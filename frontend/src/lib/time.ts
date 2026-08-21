@@ -200,15 +200,23 @@ export function formatDayDate(date: string): string {
 
 /** An instant as its named day plus its clock (`יום ו׳, 11 בספט׳ · 14:30`), in `timeZone`.
  *  Lived in `ui/BookingDetail` — a formatter, in a component, that a second component
- *  imported from the first. */
-export function formatDayTime(iso: string, timeZone: string): string {
+ *  imported from the first.
+ *
+ *  **`endClock` makes it a window** (`… · 14:30–16:00`), and it is a parameter here rather
+ *  than a caller's own `` `${a}–${b}` `` because that concatenation is the bug: two clocks
+ *  either side of a dash in an RTL flow are two numeric islands, and the layout puts the
+ *  SECOND one first — so the event sheet read `19:30–18:30` for a 90-minute event (owner,
+ *  2026-08-21), the exact reversal {@link clockRange} was extracted to end, on the one call
+ *  site that had concatenated instead of calling it. Already FORMATTED, because an end can be
+ *  read in a different zone from its start (a flight's arrival). */
+export function formatDayTime(iso: string, timeZone: string, endClock?: string | null): string {
   const day = new Intl.DateTimeFormat(APP_LOCALE, {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
     timeZone,
   }).format(new Date(iso));
-  return `${day} ${DOT_SEPARATOR} ${formatTime(iso, timeZone)}`;
+  return `${day} ${DOT_SEPARATOR} ${clockRange(formatTime(iso, timeZone), endClock)}`;
 }
 
 /** Wall-clock parts for an instant, rendered in a specific IANA timezone. */

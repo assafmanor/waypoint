@@ -64,25 +64,12 @@
      the selected pill centres itself, see `.choice-pill.on` below.)
      It can't fix the TRAILING edge (the
      container width is never an exact multiple of chip widths, so a peek is
-     inherent); a mask-image fade handles that so the peek reads as a "scroll
-     for more" affordance instead of a hard cutoff (ADR-0100 §6). The gradient
-     direction is physical (`to right`), correct in both directions since RTL
-     only reorders flex children, not `mask-image`'s own coordinate space. */
+     inherent); the `edge-fade` class the component also carries handles that,
+     so the peek reads as a "scroll for more" affordance instead of a hard
+     cutoff (ADR-0100 §6) — and only at an edge that has more behind it, which
+     is why the gradient and its condition live in `styles/edge-fade.css` +
+     `lib/edge-fade.ts` rather than here. */
   scroll-snap-type: x mandatory;
-  -webkit-mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    black 14px,
-    black calc(100% - 14px),
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    black 14px,
-    black calc(100% - 14px),
-    transparent 100%
-  );
 }
 .choice-grid.pills::-webkit-scrollbar {
   height: 0;

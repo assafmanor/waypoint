@@ -89,9 +89,14 @@ export function EventDetail({
             k={t.index.detail.timing}
             v={
               event.startsAt
-                ? `${formatDayTime(event.startsAt, startZone)}${
-                    event.endsAt ? `–${formatTime(event.endsAt, endZone)}` : ''
-                  }`
+                ? // The end goes THROUGH `formatDayTime` rather than onto its result: the
+                  // dash between two hand-concatenated clocks is what rendered the window
+                  // backwards here (`19:30–18:30`).
+                  formatDayTime(
+                    event.startsAt,
+                    startZone,
+                    event.endsAt && formatTime(event.endsAt, endZone),
+                  )
                 : formatDayDate(event.date)
             }
           />

@@ -105,7 +105,8 @@ export function DocumentsSection({
 
   // Only a type that HAS a document gets a chip (ADR-0101); `הכל` always does. Worded rather
   // than `compact`: the owner asked for the row "where category titles are also shown", which
-  // is the bookings density, not the notes one (ADR-0122 §2).
+  // is the bookings density — and since 2026-08-21 the notes row is worded too, leaving
+  // `compact` to the one strip ADR-0122 §2 argued it for, the Map's.
   const typeOptions: Choice<DocumentTypeFilter>[] = [
     { value: DOCUMENT_TYPE_ALL, icon: '', label: t.docs.filter.all, count: allDocs.length },
     ...Object.entries(typeCounts)

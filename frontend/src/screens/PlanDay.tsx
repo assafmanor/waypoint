@@ -37,6 +37,7 @@ import {
 import { useTrip, byStart } from '../state/trip-state';
 import { EVENT_PARAM, EVENT_ROW_ATTR, eventRowSelector, useArrivalParam } from '../state/nav-state';
 import { landAtTop } from '../lib/land-at-top';
+import { edgeFadeRef } from '../lib/edge-fade';
 import { useDragState } from '../state/drag-state';
 import { useSpringLoadedDay } from '../lib/useSpringLoadedDay';
 import { useVerbs } from '../state/verbs';
@@ -1168,8 +1169,9 @@ export function PlanDay() {
                 <div className="shelf-group">{t.day.shelfForDay}</div>
               )}
               <div
-                className={'shelf' + (overShelf(SHELF_DROP.DAY) ? ' drop-over' : '')}
+                className={'shelf edge-fade' + (overShelf(SHELF_DROP.DAY) ? ' drop-over' : '')}
                 data-shelf-drop={SHELF_DROP.DAY}
+                ref={edgeFadeRef}
               >
                 {shelf.forDay.map((m) => shelfCard({ kind: SHELF_DRAG.IDEA, item: m }))}
                 {/* A skipped card drags too (session-117): it is the card that most
@@ -1193,8 +1195,9 @@ export function PlanDay() {
                 </div>
               )}
               <div
-                className={'shelf' + (overShelf(SHELF_DROP.POOL) ? ' drop-over' : '')}
+                className={'shelf edge-fade' + (overShelf(SHELF_DROP.POOL) ? ' drop-over' : '')}
                 data-shelf-drop={SHELF_DROP.POOL}
+                ref={edgeFadeRef}
               >
                 {/* Scheduled (consumed) ideas leave the shelf — no dead "שובץ"
                     tombstone (ADR-0027: an idea is parked OR placed, never both). */}

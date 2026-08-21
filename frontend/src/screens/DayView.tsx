@@ -26,6 +26,7 @@ import {
 } from '../state/map-scope-state';
 import { prefersReducedMotion } from '../lib/motion';
 import { landAtTop } from '../lib/land-at-top';
+import { edgeFadeRef } from '../lib/edge-fade';
 import {
   authoringZone,
   ideaShowOnMap,
@@ -734,7 +735,7 @@ export function DayView() {
           {(shelf.forDay.length > 0 || shelf.skipped.length > 0) && (
             <>
               {shelf.pool.length > 0 && <div className="shelf-group">{t.day.shelfForDay}</div>}
-              <div className="shelf">
+              <div className="shelf edge-fade" ref={edgeFadeRef}>
                 {shelf.forDay.map((m) => (
                   <MaybeCard
                     key={m.id}
@@ -775,7 +776,7 @@ export function DayView() {
                   <span className="shelf-count">{shelf.pool.length}</span>
                 </div>
               )}
-              <div className="shelf">
+              <div className="shelf edge-fade" ref={edgeFadeRef}>
                 {/* Scheduled (consumed) ideas leave the shelf — no dead tombstone
                     (ADR-0027); `shelfGroups` already dropped them. */}
                 {/* The tile's meta carries the ranking reason — a fact that VARIES

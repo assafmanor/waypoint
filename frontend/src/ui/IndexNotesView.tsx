@@ -170,12 +170,16 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
         !searchMode && (
           <>
             <div className="filter-row">
+              {/* Worded, not `compact`: ADR-0153 §3 took this row from the
+                  bookings screen with "no change", and `compact` is ADR-0122 §2's density
+                  for a strip over the MAP, where the pin and the row badge already carry
+                  the same glyph. Here the glyph stands alone, so a chip row of six emoji
+                  is the one place in the app a category is unnamed (owner, 2026-08-21). */}
               <ChoiceGrid
                 options={categoryOptions}
                 value={activeCategory}
                 onChange={setCategory}
                 layout="pills"
-                compact
                 ariaLabel={t.notes.filter.categoryLabel}
               />
               <button

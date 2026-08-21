@@ -55,6 +55,14 @@ one.
   scrollable ancestor and so drags the sheet a chip row sits in. Under **mandatory**
   scroll-snap the selected child also needs `scroll-snap-align: center`, or the browser
   re-snaps the centred offset back to a start-aligned boundary (`choice-grid.css`).
+- **A horizontally scrolling strip whose edges should fade** — `lib/edge-fade.ts`'s
+  `edgeFadeRef` plus the `edge-fade` class (`styles/edge-fade.css`), never a `mask-image`
+  gradient in your own stylesheet. ADR-0100 §6 decided that fade and three strips then each
+  wrote it out (the pills row, the maybe shelf, the Map's facet strip), so the CONDITION the
+  copies all lacked — an edge with nothing behind it must not fade, which is what the owner
+  reported — would have had to be added three times. A callback ref rather than a hook so a
+  strip rendered inside a `.map()` can take it; it asks `scrollsOn`, so a box that clips
+  instead of scrolling (the Map's nested pills group) declines by itself.
 - **Motion timed from JS** — `lib/motion.ts` (`motionDurationMs`), never a literal and
   never a raw `readDurationMs`. It answers **0** both under reduced motion and when the
   token is unreadable, which is what keeps a state that only exists _during_ an

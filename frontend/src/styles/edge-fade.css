@@ -1,0 +1,30 @@
+/* **`.edge-fade` — a scrolling strip's edge fades only where the content continues.**
+ *
+ * ADR-0100 §6 decided the fade and its geometry (14px, physical `to right`: RTL reorders flex
+ * children, not `mask-image`'s own coordinate space). Three strips then each wrote it out —
+ * `choice-grid.css`'s pills row, `screens.css`'s maybe shelf, `map.css`'s facet strip, the last
+ * two naming the first in a comment. This is that gradient once (root rule 8).
+ *
+ * The two stop widths are custom properties so `lib/edge-fade.ts` can zero the side with
+ * nothing behind it: the fade used to promise "more this way" at a strip's first chip and on a
+ * strip that fits entirely. A zeroed side is a hard stop at the box edge, i.e. no fade at all —
+ * which is why this is one gradient with two variables rather than four rules. */
+.edge-fade {
+  --edge-fade-w: 14px;
+  --edge-fade-l: var(--edge-fade-w);
+  --edge-fade-r: var(--edge-fade-w);
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black var(--edge-fade-l),
+    black calc(100% - var(--edge-fade-r)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black var(--edge-fade-l),
+    black calc(100% - var(--edge-fade-r)),
+    transparent 100%
+  );
+}

@@ -49,6 +49,7 @@ vi.mock('../lib/outbox', () => ({
 
 import { EventDetail } from './EventDetail';
 import { buildHostContextIndex } from '../lib/host-context';
+import { withoutBidiControls } from '../lib/bidi';
 import { t } from '../i18n/he';
 
 const event = (over: Partial<TripEvent> = {}): TripEvent =>
@@ -83,6 +84,18 @@ describe('EventDetail', () => {
     show(event());
     expect(screen.getByText('ארוחת ערב · איצ׳יראן')).toBeTruthy();
     expect(screen.getByText(t.event.soft)).toBeTruthy();
+  });
+
+  // The owner's report (2026-08-21): this sheet read `19:30–18:30` for an event the day card
+  // read correctly. The two clocks were concatenated either side of a dash, which makes them
+  // two numeric islands an RTL flow lays out second-first — so the window is one LTR island
+  // now, through `formatDayTime`'s own end (`lib/time.ts`, `clockRange`).
+  it('states its window in start–end order', () => {
+    show(event());
+    const when = screen.getByText((text) => withoutBidiControls(text).includes('–'));
+    const plain = withoutBidiControls(when.textContent ?? '');
+    expect(plain).toContain('19:00–20:30');
+    expect(plain).not.toContain('20:30–19:00');
   });
 
   it('shows the hard-commitment guard on a hard event, and not on a soft one', () => {
