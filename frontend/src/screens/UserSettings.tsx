@@ -16,6 +16,7 @@ import { SETTINGS_PICTURE_PATH, useAppBack } from '../state/nav-state';
 import { readThemePick, setThemePick, THEME_PICK, type ThemePick } from '../lib/theme';
 import { currencyForDeviceRegion } from '../lib/currency';
 import { Avatar } from '../ui/primitives/Avatar';
+import { PushDebugPanel } from '../ui/PushDebugPanel';
 import { ChoiceGrid } from '../ui/primitives/ChoiceGrid';
 import { CurrencyPicker, currencyLabel } from '../ui/primitives/CurrencyPicker';
 import { Icon } from '../ui/Icon';
@@ -293,6 +294,11 @@ export default function UserSettings() {
           </div>
         </div>
         <div className="set-hint-block">{t.shell.account.emailHint}</div>
+
+        {/* The push instrument, gated behind VITE_PUSH_DEBUG (inert in production), and
+            sitting where the DESIGNED Notifications row will land in phase 1b — so the
+            replacement is a swap rather than a move. */}
+        <PushDebugPanel />
 
         {/* Signing out is routine, so it is NOT the danger grammar — that is reserved
             for the irreversible (leaving a trip, deleting it). */}

@@ -85,6 +85,27 @@ export const ENRICHMENT_JSON_MAX_BYTES = 'ENRICHMENT_JSON_MAX_BYTES';
  *  without taking down the reads, which serve already-stored data and are unaffected. */
 export const ENRICHMENT_DISABLED = 'ENRICHMENT_DISABLED';
 
+// Web Push (ADR-0197 §1). The keypair is this server's identity to every push service:
+// the public half is handed to the browser at subscribe time and rides `/me` (§7), the
+// private half signs each request and never leaves the process. Generate with
+// `npx web-push generate-vapid-keys`.
+//
+// `VAPID_SUBJECT` is a `mailto:` or `https:` URL the push services can use to reach whoever
+// runs this deployment when it misbehaves — required by the spec, and not optional in
+// practice: some services reject a request without it.
+export const VAPID_PUBLIC_KEY = 'VAPID_PUBLIC_KEY';
+export const VAPID_PRIVATE_KEY = 'VAPID_PRIVATE_KEY';
+export const VAPID_SUBJECT = 'VAPID_SUBJECT';
+
+/** **Kill switch for outbound push** (any truthy value stops every send).
+ *
+ *  The third variable of its kind after `ENRICHMENT_DISABLED` and `FX_DISABLED`, and the
+ *  reason is the same one stated there: this is the third thing in the app that acts on its
+ *  own initiative, so it gets the one switch that stops it doing so. Reads are unaffected —
+ *  subscribing, unsubscribing and every in-app surface keep working, which matters because
+ *  the in-app surfaces are the primary and push is the amplifier (ADR-0198 §6). */
+export const PUSH_DISABLED = 'PUSH_DISABLED';
+
 /** The FX feed's kill switch (ADR-0180 §7), and the second variable of its kind for
  *  the same reason the first exists: this is now the second thing in the app that
  *  talks to a third party on its own initiative, and it gets the one switch that

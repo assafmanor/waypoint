@@ -1,0 +1,166 @@
+// The device's side of Web Push (ADR-0197 §2/§7): can this device be reached, is it
+// registered, and the two verbs that change that.
+//
+// Everything here is about the DEVICE. The category preferences ADR-0198 §6 puts on `User`
+// are account state and are not this module's business — a subscription is per device, a
+// preference follows the person, and keeping them apart is what makes a new phone work
+// without re-choosing anything.
+import { deletePushSubscription, registerPushSubscription } from './api';
+
+/**
+ * Why this device cannot be subscribed, or `null` when it can.
+ *
+ * A closed set rather than a boolean, because **the four reasons need four different
+ * sentences** and one of them is not a refusal at all but an instruction (ADR-0197 §7: the
+ * iOS hole is stated in the UI, not discovered in a field report).
+ */
+export const PUSH_BLOCKER = {
+  /** The browser has no Push API at all. On an Apple browser this usually means the app is
+   *  in a tab rather than on the home screen — see `needsInstall`. */
+  UNSUPPORTED: 'unsupported',
+  /** Safari 16.4+ delivers Web Push only to an INSTALLED PWA. This is the one blocker with
+   *  a cure the user can perform, so it is a separate member from `unsupported`. */
+  NEEDS_INSTALL: 'needsInstall',
+  /** The user said no. Not recoverable in-app on any platform — only in browser settings —
+   *  which is the whole reason §7 never asks on load. */
+  DENIED: 'denied',
+  /** This server holds no VAPID keypair, so nothing could be sent even if we subscribed.
+   *  A capability of the deployment, not of the device. */
+  SERVER: 'server',
+} as const;
+export type PushBlocker = (typeof PUSH_BLOCKER)[keyof typeof PUSH_BLOCKER];
+
+/** Whether the app is running as an installed PWA. Two checks because the platforms differ:
+ *  `display-mode: standalone` is the standard, `navigator.standalone` is WebKit's older
+ *  answer and is the one that reports correctly on an iPhone home-screen app. */
+function isInstalled(): boolean {
+  if (window.matchMedia('(display-mode: standalone)').matches) return true;
+  return (navigator as { standalone?: boolean }).standalone === true;
+}
+
+/** Apple's engine, which is what makes the install requirement apply. Deliberately a
+ *  capability sniff rather than a UA string: every iOS browser is WebKit, so what matters
+ *  is the engine, and `standalone` on `navigator` is a WebKit-only property. */
+function isWebKit(): boolean {
+  return 'standalone' in navigator;
+}
+
+/**
+ * Can this device be subscribed, and if not, why.
+ *
+ * `vapidPublicKey` comes from `/me` (ADR-0197 §7), so the server's own capability is part
+ * of the same answer rather than a second thing a caller has to remember to check.
+ */
+export function pushBlocker(vapidPublicKey: string | null | undefined): PushBlocker | null {
+  if (!vapidPublicKey) return PUSH_BLOCKER.SERVER;
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    // The order matters: on an un-installed iOS tab there is no `PushManager`, and telling
+    // that user "unsupported" would be false — the cure is one gesture away.
+    return isWebKit() && !isInstalled() ? PUSH_BLOCKER.NEEDS_INSTALL : PUSH_BLOCKER.UNSUPPORTED;
+  }
+  if (Notification.permission === 'denied') return PUSH_BLOCKER.DENIED;
+  return null;
+}
+
+/** The existing subscription for this device, or `null`. Never throws: a caller asking
+ *  "am I registered" while the worker is still installing should get an answer, not a
+ *  rejection. */
+export async function currentSubscription(): Promise<PushSubscription | null> {
+  if (!('serviceWorker' in navigator)) return null;
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    return await registration.pushManager.getSubscription();
+  } catch {
+    return null;
+  }
+}
+
+/** base64url → the `Uint8Array` `subscribe()` demands. The API predates `BufferSource`
+ *  accepting a string, so every Web Push client on earth carries this function.
+ *
+ *  Built over an explicit `ArrayBuffer` rather than through `Uint8Array.from`, and that is
+ *  not style: since TypeScript 5.7 the typed arrays are generic in their backing buffer, so
+ *  `from` yields `Uint8Array<ArrayBufferLike>` — which `BufferSource` rejects, because a
+ *  `SharedArrayBuffer` cannot be one. Naming the buffer is what makes the type exact. */
+function applicationServerKey(base64Url: string): Uint8Array<ArrayBuffer> {
+  const padded = base64Url.padEnd(base64Url.length + ((4 - (base64Url.length % 4)) % 4), '=');
+  const binary = atob(padded.replace(/-/g, '+').replace(/_/g, '/'));
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+/** The subscription's two keys, base64url, as the server stores them. `getKey` hands back
+ *  raw bytes; `PushSubscription.toJSON()` would encode them for us but its `keys` member is
+ *  typed as an optional record of strings, so this reads the bytes and encodes them itself
+ *  rather than asserting on a shape the DOM lib will not promise. */
+function encodedKeys(subscription: PushSubscription): { p256dh: string; auth: string } | null {
+  const p256dh = subscription.getKey('p256dh');
+  const auth = subscription.getKey('auth');
+  if (!p256dh || !auth) return null;
+  return { p256dh: base64Url(p256dh), auth: base64Url(auth) };
+}
+
+function base64Url(buffer: ArrayBuffer): string {
+  let binary = '';
+  for (const byte of new Uint8Array(buffer)) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/**
+ * Subscribe this device and register it with the server.
+ *
+ * **Must be called from a user gesture** — that is the platform's rule for the permission
+ * prompt, not ours (ADR-0197 §7). Throws on refusal or failure, so a caller can report it;
+ * the one thing it will not do is leave the device subscribed to a push service the server
+ * does not know about, because the local subscription is rolled back if the registration
+ * call fails.
+ */
+export async function subscribeThisDevice(vapidPublicKey: string): Promise<void> {
+  const registration = await navigator.serviceWorker.ready;
+  const subscription =
+    (await registration.pushManager.getSubscription()) ??
+    (await registration.pushManager.subscribe({
+      // Required, and required to be true: a subscription that could send a silent push is
+      // one Chrome refuses to create. It is also what the worker's always-show rule honours.
+      userVisibleOnly: true,
+      applicationServerKey: applicationServerKey(vapidPublicKey),
+    }));
+
+  const keys = encodedKeys(subscription);
+  if (!keys) {
+    await subscription.unsubscribe().catch(() => {});
+    throw new Error('push subscription carried no keys');
+  }
+
+  try {
+    await registerPushSubscription({
+      endpoint: subscription.endpoint,
+      ...keys,
+      userAgent: navigator.userAgent,
+    });
+  } catch (error) {
+    // **The rollback is the point.** A device subscribed at the push service but unknown to
+    // the server is a permission spent for nothing, and the next attempt would find an
+    // existing subscription and skip straight past `subscribe()` — so it would stay broken.
+    await subscription.unsubscribe().catch(() => {});
+    throw error;
+  }
+}
+
+/**
+ * Unsubscribe this device, locally and on the server.
+ *
+ * **Both halves, and the local one is not optional** (ADR-0197 §2.3). This also runs on
+ * sign-out, where the server call may well fail because the session is already gone — that
+ * is why the local `unsubscribe()` happens regardless and the server call is best-effort:
+ * a phone handed to somebody else must stop waking with the previous person's deadlines,
+ * and the server prunes its own row when the push service later reports it gone.
+ */
+export async function unsubscribeThisDevice(): Promise<void> {
+  const subscription = await currentSubscription();
+  if (!subscription) return;
+  const { endpoint } = subscription;
+  await subscription.unsubscribe().catch(() => {});
+  await deletePushSubscription(endpoint).catch(() => {});
+}

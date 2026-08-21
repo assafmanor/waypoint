@@ -32,6 +32,7 @@ import {
   type CreateEventInput,
   type CreateMaybeItemInput,
   type CreateNoteInput,
+  type CreatePushSubscriptionInput,
   type CreateTaskInput,
   type UpdateMaybeItemInput,
   type UpdateNoteInput,
@@ -242,6 +243,32 @@ export async function deleteAvatar(): Promise<Me> {
   const res = await apiFetch(`${API_BASE_URL}/me/avatar`, { method: HTTP_METHOD.DELETE });
   if (!res.ok) return throwApiError(res);
   return meSchema.parse(await readJson(res));
+}
+
+// ── PUSH SUBSCRIPTIONS (ADR-0197 §2) ───────────────────────────────────────────────────
+// Control plane, beside `/me` rather than under a trip: a subscription belongs to a person
+// and a device, and one device is reached about every trip that person is in.
+
+/** Register (or refresh) this device. Idempotent server-side — the row is upserted on the
+ *  endpoint — so a caller that is unsure whether it already registered may just call it. */
+export async function registerPushSubscription(input: CreatePushSubscriptionInput): Promise<void> {
+  const res = await apiFetch(`${API_BASE_URL}/notifications/subscription`, {
+    method: HTTP_METHOD.POST,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+}
+
+/** Drop this device. A 404 is tolerated for the same reason `removeMember`'s is: the
+ *  desired state is "this endpoint is not registered", and a missing row already means it. */
+export async function deletePushSubscription(endpoint: string): Promise<void> {
+  const res = await apiFetch(`${API_BASE_URL}/notifications/subscription`, {
+    method: HTTP_METHOD.DELETE,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ endpoint }),
+  });
+  if (!res.ok && res.status !== 404) return throwApiError(res);
 }
 
 export async function fetchTrips(): Promise<Trip[]> {

@@ -188,6 +188,8 @@ Same project as everything else — confirm the Console's project picker shows *
 
 - [ ] `JWT_SECRET` — random 32+ bytes.
 - [ ] `DOC_ENCRYPTION_KEY` — random 32 bytes, base64 (server-side document encryption, ADR-0015).
+- [ ] `VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` + `VAPID_SUBJECT` — Web Push (ADR-0197). Generate the pair with **`npx web-push generate-vapid-keys`**; the subject is a `mailto:` or `https:` URL a push service can use to reach whoever runs the deployment. **All three or none:** the backend refuses to boot on a partial keypair, because half of one subscribes fine and fails at the first send. It also size-checks them (65 bytes public, 32 private), so the copy-paste that swaps the two halves fails at boot rather than at the first send. Omit all three on a dev box and `/me` reports no key, which the app states rather than offering a control that cannot work.
+  - **To actually see a notification you need a production build**, because there is no service worker under `pnpm dev`: `VITE_PUSH_DEBUG=1 pnpm --filter @waypoint/frontend build && pnpm --filter @waypoint/frontend preview`, subscribe from the instrument in user settings, then `curl -X POST localhost:3000/notifications/test` with `DEV_AUTH=1`.
 - [ ] Keep all of the above in `.env` (gitignored). Record _what exists_ (not the values) in a password manager or private local notes (kept out of the repo).
 
 ## Deployment (later, not v1-blocking) 👤

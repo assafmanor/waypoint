@@ -1,5 +1,5 @@
-// The service worker — ours now, because a `push` listener cannot be added to a
-// generated one (ADR-0197 §8, phase 0 of the notifications epic).
+// The service worker — ours since phase 0, because a `push` listener cannot be added to a
+// generated one (ADR-0197 §8). Phase 1 adds that listener, at the bottom of this file.
 //
 // **Everything in this file was previously declarative config** in
 // `vite.config.ts`'s `workbox` block, emitted by workbox-build's `sw-template`.
@@ -35,6 +35,10 @@ import { CacheFirst } from 'workbox-strategies';
 // the barrel would inline zod and every entity schema into the worker, and this
 // module imports nothing itself.
 import { SERVER_ROUTE_PATTERN } from '../../packages/shared/src/server-routes';
+// The same rule as the line above, and the reason `push.ts` is zod-free: this bundle is
+// built with `inlineDynamicImports`, so importing the package barrel would inline zod and
+// every entity schema into the worker.
+import { parsePushPayload } from '../../packages/shared/src/push';
 
 /** The worker's own global. Declared rather than imported: `__WB_MANIFEST` is a
  *  build-time injection point, not a runtime value, and writing its shape here is
@@ -94,3 +98,67 @@ registerRoute(
 // glyph bytes needs a new path (or a `cacheName` bump), not a redeploy. They are
 // Noto releases — this will not happen often.
 registerRoute(/\/map-glyphs\/.*\.pbf$/, new CacheFirst({ cacheName: 'map-glyphs' }), 'GET');
+
+// ── NOTIFICATIONS (ADR-0197 §8, phase 1) ────────────────────────────────────────────────
+
+/** What a malformed or empty payload draws. **The fallback exists because a `push` handler
+ *  that shows nothing is punished**: browsers treat a silent push as an abuse signal and
+ *  eventually revoke the origin's permission entirely. So there is no path through the
+ *  handler below that does not call `showNotification` — including the one where our own
+ *  server sent something this build cannot read.
+ *
+ *  Latin, and deliberately not from `i18n/he.ts`: the worker cannot import the app graph,
+ *  and this string is only reachable through a bug. */
+const FALLBACK_NOTIFICATION = { title: 'Travelive', body: '', url: '/' };
+
+self.addEventListener('push', (event) => {
+  // `event.data.json()` throws on a non-JSON body, and a throw here is a silent push.
+  let parsed: ReturnType<typeof parsePushPayload> = null;
+  try {
+    parsed = parsePushPayload(event.data?.json());
+  } catch {
+    parsed = null;
+  }
+  const { title, body, url } = parsed ?? FALLBACK_NOTIFICATION;
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      // The app's own maskable icon, already precached — so a notification has our face
+      // on it offline, and needs no asset of its own.
+      icon: '/pwa-192.png',
+      badge: '/pwa-192.png',
+      // Where the tap goes. Carried through `data` rather than the tag, because `tag` is
+      // the COLLAPSE key: two notifications sharing one replace each other.
+      data: { url },
+      // Per-kind collapsing is ADR-0198's business (a second reminder about one task
+      // should replace the first). Phase 1 has one kind and no such rule, so nothing
+      // collapses yet and the tag is deliberately unset.
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const raw = (event.notification.data as { url?: unknown } | null)?.url;
+  const path = typeof raw === 'string' && raw.startsWith('/') ? raw : '/';
+  const target = new URL(path, self.location.origin);
+  event.waitUntil(
+    (async () => {
+      // **Focus an open tab before opening a new one.** A standalone PWA that opens a
+      // second window on every notification tap accumulates them, and the one already
+      // running holds the app's state. `includeUncontrolled` matters: a client loaded
+      // before this worker took over is still the user's open app.
+      const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const client of clients) {
+        if (new URL(client.url).origin !== target.origin) continue;
+        await client.focus();
+        // Navigate the focused client if it is somewhere else. `navigate` can reject (it
+        // is not available to every client type), and a failed navigation must not lose
+        // the focus we just gained.
+        if (client.url !== target.href) await client.navigate(target.href).catch(() => {});
+        return;
+      }
+      await self.clients.openWindow(target.href);
+    })(),
+  );
+});
