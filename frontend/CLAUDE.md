@@ -368,6 +368,15 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   event then renders at a different time than it was typed at. A `WhenField`
   without a `zone`/`zones` prop is exactly that surface: the chip is opt-in per
   call site, so a form doesn't get it "for free" (ADR-0107 session-128).
+- **The read-side twin of the line above:** rendering a stored instant with
+  `trip.timezone` instead of the event's resolved zone
+  (`eventDisplayZones(event, zoneEvidence)`), per **end** — a departure in its
+  origin, an arrival in its destination. The primary zone is the fallback for an
+  event nothing anchors, not a default to reach for. It cost a field report on
+  `BookingDetail` and the Index row (ADR-0107 session-258), where the tell was
+  that the wrong pair looked _right_: the duration beside them is instant-based,
+  so it agrees with any zone and hides the error until you open two surfaces at
+  once. A read one tap from a row must state the row's time.
 - `navigate(-1)`, `history.back()/forward()/go()`, or any read of
   `history.length` for a back action — back is computed from nav state
   (ADR-0090), never traversed. **Lint-blocked since session 178**, because the

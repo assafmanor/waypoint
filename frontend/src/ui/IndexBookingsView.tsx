@@ -5,10 +5,15 @@
 // tab → Home rule; a nested BookingDetail/BookingManageSheet/BookingSheet
 // registers on top of that via its own Modal, so it closes first in turn.
 import { useEffect, useMemo, useState } from 'react';
-import { BOOKING_TYPE, type Booking, type Place, type Trip } from '@waypoint/shared';
+import { BOOKING_TYPE, type Booking, type Place } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { usePlaceErrandReturn, useShowPlaceOnMap } from '../state/map-scope-state';
-import { bookingShowOnMap, type ShowPlaceOnMap } from '../lib/places';
+import {
+  bookingShowOnMap,
+  eventDisplayZones,
+  type ShowPlaceOnMap,
+  type ZoneEvidence,
+} from '../lib/places';
 import { useMode } from '../state/mode-state';
 import { useBackLayer, type BackResult } from '../state/nav-state';
 import { useClock } from '../lib/useClock';
@@ -56,8 +61,17 @@ export function IndexBookingsView({
    *  that booking's detail on top of this screen once mounted. */
   initialBookingId?: string;
 }) {
-  const { trip, bookings, places, events, notes, documentAttachments, hostContexts, tasks } =
-    useTrip();
+  const {
+    trip,
+    bookings,
+    places,
+    events,
+    notes,
+    documentAttachments,
+    hostContexts,
+    tasks,
+    zoneEvidence,
+  } = useTrip();
   const { mode } = useMode();
   // This screen is the Index's topmost overlay (ADR-0098 §5), so it closes before
   // the tab changes — the same ordering `BookingDetail` needs, one level out.
@@ -192,7 +206,7 @@ export function IndexBookingsView({
     <BookingLi
       row={row}
       places={places}
-      trip={trip}
+      zoneEvidence={zoneEvidence}
       now={now}
       onOpen={openDetail}
       onManage={setManage}
@@ -373,7 +387,7 @@ export function IndexBookingsView({
 function BookingLi({
   row,
   places,
-  trip,
+  zoneEvidence,
   now,
   onOpen,
   onManage,
@@ -385,7 +399,9 @@ function BookingLi({
 }: {
   row: BookingRow;
   places: Place[];
-  trip: Trip;
+  /** The row's clocks read in each event's OWN resolved zone (ADR-0107); this replaced the
+   *  `Trip` prop, which the row only ever consulted for `timezone`. */
+  zoneEvidence: ZoneEvidence;
   now: Date;
   onOpen: (booking: Booking) => void;
   onManage: (booking: Booking) => void;
@@ -412,13 +428,19 @@ function BookingLi({
   // A queued (pending) write fades the row to read as provisional (ADR-0092).
   const unsynced = useUnsynced(booking.id);
 
-  const schedule = event ? scheduleParts(event, booking, trip, now) : undefined;
+  const schedule = event ? scheduleParts(event, booking, zoneEvidence, now) : undefined;
   // THE VERB IS DRAWN WHERE IT DISAMBIGUATES (ADR-0179 §2d): on a span's closing edge it
   // is the only thing that can say which end this time is, and on a start edge the badge
   // glyph already says it — the type→verb map is 1:1.
   const showVerb = !!schedule?.verb && schedule.edge === 'end';
   const duration = event
-    ? formatBookingDuration(event, trip.timezone, bookingDurationUnit(booking.type))
+    ? // The booking's own zone, for the same reason `BookingDetail` reads it that way: this
+      // only turns an instant into a calendar day for the nights count (ADR-0107).
+      formatBookingDuration(
+        event,
+        eventDisplayZones(event, zoneEvidence).start,
+        bookingDurationUnit(booking.type),
+      )
     : null;
 
   return (
