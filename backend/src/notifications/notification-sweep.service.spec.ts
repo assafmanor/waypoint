@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { Logger } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NOTIFICATION_KIND, type PushPayload } from '@waypoint/shared';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -21,6 +22,7 @@ vi.mock('./notification-registry', () => ({ NOTIFICATION_KINDS: hoisted.kinds })
 // error (TS1309). The dynamic form ran fine under vitest and failed `pnpm typecheck` — which
 // is the sort of divergence the second typecheck pass exists to catch.
 import { NotificationSweepService } from './notification-sweep.service';
+import { fireKeyFor } from './send-policy';
 
 const HOUR = 60 * 60 * 1000;
 const utc = (iso: string) => Date.parse(iso);
@@ -62,6 +64,14 @@ function kind(
   };
 }
 
+/** The four columns of the ledger's unique key, as the fake passes them around. */
+interface LedgerRow {
+  userId: string;
+  kind: string;
+  subjectId: string;
+  fireKey: string;
+}
+
 /** A Prisma stand-in over the calls the sweep makes. `ledger` is the stored rows, so a
  *  test can seed "already sent" and a unique violation is modelled rather than mocked. */
 function fakePrisma(
@@ -71,6 +81,9 @@ function fakePrisma(
     /** Recipients' category switches. Absent means "no row", which the sweep must read as
      *  opted OUT — the only way to be absent is to have been deleted mid-tick. */
     users?: { id: string; notifyTasks: boolean }[];
+    /** Make the pre-check answer nothing while the ledger still holds the row — how a row
+     *  written by another instance after this tick's read looks from inside this tick. */
+    blindPreCheck?: boolean;
   } = {},
 ) {
   const trips = options.trips ?? [{ id: 'trip-1', timezone: 'Asia/Jerusalem' }];
@@ -112,6 +125,25 @@ function fakePrisma(
             const [userId, kind] = key.split('\u0000');
             return { userId, kind, _count: { _all: count } };
           }),
+        );
+      },
+      // The pre-check the sweep now runs before any insert. Matches EXACT tuples, exactly as
+      // the real `OR` of composite keys does — a fake that matched on `userId` alone would let
+      // a pre-check with a too-loose `where` pass, which is how a candidate would be silently
+      // suppressed rather than sent.
+      findMany: ({ where }: { where: { OR: LedgerRow[] } }) => {
+        calls.push('preCheck');
+        if (options.blindPreCheck) return Promise.resolve([]);
+        return Promise.resolve(
+          ledger.filter((row) =>
+            where.OR.some(
+              (k) =>
+                k.userId === row.userId &&
+                k.kind === row.kind &&
+                k.subjectId === row.subjectId &&
+                k.fireKey === row.fireKey,
+            ),
+          ),
         );
       },
       deleteMany: ({ where }: { where: { kind: { in: string[] }; sentAt: { lt: Date } } }) => {
@@ -235,6 +267,7 @@ describe('a due candidate', () => {
       place: { findMany: () => Promise.resolve([]) },
       notificationSend: {
         groupBy: () => Promise.resolve([]),
+        findMany: () => Promise.resolve([]),
         create: () => {
           order.push('claim');
           return Promise.resolve({});
@@ -360,6 +393,152 @@ describe('dedup BY_SUBJECT (ADR-0198’s "does not multiply")', () => {
  * title is the same one and does not. Both fall out of `fireKey` being derived from the
  * aimed-at instant, so no edit path has to know.
  */
+/**
+ * **The defect the owner found on a production dashboard**, and it is the shape of the windows
+ * that causes it rather than anything about the ledger.
+ *
+ * `task.due` selects `dueAt` within `staleAfterMs` — three hours — so a deadline that fired at
+ * 12:00 is *still a candidate* at 12:01, 12:02 … 14:59. Every one of those ticks re-derived it
+ * and re-attempted the insert, taking a Postgres unique violation each time: about 180 errors
+ * per task, forever, for every task ever notified. Correctness never broke. The error log
+ * became useless, which is worse than it sounds — a log full of expected errors is a log with
+ * no errors in it.
+ */
+describe('a candidate whose window has not closed does not storm the ledger', () => {
+  const claimedRow = (over: Partial<LedgerRow> = {}) => ({
+    userId: 'u1',
+    kind: 'task.due',
+    subjectId: 'task-1',
+    fireKey: fireKeyFor(NOON),
+    sentAt: new Date(NOON),
+    ...over,
+  });
+
+  it('attempts NO insert for a send the ledger already holds', async () => {
+    // The assertion that is really about the production log: not "it did not send twice"
+    // (that always held) but "it did not TRY".
+    kinds.push(kind({ staleAfterMs: 3 * HOUR, due: () => Promise.resolve([send()]) }));
+    const { prisma, calls } = fakePrisma({ ledger: [claimedRow()] });
+    const { sweep, dispatcher } = makeSweep(prisma);
+
+    const report = await sweep.sweep(NOON + 30 * 60_000);
+
+    expect(report.alreadySent).toBe(1);
+    expect(report.claimed).toBe(0);
+    expect(calls).toContain('preCheck');
+    expect(calls).not.toContain('create');
+    expect(dispatcher.batches).toEqual([]);
+  });
+
+  it('stays quiet for every tick of the whole window, not just the next one', async () => {
+    // 180 ticks across three hours, which is the real duration of the storm.
+    kinds.push(kind({ staleAfterMs: 3 * HOUR, due: () => Promise.resolve([send()]) }));
+    const { prisma, calls } = fakePrisma({ ledger: [claimedRow()] });
+    const { sweep } = makeSweep(prisma);
+
+    for (let minute = 1; minute <= 180; minute += 1) {
+      await sweep.sweep(NOON + minute * 60_000);
+    }
+
+    expect(calls.filter((c) => c === 'create')).toEqual([]);
+  });
+
+  it('counts it as already sent rather than as stale or deferred', async () => {
+    // The pre-check runs BEFORE the policies, so the report says what actually happened. A
+    // done send that got counted as "dropped stale" would send somebody looking for a bug in
+    // the staleness window.
+    kinds.push(kind({ staleAfterMs: 3 * HOUR, due: () => Promise.resolve([send()]) }));
+    const { prisma } = fakePrisma({ ledger: [claimedRow()] });
+    const { sweep } = makeSweep(prisma);
+
+    const report = await sweep.sweep(NOON + 2 * HOUR);
+
+    expect(report).toMatchObject({
+      alreadySent: 1,
+      droppedStale: 0,
+      deferredQuiet: 0,
+      droppedCapped: 0,
+    });
+  });
+
+  it('still claims a candidate the ledger does NOT hold', async () => {
+    // The pre-check must not become a filter that suppresses real sends: a `where` that
+    // matched on `userId` alone would pass the tests above and fail this one.
+    kinds.push(kind({ due: () => Promise.resolve([send({ subjectId: 'task-2' })]) }));
+    const { prisma, calls } = fakePrisma({ ledger: [claimedRow()] });
+    const { sweep } = makeSweep(prisma);
+
+    expect((await sweep.sweep(NOON)).claimed).toBe(1);
+    expect(calls).toContain('create');
+  });
+
+  it('logs NOTHING on a tick whose every candidate was already sent', async () => {
+    // The other half of the dashboard fix. An INFO line every minute for three hours per task
+    // is the same noise as the error, one severity down — and it buried the ticks that matter.
+    const logged = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+    try {
+      kinds.push(kind({ staleAfterMs: 3 * HOUR, due: () => Promise.resolve([send()]) }));
+      const { prisma } = fakePrisma({ ledger: [claimedRow()] });
+      const { sweep } = makeSweep(prisma);
+
+      await sweep.sweep(NOON + HOUR);
+
+      expect(logged).not.toHaveBeenCalled();
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
+  it('still logs a tick that actually did something', async () => {
+    const logged = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+    try {
+      kinds.push(kind({ due: () => Promise.resolve([send()]) }));
+      const { prisma } = fakePrisma();
+      const { sweep } = makeSweep(prisma);
+
+      await sweep.sweep(NOON);
+
+      expect(logged).toHaveBeenCalledOnce();
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
+  it('still logs a tick that dropped something for a REASON', async () => {
+    // "Nothing happened" is silent; "something was refused" never is — otherwise a cap or a
+    // quiet-hours deferral would be invisible, which is the opposite of the point.
+    const logged = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+    try {
+      kinds.push(kind({ pref: 'notifyTasks', due: () => Promise.resolve([send()]) }));
+      const { prisma } = fakePrisma({ users: [{ id: 'u1', notifyTasks: false }] });
+      const { sweep } = makeSweep(prisma);
+
+      await sweep.sweep(NOON);
+
+      expect(logged).toHaveBeenCalledOnce();
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
+  it('keeps the insert’s catch for the race it was always for', async () => {
+    // Two instances inside the same minute: neither pre-check sees the other's row yet, both
+    // attempt, one loses. Rare, genuine, and the reason the `catch` stays. `blindPreCheck`
+    // models exactly that — the row IS in the ledger, and the pre-check cannot see it, which
+    // is what "it landed after my read" looks like from inside one tick.
+    kinds.push(kind({ due: () => Promise.resolve([send()]) }));
+    const { prisma, calls } = fakePrisma({ ledger: [claimedRow()], blindPreCheck: true });
+    const { sweep } = makeSweep(prisma);
+
+    const report = await sweep.sweep(NOON);
+
+    // It tried, and the unique index refused it — which is the guarantee, not the fallback.
+    expect(calls).toContain('create');
+    expect(report.alreadySent).toBe(1);
+    expect(report.claimed).toBe(0);
+  });
+});
+
 describe('the ledger’s retention, and the rows it must never touch', () => {
   const DAY = 24 * HOUR;
 
