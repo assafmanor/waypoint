@@ -114,6 +114,9 @@ import './ui/primitives/form-errors.css';
 // The rebuff beat, shared by Plan's prep hero and the Trip board (ADR-0160 §Q) — global
 // for the same reason: two surfaces play it and neither owns it.
 import './styles/beats.css';
+// The strip-edge fade, shared by the pills row, the maybe shelf and the Map's facet strip
+// (ADR-0100 §6, one mechanism since 2026-08-21) — global for the same reason.
+import './styles/edge-fade.css';
 import { Avatar } from './ui/primitives/Avatar';
 import { RosterSheet } from './ui/RosterSheet';
 import { ltrIsolate } from './lib/bidi';

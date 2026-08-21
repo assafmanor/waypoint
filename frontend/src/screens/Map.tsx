@@ -120,6 +120,7 @@ import { mapColorScheme, mapPaneAvailable, mapTileUrls } from '../lib/map-config
 import { useMapArchives } from '../lib/useMapArchives';
 import { landAtTop } from '../lib/land-at-top';
 import { observeResize } from '../lib/observe-resize';
+import { edgeFadeRef } from '../lib/edge-fade';
 import { usePlaceSearch } from '../lib/usePlaceSearch';
 import { useVerbs, type AddMaybeOptions } from '../state/verbs';
 import { stopHeightCss } from '../lib/snap-sheet';
@@ -2825,7 +2826,7 @@ export function MapView() {
     <div className={'map-controls' + (hasMap ? '' : ' in-flow')}>
       {facetsOpen ? (
         <>
-          <div className="map-facetstrip">
+          <div className="map-facetstrip edge-fade" ref={edgeFadeRef}>
             <ChoiceGrid
               options={typeOptions}
               value={activeCategory}

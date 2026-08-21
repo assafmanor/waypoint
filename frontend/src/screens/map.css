@@ -140,22 +140,8 @@
   overflow-x: auto;
   scrollbar-width: none;
   scroll-snap-type: x mandatory;
-  /* Physical `to right` on purpose: RTL reorders flex children, not `mask-image`'s own
-     coordinate space (ADR-0100 §6). */
-  -webkit-mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    black 14px,
-    black calc(100% - 14px),
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    black 14px,
-    black calc(100% - 14px),
-    transparent 100%
-  );
+  /* The fade is the shared `edge-fade` class this strip also carries (ADR-0100 §6, one
+     mechanism since 2026-08-21), so the gradient is no longer written out here. */
 }
 .map-facetstrip::-webkit-scrollbar {
   display: none;
@@ -165,7 +151,10 @@
   scroll-snap-align: start;
 }
 /* The outer strip owns the scroll and the fade now, so the pills group inside it is a
-   plain flex group: two nested scrollers fight, and two nested masks fade a chip twice. */
+   plain flex group: two nested scrollers fight, and two nested masks fade a chip twice.
+   `lib/edge-fade.ts` declines this element too (it asks `scrollsOn`, and this clips rather
+   than scrolls), so the two mask lines below are belt to that braces — kept because the
+   invariant is "one mask per strip", not "whatever the JS happens to decide". */
 .map-facetstrip .choice-grid.pills {
   flex: 0 0 auto;
   overflow: visible;

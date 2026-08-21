@@ -681,25 +681,11 @@
   padding: 2px 2px 6px;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
-  /* A partially-visible card at the edge is inherent to a scrolling strip; the
-     fade makes it read as "scroll for more" instead of a chopped card (the exact
-     grammar ADR-0100 §6 established for the Index chip row — same declarations,
-     `to right` physical, correct in RTL since direction only reorders flex
-     children, not the mask's coordinate space). */
-  -webkit-mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    black 14px,
-    black calc(100% - 14px),
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    black 14px,
-    black calc(100% - 14px),
-    transparent 100%
-  );
+  /* A partially-visible card at the edge is inherent to a scrolling strip; the fade makes
+     it read as "scroll for more" instead of a chopped card (ADR-0100 §6's grammar for the
+     Index chip row). The declarations are no longer copied here: the shelf carries the
+     `edge-fade` class, which is that one gradient plus the condition the copies all
+     lacked — an edge with nothing behind it does not fade. */
 }
 /* A shelf group under a dragged idea: dropping here re-aims its DAY, so the whole
    strip lights up rather than one card (ADR-0116 §2 amendment). */

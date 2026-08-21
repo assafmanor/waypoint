@@ -5,6 +5,7 @@
 // (selected = --cta ring), never a semantic hue (design-language color budget).
 import type { CSSProperties, ReactNode } from 'react';
 import { useCenterSelected } from '../../lib/useCenterSelected';
+import { edgeFadeRef } from '../../lib/edge-fade';
 import './choice-grid.css';
 
 export interface Choice<T extends string> {
@@ -73,7 +74,12 @@ export function ChoiceGrid<T extends string>({
   const selectedRef = useCenterSelected<HTMLButtonElement>(value, { active: pills });
   return (
     <div
-      className={'choice-grid' + (pills ? ' pills' : '') + (pills && compact ? ' compact' : '')}
+      // `edge-fade` only in `pills`: the grid doesn't scroll, so it has no edge to fade
+      // and nothing behind one (`lib/edge-fade.ts`, ADR-0100 §6).
+      className={
+        'choice-grid' + (pills ? ' pills edge-fade' : '') + (pills && compact ? ' compact' : '')
+      }
+      ref={pills ? edgeFadeRef : undefined}
       role="radiogroup"
       aria-label={ariaLabel}
       style={pills ? undefined : ({ '--choice-cols': columns } as CSSProperties)}

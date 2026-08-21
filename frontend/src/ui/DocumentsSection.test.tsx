@@ -150,7 +150,7 @@ describe('DocumentsSection — the type chips and the search (ADR-0052 §7)', ()
   it('renders one worded chip per type that HAS a document, led by הכל with the total', () => {
     show();
     // Worded, not `compact` — the brief asked for the row "where category titles are also
-    // shown", which is the bookings density and not the notes one (ADR-0122 §2).
+    // shown", which is the bookings density. `compact` is the Map's alone now (ADR-0122 §2).
     expect(chips()[0].textContent).toContain(t.docs.filter.all);
     expect(chips()[0].textContent).toContain('4');
     const labels = chips()

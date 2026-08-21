@@ -325,6 +325,17 @@ describe('IndexNotesView (ADR-0153)', () => {
       show();
       expect(screen.queryByRole('radio', { name: t.iconPicker.categories.nature })).toBeNull();
     });
+
+    // ADR-0153 §3 took this row from the bookings screen "with no change", and `compact`
+    // (ADR-0122 §2) is the density for a strip over the MAP, where the pin already carries the
+    // same glyph. Here the glyph stood alone, which made this the one chip row in the app whose
+    // categories were unnamed (owner, 2026-08-21).
+    it('names its categories rather than drawing the glyph alone', () => {
+      show();
+      const food = screen.getByRole('radio', { name: t.iconPicker.categories.food });
+      expect(food.textContent).toContain(t.iconPicker.categories.food);
+      expect(food.getAttribute('aria-label')).toBeNull();
+    });
   });
 
   describe('search', () => {

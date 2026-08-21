@@ -33,7 +33,7 @@ import {
   formatZoneDelta,
   zoneOffsetMinutes,
 } from './time';
-import { withoutBidiControls } from './bidi';
+import { ltrIsolate, withoutBidiControls } from './bidi';
 import { DEMO_NOW, EVENTS, TRIP } from '../fixtures';
 
 const tz = TRIP.timezone;
@@ -275,10 +275,20 @@ describe("the app renders dates in its own locale, not the device's", () => {
   });
 
   it('names a timed moment in Hebrew, day then clock', () => {
-    const out = formatDayTime('2026-07-18T09:30:00Z', 'Asia/Jerusalem');
+    const out = withoutBidiControls(formatDayTime('2026-07-18T09:30:00Z', 'Asia/Jerusalem'));
     expect(out).toMatch(/[֐-׿]/);
     expect(out).not.toMatch(/[A-Za-z]/);
     expect(out.endsWith('12:30')).toBe(true);
+  });
+
+  // The owner's report (2026-08-21): the event sheet read `19:30–18:30` for a 90-minute
+  // event, because the end was concatenated onto this formatter's RESULT — two numeric
+  // islands either side of a dash, which an RTL flow lays out second-first. The window is
+  // one island now, the same way `clockRange` already carried the day card's.
+  it('keeps a window in start–end order, as one LTR island', () => {
+    const out = formatDayTime('2026-07-18T09:30:00Z', 'Asia/Jerusalem', '13:00');
+    expect(withoutBidiControls(out).endsWith('12:30–13:00')).toBe(true);
+    expect(out).toContain(ltrIsolate('12:30–13:00'));
   });
 });
 
