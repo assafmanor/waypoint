@@ -72,6 +72,22 @@ export const BOOKING_PARAM = 'booking';
 export const DOCUMENT_PARAM = 'doc';
 export const EVENT_PARAM = 'event';
 export const IDEA_PARAM = 'idea';
+/** …and the fifth, which arrived with notifications (ADR-0197 §6): `?task=<id>` opens the
+ *  tasks screen with that task's sheet on top. A task had no param because nothing outside
+ *  the app had ever needed to name one — every way in was a tap on the row itself. */
+export const TASK_PARAM = 'task';
+/**
+ * **`?trip=<id>` — the only param that says WHICH TRIP, and the only one a notification
+ * cannot do without** (ADR-0197 §6).
+ *
+ * Every param above opens something *inside* the active trip. None of them could change
+ * which trip that is, because it comes from `localStorage` alone (`state/active-trip-id`) —
+ * which was invisible while every way in was a tap from inside the app, and is a
+ * wrong-answer bug the moment a notification arrives from outside it. Consumed by
+ * `ActiveTripIdProvider`, which sits ABOVE the router, so it reads `window.location`
+ * directly rather than through `useSearchParams`.
+ */
+export const TRIP_PARAM = 'trip';
 /**
  * **`?event=`'s other half: what the surface stamps on the row it names** (2026-08-20).
  *

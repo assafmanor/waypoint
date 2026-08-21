@@ -57,7 +57,6 @@ export const taskAssignedKind: NotificationKind = {
     if (tasks.length === 0) return [];
 
     const audience = await tripAudience(prisma, tasks, nowMs);
-    const assignerNames = await namesFor(prisma, tasks);
     const sends: DueSend[] = [];
     for (const task of tasks) {
       if (!audience.isLive(task.tripId)) continue;
@@ -76,8 +75,8 @@ export const taskAssignedKind: NotificationKind = {
         aimedAtMs: task.assignedAt!.getTime(),
         payload: taskAssignedPayload({
           tripId: task.tripId,
+          taskId: task.id,
           title: task.title,
-          assignerName: assignerNames.get(task.id) ?? '',
           dueLabel: dueLabelFor(task, audience.primaryZone(task.tripId)),
         }),
       });
@@ -87,28 +86,21 @@ export const taskAssignedKind: NotificationKind = {
 };
 
 /**
- * Who put it on them, by display name — one query for the whole tick.
+ * **The assigner's NAME is deliberately not in this send** (owner, 2026-08-21).
  *
- * `updatedBy` is the closest honest answer the schema holds: `assignedAt` and `updatedBy`
- * are written in the same statement, so at the moment of assignment they agree. A later edit
- * by a third party inside the six-hour window would move `updatedBy` and leave `assignedAt`
- * alone, so the name could drift — which is why the name is a **courtesy in the body** and
- * never the thing that makes the send legitimate. Storing `assignedBy` beside `assignedAt`
- * would fix it exactly; it is a second column for a nicety, and it can be added the day
- * somebody notices the drift.
+ * It used to be: the body ended `· דנה`, and a whole `namesFor` query resolved it for the
+ * tick. Removed on the owner's call, and the trade is worth recording because ADR-0198
+ * defended this kind against ADR-0081's rejection of ambient awareness on the grounds that
+ * it is **addressed** — "someone put your name on something". The addressing survives in the
+ * title (`משימה חדשה בשבילך`); what is gone is *who*, and with it a `User` query per tick.
+ *
+ * The name was never solid anyway, which is the other half of why it went cheaply.
+ * `updatedBy` was the closest the schema holds: it and `assignedAt` are written in one
+ * statement so they agree at the moment of assignment, but a third party editing inside the
+ * six-hour window moves one and not the other. Restoring the name properly would mean an
+ * `assignedBy` column beside `assignedAt` — a column for a courtesy, and the reason it was
+ * never worth one.
  */
-async function namesFor(
-  prisma: DueInput['prisma'],
-  tasks: TaskRow[],
-): Promise<Map<string, string>> {
-  const users = await prisma.user.findMany({
-    where: { id: { in: [...new Set(tasks.map((t) => t.updatedBy))] } },
-    select: { id: true, displayName: true },
-  });
-  const nameOf = new Map(users.map((u) => [u.id, u.displayName]));
-  return new Map(tasks.map((task) => [task.id, nameOf.get(task.updatedBy) ?? '']));
-}
-
 /** `18:00` when the deadline has an hour, the day otherwise, `null` when there is no
  *  deadline at all — an assigned task need not have one. The day form is deliberately short:
  *  a lock screen is not the place to spell out a date. */

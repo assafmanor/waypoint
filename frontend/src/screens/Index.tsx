@@ -23,7 +23,13 @@ import { IndexTasksView } from '../ui/IndexTasksView';
 import { IndexTile } from '../ui/domain';
 import { Icon } from '../ui/Icon';
 import { useSettledHosts } from '../ui/HostTasks';
-import { BOOKING_PARAM, DOCUMENT_PARAM, FOCUS_PARAM, INDEX_FOCUS } from '../state/nav-state';
+import {
+  BOOKING_PARAM,
+  DOCUMENT_PARAM,
+  FOCUS_PARAM,
+  INDEX_FOCUS,
+  TASK_PARAM,
+} from '../state/nav-state';
 import { t } from '../i18n/he';
 
 type IndexView = 'landing' | 'bookings' | 'documents' | 'notes' | 'tasks';
@@ -49,6 +55,9 @@ export function Index() {
   // manual tile tap clears it first, so re-entering the bookings screen later
   // doesn't reopen a stale detail from an earlier deep link.
   const [pendingBookingId, setPendingBookingId] = useState<string | undefined>();
+  // The same shape for a task, and its one producer is a notification (ADR-0197 §6): a
+  // reminder about a deadline has to open THAT deadline, not the list it sits in.
+  const [pendingTaskId, setPendingTaskId] = useState<string | undefined>();
   /** The same shape one kind over: `?doc=<id>` opens the documents screen with that document
    *  open, which is where a note about it sends you (ADR-0153 §8's way-in amendment). */
   const [pendingDocumentId, setPendingDocumentId] = useState<string | undefined>();
@@ -61,8 +70,9 @@ export function Index() {
   useEffect(() => {
     const id = params.get(BOOKING_PARAM);
     const docId = params.get(DOCUMENT_PARAM);
+    const taskId = params.get(TASK_PARAM);
     const focus = params.get(FOCUS_PARAM);
-    if (!id && !docId && !focus) return;
+    if (!id && !docId && !taskId && !focus) return;
     if (id) {
       setPendingBookingId(id);
       setView('bookings');
@@ -79,6 +89,10 @@ export function Index() {
     if (focus === INDEX_FOCUS.TASKS) {
       setView('tasks');
     }
+    if (taskId) {
+      setPendingTaskId(taskId);
+      setView('tasks');
+    }
     // …and MOUNTING the bookings screen is itself a destination (session 172): a booking
     // errand returns here so the screen can take the pending answer and re-open its form.
     // No id — the answer says which booking, and what was typed.
@@ -89,6 +103,7 @@ export function Index() {
     const next = new URLSearchParams(params);
     next.delete(BOOKING_PARAM);
     next.delete(DOCUMENT_PARAM);
+    next.delete(TASK_PARAM);
     next.delete(FOCUS_PARAM);
     setParams(next, { replace: true });
   }, [params, setParams]);
@@ -134,7 +149,11 @@ export function Index() {
     // (ADR-0190 §3), so the Index hands the way in.
     return (
       <div className="index">
-        <IndexTasksView onClose={backToLanding} onOpenDocuments={openDocuments} />
+        <IndexTasksView
+          onClose={backToLanding}
+          onOpenDocuments={openDocuments}
+          initialTaskId={pendingTaskId}
+        />
       </div>
     );
   }

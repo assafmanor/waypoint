@@ -154,8 +154,16 @@ function wrap(node: ReactNode) {
 }
 
 const openDocuments = vi.fn();
-const show = (onClose = () => {}) =>
-  render(wrap(<IndexTasksView onClose={onClose} onOpenDocuments={openDocuments} />));
+const show = (onClose = () => {}, initialTaskId?: string) =>
+  render(
+    wrap(
+      <IndexTasksView
+        onClose={onClose}
+        onOpenDocuments={openDocuments}
+        initialTaskId={initialTaskId}
+      />,
+    ),
+  );
 const visibleRows = () =>
   [...document.querySelectorAll('.wp-reveal:not(.hidden) .wp-listrow')] as HTMLElement[];
 const MANUAL_TITLES = ALL.map((x) => x.title);
@@ -626,5 +634,54 @@ describe('IndexTasksView', () => {
       expect(screen.queryByRole('button', { name: t.tasks.manage.edit })).toBeNull();
       expect(screen.queryByRole('button', { name: t.tasks.manage.delete })).toBeNull();
     });
+  });
+});
+
+describe('?task= — a task named from outside the app (ADR-0197 §6)', () => {
+  afterEach(() => {
+    cleanup();
+    tripTasks = ALL;
+  });
+
+  it('opens that task’s sheet on arrival', () => {
+    // A notification about a deadline has to open THAT deadline. Before this the URL had no
+    // way to name a task at all, so every task notification landed on the list.
+    const target = ALL[0];
+    show(() => {}, target.id);
+    expect(document.querySelector('.task-sheet')).not.toBeNull();
+  });
+
+  it('opens nothing when no task is named', () => {
+    show();
+    expect(document.querySelector('.task-sheet')).toBeNull();
+  });
+
+  it('opens nothing for an id this trip does not have', () => {
+    // A task deleted between the send and the tap. The list is the honest fallback — the
+    // notification's subject is simply gone.
+    show(() => {}, 'task-that-was-deleted');
+    expect(document.querySelector('.task-sheet')).toBeNull();
+  });
+
+  it('waits for the task to ARRIVE rather than spending itself on an empty list', () => {
+    // The cold-start case, and the reason the effect is keyed on both the id and the list:
+    // a notification tap loads the app from nothing, so `tasks` is empty on the first
+    // render and a one-shot keyed on the id alone would fire against it and open nothing.
+    const target = ALL[0];
+    tripTasks = [];
+    const view = show(() => {}, target.id);
+    expect(document.querySelector('.task-sheet')).toBeNull();
+
+    tripTasks = ALL;
+    view.rerender(
+      wrap(
+        <IndexTasksView
+          onClose={() => {}}
+          onOpenDocuments={openDocuments}
+          initialTaskId={target.id}
+        />,
+      ),
+    );
+    expect(document.querySelector('.task-sheet')).not.toBeNull();
   });
 });

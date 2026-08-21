@@ -41,6 +41,24 @@ export const MS_PER_MINUTE = 60_000;
  */
 export const LANDING_WATCH_MS = 2500;
 
+/**
+ * **How long a landing waits for the thing it is aiming at to EXIST**, as opposed to how long
+ * it keeps the landing true once it does (`LANDING_WATCH_MS` above).
+ *
+ * They were one number until 2026-08-21, and that conflated two different waits. The 2.5s
+ * above is a measurement of a surface *settling*; waiting for one to *arrive* is a different
+ * order of magnitude, because Plan mode's day view is a lazy chunk that `land-at-top.ts`
+ * measured mounting **~5s in under 6× CPU throttling**. Sharing the budget meant a loaded
+ * machine could spend all of it before the row existed and then close the watch, so the
+ * landing never happened at all — an `e2e (preview)` failure that took three PRs to catch,
+ * because every machine fast enough to have the chunk warm passes.
+ *
+ * 10s is that 5s measurement doubled. It is affordable in a way the settle window is not: a
+ * frame of waiting costs one `querySelector` and no layout, and any touch, wheel or key ends
+ * the watch on the spot — so nobody is ever waiting on this, and nothing is fighting it.
+ */
+export const LANDING_WAIT_MS = 10_000;
+
 /** Where the API lives. Empty in production, where the app is served same-origin, so
  *  every consumer must treat it as a prefix rather than a base to `new URL()` against.
  *

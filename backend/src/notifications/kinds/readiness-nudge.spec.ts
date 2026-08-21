@@ -227,7 +227,8 @@ describe('readiness.nudge', () => {
   it('goes to the tasks surface, not to a second inbox (ADR-0004)', async () => {
     const { prisma } = fakePrisma();
     const sends = await readinessNudgeKind.due(input(prisma, AT10));
-    expect(sends[0].payload.url).toBe('/trips/trip-1/index/tasks');
+    // The trip's readiness is a SET of gaps, so this opens the list and no single row.
+    expect(sends[0].payload.url).toBe('/?trip=trip-1&tab=index&focus=tasks');
   });
 
   it('keys each milestone apart, so T-14 cannot suppress T-7', async () => {

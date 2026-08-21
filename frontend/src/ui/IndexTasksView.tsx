@@ -14,7 +14,7 @@
 // second control beside it — `ChoiceGrid` carries its own count, so `הושלמו · 3` is already
 // the count-in-label toggle ADR-0061 established, and building both would be two ways to
 // see one set of rows.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TASK_STATUS, type Task, type User } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
@@ -80,12 +80,17 @@ const EMPTY_STEPS: Task[] = [];
 export function IndexTasksView({
   onClose,
   onOpenDocuments,
+  initialTaskId,
 }: {
   onClose: () => void;
   /** The passport check's verb. Its destination is this screen's own sibling rather than
    *  Home, so the Index hands the way in rather than the tasks screen navigating (ADR-0190
    *  §3). */
   onOpenDocuments: () => void;
+  /** **A task named from outside the app** — `?task=` (ADR-0197 §6), which today means a
+   *  notification. Opens that task's sheet on arrival, the same way `initialBookingId` does
+   *  on the bookings screen. */
+  initialTaskId?: string;
 }) {
   const { trip, tasks, subtasks, users, zoneCrossings, taskVerbs, setActiveDate, noteHosts } =
     useTrip();
@@ -96,6 +101,20 @@ export function IndexTasksView({
   const [facet, setFacet] = useState<TaskFacet>(TASK_FACET.ALL);
   // null = closed; 'create' = a new task; a Task = editing that one.
   const [sheet, setSheet] = useState<Task | 'create' | null>(null);
+
+  // **Opened once, when the named task is actually in hand.** `tasks` arrives empty on a cold
+  // load (the snapshot is still in flight), so a one-shot keyed on the id alone would spend
+  // itself against an empty list and never open anything — which is precisely what a
+  // notification tap on a cold start is. Keyed on both, and latched, so it opens on the render
+  // the task appears and never re-opens after the sheet is closed.
+  const openedArrival = useRef<string | null>(null);
+  useEffect(() => {
+    if (!initialTaskId || openedArrival.current === initialTaskId) return;
+    const arriving = tasks.find((task) => task.id === initialTaskId);
+    if (!arriving) return;
+    openedArrival.current = initialTaskId;
+    setSheet(arriving);
+  }, [initialTaskId, tasks]);
   const [manage, setManage] = useState<Task | null>(null);
   // The id of the row opened IN PLACE, or null. One at a time, exactly as the notes screen
   // holds it (ADR-0153 §4): a second open row would make the list a set of panels.
