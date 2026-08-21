@@ -18,6 +18,37 @@
    itself out of the ACCENT tokens, which is why it renders as the brightest
    surface in the whole dark app. Paper/card colours read tokens. */
 
+/* ===== The day surface's page step (ADR-0200, lib/useSwipePager.ts) =====
+   One class, worn by BOTH day surfaces (`DayView`'s wrapper and `PlanDay`'s `.builder`),
+   because stepping to the next day is a fact and not a posture (ADR-0159 §1).
+
+   `min-height: 100%` is the hit area, not the look: a day holding two events leaves most
+   of the body empty, and a swipe that only works where there happen to be rows reads as
+   a swipe that works sometimes. The body is the scroller, so 100% is its content box.
+
+   The transform is behind `[data-swiping]` on purpose — it establishes a containing block
+   for any `position: fixed` descendant, and `PlanDay` renders `.wp-dragghost` inside this
+   very element. The pager stands down while a drag is live, and the attribute is gone the
+   moment the gesture settles, so the two states cannot overlap.
+
+   The settle is a transition and not a keyframe, which is what makes the arriving day free:
+   the new day renders into this same element, still displaced by the finger's travel, and
+   then eases to level. Reduced motion kills the transition (App.css) and `motionDurationMs`
+   answers 0, so there the step simply happens.
+
+   `--ease-arrive` for both halves, and its overshoot is the reason: a page returning to
+   level is an object settling, and on a refused swipe that mild nudge past the mark IS the
+   rebuff's recoil. `--ease-exit` would be wrong twice over — nothing here is leaving. */
+.day-swipe {
+  min-height: 100%;
+}
+.day-swipe[data-swiping] {
+  transform: translateX(var(--swipe-dx, 0px));
+}
+.day-swipe[data-swipe-settling] {
+  transition: transform var(--t-quick) var(--ease-arrive);
+}
+
 /* section titles */
 .sec-title {
   font-size: 12px;

@@ -516,3 +516,10 @@ Both are **Should / v1** in [`product/feature-catalog.md`](product/feature-catal
 [ADR-0199](decisions/0199-a-hard-event-answers-the-hold.md) is **built** (2026-08-21). What the render behind it found and left open:
 
 - **`button.bld-time`'s touch target is 43px, one short of ADR-0017's 44px floor** (found 2026-08-21 by rendering [`mockups/a-hard-event-answers-the-hold-v1.html`](../mockups/a-hard-event-answers-the-hold-v1.html); not introduced by it). The chip renders 27px and its `::after` overlay is `inset: -8px 0`. ADR-0161 §7 chose the overlay deliberately — `min-height: 44px` on the chip itself took the row from 58px to 75px — but never measured where the overlay landed. `-8.5px` closes it at no cost to the row, since the overlay reaches into vertical padding no other control occupies.
+
+## A day steps with a swipe (owner report, 2026-08-21)
+
+[ADR-0200](decisions/0200-a-day-steps-with-a-swipe-and-the-shell-stops-scrolling.md) is **built** (2026-08-21) — both halves of the report. What it leaves open:
+
+- **`SWIPE_PAGER`'s numbers want a real-device pass**, in exactly the sense ADR-0182's peek width does. Five of the six ship as recommendations: `SLOP_PX` (24) and `COMMIT_SHARE` (0.22) are the feel — does a step ask too much or too little of a thumb — and `EDGE_RESIST` (0.28) / `EDGE_MAX_PX` (40) are whether the refusal at the trip's ends reads as a refusal or as a stutter. **`DECIDE_PX` (6) is the one that is not a preference:** it is pinned under Chrome's ~8px touch slop because the axis has to be answered before the browser claims the touch, and if iOS Safari's slop differs that is the number to move. The question a desktop render cannot answer is whether deciding the axis at 6px feels decisive or twitchy on glass.
+- **A gesture that starts horizontal and turns vertical will not scroll for the rest of that touch** — inherent to claiming an axis at 6px (ADR-0200 §4), and worth a sentence of device feedback rather than a fix, since the alternative is the gesture not existing.

@@ -26,6 +26,7 @@ import {
 } from '../state/map-scope-state';
 import { prefersReducedMotion } from '../lib/motion';
 import { landAtTop } from '../lib/land-at-top';
+import { useDaySwipe } from '../lib/useDaySwipe';
 import { edgeFadeRef } from '../lib/edge-fade';
 import {
   authoringZone,
@@ -226,6 +227,10 @@ export function DayView() {
     tasks,
   } = useTrip();
   const verbs = useVerbs();
+  // Swiping the day steps to the next/previous one, refused at the trip's ends
+  // (ADR-0200). The same hook and the same class as Plan's builder: which day is next
+  // is a fact, so the two day surfaces cannot answer it differently.
+  const daySwipe = useDaySwipe<HTMLDivElement>();
   const placeLabels = usePlaceLabels();
   const now = useClock();
   // `מפה` is an in-app destination now (ADR-0121 §8): it hands the Map tab a focus
@@ -502,7 +507,7 @@ export function DayView() {
   }, [activeDate, isToday]);
 
   return (
-    <>
+    <div className="day-swipe" ref={daySwipe}>
       {ripple && (
         <div className="ripple show">
           <span className="rt">{t.ripple.prompt(ripple.movedTitle, ripple.direction)}</span>
@@ -931,7 +936,7 @@ export function DayView() {
           onClose={() => setGapTarget(null)}
         />
       )}
-    </>
+    </div>
   );
 }
 

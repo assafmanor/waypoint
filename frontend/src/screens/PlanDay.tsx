@@ -40,6 +40,7 @@ import { landAtTop } from '../lib/land-at-top';
 import { edgeFadeRef } from '../lib/edge-fade';
 import { useDragState } from '../state/drag-state';
 import { useSpringLoadedDay } from '../lib/useSpringLoadedDay';
+import { useDaySwipe } from '../lib/useDaySwipe';
 import { useVerbs } from '../state/verbs';
 import {
   usePlaceErrandReturn,
@@ -268,6 +269,10 @@ export function PlanDay() {
     tasks,
   } = useTrip();
   const verbs = useVerbs();
+  // Swiping the day steps to the next/previous one, refused at the trip's ends
+  // (ADR-0200) — the same hook and class Trip's day view wears, because which day is
+  // next is a fact and only the posture differs between the two (ADR-0159 §1).
+  const daySwipe = useDaySwipe<HTMLDivElement>();
   const placeLabels = usePlaceLabels();
   const now = useClock();
   // The builder's way to the map (ADR-0121 §8), on every row whose event resolves a
@@ -1006,7 +1011,7 @@ export function PlanDay() {
     // that. So the day at rest is byte-for-byte the day it was before ADR-0161, and there
     // is exactly one answer to "is a drag in flight" rather than this screen's union of
     // its own two drag states.
-    <div className="builder">
+    <div className="builder day-swipe" ref={daySwipe}>
       <div className="builder-main">
         <div className="sec-title">
           {t.day.heading(dayNumber, weekday, trip.destination)}

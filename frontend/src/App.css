@@ -87,6 +87,10 @@
   /* Contain overscroll so hitting the top/bottom of the scroll area doesn't
      trigger the browser's pull-to-refresh (see tokens.css). */
   overscroll-behavior-y: contain;
+  /* The tail is 92px because of the TOAST, not because of the tab bar. The nav is
+     in flow (a flex child of `.app`), so it takes its own room and needs none here —
+     but `.toast` is `position: fixed; bottom: 78px`, i.e. it floats over the body's
+     last ~56px. Trim this and a confirmation covers the row that produced it. */
   padding: 16px 16px 92px;
   animation: fade 0.32s ease;
 }

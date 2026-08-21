@@ -524,7 +524,24 @@ body.wp-dragging .wp-maybecard.dragging {
 html,
 body,
 #root {
+  /* **`100%` here is the LARGE viewport, and that is the whole bug it caused**
+     (field report: empty space below the tab bar on Home, reachable by swiping
+     down from it). A percentage height on the root resolves against the initial
+     containing block, which a mobile browser sizes to the viewport with its
+     toolbars HIDDEN — while `.app` is `100dvh`, the viewport as it is right now.
+     With the toolbars showing the two disagree by their height, so the document
+     was ~125px taller than the frame inside it: the app sat pinned at the top,
+     the tab bar ended well above the screen's bottom, and the band of `--screen`
+     below it was the document's own overflow. The body contains its overscroll,
+     so the only way to reach it was a gesture starting on the chrome — which is
+     exactly how it was found.
+
+     Both halves of the fix are load-bearing. The unit makes the document track
+     the same viewport the frame does, so the band does not exist; `overflow`
+     makes the sentence below TRUE rather than merely intended, so no future
+     mismatch on either axis is scrollable. */
   height: 100%;
+  height: 100dvh;
   /* App-shell scrolls inside .body, not the document. Stop overscroll from
      chaining to the page so the browser's native pull-to-refresh never fires
      (PWA feel). Scrolling inside .body is unaffected. */
@@ -533,6 +550,16 @@ body,
      the image preview opts back in via its own touch-action). manipulation still
      allows panning + the day-strip pan-x scroll. */
   touch-action: manipulation;
+}
+
+/* The document itself never scrolls — every scroll in this app is `.body`'s, a
+   sheet's own list, or a strip's. On the root this propagates to the viewport, so
+   it is the enforcement of the line above and not a second opinion about it. Safe
+   for every overlay: `Modal`, `MediaViewer` and the toast are all `position: fixed`
+   with their own inner scroller. */
+html,
+body {
+  overflow: hidden;
 }
 
 body {
