@@ -144,6 +144,48 @@ export function mapPlanetArchivePath(build: string): string {
   return `/map/planet-${build}.pmtiles`;
 }
 
+/**
+ * **How long an OFFLINE archive stays current** (ADR-0186 §6 amendment, 2026-08-21).
+ *
+ * An extract and the world layer are cut from the same daily upstream the live source reads — so
+ * once the build rotates, a downloaded archive is a snapshot of yesterday's OSM. Preferring fresh
+ * data is the owner's call; **matching the upstream cadence is not an option**, because that is a
+ * 42.7 MB world layer plus a city extract per device per DAY, which is a data plan rather than a
+ * map (§5's whole subject).
+ *
+ * So offline artefacts run on a slow clock of their own: one **vintage** per 30 days. The server
+ * cuts a new artefact when the vintage rolls; a device replaces what it holds when its copy is
+ * both a vintage behind AND older than the window (so a download late in one window is never
+ * chased two days later by the next).
+ */
+export const MAP_ARCHIVE_VINTAGE_DAYS = 30;
+
+/** Windows counted from this instant, which is arbitrary and only has to be stable: moving it
+ *  would re-label every stored archive and cost every device one re-download. */
+const MAP_ARCHIVE_VINTAGE_EPOCH_MS = Date.UTC(2026, 0, 1);
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * **The vintage an archive cut now, from `build`, belongs to.**
+ *
+ * Shared because the backend puts it in a storage key and the client compares it with what it
+ * holds — two spellings would mean a device re-downloading 42.7 MB it already has.
+ *
+ * Taken from the BUILD's own date when there is one, because that is what the bytes actually
+ * contain. A mirror's name (`MAP_TILES_SOURCE_URL`) says nothing about its data, so an undated
+ * source falls back to when the cut happens — which still rolls every 30 days.
+ */
+export function mapArchiveVintage(build: string | null | undefined, nowMs: number): string {
+  const dated = build && MAP_PLANET_BUILD_PATTERN.test(build);
+  const at = dated
+    ? Date.UTC(Number(build.slice(0, 4)), Number(build.slice(4, 6)) - 1, Number(build.slice(6, 8)))
+    : nowMs;
+  const windows = Math.floor(
+    (at - MAP_ARCHIVE_VINTAGE_EPOCH_MS) / (MAP_ARCHIVE_VINTAGE_DAYS * DAY_MS),
+  );
+  return `v${windows}`;
+}
+
 export const MAP_AREA_LINK_RADIUS_M = 40_000;
 
 /** How much ground each area keeps around its own stops. You walk off the edge of

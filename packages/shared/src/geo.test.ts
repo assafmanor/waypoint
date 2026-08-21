@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   MAP_AREA_LINK_RADIUS_M,
+  MAP_ARCHIVE_VINTAGE_DAYS,
   MAX_VIEWPORT_SPAN_DEG,
   boundsAroundLatLngs,
   clusterLatLngs,
   isSendableViewport,
+  mapArchiveVintage,
   mapDownloadAreas,
 } from './geo';
 
@@ -133,4 +135,39 @@ describe('mapDownloadAreas', () => {
     const ends = Math.abs(last.lat - first.lat) * 111_320;
     return ends > MAP_AREA_LINK_RADIUS_M;
   }
+});
+
+/* ── THE OFFLINE ARCHIVE'S CLOCK (ADR-0186 §6 amendment) ─────────────────────────────────────
+   Two clocks, deliberately different: the live source follows upstream's DAILY build, and an
+   offline archive follows this one. A vintage per build would be a 42.7 MB world layer per
+   device per day, which is a data plan rather than a map. */
+describe('mapArchiveVintage', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const now = Date.UTC(2026, 7, 21);
+
+  it('is one value for every build inside a window, so a key changes monthly not nightly', () => {
+    expect(mapArchiveVintage('20260821', now)).toBe(mapArchiveVintage('20260815', now));
+    expect(mapArchiveVintage('20260821', now)).toBe(mapArchiveVintage('20260801', now));
+  });
+
+  it('rolls when the window does', () => {
+    // A window apart is a different vintage, whatever else is true.
+    const later = mapArchiveVintage('20261001', now);
+    expect(later).not.toBe(mapArchiveVintage('20260821', now));
+  });
+
+  it('takes the BUILD date, not the wall clock — the bytes are what is being labelled', () => {
+    expect(mapArchiveVintage('20260821', Date.UTC(2027, 0, 1))).toBe(
+      mapArchiveVintage('20260821', now),
+    );
+  });
+
+  it('falls back to the cut date for a source whose name is not a daily id', () => {
+    // A configured mirror (`MAP_TILES_SOURCE_URL`) says nothing about its data, so the label is
+    // when we cut it — which still rolls every window rather than never.
+    expect(mapArchiveVintage('our-planet', now)).toBe(mapArchiveVintage(null, now));
+    expect(mapArchiveVintage(null, now)).not.toBe(
+      mapArchiveVintage(null, now + (MAP_ARCHIVE_VINTAGE_DAYS + 1) * DAY),
+    );
+  });
 });

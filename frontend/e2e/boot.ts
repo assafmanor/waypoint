@@ -85,7 +85,15 @@ if (!invalid.success) {
  *  the app ask for a `planet-<build>.pmtiles` URL at all. Without it the detail source falls back
  *  to the world archive and the specs test one layer where production reads two. */
 export const E2E_LIVE_MAP_BUILD = '20260821';
-const ME = { user: USER, memberships: [MEMBERSHIP], map: { liveBuild: E2E_LIVE_MAP_BUILD } };
+/** And which vintage of the offline archives it is cutting (ADR-0186 §6 amendment). Nothing here
+ *  downloads one, so this only has to be present and stable — a device with no stored archive has
+ *  nothing to compare it against. */
+export const E2E_MAP_ARCHIVE_VINTAGE = 'v7';
+const ME = {
+  user: USER,
+  memberships: [MEMBERSHIP],
+  map: { liveBuild: E2E_LIVE_MAP_BUILD, archiveVintage: E2E_MAP_ARCHIVE_VINTAGE },
+};
 
 /** Two unlinked bookings of DIFFERENT types, so the Index bookings screen shows
  *  category filter chips (one per type with count > 0, ADR-0101) — the fixture

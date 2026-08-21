@@ -12,6 +12,11 @@ export interface MapArchiveMeta extends ByteCacheMeta {
   kind: 'world' | 'extract';
   tripId?: string;
   downloadedAt: number;
+  /** **Which vintage of the archive this is** (ADR-0186 §6 amendment) — the server states the
+   *  current one on `/me`, and this is what was current when these bytes were stored. Absent on
+   *  an entry downloaded before archives were vintaged at all, which reads as "unknown, so a
+   *  refresh is due". */
+  vintage?: string;
 }
 
 export type MapArchiveDownloadResult =
@@ -60,6 +65,11 @@ export async function downloadMapArchive(opts: {
   kind: MapArchiveMeta['kind'];
   tripId?: string;
   currentTripId?: string;
+  /** What the server said it is cutting when this download was decided (`/me`). Recorded rather
+   *  than read back from the response: a range/byte route has no place to say it, and a label
+   *  that is one window behind costs nothing — the age test above already stops a device from
+   *  chasing the difference twice. */
+  vintage?: string | null;
   now?: number;
   budgetBytes?: number;
 }): Promise<MapArchiveDownloadResult> {
@@ -87,6 +97,7 @@ export async function downloadMapArchive(opts: {
     downloadedAt: now,
     kind: opts.kind,
     tripId: opts.tripId,
+    ...(opts.vintage ? { vintage: opts.vintage } : {}),
   });
   return { status: 'stored', sizeBytes };
 }
@@ -145,7 +156,7 @@ export async function retainMapArchives(opts: {
 export async function seedMapArchiveForTests(
   url: string,
   sizeBytes: number,
-  opts: { kind: MapArchiveMeta['kind']; tripId?: string; now?: number },
+  opts: { kind: MapArchiveMeta['kind']; tripId?: string; now?: number; vintage?: string },
 ): Promise<void> {
   const now = opts.now ?? getNow();
   await cache.put(url, new Response(new Uint8Array(sizeBytes)), {
@@ -155,5 +166,6 @@ export async function seedMapArchiveForTests(
     downloadedAt: now,
     kind: opts.kind,
     tripId: opts.tripId,
+    ...(opts.vintage ? { vintage: opts.vintage } : {}),
   });
 }

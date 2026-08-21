@@ -714,6 +714,19 @@ export type NotifyPrefs = z.infer<typeof notifyPrefsSchema>;
  */
 export const mapCapabilitySchema = z.object({
   liveBuild: z.string().nullable(),
+  /** **Which vintage of the OFFLINE archives this server is cutting** (ADR-0186 §6 amendment).
+   *  A device compares it with the vintage it holds to know whether a fresher archive exists at
+   *  all — without it, a downloaded map is frozen at the build it was cut from forever. `null`
+   *  when the server cannot name one (no live build resolved).
+   *
+   *  **`.optional()`, and the reason is the whole point of the outer object being optional too.**
+   *  A field ADDED to a capability object has to tolerate the object's older shape, because that
+   *  shape is already in `localStorage` on every device (`readCachedMe`) and in every fixture
+   *  written against the previous build. Required, it made `meSchema.parse` throw on a `/me`
+   *  holding only `liveBuild` — so `fetchMe` rejected, the cached identity failed to parse with
+   *  it, and the app dropped to /login: an offline cold-load signing a person out on a plane.
+   *  Caught as 231 e2e timeouts, which is what "the app does not boot" looks like from CI. */
+  archiveVintage: z.string().nullable().optional(),
 });
 export type MapCapability = z.infer<typeof mapCapabilitySchema>;
 

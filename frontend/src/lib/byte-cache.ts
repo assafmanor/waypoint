@@ -100,11 +100,27 @@ export function createByteCache<T extends ByteCacheMeta>(name: string) {
     async put(key: string, response: Response, meta: T): Promise<void> {
       const cache = await open();
       if (!cache) throw new Error('Cache API unavailable');
+      // **What was here before, because a put may be a REPLACE** — which it became when an
+      // archive gained a vintage and a refresh started writing over the entry it is renewing
+      // (ADR-0186 §6 amendment). Every put used to be a first write.
+      const previous = await readMeta(cache, key);
       await writeMeta(cache, meta);
       try {
         await cache.put(key, response);
       } catch (error) {
-        await cache.delete(metaKey(key));
+        // **The rollback has to put back what it found, not assume there was nothing.** A failed
+        // FIRST write leaves no bytes, so its meta must go or it describes an entry that does not
+        // exist. A failed REPLACE leaves the OLD bytes exactly where they were — and deleting the
+        // meta then strands them: `read` needs both halves, so the device reports "no archive"
+        // while a 42.7 MB world layer sits where `entries()` cannot see it, the budget cannot
+        // count it and eviction cannot reach it. One dropped connection, one leaked archive.
+        if (previous) {
+          // And if even that cannot be written, drop the bytes with it: an entry nothing
+          // describes is worse than no entry — it is space no eviction path can ever reclaim.
+          await writeMeta(cache, previous).catch(() => remove(key));
+        } else {
+          await cache.delete(metaKey(key));
+        }
         throw error;
       }
     },

@@ -9,19 +9,29 @@ import { PrismaService } from '../prisma/prisma.service';
 import { getObject, putObject } from '../common/storage';
 import {
   MAP_EXTRACT_MAXZOOM,
-  MAP_KEY_PREFIX,
   mapExtractKey,
   mapRegionFor,
+  mapWorldKey,
   type MapRegion,
 } from './map-region';
 import { buildExtract } from './pmtiles-extract';
-import { resolveLivePlanetBuild } from './planet';
+import { archiveVintage, resolveLivePlanetBuild } from './planet';
 
 /** The shared coarse layer every trip falls back to, so nowhere is ever blank — including
  *  the ground between a trip's areas and any place it does not cover at all (§4).
  *  **Measured: 42.7 MB at z0–6**, against 525.6 MB at z0–8, which is why the floor is 6. */
 export const WORLD_MAXZOOM = MAP_WORLD_MAXZOOM;
-export const WORLD_KEY = `${MAP_KEY_PREFIX}world-z${WORLD_MAXZOOM}.pmtiles`;
+
+/** The vintage is `planet.ts`'s (it derives from the live build); what is here is only the keys
+ *  it names. The key changing IS the invalidation — the existing "serve what is stored, cut in
+ *  the background, 503 with a `Retry-After` meanwhile" flow does the rest, unchanged. */
+
+/** The current vintage's world-layer key. Not a constant any more, and that is the point: the
+ *  fixed key froze the shared archive at whatever build the first cut on a deploy happened to
+ *  read, forever. */
+export function worldKey(vintage = archiveVintage()): string {
+  return mapWorldKey(WORLD_MAXZOOM, vintage);
+}
 
 /** **How long to tell a client to wait for an archive that is still being cut.** A world layer
  *  is ~4s and a city extract ~10-13s measured, both against a good network; this is a hint, and
@@ -111,7 +121,7 @@ export class MapService implements OnModuleInit {
   async extractFor(tripId: string): Promise<{ bytes: Buffer; region: MapRegion }> {
     const region = await this.regionFor(tripId);
     if (!region) throw new NotFoundException('trip has no mapped coordinates');
-    const key = mapExtractKey(tripId, region.signature);
+    const key = mapExtractKey(tripId, region.signature, archiveVintage());
     return { bytes: await this.cached(key, () => this.cut(key, region)), region };
   }
 
@@ -122,13 +132,13 @@ export class MapService implements OnModuleInit {
   async extractIfReady(tripId: string): Promise<Buffer | null> {
     const region = await this.regionFor(tripId);
     if (!region) throw new NotFoundException('trip has no mapped coordinates');
-    const key = mapExtractKey(tripId, region.signature);
+    const key = mapExtractKey(tripId, region.signature, archiveVintage());
     return this.readyOrWarm(key, () => this.cut(key, region));
   }
 
   /** The shared world layer **if it is already stored**, or `null` with a build started. */
   async worldIfReady(): Promise<Buffer | null> {
-    return this.readyOrWarm(WORLD_KEY, () => this.cutWorld());
+    return this.readyOrWarm(worldKey(), () => this.cutWorld());
   }
 
   /**
@@ -145,7 +155,7 @@ export class MapService implements OnModuleInit {
     // real build id instead of `null` — which the client would answer by drawing the coarse
     // world as its detail source for that whole session (ADR-0187 §1 amendment, 2026-08-21).
     const build = await resolveLivePlanetBuild().catch(() => null);
-    if (build) this.logger.log(`live map source is planet build ${build}`);
+    if (build) this.logger.log(`live map source is planet build ${build} (${archiveVintage()})`);
     else this.logger.warn('no upstream planet build is readable; the live map source is off');
     void this.worldIfReady().catch((error: unknown) => {
       this.logger.warn(`could not pre-warm the world layer: ${String(error)}`);
@@ -153,9 +163,10 @@ export class MapService implements OnModuleInit {
   }
 
   private async cutWorld(): Promise<Buffer> {
-    this.logger.log(`cutting the world layer at z${WORLD_MAXZOOM}`);
+    const key = worldKey();
+    this.logger.log(`cutting the world layer at z${WORLD_MAXZOOM} (${key})`);
     const bytes = await buildExtract({ maxZoom: WORLD_MAXZOOM });
-    await putObject(WORLD_KEY, bytes);
+    await putObject(key, bytes);
     return bytes;
   }
 
@@ -181,7 +192,7 @@ export class MapService implements OnModuleInit {
   /** The shared world layer, waiting for the cut if it is not stored. **Not for a request
    *  handler** — `worldIfReady` is. Kept for the boot warm and for any deliberate caller. */
   async world(): Promise<Buffer> {
-    return this.cached(WORLD_KEY, () => this.cutWorld());
+    return this.cached(worldKey(), () => this.cutWorld());
   }
 
   private async cut(key: string, region: MapRegion): Promise<Buffer> {

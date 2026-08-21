@@ -991,3 +991,72 @@ specificity and bundle order would otherwise decide it (measured: the vendor won
 Neither half can fail in the component suite — jsdom computes no layout, so a collapsed line box
 and a substituted font family are both invisible to it. `styles/map-pin-typography.contract.test.ts`
 asserts both as CSS contracts, the shape `map-stacking.contract.test.ts` already used.
+
+## Amendment (2026-08-21) — §6 gains a freshness rule: a downloaded archive is not permanent
+
+Owner, immediately after the live source stopped being pinned to a build id ([ADR-0187's
+2026-08-21 amendment](0187-detail-is-live-and-an-extract-is-only-for-the-plane.md)):
+
+> _"I guess that offline maps have to be updated too then, not because they won't work but because we prefer updated maps."_
+
+**Correct, and until now nothing in this ADR could.** §6 is entirely about _deleting_ archives —
+trip end, trip delete, the byte budget, surviving eviction — and every one of its rules assumes the
+only reason to drop an archive is space or correctness. There was no rule for **age**, and the
+result was an archive frozen at the build it was cut from for as long as the device held it. Worse
+at the origin: `WORLD_KEY` was one fixed string, so the shared world layer was cut **once per
+deploy** and never again — a device could not have fresher ground even if it asked for it, because
+the server had none.
+
+### The rule
+
+**§6 gains rule 6: an archive is replaced when it is a vintage behind and older than the vintage
+window.** Retention still owns _whether we keep a map_; this owns _how old that map may be_.
+
+- **A vintage is 30 days** (`MAP_ARCHIVE_VINTAGE_DAYS`), taken from the date of the build the
+  archive was cut from. Deliberately **not** the upstream cadence: the live source follows a
+  **daily** build, and matching it offline is a 42.7 MB world layer plus a city extract per device
+  per day — §5's exact nightmare, arrived at from the other direction. Two clocks, and the slow one
+  is the one that touches somebody's data plan.
+- **The server states the current vintage on `/me`** (`map.archiveVintage`, beside `liveBuild`) and
+  puts it in the storage key. A rolled vintage is therefore a plain **cache miss**, so the existing
+  "serve what is stored, cut in the background, `503` + `Retry-After` meanwhile" flow carries the
+  refresh with no new machinery at all.
+- **A device replaces a copy only when both are true**: the server is cutting a different vintage,
+  **and** its copy is older than the window. The second half is load-bearing — without it, a
+  download late in one window is chased by the next one days later, which is 80 MB for a few days
+  of OSM edits. With it, a refresh lands at most once per window and usually less.
+- **A refresh never asks and never spends metered bytes.** §5's one-time prompt is earned by a
+  _missing_ archive — the difference between having a map on the plane and not. A stale one already
+  works, so on a connection we cannot vouch for (Safari, where `navigator.connection` does not
+  exist) what is on the device stays, silently. This is the one place this amendment is deliberately
+  more conservative than §5.
+- **A stale archive keeps rendering until a replacement is stored**, which is rule 5's spirit rather
+  than a new idea: the refresh reuses the same URL, so the old bytes answer every read until the new
+  ones are complete. You cannot lose your map to a refresh.
+- **On the device a refresh REPLACES, it does not accumulate.** The URL is unchanged, so
+  `makeRoom` treats it as a replacement (the old entry's bytes come off the total and it is
+  excluded from eviction) and the `put` overwrites the same key. One entry per archive, before and
+  after — the manage row's size does not double. And a failed replace now restores the meta it
+  overwrote rather than deleting it: the old rollback was written when every put was a first write,
+  and against a replace it stranded the previous archive's bytes with nothing describing them —
+  invisible to `entries()`, uncounted by the budget, unreachable by eviction.
+- **Server-side, nothing is purged, and that is now a growth axis rather than a footnote.** A
+  superseded archive stays in the bucket: `isExtractKeyFor` was written "for eviction" and has no
+  caller outside its own spec. That was already true per region signature; the vintage adds a
+  second axis, so the bucket grows by roughly one archive per trip per window. Serving the previous
+  vintage is _wanted_ (devices still holding it read it) — keeping every vintage before it is not.
+  A sweep needs a key listing the byte sink does not have (`storage.ts` is get/put/delete only), so
+  it is named on the backlog rather than half-built here.
+
+### What it costs, stated rather than discovered later
+
+Once per window, the first read of the world layer after the vintage rolls is a `503` while the new
+cut runs (~4s measured) — the same cold-start path a fresh deploy already takes, and the live
+detail source is unaffected, so the online map keeps its labels throughout. Serving the previous
+vintage during that window was considered and rejected: it would hand a device bytes labelled with
+a vintage they are not, which is exactly the class of quiet mislabelling ADR-0187 §1 puts build ids
+in URLs to avoid.
+
+**Not built, and named so it is a decision:** nothing tells a person their map is a month old. The
+manage surface (§5's "offline maps · 180 MB · manage") lists size, not age. If a refresh ever needs
+to be _asked_ for rather than taken silently on wifi, that row is where it goes.

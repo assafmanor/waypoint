@@ -70,10 +70,18 @@ describe('mapRegionFor', () => {
 });
 
 describe('mapExtractKey', () => {
+  it('is a new key each vintage, so an extract can be refreshed rather than frozen', () => {
+    // ADR-0186 §6 amendment: the signature answers "is this the right GROUND", the vintage
+    // answers "is this ground still current". Two different questions, both in the key.
+    expect(mapExtractKey('trip-japan-26', 'abc123', 'v8')).not.toBe(
+      mapExtractKey('trip-japan-26', 'abc123', 'v7'),
+    );
+  });
+
   it('carries the signature, so a rebuild is a new object rather than an overwrite', () => {
     // Atomicity: the old archive stays readable until the new one is stored.
-    expect(mapExtractKey('trip-japan-26', 'def456')).not.toBe(
-      mapExtractKey('trip-japan-26', 'abc123'),
+    expect(mapExtractKey('trip-japan-26', 'def456', 'v7')).not.toBe(
+      mapExtractKey('trip-japan-26', 'abc123', 'v7'),
     );
   });
 
@@ -81,11 +89,11 @@ describe('mapExtractKey', () => {
     // Not a preference: `storage.ts` writes with a bare `writeFile`, so a `/` in the key
     // asks its local branch to create directories it never has. Found by the first real
     // request — the archive cut fine and the write threw ENOENT.
-    expect(mapExtractKey('trip-japan-26', 'abc123')).not.toContain('/');
+    expect(mapExtractKey('trip-japan-26', 'abc123', 'v7')).not.toContain('/');
   });
 
   it('lets eviction find one trip by prefix, and never a neighbouring one', () => {
-    const mine = mapExtractKey('trip-japan-26', 'abc123');
+    const mine = mapExtractKey('trip-japan-26', 'abc123', 'v7');
     expect(isExtractKeyFor('trip-japan-26', mine)).toBe(true);
     expect(isExtractKeyFor('trip-paris-26', mine)).toBe(false);
     // A trip id that PREFIXES another must not match it — `trip-1` vs `trip-12`.
