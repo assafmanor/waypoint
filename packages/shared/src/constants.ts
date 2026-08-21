@@ -356,10 +356,20 @@ export const MAX_DISPLAY_NAME_LENGTH = 40;
 export const MAX_PUSH_ENDPOINT_LENGTH = 1024;
 export const MAX_PUSH_KEY_LENGTH = 256;
 
-/** **What the two subscription keys must decode to** (RFC 8291): `p256dh` is an
- *  uncompressed P-256 point (`0x04` + two 32-byte coordinates) and `auth` a 16-byte secret.
- *  Not tunables — the wire format fixes them. */
-export const PUSH_KEY_BYTES = { p256dh: 65, auth: 16 } as const;
+/**
+ * **What the two subscription keys must decode to**, and the asymmetry is not a typo.
+ *
+ * RFC 8291 says `p256dh` is an uncompressed P-256 point (`0x04` + two 32-byte coordinates,
+ * so 65) and `auth` a 16-byte secret. But the numbers here mirror **what `web-push` itself
+ * refuses**, which is the only gate that matters: measured against the library, a `p256dh` of
+ * any other length throws locally ("should be 65 bytes long"), while `auth` is checked as
+ * "at least 16" — a 32-byte one is encrypted and sent, and the push service answers it.
+ *
+ * So `auth` is a floor, not an equality. Validating it as exactly 16 would have refused a
+ * subscription the sender would have delivered, which is a worse failure than the one this
+ * check exists to prevent: this must never be stricter than the thing it is protecting.
+ */
+export const PUSH_KEY_BYTES = { p256dh: 65, authMin: 16 } as const;
 
 /** The device label shown beside a subscription. A real UA string is ~120 chars; this is
  *  a rendered label rather than a forensic record, so it is capped well below the endpoint. */

@@ -774,15 +774,18 @@ export type JoinTripInput = z.infer<typeof joinTripSchema>;
  * the server's own keypair ("a swap is caught at boot instead of at the first send"); this
  * is the device half of it, caught at the one moment somebody is still holding the phone.
  */
-function pushKey(which: keyof typeof PUSH_KEY_BYTES) {
-  const bytes = PUSH_KEY_BYTES[which];
-  return z
-    .string()
-    .min(1)
-    .max(MAX_PUSH_KEY_LENGTH)
-    .refine((value) => decodedByteLength(value) === bytes, {
-      message: `${which} must be base64url that decodes to exactly ${bytes} bytes`,
-    });
+function pushKey(which: 'p256dh' | 'auth') {
+  const base = z.string().min(1).max(MAX_PUSH_KEY_LENGTH);
+  // `p256dh` is an equality and `auth` a floor, because that is what `web-push` enforces —
+  // see `PUSH_KEY_BYTES`. A check stricter than the sender's would refuse a subscription
+  // that would have worked.
+  return which === 'p256dh'
+    ? base.refine((value) => decodedByteLength(value) === PUSH_KEY_BYTES.p256dh, {
+        message: `p256dh must be base64url that decodes to exactly ${PUSH_KEY_BYTES.p256dh} bytes`,
+      })
+    : base.refine((value) => decodedByteLength(value) >= PUSH_KEY_BYTES.authMin, {
+        message: `auth must be base64url that decodes to at least ${PUSH_KEY_BYTES.authMin} bytes`,
+      });
 }
 
 /** Byte length of a base64url string, or `-1` if it is not base64url at all. Length is

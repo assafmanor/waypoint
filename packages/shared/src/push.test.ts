@@ -74,7 +74,7 @@ describe('createPushSubscriptionSchema — the device’s own keys', () => {
   const subscription = (over: Record<string, unknown> = {}) => ({
     endpoint: 'https://fcm.googleapis.com/fcm/send/abc',
     p256dh: key(PUSH_KEY_BYTES.p256dh),
-    auth: key(PUSH_KEY_BYTES.auth),
+    auth: key(PUSH_KEY_BYTES.authMin),
     ...over,
   });
 
@@ -93,11 +93,22 @@ describe('createPushSubscriptionSchema — the device’s own keys', () => {
     }
   });
 
-  it('refuses an auth that is not 16 bytes', () => {
-    for (const bytes of [8, 15, 17, 32]) {
+  it('refuses an auth UNDER 16 bytes — the length web-push refuses locally', () => {
+    for (const bytes of [1, 8, 15]) {
       expect(
         createPushSubscriptionSchema.safeParse(subscription({ auth: key(bytes) })).success,
       ).toBe(false);
+    }
+  });
+
+  it('ACCEPTS an auth over 16 bytes, because web-push sends those and the service answers', () => {
+    // Measured against the library, not assumed: a 32-byte auth is encrypted, sent, and
+    // answered (410 for a bogus token). Refusing it here would reject a subscription that
+    // would have worked — this check must never be stricter than the sender it protects.
+    for (const bytes of [16, 17, 32]) {
+      expect(
+        createPushSubscriptionSchema.safeParse(subscription({ auth: key(bytes) })).success,
+      ).toBe(true);
     }
   });
 
@@ -108,7 +119,7 @@ describe('createPushSubscriptionSchema — the device’s own keys', () => {
   });
 
   it('accepts the padded variant, since not every client strips it', () => {
-    const padded = Buffer.alloc(PUSH_KEY_BYTES.auth, 7).toString('base64url') + '==';
+    const padded = Buffer.alloc(PUSH_KEY_BYTES.authMin, 7).toString('base64url') + '==';
     expect(createPushSubscriptionSchema.safeParse(subscription({ auth: padded })).success).toBe(
       true,
     );
