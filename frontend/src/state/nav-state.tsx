@@ -111,10 +111,17 @@ export const eventRowSelector = (id: string): string => `[${EVENT_ROW_ATTR}="${i
  * two callers need for different reasons: an effect keyed on it acts once (and once more with
  * `null`, which every caller already guards), and a decision taken AT MOUNT — the Day view's
  * "land on now", which must stand down when the arrival names a card — can see it at all.
+ *
+ * **`active: false` makes it wholly inert** — no value returned and, the half that matters,
+ * the param NOT SPENT. Its one caller is the day peek (ADR-0200 §7), which renders a real day
+ * surface for the day you are swiping toward: two mounted surfaces both reading `?event=`
+ * means the preview consumes the arrival and the day you actually land on never sees it. That
+ * was counted before it was written rather than found afterwards — every arrival effect on
+ * both day screens keys off this hook, so one option covers all of them.
  */
-export function useArrivalParam(name: string): string | null {
+export function useArrivalParam(name: string, { active = true } = {}): string | null {
   const [params, setParams] = useSearchParams();
-  const value = params.get(name);
+  const value = active ? params.get(name) : null;
   useEffect(() => {
     if (value === null) return;
     const next = new URLSearchParams(params);

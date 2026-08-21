@@ -26,7 +26,9 @@ import {
 } from '../state/map-scope-state';
 import { prefersReducedMotion } from '../lib/motion';
 import { landAtTop } from '../lib/land-at-top';
-import { useDaySwipe } from '../lib/useDaySwipe';
+import { useDaySurface } from '../lib/useDaySurface';
+import { DayPeeks } from '../ui/domain/DayPeek';
+import { useIsDayPreview } from '../state/day-preview';
 import { edgeFadeRef } from '../lib/edge-fade';
 import {
   authoringZone,
@@ -227,10 +229,16 @@ export function DayView() {
     tasks,
   } = useTrip();
   const verbs = useVerbs();
-  // Swiping the day steps to the next/previous one, refused at the trip's ends
-  // (ADR-0200). The same hook and the same class as Plan's builder: which day is next
-  // is a fact, so the two day surfaces cannot answer it differently.
-  const daySwipe = useDaySwipe<HTMLDivElement>();
+  // Which day this surface is showing, and how it changes (ADR-0200 §6/§7): the swipe,
+  // the neighbour days the peek renders, and the rule that a day opens at its top however
+  // you got here. Called EARLY on purpose — the arrival landing and "land on now" below
+  // both key on the same day change and both mean to win, and effects run in declaration
+  // order. The same hook and class as Plan's builder: none of this is a posture.
+  // **Am I the real day, or the peek beside it?** (ADR-0200 §7) Read only to suppress what
+  // reaches OUT of a preview's pane — the arrival param it must not spend, and a scroll on the
+  // body it does not own. Never to change how the day LOOKS: looking identical is the point.
+  const preview = useIsDayPreview();
+  const daySurface = useDaySurface<HTMLDivElement>();
   const placeLabels = usePlaceLabels();
   const now = useClock();
   // `מפה` is an in-app destination now (ADR-0121 §8): it hands the Map tab a focus
@@ -309,8 +317,8 @@ export function DayView() {
   // screen: `?event=<id>` expands the card, `?idea=<id>` opens the idea's sheet. Both params
   // are spent on arrival by `useArrivalParam`, so a back or a reload does not re-open what you
   // have since closed.
-  const arrivingEvent = useArrivalParam(EVENT_PARAM);
-  const arrivingIdea = useArrivalParam(IDEA_PARAM);
+  const arrivingEvent = useArrivalParam(EVENT_PARAM, { active: !preview });
+  const arrivingIdea = useArrivalParam(IDEA_PARAM, { active: !preview });
   useEffect(() => {
     if (arrivingEvent) setOpenId(arrivingEvent);
   }, [arrivingEvent]);
@@ -500,442 +508,455 @@ export function DayView() {
   const nowLineRef = useRef<HTMLDivElement>(null);
   const isToday = dayScope === 'today';
   useEffect(() => {
-    if (!isToday || aimedAtCard.current) return;
+    // A preview must not scroll: its pane is not a scroller, so `scrollIntoView` would walk
+    // out and move the REAL day's body under the finger (ADR-0200 §7).
+    if (preview || !isToday || aimedAtCard.current) return;
     const el = nowLineRef.current;
     if (!el) return;
     el.scrollIntoView({ block: 'center', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
-  }, [activeDate, isToday]);
+  }, [activeDate, isToday, preview]);
 
   return (
-    <div className="day-swipe" ref={daySwipe}>
-      {ripple && (
-        <div className="ripple show">
-          <span className="rt">{t.ripple.prompt(ripple.movedTitle, ripple.direction)}</span>
-          <button className="yes" onClick={verbs.rippleApply}>
-            {t.common.yes}
-          </button>
-          <button className="no" onClick={verbs.rippleDismiss}>
-            {t.common.no}
-          </button>
-        </div>
+    <div className="day-swipe" data-preview={preview || undefined} ref={daySurface.ref}>
+      {/* **THE DAY YOU ARE SWIPING TOWARD, DRAWN WHILE YOU SWIPE** (ADR-0200 §7). The same
+          screen, one day over, inert — so what the page turn lands on is what the committed
+          day draws, and the seam needs no cross-fade. `preview` stops the recursion at depth
+          one: a peek renders no peeks of its own. */}
+      {!preview && daySurface.live && (
+        <DayPeeks prev={daySurface.peek.prev} next={daySurface.peek.next}>
+          <DayView />
+        </DayPeeks>
       )}
+      <div className="day-page">
+        {ripple && (
+          <div className="ripple show">
+            <span className="rt">{t.ripple.prompt(ripple.movedTitle, ripple.direction)}</span>
+            <button className="yes" onClick={verbs.rippleApply}>
+              {t.common.yes}
+            </button>
+            <button className="no" onClick={verbs.rippleDismiss}>
+              {t.common.no}
+            </button>
+          </div>
+        )}
 
-      {readOnly && (
-        <div className="archive-banner">
-          <span className="ab-ic" aria-hidden="true">
-            <Icon name="archive" />
-          </span>
-          <span className="ab-main">
-            {heading} · {t.day.archiveTag}
-          </span>
-          <button className="ab-back" onClick={() => setActiveDate(today)}>
-            {t.header.backToToday}
-          </button>
-        </div>
-      )}
+        {readOnly && (
+          <div className="archive-banner">
+            <span className="ab-ic" aria-hidden="true">
+              <Icon name="archive" />
+            </span>
+            <span className="ab-main">
+              {heading} · {t.day.archiveTag}
+            </span>
+            <button className="ab-back" onClick={() => setActiveDate(today)}>
+              {t.header.backToToday}
+            </button>
+          </div>
+        )}
 
-      <div className="sec-title">
-        {heading}
-        <span className="sec-title-end">
-          {/* Trip-mode add is a Tier-1 quick soft-add for today (ADR-0025/0043),
+        <div className="sec-title">
+          {heading}
+          <span className="sec-title-end">
+            {/* Trip-mode add is a Tier-1 quick soft-add for today (ADR-0025/0043),
               prefilled at the next open slot; heavy building lives in Plan.
               Locked on a past day (create gated, ADR-0029). */}
-          {!readOnly && (
-            <button className="new-event-btn" onClick={() => setFormTarget('new')}>
-              <Icon name="plus" /> {t.actions.newEvent}
-            </button>
-          )}
-        </span>
-      </div>
+            {!readOnly && (
+              <button className="new-event-btn" onClick={() => setFormTarget('new')}>
+                <Icon name="plus" /> {t.actions.newEvent}
+              </button>
+            )}
+          </span>
+        </div>
 
-      {(staysToday.length > 0 || placement.commitments.length > 0) && (
-        <div className="day-ambient">
-          {/* **AN EDGE DAY SAYS THE EDGE; A MIDDLE DAY SAYS THE COUNT** (owner, 2026-08-13).
+        {(staysToday.length > 0 || placement.commitments.length > 0) && (
+          <div className="day-ambient">
+            {/* **AN EDGE DAY SAYS THE EDGE; A MIDDLE DAY SAYS THE COUNT** (owner, 2026-08-13).
               `לילה 1 מתוך 1` on both of two guesthouses — one being left this morning, one
               being arrived at tonight — is the same words for opposite events. The sentence
               comes from the day's PLACED entry, so this line and the row below it cannot
               print two different clocks for one edge. */}
-          {staysToday.map((e) => {
-            const edge = edgeEntryOf(placement.positioned, e.id);
-            return (
-              <div className="ambient" key={e.id}>
-                <span className="ai" aria-hidden="true">
-                  {e.icon ?? DEFAULT_STAY_ICON}
-                </span>
-                <span className="an">{e.title}</span>
-                <span className="as">
-                  {edge
-                    ? edgeSentence(edge, transitionZoneProps(edge, zoneCtx).zone)
-                    : ambientSpanLabel(e, activeDate)}
-                </span>
-              </div>
-            );
-          })}
-          {/* **A commitment with no position reads at the TOP** (ADR-0171 §10a-i) — a
+            {staysToday.map((e) => {
+              const edge = edgeEntryOf(placement.positioned, e.id);
+              return (
+                <div className="ambient" key={e.id}>
+                  <span className="ai" aria-hidden="true">
+                    {e.icon ?? DEFAULT_STAY_ICON}
+                  </span>
+                  <span className="an">{e.title}</span>
+                  <span className="as">
+                    {edge
+                      ? edgeSentence(edge, transitionZoneProps(edge, zoneCtx).zone)
+                      : ambientSpanLabel(e, activeDate)}
+                  </span>
+                </div>
+              );
+            })}
+            {/* **A commitment with no position reads at the TOP** (ADR-0171 §10a-i) — a
               claim on your day, carried all day, rather than something buried at its
               foot. It lands in the strip a multi-night stay's MIDDLE days already use,
               so one hotel reads the same way on every day of itself, edges included,
               and no second band is invented. */}
-          {placement.commitments.map((row) => (
-            <UnplacedCommitment
-              key={`${row.event.id}-${row.edge ?? 'untimed'}`}
-              row={row}
-              tz={trip.timezone}
-              bookings={bookings}
-              onDone={() => verbs.done(row.event)}
-              onSkip={() => verbs.skip(row.event)}
-              onUndo={() => verbs.restore(row.event)}
-              onOpen={setDetailTarget}
-            />
-          ))}
-        </div>
-      )}
+            {placement.commitments.map((row) => (
+              <UnplacedCommitment
+                key={`${row.event.id}-${row.edge ?? 'untimed'}`}
+                row={row}
+                tz={trip.timezone}
+                bookings={bookings}
+                onDone={() => verbs.done(row.event)}
+                onSkip={() => verbs.skip(row.event)}
+                onUndo={() => verbs.restore(row.event)}
+                onOpen={setDetailTarget}
+              />
+            ))}
+          </div>
+        )}
 
-      <div className={'day-list' + (readOnly ? ' archive' : '')}>
-        {/* Overlapping events render as the concurrency forest (ADR-0041): nests
+        <div className={'day-list' + (readOnly ? ' archive' : '')}>
+          {/* Overlapping events render as the concurrency forest (ADR-0041): nests
             for containment, quiet clusters for partial overlap. The now-line is
             interleaved at the top level; untimed events have no span to place, so
             they stay plain leaf rows at the end. */}
-        {blocks.map((block) => {
-          const rows = block.entries.map(({ entry, index, join }) => (
-            <Fragment
-              key={
-                entry.kind === 'event' ? groupKey(entry.group) : `${entry.event.id}-${entry.edge}`
-              }
-            >
-              {/* The join reads BEFORE the now-line: it is a fact about the plan, and
+          {blocks.map((block) => {
+            const rows = block.entries.map(({ entry, index, join }) => (
+              <Fragment
+                key={
+                  entry.kind === 'event' ? groupKey(entry.group) : `${entry.event.id}-${entry.edge}`
+                }
+              >
+                {/* The join reads BEFORE the now-line: it is a fact about the plan, and
                   the now-line is the clock arriving inside it. */}
-              {join && (
-                <JoinRow
-                  join={join}
-                  places={places}
-                  placeLabels={placeLabels}
-                  onFillGap={readOnly ? undefined : setGapTarget}
-                />
-              )}
-              {showNowLine && index === nowLineIndex && (
-                <NowLine ref={nowLineRef} now={now} tz={nowZone} />
-              )}
-              {entry.kind === 'event' ? (
-                <GroupNode group={entry.group} depth={0} ctx={dayCtx} />
-              ) : (
-                <TransitionRow
-                  entry={entry}
-                  tz={dayCtx.tz}
-                  {...transitionZoneProps(entry, dayCtx.zoneCtx)}
-                  bookings={dayCtx.bookings}
-                  onOpen={dayCtx.onOpenDetail}
-                  onNavigate={dayCtx.readOnly ? undefined : navigateHandler(entry.event, dayCtx)}
-                  // Not gated on `readOnly`: a past day is a browsable archive
-                  // (ADR-0029), and looking at where you were changes nothing.
-                  // THIS EDGE's end, so a `נחיתה` row goes to where you landed rather than to
-                  // the airport you took off from (2026-08-06). The row already knows which end
-                  // it is; it simply was not saying so.
-                  onShowOnMap={eventShowOnMap(
-                    entry.event,
-                    dayCtx.bookings,
-                    dayCtx.places,
-                    dayCtx.showPlaceOnMap,
-                    entry.edge,
-                  )}
-                  // The settle pair the strip used to carry, moved with the floors that
-                  // moved into this list (2026-08-13). `TransitionRow` renders it on a
-                  // FLOOR only; passing it unconditionally here keeps that one rule in
-                  // one place. Trip mode's alone — Plan settles off a row menu (ADR-0171
-                  // §10e) — and gated on `readOnly` like every other write on a past day.
-                  onDone={dayCtx.readOnly ? undefined : () => verbs.done(entry.event)}
-                  onSkip={dayCtx.readOnly ? undefined : () => verbs.skip(entry.event)}
-                  onUndo={dayCtx.readOnly ? undefined : () => verbs.restore(entry.event)}
-                />
-              )}
-            </Fragment>
-          ));
-          // A journey's legs live INSIDE one block, so the band between them belongs to
-          // an object rather than floating between two cards (ADR-0159 §3).
-          return block.journey ? (
-            <div className="journey" key={blockKey(block)}>
-              {rows}
-            </div>
-          ) : (
-            <Fragment key={blockKey(block)}>{rows}</Fragment>
-          );
-        })}
-        {showNowLine && nowLineIndex === merged.length && (
-          <NowLine ref={nowLineRef} now={now} tz={nowZone} />
-        )}
-        {/* **The tail, and the line that finally names it** (ADR-0171 §10a). These rows
+                {join && (
+                  <JoinRow
+                    join={join}
+                    places={places}
+                    placeLabels={placeLabels}
+                    onFillGap={readOnly ? undefined : setGapTarget}
+                  />
+                )}
+                {showNowLine && index === nowLineIndex && (
+                  <NowLine ref={nowLineRef} now={now} tz={nowZone} />
+                )}
+                {entry.kind === 'event' ? (
+                  <GroupNode group={entry.group} depth={0} ctx={dayCtx} />
+                ) : (
+                  <TransitionRow
+                    entry={entry}
+                    tz={dayCtx.tz}
+                    {...transitionZoneProps(entry, dayCtx.zoneCtx)}
+                    bookings={dayCtx.bookings}
+                    onOpen={dayCtx.onOpenDetail}
+                    onNavigate={dayCtx.readOnly ? undefined : navigateHandler(entry.event, dayCtx)}
+                    // Not gated on `readOnly`: a past day is a browsable archive
+                    // (ADR-0029), and looking at where you were changes nothing.
+                    // THIS EDGE's end, so a `נחיתה` row goes to where you landed rather than to
+                    // the airport you took off from (2026-08-06). The row already knows which end
+                    // it is; it simply was not saying so.
+                    onShowOnMap={eventShowOnMap(
+                      entry.event,
+                      dayCtx.bookings,
+                      dayCtx.places,
+                      dayCtx.showPlaceOnMap,
+                      entry.edge,
+                    )}
+                    // The settle pair the strip used to carry, moved with the floors that
+                    // moved into this list (2026-08-13). `TransitionRow` renders it on a
+                    // FLOOR only; passing it unconditionally here keeps that one rule in
+                    // one place. Trip mode's alone — Plan settles off a row menu (ADR-0171
+                    // §10e) — and gated on `readOnly` like every other write on a past day.
+                    onDone={dayCtx.readOnly ? undefined : () => verbs.done(entry.event)}
+                    onSkip={dayCtx.readOnly ? undefined : () => verbs.skip(entry.event)}
+                    onUndo={dayCtx.readOnly ? undefined : () => verbs.restore(entry.event)}
+                  />
+                )}
+              </Fragment>
+            ));
+            // A journey's legs live INSIDE one block, so the band between them belongs to
+            // an object rather than floating between two cards (ADR-0159 §3).
+            return block.journey ? (
+              <div className="journey" key={blockKey(block)}>
+                {rows}
+              </div>
+            ) : (
+              <Fragment key={blockKey(block)}>{rows}</Fragment>
+            );
+          })}
+          {showNowLine && nowLineIndex === merged.length && (
+            <NowLine ref={nowLineRef} now={now} tz={nowZone} />
+          )}
+          {/* **The tail, and the line that finally names it** (ADR-0171 §10a). These rows
             have always rendered here; what they never had was anything saying they hold
             no position, so one of them read as "the last thing today". The line is the
             gap strip's own dashed hairline at the same 9px rhythm — the other thing a
             line between rows can say — so the day gains no new grammar for it. */}
-        {placement.ideas.length > 0 && (
-          <div className="day-unplaced">
-            <span className="line" />
-            <span className="lbl">{t.day.unplaced}</span>
-            <span className="line" />
-          </div>
-        )}
-        {placement.ideas.map((row) => (
-          <ItemNode
-            key={row.event.id}
-            item={{ event: row.event, children: [] }}
-            depth={0}
-            ctx={dayCtx}
-          />
-        ))}
-      </div>
-
-      {formTarget && (
-        <EventForm
-          event={formTarget === 'new' ? null : formTarget}
-          defaults={
-            formTarget === 'new'
-              ? (formSlot ?? nextSlot(dayEvents, activeDate, trip.timezone))
-              : undefined
-          }
-          draft={formDraft}
-          onClose={closeForm}
-        />
-      )}
-
-      {(bookingTarget || bookingDraft) && (
-        <BookingSheet
-          booking={bookingTarget}
-          draft={bookingDraft}
-          onClose={() => {
-            setBookingTarget(null);
-            setBookingDraft(null);
-          }}
-        />
-      )}
-
-      {detailTarget && (
-        <BookingDetail
-          booking={detailTarget}
-          onClose={() => setDetailTarget(null)}
-          onOpen={setDetailTarget}
-          onEdit={(b) => {
-            setDetailTarget(null);
-            setBookingTarget(b);
-          }}
-        />
-      )}
-
-      {/* The maybe-shelf schedules onto a day — a create action, so it's gone on
-          a read-only past day (ADR-0029/0040); a build hint points to Plan. */}
-      {readOnly ? (
-        <div className="past-build-hint">
-          <span aria-hidden="true">
-            <Icon name="edit" />
-          </span>{' '}
-          {t.day.pastBuildHint}
+          {placement.ideas.length > 0 && (
+            <div className="day-unplaced">
+              <span className="line" />
+              <span className="lbl">{t.day.unplaced}</span>
+              <span className="line" />
+            </div>
+          )}
+          {placement.ideas.map((row) => (
+            <ItemNode
+              key={row.event.id}
+              item={{ event: row.event, children: [] }}
+              depth={0}
+              ctx={dayCtx}
+            />
+          ))}
         </div>
-      ) : (
-        <>
-          <div className="sec-title">{t.day.maybeShelf}</div>
-          {/* Two groups (ADR-0116 §2): what's pencilled in for this day — plus the
+
+        {formTarget && (
+          <EventForm
+            event={formTarget === 'new' ? null : formTarget}
+            defaults={
+              formTarget === 'new'
+                ? (formSlot ?? nextSlot(dayEvents, activeDate, trip.timezone))
+                : undefined
+            }
+            draft={formDraft}
+            onClose={closeForm}
+          />
+        )}
+
+        {(bookingTarget || bookingDraft) && (
+          <BookingSheet
+            booking={bookingTarget}
+            draft={bookingDraft}
+            onClose={() => {
+              setBookingTarget(null);
+              setBookingDraft(null);
+            }}
+          />
+        )}
+
+        {detailTarget && (
+          <BookingDetail
+            booking={detailTarget}
+            onClose={() => setDetailTarget(null)}
+            onOpen={setDetailTarget}
+            onEdit={(b) => {
+              setDetailTarget(null);
+              setBookingTarget(b);
+            }}
+          />
+        )}
+
+        {/* The maybe-shelf schedules onto a day — a create action, so it's gone on
+          a read-only past day (ADR-0029/0040); a build hint points to Plan. */}
+        {readOnly ? (
+          <div className="past-build-hint">
+            <span aria-hidden="true">
+              <Icon name="edit" />
+            </span>{' '}
+            {t.day.pastBuildHint}
+          </div>
+        ) : (
+          <>
+            <div className="sec-title">{t.day.maybeShelf}</div>
+            {/* Two groups (ADR-0116 §2): what's pencilled in for this day — plus the
               day's skipped events, which belong to it — then the rest of the pool,
               each out-of-day idea naming its own day. A header appears only when its
               group has content, so a trip with no target days reads as one strip. */}
-          {(shelf.forDay.length > 0 || shelf.skipped.length > 0) && (
-            <>
-              {shelf.pool.length > 0 && <div className="shelf-group">{t.day.shelfForDay}</div>}
-              <div className="shelf edge-fade" ref={edgeFadeRef}>
-                {shelf.forDay.map((m) => (
-                  <MaybeCard
-                    key={m.id}
-                    compact
-                    icon={ideaGlyph(m, places)}
-                    title={m.title}
-                    meta={stopReasonText(forDayReasons.get(m.id))}
-                    notes={noteCountFor(noteCounts, 'maybeItem', m.id)}
-                    onShowOnMap={ideaShowOnMap(m, places, showPlaceOnMap)}
-                    onOpen={() => setIdeaSheet(m)}
-                  />
-                ))}
-                {/* Skipped soft events park here, restorable (ADR-0027 parking lot).
+            {(shelf.forDay.length > 0 || shelf.skipped.length > 0) && (
+              <>
+                {shelf.pool.length > 0 && <div className="shelf-group">{t.day.shelfForDay}</div>}
+                <div className="shelf edge-fade" ref={edgeFadeRef}>
+                  {shelf.forDay.map((m) => (
+                    <MaybeCard
+                      key={m.id}
+                      compact
+                      icon={ideaGlyph(m, places)}
+                      title={m.title}
+                      meta={stopReasonText(forDayReasons.get(m.id))}
+                      notes={noteCountFor(noteCounts, 'maybeItem', m.id)}
+                      onShowOnMap={ideaShowOnMap(m, places, showPlaceOnMap)}
+                      onOpen={() => setIdeaSheet(m)}
+                    />
+                  ))}
+                  {/* Skipped soft events park here, restorable (ADR-0027 parking lot).
                     No action line: the card is a button and `skippedTag` marks the state
                     it is in, which is the part a reader cannot get from the tile itself. */}
-                {shelf.skipped.map((e) => (
-                  <MaybeCard
-                    key={e.id}
-                    compact
-                    className="skipped-card"
-                    icon={e.icon}
-                    title={e.title}
-                    meta={t.day.skippedTag}
-                    // A skipped event's tap still restores it in place: it HAS a surface of
-                    // its own (its day row), so the gesture change is the idea's alone.
-                    onShowOnMap={eventShowOnMap(e, bookings, places, showPlaceOnMap)}
-                    onOpen={() => verbs.restore(e)}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-          {shelf.pool.length > 0 && (
-            <>
-              {(shelf.forDay.length > 0 || shelf.skipped.length > 0) && (
-                <div className="shelf-group">
-                  {t.day.shelfRanked}
-                  <span className="shelf-count">{shelf.pool.length}</span>
+                  {shelf.skipped.map((e) => (
+                    <MaybeCard
+                      key={e.id}
+                      compact
+                      className="skipped-card"
+                      icon={e.icon}
+                      title={e.title}
+                      meta={t.day.skippedTag}
+                      // A skipped event's tap still restores it in place: it HAS a surface of
+                      // its own (its day row), so the gesture change is the idea's alone.
+                      onShowOnMap={eventShowOnMap(e, bookings, places, showPlaceOnMap)}
+                      onOpen={() => verbs.restore(e)}
+                    />
+                  ))}
                 </div>
-              )}
-              <div className="shelf edge-fade" ref={edgeFadeRef}>
-                {/* Scheduled (consumed) ideas leave the shelf — no dead tombstone
-                    (ADR-0027); `shelfGroups` already dropped them. */}
-                {/* The tile's meta carries the ranking reason — a fact that VARIES
-                    per card, which is what the retired action line never was. */}
-                {rankedPool.map(({ item: m, reason }) => (
-                  <MaybeCard
-                    key={m.id}
-                    compact
-                    icon={ideaGlyph(m, places)}
-                    title={m.title}
-                    meta={tileReasonText(reason, activeDate)}
-                    notes={noteCountFor(noteCounts, 'maybeItem', m.id)}
-                    onShowOnMap={ideaShowOnMap(m, places, showPlaceOnMap)}
-                    onOpen={() => setIdeaSheet(m)}
-                  />
-                ))}
-                {/* The tail, and what makes the strip's width independent of N. Absent
-                    rather than broken outside the trip shell (no Map tab to route to). */}
-                {poolTail > 0 && showMaybesOnMap && (
-                  <MaybeMoreCard
-                    label={t.day.shelfMore(poolTail)}
-                    icon={<Icon name="map" />}
-                    onOpen={showMaybesOnMap}
-                  />
+              </>
+            )}
+            {shelf.pool.length > 0 && (
+              <>
+                {(shelf.forDay.length > 0 || shelf.skipped.length > 0) && (
+                  <div className="shelf-group">
+                    {t.day.shelfRanked}
+                    <span className="shelf-count">{shelf.pool.length}</span>
+                  </div>
                 )}
-              </div>
-            </>
-          )}
-        </>
-      )}
+                <div className="shelf edge-fade" ref={edgeFadeRef}>
+                  {/* Scheduled (consumed) ideas leave the shelf — no dead tombstone
+                    (ADR-0027); `shelfGroups` already dropped them. */}
+                  {/* The tile's meta carries the ranking reason — a fact that VARIES
+                    per card, which is what the retired action line never was. */}
+                  {rankedPool.map(({ item: m, reason }) => (
+                    <MaybeCard
+                      key={m.id}
+                      compact
+                      icon={ideaGlyph(m, places)}
+                      title={m.title}
+                      meta={tileReasonText(reason, activeDate)}
+                      notes={noteCountFor(noteCounts, 'maybeItem', m.id)}
+                      onShowOnMap={ideaShowOnMap(m, places, showPlaceOnMap)}
+                      onOpen={() => setIdeaSheet(m)}
+                    />
+                  ))}
+                  {/* The tail, and what makes the strip's width independent of N. Absent
+                    rather than broken outside the trip shell (no Map tab to route to). */}
+                  {poolTail > 0 && showMaybesOnMap && (
+                    <MaybeMoreCard
+                      label={t.day.shelfMore(poolTail)}
+                      icon={<Icon name="map" />}
+                      onOpen={showMaybesOnMap}
+                    />
+                  )}
+                </div>
+              </>
+            )}
+          </>
+        )}
 
-      {ideaSheet && (
-        <MaybeManageSheet
-          item={ideaSheet}
-          onSchedule={() => {
-            setScheduleItem(ideaSheet);
-            setIdeaSheet(null);
-          }}
-          markForDay={markForDay(ideaSheet)}
-          why={ideaWhy(ideaSheet)}
-          onClose={() => setIdeaSheet(null)}
-        />
-      )}
+        {ideaSheet && (
+          <MaybeManageSheet
+            item={ideaSheet}
+            onSchedule={() => {
+              setScheduleItem(ideaSheet);
+              setIdeaSheet(null);
+            }}
+            markForDay={markForDay(ideaSheet)}
+            why={ideaWhy(ideaSheet)}
+            onClose={() => setIdeaSheet(null)}
+          />
+        )}
 
-      {scheduleItem && (
-        <ScheduleSheet
-          item={scheduleItem}
-          // The free slot is read on the same clock the sheet types on, so the
-          // prefilled time means what the day means by it (ADR-0107 session 128).
-          // **The first position with room for it**, not the end of the day's last event
-          // (ADR-0161 §4/§5). Trip mode is Tier-1, so it defaults rather than asking — but the
-          // default used to be `nextSlot`, so the opening offer for every idea was "after
-          // everything", on days with a three-hour hole in the middle. The length is the
-          // idea's category's, capped by whatever room that position actually has.
-          //
-          // Read on the same clock the sheet types on, so the prefilled time means what the
-          // day means by it (ADR-0107 session 128).
-          defaults={scheduleDefaults(scheduleItem)}
-          // The day is now part of the sheet (ADR-0116 §5), defaulting to the idea's
-          // own pencilled-in day: putting something on Thursday stops requiring a
-          // trip to Thursday first. Day-scope still gates the range — scheduling is
-          // a create, and creates are locked on a past day in Trip mode (ADR-0029).
-          date={scheduleItem.targetDate ?? activeDate}
-          minDate={today > trip.startDate ? today : trip.startDate}
-          maxDate={trip.endDate}
-          evidence={zoneEvidence}
-          onConfirm={({ date, start, end, zone, override }) => {
-            verbs.schedule(scheduleItem, {
-              date,
-              title: scheduleItem.title,
-              kind: EVENT_KIND.SOFT,
-              // Typed in the day's own zone, not the trip primary — the zone the
-              // chip states and the day view will read the event back in.
-              startsAt: start ? zonedIso(date, start, zone) : undefined,
-              endsAt: end && start ? resolveEndIso(date, start, end, zone) : undefined,
-              displayTimezone: override ?? undefined,
-            });
-            setScheduleItem(null);
-          }}
-          onClose={() => setScheduleItem(null)}
-        />
-      )}
+        {scheduleItem && (
+          <ScheduleSheet
+            item={scheduleItem}
+            // The free slot is read on the same clock the sheet types on, so the
+            // prefilled time means what the day means by it (ADR-0107 session 128).
+            // **The first position with room for it**, not the end of the day's last event
+            // (ADR-0161 §4/§5). Trip mode is Tier-1, so it defaults rather than asking — but the
+            // default used to be `nextSlot`, so the opening offer for every idea was "after
+            // everything", on days with a three-hour hole in the middle. The length is the
+            // idea's category's, capped by whatever room that position actually has.
+            //
+            // Read on the same clock the sheet types on, so the prefilled time means what the
+            // day means by it (ADR-0107 session 128).
+            defaults={scheduleDefaults(scheduleItem)}
+            // The day is now part of the sheet (ADR-0116 §5), defaulting to the idea's
+            // own pencilled-in day: putting something on Thursday stops requiring a
+            // trip to Thursday first. Day-scope still gates the range — scheduling is
+            // a create, and creates are locked on a past day in Trip mode (ADR-0029).
+            date={scheduleItem.targetDate ?? activeDate}
+            minDate={today > trip.startDate ? today : trip.startDate}
+            maxDate={trip.endDate}
+            evidence={zoneEvidence}
+            onConfirm={({ date, start, end, zone, override }) => {
+              verbs.schedule(scheduleItem, {
+                date,
+                title: scheduleItem.title,
+                kind: EVENT_KIND.SOFT,
+                // Typed in the day's own zone, not the trip primary — the zone the
+                // chip states and the day view will read the event back in.
+                startsAt: start ? zonedIso(date, start, zone) : undefined,
+                endsAt: end && start ? resolveEndIso(date, start, end, zone) : undefined,
+                displayTimezone: override ?? undefined,
+              });
+              setScheduleItem(null);
+            }}
+            onClose={() => setScheduleItem(null)}
+          />
+        )}
 
-      {/* **`החלף`, taken on the slot** (ADR-0161 §6). The same sheet the gap fill uses, with
+        {/* **`החלף`, taken on the slot** (ADR-0161 §6). The same sheet the gap fill uses, with
           its other header: pick a replacement, the displaced event goes to the shelf, and the
           replacement takes its exact start and length — one write, one toast, one undo. The
           verb used to skip the event and tell you to go looking. */}
-      {replaceTarget && (
-        <SlotFillSheet
-          title={t.slotFill.replaceTitle(replaceTarget.title)}
-          sub={t.slotFill.replaceSub(
-            clockRange(slotOf(replaceTarget).start, slotOf(replaceTarget).end),
-          )}
-          mode="trip"
-          date={replaceTarget.date}
-          ideas={shelfForSlot(shelf, slotOf(replaceTarget), trip.timezone, {
-            events,
-            bookings,
-            places,
-          })}
-          glyph={(m) => ideaGlyph(m, places)}
-          onPickIdea={(m) => {
-            verbs.replace(replaceTarget, m);
-            setReplaceTarget(null);
-          }}
-          // **Nothing on the shelf fits, so build it** — and this branch is deliberately TWO
-          // actions where a pick is one (ADR-0161 §6's amendment). The displaced event goes to
-          // the shelf now, and the form opens on the slot it freed. Not one atomic write,
-          // because there is nothing to write yet: the form can be cancelled, and the two
-          // separate undos are the better shape for that — backing out of the form leaves the
-          // event on the shelf, which is a decision the user did make, and one more undo puts
-          // it back on the day.
-          onNewEvent={() => {
-            verbs.park(replaceTarget);
-            setFormSlot(slotOf(replaceTarget));
-            setFormTarget('new');
-            setReplaceTarget(null);
-          }}
-          onClose={() => setReplaceTarget(null)}
-        />
-      )}
+        {replaceTarget && (
+          <SlotFillSheet
+            title={t.slotFill.replaceTitle(replaceTarget.title)}
+            sub={t.slotFill.replaceSub(
+              clockRange(slotOf(replaceTarget).start, slotOf(replaceTarget).end),
+            )}
+            mode="trip"
+            date={replaceTarget.date}
+            ideas={shelfForSlot(shelf, slotOf(replaceTarget), trip.timezone, {
+              events,
+              bookings,
+              places,
+            })}
+            glyph={(m) => ideaGlyph(m, places)}
+            onPickIdea={(m) => {
+              verbs.replace(replaceTarget, m);
+              setReplaceTarget(null);
+            }}
+            // **Nothing on the shelf fits, so build it** — and this branch is deliberately TWO
+            // actions where a pick is one (ADR-0161 §6's amendment). The displaced event goes to
+            // the shelf now, and the form opens on the slot it freed. Not one atomic write,
+            // because there is nothing to write yet: the form can be cancelled, and the two
+            // separate undos are the better shape for that — backing out of the form leaves the
+            // event on the shelf, which is a decision the user did make, and one more undo puts
+            // it back on the day.
+            onNewEvent={() => {
+              verbs.park(replaceTarget);
+              setFormSlot(slotOf(replaceTarget));
+              setFormTarget('new');
+              setReplaceTarget(null);
+            }}
+            onClose={() => setReplaceTarget(null)}
+          />
+        )}
 
-      {/* **A tap on the day's free time** (ADR-0161 §9), through the same sheet with its other
+        {/* **A tap on the day's free time** (ADR-0161 §9), through the same sheet with its other
           header. The idea's category decides how long it gets, capped by the room actually
           there (§5) — one derivation shared with Plan mode's chip, so the two modes cannot put
           the same idea in two different slots. */}
-      {gapTarget && (
-        <SlotFillSheet
-          title={t.slotFill.gapTitle(clockRange(gapTarget.fill.start, gapTarget.fill.end))}
-          mode="trip"
-          date={gapTarget.fill.date}
-          ideas={shelfForSlot(shelf, gapTarget.fill, trip.timezone, { events, bookings, places })}
-          glyph={(m) => ideaGlyph(m, places)}
-          onPickIdea={(m) => {
-            const block = ideaBlock(ideaCategory(m, places), gapTarget);
-            verbs.schedule(m, {
-              date: block.date,
-              title: m.title,
-              kind: EVENT_KIND.SOFT,
-              startsAt: zonedIso(block.date, block.start, trip.timezone),
-              endsAt: block.end ? zonedIso(block.date, block.end, trip.timezone) : undefined,
-            });
-            setGapTarget(null);
-          }}
-          // A NEW event keeps the gap's own default block: its category is the form's next
-          // question, so there is nothing yet to read a typical length from.
-          onNewEvent={() => {
-            setFormSlot(gapTarget.fill);
-            setFormTarget('new');
-            setGapTarget(null);
-          }}
-          onClose={() => setGapTarget(null)}
-        />
-      )}
+        {gapTarget && (
+          <SlotFillSheet
+            title={t.slotFill.gapTitle(clockRange(gapTarget.fill.start, gapTarget.fill.end))}
+            mode="trip"
+            date={gapTarget.fill.date}
+            ideas={shelfForSlot(shelf, gapTarget.fill, trip.timezone, { events, bookings, places })}
+            glyph={(m) => ideaGlyph(m, places)}
+            onPickIdea={(m) => {
+              const block = ideaBlock(ideaCategory(m, places), gapTarget);
+              verbs.schedule(m, {
+                date: block.date,
+                title: m.title,
+                kind: EVENT_KIND.SOFT,
+                startsAt: zonedIso(block.date, block.start, trip.timezone),
+                endsAt: block.end ? zonedIso(block.date, block.end, trip.timezone) : undefined,
+              });
+              setGapTarget(null);
+            }}
+            // A NEW event keeps the gap's own default block: its category is the form's next
+            // question, so there is nothing yet to read a typical length from.
+            onNewEvent={() => {
+              setFormSlot(gapTarget.fill);
+              setFormTarget('new');
+              setGapTarget(null);
+            }}
+            onClose={() => setGapTarget(null)}
+          />
+        )}
+      </div>
     </div>
   );
 }

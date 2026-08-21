@@ -40,7 +40,9 @@ import { landAtTop } from '../lib/land-at-top';
 import { edgeFadeRef } from '../lib/edge-fade';
 import { useDragState } from '../state/drag-state';
 import { useSpringLoadedDay } from '../lib/useSpringLoadedDay';
-import { useDaySwipe } from '../lib/useDaySwipe';
+import { useDaySurface } from '../lib/useDaySurface';
+import { DayPeeks } from '../ui/domain/DayPeek';
+import { useIsDayPreview } from '../state/day-preview';
 import { useVerbs } from '../state/verbs';
 import {
   usePlaceErrandReturn,
@@ -269,10 +271,14 @@ export function PlanDay() {
     tasks,
   } = useTrip();
   const verbs = useVerbs();
-  // Swiping the day steps to the next/previous one, refused at the trip's ends
-  // (ADR-0200) — the same hook and class Trip's day view wears, because which day is
-  // next is a fact and only the posture differs between the two (ADR-0159 §1).
-  const daySwipe = useDaySwipe<HTMLDivElement>();
+  // Which day this surface is showing, and how it changes (ADR-0200 §6/§7) — the same hook
+  // and class Trip's day view wears, because none of it is a posture (ADR-0159 §1). Called
+  // early for the declaration-order reason the hook's header states.
+  // **Am I the real day, or the peek beside it?** (ADR-0200 §7) Read only to suppress what
+  // reaches OUT of a preview's pane — the arrival param it must not spend, and a scroll on the
+  // body it does not own. Never to change how the day LOOKS: looking identical is the point.
+  const preview = useIsDayPreview();
+  const daySurface = useDaySurface<HTMLDivElement>();
   const placeLabels = usePlaceLabels();
   const now = useClock();
   // The builder's way to the map (ADR-0121 §8), on every row whose event resolves a
@@ -319,7 +325,7 @@ export function PlanDay() {
   // (ADR-0159 §1). Trip's card expands in place, so an arrival there expands it; Plan's row
   // opens a detail SHEET over the day, and a modal raised by a navigation would hide the very
   // day you were sent to. So Plan lands the row and leaves the tap to the person.
-  const arrivingEvent = useArrivalParam(EVENT_PARAM);
+  const arrivingEvent = useArrivalParam(EVENT_PARAM, { active: !preview });
   useEffect(() => {
     if (!arrivingEvent) return;
     return landAtTop(() => document.querySelector(eventRowSelector(arrivingEvent)));
@@ -1011,409 +1017,419 @@ export function PlanDay() {
     // that. So the day at rest is byte-for-byte the day it was before ADR-0161, and there
     // is exactly one answer to "is a drag in flight" rather than this screen's union of
     // its own two drag states.
-    <div className="builder day-swipe" ref={daySwipe}>
-      <div className="builder-main">
-        <div className="sec-title">
-          {t.day.heading(dayNumber, weekday, trip.destination)}
-          <span className="sec-title-end">
-            {readOnly ? (
-              <span className="hint">{t.planDay.pastNote}</span>
-            ) : (
-              <button className="new-event-btn" onClick={() => setFormTarget('new')}>
-                <Icon name="plus" /> {t.actions.newEvent}
-              </button>
-            )}
-          </span>
-        </div>
+    <div className="builder day-swipe" data-preview={preview || undefined} ref={daySurface.ref}>
+      {/* **THE DAY YOU ARE SWIPING TOWARD, DRAWN WHILE YOU SWIPE** (ADR-0200 §7). The same
+          screen, one day over, inert — so what the page turn lands on is what the committed
+          day draws, and the seam needs no cross-fade. `preview` stops the recursion at depth
+          one: a peek renders no peeks of its own. */}
+      {!preview && daySurface.live && (
+        <DayPeeks prev={daySurface.peek.prev} next={daySurface.peek.next}>
+          <PlanDay />
+        </DayPeeks>
+      )}
+      <div className="day-page">
+        <div className="builder-main">
+          <div className="sec-title">
+            {t.day.heading(dayNumber, weekday, trip.destination)}
+            <span className="sec-title-end">
+              {readOnly ? (
+                <span className="hint">{t.planDay.pastNote}</span>
+              ) : (
+                <button className="new-event-btn" onClick={() => setFormTarget('new')}>
+                  <Icon name="plus" /> {t.actions.newEvent}
+                </button>
+              )}
+            </span>
+          </div>
 
-        {(staysToday.length > 0 || placement.commitments.length > 0) && (
-          <div className="day-ambient">
-            {/* An edge day says the edge, a middle day says the count — the same rule Trip
+          {(staysToday.length > 0 || placement.commitments.length > 0) && (
+            <div className="day-ambient">
+              {/* An edge day says the edge, a middle day says the count — the same rule Trip
                 reads, from the same two functions (ADR-0171 §10e). No posture difference
                 here: what the strip STATES is a fact about the booking. */}
-            {staysToday.map((e) => {
-              const edge = edgeEntryOf(placement.positioned, e.id);
-              return (
-                <div className="ambient" key={e.id}>
-                  <span className="ai" aria-hidden="true">
-                    {e.icon ?? DEFAULT_STAY_ICON}
-                  </span>
-                  <span className="an">{e.title}</span>
-                  <span className="as">
-                    {edge
-                      ? edgeSentence(edge, eventEdgeZone(edge.event, edge.edge, zoneCtx).zone)
-                      : ambientSpanLabel(e, activeDate)}
-                  </span>
-                </div>
-              );
-            })}
-            {/* **The same row, without the control** (ADR-0171 §10e). Plan settles through
+              {staysToday.map((e) => {
+                const edge = edgeEntryOf(placement.positioned, e.id);
+                return (
+                  <div className="ambient" key={e.id}>
+                    <span className="ai" aria-hidden="true">
+                      {e.icon ?? DEFAULT_STAY_ICON}
+                    </span>
+                    <span className="an">{e.title}</span>
+                    <span className="as">
+                      {edge
+                        ? edgeSentence(edge, eventEdgeZone(edge.event, edge.edge, zoneCtx).zone)
+                        : ambientSpanLabel(e, activeDate)}
+                    </span>
+                  </div>
+                );
+              })}
+              {/* **The same row, without the control** (ADR-0171 §10e). Plan settles through
                 a sheet off the row menu and never inline, and `נותרו היום` — the number
                 that made settling load-bearing on Trip's copy — is a Trip-mode number.
                 Posture differs; the fact does not. */}
-            {placement.commitments.map((row) => (
-              <UnplacedCommitment
-                key={`${row.event.id}-${row.edge ?? 'untimed'}`}
-                row={row}
-                tz={trip.timezone}
-                bookings={bookings}
-                onOpen={setDetailTarget}
-              />
-            ))}
-          </div>
-        )}
+              {placement.commitments.map((row) => (
+                <UnplacedCommitment
+                  key={`${row.event.id}-${row.edge ?? 'untimed'}`}
+                  row={row}
+                  tz={trip.timezone}
+                  bookings={bookings}
+                  onOpen={setDetailTarget}
+                />
+              ))}
+            </div>
+          )}
 
-        {isEmptyDay && (
-          // An empty day has no gap chips, so it had nothing to drop a card onto —
-          // the one day where dragging an idea in is most obviously the point
-          // (session-117). While a drag is in flight the empty state itself becomes
-          // the target, the same "chrome that exists only while it's useful" move
-          // the empty day GROUP already makes on the shelf (§2 amendment). It offers
-          // no slot, so an idea dropped here opens the schedule sheet to pick a time,
-          // and a ROW dropped here (session-123) simply moves to this day — it can only
-          // be a day the drag walked to, since the day it came off has it on it.
-          <div
-            className={
-              'builder-empty' +
-              (dragLive ? ' droppable' : '') +
-              (ideaDrag?.overDay || drag?.overDay ? ' drop-over' : '')
-            }
-            data-day-drop={dragLive ? '' : undefined}
-          >
-            {drag
-              ? t.planDay.moveDayDropHere
-              : ideaDrag
-                ? t.planDay.dayDropHere
-                : readOnly
-                  ? t.planDay.pastEmpty
-                  : t.planDay.empty}
-          </div>
-        )}
-        {/* …and the day itself as a POSITION, which is what `שבץ` means: a drop here lands
+          {isEmptyDay && (
+            // An empty day has no gap chips, so it had nothing to drop a card onto —
+            // the one day where dragging an idea in is most obviously the point
+            // (session-117). While a drag is in flight the empty state itself becomes
+            // the target, the same "chrome that exists only while it's useful" move
+            // the empty day GROUP already makes on the shelf (§2 amendment). It offers
+            // no slot, so an idea dropped here opens the schedule sheet to pick a time,
+            // and a ROW dropped here (session-123) simply moves to this day — it can only
+            // be a day the drag walked to, since the day it came off has it on it.
+            <div
+              className={
+                'builder-empty' +
+                (dragLive ? ' droppable' : '') +
+                (ideaDrag?.overDay || drag?.overDay ? ' drop-over' : '')
+              }
+              data-day-drop={dragLive ? '' : undefined}
+            >
+              {drag
+                ? t.planDay.moveDayDropHere
+                : ideaDrag
+                  ? t.planDay.dayDropHere
+                  : readOnly
+                    ? t.planDay.pastEmpty
+                    : t.planDay.empty}
+            </div>
+          )}
+          {/* …and the day itself as a POSITION, which is what `שבץ` means: a drop here lands
             at a time on this day rather than carrying whatever clock time the event already
             had. It sits inside/below the empty state deliberately rather than replacing it,
             so the coarser "move it to this day, keep its time" target stays available — the
             chip is more specific, and `resolveRowDrop` already prefers a slot over a day. */}
-        {wholeDayFree && (
-          <FreeSlot
-            free={wholeDayFree}
-            label={t.planDay.gapWholeDay}
-            seamLabel={t.planDay.seamDayStart}
-            over={overGap(wholeDayFree.fill)}
-            onFill={setGapChoice}
-          />
-        )}
-        {!isEmptyDay && (
-          <div>
-            {/* The day's head: free time before the first event, which `freeBetween`
+          {wholeDayFree && (
+            <FreeSlot
+              free={wholeDayFree}
+              label={t.planDay.gapWholeDay}
+              seamLabel={t.planDay.seamDayStart}
+              over={overGap(wholeDayFree.fill)}
+              onFill={setGapChoice}
+            />
+          )}
+          {!isEmptyDay && (
+            <div>
+              {/* The day's head: free time before the first event, which `freeBetween`
                 cannot see because it has an event on one side only (session-123). */}
-            {edgeFree.before && !heldAtEdge(edgeFree.before, timed[0]) && (
-              <FreeSlot
-                free={edgeFree.before}
-                label={t.planDay.gapBefore(gapLabel(edgeFree.before.minutes))}
-                seamLabel={t.planDay.seamDayStart}
-                over={overGap(edgeFree.before.fill)}
-                onFill={setGapChoice}
-              />
-            )}
-            {/* Overlaps render as the concurrency forest (ADR-0041): nests for
+              {edgeFree.before && !heldAtEdge(edgeFree.before, timed[0]) && (
+                <FreeSlot
+                  free={edgeFree.before}
+                  label={t.planDay.gapBefore(gapLabel(edgeFree.before.minutes))}
+                  seamLabel={t.planDay.seamDayStart}
+                  over={overGap(edgeFree.before.fill)}
+                  onFill={setGapChoice}
+                />
+              )}
+              {/* Overlaps render as the concurrency forest (ADR-0041): nests for
                 containment, violet clusters for partial overlap. Gap chips sit
                 only between top-level groups — never inside an overlap.
                 Transition points interleave by instant at the top level (§B). */}
-            <BuilderGroups
-              groups={planGroups}
-              depth={0}
-              ctx={builderCtx}
-              entries={placement.positioned}
-            />
-            {/* The day's tail: free time after the last event. It stays ABOVE the line
-                below, because a drop slot IS a position — everything that has one sits
-                above everything that does not. */}
-            {edgeFree.after && !heldAtEdge(edgeFree.after, timed[timed.length - 1]) && (
-              <FreeSlot
-                free={edgeFree.after}
-                label={t.planDay.gapAfter(gapLabel(edgeFree.after.minutes))}
-                seamLabel={t.planDay.seamDayEnd}
-                over={overGap(edgeFree.after.fill)}
-                onFill={setGapChoice}
-              />
-            )}
-            {/* …then what holds no position at all (ADR-0171 §10a): the same line Trip
-                mode draws, over the same rows, from the same split. */}
-            {placement.ideas.length > 0 && (
-              <div className="day-unplaced">
-                <span className="line" />
-                <span className="lbl">{t.day.unplaced}</span>
-                <span className="line" />
-              </div>
-            )}
-            {placement.ideas.map((row) => (
-              <BuilderNode
-                key={row.event.id}
-                item={{ event: row.event, children: [] }}
+              <BuilderGroups
+                groups={planGroups}
                 depth={0}
                 ctx={builderCtx}
+                entries={placement.positioned}
               />
-            ))}
+              {/* The day's tail: free time after the last event. It stays ABOVE the line
+                below, because a drop slot IS a position — everything that has one sits
+                above everything that does not. */}
+              {edgeFree.after && !heldAtEdge(edgeFree.after, timed[timed.length - 1]) && (
+                <FreeSlot
+                  free={edgeFree.after}
+                  label={t.planDay.gapAfter(gapLabel(edgeFree.after.minutes))}
+                  seamLabel={t.planDay.seamDayEnd}
+                  over={overGap(edgeFree.after.fill)}
+                  onFill={setGapChoice}
+                />
+              )}
+              {/* …then what holds no position at all (ADR-0171 §10a): the same line Trip
+                mode draws, over the same rows, from the same split. */}
+              {placement.ideas.length > 0 && (
+                <div className="day-unplaced">
+                  <span className="line" />
+                  <span className="lbl">{t.day.unplaced}</span>
+                  <span className="line" />
+                </div>
+              )}
+              {placement.ideas.map((row) => (
+                <BuilderNode
+                  key={row.event.id}
+                  item={{ event: row.event, children: [] }}
+                  depth={0}
+                  ctx={builderCtx}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Header's "new event" is a blank form; this one continues the day at
+            the next open slot. Frozen on a finished trip (ADR-0040). */}
+          {!readOnly && (
+            <button
+              className="addbtn"
+              onClick={() => {
+                setGapFill(nextSlot(dayEvents, activeDate, tz));
+                setFormTarget('new');
+              }}
+            >
+              <Icon name="plus" /> {t.planDay.addToDay}
+            </button>
+          )}
+        </div>
+
+        {/* The maybe-shelf is trip-building (ADR-0025 Tier 3), so a finished
+          read-only trip drops it entirely (ADR-0040). */}
+        {!readOnly && (
+          <div className="builder-side">
+            <div className="sec-title">{t.day.maybeShelf}</div>
+            {/* Two groups (ADR-0116 §2), and Plan mode finally renders ADR-0027's
+              union: the day's skipped soft events were invisible here, on the very
+              surface you rebuild the day from. */}
+            {/* Either group also appears while a drag is in flight, even when empty:
+              without it there would be nothing to drop onto (ADR-0116 §2 amendment,
+              extended in session-118 to a ROW being parked, which can target both). */}
+            {(showDayGroup || draggingFromPool || parkingRow) && (
+              <>
+                {(showPoolGroup || draggingFromPool || parkingRow) && (
+                  <div className="shelf-group">{t.day.shelfForDay}</div>
+                )}
+                <div
+                  className={'shelf edge-fade' + (overShelf(SHELF_DROP.DAY) ? ' drop-over' : '')}
+                  data-shelf-drop={SHELF_DROP.DAY}
+                  ref={edgeFadeRef}
+                >
+                  {shelf.forDay.map((m) => shelfCard({ kind: SHELF_DRAG.IDEA, item: m }))}
+                  {/* A skipped card drags too (session-117): it is the card that most
+                    obviously wants to go back onto the day, and it was the only one
+                    you couldn't put there. */}
+                  {shelf.skipped.map((e) => shelfCard({ kind: SHELF_DRAG.SKIPPED, event: e }))}
+                  {!showDayGroup && (
+                    <div className="shelf-dropzone">
+                      {parkingRow ? t.planDay.parkDropHere : t.day.shelfDropHere}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+            {(showPoolGroup || parkingRow) && (
+              <>
+                {(showDayGroup || draggingFromPool || parkingRow) && (
+                  <div className="shelf-group">
+                    {t.day.shelfRanked}
+                    <span className="shelf-count">{shelf.pool.length}</span>
+                  </div>
+                )}
+                <div
+                  className={'shelf edge-fade' + (overShelf(SHELF_DROP.POOL) ? ' drop-over' : '')}
+                  data-shelf-drop={SHELF_DROP.POOL}
+                  ref={edgeFadeRef}
+                >
+                  {/* Scheduled (consumed) ideas leave the shelf — no dead "שובץ"
+                    tombstone (ADR-0027: an idea is parked OR placed, never both). */}
+                  {rankedPool.map(({ item: m }) => shelfCard({ kind: SHELF_DRAG.IDEA, item: m }))}
+                  {/* The tail, and what makes the strip's width independent of N. It is
+                    not a drop target: dropping an idea on a navigation means nothing,
+                    and the drag is untouched by all of this. */}
+                  {poolTail > 0 && showMaybesOnMap && (
+                    <MaybeMoreCard
+                      label={t.day.shelfMore(poolTail)}
+                      icon={<Icon name="map" />}
+                      onOpen={showMaybesOnMap}
+                    />
+                  )}
+                  {!showPoolGroup && (
+                    <div className="shelf-dropzone">{t.planDay.parkSomedayDropHere}</div>
+                  )}
+                </div>
+              </>
+            )}
+            <AddIdea onAdd={(title, icon, category) => verbs.addMaybe(title, { icon, category })} />
           </div>
         )}
 
-        {/* Header's "new event" is a blank form; this one continues the day at
-            the next open slot. Frozen on a finished trip (ADR-0040). */}
-        {!readOnly && (
-          <button
-            className="addbtn"
-            onClick={() => {
-              setGapFill(nextSlot(dayEvents, activeDate, tz));
+        {gapChoice && (
+          <SlotFillSheet
+            title={t.slotFill.gapTitle(clockRange(gapChoice.fill.start, gapChoice.fill.end))}
+            mode="plan"
+            date={gapChoice.fill.date}
+            ideas={shelfForSlot(shelf, gapChoice.fill, tz, { events, bookings, places })}
+            glyph={(m) => ideaGlyph(m, places)}
+            onPickIdea={(m) => {
+              // The idea's own category decides how long it gets, capped by this position's room
+              // (ADR-0161 §5) — a meal is an hour and a half, a hike three hours, and the flat
+              // hour every create used to get was neither.
+              const block = ideaBlock(ideaCategory(m, places), gapChoice);
+              verbs.schedule(m, {
+                date: block.date,
+                title: m.title,
+                kind: EVENT_KIND.SOFT,
+                startsAt: zonedIso(block.date, block.start, tz),
+                endsAt: block.end ? zonedIso(block.date, block.end, tz) : undefined,
+              });
+              setGapChoice(null);
+            }}
+            onNewEvent={() => {
+              // A NEW event keeps the position's own default block: its category is the form's
+              // next question, so there is nothing yet to read a typical length from.
+              setGapFill(gapChoice.fill);
               setFormTarget('new');
+              setGapChoice(null);
             }}
-          >
-            <Icon name="plus" /> {t.planDay.addToDay}
-          </button>
+            onClose={() => setGapChoice(null)}
+          />
         )}
-      </div>
 
-      {/* The maybe-shelf is trip-building (ADR-0025 Tier 3), so a finished
-          read-only trip drops it entirely (ADR-0040). */}
-      {!readOnly && (
-        <div className="builder-side">
-          <div className="sec-title">{t.day.maybeShelf}</div>
-          {/* Two groups (ADR-0116 §2), and Plan mode finally renders ADR-0027's
-              union: the day's skipped soft events were invisible here, on the very
-              surface you rebuild the day from. */}
-          {/* Either group also appears while a drag is in flight, even when empty:
-              without it there would be nothing to drop onto (ADR-0116 §2 amendment,
-              extended in session-118 to a ROW being parked, which can target both). */}
-          {(showDayGroup || draggingFromPool || parkingRow) && (
-            <>
-              {(showPoolGroup || draggingFromPool || parkingRow) && (
-                <div className="shelf-group">{t.day.shelfForDay}</div>
-              )}
-              <div
-                className={'shelf edge-fade' + (overShelf(SHELF_DROP.DAY) ? ' drop-over' : '')}
-                data-shelf-drop={SHELF_DROP.DAY}
-                ref={edgeFadeRef}
-              >
-                {shelf.forDay.map((m) => shelfCard({ kind: SHELF_DRAG.IDEA, item: m }))}
-                {/* A skipped card drags too (session-117): it is the card that most
-                    obviously wants to go back onto the day, and it was the only one
-                    you couldn't put there. */}
-                {shelf.skipped.map((e) => shelfCard({ kind: SHELF_DRAG.SKIPPED, event: e }))}
-                {!showDayGroup && (
-                  <div className="shelf-dropzone">
-                    {parkingRow ? t.planDay.parkDropHere : t.day.shelfDropHere}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-          {(showPoolGroup || parkingRow) && (
-            <>
-              {(showDayGroup || draggingFromPool || parkingRow) && (
-                <div className="shelf-group">
-                  {t.day.shelfRanked}
-                  <span className="shelf-count">{shelf.pool.length}</span>
-                </div>
-              )}
-              <div
-                className={'shelf edge-fade' + (overShelf(SHELF_DROP.POOL) ? ' drop-over' : '')}
-                data-shelf-drop={SHELF_DROP.POOL}
-                ref={edgeFadeRef}
-              >
-                {/* Scheduled (consumed) ideas leave the shelf — no dead "שובץ"
-                    tombstone (ADR-0027: an idea is parked OR placed, never both). */}
-                {rankedPool.map(({ item: m }) => shelfCard({ kind: SHELF_DRAG.IDEA, item: m }))}
-                {/* The tail, and what makes the strip's width independent of N. It is
-                    not a drop target: dropping an idea on a navigation means nothing,
-                    and the drag is untouched by all of this. */}
-                {poolTail > 0 && showMaybesOnMap && (
-                  <MaybeMoreCard
-                    label={t.day.shelfMore(poolTail)}
-                    icon={<Icon name="map" />}
-                    onOpen={showMaybesOnMap}
-                  />
-                )}
-                {!showPoolGroup && (
-                  <div className="shelf-dropzone">{t.planDay.parkSomedayDropHere}</div>
-                )}
-              </div>
-            </>
-          )}
-          <AddIdea onAdd={(title, icon, category) => verbs.addMaybe(title, { icon, category })} />
-        </div>
-      )}
+        {timeTarget && (
+          <Sheet title={t.planDay.slotMoveTitle(timeTarget.title)} onClose={closeTimePicker}>
+            <DaySlotPicker
+              sub={t.planDay.slotWhen}
+              options={positionOptionsFor(timeTarget.id)}
+              onPick={(option) => pickPosition(timeTarget, option.fill)}
+              // The way out to ADR-0036's start+duration setter, which is `EventForm` — where
+              // an exact time and a length were always set, and still are.
+              onExact={() => {
+                closeTimePicker();
+                setFormTarget(timeTarget);
+              }}
+            />
+          </Sheet>
+        )}
 
-      {gapChoice && (
-        <SlotFillSheet
-          title={t.slotFill.gapTitle(clockRange(gapChoice.fill.start, gapChoice.fill.end))}
-          mode="plan"
-          date={gapChoice.fill.date}
-          ideas={shelfForSlot(shelf, gapChoice.fill, tz, { events, bookings, places })}
-          glyph={(m) => ideaGlyph(m, places)}
-          onPickIdea={(m) => {
-            // The idea's own category decides how long it gets, capped by this position's room
-            // (ADR-0161 §5) — a meal is an hour and a half, a hike three hours, and the flat
-            // hour every create used to get was neither.
-            const block = ideaBlock(ideaCategory(m, places), gapChoice);
-            verbs.schedule(m, {
-              date: block.date,
-              title: m.title,
-              kind: EVENT_KIND.SOFT,
-              startsAt: zonedIso(block.date, block.start, tz),
-              endsAt: block.end ? zonedIso(block.date, block.end, tz) : undefined,
-            });
-            setGapChoice(null);
-          }}
-          onNewEvent={() => {
-            // A NEW event keeps the position's own default block: its category is the form's
-            // next question, so there is nothing yet to read a typical length from.
-            setGapFill(gapChoice.fill);
-            setFormTarget('new');
-            setGapChoice(null);
-          }}
-          onClose={() => setGapChoice(null)}
-        />
-      )}
+        {scheduleWhere && (
+          <Sheet
+            title={t.day.scheduleTitle(scheduleWhere.title)}
+            onClose={() => setScheduleWhere(null)}
+          >
+            <DaySlotPicker
+              sub={t.planDay.slotWhen}
+              // Nothing to exclude: an idea is not on the day yet, so every position is a
+              // candidate — including the two either side of where it will end up.
+              options={positionOptionsFor(null)}
+              onPick={(option) => {
+                const item = scheduleWhere;
+                setScheduleWhere(null);
+                // Joined back to the position by key, for its ROOM: the idea's category decides
+                // how long it gets and the room is what caps it (ADR-0161 §5).
+                const position = dayPositions(dayEvents, activeDate, tz).find(
+                  (p) => p.key === option.key,
+                );
+                openSchedule(
+                  item,
+                  position ? ideaBlock(ideaCategory(item, places), position.free) : option.fill,
+                );
+              }}
+              // The form with the day's next opening, which is what this path offered before —
+              // kept as the escape rather than removed, for when the position is not the point.
+              onExact={() => {
+                const item = scheduleWhere;
+                setScheduleWhere(null);
+                openSchedule(item, nextSlot(dayEvents, activeDate, tz));
+              }}
+            />
+          </Sheet>
+        )}
 
-      {timeTarget && (
-        <Sheet title={t.planDay.slotMoveTitle(timeTarget.title)} onClose={closeTimePicker}>
-          <DaySlotPicker
-            sub={t.planDay.slotWhen}
-            options={positionOptionsFor(timeTarget.id)}
-            onPick={(option) => pickPosition(timeTarget, option.fill)}
-            // The way out to ADR-0036's start+duration setter, which is `EventForm` — where
-            // an exact time and a length were always set, and still are.
-            onExact={() => {
-              closeTimePicker();
-              setFormTarget(timeTarget);
+        {ideaSheet && (
+          <MaybeManageSheet
+            item={ideaSheet}
+            onSchedule={() => {
+              const item = ideaSheet;
+              setIdeaSheet(null);
+              setScheduleWhere(item);
+            }}
+            markForDay={markForDay(ideaSheet)}
+            why={ideaWhy(ideaSheet)}
+            // Plan mode is where an idea can be removed (ADR-0116 §4), so the sheet carries
+            // the same verb the tile's `✕` does rather than a second capability.
+            onRemove={() => {
+              verbs.removeMaybe(ideaSheet);
+              setIdeaSheet(null);
+            }}
+            onClose={() => setIdeaSheet(null)}
+          />
+        )}
+
+        {resolveCluster && resolveCluster.kind === 'cluster' && (
+          <ResolveSheet
+            cluster={resolveCluster}
+            tz={tz}
+            optionsFor={(mover) => positionOptionsFor(mover.id)}
+            onPick={(mover, fill) => {
+              closeResolve();
+              pickPosition(mover, fill);
+            }}
+            onOther={(mover) => {
+              closeResolve();
+              setFormTarget(mover);
+            }}
+            onClose={closeResolve}
+          />
+        )}
+
+        {(formTarget || scheduleMaybe) && (
+          <EventForm
+            event={formTarget && formTarget !== 'new' ? formTarget : null}
+            maybeItem={scheduleMaybe}
+            defaults={gapFill ?? undefined}
+            draft={formDraft}
+            onClose={closeForm}
+          />
+        )}
+
+        {(bookingTarget || bookingDraft) && (
+          <BookingSheet
+            booking={bookingTarget}
+            draft={bookingDraft}
+            onClose={() => {
+              setBookingTarget(null);
+              setBookingDraft(null);
             }}
           />
-        </Sheet>
-      )}
+        )}
 
-      {scheduleWhere && (
-        <Sheet
-          title={t.day.scheduleTitle(scheduleWhere.title)}
-          onClose={() => setScheduleWhere(null)}
-        >
-          <DaySlotPicker
-            sub={t.planDay.slotWhen}
-            // Nothing to exclude: an idea is not on the day yet, so every position is a
-            // candidate — including the two either side of where it will end up.
-            options={positionOptionsFor(null)}
-            onPick={(option) => {
-              const item = scheduleWhere;
-              setScheduleWhere(null);
-              // Joined back to the position by key, for its ROOM: the idea's category decides
-              // how long it gets and the room is what caps it (ADR-0161 §5).
-              const position = dayPositions(dayEvents, activeDate, tz).find(
-                (p) => p.key === option.key,
-              );
-              openSchedule(
-                item,
-                position ? ideaBlock(ideaCategory(item, places), position.free) : option.fill,
-              );
-            }}
-            // The form with the day's next opening, which is what this path offered before —
-            // kept as the escape rather than removed, for when the position is not the point.
-            onExact={() => {
-              const item = scheduleWhere;
-              setScheduleWhere(null);
-              openSchedule(item, nextSlot(dayEvents, activeDate, tz));
+        {eventDetail && (
+          <EventDetail
+            event={eventDetail}
+            zoneCtx={zoneCtx}
+            onClose={() => setEventDetail(null)}
+            // A finished trip is browsable and not editable (ADR-0040), so the archive's read
+            // carries no way to write — which is also what makes opening it safe there.
+            onEdit={
+              readOnly
+                ? undefined
+                : () => {
+                    setEventDetail(null);
+                    setFormTarget(eventDetail);
+                  }
+            }
+          />
+        )}
+
+        {detailTarget && (
+          <BookingDetail
+            booking={detailTarget}
+            onClose={() => setDetailTarget(null)}
+            onOpen={setDetailTarget}
+            onEdit={(b) => {
+              setDetailTarget(null);
+              setBookingTarget(b);
             }}
           />
-        </Sheet>
-      )}
+        )}
 
-      {ideaSheet && (
-        <MaybeManageSheet
-          item={ideaSheet}
-          onSchedule={() => {
-            const item = ideaSheet;
-            setIdeaSheet(null);
-            setScheduleWhere(item);
-          }}
-          markForDay={markForDay(ideaSheet)}
-          why={ideaWhy(ideaSheet)}
-          // Plan mode is where an idea can be removed (ADR-0116 §4), so the sheet carries
-          // the same verb the tile's `✕` does rather than a second capability.
-          onRemove={() => {
-            verbs.removeMaybe(ideaSheet);
-            setIdeaSheet(null);
-          }}
-          onClose={() => setIdeaSheet(null)}
-        />
-      )}
-
-      {resolveCluster && resolveCluster.kind === 'cluster' && (
-        <ResolveSheet
-          cluster={resolveCluster}
-          tz={tz}
-          optionsFor={(mover) => positionOptionsFor(mover.id)}
-          onPick={(mover, fill) => {
-            closeResolve();
-            pickPosition(mover, fill);
-          }}
-          onOther={(mover) => {
-            closeResolve();
-            setFormTarget(mover);
-          }}
-          onClose={closeResolve}
-        />
-      )}
-
-      {(formTarget || scheduleMaybe) && (
-        <EventForm
-          event={formTarget && formTarget !== 'new' ? formTarget : null}
-          maybeItem={scheduleMaybe}
-          defaults={gapFill ?? undefined}
-          draft={formDraft}
-          onClose={closeForm}
-        />
-      )}
-
-      {(bookingTarget || bookingDraft) && (
-        <BookingSheet
-          booking={bookingTarget}
-          draft={bookingDraft}
-          onClose={() => {
-            setBookingTarget(null);
-            setBookingDraft(null);
-          }}
-        />
-      )}
-
-      {eventDetail && (
-        <EventDetail
-          event={eventDetail}
-          zoneCtx={zoneCtx}
-          onClose={() => setEventDetail(null)}
-          // A finished trip is browsable and not editable (ADR-0040), so the archive's read
-          // carries no way to write — which is also what makes opening it safe there.
-          onEdit={
-            readOnly
-              ? undefined
-              : () => {
-                  setEventDetail(null);
-                  setFormTarget(eventDetail);
-                }
-          }
-        />
-      )}
-
-      {detailTarget && (
-        <BookingDetail
-          booking={detailTarget}
-          onClose={() => setDetailTarget(null)}
-          onOpen={setDetailTarget}
-          onEdit={(b) => {
-            setDetailTarget(null);
-            setBookingTarget(b);
-          }}
-        />
-      )}
-
-      {/* Whatever is under the finger — a shelf card or a builder row (sessions
+        {/* Whatever is under the finger — a shelf card or a builder row (sessions
           117-118). Deliberately EMPTY here: the hook appends a DOM clone of the
           source, which is what lets one mechanism serve two completely different
           pieces of markup and keeps the clone from ever drifting from the original.
@@ -1423,7 +1439,8 @@ export function PlanDay() {
           sense — not a back target, never in the back stack, hence no
           `Modal`/`useOverlay`. `inert` + `aria-hidden` because it is a duplicate of
           something still in the list. */}
-      {dragLive && <div className="wp-dragghost" ref={ghost.ref} aria-hidden="true" inert />}
+        {dragLive && <div className="wp-dragghost" ref={ghost.ref} aria-hidden="true" inert />}
+      </div>
     </div>
   );
 }

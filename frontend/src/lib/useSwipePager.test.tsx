@@ -14,8 +14,8 @@
 //   4. **A strip inside it keeps its own axis.** This is the defect ADR-0182's device pass
 //      found from the other side (`touch-action` on an ancestor), and here it is the
 //      recogniser's job instead.
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { SWIPE_PAGER } from '../constants';
 import { useSwipePager, type SwipeStep } from './useSwipePager';
 import { fakeScroller } from '../test/scroller-harness';
@@ -39,7 +39,7 @@ function Host({
   rtl?: boolean;
   strip?: boolean;
 }) {
-  const ref = useSwipePager<HTMLDivElement>({ canStep, onStep, enabled });
+  const { ref } = useSwipePager<HTMLDivElement>({ canStep, onStep, enabled });
   return (
     // `direction` inline rather than via `dir`: jsdom's `getComputedStyle` resolves the
     // style declaration, not the attribute's presentational hint.
@@ -68,10 +68,26 @@ function mount(props: Parameters<typeof Host>[0]) {
   return { view, host };
 }
 
-/** One gesture, start to finish. `from` is the element the finger lands on. */
+/** Let the page finish turning. **The step commits here, not at the release** — the exit
+ *  animation carries the outgoing page off screen first, so that the arriving pane is exactly
+ *  at rest when the date changes under it (ADR-0200 §7). `motionDurationMs` answers 0 with no
+ *  `tokens.css`, so this is one turn of the loop rather than a wait. */
+function settle() {
+  act(() => {
+    vi.advanceTimersByTime(1000);
+  });
+}
+
+/** One gesture, start to finish — including the page turn unless `settle: false`, which is
+ *  for the cases that inspect the surface mid-settle. */
 function swipe(
   from: HTMLElement,
-  { dx, dy = 0, cancel = false }: { dx: number; dy?: number; cancel?: boolean },
+  {
+    dx,
+    dy = 0,
+    cancel = false,
+    settled = true,
+  }: { dx: number; dy?: number; cancel?: boolean; settled?: boolean },
 ) {
   fireEvent.pointerDown(from, { clientX: 200, clientY: 300, button: 0 });
   // Two moves: the first crosses the slop and claims (or does not), the second is where
@@ -83,9 +99,17 @@ function swipe(
     clientX: 200 + dx,
     clientY: 300 + dy,
   });
+  if (settled) settle();
 }
 
 const offset = (host: HTMLElement) => host.style.getPropertyValue('--swipe-dx');
+
+// Fake timers for the whole file, because the commit is now on a timer by design: the step
+// lands when the page has finished turning. A test that asserted it synchronously would be
+// asserting the old contract.
+beforeEach(() => {
+  vi.useFakeTimers();
+});
 
 afterEach(() => {
   cleanup();
@@ -96,7 +120,12 @@ describe('useSwipePager', () => {
   it('steps to the NEXT page when the finger moves toward inline-start (right, in RTL)', () => {
     const onStep = vi.fn();
     const { host } = mount({ onStep });
-    swipe(host, { dx: COMMIT + 10 });
+    swipe(host, { dx: COMMIT + 10, settled: false });
+    // The turn finishes the travel rather than springing back: the offset goes to a full page
+    // out, which is what lands the arriving pane exactly at rest (ADR-0200 §7).
+    expect(host.getAttribute('data-swipe-settling')).toBe('turn');
+    expect(parseFloat(offset(host))).toBe(WIDTH);
+    settle();
     expect(onStep).toHaveBeenCalledWith(1);
   });
 
@@ -117,10 +146,12 @@ describe('useSwipePager', () => {
   it('does not commit a swipe that stops short of the threshold', () => {
     const onStep = vi.fn();
     const { host } = mount({ onStep });
-    swipe(host, { dx: COMMIT - 10 });
+    swipe(host, { dx: COMMIT - 10, settled: false });
     expect(onStep).not.toHaveBeenCalled();
-    // …and it did claim the gesture, so the surface followed and then settled back.
-    expect(host.getAttribute('data-swipe-settling')).toBe('');
+    // …and it did claim the gesture, so the surface followed and is on its way back to level.
+    // `back`, not `turn` — the attribute's value is what tells the CSS which duration to use,
+    // so a refusal asserting only that the attribute EXISTS would pass for a page turn.
+    expect(host.getAttribute('data-swipe-settling')).toBe('back');
     expect(offset(host)).toBe('0px');
   });
 
@@ -163,6 +194,8 @@ describe('useSwipePager', () => {
     fireEvent.pointerUp(window, { clientX: 200 + 300, clientY: 300 });
     expect(onStep).not.toHaveBeenCalled();
     expect(offset(host)).toBe('0px');
+    settle();
+    expect(onStep).not.toHaveBeenCalled();
   });
 
   it('follows the finger one-for-one when there IS a page that way', () => {
@@ -196,7 +229,7 @@ describe('useSwipePager', () => {
     const onClick = vi.fn();
     const { view, host } = mount({ onStep });
     view.getByTestId('card').addEventListener('click', onClick);
-    swipe(host, { dx: COMMIT + 40 });
+    swipe(host, { dx: COMMIT + 40, settled: false });
     fireEvent.click(view.getByTestId('card'));
     expect(onClick).not.toHaveBeenCalled();
   });
@@ -211,6 +244,7 @@ describe('useSwipePager', () => {
     fireEvent.pointerMove(window, { clientX: 200 + SWIPE_PAGER.SLOP_PX + 4, clientY: 300 });
     fireEvent.pointerMove(window, { clientX: 200 + COMMIT + 40, clientY: 300 });
     fireEvent.pointerUp(window, { clientX: 0, clientY: 0 });
+    settle();
     expect(onStep).toHaveBeenCalledWith(1);
   });
 
@@ -248,14 +282,13 @@ describe('useSwipePager', () => {
   });
 
   it('drops the follow attributes once the settle is over', () => {
-    vi.useFakeTimers();
     const onStep = vi.fn();
     const { host } = mount({ onStep });
-    swipe(host, { dx: COMMIT + 40 });
+    swipe(host, { dx: COMMIT + 40, settled: false });
     // `motionDurationMs` answers 0 with no `tokens.css` (every jsdom run), and the removal
     // is still scheduled rather than inline — so it takes a turn of the loop, not zero.
     expect(host.hasAttribute('data-swipe-settling')).toBe(true);
-    vi.runAllTimers();
+    settle();
     expect(host.hasAttribute('data-swipe-settling')).toBe(false);
     expect(host.hasAttribute('data-swiping')).toBe(false);
     expect(offset(host)).toBe('');

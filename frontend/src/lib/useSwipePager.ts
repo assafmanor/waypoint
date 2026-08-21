@@ -1,6 +1,11 @@
 // **A horizontal swipe that steps a full surface one page along the inline axis**
 // (ADR-0200), with the refusal at the ends carried by the gesture itself.
 //
+// **It reports `live` so the host can mount the neighbouring pages** (§7). That is the one
+// piece of React state in the whole gesture — two renders, at the claim and at the settle —
+// and everything between them is a CSS custom property, because a state update per
+// `pointermove` would re-render the heaviest screen in the app sixty times a second.
+//
 // **Why this is a third pointer recogniser and not a reuse of either existing one.**
 // `useHoldToDrag` is hold-gated and takes no capture, because a shelf card is a tap
 // target inside a scrolling strip and its dragged element can unmount mid-gesture.
@@ -34,7 +39,7 @@
 // claimed in JS instead, at the press (`scrollerWithin`) and at the first real move
 // (`touchMove`), which is the one place that can tell a bare stretch of day from a strip that
 // owns this axis.
-import { useEffect, useRef, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { SWIPE_PAGER } from '../constants';
 import { armClickSwallow } from './click-swallow';
 import { motionDurationMs } from './motion';
@@ -50,7 +55,11 @@ export interface SwipePagerOptions {
   /** Is there a page that way? Asked live during the gesture, because the answer is
    *  what decides between following the finger and refusing it. */
   canStep: (step: SwipeStep) => boolean;
-  /** Committed. Called once, on the release. */
+  /** Committed. Called once, and **after the page has finished turning** rather than at the
+   *  release: the exit animation carries the outgoing page fully off screen, which lands the
+   *  neighbour's own pane exactly at rest — so the moment this fires, what replaces the pane
+   *  is identical to what was already drawn there (§7). Calling it at the release instead put
+   *  the new day under the finger mid-gesture, which is the opposite of continuous. */
   onStep: (step: SwipeStep) => void;
   /** Off while something else owns the pointer — a hold-drag in flight. Not a
    *  tidiness guard: the drag's ghost is `position: fixed` and this host would become
@@ -58,24 +67,48 @@ export interface SwipePagerOptions {
   enabled?: boolean;
 }
 
-/** The attribute the host's CSS keys the follow off (`screens.css`). Set only while a
- *  gesture is live, so the `transform` — and the containing block it establishes for
- *  any `position: fixed` descendant (App.css's own scar) — exists for the gesture and
- *  not a moment longer. */
+/** The attribute the host's CSS keys the follow off (`screens.css`). Set only while a gesture
+ *  is live.
+ *
+ *  **The transform it drives is on the host's inner PAGE, never on the host itself**, and that
+ *  is what lets the peeks work: a transform makes its element the containing block for any
+ *  `position: fixed` descendant, and the peeks are fixed panes that must stay pinned to the
+ *  viewport however far the day is scrolled. Host holds the variable, page and panes both read
+ *  it, nobody's positioning is captured. */
 const SWIPING_ATTR = 'data-swiping';
-/** Set for the settle only, which is what turns the follow into a transition: the new
- *  page renders into the SAME element still displaced by the finger's travel, then
- *  eases to level. That is the page arriving from the side it was pulled from, and it
- *  costs no keyframes, no remount and no beat. */
+/** Set for the settle only, and its VALUE says which settle it is: `turn` finishes the page
+ *  turn (a full page of travel), `back` gives back the strain a refusal took. The CSS keys its
+ *  duration off the same value the timer below reads, because one duration for both would
+ *  remove the class mid-animation on the shorter one and the transform would snap. */
 const SETTLING_ATTR = 'data-swipe-settling';
 const OFFSET_PROP = '--swipe-dx';
+/** The host's own width in px, published for the panes: they sit one page plus a gutter away on
+ *  the inline axis, and a percentage cannot say that — a fixed pane's percentages resolve
+ *  against the VIEWPORT, which is wider than the page on any tablet or desktop (`.app` is a
+ *  centred 430px column). Measured at the claim, which is also when the panes mount. */
+const WIDTH_PROP = '--swipe-page-w';
+/** The gutter between two pages, **owned by the stylesheet and read back here** so the commit
+ *  travels exactly as far as the panes are offset. A literal in this file would be a second
+ *  opinion about a spacing value, and the two would drift the first time either moved — the
+ *  page would then stop a gutter short of level and the arriving day would sit visibly off. */
+const GAP_PROP = '--swipe-page-gap';
+
+export interface SwipePager<T extends HTMLElement> {
+  /** Attach to the host — the box that is measured and that holds the offset variable. */
+  ref: RefObject<T | null>;
+  /** A gesture is claimed and has not settled. The host mounts its neighbouring pages on
+   *  this, and only on this: mounted always, they would triple the cost of the day surface
+   *  for a gesture that has not happened. */
+  live: boolean;
+}
 
 export function useSwipePager<T extends HTMLElement>({
   canStep,
   onStep,
   enabled = true,
-}: SwipePagerOptions): RefObject<T | null> {
+}: SwipePagerOptions): SwipePager<T> {
   const host = useRef<T | null>(null);
+  const [live, setLive] = useState(false);
   // Latest-ref: a day surface re-renders on the clock, and the listeners below are bound
   // once — closing over a stale `canStep` is how the last day of a trip would step.
   const latest = useRef({ canStep, onStep, enabled });
@@ -95,6 +128,8 @@ export function useSwipePager<T extends HTMLElement>({
       el.removeAttribute(SWIPING_ATTR);
       el.removeAttribute(SETTLING_ATTR);
       el.style.removeProperty(OFFSET_PROP);
+      el.style.removeProperty(WIDTH_PROP);
+      setLive(false);
     };
 
     const onPointerDown = (e: PointerEvent) => {
@@ -115,6 +150,10 @@ export function useSwipePager<T extends HTMLElement>({
       // so the element is the only thing that knows which way its own inline axis runs.
       const rtl = getComputedStyle(el).direction === 'rtl';
       const width = el.getBoundingClientRect().width || window.innerWidth;
+      const gap = parseFloat(getComputedStyle(el).getPropertyValue(GAP_PROP)) || 0;
+      /** How far the page travels to finish a turn: a full page, plus the gutter, so the
+       *  arriving pane lands exactly at level. */
+      const turn = width + gap;
       const commitPx = width * SWIPE_PAGER.COMMIT_SHARE;
       /** Content dragged toward inline-START reveals the NEXT page: in RTL that is a
        *  finger moving right, in LTR one moving left. */
@@ -217,6 +256,9 @@ export function useSwipePager<T extends HTMLElement>({
           window.clearTimeout(settle);
           el.removeAttribute(SETTLING_ATTR);
           el.setAttribute(SWIPING_ATTR, '');
+          el.style.setProperty(WIDTH_PROP, `${Math.round(width)}px`);
+          // The panes mount here, one render, while the finger is still accelerating.
+          setLive(true);
         }
         el.style.setProperty(OFFSET_PROP, `${Math.round(offsetFor(dx))}px`);
       };
@@ -234,15 +276,27 @@ export function useSwipePager<T extends HTMLElement>({
         if (released) armClickSwallow();
         const dx = lastX - startX;
         const step = stepFor(dx);
-        if (released && Math.abs(dx) >= commitPx && latest.current.canStep(step)) {
-          latest.current.onStep(step);
-        }
-        // Level again, through the CSS transition. The timer's duration comes from the same
-        // token the transition does and answers 0 under reduced motion, so the attributes
-        // can never outlive an animation that did not play (ADR-0140 §5).
-        el.setAttribute(SETTLING_ATTR, '');
-        el.style.setProperty(OFFSET_PROP, '0px');
-        settle = window.setTimeout(clear, motionDurationMs('--t-quick'));
+        const commit = released && Math.abs(dx) >= commitPx && latest.current.canStep(step);
+        // **Two different endings, two different distances, two different tokens.** A commit
+        // finishes the turn — the page carries on a full page plus the gutter, which puts the
+        // arriving pane exactly at rest — so it travels furthest and takes `--t-base`, the app's token
+        // for a surface moving. A refusal only has to give back the strain it took, so it is
+        // `--t-quick`. Both read the same token the CSS transition does, and both answer 0
+        // under reduced motion, so no attribute can outlive an animation that did not play
+        // (ADR-0140 §5).
+        el.setAttribute(SETTLING_ATTR, commit ? 'turn' : 'back');
+        el.style.setProperty(OFFSET_PROP, commit ? `${Math.round(Math.sign(dx) * turn)}px` : '0px');
+        settle = window.setTimeout(
+          () => {
+            // **The date changes only now, with the arriving pane covering the screen.** So the
+            // swap is a pane leaving and the host arriving at the same offset with the same day
+            // drawn by the same components — nothing moves, which is why there is no cross-fade
+            // and no keyframe anywhere in this feature.
+            if (commit) latest.current.onStep(step);
+            clear();
+          },
+          motionDurationMs(commit ? '--t-base' : '--t-quick'),
+        );
       };
 
       abandon = unbind;
@@ -261,5 +315,5 @@ export function useSwipePager<T extends HTMLElement>({
     };
   }, []);
 
-  return host;
+  return { ref: host, live };
 }

@@ -18,35 +18,109 @@
    itself out of the ACCENT tokens, which is why it renders as the brightest
    surface in the whole dark app. Paper/card colours read tokens. */
 
-/* ===== The day surface's page step (ADR-0200, lib/useSwipePager.ts) =====
-   One class, worn by BOTH day surfaces (`DayView`'s wrapper and `PlanDay`'s `.builder`),
+/* ===== The day surface's page step + its peek (ADR-0200 §2/§7, lib/useSwipePager.ts) =====
+   One grammar, worn by BOTH day surfaces (`DayView`'s wrapper and `PlanDay`'s `.builder`),
    because stepping to the next day is a fact and not a posture (ADR-0159 §1).
 
-   `min-height: 100%` is the hit area, not the look: a day holding two events leaves most
-   of the body empty, and a swipe that only works where there happen to be rows reads as
-   a swipe that works sometimes. The body is the scroller, so 100% is its content box.
+   Three elements and each has one job:
 
-   The transform is behind `[data-swiping]` on purpose — it establishes a containing block
-   for any `position: fixed` descendant, and `PlanDay` renders `.wp-dragghost` inside this
-   very element. The pager stands down while a drag is live, and the attribute is gone the
-   moment the gesture settles, so the two states cannot overlap.
+     .day-swipe   the host — holds the offset variable, is the measured box, and is NOT
+                  transformed, which is what lets the peeks be fixed panes (a transform makes
+                  its element the containing block for `position: fixed` inside it).
+     .day-page    the day you are on. This is what the finger moves.
+     .day-peek    a neighbouring day, one page away on the inline axis, riding the same offset
+                  so the strip moves as one thing.
 
-   The settle is a transition and not a keyframe, which is what makes the arriving day free:
-   the new day renders into this same element, still displaced by the finger's travel, and
-   then eases to level. Reduced motion kills the transition (App.css) and `motionDurationMs`
-   answers 0, so there the step simply happens.
+   `min-height: 100%` on the host is the hit area, not the look: a day holding two events
+   leaves most of the body empty, and a swipe that only works where there happen to be rows
+   reads as a swipe that works sometimes. The body is the scroller, so 100% is its content box.
 
-   `--ease-arrive` for both halves, and its overshoot is the reason: a page returning to
-   level is an object settling, and on a refused swipe that mild nudge past the mark IS the
-   rebuff's recoil. `--ease-exit` would be wrong twice over — nothing here is leaving. */
+   The settle is a transition rather than a keyframe, and it has TWO lengths because it has two
+   meanings: a commit finishes the turn (a full page of travel, `--t-base`) and a refusal only
+   gives back the strain it took (`--t-quick`). The attribute carries which, so the CSS and the
+   JS timer that clears it cannot disagree — one value for both would leave a refusal's class
+   removed mid-animation, and the transform would snap.
+
+   `--ease-arrive` throughout, and its overshoot is the reason: a page settling is an object
+   settling, and on a refused swipe that mild nudge past the mark IS the recoil. `--ease-exit`
+   would be wrong twice over — nothing here is leaving. */
 .day-swipe {
   min-height: 100%;
+  /* **THE GUTTER BETWEEN PAGES** (owner: _"there should be some gap between the days. They
+     shouldn't look sticked together"_). Without it the two days are contiguous to the pixel,
+     which is geometrically tidy and reads as ONE long sheet sliding past — the cards of
+     tomorrow start where today's stop and nothing says a boundary was crossed.
+     `--space-6`, and the size is an argument rather than a preference: the day's own cards are
+     11px apart vertically, so a page break has to be visibly wider than a card gap or it reads
+     as one more row. It is a feel number all the same, and a device pass owns it.
+     Declared here rather than in `constants.ts` because CSS is what spends it — the pager
+     READS it back off this element for the commit distance, so the two cannot disagree (the
+     same discipline `motionDurationMs` follows for durations). */
+  --swipe-page-gap: var(--space-6);
 }
-.day-swipe[data-swiping] {
+/* **`>` and not a descendant space, and a render is what caught it.** A peek holds a whole day
+   surface, so `.day-page` and `.day-swipe` both exist again INSIDE each pane — a descendant
+   selector therefore also translated every pane's own inner page by the same `--swipe-dx` the
+   pane was already carrying, which showed up as the preview's content sliding out from under
+   its own frame. Only the host's direct child is the page the finger moves. */
+.day-swipe[data-swiping] > .day-page {
   transform: translateX(var(--swipe-dx, 0px));
 }
-.day-swipe[data-swipe-settling] {
+.day-swipe[data-swipe-settling='turn'] > .day-page,
+.day-swipe[data-swipe-settling='turn'] > .day-peeks .day-peek {
+  transition: transform var(--t-base) var(--ease-arrive);
+}
+.day-swipe[data-swipe-settling='back'] > .day-page,
+.day-swipe[data-swipe-settling='back'] > .day-peeks .day-peek {
   transition: transform var(--t-quick) var(--ease-arrive);
+}
+
+/* The WINDOW: the body's visible strip, the host's inline column, clipping whatever slides
+   through it. Every number is measured by `ui/domain/DayPeek.tsx`. Bounding it to the scroller
+   is what stops a fixed layer painting over the header and the tab bar; bounding it to the
+   column and clipping is what stops a pane mid-flight sliding across the page background on a
+   desktop viewport, where `.app` is a centred column rather than the whole screen. */
+.day-peeks {
+  position: fixed;
+  top: var(--peek-top, 0px);
+  left: var(--peek-x, 0px);
+  block-size: var(--peek-h, 0px);
+  inline-size: var(--swipe-page-w, 0px);
+  /* `clip`, not `hidden` (the same distinction tokens.css draws for the root): this must not
+     become a scroll container — it holds two whole days, and `scrollIntoView` from anything
+     inside would then have somewhere to go. */
+  overflow: clip;
+  /* Belt to `inert`'s braces: `inert` is the contract, this is the paint-level guarantee that
+     a pane mid-flight can never take a press meant for the day underneath. */
+  pointer-events: none;
+}
+/* A pane: the whole window, one page over, riding the gesture's offset. Its own ground, so the
+   day it draws reads as a page and not as a translucent hint over the one you are leaving. */
+.day-peek {
+  position: absolute;
+  inset: 0;
+  background: var(--screen);
+  transform: translateX(
+    calc(
+      var(--swipe-dx, 0px) + var(--peek-dir) * var(--peek-side) *
+        (var(--swipe-page-w, 0px) + var(--swipe-page-gap, 0px))
+    )
+  );
+}
+/* **The next day always arrives from inline-end, in both directions** — that is what makes
+   this two rules rather than four. RTL: later days lie to the left, so inline-end is physical
+   −x. LTR mirrors it. `--peek-side` then only has to say which neighbour a pane is. */
+.day-peek {
+  --peek-dir: -1;
+}
+[dir='ltr'] .day-peek {
+  --peek-dir: 1;
+}
+.day-peek[data-day='next'] {
+  --peek-side: 1;
+}
+.day-peek[data-day='prev'] {
+  --peek-side: -1;
 }
 
 /* section titles */

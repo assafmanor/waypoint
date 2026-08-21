@@ -57,6 +57,23 @@ const EVENTS = Array.from({ length: 8 }, (_, i) => ({
   ...stamps,
 }));
 
+/** **One event that exists only tomorrow**, so "the peek shows the NEXT day" is a statement
+ *  about content and not about a heading that happens to differ. */
+const TOMORROW_ONLY = 'מחר ייחודי';
+const TOMORROW_EVENT = {
+  id: 'ev-tomorrow',
+  tripId: 't1',
+  date: TOMORROW,
+  title: TOMORROW_ONLY,
+  kind: 'soft',
+  status: 'planned',
+  sortOrder: 0,
+  source: 'manual',
+  startsAt: `${TOMORROW}T09:00:00.000Z`,
+  endsAt: `${TOMORROW}T09:40:00.000Z`,
+  ...stamps,
+};
+
 /** Enough ideas that the shelf really overflows its strip — the whole point of the strip
  *  case is that `scrollsOn` answers yes about a box the browser actually laid out. */
 const IDEAS = Array.from({ length: 10 }, (_, i) => ({
@@ -76,8 +93,53 @@ const touch = (cdp: CDPSession, type: 'touchStart' | 'touchMove' | 'touchEnd', x
  *  absence is a value and not a missing assertion. */
 const dayParam = (page: Page) => new URL(page.url()).searchParams.get('day');
 
+/** **The day you are ON.** While a gesture is live a peek holds a whole day surface, so
+ *  `.day-swipe`, `.day-page` and every row class exist three times over — a bare selector
+ *  returns whichever pane the DOM lists first, which is a real trap and not a style point. */
+const PAGE = '.day-swipe:not([data-preview])';
+
+/** Boxes read off the live page, rounded — the geometry the peek's whole claim rests on. */
+async function boxes(page: Page) {
+  return page.evaluate((pageSel) => {
+    const r = (el: Element | null) =>
+      el
+        ? (({ left, top, width, right, bottom }) => ({
+            left: Math.round(left),
+            top: Math.round(top),
+            width: Math.round(width),
+            right: Math.round(right),
+            bottom: Math.round(bottom),
+          }))(el.getBoundingClientRect())
+        : null;
+    const next = document.querySelector('.day-peek[data-day="next"]');
+    return {
+      gap:
+        parseFloat(
+          getComputedStyle(document.querySelector(pageSel)!).getPropertyValue('--swipe-page-gap'),
+        ) || 0,
+      win: r(document.querySelector('.day-peeks')),
+      next: r(next),
+      prev: r(document.querySelector('.day-peek[data-day="prev"]')),
+      page: r(document.querySelector(`${pageSel} > .day-page`)),
+      body: r(document.querySelector('main.body')),
+      /** A pane's OWN inner page, which must sit flush with its pane and not be shifted a
+       *  second time by the offset the pane is already carrying. */
+      nextInner: r(next?.querySelector('.day-page') ?? null),
+      nextText: next?.textContent ?? '',
+    };
+  }, PAGE);
+}
+
+const bodyScroll = (page: Page) =>
+  page.evaluate(() => document.querySelector('main.body')!.scrollTop);
+
 async function boot(page: Page, mode: 'trip' | 'plan') {
-  await bootIntoTrip(page, { events: EVENTS, maybeItems: IDEAS, now: NOW, dates: RANGE });
+  await bootIntoTrip(page, {
+    events: [...EVENTS, TOMORROW_EVENT],
+    maybeItems: IDEAS,
+    now: NOW,
+    dates: RANGE,
+  });
   await page.goto('/');
   await expect(page.locator('nav.nav')).toBeVisible();
   if (mode === 'plan') {
@@ -85,7 +147,7 @@ async function boot(page: Page, mode: 'trip' | 'plan') {
     await expect(page.locator('.app')).toHaveAttribute('data-mode', 'plan');
   }
   await page.locator('nav.nav button', { hasText: t.tabs.days }).click();
-  await expect(page.locator('.day-swipe')).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(PAGE)).toBeVisible({ timeout: 20_000 });
 }
 
 /**
@@ -100,14 +162,33 @@ async function swipeDay(
   page: Page,
   cdp: CDPSession,
   dx: number,
-  { dy = 0, holdAtEnd = false }: { dy?: number; holdAtEnd?: boolean } = {},
+  {
+    dy = 0,
+    holdAtEnd = false,
+    from = 'heading',
+  }: { dy?: number; holdAtEnd?: boolean; from?: 'heading' | 'upper' } = {},
 ) {
+  // `upper` is for a day that has been SCROLLED: the heading is then off the top of the
+  // viewport, and a touch dispatched at an off-screen coordinate lands on nothing at all —
+  // which presents as "the swipe did not commit" and says nothing about the swipe. The body's
+  // upper third is day rows at any offset, and is never the shelf at the tail.
+  if (from === 'upper') {
+    const strip = (await page.locator('main.body').boundingBox())!;
+    const ux = strip.x + strip.width * 0.45;
+    const uy = strip.y + strip.height * 0.25;
+    await touch(cdp, 'touchStart', ux, uy);
+    for (let i = 1; i <= 8; i++) {
+      await touch(cdp, 'touchMove', ux + (dx * i) / 8, uy + (dy * i) / 8);
+    }
+    if (!holdAtEnd) await touch(cdp, 'touchEnd');
+    return { x: ux + dx, y: uy + dy };
+  }
   // **The origin is the day's heading row, not a share of the surface's height.** A share
   // lands wherever the day happens to be tall — on a loaded day that is the maybe shelf,
   // which owns the horizontal axis and correctly refuses the gesture, so the spec would be
   // measuring the wrong thing while looking green on one fixture. The heading is the first
   // row of both day surfaces and exists on an empty day too, which the last-day case needs.
-  const box = await page.locator('.day-swipe .sec-title').first().boundingBox();
+  const box = await page.locator(`${PAGE} .sec-title`).first().boundingBox();
   if (!box) throw new Error('no day heading to swipe from');
   const x0 = box.x + box.width * 0.45;
   const y0 = box.y + box.height / 2;
@@ -159,10 +240,10 @@ test.describe('a day surface steps day to day with a swipe', () => {
     const cdp = await page.context().newCDPSession(page);
     await boot(page, 'trip');
     await page.goto(`/?tab=days&day=${RANGE.endDate}`);
-    await expect(page.locator('.day-swipe')).toBeVisible();
+    await expect(page.locator(PAGE)).toBeVisible();
 
     await swipeDay(page, cdp, COMMIT_PX, { holdAtEnd: true });
-    const surface = page.locator('.day-swipe');
+    const surface = page.locator(PAGE);
     await expect(surface).toHaveAttribute('data-swiping', '');
     const strained = await surface.evaluate((el) =>
       parseFloat(getComputedStyle(el).getPropertyValue('--swipe-dx')),
@@ -187,6 +268,139 @@ test.describe('a day surface steps day to day with a swipe', () => {
       .poll(() => page.evaluate(() => document.querySelector('main.body')!.scrollTop))
       .toBeGreaterThan(before);
     expect(dayParam(page)).toBeNull();
+  });
+
+  // ── THE PEEK (§7) ─────────────────────────────────────────────────────────────────────
+  //
+  // "It should feel continuous" is a claim about geometry, so it is asserted as geometry: the
+  // pages are one gutter apart, at every offset. A sign error, a wrong width, a percentage
+  // resolved against the viewport instead of the column, or a commit that travels a page
+  // without its gutter all show up here — and in none of them would a day look wrong on its
+  // own. The gutter is READ from the stylesheet rather than repeated here, so moving
+  // `--swipe-page-gap` cannot leave this spec asserting the old spacing.
+  test('the neighbouring days ride the gesture, one gutter from the page', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    await boot(page, 'trip');
+
+    // Nothing is mounted until a gesture is claimed — two extra day surfaces are not a resting
+    // cost, and asserting the absence is what keeps that true.
+    expect(await page.locator('.day-peek').count()).toBe(0);
+
+    await swipeDay(page, cdp, 120, { holdAtEnd: true });
+    const b = await boxes(page);
+
+    // The strip: [next] gutter [page] gutter [prev], one offset.
+    expect(b.gap).toBeGreaterThan(0);
+    expect(b.page!.left - b.next!.right).toBe(b.gap);
+    expect(b.prev!.left - b.page!.right).toBe(b.gap);
+    expect(b.next!.width).toBe(b.page!.width);
+
+    // The pane's own inner page sits flush with its pane. It does NOT, if the transform is
+    // written as a descendant selector — a peek holds a `.day-page` of its own, so it gets the
+    // offset twice and its content slides out from under its own frame. Measured, not reasoned:
+    // that is exactly what the first render of this feature did.
+    expect(b.nextInner!.left).toBe(b.next!.left);
+
+    // And it is the NEXT day, by content rather than by a heading that merely differs.
+    expect(b.nextText).toContain(TOMORROW_ONLY);
+    await expect(page.locator(`${PAGE} > .day-page`)).not.toContainText(TOMORROW_ONLY);
+
+    await touch(cdp, 'touchEnd');
+    await expect.poll(() => page.locator('.day-peek').count()).toBe(0);
+  });
+
+  // A fixed layer inside the body has to be told where the body is, or it paints over the
+  // header and the tab bar — the one failure mode that would look fine in a screenshot taken
+  // mid-gesture on a short day.
+  test('the peek window is bounded to the body, never over the chrome', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    await boot(page, 'trip');
+    await swipeDay(page, cdp, 120, { holdAtEnd: true });
+    const b = await boxes(page);
+    expect(b.win!.top).toBeGreaterThanOrEqual(b.body!.top);
+    expect(b.win!.bottom).toBeLessThanOrEqual(b.body!.bottom);
+    expect(b.win!.left).toBeGreaterThanOrEqual(b.body!.left);
+    expect(b.win!.right).toBeLessThanOrEqual(b.body!.right);
+    await touch(cdp, 'touchEnd');
+  });
+
+  test('the Plan builder previews its neighbours too — one hook, two surfaces', async ({
+    page,
+  }) => {
+    const cdp = await page.context().newCDPSession(page);
+    await boot(page, 'plan');
+    await swipeDay(page, cdp, 120, { holdAtEnd: true });
+    const b = await boxes(page);
+    expect(b.page!.left - b.next!.right).toBe(b.gap);
+    expect(b.nextText).toContain(TOMORROW_ONLY);
+    await touch(cdp, 'touchEnd');
+  });
+
+  // **The turn travels a page PLUS the gutter**, which is the one number that cannot be
+  // checked mid-gesture: it decides where the arriving pane comes to REST. A commit that
+  // travelled only a page would leave the new day sitting a gutter off level for the length of
+  // the animation and then snap — and every mid-gesture assertion above would still pass. It
+  // was wrong exactly this way once, caught by an unused-variable warning rather than by a
+  // test, which is why the assertion exists.
+  test('the turn travels a page and its gutter, so the new day lands level', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    await boot(page, 'trip');
+    await swipeDay(page, cdp, COMMIT_PX, { holdAtEnd: true });
+    const b = await boxes(page);
+    await touch(cdp, 'touchEnd');
+
+    // Read the offset the settle aims at, on the frame the release sets it.
+    const aim = await page.evaluate(
+      (sel) =>
+        parseFloat(
+          (document.querySelector(sel) as HTMLElement).style.getPropertyValue('--swipe-dx'),
+        ),
+      PAGE,
+    );
+    expect(aim).toBe(b.page!.width + b.gap);
+  });
+
+  // ── A DAY OPENS AT ITS TOP (§6) ───────────────────────────────────────────────────────
+  //
+  // Owner: _"if you're at the end of the day, swiping keeps you on the bottom. It should be on
+  // the top of the day"_ — and then _"this should be true for the day strip as well"_, which is
+  // why both triggers are asserted. One action, two ways in; a fix that covered only the
+  // gesture would be the divergence `frontend/CLAUDE.md` warns about, one layer out.
+  test('a swipe from the bottom of a day lands at the top of the next one', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    await boot(page, 'trip');
+    await page.evaluate(() => {
+      const body = document.querySelector('main.body')!;
+      body.scrollTop = body.scrollHeight;
+    });
+    await expect.poll(() => bodyScroll(page)).toBeGreaterThan(0);
+
+    await swipeDay(page, cdp, COMMIT_PX, { from: 'upper' });
+    await expect.poll(() => dayParam(page)).toBe(TOMORROW);
+    await expect.poll(() => bodyScroll(page)).toBe(0);
+  });
+
+  test('and so does a day picked from the header strip', async ({ page }) => {
+    await boot(page, 'trip');
+    await page.evaluate(() => {
+      const body = document.querySelector('main.body')!;
+      body.scrollTop = body.scrollHeight;
+    });
+    await expect.poll(() => bodyScroll(page)).toBeGreaterThan(0);
+
+    // The pill for the day after tomorrow — a day away from both today and the one a swipe
+    // would reach, so this cannot pass on the swipe's behaviour. Found by the number it shows
+    // (the pill carries no date attribute, and adding one just for this would be a test seam
+    // in shipped markup); matched exactly, so `2` cannot select `22`.
+    const target = iso(NOW + 2 * DAY);
+    const dayOfMonth = target.slice(8).replace(/^0/, '');
+    await page
+      .locator('.wp-daystrip button')
+      .filter({ has: page.locator('.n', { hasText: new RegExp(`^${dayOfMonth}$`) }) })
+      .first()
+      .click();
+    await expect.poll(() => dayParam(page)).toBe(target);
+    await expect.poll(() => bodyScroll(page)).toBe(0);
   });
 
   // And the strip keeps its own axis, which is what `scrollerWithin` is there for.
