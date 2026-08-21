@@ -71,8 +71,8 @@ one.
   sheet, a new tappable and a new shell screen inherit their motion by existing. What a
   new **large** surface must do is one line: `--press-scale: var(--press-scale-lg)`,
   because the default step is the control one.
-- **A one-shot "that just happened" beat** — `lib/one-shot.ts`'s `BEAT` + `playBeat`, four
-  members and counting (`NUDGE`, `LANDING`, `REBUFF`, `TICK`), never a hand-rolled class
+- **A one-shot "that just happened" beat** — `lib/one-shot.ts`'s `BEAT` + `playBeat`, five
+  members and counting (`NUDGE`, `LANDING`, `REBUFF`, `TICK`, `PINNED`), never a hand-rolled class
   toggle: it owns the remove-reflow-add that makes an animation replay, the token-derived
   duration, and removal by **timer** rather than `animationend` (which never fires when
   nothing animates, leaving the class on forever). Its keyframes live beside the surface

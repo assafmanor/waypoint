@@ -84,6 +84,28 @@ export interface HoldToDragHandlers {
   onCancel: () => void;
 }
 
+/** The other thing a completed hold can mean (ADR-0199 §1): **this host has nothing to
+ *  drag, and says so**. A hard event is a pinned anchor (ADR-0011), so `PlanDay` gave its
+ *  row no `dragProps` at all — and with them went the `selectstart` cancel and the
+ *  context-menu prevent, which is why what answered a press-and-hold on a commitment was
+ *  the platform's text-selection UI.
+ *
+ *  It is a branch of THIS hook rather than a `useHoldToRefuse` beside it (root rule 8): it
+ *  is the same gesture with nothing behind it, and a second hook would drift on the three
+ *  things the refusal path keeps — the selection suppress, the context-menu prevent, and
+ *  the click swallow. */
+export interface HoldToRefuseHandlers {
+  /** The hold completed on a host that does not drag. Receives the held element, which is
+   *  what a beat is played on. Nothing arms: selection is never locked page-wide and
+   *  native scrolling is never suppressed, so the finger has the page back the instant
+   *  the answer is given. */
+  onRefuse: (el: HTMLElement) => void;
+}
+
+export type HoldHandlers = HoldToDragHandlers | HoldToRefuseHandlers;
+
+const isRefusal = (h: HoldHandlers): h is HoldToRefuseHandlers => 'onRefuse' in h;
+
 export interface HoldToDragProps {
   /** Attaches the non-passive `touchmove` guard at mount — the timing that makes an
    *  armed drag able to suppress native scrolling at all. The host must spread these
@@ -94,9 +116,13 @@ export interface HoldToDragProps {
   onContextMenu: (e: React.MouseEvent) => void;
 }
 
-export function useHoldToDrag(): (handlers: HoldToDragHandlers) => HoldToDragProps {
+export function useHoldToDrag(): (handlers: HoldHandlers) => HoldToDragProps {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const armed = useRef(false);
+  // The refusal's counterpart to `armed`: the hold completed on a host with nothing to
+  // drag. Nothing is suppressed while it is set — all it decides is that the release's
+  // click must be swallowed, and that the context menu stays shut until the finger lifts.
+  const refused = useRef(false);
   const origin = useRef<{ x: number; y: number } | null>(null);
   const held = useRef<HTMLElement | null>(null);
 
@@ -153,6 +179,7 @@ export function useHoldToDrag(): (handlers: HoldToDragHandlers) => HoldToDragPro
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     armed.current = false;
+    refused.current = false;
     origin.current = null;
     selection.release();
     held.current = null;
@@ -190,9 +217,11 @@ export function useHoldToDrag(): (handlers: HoldToDragHandlers) => HoldToDragPro
   );
 
   return useCallback(
-    (handlers: HoldToDragHandlers): HoldToDragProps => ({
+    (handlers: HoldHandlers): HoldToDragProps => ({
       ref: attach,
       onPointerDown: (e) => {
+        const refusal = isRefusal(handlers) ? handlers : null;
+        const drag = isRefusal(handlers) ? null : handlers;
         reset();
         const el = e.currentTarget as HTMLElement;
         const pressBox = el.getBoundingClientRect();
@@ -208,6 +237,11 @@ export function useHoldToDrag(): (handlers: HoldToDragHandlers) => HoldToDragPro
         // freezes; with element handlers, they unmount with it. The window outlives
         // both, so the drag is independent of its source's lifetime.
         const move = (ev: PointerEvent) => {
+          // A refusal is over the moment it is given: the answer was the whole gesture, so
+          // there is nothing left to arbitrate and nothing to cancel. Ending here instead
+          // would drop the listener that swallows the release's click, and a slow finger
+          // would then open the row it had just been told it cannot move.
+          if (refused.current) return;
           if (!armed.current) {
             // Moved before the hold completed → this was a scroll. Drop the pending
             // drag so the browser keeps the gesture.
@@ -219,19 +253,25 @@ export function useHoldToDrag(): (handlers: HoldToDragHandlers) => HoldToDragPro
             if (far) end();
             return;
           }
-          handlers.onMove({ clientX: ev.clientX, clientY: ev.clientY });
+          drag?.onMove({ clientX: ev.clientX, clientY: ev.clientY });
         };
         const up = () => {
           const wasArmed = armed.current;
+          const wasRefused = refused.current;
           end();
-          if (!wasArmed) return;
+          if (!wasArmed && !wasRefused) return;
+          // Armed at the RELEASE, never at the arm/refusal — the swallow expires in
+          // `DRAG_CLICK_SWALLOW_MS`, and a hold the finger rests on for longer than that
+          // would outlive a guard started while it was still down (frontend/CLAUDE.md's
+          // "arm a one-shot guard at the event before the one you are guarding").
           swallowNextClick();
-          handlers.onDrop();
+          drag?.onDrop();
         };
         const cancel = () => {
           const wasArmed = armed.current;
           end();
-          if (wasArmed) handlers.onCancel();
+          // A refusal has nothing to cancel, and a `pointercancel` is followed by no click.
+          if (wasArmed) drag?.onCancel();
         };
         function end() {
           window.removeEventListener('pointermove', move);
@@ -253,19 +293,38 @@ export function useHoldToDrag(): (handlers: HoldToDragHandlers) => HoldToDragPro
 
         const arm = () => {
           timer.current = null;
+          if (refusal) {
+            // NOTHING arms. `armed` stays false, so the mount-time `touchmove` guard keeps
+            // letting the page scroll, and `selection.lock()` is never called — the
+            // page-wide selection kill exists to protect a finger travelling over other
+            // rows, and this finger is going nowhere. What the refusal DOES keep is the
+            // pointer-down `selection.suppress()` above, which runs until the release:
+            // dropping it here would hand the still-pressed finger back to the platform's
+            // long-press selection, which is the behaviour this branch exists to end.
+            refused.current = true;
+            refusal.onRefuse(el);
+            return;
+          }
           armed.current = true;
           selection.lock();
-          handlers.onArm(el, { clientX: e.clientX, clientY: e.clientY }, pressBox);
+          drag?.onArm(el, { clientX: e.clientX, clientY: e.clientY }, pressBox);
         };
         // A mouse has no scroll/drag ambiguity to resolve (the wheel scrolls), so
         // a pointer device drags immediately — waiting would just feel broken.
-        if (e.pointerType === 'mouse') arm();
+        //
+        // **A refusing host is the exception, and it is not a detail**: with no hold to
+        // wait for, every ordinary click on the row would land on `arm` and beat at it,
+        // including the tap that opens the row's read. A refusal is the answer to a
+        // press-and-HOLD, so it waits for one on every pointer type.
+        if (e.pointerType === 'mouse' && !refusal) arm();
         else timer.current = setTimeout(arm, DRAG_HOLD_MS);
       },
       onContextMenu: (e) => {
         // Only while the hold is live — a right-click on an idle card is nobody's
-        // business of ours.
-        if (armed.current || timer.current) e.preventDefault();
+        // business of ours. `refused` extends "live" past the beat to the release: on
+        // Android the platform's own long-press fires around the same moment, and a
+        // context menu opening on top of the answer is the callout this branch removes.
+        if (armed.current || timer.current || refused.current) e.preventDefault();
       },
     }),
     [attach, reset, selection, swallowNextClick],

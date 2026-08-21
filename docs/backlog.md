@@ -508,3 +508,9 @@ Both are **Should / v1** in [`product/feature-catalog.md`](product/feature-catal
   - **A pre-existing e2e flake, recorded because it cost time to rule out:** `e2e/shelf-drag.spec.ts:453` ("the held card follows the finger") fails roughly one run in two on the same tree with a drag-ghost offset of ~37px against a 3px tolerance, and passes in isolation. Not introduced here (it passed in the CI run for this branch) and not diagnosed. It is a measured-geometry assertion under a synthetic touch drag, so the suspect is the gesture's timing, not the tolerance.
   - **Deliberately still gendered, and the narration is why:** the change feed reports what a _named_ person did, so Hebrew demands a grammatical subject. A verbal noun drops the actor (`הזזה של האירוע` says nothing about who) and so does the passive. Masculine by convention, documented at `changeFeed` in `he.ts`. Worth revisiting only if `Member` ever carries a pronoun.
   - **Not swept, and it is a real remainder:** the ~40 `:hover` rules the frontend `CLAUDE.md` already backlogs are untouched, and so is every English-language string in the codebase. This pass was `he.ts` only.
+
+## A hard event answers the hold (owner report, 2026-08-21)
+
+[ADR-0199](decisions/0199-a-hard-event-answers-the-hold.md) is **built** (2026-08-21). What the render behind it found and left open:
+
+- **`button.bld-time`'s touch target is 43px, one short of ADR-0017's 44px floor** (found 2026-08-21 by rendering [`mockups/a-hard-event-answers-the-hold-v1.html`](../mockups/a-hard-event-answers-the-hold-v1.html); not introduced by it). The chip renders 27px and its `::after` overlay is `inset: -8px 0`. ADR-0161 §7 chose the overlay deliberately — `min-height: 44px` on the chip itself took the row from 58px to 75px — but never measured where the overlay landed. `-8.5px` closes it at no cost to the row, since the overlay reaches into vertical padding no other control occupies.

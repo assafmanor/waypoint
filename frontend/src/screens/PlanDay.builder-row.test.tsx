@@ -17,12 +17,19 @@
 //
 // The picker the button OPENS is `ui/domain/DaySlotPicker` with `lib/day-positions.ts`'s
 // options; both are tested where they live. This is about the row.
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
+import { useMemo, type ReactElement } from 'react';
 import { BuilderRow } from './PlanDay';
 import { wrapNav } from '../test/nav-harness';
+import { useHoldToDrag } from '../lib/useHoldToDrag';
+import { BEAT, playBeat } from '../lib/one-shot';
+import { DRAG_HOLD_MS } from '../constants';
 import { t } from '../i18n/he';
+// jsdom implements neither PointerEvent nor pointer capture, and the hold's arbitration is
+// entirely about `pointerType` and coordinates.
+import '../test/pointer-events';
 
 const NOW = '2026-07-01T00:00:00Z';
 const ev = (
@@ -222,5 +229,105 @@ describe('BuilderRow — the hard mark is drawn once, on the when line', () => {
     expect(container.querySelector('.bld')!.classList.contains('soft')).toBe(true);
     expect(container.querySelector('.tag-soft')).toBeNull();
     expect(container.querySelector('.hard-lock')).toBeNull();
+  });
+});
+
+// ADR-0199 §1/§2. A hard row never drags — it is a pinned anchor (ADR-0011) — and until
+// this it got no hold props at all, so the thing that answered a press-and-hold on a
+// commitment was the platform's text-selection UI. These pin the wiring: the row takes the
+// refusing hold, the beat lands ON the row, and the row still does not claim to be
+// draggable.
+describe('a hard row answers the hold it cannot obey (ADR-0199)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    Element.prototype.setPointerCapture = vi.fn();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    cleanup();
+  });
+
+  /** The screen's own wiring, reproduced: one refusing props object shared by every hard
+   *  row, playing `BEAT.PINNED` on whichever element was held. */
+  function Host({ event }: { event: TripEvent }) {
+    const holdToDrag = useHoldToDrag();
+    const refuseProps = useMemo(
+      () => holdToDrag({ onRefuse: (el) => playBeat(el, BEAT.PINNED) }),
+      [holdToDrag],
+    );
+    return (
+      <BuilderRow
+        event={event}
+        tz={TZ}
+        onOpen={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onPickTime={vi.fn()}
+        refuseProps={refuseProps}
+      />
+    );
+  }
+
+  /** Scoped to THIS render's container, never `document`: an earlier describe in this file
+   *  leaves its own `.bld` behind, and a document-wide query silently answered with that
+   *  row instead — a green-looking assertion about the wrong element. */
+  let container: HTMLElement;
+  const mount = (ui: ReactElement) => {
+    container = render(wrapNav(ui)).container;
+  };
+  const rowEl = () => container.querySelector('.bld') as HTMLElement;
+  const press = () =>
+    fireEvent.pointerDown(rowEl(), {
+      clientX: 50,
+      clientY: 50,
+      pointerType: 'touch',
+      pointerId: 1,
+    });
+  const hold = () => {
+    press();
+    vi.advanceTimersByTime(DRAG_HOLD_MS);
+  };
+
+  it('plays the pinned beat on the row itself', () => {
+    mount(<Host event={HARD} />);
+    expect(rowEl().classList.contains(BEAT.PINNED)).toBe(false);
+    hold();
+    expect(rowEl().classList.contains(BEAT.PINNED)).toBe(true);
+  });
+
+  it('says nothing before the hold completes — a tap is still a tap', () => {
+    mount(<Host event={HARD} />);
+    press();
+    vi.advanceTimersByTime(DRAG_HOLD_MS - 50);
+    expect(rowEl().classList.contains(BEAT.PINNED)).toBe(false);
+  });
+
+  // The beat must be replayable: pressing the same row again is the case a plain class
+  // toggle gets wrong, and it is the whole reason `playBeat` forces a reflow.
+  it('answers a second hold on the same row', () => {
+    mount(<Host event={HARD} />);
+    hold();
+    fireEvent.pointerUp(rowEl());
+    // Drain the beat's removal and the click swallow's expiry, so the row is back at rest
+    // and the next hold timer is the only thing pending.
+    vi.runAllTimers();
+    expect(rowEl().classList.contains(BEAT.PINNED)).toBe(false);
+
+    hold();
+    expect(rowEl().classList.contains(BEAT.PINNED)).toBe(true);
+  });
+
+  // `.draggable` carries the grab cursor and, before ADR-0199 §4, the selection rule. A
+  // refusing row must not wear it: it is answering the gesture, not offering it.
+  it('does not claim to be draggable', () => {
+    mount(<Host event={HARD} />);
+    expect(rowEl().classList.contains('draggable')).toBe(false);
+  });
+
+  it('a row given neither props answers nothing at all', () => {
+    container = row(HARD).container;
+    press();
+    vi.advanceTimersByTime(DRAG_HOLD_MS);
+    expect(rowEl().classList.contains(BEAT.PINNED)).toBe(false);
   });
 });

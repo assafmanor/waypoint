@@ -2219,10 +2219,41 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
    Hard rows show a static anchor glyph instead — they're pinned (ADR-0011). */
 .bld.draggable {
   cursor: grab;
-  /* A long press on a row otherwise starts a text selection or the iOS callout. */
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
+  /* The `user-select`/`-webkit-touch-callout` trio that lived here is GONE (ADR-0199 §4).
+     It was keyed on `.draggable`, and the key was the bug: what makes selection wrong on a
+     day row is not that the row drags, it is that a press on it is a GESTURE — which is
+     exactly why the two rows that never drag (a hard `.bld`, every `.wp-event`) were left
+     selecting. One rule in `styles/tokens.css` now covers all three row types, beside the
+     `body.wp-dragging` block that already owned the other half of the subject. */
+}
+
+/* **`BEAT.PINNED`** (ADR-0199 §2) — the hold answered on a row that is a pinned anchor
+   (ADR-0011). The row strains on the axis it was being dragged on, is arrested, and is
+   pulled back PAST level onto its anchor: the return overshoot is what makes it read as
+   held down rather than as merely stopping.
+
+   The family's four properties, each load-bearing (`lib/one-shot.ts`): one shot applied
+   imperatively, so a repeat hold on the same row is felt again; `linear`, because the
+   keyframe offsets ARE the timing of an oscillation and an easing curve resamples them
+   into a different shape; symmetric, so no `--dir` in an RTL app; and the duration from a
+   token, so `motionDurationMs` and this rule cannot disagree.
+
+   The lift is 4px because the row's own `margin-bottom` is 9px — the beat rises into that
+   gap and must not reach the row below (measured in
+   `mockups/a-hard-event-answers-the-hold-v1.html`, where it is 44% of it). */
+.is-pinned {
+  animation: bld-pinned var(--t-base) linear;
+}
+@keyframes bld-pinned {
+  35% {
+    transform: translateY(-4px);
+  }
+  62% {
+    transform: translateY(1px);
+  }
+  100% {
+    transform: translateY(0);
+  }
 }
 .bld.dragging {
   opacity: 0.45;

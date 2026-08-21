@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useHoldToDrag } from './useHoldToDrag';
-import { DRAG_HOLD_MS } from '../constants';
+import { DRAG_CLICK_SWALLOW_MS, DRAG_HOLD_MS } from '../constants';
 
 // The gesture arbitration (ADR-0116 §5, session-114): a scroll and a drag are the
 // same movement, so only TIME can tell them apart. These assert the arbitration —
@@ -291,5 +291,143 @@ describe('useHoldToDrag', () => {
     render(<Card />);
     down(100, 100, 'mouse');
     expect(handlers.onArm).toHaveBeenCalledTimes(1);
+  });
+
+  // ADR-0199 §1. The other thing a completed hold can mean: this host has nothing to
+  // drag, and says so. What these pin is that the refusal keeps the three parts of the
+  // gesture that were never about dragging — the selection suppress, the context-menu
+  // prevent and the click swallow — while arming none of the parts that were.
+  describe('refusal mode', () => {
+    const onRefuse = vi.fn();
+    function HardRow({ onClick }: { onClick?: () => void }) {
+      const holdToDrag = useHoldToDrag();
+      return (
+        <button type="button" onClick={onClick} {...holdToDrag({ onRefuse })}>
+          idea
+        </button>
+      );
+    }
+    afterEach(() => onRefuse.mockClear());
+
+    it('answers the hold with the held element, once', () => {
+      render(<HardRow />);
+      down();
+      expect(onRefuse).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(DRAG_HOLD_MS);
+      expect(onRefuse).toHaveBeenCalledTimes(1);
+      expect(onRefuse).toHaveBeenCalledWith(card());
+    });
+
+    it('a flick before the hold is still a scroll: nothing is refused', () => {
+      render(<HardRow />);
+      down(100, 100);
+      move(100, 60);
+      vi.advanceTimersByTime(DRAG_HOLD_MS * 2);
+      expect(onRefuse).not.toHaveBeenCalled();
+    });
+
+    // The whole point of the branch: there is nothing to carry, so the page is never
+    // taken. A refusal that locked selection page-wide or ate the scroll would be a
+    // drag in everything but name.
+    it('arms nothing — the page keeps its selection and its scroll', () => {
+      render(<HardRow />);
+      down();
+      vi.advanceTimersByTime(DRAG_HOLD_MS);
+      expect(document.body.classList.contains('wp-dragging')).toBe(false);
+      expect(touchMove().defaultPrevented).toBe(false);
+    });
+
+    // The half `user-select: none` cannot do: `selectstart` is what a long press fires,
+    // and it keeps being suppressed after the beat because the finger is still down.
+    it('cancels selectstart through the refusal and until the finger lifts', () => {
+      render(<HardRow />);
+      down();
+      vi.advanceTimersByTime(DRAG_HOLD_MS);
+      const during = new Event('selectstart', { cancelable: true, bubbles: true });
+      document.dispatchEvent(during);
+      expect(during.defaultPrevented).toBe(true);
+
+      fireEvent.pointerUp(card());
+      const after = new Event('selectstart', { cancelable: true, bubbles: true });
+      document.dispatchEvent(after);
+      expect(after.defaultPrevented).toBe(false);
+    });
+
+    // Without this the hold that was just told "this does not move" ends by opening the
+    // row's read — which is the same class of bug as a drop reading as a tap.
+    it('swallows the click the release fires', () => {
+      const onClick = vi.fn();
+      render(<HardRow onClick={onClick} />);
+      down();
+      vi.advanceTimersByTime(DRAG_HOLD_MS);
+      fireEvent.pointerUp(card());
+      fireEvent.click(card());
+      expect(onClick).not.toHaveBeenCalled();
+    });
+
+    // The swallow is armed at the RELEASE, not at the refusal, so a finger that rests
+    // on the row for longer than DRAG_CLICK_SWALLOW_MS still gets it.
+    it('swallows it however long the finger stays down after the answer', () => {
+      const onClick = vi.fn();
+      render(<HardRow onClick={onClick} />);
+      down();
+      vi.advanceTimersByTime(DRAG_HOLD_MS);
+      vi.advanceTimersByTime(DRAG_CLICK_SWALLOW_MS * 3);
+      fireEvent.pointerUp(card());
+      fireEvent.click(card());
+      expect(onClick).not.toHaveBeenCalled();
+    });
+
+    // Moving after the answer must not tear the gesture down early — that would take
+    // the pending click swallow with it.
+    it('still swallows the click when the finger drifts after the answer', () => {
+      const onClick = vi.fn();
+      render(<HardRow onClick={onClick} />);
+      down(100, 100);
+      vi.advanceTimersByTime(DRAG_HOLD_MS);
+      move(100, 300);
+      fireEvent.pointerUp(card());
+      fireEvent.click(card());
+      expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it('leaves an ordinary tap clickable', () => {
+      const onClick = vi.fn();
+      render(<HardRow onClick={onClick} />);
+      down();
+      fireEvent.pointerUp(card());
+      fireEvent.click(card());
+      expect(onClick).toHaveBeenCalledTimes(1);
+      expect(onRefuse).not.toHaveBeenCalled();
+    });
+
+    // A mouse arms a DRAG immediately, and inheriting that here would beat at every
+    // click of the row — including the one that opens its read.
+    it('makes a mouse wait for the hold too', () => {
+      render(<HardRow />);
+      down(100, 100, 'mouse');
+      expect(onRefuse).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(DRAG_HOLD_MS);
+      expect(onRefuse).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the context menu shut from the hold until the release', () => {
+      render(<HardRow />);
+      down();
+      vi.advanceTimersByTime(DRAG_HOLD_MS);
+      const menu = new MouseEvent('contextmenu', { cancelable: true, bubbles: true });
+      card().dispatchEvent(menu);
+      expect(menu.defaultPrevented).toBe(true);
+    });
+
+    it('a second hold on the same row is answered again', () => {
+      render(<HardRow />);
+      down();
+      vi.advanceTimersByTime(DRAG_HOLD_MS);
+      fireEvent.pointerUp(card());
+      down();
+      vi.advanceTimersByTime(DRAG_HOLD_MS);
+      expect(onRefuse).toHaveBeenCalledTimes(2);
+    });
   });
 });
