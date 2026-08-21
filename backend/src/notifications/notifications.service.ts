@@ -17,9 +17,11 @@ import { deviceLabel } from './device-label';
 import {
   NOTIFICATION_SENDER,
   SEND_OUTCOME,
+  type DeliveryOptions,
   type NotificationSender,
   type SubscriptionTarget,
 } from './notification-sender';
+import { deliveryFor } from './notification-registry';
 
 /** What a caller learns about one device's send. `gone` is not surfaced separately: by the
  *  time the caller sees this the row is already deleted, so the honest report is that the
@@ -130,7 +132,11 @@ export class NotificationsService {
    * **A `gone` device is deleted here rather than reported up** (§10): that is a
    * subscription's normal death, and the row is wrong the moment we learn it.
    */
-  async sendToUser(userId: string, payload: PushPayload): Promise<SendReport> {
+  async sendToUser(
+    userId: string,
+    payload: PushPayload,
+    delivery: DeliveryOptions = deliveryFor(payload.kind),
+  ): Promise<SendReport> {
     const subscriptions = await this.listForUser(userId);
     let sent = 0;
     for (const subscription of subscriptions) {
@@ -139,7 +145,7 @@ export class NotificationsService {
         p256dh: subscription.p256dh,
         auth: subscription.auth,
       };
-      const outcome = await this.sender.send(target, payload);
+      const outcome = await this.sender.send(target, payload, delivery);
       if (outcome === SEND_OUTCOME.SENT) {
         sent += 1;
         await this.touch(subscription.id, { lastSentAt: new Date() });

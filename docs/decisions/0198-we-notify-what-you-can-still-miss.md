@@ -223,6 +223,27 @@ Which is §5's computed shape, now measured rather than reasoned — and the cap
 
 **`task-audience.ts` became `trip-audience.ts`** — every line of it was already trip-scoped (the live window, the roster, the zone), and phase B's kinds need exactly those three answers. Root rule 8: generalise the one-off rather than write an `event-audience` beside it that could disagree about what "live" means.
 
+## PHASE C, FIRST HALF, BUILT (2026-08-21) — [session note](../planning/2026-08-21-notifications-phase-c-readiness.md)
+
+`readiness.nudge` is registered. **The flight check-in is deliberately NOT built with it** — see the fork below, which this section could not settle on its own.
+
+**`computeReadiness` moved into `packages/shared`, which is ADR-0197 §5's rule applied to a FACT rather than to a clock.** §5 says a send time and a printed time must be one derivation; the same argument holds for "is lodging covered". A nudge that disagreed with the tasks screen about an open check is worse than no nudge: the person opens the app, sees a satisfied row, and stops trusting the channel. The move took `addDays`, `tripDates`, `zonedIso` and the night-window constants with it, re-exported from `lib/time.ts` so the 22 call sites did not churn — the same shape phase 2 used for the zone model. `zonedIso`'s full docstring travelled with it, including the field-report-#38 precondition, because that is the part a reader cannot recover from the code.
+
+**It rides `notifyTasks` rather than a third switch.** ADR-0190 decided a readiness check **is** a task row, so the control that governs task notifications governs these. §6 stays at two switches, and no column was added for a kind the user already has a control for.
+
+**Three milestones, and the labels are a lookup rather than arithmetic.** `שבועיים` (14) and `יומיים` (2) are Hebrew duals, which no `${n} ימים` template can produce — the same reason phase B's `untilLabel` has a dual case. A fourth milestone must supply its own words, which the compiler asks for.
+
+**Nothing open means no send** — not "you're all set". A notification whose content is congratulation is the app talking about itself, and the branch has a test with a fixture that satisfies all five checks (the only way to reach it), proved non-vacuous by mutating the guard away.
+
+### The fork this section did not settle: is the check-in task STORED or DERIVED?
+
+§C above says a flight booking "mints an automatic task … which then rides `task.due` for free" — a **stored** row with a stored `dueAt`. Its very next sentence calls this "ADR-0190's rule already decided for readiness applied one row further" — and ADR-0190's rule is the **opposite**: derive the check, store only the human's dismissal. Both readings are in one paragraph, and they are materially different builds:
+
+- **Stored** — minted in `bookings.create`'s existing `mutateMany` (the auto-`Event` is the precedent), `dueAt` cascaded at the **three** sites that can move a departure (`events.update`, `events.move`, `bookings.update`), deleted with its booking. Rides `task.due` with no new kind. The cost is those three cascade sites, which is exactly the "cascades that write no `Change` rows" hole ADR-0152 §2 / ADR-0157 §3 already name.
+- **Derived** — nothing can go stale, but `TaskDerivedKey` is a closed five-value enum and per-**trip**, while a check-in is per-**booking**; and a derived task has no `dueAt` for `task.due`'s indexed query to find, so it would need the `flight.checkin` kind §C explicitly rejected.
+
+**Left open rather than decided quietly, because it touches the schema either way.** Whichever wins, this section gets amended to say so in one voice instead of two.
+
 ## Consequences
 
 - **The set of notifiable things is closed and derived**: hard events, span edges, task deadlines. A proposal to notify anything else has to argue with ADR-0011 first, which is a much shorter conversation than arguing about taste.

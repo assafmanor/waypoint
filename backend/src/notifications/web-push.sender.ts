@@ -18,6 +18,7 @@ import { PUSH_DISABLED } from '../common/env';
 import { requireVapid } from './vapid';
 import {
   SEND_OUTCOME,
+  type DeliveryOptions,
   type NotificationSender,
   type SendOutcome,
   type SubscriptionTarget,
@@ -79,7 +80,11 @@ function endpointHost(endpoint: string): string {
 export class WebPushSender implements NotificationSender {
   private readonly log = new Logger(WebPushSender.name);
 
-  async send(target: SubscriptionTarget, payload: PushPayload): Promise<SendOutcome> {
+  async send(
+    target: SubscriptionTarget,
+    payload: PushPayload,
+    delivery: DeliveryOptions,
+  ): Promise<SendOutcome> {
     if (process.env[PUSH_DISABLED]) return SEND_OUTCOME.FAILED;
 
     const vapid = requireVapid();
@@ -110,7 +115,14 @@ export class WebPushSender implements NotificationSender {
       await webpush.sendNotification(
         { endpoint: target.endpoint, keys: { p256dh: target.p256dh, auth: target.auth } },
         body,
-        { vapidDetails: vapid },
+        {
+          vapidDetails: vapid,
+          // **Both are the kind's own policy, spoken to the push service.** Left unset,
+          // `web-push` sends a four-week TTL, which is how a device that was asleep at the
+          // aimed-at minute received a two-hour flight warning on its next reconnect.
+          urgency: delivery.urgency,
+          TTL: delivery.ttlSeconds,
+        },
       );
       return SEND_OUTCOME.SENT;
     } catch (error) {

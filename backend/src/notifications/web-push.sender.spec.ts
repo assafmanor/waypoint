@@ -33,6 +33,9 @@ vi.mock('web-push', () => ({
 }));
 
 const TARGET = { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', p256dh: 'k', auth: 'a' };
+/** The transport policy a `task.due` send carries: ordinary urgency, a three-hour life. */
+const DELIVERY = { urgency: 'normal', ttlSeconds: 3 * 60 * 60 } as const;
+
 const PAYLOAD: PushPayload = {
   kind: NOTIFICATION_KIND.TEST,
   title: 'משימה להיום',
@@ -74,7 +77,9 @@ describe('WebPushSender', () => {
   });
 
   it('sends the payload as JSON with the VAPID details', async () => {
-    await expect(new WebPushSender().send(TARGET, PAYLOAD)).resolves.toBe(SEND_OUTCOME.SENT);
+    await expect(new WebPushSender().send(TARGET, PAYLOAD, DELIVERY)).resolves.toBe(
+      SEND_OUTCOME.SENT,
+    );
 
     const [subscription, body, options] = sendNotification.mock.calls[0];
     expect(subscription).toEqual({
@@ -91,17 +96,23 @@ describe('WebPushSender', () => {
   // lets the caller prune the row instead of retrying forever against a device that is gone.
   it.each([404, 410])('maps %i to GONE rather than to a failure', async (status) => {
     sendNotification.mockRejectedValueOnce(pushError(status));
-    await expect(new WebPushSender().send(TARGET, PAYLOAD)).resolves.toBe(SEND_OUTCOME.GONE);
+    await expect(new WebPushSender().send(TARGET, PAYLOAD, DELIVERY)).resolves.toBe(
+      SEND_OUTCOME.GONE,
+    );
   });
 
   it.each([400, 413, 429, 500, 503])('maps %i to FAILED, so the row survives', async (status) => {
     sendNotification.mockRejectedValueOnce(pushError(status));
-    await expect(new WebPushSender().send(TARGET, PAYLOAD)).resolves.toBe(SEND_OUTCOME.FAILED);
+    await expect(new WebPushSender().send(TARGET, PAYLOAD, DELIVERY)).resolves.toBe(
+      SEND_OUTCOME.FAILED,
+    );
   });
 
   it('treats a status-less network fault as FAILED', async () => {
     sendNotification.mockRejectedValueOnce(new Error('ECONNRESET'));
-    await expect(new WebPushSender().send(TARGET, PAYLOAD)).resolves.toBe(SEND_OUTCOME.FAILED);
+    await expect(new WebPushSender().send(TARGET, PAYLOAD, DELIVERY)).resolves.toBe(
+      SEND_OUTCOME.FAILED,
+    );
   });
 
   it('NAMES the reason when there is no status, because nothing else can', async () => {
@@ -112,7 +123,9 @@ describe('WebPushSender', () => {
       Object.assign(new Error('Vapid subject is not a url or mailto url'), { code: 'EINVAL' }),
     );
 
-    await expect(new WebPushSender().send(TARGET, PAYLOAD)).resolves.toBe(SEND_OUTCOME.FAILED);
+    await expect(new WebPushSender().send(TARGET, PAYLOAD, DELIVERY)).resolves.toBe(
+      SEND_OUTCOME.FAILED,
+    );
 
     expect(warn).toHaveBeenCalledTimes(1);
     expect(lastWarning()).toContain('no status');
@@ -123,7 +136,9 @@ describe('WebPushSender', () => {
   it('still logs a reason when the error is not an Error at all', async () => {
     sendNotification.mockRejectedValueOnce('a string, not an Error');
 
-    await expect(new WebPushSender().send(TARGET, PAYLOAD)).resolves.toBe(SEND_OUTCOME.FAILED);
+    await expect(new WebPushSender().send(TARGET, PAYLOAD, DELIVERY)).resolves.toBe(
+      SEND_OUTCOME.FAILED,
+    );
     expect(lastWarning()).toContain('a string, not an Error');
   });
 
@@ -132,7 +147,7 @@ describe('WebPushSender', () => {
     // interpolate it into the message. The host is fine in a log line; the path never is.
     sendNotification.mockRejectedValueOnce(new Error(`refused to POST ${TARGET.endpoint} today`));
 
-    await new WebPushSender().send(TARGET, PAYLOAD);
+    await new WebPushSender().send(TARGET, PAYLOAD, DELIVERY);
 
     expect(lastWarning()).not.toContain('/fcm/send/abc');
     expect(lastWarning()).toContain('[endpoint]');
@@ -141,7 +156,7 @@ describe('WebPushSender', () => {
   it('caps the reason, so a response body cannot become a log entry', async () => {
     sendNotification.mockRejectedValueOnce(new Error('x'.repeat(5_000)));
 
-    await new WebPushSender().send(TARGET, PAYLOAD);
+    await new WebPushSender().send(TARGET, PAYLOAD, DELIVERY);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(lastWarning().length).toBeLessThan(400);
   });
@@ -149,13 +164,15 @@ describe('WebPushSender', () => {
   it('says nothing extra when there IS a status — the number is the diagnosis', async () => {
     sendNotification.mockRejectedValueOnce(pushError(429));
 
-    await new WebPushSender().send(TARGET, PAYLOAD);
+    await new WebPushSender().send(TARGET, PAYLOAD, DELIVERY);
     expect(lastWarning()).toBe('push send failed (429) to fcm.googleapis.com');
   });
 
   it('never throws at the caller, whatever comes back', async () => {
     sendNotification.mockRejectedValueOnce('a string, not an Error');
-    await expect(new WebPushSender().send(TARGET, PAYLOAD)).resolves.toBe(SEND_OUTCOME.FAILED);
+    await expect(new WebPushSender().send(TARGET, PAYLOAD, DELIVERY)).resolves.toBe(
+      SEND_OUTCOME.FAILED,
+    );
   });
 
   it('refuses an oversized payload BEFORE the request, measuring bytes not characters', async () => {
@@ -165,10 +182,24 @@ describe('WebPushSender', () => {
     expect(long.length).toBeLessThanOrEqual(PUSH_PAYLOAD_MAX_BYTES);
     expect(Buffer.byteLength(long, 'utf8')).toBeGreaterThan(PUSH_PAYLOAD_MAX_BYTES);
 
-    await expect(new WebPushSender().send(TARGET, { ...PAYLOAD, body: long })).resolves.toBe(
-      SEND_OUTCOME.FAILED,
-    );
+    await expect(
+      new WebPushSender().send(TARGET, { ...PAYLOAD, body: long }, DELIVERY),
+    ).resolves.toBe(SEND_OUTCOME.FAILED);
     expect(sendNotification).not.toHaveBeenCalled();
+  });
+
+  it('tells the push service how long to hold it, and how urgently', async () => {
+    // The reported failure: with no TTL, `web-push` sends its FOUR WEEK default, so a device
+    // that was unreachable at the aimed-at minute got "your flight is in two hours" on its
+    // next reconnect. The kind's own `staleAfterMs` is the honest ceiling.
+    await new WebPushSender().send(TARGET, PAYLOAD, {
+      urgency: 'high',
+      ttlSeconds: 1800,
+    });
+
+    const [, , options] = sendNotification.mock.calls[0];
+    expect(options.TTL).toBe(1800);
+    expect(options.urgency).toBe('high');
   });
 
   it('calls through the CJS namespace’s `.default`, which is where the function lives', async () => {
@@ -177,19 +208,25 @@ describe('WebPushSender', () => {
     // on every send — and threw with no `statusCode`, so it read as an ordinary transport
     // failure for the whole life of the feature.
     shape = 'cjs';
-    await expect(new WebPushSender().send(TARGET, PAYLOAD)).resolves.toBe(SEND_OUTCOME.SENT);
+    await expect(new WebPushSender().send(TARGET, PAYLOAD, DELIVERY)).resolves.toBe(
+      SEND_OUTCOME.SENT,
+    );
     expect(sendNotification).toHaveBeenCalledTimes(1);
   });
 
   it('still works if the library ever exposes a real named export', async () => {
     shape = 'esm';
-    await expect(new WebPushSender().send(TARGET, PAYLOAD)).resolves.toBe(SEND_OUTCOME.SENT);
+    await expect(new WebPushSender().send(TARGET, PAYLOAD, DELIVERY)).resolves.toBe(
+      SEND_OUTCOME.SENT,
+    );
     expect(sendNotification).toHaveBeenCalledTimes(1);
   });
 
   it('sends nothing while PUSH_DISABLED is set', async () => {
     process.env.PUSH_DISABLED = '1';
-    await expect(new WebPushSender().send(TARGET, PAYLOAD)).resolves.toBe(SEND_OUTCOME.FAILED);
+    await expect(new WebPushSender().send(TARGET, PAYLOAD, DELIVERY)).resolves.toBe(
+      SEND_OUTCOME.FAILED,
+    );
     expect(sendNotification).not.toHaveBeenCalled();
   });
 
@@ -198,7 +235,7 @@ describe('WebPushSender', () => {
     // becoming a `FAILED`, because a missing key is a misconfiguration to fix, not a device
     // to mark — and `validateConfig` makes it impossible in production.
     delete process.env.VAPID_PRIVATE_KEY;
-    await expect(new WebPushSender().send(TARGET, PAYLOAD)).rejects.toThrow(
+    await expect(new WebPushSender().send(TARGET, PAYLOAD, DELIVERY)).rejects.toThrow(
       /VAPID_PRIVATE_KEY not configured/,
     );
     expect(sendNotification).not.toHaveBeenCalled();

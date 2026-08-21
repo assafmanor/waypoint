@@ -308,6 +308,21 @@ A `404` or `410` from the push service means the subscription is gone: **delete 
 
 No separate metrics table: `NotificationSend` **is** the record of what was sent, and `@@index([userId, sentAt])` is also what enforces 0198 §6's per-day cap.
 
+**AMENDED IN BUILD (2026-08-21, a field report): the two per-kind policies are TOLD to the push service, not just enforced here.**
+
+Reported: _"I got the notification as soon as I opened the app. But when it was closed I got nothing."_ The worker was not at fault — its `push` handler parses synchronously and hands `showNotification` to `event.waitUntil`, so a freshly-started worker cannot be killed before it draws. What happened is that the push service **held** the message while the device was unreachable and released it on reconnect, and it was entitled to: `web-push`'s default TTL is **four weeks** (`DEFAULT_TTL = 2419200`) and its default urgency is `normal`.
+
+So a send this sweep would refuse to re-derive after an hour could be delivered by FCM 672 hours later, saying "your flight is in two hours". The staleness rule existed on our side only.
+
+Both knobs are RFC 8030's and both are already declared per kind, so neither is a new decision — only a message that was never sent:
+
+- **`timeCritical` → `Urgency`.** §5.3's `high` row is "incoming call or time-sensitive alert", and is the one delivered to a device on low battery. That is what `timeCritical` already means, so the mapping is a rename.
+- **`staleAfterMs` → `TTL`**, rounded up so it cannot expire inside the window the sweep still considers current. A notification past its staleness is a lie about the time, and expiring it at the push service is the same answer we already give ourselves.
+
+Derived from the kind by id (`deliveryFor`) rather than declared a second time, because a per-kind table of urgencies is a copy that can disagree with the flag the sweep enforces. An unnamed kind — the dev-only `test` send — gets ordinary urgency and fifteen minutes rather than inheriting a month.
+
+**What this does not fix, and the honest limit:** it does not make a push arrive at a device whose browser the OS has stopped. Whether a closed PWA is woken at all is the platform's call — Android battery optimisation and a force-stopped browser both prevent it, and no header changes that. What this changes is that a late delivery no longer arrives as a **lie**: past its kind's staleness the send expires instead.
+
 **AMENDED IN BUILD (2026-08-21): the transport had never worked in production, and the reason was a mock looser than the module it stood for.**
 
 The first status-less failure, read once its reason was logged, said `webpush.sendNotification is not a function`. `web-push` is CommonJS, so a dynamic `import()` of it returns a Module namespace whose named exports are only those `cjs-module-lexer` can detect statically — for this library `WebPushError` and `supportedContentEncodings`, and **not** `sendNotification`, which is reachable only through `.default`. So every send this feature ever attempted threw, and because that `TypeError` carries no `statusCode` it was logged as an ordinary transport failure for the whole life of the epic.

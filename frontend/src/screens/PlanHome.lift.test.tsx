@@ -28,7 +28,7 @@ import {
 } from '@waypoint/shared';
 import { setSimulatedNow } from '../lib/useClock';
 import { BEAT } from '../lib/one-shot';
-import type { CheckId } from '../lib/readiness';
+import type { CheckId } from '@waypoint/shared';
 import { wrapNav } from '../test/nav-harness';
 import { t } from '../i18n/he';
 import { PLAN_TASK_CAP } from '../constants';

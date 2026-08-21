@@ -30,7 +30,7 @@
 // MID-STRING wherever a sentence allows it, `·` separates rather than parentheses or arrows,
 // and none of this is settled until it has been seen on both platforms' lock screens — the
 // device pass ADR-0198 §7 requires before phase A is called done.
-import { NOTIFICATION_KIND, type PushPayload } from '@waypoint/shared';
+import { NOTIFICATION_KIND, type CheckId, type PushPayload } from '@waypoint/shared';
 
 /** A time as a lock screen should read it: `18:00`, in the zone the deadline means. Through
  *  `Intl` with an explicit zone, the same derivation `send-policy.ts` uses for quiet hours,
@@ -269,5 +269,55 @@ export function tripTomorrowPayload(input: {
       ? `${input.tripName} · ${firstThing.title} ב-${clockLabel(firstThing.atMs, firstThing.zone)}`
       : input.tripName,
     url: eventUrl(input.tripId, input.dateKey),
+  };
+}
+
+// ── PHASE C: readiness ──────────────────────────────────────────────────────────────────
+
+/**
+ * **The five checks, named the way the tasks surface names them** (ADR-0190 §1).
+ *
+ * Short forms on purpose: this list is a body fragment, not a set of row titles, so
+ * `מסמכים ודרכונים` becomes `מסמכים`. Keyed by `CheckId`, so a sixth check cannot be added
+ * without the compiler asking for its word.
+ */
+const CHECK_WORD: Record<CheckId, string> = {
+  flights: 'טיסות',
+  lodging: 'לינה',
+  itinerary: 'מסלול',
+  documents: 'מסמכים',
+  group: "החבר'ה",
+};
+
+/**
+ * **How far out the milestone is, in Hebrew**, and the dual forms are the reason this is a
+ * lookup and not arithmetic on a number: 14 days is `שבועיים` and 2 is `יומיים`, neither of
+ * which a `${n} ימים` template can produce. Keyed by the same three offsets the kind fires
+ * at, so a fourth milestone must supply its own words.
+ */
+const MILESTONE_LABEL: Record<number, string> = {
+  14: 'שבועיים לטיול',
+  7: 'שבוע לטיול',
+  2: 'יומיים לטיול',
+};
+
+/**
+ * `readiness.nudge` — a milestone, and only what is still missing.
+ *
+ * ADR-0198 §2 asks for exactly this shape ("חסרים: לינה, מסמכים"): the app is speaking
+ * unprompted, so it owes a reason, and the reason is the gap rather than a percentage. A
+ * satisfied check is never named — being told what you have already done is what makes a
+ * nudge a nag.
+ */
+export function readinessNudgePayload(input: {
+  tripId: string;
+  daysOut: number;
+  missing: readonly CheckId[];
+}): PushPayload {
+  return {
+    kind: NOTIFICATION_KIND.READINESS_NUDGE,
+    title: MILESTONE_LABEL[input.daysOut] ?? 'מתקרבים לטיול',
+    body: `חסרים: ${input.missing.map((id) => CHECK_WORD[id]).join(', ')}`,
+    url: taskUrl(input.tripId),
   };
 }
