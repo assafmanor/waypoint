@@ -150,6 +150,21 @@ Two more reasons the queue is not the cheap option here, contra the costing:
 
 **The sweep's scope is every trip that has not ENDED — pre-trip explicitly included** (owner, 2026-08-20: _"we should be able to send reminders for due tasks even before the trip"_). This is worth stating because the obvious phrasing, "trips inside their access window", reads as ADR-0040's **Trip-mode** window and would have excluded exactly the case that matters most: ADR-0040 governs which **mode** a trip is in, not whether it is live data, and pre-trip is ordinary editable Plan mode where most task deadlines are actually written. So the filter is `endDate >= today`, not "is the board showing". A finished trip is the read-only archive (ADR-0040 §2) and is the only thing excluded.
 
+#### 3.3 CORRECTED IN PRODUCTION (2026-08-21) — the unique violation is the guarantee, not the path
+
+§3 says "inserting the ledger row IS the exactly-once mechanism: a unique violation means another tick, or another backend instance, already owns this send." That is still true, and building on it **as the normal path** was still wrong.
+
+The shape of the windows is what makes it obvious in hindsight. A kind selects its candidates within its own `staleAfterMs`, so `task.due`'s window is three hours wide — a deadline that fired at 12:00 is **still a candidate** at 12:01, 12:02 … 14:59. Every one of those ticks re-derived it, re-attempted the insert, and took a Postgres `ERROR: duplicate key value violates unique constraint`. About **180 per task, forever, for every task ever notified**, plus an INFO line a minute saying nothing happened.
+
+**Correctness never broke. Observability did** — and a log full of expected errors is a log with no errors in it. Which is how this was found: on a production dashboard, by the owner, not by a test.
+
+So the sweep now **reads the ledger once per tick** for exactly the keys its candidates would claim, and skips those already present. The insert keeps its `catch` for what it was always really for: two instances inside the same minute. That is a genuine race, it is rare, and losing it is worth a line. The pre-check is a check-then-act and therefore not a guarantee — it is not meant to be one; the unique index still is.
+
+Two rules fall out, both of them small and both of them the kind of thing that comes back if unwritten:
+
+- **The key is derived in one place** (`keyFor`), read by the pre-check and the insert. A pre-check that computed it even slightly differently would stop matching and silently restore the storm.
+- **A tick that did nothing says nothing.** "Every candidate already sent" is the normal state for the whole of a kind's window, so logging it per minute is the same noise one severity down.
+
 #### 3.2 What an edit does, and what the ledger has to forget (2026-08-21, phase A)
 
 §3's whole argument for refusing a queue was that **no edit path should have to know notifications exist**. Phase A is where that stopped being an argument and became a test suite, so the claim is written down as the table it was verified against:

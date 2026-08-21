@@ -49,7 +49,9 @@ export interface SweepReport {
   droppedCapped: number;
   /** The recipient has this kind's category switched off (ADR-0198 §6). */
   droppedPref: number;
-  /** Lost the ledger race to another tick or another instance. */
+  /** **Already in the ledger.** Nearly always found by the pre-check — a candidate whose
+   *  window has not closed yet but whose send went out on an earlier tick — and occasionally
+   *  by losing the insert race to another instance in the same minute. */
   alreadySent: number;
 }
 
@@ -60,6 +62,21 @@ export interface SweepReport {
  * `pruneLedger`.
  */
 export const LEDGER_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** The ledger's own unique key, as a value. Exactly the four columns of
+ *  `@@unique([userId, kind, subjectId, fireKey])`, so the pre-check and the insert cannot
+ *  disagree about what identifies a send. */
+interface LedgerKey {
+  userId: string;
+  kind: string;
+  subjectId: string;
+  fireKey: string;
+}
+
+/** A `LedgerKey` as a `Set` member. `\u0000` separates, because it cannot occur in any of the
+ *  four values — so two different keys can never collide into one string. */
+const ledgerKeyString = (key: LedgerKey): string =>
+  [key.userId, key.kind, key.subjectId, key.fireKey].join('\u0000');
 
 const EMPTY_REPORT: SweepReport = {
   candidates: 0,
@@ -106,9 +123,10 @@ export class NotificationSweepService {
     if (found.length === 0) return report;
 
     const userIds = [...new Set(found.map((f) => f.candidate.userId))];
-    const [spent, prefs] = await Promise.all([
+    const [spent, prefs, sent] = await Promise.all([
       this.spentToday(userIds, nowMs),
       this.prefsFor(userIds),
+      this.alreadyInLedger(found.map((f) => this.keyFor(f.candidate, f.kind))),
     ]);
 
     // Claimed sends accumulate and go out in ONE dispatch at the end. Not per-candidate,
@@ -117,7 +135,7 @@ export class NotificationSweepService {
     // handing it one item at a time would make the swap a rewrite instead of a binding change.
     const claimed: DueSend[] = [];
     for (const { candidate, kind } of found) {
-      if (await this.consider(candidate, kind, nowMs, zonesFor, spent, prefs, report)) {
+      if (await this.consider(candidate, kind, nowMs, zonesFor, spent, prefs, sent, report)) {
         claimed.push(candidate);
       }
     }
@@ -128,13 +146,69 @@ export class NotificationSweepService {
     // direction a notification should fail in.
     if (claimed.length > 0) await this.dispatcher.dispatch(claimed);
 
-    this.log.log(
-      `sweep: ${report.candidates} candidates, ${report.claimed} claimed, ` +
-        `${report.droppedStale} stale, ${report.deferredQuiet} quiet, ` +
-        `${report.droppedCapped} capped, ${report.droppedPref} opted out, ` +
-        `${report.alreadySent} already sent`,
-    );
+    // **A tick that did nothing says nothing.** "Every candidate already sent" is the normal
+    // state for the whole of a kind's window — three hours, per task — so logging it once a
+    // minute buried the ticks that matter. Anything actually claimed, or actually dropped for
+    // a reason, still logs.
+    if (report.claimed > 0 || report.alreadySent < report.candidates) {
+      this.log.log(
+        `sweep: ${report.candidates} candidates, ${report.claimed} claimed, ` +
+          `${report.droppedStale} stale, ${report.deferredQuiet} quiet, ` +
+          `${report.droppedCapped} capped, ${report.droppedPref} opted out, ` +
+          `${report.alreadySent} already sent`,
+      );
+    }
     return report;
+  }
+
+  /**
+   * The ledger key for one candidate. **One derivation, two readers** — the pre-check below
+   * and the claim itself — because a pre-check that computed the key even slightly differently
+   * from the insert would silently stop matching and quietly restore the storm it exists to
+   * prevent.
+   */
+  private keyFor(candidate: DueSend, kind: NotificationKind): LedgerKey {
+    return {
+      userId: candidate.userId,
+      kind: candidate.kind,
+      subjectId: candidate.subjectId,
+      fireKey: kind.dedup === DEDUP.BY_SUBJECT ? SUBJECT_FIRE_KEY : fireKeyFor(candidate.aimedAtMs),
+    };
+  }
+
+  /**
+   * **Which of this tick's candidates the ledger already holds** — one query, before any
+   * insert is attempted.
+   *
+   * ── WHY THIS EXISTS, AND IT IS A PRODUCTION DEFECT IT FIXES ──────────────────────────
+   *
+   * The unique index is the exactly-once mechanism and stays exactly that. But relying on the
+   * VIOLATION as the normal path was wrong, and the shape of the windows is what makes it
+   * obvious: `task.due` selects `dueAt` within `staleAfterMs` (three hours), so a deadline
+   * that fired at 12:00 is still a candidate at 12:01, 12:02 … 14:59. Every one of those ticks
+   * re-derived it, re-attempted the insert and took a **Postgres ERROR** — around 180 per
+   * task, forever, for every task ever notified.
+   *
+   * Correctness never broke; observability did. A log full of expected errors is a log with no
+   * errors in it, which is the state this was found in: on a production dashboard, by the
+   * owner, not by a test.
+   *
+   * So the pre-check makes the normal case a read, and the insert keeps its `catch` for what it
+   * was always really for — **two instances inside the same minute**. That is a genuine race,
+   * it is rare, and losing it is worth a line in the log.
+   *
+   * Exact tuples rather than three `in` lists intersected in memory: the tuple form cannot
+   * match a row this tick did not ask about, and each branch is a lookup on the unique index.
+   * The candidate count per tick is small by construction — every kind's window is bounded by
+   * its own `staleAfterMs`.
+   */
+  private async alreadyInLedger(keys: LedgerKey[]): Promise<Set<string>> {
+    if (keys.length === 0) return new Set();
+    const rows = await this.prisma.notificationSend.findMany({
+      where: { OR: keys },
+      select: { userId: true, kind: true, subjectId: true, fireKey: true },
+    });
+    return new Set(rows.map(ledgerKeyString));
   }
 
   /**
@@ -265,8 +339,18 @@ export class NotificationSweepService {
     zonesFor: (tripId: string) => Promise<TripZones>,
     spent: Map<string, number>,
     prefs: Map<string, Record<NotifyPref, boolean>>,
+    sent: Set<string>,
     report: SweepReport,
   ): Promise<boolean> {
+    // **First, because a send already made is not a candidate for anything.** Ahead of the
+    // policies deliberately: a done send is not "dropped as stale" or "deferred for quiet
+    // hours", and counting it as either would misreport what the tick did.
+    const ledgerKey = this.keyFor(candidate, kind);
+    if (sent.has(ledgerKeyString(ledgerKey))) {
+      report.alreadySent += 1;
+      return false;
+    }
+
     if (isStale({ nowMs, aimedAtMs: candidate.aimedAtMs, staleAfterMs: kind.staleAfterMs })) {
       report.droppedStale += 1;
       return false;
@@ -306,15 +390,7 @@ export class NotificationSweepService {
     // violation means another tick, or another backend instance, already owns this send.
     // Nothing here needs a lock or a leader.
     try {
-      await this.prisma.notificationSend.create({
-        data: {
-          userId: candidate.userId,
-          kind: candidate.kind,
-          subjectId: candidate.subjectId,
-          fireKey:
-            kind.dedup === DEDUP.BY_SUBJECT ? SUBJECT_FIRE_KEY : fireKeyFor(candidate.aimedAtMs),
-        },
-      });
+      await this.prisma.notificationSend.create({ data: ledgerKey });
       report.claimed += 1;
       // Counted against the budget in-memory too, so one tick cannot spend the same allowance
       // twice — the grouped query above is a snapshot from before any of these claims.
