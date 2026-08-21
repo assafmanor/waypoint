@@ -150,6 +150,32 @@ Two more reasons the queue is not the cheap option here, contra the costing:
 
 **The sweep's scope is every trip that has not ENDED — pre-trip explicitly included** (owner, 2026-08-20: _"we should be able to send reminders for due tasks even before the trip"_). This is worth stating because the obvious phrasing, "trips inside their access window", reads as ADR-0040's **Trip-mode** window and would have excluded exactly the case that matters most: ADR-0040 governs which **mode** a trip is in, not whether it is live data, and pre-trip is ordinary editable Plan mode where most task deadlines are actually written. So the filter is `endDate >= today`, not "is the board showing". A finished trip is the read-only archive (ADR-0040 §2) and is the only thing excluded.
 
+#### 3.2 What an edit does, and what the ledger has to forget (2026-08-21, phase A)
+
+§3's whole argument for refusing a queue was that **no edit path should have to know notifications exist**. Phase A is where that stopped being an argument and became a test suite, so the claim is written down as the table it was verified against:
+
+| the edit                              | what happens, and why                                                                                                                     |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| deadline moved, not yet fired         | fires at the new instant, never the old — the window is re-read every tick                                                                |
+| deadline moved **after** firing       | **re-arms**: a different instant is a different `fireKey`, and it is a different obligation                                               |
+| moved inside the same minute          | does not re-send — the bucket is the tick's interval                                                                                      |
+| title, body, assignee's name edited   | does not re-send — none of them move the aimed-at instant                                                                                 |
+| zone pin corrected                    | changes the printed hour, not the key: `dueAt` is the instant, the pin is only how it is read                                             |
+| settled (done / dismissed)            | drops out of every kind on the next tick — `status: open` is the first clause of every query                                              |
+| re-opened at the same deadline        | does **not** re-fire; the ledger row stands. Being told once is the promise                                                               |
+| deleted, or cascaded away by a parent | nothing to select. The sweep reads entities and never the change log, so the cascade hole ADR-0152 §2 costs the client costs this nothing |
+| re-assigned                           | the new assignee gets their own row; the old one is not told twice                                                                        |
+| un-assigned                           | back to the group for `task.due`; a pending `task.assigned` is **retracted** by its stamp clearing                                        |
+| a member removed                      | stops receiving, with no cancellation step (§2.4)                                                                                         |
+| trip dates shortened so it has ended  | stops. ADR-0040's archive is derived from the live window, so this is the same check                                                      |
+| an offline edit replayed hours late   | `staleAfterMs` drops it rather than firing a burst (ADR-0042)                                                                             |
+
+**And the one thing that does NOT take care of itself: the ledger grows monotonically.** It cascades from `User`, and there is deliberately no FK to `Task` or `Trip` — a send is _about_ a thing that may be gone, so the subject is an id and not a relation. Nothing else ever removed a row.
+
+So retention, and **the split is by `dedup`, because getting it the other way round would resurrect notifications rather than merely waste disk**. A `BY_INSTANT` row stops mattering once its instant is far behind: the longest reader is the 24-hour cap window. A `BY_SUBJECT` row _is_ the permanent answer to "has this person already been told about this task" — prune it and every assignment announcement fires again. So those are exempt, and they are cheap: one row per assignee per task, ever. The window is 30 days rather than the 25 hours correctness needs, because §10 makes this table the log as well as the ledger.
+
+It rides the sweep's own timer at a six-hour cadence rather than taking a second timer — a second timer is a second thing to shut down cleanly (ADR-0072) — and it sits inside the tick's `try`, so a failing prune is logged and dropped exactly like a failing tick. Housekeeping is never the reason a notification does not go out.
+
 ### 4. What is awake: an in-process ticker in the one service
 
 A `NotificationScheduler` provider in the single Nest service (ADR-0031, ADR-0169), started in `onApplicationBootstrap` and cleared in `onModuleDestroy` so ADR-0072's graceful shutdown stops it before the pool closes. **60-second interval**, which is also `fireKey`'s bucket: a notification may be up to a minute late, and nothing in 0198's catalogue is written to a tighter tolerance than that.

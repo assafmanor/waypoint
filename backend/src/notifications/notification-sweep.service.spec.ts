@@ -114,6 +114,18 @@ function fakePrisma(
           }),
         );
       },
+      deleteMany: ({ where }: { where: { kind: { in: string[] }; sentAt: { lt: Date } } }) => {
+        calls.push('deleteMany');
+        // Mirrors the real clause pair: BOTH must match, so a prune that dropped the `kind`
+        // filter would delete a by-subject row here and fail the test that forbids it.
+        const kept = ledger.filter(
+          (row) =>
+            !(where.kind.in.includes(row.kind) && row.sentAt.getTime() < where.sentAt.lt.getTime()),
+        );
+        const count = ledger.length - kept.length;
+        ledger.splice(0, ledger.length, ...kept);
+        return Promise.resolve({ count });
+      },
       create: ({
         data,
       }: {
@@ -337,6 +349,174 @@ describe('dedup BY_SUBJECT (ADR-0198’s "does not multiply")', () => {
 
     expect((await sweep.sweep(NOON)).claimed).toBe(3);
     expect(ledger).toHaveLength(3);
+  });
+});
+
+/**
+ * **What an edit actually SENDS** — the other half of ADR-0197 §3's claim.
+ *
+ * The kinds' own spec proves an edited row is re-read. These prove the ledger draws the right
+ * line through the result: a moved deadline is a different obligation and re-arms, an edited
+ * title is the same one and does not. Both fall out of `fireKey` being derived from the
+ * aimed-at instant, so no edit path has to know.
+ */
+describe('the ledger’s retention, and the rows it must never touch', () => {
+  const DAY = 24 * HOUR;
+
+  it('forgets dedup-by-INSTANT rows past retention', async () => {
+    kinds.push(
+      kind({ id: NOTIFICATION_KIND.TEST, dedup: DEDUP.BY_INSTANT, due: () => Promise.resolve([]) }),
+    );
+    const old = {
+      userId: 'u1',
+      kind: NOTIFICATION_KIND.TEST,
+      subjectId: 's',
+      fireKey: 'k',
+      sentAt: new Date(NOON - 40 * DAY),
+    };
+    const { prisma, ledger } = fakePrisma({ ledger: [old] });
+    const { sweep } = makeSweep(prisma);
+
+    expect(await sweep.pruneLedger(NOON)).toBe(1);
+    expect(ledger).toHaveLength(0);
+  });
+
+  it('keeps one still inside it', async () => {
+    kinds.push(
+      kind({ id: NOTIFICATION_KIND.TEST, dedup: DEDUP.BY_INSTANT, due: () => Promise.resolve([]) }),
+    );
+    const recent = {
+      userId: 'u1',
+      kind: NOTIFICATION_KIND.TEST,
+      subjectId: 's',
+      fireKey: 'k',
+      sentAt: new Date(NOON - 2 * DAY),
+    };
+    const { prisma, ledger } = fakePrisma({ ledger: [recent] });
+    const { sweep } = makeSweep(prisma);
+
+    expect(await sweep.pruneLedger(NOON)).toBe(0);
+    expect(ledger).toHaveLength(1);
+  });
+
+  it('NEVER forgets a dedup-by-SUBJECT row, however old', async () => {
+    // This is the load-bearing one. Such a row is the permanent answer to "has this person
+    // already been told about this task" — prune it and every assignment announcement in the
+    // app fires again. Getting the split the other way round is a bug that would look like a
+    // feature working.
+    kinds.push(
+      kind({ id: NOTIFICATION_KIND.TEST, dedup: DEDUP.BY_SUBJECT, due: () => Promise.resolve([]) }),
+    );
+    const ancient = {
+      userId: 'u1',
+      kind: NOTIFICATION_KIND.TEST,
+      subjectId: 's',
+      fireKey: 'once',
+      sentAt: new Date(NOON - 400 * DAY),
+    };
+    const { prisma, ledger } = fakePrisma({ ledger: [ancient] });
+    const { sweep } = makeSweep(prisma);
+
+    expect(await sweep.pruneLedger(NOON)).toBe(0);
+    expect(ledger).toHaveLength(1);
+  });
+
+  it('touches nothing at all with no kinds registered', async () => {
+    const { prisma, ledger } = fakePrisma({
+      ledger: [
+        {
+          userId: 'u1',
+          kind: 'gone.kind',
+          subjectId: 's',
+          fireKey: 'k',
+          sentAt: new Date(NOON - 400 * DAY),
+        },
+      ],
+    });
+    const { sweep } = makeSweep(prisma);
+    expect(await sweep.pruneLedger(NOON)).toBe(0);
+    // A row whose kind is no longer registered is left alone rather than guessed about.
+    expect(ledger).toHaveLength(1);
+  });
+});
+
+describe('an edit re-arms or it does not, and the ledger decides which', () => {
+  const HALF_HOUR = HOUR / 2;
+
+  it('RE-ARMS a deadline that moved, because that is a different instant', async () => {
+    kinds.push(kind({ staleAfterMs: 6 * HOUR, due: () => Promise.resolve([send()]) }));
+    const { prisma, ledger } = fakePrisma();
+    const { sweep, dispatcher } = makeSweep(prisma);
+    expect((await sweep.sweep(NOON)).claimed).toBe(1);
+
+    // The same task, its deadline moved two hours on.
+    kinds.length = 0;
+    kinds.push(
+      kind({
+        staleAfterMs: 6 * HOUR,
+        due: () => Promise.resolve([send({ aimedAtMs: NOON + 2 * HOUR })]),
+      }),
+    );
+    const second = await sweep.sweep(NOON + 2 * HOUR);
+
+    expect(second.claimed).toBe(1);
+    expect(second.alreadySent).toBe(0);
+    expect(ledger).toHaveLength(2);
+    expect(dispatcher.batches).toHaveLength(2);
+  });
+
+  it('does NOT re-send when only the words changed', async () => {
+    // An edited title, a new assignee's name, a corrected zone pin: none of them move the
+    // aimed-at instant, so none of them can re-send.
+    kinds.push(kind({ staleAfterMs: 6 * HOUR, due: () => Promise.resolve([send()]) }));
+    const { prisma, ledger } = fakePrisma();
+    const { sweep } = makeSweep(prisma);
+    await sweep.sweep(NOON);
+
+    kinds.length = 0;
+    kinds.push(
+      kind({
+        staleAfterMs: 6 * HOUR,
+        due: () =>
+          Promise.resolve([send({ payload: { ...PAYLOAD, title: 'a different title entirely' } })]),
+      }),
+    );
+    const second = await sweep.sweep(NOON + HALF_HOUR);
+
+    expect(second.alreadySent).toBe(1);
+    expect(second.claimed).toBe(0);
+    expect(ledger).toHaveLength(1);
+  });
+
+  it('does not re-send for a move inside the same MINUTE', async () => {
+    // The bucket is the tick's interval; finer than that is a distinction a 60-second sweep
+    // cannot make and a person would not notice.
+    kinds.push(kind({ due: () => Promise.resolve([send({ aimedAtMs: NOON })]) }));
+    const { prisma } = fakePrisma();
+    const { sweep } = makeSweep(prisma);
+    await sweep.sweep(NOON);
+
+    kinds.length = 0;
+    kinds.push(kind({ due: () => Promise.resolve([send({ aimedAtMs: NOON + 30_000 })]) }));
+    expect((await sweep.sweep(NOON + 30_000)).alreadySent).toBe(1);
+  });
+
+  it('re-arms per RECIPIENT, so a re-assigned task reaches its new owner', async () => {
+    // The old assignee heard about it and is not told twice; the new one has their own row.
+    kinds.push(kind({ due: () => Promise.resolve([send({ userId: 'u1' })]) }));
+    const { prisma, ledger } = fakePrisma({
+      users: [
+        { id: 'u1', notifyTasks: true },
+        { id: 'u2', notifyTasks: true },
+      ],
+    });
+    const { sweep } = makeSweep(prisma);
+    await sweep.sweep(NOON);
+
+    kinds.length = 0;
+    kinds.push(kind({ due: () => Promise.resolve([send({ userId: 'u2' })]) }));
+    expect((await sweep.sweep(NOON)).claimed).toBe(1);
+    expect(ledger.map((r) => r.userId).sort()).toEqual(['u1', 'u2']);
   });
 });
 

@@ -53,6 +53,14 @@ export interface SweepReport {
   alreadySent: number;
 }
 
+/**
+ * How long a **dedup-by-instant** ledger row is kept. Correctness needs only the 24-hour cap
+ * window; this is long because ADR-0197 §10 makes the ledger the log too, and a month is how
+ * far back "why did I get that" is worth answering. Dedup-by-subject rows are exempt — see
+ * `pruneLedger`.
+ */
+export const LEDGER_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
 const EMPTY_REPORT: SweepReport = {
   candidates: 0,
   claimed: 0,
@@ -127,6 +135,41 @@ export class NotificationSweepService {
         `${report.alreadySent} already sent`,
     );
     return report;
+  }
+
+  /**
+   * **Retention: forget the sends nothing will ever read again** — and NOT the ones that are
+   * somebody's only memory.
+   *
+   * The ledger grows monotonically. It cascades from `User`, so a deleted account takes its
+   * rows, but there is deliberately no FK to `Task` or `Trip` (the subject is an id, not a
+   * relation — a send is about a thing that may be gone, which is the point), so nothing
+   * else ever removes a row.
+   *
+   * **The split is by `dedup`, and getting it the other way round would resurrect
+   * notifications.** A `BY_INSTANT` row stops mattering once its instant is far behind: the
+   * longest thing that reads one is the 24-hour cap window, so anything older is dead weight.
+   * A `BY_SUBJECT` row IS the permanent answer to "has this person already been told about
+   * this task" — delete it and every assignment announcement fires again. So those are never
+   * pruned, and they are cheap: one row per assignee per task, ever.
+   *
+   * Thirty days rather than the 25 hours correctness needs, because §10 makes this table the
+   * log as well as the ledger — "why did I get that" is worth being able to answer for longer
+   * than a day.
+   *
+   * A kind REMOVED from the registry leaves rows that are neither prunable nor read. Harmless,
+   * and named here so the next person does not have to work out why.
+   */
+  async pruneLedger(nowMs: number): Promise<number> {
+    const byInstant = NOTIFICATION_KINDS.filter((kind) => kind.dedup === DEDUP.BY_INSTANT).map(
+      (kind) => kind.id,
+    );
+    if (byInstant.length === 0) return 0;
+    const { count } = await this.prisma.notificationSend.deleteMany({
+      where: { kind: { in: byInstant }, sentAt: { lt: new Date(nowMs - LEDGER_RETENTION_MS) } },
+    });
+    if (count > 0) this.log.log(`pruned ${count} ledger rows past retention`);
+    return count;
   }
 
   /**

@@ -367,3 +367,120 @@ describe('task.assigned', () => {
     expect(withoutTime.payload.body).not.toContain('עד');
   });
 });
+
+/**
+ * **Resilience to edits** — the property ADR-0197 §3 claims and the reason it refused a queue.
+ *
+ * A delayed job per notification would have to be cancelled and re-armed by every edit path:
+ * an LWW patch, a move, a ripple, a delete, a settle, a parent's cascade — and the cascades
+ * write no `Change` rows at all (the ADR-0152 §2 / ADR-0157 §3 hole). Deriving instead means
+ * **no edit path knows notifications exist**, and these tests are what makes that a fact
+ * rather than a claim: each one edits a row and asks the kind again, with nothing in between.
+ */
+describe('an edit needs no notification code to know about it', () => {
+  const now = utc('2026-08-21T15:00:00Z');
+
+  it('follows a deadline that MOVED before it fired', async () => {
+    // Out of the window: nothing, at the old instant or any other.
+    const moved = new Date(utc('2026-08-21T21:00:00Z'));
+    const later = fakePrisma({ tasks: [row({ dueAt: moved })] });
+    expect(await taskDueKind.due(input(later.prisma, now))).toEqual([]);
+
+    // And at its new instant it fires, aimed there and not at where it used to be.
+    const then = fakePrisma({ tasks: [row({ dueAt: moved })] });
+    const sends = await taskDueKind.due(input(then.prisma, moved.getTime()));
+    expect(sends[0].aimedAtMs).toBe(moved.getTime());
+  });
+
+  it('drops a task the moment it is SETTLED', async () => {
+    // `status: open` is the first clause of every phase-A query, so a tick right after a tick
+    // is the whole mechanism — no cancellation, no cleanup.
+    for (const status of ['done', 'dismissed']) {
+      const { prisma } = fakePrisma({ tasks: [row({ status })] });
+      expect(await taskDueKind.due(input(prisma, now))).toEqual([]);
+      const digest = fakePrisma({ tasks: [row({ status, dueHasTime: false })] });
+      expect(await taskDigestKind.due(input(digest.prisma, utc('2026-08-21T05:00:00Z')))).toEqual(
+        [],
+      );
+      const assigned = fakePrisma({
+        tasks: [row({ status, assigneeUserId: 'u-noam', assignedAt: new Date(now - HOUR) })],
+      });
+      expect(await taskAssignedKind.due(input(assigned.prisma, now))).toEqual([]);
+    }
+  });
+
+  it('says nothing about a task that no longer exists', async () => {
+    // Including one destroyed by a CASCADE — a deleted parent takes its steps in one
+    // statement and writes no `Change` rows for them. The sweep reads entities, never the
+    // change log, so the hole that costs the client an applier costs this nothing.
+    const { prisma } = fakePrisma({ tasks: [] });
+    expect(await taskDueKind.due(input(prisma, now))).toEqual([]);
+  });
+
+  it('re-points at a new assignee, and stops pointing at the old one', async () => {
+    const before = fakePrisma({ tasks: [row({ assigneeUserId: 'u-assaf' })] });
+    expect((await taskDueKind.due(input(before.prisma, now))).map((s) => s.userId)).toEqual([
+      'u-assaf',
+    ]);
+
+    const after = fakePrisma({ tasks: [row({ assigneeUserId: 'u-noam' })] });
+    expect((await taskDueKind.due(input(after.prisma, now))).map((s) => s.userId)).toEqual([
+      'u-noam',
+    ]);
+  });
+
+  it('hands a task back to the GROUP when its assignee is cleared', async () => {
+    const { prisma } = fakePrisma({ tasks: [row({ assigneeUserId: null })] });
+    expect((await taskDueKind.due(input(prisma, now))).map((s) => s.userId).sort()).toEqual([
+      'u-assaf',
+      'u-noam',
+    ]);
+  });
+
+  it('retracts a pending assignment announcement when the assignee is cleared', async () => {
+    // `assignmentStamp` nulls `assignedAt` on un-assign, so a send that has not gone out
+    // simply stops being due — which is the retraction, with nothing to cancel.
+    const { prisma } = fakePrisma({
+      tasks: [row({ assigneeUserId: null, assignedAt: null })],
+    });
+    expect(await taskAssignedKind.due(input(prisma, now))).toEqual([]);
+  });
+
+  it('re-reads the deadline’s PINNED zone, so a corrected pin corrects the printed hour', async () => {
+    // The pin changes what the body says, never when it fires: `dueAt` is the instant and the
+    // pin is only how it is read (ADR-0194).
+    const jerusalem = fakePrisma({ tasks: [row({ displayTimezone: 'Asia/Jerusalem' })] });
+    const a = await taskDueKind.due(input(jerusalem.prisma, now));
+    const tokyo = fakePrisma({ tasks: [row({ displayTimezone: 'Asia/Tokyo' })] });
+    const b = await taskDueKind.due(input(tokyo.prisma, now));
+
+    expect(a[0].payload.body).toContain('18:00');
+    expect(b[0].payload.body).toContain('00:00');
+    // Same instant either way — so the ledger key is unchanged and a re-pin cannot re-send.
+    expect(a[0].aimedAtMs).toBe(b[0].aimedAtMs);
+  });
+
+  it('never fires an edit an offline device replayed too late', async () => {
+    // The outbox can land an edit hours after it was made (ADR-0042). `staleAfterMs` is what
+    // makes that safe: a deadline replayed further into the past than the window is simply
+    // never selected, rather than arriving as a burst.
+    const { prisma } = fakePrisma({ tasks: [row({ dueAt: new Date(now - 5 * HOUR) })] });
+    expect(await taskDueKind.due(input(prisma, now))).toEqual([]);
+  });
+
+  it('stops when the trip’s dates move so that it has ENDED', async () => {
+    // ADR-0040's archive is DERIVED from the live window rather than stored, so shortening a
+    // trip's `endDate` archives it and this check is the same one.
+    const { prisma } = fakePrisma({
+      tasks: [row()],
+      trips: [
+        {
+          id: 'trip-1',
+          endDate: new Date(utc('2026-08-19T00:00:00Z')),
+          timezone: 'Asia/Jerusalem',
+        },
+      ],
+    });
+    expect(await taskDueKind.due(input(prisma, now))).toEqual([]);
+  });
+});

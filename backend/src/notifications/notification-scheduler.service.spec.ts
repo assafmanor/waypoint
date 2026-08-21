@@ -11,7 +11,11 @@ const hoisted = vi.hoisted(() => ({ kinds: [] as unknown[] }));
 const kinds = hoisted.kinds as NotificationKind[];
 vi.mock('./notification-registry', () => ({ NOTIFICATION_KINDS: hoisted.kinds }));
 
-import { NotificationSchedulerService, SWEEP_INTERVAL_MS } from './notification-scheduler.service';
+import {
+  NotificationSchedulerService,
+  PRUNE_INTERVAL_MS,
+  SWEEP_INTERVAL_MS,
+} from './notification-scheduler.service';
 
 const aKind = () =>
   ({
@@ -24,7 +28,10 @@ const aKind = () =>
   }) as NotificationKind;
 
 function build() {
-  const sweep = { sweep: vi.fn().mockResolvedValue(undefined) };
+  const sweep = {
+    sweep: vi.fn().mockResolvedValue(undefined),
+    pruneLedger: vi.fn().mockResolvedValue(0),
+  };
   return {
     sweep,
     scheduler: new NotificationSchedulerService(sweep as unknown as NotificationSweepService),
@@ -73,6 +80,47 @@ describe('NotificationSchedulerService', () => {
       scheduler.onModuleDestroy();
       await vi.advanceTimersByTimeAsync(5 * SWEEP_INTERVAL_MS);
       expect(sweep.sweep).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('the ledger’s retention rides the sweep’s timer', () => {
+    it('prunes on the first tick, then not again until its own interval', async () => {
+      // Once per six hours off a sixty-second timer: a `deleteMany` over a date range has
+      // nothing to do 1,439 minutes out of every 1,440.
+      const { scheduler, sweep } = build();
+      await scheduler.tick(0);
+      expect(sweep.pruneLedger).toHaveBeenCalledTimes(1);
+
+      await scheduler.tick(SWEEP_INTERVAL_MS);
+      await scheduler.tick(PRUNE_INTERVAL_MS - 1);
+      expect(sweep.pruneLedger).toHaveBeenCalledTimes(1);
+
+      await scheduler.tick(PRUNE_INTERVAL_MS);
+      expect(sweep.pruneLedger).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not run while PUSH_DISABLED is set', async () => {
+      // The kill switch stops the whole tick, housekeeping included — one switch, one answer.
+      const { scheduler, sweep } = build();
+      process.env[PUSH_DISABLED] = '1';
+      await scheduler.tick(0);
+      expect(sweep.pruneLedger).not.toHaveBeenCalled();
+    });
+
+    it('keeps retrying after a failure rather than going quiet for six hours', async () => {
+      // `lastPrunedAtMs` advances only on success.
+      const { scheduler, sweep } = build();
+      sweep.pruneLedger.mockRejectedValueOnce(new Error('db down'));
+      await scheduler.tick(0);
+      await scheduler.tick(SWEEP_INTERVAL_MS);
+      expect(sweep.pruneLedger).toHaveBeenCalledTimes(2);
+    });
+
+    it('never stops a send: a failing prune is dropped like a failing tick', async () => {
+      const { scheduler, sweep } = build();
+      sweep.pruneLedger.mockRejectedValue(new Error('db down'));
+      await expect(scheduler.tick(0)).resolves.toBeUndefined();
+      expect(sweep.sweep).toHaveBeenCalledOnce();
     });
   });
 
