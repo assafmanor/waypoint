@@ -1,146 +1,160 @@
-# 0200 — Five public skill libraries come in vendored, pinned, and outranked
+# 0200 — Vendored skills are method, pinned; the ones that decide things for us are refused
 
 **Status:** Accepted
 **Date:** 2026-08-21
-**Relates:** [ADR-0175](0175-the-mockup-procedure-is-a-skill.md) (the one skill we wrote; this places 47 we did not beside it), [ADR-0096](0096-per-domain-claude-md-guides.md) (progressive disclosure — the reason a skill is cheaper than a `CLAUDE.md` paragraph), [ADR-0046](0046-retire-the-task-board.md) (the backlog lines this adds), [ADR-0028](0028-plan-violet-color-budget-dark-ready.md) / [`design-language.md`](../design/design-language.md) (the palette these skills will argue with)
+**Relates:** [ADR-0175](0175-the-mockup-procedure-is-a-skill.md) (the one skill we wrote; this places 33 we did not beside it), [ADR-0096](0096-per-domain-claude-md-guides.md) (progressive disclosure — the reason a skill is cheaper than a `CLAUDE.md` paragraph), [ADR-0028](0028-plan-violet-color-budget-dark-ready.md) / [`design-language.md`](../design/design-language.md) (the palette two of these repos wanted to replace), [ADR-0046](0046-retire-the-task-board.md) (the backlog line this adds)
 
 ## Context
 
 Owner ask: pull `ui-ux-pro-max-skill`, `impeccable`, `agent-skills`,
 `andrej-karpathy-skills` and Superpowers into the repo's Claude skills so sessions
-actually use them. Resolved to five upstreams:
+actually use them.
 
-| Repo                                                                                            | Skills                                                       | License                      |
-| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------- |
-| [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) | 7 (design intelligence, searchable style/palette/font data)  | MIT                          |
-| [pbakaus/impeccable](https://github.com/pbakaus/impeccable)                                     | 1 (a design language plus a real anti-pattern detector)      | Apache-2.0                   |
-| [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills)                           | 24 (engineering practice: TDD, review, perf, security, ADRs) | MIT                          |
-| [obra/superpowers](https://github.com/obra/superpowers)                                         | 14 (workflow: brainstorming, plans, subagents, verification) | MIT                          |
-| [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills)       | 1 (LLM coding-pitfall guidelines)                            | MIT, declared in README only |
+**Taken literally, that is 47 skills, 484 files, ~15 MB, 181k lines** — and it was, in
+the first pass on this branch. The owner's response to that diff is the reason this ADR
+exists: _"181k lines… doesn't it look too excessive… no need for all of this 15mb of
+styling and stuff… we don't want the opinionated stuff that go against our adrs and
+conventions."_ Both halves of that are the same finding from two directions, and the
+measurement makes it concrete:
 
-**47 skills, 484 files, ~15 MB.** Four facts from the harness docs decided the shape,
-and none of them were guessable from the request:
+|                                                                                                       | lines | weight |
+| ----------------------------------------------------------------------------------------------------- | ----- | ------ |
+| `impeccable`                                                                                          | 72.6k | 3.5 MB |
+| `ui-ux-pro-max` (+ `ui-styling`, `design-system`, `brand`, `slides`, `banner-design`, `ui-ux-design`) | 90.7k | 11 MB  |
+| everything else (process + engineering method)                                                        | 16.2k | 1 MB   |
 
-1. A project skill is invoked by its **directory** name. Frontmatter `name` is a
-   display label and nothing more — so a rename means renaming a directory.
-2. **A project skill silently replaces a bundled skill of the same name.** `design` is
-   a bundled skill (the design canvas). Vendored as-is, ui-ux-pro-max's `design` would
-   have taken it over with no warning anywhere.
-3. Nesting for tidiness does not exist. `.claude/skills/<collection>/<skill>/SKILL.md`
-   is not discovered; a nested `.claude/skills/` means _a subdirectory of the repo_,
-   loaded only once Claude touches a file there. So 47 flat directories it is.
-4. The skill listing has a **character budget of ~1% of the context window**, and when
-   it overflows Claude Code drops descriptions **starting with the skills you invoke
-   least**. Our 48 project skills alone total 13.5k chars of description, against a
-   default budget near 8k for everything including the bundled skills.
+**90% of the bulk was two repos whose job is to decide what a UI looks like.** Not
+incidentally — that _is_ the product: a palette, a type scale, 5.5 MB of fonts, an
+824 KB icon index, a 500 KB bundled browser script. And what a UI looks like is the one
+thing this repo has decided most explicitly: root rule 4 (amber = time and commitment,
+teal = location, `--plan` violet = plan mode, and nothing else),
+[`design-language.md`](../design/design-language.md), and ADR-0175's `design-mockups`
+procedure for drawing anything at all. So the largest thing in the diff was also the
+thing least entitled to an opinion here.
 
-Point 4 is the one that would have quietly undone the whole exercise: a skill with no
-description in the listing is a skill Claude stops matching. `design-mockups` — 685
-chars, second-fattest description, invoked rarely, and **mandatory** for design work
-under ADR-0175 — is exactly the profile the eviction rule reaches for first. Adding 47
-skills would have blunted the one skill this repo actually wrote.
+The same test, applied to process, disqualifies six more skills — each prescribing
+something already decided differently:
 
-And the deeper problem is not context, it is **authority**. These skills are opinionated
-about the things this repo has already decided. `impeccable`, `ui-ux-pro-max`,
-`ui-styling`, `design-system` and `brand` each ship a palette and type scale, against
-root rule 4 (amber = time and commitment, teal = location, `--plan` violet = plan mode,
-and nothing else). `documentation-and-adrs`, `git-workflow-and-versioning` and
-`shipping-and-launch` overlap root `CLAUDE.md` and `conventions.md`. All of them write
-em dashes freely. None has seen an RTL phone-first PWA. Left unranked, that is 47 files
-of confident instruction competing with the ones we wrote on purpose.
+- `using-superpowers` — _"invoke a skill BEFORE any response or action, including
+  clarifying questions"_, _"you do not have a choice"_. The exact inverse of this
+  repo's context-engineering rule: load the minimum for the change in front of you.
+- `git-workflow-and-versioning` — trunk-based development, its own branch naming, a
+  semver/changelog release flow. Ours: branch per task, Conventional Commits, no
+  versioning scheme at all.
+- `documentation-and-adrs` — its own ADR template and threshold. Ours is stricter and
+  written down: an ADR for a decision, not for an adjustment; amend in place.
+- `finishing-a-development-branch` — presents _"merge back to `<base-branch>` locally"_
+  as an option. Root `CLAUDE.md` forbids committing onto local `main`.
+- `using-git-worktrees` — worktree setup as a precondition; our isolation is
+  branch-per-task, and `.claude/worktrees/` is gitignored scratch.
+- `using-agent-skills` — a meta-router whose decision tree points at three of the above.
+
+Four harness facts shaped the mechanics, none guessable from the request: a project
+skill is invoked by its **directory** name (frontmatter `name` is only a label); a
+project skill **silently replaces a bundled skill** of the same name; grouping
+subfolders inside `.claude/skills/` are not discovered at all; and the skill listing has
+a **~1%-of-context character budget** past which descriptions are dropped **starting
+with the least-invoked skill** — which is precisely `design-mockups`, rarely invoked and
+mandatory under ADR-0175.
 
 ## Decision
 
-**Vendored, pinned by commit, flat, renamed only where a name collides, and explicitly
-outranked by this repo.**
+**Take the method, refuse the authority.** 33 skills, ~1 MB, 16.2k lines.
 
-### 1. Pinned by commit, materialised by a script
+### 1. What comes in
 
-[`.claude/vendor/skills.json`](../../.claude/vendor/skills.json) holds the five sources
-with their commit, license, upstream skills directory, renames and path rewrites;
-[`sync-skills.mjs`](../../.claude/vendor/sync-skills.mjs) re-materialises exactly that
-state (`--check` fails on drift, `--bump` moves the pins and prints the diff to review).
+| Source                                                                                          | Kept | Refused |
+| ----------------------------------------------------------------------------------------------- | ---- | ------- |
+| [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills)                           | 21   | 3       |
+| [obra/superpowers](https://github.com/obra/superpowers)                                         | 11   | 3       |
+| [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills)       | 1    | 0       |
+| [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) | 0    | 7       |
+| [pbakaus/impeccable](https://github.com/pbakaus/impeccable)                                     | 0    | 1       |
 
-Pinned rather than tracked because **these files are instructions Claude follows.** An
+What is left is review, debugging, verification, specs, incremental delivery, perf,
+security, and the Karpathy pitfall list — the register root `CLAUDE.md`'s own "two ways
+a session goes wrong" section is written in. `frontend-ui-engineering` survives the
+design cut because it argues _against_ imposing a palette (_"use the project's actual
+color palette"_), which is our rule stated by someone else.
+
+**`impeccable`'s detector is the one real loss** and worth naming so it can be
+reconsidered deliberately: mechanical anti-pattern checks are exactly what this repo
+values, and ADR-0175 exists because rendering finds defects reading does not. It is
+refused at 3.5 MB of bundled browser JS carrying a competing design language, not on
+merit. If it comes back, it comes back as the detector alone.
+
+### 2. Pinned by commit, with an allowlist
+
+[`.claude/vendor/skills.json`](../../.claude/vendor/skills.json) pins each source by
+commit and carries an **allowlist of upstream directory names** plus an `excluded` map
+with a one-line reason per refusal. [`sync-skills.mjs`](../../.claude/vendor/sync-skills.mjs)
+materialises exactly that (`--check` fails on drift, `--bump` moves the pins).
+
+Pinned rather than tracked because **these files are instructions Claude follows**: an
 upstream edit changes how every session behaves, which is a reviewed commit, not
-whatever `main` said this morning. The script owns only the directories the pinned
-commits contain and names anything else as unclaimed rather than deleting it — the one
-unclaimed directory today is `design-mockups`, and a sync that could remove it would be
-a worse tool than no tool.
+whatever `main` said this morning. An allowlist rather than "everything in `skills/`"
+because curation is now the substance of the decision — and anything upstream in neither
+list is **reported by every sync**, so a `--bump` surfaces a new skill as a decision
+rather than adopting or dropping it silently. The script owns only the directories the
+pins name and never deletes an unclaimed one, so `design-mockups` is out of reach.
 
-### 2. Three names differ from upstream, and only three
+### 3. Two renames' worth of collision, down to one
 
-`design` → **`ui-ux-design`** (the bundled-skill collision above).
-`test-driven-development` (addyosmani) → **`agent-skills-test-driven-development`**,
-because Superpowers ships one too and two directories cannot share a name; Superpowers
-keeps the plain name, and the six sibling files that route to the renamed one by name
-were rewritten with it. Two path rewrites for the same class of reason —
-`${CLAUDE_PLUGIN_ROOT}` and `~/.claude/skills/design/scripts/` resolve to nothing in a
-project install, so both become `${CLAUDE_SKILL_DIR}`.
+Both remaining repos ship a `test-driven-development`; Superpowers keeps the plain name
+and addyosmani's becomes **`agent-skills-test-driven-development`**, with the siblings
+that route to it by name rewritten to match. The first pass also needed `design` →
+`ui-ux-design` to stop a project skill silently replacing the bundled design canvas —
+**refusing that repo removed the collision instead of managing it**, which is the better
+shape of the same fix.
 
-Every edit is declared in the manifest and applied by the script, which keeps a diff
-against upstream reviewable. Verified byte-identical to the pinned trees everywhere no
-rewrite was declared — including `ui-styling`'s 81 OFL font binaries, which is why the
-rewriter is byte-preserving rather than UTF-8-decoding.
+Where a kept skill called a refused one a **required sub-skill**, the reference is
+redirected to the convention that applies here (`finishing-a-development-branch` → the
+pull-request convention; `using-git-worktrees` → branch-per-task;
+`git-workflow-and-versioning` → `conventions.md`). Every redirect is declared in the
+manifest, so a diff against upstream stays reviewable — dangling required sub-skills
+would otherwise leave three workflows with no ending.
 
-### 3. The listing budget is raised, and the cost is stated
+### 4. The listing budget, and rule 9
 
-`skillListingBudgetFraction: 0.04` in `.claude/settings.json`. Roughly 6–8k tokens of
-every session's context spent advertising skills, which is the honest price of 47 of
-them; the alternative is a listing that silently forgets `design-mockups`.
-
-### 4. They lose every argument with this repo
-
-Root `CLAUDE.md` gains **rule 9**, and
-[`.claude/skills/README.md`](../../.claude/skills/README.md) carries the detail: the
-precedence order (root `CLAUDE.md` → ADRs → `design-language.md` → package
-`CLAUDE.md`), the named conflicts, and the standing instruction to take a vendored
-design skill's _method_ and never its _tokens_.
-
-### 5. Skills only
-
-These upstreams also ship hooks, subagents, commands and MCP config, which
-`.claude/skills/` does not load. The visible casualty is Superpowers' session-start
-hook, whose job is to force `using-superpowers` to load before anything else. Not
-ported, and that is the decision rather than an omission: advice does not get to
-pre-empt the turn.
+`skillListingBudgetFraction: 0.02`. The 34 project skills now total **8.5k chars** of
+description; at the default ~1% they would still crowd the bundled skills' entries, and
+an evicted description is a skill Claude stops matching. Root `CLAUDE.md` gains **rule
+9**: a vendored skill never outranks this repo, and the refusals are listed so one is
+not proposed back from memory.
 
 ## Consequences
 
-- Every session, local and cloud, gets 47 more skills; they are found by description
-  like any other, and `design-mockups` keeps its own.
-- The repo grows ~15 MB, most of it `ui-styling`'s fonts (5.5 MB, OFL, shipped with
-  their licenses) and ui-ux-pro-max's searchable data (3.1 MB). `.prettierignore`
-  already covers `.claude/**`, so none of it enters the format or lint surface — the
-  one piece of luck in this change.
-- Four licenses now ship inside the repo (MIT ×3, Apache-2.0 ×1, plus OFL fonts). The
-  karpathy repo declares MIT in its README and ships no `LICENSE` file; recorded rather
-  than resolved.
-- A skill that assumes network, a Gemini API key, or Chrome DevTools MCP will fail
-  where those are absent. `ui-ux-design`'s logo and CIP generation and
-  `browser-testing-with-devtools` are the clear cases. They fail loudly, so no guard.
-- The reverse risk is real and not fully mitigated: 47 confident voices raise the odds
-  of a session following generic advice over a decision recorded here. Rule 9 and the
-  README are the answer today. If it happens anyway, the fix is fewer skills, not more
-  prose.
+- 33 more skills in every session, local and cloud, found by description like any other.
+  The repo grows ~1 MB of markdown and small scripts — no binaries, no vendored bundles.
+  `.prettierignore` already covers `.claude/**`, so none of it enters format or lint.
+- **Design guidance is deliberately unchanged by this ADR.** `design-mockups`,
+  `design-language.md` and ADR-0028 remain the whole story; the only new voice near the
+  surface is `frontend-ui-engineering`, on accessibility and responsive behaviour.
+- Two licenses ship inside the repo (MIT ×3 across three repos). The karpathy repo
+  declares MIT in its README and ships no `LICENSE` file; recorded rather than resolved.
+- `browser-testing-with-devtools` needs the Chrome DevTools MCP server and fails loudly
+  without it. No guard.
+- The reverse risk is smaller but real: 33 confident voices still raise the odds of a
+  session following generic advice over a decision recorded here. Rule 9 and
+  `.claude/skills/README.md` are the answer; if it happens anyway, the fix is fewer
+  skills, not more prose.
 
 ## Alternatives considered
 
-- **A plugin marketplace install, or git submodules.** Both keep the tree small and
-  updates trivial. Rejected: cloud and CI sessions clone this repo and get what is
-  committed — a skill that needs a second fetch is a skill that is absent exactly when
-  a sandboxed session needs it. Vendoring is the only form that always loads.
-- **Namespacing every skill by collection** (`superpowers-brainstorming`, …). Kills all
-  collisions mechanically and prints provenance in the `/` menu. Rejected: it breaks
-  every cross-reference these collections make to each other by name — 40-odd of them —
-  and turns each future re-vendoring into a rename pass. Two renames beat 47.
-- **A `.claude-plugin/plugin.json` per collection**, which the harness loads as
-  `<name>@skills-dir` and namespaces for free. Rejected: it needs the workspace trust
-  dialog accepted before it loads, which is precisely the headless and cloud case.
-- **Dropping the heavy assets** (fonts, style data) to keep the repo lean. Rejected:
-  the skills read them. A half-vendored skill that fails at its first script is worse
-  than a fat one that works.
-- **Taking only the design skills**, since that is where this repo's live work is.
-  Rejected against the ask, and the process skills are the better bargain anyway —
-  `verification-before-completion` and `doubt-driven-development` name failure modes
-  that root `CLAUDE.md`'s own "two ways a session goes wrong" section was written about.
+- **Vendor all 47, as asked.** Done first, and it is what produced the 181k-line diff.
+  Rejected on the owner's reading of it, and the measurement agrees: the bulk was the
+  part with the least right to an opinion here.
+- **Keep the design repos but strip their heavy assets** — drop the fonts, the icon
+  index, the bundled detector. Rejected: the skills read those files, so what survives
+  is the palette prose without the tooling that made it checkable. That is the worst
+  half of both.
+- **Keep the process skills and let rule 9 arbitrate.** Rejected: a rule that has to be
+  re-won in every session is not a rule. A skill asserting _"you do not have a choice"_
+  is not a peer to root `CLAUDE.md`, and the cheapest way to win that argument once is
+  to not ship the argument.
+- **A plugin marketplace install, or git submodules.** Both keep the tree small.
+  Rejected: cloud and CI sessions get what is committed, so a skill needing a second
+  fetch is absent exactly when a sandboxed session needs it.
+- **Namespacing every skill by collection** (`superpowers-brainstorming`, …). Rejected:
+  it breaks the cross-references these repos make to each other by name and turns every
+  re-vendoring into a rename pass. One rename beats 33.

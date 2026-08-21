@@ -65,6 +65,7 @@ function relabel(skillDir, name) {
 const manifest = JSON.parse(readFileSync(MANIFEST, 'utf8'));
 const staging = mkdtempSync(join(tmpdir(), 'waypoint-skills-'));
 const owned = [];
+const unreviewed = [];
 let bumped = false;
 
 // --check must not repair what it is checking: it materialises somewhere else and compares.
@@ -103,8 +104,19 @@ try {
     const from = join(workDir, src.skillsDir);
     if (!existsSync(from)) throw new Error(`${src.id}: no ${src.skillsDir} at ${head.slice(0, 10)}`);
 
-    for (const entry of readdirSync(from, { withFileTypes: true })) {
-      if (!entry.isDirectory() || !existsSync(join(from, entry.name, 'SKILL.md'))) continue;
+    const upstream = readdirSync(from, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && existsSync(join(from, e.name, 'SKILL.md')))
+      .map((e) => e.name);
+
+    // Curation is deliberate, so an upstream skill in neither list is reported rather than
+    // guessed at: a --bump should surface a new skill as a decision, not adopt or drop it.
+    const undecided = upstream.filter((n) => !src.skills.includes(n) && !(n in (src.excluded ?? {})));
+    if (undecided.length) unreviewed.push(`${src.id}: ${undecided.join(', ')}`);
+    for (const want of src.skills) {
+      if (!upstream.includes(want)) throw new Error(`${src.id}: no skill "${want}" at ${head.slice(0, 10)}`);
+    }
+
+    for (const entry of upstream.filter((n) => src.skills.includes(n)).map((name) => ({ name }))) {
       const name = src.renames[entry.name] ?? entry.name;
       const dest = join(OUT_ROOT, name);
       if (owned.includes(name)) throw new Error(`two sources both claim the skill name "${name}"`);
@@ -144,3 +156,7 @@ const unclaimed = present.filter((n) => !owned.includes(n));
 
 console.log(`${owned.length} vendored skills in ${relative(REPO_ROOT, SKILLS_ROOT)}/`);
 if (unclaimed.length) console.log(`not vendored (left alone): ${unclaimed.join(', ')}`);
+if (unreviewed.length) {
+  console.log(`\nupstream skills in neither the allowlist nor \`excluded\` — decide, then list them:`);
+  for (const line of unreviewed) console.log(`  ${line}`);
+}

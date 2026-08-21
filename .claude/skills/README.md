@@ -4,78 +4,85 @@ Two kinds live here, and the difference matters more than anything else on this 
 
 | | Written for this repo | Vendored from upstream |
 | --- | --- | --- |
-| Which | `design-mockups` ([ADR-0175](../../docs/decisions/0175-the-mockup-procedure-is-a-skill.md)) | the other 47, from five public repos |
+| Which | `design-mockups` ([ADR-0175](../../docs/decisions/0175-the-mockup-procedure-is-a-skill.md)) | the other 33, from three public repos |
 | Authority | **it is the rule** — it encodes decisions this repo has actually made | **advice** — it knows nothing about Travelive |
 | Edit it? | yes, in place, like any file we own | no: edit the pin in [`../vendor/skills.json`](../vendor/skills.json) instead |
 
-## Vendored skills lose every argument with this repo
+## What is here
 
-They were written for other people's codebases. They will confidently tell you to
-use a palette we don't use, a git workflow we don't use, and a docs convention we
-don't use. When a vendored skill and this repo disagree, **this repo wins** — root
-`CLAUDE.md`, the ADRs in `docs/decisions/`, `docs/design/design-language.md`, and the
-per-package `CLAUDE.md` files, in that order. The conflicts that are not hypothetical:
+Pinned by commit in [`../vendor/skills.json`](../vendor/skills.json). Method and
+engineering practice only — roughly 1 MB of markdown and small scripts.
 
-- **Design language.** `impeccable`, `ui-ux-pro-max`, `ui-ux-design`, `ui-styling`,
-  `design-system` and `brand` all carry their own opinions about color, type and
-  spacing. Ours are in `docs/design/design-language.md` and root rule 4 (amber = time
-  and commitment, teal = location, `--plan` violet = plan mode, and nothing else).
-  Take their *method* — contrast checks, hierarchy, motion discipline, the
-  anti-pattern detectors. Do not take their tokens.
-- **Drawing a surface.** `design-mockups` is the procedure here, and it is not
-  optional: RTL, phone-first, both themes, real app CSS, measured off the DOM. A
-  vendored design skill is a second opinion inside that procedure, never a
-  replacement for it.
-- **Docs and git.** `documentation-and-adrs`, `git-workflow-and-versioning` and
-  `shipping-and-launch` overlap root `CLAUDE.md` and `docs/engineering/conventions.md`.
-  Ours are narrower and already decided — branch per task before the first commit,
-  Conventional Commits, an ADR only for a decision, a backlog line to bracket the task.
-- **No em dashes in UI copy.** Every one of these skills writes them freely. The rule
-  in root `CLAUDE.md` applies to what we ship regardless of what a skill's examples do.
-
-## What is here, and where it came from
-
-Pinned by commit in [`../vendor/skills.json`](../vendor/skills.json).
-
-| Source | Skills | License |
+| Source | Kept | License |
 | --- | --- | --- |
-| [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) | `ui-ux-pro-max`, `ui-styling`, `design-system`, `brand`, `slides`, `banner-design`, `ui-ux-design` | MIT |
-| [pbakaus/impeccable](https://github.com/pbakaus/impeccable) | `impeccable` | Apache-2.0 |
-| [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) | 24 engineering skills, incl. `agent-skills-test-driven-development`, `using-agent-skills` | MIT |
-| [obra/superpowers](https://github.com/obra/superpowers) | 14 workflow skills, incl. `test-driven-development`, `brainstorming`, `using-superpowers` | MIT |
-| [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) | `karpathy-guidelines` | MIT (declared in its README; the repo ships no `LICENSE` file) |
+| [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) | 21 — review, debugging, perf, security, specs, incremental delivery, `agent-skills-test-driven-development` | MIT |
+| [obra/superpowers](https://github.com/obra/superpowers) | 11 — `brainstorming`, `systematic-debugging`, `verification-before-completion`, `test-driven-development`, plans, subagents | MIT |
+| [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) | 1 — `karpathy-guidelines` | MIT (declared in its README; the repo ships no `LICENSE` file) |
 
-Three names differ from upstream, because a project skill is invoked by its
-**directory** name and two collisions had to be broken:
+One name differs from upstream: both repos ship a `test-driven-development`, and a
+project skill is invoked by its **directory** name, so two cannot share one. Superpowers
+keeps the plain name; addyosmani's is **`agent-skills-test-driven-development`**, and
+the siblings that route to it by name were rewritten to match.
 
-- `design` → **`ui-ux-design`** — `design` is a bundled Claude Code skill (the design
-  canvas). A project skill of the same name silently replaces it.
-- `test-driven-development` (addyosmani) → **`agent-skills-test-driven-development`** —
-  both that repo and superpowers ship one. Superpowers keeps the plain name; the
-  sibling skills that route to the renamed one by name were rewritten to match.
+## What was refused, and why
 
-Two path rewrites were applied for the same reason — upstream assumes a personal or
-plugin install, and `${CLAUDE_PLUGIN_ROOT}` / `~/.claude/skills/…` resolve to nothing
-here. Both now use `${CLAUDE_SKILL_DIR}`. Every rewrite is declared in the manifest;
-nothing else was touched, so a diff against upstream stays reviewable.
+Kept out on purpose, not overlooked. The full argument is in
+[ADR-0200](../../docs/decisions/0200-vendored-skills-are-advice-and-they-are-pinned.md);
+`skills.json` carries a one-line reason next to each.
+
+**Two whole repos**, because their job is to decide what a UI looks like and that is
+already decided here by [`design-language.md`](../../docs/design/design-language.md),
+ADR-0028 and the `design-mockups` skill:
+
+- **ui-ux-pro-max-skill** — 7 skills, 69k lines, 11 MB: a competing palette and type
+  scale, 5.5 MB of fonts, an 824 KB icon index, and logo/CIP generation needing a
+  Gemini key we do not ship.
+- **impeccable** — 1 skill, 72k lines, 3.5 MB, mostly bundled browser JS for its own
+  anti-pattern detector. The detector is the good part; without its scripts the skill is
+  only a second design language, and with them it was the largest thing in the repo.
+
+**Six process skills**, because each prescribes something this repo has already decided
+differently: `using-superpowers` (demands a skill be invoked before any response,
+including clarifying questions — the opposite of our context-engineering rule),
+`using-agent-skills` (routes to the skills below), `git-workflow-and-versioning`
+(trunk-based, its own branch naming, semver releases), `documentation-and-adrs` (its own
+ADR template and threshold), `finishing-a-development-branch` (offers a local merge to
+the base branch), `using-git-worktrees` (worktree setup as a precondition).
+
+Where a kept skill called one of those a **required sub-skill**, the reference was
+redirected to the convention that actually applies here — every redirect declared in the
+manifest, so a diff against upstream stays reviewable.
+
+## They still lose every argument with this repo
+
+Even trimmed, these were written for other people's codebases. When one disagrees with
+this repo, **this repo wins** — root `CLAUDE.md`, the ADRs in `docs/decisions/`,
+`docs/design/design-language.md`, and the per-package `CLAUDE.md` files, in that order.
+What to watch for:
+
+- **Drawing a surface.** `design-mockups` is the procedure here, and it is not optional:
+  RTL, phone-first, both themes, real app CSS, measured off the DOM. `frontend-ui-engineering`
+  is a useful second opinion inside that procedure, never a replacement for it.
+- **No em dashes in UI copy.** These skills write them freely. The rule in root
+  `CLAUDE.md` governs what we ship regardless of what a skill's examples do.
+- **Our ADR and backlog discipline** is narrower than any of them: an ADR only for a
+  decision, amended in place, and a backlog line bracketing the task.
+- **`shipping-and-launch` and `ci-cd-and-automation`** describe pipelines we already
+  have in `.github/workflows/`. Read them as checklists, not as instructions to rebuild.
 
 ## Updating
 
 ```bash
 node .claude/vendor/sync-skills.mjs           # restore the pinned state
-node .claude/vendor/sync-skills.mjs --check   # CI-style: fail if the tree drifted
+node .claude/vendor/sync-skills.mjs --check   # exit 1 if the tree has drifted
 node .claude/vendor/sync-skills.mjs --bump    # move pins to upstream head, then review
 ```
 
 Pinned, not tracked, on purpose: these files are instructions Claude follows, so an
-upstream edit changes how every session behaves. That belongs in a reviewed commit,
-not in whatever `main` happened to say this morning. `--bump` writes new pins and
-prints them; read the diff before committing it.
+upstream edit changes how every session behaves. That belongs in a reviewed commit, not
+in whatever `main` happened to say this morning.
 
-## What was left behind
-
-Skills only. These upstreams also ship hooks, subagents, commands and MCP config,
-which `.claude/skills/` does not load — most visibly superpowers' session-start hook,
-whose job was to force `using-superpowers` to load first. Without it, these skills are
-found the ordinary way, by their descriptions. That is the intended behavior here:
-they are advice, and advice does not get to pre-empt the turn.
+`skills` in the manifest is an **allowlist of upstream directory names** — curation is
+the point, so a skill that is not listed is not taken. Anything upstream in neither the
+allowlist nor `excluded` is reported by every sync, so a `--bump` surfaces a new skill as
+a decision to make rather than adopting or dropping it silently.

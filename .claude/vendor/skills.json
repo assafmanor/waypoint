@@ -3,41 +3,13 @@
     "Provenance for the third-party skills vendored into .claude/skills/ (ADR-0200).",
     "Pinned by commit, not by branch: a skill that changes under us changes how every",
     "session behaves, so an update is a reviewed commit like any other.",
-    "Run `node .claude/vendor/sync-skills.mjs` to re-materialise exactly this state,",
-    "or `--bump` to move every pin to its upstream head."
+    "`skills` is an allowlist of UPSTREAM directory names — curation is the point, so a",
+    "skill that is not listed is not taken. `excluded` records what was refused and why;",
+    "a sync reports any upstream skill in neither list, so a --bump surfaces new",
+    "candidates instead of silently adopting or silently dropping them.",
+    "Run `node .claude/vendor/sync-skills.mjs` to re-materialise exactly this state."
   ],
   "sources": [
-    {
-      "id": "ui-ux-pro-max",
-      "repo": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill",
-      "branch": "main",
-      "commit": "bc826e2267a36d98a2dcf5231e16c30ff546770f",
-      "license": "MIT",
-      "skillsDir": ".claude/skills",
-      "renames": { "design": "ui-ux-design" },
-      "rewrites": [
-        {
-          "why": "Vendored as a project skill, so the plugin-root variable never expands.",
-          "find": "${CLAUDE_PLUGIN_ROOT}/.claude/skills/ui-ux-pro-max/scripts/",
-          "replace": "${CLAUDE_SKILL_DIR}/scripts/"
-        },
-        {
-          "why": "Upstream assumes a personal (~/.claude) install; ours is project-level.",
-          "find": "~/.claude/skills/design/scripts/",
-          "replace": "${CLAUDE_SKILL_DIR}/scripts/"
-        }
-      ]
-    },
-    {
-      "id": "impeccable",
-      "repo": "https://github.com/pbakaus/impeccable",
-      "branch": "main",
-      "commit": "f88b2837a7d7c3182e46307bbbb091a1ed547571",
-      "license": "Apache-2.0",
-      "skillsDir": ".claude/skills",
-      "renames": {},
-      "rewrites": []
-    },
     {
       "id": "agent-skills",
       "repo": "https://github.com/addyosmani/agent-skills",
@@ -45,12 +17,46 @@
       "commit": "5a5ea45e806f82273549fd85e60adb95d55f510d",
       "license": "MIT",
       "skillsDir": "skills",
+      "skills": [
+        "api-and-interface-design",
+        "browser-testing-with-devtools",
+        "ci-cd-and-automation",
+        "code-review-and-quality",
+        "code-simplification",
+        "context-engineering",
+        "debugging-and-error-recovery",
+        "deprecation-and-migration",
+        "doubt-driven-development",
+        "frontend-ui-engineering",
+        "idea-refine",
+        "incremental-implementation",
+        "interview-me",
+        "observability-and-instrumentation",
+        "performance-optimization",
+        "planning-and-task-breakdown",
+        "security-and-hardening",
+        "shipping-and-launch",
+        "source-driven-development",
+        "spec-driven-development",
+        "test-driven-development"
+      ],
+      "excluded": {
+        "git-workflow-and-versioning": "Prescribes trunk-based development, its own branch naming, and a semver/changelog release flow. This repo decided branch-per-task and Conventional Commits, and has no versioning scheme.",
+        "documentation-and-adrs": "Ships its own ADR template and threshold. Ours is decided and stricter — root CLAUDE.md's 'write only what a future reader would otherwise get wrong', and amend in place.",
+        "using-agent-skills": "A meta-router whose decision tree points at the three skills above; with them gone it routes to absent skills."
+      },
       "renames": { "test-driven-development": "agent-skills-test-driven-development" },
       "rewrites": [
         {
           "why": "Its TDD skill is renamed to clear the collision with superpowers'; the sibling skills that route to it by name have to follow.",
           "find": "test-driven-development",
           "replace": "agent-skills-test-driven-development",
+          "include": "\\.md$"
+        },
+        {
+          "why": "git-workflow-and-versioning is excluded; commit guidance here is the repo's own.",
+          "find": "`git-workflow-and-versioning`",
+          "replace": "`docs/engineering/conventions.md`",
           "include": "\\.md$"
         }
       ]
@@ -62,8 +68,69 @@
       "commit": "b36e0829c6d0140e93cfef2ca599b1b07d4a7797",
       "license": "MIT",
       "skillsDir": "skills",
+      "skills": [
+        "brainstorming",
+        "dispatching-parallel-agents",
+        "executing-plans",
+        "receiving-code-review",
+        "requesting-code-review",
+        "subagent-driven-development",
+        "systematic-debugging",
+        "test-driven-development",
+        "verification-before-completion",
+        "writing-plans",
+        "writing-skills"
+      ],
+      "excluded": {
+        "using-superpowers": "Demands a skill be invoked 'before ANY response including clarifying questions' and that the model 'does not have a choice'. That is the opposite of this repo's context-engineering rule — load the minimum for the change in front of you.",
+        "using-git-worktrees": "Sets up worktree isolation as a precondition. Our sessions are already isolated by branch-per-task, and `.claude/worktrees/` is gitignored scratch.",
+        "finishing-a-development-branch": "Offers 'merge back to <base> locally' as an option. Root CLAUDE.md forbids committing onto local main, and a finished task ends in a pull request."
+      },
       "renames": {},
-      "rewrites": []
+      "rewrites": [
+        {
+          "why": "finishing-a-development-branch is excluded, and three kept skills call it a REQUIRED SUB-SKILL. Point them at the convention that actually ends a task here.",
+          "find": "the finishing-a-development-branch skill",
+          "replace": "the pull-request convention in root CLAUDE.md",
+          "include": "\\.md$"
+        },
+        {
+          "why": "Same, for the namespaced and bare spellings.",
+          "find": "superpowers:finishing-a-development-branch",
+          "replace": "the pull-request convention in root CLAUDE.md",
+          "include": "\\.md$"
+        },
+        {
+          "why": "Same, for the remaining bare spelling.",
+          "find": "finishing-a-development-branch",
+          "replace": "the pull-request convention in root CLAUDE.md",
+          "include": "\\.md$"
+        },
+        {
+          "why": "using-git-worktrees is excluded; isolation here comes from branch-per-task.",
+          "find": "the `superpowers:using-git-worktrees` skill",
+          "replace": "the branch-per-task convention in root CLAUDE.md",
+          "include": "\\.md$"
+        },
+        {
+          "why": "Same, for the namespaced and bare spellings.",
+          "find": "superpowers:using-git-worktrees",
+          "replace": "the branch-per-task convention in root CLAUDE.md",
+          "include": "\\.md$"
+        },
+        {
+          "why": "Same, for the remaining bare spelling.",
+          "find": "using-git-worktrees",
+          "replace": "the branch-per-task convention in root CLAUDE.md",
+          "include": "\\.md$"
+        },
+        {
+          "why": "using-superpowers is excluded, so its bundled reference files are not here. Keep the links resolving, upstream.",
+          "find": "../using-superpowers/references/",
+          "replace": "https://github.com/obra/superpowers/tree/main/skills/using-superpowers/references/",
+          "include": "\\.md$"
+        }
+      ]
     },
     {
       "id": "andrej-karpathy-skills",
@@ -72,8 +139,15 @@
       "commit": "2c606141936f1eeef17fa3043a72095b4765b9c2",
       "license": "MIT (declared in README; the repo ships no LICENSE file)",
       "skillsDir": "skills",
+      "skills": ["karpathy-guidelines"],
+      "excluded": {},
       "renames": {},
       "rewrites": []
     }
-  ]
+  ],
+  "sourcesRefused": {
+    "$comment": "Asked for, cloned, measured, and not taken. Recorded so the question is not reopened from memory — see ADR-0200.",
+    "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill": "7 skills, 69k+ lines, 11 MB — a palette, type scale and font/icon corpus (5.5 MB of TTFs, an 824 KB icon index) that exists to decide what a UI looks like. That is decided here by docs/design/design-language.md and ADR-0028, and drawn by the design-mockups skill.",
+    "https://github.com/pbakaus/impeccable": "1 skill, 72k lines, 3.5 MB — mostly bundled browser JS for its own anti-pattern detector. The detector is the good part; without its 3 MB of scripts the skill is only a competing design language, and with them it is the single largest thing in the repo."
+  }
 }
