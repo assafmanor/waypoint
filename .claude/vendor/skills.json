@@ -1,0 +1,79 @@
+{
+  "$comment": [
+    "Provenance for the third-party skills vendored into .claude/skills/ (ADR-0200).",
+    "Pinned by commit, not by branch: a skill that changes under us changes how every",
+    "session behaves, so an update is a reviewed commit like any other.",
+    "Run `node .claude/vendor/sync-skills.mjs` to re-materialise exactly this state,",
+    "or `--bump` to move every pin to its upstream head."
+  ],
+  "sources": [
+    {
+      "id": "ui-ux-pro-max",
+      "repo": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill",
+      "branch": "main",
+      "commit": "bc826e2267a36d98a2dcf5231e16c30ff546770f",
+      "license": "MIT",
+      "skillsDir": ".claude/skills",
+      "renames": { "design": "ui-ux-design" },
+      "rewrites": [
+        {
+          "why": "Vendored as a project skill, so the plugin-root variable never expands.",
+          "find": "${CLAUDE_PLUGIN_ROOT}/.claude/skills/ui-ux-pro-max/scripts/",
+          "replace": "${CLAUDE_SKILL_DIR}/scripts/"
+        },
+        {
+          "why": "Upstream assumes a personal (~/.claude) install; ours is project-level.",
+          "find": "~/.claude/skills/design/scripts/",
+          "replace": "${CLAUDE_SKILL_DIR}/scripts/"
+        }
+      ]
+    },
+    {
+      "id": "impeccable",
+      "repo": "https://github.com/pbakaus/impeccable",
+      "branch": "main",
+      "commit": "f88b2837a7d7c3182e46307bbbb091a1ed547571",
+      "license": "Apache-2.0",
+      "skillsDir": ".claude/skills",
+      "renames": {},
+      "rewrites": []
+    },
+    {
+      "id": "agent-skills",
+      "repo": "https://github.com/addyosmani/agent-skills",
+      "branch": "main",
+      "commit": "5a5ea45e806f82273549fd85e60adb95d55f510d",
+      "license": "MIT",
+      "skillsDir": "skills",
+      "renames": { "test-driven-development": "agent-skills-test-driven-development" },
+      "rewrites": [
+        {
+          "why": "Its TDD skill is renamed to clear the collision with superpowers'; the sibling skills that route to it by name have to follow.",
+          "find": "test-driven-development",
+          "replace": "agent-skills-test-driven-development",
+          "include": "\\.md$"
+        }
+      ]
+    },
+    {
+      "id": "superpowers",
+      "repo": "https://github.com/obra/superpowers",
+      "branch": "main",
+      "commit": "b36e0829c6d0140e93cfef2ca599b1b07d4a7797",
+      "license": "MIT",
+      "skillsDir": "skills",
+      "renames": {},
+      "rewrites": []
+    },
+    {
+      "id": "andrej-karpathy-skills",
+      "repo": "https://github.com/multica-ai/andrej-karpathy-skills",
+      "branch": "main",
+      "commit": "2c606141936f1eeef17fa3043a72095b4765b9c2",
+      "license": "MIT (declared in README; the repo ships no LICENSE file)",
+      "skillsDir": "skills",
+      "renames": {},
+      "rewrites": []
+    }
+  ]
+}
