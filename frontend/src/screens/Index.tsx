@@ -29,8 +29,18 @@ import { t } from '../i18n/he';
 type IndexView = 'landing' | 'bookings' | 'documents' | 'notes' | 'tasks';
 
 export function Index() {
-  const { trip, bookings, places, events, documents, notes, tasks, users, zoneCrossings } =
-    useTrip();
+  const {
+    trip,
+    bookings,
+    places,
+    events,
+    documents,
+    notes,
+    tasks,
+    users,
+    zoneCrossings,
+    zoneEvidence,
+  } = useTrip();
   const now = useClock();
   const { automatic } = useAutomaticTasks();
   const [view, setView] = useState<IndexView>('landing');
@@ -135,7 +145,7 @@ export function Index() {
     <>
       <Icon name="link" /> {t.index.tile.nextPrefix}{' '}
       <BookingTitle booking={next.booking} places={places} />
-      {next.event && <> · {scheduleLabel(next.event, next.booking, trip, now)}</>}
+      {next.event && <> · {scheduleLabel(next.event, next.booking, zoneEvidence, now)}</>}
       {past.length > 0 && <> · {t.index.tile.pastCount(past.length)}</>}
     </>
   ) : (

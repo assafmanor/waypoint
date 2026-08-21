@@ -187,3 +187,33 @@ The rule the slices should have been written against, stated now: **wherever a w
 - **The free-slot prefill is read on the same clock it will be typed on** — `nextSlot` was called with `trip.timezone` beside a field authoring elsewhere, so "after your last event" could prefill a time that meant something else. A prefill and its interpretation must share a zone or the default is a lie.
 - **The confirmation toast says the time back in the event's own zone**, not the primary — it was confirming an hour nobody typed.
 - **Plan mode's gap machinery is deliberately untouched.** `PlanDay` computes its gaps, their labels and its drag-to-another-day round-trip in one base zone (`trip.timezone`), and it is internally consistent that way: changing only the authoring interpretation would author outside the gap the user tapped. Moving that surface to per-day zones is one coherent change (gaps, labels, the wall-clock-vs-instant question on a cross-day move), recorded on the backlog rather than half-done here.
+
+## Amendment (2026-08-21, session 258) — the two booking READ surfaces were never wired
+
+Slice 3b's closing claim was that "no read surface is left painting one zone". Two were, and both were about a **booking**: `BookingDetail` — the sheet a row's tap opens — and `scheduleParts`/`scheduleLabel` (`lib/index-bookings.ts`), the Index row's when-line. Both took `trip.timezone` and rendered every clock in it.
+
+The owner's report is what that costs. On an Iceland trip (primary `Atlantic/Reykjavik`), a Tel Aviv → Vienna flight stored at `12:30Z → 16:15Z` read:
+
+| Surface                            | Departure | Arrival   | Duration     |
+| ---------------------------------- | --------- | --------- | ------------ |
+| Day card (`EventCard`, since s89)  | **15:30** | **18:15** | 3:45 · −1 ש׳ |
+| Booking form (`BookingSheet`, s91) | **15:30** | **18:15** | —            |
+| Booking detail (this fix)          | 12:30     | 16:15     | 3:45         |
+| Index row (this fix)               | 12:30     | —         | —            |
+
+Three facts about that table are the point:
+
+- **The wrong pair was internally consistent.** `12:30`/`16:15` are 3h45 apart on one wall clock, and the duration row agreed with them — because the duration was always computed from the **instants** and so was always right. A zone bug that keeps arithmetic self-consistent is the kind nobody spots from one screen; it took two screens side by side.
+- **The sheet disagreed with the form it opens.** `BookingSheet` has read each end in its own endpoint's zone since slice 4a, so the read said `12:30` and the edit one tap later said `15:30` about the same booking. `EventDetail` — this sheet's peer, built later (ADR-0174 §4) — was zone-aware from birth, and its own docblock states the rule this sheet broke: _a read cannot state a different time than the row it opened_.
+- **Reykjavik is not a wrong-but-defensible answer.** It is the clock of a place the first leg never touches. The primary zone is the fallback for an event nothing anchors (§3 step 5), and a flight with two picked airports is anchored twice over.
+
+**The fix is to call the resolver, not to add one.** `eventDisplayZones` already answers this; both surfaces now read it, per end.
+
+- `BookingDetail` resolves `{start, end}` once from trip-state's `zoneEvidence` and uses `startZone`/`endZone` for the two timing facts. Its two **relational** facts (the journey neighbour, the round-trip partner) resolve the **other** leg's own zone rather than borrowing this one's — a journey's whole point is that its legs are in different zones.
+- `scheduleParts` reads the clock in the **edge's** zone (a departure in its origin, a check-out in its destination). It now takes the `ZoneEvidence` **in place of** the `Trip` rather than beside it: `primaryZone` _is_ `trip.timezone`, nothing else on the trip was read, and a required argument is what stops the next call site quietly falling back. Same for `IndexBookingsView`'s row, whose `trip` prop went the same way.
+- The **duration** formatter keeps its single-zone signature and is handed the resolved zone. Its zone only ever converts an instant to a calendar day for the nights count, and both ends of a stay sit in one place; the elapsed reads are instant-based and were never affected.
+- `PlanDay`'s gap machinery stays deliberately untouched, for the reason the session-128 amendment above records.
+
+**What day it is stays on the primary zone here.** `today` and `isEventPast` inside `scheduleParts` answer "is this behind me", not "what does the clock say", and moving them is the day-rollover rule (§4), not this one. Left as it was, on purpose.
+
+The anti-pattern is now written down as the read-side twin of session 128's authoring rule: **rendering a stored instant with `trip.timezone` instead of the event's resolved display zone.** Both halves of that pair have now cost a field report.

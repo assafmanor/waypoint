@@ -14,8 +14,10 @@ import {
   bookingMapPlace,
   bookingPlaceId,
   bookingShowOnMap,
+  eventDisplayZones,
   mapsDirectionsUrl,
   placeName,
+  type ZoneEvidence,
 } from '../lib/places';
 import { placeIataCode } from '../lib/place-label';
 import { usePlaceLabels } from '../state/place-labels';
@@ -49,7 +51,7 @@ export function BookingDetail({
    *  broken" rule `onShowOnMap` follows below. */
   onOpen?: (booking: Booking) => void;
 }) {
-  const { trip, events, places, enrichments } = useTrip();
+  const { trip, events, places, enrichments, zoneEvidence } = useTrip();
   const placeLabels = usePlaceLabels();
   const showPlaceOnMap = useShowPlaceOnMap();
   const linkedEvent = events.find((e) => e.bookingId === booking.id);
@@ -57,7 +59,14 @@ export function BookingDetail({
   // The journey this leg belongs to (ADR-0159) — null unless there is more than itself.
   const journey = useJourney(booking);
 
-  const tz = trip.timezone;
+  // **Each end reads in its OWN resolved zone** (ADR-0107), exactly as the day card and
+  // `EventDetail` already do — a read one tap from a row must not state a different time
+  // than the row. `trip.timezone` painted every fact in the trip's PRIMARY zone, so a
+  // TLV→VIE flight on an Iceland trip read its departure in Reykjavik: 12:30 for a flight
+  // that leaves at 15:30, against a duration computed from the instants and therefore right.
+  const zones = linkedEvent ? eventDisplayZones(linkedEvent, zoneEvidence) : undefined;
+  const startZone = zones?.start ?? trip.timezone;
+  const endZone = zones?.end ?? trip.timezone;
   const icon = chosenIcon(linkedEvent?.icon) ?? BOOKING_TYPE_ICON[booking.type];
   // Shared booking grammar (ADR-0059 §3): badge tinted by category.
   const badgeTint = badgeClassForBookingType(booking.type);
@@ -87,8 +96,11 @@ export function BookingDetail({
   // Duration read-out, phrased per the booking type (hours / nights / days) — the
   // same shared formatter the Index row uses (ADR-0063 extension), keyed on the
   // type not the icon-overridable event category.
+  // The stay's own zone rather than the trip's: this zone only ever converts an instant to
+  // a CALENDAR DAY for the nights count, and both ends of a stay sit in one place — the
+  // elapsed reads below it are instant-based and zone-independent either way.
   const duration = linkedEvent
-    ? formatBookingDuration(linkedEvent, tz, bookingDurationUnit(booking.type))
+    ? formatBookingDuration(linkedEvent, startZone, bookingDurationUnit(booking.type))
     : null;
 
   // Location detail (ADR-0109 amendment): the booking's resolved place (transport
@@ -195,13 +207,13 @@ export function BookingDetail({
             <Fact k={t.index.detail.timing} v={t.index.detail.unscheduled} />
           ) : endsAt ? (
             <>
-              <Fact k={labels.start} v={startsAt ? formatDayTime(startsAt, tz) : '-'} />
-              <Fact k={labels.end} v={formatDayTime(endsAt, tz)} />
+              <Fact k={labels.start} v={startsAt ? formatDayTime(startsAt, startZone) : '-'} />
+              <Fact k={labels.end} v={formatDayTime(endsAt, endZone)} />
             </>
           ) : (
             <Fact
               k={startsAt ? labels.start : t.index.detail.timing}
-              v={startsAt ? formatDayTime(startsAt, tz) : formatDayDate(linkedEvent.date)}
+              v={startsAt ? formatDayTime(startsAt, startZone) : formatDayDate(linkedEvent.date)}
             />
           )}
           {duration && <Fact k={t.index.detail.duration} v={duration} />}
@@ -241,14 +253,14 @@ export function BookingDetail({
               label={t.index.detail.journey}
               text={[
                 t.index.detail.journeyLeg(journey.index + 1, journey.legs.length),
-                journeyNeighbour(journey, tz)?.text,
+                journeyNeighbour(journey, zoneEvidence)?.text,
               ]
                 .filter(Boolean)
                 .join(` ${DOT_SEPARATOR} `)}
               onOpen={
                 onOpen &&
                 (() => {
-                  const neighbour = journeyNeighbour(journey, tz);
+                  const neighbour = journeyNeighbour(journey, zoneEvidence);
                   if (neighbour) onOpen(neighbour.booking);
                 })
               }
@@ -260,7 +272,10 @@ export function BookingDetail({
               text={t.index.detail.pairLeg(
                 pair.leg,
                 pair.partnerEvent?.startsAt
-                  ? formatDayTime(pair.partnerEvent.startsAt, tz)
+                  ? formatDayTime(
+                      pair.partnerEvent.startsAt,
+                      eventDisplayZones(pair.partnerEvent, zoneEvidence).start,
+                    )
                   : pair.partnerEvent?.date
                     ? formatDayDate(pair.partnerEvent.date)
                     : t.index.detail.pairUnscheduled,
@@ -336,19 +351,21 @@ export function LocationFact({
  *  journey is read forwards; the previous one on the last leg, where "next" is nothing.
  *  Null when the neighbour has no schedule to name, in which case the fact still states
  *  the position — that part is always true. */
-function journeyNeighbour(journey: Journey, tz: string) {
+function journeyNeighbour(journey: Journey, evidence: ZoneEvidence) {
   const next = journey.legs[journey.index + 1];
   const prev = journey.legs[journey.index - 1];
   const target = next ?? prev;
   if (!target) return null;
-  const at = target.event?.startsAt;
+  const event = target.event;
   return {
     booking: target.booking,
     text: (next ? t.index.detail.journeyNext : t.index.detail.journeyPrev)(
-      at
-        ? formatDayTime(at, tz)
-        : target.event?.date
-          ? formatDayDate(target.event.date)
+      event?.startsAt
+        ? // The NEIGHBOUR's departure in the NEIGHBOUR's zone — a journey's whole point is
+          // that its legs are in different ones, so this leg's zone is the wrong answer here.
+          formatDayTime(event.startsAt, eventDisplayZones(event, evidence).start)
+        : event?.date
+          ? formatDayDate(event.date)
           : t.index.detail.pairUnscheduled,
     ),
   };

@@ -111,6 +111,14 @@ vi.mock('../state/map-scope-state', () => ({
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
     zoneCrossings: [],
+    // The row's clocks read in each event's OWN resolved zone (ADR-0107).
+    zoneEvidence: {
+      events: tripEvents,
+      bookings: tripBookings,
+      places: [hotelPlace],
+      crossings: [],
+      primaryZone: 'Asia/Tokyo',
+    },
     // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
     tasks: [],
     taskVerbs: {

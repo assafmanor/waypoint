@@ -8,10 +8,15 @@ import {
   type Booking,
   type BookingType,
   type Place,
-  type Trip,
   type TripEvent,
 } from '@waypoint/shared';
-import { bookingDestinationId, bookingPlaceId, placeName } from './places';
+import {
+  bookingDestinationId,
+  bookingPlaceId,
+  eventDisplayZones,
+  placeName,
+  type ZoneEvidence,
+} from './places';
 import { formatTime, isEventPast, relativeDayLabel, todayInTz } from './time';
 import { plainTimingLabel, timingLabels } from './booking-timing';
 import { revealRows, type Revealed } from './filter-reveal';
@@ -208,32 +213,43 @@ export interface ScheduleParts {
 export function scheduleParts(
   event: TripEvent,
   booking: Booking,
-  trip: Trip,
+  evidence: ZoneEvidence,
   now: Date,
 ): ScheduleParts {
-  const today = todayInTz(trip.timezone, now);
+  // **The clock reads in the EDGE's own resolved zone** (ADR-0107) — a departure in its
+  // origin, an arrival in its destination — which is what the day card and the two detail
+  // sheets already do. This took the trip's primary zone, so on a multi-zone trip the row
+  // stated a time no clock on the itinerary shows. The evidence replaced the `Trip` here
+  // rather than joining it: `primaryZone` IS `trip.timezone`, and nothing else was read.
+  const zones = eventDisplayZones(event, evidence);
+  const today = todayInTz(evidence.primaryZone, now);
   const labels = timingLabels(booking.type);
   const multiDay = !!event.endDate && event.endDate !== event.date;
-  const past = isEventPast(event, now, trip.timezone);
+  const past = isEventPast(event, now, evidence.primaryZone);
 
   if (multiDay && today > event.date) {
     const day = relativeDayLabel(event.endDate!, today);
     const verb = past ? undefined : plainTimingLabel(labels.end);
     // Before the check-out day the day is enough; on the day itself, name the time.
     return event.endDate === today && event.endsAt
-      ? { verb, day, time: formatTime(event.endsAt, trip.timezone), edge: 'end' }
+      ? { verb, day, time: formatTime(event.endsAt, zones.end), edge: 'end' }
       : { verb, day, edge: 'end' };
   }
 
   const day = relativeDayLabel(event.date, today);
   if (!event.startsAt) return { day, edge: 'start' };
   const verb = past ? undefined : plainTimingLabel(labels.start);
-  return { verb, day, time: formatTime(event.startsAt, trip.timezone), edge: 'start' };
+  return { verb, day, time: formatTime(event.startsAt, zones.start), edge: 'start' };
 }
 
 /** The parts as one run, `verb · day · time` — unchanged output, and still what the Index
  *  landing tile's one-line "next booking" preview wants. */
-export function scheduleLabel(event: TripEvent, booking: Booking, trip: Trip, now: Date): string {
-  const { verb, day, time } = scheduleParts(event, booking, trip, now);
+export function scheduleLabel(
+  event: TripEvent,
+  booking: Booking,
+  evidence: ZoneEvidence,
+  now: Date,
+): string {
+  const { verb, day, time } = scheduleParts(event, booking, evidence, now);
   return [verb, day, time].filter(Boolean).join(' · ');
 }

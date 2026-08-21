@@ -60,6 +60,15 @@ vi.mock('../state/trip-state', () => ({
   // collections to answer "already in trip".
   useTrip: () => ({
     zoneCrossings: [],
+    // The read renders each end in its OWN resolved zone (ADR-0107), so the sheet needs
+    // the same evidence every other zone-aware surface reads.
+    zoneEvidence: {
+      events: tripEvents,
+      bookings: tripBookings,
+      places: tripPlaces,
+      crossings: [],
+      primaryZone: 'Asia/Tokyo',
+    },
     // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
     tasks: [],
     taskVerbs: {
@@ -256,6 +265,72 @@ describe('BookingDetail — the linked-event facts still read (regression guard)
     open(bk({ id: 'b8', type: BOOKING_TYPE.HOTEL, placeId: 'pl-1' }));
     expect(screen.getByText(t.index.detail.hardNote, { exact: false })).toBeTruthy();
     expect(screen.getByText('2-14-5 Kabukicho')).toBeTruthy();
+  });
+});
+
+// **The owner's field report** (2026-08-21): the day card read the flight `15:30–18:15`
+// and this sheet, one tap away, read `12:30` / `16:15` for the same two instants. The sheet
+// painted every fact in `trip.timezone` — the trip's PRIMARY zone — so a Tel Aviv departure
+// was stated in the destination country's clock, against a duration computed from the
+// instants and therefore already right. Each end now reads in its own resolved zone
+// (ADR-0107), which is what the day card and `EventDetail` had done since session 89.
+describe('BookingDetail — each end reads in its OWN zone (ADR-0107)', () => {
+  const tlv = pl('pl-tlv', 'נתב״ג', { lat: 32.0, lng: 34.88, timezone: 'Asia/Jerusalem' });
+  const vie = pl('pl-vie', 'וינה', { lat: 48.11, lng: 16.57, timezone: 'Europe/Vienna' });
+  const flight = bk({
+    id: 'b-fl',
+    type: BOOKING_TYPE.FLIGHT,
+    title: 'נתב״ג ← וינה',
+    fromPlaceId: 'pl-tlv',
+    toPlaceId: 'pl-vie',
+  });
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    showPlaceOnMap = null;
+    tripPlaces = [tlv, vie];
+    tripBookings = [flight];
+    tripEvents = [
+      {
+        id: 'e-fl',
+        tripId: 't1',
+        date: '2026-07-20',
+        title: 'נתב״ג ← וינה',
+        kind: EVENT_KIND.HARD,
+        // 15:30 in Tel Aviv → 18:15 in Vienna. A 3h45 flight that reads as 2h45 of
+        // wall clock, which is exactly why neither end may borrow the other's zone.
+        startsAt: '2026-07-20T12:30:00Z',
+        endsAt: '2026-07-20T16:15:00Z',
+        status: EVENT_STATUS.PLANNED,
+        bookingId: 'b-fl',
+        sortOrder: 0,
+        source: EVENT_SOURCE.MANUAL,
+        createdAt: NOW,
+        updatedAt: NOW,
+        updatedBy: 'u1',
+      },
+    ];
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+    tripBookings = [];
+  });
+
+  it('states the departure in the origin zone and the arrival in the destination zone', () => {
+    open(flight);
+    expect(screen.getByText('15:30', { exact: false })).toBeTruthy();
+    expect(screen.getByText('18:15', { exact: false })).toBeTruthy();
+    // The trip primary is Tokyo in this harness; neither end may be read in it.
+    expect(screen.queryByText('21:30', { exact: false })).toBeNull();
+    expect(screen.queryByText('01:15', { exact: false })).toBeNull();
+  });
+
+  // The duration was always instant-based and so was always right — which is what made the
+  // wrong clocks hard to spot: `3:45` beside `12:30`/`16:15` looks self-consistent.
+  it('keeps the instant-based duration, which the zones never touched', () => {
+    open(flight);
+    expect(screen.getByText('3:45', { exact: false })).toBeTruthy();
   });
 });
 

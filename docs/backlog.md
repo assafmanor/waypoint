@@ -292,6 +292,10 @@ Full write-up + evidence in [reviews/frontend-architecture-review.md](reviews/fr
 
 - **(Optional) Route verb optimistic in-memory writes through the applier (ADR-0094 tail)** — the cache mirror + member keying are unified (`applyOutboxOpToCache` → `applyChangeToCache`); the one remaining parallel path is each verb's own optimistic `setState`/dispatch. Routing it through `applyEntityChange` too would need each verb's rollback rewritten as an inverse-change and entangles the event one-slot undo (ADR-0019) — real risk for little further dedup. Low priority.
 
+## The change feed still narrates in the trip's primary zone (found 2026-08-21, session 258)
+
+- **`change-feed.tsx`'s "moved X to 12:30" reads `trip.timezone`** — the last surface painting one zone after ADR-0107's session-258 amendment wired the two booking reads. Deliberately not folded into that fix: a change row carries the `after` payload, not the entity, so resolving its zone means looking the live event up by id and answering two questions the feed has never had to — what a moved event's zone is when the event has since been deleted, and whether an old entry should re-read in the zone the event has _now_ or the one it had when the move happened. One coherent change, not a one-liner.
+
 ## UI/UX review follow-ups (open findings)
 
 Full write-up + evidence in [reviews/ui-ux-review.md](reviews/ui-ux-review.md) (advisory, 2026-07-19). No production code changed. Ordered roughly by the review's phased roadmap; the design-system consolidations are the point — fix the shared root, not each screen.
