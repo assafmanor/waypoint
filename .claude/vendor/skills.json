@@ -1,6 +1,6 @@
 {
   "$comment": [
-    "Provenance for the third-party skills vendored into .claude/skills/ (ADR-0200).",
+    "Provenance for the third-party skills vendored into .claude/skills/ (ADR-0201).",
     "Pinned by commit, not by branch: a skill that changes under us changes how every",
     "session behaves, so an update is a reviewed commit like any other.",
     "`skills` is an allowlist of UPSTREAM directory names — curation is the point, so a",
@@ -146,7 +146,7 @@
     }
   ],
   "sourcesRefused": {
-    "$comment": "Asked for, cloned, measured, and not taken. Recorded so the question is not reopened from memory — see ADR-0200.",
+    "$comment": "Asked for, cloned, measured, and not taken. Recorded so the question is not reopened from memory — see ADR-0201.",
     "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill": "7 skills, 69k+ lines, 11 MB — a palette, type scale and font/icon corpus (5.5 MB of TTFs, an 824 KB icon index) that exists to decide what a UI looks like. That is decided here by docs/design/design-language.md and ADR-0028, and drawn by the design-mockups skill.",
     "https://github.com/pbakaus/impeccable": "1 skill, 72k lines, 3.5 MB — mostly bundled browser JS for its own anti-pattern detector. The detector is the good part; without its 3 MB of scripts the skill is only a competing design language, and with them it is the single largest thing in the repo."
   }

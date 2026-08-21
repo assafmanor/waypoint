@@ -27,7 +27,7 @@ the siblings that route to it by name were rewritten to match.
 ## What was refused, and why
 
 Kept out on purpose, not overlooked. The full argument is in
-[ADR-0200](../../docs/decisions/0200-vendored-skills-are-advice-and-they-are-pinned.md);
+[ADR-0201](../../docs/decisions/0201-vendored-skills-are-advice-and-they-are-pinned.md);
 `skills.json` carries a one-line reason next to each.
 
 **Two whole repos**, because their job is to decide what a UI looks like and that is

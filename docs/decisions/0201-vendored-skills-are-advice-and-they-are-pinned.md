@@ -1,4 +1,4 @@
-# 0200 — Vendored skills are method, pinned; the ones that decide things for us are refused
+# 0201 — Vendored skills are method, pinned; the ones that decide things for us are refused
 
 **Status:** Accepted
 **Date:** 2026-08-21

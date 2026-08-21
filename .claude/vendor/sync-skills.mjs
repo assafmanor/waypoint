@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Re-materialise the vendored third-party skills in .claude/skills/ from the pins in
-// skills.json (ADR-0200). Idempotent: it removes and rewrites only the directories it
+// skills.json (ADR-0201). Idempotent: it removes and rewrites only the directories it
 // owns, so this repo's own skills — design-mockups — are never in reach.
 //
 //   node .claude/vendor/sync-skills.mjs            # restore the pinned state
