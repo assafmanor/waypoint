@@ -44,10 +44,37 @@ export function clockLabel(instantMs: number, zone: string): string {
   }).format(new Date(instantMs));
 }
 
-/** Where a task notification goes when tapped: the trip's task index (ADR-0004 — a
- *  notification is a way IN to a surface that already exists, never a second inbox). */
-export function taskUrl(tripId: string): string {
-  return `/trips/${tripId}/index/tasks`;
+/**
+ * **Where a notification lands, and the four params that get it there.**
+ *
+ * These were `/trips/<id>/index/tasks` and `/trips/<id>/day/<date>` — paths that look right
+ * and match **no route**. The router has `login`, `trips`, `new`, `join/:token`,
+ * `trip/:id/settings`, `settings` and `*`; both of those fell through to `*`, which renders
+ * the app home. So every notification ever sent landed on home, which is what the owner
+ * reported. The app is a **query-addressed** single surface (ADR-0098): `?tab=`, `?day=`,
+ * and the "way-in" ids of ADR-0153 §8.
+ *
+ * **`?trip=` is the one that is easy to forget and worst to omit.** The active trip lives in
+ * `localStorage`, so without it a reminder about Japan, tapped while Iceland is active, opens
+ * Iceland. Every URL here carries it.
+ */
+function appUrl(params: Record<string, string | undefined>): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) if (value) query.set(key, value);
+  return `/?${query.toString()}`;
+}
+
+/**
+ * The trip's task list, optionally with one task's sheet open on top.
+ *
+ * **A kind whose subject is ONE task passes its id; a kind whose subject is a SET does not.**
+ * The digest is about a morning's worth of deadlines and the readiness nudge about a trip's
+ * gaps — opening one arbitrary sheet over either would be picking a row out of a list the
+ * notification was deliberately about as a whole (ADR-0004: a way in to a surface, not a
+ * second inbox).
+ */
+export function taskUrl(tripId: string, taskId?: string): string {
+  return appUrl({ trip: tripId, tab: 'index', focus: 'tasks', task: taskId });
 }
 
 /** `task.due` — a deadline with an hour on it, at that hour.
@@ -56,6 +83,7 @@ export function taskUrl(tripId: string): string {
  *  glance needs and the time is the qualifier. */
 export function taskDuePayload(input: {
   tripId: string;
+  taskId: string;
   title: string;
   dueAtMs: number;
   zone: string;
@@ -64,7 +92,7 @@ export function taskDuePayload(input: {
     kind: NOTIFICATION_KIND.TASK_DUE,
     title: 'משימה להיום',
     body: `${input.title} · עד ${clockLabel(input.dueAtMs, input.zone)}`,
-    url: taskUrl(input.tripId),
+    url: taskUrl(input.tripId, input.taskId),
   };
 }
 
@@ -130,16 +158,15 @@ function digestBody(titles: string[], tomorrowCount: number): string {
  */
 export function taskAssignedPayload(input: {
   tripId: string;
+  taskId: string;
   title: string;
-  assignerName: string;
   dueLabel: string | null;
 }): PushPayload {
-  const subject = input.dueLabel ? `${input.title} · עד ${input.dueLabel}` : input.title;
   return {
     kind: NOTIFICATION_KIND.TASK_ASSIGNED,
     title: 'משימה חדשה בשבילך',
-    body: input.assignerName ? `${subject} · ${input.assignerName}` : subject,
-    url: taskUrl(input.tripId),
+    body: input.dueLabel ? `${input.title} · עד ${input.dueLabel}` : input.title,
+    url: taskUrl(input.tripId, input.taskId),
   };
 }
 
@@ -150,10 +177,11 @@ export function taskAssignedPayload(input: {
 // screen, half asleep. So the title carries the COUNTDOWN and the body carries the identity —
 // the reverse of phase A, where the obligation is the title because the hour is the qualifier.
 
-/** Where tapping an event notification goes: the day it belongs to (ADR-0004 — a notification
- *  is a way IN to a surface that already exists). */
-export function eventUrl(tripId: string, dateKey: string): string {
-  return `/trips/${tripId}/day/${dateKey}`;
+/** The day an event belongs to, with that event's own card opened and scrolled to — `?event=`
+ *  is the arrival both day surfaces already answer to (ADR-0153 §8), so a flight reminder
+ *  lands on the flight rather than on the day it happens to be in. */
+export function eventUrl(tripId: string, dateKey: string, eventId?: string): string {
+  return appUrl({ trip: tripId, tab: 'days', day: dateKey, event: eventId });
 }
 
 /** How long until something, as a lock screen should read it. Hebrew's dual is what makes this

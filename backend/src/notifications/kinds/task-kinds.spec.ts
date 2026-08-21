@@ -327,17 +327,28 @@ describe('task.assigned', () => {
     expect(sends[0].kind).toBe(NOTIFICATION_KIND.TASK_ASSIGNED);
   });
 
-  it('names who assigned it, with NO gendered verb', async () => {
-    // ADR-0198 §7's table read `דנה הטילה עליך משימה` — a feminine inflection guessed from a
-    // name, about a real person, from a field the app does not have. The copy is a
-    // verb-free construction instead, and this is the test that keeps it that way.
+  it('names NOBODY, and still no gendered verb', async () => {
+    // Two decisions in one assertion. ADR-0198 §7's table read `דנה הטילה עליך משימה` — a
+    // feminine inflection guessed from a name, about a real person, from a field the app does
+    // not have; the copy is verb-free instead. And the owner dropped the assigner's name
+    // entirely (2026-08-21), so the send names no person at all — the title's `בשבילך` is
+    // what keeps it addressed rather than ambient.
     const { prisma } = fakePrisma({
       tasks: [row({ assigneeUserId: 'u-noam', assignedAt: new Date(now - HOUR) })],
     });
     const [send] = await taskAssignedKind.due(input(prisma, now));
-    expect(send.payload.body).toContain('דנה');
+    expect(send.payload.body).not.toContain('דנה');
     expect(send.payload.title).toBe('משימה חדשה בשבילך');
     expect(send.payload.title + send.payload.body).not.toMatch(/הטיל/);
+  });
+
+  it('opens the task it is about, not the list it sits in', async () => {
+    const { prisma } = fakePrisma({
+      tasks: [row({ assigneeUserId: 'u-noam', assignedAt: new Date(now - HOUR) })],
+    });
+    const [send] = await taskAssignedKind.due(input(prisma, now));
+    expect(send.payload.url).toContain('task=task-1');
+    expect(send.payload.url).toContain('trip=');
   });
 
   it('says nothing when nobody was assigned', async () => {

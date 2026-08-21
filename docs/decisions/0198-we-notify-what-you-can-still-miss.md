@@ -244,6 +244,16 @@ Which is §5's computed shape, now measured rather than reasoned — and the cap
 
 **Left open rather than decided quietly, because it touches the schema either way.** Whichever wins, this section gets amended to say so in one voice instead of two.
 
+## AMENDED BY THE OWNER (2026-08-21): two rows leave the catalogue, and one string leaves a payload
+
+**The flight check-in is dropped.** §C's automatic task is not being built — so the stored-vs-derived fork that §C stated two ways in one paragraph is closed by not needing an answer, and phase C is complete as `readiness.nudge` alone. The reasoning §C gives for preferring a task over a `flight.checkin` notification still stands and is worth keeping: we do not store the airline's window, so a send claiming check-in is open would be a guess printed as a fact. If this returns, it returns as a task.
+
+**Phase D is dropped.** `group.imminent` will not be built. This ADR already leaned against it and named the reason — it is the only row whose absence costs nobody an obligation, because you cannot be _late_ for somebody else's edit. ADR-0081's change feed remains the home for that, unpushed. So `notifyGroup` is never added, and §6's two switches are the final set rather than a way-station.
+
+**`task.assigned` no longer names who assigned it.** The body was `‹title› · עד ‹due› · ‹name›`; it is now the first two. The trade is recorded because §2 defended this kind against ADR-0081 on the grounds that it is **addressed** — the title's `בשבילך` carries that alone now. It also deleted a `User` query per tick, and the name was never solid: `updatedBy` is the closest the schema holds, and a third party editing inside the six-hour window moves it while `assignedAt` stays put. Restoring it properly would mean an `assignedBy` column, which is a column for a courtesy.
+
+**So the catalogue is closed at seven kinds:** `task.due`, `task.digest`, `task.assigned`, `event.hard.soon`, `span.edge.soon`, `trip.tomorrow`, `readiness.nudge`.
+
 ## Consequences
 
 - **The set of notifiable things is closed and derived**: hard events, span edges, task deadlines. A proposal to notify anything else has to argue with ADR-0011 first, which is a much shorter conversation than arguing about taste.

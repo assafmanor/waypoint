@@ -52,6 +52,7 @@ export const taskDueKind: NotificationKind = {
       const dueAtMs = task.dueAt!.getTime();
       const payload = taskDuePayload({
         tripId: task.tripId,
+        taskId: task.id,
         title: task.title,
         dueAtMs,
         zone: deadlineZone(task, await zonesFor(task.tripId)),

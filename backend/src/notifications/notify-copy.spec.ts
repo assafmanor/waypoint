@@ -34,6 +34,7 @@ describe('the payload shape ADR-0198 §7 asks for', () => {
   const payloads = [
     taskDuePayload({
       tripId: 't1',
+      taskId: 'task-1',
       title: 'צילום דרכונים',
       dueAtMs: utc('2026-08-21T15:00:00Z'),
       zone: 'Asia/Jerusalem',
@@ -41,8 +42,8 @@ describe('the payload shape ADR-0198 §7 asks for', () => {
     taskDigestPayload({ tripId: 't1', titles: ['צילום דרכונים'], tomorrowCount: 0 }),
     taskAssignedPayload({
       tripId: 't1',
+      taskId: 'task-1',
       title: 'צילום דרכונים',
-      assignerName: 'דנה',
       dueLabel: '18:00',
     }),
   ];
@@ -66,7 +67,31 @@ describe('the payload shape ADR-0198 §7 asks for', () => {
 
   it('goes to a surface that already exists, never to a second inbox', () => {
     // ADR-0004's rule reaching a channel it was not written about (ADR-0198 §6).
-    expect(taskUrl('trip-japan-26')).toBe('/trips/trip-japan-26/index/tasks');
+    expect(taskUrl('trip-japan-26')).toBe('/?trip=trip-japan-26&tab=index&focus=tasks');
+  });
+
+  it('names the TRIP, so a reminder cannot open the wrong one', () => {
+    // The active trip lives in `localStorage`, so a URL without `?trip=` opens whichever
+    // trip was last used — which for a notification is a wrong answer, not a default.
+    for (const p of payloads) expect(p.url).toContain('trip=t1');
+  });
+
+  it('opens the ONE task a single-task kind is about', () => {
+    expect(taskUrl('t1', 'task-9')).toBe('/?trip=t1&tab=index&focus=tasks&task=task-9');
+  });
+
+  it('opens NO task for a kind whose subject is a SET', () => {
+    // The digest is about a morning's worth of deadlines; opening one arbitrary sheet over
+    // it would pick a row out of the list the send was deliberately about as a whole.
+    const digest = taskDigestPayload({ tripId: 't1', titles: ['a', 'b'], tomorrowCount: 1 });
+    expect(digest.url).not.toContain('task=');
+  });
+
+  it('lands on a route the router actually has', () => {
+    // The bug this replaces: `/trips/<id>/index/tasks` and `/trips/<id>/day/<date>` matched
+    // NO route, fell through to `*`, and rendered the app home — so every notification ever
+    // sent landed on home. The app is query-addressed (ADR-0098), not path-addressed.
+    for (const p of payloads) expect(p.url.startsWith('/?')).toBe(true);
   });
 });
 
@@ -74,6 +99,7 @@ describe('taskDuePayload', () => {
   it('names the subject and qualifies it with the hour', () => {
     const p = taskDuePayload({
       tripId: 't1',
+      taskId: 'task-1',
       title: 'צילום דרכונים',
       dueAtMs: utc('2026-08-21T15:00:00Z'),
       zone: 'Asia/Jerusalem',
@@ -129,42 +155,45 @@ describe('taskAssignedPayload', () => {
     // construction with no verb in it at all.
     const p = taskAssignedPayload({
       tripId: 't1',
+      taskId: 'task-1',
       title: 'צילום דרכונים',
-      assignerName: 'דנה',
       dueLabel: '18:00',
     });
     expect(p.title).toBe('משימה חדשה בשבילך');
     expect(p.title + p.body).not.toMatch(/הטיל|ביקש|שלח/);
   });
 
-  it('stays ADDRESSED — the title says it is yours, the body says who', () => {
-    // What earns this send its place against ADR-0081's rejection of ambient awareness.
+  it('stays ADDRESSED through the TITLE alone, now that the name is gone', () => {
+    // What earns this send its place against ADR-0081's rejection of ambient awareness used
+    // to be split between the title and the name in the body. The owner dropped the name
+    // (2026-08-21), so `בשבילך` carries the addressing by itself — and that is the assertion
+    // worth holding, because losing it would make this an ambient change ping.
     const p = taskAssignedPayload({
       tripId: 't1',
+      taskId: 'task-1',
       title: 'צילום דרכונים',
-      assignerName: 'דנה',
       dueLabel: '18:00',
     });
     expect(p.title).toContain('בשבילך');
-    expect(p.body).toBe('צילום דרכונים · עד 18:00 · דנה');
+    expect(p.body).toBe('צילום דרכונים · עד 18:00');
+  });
+
+  it('names NOBODY — no assigner, and no separator where one used to be', () => {
+    const p = taskAssignedPayload({
+      tripId: 't1',
+      taskId: 'task-1',
+      title: 'צילום דרכונים',
+      dueLabel: '18:00',
+    });
+    expect(p.body).not.toContain('דנה');
+    expect(p.body.endsWith('·')).toBe(false);
   });
 
   it('drops the deadline clause when there is no deadline', () => {
     const p = taskAssignedPayload({
       tripId: 't1',
+      taskId: 'task-1',
       title: 'צילום דרכונים',
-      assignerName: 'דנה',
-      dueLabel: null,
-    });
-    expect(p.body).toBe('צילום דרכונים · דנה');
-  });
-
-  it('leaves no dangling separator when the name is unknown', () => {
-    // A name can be missing: the row's `updatedBy` may point at an account that is gone.
-    const p = taskAssignedPayload({
-      tripId: 't1',
-      title: 'צילום דרכונים',
-      assignerName: '',
       dueLabel: null,
     });
     expect(p.body).toBe('צילום דרכונים');
@@ -209,7 +238,7 @@ describe('the phase-B payloads', () => {
   });
 
   it('opens the DAY, not a second inbox', () => {
-    expect(soon.url).toBe('/trips/t1/day/2026-08-21');
+    expect(soon.url).toBe('/?trip=t1&tab=days&day=2026-08-21');
   });
 
   it('gives a span edge its own word and its deadline', () => {

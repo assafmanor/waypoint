@@ -223,6 +223,19 @@ What lands on a lock screen is a different threat model, and it decides the copy
 
 Payload budget: **≤ 2 KB** of JSON (the practical floor across push services is ~4 KB; Apple's is the tightest). It carries `{ kind, tripId, subjectId, title, body, url }` and nothing else — no entity snapshot. The service worker does not fetch on `push`: it renders what it was given, because a fetch there races the network the device may not have.
 
+### 6.1 AMENDED IN BUILD (2026-08-21): the URL lands on the SOURCE, and it is query-addressed
+
+§6 says a payload carries a `url` and that tapping it is "a way in to a surface that already exists" (ADR-0004). It never said what such a URL looks like, and every URL shipped in phases A–C was **wrong**: `/trips/<id>/index/tasks` and `/trips/<id>/day/<date>` match no route. The router has `login`, `trips`, `new`, `join/:token`, `trip/:id/settings`, `settings` and `*` — both fell through to `*`, which renders the app home. So every notification ever sent landed on home, reported by the owner as exactly that.
+
+**The app is query-addressed, not path-addressed** (ADR-0098): one surface, with `?tab=` and `?day=` choosing it and ADR-0153 §8's "way-in" ids opening something on top. So a notification URL is built from that vocabulary, and two params had to be added to it:
+
+- **`?task=<id>`**, the fifth way-in id beside `?booking=`/`?doc=`/`?event=`/`?idea=`. A task had none because nothing outside the app had ever needed to name one — every way in was a tap on the row itself.
+- **`?trip=<id>`, which is the one that matters most and is easiest to miss.** The active trip lives in `localStorage` alone, so _no_ URL could ever change it. Invisible while every entry point was a tap from inside the app; a wrong-answer bug the moment a notification arrives from outside it, because a reminder about Japan tapped while Iceland is active opened **Iceland**. It counts as an explicit pick, so ADR-0033's live-trip landing rule cannot redirect a notification about a trip that has not started yet.
+
+**A kind whose subject is one row names it; a kind whose subject is a set does not.** `task.due` and `task.assigned` open that task's sheet; the digest and the readiness nudge open the list, because picking one arbitrary row out of a send that was deliberately about the whole set would misrepresent it. The two event kinds carry `?event=`, so a flight reminder lands on the flight rather than on the day containing it.
+
+The service worker needed no change: its `notificationclick` already focuses an open window and navigates it, so this was only ever about generating an address that exists.
+
 ### 7. Permission is asked at the moment it is earned, and iOS is told the truth
 
 **Never on load.** A permission prompt fired at first paint is the request that gets denied permanently, and a denial is not recoverable in-app on any platform.
