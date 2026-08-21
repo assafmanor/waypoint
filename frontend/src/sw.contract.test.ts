@@ -89,6 +89,51 @@ describe('the service worker is ours, and these lines have no other alarm', () =
     expect(SW).toMatch(/CacheFirst\(\{\s*cacheName:\s*['"]map-glyphs['"]/);
   });
 
+  // ── PHASE 1: THE PUSH HANDLERS (ADR-0197 §8) ──────────────────────────────────────
+  //
+  // The first of these is the one with a penalty attached rather than merely a defect:
+  // a `push` handler that resolves without showing a notification is an abuse signal,
+  // and browsers eventually revoke the origin's permission for it. So the assertion is
+  // not "a notification is shown somewhere" but "there is no path through the handler
+  // that does not show one" — which is what the fallback constant exists to guarantee.
+  it('shows a notification on every push, including one it cannot read', () => {
+    expect(SW).toMatch(/addEventListener\(\s*['"]push['"]/);
+    expect(SW).toContain('showNotification');
+    // The parse must be the total one, not `event.data.json()` read directly: that
+    // throws on a non-JSON body, and a throw inside the handler is a silent push.
+    //
+    // **Asserted as the CALL, not as the identifier.** `toContain('parsePushPayload')` was
+    // the first version and mutation-testing found it vacuous: the import line and the
+    // `ReturnType<typeof …>` annotation both satisfy it, so deleting the actual call left
+    // the suite green. This is the failure mode `frontend/CLAUDE.md` names — an assertion
+    // that reports green forever — caught only by breaking the code on purpose.
+    expect(SW).toMatch(/parsePushPayload\(\s*event\.data/);
+    // A single `??` onto the fallback is what makes the no-payload path draw something.
+    expect(SW).toMatch(/\?\?\s*FALLBACK_NOTIFICATION/);
+    // And it must be awaited by the event, or the worker may be killed mid-show.
+    expect(SW).toMatch(/event\.waitUntil\(/);
+  });
+
+  // A notification that opens a second window every time is how a standalone PWA
+  // accumulates them, and the tab already open is the one holding the app's state.
+  it('focuses an existing client before opening a window', () => {
+    expect(SW).toMatch(/addEventListener\(\s*['"]notificationclick['"]/);
+    const click = SW.slice(SW.indexOf("'notificationclick'"));
+    expect(click).toContain('matchAll');
+    expect(click).toContain('.focus()');
+    // `openWindow` must come after the loop that tries to focus, not instead of it.
+    expect(click.indexOf('.focus()')).toBeLessThan(click.indexOf('openWindow'));
+  });
+
+  // The tap target comes from the payload, so it is the one field an attacker-shaped
+  // payload could aim. `parsePushPayload` refuses anything but an absolute same-origin
+  // path; the handler must not then widen it back.
+  it('resolves the tap target against our own origin', () => {
+    const click = SW.slice(SW.indexOf("'notificationclick'"));
+    expect(click).toMatch(/new URL\([^)]*self\.location\.origin/);
+    expect(click).toMatch(/startsWith\('\/'\)/);
+  });
+
   // The worker is bundled separately with `inlineDynamicImports`, so one import
   // reaching the app graph inlines the app into the worker — megabytes, on the
   // critical path of every install.

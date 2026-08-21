@@ -337,6 +337,19 @@ export const MAX_DISPLAY_NAME_LENGTH = 40;
 /** Document upload cap (T-046) — passport/insurance/visa scans are single-page
  *  PDFs or phone photos, never large media; the whole file is buffered in memory
  *  for encryption, so this also bounds worst-case per-request memory use. */
+/** Caps on a push subscription's fields (ADR-0197 §2). Not guesses: a real FCM endpoint
+ *  is ~200 chars and Mozilla's ~100, so 1 KB is an order of magnitude of headroom while
+ *  still bounding a hostile body; `p256dh` is base64url of a 65-byte uncompressed P-256
+ *  point (88 chars) and `auth` of a 16-byte secret (22), so 256 covers both with room for
+ *  padding variants. They exist to bound the column, not to validate the crypto — the push
+ *  service is the authority on whether the keys work, at send time. */
+export const MAX_PUSH_ENDPOINT_LENGTH = 1024;
+export const MAX_PUSH_KEY_LENGTH = 256;
+
+/** The device label shown beside a subscription. A real UA string is ~120 chars; this is
+ *  a rendered label rather than a forensic record, so it is capped well below the endpoint. */
+export const MAX_USER_AGENT_LENGTH = 256;
+
 export const MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024;
 
 /** Server-enforced upload allow-list (ADR-0069 / backend-review B-03). Documents

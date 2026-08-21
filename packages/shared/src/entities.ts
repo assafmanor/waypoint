@@ -634,9 +634,28 @@ export const tripWithMembersSchema = z.object({
 });
 export type TripWithMembers = z.infer<typeof tripWithMembersSchema>;
 
+/** What this server can do about notifications, answered at boot (ADR-0197 §7).
+ *
+ *  `vapidPublicKey` is `null` when the server holds no keypair — a real state, not an
+ *  error: a dev box or a deploy that never set them. It rides `/me` rather than a
+ *  `VITE_` copy of its own for two reasons. The halves of a keypair must not be able to
+ *  drift (the private one lives only on the server, so the public one is the server's to
+ *  state), and a client that is about to offer a control needs the answer **before** the
+ *  first gesture, which is exactly when `/me` has already landed.
+ *
+ *  Its own object rather than a loose field, because §7's settings row will need to say
+ *  more than one true thing about the server's side of this. */
+export const pushCapabilitySchema = z.object({
+  vapidPublicKey: z.string().nullable(),
+});
+export type PushCapability = z.infer<typeof pushCapabilitySchema>;
+
 /** `GET /me` response shape — not its own persisted entity (ADR-0020). */
 export const meSchema = z.object({
   user: userSchema,
   memberships: z.array(membershipSchema),
+  /** Optional so a client built against this schema still reads a `/me` from a server
+   *  that predates it — the cached copy in Dexie is exactly such a payload. */
+  push: pushCapabilitySchema.optional(),
 });
 export type Me = z.infer<typeof meSchema>;

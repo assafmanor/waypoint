@@ -7,6 +7,9 @@ import {
   GOOGLE_OAUTH_REDIRECT_URI,
   JWT_SECRET,
   TOKEN_ENCRYPTION_KEY,
+  VAPID_PRIVATE_KEY,
+  VAPID_PUBLIC_KEY,
+  VAPID_SUBJECT,
 } from './env';
 
 /** Thrown by {@link validateConfig}; carries the list of problems (var names
@@ -105,5 +108,68 @@ export function validateConfig(env: NodeJS.ProcessEnv = process.env): void {
     );
   }
 
+  validateVapid(env, problems, isProd);
+
   if (problems.length > 0) throw new ConfigValidationError(problems);
+}
+
+/** Base64url of exactly `bytes` bytes, which is how a VAPID key is carried. Written out
+ *  rather than reusing `isBase64_32Bytes` above: that one wants standard base64 (the
+ *  encryption keys are stored that way) and these are URL-safe, so the alphabets differ.
+ *  Node's decoder accepts both, so the length check is what actually discriminates. */
+function isBase64UrlBytes(value: string, bytes: number): boolean {
+  if (!/^[A-Za-z0-9_-]+={0,2}$/.test(value)) return false;
+  try {
+    return Buffer.from(value, 'base64url').length === bytes;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The Web Push keypair (ADR-0197 §1), validated as a **set**.
+ *
+ * Two things here are deliberate. **A partial keypair is a problem in every environment,
+ * production or not** — unlike the Google credentials, which a `DEV_AUTH` sandbox may
+ * legitimately omit entirely, half a VAPID keypair cannot be anything but a mistake, and
+ * the failure it produces is a subscribe that succeeds and a send that 401s later. And the
+ * keys are **format-checked whenever present**, because the way this goes wrong in practice
+ * is a copy-paste that swaps the two halves: the public key is 65 bytes (an uncompressed
+ * P-256 point, `0x04` + two 32-byte coordinates) and the private one is 32, so the sizes
+ * tell them apart and a swap is caught at boot instead of at the first send.
+ */
+function validateVapid(env: NodeJS.ProcessEnv, problems: string[], isProd: boolean): void {
+  const publicKey = env[VAPID_PUBLIC_KEY];
+  const privateKey = env[VAPID_PRIVATE_KEY];
+  const subject = env[VAPID_SUBJECT];
+
+  if (isProd) {
+    for (const name of [VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT] as const) {
+      if (!env[name]) problems.push(`${name} is required`);
+    }
+  } else if ((publicKey || privateKey || subject) && !(publicKey && privateKey && subject)) {
+    problems.push(
+      `${VAPID_PUBLIC_KEY}, ${VAPID_PRIVATE_KEY} and ${VAPID_SUBJECT} must be set together ` +
+        `(a partial keypair subscribes fine and fails at the first send)`,
+    );
+  }
+
+  if (publicKey && !isBase64UrlBytes(publicKey, 65)) {
+    problems.push(
+      `${VAPID_PUBLIC_KEY} must be base64url that decodes to exactly 65 bytes ` +
+        `(an uncompressed P-256 point — 32 bytes means the private key is here by mistake)`,
+    );
+  }
+  if (privateKey && !isBase64UrlBytes(privateKey, 32)) {
+    problems.push(
+      `${VAPID_PRIVATE_KEY} must be base64url that decodes to exactly 32 bytes ` +
+        `(65 bytes means the public key is here by mistake)`,
+    );
+  }
+  if (subject) {
+    const url = parseUrl(subject);
+    if (!url || !['mailto:', 'https:'].includes(url.protocol)) {
+      problems.push(`${VAPID_SUBJECT} must be a mailto: or https: URL`);
+    }
+  }
 }

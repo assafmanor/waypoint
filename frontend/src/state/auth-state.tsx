@@ -14,6 +14,7 @@ import {
 } from '../lib/api';
 import { isNetworkError, isOffline } from '../lib/outbox';
 import { wipeLocalData } from '../lib/cache';
+import { unsubscribeThisDevice } from '../lib/push';
 import { withDeadline } from '../lib/deadline';
 import { API_PHASE, API_TIMEOUT_MS, ME_STORAGE_KEY } from '../constants';
 
@@ -74,6 +75,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus('anon');
       clearCachedMe();
       void wipeLocalData();
+      // The same revoke as `logout`, and here the SERVER half will fail — the session is
+      // already gone, which is why we are in this callback at all. The local
+      // `unsubscribe()` is the part that matters: this device stops receiving immediately,
+      // and the server prunes its now-unreachable row when a push service reports it gone
+      // (ADR-0197 §10). Deliberately not skipped just because half of it cannot succeed.
+      void unsubscribeThisDevice().catch(() => {});
     });
     return () => setOnSessionExpired(null);
   }, []);
@@ -131,6 +138,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    // **Before `requestLogout`, deliberately** (ADR-0197 §2.3). A push subscription is not
+    // client-local data — it lives on the server and keeps working after the tab closes,
+    // which is the whole point — so `wipeLocalData` cannot reach it, and a phone handed to
+    // somebody else would keep waking with this person's deadlines on the lock screen.
+    // The server half of the revoke needs a session, so it has to happen while there still
+    // is one; the local `unsubscribe()` inside is what makes it true even if that call fails.
+    await unsubscribeThisDevice().catch(() => {});
     await requestLogout();
     await wipeLocalData();
     setMe(null);

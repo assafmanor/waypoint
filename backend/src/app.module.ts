@@ -14,6 +14,7 @@ import { EventsModule } from './events/events.module';
 import { HealthController } from './health/health.controller';
 import { MaybeItemsModule } from './maybe-items/maybe-items.module';
 import { NotesModule } from './notes/notes.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { TasksModule } from './tasks/tasks.module';
 import { DocumentAttachmentsModule } from './document-attachments/document-attachments.module';
 import { PlacesModule } from './places/places.module';
@@ -48,6 +49,7 @@ import { TripsModule } from './trips/trips.module';
     // construct, called by nothing yet.
     EnrichmentModule,
     FxModule,
+    NotificationsModule,
   ],
   controllers: [HealthController],
   providers: [

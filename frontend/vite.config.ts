@@ -181,6 +181,10 @@ export default defineConfig(() => {
         // Same reason as the API URL above: a developer with this set locally would
         // otherwise flip `BuildBadge`'s default case in their run and not in CI.
         VITE_BUILD_BADGE: '',
+        // Third instance of the same rule, and this one has teeth: a developer testing
+        // push on their own device sets it, and it would then mount `PushDebugPanel` into
+        // every `UserSettings` render in their unit run and nobody else's.
+        VITE_PUSH_DEBUG: '',
       },
       /** `vite-plugin-pwa`'s virtual module has no file behind it, and under vitest its id
        *  resolves to `file:///@vite-plugin-pwa/virtual:…`, which Node refuses as a filename.

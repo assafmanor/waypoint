@@ -21,6 +21,10 @@ export const SERVER_ROUTE_PREFIXES = [
   // rather than living under `trips`.
   'map',
   'me',
+  // The push subscription routes (ADR-0197 §2). Control plane, beside `me` rather than
+  // under `trips`: a subscription belongs to a person and a device, and one device is
+  // reached about every trip that person is in.
+  'notifications',
   'trips',
   // Uploaded avatar bytes (ADR-0133 §12). It has to be here for the SERVICE WORKER
   // half, not just the contract test: an avatar is loaded by a plain `<img src>`, so

@@ -5,6 +5,7 @@ import { decryptAtRest, encryptAtRest } from '../common/crypto.util';
 import { requireEnv, TOKEN_ENCRYPTION_KEY } from '../common/env';
 import { sniffImageMimeType } from '../common/image-sniff';
 import { deleteObject, getObject, putObject } from '../common/storage';
+import { vapidPublicKeyOrNull } from '../notifications/vapid';
 import { PrismaService } from '../prisma/prisma.service';
 import { toMembershipDto, toUserDto } from '../trips/trips.mapper';
 import {
@@ -158,6 +159,9 @@ export class AuthService {
     }
   }
 
+  /** `GET /me`, and the one place a `Me` is assembled — `updateMe`, `setAvatar` and
+   *  `removeAvatar` all return through here (counted, not assumed), which is why the push
+   *  capability below needs adding once rather than four times. */
   async getMe(userId: string): Promise<Me> {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     const memberships = await this.prisma.membership.findMany({ where: { userId } });
@@ -166,6 +170,12 @@ export class AuthService {
       // hue, and a second user-shaping path here would silently skip that.
       user: toUserDto(user),
       memberships: memberships.map(toMembershipDto),
+      // What this server can do about notifications (ADR-0197 §7). It rides `/me` rather
+      // than a `VITE_` copy so the two halves of the keypair cannot drift, and so the
+      // answer is already in hand before the first gesture that would need it. `null` is a
+      // real state — a deploy with no keys — and the client is entitled to say so rather
+      // than offer a control that fails on press.
+      push: { vapidPublicKey: vapidPublicKeyOrNull() },
     };
   }
 

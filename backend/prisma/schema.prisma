@@ -138,6 +138,7 @@ model User {
   notes               Note[]
   tasks               Task[]
   documentAttachments DocumentAttachment[]
+  pushSubscriptions   PushSubscription[]
 }
 
 // Provider identity + that provider's OAuth material, one per (user, provider). ADR-0020.
@@ -710,4 +711,42 @@ model FxRateSet {
   /// the chosen source's terms require visible, linked attribution.
   provider    String
   providerUrl String
+}
+
+/// A device this user can be reached on (ADR-0197 §2). Control plane, not data plane:
+/// no `tripId`, no `Change` row, no broadcast, never client-mutated beyond its own
+/// create/delete — the same three reasons `PlaceEnrichment` sits outside `ChangeService`
+/// (ADR-0166 §6). There is nothing here to undo and nothing to reconcile.
+model PushSubscription {
+  id String @id @default(cuid())
+
+  userId String
+
+  /// **The push service's own URL, and the row's real identity.** Unique because the
+  /// endpoint already is: the browser issues one per (profile, origin, subscription), so
+  /// inventing a device id of our own would be a second name for the same thing — and a
+  /// re-subscribe after a key rotation would leave the old row addressable.
+  endpoint String @unique
+
+  /// The client's P-256 public key and auth secret, base64url as the browser hands them
+  /// over. Not secrets of ours: they are the halves that let only this device decrypt the
+  /// payload, and without them the endpoint is useless to us.
+  p256dh String
+  auth   String
+
+  /// So a person can recognise the row in settings ("this phone" vs "the laptop").
+  /// Nullable — a client that sends none still gets a working subscription.
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  /// Diagnostics, and the two facts a settings surface can honestly show. Deliberately
+  /// NOT a failure counter: a `404`/`410` deletes the row outright (§10), because that is
+  /// a subscription's normal death rather than an error to count.
+  lastSentAt   DateTime?
+  lastFailedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

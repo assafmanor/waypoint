@@ -24,6 +24,9 @@ import { geoBoundsSchema } from './geo';
 import { avatarChoiceSchema, identityHueSchema } from './identity';
 import {
   MAX_DISPLAY_NAME_LENGTH,
+  MAX_PUSH_ENDPOINT_LENGTH,
+  MAX_PUSH_KEY_LENGTH,
+  MAX_USER_AGENT_LENGTH,
   MAX_PLACE_NICKNAME_LENGTH,
   MAX_TRIP_NAME_LENGTH,
 } from './constants';
@@ -750,6 +753,33 @@ export type JoinTripInput = z.infer<typeof joinTripSchema>;
  *  exactly the way ADR-0107's zone chip clears a manual override to null.
  *  `displayName` is trimmed and length-capped because it renders on every
  *  co-member's roster — it is shared state, not a private label. */
+/** `POST /notifications/subscription` — the browser's `PushSubscription`, as the browser
+ *  gives it (ADR-0197 §2). Three fields and a courtesy label; there is nothing here we
+ *  choose, which is why the shape is this literal.
+ *
+ *  `endpoint` is checked as a URL because it IS one, and it is the row's identity — a
+ *  garbage endpoint would be a row that can never be reached and never be replaced. The
+ *  key material is length-bounded rather than decoded: base64url of a P-256 point and a
+ *  16-byte secret have known sizes, and a value outside them cannot be either, but the
+ *  authority on whether they are valid is the push service at send time, not us. */
+export const createPushSubscriptionSchema = z.object({
+  endpoint: z.string().url().max(MAX_PUSH_ENDPOINT_LENGTH),
+  p256dh: z.string().min(1).max(MAX_PUSH_KEY_LENGTH),
+  auth: z.string().min(1).max(MAX_PUSH_KEY_LENGTH),
+  /** The device label a person recognises their own row by. Trimmed and capped because it
+   *  is rendered; absent is fine and renders as the generic "this device". */
+  userAgent: z.string().trim().max(MAX_USER_AGENT_LENGTH).optional(),
+});
+export type CreatePushSubscriptionInput = z.infer<typeof createPushSubscriptionSchema>;
+
+/** `DELETE /notifications/subscription` — by endpoint, because that is the identity, and
+ *  in a body rather than a path segment: an endpoint is a URL and a bearer capability, so
+ *  it has no business being percent-encoded into a path or written to an access log. */
+export const deletePushSubscriptionSchema = z.object({
+  endpoint: z.string().url().max(MAX_PUSH_ENDPOINT_LENGTH),
+});
+export type DeletePushSubscriptionInput = z.infer<typeof deletePushSubscriptionSchema>;
+
 export const updateMeSchema = z
   .object({
     displayName: z.string().trim().min(1).max(MAX_DISPLAY_NAME_LENGTH).optional(),

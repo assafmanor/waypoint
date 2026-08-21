@@ -144,6 +144,17 @@ Facts about the real-world entity a `Place` refers to: a summary, an image, open
 - **No Google-sourced value is ever written here** (§2), enforced by each source's declared `storable` policy plus one guard (`enrichment.policy.ts`), not by anyone remembering the caching terms.
 - `Place` is **unchanged** by this table's existence — no migration, no column moved, no behaviour altered.
 
+### PushSubscription (ADR-0197) — a device, not a trip
+
+A device this user can be reached on. Control plane, for the same three structural reasons `PlaceEnrichment` above is: **no `tripId`**, one writer, and nothing anyone would undo — so it is outside `ChangeService`, out of the sync protocol, and absent from the trip snapshot. Nothing about it is mirrored into memory or Dexie, which is why its `User` cascade owes no client applier the way the trip-scoped ones do.
+
+- `endpoint @unique` — **the push service's own URL, and the row's real identity.** The browser issues exactly one per (profile, origin, subscription), so a device id of ours would be a second name for the same thing, and a re-subscribe after a key rotation would leave the old row addressable.
+- `p256dh`, `auth` — the client's public key and auth secret, base64url as the browser hands them over. Not secrets of ours: they are what let **only that device** decrypt a payload, and without them the endpoint is useless to us.
+- `userAgent?` — the label a person recognises their own row by. A rendered string, not a forensic record.
+- `lastSentAt?`, `lastFailedAt?` — diagnostics, and the two facts a settings surface can honestly show. Deliberately **not a failure counter**: a `404`/`410` from the push service deletes the row outright, because that is a subscription's normal death rather than an error to count (§10).
+- **Sign-out deletes it** (§2.3), and that is a security property rather than tidiness: a subscription is not client-local data, so `wipeLocalData` cannot reach it, and a phone handed to somebody else would otherwise keep waking with the previous person's deadlines.
+- **The send ledger (`NotificationSend`) does not exist yet.** It lands with the sweep that reads it (§3, phase 3) — a new table costs nothing to add later, so there is no reason to ship one nothing writes.
+
 ### Note (ADR-0152)
 
 **One entity, and what it is about is a field.** No host = a general note; exactly one host FK set = that entity's note. Same row, same editor, same list, same sync channel, same offline story either way — which is the whole reason the entity exists rather than a `notes` column on each of five tables (five editors and no unified view).
