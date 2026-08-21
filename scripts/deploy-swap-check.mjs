@@ -9,15 +9,23 @@
 // keep: it caught the reload that never fired (see `useAppUpdate.ts` on
 // `onNeedReload`), which every unit test in the repo passed straight through.
 //
-// Run from `frontend/` (it imports Playwright's chromium):
+// Run it from anywhere:
 //
-//   pnpm --filter @waypoint/frontend build && cp -r dist /tmp/A
+//   pnpm --filter @waypoint/frontend build && cp -r frontend/dist /tmp/A
 //   # …make any source change, then…
-//   pnpm --filter @waypoint/frontend build && cp -r dist /tmp/B
-//   cd frontend && node ../scripts/deploy-swap-check.mjs /tmp/A /tmp/B
+//   pnpm --filter @waypoint/frontend build && cp -r frontend/dist /tmp/B
+//   node scripts/deploy-swap-check.mjs /tmp/A /tmp/B
 //
-// Note the change between builds must survive minification — a comment does not,
-// and two builds with identical hashes prove nothing.
+// The previous instruction here said to run it from `frontend/`, and that has never
+// been what makes the import below resolve: a bare specifier in an ES module resolves
+// from the MODULE's own URL, not the cwd, and `@playwright/test` is a frontend
+// devDependency that pnpm does not hoist to the root. So it threw
+// ERR_MODULE_NOT_FOUND from any directory — see the `createRequire` below, which is
+// the fix and the reason the cwd no longer matters.
+//
+// Note the change between builds must survive minification — a comment does not, and
+// **an unused export is tree-shaken**, so two builds can still hash identically. Change
+// a value something reads (the script refuses to run when nothing vanished).
 //
 // What it asserts, in order:
 //   1. after the deploy, is the new worker PARKED or has it claimed the tab?
@@ -35,7 +43,11 @@ import { createServer } from 'node:http';
 import { readFile, readdir } from 'node:fs/promises';
 import { existsSync, statSync } from 'node:fs';
 import { join, extname } from 'node:path';
-import { chromium } from '@playwright/test';
+import { createRequire } from 'node:module';
+// Resolved against `frontend/`, where the dependency actually lives (see the header).
+const { chromium } = createRequire(new URL('../frontend/package.json', import.meta.url))(
+  '@playwright/test',
+);
 
 const [dirA, dirB] = process.argv.slice(2);
 let serving = dirA;
