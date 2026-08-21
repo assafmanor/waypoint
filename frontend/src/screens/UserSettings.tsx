@@ -16,6 +16,7 @@ import { SETTINGS_PICTURE_PATH, useAppBack } from '../state/nav-state';
 import { readThemePick, setThemePick, THEME_PICK, type ThemePick } from '../lib/theme';
 import { currencyForDeviceRegion } from '../lib/currency';
 import { Avatar } from '../ui/primitives/Avatar';
+import { NotificationSettings } from '../ui/NotificationSettings';
 import { PushDebugPanel } from '../ui/PushDebugPanel';
 import { ChoiceGrid } from '../ui/primitives/ChoiceGrid';
 import { CurrencyPicker, currencyLabel } from '../ui/primitives/CurrencyPicker';
@@ -240,6 +241,15 @@ export default function UserSettings() {
           />
         )}
 
+        {/* Between תצוגה and מפות אופליין (ADR-0197 §7.1): notifications are a preference a
+            person chooses, map storage is housekeeping, and the account stays last because it
+            is the only section nothing in it was chosen. */}
+        <NotificationSettings
+          vapidPublicKey={me.push?.vapidPublicKey ?? null}
+          notifyTasks={me.notify?.tasks ?? true}
+          onPatchPrefs={patchMe}
+        />
+
         <div className="set-sec-title">{t.shell.account.mapStorage}</div>
         <div className="set-card">
           <div className="id-row">
@@ -295,9 +305,10 @@ export default function UserSettings() {
         </div>
         <div className="set-hint-block">{t.shell.account.emailHint}</div>
 
-        {/* The push instrument, gated behind VITE_PUSH_DEBUG (inert in production), and
-            sitting where the DESIGNED Notifications row will land in phase 1b — so the
-            replacement is a swap rather than a move. */}
+        {/* The instrument stays, and its job has changed. The designed section above is now
+            the product surface; this remains behind `VITE_PUSH_DEBUG` for the one thing the
+            product surface deliberately does not do — read back the raw endpoint, which is
+            how you confirm the row the backend stored is this device. */}
         <PushDebugPanel />
 
         {/* Signing out is routine, so it is NOT the danger grammar — that is reserved

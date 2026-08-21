@@ -5,14 +5,22 @@
 // the cases under test, which is why the harness builds the surface per test rather than
 // relying on what jsdom happens to provide.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PUSH_BLOCKER, pushBlocker, subscribeThisDevice, unsubscribeThisDevice } from './push';
+import {
+  PUSH_BLOCKER,
+  pushBlocker,
+  subscribeThisDevice,
+  thisDeviceSubscriptionId,
+  unsubscribeThisDevice,
+} from './push';
 import { deletePushSubscription, registerPushSubscription } from './api';
 
 // Both resolve by default. A bare `vi.fn()` answers `undefined`, and
 // `unsubscribeThisDevice` calls `.catch()` on what it gets back — so a mock with no
 // resolved value fails the spec for a reason that is only about the mock.
 vi.mock('./api', () => ({
-  registerPushSubscription: vi.fn().mockResolvedValue(undefined),
+  // Resolves the row id, which is what the server returns and what `subscribeThisDevice`
+  // stores so the settings list can mark "this device" without an endpoint (ADR-0197 §2).
+  registerPushSubscription: vi.fn().mockResolvedValue({ id: 'sub-1' }),
   deletePushSubscription: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -134,6 +142,10 @@ describe('subscribeThisDevice', () => {
 
     await subscribeThisDevice(VAPID);
 
+    // The id the server handed back is kept, because it is the only thing that can mark
+    // "this device" in the settings list — the endpoint is a bearer capability and never
+    // appears in a list response (ADR-0197 §2).
+    expect(thisDeviceSubscriptionId()).toBe('sub-1');
     expect(registerPushSubscription).toHaveBeenCalledWith(
       expect.objectContaining({
         endpoint: 'https://push.example/abc',
@@ -200,6 +212,17 @@ describe('unsubscribeThisDevice', () => {
 
     await expect(unsubscribeThisDevice()).resolves.toBeUndefined();
     expect(subscription.unsubscribe).toHaveBeenCalledOnce();
+  });
+
+  it('forgets the stored id, so the settings list stops marking a row that is gone', async () => {
+    const subscription = fakeSubscription();
+    install({ serviceWorker: true, pushManager: true, subscription });
+    await subscribeThisDevice(VAPID);
+    expect(thisDeviceSubscriptionId()).toBe('sub-1');
+
+    await unsubscribeThisDevice();
+
+    expect(thisDeviceSubscriptionId()).toBeNull();
   });
 
   it('is a no-op with nothing subscribed', async () => {

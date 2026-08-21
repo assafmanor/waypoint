@@ -80,6 +80,7 @@ export function planSteps(before: Task[], after: StepDraft[]): StepPlan {
 }
 import { authoringZone } from '../lib/places';
 import { useTrip } from '../state/trip-state';
+import { PushAskBanner } from './PushAskBanner';
 import { isoToTimeInput, todayInTz, zonedIso } from '../lib/time';
 import { DAY_DEADLINE_HHMM } from '../constants';
 import { Sheet } from './Sheet';
@@ -455,6 +456,11 @@ export function TaskSheet({
                 </button>
               )}
             </div>
+            {/* **The second door** (ADR-0197 §7): the one earned moment other than the
+              settings screen, and it is here rather than a screen later because a deadline is
+              also set from `HostTasks` and `TripHomeTaskBand`. Renders itself away unless
+              this install can be asked and has not been. */}
+            <PushAskBanner visible={Boolean(date)} />
             {/* Stated, not correctable — see the header. Only once a time is typed: a
               date-only deadline has no wall-clock a zone could move. */}
             {date && time && (

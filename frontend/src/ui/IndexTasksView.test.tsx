@@ -119,7 +119,12 @@ vi.mock('../state/trip-state', () => ({
     },
   }),
 }));
-vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1' } } }) }));
+vi.mock('../state/auth-state', () => ({
+  useAuth: () => ({ me: { user: { id: 'u1' } } }),
+  // The task sheet's push ask reads this one. `push: undefined` — this fixture's server has
+  // no VAPID keypair, so the ask renders nothing, which is what these tests are about.
+  useMaybeAuth: () => ({ me: { user: { id: 'u1' } } }),
+}));
 vi.mock('../lib/useClock', () => ({ useClock: () => NOW }));
 vi.mock('../lib/outbox', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/outbox')>();

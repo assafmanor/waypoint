@@ -167,7 +167,33 @@ Hebrew, no em dashes, `·` as the separator (root `CLAUDE.md`), under a new `not
 | `readiness.nudge` | `עוד שבוע לטיסה`                  | `חסרים: לינה, מסמכים`                  |
 | `group.imminent`  | `נועם שינה 2 דברים במסלול של מחר` | (no body)                              |
 
+#### 7.1 AMENDED IN BUILD (2026-08-21, phase A) — two corrections, and one of them is about a person
+
+**The copy lives on the SERVER, not in `i18n/he.ts`.** This section said the latter, and it cannot: [ADR-0197](0197-a-notification-is-a-derived-obligation-and-the-sweep-is-its-clock.md) §6 shipped first and made `PushPayload` carry `title` and `body` as **finished strings**, so whoever sends is whoever composes — and that is the sweep. Composing in the service worker instead would mean inlining `i18n/he.ts` (2,600 lines) into a bundle on the critical path of every install, which is the exact cost `push.ts` already refuses zod for, or keeping a second copy of these strings. So `backend/src/notifications/notify-copy.ts` is the one place the backend holds user-facing Hebrew. What would change under a second locale: the sweep would need the recipient's locale — a `User` column and a lookup — not a rewrite. The app is Hebrew-only (ADR-0009) and scaffolding for otherwise would be fiction.
+
+**And `task.assigned`'s line is gone, because it guessed a person's gender from their name.** The table above reads `דנה הטילה עליך משימה` — a feminine verb inflected from the name, about a real user, out of a field the app does not have and should not infer. Hebrew has no neutral form of that verb, so the fix is not a different inflection but a construction with none in it:
+
+| kind            | title               | body                              |
+| --------------- | ------------------- | --------------------------------- |
+| `task.assigned` | `משימה חדשה בשבילך` | `צילום דרכונים · עד יום ה׳ · דנה` |
+
+It stays **addressed** — which is what earns this send its place against ADR-0081's rejection of ambient awareness — because the title says בשבילך and the body says who. There is a test that keeps the verb out.
+
 **And the part that is genuinely new:** the operating system draws these strings, so **none of ADR-0118's bidi isolation reaches them** — `lib/bidi.ts`, the LTR islands, the `dir` attributes are all app-side. A Hebrew string that ends in a time can reorder on a lock screen in a way the app never shows. Hence the digits sitting mid-string above, `·` instead of parentheses or arrows around numbers, and a **device pass on both platforms' lock screens** before Phase A ships — the sense in which ADR-0146 means a thing must be seen on a phone, not drawn in a mockup.
+
+## PHASE A BUILT (2026-08-21) — [session note](../planning/2026-08-21-notifications-phase-a-and-the-settings-surface.md)
+
+`task.due`, `task.digest` and `task.assigned` are registered and firing; the settings surface ADR-0197 §7.1 designed is built beside them, because a switch and the thing it switches had to ship together.
+
+**One column had to be added, and it is not a retreat from ADR-0197 §3.** `Task.assignedAt`. The sweep derives schedules from state, which works because a deadline _is_ a state — and "you were just assigned this" is not: no combination of `updatedAt` and `assigneeUserId` can tell it from a title edit. So the **fact** is recorded where the actor is known and the **send** stays derived. It is null when somebody assigns themselves, which is how this ADR's "when the actor is not the assignee" rule is enforced exactly rather than guessed from `updatedBy` by the sweep; null on un-assign, which retracts a send that has not gone out; and null for every task written before the column, which is right — an assignment nobody could be told about is not news.
+
+**Two per-kind policies joined the interface, both for the reason `timeCritical` is there: a kind must not be able to forget.** `pref` names the switch that turns a kind off, enforced by the sweep in one batched query, so a kind that declares none is visibly un-declinable rather than accidentally so. `dedup` chooses the ledger identity: `BY_SUBJECT` for `task.assigned`, which is what makes §2's "passing a task back and forth does not multiply" true — with the default (the aimed-at minute) an A→B→A→B hand-off would send four times.
+
+**§6's three switches are one.** `notifyTasks` ships with the kinds it gates. `notifyObligations` waits for phase B, `notifyGroup` for a phase this ADR leans against building — see the §6 amendment.
+
+**The digest is the kind whose trigger is a wall clock**, and it stays inside the inverted loop by asking in this order: which trips have an open dated task at all (one indexed scan), then zones for only those, then which of them are at 08:00. So it costs what the trips with something to report cost, never what all trips cost.
+
+**Still owed: the lock-screen device pass** this section requires before phase A is called done. It cannot be done from a sandbox — both platforms, both a Hebrew string ending in a time and one ending in a name.
 
 ## Consequences
 

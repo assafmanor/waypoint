@@ -206,6 +206,16 @@ Phase 1b's mockup ([`notifications-in-settings-v1.html`](../../mockups/notificat
 - **The second door is `StatusBanner`, inside `TaskSheet`, under the deadline field.** No new infrastructure: `StatusBanner` already takes an `action` and an `onDismiss`, and ADR-0181 already recorded why the verb belongs inside the banner. A sheet after the editor's own sheet measured **169px against the banner's 55.7px, ×3, plus a back-stack layer**; a banner on "the screen after" is unreachable from `HostTasks` and `TripHomeTaskBand`, which also set deadlines. Inside the sheet is one host, zero new layers, and the moment the want was expressed.
 - **One shipped defect found on the way, and it is not this feature's:** `.set-edit` renders at **25px**, under ADR-0017's 44px floor, at its existing call sites — the map-storage delete buttons in this very screen. Same class as the `.set-tz-trigger` 40px defect `currency-becomes-a-feature-v1` found and `.set-pick-trigger` fixed by the same argument: a second call site is the moment to fix it rather than file it.
 
+#### 7.2 BUILT (2026-08-21) — [session note](../planning/2026-08-21-notifications-phase-a-and-the-settings-surface.md)
+
+The surface §7.1 drew is built, with phase A's kinds, because a switch and the thing it switches had to ship together. What the build added to the drawing:
+
+- **`ui/primitives/Switch`** — the app's first boolean, `role="switch"`, 46×28, its 44px target through an `::after` overlay, `--cta`/`--cta-text` for ON, and a hairline rather than the iOS knob-shadow.
+- **`.set-edit` now meets ADR-0017's floor**, through the same overlay technique. It rendered at 25px at its existing call sites — the map-storage delete buttons on this very screen — and the device list is the second consumer that earned the fix.
+- **The device list needs no endpoint on the wire.** `POST /notifications/subscription` returns the row's **id**, the client stores it (`waypoint:push:subscription-id`), and `GET /notifications/subscriptions` carries `{ id, label, lastSentAt, createdAt }` — no endpoint (a bearer capability) and no raw user-agent (noise, and it lies: Chrome on iOS reports Safari). `deviceLabel` derives `iPhone · Safari` server-side, ordered longest-claim-first because every Edge UA also says Chrome.
+- **The preferences card renders only while this device is subscribed.** A category switch on a device that receives nothing narrows nothing, which is this section's own copy rule.
+- **The second door is `PushAskBanner`** — `StatusBanner` with an action, inside `TaskSheet` under the deadline field. `waypoint:push:asked` is the "once per install" half, and **a dismissal sets it exactly as an acceptance does**: re-asking somebody who said no is how a prompt becomes a nag, and a platform refusal is not recoverable in-app anyway. It reads `useMaybeAuth` rather than `useAuth`, a new tolerant accessor for the one shape where no session is a state to render nothing for rather than a wiring bug.
+
 ### 8. The service worker becomes ours, and ADR-0185's swap must survive it
 
 A `push` listener cannot be added to a generated worker, so `vite.config.ts` moves from `VitePWA`'s default `generateSW` to **`strategies: 'injectManifest'`** with `frontend/src/sw.ts`.

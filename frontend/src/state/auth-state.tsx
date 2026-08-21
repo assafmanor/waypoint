@@ -188,3 +188,16 @@ export function useAuth() {
   if (!ctx) throw new Error('useAuth must be used within <AuthProvider>');
   return ctx;
 }
+
+/**
+ * The session if there is one, `null` if this subtree has no `AuthProvider` above it.
+ *
+ * **`useAuth` keeps throwing, and that is not softened here.** For nearly everything a missing
+ * provider is a wiring bug and failing loudly is the right answer. This exists for the one
+ * shape where absence is a real state to render for rather than a fault: a component that must
+ * be **inert** outside a session — the push ask (ADR-0197 §7's second door) is one, because no
+ * session means no device to subscribe and nothing to offer.
+ */
+export function useMaybeAuth() {
+  return useContext(AuthContext) ?? null;
+}
