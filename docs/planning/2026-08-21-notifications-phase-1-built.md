@@ -63,6 +63,16 @@ Six phases remained after phase 0. **Phase 1 is now split, because the owner's q
 - **`NotificationDispatcher`** (seam B of §3.1). Same reason: there is no sweep to feed it, and an interface with one caller and no second implementation is the speculative abstraction §3.1 was careful _not_ to ask for yet.
 - **Any Hebrew copy.** ADR-0198 §7's table is the phase-4 deliverable; the only strings shipped here are the instrument's Latin diagnostics and the worker's fallback title, which is reachable only through a bug.
 
+## Amendment (same day) — the deployment doc was missed
+
+Phase 1 documented the new variables in `.env.example` and `prerequisites-checklist.md` and **not** in [`architecture/deployment.md`](../architecture/deployment.md), which is the Railway env-var table an actual deploy is read off. Fixed there now, with the three things a deployer needs that the code knows and the table did not say:
+
+- **The three `VAPID_*` vars are required in production and the service refuses to boot without them.** Deliberate (a deploy that boots "healthy" and cannot notify anyone is the worse outcome), but it means **the next production deploy of `main` fails at boot unless they are set first**. Worth stating plainly rather than discovering.
+- **Staging needs its own pair**, alongside the three secrets ADR-0104 already says never to copy — a shared keypair makes a device subscribed on staging addressable from production.
+- **Rotating the pair is a user-visible event, not a routine secret rotation.** The keypair is the server's identity to the push services, so a new one invalidates every stored subscription: rows start returning `410`, the sender prunes them, and every device has to be re-subscribed by its owner. Nobody is signed out; it is a notification outage.
+
+The gap is worth naming rather than just closing: `.env.example` is what a _developer_ reads and `deployment.md` is what a _deploy_ reads, and phase 1 updated only the first two of the three places a new required variable has to appear.
+
 ## Owner action to see it on a phone
 
 ```
