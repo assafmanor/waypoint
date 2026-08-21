@@ -341,10 +341,35 @@ export const MAX_DISPLAY_NAME_LENGTH = 40;
  *  is ~200 chars and Mozilla's ~100, so 1 KB is an order of magnitude of headroom while
  *  still bounding a hostile body; `p256dh` is base64url of a 65-byte uncompressed P-256
  *  point (88 chars) and `auth` of a 16-byte secret (22), so 256 covers both with room for
- *  padding variants. They exist to bound the column, not to validate the crypto — the push
- *  service is the authority on whether the keys work, at send time. */
+ *  padding variants.
+ *
+ *  **AMENDED 2026-08-21 (a production no-status failure).** This used to end "they exist to
+ *  bound the column, not to validate the crypto — the push service is the authority on
+ *  whether the keys work, at send time". The caps still only bound the column, but that
+ *  reasoning was wrong about WHERE a bad key is caught: `web-push` validates both lengths
+ *  itself and throws **before** any request, so a wrong-length key never reaches a push
+ *  service and there is no verdict to defer to — it surfaces as a rejection with no status,
+ *  hours later, on a subscription that accepted happily. Both lengths are fixed by RFC 8291,
+ *  so `PUSH_KEY_BYTES` below is checkable at the only moment a person is still holding the
+ *  device: the subscribe. Exactly the argument `validateVapid` already makes for the
+ *  server's own keypair, applied to the half that had been left out. */
 export const MAX_PUSH_ENDPOINT_LENGTH = 1024;
 export const MAX_PUSH_KEY_LENGTH = 256;
+
+/**
+ * **What the two subscription keys must decode to**, and the asymmetry is not a typo.
+ *
+ * RFC 8291 says `p256dh` is an uncompressed P-256 point (`0x04` + two 32-byte coordinates,
+ * so 65) and `auth` a 16-byte secret. But the numbers here mirror **what `web-push` itself
+ * refuses**, which is the only gate that matters: measured against the library, a `p256dh` of
+ * any other length throws locally ("should be 65 bytes long"), while `auth` is checked as
+ * "at least 16" — a 32-byte one is encrypted and sent, and the push service answers it.
+ *
+ * So `auth` is a floor, not an equality. Validating it as exactly 16 would have refused a
+ * subscription the sender would have delivered, which is a worse failure than the one this
+ * check exists to prevent: this must never be stricter than the thing it is protecting.
+ */
+export const PUSH_KEY_BYTES = { p256dh: 65, authMin: 16 } as const;
 
 /** The device label shown beside a subscription. A real UA string is ~120 chars; this is
  *  a rendered label rather than a forensic record, so it is capped well below the endpoint. */

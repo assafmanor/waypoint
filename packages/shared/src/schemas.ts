@@ -26,6 +26,7 @@ import {
   MAX_DISPLAY_NAME_LENGTH,
   MAX_PUSH_ENDPOINT_LENGTH,
   MAX_PUSH_KEY_LENGTH,
+  PUSH_KEY_BYTES,
   MAX_USER_AGENT_LENGTH,
   MAX_PLACE_NICKNAME_LENGTH,
   MAX_TRIP_NAME_LENGTH,
@@ -762,10 +763,47 @@ export type JoinTripInput = z.infer<typeof joinTripSchema>;
  *  key material is length-bounded rather than decoded: base64url of a P-256 point and a
  *  16-byte secret have known sizes, and a value outside them cannot be either, but the
  *  authority on whether they are valid is the push service at send time, not us. */
+/**
+ * One of a subscription's two keys: base64url that decodes to exactly the length RFC 8291
+ * fixes for it.
+ *
+ * **Checked here because the alternative is a silent failure hours later.** `web-push`
+ * validates both lengths and throws before it makes any request, so a wrong-length key
+ * produces a rejection carrying no status — a subscribe that succeeded and a send that
+ * failed with nothing to point at. `validateVapid` already makes this exact argument for
+ * the server's own keypair ("a swap is caught at boot instead of at the first send"); this
+ * is the device half of it, caught at the one moment somebody is still holding the phone.
+ */
+function pushKey(which: 'p256dh' | 'auth') {
+  const base = z.string().min(1).max(MAX_PUSH_KEY_LENGTH);
+  // `p256dh` is an equality and `auth` a floor, because that is what `web-push` enforces —
+  // see `PUSH_KEY_BYTES`. A check stricter than the sender's would refuse a subscription
+  // that would have worked.
+  return which === 'p256dh'
+    ? base.refine((value) => decodedByteLength(value) === PUSH_KEY_BYTES.p256dh, {
+        message: `p256dh must be base64url that decodes to exactly ${PUSH_KEY_BYTES.p256dh} bytes`,
+      })
+    : base.refine((value) => decodedByteLength(value) >= PUSH_KEY_BYTES.authMin, {
+        message: `auth must be base64url that decodes to at least ${PUSH_KEY_BYTES.authMin} bytes`,
+      });
+}
+
+/** Byte length of a base64url string, or `-1` if it is not base64url at all. Length is
+ *  computed rather than decoded: no Buffer (this package runs in a browser too) and no
+ *  allocation for a value that may be hostile. */
+function decodedByteLength(value: string): number {
+  const body = value.replace(/=+$/, '');
+  if (!/^[A-Za-z0-9_-]*$/.test(body)) return -1;
+  const remainder = body.length % 4;
+  // 1 leftover base64 char cannot encode any whole byte, so it is malformed.
+  if (remainder === 1) return -1;
+  return Math.floor((body.length * 3) / 4);
+}
+
 export const createPushSubscriptionSchema = z.object({
   endpoint: z.string().url().max(MAX_PUSH_ENDPOINT_LENGTH),
-  p256dh: z.string().min(1).max(MAX_PUSH_KEY_LENGTH),
-  auth: z.string().min(1).max(MAX_PUSH_KEY_LENGTH),
+  p256dh: pushKey('p256dh'),
+  auth: pushKey('auth'),
   /** The device label a person recognises their own row by. Trimmed and capped because it
    *  is rendered; absent is fine and renders as the generic "this device". */
   userAgent: z.string().trim().max(MAX_USER_AGENT_LENGTH).optional(),

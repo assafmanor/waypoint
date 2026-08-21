@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { NOTIFICATION_KIND, parsePushPayload, PUSH_PAYLOAD_MAX_BYTES } from './push';
+import { PUSH_KEY_BYTES } from './constants';
+import { createPushSubscriptionSchema } from './schemas';
 
 const valid = {
   kind: NOTIFICATION_KIND.TEST,
@@ -57,5 +59,78 @@ describe('parsePushPayload', () => {
     expect(Buffer.byteLength(JSON.stringify(valid), 'utf8')).toBeLessThan(
       PUSH_PAYLOAD_MAX_BYTES / 4,
     );
+  });
+});
+
+describe('createPushSubscriptionSchema — the device’s own keys', () => {
+  /** base64url of `bytes` bytes, which is what a browser hands `getKey` back as. */
+  const key = (bytes: number) =>
+    Buffer.alloc(bytes, 7)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+  const subscription = (over: Record<string, unknown> = {}) => ({
+    endpoint: 'https://fcm.googleapis.com/fcm/send/abc',
+    p256dh: key(PUSH_KEY_BYTES.p256dh),
+    auth: key(PUSH_KEY_BYTES.authMin),
+    ...over,
+  });
+
+  it('accepts what a real browser produces', () => {
+    expect(createPushSubscriptionSchema.safeParse(subscription()).success).toBe(true);
+  });
+
+  it('refuses a p256dh that is not 65 bytes, at the subscribe rather than hours later', () => {
+    // The failure this closes: `web-push` checks both lengths and throws BEFORE any
+    // request, so a wrong-length key is a send that fails with no status and nothing to
+    // point at — never a verdict from the push service.
+    for (const bytes of [32, 64, 66, 16]) {
+      expect(
+        createPushSubscriptionSchema.safeParse(subscription({ p256dh: key(bytes) })).success,
+      ).toBe(false);
+    }
+  });
+
+  it('refuses an auth UNDER 16 bytes — the length web-push refuses locally', () => {
+    for (const bytes of [1, 8, 15]) {
+      expect(
+        createPushSubscriptionSchema.safeParse(subscription({ auth: key(bytes) })).success,
+      ).toBe(false);
+    }
+  });
+
+  it('ACCEPTS an auth over 16 bytes, because web-push sends those and the service answers', () => {
+    // Measured against the library, not assumed: a 32-byte auth is encrypted, sent, and
+    // answered (410 for a bogus token). Refusing it here would reject a subscription that
+    // would have worked — this check must never be stricter than the sender it protects.
+    for (const bytes of [16, 17, 32]) {
+      expect(
+        createPushSubscriptionSchema.safeParse(subscription({ auth: key(bytes) })).success,
+      ).toBe(true);
+    }
+  });
+
+  it('refuses a key that is the right length but not base64url at all', () => {
+    expect(
+      createPushSubscriptionSchema.safeParse(subscription({ auth: '!'.repeat(22) })).success,
+    ).toBe(false);
+  });
+
+  it('accepts the padded variant, since not every client strips it', () => {
+    const padded = Buffer.alloc(PUSH_KEY_BYTES.authMin, 7).toString('base64url') + '==';
+    expect(createPushSubscriptionSchema.safeParse(subscription({ auth: padded })).success).toBe(
+      true,
+    );
+  });
+
+  it('names WHICH key is wrong, so the client error is actionable', () => {
+    const result = createPushSubscriptionSchema.safeParse(subscription({ p256dh: key(32) }));
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(JSON.stringify(result.error.issues)).toContain('p256dh');
+      expect(JSON.stringify(result.error.issues)).toContain('65');
+    }
   });
 });
