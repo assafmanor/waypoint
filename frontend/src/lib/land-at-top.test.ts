@@ -51,7 +51,21 @@ function row(parent: HTMLElement, top: number) {
 
 const aims = (el: HTMLElement) => (el.scrollIntoView as ReturnType<typeof vi.fn>).mock.calls.length;
 
+/**
+ * **A clock the test moves, because the watch's budgets are WALL time.**
+ *
+ * The suite drives `requestAnimationFrame` by hand, so pumping frames advances no real time —
+ * which is why every test here passed while a budget could expire before the element existed.
+ * `advance` is what makes that expiry visible.
+ */
+let clock = 0;
+const advance = (ms: number) => {
+  clock += ms;
+};
+
 beforeEach(() => {
+  clock = 0;
+  vi.stubGlobal('performance', { now: () => clock });
   frames = [];
   vi.stubGlobal('requestAnimationFrame', (cb: () => void) => {
     frames.push(cb);
@@ -169,6 +183,58 @@ describe('landAtTop', () => {
     el.dataset.top = '900';
     pump(20);
     expect(aims(el)).toBe(1);
+  });
+
+  it('keeps LOOKING long past the settle window, for a lazy surface', () => {
+    // The bug this closes. Plan mode's day view is a lazy chunk that this file measured
+    // mounting ~5s in under 6× CPU throttling, and the settle budget is 2.5s — so on a loaded
+    // machine the whole budget was spent before `find()` had anything to return, the watch
+    // closed, and the landing never happened. It failed on CI's `preview` leg three times and
+    // passed 16/16 locally, because a warm chunk mounts immediately.
+    const box = scroller();
+    let el: HTMLElement | null = null;
+    landAtTop(() => el);
+
+    // Four seconds with nothing to aim at — well past LANDING_WATCH_MS.
+    for (let i = 0; i < 8; i++) {
+      advance(500);
+      pump();
+    }
+    el = row(box, 500);
+    pump();
+
+    expect(aims(el)).toBe(1);
+  });
+
+  it('starts the SETTLE budget when the element appears, not when the watch began', () => {
+    // The other half: having waited, it must still get its full settling window — the aim
+    // that matters is often the second or third, once the scrollport has finished growing.
+    const box = scroller();
+    let el: HTMLElement | null = null;
+    landAtTop(() => el);
+
+    advance(4000);
+    pump();
+    el = row(box, 500);
+    pump();
+    const first = aims(el);
+
+    // A second later the surface is still at rest, so it is still being corrected.
+    advance(1000);
+    pump();
+    expect(aims(el)).toBeGreaterThan(first);
+  });
+
+  it('gives up eventually on a surface that never arrives', () => {
+    // Generous is not unbounded: a frame loop that never stops is a leak on a screen that
+    // already re-renders on the clock.
+    landAtTop(() => null);
+    for (let i = 0; i < 30; i++) {
+      advance(1000);
+      pump();
+    }
+    // Nothing scheduled means the loop closed itself.
+    expect(frames.length).toBe(0);
   });
 
   it('closes the watch when its window is over', () => {

@@ -46,7 +46,7 @@
 // has hit yet.
 import { prefersReducedMotion } from './motion';
 import { scrollerFor } from './scrollable';
-import { LANDING_WATCH_MS } from '../constants';
+import { LANDING_WAIT_MS, LANDING_WATCH_MS } from '../constants';
 
 /** A person taking hold of the list. `pointerdown` rather than `click`, so the watch ends when
  *  the finger lands rather than when it lifts; captured, so a handler that stops propagation
@@ -81,7 +81,27 @@ export function landAtTop(
   const aim = (el: Element) =>
     el.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
 
-  const deadline = performance.now() + windowMs;
+  /**
+   * **Two budgets, because "not there yet" and "there but still settling" are different waits.**
+   *
+   * `windowMs` was measured against a surface that EXISTS — the extent growing under it, the
+   * row opening, a notice arriving above it. It was also, until 2026-08-21, the budget for
+   * waiting on the surface to appear at all, and that is a different order of magnitude: this
+   * file's own header notes that Plan mode's day view is a **lazy chunk that mounts ~5s in
+   * under 6× CPU throttling**. So on a loaded machine the whole 2.5s could be spent before
+   * `find()` had anything to return, the watch closed, and the landing never happened —
+   * `event-arrival-scroll.spec.ts` failing on CI's `preview` leg with the row's `top` at 883
+   * in an 844-high viewport, unmoved for thirty seconds of retries, while it passed 16/16
+   * locally where the chunk is warm.
+   *
+   * The fix is not a bigger number, it is starting the clock at the right moment: the settle
+   * budget begins on the frame the element first appears. Until then only the wait budget
+   * runs, and a frame of waiting costs one `find()` — a `querySelector` — which is why it can
+   * afford to be generous. A hand on the list still ends either one instantly.
+   */
+  const waitDeadline = performance.now() + LANDING_WAIT_MS;
+  /** Set on the frame `find()` first answers, which is when settling starts mattering. */
+  let settleDeadline: number | undefined;
   /** Whether the one-shot aim has gone out — only meaningful while nothing scrolls yet. */
   let aimed = false;
   /** The offset the scroller was last seen resting at; `undefined` until we have seen it. */
@@ -90,6 +110,14 @@ export function landAtTop(
   const step = () => {
     if (!watching) return;
     const el = find();
+    if (!el) {
+      // Nothing to aim at yet. Keep looking — this is the lazy-chunk case, and it is the
+      // whole reason the two budgets are separate.
+      if (performance.now() < waitDeadline) frame = requestAnimationFrame(step);
+      else stop();
+      return;
+    }
+    settleDeadline ??= performance.now() + windowMs;
     const scroller = el instanceof HTMLElement ? scrollerFor(el, 'block') : null;
     if (el && !scroller) {
       // **Nothing overflows yet**, which is a real state and not an edge case: a list that has
@@ -117,7 +145,7 @@ export function landAtTop(
         aim(el);
       }
     }
-    if (performance.now() < deadline) frame = requestAnimationFrame(step);
+    if (performance.now() < settleDeadline) frame = requestAnimationFrame(step);
     else stop();
   };
   frame = requestAnimationFrame(step);
