@@ -4,7 +4,7 @@ import { ERROR_CODE, isAllowedAvatarMimeType, type Me, type UpdateMeInput } from
 import { decryptAtRest, encryptAtRest } from '../common/crypto.util';
 import { requireEnv, TOKEN_ENCRYPTION_KEY } from '../common/env';
 import { sniffImageMimeType } from '../common/image-sniff';
-import { livePlanetBuild } from '../map/planet';
+import { archiveVintage, livePlanetBuild } from '../map/planet';
 import { deleteObject, getObject, putObject } from '../common/storage';
 import { vapidPublicKeyOrNull } from '../notifications/vapid';
 import { PrismaService } from '../prisma/prisma.service';
@@ -185,7 +185,7 @@ export class AuthService {
       // here for the same reason `vapidPublicKey` is: only the server knows what it can
       // actually read, and the client needs the answer before its first tile. Synchronous and
       // cached — `/me` never waits on somebody else's bucket.
-      map: { liveBuild: livePlanetBuild() },
+      map: { liveBuild: livePlanetBuild(), archiveVintage: archiveVintage() },
     };
   }
 

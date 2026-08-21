@@ -611,7 +611,11 @@ export function MapView() {
   // a URL with an expiry date — and when it expired, every detail tile 404'd and the map lost
   // every label, road and border while the world layer kept drawing fills. `null` (a server with
   // no live source, or a `/me` cached before this field) falls back to the world archive.
-  const liveMapBuild = useMaybeAuth()?.me?.map?.liveBuild ?? null;
+  const serverMap = useMaybeAuth()?.me?.map;
+  const liveMapBuild = serverMap?.liveBuild ?? null;
+  // Which vintage of the offline archives the server is cutting — what lets a downloaded map be
+  // REPLACED rather than held forever (ADR-0186 §6 amendment).
+  const archiveVintage = serverMap?.archiveVintage ?? null;
   const remoteTileUrls = useMemo(
     () => mapTileUrls(trip?.id, liveMapBuild),
     [liveMapBuild, trip?.id],
@@ -632,6 +636,7 @@ export function MapView() {
       (place) => savedPlaceIds.has(place.id) && placePoint(place) != null,
     ),
     urls: remoteTileUrls,
+    archiveVintage,
   });
   const tileUrls = mapArchives.urls;
   // The bundled renderer and local archive floor keep this true offline. The capability seam

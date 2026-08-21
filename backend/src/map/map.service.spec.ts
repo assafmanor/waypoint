@@ -24,9 +24,15 @@ vi.mock('./pmtiles-extract', () => ({ buildExtract: () => buildExtract() }));
 /** The boot warm resolves which planet build to cut from before it cuts (ADR-0187 §1
  *  amendment). Stubbed so nothing here reaches upstream. */
 const resolveLivePlanetBuild = vi.fn<() => Promise<string | null>>();
-vi.mock('./planet', () => ({ resolveLivePlanetBuild: () => resolveLivePlanetBuild() }));
+/** Which vintage of the offline archives the server is cutting (ADR-0186 §6 amendment) — the
+ *  thing that makes a stored archive replaceable rather than permanent. */
+const archiveVintage = vi.fn<() => string>();
+vi.mock('./planet', () => ({
+  resolveLivePlanetBuild: () => resolveLivePlanetBuild(),
+  archiveVintage: () => archiveVintage(),
+}));
 
-import { MapService, WORLD_KEY } from './map.service';
+import { MapService, worldKey } from './map.service';
 
 /** `worldIfReady` touches no database, so the one dependency is a stub rather than a fake. */
 const service = () => new MapService({} as never);
@@ -50,6 +56,8 @@ beforeEach(() => {
   buildExtract.mockReset();
   resolveLivePlanetBuild.mockReset();
   resolveLivePlanetBuild.mockResolvedValue('20260821');
+  archiveVintage.mockReset();
+  archiveVintage.mockReturnValue('v7');
   putObject.mockResolvedValue(undefined);
 });
 
@@ -84,7 +92,43 @@ describe('MapService.worldIfReady', () => {
     const map = service();
     expect(await map.worldIfReady()).toBeNull();
     build.resolve(Buffer.from('cut'));
-    await vi.waitFor(() => expect(putObject).toHaveBeenCalledWith(WORLD_KEY, Buffer.from('cut')));
+    await vi.waitFor(() => expect(putObject).toHaveBeenCalledWith(worldKey(), Buffer.from('cut')));
+  });
+
+  // ── THE ARCHIVE IS NOT PERMANENT (ADR-0186 §6 amendment, 2026-08-21) ──────────────────
+  //
+  // The world key used to be one fixed string, so the shared archive was cut once per deploy and
+  // then frozen: a device could not have fresher OSM ground even if it asked, because the server
+  // had none to give. The vintage in the key is what makes a refresh possible at all — and the
+  // invalidation is just a cache miss, so the existing "serve what is stored, cut in the
+  // background, 503 meanwhile" flow carries it with no new machinery.
+  it('serves the stored archive while its vintage is the current one', async () => {
+    getObject.mockImplementation((key: string) =>
+      key === worldKey('v7')
+        ? Promise.resolve(Buffer.from('an archive'))
+        : Promise.reject(new Error('not stored')),
+    );
+    await expect(service().worldIfReady()).resolves.toEqual(Buffer.from('an archive'));
+    expect(buildExtract).not.toHaveBeenCalled();
+  });
+
+  it('cuts a fresh one when the vintage rolls, and stores it under the new key', async () => {
+    getObject.mockImplementation((key: string) =>
+      key === worldKey('v7')
+        ? Promise.resolve(Buffer.from('last month'))
+        : Promise.reject(new Error('not stored')),
+    );
+    archiveVintage.mockReturnValue('v8');
+    const build = pendingBuild();
+
+    // A miss, so nobody waits: 503 + Retry-After at the route, exactly as a cold start does.
+    await expect(service().worldIfReady()).resolves.toBeNull();
+    build.resolve(Buffer.from('this month'));
+    await vi.waitFor(() =>
+      expect(putObject).toHaveBeenCalledWith(worldKey('v8'), Buffer.from('this month')),
+    );
+    // And the old vintage is left where it is: it is what any device still holding it reads.
+    expect(putObject).not.toHaveBeenCalledWith(worldKey('v7'), expect.anything());
   });
 
   // A failed cut must not wedge the key forever: the next request is what retries it. The old

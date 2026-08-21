@@ -62,6 +62,25 @@ describe('downloadMapArchive', () => {
     expect(apiFetch).toHaveBeenCalledTimes(1);
   });
 
+  it('records the vintage it was cut from, which is what makes a refresh decidable', async () => {
+    // ADR-0186 §6 amendment: without a label on the bytes, "is there something fresher" has no
+    // answer and the first download a device ever makes is the map it keeps forever.
+    apiFetch.mockResolvedValue(
+      new Response('abcd', { status: 200, headers: { 'Content-Length': '4' } }),
+    );
+    const { downloadMapArchive, readLocalMapArchive } = await import('./map-archive-cache');
+
+    await downloadMapArchive({
+      url: 'https://app.example/map/world.pmtiles',
+      kind: 'world',
+      vintage: 'v7',
+      now: 10,
+    });
+    await expect(
+      readLocalMapArchive('https://app.example/map/world.pmtiles', 20),
+    ).resolves.toMatchObject({ meta: { vintage: 'v7', downloadedAt: 10 } });
+  });
+
   it('reports 503 as preparing with Retry-After, not as a failed download', async () => {
     apiFetch.mockResolvedValue(
       new Response(null, { status: 503, headers: { 'Retry-After': '9' } }),

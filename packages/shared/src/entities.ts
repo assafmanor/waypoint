@@ -714,6 +714,11 @@ export type NotifyPrefs = z.infer<typeof notifyPrefsSchema>;
  */
 export const mapCapabilitySchema = z.object({
   liveBuild: z.string().nullable(),
+  /** **Which vintage of the OFFLINE archives this server is cutting** (ADR-0186 §6 amendment).
+   *  A device compares it with the vintage it holds to know whether a fresher archive exists at
+   *  all — without it, a downloaded map is frozen at the build it was cut from forever. `null`
+   *  when the server cannot name one (no live build resolved). */
+  archiveVintage: z.string().nullable(),
 });
 export type MapCapability = z.infer<typeof mapCapabilitySchema>;
 

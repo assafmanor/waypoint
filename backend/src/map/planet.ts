@@ -32,7 +32,7 @@
 // this module stays the only place that knows the upstream URL shape.
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { isMapPlanetBuild } from '@waypoint/shared';
+import { isMapPlanetBuild, mapArchiveVintage } from '@waypoint/shared';
 import { createByteLru } from '../common/byte-lru';
 import {
   DEFAULT_MAP_PLANET_CACHE_MAX_BYTES,
@@ -245,6 +245,17 @@ export function livePlanetBuild(): string | null {
   if (override) return buildIdOf(override);
   if (!fresh()) void resolveLivePlanetBuild().catch(() => null);
   return resolved?.build ?? null;
+}
+
+/**
+ * **Which vintage of the OFFLINE archives to cut and to name** (ADR-0186 §6 amendment).
+ *
+ * Beside the live build because it is derived from it — but on a 30-day clock rather than the
+ * build's daily one, because an archive cut per build is a 42.7 MB world layer per device per
+ * day. Read per call, so a long-running process rolls over by itself.
+ */
+export function archiveVintage(nowMs = Date.now()): string {
+  return mapArchiveVintage(livePlanetBuild(), nowMs);
 }
 
 /**

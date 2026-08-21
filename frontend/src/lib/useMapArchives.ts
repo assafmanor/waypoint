@@ -1,6 +1,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MapTileUrls } from './map-config';
-import { downloadMapArchive, readLocalMapArchive } from './map-archive-cache';
+import { MAP_ARCHIVE_VINTAGE_DAYS } from '@waypoint/shared';
+import { downloadMapArchive, readLocalMapArchive, type MapArchiveMeta } from './map-archive-cache';
+import { getNow } from './useClock';
+
+const VINTAGE_WINDOW_MS = MAP_ARCHIVE_VINTAGE_DAYS * 24 * 60 * 60 * 1000;
+
+/**
+ * **Is this archive worth replacing?** (ADR-0186 §6 amendment, 2026-08-21.)
+ *
+ * Two conditions, and the second is what keeps a preference from becoming a data plan:
+ *
+ * - the server is cutting a different vintage than this copy is, and
+ * - this copy is older than the vintage window itself.
+ *
+ * Without the age test, a download late in one window would be chased by the next one days
+ * later. With it, a device replaces an archive at most once per window and usually less — which
+ * is the whole point of offline archives running on a slower clock than the daily build.
+ *
+ * A stale archive is never a broken one: it keeps rendering until a replacement is actually
+ * stored, which is §6 rule 5's spirit — you do not lose your map mid-refresh.
+ */
+export function isMapArchiveStale(
+  entry: MapArchiveMeta,
+  currentVintage: string | null | undefined,
+  now: number,
+): boolean {
+  if (!currentVintage) return false;
+  if (entry.vintage === currentVintage) return false;
+  return now - entry.downloadedAt >= VINTAGE_WINDOW_MS;
+}
 
 export type MapArchiveStatus =
   'idle' | 'prompt' | 'downloading' | 'preparing' | 'no-space' | 'failed' | 'ready';
@@ -40,14 +69,31 @@ function rememberPrompt(tripId: string, decision: 'accepted' | 'dismissed'): voi
   }
 }
 
+/** What is on the device for one archive, or nothing. The METADATA rather than a boolean, so
+ *  "is there one" and "is it still the current vintage" are one lookup. */
+type LocalArchive = MapArchiveMeta | null;
+
+/** **Do we want to download this one?** Missing, or stale enough to replace (ADR-0186 §6
+ *  amendment) — the two cases the download path treats identically. */
+function wanted(entry: LocalArchive, vintage: string | null | undefined): boolean {
+  return !entry || isMapArchiveStale(entry, vintage, getNow());
+}
+
 export function useMapArchives(opts: {
   tripId: string;
   offline: boolean;
   ended: boolean;
   hasMappedPlaces: boolean;
   urls: MapTileUrls;
+  /** **The vintage the server is cutting now** (`/me`'s `map.archiveVintage`). What makes a
+   *  downloaded archive replaceable at all: without it a device holds its first download
+   *  forever, which is a map of the world as it was the day you installed the app. */
+  archiveVintage?: string | null;
 }) {
-  const [local, setLocal] = useState({ world: false, extract: false });
+  const [local, setLocal] = useState<{ world: LocalArchive; extract: LocalArchive }>({
+    world: null,
+    extract: null,
+  });
   const [checked, setChecked] = useState(false);
   const [status, setStatus] = useState<MapArchiveStatus>('idle');
   const [retryAfterSeconds, setRetryAfterSeconds] = useState<number>();
@@ -61,7 +107,7 @@ export function useMapArchives(opts: {
         ? readLocalMapArchive(opts.urls.extract).catch(() => null)
         : Promise.resolve(null),
     ]);
-    const found = { world: !!world, extract: !!extract };
+    const found = { world: world?.meta ?? null, extract: extract?.meta ?? null };
     setLocal(found);
     setChecked(true);
     return found;
@@ -84,11 +130,16 @@ export function useMapArchives(opts: {
       setRetryAfterSeconds(undefined);
       try {
         const found = await inspect();
+        // **Missing OR stale**, and one list for both: a refresh is the same download, decided
+        // the same way, differing only in that something readable is already there (§6's
+        // amendment). `wanted` is what says so.
         const targets = [
-          ...(!found.world
+          ...(wanted(found.world, opts.archiveVintage)
             ? [{ url: opts.urls.world, kind: 'world' as const, tripId: undefined }]
             : []),
-          ...(!found.extract && opts.hasMappedPlaces && opts.urls.extract
+          ...(wanted(found.extract, opts.archiveVintage) &&
+          opts.hasMappedPlaces &&
+          opts.urls.extract
             ? [{ url: opts.urls.extract, kind: 'extract' as const, tripId: opts.tripId }]
             : []),
         ];
@@ -96,6 +147,7 @@ export function useMapArchives(opts: {
           const result = await downloadMapArchive({
             ...target,
             currentTripId: opts.tripId,
+            vintage: opts.archiveVintage,
           });
           if (result.status === 'preparing') {
             setRetryAfterSeconds(result.retryAfterSeconds);
@@ -107,7 +159,7 @@ export function useMapArchives(opts: {
             return;
           }
         }
-        setLocal({ world: true, extract: opts.hasMappedPlaces && !!opts.urls.extract });
+        await inspect();
         setStatus('ready');
       } catch {
         setStatus('failed');
@@ -117,6 +169,7 @@ export function useMapArchives(opts: {
     },
     [
       inspect,
+      opts.archiveVintage,
       opts.ended,
       opts.hasMappedPlaces,
       opts.offline,
@@ -145,7 +198,13 @@ export function useMapArchives(opts: {
   useEffect(() => {
     if (!checked || status !== 'idle' || opts.offline || opts.ended) return;
     const needsExtract = opts.hasMappedPlaces && !!opts.urls.extract;
-    if (local.world && (local.extract || !needsExtract)) {
+    const missing = !local.world || (needsExtract && !local.extract);
+    const stale =
+      (!!local.world && isMapArchiveStale(local.world, opts.archiveVintage, getNow())) ||
+      (needsExtract &&
+        !!local.extract &&
+        isMapArchiveStale(local.extract, opts.archiveVintage, getNow()));
+    if (!missing && !stale) {
       setStatus('ready');
       return;
     }
@@ -153,11 +212,21 @@ export function useMapArchives(opts: {
       void runDownload(false);
       return;
     }
+    // **A refresh never asks, and never spends metered bytes.** A missing archive is the
+    // difference between having a map on the plane and not, which is what earns §5's prompt; a
+    // stale one is a preference, and a prompt offering to re-download 80 MB of a map you already
+    // have is a nag by any other name. So on a connection we cannot vouch for, what is on the
+    // device stays (ADR-0186 §6 amendment).
+    if (!missing) {
+      setStatus('ready');
+      return;
+    }
     if (!needsExtract) return;
     if (promptDecision(opts.tripId) == null) setStatus('prompt');
   }, [
     checked,
     local,
+    opts.archiveVintage,
     opts.ended,
     opts.hasMappedPlaces,
     opts.offline,
