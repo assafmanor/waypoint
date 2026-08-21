@@ -3,12 +3,14 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const archives = vi.hoisted(() => ({
-  read: vi.fn(),
+  list: vi.fn(),
   download: vi.fn(),
 }));
 
+// The hook asks for the METADATA listing, never for the archives themselves: opening one
+// materialises 42.7 MB of world layer to answer "is there one, and which vintage".
 vi.mock('./map-archive-cache', () => ({
-  readLocalMapArchive: archives.read,
+  listMapArchives: archives.list,
   downloadMapArchive: archives.download,
 }));
 
@@ -23,7 +25,7 @@ const urls = {
 
 beforeEach(() => {
   localStorage.clear();
-  archives.read.mockReset().mockResolvedValue(null);
+  archives.list.mockReset().mockResolvedValue([]);
   archives.download.mockReset().mockResolvedValue({ status: 'stored', sizeBytes: 4 });
 });
 
@@ -42,24 +44,26 @@ afterEach(() => {
 const NOW = Date.UTC(2026, 7, 21);
 const DAY = 24 * 60 * 60 * 1000;
 
-/** One stored archive, as `readLocalMapArchive` answers. */
-const stored = (vintage: string | undefined, ageDays: number) => ({
-  blob: new Blob(),
-  meta: { vintage, downloadedAt: NOW - ageDays * DAY },
+/** One stored archive, as `listMapArchives` answers: metadata, keyed by its url. */
+const stored = (url: string, vintage: string | undefined, ageDays: number) => ({
+  key: url,
+  sizeBytes: 4,
+  lastUsedAt: NOW,
+  downloadedAt: NOW - ageDays * DAY,
+  kind: url === urls.extract ? ('extract' as const) : ('world' as const),
+  ...(vintage ? { vintage } : {}),
 });
 
 describe('useMapArchives', () => {
   it('renders a downloaded extract offline and otherwise keeps the world floor visible', async () => {
-    archives.read.mockImplementation((url: string) =>
-      Promise.resolve(url === urls.extract ? { blob: new Blob(), meta: {} } : null),
-    );
+    archives.list.mockResolvedValue([stored(urls.extract, undefined, 0)]);
     const withExtract = renderHook(() =>
       useMapArchives({ tripId: 't1', offline: true, ended: false, hasMappedPlaces: true, urls }),
     );
     await waitFor(() => expect(withExtract.result.current.urls.detail).toBe(urls.extract));
     withExtract.unmount();
 
-    archives.read.mockResolvedValue(null);
+    archives.list.mockResolvedValue([]);
     const worldOnly = renderHook(() =>
       useMapArchives({ tripId: 't1', offline: true, ended: false, hasMappedPlaces: true, urls }),
     );
@@ -111,8 +115,8 @@ describe('useMapArchives', () => {
     vi.stubGlobal('navigator', { connection: { type: 'wifi', saveData: false } });
     let worldStored = false;
     let extractAttempts = 0;
-    archives.read.mockImplementation((url: string) =>
-      Promise.resolve(url === urls.world && worldStored ? { blob: new Blob(), meta: {} } : null),
+    archives.list.mockImplementation(() =>
+      Promise.resolve(worldStored ? [stored(urls.world, undefined, 0)] : []),
     );
     archives.download.mockImplementation(async ({ url }: { url: string }) => {
       if (url === urls.world) {
@@ -136,7 +140,7 @@ describe('useMapArchives', () => {
   it('leaves a current-vintage archive alone', async () => {
     setSimulatedNow(NOW);
     vi.stubGlobal('navigator', { connection: { type: 'wifi', saveData: false } });
-    archives.read.mockImplementation(() => Promise.resolve(stored('v7', 90)));
+    archives.list.mockResolvedValue([stored(urls.world, 'v7', 90), stored(urls.extract, 'v7', 90)]);
     const view = renderHook(() =>
       useMapArchives({
         tripId: 't1',
@@ -155,7 +159,7 @@ describe('useMapArchives', () => {
   it('replaces a superseded archive on an unmetered connection, quietly', async () => {
     setSimulatedNow(NOW);
     vi.stubGlobal('navigator', { connection: { type: 'wifi', saveData: false } });
-    archives.read.mockImplementation(() => Promise.resolve(stored('v6', 40)));
+    archives.list.mockResolvedValue([stored(urls.world, 'v6', 40), stored(urls.extract, 'v6', 40)]);
     const view = renderHook(() =>
       useMapArchives({
         tripId: 't1',
@@ -179,7 +183,7 @@ describe('useMapArchives', () => {
     vi.stubGlobal('navigator', { connection: { type: 'wifi', saveData: false } });
     // Downloaded three days ago, one window behind: a refresh here is 80 MB for three days of
     // OSM edits, which is the trade this guard exists to refuse.
-    archives.read.mockImplementation(() => Promise.resolve(stored('v6', 3)));
+    archives.list.mockResolvedValue([stored(urls.world, 'v6', 3), stored(urls.extract, 'v6', 3)]);
     const view = renderHook(() =>
       useMapArchives({
         tripId: 't1',
@@ -200,7 +204,7 @@ describe('useMapArchives', () => {
     // No `navigator.connection` — Safari, where §5 cannot tell wifi from roaming. A MISSING
     // archive earns its one-time prompt; a merely stale one does not get to nag.
     vi.stubGlobal('navigator', {});
-    archives.read.mockImplementation(() => Promise.resolve(stored('v6', 90)));
+    archives.list.mockResolvedValue([stored(urls.world, 'v6', 90), stored(urls.extract, 'v6', 90)]);
     const view = renderHook(() =>
       useMapArchives({
         tripId: 't1',
@@ -219,9 +223,7 @@ describe('useMapArchives', () => {
 
   it('renders a stale archive rather than nothing — a refresh is never a gap', async () => {
     setSimulatedNow(NOW);
-    archives.read.mockImplementation((url: string) =>
-      Promise.resolve(url === urls.extract ? stored('v5', 200) : null),
-    );
+    archives.list.mockResolvedValue([stored(urls.extract, 'v5', 200)]);
     const view = renderHook(() =>
       useMapArchives({
         tripId: 't1',

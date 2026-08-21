@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MapTileUrls } from './map-config';
 import { MAP_ARCHIVE_VINTAGE_DAYS } from '@waypoint/shared';
-import { downloadMapArchive, readLocalMapArchive, type MapArchiveMeta } from './map-archive-cache';
+import { downloadMapArchive, listMapArchives, type MapArchiveMeta } from './map-archive-cache';
 import { getNow } from './useClock';
 
 const VINTAGE_WINDOW_MS = MAP_ARCHIVE_VINTAGE_DAYS * 24 * 60 * 60 * 1000;
@@ -79,6 +79,18 @@ function wanted(entry: LocalArchive, vintage: string | null | undefined): boolea
   return !entry || isMapArchiveStale(entry, vintage, getNow());
 }
 
+/** Identity of what we hold, for the "did anything change" test above. `lastUsedAt` is
+ *  deliberately not in it: reading an archive touches it, and that is not news. */
+function sameArchives(
+  a: { world: LocalArchive; extract: LocalArchive },
+  b: { world: LocalArchive; extract: LocalArchive },
+): boolean {
+  const same = (x: LocalArchive, y: LocalArchive) =>
+    x === y ||
+    (!!x && !!y && x.key === y.key && x.vintage === y.vintage && x.downloadedAt === y.downloadedAt);
+  return same(a.world, b.world) && same(a.extract, b.extract);
+}
+
 export function useMapArchives(opts: {
   tripId: string;
   offline: boolean;
@@ -100,15 +112,28 @@ export function useMapArchives(opts: {
   const [visible, setVisible] = useState(false);
   const running = useRef(false);
 
+  /**
+   * **What is on the device — from the METADATA, never by opening the archives.**
+   *
+   * `readLocalMapArchive` materialises the whole `Blob`, which is 42.7 MB of world layer to
+   * answer "is there one, and which vintage". `listMapArchives` reads the small JSON entries the
+   * byte cache keeps beside the bytes, so this is a handful of KB either way — and it matters
+   * beyond tidiness: this runs on the Map's mount, and the arrival landing that follows a tap on
+   * the Map is timed against a scroller settling (`lib/land-at-top.ts`). Main-thread work here is
+   * paid for over there.
+   */
   const inspect = useCallback(async () => {
-    const [world, extract] = await Promise.all([
-      readLocalMapArchive(opts.urls.world).catch(() => null),
-      opts.hasMappedPlaces && opts.urls.extract
-        ? readLocalMapArchive(opts.urls.extract).catch(() => null)
-        : Promise.resolve(null),
-    ]);
-    const found = { world: world?.meta ?? null, extract: extract?.meta ?? null };
-    setLocal(found);
+    const entries = await listMapArchives().catch(() => []);
+    const byKey = new Map(entries.map((entry) => [entry.key, entry]));
+    const found = {
+      world: byKey.get(opts.urls.world) ?? null,
+      extract:
+        opts.hasMappedPlaces && opts.urls.extract ? (byKey.get(opts.urls.extract) ?? null) : null,
+    };
+    // **Only when the answer CHANGED.** A fresh object every inspect re-renders the Map — and
+    // `MapPane` is memoized on prop identity precisely because a needless re-diff there costs
+    // every marker (`frontend/CLAUDE.md`).
+    setLocal((prev) => (sameArchives(prev, found) ? prev : found));
     setChecked(true);
     return found;
   }, [opts.hasMappedPlaces, opts.urls.extract, opts.urls.world]);
@@ -242,14 +267,17 @@ export function useMapArchives(opts: {
     setStatus('idle');
   }, [opts.tripId]);
 
+  // Keyed on PRESENCE, not on the meta object: the urls feed a memoized pane, so a new object
+  // here re-diffs every marker on a screen that already re-renders every second.
+  const hasLocalExtract = !!local.extract;
   const renderUrls = useMemo<MapTileUrls>(() => {
     if (!opts.offline) return opts.urls;
     return {
       world: opts.urls.world,
-      detail: local.extract && opts.urls.extract ? opts.urls.extract : opts.urls.world,
+      detail: hasLocalExtract && opts.urls.extract ? opts.urls.extract : opts.urls.world,
       extract: opts.urls.extract,
     };
-  }, [local.extract, opts.offline, opts.urls]);
+  }, [hasLocalExtract, opts.offline, opts.urls]);
 
   return {
     urls: renderUrls,
