@@ -8,6 +8,39 @@
 import { deletePushSubscription, registerPushSubscription } from './api';
 
 /**
+ * **The id of THIS device's subscription row**, so the settings list can mark which row is
+ * the one you are looking at.
+ *
+ * Local because that is the only place it can live: the server cannot tell which device a
+ * request came from, and the alternative — comparing endpoints — would mean shipping a bearer
+ * capability in a list response (ADR-0197 §2). So the id comes back from `POST` and is kept
+ * here, and the list carries no endpoint at all.
+ *
+ * `waypoint:*` like every other key in this app (root `CLAUDE.md`: these keys ARE the local
+ * cache and are not renamed). Losing it is harmless — the list simply marks no row as this
+ * one, which is the same thing it does on a device that never subscribed.
+ */
+const SUBSCRIPTION_ID_KEY = 'waypoint:push:subscription-id';
+
+/** The stored id, or `null`. Never throws: private-mode storage rejects a read. */
+export function thisDeviceSubscriptionId(): string | null {
+  try {
+    return localStorage.getItem(SUBSCRIPTION_ID_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function rememberSubscriptionId(id: string | null): void {
+  try {
+    if (id === null) localStorage.removeItem(SUBSCRIPTION_ID_KEY);
+    else localStorage.setItem(SUBSCRIPTION_ID_KEY, id);
+  } catch {
+    /* A device that cannot store this still subscribes; only the mark is lost. */
+  }
+}
+
+/**
  * Why this device cannot be subscribed, or `null` when it can.
  *
  * A closed set rather than a boolean, because **the four reasons need four different
@@ -60,6 +93,38 @@ export function pushBlocker(vapidPublicKey: string | null | undefined): PushBloc
   }
   if (Notification.permission === 'denied') return PUSH_BLOCKER.DENIED;
   return null;
+}
+
+/**
+ * **Has this install already been asked, at the second door?**
+ *
+ * ADR-0197 §7's second place to ask is "immediately after a first deadline is set on a task —
+ * once per install, dismissible, never re-asked", and this key is the "once per install"
+ * half. Set by taking the offer OR by dismissing it: both are answers, and re-asking somebody
+ * who said no is how a prompt becomes a nag.
+ *
+ * Deliberately **not** on `User`: it is about a device's install, and the same person on a new
+ * phone should be offered it again — which is the mirror image of why the category
+ * preferences ARE on `User`.
+ */
+const ASKED_KEY = 'waypoint:push:asked';
+
+export function pushAskAnswered(): boolean {
+  try {
+    return localStorage.getItem(ASKED_KEY) !== null;
+  } catch {
+    // Storage refused (a private window). Treat it as answered: the settings surface is
+    // always available, and a prompt that cannot remember a "no" must not be shown.
+    return true;
+  }
+}
+
+export function markPushAskAnswered(): void {
+  try {
+    localStorage.setItem(ASKED_KEY, '1');
+  } catch {
+    /* Nothing to do — see above. */
+  }
 }
 
 /** The existing subscription for this device, or `null`. Never throws: a caller asking
@@ -134,11 +199,12 @@ export async function subscribeThisDevice(vapidPublicKey: string): Promise<void>
   }
 
   try {
-    await registerPushSubscription({
+    const { id } = await registerPushSubscription({
       endpoint: subscription.endpoint,
       ...keys,
       userAgent: navigator.userAgent,
     });
+    rememberSubscriptionId(id);
   } catch (error) {
     // **The rollback is the point.** A device subscribed at the push service but unknown to
     // the server is a permission spent for nothing, and the next attempt would find an
@@ -163,4 +229,7 @@ export async function unsubscribeThisDevice(): Promise<void> {
   const { endpoint } = subscription;
   await subscription.unsubscribe().catch(() => {});
   await deletePushSubscription(endpoint).catch(() => {});
+  // The row is gone, so the id names nothing. Cleared last, so a failed server call does not
+  // lose the one handle a retry could use.
+  rememberSubscriptionId(null);
 }

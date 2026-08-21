@@ -2346,6 +2346,21 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   border-radius: 8px;
   padding: 4px 12px;
   cursor: pointer;
+  /* **ADR-0017's 44px floor, through an overlay rather than by growing the chip.** It
+     rendered at 25px — found by rendering `notifications-in-settings-v1`, and the same class
+     of defect that mockup's predecessor found in `.set-tz-trigger` at 40px. The overlay is
+     `ValueToken`'s technique (ADR-0177): the rows this sits in stay 52px, and a control that
+     is 25px of paint stops being 25px of target. */
+  position: relative;
+}
+.set-edit::after {
+  content: '';
+  position: absolute;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+  width: 100%;
+  min-width: 44px;
+  height: 44px;
 }
 .set-card {
   background: var(--card);
@@ -2388,15 +2403,80 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
 }
+/* One statement inside a `.set-card` explaining why there is no control. `TripSettings`'
+   "you cannot change this" was its only call site; the notifications section's blocked
+   states are the second, and they need it to WRAP — so `align-items` moves to the top
+   (identical for a single line) and the glyph is nudged onto the first line's cap height.
+   Generalising the existing one-off rather than adding a second note beside it, which is
+   what the phase-1b mockup's own name collision caught. */
 .set-note {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   padding: 10px 15px;
   background: color-mix(in srgb, var(--ink) 3%, transparent);
   border-top: 1px solid var(--line);
   font-size: 11.5px;
+  line-height: 1.6;
   color: var(--muted);
+}
+.set-note .icon {
+  margin-top: 2px;
+}
+.set-note b {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* The device list (ADR-0197 §2, mockup §4). **Two lines, not one** — drawn as a single
+   `.id-row` the device NAME was what ellipsised at 360px, on the very row a person is there
+   to recognise: 116px of label against 296px, for 9px of height. So the row answers "where
+   does a wide value go" the way `.wp-event-face` does (title over meta) rather than the way
+   `.transition-row` does (value at the trailing edge). */
+.set-dev-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+}
+.set-dev-row + .set-dev-row {
+  border-top: 1px solid var(--line);
+}
+.set-dev-body {
+  flex: 1;
+  min-width: 0;
+}
+.set-dev-name {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.set-dev-sub {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 3px;
+}
+.set-dev-meta {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+}
+/* "This device", and it is a MARK rather than a hue: recognition is carried by this, never
+   by the user-agent label beside it, which is a hint and can be wrong (Chrome on iOS reports
+   itself as Safari). Neutral chrome, because the colour budget has no member for "you are
+   here" in a list. */
+.set-dev-here {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 7px;
+  flex: none;
 }
 
 /* members */

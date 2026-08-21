@@ -1,0 +1,72 @@
+/* Switch — the app's boolean (ADR-0198 §6, mockup `notifications-in-settings-v1` §3).
+
+   Three decisions in here are load-bearing and none is aesthetic:
+
+   1. **44px of touch on a 28px track**, through an `::after` overlay rather than by growing
+      the track. Exactly how `ValueToken` keeps a chip inside a line of prose tappable
+      (ADR-0177), and what lets a settings row stay 52px while meeting ADR-0017's floor.
+   2. **`--cta` for ON, never `--ok` or `--teal`.** The colour budget (ADR-0028) has no member
+      for "this setting is on", and the app's neutral primary is exactly the thing that means
+      "yes, affirmatively". It inverts between themes because `--cta` is `--ink` and re-maps —
+      the same inversion every primary button on this screen already does, which is why the
+      thumb takes `--cta-text` (`--on-fill`, ADR-0158 §2) rather than a fixed white.
+   3. **A hairline on the thumb, not a shadow.** The iOS knob is a `box-shadow`, and a black
+      shadow on a dark track is invisible: the off state had 8% of contrast and nothing else.
+      A `--line` border reads in both themes by construction. Found by rendering, not by
+      reading. */
+.wp-switch {
+  position: relative;
+  flex: none;
+  width: 46px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  padding: 0;
+  cursor: pointer;
+  transition:
+    background var(--t-quick) ease,
+    border-color var(--t-quick) ease;
+}
+/* The touch target. Centred on the track so it grows symmetrically and never pushes a
+   neighbour; `min-width` because the track is already wider than the floor's 44px is tall. */
+.wp-switch::after {
+  content: '';
+  position: absolute;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+  width: 100%;
+  min-width: 44px;
+  height: 44px;
+}
+.wp-switch-thumb {
+  position: absolute;
+  inset-block-start: 2px;
+  /* Logical, so the OFF seat is the inline start in both directions. `left: 2px` here would
+     put the off state at the reading END of an RTL row and make the on state travel
+     backwards. */
+  inset-inline-start: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--card);
+  border: 1px solid var(--line);
+  transition: inset-inline-start var(--t-quick) ease;
+}
+.wp-switch[aria-checked='true'] {
+  background: var(--cta);
+  border-color: var(--cta);
+}
+.wp-switch[aria-checked='true'] .wp-switch-thumb {
+  inset-inline-start: 20px;
+  background: var(--cta-text);
+  border-color: transparent;
+}
+.wp-switch:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+.wp-switch:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

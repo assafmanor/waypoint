@@ -65,6 +65,7 @@ export class TasksService {
               dueHasTime: input.dueHasTime ?? false,
               displayTimezone: input.displayTimezone,
               assigneeUserId: input.assigneeUserId,
+              ...assignmentStamp(null, input.assigneeUserId, actorUserId),
               important: input.important ?? false,
               derivedKey: input.derivedKey,
               parentTaskId: input.parentTaskId,
@@ -143,6 +144,7 @@ export class TasksService {
             // clears it. Same shape `dueAt` above needs for the same reason.
             displayTimezone: input.displayTimezone,
             assigneeUserId: input.assigneeUserId,
+            ...assignmentStamp(before.assigneeUserId, input.assigneeUserId, actorUserId),
             important: input.important,
             ...settlement(input.status, actorUserId),
             eventId: input.eventId,
@@ -209,6 +211,35 @@ export class TasksService {
  *  trusted from it — a client that posted its own `settledAt` could date a completion
  *  before the trip. Reopening clears both, so a task that comes back is open with no
  *  residue of the tick that closed it. */
+/**
+ * **When `assignedAt` moves, and when it must not** (ADR-0198 §2, `task.assigned`).
+ *
+ * The column exists because being assigned is a TRANSITION, and ADR-0197 §3's sweep derives
+ * everything from state — no combination of `updatedAt` and `assigneeUserId` can tell "you
+ * were just assigned this" from "somebody fixed a typo in the title". So the fact is
+ * recorded here, where the actor is known, and the send stays derived.
+ *
+ * Three answers, and the middle one is the load-bearing one:
+ *
+ * - **The assignee did not change** → `{}`, so an edit to anything else cannot re-announce
+ *   an assignment somebody already heard about.
+ * - **Self-assigned, or un-assigned** → `null`. This is ADR-0198's "when the actor is not
+ *   the assignee" rule applied *here*, where the actor is actually known, rather than left
+ *   for the sweep to infer from `updatedBy` — which would be a guess that goes wrong the
+ *   moment a third person edits the row inside the window. Un-assigning also RETRACTS a
+ *   send that has not gone out yet, which is the honest behaviour.
+ * - **Somebody else was put on it** → now.
+ */
+export function assignmentStamp(
+  before: string | null,
+  patch: string | null | undefined,
+  actorUserId: string,
+): { assignedAt?: Date | null } {
+  if (patch === undefined || patch === before) return {};
+  if (patch === null || patch === actorUserId) return { assignedAt: null };
+  return { assignedAt: new Date() };
+}
+
 function settlement(
   status: UpdateTaskInput['status'],
   actorUserId: string,

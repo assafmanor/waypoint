@@ -29,6 +29,12 @@ const todayInTz = (timeZone) => new Intl.DateTimeFormat('en-CA', { timeZone }).f
 const DAY = todayInTz(TRIP_TZ);
 const CREATED_AT = `${DAY}T09:00:00Z`;
 const at = (time) => `${DAY}T${time}:00${TZ}`;
+// **A date-only deadline resolves to the day's END, in the trip's own zone** — the
+// `DAY_DEADLINE_HHMM` convention the task editor writes (`frontend/src/constants.ts`, tasks
+// brief §5). "By Thursday" is discharged any time on Thursday, so 00:00 would make a task
+// due today read as overdue one minute past midnight. Seeding it any other way would give
+// the notification sweep a shape the app never produces.
+const dayEnd = (dateKey) => `${dateKey}T23:59:00${TZ}`;
 
 const USERS = [
   { id: 'u-assaf', email: 'assaf@example.com', displayName: 'אסף' },
@@ -197,6 +203,88 @@ const EVENTS = [
   },
 ].map((e) => ({ ...e, tripId: TRIP.id, date: date(DAY), source: 'manual', updatedBy: ME }));
 
+// **The tasks, and the reason they are the notification epic's blocker rather than a chore.**
+//
+// `grep -c dueAt prisma/seed.mjs` was 0 before this: the demo trip had no tasks at all, so
+// ADR-0198's phase A had nothing to fire against and no way to be seen working. These cover
+// the catalogue's own cases deliberately, not decoratively:
+//
+//   · dated WITH an hour, today       → `task.due` fires at that hour
+//   · dated with NO hour              → `task.due` must NOT fire; the digest counts it
+//   · overdue and still open          → the digest counts it as part of today (no separate nag)
+//   · due tomorrow                    → the digest names it in its tail
+//   · assigned to somebody else       → `task.assigned`, once
+//   · unassigned ("one of us")        → `task.due` reaches the whole group
+//   · undated                         → never notified, at any preference
+//   · settled                         → never notified, and keeps the index scan honest
+//
+// `dueAt` is built from `DAY`, so a reseed rolls them to the present exactly as the events do.
+const TASKS = [
+  {
+    id: 'tk-passports',
+    title: 'לצלם דרכונים ולהעלות',
+    dueAt: at('18:00'),
+    dueHasTime: true,
+    assigneeUserId: null,
+    important: true,
+  },
+  {
+    id: 'tk-insurance',
+    title: 'ביטוח נסיעות לכולם',
+    // A day with no hour, which is most of what anybody writes weeks out — and the reason
+    // the digest exists at all.
+    dueAt: dayEnd(DAY),
+    dueHasTime: false,
+    assigneeUserId: 'u-dana',
+  },
+  {
+    id: 'tk-jr-pass',
+    title: 'להזמין JR Pass',
+    dueAt: dayEnd(addDays(DAY, -3)),
+    dueHasTime: false,
+    assigneeUserId: ME,
+  },
+  {
+    id: 'tk-sim',
+    title: 'כרטיס SIM בשדה התעופה',
+    dueAt: `${addDays(DAY, 1)}T11:00:00${TZ}`,
+    dueHasTime: true,
+    assigneeUserId: null,
+  },
+  {
+    id: 'tk-yen',
+    title: 'להחליף ין במזומן',
+    // Assigned BY somebody else TO me, which is the only shape `task.assigned` fires for.
+    dueAt: null,
+    dueHasTime: false,
+    assigneeUserId: ME,
+    assignedAt: CREATED_AT,
+    updatedBy: 'u-noam',
+  },
+  {
+    id: 'tk-slippers',
+    title: 'נעלי בית לאונסן',
+    dueAt: null,
+    dueHasTime: false,
+    assigneeUserId: null,
+  },
+  {
+    id: 'tk-visas',
+    title: 'לבדוק ויזות',
+    dueAt: dayEnd(addDays(DAY, -5)),
+    dueHasTime: false,
+    assigneeUserId: ME,
+    status: 'done',
+    settledAt: CREATED_AT,
+    settledBy: ME,
+  },
+].map((t) => ({
+  ...t,
+  tripId: TRIP.id,
+  createdBy: ME,
+  updatedBy: t.updatedBy ?? ME,
+}));
+
 const MAYBE_ITEMS = [
   { id: 'mb-skytree', title: 'טוקיו סקייטרי', icon: '🗼' },
   { id: 'mb-catcafe', title: 'קפה חתולים', icon: '🐱' },
@@ -217,11 +305,18 @@ async function main() {
     create: { ...TRIP, createdAt: CREATED_AT },
     update: TRIP,
   });
-  await prisma.membership.upsert({
-    where: { tripId_userId: { tripId: TRIP.id, userId: ME } },
-    create: { tripId: TRIP.id, userId: ME, role: 'admin' },
-    update: { role: 'admin' },
-  });
+  // **The whole group, not just me.** The demo trip had one membership, so every
+  // group-shaped behaviour — "one of us" reaching everybody, an assignment coming FROM
+  // somebody, the roster's avatars — was untestable against the seed. The other four users
+  // already existed; only their memberships were missing.
+  for (const u of USERS) {
+    const role = u.id === ME ? 'admin' : 'peer';
+    await prisma.membership.upsert({
+      where: { tripId_userId: { tripId: TRIP.id, userId: u.id } },
+      create: { tripId: TRIP.id, userId: u.id, role },
+      update: { role },
+    });
+  }
   // Places first — bookings/events reference them by FK.
   for (const p of PLACES) {
     await prisma.place.upsert({
@@ -244,6 +339,13 @@ async function main() {
       update: e,
     });
   }
+  for (const t of TASKS) {
+    await prisma.task.upsert({
+      where: { id: t.id },
+      create: { ...t, createdAt: CREATED_AT },
+      update: t,
+    });
+  }
   for (const m of MAYBE_ITEMS) {
     await prisma.maybeItem.upsert({
       where: { id: m.id },
@@ -252,7 +354,9 @@ async function main() {
     });
   }
   console.log(
-    `Seeded: ${USERS.length} users, 1 trip, 1 membership, ${PLACES.length} places, ${BOOKINGS.length} bookings, ${EVENTS.length} events, ${MAYBE_ITEMS.length} maybe-items.`,
+    `Seeded: ${USERS.length} users, 1 trip, ${USERS.length} memberships, ${PLACES.length} places, ` +
+      `${BOOKINGS.length} bookings, ${EVENTS.length} events, ${TASKS.length} tasks, ` +
+      `${MAYBE_ITEMS.length} maybe-items.`,
   );
 }
 

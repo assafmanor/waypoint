@@ -32,7 +32,9 @@ import {
   type CreateEventInput,
   type CreateMaybeItemInput,
   type CreateNoteInput,
+  pushDeviceSchema,
   type CreatePushSubscriptionInput,
+  type PushDevice,
   type CreateTaskInput,
   type UpdateMaybeItemInput,
   type UpdateNoteInput,
@@ -251,13 +253,36 @@ export async function deleteAvatar(): Promise<Me> {
 
 /** Register (or refresh) this device. Idempotent server-side — the row is upserted on the
  *  endpoint — so a caller that is unsure whether it already registered may just call it. */
-export async function registerPushSubscription(input: CreatePushSubscriptionInput): Promise<void> {
+export async function registerPushSubscription(
+  input: CreatePushSubscriptionInput,
+): Promise<{ id: string }> {
   const res = await apiFetch(`${API_BASE_URL}/notifications/subscription`, {
     method: HTTP_METHOD.POST,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
   if (!res.ok) return throwApiError(res);
+  // The row's id, which the caller stores so the device list can mark "this device" without
+  // an endpoint ever appearing in a list response (ADR-0197 §2).
+  return (await readJson(res)) as { id: string };
+}
+
+/** This person's registered devices, for the notifications settings surface. Carries neither
+ *  the endpoint nor the raw user-agent — the server derives a label and keeps the rest. */
+export async function fetchPushDevices(): Promise<PushDevice[]> {
+  const res = await apiFetch(`${API_BASE_URL}/notifications/subscriptions`);
+  if (!res.ok) return throwApiError(res);
+  return pushDeviceSchema.array().parse(await readJson(res));
+}
+
+/** Revoke a device by id — "I lost that phone". A 404 is tolerated for the same reason
+ *  `deletePushSubscription`'s is: a missing row already means the desired state. */
+export async function deletePushDevice(id: string): Promise<void> {
+  const res = await apiFetch(
+    `${API_BASE_URL}/notifications/subscriptions/${encodeURIComponent(id)}`,
+    { method: HTTP_METHOD.DELETE },
+  );
+  if (!res.ok && res.status !== 404) return throwApiError(res);
 }
 
 /** Drop this device. A 404 is tolerated for the same reason `removeMember`'s is: the

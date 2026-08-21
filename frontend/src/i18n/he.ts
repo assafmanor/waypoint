@@ -1187,6 +1187,14 @@ export const t = {
       addTime: 'הוספת שעה',
       timeLabel: 'שעת יעד',
       clearDue: 'ללא תאריך',
+      // **The second door** (ADR-0197 §7): the ask that appears under the deadline field the
+      // moment a deadline is on the draft, once per install, dismissible, never re-asked.
+      // A question rather than a claim, because taking it opens the platform's own prompt and
+      // this line must not promise what that prompt may refuse.
+      notifyAsk: {
+        text: 'שנזכיר לכם כשהמשימה תגיע?',
+        action: 'הפעלת התראות',
+      },
       assigneeLabel: 'מי אחראי',
       nobody: 'לא משויך',
       bodyLabel: 'פרטים · לא חובה',
@@ -1661,6 +1669,38 @@ export const t = {
       mapStorageDelete: 'מחיקה',
       mapStorageDeleteTrip: (name: string) => `מחיקת ${name}`,
       mapStorageHint: 'המפות שמורות רק במכשיר הזה · מחיקה לא נוגעת במקומות או בפרטי הטיול.',
+      // The notifications section (ADR-0197 §7.1, ADR-0198 §6). TWO cards, because the
+      // device half and the preferences half have opposite persistence and ADR-0180 §2
+      // already settled that this means one hint per card.
+      notifications: 'התראות',
+      notifyLabel: 'קבלת התראות',
+      notifyDeviceHint: 'ההתראות נשמרות במכשיר הזה · בכל מכשיר צריך להפעיל אותן בנפרד.',
+      // The five states where there is no switch. A control that reliably does nothing is
+      // worse than no control, so each of these is a SENTENCE and the switch is absent.
+      notifyGranted: 'ההרשאה כבר ניתנה בדפדפן הזה · הפעלה כאן לא תשאל שוב.',
+      notifyDenied: 'חסמתם התראות מהאפליקציה הזאת · אפשר להחזיר רק מהגדרות הדפדפן, לא מכאן.',
+      // No pseudo-markup for the emphasis the mockup drew: a copy string that carries its
+      // own bold tags is a second templating language living in the i18n file, and the
+      // sentence carries itself. The gershayim are the app's own quoting convention
+      // (`נתב״ג`, `ק״מ`), not straight quotes.
+      notifyNeedsInstall:
+        'באייפון ההתראות עובדות רק כשהאפליקציה על מסך הבית · בתפריט השיתוף של הדפדפן בחרו ״הוספה למסך הבית״, ואז חזרו לכאן.',
+      notifyUnsupported: 'הדפדפן הזה לא יודע לקבל התראות · בכרום או בספארי זה יעבוד.',
+      notifyFailed: 'לא הצלחנו להפעיל התראות במכשיר הזה. אפשר לנסות שוב.',
+      notifyOff: '-',
+      notifyBlockedValue: 'כבוי בדפדפן',
+      // The categories card. ONE switch, for phase A — a preference for a phase that may
+      // never ship is a promise, not a control (ADR-0198 §6, amended).
+      notifyTasksLabel: 'משימות ותזכורות',
+      notifyPrefsHint: 'הבחירה נשמרת בחשבון ומגיעה איתכם לכל מכשיר.',
+      // The device list, which renders only when there IS another device.
+      notifyDevices: 'המכשירים שלי',
+      notifyDeviceHere: 'המכשיר הזה',
+      notifyDeviceNeverSent: 'עוד לא נשלח',
+      notifyDeviceLastSent: (when: string) => `נשלח לאחרונה ${when}`,
+      notifyDeviceRemove: 'הסרה',
+      notifyDeviceRemoveLabel: (name: string) => `הסרת ${name}`,
+      notifyDevicesHint: 'הסרת מכשיר מפסיקה לשלוח אליו · אם אבד לכם טלפון, זה המקום.',
       accountSection: 'החשבון',
       emailLabel: 'אימייל',
       emailHint:

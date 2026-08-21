@@ -9,9 +9,11 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   NOTIFICATION_KIND,
   type CreatePushSubscriptionInput,
+  type PushDevice,
   type PushPayload,
 } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { deviceLabel } from './device-label';
 import {
   NOTIFICATION_SENDER,
   SEND_OUTCOME,
@@ -48,13 +50,18 @@ export class NotificationsService {
    *
    * `lastFailedAt` is cleared: a re-subscribe is the cure for whatever the failure was.
    */
-  async subscribe(userId: string, input: CreatePushSubscriptionInput): Promise<void> {
+  async subscribe(userId: string, input: CreatePushSubscriptionInput): Promise<{ id: string }> {
     const { endpoint, p256dh, auth, userAgent } = input;
-    await this.prisma.pushSubscription.upsert({
+    // **The id comes back**, and that is what lets the device list mark "this device"
+    // without the endpoint ever appearing in a list response: the client stores this and
+    // compares ids. An endpoint is a bearer capability; an id is not.
+    const row = await this.prisma.pushSubscription.upsert({
       where: { endpoint },
       create: { userId, endpoint, p256dh, auth, userAgent },
       update: { userId, p256dh, auth, userAgent, lastFailedAt: null },
+      select: { id: true },
     });
+    return row;
   }
 
   /**
@@ -70,12 +77,46 @@ export class NotificationsService {
     await this.prisma.pushSubscription.deleteMany({ where: { userId, endpoint } });
   }
 
-  /** This user's devices, newest first — what a settings surface lists (phase 1b). */
+  /** This user's devices, newest first. The internal read — rows with their endpoints, for
+   *  sending. `listDevices` is the one a client sees. */
   listForUser(userId: string) {
     return this.prisma.pushSubscription.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  /**
+   * The device list a settings surface renders (phase 1b).
+   *
+   * **Neither the endpoint nor the raw user-agent leaves the server.** The first is a bearer
+   * capability and the second is 120 characters of noise the screen does not want — so the
+   * `select` here is the security boundary, not a convenience: a field added to the model is
+   * not added to this response by accident.
+   */
+  async listDevices(userId: string): Promise<PushDevice[]> {
+    const rows = await this.prisma.pushSubscription.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, userAgent: true, lastSentAt: true, createdAt: true },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      label: deviceLabel(row.userAgent),
+      lastSentAt: row.lastSentAt?.toISOString() ?? null,
+      createdAt: row.createdAt.toISOString(),
+    }));
+  }
+
+  /**
+   * Drop one device **by its id** — how a person revokes a phone they no longer have.
+   *
+   * Scoped to the caller's own rows by the same `deleteMany` pair `unsubscribe` uses, and
+   * for the same reason: an id the caller does not own must not delete anything, and the
+   * pair makes that true without a read-then-check race. A no-match is a success.
+   */
+  async removeDevice(userId: string, id: string): Promise<void> {
+    await this.prisma.pushSubscription.deleteMany({ where: { userId, id } });
   }
 
   /**

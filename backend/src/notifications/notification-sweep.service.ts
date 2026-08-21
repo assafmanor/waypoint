@@ -21,11 +21,13 @@ import { tripZoneCrossings } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { NOTIFICATION_DISPATCHER, type NotificationDispatcher } from './notification-dispatcher';
 import {
-  NOTIFICATION_KINDS,
+  DEDUP,
   type DueSend,
   type NotificationKind,
+  type NotifyPref,
   type TripZones,
 } from './notification-kind';
+import { NOTIFICATION_KINDS } from './notification-registry';
 import {
   capWindowStart,
   dailySource,
@@ -34,6 +36,7 @@ import {
   QUIET_VERDICT,
   quietVerdict,
   remainingToday,
+  SUBJECT_FIRE_KEY,
 } from './send-policy';
 
 /** What one tick did, for the log and for a spec to assert against. */
@@ -44,9 +47,19 @@ export interface SweepReport {
   droppedStale: number;
   deferredQuiet: number;
   droppedCapped: number;
+  /** The recipient has this kind's category switched off (ADR-0198 §6). */
+  droppedPref: number;
   /** Lost the ledger race to another tick or another instance. */
   alreadySent: number;
 }
+
+/**
+ * How long a **dedup-by-instant** ledger row is kept. Correctness needs only the 24-hour cap
+ * window; this is long because ADR-0197 §10 makes the ledger the log too, and a month is how
+ * far back "why did I get that" is worth answering. Dedup-by-subject rows are exempt — see
+ * `pruneLedger`.
+ */
+export const LEDGER_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 const EMPTY_REPORT: SweepReport = {
   candidates: 0,
@@ -54,6 +67,7 @@ const EMPTY_REPORT: SweepReport = {
   droppedStale: 0,
   deferredQuiet: 0,
   droppedCapped: 0,
+  droppedPref: 0,
   alreadySent: 0,
 };
 
@@ -91,7 +105,11 @@ export class NotificationSweepService {
     report.candidates = found.length;
     if (found.length === 0) return report;
 
-    const spent = await this.spentToday([...new Set(found.map((f) => f.candidate.userId))], nowMs);
+    const userIds = [...new Set(found.map((f) => f.candidate.userId))];
+    const [spent, prefs] = await Promise.all([
+      this.spentToday(userIds, nowMs),
+      this.prefsFor(userIds),
+    ]);
 
     // Claimed sends accumulate and go out in ONE dispatch at the end. Not per-candidate,
     // deliberately: the dispatcher is the seam a queue replaces (ADR-0197 §3.1), so it should
@@ -99,7 +117,7 @@ export class NotificationSweepService {
     // handing it one item at a time would make the swap a rewrite instead of a binding change.
     const claimed: DueSend[] = [];
     for (const { candidate, kind } of found) {
-      if (await this.consider(candidate, kind, nowMs, zonesFor, spent, report)) {
+      if (await this.consider(candidate, kind, nowMs, zonesFor, spent, prefs, report)) {
         claimed.push(candidate);
       }
     }
@@ -113,9 +131,45 @@ export class NotificationSweepService {
     this.log.log(
       `sweep: ${report.candidates} candidates, ${report.claimed} claimed, ` +
         `${report.droppedStale} stale, ${report.deferredQuiet} quiet, ` +
-        `${report.droppedCapped} capped, ${report.alreadySent} already sent`,
+        `${report.droppedCapped} capped, ${report.droppedPref} opted out, ` +
+        `${report.alreadySent} already sent`,
     );
     return report;
+  }
+
+  /**
+   * **Retention: forget the sends nothing will ever read again** — and NOT the ones that are
+   * somebody's only memory.
+   *
+   * The ledger grows monotonically. It cascades from `User`, so a deleted account takes its
+   * rows, but there is deliberately no FK to `Task` or `Trip` (the subject is an id, not a
+   * relation — a send is about a thing that may be gone, which is the point), so nothing
+   * else ever removes a row.
+   *
+   * **The split is by `dedup`, and getting it the other way round would resurrect
+   * notifications.** A `BY_INSTANT` row stops mattering once its instant is far behind: the
+   * longest thing that reads one is the 24-hour cap window, so anything older is dead weight.
+   * A `BY_SUBJECT` row IS the permanent answer to "has this person already been told about
+   * this task" — delete it and every assignment announcement fires again. So those are never
+   * pruned, and they are cheap: one row per assignee per task, ever.
+   *
+   * Thirty days rather than the 25 hours correctness needs, because §10 makes this table the
+   * log as well as the ledger — "why did I get that" is worth being able to answer for longer
+   * than a day.
+   *
+   * A kind REMOVED from the registry leaves rows that are neither prunable nor read. Harmless,
+   * and named here so the next person does not have to work out why.
+   */
+  async pruneLedger(nowMs: number): Promise<number> {
+    const byInstant = NOTIFICATION_KINDS.filter((kind) => kind.dedup === DEDUP.BY_INSTANT).map(
+      (kind) => kind.id,
+    );
+    if (byInstant.length === 0) return 0;
+    const { count } = await this.prisma.notificationSend.deleteMany({
+      where: { kind: { in: byInstant }, sentAt: { lt: new Date(nowMs - LEDGER_RETENTION_MS) } },
+    });
+    if (count > 0) this.log.log(`pruned ${count} ledger rows past retention`);
+    return count;
   }
 
   /**
@@ -141,6 +195,22 @@ export class NotificationSweepService {
       spent.set(key, (spent.get(key) ?? 0) + row._count._all);
     }
     return spent;
+  }
+
+  /**
+   * Each recipient's category switches (ADR-0198 §6) — **one query for the whole tick**, the
+   * same shape as `spentToday` above and for the same reason.
+   *
+   * A user the query does not return is treated as opted OUT, which is the safe direction:
+   * the only way to be absent is to have been deleted between a kind's query and this one.
+   */
+  private async prefsFor(userIds: string[]): Promise<Map<string, Record<NotifyPref, boolean>>> {
+    if (userIds.length === 0) return new Map();
+    const rows = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, notifyTasks: true },
+    });
+    return new Map(rows.map((row) => [row.id, { notifyTasks: row.notifyTasks }]));
   }
 
   /**
@@ -194,10 +264,19 @@ export class NotificationSweepService {
     nowMs: number,
     zonesFor: (tripId: string) => Promise<TripZones>,
     spent: Map<string, number>,
+    prefs: Map<string, Record<NotifyPref, boolean>>,
     report: SweepReport,
   ): Promise<boolean> {
     if (isStale({ nowMs, aimedAtMs: candidate.aimedAtMs, staleAfterMs: kind.staleAfterMs })) {
       report.droppedStale += 1;
+      return false;
+    }
+
+    // **The preference, before anything else costs a query.** Declared per kind so a kind
+    // cannot forget to check (ADR-0198 §6); a kind with `pref: null` is one nobody can
+    // decline, and that is visible in its own source rather than by omission here.
+    if (kind.pref && prefs.get(candidate.userId)?.[kind.pref] !== true) {
+      report.droppedPref += 1;
       return false;
     }
 
@@ -232,7 +311,8 @@ export class NotificationSweepService {
           userId: candidate.userId,
           kind: candidate.kind,
           subjectId: candidate.subjectId,
-          fireKey: fireKeyFor(candidate.aimedAtMs),
+          fireKey:
+            kind.dedup === DEDUP.BY_SUBJECT ? SUBJECT_FIRE_KEY : fireKeyFor(candidate.aimedAtMs),
         },
       });
       report.claimed += 1;

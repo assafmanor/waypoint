@@ -13,12 +13,24 @@
 // nothing), so it can never throw on a malformed payload — it needs a parse that answers
 // `null` and lets the caller fall back, not one that raises.
 
-/** The kinds a payload can carry. One member today, and ADR-0198's catalogue fills it in
- *  from phase A: named constants rather than bare strings (ADR-0095), so a typo is a
- *  compile error at both ends of the wire instead of a notification nobody can route. */
+/** The kinds a payload can carry — ADR-0198's catalogue, one member per row of it. Named
+ *  constants rather than bare strings (ADR-0095), so a typo is a compile error at both ends
+ *  of the wire instead of a notification nobody can route. Phases B, C and D add theirs
+ *  here and nothing else in this file changes. */
 export const NOTIFICATION_KIND = {
   /** The dev-only proof that the pipe works end to end. Never sent by the sweep. */
   TEST: 'test',
+  /** **Phase A** (ADR-0198 §2). A task deadline with an HOUR on it, at that hour. A
+   *  dated-no-time task never fires this — "Thursday" is not a moment — and is the
+   *  digest's job instead. */
+  TASK_DUE: 'task.due',
+  /** The 08:00 local roll-up of what is open and dated today or tomorrow. The mechanism
+   *  that makes a dated-no-time deadline reachable at all, which is most of what anyone
+   *  writes weeks out. */
+  TASK_DIGEST: 'task.digest',
+  /** The catalogue's one social send, and it earns its place by being ADDRESSED: somebody
+   *  put your name on something. */
+  TASK_ASSIGNED: 'task.assigned',
 } as const;
 export type NotificationKind = (typeof NOTIFICATION_KIND)[keyof typeof NOTIFICATION_KIND];
 
