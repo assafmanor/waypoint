@@ -77,6 +77,17 @@ export const BEAT = {
    *  no beat at all: the open state declares its own `transition`, which a `transition`
    *  being read from the DESTINATION state makes govern the way back and nothing else. */
   TICK: 'is-ticking',
+  /** A hold on something that cannot be dragged: the row strains on the axis it was being
+   *  dragged on, is arrested, and is pulled back past level onto its anchor (ADR-0199 §2).
+   *  Keyframes in `screens.css`, beside `.bld.draggable`.
+   *
+   *  Deliberately neither of its two nearest siblings, and for the same kind of reason each
+   *  time. Not `NUDGE`: that beat means something is WRONG, and trying to drag a hard event
+   *  is not an error — ADR-0011 guards a commitment rather than forbidding it, and the event
+   *  does move, through the time chip the lock sits on. Not `REBUFF`: that one means there
+   *  is nothing to OPEN, and a hard row has a read, a `⋯` and a time; its arc also
+   *  COMPLETES, where the whole statement here is a movement that does not. */
+  PINNED: 'is-pinned',
 } as const;
 
 export type Beat = (typeof BEAT)[keyof typeof BEAT];

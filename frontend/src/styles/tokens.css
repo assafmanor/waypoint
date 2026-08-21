@@ -434,6 +434,29 @@ body.wp-dragging * {
   user-select: none !important;
   -webkit-user-select: none !important;
 }
+/* …and the other half of the same subject, which the comment above used to point at while
+   the rule itself was copied per component (ADR-0199 §4). **A day or shelf row is a
+   control, not a document**: a press on one is a gesture in every mode — a drag on a soft
+   row, an answered refusal on a hard one (`BEAT.PINNED`), a tap everywhere else — and a
+   long press that starts selecting text or opens the iOS callout is the platform answering
+   in the app's place.
+
+   It was keyed on `.draggable` in `screens.css` and `maybe-card.css`, and the key is what
+   made it a bug rather than a gap: the two rows that never drag — a hard `.bld`, and every
+   `.wp-event`, which has no drag in any mode — were the two that selected. Owner report,
+   2026-08-21.
+
+   One selector list rather than three declarations, so they cannot drift the way ADR-0139's
+   four axes did; a fourth row type joins by being added here. Note this handles the press
+   only: cancelling `selectstart` mid-gesture is `useHoldToDrag`'s `selection.suppress()`,
+   because `user-select: none` does not stop a long press ASKING to select. */
+.bld,
+.wp-event,
+.wp-maybecard {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
 /* Ownership of the finger is enforced in JS, not here (lib/useHoldToDrag.ts's
    mount-time non-passive `touchmove` guard). Two CSS routes were tried first and
    both are dead ends, so they are documented rather than reintroduced:

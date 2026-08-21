@@ -265,11 +265,10 @@
    scrolling itself, only once it has actually armed. */
 .wp-maybecard.draggable {
   cursor: grab;
-  /* A press-and-hold on a button otherwise starts a text selection or the iOS
-     callout menu, both of which fight the drag. */
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
+  /* The `user-select`/`-webkit-touch-callout` trio that lived here is GONE (ADR-0199 §4) —
+     it is one rule in `styles/tokens.css` now, keyed on being a row rather than on being
+     draggable. This card is covered unconditionally there, which is also more correct: a
+     read-only shelf card was never meant to select either. */
 }
 /* Now that something DOES follow the finger (session-117, `lib/useDragGhost.ts`),
    the two halves of the drag split cleanly:

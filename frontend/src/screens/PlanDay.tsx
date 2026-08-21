@@ -114,6 +114,7 @@ import {
 } from '../lib/shelf-drop';
 import { useEdgeAutoScroll, type DragPoint } from '../lib/edge-autoscroll';
 import { useHoldToDrag, type HoldToDragProps } from '../lib/useHoldToDrag';
+import { BEAT, playBeat } from '../lib/one-shot';
 import { useDragGhost } from '../lib/useDragGhost';
 import {
   CONTROL_ICON,
@@ -434,6 +435,20 @@ export function PlanDay() {
   // tap; time arbitrates instead, so the handle (and the ▲/▼ fallback beside it) is
   // retired and the row gets that width back. Reorder stays keyboard-reachable in the
   // row's ⋯ sheet, which is where row actions live anyway.
+  // **The hard row's half of the same gesture** (ADR-0199 §1). It never drags — a hard
+  // event is a pinned anchor (ADR-0011) — so until now it got no hold props at all, and
+  // with them it lost the `selectstart` cancel and the context-menu prevent: what answered
+  // a press-and-hold on a commitment was the platform's text-selection UI. It takes the
+  // same hook in refusal mode now, so the hold is answered and the finger comes straight
+  // back to the page.
+  //
+  // One object for every hard row rather than a factory per id: the handler is told which
+  // element was held, and unlike a drag there is nothing else about the row it needs.
+  const rowRefuseProps = useMemo(
+    () => holdToDrag({ onRefuse: (el) => playBeat(el, BEAT.PINNED) }),
+    [holdToDrag],
+  );
+
   const rowDragProps = (id: string) =>
     holdToDrag({
       onArm: (el, at, pressBox) => {
@@ -962,6 +977,7 @@ export function PlanDay() {
     softIndex,
     drag,
     rowDragProps,
+    rowRefuseProps,
     onEdit: (e) => {
       const booking = e.bookingId ? bookings.find((b) => b.id === e.bookingId) : undefined;
       if (booking) setBookingTarget(booking);
@@ -1558,6 +1574,8 @@ interface BuilderCtx {
   softIndex: Map<string, number>;
   drag: { id: string; overId: string | null } | null;
   rowDragProps: (id: string) => HoldToDragProps;
+  /** Shared by every hard row — the hold is answered rather than armed (ADR-0199 §1). */
+  rowRefuseProps: HoldToDragProps;
   onEdit: (event: TripEvent) => void;
   /** The row's own tap (ADR-0174 §4) — the READ, routed by whether the event is booked. */
   onOpen: (event: TripEvent) => void;
@@ -1850,6 +1868,10 @@ function BuilderNode({
         onShowOnMap={eventShowOnMap(e, ctx.bookings, ctx.places, ctx.showPlaceOnMap)}
         onPark={soft ? () => ctx.verbs.park(e) : undefined}
         dragProps={soft && !ctx.readOnly ? ctx.rowDragProps(e.id) : undefined}
+        // A hard row refuses the same hold instead of arming it. Gated on `readOnly` for
+        // the same reason the drag is: on a finished-trip archive nothing moves, so a beat
+        // singling this row out as the anchored one would be saying something false.
+        refuseProps={!soft && !ctx.readOnly ? ctx.rowRefuseProps : undefined}
         dragging={ctx.drag?.id === e.id}
         over={ctx.drag?.overId === e.id}
         // The row's own time opens the day-position picker (ADR-0161 §7). Offered on any
@@ -1901,6 +1923,7 @@ export function BuilderRow({
   onShowOnMap,
   onPark,
   dragProps,
+  refuseProps,
   dragging,
   over,
   onPickTime,
@@ -1952,6 +1975,11 @@ export function BuilderRow({
   /** Press-and-hold to drag, from anywhere on the row (session-119). Present only
    *  for soft rows — hard events are pinned anchors, not draggable (ADR-0011). */
   dragProps?: HoldToDragProps;
+  /** Press-and-hold on a HARD row (ADR-0199 §1). Same hook, same 500ms, but the hold is
+   *  answered with `BEAT.PINNED` and the gesture ends there — nothing arms, so the page
+   *  keeps its scroll and the finger is handed straight back. Mutually exclusive with
+   *  `dragProps` by construction: a row is one or the other. */
+  refuseProps?: HoldToDragProps;
   dragging?: boolean;
   over?: boolean;
   /** **Open the day-position picker for this row** (ADR-0161 §4/§7). Reached by tapping the
@@ -2078,7 +2106,7 @@ export function BuilderRow({
     // could only arm on contact from a dedicated handle before; a press-and-hold can
     // arm from anywhere without eating the row's tap, so the row gets that width back
     // and the gesture matches the shelf's exactly.
-    <div className={cls} {...{ [EVENT_ROW_ATTR]: event.id }} {...dragProps}>
+    <div className={cls} {...{ [EVENT_ROW_ATTR]: event.id }} {...(dragProps ?? refuseProps)}>
       {/* The badge is the way to the map, and it survives `readOnly` — a finished
           trip is a browsable archive (ADR-0040) and looking at a place changes
           nothing. */}
