@@ -6,8 +6,30 @@ import { SEND_OUTCOME } from './notification-sender';
 import { WebPushSender } from './web-push.sender';
 
 const sendNotification = vi.fn();
+
+/**
+ * **The mock is shaped like the REAL module, and that is the whole point of this block.**
+ *
+ * The previous version exported `sendNotification` at the top level, which no build of
+ * `web-push` ever does: it is CommonJS, so a dynamic `import()` puts `module.exports` on
+ * `.default` and exposes only the named exports `cjs-module-lexer` can detect statically
+ * (`WebPushError`, `supportedContentEncodings` — not `sendNotification`). So the mock was
+ * LOOSER than reality, every test passed, and in production every send threw
+ * `webpush.sendNotification is not a function`.
+ *
+ * `shape` exists so both branches of the interop are covered: `cjs` is production and is
+ * the default for every test in this file, `esm` is the fallback for a real ESM build.
+ */
+let shape: 'cjs' | 'esm' = 'cjs';
 vi.mock('web-push', () => ({
-  sendNotification: (...args: unknown[]) => sendNotification(...args),
+  get default() {
+    return shape === 'cjs'
+      ? { sendNotification: (...a: unknown[]) => sendNotification(...a) }
+      : undefined;
+  },
+  get sendNotification() {
+    return shape === 'esm' ? (...a: unknown[]) => sendNotification(...a) : undefined;
+  },
 }));
 
 const TARGET = { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', p256dh: 'k', auth: 'a' };
@@ -43,6 +65,7 @@ describe('WebPushSender', () => {
   });
 
   afterEach(() => {
+    shape = 'cjs';
     warn.mockRestore();
     delete process.env.VAPID_PUBLIC_KEY;
     delete process.env.VAPID_PRIVATE_KEY;
@@ -146,6 +169,22 @@ describe('WebPushSender', () => {
       SEND_OUTCOME.FAILED,
     );
     expect(sendNotification).not.toHaveBeenCalled();
+  });
+
+  it('calls through the CJS namespace’s `.default`, which is where the function lives', async () => {
+    // The production bug, as a test: `web-push` is CommonJS, so `sendNotification` is
+    // reachable only via `.default`. Reading it off the namespace threw `is not a function`
+    // on every send — and threw with no `statusCode`, so it read as an ordinary transport
+    // failure for the whole life of the feature.
+    shape = 'cjs';
+    await expect(new WebPushSender().send(TARGET, PAYLOAD)).resolves.toBe(SEND_OUTCOME.SENT);
+    expect(sendNotification).toHaveBeenCalledTimes(1);
+  });
+
+  it('still works if the library ever exposes a real named export', async () => {
+    shape = 'esm';
+    await expect(new WebPushSender().send(TARGET, PAYLOAD)).resolves.toBe(SEND_OUTCOME.SENT);
+    expect(sendNotification).toHaveBeenCalledTimes(1);
   });
 
   it('sends nothing while PUSH_DISABLED is set', async () => {

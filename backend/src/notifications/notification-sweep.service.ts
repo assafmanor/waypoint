@@ -53,6 +53,9 @@ export interface SweepReport {
    *  window has not closed yet but whose send went out on an earlier tick — and occasionally
    *  by losing the insert race to another instance in the same minute. */
   alreadySent: number;
+  /** Claimed, then reached no device, so the claim was handed back for the next tick to
+   *  re-derive (ADR-0197 §10). Non-zero means somebody's notification is late, not lost. */
+  released: number;
 }
 
 /**
@@ -62,6 +65,13 @@ export interface SweepReport {
  * `pruneLedger`.
  */
 export const LEDGER_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** **What makes two `DueSend`s the same send**, by value rather than by reference — so a
+ *  dispatcher that serialised its input can still be understood when it reports back. The
+ *  four fields that decide a ledger row, before `fireKey` bucketing. */
+function sendIdentity(send: DueSend): string {
+  return [send.userId, send.kind, send.subjectId, send.aimedAtMs].join('\u0000');
+}
 
 /** The ledger's own unique key, as a value. Exactly the four columns of
  *  `@@unique([userId, kind, subjectId, fireKey])`, so the pre-check and the insert cannot
@@ -86,6 +96,7 @@ const EMPTY_REPORT: SweepReport = {
   droppedCapped: 0,
   droppedPref: 0,
   alreadySent: 0,
+  released: 0,
 };
 
 @Injectable()
@@ -134,9 +145,19 @@ export class NotificationSweepService {
     // see the tick's whole batch — that is the unit a `QueueDispatcher` would enqueue, and
     // handing it one item at a time would make the swap a rewrite instead of a binding change.
     const claimed: DueSend[] = [];
+    // The ledger key each claim was written under, so a send nobody received can hand it
+    // back without re-deriving the key from a candidate a second time.
+    //
+    // **Keyed by the send's own identity, NOT by object identity.** `DirectDispatcher`
+    // happens to return the very objects it was handed, so a `Map<DueSend, …>` would work
+    // today and break silently the moment the seam does what it exists for: a
+    // `QueueDispatcher` (ADR-0197 §3.1) serialises, so what comes back is an equal object
+    // and never the same one. Releases would quietly stop happening, with no failing test.
+    const keys = new Map<string, LedgerKey>();
     for (const { candidate, kind } of found) {
       if (await this.consider(candidate, kind, nowMs, zonesFor, spent, prefs, sent, report)) {
         claimed.push(candidate);
+        keys.set(sendIdentity(candidate), this.keyFor(candidate, kind));
       }
     }
 
@@ -144,7 +165,10 @@ export class NotificationSweepService {
     // delivered is recoverable only as "we said we sent it"; claiming everything first means
     // a crash mid-dispatch loses deliveries rather than double-sending them, which is the
     // direction a notification should fail in.
-    if (claimed.length > 0) await this.dispatcher.dispatch(claimed);
+    if (claimed.length > 0) {
+      const undelivered = await this.dispatcher.dispatch(claimed);
+      report.released = await this.release(undelivered, keys);
+    }
 
     // **A tick that did nothing says nothing.** "Every candidate already sent" is the normal
     // state for the whole of a kind's window — three hours, per task — so logging it once a
@@ -155,7 +179,7 @@ export class NotificationSweepService {
         `sweep: ${report.candidates} candidates, ${report.claimed} claimed, ` +
           `${report.droppedStale} stale, ${report.deferredQuiet} quiet, ` +
           `${report.droppedCapped} capped, ${report.droppedPref} opted out, ` +
-          `${report.alreadySent} already sent`,
+          `${report.alreadySent} already sent, ${report.released} released for retry`,
       );
     }
     return report;
@@ -328,6 +352,45 @@ export class NotificationSweepService {
       crossings: tripZoneCrossings(events as never, bookings as never, places as never),
       primaryZone: trip.timezone,
     };
+  }
+
+  /**
+   * **Hand back the claims nobody received**, so the next tick re-derives them.
+   *
+   * This is not a new policy — it is what `SEND_OUTCOME.FAILED` has always documented
+   * ("recorded and dropped; §3's sweep re-derives on the next tick"). That re-derivation
+   * could not happen: the claim is written BEFORE the send, on purpose, so a crash loses a
+   * delivery rather than double-sending it — and a claim that outlives a failed send makes
+   * the loss permanent. The distinction that makes releasing safe is **who told us**: a
+   * crash leaves us guessing what got through, while a transport failure is the sender
+   * reporting, in-process, that nothing did. Retrying what we know did not arrive is not a
+   * double send.
+   *
+   * **`staleAfterMs` is the bound**, and it is the right one: the candidate stops being
+   * derived when the moment it names has passed, so a persistently unreachable device costs
+   * one attempt a tick until the notification is no longer worth sending, and a device the
+   * push service reports as `410` is deleted on the first attempt and stops being tried at
+   * all. A `429` is retried on the next tick, which at this app's volume (§0198 §5: a
+   * handful of sends per person per day) cannot itself be what caused the throttle —
+   * ADR-0197 §3.1's fourth threshold (non-410 failures over ~1%) is where that stops being
+   * true and a backoff belongs.
+   */
+  private async release(
+    undelivered: readonly DueSend[],
+    keys: Map<string, LedgerKey>,
+  ): Promise<number> {
+    if (undelivered.length === 0) return 0;
+    const rows = undelivered
+      .map((send) => keys.get(sendIdentity(send)))
+      .filter((key): key is LedgerKey => !!key);
+    if (rows.length === 0) return 0;
+    // One statement, exact tuples — the same shape as the pre-check, so a row can only be
+    // released under precisely the key it was claimed under.
+    const { count } = await this.prisma.notificationSend.deleteMany({ where: { OR: rows } });
+    if (count > 0) {
+      this.log.warn(`released ${count} claims whose send reached no device; next tick retries`);
+    }
+    return count;
   }
 
   /**

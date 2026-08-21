@@ -146,14 +146,30 @@ function fakePrisma(
           ),
         );
       },
-      deleteMany: ({ where }: { where: { kind: { in: string[] }; sentAt: { lt: Date } } }) => {
+      // **Two callers, two clause shapes, and the fake honours only the clauses it is
+      // actually sent** — the prune's `kind`+`sentAt` pair, and the release's `OR` of exact
+      // tuples. A fake that ignored the difference could not tell a release that deleted the
+      // right row from one that emptied the table.
+      deleteMany: ({ where }: { where: LedgerDeleteWhere }) => {
         calls.push('deleteMany');
-        // Mirrors the real clause pair: BOTH must match, so a prune that dropped the `kind`
-        // filter would delete a by-subject row here and fail the test that forbids it.
-        const kept = ledger.filter(
-          (row) =>
-            !(where.kind.in.includes(row.kind) && row.sentAt.getTime() < where.sentAt.lt.getTime()),
-        );
+        const matches = (row: LedgerRow & { sentAt: Date }): boolean => {
+          if ('OR' in where) {
+            return where.OR.some(
+              (k) =>
+                k.userId === row.userId &&
+                k.kind === row.kind &&
+                k.subjectId === row.subjectId &&
+                k.fireKey === row.fireKey,
+            );
+          }
+          // Mirrors the real clause pair: BOTH must match, so a prune that dropped the
+          // `kind` filter would delete a by-subject row here and fail the test that
+          // forbids it.
+          return (
+            where.kind.in.includes(row.kind) && row.sentAt.getTime() < where.sentAt.lt.getTime()
+          );
+        };
+        const kept = ledger.filter((row) => !matches(row));
         const count = ledger.length - kept.length;
         ledger.splice(0, ledger.length, ...kept);
         return Promise.resolve({ count });
@@ -182,11 +198,17 @@ function fakePrisma(
   return { prisma, ledger, calls };
 }
 
+/** The two `deleteMany` shapes the sweep sends: the prune's, and the release's. */
+type LedgerDeleteWhere = { kind: { in: string[] }; sentAt: { lt: Date } } | { OR: LedgerRow[] };
+
 class RecordingDispatcher implements NotificationDispatcher {
   readonly batches: DueSend[][] = [];
-  dispatch(due: readonly DueSend[]): Promise<void> {
+  /** What this dispatcher claims reached nobody. Empty = everything landed, which is the
+   *  default every existing spec assumes. */
+  undelivered: readonly DueSend[] = [];
+  dispatch(due: readonly DueSend[]): Promise<readonly DueSend[]> {
     this.batches.push([...due]);
-    return Promise.resolve();
+    return Promise.resolve(this.undelivered);
   }
 }
 
@@ -214,6 +236,7 @@ describe('the no-kinds short circuit — what phase 3 actually ships', () => {
       droppedCapped: 0,
       droppedPref: 0,
       alreadySent: 0,
+      released: 0,
     });
     // The assertion that makes phase 3 free rather than merely quiet: not one query.
     expect(calls).toEqual([]);
@@ -277,13 +300,85 @@ describe('a due candidate', () => {
     const dispatcher: NotificationDispatcher = {
       dispatch: () => {
         order.push('dispatch');
-        return Promise.resolve();
+        return Promise.resolve([]);
       },
     };
 
     await new NotificationSweepService(prisma, dispatcher).sweep(NOON);
 
     expect(order).toEqual(['claim', 'claim', 'dispatch']);
+  });
+});
+
+describe('a send that reached no device hands its claim back (ADR-0197 §10)', () => {
+  it('releases the claim, so the ledger does not record a send nobody got', async () => {
+    kinds.push(kind({ due: () => Promise.resolve([send()]) }));
+    const { prisma, ledger } = fakePrisma();
+    const { sweep, dispatcher } = makeSweep(prisma);
+    dispatcher.undelivered = [send()];
+
+    const report = await sweep.sweep(NOON);
+
+    expect(report.claimed).toBe(1);
+    expect(report.released).toBe(1);
+    // The row was written (the claim is what makes the send exactly-once) and then removed,
+    // because the transport reported in-process that nothing arrived.
+    expect(ledger).toEqual([]);
+  });
+
+  it('lets the NEXT tick send it again — which is the whole point', async () => {
+    // The failure this closes: one DNS hiccup permanently consumed a notification, because
+    // the claim outlived the send that failed. `SEND_OUTCOME.FAILED` documented a re-derive
+    // on the next tick that the ledger made impossible.
+    kinds.push(kind({ due: () => Promise.resolve([send()]) }));
+    const { prisma, ledger } = fakePrisma();
+    const { sweep, dispatcher } = makeSweep(prisma);
+
+    dispatcher.undelivered = [send()];
+    await sweep.sweep(NOON);
+    expect(ledger).toEqual([]);
+
+    // Next minute: nothing suppresses it, and this time the device takes it.
+    dispatcher.undelivered = [];
+    const second = await sweep.sweep(NOON + 60_000);
+
+    expect(second.claimed).toBe(1);
+    expect(second.alreadySent).toBe(0);
+    expect(dispatcher.batches).toHaveLength(2);
+    expect(ledger).toHaveLength(1);
+  });
+
+  it('releases ONLY the send that was lost, keeping the one that landed', async () => {
+    // One unreachable device must not hand back the claims of the sends that worked.
+    kinds.push(
+      kind({
+        due: () => Promise.resolve([send({ subjectId: 'landed' }), send({ subjectId: 'lost' })]),
+      }),
+    );
+    const { prisma, ledger } = fakePrisma();
+    const { sweep, dispatcher } = makeSweep(prisma);
+    // A **value-equal** send, deliberately not the object the sweep handed over: that is what
+    // a QueueDispatcher would return, and the release has to survive it.
+    dispatcher.undelivered = [send({ subjectId: 'lost' })];
+
+    const report = await sweep.sweep(NOON);
+
+    expect(report.claimed).toBe(2);
+    expect(report.released).toBe(1);
+    expect(ledger.map((r) => r.subjectId)).toEqual(['landed']);
+  });
+
+  it('releases NOTHING when every send landed, and does not touch the table', async () => {
+    kinds.push(kind({ due: () => Promise.resolve([send()]) }));
+    const { prisma, calls, ledger } = fakePrisma();
+    const { sweep } = makeSweep(prisma);
+
+    const report = await sweep.sweep(NOON);
+
+    expect(report.released).toBe(0);
+    expect(ledger).toHaveLength(1);
+    // No delete at all on the happy path — the release must be free when nothing failed.
+    expect(calls.filter((c) => c === 'deleteMany')).toEqual([]);
   });
 });
 
