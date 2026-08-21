@@ -129,21 +129,6 @@ export const COUNTDOWN_MONTHS_THRESHOLD = 2;
 /** How far a "delay" verb pushes an event. */
 export const DELAY_STEP_MINUTES = 30;
 
-/** **The hours a night is slept in**, as trip-local wall clock — the window readiness
- *  measures a night's sleepable stretch inside (ADR-0061's 2026-08-14 amendment). The end
- *  reads on the FOLLOWING calendar day, which is what makes the pair a night rather than
- *  an evening. Deliberately wider than anyone sleeps: it is the span a bed could be used
- *  in, and what gets subtracted from it is the transport that provably occupied it. */
-export const NIGHT_WINDOW_START_TIME = '22:00';
-export const NIGHT_WINDOW_END_TIME = '08:00';
-
-/** **The shortest stretch that still reads as a night in a bed.** Below it, nobody books
- *  a room — a 01:00 departure leaves three hours between dinner and the airport, and a
- *  bus arriving at 04:00 leaves four before the day starts. Above it (a 06:00 flight
- *  leaves eight), you slept somewhere and the lodging check should still be asking where.
- *  Tunable: it is the one number separating those two readings. */
-export const SLEEPABLE_NIGHT_MIN_MINUTES = 5 * 60;
-
 /** Toast auto-dismiss. */
 export const TOAST_DURATION_MS = 3600;
 

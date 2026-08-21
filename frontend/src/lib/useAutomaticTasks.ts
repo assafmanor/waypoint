@@ -10,7 +10,7 @@
 import { useMemo } from 'react';
 import type { Task, UpdateTaskInput } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
-import { computeReadiness, type Readiness } from './readiness';
+import { computeReadiness, type Readiness } from '@waypoint/shared';
 import { automaticTasks, isUnwritten, type AutomaticTask } from './automatic-tasks';
 
 export interface AutomaticTasks {

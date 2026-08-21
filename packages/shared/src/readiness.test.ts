@@ -6,8 +6,8 @@ import {
   EVENT_CATEGORY,
   EVENT_KIND,
   EVENT_STATUS,
-} from '@waypoint/shared';
-import type { Booking, DocumentSummary, Place, TripEvent } from '@waypoint/shared';
+} from './constants';
+import type { Booking, DocumentSummary, Place, TripEvent } from './entities';
 import { computeReadiness } from './readiness';
 
 const NOW = '2026-07-01T00:00:00Z';

@@ -42,6 +42,11 @@ export const NOTIFICATION_KIND = {
   /** 19:00 the evening before day 1. The one row in the catalogue that fires before the trip
    *  has anything timed in it. */
   TRIP_TOMORROW: 'trip.tomorrow',
+  /** **Phase C** (ADR-0198 §2) — 10:00 local at T-14 / T-7 / T-2, and only when one of
+   *  ADR-0190's five readiness checks is still open. Three milestones rather than a daily
+   *  countdown, and each names what is still MISSING: a nudge that repeats every day about
+   *  a thing nobody has done yet is a nag with a calendar. */
+  READINESS_NUDGE: 'readiness.nudge',
 } as const;
 export type NotificationKind = (typeof NOTIFICATION_KIND)[keyof typeof NOTIFICATION_KIND];
 

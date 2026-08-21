@@ -20,7 +20,7 @@
 // returns an action *id* rather than a closure.
 import type { Task, TaskDerivedKey, TaskStatus } from '@waypoint/shared';
 import { TASK_STATUS } from '@waypoint/shared';
-import type { ReadinessCheck } from './readiness';
+import type { ReadinessCheck } from '@waypoint/shared';
 import { MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
 

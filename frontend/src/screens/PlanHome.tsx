@@ -3,7 +3,7 @@
 // plan violet, never amber, no pulse (design-language: mode identity, ADR-0028).
 //
 // Readiness and the checklist are DERIVED from the snapshot, never stored
-// (lib/readiness.ts, ADR-0061). Each incomplete row's CTA *does the thing* —
+// (@waypoint/shared readiness.ts, ADR-0061). Each incomplete row's CTA *does the thing* —
 // opens the type-specific create form (flight seeded with the missing leg /
 // lodging), seeds the day builder, or the settings invite — not a bare tab
 // switch. Completed checks collapse into a summary. Only rows we can honestly

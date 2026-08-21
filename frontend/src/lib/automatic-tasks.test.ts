@@ -11,7 +11,7 @@ import {
   tickedAutomaticStatus,
   AUTOMATIC_TASK_ACTION,
 } from './automatic-tasks';
-import type { ReadinessCheck } from './readiness';
+import type { ReadinessCheck } from '@waypoint/shared';
 
 const CTX = {
   emptyDates: ['2026-08-18', '2026-08-20'],

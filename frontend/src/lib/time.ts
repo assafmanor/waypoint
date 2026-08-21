@@ -46,27 +46,13 @@ export const toHHMM = (min: number) => `${pad(Math.floor(min / 60))}:${pad(min %
 // two implementations of "which calendar day is this, over there" is precisely how a
 // notification comes to fire on a different day than the row it is about.
 // Imported for this file's own use (three call sites below) as well as re-exported.
-import { todayInTz } from '@waypoint/shared';
+import { addDays, todayInTz, tripDates, zoneOffsetAt, zonedIso } from '@waypoint/shared';
 
-export { todayInTz };
-
-/** Add whole days to a YYYY-MM-DD date string. */
-export function addDays(date: string, delta: number): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + delta);
-  return d.toISOString().slice(0, 10);
-}
-
-/** **Every calendar day of a trip**, inclusive, as `YYYY-MM-DD`. Calendar dates, so read in
- *  UTC like every other date here — a trip's span is not an instant.
- *
- *  One derivation because there are three readers now: the header's day strip built this inline,
- *  and the two shelves need the same list to ask which day a dateless idea fits (ADR-0151's
- *  2026-08-04 amendment). Three copies of a `+ 1` is how two of them end up off by a day. */
-export function tripDates(startDate: string, endDate: string): string[] {
-  const total = Math.round((Date.parse(endDate) - Date.parse(startDate)) / MS_PER_DAY) + 1;
-  return Array.from({ length: Math.max(0, total) }, (_, i) => addDays(startDate, i));
-}
+// `addDays`, `tripDates` and `zonedIso` moved to `@waypoint/shared`'s `trip-dates.ts` with
+// `computeReadiness` (ADR-0198 phase C) — the server derives the same readiness the card
+// shows, and it needs all three. Re-exported for the same reason `todayInTz` is: 22 files
+// import them from here.
+export { addDays, todayInTz, tripDates, zonedIso };
 
 /** Clamp a YYYY-MM-DD date string into [min, max] — lexical compare is valid
  *  since ISO date strings sort chronologically. */
@@ -470,17 +456,11 @@ export function shiftIso(iso: string, minutes: number): string {
 
 /** UTC offset (e.g. "+09:00") for a timezone at a specific instant — the IANA
  *  tzdata behind `Intl` is the authoritative source, not a hand-maintained table. */
-function offsetAt(at: Date, timeZone: string): string {
-  const name = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'longOffset' })
-    .formatToParts(at)
-    .find((p) => p.type === 'timeZoneName')?.value;
-  return !name || name === 'GMT' ? '+00:00' : name.replace('GMT', '');
-}
 
 /** A timezone's UTC offset in signed minutes at a specific instant (DST-correct),
  *  e.g. Asia/Tokyo → 540, America/New_York in July → -240. */
 export function zoneOffsetMinutes(at: Date, timeZone: string): number {
-  const s = offsetAt(at, timeZone); // "+09:00" | "-04:00" | "+05:30" | "+00:00"
+  const s = zoneOffsetAt(at, timeZone); // "+09:00" | "-04:00" | "+05:30" | "+00:00"
   const sign = s.startsWith('-') ? -1 : 1;
   const [h, m] = s.slice(1).split(':').map(Number);
   return sign * (h * 60 + m);
@@ -514,37 +494,6 @@ export function formatZoneDelta(minutes: number): string {
  *  regex. */
 export function isCalendarDay(date: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(Date.parse(`${date}T00:00:00Z`));
-}
-
-/** Combine a form's `date` (YYYY-MM-DD) + `time` (HH:MM) inputs, read as wall-clock
- *  in `timeZone`, into a UTC ISO instant. **`date` must be a real calendar day**
- *  (`isCalendarDay`) and `time` an `HH:MM` — anything else is an Invalid Date and
- *  throws rather than returning one.
- *
- *  The offset for a given wall-clock reading depends on the instant itself (DST),
- *  which is exactly what we're trying to compute — so this resolves the
- *  chicken-and-egg by fixed-point iteration: guess an offset, recompute the
- *  instant, re-derive the offset *at that instant*, repeat until it stops
- *  moving (verified against real DST boundaries in time.test.ts; converges in
- *  at most 2 steps in practice). A single noon-anchored guess (the obvious
- *  shortcut) is silently wrong by up to an hour for any wall time on the same
- *  calendar day as a transition — don't reintroduce that.
- *
- *  ponytail: the one input this can't resolve correctly is a wall-clock
- *  reading that's ambiguous (repeated) or nonexistent (skipped) *during* the
- *  transition hour itself (e.g. 02:30 on a spring-forward day). It returns a
- *  stable, well-defined instant rather than looping or throwing, just not
- *  necessarily the one the user meant — every timezone library needs an
- *  explicit disambiguation policy for that hour; add one (e.g. "prefer
- *  standard time") if trip dates ever land there in practice. */
-export function zonedIso(date: string, time: string, timeZone: string): string {
-  let candidate = new Date(`${date}T${time}:00Z`);
-  for (let i = 0; i < 3; i++) {
-    const next = new Date(`${date}T${time}:00${offsetAt(candidate, timeZone)}`);
-    if (next.getTime() === candidate.getTime()) break;
-    candidate = next;
-  }
-  return candidate.toISOString();
 }
 
 /** Inverse of the date/time split zonedIso() combines — HH:MM in the trip timezone,

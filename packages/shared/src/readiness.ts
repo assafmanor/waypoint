@@ -8,25 +8,29 @@
 // (per-traveller passports, now that documents ride the snapshot — ADR-0058),
 // and group. Still-deferred signals (Gmail import, Google-connection, WhatsApp)
 // have no data/feature behind them and stay out rather than faked (ADR-0004).
-import {
-  BOOKING_TYPE,
-  DOCUMENT_TYPE,
-  EVENT_CATEGORY,
-  MULTI_ZONE_COUNTRIES,
-  spendsSpanInMotion,
-  type Booking,
-  type DocumentSummary,
-  type Place,
-  type TripEvent,
-} from '@waypoint/shared';
-import {
-  MS_PER_DAY,
-  MS_PER_MINUTE,
-  NIGHT_WINDOW_END_TIME,
-  NIGHT_WINDOW_START_TIME,
-  SLEEPABLE_NIGHT_MIN_MINUTES,
-} from '../constants';
-import { addDays, tripDates, zonedIso } from './time';
+import { BOOKING_TYPE, DOCUMENT_TYPE, EVENT_CATEGORY } from './constants';
+import { MULTI_ZONE_COUNTRIES } from './destinations';
+import { spendsSpanInMotion } from './icons';
+import type { Booking, DocumentSummary, Place, TripEvent } from './entities';
+import { addDays, MS_PER_DAY, MS_PER_MINUTE, tripDates, zonedIso } from './trip-dates';
+
+/** **The hours a night is slept in**, as trip-local wall clock — the window readiness
+ *  measures a night's sleepable stretch inside (ADR-0061's 2026-08-14 amendment). The end
+ *  reads on the FOLLOWING calendar day, which is what makes the pair a night rather than
+ *  an evening. Deliberately wider than anyone sleeps: it is the span a bed could be used
+ *  in, and what gets subtracted from it is the transport that provably occupied it.
+ *
+ *  Moved here from `frontend/src/constants.ts` with this module (ADR-0198 phase C), which
+ *  was their only reader — they mean nothing outside this derivation. */
+const NIGHT_WINDOW_START_TIME = '22:00';
+const NIGHT_WINDOW_END_TIME = '08:00';
+
+/** **The shortest stretch that still reads as a night in a bed.** Below it, nobody books
+ *  a room — a 01:00 departure leaves three hours between dinner and the airport, and a
+ *  bus arriving at 04:00 leaves four before the day starts. Above it (a 06:00 flight
+ *  leaves eight), you slept somewhere and the lodging check should still be asking where.
+ *  Tunable: it is the one number separating those two readings. */
+const SLEEPABLE_NIGHT_MIN_MINUTES = 5 * 60;
 
 export type CheckId = 'flights' | 'lodging' | 'itinerary' | 'documents' | 'group';
 
