@@ -116,6 +116,17 @@ export function fireKeyFor(aimedAtMs: number): string {
   return new Date(Math.floor(aimedAtMs / 60_000) * 60_000).toISOString().slice(0, 16);
 }
 
+/**
+ * The fire key for a kind that dedups by SUBJECT rather than by instant
+ * (`DEDUP.BY_SUBJECT`) — once per (recipient, subject), ever.
+ *
+ * A constant, and deliberately not a formatted instant: the ledger's unique key already
+ * carries `userId`, `kind` and `subjectId`, so the only thing left to neutralise is the time
+ * component. Written as a word rather than an empty string so a row in the table reads as a
+ * decision instead of a bug.
+ */
+export const SUBJECT_FIRE_KEY = 'once';
+
 /** The UTC day boundary the cap counts from, as an instant. Deliberately **not** the
  *  recipient's local day: a cap is a rate limit on our own behaviour, and re-basing it per
  *  traveller would give somebody crossing the date line two budgets. */

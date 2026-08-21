@@ -10,7 +10,9 @@ import {
   Controller,
   Delete,
   ForbiddenException,
+  Get,
   HttpCode,
+  Param,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -20,6 +22,7 @@ import {
   createPushSubscriptionSchema,
   deletePushSubscriptionSchema,
   ERROR_CODE,
+  type PushDevice,
 } from '@waypoint/shared';
 import { createZodDto } from 'nestjs-zod';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -45,15 +48,40 @@ const SUBSCRIPTION_LIMIT = { default: { limit: 30, ttl: 60_000 } };
 export class NotificationsController {
   constructor(private readonly notifications: NotificationsService) {}
 
+  /** Returns the row's **id**, which the client stores so it can later recognise its own
+   *  row in the device list. The endpoint is never in a list response, so this is the only
+   *  thing that can play that part — and an id, unlike an endpoint, is not a capability. */
   @Post('subscription')
+  @Throttle(SUBSCRIPTION_LIMIT)
+  @ApiOkResponse()
+  subscribe(
+    @CurrentUser() user: Principal,
+    @Body(new ZodValidationPipe(createPushSubscriptionSchema)) body: CreatePushSubscriptionDto,
+  ): Promise<{ id: string }> {
+    return this.notifications.subscribe(user.userId, body);
+  }
+
+  /** The devices this person has registered, for the settings surface (phase 1b). Carries no
+   *  endpoint and no raw user-agent — see `NotificationsService.listDevices`. */
+  @Get('subscriptions')
+  @ApiOkResponse()
+  listDevices(@CurrentUser() user: Principal): Promise<PushDevice[]> {
+    return this.notifications.listDevices(user.userId);
+  }
+
+  /**
+   * Revoke one device by id — "I lost that phone".
+   *
+   * **An id in a path is fine where an endpoint was not**: this one is ours, opaque, and
+   * useless to anybody who does not already hold the caller's access token. It is also
+   * scoped to the caller's own rows in the service, so a guessed id deletes nothing.
+   */
+  @Delete('subscriptions/:id')
   @HttpCode(204)
   @Throttle(SUBSCRIPTION_LIMIT)
   @ApiNoContentResponse()
-  async subscribe(
-    @CurrentUser() user: Principal,
-    @Body(new ZodValidationPipe(createPushSubscriptionSchema)) body: CreatePushSubscriptionDto,
-  ): Promise<void> {
-    await this.notifications.subscribe(user.userId, body);
+  async removeDevice(@CurrentUser() user: Principal, @Param('id') id: string): Promise<void> {
+    await this.notifications.removeDevice(user.userId, id);
   }
 
   /** A `DELETE` with a body, which is unusual and is the right shape here: the endpoint is

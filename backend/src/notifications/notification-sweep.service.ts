@@ -21,11 +21,13 @@ import { tripZoneCrossings } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { NOTIFICATION_DISPATCHER, type NotificationDispatcher } from './notification-dispatcher';
 import {
-  NOTIFICATION_KINDS,
+  DEDUP,
   type DueSend,
   type NotificationKind,
+  type NotifyPref,
   type TripZones,
 } from './notification-kind';
+import { NOTIFICATION_KINDS } from './notification-registry';
 import {
   capWindowStart,
   dailySource,
@@ -34,6 +36,7 @@ import {
   QUIET_VERDICT,
   quietVerdict,
   remainingToday,
+  SUBJECT_FIRE_KEY,
 } from './send-policy';
 
 /** What one tick did, for the log and for a spec to assert against. */
@@ -44,6 +47,8 @@ export interface SweepReport {
   droppedStale: number;
   deferredQuiet: number;
   droppedCapped: number;
+  /** The recipient has this kind's category switched off (ADR-0198 §6). */
+  droppedPref: number;
   /** Lost the ledger race to another tick or another instance. */
   alreadySent: number;
 }
@@ -54,6 +59,7 @@ const EMPTY_REPORT: SweepReport = {
   droppedStale: 0,
   deferredQuiet: 0,
   droppedCapped: 0,
+  droppedPref: 0,
   alreadySent: 0,
 };
 
@@ -91,7 +97,11 @@ export class NotificationSweepService {
     report.candidates = found.length;
     if (found.length === 0) return report;
 
-    const spent = await this.spentToday([...new Set(found.map((f) => f.candidate.userId))], nowMs);
+    const userIds = [...new Set(found.map((f) => f.candidate.userId))];
+    const [spent, prefs] = await Promise.all([
+      this.spentToday(userIds, nowMs),
+      this.prefsFor(userIds),
+    ]);
 
     // Claimed sends accumulate and go out in ONE dispatch at the end. Not per-candidate,
     // deliberately: the dispatcher is the seam a queue replaces (ADR-0197 §3.1), so it should
@@ -99,7 +109,7 @@ export class NotificationSweepService {
     // handing it one item at a time would make the swap a rewrite instead of a binding change.
     const claimed: DueSend[] = [];
     for (const { candidate, kind } of found) {
-      if (await this.consider(candidate, kind, nowMs, zonesFor, spent, report)) {
+      if (await this.consider(candidate, kind, nowMs, zonesFor, spent, prefs, report)) {
         claimed.push(candidate);
       }
     }
@@ -113,7 +123,8 @@ export class NotificationSweepService {
     this.log.log(
       `sweep: ${report.candidates} candidates, ${report.claimed} claimed, ` +
         `${report.droppedStale} stale, ${report.deferredQuiet} quiet, ` +
-        `${report.droppedCapped} capped, ${report.alreadySent} already sent`,
+        `${report.droppedCapped} capped, ${report.droppedPref} opted out, ` +
+        `${report.alreadySent} already sent`,
     );
     return report;
   }
@@ -141,6 +152,22 @@ export class NotificationSweepService {
       spent.set(key, (spent.get(key) ?? 0) + row._count._all);
     }
     return spent;
+  }
+
+  /**
+   * Each recipient's category switches (ADR-0198 §6) — **one query for the whole tick**, the
+   * same shape as `spentToday` above and for the same reason.
+   *
+   * A user the query does not return is treated as opted OUT, which is the safe direction:
+   * the only way to be absent is to have been deleted between a kind's query and this one.
+   */
+  private async prefsFor(userIds: string[]): Promise<Map<string, Record<NotifyPref, boolean>>> {
+    if (userIds.length === 0) return new Map();
+    const rows = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, notifyTasks: true },
+    });
+    return new Map(rows.map((row) => [row.id, { notifyTasks: row.notifyTasks }]));
   }
 
   /**
@@ -194,10 +221,19 @@ export class NotificationSweepService {
     nowMs: number,
     zonesFor: (tripId: string) => Promise<TripZones>,
     spent: Map<string, number>,
+    prefs: Map<string, Record<NotifyPref, boolean>>,
     report: SweepReport,
   ): Promise<boolean> {
     if (isStale({ nowMs, aimedAtMs: candidate.aimedAtMs, staleAfterMs: kind.staleAfterMs })) {
       report.droppedStale += 1;
+      return false;
+    }
+
+    // **The preference, before anything else costs a query.** Declared per kind so a kind
+    // cannot forget to check (ADR-0198 §6); a kind with `pref: null` is one nobody can
+    // decline, and that is visible in its own source rather than by omission here.
+    if (kind.pref && prefs.get(candidate.userId)?.[kind.pref] !== true) {
+      report.droppedPref += 1;
       return false;
     }
 
@@ -232,7 +268,8 @@ export class NotificationSweepService {
           userId: candidate.userId,
           kind: candidate.kind,
           subjectId: candidate.subjectId,
-          fireKey: fireKeyFor(candidate.aimedAtMs),
+          fireKey:
+            kind.dedup === DEDUP.BY_SUBJECT ? SUBJECT_FIRE_KEY : fireKeyFor(candidate.aimedAtMs),
         },
       });
       report.claimed += 1;

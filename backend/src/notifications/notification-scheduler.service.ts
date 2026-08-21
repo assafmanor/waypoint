@@ -20,7 +20,7 @@ import {
   type OnModuleDestroy,
 } from '@nestjs/common';
 import { PUSH_DISABLED } from '../common/env';
-import { NOTIFICATION_KINDS } from './notification-kind';
+import { NOTIFICATION_KINDS } from './notification-registry';
 import { NotificationSweepService } from './notification-sweep.service';
 
 /** The tick interval. Named here rather than inlined because it is load-bearing twice: it

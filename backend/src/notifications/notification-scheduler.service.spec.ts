@@ -9,12 +9,19 @@ import type { NotificationSweepService } from './notification-sweep.service';
 // registered — can only be told apart from its opposite by registering something.
 const hoisted = vi.hoisted(() => ({ kinds: [] as unknown[] }));
 const kinds = hoisted.kinds as NotificationKind[];
-vi.mock('./notification-kind', () => ({ NOTIFICATION_KINDS: hoisted.kinds }));
+vi.mock('./notification-registry', () => ({ NOTIFICATION_KINDS: hoisted.kinds }));
 
 import { NotificationSchedulerService, SWEEP_INTERVAL_MS } from './notification-scheduler.service';
 
 const aKind = () =>
-  ({ id: 'test', timeCritical: false, staleAfterMs: 0, due: async () => [] }) as NotificationKind;
+  ({
+    id: 'test',
+    timeCritical: false,
+    staleAfterMs: 0,
+    dedup: 'byInstant',
+    pref: null,
+    due: async () => [],
+  }) as NotificationKind;
 
 function build() {
   const sweep = { sweep: vi.fn().mockResolvedValue(undefined) };

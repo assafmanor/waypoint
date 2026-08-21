@@ -124,6 +124,18 @@ model User {
   // default would be the mistake `avatarColor` already made here: one value
   // that is wrong for everyone outside the country that picked it.
   preferredCurrency String?
+  // **Which categories of notification this person wants** (ADR-0198 §6). On `User` and not
+  // on `PushSubscription`, so they follow a person to a new phone the way
+  // `preferredCurrency` does: the subscription is per DEVICE, the preference is per person.
+  //
+  // Default `true`, and that is not an opt-in by stealth — the real opt-in is the device's
+  // own permission, which nothing here can grant. A person who has allowed notifications
+  // and then finds task reminders switched off would be looking at a switch that lied.
+  //
+  // Only phase A's switch exists. `notifyObligations` arrives with phase B and
+  // `notifyGroup` only if phase D is ever built (ADR-0198 §6, amended 2026-08-21) — an
+  // unused column would be a preference for a feature that may never come.
+  notifyTasks       Boolean  @default(true)
 
   createdAt DateTime @default(now())
 
@@ -562,6 +574,20 @@ model Task {
   // `Event.updatedBy`: the trip's roster is what resolves a name, and a FK here would owe
   // a cascade answer for a case (the assignee's account is deleted) nobody has asked.
   assigneeUserId  String?
+  // **When somebody ELSE put this on the assignee** (ADR-0198 §2, `task.assigned`).
+  //
+  // A transition, not a clock — which is why it has to be stored. ADR-0197 §3 derives every
+  // schedule from state rather than enqueueing it, and that works because a deadline IS a
+  // state; "you were just assigned this" is not, and no combination of `updatedAt` and
+  // `assigneeUserId` can tell it from a title edit. So the FACT is recorded and the send is
+  // still derived, which keeps §3's principle rather than bending it.
+  //
+  // **Null when the actor assigned themselves**, so the "the actor is not the assignee" rule
+  // is applied where the actor is actually known instead of being guessed from `updatedBy`
+  // by the sweep. Null also on un-assign, which retracts a send that has not gone out yet.
+  // Null on every task written before this column, which is the right answer: we do not
+  // announce an assignment that happened before anyone could be told.
+  assignedAt      DateTime?
   important       Boolean    @default(false)
   status          TaskStatus @default(open)
   settledAt       DateTime?
@@ -617,6 +643,10 @@ model Task {
   /// without this it is a full table scan every minute forever. `status` leads because it is
   /// the selective half: most rows are settled and can never be due again.
   @@index([status, dueAt])
+  /// The same shape for `task.assigned`, whose window is the last few hours of assignments
+  /// rather than the next few minutes of deadlines. `assignedAt` is null for almost every
+  /// row ever written, which is what makes this one cheap.
+  @@index([status, assignedAt])
 }
 
 // The sync/undo/feed substrate; seq is a strictly-increasing cursor (ADR-0019).

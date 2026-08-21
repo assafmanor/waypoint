@@ -1,11 +1,16 @@
 // **What a notification kind IS, and the registry the sweep iterates** (ADR-0197 §3,
 // ADR-0198's catalogue).
 //
-// Phase 3 registers **nothing**. That is the deliverable, not an oversight: the tick runs,
-// the ledger exists, quiet hours and the cap are enforced, and no notification can reach
-// anybody — a state that is testable and that cannot surprise a real traveller while the
-// catalogue is still being built. Phase 4 adds `task.due` here and the sweep starts working
-// without another line changing.
+// **The registry lives next door, in `notification-registry.ts`**, and that split is not
+// tidiness. A kind needs `DEDUP` and `NOTIFY_PREF` from this file at module-eval time, so a
+// registry here would make this file import its own implementers and them import it back — a
+// cycle that in CommonJS leaves one side reading `undefined` from a half-initialised module.
+// An interface that does not know who implements it also mocks cleanly, which the sweep's
+// spec depends on.
+//
+// Phase 3 registered nothing on purpose, and phase 4 filled it in: `task.due`, `task.digest`
+// and `task.assigned`, ADR-0198's phase A. The claim phase 3 made held — the registry is the
+// only line that changed to turn the machinery on.
 //
 // ── THE SHAPE, AND WHY IT IS THIS SHAPE ────────────────────────────────────────────────────
 //
@@ -77,16 +82,48 @@ export interface DueSend {
 }
 
 /**
+ * How a send of this kind is identified in the ledger.
+ *
+ * The default is the aimed-at minute, which is what makes a moved deadline re-arm and an
+ * edited title not. `BY_SUBJECT` exists for a kind whose trigger is a **transition** rather
+ * than a clock: there is no instant that both bounds its staleness and stays put across
+ * later edits, so the two jobs are separated instead of one of them being fudged.
+ */
+export const DEDUP = {
+  /** Once per (recipient, subject, aimed-at minute). */
+  BY_INSTANT: 'byInstant',
+  /** Once per (recipient, subject), ever. ADR-0198's "dedup on the assignee, so passing a
+   *  task back and forth does not multiply" is exactly this. */
+  BY_SUBJECT: 'bySubject',
+} as const;
+export type Dedup = (typeof DEDUP)[keyof typeof DEDUP];
+
+/**
+ * Which `User` preference switches this kind off (ADR-0198 §6), or `null` for a kind nobody
+ * can decline.
+ *
+ * **Declared per kind and enforced by the sweep**, for the same reason `timeCritical` is: a
+ * kind must not be able to forget to check, and a new kind that names no preference is
+ * visibly un-declinable rather than accidentally so.
+ */
+export const NOTIFY_PREF = {
+  TASKS: 'notifyTasks',
+} as const;
+export type NotifyPref = (typeof NOTIFY_PREF)[keyof typeof NOTIFY_PREF];
+
+/**
  * A notification kind: what of this sort is due right now, anywhere.
  *
- * Two properties are declared rather than inferred, because both are per-kind policy that the
- * sweep enforces and a kind must not be able to forget:
+ * Four properties are declared rather than inferred, because each is per-kind policy that
+ * the sweep enforces and a kind must not be able to forget:
  *
  * - **`timeCritical`** — may this fire inside quiet hours? A 05:30 airport departure has to
  *   ring at 04:00 or the feature is decorative; a task reminder does not (ADR-0197 §5).
  * - **`staleAfterMs`** — how long after its aimed-at instant is this still worth sending? A
  *   missed tick DROPS rather than delivering late (§3): "leave for the airport" is worthless
  *   twenty minutes on, and a redeploy must not fire eleven notifications at once.
+ * - **`dedup`** — see `DEDUP` above.
+ * - **`pref`** — which switch turns this off, or `null`.
  *
  * **The contract on `due`:** one bounded, indexed query. Its window should be no wider than
  * `staleAfterMs` — anything older is dropped by the sweep anyway, so selecting it is work
@@ -96,11 +133,10 @@ export interface NotificationKind {
   id: NotificationKindId;
   timeCritical: boolean;
   staleAfterMs: number;
+  dedup: Dedup;
+  pref: NotifyPref | null;
   due(input: DueInput): Promise<DueSend[]>;
 }
-
-/** The registered kinds. **Empty in phase 3, deliberately** — see the file header. */
-export const NOTIFICATION_KINDS: readonly NotificationKind[] = [];
 
 /** The id union, taken from `@waypoint/shared`'s `NOTIFICATION_KIND` rather than declared a
  *  second time here — a bare `string` would be the exact weakness ADR-0095 exists to

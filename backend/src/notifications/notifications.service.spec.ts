@@ -292,4 +292,109 @@ describe('NotificationsService', () => {
     // worker's fallback instead of itself — which is a passing test and a broken feature.
     expect(seen?.url.startsWith('/')).toBe(true);
   });
+  describe('the device list a settings surface renders (phase 1b)', () => {
+    it('carries NO endpoint and NO raw user-agent', async () => {
+      // The security boundary of this response. The fake ignores `select`, so what this
+      // actually pins is that the service BUILDS its rows field by field rather than
+      // spreading the model — which is the change that would leak a capability.
+      rows.push(
+        row({
+          id: 'r1',
+          userId: 'u1',
+          endpoint: 'https://push/secret-capability',
+          userAgent:
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Safari/604.1',
+        }),
+      );
+      const { prisma } = fakePrisma(rows);
+
+      const devices = await new NotificationsService(prisma, new RecordingSender([])).listDevices(
+        'u1',
+      );
+
+      expect(Object.keys(devices[0]).sort()).toEqual(['createdAt', 'id', 'label', 'lastSentAt']);
+      expect(JSON.stringify(devices)).not.toContain('secret-capability');
+      expect(JSON.stringify(devices)).not.toContain('Mozilla');
+    });
+
+    it('labels the device from its user-agent', async () => {
+      rows.push(
+        row({
+          id: 'r1',
+          userId: 'u1',
+          userAgent:
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36',
+        }),
+      );
+      const { prisma } = fakePrisma(rows);
+      const devices = await new NotificationsService(prisma, new RecordingSender([])).listDevices(
+        'u1',
+      );
+      expect(devices[0].label).toBe('Mac · Chrome');
+    });
+
+    it('says when a device was last reached, and says null when it never was', async () => {
+      const lastSentAt = new Date('2026-08-20T10:00:00Z');
+      rows.push(row({ id: 'r1', userId: 'u1', lastSentAt }));
+      rows.push(row({ id: 'r2', userId: 'u1' }));
+      const { prisma } = fakePrisma(rows);
+      const devices = await new NotificationsService(prisma, new RecordingSender([])).listDevices(
+        'u1',
+      );
+      expect(devices.find((d) => d.id === 'r1')?.lastSentAt).toBe(lastSentAt.toISOString());
+      expect(devices.find((d) => d.id === 'r2')?.lastSentAt).toBeNull();
+    });
+
+    it('lists only the caller’s own devices', async () => {
+      rows.push(row({ id: 'mine', userId: 'u1' }));
+      rows.push(row({ id: 'theirs', userId: 'u2' }));
+      const { prisma } = fakePrisma(rows);
+      const devices = await new NotificationsService(prisma, new RecordingSender([])).listDevices(
+        'u1',
+      );
+      expect(devices.map((d) => d.id)).toEqual(['mine']);
+    });
+  });
+
+  describe('removeDevice — "I lost that phone"', () => {
+    it('removes the caller’s own device by id', async () => {
+      rows.push(row({ id: 'r1', userId: 'u1' }));
+      const { prisma } = fakePrisma(rows);
+
+      await new NotificationsService(prisma, new RecordingSender([])).removeDevice('u1', 'r1');
+
+      expect(rows).toHaveLength(0);
+    });
+
+    it('cannot remove somebody ELSE’s device, even with the right id', async () => {
+      // The pair in `deleteMany` is what makes this true without a read-then-check race —
+      // and the fake constrains only the keys present, so dropping `userId` from the query
+      // would make this fail rather than silently still pass.
+      rows.push(row({ id: 'r1', userId: 'u2' }));
+      const { prisma } = fakePrisma(rows);
+
+      await new NotificationsService(prisma, new RecordingSender([])).removeDevice('u1', 'r1');
+
+      expect(rows).toHaveLength(1);
+    });
+
+    it('treats an id that matches nothing as done', async () => {
+      const { prisma } = fakePrisma(rows);
+      await expect(
+        new NotificationsService(prisma, new RecordingSender([])).removeDevice('u1', 'ghost'),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  it('subscribe hands back the row id, so a client can recognise its own device later', async () => {
+    const { prisma } = fakePrisma(rows);
+    const result = await new NotificationsService(prisma, new RecordingSender([])).subscribe('u1', {
+      endpoint: 'https://push/1',
+      p256dh: 'k',
+      auth: 'a',
+    });
+    // Not the endpoint: that is a bearer capability and never appears in a list response, so
+    // the id is what the client stores to mark "this device".
+    expect(typeof result.id).toBe('string');
+  });
 });

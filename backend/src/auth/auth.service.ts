@@ -176,6 +176,10 @@ export class AuthService {
       // real state — a deploy with no keys — and the client is entitled to say so rather
       // than offer a control that fails on press.
       push: { vapidPublicKey: vapidPublicKeyOrNull() },
+      // The category preferences (ADR-0198 §6). Here rather than on `user`, because that
+      // shape is also every co-member's roster row and a preference is nobody else's
+      // business.
+      notify: { tasks: user.notifyTasks },
     };
   }
 
@@ -197,6 +201,7 @@ export class AuthService {
         ...(patch.preferredCurrency !== undefined && {
           preferredCurrency: patch.preferredCurrency,
         }),
+        ...(patch.notifyTasks !== undefined && { notifyTasks: patch.notifyTasks }),
       },
     });
     return this.getMe(userId);

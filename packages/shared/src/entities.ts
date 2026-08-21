@@ -125,6 +125,8 @@ export const userSchema = z.object({
   // chosen one — the client then seeds a default from the device region rather
   // than the server guessing on their behalf.
   preferredCurrency: currencyCodeSchema.nullable(),
+  // NOTE: the notification preferences are deliberately NOT here — see `notifyPrefsSchema`
+  // below. This shape is also every co-member's row in the roster.
   createdAt: z.string(),
 });
 export type User = z.infer<typeof userSchema>;
@@ -650,6 +652,47 @@ export const pushCapabilitySchema = z.object({
 });
 export type PushCapability = z.infer<typeof pushCapabilitySchema>;
 
+/**
+ * One registered device, as a settings surface lists it (ADR-0197 §2, phase 1b).
+ *
+ * **The endpoint is not here, and that is the point.** It is a bearer capability — anyone
+ * holding it can push to that device — so it stays server-side, and the row is addressed by
+ * its own `id` instead. A client identifies *its own* row by the id it stored when it
+ * subscribed, never by comparing endpoints.
+ *
+ * `label` is derived on the server from the stored user-agent (`deviceLabel`), so the raw
+ * string never ships either: nothing on the screen needs it, and it is a hint rather than an
+ * identity — the "this device" mark is what carries recognition.
+ */
+export const pushDeviceSchema = z.object({
+  id: idSchema,
+  /** `iPhone · Safari`, or `מכשיר` when the user-agent said nothing recognisable. */
+  label: z.string(),
+  /** When this device was last actually reached, or null if it never has been. What answers
+   *  "is this row still alive" without a second call. */
+  lastSentAt: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type PushDevice = z.infer<typeof pushDeviceSchema>;
+
+/**
+ * Which categories of notification this person wants (ADR-0198 §6).
+ *
+ * **On `Me` and not on `userSchema`, and that is the whole point of the separation.**
+ * `userSchema` is also every CO-MEMBER's row — the roster, the avatars, the assignee
+ * options — so a preference put there would tell the group what each of them has switched
+ * off. It is account state (it follows a person to a new phone, unlike the per-device
+ * subscription), and it is nobody else's business.
+ *
+ * One field, for phase A. `obligations` arrives with phase B and `group` only if phase D is
+ * ever built — a field for a phase that may never ship is a preference for a feature that
+ * does not exist.
+ */
+export const notifyPrefsSchema = z.object({
+  tasks: z.boolean(),
+});
+export type NotifyPrefs = z.infer<typeof notifyPrefsSchema>;
+
 /** `GET /me` response shape — not its own persisted entity (ADR-0020). */
 export const meSchema = z.object({
   user: userSchema,
@@ -657,5 +700,9 @@ export const meSchema = z.object({
   /** Optional so a client built against this schema still reads a `/me` from a server
    *  that predates it — the cached copy in Dexie is exactly such a payload. */
   push: pushCapabilitySchema.optional(),
+  /** Optional for the same reason `push` is: a cached `/me` from before this field. A
+   *  reader that finds it absent should treat the preferences as ON, matching the column
+   *  default — the safe direction here is "as the server has it", not "off". */
+  notify: notifyPrefsSchema.optional(),
 });
 export type Me = z.infer<typeof meSchema>;

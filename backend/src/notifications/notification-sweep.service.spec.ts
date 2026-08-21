@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NOTIFICATION_KIND, type PushPayload } from '@waypoint/shared';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { NotificationDispatcher } from './notification-dispatcher';
-import type { DueSend, NotificationKind } from './notification-kind';
+import { DEDUP, type DueSend, type NotificationKind } from './notification-kind';
 
 // **The registry is mocked so this spec can register kinds.** Production ships it empty
 // (phase 3's whole point), and a spec that could only observe the empty case would be
@@ -14,7 +14,7 @@ import type { DueSend, NotificationKind } from './notification-kind';
 // initialization", which is what the first version of this file did.
 const hoisted = vi.hoisted(() => ({ kinds: [] as unknown[] }));
 const kinds = hoisted.kinds as NotificationKind[];
-vi.mock('./notification-kind', () => ({ NOTIFICATION_KINDS: hoisted.kinds }));
+vi.mock('./notification-registry', () => ({ NOTIFICATION_KINDS: hoisted.kinds }));
 
 // A static import, not `await import`: vitest hoists `vi.mock` above the imports so the mock
 // is in place either way, and this backend emits CommonJS, where top-level `await` is a type
@@ -50,21 +50,40 @@ function send(over: Partial<DueSend> = {}): DueSend {
 function kind(
   over: Partial<NotificationKind> & { due: NotificationKind['due'] },
 ): NotificationKind {
-  return { id: NOTIFICATION_KIND.TEST, timeCritical: false, staleAfterMs: 3 * HOUR, ...over };
+  return {
+    id: NOTIFICATION_KIND.TEST,
+    timeCritical: false,
+    staleAfterMs: 3 * HOUR,
+    dedup: DEDUP.BY_INSTANT,
+    // `null` by default, so a test that is not about the preference does not have to seed a
+    // user row to get a send through.
+    pref: null,
+    ...over,
+  };
 }
 
-/** A Prisma stand-in over the five calls the sweep makes. `ledger` is the stored rows, so a
+/** A Prisma stand-in over the calls the sweep makes. `ledger` is the stored rows, so a
  *  test can seed "already sent" and a unique violation is modelled rather than mocked. */
 function fakePrisma(
   options: {
     trips?: { id: string; timezone: string }[];
     ledger?: { userId: string; kind: string; subjectId: string; fireKey: string; sentAt: Date }[];
+    /** Recipients' category switches. Absent means "no row", which the sweep must read as
+     *  opted OUT — the only way to be absent is to have been deleted mid-tick. */
+    users?: { id: string; notifyTasks: boolean }[];
   } = {},
 ) {
   const trips = options.trips ?? [{ id: 'trip-1', timezone: 'Asia/Jerusalem' }];
   const ledger = options.ledger ?? [];
+  const users = options.users ?? [{ id: 'u1', notifyTasks: true }];
   const calls: string[] = [];
   const prisma = {
+    user: {
+      findMany: ({ where }: { where: { id: { in: string[] } } }) => {
+        calls.push('prefs');
+        return Promise.resolve(users.filter((u) => where.id.in.includes(u.id)));
+      },
+    },
     trip: {
       findUniqueOrThrow: ({ where }: { where: { id: string } }) => {
         calls.push(`zones:${where.id}`);
@@ -149,6 +168,7 @@ describe('the no-kinds short circuit — what phase 3 actually ships', () => {
       droppedStale: 0,
       deferredQuiet: 0,
       droppedCapped: 0,
+      droppedPref: 0,
       alreadySent: 0,
     });
     // The assertion that makes phase 3 free rather than merely quiet: not one query.
@@ -196,6 +216,7 @@ describe('a due candidate', () => {
       kind({ due: () => Promise.resolve([send({ subjectId: 'a' }), send({ subjectId: 'b' })]) }),
     );
     const prisma = {
+      user: { findMany: () => Promise.resolve([{ id: 'u1', notifyTasks: true }]) },
       trip: { findUniqueOrThrow: () => Promise.resolve({ timezone: 'Asia/Jerusalem' }) },
       event: { findMany: () => Promise.resolve([]) },
       booking: { findMany: () => Promise.resolve([]) },
@@ -218,6 +239,104 @@ describe('a due candidate', () => {
     await new NotificationSweepService(prisma, dispatcher).sweep(NOON);
 
     expect(order).toEqual(['claim', 'claim', 'dispatch']);
+  });
+});
+
+describe('the category preference (ADR-0198 §6)', () => {
+  it('drops a send whose recipient has that switch off', async () => {
+    kinds.push(kind({ pref: 'notifyTasks', due: () => Promise.resolve([send()]) }));
+    const { prisma, ledger } = fakePrisma({ users: [{ id: 'u1', notifyTasks: false }] });
+    const { sweep, dispatcher } = makeSweep(prisma);
+
+    const report = await sweep.sweep(NOON);
+
+    expect(report.droppedPref).toBe(1);
+    expect(report.claimed).toBe(0);
+    // Nothing is written either, so switching the preference back on re-arms the send rather
+    // than leaving a ledger row that swallows it.
+    expect(ledger).toHaveLength(0);
+    expect(dispatcher.batches).toEqual([]);
+  });
+
+  it('lets it through when the switch is on', async () => {
+    kinds.push(kind({ pref: 'notifyTasks', due: () => Promise.resolve([send()]) }));
+    const { prisma } = fakePrisma({ users: [{ id: 'u1', notifyTasks: true }] });
+    const { sweep } = makeSweep(prisma);
+
+    expect((await sweep.sweep(NOON)).claimed).toBe(1);
+  });
+
+  it('treats a MISSING user row as opted out, never as opted in', async () => {
+    // The only way to be absent is to have been deleted between a kind's query and this
+    // one, and the failure direction there must be silence.
+    kinds.push(kind({ pref: 'notifyTasks', due: () => Promise.resolve([send()]) }));
+    const { prisma } = fakePrisma({ users: [] });
+    const { sweep } = makeSweep(prisma);
+
+    expect((await sweep.sweep(NOON)).droppedPref).toBe(1);
+  });
+
+  it('never asks about a kind that declares no preference', async () => {
+    // `pref: null` is a kind nobody can decline, and it must not need a user row to fire.
+    kinds.push(kind({ pref: null, due: () => Promise.resolve([send()]) }));
+    const { prisma } = fakePrisma({ users: [] });
+    const { sweep } = makeSweep(prisma);
+
+    expect((await sweep.sweep(NOON)).claimed).toBe(1);
+  });
+});
+
+describe('dedup BY_SUBJECT (ADR-0198’s "does not multiply")', () => {
+  it('writes ONE ledger row per (recipient, subject) however the instant moves', async () => {
+    // Two ticks, two different aimed-at instants, one send. With the default dedup this
+    // would be two — which is the A→B→A→B hand-off multiplying.
+    kinds.push(
+      kind({
+        dedup: DEDUP.BY_SUBJECT,
+        staleAfterMs: 24 * HOUR,
+        due: () => Promise.resolve([send({ aimedAtMs: NOON })]),
+      }),
+    );
+    const { prisma, ledger } = fakePrisma();
+    const { sweep } = makeSweep(prisma);
+
+    expect((await sweep.sweep(NOON)).claimed).toBe(1);
+    kinds.length = 0;
+    kinds.push(
+      kind({
+        dedup: DEDUP.BY_SUBJECT,
+        staleAfterMs: 24 * HOUR,
+        due: () => Promise.resolve([send({ aimedAtMs: NOON + HOUR })]),
+      }),
+    );
+    const second = await sweep.sweep(NOON + HOUR);
+
+    expect(second.alreadySent).toBe(1);
+    expect(ledger).toHaveLength(1);
+  });
+
+  it('still separates two subjects, and two recipients', async () => {
+    kinds.push(
+      kind({
+        dedup: DEDUP.BY_SUBJECT,
+        due: () =>
+          Promise.resolve([
+            send({ subjectId: 'a' }),
+            send({ subjectId: 'b' }),
+            send({ subjectId: 'a', userId: 'u2' }),
+          ]),
+      }),
+    );
+    const { prisma, ledger } = fakePrisma({
+      users: [
+        { id: 'u1', notifyTasks: true },
+        { id: 'u2', notifyTasks: true },
+      ],
+    });
+    const { sweep } = makeSweep(prisma);
+
+    expect((await sweep.sweep(NOON)).claimed).toBe(3);
+    expect(ledger).toHaveLength(3);
   });
 });
 
