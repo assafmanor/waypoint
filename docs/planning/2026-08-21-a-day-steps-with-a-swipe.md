@@ -19,6 +19,28 @@ The report came with a frame, and the frame is what named the cause. Decoding it
 
 And then the cause is `html, body, #root { height: 100% }` — a line nobody reads, three lines above a comment asserting the opposite of what it produces. That is the transferable part: **the shell's invariant was written as prose in a comment and enforced nowhere.** It is `overflow: hidden` now.
 
+### The regression I spent an hour proving, which was not one
+
+The shell fix shipped first as `html, body { overflow: hidden }` plus the root chain moved to `dvh`. The full e2e run came back with one failure: `event-arrival-scroll.spec.ts`'s **Plan-day** landing, the row unmoved at `top: 883` in an 844-high viewport. It passed in isolation.
+
+Then I did the right thing badly. I ran the base 12 times (12/12), the change 4–6 times (1 failure each), a `tokens.css`-reverted arm 8 times (8/8), and concluded — with a mechanism to match — that sizing the root in `dvh` was churning layout under `lib/land-at-top.ts`'s watch. Every one of those arms was **too small to distinguish the rate I was claiming**, and the mechanism was a story fitted to noise. Repeating properly:
+
+| root style                 | Plan-day landing |
+| -------------------------- | ---------------- |
+| base — neither declaration | **51/52**        |
+| `overflow: hidden`         | 46/48            |
+| `overflow: clip`           | 47/48            |
+
+**The base fails at the same rate.** It is a pre-existing flake in that spec, now backlogged beside the `shelf-drag.spec.ts` one, and nothing in this change made it worse.
+
+Three things worth keeping, none of them about CSS:
+
+- **A bisect arm needs enough runs to see the rate you are claiming.** At a ~2% base rate, 8 runs cannot tell 2% from 0% — and it will happily hand you a clean-looking table.
+- **"Passes in isolation" is a statement about parallelism, not a diagnosis.** The prior was available (the backlog already records one flake of exactly this class) and I reached past it for a regression I had just written.
+- **A mechanism that explains the data is not evidence the data is real.** The `hidden`-is-a-scroll-container argument is _true_ — and it explained a difference that does not exist.
+
+The fix kept the part that survives on its own reasoning: `overflow: clip`, because `hidden` leaves the root a scroll container that `scrollIntoView` would walk, and `clip` is not one at all. The `dvh` half is gone as redundant — `dvh <= lvh` and the ICB _is_ `lvh`, so the surplus is always below the fold and an unscrollable root makes it unreachable. And `e2e/shell-does-not-scroll.spec.ts` now asserts the invariant the band itself cannot be tested for.
+
 ## The gesture: two measurements, each of which looks like the other's answer
 
 The recogniser was the easy half. Claiming the axis was not, and both facts below were measured in a real engine after the unit tests were already green — which is the whole argument for the e2e spec existing.

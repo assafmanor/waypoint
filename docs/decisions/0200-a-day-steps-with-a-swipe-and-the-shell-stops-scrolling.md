@@ -31,13 +31,27 @@ Two prior decisions point in opposite directions and both have to be answered:
 
 ## Decision
 
-### 1. The document does not scroll. Both halves of that are load-bearing
+### 1. The document does not scroll — one declaration, and it is `clip` rather than `hidden`
 
-`html, body, #root` are sized in `dvh` (with `100%` kept as the fallback line, the same two-line idiom `.app` already uses), and `html, body` are `overflow: hidden`.
+`html, body` take `overflow: clip`. Nothing else changes: the root chain stays `height: 100%`, and `.app` stays `100dvh`.
 
-The unit fixes the cause: the document now tracks the same viewport the frame does, so the band does not exist. The `overflow` makes the invariant **true** rather than intended — on the root it propagates to the viewport, so no future disagreement between a frame's unit and the document's is scrollable, on either axis. Safe for every overlay in the app: `Modal`, `MediaViewer` and the toast are all `position: fixed` with their own inner scroller, and the app's one other scroll is `.body`'s.
+**The mismatch is left in place on purpose, because it can only ever fall one way.** `dvh` is never larger than `lvh`, and the ICB **is** `lvh` — so the frame can never overflow the document, and the surplus is always **below the fold**. Make the root unscrollable and the band is unreachable and never painted, which is the entirety of what was reported. On the root, `overflow` propagates to the viewport, so this is the enforcement of the comment that was already there rather than a second opinion about it. Safe for every overlay in the app: `Modal`, `MediaViewer` and the toast are all `position: fixed` with their own inner scroller, and the app's one other scroll is `.body`'s.
 
-**Not repaired by making `.app` `height: 100%`.** That trades the band for the tab bar sitting under the browser's toolbar, which is what `100dvh` was chosen for.
+**`clip`, not `hidden`, and the reason is a principle rather than a measurement.** `hidden` makes an element a scroll **container** that merely refuses the user: it still has a scrollport, and `scrollIntoView` walks every scroll container between an element and the viewport. `hidden` on the root would therefore put a second, empty scroll target in front of `.body` on the one path in this app that aims a smooth scroll at a surface still settling — `lib/land-at-top.ts`. `clip` is not a scroll container at all: nothing to scroll, nothing to walk, identical propagation to the viewport, so it says only what is meant. `map.css` draws the same distinction for its own track.
+
+**And the wrong turn is recorded because it is the more useful half.** `hidden` shipped first, the full e2e run came back with `e2e/event-arrival-scroll.spec.ts`'s Plan-day landing failing (the row unmoved at `top: 883` in an 844-high viewport), it passed in isolation, and the mechanism above was written up as the cause. It is not. Repeating each arm ~24–52 times on the same box:
+
+| root style                 | Plan-day landing |
+| -------------------------- | ---------------- |
+| base — neither declaration | **51/52**        |
+| `overflow: hidden`         | 46/48            |
+| `overflow: clip`           | 47/48            |
+
+**The base fails at the same rate. It is a pre-existing flake in that spec** (backlogged beside the one `shelf-drag.spec.ts` already carries), and the first two bisect rounds — 12/12 here, 8/8 there — were under-powered enough to look like clean separation while being noise. Two lessons worth more than the fix: **a bisect arm needs enough runs to distinguish the rate you are claiming**, and "it passes in isolation" is a statement about parallelism, not a diagnosis. `clip` stays because the reasoning above stands on its own; the numbers say only that neither spelling made anything worse.
+
+**Also tried and dropped: sizing the root chain in `dvh` too.** It reads like the tidier fix (make the document track the same viewport the frame does, so the band never exists) and it is redundant given the first paragraph — `overflow` already makes the surplus unreachable. It also churns: `dvh` is re-resolved whenever the dynamic viewport is, and on the **root** that is a relayout of the whole document at an unpredictable moment during load, landing on the same `requestAnimationFrame` watch. A length that does not need to be dynamic should not be.
+
+**Not repaired by making `.app` `height: 100%` either.** That trades the band for the tab bar sitting under the browser's toolbar, which is what `100dvh` was chosen for.
 
 **What is deliberately NOT changed is `.body`'s 92 px of tail padding**, which is the other thing at the bottom of Home that looks like dead space. It is not dead: `.toast` is `position: fixed; bottom: 78px`, so it floats over the body's last ~56 px, and trimming the tail means a confirmation covering the row that produced it. That reason was nowhere in the code and is now a comment on the declaration.
 
@@ -87,10 +101,12 @@ So this one is written as the shared answer to its own question: axis-aware, dir
 ## Consequences
 
 - The document is no longer scrollable anywhere in the app. Any future surface that wants a scroll gets one on an element, which is what every existing one already does.
+- **Two spellings in §1 are deliberate and both look like tidiness to change**: the root's `overflow` is `clip` and not `hidden`, and its `height` is `100%` and not `100dvh`. `e2e/shell-does-not-scroll.spec.ts` asserts the first (a computed value and a refused scroll are both real in an engine); the second is guarded only by the note there.
+- **`e2e/event-arrival-scroll.spec.ts` is a known flake at roughly 1 run in 25**, in both of its cases, established here at 51/52 on an untouched base while trying to pin it on this change. Backlogged rather than diagnosed — it is a measured-geometry assertion behind a lazy chunk, the same class as the `shelf-drag.spec.ts` entry already there.
 - `SWIPE_PAGER`'s six numbers are a device-pass debt in the same sense ADR-0182's peek width is: `SLOP_PX`, `AXIS_RATIO`, `DECIDE_PX` and `COMMIT_SHARE` are settled enough to ship and `DECIDE_PX` in particular is pinned against one engine's slop. If Safari's differs, that is the number to move.
 - A gesture that begins horizontally and turns vertical will not scroll for the rest of that touch. Inherent to claiming an axis at 6 px, and the alternative is the gesture not existing.
 - `lib/useSwipePager.test.tsx` owns the arithmetic, the mirror, the refusal and the axis decision; `e2e/day-swipe.spec.ts` owns what only an engine can answer — that the browser lets us have the axis, that a swipe over the shelf scrolls the shelf, and that **both** day surfaces step.
-- The empty band itself has no automated guard, and this is stated rather than papered over: the condition is a disagreement between the initial containing block and the dynamic viewport, which no desktop engine and no jsdom run can produce. What is testable is the invariant, and `overflow: hidden` is now that assertion in the stylesheet rather than in a comment.
+- **The empty band itself has no automated guard, and the invariant behind it does.** The band needs a browser with retractable chrome — no desktop engine and no jsdom run can produce the disagreement between the ICB and the dynamic viewport. What an engine _can_ answer is the rule that makes it unreachable, so `e2e/shell-does-not-scroll.spec.ts` asks the three questions worth asking: the document refuses to scroll however it is asked, the root is not a scroll container, and the thing that _is_ supposed to scroll still does.
 
 ## Alternatives considered
 

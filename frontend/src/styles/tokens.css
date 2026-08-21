@@ -524,24 +524,27 @@ body.wp-dragging .wp-maybecard.dragging {
 html,
 body,
 #root {
-  /* **`100%` here is the LARGE viewport, and that is the whole bug it caused**
-     (field report: empty space below the tab bar on Home, reachable by swiping
-     down from it). A percentage height on the root resolves against the initial
+  /* **`100%` here is the LARGE viewport, and that mismatch is the empty band**
+     (field report: space below the tab bar on Home, reachable by swiping down
+     from it). A percentage height on the root resolves against the initial
      containing block, which a mobile browser sizes to the viewport with its
      toolbars HIDDEN — while `.app` is `100dvh`, the viewport as it is right now.
      With the toolbars showing the two disagree by their height, so the document
-     was ~125px taller than the frame inside it: the app sat pinned at the top,
-     the tab bar ended well above the screen's bottom, and the band of `--screen`
-     below it was the document's own overflow. The body contains its overscroll,
-     so the only way to reach it was a gesture starting on the chrome — which is
-     exactly how it was found.
+     is ~125px taller than the frame inside it, and the band of `--screen` under
+     the tab bar is the document's own overflow.
 
-     Both halves of the fix are load-bearing. The unit makes the document track
-     the same viewport the frame does, so the band does not exist; `overflow`
-     makes the sentence below TRUE rather than merely intended, so no future
-     mismatch on either axis is scrollable. */
+     **It is fixed by the `overflow` below, and deliberately NOT by sizing
+     this in `dvh`.** `dvh` can never EXCEED the containing block (`dvh <= lvh`,
+     and the ICB is `lvh`), so the frame can never overflow this box and the
+     surplus is always below the fold — make the root unscrollable and the band
+     is unreachable and never painted, which is the whole of the report. Sizing
+     the document in `dvh` buys nothing on top of that and is not free: `dvh` is
+     re-resolved whenever the dynamic viewport is, and here that is a relayout of
+     the WHOLE document at an unpredictable moment during load — which lands on
+     `lib/land-at-top.ts`, a `requestAnimationFrame` watch whose entire subject is
+     a surface that has not settled yet. A length that does not need to be dynamic
+     should not be. */
   height: 100%;
-  height: 100dvh;
   /* App-shell scrolls inside .body, not the document. Stop overscroll from
      chaining to the page so the browser's native pull-to-refresh never fires
      (PWA feel). Scrolling inside .body is unaffected. */
@@ -552,14 +555,26 @@ body,
   touch-action: manipulation;
 }
 
-/* The document itself never scrolls — every scroll in this app is `.body`'s, a
-   sheet's own list, or a strip's. On the root this propagates to the viewport, so
-   it is the enforcement of the line above and not a second opinion about it. Safe
-   for every overlay: `Modal`, `MediaViewer` and the toast are all `position: fixed`
-   with their own inner scroller. */
+/* **The document itself never scrolls**, which is what closes the empty band above:
+   every scroll in this app is `.body`'s, a sheet's own list, or a strip's. On the
+   root this propagates to the viewport, so it is the enforcement of the sentence in
+   the block above rather than a second opinion about it. Safe for every overlay:
+   `Modal`, `MediaViewer` and the toast are all `position: fixed` with their own
+   inner scroller.
+
+   **`clip`, not `hidden`.** `hidden` makes an element a scroll CONTAINER that merely
+   refuses the user: it still has a scrollport, and `scrollIntoView` walks every scroll
+   container between an element and the viewport. So `hidden` here would put a second,
+   empty scroll target in front of `.body` on the one path in this app that aims a smooth
+   scroll at a surface still settling (`lib/land-at-top.ts`). `clip` is not a scroll
+   container at all — nothing to scroll, nothing to walk, identical propagation to the
+   viewport — so it says only what is meant. Chosen on that reasoning and not on a
+   measurement: `hidden` was tried and no run separated the two (see ADR-0200 §1, which
+   also records the wrong turn taken while looking). Same distinction `map.css` draws for
+   its own track. */
 html,
 body {
-  overflow: hidden;
+  overflow: clip;
 }
 
 body {
