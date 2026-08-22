@@ -13,6 +13,7 @@
 // the same bargain the platform's own reorder gestures make.
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { DRAG_CLICK_SWALLOW_MS, DRAG_HOLD_MS, DRAG_HOLD_SLOP_PX } from '../constants';
+import { useIsDayPreview } from '../state/day-preview';
 import type { DragSourceBox } from './useDragGhost';
 
 /** Parked on `<body>` for the length of an armed drag: turns selection off
@@ -36,26 +37,45 @@ export interface SelectionGuard {
  *  reorder grip, which arms immediately but drags over the same text. */
 export function useSelectionGuard(): SelectionGuard {
   const preventer = useRef<((e: Event) => void) | null>(null);
+  /**
+   * **A preview holds none of this** (ADR-0116 §2c).
+   *
+   * `lock`/`release` are GLOBAL — a class on `<body>` and a document listener — while the
+   * effect that releases them is component-scoped. That was harmless while a day surface
+   * existed once, and stopped being harmless the moment §2c mounted the peeks DURING a drag:
+   * each pane renders a whole day screen, so the same global state acquired three owners and
+   * the two that are not dragging can give it away. Measured, not reasoned — the probe read
+   * `body.wp-dragging` present at the arm and **gone** one move later, which is the peeks'
+   * own mount doing it, and the lean's stylesheet keys off exactly that class.
+   *
+   * The rule is `state/day-preview.tsx`'s and predates this: a pane must reach OUT of itself
+   * for nothing at all. A preview is `inert`, so it can never arm a drag either way; what
+   * this guard stops is the *release*.
+   */
+  const preview = useIsDayPreview();
 
   const suppress = useCallback(() => {
+    if (preview) return;
     if (preventer.current) return;
     const prevent = (e: Event) => e.preventDefault();
     preventer.current = prevent;
     document.addEventListener('selectstart', prevent);
-  }, []);
+  }, [preview]);
 
   const lock = useCallback(() => {
+    if (preview) return;
     document.body.classList.add(DRAGGING_BODY_CLASS);
-  }, []);
+  }, [preview]);
 
   const release = useCallback(() => {
+    if (preview) return;
     if (preventer.current) document.removeEventListener('selectstart', preventer.current);
     preventer.current = null;
     document.body.classList.remove(DRAGGING_BODY_CLASS);
     // A selection that slipped through before the listener attached would otherwise
     // stay highlighted under the card after the drop.
     document.getSelection()?.removeAllRanges();
-  }, []);
+  }, [preview]);
 
   useEffect(() => release, [release]);
 
