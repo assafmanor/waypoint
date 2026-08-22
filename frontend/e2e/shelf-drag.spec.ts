@@ -1442,6 +1442,70 @@ test.describe('carrying a card to another day from the surface edge', () => {
     await touch(cdp, 'touchEnd');
   });
 
+  // **Turning back during the animation stops, it does not reverse** (§2d's fifth repair;
+  // owner: _"we 'turn back' during the animation, then it does a full animation of going back…
+  // this looks very awkward and confusing"_).
+  //
+  // Recorded, with the pager's commands logged: `turn(1)` at 6229ms · the finger reaching the
+  // opposite band at 6260 while the page travelled · the day arriving at 6501 · then `turn(-1)`
+  // at 7300 and again at 8372, a full page backwards each time. The hand was retreating from
+  // the edge it had just used, which is where a hand goes next.
+  //
+  // Counted rather than sampled: after the day lands, the offset must never travel the other
+  // way, and no further day may arrive on its own.
+  test('turning back during the turn stops, and does not walk back', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+    const host = page.locator('.day-swipe:not([data-preview])');
+    const bands = await bodyBands(page);
+    const box = await boxOf(page, '.day-swipe:not([data-preview])');
+    const y = (bands.middleFrom + bands.middleTo) / 2;
+    // The far band — where a hand pulling the card back the way it came ends up.
+    const back = { x: box.x + box.width - Math.round(DRAG_DAY_EDGE_PX / 4), y };
+
+    await page.evaluate(() => {
+      const w = window as unknown as { __turns: number; __watch: () => void };
+      w.__watch = () => {
+        w.__turns = 0;
+        const el = document.querySelector('.day-swipe:not([data-preview])') as HTMLElement;
+        // Every time the host is told to travel a page — in either direction.
+        new MutationObserver(() => {
+          if (el.getAttribute('data-swipe-settling') === 'turn') w.__turns++;
+        }).observe(el, { attributes: true, attributeFilter: ['data-swipe-settling'] });
+      };
+    });
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await expect
+      .poll(() => host.getAttribute('data-swipe-settling'), {
+        timeout: DRAG_DAY_DWELL_MS * 4,
+        intervals: [16],
+      })
+      .toBe('turn');
+    // Armed after the forward turn was commanded, so only what follows is counted.
+    await page.evaluate(() => (window as unknown as { __watch: () => void }).__watch());
+    await touch(cdp, 'touchMove', back.x, back.y);
+
+    // The turn that was already travelling still arrives — that much is #680's rule.
+    await stepsTo(page, TOMORROW);
+    // Then nothing, for three dwells: no reverse turn, no further day.
+    await page.waitForTimeout(DRAG_DAY_DWELL_MS * 3);
+    expect(
+      await page.evaluate(() => (window as unknown as { __turns: number }).__turns),
+      'the band the hand retreated into is not a request to go back',
+    ).toBe(0);
+    expect(dayParam(page)).toBe(TOMORROW);
+
+    // And it still WORKS as a way back — once the drag asks for it, by leaving and returning.
+    await touch(cdp, 'touchMove', box.x + box.width / 2, y);
+    await touch(cdp, 'touchMove', back.x, back.y);
+    await expect.poll(() => dayParam(page), { timeout: DRAG_DAY_DWELL_MS * 4 }).toBeNull();
+    await touch(cdp, 'touchEnd');
+  });
+
   test('holding at the edge steps the day, and keeps stepping', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
     const card = await centre(page, '.wp-maybecard');

@@ -433,6 +433,9 @@ export function PlanDay() {
     activeDate,
     (date) => {
       if (overDate || edgeDay.step == null) return setActiveDate(date);
+      // The edge is told at the COMMAND, not at the arrival: the page takes `--t-base` to
+      // travel and the hand can be somewhere else by then (§2d's fifth repair).
+      edgeDay.turning();
       daySurface.turn(edgeDay.step);
     },
     overDate ? DRAG_DAY_DWELL_MS : edgeDay.dwell,

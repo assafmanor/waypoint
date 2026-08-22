@@ -93,6 +93,8 @@ function mount(neighbours: DayNeighbours, rtl = true) {
     held: () => held,
     last: () => held[held.length - 1],
     track: (x: number) => act(() => api!.track(at(x))),
+    /** What `PlanDay` calls the instant the dwell commands a turn. */
+    turning: () => act(() => api!.turning()),
     stop: () => act(() => api!.stop()),
     date: () => api!.date,
     step: () => api!.step,
@@ -256,7 +258,10 @@ describe('useEdgeDayStep', () => {
     h.arm(MIDDLE);
     h.track(AT_LOW);
     expect(h.last()).toEqual({ step: 1, px: DRAG_DAY_LIFT_PX });
-    // The turn landed, which for this hook is the neighbours moving along.
+    // The turn was commanded, and then landed — which for this hook is the neighbours moving
+    // along. Both halves matter: a day that changed for some OTHER reason (a pill's dwell) is
+    // not this edge's turn and spends none of its state.
+    h.turning();
     h.redraw({ prev: '2026-08-22', next: '2026-08-24' });
     expect(h.last()).toEqual({ step: 1, px: 0 });
   });
@@ -266,6 +271,7 @@ describe('useEdgeDayStep', () => {
     h.settle();
     h.arm(MIDDLE);
     h.track(AT_LOW);
+    h.turning();
     h.redraw({ prev: '2026-08-22', next: '2026-08-24' });
     expect(h.last()).toEqual({ step: 1, px: 0 });
     // Out of the band and back in: a new approach, so the affordance is worth paying for again.
@@ -352,9 +358,13 @@ describe('useEdgeDayStep', () => {
       h.settle();
       h.arm(MIDDLE);
       h.track(AT_LOW);
-      // The turn landed: the day moved on, which is the only notice this hook gets.
+      // The turn was commanded and landed: the day moved on, which is the only notice this hook
+      // gets that its own request arrived.
+      h.turning();
       h.redraw({ prev: '2026-08-22', next: '2026-08-24' });
-      // …and now the other edge, which is the same journey backwards.
+      // …and now the other edge. Reached by LEAVING the band and coming back, because a band the
+      // hand merely drifted into while the page travelled is latched (see below).
+      h.track(MIDDLE);
       h.track(AT_HIGH);
       expect(h.step()).toBe(-1);
       expect(h.dwell()).toBe(DRAG_DAY_REVERSE_DWELL_MS);
@@ -365,6 +375,7 @@ describe('useEdgeDayStep', () => {
       h.settle();
       h.arm(MIDDLE);
       h.track(AT_LOW);
+      h.turning();
       h.redraw({ prev: '2026-08-22', next: '2026-08-24' });
       // Still the same band, still going the same way: a second day is a second journey.
       expect(h.step()).toBe(1);
@@ -376,11 +387,87 @@ describe('useEdgeDayStep', () => {
       h.settle();
       h.arm(MIDDLE);
       h.track(AT_LOW);
+      h.turning();
       h.redraw({ prev: '2026-08-22', next: '2026-08-24' });
       h.stop();
       h.arm(MIDDLE);
       h.track(AT_HIGH);
       expect(h.dwell()).toBe(DRAG_DAY_DWELL_MS);
+    });
+  });
+
+  // ── A BAND THE DRAG DRIFTED INTO IS NOT A REQUEST (§2d's fifth repair) ────────────────
+  //
+  // Owner: _"we 'turn back' during the animation, then it does a full animation of going
+  // back"_. Recorded: the turn commanded at 6229ms, the finger reaching the opposite band at
+  // 6260 while the page travelled, the day arriving at 6501 — and a full reverse turn at 7300,
+  // then another at 8372. The hand was retreating from the edge it had just used, which is
+  // where a hand goes next; nothing about it asked to go back.
+  //
+  // `gateEdgeStep`'s scar, at a third moment. The band that produced the turn stays exempt,
+  // because holding still there has to keep stepping.
+  describe('a page arriving under a wandering finger', () => {
+    /** The gesture in full: aim at the low edge, the dwell fires, the hand retreats across to
+     *  the far band while the page travels, and the day lands. */
+    const drift = () => {
+      const h = mount(BOTH);
+      h.settle();
+      h.arm(MIDDLE);
+      h.track(AT_LOW);
+      expect(h.step()).toBe(1);
+      h.turning();
+      h.track(AT_HIGH);
+      h.redraw({ prev: '2026-08-22', next: '2026-08-24' });
+      return h;
+    };
+
+    it('does not name the day behind it', () => {
+      const h = drift();
+      expect(h.date()).toBeNull();
+      expect(h.step()).toBeNull();
+    });
+
+    it('and names it once the drag asks — by leaving and coming back', () => {
+      const h = drift();
+      h.track(MIDDLE);
+      h.track(AT_HIGH);
+      expect(h.step()).toBe(-1);
+    });
+
+    it('or by pushing deeper into it than it drifted to', () => {
+      const h = mount(BOTH);
+      h.settle();
+      h.arm(MIDDLE);
+      h.track(AT_LOW);
+      h.turning();
+      const drifted = WIDTH - DRAG_DAY_EDGE_PX + 4;
+      h.track(drifted);
+      h.redraw({ prev: '2026-08-22', next: '2026-08-24' });
+      expect(h.date()).toBeNull();
+      h.track(drifted + DRAG_EDGE_SCROLL_RELEASE_PX);
+      expect(h.step()).toBe(-1);
+    });
+
+    // The exemption, and it is §2b's whole promise: a finger that has not moved keeps stepping.
+    it('but a finger that stayed put keeps stepping the way it was going', () => {
+      const h = mount(BOTH);
+      h.settle();
+      h.arm(MIDDLE);
+      h.track(AT_LOW);
+      h.turning();
+      h.redraw({ prev: '2026-08-22', next: '2026-08-24' });
+      expect(h.date()).toBe('2026-08-24');
+      expect(h.step()).toBe(1);
+    });
+
+    // And the reversal window is the REQUEST's step, not whatever the hand was over when the
+    // page landed — which is what it used to record.
+    it('records the step that turned, not the one the hand drifted to', () => {
+      const h = drift();
+      h.track(MIDDLE);
+      h.track(AT_HIGH);
+      expect(h.step()).toBe(-1);
+      expect(h.dwell()).toBe(DRAG_DAY_REVERSE_DWELL_MS);
     });
   });
 

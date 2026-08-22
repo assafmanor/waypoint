@@ -180,3 +180,27 @@ Three things worth keeping from this round:
 - **I fixed the jitter in a motion that should not have existed.** The third repair's measurement was right (the wait was cut mid-transition) and its target was wrong: nobody should have been watching that unwind at all. When a report says a motion is _confusing_ rather than _rough_, the question is what the motion means, not how it runs. I read "jittering" and went to the clock.
 - **The abort rule I added in the second repair was protecting a case that cannot happen.** It cancelled a committed turn so a day could not arrive after a drop had landed on the day before it — but the edge is deliberately not a drop target, so a release inside the band resolves to nothing and §2b takes the whole walk back anyway. A guard written from reasoning rather than from a reachable sequence, and it cost the loudest symptom in the whole feature.
 - **Each of the four repairs removed a motion whose meaning did not match its appearance:** a lift too slow to read as motion, a clone that walked away from the finger, a second animation with no cause, a reverse with no consequence. The generalisation is not about the numbers — **a horizontal slide of a day surface resembles exactly one thing**, so every offset held between days is a promise to move it back. Hold one only while a finger is asking for it.
+
+---
+
+## A sixth round, and the fourth repair had fixed the wrong reverse
+
+> _"Are you kidding? The problem still exists! What did you fix? The problem is that we 'turn back' during the animation, then it does a full animation of going back, but stays in the new day."_
+
+Fair. The previous round removed a reverse that ended on the **same** day; the report says **new** day, and I had read past that word twice. What settled it in one pass was logging the pager's commands rather than the pixels:
+
+```
+6229  turn(1)                       the forward turn is commanded
+6260  hold(-1, 48) turning=true     the finger reaches the OPPOSITE band mid-travel
+6501  COMMIT step=1                 the new day arrives, correctly
+7300  turn(-1)                      a full page backwards, unasked
+8372  turn(-1)                      and again
+```
+
+**The hand retreating from the edge it just used is not a request to go back**, and the edge was reading the far band as exactly that. The fix is `gateEdgeStep` at a third moment: latch the band the pointer is in when a page lands, unless it is the band that produced the turn.
+
+Three things to take from this round rather than from the diff:
+
+- **Read the report's nouns.** "Stays in the new day" and "stays on the same day" are different bugs, and I fixed the second one twice. The frame-by-frame recording I trusted was of _my_ gesture — out of the band — not of theirs, which was back across it. When a report describes a gesture, replay the gesture, including the part that sounds incidental.
+- **A command log beats a pixel log for questions of intent.** Frames tell you what moved; `turn(-1)` at 7300 tells you the app _decided_ to move, which is the thing that was wrong. Two rounds of this feature were diagnosed from pixels and one of them was diagnosed wrong.
+- **The last two repairs are one class:** the drag's geometry changing without the hand doing anything — the surface sliding under a finger, then a day arriving under one. Every rule that reads a position should ask whether the position was chosen. This ADR now answers that question three times, written at three different moments, which is the tell that it should have been asked once as a principle.
