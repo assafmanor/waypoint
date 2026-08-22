@@ -67,6 +67,28 @@ describe('NoteProse', () => {
     expect(hebrew.className).toBe('note-prose-code-he');
   });
 
+  // THE REPORTED DEFECT (owner, 2026-08-22). `dir="auto"` here read the `T` of `TL;DR` and
+  // laid the whole Hebrew note out left to right. The direction has to come from what the
+  // prose IS, not from what happens to come first.
+  it('lays a Hebrew note out RTL even when it opens with Latin', () => {
+    const { container } = render(
+      <NoteProse body={'TL;DR — מה לעשות כדי להטיס DJI Mini 5 Pro כחוק באיסלנד'} />,
+    );
+    expect(container.querySelector('.note-prose')?.getAttribute('dir')).toBe('rtl');
+  });
+
+  it('still lays an English note out LTR', () => {
+    const { container } = render(<NoteProse body="Back entrance, by the flower shop" />);
+    expect(container.querySelector('.note-prose')?.getAttribute('dir')).toBe('ltr');
+  });
+
+  // No letters, no attribute — it inherits the page's RTL, which is what the notes screen's
+  // own row has always done.
+  it('sets no direction on a note that is only numbers', () => {
+    const { container } = render(<NoteProse body="17:00 · 12.50" />);
+    expect(container.querySelector('.note-prose')?.hasAttribute('dir')).toBe(false);
+  });
+
   it('takes the dense density for a host section', () => {
     const { container } = render(<NoteProse body="שורה" dense />);
     expect(container.querySelector('.note-prose')?.className).toContain('dense');

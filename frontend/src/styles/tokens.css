@@ -314,6 +314,13 @@
   --text-h1: 26px; /* screen titles */
   --text-h2: 21px; /* board now-title */
   --text-h3: 17px; /* card titles (17–18) */
+  /* **A step ABOVE body, for the one surface that is a document** (ADR-0202's 2026-08-22
+     amendment; owner: the note's full screen is "too small"). `--text-body` is sized for app
+     chrome — a row, a fact, a meta line — where the job is to fit several facts on a phone
+     line. A note read on its own screen has the opposite job: one long text, nothing beside
+     it, and a reader who is reading rather than scanning. It is a ramp step and not a local
+     number so the next reading surface takes the same size instead of picking its own. */
+  --text-reading: 16px; /* prose on a surface that holds nothing else */
   --text-body: 14.5px; /* default text */
   --text-secondary: 13px; /* meta, descriptions (12–13) */
   --text-caption: 11px; /* labels, hints */

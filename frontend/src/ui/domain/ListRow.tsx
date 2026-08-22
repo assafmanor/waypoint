@@ -11,6 +11,7 @@
 // props; no trip-state, no domain types beyond ReactNode. Rows live inside the
 // screen's `.listcard` container, which owns the card frame + row dividers.
 import { type MouseEvent, type ReactNode } from 'react';
+import type { HoldToOpenProps } from '../../lib/useHoldToOpen';
 import { Sheet } from '../Sheet';
 import { Icon, type IconName } from '../Icon';
 import { PlaceBadge } from './PlaceBadge';
@@ -45,6 +46,15 @@ export interface ListRowProps {
    *  thing you tapped is one `overlayOriginOffset(e.currentTarget)` away. Widening a
    *  `() => void` is backwards compatible, so no existing call site changes. */
   onOpen: (event: MouseEvent<HTMLButtonElement>) => void;
+  /** **Pointer handlers for a HOLD on the open body** (ADR-0202's 2026-08-22 amendment) —
+   *  `lib/useHoldToOpen.ts`'s output, spread as-is. A slot rather than an `onHold` callback so
+   *  this primitive stays ignorant of the gesture: it does not own the timer, the selection
+   *  guard or the click swallow, and a row with nothing to hold for spreads `{}`.
+   *
+   *  On the OPEN BODY and not on the row, deliberately: the trailing group holds the `⋯`, the
+   *  sync badge and any mark, and holding a menu button to open something else is a mistap
+   *  waiting to happen. */
+  hold?: HoldToOpenProps;
   /** Accessible name for the open button (the row's title as a string). */
   openLabel: string;
   /** Disables the open button (e.g. a still-uploading document). */
@@ -83,6 +93,7 @@ export function ListRow({
   badgeTone,
   lead,
   onOpen,
+  hold,
   openLabel,
   disabled,
   title,
@@ -106,6 +117,7 @@ export function ListRow({
         type="button"
         className="wp-listrow-open"
         onClick={onOpen}
+        {...hold}
         disabled={disabled}
         aria-label={openLabel}
       >

@@ -466,6 +466,9 @@
    saves the character and space that were wrapping a line, and a heading saves the blank line
    between two blocks. */
 .note-prose {
+  /* Chrome size by default — a host's section is one item in a card that holds facts and
+     verbs. The full screen raises it to `--text-reading` (`.note-full-body` below), which is
+     what the owner's "too small" bought: the row and the section were never the complaint. */
   --np-base: var(--text-body);
   --np-size: var(--np-base);
   font-size: var(--np-size);
@@ -605,6 +608,10 @@
   flex: 1 1 auto;
 }
 .note-full-body {
+  /* **The one surface that reads at reading size** (ADR-0202's 2026-08-22 amendment). Set on
+     the body rather than inside `.note-prose`, so the prose keeps one default and each host
+     states what it is: this one is a document, the section inside a card is not. */
+  --np-base: var(--text-reading);
   flex: 1;
   min-height: 0;
   overflow-y: auto;

@@ -26,11 +26,12 @@
 // already did, since this button has always held the note's whole body as text. What the
 // shaping must not do is add a tab stop inside a tap target, and `anchors={false}` is what
 // guarantees it.
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import type { Note, User } from '@waypoint/shared';
 import { noteTitleText, noteWhen } from '../lib/notes';
 import { NoteOpenFoot } from './NoteOpenFoot';
 import { NoteProse } from './NoteProse';
+import { useHoldToOpen } from '../lib/useHoldToOpen';
 import { Icon } from './Icon';
 import { t } from '../i18n/he';
 import './section-head.css';
@@ -105,6 +106,13 @@ export function NoteSection({
   // Which note is open, if any. Local: it is the state of this rendering, and no host has
   // any reason to know or to persist it.
   const [openId, setOpenId] = useState<string | null>(null);
+  // **Which note the finger is on**, so one set of hold handlers can serve the whole list
+  // rather than a hook per row — a hook inside `notes.map()` is not allowed, and a
+  // per-row child component would be a second component for one prop.
+  const held = useRef<Note | null>(null);
+  const hold = useHoldToOpen(
+    onOpenFull ? () => held.current && onOpenFull(held.current) : undefined,
+  );
 
   return (
     <div className="note-sec">
@@ -140,6 +148,11 @@ export function NoteSection({
                   type="button"
                   className="note-item-b"
                   onClick={() => setOpenId((current) => (current === note.id ? null : note.id))}
+                  {...hold}
+                  onPointerDown={(event) => {
+                    held.current = note;
+                    hold.onPointerDown?.(event);
+                  }}
                 >
                   {/* **A titled note shows its title AND its body** (ADR-0152 §6's 2026-08-16
                       amendment). `noteTitleText` is `title || body`, so until now a note with
