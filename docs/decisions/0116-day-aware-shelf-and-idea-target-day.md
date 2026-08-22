@@ -1,6 +1,6 @@
 # 0116 — The shelf becomes day-aware: an idea's optional target day, one union in both modes, and skip vs. park
 
-**Status:** Accepted (design + build) — **amended 2026-08-22** (§2b: the surface's inline edge is a second route to another day; §2c: that turn is drawn rather than teleported; §2d: it is lifted to a detent and completed by staying, superseding §2c's approach — and repaired the same day: the ghost's containing block, the interrupted turn, the band's hysteresis, the cheaper reversal)
+**Status:** Accepted (design + build) — **amended 2026-08-22** (§2b: the surface's inline edge is a second route to another day; §2c: that turn is drawn rather than teleported; §2d: it is lifted to a detent and completed by staying, superseding §2c's approach — and repaired the same day, twice: the ghost's containing block, the interrupted turn, the band's hysteresis, the cheaper reversal, and then the landing that keeps the detent)
 **Date:** 2026-07-25
 **Refines:** [0027](0027-soft-item-lifecycle-shelf-slip.md) (the parking-lot model: an idea is parked _or_ placed; the shelf renders unplaced ideas **and** skipped soft events "uniformly" — a promise only Trip mode ever kept), [0025](0025-trip-mode-edit-capability-tiers.md)/[0029](0029-trip-mode-day-scope-gating.md) (which verbs are reachable on which day — the gate the new day picker obeys), [0038](0038-icons-and-canonical-category.md)/[0109](0109-map-tab-design.md) §11 (an idea is created uncategorised; category is captured when it's scheduled — now also when it's parked), [0083](0083-whenfield-datetime-standard.md) (the one date/time entry primitive the schedule sheet finally uses), [0085](0085-relative-day-phrasing.md) (how an idea states its day)
 
@@ -356,6 +356,30 @@ And the channel is **idempotent**: a command that rewrites the value it already 
 **4 · Undoing a step is cheaper than making one** (owner's call, on _"hard to go back"_: half dwell when reversing). Reversing cost a fresh 940ms with nothing to say it was an undo. The opposite band, within `DRAG_DAY_REVERSE_MS` (2s) of a step, now pays `DRAG_DAY_REVERSE_DWELL_MS` — half, **derived** from the dwell rather than typed so the two cannot drift. The lift and the turn are unchanged; only the hold shortens, because `design-language.md` already says a correction is quicker than the thing it corrects. A window rather than "for the rest of the drag": five minutes into a long drag, a band brushed while aiming should not be a day change with half the warning. The dwell is therefore a property of the **target** and is computed by `useEdgeDayStep` — a pill always pays full.
 
 **And the abort stays silent** (owner's call). The 140ms unwind is the whole statement; a drag crosses the band many times in normal use, so a beat per crossing is noise — the same argument §2c made when it refused `BEAT.REBUFF`, and it survives the change of what moves.
+
+**Repaired again the same day, and this one was a design gap rather than a defect.** Owner: _"after landing on the new day there's like a second animation for switching days"_, and _"moving multiple days by holding on the edge is not looking good — perhaps related to the first issue"_. It was the same issue, once per day.
+
+**Recorded rather than reasoned about, because "there's like a second animation" is a claim about how many there are.** A `transitionrun` listener over a hold that stepped two days, before the fix:
+
+```
+ 946ms  transform on .day-page                 ← the lift
+1677ms  transform on .day-page + both peeks    ← the turn
+1904ms  URL ?day=2026-08-23                    ← the day lands
+1995ms  transform on .day-page + both peeks    ← a THIRD run, 91ms later
+2710ms  … turn        2920ms  URL 08-24        2993ms  … and again
+```
+
+The third run is the **re-lift**. §8's reset hands back the whole offset when a turn commits, so the surface went to level — and the finger was still in the band, so the edge immediately commanded its lift again: 48px over `--t-base`, starting ~90ms after the day changed. Per day that is a page turn followed by a smaller second animation, which is exactly what a day switch looks like; across a hold it is one of those every second, which is _"not looking good"_.
+
+**So a turn that began at a detent lands back at the detent.** The travel becomes `page + gutter + detent`, and at the commit the offset is rebased to the detent rather than to zero — a jump of exactly one page, over the page that was swapped underneath it in the same paint, so the picture either side is identical. The finger is still where it was; the surface is still held; nothing is left for the next cycle to animate. Holding at the edge is now **one motion per day**, and the strip never returns to level until the drag lets go.
+
+Three things this needed, each small and each load-bearing:
+
+- **The landing is read off the element, not passed in.** `turn()` asks what offset it is currently holding, because the caller would only be repeating what its own last `hold` already said. That also means a **dragged** turn still lands level with no branch anywhere: no detent was held, so there is nothing to land at.
+- **A one-frame transition suppression** (`data-swipe-rebase`). The offset changes and nothing moves, which is the one combination a transition gets wrong — it would slide the arriving day in from off screen over `--t-base`. Removed on the next frame, so the detent's own transition is back before anything asks it to move; the edge's re-commanded lift in between writes the value already there and its idempotence makes that a no-op.
+- **A completed turn implies the finger stayed**, which is what makes landing-at-the-detent safe rather than a guess: a withdrawal cancels the turn (the rule above), so there is no path where the surface lands held while nothing is holding it.
+
+**And two e2e cases that assert a COUNT rather than a magnitude.** "Nothing animates a second time after a landing" is `transitionrun` events on the day page: unchanged across the 400ms after the day arrives, where the old behaviour started one at 91ms. The multi-day case counts three runs for two days — the lift and a turn each — where the old behaviour ran five. A first version of that test sampled `--swipe-dx` a frame after each landing instead, which is a magnitude at a moment, and it duly failed under two workers for reasons the app had nothing to do with; the same round moved the abort case's `boundingBox` read out of the 240ms window it was racing.
 
 **What this round is really about, as a lesson rather than a fix.** Both defects were in the same class: **a fact about the surrounding DOM that the change assumed instead of counting.** The ghost's containing block is one `grep` for what renders inside `.day-page`; the jitter is one reading of who calls `hold` and how often. Root `CLAUDE.md` has the rule already — _count the call sites before claiming what a derivation does_ — and this is its shape for a gesture: **count the callers of a command channel, and the fixed descendants of anything you transform.**
 

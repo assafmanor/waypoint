@@ -97,6 +97,13 @@ const SETTLING_ATTR = 'data-swipe-settling';
  *  and the state `screens.css` gives its own transition. Distinct from `SETTLING_ATTR` because
  *  a detent is not a settle: nothing is on its way anywhere until the dwell says so. */
 const LIFT_ATTR = 'data-edge-lift';
+/** **The one frame in which the offset changes and nothing moves** (ADR-0116 §2d's second
+ *  repair). A turn that began from a detent lands back at it, so at the commit the offset is
+ *  rewritten from `page + gap + detent` to `detent` — a jump of exactly one page, which is the
+ *  page that was swapped underneath it in the same paint. The picture is identical either side;
+ *  the VALUE is not, and a transition on it would slide the arriving day in from off screen. So
+ *  the transition is suppressed for that frame, and `screens.css` keys it off this. */
+const REBASE_ATTR = 'data-swipe-rebase';
 const OFFSET_PROP = '--swipe-dx';
 /** The host's own width in px, published for the panes: they sit one page plus a gutter away on
  *  the inline axis, and a percentage cannot say that — a fixed pane's percentages resolve
@@ -167,6 +174,18 @@ export function useSwipePager<T extends HTMLElement>({
    * snapping back from a turn it had already started.
    */
   const turning = useRef(false);
+  /**
+   * **Where a committed turn LANDS** — 0 for a swipe (level), the detent for a turn that began
+   * from one.
+   *
+   * The reason it is not always level is the owner's: _"after landing on the new day there's
+   * like a second animation for switching days"_. The finger is still in the band, so the edge
+   * re-commanded its lift the moment the day arrived — a fresh 48px over `--t-base`, measured
+   * starting 91ms after the URL changed, and a second smaller day-switch on the heels of every
+   * one. Landing AT the detent removes it: there is nothing left to animate, and holding at the
+   * edge becomes one motion per day instead of two.
+   */
+  const landing = useRef(0);
 
   /** The host's own geometry, measured on demand. A gesture measures it once at the press;
    *  a COMMAND has no press, so the same three numbers are read here. `direction` off the
@@ -190,11 +209,13 @@ export function useSwipePager<T extends HTMLElement>({
     window.clearTimeout(settle.current);
     owed.current = false;
     turning.current = false;
+    landing.current = 0;
     const el = host.current;
     if (el) {
       el.removeAttribute(SWIPING_ATTR);
       el.removeAttribute(SETTLING_ATTR);
       el.removeAttribute(LIFT_ATTR);
+      el.removeAttribute(REBASE_ATTR);
       el.style.removeProperty(OFFSET_PROP);
       el.style.removeProperty(WIDTH_PROP);
     }
@@ -215,12 +236,14 @@ export function useSwipePager<T extends HTMLElement>({
         window.clearTimeout(settle.current);
         owed.current = false;
         turning.current = false;
+        landing.current = 0;
         // Not `clear()`: the offset goes to zero and the surface unwinds under the destination
         // state's own transition (`screens.css`). Clearing the attributes here would take the
         // transform away mid-unwind and it would snap. The settle attribute goes too, because
         // an abandoned turn unwinds on the quick curve rather than on the turn's own.
         el.removeAttribute(LIFT_ATTR);
         el.removeAttribute(SETTLING_ATTR);
+        el.removeAttribute(REBASE_ATTR);
         el.style.setProperty(OFFSET_PROP, '0px');
         settle.current = window.setTimeout(clear, motionDurationMs('--t-quick'));
         return;
@@ -238,6 +261,7 @@ export function useSwipePager<T extends HTMLElement>({
       window.clearTimeout(settle.current);
       owed.current = false;
       el.removeAttribute(SETTLING_ATTR);
+      el.removeAttribute(REBASE_ATTR);
       el.setAttribute(SWIPING_ATTR, '');
       el.setAttribute(LIFT_ATTR, '');
       el.style.setProperty(WIDTH_PROP, `${Math.round(g.width)}px`);
@@ -257,13 +281,24 @@ export function useSwipePager<T extends HTMLElement>({
       if (turning.current) return;
       window.clearTimeout(settle.current);
       turning.current = true;
+      // **Where it is now is where it will land.** Read off the element rather than taken as an
+      // argument, because the caller would only be telling us what it has already told us: the
+      // detent is whatever the last `hold` parked, and the finger that asked for this turn has
+      // not left the band (a withdrawal cancels the turn — see `hold(null)`). So the travel is
+      // a page, a gutter AND the detent, and the day that arrives is already lifted.
+      const held = parseFloat(el.style.getPropertyValue(OFFSET_PROP)) || 0;
+      landing.current = el.hasAttribute(LIFT_ATTR) ? held : 0;
       // The lift's attribute goes first: its transition is the detent's, and what follows is
       // the turn's — one channel, two states, never both at once.
       el.removeAttribute(LIFT_ATTR);
+      el.removeAttribute(REBASE_ATTR);
       el.setAttribute(SWIPING_ATTR, '');
       el.setAttribute(SETTLING_ATTR, 'turn');
       el.style.setProperty(WIDTH_PROP, `${Math.round(g.width)}px`);
-      el.style.setProperty(OFFSET_PROP, `${Math.round(g.dirFor(step) * g.turn)}px`);
+      el.style.setProperty(
+        OFFSET_PROP,
+        `${Math.round(g.dirFor(step) * g.turn + landing.current)}px`,
+      );
       setLive(true);
       settle.current = window.setTimeout(() => {
         turning.current = false;
@@ -291,7 +326,26 @@ export function useSwipePager<T extends HTMLElement>({
    * from in here re-renders before that same paint, which retires the panes in it too.
    */
   useLayoutEffect(() => {
-    if (owed.current) clear();
+    if (!owed.current) return;
+    const el = host.current;
+    // **A turn that began at a detent gives back one PAGE, not the whole offset** (§2d's second
+    // repair). The finger is still in the band, so the surface is still held — clearing here
+    // put it at level and the edge then animated it back to the detent, which is the second
+    // day-switch the owner saw. Same paint, same picture, one page less offset.
+    if (el && landing.current !== 0) {
+      owed.current = false;
+      el.setAttribute(REBASE_ATTR, '');
+      el.setAttribute(LIFT_ATTR, '');
+      el.removeAttribute(SETTLING_ATTR);
+      el.style.setProperty(OFFSET_PROP, `${Math.round(landing.current)}px`);
+      // The suppression lasts exactly the frame it is needed for. Removed on the next one, so
+      // the detent's own transition is back in place before anything asks it to move — and the
+      // edge's re-commanded lift in between writes the value already there, which its own
+      // idempotence turns into a no-op.
+      const id = requestAnimationFrame(() => el.removeAttribute(REBASE_ATTR));
+      return () => cancelAnimationFrame(id);
+    }
+    clear();
   }, [pageKey, clear]);
 
   useEffect(() => {
@@ -380,7 +434,9 @@ export function useSwipePager<T extends HTMLElement>({
         // commanded turn it interrupts is dropped with it, for the same reason.
         owed.current = false;
         turning.current = false;
+        landing.current = 0;
         el.removeAttribute(SETTLING_ATTR);
+        el.removeAttribute(REBASE_ATTR);
         el.setAttribute(SWIPING_ATTR, '');
         el.style.setProperty(WIDTH_PROP, `${Math.round(width)}px`);
         // The panes mount here, one render, while the finger is still accelerating.

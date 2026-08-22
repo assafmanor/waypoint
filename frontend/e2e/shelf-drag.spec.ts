@@ -1218,15 +1218,24 @@ test.describe('carrying a card to another day from the surface edge', () => {
     const host = page.locator('.day-swipe:not([data-preview])');
     const bands = await bodyBands(page);
 
+    // **Every measurement happens BEFORE the window.** The turn lasts `--t-base`, so a
+    // `boundingBox` round trip taken after the settle was observed can spend the whole of it —
+    // which is a test that fails under load for reasons the app has nothing to do with. The
+    // poll is tight for the same reason: what is left inside the window is one CDP dispatch.
+    const box = await boxOf(page, '.day-swipe:not([data-preview])');
+    const middle = { x: box.x + box.width / 2, y: (bands.middleFrom + bands.middleTo) / 2 };
+
     await touch(cdp, 'touchStart', card.x, card.y);
     await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
     const edge = await edgeOf(page, 'left');
     await touch(cdp, 'touchMove', edge.x, edge.y);
-    await expect(host).toHaveAttribute('data-swipe-settling', 'turn', {
-      timeout: DRAG_DAY_DWELL_MS * 4,
-    });
-    const box = await boxOf(page, '.day-swipe:not([data-preview])');
-    await touch(cdp, 'touchMove', box.x + box.width / 2, (bands.middleFrom + bands.middleTo) / 2);
+    await expect
+      .poll(() => host.getAttribute('data-swipe-settling'), {
+        timeout: DRAG_DAY_DWELL_MS * 4,
+        intervals: [20],
+      })
+      .toBe('turn');
+    await touch(cdp, 'touchMove', middle.x, middle.y);
     await expect
       .poll(() => host.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--swipe-dx')))
       .toMatch(/^0px$|^$/);
@@ -1256,6 +1265,112 @@ test.describe('carrying a card to another day from the surface edge', () => {
     // and comfortably under what a full dwell would have cost.
     expect(Date.now() - at).toBeLessThan(DRAG_DAY_DWELL_MS);
     expect(Date.now() - at).toBeGreaterThan(DRAG_DAY_REVERSE_DWELL_MS - 50);
+    await touch(cdp, 'touchEnd');
+  });
+
+  // **Nothing animates a second time after a landing** (§2d's second repair; owner: _"after
+  // landing on the new day there's like a second animation for switching days"_, and _"moving
+  // multiple days by holding on the edge is not looking good"_ — the same thing, once per day).
+  //
+  // The commit used to hand back the WHOLE offset, so the surface went to level and the edge —
+  // whose finger is still in the band — animated it back to the detent. Recorded in the engine
+  // before the fix, per day: the lift, the turn, then a third `transitionrun` on `.day-page`
+  // 91ms after the URL changed. This counts transitions instead of looking at one, because "a
+  // second animation" is a statement about how many there are.
+  test('a landing does not start a second animation', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+    const host = page.locator('.day-swipe:not([data-preview])');
+    await page.evaluate(() => {
+      const w = window as unknown as { __runs: number };
+      w.__runs = 0;
+      document.addEventListener(
+        'transitionrun',
+        (ev) => {
+          const el = ev.target as HTMLElement;
+          if (el.classList?.contains('day-page') || el.classList?.contains('day-peek')) w.__runs++;
+        },
+        true,
+      );
+    });
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await stepsTo(page, TOMORROW);
+    const atLanding = await page.evaluate(() => (window as unknown as { __runs: number }).__runs);
+    // Long enough for the old re-lift (it began ~90ms after the day changed and ran 240ms) and
+    // comfortably short of the next dwell.
+    await page.waitForTimeout(400);
+    expect(
+      await page.evaluate(() => (window as unknown as { __runs: number }).__runs),
+      'the arriving day is already at the detent, so nothing has to move',
+    ).toBe(atLanding);
+
+    // And it IS still held, one page less offset — which is what makes the next step continuous.
+    const state = await host.evaluate((el) => ({
+      dx: parseFloat((el as HTMLElement).style.getPropertyValue('--swipe-dx')),
+      lift: el.hasAttribute('data-edge-lift'),
+      settling: el.getAttribute('data-swipe-settling'),
+      rebase: el.hasAttribute('data-swipe-rebase'),
+    }));
+    expect(Math.abs(state.dx)).toBe(DRAG_DAY_LIFT_PX);
+    expect(state.lift).toBe(true);
+    expect(state.settling).toBeNull();
+    // The suppression lasted its one frame and is long gone.
+    expect(state.rebase).toBe(false);
+    await touch(cdp, 'touchEnd');
+  });
+
+  // Holding through several days is the case the report was actually about: _"moving multiple
+  // days by holding on the edge is not looking good"_. **Counted rather than sampled** — one
+  // motion per day is a statement about how many transitions run, and a first version of this
+  // read `--swipe-dx` a frame after each landing, which is a magnitude at a moment and duly
+  // failed under load for reasons the app had nothing to do with.
+  //
+  // Three runs on `.day-page` for two days: the lift, then a turn each. Before the fix it was
+  // five — every landing dropped to level and animated back to the detent.
+  test('holding through two days is one motion per day', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+    const host = page.locator('.day-swipe:not([data-preview])');
+    const dayAfter = new Date(Date.parse(`${TOMORROW}T00:00:00.000Z`) + 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    await page.evaluate(() => {
+      const w = window as unknown as { __page: number };
+      w.__page = 0;
+      document.addEventListener(
+        'transitionrun',
+        (ev) => {
+          const el = ev.target as HTMLElement;
+          // The host's own page only: the panes ride the same offset and would treble the count
+          // without saying anything the page does not.
+          if (
+            el.classList?.contains('day-page') &&
+            el.parentElement?.matches('.day-swipe:not([data-preview])')
+          )
+            w.__page++;
+        },
+        true,
+      );
+    });
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await stepsTo(page, TOMORROW);
+    await stepsTo(page, dayAfter);
+    // Past where a re-lift would have started (~90ms after the landing) and short of the next
+    // dwell, so the count is settled and nothing new has been commanded.
+    await page.waitForTimeout(400);
+    expect(
+      await page.evaluate(() => (window as unknown as { __page: number }).__page),
+      'the lift, then one turn per day, and nothing else',
+    ).toBe(3);
+    await expect(host).toHaveAttribute('data-edge-lift', '');
     await touch(cdp, 'touchEnd');
   });
 

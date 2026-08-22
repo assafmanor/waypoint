@@ -106,3 +106,31 @@ The reports also exposed something neither the mockup nor the ADR had specified:
 - **The band had one threshold.** Enter at 36px, leave the instant depth read zero — so a finger near the boundary chattered. Now it leaves at 36 + 16, reusing the release distance the latch already spends on this axis. Not a fork; just missing.
 - **Reversing cost a fresh 940ms.** Put to the owner as three options (half dwell inside a window · symmetric · instant), answered **half dwell**: `DRAG_DAY_REVERSE_DWELL_MS`, derived from the dwell, inside `DRAG_DAY_REVERSE_MS` of a step. Only the hold shortens — the lift and the turn are identical, so the two directions still look the same.
 - **Whether an aborted turn should say anything.** Answered **no**: the 140ms unwind is the statement. A drag crosses the band many times in normal use, so a beat per crossing is noise — §2c's reason for refusing `BEAT.REBUFF`, which survives the change of what moves.
+
+---
+
+## A third round, and the diagnosis was a list of events
+
+> _"1. After landing on the new day, there's like a second animation for switching days (that happens right around the time that the day strip changes days). 2. Moving multiple days by holding on the edge is not looking good. I'm not sure why, perhaps related to the first issue."_
+
+They were the same issue, and the owner's hunch was right. **What made this quick was not reading the code — it was recording it.** A `transitionrun`/`animationstart` listener over a hold that stepped two days printed the whole cycle:
+
+```
+ 946ms  transform on .day-page                 ← the lift
+1677ms  transform on .day-page + both peeks    ← the turn
+1904ms  URL ?day=2026-08-23                    ← lands
+1995ms  transform on .day-page + both peeks    ← a THIRD run, 91ms later
+```
+
+That third run is the re-lift, and the log also **ruled out** the theory I would otherwise have spent an hour on: `selectDay` pushes a same-pathname URL, and `frontend/CLAUDE.md` already records a case where that restarted the shell's route animation. Nothing of the sort appears in the log — no shell transition, no beat, nothing but three transforms. A list of what actually ran costs one probe and answers "which animation" definitively, where reasoning about it produces a plausible suspect per reader.
+
+**The fix is one sentence: a turn that began at a detent lands back at the detent.** The travel is `page + gutter + detent`, the commit rebases to the detent instead of to zero, and because that rebase is a one-page jump over a page that was swapped in the same paint, nothing moves. Holding at the edge is one motion per day now, and the surface never returns to level until the drag lets go.
+
+**What I would not have guessed without writing it down:** the landing offset should be _read off the element_ rather than passed in. `turn()` asks what it is currently holding, which means a dragged turn still lands level with no branch and no flag — the absence of a detent is the answer. Passing it as an argument would have been a second copy of something the caller had already said, and the two would disagree the first time the lift distance moved.
+
+## Two tests I wrote badly first, and the repo's own notes say why
+
+Both new e2e cases passed alone and failed under two workers, and neither failure was about the app:
+
+- The multi-day case **sampled `--swipe-dx` one frame after each landing**. That is a magnitude at a moment — the exact class this repo has three flake entries for. Rewritten to count `transitionrun` events instead: three for two days (the lift, then a turn each), where the old behaviour ran five. A count is what the owner's report is actually about, and it does not care how loaded the machine is.
+- The abort case read a `boundingBox` **inside** the 240ms window it was racing, which can spend the whole of it. Every measurement moved before the window, and the poll inside it tightened to 20ms, so what is left in there is one CDP dispatch.

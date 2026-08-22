@@ -489,7 +489,7 @@ describe('useSwipePager', () => {
   describe('a page turn that was commanded rather than dragged', () => {
     it('lifts to the detent, then commits when the turn is asked for', () => {
       const onStep = vi.fn();
-      const { host, command, drawNextPage } = mount({ onStep });
+      const { host, command } = mount({ onStep });
       command.hold(1, 48);
       expect(host.hasAttribute('data-edge-lift')).toBe(true);
       expect(offset(host)).toBe('48px');
@@ -497,10 +497,72 @@ describe('useSwipePager', () => {
       command.turn(1);
       expect(host.hasAttribute('data-edge-lift')).toBe(false);
       expect(host.getAttribute('data-swipe-settling')).toBe('turn');
+      // A page, a gutter (0 with no stylesheet) AND the detent: the arriving day has to end up
+      // lifted, not level, because the finger is still in the band.
+      expect(offset(host)).toBe(`${WIDTH + 48}px`);
       settle();
       expect(onStep).toHaveBeenCalledWith(1);
+    });
+
+    // **The second animation the owner reported** (_"after landing on the new day there's like a
+    // second animation for switching days"_). It was the edge re-commanding its lift the instant
+    // the day arrived, because the commit handed back the WHOLE offset and put the surface at
+    // level. Measured in the engine: a third `transitionrun` on `.day-page` 91ms after the URL
+    // changed, every landing. So a turn that began at a detent gives back one PAGE and stays
+    // held — there is nothing left for the next cycle to animate.
+    it('lands at the detent it started from, not at level', () => {
+      const onStep = vi.fn();
+      const { host, command, drawNextPage } = mount({ onStep });
+      command.hold(1, 48);
+      command.turn(1);
+      settle();
+      drawNextPage();
+      expect(offset(host)).toBe('48px');
+      expect(host.hasAttribute('data-edge-lift')).toBe(true);
+      expect(host.hasAttribute('data-swipe-settling')).toBe(false);
+      // Still live, because the panes are what the NEXT step turns to.
+      expect(host.hasAttribute('data-swiping')).toBe(true);
+    });
+
+    // The frame in which the offset changes and nothing moves: one page less offset over a page
+    // that was swapped underneath it. A transition there would slide the arriving day in from
+    // off screen, so it is suppressed — for exactly that frame.
+    it('suppresses the transition for the frame it rebases in, and only that frame', () => {
+      const onStep = vi.fn();
+      const { host, command, drawNextPage } = mount({ onStep });
+      command.hold(1, 48);
+      command.turn(1);
+      settle();
+      drawNextPage();
+      expect(host.hasAttribute('data-swipe-rebase')).toBe(true);
+      act(() => {
+        vi.advanceTimersByTime(50);
+      });
+      expect(host.hasAttribute('data-swipe-rebase')).toBe(false);
+      expect(offset(host)).toBe('48px');
+    });
+
+    it('and letting go after a landing unwinds from the detent', () => {
+      const onStep = vi.fn();
+      const { host, command, drawNextPage } = mount({ onStep });
+      command.hold(1, 48);
+      command.turn(1);
+      settle();
+      drawNextPage();
+      command.hold(null);
+      expect(offset(host)).toBe('0px');
+      expect(host.hasAttribute('data-edge-lift')).toBe(false);
+    });
+
+    // A DRAGGED turn still lands level, which is the case that would break if the landing were
+    // read from anything other than "was a detent being held".
+    it('leaves a swiped turn landing at level', () => {
+      const onStep = vi.fn();
+      const { host, drawNextPage } = mount({ onStep });
+      swipe(host, { dx: COMMIT + 40 });
       drawNextPage();
       expect(offset(host)).toBe('');
+      expect(host.hasAttribute('data-edge-lift')).toBe(false);
     });
 
     it('ignores a lift re-issued while the turn is in flight', () => {
@@ -547,16 +609,16 @@ describe('useSwipePager', () => {
       expect(offset(host)).toBe('-48px');
     });
 
-    it('lifts again after the day it turned to has been drawn', () => {
+    // The other side of the idempotence guard: once the surface really HAS been given back, a
+    // lift with the same numbers is a new lift and must be taken. Asking the DOM rather than
+    // keeping a copy of the state is what makes that fall out for free.
+    it('takes a fresh lift after the surface was given back', () => {
       const onStep = vi.fn();
-      const { host, command, drawNextPage } = mount({ onStep });
+      const { host, command } = mount({ onStep });
       command.hold(1, 48);
-      command.turn(1);
+      command.hold(null);
       settle();
-      drawNextPage();
       expect(offset(host)).toBe('');
-      // The next cycle: the finger never left the band, so the edge re-commands the lift and
-      // the surface must take it — the DOM having been cleared is what makes this not a repeat.
       command.hold(1, 48);
       expect(offset(host)).toBe('48px');
       expect(host.hasAttribute('data-edge-lift')).toBe(true);

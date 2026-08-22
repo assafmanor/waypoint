@@ -164,6 +164,15 @@
 .day-swipe[data-edge-lift] > .day-peeks .day-peek {
   transition: transform var(--t-base) var(--ease-arrive);
 }
+/* **The rebase frame** (§2d's second repair): a turn that began at a detent lands back at it, so
+   at the commit the offset drops by exactly one page — the page that was swapped underneath it
+   in the same paint. Nothing moves and the value changes, which is the one combination a
+   transition gets wrong: it would slide the arriving day in from off screen over `--t-base`.
+   Held for a single frame by `useSwipePager`. */
+.day-swipe[data-swipe-rebase] > .day-page,
+.day-swipe[data-swipe-rebase] > .day-peeks .day-peek {
+  transition: none;
+}
 /* The abort, on the DESTINATION state (design-language.md's asymmetric settle): the lift is
    deliberate, giving it up is a correction, so it unwinds quickly rather than replaying the
    lift backwards. Scoped to `body.wp-dragging` because during a SWIPE `--swipe-dx` is rewritten
