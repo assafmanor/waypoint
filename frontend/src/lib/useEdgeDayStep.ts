@@ -70,6 +70,12 @@ export interface EdgeDayStep {
    *  under a still finger changes nothing on this axis, but the caller feeds both from one
    *  place and a spurious call here is a no-op. */
   track: (point: DragPoint) => void;
+  /** **The dwell has decided to turn**, and the caller says so at the moment it commands it
+   *  (§2d's fifth repair). What this captures is not the step — the edge already knows that —
+   *  but WHERE THE DRAG WAS when the decision was made, because the page takes `--t-base` to
+   *  travel and a finger can go somewhere else while it does. Everything the arrival then
+   *  decides is measured against the request rather than against wherever the hand ended up. */
+  turning: () => void;
   /** Drop, cancel, unmount. */
   stop: () => void;
 }
@@ -99,6 +105,9 @@ export function useEdgeDayStep(
   const inside = useRef<EdgeDirection>(null);
   /** The step this drag last completed, and when — the reversal window's whole input. */
   const turned = useRef<{ step: SwipeStep; at: number } | null>(null);
+  /** The request a turn is travelling on: the step, and the band the drag was resting in when
+   *  the dwell fired. Both are read at the COMMAND, not at the arrival. */
+  const commanded = useRef<{ step: SwipeStep; side: EdgeDirection } | null>(null);
   /** What the edge is currently asking for, readable from an effect that must NOT re-run when
    *  it changes: the effect below fires on the day arriving, and the step is what it reads to
    *  know which way that day came from. */
@@ -195,30 +204,45 @@ export function useEdgeDayStep(
     [resolve],
   );
 
+  /** **Latch whatever band the pointer is in right now**, so it takes a request to act on it.
+   *  Two moments need this and they are the same statement: the drag ARMED inside a band, or a
+   *  page arrived under a drag that had wandered into one. */
+  const latchHere = useCallback(() => {
+    const el = host.current;
+    const at = point.current;
+    latch.current = null;
+    if (!el || !at) return;
+    const box = el.getBoundingClientRect();
+    if (box.width <= 0) return;
+    const x = at.clientX - box.left;
+    latch.current = edgeLatchAt(edgeDepth(x, box.width, DRAG_DAY_EDGE_PX), x);
+  }, [host]);
+
   const arm = useCallback(
     (at: DragPoint) => {
-      const el = host.current;
       point.current = at;
-      latch.current = null;
       inside.current = null;
       turned.current = null;
+      commanded.current = null;
       stepped.current = false;
       setDate(null);
       lift(null);
-      if (!el) return;
-      const box = el.getBoundingClientRect();
-      if (box.width <= 0) return;
-      const x = at.clientX - box.left;
-      latch.current = edgeLatchAt(edgeDepth(x, box.width, DRAG_DAY_EDGE_PX), x);
+      latchHere();
     },
-    [host, lift],
+    [latchHere, lift],
   );
+
+  const turning = useCallback(() => {
+    commanded.current =
+      asked.current == null ? null : { step: asked.current, side: inside.current };
+  }, []);
 
   const stop = useCallback(() => {
     point.current = null;
     latch.current = null;
     inside.current = null;
     turned.current = null;
+    commanded.current = null;
     stepped.current = false;
     setDate(null);
     lift(null);
@@ -233,17 +257,34 @@ export function useEdgeDayStep(
   useEffect(() => {
     if (!point.current) return;
     // The neighbours moving along under a live drag IS the turn this edge commanded landing,
-    // which is the only notice it gets — so this is where a reversal's window opens. Read
-    // through `asked` rather than the state: this effect must fire on the DAY arriving, and
-    // taking the step as a dependency would re-run it on the lift and record a turn that had
-    // not happened yet.
-    if (asked.current != null) {
-      turned.current = { step: asked.current, at: getNow() };
+    // which is the only notice it gets.
+    if (commanded.current) {
+      const { step, side } = commanded.current;
+      commanded.current = null;
+      turned.current = { step, at: getNow() };
       // The lift has been spent for this stay in the band; from here the edge arms at zero.
       stepped.current = true;
+      /**
+       * **A band the drag drifted into while the page was travelling is a band it never asked
+       * for** (§2d's fifth repair; owner: _"we 'turn back' during the animation, then it does a
+       * full animation of going back"_).
+       *
+       * Recorded: `turn(1)` at 6229ms, the finger reaching the opposite band at 6260 while the
+       * page travelled, the day arriving at 6501 — and then `turn(-1)` at 7300 and again at
+       * 8372, walking back a full page at a time. Nobody asked to go back; the hand was
+       * retreating from the edge it had just used, which is where a hand goes next.
+       *
+       * This is `gateEdgeStep`'s own scar at a third moment. It was written for a drag that
+       * ARMED inside a band ("you pressed, held, and the list took off") and transposed once to
+       * the inline axis; the page arriving under a wandering finger is the same shape, and the
+       * same gate answers it — leave the band, or push deeper into it, and it means something
+       * again. The band that produced the turn is deliberately exempt: holding still there
+       * keeps stepping, which is the whole of §2b.
+       */
+      if (inside.current && inside.current !== side) latchHere();
     }
     setDate(resolve());
-  }, [neighbours.prev, neighbours.next, resolve]);
+  }, [neighbours.prev, neighbours.next, resolve, latchHere]);
 
   // A drag interrupted by an unmount (a mode switch, a tab change) must not leave a target
   // named for a gesture that no longer exists — and `stop` is identity-stable (see `cmd`), so
@@ -265,6 +306,7 @@ export function useEdgeDayStep(
     dwell: reversing ? DRAG_DAY_REVERSE_DWELL_MS : DRAG_DAY_DWELL_MS,
     arm,
     track,
+    turning,
     stop,
   };
 }
