@@ -1,6 +1,6 @@
 # 0200 — A day steps with a swipe, and the document stops scrolling under the shell
 
-**Status:** Accepted — **built 2026-08-21**
+**Status:** Accepted — **built 2026-08-21**, **amended and extended the same day** (§6, §7 — the page turn previews the day it is turning to, and a day opens at its top)
 **Date:** 2026-08-21
 **From:** two owner reports in one message. _"When swiping down from the bottom buttons when on home, it goes down to where there's empty space that shouldn't be there"_ (with a screenshot), and _"When on the trip day / plan day, swiping left or right should move to the next / prev day, and get a rebuff or something on the edges."_
 
@@ -98,10 +98,54 @@ The pointer path is unchanged for a mouse, which has no browser pan to lose.
 
 So this one is written as the shared answer to its own question: axis-aware, direction-aware, page-shaped, `{ canStep, onStep }`. A second surface that pages is a hook call and a class.
 
+### 6. A day opens at its TOP, whichever way you got there
+
+Owner, on the shipped swipe: _"if you're at the end of the day, swiping keeps you on the bottom. It should be on the top of the day"_ — and then, unprompted: _"this should be true for the day strip as well. Not just for swipes."_
+
+That second sentence is the decision. A scroll offset is a fact about the day you were **reading**; carrying it into a different day is carrying the answer to a question nobody asked, and it is no more defensible after a pill tap than after a swipe. So the reset lives at the surface, keyed on `activeDate`, and every trigger inherits it: the swipe, a header pill, the anchor's way back to today, a deep link that lands on `?day=`. `lib/useDaySurface.ts` — the hook both day screens already call for the gesture, because none of this is a posture (ADR-0159 §1).
+
+Two things it deliberately does not do.
+
+**It does not fight the two landings that already exist.** An arrival named a card (`?event=` → `landAtTop`) and today opens on its now-line (ADR-0027/0043); both key on the same day change and both mean to win. Effects run in **declaration order**, so the hook is called early in both screens and those land on top of it. Called late it would erase them — the same trap `DayView`'s own `aimedAtCard` comment documents one layer in. The one visible consequence: a peek of **today** shows the day's top while committing to it lands on the now-line. One day of the trip, and the alternative is a preview that has to guess where a watch loop will end up.
+
+**It is instant, never smooth.** The page turn has just supplied the motion; a second animation chasing it reads as the surface settling twice.
+
+### 7. The page turn shows the page it is turning to
+
+Owner, on the shipped version, with a screenshot of the void: _"The swipe should also preview the next day, it look and feel more continuous. Not good enough."_
+
+The screenshot is the argument. §2's follow moved the current day with the finger and put **nothing** where it came from, so the gesture was a card being dragged off a hole. Continuity is not a property of the outgoing page.
+
+**So both neighbours are drawn, one page **plus a gutter** away on the inline axis, riding the same offset — and they are the REAL day surface, not a summary of it.** `ui/domain/DayPeek.tsx` is a measured window over the body's visible strip; `state/day-preview.tsx` puts the same `<DayView>` / `<PlanDay>` inside it with one field of the trip context swapped.
+
+**Rendering the real screen is the decision, and it is what removes the seam rather than hiding it.** When the turn lands, the arriving pane is at rest exactly where the committed day will be, drawn by the same components with the same props off the same derivation — so the swap is a pane unmounting and nothing moving. A compact preview row would have needed a cross-fade to disguise the difference, and would have drifted from the real row the first time either changed: `frontend/CLAUDE.md` records a third copy of the day's rows as the mistake ADR-0159 §1 exists to prevent. The peek inherits every future change to the day for free.
+
+It is affordable because of §6. A day that always opens at its top means the peek only ever has to draw the day **from its top** — the one view it can produce without knowing where a scroll will end up. The two decisions are not independent; the second is what makes the first cheap.
+
+Five things that make it hold, each of which was a defect first:
+
+- **`activeDate` is shadowed, not threaded.** `TripContext` carries it in one value, so the pane re-provides that value with one field changed. A `date` prop would have to reach every child of a ~1200-line screen and a ~2300-line one that asks what day it is.
+- **A preview must not spend the arrival.** `useArrivalParam` **deletes** the param it reads, so two mounted surfaces means the preview eats `?event=` and the day you land on never sees it. Found by counting the effects before writing anything: all seven across both screens are "an arrival landed on me", so **one** option (`active: false`) covers all of them. Same reason the now-line scroll is gated — the pane is not a scroller, so `scrollIntoView` inside it would walk out and move the real body under the finger.
+- **The transform is on the host's inner PAGE, never on the host.** A transform makes its element the containing block for `position: fixed` inside it, and the panes are fixed. Host holds the offset variable, page and panes both read it, nobody's positioning is captured.
+- **`>` and not a descendant space.** A pane holds a whole day surface, so `.day-page` and `.day-swipe` exist three times over while a gesture is live — the first render translated every pane's own inner page by the offset the pane already carried, and its content slid out from under its frame. `data-preview` on a pane's host is what keeps a selector honest afterwards; anything asking about the day you are on wants `.day-swipe:not([data-preview])`, and the e2e says so in a comment because it is a trap and not a style point.
+- **The window is measured, and bounded twice.** To the scroller's visible strip, or a fixed layer paints over the header and the tab bar; and to the host's column with `overflow: clip`, or a pane mid-flight slides across the page background on a desktop viewport where `.app` is a centred column. Percentages cannot say "one page" here for the same reason — a fixed pane's percentages resolve against the **viewport**, which is wider than the column.
+
+**The pages are a gutter apart, not flush.** Owner, on the first build of this section: _"there should be some gap between the days. They shouldn't look sticked together."_ Flush was the tidy answer and the wrong one — two days whose cards begin exactly where the previous day's end read as **one long sheet** sliding past, with nothing saying a boundary had been crossed. `--swipe-page-gap` is `--space-6` (24px), and the size is an argument rather than a preference: the day's own cards sit 11px apart vertically, so a page break has to be visibly wider than a card gap or it reads as one more row. It is still a feel number, and the device pass owns it.
+
+The gutter is declared in the stylesheet and **read back by the pager** for the commit distance, the same discipline `motionDurationMs` follows for durations. A literal in the recogniser would be a second opinion about a spacing value, and the two would drift the first time either moved — the page would then stop a gutter short of level and the arriving day would sit visibly off. Nothing is drawn _in_ the gutter: the cards stopping is what marks the edge, and a divider there would be new grammar for a boundary the layout already states.
+
+**The commit moved to the end of the turn.** §2 committed on release and eased the offset back to zero, which read as the new day arriving because nothing was drawn beside it. With a pane there, easing back to zero would slide the preview out and put the new content in the middle. So the exit finishes the travel — a full page out — and the date changes when it lands, with the arriving pane covering the screen. Two settle lengths follow, and the attribute carries which (`turn` / `back`) so the CSS and the timer that clears it cannot disagree: one duration for both would remove the class mid-animation on the shorter one and the transform would snap.
+
+**Both panes mount, not only the one being pulled toward.** A finger reverses mid-gesture and re-deciding which side exists would flicker. At the trip's ends the absent one is doing real work — nothing arrives — which is ADR-0182's argument for the Map track's missing peek, and the second half of why the rebuff needs no label.
+
+**Deliberately not mocked, and this is the reason rather than an omission.** `design-mockups` exists so a design decision can be falsified before it is built, and its instrument is a drawing plus measurements. This introduces **no new visual grammar at all** — the peek is the existing day surface at full width — so there was nothing to draw that the app does not already render, and no new geometry to measure that is not read off the real thing at runtime. What was actually falsifiable here was behavioural (does the preview steal the arrival, does the transform apply twice, is the pane bounded to the body) and it was falsified by rendering the app under Playwright and by counting effects, both of which found real defects. The measurements that would have gone in a mockup's table are in `e2e/day-swipe.spec.ts` instead, where they re-run.
+
 ## Consequences
 
 - The document is no longer scrollable anywhere in the app. Any future surface that wants a scroll gets one on an element, which is what every existing one already does.
 - **Two spellings in §1 are deliberate and both look like tidiness to change**: the root's `overflow` is `clip` and not `hidden`, and its `height` is `100%` and not `100dvh`. `e2e/shell-does-not-scroll.spec.ts` asserts the first (a computed value and a refused scroll are both real in an engine); the second is guarded only by the note there.
+- **A peek costs two extra day renders per gesture, once**, at the moment the axis is claimed — not per frame: everything between the claim and the settle is a CSS custom property, and the only React state in the gesture is `live`, which flips twice. A day surface is the heaviest screen in the app, so this is the number to watch if a swipe ever feels like it hitches on a loaded day; the lever is what the pane renders, not how often.
+- **`.day-swipe`, `.day-page` and every row class exist three times over while a gesture is live.** Any future test, style rule or query about the day you are ON has to say `:not([data-preview])` or scope to a direct child. Two rules and one spec already got this wrong before it was named.
 - **`e2e/event-arrival-scroll.spec.ts` is a known flake at roughly 1 run in 25**, in both of its cases, established here at 51/52 on an untouched base while trying to pin it on this change. Backlogged rather than diagnosed — it is a measured-geometry assertion behind a lazy chunk, the same class as the `shelf-drag.spec.ts` entry already there.
 - `SWIPE_PAGER`'s six numbers are a device-pass debt in the same sense ADR-0182's peek width is: `SLOP_PX`, `AXIS_RATIO`, `DECIDE_PX` and `COMMIT_SHARE` are settled enough to ship and `DECIDE_PX` in particular is pinned against one engine's slop. If Safari's differs, that is the number to move.
 - A gesture that begins horizontally and turns vertical will not scroll for the rest of that touch. Inherent to claiming an axis at 6 px, and the alternative is the gesture not existing.
@@ -112,5 +156,10 @@ So this one is written as the shared answer to its own question: axis-aware, dir
 
 - **Three mounted days in a scroll-snap track**, the shape ADR-0182's device pass endorsed. Rejected on cost and on correctness: a day surface is the heaviest screen in the app (time tree, zone contexts, verbs, drag targets, arrival scroll), and mounting the neighbours puts two more of them behind a peek nobody has looked at — while the peek itself would have to render a whole day to be a peek at all.
 - **Arrows beside the day heading.** Refused for the same reason ADR-0182 §5 refused them on the card: the strip already answers "which day", and a second control saying the same thing costs height on the surface whose scarce axis it is. If the swipe proves undiscoverable on a device, this is where to look again.
+- **Flush pages, no gutter.** The first build of §7; refused by the owner on the render — see above.
+- **A divider drawn in the gutter** (a hairline page edge). Would remove all doubt, and it is new grammar for a boundary two stacks of cards already state by stopping. Held as the next lever if 24px of ground reads as too quiet on glass.
+- **A compact preview row instead of the real surface** — cheap to render, and rejected on the seam: it needs a cross-fade to disguise the difference at the commit, and a second row grammar beside the one both day screens share. §7 above.
+- **Committing the day at the drag's threshold**, so the "preview" is simply the real day being dragged back to centre. No pane, no providers. Rejected because it swaps the content _under the finger_ mid-gesture, which is the opposite of continuous, and it writes `?day=` several times for one wavering drag.
+- **Rendering the neighbour at the CURRENT scroll offset** instead of from its top, so the preview matches where you would land. It is what the shipped behaviour required, and §6 removed the requirement instead — which is cheaper and, per the owner, what the day should do anyway.
 - **Wrapping at the trip's ends.** The owner asked for a rebuff, which is the opposite decision, and it is the right one: the first and last day of a trip are facts about the trip, and a gesture that silently teleports across it hides one.
 - **A `BEAT` for the edge.** Covered in §2 — the beat family gains no member, because the gesture can say it while it is happening.

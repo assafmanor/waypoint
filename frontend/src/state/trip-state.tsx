@@ -697,7 +697,12 @@ interface TripContextValue {
   usingCachedSnapshot: boolean;
 }
 
-const TripContext = createContext<TripContextValue | null>(null);
+/** **Exported for exactly one consumer** — `state/day-preview.tsx`, which re-provides this
+ *  same value with `activeDate` swapped so the day swipe's peek can render a real day surface
+ *  for the neighbouring day (ADR-0200 §7). Not a general seam: anything else wanting trip
+ *  state uses `useTrip`, and a second provider of this context would be two answers to "what
+ *  day is it". */
+export const TripContext = createContext<TripContextValue | null>(null);
 
 // Bootstraps from GET /trips/:tripId/snapshot (T-034); the tripId prop is the
 // seam T-027 fills with a real switcher. Verbs still mutate local state only —
