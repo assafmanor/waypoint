@@ -158,6 +158,8 @@ export function useSwipePager<T extends HTMLElement>({
   const latest = useRef({ canStep, onStep, enabled });
   latest.current = { canStep, onStep, enabled };
   const settle = useRef(0);
+  /** The rendering-clock half of a pending wait — see `waitOut`. */
+  const frame = useRef(0);
   /** A turn has been committed and its offset is still owed a reset — held until the page it
    *  turned to is drawn (see the layout effect below). */
   const owed = useRef(false);
@@ -202,11 +204,52 @@ export function useSwipePager<T extends HTMLElement>({
     return { el, width, gap, turn: width + gap, dirFor };
   }, []);
 
+  /** Drop whatever wait is pending, on both clocks. Every command starts by calling this,
+   *  because whatever was scheduled belonged to the state it is replacing. */
+  const stopWaiting = useCallback(() => {
+    window.clearTimeout(settle.current);
+    cancelAnimationFrame(frame.current);
+  }, []);
+
+  /**
+   * **Wait for a transition to finish, on the clock the transition actually runs on.**
+   *
+   * `setTimeout(ms)` from here does not do that, and the difference was visible (ADR-0116 §2d's
+   * third repair; owner: _"still some jittering… when dragging to the next day and then moving
+   * the finger quickly to not drag to the next day again"_). Measured: the offset was written at
+   * 2031ms and the browser did not start the transition until 2061 — a style flush behind a busy
+   * main thread — so a 140ms timer fired 103ms INTO a 140ms unwind. Giving the surface back
+   * there dropped the rule mid-flight, the transition was cancelled at 12px, and a second one
+   * carried the rest: one unwind became two, 250ms with a velocity break at the seam.
+   *
+   * A `requestAnimationFrame` is the rendering clock: the transition is created in the same
+   * rendering pass, so a frame that arrives late takes the wait with it. `SETTLE_SLACK_MS` then
+   * only has to cover the timer's own imprecision. Zero duration (reduced motion, or an
+   * unreadable token) means there is no transition to outlast, so the wait is not one.
+   */
+  const waitOut = useCallback(
+    (ms: number, run: () => void) => {
+      stopWaiting();
+      // Zero means there is no transition to outlast (reduced motion, or an unreadable token),
+      // so there is no frame to anchor to — but it is still a TASK later, never inline: the
+      // commit landing synchronously inside the event that asked for it is a different contract
+      // from the one every caller here was written against.
+      if (ms <= 0) {
+        settle.current = window.setTimeout(run, 0);
+        return;
+      }
+      frame.current = requestAnimationFrame(() => {
+        settle.current = window.setTimeout(run, ms + SWIPE_PAGER.SETTLE_SLACK_MS);
+      });
+    },
+    [stopWaiting],
+  );
+
   /** Give the surface back: no offset, no attributes, no panes. Hoisted out of the listener
    *  effect because a committed turn is undone by a RENDER rather than by the gesture that
    *  asked for it. */
   const clear = useCallback(() => {
-    window.clearTimeout(settle.current);
+    stopWaiting();
     owed.current = false;
     turning.current = false;
     landing.current = 0;
@@ -233,7 +276,7 @@ export function useSwipePager<T extends HTMLElement>({
         // aimed at any more" is the gesture withdrawing — the finger left the band, or let go
         // over a target. Committing anyway would move the day out from under a drop that had
         // already landed on the day before it.
-        window.clearTimeout(settle.current);
+        stopWaiting();
         owed.current = false;
         turning.current = false;
         landing.current = 0;
@@ -245,7 +288,7 @@ export function useSwipePager<T extends HTMLElement>({
         el.removeAttribute(SETTLING_ATTR);
         el.removeAttribute(REBASE_ATTR);
         el.style.setProperty(OFFSET_PROP, '0px');
-        settle.current = window.setTimeout(clear, motionDurationMs('--t-quick'));
+        waitOut(motionDurationMs('--t-quick'), clear);
         return;
       }
       // The dwell has fired and the page is on its way; `--t-base` is not a window for a
@@ -258,7 +301,7 @@ export function useSwipePager<T extends HTMLElement>({
       // is asked rather than a second copy of this state kept, so a `clear()` in between (the
       // arriving page's own reset) correctly reads as "not held" and lifts again.
       if (el.hasAttribute(LIFT_ATTR) && el.style.getPropertyValue(OFFSET_PROP) === dx) return;
-      window.clearTimeout(settle.current);
+      stopWaiting();
       owed.current = false;
       el.removeAttribute(SETTLING_ATTR);
       el.removeAttribute(REBASE_ATTR);
@@ -279,7 +322,7 @@ export function useSwipePager<T extends HTMLElement>({
       // One turn per dwell: a second command while the page is already travelling would
       // restart the same journey from further along it.
       if (turning.current) return;
-      window.clearTimeout(settle.current);
+      stopWaiting();
       turning.current = true;
       // **Where it is now is where it will land.** Read off the element rather than taken as an
       // argument, because the caller would only be telling us what it has already told us: the
@@ -300,13 +343,15 @@ export function useSwipePager<T extends HTMLElement>({
         `${Math.round(g.dirFor(step) * g.turn + landing.current)}px`,
       );
       setLive(true);
-      settle.current = window.setTimeout(() => {
+      // On the rendering clock, like every other wait here: the step must not commit before the
+      // travel it is waiting for has actually finished painting.
+      waitOut(motionDurationMs('--t-base'), () => {
         turning.current = false;
         owed.current = true;
         latest.current.onStep(step);
-      }, motionDurationMs('--t-base'));
+      });
     },
-    [geometry],
+    [geometry, waitOut],
   );
 
   /**
@@ -428,7 +473,7 @@ export function useSwipePager<T extends HTMLElement>({
         claimed = true;
         origin = atDx;
         el.setPointerCapture?.(pointerId);
-        window.clearTimeout(settle.current);
+        stopWaiting();
         // A second swipe inside the first one's few-ms wait owns the surface now, so the
         // owed reset is dropped rather than left to fire mid-drag and flatten it — and a
         // commanded turn it interrupts is dropped with it, for the same reason.
@@ -598,26 +643,23 @@ export function useSwipePager<T extends HTMLElement>({
         // on nothing else now that a reversing flick refuses — but deriving the page's travel
         // from the step it commits is the statement that cannot go out of sync.
         el.style.setProperty(OFFSET_PROP, commit ? `${Math.round(dirFor(step) * turn)}px` : '0px');
-        settle.current = window.setTimeout(
-          () => {
-            // **The date changes only now, with the arriving pane covering the screen.** So the
-            // swap is a pane leaving and the host arriving at the same offset with the same day
-            // drawn by the same components — nothing moves, which is why there is no cross-fade
-            // and no keyframe anywhere in this feature.
-            //
-            // A commit does NOT clear here: the offset is owed back to whichever page is drawn
-            // next, and the layout effect above pays it in that page's own paint (§8). A
-            // refusal clears immediately, because nothing is arriving — there is no second
-            // state to be caught between.
-            if (!commit) {
-              clear();
-              return;
-            }
-            owed.current = true;
-            latest.current.onStep(step);
-          },
-          motionDurationMs(commit ? '--t-base' : '--t-quick'),
-        );
+        waitOut(motionDurationMs(commit ? '--t-base' : '--t-quick'), () => {
+          // **The date changes only now, with the arriving pane covering the screen.** So the
+          // swap is a pane leaving and the host arriving at the same offset with the same day
+          // drawn by the same components — nothing moves, which is why there is no cross-fade
+          // and no keyframe anywhere in this feature.
+          //
+          // A commit does NOT clear here: the offset is owed back to whichever page is drawn
+          // next, and the layout effect above pays it in that page's own paint (§8). A
+          // refusal clears immediately, because nothing is arriving — there is no second
+          // state to be caught between.
+          if (!commit) {
+            clear();
+            return;
+          }
+          owed.current = true;
+          latest.current.onStep(step);
+        });
       };
 
       abandon = unbind;
@@ -634,7 +676,7 @@ export function useSwipePager<T extends HTMLElement>({
       abandon?.();
       clear();
     };
-  }, [clear]);
+  }, [clear, stopWaiting, waitOut]);
 
   return { ref: host, live, hold, turn };
 }

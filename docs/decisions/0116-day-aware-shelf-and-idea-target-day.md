@@ -1,6 +1,6 @@
 # 0116 — The shelf becomes day-aware: an idea's optional target day, one union in both modes, and skip vs. park
 
-**Status:** Accepted (design + build) — **amended 2026-08-22** (§2b: the surface's inline edge is a second route to another day; §2c: that turn is drawn rather than teleported; §2d: it is lifted to a detent and completed by staying, superseding §2c's approach — and repaired the same day, twice: the ghost's containing block, the interrupted turn, the band's hysteresis, the cheaper reversal, and then the landing that keeps the detent)
+**Status:** Accepted (design + build) — **amended 2026-08-22** (§2b: the surface's inline edge is a second route to another day; §2c: that turn is drawn rather than teleported; §2d: it is lifted to a detent and completed by staying, superseding §2c's approach — and repaired the same day, three times: the ghost's containing block, the interrupted turn, the band's hysteresis, the cheaper reversal, the landing that keeps the detent, and the wait that outlasts its own transition)
 **Date:** 2026-07-25
 **Refines:** [0027](0027-soft-item-lifecycle-shelf-slip.md) (the parking-lot model: an idea is parked _or_ placed; the shelf renders unplaced ideas **and** skipped soft events "uniformly" — a promise only Trip mode ever kept), [0025](0025-trip-mode-edit-capability-tiers.md)/[0029](0029-trip-mode-day-scope-gating.md) (which verbs are reachable on which day — the gate the new day picker obeys), [0038](0038-icons-and-canonical-category.md)/[0109](0109-map-tab-design.md) §11 (an idea is created uncategorised; category is captured when it's scheduled — now also when it's parked), [0083](0083-whenfield-datetime-standard.md) (the one date/time entry primitive the schedule sheet finally uses), [0085](0085-relative-day-phrasing.md) (how an idea states its day)
 
@@ -380,6 +380,26 @@ Three things this needed, each small and each load-bearing:
 - **A completed turn implies the finger stayed**, which is what makes landing-at-the-detent safe rather than a guess: a withdrawal cancels the turn (the rule above), so there is no path where the surface lands held while nothing is holding it.
 
 **And two e2e cases that assert a COUNT rather than a magnitude.** "Nothing animates a second time after a landing" is `transitionrun` events on the day page: unchanged across the 400ms after the day arrives, where the old behaviour started one at 91ms. The multi-day case counts three runs for two days — the lift and a turn each — where the old behaviour ran five. A first version of that test sampled `--swipe-dx` a frame after each landing instead, which is a magnitude at a moment, and it duly failed under two workers for reasons the app had nothing to do with; the same round moved the abort case's `boundingBox` read out of the 240ms window it was racing.
+
+**Repaired a third time, and the defect was in the CLOCK.** Owner: _"still some jittering… I think but not sure that when dragging to the next day and then moving the finger quickly to not drag to the next day again then this jitter is happening."_ The hunch was exact.
+
+**`setTimeout` is not the clock a transition runs on**, and the recording shows the cost:
+
+```
+2031  hold(null): dx → 0px, the lift released     painted=48
+2061  transitionrun                                painted=47   ← the browser starts it, 30ms late
+2164  data-swiping REMOVED (the surface given back) painted=12   ← 103ms into a 140ms unwind
+2178  transitioncancel, then a second transitionrun painted=12
+2311  transitionend                                painted=0
+```
+
+The wait was `motionDurationMs('--t-quick')` measured from the JS call, but the browser did not create the transition until a style flush 30ms later — the main thread was busy, the day had just changed. So the timer fired **inside** the unwind, dropping the rule mid-flight: the transition was cancelled at 12px and a second one carried the rest. One unwind became two, 250ms with a velocity break at the seam. That is the jitter, and it appears on **every** withdrawal now precisely because the previous repair made the surface rest at the detent between days.
+
+**The fix is to anchor the wait to the rendering clock.** `requestAnimationFrame`, then the duration: the transition is created in the same rendering pass, so a frame that arrives late takes the wait with it, and `SWIPE_PAGER.SETTLE_SLACK_MS` (one frame) only has to cover the timer's own imprecision. Every wait in the pager that outlasts a transition moved onto it — the unwind, the commanded turn's commit, and the dragged release's — because they are all the same statement: _do this once the motion has finished_. Zero duration (reduced motion, an unreadable token) still defers by a **task**, never inline: a commit landing synchronously inside the event that asked for it is a different contract from the one every caller was written against, and six unit cases said so.
+
+**And a phantom animation the recording also caught**, unrelated to the jitter but on the same surface: the quick-unwind rule was not scoped to `[data-swiping]`, so it outlived the offset. The moment the pager gave the surface back, `transform` went from `translateX(0px)` to none with a transition still declared — a 140ms animation over zero distance, invisible and real, after every gesture. There is nothing to move when there is no offset.
+
+**What the guard asserts is a count and an order**, both of which survive a loaded machine: exactly `transitionrun · transitionend · given-back` on the withdrawal after a landing, with nothing cancelled, and the surface given back no earlier than the motion ends.
 
 **What this round is really about, as a lesson rather than a fix.** Both defects were in the same class: **a fact about the surrounding DOM that the change assumed instead of counting.** The ghost's containing block is one `grep` for what renders inside `.day-page`; the jitter is one reading of who calls `hold` and how often. Root `CLAUDE.md` has the rule already — _count the call sites before claiming what a derivation does_ — and this is its shape for a gesture: **count the callers of a command channel, and the fixed descendants of anything you transform.**
 

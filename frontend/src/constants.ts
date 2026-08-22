@@ -829,6 +829,12 @@ export const SWIPE_PAGER = {
   COMMIT_SHARE: 0.22,
   EDGE_RESIST: 0.28,
   EDGE_MAX_PX: 40,
+  /** **A frame of slack on any wait that has to outlast a transition** (ADR-0116 §2d's third
+   *  repair). `setTimeout` is not the clock a transition runs on: it can fire a millisecond
+   *  before the last frame of one, and giving the surface back one frame early cancels it. The
+   *  wait is anchored to a `requestAnimationFrame` for the same reason — that IS the rendering
+   *  clock — so this only has to cover the timer's own imprecision. */
+  SETTLE_SLACK_MS: 16,
 } as const;
 
 /** Camera zoom bounds (ADR-0121 §7, re-tuned and reorganised by ADR-0127).
