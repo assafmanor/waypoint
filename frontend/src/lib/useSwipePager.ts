@@ -324,9 +324,17 @@ export function useSwipePager<T extends HTMLElement>({
         waitOut(motionDurationMs('--t-quick'), clear);
         return;
       }
-      // The dwell has fired and the page is on its way; `--t-base` is not a window for a
-      // change of mind, and re-parking it at the detent is what read as a stutter.
-      if (turning.current) return;
+      // **The page is on its way, or it has arrived and not yet been drawn** — either way this
+      // command is not allowed to land (§2d's seventh repair; owner: _"once the moving animation
+      // starts… it should complete the day move and animation"_).
+      //
+      // `owed` is the second half and it is the one that was leaking. It marks the window
+      // between the commit and React drawing the arriving day — a full render of the heaviest
+      // screen in the app — and a `hold` landing in there cleared it, so the reset that hands
+      // the page back never ran: the strip moved on while the page stayed parked a page away
+      // drawing the day before. Visible in the owner's own recording, where the pill said one
+      // day and the screen showed another for about half a second.
+      if (turning.current || owed.current) return;
       const dx = `${Math.round(g.dirFor(step) * px)}px`;
       // **Idempotent, because the caller is a stream.** A command channel that rewrites the
       // value it is already holding sixty times a second is a defect even where it is

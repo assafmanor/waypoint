@@ -1266,6 +1266,9 @@ test.describe('carrying a card to another day from the surface edge', () => {
   test('reversing costs half a dwell', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
     const card = await centre(page, '.wp-maybecard');
+    const bands = await bodyBands(page);
+    const box = await boxOf(page, '.day-swipe:not([data-preview])');
+    const middle = { x: box.x + box.width / 2, y: (bands.middleFrom + bands.middleTo) / 2 };
 
     await touch(cdp, 'touchStart', card.x, card.y);
     await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
@@ -1273,7 +1276,12 @@ test.describe('carrying a card to another day from the surface edge', () => {
     await touch(cdp, 'touchMove', forward.x, forward.y);
     await stepsTo(page, TOMORROW);
 
+    // **Reaching the far band is not the request — asking for it is** (§2d's seventh repair,
+    // below). So the price is measured from the ask, which is the second entry: the first one
+    // latches the band, leaving releases it, and coming back means it.
     const back = await edgeOf(page, 'right');
+    await touch(cdp, 'touchMove', back.x, back.y);
+    await touch(cdp, 'touchMove', middle.x, middle.y);
     await touch(cdp, 'touchMove', back.x, back.y);
     const at = Date.now();
     await stepsTo(page, null as unknown as string);
@@ -1505,6 +1513,66 @@ test.describe('carrying a card to another day from the surface edge', () => {
     expect(dayParam(page)).toBe(TOMORROW);
 
     // And it still WORKS as a way back — once the drag asks for it, by leaving and returning.
+    await touch(cdp, 'touchMove', box.x + box.width / 2, y);
+    await touch(cdp, 'touchMove', back.x, back.y);
+    await expect.poll(() => dayParam(page), { timeout: DRAG_DAY_DWELL_MS * 4 }).toBeNull();
+    await touch(cdp, 'touchEnd');
+  });
+
+  // **The hand crossing to the far edge AFTER the landing is not a request to go back either**
+  // (§2d's seventh repair; owner, with a screen recording: _"once the moving animation starts for
+  // dragging, moving the opposite direction shouldn't cancel the operation, undo, or do any other
+  // animation. It should complete the day move and animation. Only after you're on the next day
+  // you should be able to go back."_ And: _"if you move your finger back fast enough — even a
+  // little — it happens every time"_.)
+  //
+  // Read off the recording frame by frame: a step forward from day 2 of 12 to day 3, then, as the
+  // hand crossed to the other edge, a full page travelling back to day 2. The fifth repair
+  // covered the hand that crossed WHILE the page travelled; this is the hand that crosses a frame
+  // after it lands, which is the same motion and read as a fresh request. It is the sixth repair's
+  // case moved from "at the arrival" to "for as long as the step is on screen".
+  //
+  // The case above stops at the turn's own settle; this one waits for the day to arrive first, so
+  // the two windows are asserted separately rather than one covering for the other.
+  test('crossing to the far edge after a landing does not walk back', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+    const bands = await bodyBands(page);
+    const box = await boxOf(page, '.day-swipe:not([data-preview])');
+    const y = (bands.middleFrom + bands.middleTo) / 2;
+    const back = { x: box.x + box.width - Math.round(DRAG_DAY_EDGE_PX / 4), y };
+
+    await page.evaluate(() => {
+      const w = window as unknown as { __turns: number; __watch: () => void };
+      w.__watch = () => {
+        w.__turns = 0;
+        const el = document.querySelector('.day-swipe:not([data-preview])') as HTMLElement;
+        new MutationObserver(() => {
+          if (el.getAttribute('data-swipe-settling') === 'turn') w.__turns++;
+        }).observe(el, { attributes: true, attributeFilter: ['data-swipe-settling'] });
+      };
+    });
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    // The day has ARRIVED — not merely been commanded, which is the other case's window.
+    await stepsTo(page, TOMORROW);
+    await page.evaluate(() => (window as unknown as { __watch: () => void }).__watch());
+    await touch(cdp, 'touchMove', back.x, back.y);
+
+    // Three dwells of nothing: no page travels, and the day the step landed on is the day that
+    // stays. Before this repair the reverse fired ~590ms in — half a dwell, because the app
+    // priced it as an undo — and the owner watched a step they had just made come apart.
+    await page.waitForTimeout(DRAG_DAY_DWELL_MS * 3);
+    expect(
+      await page.evaluate(() => (window as unknown as { __turns: number }).__turns),
+      'the band the hand crossed into is not a request to go back',
+    ).toBe(0);
+    expect(dayParam(page)).toBe(TOMORROW);
+
+    // And the second half of the owner's sentence: going back is still there to be asked for.
     await touch(cdp, 'touchMove', box.x + box.width / 2, y);
     await touch(cdp, 'touchMove', back.x, back.y);
     await expect.poll(() => dayParam(page), { timeout: DRAG_DAY_DWELL_MS * 4 }).toBeNull();
