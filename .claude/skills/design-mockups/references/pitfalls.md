@@ -112,6 +112,48 @@ reported no font.
 synthetic images for exactly this reason, which left crop geometry honest and
 content dishonest — and the ADR said so rather than pretending otherwise.
 
+**`tokens.css` pins the document to the viewport, so a mockup must undo it.**
+Since 2026-08-21 (ADR-0200 §1) the app declares `html, body { overflow: clip }` —
+the app-shell scrolls inside `.body` and the root must never become a scroll
+container. Every mockup inlines that sheet, and a mockup is a *document* of
+sections rather than an app shell: `scrollHeight` collapses to the viewport,
+`window.scrollTo` does nothing, and a full-page screenshot comes back with §1 and
+then blank rectangles where §2–§5 are laid out but never painted. Nothing errors
+and the measurement table still fills in, so it reads as a page that renders.
+Undo it in the `mk-*` block, labelled:
+
+```css
+html,
+body {
+  height: auto;
+  overflow: visible;
+}
+```
+
+`note-full-screen-v1.html` is the file that found it; `a-day-turns-under-a-held-card-v1.html`
+is the other one that inlines the rule.
+
+**`document.fonts.ready` is not enough to trust a width.** An `@font-face` is
+fetched lazily on first use, so at parse time there may be nothing pending and
+`ready` resolves **immediately** — before a single glyph of Assistant exists.
+A measurement table built in that tick reports fallback metrics, which is the
+webfont trap above arriving through the clock instead of the network. Ask for the
+faces explicitly, per weight, and re-measure:
+
+```js
+Promise.all(
+  ['400 12px Assistant', '600 12px Assistant', '12px "Secular One"'].map((f) =>
+    document.fonts.load(f),
+  ),
+).then(() => document.fonts.ready.then(measure));
+```
+
+`note-full-screen-v1.html` reported a truncation rule as costing **nothing**
+(⁦38px⁩ against ⁦38px⁩) until it did this; the same two boxes are ⁦51px⁩ and ⁦37px⁩
+once Assistant is applied, because the fallback face is narrow enough that the
+name never overflowed. Note the shape of the failure: the number that lied was
+the one saying **the change makes no difference**.
+
 ## Drift
 
 **Re-run `inline-app-css.mjs` whenever a manifest sheet changes.** The catalog
