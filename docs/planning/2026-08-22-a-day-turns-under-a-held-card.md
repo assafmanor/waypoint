@@ -230,3 +230,37 @@ Three process notes, and they are the point of this note:
 - **Ask what the instrument measures before trusting a clean result.** A green probe against the wrong property is worse than no probe: it retires a hypothesis that was correct.
 - **A count of transitions and a series of painted values are the honest assertions for a motion.** Both survive a loaded machine; a magnitude at a moment does not, and a variable does not describe the screen at all.
 - **A guard that cannot fail is not a guard.** Reverting the fix and re-running is one command, and it turned an assertion I believed into 4 failures in 6 — which is also how I learned the window is timing-dependent and that the owner's timing sits outside it.
+
+## An eighth round: the spec, the recording, and an undo nobody asked for
+
+> _"OK not fixed, but I can explain what I want to happen. Once the moving animation starts for dragging, moving the opposite direction shouldn't cancel the operation, undo, or do any other animation. It should complete the day move and animation. Only after you're on the next day you should be able to go back, ok?"_
+
+And then, when I said I could not reproduce it, a screen recording. Read at 12fps and then frame by frame on the day pill: **2/12 → 3/12 → 2/12.** The day goes forward and then comes back. Every sweep in the seventh round was hunting a reverse _animation_ on the day the drag had just landed on — and the defect was the wrong thing moving **correctly**: a genuine page turn, in the right direction for a request that was never made.
+
+That is why eight variants came back clean. The instrument was looking at the offset; the answer was in the URL.
+
+### Two consecutive windows, and the sixth repair had covered a slice of the first
+
+- **While the page travels.** The pager has refused offset commands mid-turn since the second repair, but `useEdgeDayStep` kept resolving underneath it: a hand crossing to the far band named the day behind, and the dwell armed on it at **half** rest — the third repair's cheaper undo — so the reverse fired barely after the step landed. _Fast_ in the report is exactly "reached the far band inside 240ms".
+- **After the day arrives.** The far band was live. The sixth repair latched a band the drag had drifted into, but said it **once, at the arrival**; a hand crossing a frame later read as a fresh request.
+
+### The fix is the sentence the rest of the app already says
+
+The first time a drag reaches the band opposite the one that just turned, while that step is still on screen, the band is latched — as if the drag had been lifted there. `gateEdgeStep`, at a fourth moment. Being there does nothing; leaving or pushing deeper means it.
+
+Two things fell out of writing it that way rather than as a new rule:
+
+- **The window is `DRAG_DAY_REVERSE_MS`, which already existed** to price an undo at half a dwell. It now also says an undo must be asked for — one window, two consequences — so nothing new is tunable, and outside it the far band is ordinary again. A retreat two seconds later was never this defect, and gating it would be the _"hard to go back"_ the third repair answered.
+- **The sixth repair's special case is deleted.** It was this rule made at one moment instead of for as long as it holds, and its own e2e cases now pass through the general one.
+
+### Two mechanisms I wrote and then removed
+
+`busy` on the edge's return value, and a gate on the pill's dwell in `PlanDay` reading it — my first answer to the owner's first sentence. Both are dead on inspection: `busy` is derived from a ref, `turning()` is called from an event handler and changes no state, so nothing re-renders and every read of it at render time is `false`. Kept as written, it would have looked like a guard in every future reading of that file.
+
+What survived from that attempt is the one line that does something: `track` records the pointer but names nothing while a turn is in flight. Removing it fails a unit case, which is how I know the difference.
+
+### Measured both ways, and this time in the browser
+
+`e2e/shelf-drag.spec.ts`, _"crossing to the far edge after a landing does not walk back"_: with the gate removed, the same gesture fires **two** reverse page turns in three dwells and ends two days behind where the drag put it. With it, zero, and the day stays. Eight unit cases in `useEdgeDayStep.test.tsx` fail without it too.
+
+The process note, which is the mirror of the last round's: **when a report says a step came undone, assert the step.** Four rounds of animation probes could not see a defect whose entire signature was one `?day=` going backwards.

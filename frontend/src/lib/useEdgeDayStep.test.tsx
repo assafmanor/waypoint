@@ -22,8 +22,10 @@ import {
   DRAG_DAY_EDGE_PX,
   DRAG_DAY_LIFT_PX,
   DRAG_DAY_REVERSE_DWELL_MS,
+  DRAG_DAY_REVERSE_MS,
   DRAG_EDGE_SCROLL_RELEASE_PX,
 } from '../constants';
+import { getNow, setSimulatedNow } from './useClock';
 import { useEdgeDayStep, type DayNeighbours, type EdgeDayStep } from './useEdgeDayStep';
 import type { SwipeStep } from './useSwipePager';
 
@@ -122,7 +124,12 @@ const AT_LOW = 4;
 const AT_HIGH = WIDTH - 4;
 const MIDDLE = WIDTH / 2;
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // One case pins the clock past the undo window (below); the rule is the suite's, not that
+  // case's — a leaked `now` means every test after it reads a different one.
+  setSimulatedNow(null);
+});
 
 describe('useEdgeDayStep', () => {
   it('names the NEXT day at the left edge and the PREVIOUS one at the right, in RTL', () => {
@@ -362,8 +369,9 @@ describe('useEdgeDayStep', () => {
       // gets that its own request arrived.
       h.turning();
       h.redraw({ prev: '2026-08-22', next: '2026-08-24' });
-      // …and now the other edge. Reached by LEAVING the band and coming back, because a band the
-      // hand merely drifted into while the page travelled is latched (see below).
+      // …and now the other edge, asked for: the far band is latched on arrival inside the undo
+      // window, so reaching it is not the request (see the seventh repair, below).
+      h.track(AT_HIGH);
       h.track(MIDDLE);
       h.track(AT_HIGH);
       expect(h.step()).toBe(-1);
@@ -434,6 +442,13 @@ describe('useEdgeDayStep', () => {
       expect(h.step()).toBe(-1);
     });
 
+    it('and the latch is the one the seventh repair installs, so it survives the arrival', () => {
+      const h = drift();
+      // Not a fresh render's worth of latch: the same band, still latched, one move later.
+      h.track(AT_HIGH - 1);
+      expect(h.step()).toBeNull();
+    });
+
     it('or by pushing deeper into it than it drifted to', () => {
       const h = mount(BOTH);
       h.settle();
@@ -468,6 +483,150 @@ describe('useEdgeDayStep', () => {
       h.track(AT_HIGH);
       expect(h.step()).toBe(-1);
       expect(h.dwell()).toBe(DRAG_DAY_REVERSE_DWELL_MS);
+    });
+  });
+
+  // ── AN UNDO IS ASKED FOR, NOT ARRIVED AT (§2d's seventh repair) ───────────────────────
+  //
+  // Owner, with a screen recording: _"once the moving animation starts for dragging, moving the
+  // opposite direction shouldn't cancel the operation, undo, or do any other animation. It
+  // should complete the day move and animation. Only after you're on the next day you should be
+  // able to go back."_ The recording shows a step forward to day 3 of 12 and then, as the hand
+  // crosses to the other edge, a full page walking back to day 2 — a step being undone that
+  // nobody asked for.
+  //
+  // Two windows leaked, and they are consecutive. `track` covers the first: while the page is
+  // travelling the edge named the day behind and the dwell armed on it AT HALF REST, so the
+  // undo fired barely after the step landed — which is why the owner's report was about moving
+  // back FAST. These cases cover the second: the hand that crosses after the arrival.
+  describe('the band opposite the one that turned', () => {
+    /** A step forward, landed, with the hand still at the edge that made it. */
+    const stepped = () => {
+      const h = mount(BOTH);
+      h.settle();
+      h.arm(MIDDLE);
+      h.track(AT_LOW);
+      expect(h.step()).toBe(1);
+      h.turning();
+      h.redraw({ prev: '2026-08-22', next: '2026-08-24' });
+      return h;
+    };
+
+    it('says nothing the first time the drag reaches it', () => {
+      const h = stepped();
+      h.track(MIDDLE);
+      h.track(AT_HIGH);
+      expect(h.date()).toBeNull();
+      expect(h.step()).toBeNull();
+      expect(h.last()).toEqual({ step: null, px: 0 });
+    });
+
+    it('and stays quiet for a hand that rests there', () => {
+      const h = stepped();
+      h.track(MIDDLE);
+      h.track(AT_HIGH);
+      h.track(AT_HIGH);
+      h.track(AT_HIGH - 2);
+      expect(h.step()).toBeNull();
+    });
+
+    // Going back is the second half of the owner's sentence, so it must stay possible — in the
+    // same words every other band in this app is asked in.
+    it('acts once the drag pushes deeper into it than it entered at', () => {
+      const h = stepped();
+      h.track(MIDDLE);
+      const entered = WIDTH - DRAG_DAY_EDGE_PX + 4;
+      h.track(entered);
+      expect(h.step()).toBeNull();
+      h.track(entered + DRAG_EDGE_SCROLL_RELEASE_PX);
+      expect(h.step()).toBe(-1);
+      expect(h.dwell()).toBe(DRAG_DAY_REVERSE_DWELL_MS);
+    });
+
+    it('or once it has left and come back', () => {
+      const h = stepped();
+      h.track(MIDDLE);
+      h.track(AT_HIGH);
+      h.track(MIDDLE);
+      h.track(AT_HIGH);
+      expect(h.step()).toBe(-1);
+    });
+
+    // The gate is the undo window's, not the drag's: a retreat two seconds later was never the
+    // undo this repair is about, and gating it would be the _"hard to go back"_ this feature
+    // already answered once.
+    it('is ordinary again once the step it undoes has been on screen a while', () => {
+      const h = stepped();
+      setSimulatedNow(getNow() + DRAG_DAY_REVERSE_MS + 1);
+      h.track(MIDDLE);
+      h.track(AT_HIGH);
+      expect(h.step()).toBe(-1);
+      // …and at full price, because the same window prices the dwell.
+      expect(h.dwell()).toBe(DRAG_DAY_DWELL_MS);
+    });
+
+    // The exemption, and it is §2b: the band that did the turning keeps stepping under a finger
+    // that has not moved.
+    it('while the band that turned is untouched', () => {
+      const h = stepped();
+      expect(h.step()).toBe(1);
+      expect(h.date()).toBe('2026-08-24');
+      h.track(AT_LOW);
+      expect(h.step()).toBe(1);
+    });
+
+    // Each turn arms the gate once more: walking forward two days and then retreating is the
+    // same motion as retreating after one.
+    it('and every further step arms it again', () => {
+      const h = stepped();
+      h.turning();
+      h.redraw({ prev: '2026-08-23', next: '2026-08-25' });
+      h.track(MIDDLE);
+      h.track(AT_HIGH);
+      expect(h.step()).toBeNull();
+    });
+
+    it('and a fresh drag knows nothing about it', () => {
+      const h = stepped();
+      h.stop();
+      h.arm(MIDDLE);
+      h.track(AT_HIGH);
+      expect(h.step()).toBe(-1);
+    });
+  });
+
+  // **A turn in flight is committed, and that includes what the EDGE thinks** (§2d's seventh
+  // repair, first half). The pager has refused offset commands mid-turn since the second repair,
+  // but the edge kept resolving underneath it — so a hand crossing to the far band during the
+  // `--t-base` travel named the day behind, and the dwell armed on it at half rest and fired
+  // barely after the step landed. Nothing is named until the day it is turning to arrives.
+  describe('while a turn is travelling', () => {
+    it('names nothing new, wherever the hand goes', () => {
+      const h = mount(BOTH);
+      h.settle();
+      h.arm(MIDDLE);
+      h.track(AT_LOW);
+      h.turning();
+      const before = h.held().length;
+      h.track(MIDDLE);
+      h.track(AT_HIGH);
+      expect(h.date()).toBe(NEXT);
+      expect(h.step()).toBe(1);
+      // Not one command in either direction: the page is on its way and nothing may land.
+      expect(h.held().length).toBe(before);
+    });
+
+    it('and resolves against wherever the hand ended up when the day arrives', () => {
+      const h = mount(BOTH);
+      h.settle();
+      h.arm(MIDDLE);
+      h.track(AT_LOW);
+      h.turning();
+      h.track(AT_HIGH);
+      h.redraw({ prev: '2026-08-22', next: '2026-08-24' });
+      // The far band, reached mid-flight and latched at the arrival — the sixth repair's case,
+      // now the seventh's.
+      expect(h.date()).toBeNull();
     });
   });
 

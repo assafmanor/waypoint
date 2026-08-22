@@ -105,6 +105,26 @@ export function useEdgeDayStep(
   const inside = useRef<EdgeDirection>(null);
   /** The step this drag last completed, and when — the reversal window's whole input. */
   const turned = useRef<{ step: SwipeStep; at: number } | null>(null);
+  /**
+   * **The side this drag last turned FROM, for the rest of the drag** (§2d's seventh repair;
+   * owner: _"moving the opposite direction shouldn't cancel the operation, undo, or do any other
+   * animation… only after you're on the next day you should be able to go back"_).
+   *
+   * Their recording is the argument: step forward to the next day, move the hand to the other
+   * edge, and the day walks back — a full page turn, ending where it started. The hand went the
+   * other way; nothing about it asked to undo the step. The sixth repair latched a band the drag
+   * DRIFTED into while the page travelled, and the hand in the recording crossed a frame LATER,
+   * which read as a fresh request.
+   *
+   * So the side is kept, and the band opposite it is latched the first time the drag reaches it
+   * inside the undo window. Going back is still possible — the second half of the owner's
+   * sentence — it just has to be asked for, in the same words every other band here is asked in.
+   */
+  const turnedSide = useRef<EdgeDirection>(null);
+  /** Whether the band opposite `turnedSide` has already been latched since that turn. Once it
+   *  has, the ordinary latch is what decides — so this is a boolean rather than a second gate,
+   *  and each turn arms it exactly once. */
+  const gatedBack = useRef(false);
   /** The request a turn is travelling on: the step, and the band the drag was resting in when
    *  the dwell fired. Both are read at the COMMAND, not at the arrival. */
   const commanded = useRef<{ step: SwipeStep; side: EdgeDirection } | null>(null);
@@ -156,6 +176,14 @@ export function useEdgeDayStep(
     setStep(next);
   }, []);
 
+  /** **The step this drag just made is still on screen** — within `DRAG_DAY_REVERSE_MS` of
+   *  landing. One window with two consequences: undoing inside it is half price (§2d's third
+   *  repair), and inside it an undo has to be asked for (the seventh). */
+  const undoWindow = useCallback(
+    () => turned.current != null && getNow() - turned.current.at < DRAG_DAY_REVERSE_MS,
+    [],
+  );
+
   /** Which day lies past the edge the pointer is in, if any.
    *
    *  The mirror is read off the element rather than the document, for the reason
@@ -180,6 +208,28 @@ export function useEdgeDayStep(
     const leaving = edgeDepth(x, box.width, DRAG_DAY_EDGE_PX + DRAG_EDGE_SCROLL_RELEASE_PX);
     const depth =
       entering !== 0 ? entering : edgeDirection(leaving) === inside.current ? leaving : 0;
+    // **Undoing a step is a request, not a direction of travel** (§2d's seventh repair; owner:
+    // _"moving the opposite direction shouldn't cancel the operation, undo, or do any other
+    // animation… only after you're on the next day you should be able to go back"_).
+    //
+    // The first time a drag reaches the band OPPOSITE the one that just turned — while the step
+    // it made is still on screen — that band is latched, exactly as if the drag had been lifted
+    // there. So being there does nothing, and leaving or pushing deeper is what means it, which
+    // is the same sentence every other band in this app answers to. The band that did the
+    // turning is untouched, so holding still keeps stepping (§2b), and once the window has
+    // closed the far band is ordinary again — a retreat two seconds later was never the undo
+    // this is about.
+    const where = edgeDirection(depth);
+    if (
+      !gatedBack.current &&
+      where != null &&
+      turnedSide.current != null &&
+      where !== turnedSide.current &&
+      undoWindow()
+    ) {
+      gatedBack.current = true;
+      latch.current = edgeLatchAt(depth, x);
+    }
     // The same distance that says a drag has asked for the band it was lifted in. Its name
     // belongs to the scroll only because that is where the scar was found.
     const gated = gateEdgeStep(depth, x, latch.current, DRAG_EDGE_SCROLL_RELEASE_PX);
@@ -194,11 +244,20 @@ export function useEdgeDayStep(
     // "the next page" or "the previous one".
     lift(date ? (date === next ? 1 : -1) : null);
     return date;
-  }, [host, lift]);
+  }, [host, lift, undoWindow]);
 
   const track = useCallback(
     (next: DragPoint) => {
       point.current = next;
+      // **A turn in flight is committed, and that includes what the edge THINKS** (§2d's
+      // seventh repair, first half). The pager has refused offset commands mid-turn since the
+      // second repair, but the edge kept resolving underneath it — so a hand crossing to the
+      // far band during the `--t-base` travel NAMED the day behind, and the dwell armed on it
+      // at half rest and fired ~110ms after the step landed. That is the reverse the owner
+      // recorded, and it happens before `turnedSide` (the second half) exists to gate it.
+      // The position is still recorded, so the arrival resolves against wherever the hand
+      // actually ended up.
+      if (commanded.current) return;
       setDate(resolve());
     },
     [resolve],
@@ -223,6 +282,8 @@ export function useEdgeDayStep(
       point.current = at;
       inside.current = null;
       turned.current = null;
+      turnedSide.current = null;
+      gatedBack.current = false;
       commanded.current = null;
       stepped.current = false;
       setDate(null);
@@ -242,6 +303,8 @@ export function useEdgeDayStep(
     latch.current = null;
     inside.current = null;
     turned.current = null;
+    turnedSide.current = null;
+    gatedBack.current = false;
     commanded.current = null;
     stepped.current = false;
     setDate(null);
@@ -262,29 +325,19 @@ export function useEdgeDayStep(
       const { step, side } = commanded.current;
       commanded.current = null;
       turned.current = { step, at: getNow() };
+      // The side that did the turning, kept for the rest of the drag: everything else is now the
+      // opposite band, and the opposite band has to be asked for.
+      turnedSide.current = side;
       // The lift has been spent for this stay in the band; from here the edge arms at zero.
       stepped.current = true;
-      /**
-       * **A band the drag drifted into while the page was travelling is a band it never asked
-       * for** (§2d's fifth repair; owner: _"we 'turn back' during the animation, then it does a
-       * full animation of going back"_).
-       *
-       * Recorded: `turn(1)` at 6229ms, the finger reaching the opposite band at 6260 while the
-       * page travelled, the day arriving at 6501 — and then `turn(-1)` at 7300 and again at
-       * 8372, walking back a full page at a time. Nobody asked to go back; the hand was
-       * retreating from the edge it had just used, which is where a hand goes next.
-       *
-       * This is `gateEdgeStep`'s own scar at a third moment. It was written for a drag that
-       * ARMED inside a band ("you pressed, held, and the list took off") and transposed once to
-       * the inline axis; the page arriving under a wandering finger is the same shape, and the
-       * same gate answers it — leave the band, or push deeper into it, and it means something
-       * again. The band that produced the turn is deliberately exempt: holding still there
-       * keeps stepping, which is the whole of §2b.
-       */
-      if (inside.current && inside.current !== side) latchHere();
+      // A band the drag DRIFTED into while the page travelled needs no special case any more:
+      // it is the opposite band like any other, and `resolve` below latches it. The sixth
+      // repair was this same statement made only at the arrival, which is exactly why it missed
+      // the hand that crossed over a frame later.
+      gatedBack.current = false;
     }
     setDate(resolve());
-  }, [neighbours.prev, neighbours.next, resolve, latchHere]);
+  }, [neighbours.prev, neighbours.next, resolve]);
 
   // A drag interrupted by an unmount (a mode switch, a tab change) must not leave a target
   // named for a gesture that no longer exists — and `stop` is identity-stable (see `cmd`), so
@@ -294,11 +347,7 @@ export function useEdgeDayStep(
   /** Half a dwell while the step just made is still on screen and this one undoes it. Read at
    *  render because that is when the dwell arms — a stale clock here would only ever make a
    *  reversal cost MORE, never less. */
-  const reversing =
-    step != null &&
-    turned.current != null &&
-    turned.current.step === -step &&
-    getNow() - turned.current.at < DRAG_DAY_REVERSE_MS;
+  const reversing = step != null && turned.current?.step === -step && undoWindow();
 
   return {
     date,

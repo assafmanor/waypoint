@@ -537,6 +537,27 @@ describe('useSwipePager', () => {
       expect(host.hasAttribute('data-swiping')).toBe(false);
     });
 
+    // **The window between the commit and the arriving day being drawn is not a window for a
+    // command either** (§2d's seventh repair). `turning` covers the travel; this covers what
+    // comes after it — a full render of the heaviest screen in the app, during which the edge is
+    // still streaming `hold` at whatever rate the pointer reports. A lift landing in there
+    // cleared the reset the turn was owed, so the page never rebased: the strip had moved on and
+    // the surface stayed parked a page away, drawing the day before.
+    it('ignores a lift issued after the commit and before the page is drawn', () => {
+      const onStep = vi.fn();
+      const { host, command, drawNextPage } = mount({ onStep });
+      command.hold(1, 48);
+      command.turn(1);
+      settle();
+      expect(onStep).toHaveBeenCalledWith(1);
+      // The finger has not moved and the edge says so again, in the one frame it must not.
+      command.hold(1, 48);
+      drawNextPage();
+      expect(offset(host)).toBe('0px');
+      expect(host.hasAttribute('data-swipe-rebase')).toBe(true);
+      expect(host.hasAttribute('data-edge-lift')).toBe(true);
+    });
+
     // The frame in which the offset changes and nothing moves: one page less offset over a page
     // that was swapped underneath it. A transition there would slide the arriving day in from
     // off screen, so it is suppressed — for exactly that frame.
