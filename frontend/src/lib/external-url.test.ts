@@ -19,6 +19,25 @@ describe('externalHref', () => {
     expect(externalHref('tel:+81312345678')).toBe('tel:+81312345678');
   });
 
+  // THE SECOND REPORTED BUG (ADR-0202 §7). `mailto:` was allowed and never supplied, so a
+  // typed address took the `https://` branch and the `@` was parsed as HTTP userinfo: the
+  // link went to the bare domain with the local part as credentials, and `prettyUrl` then
+  // labelled it `example.com` — so the address was not even on screen.
+  it('supplies mailto for an address, rather than making the @ into userinfo', () => {
+    expect(externalHref('tokyo-stay@example.com')).toBe('mailto:tokyo-stay@example.com');
+    expect(externalHref('a@b.co.il')).toBe('mailto:a@b.co.il');
+    expect(prettyUrl('tokyo-stay@example.com')).toBe('tokyo-stay@example.com');
+  });
+
+  // Narrow on purpose: an `@` alone is not an address, or a handle and a path become mail.
+  // Asserted as "not mail" rather than against an exact string, because what `new URL` makes
+  // of a bare handle (`https://waypoint/` — the `@` read as empty userinfo) is pre-existing
+  // garbage-in behaviour and not this rule's business.
+  it('does not read a handle or a path as an address', () => {
+    expect(externalHref('@waypoint')).not.toMatch(/^mailto:/);
+    expect(externalHref('example.com/@user')).toBe('https://example.com/@user');
+  });
+
   // A note is group-visible free text, so a `url` field is a script one member could hand
   // another. Answering `null` is what makes the call site render text instead of a link.
   it('refuses a scheme that is not a place to go', () => {

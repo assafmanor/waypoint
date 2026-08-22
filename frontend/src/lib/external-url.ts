@@ -29,6 +29,24 @@ const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:']);
  *  it is the point, so the check below can refuse it rather than prefix it into safety.) */
 const HAS_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
 
+/** **An address needs `mailto:`, and nothing was supplying it** (ADR-0202 §7, found while
+ *  drawing `mockups/note-full-screen-v1.html`). `mailto:` has been in the allowlist above
+ *  since this file shipped, on the reasoning that "a hotel's contact line is a thing people
+ *  paste" — but the only scheme this function ever ADDED was `https://`, and under that
+ *  branch the `@` is not an address separator, it is HTTP **userinfo**:
+ *
+ *      externalHref('tokyo-stay@example.com')
+ *        → 'https://tokyo-stay@example.com/'    host=example.com  user=tokyo-stay
+ *
+ *  So a pasted address became a link to the bare domain with the local part handed over as
+ *  credentials — and `prettyUrl` then labels it `example.com`, because `url.host` drops the
+ *  userinfo, so the address the author typed was not even on screen. Reachable from the note
+ *  editor's url field today, which is free text.
+ *
+ *  Deliberately narrow: one `@`, and a dotted domain after it. Anything looser starts
+ *  claiming Twitter handles and file paths. */
+const LOOKS_LIKE_EMAIL = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
+
 /**
  * An absolute, safe href for a user-typed url — or `null` when it cannot be one, which the
  * caller must render as plain text rather than as a dead link.
@@ -39,9 +57,11 @@ export function externalHref(raw: string | null | undefined): string | null {
   // `//host/path` is scheme-relative and would become `https:////host` under a blind prefix.
   const candidate = HAS_SCHEME.test(value)
     ? value
-    : value.startsWith('//')
-      ? `https:${value}`
-      : `https://${value}`;
+    : LOOKS_LIKE_EMAIL.test(value)
+      ? `mailto:${value}`
+      : value.startsWith('//')
+        ? `https:${value}`
+        : `https://${value}`;
   try {
     const parsed = new URL(candidate);
     return ALLOWED_PROTOCOLS.has(parsed.protocol) ? parsed.href : null;

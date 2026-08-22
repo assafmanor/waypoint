@@ -88,3 +88,29 @@
 .wp-listrow.is-open {
   border-bottom: 0;
 }
+
+/* **WHAT GIVES WAY WHEN THE LINE IS FULL** (ADR-0202 §1). With two controls this foot never
+   wrapped, so nothing here had ever had to decide. With three it does: measured in
+   `mockups/note-full-screen-v1.html` at 360px, a real host name
+   (`מוזיאון האמנות המודרנית של טוקיו`) takes the line from 27px to 51px once Assistant is
+   loaded — and the wrap point is webfont-dependent, which is the caution ADR-0153 §6c already
+   recorded about host-name widths, so this ships rather than being argued from one reading.
+
+   The VERBS hold the trailing edge, because that is where a thumb finds them, so the NAME is
+   what truncates. It can afford to: the full screen one tap away prints the host in its bar,
+   and the row's own meta line printed it before it opened.
+
+   `min-width: 0` because a flex item's `auto` minimum refuses to shrink below its content —
+   without it the ellipsis never engages. The name needs its own element to ellipsise in
+   (`.row-open-lead-n`), since the lead button also carries the caret. */
+.row-open-act {
+  flex: 0 0 auto;
+}
+.row-open-lead {
+  min-width: 0;
+}
+.row-open-lead-n {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -13,10 +13,24 @@
 // read is the verb. And the foot carries no way in to the host, because this surface IS the
 // host. (The notes SCREEN is the other case: its rows clamp to two lines, so opening there
 // lifts the clamp as well.)
+//
+// **Not clamping is also what makes this one of the two surfaces that can SHAPE a note**
+// (ADR-0202 §6) — a pasted heading and list read as a heading and a list here, at the dense
+// density, because there is no two-line budget to spend on markers.
+//
+// One caveat worth stating rather than discovering: `.note-item-b` is a `<button>`, and
+// `NoteProse` puts block elements inside it. React builds that with DOM calls rather than the
+// HTML parser, so nothing is reparented (the failure ADR-0160 §4 measured needs a nested
+// *interactive* element, which is exactly why the prose renders its links as plain text here).
+// It is still phrasing-only by the content model, and the accessible name flattens — which it
+// already did, since this button has always held the note's whole body as text. What the
+// shaping must not do is add a tab stop inside a tap target, and `anchors={false}` is what
+// guarantees it.
 import { useState, type ReactNode } from 'react';
 import type { Note, User } from '@waypoint/shared';
 import { noteTitleText, noteWhen } from '../lib/notes';
 import { NoteOpenFoot } from './NoteOpenFoot';
+import { NoteProse } from './NoteProse';
 import { Icon } from './Icon';
 import { t } from '../i18n/he';
 import './section-head.css';
@@ -28,6 +42,7 @@ export function NoteSection({
   now,
   onAdd,
   onEdit,
+  onOpenFull,
   inheritedFrom,
   compose,
   composeActive,
@@ -52,6 +67,15 @@ export function NoteSection({
   /** The one verb an open note offers here. Reached by tapping the note and then `עריכה`,
    *  so nobody lands in a form by reaching for a sentence. */
   onEdit: (note: Note) => void;
+  /** **Read this note on its own screen** (ADR-0202 §1). The section is one of the two
+   *  surfaces a note opens on, and the foot is the only half of either that can hold a tap
+   *  target — so the way in is the same control here as on the notes screen, which is the
+   *  whole reason that candidate won.
+   *
+   *  A callback rather than this component owning the overlay, because it stays
+   *  presentational: the screen needs the resolved host and the trip's users, and `HostNotes`
+   *  is the connected half that already has both. */
+  onOpenFull?: (note: Note) => void;
   /** **The composer, as this section's LAST ROW** (ADR-0192 §2) — on a host's own form, where
    *  a note is written on the way (ADR-0152 §6b) rather than through `NoteSheet`. `onAdd` is
    *  what reveals it there, so the two props are partners on a form rather than alternatives.
@@ -121,13 +145,29 @@ export function NoteSection({
                       amendment). `noteTitleText` is `title || body`, so until now a note with
                       both showed only its title HERE — and since the notes screen printed the
                       body into a meta line that collapses newlines, a long structured note had
-                      no surface at all that rendered it as written. This one does: a line here
-                      does not clamp, and `.note-item-b` already carries `white-space: pre-wrap`,
-                      so the breaks the author typed to make it readable land whole.
-                      `noteTitleText` still answers the untitled cases, including the url-only
-                      fallback it is the only holder of. */}
+                      no surface at all that rendered it as written.
+
+                      **And the body is now SHAPED** (ADR-0202 §6): this surface never clamped,
+                      so it is one of the two where a pasted heading and list can read as a
+                      heading and a list. `anchors={false}` because this whole element is a
+                      `<button>` — an `<a>` cannot nest inside one, and ADR-0153 §8 refused a
+                      second tap target inside a row's one open target anyway. It is also why
+                      `pre-wrap` is no longer what carries the newlines here: the parser keeps
+                      them and `NoteProse` renders them as breaks.
+
+                      `noteTitleText` still answers the untitled url-only case, which it is the
+                      only holder of. */}
                   {note.title && <span className="note-item-t">{note.title}</span>}
-                  {note.title ? note.body : noteTitleText(note)}
+                  {note.body ? (
+                    <NoteProse body={note.body} dense anchors={false} />
+                  ) : (
+                    // **Only when there is no title either.** The first draft of this fell
+                    // through to `noteTitleText` whenever the body was empty, and that
+                    // function is `title || body || prettyUrl(url)` — so a titled note with
+                    // no body printed its title twice, one line apart. Caught by
+                    // `HostNotes.test.tsx`, which is what that spec is for.
+                    !note.title && noteTitleText(note)
+                  )}
                 </button>
                 <span className="note-item-m">
                   {[
@@ -144,6 +184,11 @@ export function NoteSection({
                   <NoteOpenFoot
                     url={note.url}
                     urlIsTheTitle={!note.title && !note.body}
+                    // The surface IS the host, so the foot says nothing about where this
+                    // belongs — rather than saying `פתק כללי`, which is what it used to do
+                    // here and was false on every hosted note (ADR-0202's build).
+                    onHostSurface
+                    onView={onOpenFull ? () => onOpenFull(note) : undefined}
                     onEdit={() => onEdit(note)}
                   />
                 )}

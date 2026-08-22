@@ -1060,10 +1060,23 @@ export const t = {
     open: {
       general: 'פתק כללי',
       edit: 'עריכה',
+      // **The way in to the note's own screen** (ADR-0202 §1). `תצוגה מלאה` and not the
+      // shorter `מסך מלא` the mockup drew: `FilePicker` already names this exact action
+      // `תצוגה מלאה: {name}` when it opens `MediaViewer`, and one meaning with two nouns is
+      // how a vocabulary drifts (ADR-0138's recurring finding). It costs ~22px more on an
+      // 11.5px line than the invented word did, which is what `row-open.css`'s truncation
+      // rule is there to absorb.
+      full: 'תצוגה מלאה',
       openLink: 'פתיחת הקישור',
       /** The accessible name for the way in, which the visible label (the host's own name)
        *  does not say on its own. */
       toHost: (name: string) => `מעבר אל ${name}`,
+    },
+    // The note's own screen (ADR-0202 §2). No title of its own beyond `notes.one` — the bar
+    // says what KIND of thing you are reading and the note's words say the rest, which is
+    // ADR-0153 §4's rule for the row one surface up.
+    full: {
+      backAria: 'חזרה מהפתק',
     },
     // The note section on a detail surface, where the body lives.
     section: {

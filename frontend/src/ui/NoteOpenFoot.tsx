@@ -35,6 +35,8 @@ export function NoteOpenFoot({
   url,
   urlIsTheTitle,
   onGoToHost,
+  onView,
+  onHostSurface,
   onEdit,
 }: {
   /** Resolved, never copied (ADR-0152 §5) — absent for a general note. */
@@ -49,6 +51,23 @@ export function NoteOpenFoot({
   urlIsTheTitle?: boolean;
   /** Absent when there is nowhere to go, or when this surface is the host itself. */
   onGoToHost?: () => void;
+  /** **Open this note on its own screen** (ADR-0202 §1). Present on both surfaces, always —
+   *  never conditional on how long the note is, because a control whose position depends on
+   *  the length of the text cannot be learned, and it costs 0px in a line that already
+   *  exists. */
+  onView?: () => void;
+  /** **Is the surface showing this foot the note's own host?** (ADR-0202's build.)
+   *
+   *  This exists because of what the two absences used to collapse into. `host` being absent
+   *  meant BOTH "this note has no host" and "you are standing on its host", and the lead then
+   *  printed `פתק כללי` for both — so on a booking's own note section, every hosted note was
+   *  labelled a general note. A shipped copy defect, and invisible in the tests because the
+   *  screen's rows (which do pass a host) are where the lead was asserted.
+   *
+   *  With it true the lead is absent entirely, which is `RowOpenFoot`'s own documented case
+   *  and the right answer: the host is the screen you are on, so the foot has nothing to say
+   *  about where this belongs and says nothing rather than saying something false. */
+  onHostSurface?: boolean;
   onEdit: () => void;
 }) {
   // `externalHref` (ADR-0153 §5b) owns the scheme-supplying and the allowlist, `prettyUrl`
@@ -78,20 +97,28 @@ export function NoteOpenFoot({
           specific is only what the LEAD says, which is this component's whole remaining job. */}
       <RowOpenFoot
         lead={
-          host && onGoToHost ? (
+          // Nothing at all where the surface IS the host — see `onHostSurface`.
+          onHostSurface ? undefined : host && onGoToHost ? (
             <button
               type="button"
               className="row-open-lead"
               onClick={onGoToHost}
               aria-label={t.notes.open.toHost(host.name)}
             >
-              {host.name}
+              {/* Its own element so it can ellipsise: with a third control on this line a
+                  long host name wraps it, and the verbs are what must keep the trailing
+                  edge (`row-open.css`, ADR-0202 §1). */}
+              <span className="row-open-lead-n">{host.name}</span>
               <Icon name="caret" dir="left" />
             </button>
           ) : (
-            <span className="row-open-lead plain">{host ? host.name : t.notes.open.general}</span>
+            <span className="row-open-lead plain">
+              <span className="row-open-lead-n">{host ? host.name : t.notes.open.general}</span>
+            </span>
           )
         }
+        viewLabel={onView ? t.notes.open.full : undefined}
+        onView={onView}
         editLabel={t.notes.open.edit}
         onEdit={onEdit}
       />
