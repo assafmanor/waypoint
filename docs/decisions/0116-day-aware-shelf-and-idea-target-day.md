@@ -1,6 +1,6 @@
 # 0116 — The shelf becomes day-aware: an idea's optional target day, one union in both modes, and skip vs. park
 
-**Status:** Accepted (design + build) — **amended 2026-08-22** (§2b: the surface's inline edge is a second route to another day)
+**Status:** Accepted (design + build) — **amended 2026-08-22** (§2b: the surface's inline edge is a second route to another day; §2c: that turn is drawn rather than teleported)
 **Date:** 2026-07-25
 **Refines:** [0027](0027-soft-item-lifecycle-shelf-slip.md) (the parking-lot model: an idea is parked _or_ placed; the shelf renders unplaced ideas **and** skipped soft events "uniformly" — a promise only Trip mode ever kept), [0025](0025-trip-mode-edit-capability-tiers.md)/[0029](0029-trip-mode-day-scope-gating.md) (which verbs are reachable on which day — the gate the new day picker obeys), [0038](0038-icons-and-canonical-category.md)/[0109](0109-map-tab-design.md) §11 (an idea is created uncategorised; category is captured when it's scheduled — now also when it's parked), [0083](0083-whenfield-datetime-standard.md) (the one date/time entry primitive the schedule sheet finally uses), [0085](0085-relative-day-phrasing.md) (how an idea states its day)
 
@@ -259,6 +259,32 @@ Almost nothing here is new, and that is the design rather than an accident:
 **The edge navigates and is deliberately not a drop target.** Feeding it into `overDate` would have been one character of code and a real defect: `resolveShelfDrop` checks `overDate` **before** the gap chip, which is safe only because a pill and a chip can never be under one pointer. An edge band and a chip can — a chip spans the surface, so its last 36px lie inside one — and a drop meant for that slot would have silently become "aim at another day". So a release at the edge means what a release over the surface's margin already meant, and the pill keeps its `drop-over` mark to itself: marking the edge's target the same way would promise a landing that releasing there does not deliver.
 
 **What this leaves open, and it is the one thing worth a device's opinion:** there is no pre-dwell affordance. Nothing says "hold here and the day will turn" — the turn itself is the only feedback, 700ms in. That is exactly how the pill behaved before it had `drop-over`, and it may read as unresponsive on glass. The candidate answer is already in the app's vocabulary rather than new: ADR-0200 §7's peek, a sliver of the neighbouring day at the edge, which is the same claim ADR-0182 §5 made for the Map track — the edge of the next thing is the affordance. Not drawn here, because a pre-dwell hint is a visual decision and this amendment introduces no pixels at all.
+
+### 2c. The turn is drawn, not teleported (amended 2026-08-22)
+
+Owner, on §2b as shipped: _"I think that we need some kind of an animation or something for dragging between pages. Something that looks polished."_
+
+Drawn and measured in [`mockups/a-day-turns-under-a-held-card-v1.html`](../../mockups/a-day-turns-under-a-held-card-v1.html) before any of it was built.
+
+**The finding that made this small.** The app already owns a page turn — ADR-0200 §7 draws both neighbours as real day surfaces one page plus a gutter away, rides them on `--swipe-dx`, and lands them with a `--t-base` / `--ease-standard` settle. The edge-drag is **the one day change that does not use it**. So this is not "add an animation", it is "stop being the exception", and the whole CSS delta is one term in an existing `transform`.
+
+**1 · The hint is the beginning of the turn, not a separate indicator.** While the drag rests in the band with a neighbour to reach, the **incoming pane** comes to meet the finger — `gap + reveal` of travel, `linear`, over exactly the dwell. That single motion says four things with no new vocabulary: something is happening, which direction, which day (its own content is what appears), and **how long is left** — the lean's progress _is_ the dwell's progress.
+
+`linear` is load-bearing twice. It makes the remaining time readable (any curve would lie about it), and it makes the motion **samplable**: a sampled position is a sampled time, which is why the mockup's four frames are the real motion at 0 · 233 · 467 · 700ms rather than an illustration of it. `beats.css` sets the same precedent — _"`linear` because the keyframe offset IS the timing"_.
+
+**2 · The day you are aiming at does not move.** Measured, both models at the same instant: the whole-strip lean displaces the row under the finger by **48px**, the pane-only lean by **0px**. A drag is a targeting gesture, and moving the target while someone aims at it is a cost with nothing on the other side. This is the section's one departure from §7's "the strip moves as one thing", and it is deliberate: during a swipe the finger _is_ dragging the strip, and here nothing is — the day is offering to turn.
+
+**3 · The gutter has to be crossed before any of tomorrow is visible**, which killed the first design. `.day-peek`'s parked offset is `dx ± (page + gap)`, so at rest the incoming pane's near edge sits `--swipe-page-gap` (24px) _outside_ the window: a "12px lean" reveals 12px of page background and **0px** of the day it is promising. A legible reveal therefore costs `24 + N` px — affordable when only the pane pays it, unaffordable when the surface under the finger does.
+
+**4 · The duration is the dwell, and cannot be a motion token.** 700ms is longer than every token except `--t-cinematic` (600ms), which `design-language.md` budgets to exactly one moment in the product. And a token would _lie_: the motion has to end when the day changes, or it promises the wrong time. So it reads `DRAG_DAY_DWELL_MS`, published as `--swipe-dwell` — the mirror of `--swipe-page-gap`, which the pager reads out of CSS so the two cannot disagree.
+
+**5 · The trip's end stays silent, and the abort is asymmetric.** No neighbour, nothing moves — ADR-0182 §5's argument, and the swipe's. `BEAT.REBUFF` was considered and refused on two grounds: its axis is vertical (`translateY(-7px)`) where the absence here is horizontal, and a drag crosses the band many times in normal use, so a beat per crossing is noise. Leaving the band before the dwell unwinds the lean on `--t-quick` / `--ease-exit`, declared on the destination state — the turn is deliberate, giving up is a correction, and `design-language.md` says a mechanism that plays both the same says they are the same.
+
+**What the render answered that reasoning could not.** The dragged clone is a full-width row under the finger, so it **always** covers the revealed strip horizontally — 24 of 24px. That looked fatal until the measurement was taken in the dimension that decides it: the reveal is the body's whole visible height, and the clone is one row, so **89%** of it is never covered at all (24 × 638px revealed, 68px of height crossed), and the crossed part still reads through `--drag-ghost-opacity` 0.78. A width could not see that, exactly as `frontend/CLAUDE.md`'s "a height cannot see a clip" predicts in reverse.
+
+**Still open, and it is a device question rather than a drawing one:** whether the 36px band wants any mark of its own. After §1 the question looks different — the arriving neighbour _is_ the mark — but only glass can say whether a first-time user finds the band at all.
+
+**A shipped defect the drawing found, unrelated to motion.** `screens.css`'s `.day-peek` declares `--peek-dir: -1` / `1` for "which way the inline axis runs" — which is `tokens.css`'s `--dir`, a shipped token four other stylesheets already spend (`modal.css`, `form-steps.css`, `App.css` twice) and which `design-language.md` documents as exactly that. It was introduced by ADR-0200 §7 the day before by a session that did not look. The proposal's rule spends `--dir` and the two `--peek-dir` declarations go with it.
 
 ### Three things this required, each a bug if missed
 
