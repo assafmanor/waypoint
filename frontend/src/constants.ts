@@ -636,6 +636,17 @@ export const DRAG_CLICK_SWALLOW_MS = 400;
  *  starts the drag: a drag crosses several pills on its way anywhere, and every one it
  *  merely passes over must not open. */
 export const DRAG_DAY_DWELL_MS = 700;
+/** How near the day surface's inline edge a drag must be held for that rest to mean
+ *  "the day beyond this edge" (ADR-0116 §2's 2026-08-22 amendment; owner: _"you could
+ *  drag from the edge to a different day"_). The header pill was the only way to reach
+ *  another day, and it asks a phone to carry a card up to a ~30px target.
+ *
+ *  Narrow on purpose, and it is the one number here that is not a preference: the band
+ *  has to be somewhere the finger only goes deliberately, because everything else on the
+ *  inline axis at that depth is the surface's own padding. Two of these leave ~286px of
+ *  neutral middle on a 358px column. The dwell is `DRAG_DAY_DWELL_MS`, shared with the
+ *  pill — one answer to "resting somewhere switches the day", wherever you rest. */
+export const DRAG_DAY_EDGE_PX = 36;
 
 /** ── AN ANCHORED PANEL'S PLACEMENT (ADR-0144) ────────────────────────────────────────
  *  `IconPicker` opens below its trigger, which is right in a form that scrolls under a

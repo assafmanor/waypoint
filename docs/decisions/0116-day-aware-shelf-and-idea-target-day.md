@@ -1,6 +1,6 @@
 # 0116 — The shelf becomes day-aware: an idea's optional target day, one union in both modes, and skip vs. park
 
-**Status:** Accepted (design + build)
+**Status:** Accepted (design + build) — **amended 2026-08-22** (§2b: the surface's inline edge is a second route to another day)
 **Date:** 2026-07-25
 **Refines:** [0027](0027-soft-item-lifecycle-shelf-slip.md) (the parking-lot model: an idea is parked _or_ placed; the shelf renders unplaced ideas **and** skipped soft events "uniformly" — a promise only Trip mode ever kept), [0025](0025-trip-mode-edit-capability-tiers.md)/[0029](0029-trip-mode-day-scope-gating.md) (which verbs are reachable on which day — the gate the new day picker obeys), [0038](0038-icons-and-canonical-category.md)/[0109](0109-map-tab-design.md) §11 (an idea is created uncategorised; category is captured when it's scheduled — now also when it's parked), [0083](0083-whenfield-datetime-standard.md) (the one date/time entry primitive the schedule sheet finally uses), [0085](0085-relative-day-phrasing.md) (how an idea states its day)
 
@@ -240,6 +240,25 @@ The drag could only reach the day already on screen. Now, while a drag is in fli
 - A **skipped** card is not accepted by a pill: it belongs to the day it was skipped on, and moving it elsewhere is a reschedule rather than a pencil mark.
 
 **Cancelling puts the day back.** A drop that resolves to nothing — or a cancelled gesture — returns to the day the drag was lifted from, however many days it dwelled through. A committed drop keeps the new day, because you just put something there and want to see it. The asymmetry is the point: the day switch is **scaffolding for the drag**, and day changes are `replace` navigation with no back step (ADR-0035/0090), so a switch left behind by an abandoned gesture would have no reverse gear at all.
+
+### 2b. The surface's own inline edge is a second route to the same day (amended 2026-08-22)
+
+Owner, after the day gained a swipe: _"Regarding event/shelf drag, it should behave differently now. Swipe should be disabled when dragging and you could drag from the edge to a different day."_
+
+§2 gave the drag one way to reach a day that is not on screen, and it is the right way for a mouse and the wrong shape for a thumb: the pills are ~30px targets at the **top** of the screen, and what you are usually aiming at afterwards is a gap chip further down. So **holding the drag near the day surface's inline edge names the day beyond it**, and the dwell that switches to it is `useSpringLoadedDay` — the same hook, the same `DRAG_DAY_DWELL_MS`. One answer to "resting somewhere switches the day", wherever you rest.
+
+Almost nothing here is new, and that is the design rather than an accident:
+
+- **The band arithmetic and the latch are the edge auto-scroll's** (`edgeDepth`, `gateEdgeStep`), shared rather than copied — and the latch is the reason the sharing matters rather than being tidy. Its scar transposes exactly. Vertically it was _"you pressed, held, and the list took off"_; on the inline axis an event row spans the whole surface, so a card or row lifted by its trailing end starts **inside** a band and the days would begin flipping under a finger that had not moved. The gate makes the drag ASK for the band first — by leaving it, or by pushing deeper into it than it was lifted at.
+- **The neighbouring dates are the swipe's**, read straight off `useDaySurface`'s peek pair (ADR-0200 §7). Two ways of reaching tomorrow that computed "tomorrow" separately would eventually disagree about it; and `null` at the trip's ends is what makes the edge do nothing there, with no label, exactly as the swipe's rebuff does.
+- **The mirror is the peek's.** In RTL the next day's pane sits to the LEFT (`--peek-dir`), so dragging a card left is dragging it toward tomorrow. Read off the element rather than the document, because direction is a CSS variant.
+- **Cancelling still puts the day back**, however many days the drag walked through — §2's asymmetry, inherited by feeding the same dwell rather than restated.
+
+**Holding still has to keep stepping, and that is the one thing the dwell could not give for free.** The edge's target is computed from a pointer position, so once the day has switched, a finger that does not move produces no further move event — and the day it named is now the day you are standing on, which `useSpringLoadedDay` correctly refuses as "not a switch". Recomputing when the **neighbours** change is what turns one step into a queue of them, 700ms apart, ending itself where the neighbour is `null`.
+
+**The edge navigates and is deliberately not a drop target.** Feeding it into `overDate` would have been one character of code and a real defect: `resolveShelfDrop` checks `overDate` **before** the gap chip, which is safe only because a pill and a chip can never be under one pointer. An edge band and a chip can — a chip spans the surface, so its last 36px lie inside one — and a drop meant for that slot would have silently become "aim at another day". So a release at the edge means what a release over the surface's margin already meant, and the pill keeps its `drop-over` mark to itself: marking the edge's target the same way would promise a landing that releasing there does not deliver.
+
+**What this leaves open, and it is the one thing worth a device's opinion:** there is no pre-dwell affordance. Nothing says "hold here and the day will turn" — the turn itself is the only feedback, 700ms in. That is exactly how the pill behaved before it had `drop-over`, and it may read as unresponsive on glass. The candidate answer is already in the app's vocabulary rather than new: ADR-0200 §7's peek, a sliver of the neighbouring day at the edge, which is the same claim ADR-0182 §5 made for the Map track — the edge of the next thing is the affordance. Not drawn here, because a pre-dwell hint is a visual decision and this amendment introduces no pixels at all.
 
 ### Three things this required, each a bug if missed
 

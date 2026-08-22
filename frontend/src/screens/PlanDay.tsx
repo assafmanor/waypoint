@@ -40,6 +40,7 @@ import { landAtTop } from '../lib/land-at-top';
 import { edgeFadeRef } from '../lib/edge-fade';
 import { useDragState } from '../state/drag-state';
 import { useSpringLoadedDay } from '../lib/useSpringLoadedDay';
+import { useEdgeDayStep } from '../lib/useEdgeDayStep';
 import { useDaySurface } from '../lib/useDaySurface';
 import { DayPeeks } from '../ui/domain/DayPeek';
 import { useIsDayPreview } from '../state/day-preview';
@@ -400,10 +401,23 @@ export function PlanDay() {
   // The header's day strip renders from these: `dragging` arms its pills as drop
   // targets, `overDate` shows which one a drop would land on (session-119).
   const { setDragging, overDate, setOverDate } = useDragState();
-  // …and resting on a pill switches to that day, so a card or a row can be carried to
+  // …and a drag held at the surface's own inline EDGE names the day beyond it, which is the
+  // second route to the same target (ADR-0116 §2's 2026-08-22 amendment): the pill asks a
+  // phone to carry a card to the top of the screen, and the edge is where the finger already
+  // is. It reads the neighbours the swipe's peek already derives, so the two ways of reaching
+  // tomorrow cannot disagree about which day that is.
+  //
+  // **It navigates and nothing else — it is deliberately not fed into `overDate`.** That field
+  // is a DROP target and `resolveShelfDrop` checks it before the gap chip, which is safe only
+  // because a pill and a chip can never be under one pointer. An edge band can: a gap chip
+  // spans the surface, so its last 36px lie inside one, and a drop meant for that slot would
+  // have silently become "aim at another day" instead.
+  const edgeDay = useEdgeDayStep(daySurface.ref, daySurface.peek);
+  // …and resting on either switches to that day, so a card or a row can be carried to
   // a day that isn't on screen. The dwell lives here because only the drag can
-  // hit-test the pointer — see the hook for why the pill can't do it itself.
-  useSpringLoadedDay(overDate, activeDate, setActiveDate);
+  // hit-test the pointer — see the hook for why the pill can't do it itself. The pill wins
+  // when both are named: it is the more specific statement, and it is where the finger is.
+  useSpringLoadedDay(overDate ?? edgeDay.date, activeDate, setActiveDate);
 
   // A drag now OUTLIVES the render it began in: the window listeners that track it
   // hold the handlers from the render at touch-down, and dwelling on the day strip
@@ -432,6 +446,7 @@ export function PlanDay() {
   /** Everything a finished drag must put back, whichever way it ended. */
   const endDrag = () => {
     autoScroll.stop();
+    edgeDay.stop();
     setDragging(false);
     setOverDate(null);
   };
@@ -464,6 +479,7 @@ export function PlanDay() {
     holdToDrag({
       onArm: (el, at, pressBox) => {
         autoScroll.start(el, at, hitTestRowDrop);
+        edgeDay.arm(at);
         ghost.lift(el, at, pressBox);
         dayAtLift.current = live.current.activeDate;
         setDragging(true);
@@ -485,6 +501,7 @@ export function PlanDay() {
       },
       onMove: (point) => {
         autoScroll.track(point);
+        edgeDay.track(point);
         ghost.track(point);
         hitTestRowDrop(point);
       },
@@ -689,6 +706,7 @@ export function PlanDay() {
     holdToDrag({
       onArm: (el, at, pressBox) => {
         autoScroll.start(el, at, hitTestDropTarget);
+        edgeDay.arm(at);
         ghost.lift(el, at, pressBox);
         dayAtLift.current = live.current.activeDate;
         setDragging(true);
@@ -709,6 +727,7 @@ export function PlanDay() {
       },
       onMove: (point) => {
         autoScroll.track(point);
+        edgeDay.track(point);
         ghost.track(point);
         hitTestDropTarget(point);
       },

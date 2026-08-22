@@ -55,8 +55,10 @@ describe('edgeScrollStep', () => {
 // picked up inside a band, and the drag opened by running the list away.
 describe('gateEdgeStep', () => {
   // Lifted 20px from the bottom of the box and 20px from the top respectively.
-  const bottom: EdgeLatch = { dir: 'down', from: 580 };
-  const top: EdgeLatch = { dir: 'up', from: 20 };
+  // `low`/`high` rather than up/down since the latch went axis-agnostic: the inline day
+  // step shares it, and the band it guards there has no top (ADR-0116 §2's amendment).
+  const bottom: EdgeLatch = { dir: 'high', from: 580 };
+  const top: EdgeLatch = { dir: 'low', from: 20 };
 
   it('holds off the band the drag was lifted in while the pointer rests there', () => {
     expect(gateEdgeStep(14, 580, bottom).step).toBe(0);
@@ -100,8 +102,8 @@ describe('gateEdgeStep', () => {
 
 describe('edgeLatchAt', () => {
   it('latches the band a drag was lifted in, remembering where', () => {
-    expect(edgeLatchAt(14, 580)).toEqual({ dir: 'down', from: 580 });
-    expect(edgeLatchAt(-14, 20)).toEqual({ dir: 'up', from: 20 });
+    expect(edgeLatchAt(14, 580)).toEqual({ dir: 'high', from: 580 });
+    expect(edgeLatchAt(-14, 20)).toEqual({ dir: 'low', from: 20 });
   });
 
   it('latches nothing for a drag lifted in the middle', () => {
