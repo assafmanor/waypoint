@@ -41,6 +41,52 @@ describe('a note body keeps the newlines the composer writes (ADR-0152 §6b)', (
   it('insulates .note-prose from an inherited pre-wrap', () => {
     expect(rule('.note-prose')).toMatch(/white-space:\s*normal/);
   });
+});
+
+// **A SHIPPED DEFECT, and the only place it can be caught** (ADR-0202 §9b's second round).
+// `--np-base` is the one knob a host moves to make the prose read at reading size, and
+// `.note-prose` declared it on ITSELF — a custom property on an element shadows the inherited
+// one, so `.note-full-body`'s value never arrived and the size fix changed nothing. It
+// typechecked and every test stayed green, because a jsdom render has no cascade to consult:
+// `getComputedStyle` there resolves no `var()` and no inheritance.
+//
+// So the guard has to read the stylesheet as text, which is exactly what this file is for.
+describe('the prose takes its size from its HOST (ADR-0202 §9b)', () => {
+  it('does not declare --np-base on itself, or a host can never raise it', () => {
+    expect(rule('.note-prose')).not.toMatch(/--np-base\s*:/);
+  });
+
+  it('keeps the chrome-size default in the var() fallback instead', () => {
+    expect(rule('.note-prose')).toMatch(/--np-size:\s*var\(--np-base,\s*var\(--text-body\)\)/);
+  });
+
+  it('has the full screen ask for reading size', () => {
+    expect(rule('.note-full-body')).toMatch(/--np-base:\s*var\(--text-reading\)/);
+  });
+});
+
+// **THE OTHER HALF OF THE SAME REPORT, and a worse bug than the size** (ADR-0202 §10b). The
+// prose's block spacing lives on `.note-prose > * + *`, which is specificity (0,1,0). A
+// per-element reset — `.note-prose p { margin: 0 }` — is (0,1,1), so it wins NO MATTER THE
+// ORDER: every block gap this file declared was dead on arrival and the prose shipped with no
+// spacing between blocks at all. That is what "clumped up" was.
+//
+// jsdom cannot see it (no cascade, no `var()`, no specificity resolution), and a browser has to
+// be looking at the right property to notice, so the guard is structural: the reset must sit at
+// the same weight as the rhythm, which means on `> *` and nowhere else.
+describe('the prose rhythm is not out-specified by its own reset (ADR-0202 §10b)', () => {
+  it('resets margins on the direct-child selector, at the rhythm’s own weight', () => {
+    expect(css).toMatch(/\.note-prose\s*>\s*\*\s*\{[^}]*margin:\s*0/);
+  });
+
+  // Every `.note-prose <tag>` block — a DESCENDANT selector, therefore one class plus one
+  // element, therefore (0,1,1) and heavier than the gaps.
+  it('declares no margin in any descendant-selector rule', () => {
+    const offenders = [...css.matchAll(/(^|\})\s*((?:\.note-prose [^{>,]+,?\s*)+)\{([^}]*)\}/gm)]
+      .filter(([, , , body]) => /(^|[;{\s])margin(-block|-inline|-top|-bottom)?\s*:/.test(body))
+      .map(([, , selector]) => selector.trim());
+    expect(offenders).toEqual([]);
+  });
 
   // Not the composer's chip: a committed note collapses to ONE line there by design, and
   // the full text is one tap away (§6b). Asserted so "make notes keep their newlines" is

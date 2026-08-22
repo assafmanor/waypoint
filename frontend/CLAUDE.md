@@ -532,3 +532,22 @@ leak, session 260):
     (`src/test/pwa-register-stub.ts` is the alias that fixed it). When you read a
     failure count, read the **file** count beside it — 3564 passing looked
     healthy while 23 tests were not running at all.
+
+**Two traps in measuring a box in an e2e spec**, both of which cost a red CI on `main`
+(day-swipe, 2026-08-22) and neither of which fails loudly:
+
+- **A descendant selector on the day surface reaches the peek panes.** A peek holds a whole day
+  surface, so `.day-page`, `.sec-title` and every row class exist three times over while a
+  gesture is live — and `.day-peeks` renders BEFORE `.day-page`, so
+  `` `${PAGE} .sec-title` ``.first() is TOMORROW's heading. `:not([data-preview])` does not save
+  you: it excludes a pane's own inner host, not the panes nested inside the host you asked
+  about. Use the child combinator (`> .day-page …`), which the same spec already used one
+  assertion away. The failure mode is a spec measuring the wrong pane and staying green.
+- **`locator.boundingBox()` returns `null` for a node a render detached mid-call**, and does not
+  re-resolve the locator the way an action would — so a visible element reports as invisible and
+  the only tell is that the next query succeeds (proven: `isConnected=false`,
+  `getClientRects().length === 0`, correct box one tick later). It also inherits
+  `use.actionTimeout`, which this config leaves at **0 = no timeout**, so a locator that never
+  resolves hangs to the _test_ timeout and names no element. `e2e/measure.ts`'s `stableBox` is
+  the answer to both; reach for it rather than a bare `boundingBox()` on any surface that
+  re-renders.

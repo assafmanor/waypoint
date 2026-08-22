@@ -28,7 +28,7 @@
 // guarantees it.
 import { useRef, useState, type ReactNode } from 'react';
 import type { Note, User } from '@waypoint/shared';
-import { noteTitleText, noteWhen } from '../lib/notes';
+import { noteReadsFullScreen, noteTitleText, noteWhen } from '../lib/notes';
 import { NoteOpenFoot } from './NoteOpenFoot';
 import { NoteProse } from './NoteProse';
 import { useHoldToOpen } from '../lib/useHoldToOpen';
@@ -147,7 +147,15 @@ export function NoteSection({
                 <button
                   type="button"
                   className="note-item-b"
-                  onClick={() => setOpenId((current) => (current === note.id ? null : note.id))}
+                  // Same rule as the notes screen (ADR-0202 §9c), so one gesture does not
+                  // mean two different things on two surfaces. A long note here is already
+                  // rendered in full — the section has never clamped — so what the screen adds
+                  // is a place to read it that is not inside a card.
+                  onClick={() =>
+                    onOpenFull && noteReadsFullScreen(note)
+                      ? onOpenFull(note)
+                      : setOpenId((current) => (current === note.id ? null : note.id))
+                  }
                   {...hold}
                   onPointerDown={(event) => {
                     held.current = note;

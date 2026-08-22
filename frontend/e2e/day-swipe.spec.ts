@@ -22,6 +22,7 @@
 import { test, expect, type CDPSession, type Page } from '@playwright/test';
 import { bootIntoTrip, shortLiveTripDates, todayAt } from './boot';
 import { dispatchTouch } from './touch';
+import { stableBox } from './measure';
 import { SWIPE_PAGER } from '../src/constants';
 import { t } from '../src/i18n/he';
 
@@ -261,8 +262,14 @@ async function swipeDay(
   // which owns the horizontal axis and correctly refuses the gesture, so the spec would be
   // measuring the wrong thing while looking green on one fixture. The heading is the first
   // row of both day surfaces and exists on an empty day too, which the last-day case needs.
-  const box = await page.locator(`${PAGE} .sec-title`).first().boundingBox();
-  if (!box) throw new Error('no day heading to swipe from');
+  // **`> .day-page`, and the child combinator is the whole point.** A peek pane holds a whole
+  // day surface, so `.sec-title` exists three times over while a gesture is live — and
+  // `.day-peeks` renders BEFORE `.day-page`, so a descendant `${PAGE} .sec-title` reaches a
+  // PEEK's heading first. `:not([data-preview])` cannot help: it excludes a pane's own inner
+  // host, not the panes nested inside the host being asked. That is the trap `DayPeek.tsx`
+  // states in its own comment, and it fails QUIETLY — the spec would swipe from tomorrow's
+  // heading and still look green. Line 379 already asks the right way.
+  const box = await stableBox(page.locator(`${PAGE} > .day-page .sec-title`).first());
   const x0 = box.x + box.width * 0.45;
   const y0 = box.y + box.height / 2;
   await touch(cdp, 'touchStart', x0, y0, stamp(0));
@@ -565,7 +572,7 @@ test.describe('a day surface steps day to day with a swipe', () => {
   test('the page leaves level at zero and tracks the finger from there', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
     await boot(page, 'trip');
-    const box = (await page.locator(`${PAGE} .sec-title`).first().boundingBox())!;
+    const box = await stableBox(page.locator(`${PAGE} > .day-page .sec-title`).first());
     const x0 = box.x + box.width * 0.45;
     const y0 = box.y + box.height / 2;
 

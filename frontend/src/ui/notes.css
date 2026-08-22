@@ -466,13 +466,27 @@
    saves the character and space that were wrapping a line, and a heading saves the blank line
    between two blocks. */
 .note-prose {
-  /* Chrome size by default — a host's section is one item in a card that holds facts and
-     verbs. The full screen raises it to `--text-reading` (`.note-full-body` below), which is
-     what the owner's "too small" bought: the row and the section were never the complaint. */
-  --np-base: var(--text-body);
-  --np-size: var(--np-base);
+  /* **`--np-base` is NOT declared here, and that absence is the whole fix for a defect.**
+     A custom property declared on an element SHADOWS the inherited one, so
+     `--np-base: var(--text-body)` here silently beat `.note-full-body`'s
+     `--np-base: var(--text-reading)` — the full screen went on rendering at chrome size and
+     the size fix did nothing at all (owner, 2026-08-22, reported twice). It typechecked, it
+     passed every test, and it changed no pixel; the default belongs in the `var()` FALLBACK,
+     where a host that states nothing gets it and a host that states something wins.
+
+     The fallback is repeated in `.dense` below rather than hoisted into a second property,
+     because a second property is exactly what went wrong here. */
+  --np-size: var(--np-base, var(--text-body));
+  /* A heading inside prose steps up from the PROSE's own base, not from the app's ramp: the
+     base moves per host (reading size on the full screen, a notch below body in a card), and
+     a fixed `--text-h3` would be a heading on one surface and body text on the other. */
+  --np-head: calc(var(--np-size) + 2px);
   font-size: var(--np-size);
-  line-height: 1.65;
+  /* Prose leading, not chrome leading (owner: "the line heights should be adjusted, see how
+     clumped up this is"). `--leading-normal` is 1.45 and right for a row that must fit in a
+     list; a long text read on its own screen wants air between lines or the paragraph reads
+     as one block. */
+  line-height: 1.75;
   color: var(--ink);
   /* **The prose carries its own breaks, so it must not inherit anyone else's rule about
      them.** `white-space` inherits, and one of this component's two hosts is `.note-item-b`,
@@ -482,11 +496,32 @@
      mechanisms from stacking. */
   white-space: normal;
 }
-.note-prose > * + * {
-  margin-block-start: var(--space-3);
-}
-.note-prose p {
+/* **One reset for every block, at (0,1,0)** — and the specificity is the point, not the
+   brevity. Per-element resets (`.note-prose p`, `.note-prose h3`, …) are (0,1,1) and beat
+   `.note-prose > * + *` at (0,1,0) NO MATTER THE ORDER, so every block gap this file has ever
+   declared was dead on arrival: the prose shipped with no spacing between blocks at all, which
+   is what "clumped up" actually was. Found by rendering the reported note under the real
+   stylesheet and reading the computed margins back — 0px where the rule says 16px. */
+.note-prose > * {
   margin: 0;
+}
+
+/* ── RHYTHM ───────────────────────────────────────────────────────────────────
+   One gap between blocks, and then the rule that does the actual work: **a heading pulls away
+   from what comes before it and stays with what comes after.** Equal gaps everywhere is what
+   "clumped up" was — every block the same distance from every other, so a section heading read
+   as just another line and nothing grouped. The asymmetry is what makes structure visible, and
+   it costs no new tokens. */
+.note-prose > * + * {
+  margin-block-start: var(--space-4);
+}
+.note-prose > * + :is(h3, h4) {
+  margin-block-start: var(--space-6);
+}
+/* Last, so a heading immediately under another heading takes the TIGHT gap: two headings in a
+   row are one group, not two sections. */
+.note-prose > :is(h3, h4) + * {
+  margin-block-start: var(--space-2);
 }
 /* **A heading inside a note is a SECTION, not a screen title**, so it spends one step and
    the tail folds into the body size rather than opening a fourth ramp at 360px. The note's
@@ -497,33 +532,29 @@
    the app's display face read as a heading OF the app. */
 .note-prose h3,
 .note-prose h4 {
-  margin: 0;
-  font-size: var(--np-head, var(--text-h3));
+  font-size: var(--np-head);
   font-weight: 700;
-  line-height: 1.35;
+  line-height: 1.4;
 }
 .note-prose h4 {
   font-size: var(--np-size);
 }
 .note-prose ul,
 .note-prose ol {
-  margin: 0;
   padding-inline-start: 1.35em;
 }
 .note-prose li + li {
-  margin-block-start: var(--space-1);
+  margin-block-start: var(--space-2);
 }
 /* The rule a note already wears on a host surface (`.note-item-lead::before` is a 2px
    `--line` bar against its text), so the app has ONE idea of what a quoted block looks like
    rather than two that drifted. */
 .note-prose blockquote {
-  margin: 0;
   padding-inline-start: var(--space-3);
   border-inline-start: 2px solid var(--line);
   color: var(--muted);
 }
 .note-prose hr {
-  margin: 0;
   border: 0;
   border-block-start: 1px solid var(--line);
 }
@@ -563,12 +594,17 @@
    facts and verbs. Derived from `--np-base` rather than pinning a number, so the two
    densities cannot drift apart if the base ever moves. */
 .note-prose.dense {
-  --np-size: calc(var(--np-base) - 1.5px);
-  --np-head: calc(var(--np-base) - 1.5px);
-  line-height: 1.45;
+  --np-size: calc(var(--np-base, var(--text-body)) - 1.5px);
+  line-height: 1.55;
 }
 .note-prose.dense > * + * {
-  margin-block-start: var(--space-2);
+  margin-block-start: var(--space-3);
+}
+.note-prose.dense > * + :is(h3, h4) {
+  margin-block-start: var(--space-4);
+}
+.note-prose.dense > :is(h3, h4) + * {
+  margin-block-start: var(--space-1);
 }
 
 /* ── THE FULL SCREEN (ADR-0202 §2/§3) ─────────────────────────────────────────

@@ -106,3 +106,30 @@ The fix is `baseDirection` in `lib/bidi.ts` — count the letters, larger side w
 
 - **`Math.abs(undefined - 10)` is `NaN`, and `NaN > slop` is `false`.** A pointer event without coordinates therefore disables the scroll guard completely and the hold fires mid-scroll. There is nothing to see in the code — the comparison looks right.
 - **jsdom implements no `PointerEvent`**, so a synthetic `pointermove` arrives as a plain `Event` with no coordinates and the slop check cannot be exercised through `fireEvent` at all. A real `MouseEvent` named `pointermove` carries them and React routes it the same way. The primary-pointer guard is written as "not explicitly secondary" for the same reason: `isPrimary === true` refuses every event in the suite while passing in a browser, which is the worst way round for a gesture to be wrong.
+
+---
+
+## A second round on the phone — and one of the first round's fixes had never applied
+
+Three reports. Two of them are one root cause, and it is not the one I would have guessed.
+
+**The reading size never reached the screen.** `.note-prose` declared `--np-base: var(--text-body)` on itself, and **a custom property declared on an element shadows the inherited one** — so `.note-full-body`'s `--np-base: var(--text-reading)` never arrived. The previous round's size fix was inert from the moment it shipped. The default belongs in the `var()` fallback, where a host that states nothing gets it and a host that states something wins.
+
+**And the block spacing had been dead since the feature shipped.** This is the worse one. The gaps live on `.note-prose > * + *`, which is specificity **(0,1,0)**; the per-element resets (`.note-prose p { margin: 0 }`) are **(0,1,1)**, so they win _no matter the order_. Every block gap this file ever declared was overridden. The prose has had no spacing between blocks at all — which is exactly what "clumped up" was, and re-tuning the numbers (which is what I did first) would have changed nothing again.
+
+### The pattern across three rounds, which is the thing worth keeping
+
+Three of my fixes in a row typechecked, passed 4,200+ tests, and changed no pixel: `dir="auto"` (wrong tool), `--np-base` (shadowed), the block gaps (out-specified). None of them is a knowledge gap — each is a rule I could recite. What they share is that **CSS and bidi resolution are invisible to this test suite by construction**: jsdom has no cascade, resolves no `var()`, and computes no specificity, so a green suite says nothing about any of them.
+
+So the guard has to be structural, and it now is. `notes.contract.test.ts` reads the stylesheet as text and asserts: `.note-prose` does not declare `--np-base`; the default is in the fallback; the full screen asks for reading size; the reset sits on `> *` at the rhythm's own weight; and **no `.note-prose <tag>` rule declares a margin at all**. That last one was verified by re-injecting the original offender and watching it fail by name — an absence assertion nobody has seen fail is worth very little.
+
+The other half is cheaper and I should have done it two rounds ago: **render it and read the computed values back.** Dumping the reported note's real markup under the real stylesheet and asking the browser for `fontSize`, `lineHeight` and `marginBlockStart` found the dead gaps in one run, after the numbers had already been "fixed" once.
+
+### The threshold (owner's proposal)
+
+A note past a threshold no longer expands; the tap opens the screen. The expansion's justification was measured on notes where lifting a two-line clamp adds a little (ADR-0153 §4's +37/+89px) — never on a document, where it produces a screen-height wall inside a list row with the verbs at the bottom.
+
+- **The cost, stated:** one gesture now means two things and the boundary is invisible. That is why §1 did not propose it. What buys it is that the failure it removes is worse and was reported.
+- **Estimated, not measured** — measuring the rendered height would mean rendering the thing to decide whether to render it. `noteReadsFullScreen` counts what the row _would_ show and wraps it at 42 chars against 8 lines.
+- **Counting characters was the first version and was wrong in a way that matters**: twelve short lines is twelve lines tall and barely 150 characters, so a character threshold let exactly the wall through. There is a test named for it.
+- **Left open, not built:** whether a host's section should now clamp a long note. It renders one in full today — the wall in a different room — and changing that contradicts that surface's whole grammar ("the note is already whole here").

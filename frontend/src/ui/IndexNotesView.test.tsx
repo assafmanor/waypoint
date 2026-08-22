@@ -160,6 +160,7 @@ import { ModeProvider } from '../state/mode-state';
 import { IndexNotesView } from './IndexNotesView';
 import { t } from '../i18n/he';
 import { DRAG_HOLD_MS } from '../constants';
+import { noteTitleText } from '../lib/notes';
 import { buildNoteHosts } from '../lib/notes';
 
 function wrap(node: ReactNode) {
@@ -434,6 +435,22 @@ describe('IndexNotesView (ADR-0153)', () => {
     // same, which is what makes the cancel assertable.
     const pointer = (el: Element, type: string, y: number) =>
       el.dispatchEvent(new MouseEvent(type, { clientX: 10, clientY: y, bubbles: true }));
+
+    // ADR-0202 §9c. The expansion was measured on notes where lifting a two-line clamp adds a
+    // little; a document-length note turns the row into a wall and puts its verbs at the
+    // bottom of it. So a tap means "read this" and the app picks the container.
+    it('opens a long note on its own screen instead of expanding it', () => {
+      const long = note('n-long', {
+        body: Array.from({ length: 14 }, (_, i) => `שורה מספר ${i} עם עוד קצת טקסט`).join('\n'),
+        createdAt: '2026-07-19T09:20:00Z',
+      });
+      tripNotes = [long];
+      show();
+      fireEvent.click(screen.getByRole('button', { name: noteTitleText(long) }));
+      expect(document.querySelector('.note-full')).toBeTruthy();
+      // …and the row it came from stayed a row.
+      expect(document.querySelector('.wp-listrow.is-open')).toBeNull();
+    });
 
     // ADR-0202's 2026-08-22 amendment, answering the report that the control was only
     // reachable by expanding a long note and scrolling past all of it. A hold reaches the
