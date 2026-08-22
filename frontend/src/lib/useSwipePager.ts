@@ -93,6 +93,10 @@ const SWIPING_ATTR = 'data-swiping';
  *  duration off the same value the timer below reads, because one duration for both would
  *  remove the class mid-animation on the shorter one and the transform would snap. */
 const SETTLING_ATTR = 'data-swipe-settling';
+/** **The page is held at a detent** (ADR-0116 §2d) — set while a commanded lift is parked,
+ *  and the state `screens.css` gives its own transition. Distinct from `SETTLING_ATTR` because
+ *  a detent is not a settle: nothing is on its way anywhere until the dwell says so. */
+const LIFT_ATTR = 'data-edge-lift';
 const OFFSET_PROP = '--swipe-dx';
 /** The host's own width in px, published for the panes: they sit one page plus a gutter away on
  *  the inline axis, and a percentage cannot say that — a fixed pane's percentages resolve
@@ -108,6 +112,23 @@ const GAP_PROP = '--swipe-page-gap';
 export interface SwipePager<T extends HTMLElement> {
   /** Attach to the host — the box that is measured and that holds the offset variable. */
   ref: RefObject<T | null>;
+  /**
+   * **Hold the page at a detent, or let it go** (ADR-0116 §2d) — a page turn that has begun
+   * without a finger. `hold(step, px)` parks the strip `px` toward `step` and leaves it there;
+   * `hold(null)` gives it back.
+   *
+   * This exists because the drag's edge dwell needs the same three things a swipe needs — the
+   * offset channel, the panes mounted, the measured width — and writing them a second time
+   * beside this hook is what root rule 8 exists to stop. What the caller supplies is only
+   * *when*: a finger, or a dwell.
+   */
+  hold: (step: SwipeStep | null, px?: number) => void;
+  /**
+   * **Finish the turn and commit it**, on the same path a released drag takes: the settle
+   * attribute, a full page plus the gutter of travel, `onStep` at the end, and §8's owed reset
+   * paid by the arriving page. A commanded turn is a turn.
+   */
+  turn: (step: SwipeStep) => void;
   /** A gesture is claimed and the surface has not been given back yet. The host mounts its
    *  neighbouring pages on this, and only on this: mounted always, they would triple the cost
    *  of the day surface for a gesture that has not happened.
@@ -134,6 +155,21 @@ export function useSwipePager<T extends HTMLElement>({
    *  turned to is drawn (see the layout effect below). */
   const owed = useRef(false);
 
+  /** The host's own geometry, measured on demand. A gesture measures it once at the press;
+   *  a COMMAND has no press, so the same three numbers are read here. `direction` off the
+   *  element rather than the document, for `useSwipePager`'s usual reason — the mirror is a
+   *  CSS variant, so the element is the only thing that knows which way its inline axis runs. */
+  const geometry = useCallback(() => {
+    const el = host.current;
+    if (!el) return null;
+    const width = el.getBoundingClientRect().width || window.innerWidth;
+    const gap = parseFloat(getComputedStyle(el).getPropertyValue(GAP_PROP)) || 0;
+    const rtl = getComputedStyle(el).direction === 'rtl';
+    /** Which way the page travels, in screen px, to reach `step`. */
+    const dirFor = (step: SwipeStep) => (rtl ? step : -step);
+    return { el, width, gap, turn: width + gap, dirFor };
+  }, []);
+
   /** Give the surface back: no offset, no attributes, no panes. Hoisted out of the listener
    *  effect because a committed turn is undone by a RENDER rather than by the gesture that
    *  asked for it. */
@@ -144,11 +180,60 @@ export function useSwipePager<T extends HTMLElement>({
     if (el) {
       el.removeAttribute(SWIPING_ATTR);
       el.removeAttribute(SETTLING_ATTR);
+      el.removeAttribute(LIFT_ATTR);
       el.style.removeProperty(OFFSET_PROP);
       el.style.removeProperty(WIDTH_PROP);
     }
     setLive(false);
   }, []);
+
+  const hold = useCallback(
+    (step: SwipeStep | null, px = 0) => {
+      const g = geometry();
+      if (!g) return;
+      const { el } = g;
+      window.clearTimeout(settle.current);
+      owed.current = false;
+      if (step == null) {
+        // Letting go is not `clear()`: the offset goes to zero and the surface unwinds under
+        // the destination state's own transition (`screens.css`). Clearing the attributes here
+        // would take the transform away mid-unwind and it would snap.
+        el.removeAttribute(LIFT_ATTR);
+        el.style.setProperty(OFFSET_PROP, '0px');
+        settle.current = window.setTimeout(clear, motionDurationMs('--t-quick'));
+        return;
+      }
+      el.removeAttribute(SETTLING_ATTR);
+      el.setAttribute(SWIPING_ATTR, '');
+      el.setAttribute(LIFT_ATTR, '');
+      el.style.setProperty(WIDTH_PROP, `${Math.round(g.width)}px`);
+      el.style.setProperty(OFFSET_PROP, `${Math.round(g.dirFor(step) * px)}px`);
+      setLive(true);
+    },
+    [clear, geometry],
+  );
+
+  const turn = useCallback(
+    (step: SwipeStep) => {
+      const g = geometry();
+      if (!g) return;
+      const { el } = g;
+      window.clearTimeout(settle.current);
+      // The lift's attribute goes first: its transition is the detent's, and what follows is
+      // the turn's — one channel, two states, never both at once.
+      el.removeAttribute(LIFT_ATTR);
+      el.setAttribute(SWIPING_ATTR, '');
+      el.setAttribute(SETTLING_ATTR, 'turn');
+      el.style.setProperty(WIDTH_PROP, `${Math.round(g.width)}px`);
+      el.style.setProperty(OFFSET_PROP, `${Math.round(g.dirFor(step) * g.turn)}px`);
+      setLive(true);
+      settle.current = window.setTimeout(() => {
+        owed.current = true;
+        latest.current.onStep(step);
+      }, motionDurationMs('--t-base'));
+    },
+    [geometry],
+  );
 
   /**
    * **The reset lands in the same paint as the page it turned to** (§8, owner: _"there's like a
@@ -454,5 +539,5 @@ export function useSwipePager<T extends HTMLElement>({
     };
   }, [clear]);
 
-  return { ref: host, live };
+  return { ref: host, live, hold, turn };
 }

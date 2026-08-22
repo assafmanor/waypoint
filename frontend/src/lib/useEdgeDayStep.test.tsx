@@ -17,8 +17,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { act, cleanup, render } from '@testing-library/react';
 import { useRef, type ReactNode } from 'react';
-import { DRAG_DAY_DWELL_MS, DRAG_DAY_EDGE_PX, DRAG_EDGE_SCROLL_RELEASE_PX } from '../constants';
+import { DRAG_DAY_EDGE_PX, DRAG_DAY_LIFT_PX, DRAG_EDGE_SCROLL_RELEASE_PX } from '../constants';
 import { useEdgeDayStep, type DayNeighbours, type EdgeDayStep } from './useEdgeDayStep';
+import type { SwipeStep } from './useSwipePager';
+
+/** Every `hold` the hook issued, in order — the commanded lift is what §2d replaced v1's
+ *  pane-painting with, so this log IS the contract. */
+type Held = { step: SwipeStep | null; px?: number };
 
 const WIDTH = 360;
 const LEFT = 20;
@@ -28,10 +33,12 @@ const LEFT = 20;
 function Host({
   neighbours,
   rtl = true,
+  held,
   children,
 }: {
   neighbours: DayNeighbours;
   rtl?: boolean;
+  held: Held[];
   children: (edge: EdgeDayStep) => ReactNode;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -39,7 +46,7 @@ function Host({
     ref.current.getBoundingClientRect = () =>
       ({ left: LEFT, width: WIDTH, right: LEFT + WIDTH, top: 0, height: 640 }) as DOMRect;
   }
-  const edge = useEdgeDayStep(ref, neighbours);
+  const edge = useEdgeDayStep(ref, neighbours, (step, px) => held.push({ step, px }));
   return (
     <div ref={ref} style={{ direction: rtl ? 'rtl' : 'ltr' }}>
       {children(edge)}
@@ -51,8 +58,9 @@ function Host({
  *  the previous frame. */
 function mount(neighbours: DayNeighbours, rtl = true) {
   let api: EdgeDayStep | null = null;
+  const held: Held[] = [];
   const view = render(
-    <Host neighbours={neighbours} rtl={rtl}>
+    <Host neighbours={neighbours} rtl={rtl} held={held}>
       {(edge) => {
         api = edge;
         return null;
@@ -66,7 +74,7 @@ function mount(neighbours: DayNeighbours, rtl = true) {
     settle: () =>
       act(() =>
         view.rerender(
-          <Host neighbours={neighbours} rtl={rtl}>
+          <Host neighbours={neighbours} rtl={rtl} held={held}>
             {(e) => {
               api = e;
               return null;
@@ -75,15 +83,17 @@ function mount(neighbours: DayNeighbours, rtl = true) {
         ),
       ),
     arm: (x: number) => act(() => api!.arm(at(x))),
-    host: () => view.container.firstElementChild as HTMLElement,
+    /** The commands issued so far, and the last one — which is the state the surface is in. */
+    held: () => held,
+    last: () => held[held.length - 1],
     track: (x: number) => act(() => api!.track(at(x))),
     stop: () => act(() => api!.stop()),
     date: () => api!.date,
-    leaning: () => api!.leaning,
+    step: () => api!.step,
     redraw: (next: DayNeighbours) =>
       act(() => {
         view.rerender(
-          <Host neighbours={next} rtl={rtl}>
+          <Host neighbours={next} rtl={rtl} held={held}>
             {(e) => {
               api = e;
               return null;
@@ -93,9 +103,6 @@ function mount(neighbours: DayNeighbours, rtl = true) {
       }),
   };
 }
-
-/** The peeks mount on this, so it is worth asserting that it cannot drift from `date`. */
-const api_leaning = (h: { date: () => string | null; leaning: () => boolean }) => h.leaning();
 
 const PREV = '2026-08-21';
 const NEXT = '2026-08-23';
@@ -193,57 +200,54 @@ describe('useEdgeDayStep', () => {
     expect(h.date()).toBe('2026-08-24');
   });
 
-  // ── WHAT THE LEAN'S CSS IS GIVEN (§2c) ───────────────────────────────────────────────
+  // ── WHAT THE EDGE COMMANDS (§2d) ─────────────────────────────────────────────────────
   //
-  // The hook decides WHICH day and paints the three things `screens.css` needs; the motion
-  // itself is the stylesheet's and is asserted where it can be seen (`e2e/shelf-drag.spec.ts`).
-  // The division is `useSwipePager`'s: an attribute plus numbers, never a transform.
-  it('names the leaning neighbour on the host, and publishes the dwell', () => {
+  // v1 animated the incoming pane itself and the owner rejected it on sight — 48px over the
+  // 700ms dwell is 1.1px per frame, a static offset with a timer attached. §2d lifts the whole
+  // STRIP to a detent instead, briskly, through the pager's own channel. So what this hook owes
+  // is a command, and these cases are that command's contract; how it LOOKS is `screens.css`'s
+  // and is asserted where it can be seen (`e2e/shelf-drag.spec.ts`).
+  it('lifts toward the neighbour it names, by the detent', () => {
     const h = mount(BOTH);
     h.settle();
     h.arm(MIDDLE);
     h.track(AT_LOW);
-    expect(h.host().getAttribute('data-edge-lean')).toBe('next');
-    // The dwell comes from the constant, so the transition and the timer cannot disagree
-    // about when the day changes.
-    expect(h.host().style.getPropertyValue('--swipe-dwell')).toBe(`${DRAG_DAY_DWELL_MS}ms`);
-    // Republished here because the pager only writes it when a SWIPE claims, and a drag
-    // never claims one — without it the pane's whole transform resolves against 0.
-    expect(h.host().style.getPropertyValue('--swipe-page-w')).toBe(`${WIDTH}px`);
-
+    // In RTL the next day lies to the left, and the pager owns the mirror — so what it is
+    // handed is the STEP, not a side of the screen.
+    expect(h.last()).toEqual({ step: 1, px: DRAG_DAY_LIFT_PX });
     h.track(AT_HIGH);
-    expect(h.host().getAttribute('data-edge-lean')).toBe('prev');
+    expect(h.last()).toEqual({ step: -1, px: DRAG_DAY_LIFT_PX });
   });
 
-  it('drops the name when the edge stops naming a day, and keeps the parked distance', () => {
+  it('lets the page go when the edge stops naming a day', () => {
     const h = mount(BOTH);
     h.settle();
     h.arm(MIDDLE);
     h.track(AT_LOW);
     h.track(MIDDLE);
-    expect(h.host().hasAttribute('data-edge-lean')).toBe(false);
-    // The pane is mid-unwind: taking `--swipe-page-w` away here would remove the distance it
-    // is settling FROM, and it would snap instead.
-    expect(h.host().style.getPropertyValue('--swipe-page-w')).toBe(`${WIDTH}px`);
+    expect(h.last()).toEqual({ step: null, px: 0 });
   });
 
-  it('names nothing at the trip end, so nothing leans', () => {
+  it('lifts nothing past the end of the trip', () => {
     const h = mount({ prev: PREV, next: null });
     h.settle();
     h.arm(MIDDLE);
     h.track(AT_LOW);
-    expect(h.host().hasAttribute('data-edge-lean')).toBe(false);
+    // Nothing to lift toward, so the only command is the one that lets go — never a lift with
+    // no page behind it, which would show the gutter and a hole.
+    expect(h.held().every((c) => c.step === null)).toBe(true);
   });
 
-  it('says it is leaning exactly when it names a day', () => {
+  it('reports the step beside the day, so the dwell knows which way to turn', () => {
     const h = mount(BOTH);
     h.settle();
     h.arm(MIDDLE);
-    expect(api_leaning(h)).toBe(false);
+    expect(h.step()).toBeNull();
     h.track(AT_LOW);
-    expect(api_leaning(h)).toBe(true);
+    expect(h.step()).toBe(1);
+    expect(h.date()).toBe(NEXT);
     h.track(MIDDLE);
-    expect(api_leaning(h)).toBe(false);
+    expect(h.step()).toBeNull();
   });
 
   it('forgets the drag when it ends', () => {

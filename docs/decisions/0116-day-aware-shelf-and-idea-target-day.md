@@ -1,6 +1,6 @@
 # 0116 — The shelf becomes day-aware: an idea's optional target day, one union in both modes, and skip vs. park
 
-**Status:** Accepted (design + build) — **amended 2026-08-22** (§2b: the surface's inline edge is a second route to another day; §2c: that turn is drawn rather than teleported)
+**Status:** Accepted (design + build) — **amended 2026-08-22** (§2b: the surface's inline edge is a second route to another day; §2c: that turn is drawn rather than teleported; §2d: it is lifted to a detent and completed by staying, superseding §2c's approach)
 **Date:** 2026-07-25
 **Refines:** [0027](0027-soft-item-lifecycle-shelf-slip.md) (the parking-lot model: an idea is parked _or_ placed; the shelf renders unplaced ideas **and** skipped soft events "uniformly" — a promise only Trip mode ever kept), [0025](0025-trip-mode-edit-capability-tiers.md)/[0029](0029-trip-mode-day-scope-gating.md) (which verbs are reachable on which day — the gate the new day picker obeys), [0038](0038-icons-and-canonical-category.md)/[0109](0109-map-tab-design.md) §11 (an idea is created uncategorised; category is captured when it's scheduled — now also when it's parked), [0083](0083-whenfield-datetime-standard.md) (the one date/time entry primitive the schedule sheet finally uses), [0085](0085-relative-day-phrasing.md) (how an idea states its day)
 
@@ -262,6 +262,8 @@ Almost nothing here is new, and that is the design rather than an accident:
 
 ### 2c. The turn is drawn, not teleported (amended 2026-08-22)
 
+> **Superseded in approach by §2d the same day** — the claim "the turn is drawn rather than teleported" holds and is what §2d builds on; the pane-only lean this section chose was rejected on sight and is not the shipped motion. Kept because its measurements (the gutter, the clone's coverage, the `--peek-dir` defect) are what §2d stands on.
+
 Owner, on §2b as shipped: _"I think that we need some kind of an animation or something for dragging between pages. Something that looks polished."_
 
 Drawn and measured in [`mockups/a-day-turns-under-a-held-card-v1.html`](../../mockups/a-day-turns-under-a-held-card-v1.html) before any of it was built.
@@ -293,6 +295,42 @@ Drawn and measured in [`mockups/a-day-turns-under-a-held-card-v1.html`](../../mo
 **Still open, and it is a device question rather than a drawing one:** whether the 36px band wants any mark of its own. After §1 the question looks different — the arriving neighbour _is_ the mark — but only glass can say whether a first-time user finds the band at all.
 
 **A shipped defect the drawing found, unrelated to motion.** `screens.css`'s `.day-peek` declares `--peek-dir: -1` / `1` for "which way the inline axis runs" — which is `tokens.css`'s `--dir`, a shipped token four other stylesheets already spend (`modal.css`, `form-steps.css`, `App.css` twice) and which `design-language.md` documents as exactly that. It was introduced by ADR-0200 §7 the day before by a session that did not look. The proposal's rule spends `--dir` and the two `--peek-dir` declarations go with it.
+
+### 2d. The page is lifted, it stops, and staying finishes the turn (amended 2026-08-22, supersedes §2c's approach)
+
+Owner, on §2c as shipped: _"No you got this all wrong. Your design is very ugly, no I don't like the static 'peek' into the next/prev day."_ And then the model to build: _"We should maybe get a peek but in a more fluent way, like it starts dragging to the next day and stops and then if your finger stays then it completes the motion."_
+
+Drawn and measured in [`mockups/a-day-turns-under-a-held-card-v2.html`](../../mockups/a-day-turns-under-a-held-card-v2.html), which has a **play control** — §2c was approved off a filmstrip and rejected on a device, and a filmstrip cannot answer "is this fluent".
+
+**Why §2c read as static, as a number the session had and did not interrogate.** Its lean travels 48px over the 700ms dwell: 1.1px per 16ms frame. A surface moving one pixel per frame is not slow motion, it is a static offset with a timer attached — so _"static peek"_ was a precise description rather than a matter of taste. §2c's own argument (the motion **is** the progress indicator) was sound and unaffordable at that speed. The session checked that the duration matched the dwell and never checked that the result was **perceptible**, which is why the v2 mockup prints **px per frame** for every phase and why that unit is the one to reach for the next time a duration is chosen by what it has to agree with.
+
+**The mechanism, and it is a mechanism rather than a restyling.** Three phases with a **detent** in the middle:
+
+1. **The lift** — the whole strip moves `DRAG_DAY_LIFT_PX` (48px) toward the named day over `--t-base` / `--ease-arrive`, and **stops**. 3.2px/frame, 2.9× §2c's lean.
+2. **The hold** — it rests there for the remainder of the dwell (~460ms). Nothing moves.
+3. **The completion** — the finger stayed, so the turn finishes on the swipe's own settle and the day changes. 350px over `--t-base` at 360px wide: 23px/frame.
+
+The affordance is no longer "how much is left", it is **"the page is cocked"** — legible at a glance, where a 1px/frame creep was not. Total cost from reaching the edge to the day changing: 940ms, of which the dwell is still `DRAG_DAY_DWELL_MS`.
+
+**1 · Phase ③ is not new code, and that is the whole build.** `useSwipePager` already owns the offset channel, both settle attributes, the timer and §8's wait-for-the-arriving-page. So the pager gained a **commanded** API — `hold(step, px)` and `turn(step)` — and the edge calls it. "A page turn can be **commanded**, not only dragged" is an extraction, not a second turn beside the first; the two ways of reaching tomorrow now share the mechanism as well as the date. `--peek-lean` and the extra `transform` term it added are deleted: the strip's own `--swipe-dx` is the channel, and the panes ride it for free (ADR-0200 §7).
+
+**2 · The whole strip moves, which §2c refused.** §2c measured that model's cost — the row under the finger displaces by the lift — and rejected it on that number. **That rejection was over-weighted.** The displacement exists only while the finger is _in_ the band, and leaving the band unwinds it, so it is never present at the moment anyone is aiming at a chip: 48px during the hold, **0px** once the band is left. And moving the strip restores §7's "the strip moves as one thing", which §2c had to depart from.
+
+**3 · The lift has to clear the gutter, and 48px is the smallest number that does.** `.day-peek` parks at `dx ± (page + gap)`, so the incoming pane's near edge sits 24px (`--swipe-page-gap`) outside the window: a 24px lift reveals 24px of page background and **nothing** of the day it is promising. 48px reveals 24px of tomorrow. The distance stays a `constants.ts` tunable with the mockup's control shipped as its recommendation — it is a feel call, and glass gets the final say.
+
+**4 · Easings, and the abort.** `--ease-arrive` on the lift (its overshoot is weight on 48px and a wobble on 382px) and the pager's own `--ease-standard` on the completion. Leaving the band before the dwell unwinds on `--t-quick` / `--ease-exit`, declared on the destination state — §2c's asymmetry, kept for its reason: the turn is deliberate, giving up is a correction. The trip's end still lifts nothing at all, because a lift with no page behind it shows the gutter and a hole.
+
+**Rejected, and each is a thing that could reasonably be proposed again:**
+
+- **§2c itself** (only the pane moves). Right in argument, unaffordable at 1.1px/frame.
+- **Spending the whole dwell on the lift** (§2c's timing with the whole strip). Same 1.1px/frame, with more things moving.
+- **A slow creep during the hold**, to keep the "how long is left" reading. The owner said _"stops"_, and motion that continues without arriving is what was rejected.
+- **Shortening the dwell** so the total is under 940ms. 700ms is shared with the day pill's route (§2), so changing it moves two mechanisms; the visible lift already answers "nothing is happening".
+
+**Built 2026-08-22, and two things the build found.**
+
+- **`useEffect(() => stop, [stop])` means "on unmount" only while `stop` never changes identity.** The moment it depended on the caller's command callback, that cleanup ran on **every render** and gave the lift back the instant it was taken — one `resolve` and five commands, ending on "let go". The app survived it by luck (the pager's `hold` happens to be stable) and a unit harness passing an inline arrow did not. The command is read through a latest-ref, which removes the luck.
+- **An e2e that waits for a stepped day has to poll faster than the step.** §2d puts `--t-base` between a turn being _commanded_ and its day arriving, so the repeat cadence is 940ms and the next turn is committed 240ms before the previous day appears. `expect.poll`'s default ladder (0, 100, 250, 500, 1000ms) then reports an arrival up to a second late — measured: 2026-08-23 reported at 1850ms, 2026-08-24 landing at 1880 — and a test that acts on what it saw is acting on the day before last. A flat 50ms interval hands the caller the whole dwell to move out of the band in. This is a general hazard for any assertion about a **repeating** state, not a quirk of one spec.
 
 ### Three things this required, each a bug if missed
 

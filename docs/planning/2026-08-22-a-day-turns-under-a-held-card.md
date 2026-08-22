@@ -57,3 +57,32 @@ The owner approved the drawing (_"approved, let's build this"_) and it shipped a
 And a test-shaped trap worth keeping: **an unregistered custom property computes to its token stream**, so `--peek-lean` reads back as `calc(24px + 24px)`, `parseFloat` gives `NaN`, and a `|| 0` turns the assertion into `0 === 0`. Resolving it through a probe element's `width` makes it a number the browser computed rather than one the spec parsed — and unlike reading the transform mid-transition, it needs no timing at all.
 
 **What the build asserts:** the pane exists (the half that was missing), the host names it, its target equals gutter + reveal read from the stylesheet, the transition is the dwell and `linear`, the day still commits, and leaving the band stops the lean without turning the day. Nothing samples a frame.
+
+---
+
+## And then it was rejected, in one sentence that named the fix
+
+> _"OK no you got this all wrong. Your design is very ugly, no I don't like the static 'peek' into the next/prev day."_
+>
+> _"We should maybe get a peek but in a more fluent way, like it starts dragging to the next day and stops and then if your finger stays then it completes the motion."_
+
+Drawn again in [`mockups/a-day-turns-under-a-held-card-v2.html`](../../mockups/a-day-turns-under-a-held-card-v2.html), promoted into [ADR-0116 §2d](../decisions/0116-day-aware-shelf-and-idea-target-day.md), built and shipped the same day.
+
+**The number I had and did not interrogate: 1.1px per frame.** v1's lean travels 48px over the 700ms dwell. I checked that the duration matched the dwell — which was the interesting argument, and which I got right — and never checked whether 48px spread over 700ms is a motion a person can see. It is not: 0.069px/ms is 1.1px per 16ms frame, which is a static offset with a timer attached. _"Static peek"_ was a description, not a preference. The unit that would have caught it is **px per frame**, and it is now printed for every phase in the file, in the table, where the next session cannot avoid reading it.
+
+**The other correction is mine to record: v1's §3 was over-weighted.** It measured the whole-strip model at a 48px displacement of the row under the finger and rejected it on that number alone. The number is right and the reading was wrong — the displacement exists only while the finger is inside the band, and leaving the band unwinds it, so it is never present at the moment anyone is aiming at a chip. A cost that is absent whenever it would matter is not the cost it looks like. v2 prints both readings (48px held · 0px left) rather than one.
+
+**A filmstrip cannot answer "is this fluent", and that is how v1 got approved.** Four still frames of a linear lean look like a motion; the motion was a creep. v2's `הרץ את התנועה` runs the real transitions on the real stylesheet, and every later mockup about motion should have one — the control is cheaper than a rejected merge.
+
+## What the build was, and why it was small
+
+Phase ③ was already written. `useSwipePager` owns the offset channel, both settle attributes, the timer and ADR-0200 §8's wait-for-the-arriving-page, so the work was giving it a **commanded** API — `hold(step, px)` and `turn(step)` — and having the edge call it. "A page turn can be _commanded_, not only dragged" is an extraction; the alternative was a second turn beside the first, which is the ADR-0078/0094/0095 shape this repo keeps having to undo. It also deletes v1's `--peek-lean` and the extra `transform` term it added.
+
+Two things the build found:
+
+1. **`useEffect(() => stop, [stop])` is an unmount cleanup only while `stop` never changes identity.** The moment it depended on the caller's command callback, it ran on **every render** and gave the lift back the instant it was taken. The evidence was a log that made no sense until it did: one `resolve` and five commands, ending on "let go". The app survived it by luck — the pager's `hold` happens to be stable — and the unit harness, which passes an inline arrow, did not. The command is read through a latest-ref now, which removes the luck rather than the symptom.
+2. **An e2e that waits for a stepped day has to poll faster than the step.** §2d puts `--t-base` between a turn being _commanded_ and its day arriving, so the repeat cadence is 940ms and the next turn is already committed 240ms before the previous day appears. `expect.poll`'s default ladder (0, 100, 250, 500, 1000ms) reported 2026-08-23 at **1850ms**, with 2026-08-24 landing at **1880** — so the spec moved out of the band on the strength of a day that was already stale, and asserted the wrong one at the end. A flat 50ms interval hands the caller the whole dwell. Worth generalising: **any assertion about a repeating state has to sample faster than the repeat**, and the default ladder is tuned for states that settle.
+
+## Still open, unchanged
+
+`DRAG_DAY_EDGE_PX` (36) and whether the band wants a mark of its own, plus the lift distance — `DRAG_DAY_LIFT_PX` ships at 48 because that is the smallest lift that clears the 24px gutter and shows any of tomorrow, and 40/48/64/80 are wired as controls for a device pass.

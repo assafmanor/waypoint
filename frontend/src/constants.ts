@@ -647,6 +647,20 @@ export const DRAG_DAY_DWELL_MS = 700;
  *  neutral middle on a 358px column. The dwell is `DRAG_DAY_DWELL_MS`, shared with the
  *  pill — one answer to "resting somewhere switches the day", wherever you rest. */
 export const DRAG_DAY_EDGE_PX = 36;
+/** **How far the page is lifted when the edge names a day** (ADR-0116 §2d) — the detent it
+ *  stops at, before the dwell decides whether to finish the turn.
+ *
+ *  It has to clear `--swipe-page-gap` before any of the next day is visible at all (the pane
+ *  parks a gutter outside the window), so this is "the gutter, plus a readable sliver": at 48
+ *  the gutter is 24 and the sliver is 24. Lower than ~40 and the lift shows the gap and
+ *  nothing behind it; much higher and the row under the finger has moved further than the
+ *  gesture is worth.
+ *
+ *  A feel number, and the one this section is most likely to want moved — v1's mistake was
+ *  spending the whole dwell travelling this far, which came out at 1.1px per frame and read
+ *  as a static offset rather than a motion. It travels in `--t-base` now (~3.2px/frame),
+ *  measured in `mockups/a-day-turns-under-a-held-card-v2.html` where it is a control. */
+export const DRAG_DAY_LIFT_PX = 48;
 
 /** ── AN ANCHORED PANEL'S PLACEMENT (ADR-0144) ────────────────────────────────────────
  *  `IconPicker` opens below its trigger, which is right in a form that scrolls under a
