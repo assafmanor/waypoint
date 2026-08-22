@@ -86,8 +86,20 @@ const IDEAS = Array.from({ length: 10 }, (_, i) => ({
   ...stamps,
 }));
 
-const touch = (cdp: CDPSession, type: 'touchStart' | 'touchMove' | 'touchEnd', x = 0, y = 0) =>
-  dispatchTouch(cdp, type, [{ x, y }]);
+const touch = (
+  cdp: CDPSession,
+  type: 'touchStart' | 'touchMove' | 'touchEnd',
+  x = 0,
+  y = 0,
+  timestamp?: number,
+) => dispatchTouch(cdp, type, [{ x, y }], timestamp);
+
+/** The page's clock, so a gesture can state when each of its moves happened rather than
+ *  inheriting the CDP connection's round-trip time as its speed (`e2e/touch.ts`). */
+async function clockBase(page: Page) {
+  const [origin, now] = await page.evaluate(() => [performance.timeOrigin, performance.now()]);
+  return (ms: number) => (origin + now + ms) / 1000;
+}
 
 /** The `?day=` on screen. Omitted entirely when the day IS today (`daySelectTarget`), so the
  *  absence is a value and not a missing assertion. */
@@ -216,8 +228,19 @@ async function swipeDay(
     dy = 0,
     holdAtEnd = false,
     from = 'heading',
-  }: { dy?: number; holdAtEnd?: boolean; from?: 'heading' | 'upper' } = {},
+    pace,
+  }: {
+    dy?: number;
+    holdAtEnd?: boolean;
+    from?: 'heading' | 'upper';
+    /** Ms between moves, stated rather than measured — this is the gesture's SPEED, and speed
+     *  decides a flick (§9). Left out, the moves carry the real clock, which is what every
+     *  case that is about distance wants. */
+    pace?: number;
+  } = {},
 ) {
+  const at = pace === undefined ? null : await clockBase(page);
+  const stamp = (i: number) => (at ? at(i * pace!) : undefined);
   // `upper` is for a day that has been SCROLLED: the heading is then off the top of the
   // viewport, and a touch dispatched at an off-screen coordinate lands on nothing at all —
   // which presents as "the swipe did not commit" and says nothing about the swipe. The body's
@@ -226,11 +249,11 @@ async function swipeDay(
     const strip = (await page.locator('main.body').boundingBox())!;
     const ux = strip.x + strip.width * 0.45;
     const uy = strip.y + strip.height * 0.25;
-    await touch(cdp, 'touchStart', ux, uy);
+    await touch(cdp, 'touchStart', ux, uy, stamp(0));
     for (let i = 1; i <= 8; i++) {
-      await touch(cdp, 'touchMove', ux + (dx * i) / 8, uy + (dy * i) / 8);
+      await touch(cdp, 'touchMove', ux + (dx * i) / 8, uy + (dy * i) / 8, stamp(i));
     }
-    if (!holdAtEnd) await touch(cdp, 'touchEnd');
+    if (!holdAtEnd) await touch(cdp, 'touchEnd', ux + dx, uy + dy, stamp(8));
     return { x: ux + dx, y: uy + dy };
   }
   // **The origin is the day's heading row, not a share of the surface's height.** A share
@@ -242,13 +265,13 @@ async function swipeDay(
   if (!box) throw new Error('no day heading to swipe from');
   const x0 = box.x + box.width * 0.45;
   const y0 = box.y + box.height / 2;
-  await touch(cdp, 'touchStart', x0, y0);
+  await touch(cdp, 'touchStart', x0, y0, stamp(0));
   const steps = 8;
   for (let i = 1; i <= steps; i++) {
-    await touch(cdp, 'touchMove', x0 + (dx * i) / steps, y0 + (dy * i) / steps);
+    await touch(cdp, 'touchMove', x0 + (dx * i) / steps, y0 + (dy * i) / steps, stamp(i));
   }
   if (holdAtEnd) return { x: x0 + dx, y: y0 + dy };
-  await touch(cdp, 'touchEnd');
+  await touch(cdp, 'touchEnd', x0 + dx, y0 + dy, stamp(steps));
   return { x: x0 + dx, y: y0 + dy };
 }
 
@@ -527,6 +550,68 @@ test.describe('a day surface steps day to day with a swipe', () => {
     const seen = await swapLog(page);
     expect(seen.length).toBeGreaterThan(0);
     expect(seen.filter((s) => s.level && !s.arrived)).toEqual([]);
+  });
+
+  // ── THE FEEL (§9) ─────────────────────────────────────────────────────────────────────
+  //
+  // Two owner reports on the shipped gesture: _"it doesn't feel smooth enough"_ and _"quick
+  // swipes don't always register."_ Both are answerable in an engine, and neither is a frame
+  // sample — one is the geometry of the first few moves, the other is a stated velocity.
+
+  // **The surface leaves level at zero and then tracks the finger.** Measured before the fix,
+  // in this browser: `finger+4 → 0, +8 → 0, +12 → 0, +16 → 0, +20 → 0, +24 → 24`. Twenty px of
+  // a surface that had already stopped scrolling (the axis is taken at `DECIDE_PX`) and had not
+  // started moving, then a 24px jump on one frame — at the start of every swipe.
+  test('the page leaves level at zero and tracks the finger from there', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    await boot(page, 'trip');
+    const box = (await page.locator(`${PAGE} .sec-title`).first().boundingBox())!;
+    const x0 = box.x + box.width * 0.45;
+    const y0 = box.y + box.height / 2;
+
+    const tx = () =>
+      page.evaluate((sel) => {
+        const el = document.querySelector(`${sel} > .day-page`);
+        const t = el ? getComputedStyle(el).transform : 'none';
+        return t === 'none' ? 0 : Math.round(new DOMMatrixReadOnly(t).m41);
+      }, PAGE);
+
+    await touch(cdp, 'touchStart', x0, y0);
+    const trail: number[] = [];
+    for (let i = 1; i <= 10; i++) {
+      await touch(cdp, 'touchMove', x0 + i * 6, y0);
+      trail.push(await tx());
+    }
+    await touch(cdp, 'touchEnd');
+
+    // No frame of the follow may be a jump: the biggest single step the page takes is the
+    // biggest step the FINGER took, and nothing bigger. A lurch is exactly a step the finger
+    // did not make, so this one assertion covers the dead zone and the jump at once.
+    const steps = trail.slice(1).map((v, i) => v - trail[i]);
+    expect(Math.max(...steps.map(Math.abs))).toBeLessThanOrEqual(6);
+    // And it does move — an inert surface would satisfy the line above perfectly.
+    expect(trail[trail.length - 1]).toBeGreaterThan(6 * 5);
+  });
+
+  // **A deliberate drag under the commit distance still refuses**, at a stated 0.075px/ms —
+  // which is what keeps the flick from swallowing the distance rule whole. Stating the pace is
+  // safe in this direction and only this one: a loaded machine delivers moves further apart,
+  // i.e. slower, i.e. refusing harder.
+  //
+  // Its opposite number — a flick committing UNDER that distance — is deliberately not here.
+  // Input arrives frame-aligned (`e2e/touch.ts`), so a gesture short enough that distance
+  // cannot commit it cannot also be thrown fast enough to clear `SNAP_FLICK_PX_PER_MS` in this
+  // environment: measured at 33–83ms between delivered moves, the two conditions have no
+  // overlap. The flick is pinned in `src/lib/useSwipePager.test.tsx` instead, where the clock
+  // belongs to the test. A phone is not the constraint here — a real finger moves 20–60px per
+  // 8–16ms frame, and this is the same threshold and sampling the sheet's drag has been using
+  // on the owner's own device since ADR-0122 §4.
+  test('a short drag that is not thrown does not step the day', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    await boot(page, 'trip');
+    await swipeDay(page, cdp, Math.floor(COMMIT_PX * 0.6), { pace: 100 });
+    await expect(page.locator(PAGE)).not.toHaveAttribute('data-swiping', '');
+    expect(dayParam(page)).toBeNull();
   });
 
   // And the strip keeps its own axis, which is what `scrollerWithin` is there for.

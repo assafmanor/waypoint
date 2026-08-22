@@ -757,10 +757,16 @@ export const SNAP_FLICK_PX_PER_MS = 0.5;
 /** **Stepping a full surface one page with a swipe** (ADR-0200, `lib/useSwipePager.ts`).
  *  Six numbers, and the first three are the arbitration rather than the feel:
  *
- *  - `SLOP_PX` — how far the finger goes before the gesture is ours at all. The whole day
- *    surface is the target and it is nothing but controls (cards that expand, rows that
- *    hold-drag, ticks), so the floor `SNAP_DRAG_SLOP_PX` sets for a 51px region has to be
- *    much higher here: 4px would swallow a tap on every one of them.
+ *  - `SLOP_PX` — **the travel below which nothing here is a swipe**, and it answers that
+ *    question twice (§9). It is the MOUSE's claim gate, where there is no browser pan to
+ *    lose and so no reason to decide early; and it is the floor a **flick** still has to
+ *    clear, so a thumb rolling 8px off a tap cannot page the day however fast it rolled.
+ *    The whole day surface is the target and it is nothing but controls (cards that expand,
+ *    rows that hold-drag, ticks), so the floor `SNAP_DRAG_SLOP_PX` sets for a 51px region
+ *    has to be much higher here: 4px would swallow a tap on every one of them.
+ *    **On touch it is no longer the claim gate** — the axis is already forfeited at
+ *    `DECIDE_PX`, so holding the follow back to 24px bought a dead zone and a lurch, not
+ *    safety (§9, measured).
  *  - `AXIS_RATIO` — how much more horizontal than vertical the travel must be. The surface
  *    lives inside the body's vertical scroller, so the two gestures share a start point and
  *    only their direction separates them. Above the ratio it is a page step; below it the
@@ -770,8 +776,10 @@ export const SNAP_FLICK_PX_PER_MS = 0.5;
  *    its slop in whatever direction, so the axis has to be answered before then or the
  *    gesture is cancelled out from under us (measured — see `useSwipePager`'s `touchMove`).
  *    Low enough to beat the slop, high enough that a still finger's jitter decides nothing.
- *  - `COMMIT_SHARE` — the share of the surface's width that commits, so the gesture asks
- *    the same effort of a 360px phone and a 640px desktop column.
+ *  - `COMMIT_SHARE` — the share of the surface's width that commits **a deliberate drag**,
+ *    so the gesture asks the same effort of a 360px phone and a 640px desktop column. A
+ *    flick commits under it: that is `SNAP_FLICK_PX_PER_MS`'s job, one flick threshold for
+ *    the whole app (§9, and the owner reported the sheet's version of it first).
  *  - `EDGE_RESIST` / `EDGE_MAX_PX` — the rebuff. With nowhere to go the surface still
  *    follows the finger, at a fraction of it and no further than the cap: it strains,
  *    is arrested, and is pulled back to level on release. Same statement `BEAT.PINNED`

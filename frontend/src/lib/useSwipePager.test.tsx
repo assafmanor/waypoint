@@ -25,6 +25,11 @@ import '../test/pointer-events';
 
 const WIDTH = 360;
 const COMMIT = WIDTH * SWIPE_PAGER.COMMIT_SHARE;
+/** What the first move spends getting the gesture recognised on the MOUSE path — `swipe`'s
+ *  first step, and therefore the follow's origin (§9). The page's travel is measured from
+ *  there, so a case about the commit DISTANCE has to send the finger this much further than
+ *  the distance it is testing. On touch the same cost is `DECIDE_PX`, i.e. 6px. */
+const CLAIM = SWIPE_PAGER.SLOP_PX + 4;
 
 function Host({
   onStep,
@@ -69,6 +74,12 @@ function mount(props: Parameters<typeof Host>[0]) {
     act(() => {
       view.rerender(<Host {...props} pageKey={`page-${++drawn}`} />);
     });
+  /** Change a prop mid-gesture — `enabled` going false under a bound listener is a real
+   *  sequence, not a contrivance: the hold-drag fires on a timer after the press. */
+  const update = (next: Partial<Parameters<typeof Host>[0]>) =>
+    act(() => {
+      view.rerender(<Host {...props} {...next} />);
+    });
   // jsdom lays nothing out, and the commit threshold is a SHARE of the surface's width —
   // with a zero rect the hook falls back to `window.innerWidth` and the numbers below
   // would mean something else.
@@ -77,7 +88,7 @@ function mount(props: Parameters<typeof Host>[0]) {
     const stripEl = view.getByTestId('strip');
     fakeScroller(stripEl, [view.getByTestId('chip')], { axis: 'inline', viewport: 40 });
   }
-  return { view, host, drawNextPage };
+  return { view, host, drawNextPage, update };
 }
 
 /** Let the page finish turning. **The step commits here, not at the release** — the exit
@@ -90,8 +101,17 @@ function settle() {
   });
 }
 
-/** One gesture, start to finish — including the page turn unless `settle: false`, which is
- *  for the cases that inspect the surface mid-settle. */
+/**
+ * One gesture, start to finish — including the page turn unless `settle: false`, which is for
+ * the cases that inspect the surface mid-settle.
+ *
+ * **`pace` is not decoration: it is the gesture's speed, and speed now decides things** (§9).
+ * jsdom's `event.timeStamp` is driven by the fake clock, so the ms advanced between the last
+ * two moves IS the velocity the recogniser reads — and with no advance at all `dt` floors at
+ * 1ms and every swipe in this file would read as a flick, quietly turning the distance cases
+ * below into velocity cases that pass for the wrong reason. The default is a deliberate drag;
+ * `flick: true` is a thrown one.
+ */
 function swipe(
   from: HTMLElement,
   {
@@ -99,13 +119,25 @@ function swipe(
     dy = 0,
     cancel = false,
     settled = true,
-  }: { dx: number; dy?: number; cancel?: boolean; settled?: boolean },
+    flick = false,
+    pace = flick ? 16 : 400,
+  }: {
+    dx: number;
+    dy?: number;
+    cancel?: boolean;
+    settled?: boolean;
+    flick?: boolean;
+    pace?: number;
+  },
 ) {
   fireEvent.pointerDown(from, { clientX: 200, clientY: 300, button: 0 });
   // Two moves: the first crosses the slop and claims (or does not), the second is where
   // the finger actually ends up.
   const step = Math.sign(dx || 1) * Math.min(Math.abs(dx), SWIPE_PAGER.SLOP_PX + 4);
   fireEvent.pointerMove(window, { clientX: 200 + step, clientY: 300 + Math.sign(dy) * 2 });
+  act(() => {
+    vi.advanceTimersByTime(pace);
+  });
   fireEvent.pointerMove(window, { clientX: 200 + dx, clientY: 300 + dy });
   fireEvent[cancel ? 'pointerCancel' : 'pointerUp'](window, {
     clientX: 200 + dx,
@@ -132,7 +164,7 @@ describe('useSwipePager', () => {
   it('steps to the NEXT page when the finger moves toward inline-start (right, in RTL)', () => {
     const onStep = vi.fn();
     const { host } = mount({ onStep });
-    swipe(host, { dx: COMMIT + 10, settled: false });
+    swipe(host, { dx: CLAIM + COMMIT + 10, settled: false });
     // The turn finishes the travel rather than springing back: the offset goes to a full page
     // out, which is what lands the arriving pane exactly at rest (ADR-0200 §7).
     expect(host.getAttribute('data-swipe-settling')).toBe('turn');
@@ -144,14 +176,14 @@ describe('useSwipePager', () => {
   it('steps to the PREVIOUS page the other way', () => {
     const onStep = vi.fn();
     const { host } = mount({ onStep });
-    swipe(host, { dx: -(COMMIT + 10) });
+    swipe(host, { dx: -(CLAIM + COMMIT + 10) });
     expect(onStep).toHaveBeenCalledWith(-1);
   });
 
   it('mirrors under [dir=ltr] — the same finger reaches the previous page', () => {
     const onStep = vi.fn();
     const { host } = mount({ onStep, rtl: false });
-    swipe(host, { dx: COMMIT + 10 });
+    swipe(host, { dx: CLAIM + COMMIT + 10 });
     expect(onStep).toHaveBeenCalledWith(-1);
   });
 
@@ -210,12 +242,30 @@ describe('useSwipePager', () => {
     expect(onStep).not.toHaveBeenCalled();
   });
 
+  // **Leaves level at ZERO and then tracks the finger exactly** (§9). Asserted as a
+  // difference rather than an absolute, which is the actual claim: whatever the gesture spent
+  // being recognised is not the page's to travel, and every px after that is. The absolute
+  // version of this assertion was what a 24px lurch passed.
+  it('follows the finger one-for-one from where it was claimed', () => {
+    const onStep = vi.fn();
+    const { host } = mount({ onStep });
+    fireEvent.pointerDown(host, { clientX: 200, clientY: 300, button: 0 });
+    fireEvent.pointerMove(window, { clientX: 200 + CLAIM, clientY: 300 });
+    // The claiming move itself moves nothing: no jump onto the surface.
+    expect(offset(host)).toBe('0px');
+    fireEvent.pointerMove(window, { clientX: 200 + CLAIM + 60, clientY: 300 });
+    expect(offset(host)).toBe('60px');
+    fireEvent.pointerMove(window, { clientX: 200 + CLAIM + 100, clientY: 300 });
+    expect(offset(host)).toBe('100px');
+    fireEvent.pointerUp(window, { clientX: 200 + CLAIM + 100, clientY: 300 });
+  });
+
   it('follows the finger one-for-one when there IS a page that way', () => {
     const onStep = vi.fn();
     const { host } = mount({ onStep });
     fireEvent.pointerDown(host, { clientX: 200, clientY: 300, button: 0 });
-    fireEvent.pointerMove(window, { clientX: 200 + SWIPE_PAGER.SLOP_PX + 4, clientY: 300 });
-    fireEvent.pointerMove(window, { clientX: 200 + 120, clientY: 300 });
+    fireEvent.pointerMove(window, { clientX: 200 + CLAIM, clientY: 300 });
+    fireEvent.pointerMove(window, { clientX: 200 + CLAIM + 120, clientY: 300 });
     expect(offset(host)).toBe('120px');
   });
 
@@ -291,6 +341,86 @@ describe('useSwipePager', () => {
       const { host } = mount({ onStep: vi.fn() });
       expect(touch(host, SWIPE_PAGER.DECIDE_PX - 2, 0)).toBe(false);
     });
+  });
+
+  // The hold-drag owns the pointer once it has it, and it takes it on a TIMER — so `enabled`
+  // goes false with this hook's listeners already bound. Read only at the press, the standing
+  // down promised by the docblock did not happen, and the day surface would translate under a
+  // dragged card's ghost.
+  it('stands down when something else takes the pointer mid-gesture', () => {
+    const onStep = vi.fn();
+    const { host, update } = mount({ onStep });
+    fireEvent.pointerDown(host, { clientX: 200, clientY: 300, button: 0 });
+    update({ enabled: false });
+    fireEvent.pointerMove(window, { clientX: 200 + CLAIM, clientY: 300 });
+    fireEvent.pointerMove(window, { clientX: 200 + CLAIM + 200, clientY: 300 });
+    expect(host.hasAttribute('data-swiping')).toBe(false);
+    expect(offset(host)).toBe('');
+    fireEvent.pointerUp(window, { clientX: 200 + CLAIM + 200, clientY: 300 });
+    settle();
+    expect(onStep).not.toHaveBeenCalled();
+  });
+
+  // ── THE FLICK (§9) ────────────────────────────────────────────────────────────────────
+  //
+  // Owner: _"quick swipes don't always register."_ They didn't: distance was the only thing
+  // that committed, so a flick that travelled less than a fifth of the page was refused however
+  // fast it was thrown. `SNAP_FLICK_PX_PER_MS` is the app's existing answer to exactly this
+  // report from the sheet, and these cases pin the three questions that come with reusing it.
+  //
+  // Velocity here is `(last two moves) / ms`, and the ms is the fake clock — `pace` in `swipe`.
+  it('commits a flick that never travels the commit distance', () => {
+    const onStep = vi.fn();
+    const { host } = mount({ onStep });
+    // Half of what a deliberate drag would need, thrown: 60px in 16ms is 3.75px/ms.
+    swipe(host, { dx: CLAIM + COMMIT / 2, flick: true });
+    expect(onStep).toHaveBeenCalledWith(1);
+    expect(COMMIT / 2).toBeLessThan(COMMIT);
+  });
+
+  it('refuses the same distance dragged slowly', () => {
+    const onStep = vi.fn();
+    const { host } = mount({ onStep });
+    // The identical travel at 0.15px/ms — under the threshold, so distance alone decides.
+    swipe(host, { dx: CLAIM + COMMIT / 2, pace: 400 });
+    expect(onStep).not.toHaveBeenCalled();
+    expect(host.hasAttribute('data-swiping')).toBe(false);
+  });
+
+  // A flick BACK from a half-open page means "no", not "the other way". Position decides
+  // between the page you are on and the one you are already moving toward; the flick only
+  // picks between those two, so against the drag it commits nothing.
+  it('refuses a flick thrown back against the drag', () => {
+    const onStep = vi.fn();
+    const { host } = mount({ onStep });
+    fireEvent.pointerDown(host, { clientX: 200, clientY: 300, button: 0 });
+    fireEvent.pointerMove(window, { clientX: 200 + CLAIM, clientY: 300 });
+    fireEvent.pointerMove(window, { clientX: 200 + CLAIM + 90, clientY: 300 });
+    act(() => {
+      vi.advanceTimersByTime(16);
+    });
+    // Still 30px out — the next page is half revealed — but the finger left going back.
+    fireEvent.pointerMove(window, { clientX: 200 + CLAIM + 30, clientY: 300 });
+    fireEvent.pointerUp(window, { clientX: 200 + CLAIM + 30, clientY: 300 });
+    settle();
+    expect(onStep).not.toHaveBeenCalled();
+  });
+
+  // The floor under the flick: a thumb rolling a few px off a tap is fast, and it is not a
+  // swipe. `SLOP_PX` answers this question for the mouse's claim too — one number, one meaning.
+  it('refuses a fast twitch shorter than the slop', () => {
+    const onStep = vi.fn();
+    const { host } = mount({ onStep });
+    fireEvent.pointerDown(host, { clientX: 200, clientY: 300, button: 0 });
+    fireEvent.pointerMove(window, { clientX: 200 + CLAIM, clientY: 300 });
+    act(() => {
+      vi.advanceTimersByTime(4);
+    });
+    const twitch = SWIPE_PAGER.SLOP_PX - 6;
+    fireEvent.pointerMove(window, { clientX: 200 + CLAIM + twitch, clientY: 300 });
+    fireEvent.pointerUp(window, { clientX: 200 + CLAIM + twitch, clientY: 300 });
+    settle();
+    expect(onStep).not.toHaveBeenCalled();
   });
 
   // **The offset is owed to the page that arrives, not to the end of the animation** (§8).

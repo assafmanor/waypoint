@@ -41,7 +41,7 @@
 // (`touchMove`), which is the one place that can tell a bare stretch of day from a strip that
 // owns this axis.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import { SWIPE_PAGER } from '../constants';
+import { SNAP_FLICK_PX_PER_MS, SWIPE_PAGER } from '../constants';
 import { armClickSwallow } from './click-swallow';
 import { motionDurationMs } from './motion';
 import { scrollerWithin } from './scrollable';
@@ -192,6 +192,9 @@ export function useSwipePager<T extends HTMLElement>({
 
       const startX = e.clientX;
       const startY = e.clientY;
+      // The claim can now come from the TOUCH stream (see `claim`), which has no pointerId of
+      // its own — so it is taken here, where the gesture starts.
+      const pointerId = e.pointerId;
       // `direction` off the host rather than `document.dir`: the mirror is a CSS variant,
       // so the element is the only thing that knows which way its own inline axis runs.
       const rtl = getComputedStyle(el).direction === 'rtl';
@@ -207,6 +210,12 @@ export function useSwipePager<T extends HTMLElement>({
 
       let claimed = false;
       let done = false;
+      /** Where the follow starts from, in travel px. **The page must not jump when it is
+       *  claimed** (§9): whatever the finger had already spent getting the gesture recognised
+       *  belongs to the recognition, not to the page, so the offset is measured from here and
+       *  the surface leaves level at 0 and tracks 1:1. Measured before this existed: 20px of
+       *  nothing, then a 24px jump on one frame, at the start of every swipe. */
+      let origin = 0;
       // **The travel is the last position we SAW, never the release event's own.** A
       // `pointercancel` carries no meaningful coordinates at all, and a `pointerup` can
       // arrive at the origin when the platform has no point left to report it against —
@@ -217,12 +226,60 @@ export function useSwipePager<T extends HTMLElement>({
       // Set once the axis has been decided in our favour (see `touchMove`). A mouse never
       // decides — there is no browser pan to lose — so the pointer path below stands alone.
       let ours = false;
+      // **The last two moves, for the flick** (§9). The same sampling `useSnapDrag` does for
+      // the sheet, against the same threshold: a flick is how the finger was moving when it
+      // left, not how it averaged over a gesture that may have paused halfway.
+      let prev = { x: startX, t: e.timeStamp };
+      let last = prev;
+
+      /** Which way the page travels, in screen px, to reach `step`. The mirror lives here and
+       *  not in a `Math.sign` of the finger's travel, because a flick can commit a step the
+       *  accumulated travel does not agree with. */
+      const dirFor = (step: SwipeStep) => (rtl ? step : -step);
+
+      /**
+       * **Take the gesture, and start the follow from where we took it.**
+       *
+       * Called from `touchMove` the moment the axis is decided (touch), or from `move` at
+       * `SLOP_PX` (mouse). Those are two different questions and the answer used to be one
+       * number: on touch the browser's pan is already forfeited at `DECIDE_PX` — `touchMove`
+       * has called `preventDefault` by then — so waiting for 24px protected nothing and cost
+       * the user 18px of a surface that had stopped scrolling and had not started moving.
+       */
+      const claim = (atDx: number) => {
+        claimed = true;
+        origin = atDx;
+        el.setPointerCapture?.(pointerId);
+        window.clearTimeout(settle.current);
+        // A second swipe inside the first one's few-ms wait owns the surface now, so the
+        // owed reset is dropped rather than left to fire mid-drag and flatten it.
+        owed.current = false;
+        el.removeAttribute(SETTLING_ATTR);
+        el.setAttribute(SWIPING_ATTR, '');
+        el.style.setProperty(WIDTH_PROP, `${Math.round(width)}px`);
+        // The panes mount here, one render, while the finger is still accelerating.
+        setLive(true);
+      };
 
       const offsetFor = (dx: number) => {
         if (latest.current.canStep(stepFor(dx))) return dx;
         // THE REBUFF. No page that way, so the surface strains a little and no further.
         const strained = Math.min(Math.abs(dx) * SWIPE_PAGER.EDGE_RESIST, SWIPE_PAGER.EDGE_MAX_PX);
         return Math.sign(dx) * strained;
+      };
+
+      /** **Something else took the pointer while we held it.** The hold-drag arms on a press
+       *  and fires on a TIMER, so `enabled` can go false with our listeners already bound —
+       *  and this hook's own docblock promises the pager "stands down entirely rather than
+       *  racing it for the transform". Read at the press only, that promise held only for
+       *  gestures that had already moved 24px by then; found while matching arms on an
+       *  unrelated flake, and it is the drag's own spec that would have paid for it (§9). */
+      const stoodDown = () => {
+        if (latest.current.enabled) return false;
+        done = true;
+        unbind();
+        if (claimed) clear();
+        return true;
       };
 
       const unbind = () => {
@@ -258,7 +315,7 @@ export function useSwipePager<T extends HTMLElement>({
        * far enough to mean anything is the only one we get to answer.
        */
       const touchMove = (ev: TouchEvent) => {
-        if (done || ev.touches.length !== 1) return;
+        if (done || stoodDown() || ev.touches.length !== 1) return;
         const touch = ev.touches[0];
         const dx = touch.clientX - startX;
         const dy = touch.clientY - startY;
@@ -271,6 +328,10 @@ export function useSwipePager<T extends HTMLElement>({
             return;
           }
           ours = true;
+          // **Claimed here, at the same moment the pan is forfeited** (§9). One decision, one
+          // place: the `preventDefault` below is what takes the axis, so this is where the
+          // surface starts following. `origin` is this touch's own travel, so nothing jumps.
+          if (!claimed) claim(dx);
         }
         // Cancelable is false once a scroll is already under way — preventing then is a
         // console warning and nothing else, so ask rather than assume.
@@ -278,10 +339,12 @@ export function useSwipePager<T extends HTMLElement>({
       };
 
       const move = (ev: PointerEvent) => {
-        if (done) return;
+        if (done || stoodDown()) return;
         const dx = ev.clientX - startX;
         const dy = ev.clientY - startY;
         lastX = ev.clientX;
+        prev = last;
+        last = { x: ev.clientX, t: ev.timeStamp };
         if (!claimed) {
           // The browser's pan wins the moment the travel reads vertical — stop listening
           // rather than sitting armed, or a long scroll ending with a sideways flick pages
@@ -291,25 +354,18 @@ export function useSwipePager<T extends HTMLElement>({
             unbind();
             return;
           }
+          // The MOUSE's gate, and on touch a gesture claimed by `touchMove` never reaches
+          // it. `SLOP_PX` is right here for the reason it was always right: there is no pan
+          // to lose, so nothing is spent by waiting until the travel means something.
           if (
             Math.abs(dx) < SWIPE_PAGER.SLOP_PX ||
             Math.abs(dx) <= Math.abs(dy) * SWIPE_PAGER.AXIS_RATIO
           ) {
             return;
           }
-          claimed = true;
-          el.setPointerCapture?.(ev.pointerId);
-          window.clearTimeout(settle.current);
-          // A second swipe inside the first one's few-ms wait owns the surface now, so the
-          // owed reset is dropped rather than left to fire mid-drag and flatten it.
-          owed.current = false;
-          el.removeAttribute(SETTLING_ATTR);
-          el.setAttribute(SWIPING_ATTR, '');
-          el.style.setProperty(WIDTH_PROP, `${Math.round(width)}px`);
-          // The panes mount here, one render, while the finger is still accelerating.
-          setLive(true);
+          claim(dx);
         }
-        el.style.setProperty(OFFSET_PROP, `${Math.round(offsetFor(dx))}px`);
+        el.style.setProperty(OFFSET_PROP, `${Math.round(offsetFor(dx - origin))}px`);
       };
 
       const end = (ev: PointerEvent) => {
@@ -323,9 +379,31 @@ export function useSwipePager<T extends HTMLElement>({
         // `armClickSwallow` itself documents).
         const released = ev.type === 'pointerup';
         if (released) armClickSwallow();
-        const dx = lastX - startX;
+        // Measured from the claim, like the offset is: this is how far the PAGE moved, which
+        // is what the user was aiming with.
+        const dx = lastX - startX - origin;
         const step = stepFor(dx);
-        const commit = released && Math.abs(dx) >= commitPx && latest.current.canStep(step);
+        /**
+         * **A quick swipe is a swipe** (§9, owner: _"quick swipes don't always register"_).
+         * Distance alone refuses a flick that travelled less than a fifth of the page, however
+         * unmistakable it was — and `SNAP_FLICK_PX_PER_MS`'s own docblock reports the same
+         * complaint from the sheet a release earlier, so the app already knows what a flick
+         * is. One threshold, one sampling rule (the last two moves), two surfaces.
+         *
+         * Two guards, and each is a real gesture. It must be going the way the drag went, or a
+         * flick BACK from a half-open page would step to the day behind you when what it plainly
+         * means is "no" — position decides between the page you are on and the one you are
+         * already moving toward, and the flick only picks between those two. And it must have
+         * cleared `SLOP_PX`, or a thumb rolling a few px off a tap pages the day at speed.
+         */
+        const dt = Math.max(last.t - prev.t, 1);
+        const velocity = (last.x - prev.x) / dt;
+        const flick =
+          Math.abs(velocity) >= SNAP_FLICK_PX_PER_MS &&
+          Math.sign(velocity) === Math.sign(dx) &&
+          Math.abs(dx) >= SWIPE_PAGER.SLOP_PX;
+        const commit =
+          released && (flick || Math.abs(dx) >= commitPx) && latest.current.canStep(step);
         // **Two different endings, two different distances, two different tokens.** A commit
         // finishes the turn — the page carries on a full page plus the gutter, which puts the
         // arriving pane exactly at rest — so it travels furthest and takes `--t-base`, the app's token
@@ -334,7 +412,10 @@ export function useSwipePager<T extends HTMLElement>({
         // under reduced motion, so no attribute can outlive an animation that did not play
         // (ADR-0140 §5).
         el.setAttribute(SETTLING_ATTR, commit ? 'turn' : 'back');
-        el.style.setProperty(OFFSET_PROP, commit ? `${Math.round(Math.sign(dx) * turn)}px` : '0px');
+        // The direction of the STEP, not of the travel. They agree on a drag and can disagree
+        // on nothing else now that a reversing flick refuses — but deriving the page's travel
+        // from the step it commits is the statement that cannot go out of sync.
+        el.style.setProperty(OFFSET_PROP, commit ? `${Math.round(dirFor(step) * turn)}px` : '0px');
         settle.current = window.setTimeout(
           () => {
             // **The date changes only now, with the arriving pane covering the screen.** So the
