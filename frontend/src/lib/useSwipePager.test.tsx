@@ -32,14 +32,18 @@ function Host({
   enabled = true,
   rtl = true,
   strip = false,
+  pageKey = 'a',
 }: {
   onStep: (step: SwipeStep) => void;
   canStep?: (step: SwipeStep) => boolean;
   enabled?: boolean;
   rtl?: boolean;
   strip?: boolean;
+  /** Which page is drawn. Held by the test rather than advanced by `onStep`, because when it
+   *  changes is the whole subject of the settle cases below (§8). */
+  pageKey?: string;
 }) {
-  const { ref } = useSwipePager<HTMLDivElement>({ canStep, onStep, enabled });
+  const { ref } = useSwipePager<HTMLDivElement>({ canStep, onStep, enabled, pageKey });
   return (
     // `direction` inline rather than via `dir`: jsdom's `getComputedStyle` resolves the
     // style declaration, not the attribute's presentational hint.
@@ -57,6 +61,14 @@ function Host({
 function mount(props: Parameters<typeof Host>[0]) {
   const view = render(<Host {...props} />);
   const host = view.getByTestId('host');
+  /** The page the host draws changes — what `onStep` causes in the app, where the day comes
+   *  back through the router. This is the moment a committed turn is allowed to give the
+   *  offset back (§8). */
+  let drawn = 0;
+  const drawNextPage = () =>
+    act(() => {
+      view.rerender(<Host {...props} pageKey={`page-${++drawn}`} />);
+    });
   // jsdom lays nothing out, and the commit threshold is a SHARE of the surface's width —
   // with a zero rect the hook falls back to `window.innerWidth` and the numbers below
   // would mean something else.
@@ -65,7 +77,7 @@ function mount(props: Parameters<typeof Host>[0]) {
     const stripEl = view.getByTestId('strip');
     fakeScroller(stripEl, [view.getByTestId('chip')], { axis: 'inline', viewport: 40 });
   }
-  return { view, host };
+  return { view, host, drawNextPage };
 }
 
 /** Let the page finish turning. **The step commits here, not at the release** — the exit
@@ -281,16 +293,52 @@ describe('useSwipePager', () => {
     });
   });
 
-  it('drops the follow attributes once the settle is over', () => {
+  // **The offset is owed to the page that arrives, not to the end of the animation** (§8).
+  // Dropping it drops the transform with it, so dropping it early puts the day you LEFT back
+  // at level for as long as the render takes — which is the stutter the owner reported, and
+  // `e2e/day-swipe.spec.ts` is where the no-frame-between claim is asserted against a real
+  // engine. Here it is the contract: held after the settle, released by the page.
+  it('holds the follow attributes after the settle, until the page it turned to is drawn', () => {
     const onStep = vi.fn();
-    const { host } = mount({ onStep });
+    const { host, drawNextPage } = mount({ onStep });
     swipe(host, { dx: COMMIT + 40, settled: false });
-    // `motionDurationMs` answers 0 with no `tokens.css` (every jsdom run), and the removal
+    // `motionDurationMs` answers 0 with no `tokens.css` (every jsdom run), and the commit
     // is still scheduled rather than inline — so it takes a turn of the loop, not zero.
     expect(host.hasAttribute('data-swipe-settling')).toBe(true);
     settle();
+    expect(onStep).toHaveBeenCalledWith(1);
+    expect(host.getAttribute('data-swipe-settling')).toBe('turn');
+    expect(host.hasAttribute('data-swiping')).toBe(true);
+    expect(offset(host)).not.toBe('');
+
+    drawNextPage();
     expect(host.hasAttribute('data-swipe-settling')).toBe(false);
     expect(host.hasAttribute('data-swiping')).toBe(false);
     expect(offset(host)).toBe('');
+  });
+
+  // A refusal has nothing to wait for: no page is arriving, so there is no second state for a
+  // frame to be caught between, and holding the strain until some unrelated render happened
+  // would leave the surface visibly bent.
+  it('drops them at the settle when the swipe was refused', () => {
+    const onStep = vi.fn();
+    const { host } = mount({ onStep, canStep: () => false });
+    swipe(host, { dx: COMMIT + 40 });
+    expect(onStep).not.toHaveBeenCalled();
+    expect(host.hasAttribute('data-swipe-settling')).toBe(false);
+    expect(host.hasAttribute('data-swiping')).toBe(false);
+    expect(offset(host)).toBe('');
+  });
+
+  // A gesture that begins inside the previous one's wait owns the surface, and the reset it
+  // was owed must not fire mid-drag and flatten it.
+  it('a second swipe inside the wait keeps its own follow', () => {
+    const onStep = vi.fn();
+    const { host, drawNextPage } = mount({ onStep });
+    swipe(host, { dx: COMMIT + 40 });
+    swipe(host, { dx: COMMIT + 40, settled: false });
+    drawNextPage();
+    expect(host.hasAttribute('data-swiping')).toBe(true);
+    expect(offset(host)).not.toBe('');
   });
 });

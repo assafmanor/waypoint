@@ -133,6 +133,56 @@ async function boxes(page: Page) {
 const bodyScroll = (page: Page) =>
   page.evaluate(() => document.querySelector('main.body')!.scrollTop);
 
+/** One observation of the surface mid-swap: is the page back at level, is the day it draws the
+ *  one we swiped to, and is the body still scrolled where the last day was. */
+interface SwapState {
+  level: boolean;
+  arrived: boolean;
+  scrolled: boolean;
+}
+
+/**
+ * Log every DOM state the host passes through from here on, one entry per mutation batch.
+ *
+ * Call it with the finger still down: the resting state is `level && !arrived` too, which is
+ * legitimate BEFORE a gesture and is exactly the defect after one, so the log has to start
+ * inside the gesture for the combination to mean anything.
+ */
+async function watchSwap(page: Page) {
+  await page.evaluate(
+    ([sel, marker]) => {
+      const host = document.querySelector(sel)!;
+      const body = document.querySelector('main.body')!;
+      const seen: SwapState[] = [];
+      (window as unknown as { __swap: SwapState[] }).__swap = seen;
+      const look = () => {
+        // The host's OWN page, re-queried each time: `host.textContent` includes the peek panes,
+        // which are drawing tomorrow on purpose, and would report the arrival early.
+        const el = host.querySelector(':scope > .day-page');
+        if (!el) return;
+        // The RENDERED transform rather than the variable: `--swipe-dx` is removed by the reset,
+        // and a page at level looks the same either way. This is the visible fact.
+        const tx = getComputedStyle(el).transform;
+        seen.push({
+          level: tx === 'none' || Math.abs(new DOMMatrixReadOnly(tx).m41) < 1,
+          arrived: (el.textContent ?? '').includes(marker),
+          scrolled: body.scrollTop > 0,
+        });
+      };
+      new MutationObserver(look).observe(host, {
+        attributes: true,
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    },
+    [PAGE, TOMORROW_ONLY] as const,
+  );
+}
+
+const swapLog = (page: Page): Promise<SwapState[]> =>
+  page.evaluate(() => (window as unknown as { __swap: SwapState[] }).__swap);
+
 async function boot(page: Page, mode: 'trip' | 'plan') {
   await bootIntoTrip(page, {
     events: [...EVENTS, TOMORROW_EVENT],
@@ -401,6 +451,82 @@ test.describe('a day surface steps day to day with a swipe', () => {
       .click();
     await expect.poll(() => dayParam(page)).toBe(target);
     await expect.poll(() => bodyScroll(page)).toBe(0);
+  });
+
+  // ── THE SWAP IS ONE PAINT (§8) ────────────────────────────────────────────────────────
+  //
+  // Owner, 2026-08-22: _"after you swipe to the next/last day, there's like a stutter where you
+  // briefly (for a really short time, like a few ms) see the last day"_.
+  //
+  // **Asserted as an ordering, not as a frame.** The tempting probe is a `requestAnimationFrame`
+  // sampler hunting the flash, and it would be the fourth spec in the class `docs/backlog.md`
+  // already names — a timing read competing with the machine that runs it. What actually has to
+  // hold is an order the DOM can be asked about, and a browser cannot paint in the middle of a
+  // task: if the reset and the new day arrive in ONE mutation batch, no frame can exist between
+  // them; if they arrive in two, the first one IS the stutter, at whatever length the machine
+  // gives it. So the log below is a list of DOM states, and the assertion is that a forbidden
+  // combination never appears in it — no tolerance, no sampling rate, nothing to tune.
+  test('the day you left is never drawn at level again (Trip mode)', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    await boot(page, 'trip');
+    await swipeDay(page, cdp, COMMIT_PX, { holdAtEnd: true });
+    await watchSwap(page);
+
+    await touch(cdp, 'touchEnd');
+    await expect.poll(() => dayParam(page)).toBe(TOMORROW);
+
+    const seen = await swapLog(page);
+    // The gesture really was observed — an empty log would pass the assertion below vacuously,
+    // which is the one way this test could report green while seeing nothing at all.
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.filter((s) => s.level && !s.arrived)).toEqual([]);
+  });
+
+  // The other half of the same swap: the day that arrives used to be drawn at the scroll offset
+  // the day you LEFT was reading at, and only then jump to its top — the same stutter on the
+  // other axis, and invisible to the `bodyScroll` assertion above, which polls until it settles
+  // at 0 and so cannot see what it passed through.
+  //
+  // **What this does and does not pin, measured rather than assumed.** It goes red on the
+  // unfixed surface and green on the fixed one. But re-run with §6's landing put back to an
+  // ordinary effect and it still passes — React flushes that effect before the observer's own
+  // microtask, so at this resolution the two phases are indistinguishable. The landing is a
+  // LAYOUT effect because a scroll write is geometry and belongs in the commit that changed the
+  // day, not because this spec can tell: relying on a passive effect landing before the paint
+  // is the same kind of incidental timing the bug above was made of.
+  test('and it never arrives at the scroll offset of the day you left', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    await boot(page, 'trip');
+    await page.evaluate(() => {
+      const body = document.querySelector('main.body')!;
+      body.scrollTop = body.scrollHeight;
+    });
+    await expect.poll(() => bodyScroll(page)).toBeGreaterThan(0);
+
+    await swipeDay(page, cdp, COMMIT_PX, { holdAtEnd: true, from: 'upper' });
+    await watchSwap(page);
+
+    await touch(cdp, 'touchEnd');
+    await expect.poll(() => dayParam(page)).toBe(TOMORROW);
+
+    const seen = await swapLog(page);
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.filter((s) => s.arrived && s.scrolled)).toEqual([]);
+    expect(seen.filter((s) => s.level && !s.arrived)).toEqual([]);
+  });
+
+  test('the Plan builder swaps in one paint too — one hook, two surfaces', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    await boot(page, 'plan');
+    await swipeDay(page, cdp, COMMIT_PX, { holdAtEnd: true });
+    await watchSwap(page);
+
+    await touch(cdp, 'touchEnd');
+    await expect.poll(() => dayParam(page)).toBe(TOMORROW);
+
+    const seen = await swapLog(page);
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.filter((s) => s.level && !s.arrived)).toEqual([]);
   });
 
   // And the strip keeps its own axis, which is what `scrollerWithin` is there for.

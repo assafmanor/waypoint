@@ -2,9 +2,10 @@
 // (ADR-0200), with the refusal at the ends carried by the gesture itself.
 //
 // **It reports `live` so the host can mount the neighbouring pages** (§7). That is the one
-// piece of React state in the whole gesture — two renders, at the claim and at the settle —
-// and everything between them is a CSS custom property, because a state update per
-// `pointermove` would re-render the heaviest screen in the app sixty times a second.
+// piece of React state in the whole gesture — two renders, at the claim and at the arrival of
+// the page it turned to — and everything between them is a CSS custom property, because a
+// state update per `pointermove` would re-render the heaviest screen in the app sixty times a
+// second.
 //
 // **Why this is a third pointer recogniser and not a reuse of either existing one.**
 // `useHoldToDrag` is hold-gated and takes no capture, because a shelf card is a tap
@@ -39,7 +40,7 @@
 // claimed in JS instead, at the press (`scrollerWithin`) and at the first real move
 // (`touchMove`), which is the one place that can tell a bare stretch of day from a strip that
 // owns this axis.
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { SWIPE_PAGER } from '../constants';
 import { armClickSwallow } from './click-swallow';
 import { motionDurationMs } from './motion';
@@ -65,6 +66,17 @@ export interface SwipePagerOptions {
    *  tidiness guard: the drag's ghost is `position: fixed` and this host would become
    *  its containing block the moment we set a transform on it. */
   enabled?: boolean;
+  /**
+   * **Which page is currently drawn** — and the pager's contract is that `onStep` changes it
+   * (§8). The offset belongs to the page it was dragged from, so a finished turn cannot give
+   * it back until the page it turned TO is the one on screen; this is what says when that
+   * happened. Anything stable and comparable: the day surface passes `activeDate`.
+   *
+   * A host whose `onStep` leaves it unchanged leaves the surface a page off level until the
+   * next touch, which re-bases it — recoverable, and the reason there is no timer here
+   * second-guessing the contract.
+   */
+  pageKey: unknown;
 }
 
 /** The attribute the host's CSS keys the follow off (`screens.css`). Set only while a gesture
@@ -96,9 +108,12 @@ const GAP_PROP = '--swipe-page-gap';
 export interface SwipePager<T extends HTMLElement> {
   /** Attach to the host — the box that is measured and that holds the offset variable. */
   ref: RefObject<T | null>;
-  /** A gesture is claimed and has not settled. The host mounts its neighbouring pages on
-   *  this, and only on this: mounted always, they would triple the cost of the day surface
-   *  for a gesture that has not happened. */
+  /** A gesture is claimed and the surface has not been given back yet. The host mounts its
+   *  neighbouring pages on this, and only on this: mounted always, they would triple the cost
+   *  of the day surface for a gesture that has not happened.
+   *
+   *  It outlives the settle by design on a committed turn (§8): the pane that finished the
+   *  turn is what is covering the screen, so it stays until the page it turned to is drawn. */
   live: boolean;
 }
 
@@ -106,6 +121,7 @@ export function useSwipePager<T extends HTMLElement>({
   canStep,
   onStep,
   enabled = true,
+  pageKey,
 }: SwipePagerOptions): SwipePager<T> {
   const host = useRef<T | null>(null);
   const [live, setLive] = useState(false);
@@ -113,24 +129,54 @@ export function useSwipePager<T extends HTMLElement>({
   // once — closing over a stale `canStep` is how the last day of a trip would step.
   const latest = useRef({ canStep, onStep, enabled });
   latest.current = { canStep, onStep, enabled };
+  const settle = useRef(0);
+  /** A turn has been committed and its offset is still owed a reset — held until the page it
+   *  turned to is drawn (see the layout effect below). */
+  const owed = useRef(false);
 
-  useEffect(() => {
+  /** Give the surface back: no offset, no attributes, no panes. Hoisted out of the listener
+   *  effect because a committed turn is undone by a RENDER rather than by the gesture that
+   *  asked for it. */
+  const clear = useCallback(() => {
+    window.clearTimeout(settle.current);
+    owed.current = false;
     const el = host.current;
-    if (!el) return;
-    let settle = 0;
-    // A gesture's `window` listeners outlive the element unless something takes them down:
-    // this surface unmounts on a tab change, and a finger still on the glass would otherwise
-    // keep driving a host that is no longer on screen.
-    let abandon: (() => void) | null = null;
-
-    const clear = () => {
-      window.clearTimeout(settle);
+    if (el) {
       el.removeAttribute(SWIPING_ATTR);
       el.removeAttribute(SETTLING_ATTR);
       el.style.removeProperty(OFFSET_PROP);
       el.style.removeProperty(WIDTH_PROP);
-      setLive(false);
-    };
+    }
+    setLive(false);
+  }, []);
+
+  /**
+   * **The reset lands in the same paint as the page it turned to** (§8, owner: _"there's like a
+   * stutter where you briefly see the last day"_).
+   *
+   * Dropping `data-swiping` drops the only rule that translates the page (`screens.css`), so
+   * the page snaps to level the instant that attribute goes. Doing it beside `onStep` therefore
+   * put the OLD day at level for however long React took to commit the new one — and the
+   * commit cannot be hurried into that task: `BrowserRouter` (react-router 7) wraps its
+   * location update in `startTransition`, which `flushSync` does not flush. Measured, not
+   * reasoned: `flushSync(onStep)` left the probe in `e2e/day-swipe.spec.ts` just as red.
+   *
+   * So the wait is the mechanism rather than the workaround. A **layout** effect keyed on the
+   * page: it runs inside the commit that carries the new day, before the browser has painted
+   * anything, so there is no frame between the two states to shorten — and `setLive(false)`
+   * from in here re-renders before that same paint, which retires the panes in it too.
+   */
+  useLayoutEffect(() => {
+    if (owed.current) clear();
+  }, [pageKey, clear]);
+
+  useEffect(() => {
+    const el = host.current;
+    if (!el) return;
+    // A gesture's `window` listeners outlive the element unless something takes them down:
+    // this surface unmounts on a tab change, and a finger still on the glass would otherwise
+    // keep driving a host that is no longer on screen.
+    let abandon: (() => void) | null = null;
 
     const onPointerDown = (e: PointerEvent) => {
       if (!latest.current.enabled) return;
@@ -253,7 +299,10 @@ export function useSwipePager<T extends HTMLElement>({
           }
           claimed = true;
           el.setPointerCapture?.(ev.pointerId);
-          window.clearTimeout(settle);
+          window.clearTimeout(settle.current);
+          // A second swipe inside the first one's few-ms wait owns the surface now, so the
+          // owed reset is dropped rather than left to fire mid-drag and flatten it.
+          owed.current = false;
           el.removeAttribute(SETTLING_ATTR);
           el.setAttribute(SWIPING_ATTR, '');
           el.style.setProperty(WIDTH_PROP, `${Math.round(width)}px`);
@@ -286,14 +335,23 @@ export function useSwipePager<T extends HTMLElement>({
         // (ADR-0140 §5).
         el.setAttribute(SETTLING_ATTR, commit ? 'turn' : 'back');
         el.style.setProperty(OFFSET_PROP, commit ? `${Math.round(Math.sign(dx) * turn)}px` : '0px');
-        settle = window.setTimeout(
+        settle.current = window.setTimeout(
           () => {
             // **The date changes only now, with the arriving pane covering the screen.** So the
             // swap is a pane leaving and the host arriving at the same offset with the same day
             // drawn by the same components — nothing moves, which is why there is no cross-fade
             // and no keyframe anywhere in this feature.
-            if (commit) latest.current.onStep(step);
-            clear();
+            //
+            // A commit does NOT clear here: the offset is owed back to whichever page is drawn
+            // next, and the layout effect above pays it in that page's own paint (§8). A
+            // refusal clears immediately, because nothing is arriving — there is no second
+            // state to be caught between.
+            if (!commit) {
+              clear();
+              return;
+            }
+            owed.current = true;
+            latest.current.onStep(step);
           },
           motionDurationMs(commit ? '--t-base' : '--t-quick'),
         );
@@ -313,7 +371,7 @@ export function useSwipePager<T extends HTMLElement>({
       abandon?.();
       clear();
     };
-  }, []);
+  }, [clear]);
 
   return { ref: host, live };
 }
