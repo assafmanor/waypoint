@@ -204,3 +204,29 @@ Three things to take from this round rather than from the diff:
 - **Read the report's nouns.** "Stays in the new day" and "stays on the same day" are different bugs, and I fixed the second one twice. The frame-by-frame recording I trusted was of _my_ gesture — out of the band — not of theirs, which was back across it. When a report describes a gesture, replay the gesture, including the part that sounds incidental.
 - **A command log beats a pixel log for questions of intent.** Frames tell you what moved; `turn(-1)` at 7300 tells you the app _decided_ to move, which is the thing that was wrong. Two rounds of this feature were diagnosed from pixels and one of them was diagnosed wrong.
 - **The last two repairs are one class:** the drag's geometry changing without the hand doing anything — the surface sliding under a finger, then a day arriving under one. Every rule that reads a position should ask whether the position was chosen. This ADR now answers that question three times, written at three different moments, which is the tell that it should have been asked once as a principle.
+
+---
+
+## A seventh round: the probe was wrong, not just the code
+
+> _"Merged and still nothing! What have you done?! Do you understand the issue?"_
+
+A fair question after three merged PRs that did not fix what they were aimed at. What broke the loop was not a better hypothesis — it was noticing that **every probe I had written sampled `--swipe-dx`**, which is a transition's destination rather than the picture. It reads `0px` while the compositor is still carrying the page a full page away from there. Four rounds of "measured, clean" were measuring the wrong number.
+
+Sampling the computed transform instead found it immediately:
+
+```
+6229  paint=382  says=יום 4  day=08-23     the day has committed
+6248  paint=347  says=יום 4                …the page is animating BACK
+6271  paint=312  says=יום 5                …now showing the day it arrived at
+```
+
+The mechanism: `hold(null)` writes the offset to 0, and the unwind rule — written to give back a **48px detent** — animates whatever distance it is handed. After a committed turn that distance is a page. So the rule is now "a page is not a detent": a release from further than the detent is the §8 swap, not an unwind.
+
+**What this round is honest about.** The owner's own gesture is _fast, even a little, every time_, and a fast reverse does **not** reproduce this defect — it leaves the band while the turn is still travelling, where the command channel correctly does nothing. I checked that with the fix and without it, on a desktop runner and again throttled 6× to phone speed, across eight variants (both edges, card and row, one day and two). All clean. So this fixes a real full-page reverse that produces exactly the reported words, and it is not established that it is _their_ reverse.
+
+Three process notes, and they are the point of this note:
+
+- **Ask what the instrument measures before trusting a clean result.** A green probe against the wrong property is worse than no probe: it retires a hypothesis that was correct.
+- **A count of transitions and a series of painted values are the honest assertions for a motion.** Both survive a loaded machine; a magnitude at a moment does not, and a variable does not describe the screen at all.
+- **A guard that cannot fail is not a guard.** Reverting the fix and re-running is one command, and it turned an assertion I believed into 4 failures in 6 — which is also how I learned the window is timing-dependent and that the owner's timing sits outside it.

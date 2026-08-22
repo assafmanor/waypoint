@@ -1277,9 +1277,14 @@ test.describe('carrying a card to another day from the surface edge', () => {
     await touch(cdp, 'touchMove', back.x, back.y);
     const at = Date.now();
     await stepsTo(page, null as unknown as string);
-    // Half the dwell plus the turn's own travel, with room for the poll's own granularity —
-    // and comfortably under what a full dwell would have cost.
-    expect(Date.now() - at).toBeLessThan(DRAG_DAY_DWELL_MS);
+    /**
+     * **The bound sits between the two answers, which the first version did not.** A reversal
+     * costs half a dwell plus the turn's travel — ~590ms — where a fresh journey costs the full
+     * dwell plus the same travel, ~940ms. Asserting `< DRAG_DAY_DWELL_MS` put the line 110ms
+     * above the expected value: true alone, eaten by two workers, which is how it failed once in
+     * a group run and passed 3/3 on its own. `+100` leaves ~200ms either side.
+     */
+    expect(Date.now() - at).toBeLessThan(DRAG_DAY_DWELL_MS + 100);
     expect(Date.now() - at).toBeGreaterThan(DRAG_DAY_REVERSE_DWELL_MS - 50);
     await touch(cdp, 'touchEnd');
   });
@@ -1503,6 +1508,96 @@ test.describe('carrying a card to another day from the surface edge', () => {
     await touch(cdp, 'touchMove', box.x + box.width / 2, y);
     await touch(cdp, 'touchMove', back.x, back.y);
     await expect.poll(() => dayParam(page), { timeout: DRAG_DAY_DWELL_MS * 4 }).toBeNull();
+    await touch(cdp, 'touchEnd');
+  });
+
+  // **The page a turn arrived on is handed back in ONE paint, never animated back** (§2d's
+  // sixth repair).
+  //
+  // `hold(null)` writes the offset to 0, and the unwind rule — `--t-quick`/`--ease-exit`,
+  // written for giving back a 48px detent — animated a whole PAGE when the release landed after
+  // a committed turn. Measured on the PAINTED transform: `382 → 372 → 347 → 312 → 268 → 159 → 0`
+  // with the heading flipping to the arriving day partway through, so what you watched was the
+  // day you had just reached sliding backwards into place. Four failures in six runs before the
+  // fix; six of six after.
+  //
+  // **Two things about how this is asserted, both of which cost rounds to learn.** It samples
+  // the PAINT, never `--swipe-dx`: the variable is a transition's destination and reads `0px`
+  // while the picture is still a page away, which is why four earlier probes reported clean.
+  // And the reverse here is a slow glide, because the window is the gap between the commit and
+  // React drawing the arriving day — a fast flick leaves the band while the turn is still
+  // travelling, where `hold` correctly does nothing (measured: that variant passes with the fix
+  // and without it, on a desktop runner and throttled 6x). The owner's own gesture is the fast
+  // one, so **this case is not proof that their report is answered** — it is proof of one defect
+  // that produced their words.
+  test('the page a turn arrived on is handed back, not animated back', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const host = page.locator('.day-swipe:not([data-preview])');
+    const bands = await bodyBands(page);
+    const box = await boxOf(page, '.day-swipe:not([data-preview])');
+    const y = (bands.middleFrom + bands.middleTo) / 2;
+    const edge = { x: box.x + Math.round(DRAG_DAY_EDGE_PX / 4), y };
+    const middle = box.x + box.width / 2;
+    // Measured last: the two above move the page, and a coordinate captured before them lands
+    // on nothing by the time the touch is dispatched.
+    const card = await centre(page, '.wp-maybecard');
+
+    await page.evaluate(() => {
+      const w = window as unknown as { __runs: number; __paint: string[]; __watch: () => void };
+      w.__watch = () => {
+        w.__runs = 0;
+        w.__paint = [];
+        const el = document.querySelector('.day-swipe:not([data-preview])') as HTMLElement;
+        document.addEventListener('transitionrun', (ev) => {
+          if ((ev.target as HTMLElement).classList?.contains('day-page')) w.__runs++;
+        });
+        setInterval(() => {
+          const pg = el.querySelector(':scope > .day-page') as HTMLElement;
+          if (!pg) return;
+          w.__paint.push(
+            `${Math.round(new DOMMatrixReadOnly(getComputedStyle(pg).transform).m41)}@${new URL(location.href).searchParams.get('day') ?? 'today'}`,
+          );
+        }, 16);
+      };
+    });
+
+    // Armed before the gesture, so the count is the whole motion: the lift, then the turn.
+    await page.evaluate(() => (window as unknown as { __watch: () => void }).__watch());
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const steps = Math.round((card.x - edge.x) / 8);
+    for (let i = 1; i <= steps; i++) {
+      await touch(cdp, 'touchMove', card.x + ((edge.x - card.x) * i) / steps, y);
+      await page.waitForTimeout(8);
+    }
+    await expect
+      .poll(() => host.getAttribute('data-swipe-settling'), {
+        timeout: DRAG_DAY_DWELL_MS * 4,
+        intervals: [8],
+      })
+      .toBe('turn');
+    const back = Math.round((middle - edge.x) / 8);
+    for (let i = 1; i <= back; i++) {
+      await touch(cdp, 'touchMove', edge.x + ((middle - edge.x) * i) / back, y);
+      await page.waitForTimeout(8);
+    }
+    await stepsTo(page, TOMORROW);
+    await page.waitForTimeout(400);
+
+    const [runs, paint] = await page.evaluate(() => [
+      (window as unknown as { __runs: number }).__runs,
+      (window as unknown as { __paint: string[] }).__paint,
+    ]);
+    // The lift on the way in, and the turn. A third is the reverse slide this case forbids.
+    expect(runs, 'the lift and the turn, and nothing else').toBe(2);
+    const arrived = paint.findIndex((f) => f.endsWith(TOMORROW));
+    expect(arrived, 'the day never arrived').toBeGreaterThan(-1);
+    const between = paint
+      .slice(arrived)
+      .map((f) => Math.abs(Number(f.split('@')[0])))
+      .filter((px) => px > 40 && px < 340);
+    expect(between, `the page was painted mid-way back: ${between.join(',')}`).toEqual([]);
+    expect(dayParam(page)).toBe(TOMORROW);
     await touch(cdp, 'touchEnd');
   });
 

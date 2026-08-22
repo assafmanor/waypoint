@@ -334,6 +334,17 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   the state, so an intervening reset correctly reads as "not held" — and **a committed
   animation is not interruptible by a repeat of the command that started it**, only by a
   command that means something different.
+- **Sampling the CSS variable a transition is driving, and calling it the picture.** A custom
+  property is the transition's **destination**: `--swipe-dx` reads `0px` the instant it is
+  written, while the compositor is still carrying the element a page away from there. ADR-0116
+  §2d cost **four rounds** to this — every probe reported the offset clean while the screen
+  showed a whole page sliding backwards, because the offset _was_ clean and the paint was not.
+  Sample `new DOMMatrixReadOnly(getComputedStyle(el).transform).m41`, and sample it beside the
+  state it belongs to (which day the page draws, which attributes the host carries) — a position
+  without its meaning is what let a reverse slide read as correct. Corollary for e2e: assert a
+  **count of transitions** and the **painted values**, never the variable; and if a case is
+  about what the eye sees, a `transitionrun` listener plus a 16ms sampler is the instrument, not
+  `expect.poll` on a style property.
 - **Reading a rect and calling it visibility.** An ancestor's `overflow: hidden` clips what
   paints and changes **no rect at all**, so a geometry harness reports every number healthy
   while the element is a sliver. It happened here twice in one evening: the Map card's own

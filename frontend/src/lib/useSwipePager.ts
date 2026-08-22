@@ -192,6 +192,21 @@ export function useSwipePager<T extends HTMLElement>({
    * it again on every day means owing it back on every exit.
    */
   const held = useRef(false);
+  /**
+   * **The offset this pager last wrote, and the detent it parked at** (ADR-0116 §2d's sixth
+   * repair). Together they answer one question at release time: is there a LIFT to give back,
+   * or is the surface a whole page from level?
+   *
+   * The distinction is the owner's bug, and it took four rounds to find because every probe
+   * read `--swipe-dx` rather than the painted transform — and the variable is already 0 while
+   * the paint is still 382px away. Measured through the commit: the day changes, `hold(null)`
+   * writes `0px`, and the unwind rule — `--t-quick`/`--ease-exit`, written for giving back
+   * 48px — animates the whole page instead. What you see is the day you just arrived at
+   * sliding a full page backwards into place: _"a full animation of going back, but stays in
+   * the new day"_.
+   */
+  const written = useRef(0);
+  const detent = useRef(0);
 
   /** The host's own geometry, measured on demand. A gesture measures it once at the press;
    *  a COMMAND has no press, so the same three numbers are read here. `direction` off the
@@ -257,6 +272,8 @@ export function useSwipePager<T extends HTMLElement>({
     owed.current = false;
     turning.current = false;
     held.current = false;
+    written.current = 0;
+    detent.current = 0;
     const el = host.current;
     if (el) {
       el.removeAttribute(SWIPING_ATTR);
@@ -284,6 +301,14 @@ export function useSwipePager<T extends HTMLElement>({
         // rather than kept claimed.
         held.current = false;
         if (turning.current) return;
+        // **A page is not a detent, and only a detent is worth animating back.** With nothing
+        // parked, the offset belongs to a turn that has already arrived: giving it back is the
+        // §8 swap — the pane at level becomes the host at level, in one paint, invisibly — and
+        // animating it instead plays the day that just arrived sliding backwards into place.
+        if (Math.abs(written.current) > detent.current) {
+          clear();
+          return;
+        }
         stopWaiting();
         owed.current = false;
         // Not `clear()`: the offset goes to zero and the surface unwinds under the destination
@@ -294,6 +319,8 @@ export function useSwipePager<T extends HTMLElement>({
         el.removeAttribute(SETTLING_ATTR);
         el.removeAttribute(REBASE_ATTR);
         el.style.setProperty(OFFSET_PROP, '0px');
+        written.current = 0;
+        detent.current = 0;
         waitOut(motionDurationMs('--t-quick'), clear);
         return;
       }
@@ -307,6 +334,12 @@ export function useSwipePager<T extends HTMLElement>({
       // is asked rather than a second copy of this state kept, so a `clear()` in between (the
       // arriving page's own reset) correctly reads as "not held" and lifts again.
       if (el.hasAttribute(LIFT_ATTR) && el.style.getPropertyValue(OFFSET_PROP) === dx) return;
+      // **The other arm of the same rule** (§2d's sixth repair). If the offset we are leaving is
+      // a turn's rather than a detent's, the page underneath has already been swapped: give it
+      // back in THIS paint before parking, or parking animates a whole page backwards on the
+      // detent's own curve. `clear()` here costs nothing visible — that is the §8 swap — and the
+      // park below then animates from level, which is what a lift is.
+      if (Math.abs(written.current) > detent.current) clear();
       stopWaiting();
       owed.current = false;
       el.removeAttribute(SETTLING_ATTR);
@@ -315,6 +348,8 @@ export function useSwipePager<T extends HTMLElement>({
       el.setAttribute(LIFT_ATTR, '');
       el.style.setProperty(WIDTH_PROP, `${Math.round(g.width)}px`);
       el.style.setProperty(OFFSET_PROP, dx);
+      written.current = Math.round(g.dirFor(step) * px);
+      detent.current = Math.abs(Math.round(px));
       setLive(true);
     },
     [clear, geometry],
@@ -343,6 +378,10 @@ export function useSwipePager<T extends HTMLElement>({
       el.setAttribute(SETTLING_ATTR, 'turn');
       el.style.setProperty(WIDTH_PROP, `${Math.round(g.width)}px`);
       el.style.setProperty(OFFSET_PROP, `${Math.round(g.dirFor(step) * g.turn)}px`);
+      // A turn is travelling, so nothing is parked any more: from here the offset is a page's
+      // worth and its release is a swap rather than an unwind.
+      written.current = Math.round(g.dirFor(step) * g.turn);
+      detent.current = 0;
       setLive(true);
       // On the rendering clock, like every other wait here: the step must not commit before the
       // travel it is waiting for has actually finished painting.
@@ -386,6 +425,9 @@ export function useSwipePager<T extends HTMLElement>({
       el.setAttribute(LIFT_ATTR, '');
       el.removeAttribute(SETTLING_ATTR);
       el.style.setProperty(OFFSET_PROP, '0px');
+      // The paint is level from here, so the offset this pager is holding is level too — say so,
+      // or the next release reads "a page away" and gives back a surface that is already level.
+      written.current = 0;
       // The suppression lasts exactly the frame it is needed for. Removed on the next one, so
       // the detent's own transition is back in place before anything asks it to move — and the
       // edge's re-commanded lift in between writes the value already there, which its own
@@ -595,7 +637,8 @@ export function useSwipePager<T extends HTMLElement>({
           }
           claim(dx);
         }
-        el.style.setProperty(OFFSET_PROP, `${Math.round(offsetFor(dx - origin))}px`);
+        written.current = Math.round(offsetFor(dx - origin));
+        el.style.setProperty(OFFSET_PROP, `${written.current}px`);
       };
 
       const end = (ev: PointerEvent) => {
