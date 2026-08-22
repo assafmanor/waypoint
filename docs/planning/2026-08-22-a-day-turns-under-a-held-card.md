@@ -43,3 +43,17 @@ Worth noting how it surfaced: not by reading the code again, but because the moc
 ## What is still open
 
 Whether the 36px band wants any mark of its own. After §1 the question changes shape — the arriving neighbour _is_ the mark — but only a phone can say whether a first-time user finds the band at all. Same pass owns `DRAG_DAY_EDGE_PX` (36) and how much of tomorrow should show (16 · 24 · 32 · 44px, shipped at 24 as a recommendation and wired as a control).
+
+---
+
+## Built the same day, and the build found three things the drawing could not
+
+The owner approved the drawing (_"approved, let's build this"_) and it shipped as drawn. Every surprise came from one fact the mockup could not model, because a mockup has no second component instance: **the peeks now mount during a drag, so a whole day screen exists three times over while one is in flight.** §7 only ever mounted them during a _swipe_, when no drag is running.
+
+1. **A global side effect in a component-scoped teardown now has three owners.** `useSelectionGuard`'s `release` removes `body.wp-dragging` and runs from an unmount cleanup — so a preview pane going away took the class the _real_ drag was using, and the lean's stylesheet keys off exactly that class. The probe read it present at the arm and **gone one move later**. Both that hook and `useSpringLoadedDay` now stand down inside a preview, which is `state/day-preview.tsx`'s existing rule reaching two more places. The second guard matters independently: without it every mounted pane arms a dwell of its own against the shared `overDate`.
+2. **`:not([data-preview])` on an ancestor does not exclude preview descendants.** The panes live _inside_ the non-preview host, so `closest('.day-swipe:not([data-preview])')` succeeds from a pane. A `[data-shelf-drop="pool"]` query matched three strips; `.first()` resolved to the pane parked off the far edge, and the finger it placed there walked the day back to the trip's first day. `:not(.day-peek *)` is the scope that holds. This is §7's own warning, one level sharper — and it cost two specs that looked green.
+3. **The mount condition is `live || leaning`.** The pager's `live` cannot serve, because the pager stands down for a drag by design — its flag is false in exactly the case that needs a pane to animate. That one line is the whole reason the shipped step was silent.
+
+And a test-shaped trap worth keeping: **an unregistered custom property computes to its token stream**, so `--peek-lean` reads back as `calc(24px + 24px)`, `parseFloat` gives `NaN`, and a `|| 0` turns the assertion into `0 === 0`. Resolving it through a probe element's `width` makes it a number the browser computed rather than one the spec parsed — and unlike reading the transform mid-transition, it needs no timing at all.
+
+**What the build asserts:** the pane exists (the half that was missing), the host names it, its target equals gutter + reveal read from the stylesheet, the transition is the dwell and `linear`, the day still commits, and leaving the band stops the lean without turning the day. Nothing samples a frame.

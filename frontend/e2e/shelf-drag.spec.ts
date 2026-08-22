@@ -1132,6 +1132,88 @@ test.describe('carrying a card to another day from the surface edge', () => {
     await touch(cdp, 'touchEnd');
   });
 
+  // **THE LEAN (ADR-0116 §2c).** The step used to happen in silence: the pager stands down for
+  // a drag, so nothing was drawn to animate. Two assertions, and neither samples a frame — the
+  // magnitude of a 700ms motion read at an arbitrary moment is the flake class
+  // `docs/backlog.md` already tracks three of.
+  test('the day being turned to is drawn, and leans in', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+    const host = page.locator('.day-swipe:not([data-preview])');
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    // Nothing is drawn until the edge names a day: two extra day surfaces are not a resting
+    // cost of picking a card up.
+    expect(await page.locator('.day-peek').count()).toBe(0);
+
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+
+    // ① The pane EXISTS, which is the half that was missing, and the host names it.
+    await expect(host).toHaveAttribute('data-edge-lean', 'next');
+    await expect(page.locator('.day-peek[data-day="next"]')).toHaveCount(1);
+
+    // ② Its target is a style fact, not a sampled position: gutter + reveal, both read from
+    // the stylesheet, so moving either cannot leave this asserting the old distance.
+    const aim = await page.evaluate(() => {
+      const pane = document.querySelector('.day-peek[data-day="next"]');
+      const cs = getComputedStyle(pane);
+      const host = document.querySelector('.day-swipe:not([data-preview])');
+      // **An unregistered custom property computes to its TOKEN STREAM, not to a length.**
+      // `--peek-lean` reads back as `calc(24px + 24px)`, so `parseFloat` gives NaN and a
+      // `|| 0` turns the whole assertion into `0 === 0`. Resolving it through a probe's
+      // `width` is what makes this a number the browser computed rather than one this spec
+      // parsed — and it needs no timing, unlike reading the transform mid-transition.
+      const resolve = (el, expr) => {
+        const probe = document.createElement('div');
+        probe.style.cssText = `position:absolute;visibility:hidden;width:${expr}`;
+        el.appendChild(probe);
+        const px = parseFloat(getComputedStyle(probe).width) || 0;
+        probe.remove();
+        return px;
+      };
+      return {
+        lean: resolve(pane, 'var(--peek-lean)'),
+        want: resolve(host, 'calc(var(--swipe-page-gap) + var(--edge-reveal))'),
+        dwell: cs.transitionDuration,
+        easing: cs.transitionTimingFunction,
+      };
+    });
+    expect(aim.lean).toBe(aim.want);
+    expect(aim.lean).toBeGreaterThan(0);
+    // The dwell drives the transition, so the motion cannot finish at a different time than
+    // the day changes.
+    expect(aim.dwell).toBe(`${DRAG_DAY_DWELL_MS / 1000}s`);
+    expect(aim.easing).toBe('linear');
+
+    // And it still commits, which is what the lean was counting down to.
+    await expect.poll(() => dayParam(page), { timeout: DRAG_DAY_DWELL_MS * 4 }).toBe(TOMORROW);
+    await touch(cdp, 'touchEnd');
+  });
+
+  test('and it stops leaning the moment the edge stops naming a day', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+    const host = page.locator('.day-swipe:not([data-preview])');
+    const bands = await bodyBands(page);
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await expect(host).toHaveAttribute('data-edge-lean', 'next');
+
+    // Out of the band well before the dwell elapses: the day must not turn, and the pane must
+    // stop being aimed at it.
+    const box = await boxOf(page, '.day-swipe:not([data-preview])');
+    await touch(cdp, 'touchMove', box.x + box.width / 2, (bands.middleFrom + bands.middleTo) / 2);
+    await expect(host).not.toHaveAttribute('data-edge-lean', 'next');
+    await page.waitForTimeout(DRAG_DAY_DWELL_MS * 2);
+    expect(dayParam(page)).toBeNull();
+    await touch(cdp, 'touchEnd');
+  });
+
   // **A ROW, whose own element is what the day switch unmounts.** The card case above proves
   // the gesture; this proves the trap ADR-0116 §2 lists first — with `setPointerCapture` the
   // browser releases capture when the captured element goes away, so a drag that held one
@@ -1150,11 +1232,24 @@ test.describe('carrying a card to another day from the surface edge', () => {
     await expect.poll(() => dayParam(page), { timeout: DRAG_DAY_DWELL_MS * 4 }).toBe(TOMORROW);
 
     // The row it came off no longer exists — tomorrow has none — and the drag is still live.
-    await expect(page.locator('[data-event]')).toHaveCount(0);
+    // **Scoped to the surface you are ON**, because §2c's lean mounts the peeks during a drag
+    // and every row class then exists three times over (ADR-0200 §7's own warning, which this
+    // assertion walked straight into: it counted tomorrow's rows inside a peek pane).
+    await expect(
+      page.locator('.day-swipe:not([data-preview]) > .day-page [data-event]'),
+    ).toHaveCount(0);
     await expect(ghost, 'the drag survived the day it was lifted from').toBeVisible();
 
     // And it can still be put down on the day it was carried to.
-    await holdOver(cdp, page, '[data-shelf-drop="pool"]');
+    //
+    // **Scoped with `:not(.day-peek *)`, and the obvious scope does not work.** A live lean
+    // mounts the peeks, so `[data-shelf-drop="pool"]` matches three strips — and
+    // `.day-swipe:not([data-preview]) …` matches all three too, because every pane lives
+    // INSIDE the non-preview host, so `closest` finds it from a pane as readily as from the
+    // real strip. Measured: `.first()` resolved to the pane parked off the far edge, which
+    // put the finger deep in the opposite band and walked the day back to the trip's first
+    // day (2026-08-19). Excluding by peek ancestry is the only scope that holds.
+    await holdOver(cdp, page, '[data-shelf-drop="pool"]:not(.day-peek *)');
     await touch(cdp, 'touchEnd');
     // By its title, not by a count: this describe seeds the pool, so the row parks BESIDE
     // three ideas that were always there.

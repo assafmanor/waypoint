@@ -11,6 +11,7 @@
 // pills would simply never light up. `elementFromPoint` is the only thing that knows.
 import { useEffect, useRef } from 'react';
 import { DRAG_DAY_DWELL_MS } from '../constants';
+import { useIsDayPreview } from '../state/day-preview';
 
 /**
  * @param overDate  the day pill under the pointer, or null
@@ -27,12 +28,18 @@ export function useSpringLoadedDay(
   // would restart the dwell on every tick.
   const cb = useRef(onSwitch);
   cb.current = onSwitch;
+  // A pane is a day surface too, and switching the day is the loudest possible way to reach
+  // out of one (ADR-0116 §2c). Its `activeDate` differs from the drag's target by definition,
+  // so without this every mounted peek arms a dwell of its own against the shared
+  // `overDate` — three timers for one gesture, latent until §2c mounted the panes mid-drag.
+  const preview = useIsDayPreview();
 
   useEffect(() => {
+    if (preview) return;
     if (!overDate || overDate === activeDate) return;
     const id = setTimeout(() => cb.current(overDate), DRAG_DAY_DWELL_MS);
     // Moving off the pill (or ending the drag) changes `overDate`, and the cleanup is
     // what makes "merely passed over" a no-op.
     return () => clearTimeout(id);
-  }, [overDate, activeDate]);
+  }, [overDate, activeDate, preview]);
 }

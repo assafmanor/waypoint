@@ -17,7 +17,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { act, cleanup, render } from '@testing-library/react';
 import { useRef, type ReactNode } from 'react';
-import { DRAG_DAY_EDGE_PX, DRAG_EDGE_SCROLL_RELEASE_PX } from '../constants';
+import { DRAG_DAY_DWELL_MS, DRAG_DAY_EDGE_PX, DRAG_EDGE_SCROLL_RELEASE_PX } from '../constants';
 import { useEdgeDayStep, type DayNeighbours, type EdgeDayStep } from './useEdgeDayStep';
 
 const WIDTH = 360;
@@ -75,9 +75,11 @@ function mount(neighbours: DayNeighbours, rtl = true) {
         ),
       ),
     arm: (x: number) => act(() => api!.arm(at(x))),
+    host: () => view.container.firstElementChild as HTMLElement,
     track: (x: number) => act(() => api!.track(at(x))),
     stop: () => act(() => api!.stop()),
     date: () => api!.date,
+    leaning: () => api!.leaning,
     redraw: (next: DayNeighbours) =>
       act(() => {
         view.rerender(
@@ -91,6 +93,9 @@ function mount(neighbours: DayNeighbours, rtl = true) {
       }),
   };
 }
+
+/** The peeks mount on this, so it is worth asserting that it cannot drift from `date`. */
+const api_leaning = (h: { date: () => string | null; leaning: () => boolean }) => h.leaning();
 
 const PREV = '2026-08-21';
 const NEXT = '2026-08-23';
@@ -186,6 +191,59 @@ describe('useEdgeDayStep', () => {
     // The dwell fired and the day is now NEXT, so the neighbours have shifted a day along.
     h.redraw({ prev: '2026-08-22', next: '2026-08-24' });
     expect(h.date()).toBe('2026-08-24');
+  });
+
+  // ── WHAT THE LEAN'S CSS IS GIVEN (§2c) ───────────────────────────────────────────────
+  //
+  // The hook decides WHICH day and paints the three things `screens.css` needs; the motion
+  // itself is the stylesheet's and is asserted where it can be seen (`e2e/shelf-drag.spec.ts`).
+  // The division is `useSwipePager`'s: an attribute plus numbers, never a transform.
+  it('names the leaning neighbour on the host, and publishes the dwell', () => {
+    const h = mount(BOTH);
+    h.settle();
+    h.arm(MIDDLE);
+    h.track(AT_LOW);
+    expect(h.host().getAttribute('data-edge-lean')).toBe('next');
+    // The dwell comes from the constant, so the transition and the timer cannot disagree
+    // about when the day changes.
+    expect(h.host().style.getPropertyValue('--swipe-dwell')).toBe(`${DRAG_DAY_DWELL_MS}ms`);
+    // Republished here because the pager only writes it when a SWIPE claims, and a drag
+    // never claims one — without it the pane's whole transform resolves against 0.
+    expect(h.host().style.getPropertyValue('--swipe-page-w')).toBe(`${WIDTH}px`);
+
+    h.track(AT_HIGH);
+    expect(h.host().getAttribute('data-edge-lean')).toBe('prev');
+  });
+
+  it('drops the name when the edge stops naming a day, and keeps the parked distance', () => {
+    const h = mount(BOTH);
+    h.settle();
+    h.arm(MIDDLE);
+    h.track(AT_LOW);
+    h.track(MIDDLE);
+    expect(h.host().hasAttribute('data-edge-lean')).toBe(false);
+    // The pane is mid-unwind: taking `--swipe-page-w` away here would remove the distance it
+    // is settling FROM, and it would snap instead.
+    expect(h.host().style.getPropertyValue('--swipe-page-w')).toBe(`${WIDTH}px`);
+  });
+
+  it('names nothing at the trip end, so nothing leans', () => {
+    const h = mount({ prev: PREV, next: null });
+    h.settle();
+    h.arm(MIDDLE);
+    h.track(AT_LOW);
+    expect(h.host().hasAttribute('data-edge-lean')).toBe(false);
+  });
+
+  it('says it is leaning exactly when it names a day', () => {
+    const h = mount(BOTH);
+    h.settle();
+    h.arm(MIDDLE);
+    expect(api_leaning(h)).toBe(false);
+    h.track(AT_LOW);
+    expect(api_leaning(h)).toBe(true);
+    h.track(MIDDLE);
+    expect(api_leaning(h)).toBe(false);
   });
 
   it('forgets the drag when it ends', () => {

@@ -1041,7 +1041,10 @@ export function PlanDay() {
           screen, one day over, inert — so what the page turn lands on is what the committed
           day draws, and the seam needs no cross-fade. `preview` stops the recursion at depth
           one: a peek renders no peeks of its own. */}
-      {!preview && daySurface.live && (
+      {/* The peeks mount for a SWIPE or for an edge lean (ADR-0116 §2c). The pager stands
+          down for a drag by design, so its `live` is false exactly when the lean needs a pane
+          to animate — which is why the shipped step was silent. */}
+      {!preview && (daySurface.live || edgeDay.leaning) && (
         <DayPeeks prev={daySurface.peek.prev} next={daySurface.peek.next}>
           <PlanDay />
         </DayPeeks>
