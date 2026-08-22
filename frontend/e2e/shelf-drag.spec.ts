@@ -28,6 +28,8 @@ import { test, expect, type Page, type CDPSession } from '@playwright/test';
 import { bootIntoTrip, shortLiveTripDates, todayAt } from './boot';
 import { dispatchTouch } from './touch';
 import {
+  DRAG_DAY_DWELL_MS,
+  DRAG_DAY_EDGE_PX,
   DRAG_EDGE_SCROLL_RELEASE_PX,
   DRAG_EDGE_SCROLL_ZONE_PX,
   DRAG_GHOST_LIFT_PX,
@@ -41,6 +43,10 @@ test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 660 }
 
 const TODAY = new Date().toISOString().slice(0, 10); // trip timezone is UTC
 const TOMORROW = new Date(Date.parse(`${TODAY}T00:00:00.000Z`) + 86_400_000)
+  .toISOString()
+  .slice(0, 10);
+/** The day the surface's TRAILING edge names in RTL — the other half of the mirror. */
+const YESTERDAY = new Date(Date.parse(`${TODAY}T00:00:00.000Z`) - 86_400_000)
   .toISOString()
   .slice(0, 10);
 
@@ -1073,6 +1079,148 @@ test.describe('a second gesture on the same element', () => {
     await expect.poll(() => scrollTop(page), { timeout: 3000 }).toBeLessThan(before);
     await expect(page.locator('.wp-dragghost')).toBeVisible();
 
+    await touch(cdp, 'touchEnd');
+  });
+});
+
+// ── THE EDGE THAT NAMES ANOTHER DAY (ADR-0116 §2's 2026-08-22 amendment) ─────────────────
+//
+// Owner: _"you could drag from the edge to a different day."_ The unit suite owns which day an
+// edge means (`src/lib/useEdgeDayStep.test.tsx`) — the mirror, the latch, the trip's ends. What
+// only an engine can answer is whether the thing works as a GESTURE: a real finger, the real
+// hit-test, the real dwell, and a card that is still being dragged afterwards.
+test.describe('carrying a card to another day from the surface edge', () => {
+  test.beforeEach(({ page }) => bootBuilder(page, { events: EVENTS, maybeItems: IDEAS }));
+
+  /** Inside the inline band, at a height clear of both vertical bands so the auto-scroll is
+   *  not also running — one gesture, one thing being asserted. */
+  async function edgeOf(page: Page, side: 'left' | 'right') {
+    const box = await boxOf(page, '.day-swipe:not([data-preview])');
+    const bands = await bodyBands(page);
+    const inset = Math.round(DRAG_DAY_EDGE_PX / 4);
+    return {
+      x: side === 'left' ? box.x + inset : box.x + box.width - inset,
+      y: (bands.middleFrom + bands.middleTo) / 2,
+    };
+  }
+
+  test('holding at the edge steps the day, and keeps stepping', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+    expect(dayParam(page)).toBeNull();
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+
+    // In RTL the next day lies to the LEFT — the side its peek pane sits on — so dragging a
+    // card that way is dragging it toward tomorrow.
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await expect.poll(() => dayParam(page), { timeout: DRAG_DAY_DWELL_MS * 4 }).toBe(TOMORROW);
+
+    // **And the card is still in hand.** A day switch unmounts most of the screen; the whole
+    // point of arriving there mid-drag is that you can now drop on this day's own targets.
+    await expect(page.locator('.wp-dragghost')).toBeVisible();
+
+    // Held, not re-moved: the finger has not travelled since the last `touchMove`, so the
+    // second step can only come from the neighbours having shifted under it.
+    const dayAfter = new Date(Date.parse(`${TOMORROW}T00:00:00.000Z`) + 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    await expect.poll(() => dayParam(page), { timeout: DRAG_DAY_DWELL_MS * 4 }).toBe(dayAfter);
+
+    await touch(cdp, 'touchEnd');
+  });
+
+  // **A ROW, whose own element is what the day switch unmounts.** The card case above proves
+  // the gesture; this proves the trap ADR-0116 §2 lists first — with `setPointerCapture` the
+  // browser releases capture when the captured element goes away, so a drag that held one
+  // would freeze mid-air. The edge reaches the same dwell from a different side of the screen,
+  // so it inherits that answer rather than needing its own; asserted because "inherits" is a
+  // claim about code, and the ghost outliving its source is a fact about the screen.
+  test('a ROW carried to the edge survives the day it is dragged out of', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const row = await centre(page, '[data-event]');
+    const ghost = page.locator('.wp-dragghost');
+
+    await touch(cdp, 'touchStart', row.x, row.y);
+    await expect(page.locator('.bld.dragging')).toBeVisible();
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await expect.poll(() => dayParam(page), { timeout: DRAG_DAY_DWELL_MS * 4 }).toBe(TOMORROW);
+
+    // The row it came off no longer exists — tomorrow has none — and the drag is still live.
+    await expect(page.locator('[data-event]')).toHaveCount(0);
+    await expect(ghost, 'the drag survived the day it was lifted from').toBeVisible();
+
+    // And it can still be put down on the day it was carried to.
+    await holdOver(cdp, page, '[data-shelf-drop="pool"]');
+    await touch(cdp, 'touchEnd');
+    // By its title, not by a count: this describe seeds the pool, so the row parks BESIDE
+    // three ideas that were always there.
+    await expect(
+      page.locator(`[data-shelf-drop="pool"] .wp-maybecard`).filter({ hasText: 'בוקר' }),
+    ).toHaveCount(1);
+    expect(dayParam(page)).toBe(TOMORROW);
+  });
+
+  // ADR-0116 §2's asymmetry, which the edge inherits by feeding the same dwell: the day switch
+  // is scaffolding for the drag, so a gesture that resolves to nothing takes it back.
+  test('a drag that comes to nothing puts the day back', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await expect.poll(() => dayParam(page), { timeout: DRAG_DAY_DWELL_MS * 4 }).toBe(TOMORROW);
+
+    // Released over the edge, which accepts nothing: the edge NAVIGATES and is deliberately
+    // not a drop target (a gap chip's own last 36px lie inside the band, and `overDate` is
+    // read before the chip — see `PlanDay`).
+    await touch(cdp, 'touchEnd');
+    await expect.poll(() => dayParam(page)).toBeNull();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+
+  // The latch, in the engine: a card whose own box reaches into a band must not set the days
+  // running before the finger has asked. Vertically this was "you pressed, held, and the list
+  // took off"; here it would be a day flipping under a stationary finger.
+  //
+  // **The lift point is measured, and the premise is asserted rather than assumed.** A first
+  // attempt lifted 9px from the CARD's leading edge on the theory that this was near the
+  // screen's — and in RTL the first pool card sits at x 234-374, so that point was 100px clear
+  // of any band and the "does not step" half passed for no reason at all. The card's TRAILING
+  // edge is the one flush with the surface's, and an event row spans the whole width, so a
+  // drag lifted inside a band is the ordinary case rather than a contrived one.
+  test('a card lifted inside the band does not step until the drag asks', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const host = await boxOf(page, '.day-swipe:not([data-preview])');
+    const card = await boxOf(page, '.wp-maybecard');
+    const bands = await bodyBands(page);
+    const midY = (bands.middleFrom + bands.middleTo) / 2;
+    // Inside the trailing band with room left to push deeper than the release distance.
+    const lift = {
+      x: host.x + host.width - DRAG_EDGE_SCROLL_RELEASE_PX - 4,
+      y: card.y + card.height / 2,
+    };
+    expect(host.x + host.width - lift.x).toBeLessThan(DRAG_DAY_EDGE_PX);
+    expect(lift.x).toBeGreaterThan(card.x);
+
+    await touch(cdp, 'touchStart', lift.x, lift.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    // Carried down to the middle of the scroller without leaving the band, and held there for
+    // twice the dwell: the day must not move.
+    await touch(cdp, 'touchMove', lift.x, midY);
+    await page.waitForTimeout(DRAG_DAY_DWELL_MS * 2);
+    expect(dayParam(page)).toBeNull();
+
+    // Now it asks — by pushing deeper into the same band than it was lifted at. The trailing
+    // edge is the PREVIOUS day in RTL, which is the other half of the mirror this file's
+    // sibling unit test pins.
+    await touch(cdp, 'touchMove', lift.x + DRAG_EDGE_SCROLL_RELEASE_PX, midY);
+    await expect.poll(() => dayParam(page), { timeout: DRAG_DAY_DWELL_MS * 4 }).toBe(YESTERDAY);
     await touch(cdp, 'touchEnd');
   });
 });
