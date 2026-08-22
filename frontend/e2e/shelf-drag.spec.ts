@@ -1209,10 +1209,16 @@ test.describe('carrying a card to another day from the surface edge', () => {
     await touch(cdp, 'touchEnd');
   });
 
-  // The other half of that asymmetry, and the reason the guard above is not "ignore every
-  // command": leaving the band DOES take a committed turn back, because a day arriving after
-  // the card has been put down moves the surface out from under the drop.
-  test('but leaving the band inside the turn takes the day back', async ({ page }) => {
+  // **Leaving the band inside the turn lets it FINISH** (§2d's fourth repair; owner: _"dragging
+  // to another day and then backing away still does this weird 'going back' animation, but stays
+  // on the same day, and it comes across as super confusing"_).
+  //
+  // It used to rewind, and the recording is why that reads as it does: sampled every frame, the
+  // page went from 247px back to 0 over ~160ms — over half a page of reverse travel, both peeks
+  // moving with it, ending on the day it started on. The dwell had already fired and the page was
+  // most of the way there, so finishing is both shorter and truer. What the withdrawal decides is
+  // where it LANDS: nothing is holding the surface, so it is given back rather than kept claimed.
+  test('leaving the band inside the turn lets the turn finish', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
     const card = await centre(page, '.wp-maybecard');
     const host = page.locator('.day-swipe:not([data-preview])');
@@ -1235,12 +1241,22 @@ test.describe('carrying a card to another day from the surface edge', () => {
         intervals: [20],
       })
       .toBe('turn');
+    const travelling = parseFloat(
+      await host.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--swipe-dx')),
+    );
     await touch(cdp, 'touchMove', middle.x, middle.y);
+
+    // Forward, never back: the offset never retreats from where the withdrawal found it, and the
+    // day it was travelling to is the day that arrives.
     await expect
-      .poll(() => host.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--swipe-dx')))
+      .poll(() => host.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--swipe-dx')), {
+        intervals: [16],
+      })
       .toMatch(/^0px$|^$/);
-    await page.waitForTimeout(DRAG_DAY_DWELL_MS);
-    expect(dayParam(page)).toBeNull();
+    expect(dayParam(page)).toBe(TOMORROW);
+    // …and once it has arrived, nothing is holding it, so the surface is given back.
+    await expect(host).not.toHaveAttribute('data-swiping', '');
+    expect(travelling).toBeGreaterThan(0);
     await touch(cdp, 'touchEnd');
   });
 
@@ -1308,14 +1324,15 @@ test.describe('carrying a card to another day from the surface edge', () => {
       'the arriving day is already at the detent, so nothing has to move',
     ).toBe(atLanding);
 
-    // And it IS still held, one page less offset — which is what makes the next step continuous.
+    // And it IS still claimed — at LEVEL, which is what makes the next step continuous AND
+    // leaves nothing to give back if the drag walks away instead (§2d's fourth repair).
     const state = await host.evaluate((el) => ({
       dx: parseFloat((el as HTMLElement).style.getPropertyValue('--swipe-dx')),
       lift: el.hasAttribute('data-edge-lift'),
       settling: el.getAttribute('data-swipe-settling'),
       rebase: el.hasAttribute('data-swipe-rebase'),
     }));
-    expect(Math.abs(state.dx)).toBe(DRAG_DAY_LIFT_PX);
+    expect(state.dx).toBe(0);
     expect(state.lift).toBe(true);
     expect(state.settling).toBeNull();
     // The suppression lasted its one frame and is long gone.
@@ -1374,18 +1391,17 @@ test.describe('carrying a card to another day from the surface edge', () => {
     await touch(cdp, 'touchEnd');
   });
 
-  // **The unwind after a landing is ONE motion** (§2d's third repair; owner: _"still some
-  // jittering… when dragging to the next day and then moving the finger quickly to not drag to
-  // the next day again"_).
+  // **Backing away after a landing moves nothing at all** (§2d's fourth repair, and the third
+  // repair's case rewritten — the jitter it fixed was in a motion that should not exist).
   //
-  // Since the landing keeps the detent, every withdrawal unwinds from 48px — and the wait that
-  // gives the surface back was measured from the JS call rather than from the frame the browser
-  // started the transition on. Recorded before the fix: the offset written at 2031ms, the
-  // transition created at 2061 (a style flush behind a busy main thread), the surface given back
-  // at 2164 — 103ms into a 140ms unwind. That dropped the rule mid-flight, cancelled the
-  // transition at 12px, and a second one carried the rest: 250ms with a velocity break at the
-  // seam. So the assertion is a count and an ORDER, both of which survive a loaded machine.
-  test('the unwind after a landing is one continuous motion', async ({ page }) => {
+  // The surface rests at LEVEL between days now: the lift is spent once on entering the band,
+  // and after a turn the edge stays armed at zero. So there is no offset to give back, and a
+  // withdrawal is not a motion. Sampled every frame before this, the same gesture ran the page
+  // from 48px back to 0 — small, backwards, and meaning nothing, which is the report.
+  //
+  // Asserted as "no transition ran", which is what a still surface IS — a magnitude at a moment
+  // would pass just as well on a motion that had merely finished early.
+  test('backing away after a landing does not move the surface', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
     const card = await centre(page, '.wp-maybecard');
     const host = page.locator('.day-swipe:not([data-preview])');
@@ -1393,25 +1409,14 @@ test.describe('carrying a card to another day from the surface edge', () => {
     const box = await boxOf(page, '.day-swipe:not([data-preview])');
     const middle = { x: box.x + box.width / 2, y: (bands.middleFrom + bands.middleTo) / 2 };
 
-    type Beat = { type: string; at: number };
     await page.evaluate(() => {
-      const w = window as unknown as { __beats: Beat[]; __watch: () => void };
-      type Beat = { type: string; at: number };
-      w.__beats = [];
-      const el = document.querySelector('.day-swipe:not([data-preview])') as HTMLElement;
-      // Armed by the caller AFTER the day has landed, so the turn's own transition is not in the
-      // sample — this case is about what happens on the way back.
+      const w = window as unknown as { __runs: number; __watch: () => void };
       w.__watch = () => {
-        w.__beats = [];
-        for (const type of ['transitionrun', 'transitionend', 'transitioncancel'])
-          document.addEventListener(type, (ev) => {
-            if ((ev.target as HTMLElement).classList?.contains('day-page'))
-              w.__beats.push({ type, at: Math.round(performance.now()) });
-          });
-        new MutationObserver(() => {
-          if (!el.hasAttribute('data-swiping'))
-            w.__beats.push({ type: 'given-back', at: Math.round(performance.now()) });
-        }).observe(el, { attributes: true, attributeFilter: ['data-swiping'] });
+        w.__runs = 0;
+        document.addEventListener('transitionrun', (ev) => {
+          const el = ev.target as HTMLElement;
+          if (el.classList?.contains('day-page') || el.classList?.contains('day-peek')) w.__runs++;
+        });
       };
     });
 
@@ -1420,26 +1425,20 @@ test.describe('carrying a card to another day from the surface edge', () => {
     const edge = await edgeOf(page, 'left');
     await touch(cdp, 'touchMove', edge.x, edge.y);
     await stepsTo(page, TOMORROW);
+    // Armed after the landing rather than before it, so the turn's own motion is not counted.
     await page.evaluate(() => (window as unknown as { __watch: () => void }).__watch());
+    expect(
+      await host.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--swipe-dx')),
+      'the day it landed on rests at level',
+    ).toBe('0px');
 
-    // The reported gesture: straight out of the band, right after the day arrived.
     await touch(cdp, 'touchMove', middle.x, middle.y);
-    await expect
-      .poll(() => host.getAttribute('data-swiping'), { timeout: 2000, intervals: [20] })
-      .toBeNull();
-    await page.waitForTimeout(300);
-    const beats = await page.evaluate(() => (window as unknown as { __beats: Beat[] }).__beats);
-    const kinds = beats.map((b) => b.type);
-
-    expect(kinds, 'one unwind, and nothing cancelled it').toEqual([
-      'transitionrun',
-      'transitionend',
-      'given-back',
-    ]);
-    // The order is the whole point: the surface is given back after the motion, not inside it.
-    const end = beats.find((b) => b.type === 'transitionend')!;
-    const back = beats.find((b) => b.type === 'given-back')!;
-    expect(back.at).toBeGreaterThanOrEqual(end.at);
+    await page.waitForTimeout(400);
+    expect(
+      await page.evaluate(() => (window as unknown as { __runs: number }).__runs),
+      'nothing had to move, so nothing did',
+    ).toBe(0);
+    expect(dayParam(page)).toBe(TOMORROW);
     await touch(cdp, 'touchEnd');
   });
 

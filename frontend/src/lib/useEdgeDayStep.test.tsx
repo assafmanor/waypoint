@@ -245,6 +245,35 @@ describe('useEdgeDayStep', () => {
     expect(h.held().every((c) => c.step === null)).toBe(true);
   });
 
+  // **The lift is spent once per stay in the band** (§2d's fourth repair). Re-lifting after every
+  // turn is what the owner saw twice: kept at the detent it was a second animation on the heels
+  // of each day, and given back on the way out it was _"this weird 'going back' animation, but
+  // stays on the same day"_. After the first turn the edge arms at zero — still claimed, nothing
+  // offset, nothing owed back.
+  it('arms at zero once this stay in the band has turned a day', () => {
+    const h = mount(BOTH);
+    h.settle();
+    h.arm(MIDDLE);
+    h.track(AT_LOW);
+    expect(h.last()).toEqual({ step: 1, px: DRAG_DAY_LIFT_PX });
+    // The turn landed, which for this hook is the neighbours moving along.
+    h.redraw({ prev: '2026-08-22', next: '2026-08-24' });
+    expect(h.last()).toEqual({ step: 1, px: 0 });
+  });
+
+  it('and lifts again for a fresh stay in the band', () => {
+    const h = mount(BOTH);
+    h.settle();
+    h.arm(MIDDLE);
+    h.track(AT_LOW);
+    h.redraw({ prev: '2026-08-22', next: '2026-08-24' });
+    expect(h.last()).toEqual({ step: 1, px: 0 });
+    // Out of the band and back in: a new approach, so the affordance is worth paying for again.
+    h.track(MIDDLE);
+    h.track(AT_LOW);
+    expect(h.last()).toEqual({ step: 1, px: DRAG_DAY_LIFT_PX });
+  });
+
   it('reports the step beside the day, so the dwell knows which way to turn', () => {
     const h = mount(BOTH);
     h.settle();

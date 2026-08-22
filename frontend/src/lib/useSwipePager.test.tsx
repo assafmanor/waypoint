@@ -497,31 +497,44 @@ describe('useSwipePager', () => {
       command.turn(1);
       expect(host.hasAttribute('data-edge-lift')).toBe(false);
       expect(host.getAttribute('data-swipe-settling')).toBe('turn');
-      // A page, a gutter (0 with no stylesheet) AND the detent: the arriving day has to end up
-      // lifted, not level, because the finger is still in the band.
-      expect(offset(host)).toBe(`${WIDTH + 48}px`);
+      // A page and a gutter (0 with no stylesheet), to LEVEL — an absolute target, so a turn
+      // that began at the detent travels 48px less and still puts the arriving pane at rest.
+      expect(offset(host)).toBe(`${WIDTH}px`);
       settle();
       expect(onStep).toHaveBeenCalledWith(1);
     });
 
-    // **The second animation the owner reported** (_"after landing on the new day there's like a
-    // second animation for switching days"_). It was the edge re-commanding its lift the instant
-    // the day arrived, because the commit handed back the WHOLE offset and put the surface at
-    // level. Measured in the engine: a third `transitionrun` on `.day-page` 91ms after the URL
-    // changed, every landing. So a turn that began at a detent gives back one PAGE and stays
-    // held — there is nothing left for the next cycle to animate.
-    it('lands at the detent it started from, not at level', () => {
+    // **Where a held turn lands, which took three goes to get right.** Clearing outright put the
+    // day at level and let the edge animate the lift back on — _"a second animation for
+    // switching days"_. Landing at the DETENT killed that and bought a 48px reverse on every
+    // withdrawal instead — _"this weird 'going back' animation, but stays on the same day"_. So:
+    // level, and still claimed. Nothing offset means nothing owed back, and the panes stay
+    // mounted for the turn after this one.
+    it('lands at level and stays claimed while a finger is still holding', () => {
       const onStep = vi.fn();
       const { host, command, drawNextPage } = mount({ onStep });
       command.hold(1, 48);
       command.turn(1);
       settle();
       drawNextPage();
-      expect(offset(host)).toBe('48px');
+      expect(offset(host)).toBe('0px');
       expect(host.hasAttribute('data-edge-lift')).toBe(true);
       expect(host.hasAttribute('data-swipe-settling')).toBe(false);
       // Still live, because the panes are what the NEXT step turns to.
       expect(host.hasAttribute('data-swiping')).toBe(true);
+    });
+
+    // …and a turn nothing is holding any more is given back outright, the way a swipe's is.
+    it('gives the surface back when the hold was released mid-turn', () => {
+      const onStep = vi.fn();
+      const { host, command, drawNextPage } = mount({ onStep });
+      command.hold(1, 48);
+      command.turn(1);
+      command.hold(null);
+      settle();
+      drawNextPage();
+      expect(offset(host)).toBe('');
+      expect(host.hasAttribute('data-swiping')).toBe(false);
     });
 
     // The frame in which the offset changes and nothing moves: one page less offset over a page
@@ -539,16 +552,19 @@ describe('useSwipePager', () => {
         vi.advanceTimersByTime(50);
       });
       expect(host.hasAttribute('data-swipe-rebase')).toBe(false);
-      expect(offset(host)).toBe('48px');
+      expect(offset(host)).toBe('0px');
     });
 
-    it('and letting go after a landing unwinds from the detent', () => {
+    // The point of landing at level: there is nothing left to give back, so the gesture that
+    // walked several days can be abandoned without the surface moving at all.
+    it('and letting go after a landing moves nothing', () => {
       const onStep = vi.fn();
       const { host, command, drawNextPage } = mount({ onStep });
       command.hold(1, 48);
       command.turn(1);
       settle();
       drawNextPage();
+      expect(offset(host)).toBe('0px');
       command.hold(null);
       expect(offset(host)).toBe('0px');
       expect(host.hasAttribute('data-edge-lift')).toBe(false);
@@ -579,19 +595,23 @@ describe('useSwipePager', () => {
       expect(onStep).toHaveBeenCalledWith(1);
     });
 
-    // The asymmetry, and it is the reason the guard above is not simply "ignore every hold":
-    // letting go is the gesture withdrawing, and a day arriving after the card has been
-    // dropped would move the surface out from under the drop.
-    it('but lets go of one, and takes the day back with it', () => {
+    // **And letting go does not rewind one either** (§2d's fourth repair). It used to: the
+    // withdrawal put the offset back to zero and the page travelled back to level, measured at
+    // 247px of reverse motion for a day that then did not change — which is exactly what the
+    // owner described. The dwell had already fired and the page was over half way there, so
+    // finishing is both shorter and truer. Letting go changes where it LANDS, not whether it
+    // arrives.
+    it('and letting go does not rewind one — it decides the landing', () => {
       const onStep = vi.fn();
       const { host, command } = mount({ onStep });
       command.hold(1, 48);
       command.turn(1);
+      const travelling = offset(host);
       command.hold(null);
-      expect(offset(host)).toBe('0px');
-      expect(host.hasAttribute('data-swipe-settling')).toBe(false);
+      expect(offset(host)).toBe(travelling);
+      expect(host.getAttribute('data-swipe-settling')).toBe('turn');
       settle();
-      expect(onStep).not.toHaveBeenCalled();
+      expect(onStep).toHaveBeenCalledWith(1);
     });
 
     // Idempotence for its own sake: the same command twice must not restart the detent, or the

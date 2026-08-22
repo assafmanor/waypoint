@@ -177,17 +177,21 @@ export function useSwipePager<T extends HTMLElement>({
    */
   const turning = useRef(false);
   /**
-   * **Where a committed turn LANDS** — 0 for a swipe (level), the detent for a turn that began
-   * from one.
+   * **Is a finger still holding the surface at the moment a turn commits?**
    *
-   * The reason it is not always level is the owner's: _"after landing on the new day there's
-   * like a second animation for switching days"_. The finger is still in the band, so the edge
-   * re-commanded its lift the moment the day arrived — a fresh 48px over `--t-base`, measured
-   * starting 91ms after the URL changed, and a second smaller day-switch on the heels of every
-   * one. Landing AT the detent removes it: there is nothing left to animate, and holding at the
-   * edge becomes one motion per day instead of two.
+   * It decides between two landings, and the distinction is the whole of ADR-0116 §2d's fourth
+   * repair. **Both land at LEVEL** — where they differ is whether the surface is given back.
+   * Held, it stays claimed at zero: the panes stay mounted for the next turn and there is
+   * nothing offset, so backing out of the band later moves nothing at all. Not held, it is
+   * given back the way a swipe's is.
+   *
+   * The earlier version of this landed at the DETENT while held, so the strip rested 48px off
+   * between days — and every withdrawal then had to give those 48px back, which the owner read
+   * exactly as it looked: _"this weird 'going back' animation, but stays on the same day"_. The
+   * lift is worth spending once, when the band is entered, to say the page is cocked. Spending
+   * it again on every day means owing it back on every exit.
    */
-  const landing = useRef(0);
+  const held = useRef(false);
 
   /** The host's own geometry, measured on demand. A gesture measures it once at the press;
    *  a COMMAND has no press, so the same three numbers are read here. `direction` off the
@@ -252,7 +256,7 @@ export function useSwipePager<T extends HTMLElement>({
     stopWaiting();
     owed.current = false;
     turning.current = false;
-    landing.current = 0;
+    held.current = false;
     const el = host.current;
     if (el) {
       el.removeAttribute(SWIPING_ATTR);
@@ -271,15 +275,17 @@ export function useSwipePager<T extends HTMLElement>({
       if (!g) return;
       const { el } = g;
       if (step == null) {
-        // **Letting go DOES cancel a turn in flight**, which is the one asymmetry here worth
-        // stating: a re-lift below is jitter and must not touch it, but "there is no day being
-        // aimed at any more" is the gesture withdrawing — the finger left the band, or let go
-        // over a target. Committing anyway would move the day out from under a drop that had
-        // already landed on the day before it.
+        // **A committed turn is never rewound** (§2d's fourth repair). It used to be: the
+        // withdrawal cancelled it and the page travelled back to level, which measured at 247px
+        // of reverse motion for a day that then did not change — the owner's _"weird 'going
+        // back' animation, but stays on the same day"_. The dwell had already fired and the page
+        // was over half way; finishing is both shorter and truer. What the withdrawal changes
+        // is only where it LANDS: nothing is holding the surface any more, so it is given back
+        // rather than kept claimed.
+        held.current = false;
+        if (turning.current) return;
         stopWaiting();
         owed.current = false;
-        turning.current = false;
-        landing.current = 0;
         // Not `clear()`: the offset goes to zero and the surface unwinds under the destination
         // state's own transition (`screens.css`). Clearing the attributes here would take the
         // transform away mid-unwind and it would snap. The settle attribute goes too, because
@@ -324,13 +330,11 @@ export function useSwipePager<T extends HTMLElement>({
       if (turning.current) return;
       stopWaiting();
       turning.current = true;
-      // **Where it is now is where it will land.** Read off the element rather than taken as an
-      // argument, because the caller would only be telling us what it has already told us: the
-      // detent is whatever the last `hold` parked, and the finger that asked for this turn has
-      // not left the band (a withdrawal cancels the turn — see `hold(null)`). So the travel is
-      // a page, a gutter AND the detent, and the day that arrives is already lifted.
-      const held = parseFloat(el.style.getPropertyValue(OFFSET_PROP)) || 0;
-      landing.current = el.hasAttribute(LIFT_ATTR) ? held : 0;
+      // **A page and a gutter, to level** — wherever the surface happens to be now. A turn that
+      // began at the detent therefore travels 48px less than one that began at rest, and both
+      // put the arriving pane exactly at level, because the target is absolute rather than a
+      // distance. Whether a finger is holding decides the LANDING, not the target.
+      held.current = el.hasAttribute(LIFT_ATTR);
       // The lift's attribute goes first: its transition is the detent's, and what follows is
       // the turn's — one channel, two states, never both at once.
       el.removeAttribute(LIFT_ATTR);
@@ -338,10 +342,7 @@ export function useSwipePager<T extends HTMLElement>({
       el.setAttribute(SWIPING_ATTR, '');
       el.setAttribute(SETTLING_ATTR, 'turn');
       el.style.setProperty(WIDTH_PROP, `${Math.round(g.width)}px`);
-      el.style.setProperty(
-        OFFSET_PROP,
-        `${Math.round(g.dirFor(step) * g.turn + landing.current)}px`,
-      );
+      el.style.setProperty(OFFSET_PROP, `${Math.round(g.dirFor(step) * g.turn)}px`);
       setLive(true);
       // On the rendering clock, like every other wait here: the step must not commit before the
       // travel it is waiting for has actually finished painting.
@@ -373,16 +374,18 @@ export function useSwipePager<T extends HTMLElement>({
   useLayoutEffect(() => {
     if (!owed.current) return;
     const el = host.current;
-    // **A turn that began at a detent gives back one PAGE, not the whole offset** (§2d's second
-    // repair). The finger is still in the band, so the surface is still held — clearing here
-    // put it at level and the edge then animated it back to the detent, which is the second
-    // day-switch the owner saw. Same paint, same picture, one page less offset.
-    if (el && landing.current !== 0) {
+    // **A held surface keeps its claim and gives back the offset** (§2d's second and fourth
+    // repairs together). Clearing outright put the day at level and let the edge animate it
+    // back to the detent — a second day-switch on the heels of every one. Landing at the detent
+    // fixed that and bought a 48px reverse on every withdrawal instead. So: level, and still
+    // claimed. Nothing moves here (the page that arrives is drawn where the pane was), nothing
+    // is owed back later, and the panes stay mounted for the turn after this one.
+    if (el && held.current) {
       owed.current = false;
       el.setAttribute(REBASE_ATTR, '');
       el.setAttribute(LIFT_ATTR, '');
       el.removeAttribute(SETTLING_ATTR);
-      el.style.setProperty(OFFSET_PROP, `${Math.round(landing.current)}px`);
+      el.style.setProperty(OFFSET_PROP, '0px');
       // The suppression lasts exactly the frame it is needed for. Removed on the next one, so
       // the detent's own transition is back in place before anything asks it to move — and the
       // edge's re-commanded lift in between writes the value already there, which its own
@@ -479,7 +482,7 @@ export function useSwipePager<T extends HTMLElement>({
         // commanded turn it interrupts is dropped with it, for the same reason.
         owed.current = false;
         turning.current = false;
-        landing.current = 0;
+        held.current = false;
         el.removeAttribute(SETTLING_ATTR);
         el.removeAttribute(REBASE_ATTR);
         el.setAttribute(SWIPING_ATTR, '');
