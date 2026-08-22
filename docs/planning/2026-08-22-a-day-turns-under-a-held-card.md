@@ -86,3 +86,23 @@ Two things the build found:
 ## Still open, unchanged
 
 `DRAG_DAY_EDGE_PX` (36) and whether the band wants a mark of its own, plus the lift distance — `DRAG_DAY_LIFT_PX` ships at 48 because that is the smallest lift that clears the 24px gutter and shows any of tomorrow, and 40/48/64/80 are wired as controls for a device pass.
+
+---
+
+## And then five reports at once, which were two bugs
+
+> _"It doesn't work as expected at all: 1. After moving to a day it no longer is under the finger 2. Doesn't always move to the next or prev day 3. Hard to go back 4. The ghost disappears sometimes 5. There's a weird stutter animation where it sort of looks like it tries to complete the swipe but out of place"_
+
+Five symptoms, two causes, and grouping them was the whole of the diagnosis: **1, 3 and 4 are the drag ghost's containing block; 2 and 5 are the turn being cancelled by jitter.** Both are written up in [ADR-0116 §2d](../decisions/0116-day-aware-shelf-and-idea-target-day.md)'s repair block, and both are now entries in `frontend/CLAUDE.md` because neither is specific to this gesture.
+
+**The ghost's containing block, measured before it was explained.** The clone is `position: fixed` and renders inside `.day-page`, which is the element §2d translates — and a transform makes its element the containing block for every fixed descendant. So `offsetParent` went from `null` to `day-page` at the lift, and the clone left the finger: 117px down the screen, then 156px after the next turn, with the finger never moving off `y=353`. What makes this worth a note rather than a line in a changelog is that **`useSwipePager`'s own docblock had already written the trap down** — `enabled: !dragging` exists for exactly this ghost — and §2d then drove the transform from a channel `enabled` does not gate. Reading the comment is not the same as counting what is inside the box.
+
+**The jitter, also measured.** `dx 382px` / `settling=turn`, one 1px touch move, `dx 48px`, and the day never changed. The edge re-issues its lift on every move it sees and on every auto-scroll frame, and `hold` cleared the turn's timer each time. So a re-lift is now ignored while a turn is travelling, `hold(null)` still cancels one (letting go must not leave a day arriving after the drop), and the channel is idempotent about a state it already holds.
+
+## Two forks put to the owner about cancelling, both answered
+
+The reports also exposed something neither the mockup nor the ADR had specified: **what cancelling costs and what it looks like.** Three moments turned out to be three different questions — withdrawing before the dwell (handled since §2c), withdrawing during the turn's 240ms (the bug above), and cancelling the whole drag after it had walked days (handled since §2b). What was genuinely missing:
+
+- **The band had one threshold.** Enter at 36px, leave the instant depth read zero — so a finger near the boundary chattered. Now it leaves at 36 + 16, reusing the release distance the latch already spends on this axis. Not a fork; just missing.
+- **Reversing cost a fresh 940ms.** Put to the owner as three options (half dwell inside a window · symmetric · instant), answered **half dwell**: `DRAG_DAY_REVERSE_DWELL_MS`, derived from the dwell, inside `DRAG_DAY_REVERSE_MS` of a step. Only the hold shortens — the lift and the turn are identical, so the two directions still look the same.
+- **Whether an aborted turn should say anything.** Answered **no**: the 140ms unwind is the statement. A drag crosses the band many times in normal use, so a beat per crossing is noise — §2c's reason for refusing `BEAT.REBUFF`, which survives the change of what moves.

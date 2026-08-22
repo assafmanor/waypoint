@@ -22,14 +22,24 @@
 // flipping the moment the hold fired. The gate makes the drag ASK for the band first — by
 // leaving it, or by pushing deeper into it than it was lifted at.
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
-import { DRAG_DAY_EDGE_PX, DRAG_DAY_LIFT_PX, DRAG_EDGE_SCROLL_RELEASE_PX } from '../constants';
+import {
+  DRAG_DAY_DWELL_MS,
+  DRAG_DAY_EDGE_PX,
+  DRAG_DAY_LIFT_PX,
+  DRAG_DAY_REVERSE_DWELL_MS,
+  DRAG_DAY_REVERSE_MS,
+  DRAG_EDGE_SCROLL_RELEASE_PX,
+} from '../constants';
 import {
   edgeDepth,
+  edgeDirection,
   edgeLatchAt,
   gateEdgeStep,
   type DragPoint,
+  type EdgeDirection,
   type EdgeLatch,
 } from './edge-autoscroll';
+import { getNow } from './useClock';
 import type { SwipeStep } from './useSwipePager';
 
 /** The neighbouring days, exactly as `useDaySurface` already derives them for the swipe's
@@ -48,6 +58,11 @@ export interface EdgeDayStep {
   /** Which way the edge is pointing, or `null` — the step the dwell will command when it
    *  fires (§2d). Paired with `date`: one is the direction, the other is the day. */
   step: SwipeStep | null;
+  /** How long the dwell should hold for the day currently named — the full
+   *  `DRAG_DAY_DWELL_MS`, or `DRAG_DAY_REVERSE_DWELL_MS` when this edge is undoing the step
+   *  it just made (§2d's repair). Feed it to `useSpringLoadedDay`; it is a property of the
+   *  TARGET, which is why it is computed here rather than by the dwell. */
+  dwell: number;
   /** The drag armed. Latches the band it was lifted in, so resting where you picked up is
    *  not a request to leave. */
   arm: (at: DragPoint) => void;
@@ -71,6 +86,23 @@ export function useEdgeDayStep(
   const [step, setStep] = useState<SwipeStep | null>(null);
   const latch = useRef<EdgeLatch>(null);
   const point = useRef<DragPoint | null>(null);
+  /**
+   * **The band this drag is currently inside, for hysteresis** (§2d's repair).
+   *
+   * The band had an entry threshold and no exit threshold, so a finger resting anywhere near
+   * the boundary chattered: lift, unwind, lift, at whatever rate the pointer reported. Entering
+   * still costs `DRAG_DAY_EDGE_PX`; leaving now costs that plus `DRAG_EDGE_SCROLL_RELEASE_PX`,
+   * which is the same distance the latch already spends on this axis for the same question —
+   * how much movement counts as intent. The opposite band is unaffected: it starts where it
+   * always did, so reaching across is as easy as it was.
+   */
+  const inside = useRef<EdgeDirection>(null);
+  /** The step this drag last completed, and when — the reversal window's whole input. */
+  const turned = useRef<{ step: SwipeStep; at: number } | null>(null);
+  /** What the edge is currently asking for, readable from an effect that must NOT re-run when
+   *  it changes: the effect below fires on the day arriving, and the step is what it reads to
+   *  know which way that day came from. */
+  const asked = useRef<SwipeStep | null>(null);
   // Read through a ref, because a drag OUTLIVES the render it began in (ADR-0116 §2's
   // second "each a bug if missed"): the window listeners that call `track` hold the
   // handlers from the render at touch-down, when the neighbours were the lift day's.
@@ -98,6 +130,7 @@ export function useEdgeDayStep(
    */
   const lift = useCallback((next: SwipeStep | null) => {
     cmd.current(next, next == null ? 0 : DRAG_DAY_LIFT_PX);
+    asked.current = next;
     setStep(next);
   }, []);
 
@@ -119,11 +152,17 @@ export function useEdgeDayStep(
       return null;
     };
     const x = at.clientX - box.left;
-    const depth = edgeDepth(x, box.width, DRAG_DAY_EDGE_PX);
+    // Entering, then — once inside — a wider band to leave. Asked as two questions of the same
+    // function rather than one arithmetic of my own, so a short box still shrinks both.
+    const entering = edgeDepth(x, box.width, DRAG_DAY_EDGE_PX);
+    const leaving = edgeDepth(x, box.width, DRAG_DAY_EDGE_PX + DRAG_EDGE_SCROLL_RELEASE_PX);
+    const depth =
+      entering !== 0 ? entering : edgeDirection(leaving) === inside.current ? leaving : 0;
     // The same distance that says a drag has asked for the band it was lifted in. Its name
     // belongs to the scroll only because that is where the scar was found.
     const gated = gateEdgeStep(depth, x, latch.current, DRAG_EDGE_SCROLL_RELEASE_PX);
     latch.current = gated.latch;
+    inside.current = edgeDirection(gated.step);
     if (gated.step === 0) return off();
     const rtl = getComputedStyle(el).direction === 'rtl';
     const { prev, next } = live.current;
@@ -148,6 +187,8 @@ export function useEdgeDayStep(
       const el = host.current;
       point.current = at;
       latch.current = null;
+      inside.current = null;
+      turned.current = null;
       setDate(null);
       lift(null);
       if (!el) return;
@@ -162,6 +203,8 @@ export function useEdgeDayStep(
   const stop = useCallback(() => {
     point.current = null;
     latch.current = null;
+    inside.current = null;
+    turned.current = null;
     setDate(null);
     lift(null);
   }, [lift]);
@@ -173,7 +216,14 @@ export function useEdgeDayStep(
   // switch". Recomputing when the NEIGHBOURS change is what turns one step into a queue of
   // them, 700ms apart, and it ends itself at the trip's edge where the neighbour is `null`.
   useEffect(() => {
-    if (point.current) setDate(resolve());
+    if (!point.current) return;
+    // The neighbours moving along under a live drag IS the turn this edge commanded landing,
+    // which is the only notice it gets — so this is where a reversal's window opens. Read
+    // through `asked` rather than the state: this effect must fire on the DAY arriving, and
+    // taking the step as a dependency would re-run it on the lift and record a turn that had
+    // not happened yet.
+    if (asked.current != null) turned.current = { step: asked.current, at: getNow() };
+    setDate(resolve());
   }, [neighbours.prev, neighbours.next, resolve]);
 
   // A drag interrupted by an unmount (a mode switch, a tab change) must not leave a target
@@ -181,5 +231,21 @@ export function useEdgeDayStep(
   // this really is an unmount cleanup rather than a per-render one.
   useEffect(() => stop, [stop]);
 
-  return { date, step, arm, track, stop };
+  /** Half a dwell while the step just made is still on screen and this one undoes it. Read at
+   *  render because that is when the dwell arms — a stale clock here would only ever make a
+   *  reversal cost MORE, never less. */
+  const reversing =
+    step != null &&
+    turned.current != null &&
+    turned.current.step === -step &&
+    getNow() - turned.current.at < DRAG_DAY_REVERSE_MS;
+
+  return {
+    date,
+    step,
+    dwell: reversing ? DRAG_DAY_REVERSE_DWELL_MS : DRAG_DAY_DWELL_MS,
+    arm,
+    track,
+    stop,
+  };
 }

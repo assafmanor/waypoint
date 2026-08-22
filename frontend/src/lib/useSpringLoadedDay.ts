@@ -17,17 +17,25 @@ import { useIsDayPreview } from '../state/day-preview';
  * @param overDate  the day pill under the pointer, or null
  * @param activeDate the day already on screen — resting on it is not a switch
  * @param onSwitch  called once, after the dwell
+ * @param wait      how long to rest. `DRAG_DAY_DWELL_MS` unless the caller knows something
+ *                  about this particular target that makes it cheaper — the edge's reversal
+ *                  pays half (ADR-0116 §2d's repair), because undoing the step you can still
+ *                  see is a correction rather than a second journey. Read at the moment the
+ *                  target is named, which is when the dwell is decided.
  */
 export function useSpringLoadedDay(
   overDate: string | null,
   activeDate: string,
   onSwitch: (date: string) => void,
+  wait: number = DRAG_DAY_DWELL_MS,
 ): void {
   // Read through a ref so the effect's deps are the two dates and nothing else: this
   // screen re-renders every second on the clock, and a callback identity in the deps
   // would restart the dwell on every tick.
   const cb = useRef(onSwitch);
   cb.current = onSwitch;
+  const ms = useRef(wait);
+  ms.current = wait;
   // A pane is a day surface too, and switching the day is the loudest possible way to reach
   // out of one (ADR-0116 §2c). Its `activeDate` differs from the drag's target by definition,
   // so without this every mounted peek arms a dwell of its own against the shared
@@ -37,7 +45,7 @@ export function useSpringLoadedDay(
   useEffect(() => {
     if (preview) return;
     if (!overDate || overDate === activeDate) return;
-    const id = setTimeout(() => cb.current(overDate), DRAG_DAY_DWELL_MS);
+    const id = setTimeout(() => cb.current(overDate), ms.current);
     // Moving off the pill (or ending the drag) changes `overDate`, and the cleanup is
     // what makes "merely passed over" a no-op.
     return () => clearTimeout(id);

@@ -312,6 +312,28 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   handoff's target. Measure the destination element, and assert the aim against its
   settled box in an e2e spec — jsdom reports every rect as zero, so this whole class of
   bug is invisible to the unit suite by construction.
+- **Transforming an element without counting the `position: fixed` descendants inside it.** A
+  transform (and `will-change: transform`, and a filter) makes its element the **containing
+  block** for every fixed descendant, so a layer that was pinned to the viewport silently
+  becomes pinned to that box — and its rect is then wrong by however far the box sits from the
+  viewport's origin, which changes as the transform animates. ADR-0116 §2d shipped this: the
+  edge dwell translated `.day-page`, the drag ghost rendered inside it, and the clone walked
+  117px down the screen and then 156px while the finger never moved (_"it no longer is under
+  the finger"_, _"the ghost disappears sometimes"_). `useSwipePager`'s docblock had already
+  written the trap down for the same ghost — which is what makes this a counting failure and not
+  a knowledge one. Before adding a transform, `grep` what renders inside that element; a
+  gesture-time fixed layer (`.wp-dragghost`, `.day-peeks`, `.doc-viewer-lift`) belongs OUTSIDE
+  the transformed box, and `offsetParent === null` is the assertion, because a fixed box that
+  reports an offset parent is not viewport-anchored whatever its rect says this frame.
+- **A command channel that is not idempotent, when its caller is a stream.** The same ADR's
+  second defect: the edge dwell re-issues `hold(step)` on every pointer move and every
+  auto-scroll frame, and `hold` cleared the settle timer and rewrote the offset each time — so
+  one pixel of jitter cancelled the page turn it had just started (`dx 382px` → `dx 48px`, no
+  day change, a visible snap-back). Two rules for anything imperative that a gesture drives:
+  **re-commanding the state you are already in is a no-op** — ask the DOM, not a second copy of
+  the state, so an intervening reset correctly reads as "not held" — and **a committed
+  animation is not interruptible by a repeat of the command that started it**, only by a
+  command that means something different.
 - **Reading a rect and calling it visibility.** An ancestor's `overflow: hidden` clips what
   paints and changes **no rect at all**, so a geometry harness reports every number healthy
   while the element is a sliver. It happened here twice in one evening: the Map card's own

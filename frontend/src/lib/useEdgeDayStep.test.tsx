@@ -17,7 +17,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { act, cleanup, render } from '@testing-library/react';
 import { useRef, type ReactNode } from 'react';
-import { DRAG_DAY_EDGE_PX, DRAG_DAY_LIFT_PX, DRAG_EDGE_SCROLL_RELEASE_PX } from '../constants';
+import {
+  DRAG_DAY_DWELL_MS,
+  DRAG_DAY_EDGE_PX,
+  DRAG_DAY_LIFT_PX,
+  DRAG_DAY_REVERSE_DWELL_MS,
+  DRAG_EDGE_SCROLL_RELEASE_PX,
+} from '../constants';
 import { useEdgeDayStep, type DayNeighbours, type EdgeDayStep } from './useEdgeDayStep';
 import type { SwipeStep } from './useSwipePager';
 
@@ -90,6 +96,7 @@ function mount(neighbours: DayNeighbours, rtl = true) {
     stop: () => act(() => api!.stop()),
     date: () => api!.date,
     step: () => api!.step,
+    dwell: () => api!.dwell,
     redraw: (next: DayNeighbours) =>
       act(() => {
         view.rerender(
@@ -248,6 +255,104 @@ describe('useEdgeDayStep', () => {
     expect(h.date()).toBe(NEXT);
     h.track(MIDDLE);
     expect(h.step()).toBeNull();
+  });
+
+  // ── LEAVING THE BAND COSTS MORE THAN ENTERING IT (§2d's repair) ───────────────────────
+  //
+  // The band had one threshold, so a finger resting near its boundary chattered — lift,
+  // unwind, lift — at whatever rate the pointer reported. Entering still costs
+  // `DRAG_DAY_EDGE_PX`; leaving costs that plus the release distance the latch already spends
+  // on this axis for the same question.
+  describe('the band holds on once the drag is inside it', () => {
+    /** Just outside the entry threshold: enough to have left under the old rule, not enough
+     *  under this one. */
+    const JUST_OUT = DRAG_DAY_EDGE_PX + 4;
+    const WELL_OUT = DRAG_DAY_EDGE_PX + DRAG_EDGE_SCROLL_RELEASE_PX + 4;
+
+    it('does not let go for a pixel past the edge it entered at', () => {
+      const h = mount(BOTH);
+      h.settle();
+      h.arm(MIDDLE);
+      h.track(AT_LOW);
+      expect(h.date()).toBe(NEXT);
+      h.track(JUST_OUT);
+      expect(h.date()).toBe(NEXT);
+      expect(h.last()).toEqual({ step: 1, px: DRAG_DAY_LIFT_PX });
+    });
+
+    it('lets go once the drag has really left', () => {
+      const h = mount(BOTH);
+      h.settle();
+      h.arm(MIDDLE);
+      h.track(AT_LOW);
+      h.track(WELL_OUT);
+      expect(h.date()).toBeNull();
+      expect(h.last()).toEqual({ step: null, px: 0 });
+    });
+
+    // The hysteresis is the band's own, not the axis's: reaching for the OTHER edge must be
+    // exactly as easy as it was, or every step across the surface would carry the last band
+    // with it.
+    it('and the opposite band still starts where it always did', () => {
+      const h = mount(BOTH);
+      h.settle();
+      h.arm(MIDDLE);
+      h.track(AT_LOW);
+      h.track(WIDTH - JUST_OUT);
+      expect(h.date()).toBeNull();
+      h.track(AT_HIGH);
+      expect(h.date()).toBe(PREV);
+    });
+  });
+
+  // ── UNDOING A STEP IS CHEAPER THAN MAKING ONE (§2d's repair) ──────────────────────────
+  //
+  // Owner: _"hard to go back"_. Reversing used to cost a fresh 940ms with nothing to say it
+  // was an undo. The dwell is a property of the TARGET, so it is computed here.
+  describe('the dwell it asks for', () => {
+    it('is the full rest for a step this drag has not made', () => {
+      const h = mount(BOTH);
+      h.settle();
+      h.arm(MIDDLE);
+      h.track(AT_LOW);
+      expect(h.dwell()).toBe(DRAG_DAY_DWELL_MS);
+    });
+
+    it('is halved when the edge is undoing the step it just made', () => {
+      const h = mount(BOTH);
+      h.settle();
+      h.arm(MIDDLE);
+      h.track(AT_LOW);
+      // The turn landed: the day moved on, which is the only notice this hook gets.
+      h.redraw({ prev: '2026-08-22', next: '2026-08-24' });
+      // …and now the other edge, which is the same journey backwards.
+      h.track(AT_HIGH);
+      expect(h.step()).toBe(-1);
+      expect(h.dwell()).toBe(DRAG_DAY_REVERSE_DWELL_MS);
+    });
+
+    it('is the full rest for carrying ON in the same direction', () => {
+      const h = mount(BOTH);
+      h.settle();
+      h.arm(MIDDLE);
+      h.track(AT_LOW);
+      h.redraw({ prev: '2026-08-22', next: '2026-08-24' });
+      // Still the same band, still going the same way: a second day is a second journey.
+      expect(h.step()).toBe(1);
+      expect(h.dwell()).toBe(DRAG_DAY_DWELL_MS);
+    });
+
+    it('forgets the reversal window when the drag ends', () => {
+      const h = mount(BOTH);
+      h.settle();
+      h.arm(MIDDLE);
+      h.track(AT_LOW);
+      h.redraw({ prev: '2026-08-22', next: '2026-08-24' });
+      h.stop();
+      h.arm(MIDDLE);
+      h.track(AT_HIGH);
+      expect(h.dwell()).toBe(DRAG_DAY_DWELL_MS);
+    });
   });
 
   it('forgets the drag when it ends', () => {
