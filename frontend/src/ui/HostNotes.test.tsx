@@ -6,7 +6,7 @@
 // through `NOTE_HOST_FIELD`, so this file drives all five kinds rather than the two phase 5
 // happens to wire: the place case is phase 6's, and the point is that it needs no code.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { BOOKING_TYPE, type Booking, type Note, type TripEvent } from '@waypoint/shared';
 import { wrapNav } from '../test/nav-harness';
 import { setSimulatedNow } from '../lib/useClock';
@@ -77,6 +77,7 @@ vi.mock('../state/trip-state', () => ({
 
 import { HostNotes } from './HostNotes';
 import { t } from '../i18n/he';
+import { DRAG_HOLD_MS } from '../constants';
 import { buildHostContextIndex } from '../lib/host-context';
 import { buildNoteHosts } from '../lib/notes';
 
@@ -302,6 +303,28 @@ describe('HostNotes', () => {
     // The screen names the host even though the section behind it is that host: with no chip
     // in its bar, the foot is the only place it appears at all.
     expect(document.querySelector('.note-full .row-open-lead')?.textContent).toBeTruthy();
+  });
+
+  // The hold reaches the same screen from the host's section (ADR-0202's amendment). Both
+  // surfaces, one gesture — the property that made the foot control win in the first place.
+  //
+  // A real `MouseEvent` named `pointerdown`, because jsdom implements no `PointerEvent` and a
+  // synthetic one arrives with no coordinates for the slop check to read.
+  it('opens the note on its own screen on a hold, without expanding it', () => {
+    vi.useFakeTimers();
+    try {
+      tripNotes = [note({ id: 'n1', body: 'קוד הכספת 4417', documentId: 'd1' })];
+      open('document', 'd1');
+      const body = screen.getByRole('button', { name: 'קוד הכספת 4417' });
+      body.dispatchEvent(
+        new MouseEvent('pointerdown', { clientX: 10, clientY: 10, bubbles: true }),
+      );
+      act(() => vi.advanceTimersByTime(DRAG_HOLD_MS));
+      expect(document.querySelector('.note-full')).toBeTruthy();
+      expect(document.querySelector('.note-item.is-open')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // The row here prints title-or-body, so a note carrying both a body and a link showed

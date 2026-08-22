@@ -35,7 +35,7 @@
 import type { Note, User } from '@waypoint/shared';
 import { noteWhen, type NoteHostRef } from '../lib/notes';
 import { externalHref, prettyUrl } from '../lib/external-url';
-import { ltrIsolate } from '../lib/bidi';
+import { baseDirection, ltrIsolate } from '../lib/bidi';
 import { Modal } from './primitives/Modal';
 import { NavArrow } from './NavArrow';
 import { NoteProse } from './NoteProse';
@@ -102,10 +102,13 @@ export function NoteFullScreen({
           </div>
 
           <div className="note-full-body">
-            {/* Stored content sniffs its own direction (ADR-0118) — a title may be Hebrew,
-                English, or open with a Latin run. */}
+            {/* Same rule as the prose below it, and for the same reason: a title reading
+                `TL;DR: מה לעשות` would flip under `dir="auto"` because of the `T`. A title is
+                short enough that the first strong character is USUALLY right, which is exactly
+                what made the reported defect hard to see — the title in the screenshot was
+                fine and the body under it was not. */}
             {note.title && (
-              <h1 className="note-full-title" dir="auto">
+              <h1 className="note-full-title" dir={baseDirection(note.title)}>
                 {note.title}
               </h1>
             )}

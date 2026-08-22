@@ -22,6 +22,12 @@
 const LTR_ISOLATE = '⁦';
 const POP_DIRECTIONAL_ISOLATE = '⁩';
 
+/** The two scripts `baseDirection` weighs. Letters only — digits and punctuation are
+ *  bidi-neutral and belong to whichever run surrounds them, so counting them would let a
+ *  price list decide a note's direction. */
+const HEBREW_LETTERS = /[\u0590-\u05FF]/g;
+const LATIN_LETTERS = /[A-Za-z\u00C0-\u024F]/g;
+
 /** Bidi control characters (isolates, embeddings, marks), for stripping a token
  *  back to its plain text. */
 const BIDI_CONTROLS = /[⁦-⁩‪-‮‎‏]/g;
@@ -49,4 +55,36 @@ export function measure(value: string | number, unit: string): string {
  *  anywhere the plain characters are what matters (comparison, clipboard). */
 export function withoutBidiControls(text: string): string {
   return text.replace(BIDI_CONTROLS, '');
+}
+
+/**
+ * **The base direction of a block of STORED text, decided by what the text mostly is.**
+ *
+ * `dir="auto"` is the app's usual answer and it is the wrong one here, for a reason that only
+ * shows on real content: `auto` resolves from the **first strong character** and nothing else.
+ * A note that opens `TL;DR — מה לעשות כדי להטיס DJI Mini 5 Pro כחוק באיסלנד` has 26 Hebrew
+ * letters against 14 Latin, and `auto` lays the whole thing out **left to right** because the
+ * `T` of `TL;DR` came first — so every Hebrew line in it reads from the wrong end. Reported
+ * against the shipped note screen (owner, 2026-08-22), and the tell was that the note's
+ * TITLE was fine: it happened to start with a Hebrew word.
+ *
+ * So the question this answers is not "what comes first" but "what is this text", and the
+ * honest measure of that is which script the letters actually belong to. Ties go to RTL: the
+ * app is Hebrew-first (design-language.md), so a genuinely balanced note is a Hebrew note
+ * with a lot of Latin in it.
+ *
+ * `undefined` means "no letters at all" — a note of digits, times or emoji. That renders no
+ * `dir`, which lets it inherit the page's RTL, and it is the same thing the notes screen's own
+ * row has always done (it carries no `dir` and reads correctly).
+ *
+ * **This is for a BLOCK of prose the app did not write.** It is not a replacement for
+ * `dir="auto"` on a single value (an address, a place name) — there, one field is one run and
+ * the first strong character is exactly the right signal. Nor for `ltrIsolate`, which is about
+ * a run INSIDE a line rather than the line's own direction.
+ */
+export function baseDirection(text: string): 'rtl' | 'ltr' | undefined {
+  const hebrew = text.match(HEBREW_LETTERS)?.length ?? 0;
+  const latin = text.match(LATIN_LETTERS)?.length ?? 0;
+  if (!hebrew && !latin) return undefined;
+  return hebrew >= latin ? 'rtl' : 'ltr';
 }

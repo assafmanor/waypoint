@@ -3,7 +3,7 @@
 // RESOLVED category, search across title/body/url, and the editor's one refusal.
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { type ReactNode } from 'react';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import {
   BOOKING_SOURCE,
@@ -159,6 +159,7 @@ import { NavProvider } from '../state/nav-state';
 import { ModeProvider } from '../state/mode-state';
 import { IndexNotesView } from './IndexNotesView';
 import { t } from '../i18n/he';
+import { DRAG_HOLD_MS } from '../constants';
 import { buildNoteHosts } from '../lib/notes';
 
 function wrap(node: ReactNode) {
@@ -424,6 +425,53 @@ describe('IndexNotesView (ADR-0153)', () => {
       expect(document.querySelector('.note-full-body')?.textContent).toContain(
         'הכניסה מאחור, ליד חנות הפרחים',
       );
+    });
+
+    // **jsdom implements no `PointerEvent`**, and a synthetic `pointermove` through `fireEvent`
+    // comes out as a plain `Event` with NO `clientX`/`clientY` at all — so the slop check has
+    // nothing to compare and the scroll guard cannot be exercised that way. A real `MouseEvent`
+    // named `pointermove` carries coordinates and React routes it to `onPointerMove` all the
+    // same, which is what makes the cancel assertable.
+    const pointer = (el: Element, type: string, y: number) =>
+      el.dispatchEvent(new MouseEvent(type, { clientX: 10, clientY: y, bubbles: true }));
+
+    // ADR-0202's 2026-08-22 amendment, answering the report that the control was only
+    // reachable by expanding a long note and scrolling past all of it. A hold reaches the
+    // screen from the row AS IT STANDS — this one is collapsed.
+    it('opens the full screen on a hold, without expanding the row first', () => {
+      vi.useFakeTimers();
+      try {
+        show();
+        const body = screen.getByRole('button', { name: bodyOnly.body ?? '' });
+        pointer(body, 'pointerdown', 10);
+        // Inside `act`: the hold's timer opens the screen through a state update, and an
+        // advance outside it leaves React's queue unflushed — the assertion then reads the
+        // tree from before the hold and reports the gesture as broken.
+        act(() => vi.advanceTimersByTime(DRAG_HOLD_MS));
+        expect(document.querySelector('.note-full')).toBeTruthy();
+        // …and the row it came from was never expanded. Asserted on the ROW rather than on
+        // `.row-open-foot`, because the full screen renders a `RowOpenFoot` of its own — the
+        // first version of this line looked for the foot and found the screen's.
+        expect(document.querySelector('.wp-listrow.is-open')).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    // Time arbitrates, not direction (`useHoldToDrag`'s bargain): a finger that moves was
+    // scrolling the list, and a list that opened a screen mid-scroll would be unusable.
+    it('does not open on a hold that turns into a scroll', () => {
+      vi.useFakeTimers();
+      try {
+        show();
+        const body = screen.getByRole('button', { name: bodyOnly.body ?? '' });
+        pointer(body, 'pointerdown', 10);
+        pointer(body, 'pointermove', 90);
+        act(() => vi.advanceTimersByTime(DRAG_HOLD_MS));
+        expect(document.querySelector('.note-full')).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     // A general note has no host, so there is nothing to go to — the words stay, the

@@ -1,6 +1,6 @@
 # 0202 — A note gets a full screen, its way in is the foot it already has, and Markdown arrives as a subset that emits structure
 
-**Status:** Accepted — **built 2026-08-22**, same day, with five amendments the build itself forced (§3, §4, §5, §6 and a second shipped defect, §7b)
+**Status:** Accepted — **built 2026-08-22**, same day, with five amendments the build forced (§3, §4, §5, §6, §7b) and four more from the owner's first look at it on a phone (§9)
 **Date:** 2026-08-22
 **Design exploration:** [`mockups/note-full-screen-v1.html`](../../mockups/note-full-screen-v1.html) — the four candidate ways in drawn on **both** surfaces a note opens on, the screen itself across three note shapes, the whole subset rendered at once, the four link refusals, and one note on three surfaces. Interactive: theme · width · candidate · note · Markdown on/off, plus the two numbers that are feel calls (prose size, heading steps). Every number in its table is read off that page's own DOM, and the two that are not say so.
 **Builds on:** [0153](0153-the-notes-surface-the-mark-and-no-mode-gate.md) §4 (a note opens **where it is**, and its foot carries where it belongs plus one verb) · §5b (a note's url is a link) · §8 (four entrances to one destination; the menu holds verbs, the row holds content), [0152](0152-a-note-is-one-entity-with-an-optional-host.md) §6/§6b (the body lives in the host's own surface; the composer's newlines are **content**), [0189](0189-the-editor-uses-the-idiom-the-app-already-had-and-a-task-is-read-where-it-sits.md) (`RowOpenFoot` is shared with tasks), [0101](0101-index-search-mode-and-header-titles.md) (`Modal variant="full"` is the app's full-screen primitive), [0103](0103-back-navigation-typed-layer-model.md)/[0090](0090-back-is-computed-from-nav-state.md) (one back per surface, computed), [0118](0118-numbers-in-hebrew-bidi.md) (isolate the run, never the container), [0028](0028-plan-violet-color-budget-dark-ready.md) (the colour budget), [0017](0017-mobile-first-device-targets.md) (phone-first, the 44px floor)
@@ -137,6 +137,32 @@ The fix is a third state rather than a better string — `onHostSurface` makes t
 - **Two numbers that a desktop screenshot cannot settle**, both controls in the mockup: the prose size (14.5 vs 15.5) and whether the subset spends one heading step or two.
 - **A live preview in the editor** is refused rather than deferred: the form is a `Modal` on a phone, and ADR-0155 measures `BookingSheet` at ~1565px against ~675px of visible screen. Half a screen of preview there buys a guess and sells the text being written.
 - **Nothing about the composer or the editor changes.** A plain textarea is already a Markdown editor for the purpose of pasting Markdown into it.
+
+### 9. Four reports from the first look at it on a phone (2026-08-22, after the merge)
+
+**9a — `dir="auto"` laid a Hebrew note out left to right, and this is the worst kind of bug in this app.** The reported note opens `TL;DR — מה לעשות כדי להטיס DJI Mini 5 Pro כחוק באיסלנד`: 26 Hebrew letters against 14 Latin, and `auto` resolves from the **first strong character**, which is the `T`. So every Hebrew line in the note read from the wrong end. The tell in the screenshot is that the note's **title** was fine — it happened to start with a Hebrew word.
+
+Three things worth recording, because each one is a trap and not a slip:
+
+- **`dir="auto"` was the wrong tool, not a wrong value.** ADR-0118 and `frontend/CLAUDE.md` both say `auto` resolves from the first strong character; they say it about a **single value** — an address, a place name — where one field is one run and the first character is exactly the right signal. A block of mixed prose is the case that rule was never about, and nothing in the app had needed one before.
+- **Omitting `dir` entirely would have been better than `auto`.** The notes screen's row carries no `dir` and has always read correctly, because it inherits the page's RTL. So the attribute I added to be careful is what broke it — the careful-looking version was worse than nothing.
+- **The fix is a derivation, `lib/bidi.ts`'s `baseDirection`**: count the Hebrew letters against the Latin ones and let the larger side decide, ties to RTL (the app is Hebrew-first). Letters only — digits and punctuation are bidi-neutral, so counting them would let a price list decide a note's direction. `undefined` for a text with no letters at all, which renders no attribute and inherits the page, i.e. the row's behaviour.
+
+**9b — the full screen read too small.** `--text-body` is 14.5px, sized for app chrome: a row, a fact, a meta line, where the job is fitting several facts on a phone line. A note on its own screen has the opposite job — one long text, nothing beside it, a reader reading rather than scanning. The ramp gains **`--text-reading: 16px`** (`tokens.css` + design-language.md), spent by `.note-full-body` alone; the row and the host section were never the complaint and are unchanged. A step in the ramp rather than a local number, so the next reading surface takes the same size instead of picking its own.
+
+**9c — the way in was only reachable through the thing it exists to relieve.** The control lives in the open foot, so on a long note you tapped to expand, scrolled past the whole body, and only then reached it. §1's "it costs 0px" was true and beside the point: the cost was never pixels, it was **distance**.
+
+**9d — a hold opens the full screen** (owner's suggestion, and it answers 9c). `lib/useHoldToOpen.ts`, on both row bodies, from a collapsed row or an open one.
+
+- **It is a shortcut and not the way.** ADR-0157 §2 admitted a gesture-only menu on the Map pin and paid for it with a keyboard-reachable twin; here the twin already exists — the foot's `תצוגה מלאה` — so the hold adds a fast path without becoming the only one. It is not discoverable and is not asked to be.
+- **Reuses the two hard parts rather than restating them**: `useSelectionGuard`, because `user-select: none` does not stop a long press from _asking_ the platform to select, and `armClickSwallow`, because a hold fires with the finger still down so the release's click would otherwise toggle the row as well. Both were already exported separately from `useHoldToDrag`, which is what made this a small addition instead of a refactor of a shipped gesture (rule 8 — generalising that hook is the right move if a third holdable thing appears, and it is not this change's to take).
+- **Rejected: a fourth mark in the row's trailing slot.** It is discoverable, one tap, and it only helps the notes screen — a host's section renders a long note in full, so its foot is just as far down. The friction is on both surfaces and a screen-only control answers half of it, in a slot that already holds a link mark, a sync badge and the `⋯` at 360px.
+- **Rejected: bounding the expansion and pinning the foot inside it** (the Map place card's grammar, ADR-0148 §1). It would fix the distance visibly and put a vertical scroller inside a vertically scrolling list, which is the touch problem that grammar has never had to have.
+
+Two things the gesture's own tests found, both of which would have shipped silently:
+
+- **`Math.abs(undefined - 10)` is `NaN`, and `NaN > slop` is `false`** — so a pointer event arriving without coordinates disables the scroll guard entirely and the hold fires mid-scroll. Coalesced to 0 at the one place both handlers read a position.
+- **jsdom implements no `PointerEvent`.** A synthetic `pointermove` comes out as a plain `Event` with no coordinates at all, so the slop check cannot be exercised through `fireEvent` — a real `MouseEvent` named `pointermove` carries them and React routes it to `onPointerMove` all the same. The primary-pointer guard is written as "not explicitly secondary" for the same reason: `isPrimary === true` refuses every event in the unit suite while passing in a browser, which is the worst way round for a gesture to be wrong.
 
 ## Consequences
 

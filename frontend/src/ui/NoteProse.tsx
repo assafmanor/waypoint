@@ -20,7 +20,7 @@
 // It also cannot nest an `<a>` inside a `<button>`, so `anchors={false}` is a correctness
 // requirement and not only a design one.
 import { type ReactNode } from 'react';
-import { ltrIsolate } from '../lib/bidi';
+import { baseDirection, ltrIsolate } from '../lib/bidi';
 import { parseNoteMarkdown, type NoteBlock, type NoteInline } from '../lib/note-markdown';
 import './notes.css';
 
@@ -37,10 +37,16 @@ export function NoteProse({
 }) {
   const blocks = parseNoteMarkdown(body);
   return (
-    // `dir="auto"` and never `dir="ltr"` (ADR-0118): the app did not write these words, so
-    // the element holding them sniffs its own direction — and it holds the value and nothing
-    // else, which is the other half of that rule.
-    <div className={'note-prose' + (dense ? ' dense' : '')} dir="auto">
+    // **NOT `dir="auto"`, and that was a shipped defect** (owner, 2026-08-22). `auto` resolves
+    // from the first strong character, so a Hebrew note opening with `TL;DR` laid its every
+    // line out left to right — 26 Hebrew letters against 14 Latin, and the `T` decided. What a
+    // block of prose needs is a direction derived from what the prose IS, which is
+    // `baseDirection`. Undefined for a note with no letters at all, and then no attribute at
+    // all: it inherits the page's RTL, exactly as the notes screen's row already does.
+    //
+    // Still never `dir="ltr"` (lint-blocked, ADR-0118) — this resolves to `rtl` or `ltr` from
+    // the content, which is a different thing from forcing one.
+    <div className={'note-prose' + (dense ? ' dense' : '')} dir={baseDirection(body)}>
       {blocks.map((block, index) => (
         <Block key={index} block={block} anchors={anchors} />
       ))}

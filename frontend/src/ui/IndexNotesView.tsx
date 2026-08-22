@@ -35,6 +35,7 @@ import {
 import { ltrIsolate } from '../lib/bidi';
 import { prettyUrl } from '../lib/external-url';
 import { flattenNoteMarkdown } from '../lib/note-markdown';
+import { useHoldToOpen } from '../lib/useHoldToOpen';
 import { todayInTz } from '../lib/time';
 import { useNoteHostWayIn, type NoteHostWayIn } from '../state/note-host-nav';
 import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
@@ -331,6 +332,10 @@ function NoteLi({
 }) {
   const { users } = useTrip();
   const unsynced = useUnsynced(note.id);
+  // **A hold opens the full screen from the row as it stands** (ADR-0202's amendment) —
+  // collapsed or open, so a long note no longer has to be expanded and scrolled past to reach
+  // its own screen. The foot's control stays: this is the shortcut, that is the way in.
+  const hold = useHoldToOpen(onView);
   const author = users.find((u) => u.id === note.createdBy)?.displayName;
 
   // **A note with a title AND a body shows both, and the body is a line of its OWN**
@@ -388,6 +393,7 @@ function NoteLi({
         className={'note-row' + (open ? ' is-open' : '')}
         icon={glyph}
         onOpen={onToggle}
+        hold={hold}
         openLabel={noteTitleText(note)}
         title={titleLine}
         meta={meta}

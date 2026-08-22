@@ -118,16 +118,17 @@ New screens must pick from these ramps instead of inventing values.
 
 **Type ramp** (Assistant unless noted):
 
-| Step      | Size  | Use                           |
-| --------- | ----- | ----------------------------- |
-| display   | 34    | Landing hero (Secular One)    |
-| h1        | 26    | Screen titles (Secular One)   |
-| h2        | 21    | Board now-title (Secular One) |
-| h3        | 17–18 | Card titles (Secular One)     |
-| body      | 14.5  | Default text                  |
-| secondary | 12–13 | Meta, descriptions            |
-| caption   | 11    | Labels, hints                 |
-| micro     | 10.5  | Tags, badges                  |
+| Step      | Size  | Use                                                               |
+| --------- | ----- | ----------------------------------------------------------------- |
+| display   | 34    | Landing hero (Secular One)                                        |
+| h1        | 26    | Screen titles (Secular One)                                       |
+| h2        | 21    | Board now-title (Secular One)                                     |
+| h3        | 17–18 | Card titles (Secular One)                                         |
+| reading   | 16    | Prose on a surface that holds nothing else (a note's full screen) |
+| body      | 14.5  | Default text                                                      |
+| secondary | 12–13 | Meta, descriptions                                                |
+| caption   | 11    | Labels, hints                                                     |
+| micro     | 10.5  | Tags, badges                                                      |
 
 JetBrains Mono is reserved for **times, dates, codes, and money** — never prose. And only for **Latin/numeric runs**: the face has no Hebrew glyphs, so Hebrew text must never sit inside a mono element (it silently falls back to a generic monospace and reads foreign). Mixed lines — e.g. the day progress's `07:00 · עכשיו · 23:00` — set the row in Assistant and wrap only the numeric runs in mono + `dir="auto"` (ADR-0118: `auto` resolves LTR for a numeral exactly as `ltr` did, and stays correct if Hebrew ever lands in that span).
 

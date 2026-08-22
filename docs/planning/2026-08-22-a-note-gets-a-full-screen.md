@@ -81,3 +81,28 @@ The mockup was promoted and built in the same session. Five things moved, and ea
 ## Owed
 
 A device pass. Nothing here has been seen on a phone (ADR-0017): whether the foot's three controls read as three under a thumb, whether `--text-body` is the right size for a long note, and whether the truncated host name reads as truncated rather than as a shorter name.
+
+---
+
+## After the merge — four reports from the first look at it on a phone
+
+Same day, screenshot attached to the report. All four are in [ADR-0202 §9](../decisions/0202-a-note-gets-a-full-screen-and-markdown-is-a-subset.md).
+
+**The one that matters: a Hebrew note read left to right.** `dir="auto"` on the prose container resolves from the first strong character, and the reported note opens `TL;DR` — so 26 Hebrew letters were laid out as if they were English because of one `T`. Three things about it are worth more than the fix:
+
+- The rule I followed says exactly this, and says it about a **single value** (an address, a place name), where one field is one run and the first character is the right signal. A block of mixed prose is the case ADR-0118 was never about, and nothing in the app had needed one before.
+- **Omitting `dir` would have been better than `auto`.** The notes screen's row carries none and has always read correctly, because it inherits the page's RTL. The attribute I added to be careful is what broke it.
+- The tell was in the screenshot and not in the code: the **title** was fine. It happened to start with a Hebrew word.
+
+The fix is `baseDirection` in `lib/bidi.ts` — count the letters, larger side wins, ties to RTL, `undefined` when there are no letters so the element inherits the page.
+
+**Too small**: the ramp gains `--text-reading: 16px`, spent by the full screen alone. `--text-body` is sized for chrome — several facts on a phone line — and a document has the opposite job.
+
+**The way in was only reachable through the thing it relieves**: tap to expand, scroll past the whole note, then the control. §1's "it costs 0px" was true and beside the point — the cost was never pixels, it was distance.
+
+**A hold opens it**, which was the owner's suggestion and answers that directly. Two rejected alternatives are recorded in the ADR, and the more interesting one is the trailing mark: it is discoverable and one tap, and it only helps the notes screen, because a host's section renders a long note in full and its foot is just as far down.
+
+### Two things the gesture's tests found that would have shipped silently
+
+- **`Math.abs(undefined - 10)` is `NaN`, and `NaN > slop` is `false`.** A pointer event without coordinates therefore disables the scroll guard completely and the hold fires mid-scroll. There is nothing to see in the code — the comparison looks right.
+- **jsdom implements no `PointerEvent`**, so a synthetic `pointermove` arrives as a plain `Event` with no coordinates and the slop check cannot be exercised through `fireEvent` at all. A real `MouseEvent` named `pointermove` carries them and React routes it the same way. The primary-pointer guard is written as "not explicitly secondary" for the same reason: `isPrimary === true` refuses every event in the suite while passing in a browser, which is the worst way round for a gesture to be wrong.
