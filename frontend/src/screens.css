@@ -41,9 +41,11 @@
    JS timer that clears it cannot disagree — one value for both would leave a refusal's class
    removed mid-animation, and the transform would snap.
 
-   `--ease-arrive` throughout, and its overshoot is the reason: a page settling is an object
+   The refusal is `--ease-arrive`, and its overshoot is the reason: a page settling is an object
    settling, and on a refused swipe that mild nudge past the mark IS the recoil. `--ease-exit`
-   would be wrong twice over — nothing here is leaving. */
+   would be wrong twice over — nothing here is leaving. The TURN is `--ease-standard`, which is
+   §9's correction: over a full page of travel the same overshoot is a wobble rather than a
+   recoil, and the two settles mean different things. */
 .day-swipe {
   min-height: 100%;
   /* **THE GUTTER BETWEEN PAGES** (owner: _"there should be some gap between the days. They
@@ -66,9 +68,25 @@
 .day-swipe[data-swiping] > .day-page {
   transform: translateX(var(--swipe-dx, 0px));
 }
+/* **Promoted for the length of the gesture, and only for it** (§9). Three full day surfaces
+   have their transform rewritten from JS every frame, which is exactly the shape `.wp-dragghost`
+   and `.doc-viewer-lift` already carry this declaration for. Measured over four matched arms
+   (30 follow moves each, same day, same node count): total main-thread work per move fell from
+   ~2.3ms to ~1.9ms, every bare arm worse than every promoted one. Scoped to `[data-swiping]` so
+   an idle day surface pays no layer for a gesture nobody made. */
+.day-swipe[data-swiping] > .day-page,
+.day-swipe[data-swiping] .day-peek {
+  will-change: transform;
+}
+/* **The turn ARRIVES; only the refusal recoils.** `--ease-arrive` overshoots by design
+   (`cubic-bezier(0.22, 1.16, 0.36, 1)`) and that overshoot is the whole message of a rebuff —
+   the surface strains, is arrested, springs back. Spent on a commit it is a different
+   statement: the page travels ~382px on a 390px phone, so a few percent past the mark is
+   ~15px of the arriving day sliding past level and coming back, which reads as a wobble at
+   the end of every step. `--ease-standard` is the app's arrival curve and has no overshoot. */
 .day-swipe[data-swipe-settling='turn'] > .day-page,
 .day-swipe[data-swipe-settling='turn'] > .day-peeks .day-peek {
-  transition: transform var(--t-base) var(--ease-arrive);
+  transition: transform var(--t-base) var(--ease-standard);
 }
 .day-swipe[data-swipe-settling='back'] > .day-page,
 .day-swipe[data-swipe-settling='back'] > .day-peeks .day-peek {
