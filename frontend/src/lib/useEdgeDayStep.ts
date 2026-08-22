@@ -103,6 +103,18 @@ export function useEdgeDayStep(
    *  it changes: the effect below fires on the day arriving, and the step is what it reads to
    *  know which way that day came from. */
   const asked = useRef<SwipeStep | null>(null);
+  /**
+   * **Has this stay in the band already turned a day?**
+   *
+   * The lift is worth spending once — it is what says _the page is cocked_ — and spending it
+   * again after every turn is what the owner saw twice over (§2d's fourth repair). Kept at the
+   * detent between days, it was a second animation on the heels of each day; given back on the
+   * way out, it was _"this weird 'going back' animation, but stays on the same day"_. So after
+   * the first turn the edge stays armed at **zero**: the surface is still claimed, the panes
+   * stay mounted for the next turn, and there is nothing offset to owe back. Leaving the band
+   * ends the stay, so coming back is a fresh lift.
+   */
+  const stepped = useRef(false);
   // Read through a ref, because a drag OUTLIVES the render it began in (ADR-0116 §2's
   // second "each a bug if missed"): the window listeners that call `track` hold the
   // handlers from the render at touch-down, when the neighbours were the lift day's.
@@ -129,7 +141,8 @@ export function useEdgeDayStep(
    * page being picked up. Nothing here knows how it looks; `screens.css` owns that.
    */
   const lift = useCallback((next: SwipeStep | null) => {
-    cmd.current(next, next == null ? 0 : DRAG_DAY_LIFT_PX);
+    if (next == null) stepped.current = false;
+    cmd.current(next, next == null || stepped.current ? 0 : DRAG_DAY_LIFT_PX);
     asked.current = next;
     setStep(next);
   }, []);
@@ -189,6 +202,7 @@ export function useEdgeDayStep(
       latch.current = null;
       inside.current = null;
       turned.current = null;
+      stepped.current = false;
       setDate(null);
       lift(null);
       if (!el) return;
@@ -205,6 +219,7 @@ export function useEdgeDayStep(
     latch.current = null;
     inside.current = null;
     turned.current = null;
+    stepped.current = false;
     setDate(null);
     lift(null);
   }, [lift]);
@@ -222,7 +237,11 @@ export function useEdgeDayStep(
     // through `asked` rather than the state: this effect must fire on the DAY arriving, and
     // taking the step as a dependency would re-run it on the lift and record a turn that had
     // not happened yet.
-    if (asked.current != null) turned.current = { step: asked.current, at: getNow() };
+    if (asked.current != null) {
+      turned.current = { step: asked.current, at: getNow() };
+      // The lift has been spent for this stay in the band; from here the edge arms at zero.
+      stepped.current = true;
+    }
     setDate(resolve());
   }, [neighbours.prev, neighbours.next, resolve]);
 

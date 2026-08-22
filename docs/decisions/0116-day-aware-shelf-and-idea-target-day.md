@@ -1,6 +1,6 @@
 # 0116 — The shelf becomes day-aware: an idea's optional target day, one union in both modes, and skip vs. park
 
-**Status:** Accepted (design + build) — **amended 2026-08-22** (§2b: the surface's inline edge is a second route to another day; §2c: that turn is drawn rather than teleported; §2d: it is lifted to a detent and completed by staying, superseding §2c's approach — and repaired the same day, three times: the ghost's containing block, the interrupted turn, the band's hysteresis, the cheaper reversal, the landing that keeps the detent, and the wait that outlasts its own transition)
+**Status:** Accepted (design + build) — **amended 2026-08-22** (§2b: the surface's inline edge is a second route to another day; §2c: that turn is drawn rather than teleported; §2d: it is lifted to a detent and completed by staying, superseding §2c's approach — and repaired the same day, four times: the ghost's containing block, the interrupted turn, the band's hysteresis, the cheaper reversal, the wait that outlasts its own transition, and finally the offset itself: the lift is spent once per approach and the surface rests at level between days)
 **Date:** 2026-07-25
 **Refines:** [0027](0027-soft-item-lifecycle-shelf-slip.md) (the parking-lot model: an idea is parked _or_ placed; the shelf renders unplaced ideas **and** skipped soft events "uniformly" — a promise only Trip mode ever kept), [0025](0025-trip-mode-edit-capability-tiers.md)/[0029](0029-trip-mode-day-scope-gating.md) (which verbs are reachable on which day — the gate the new day picker obeys), [0038](0038-icons-and-canonical-category.md)/[0109](0109-map-tab-design.md) §11 (an idea is created uncategorised; category is captured when it's scheduled — now also when it's parked), [0083](0083-whenfield-datetime-standard.md) (the one date/time entry primitive the schedule sheet finally uses), [0085](0085-relative-day-phrasing.md) (how an idea states its day)
 
@@ -400,6 +400,24 @@ The wait was `motionDurationMs('--t-quick')` measured from the JS call, but the 
 **And a phantom animation the recording also caught**, unrelated to the jitter but on the same surface: the quick-unwind rule was not scoped to `[data-swiping]`, so it outlived the offset. The moment the pager gave the surface back, `transform` went from `translateX(0px)` to none with a transition still declared — a 140ms animation over zero distance, invisible and real, after every gesture. There is nothing to move when there is no offset.
 
 **What the guard asserts is a count and an order**, both of which survive a loaded machine: exactly `transitionrun · transitionend · given-back` on the withdrawal after a landing, with nothing cancelled, and the surface given back no earlier than the motion ends.
+
+**Repaired a fourth time, and this one undoes a decision rather than a defect.** Owner: _"dragging to another day and then backing away still does this weird 'going back' animation, but stays on the same day, and it comes across as super confusing."_ Sampled every frame, that gesture at two timings:
+
+| backing away                       | the page travels | the day   |
+| ---------------------------------- | ---------------- | --------- |
+| just after a landing               | 48 → 0           | unchanged |
+| ~800ms later, inside the next turn | **247 → 0**      | unchanged |
+
+Both are the same wrongness at two scales: **there was an offset to give back, and giving it back looks like a page turn in reverse** — the peeks moving with it, ending where it started. The second is over half a page of it.
+
+Both offsets exist because of decisions made two repairs ago, and both are now withdrawn:
+
+- **The lift is spent once per stay in the band, not once per day.** It is what says _the page is cocked_, and that is worth paying for on approach. Paying it again after every turn was wrong in both directions: kept at the detent it was a second animation on the heels of each day (the second repair), and given back on the way out it is this report. So after a turn the edge stays armed at **zero** — still claimed, panes still mounted for the next turn, nothing offset. Leaving the band ends the stay, so a fresh approach lifts again.
+- **A committed turn is never rewound.** The dwell has fired and the page is most of the way there; finishing is shorter than reversing and it is what the motion has already promised. What a withdrawal decides is where the turn **lands**: nothing is holding the surface any more, so it is given back rather than kept claimed. This reverses the abort rule the second repair introduced — that rule was there so a day could not arrive after a drop had landed on the day before it, and the case it was protecting cannot arise: the edge is deliberately not a drop target, so a release inside the band resolves to nothing and §2b's asymmetry takes the whole walk back regardless.
+
+**What the surface does now, end to end:** approach the band and it lifts 48px and stops. Hold and it turns a full page, landing at level, still claimed. Hold again and it turns again — one motion per day, and nothing between them. Back away at any point after a landing and **nothing moves at all**; back away mid-turn and the turn finishes forward. The only reverse motion left in the feature is the pre-dwell abort, where 48px going back is the honest statement that the turn did not happen.
+
+**Three repairs on one gesture in one day, and the through-line is worth naming.** Each one removed a motion whose meaning did not match what it looked like — a lift too slow to read as motion, a second animation with no cause, a reverse with no consequence. The lesson is not about any of the numbers: **a motion has to mean the thing it resembles**, and a horizontal slide of a day surface resembles exactly one thing. Every offset held between days is a promise to move it back, so the surface should hold one only while a finger is asking it to.
 
 **What this round is really about, as a lesson rather than a fix.** Both defects were in the same class: **a fact about the surrounding DOM that the change assumed instead of counting.** The ghost's containing block is one `grep` for what renders inside `.day-page`; the jitter is one reading of who calls `hold` and how often. Root `CLAUDE.md` has the rule already — _count the call sites before claiming what a derivation does_ — and this is its shape for a gesture: **count the callers of a command channel, and the fixed descendants of anything you transform.**
 

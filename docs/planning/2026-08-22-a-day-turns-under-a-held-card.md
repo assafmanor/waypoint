@@ -159,3 +159,24 @@ Two things worth keeping from this:
 - **Anchor a wait to the clock the thing you are waiting for runs on.** `requestAnimationFrame` then the duration: the transition is created in the same rendering pass, so a late frame takes the wait with it, and the slack constant only covers the timer's own imprecision. All three waits in the pager moved onto it, because they are one statement — _do this once the motion has finished_. Zero duration still defers by a task rather than running inline; six unit cases exist precisely because the inline version is a different contract.
 
 The same recording caught a **phantom animation** that had nothing to do with the jitter: the quick-unwind rule was not scoped to `[data-swiping]`, so after the pager gave the surface back, `transform` went `translateX(0px)` → none _with a transition declared_ — 140ms of animation over zero distance, after every gesture. Invisible, real, and now gone. Reading a full event log finds the things you were not looking for, which is the argument for logging over sampling.
+
+---
+
+## A fifth round, which undid two of my own decisions
+
+> _"The fix didn't work. Dragging to another day and then backing away still does this weird 'going back' animation, but stays on the same day, and it comes across as super confusing."_
+
+The previous round fixed how _smoothly_ that motion ran. The motion itself was the problem, which the report says plainly and my fix had not asked. Sampling every frame at two withdrawal timings:
+
+| backing away                       | the page travels | the day   |
+| ---------------------------------- | ---------------- | --------- |
+| just after a landing               | 48 → 0           | unchanged |
+| ~800ms later, inside the next turn | **247 → 0**      | unchanged |
+
+**Two scales of one wrongness: there was an offset to give back, and giving it back looks like a page turn in reverse.** Both offsets came from decisions I had made in the two repairs before, and both are now withdrawn — the lift is spent once per stay in the band rather than once per day, and a committed turn is never rewound.
+
+Three things worth keeping from this round:
+
+- **I fixed the jitter in a motion that should not have existed.** The third repair's measurement was right (the wait was cut mid-transition) and its target was wrong: nobody should have been watching that unwind at all. When a report says a motion is _confusing_ rather than _rough_, the question is what the motion means, not how it runs. I read "jittering" and went to the clock.
+- **The abort rule I added in the second repair was protecting a case that cannot happen.** It cancelled a committed turn so a day could not arrive after a drop had landed on the day before it — but the edge is deliberately not a drop target, so a release inside the band resolves to nothing and §2b takes the whole walk back anyway. A guard written from reasoning rather than from a reachable sequence, and it cost the loudest symptom in the whole feature.
+- **Each of the four repairs removed a motion whose meaning did not match its appearance:** a lift too slow to read as motion, a clone that walked away from the finger, a second animation with no cause, a reverse with no consequence. The generalisation is not about the numbers — **a horizontal slide of a day surface resembles exactly one thing**, so every offset held between days is a promise to move it back. Hold one only while a finger is asking for it.
