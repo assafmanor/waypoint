@@ -305,6 +305,20 @@ describe('HostNotes', () => {
     expect(document.querySelector('.note-full .row-open-lead')?.textContent).toBeTruthy();
   });
 
+  // ADR-0202 §9c, on this surface too — one gesture must not mean two different things on two
+  // surfaces. A long note here is already rendered in full (the section never clamped), so the
+  // screen is what gives it a place to be read that is not inside a card.
+  it('opens a long note on its own screen instead of adding a foot to a wall', () => {
+    const long = Array.from({ length: 14 }, (_, i) => `שורה מספר ${i} עם עוד קצת טקסט`).join('\n');
+    tripNotes = [note({ id: 'n1', body: long, documentId: 'd1' })];
+    open('document', 'd1');
+    // By element, not by accessible name: the body renders through `NoteProse`, so the
+    // button's name is every line concatenated without the newlines that seeded it.
+    fireEvent.click(document.querySelector('.note-item-b')!);
+    expect(document.querySelector('.note-full')).toBeTruthy();
+    expect(document.querySelector('.note-item.is-open')).toBeNull();
+  });
+
   // The hold reaches the same screen from the host's section (ADR-0202's amendment). Both
   // surfaces, one gesture — the property that made the foot control win in the first place.
   //

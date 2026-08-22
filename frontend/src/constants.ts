@@ -617,6 +617,26 @@ export const DRAG_SCROLLER_MIN_OVERFLOW_PX = 24;
  *  surface's: a finger is a finger. If the device pass finds the canvas wants its own —
  *  it competes with the renderer's pan, where the shelf competes with a scroll — that is when
  *  it splits, and not before. */
+/** **When a note stops being something you read in the list** (ADR-0202 §9c's second round;
+ *  owner: _"notes past a certain threshold shouldn't expand at all but open at full screen"_).
+ *
+ *  The expansion was measured on notes where lifting a two-line clamp adds a little — ADR-0153
+ *  §4's +37px short and +89px long. It was never measured on a note that is a document: there,
+ *  expanding produces a screen-height wall inside a list row, which loses your place, pushes
+ *  every other row off, and leaves the verbs at the bottom of it.
+ *
+ *  Both numbers are ESTIMATES and named as such, because the alternative is measuring the
+ *  rendered box before deciding what to do with a tap, which means rendering it first.
+ *  `CHARS_PER_LINE` is `.note-body-line` at 360px and `--text-body` — the design width, so the
+ *  estimate errs on the side of more lines on a wider phone, which is the safe direction.
+ *  `MAX_LINES` is the point where the expansion takes about half the visible list (~8 lines of
+ *  body on top of a ~99px row, against ~540px of list on a 640px screen).
+ *
+ *  Both want a device pass: they decide which of two containers a tap opens, and the boundary
+ *  between them is invisible by construction. */
+export const NOTE_ROW_CHARS_PER_LINE = 42;
+export const NOTE_INLINE_MAX_LINES = 8;
+
 export const DRAG_HOLD_MS = 500;
 export const DRAG_HOLD_SLOP_PX = 8;
 /** How far the drag clone sits ABOVE the finger (ADR-0161 §8), so the pointer lands just

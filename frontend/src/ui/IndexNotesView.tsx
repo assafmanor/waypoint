@@ -24,6 +24,7 @@ import {
   countNotesByCategory,
   noteGlyph,
   noteHost,
+  noteReadsFullScreen,
   noteTitleText,
   noteWhen,
   NOTE_CATEGORY_ALL,
@@ -143,7 +144,15 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
       now={now}
       open={openId === note.id}
       onManage={setManage}
-      onToggle={() => setOpenId((current) => (current === note.id ? null : note.id))}
+      // **A tap means "read this", and the app decides where** (ADR-0202 §9c). A short note
+      // lifts its clamp where it sits; one too long for the list opens on its own screen
+      // instead of becoming a wall inside a row. The decision is here rather than in `NoteLi`
+      // because it is about the two containers, not about the row.
+      onToggle={() =>
+        noteReadsFullScreen(note)
+          ? setReading(note)
+          : setOpenId((current) => (current === note.id ? null : note.id))
+      }
       onView={() => setReading(note)}
       onEdit={setSheet}
     />

@@ -13,11 +13,12 @@ import {
   type Note,
   type NoteHostKey,
 } from '@waypoint/shared';
-import { DEFAULT_EVENT_ICON } from '../constants';
+import { DEFAULT_EVENT_ICON, NOTE_INLINE_MAX_LINES, NOTE_ROW_CHARS_PER_LINE } from '../constants';
 import { inContext, type HostContext } from './host-context';
 import { revealRows, type Revealed } from './filter-reveal';
 import { formatDuration } from './duration';
 import { prettyUrl } from './external-url';
+import { flattenNoteMarkdown } from './note-markdown';
 import { t } from '../i18n/he';
 
 /** Every `EventCategory`, in the enum's own order — the chip row's order, so nothing here
@@ -352,3 +353,33 @@ export function noteCountsByHost(notes: Note[]): Map<string, number> {
  *  so callers ask by kind and id rather than building it. */
 export const noteCountFor = (counts: Map<string, number>, kind: NoteHostKind, id: string): number =>
   counts.get(`${kind}:${id}`) ?? 0;
+
+/** **Is this note too long to read inside the list?** (ADR-0202 §9c.)
+ *
+ * A tap means "read this", and the app decides where: a short note lifts its clamp where it
+ * sits, a long one opens on its own screen. That is state-dependent behaviour for one gesture,
+ * which is a real cost — but the alternative shipped and was reported, because expanding a
+ * document-length note produces a wall inside a list row and puts its verbs at the bottom of
+ * it.
+ *
+ * **Estimated, not measured.** Measuring the rendered height first would mean rendering the
+ * thing before deciding whether to render it. So this counts what the row WOULD show — the
+ * flattened text, which is what `.note-body-line` receives — and turns it into a line count by
+ * wrapping at `NOTE_ROW_CHARS_PER_LINE`. Counting characters alone was the first version and it
+ * is wrong in a way that matters: a note of twelve short lines is twelve lines tall and barely
+ * 150 characters, so it would have expanded into exactly the wall this exists to prevent.
+ *
+ * A note with no body never qualifies: a url-only note's row IS its url, and there is nothing
+ * for a screen to add that the foot does not already carry.
+ */
+export function noteReadsFullScreen(note: Pick<Note, 'body'>): boolean {
+  const text = flattenNoteMarkdown(note.body ?? '');
+  if (!text) return false;
+  const lines = text
+    .split('\n')
+    .reduce<number>(
+      (total, line) => total + Math.max(1, Math.ceil(line.length / NOTE_ROW_CHARS_PER_LINE)),
+      0,
+    );
+  return lines > NOTE_INLINE_MAX_LINES;
+}
