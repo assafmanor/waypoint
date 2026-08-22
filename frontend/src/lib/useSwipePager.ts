@@ -154,6 +154,19 @@ export function useSwipePager<T extends HTMLElement>({
   /** A turn has been committed and its offset is still owed a reset — held until the page it
    *  turned to is drawn (see the layout effect below). */
   const owed = useRef(false);
+  /**
+   * **A commanded turn is in flight** (ADR-0116 §2d's repair) — set for the `--t-base` between
+   * `turn()` and the step it commits.
+   *
+   * It exists because the two commands share one channel and a re-issued LIFT was quietly
+   * killing the turn: the edge dwell re-commands `hold(step)` on every move it sees — every
+   * pointer jitter, and every frame the auto-scroll scrolls — and `hold` rewrote the offset and
+   * cleared this timer. Measured: `dx 382px` / `settling=turn`, one 1px move, `dx 48px` and no
+   * day change at all. That is the owner's _"doesn't always move to the next day"_, and the
+   * _"stutter that looks like it tries to complete the swipe but out of place"_ was the page
+   * snapping back from a turn it had already started.
+   */
+  const turning = useRef(false);
 
   /** The host's own geometry, measured on demand. A gesture measures it once at the press;
    *  a COMMAND has no press, so the same three numbers are read here. `direction` off the
@@ -176,6 +189,7 @@ export function useSwipePager<T extends HTMLElement>({
   const clear = useCallback(() => {
     window.clearTimeout(settle.current);
     owed.current = false;
+    turning.current = false;
     const el = host.current;
     if (el) {
       el.removeAttribute(SWIPING_ATTR);
@@ -192,22 +206,42 @@ export function useSwipePager<T extends HTMLElement>({
       const g = geometry();
       if (!g) return;
       const { el } = g;
-      window.clearTimeout(settle.current);
-      owed.current = false;
       if (step == null) {
-        // Letting go is not `clear()`: the offset goes to zero and the surface unwinds under
-        // the destination state's own transition (`screens.css`). Clearing the attributes here
-        // would take the transform away mid-unwind and it would snap.
+        // **Letting go DOES cancel a turn in flight**, which is the one asymmetry here worth
+        // stating: a re-lift below is jitter and must not touch it, but "there is no day being
+        // aimed at any more" is the gesture withdrawing — the finger left the band, or let go
+        // over a target. Committing anyway would move the day out from under a drop that had
+        // already landed on the day before it.
+        window.clearTimeout(settle.current);
+        owed.current = false;
+        turning.current = false;
+        // Not `clear()`: the offset goes to zero and the surface unwinds under the destination
+        // state's own transition (`screens.css`). Clearing the attributes here would take the
+        // transform away mid-unwind and it would snap. The settle attribute goes too, because
+        // an abandoned turn unwinds on the quick curve rather than on the turn's own.
         el.removeAttribute(LIFT_ATTR);
+        el.removeAttribute(SETTLING_ATTR);
         el.style.setProperty(OFFSET_PROP, '0px');
         settle.current = window.setTimeout(clear, motionDurationMs('--t-quick'));
         return;
       }
+      // The dwell has fired and the page is on its way; `--t-base` is not a window for a
+      // change of mind, and re-parking it at the detent is what read as a stutter.
+      if (turning.current) return;
+      const dx = `${Math.round(g.dirFor(step) * px)}px`;
+      // **Idempotent, because the caller is a stream.** A command channel that rewrites the
+      // value it is already holding sixty times a second is a defect even where it is
+      // harmless, and here it was not harmless: every write cleared the settle timer. The DOM
+      // is asked rather than a second copy of this state kept, so a `clear()` in between (the
+      // arriving page's own reset) correctly reads as "not held" and lifts again.
+      if (el.hasAttribute(LIFT_ATTR) && el.style.getPropertyValue(OFFSET_PROP) === dx) return;
+      window.clearTimeout(settle.current);
+      owed.current = false;
       el.removeAttribute(SETTLING_ATTR);
       el.setAttribute(SWIPING_ATTR, '');
       el.setAttribute(LIFT_ATTR, '');
       el.style.setProperty(WIDTH_PROP, `${Math.round(g.width)}px`);
-      el.style.setProperty(OFFSET_PROP, `${Math.round(g.dirFor(step) * px)}px`);
+      el.style.setProperty(OFFSET_PROP, dx);
       setLive(true);
     },
     [clear, geometry],
@@ -218,7 +252,11 @@ export function useSwipePager<T extends HTMLElement>({
       const g = geometry();
       if (!g) return;
       const { el } = g;
+      // One turn per dwell: a second command while the page is already travelling would
+      // restart the same journey from further along it.
+      if (turning.current) return;
       window.clearTimeout(settle.current);
+      turning.current = true;
       // The lift's attribute goes first: its transition is the detent's, and what follows is
       // the turn's — one channel, two states, never both at once.
       el.removeAttribute(LIFT_ATTR);
@@ -228,6 +266,7 @@ export function useSwipePager<T extends HTMLElement>({
       el.style.setProperty(OFFSET_PROP, `${Math.round(g.dirFor(step) * g.turn)}px`);
       setLive(true);
       settle.current = window.setTimeout(() => {
+        turning.current = false;
         owed.current = true;
         latest.current.onStep(step);
       }, motionDurationMs('--t-base'));
@@ -337,8 +376,10 @@ export function useSwipePager<T extends HTMLElement>({
         el.setPointerCapture?.(pointerId);
         window.clearTimeout(settle.current);
         // A second swipe inside the first one's few-ms wait owns the surface now, so the
-        // owed reset is dropped rather than left to fire mid-drag and flatten it.
+        // owed reset is dropped rather than left to fire mid-drag and flatten it — and a
+        // commanded turn it interrupts is dropped with it, for the same reason.
         owed.current = false;
+        turning.current = false;
         el.removeAttribute(SETTLING_ATTR);
         el.setAttribute(SWIPING_ATTR, '');
         el.style.setProperty(WIDTH_PROP, `${Math.round(width)}px`);

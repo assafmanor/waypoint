@@ -125,6 +125,7 @@ import {
   DEFAULT_MAYBE_ICON,
   DEFAULT_STAY_ICON,
   DOT_SEPARATOR,
+  DRAG_DAY_DWELL_MS,
   MS_PER_DAY,
   MINUTES_PER_HOUR,
 } from '../constants';
@@ -422,10 +423,20 @@ export function PlanDay() {
   // the day and nothing turns; the EDGE has already lifted the page to its detent, so what it
   // owes is the rest of the motion — `turn` finishes it and changes the day at the end, on the
   // swipe's own path. The caller decides, which is why this stays one hook.
-  useSpringLoadedDay(overDate ?? edgeDay.date, activeDate, (date) => {
-    if (overDate || edgeDay.step == null) return setActiveDate(date);
-    daySurface.turn(edgeDay.step);
-  });
+  //
+  // **And the dwell is the TARGET's, not a constant** (§2d's repair; owner: _"hard to go
+  // back"_). A pill always costs the full rest; the edge costs half when it is undoing the
+  // step it just made, which is the difference between correcting a mistake and setting out
+  // again.
+  useSpringLoadedDay(
+    overDate ?? edgeDay.date,
+    activeDate,
+    (date) => {
+      if (overDate || edgeDay.step == null) return setActiveDate(date);
+      daySurface.turn(edgeDay.step);
+    },
+    overDate ? DRAG_DAY_DWELL_MS : edgeDay.dwell,
+  );
 
   // A drag now OUTLIVES the render it began in: the window listeners that track it
   // hold the handlers from the render at touch-down, and dwelling on the day strip
@@ -1459,8 +1470,8 @@ export function PlanDay() {
             }}
           />
         )}
-
-        {/* Whatever is under the finger — a shelf card or a builder row (sessions
+      </div>
+      {/* Whatever is under the finger — a shelf card or a builder row (sessions
           117-118). Deliberately EMPTY here: the hook appends a DOM clone of the
           source, which is what lets one mechanism serve two completely different
           pieces of markup and keeps the clone from ever drifting from the original.
@@ -1469,9 +1480,19 @@ export function PlanDay() {
           `position: fixed` escapes that, so this is NOT an overlay in the ADR-0090
           sense — not a back target, never in the back stack, hence no
           `Modal`/`useOverlay`. `inert` + `aria-hidden` because it is a duplicate of
-          something still in the list. */}
-        {dragLive && <div className="wp-dragghost" ref={ghost.ref} aria-hidden="true" inert />}
-      </div>
+          something still in the list.
+
+          **OUTSIDE `.day-page`, and that is load-bearing** (ADR-0116 §2d's repair). It lived
+          inside until the edge dwell started translating the page under a live drag: a
+          transform makes its element the containing block for every `position: fixed`
+          descendant, so the clone stopped being positioned against the viewport and picked up
+          the page's own offset — measured at 117px down the screen and growing, with the
+          finger still at the same y, which is the owner's _"it no longer is under the
+          finger"_ and _"the ghost disappears sometimes"_. `.day-swipe` itself is never
+          transformed (the pager is careful to put the offset on the inner page precisely so
+          the fixed panes survive), so one level out is a viewport-anchored clone again. Any
+          fixed layer that must track the finger belongs here, not in there. */}
+      {dragLive && <div className="wp-dragghost" ref={ghost.ref} aria-hidden="true" inert />}
     </div>
   );
 }

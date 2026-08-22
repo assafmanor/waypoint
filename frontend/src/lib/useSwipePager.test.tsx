@@ -17,7 +17,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { SWIPE_PAGER } from '../constants';
-import { useSwipePager, type SwipeStep } from './useSwipePager';
+import { useSwipePager, type SwipePager, type SwipeStep } from './useSwipePager';
 import { fakeScroller } from '../test/scroller-harness';
 // jsdom has neither `PointerEvent` nor pointer capture, and this gesture is nothing but
 // coordinates and a capture call.
@@ -38,6 +38,7 @@ function Host({
   rtl = true,
   strip = false,
   pageKey = 'a',
+  api,
 }: {
   onStep: (step: SwipeStep) => void;
   canStep?: (step: SwipeStep) => boolean;
@@ -47,8 +48,15 @@ function Host({
   /** Which page is drawn. Held by the test rather than advanced by `onStep`, because when it
    *  changes is the whole subject of the settle cases below (§8). */
   pageKey?: string;
+  /** Hands the COMMANDED half out to the test (ADR-0116 §2d) — the edge dwell's channel,
+   *  which has no pointer events to fake. */
+  api?: (pager: {
+    hold: SwipePager<HTMLDivElement>['hold'];
+    turn: SwipePager<HTMLDivElement>['turn'];
+  }) => void;
 }) {
-  const { ref } = useSwipePager<HTMLDivElement>({ canStep, onStep, enabled, pageKey });
+  const { ref, hold, turn } = useSwipePager<HTMLDivElement>({ canStep, onStep, enabled, pageKey });
+  api?.({ hold, turn });
   return (
     // `direction` inline rather than via `dir`: jsdom's `getComputedStyle` resolves the
     // style declaration, not the attribute's presentational hint.
@@ -64,7 +72,12 @@ function Host({
 }
 
 function mount(props: Parameters<typeof Host>[0]) {
-  const view = render(<Host {...props} />);
+  let pager: {
+    hold: SwipePager<HTMLDivElement>['hold'];
+    turn: SwipePager<HTMLDivElement>['turn'];
+  } | null = null;
+  const withApi = { ...props, api: (p: typeof pager) => (pager = p) };
+  const view = render(<Host {...withApi} />);
   const host = view.getByTestId('host');
   /** The page the host draws changes — what `onStep` causes in the app, where the day comes
    *  back through the router. This is the moment a committed turn is allowed to give the
@@ -72,13 +85,13 @@ function mount(props: Parameters<typeof Host>[0]) {
   let drawn = 0;
   const drawNextPage = () =>
     act(() => {
-      view.rerender(<Host {...props} pageKey={`page-${++drawn}`} />);
+      view.rerender(<Host {...withApi} pageKey={`page-${++drawn}`} />);
     });
   /** Change a prop mid-gesture — `enabled` going false under a bound listener is a real
    *  sequence, not a contrivance: the hold-drag fires on a timer after the press. */
   const update = (next: Partial<Parameters<typeof Host>[0]>) =>
     act(() => {
-      view.rerender(<Host {...props} {...next} />);
+      view.rerender(<Host {...withApi} {...next} />);
     });
   // jsdom lays nothing out, and the commit threshold is a SHARE of the surface's width —
   // with a zero rect the hook falls back to `window.innerWidth` and the numbers below
@@ -88,7 +101,12 @@ function mount(props: Parameters<typeof Host>[0]) {
     const stripEl = view.getByTestId('strip');
     fakeScroller(stripEl, [view.getByTestId('chip')], { axis: 'inline', viewport: 40 });
   }
-  return { view, host, drawNextPage, update };
+  /** The commanded channel — `hold` and `turn`, wrapped in `act` because both write state. */
+  const command = {
+    hold: (step: SwipeStep | null, px?: number) => act(() => pager!.hold(step, px)),
+    turn: (step: SwipeStep) => act(() => pager!.turn(step)),
+  };
+  return { view, host, drawNextPage, update, command };
 }
 
 /** Let the page finish turning. **The step commits here, not at the release** — the exit
@@ -458,6 +476,91 @@ describe('useSwipePager', () => {
     expect(host.hasAttribute('data-swipe-settling')).toBe(false);
     expect(host.hasAttribute('data-swiping')).toBe(false);
     expect(offset(host)).toBe('');
+  });
+
+  // ── THE COMMANDED TURN (ADR-0116 §2d, and its repair) ──────────────────────────────────
+  //
+  // The edge dwell drives `hold`/`turn` instead of a finger, and it drives them from a
+  // STREAM: `hold(step)` is re-issued on every pointer move the drag sees and on every frame
+  // the auto-scroll scrolls. The three cases below are that fact, and the first is the defect
+  // the owner reported as _"doesn't always move to the next day"_ — one pixel of jitter inside
+  // the turn's `--t-base` used to clear its timer and re-park the page at the detent, so the
+  // day never changed and the page visibly snapped back out of a turn it had begun.
+  describe('a page turn that was commanded rather than dragged', () => {
+    it('lifts to the detent, then commits when the turn is asked for', () => {
+      const onStep = vi.fn();
+      const { host, command, drawNextPage } = mount({ onStep });
+      command.hold(1, 48);
+      expect(host.hasAttribute('data-edge-lift')).toBe(true);
+      expect(offset(host)).toBe('48px');
+
+      command.turn(1);
+      expect(host.hasAttribute('data-edge-lift')).toBe(false);
+      expect(host.getAttribute('data-swipe-settling')).toBe('turn');
+      settle();
+      expect(onStep).toHaveBeenCalledWith(1);
+      drawNextPage();
+      expect(offset(host)).toBe('');
+    });
+
+    it('ignores a lift re-issued while the turn is in flight', () => {
+      const onStep = vi.fn();
+      const { host, command } = mount({ onStep });
+      command.hold(1, 48);
+      command.turn(1);
+      const travelling = offset(host);
+      // The jitter. Same step, same distance, the value the caller has been repeating.
+      command.hold(1, 48);
+      expect(offset(host)).toBe(travelling);
+      expect(host.getAttribute('data-swipe-settling')).toBe('turn');
+      settle();
+      expect(onStep).toHaveBeenCalledWith(1);
+    });
+
+    // The asymmetry, and it is the reason the guard above is not simply "ignore every hold":
+    // letting go is the gesture withdrawing, and a day arriving after the card has been
+    // dropped would move the surface out from under the drop.
+    it('but lets go of one, and takes the day back with it', () => {
+      const onStep = vi.fn();
+      const { host, command } = mount({ onStep });
+      command.hold(1, 48);
+      command.turn(1);
+      command.hold(null);
+      expect(offset(host)).toBe('0px');
+      expect(host.hasAttribute('data-swipe-settling')).toBe(false);
+      settle();
+      expect(onStep).not.toHaveBeenCalled();
+    });
+
+    // Idempotence for its own sake: the same command twice must not restart the detent, or the
+    // page re-animates from where it already is on every frame the caller repeats itself.
+    it('holds the detent still while the same lift is repeated', () => {
+      const onStep = vi.fn();
+      const { host, command } = mount({ onStep });
+      command.hold(1, 48);
+      command.hold(1, 48);
+      command.hold(1, 48);
+      expect(offset(host)).toBe('48px');
+      expect(host.hasAttribute('data-edge-lift')).toBe(true);
+      // And a change of mind about the direction is not idempotent — it is a new detent.
+      command.hold(-1, 48);
+      expect(offset(host)).toBe('-48px');
+    });
+
+    it('lifts again after the day it turned to has been drawn', () => {
+      const onStep = vi.fn();
+      const { host, command, drawNextPage } = mount({ onStep });
+      command.hold(1, 48);
+      command.turn(1);
+      settle();
+      drawNextPage();
+      expect(offset(host)).toBe('');
+      // The next cycle: the finger never left the band, so the edge re-commands the lift and
+      // the surface must take it — the DOM having been cleared is what makes this not a repeat.
+      command.hold(1, 48);
+      expect(offset(host)).toBe('48px');
+      expect(host.hasAttribute('data-edge-lift')).toBe(true);
+    });
   });
 
   // A gesture that begins inside the previous one's wait owns the surface, and the reset it

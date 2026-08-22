@@ -2,12 +2,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
 import { useSpringLoadedDay } from './useSpringLoadedDay';
-import { DRAG_DAY_DWELL_MS } from '../constants';
+import { DRAG_DAY_DWELL_MS, DRAG_DAY_REVERSE_DWELL_MS } from '../constants';
 
 const onSwitch = vi.fn();
 
-function Host({ overDate, activeDate = 'D1' }: { overDate: string | null; activeDate?: string }) {
-  useSpringLoadedDay(overDate, activeDate, onSwitch);
+function Host({
+  overDate,
+  activeDate = 'D1',
+  wait,
+}: {
+  overDate: string | null;
+  activeDate?: string;
+  wait?: number;
+}) {
+  useSpringLoadedDay(overDate, activeDate, onSwitch, wait);
   return null;
 }
 
@@ -52,6 +60,17 @@ describe('useSpringLoadedDay (ADR-0116 session-119)', () => {
     render(<Host overDate="D1" activeDate="D1" />);
     vi.advanceTimersByTime(DRAG_DAY_DWELL_MS * 2);
     expect(onSwitch).not.toHaveBeenCalled();
+  });
+
+  // The rest is the TARGET's, not a constant: the edge's reversal pays half, because undoing
+  // the step you can still see is a correction rather than a second journey (ADR-0116 §2d's
+  // repair). The default is unchanged, which is what every case above asserts.
+  it('rests for as long as the caller asked', () => {
+    render(<Host overDate="D2" wait={DRAG_DAY_REVERSE_DWELL_MS} />);
+    vi.advanceTimersByTime(DRAG_DAY_REVERSE_DWELL_MS - 20);
+    expect(onSwitch).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(20);
+    expect(onSwitch).toHaveBeenCalledWith('D2');
   });
 
   it('fires once, not once per re-render', () => {

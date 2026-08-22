@@ -31,6 +31,7 @@ import {
   DRAG_DAY_DWELL_MS,
   DRAG_DAY_EDGE_PX,
   DRAG_DAY_LIFT_PX,
+  DRAG_DAY_REVERSE_DWELL_MS,
   DRAG_EDGE_SCROLL_RELEASE_PX,
   DRAG_EDGE_SCROLL_ZONE_PX,
   DRAG_GHOST_LIFT_PX,
@@ -1119,6 +1120,144 @@ test.describe('carrying a card to another day from the surface edge', () => {
       y: (bands.middleFrom + bands.middleTo) / 2,
     };
   }
+
+  /** The clone's centre against the finger it is meant to be under. `DRAG_GHOST_LIFT_PX` is the
+   *  deliberate offset above the touch point, so a healthy clone reads as exactly that. */
+  async function ghostOff(page: Page, at: { x: number; y: number }) {
+    const g = await page.locator('.wp-dragghost').evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return {
+        cx: r.x + r.width / 2,
+        cy: r.y + r.height / 2,
+        // **The fact under the whole case.** A `position: fixed` box has no offset parent —
+        // unless an ancestor is transformed, which re-parents it, and that is exactly what the
+        // lift did to it.
+        anchored: (el as HTMLElement).offsetParent === null,
+      };
+    });
+    return { dx: g.cx - at.x, dy: g.cy - (at.y - DRAG_GHOST_LIFT_PX), anchored: g.anchored };
+  }
+
+  // **The clone stays under the finger while the page moves under it** (§2d's repair; owner:
+  // _"after moving to a day it no longer is under the finger"_, _"the ghost disappears
+  // sometimes"_).
+  //
+  // A transform makes its element the containing block for every `position: fixed` descendant,
+  // and the ghost rendered inside `.day-page` — the element the lift translates. So the moment
+  // the edge lifted, the clone stopped being positioned against the viewport and took on the
+  // page's own offset: measured 117px down the screen and then 156, with the finger never
+  // leaving y=353. `offsetParent` is the assertion because it is the mechanism rather than a
+  // symptom — a fixed box that reports one is not viewport-anchored, whatever its rect says
+  // this frame.
+  test('the dragged clone stays with the finger through a lift and a turn', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+    const host = page.locator('.day-swipe:not([data-preview])');
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await expect(host).toHaveAttribute('data-edge-lift', '');
+    const lifted = await ghostOff(page, edge);
+    expect(lifted.anchored, 'the clone is positioned against the viewport, not the page').toBe(
+      true,
+    );
+    expect(Math.abs(lifted.dx)).toBeLessThan(2);
+    expect(Math.abs(lifted.dy)).toBeLessThan(2);
+
+    await stepsTo(page, TOMORROW);
+    // A move after the day changed, because the defect's offset GREW with each turn.
+    await touch(cdp, 'touchMove', edge.x, edge.y + 1);
+    const after = await ghostOff(page, { x: edge.x, y: edge.y + 1 });
+    expect(after.anchored).toBe(true);
+    expect(Math.abs(after.dx)).toBeLessThan(2);
+    expect(Math.abs(after.dy)).toBeLessThan(2);
+    await touch(cdp, 'touchEnd');
+  });
+
+  // **One pixel of jitter must not cancel the turn** (§2d's repair; owner: _"doesn't always
+  // move to the next or prev day"_, and _"a weird stutter where it sort of looks like it tries
+  // to complete the swipe but out of place"_).
+  //
+  // The edge re-issues its lift on every move it sees — and on every frame the auto-scroll
+  // scrolls — so the turn's `--t-base` was being cleared by a finger that had not gone
+  // anywhere. Measured before the fix: `dx 382px` / `settling=turn`, one 1px move, `dx 48px`,
+  // and no day change at all.
+  test('a twitch inside the turn does not put the page back', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+    const host = page.locator('.day-swipe:not([data-preview])');
+    const dx = () =>
+      host.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--swipe-dx'));
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await expect(host).toHaveAttribute('data-swipe-settling', 'turn', {
+      timeout: DRAG_DAY_DWELL_MS * 4,
+    });
+    const travelling = await dx();
+    await touch(cdp, 'touchMove', edge.x, edge.y + 1);
+    // Still travelling: the same offset, still the turn's own settle, and no detent.
+    expect(await dx()).toBe(travelling);
+    await expect(host).toHaveAttribute('data-swipe-settling', 'turn');
+    await expect(host).not.toHaveAttribute('data-edge-lift', '');
+    await stepsTo(page, TOMORROW);
+    await touch(cdp, 'touchEnd');
+  });
+
+  // The other half of that asymmetry, and the reason the guard above is not "ignore every
+  // command": leaving the band DOES take a committed turn back, because a day arriving after
+  // the card has been put down moves the surface out from under the drop.
+  test('but leaving the band inside the turn takes the day back', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+    const host = page.locator('.day-swipe:not([data-preview])');
+    const bands = await bodyBands(page);
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await expect(host).toHaveAttribute('data-swipe-settling', 'turn', {
+      timeout: DRAG_DAY_DWELL_MS * 4,
+    });
+    const box = await boxOf(page, '.day-swipe:not([data-preview])');
+    await touch(cdp, 'touchMove', box.x + box.width / 2, (bands.middleFrom + bands.middleTo) / 2);
+    await expect
+      .poll(() => host.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--swipe-dx')))
+      .toMatch(/^0px$|^$/);
+    await page.waitForTimeout(DRAG_DAY_DWELL_MS);
+    expect(dayParam(page)).toBeNull();
+    await touch(cdp, 'touchEnd');
+  });
+
+  // **Going back is cheaper than going on** (§2d's repair; owner: _"hard to go back"_). The
+  // opposite band, inside the reversal window, pays half the dwell — so this asserts a day
+  // arriving in less time than a first step is allowed to take.
+  test('reversing costs half a dwell', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const forward = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', forward.x, forward.y);
+    await stepsTo(page, TOMORROW);
+
+    const back = await edgeOf(page, 'right');
+    await touch(cdp, 'touchMove', back.x, back.y);
+    const at = Date.now();
+    await stepsTo(page, null as unknown as string);
+    // Half the dwell plus the turn's own travel, with room for the poll's own granularity —
+    // and comfortably under what a full dwell would have cost.
+    expect(Date.now() - at).toBeLessThan(DRAG_DAY_DWELL_MS);
+    expect(Date.now() - at).toBeGreaterThan(DRAG_DAY_REVERSE_DWELL_MS - 50);
+    await touch(cdp, 'touchEnd');
+  });
 
   test('holding at the edge steps the day, and keeps stepping', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);

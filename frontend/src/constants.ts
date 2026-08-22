@@ -661,6 +661,18 @@ export const DRAG_DAY_EDGE_PX = 36;
  *  as a static offset rather than a motion. It travels in `--t-base` now (~3.2px/frame),
  *  measured in `mockups/a-day-turns-under-a-held-card-v2.html` where it is a control. */
 export const DRAG_DAY_LIFT_PX = 48;
+/** **How long after a step the opposite band still reads as UNDOING it** rather than starting
+ *  a new journey (§2d's repair; owner: _"hard to go back"_). Inside this window a reversal pays
+ *  the shortened dwell below; outside it, going back costs what going forward costs.
+ *
+ *  A window rather than "for the rest of the drag" on purpose: five minutes into a long drag,
+ *  a band brushed while aiming should not be a day change with half the warning. */
+export const DRAG_DAY_REVERSE_MS = 2_000;
+/** The dwell a reversal pays — **half**, and derived rather than typed so the two cannot drift
+ *  apart. Undoing a step you can still see is a correction, and `design-language.md` says a
+ *  correction is quicker than the thing it corrects; the lift and the turn are unchanged, so
+ *  what shortens is only the hold. */
+export const DRAG_DAY_REVERSE_DWELL_MS = DRAG_DAY_DWELL_MS / 2;
 
 /** ── AN ANCHORED PANEL'S PLACEMENT (ADR-0144) ────────────────────────────────────────
  *  `IconPicker` opens below its trigger, which is right in a form that scrolls under a
