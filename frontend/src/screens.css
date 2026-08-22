@@ -176,10 +176,19 @@
 /* The abort, on the DESTINATION state (design-language.md's asymmetric settle): the lift is
    deliberate, giving it up is a correction, so it unwinds quickly rather than replaying the
    lift backwards. Scoped to `body.wp-dragging` because during a SWIPE `--swipe-dx` is rewritten
-   every frame and a transition on it would smear the follow. */
-body.wp-dragging .day-swipe:not([data-edge-lift]):not([data-swipe-settling]) > .day-page,
+   every frame and a transition on it would smear the follow.
+
+   **And to `[data-swiping]`, which is the attribute the transform itself lives under.** Without
+   it the rule outlived the offset: the moment the pager gave the surface back, `transform` went
+   from `translateX(0px)` to none WITH a transition still declared, so a 140ms transition ran
+   over zero distance — invisible, but a real animation on the main thread after every gesture,
+   and it showed up in the recording that found the jitter above. There is nothing to move when
+   there is no offset. */
 body.wp-dragging
-  .day-swipe:not([data-edge-lift]):not([data-swipe-settling])
+  .day-swipe[data-swiping]:not([data-edge-lift]):not([data-swipe-settling])
+  > .day-page,
+body.wp-dragging
+  .day-swipe[data-swiping]:not([data-edge-lift]):not([data-swipe-settling])
   > .day-peeks
   .day-peek {
   transition: transform var(--t-quick) var(--ease-exit);

@@ -134,3 +134,28 @@ Both new e2e cases passed alone and failed under two workers, and neither failur
 
 - The multi-day case **sampled `--swipe-dx` one frame after each landing**. That is a magnitude at a moment — the exact class this repo has three flake entries for. Rewritten to count `transitionrun` events instead: three for two days (the lift, then a turn each), where the old behaviour ran five. A count is what the owner's report is actually about, and it does not care how loaded the machine is.
 - The abort case read a `boundingBox` **inside** the 240ms window it was racing, which can spend the whole of it. Every measurement moved before the window, and the poll inside it tightened to 20ms, so what is left in there is one CDP dispatch.
+
+---
+
+## A fourth round: the jitter was in the clock
+
+> _"There's still some jittering happening sometimes when dragging from day to day, I think but not sure that when dragging to the next day and then moving the finger quickly to not drag to the next day again then this jitter is happening."_
+
+The hunch was exact, and the recording of that precise gesture — land on a day, then straight out of the band — shows why:
+
+```
+2031  hold(null): dx → 0px, the lift released      painted=48
+2061  transitionrun                                 painted=47   ← 30ms after we asked
+2164  the surface given back                        painted=12   ← 103ms into a 140ms unwind
+2178  transitioncancel, then a SECOND transitionrun  painted=12
+2311  transitionend                                 painted=0
+```
+
+**`setTimeout(duration)` measures from the moment we ask; a transition measures from the frame the browser starts it.** Here that was 30ms apart — a style flush behind a main thread that had just swapped a day — so the wait expired inside the unwind, dropped the rule mid-flight, and a second transition carried the last 12px. One 140ms motion became two totalling 250ms with a velocity break at the seam.
+
+Two things worth keeping from this:
+
+- **The previous repair is what made it visible.** Landing at the detent means every withdrawal now unwinds from 48px, where before the surface was usually already at level. A fix that removes one motion can promote a latent race in the motion it leaves behind, and the only reason this was found in one pass is that the owner described the gesture rather than the symptom.
+- **Anchor a wait to the clock the thing you are waiting for runs on.** `requestAnimationFrame` then the duration: the transition is created in the same rendering pass, so a late frame takes the wait with it, and the slack constant only covers the timer's own imprecision. All three waits in the pager moved onto it, because they are one statement — _do this once the motion has finished_. Zero duration still defers by a task rather than running inline; six unit cases exist precisely because the inline version is a different contract.
+
+The same recording caught a **phantom animation** that had nothing to do with the jitter: the quick-unwind rule was not scoped to `[data-swiping]`, so after the pager gave the surface back, `transform` went `translateX(0px)` → none _with a transition declared_ — 140ms of animation over zero distance, after every gesture. Invisible, real, and now gone. Reading a full event log finds the things you were not looking for, which is the argument for logging over sampling.

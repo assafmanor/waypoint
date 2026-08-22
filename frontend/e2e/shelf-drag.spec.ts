@@ -1374,6 +1374,75 @@ test.describe('carrying a card to another day from the surface edge', () => {
     await touch(cdp, 'touchEnd');
   });
 
+  // **The unwind after a landing is ONE motion** (§2d's third repair; owner: _"still some
+  // jittering… when dragging to the next day and then moving the finger quickly to not drag to
+  // the next day again"_).
+  //
+  // Since the landing keeps the detent, every withdrawal unwinds from 48px — and the wait that
+  // gives the surface back was measured from the JS call rather than from the frame the browser
+  // started the transition on. Recorded before the fix: the offset written at 2031ms, the
+  // transition created at 2061 (a style flush behind a busy main thread), the surface given back
+  // at 2164 — 103ms into a 140ms unwind. That dropped the rule mid-flight, cancelled the
+  // transition at 12px, and a second one carried the rest: 250ms with a velocity break at the
+  // seam. So the assertion is a count and an ORDER, both of which survive a loaded machine.
+  test('the unwind after a landing is one continuous motion', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+    const host = page.locator('.day-swipe:not([data-preview])');
+    const bands = await bodyBands(page);
+    const box = await boxOf(page, '.day-swipe:not([data-preview])');
+    const middle = { x: box.x + box.width / 2, y: (bands.middleFrom + bands.middleTo) / 2 };
+
+    type Beat = { type: string; at: number };
+    await page.evaluate(() => {
+      const w = window as unknown as { __beats: Beat[]; __watch: () => void };
+      type Beat = { type: string; at: number };
+      w.__beats = [];
+      const el = document.querySelector('.day-swipe:not([data-preview])') as HTMLElement;
+      // Armed by the caller AFTER the day has landed, so the turn's own transition is not in the
+      // sample — this case is about what happens on the way back.
+      w.__watch = () => {
+        w.__beats = [];
+        for (const type of ['transitionrun', 'transitionend', 'transitioncancel'])
+          document.addEventListener(type, (ev) => {
+            if ((ev.target as HTMLElement).classList?.contains('day-page'))
+              w.__beats.push({ type, at: Math.round(performance.now()) });
+          });
+        new MutationObserver(() => {
+          if (!el.hasAttribute('data-swiping'))
+            w.__beats.push({ type: 'given-back', at: Math.round(performance.now()) });
+        }).observe(el, { attributes: true, attributeFilter: ['data-swiping'] });
+      };
+    });
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await stepsTo(page, TOMORROW);
+    await page.evaluate(() => (window as unknown as { __watch: () => void }).__watch());
+
+    // The reported gesture: straight out of the band, right after the day arrived.
+    await touch(cdp, 'touchMove', middle.x, middle.y);
+    await expect
+      .poll(() => host.getAttribute('data-swiping'), { timeout: 2000, intervals: [20] })
+      .toBeNull();
+    await page.waitForTimeout(300);
+    const beats = await page.evaluate(() => (window as unknown as { __beats: Beat[] }).__beats);
+    const kinds = beats.map((b) => b.type);
+
+    expect(kinds, 'one unwind, and nothing cancelled it').toEqual([
+      'transitionrun',
+      'transitionend',
+      'given-back',
+    ]);
+    // The order is the whole point: the surface is given back after the motion, not inside it.
+    const end = beats.find((b) => b.type === 'transitionend')!;
+    const back = beats.find((b) => b.type === 'given-back')!;
+    expect(back.at).toBeGreaterThanOrEqual(end.at);
+    await touch(cdp, 'touchEnd');
+  });
+
   test('holding at the edge steps the day, and keeps stepping', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
     const card = await centre(page, '.wp-maybecard');
