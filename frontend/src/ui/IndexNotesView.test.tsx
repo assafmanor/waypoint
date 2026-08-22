@@ -410,6 +410,22 @@ describe('IndexNotesView (ADR-0153)', () => {
       expect(link.closest('.row-open-foot')).toBeTruthy();
     });
 
+    // ADR-0202 §1. The way in is a third control in the line that already exists, and it is
+    // there on EVERY open note — not only a long one, because a control whose position
+    // depends on the length of the text cannot be learned.
+    it('offers the full screen from the open foot, on every note', () => {
+      show();
+      tap(bodyOnly);
+      expect(foot()?.textContent).toContain(t.notes.open.full);
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.notes.open.full) }));
+      expect(document.querySelector('.note-full')).toBeTruthy();
+      // The bar names the kind, and the words read in full below it.
+      expect(document.querySelector('.note-full-t')?.textContent).toBe(t.notes.one);
+      expect(document.querySelector('.note-full-body')?.textContent).toContain(
+        'הכניסה מאחור, ליד חנות הפרחים',
+      );
+    });
+
     // A general note has no host, so there is nothing to go to — the words stay, the
     // control does not appear at all.
     it('offers no way in for a general note', () => {

@@ -18,6 +18,8 @@ export function RowOpenFoot({
   lead,
   addLabel,
   onAdd,
+  viewLabel,
+  onView,
   editLabel,
   onEdit,
 }: {
@@ -39,6 +41,26 @@ export function RowOpenFoot({
    *  rather than at the end of the line. */
   addLabel?: string;
   onAdd?: () => void;
+  /** **The way in to the full screen** (ADR-0202 §1) — a note's, and the only shape that
+   *  exists identically on BOTH surfaces a note opens on. The notes screen's row and a host's
+   *  section share this foot and share nothing else that can hold a tap target: the meta line
+   *  lives inside the row's own `<button>` and buttons do not nest (ADR-0139 §3, the same
+   *  reason `.wp-listrow-right` is a sibling rather than a child).
+   *
+   *  Trailing rather than leading, and BEFORE the edit: the spacer's job is to keep the row's
+   *  own verb at the trailing edge, so a second verb joins in front of it rather than pushing
+   *  it inward.
+   *
+   *  `Icon name="frame"` is not a new glyph. It already means "this opens full screen" in
+   *  `FilePicker`, whose preview card wears it as corner brackets "because there is no hover
+   *  to discover it with (ADR-0017)" — a second mark for one meaning is the parallel copy
+   *  rule 8 exists to stop.
+   *
+   *  **If a third optional pair ever wants to join these two, they become a list.** Two named
+   *  slots is the honest cost of two call sites (tasks' `＋ תת משימה` and this); a fourth prop
+   *  pair would be a strip pretending to be a line. */
+  viewLabel?: string;
+  onView?: () => void;
   editLabel: string;
   onEdit: () => void;
 }) {
@@ -51,6 +73,11 @@ export function RowOpenFoot({
         </button>
       )}
       <span className="row-open-sp" />
+      {onView && viewLabel && (
+        <button type="button" className="row-open-act" onClick={onView}>
+          <Icon name="frame" /> {viewLabel}
+        </button>
+      )}
       <button type="button" className="row-open-act" onClick={onEdit}>
         <Icon name="edit" /> {editLabel}
       </button>

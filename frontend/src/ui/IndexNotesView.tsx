@@ -34,12 +34,14 @@ import {
 } from '../lib/notes';
 import { ltrIsolate } from '../lib/bidi';
 import { prettyUrl } from '../lib/external-url';
+import { flattenNoteMarkdown } from '../lib/note-markdown';
 import { todayInTz } from '../lib/time';
 import { useNoteHostWayIn, type NoteHostWayIn } from '../state/note-host-nav';
 import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
 import { NoteSheet, type NoteDraft } from './NoteSheet';
 import { NoteManageSheet } from './NoteManageSheet';
 import { NoteOpenFoot } from './NoteOpenFoot';
+import { NoteFullScreen } from './NoteFullScreen';
 import { IndexBackRow } from './IndexBackRow';
 import { Icon } from './Icon';
 import { ListRow } from './domain';
@@ -53,7 +55,7 @@ import { t } from '../i18n/he';
 import './notes.css';
 
 export function IndexNotesView({ onClose }: { onClose: () => void }) {
-  const { trip, notes, noteHosts, noteVerbs } = useTrip();
+  const { trip, notes, users, noteHosts, noteVerbs } = useTrip();
   const { mode } = useMode();
   const now = useClock();
 
@@ -67,6 +69,10 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
   // two-line clamp lifts and one foot line appears under it. No sheet, no scrim, and the
   // list you were reading stays exactly where it was.
   const [openId, setOpenId] = useState<string | null>(null);
+  // **The third container** (ADR-0202 §2), above the expansion rather than instead of it.
+  // Local view state exactly like `sheet` and `manage`: the note it holds is the one being
+  // read, and no screen behind this has a reason to know.
+  const [reading, setReading] = useState<Note | null>(null);
   // The way in to a note's host, measured against the trip's own today (a day-scoped host
   // needs `?day=` unless it IS today).
   const wayIn = useNoteHostWayIn(todayInTz(trip.timezone, now));
@@ -137,6 +143,7 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
       open={openId === note.id}
       onManage={setManage}
       onToggle={() => setOpenId((current) => (current === note.id ? null : note.id))}
+      onView={() => setReading(note)}
       onEdit={setSheet}
     />
   );
@@ -248,6 +255,28 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
         />
       )}
 
+      {/* Above the row it came from, and above search: `Modal variant="full"` registers as
+          the topmost overlay, so one back returns to the list with the row still open. */}
+      {reading && (
+        <NoteFullScreen
+          note={reading}
+          host={noteHost(reading, hosts)}
+          users={users}
+          now={now}
+          onGoToHost={
+            wayIn.canReach(noteHost(reading, hosts))
+              ? () => wayIn.goTo(noteHost(reading, hosts)!)
+              : undefined
+          }
+          onEdit={() => {
+            const note = reading;
+            setReading(null);
+            setSheet(note);
+          }}
+          onClose={() => setReading(null)}
+        />
+      )}
+
       {manage && (
         <NoteManageSheet
           note={manage}
@@ -282,6 +311,7 @@ function NoteLi({
   wayIn,
   open,
   onToggle,
+  onView,
   onEdit,
   onManage,
 }: {
@@ -294,6 +324,8 @@ function NoteLi({
   /** Expanded: the title line's two-line clamp is off and the foot is under it. */
   open: boolean;
   onToggle: () => void;
+  /** Open this note on its own screen (ADR-0202 §1). */
+  onView: () => void;
   onEdit: (note: Note) => void;
   onManage: (note: Note) => void;
 }) {
@@ -313,13 +345,19 @@ function NoteLi({
   // honours the composer's newlines, and it unclamps when the row opens. So both shapes of
   // note now read through one element, and the body's structure survives on every surface
   // that shows it.
+  // **The markers come OFF on this surface** (ADR-0202 §6). The row clamps to two lines, and
+  // `## מסעדות` inside a two-line preview is noise where the words under it are what the
+  // reader is scanning for. It costs the row nothing — the clamp fixes the height either way,
+  // measured at 99.4px flat against 99.4px raw — and it keeps the authored newlines, which is
+  // the 2026-08-16 defect it must not undo.
+  const preview = flattenNoteMarkdown(note.body ?? '');
   const titleLine = note.title ? (
     <>
       <span>{note.title}</span>
-      {note.body && <span className="note-body-line">{note.body}</span>}
+      {note.body && <span className="note-body-line">{preview}</span>}
     </>
   ) : note.body ? (
-    <span className="note-body-line">{note.body}</span>
+    <span className="note-body-line">{preview}</span>
   ) : (
     // A url-only note's title line IS the url, as an LTR island inside the RTL row —
     // `ltrIsolate`, never `dir="ltr"` on a non-input (ADR-0118). `prettyUrl`, not the raw
@@ -374,6 +412,7 @@ function NoteLi({
           url={note.url}
           urlIsTheTitle={!note.title && !note.body}
           onGoToHost={reachable ? () => wayIn.goTo(host!) : undefined}
+          onView={onView}
           onEdit={() => onEdit(note)}
         />
       )}

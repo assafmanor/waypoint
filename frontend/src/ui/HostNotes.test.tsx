@@ -33,6 +33,12 @@ let tripBookings: Booking[] = [];
 const createNote = vi.fn(() => Promise.resolve(undefined));
 const updateNote = vi.fn(() => Promise.resolve());
 
+// The section's full screen wears the mode tint, so `HostNotes` reads `useMode` — mocked
+// rather than provided, because `ModeProvider` reads trip state and this spec's trip state is
+// itself a mock. Same reflex as the trip mock below: if the assertion depends on it, the suite
+// states it (frontend/CLAUDE.md).
+vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: 'trip' }) }));
+
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
     trip: { id: 't1', timezone: 'Asia/Jerusalem', startDate: '2026-08-15', endDate: '2026-08-20' },
@@ -109,14 +115,23 @@ describe('HostNotes', () => {
   it('renders a multi-line body with its newlines intact', () => {
     tripNotes = [note({ id: 'n1', body: 'קומה 3\n\nהכניסה מאחור', bookingId: 'b1' })];
     open('booking', 'b1');
-    expect(document.querySelector('.note-item-b')?.textContent).toBe('קומה 3\n\nהכניסה מאחור');
+    const body = document.querySelector('.note-item-b');
+    // A BLANK line is a block break, so these are two paragraphs rather than one with a
+    // `<br />` — which is the distinction `pre-wrap` could not draw and this can.
+    expect(body?.querySelectorAll('.note-prose p')).toHaveLength(2);
+    expect(body?.textContent).toBe('קומה 3הכניסה מאחור');
   });
 
   // ADR-0152 §6's 2026-08-16 amendment. This surface rendered `noteTitleText`, which is
   // `title || body` — so a note with BOTH showed its title and its body appeared nowhere on
   // any read surface, since the notes screen was pushing it into a meta line that collapsed
   // it. A line here does not clamp, so this is where a long structured note reads whole.
-  it('shows a titled note’s body under its title, newlines and all', () => {
+  //
+  // **The newline is now a `<br />` rather than a preserved `\n`** (ADR-0202 §6): the body is
+  // rendered by `NoteProse`, which keeps each authored line as its own run. Same pixels, and
+  // a stronger guarantee — the old rule lived in CSS that jsdom cannot see, which is exactly
+  // why `notes.contract.test.ts` had to exist to guard it. This assertion can see it.
+  it('shows a titled note’s body under its title, breaking where the author broke it', () => {
     tripNotes = [
       note({
         id: 'n1',
@@ -128,7 +143,9 @@ describe('HostNotes', () => {
     open('booking', 'b1');
     const item = document.querySelector('.note-item-b');
     expect(item?.querySelector('.note-item-t')?.textContent).toBe('הזוהר הצפוני');
-    expect(item?.textContent).toContain('החלון הטוב: 22:00–02:00\nלא להסתכל רק על KP');
+    expect(item?.textContent).toContain('החלון הטוב: 22:00–02:00');
+    expect(item?.textContent).toContain('לא להסתכל רק על KP');
+    expect(item?.querySelectorAll('.note-prose br')).toHaveLength(1);
     // The title is not also printed as the body — the two are one line apart, not twice.
     expect(item?.textContent?.match(/הזוהר הצפוני/g)).toHaveLength(1);
   });
@@ -259,6 +276,32 @@ describe('HostNotes', () => {
     open('document', 'd1');
     fireEvent.click(screen.getByRole('button', { name: 'קוד הכספת 4417' }));
     expect(document.querySelector('button.row-open-lead')).toBeNull();
+  });
+
+  // …and it says NOTHING there rather than something false. `NoteOpenFoot` used to fall
+  // through to `פתק כללי` whenever no host was passed, and this surface passes none because it
+  // IS the host — so every hosted note on a booking, a document or a place was labelled a
+  // general note (ADR-0202's build found this while adding the control below).
+  it('does not call a hosted note general on its own host’s surface', () => {
+    tripNotes = [note({ id: 'n1', body: 'קוד הכספת 4417', documentId: 'd1' })];
+    open('document', 'd1');
+    fireEvent.click(screen.getByRole('button', { name: 'קוד הכספת 4417' }));
+    expect(document.querySelector('.row-open-foot')?.textContent).not.toContain(
+      t.notes.open.general,
+    );
+  });
+
+  // ADR-0202 §1: the same control as on the notes screen, because the foot is the only half
+  // of either surface that can hold a tap target — which is what made this candidate win.
+  it('opens the note on its own screen, from the host’s section', () => {
+    tripNotes = [note({ id: 'n1', body: 'קוד הכספת 4417', documentId: 'd1' })];
+    open('document', 'd1');
+    fireEvent.click(screen.getByRole('button', { name: 'קוד הכספת 4417' }));
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.notes.open.full) }));
+    expect(document.querySelector('.note-full')).toBeTruthy();
+    // The screen names the host even though the section behind it is that host: with no chip
+    // in its bar, the foot is the only place it appears at all.
+    expect(document.querySelector('.note-full .row-open-lead')?.textContent).toBeTruthy();
   });
 
   // The row here prints title-or-body, so a note carrying both a body and a link showed

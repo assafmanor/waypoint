@@ -1,6 +1,6 @@
 # 0202 — A note gets a full screen, its way in is the foot it already has, and Markdown arrives as a subset that emits structure
 
-**Status:** Proposed — design only, nothing here is built
+**Status:** Accepted — **built 2026-08-22**, same day, with five amendments the build itself forced (§3, §4, §5, §6 and a second shipped defect, §7b)
 **Date:** 2026-08-22
 **Design exploration:** [`mockups/note-full-screen-v1.html`](../../mockups/note-full-screen-v1.html) — the four candidate ways in drawn on **both** surfaces a note opens on, the screen itself across three note shapes, the whole subset rendered at once, the four link refusals, and one note on three surfaces. Interactive: theme · width · candidate · note · Markdown on/off, plus the two numbers that are feel calls (prose size, heading steps). Every number in its table is read off that page's own DOM, and the two that are not say so.
 **Builds on:** [0153](0153-the-notes-surface-the-mark-and-no-mode-gate.md) §4 (a note opens **where it is**, and its foot carries where it belongs plus one verb) · §5b (a note's url is a link) · §8 (four entrances to one destination; the menu holds verbs, the row holds content), [0152](0152-a-note-is-one-entity-with-an-optional-host.md) §6/§6b (the body lives in the host's own surface; the composer's newlines are **content**), [0189](0189-the-editor-uses-the-idiom-the-app-already-had-and-a-task-is-read-where-it-sits.md) (`RowOpenFoot` is shared with tasks), [0101](0101-index-search-mode-and-header-titles.md) (`Modal variant="full"` is the app's full-screen primitive), [0103](0103-back-navigation-typed-layer-model.md)/[0090](0090-back-is-computed-from-nav-state.md) (one back per surface, computed), [0118](0118-numbers-in-hebrew-bidi.md) (isolate the run, never the container), [0028](0028-plan-violet-color-budget-dark-ready.md) (the colour budget), [0017](0017-mobile-first-device-targets.md) (phone-first, the 44px floor)
@@ -59,6 +59,12 @@ Top to bottom: the bar (back · `פתק` · the host as a `.chrome-chip` · `⋯
 - **The note's title is `--text-h3` in the BODY face**, not `--font-head`. Secular One is the app's chrome voice — design-language.md marks h1/h2/h3 as Secular One because every one of them is a screen or a card _the app wrote_. A reader's own words in the display face read as a heading **of** the app.
 - **The `⋯` is `RowActionList`**, i.e. `NoteManageSheet`'s existing verbs: `עריכה`, `מעבר למה שהפתק שייך אליו`, the destructive `מחיקה` in its own partition — plus `העתקה כ-Markdown`, which is the one new verb and the one this ADR is least sure of (§8). One visible edit, delete on the `⋯`: `BookingDetail`'s grammar (ADR-0053), unchanged.
 
+**Amended in the build (2026-08-22) — the screen has NO `⋯`, and no host chip either. Both are subtractions, and both come from applying a rule this ADR was already citing.**
+
+- **No menu.** ADR-0053's grammar is _one visible edit, delete on the row's kebab_ — the row's, not the read surface's, which is why `BookingDetail` has no menu of its own. Writing the menu out made it obvious that two of its three items (`עריכה`, the host way in) are already on screen in the foot, which leaves a menu whose only unique item is the destructive one. That is a worse home for a delete than the row's kebab, not a better one.
+- **No host chip in the bar.** The foot's lead already names the host _and_ is the way to it, and ADR-0153 §4's amendment settled this exact question one surface down: when a note opens, `.wp-listrow.is-open .note-host` **hides** the row's chip, because the foot below carries the same fact. A chip in the bar is that stutter again with a whole screen between the two copies. So the bar is back + `פתק`, which is `IndexBackRow`'s shape.
+- **And the consequence, which is the interesting half:** with no chip, the foot is the only place the host appears at all — so the full screen names it _even when it cannot be reached_, and even when the surface behind it IS that host. That is the opposite call from the row's foot (§7b), and it comes from the same rule: say a fact once, on the surface that is missing it.
+
 ### 4. Markdown is a subset, and it is a subset that emits structure rather than an HTML string
 
 The parser is ~147 lines, **2,911 bytes minified and 1,437 gzipped**. In the app it returns React nodes; the mockup builds strings because a static page has no React, and it escapes.
@@ -70,6 +76,9 @@ Four rules inside it that are decisions rather than parser trivia:
 
 - **A single newline stays a break.** The one deliberate divergence from CommonMark, and the reason a library is not a drop-in: ADR-0152 §6b's 2026-08-07 amendment made the composer's newlines **content**, and CommonMark joins a soft break into the same paragraph. A correct renderer would therefore _silently rewrite every note that already exists_.
 - **A heading inside a note is a section, not a screen title.** The note's `title` field is the only h1 it can have, so the subset spends **one** step by default and `###`+ falls back to body size rather than opening a fourth ramp on a 360px phone. The two-step variant is a control in the mockup, not a decision here.
+
+  **Amended in the build: `#` and `##` are the SAME level.** The first implementation gave the step to `#` alone and folded `##` into body size, which inverts the point — `##` is the level people actually paste, so the common case came out flat and the rare one got the emphasis. `#`/`##` take the one step; `###` and deeper are bold at body size.
+
 - **A code span is monospace only when it has no Hebrew in it.** design-language.md reserves JetBrains Mono for Latin/numeric runs because the face has **no Hebrew glyphs**. A wifi password is exactly what a code span in a travel note is for, and `` `סיסמה` `` is exactly what would have broken the rule — so the parser decides per span and the CSS carries both. The render reads the two families back: `JetBrains Mono` against `Assistant`.
 - **`- [ ]` renders as a plain bullet.** This app has real tasks (ADR-0196); a checkbox that cannot be ticked invites a tap that does nothing, and the real thing is one section away.
 
@@ -78,6 +87,8 @@ Four rules inside it that are decisions rather than parser trivia:
 ### 5. Link detection is unconditional, and it is the existing pair of functions
 
 A url or an email inside a note's prose becomes a link whether or not Markdown is on ("either way"). The href is `externalHref`'s and the label is `prettyUrl`'s — the two functions written for exactly this field, the first owning the allowlist that refuses `javascript:`, the second owning what a reader should see. A Latin run inside Hebrew prose is isolated per ADR-0118; the label wraps rather than ellipsising, because inside a paragraph there is nothing to truncate against.
+
+**The control's words are the app's own.** The mockup drew `מסך מלא`; the build ships **`תצוגה מלאה`**, because `FilePicker` already names this exact action `תצוגה מלאה: {name}` when it opens `MediaViewer`. One meaning with two nouns is how a vocabulary drifts (ADR-0138's recurring finding), and the ~22px it costs on an 11.5px line is what §1's truncation rule absorbs.
 
 **Detection requires a scheme, a `www.`, or a path slash.** Without that third condition `passport.pdf` — a thing travel notes genuinely say — becomes `https://passport.pdf`. A bare host with no path that someone _means_ as a link is what the note's url field is for. Deliberately not detected, and each is drawn in the mockup: a filename, a time or a price (`17:00`, `12.50`), and a phone number — the last because a travel note is full of digit runs and a wrong `tel:` is worse than none.
 
@@ -95,6 +106,12 @@ Not a taxonomy — two questions the CSS already answers per surface:
 - **A body that is a button cannot hold a link, so it does not pretend to.** ADR-0153 §8 already refused a second tap target inside a row's one open target ("at ~16px … a mistap, not an affordance"), which is why §5b put the note's url in the **foot**. A url found in prose gets the same answer: no `--cta`, no underline, nothing promising a tap that cannot happen. Which gives the full screen a second reason to exist beyond room — **it is the only surface where a note's links are live.**
 - **And shaping a note on a host makes the section shorter, not longer**: 312.5px against 319.7px, because a real bullet saves the character and space that were wrapping a line and a heading saves the blank line that separated two blocks. Recorded because the opposite was assumed while drawing it.
 
+**Amended in the build — how a break is CARRIED changed, and it is an improvement rather than a detail.** The host section's newlines used to come from `white-space: pre-wrap` on `.note-item-b`; they now come from a `<br />` per authored line, because the parser already has the lines separate. Three consequences worth writing down:
+
+- **A blank line and a single newline are finally different things.** `pre-wrap` rendered both as whitespace; the renderer makes the first a new `<p>` and the second a `<br />`.
+- **The guarantee got stronger.** `notes.contract.test.ts` exists because jsdom has no CSS engine, so the newline rule could only be checked by reading the stylesheet as text. A `<br />` is in the DOM, so `HostNotes.test.tsx` asserts it directly. `.note-body-line`'s `pre-wrap` still matters and is still guarded — the notes screen's row renders a _flattened string_ whose newlines are real characters.
+- **`.note-prose` declares `white-space: normal`.** `white-space` inherits, and one of the prose's two hosts declares `pre-wrap` for its own text node — inherited, that would preserve every run of spaces inside a pasted paragraph _on top of_ the breaks the renderer emits. Asserted in the contract test.
+
 ### 7. A shipped defect this exposed, and the fix belongs in `external-url.ts`
 
 `externalHref` allows `mailto:` and nothing ever supplies it, so a scheme-less address takes the `https://` branch and the `@` is parsed as HTTP **userinfo**:
@@ -106,9 +123,17 @@ externalHref('tokyo-stay@example.com')
 
 The note's url field is free text, so this is reachable today with none of this ADR: a typed email becomes a link to the wrong place with the address handed over as credentials, and `prettyUrl` then labels it `example.com` — so the address the author typed is not even on screen. One line, in the one function, and both the field and §5 get it right.
 
+### 7b. A second shipped defect, found by adding the control: a hosted note was labelled "general" on its own host's surface
+
+`NoteOpenFoot`'s lead read `host ? host.name : t.notes.open.general`, and `NoteSection` passes no host **because the surface IS the host**. So the two absences collapsed: "this note has no host" and "you are standing on its host" produced the same lead, and every hosted note on a booking, a document, an idea or a place had `פתק כללי` printed under it when opened.
+
+Invisible to the tests for a structural reason worth noting: the lead was asserted on the notes **screen**, which does pass a host, so every assertion was about the case that worked.
+
+The fix is a third state rather than a better string — `onHostSurface` makes the lead **absent**, which is `RowOpenFoot`'s own documented case ("a task has no lead at all … the foot has nothing left to say and says nothing rather than saying it twice"). The full screen answers the same question the other way (§3), because there the host appears nowhere else.
+
 ### 8. What this ADR does not decide
 
-- **`העתקה כ-Markdown`.** Drawn in the `⋯` because it costs one row in a sheet that exists, and flagged because "the verb was cheap" is not a reason to ship one. The ask reads primarily as _paste in_, which §4 answers; copy out is the reverse trip and nobody has asked for it.
+- **`העתקה כ-Markdown`.** Drawn in the `⋯` because it costs one row in a sheet that exists, and flagged because "the verb was cheap" is not a reason to ship one. The ask reads primarily as _paste in_, which §4 answers; copy out is the reverse trip and nobody has asked for it. **Not built** — and the menu it was drawn in is gone too (§3), so it now needs a home as well as a decision.
 - **Two numbers that a desktop screenshot cannot settle**, both controls in the mockup: the prose size (14.5 vs 15.5) and whether the subset spends one heading step or two.
 - **A live preview in the editor** is refused rather than deferred: the form is a `Modal` on a phone, and ADR-0155 measures `BookingSheet` at ~1565px against ~675px of visible screen. Half a screen of preview there buys a guess and sells the text being written.
 - **Nothing about the composer or the editor changes.** A plain textarea is already a Markdown editor for the purpose of pasting Markdown into it.
@@ -121,6 +146,14 @@ The note's url field is free text, so this is reachable today with none of this 
 - **`lib/external-url.ts` changes for a defect that predates this work** (§7), and its unit test gains the email case.
 - **New `he.ts` copy** for the way in, the screen's bar, and the copy verb.
 - **A backlog line and a catalog entry** land with the mockup; the two harness pitfalls the render exposed are written into `.claude/skills/design-mockups/references/pitfalls.md` rather than into this ADR, because they are about drawing and not about notes.
+
+**Built 2026-08-22 (same day).** `lib/note-markdown.ts` (+ spec), `ui/NoteProse.tsx` (+ spec), `ui/NoteFullScreen.tsx` (+ spec), `RowOpenFoot`'s `viewLabel`/`onView` and `row-open.css`'s truncation pair, `NoteOpenFoot`'s `onView`/`onHostSurface`, `NoteSection`'s `onOpenFull` plus its shaped body, both entrances wired (`IndexNotesView`, `HostNotes`), `lib/external-url.ts`'s `mailto:` fix, and `t.notes.open.full` / `t.notes.full.backAria`. **4,246 frontend tests green**, typecheck and build clean.
+
+Three build notes that are decisions rather than mechanics:
+
+- **The parser uses no lookbehind.** `(?<!\s)` is the natural way to write "no space before the closing marker" and it is unsupported below iOS Safari 16.4 — on a phone-first installed PWA that is a module which throws at import time on a real device. Every rule is written with `\S`-anchored groups instead.
+- **Emphasis opens after a Hebrew prefix hyphen**, not only after whitespace. `ו-*נטוי*` is how Hebrew attaches a prefix, so the obvious "must follow a space" rule means emphasis silently never works in Hebrew prose — which the first two drafts each did, once per marker, and which no English fixture would have caught. The condition is "not straight after a word character", and the class has to exclude Hebrew letters too, or `שלום_עולם_` becomes emphasis.
+- **`NoteFullScreen` reads `useMode` rather than taking it as a prop**, and the prop version was written first: passing it means `HostNotes` reads the mode, and `HostNotes` is rendered by all five hosts — which turned **169 tests in six unrelated specs** into "useMode must be used within ModeProvider". The read belongs where the tint is used, because this component mounts only when a note is opened.
 
 ## Alternatives considered
 

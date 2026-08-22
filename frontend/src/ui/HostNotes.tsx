@@ -26,6 +26,7 @@ import {
 import { resolveHostContext, type HostContext } from '../lib/host-context';
 import { NoteSection } from './NoteSection';
 import { NoteSheet } from './NoteSheet';
+import { NoteFullScreen } from './NoteFullScreen';
 
 /** **How many notes this one host carries**, from trip state — for the surfaces that ask
  *  about a single host rather than a listful: the delete confirms, which owe the reader the
@@ -116,6 +117,10 @@ export function HostNotes({
   const { notes, users, noteVerbs } = useTrip();
   const now = useClock();
   const [editing, setEditing] = useState<Note | 'create' | null>(null);
+  // **The full screen, opened from a host** (ADR-0202 §1/§2). Here rather than in
+  // `NoteSection` because the screen needs the RESOLVED host and the trip's users, and this is
+  // the connected half that already holds both — the section stays presentational.
+  const [reading, setReading] = useState<Note | null>(null);
   const hostId = host.id;
   // The host as the index knows it — so the editor can state the category this note inherits.
   const resolved = useResolvedHost({ ...host, id: hostId ?? '' });
@@ -151,10 +156,30 @@ export function HostNotes({
         inheritedFrom={inheritedFrom}
         onAdd={canAdd ? (onAdd ?? (() => setEditing('create'))) : undefined}
         onEdit={setEditing}
+        onOpenFull={setReading}
         compose={compose}
         composeActive={composeActive}
         composeHint={composeHint}
       />
+      {/* No `onGoToHost`: you are standing on the host. The screen still NAMES it, because
+          with no chip in its bar the foot is the only place the host appears at all — the
+          opposite call from the row's foot one level down, and for the same reason (say a
+          fact once, on the surface that is missing it). */}
+      {reading && (
+        <NoteFullScreen
+          note={reading}
+          host={hostId ? resolved : undefined}
+          users={users}
+          now={now}
+          onEdit={() => {
+            const note = reading;
+            setReading(null);
+            setEditing(note);
+          }}
+          onClose={() => setReading(null)}
+        />
+      )}
+
       {/* Unreachable without a host: a form supplies its own `onAdd`, so nothing here opens
           `create`, and a row can only be edited if a row was rendered — which needs an id.
           Guarded anyway so the type is honest rather than asserted. */}
