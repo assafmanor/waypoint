@@ -43,6 +43,11 @@ export interface DaySurface<T extends HTMLElement> {
   live: boolean;
   /** The neighbouring days the peek renders, `null` where the trip ends (§7). */
   peek: { prev: string | null; next: string | null };
+  /** **A page turn, commanded** (ADR-0116 §2d): `hold` parks the strip at a detent, `turn`
+   *  finishes and commits it. The drag's edge dwell drives these, so the lift and the
+   *  completion are the same mechanism a finger uses rather than a second one beside it. */
+  hold: (step: SwipeStep | null, px?: number) => void;
+  turn: (step: SwipeStep) => void;
 }
 
 export function useDaySurface<T extends HTMLElement>(): DaySurface<T> {
@@ -66,7 +71,7 @@ export function useDaySurface<T extends HTMLElement>(): DaySurface<T> {
     return within(date) ? date : null;
   };
 
-  const { ref, live } = useSwipePager<T>({
+  const { ref, live, hold, turn } = useSwipePager<T>({
     enabled: !dragging && !preview,
     canStep: (step) => neighbour(step) != null,
     onStep: (step) => selectDay(dayIn(step)),
@@ -103,5 +108,5 @@ export function useDaySurface<T extends HTMLElement>(): DaySurface<T> {
     if (scroller) scroller.scrollTop = 0;
   }, [activeDate, ref, preview]);
 
-  return { ref, live, peek: { prev: neighbour(-1), next: neighbour(1) } };
+  return { ref, live, peek: { prev: neighbour(-1), next: neighbour(1) }, hold, turn };
 }

@@ -115,12 +115,6 @@
 /* A pane: the whole window, one page over, riding the gesture's offset. Its own ground, so the
    day it draws reads as a page and not as a translucent hint over the one you are leaving.
    
-   **Everything inside the bracket is a DISTANCE and only `--dir * --peek-side` carries a sign**,
-   which is deliberate: `--peek-lean` (§2c) is the pane coming CLOSER, so it subtracts. Drawn
-   the other way first in `mockups/a-day-turns-under-a-held-card-v1.html` and the render caught
-   it in one number — `translateX(-400px)` where −304 was wanted, i.e. the hint pushed tomorrow
-   further off screen. Written as one multiplication so that cannot come back.
-   
    **`--dir`, not a local copy.** `tokens.css` already publishes the inline axis's physical sign
    (−1 RTL / 1 LTR) and `modal.css`, `form-steps.css` and `App.css` all spend it; §7 declared a
    `--peek-dir` with the same two values for the same job, which is the duplicate ADR-0116 §2c
@@ -132,7 +126,7 @@
   transform: translateX(
     calc(
       var(--swipe-dx, 0px) + var(--dir) * var(--peek-side) *
-        (var(--swipe-page-w, 0px) + var(--swipe-page-gap, 0px) - var(--peek-lean, 0px))
+        (var(--swipe-page-w, 0px) + var(--swipe-page-gap, 0px))
     )
   );
 }
@@ -147,44 +141,38 @@
   --peek-side: -1;
 }
 
-/* ===== The day the DRAG is about to turn to leans in (ADR-0116 §2c) =====
-   Owner: _"we need some kind of an animation… something that looks polished."_
+/* ===== The page is LIFTED to a detent, and the dwell decides (ADR-0116 §2d) =====
+   Owner, on §2c: _"your design is very ugly, no I don't like the static 'peek'… we should
+   maybe get a peek but in a more fluent way, like it starts dragging to the next day and stops
+   and then if your finger stays then it completes the motion."_
 
-   The whole of it: while a dragged card rests in the surface's inline edge band, the incoming
-   pane — and only it — comes to meet the finger. Four things said by one motion, with no new
-   vocabulary: something is happening, which direction, WHICH DAY (its own content is what
-   appears), and how long is left.
+   §2c animated the incoming PANE by itself across the whole dwell, and the rejection has a
+   number behind it: 48px over 700ms is **1.1px per frame**, which is a static offset with a
+   timer attached rather than a motion. So this moves the STRIP — page and both panes together,
+   `--swipe-dx`, exactly what a finger moves — briskly, to a detent where it stops. Three
+   phases: lift (`--t-base`, ~3.2px/frame), hold (the rest of the dwell, nothing moves),
+   complete (the swipe's own `[data-swipe-settling='turn']` below).
 
-   **`linear`, and it is load-bearing twice.** The lean's progress IS the dwell's progress, so
-   any curve would make the time left unreadable; and a linear motion is samplable, which is
-   what let the mockup's filmstrip be the real motion at 0 · 233 · 467 · 700ms rather than an
-   illustration of it. `beats.css` writes the same sentence for the beats.
+   `--ease-arrive` because a page settling into a detent is an arriving object, and 48px is
+   short enough for its overshoot to read as weight — §9b measured the other end of that same
+   token, where a 382px turn under it is ~15px of wobble.
 
-   **The duration is the DWELL, not a motion token.** 700ms is longer than every token except
-   `--t-cinematic`, which design-language.md budgets to one moment in the product — and a token
-   would lie, because this motion must end exactly when the day changes. `--swipe-dwell` is
-   published from `DRAG_DAY_DWELL_MS` by `useEdgeDayStep`, the mirror of the pager reading
-   `--swipe-page-gap` back out of here for its commit distance.
-
-   **The reveal is one `--space-6`, the same as the gutter it crosses**, so the pane travels
-   exactly two of them: the gap is what hides the neighbour at rest (a 12px lean would show
-   12px of page background and none of tomorrow — measured), and the reveal is what shows it.
-
-   Scoped to `body.wp-dragging`, the class `useHoldToDrag` already parks and four `.bld-seam`
-   rules already key off, because a transition must NOT exist during a SWIPE: `--swipe-dx` is
-   rewritten every frame there and would smear. */
-.day-swipe {
-  --edge-reveal: var(--space-6);
+   The commanded lift/turn live in `useSwipePager` (`hold`/`turn`), because it already owns the
+   offset channel, both attributes, the timer and §8's wait-for-the-arriving-page. A page turn
+   can be commanded, not only dragged. */
+.day-swipe[data-edge-lift] > .day-page,
+.day-swipe[data-edge-lift] > .day-peeks .day-peek {
+  transition: transform var(--t-base) var(--ease-arrive);
 }
-body.wp-dragging .day-swipe[data-edge-lean='next'] .day-peek[data-day='next'],
-body.wp-dragging .day-swipe[data-edge-lean='prev'] .day-peek[data-day='prev'] {
-  --peek-lean: calc(var(--swipe-page-gap) + var(--edge-reveal));
-  transition: transform var(--swipe-dwell, 0ms) linear;
-}
-/* The quiet half, declared on the DESTINATION state (design-language.md's asymmetric settle):
-   the turn is deliberate and giving up on it is a correction, so leaving the band unwinds
-   quickly rather than replaying the same 700ms backwards. */
-body.wp-dragging .day-peek {
+/* The abort, on the DESTINATION state (design-language.md's asymmetric settle): the lift is
+   deliberate, giving it up is a correction, so it unwinds quickly rather than replaying the
+   lift backwards. Scoped to `body.wp-dragging` because during a SWIPE `--swipe-dx` is rewritten
+   every frame and a transition on it would smear the follow. */
+body.wp-dragging .day-swipe:not([data-edge-lift]):not([data-swipe-settling]) > .day-page,
+body.wp-dragging
+  .day-swipe:not([data-edge-lift]):not([data-swipe-settling])
+  > .day-peeks
+  .day-peek {
   transition: transform var(--t-quick) var(--ease-exit);
 }
 

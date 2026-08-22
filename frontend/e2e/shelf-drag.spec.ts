@@ -30,6 +30,7 @@ import { dispatchTouch } from './touch';
 import {
   DRAG_DAY_DWELL_MS,
   DRAG_DAY_EDGE_PX,
+  DRAG_DAY_LIFT_PX,
   DRAG_EDGE_SCROLL_RELEASE_PX,
   DRAG_EDGE_SCROLL_ZONE_PX,
   DRAG_GHOST_LIFT_PX,
@@ -1094,6 +1095,21 @@ test.describe('carrying a card to another day from the surface edge', () => {
 
   /** Inside the inline band, at a height clear of both vertical bands so the auto-scroll is
    *  not also running — one gesture, one thing being asserted. */
+  /** Waits for the day the edge is stepping toward, **and does so promptly** — the interval
+   *  is the whole point of the helper.
+   *
+   *  Holding at the edge steps again and again, and §2d put `--t-base` between a turn being
+   *  COMMANDED and its day arriving: the cadence is ~940ms, and the next turn is committed
+   *  240ms before the previous day even appears. `expect.poll`'s default ladder (0, 100, 250,
+   *  500, 1000ms) can then report an arrival a full second late, so a test that acts on what
+   *  it saw is acting on the day before last. Measured on the row case: 2026-08-23 was
+   *  reported at 1850ms and 2026-08-24 landed at 1880. A flat 50ms hands the caller the whole
+   *  dwell to move out of the band in. */
+  const stepsTo = (page: Page, day: string) =>
+    expect
+      .poll(() => dayParam(page), { timeout: DRAG_DAY_DWELL_MS * 4, intervals: [50] })
+      .toBe(day);
+
   async function edgeOf(page: Page, side: 'left' | 'right') {
     const box = await boxOf(page, '.day-swipe:not([data-preview])');
     const bands = await bodyBands(page);
@@ -1116,7 +1132,7 @@ test.describe('carrying a card to another day from the surface edge', () => {
     // card that way is dragging it toward tomorrow.
     const edge = await edgeOf(page, 'left');
     await touch(cdp, 'touchMove', edge.x, edge.y);
-    await expect.poll(() => dayParam(page), { timeout: DRAG_DAY_DWELL_MS * 4 }).toBe(TOMORROW);
+    await stepsTo(page, TOMORROW);
 
     // **And the card is still in hand.** A day switch unmounts most of the screen; the whole
     // point of arriving there mid-drag is that you can now drop on this day's own targets.
@@ -1127,72 +1143,58 @@ test.describe('carrying a card to another day from the surface edge', () => {
     const dayAfter = new Date(Date.parse(`${TOMORROW}T00:00:00.000Z`) + 86_400_000)
       .toISOString()
       .slice(0, 10);
-    await expect.poll(() => dayParam(page), { timeout: DRAG_DAY_DWELL_MS * 4 }).toBe(dayAfter);
+    await stepsTo(page, dayAfter);
 
     await touch(cdp, 'touchEnd');
   });
 
-  // **THE LEAN (ADR-0116 §2c).** The step used to happen in silence: the pager stands down for
-  // a drag, so nothing was drawn to animate. Two assertions, and neither samples a frame — the
-  // magnitude of a 700ms motion read at an arbitrary moment is the flake class
-  // `docs/backlog.md` already tracks three of.
-  test('the day being turned to is drawn, and leans in', async ({ page }) => {
+  // **THE LIFT (ADR-0116 §2d).** §2c animated the incoming pane over the whole dwell and the
+  // owner rejected it: 48px over 700ms is 1.1px per frame, a static offset with a timer. The
+  // STRIP is lifted to a detent instead, briskly, and the dwell completes the turn. Asserted as
+  // states and distances, never as a sampled frame.
+  test('the page lifts to a detent, stops there, and the dwell completes the turn', async ({
+    page,
+  }) => {
     const cdp = await page.context().newCDPSession(page);
     const card = await centre(page, '.wp-maybecard');
     const host = page.locator('.day-swipe:not([data-preview])');
 
     await touch(cdp, 'touchStart', card.x, card.y);
     await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
-    // Nothing is drawn until the edge names a day: two extra day surfaces are not a resting
-    // cost of picking a card up.
     expect(await page.locator('.day-peek').count()).toBe(0);
 
     const edge = await edgeOf(page, 'left');
     await touch(cdp, 'touchMove', edge.x, edge.y);
 
-    // ① The pane EXISTS, which is the half that was missing, and the host names it.
-    await expect(host).toHaveAttribute('data-edge-lean', 'next');
-    await expect(page.locator('.day-peek[data-day="next"]')).toHaveCount(1);
+    // ① The lift: the host says it is held at a detent, and the panes are mounted — through
+    // the pager's OWN `live`, because a commanded lift is a page turn that has begun.
+    await expect(host).toHaveAttribute('data-edge-lift', '');
+    await expect(host).toHaveAttribute('data-swiping', '');
+    await expect(page.locator('.day-peek')).toHaveCount(2);
 
-    // ② Its target is a style fact, not a sampled position: gutter + reveal, both read from
-    // the stylesheet, so moving either cannot leave this asserting the old distance.
-    const aim = await page.evaluate(() => {
-      const pane = document.querySelector('.day-peek[data-day="next"]');
-      const cs = getComputedStyle(pane);
-      const host = document.querySelector('.day-swipe:not([data-preview])');
-      // **An unregistered custom property computes to its TOKEN STREAM, not to a length.**
-      // `--peek-lean` reads back as `calc(24px + 24px)`, so `parseFloat` gives NaN and a
-      // `|| 0` turns the whole assertion into `0 === 0`. Resolving it through a probe's
-      // `width` is what makes this a number the browser computed rather than one this spec
-      // parsed — and it needs no timing, unlike reading the transform mid-transition.
-      const resolve = (el, expr) => {
-        const probe = document.createElement('div');
-        probe.style.cssText = `position:absolute;visibility:hidden;width:${expr}`;
-        el.appendChild(probe);
-        const px = parseFloat(getComputedStyle(probe).width) || 0;
-        probe.remove();
-        return px;
-      };
-      return {
-        lean: resolve(pane, 'var(--peek-lean)'),
-        want: resolve(host, 'calc(var(--swipe-page-gap) + var(--edge-reveal))'),
-        dwell: cs.transitionDuration,
-        easing: cs.transitionTimingFunction,
-      };
+    // The distance is the detent, on the strip's own channel — and it is the WHOLE strip, which
+    // is the difference from §2c: the page moves, so `--swipe-dx` is what carries it.
+    const aim = await host.evaluate((el) => ({
+      dx: parseFloat((el as HTMLElement).style.getPropertyValue('--swipe-dx')),
+      // The page and the incoming pane are one thing: both transitions are the detent's.
+      pageEase: getComputedStyle(el.querySelector(':scope > .day-page')!).transitionTimingFunction,
+      paneEase: getComputedStyle(el.querySelector('.day-peek[data-day="next"]')!)
+        .transitionTimingFunction,
+      dur: getComputedStyle(el.querySelector(':scope > .day-page')!).transitionDuration,
+    }));
+    expect(Math.abs(aim.dx)).toBe(DRAG_DAY_LIFT_PX);
+    expect(aim.pageEase).toBe(aim.paneEase);
+    expect(aim.dur).not.toBe('0s');
+
+    // ② and ③: it stops there, and the dwell finishes the turn on the swipe's own settle.
+    await expect(host).toHaveAttribute('data-swipe-settling', 'turn', {
+      timeout: DRAG_DAY_DWELL_MS * 4,
     });
-    expect(aim.lean).toBe(aim.want);
-    expect(aim.lean).toBeGreaterThan(0);
-    // The dwell drives the transition, so the motion cannot finish at a different time than
-    // the day changes.
-    expect(aim.dwell).toBe(`${DRAG_DAY_DWELL_MS / 1000}s`);
-    expect(aim.easing).toBe('linear');
-
-    // And it still commits, which is what the lean was counting down to.
-    await expect.poll(() => dayParam(page), { timeout: DRAG_DAY_DWELL_MS * 4 }).toBe(TOMORROW);
+    await stepsTo(page, TOMORROW);
     await touch(cdp, 'touchEnd');
   });
 
-  test('and it stops leaning the moment the edge stops naming a day', async ({ page }) => {
+  test('and leaving the band puts the page back without turning the day', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
     const card = await centre(page, '.wp-maybecard');
     const host = page.locator('.day-swipe:not([data-preview])');
@@ -1202,13 +1204,15 @@ test.describe('carrying a card to another day from the surface edge', () => {
     await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
     const edge = await edgeOf(page, 'left');
     await touch(cdp, 'touchMove', edge.x, edge.y);
-    await expect(host).toHaveAttribute('data-edge-lean', 'next');
+    await expect(host).toHaveAttribute('data-edge-lift', '');
 
-    // Out of the band well before the dwell elapses: the day must not turn, and the pane must
-    // stop being aimed at it.
     const box = await boxOf(page, '.day-swipe:not([data-preview])');
     await touch(cdp, 'touchMove', box.x + box.width / 2, (bands.middleFrom + bands.middleTo) / 2);
-    await expect(host).not.toHaveAttribute('data-edge-lean', 'next');
+    // The detent is released and the offset goes back to zero — the unwind itself is CSS.
+    await expect(host).not.toHaveAttribute('data-edge-lift', '');
+    await expect
+      .poll(() => host.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--swipe-dx')))
+      .toMatch(/^0px$|^$/);
     await page.waitForTimeout(DRAG_DAY_DWELL_MS * 2);
     expect(dayParam(page)).toBeNull();
     await touch(cdp, 'touchEnd');
@@ -1229,7 +1233,7 @@ test.describe('carrying a card to another day from the surface edge', () => {
     await expect(page.locator('.bld.dragging')).toBeVisible();
     const edge = await edgeOf(page, 'left');
     await touch(cdp, 'touchMove', edge.x, edge.y);
-    await expect.poll(() => dayParam(page), { timeout: DRAG_DAY_DWELL_MS * 4 }).toBe(TOMORROW);
+    await stepsTo(page, TOMORROW);
 
     // The row it came off no longer exists — tomorrow has none — and the drag is still live.
     // **Scoped to the surface you are ON**, because §2c's lean mounts the peeks during a drag
@@ -1269,7 +1273,7 @@ test.describe('carrying a card to another day from the surface edge', () => {
     await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
     const edge = await edgeOf(page, 'left');
     await touch(cdp, 'touchMove', edge.x, edge.y);
-    await expect.poll(() => dayParam(page), { timeout: DRAG_DAY_DWELL_MS * 4 }).toBe(TOMORROW);
+    await stepsTo(page, TOMORROW);
 
     // Released over the edge, which accepts nothing: the edge NAVIGATES and is deliberately
     // not a drop target (a gap chip's own last 36px lie inside the band, and `overDate` is
@@ -1315,7 +1319,7 @@ test.describe('carrying a card to another day from the surface edge', () => {
     // edge is the PREVIOUS day in RTL, which is the other half of the mirror this file's
     // sibling unit test pins.
     await touch(cdp, 'touchMove', lift.x + DRAG_EDGE_SCROLL_RELEASE_PX, midY);
-    await expect.poll(() => dayParam(page), { timeout: DRAG_DAY_DWELL_MS * 4 }).toBe(YESTERDAY);
+    await stepsTo(page, YESTERDAY);
     await touch(cdp, 'touchEnd');
   });
 });

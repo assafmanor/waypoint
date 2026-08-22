@@ -412,12 +412,20 @@ export function PlanDay() {
   // because a pill and a chip can never be under one pointer. An edge band can: a gap chip
   // spans the surface, so its last 36px lie inside one, and a drop meant for that slot would
   // have silently become "aim at another day" instead.
-  const edgeDay = useEdgeDayStep(daySurface.ref, daySurface.peek);
+  const edgeDay = useEdgeDayStep(daySurface.ref, daySurface.peek, daySurface.hold);
   // …and resting on either switches to that day, so a card or a row can be carried to
   // a day that isn't on screen. The dwell lives here because only the drag can
   // hit-test the pointer — see the hook for why the pill can't do it itself. The pill wins
   // when both are named: it is the more specific statement, and it is where the finger is.
-  useSpringLoadedDay(overDate ?? edgeDay.date, activeDate, setActiveDate);
+  //
+  // **One dwell, two outcomes** (§2d). A pill is a target you are resting ON, so it switches
+  // the day and nothing turns; the EDGE has already lifted the page to its detent, so what it
+  // owes is the rest of the motion — `turn` finishes it and changes the day at the end, on the
+  // swipe's own path. The caller decides, which is why this stays one hook.
+  useSpringLoadedDay(overDate ?? edgeDay.date, activeDate, (date) => {
+    if (overDate || edgeDay.step == null) return setActiveDate(date);
+    daySurface.turn(edgeDay.step);
+  });
 
   // A drag now OUTLIVES the render it began in: the window listeners that track it
   // hold the handlers from the render at touch-down, and dwelling on the day strip
@@ -1041,10 +1049,11 @@ export function PlanDay() {
           screen, one day over, inert — so what the page turn lands on is what the committed
           day draws, and the seam needs no cross-fade. `preview` stops the recursion at depth
           one: a peek renders no peeks of its own. */}
-      {/* The peeks mount for a SWIPE or for an edge lean (ADR-0116 §2c). The pager stands
-          down for a drag by design, so its `live` is false exactly when the lean needs a pane
-          to animate — which is why the shipped step was silent. */}
-      {!preview && (daySurface.live || edgeDay.leaning) && (
+      {/* One condition again (§2d): a commanded lift sets the pager's own `live`, because the
+          lift IS a page turn that has begun — so the panes mount for a finger and for a dwell
+          through the same flag. §2c needed a second one only because it animated the pane
+          instead of the strip. */}
+      {!preview && daySurface.live && (
         <DayPeeks prev={daySurface.peek.prev} next={daySurface.peek.next}>
           <PlanDay />
         </DayPeeks>

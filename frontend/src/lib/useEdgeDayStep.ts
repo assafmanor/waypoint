@@ -22,7 +22,7 @@
 // flipping the moment the hold fired. The gate makes the drag ASK for the band first — by
 // leaving it, or by pushing deeper into it than it was lifted at.
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
-import { DRAG_DAY_DWELL_MS, DRAG_DAY_EDGE_PX, DRAG_EDGE_SCROLL_RELEASE_PX } from '../constants';
+import { DRAG_DAY_EDGE_PX, DRAG_DAY_LIFT_PX, DRAG_EDGE_SCROLL_RELEASE_PX } from '../constants';
 import {
   edgeDepth,
   edgeLatchAt,
@@ -30,10 +30,7 @@ import {
   type DragPoint,
   type EdgeLatch,
 } from './edge-autoscroll';
-
-/** What `screens.css` keys the lean off — set to the NEIGHBOUR the edge names (`next`/`prev`),
- *  so the rule can pair it with the pane's own `data-day` and animate exactly one of them. */
-const EDGE_LEAN_ATTR = 'data-edge-lean';
+import type { SwipeStep } from './useSwipePager';
 
 /** The neighbouring days, exactly as `useDaySurface` already derives them for the swipe's
  *  peek — `null` where the trip ends, which is what makes the edge do nothing there. Taking
@@ -48,10 +45,9 @@ export interface EdgeDayStep {
   /** The day the edge is currently pointing at, or `null`. Feed it to `useSpringLoadedDay`
    *  beside the day pill's own target: they are two ways of naming one thing. */
   date: string | null;
-  /** **Mount the peeks on this** (§2c). The swipe's own `live` cannot serve here: the pager
-   *  stands down for a drag by design, so during one there is nothing drawn to lean — which
-   *  is why the shipped step was silent. The pane the CSS animates has to exist first. */
-  leaning: boolean;
+  /** Which way the edge is pointing, or `null` — the step the dwell will command when it
+   *  fires (§2d). Paired with `date`: one is the direction, the other is the day. */
+  step: SwipeStep | null;
   /** The drag armed. Latches the band it was lifted in, so resting where you picked up is
    *  not a request to leave. */
   arm: (at: DragPoint) => void;
@@ -66,8 +62,13 @@ export interface EdgeDayStep {
 export function useEdgeDayStep(
   host: RefObject<HTMLElement | null>,
   neighbours: DayNeighbours,
+  /** The commanded half of the page turn (`useDaySurface`). The edge decides WHEN; the pager
+   *  owns the offset, the panes, the attributes and the settle — so the lift and the
+   *  completion are the swipe's own mechanism rather than a second one (§2d). */
+  hold: (step: SwipeStep | null, px?: number) => void,
 ): EdgeDayStep {
   const [date, setDate] = useState<string | null>(null);
+  const [step, setStep] = useState<SwipeStep | null>(null);
   const latch = useRef<EdgeLatch>(null);
   const point = useRef<DragPoint | null>(null);
   // Read through a ref, because a drag OUTLIVES the render it began in (ADR-0116 §2's
@@ -75,31 +76,30 @@ export function useEdgeDayStep(
   // handlers from the render at touch-down, when the neighbours were the lift day's.
   const live = useRef(neighbours);
   live.current = neighbours;
+  /**
+   * **The command, read through a ref so every callback here stays identity-stable.**
+   *
+   * Not a micro-optimisation — a correctness fix the unit suite caught. `stop` is wired as
+   * `useEffect(() => stop, [stop])`, which means "unmount" only while `stop` never changes
+   * identity; the moment it depended on a caller's callback, that cleanup ran on **every
+   * render** and gave the lift back the instant it was taken. The app survived it by luck
+   * (`useSwipePager`'s `hold` happens to be stable) and a harness passing an inline arrow did
+   * not. A ref removes the luck.
+   */
+  const cmd = useRef(hold);
+  cmd.current = hold;
 
   /**
-   * **Publish what the lean's CSS needs, and nothing more** (§2c) — the same division
-   * `useSwipePager` keeps: the hook owns the attribute and the numbers, `screens.css` owns
-   * the motion. `--swipe-page-w` is republished here because the pager only writes it when a
-   * SWIPE claims, and a drag never claims one; `--swipe-dwell` carries `DRAG_DAY_DWELL_MS`
-   * so the transition and the timer cannot disagree about when the day changes.
+   * **The lift, commanded** (§2d). v1 animated the incoming PANE by itself over the whole
+   * dwell, and the owner rejected it on sight: 48px over 700ms is 1.1px per frame, which is a
+   * static offset with a timer attached rather than a motion. So the strip is lifted instead —
+   * briskly, to a detent, where it stops — which is the swipe's own channel and reads as a
+   * page being picked up. Nothing here knows how it looks; `screens.css` owns that.
    */
-  const paint = useCallback(
-    (side: 'next' | 'prev' | null, width: number) => {
-      const el = host.current;
-      if (!el) return;
-      if (side) {
-        el.style.setProperty('--swipe-page-w', `${Math.round(width)}px`);
-        el.style.setProperty('--swipe-dwell', `${DRAG_DAY_DWELL_MS}ms`);
-        el.setAttribute(EDGE_LEAN_ATTR, side);
-      } else {
-        // The attribute goes and the pane unwinds on the destination state's own transition.
-        // The two variables stay: removing them mid-unwind would take the pane's parked
-        // distance away with them and it would snap rather than settle.
-        el.removeAttribute(EDGE_LEAN_ATTR);
-      }
-    },
-    [host],
-  );
+  const lift = useCallback((next: SwipeStep | null) => {
+    cmd.current(next, next == null ? 0 : DRAG_DAY_LIFT_PX);
+    setStep(next);
+  }, []);
 
   /** Which day lies past the edge the pointer is in, if any.
    *
@@ -115,7 +115,7 @@ export function useEdgeDayStep(
     const box = el.getBoundingClientRect();
     if (box.width <= 0) return null;
     const off = () => {
-      paint(null, 0);
+      lift(null);
       return null;
     };
     const x = at.clientX - box.left;
@@ -129,12 +129,11 @@ export function useEdgeDayStep(
     const { prev, next } = live.current;
     const [low, high] = rtl ? [next, prev] : [prev, next];
     const date = gated.step < 0 ? low : high;
-    // The pane that leans is named by WHICH NEIGHBOUR it is, not by which side of the screen
-    // it came from — `screens.css` pairs `[data-edge-lean]` with `[data-day]`, and the mirror
-    // is already in `--dir`.
-    paint(date ? (date === next ? 'next' : 'prev') : null, box.width);
+    // The STEP, not the side of the screen: the pager owns the mirror, so what it needs is
+    // "the next page" or "the previous one".
+    lift(date ? (date === next ? 1 : -1) : null);
     return date;
-  }, [host, paint]);
+  }, [host, lift]);
 
   const track = useCallback(
     (next: DragPoint) => {
@@ -150,25 +149,22 @@ export function useEdgeDayStep(
       point.current = at;
       latch.current = null;
       setDate(null);
-      paint(null, 0);
+      lift(null);
       if (!el) return;
       const box = el.getBoundingClientRect();
       if (box.width <= 0) return;
       const x = at.clientX - box.left;
       latch.current = edgeLatchAt(edgeDepth(x, box.width, DRAG_DAY_EDGE_PX), x);
     },
-    [host, paint],
+    [host, lift],
   );
 
   const stop = useCallback(() => {
     point.current = null;
     latch.current = null;
     setDate(null);
-    const el = host.current;
-    paint(null, 0);
-    // The drag is over, so the pane is going away with it — the parked distance can go now.
-    el?.style.removeProperty('--swipe-dwell');
-  }, [host, paint]);
+    lift(null);
+  }, [lift]);
 
   // **Holding still at the edge has to keep stepping**, and that is the one thing the dwell
   // cannot give for free. `date` is computed from a pointer position, so once the day has
@@ -181,10 +177,9 @@ export function useEdgeDayStep(
   }, [neighbours.prev, neighbours.next, resolve]);
 
   // A drag interrupted by an unmount (a mode switch, a tab change) must not leave a target
-  // named for a gesture that no longer exists.
+  // named for a gesture that no longer exists — and `stop` is identity-stable (see `cmd`), so
+  // this really is an unmount cleanup rather than a per-render one.
   useEffect(() => stop, [stop]);
 
-  // `leaning` is `date != null` and deliberately not a second piece of state: the pane that
-  // leans is the pane that names a day, and two flags would be one flag and a way to disagree.
-  return { date, leaning: date != null, arm, track, stop };
+  return { date, step, arm, track, stop };
 }
