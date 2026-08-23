@@ -115,6 +115,16 @@ clock that is still the same calendar day, 19 hours of zone shift against a 7-ho
 flight. A wall-clock rule gets that one wrong by a full day, which is the whole
 justification for the instants machinery.
 
+## Two more owner notes, and the second one improved the design's own conclusion
+
+**The suggestion's wording was unreadable.** _"I don't understand the wording of 'מהטיסה לכאן', that's weird"_ — and it was wrong three ways, not one: `לכאן` has no antecedent, it was the **same string on both fields** although they carry opposite facts (the origin's suggestion is where the outbound lands, the destination's is where it started), and it named a _flight_ where the type may be a train. It is now `מההלוך` / `מהחזרה` — the pair ADR-0154 §6 already made one const in `he.ts` precisely because the leg headings write it, so no new vocabulary and a pill that fits at 360px.
+
+**The length question got a better answer than the one it proposed.** The owner asked whether the form should scroll when there are several layovers, and explicitly invited a better idea. Scrolling already exists (`.booking-sheet` scrolls, footer pins — ADR-0155's own _"already the case"_) but it is the wrong answer _here_, because §7's whole argument is that a hard commitment can be reviewed **whole**. So §9: a filled node swaps its controls for the line they read as, one node stays open, tapping a summarised row reopens it.
+
+Measured at `MAX_ROUTE_STOPS`: all-open **783px** against 675px of visible sheet, summarised **437.5px**, and the _whole step_ **548.5px** — inside. So the answer to "make sure it doesn't exceed the page" turned out to be "it doesn't have to", and §7's "the common case fits, two stops scrolls" became "every case fits."
+
+Two things that only surfaced by drawing it: the first render **summarised the journey's one date away** (it lives on the first node, so collapsing that node hid the fact §2 is built on), and the obvious primitive is the wrong one — `Collapsible` animates `max-height`, which is exactly the clip ADR-0155 §4 forbids inside a form step. What gets reused is the step primitive's _posture_, not the component, and the ADR says why.
+
 ## Left open, deliberately
 
 Three device questions, all wired as controls with the recommendation as the

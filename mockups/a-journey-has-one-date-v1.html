@@ -98,7 +98,10 @@
          lying in the one place this file promises not to. Caught in the dark render.
       7. `מהטיסה לכאן` was rendered in the mono class, which has no Hebrew — the exact
          trap `value-token.css` keeps a whole `.vt-word` tone for.
-      8. The first draft drew a NEW ✕ beside the stop picker, and the origin's place
+      8. §9's first render summarised the JOURNEY'S ONE DATE away — the absolute date
+         lives on the first node, so collapsing that node hid the single fact §2 is
+         built on. It reads compact-numeric when summarised now.
+      9. The first draft drew a NEW ✕ beside the stop picker, and the origin's place
          suggestion was silently clobbered by the (null) date one. The ✕ is now
          `pp-clear` itself made unconditional — which is what ADR-0159 §5 meant — and
          the drawn-then-deleted second control is in the notes panel.
@@ -114,6 +117,7 @@
        §6 a round trip is seeded, not derived → ADR §6
        §7 one step per journey    → ADR §7 (reverses ADR-0159 §5)
        §8 a place suggested off the trip's existing legs → ADR §8
+       §9 a filled node summarises to one line → ADR §9
 
      ─────────────────────────────────────────────────────────────────────────
      Interactive: theme (light · dark) · screen (360×640 · 390×844) · §2's day
@@ -10416,6 +10420,45 @@ button.day-gap:hover .day-gap-lbl {
         padding-inline: 13px;
       }
 
+      /* **A SUMMARISED NODE** (§9) — the same rail row with its controls swapped for the line
+         they read as. A whole `<button>`, because the whole row is the way back in.
+
+         **Not `Collapsible`, and the reason is a rule this form already lives under.** That
+         primitive animates `max-height` (its own header says so), and ADR-0155 §4 forbids
+         animating height inside a form step — it is ADR-0152 §6's clip, where
+         `.wp-event-actions` tweens to a FIXED cap and silently truncates. A leg's height is
+         bounded today, which is exactly the reasoning that produced that clip in the first
+         place. So this reuses the step primitive's POSTURE instead: swap the content, let the
+         sheet resize, no transition on height. Same trade ADR-0155 §4 already accepted. */
+      .jf-sum-btn {
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 4px 8px;
+        inline-size: 100%;
+        font: inherit;
+        text-align: start;
+        background: none;
+        border: 0;
+        cursor: pointer;
+      }
+      .jf-sum-btn:active {
+        transform: scale(var(--press-scale));
+      }
+      .jf-sum .jf-place {
+        color: var(--ink);
+        font-size: 12.5px;
+        font-weight: 700;
+      }
+      /* The clock is amber wherever it appears (rule 4), summarised or not — the mono face
+         keeps a column of times readable down the rail. */
+      .jf-sum-line {
+        font-family: var(--font-mono);
+        font-size: var(--text-secondary);
+        font-weight: 500;
+        color: var(--amber-deep);
+      }
+
       /* The trip's two edges, offered while a date is empty (§5). Not a `ChoiceGrid`:
          these are not a choice between two values of one field, they are two
          shortcuts to one — tapping either fills the date and both disappear. */
@@ -10986,6 +11029,38 @@ button.day-gap:hover .day-gap-lbl {
         <div class="pair" id="s8"></div>
       </section>
 
+      <!-- ══════════════════════════ §9 ══════════════════════════ -->
+      <section class="case">
+        <h2>§9 · מסע ארוך · צומת שמולא מתקפל לשורה</h2>
+        <p class="note">
+          הערת הבעלים: <i>"the form for filling out time etc could be very long if there are
+          several layovers, so let's make sure that it doesn't exceed the page size and instead
+          becomes scrollable? Or do you suggest a better ui/ux solution for that?"</i>
+          <b>הגלילה כבר קיימת ואינה צריכה שינוי</b> · <code>.booking-sheet</code> גולל והפוטר
+          נעוץ מאז ומתמיד, וזו החלופה ש-ADR-0155 עצמו רשם כ<i>"already the case"</i>. אבל
+          גלילה היא תשובה גרועה כאן דווקא בגלל §7: הנימוק לשלב-לכל-מסע הוא שאפשר לסקור
+          התחייבות קשה <b>בשלמותה</b>, ומסע שגולל שלוש מסכים מאבד בדיוק את זה.
+        </p>
+        <p class="note">
+          <b>אז ההצעה: צומת שמולא מתקפל לשורה אחת.</b> הפקדים מתחלפים בשורה שהם יקראו כמוה
+          (<code>אמסטרדם · 19:40 · יציאה 21:45 · המתנה 2:05</code>), פתוח נשאר אחד · הראשון
+          שעוד חסר לו זמן · ולחיצה על שורה מסוכמת פותחת אותה חזרה. <b>מה שזה קונה:</b> הפס,
+          שמות המקומות והשעות נשארים על המסך <i>כולם</i>, אז המסע נקרא שלם בזמן שממלאים חלק
+          ממנו, וההמתנה בין קטעים עדיין נראית · שני הדברים ש-§7 נשען עליהם. וכשהכול מולא, הכול
+          מסוכם: מצב הסקירה שלפני <code>שמירה</code> הוא המסע כולו בשורות קומפקטיות.
+        </p>
+        <p class="note">
+          <b>ולמה זה לא <code>Collapsible</code>, למרות שזה המועמד המובן מאליו</b> (ADR-0098,
+          ארבעה אתרי קריאה): הפרימיטיב הזה מנפיש <code>max-height</code>, וזה בדיוק מה
+          ש-ADR-0155 §4 אוסר בתוך שלב טופס · החיתוך של ADR-0152 §6, שבו
+          <code>.wp-event-actions</code> מנפיש לתקרה <b>קבועה</b> וקוצץ בשקט. גובה של קטע
+          חסום היום, וזה בעצמו הנימוק שיצר את החיתוך ההוא. אז מה שממוחזר כאן הוא ה<b>פוסטורה</b>
+          של פרימיטיב השלבים ולא הרכיב: מחליפים תוכן, נותנים לגיליון להשתנות, ואף גובה לא מונפש.
+          אותו טרייד ש-ADR-0155 §4 כבר קיבל במפורש.
+        </p>
+        <div class="pair" id="s9"></div>
+      </section>
+
       <div class="panel">
         <h2>מדידה · נקראת מה-DOM החי</h2>
         <p>
@@ -11141,9 +11216,19 @@ button.day-gap:hover .day-gap-lbl {
         tripStart: 'תחילת הטיול',
         tripEnd: 'סוף הטיול',
         mirrored: 'אותו מסלול בהיפוך',
-        afterPrevious: 'המשך מהקטע הקודם',
-        fromOutbound: 'מהטיסה לכאן',
-        fromReturn: 'מהטיסה חזרה',
+        // **`הלוך`/`חזרה` are already one pair of words in `he.ts`** (ADR-0154 §6 made them
+        // one const because the form writes them as leg headings and the pair-fact reads them
+        // back). So a suggestion says which leg it came from in the words the leg headings
+        // already use — no new vocabulary, and short enough for a pill at 360px.
+        //
+        // The first draft said `מהטיסה לכאן`, which the owner could not parse: `לכאן` reads as
+        // "to here" with no antecedent, it was the SAME string on both fields although they
+        // carry opposite facts, and it named a flight where the type may be a train.
+        leaveShort: 'יציאה',
+        waitShort: 'המתנה',
+        afterPrevious: 'יום הקטע הקודם',
+        fromOutbound: 'מההלוך',
+        fromReturn: 'מהחזרה',
       };
 
       /* ══ Formatters · COPIED behaviour from `lib/time.ts` (`formatDayDate`,
@@ -11337,6 +11422,31 @@ button.day-gap:hover .day-gap-lbl {
             the continuity §4 is about. */
       const node = (n, o) => {
         const showWord = o.dayMode === 'always' || (n.word && n.word !== T.sameDay);
+        // **A SUMMARISED NODE** (§9): the same rail row, its controls swapped for the line they
+        // will read as. Not `Collapsible` and not a height animation — see §9 for why.
+        if (n.summary) {
+          const cls = ['jf-row', 'jf-sum', n.first ? 'first' : '', n.last ? 'last' : '',
+            n.end ? 'end' : ''].filter(Boolean).join(' ');
+          // **A SUMMARY MUST NOT SWALLOW THE JOURNEY'S ONE DATE.** The first render of §9 did:
+          // the absolute date lives on the first node, so collapsing that node hid the single
+          // fact §2 is built on — a journey with one date, and no second one to mistake for a
+          // return. It reads in the compact numeric form here and the named form when open;
+          // ADR-0176 sanctions both, and a summary is exactly what the numeric one is for.
+          const bits = [
+            n.absolute && n.date ? fmtShort(n.date) : null,
+            n.time,
+            n.out ? `${T.leaveShort} ${n.out.time}` : null,
+            n.out ? `${T.waitShort} ${hoursPhrase(n.out.wait)}` : null,
+            n.dayN ? dayWordFor(n.dayN) : null,
+          ].filter(Boolean);
+          return `<div class="${cls}">
+              <span class="jf-rail"><span class="jf-dot"></span></span>
+              <button type="button" class="jf-body jf-sum-btn">
+                <span class="jf-place">${n.place}</span>
+                <span class="jf-sum-line">${bits.join(' · ')}</span>
+              </button>
+            </div>`;
+        }
         const cls = ['jf-row', n.mode === 'place' ? 'place' : '', n.first ? 'first' : '',
           n.last ? 'last' : '', n.end ? 'end' : ''].filter(Boolean).join(' ');
 
@@ -11463,6 +11573,7 @@ button.day-gap:hover .day-gap-lbl {
         // Not on this trip, and that is the point — §2 is about the DERIVATION, and this is
         // the pair that separates instants from wall clocks. A 19-hour zone shift against a
         // 7-hour flight is the case a wall-clock rule gets wrong by a whole day.
+        osl: { name: 'אוסלו', timezone: 'Europe/Oslo', utc: 2, zone: 'Oslo · GMT+2' },
         nrt: { name: 'טוקיו', timezone: 'Asia/Tokyo', utc: 9, zone: 'Tokyo · GMT+9' },
         hnl: { name: 'הונולולו', timezone: 'Pacific/Honolulu', utc: -10, zone: 'Honolulu · GMT-10' },
       };
@@ -11470,7 +11581,7 @@ button.day-gap:hover .day-gap-lbl {
 
       /** A journey, from its points and its clocks. ONE builder for every frame on the
        *  page, so no two of them can disagree about the same journey. */
-      const build = ({ points, clocks, mode = 'time', head, mirror, swap, empty, invalid, legs, previousLanded }) => {
+      const build = ({ points, clocks, mode = 'time', head, mirror, swap, empty, invalid, legs, previousLanded, openAt }) => {
         const ctx = { from: points[0], to: points[points.length - 1], dest: DEST, trip: TRIP, legs, previousLanded };
         const dateSug = suggest(DATE_SOURCES, ctx);
         const nodes = [];
@@ -11543,6 +11654,9 @@ button.day-gap:hover .day-gap-lbl {
             };
             arrivedAt = { day: outDay, at: outAt };
           }
+          // `openAt` summarises every node but one (§9). Absent → every node is open, which is
+          // every frame before §9.
+          if (openAt != null && i !== openAt) n.summary = true;
           prev = arrivedAt ?? prev;
           nodes.push(n);
         });
@@ -11686,6 +11800,31 @@ button.day-gap:hover .day-gap-lbl {
             'אין ממה להסיק, אז אין גלולה · והבורר הוא בדיוק מה שהוא היום'),
         ]);
 
+        // §9 — a long journey. Three answers at MAX_ROUTE_STOPS, measured against the fold.
+        const LONG = (openAt) => build({
+          points: [P.tlv, P.ams, P.cph, P.osl, P.kef],
+          clocks: [
+            { date: TRIP.start, time: '15:30' },
+            { time: '19:40', out: '21:45' },
+            { time: '23:00', out: '00:00' },
+            { time: '01:10', out: '02:30' },
+            { time: '05:00' },
+          ],
+          head: T.legOut,
+          openAt,
+        });
+        set('#s9', [
+          col('<span class="tag before">הכול פתוח · גולל</span>',
+            stepBar(WHEN_STEPS, 2) + `<div id="s9-open">${journey(LONG(), o)}</div>` + foot(T.next, T.prev),
+            'שלוש עצירות · <code>MAX_ROUTE_STOPS</code> · הכול פתוח בו-זמנית. זה מה שיש עכשיו, וזה עובר את הקיפול', true),
+          col('<span class="tag after">מסוכם · אחד פתוח</span>',
+            stepBar(WHEN_STEPS, 2) + `<div id="s9-sum">${journey(LONG(3), o)}</div>` + foot(T.next, T.prev),
+            'כל צומת שמולא מתקפל לשורה אחת · הפס, שמות המקומות והשעות עדיין שם, אז המסע נקרא <b>שלם</b> בזמן שממלאים חלק ממנו', true),
+          col('<span class="tag neutral">שלב לכל קטע · מה שיש היום</span>',
+            legSteps(0, 4) + shippedSpan({ date: TRIP.start, time: '15:30' }, { date: TRIP.start, time: '19:40' }) + foot(T.next, T.prev),
+            'נכנס בקלות · אבל ארבעה שלבים, זמן ההמתנה בלתי-נראה, והמסע לא נראה שלם אף פעם', true),
+        ]);
+
         set('#s7', [
           col('<span class="tag before">היום · שלב לכל קטע</span>',
             legSteps(0, 3) + shippedSpan({ date: TRIP.start, time: '15:30' }, { date: TRIP.start, time: '19:40' }) + foot(T.next, T.prev),
@@ -11765,6 +11904,10 @@ button.day-gap:hover .day-gap-lbl {
             'רצפת מגע 44px · הכפתור עצמו הוא 32px מאז שנשלח, וההצעה נותנת לו את ההישג בלי להגדיל שורה'],
           ['הוספת עצירה · <code>.jf-insert</code>', h('#s4-1 .jf-insert') + 'px · יעד ' + reach('#s4-1 .jf-insert') + 'px', 'רצפת מגע 44px'],
           ['גלולת קצה טיול · <code>.jf-offer button</code>', h('#s5-1 .jf-offer button') + 'px · יעד ' + reach('#s5-1 .jf-offer button') + 'px', 'רצפת מגע 44px'],
+          ['מסע · 3 עצירות · הכול פתוח', h('#s9-open .jf') + 'px', overUnder(h('#s9-open .jf')) + ' · <code>MAX_ROUTE_STOPS</code>'],
+          ['מסע · 3 עצירות · מסוכם, אחד פתוח', h('#s9-sum .jf') + 'px', overUnder(h('#s9-sum .jf')) + ' · זו ההצעה של §9'],
+          ['השלב כולו · 3 עצירות, מסוכם', h('#s9 .col:nth-child(2) .fbody') + 'px', 'כולל סרגל וכפתורים · מול 675px'],
+          ['צומת מסוכם · <code>.jf-sum</code>', h('#s9-sum .jf-sum') + 'px', 'מול צומת פתוח למטה · זה מה שהקיפול חוסך'],
           ['הפס של העצירה · <code>.journey-stop</code>', h('#s3-1 .journey-stop') + 'px', 'לא מסוגנן מחדש · אותו רכיב של תצוגת היום'],
         ];
         document.querySelector('#meas tbody').innerHTML = rows

@@ -116,7 +116,7 @@ ADR-0159 §5 chose "a leg is a step" out of a constraint, not out of content: it
 
 **The argument this section originally leaned on is gone, and §2 is what removed it.** ADR-0159 §5 called the cross-leg refusal _"the cross-step dependency ADR-0155 §5 names as the strongest reason to step a form at all"_, and the first draft here claimed stepping per journey turns it into an in-step refusal. It does not: under §2 that refusal **cannot fire**. The mockup drew a frame captioned "the refusal, in-step" and the render showed the derivation quietly rolling the day instead — the file contradicting its own design until it was looked at. Recorded because a future reader would otherwise re-derive the old justification from ADR-0159 and find it no longer applies.
 
-The sheet has always scrolled with a pinned footer, which ADR-0155's own alternatives list records as _"already the case"_ — so a two-stop journey scrolling is the existing behaviour, not a regression this introduces.
+The sheet has always scrolled with a pinned footer, which ADR-0155's own alternatives list records as _"already the case"_ — so a two-stop journey scrolling is the existing behaviour, not a regression this introduces. **§9 then removes the need for it entirely**, on the owner's report against this drawing: a filled node summarises to one line, and the whole step at `MAX_ROUTE_STOPS` comes in at 548.5px against 675px. Read §7's ladder as the _all-open_ case and §9 as what actually ships.
 
 ### 8. A suggestion is a **table of sources**, and a place is its second consumer
 
@@ -126,7 +126,7 @@ So the mechanism, not the feature. One suggestion shape, and an **ordered list o
 
 **Date sources**: the previous leg's landing day (the rule `BookingSheet`'s `defaultDate: previous?.end` already follows inside one form, read off the trip's own legs instead), then §5's trip edge.
 
-**Place sources**: the mirror of an existing leg. A leg reaching the destination is the way there (`hasOutbound`'s own test), so a journey authored while one exists is probably the way back — its origin is that leg's landing, its destination is that leg's start. **Read off the trip's existing legs**, so it works for a return authored weeks after its outbound, in a different form, with no round-trip control involved. And it **avoids the Map errand entirely**: one tap in the form, no unmount, no network call.
+**Place sources**: the mirror of an existing leg. Its pill names the place and says which leg it came from — **`מההלוך` / `מהחזרה`**, the pair ADR-0154 §6 already made one const in `he.ts` because the leg headings write it. The first drawing said `מהטיסה לכאן`, which the owner could not parse, and it was wrong three ways: `לכאן` has no antecedent, it was the same string on two fields carrying opposite facts, and it named a flight where the type may be a train. A leg reaching the destination is the way there (`hasOutbound`'s own test), so a journey authored while one exists is probably the way back — its origin is that leg's landing, its destination is that leg's start. **Read off the trip's existing legs**, so it works for a return authored weeks after its outbound, in a different form, with no round-trip control involved. And it **avoids the Map errand entirely**: one tap in the form, no unmount, no network call.
 
 **A source may answer null, and all of them answering null is the ordinary case** — a form with nothing to infer from shows no pill and behaves exactly as today. **A suggestion can only ever be added to an empty field**, never corrected onto a filled one.
 
@@ -134,27 +134,45 @@ So the mechanism, not the feature. One suggestion shape, and an **ordered list o
 
 **Three things deliberately left out, each with its reason**, so a later session does not re-derive them: auto-running a seeded Places search on errand arrival (`PLACE_SEARCH_MIN_CHARS` exists so a paid call is never made unasked — ADR-0131 §8b; if it is added it is a tappable chip in the empty state, not an auto-run); bundling an airport dataset (Places already holds it, and it is wrong for train/bus/ferry); and **"the airport you usually fly from"**, which needs a user-level place record where `Place` is `@@unique([tripId, googlePlaceId])` and the schema states the deliberate reason — _"a chosen icon is data about this trip's view of the place, not about the entity Google describes"_. That last one is its own ADR, and the owner's own note is what narrows it: once a trip has one leg, this section answers the rest. What is left with no source is only the very first endpoint of the very first trip — which is one more row in the table.
 
+### 9. A filled node **summarises to one line**, and that is what makes §7 hold at any stop count
+
+Owner, on the drawing: _"the form for filling out time etc could be very long if there are several layovers, so let's make sure that it doesn't exceed the page size and instead becomes scrollable? Or do you suggest a better ui/ux solution for that?"_
+
+**Scrolling already exists and needs no change** — `.booking-sheet` scrolls and its footer pins, which ADR-0155's own alternatives list records as _"already the case."_ But scrolling is the wrong answer _here_, and §7 is why: the argument for one step per journey is that a hard commitment can be reviewed **whole**, and a journey that scrolls three screens loses exactly that.
+
+**So a node that has been filled swaps its controls for the line they read as** — `אמסטרדם · 19:40 · יציאה 21:45 · המתנה 2:05 שע׳` — one node stays open (the first still missing a time), and tapping a summarised row reopens it. The rail, the place names and the times all stay on screen, so the journey reads whole while a part of it is being filled, and the layover's wait is still visible. When everything is filled everything is summarised, which makes the state just before `שמירה` the best review surface the form has ever had.
+
+**The measurement is the argument, and it changes §7's conclusion.** At `MAX_ROUTE_STOPS`, all-open measures **783px** against 675px of visible sheet — over by 108px. Summarised it is **437.5px**, and the _whole step_ including the step bar and the footer is **548.5px**: inside. A summarised node is **32px** against an open one's ~150px. So the form no longer needs to scroll at any legal stop count, and §7's "the common case fits, two stops scrolls" becomes "every case fits."
+
+**A summary must not swallow the journey's one date.** The first render of this section did — the absolute date lives on the first node, so collapsing that node hid the single fact §2 is built on. It reads in the compact numeric form when summarised and the named form when open; ADR-0176 sanctions both, and a summary is what the numeric one is for.
+
+**And this is deliberately not `Collapsible`** (ADR-0098, four call sites), which is the obvious candidate. That primitive animates `max-height`, and ADR-0155 §4 forbids animating height inside a form step — it is ADR-0152 §6's clip, where `.wp-event-actions` tweens to a **fixed** cap and truncates silently. A leg's height is bounded today, which is precisely the reasoning that produced that clip. So this reuses the step primitive's **posture** rather than the component: swap the content, let the sheet resize, animate no height. The same trade ADR-0155 §4 already accepted and wrote down.
+
 ## Measurements
 
 Read from `mockups/a-journey-has-one-date-v1.html`'s live DOM at 360×640, light. Every one re-measured when a control changes; the ceiling is ADR-0155's 675px of visible sheet and the floor is ADR-0017's 44px.
 
-|                               |                              |                                                                                                        |
-| ----------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `מתי` step, shipped, empty    | 241.5px                      | the two identical blocks that were read as two flights                                                 |
-| `מתי` step, proposed, empty   | 238.5px                      | a place name on every moment **and** a suggestion pill, for 3px less — §5's filter is what pays for it |
-| journey, 0 stops              | 220.5px                      | inside, 454.5px to spare                                                                               |
-| journey, 1 stop               | 396px                        | inside, 279px to spare                                                                                 |
-| journey, 2 stops              | 607.5px                      | inside, 67.5px to spare (`MAX_ROUTE_STOPS` is 3)                                                       |
-| whole `מתי` step, 2 stops     | 720.5px                      | **over by 45.5px** — it scrolls, and §7 says so                                                        |
-| shipped `מתי · קטע 1` of 3    | 354.5px                      | fits easily, ×3 steps, and the journey is never seen whole                                             |
-| endpoint node                 | 96.8px                       | place name + prose line + zone chip                                                                    |
-| stop node                     | 150.5px                      | arrival + wait band + departure, no second label                                                       |
-| segment                       | 25px                         | duration only on the when step                                                                         |
-| `.vt-word` (the relative day) | 72×31.8px, target **45.8px** | via the existing `.vt::after`, which grows no row                                                      |
-| `pp-clear` on an empty stop   | 32×32px, target **44px**     | 32px since it shipped; the reach is the proposal's                                                     |
-| `.jf-insert`                  | 22px, target **44px**        | −11px, because −8px measured 38px                                                                      |
-| `.jf-offer` pill              | 27px, target **44px**        | −8.5px, because −7px measured 41px                                                                     |
-| `.journey-stop`               | 31px                         | not restyled — the day view's own component                                                            |
+|                                 |                              |                                                                                                        |
+| ------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `מתי` step, shipped, empty      | 241.5px                      | the two identical blocks that were read as two flights                                                 |
+| `מתי` step, proposed, empty     | 238.5px                      | a place name on every moment **and** a suggestion pill, for 3px less — §5's filter is what pays for it |
+| journey, 0 stops                | 220.5px                      | inside, 454.5px to spare                                                                               |
+| journey, 1 stop                 | 396px                        | inside, 279px to spare                                                                                 |
+| journey, 2 stops                | 607.5px                      | inside, 67.5px to spare (`MAX_ROUTE_STOPS` is 3)                                                       |
+| whole `מתי` step, 2 stops       | 720.5px                      | **over by 45.5px** — it scrolls, and §7 says so                                                        |
+| shipped `מתי · קטע 1` of 3      | 354.5px                      | fits easily, ×3 steps, and the journey is never seen whole                                             |
+| endpoint node                   | 96.8px                       | place name + prose line + zone chip                                                                    |
+| stop node                       | 150.5px                      | arrival + wait band + departure, no second label                                                       |
+| segment                         | 25px                         | duration only on the when step                                                                         |
+| `.vt-word` (the relative day)   | 72×31.8px, target **45.8px** | via the existing `.vt::after`, which grows no row                                                      |
+| `pp-clear` on an empty stop     | 32×32px, target **44px**     | 32px since it shipped; the reach is the proposal's                                                     |
+| `.jf-insert`                    | 22px, target **44px**        | −11px, because −8px measured 38px                                                                      |
+| `.jf-offer` pill                | 27px, target **44px**        | −8.5px, because −7px measured 41px                                                                     |
+| journey, 3 stops, all open      | 783px                        | **over by 108px** — the case §9 is for                                                                 |
+| journey, 3 stops, summarised    | 437.5px                      | inside, 237.5px to spare                                                                               |
+| whole step, 3 stops, summarised | 548.5px                      | inside — so **no stop count needs scrolling**                                                          |
+| summarised node                 | 32px                         | against ~150px open                                                                                    |
+| `.journey-stop`                 | 31px                         | not restyled — the day view's own component                                                            |
 
 ## Consequences
 
@@ -162,6 +180,7 @@ Read from `mockups/a-journey-has-one-date-v1.html`'s live DOM at 360×640, light
 - **Nothing is an entity, a table or a migration**, exactly as ADR-0154 could say: a round trip stays two `Booking`s, a journey stays one per leg, and §6 changes only which points authoring holds.
 - **`reachesDestination` gains a second consumer**, which is the point — a derivation with one caller in one corner is the shape both ADR-0154 and this ADR were written about.
 - **Three shipped defects are fixed on the way**, each measured rather than inferred: the unremovable empty stop, `pp-clear`'s 32px target, and the unfiltered place search for a train or bus endpoint.
+- **No stop count needs the sheet to scroll**, after §9 — which is a stronger outcome than §7 originally claimed and came from the owner reading the drawing rather than from the measurement pass.
 - **The mockup carries three device questions**, wired as controls with the recommendation as the default: whether `באותו יום` shows always, whether the date suggestion is a pill or a pre-fill, and whether `הלוך ושוב` is pre-offered from the trip's readiness.
 - **ADR-0159 §5 is reversed and ADR-0154 §4 is amended in place.** Neither is deleted: the costs they measured are real and are now costs this app has stopped paying, which is only legible with both sides written down.
 
