@@ -45,6 +45,16 @@ import { IconPicker } from './IconPicker';
 import { Icon } from './Icon';
 import { RouteLabel } from './RouteLabel';
 import { RouteField } from './domain';
+import { JourneyField, type JourneyNode } from './domain/JourneyField';
+import { resolveJourneyDays } from '../lib/journey-days';
+import {
+  journeyViewOf,
+  withJourneyDate,
+  withMomentDayOffset,
+  withMomentTime,
+} from '../lib/journey-legs';
+import { DATE_SOURCES, suggest, type KnownLeg } from '../lib/form-suggest';
+import { destinationRefOf } from '@waypoint/shared';
 import { Field } from './primitives/Field';
 import { PlacePicker } from './primitives/PlacePicker';
 import { NoteComposer, useNoteComposer } from './NoteComposer';
@@ -155,7 +165,8 @@ export function BookingSheet({
   focus?: 'when';
   onClose: () => void;
 }) {
-  const { trip, events, places, indexVerbs, noteVerbs, attachmentVerbs, taskVerbs } = useTrip();
+  const { trip, events, places, bookings, indexVerbs, noteVerbs, attachmentVerbs, taskVerbs } =
+    useTrip();
   const startErrand = useStartPlaceErrand();
   const isCreate = !booking;
 
@@ -270,6 +281,13 @@ export function BookingSheet({
   // The two note counts the delete confirm owes (ADR-0152 §2) come from the same place for
   // the same reason.
   const pair = useRoundTripPartner(booking);
+  /** **Which node of the journey is open; the rest summarise** (ADR-0203 §9). Per side, so
+   *  stepping to the return does not inherit the outbound's place in the rail. `null` opens
+   *  everything, which is what a single-leg journey wants — there is nothing to summarise. */
+  const [openNode, setOpenNode] = useState<{ out: number | null; back: number | null }>({
+    out: null,
+    back: null,
+  });
   const bookingNotes = useHostNoteCount('booking', booking?.id);
   const linkedEventNotes = useHostNoteCount('event', linkedEvent?.id);
 
@@ -346,6 +364,18 @@ export function BookingSheet({
   const providerLabel = t.index.sheet.providerLabel[type];
   const providerPlaceholder = t.index.sheet.providerPlaceholder[type];
   const isSpan = hasSpanSchedule(type);
+  /** **A JOURNEY, which is not the same set as "has a span"** (ADR-0203 §3, corrected in the
+   *  build after the first attempt drew a rail for a car hire).
+   *
+   *  `isSpan && isTransport` is true for `car`, because a hire carries a route — so the rail
+   *  claimed it, and dropped ADR-0184 §2's `＋ עד` window, which a HELD edge offers and a
+   *  journey never has. ADR-0163's own title is the sentence the design needed first: a hire
+   *  is not a journey. A hotel is not one either, and it genuinely has two calendar dates —
+   *  a stay spans them — so both keep `WhenField`'s span, its two dates and its windows.
+   *
+   *  `titlesFromRoute` is the discriminant rather than a fifth predicate, for the reason
+   *  ADR-0163 §3 separated it: a journey is the thing the route NAMES. */
+  const isJourney = isSpan && isTransport && titlesFromRoute(type);
   // Offered only where there is a route to mirror, and only on a create: editing a leg
   // opens ADR-0047 §2's merged surface unchanged, and turning a saved single leg into a
   // pair is a different action (§4, out of scope).
@@ -377,6 +407,10 @@ export function BookingSheet({
     const current = side === 'out' ? outLegs : backLegs;
     write(current.map((leg, i) => (i === index ? next : leg)));
   };
+  /** The whole side at once — the rail edits a JOURNEY, and one moment can move more than
+   *  one leg (the date moves all of them, keeping every offset). */
+  const setSideLegs = (side: 'out' | 'back', next: LegTimes[]) =>
+    (side === 'out' ? setLegs : setReturnLegs)(next);
   // The LIVE zone resolver — same rule as the draft's, over the CURRENT picks rather than
   // the ones the sheet opened with (`lib/booking-draft.ts` owns the opening ones).
   const zoneOf = (id: string | undefined, override: string | null) =>
@@ -423,6 +457,88 @@ export function BookingSheet({
   // A stable instant (trip-start noon) to read the zones' offsets at, for the
   // shift the note shows — exact enough for a "how far apart" figure.
   const zoneRefMs = Date.parse(zonedIso(trip.startDate, '12:00', trip.timezone));
+
+  /** **The rail's own view of one side of the journey** (ADR-0203 §1/§3). Everything here is
+   *  derived from `LegTimes[]` through `lib/journey-legs`, which is what keeps the save path,
+   *  the per-end zones, the note host and every refusal name working on the shape they
+   *  already read (see that module's header for the 32-spec version of this mistake).
+   *
+   *  A node's zone is its own place's; only the journey's OUTER ends carry a chip, because an
+   *  interior stop has a picked place and that is what an override stands in for (ADR-0107
+   *  §6). On the return the two outer ends swap, which is the same rule `legZones` follows. */
+  const journeyOf = (side: LegSide) => {
+    const legs = side === 'out' ? outLegs : backLegs;
+    const points = side === 'out' ? routePoints : reversed;
+    const view = journeyViewOf(legs);
+    const zoneAt = (i: number) =>
+      i === 0
+        ? side === 'out'
+          ? startZone
+          : endZone
+        : i === legCount
+          ? side === 'out'
+            ? endZone
+            : startZone
+          : zoneOf(points[i], null);
+    /** Which node a moment belongs to, in the rail's order: node 0 departs, then each later
+     *  node arrives and (if interior) departs. */
+    const nodeOfMoment = (m: number) => (m === 0 ? 0 : Math.floor((m + 1) / 2));
+    const moments = view.moments.map((moment, m) => ({
+      time: moment.time,
+      timeZone: zoneAt(nodeOfMoment(m)),
+      dayOffset: moment.time ? moment.dayOffset : undefined,
+    }));
+    const resolved = resolveJourneyDays(view.date, moments);
+    const labels = spanLabels(type);
+    const nodes: JourneyNode[] = points.map((pointId, i) => ({
+      placeName: placeName(places, pointId),
+      arriveLabel: labels.end,
+      departLabel: labels.start,
+      timeZone: zoneAt(i),
+      zone:
+        i === 0
+          ? zoneChip(
+              side === 'out' ? (fromPlaceId ?? placeId) : toPlaceId,
+              zoneAt(0),
+              side === 'out' ? startOverride : endOverride,
+              side === 'out' ? setStartOverride : setEndOverride,
+            )
+          : i === legCount
+            ? zoneChip(
+                side === 'out' ? toPlaceId : (fromPlaceId ?? placeId),
+                zoneAt(legCount),
+                side === 'out' ? endOverride : startOverride,
+                side === 'out' ? setEndOverride : setStartOverride,
+              )
+            : undefined,
+      arrive: i > 0 ? { time: view.moments[2 * i - 1]?.time ?? '' } : undefined,
+      depart: i < legCount ? { time: view.moments[i === 0 ? 0 : 2 * i]?.time ?? '' } : undefined,
+      marks: {
+        // The journey's DATE refuses under its own name, which is why `stepOf` maps it to the
+        // first leg step: it is one fact for the whole side, not a per-leg one.
+        date: i === 0 ? errors.field('date') : undefined,
+        arrive: i > 0 ? errors.field(legField(side, i - 1, 'end')) : undefined,
+        depart: i < legCount ? errors.field(legField(side, i, 'start')) : undefined,
+      },
+    }));
+    return { legs, view, resolved, nodes };
+  };
+
+  /** **The legs the TRIP already holds**, for §8's place suggestion and §5's date one. Read
+   *  off the snapshot rather than this form, so a return authored weeks after its outbound
+   *  still finds it (ADR-0203 §8). */
+  const knownLegs: KnownLeg[] = useMemo(
+    () =>
+      bookings
+        .filter(
+          (b: Booking) => b.id !== booking?.id && carriesRoute(b.type) && titlesFromRoute(b.type),
+        )
+        .map((b: Booking) => ({
+          from: places.find((p) => p.id === b.fromPlaceId),
+          to: places.find((p) => p.id === b.toPlaceId),
+        })),
+    [bookings, booking?.id, places],
+  );
   // A booked event's category is its booking type's — canonical (ADR-0038), not
   // the picked glyph. The IconPicker only sets the badge icon; a ⭐ on a hotel
   // stays lodging, so nights/check-in-out/ambient behaviour all follow the type.
@@ -648,10 +764,21 @@ export function BookingSheet({
    *
    *  A type with no span keeps its single day step, so a restaurant's form is the three
    *  it has always been. */
-  const legSteps: StepId[] = [
-    ...outLegs.map((_, i) => `out-${i}` as StepId),
-    ...backLegs.map((_, i) => `back-${i}` as StepId),
-  ];
+  /** **A JOURNEY is one step; anything else keeps a step per leg** (ADR-0203 §7, reversing
+   *  ADR-0159 §5). That reversal is not a preference: §5 chose per-leg out of the 492px a
+   *  span schedule cost, and a rail leg is two lines. What it buys is that the layover's wait
+   *  is stated while you type it — two steps can never show that, because the legs are never
+   *  on screen together — and that a hard commitment can be reviewed whole before it is
+   *  signed, which ADR-0155 §1 lists as chunking's unmitigated third cost.
+   *
+   *  Keyed `out-0`/`back-0` rather than a new id shape, so `StepId`, `FIRST_LEG_STEP` and
+   *  every refusal name below keep working: a journey collapses the INDEX, not the scheme. */
+  const legSteps: StepId[] = isJourney
+    ? (['out-0' as StepId, ...(twoLegs ? ['back-0' as StepId] : [])] as StepId[])
+    : [
+        ...outLegs.map((_, i) => `out-${i}` as StepId),
+        ...backLegs.map((_, i) => `back-${i}` as StepId),
+      ];
   type StepId = 'type' | 'what' | 'more' | `${LegSide}-${number}`;
   /** **The type is the first question, and only when it is a question** (field report #2).
    *  It shapes every step after it — span vs point, how many legs, whether a return can be
@@ -680,7 +807,9 @@ export function BookingSheet({
     if (field === 'title' || field === 'route' || field === 'direction') return 'what';
     if (field === 'date') return 'out-0';
     const [side, , index] = field.split('-');
-    return `${side as LegSide}-${index}` as StepId;
+    // A journey has one step per SIDE, so every leg's refusal lands on it — which is what
+    // turns the cross-leg dependency into an in-step one (ADR-0150, ADR-0203 §7).
+    return `${side as LegSide}-${isJourney ? 0 : index}` as StepId;
   };
   const problemsIn = (step: StepId) =>
     allProblems().filter((p) => p.field != null && stepOf(p.field) === step);
@@ -951,11 +1080,14 @@ export function BookingSheet({
     if (id === 'more') return t.index.form.stepDetails;
     const [side, index] = id.split('-');
     const n = Number(index) + 1;
+    // **A journey's step names the JOURNEY, never a leg** (ADR-0203 §7): its legs are all on
+    // this one step, so "קטע 2" would be counting something that is not a step any more.
+    const countsLegs = multiLeg && !isJourney;
     if (side === 'out') {
-      if (multiLeg) return t.index.form.stepLeg(n);
+      if (countsLegs) return t.index.form.stepLeg(n);
       return twoLegs ? t.index.form.stepWhenOut : t.index.form.stepWhen;
     }
-    return multiLeg ? t.index.form.stepBackLeg(n) : t.index.form.legBack;
+    return countsLegs ? t.index.form.stepBackLeg(n) : t.index.form.legBack;
   });
 
   /** **The leg the current step is asking about**, or null when the step is not a leg.
@@ -1244,7 +1376,98 @@ export function BookingSheet({
               that knows which is rendered. */}
             {legStep && (
               <div ref={whenRef}>
-                {isSpan ? (
+                {isJourney ? (
+                  (() => {
+                    /* **THE JOURNEY, AS ONE OBJECT WITH PARTS** (ADR-0203 §1/§3). The two
+                       identical date+time blocks are gone: this side of the journey carries
+                       ONE calendar date and every later moment is a clock plus a derived
+                       relative day, so a return flight would need a second date and there is
+                       exactly one on screen. That is what makes the reported misread
+                       impossible rather than merely less likely. */
+                    const side = legStep.side;
+                    const { legs, view, resolved, nodes } = journeyOf(side);
+                    const write = (next: LegTimes[]) => setSideLegs(side, next);
+                    const dateSug =
+                      !view.date && isCreate
+                        ? suggest(DATE_SOURCES, {
+                            from: places.find((p) => p.id === routePoints[0]),
+                            to: places.find((p) => p.id === routePoints[legCount]),
+                            destination: destinationRefOf(trip),
+                            trip: { startDate: trip.startDate, endDate: trip.endDate },
+                            legs: knownLegs,
+                            words: t.journey.suggest,
+                          })
+                        : null;
+                    return (
+                      <>
+                        <JourneyField
+                          nodes={nodes}
+                          date={view.date}
+                          onDateChange={(d) => write(withJourneyDate(legs, d))}
+                          minDate={trip.startDate}
+                          maxDate={trip.endDate}
+                          resolved={resolved}
+                          onTimeChange={(node, which, time) => {
+                            /* The offset is DERIVED for the clock just typed — the moment
+                               loses its explicit day so §2's forward resolution decides it,
+                               and the adapter writes only the day it is handed. */
+                            const at =
+                              node === 0 ? 0 : which === 'arrive' ? 2 * node - 1 : 2 * node;
+                            const probe = view.moments.map((m, i) => ({
+                              time: i === at ? time : m.time,
+                              timeZone: nodes[i === 0 ? 0 : Math.floor((i + 1) / 2)].timeZone,
+                              dayOffset: i === at ? undefined : m.time ? m.dayOffset : undefined,
+                            }));
+                            const offset = resolveJourneyDays(view.date, probe)[at].dayOffset;
+                            write(withMomentTime(legs, node, which, time, offset));
+                          }}
+                          onDayOffsetChange={(node, which, offset) =>
+                            write(withMomentDayOffset(legs, node, which, offset))
+                          }
+                          openNodeIndex={openNode[side]}
+                          onOpenNode={(i) => setOpenNode((o) => ({ ...o, [side]: i }))}
+                          heading={
+                            twoLegs
+                              ? side === 'out'
+                                ? t.index.form.legOut
+                                : t.index.form.legBack
+                              : undefined
+                          }
+                          connection={
+                            connectionWindow(type)
+                              ? {
+                                  word: t.day.join.word[type] ?? t.index.form.addStop,
+                                  tightMinutes: connectionWindow(type)!.tightMinutes,
+                                }
+                              : undefined
+                          }
+                          alwaysShowDay
+                          dateSuggestion={
+                            dateSug
+                              ? {
+                                  label: dateSug.label,
+                                  detail: dateSug.detail,
+                                  mono: dateSug.mono,
+                                  onAccept: () => write(withJourneyDate(legs, dateSug.value)),
+                                }
+                              : undefined
+                          }
+                        />
+                        <ZoneNote
+                          startZone={legStep.zones.start}
+                          endZone={legStep.zones.end}
+                          tripZone={trip.timezone}
+                          refMs={zoneRefMs}
+                        />
+                        {/* The commitment is the JOURNEY's, so it is asked once, on the side
+                            that starts it. */}
+                        {side === 'out' && view.date && (
+                          <KindToggle kind={kind.value} onPick={pickKind} />
+                        )}
+                      </>
+                    );
+                  })()
+                ) : isSpan ? (
                   <>
                     {/* **Leg headings arrive in PAIRS or not at all** (ADR-0154 §4,
                     extended over a sequence). One journey of one leg needs no name and

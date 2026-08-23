@@ -517,6 +517,17 @@ describe('reachesDestination (ADR-0203 §5, exported)', () => {
     );
   });
 
+  it('does not throw when a trip has no destination set yet', () => {
+    // A form calls this on every render (ADR-0203 §5), so a trip mid-creation reaches it
+    // with nothing in the field. An exception here unmounts the app.
+    const noName = { name: undefined as unknown as string };
+    expect(() => reachesDestination(place('p', 'Somewhere'), noName)).not.toThrow();
+    expect(reachesDestination(place('p', 'Somewhere'), noName)).toBe(false);
+    expect(
+      reachesDestination({ ...place('p', 'x'), name: undefined as unknown as string }, ICELAND),
+    ).toBe(false);
+  });
+
   it('CANNOT ANSWER NO — an unplaceable endpoint is unconfirmed, not refused', () => {
     // The whole basis on which a form may filter with it: every false is "no evidence",
     // so the worst a filter can do is offer nothing.

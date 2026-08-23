@@ -104,8 +104,15 @@ function zoneReachesDestination(zone: string | undefined, destination: Destinati
  *  "Japan"). All we have for a name-only Place-lite (ADR-0051), and true of an
  *  airport only by luck — "Keflavik" says nothing about "Iceland". */
 function nameReachesDestination(placeName: string, destinationName: string): boolean {
-  const a = placeName.trim().toLowerCase();
-  const b = destinationName.trim().toLowerCase();
+  // **Both operands are guarded, and the second consumer is why** (ADR-0203 §5). While
+  // `computeReadiness` was the only caller these arrived from a loaded Trip and were always
+  // strings. A FORM calls this on every render, and a trip whose destination is not set yet
+  // hands `undefined` — which threw inside render, and an exception in render with no error
+  // boundary anywhere in the app takes the whole screen (the same blank-screen shape
+  // `DateField`'s clear note records). Empty already answers false, so an absent name
+  // answering false is the existing rule rather than a new one.
+  const a = (placeName ?? '').trim().toLowerCase();
+  const b = (destinationName ?? '').trim().toLowerCase();
   if (!a || !b) return false;
   return a === b || a.includes(b) || b.includes(a);
 }

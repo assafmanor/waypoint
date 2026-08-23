@@ -181,6 +181,57 @@ const toLastStep = () => {
 const pastTypeStep = () => {
   if (onTypeStep()) press(t.common.steps.next);
 };
+/* ── Driving the JOURNEY RAIL (ADR-0203 §1/§3/§7/§9) ─────────────────────────────────
+   A journey is no longer two captioned legs with a date each. It is ONE calendar date and a
+   clock per moment, all on one step — so the specs below fill it through the rail's own
+   controls rather than through `.wf-leg`, which a hire and a hotel still use and which these
+   helpers deliberately do not touch. */
+
+/** The rail's nodes, in journey order. Segments carry the leg durations and are skipped. */
+const railNodes = () => [...document.querySelectorAll<HTMLElement>('.jf-row:not(.jf-seg)')];
+
+/** The journey's ONE date. There is exactly one such input in the rail, which is the whole
+ *  design: a return flight would need a second and there is none to mistake it for. */
+const setJourneyDate = (value: string) =>
+  fireEvent.change(document.querySelector('.jf .vt-date input') as HTMLInputElement, {
+    target: { value },
+  });
+
+/** Open node `i` if it is summarised, so its real controls are on screen (§9). */
+const openRailNode = (i: number) => {
+  const summary = railNodes()[i]?.querySelector<HTMLElement>('.jf-sum-tok');
+  if (summary) fireEvent.click(summary);
+};
+
+/** Set one moment's clock. `which` picks between an interior node's two — its arrival is the
+ *  first `TimeField` in the node, its departure the second. Through the panel's exact
+ *  `<input type="time">`, the same precise path the span helpers use. */
+const setNodeTime = (i: number, which: 'arrive' | 'depart', value: string) => {
+  openRailNode(i);
+  const node = railNodes()[i];
+  const tokens = [...node.querySelectorAll<HTMLElement>('button.vt-time')];
+  // Node 0 only departs and the last only arrives, so each has one token; an interior node
+  // has both, arrival first.
+  const token = tokens.length === 1 ? tokens[0] : which === 'arrive' ? tokens[0] : tokens[1];
+  fireEvent.click(token);
+  fireEvent.change(node.querySelector('.tp-time-input') as HTMLInputElement, {
+    target: { value },
+  });
+};
+
+/** Fill a whole journey: its date, then every moment in rail order. `times` is
+ *  `[depart0, arrive1, depart1, arrive2, …]` — exactly the order the rail lays them out. */
+const fillJourney = (date: string, times: string[]) => {
+  setJourneyDate(date);
+  let m = 0;
+  const nodes = railNodes().length;
+  for (let i = 0; i < nodes; i++) {
+    if (i > 0) setNodeTime(i, 'arrive', times[m++]);
+    else setNodeTime(0, 'depart', times[m++]);
+    if (i > 0 && i < nodes - 1) setNodeTime(i, 'depart', times[m++]);
+  }
+};
+
 const save = () => fireEvent.click(screen.getByText(t.common.save));
 const saveFrom = (step: 'what' | 'when' | 'more') => {
   if (step === 'what') toLastStep();
@@ -663,14 +714,14 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
       target: { value },
     });
   };
-  /** Fill the outbound span on step `when`, then advance to `more`. */
-  const fillOut = (d1: string, t1: string, d2: string, t2: string) => {
-    const [a, b] = legs();
-    setDate(a, d1);
-    setTime(a, t1);
-    setDate(b, d2);
-    setTime(b, t2);
-  };
+  /** Fill one side of the journey on its own step (ADR-0203 §7).
+   *
+   *  **The arrival's DATE is gone and that is the design** (§2): a journey carries one
+   *  calendar date and the arrival is a clock whose day is derived. The parameter is kept so
+   *  every call site below reads unchanged, and ignored — if a spec needs the arrival on
+   *  another day it says so with a clock that cannot follow the departure, which is exactly
+   *  what a reader would have to understand anyway. */
+  const fillOut = (d1: string, t1: string, _d2: string, t2: string) => fillJourney(d1, [t1, t2]);
 
   it('offers the direction control on a transport create, with NEITHER preselected', () => {
     open({ roundTrip: undefined });
@@ -695,9 +746,10 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
 
     fireEvent.click(screen.getByText(t.index.form.oneWay));
     press(t.common.steps.next);
-    // One-way is what it always was: one schedule step, no leg heading, details last.
-    expect(legs().length).toBe(2);
-    expect(document.querySelectorAll('.bs-leg-head').length).toBe(0);
+    // One-way is one schedule step with a two-node rail and no journey heading — headings
+    // arrive in pairs or not at all (ADR-0154 §4), and one journey needs no name.
+    expect(railNodes().length).toBe(2);
+    expect(document.querySelectorAll('.jf-head').length).toBe(0);
     next();
     expect(screen.getByText(t.common.save)).toBeTruthy();
   });
@@ -1035,25 +1087,25 @@ describe('BookingSheet — a stop makes one save a chain of bookings', () => {
       target: { value },
     });
   };
-  const fillLeg = (d1: string, t1: string, d2: string, t2: string) => {
-    const [a, b] = legs();
-    setDate(a, d1);
-    setTime(a, t1);
-    setDate(b, d2);
-    setTime(b, t2);
-  };
+  /** Fill the WHOLE journey on its one step (ADR-0203 §7): its date, then every moment in
+   *  rail order. The per-leg `fillLeg` this replaces cannot exist any more — there is no
+   *  per-leg step to fill on, and no second date to fill it with. */
+  const fillChain = (date: string, times: string[]) => fillJourney(date, times);
   const label = () => document.querySelector('.form-steps-label')!.textContent;
 
-  it('gives every leg a step of its own, named for it', () => {
+  /** **This spec asserted the opposite until ADR-0203 §7, which reverses ADR-0159 §5.** That
+   *  section chose a step per leg out of the 492px a span schedule cost; a rail leg is two
+   *  lines, so the whole journey fits one step — and that is what lets the layover's wait be
+   *  stated while you type it, which two steps can never do because the legs are never on
+   *  screen together. */
+  it('gives the whole journey ONE step, and every leg a node on its rail', () => {
     open();
     expect(label()).toBe(t.index.form.stepWhat);
     next();
-    expect(label()).toBe(t.index.form.stepLeg(1));
-    expect(document.querySelector('.bs-leg-head > span:first-child')?.textContent).toBe(
-      t.index.form.legNumber(1),
-    );
-    next();
-    expect(label()).toBe(t.index.form.stepLeg(2));
+    expect(label()).toBe(t.index.form.stepWhen);
+    // Three points, two legs, one step.
+    expect(railNodes().length).toBe(3);
+    expect(document.querySelectorAll('.jf-seg').length).toBe(2);
     next();
     expect(label()).toBe(t.index.form.stepDetails);
   });
@@ -1062,9 +1114,7 @@ describe('BookingSheet — a stop makes one save a chain of bookings', () => {
     indexVerbs.createBooking.mockResolvedValue({ id: 'b-leg1' });
     open();
     next();
-    fillLeg('2026-07-19', '00:30', '2026-07-19', '06:10');
-    next();
-    fillLeg('2026-07-19', '08:50', '2026-07-19', '11:35');
+    fillChain('2026-07-19', ['00:30', '06:10', '08:50', '11:35']);
     next();
     save();
 
@@ -1084,9 +1134,7 @@ describe('BookingSheet — a stop makes one save a chain of bookings', () => {
     indexVerbs.createBooking.mockResolvedValue({ id: 'b-leg1' });
     open();
     next();
-    fillLeg('2026-07-19', '00:30', '2026-07-19', '06:10');
-    next();
-    fillLeg('2026-07-19', '08:50', '2026-07-19', '11:35');
+    fillChain('2026-07-19', ['00:30', '06:10', '08:50', '11:35']);
     next();
     save();
 
@@ -1101,26 +1149,35 @@ describe('BookingSheet — a stop makes one save a chain of bookings', () => {
     expect(second.event.endsAt).toBe(zonedIso('2026-07-19', '11:35', 'Asia/Jerusalem'));
   });
 
-  it('refuses a leg that leaves before the one before it landed, on that field', async () => {
+  /** **The refusal this spec was named for no longer exists, and that is ADR-0203 §2.**
+   *
+   *  `legBeforeArrival` could fire because two absolute dates let you enter a departure
+   *  before the previous arrival. A journey now carries ONE date and every later moment
+   *  resolves to the nearest FORWARD instant, so a stop leaving at 05:40 after landing at
+   *  06:10 is not an error to refuse — it is tomorrow, and the leg's own duration states what
+   *  that costs. Prevented rather than refused, which is ADR-0150 §8's own rule and the one
+   *  `TimeField`'s `minTime` already follows.
+   *
+   *  `returnBeforeArrival` survives untouched, because a return carries an absolute date of
+   *  its own and so genuinely can leave before the outbound lands — the spec for it is in the
+   *  round-trip describe above. */
+  it('rolls a stop’s departure to the next day rather than refusing it', async () => {
+    indexVerbs.createBooking.mockResolvedValue({ id: 'b-leg1' });
     open();
     next();
-    fillLeg('2026-07-19', '00:30', '2026-07-19', '06:10');
-    next();
-    // 05:40 Dubai time is before the 06:10 arrival — a real instant comparison across
-    // two zones, which a date-only check would wave through.
-    fillLeg('2026-07-19', '05:40', '2026-07-19', '08:25');
-    next();
+    fillChain('2026-07-19', ['00:30', '06:10', '05:40', '08:25']);
 
-    const [start, end] = legs();
-    const marked = (leg: HTMLElement) => leg.closest('.field');
-    expect(marked(start)?.hasAttribute('data-invalid')).toBe(true);
-    expect(marked(start)?.querySelector('.field-error')?.textContent).toBe(
-      t.index.form.legBeforeArrival('דובאי'),
-    );
-    expect(marked(end)?.hasAttribute('data-invalid')).toBe(false);
-    expect(indexVerbs.createBooking).not.toHaveBeenCalled();
-    // A refused step does not advance.
-    expect(label()).toBe(t.index.form.stepLeg(2));
+    // No refusal anywhere on the step, and the step advances.
+    expect(document.querySelector('.field[data-invalid]')).toBeNull();
+    next();
+    expect(label()).toBe(t.index.form.stepDetails);
+    save();
+
+    await waitFor(() => expect(indexVerbs.createBooking).toHaveBeenCalledTimes(2));
+    const [, second] = indexVerbs.createBooking.mock.calls.map(([b]) => b);
+    // The rolled day, in the stop's OWN zone — a real instant, not a date-only guess.
+    expect(second.event.startsAt).toBe(zonedIso('2026-07-20', '05:40', 'Asia/Dubai'));
+    expect(second.event.endsAt).toBe(zonedIso('2026-07-20', '08:25', 'Asia/Jerusalem'));
   });
 
   it('refuses a stop with no place, at the route', () => {
@@ -1140,9 +1197,7 @@ describe('BookingSheet — a stop makes one save a chain of bookings', () => {
       .mockResolvedValueOnce({ id: 'b-leg2' });
     open();
     next();
-    fillLeg('2026-07-19', '00:30', '2026-07-19', '06:10');
-    next();
-    fillLeg('2026-07-19', '08:50', '2026-07-19', '11:35');
+    fillChain('2026-07-19', ['00:30', '06:10', '08:50', '11:35']);
     next();
     fireEvent.change(composer(), {
       target: { value: 'הכבודה עוברת ישירות' },

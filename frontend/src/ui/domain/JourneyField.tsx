@@ -36,6 +36,7 @@ import { ConnectionBand } from './DayJoinRow';
 import { RouteLabel } from '../RouteLabel';
 import { t } from '../../i18n/he';
 import { type FieldMark } from '../primitives/useFormErrors';
+import { Field } from '../primitives/Field';
 import './journey-field.css';
 
 /** One moment a journey asks for: a clock, and the day it lands on. */
@@ -161,17 +162,26 @@ export function JourneyField({
     const moment = which === 'arrive' ? node.arrive : node.depart;
     if (!moment) return null;
     const mark = which === 'arrive' ? node.marks?.arrive : node.marks?.depart;
+    /* **A mark needs the `Field` shell, not a bare line** — found by wiring the form's own
+       refusal specs against this component. ADR-0150's caption, its nudge animation and the
+       scroll-into-view all hang off that box (`useFormErrors.report` looks the node up in the
+       live DOM), so spreading the mark onto a `.wf-line` marked the row and rendered no
+       message at all: a refusal that looks delivered and is not, which is the exact failure
+       that ADR's session-175 note records once already. `WhenField` wraps every leg the same
+       way. */
     return (
-      <div className="wf-line" {...mark}>
-        <TimeField
-          value={moment.time}
-          onChange={(hhmm) => onTimeChange(nodeIndex, which, hhmm)}
-          onClear={() => onTimeChange(nodeIndex, which, '')}
-          label={which === 'arrive' ? node.arriveLabel : node.departLabel}
-          placeholder={t.whenField.addTime}
-        />
-        {moment.time && dayToken(nodeIndex, which, moment)}
-      </div>
+      <Field {...mark}>
+        <div className="wf-line">
+          <TimeField
+            value={moment.time}
+            onChange={(hhmm) => onTimeChange(nodeIndex, which, hhmm)}
+            onClear={() => onTimeChange(nodeIndex, which, '')}
+            label={which === 'arrive' ? node.arriveLabel : node.departLabel}
+            placeholder={t.whenField.addTime}
+          />
+          {moment.time && dayToken(nodeIndex, which, moment)}
+        </div>
+      </Field>
     );
   };
 
@@ -287,25 +297,27 @@ export function JourneyField({
                     </span>
                     {i === 0 ? (
                       <>
-                        <div className="wf-line" {...node.marks?.date}>
-                          <DateField
-                            className={tokenClass('date', { empty: !date })}
-                            format="named"
-                            min={minDate}
-                            max={maxDate}
-                            value={date}
-                            onChange={onDateChange}
-                          />
-                          {node.depart && (
-                            <TimeField
-                              value={node.depart.time}
-                              onChange={(hhmm) => onTimeChange(i, 'depart', hhmm)}
-                              onClear={() => onTimeChange(i, 'depart', '')}
-                              label={node.departLabel}
-                              placeholder={t.whenField.addTime}
+                        <Field {...node.marks?.date}>
+                          <div className="wf-line">
+                            <DateField
+                              className={tokenClass('date', { empty: !date })}
+                              format="named"
+                              min={minDate}
+                              max={maxDate}
+                              value={date}
+                              onChange={onDateChange}
                             />
-                          )}
-                        </div>
+                            {node.depart && (
+                              <TimeField
+                                value={node.depart.time}
+                                onChange={(hhmm) => onTimeChange(i, 'depart', hhmm)}
+                                onClear={() => onTimeChange(i, 'depart', '')}
+                                label={node.departLabel}
+                                placeholder={t.whenField.addTime}
+                              />
+                            )}
+                          </div>
+                        </Field>
                         {/* **Offered only into an empty date** (§5) — never corrected onto
                             one that has a value, which is the line between offering a day
                             and guessing a commitment (ADR-0171 §1). */}
