@@ -209,3 +209,19 @@ construction** (every consumer tests `=== 'exact'`), and turned up the one
 consumer that does not follow the pattern and would have shipped a defect
 (`glance.ts:457` tests `!== 'not-before'`). The count is usually the deliverable,
 not the preamble.
+
+**Inlining `tokens.css` stops the mockup itself from scrolling, and the symptom
+looks like a page that fits.** ADR-0200 §1 put `html, body { overflow: clip }` in
+`styles/tokens.css` — the app's document never scrolls, an inner `.body` does — and
+every mockup that inlines that sheet applies the rule to its own page, which has no
+inner scroller and is several viewports tall. **`clip` is not a scroll container**,
+so the root's `scrollHeight` collapses to `clientHeight`: content below the fold is
+*unreachable*, not hidden, and the obvious check ("is `scrollHeight >
+clientHeight`?") answers **no** — identical to a short page. Caught only when a human
+tried to scroll one. Three files, all inlined after 2026-08-21: measured at
+**9713px of content against 700px reachable** on
+`a-journey-has-one-date-v1.html`, and 6650 / 5084 on
+`a-day-turns-under-a-held-card-v1/v2.html` — **the promoted build specs for
+ADR-0116 §2d and ADR-0200, unreadable for a day.** The template now ends with an
+`html, body { overflow: visible }` block; keep it **last**, and if you write a scroll
+check, assert on the content's own height rather than the root's.

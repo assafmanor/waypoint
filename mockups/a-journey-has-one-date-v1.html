@@ -10706,6 +10706,29 @@ button.day-gap:hover .day-gap-lbl {
         }
       }
     </style>
+    <style>
+      /* ══════════════════════════════════════════════════════════════════════
+         THE MOCKUP'S OWN DOCUMENT HAS TO SCROLL. Last block on purpose, so it
+         wins over the inlined app css above it whatever that sheet grows.
+
+         `styles/tokens.css` sets `html, body { overflow: clip }` — ADR-0200 §1's
+         decision that the APP's document never scrolls and an inner `.body` does.
+         Inlining that sheet applies it to THIS page, which has no inner scroller
+         and is several viewports tall: `clip` is not a scroll container at all, so
+         the root's `scrollHeight` collapses to the viewport and everything below
+         the fold becomes unreachable rather than merely hidden. Measured here at
+         9713px of content against 700px reachable.
+
+         Restoring it is CHROME, not a change to the app's rule — the frames below
+         are ordinary divs and never saw that rule. It is also why the symptom is
+         easy to misread: a scroll test that asks "is scrollHeight > clientHeight"
+         answers NO on a clipped root, i.e. exactly like a page that fits.
+         ══════════════════════════════════════════════════════════════════════ */
+      html,
+      body {
+        overflow: visible;
+      }
+    </style>
   </head>
 
   <body>
