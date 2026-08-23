@@ -73,6 +73,11 @@ export const EVENT_CATEGORY = {
  *  the proxy owns the mapping to Google's own type vocabulary. */
 export const PLACE_SEARCH_KIND = {
   AIRPORT: 'airport',
+  /** A platform rather than a terminal (ADR-0203 §8). `TRANSIT_STATION` is the wider one —
+   *  a bus or a ferry — and is deliberately separate from `TRAIN_STATION` so the proxy can
+   *  keep answering a train with rail only. */
+  TRAIN_STATION: 'train_station',
+  TRANSIT_STATION: 'transit_station',
 } as const satisfies Record<string, PlaceSearchKind>;
 
 export const MEMBERSHIP_ROLE = {

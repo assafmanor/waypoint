@@ -17,7 +17,7 @@ import {
   BOOKING_TYPE,
   BOOKING_TYPE_TO_CATEGORY,
   edgeMeaning,
-  PLACE_SEARCH_KIND,
+  placeSearchKindFor,
   EVENT_KIND,
   carriesRoute,
   defaultKindForBookingType,
@@ -280,13 +280,17 @@ export function BookingSheet({
   const findPlace = (field: PlaceErrandField, side?: string, index?: number) => () =>
     startErrand?.({
       target: { kind: 'booking', id: booking?.id, field, index },
-      // **A flight's ROUTE fields want airports** (field report #6): searching `נתב"ג` on the
-      // tab otherwise answers with the terminal, the car park and the hotel beside it, and the
-      // one you need is not reliably among them. Only the route fields, and only for a flight
-      // — a hotel's `placeId` is a hotel, and a train's stop is a station this restriction has
-      // no type for yet.
-      ...(type === BOOKING_TYPE.FLIGHT &&
-        field !== 'placeId' && { kind: PLACE_SEARCH_KIND.AIRPORT }),
+      // **A route field wants the kind of place its type is boarded at** (field report #6,
+      // widened by ADR-0203 §8): searching `נתב"ג` unrestricted answers with the terminal, the
+      // car park and the hotel beside it, and the one you need is not reliably among them.
+      //
+      // The type no longer decides that here. `placeSearchKindFor` reads it off
+      // `BOOKING_TYPE_PROFILE`, which closes the gap this comment used to name itself — "a
+      // train's stop is a station this restriction has no type for yet" — so a train, a bus
+      // and a ferry stopped searching the whole corpus, and a fifth transport mode answers by
+      // existing. Route fields only, still: a hotel's `placeId` is a hotel, and a hire's two
+      // counters are counters, so its profile restricts nothing on purpose.
+      ...(field === 'placeId' ? undefined : { kind: placeSearchKindFor(type) }),
       label: [title.value.trim() || t.map.errand.untitledBooking, side]
         .filter(Boolean)
         .join(` ${DOT_SEPARATOR} `),

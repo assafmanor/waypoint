@@ -1558,7 +1558,7 @@ describe('BookingSheet — the type step, the derived name and the offered sched
 /* ── WHAT WOULD ANSWER THIS ERRAND (field report #6) ───────────────────────────────────────
    A flight leg wants an AIRPORT, so the tab's search is restricted to one. The sheet is the
    only thing that knows the question; the Map owns the search (ADR-0134 §1). */
-describe('BookingSheet — a flight leg asks the Map for an airport', () => {
+describe('BookingSheet — a route leg asks the Map for the kind it boards at', () => {
   afterEach(() => {
     cleanup();
     startErrand.mockReset();
@@ -1589,13 +1589,30 @@ describe('BookingSheet — a flight leg asks the Map for an airport', () => {
     expect(startErrand).toHaveBeenCalledWith(expect.objectContaining({ kind: 'airport' }));
   });
 
-  // A train's stop is a station and a car's is a rental desk — neither is an airport, and the
-  // restriction has no type for them yet. Naming one anyway would hide every right answer.
-  it('names NO kind on a train’s origin', () => {
+  /** **This spec used to assert the opposite, and that is the point of ADR-0203 §8.** It
+   *  pinned "names NO kind on a train's origin" — the gap `findPlace`'s own comment named
+   *  ("a train's stop is a station this restriction has no type for yet"), which left a
+   *  train, a bus and a ferry searching the whole corpus. The kind now comes off
+   *  `BOOKING_TYPE_PROFILE`, so the type is not asked at this call site at all. */
+  it('names the station kind on a train’s origin, and the wider one on a bus', () => {
     openCreate(BOOKING_TYPE.TRAIN);
     tapOrigin();
+    expect(startErrand).toHaveBeenCalledWith(expect.objectContaining({ kind: 'train_station' }));
+    startErrand.mockReset();
+    cleanup();
+    openCreate(BOOKING_TYPE.TRANSIT);
+    tapOrigin();
+    expect(startErrand).toHaveBeenCalledWith(expect.objectContaining({ kind: 'transit_station' }));
+  });
+
+  /** A hire's two ends are rental COUNTERS, so it restricts nothing — the one route-shaped
+   *  type with no search kind, and the reason the profile axis keys on being CARRIED
+   *  (`inMotion`) rather than on carrying a route. */
+  it('names no kind on a hire’s counters, though a hire carries a route', () => {
+    openCreate(BOOKING_TYPE.CAR);
+    tapOrigin();
     expect(startErrand).toHaveBeenCalledTimes(1);
-    expect(startErrand.mock.calls[0][0]).not.toHaveProperty('kind');
+    expect(startErrand.mock.calls[0][0].kind).toBeUndefined();
   });
 
   // A hotel's single place is the hotel. The restriction is about the ROUTE fields only, even

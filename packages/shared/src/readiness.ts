@@ -119,8 +119,18 @@ function nameReachesDestination(placeName: string, destinationName: string): boo
  *
  *  Nothing here can answer NO: a place no route can place is unconfirmed, and an
  *  unconfirmed leg leaves the check open rather than falsely reading done
- *  (ADR-0061's degradation clause). */
-function reachesDestination(place: Place | undefined, destination: DestinationRef): boolean {
+ *  (ADR-0061's degradation clause).
+ *
+ *  **Exported since ADR-0203 §5, and the reason is the defect that ADR was written about
+ *  one function over.** This is the app's only answer to "is this leg the way there or the
+ *  way back", and while it was module-private the booking form could not ask it — so a
+ *  form offering the trip's first day and its last day had no way to tell which one a
+ *  journey wanted, and offered both. ADR-0154 recorded the same shape about `PlanHome`:
+ *  _"the app knows what a round trip is, in exactly one corner, and the form it would help
+ *  never hears about it."_ Two consumers now, and the degradation clause above is what
+ *  makes it safe for the second: it can only ever REMOVE a suggestion, never add a wrong
+ *  one. */
+export function reachesDestination(place: Place | undefined, destination: DestinationRef): boolean {
   if (!place) return false;
   return (
     (Boolean(place.googlePlaceId) && place.googlePlaceId === destination.googlePlaceId) ||

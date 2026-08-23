@@ -9,8 +9,8 @@
 // migration touches. UI copy (group labels) lives in the frontend i18n, keyed
 // by `IconGroup.id` — never here (this package is shapes + data, ADR-0009).
 
-import { BOOKING_TYPE_TO_CATEGORY } from './constants';
-import type { BookingType, EventCategory, EventKind, TripEvent } from './entities';
+import { BOOKING_TYPE_TO_CATEGORY, PLACE_SEARCH_KIND } from './constants';
+import type { BookingType, EventCategory, EventKind, PlaceSearchKind, TripEvent } from './entities';
 import { matchesAnyTerm } from './search-terms';
 
 /** A browse-group in the picker. `category` is the canonical semantic value
@@ -620,6 +620,19 @@ export interface BookingTypeProfile {
    *  a five-day rental that it needs no lodging at all. Optional, so the table carries
    *  only the types this is true of. Read through `spendsSpanInMotion`. */
   inMotion?: boolean;
+  /** **What kind of place this type's ROUTE endpoints are** (ADR-0203 §8). A flight's leg
+   *  wants an airport, a train's wants a platform.
+   *
+   *  This replaces a conditional at the call site, and that is the reason it is here rather
+   *  than staying there. `BookingSheet.findPlace` asked `type === BOOKING_TYPE.FLIGHT` and
+   *  its own comment named what that cost: _"a train's stop is a station this restriction
+   *  has no type for yet"_ — so a train, a bus and a ferry endpoint searched the whole
+   *  corpus. One column, and a new transport mode answers it by existing.
+   *
+   *  Optional, because it is a property of a ROUTE and `places: 'single'` types have none
+   *  to restrict — a hotel's place is a hotel, and a restaurant's is a restaurant. Read
+   *  through `placeSearchKindFor`. */
+  searchKind?: PlaceSearchKind;
 }
 
 /** **The clock the day is assumed to begin on** (owner, field report #11: _"most events
@@ -668,8 +681,12 @@ const MINUTES_PER_HOUR = 60;
 /** A route-shaped type: two endpoints, a round trip is a mirror of them, and a
  *  connection is a sequence of them. The window differs per type, so each type
  *  supplies its own below rather than sharing this one. */
-const transportProfile = (sequence: ConnectionWindow): BookingTypeProfile => ({
+const transportProfile = (
+  sequence: ConnectionWindow,
+  searchKind: PlaceSearchKind,
+): BookingTypeProfile => ({
   places: 'route',
+  searchKind,
   schedule: 'span',
   defaultKind: 'hard',
   legs: { mirrored: true, sequence },
@@ -687,12 +704,22 @@ const ONE_JOURNEY = { mirrored: false, sequence: null } as const;
 
 export const BOOKING_TYPE_PROFILE = {
   // A layover, by the aviation line that separates one from a stopover.
-  flight: transportProfile({ maxGapMinutes: 24 * MINUTES_PER_HOUR, tightMinutes: 90 }),
-  train: transportProfile({ maxGapMinutes: 6 * MINUTES_PER_HOUR, tightMinutes: 20 }),
+  flight: transportProfile(
+    { maxGapMinutes: 24 * MINUTES_PER_HOUR, tightMinutes: 90 },
+    PLACE_SEARCH_KIND.AIRPORT,
+  ),
+  train: transportProfile(
+    { maxGapMinutes: 6 * MINUTES_PER_HOUR, tightMinutes: 20 },
+    PLACE_SEARCH_KIND.TRAIN_STATION,
+  ),
   // **The third transport mode** (ADR-0156). It carries a route, spans two instants, is a
   // real commitment, can be bought as a round trip and can be changed halfway — exactly
   // like the two above, and on a platform's timescale rather than an airport's.
-  transit: transportProfile({ maxGapMinutes: 6 * MINUTES_PER_HOUR, tightMinutes: 20 }),
+  transit: transportProfile(
+    { maxGapMinutes: 6 * MINUTES_PER_HOUR, tightMinutes: 20 },
+    // A bus or a ferry stops at a platform or a quay, not a rail station — the wider kind.
+    PLACE_SEARCH_KIND.TRANSIT_STATION,
+  ),
   // **The fourth transport mode** (ADR-0162) — and the first that is NOT
   // `transportProfile`, which is the whole point of it. A hire carries a route
   // (pick-up → drop-off) and spans two instants like the three above, but the `legs`
@@ -771,6 +798,16 @@ export const carriesRoute = (type: BookingType): boolean =>
  *  one of the two is exactly how `נריטה ← נריטה` got saved as a booking's title. */
 export const titlesFromRoute = (type: BookingType): boolean =>
   BOOKING_TYPE_PROFILE[type].titleFrom === 'route';
+
+/** **What kind of place this type's route endpoints are** (ADR-0203 §8), or `undefined` for
+ *  a type whose place is not a route endpoint at all. See `BookingTypeProfile.searchKind`. */
+export const placeSearchKindFor = (type: BookingType): PlaceSearchKind | undefined => {
+  // Widened to the interface deliberately, same as `bookingTypeDurationUnit` and
+  // `spendsSpanInMotion`: `as const satisfies` narrows each row to its own shape, on which
+  // an OPTIONAL field simply isn't a property to read.
+  const profile: BookingTypeProfile = BOOKING_TYPE_PROFILE[type];
+  return profile.searchKind;
+};
 
 /** Two-endpoint schedule (start + end, may span days) rather than a point on a day. */
 export const hasSpanSchedule = (type: BookingType): boolean =>
