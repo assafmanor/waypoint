@@ -99,6 +99,14 @@ export interface JourneyFieldProps {
   alwaysShowDay?: boolean;
   /** The date suggestion, offered only into an empty date (§5). */
   dateSuggestion?: { label: string; detail?: string; mono?: boolean; onAccept: () => void };
+  /** **How many days after the journey's date moment `m` would land on, were its clock
+   *  `hhmm`** — the host's own `resolveJourneyDays`, asked one candidate at a time.
+   *
+   *  This exists so the time list can show where the day turns while you choose, and it is a
+   *  callback rather than a number because the turn is not at midnight: a westward crossing
+   *  keeps the same calendar day past 00:00 (§2). The derivation lives in one module and this
+   *  component never computes a day. */
+  dayOffsetOf?: (moment: number, hhmm: string) => number;
 }
 
 /** Where node `i`'s moment sits in the resolved list. The order is the journey's: node 0's
@@ -116,6 +124,23 @@ const momentIndex = (nodes: JourneyNode[], node: number, which: 'arrive' | 'depa
   return which === 'arrive' ? n : n + 1;
 };
 
+/** `momentIndex`'s inverse: the moment at a position in the resolved list, so a clock can
+ *  name the one it FOLLOWS (§10) without the caller re-deriving the walk. Same order, read
+ *  the other way, and one function so the two cannot drift apart. */
+const momentAt = (nodes: JourneyNode[], index: number): JourneyTime | null => {
+  if (index === 0) return nodes[0]?.depart ?? null;
+  let n = 1;
+  for (let i = 1; i < nodes.length; i++) {
+    if (n === index) return nodes[i].arrive ?? null;
+    n++;
+    if (nodes[i].depart) {
+      if (n === index) return nodes[i].depart ?? null;
+      n++;
+    }
+  }
+  return null;
+};
+
 const dayWord = (offset: number): string =>
   offset === 0 ? t.journey.sameDay : offset === 1 ? t.journey.nextDay : t.journey.plusDays(offset);
 
@@ -123,6 +148,7 @@ export function JourneyField({
   nodes,
   date,
   onDateChange,
+  dayOffsetOf,
   minDate,
   maxDate,
   resolved,
@@ -158,10 +184,34 @@ export function JourneyField({
     );
   };
 
-  const clock = (nodeIndex: number, which: 'arrive' | 'depart', node: JourneyNode) => {
+  /** One moment's line. `caption` names WHICH moment it is, in the line itself — passed only
+   *  where the node heading cannot say it.
+   *
+   *  **An interior node has two clocks and the heading can only name one.** Both rendered as
+   *  bare `הוספת שעה` triggers, stacked, identical — which is the reported misread again, one
+   *  level down: two indistinguishable time controls and no words to tell them apart. The
+   *  original plan had the `ConnectionBand` between them doing this job ("it needs no label of
+   *  its own: the band above it says what the line below it is"), and that was wrong for the
+   *  case that matters — the band measures the WAIT, so it needs both clocks to exist and
+   *  renders nothing until they do. The explanation arrived only after you no longer needed
+   *  it. A caption is on the line from the start instead, glyph included: `🛬` against `🛫` is
+   *  the fastest read of the two, and it also restores the cue the heading gives up. */
+  const clock = (
+    nodeIndex: number,
+    which: 'arrive' | 'depart',
+    node: JourneyNode,
+    caption?: string,
+  ) => {
     const moment = which === 'arrive' ? node.arrive : node.depart;
     if (!moment) return null;
     const mark = which === 'arrive' ? node.marks?.arrive : node.marks?.depart;
+    /** **A clock offers forward from the moment before it** (ADR-0203 §10). Both of these
+     *  come from the host's own derivation rather than being computed here: the anchor is the
+     *  previous moment's clock, and where the day turns is asked of `dayOffsetOf`, because a
+     *  westward crossing keeps the same calendar day past midnight and this component is not
+     *  allowed to guess a day. */
+    const m = momentIndex(nodes, nodeIndex, which);
+    const previous = m > 0 ? momentAt(nodes, m - 1) : null;
     /* **A mark needs the `Field` shell, not a bare line** — found by wiring the form's own
        refusal specs against this component. ADR-0150's caption, its nudge animation and the
        scroll-into-view all hang off that box (`useFormErrors.report` looks the node up in the
@@ -172,12 +222,15 @@ export function JourneyField({
     return (
       <Field {...mark}>
         <div className="wf-line">
+          {caption && <span className="jf-moment-lbl">{caption}</span>}
           <TimeField
             value={moment.time}
             onChange={(hhmm) => onTimeChange(nodeIndex, which, hhmm)}
             onClear={() => onTimeChange(nodeIndex, which, '')}
             label={which === 'arrive' ? node.arriveLabel : node.departLabel}
             placeholder={t.whenField.addTime}
+            afterTime={previous?.time || undefined}
+            dayOffsetOf={previous?.time && dayOffsetOf ? (hhmm) => dayOffsetOf(m, hhmm) : undefined}
           />
           {moment.time && dayToken(nodeIndex, which, moment)}
         </div>
@@ -261,21 +314,41 @@ export function JourneyField({
          *  nodes AHEAD of you open while the ones behind you collapse, which is the walk down
          *  the rail §9 describes rather than a single window sliding over it. */
         const summarisable = (i === 0 && !!date) || !!node.arrive?.time || !!node.depart?.time;
-        const open = openNodeIndex == null || openNodeIndex === i || !summarisable;
+        /** **A refused node is never summarised** — the field a refusal names has to be on
+         *  screen for it to be delivered at all. `useFormErrors` renders the message in the
+         *  `Field` box and finds that same box in the live DOM to nudge it and scroll to it,
+         *  so a summarised node swallows all three: the form declines to advance and says
+         *  nothing, which is the one failure that file exists to prevent ("a refusal the user
+         *  cannot see is the bug this whole file exists for"). Reachable only from three nodes
+         *  up — a two-node journey never summarises — which is why a layover is what surfaced
+         *  it. Read off `error`, not the mark object: `errors.field()` always returns one, and
+         *  it carries the `ref` whether or not anything is wrong. */
+        const refused = !!(
+          node.marks?.date?.error ||
+          node.marks?.arrive?.error ||
+          node.marks?.depart?.error
+        );
+        const open = refused || openNodeIndex == null || openNodeIndex === i || !summarisable;
+        /** A node with a moment on both sides of it — a layover. The only kind with two
+         *  clocks, and so the only one whose lines have to name themselves. */
+        const interior = i > 0 && i < lastIndex;
         const leg = legMinutes(i);
         const wait = waitMinutes(i, node);
         return (
           <div key={i}>
-            {i > 0 && (
+            {/* **No duration, no row.** This drew whenever a node had one above it and filled
+                itself only when the leg could be measured — so a journey mid-fill reserved a
+                blank band between two nodes, which reads as a missing line rather than as
+                nothing to say. The rail is unbroken without it: every row paints its own
+                full-height line, so the two nodes it sat between simply become adjacent. */}
+            {leg != null && (
               <div className="jf-row jf-seg">
                 <span className="jf-rail" aria-hidden="true" />
                 <div className="jf-body">
-                  {leg != null && (
-                    <span className="jf-dur">
-                      <Icon name="clock" />
-                      <b>{hoursPhrase(leg)}</b>
-                    </span>
-                  )}
+                  <span className="jf-dur">
+                    <Icon name="clock" />
+                    <b>{hoursPhrase(leg)}</b>
+                  </span>
                 </div>
               </div>
             )}
@@ -294,12 +367,18 @@ export function JourneyField({
               <div className="jf-body">
                 {open ? (
                   <>
+                    {/* **An endpoint's heading names its one moment; an interior node's does
+                        not.** A stop has two clocks, so a heading naming one of them reads as
+                        a caption for both — and the other is then the unlabelled line the
+                        field report was about. Its moments carry their own captions below. */}
                     <span className="jf-node-lbl">
                       {node.placeName && <span className="jf-place">{node.placeName}</span>}
-                      <span>
-                        {node.placeName ? `${t.journey.dot} ` : ''}
-                        {i === 0 ? node.departLabel : node.arriveLabel}
-                      </span>
+                      {!interior && (
+                        <span>
+                          {node.placeName ? `${t.journey.dot} ` : ''}
+                          {i === 0 ? node.departLabel : node.arriveLabel}
+                        </span>
+                      )}
                     </span>
                     {i === 0 ? (
                       <>
@@ -343,13 +422,14 @@ export function JourneyField({
                         )}
                       </>
                     ) : (
-                      clock(i, 'arrive', node)
+                      clock(i, 'arrive', node, interior ? node.arriveLabel : undefined)
                     )}
                     {node.zone && <ZoneChip {...node.zone} />}
-                    {/* A stop's own departure, under the band that measures the wait. It
-                        needs no label of its own: the band above it says what the line
-                        below it is, so the node reads as one sentence. */}
-                    {i > 0 && i < lastIndex && node.depart && (
+                    {/* A stop's own departure, under the band that measures the wait — and
+                        carrying its own caption, because the band cannot be that caption: it
+                        needs both clocks to exist before it can measure anything, so it is
+                        absent for exactly as long as the two lines are ambiguous. */}
+                    {interior && node.depart && (
                       <>
                         {connection && wait != null && (
                           <ConnectionBand
@@ -358,7 +438,7 @@ export function JourneyField({
                             tight={wait < connection.tightMinutes}
                           />
                         )}
-                        {clock(i, 'depart', node)}
+                        {clock(i, 'depart', node, node.departLabel)}
                       </>
                     )}
                   </>

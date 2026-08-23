@@ -9,7 +9,7 @@
 // wrong and in what words. What this owns is what happens after — which is exactly
 // the part that had drifted into three shapes (a form-level `<p>`, `Field`'s error
 // slot, a hand-rolled `.invalid` class).
-import { useCallback, useRef, useState, type RefCallback } from 'react';
+import { useCallback, useEffect, useRef, useState, type RefCallback } from 'react';
 // The marks it applies are drawn by `form-errors.css`, which `App.tsx` loads
 // globally — the attribute is a contract screens honour without this hook.
 import { prefersReducedMotion } from '../../lib/motion';
@@ -41,6 +41,9 @@ export function useFormErrors<F extends string>() {
   const [problems, setProblems] = useState<readonly FieldProblem<F>[]>(NONE);
   const nodes = useRef(new Map<F, HTMLElement>());
   const refs = useRef(new Map<F, RefCallback<HTMLElement>>());
+  /** The refusals still owed their nudge and their scroll, handed from `report` to the
+   *  effect that delivers them once the DOM they name has rendered. */
+  const pending = useRef<readonly FieldProblem<F>[] | null>(null);
 
   // One stable callback per field name: a fresh identity each render would make
   // React detach and re-attach every node on every keystroke.
@@ -62,7 +65,21 @@ export function useFormErrors<F extends string>() {
    *  order is what gets brought into view. An empty list clears. */
   const report = useCallback((list: readonly FieldProblem<F>[]): boolean => {
     setProblems(list.length === 0 ? NONE : list);
+    // **Delivered after the commit, not during the call.** Marking a field can be what PUTS
+    // it on screen — the journey rail summarises the nodes behind you, and a summarised one
+    // renders no box at all — so reading `nodes` here found nothing to nudge and nothing to
+    // scroll to, and the refusal went silently undelivered. Stashing the list and letting the
+    // effect below run it means the DOM being addressed is the one the refusal itself
+    // produced. A repeat attempt still lands: every `report` passes a fresh array, so the
+    // state identity changes and the effect runs again.
+    pending.current = list.length === 0 ? null : list;
+    return list.length > 0;
+  }, []);
 
+  useEffect(() => {
+    const list = pending.current;
+    if (!list) return;
+    pending.current = null;
     // A field can collect two problems (a day both outside the trip and before its
     // start); it is still one box, and it nudges once.
     const marked = [
@@ -74,8 +91,7 @@ export function useFormErrors<F extends string>() {
     ].sort(inDocumentOrder);
     for (const el of marked) nudge(el);
     if (marked[0]) bringIntoView(marked[0]);
-    return list.length > 0;
-  }, []);
+  }, [problems]);
 
   const clear = useCallback(() => setProblems(NONE), []);
 

@@ -101,10 +101,34 @@
 .jf-row.end .jf-dot {
   background: var(--amber);
 }
+/* **A column with a gap, which is how `WhenField` already stacks the same pieces.** This was
+   a plain block, so everything after the first line — the zone chip above all, but also a
+   stop's second clock — sat flush against the row above it with no space at all, while the
+   same `ZoneChip` in `WhenField` gets its air from that container's `gap`. One rule here
+   instead of a margin per child, and `.jf-node-lbl`/`.jf-offer` give up the margins they were
+   using to fake it. */
 .jf-body {
   min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
   padding-block: 7px 8px;
 }
+/* A `Field` is the box a refusal renders in (ADR-0150), so it has to be as wide as the row
+   it marks — `align-items: flex-start` above would otherwise shrink it to its content and
+   leave the caption hanging off the token. */
+.jf-body > .field,
+.jf-body > .wf-line {
+  align-self: stretch;
+}
+
+/* Which moment a line is, said in the line (§3). The prose ground of `.wf-line`, so it needs
+   no colour of its own — the token beside it is the value and this is the sentence. */
+.jf-moment-lbl {
+  font-weight: 700;
+}
+
 /* The moment's name, and the PLACE is the half doing the work: `נחיתה · קפלוויק` cannot be
    a return leg's departure. `.wf-leg-lbl`'s type, so a node label and a leg label are one
    voice rather than a second style. */
@@ -116,7 +140,6 @@
   font-size: var(--text-caption);
   font-weight: 700;
   color: var(--muted);
-  margin-block-end: var(--space-2);
 }
 .jf-place {
   color: var(--ink);
@@ -128,6 +151,8 @@
    zone-crossing one reads correctly rather than by luck. */
 .jf-seg .jf-body {
   display: flex;
+  /* Explicit: the base `.jf-body` is a column now, and this row must not inherit that. */
+  flex-direction: row;
   align-items: center;
   flex-wrap: wrap;
   gap: 4px 10px;
@@ -154,8 +179,10 @@
    the authoring inset — and nothing else. `.journey-stop` itself is not restyled: the wait
    you type is the wait the day will show, in the same words and with the same `tight` rule. */
 .jf-body > .journey-stop {
+  /* `align-self` because the body is a column with `align-items: flex-start` now — the band
+     is the one child that spans it rather than hugging its content. */
+  align-self: stretch;
   margin-inline: -13px;
-  margin-block: 8px;
   padding-inline: 13px;
 }
 
@@ -185,7 +212,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-block-start: var(--space-2);
 }
 .jf-offer button {
   position: relative;

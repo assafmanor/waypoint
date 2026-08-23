@@ -182,16 +182,33 @@ export function useFormSteps<Id extends string, F extends string>({
 export function FormStepPanel<Id extends string>({
   steps,
   labels,
+  header,
   children,
 }: {
   steps: FormStepsController<Id>;
   /** One short name per step, in order — the read-out's accessible text. */
   labels?: readonly string[];
+  /** **What stays on screen while the step scrolls** — the step's identity, beside the
+   *  read-out. Reported from the field with two screenshots, before and after scrolling,
+   *  in which both `מתי` and `טיסה` were gone: a journey with three stops scrolls well
+   *  past a screen, and once the heading leaves there is nothing left saying which step
+   *  you are on.
+   *
+   *  **It is a slot rather than a caller's own sticky row, because it has to be ONE box.**
+   *  The read-out and whatever the host pins are separated by the scroll container's own
+   *  gap, and two sticky siblings let the content scroll THROUGH that gap between them
+   *  (measured at 24px in the mockup). One box, one background, no seam.
+   *
+   *  Optional: a form with nothing to pin passes nothing and the read-out sticks alone. */
+  header?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <>
-      <StepBar index={steps.index} count={steps.count} label={labels?.[steps.index]} />
+      <div className="form-steps-head">
+        <StepBar index={steps.index} count={steps.count} label={labels?.[steps.index]} />
+        {header}
+      </div>
       {/* Keyed by step, so each arrival is a MOUNT and `StepPane` can LATCH its direction
           by existing. Read live it would restart on any unrelated re-render that flipped
           the value — the defect ADR-0140 §7 logged on the route shell. */}
