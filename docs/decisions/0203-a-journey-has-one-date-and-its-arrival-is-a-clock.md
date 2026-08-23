@@ -1,6 +1,6 @@
 # 0203 — A journey has **one date**, its arrival is a **clock plus a relative day**, and a suggestion is a **table of sources**
 
-**Status:** Proposed (2026-08-23)
+**Status:** Accepted (owner sign-off 2026-08-23). **Partly built 2026-08-23** — §2, §4, §5's and §8's machinery and §8's search-kind axis are in; §1/§3/§6/§7/§9 are drawn, componentised and specced but **not wired into `BookingSheet`**. See the build log at the foot, which records what the wiring turned out to need and the one design finding that stopped it.
 **Date:** 2026-08-23
 **Design reference:** [`mockups/a-journey-has-one-date-v1.html`](../../mockups/a-journey-has-one-date-v1.html) — every number below is read from that file's live DOM in a headless browser, at 360px and 390px, in both themes. **It falsified this ADR's first §7 and its own first draft of §4; both corrections are recorded here rather than quietly applied.**
 **Session note:** [`planning/2026-08-23-the-arrival-was-read-as-a-return.md`](../planning/2026-08-23-the-arrival-was-read-as-a-return.md)
@@ -210,3 +210,39 @@ Read from `mockups/a-journey-has-one-date-v1.html`'s live DOM at 360×640, light
 - **Pre-filling the date with a latch.** Not rejected on merit — drawn in the mockup, and left to the device pass. The recommendation is the pill.
 - **Giving a diverged return's seeded values a "suggested" look.** Rejected in §6.
 - **Auto-running a seeded Places search, bundling an airport list, and a cross-trip "home airport".** Each rejected or deferred with its own reason in §8.
+
+## Build log — 2026-08-23
+
+**What is in**, each with its own commit and its own specs:
+
+- **§8's search-kind axis.** `BOOKING_TYPE_PROFILE.searchKind`, `PLACE_SEARCH_KIND` widened with `train_station`/`transit_station`, and `findPlace`'s `type === BOOKING_TYPE.FLIGHT` conditional gone. The axis keys on `spendsSpanInMotion`, **not** `carriesRoute`, and a car hire is why: it has two route endpoints and they are rental counters, so asking Google for a station there would exclude the only right answers. A spec pins the iff.
+- **§5's predicate.** `reachesDestination` exported, with its degradation clause pinned directly rather than only through `computeReadiness` — with two consumers, "can say yes or cannot confirm, never no" is a contract a form depends on.
+- **§4's defect.** `PlacePicker` takes a `removable` role, so a stop the `＋` just added can be removed. Three of the four specs verified to fail without it. The ✕ also gained ADR-0017's reach; it had been 32px since it shipped.
+- **§2's derivation.** `lib/journey-days.ts`, on instants, with the westward-crossing case as a spec beside the eastbound one a wall-clock rule passes by luck.
+- **§5/§8's infra.** `lib/form-suggest.ts` — the source table, with "at most one" as a property of the mechanism.
+- **§1/§3/§9's component.** `ui/domain/JourneyField` + `journey-field.css`, 15 specs.
+- **`destinationRefOf`**, extracted rather than copied into a second caller.
+
+**Three things the build found that the design had not:**
+
+- **The compiler caught the backend half of §8.** `google-places.client.ts`'s `Record<PlaceSearchKind, string>` stopped compiling until the proxy answered the two new kinds — which is exactly the property ADR-0154 §2 built that table for. The single-type constraint bites harder on the ground modes (Google lists train, subway, light-rail, bus and ferry separately) and the empty-answer fallback written for the airport case already covers it.
+
+- **§2's own implementation had a bug its specs caught.** An override was applied as `max(override, previousOffset)` — which constrains the OFFSET and says nothing about the INSTANT, so an arrival overridden to the same day at an earlier clock resolved to a moment _before_ its departure. A journey running backwards. An override is a floor on where the forward search starts, not an answer replacing it.
+
+- **A sharp edge in `reachesDestination`, pinned rather than fixed.** Its name tier matches by substring in both directions, so a one-character Place-lite "reaches" almost any destination (`'a'` is inside `'Iceland'`). Shipped behaviour the readiness count depends on, so narrowing it is not this ADR's business — but it bounds §5's safety claim to endpoints that are really placeable. On the backlog.
+
+### What the wiring needs, and the finding that stopped it
+
+§1/§3/§6/§7/§9 are **not** wired. The step change and the rail were written, typechecked clean, and then failed 32 of `BookingSheet`'s 86 specs — and reading those failures found a design error in this ADR rather than a defect in the code:
+
+**A hire renders through the same branch, and a hire is not a journey.** `isSpan && isTransport` is true for `car`, because a hire carries a route. So the rail would have claimed it — and dropped ADR-0184 §2's `＋ עד` window control, which a held edge offers and a journey never has. ADR-0163's own title says the thing this ADR should have read before drawing: _a hire is not a journey_. **The branch must be `isSpan && titlesFromRoute(type)`** — a journey — with a hire and a hotel keeping `WhenField`'s span, its two absolute dates (a stay genuinely has two calendar days) and its windows. That correction belongs in §3 and is the first thing the wiring does.
+
+What remains, in the order it should be taken:
+
+1. **Narrow the branch** to a journey, per the finding above, and keep the span path whole for hire and hotel.
+2. **Rewrite the journey-specific specs** against the rail's markup. Most of the 32 are one repeated shape — a spec that filled two date inputs per leg now fills one per journey and its clocks through `TimeField` — but they include the save path, the note host and the per-end zones, so each needs reading rather than a sweep.
+3. **§6's independent return** is the largest remaining piece and touches three layers this ADR did not count: `PlaceErrandField` needs names for a return's places, `bookingSheetDraft` needs to carry them, and `legBooking` needs `returnPoints` instead of `reversed`. The model is already right — one `Booking` per leg with its own two points — so none of it is a migration, but it is not the one-line change §6 implies.
+4. **§8's place suggestion in the form**, which needs the trip's existing transport legs derived and passed to `PLACE_SOURCES`.
+5. **§9's open-node state** on the form, once the rail is mounted.
+
+The mockup remains the build spec and its measurements stand.

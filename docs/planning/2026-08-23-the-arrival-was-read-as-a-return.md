@@ -142,3 +142,24 @@ default: whether `באותו יום` shows always, whether the date suggestion i
 a pre-fill, and whether `הלוך ושוב` is pre-offered. And one deferred feature with
 its reason written down: a cross-trip place memory for the first endpoint of a first
 trip.
+
+## The build, and where it stopped
+
+Approved and built in phases, one commit each: §8's profile axis, §4's defect, §2's
+derivation, §5/§8's source table, §1/§3/§9's component, and the `destinationRefOf`
+extraction. Every phase green before the next started.
+
+**Wiring the rail into `BookingSheet` failed 32 of its 86 specs, and reading the failures
+found an error in the ADR rather than in the code.** The first one said `＋ עד` was missing —
+ADR-0184 §2's window control, which a held edge offers. A **car hire** renders through
+`isSpan && isTransport`, so the rail had claimed it and dropped that control; and
+[ADR-0163](../decisions/0163-a-hire-is-not-a-journey.md)'s own title is the sentence the
+design needed before it drew anything: _a hire is not a journey_. The branch is
+`isSpan && titlesFromRoute(type)`, and a hire and a hotel keep the span field with its two
+genuine calendar dates and its windows.
+
+That correction plus the spec rewrite plus §6's three-layer widening (errand field names,
+draft, `legBooking`'s points) is more than the session had left to do responsibly, so the
+wiring was **not** committed: the branch stands at a green phase 5 and the ADR's build log
+plus the backlog carry what remains, in order. What is worth carrying forward is the
+finding, not the diff — the diff is a morning's work once the branch is narrowed.
