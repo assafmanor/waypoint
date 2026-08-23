@@ -2568,6 +2568,31 @@ export const t = {
   },
   // The "when" standard (WhenField). Shared span-endpoint copy for the tap-to-open
   // time field, the derived duration read-out, and the crosses-a-day marker.
+  /** **A journey's schedule** (ADR-0203). The relative day is the load-bearing string: it
+   *  replaces the arrival's second calendar date, which is what was read as a return flight. */
+  journey: {
+    sameDay: 'באותו יום',
+    nextDay: 'למחרת',
+    plusDays: (n: number) => `+${n} ימים`,
+    /** The token's accessible name — the visible run is the day alone. */
+    dayLabel: 'היום',
+    /** A summarised node's one control: it reopens the node's real fields. */
+    editTimes: 'עריכת הזמנים',
+    waitShort: 'המתנה',
+    /** The app's separator, between peer facts on a summarised line. */
+    dot: '·',
+    noPlace: '-',
+    /** A summarised first node still carries the journey's ONE date — collapsing it away
+     *  hides the single fact the design rests on — and reads it compactly (ADR-0176 allows
+     *  both faces; the numeric one is what a summary is for). */
+    shortDate: (iso: string) => {
+      const [, m, d] = iso.split('-');
+      return `${Number(d)}.${Number(m)}`;
+    },
+    /** Said while a seeded return is still an exact mirror of its outbound (§6), and gone
+     *  the moment any of it diverges. */
+    sameRouteReversed: 'אותו מסלול בהיפוך',
+  },
   whenField: {
     // ONE label for the whole when (ADR-0177 §1), replacing a caption per atom — the
     // values say what they are, so "תאריך" over a date was the screen saying it twice.

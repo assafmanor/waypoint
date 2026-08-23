@@ -1,0 +1,225 @@
+/* JourneyField (ADR-0203 §1–§3, §9). Logical properties only (RTL).
+
+   **Deliberately short, and that is the argument.** Everything inside a node is already
+   shipped: the prose line is `.wf-line` (ADR-0177), the date is `DateField` wearing
+   `vt vt-date`, the clock is `TimeField`, the relative day is a `ValueToken` in the `word`
+   tone, the zone is `.zchip`, and the layover band is `day-join.css`'s own `.journey-stop`
+   through `ConnectionBand`. What is new is a RAIL and two controls; a long file here would
+   mean a primitive went unused. */
+
+/* One journey, one object — `.journey`'s own words from `day-join.css`, at authoring
+   density. The container owns the border and the radius; the rows inside give theirs up and
+   become rows OF it, which is the whole point: a connection is not a mark between two cards,
+   it is the inside of one thing. Amber-tinted hairline, exactly as the day's block, because
+   a journey is time inside a commitment (rule 4). */
+.jf {
+  border: 1px solid color-mix(in srgb, var(--amber) 38%, var(--line));
+  border-radius: 15px;
+  background: var(--card);
+  overflow: hidden;
+}
+
+/* The journey's heading — the frame the reported step never had. It names both ends, which
+   is what stops `המראה` and `נחיתה` reading as two flights: a return departs from the other
+   end, so a named place cannot be mistaken for one. */
+.jf-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 9px 13px;
+  background: color-mix(in srgb, var(--amber) 8%, transparent);
+  border-block-end: 1px solid color-mix(in srgb, var(--amber) 20%, transparent);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+}
+.jf-head .route {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+/* While a seeded return is still an exact mirror it SAYS so, and the clause leaves the
+   moment anything about it diverges (§6). One derived sentence, not a control. */
+.jf-mirror {
+  margin-inline-start: auto;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* ── the rail ──────────────────────────────────────────────────────────────
+   A two-column grid rather than a flex row with an absolutely-positioned line, because the
+   line has to reach the full height of a row whose height is set by wrapping prose — and a
+   `.wf-line` does wrap at 360px, which is the design width and not the stress case. */
+.jf-row {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  padding-inline: 13px;
+}
+.jf-rail {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+/* **`inset-block` alone is not enough.** With no inline offset an absolutely-positioned
+   pseudo-element resolves to its STATIC position — the start edge of the flex line — so the
+   line draws beside the column instead of through the dots, and a rail that does not run
+   through its own nodes is not a rail. Found by rendering it. Centred explicitly; the dot
+   paints over it by DOM order.
+
+   Clipped only at the journey's two ends, so it TOUCHES every interior node — the
+   correction ADR-0159 §3 already had to make once on the day list, where a rail that kept
+   the list's rhythm floated clear at each end and a now-line then cut it in half. */
+.jf-rail::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 50%;
+  margin-inline-start: -1px;
+  inline-size: 2px;
+  background: color-mix(in srgb, var(--amber) 34%, transparent);
+}
+.jf-row.first .jf-rail::before {
+  inset-block-start: 15px;
+}
+.jf-row.last .jf-rail::before {
+  inset-block-end: calc(100% - 15px);
+}
+.jf-dot {
+  position: relative;
+  margin-block-start: 9px;
+  inline-size: 11px;
+  block-size: 11px;
+  border-radius: var(--radius-999);
+  background: var(--card);
+  border: 2px solid var(--amber);
+  flex: 0 0 auto;
+  align-self: flex-start;
+}
+/* An endpoint of the journey is solid; a waypoint is hollow — the same thing
+   `.place-picker-stop`'s indent says one step earlier. */
+.jf-row.end .jf-dot {
+  background: var(--amber);
+}
+.jf-body {
+  min-inline-size: 0;
+  padding-block: 7px 8px;
+}
+/* The moment's name, and the PLACE is the half doing the work: `נחיתה · קפלוויק` cannot be
+   a return leg's departure. `.wf-leg-lbl`'s type, so a node label and a leg label are one
+   voice rather than a second style. */
+.jf-node-lbl {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+  margin-block-end: var(--space-2);
+}
+.jf-place {
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+/* The segment between two nodes: what the leg cost, measured on instants so a
+   zone-crossing one reads correctly rather than by luck. */
+.jf-seg .jf-body {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding-block: 3px 5px;
+}
+.jf-dur {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  color: var(--muted);
+}
+.jf-dur .icon {
+  inline-size: 13px;
+  block-size: 13px;
+}
+.jf-dur b {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* The layover band sits inside a stop node's body rather than across a block, so it needs
+   the authoring inset — and nothing else. `.journey-stop` itself is not restyled: the wait
+   you type is the wait the day will show, in the same words and with the same `tight` rule. */
+.jf-body > .journey-stop {
+  margin-inline: -13px;
+  margin-block: 8px;
+  padding-inline: 13px;
+}
+
+/* ── a summarised node (§9) ────────────────────────────────────────────────
+   The row IS a `.wf-line`: ADR-0177's grammar unchanged, prose as the ground and the value
+   as a token. That container is also what sets the type context every other token in the app
+   is sized in — getting that wrong is what made this token's reach land short twice while
+   `.vt-word` measures 45.8px in an ordinary line. So this adds a tighter row-gap and nothing
+   else, and the 44px arrives from the primitive. */
+.jf-sum-row {
+  row-gap: 4px;
+}
+/* The `word` tone, not `time`: the run is mixed (`19:40 · יציאה 21:45 · המתנה 2:05 שע׳`) and
+   `.vt-time` is the MONO face, which has no Hebrew — the fallback changes the line box and
+   the metrics with it. `ValueToken` keeps a whole `word` kind for exactly this. It also
+   settles the hue honestly: `word` inherits ink, and rule 4's amber stays on the real clock
+   tokens inside the node this reopens. A summary is a READ with one way in; the sentence is
+   what you get when it opens. */
+.jf-sum-tok {
+  flex-wrap: wrap;
+}
+
+/* The date suggestion, offered while the date is empty (§5). Not a `ChoiceGrid`: it is not
+   one of two values of a field, it is a shortcut TO one — accepting it fills the date and
+   the pill goes. Dashed in `--cta` says "offer" while spending no hue (rule 4). */
+.jf-offer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-block-start: var(--space-2);
+}
+.jf-offer button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--cta);
+  background: color-mix(in srgb, var(--cta) 9%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--cta) 42%, transparent);
+  border-radius: var(--radius-999);
+  padding: 5px 10px;
+  cursor: pointer;
+}
+/* −8.5px, because −7px measured 41px against ADR-0017's 44px floor. The same quarter-pixel
+   class of miss `value-token.css` records against its own first number, and the reason every
+   new control here states the reach rather than the box. */
+.jf-offer button::after {
+  content: '';
+  position: absolute;
+  inset: -8.5px -2px;
+}
+.jf-offer button:active {
+  transform: scale(var(--press-scale));
+}
+/* A numeral is mono; a word is not — the same reason `.jf-sum-tok` takes the `word` tone. */
+.jf-offer .jf-offer-num {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  opacity: 0.85;
+}
+.jf-offer .jf-offer-word {
+  font-weight: 600;
+  opacity: 0.75;
+}
