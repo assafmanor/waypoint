@@ -2526,6 +2526,10 @@ export const t = {
     open: 'בחירת מקום',
     empty: 'הוספת מקום',
     clear: 'הסרת המקום',
+    // **A stop's ✕ removes the STOP, not just its place** (ADR-0203 §4). The control is the
+    // same one; what differs is what it means on a row that is itself optional, and a screen
+    // reader is the only place that difference can be heard.
+    removeStop: 'הסרת העצירה',
     title: 'מקום',
     // Under an empty location field, in BOTH authoring forms — one key, because an
     // event and a booking lose exactly the same five things. Entities saved happily

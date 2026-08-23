@@ -226,6 +226,13 @@ function JourneyField({
           // Indented, because a stop is a WAYPOINT and not an endpoint: a three-row
           // stack of equals reads as three destinations. Same thing `.cluster-kids`
           // says with an indent about the rows that belong to the one above them.
+          //
+          // **`removable` is the fix for a shipped defect** (ADR-0203 §4): the picker's ✕ is
+          // this field's only way to remove a stop, and it used to render only with a place
+          // in it — so a stop the `＋` had just added could not be removed at all, and its
+          // one other control launches an errand that unmounts the sheet. The ADR-0159 §5
+          // decision ("clearing IS removing") is unchanged; what changes is that the control
+          // it names is now actually there.
           <PlacePicker
             key={i}
             className="place-picker-stop"
@@ -234,6 +241,8 @@ function JourneyField({
             ariaLabel={t.index.form.stopLabel}
             placeholder={t.index.form.stopShort}
             onFind={() => onFindStop?.(i, t.index.form.stopLabel)}
+            removable
+            clearLabel={t.placePicker.removeStop}
           />
         ))}
         <PlacePicker
