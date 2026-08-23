@@ -1,6 +1,6 @@
 # 0203 — A journey has **one date**, its arrival is a **clock plus a relative day**, and a suggestion is a **table of sources**
 
-**Status:** Accepted (owner sign-off 2026-08-23). **Partly built 2026-08-23** — §2, §4, §5's and §8's machinery and §8's search-kind axis are in; §1/§3/§6/§7/§9 are drawn, componentised and specced but **not wired into `BookingSheet`**. See the build log at the foot, which records what the wiring turned out to need and the one design finding that stopped it.
+**Status:** Accepted (owner sign-off 2026-08-23). **Built 2026-08-23** — §1, §2, §3, §4, §5, §7 and §9 are in the form; §8's search-kind axis and suggestion machinery are in. **§6 (the independent, non-mirrored return) and §8's in-form place suggestion are deferred** — the build log at the foot says what they turned out to touch, and why bundling them is how this lands half-wired. §3's branch is corrected there: it is `isSpan && titlesFromRoute(type)`, not `isSpan && isTransport`, because a hire is not a journey (ADR-0163).
 **Date:** 2026-08-23
 **Design reference:** [`mockups/a-journey-has-one-date-v1.html`](../../mockups/a-journey-has-one-date-v1.html) — every number below is read from that file's live DOM in a headless browser, at 360px and 390px, in both themes. **It falsified this ADR's first §7 and its own first draft of §4; both corrections are recorded here rather than quietly applied.**
 **Session note:** [`planning/2026-08-23-the-arrival-was-read-as-a-return.md`](../planning/2026-08-23-the-arrival-was-read-as-a-return.md)
@@ -237,12 +237,23 @@ Read from `mockups/a-journey-has-one-date-v1.html`'s live DOM at 360×640, light
 
 **A hire renders through the same branch, and a hire is not a journey.** `isSpan && isTransport` is true for `car`, because a hire carries a route. So the rail would have claimed it — and dropped ADR-0184 §2's `＋ עד` window control, which a held edge offers and a journey never has. ADR-0163's own title says the thing this ADR should have read before drawing: _a hire is not a journey_. **The branch must be `isSpan && titlesFromRoute(type)`** — a journey — with a hire and a hotel keeping `WhenField`'s span, its two absolute dates (a stay genuinely has two calendar days) and its windows. That correction belongs in §3 and is the first thing the wiring does.
 
-What remains, in the order it should be taken:
+### The wiring, and the four things it changed in this ADR
 
-1. **Narrow the branch** to a journey, per the finding above, and keep the span path whole for hire and hotel.
-2. **Rewrite the journey-specific specs** against the rail's markup. Most of the 32 are one repeated shape — a spec that filled two date inputs per leg now fills one per journey and its clocks through `TimeField` — but they include the save path, the note host and the per-end zones, so each needs reading rather than a sweep.
-3. **§6's independent return** is the largest remaining piece and touches three layers this ADR did not count: `PlaceErrandField` needs names for a return's places, `bookingSheetDraft` needs to carry them, and `legBooking` needs `returnPoints` instead of `reversed`. The model is already right — one `Booking` per leg with its own two points — so none of it is a migration, but it is not the one-line change §6 implies.
-4. **§8's place suggestion in the form**, which needs the trip's existing transport legs derived and passed to `PLACE_SOURCES`.
-5. **§9's open-node state** on the form, once the rail is mounted.
+The rail is now the schedule step for every journey. What made it land, after the 32-spec attempt above, is that **the rail is a VIEW over `LegTimes[]` rather than a replacement for it** (`lib/journey-legs.ts`): days stay absolute in storage, so the save path, the per-end zones, the note host and every refusal name read the shape they always read, and the one date plus the derived relative days are computed on the way out and folded back on the way in. The first attempt replaced the state model and broke 32 specs, most of them about things this ADR never touched. That is the finding worth keeping: a new reading of existing state is an adapter, not a migration.
 
-The mockup remains the build spec and its measurements stand.
+Four things the wiring changed that the design had stated differently:
+
+- **§3's branch is `isSpan && titlesFromRoute(type)`.** Recorded above as the finding that stopped the first attempt; this is where it landed.
+
+- **The journey's date wears the first departure's refusal.** `journeyOf` read `errors.field('date')`, which marks nothing at all for a span — `allProblems` guards that name behind `!isSpan`. The field that holds a journey's date is `legField(side, 0, 'start')`, and it is also the box the two controls that fix it share, so a `returnBeforeArrival` now lands on exactly what you would edit. A mark on node 0's departure clock was dropped with it: the clock is inside the date's `Field`, so a second mark rendered the same message twice.
+
+- **A journey reports out-of-range ONCE**, at the earliest moment that is out. Its days all descend from one date, so a date past the trip's end puts every later moment out with it, and marking four fields for one wrong fact is the refusal naming things that are not wrong (ADR-0150). A per-leg form keeps every mark, because there each date is its own answer.
+
+- **§9 needed a derived open node, and a rule the section did not have.** The state holds which node you _picked_; which node is _open_ is derived — the first whose moments are still empty, the last once the journey is complete. And a node with nothing in it is never summarised: compaction trades a control for the line it reads as, so an empty node is all cost. What that yields is a walk down the rail, the nodes behind you collapsing as you fill, rather than a single window sliding over it.
+
+**Deferred, with reasons:**
+
+- **§6's independent return** touches three layers this ADR did not count: `PlaceErrandField` needs names for a return's places, `bookingSheetDraft` needs to carry them, and `legBooking` needs `returnPoints` instead of `reversed`. The model is already right — one `Booking` per leg with its own two points — so none of it is a migration, but it is not the one-line change §6 implies. Until it lands, a return is still `reversed`: seeded from the outbound's points, editable, and honestly labelled by the rail's mirror note.
+- **§8's place suggestion in the form.** `knownLegs` is derived and passed; `PLACE_SOURCES` is not yet consumed by a control in the rail.
+
+Both are on the backlog. The mockup remains the build spec and its measurements stand.
