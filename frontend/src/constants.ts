@@ -376,6 +376,17 @@ export const QUICK_TILE_MAX_COLS = 4;
  *  and a whole booking on save. */
 export const MAX_ROUTE_STOPS = 3;
 
+/** **How many days forward a single moment may be resolved to** (ADR-0203 §2). A journey's
+ *  later moments take the nearest forward instant, and this bounds the search.
+ *
+ *  It is not a limit on journeys — it is the line past which the input is a mistyped clock
+ *  rather than a longer leg. Two days covers every real single leg (the longest scheduled
+ *  flight is under 20 hours; a sleeper train or a ferry crosses one night, occasionally
+ *  two), and a genuinely longer one is said with the day token's override, which this
+ *  function takes as given. Raising it would not enable anything a human cannot already
+ *  express; it would only make a typo resolve to something further away in silence. */
+export const MAX_JOURNEY_DAY_SPAN = 2;
+
 /** How far from "now" an event still evidences which zone you are standing in
  *  (ADR-0107 session-100). A booking an hour ago or an hour ahead places you; one
  *  five days out says nothing about the current clock. Half a day either way keeps
