@@ -136,6 +136,7 @@ import { BookingSheet } from './BookingSheet';
 import { bookingSheetDraft, type BookingSheetDraft } from '../lib/booking-draft';
 import { routeTitle } from '../lib/route-title';
 import { zonedIso } from '../lib/time';
+import { timingLabels } from '../lib/booking-timing';
 import { setSimulatedNow } from '../lib/useClock';
 import { t } from '../i18n/he';
 import { buildHostContextIndex } from '../lib/host-context';
@@ -781,6 +782,39 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
 
   // **A leg is a step** (ADR-0159), so the return has one of its own and the shared
   // fields keep the last. Four steps for a round trip, and one more for every stop.
+  /** **The way home is offered the trip's LAST day, not its first** — reported from the
+   *  field. Every side but this one already read `pointsFor(side)`; the suggestion read the
+   *  outbound's endpoints on both, so `tripEdgeFor` saw a journey towards the destination
+   *  twice and offered `תחילת הטיול` for the flight home. */
+  it('offers the trip start for the way there and the trip end for the way back', () => {
+    open();
+    goRoundTrip();
+    next();
+    expect(document.querySelector('.jf-offer button')!.textContent).toContain(
+      t.journey.suggest.tripStart,
+    );
+    next();
+    expect(document.querySelector('.jf-offer button')!.textContent).toContain(
+      t.journey.suggest.tripEnd,
+    );
+  });
+
+  /** **The way home is offered the trip's LAST day, not its first** — reported from the
+   *  field. Every other side-dependent read already went through the outbound-or-reversed
+   *  points; the suggestion read `routePoints` directly on both sides, so `tripEdgeFor` saw a
+   *  journey towards the destination twice and offered `תחילת הטיול` for the flight home.
+   *  Five call sites spelled that conditional out inline before this one forgot it, which is
+   *  why the fix names it once (`pointsFor`). */
+  it('offers the trip start for the way there and the trip end for the way back', () => {
+    open();
+    goRoundTrip();
+    next();
+    const offer = () => document.querySelector('.jf-offer button')!.textContent;
+    expect(offer()).toContain(t.journey.suggest.tripStart);
+    next();
+    expect(offer()).toContain(t.journey.suggest.tripEnd);
+  });
+
   it('names the two steps for the journey they ask about', () => {
     open();
     goRoundTrip();
@@ -1069,6 +1103,9 @@ describe('BookingSheet — a stop makes one save a chain of bookings', () => {
    *  rail order. The per-leg `fillLeg` this replaces cannot exist any more — there is no
    *  per-leg step to fill on, and no second date to fill it with. */
   const fillChain = (date: string, times: string[]) => fillJourney(date, times);
+  /** The moment words for a flight, from the table the component reads — never retyped, so a
+   *  copy change cannot make this spec pass for the wrong reason. */
+  const labelsFor = timingLabels(BOOKING_TYPE.FLIGHT);
   const label = () => document.querySelector('.form-steps-label')!.textContent;
 
   /** **This spec asserted the opposite until ADR-0203 §7, which reverses ADR-0159 §5.** That
@@ -1083,9 +1120,78 @@ describe('BookingSheet — a stop makes one save a chain of bookings', () => {
     expect(label()).toBe(t.index.form.stepWhen);
     // Three points, two legs, one step.
     expect(railNodes().length).toBe(3);
+    /** **A segment row states a leg's cost, so it exists once there IS one** — reported as
+     *  spacing ("the line spacing seems off… for the layover"), and it was a blank band
+     *  reserved for a measurement that could not be taken yet. Empty: no rows. Filled: one
+     *  per leg. The rail stays unbroken either way — every row paints its own full-height
+     *  line, so dropping the one between two nodes just makes them adjacent. */
+    expect(document.querySelectorAll('.jf-seg').length).toBe(0);
+    fillChain('2026-07-19', ['00:30', '06:10', '08:50', '11:35']);
     expect(document.querySelectorAll('.jf-seg').length).toBe(2);
     next();
     expect(label()).toBe(t.index.form.stepDetails);
+  });
+
+  /** **A refusal on a node the rail has SUMMARISED is still delivered** — the defect a
+   *  layover made reachable, reported from the field. Every moment filled puts the open node
+   *  at the last one (§9), so the leg whose arrival rolls past the trip's end is behind a
+   *  summary; the form declined to advance and said nothing at all, which is the single
+   *  failure `useFormErrors` exists to prevent. Two nodes never summarise, so a plain
+   *  flight could not show this and a stop could. */
+  it('delivers a refusal that lands on a summarised node, and opens it', () => {
+    open();
+    next();
+    fillChain('2026-07-30', ['20:00', '02:00', '03:00', '05:00']);
+    expect(document.querySelectorAll('.jf-sum-tok').length).toBeGreaterThan(0);
+
+    next();
+    // It refuses — the journey's date is the trip's last day, so the arrival rolls past it.
+    expect(label()).toBe(t.index.form.stepWhen);
+    // ...and it SAYS so, in the box that owns the field, which the refusal itself reopened.
+    expect(screen.queryByText(t.index.form.dateOutOfRange)).not.toBeNull();
+    const marked = document.querySelector('.jf [data-invalid]');
+    expect(marked).not.toBeNull();
+    // The node it names is open now: its controls are back, not a summary pill.
+    expect(marked!.closest('.jf-row')!.querySelector('.jf-sum-tok')).toBeNull();
+  });
+
+  /** **A stop's two clocks name themselves** — reported from the field: "you are asked to
+   *  pick the time of arrival and of departure to the next destination, but the form doesn't
+   *  explain what each time is". Two identical `הוספת שעה` triggers, stacked, with nothing
+   *  between them. The plan had `ConnectionBand` doing this, and it measures the WAIT, so it
+   *  renders only once both clocks exist — absent for exactly as long as the pair is
+   *  ambiguous. */
+  it('names both of a layover’s moments, before either is filled', () => {
+    open();
+    next();
+    const stop = railNodes()[1];
+    const captions = [...stop.querySelectorAll('.jf-moment-lbl')].map((e) => e.textContent);
+    expect(captions).toEqual([labelsFor.end, labelsFor.start]);
+    // And the heading no longer names one of the two, which is what made the other read as
+    // the unlabelled line.
+    expect(stop.querySelector('.jf-node-lbl')!.textContent).not.toContain(labelsFor.end);
+    // An endpoint keeps its heading: it has one clock and the heading is already its caption.
+    expect(railNodes()[0].querySelector('.jf-moment-lbl')).toBeNull();
+    expect(railNodes()[0].querySelector('.jf-node-lbl')!.textContent).toContain(labelsFor.start);
+  });
+
+  /** **A clock offers forward from the moment before it** (ADR-0203 §10), through the rail —
+   *  the list opened at 00:00 whatever the departure was. The rotation itself is specced on
+   *  the primitive; this is the wiring: the anchor arrives, and so does the day turn. */
+  it('opens a later moment’s list just after the moment before it', () => {
+    open();
+    next();
+    setJourneyDate('2026-07-19');
+    setNodeTime(0, 'depart', '20:30');
+    // Open the stop's ARRIVAL panel without setting it, and read what it offers.
+    openRailNode(1);
+    const stop = railNodes()[1];
+    fireEvent.click(stop.querySelectorAll('button.vt-time')[0]);
+    const offered = [...stop.querySelectorAll('.tp-list button')].map((e) => e.textContent);
+    expect(offered[0]).toBe('20:45');
+    expect(offered[offered.length - 1]).toBe('20:30');
+    // The day turns inside the list, so the derived day is visible while choosing.
+    expect(stop.querySelector('.tp-list-turn')).not.toBeNull();
   });
 
   it('writes a booking per leg, chained through the stop, in one change group', async () => {

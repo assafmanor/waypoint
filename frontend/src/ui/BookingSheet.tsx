@@ -429,8 +429,12 @@ export function BookingSheet({
    *  stop has a picked place, which is what the chip exists to stand in for when nothing
    *  else can answer. `back` walks the same points in reverse. */
   const reversed = [...routePoints].reverse();
+  /** **The points a SIDE walks**, which five call sites spelled out inline before a sixth
+   *  read `routePoints` directly and told the flight home it was the flight out. A journey's
+   *  side is the only thing that decides the direction, so it is one function. */
+  const pointsFor = (side: LegSide) => (side === 'out' ? routePoints : reversed);
   const legZones = (side: 'out' | 'back', index: number) => {
-    const points = side === 'out' ? routePoints : reversed;
+    const points = pointsFor(side);
     const outerStart = side === 'out' ? startZone : endZone;
     const outerEnd = side === 'out' ? endZone : startZone;
     return {
@@ -469,7 +473,7 @@ export function BookingSheet({
    *  §6). On the return the two outer ends swap, which is the same rule `legZones` follows. */
   const journeyOf = (side: LegSide) => {
     const legs = side === 'out' ? outLegs : backLegs;
-    const points = side === 'out' ? routePoints : reversed;
+    const points = pointsFor(side);
     const view = journeyViewOf(legs);
     const zoneAt = (i: number) =>
       i === 0
@@ -767,9 +771,7 @@ export function BookingSheet({
             field: legField(side, i, 'start'),
             message: isReturnStart
               ? t.index.form.returnBeforeArrival
-              : t.index.form.legBeforeArrival(
-                  placeName(places, (side === 'out' ? routePoints : reversed)[i]),
-                ),
+              : t.index.form.legBeforeArrival(placeName(places, pointsFor(side)[i])),
           });
         }
         previousArrival = arrival ?? previousArrival;
@@ -886,7 +888,7 @@ export function BookingSheet({
          *  unless the type names itself, which since ADR-0163 §3 is the car hire) and its
          *  two zones. Only the journey's OUTER ends carry a zone override. */
         const legBooking = (side: LegSide, index: number, times: LegTimes) => {
-          const points = side === 'out' ? routePoints : reversed;
+          const points = pointsFor(side);
           const from = points[index];
           const to = points[index + 1];
           const zones = legZones(side, index);
@@ -1095,6 +1097,30 @@ export function BookingSheet({
     errors,
     onCommit: () => void commit(),
   });
+
+  /** **The step's identity, for the panel's pinned header** (field report, 2026-08-23).
+   *
+   *  Unchanged in what it renders — a create jumps to the type STEP, an edit reveals the grid
+   *  in place (ADR-0192's `ChoiceDisclosure`) — and moved out of the step body so it survives
+   *  a scroll. On its own step there is nothing to pin: the grid IS the question.
+   *
+   *  An edit's disclosure can open inside the pinned box, and a sticky element taller than
+   *  its scrollport simply stops sticking — so the tall case degrades to scrolling rather
+   *  than pinning most of the sheet. Left as that: it collapses on the next tap. */
+  const typeRow =
+    steps.step === 'type' ? null : isCreate ? (
+      <BookingTypeRow type={type} onChange={() => steps.goTo('type')} />
+    ) : (
+      <ChoiceDisclosure
+        glyph={BOOKING_TYPE_ICON[type]}
+        label={typeLabel}
+        open={typeOpen}
+        onToggle={() => setTypeOpen((v) => !v)}
+        ariaLabel={t.index.form.stepType}
+      >
+        {typeGrid}
+      </ChoiceDisclosure>
+    );
   /** The labels name what each step ASKS. A one-way single leg keeps today's three words
    *  exactly; a journey that has more than one leg has to say WHICH leg, because with
    *  four schedules on four steps "מתי" alone leaves you counting. */
@@ -1125,7 +1151,7 @@ export function BookingSheet({
     const side = rawSide as LegSide;
     const index = Number(rawIndex);
     const list = side === 'out' ? outLegs : backLegs;
-    const points = side === 'out' ? routePoints : reversed;
+    const points = pointsFor(side);
     // Where the previous leg landed — the day this one opens on, since a connection
     // almost always departs the same day it arrived. Falls back to the trip's start.
     const previous = index > 0 ? list[index - 1] : side === 'back' ? outLegs[legCount - 1] : null;
@@ -1193,7 +1219,17 @@ export function BookingSheet({
               e.target.scrollIntoView({ block: 'center', behavior: 'smooth' });
           }}
         >
-          <FormStepPanel steps={steps} labels={stepLabels}>
+          <FormStepPanel
+            steps={steps}
+            labels={stepLabels}
+            /* **Pinned, because the rail scrolls further than a screen** (field report,
+               2026-08-23). The type row is the step's identity and it left with the content:
+               once it and the read-out were gone there was nothing on screen saying which
+               step this was. It goes in the primitive's header slot rather than growing a
+               sticky rule of its own — see `FormStepPanel.header` for why it has to be one
+               box and not two sticky siblings. */
+            header={typeRow}
+          >
             {/* **The picked type, on every step but its own** (field report #2). Collapsed to
                 the one card that was chosen, with the way back to the grid on the row itself —
                 so the eight-option grid is paid for once, at the moment it is being answered,
@@ -1212,21 +1248,6 @@ export function BookingSheet({
                 for. Note that the row being a `<button>` is what makes the revealed grid
                 scroll itself into view — the body's own `onFocusCapture` above catches a
                 focusable row where the old `<div>` was invisible to it. */}
-            {steps.step !== 'type' &&
-              (isCreate ? (
-                <BookingTypeRow type={type} onChange={() => steps.goTo('type')} />
-              ) : (
-                <ChoiceDisclosure
-                  glyph={BOOKING_TYPE_ICON[type]}
-                  label={typeLabel}
-                  open={typeOpen}
-                  onToggle={() => setTypeOpen((v) => !v)}
-                  ariaLabel={t.index.form.stepType}
-                >
-                  {typeGrid}
-                </ChoiceDisclosure>
-              ))}
-
             {steps.step === 'type' && typeGrid}
 
             {steps.step === 'what' && (
@@ -1412,11 +1433,18 @@ export function BookingSheet({
                     const side = legStep.side;
                     const { legs, view, resolved, nodes, openIndex } = journeyOf(side);
                     const write = (next: LegTimes[]) => setSideLegs(side, next);
+                    /** **Each side reads its OWN endpoints.** `routePoints` is the outbound's,
+                     *  so passing it on both sides told `tripEdgeFor` that the return also
+                     *  flies TOWARDS the destination — and it offered the trip's first day for
+                     *  the flight home. `reversed` is the same array the refusals already walk
+                     *  with (`side === 'out' ? routePoints : reversed`); this was the one call
+                     *  site still reading past it. */
+                    const sidePoints = pointsFor(side);
                     const dateSug =
                       !view.date && isCreate
                         ? suggest(DATE_SOURCES, {
-                            from: places.find((p) => p.id === routePoints[0]),
-                            to: places.find((p) => p.id === routePoints[legCount]),
+                            from: places.find((p) => p.id === sidePoints[0]),
+                            to: places.find((p) => p.id === sidePoints[legCount]),
                             destination: destinationRefOf(trip),
                             trip: { startDate: trip.startDate, endDate: trip.endDate },
                             legs: knownLegs,
@@ -1432,6 +1460,23 @@ export function BookingSheet({
                           minDate={trip.startDate}
                           maxDate={trip.endDate}
                           resolved={resolved}
+                          /* **The day a candidate clock would land on**, so the time list can
+                             show where the day turns while you choose (§10). The same probe
+                             the writer below builds, asked without writing: one moment's clock
+                             replaced, the whole journey re-resolved on INSTANTS, and the
+                             answer read off that moment. Which is why the divider is correct
+                             across a westward crossing, where local midnight is not the
+                             turn. */
+                          dayOffsetOf={(m, hhmm) =>
+                            resolveJourneyDays(
+                              view.date,
+                              view.moments.map((moment, i) => ({
+                                time: i === m ? hhmm : moment.time,
+                                timeZone: nodes[i === 0 ? 0 : Math.floor((i + 1) / 2)].timeZone,
+                                dayOffset: i === m ? undefined : moment.dayOffset,
+                              })),
+                            )[m]?.dayOffset ?? 0
+                          }
                           onTimeChange={(node, which, time) => {
                             /* The offset is DERIVED for the clock just typed — the moment
                                loses its explicit day so §2's forward resolution decides it,

@@ -123,3 +123,48 @@ describe('useFormErrors', () => {
     expect(scrollIntoView).not.toHaveBeenCalled();
   });
 });
+
+/* ── A refusal is delivered to the DOM the refusal itself produces ─────────────────────
+   The blocker behind the field report "I'm unable to continue to the next step… Perhaps I had
+   missing fields in the form, but I received no nudge so idk": marking a field can be what
+   PUTS it on screen (the journey rail summarises the nodes behind you and a summarised one
+   renders no box), and `report` read its node map during the call — before the render its own
+   state change caused. It found nothing, so nothing nudged and nothing scrolled, and the form
+   declined to advance in silence. */
+describe('useFormErrors — a field that appears BECAUSE it was refused', () => {
+  afterEach(() => cleanup());
+
+  /** A host that renders a field only once it carries a problem — the shape of a summarised
+   *  rail node, reduced to the one property that matters. */
+  function LateHost() {
+    const errors = useFormErrors<'a'>();
+    const mark = errors.field('a');
+    return (
+      <div>
+        <button type="button" onClick={() => errors.report([{ field: 'a', message: 'חסר' }])}>
+          שלח
+        </button>
+        {mark.error ? (
+          <Field label="שדה" {...mark}>
+            <input aria-label="a" />
+          </Field>
+        ) : null}
+      </div>
+    );
+  }
+
+  it('nudges and focuses the box that only rendered once the mark existed', () => {
+    render(<LateHost />);
+    expect(document.querySelector('[data-invalid]')).toBeNull();
+    fireEvent.click(screen.getByText('שלח'));
+    // The message arrives...
+    expect(screen.getByText('חסר')).toBeTruthy();
+    const box = document.querySelector('[data-invalid]');
+    expect(box).toBeTruthy();
+    // ...and so does the delivery: the effect runs after the commit, so the node is in the
+    // map by the time it is looked up. Focus is the observable half in jsdom, which has no
+    // layout and therefore no `scrollIntoView`.
+    expect(document.activeElement).toBe(screen.getByLabelText('a'));
+    expect(scrollIntoView).toHaveBeenCalled();
+  });
+});

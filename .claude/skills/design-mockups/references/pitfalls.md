@@ -225,3 +225,21 @@ tried to scroll one. Three files, all inlined after 2026-08-21: measured at
 ADR-0116 §2d and ADR-0200, unreadable for a day.** The template now ends with an
 `html, body { overflow: visible }` block; keep it **last**, and if you write a scroll
 check, assert on the content's own height rather than the root's.
+
+**A mockup written AFTER its change grades its own homework, and the "before"
+column is where it happens.** The manifest inlines shipped stylesheets. If the fix
+is already in them — which it is whenever the mockup is written alongside the code,
+the normal shape for a bug-report session rather than a design one — then the
+shipped CSS *is* the "after", and every "before" frame silently draws the fix too.
+Both columns then agree and the file reports a win it did not measure. Found twice
+in one session on `a-clock-follows-the-one-before-it-v1.html`: first **8px of
+zone-chip gap in both columns**, then **44px rows and 12px seams in both**, each
+time only because the numbers were suspiciously identical. Neither render errored
+and both screenshots looked plausible.
+
+So: when the change is already applied, the baseline has to be **drawn back by
+hand** — a namespaced block (`.bld-was*`) restoring the sheet as it stood, applied
+to the before frames only, labelled as the baseline and not as a proposal, and
+verifiable against `git show HEAD~1`. A useful tell is a before/after row whose two
+values are equal: that is either a section with nothing to say or a baseline that
+has gone missing, and it is worth knowing which.

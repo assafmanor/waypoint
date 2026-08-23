@@ -1242,7 +1242,7 @@ body.wp-dragging
   border-bottom: 1px solid var(--line);
 }
 .tp-list {
-  max-height: 210px;
+  max-height: 226px;
   overflow-y: auto;
   scroll-snap-type: y proximity;
   scrollbar-width: none;
@@ -1250,13 +1250,41 @@ body.wp-dragging
 .tp-list::-webkit-scrollbar {
   display: none;
 }
+/* **The day turning, inside the list** (ADR-0203 §10). A caption row, deliberately not a
+   `.tp-list button`: that class owns a row's bottom border and its touch box, so reusing it
+   drew a dead option and collapsed against the row above. Sticky, so the day the rows below
+   belong to stays readable while they scroll past. Amber, which is the hue time already
+   spends (rule 4) — the divider IS a statement about a clock. */
+.tp-list-turn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 13px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  background: color-mix(in srgb, var(--amber) 10%, transparent);
+  border-block: 1px solid color-mix(in srgb, var(--amber) 26%, transparent);
+  position: sticky;
+  top: 0;
+}
+.tp-list-turn::after {
+  content: '';
+  flex: 1;
+  border-block-start: 1px dashed color-mix(in srgb, var(--amber) 34%, transparent);
+}
 .tp-list button {
   width: 100%;
   text-align: start;
   background: none;
   border: none;
   border-bottom: 1px solid var(--line);
-  padding: 10px 13px;
+  /* **14.5px, and the number is measured.** 10px put the row at 36.1px against ADR-0017's
+     44px floor — on the control a traveller taps most while setting a journey — and 14px
+     measured 43.1px, the same quarter-pixel miss `value-token.css` records against its own
+     first number. The window below grows with it so the same five rows stay visible: a floor
+     paid for by showing less would only move the cost. */
+  padding: 14.5px 13px;
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: 15px;
