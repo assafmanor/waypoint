@@ -255,7 +255,13 @@ export function JourneyField({
         </div>
       )}
       {nodes.map((node, i) => {
-        const open = openNodeIndex == null || openNodeIndex === i;
+        /** **A node with nothing in it is never summarised** (§9). Compaction trades a
+         *  control away for the line it reads as, so a node with no line to read is all cost:
+         *  it would draw an empty pill where the clock should be. In practice this keeps the
+         *  nodes AHEAD of you open while the ones behind you collapse, which is the walk down
+         *  the rail §9 describes rather than a single window sliding over it. */
+        const summarisable = (i === 0 && !!date) || !!node.arrive?.time || !!node.depart?.time;
+        const open = openNodeIndex == null || openNodeIndex === i || !summarisable;
         const leg = legMinutes(i);
         const wait = waitMinutes(i, node);
         return (

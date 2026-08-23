@@ -281,9 +281,10 @@ export function BookingSheet({
   // The two note counts the delete confirm owes (ADR-0152 §2) come from the same place for
   // the same reason.
   const pair = useRoundTripPartner(booking);
-  /** **Which node of the journey is open; the rest summarise** (ADR-0203 §9). Per side, so
-   *  stepping to the return does not inherit the outbound's place in the rail. `null` opens
-   *  everything, which is what a single-leg journey wants — there is nothing to summarise. */
+  /** **Which node of the journey you have OPENED; the rest summarise** (ADR-0203 §9). Per
+   *  side, so stepping to the return does not inherit the outbound's place in the rail.
+   *  `null` means you have not picked one, and `journeyOf` derives which node that opens —
+   *  the state holds the choice, not the answer. */
   const [openNode, setOpenNode] = useState<{ out: number | null; back: number | null }>({
     out: null,
     back: null,
@@ -514,14 +515,33 @@ export function BookingSheet({
       arrive: i > 0 ? { time: view.moments[2 * i - 1]?.time ?? '' } : undefined,
       depart: i < legCount ? { time: view.moments[i === 0 ? 0 : 2 * i]?.time ?? '' } : undefined,
       marks: {
-        // The journey's DATE refuses under its own name, which is why `stepOf` maps it to the
-        // first leg step: it is one fact for the whole side, not a per-leg one.
-        date: i === 0 ? errors.field('date') : undefined,
+        /** **The journey's date wears the first departure's refusal**, because that field IS
+         *  the journey's date: `legField(side, 0, 'start')` holds the day every later moment
+         *  is derived from. It is also the box the two controls that fix it live in — the
+         *  date and the first clock share one `Field` in the rail — so a `returnBeforeArrival`
+         *  lands on exactly what you would edit (ADR-0150). Reading `errors.field('date')`
+         *  here marked nothing at all: `allProblems` guards that name behind `!isSpan`. */
+        date: i === 0 ? errors.field(legField(side, 0, 'start')) : undefined,
         arrive: i > 0 ? errors.field(legField(side, i - 1, 'end')) : undefined,
-        depart: i < legCount ? errors.field(legField(side, i, 'start')) : undefined,
+        // Node 0's departure is inside the date's box above, so a second mark for the same
+        // field would render the same message twice.
+        depart: i > 0 && i < legCount ? errors.field(legField(side, i, 'start')) : undefined,
       },
     }));
-    return { legs, view, resolved, nodes };
+    /** **Which node is open when nobody has picked one** (ADR-0203 §9). The first whose
+     *  moments are not all filled, so filling the rail walks it and the nodes behind you
+     *  summarise as you go; the LAST once the journey is complete, so a finished rail is still
+     *  reviewed at one screen rather than at the 708px §7 measured. `null` opens everything,
+     *  which is what a two-node journey wants — its arrival is one line, so summarising it
+     *  would hide a control behind a tap and save nothing. */
+    const filled = (node: JourneyNode, i: number) =>
+      (i > 0 || !!view.date) &&
+      (!node.arrive || !!node.arrive.time) &&
+      (!node.depart || !!node.depart.time);
+    const unfilled = nodes.findIndex((node, i) => !filled(node, i));
+    const openIndex =
+      openNode[side] ?? (nodes.length <= 2 ? null : unfilled === -1 ? nodes.length - 1 : unfilled);
+    return { legs, view, resolved, nodes, openIndex };
   };
 
   /** **The legs the TRIP already holds**, for §8's place suggestion and §5's date one. Read
@@ -718,17 +738,22 @@ export function BookingSheet({
      *  wrong rather than on the three fields around it that are fine. */
     const walk = (side: LegSide, list: LegTimes[], arrivedAt: number | null) => {
       let previousArrival = arrivedAt;
+      /** **A journey reports out-of-range ONCE, at the earliest moment that is out** (ADR-0203
+       *  §2). Its days all descend from one date, so a date past the trip's end puts every
+       *  later moment out with it, and marking four fields for one wrong fact is the refusal
+       *  naming things that are not wrong (ADR-0150). The earliest one is also the only one
+       *  you can act on. A per-leg form keeps every mark, because there each date is its own
+       *  answer and any of them can be the wrong one on its own. */
+      let rangeReported = false;
+      const outsideTrip = (field: BookingField) => {
+        if (isJourney && rangeReported) return;
+        rangeReported = true;
+        problems.push({ field, message: t.index.form.dateOutOfRange });
+      };
       list.forEach((leg, i) => {
         const zones = legZones(side, i);
-        if (outOfRange(leg.start)) {
-          problems.push({
-            field: legField(side, i, 'start'),
-            message: t.index.form.dateOutOfRange,
-          });
-        }
-        if (outOfRange(leg.end)) {
-          problems.push({ field: legField(side, i, 'end'), message: t.index.form.dateOutOfRange });
-        }
+        if (outOfRange(leg.start)) outsideTrip(legField(side, i, 'start'));
+        if (outOfRange(leg.end)) outsideTrip(legField(side, i, 'end'));
         const departure = instantAt(leg.start, zones.start);
         const arrival = instantAt(leg.end, zones.end);
         if (departure != null && arrival != null && arrival <= departure) {
@@ -1385,7 +1410,7 @@ export function BookingSheet({
                        exactly one on screen. That is what makes the reported misread
                        impossible rather than merely less likely. */
                     const side = legStep.side;
-                    const { legs, view, resolved, nodes } = journeyOf(side);
+                    const { legs, view, resolved, nodes, openIndex } = journeyOf(side);
                     const write = (next: LegTimes[]) => setSideLegs(side, next);
                     const dateSug =
                       !view.date && isCreate
@@ -1424,7 +1449,7 @@ export function BookingSheet({
                           onDayOffsetChange={(node, which, offset) =>
                             write(withMomentDayOffset(legs, node, which, offset))
                           }
-                          openNodeIndex={openNode[side]}
+                          openNodeIndex={openIndex}
                           onOpenNode={(i) => setOpenNode((o) => ({ ...o, [side]: i }))}
                           heading={
                             twoLegs
