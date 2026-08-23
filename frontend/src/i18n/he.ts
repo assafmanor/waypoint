@@ -2592,6 +2592,19 @@ export const t = {
     /** Said while a seeded return is still an exact mirror of its outbound (§6), and gone
      *  the moment any of it diverges. */
     sameRouteReversed: 'אותו מסלול בהיפוך',
+    /** The words a suggestion source may put on its pill (ADR-0203 §5/§8). Passed INTO
+     *  `lib/form-suggest.ts` rather than imported there: that module is logic, and Hebrew
+     *  copy lives here (ADR-0009). */
+    suggest: {
+      tripStart: 'תחילת הטיול',
+      tripEnd: 'סוף הטיול',
+      afterPrevious: 'יום הקטע הקודם',
+      /** Which leg a suggested PLACE was read off. `הלוך`/`חזרה` are already one pair of
+       *  words here (ADR-0154 §6) because the leg headings write them, so a suggestion says
+       *  where it came from in vocabulary the reader has already seen on this form. */
+      fromOutbound: 'מההלוך',
+      fromReturn: 'מהחזרה',
+    },
   },
   whenField: {
     // ONE label for the whole when (ADR-0177 §1), replacing a caption per atom — the
