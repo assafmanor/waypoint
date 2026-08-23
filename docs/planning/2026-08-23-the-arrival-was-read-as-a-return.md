@@ -125,6 +125,16 @@ Measured at `MAX_ROUTE_STOPS`: all-open **783px** against 675px of visible sheet
 
 Two things that only surfaced by drawing it: the first render **summarised the journey's one date away** (it lives on the first node, so collapsing that node hid the fact §2 is built on), and the obvious primitive is the wrong one — `Collapsible` animates `max-height`, which is exactly the clip ADR-0155 §4 forbids inside a form step. What gets reused is the step primitive's _posture_, not the component, and the ADR says why.
 
+## And the third round found the failure mode of the second
+
+_"I like your solution for the length ('מסוכם'), just make sure that the summarized lines are still editable"_ — they were, in behaviour, and **not in appearance**, which on a form is the worse half. The summarised row was a bare `<button>`: no border, no ground, a 30px target and no reach overlay. That is precisely the variant `ValueToken`'s docblock records ADR-0177 drawing and rejecting — _"a tappable thing inside a line has to look tappable… hence a resting hairline rather than bold text that happens to open a panel"_ — so the rule was already written and the drawing broke it anyway.
+
+Making it a real token took **three** attempts, and each failure had the same cause: re-deciding the primitive's box instead of inheriting it. Shrinking it to keep the row short → 39px reach. Using the `time` tone → Hebrew words in the mono face, a fallback with different metrics, 43px. Finally the `word` kind inside a `.wf-line` → 31.8px with a **45.8px** reach, which is the primitive's own number. `value-token.css` says why in its own words: _"it does not get to change the box, which is what stopped the five chromes ADR-0177 §1 counted."_ Worth remembering as a habit rather than a fact: when a token measures short, the bug is nearly always a host that changed its box.
+
+**And measuring it properly killed §9's headline.** The drawn fold was a constant 675px at both widths — the 390×844 number — while a 360×640 phone shows ~512px, and 360 is ADR-0017's _design width_. So "every case fits" was measured against the generous screen. Corrected: summarising makes every stop count fit at 844, and at 640 it cuts the overflow by 75–88% without closing it (two stops over by 25.5px, three by 97.3px). Still a strong result, and now a true one.
+
+Two smaller things the same pass found: two measurements addressed a frame by **column index**, so inserting a frame beside them silently re-pointed both — a row showing one number with an over/under computed from another. Everything is keyed off ids now.
+
 ## Left open, deliberately
 
 Three device questions, all wired as controls with the recommendation as the

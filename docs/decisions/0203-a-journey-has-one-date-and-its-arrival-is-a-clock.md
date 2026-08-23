@@ -142,9 +142,21 @@ Owner, on the drawing: _"the form for filling out time etc could be very long if
 
 **So a node that has been filled swaps its controls for the line they read as** — `אמסטרדם · 19:40 · יציאה 21:45 · המתנה 2:05 שע׳` — one node stays open (the first still missing a time), and tapping a summarised row reopens it. The rail, the place names and the times all stay on screen, so the journey reads whole while a part of it is being filled, and the layover's wait is still visible. When everything is filled everything is summarised, which makes the state just before `שמירה` the best review surface the form has ever had.
 
-**The measurement is the argument, and it changes §7's conclusion.** At `MAX_ROUTE_STOPS`, all-open measures **783px** against 675px of visible sheet — over by 108px. Summarised it is **437.5px**, and the _whole step_ including the step bar and the footer is **548.5px**: inside. A summarised node is **32px** against an open one's ~150px. So the form no longer needs to scroll at any legal stop count, and §7's "the common case fits, two stops scrolls" becomes "every case fits."
+**The measurement is the argument, and it is measured at BOTH screens — which corrected an over-claim this section made first.** A sheet shows ~675px of itself on a 390×844 phone and ~512px on a 360×640 one, and 360 is ADR-0017's **design width**, not the stress case. The whole step, including the step bar and the footer:
+
+| stops                 | all open | summarised  | 390×844 (fold 675)   | 360×640 (fold 512) |
+| --------------------- | -------- | ----------- | -------------------- | ------------------ |
+| 0–1                   | —        | —           | inside               | inside             |
+| 2                     | 718.5px  | **537.5px** | inside, 160px spare  | over by 25.5px     |
+| 3 (`MAX_ROUTE_STOPS`) | 894px    | **609.3px** | inside, 88.5px spare | over by 97.3px     |
+
+So: summarising makes **every** stop count fit on a 390×844 phone, and on a 360×640 one it cuts the overflow by **75–88%** without closing it — two and three stops still scroll there. The honest claim is that the common cases (0–1 stops) fit on every screen and the deep ones stop being three screens of scrolling. The first draft of this section said "every case fits" and was measuring the 844 fold at both widths, because the mockup drew a constant 675px line; the fold now follows the selected screen and the table states which one it compares against.
 
 **A summary must not swallow the journey's one date.** The first render of this section did — the absolute date lives on the first node, so collapsing that node hid the single fact §2 is built on. It reads in the compact numeric form when summarised and the named form when open; ADR-0176 sanctions both, and a summary is what the numeric one is for.
+
+**A summarised row is still a control, and it has to look like one.** The first drawing made it a bare `<button>` — no border, no ground, a 30px target and no reach overlay: behaviour without affordance, which on a form is the worse half to get wrong, and a rule this app has already written down in `ValueToken`'s docblock (_"a tappable thing inside a line has to look tappable… hence a resting hairline rather than bold text that happens to open a panel — which is the variant ADR-0177 drew and rejected"_). So the value run **is** a `ValueToken`, at the composite density that primitive already sanctions, inside a `.wf-line` — ADR-0177's grammar unchanged, prose as the ground and the value as a token. It measures 31.8px with a **45.8px** reach, the primitive's own number.
+
+Two things took three attempts, both because the token's box was being re-decided rather than inherited: shrinking it to keep the row short put the reach at 39px, and the `time` tone put Hebrew words in the mono face (which has no Hebrew, so a fallback with different metrics) and left it at 43px. It is the `word` kind, which `ValueToken` keeps for exactly that, and the box is the primitive's. **The place name is deliberately outside the token** — a place is edited on `מה ואיפה` and a time on `מתי` (ADR-0192 §3), so the summary makes exactly the editable half tappable.
 
 **And this is deliberately not `Collapsible`** (ADR-0098, four call sites), which is the obvious candidate. That primitive animates `max-height`, and ADR-0155 §4 forbids animating height inside a form step — it is ADR-0152 §6's clip, where `.wp-event-actions` tweens to a **fixed** cap and truncates silently. A leg's height is bounded today, which is precisely the reasoning that produced that clip. So this reuses the step primitive's **posture** rather than the component: swap the content, let the sheet resize, animate no height. The same trade ADR-0155 §4 already accepted and wrote down.
 
@@ -168,10 +180,13 @@ Read from `mockups/a-journey-has-one-date-v1.html`'s live DOM at 360×640, light
 | `pp-clear` on an empty stop     | 32×32px, target **44px**     | 32px since it shipped; the reach is the proposal's                                                     |
 | `.jf-insert`                    | 22px, target **44px**        | −11px, because −8px measured 38px                                                                      |
 | `.jf-offer` pill                | 27px, target **44px**        | −8.5px, because −7px measured 41px                                                                     |
-| journey, 3 stops, all open      | 783px                        | **over by 108px** — the case §9 is for                                                                 |
-| journey, 3 stops, summarised    | 437.5px                      | inside, 237.5px to spare                                                                               |
-| whole step, 3 stops, summarised | 548.5px                      | inside — so **no stop count needs scrolling**                                                          |
-| summarised node                 | 32px                         | against ~150px open                                                                                    |
+| journey, 3 stops, all open      | 783px                        | over at both folds                                                                                     |
+| journey, 3 stops, summarised    | 475.5 / 498.3px              | inside both — 199.5 / 13.7px spare                                                                     |
+| whole step, 3 stops, all open   | 894px                        | over by 219 / 382px                                                                                    |
+| whole step, 3 stops, summarised | 586.5 / 609.3px              | **inside** at 844 · over by 97.3px at 640                                                              |
+| whole step, 2 stops, summarised | 514.8 / 537.5px              | **inside** at 844 · over by 25.5px at 640                                                              |
+| summarised node                 | 46.8px                       | against ~150px open                                                                                    |
+| summary token `.vt-word`        | 31.8px, target **45.8px**    | the primitive's own number, not a new box                                                              |
 | `.journey-stop`                 | 31px                         | not restyled — the day view's own component                                                            |
 
 ## Consequences
@@ -180,7 +195,7 @@ Read from `mockups/a-journey-has-one-date-v1.html`'s live DOM at 360×640, light
 - **Nothing is an entity, a table or a migration**, exactly as ADR-0154 could say: a round trip stays two `Booking`s, a journey stays one per leg, and §6 changes only which points authoring holds.
 - **`reachesDestination` gains a second consumer**, which is the point — a derivation with one caller in one corner is the shape both ADR-0154 and this ADR were written about.
 - **Three shipped defects are fixed on the way**, each measured rather than inferred: the unremovable empty stop, `pp-clear`'s 32px target, and the unfiltered place search for a train or bus endpoint.
-- **No stop count needs the sheet to scroll**, after §9 — which is a stronger outcome than §7 originally claimed and came from the owner reading the drawing rather than from the measurement pass.
+- **Every stop count fits on a 390×844 phone after §9**, and on a 360×640 one the deep journeys still scroll — 75–88% less than before. Both numbers came from the owner reading the drawing rather than from the measurement pass, and the second only appeared once the drawn fold stopped being a constant.
 - **The mockup carries three device questions**, wired as controls with the recommendation as the default: whether `באותו יום` shows always, whether the date suggestion is a pill or a pre-fill, and whether `הלוך ושוב` is pre-offered from the trip's readiness.
 - **ADR-0159 §5 is reversed and ADR-0154 §4 is amended in place.** Neither is deleted: the costs they measured are real and are now costs this app has stopped paying, which is only legible with both sides written down.
 

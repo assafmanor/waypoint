@@ -101,7 +101,20 @@
       8. §9's first render summarised the JOURNEY'S ONE DATE away — the absolute date
          lives on the first node, so collapsing that node hid the single fact §2 is
          built on. It reads compact-numeric when summarised now.
-      9. The first draft drew a NEW ✕ beside the stop picker, and the origin's place
+      9. §9's summarised row was BEHAVIOUR WITHOUT AFFORDANCE — a bare `<button>` with no
+         border, no ground and a 30px target, which is the variant `ValueToken`'s own
+         docblock records ADR-0177 drawing and rejecting. Making it a real token then took
+         three attempts, each because the box was re-decided instead of inherited: shrunk
+         → 39px reach, the `time` tone (mono, no Hebrew) → 43px, and finally the `word`
+         kind inside a `.wf-line` → 45.8px, the primitive's own number.
+     10. THE DRAWN FOLD WAS A CONSTANT 675px AT BOTH WIDTHS, which flattered every claim
+         read at 360×640 — where a sheet shows ~512px. It follows the selected screen now,
+         and §9's "every case fits" became "every case fits at 844, and 640 still scrolls
+         the deep ones, 75–88% less than before".
+     11. TWO MEASUREMENTS ADDRESSED A FRAME BY COLUMN INDEX, and inserting a frame beside
+         them silently re-pointed both — a row showing one number with an over/under
+         computed from another. Everything is keyed off ids now.
+     12. The first draft drew a NEW ✕ beside the stop picker, and the origin's place
          suggestion was silently clobbered by the (null) date one. The ✕ is now
          `pp-clear` itself made unconditional — which is what ADR-0159 §5 meant — and
          the drawn-then-deleted second control is in the notes panel.
@@ -10430,33 +10443,58 @@ button.day-gap:hover .day-gap-lbl {
          bounded today, which is exactly the reasoning that produced that clip in the first
          place. So this reuses the step primitive's POSTURE instead: swap the content, let the
          sheet resize, no transition on height. Same trade ADR-0155 §4 already accepted. */
-      .jf-sum-btn {
-        display: flex;
-        align-items: baseline;
-        flex-wrap: wrap;
-        gap: 4px 8px;
-        inline-size: 100%;
-        font: inherit;
-        text-align: start;
-        background: none;
-        border: 0;
-        cursor: pointer;
-      }
-      .jf-sum-btn:active {
-        transform: scale(var(--press-scale));
+      /* **The summarised row IS a `.wf-line`** — ADR-0177's grammar unchanged: prose is the
+         ground, the value is a token. That container is also what sets the type context every
+         other token in the app is sized in, and getting that wrong is why the reach kept
+         landing short here (42px, then 43px) while `.vt-word` measures 45.8px in an ordinary
+         line. So this adds a tighter row-gap and nothing else. */
+      .jf-sum-row {
+        row-gap: 4px;
       }
       .jf-sum .jf-place {
         color: var(--ink);
         font-size: 12.5px;
         font-weight: 700;
       }
-      /* The clock is amber wherever it appears (rule 4), summarised or not — the mono face
-         keeps a column of times readable down the rail. */
-      .jf-sum-line {
-        font-family: var(--font-mono);
-        font-size: var(--text-secondary);
-        font-weight: 500;
-        color: var(--amber-deep);
+      /* **A SUMMARISED ROW IS STILL A CONTROL, AND IT HAS TO LOOK LIKE ONE.** The first
+         draft made the whole row a bare `<button>` — no border, no ground, a 30px target
+         and no `::after` — i.e. behaviour without affordance, which is the worse half to
+         get wrong on a form. It also broke a rule this app has already written down, in
+         `ValueToken`'s own docblock: *"A tappable thing inside a line has to look tappable
+         (`PlaceBadge`'s idiom, ADR-0121 §8). Hence a resting hairline rather than bold text
+         that happens to open a panel — which is the variant ADR-0177 drew and rejected."*
+
+         So the value run IS a `ValueToken`, at a composite density that primitive already
+         sanctions (`button.bld-time` "holds composite two-line content — a time range, a
+         duration, a `ZoneShiftPill`"). It inherits the hairline, the amber clock tone, the
+         press-scale and ADR-0017's 44px reach from `.vt::after` — no new mechanism, and
+         nothing here re-decides the box.
+
+         **The place name is deliberately NOT in the token.** A place is edited on
+         `מה ואיפה` and a time on `מתי` (ADR-0192 §3), so the summary makes exactly the
+         editable half tappable — which is the same split §4 draws one step earlier. */
+      /* **AND IT IS THE `word` TONE, NOT `time`.** The run is mixed — `19:40 · יציאה 21:45 ·
+         המתנה 2:05 שע׳` — and `.vt-time` is the MONO tone, which has no Hebrew: the fallback
+         changed the line box and the token measured 29px, so the shipped reach landed at 43px,
+         one short. `ValueToken` keeps a whole `word` kind for precisely this, in its own words:
+         *"A value that is a word rather than a figure — a duration ('שעה'), where the app
+         already phrases the number. Body font, because JetBrains Mono has no Hebrew and would
+         fall back to something with different metrics."* Same trap this file already hit once,
+         on the suggestion pill's detail.
+
+         It also settles the hue honestly: `word` inherits ink, and rule 4's amber stays on the
+         real clock tokens inside the node this opens. A summary is a READ with one way in, not
+         the sentence itself — the sentence is what you get when it opens.
+
+         **AND IT DOES NOT GET TO CHANGE THE BOX.** The first attempt at this token set
+         `font-size: var(--text-secondary)` and `row-gap: 0` to keep the row short — which
+         shrank it to 25px and put the shipped `.vt::after` reach at **39px**, under
+         ADR-0017's floor. `value-token.css` says why in its own words: *"Nothing here is
+         per-host. A host picks a tone and the prose around it; it does not get to change the
+         box, which is what stopped the five chromes ADR-0177 §1 counted."* So the only thing
+         left here is permission to wrap, and the 44px arrives from the primitive for free. */
+      .jf-sum-tok {
+        flex-wrap: wrap;
       }
 
       /* The trip's two edges, offered while a date is empty (§5). Not a `ChoiceGrid`:
@@ -10521,6 +10559,7 @@ button.day-gap:hover .day-gap-lbl {
         --mk-cta: #3d5a99;
         --mk-bad: #c0392b;
         --fw: 360px;
+        --fold: 512px;
       }
       :root[data-theme='dark'] {
         --mk-page: #0a0f1a;
@@ -10704,11 +10743,15 @@ button.day-gap:hover .day-gap-lbl {
       .foldbox {
         position: relative;
       }
+      /* 80vh of the SELECTED screen, not a constant. A sheet shows ~675px of itself on an
+         844px phone and ~512px on a 640px one — the file drew the 844 line at both widths,
+         which quietly flattered every claim read at 360×640. `--fold` is written by the
+         screen control beside `--fw`. */
       .foldbox .fold {
         position: absolute;
         inset-inline: 0;
         border-top: 2px dashed var(--mk-bad);
-        top: 675px;
+        top: var(--fold, 675px);
         pointer-events: none;
       }
       .foldbox .fold span {
@@ -11042,12 +11085,34 @@ button.day-gap:hover .day-gap-lbl {
           התחייבות קשה <b>בשלמותה</b>, ומסע שגולל שלוש מסכים מאבד בדיוק את זה.
         </p>
         <p class="note">
+          <b>וההצעה הזאת נמדדת בשני המסכים, מה שתיקן טענה שהסעיף הזה הגיש קודם.</b> גיליון
+          מראה כ-675px מעצמו על טלפון 390×844 וכ-512px על 360×640 · ו-360 הוא <b>רוחב
+          התכנון</b> של ADR-0017, לא מקרה קצה. הקיפול המצויר היה 675px בשני הרוחבים, מה
+          שהחניף בשקט לכל מספר שנקרא ב-360. עכשיו הוא עוקב אחרי המסך שנבחר, וטבלת המדידה
+          אומרת מול איזה קיפול היא משווה. השורה התחתונה: הסיכום מכניס <b>כל</b> מספר עצירות
+          על 844, ועל 640 הוא מקצץ את החריגה ב-<b>75–88%</b> בלי לסגור אותה · שתיים ושלוש
+          עצירות עוד גוללות שם. המקרים השכיחים (אפס או עצירה אחת) נכנסים בכל מסך.
+        </p>
+        <p class="note">
           <b>אז ההצעה: צומת שמולא מתקפל לשורה אחת.</b> הפקדים מתחלפים בשורה שהם יקראו כמוה
           (<code>אמסטרדם · 19:40 · יציאה 21:45 · המתנה 2:05</code>), פתוח נשאר אחד · הראשון
           שעוד חסר לו זמן · ולחיצה על שורה מסוכמת פותחת אותה חזרה. <b>מה שזה קונה:</b> הפס,
           שמות המקומות והשעות נשארים על המסך <i>כולם</i>, אז המסע נקרא שלם בזמן שממלאים חלק
           ממנו, וההמתנה בין קטעים עדיין נראית · שני הדברים ש-§7 נשען עליהם. וכשהכול מולא, הכול
           מסוכם: מצב הסקירה שלפני <code>שמירה</code> הוא המסע כולו בשורות קומפקטיות.
+        </p>
+        <p class="note">
+          <b>ושורה מסוכמת היא עדיין פקד · אז היא חייבת להיראות כמו אחד.</b> הציור הראשון עשה
+          מהשורה כולה <code>&lt;button&gt;</code> עירום · בלי מסגרת, בלי רקע, יעד 30px ובלי
+          שכבת הישג. כלומר התנהגות בלי אפורדנס, שזה החצי הגרוע יותר לפספס בטופס · וגם כלל
+          שהאפליקציה כבר כתבה בעצמה, ב-<code>ValueToken</code>: <i>"A tappable thing inside a
+          line has to look tappable… hence a resting hairline rather than bold text that
+          happens to open a panel — which is the variant ADR-0177 drew and rejected."</i> אז
+          מקטע הערכים <b>הוא</b> <code>ValueToken</code>, בצפיפות המורכבת שהפרימיטיב כבר מתיר,
+          בתוך <code>.wf-line</code> · כלומר הדקדוק של ADR-0177 בלי שינוי: הפרוזה היא הקרקע
+          והערך הוא טוקן. נמדד 31.8px עם הישג של <b>45.8px</b>, המספר של הפרימיטיב עצמו.
+          <b>ושם המקום נשאר בכוונה מחוץ לטוקן</b> · מקום נערך ב<code>מה ואיפה</code> ושעה
+          ב<code>מתי</code> (ADR-0192 §3), אז הסיכום עושה לחיץ בדיוק את החצי שנערך כאן.
         </p>
         <p class="note">
           <b>ולמה זה לא <code>Collapsible</code>, למרות שזה המועמד המובן מאליו</b> (ADR-0098,
@@ -11224,6 +11289,7 @@ button.day-gap:hover .day-gap-lbl {
         // The first draft said `מהטיסה לכאן`, which the owner could not parse: `לכאן` reads as
         // "to here" with no antecedent, it was the SAME string on both fields although they
         // carry opposite facts, and it named a flight where the type may be a train.
+        editTimes: 'עריכת הזמנים',
         leaveShort: 'יציאה',
         waitShort: 'המתנה',
         afterPrevious: 'יום הקטע הקודם',
@@ -11370,6 +11436,13 @@ button.day-gap:hover .day-gap-lbl {
           ? `<button type="button" class="vt vt-time"${invalid ? ` data-invalid="${invalid}"` : ''}>${hhmm}</button>`
           : `<button type="button" class="vt vt-time vt-empty">${T.addTime}</button>`;
       const wordTok = (text) => `<button type="button" class="vt vt-word">${text}</button>`;
+      /** `ValueToken`'s exported `tokenClass`, copied — `DateField` and `PlanDay`'s row time
+       *  are the two shipped call sites that wear the classes without rendering the component,
+       *  and a summarised row is the third. Never hand-built as a string at a call site. */
+      const tokenClass = (kind, opts = {}) =>
+        ['vt', `vt-${kind}`, opts.empty ? 'vt-empty' : '', opts.open ? 'open' : '', opts.className ?? '']
+          .filter(Boolean)
+          .join(' ');
       const zchip = (zone) =>
         `<div class="zchip"><span class="zchip-cap">${T.zoneCap}</span><span class="zchip-static"><span class="zchip-zone">${zone}</span></span></div>`;
       // `PlacePicker`'s real tree. `filled` is the class the component adds when a place
@@ -11441,10 +11514,14 @@ button.day-gap:hover .day-gap-lbl {
           ].filter(Boolean);
           return `<div class="${cls}">
               <span class="jf-rail"><span class="jf-dot"></span></span>
-              <button type="button" class="jf-body jf-sum-btn">
+              <div class="jf-body">
+                <div class="wf-line jf-sum-row">
                 <span class="jf-place">${n.place}</span>
-                <span class="jf-sum-line">${bits.join(' · ')}</span>
-              </button>
+                <button type="button" class="${tokenClass('word', { className: 'jf-sum-tok' })}">
+                  <span class="visually-hidden">${T.editTimes}</span>${bits.join(' · ')}
+                </button>
+                </div>
+              </div>
             </div>`;
         }
         const cls = ['jf-row', n.mode === 'place' ? 'place' : '', n.first ? 'first' : '',
@@ -11526,7 +11603,7 @@ button.day-gap:hover .day-gap-lbl {
 
       /* ══ Frames ══ */
       const phone = (inner, fold) =>
-        `<div class="phone${fold ? ' foldbox' : ''}"><div class="fbody">${inner}</div>${fold ? `<div class="fold"><span>קו הקיפול · 675px</span></div>` : ''}</div>`;
+        `<div class="phone${fold ? ' foldbox' : ''}"><div class="fbody">${inner}</div>${fold ? `<div class="fold"><span>קו הקיפול · 80vh</span></div>` : ''}</div>`;
       const col = (tag, inner, caption, fold) =>
         `<div class="col">${tag}${phone(inner, fold)}${caption ? `<span class="cap">${caption}</span>` : ''}</div>`;
 
@@ -11814,6 +11891,9 @@ button.day-gap:hover .day-gap-lbl {
           openAt,
         });
         set('#s9', [
+          col('<span class="tag neutral">שתי עצירות · מסוכם</span>',
+            stepBar(WHEN_STEPS, 2) + `<div id="s9-sum2">${journey((() => { const j = OUT_2(); j.head = T.legOut; j.nodes.forEach((n, i) => { if (i !== 2) n.summary = true; }); return j; })(), o)}</div>` + foot(T.next, T.prev),
+            'המקרה שהיה גולל ב-§7 · מסוכם הוא נכנס בשני המסכים', true),
           col('<span class="tag before">הכול פתוח · גולל</span>',
             stepBar(WHEN_STEPS, 2) + `<div id="s9-open">${journey(LONG(), o)}</div>` + foot(T.next, T.prev),
             'שלוש עצירות · <code>MAX_ROUTE_STOPS</code> · הכול פתוח בו-זמנית. זה מה שיש עכשיו, וזה עובר את הקיפול', true),
@@ -11853,7 +11933,14 @@ button.day-gap:hover .day-gap-lbl {
         );
       };
       group('data-theme', (v) => document.documentElement.setAttribute('data-theme', v));
-      group('data-w', (v) => document.documentElement.style.setProperty('--fw', v + 'px'));
+      // The two screens the skill requires, each with its own 80vh fold: 360×640 → 512px,
+      // 390×844 → 675px. One control writes both, so a drawn fold can never belong to a
+      // screen that is not on show.
+      const FOLD_FOR = { 360: 512, 390: 675 };
+      group('data-w', (v) => {
+        document.documentElement.style.setProperty('--fw', v + 'px');
+        document.documentElement.style.setProperty('--fold', FOLD_FOR[v] + 'px');
+      });
       group('data-day', (v) => (state.dayMode = v));
       group('data-offer', (v) => (state.offer = v));
       group('data-rt', (v) => (state.rt = v));
@@ -11875,9 +11962,23 @@ button.day-gap:hover .day-gap-lbl {
           const top = parseFloat(s.insetBlockStart || s.top || '0') || 0;
           return r1(el.getBoundingClientRect().height - 2 * top);
         };
-        const FOLD = 675;
+        // The ceiling is the SELECTED screen's 80vh, read from the same variable the drawn
+        // fold line uses — so the table and the line can never disagree.
+        /** The whole sheet a given block sits in — walked from the block, so adding a frame
+         *  beside it can never re-point the measurement. */
+        const stepOf = (sel) => {
+          const el = document.querySelector(sel);
+          const body = el?.closest('.fbody');
+          return body ? r1(body.getBoundingClientRect().height) : '-';
+        };
+        const FOLD =
+          parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fold')) || 675;
         const overUnder = (n) =>
-          n === '-' ? '-' : n > FOLD ? `<b>מעל</b> ב-${r1(n - FOLD)}px` : `בתוך, ${r1(FOLD - n)}px מקום`;
+          n === '-'
+            ? '-'
+            : n > FOLD
+              ? `<b>מעל</b> ב-${r1(n - FOLD)}px (קיפול ${FOLD})`
+              : `בתוך, ${r1(FOLD - n)}px מקום (קיפול ${FOLD})`;
         const j0 = h('#s3 .col:first-child .jf');
         const j1 = h('#s3-1 .jf');
         const j2 = h('#s7-j .jf');
@@ -11889,8 +11990,8 @@ button.day-gap:hover .day-gap-lbl {
           ['מסע · 0 עצירות', j0 + 'px', overUnder(j0) + ' · המקרה השכיח'],
           ['מסע · עצירה אחת', j1 + 'px', overUnder(j1)],
           ['מסע · 2 עצירות', j2 + 'px', overUnder(j2) + ' · <code>MAX_ROUTE_STOPS</code> הוא 3'],
-          ['השלב <code>מתי</code> כולו · בהצעה, 2 עצירות', h('#s7 .col:nth-child(2) .fbody') + 'px',
-            'כולל סרגל שלבים וכפתורים · מול 675px'],
+          ['השלב כולו · 2 עצירות, הכול פתוח', stepOf('#s7-j .jf') + 'px',
+            overUnder(stepOf('#s7-j .jf')) + ' · כולל סרגל וכפתורים'],
           ['השלב <code>מתי · קטע 1</code> מתוך 3 · היום', h('#s7 .col:first-child .fbody') + 'px',
             'נכנס בקלות · אבל כפול שלושה שלבים, ובלי שהמסע נראה שלם אף פעם'],
           ['צומת קצה · <code>.jf-row.first</code>', h('#s3 .col:first-child .jf-row.first') + 'px', 'שם מקום + שורת פרוזה + צ׳יפ אזור'],
@@ -11906,7 +12007,12 @@ button.day-gap:hover .day-gap-lbl {
           ['גלולת קצה טיול · <code>.jf-offer button</code>', h('#s5-1 .jf-offer button') + 'px · יעד ' + reach('#s5-1 .jf-offer button') + 'px', 'רצפת מגע 44px'],
           ['מסע · 3 עצירות · הכול פתוח', h('#s9-open .jf') + 'px', overUnder(h('#s9-open .jf')) + ' · <code>MAX_ROUTE_STOPS</code>'],
           ['מסע · 3 עצירות · מסוכם, אחד פתוח', h('#s9-sum .jf') + 'px', overUnder(h('#s9-sum .jf')) + ' · זו ההצעה של §9'],
-          ['השלב כולו · 3 עצירות, מסוכם', h('#s9 .col:nth-child(2) .fbody') + 'px', 'כולל סרגל וכפתורים · מול 675px'],
+          ['השלב כולו · 2 עצירות, מסוכם', stepOf('#s9-sum2 .jf') + 'px',
+            overUnder(stepOf('#s9-sum2 .jf')) + ' · כולל סרגל וכפתורים'],
+          ['השלב כולו · 3 עצירות, הכול פתוח', stepOf('#s9-open .jf') + 'px',
+            overUnder(stepOf('#s9-open .jf')) + ' · כולל סרגל וכפתורים'],
+          ['השלב כולו · 3 עצירות, מסוכם', stepOf('#s9-sum .jf') + 'px',
+            overUnder(stepOf('#s9-sum .jf')) + ' · כולל סרגל וכפתורים'],
           ['צומת מסוכם · <code>.jf-sum</code>', h('#s9-sum .jf-sum') + 'px', 'מול צומת פתוח למטה · זה מה שהקיפול חוסך'],
           ['הפס של העצירה · <code>.journey-stop</code>', h('#s3-1 .journey-stop') + 'px', 'לא מסוגנן מחדש · אותו רכיב של תצוגת היום'],
         ];
