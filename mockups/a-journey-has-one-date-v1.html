@@ -1,83 +1,150 @@
 <!doctype html>
-<!-- יום שמסתובב מתחת לכרטיס מוחזק — MOTION FOR THE EDGE-DRAG DAY STEP — v1 (2026-08-22)
+<!-- למסע יש תאריך אחד — WHY DO A DEPARTURE AND AN ARRIVAL READ AS TWO FLIGHTS? — v1 (2026-08-23)
 
-     WHAT THIS IS. Three reports, one day apart, on the same gesture. The last one is the
-     brief for this file:
-
-       "Regarding event/shelf drag, it should behave differently now. Swipe should be
-        disabled when dragging and you could drag from the edge to a different day."
-       → built, ADR-0116 §2b (#670)
-
-       "I think that we need some kind of an animation or something for dragging between
-        pages. Something that looks polished."
-       → this file
-
-     What shipped in #670 is correct and silent: hold a dragged card near the day surface's
-     inline edge, and 700ms later (`DRAG_DAY_DWELL_MS`) the day changes. Nothing at all
-     happens in between, and the change itself is an instant swap. That is the whole defect,
-     and it is two defects wearing one coat: no progress, and no motion.
+     THE REPORT, owner-relayed, on the shipped `מתי` step of a flight:
+     "choosing the times is confusing: I got a feedback saying that because the
+      departure and arrival of a flight both have a date and a time, they thought
+      that the latter was the return flight."
+     And two asks alongside it: suggest the "to the destination" / "to home"
+     dates, and make adding a layover — and REMOVING one — more intuitive.
 
      ─────────────────────────────────────────────────────────────────────────
-     WHAT READING THE CODE CHANGED — four things, and two of them moved the design.
+     WHAT READING THE CODE CHANGED, five things, none of them recoverable from
+     the diff:
 
-     ① **The app already owns a page turn, and the edge-drag is the one day change that
-        does not use it.** ADR-0200 §7 draws both neighbours as real day surfaces one page
-        plus a gutter away (`DayPeeks`), rides them on `--swipe-dx`, and lands them with a
-        `--t-base` / `--ease-standard` settle (§9b). A swipe therefore turns like a page and
-        a dwell teleports. So the design here is not "add an animation" — it is "stop being
-        the exception", and the proposal's whole CSS delta is ONE TERM in an existing
-        transform.
+     1. THE APP ALREADY DECIDED THAT TRANSIT IS A MOMENT PLUS A LENGTH, and this
+        one form disagrees. `booking-timing.ts`: "transport → hours (a flight
+        reads in hours, even a red-eye that crosses days)". `booking-prefill.ts`:
+        "No clock may be guessed, but the DAY still may". ADR-0037 made an
+        event's end overnight-aware off a SINGLE date. `WhenField variant="span"`
+        is the one place a transit schedule is collected as two independent
+        calendar dates — and the type that needs it least, since `hotel` is the
+        only profile whose end genuinely lands on another day by convention
+        (`bookingSpanDayOffset` reads it off `nights`).
 
-     ② **The gutter has to be crossed before any of tomorrow is visible.** `.day-peek`'s
-        offset is `dx ± (page + gap)`, so at `dx = 0` the incoming pane's near edge sits
-        `--swipe-page-gap` (24px) OUTSIDE the window. A "12px lean" therefore reveals 12px
-        of page BACKGROUND and 0px of the day it is promising. This killed the first design
-        (§3): to show a legible sliver of tomorrow the whole strip has to move 24 + N px,
-        and every px of that displaces the drop target under the finger.
+     2. THE MISREAD IS NOT ONLY SYMMETRY — THE WORDS DO NOT DISAMBIGUATE EITHER.
+        `המראה` / `נחיתה` are the two labels, and a RETURN flight also has a
+        `המראה`. Nothing in either block names the place it is about, though the
+        step before it collected both. `bs-leg-head`'s `RouteLabel` renders only
+        when `multiLeg || twoLegs`, so a plain one-way flight — the reported case
+        — gets no route context at all.
 
-     ③ **`--peek-dir` is a duplicate of the shipped `--dir` token.** `tokens.css` declares
-        `--dir: -1` (RTL) / `1` (LTR) — "the inline axis's PHYSICAL sign" per
-        `design-language.md` — and four shipped stylesheets spend it (`modal.css`,
-        `form-steps.css`, `App.css` twice). `screens.css`'s `.day-peek` then declares its
-        own `--peek-dir` with the same two values for the same job, shipped yesterday in
-        §7 by a session that did not look. Not this file's subject; filed as a defect
-        below, because a mockup that spends the wrong one teaches the build to.
+     3. AN EMPTY STOP CANNOT BE REMOVED. A SHIPPED DEFECT, not a design gap.
+        `+ עצירת ביניים` appends `undefined` to `stops`; `RouteField` removes a
+        stop by `setStop(i, undefined)`, which only `PlacePicker`'s `pp-clear`
+        calls — and that button renders `{current && …}`. So the one row that
+        needs removing is the one row with no remove control, and its trigger
+        launches a Map errand that unmounts the sheet. ADR-0159 §5 decided
+        "clearing IS removing" and deleted a second ✕; the gap is that the first
+        one is absent exactly when there is nothing to clear.
 
-     ④ **The dwell is 700ms, which is longer than every motion token except the one that is
-        budgeted.** `--t-cinematic` (600ms) is spent exactly once in the product on the
-        Plan→Trip switch and `design-language.md` says so explicitly. So the lean CANNOT
-        take a motion token: its duration is not a motion choice at all, it is the dwell,
-        and a token would make the animation lie about when the turn fires. It reads
-        `DRAG_DAY_DWELL_MS`, published as `--swipe-dwell` — the same discipline
-        `--swipe-page-gap` follows in the other direction (JS reads CSS for the commit
-        distance; here CSS reads JS for the dwell).
+     4. THE MIRROR IS NOT IN THE MODEL. `legBooking(side, i, times)` writes ONE
+        `Booking` per leg with its own `fromPlaceId`/`toPlaceId` and its own
+        route-derived title. The only thing forcing a round trip to be a mirror
+        is `const reversed = [...routePoints].reverse()` — four call sites, all
+        authoring state. So §6's independent return needs no migration, no
+        payload change and no server change.
+
+     5. THE DAY VIEW ALREADY DRAWS THIS OBJECT. `day-join.css`'s `.journey`:
+        "One object with parts… a connection is not a mark BETWEEN two cards, it
+        is the inside of one thing", with `ConnectionBand` stating the wait in
+        amber and a `tight` variant per transport mode. The read surface has the
+        shape; the authoring surface splits the same journey across N unrelated
+        steps. ADR-0192 §3's own rule: the app must not teach one order for
+        authoring and another for reading.
+
+     6. THE APP CAN ALREADY TELL AN OUTBOUND FROM A RETURN, IN ONE CORNER, AND
+        THE FORM CANNOT SEE IT. `readiness.ts`'s `reachesDestination` decides it
+        on three tiers (the place IS the destination · its ZONE is · its NAME
+        contains it) for `hasOutbound`/`hasReturn`, and it is module-private. That
+        is ADR-0154's own founding observation one function over — it said "the app
+        knows what a round trip is, in exactly one corner, and the form it would
+        help never hears about it" about `PlanHome`. Both §5's date filter and §8's
+        place suggestion are that function, exported.
+
+     7. THE AIRPORT FILTER IS ALREADY SHIPPED, AND ITS OWN COMMENT NAMES THE GAP.
+        `PlaceErrand.kind` + `PLACE_SEARCH_KIND.AIRPORT`: "a flight's leg wants an
+        airport, so the tab's search asks Google for airports and stops offering the
+        terminal, the car park and the hotel next door". But that enum has exactly
+        ONE member, and `findPlace`'s comment says why that matters — "a train's
+        stop is a station this restriction has no type for yet". So a train or bus
+        endpoint searches the whole corpus. One enum row plus one axis on
+        `BOOKING_TYPE_PROFILE`, and `findPlace`'s `type === FLIGHT` conditional
+        disappears into the table.
+
+     ─────────────────────────────────────────────────────────────────────────
+     WHAT THE RENDER FALSIFIED — eight things, and this is the reason to draw at
+     all. Not one of them was visible in the source:
+
+      1. §7's central claim was WRONG. "A three-leg journey fits one step" measured
+         708px against 675px of visible sheet. The stop node then gave up its second
+         label (the band above it already says what the line beneath it is) and the
+         block came in at 220 / 396 / 607px for 0 / 1 / 2 stops — but the whole STEP
+         with two stops is 720px and does scroll. §7 now says that, and the table
+         carries the ladder instead of the prose asserting one number.
+      2. Three touch targets measured short of ADR-0017's 44px floor — 38, 41 and 32 —
+         and each is fixed with its reach named in the CSS.
+      3. The rail did not paint. `inset-block: 0` with no inline offset resolves to the
+         STATIC position, so the line drew beside its column instead of through the dots.
+      4. The data disagreed with itself: a segment read `3:20 שע׳` between two clocks
+         1:20 apart. Every duration, wait and day offset is now DERIVED from the clocks
+         plus each point's zone offset, so it cannot.
+      5. And deriving it found the real rule. A day rollover has to be computed on
+         INSTANTS, not wall clocks: Tel Aviv 23:40 → Reykjavík 23:55 is the same
+         calendar day because the flight crossed three hours westward. §2's first
+         frame is that case, and a wall-clock comparison gets it right by luck.
+      6. The footer was drawn with `btn-primary`/`btn-ghost` — classes the app does not
+         have. `FormActions` renders `fa-primary`/`fa-secondary`, so the frame was
+         lying in the one place this file promises not to. Caught in the dark render.
+      7. `מהטיסה לכאן` was rendered in the mono class, which has no Hebrew — the exact
+         trap `value-token.css` keeps a whole `.vt-word` tone for.
+      8. §9's first render summarised the JOURNEY'S ONE DATE away — the absolute date
+         lives on the first node, so collapsing that node hid the single fact §2 is
+         built on. It reads compact-numeric when summarised now.
+      9. §9's summarised row was BEHAVIOUR WITHOUT AFFORDANCE — a bare `<button>` with no
+         border, no ground and a 30px target, which is the variant `ValueToken`'s own
+         docblock records ADR-0177 drawing and rejecting. Making it a real token then took
+         three attempts, each because the box was re-decided instead of inherited: shrunk
+         → 39px reach, the `time` tone (mono, no Hebrew) → 43px, and finally the `word`
+         kind inside a `.wf-line` → 45.8px, the primitive's own number.
+     10. THE DRAWN FOLD WAS A CONSTANT 675px AT BOTH WIDTHS, which flattered every claim
+         read at 360×640 — where a sheet shows ~512px. It follows the selected screen now,
+         and §9's "every case fits" became "every case fits at 844, and 640 still scrolls
+         the deep ones, 75–88% less than before".
+     11. TWO MEASUREMENTS ADDRESSED A FRAME BY COLUMN INDEX, and inserting a frame beside
+         them silently re-pointed both — a row showing one number with an over/under
+         computed from another. Everything is keyed off ids now.
+     12. The first draft drew a NEW ✕ beside the stop picker, and the origin's place
+         suggestion was silently clobbered by the (null) date one. The ✕ is now
+         `pp-clear` itself made unconditional — which is what ADR-0159 §5 meant — and
+         the drawn-then-deleted second control is in the notes panel.
 
      ─────────────────────────────────────────────────────────────────────────
      THIS FILE'S SECTIONS AGAINST THE ADR'S:
 
-       §1 the lean            → ADR-0116 §2c.1      §4 the end, and the abort → §2c.3
-       §2 the turn            → §2c.2               §5 the card over it       → §2c.4
-       §3 the rejected model  → Alternatives
+       §1 the misread, drawn      → ADR §1
+       §2 one date per journey    → ADR §2
+       §3 the journey as one box  → ADR §3
+       §4 a stop is inserted and removed on the rail → ADR §4 (+ the defect)
+       §5 the trip's edge, offered · filtered by `reachesDestination` → ADR §5
+       §6 a round trip is seeded, not derived → ADR §6
+       §7 one step per journey    → ADR §7 (reverses ADR-0159 §5)
+       §8 a place suggested off the trip's existing legs → ADR §8
+       §9 a filled node summarises to one line → ADR §9
 
      ─────────────────────────────────────────────────────────────────────────
-     Interactive: ערכת צבעים (בהיר · כהה) · מסך (360×640 · 390×844) · כמה ממחר נחשף
-     (⁦16⁩ · ⁦24⁩ · ⁦32⁩ · ⁦44px⁩ — A FEEL CALL, shipped at the recommendation, and the device
-     pass owns it) · הרוח (מוצג · מוסתר).
-
-     The four frames of §1 are the motion SAMPLED, not illustrated: the lean is `linear`,
-     so a sampled position is a sampled time, and the frames are t = 0 · 233 · 467 · 700ms
-     of the dwell exactly. That equivalence is an argument for `linear` and not only a
-     convenience — see the notes.
-
-     Measurements at the foot are read from THIS page's rendered DOM.
-
-     A SHIPPED DEFECT THIS FILE FOUND: finding ③ above. One line in `screens.css`, and the
-     fix lands with this ADR since it is the file and the rule this proposal edits. -->
+     Interactive: theme (light · dark) · screen (360×640 · 390×844) · §2's day
+     word (always · only when it differs) · the suggestion pill (pills ·
+     pre-filled · off) · §6's round-trip offer (derived from the trip · off) — the
+     last three are the feel calls this file refuses to settle from a desktop, so
+     the defaults are the recommendation and the device pass owns the answer.
+     Every number in the measurement table is read from THIS page's rendered
+     DOM, at the screen and theme currently selected. -->
 <html lang="he" dir="rtl" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>יום שמסתובב מתחת לכרטיס מוחזק · מוקאפ v1</title>
+    <title>למסע יש תאריך אחד · מוקאפ v1</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -85,7 +152,11 @@
       rel="stylesheet"
     />
 
-    <!-- APP-CSS: styles/tokens.css, App.css, screens.css -->
+    <!-- ══ THE APP'S REAL STYLESHEETS, in the app's own import order ══
+         Generate the block below with:
+             node mockups/tools/inline-app-css.mjs mockups/a-journey-has-one-date-v1.html
+         Idempotent; re-run after ANY change to a listed sheet. -->
+    <!-- APP-CSS: styles/tokens.css, App.css, screens.css, ui/primitives/field.css, ui/primitives/form-errors.css, ui/primitives/value-token.css, ui/primitives/date-field.css, ui/primitives/when-field.css, ui/primitives/zone-chip.css, ui/primitives/choice-grid.css, ui/primitives/place-picker.css, ui/primitives/form-steps.css, ui/primitives/form-actions.css, ui/domain/route-field.css, ui/domain/day-join.css -->
     <style data-app-css>
 /* GENERATED by mockups/tools/inline-app-css.mjs from the manifest above.
    Do not edit below this line — change the app css, then re-run the tool. */
@@ -406,6 +477,13 @@
   --text-h1: 26px; /* screen titles */
   --text-h2: 21px; /* board now-title */
   --text-h3: 17px; /* card titles (17–18) */
+  /* **A step ABOVE body, for the one surface that is a document** (ADR-0202's 2026-08-22
+     amendment; owner: the note's full screen is "too small"). `--text-body` is sized for app
+     chrome — a row, a fact, a meta line — where the job is to fit several facts on a phone
+     line. A note read on its own screen has the opposite job: one long text, nothing beside
+     it, and a reader who is reading rather than scanning. It is a ramp step and not a local
+     number so the next reading surface takes the same size instead of picking its own. */
+  --text-reading: 16px; /* prose on a surface that holds nothing else */
   --text-body: 14.5px; /* default text */
   --text-secondary: 13px; /* meta, descriptions (12–13) */
   --text-caption: 11px; /* labels, hints */
@@ -3875,32 +3953,85 @@ textarea {
   pointer-events: none;
 }
 /* A pane: the whole window, one page over, riding the gesture's offset. Its own ground, so the
-   day it draws reads as a page and not as a translucent hint over the one you are leaving. */
+   day it draws reads as a page and not as a translucent hint over the one you are leaving.
+   
+   **`--dir`, not a local copy.** `tokens.css` already publishes the inline axis's physical sign
+   (−1 RTL / 1 LTR) and `modal.css`, `form-steps.css` and `App.css` all spend it; §7 declared a
+   `--peek-dir` with the same two values for the same job, which is the duplicate ADR-0116 §2c
+   found while drawing. One token, and the `[dir='ltr']` override goes with it. */
 .day-peek {
   position: absolute;
   inset: 0;
   background: var(--screen);
   transform: translateX(
     calc(
-      var(--swipe-dx, 0px) + var(--peek-dir) * var(--peek-side) *
+      var(--swipe-dx, 0px) + var(--dir) * var(--peek-side) *
         (var(--swipe-page-w, 0px) + var(--swipe-page-gap, 0px))
     )
   );
 }
 /* **The next day always arrives from inline-end, in both directions** — that is what makes
    this two rules rather than four. RTL: later days lie to the left, so inline-end is physical
-   −x. LTR mirrors it. `--peek-side` then only has to say which neighbour a pane is. */
-.day-peek {
-  --peek-dir: -1;
-}
-[dir='ltr'] .day-peek {
-  --peek-dir: 1;
-}
+   −x, which is exactly what `--dir` says. `--peek-side` then only has to say which neighbour a
+   pane is. */
 .day-peek[data-day='next'] {
   --peek-side: 1;
 }
 .day-peek[data-day='prev'] {
   --peek-side: -1;
+}
+
+/* ===== The page is LIFTED to a detent, and the dwell decides (ADR-0116 §2d) =====
+   Owner, on §2c: _"your design is very ugly, no I don't like the static 'peek'… we should
+   maybe get a peek but in a more fluent way, like it starts dragging to the next day and stops
+   and then if your finger stays then it completes the motion."_
+
+   §2c animated the incoming PANE by itself across the whole dwell, and the rejection has a
+   number behind it: 48px over 700ms is **1.1px per frame**, which is a static offset with a
+   timer attached rather than a motion. So this moves the STRIP — page and both panes together,
+   `--swipe-dx`, exactly what a finger moves — briskly, to a detent where it stops. Three
+   phases: lift (`--t-base`, ~3.2px/frame), hold (the rest of the dwell, nothing moves),
+   complete (the swipe's own `[data-swipe-settling='turn']` below).
+
+   `--ease-arrive` because a page settling into a detent is an arriving object, and 48px is
+   short enough for its overshoot to read as weight — §9b measured the other end of that same
+   token, where a 382px turn under it is ~15px of wobble.
+
+   The commanded lift/turn live in `useSwipePager` (`hold`/`turn`), because it already owns the
+   offset channel, both attributes, the timer and §8's wait-for-the-arriving-page. A page turn
+   can be commanded, not only dragged. */
+.day-swipe[data-edge-lift] > .day-page,
+.day-swipe[data-edge-lift] > .day-peeks .day-peek {
+  transition: transform var(--t-base) var(--ease-arrive);
+}
+/* **The rebase frame** (§2d's second repair): a turn that began at a detent lands back at it, so
+   at the commit the offset drops by exactly one page — the page that was swapped underneath it
+   in the same paint. Nothing moves and the value changes, which is the one combination a
+   transition gets wrong: it would slide the arriving day in from off screen over `--t-base`.
+   Held for a single frame by `useSwipePager`. */
+.day-swipe[data-swipe-rebase] > .day-page,
+.day-swipe[data-swipe-rebase] > .day-peeks .day-peek {
+  transition: none;
+}
+/* The abort, on the DESTINATION state (design-language.md's asymmetric settle): the lift is
+   deliberate, giving it up is a correction, so it unwinds quickly rather than replaying the
+   lift backwards. Scoped to `body.wp-dragging` because during a SWIPE `--swipe-dx` is rewritten
+   every frame and a transition on it would smear the follow.
+
+   **And to `[data-swiping]`, which is the attribute the transform itself lives under.** Without
+   it the rule outlived the offset: the moment the pager gave the surface back, `transform` went
+   from `translateX(0px)` to none WITH a transition still declared, so a 140ms transition ran
+   over zero distance — invisible, but a real animation on the main thread after every gesture,
+   and it showed up in the recording that found the jitter above. There is nothing to move when
+   there is no offset. */
+body.wp-dragging
+  .day-swipe[data-swiping]:not([data-edge-lift]):not([data-swipe-settling])
+  > .day-page,
+body.wp-dragging
+  .day-swipe[data-swiping]:not([data-edge-lift]):not([data-swipe-settling])
+  > .day-peeks
+  .day-peek {
+  transition: transform var(--t-quick) var(--ease-exit);
 }
 
 /* section titles */
@@ -8701,113 +8832,1722 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
     transform: scaleY(0.88) translateY(-4px);
   }
 }
+
+/* ═══ ui/primitives/field.css — generated, do not edit here ═══ */
+/* One field shell (U-05). Token-based (Wave-0), logical properties only for RTL.
+   Neutral chrome: the control border/background stay neutral; a focused control
+   picks up teal (design-language: teal = location, but reused app-wide as the
+   input focus hue), and the error slot uses --miss. */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.field-label {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* `.df` is NOT in these lists any more (ADR-0177 §5). Every `DateField` in the app is a
+   `ValueToken` now — all six call sites pass `tokenClass('date')` — so a host painting a
+   box around one only ever painted something the token immediately undrew. Leaving them
+   is what forced `value-token.css` to carry defensive overrides. */
+.field input,
+.field textarea,
+.field select {
+  font: inherit;
+  font-size: var(--text-body);
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+}
+
+.field textarea {
+  min-height: 56px;
+  resize: vertical;
+}
+
+.field input:focus-visible,
+.field textarea:focus-visible,
+.field select:focus-visible {
+  outline: none;
+  border-color: var(--teal);
+}
+
+.field-error {
+  margin: 0;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--miss);
+}
+
+/* The hint slot — the error slot's quiet peer. Muted and regular-weight, so a note
+   about an empty field cannot be mistaken for something blocking the save. */
+.field-hint {
+  margin: 0;
+  font-size: var(--text-caption);
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* ═══ ui/primitives/form-errors.css — generated, do not edit here ═══ */
+/* How a form says no (ADR-0150). Two marks, both carried by ONE attribute —
+   `data-invalid` on whatever shell owns the field — so a `Field`, a screen's own
+   field div and a bare row all refuse identically, and a new form gets it by
+   spreading `useFormErrors().field(name)` rather than by styling anything.
+
+   Color is `--miss` and nothing else: a refusal is a status, and the status
+   mini-palette is where statuses live (design-language, ADR-0028). */
+
+/* The mark sits on the field shell, which is what nudges — but a field with TWO
+   controls (a date range) can be wrong at one end only, so a control may carry it
+   itself and be the whole refusal. Both forms, one rule.
+
+   The `:focus-visible` half is not belt-and-braces: a refusal FOCUSES the field it
+   names, so it is focused the instant it is marked — and `field.css`'s focus rule
+   (border-color: teal) would otherwise out-specify this one and paint the refused
+   control as the healthy focused one. */
+[data-invalid] :is(input, textarea, select, .pp-trigger, .vt),
+[data-invalid] :is(input, textarea, select, .pp-trigger, .vt):focus-visible,
+:is(input, textarea, select, .pp-trigger, .vt)[data-invalid],
+:is(input, textarea, select, .pp-trigger, .vt)[data-invalid]:focus-visible {
+  border-color: var(--miss);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--miss) 20%, transparent);
+}
+
+/* The date box (`.df`, ADR-0176) gets the same mark from its own rule, deliberately a
+   class heavier. Two reasons, and the paragraph above is the first one arriving twice:
+   the box is not itself focusable — the input INSIDE it is — so the mark has to survive
+   `:focus-within`, and the token's own `.df.vt-date:focus-within` (amber, `value-token.css`)
+   is precisely the focus-over-refusal trap described above, one specificity step up from
+   where it was met before. Measured in a
+   real browser (jsdom reports no colour at all): without this the refused end of a trip's
+   date range painted teal, and the day field kept its neutral border under the ring.
+
+   The `.wf-date-val` exclusion is GONE with the cell it protected (ADR-0177 §5). It
+   existed because a span leg's date sat INSIDE a `.tp-field` box that reddened around
+   it, so marking both drew one refusal twice. There is no box around a token any more —
+   the token IS the box — so the date marks itself like every other date. */
+[data-invalid] .df.df,
+[data-invalid] .df.df:focus-within,
+.df.df[data-invalid],
+.df.df[data-invalid]:focus-within {
+  border-color: var(--miss);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--miss) 20%, transparent);
+}
+
+/* The label reads as part of the refusal, so it stops being quiet chrome. `data-refused` is
+   the two-ended field (ADR-0150 §7): the shell holds the message and turns its label, but
+   does NOT mark — the controls did that themselves, at the end that is actually wrong. */
+[data-invalid] > .field-label,
+[data-refused] > .field-label {
+  color: var(--miss);
+}
+
+/* THE NUDGE. Added imperatively for one shot (`useFormErrors`), because the
+   refusal has to be felt again on a REPEAT attempt at the same field — a mark that
+   is already on screen changes nothing when you press save a second time.
+
+   `linear`, deliberately: the keyframe offsets ARE the timing of an oscillation,
+   and an easing curve resamples them into a different shape entirely (ADR-0140 §7
+   is the same lesson from the other side). And no `--dir`: a shake is symmetric,
+   so unlike every other translate in this app it has no inline direction to
+   express — mirroring it for RTL would produce the identical animation. */
+.is-nudging {
+  animation: field-nudge var(--t-base) linear both;
+}
+
+@keyframes field-nudge {
+  0% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-5px);
+  }
+  50% {
+    transform: translateX(4px);
+  }
+  75% {
+    transform: translateX(-2px);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+/* ═══ ui/primitives/value-token.css — generated, do not edit here ═══ */
+/* ValueToken (ADR-0177 §2) — "a value you can change", inline.
+
+   Generalised from `button.bld-time` (ADR-0161 §7), whose geometry this is: a
+   hairline chip at radius 9, no hue of its own, and the touch target as an inset
+   overlay rather than a height. Logical properties only (RTL).
+
+   Nothing here is per-host. A host picks a tone and the prose around it; it does not
+   get to change the box, which is what stopped the five chromes ADR-0177 §1 counted. */
+
+.vt {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink);
+  background: none;
+  border: 1px solid var(--soft-line);
+  border-radius: 9px;
+  padding: 4px 8px;
+  cursor: pointer;
+  text-align: start;
+  min-inline-size: 0;
+  transition:
+    border-color 0.12s ease,
+    background-color 0.12s ease;
+}
+
+/* THE TARGET GROWS, THE LINE DOES NOT (ADR-0161 §7, measured there before it was a
+   rule: `min-height: 44px` took that row from 58px to 75px). The overlay reaches into
+   the line's own vertical padding, which nothing else occupies — so every form gets
+   ADR-0017's 44px floor without a single block growing. `.wf-line`'s `row-gap` is set
+   to clear two of these, so stacked tokens never trade taps. */
+.vt::after {
+  content: '';
+  position: absolute;
+  inset: -7px -2px;
+}
+
+.vt:active {
+  transform: scale(var(--press-scale));
+}
+.vt:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.vt:disabled::after {
+  content: none;
+}
+
+/* Open and focused wear the same mark, because they are the same state to the reader:
+   this is the value the panel on screen belongs to. Amber, since what opens is a
+   picker for a value in a form — matching `.tp-field.open`, which this replaces. */
+.vt.open,
+.vt:focus-within {
+  border-color: var(--amber);
+  background: rgba(233, 166, 60, 0.08);
+}
+.vt:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 1px;
+}
+
+/* ── tones: the ONLY thing a host varies ─────────────────────────────────────── */
+
+/* Amber = the clock (ADR-0028's budget, spent once so it means one thing). */
+.vt-time {
+  font-family: var(--font-mono);
+  color: var(--amber-deep);
+  letter-spacing: 0.01em;
+}
+
+/* A date is a calendar fact, not a commitment — ink. `DateField` wears this class on
+   its own wrapper (ADR-0176: the wrapper is the box), so these rules must also undo
+   the chrome the wrapper would otherwise inherit from a host's `.field`/`.set-fld`
+   rules — which ADR-0177 §5 deletes, and which the build initially left standing, so this
+   file carried `.field .vt-date` / `.set-fld .vt-date` overrides against rules that should
+   not have existed. Both are gone now, and so are the overrides.
+
+   `.df.vt-date`, not `.vt-date` alone: `date-field.css`'s own `.df` box rules tie on
+   specificity and neither sheet's load order is knowable from the source (both are lazy
+   chunks). `inline-size` is stated because a stretched token is invisible in review and
+   obvious only once drawn — it is what made the booking span measure TALLER than the
+   boxes it replaced. */
+.df.vt-date {
+  inline-size: auto;
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink);
+  background: none;
+  border: 1px solid var(--soft-line);
+  border-radius: 9px;
+  padding: 4px 8px;
+}
+.df.vt-date:focus-within {
+  outline: none;
+  border-color: var(--amber);
+  background: rgba(233, 166, 60, 0.08);
+}
+/* The face is the token's text; its `min-block-size` (there to hold a line for an
+   empty native control) would otherwise make a date token taller than its neighbours. */
+.vt-date .df-face {
+  min-block-size: 0;
+}
+/* One calendar affordance, not two: the platform's indicator appears only while the
+   input is opaque, so the cell would gain an element mid-tap (ADR-0177 §5). */
+.vt-date .df-input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+}
+
+/* **A DATE GROWS ITS INPUT, NOT AN OVERLAY** — and getting this wrong made every date
+   in the app unopenable. The `::after` target above is painted after its siblings and
+   takes pointer events, which is harmless over a `<button>` (the button under it is
+   what handles the press anyway) and fatal over a date, whose real control is the
+   native `<input>` INSIDE the token (ADR-0176). The overlay simply swallowed every tap.
+
+   So a date drops the pseudo-element and reaches the same 44px with the input itself:
+   same target, and it is the control rather than a decoration sitting on one. Nothing
+   here can be "cleaned up" into the shared `::after` without breaking the field again. */
+.vt-date::after {
+  content: none;
+}
+/* `.df.vt-date`, one class heavier than `date-field.css`'s `.df .df-input { inset: 0 }`,
+   which it must out-specify rather than merely follow: both sheets are lazy chunks and
+   neither's load order is knowable from the source (the same trap that hid App.css's
+   dead mono rule). Written at (0,3,0) the growth holds whichever lands last — and when
+   it did NOT, the click still worked and only the 44px floor quietly went missing, which
+   is exactly the kind of half-failure a measured assertion catches and an eye does not. */
+.df.vt-date .df-input {
+  /* -8px, ADR-0161 §7's own number, so the two reaches are one lineage rather than two
+     guesses. -7px measured 43.75px against ADR-0017's 44px floor — a quarter-pixel short,
+     which is exactly the sort of miss that survives review and fails a measurement. */
+  inset: -8px -2px;
+  inline-size: auto;
+  block-size: auto;
+}
+
+/* A value that is a word rather than a figure — a duration ("שעה"), where the app
+   already phrases the number. Body font, because JetBrains Mono has no Hebrew and
+   would fall back to something with different metrics. */
+.vt-word {
+  font-family: var(--font-body);
+}
+
+/* An absence, and it invites rather than sits blank. Dashed is the app's existing
+   "nothing here yet" mark (`button.bld-time.empty`). */
+.vt-empty,
+.vt-empty .df-empty {
+  color: var(--muted);
+  font-weight: 600;
+}
+.vt-empty {
+  border-style: dashed;
+}
+
+/* ═══ ui/primitives/date-field.css — generated, do not edit here ═══ */
+/* DateField (ADR-0176). The wrapper is the box — it wears whatever chrome the host
+   used to put on the input. Since ADR-0177 that chrome is ONE thing — the token class
+   (`.vt .vt-date`, `value-token.css`) — rather than a rule per host; the five host
+   variants this line used to name are deleted. The refusal mark is unchanged. Logical properties only (RTL).
+
+   Every rule below is written `.df .df-input`, one class heavier than the host rules
+   that target a bare `input` inside their own box (`.field input`, `.set-fld input`):
+   the native control lives INSIDE the box now, so it must out-specify the chrome those
+   rules would otherwise paint on it a second time. */
+
+.df {
+  position: relative;
+  display: block;
+  min-inline-size: 0;
+}
+
+.df-face {
+  display: block;
+  /* An empty face still holds the line the native control would have — otherwise a
+     date-less field is shorter than its filled neighbour. */
+  min-block-size: 1.2em;
+}
+.df-empty {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* The native control, over the whole box. `padding: inherit` takes the wrapper's, so
+   its segments sit exactly where the face's text is when it swaps in on focus. */
+.df .df-input {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  margin: 0;
+  border: 0;
+  padding: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: inherit;
+  direction: ltr;
+  color: var(--ink);
+  color-scheme: light;
+  /* Invisible, not absent: the field is still tappable, focusable and fillable — only
+     its platform-formatted text is hidden, because the face says the same thing in the
+     app's order. */
+  opacity: 0;
+}
+.df .df-input:focus-visible {
+  outline: none;
+}
+/* A refusal marks the BOX, which is the wrapper (form-errors.css lists `.df` beside
+   the controls). The input inside it is chrome-less by design and must not paint a
+   second ring when a `Field` shell marks everything it contains. */
+.df input.df-input {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* **BEING TYPED INTO**, the native control IS the control: its editable segments are
+   back and the face steps aside rather than double-printing a value that is mid-entry.
+   Keyed on `data-typing` (set by the first keystroke, cleared on blur) rather than on
+   `:focus-within`, which was the same thing only until a phone was holding it: the
+   platform's picker leaves the input FOCUSED when it closes, so the field then read its
+   platform format — `12.9.2026` where the face says `שבת, 12 בספט׳` — and clipped it,
+   because a native date is one unwrappable line inside a box the face sized (field
+   report #36). A touch user never types a segment, so on a phone the face now never
+   steps aside; the picker's own surface is still the platform's, which is where its
+   format belongs. */
+.df[data-typing] .df-input {
+  opacity: 1;
+}
+.df[data-typing] .df-face {
+  visibility: hidden;
+}
+
+/* ═══ ui/primitives/when-field.css — generated, do not edit here ═══ */
+/* WhenField (ADR-0083's standard, drawn per ADR-0177). A when reads as a LINE OF
+   PROSE whose values are tappable — not a grid of captioned boxes. The values are
+   `ValueToken`s (`value-token.css`); everything here is the prose around them.
+
+   What this file used to hold — `.wf-date`, `.wf-date-cell`, `.wf-date-val`, the
+   `.tp-field` cap/value box borrowed from `screens.css` — is gone rather than
+   restyled. A token is not a field box, so there is nothing left for those rules to
+   paint, and leaving them would have been the fifth chrome ADR-0177 §1 counted.
+   Logical properties only (RTL). */
+
+.wf {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+/* ONE OWNER FOR THE RHYTHM INSIDE A WHEN. `.wf` spaces its own lines with `gap`, and
+   each `Field` shell also carries App.css's `.field { margin-top: 18px }` — so the two
+   stacked and the day sat 30px from the clock, measured. That read as separation between
+   two labelled groups back when each half had a caption; with the captions gone it is
+   one subject falling apart. The FIRST child keeps its margin, because that is what
+   separates the whole when-block from the field above it — a different concern, and the
+   reason this is a sibling selector rather than a blanket reset. */
+.wf > .field + .field {
+  margin-top: 0;
+}
+
+/* ── the line ────────────────────────────────────────────────────────────────
+   Prose is the ground and the tokens sit in it. `align-items: center`, NOT
+   `baseline`: the tokens are boxes with their own padding, and baseline-aligning
+   boxes whose fonts differ is the exact trap the old two-cell row fell into
+   (mono 19px against body 15px, nothing holding them to one line). Centring boxes
+   is stable across any mix of fonts, which matters because a Hebrew duration
+   cannot be set in the mono face at all. */
+.wf-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  /* Clears two touch reaches (8px each), so stacked tokens never trade taps when a
+     line wraps. This is the number that lets the target live in the gap instead of in
+     the line's height — raise it with the reach, never independently. */
+  row-gap: 18px;
+  font-size: var(--text-body);
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* A word of the sentence — "למשך". Muted, because the values are what is being said. */
+.wf-word {
+  color: var(--muted);
+}
+
+/* Something the app worked out rather than something you set — the end implied by a
+   start plus a duration. Deliberately NOT a token: there is nothing to tap, and
+   dressing a derived value as an editable one is how a form starts lying. */
+.wf-derived {
+  font-family: var(--font-mono);
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* ── span: one subject per row ───────────────────────────────────────────────── */
+.wf-span {
+  gap: var(--space-4);
+}
+.wf-leg {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+/* The leg's name, above its sentence. Above rather than beside so both legs' lines
+   start at the same edge without a grid track shared across their `Field` shells —
+   see the note in `WhenField.tsx`, where that trade is the reason. */
+.wf-leg-lbl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+}
+/* Crossing midnight. Unchanged from `.wf-leg-badge` — it was already the right mark;
+   it was just hung on a caption nobody could pick out. */
+.wf-badge {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: 700;
+  color: var(--amber-deep);
+  background: rgba(233, 166, 60, 0.14);
+  padding-inline: 6px;
+  border-radius: var(--radius-999);
+}
+
+/* The derived read-out under a span — nights, or elapsed time. */
+.wf-note {
+  font-size: var(--text-secondary);
+  color: var(--muted);
+}
+.wf-note b {
+  color: var(--ink);
+  font-weight: 700;
+}
+.wf-dur-note {
+  color: var(--muted);
+}
+
+/* ═══ ui/primitives/zone-chip.css — generated, do not edit here ═══ */
+/* ZoneChip (ADR-0107 §6) — the "these times are in this zone" chip under a form's
+   time fields. Amber: it is a time concept (ADR-0028). Quiet by default (a
+   statement of the inferred zone), and a pinned override reads a shade stronger so
+   "I chose this" is visible without shouting. */
+.zchip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.zchip-cap {
+  font-size: var(--text-caption, 11px);
+  font-weight: 700;
+  color: var(--muted);
+}
+.zchip-btn,
+.zchip-static {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  background: rgba(233, 166, 60, 0.12);
+  border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+.zchip-btn {
+  cursor: pointer;
+}
+.zchip-btn.pinned {
+  background: rgba(233, 166, 60, 0.2);
+  border-color: var(--amber);
+}
+.zchip-btn:focus-visible {
+  outline: 2.5px solid var(--amber);
+  outline-offset: 2px;
+}
+.zchip-zone {
+  /* An IANA city + offset is Latin text inside an RTL row. */
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+/* The caret is the shared SVG primitive (never a glyph — Assistant lacks it). */
+.zchip-caret {
+  display: inline-flex;
+  font-size: 10px;
+  opacity: 0.8;
+}
+/* Hand the event back to the derivation — quiet, text-only: it undoes a choice
+   rather than making one. */
+.zchip-reset {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.zchip-reset:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+/* ═══ ui/primitives/choice-grid.css — generated, do not edit here ═══ */
+/* ChoiceGrid — icon/label single-select cards. Ported from the shipped
+   `.bs-typesel`/`.bs-typecard` document + booking selectors in screens.css, under
+   component-scoped classes, spacing/radius/type from the Wave-0 tokens where they
+   map. Selected = neutral --cta ring + faint ink fill (never a semantic hue). */
+
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--choice-cols, 4), 1fr);
+  gap: var(--space-2);
+}
+
+.choice-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  padding: var(--space-3) var(--space-1);
+  cursor: pointer;
+}
+.choice-card:focus-visible {
+  outline: none;
+  border-color: var(--cta);
+}
+.choice-card:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.choice-card-ic {
+  font-size: var(--text-h3);
+  line-height: 1;
+}
+.choice-card-lbl {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.choice-card.on {
+  border-color: var(--cta);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+.choice-card.on .choice-card-lbl {
+  color: var(--ink);
+}
+
+/* pills layout — a horizontally-scrollable row (ADR-0098: the Index category
+   filter, too many options for a fixed grid on a narrow phone). Selected state
+   stays the same neutral rule as the grid cards: ink fill, never a semantic hue. */
+.choice-grid.pills {
+  display: flex;
+  overflow-x: auto;
+  gap: var(--space-2);
+  padding-block-end: 2px;
+  scrollbar-width: none;
+  /* scroll-snap-type + scroll-snap-align (below) align the row's resting
+     scroll position to a chip boundary at the leading edge — without it the
+     row can rest at any offset, bisecting the chip nearest the container
+     edge. (Where the row rests on FIRST LOAD is no longer this rule's job:
+     the selected pill centres itself, see `.choice-pill.on` below.)
+     It can't fix the TRAILING edge (the
+     container width is never an exact multiple of chip widths, so a peek is
+     inherent); the `edge-fade` class the component also carries handles that,
+     so the peek reads as a "scroll for more" affordance instead of a hard
+     cutoff (ADR-0100 §6) — and only at an edge that has more behind it, which
+     is why the gradient and its condition live in `styles/edge-fade.css` +
+     `lib/edge-fade.ts` rather than here. */
+  scroll-snap-type: x mandatory;
+}
+.choice-grid.pills::-webkit-scrollbar {
+  height: 0;
+}
+.choice-pill {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-999);
+  padding: 6px 12px;
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.12s ease;
+}
+/* compact pills — glyph + count, no word (ADR-0122 §2). The chip loses the padding
+   the word needed; its accessible name comes from the button's `aria-label`, not from
+   what is drawn. */
+.choice-grid.pills.compact .choice-pill {
+  padding: 6px 10px;
+}
+/* The event/idea category selector (ADR-0109 §11) wants a slightly larger tap
+   target than the compact Index filter chips that share `.choice-pill`; scoped
+   to the `.category-pills` wrapper so the Index chips stay as designed (ADR-0100).
+   **Second host since 2026-08-13: the document-type picker** (`DocumentTypePills`,
+   ADR-0052 §6's amendment). Eight types were drawn as a 3-column card grid, which is
+   three rows and 202px, against 38px here — so the picker joined the row that already
+   carried nine options rather than growing a shape of its own. Nothing was added for
+   it: a second consumer of this wrapper is the whole change.
+   Known and deliberately unresolved (ADR-0052 §6, 2026-08-13): the pill measures 36px
+   against ADR-0017's 44px floor, here AND on the shipped category selector. Room is not
+   the obstacle — at 44px the document row is 46px and still needs no scrolling — the
+   obstacle is that raising it moves three shipped surfaces, one of which
+   (`MapPlaceForm`) has a card height that is arithmetic (ADR-0148 §1). */
+.category-pills .choice-pill {
+  font-size: var(--text-secondary);
+  padding: 8px 14px;
+  gap: 6px;
+}
+
+.choice-pill-count {
+  font-family: var(--font-mono);
+  opacity: 0.75;
+}
+.choice-pill.on .choice-pill-count {
+  opacity: 0.85;
+}
+.choice-pill:active {
+  transform: scale(var(--press-scale));
+}
+.choice-pill:focus-visible {
+  outline: none;
+  border-color: var(--cta);
+}
+.choice-pill:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.choice-pill.on {
+  background: var(--cta);
+  border-color: var(--ink);
+  color: var(--cta-text);
+}
+
+/* The selected pill is a CENTRE snap point, not a start one — and this line is what makes
+   `lib/useCenterSelected` work on this row at all. The snap above is `mandatory`, so the
+   browser must rest at a snap position: with every pill start-aligned, our centred offset
+   was immediately re-snapped back to the nearest chip boundary and the centring was
+   undone. Declaring the selected pill's own snap position AS the centred one makes the two
+   rules agree — and user scrolling still snaps to chip boundaries everywhere else. */
+.choice-pill.on {
+  scroll-snap-align: center;
+}
+
+/* Selection settles, same reasoning as `.wp-chip.on` (ADR-0140's Journey 4): the press
+   scale answers the tap, this answers the outcome. The card gets the gentler amount — it
+   is a large surface, and the ratio is what should read as constant (ADR-0140 §2). */
+.choice-pill.on {
+  animation: choice-settle var(--t-quick) var(--ease-arrive);
+}
+.choice-card.on {
+  animation: choice-settle-lg var(--t-quick) var(--ease-arrive);
+}
+@keyframes choice-settle {
+  50% {
+    transform: scale(1.05);
+  }
+}
+@keyframes choice-settle-lg {
+  50% {
+    transform: scale(1.015);
+  }
+}
+
+/* ═══ ui/primitives/place-picker.css — generated, do not edit here ═══ */
+/* Places picker (ADR-0110 §1 / ADR-0109 §12). Teal is the location affordance
+   (design-language rule 4); selection chrome stays neutral. */
+.place-picker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pp-trigger {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  background: var(--card);
+  color: var(--faint);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.pp-trigger.filled {
+  color: var(--ink);
+}
+
+.pp-trigger-icon {
+  color: var(--teal);
+  flex: none;
+}
+
+.pp-trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-clear {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-999);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.pp-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.pp-search {
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+}
+
+/* The two corpora's boundary (ADR-0131 §10). `.map-grouphead` is the Map tab's and is
+   scoped to it, so this is the picker's own one-line equivalent rather than a class
+   borrowed across surfaces — same job, same voice, no shared selector to keep in sync. */
+.pp-group {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+  margin: 10px 2px 4px;
+}
+
+.pp-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.pp-result {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-3);
+  border: none;
+  border-radius: var(--radius-12);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.pp-result:hover:not(:disabled),
+.pp-result:focus-visible {
+  background: var(--line);
+}
+
+.pp-result:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pp-primary {
+  font-weight: 600;
+}
+
+.pp-secondary {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.pp-chip {
+  margin-inline-start: auto;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-999);
+  background: color-mix(in srgb, var(--teal) 16%, transparent);
+  color: var(--teal);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.pp-name-only {
+  align-self: flex-start;
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-12);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.pp-name-only:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pp-cost-footer {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+/* The `＋ מיקום` trigger (`AddLocationButton`): a dashed, muted pill — provisional,
+   NOT the teal navigate action, since there is nowhere to navigate yet. Ported from
+   the Map row's one-off `.map-addbtn` when a placeless booking's `מיקום` fact needed
+   the same affordance (rule 8). */
+.pp-addbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px dashed var(--soft-line);
+  color: var(--muted);
+  background: transparent;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pp-addbtn:hover {
+  border-color: var(--muted);
+}
+
+/* ═══ ui/primitives/form-steps.css — generated, do not edit here ═══ */
+/* FormSteps (ADR-0155). Logical properties only (RTL).
+
+   THE ONE RULE THIS FILE EXISTS TO HOLD: no height is animated, ever. The
+   obvious transition tweens `max-height` so the sheet does not jump between
+   steps — and that is ADR-0152 §6's trap one surface over: `.wp-event-actions`
+   animates to a FIXED cap and clips notes at about three, and raising the cap
+   changes the motion of every card. A step panel can hold a composer that grows
+   without bound, so the pane travels and fades and the sheet is allowed to
+   resize. The jump is the accepted cost; the alternative clips a field. */
+
+/* The arrival, borrowed from the shell's route transition (ADR-0140) rather than
+   invented: same offset, same duration, same easing, same `--dir` mirroring — so
+   a step forward inside a sheet reads like a screen forward outside one. No
+   `animation-fill-mode`, so the final keyframe leaves no transform behind to
+   establish a containing block for `position: fixed` descendants. */
+.form-step[data-step-nav='forward'] {
+  animation: form-step-in-fwd var(--t-base) var(--ease-standard);
+}
+.form-step[data-step-nav='back'] {
+  animation: form-step-in-back var(--t-base) var(--ease-standard);
+}
+@keyframes form-step-in-fwd {
+  from {
+    opacity: 0;
+    transform: translateX(calc(var(--dir) * var(--route-offset)));
+  }
+}
+@keyframes form-step-in-back {
+  from {
+    opacity: 0;
+    transform: translateX(calc(var(--dir) * -1 * var(--route-offset)));
+  }
+}
+
+/* The read-out. Quiet by construction — it reports where you are, it is not a
+   control, and it spends no hue (rule 4: a step is not time, place or plan). */
+.form-steps-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-block-end: var(--space-3);
+}
+.form-steps-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.form-steps-dot {
+  inline-size: 6px;
+  block-size: 6px;
+  border-radius: 999px;
+  background: var(--soft-line);
+}
+.form-steps-dot.done {
+  background: var(--muted);
+}
+/* The one you are on reads as a short bar rather than a brighter dot: a size
+   difference survives a monochrome render and a colour difference does not. */
+.form-steps-dot.on {
+  inline-size: 16px;
+  background: var(--ink);
+}
+.form-steps-label {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* ═══ ui/primitives/form-actions.css — generated, do not edit here ═══ */
+/* A form body inside a Modal sheet: the scroll container the sticky action bar
+   pins to (U-01/U-02). Capped height keeps a long form within the sheet; the
+   RTL left-edge scrollbar is hidden (it reads as a stray line). */
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-height: 75vh;
+  max-height: 75dvh;
+  overflow-y: auto;
+  scrollbar-width: none;
+  /* **A FOCUSED FIELD'S BORDER WAS BEING CLIPPED ON BOTH ENDS** (owner, 2026-08-16: _"selected
+     field outline is cut off"_, and reproduced in the running app before it was touched).
+     `overflow-y: auto` makes this a scroll container, which computes `overflow-x` to `auto`
+     as well and clips at the padding box — and a field is exactly as wide as that box, so the
+     teal `:focus-visible` border's outer edge lands ON the clip boundary and the two VERTICAL
+     sides vanish while the horizontal ones survive. That asymmetry is the tell, and it is why
+     it reads as "cut off" rather than as a missing ring.
+
+     Nothing overflows (`scrollWidth === clientWidth` measured), so this is not a sizing bug
+     and widening nothing fixes it: the cure is to stop the field sitting flush against the
+     clip edge. The negative margin gives the padding straight back, so no field moves and no
+     form's width changes — the only difference is that there is now slack for a border to be
+     drawn into. Here rather than at a call site because every sheet-form in the app is this
+     class, and `EventForm`'s fields sit exactly as flush as `TaskSheet`'s.
+
+     **4px, and `overflow-clip-margin` is NOT available here — which is worth writing down,
+     because it is the obvious reach and it silently does nothing.** A first pass shipped 2px;
+     the owner's phone still showed the vertical strokes lighter than the horizontal ones
+     (_"fully closed but narrower on the left and right compared to the top and bottom"_), so
+     the next instinct is `overflow-x: clip` + `overflow-clip-margin` to push the clip edge
+     outward. It cannot work on this element: CSS Overflow 3 says that when one axis is
+     `clip` and the other is not `visible`/`clip`, the `clip` **computes to `hidden`** — and
+     `overflow-clip-margin` applies to `clip` only. Measured here: `overflow-x` reports
+     `hidden` and the margin is inert. A scrolling form can therefore only buy slack with
+     padding, so this is padding.
+
+     **What padding cannot fix, and is the likely remainder:** a 1px border on an element whose
+     inline edges land on FRACTIONAL device pixels is antialiased across two of them and reads
+     lighter than the block edges, which sit on whole ones. That is a rounding artifact of the
+     device's ratio, not a clip, and it wants a device screenshot taken AFTER this change
+     before anything else is done about it. */
+  padding-inline: 4px;
+  margin-inline: -4px;
+  /* **SO `scrollIntoView` DOES NOT PARK ITS TARGET UNDER THE ACTION BAR** (ADR-0196 §13).
+     `.form-actions` below is `position: sticky; inset-block-end: 0` INSIDE this scrollport,
+     and nothing in the app declared `scroll-padding` anywhere except the Map's inline peek —
+     so `block: 'nearest'` aligned a target flush with the scrollport's bottom edge, which is
+     underneath the bar. Measured with a sub-task composer scrolling itself back into view:
+     **−53px** of clearance without this and **+15px** with it, at three added steps and at
+     six, so it is structural rather than incidental.
+
+     Latent for every consumer of this class, not only tasks: `EventForm`, `BookingSheet`,
+     `DocumentUploadSheet` and `TaskSheet` all scroll inside it. `useFormErrors` escapes only
+     because it passes `block: 'center'`.
+
+     `.body` needs none of this and the check is worth recording: `.nav` is sticky too, but it
+     is a SIBLING of that scrollport rather than inside it, so nothing there can land under
+     it. This is the app's only case. */
+  scroll-padding-block-end: var(--form-actions-h);
+}
+.modal-form::-webkit-scrollbar {
+  display: none;
+}
+
+/* One form action bar (U-02). Sticky to the bottom of its scroll container so
+   the primary stays reachable while a long form scrolls; the card background
+   masks fields sliding under it. Token-based, logical properties only (RTL). */
+
+.form-actions {
+  position: sticky;
+  inset-block-end: 0;
+  z-index: 1;
+  display: flex;
+  gap: var(--space-3);
+  padding-block-start: var(--space-3);
+  background: var(--card);
+}
+
+.form-actions button {
+  font: inherit;
+  font-weight: 700;
+  font-size: var(--text-secondary);
+  border-radius: var(--radius-12);
+  padding: var(--space-3);
+  cursor: pointer;
+}
+
+/* Primary spans the row; the ghost secondary is a small trailing pill. */
+.fa-primary {
+  flex: 1;
+  border: none;
+  background: var(--cta);
+  color: var(--cta-text);
+}
+.fa-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* A second way FORWARD (`alternate`): outlined in the CTA's ink rather than filled, so the
+   bar still has exactly one filled button and the eye still knows which one continues the
+   flow. Sized like the secondary, because it is a peer of it and not of the primary. */
+.fa-alternate {
+  flex: 0 0 auto;
+  padding-inline: var(--space-5);
+  background: transparent;
+  color: var(--cta);
+  border: 1px solid var(--cta);
+}
+.fa-alternate:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.fa-secondary {
+  flex: 0 0 auto;
+  padding-inline: var(--space-5);
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--soft-line);
+}
+
+/* Destructive: de-emphasized text button on its own row, never a filled CTA. */
+.fa-destructive {
+  align-self: center;
+  margin-block-start: var(--space-1);
+  font: inherit;
+  font-weight: 700;
+  font-size: var(--text-secondary);
+  color: var(--miss);
+  background: transparent;
+  border: none;
+  padding: var(--space-2);
+  cursor: pointer;
+}
+
+.form-actions button:focus-visible,
+.fa-destructive:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+
+/* ═══ ui/domain/route-field.css — generated, do not edit here ═══ */
+/* RouteField (ADR-0154 §3). Was `.booking-sheet .bs-route-pickers` +
+   `.bs-route-hint` in `screens.css`; the rules are unchanged, the host is gone
+   from the selector. That is the whole extraction: a rule scoped to one host is
+   wrong the moment there are two, and there are two now (`BookingSheet` and
+   `EventForm`). Logical properties only (RTL). */
+
+/* The two pickers, stacked (origin above destination) — phone-first, never a
+   cramped inline row. */
+.route-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* The exchange, between the ends it exchanges. Quiet on purpose: it is a
+   correction, not one of the field's two subjects, so it reads at caption
+   weight in `--muted` and spends no hue (rule 4). `flex-start` keeps it off the
+   pickers' full width, so it cannot be mistaken for a third endpoint. */
+.route-field-swap {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.route-field-swap .icon {
+  inline-size: 15px;
+  block-size: 15px;
+}
+.route-field-swap:active {
+  transform: scale(var(--press-scale));
+}
+.route-field-swap:focus-visible {
+  outline: none;
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.route-field-hint {
+  font-size: 10.5px;
+  color: var(--muted);
+  margin-block-start: -6px;
+}
+
+/* **A stop is a waypoint, not an endpoint** (ADR-0159). The indent is what says so
+   at a glance — a three-row stack of equals reads as three destinations — and it
+   is the same thing `.cluster-kids` says about rows belonging to the one above.
+   It has no remove control of its own: the picker's `✕` clears the place, and a
+   stop with no place is not a state worth keeping, so clearing IS removing. */
+.route-field .place-picker-stop {
+  margin-inline-start: 18px;
+}
+
+/* `+ עצירת ביניים`. A quiet text action like the swap above it, but `--cta` rather
+   than `--muted`: this one ADDS a field rather than correcting two, so it has to be
+   findable. Still no hue of its own (rule 4) — `--cta` is the neutral action colour. */
+.route-field-add {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--cta);
+  background: transparent;
+  border: 0;
+  padding: 4px 4px 0;
+  cursor: pointer;
+}
+.route-field-add .icon {
+  inline-size: 14px;
+  block-size: 14px;
+}
+.route-field-add:active {
+  transform: scale(var(--press-scale));
+}
+.route-field-add:focus-visible {
+  outline: none;
+  text-decoration: underline;
+}
+
+/* **A hire's return question** (ADR-0163 §1). The pills and the conditional second
+   picker are one block, so the picker that appears reads as the answer to the question
+   above it rather than as a third endpoint. `gap` matches `.route-field`'s so the two
+   pickers sit the same distance apart whichever branch is showing. */
+.route-field-return {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-block-start: var(--space-2);
+}
+
+/* ═══ ui/domain/day-join.css — generated, do not edit here ═══ */
+/* What sits between two rows of the day (ADR-0159). Logical properties only (RTL).
+
+   The gap strip is deliberately geometry-identical to Plan mode's `.gap`
+   (screens.css): same flex row, same 8px gap, same dashed hairline, same 9px
+   bottom margin. The two modes differ in what you can DO there, not in where the
+   fact lives — so the slot is one slot, and only the control is missing here. */
+
+.day-gap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 9px;
+  padding: 2px 6px;
+}
+/* **Tappable, and it still looks like a statement** (ADR-0161 §9). Everything a button
+   brings with it is taken back off — the background, the border, the inherited system
+   font — because what changed is that the fact ANSWERS when asked, not how loud it is.
+
+   The touch target is an out-of-flow `::after` rather than height, for the same reason
+   the drag seam's is (`screens.css`): this row's height is the list's rhythm, and 44px
+   of real box here would push the two events it sits between apart by half a card.
+   ADR-0017's floor is met by the target, not by the paint. */
+button.day-gap {
+  position: relative;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+button.day-gap::after {
+  content: '';
+  position: absolute;
+  inset: -14px 0;
+}
+button.day-gap:focus-visible {
+  outline: 2.5px solid var(--cta);
+  outline-offset: 4px;
+  border-radius: var(--radius-8, 8px);
+}
+/* The one mark that says it is a control — `--faint` like the words, because free time
+   still has no hue to spend (rule 4 has no fourth colour, and Plan's violet is Plan's). */
+.day-gap-add {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--faint);
+}
+button.day-gap:hover .day-gap-add,
+button.day-gap:hover .day-gap-lbl {
+  color: var(--muted);
+}
+.day-gap-line {
+  flex: 1;
+  height: 1px;
+  background: repeating-linear-gradient(90deg, var(--soft-line) 0 5px, transparent 5px 10px);
+}
+/* `--faint`, and no hue: free time is neither commitment (amber), location (teal)
+   nor a plan action (violet), and rule 4 has no fourth colour to lend it. It is
+   also the quietest thing on the list, which is correct — it sits between the two
+   rows that are the content. */
+.day-gap-lbl {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+/* ── The journey block ─────────────────────────────────────────────────────
+   One object with parts. The container owns the border, the radius and the
+   list's 10px rhythm; the legs inside give theirs up and become rows of it —
+   which is the whole point: a connection is not a mark BETWEEN two cards, it is
+   the inside of one thing. */
+.journey {
+  border: 1px solid color-mix(in srgb, var(--amber) 38%, var(--line));
+  border-radius: 15px;
+  overflow: hidden;
+  margin-bottom: 10px;
+  background: var(--card);
+}
+.journey > .wp-event {
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+  background: none;
+}
+/* A soft leg keeps its hatch (it is the card's background, not its border) but
+   loses the dashed edge the container now draws. */
+.journey > .wp-event.soft {
+  border: 0;
+}
+.journey-stop {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 15px;
+  background: color-mix(in srgb, var(--amber) 11%, transparent);
+  border-block: 1px solid color-mix(in srgb, var(--amber) 24%, transparent);
+  color: var(--amber-deep);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.journey-stop .icon {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+/* A short join says so in a word (`isTightConnection`, per transport mode). It is
+   descriptive, not a warning — the app does not know your terminal — so it gets
+   weight and not `--miss`. */
+.journey-stop.tight {
+  background: color-mix(in srgb, var(--amber) 17%, transparent);
+}
+/* The now-line inside a journey keeps the block's inset, so it reads as a row OF
+   the block rather than a rule laid across it. */
+.journey .nowline {
+  margin: 9px 12px;
+}
 </style>
 
-    <!-- ════ PROPOSED — this is the whole diff, and its size is the argument.
-         ONE term added to `.day-peek`'s shipped transform, plus the two rules that drive
-         it. Named `--peek-lean` beside the existing `--peek-side`; and it spends `--dir`
-         rather than `--peek-dir`, which is finding ③'s repair arriving in the same rule.
-
-         Scoped to `body.wp-dragging` — the class `useHoldToDrag` already parks and that
-         four shipped `.bld-seam` rules already key off — because the transition must NOT
-         exist during a SWIPE: `--swipe-dx` is rewritten every frame there, and a
-         transition on it would smear the follow. The shipped stylesheet has the same
-         instinct, which is why its settle lives under `[data-swipe-settling]`.
-
-         The abort's transition is declared on the DESTINATION state (no lean), which is
-         `design-language.md`'s rule for an asymmetric settle — the turn is deliberate and
-         giving up is a correction, so it leaves on `--t-quick`/`--ease-exit`. ════ -->
     <style>
-      /* The one shipped rule that changes. Restated in full because a `calc` cannot be
-         extended from outside; in the app this is a two-line edit to `screens.css`. */
-      .day-peek {
-        /* The lean SUBTRACTS from the parked distance — it is the pane coming closer, not
-           the pane moving further. Drawn the other way first, and the render caught it in
-           one number: `translateX(-400px)` where -304 was wanted, so the "hint" pushed
-           tomorrow off screen. Written as one multiplication so the sign cannot be got
-           wrong again: everything inside the bracket is a DISTANCE, and `--dir * --peek-side`
-           is the only thing that carries a direction. */
-        transform: translateX(
-          calc(
-            var(--swipe-dx, 0px) + var(--dir) * var(--peek-side) *
-              (
-                var(--swipe-page-w, 0px) + var(--swipe-page-gap, 0px) -
-                  var(--peek-lean, 0px)
-              )
-          )
-        );
-      }
-      /* The lean: the incoming pane, and only it, comes to meet the finger — over exactly
-         the dwell, `linear`, because this is a progress readout and any curve would make
-         the time left unreadable. */
-      body.wp-dragging .day-swipe[data-edge-lean='next'] .day-peek[data-day='next'],
-      body.wp-dragging .day-swipe[data-edge-lean='prev'] .day-peek[data-day='prev'] {
-        --peek-lean: calc(var(--swipe-page-gap) + var(--edge-reveal));
-        transition: transform var(--swipe-dwell) linear;
-      }
-      /* The quiet half, on the destination state. */
-      body.wp-dragging .day-peek {
-        transition: transform var(--t-quick) var(--ease-exit);
-      }
-    </style>
+      /* ══════════════════════════════════════════════════════════════════════
+         PROPOSED — the only app CSS this file writes by hand. It moves into a
+         new `ui/domain/journey-field.css` when the ADR is built, beside
+         `route-field.css`: `JourneyField` is the schedule's counterpart to
+         `RouteField`, over the same points.
 
-    <!-- ════ MOCKUP-ONLY, and nothing here is proposed ════ -->
-    <style>
-      /* `.day-peeks` is `position: fixed` in the app, measured against the body's visible
-         strip. Inside a phone frame on a document, fixed escapes to the viewport — so it
-         is absolute here, against the frame. The app's own numbers are asserted by
-         `e2e/day-swipe.spec.ts`, not by this file. */
-      .mk-frame .day-peeks {
-        position: absolute;
-        top: 0;
-        /* `.body`'s own inline padding (App.css: `16px 16px 92px`). The app measures the
-           host's box into `--peek-x` instead; a frame-relative `0` here put the window 16px
-           off the host, which the render reported as a 2px-wide pane discrepancy before it
-           reported anything about the design. */
-        left: 16px;
-        block-size: 100%;
-        inline-size: var(--swipe-page-w);
+         DELIBERATELY SHORT, and that is the argument. Every value inside a node
+         is already shipped: the prose line is `.wf-line` (ADR-0177), the date is
+         `.df.vt.vt-date`, the clock is `.vt.vt-time`, the relative day is
+         `.vt.vt-word` — which `value-token.css` already describes as "a value
+         that is a word rather than a figure" — the zone is `.zchip`, and the
+         layover band is `day-join.css`'s own `.journey-stop`, unchanged. What is
+         new here is a RAIL and two controls on it; nothing else.
+         ══════════════════════════════════════════════════════════════════════ */
+
+      /* One journey, one object — `.journey`'s own words from `day-join.css`, at
+         authoring density. The container owns the border and the radius; the nodes
+         inside give theirs up and become rows of it. Amber-tinted hairline, exactly
+         as the day's block, because a journey is time inside a commitment (rule 4). */
+      .jf {
+        border: 1px solid color-mix(in srgb, var(--amber) 38%, var(--line));
+        border-radius: 15px;
+        background: var(--card);
+        overflow: hidden;
       }
-      /* The dragged clone. The app builds it from a DOM clone positioned from `clientX`
-         (`lib/useDragGhost.ts`); here it is a static stand-in at a plausible finger
-         position, wearing the shipped `--drag-ghost-opacity`. */
-      .mk-ghost {
-        position: absolute;
-        z-index: 15;
-        pointer-events: none;
-        opacity: var(--drag-ghost-opacity);
-        inline-size: calc(100% - 32px);
+
+      /* The journey's own heading — the frame the reported step never had. It names
+         the two ends, so `המראה` and `נחיתה` can no longer be read as two flights:
+         a return would depart from the other end. */
+      .jf-head {
+        display: flex;
+        align-items: baseline;
+        gap: var(--space-2);
+        padding: 9px 13px;
+        background: color-mix(in srgb, var(--amber) 8%, transparent);
+        border-block-end: 1px solid color-mix(in srgb, var(--amber) 20%, transparent);
+        font-size: var(--text-caption);
+        font-weight: 700;
+        color: var(--muted);
       }
-      .mk-finger {
+      .jf-head .route {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--ink);
+      }
+      /* While a return is still an exact mirror it SAYS so, and the clause leaves the
+         moment anything about it diverges (§6). One derived sentence, not a control. */
+      .jf-head .jf-mirror {
+        margin-inline-start: auto;
+        font-size: 10.5px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+
+      /* ── the rail ──────────────────────────────────────────────────────────
+         A two-column grid: the rail, then the body. A GRID rather than a flex row
+         with an absolutely-positioned line, because the line has to reach the full
+         height of a row whose height is set by wrapping prose — and a `.wf-line`
+         wraps at 360px, which is the design width and not the stress case. */
+      .jf-row {
+        display: grid;
+        grid-template-columns: 22px 1fr;
+        padding-inline: 13px;
+      }
+      .jf-rail {
+        position: relative;
+        display: flex;
+        justify-content: center;
+      }
+      /* The line runs the full height of the row and is clipped at the journey's two
+         ends by the first/last modifiers below — so it CONNECTS rather than floating
+         clear at each end, which is the correction ADR-0159 §3 already had to make
+         once on the day list ("a rail is a connector, so it has to touch"). */
+      /* **`inset-block` alone is not enough, and the render is how that was found.** With
+         no inline offset an absolutely-positioned pseudo-element resolves to its STATIC
+         position — the start edge of the flex line — so the line drew beside the column
+         instead of under the dot, and a rail that does not run through its own nodes is
+         not a rail. Centred explicitly; the dot paints over it by DOM order. */
+      .jf-rail::before {
+        content: '';
         position: absolute;
-        z-index: 16;
-        inline-size: 34px;
-        block-size: 34px;
+        inset-block: 0;
+        inset-inline-start: 50%;
+        margin-inline-start: -1px;
+        inline-size: 2px;
+        background: color-mix(in srgb, var(--amber) 34%, transparent);
+      }
+      .jf-row.first .jf-rail::before {
+        inset-block-start: 15px;
+      }
+      .jf-row.last .jf-rail::before {
+        inset-block-end: calc(100% - 15px);
+      }
+      .jf-dot {
+        position: relative;
+        margin-block-start: 9px;
+        inline-size: 11px;
+        block-size: 11px;
         border-radius: 999px;
-        border: 2px solid color-mix(in srgb, var(--ink) 55%, transparent);
-        background: color-mix(in srgb, var(--ink) 12%, transparent);
-        pointer-events: none;
+        background: var(--card);
+        border: 2px solid var(--amber);
+        flex: 0 0 auto;
+        align-self: flex-start;
       }
-      /* The band, drawn so it can be seen. Not a proposal: nothing paints it in the app,
-         which is §4's open question. */
-      /* **The band, drawn as its BOUNDARY and not as a fill** — the first render filled it
-         with a 36px stripe at `z-index: 14`, which painted over the 24px reveal the whole
-         file is about. A mockup that hides its own subject is the cheapest possible version
-         of that mistake and it still took a screenshot to see. Nothing paints this in the
-         app; that is §4's open question. */
-      .mk-band {
-        position: absolute;
-        top: 0;
-        block-size: 100%;
-        inline-size: var(--mk-band-px);
-        border-inline-end: 1px dashed color-mix(in srgb, var(--cta) 55%, transparent);
-        pointer-events: none;
-        z-index: 14;
+      /* An endpoint of the journey is solid; a waypoint is hollow, which is the same
+         thing `.place-picker-stop`'s indent says one step earlier. */
+      .jf-row.end .jf-dot {
+        background: var(--amber);
       }
-    </style>
+      .jf-body {
+        min-inline-size: 0;
+        padding-block: 7px 8px;
+      }
+      /* The moment's name, and the PLACE is the half that does the work (see the
+         header's finding 2). `.wf-leg-lbl`'s type, so a node label and a leg label
+         are one voice — this is that rule's next host, not a second style. */
+      .jf-node-lbl {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 5px;
+        font-size: var(--text-caption);
+        font-weight: 700;
+        color: var(--muted);
+        margin-block-end: var(--space-2);
+      }
+      .jf-node-lbl .jf-place {
+        color: var(--ink);
+        font-size: 12.5px;
+      }
 
-    <!-- ════ mk-* — this file's own chrome. Nothing below ships. ════ -->
-    <style>
+      /* The segment between two nodes: what the leg COSTS, and the one place a stop
+         can be inserted. It sits on the rail rather than under the destination,
+         which is where the shipped `+ עצירת ביניים` sits — so the row appears where
+         you tapped instead of above the button (the report's second ask). */
+      .jf-seg .jf-body {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 4px 10px;
+        padding-block: 3px 5px;
+      }
+      .jf-dur {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: var(--text-secondary);
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .jf-dur .icon {
+        inline-size: 13px;
+        block-size: 13px;
+      }
+      .jf-dur b {
+        color: var(--ink);
+        font-weight: 700;
+      }
+      /* `.route-field-add`'s grammar exactly — a quiet `--cta` text action, no hue of
+         its own — at the segment's density. Same words as the shipped control. */
+      .jf-insert {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font: inherit;
+        font-size: var(--text-caption);
+        font-weight: 700;
+        color: var(--cta);
+        background: transparent;
+        border: 0;
+        padding: 4px;
+        cursor: pointer;
+        position: relative;
+      }
+      /* **-11px, and the render is why it is not -8px.** At -8px this measured a 38px
+         target against ADR-0017's 44px floor — the sort of miss that survives review and
+         fails a measurement, which is the same quarter-pixel lesson `value-token.css`
+         already records against its own -7px. The reach lands in the segment row's own
+         padding, so the row does not grow. */
+      .jf-insert::after {
+        content: '';
+        position: absolute;
+        inset: -11px -4px;
+      }
+      .jf-insert .icon {
+        inline-size: 13px;
+        block-size: 13px;
+      }
+      .jf-insert:active {
+        transform: scale(var(--press-scale));
+      }
+      .jf-insert:focus-visible {
+        outline: none;
+        text-decoration: underline;
+      }
+
+      /* **THE REMOVE A STOP NEEDS IS `pp-clear` ITSELF, MADE UNCONDITIONAL.**
+         ADR-0159 §5 decided "clearing IS removing" and deleted a second ✕ — correctly. The
+         defect is that `PlacePicker` renders that one ✕ as `{current && …}`, so it is absent
+         exactly on the row that most needs removing: a stop the `＋` just added, which names
+         no place and whose only other control is an errand to the Map. So the primitive takes
+         a `removable` role rather than this file drawing a second control beside it — which
+         was the first draft here, and would have been the very copy that ADR is against.
+
+         Two lines of shipped CSS change, and this is the whole of them: the picker's own ✕
+         gets ADR-0017's reach (it measures 32px today, a pre-existing miss), and a stop's is
+         never hidden. The overlay reaches into the row's own gap, so no row grows. */
+      .place-picker .pp-clear {
+        position: relative;
+      }
+      .place-picker .pp-clear::after {
+        content: '';
+        position: absolute;
+        inset: -6px;
+      }
+
+      /* **The same rail, twice.** On `מה ואיפה` each node is a `PlacePicker` and the
+         controls are the stop's; on `מתי` the same nodes carry clocks and no place control
+         at all. A stop is a PLACE, so inserting one belongs to the where step (ADR-0192 §3),
+         and putting it on the when step would mean a Map errand mid-schedule — which
+         unmounts the sheet (ADR-0134 §1). The picker gives up its own box and becomes a row
+         of the journey, exactly as `.journey > .wp-event` does on the day. */
+      .jf-row.place .jf-body {
+        padding-block: 5px 6px;
+      }
+      .jf-row.place .place-picker {
+        margin-block-start: 0;
+      }
+      .jf-row.place .pp-trigger {
+        border-color: var(--soft-line);
+      }
+
+      /* The layover band INSIDE a stop node — `day-join.css`'s `.journey-stop`,
+         reused rather than restyled, so the wait you type is the wait the day will
+         show, in the same words and with the same `tight` treatment. The only thing
+         this adds is the authoring inset, since here it sits inside a node's body
+         rather than across a block. */
+      .jf-body > .journey-stop {
+        margin-inline: -13px;
+        margin-block: 8px;
+        padding-inline: 13px;
+      }
+
+      /* **A SUMMARISED NODE** (§9) — the same rail row with its controls swapped for the line
+         they read as. A whole `<button>`, because the whole row is the way back in.
+
+         **Not `Collapsible`, and the reason is a rule this form already lives under.** That
+         primitive animates `max-height` (its own header says so), and ADR-0155 §4 forbids
+         animating height inside a form step — it is ADR-0152 §6's clip, where
+         `.wp-event-actions` tweens to a FIXED cap and silently truncates. A leg's height is
+         bounded today, which is exactly the reasoning that produced that clip in the first
+         place. So this reuses the step primitive's POSTURE instead: swap the content, let the
+         sheet resize, no transition on height. Same trade ADR-0155 §4 already accepted. */
+      /* **The summarised row IS a `.wf-line`** — ADR-0177's grammar unchanged: prose is the
+         ground, the value is a token. That container is also what sets the type context every
+         other token in the app is sized in, and getting that wrong is why the reach kept
+         landing short here (42px, then 43px) while `.vt-word` measures 45.8px in an ordinary
+         line. So this adds a tighter row-gap and nothing else. */
+      .jf-sum-row {
+        row-gap: 4px;
+      }
+      .jf-sum .jf-place {
+        color: var(--ink);
+        font-size: 12.5px;
+        font-weight: 700;
+      }
+      /* **A SUMMARISED ROW IS STILL A CONTROL, AND IT HAS TO LOOK LIKE ONE.** The first
+         draft made the whole row a bare `<button>` — no border, no ground, a 30px target
+         and no `::after` — i.e. behaviour without affordance, which is the worse half to
+         get wrong on a form. It also broke a rule this app has already written down, in
+         `ValueToken`'s own docblock: *"A tappable thing inside a line has to look tappable
+         (`PlaceBadge`'s idiom, ADR-0121 §8). Hence a resting hairline rather than bold text
+         that happens to open a panel — which is the variant ADR-0177 drew and rejected."*
+
+         So the value run IS a `ValueToken`, at a composite density that primitive already
+         sanctions (`button.bld-time` "holds composite two-line content — a time range, a
+         duration, a `ZoneShiftPill`"). It inherits the hairline, the amber clock tone, the
+         press-scale and ADR-0017's 44px reach from `.vt::after` — no new mechanism, and
+         nothing here re-decides the box.
+
+         **The place name is deliberately NOT in the token.** A place is edited on
+         `מה ואיפה` and a time on `מתי` (ADR-0192 §3), so the summary makes exactly the
+         editable half tappable — which is the same split §4 draws one step earlier. */
+      /* **AND IT IS THE `word` TONE, NOT `time`.** The run is mixed — `19:40 · יציאה 21:45 ·
+         המתנה 2:05 שע׳` — and `.vt-time` is the MONO tone, which has no Hebrew: the fallback
+         changed the line box and the token measured 29px, so the shipped reach landed at 43px,
+         one short. `ValueToken` keeps a whole `word` kind for precisely this, in its own words:
+         *"A value that is a word rather than a figure — a duration ('שעה'), where the app
+         already phrases the number. Body font, because JetBrains Mono has no Hebrew and would
+         fall back to something with different metrics."* Same trap this file already hit once,
+         on the suggestion pill's detail.
+
+         It also settles the hue honestly: `word` inherits ink, and rule 4's amber stays on the
+         real clock tokens inside the node this opens. A summary is a READ with one way in, not
+         the sentence itself — the sentence is what you get when it opens.
+
+         **AND IT DOES NOT GET TO CHANGE THE BOX.** The first attempt at this token set
+         `font-size: var(--text-secondary)` and `row-gap: 0` to keep the row short — which
+         shrank it to 25px and put the shipped `.vt::after` reach at **39px**, under
+         ADR-0017's floor. `value-token.css` says why in its own words: *"Nothing here is
+         per-host. A host picks a tone and the prose around it; it does not get to change the
+         box, which is what stopped the five chromes ADR-0177 §1 counted."* So the only thing
+         left here is permission to wrap, and the 44px arrives from the primitive for free. */
+      .jf-sum-tok {
+        flex-wrap: wrap;
+      }
+
+      /* The trip's two edges, offered while a date is empty (§5). Not a `ChoiceGrid`:
+         these are not a choice between two values of one field, they are two
+         shortcuts to one — tapping either fills the date and both disappear. */
+      .jf-offer {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-block-start: var(--space-2);
+      }
+      .jf-offer button {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font: inherit;
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--cta);
+        background: color-mix(in srgb, var(--cta) 9%, transparent);
+        border: 1px dashed color-mix(in srgb, var(--cta) 42%, transparent);
+        border-radius: 999px;
+        padding: 5px 10px;
+        cursor: pointer;
+        position: relative;
+      }
+      /* -8.5px: at -7px the render measured 41px. Same correction as `.jf-insert`. */
+      .jf-offer button::after {
+        content: '';
+        position: absolute;
+        inset: -8.5px -2px;
+      }
+      .jf-offer button:active {
+        transform: scale(var(--press-scale));
+      }
+      /* A numeral (`12.8`) is mono; a WORD is not. `value-token.css` has a whole `.vt-word`
+         tone for exactly this reason — "JetBrains Mono has no Hebrew and would fall back to
+         something with different metrics" — and the first render of this file put
+         `מהטיסה לכאן` in the mono class and proved it. */
+      .jf-offer .jf-offer-d {
+        font-family: var(--font-mono);
+        font-weight: 700;
+        opacity: 0.85;
+      }
+      .jf-offer .jf-offer-w {
+        font-weight: 600;
+        opacity: 0.75;
+      }
+
+      /* ══════════════════════════════════════════════════════════════════════
+         mk-* — this file's own chrome. Nothing below ships. Reads only `--mk-*`
+         so it stays legible in both themes and before the app css is inlined.
+         ══════════════════════════════════════════════════════════════════════ */
       :root {
         --mk-page: #eef1f6;
         --mk-surface: #ffffff;
@@ -8817,8 +10557,9 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         --mk-faint: #8b94a8;
         --mk-line: #d8dde6;
         --mk-cta: #3d5a99;
+        --mk-bad: #c0392b;
         --fw: 360px;
-        --fh: 640px;
+        --fold: 512px;
       }
       :root[data-theme='dark'] {
         --mk-page: #0a0f1a;
@@ -8829,59 +10570,72 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         --mk-faint: #7d89a3;
         --mk-line: #263248;
         --mk-cta: #8fa9e6;
+        --mk-bad: #e57373;
       }
       body {
         margin: 0;
         background: var(--mk-page);
-        color: var(--mk-ink);
         font-family: 'Assistant', system-ui, sans-serif;
+        color: var(--mk-ink);
       }
       .wrap {
-        max-width: 1180px;
+        max-width: 1320px;
         margin: 0 auto;
-        padding: 22px 16px 80px;
+        padding: 26px 18px 70px;
       }
       .doc-h h1 {
-        font-family: 'Secular One', system-ui, sans-serif;
+        font-family: 'Secular One', sans-serif;
         font-size: 25px;
         margin: 0 0 8px;
       }
       .doc-h p {
-        margin: 0 0 6px;
+        margin: 0 0 8px;
+        font-size: 13px;
+        line-height: 1.8;
         color: var(--mk-prose);
-        font-size: 14px;
-        line-height: 1.6;
+        max-width: 92ch;
+      }
+      code {
+        font:
+          600 11.5px 'JetBrains Mono',
+          monospace;
+        background: color-mix(in srgb, var(--mk-ink) 7%, transparent);
+        padding: 1px 4px;
+        border-radius: 4px;
+        direction: ltr;
+        display: inline-block;
       }
       .controls {
-        position: sticky;
-        top: 0;
-        z-index: 40;
         display: flex;
         flex-wrap: wrap;
-        gap: 6px;
         align-items: center;
-        margin: 16px 0 20px;
-        padding: 10px;
-        border-radius: 12px;
+        gap: 8px;
         background: var(--mk-surface);
         border: 1px solid var(--mk-line);
+        border-radius: 14px;
+        padding: 10px 14px;
+        margin-bottom: 20px;
+        position: sticky;
+        top: 8px;
+        z-index: 5;
       }
       .controls .lbl {
         font-size: 11px;
+        font-weight: 700;
         color: var(--mk-faint);
-        margin-inline-start: 6px;
       }
       .controls .sep {
-        inline-size: 1px;
-        block-size: 22px;
+        width: 1px;
+        height: 18px;
         background: var(--mk-line);
-        margin: 0 4px;
+        margin-inline: 6px;
       }
       .controls button {
         font: inherit;
         font-size: 12px;
-        padding: 5px 11px;
-        border-radius: 8px;
+        font-weight: 700;
+        padding: 6px 12px;
+        border-radius: 999px;
         border: 1px solid var(--mk-line);
         background: var(--mk-surface);
         color: var(--mk-prose);
@@ -8892,77 +10646,124 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         color: var(--mk-cta);
         background: color-mix(in srgb, var(--mk-cta) 12%, transparent);
       }
-      .case {
+      section.case,
+      .panel {
         background: var(--mk-surface);
         border: 1px solid var(--mk-line);
-        border-radius: 14px;
-        margin-bottom: 22px;
+        border-radius: 18px;
         overflow: hidden;
+        margin-bottom: 24px;
       }
-      .case > h2 {
-        font-family: 'Secular One', system-ui, sans-serif;
-        font-size: 17px;
+      section.case > h2,
+      .panel > h2 {
         margin: 0;
-        padding: 13px 16px 0;
+        padding: 12px 16px;
+        font-size: 14.5px;
+        font-weight: 700;
+        border-block-end: 1px solid var(--mk-line);
+        background: var(--mk-sub);
       }
-      .case > .note {
-        margin: 6px 16px 0;
+      section.case > .note,
+      .panel > p,
+      .panel > ul {
+        margin: 0;
+        padding: 11px 16px;
+        font-size: 12.5px;
+        line-height: 1.75;
         color: var(--mk-prose);
-        font-size: 13px;
-        line-height: 1.65;
       }
-      .case > .note b {
+      section.case > .note b,
+      .panel > ul b {
         color: var(--mk-ink);
       }
-      .strip {
+      .panel > ul {
+        padding-inline-start: 32px;
+      }
+      .panel > ul li {
+        margin-bottom: 7px;
+      }
+      .pair {
         display: flex;
         flex-wrap: wrap;
-        gap: 18px;
-        padding: 16px;
+        gap: 22px;
+        padding: 18px 16px;
         align-items: flex-start;
         justify-content: center;
       }
       .col {
         flex: 0 0 auto;
       }
+      .cap {
+        display: block;
+        width: var(--fw);
+        margin: 8px auto 0;
+        font-size: 11px;
+        line-height: 1.6;
+        color: var(--mk-faint);
+      }
       .tag {
         display: block;
         width: fit-content;
-        margin: 0 auto 7px;
+        margin: 0 auto 8px;
         font-size: 11px;
         font-weight: 700;
         padding: 3px 10px;
         border-radius: 999px;
-        background: color-mix(in srgb, var(--mk-ink) 8%, transparent);
-        color: var(--mk-prose);
       }
-      .tag.t0 {
+      .tag.before {
         background: rgba(198, 40, 40, 0.1);
         color: #e06767;
       }
-      .tag.t1 {
+      .tag.after {
         background: rgba(60, 154, 107, 0.12);
         color: #4fb488;
       }
-      .mk-frame {
-        position: relative;
-        inline-size: var(--fw);
-        block-size: var(--fh);
-        border: 1px solid var(--mk-line);
-        border-radius: 20px;
-        overflow: hidden;
-        background: var(--screen);
-        /* Measured, not computed: `useSwipePager` publishes the host's real width, and
-           `calc(var(--fw) - 32px)` was 2px out because the frame carries a 1px border.
-           `--mk-page-w` is written by `draw()` after the first pass. */
-        --swipe-page-w: var(--mk-page-w, 326px);
+      .tag.neutral {
+        background: color-mix(in srgb, var(--mk-cta) 12%, transparent);
+        color: var(--mk-cta);
       }
-      /* The body's own scroller, reproduced: `.app` > `main.body` is the real nesting and
-         `.day-swipe` is its child. */
-      .mk-frame .body {
-        position: absolute;
-        inset: 0;
+      /* A phone frame. Width is a variable so the screen control reflows every
+         frame on the page with one property write. */
+      .phone {
+        width: var(--fw);
+        border: 1px solid var(--mk-line);
+        border-radius: 22px;
         overflow: hidden;
+        background: var(--mk-sub);
+      }
+      /* The sheet's own ground, so a frame is judged on the surface the form
+         actually renders on rather than on the page. */
+      .fbody {
+        background: var(--paper, #fff);
+        padding: 14px 15px 16px;
+        color: var(--ink, #16233d);
+      }
+      /* The 80vh fold on an 844px phone — 675px of visible sheet (ADR-0155's own
+         measurement). Drawn, because "it fits" is the claim being made. */
+      .foldbox {
+        position: relative;
+      }
+      /* 80vh of the SELECTED screen, not a constant. A sheet shows ~675px of itself on an
+         844px phone and ~512px on a 640px one — the file drew the 844 line at both widths,
+         which quietly flattered every claim read at 360×640. `--fold` is written by the
+         screen control beside `--fw`. */
+      .foldbox .fold {
+        position: absolute;
+        inset-inline: 0;
+        border-top: 2px dashed var(--mk-bad);
+        top: var(--fold, 675px);
+        pointer-events: none;
+      }
+      .foldbox .fold span {
+        position: absolute;
+        inset-inline-end: 4px;
+        top: 3px;
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--mk-bad);
+        background: var(--mk-surface);
+        padding: 0 4px;
+        border-radius: 4px;
       }
       table.m {
         width: 100%;
@@ -8972,7 +10773,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
       table.m th,
       table.m td {
         text-align: start;
-        padding: 7px 16px;
+        padding: 8px 16px;
         border-block-start: 1px solid var(--mk-line);
         vertical-align: top;
       }
@@ -8980,22 +10781,8 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         color: var(--mk-faint);
         font-size: 11px;
       }
-      table.m td.n {
-        font-family: 'JetBrains Mono', monospace;
+      table.m td:first-child {
         font-weight: 700;
-        white-space: nowrap;
-      }
-      .notes ul {
-        margin: 0;
-        padding: 0 16px 14px 30px;
-      }
-      .notes li {
-        color: var(--mk-prose);
-        font-size: 13px;
-        line-height: 1.7;
-        margin-bottom: 5px;
-      }
-      .notes li b {
         color: var(--mk-ink);
       }
       @media (prefers-reduced-motion: reduce) {
@@ -9030,19 +10817,33 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
     </style>
   </head>
 
-  <body class="wp-dragging">
+  <body>
     <div class="wrap">
       <div class="doc-h">
-        <h1>יום שמסתובב מתחת לכרטיס מוחזק</h1>
+        <h1>למסע יש תאריך אחד</h1>
         <p>
-          <b>היום הבא נכנס אל האצבע, והיום שאתה מעליו לא נע.</b> ההחזקה בקצה כבר מחליפה יום
-          (ADR-0116 §2b) — אבל בשקט מוחלט, ואז בקפיצה. ההצעה כאן היא לא להוסיף אנימציה אלא
-          להפסיק להיות החריג: לאפליקציה יש כבר דפדוף עמוד (ADR-0200 §7), והחלפת היום הזאת היא
-          היחידה שלא משתמשת בו.
+          המראה ונחיתה נקראו כשני מסלולים, כי הם מצוירים כשתי אותן תיבות בדיוק · תאריך ושעה, זה
+          מעל זה, באותו משקל ובאותו מקום. ההצעה כאן היא לא לסדר את התיבות אלא להוריד אחת מהן:
+          <b>למסע יש תאריך קלנדרי אחד</b> · היציאה הראשונה שלו. כל רגע שאחריה הוא שעה ועוד יום
+          יחסי שהאפליקציה גוזרת (<code>באותו יום</code> · <code>למחרת</code> · <code>+2</code>).
+          טיסת חזור הייתה חייבת תאריך משלה, ועל המסך יש רק אחד · אז הקריאה השגויה מפסיקה להיות
+          אפשרית, לא רק פחות סבירה.
         </p>
         <p>
-          כל מספר בטבלה בתחתית נקרא מה-DOM המרונדר בעמוד הזה, במסך ובערכת הצבעים שנבחרו · לא
-          מהקוד ולא מהערכה.
+          שאר החלקים נובעים מאותו כלל: המסע מצויר כאובייקט אחד עם חלקים (בדיוק
+          <code>.journey</code> שתצוגת היום כבר מציירת), ועצירה נוספת ונמחקת על הפס עצמו.
+        </p>
+        <p>
+          <b>ולהצעות יש טבלה, לא פיצ׳ר.</b> תאריך (§5) ומקום (§8) הם אותה גלולה ואותה רשימת
+          <b>מקורות</b> מסודרת · "הצעה אחת לכל היותר" הופך לתכונה של המכניזם (קח את המקור
+          הראשון שעונה) במקום לכלל שכל אתר קריאה זוכר. מקור נוסף · זיכרון מקומות בין טיולים,
+          PNR שנשלף מ-Gmail, קריאת Places לנמלי התעופה של היעד · הוא <b>שורה</b>. זה האידיום
+          ש-ADR-0154 §5 כבר בחר במילים שלו: <i>"a table of relation rules rather than a
+          hard-coded ||, so a second relation is an entry"</i>.
+        </p>
+        <p>
+          כל מספר בטבלת המדידה בתחתית נקרא מה-DOM המרונדר בעמוד הזה, במסך ובערכת הצבעים שנבחרו ·
+          לא מהקוד ולא מהערכה.
         </p>
       </div>
 
@@ -9052,87 +10853,286 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         <button type="button" data-theme="dark">כהה</button>
         <span class="sep"></span>
         <span class="lbl">מסך</span>
+        <!-- The `⁦…⁩` pair is U+2066/U+2069, the isolate `lib/bidi.ts`'s
+             `ltrIsolate` emits (ADR-0118). Without it `360×640` renders as
+             `640×360` in this RTL flow. -->
         <button type="button" data-w="360" aria-pressed="true">⁦360×640⁩</button>
         <button type="button" data-w="390">⁦390×844⁩</button>
         <span class="sep"></span>
-        <span class="lbl">כמה ממחר נחשף</span>
-        <button type="button" data-reveal="16">⁦16⁩</button>
-        <button type="button" data-reveal="24" aria-pressed="true">⁦24⁩</button>
-        <button type="button" data-reveal="32">⁦32⁩</button>
-        <button type="button" data-reveal="44">⁦44px⁩</button>
+        <span class="lbl">היום היחסי</span>
+        <button type="button" data-day="always" aria-pressed="true">תמיד</button>
+        <button type="button" data-day="diff">רק כשהוא שונה</button>
         <span class="sep"></span>
-        <span class="lbl">הרוח</span>
-        <button type="button" data-ghost="1" aria-pressed="true">מוצג</button>
-        <button type="button" data-ghost="0">מוסתר</button>
+        <span class="lbl">הצעת תאריך</span>
+        <button type="button" data-offer="pills" aria-pressed="true">גלולות</button>
+        <button type="button" data-offer="prefill">מלא מראש</button>
+        <button type="button" data-offer="off">בלי</button>
+        <span class="sep"></span>
+        <span class="lbl">הלוך ושוב</span>
+        <button type="button" data-rt="derived" aria-pressed="true">נגזר מהטיול</button>
+        <button type="button" data-rt="off">כבוי</button>
       </div>
 
-      <!-- ═══════════════════════ §1 ═══════════════════════ -->
+      <!-- ══════════════════════════ §1 ══════════════════════════ -->
       <section class="case">
-        <h2>§1 · הרמז הוא ההתחלה של הפנייה, לא מחוון נפרד</h2>
+        <h2>§1 · הקריאה השגויה, מצוירת · ואיפה בדיוק היא נולדת</h2>
         <p class="note">
-          ארבע התמונות הן <b>אותה תנועה בארבעה זמנים</b>: 0 · 233 · 467 · 700ms מתוך ההשהיה.
-          מפני שהתנועה <b>לינארית</b>, מקום שנדגם הוא זמן שנדגם — וזה בדיוק מה שהופך את התנועה
-          עצמה למחוון ההתקדמות, בלי טבעת, בלי פס, ובלי מלה חדשה באוצר המילים. שימו לב למה שלא
-          זז: <b>השורה שמתחת לאצבע נשארת במקומה</b>, כי אסור להזיז מטרה בזמן שמכוונים אליה.
+          שני הפריימים הם אותו רגע בדיוק: השלב <code>מתי</code> של טיסה אחת, לפני שהוקלד משהו.
+          <b>מימין · מה שנשלח היום.</b> שני בלוקים זהים במבנה, כל אחד תאריך ריק ושעה ריקה, אותו
+          משקל ואותו מקום · והמילים לא מפרידות: גם לטיסת חזור יש
+          <code>המראה</code>. אף אחד מהם לא אומר על איזה מקום הוא מדבר, למרות שהשלב שלפניו אסף
+          את שניהם · <code>bs-leg-head</code> מרנדר את
+          <code>RouteLabel</code> רק כש-<code>multiLeg || twoLegs</code>, כלומר בדיוק לא במקרה
+          שדווח. <b>משמאל · ההצעה.</b> תאריך אחד לכל המסע, שם מקום על כל רגע, ומשך הקטע על הפס
+          בין שני הצמתים. הקריאה "זו טיסת החזור" דורשת תאריך שני, ואין.
+          <b>ובגובה זה יוצא תיקו, וזו לא הטענה כאן.</b> במצב הריק ההצעה נמדדת בערך כמו מה
+          שנשלח היום · היא <i>מוסיפה</i> שם מקום לכל רגע ועוד גלולת הצעה, ומחזירה את זה
+          בתאריך השני שירד. הגרסה הראשונה של הקובץ הזה הציעה <b>שתי</b> גלולות ואז ההצעה
+          <i>כן</i> הייתה גבוהה יותר · הפילטר של §5, שהוא הערה של הבעלים, הוא מה שהחזיר את
+          זה. מה שההצעה קונה הוא שהקריאה השגויה מפסיקה להיות אפשרית; טענת הגובה שייכת ל-§7
+          לבדו, ושם היא נמדדת מול קו הקיפול.
         </p>
-        <div class="strip" id="s1"></div>
+        <div class="pair" id="s1"></div>
       </section>
 
-      <!-- ═══════════════════════ §2 ═══════════════════════ -->
+      <!-- ══════════════════════════ §2 ══════════════════════════ -->
       <section class="case">
-        <h2>§2 · הפנייה — אותו סעיף שהחלקה כבר מקבלת</h2>
+        <h2>§2 · תאריך מוחלט אחד לכל מסע · והשאר הוא יום יחסי, נגזר וניתן לדריסה</h2>
         <p class="note">
-          כשההשהיה נגמרת, הרצועה נעה כדבר אחד ומשלימה עמוד + מרזב, ב-<b>‎--t-base</b> ו-<b
-            >‎--ease-standard</b
-          >
-          — הסעיף המדויק של ההחלקה (§9b), כולל הסיבה שאין שם חריגה: על מסלול של ‎382px חריגה
-          קטנה היא נדנוד. אם האצבע עוד בקצה, הרמז מתחיל מחדש מיד, וכך הולכים כמה ימים בתנועה
-          אחת.
+          שלושת המצבים של אותו צומת נחיתה. <b>הגזירה היא הכלל שהאפליקציה כבר כתבה</b> · ADR-0037:
+          על יום אחד, סוף שקודם להתחלה הוא הזנב שחוצה חצות. אותו חשבון בדיוק, מוצג במילה במקום
+          במרומז: שעת הנחיתה מוקדמת מההמראה ⇒ <code>למחרת</code>. הטוקן הוא
+          <code>.vt.vt-word</code> · הצורה שקיימת כבר בשביל "ערך שהוא מילה ולא ספרה", אז המכניזם
+          החדש כאן הוא אפס. הוא נשאר לחיץ, כי המקרה הנדיר (קטע ארוך מ-24 שעות · רכבת לילה, מעבורת)
+          חייב דרך לומר <code>+2 ימים</code> · הצעה, לא כלוב, בדיוק כמו
+          <code>nearestRoundSlot</code> ב-ADR-0036 §2a.
         </p>
-        <div class="strip" id="s2"></div>
+        <div class="pair" id="s2"></div>
       </section>
 
-      <!-- ═══════════════════════ §3 ═══════════════════════ -->
+      <!-- ══════════════════════════ §3 ══════════════════════════ -->
       <section class="case">
-        <h2>§3 · המודל שנדחה: כל הרצועה נוטה</h2>
+        <h2>§3 · המסע הוא אובייקט אחד עם חלקים · וזה הבלוק שתצוגת היום כבר מציירת</h2>
         <p class="note">
-          הניסיון הראשון היה להזיז את כל הרצועה — «להתחיל את ההחלקה» — והרינדור הרג אותו בשתי
-          מדידות. <b>המרזב חייב להיחצה קודם</b>: בקצה של ‎24px, נטייה של ‎12px חושפת ‎12px של
-          רקע העמוד ו-‎0px ממחר. וכל פיקסל של נטייה כזאת <b>מזיז את שורת היעד מתחת לאצבע</b> —
-          מה שהופך את הרמז לתשלום על דיוק הכיוון. שמאל: המודל שנדחה. ימין: המוצע, באותו רגע.
+          <code>day-join.css</code> על <code>.journey</code>, במילים שלו:
+          <i>"One object with parts… a connection is not a mark BETWEEN two cards, it is the
+          inside of one thing"</i> · והפס האמברי עם
+          <code>ConnectionBand</code> בפנים, על <code>tight</code> לפי מצב התחבורה. תצוגת היום
+          מציירת מסע עם עצירה כאובייקט אחד; הטופס מפצל את אותו מסע לשלבים בלתי-קשורים. כאן הוא
+          נכתב באותה צורה, ואותו <code>.journey-stop</code> · לא מסוגנן מחדש · אומר את זמן
+          ההמתנה <b>בזמן שמקלידים אותו</b>, ולא רק על היום שאחרי השמירה. שימו לב לפריים השמאלי:
+          <code>1:15 שע׳</code> הוא 75 דקות, מתחת ל-<code>tightMinutes: 90</code> של טיסה, אז
+          הפס אומר <code>עצירת ביניים קצרה</code> ומתחזק שמינית · תיאורי ולא אזהרה, וללא
+          <code>--miss</code>, כי האפליקציה לא יודעת מה הטרמינל שלכם (ADR-0159 §4). ב-§7 יש
+          מסע עם שתי עצירות שאחת מהן קצרה והשנייה לא, זה לצד זה.
         </p>
-        <div class="strip" id="s3"></div>
+        <div class="pair" id="s3"></div>
       </section>
 
-      <!-- ═══════════════════════ §4 ═══════════════════════ -->
+      <!-- ══════════════════════════ §4 ══════════════════════════ -->
       <section class="case">
-        <h2>§4 · סוף הטיול, והנסיגה</h2>
+        <h2>§4 · עצירה נוספת ונמחקת על הפס · ואחד משני הפריימים כאן הוא באג שנשלח</h2>
         <p class="note">
-          ביום האחרון אין שכן, ולכן <b>שום דבר לא נע</b> — אותה אמירה שההחלקה עושה בהיעדר
-          החלונית (ADR-0182 §5). <b>ביט</b> נשקל ונדחה: הרצועה נכנסת ויוצאת מהרצועה עשרות
-          פעמים בגרירה רגילה, וביט בכל פעם הוא רעש; והציר של <code>BEAT.REBUFF</code> אנכי
-          (‎-7px ב-40%) בזמן שהחוסר כאן אופקי. נסיגה — יציאה מהרצועה לפני שההשהיה נגמרה —
-          מתקפלת חזרה ב-<b>‎--t-quick</b> על <b>‎--ease-exit</b>: הפנייה מכוונת, הביטול הוא
-          תיקון, ומכניזם שמנגן את שתיהן אותו דבר אומר שהן אותו דבר.
+          <b>מימין · מה שקורה היום, ולא כהצעה עיצובית.</b>
+          <code>+ עצירת ביניים</code> מוסיף <code>undefined</code> ל-<code>stops</code>;
+          מחיקה של עצירה עוברת דרך <code>setStop(i, undefined)</code>, שהקורא היחיד שלו הוא
+          <code>pp-clear</code> · והכפתור הזה מרונדר <code>{current && …}</code>. כלומר השורה
+          היחידה שצריך למחוק היא השורה היחידה בלי פקד מחיקה, והלחיצה על עצמה פותחת שליחות למפה
+          שמפרקת את הגיליון. ADR-0159 §5 החליט ש"ניקוי הוא הסרה" ומחק ✕ שני · הפער הוא שהראשון
+          נעדר בדיוק כשאין מה לנקות. <b>משמאל · ההצעה.</b> ה-<code>+</code> יושב על הקטע, אז
+          השורה נוספת במקום שנגעו בו ולא מעל הכפתור; וכל עצירה נושאת ✕ משלה, בין אם יש בה מקום
+          ובין אם לא. <b>ושימו לב שזה שלב ה<code>מה ואיפה</code>, לא <code>מתי</code></b> ·
+          עצירה היא <i>מקום</i>, אז הוספה שלה שייכת לשלב שאוסף מקומות (ADR-0192 §3), ולחיצה
+          עליה משלב הזמנים הייתה שליחות למפה באמצע לוח-זמנים. זה אותו פס של §3 בדיוק, פעם אחת
+          עם מקומות ופעם עם שעות · אותן נקודות, שני שלבים, ורצף אחד שאפשר לעקוב אחריו.
         </p>
-        <div class="strip" id="s4"></div>
+        <div class="pair" id="s4"></div>
       </section>
 
-      <!-- ═══════════════════════ §5 ═══════════════════════ -->
+      <!-- ══════════════════════════ §5 ══════════════════════════ -->
       <section class="case">
-        <h2>§5 · הכרטיס שמעל — האם הוא מסתיר את מה שנחשף?</h2>
+        <h2>§5 · שני קצות הטיול, מוצעים · ולא ממולאים</h2>
         <p class="note">
-          זה הסיכון שיכול להרוג את כל ההצעה, ורק רינדור עונה עליו: הרוח (‎<code
-            >.wp-dragghost</code
-          >) הוא שיבוט ברוחב שורה שיושב מתחת לאצבע — כלומר <b>מעל הקצה שנחשף</b>. הוא שקוף
-          למחצה בכוונה (‎<code>--drag-ghost-opacity</code>, ‎0.78, ADR-0161 §8), אז השאלה היא
-          לא «נראה או לא» אלא כמה. הטבלה מודדת את החפיפה בפיקסלים ואת מה שנשאר גלוי לגמרי.
+          <code>Trip.startDate</code> ו-<code>Trip.endDate</code> קיימים ולא-null עוד לפני שיש
+          הזמנה אחת, ו-<code>booking-prefill.ts</code> כבר מותח את הקו:
+          <i>"No clock may be guessed, but the DAY still may"</i> · ולכן
+          <code>bookingTimeOffer('flight').kind === 'none'</code> לא מנחש שעה. הצעה של תאריך היא
+          בדיוק בצד המותר של הקו הזה. <b>למה גלולות ולא מילוי מראש:</b> תאריך שהופיע לבד על
+          התחייבות קשה (ADR-0011) נראה כאילו נענה, ומי שלא קרא אותו יקבל טיסה ביום הלא נכון ·
+          בעוד שהיום היחסי של §2 בטוח בדיוק כי הוא נגזר ממה שהוקלד. הפקד למעלה מצייר את שתי
+          החלופות כדי שהשיחה תהיה על משהו מצויר.
         </p>
-        <div class="strip" id="s5"></div>
+        <p class="note">
+          <b>ולמה הצעה אחת ולא שתיים · זו ההערה של הבעלים, והקוד כבר יודע לענות עליה.</b>
+          <code>readiness.ts</code> מחזיק <code>reachesDestination</code>, ובעזרתו הוא כבר
+          מבדיל הלוך מחזור בשביל <code>hasOutbound</code>/<code>hasReturn</code>. אותה
+          פונקציה בדיוק עונה כאן: היעד מגיע ליעד הטיול ⇒ זו הדרך לשם ⇒
+          <code>תחילת הטיול</code>; המוצא מגיע ⇒ זו הדרך הביתה ⇒ <code>סוף הטיול</code>; שני
+          הקצוות בפנים ⇒ קפיצה פנימית, ואז קצות הטיול הם התשובה הלא נכונה, אז <b>אין הצעה</b>.
+          <b>וזה אותו פגם בדיוק שבגללו ADR-0154 נכתב</b>, פונקציה אחת הלאה: האפליקציה יודעת
+          להבדיל הלוך מחזור בפינה אחת, והטופס שהיה נעזר בזה לא שומע עליה · שם זה היה
+          <code>hasOutbound</code> ב-<code>PlanHome</code>, כאן זו הפונקציה עצמה, שהיא
+          מודולרית-פרטית. ההחלטה מייצאת אותה, שינוי של שורה אחת בקובץ שכבר מחזיק את השאלה.
+          <b>והפוסטורה של הפילטר היא מה שמציל אותו:</b> הפונקציה לא יכולה לענות "לא" · מקום
+          שאין דרך למקם הוא לא-מאומת · אז הפילטר יכול רק <i>להוריד</i> הצעה, לעולם לא להוסיף
+          הצעה שגויה.
+        </p>
+        <div class="pair" id="s5"></div>
       </section>
 
+      <!-- ══════════════════════════ §6 ══════════════════════════ -->
       <section class="case">
-        <h2>מדידות</h2>
+        <h2>§6 · הלוך ושוב נזרע · הוא לא נגזר</h2>
+        <p class="note">
+          ההערה של הבעלים על ההצעה הראשונה: <i>"lots of times the to and from are a little
+          different (for example not the same airport, different layovers etc.)"</i> · והקוד
+          מסכים איתה. <code>legBooking</code> כותב <b>הזמנה אחת לכל קטע</b>, עם שני המקומות שלה
+          ועם כותרת שנגזרת מהם; הדבר היחיד שכופה מראה הוא
+          <code>const reversed = [...routePoints].reverse()</code> · ארבעה מקומות קריאה, כולם
+          state של טופס. אז <code>הלוך ושוב</code> <b>זורע</b> מסע שני בנקודות ההפוכות · כי זה
+          המקרה השכיח · וכל צומת בו הוא בורר מקום אמיתי, עם רשימת עצירות משלו ומספר קטעים משלו.
+          בפריים השמאלי החזרה כבר סוטה: יעד אחר ועצירה שאין להלוך, וההלוך לא נגע. הכותרת אומרת
+          <code>אותו מסלול בהיפוך</code> כל עוד זה נכון, והמשפט נעלם ברגע שמשהו משתנה · כך רואים
+          מה האפליקציה הניחה בלי פקד שני. <b>מה זה עולה:</b>
+          <code>legCount</code> מפסיק להיות מספר אחד לשני המסעות, ו-<code>roundTripPartner</code>
+          יזהה זוג שסטה רק דרך קוד ההזמנה המשותף (ADR-0154 §5 כבר כותב "או") · שזה בדיוק מה שיש
+          לכרטיס אחד.
+        </p>
+        <div class="pair" id="s6"></div>
+      </section>
+
+      <!-- ══════════════════════════ §7 ══════════════════════════ -->
+      <section class="case">
+        <h2>§7 · שלב לכל מסע · במקום שלב לכל קטע (הפיכה של ADR-0159 §5)</h2>
+        <p class="note">
+          קו הקיפול מצויר: 675px מהגיליון נראים על טלפון 844px, וזו המדידה של ADR-0155 עצמו.
+          <b>"קטע הוא שלב" נבחר מתוך אילוץ, לא מתוך תוכן:</b> ADR-0159 §5 מפנה ל-492px לכל
+          לוח-זמנים ש-ADR-0154 §4 מדד · וכשההגעה היא שעה ויום יחסי, קטע עולה שתי שורות.
+        </p>
+        <p class="note">
+          <b>והטענה הראשונה שכתבתי כאן הייתה פשוט לא נכונה · הרינדור הפיל אותה.</b> "שלושה
+          קטעים נכנסים לשלב אחד" נמדד ב-708px מול 675px, כלומר <i>מעל</i>. אחרי שהצומת של
+          עצירה ויתר על התווית השנייה שלו · הפס שמעליו כבר אומר מה השורה שמתחתיו · הבלוק עצמו
+          נכנס בכל שלושת המקרים: <b>220px</b> בלי עצירה, <b>396px</b> עם אחת,
+          <b>607px</b> עם שתיים, מול 675px. <b>אבל השלב כולו, עם סרגל השלבים והכפתורים,
+          עומד על 720px עם שתי עצירות</b> · מעל בכ-46px, והוא גולל. זה הניסוח המדויק, והוא
+          המספר של הטבלה ולא של הפרוזה · שזו הסיבה שהקובץ הזה קיים.
+        </p>
+        <p class="note">
+          <b>ומה שמחזיק את §7 גם כשהמסע הארוך לא נכנס:</b> טענת הגובה היא שהמקרה השכיח נכנס,
+          לא שכל מקרה נכנס · והגיליון גולל מאז ומתמיד עם פוטר נעוץ, שזו החלופה ש-ADR-0155
+          עצמו רשם כ"כבר המצב". שני הנימוקים האחרים לא תלויים בקיפול בכלל.
+          <b>וההמתנה:</b> זמן העצירה נראה בזמן שמקלידים אותו, מה שבין שני שלבים אי אפשר. ADR-0155 §1 מונה בעצמו את
+          המחיר השלישי של חיתוך טופס · שאי אפשר לסקור התחייבות קשה בשלמותה לפני שחותמים
+          עליה · וזה מחזיר אותו למסע.
+        </p>
+        <p class="note">
+          <b>ועוד משהו שהרינדור גילה, והוא חזק יותר ממה שתוכנן:</b> הסירוב שבגללו ADR-0159 §5
+          קרא לשלב-לכל-קטע "הנימוק החזק ביותר לחיתוך הטופס" · <code>legBeforeArrival</code>,
+          "היציאה לפני ההגעה ל…" · <b>מפסיק להתקיים</b>. הוא קיים כי שני תאריכים מוחלטים
+          מאפשרים להקליד יציאה שקודמת לנחיתה שלפניה; כשלמסע יש תאריך אחד וכל רגע אחריו הוא
+          <b>הרגע הקדימי הקרוב</b>, יציאה ב-19:05 אחרי נחיתה ב-19:40 היא לא שגיאה אלא מחר ·
+          והקטע אומר מה זה עולה. <b>נמנע במקום מסורב</b>, שזה הכלל של ADR-0150 §8 עצמו
+          (<i>"the impossible bound is PREVENTED rather than refused"</i>) ואותו כלל
+          ש-<code>minTime</code> כבר הולך לפיו בשדה השעה. הפריים השלישי הוא ההוכחה, והוא צויר
+          קודם כפריים של <i>סירוב</i> · כלומר המוקאפ סתר את העיצוב של עצמו עד שהרינדור הראה
+          את זה. מה ש<b>כן</b> נשאר סירוב הוא <code>returnBeforeArrival</code>: לחזרה יש
+          תאריך מוחלט <i>משלה</i>, אז היא באמת יכולה לצאת לפני שההלוך נחת.
+        </p>
+        <div class="pair" id="s7"></div>
+      </section>
+
+      <!-- ══════════════════════════ §8 ══════════════════════════ -->
+      <section class="case">
+        <h2>§8 · מקום מוצע · נגזר מהקטעים שכבר יש בטיול</h2>
+        <p class="note">
+          הבקשה של הבעלים, במילים שלו: <i>"at least we can for example suggest the arrival
+          airport for the return flight if we have the flight to the destination"</i> · וזה
+          נגזר מאותה פונקציה של §5. קטע שמגיע ליעד הוא הדרך לכאן (בדיוק
+          <code>hasOutbound</code>), ולכן בטיסה הבאה <b>המוצא</b> הוא המקום שבו הוא נחת
+          ו<b>היעד</b> הוא המקום שממנו הוא יצא. חשוב מה זה לא: זה לא הפקד
+          <code>הלוך ושוב</code> של §6 · ההסקה נקראת מהקטעים ש<b>כבר בטיול</b>, אז היא עובדת
+          לחזרה שנכתבה שבועיים אחרי ההלוך, בטופס אחר, בלי שאף אחד קישר ביניהם.
+          <b>וזה מייתר את השליחות למפה לגמרי</b> · לחיצה אחת בטופס, בלי לפרק את הגיליון ובלי
+          קריאת רשת. שתי ההצעות · תאריך ומקום · הן אותה גלולה ואותה טבלת מקורות; מקור נוסף הוא
+          שורה, לא מכניזם.
+        </p>
+        <p class="note">
+          <b>מה כבר עובד היום, ומה לא:</b> <code>PlaceErrand.kind</code> קיים ואומר בדיוק את
+          זה · <i>"A flight's leg wants an airport, so the tab's search asks Google for
+          airports and stops offering the terminal, the car park and the hotel next
+          door"</i>. אבל <code>PLACE_SEARCH_KIND</code> הוא איבר <b>אחד</b>,
+          <code>AIRPORT</code>, וההערה של <code>findPlace</code> אומרת את הפער בעצמה:
+          <i>"a train's stop is a station this restriction has no type for yet"</i> · כלומר
+          קצה של רכבת או אוטובוס מחפש בכל הקורפוס. זו שורה אחת ב-<code>PLACE_SEARCH_KIND</code>
+          ועוד ציר על <code>BOOKING_TYPE_PROFILE</code>, שכבר עונה על כל שאלה אחרת פר-סוג ·
+          ואז התנאי <code>type === FLIGHT</code> שיושב היום ב-<code>findPlace</code> נעלם
+          לתוך הטבלה.
+        </p>
+        <div class="pair" id="s8"></div>
+      </section>
+
+      <!-- ══════════════════════════ §9 ══════════════════════════ -->
+      <section class="case">
+        <h2>§9 · מסע ארוך · צומת שמולא מתקפל לשורה</h2>
+        <p class="note">
+          הערת הבעלים: <i>"the form for filling out time etc could be very long if there are
+          several layovers, so let's make sure that it doesn't exceed the page size and instead
+          becomes scrollable? Or do you suggest a better ui/ux solution for that?"</i>
+          <b>הגלילה כבר קיימת ואינה צריכה שינוי</b> · <code>.booking-sheet</code> גולל והפוטר
+          נעוץ מאז ומתמיד, וזו החלופה ש-ADR-0155 עצמו רשם כ<i>"already the case"</i>. אבל
+          גלילה היא תשובה גרועה כאן דווקא בגלל §7: הנימוק לשלב-לכל-מסע הוא שאפשר לסקור
+          התחייבות קשה <b>בשלמותה</b>, ומסע שגולל שלוש מסכים מאבד בדיוק את זה.
+        </p>
+        <p class="note">
+          <b>וההצעה הזאת נמדדת בשני המסכים, מה שתיקן טענה שהסעיף הזה הגיש קודם.</b> גיליון
+          מראה כ-675px מעצמו על טלפון 390×844 וכ-512px על 360×640 · ו-360 הוא <b>רוחב
+          התכנון</b> של ADR-0017, לא מקרה קצה. הקיפול המצויר היה 675px בשני הרוחבים, מה
+          שהחניף בשקט לכל מספר שנקרא ב-360. עכשיו הוא עוקב אחרי המסך שנבחר, וטבלת המדידה
+          אומרת מול איזה קיפול היא משווה. השורה התחתונה: הסיכום מכניס <b>כל</b> מספר עצירות
+          על 844, ועל 640 הוא מקצץ את החריגה ב-<b>75–88%</b> בלי לסגור אותה · שתיים ושלוש
+          עצירות עוד גוללות שם. המקרים השכיחים (אפס או עצירה אחת) נכנסים בכל מסך.
+        </p>
+        <p class="note">
+          <b>אז ההצעה: צומת שמולא מתקפל לשורה אחת.</b> הפקדים מתחלפים בשורה שהם יקראו כמוה
+          (<code>אמסטרדם · 19:40 · יציאה 21:45 · המתנה 2:05</code>), פתוח נשאר אחד · הראשון
+          שעוד חסר לו זמן · ולחיצה על שורה מסוכמת פותחת אותה חזרה. <b>מה שזה קונה:</b> הפס,
+          שמות המקומות והשעות נשארים על המסך <i>כולם</i>, אז המסע נקרא שלם בזמן שממלאים חלק
+          ממנו, וההמתנה בין קטעים עדיין נראית · שני הדברים ש-§7 נשען עליהם. וכשהכול מולא, הכול
+          מסוכם: מצב הסקירה שלפני <code>שמירה</code> הוא המסע כולו בשורות קומפקטיות.
+        </p>
+        <p class="note">
+          <b>ושורה מסוכמת היא עדיין פקד · אז היא חייבת להיראות כמו אחד.</b> הציור הראשון עשה
+          מהשורה כולה <code>&lt;button&gt;</code> עירום · בלי מסגרת, בלי רקע, יעד 30px ובלי
+          שכבת הישג. כלומר התנהגות בלי אפורדנס, שזה החצי הגרוע יותר לפספס בטופס · וגם כלל
+          שהאפליקציה כבר כתבה בעצמה, ב-<code>ValueToken</code>: <i>"A tappable thing inside a
+          line has to look tappable… hence a resting hairline rather than bold text that
+          happens to open a panel — which is the variant ADR-0177 drew and rejected."</i> אז
+          מקטע הערכים <b>הוא</b> <code>ValueToken</code>, בצפיפות המורכבת שהפרימיטיב כבר מתיר,
+          בתוך <code>.wf-line</code> · כלומר הדקדוק של ADR-0177 בלי שינוי: הפרוזה היא הקרקע
+          והערך הוא טוקן. נמדד 31.8px עם הישג של <b>45.8px</b>, המספר של הפרימיטיב עצמו.
+          <b>ושם המקום נשאר בכוונה מחוץ לטוקן</b> · מקום נערך ב<code>מה ואיפה</code> ושעה
+          ב<code>מתי</code> (ADR-0192 §3), אז הסיכום עושה לחיץ בדיוק את החצי שנערך כאן.
+        </p>
+        <p class="note">
+          <b>ולמה זה לא <code>Collapsible</code>, למרות שזה המועמד המובן מאליו</b> (ADR-0098,
+          ארבעה אתרי קריאה): הפרימיטיב הזה מנפיש <code>max-height</code>, וזה בדיוק מה
+          ש-ADR-0155 §4 אוסר בתוך שלב טופס · החיתוך של ADR-0152 §6, שבו
+          <code>.wp-event-actions</code> מנפיש לתקרה <b>קבועה</b> וקוצץ בשקט. גובה של קטע
+          חסום היום, וזה בעצמו הנימוק שיצר את החיתוך ההוא. אז מה שממוחזר כאן הוא ה<b>פוסטורה</b>
+          של פרימיטיב השלבים ולא הרכיב: מחליפים תוכן, נותנים לגיליון להשתנות, ואף גובה לא מונפש.
+          אותו טרייד ש-ADR-0155 §4 כבר קיבל במפורש.
+        </p>
+        <div class="pair" id="s9"></div>
+      </section>
+
+      <div class="panel">
+        <h2>מדידה · נקראת מה-DOM החי</h2>
+        <p>
+          כל שורה נמדדת מהתיבה המרונדרת למעלה, במסך ובערכה שנבחרו · רוחב המסך משנה חלק מהמספרים,
+          אז החליפו וקראו שוב. הרצפה שכל פקד חדש נמדד מולה היא 44px (ADR-0017), והתקרה היא 675px
+          של גיליון נראה (ADR-0155).
+        </p>
         <table class="m" id="meas">
           <thead>
             <tr>
@@ -9143,367 +11143,886 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           </thead>
           <tbody></tbody>
         </table>
-      </section>
+      </div>
 
-      <section class="case notes">
-        <h2>מה נבחר, ומה נדחה</h2>
+      <div class="panel">
+        <h2>הערות · מה נבחר, ומה נדחה ולמה</h2>
         <ul>
           <li>
-            <b>נבחר · השכן נכנס, הדף לא נע.</b> מונח אחד נוסף ל-<code>transform</code> הקיים
-            של <code>.day-peek</code>, ושתי כללים שמניעים אותו. זה כל הדלתא — מה שאומר
-            שהאפליקציה כבר ידעה לצייר את זה.
+            <b>לסדר את שתי התיבות במקום להוריד אחת.</b> נדחה, וזה אותו כשל ש-ADR-0177 §1 כבר
+            רשם על עצמו: <i>"Tidying is not designing"</i>. שתי תיבות מיושרות יפה הן עוד שתי
+            תיבות · והקריאה "השנייה היא טיסת החזור" חיה במבנה, לא במטריקות. אפשר ליישר שתי תיבות;
+            אי אפשר ליישר משפט אחד.
           </li>
           <li>
-            <b>נבחר · משך = ההשהיה, לא טוקן.</b> ‎700ms ארוך מכל טוקן חוץ מ-<code
-              >--t-cinematic</code
-            >, שמוקצב לרגע אחד במוצר (מעבר Plan→Trip). וטוקן היה גם משקר: התנועה חייבת להיגמר
-            בדיוק כשהיום מתחלף, אחרת היא מבטיחה זמן לא נכון. נקרא מ-<code
-              >DRAG_DAY_DWELL_MS</code
-            >
-            דרך <code>--swipe-dwell</code>.
+            <b>הגעה כמשך במקום כשעה.</b> נדחה למרות ש-ADR-0036 §3 בחר בדיוק את זה לאירוע. הכרטיס
+            ביד אומר שעת נחיתה, לא "3:45 שעות" · הזנת משך תכריח חישוב בראש בכל טיסה. המשך נשאר
+            <b>קריאה</b> על הקטע, שזה מה שהוא: נגזר משתי השעות, ולכן
+            <code>.jf-dur</code> ולא טוקן.
           </li>
           <li>
-            <b>נדחה · כל הרצועה נוטה</b> (§3) — המרזב נחצה קודם, אז רמז קריא עולה ‎24+Npx של
-            הזזת המטרה מתחת לאצבע.
+            <b>להוריד את <code>באותו יום</code> כשהוא זהה.</b> לא נדחה · הוא פקד למעלה, כי זו
+            שאלת קריאות שנפתרת בעין על זכוכית ולא בדפדפן. הברירה שנשלחת היא <b>תמיד</b>, משתי
+            סיבות: המילה היא מה שמחליף את התאריך, ובלעדיה נשארת שעה עירומה ושאלת "איזה יום זה"
+            נפתחת מחדש · והיא גם האפשרות היחידה לומר "בעצם למחרת" על קטע ארוך מ-24 שעות.
           </li>
           <li>
-            <b>נדחה · טבעת התקדמות או פס בקצה.</b> אוצר המילים של «טעינה» הוא שלוש דרגות
-            מוגדרות (ADR-0105), ואף אחת מהן לא «עוד רגע תקרה פעולה»; וזה גם רכיב חדש במקום
-            מונח אחד.
+            <b>✕ שני על עצירה.</b> ADR-0159 §5 צייר ומחק אותו, ובצדק · אבל המסקנה שלו ("ניקוי הוא
+            הסרה") מניחה שיש ✕ אחד, ועל עצירה ריקה אין. כאן ה-✕ עובר לשורת השם של הצומת, כלומר
+            הוא <b>אחד</b> ולא שני, והוא נוכח גם כשאין מקום. זה תיקון של הפער ולא הפיכה של
+            ההחלטה.
           </li>
           <li>
-            <b>נדחה · פעימה על הקצה.</b> <code>design-language.md</code>: פעימה = «חי,
-            עכשיו». לופ אומר «זה עוד קורה», וזה בדיוק ההפך ממה שההשהיה אומרת.
+            <b>מסילה מנוקדת בעמודת הסמלים.</b> נדחה · ADR-0159 §3 כבר ניסה בדיוק את זה על תצוגת
+            היום, והבעלים קרא את זה על טלפון: מסילה היא מחבר, אז היא חייבת לגעת בשני הדברים
+            שהיא מחברת. כאן הפס נמצא בתוך הבלוק ונחתך רק בשני קצות המסע (<code>.first</code> /
+            <code>.last</code>), ולכן הוא נוגע בכל צומת פנימי.
           </li>
           <li>
-            <b>נדחה · להאיר את הגלולה של מחר בסרגל.</b> נשקל ב-#670 ונדחה שם מסיבה שלא
-            השתנתה: <code>overDate</code> נקרא <b>לפני</b> שבב הפער ב-<code
-              >resolveShelfDrop</code
-            >, ושחרור בקצה לא מפיל שם כלום — סימון היה מבטיח נחיתה שלא קורית.
+            <b>לאחד את שלב <code>איפה</code> ושלב <code>מתי</code>, אם שניהם מציירים אותו פס.</b>
+            נדחה: בורר מקום הוא שליחות למפה שמפרקת את הגיליון (ADR-0134 §1), ו-ADR-0192 §3 קובע
+            איפה לפני מתי כי המקום הוא מה שגוזר את אזור הזמן שהשעות נקראות בו. הפס הוא
+            <b>שדרה משותפת</b> לשני השלבים · אותן נקודות, פעם עם מקומות ופעם עם שעות · ולא שלב
+            אחד.
           </li>
           <li>
-            <b>נדחה · <code>BEAT.REBUFF</code> בסוף הטיול</b> (§4) — ציר אנכי לחוסר אופקי,
-            ורעש בכל מעבר דרך הרצועה.
+            <b><code>ChoiceGrid</code> לשני קצות הטיול.</b> נדחה: אלה לא שני ערכים של שדה אחד
+            שבוחרים ביניהם אלא שני קיצורי דרך לערך אחד · לחיצה על אחד מהם ממלאת את התאריך ושניהם
+            נעלמים. גלולה מקוקווה ב-<code>--cta</code> אומרת "הצעה" בלי לבזבז גוון (כלל 4).
           </li>
           <li>
-            <b>לא נצבע כאן · הרצועה עצמה.</b> ‎36px של קצה שאין לו סימן. אחרי §1 השאלה נראית
-            אחרת — השכן שנכנס <i>הוא</i> הסימן, ורק על מסך אמת אפשר לדעת אם צריך עוד אחד.
+            <b>להריץ חיפוש מקומות מוזרע ברגע שנכנסים לשליחות.</b> נדחה, וזה מחיר ולא טעם:
+            <code>PLACE_SEARCH_MIN_CHARS</code> קיים בדיוק כדי שלא תיעשה קריאה בתשלום שאף אחד
+            לא ביקש (ADR-0131 §8b), ושאילתה מוזרעת בהגעה מוציאה קריאה בכל שליחות. אם יוסיפו
+            את זה, זה שבב במצב הריק שנלחץ · לא הרצה אוטומטית. מה שכן חינמי ועובד אופליין הוא
+            הקורפוס של הטיול עצמו, שכבר "מסתנן מהתו הראשון" · והשינוי הוא להראות אותו
+            ב<b>אפס</b> תווים.
+          </li>
+          <li>
+            <b>לצרף רשימת נמלי תעופה לאפליקציה.</b> נדחה · זה דאטהסט לתחזק, הוא לא נכון
+            לרכבת/אוטובוס/מעבורת, ו-Places כבר מחזיק את כולו מאחורי הפרוקסי שקיים.
+          </li>
+          <li>
+            <b>"נמל התעופה שממנו אתה בדרך כלל טס" · כלומר זיכרון בין טיולים.</b> לא נדחה על
+            מהות, אבל הוא לא בהחלטה הזאת ויש לו סיבה מצוטטת: <code>Place</code> הוא
+            <code>@@unique([tripId, googlePlaceId])</code>, וההערה בסכמה אומרת למה בכוונה ·
+            <i>"the reason a Place stays trip-scoped rather than a shared cross-trip record:
+            a chosen icon is data about this trip's view of the place, not about the entity
+            Google describes"</i>. אז זה רשומה ברמת המשתמש, מיגרציה, ושאלת פרטיות על זכירת
+            המקום שממנו אדם טס · ADR משלו. <b>והפער צר בהרבה ממה שנשמע</b>, בזכות ההערה של
+            הבעלים: ברגע שבטיול יש קטע אחד, §8 עונה על השאר. מה שנשאר בלי מקור הוא רק הקצה
+            הראשון של הטיול הראשון · וזה בדיוק המקום שבו מקור נוסף בטבלה יתחבר, בשורה אחת.
+          </li>
+          <li>
+            <b>לתת לחזרה הסוטה מראה "מוצע" משלה.</b> נדחה: הערך שנזרע <b>הוא</b> הערך שיישמר,
+            ומראה שאומר "אולי" על נתון שנשמר הוא בדיוק איך שטופס מתחיל לשקר. במקום זה הכותרת
+            אומרת <code>אותו מסלול בהיפוך</code> כל עוד זה נכון · משפט נגזר אחד, לא פקד.
           </li>
         </ul>
-      </section>
+      </div>
     </div>
 
     <script>
-      const $ = (s, r = document) => r.querySelector(s);
-      const $$ = (s, r = document) => [...r.querySelectorAll(s)];
-      const press = (btns, on) =>
-        btns.forEach((b) => b.setAttribute('aria-pressed', String(b === on)));
+      /* ══════════════════════════════════════════════════════════════════════
+         Every frame is BUILT from data. One node renderer, one journey renderer,
+         one screen renderer; each section states only its delta. A hand-copied
+         "after" is how a mockup ends up disagreeing with itself.
+         ══════════════════════════════════════════════════════════════════════ */
 
-      let reveal = 24;
-      let showGhost = true;
-      /** The gutter, read from the stylesheet rather than repeated — `screens.css` owns it
-       *  (`--swipe-page-gap: var(--space-6)`), and the pager already reads it back the same
-       *  way for the commit distance. */
-      const GAP = (() => {
-        const probe = document.createElement('div');
-        probe.className = 'day-swipe';
-        probe.style.cssText = 'position:absolute;visibility:hidden';
-        document.body.appendChild(probe);
-        const v = parseFloat(getComputedStyle(probe).getPropertyValue('--swipe-page-gap')) || 0;
-        probe.remove();
-        return v;
-      })();
-      /** The host's real width, measured after the first draw the way `useSwipePager` does.
-       *  Seeded so the first draw has a number; corrected in `draw()`. */
-      let PAGE_W = 326;
+      // COPIED from `ui/Icon.tsx` — never re-drawn. A hand-drawn glyph inside a
+      // file that inlines the real css lies in the one place the file promises
+      // truth. Unicode arrows are Bidi_Mirrored and flip inside dir="rtl".
+      const ICON = {
+        plus: 'M12 4.8v14.4 M4.8 12h14.4',
+        close: 'M6 18 18 6M6 6l12 12',
+        clock: 'M12 6.4V12l3.6 2.2 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0',
+        pin: 'M12 21.5s6.5-5.9 6.5-10.5a6.5 6.5 0 1 0-13 0C5.5 15.6 12 21.5 12 21.5Z M14.2 10.8a2.2 2.2 0 1 1-4.4 0 2.2 2.2 0 0 1 4.4 0',
+        swap: 'M8 20.5V4.2 M4.8 7.4 8 4.2l3.2 3.2 M16 3.5v16.3 M12.8 16.6 16 19.8l3.2-3.2',
+      };
+      const icon = (name, cls = '') =>
+        `<svg class="${`icon ${cls}`.trim()}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON[name]}"/></svg>`;
+      // `NavArrow`, variant forward, drawn for RTL exactly as `ui/NavArrow.tsx` does.
+      const navArrow = () =>
+        `<svg class="nav-arrow nav-arrow-forward" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6"/></svg>`;
 
-      /** A builder row, with the real tree: `.bld` is a grid of
-       *  `'badge title menu' / 'badge when menu'` (`screens.css`). */
-      const row = (title, time, badge = '📍', cls = '') => `
-        <div class="bld ${cls}">
-          <span class="bld-bd"><span class="pb-emoji">${badge}</span></span>
-          <span class="bld-t"><span class="bld-ttl">${title}</span></span>
-          <span class="bld-time">${time}</span>
-        </div>`;
+      /* ══ i18n · COPIED from `frontend/src/i18n/he.ts`, key by key, so no string
+            on this page is invented where the app already has one. */
+      const T = {
+        addDate: 'הוספת תאריך', // whenField.addDate
+        addTime: 'הוספת שעה', // whenField.addTime
+        nextDay: 'למחרת', // eventForm.nextDay
+        depart: 'המראה 🛫', // index.form.flightDepartLabel
+        arrive: 'נחיתה 🛬', // index.form.flightArriveLabel
+        addStop: 'עצירת ביניים', // index.form.addStop
+        stopShort: 'עצירה', // index.form.stopShort
+        originShort: 'מוצא', // index.form.originShort
+        destShort: 'יעד', // index.form.destShort
+        swapRoute: 'החלפת כיוון', // index.form.swapRoute
+        oneWay: 'כיוון אחד', // index.form.oneWay
+        roundTrip: 'הלוך ושוב', // index.form.roundTrip
+        legOut: 'הלוך', // LEG.out
+        legBack: 'חזרה', // LEG.back
+        zoneCap: 'השעות באזור', // the ZoneChip caption as shipped
+        legBeforeArrival: (p) => `היציאה לפני ההגעה ל${p}`, // index.form.legBeforeArrival
+        stepWhat: 'מה ואיפה',
+        stepWhen: 'מתי',
+        stepDetails: 'פרטים',
+        stepType: 'סוג',
+        next: 'הבא',
+        prev: 'הקודם',
+        // day.join — the layover band's own words, per transport mode
+        joinWordFlight: 'עצירת ביניים',
+        joinShort: (w) => `${w} קצרה`,
+        joinText: (w, len, place) => (place ? `${w} · ${place} · ${len}` : `${w} · ${len}`),
+        // NEW in this proposal, and only these five
+        sameDay: 'באותו יום',
+        plusDays: (n) => `+${n} ימים`,
+        dropStop: 'הסרת עצירה',
+        tripStart: 'תחילת הטיול',
+        tripEnd: 'סוף הטיול',
+        mirrored: 'אותו מסלול בהיפוך',
+        // **`הלוך`/`חזרה` are already one pair of words in `he.ts`** (ADR-0154 §6 made them
+        // one const because the form writes them as leg headings and the pair-fact reads them
+        // back). So a suggestion says which leg it came from in the words the leg headings
+        // already use — no new vocabulary, and short enough for a pill at 360px.
+        //
+        // The first draft said `מהטיסה לכאן`, which the owner could not parse: `לכאן` reads as
+        // "to here" with no antecedent, it was the SAME string on both fields although they
+        // carry opposite facts, and it named a flight where the type may be a train.
+        editTimes: 'עריכת הזמנים',
+        leaveShort: 'יציאה',
+        waitShort: 'המתנה',
+        afterPrevious: 'יום הקטע הקודם',
+        fromOutbound: 'מההלוך',
+        fromReturn: 'מהחזרה',
+      };
 
-      const DAY_TODAY = [
-        ['ארוחת בוקר במלון', '⁦08:30⁩'],
-        ['שוק צ׳אטוצ׳אק', '⁦10:00⁩'],
-        ['מקדש וואט פו', '⁦13:15⁩'],
-        ['שיט על הנהר', '⁦17:00⁩'],
-      ];
-      const DAY_NEXT = [
-        ['רכבת לצ׳יאנג מאי', '⁦07:40⁩'],
-        ['סיור בעיר העתיקה', '⁦15:00⁩'],
-        ['שוק הלילה', '⁦19:30⁩'],
-      ];
+      /* ══ Formatters · COPIED behaviour from `lib/time.ts` (`formatDayDate`,
+            `formatDayMonthYear`) and `lib/duration.ts` (`hoursPhrase`). */
+      const DOW = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
+      const MON = ['בינו׳','בפבר׳','במרץ','באפר׳','במאי','ביוני','ביולי','באוג׳','בספט׳','באוק׳','בנוב׳','בדצמ׳'];
+      const fmtDay = (iso) => {
+        const d = new Date(iso + 'T00:00:00Z');
+        return `יום ${DOW[d.getUTCDay()]}, ${d.getUTCDate()} ${MON[d.getUTCMonth()]}`;
+      };
+      const fmtShort = (iso) => {
+        const d = new Date(iso + 'T00:00:00Z');
+        return `${d.getUTCDate()}.${d.getUTCMonth() + 1}`;
+      };
+      const hoursPhrase = (min) => {
+        const h = Math.floor(min / 60), m = min % 60;
+        if (h && m) return `${h}:${String(m).padStart(2, '0')} שע׳`;
+        if (h) return h === 1 ? 'שעה' : h === 2 ? 'שעתיים' : `${h} שעות`;
+        return `${m} דק׳`;
+      };
+      const toMin = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
 
-      /** `held` is the index of the row in hand: it wears the app's own `.dragging`
-       *  (opacity 0.45, `screens.css`) and the clone rides above it. Without that the two
-       *  read as one row printed twice, which is exactly how the first render looked. */
-      const page = (rows, held = -1) =>
-        `<div class="sec-title">היום</div>${rows
-          .map(([t, w], i) => row(t, w, '📍', i === held ? 'dragging' : ''))
-          .join('')}`;
-
-      /**
-       * One day surface. `dx` is the strip's own offset, `lean` the incoming pane's extra
-       * travel, `edge` which side is armed — the three values the proposal drives.
-       */
-      function surface({ dx = 0, lean = null, edge = '', ghost = true, band = true }) {
-        // Sampling goes on the PANE, because an inline style is the only thing that beats
-        // the proposal's own rule — which is what the un-sampled frames should show.
-        const sample = lean === null ? '' : `style="--peek-lean:${lean}px"`;
-        const peeks = `
-          <div class="day-peeks" aria-hidden="true">
-            <div class="day-peek" data-day="next" ${sample} inert>
-              <div class="builder day-swipe" data-preview>
-                <div class="day-page">${page(DAY_NEXT)}</div>
-              </div>
-            </div>
-            <div class="day-peek" data-day="prev" inert>
-              <div class="builder day-swipe" data-preview>
-                <div class="day-page">${page(DAY_TODAY)}</div>
-              </div>
-            </div>
-          </div>`;
-        return `
-          <div class="mk-frame" style="--mk-band-px:36px; --mk-held-top:var(--mk-held, 214px)">
-            <main class="body">
-              <div
-                class="builder day-swipe"
-                data-swiping=""
-                ${edge ? `data-edge-lean="${edge}"` : ''}
-                style="--swipe-dx:${dx}px; --edge-reveal:${reveal}px"
-              >
-                ${peeks}
-                <div class="day-page">${page(DAY_TODAY, ghost && showGhost ? 2 : -1)}</div>
-              </div>
-            </main>
-            ${band ? '<div class="mk-band" style="left:0"></div>' : ''}
-            ${
-              ghost && showGhost
-                ? `<div class="mk-ghost" style="top:calc(var(--mk-held-top) - var(--drag-ghost-lift-px, 12px)); left:16px">${row('מקדש וואט פו', '⁦13:15⁩')}</div>
-                   <div class="mk-finger" style="top:calc(var(--mk-held-top) + 8px); left:4px"></div>`
-                : ''
-            }
-          </div>`;
-      }
-
-      const col = (label, cls, html) =>
-        `<div class="col"><span class="tag ${cls}">${label}</span>${html}</div>`;
-
-      /** §1 — the same motion at four sampled times. Linear, so position IS time. */
-      function s1() {
-        const full = GAP + reveal;
-        const at = (share) => Math.round(full * share);
-        $('#s1').innerHTML = [
-          col('⁦0ms⁩ · האצבע הגיעה', 't0', surface({ lean: 0, edge: 'next' })),
-          col('⁦233ms⁩', '', surface({ lean: at(1 / 3), edge: 'next' })),
-          col('⁦467ms⁩', '', surface({ lean: at(2 / 3), edge: 'next' })),
-          // No sample on the last one: it is the proposal's own rule at rest, which is
-          // what the other three are sampling on the way to.
-          col('⁦700ms⁩ · רגע לפני', 't1', surface({ edge: 'next' })),
-        ].join('');
-      }
-
-      /** §2 — the turn: the strip moves as one and completes page + gutter. */
-      function s2() {
-        const travel = PAGE_W + GAP;
-        $('#s2').innerHTML = [
-          col('רגע לפני', '', surface({ edge: 'next' })),
-          // Mid-turn the strip moves as one and the lean unwinds with it, so the gutter
-          // opens back to its full width as the pane settles.
-          col('אמצע הפנייה', '', surface({ dx: Math.round(travel / 2), lean: (GAP + reveal) / 2 })),
-          col('נחת', 't1', surface({ dx: travel, lean: 0 })),
-        ].join('');
-      }
-
-      /** §3 — the rejected model beside the proposed one, at the same instant. */
-      function s3() {
-        const lean = GAP + reveal;
-        $('#s3').innerHTML = [
-          col('נדחה · כל הרצועה', 't0', surface({ dx: lean, lean: 0 })),
-          col('מוצע · רק השכן', 't1', surface({ edge: 'next' })),
-        ].join('');
-      }
-
-      /** §4 — the trip's end (nothing moves) and the abort. */
-      function s4() {
-        $('#s4').innerHTML = [
-          col('סוף הטיול · אין שכן', '', surface({ lean: 0 })),
-          col('נסיגה · חזרה למקום', '', surface({ lean: 0 })),
-        ].join('');
-      }
-
-      /** §5 — the ghost over the reveal, with and without. */
-      function s5() {
-        $('#s5').innerHTML = [
-          col('עם הרוח', '', surface({ edge: 'next', ghost: true })),
-          col('בלי הרוח', '', surface({ edge: 'next', ghost: false })),
-        ].join('');
-      }
-
-      function draw() {
-        // Two passes: the first gives the frames a box to measure, the second draws with the
-        // host's REAL width in `--swipe-page-w`, which is what the app publishes.
-        s1();
-        const probe = $('#s1 .day-swipe:not([data-preview])');
-        if (probe) {
-          PAGE_W = Math.round(probe.getBoundingClientRect().width);
-          document.documentElement.style.setProperty('--mk-page-w', `${PAGE_W}px`);
-          // The held row's own top inside its frame — measured, never a constant
-          // (`frontend/CLAUDE.md`: a landing position written as a constant is a scar).
-          const f = probe.closest('.mk-frame');
-          const held = $$('.day-swipe:not([data-preview]) > .day-page .bld', f)[2];
-          if (held) {
-            const t = Math.round(held.getBoundingClientRect().top - f.getBoundingClientRect().top);
-            document.documentElement.style.setProperty('--mk-held', `${t}px`);
-          }
+      /* ══ WHICH EDGE OF THE TRIP THIS JOURNEY IS ══
+            `reachesDestination`, COPIED from `packages/shared/src/readiness.ts` — the
+            three tiers unchanged (the place IS the destination · its ZONE is the
+            destination's · its NAME contains it), including the posture that matters
+            most here: **nothing can answer NO**. An unplaceable endpoint is
+            unconfirmed, so the filter can only ever REMOVE a suggestion, never add a
+            wrong one. That function is module-private today; the ADR exports it,
+            which is a one-line change to a file that already owns the question. */
+      const MULTI_ZONE_COUNTRIES = {}; // none needed for this page's data
+      const reaches = (place, dest) => {
+        if (!place) return false;
+        if (place.googlePlaceId && place.googlePlaceId === dest.googlePlaceId) return true;
+        if (place.timezone && dest.timezone) {
+          if (place.timezone === dest.timezone) return true;
+          const zs = dest.countryCode ? MULTI_ZONE_COUNTRIES[dest.countryCode] : undefined;
+          if (zs?.includes(place.timezone) && zs.includes(dest.timezone)) return true;
         }
-        s1();
-        s2();
-        s3();
-        s4();
-        s5();
-        // Measured after layout, never in the same tick as a style write.
-        requestAnimationFrame(() => requestAnimationFrame(measure));
-      }
+        const a = (place.name || '').trim().toLowerCase();
+        const b = (dest.name || '').trim().toLowerCase();
+        return Boolean(a && b && (a === b || a.includes(b) || b.includes(a)));
+      };
+      /** **At most ONE suggestion, and often none** (§5). A journey whose DESTINATION
+       *  reaches the trip's destination is the way there, so its date is the trip's
+       *  first day; one whose ORIGIN does is the way home. Both ends inside the
+       *  destination is an internal hop — Reykjavík to Akureyri — and the trip's edges
+       *  are exactly the wrong answer for it, so it gets nothing. Neither end
+       *  placeable: nothing, and the traveller types the date as they do today. */
+      const edgeOffer = (from, to, dest, trip) => {
+        const out = reaches(to, dest), back = reaches(from, dest);
+        if (out && !back) return { label: T.tripStart, value: trip.start };
+        if (back && !out) return { label: T.tripEnd, value: trip.end };
+        return null;
+      };
 
-      const rect = (el) => (el ? el.getBoundingClientRect() : null);
-      const px = (n) => `⁦${Math.round(n)}px⁩`;
+      /* ══════════════════════════════════════════════════════════════════════
+         THE SUGGESTION TABLE · the infra, and it is the point of §5 and §8 both.
 
-      function measure() {
+         One shape for every suggestion a form makes, and an ORDERED LIST OF SOURCES
+         per field. "At most one pill" then becomes a property of the MECHANISM — take
+         the first source that answers — instead of a rule each call site has to
+         remember. A future source is one row: a cross-trip place memory, a PNR parsed
+         out of Gmail (ADR-0004 — integrations are pipes, and this is the pipe's mouth),
+         a Places call for the destination's airports.
+
+         This is the idiom ADR-0154 §5 already chose, in its own words: *"a table of
+         relation rules rather than a hard-coded ||, so a second relation is an entry"* —
+         and `BOOKING_TYPE_PROFILE` / `NOTE_HOST_FIELD` before it. Nothing here is a new
+         mechanism; it is the app's existing one, pointed at a form field.
+
+         A source may answer `null` freely, and every source answering null is the
+         ordinary case — a form with nothing to infer from shows no pill and the
+         traveller types, exactly as today. **A suggestion can only ever be ADDED to an
+         empty field**, never corrected onto a filled one, which is what keeps it a
+         suggestion rather than the guessed value on a hard commitment ADR-0171 §1
+         refuses.
+         ══════════════════════════════════════════════════════════════════════ */
+      const suggest = (sources, ctx) => {
+        for (const src of sources) {
+          const hit = src.of(ctx);
+          if (hit) return { ...hit, source: src.id };
+        }
+        return null;
+      };
+
+      /** Sources for a journey's ONE absolute date, in priority order. */
+      const DATE_SOURCES = [
+        // A later journey opens where the one before it landed. The app already carries a
+        // leg's DATE forward exactly like this — `BookingSheet`'s `defaultDate: previous?.end`,
+        // "each leg opens on the day the one before it landed" — so this is that rule, read
+        // off the trip's own legs instead of off the legs in this one form.
+        { id: 'previous-leg', of: (c) => c.previousLanded && { label: T.afterPrevious, detail: fmtShort(c.previousLanded), mono: true, value: c.previousLanded } },
+        // §5: which EDGE of the trip this journey is, decided by `reachesDestination`.
+        { id: 'trip-edge', of: (c) => { const e = edgeOffer(c.from, c.to, c.dest, c.trip); return e && { ...e, detail: fmtShort(e.value), mono: true }; } },
+        // ← a future date source is one row
+      ];
+
+      /** Sources for a transport ENDPOINT. §8, and the owner's own example: the return's
+       *  ARRIVAL is the outbound's ORIGIN, and its DEPARTURE is where the outbound landed —
+       *  read off the trip's EXISTING legs, so it works for a return authored weeks after
+       *  its outbound, in a different form, with no round-trip control involved. */
+      const PLACE_SOURCES = [
+        {
+          id: 'mirror-existing-leg',
+          of: (c) => {
+            if (!c.legs?.length || c.role === 'stop') return null;
+            // A leg that reaches the destination is the way there (`hasOutbound`'s own
+            // test). Authoring a journey while one exists, the likely journey is the way
+            // back — so its origin is that leg's landing and its destination is its start.
+            const there = c.legs.find((l) => reaches(l.to, c.dest) && !reaches(l.from, c.dest));
+            if (there) {
+              const p = c.role === 'from' ? there.to : there.from;
+              return p && { label: p.name, detail: T.fromOutbound, value: p };
+            }
+            const home = c.legs.find((l) => reaches(l.from, c.dest) && !reaches(l.to, c.dest));
+            if (home) {
+              const p = c.role === 'from' ? home.to : home.from;
+              return p && { label: p.name, detail: T.fromReturn, value: p };
+            }
+            return null;
+          },
+        },
+        // ← the sources a later decision would add, each one row and none of them a new
+        //   mechanism: a cross-trip "the airport you usually fly from" (needs a user-level
+        //   place, which `Place` deliberately is not — see the notes panel), a PNR parsed
+        //   out of Gmail, a Places call for the destination's own airports.
+      ];
+
+      /* ══ The tokens · the app's real classes, nothing hand-styled ══ */
+      // A date token is `<DateField className="vt vt-date">` — that component's
+      // wrapper IS the box (ADR-0176/0177), which is why it is not a <button>.
+      const dateTok = (iso) =>
+        iso
+          ? `<span class="df vt vt-date"><span class="df-face" dir="auto" aria-hidden="true">${fmtDay(iso)}</span></span>`
+          : `<span class="df vt vt-date vt-empty"><span class="df-face" dir="auto" aria-hidden="true"><span class="df-empty">${T.addDate}</span></span></span>`;
+      const timeTok = (hhmm, invalid) =>
+        hhmm
+          ? `<button type="button" class="vt vt-time"${invalid ? ` data-invalid="${invalid}"` : ''}>${hhmm}</button>`
+          : `<button type="button" class="vt vt-time vt-empty">${T.addTime}</button>`;
+      const wordTok = (text) => `<button type="button" class="vt vt-word">${text}</button>`;
+      /** `ValueToken`'s exported `tokenClass`, copied — `DateField` and `PlanDay`'s row time
+       *  are the two shipped call sites that wear the classes without rendering the component,
+       *  and a summarised row is the third. Never hand-built as a string at a call site. */
+      const tokenClass = (kind, opts = {}) =>
+        ['vt', `vt-${kind}`, opts.empty ? 'vt-empty' : '', opts.open ? 'open' : '', opts.className ?? '']
+          .filter(Boolean)
+          .join(' ');
+      const zchip = (zone) =>
+        `<div class="zchip"><span class="zchip-cap">${T.zoneCap}</span><span class="zchip-static"><span class="zchip-zone">${zone}</span></span></div>`;
+      // `PlacePicker`'s real tree. `filled` is the class the component adds when a place
+      // resolves; `pp-clear` renders `{current && …}` there, which is §4's whole point.
+      const picker = (name, placeholder, stopRole, alwaysClear) =>
+        `<div class="place-picker${stopRole ? ' place-picker-stop' : ''}"><button type="button" class="pp-trigger${name ? ' filled' : ''}"><span class="pp-trigger-icon" aria-hidden="true">${icon('pin')}</span><span class="pp-trigger-label" dir="auto">${name || placeholder}</span></button>${name || alwaysClear ? `<button type="button" class="pp-clear" aria-label="${alwaysClear ? T.dropStop : 'ניקוי'}">${icon('close')}</button>` : ''}</div>`;
+
+      /* ══ THE DAY WORD · one derivation, and it runs on INSTANTS ══
+            ADR-0037's rule one level up — a clock that cannot follow the moment before it
+            is the day rolling over — but computed the way the app computes a span's
+            duration: through each end's own zone (`WhenSpan`'s `zonedIso(day, time, tz)`
+            pair), never on raw wall clocks. That distinction is load-bearing here and not
+            pedantry: Tel Aviv 23:40 to Reykjavík 23:55 is the SAME calendar day despite
+            landing at a later clock, because the flight also crossed three hours westward.
+            A wall-clock comparison gets that case right by luck and the eastbound one
+            wrong.
+
+            **Every offset is counted from the JOURNEY's one date**, never from the node
+            before it. Chaining `למחרת` off each previous node would make the words
+            relative to each other and the journey unreadable — the whole point of §2 is
+            that there is one anchor and everything else states its distance from it. */
+      const MIN_PER_DAY = 1440;
+      /** Minute-of-epoch for a wall clock on `dayOffset` days after the journey's date. */
+      const inst = (hhmm, dayOffset, utcOffsetHours) =>
+        dayOffset * MIN_PER_DAY + toMin(hhmm) - utcOffsetHours * 60;
+      /** The smallest day offset, at or after the previous moment's, that puts this clock
+       *  AFTER the previous moment. `override` is what a human said instead — the rare
+       *  leg longer than 24 hours, which is the one case the derivation cannot see. */
+      const dayOffsetFor = (prev, hhmm, utcOffsetHours, override) => {
+        if (override != null) return override;
+        if (!prev) return 0;
+        for (let d = prev.day; d <= prev.day + 3; d++)
+          if (inst(hhmm, d, utcOffsetHours) > prev.at) return d;
+        return prev.day;
+      };
+      const dayWordFor = (n) => (n === 0 ? T.sameDay : n === 1 ? T.nextDay : T.plusDays(n));
+
+      /* ══ THE LAYOVER BAND ══ `day-join.css`'s own `.journey-stop`, reused rather than
+            restyled, so the wait you type is the wait the day will show — same element,
+            same classes, same words, same `tight` rule. */
+      const band = (minutes, place, tightMin) => {
+        const tight = minutes < tightMin;
+        const w = tight ? T.joinShort(T.joinWordFlight) : T.joinWordFlight;
+        return `<div class="journey-stop${tight ? ' tight' : ''}">${icon('clock')}<span>${T.joinText(w, hoursPhrase(minutes), place)}</span></div>`;
+      };
+
+      /* ══ ONE NODE ══ A point on the journey. `mode` is which step is drawing it:
+            `place` is `מה ואיפה` (a `PlacePicker` and the stop's controls), `time` is
+            `מתי` (clocks, and no place control at all). Same rail either way, which is
+            the continuity §4 is about. */
+      const node = (n, o) => {
+        const showWord = o.dayMode === 'always' || (n.word && n.word !== T.sameDay);
+        // **A SUMMARISED NODE** (§9): the same rail row, its controls swapped for the line they
+        // will read as. Not `Collapsible` and not a height animation — see §9 for why.
+        if (n.summary) {
+          const cls = ['jf-row', 'jf-sum', n.first ? 'first' : '', n.last ? 'last' : '',
+            n.end ? 'end' : ''].filter(Boolean).join(' ');
+          // **A SUMMARY MUST NOT SWALLOW THE JOURNEY'S ONE DATE.** The first render of §9 did:
+          // the absolute date lives on the first node, so collapsing that node hid the single
+          // fact §2 is built on — a journey with one date, and no second one to mistake for a
+          // return. It reads in the compact numeric form here and the named form when open;
+          // ADR-0176 sanctions both, and a summary is exactly what the numeric one is for.
+          const bits = [
+            n.absolute && n.date ? fmtShort(n.date) : null,
+            n.time,
+            n.out ? `${T.leaveShort} ${n.out.time}` : null,
+            n.out ? `${T.waitShort} ${hoursPhrase(n.out.wait)}` : null,
+            n.dayN ? dayWordFor(n.dayN) : null,
+          ].filter(Boolean);
+          return `<div class="${cls}">
+              <span class="jf-rail"><span class="jf-dot"></span></span>
+              <div class="jf-body">
+                <div class="wf-line jf-sum-row">
+                <span class="jf-place">${n.place}</span>
+                <button type="button" class="${tokenClass('word', { className: 'jf-sum-tok' })}">
+                  <span class="visually-hidden">${T.editTimes}</span>${bits.join(' · ')}
+                </button>
+                </div>
+              </div>
+            </div>`;
+        }
+        const cls = ['jf-row', n.mode === 'place' ? 'place' : '', n.first ? 'first' : '',
+          n.last ? 'last' : '', n.end ? 'end' : ''].filter(Boolean).join(' ');
+
+        // The refusal lands on the VALUE that is wrong (ADR-0150 / ADR-0177 §2), which is
+        // the token itself now rather than a cell holding a wrong value and a fine one.
+        const err = n.invalid ? `<div class="field-err" role="status">${n.invalid}</div>` : '';
+        // **ONE PILL RENDERER FOR EVERY SUGGESTION** — a date on the `מתי` step and a
+        // place on `מה ואיפה` are the same offer with different words, so they are the
+        // same control. A third kind is a source in the table above, not a fourth pill.
+        const pill = (sug) =>
+          !sug || o.offer !== 'pills'
+            ? ''
+            : `<div class="jf-offer"><button type="button">${sug.label}${sug.detail ? ` <span class="${sug.mono ? 'jf-offer-d' : 'jf-offer-w'}">${sug.detail}</span>` : ''}</button></div>`;
+        let body;
+        if (n.mode === 'place') {
+          body =
+            // `alwaysClear` is the proposed `removable` role: a stop shows its ✕ whether or
+            // not it has a place, because for a stop the ✕ means "remove this stop".
+            picker(n.place, n.stop ? T.stopShort : n.first ? T.originShort : T.destShort, n.stop, n.stop) +
+            (n.place ? '' : pill(n.suggest));
+        } else if (n.absolute) {
+          body = `<div class="wf-line">${dateTok(n.date)}${timeTok(n.time, n.invalid)}</div>${err}${n.date ? '' : pill(n.suggest)}`;
+        } else {
+          body = `<div class="wf-line">${timeTok(n.time, n.invalid)}${showWord ? wordTok(n.word) : ''}</div>${err}`;
+        }
+        // **A stop's SECOND clock needs no label of its own.** The band directly above it
+        // says `עצירת ביניים · 1:35 שע׳`, so the line under it can only be the departure —
+        // and the node then reads as one sentence: land at 19:40, wait 1:35, leave 21:15.
+        // Measured at 25px a stop, which is what brings a two-stop journey inside the fold.
+        const second = n.out
+          ? band(n.out.wait, undefined, FLIGHT_TIGHT) +
+            `<div class="wf-line">${timeTok(n.out.time, n.out.invalid)}${o.dayMode === 'always' || n.out.word !== T.sameDay ? wordTok(n.out.word) : ''}</div>` +
+            (n.out.invalid ? `<div class="field-err" role="status">${n.out.invalid}</div>` : '')
+          : '';
+        // In places mode the picker's own placeholder already names the row, so a label above
+        // it would say `עצירה` twice — which the first render did.
+        const label =
+          n.mode === 'place'
+            ? ''
+            : `<span class="jf-node-lbl"><span class="jf-place">${n.place}</span><span>· ${n.verb}</span></span>`;
+        return `<div class="${cls}">
+            <span class="jf-rail"><span class="jf-dot"></span></span>
+            <div class="jf-body">${label}${body}${n.zone && n.mode !== 'place' ? zchip(n.zone) : ''}${second}</div>
+          </div>`;
+      };
+
+      /* ══ ONE SEGMENT ══ On `מתי` it states what the leg costs; on `מה ואיפה` it is the
+            one place a stop is inserted, so the row appears where you tapped rather than
+            above a button at the bottom of the stack. */
+      const seg = (s) =>
+        `<div class="jf-row jf-seg">
+            <span class="jf-rail"></span>
+            <div class="jf-body">
+              ${s.minutes ? `<span class="jf-dur">${icon('clock')}<b>${hoursPhrase(s.minutes)}</b></span>` : ''}
+              ${s.insert ? `<button type="button" class="jf-insert">${icon('plus')} ${T.addStop}</button>` : ''}
+              ${/* **The swap stays between the ends it exchanges** (ADR-0154 §3), which is the
+                    first segment — and it still reverses the WHOLE sequence, exactly what
+                    `החלפת כיוון` already promises (ADR-0159 §5). Drawn as a trailing row first,
+                    which moved a decided control for no reason. */ ''}
+              ${s.swap ? `<button type="button" class="route-field-swap">${icon('swap')} ${T.swapRoute}</button>` : ''}
+            </div>
+          </div>`;
+
+      /* ══ ONE JOURNEY ══ The rows, and the heading that frames them. */
+      const journey = (j, o) => {
         const rows = [];
-        const add = (what, n, against) =>
-          rows.push(`<tr><td>${what}</td><td class="n">${n}</td><td>${against}</td></tr>`);
+        j.nodes.forEach((n, i) => {
+          rows.push(node(n, o));
+          if (j.segs[i]) rows.push(seg(j.segs[i]));
+        });
+        const ends = `<span class="route"><bdi>${j.nodes[0].place || '-'}</bdi><span class="arr" aria-hidden="true">${navArrow()}</span><bdi>${j.nodes[j.nodes.length - 1].place || '-'}</bdi></span>`;
+        const head = j.head
+          ? `<div class="jf-head"><span>${j.head}</span>${ends}${j.mirror ? `<span class="jf-mirror">· ${T.mirrored}</span>` : ''}</div>`
+          : '';
+        return `<div class="jf">${head}${rows.join('')}</div>`;
+      };
 
-        // The last frame of §1 — the lean at its full extent.
-        const frames = $$('#s1 .mk-frame');
-        const last = frames[frames.length - 1];
-        const host = $('.day-swipe:not([data-preview])', last);
-        const nextPane = $('.day-peek[data-day="next"]', last);
-        const hostBox = rect(host);
-        const paneBox = rect(nextPane);
-        const cs = getComputedStyle(host);
-        const gap = parseFloat(cs.getPropertyValue('--swipe-page-gap')) || 0;
+      /* ══ Frames ══ */
+      const phone = (inner, fold) =>
+        `<div class="phone${fold ? ' foldbox' : ''}"><div class="fbody">${inner}</div>${fold ? `<div class="fold"><span>קו הקיפול · 80vh</span></div>` : ''}</div>`;
+      const col = (tag, inner, caption, fold) =>
+        `<div class="col">${tag}${phone(inner, fold)}${caption ? `<span class="cap">${caption}</span>` : ''}</div>`;
 
-        // In RTL the next day arrives from the left, so what is revealed is the pane's
-        // right edge crossing the host's left edge.
-        const revealed = Math.max(0, paneBox.right - hostBox.left);
-        add(
-          'ממחר נחשף בפועל, בסוף ההשהיה',
-          px(revealed),
-          `מול הבקשה (⁦${reveal}px⁩) · הפרש = דיוק החישוב מול המרזב`,
+      /* ══ The step chrome (`FormSteps`' real read-out + `FormActions`' footer) ══ */
+      const stepBar = (labels, at) =>
+        `<div class="form-steps-bar"><span class="form-steps-dots">${labels
+          .map((_, i) => `<span class="form-steps-dot${i === at ? ' on' : i < at ? ' done' : ''}"></span>`)
+          .join('')}</span><span class="form-steps-label">${labels[at]}</span></div>`;
+      // `FormActions`' real tree (`fa-primary` / `fa-secondary`, primary FIRST in the DOM).
+      // The first version of this file wrote `btn-primary`/`btn-ghost` — classes the app does
+      // not have — so the footer rendered as two native buttons and the frame was lying in
+      // the one place this file promises not to. Found by looking at the dark render.
+      const foot = (primary, secondary) =>
+        `<div class="form-actions"><button type="button" class="fa-primary">${primary}</button><button type="button" class="fa-secondary">${secondary}</button></div>`;
+
+      /* ══ THE SHIPPED SPAN ══ `WhenField variant="span"`'s real tree, so every "before"
+            frame is the app rather than a drawing of it: `.wf.wf-span` → `.field` →
+            `.wf-leg` → `.wf-leg-lbl` + `.wf-line`. */
+      const shippedLeg = (label, date, time) =>
+        `<div class="field"><div class="wf-leg"><span class="wf-leg-lbl">${label}</span><div class="wf-line">${dateTok(date || '')}${timeTok(time || '')}</div></div></div>`;
+      const shippedSpan = (a, b) =>
+        `<div class="wf wf-span">${shippedLeg(T.depart, a?.date, a?.time)}${zchip('Jerusalem · GMT+3')}${shippedLeg(T.arrive, b?.date, b?.time)}${zchip('Reykjavik · GMT+0')}</div>`;
+      // Today's route field, with an EMPTY stop — the state §4 shows has no way out.
+      const shippedRoute = (emptyStop) =>
+        `${picker('נתב״ג', T.originShort)}<button type="button" class="route-field-swap">${icon('swap')} ${T.swapRoute}</button>${picker(emptyStop ? '' : 'אמסטרדם', T.stopShort, true)}${picker('קפלוויק', T.destShort)}<button type="button" class="route-field-add">${icon('plus')} ${T.addStop}</button>`;
+
+      /* ══ DATA · one trip, one flight. Every frame is a projection of it. ══
+            `timezone` is on every place because that is the tier `reachesDestination`
+            actually decides on — "Keflavík reaches Iceland because of where it is, which
+            no reading of its name can establish", in that function's own words. */
+      const TRIP = { start: '2026-08-12', end: '2026-08-21' };
+      const DEST = { name: 'איסלנד', timezone: 'Atlantic/Reykjavik' };
+      // `utc` is the summer offset of each zone, carried so every duration and every day
+      // word on this page is DERIVED rather than typed. The first version of this file
+      // typed both, and they disagreed: a segment read `3:20 שע׳` between two clocks
+      // 1:20 apart. Data that can contradict itself is exactly what the skill's "build
+      // frames from data, not by hand twice" rule is about.
+      const P = {
+        tlv: { name: 'נתב״ג', timezone: 'Asia/Jerusalem', utc: 3, zone: 'Jerusalem · GMT+3' },
+        kef: { name: 'קפלוויק', timezone: 'Atlantic/Reykjavik', utc: 0, zone: 'Reykjavik · GMT+0' },
+        aey: { name: 'אקוריירי', timezone: 'Atlantic/Reykjavik', utc: 0, zone: 'Reykjavik · GMT+0' },
+        ams: { name: 'אמסטרדם', timezone: 'Europe/Amsterdam', utc: 2, zone: 'Amsterdam · GMT+2' },
+        cph: { name: 'קופנהגן', timezone: 'Europe/Copenhagen', utc: 2, zone: 'Copenhagen · GMT+2' },
+        // Not on this trip, and that is the point — §2 is about the DERIVATION, and this is
+        // the pair that separates instants from wall clocks. A 19-hour zone shift against a
+        // 7-hour flight is the case a wall-clock rule gets wrong by a whole day.
+        osl: { name: 'אוסלו', timezone: 'Europe/Oslo', utc: 2, zone: 'Oslo · GMT+2' },
+        nrt: { name: 'טוקיו', timezone: 'Asia/Tokyo', utc: 9, zone: 'Tokyo · GMT+9' },
+        hnl: { name: 'הונולולו', timezone: 'Pacific/Honolulu', utc: -10, zone: 'Honolulu · GMT-10' },
+      };
+      const FLIGHT_TIGHT = 90; // BOOKING_TYPE_PROFILE.flight.legs.sequence.tightMinutes
+
+      /** A journey, from its points and its clocks. ONE builder for every frame on the
+       *  page, so no two of them can disagree about the same journey. */
+      const build = ({ points, clocks, mode = 'time', head, mirror, swap, empty, invalid, legs, previousLanded, openAt }) => {
+        const ctx = { from: points[0], to: points[points.length - 1], dest: DEST, trip: TRIP, legs, previousLanded };
+        const dateSug = suggest(DATE_SOURCES, ctx);
+        const nodes = [];
+        const segs = [];
+        // The moment the previous node produced: its day offset from the journey's date and
+        // its instant. Everything after it is measured against this and nothing is typed.
+        let prev = null;
+        points.forEach((p, i) => {
+          const isFirst = i === 0;
+          const isLast = i === points.length - 1;
+          const c = clocks[i] ?? {};
+          const n = {
+            place: p.name,
+            mode,
+            verb: isFirst ? T.depart : T.arrive,
+            first: isFirst,
+            last: isLast,
+            end: isFirst || isLast,
+            stop: !isFirst && !isLast,
+            drop: mode === 'place' && !isFirst && !isLast,
+            // The zone chip belongs to the JOURNEY's outer ends, not to a leg (ADR-0107 §6):
+            // an interior stop has a picked place, and that is what an override stands in for.
+            zone: isFirst || isLast ? p.zone : undefined,
+          };
+          // A place field asks the table too, with the ROLE it plays — which is the whole
+          // of the owner's example: an origin wants where the outbound landed, a
+          // destination wants where the outbound started.
+          if (mode === 'place')
+            n.suggest = suggest(PLACE_SOURCES, {
+              ...ctx,
+              role: isFirst ? 'from' : isLast ? 'to' : 'stop',
+            });
+          let arrivedAt = null;
+          if (isFirst) {
+            n.absolute = true;
+            n.date = empty ? '' : c.date;
+            n.time = empty ? '' : c.time;
+            if (mode === 'time') n.suggest = dateSug;
+            if (!empty) arrivedAt = { day: 0, at: inst(c.time, 0, p.utc) };
+          } else if (!empty) {
+            const day = dayOffsetFor(prev, c.time, p.utc, c.plus);
+            n.time = c.time;
+            n.dayN = day;
+            n.word = dayWordFor(day);
+            arrivedAt = { day, at: inst(c.time, day, p.utc) };
+          } else {
+            n.time = '';
+            n.word = T.sameDay;
+          }
+          // The leg that just ended: its length is the two instants, through each end's own
+          // zone — which is how a zone-crossing leg reads correctly rather than by luck.
+          if (!isFirst) {
+            const isFirstSeg = segs.length === 0;
+            segs.push({
+              minutes: prev && arrivedAt ? arrivedAt.at - prev.at : 0,
+              insert: mode === 'place',
+              swap: mode === 'place' && swap && isFirstSeg,
+            });
+          }
+
+          // A stop's own departure, and the wait it measures. Same derivation, one node in.
+          if (!isFirst && !isLast && !empty && c.out) {
+            const outDay = dayOffsetFor(arrivedAt, c.out, p.utc);
+            const outAt = inst(c.out, outDay, p.utc);
+            n.out = {
+              time: c.out,
+              wait: outAt - arrivedAt.at,
+              word: dayWordFor(outDay),
+              invalid: invalid === i ? T.legBeforeArrival(p.name) : undefined,
+            };
+            arrivedAt = { day: outDay, at: outAt };
+          }
+          // `openAt` summarises every node but one (§9). Absent → every node is open, which is
+          // every frame before §9.
+          if (openAt != null && i !== openAt) n.summary = true;
+          prev = arrivedAt ?? prev;
+          nodes.push(n);
+        });
+        // The zone chip belongs to the JOURNEY's outer ends, not to a leg (ADR-0107 §6):
+        // an interior stop has a picked place, which is what an override stands in for.
+        return { nodes, segs, head, mirror, swap };
+      };
+
+      const OUT_0 = () => build({ points: [P.tlv, P.kef], clocks: [{ date: TRIP.start, time: '15:30' }, { time: '20:40' }] });
+      // The stop's wait is 75 minutes on purpose: `tightMinutes` for a flight is 90, so this
+      // is the state that draws `עצירת ביניים קצרה` — descriptive, never `--miss`, because
+      // the app does not know your terminal (ADR-0159 §4).
+      const OUT_1 = () => build({ points: [P.tlv, P.ams, P.kef], clocks: [
+        { date: TRIP.start, time: '15:30' },
+        { time: '19:40', out: '20:55' },
+        { time: '22:15' }] });
+      // One wait tight (Copenhagen, 1:00 against a flight's 90-minute line) and one not
+      // (Amsterdam, 2:05), so §7 draws both states of the band side by side. The Keflavík
+      // arrival lands after midnight, so its word derives to `למחרת` — counted from the
+      // journey's own date, not from the node above it.
+      const OUT_2 = () => build({ points: [P.tlv, P.ams, P.cph, P.kef], clocks: [
+        { date: TRIP.start, time: '15:30' },
+        { time: '19:40', out: '21:45' },
+        { time: '23:00', out: '00:00' },
+        { time: '02:10' }] });
+
+      /* ══ paint ══ */
+      const state = { dayMode: 'always', offer: 'pills', rt: 'derived' };
+
+      const paint = () => {
+        const o = state;
+        const set = (id, cols) => (document.querySelector(id).innerHTML = cols.join(''));
+        const WHEN_STEPS = [T.stepType, T.stepWhat, T.stepWhen, T.stepDetails];
+
+        // §1 — the misread, and the same moment under the proposal.
+        set('#s1', [
+          col('<span class="tag before">היום</span>',
+            stepBar(WHEN_STEPS, 2) + shippedSpan(),
+            'שני בלוקים זהים · תאריך ריק ושעה ריקה בכל אחד · ואף מקום לא נקרא בשמו'),
+          col('<span class="tag after">בהצעה</span>',
+            stepBar(WHEN_STEPS, 2) + journey(build({ points: [P.tlv, P.kef], clocks: [{}, {}], empty: true }), o),
+            'תאריך אחד למסע · שם מקום על כל רגע · והצעה אחת, לא שתיים'),
+        ]);
+
+        // §2 — the three states of one arrival node, off ONE late departure.
+        const late = (time, plus) =>
+          build({ points: [P.tlv, P.kef], clocks: [{ date: TRIP.start, time: '23:40' }, { time, plus }] });
+        set('#s2', [
+          col('<span class="tag neutral">נגזר · למחרת</span>', journey(late('04:25'), o),
+            'המראה 23:40 בתל אביב, נחיתה 04:25 בקפלוויק · הרגע לא יכול לבוא אחרי ההמראה באותו יום, אז <b>למחרת</b> · בלי שאף אחד בחר תאריך. <b>זו בדיוק ההערה של הבעלים</b>: שעה שמוקדמת מקודמתה מגלגלת את היום לבד'),
+          col('<span class="tag after">והמקרה שמפריד רגעים משעות-קיר</span>',
+            journey(build({ points: [P.nrt, P.hnl], clocks: [{ date: TRIP.start, time: '21:00' }, { time: '09:00' }] }), o),
+            'טוקיו 21:00 ← הונולולו 09:00 · שעת הנחיתה <b>מוקדמת בשתים-עשרה שעות</b> מההמראה, וזה בכל זאת <b>אותו יום</b>: 19 שעות הפרש אזורים מול 7 שעות טיסה. כלל של שעות-קיר היה אומר כאן <code>למחרת</code> ומפספס ביממה שלמה · ולכן הגזירה רצה על רגעים'),
+          col('<span class="tag neutral">נדרס ביד</span>', journey(late('04:25', 2), o),
+            'הטוקן לחיץ · המקרה שארוך מ-24 שעות · רכבת לילה, מעבורת · אומר <code>+2 ימים</code>, וזו האפשרות היחידה שהגזירה לא יכולה לראות. דריסה שהשעות מכחישות (קטע שיצא לשלילי) נזרקת ולא נשמרת · אותו כלל של <code>endFloor</code>, שלא מציע סוף שקודם להתחלה שלו'),
+        ]);
+
+        // §3 — the journey as one object, with the band live.
+        set('#s3', [
+          col('<span class="tag neutral">קטע אחד</span>', journey(OUT_0(), o),
+            'שני צמתים, קטע אחד · הבלוק הוא אובייקט אחד עם חלקים'),
+          col('<span class="tag neutral">עם עצירת ביניים</span>', `<div id="s3-1">${journey(OUT_1(), o)}</div>`,
+            'הפס האמברי הוא <code>.journey-stop</code> של תצוגת היום, כאן במצב <code>tight</code> · ולצומת אין תווית שנייה, כי הפס כבר אמר מה השורה שמתחתיו'),
+        ]);
+
+        // §4 — the ROUTE step: the shipped defect beside the same rail in places mode.
+        set('#s4', [
+          col('<span class="tag before">היום · באג</span>',
+            stepBar(WHEN_STEPS, 1) + `<div class="route-field">${shippedRoute(true)}</div>`,
+            'עצירה ריקה: אין <code>pp-clear</code> כי אין <code>current</code> · והלחיצה על השורה פותחת שליחות למפה שמפרקת את הגיליון'),
+          col('<span class="tag after">בהצעה</span>',
+            stepBar(WHEN_STEPS, 1) +
+              `<div id="s4-1">${journey(build({ points: [P.tlv, { name: '' }, P.kef], clocks: [{}, {}, {}], mode: 'place', swap: true, empty: true }), o)}</div>`,
+            'אותו פס של §3, במקומות · ה-<code>+</code> על הקטע שבו העצירה תיווצר, וה-✕ על הצומת גם כשהוא ריק'),
+        ]);
+
+        // §5 — the filtered suggestion: one pill, the other one, and none.
+        const emptyOut = (points) => build({ points, clocks: points.map(() => ({})), empty: true });
+        set('#s5', [
+          col('<span class="tag after">היעד הוא איסלנד ⇒ תחילת הטיול</span>',
+            `<div id="s5-1">${journey(emptyOut([P.tlv, P.kef]), o)}</div>`,
+            '<code>reaches(קפלוויק)</code> · דרך אזור הזמן, לא דרך השם'),
+          col('<span class="tag after">המוצא הוא איסלנד ⇒ סוף הטיול</span>',
+            journey(emptyOut([P.kef, P.tlv]), o),
+            'אותה פונקציה, הצד השני · אף פעם לא שתי הצעות יחד'),
+          col('<span class="tag neutral">שני הקצוות בפנים ⇒ בלי</span>',
+            journey(emptyOut([P.kef, P.aey]), o),
+            'קפיצה פנימית · קצות הטיול הם בדיוק התשובה הלא נכונה לה, אז אין הצעה'),
+        ]);
+
+        // §6 — the seeded return, mirrored and diverged.
+        const dirPills = (rt) =>
+          `<div class="choice-grid choice-pills" role="radiogroup"><button type="button" class="choice-pill${rt ? '' : ' on'}" role="radio" aria-checked="${!rt}">${T.oneWay}</button><button type="button" class="choice-pill${rt ? ' on' : ''}" role="radio" aria-checked="${rt}">${T.roundTrip}</button></div>`;
+        const backMirror = build({ points: [P.kef, P.tlv], clocks: [{}, {}], empty: true, head: T.legBack, mirror: true });
+        const backDiverged = build({
+          points: [P.aey, P.cph, P.tlv],
+          clocks: [{ date: TRIP.end, time: '11:05' }, { time: '16:40', out: '17:50' }, { time: '23:30' }],
+          head: T.legBack,
+        });
+        set('#s6', [
+          col('<span class="tag neutral">נזרע · עדיין מראה</span>',
+            dirPills(o.rt === 'derived') + '<div style="height:12px"></div>' + journey(backMirror, o),
+            'הנקודות ההפוכות כבר בפנים · והכותרת אומרת שזה עדיין אותו מסלול'),
+          col('<span class="tag after">סטה · וההלוך לא נגע</span>',
+            dirPills(true) + '<div style="height:12px"></div>' + journey(backDiverged, o),
+            'מוצא אחר, עצירה שאין להלוך, ומספר קטעים משלה · והמשפט <code>אותו מסלול בהיפוך</code> נעלם'),
+        ]);
+
+        // §7 — the fold: a step per leg against a step per journey, both at two stops.
+        const legSteps = (n, total) =>
+          stepBar([T.stepType, T.stepWhat, ...Array.from({ length: total }, (_, i) => `${T.stepWhen} · קטע ${i + 1}`), T.stepDetails], 2 + n);
+        const j2 = OUT_2();
+        j2.head = T.legOut;
+        // **THE REFUSAL IS DESIGNED OUT, AND THIS FRAME IS THE PROOF.** `legBeforeArrival`
+        // exists because two absolute dates let you enter a departure before the previous
+        // arrival. Under §2 a journey has ONE date and every later moment is the NEAREST
+        // FORWARD instant — so 19:05 after a 19:40 landing is not an error to refuse, it is
+        // tomorrow, and the segment states what that costs. Prevented rather than refused,
+        // which is ADR-0150 §8's own rule and the one `minTime` already follows.
+        const j2rolled = build({
+          points: [P.tlv, P.ams, P.cph, P.kef],
+          clocks: [
+            { date: TRIP.start, time: '15:30' },
+            { time: '19:40', out: '19:05' },
+            { time: '23:00', out: '00:00' },
+            { time: '02:10' },
+          ],
+          head: T.legOut,
+        });
+        // §8 — a place suggested off the trip's EXISTING legs. `TRIP_LEGS` is what the trip
+        // already holds; the frames differ only in that.
+        const routeStep = (legs) =>
+          stepBar(WHEN_STEPS, 1) +
+          journey(build({ points: [{ name: '' }, { name: '' }], clocks: [{}, {}], mode: 'place', swap: true, empty: true, legs }), o);
+        set('#s8', [
+          col('<span class="tag after">בטיול יש טיסה לכאן</span>',
+            `<div id="s8-1">${routeStep([{ from: P.tlv, to: P.kef }])}</div>`,
+            'המוצא מוצע מהמקום שבו הטיסה לכאן נחתה, והיעד מהמקום שממנו היא יצאה · <b>זו הדוגמה של הבעלים</b>, ובלי שום פקד הלוך-ושוב'),
+          col('<span class="tag neutral">בטיול אין עוד אף קטע</span>',
+            routeStep([]),
+            'אין ממה להסיק, אז אין גלולה · והבורר הוא בדיוק מה שהוא היום'),
+        ]);
+
+        // §9 — a long journey. Three answers at MAX_ROUTE_STOPS, measured against the fold.
+        const LONG = (openAt) => build({
+          points: [P.tlv, P.ams, P.cph, P.osl, P.kef],
+          clocks: [
+            { date: TRIP.start, time: '15:30' },
+            { time: '19:40', out: '21:45' },
+            { time: '23:00', out: '00:00' },
+            { time: '01:10', out: '02:30' },
+            { time: '05:00' },
+          ],
+          head: T.legOut,
+          openAt,
+        });
+        set('#s9', [
+          col('<span class="tag neutral">שתי עצירות · מסוכם</span>',
+            stepBar(WHEN_STEPS, 2) + `<div id="s9-sum2">${journey((() => { const j = OUT_2(); j.head = T.legOut; j.nodes.forEach((n, i) => { if (i !== 2) n.summary = true; }); return j; })(), o)}</div>` + foot(T.next, T.prev),
+            'המקרה שהיה גולל ב-§7 · מסוכם הוא נכנס בשני המסכים', true),
+          col('<span class="tag before">הכול פתוח · גולל</span>',
+            stepBar(WHEN_STEPS, 2) + `<div id="s9-open">${journey(LONG(), o)}</div>` + foot(T.next, T.prev),
+            'שלוש עצירות · <code>MAX_ROUTE_STOPS</code> · הכול פתוח בו-זמנית. זה מה שיש עכשיו, וזה עובר את הקיפול', true),
+          col('<span class="tag after">מסוכם · אחד פתוח</span>',
+            stepBar(WHEN_STEPS, 2) + `<div id="s9-sum">${journey(LONG(3), o)}</div>` + foot(T.next, T.prev),
+            'כל צומת שמולא מתקפל לשורה אחת · הפס, שמות המקומות והשעות עדיין שם, אז המסע נקרא <b>שלם</b> בזמן שממלאים חלק ממנו', true),
+          col('<span class="tag neutral">שלב לכל קטע · מה שיש היום</span>',
+            legSteps(0, 4) + shippedSpan({ date: TRIP.start, time: '15:30' }, { date: TRIP.start, time: '19:40' }) + foot(T.next, T.prev),
+            'נכנס בקלות · אבל ארבעה שלבים, זמן ההמתנה בלתי-נראה, והמסע לא נראה שלם אף פעם', true),
+        ]);
+
+        set('#s7', [
+          col('<span class="tag before">היום · שלב לכל קטע</span>',
+            legSteps(0, 3) + shippedSpan({ date: TRIP.start, time: '15:30' }, { date: TRIP.start, time: '19:40' }) + foot(T.next, T.prev),
+            'שלושה קטעים = שלושה שלבים · והסירוב "היציאה לפני ההגעה ל…" הוא תלות חוצת-שלבים', true),
+          col('<span class="tag after">בהצעה · שלב לכל מסע</span>',
+            stepBar(WHEN_STEPS, 2) + `<div id="s7-j">${journey(j2, o)}</div>` + foot(T.next, T.prev),
+            'מסע שלם עם שתי עצירות על שלב אחד · מול קו הקיפול', true),
+          col('<span class="tag after">והסירוב פשוט לא קיים</span>',
+            stepBar(WHEN_STEPS, 2) + journey(j2rolled, o) + foot(T.next, T.prev),
+            'יציאה ב-19:05 אחרי נחיתה ב-19:40 · אין מה לסרב, זה <b>למחרת</b> · והקטע אומר מה זה עולה, אז המחיר <i>נראה</i> במקום להיות מסורב', true),
+        ]);
+      };
+
+      /* ══ Controls ══ `data-theme` on <html> is exactly what `lib/theme.ts` writes, so
+            the app tokens inside every frame flip on their own. */
+      const press = (btns, on) => btns.forEach((b) => b.setAttribute('aria-pressed', String(b === on)));
+      const group = (attr, apply) => {
+        const btns = [...document.querySelectorAll(`.controls button[${attr}]`)];
+        btns.forEach((b) =>
+          b.addEventListener('click', () => {
+            apply(b.getAttribute(attr));
+            press(btns, b);
+            paint();
+            measure();
+          }),
         );
-        add(
-          'המרזב, מגיליון הסגנון',
-          px(gap),
-          '<code>--swipe-page-gap</code> · חייב להיחצה לפני שנראה משהו',
-        );
+      };
+      group('data-theme', (v) => document.documentElement.setAttribute('data-theme', v));
+      // The two screens the skill requires, each with its own 80vh fold: 360×640 → 512px,
+      // 390×844 → 675px. One control writes both, so a drawn fold can never belong to a
+      // screen that is not on show.
+      const FOLD_FOR = { 360: 512, 390: 675 };
+      group('data-w', (v) => {
+        document.documentElement.style.setProperty('--fw', v + 'px');
+        document.documentElement.style.setProperty('--fold', FOLD_FOR[v] + 'px');
+      });
+      group('data-day', (v) => (state.dayMode = v));
+      group('data-offer', (v) => (state.offer = v));
+      group('data-rt', (v) => (state.rt = v));
 
-        // **The row under the finger: does it move?** Measured INSIDE each frame, against
-        // that frame's own edge — comparing rects across frames in different flex
-        // containers is what made this read 378px on the first render, which is a number
-        // about `justify-content: center` and nothing to do with the design.
-        const shift = (f) => {
-          const r = rect($$('.day-swipe:not([data-preview]) > .day-page .bld', f)[1]);
-          return r.left - rect(f).left;
+      paint();
+
+      /* ══ The measurement table · read off the rendered boxes, never typed in ══ */
+      function measure() {
+        const box = (sel) => document.querySelector(sel)?.getBoundingClientRect();
+        const r1 = (n) => (n == null ? '-' : Math.round(n * 10) / 10);
+        const h = (sel) => r1(box(sel)?.height);
+        const w = (sel) => r1(box(sel)?.width);
+        /** A control's real touch reach: its own box plus whatever its `::after` overlay
+         *  adds. This is the number ADR-0017's floor is about — not the box. */
+        const reach = (sel) => {
+          const el = document.querySelector(sel);
+          if (!el) return '-';
+          const s = getComputedStyle(el, '::after');
+          const top = parseFloat(s.insetBlockStart || s.top || '0') || 0;
+          return r1(el.getBoundingClientRect().height - 2 * top);
         };
-        const restAt = shift($$('#s4 .mk-frame')[0]);
-        add(
-          'הזזת השורה שמתחת לאצבע · המודל שנדחה',
-          px(Math.abs(shift($$('#s3 .mk-frame')[0]) - restAt)),
-          'כל פיקסל הוא תשלום על דיוק הכיוון',
-        );
-        add(
-          'הזזת השורה שמתחת לאצבע · המוצע',
-          px(Math.abs(shift($$('#s3 .mk-frame')[1]) - restAt)),
-          'מטרה שלא זזה בזמן שמכוונים אליה',
-        );
-
-        // §5 — the ghost over the revealed strip.
-        // **The ghost against the reveal, measured in the dimension that decides it.**
-        // The first render measured the horizontal overlap alone and reported "24 of 24px,
-        // nothing left clear" — which is true and means nothing, because the reveal is a
-        // FULL-HEIGHT strip and the dragged clone is one row. The width says the card is
-        // over the strip; only the height says how much of it that costs.
-        const f5 = $$('#s5 .mk-frame')[0];
-        const g = rect($('.mk-ghost', f5));
-        const win5 = rect($('.day-peeks', f5));
-        const pane5 = rect($('.day-peek[data-day="next"]', f5));
-        const revealed5 = Math.max(0, pane5.right - win5.left);
-        const across = g ? Math.max(0, Math.min(g.right, win5.left + revealed5) - Math.max(g.left, win5.left)) : 0;
-        const down = g ? Math.max(0, Math.min(g.bottom, win5.bottom) - Math.max(g.top, win5.top)) : 0;
-        add(
-          'הרצועה שנחשפה, וכמה ממנה הרוח חוצה',
-          `⁦${Math.round(revealed5)} × ${Math.round(win5.height)}px⁩`,
-          `הרוח חוצה ⁦${Math.round(across)}px⁩ לרוחב — כלומר את כולה — אבל רק ⁦${Math.round(down)}px⁩ לגובה`,
-        );
-        add(
-          'מהרצועה נשאר גלוי לגמרי',
-          `⁦${Math.round(100 - (down / win5.height) * 100)}%⁩`,
-          'גובה · השיבוט הוא שורה אחת, החשיפה היא כל הגובה — וזה מה שמציל את הרמז',
-        );
-        add(
-          'שקיפות הרוח',
-          getComputedStyle(document.documentElement).getPropertyValue('--drag-ghost-opacity').trim(),
-          '<code>--drag-ghost-opacity</code> (ADR-0161 §8) · לכן חפיפה ≠ הסתרה',
-        );
-
-        // The turn's travel, and the band against the neutral middle.
-        const w = hostBox.width;
-        add('מסלול הפנייה', px(w + gap), 'עמוד + מרזב · בדיוק כמו החלקה שמתחייבת (§9b)');
-        add(
-          'הרצועה בכל צד, והאמצע הנייטרלי',
-          `⁦36 · ${Math.round(w - 72)}px⁩`,
-          `מתוך ⁦${Math.round(w)}px⁩ · <code>DRAG_DAY_EDGE_PX</code>, קריאת תחושה`,
-        );
-        add(
-          'משך הרמז',
-          '⁦700ms⁩',
-          '<code>DRAG_DAY_DWELL_MS</code> · ארוך מ-<code>--t-cinematic</code> (⁦600ms⁩), ולכן לא טוקן',
-        );
-
-        $('#meas tbody').innerHTML = rows.join('');
+        // The ceiling is the SELECTED screen's 80vh, read from the same variable the drawn
+        // fold line uses — so the table and the line can never disagree.
+        /** The whole sheet a given block sits in — walked from the block, so adding a frame
+         *  beside it can never re-point the measurement. */
+        const stepOf = (sel) => {
+          const el = document.querySelector(sel);
+          const body = el?.closest('.fbody');
+          return body ? r1(body.getBoundingClientRect().height) : '-';
+        };
+        const FOLD =
+          parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fold')) || 675;
+        const overUnder = (n) =>
+          n === '-'
+            ? '-'
+            : n > FOLD
+              ? `<b>מעל</b> ב-${r1(n - FOLD)}px (קיפול ${FOLD})`
+              : `בתוך, ${r1(FOLD - n)}px מקום (קיפול ${FOLD})`;
+        const j0 = h('#s3 .col:first-child .jf');
+        const j1 = h('#s3-1 .jf');
+        const j2 = h('#s7-j .jf');
+        const rows = [
+          ['השלב <code>מתי</code> · מה שנשלח היום (ריק)', h('#s1 .col:first-child .wf.wf-span') + 'px',
+            'שני בלוקים זהים · זו התיבה שנקראה כשתי טיסות'],
+          ['השלב <code>מתי</code> · בהצעה (ריק)', h('#s1 .col:last-child .jf') + 'px',
+            'אותו רגע · <b>לא חיסכון בגובה</b>, וזה נאמר ב-§1: ההצעה קונה שם מקום לכל רגע ועוד גלולה'],
+          ['מסע · 0 עצירות', j0 + 'px', overUnder(j0) + ' · המקרה השכיח'],
+          ['מסע · עצירה אחת', j1 + 'px', overUnder(j1)],
+          ['מסע · 2 עצירות', j2 + 'px', overUnder(j2) + ' · <code>MAX_ROUTE_STOPS</code> הוא 3'],
+          ['השלב כולו · 2 עצירות, הכול פתוח', stepOf('#s7-j .jf') + 'px',
+            overUnder(stepOf('#s7-j .jf')) + ' · כולל סרגל וכפתורים'],
+          ['השלב <code>מתי · קטע 1</code> מתוך 3 · היום', h('#s7 .col:first-child .fbody') + 'px',
+            'נכנס בקלות · אבל כפול שלושה שלבים, ובלי שהמסע נראה שלם אף פעם'],
+          ['צומת קצה · <code>.jf-row.first</code>', h('#s3 .col:first-child .jf-row.first') + 'px', 'שם מקום + שורת פרוזה + צ׳יפ אזור'],
+          ['צומת עצירה · <code>.jf-row</code> אמצעי', h('#s3-1 .jf-row:nth-child(3)') + 'px', 'נחיתה + פס ההמתנה + יציאה, בלי תווית שנייה'],
+          ['קטע · <code>.jf-seg</code>', h('#s3 .col:first-child .jf-seg') + 'px', 'המשך בלבד · ההוספה שייכת לשלב המקומות'],
+          ['טוקן היום היחסי · <code>.vt-word</code>',
+            w('#s3 .col:first-child .vt-word') + '×' + h('#s3 .col:first-child .vt-word') + 'px · יעד ' + reach('#s3 .col:first-child .vt-word') + 'px',
+            'רצפת מגע 44px · דרך <code>.vt::after</code> הקיים, שלא מגדיל את השורה'],
+          ['✕ של עצירה · <code>pp-clear</code> על עצירה ריקה',
+            w('#s4-1 .place-picker-stop .pp-clear') + '×' + h('#s4-1 .place-picker-stop .pp-clear') + 'px · יעד ' + reach('#s4-1 .place-picker-stop .pp-clear') + 'px',
+            'רצפת מגע 44px · הכפתור עצמו הוא 32px מאז שנשלח, וההצעה נותנת לו את ההישג בלי להגדיל שורה'],
+          ['הוספת עצירה · <code>.jf-insert</code>', h('#s4-1 .jf-insert') + 'px · יעד ' + reach('#s4-1 .jf-insert') + 'px', 'רצפת מגע 44px'],
+          ['גלולת קצה טיול · <code>.jf-offer button</code>', h('#s5-1 .jf-offer button') + 'px · יעד ' + reach('#s5-1 .jf-offer button') + 'px', 'רצפת מגע 44px'],
+          ['מסע · 3 עצירות · הכול פתוח', h('#s9-open .jf') + 'px', overUnder(h('#s9-open .jf')) + ' · <code>MAX_ROUTE_STOPS</code>'],
+          ['מסע · 3 עצירות · מסוכם, אחד פתוח', h('#s9-sum .jf') + 'px', overUnder(h('#s9-sum .jf')) + ' · זו ההצעה של §9'],
+          ['השלב כולו · 2 עצירות, מסוכם', stepOf('#s9-sum2 .jf') + 'px',
+            overUnder(stepOf('#s9-sum2 .jf')) + ' · כולל סרגל וכפתורים'],
+          ['השלב כולו · 3 עצירות, הכול פתוח', stepOf('#s9-open .jf') + 'px',
+            overUnder(stepOf('#s9-open .jf')) + ' · כולל סרגל וכפתורים'],
+          ['השלב כולו · 3 עצירות, מסוכם', stepOf('#s9-sum .jf') + 'px',
+            overUnder(stepOf('#s9-sum .jf')) + ' · כולל סרגל וכפתורים'],
+          ['צומת מסוכם · <code>.jf-sum</code>', h('#s9-sum .jf-sum') + 'px', 'מול צומת פתוח למטה · זה מה שהקיפול חוסך'],
+          ['הפס של העצירה · <code>.journey-stop</code>', h('#s3-1 .journey-stop') + 'px', 'לא מסוגנן מחדש · אותו רכיב של תצוגת היום'],
+        ];
+        document.querySelector('#meas tbody').innerHTML = rows
+          .map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`)
+          .join('');
       }
-
-      const themeBtns = $$('.controls [data-theme]');
-      themeBtns.forEach((b) =>
-        b.addEventListener('click', () => {
-          document.documentElement.setAttribute('data-theme', b.dataset.theme);
-          press(themeBtns, b);
-          measure();
-        }),
-      );
-      const wBtns = $$('.controls [data-w]');
-      wBtns.forEach((b) =>
-        b.addEventListener('click', () => {
-          const w = b.dataset.w;
-          document.documentElement.style.setProperty('--fw', `${w}px`);
-          document.documentElement.style.setProperty('--fh', w === '360' ? '640px' : '844px');
-          press(wBtns, b);
-          draw();
-        }),
-      );
-      const rBtns = $$('.controls [data-reveal]');
-      rBtns.forEach((b) =>
-        b.addEventListener('click', () => {
-          reveal = parseInt(b.dataset.reveal);
-          press(rBtns, b);
-          draw();
-        }),
-      );
-      const gBtns = $$('.controls [data-ghost]');
-      gBtns.forEach((b) =>
-        b.addEventListener('click', () => {
-          showGhost = b.dataset.ghost === '1';
-          press(gBtns, b);
-          draw();
-        }),
-      );
-
-      draw();
+      // Fonts change every box on the page, so the first reading waits for them.
+      if (document.fonts?.ready) document.fonts.ready.then(measure);
+      measure();
     </script>
   </body>
 </html>

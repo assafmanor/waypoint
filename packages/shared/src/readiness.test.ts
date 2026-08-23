@@ -8,7 +8,7 @@ import {
   EVENT_STATUS,
 } from './constants';
 import type { Booking, DocumentSummary, Place, TripEvent } from './entities';
-import { computeReadiness } from './readiness';
+import { computeReadiness, reachesDestination } from './readiness';
 
 const NOW = '2026-07-01T00:00:00Z';
 const DEST = { name: 'Japan' };
@@ -485,5 +485,88 @@ describe('computeReadiness', () => {
       expect(l.done).toBe(false);
       expect(l.total).toBe(2);
     });
+  });
+});
+
+/** **The predicate the booking form now reads too** (ADR-0203 §5). Pinned directly rather
+ *  than only through `computeReadiness`, because it has a second consumer: with one caller
+ *  its three tiers were an implementation detail, and with two the degradation clause — it
+ *  can say "yes" or "cannot confirm", never "no" — is a contract a form depends on to only
+ *  ever REMOVE a suggestion. */
+describe('reachesDestination (ADR-0203 §5, exported)', () => {
+  const ICELAND = { name: 'Iceland', timezone: 'Atlantic/Reykjavik', countryCode: 'IS' };
+
+  it('answers on the ZONE, which is what a name cannot establish', () => {
+    // The comment in the function says it: "Keflavík reaches Iceland because of where it
+    // is, which no reading of its name can establish."
+    const kef = place('kef', 'Keflavík International Airport', {
+      timezone: 'Atlantic/Reykjavik',
+    });
+    expect(reachesDestination(kef, ICELAND)).toBe(true);
+    expect(kef.name.toLowerCase().includes('iceland')).toBe(false);
+  });
+
+  it('answers on the NAME for a Place-lite that has no location at all', () => {
+    expect(reachesDestination(place('x', 'Tokyo, Japan'), { name: 'Japan' })).toBe(true);
+  });
+
+  it('answers on the picked place ITSELF', () => {
+    const dest = { name: 'Somewhere', googlePlaceId: 'g-1' };
+    expect(reachesDestination(place('p', 'unrelated words', { googlePlaceId: 'g-1' }), dest)).toBe(
+      true,
+    );
+  });
+
+  it('CANNOT ANSWER NO — an unplaceable endpoint is unconfirmed, not refused', () => {
+    // The whole basis on which a form may filter with it: every false is "no evidence",
+    // so the worst a filter can do is offer nothing.
+    expect(reachesDestination(undefined, ICELAND)).toBe(false);
+    expect(reachesDestination(place('p', 'Ben Gurion Airport'), ICELAND)).toBe(false);
+    expect(reachesDestination(place('p', 'Ben Gurion Airport'), { name: '' })).toBe(false);
+  });
+
+  it('accepts any zone of a multi-zone destination country, and never a second country', () => {
+    const US = { name: 'United States', timezone: 'America/New_York', countryCode: 'US' };
+    const lax = place('lax', 'Los Angeles International', { timezone: 'America/Los_Angeles' });
+    expect(reachesDestination(lax, US)).toBe(true);
+    expect(reachesDestination(place('yyz', 'Toronto', { timezone: 'America/Toronto' }), US)).toBe(
+      false,
+    );
+  });
+
+  /** §5's filter, stated as the property the form relies on: the two ends of a journey
+   *  decide WHICH edge of the trip it is, and an internal hop decides neither. */
+  it('separates the way there, the way home, and an internal hop', () => {
+    const tlv = place('tlv', 'Ben Gurion Airport', { timezone: 'Asia/Jerusalem' });
+    const kef = place('kef', 'Keflavík', { timezone: 'Atlantic/Reykjavik' });
+    const aey = place('aey', 'Akureyri', { timezone: 'Atlantic/Reykjavik' });
+    const edge = (from: Place, to: Place) =>
+      reachesDestination(to, ICELAND) && !reachesDestination(from, ICELAND)
+        ? 'out'
+        : reachesDestination(from, ICELAND) && !reachesDestination(to, ICELAND)
+          ? 'back'
+          : null;
+    expect(edge(tlv, kef)).toBe('out');
+    expect(edge(kef, tlv)).toBe('back');
+    // Both ends inside the destination: the trip's edges are the wrong answer, so none.
+    expect(edge(kef, aey)).toBe(null);
+    // Neither end placeable: also none, and for the same reason.
+    expect(edge(place('a', 'Downtown'), place('b', 'The Old Port'))).toBe(null);
+  });
+
+  /** **A sharp edge in the name tier, pinned rather than fixed** — found by writing the
+   *  spec above with one-letter fixtures, which passed for the wrong reason.
+   *  `nameReachesDestination` matches by substring in BOTH directions, so any place whose
+   *  name is a substring of the destination's "reaches" it: `'a'` is inside `'Iceland'`.
+   *
+   *  Left alone deliberately. It is shipped behaviour with `computeReadiness` as its first
+   *  consumer, the docblock already warns the tier is true "only by luck", and narrowing it
+   *  is a change to a derivation the Plan readiness count depends on — not something to
+   *  take on inside ADR-0203's build. What it DOES cost is stated where it matters: §5's
+   *  filter can only remove a suggestion **given endpoints that are really placeable**, so a
+   *  one- or two-character Place-lite can still tip it to the wrong edge. On the backlog. */
+  it('matches a name by substring in both directions, which a tiny name exploits', () => {
+    expect(reachesDestination(place('a', 'a'), ICELAND)).toBe(true);
+    expect(reachesDestination(place('l', 'LAND'), ICELAND)).toBe(true);
   });
 });

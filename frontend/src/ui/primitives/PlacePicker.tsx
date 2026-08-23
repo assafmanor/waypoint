@@ -19,6 +19,8 @@ export function PlacePicker({
   placeholder,
   onFind,
   className,
+  removable,
+  clearLabel,
 }: {
   /** Current placeId (a trip Place, possibly a coordless name-only Place-lite). */
   value?: string;
@@ -40,6 +42,22 @@ export function PlacePicker({
    *  first one (ADR-0159). Not a style prop: the host names a role, this file keeps
    *  owning what the role looks like. */
   className?: string;
+  /** **This field's ✕ is a REMOVE, so it shows even when there is nothing to clear**
+   *  (ADR-0203 §4, fixing a shipped defect).
+   *
+   *  ADR-0159 §5 decided that clearing a journey's stop IS removing it, and deleted a second
+   *  ✕ someone had drawn beside the first — correctly. What it did not notice is that the
+   *  first one renders `{current && …}`, so it is absent on precisely the row that most needs
+   *  removing: a stop the `＋` just added, which names no place and whose only other control
+   *  is an errand that unmounts the whole sheet. There was no way out of that row at all.
+   *
+   *  A role on the existing control rather than a second one, so the fix lands where
+   *  ADR-0159 already put the decision instead of beside it. Absent → the ✕ means "clear"
+   *  and appears only with a value, which is every other host. */
+  removable?: boolean;
+  /** What the ✕ is called when it is not a clear. A remove reads differently and a screen
+   *  reader is the only place that difference is visible. */
+  clearLabel?: string;
 }) {
   const { places } = useTrip();
   const current = value ? places.find((p) => p.id === value) : undefined;
@@ -62,11 +80,11 @@ export function PlacePicker({
           {current ? current.name : (placeholder ?? t.placePicker.empty)}
         </span>
       </button>
-      {current && (
+      {(current || removable) && (
         <button
           type="button"
           className="pp-clear"
-          aria-label={t.placePicker.clear}
+          aria-label={clearLabel ?? t.placePicker.clear}
           onClick={() => onChange(undefined)}
         >
           <Icon name="close" />

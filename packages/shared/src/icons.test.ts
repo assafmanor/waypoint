@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BookingType, EventCategory, TripEvent } from './entities';
-import { BOOKING_TYPE, BOOKING_TYPE_TO_CATEGORY } from './constants';
+import { BOOKING_TYPE, BOOKING_TYPE_TO_CATEGORY, PLACE_SEARCH_KIND } from './constants';
 import {
   authorsRoundTrip,
   bookingTypeDurationUnit,
@@ -8,6 +8,8 @@ import {
   isTightConnection,
   titlesFromRoute,
   BOOKING_TYPE_PROFILE,
+  placeSearchKindFor,
+  spendsSpanInMotion,
   carriesRoute,
   CATEGORY_TIME_PROFILE,
   defaultKindForBookingType,
@@ -462,6 +464,30 @@ describe('BOOKING_TYPE_PROFILE (ADR-0154 §2)', () => {
     for (const type of ALL_TYPES) {
       expect(carriesRoute(type)).toBe(BOOKING_TYPE_TO_CATEGORY[type] === 'transport');
     }
+  });
+
+  /** **ADR-0203 §8.** The axis exists to retire a `type === FLIGHT` conditional at a call
+   *  site whose own comment named what it cost — "a train's stop is a station this
+   *  restriction has no type for yet" — so the test that matters is that every route-shaped
+   *  type answers, not that any particular one does. */
+  it('gives a search kind to exactly the types you are CARRIED by', () => {
+    // Not `carriesRoute`, and the car hire is why — the same distinction `inMotion` was
+    // separated for. A hire has two route endpoints, but they are rental COUNTERS: asking
+    // Google for a station there would exclude the only right answers. So the invariant
+    // is `spendsSpanInMotion`, and a car deliberately restricts nothing.
+    for (const type of ALL_TYPES) {
+      if (spendsSpanInMotion(type)) expect(placeSearchKindFor(type)).toBeDefined();
+      else expect(placeSearchKindFor(type)).toBeUndefined();
+    }
+    expect(carriesRoute(BOOKING_TYPE.CAR)).toBe(true);
+    expect(placeSearchKindFor(BOOKING_TYPE.CAR)).toBeUndefined();
+  });
+
+  it('asks for a terminal for a flight and a platform for the two ground modes', () => {
+    expect(placeSearchKindFor(BOOKING_TYPE.FLIGHT)).toBe(PLACE_SEARCH_KIND.AIRPORT);
+    expect(placeSearchKindFor(BOOKING_TYPE.TRAIN)).toBe(PLACE_SEARCH_KIND.TRAIN_STATION);
+    // A bus or a ferry is a quay, not rail — the wider kind, deliberately not TRAIN_STATION.
+    expect(placeSearchKindFor(BOOKING_TYPE.TRANSIT)).toBe(PLACE_SEARCH_KIND.TRANSIT_STATION);
   });
 
   it('gives the four transport modes a route, and every other type a single place', () => {

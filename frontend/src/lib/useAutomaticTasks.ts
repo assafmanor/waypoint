@@ -10,7 +10,7 @@
 import { useMemo } from 'react';
 import type { Task, UpdateTaskInput } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
-import { computeReadiness, type Readiness } from '@waypoint/shared';
+import { computeReadiness, destinationRefOf, type Readiness } from '@waypoint/shared';
 import { automaticTasks, isUnwritten, type AutomaticTask } from './automatic-tasks';
 
 export interface AutomaticTasks {
@@ -32,12 +32,7 @@ export function useAutomaticTasks(): AutomaticTasks {
       computeReadiness({
         startDate: trip.startDate,
         endDate: trip.endDate,
-        destination: {
-          name: trip.destination,
-          googlePlaceId: trip.destinationGooglePlaceId,
-          timezone: trip.timezone,
-          countryCode: trip.destinationCountryCode,
-        },
+        destination: destinationRefOf(trip),
         events,
         bookings,
         places,

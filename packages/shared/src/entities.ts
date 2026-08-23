@@ -256,12 +256,17 @@ export type Booking = z.infer<typeof bookingSchema>;
 
 /** **What a search is being asked to find, when the asker knows** (field report #6).
  *
- *  One member, and the enum shape is the point: a caller names a KIND, and which Google
- *  type(s) that becomes is the places proxy's business, not a form's. A flight leg wants an
- *  airport — searching `נתב"ג` unrestricted returns the terminal, the car park and a hotel
- *  beside it, all legitimate answers to the words and none of them where the plane leaves
- *  from. */
-export const placeSearchKindSchema = z.enum(['airport']);
+ *  A caller names a KIND, and which Google type(s) that becomes is the places proxy's
+ *  business, not a form's. A flight leg wants an airport — searching `נתב"ג` unrestricted
+ *  returns the terminal, the car park and a hotel beside it, all legitimate answers to the
+ *  words and none of them where the plane leaves from.
+ *
+ *  **`train_station` and `transit_station` join it in ADR-0203 §8**, closing a gap the old
+ *  one-member version left and which `BookingSheet.findPlace`'s own comment already named:
+ *  _"a train's stop is a station this restriction has no type for yet"_. Which type a
+ *  BOOKING asks for is now the profile's answer (`BOOKING_TYPE_PROFILE.searchKind`), not a
+ *  conditional at the call site. */
+export const placeSearchKindSchema = z.enum(['airport', 'train_station', 'transit_station']);
 export type PlaceSearchKind = z.infer<typeof placeSearchKindSchema>;
 
 /** Trip-scoped location registry (ADR-0048). Every `placeId` FK points here. A

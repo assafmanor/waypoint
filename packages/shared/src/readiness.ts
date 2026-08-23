@@ -11,7 +11,7 @@
 import { BOOKING_TYPE, DOCUMENT_TYPE, EVENT_CATEGORY } from './constants';
 import { MULTI_ZONE_COUNTRIES } from './destinations';
 import { spendsSpanInMotion } from './icons';
-import type { Booking, DocumentSummary, Place, TripEvent } from './entities';
+import type { Booking, DocumentSummary, Place, Trip, TripEvent } from './entities';
 import { addDays, MS_PER_DAY, MS_PER_MINUTE, tripDates, zonedIso } from './trip-dates';
 
 /** **The hours a night is slept in**, as trip-local wall clock — the window readiness
@@ -119,8 +119,37 @@ function nameReachesDestination(placeName: string, destinationName: string): boo
  *
  *  Nothing here can answer NO: a place no route can place is unconfirmed, and an
  *  unconfirmed leg leaves the check open rather than falsely reading done
- *  (ADR-0061's degradation clause). */
-function reachesDestination(place: Place | undefined, destination: DestinationRef): boolean {
+ *  (ADR-0061's degradation clause).
+ *
+ *  **Exported since ADR-0203 §5, and the reason is the defect that ADR was written about
+ *  one function over.** This is the app's only answer to "is this leg the way there or the
+ *  way back", and while it was module-private the booking form could not ask it — so a
+ *  form offering the trip's first day and its last day had no way to tell which one a
+ *  journey wanted, and offered both. ADR-0154 recorded the same shape about `PlanHome`:
+ *  _"the app knows what a round trip is, in exactly one corner, and the form it would help
+ *  never hears about it."_ Two consumers now, and the degradation clause above is what
+ *  makes it safe for the second: it can only ever REMOVE a suggestion, never add a wrong
+ *  one. */
+/** **The destination, as the four fields `reachesDestination` reads.**
+ *
+ *  Extracted rather than written a second time (rule 8). `useAutomaticTasks` had this object
+ *  inline as part of an eight-field `computeReadiness` call, which was right while it was the
+ *  only caller; the booking form asking the same question is what makes it a shared
+ *  derivation. A `Pick` rather than a whole `Trip` so a caller with only the fields — a
+ *  server route, a test — can supply them. */
+export const destinationRefOf = (
+  trip: Pick<
+    Trip,
+    'destination' | 'destinationGooglePlaceId' | 'timezone' | 'destinationCountryCode'
+  >,
+): DestinationRef => ({
+  name: trip.destination,
+  googlePlaceId: trip.destinationGooglePlaceId,
+  timezone: trip.timezone,
+  countryCode: trip.destinationCountryCode,
+});
+
+export function reachesDestination(place: Place | undefined, destination: DestinationRef): boolean {
   if (!place) return false;
   return (
     (Boolean(place.googlePlaceId) && place.googlePlaceId === destination.googlePlaceId) ||

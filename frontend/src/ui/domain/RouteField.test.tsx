@@ -99,6 +99,64 @@ describe('RouteField', () => {
 // ── THE HIRE SHAPE (ADR-0163 §1) ───────────────────────────────────────────────
 // Same two columns, a different question. What is worth pinning here is the state the
 // DATA cannot express: "return it somewhere else, and I have not said where yet".
+/** **The shipped defect ADR-0203 §4 fixes, and the spec that would have caught it.**
+ *  A stop is removed through the picker's own ✕ (ADR-0159 §5: "clearing IS removing"), and
+ *  that button used to render only when the row had a place — so a stop the `＋` had just
+ *  added had no remove control, and its only other control is an errand that unmounts the
+ *  sheet. The row was a dead end. */
+describe('RouteField · a stop can always be removed (ADR-0203 §4)', () => {
+  afterEach(cleanup);
+
+  const withStops = (stops: (string | undefined)[], onStopsChange = vi.fn()) => {
+    render(
+      <RouteField
+        from="p-tlv"
+        to="p-nrt"
+        onChange={vi.fn()}
+        onFind={vi.fn()}
+        stops={stops}
+        onStopsChange={onStopsChange}
+        onFindStop={vi.fn()}
+      />,
+    );
+    return onStopsChange;
+  };
+
+  it('offers the remove on an EMPTY stop — the row that used to have no way out', () => {
+    withStops([undefined]);
+    const stop = document.querySelector('.place-picker-stop');
+    expect(stop).not.toBeNull();
+    expect(stop!.querySelector('.pp-clear')).not.toBeNull();
+  });
+
+  it('removes that empty stop rather than leaving it in the list', () => {
+    const onStopsChange = withStops([undefined]);
+    fireEvent.click(document.querySelector<HTMLElement>('.place-picker-stop .pp-clear')!);
+    expect(onStopsChange).toHaveBeenCalledWith([]);
+  });
+
+  it('still removes a stop that HAS a place, which never regressed', () => {
+    const onStopsChange = withStops(['p-nrt', undefined]);
+    fireEvent.click(document.querySelector<HTMLElement>('.place-picker-stop .pp-clear')!);
+    expect(onStopsChange).toHaveBeenCalledWith([undefined]);
+  });
+
+  it('names the control a REMOVE on a stop, and leaves an endpoint saying clear', () => {
+    withStops([undefined]);
+    // The endpoints are the same component and must not have been renamed with it.
+    const labels = [...document.querySelectorAll('.pp-clear')].map((b) =>
+      b.getAttribute('aria-label'),
+    );
+    expect(labels).toContain('הסרת העצירה');
+    expect(labels).toContain('הסרת המקום');
+  });
+
+  it('leaves an endpoint with no place showing no ✕ at all', () => {
+    render(<RouteField onChange={vi.fn()} onFind={vi.fn()} />);
+    expect(document.querySelector('.pp-clear')).toBeNull();
+  });
+});
+
 describe('RouteField · shape="hire"', () => {
   afterEach(cleanup);
 
