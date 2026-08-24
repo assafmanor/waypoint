@@ -850,6 +850,20 @@ export const t = {
       stopLabel: 'עצירה 📍',
       stopShort: 'עצירה',
       addStop: 'עצירת ביניים',
+      /** **The way home's own route** (ADR-0203 §6). Reported from the field: a round trip's
+       *  stops "could be different stops and/or a different number of stops".
+       *
+       *  `אותה דרך` / `דרך אחרת` deliberately avoid the word `חזרה`, which already names the
+       *  section — the rejected text-offer variant had to say `חזרה לאותה דרך` and would have
+       *  used one word for two things in adjacent lines. */
+      returnRouteAria: 'דרך החזרה',
+      returnSameWay: 'אותה דרך',
+      returnOtherWay: 'דרך אחרת',
+      /** What a mirrored return IS, as a derived sentence rather than a control. */
+      returnMirrors: 'אותן עצירות, בסדר הפוך',
+      /** A return stop with no place cannot be flown to, scheduled or titled — the same
+       *  refusal the outbound's stops already make, at the same field. */
+      returnStopRequired: 'לכל עצירה בחזרה צריך מקום',
       // The direction control (ADR-0154 §4), offered on flight/train at create only.
       // Defaults to one-way: the control row costs 44px on every transport booking, and
       // the second leg a further 492px that only an explicit tap should buy.

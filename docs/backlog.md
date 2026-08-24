@@ -548,7 +548,6 @@ Both are **Should / v1** in [`product/feature-catalog.md`](product/feature-catal
 
 [ADR-0203](decisions/0203-a-journey-has-one-date-and-its-arrival-is-a-clock.md) is **Accepted and built** (2026-08-23), design reference [`mockups/a-journey-has-one-date-v1.html`](../mockups/a-journey-has-one-date-v1.html). The rail is the schedule step for every journey: one absolute date, arrivals as clocks with derived relative days, one step per journey, and the nodes behind you summarising as you fill. §1–§5, §7 and §9 are in; the ADR's build log carries what the wiring changed. Two pieces are left, plus one decision that is not this ADR's:
 
-- **§6's independent return is bigger than §6 implies**, and touches three layers the ADR did not count: `PlaceErrandField` needs names for a return's places, `bookingSheetDraft` needs to carry them, and `legBooking` needs `returnPoints` rather than `reversed`. No migration — the model already writes one `Booking` per leg with its own two points — but not a one-line change either.
 - **§8's place suggestion in the form** needs the trip's existing transport legs derived and handed to `PLACE_SOURCES`; the sources themselves are done and specced.
 - **`reachesDestination`'s name tier matches by substring in both directions**, so a one- or two-character Place-lite "reaches" almost any destination (`'a'` is inside `'Iceland'`). Shipped behaviour with the readiness count as its first consumer, pinned by a spec rather than narrowed inside this ADR — but it bounds §5's "can only remove a suggestion" to endpoints that are really placeable. Worth a decision of its own.
 
@@ -559,6 +558,19 @@ What the build already carried, kept for the reader who wonders whether it was c
 - **`reachesDestination` gets exported from `@waypoint/shared`** — one line — so §5's date filter and §8's place suggestion read the same predicate the Plan readiness check does. `legCount` also stops being one number for both journeys (§6).
 - **Three device questions, all wired as controls in the mockup with the recommendation as the default:** whether `באותו יום` shows always or only when it differs, whether the date suggestion is a pill or a pre-filled value with a latch, and whether `הלוך ושוב` is pre-offered from the trip's readiness. The last one is where the owner's approval was explicitly conditional, so it wants glass before it ships.
 - **A cross-trip place memory ("the airport you usually fly from") is deferred with its reason**: `Place` is `@@unique([tripId, googlePlaceId])` and the schema comment states the deliberate reason. It is one more row in §8's source table when it comes, and the gap is only the very first endpoint of a first trip.
+
+## Three more on the rail, and §6 lands (owner, 2026-08-24)
+
+All three fixed the same day. [ADR-0203](decisions/0203-a-journey-has-one-date-and-its-arrival-is-a-clock.md) §6 is **built** and [ADR-0184](decisions/0184-an-edge-can-be-a-window.md) §2 amended; design reference [`mockups/the-way-back-is-its-own-route-v1.html`](../mockups/the-way-back-is-its-own-route-v1.html). Kept here for the findings that outlive the fixes:
+
+- **§6 was never three layers, it was a NUMBER.** Both earlier deferrals named the draft, the errand field and `legBooking`. What actually made it hard is that `legCount` was one number for both journeys and nine call sites read it — the field's "a different number of stops" is the part no amount of `reversed` could express. `pointsFor(side)`/`legCountFor(side)` now carry it.
+- **A hoisted `function` does not rescue a `const` it closes over.** `legCountFor` was reachable early; `backPoints` was not, so every round trip threw `cannot access before initialization` and eight specs caught it at once.
+- **Two intents on one callback is a bug waiting.** "Give me my own route" and "I cleared the last stop" arrived as the same call, so emptying the return's list restored the stop just removed. And `[]` had to stop meaning "nothing remembered": it is a real answer — diverged, and the way home is direct.
+
+Still open, both narrow:
+
+- **The refusal's scroll target on a reordered window line.** An end edge's two tokens now render floor-then-deadline, so the marked `Field` is no longer the line's first token. The mark is on the box, which is correct, but the scroll-into-view aims at that box and wants a device pass.
+- **An open-jaw round trip** — different endpoints, not just different stops (in to Tbilisi, out of Kutaisi). Declared out of scope for §6 rather than half-built; it needs the return's two ends to become their own fields.
 
 ## Six field reports on the shipped journey rail (owner, 2026-08-23)
 

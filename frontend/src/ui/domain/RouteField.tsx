@@ -25,6 +25,8 @@ import { useState } from 'react';
 import { PlacePicker } from '../primitives/PlacePicker';
 import { ChoiceGrid } from '../primitives/ChoiceGrid';
 import { Icon } from '../Icon';
+import { RouteLabel } from '../RouteLabel';
+import { useTrip } from '../../state/trip-state';
 import { MAX_ROUTE_STOPS } from '../../constants';
 import { t } from '../../i18n/he';
 import './route-field.css';
@@ -63,6 +65,25 @@ export interface RouteFieldProps {
    *  `PlacePicker`s over the same two `Booking` columns, with the same errand plumbing
    *  that ADR-0134 §2 made per-field. A copy would fork that. */
   shape?: 'journey' | 'hire';
+  /** **The way home's OWN stops, when it has them** (ADR-0203 §6) — `null` while the return
+   *  is still the outbound reversed, and absent entirely when this host authors no return at
+   *  all. Reported from the field: a round trip's stops "could be different stops and/or a
+   *  different number of stops", and after choosing round trip there was no way to say so.
+   *
+   *  **The two ENDS are not offered here**, and that is the scope decision: you fly home from
+   *  where you landed, so the way back's endpoints are the outbound's two, swapped. Drawing
+   *  pickers for them would offer an edit that writes to the outbound. An open-jaw trip is a
+   *  different feature (see the ADR). */
+  returnStops?: (string | undefined)[] | null;
+  /** A LIST edit, or `null` to return the way back to a mirror. Never used to switch INTO
+   *  an independent route — that is `onReturnDiverge`, and conflating the two made clearing
+   *  the last stop look identical to "give me my own route", so the host restored the list the
+   *  user had just emptied. Two intents, two callbacks. */
+  onReturnStopsChange?: (next: (string | undefined)[] | null) => void;
+  /** Give the way back a route of its own. The HOST decides what it opens with — the
+   *  outbound reversed the first time, whatever was typed before if there is any. */
+  onReturnDiverge?: () => void;
+  onFindReturnStop?: (index: number, sideLabel: string) => void;
 }
 
 export function RouteField({
@@ -75,6 +96,10 @@ export function RouteField({
   onStopsChange,
   onFindStop,
   shape = 'journey',
+  returnStops,
+  onReturnStopsChange,
+  onReturnDiverge,
+  onFindReturnStop,
 }: RouteFieldProps) {
   if (shape === 'hire') {
     return <HireEndsField from={from} to={to} onChange={onChange} onFind={onFind} />;
@@ -89,6 +114,10 @@ export function RouteField({
       stops={stops}
       onStopsChange={onStopsChange}
       onFindStop={onFindStop}
+      returnStops={returnStops}
+      onReturnStopsChange={onReturnStopsChange}
+      onReturnDiverge={onReturnDiverge}
+      onFindReturnStop={onFindReturnStop}
     />
   );
 }
@@ -167,6 +196,151 @@ function HireEndsField({
   );
 }
 
+/** **The stop rows and their `＋`, once** — used by the outbound and by the way back
+ *  (ADR-0203 §6). Extracted rather than copied: the two lists differ only in which state
+ *  they write to, and a second hand-built stack is how the removal rule, the indent and the
+ *  `MAX_ROUTE_STOPS` ceiling drift apart. `PlacePicker`'s own `✕` is the only removal
+ *  control either list has (ADR-0159 §5, fixed by ADR-0203 §4's `removable`). */
+function StopRows({
+  stops,
+  onStopsChange,
+  onFindStop,
+}: {
+  stops: (string | undefined)[];
+  onStopsChange: (next: (string | undefined)[]) => void;
+  onFindStop?: (index: number, sideLabel: string) => void;
+}) {
+  const setStop = (index: number, value: string | undefined) =>
+    onStopsChange(
+      // **Clearing a stop REMOVES it.** An empty stop is not a state worth keeping — it
+      // names no place, so it can neither be flown to nor scheduled.
+      value === undefined
+        ? stops.filter((_, i) => i !== index)
+        : stops.map((s, i) => (i === index ? value : s)),
+    );
+  return (
+    <>
+      {stops.map((stop, i) => (
+        // Indented, because a stop is a WAYPOINT and not an endpoint: a three-row stack of
+        // equals reads as three destinations. Same thing `.cluster-kids` says with an indent.
+        <PlacePicker
+          key={i}
+          className="place-picker-stop"
+          value={stop}
+          onChange={(id) => setStop(i, id)}
+          ariaLabel={t.index.form.stopLabel}
+          placeholder={t.index.form.stopShort}
+          onFind={() => onFindStop?.(i, t.index.form.stopLabel)}
+          removable
+          clearLabel={t.placePicker.removeStop}
+        />
+      ))}
+    </>
+  );
+}
+
+/** The `＋ עצירת ביניים` button, withheld at the ceiling. A named number rather than an open
+ *  list: past a few, this is an itinerary and not a journey. */
+function AddStop({
+  stops,
+  onStopsChange,
+}: {
+  stops: (string | undefined)[];
+  onStopsChange: (next: (string | undefined)[]) => void;
+}) {
+  if (stops.length >= MAX_ROUTE_STOPS) return null;
+  return (
+    <button
+      type="button"
+      className="route-field-add"
+      onClick={() => onStopsChange([...stops, undefined])}
+    >
+      <Icon name="plus" /> {t.index.form.addStop}
+    </button>
+  );
+}
+
+/** **The way home, as its own route** (ADR-0203 §6).
+ *
+ *  Opens as a derived SENTENCE and not a control: most round trips do come back the same
+ *  way, so the common case costs one line and no second list. Choosing `דרך אחרת` seeds the
+ *  list from the outbound reversed — you edit a route rather than start from nothing, which
+ *  is §6's own wording — and the two ends stay statements, because they are the outbound's
+ *  two swapped.
+ *
+ *  **Pills, not a text offer**, and drawing both is what settled it: the question sits
+ *  directly under the direction control, which is also pills, so "one way or round trip?" and
+ *  "same way or a different one?" read as a pair. And a text offer's revert has to say
+ *  `חזרה לאותה דרך`, where `חזרה` is already the name of this section — one word for two
+ *  things in adjacent lines. */
+function ReturnRoute({
+  from,
+  to,
+  returnStops,
+  onReturnStopsChange,
+  onReturnDiverge,
+  onFindReturnStop,
+}: {
+  from?: string;
+  to?: string;
+  returnStops: (string | undefined)[] | null;
+  onReturnStopsChange: (next: (string | undefined)[] | null) => void;
+  onReturnDiverge: () => void;
+  onFindReturnStop?: (index: number, sideLabel: string) => void;
+}) {
+  // `RouteLabel` states NAMES, and this field is handed ids — so the names are resolved the
+  // same way `PlacePicker` resolves its own, which is that primitive's existing contract
+  // rather than a prop threaded down from the host.
+  const { places } = useTrip();
+  const nameOf = (id?: string) => (id ? places.find((p) => p.id === id)?.name : undefined);
+  const own = returnStops !== null;
+  return (
+    <div className="rf-back">
+      {/* `roundTrip`, which is the icon `RouteLabel` already draws for a mirrored pair — and
+          the right one here for the same reason its own note gives: it is symmetric, so it
+          claims no direction for a locale to flip. There is no `flag` in `Icon`, and inventing
+          one for a section head would be a glyph nobody decided. */}
+      <div className="rf-back-head">
+        <Icon name="roundTrip" />
+        <span>{t.index.form.legBack}</span>
+      </div>
+      <ChoiceGrid
+        layout="pills"
+        options={[
+          { value: 'same', icon: '', label: t.index.form.returnSameWay },
+          { value: 'own', icon: '', label: t.index.form.returnOtherWay },
+        ]}
+        value={own ? 'own' : 'same'}
+        // Seeded from the outbound reversed, so `דרך אחרת` opens on a route to edit. Going
+        // back to `אותה דרך` passes null; the host keeps what was typed, so this is not a
+        // destructive tap and no dialog has to ask.
+        onChange={(v) => (v === 'own' ? onReturnDiverge() : onReturnStopsChange(null))}
+        ariaLabel={t.index.form.returnRouteAria}
+      />
+      {own ? (
+        <>
+          {/* The two ends, stated. `RouteLabel` rather than a hand-built line: it owns the
+              `<bdi>` per end and draws its arrow as `NavArrow`, which is correct in RTL —
+              a literal `←` is `Bidi_Mirrored` and flips (ADR-0118). */}
+          <div className="rf-back-ends">
+            <RouteLabel from={nameOf(to)} to={nameOf(from)} />
+          </div>
+          <div className="route-field">
+            <StopRows
+              stops={returnStops}
+              onStopsChange={onReturnStopsChange}
+              onFindStop={onFindReturnStop}
+            />
+          </div>
+          <AddStop stops={returnStops} onStopsChange={onReturnStopsChange} />
+        </>
+      ) : (
+        <div className="rf-back-same">{t.index.form.returnMirrors}</div>
+      )}
+    </div>
+  );
+}
+
 function JourneyField({
   from,
   to,
@@ -176,6 +350,10 @@ function JourneyField({
   stops,
   onStopsChange,
   onFindStop,
+  returnStops,
+  onReturnStopsChange,
+  onReturnDiverge,
+  onFindReturnStop,
 }: RouteFieldProps) {
   // Offered only with something to exchange — a swap over two empty slots is a control
   // that cannot do anything, which ADR-0150 §8 makes a `disabled` primary's rule and is
@@ -184,15 +362,9 @@ function JourneyField({
   // A stop is authored only where the host asked for them, and the ceiling is a named
   // number rather than an open list: past a few, this is an itinerary and not a journey.
   const authorsStops = !!stops && !!onStopsChange;
-  const setStop = (index: number, value: string | undefined) =>
-    onStopsChange?.(
-      // **Clearing a stop REMOVES it.** An empty stop is not a state worth keeping —
-      // it names no place, so it can neither be flown to nor scheduled — which is why
-      // the picker's own `✕` is the only removal control this field has.
-      value === undefined
-        ? stops!.filter((_, i) => i !== index)
-        : stops!.map((s, i) => (i === index ? value : s)),
-    );
+  /** Whether this host authors the way back at all — `EventForm` does not (one event cannot
+   *  be a journey), and neither does a one-way. */
+  const authorsReturn = returnStops !== undefined && !!onReturnStopsChange;
 
   return (
     <>
@@ -217,34 +389,17 @@ function JourneyField({
             onClick={() => {
               onChange({ from: to, to: from });
               if (stops) onStopsChange?.([...stops].reverse());
+              // A mirrored way back follows by construction and needs no write. An
+              // INDEPENDENT one is a route somebody typed, so reversing the outbound must
+              // not silently rewrite it — the two stopped being the same list (§6).
             }}
           >
             <Icon name="swap" /> {t.index.form.swapRoute}
           </button>
         )}
-        {stops?.map((stop, i) => (
-          // Indented, because a stop is a WAYPOINT and not an endpoint: a three-row
-          // stack of equals reads as three destinations. Same thing `.cluster-kids`
-          // says with an indent about the rows that belong to the one above them.
-          //
-          // **`removable` is the fix for a shipped defect** (ADR-0203 §4): the picker's ✕ is
-          // this field's only way to remove a stop, and it used to render only with a place
-          // in it — so a stop the `＋` had just added could not be removed at all, and its
-          // one other control launches an errand that unmounts the sheet. The ADR-0159 §5
-          // decision ("clearing IS removing") is unchanged; what changes is that the control
-          // it names is now actually there.
-          <PlacePicker
-            key={i}
-            className="place-picker-stop"
-            value={stop}
-            onChange={(id) => setStop(i, id)}
-            ariaLabel={t.index.form.stopLabel}
-            placeholder={t.index.form.stopShort}
-            onFind={() => onFindStop?.(i, t.index.form.stopLabel)}
-            removable
-            clearLabel={t.placePicker.removeStop}
-          />
-        ))}
+        {stops && onStopsChange && (
+          <StopRows stops={stops} onStopsChange={onStopsChange} onFindStop={onFindStop} />
+        )}
         <PlacePicker
           value={to}
           onChange={(id) => onChange({ from, to: id })}
@@ -253,14 +408,16 @@ function JourneyField({
           onFind={() => onFind('toPlaceId', t.index.form.destLabel)}
         />
       </div>
-      {authorsStops && stops!.length < MAX_ROUTE_STOPS && (
-        <button
-          type="button"
-          className="route-field-add"
-          onClick={() => onStopsChange!([...stops!, undefined])}
-        >
-          <Icon name="plus" /> {t.index.form.addStop}
-        </button>
+      {authorsStops && <AddStop stops={stops!} onStopsChange={onStopsChange!} />}
+      {authorsReturn && (
+        <ReturnRoute
+          from={from}
+          to={to}
+          returnStops={returnStops!}
+          onReturnStopsChange={onReturnStopsChange!}
+          onReturnDiverge={onReturnDiverge!}
+          onFindReturnStop={onFindReturnStop}
+        />
       )}
       <div className="route-field-hint">
         <Icon name="pin" /> {hint ?? t.index.form.routeHint}

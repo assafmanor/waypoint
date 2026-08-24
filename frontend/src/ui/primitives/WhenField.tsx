@@ -334,41 +334,34 @@ function SpanLeg({
           value={date}
           onChange={(next) => commit(next, time)}
         />
-        {/* **The line reads as prose, and the window is one more word in it** (ADR-0177's
-            grammar, ADR-0184 §2): `מ־ 17:00 עד 21:00`. `מ־` appears only once a window
-            does — with one time there is nothing to be "from". */}
-        {window?.value && <span className="wf-word">{t.whenField.rangeFrom}</span>}
-        <TimeField
-          value={time}
-          onChange={(hhmm) => commit(date || defaultDate || '', hhmm)}
-          onClear={() => commit(date, '')}
-          label={t.whenField.timeCap}
-          placeholder={t.whenField.addTime}
-          minTime={minTime}
-        />
-        {/* **The opt-in bound is just another `TimeField`** — which already draws itself as
-            a dashed, muted token while empty (`ValueToken`'s `empty`), already opens a
-            panel, and already offers removal in that panel's footer via `onClear`. So the
-            affordance costs one token when untouched and no new mechanism at all.
+        {/* **The two clocks read chronologically, so ONE sentence serves both edges**
+            (ADR-0184 §2, corrected 2026-08-24). Reported from the field: a car hire's return
+            read `מ־ 08:00 מ־ 01:15` — _"two times מ- which doesn't make sense at all"_.
 
-            The impossible bound is PREVENTED rather than refused (ADR-0150 §8): a start
-            window closes after its floor, an end window opens before its deadline, and the
-            picker simply does not offer the other slots.
+            The bug was one word that never learned which edge it was on. The leading `מ־`
+            printed before this leg's OWN time unconditionally, while the second word was
+            already edge-aware — so a start edge came out right (`מ־ 10:00 עד 11:00`) and an
+            end edge printed `מ־` twice. The comment here already stated the rule correctly
+            ("an end edge's own time IS the deadline, so its second bound is the earliest");
+            only the first word was never told.
 
-            **The word reads per edge**, and `maxTime` alone was not enough to make that
-            optional: a start edge's own time is the floor, so its second bound is a ceiling
-            and reads `עד` — an end edge's own time IS the deadline, so its second bound is
-            the earliest and reads `מ־`. Both said `עד`, which invited a check-out of `06:00`
-            with `עד 11:00` and stored an 11:00 that `windowBoundIso` rolled to the previous
-            day. See `he.ts`. */}
-        {window && (
-          <>
-            {window.value && (
-              <span className="wf-word">
-                {edge === 'end' ? t.whenField.rangeFrom : t.whenField.rangeTo}
-              </span>
-            )}
+            The fix is the ORDER, not a new word. A start edge's own time is the floor; an
+            end edge's own time is the deadline. Put the floor first either way and both read
+            `מ־ … עד`, with the only difference being which of the two is the stored value.
+
+            **Reordered only once the bound has a value.** While it is empty the `＋ מ־`
+            token is an affordance, not a clock, and an affordance belongs after the value it
+            extends — putting it first would print `＋מ־ 08:00`, which reads as "from 08:00"
+            about a deadline. So the pair becomes a sentence at the moment it is a pair. */}
+        {(() => {
+          /** The opt-in bound is just another `TimeField` — already dashed and muted while
+           *  empty (`ValueToken`'s `empty`), already opens a panel, already offers removal in
+           *  that panel's footer. The impossible bound is PREVENTED rather than refused
+           *  (ADR-0150 §8): a start window closes after its floor, an end window opens before
+           *  its deadline, and the picker does not offer the other slots. */
+          const bound = window ? (
             <TimeField
+              key="bound"
               value={window.value}
               onChange={window.onChange}
               onClear={() => window.onChange('')}
@@ -377,8 +370,30 @@ function SpanLeg({
               minTime={edge === 'start' ? time || undefined : undefined}
               maxTime={edge === 'end' ? time || undefined : undefined}
             />
-          </>
-        )}
+          ) : null;
+          const own = (
+            <TimeField
+              key="own"
+              value={time}
+              onChange={(hhmm) => commit(date || defaultDate || '', hhmm)}
+              onClear={() => commit(date, '')}
+              label={t.whenField.timeCap}
+              placeholder={t.whenField.addTime}
+              minTime={minTime}
+            />
+          );
+          const paired = !!window?.value;
+          const earlier = paired && edge === 'end' ? bound : own;
+          const later = paired && edge === 'end' ? own : bound;
+          return (
+            <>
+              {paired && <span className="wf-word">{t.whenField.rangeFrom}</span>}
+              {earlier}
+              {paired && <span className="wf-word">{t.whenField.rangeTo}</span>}
+              {later}
+            </>
+          );
+        })()}
       </div>
     </div>
   );

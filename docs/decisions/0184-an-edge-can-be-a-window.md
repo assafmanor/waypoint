@@ -1,6 +1,6 @@
 # 0184 — An edge can be a **window**, and closing it is what gives it a position
 
-**Status:** Accepted (owner sign-off 2026-08-13), **and built the same day**.
+**Status:** Accepted (owner sign-off 2026-08-13), **and built the same day**. **Amended 2026-08-24** — see [the words read chronologically](#amendment-2026-08-24--a-window-reads-as-one-sentence-at-both-edges), a field report on the car hire's return.
 **Date:** 2026-08-13
 **Design reference:** [`mockups/an-edge-can-be-a-window-v1.html`](../../mockups/an-edge-can-be-a-window-v1.html) — the two affordances priced against each other (§1), the day's placement (§2), the row's own placement (§2b), Plan (§2c), the hero's four states (§3) and the window-vs-duration collision (§4). Every measurement quoted below is read from that file's live DOM at 360px.
 **Session note:** [2026-08-13 session 257](../planning/2026-08-13-session-257-an-edge-can-be-a-window.md).
@@ -178,3 +178,28 @@ A single clock still reads the placed instant, and that is not an inconsistency:
 - **A fourth explicit `edges` field on the profile.** Still two sources for one fact (ADR-0171 §2, ADR-0162 §2). The window is the per-EVENT answer; the profile stays the per-category one.
 - **Letting a closed window earn a map number.** The Iceland case (§10b): a number asserts a sequence, and a window is not a moment.
 - **Keeping the range at the row's trailing edge.** Cheaper by 20px of row height and costs 45px of the hotel's name at 360px. The owner picked the name.
+
+## Amendment (2026-08-24) — a window reads as ONE sentence, at both edges
+
+Reported from the field, on a car hire whose return carried a window:
+
+> on the return we have to times "מ-" which doesn't make sense at all. What is it? Do we need a "מ-" at all? Not just an "עד"?
+
+It printed `מ־ 08:00 מ־ 01:15`. **One word never learned which edge it was on.** `SpanLeg` printed a leading `מ־` before the leg's own time whenever a window existed — unconditionally, both edges — and then printed a second word that _was_ edge-aware. So a start edge came out right (`מ־ 10:00 עד 11:00`) and an end edge said `מ־` twice.
+
+The section above already stated the rule correctly: _"a start edge's own time is the floor, so its second bound is a ceiling and reads `עד` — an end edge's own time IS the deadline, so its second bound is the earliest and reads `מ־`."_ Only the first word was never told.
+
+**The answer to "do we need a `מ־` at all?" is yes — but not before that time.** The fix is the ORDER, not a new word. A start edge's own time is the floor; an end edge's own time is the deadline. Put the floor first either way and both edges read `מ־ … עד`, with the only difference being **which of the two is the stored value**:
+
+| edge                      | reads               | stored value                                  |
+| ------------------------- | ------------------- | --------------------------------------------- |
+| start (check-in, pick-up) | `מ־ 10:00 עד 11:00` | the **first** — its own time is the floor     |
+| end (check-out, return)   | `מ־ 01:15 עד 08:00` | the **second** — its own time is the deadline |
+
+**Reordered only once the bound has a value.** While it is empty the `＋ מ־` token is an affordance, not a clock, and an affordance belongs after the value it extends — putting it first would print `＋מ־ 08:00`, which reads as "from 08:00" about a deadline. So the pair becomes a sentence at the moment it is a pair.
+
+**Blast radius, counted rather than assumed:** only a `held` edge offers a window (`edgeMeaning(…) !== 'exact'`), `SpanLeg` is the only component that renders one, and `WhenDay` has no window at all. So this is a stay and a hire, both edges, one component — and the same two lines fix every case.
+
+**One thing left open.** Swapping the render order means the `Field` carrying the refusal mark (ADR-0150) is no longer the first token in the line. The mark sits on the line's box rather than on a token, so this is correct — but the refusal's scroll-into-view targets that box, and it is worth a look on a device.
+
+Design reference: [`mockups/the-way-back-is-its-own-route-v1.html`](../../mockups/the-way-back-is-its-own-route-v1.html) §3, whose measurement table prints the actual word run each line renders — a screenshot cannot be trusted to tell `מ־` from `עד` at that size.
