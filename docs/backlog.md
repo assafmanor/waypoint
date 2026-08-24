@@ -565,6 +565,8 @@ Fixed the same day; [ADR-0203](decisions/0203-a-journey-has-one-date-and-its-arr
 
 Still open, and deliberately not guessed at:
 
+- **§10's time panel renders 96 rows to show five, and the test suite is where that first bit.** Each picker open builds the whole rotated list plus its day divider, so a spec driving several of them costs ~1.3-1.5s locally and roughly twice that on CI hardware — which is how one passed locally at ~2.4s and timed out at the 5s default in CI. **Four specs in `BookingSheet.test.tsx` now carry explicit budgets**, and that is the honest ceiling for this approach: a fifth means making the list cheaper (a window around the offered slot, or virtualising) rather than raising another number. Nothing is wrong on a phone, where one panel opens at a time — this is a suite cost that happens to be a fair proxy for a real one.
+
 - **Whether the collapse should fire on FINISHING a node or on OPENING another.** Today it fires the moment a node's last time is picked, in the same frame the time panel closes — so a large layout change is already underway and the collapse rides with it. The owner's "and even then I'm not sure" is about that movement at two and three stops, where compaction does earn its height. The cheap alternative is to collapse when another node opens instead: same end state, movement attached to a tap already being made. Wants a device pass at two stops before either is chosen.
 
 ## Three more on the rail, and §6 lands (owner, 2026-08-24)

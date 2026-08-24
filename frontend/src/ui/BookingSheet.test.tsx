@@ -859,13 +859,19 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
 
   /** The reported case: a DIFFERENT NUMBER of stops, which `reversed` could never express —
    *  it was one array read backwards, and `legCount` was one number for both journeys. */
-  /** **The one spec in this file that needs its own budget.** It drives six time pickers
-   *  through a full save, and since §10 each panel renders the whole rotated 96-slot list plus
-   *  its day divider — then §9's threshold moved, so at one stop nothing collapses any more and
-   *  every control stays live between picks. Measured at ~4.5s against the 5s default: not
-   *  stuck, just the most expensive path in the suite. Raised deliberately rather than thinned,
-   *  because what makes it slow (a real save over two journeys of different depth) is exactly
-   *  what it exists to prove. */
+  /** **Why four specs in this file carry their own budget, stated once here.** Since ADR-0203
+   *  §10 every time picker renders the whole rotated 96-slot list plus its day divider on each
+   *  open, so a spec that drives several of them costs ~1.3-1.5s locally — and CI hardware runs
+   *  roughly TWICE as slow, which is how one of them passed here at ~2.4s and timed out at the
+   *  5s default there. The numbers were read per spec rather than inferred, after the first CI
+   *  failure showed that fixing only the reported one would have shipped two more.
+   *
+   *  Budgeted rather than thinned wherever the picker opens ARE the thing being proved — a real
+   *  save across two journeys of different depth, here. Where they were not (the summarised-node
+   *  refusal filled two clocks past what staged its case) the spec was trimmed instead.
+   *
+   *  **If a fifth one needs this, raise the list's cost rather than the number** — on the
+   *  backlog: the panel renders 96 rows to show five. */
   it(
     'lets the two journeys have a different number of stops, and writes a leg for each',
     { timeout: 15_000 },
@@ -1268,23 +1274,35 @@ describe('BookingSheet — a stop makes one save a chain of bookings', () => {
    *
    *  **Two stops, not one** — the threshold moved (§9, 2026-08-24): a one-stop journey fits
    *  the fold, so it no longer summarises and could no longer stage this. The defect is
-   *  unchanged; the shape that reaches it is one stop deeper. */
-  it('delivers a refusal that lands on a summarised node, and opens it', () => {
-    open({ stopPlaceIds: ['pl-dxb', 'pl-tlv'] });
-    next();
-    fillChain('2026-07-30', ['20:00', '02:00', '03:00', '05:00', '06:00', '07:00']);
-    expect(document.querySelectorAll('.jf-sum-tok').length).toBeGreaterThan(0);
+   *  unchanged; the shape that reaches it is one stop deeper.
+   *
+   *  **Filled to the FIRST moment that stages the case, not to the end.** Four clocks leave
+   *  the last node's departure empty, so the open node is node 2 and nodes 0–1 summarise —
+   *  which is all this needs, since the refusal lands on leg 0's end (node 1's arrival) and
+   *  that is behind a summary either way. Filling all six cost two more picker opens, and
+   *  each open renders §10's whole rotated 96-slot list: it passed locally and timed out at
+   *  5s on CI. Trimmed rather than blanket-budgeted, because the two extra clocks were never
+   *  part of what this proves. */
+  it(
+    'delivers a refusal that lands on a summarised node, and opens it',
+    { timeout: 15_000 },
+    () => {
+      open({ stopPlaceIds: ['pl-dxb', 'pl-tlv'] });
+      next();
+      fillChain('2026-07-30', ['20:00', '02:00', '03:00', '05:00']);
+      expect(document.querySelectorAll('.jf-sum-tok').length).toBeGreaterThan(0);
 
-    next();
-    // It refuses — the journey's date is the trip's last day, so the arrival rolls past it.
-    expect(label()).toBe(t.index.form.stepWhen);
-    // ...and it SAYS so, in the box that owns the field, which the refusal itself reopened.
-    expect(screen.queryByText(t.index.form.dateOutOfRange)).not.toBeNull();
-    const marked = document.querySelector('.jf [data-invalid]');
-    expect(marked).not.toBeNull();
-    // The node it names is open now: its controls are back, not a summary pill.
-    expect(marked!.closest('.jf-row')!.querySelector('.jf-sum-tok')).toBeNull();
-  });
+      next();
+      // It refuses — the journey's date is the trip's last day, so the arrival rolls past it.
+      expect(label()).toBe(t.index.form.stepWhen);
+      // ...and it SAYS so, in the box that owns the field, which the refusal itself reopened.
+      expect(screen.queryByText(t.index.form.dateOutOfRange)).not.toBeNull();
+      const marked = document.querySelector('.jf [data-invalid]');
+      expect(marked).not.toBeNull();
+      // The node it names is open now: its controls are back, not a summary pill.
+      expect(marked!.closest('.jf-row')!.querySelector('.jf-sum-tok')).toBeNull();
+    },
+  );
 
   /** **A stop's two clocks name themselves** — reported from the field: "you are asked to
    *  pick the time of arrival and of departure to the next destination, but the form doesn't
@@ -1438,7 +1456,7 @@ describe('BookingSheet — a stop makes one save a chain of bookings', () => {
    *
    *  Both arms in one spec on purpose: the number is only meaningful as the line between them,
    *  and a spec that asserted just the quiet side would pass with compaction deleted. */
-  it('never summarises at one stop, and still does at two', () => {
+  it('never summarises at one stop, and still does at two', { timeout: 15_000 }, () => {
     const anySummarised = () => document.querySelectorAll('.jf-sum-tok').length > 0;
 
     open({ stopPlaceIds: ['pl-dxb'] });
@@ -1461,7 +1479,7 @@ describe('BookingSheet — a stop makes one save a chain of bookings', () => {
    *  and then removing a stop brought the pick back to a rail that no longer summarises, and a
    *  pick left pointing past the end matched no node and collapsed every one of them. Found by
    *  re-reading the diff, not by a report. */
-  it('drops a node pick when the rail falls back below the threshold', () => {
+  it('drops a node pick when the rail falls back below the threshold', { timeout: 15_000 }, () => {
     open({ stopPlaceIds: ['pl-dxb', 'pl-tlv'] });
     next();
     fillChain('2026-07-19', ['00:30', '06:10', '08:50', '11:35', '13:00', '15:20']);
