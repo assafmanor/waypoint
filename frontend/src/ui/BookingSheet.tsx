@@ -91,7 +91,7 @@ import { withChangeGroup } from '../lib/outbox';
 import { zoneOffsetMinutes, zonedIso } from '../lib/time';
 import { hoursPhrase } from '../lib/duration';
 import { bookingDurationUnit, timingLabels } from '../lib/booking-timing';
-import { BOOKING_TYPE_ICON, DOT_SEPARATOR } from '../constants';
+import { BOOKING_TYPE_ICON, DOT_SEPARATOR, SUMMARISE_FROM_NODES } from '../constants';
 import { useStartPlaceErrand, type PlaceErrandField } from '../state/map-scope-state';
 import { useDerivedField } from '../lib/useDerivedField';
 import { t } from '../i18n/he';
@@ -580,19 +580,42 @@ export function BookingSheet({
           i > 0 && i < legCountFor(side) ? errors.field(legField(side, i, 'start')) : undefined,
       },
     }));
-    /** **Which node is open when nobody has picked one** (ADR-0203 §9). The first whose
-     *  moments are not all filled, so filling the rail walks it and the nodes behind you
-     *  summarise as you go; the LAST once the journey is complete, so a finished rail is still
-     *  reviewed at one screen rather than at the 708px §7 measured. `null` opens everything,
-     *  which is what a two-node journey wants — its arrival is one line, so summarising it
-     *  would hide a control behind a tap and save nothing. */
+    /** **Which node is open when nobody has picked one** (ADR-0203 §9, threshold corrected
+     *  2026-08-24). The first whose moments are not all filled, so filling the rail walks it
+     *  and the nodes behind you summarise as you go; the LAST once the journey is complete, so
+     *  a finished rail is reviewed at one screen rather than at the 708px §7 measured.
+     *
+     *  **`null` — nothing summarises — up to and including ONE stop, because up to one stop
+     *  there is nothing to buy.** §9's own fold table says a journey with 0–1 stops is inside
+     *  the fold on both a 390×844 and a 360×640 phone; the cases it was written for are two
+     *  stops (718.5px all-open against a 675px fold) and three (894px). The threshold shipped
+     *  at `<= 2` nodes, which is ZERO stops — so a one-stop journey compacted to fix an
+     *  overflow it never had, and reported back as exactly that: "the lines collapsing under
+     *  your fingers could be a little confusing… maybe do it only when the form is very long."
+     *
+     *  Confirmed on a device rather than only against that table, which matters because the
+     *  rail grew since it was measured (per-moment captions, the 44px time rows): the owner's
+     *  own screenshot of a one-stop train journey shows the whole step — dots, type row, rail,
+     *  zone note, commitment toggle and footer — with no scrolling.
+     *
+     *  So the number is `<= 3`: nothing summarises at one stop or fewer. Above it the height
+     *  is real and compaction is the cheaper of the two costs. */
     const filled = (node: JourneyNode, i: number) =>
       (i > 0 || !!view.date) &&
       (!node.arrive || !!node.arrive.time) &&
       (!node.depart || !!node.depart.time);
     const unfilled = nodes.findIndex((node, i) => !filled(node, i));
+    /** **The threshold gates the explicit pick too, and that ordering is the fix for a hole
+     *  found re-reading this change.** `openNode[side]` used to short-circuit it: tap a
+     *  summarised row at two stops, go back to `מה ואיפה`, remove a stop, and the pick came
+     *  back with you — so a one-stop journey compacted again, and a pick left pointing past
+     *  the shortened rail (index 3 of 3 nodes) matched no node at all and collapsed EVERY
+     *  summarisable one. Below the threshold the answer is `null` whatever was tapped, because
+     *  the threshold is a fact about the form's height and not about the last tap. */
     const openIndex =
-      openNode[side] ?? (nodes.length <= 2 ? null : unfilled === -1 ? nodes.length - 1 : unfilled);
+      nodes.length <= SUMMARISE_FROM_NODES
+        ? null
+        : (openNode[side] ?? (unfilled === -1 ? nodes.length - 1 : unfilled));
     return { legs, view, resolved, nodes, openIndex };
   };
 
