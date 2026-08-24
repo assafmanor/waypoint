@@ -54,9 +54,12 @@ const mine = task('t-mine', {
   assigneeUserId: 'u1',
   createdAt: '2026-08-03T00:00:00.000Z',
 });
+// Carries a PASSED deadline on purpose: this is the row the deadline defect was reported
+// from, and it only shows up on a settled task that had a date to miss.
 const done = task('t-done', {
   title: 'להעביר לנועם את הכסף',
   status: TASK_STATUS.DONE,
+  dueAt: '2026-08-13T09:00:00.000Z',
   createdAt: '2026-08-04T00:00:00.000Z',
 });
 const dismissed = task('t-dismissed', {
@@ -211,6 +214,17 @@ describe('IndexTasksView', () => {
       show();
       const row = visibleRows().find((r) => within(r).queryByText(undated.title))!;
       expect(row.querySelector('.tsk-due')).toBeNull();
+    });
+
+    // **Nor for a settled one** (owner, 2026-08-24): `done` missed its date, and on the
+    // `הושלמו` list it printed `באיחור ·` in `--miss` beside a struck-through title — a
+    // status about work nobody owes any more.
+    it('prints no deadline on a settled task, late or not', () => {
+      show();
+      fireEvent.click(screen.getByRole('radio', { name: new RegExp(t.tasks.filter.settled) }));
+      const row = visibleRows().find((r) => within(r).queryByText(done.title))!;
+      expect(row.querySelector('.tsk-due')).toBeNull();
+      expect(row.textContent).not.toContain(t.tasks.due.late);
     });
 
     // **The FACE, on the title row, and nothing where nobody owns it** (ADR-0190 §6 amended

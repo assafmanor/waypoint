@@ -216,6 +216,18 @@ describe('taskDue', () => {
     expect(taskDue(task('c', { dueAt: '2026-08-14T09:00:00.000Z' }), clock)?.late).toBe(true);
   });
 
+  // The deadline is what is still OWED, so a finished task has none to print — done and
+  // dismissed alike, and whether it beat the date or missed it.
+  it('says nothing for a settled task, however its deadline landed', () => {
+    const late = { dueAt: '2026-08-14T09:00:00.000Z' };
+    const ahead = { dueAt: '2026-08-25T09:00:00.000Z' };
+    expect(taskDue(task('s1', { ...late, status: TASK_STATUS.DONE }), clock)).toBeUndefined();
+    expect(taskDue(task('s2', { ...ahead, status: TASK_STATUS.DONE }), clock)).toBeUndefined();
+    expect(taskDue(task('s3', { ...late, status: TASK_STATUS.DISMISSED }), clock)).toBeUndefined();
+    // …and re-opening it brings the deadline straight back.
+    expect(taskDue(task('s4', late), clock)?.late).toBe(true);
+  });
+
   // With NO pin the zone is derived — the same instant reads as a different wall-clock
   // depending on the segment it falls in (brief §10, still true for every unpinned task).
   it('renders the time in the zone the deadline falls in', () => {
