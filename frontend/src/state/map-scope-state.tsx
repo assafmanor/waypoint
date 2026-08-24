@@ -52,7 +52,15 @@ import { dayCarriedFrom, tabOfParams, tabTarget } from './nav-state';
 import type { TabId } from '../constants';
 import { useTrip } from './trip-state';
 
-export type PlaceErrandField = 'placeId' | 'fromPlaceId' | 'toPlaceId' | 'stopPlaceIds';
+export type PlaceErrandField =
+  | 'placeId'
+  | 'fromPlaceId'
+  | 'toPlaceId'
+  | 'stopPlaceIds'
+  /** The way home's own stops (ADR-0203 §6). A field of its own rather than an extra flag on
+   *  `stopPlaceIds`, for the same reason the draft keeps a second list: the two can be
+   *  different lengths, so an index into one is not an index into the other. */
+  | 'returnStopPlaceIds';
 
 /** Which place field of which entity an errand is for (ADR-0134 §2). **`field` is not
  *  optional**, and that is the point of the type: a transport booking has two place

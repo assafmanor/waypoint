@@ -261,6 +261,15 @@ export function BookingSheet({
   // second leg still costs what it costed; nobody is now told they chose not to buy it.
   const [roundTrip, setRoundTrip] = useState(draft ? draft.roundTrip : initial.roundTrip);
   const [returnLegs, setReturnLegs] = useState(draft ? draft.returnLegs : initial.returnLegs);
+  /** **The way home's own stops** (ADR-0203 §6), `null` while it mirrors the outbound. The
+   *  draft beside it holds what was typed, so leaving "a different way" and coming back is
+   *  free — see `bookingSheetDraft`'s note on why they are two fields. */
+  const [returnStops, setReturnStops] = useState(
+    draft ? draft.returnStopPlaceIds : initial.returnStopPlaceIds,
+  );
+  const [returnStopsDraft, setReturnStopsDraft] = useState(
+    draft ? draft.returnStopsDraft : initial.returnStopsDraft,
+  );
   // **The end stops following the start once it is answered** (field report #11) — the
   // same latch `useDerivedField` puts on the icon and the kind, kept as plain state
   // because what it gates lives in `legs`/`end` rather than in a value of its own.
@@ -338,6 +347,8 @@ export function BookingSheet({
         endWindow,
         roundTrip,
         returnLegs,
+        returnStopPlaceIds: returnStops,
+        returnStopsDraft,
         endTouched,
         kind: kind.value,
         kindTouched: kind.touched,
@@ -348,6 +359,10 @@ export function BookingSheet({
    *  INDEX, because a stop is an element of a list rather than a `Booking` column
    *  (ADR-0159 extends ADR-0134 §2's channel by exactly that much). */
   const findStop = (index: number, side: string) => findPlace('stopPlaceIds', side, index)();
+  /** The way back's stops are their OWN errand target (ADR-0203 §6): the two lists can be
+   *  different lengths, so an index into one is not an index into the other. */
+  const findReturnStop = (index: number, side: string) =>
+    findPlace('returnStopPlaceIds', side, index)();
 
   const suggestedZones = useMemo(
     () =>
@@ -397,12 +412,47 @@ export function BookingSheet({
   /** The journey's points in travel order: origin, every stop, destination. Legs run
    *  between consecutive points, so `legCount` is one less than this. */
   const routePoints = [fromPlaceId, ...stops, hireReturnId];
+  /** **The OUTBOUND's leg count.** Kept as a plain name because three readers genuinely mean
+   *  that journey — the outbound resize, the "is this a sequence" display flag, and the day a
+   *  return's first leg opens on. Every reader that depends on WHICH side asks
+   *  `legCountFor(side)` instead; the two stopped being the same number when a return got its
+   *  own stops (§6). */
   const legCount = isSpan ? routePoints.length - 1 : 1;
+  const reversed = [...routePoints].reverse();
+  /** **The way home's own points, when it has them** (ADR-0203 §6). Reported from the field:
+   *  a round trip's stops "could be different stops and/or a different number of stops".
+   *
+   *  **The ENDS stay mirrored and that is what keeps this small** — you fly home from where
+   *  you landed, so what varies is the middle. An open-jaw trip (in to Tbilisi, out of
+   *  Kutaisi) is a different feature and is deliberately not half-built here.
+   *
+   *  `null` means the whole way back is still `reversed`, which is the common case and costs
+   *  nothing: no second list, no second leg count. */
+  const backPoints = returnStops === null ? reversed : [hireReturnId, ...returnStops, fromPlaceId];
+  /** **The points a SIDE walks**, which five call sites spelled out inline before a sixth
+   *  read `routePoints` directly and told the flight home it was the flight out. A journey's
+   *  side is the only thing that decides the direction, so it is one function. */
+  function pointsFor(side: LegSide) {
+    return side === 'out' ? routePoints : backPoints;
+  }
+  /** **How many legs a SIDE has, which used to be one number for both journeys.** That single
+   *  `legCount` is the reason §6 was never a small change: nine call sites read it, and each
+   *  had to learn which side it was talking about before a return could have a different
+   *  number of stops.
+   *
+   *  **Declared ABOVE the leg resize that reads it**, which the first attempt was not: a
+   *  hoisted `function` is reachable early but the `const backPoints` it closes over is not,
+   *  so `legCountFor('back')` threw "cannot access before initialization" on every round trip.
+   *  Caught by eight specs at once, and the reason this block sits here rather than beside
+   *  `legZones` where it reads more naturally. */
+  function legCountFor(side: LegSide) {
+    return isSpan ? pointsFor(side).length - 1 : 1;
+  }
   // Read through a resize rather than kept in sync by a setter: state can lag the
   // number of stops for one render, and normalising on READ makes that unrepresentable
   // instead of a bug that only appears when a stop is added mid-edit.
   const outLegs = resizeLegs(legs, legCount);
-  const backLegs = twoLegs ? resizeLegs(returnLegs, legCount) : EMPTY_LEGS;
+  const backLegs = twoLegs ? resizeLegs(returnLegs, legCountFor('back')) : EMPTY_LEGS;
   const setLeg = (side: 'out' | 'back', index: number, next: LegTimes) => {
     const write = side === 'out' ? setLegs : setReturnLegs;
     const current = side === 'out' ? outLegs : backLegs;
@@ -427,19 +477,15 @@ export function BookingSheet({
   /** **A leg reads in the zones of ITS OWN two points** (ADR-0107, extended over a
    *  sequence). Only the journey's outer ends can carry a pinned override — an interior
    *  stop has a picked place, which is what the chip exists to stand in for when nothing
-   *  else can answer. `back` walks the same points in reverse. */
-  const reversed = [...routePoints].reverse();
-  /** **The points a SIDE walks**, which five call sites spelled out inline before a sixth
-   *  read `routePoints` directly and told the flight home it was the flight out. A journey's
-   *  side is the only thing that decides the direction, so it is one function. */
-  const pointsFor = (side: LegSide) => (side === 'out' ? routePoints : reversed);
+   *  else can answer. `back` walks its own points, which since §6 may not be the outbound's
+   *  reversed at all. */
   const legZones = (side: 'out' | 'back', index: number) => {
     const points = pointsFor(side);
     const outerStart = side === 'out' ? startZone : endZone;
     const outerEnd = side === 'out' ? endZone : startZone;
     return {
       start: index === 0 ? outerStart : zoneOf(points[index], null),
-      end: index === legCount - 1 ? outerEnd : zoneOf(points[index + 1], null),
+      end: index === legCountFor(side) - 1 ? outerEnd : zoneOf(points[index + 1], null),
     };
   };
   // A chip per time field (ADR-0107 §6). It is **editable only when no place
@@ -480,7 +526,7 @@ export function BookingSheet({
         ? side === 'out'
           ? startZone
           : endZone
-        : i === legCount
+        : i === legCountFor(side)
           ? side === 'out'
             ? endZone
             : startZone
@@ -508,16 +554,17 @@ export function BookingSheet({
               side === 'out' ? startOverride : endOverride,
               side === 'out' ? setStartOverride : setEndOverride,
             )
-          : i === legCount
+          : i === legCountFor(side)
             ? zoneChip(
                 side === 'out' ? toPlaceId : (fromPlaceId ?? placeId),
-                zoneAt(legCount),
+                zoneAt(legCountFor(side)),
                 side === 'out' ? endOverride : startOverride,
                 side === 'out' ? setEndOverride : setStartOverride,
               )
             : undefined,
       arrive: i > 0 ? { time: view.moments[2 * i - 1]?.time ?? '' } : undefined,
-      depart: i < legCount ? { time: view.moments[i === 0 ? 0 : 2 * i]?.time ?? '' } : undefined,
+      depart:
+        i < legCountFor(side) ? { time: view.moments[i === 0 ? 0 : 2 * i]?.time ?? '' } : undefined,
       marks: {
         /** **The journey's date wears the first departure's refusal**, because that field IS
          *  the journey's date: `legField(side, 0, 'start')` holds the day every later moment
@@ -529,7 +576,8 @@ export function BookingSheet({
         arrive: i > 0 ? errors.field(legField(side, i - 1, 'end')) : undefined,
         // Node 0's departure is inside the date's box above, so a second mark for the same
         // field would render the same message twice.
-        depart: i > 0 && i < legCount ? errors.field(legField(side, i, 'start')) : undefined,
+        depart:
+          i > 0 && i < legCountFor(side) ? errors.field(legField(side, i, 'start')) : undefined,
       },
     }));
     /** **Which node is open when nobody has picked one** (ADR-0203 §9). The first whose
@@ -603,6 +651,7 @@ export function BookingSheet({
     !sameLegs(legs, initial.legs) ||
     roundTrip !== initial.roundTrip ||
     !sameLegs(returnLegs, initial.returnLegs) ||
+    (returnStops ?? []).join() !== (initial.returnStopPlaceIds ?? []).join() ||
     startOverride !== initial.startOverride ||
     endOverride !== initial.endOverride ||
     kind.value !== initial.kind;
@@ -712,6 +761,11 @@ export function BookingSheet({
       // route, which is the field it is a part of (ADR-0150).
       if (stops.some((id) => !id)) {
         problems.push({ field: 'route', message: t.index.form.stopRequired });
+      }
+      // The way back's own stops answer the same rule, in their own words so the message
+      // says which journey is short a place (ADR-0203 §6).
+      if (twoLegs && returnStops?.some((id) => !id)) {
+        problems.push({ field: 'route', message: t.index.form.returnStopRequired });
       }
     }
     // **A direction is refused, never assumed** (field report #8). This is the price of
@@ -904,7 +958,7 @@ export function BookingSheet({
             zones.end,
           );
           const firstOfJourney = index === 0;
-          const lastOfJourney = index === legCount - 1;
+          const lastOfJourney = index === legCountFor(side) - 1;
           // The overrides ride with the END they belong to: on the way out the start's
           // is the journey's start; on the way back it departs from the destination, so
           // the two swap. Same "only when the chip was used" rule as a single leg's.
@@ -1124,7 +1178,10 @@ export function BookingSheet({
   /** The labels name what each step ASKS. A one-way single leg keeps today's three words
    *  exactly; a journey that has more than one leg has to say WHICH leg, because with
    *  four schedules on four steps "מתי" alone leaves you counting. */
-  const multiLeg = legCount > 1;
+  /** **Either journey being a sequence makes this a multi-leg booking.** A return with its
+   *  own stops can be a chain while the outbound is a single hop (§6), and the readers of this
+   *  flag — the shared-code hint, the leg headings — are about the booking as a whole. */
+  const multiLeg = legCount > 1 || legCountFor('back') > 1;
   const stepLabels = STEP_IDS.map((id) => {
     if (id === 'type') return t.index.form.stepType;
     if (id === 'what') return t.index.form.stepWhat;
@@ -1388,6 +1445,42 @@ export function BookingSheet({
                       stops={offersStops ? stopPlaceIds : undefined}
                       onStopsChange={offersStops ? setStopPlaceIds : undefined}
                       onFindStop={(index, side) => findStop(index, side)}
+                      /* **The way back's own route, offered only where there IS one**
+                         (ADR-0203 §6) — a round trip, on a type that can hold a sequence, on
+                         a create. Same terms as the stops above and the direction control,
+                         and for the same reason: turning a saved leg into a journey is a
+                         different action. `undefined` here is "this host authors no return",
+                         which is what `EventForm` and a one-way both are. */
+                      returnStops={offersStops && twoLegs ? returnStops : undefined}
+                      onReturnStopsChange={
+                        offersStops && twoLegs
+                          ? (next) => {
+                              // A LIST edit, taken as given — including an empty one, which is
+                              // "the way home is direct". Remembered so leaving and coming
+                              // back is free.
+                              setReturnStops(next);
+                              if (next !== null) setReturnStopsDraft(next);
+                              // `null` (back to a mirror) deliberately leaves the draft alone
+                              // — that is the whole point of keeping two fields.
+                            }
+                          : undefined
+                      }
+                      /* **The list and the flag are separate, and this is where that pays.**
+                         Going back to `אותה דרך` keeps what was typed, and `דרך אחרת` RESTORES
+                         it rather than re-seeding — so a change of mind inside one form costs
+                         nothing and no confirm dialog has to ask. The outbound reversed is the
+                         seed only the first time, when nothing is remembered yet.
+
+                         A callback of its own, because the first attempt folded this into the
+                         list write and could not tell "give me my own route" from "I cleared
+                         the last stop" — so emptying the list restored the very stop that had
+                         just been removed. Two intents, two callbacks. */
+                      onReturnDiverge={
+                        offersStops && twoLegs
+                          ? () => setReturnStops(returnStopsDraft ?? [...stopPlaceIds].reverse())
+                          : undefined
+                      }
+                      onFindReturnStop={(index, side) => findReturnStop(index, side)}
                       // **A hire asks about counters, not a direction** (ADR-0163 §1).
                       shape={isHire ? 'hire' : 'journey'}
                     />
@@ -1444,7 +1537,7 @@ export function BookingSheet({
                       !view.date && isCreate
                         ? suggest(DATE_SOURCES, {
                             from: places.find((p) => p.id === sidePoints[0]),
-                            to: places.find((p) => p.id === sidePoints[legCount]),
+                            to: places.find((p) => p.id === sidePoints[legCountFor(side)]),
                             destination: destinationRefOf(trip),
                             trip: { startDate: trip.startDate, endDate: trip.endDate },
                             legs: knownLegs,

@@ -815,6 +815,123 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
     expect(offer()).toContain(t.journey.suggest.tripEnd);
   });
 
+  /* ── The way home is its own route (ADR-0203 §6) ────────────────────────────────────
+     Reported from the field: "when doing a round trip with layovers, theres a good chance
+     that it isn't going to be the same stops exactly - it could be different stops and/or a
+     different number of stops. Right now after you chose round-trip you can't change it per
+     journey, and that's bad ux." */
+
+  /** The way-back section's two pills, and which is on. */
+  const backPills = () =>
+    [...document.querySelectorAll('.rf-back .choice-pill')].map((b) => ({
+      label: b.textContent,
+      on: b.getAttribute('aria-checked') === 'true',
+    }));
+  const pressPill = (label: string) =>
+    fireEvent.click(
+      [...document.querySelectorAll('.rf-back .choice-pill')].find((b) =>
+        b.textContent?.includes(label),
+      )!,
+    );
+  const backStopRows = () => document.querySelectorAll('.rf-back .place-picker-stop');
+
+  it('offers nothing about the way back until a round trip is chosen', () => {
+    open();
+    expect(document.querySelector('.rf-back')).toBeNull();
+    goRoundTrip();
+    expect(document.querySelector('.rf-back')).not.toBeNull();
+    // And it opens as a MIRROR: a statement, no second list. Most round trips do come home
+    // the same way, so the common case costs one line.
+    expect(backPills().find((p) => p.on)!.label).toContain(t.index.form.returnSameWay);
+    expect(backStopRows().length).toBe(0);
+    expect(document.querySelector('.rf-back-same')!.textContent).toBe(t.index.form.returnMirrors);
+  });
+
+  /** **Seeded from the outbound reversed, so `דרך אחרת` opens on a route to EDIT** — §6's own
+   *  wording, and the difference between offering a change and demanding re-entry. */
+  it('seeds a diverging return from the outbound reversed', () => {
+    open({ stopPlaceIds: ['pl-dxb'] });
+    goRoundTrip();
+    pressPill(t.index.form.returnOtherWay);
+    expect(backStopRows().length).toBe(1);
+    expect(backStopRows()[0].textContent).toContain('דובאי');
+  });
+
+  /** The reported case: a DIFFERENT NUMBER of stops, which `reversed` could never express —
+   *  it was one array read backwards, and `legCount` was one number for both journeys. */
+  it('lets the two journeys have a different number of stops, and writes a leg for each', async () => {
+    indexVerbs.createBooking.mockResolvedValue({ id: 'b' });
+    open({ stopPlaceIds: ['pl-dxb'] });
+    goRoundTrip();
+    pressPill(t.index.form.returnOtherWay);
+    // Drop the seeded stop: the way home is direct, while the way out has one.
+    fireEvent.click(backStopRows()[0].querySelector('.pp-clear')!);
+    expect(backStopRows().length).toBe(0);
+
+    next();
+    fillJourney('2026-07-19', ['00:30', '06:10', '08:50', '11:35']);
+    next();
+    // The return is ONE leg now, so its rail has two nodes rather than three.
+    expect(railNodes().length).toBe(2);
+    fillJourney('2026-07-22', ['09:00', '15:00']);
+    next();
+    save();
+
+    // Two legs out (one stop) plus one leg back = three bookings, from one save.
+    await waitFor(() => expect(indexVerbs.createBooking).toHaveBeenCalledTimes(3));
+    const routes = indexVerbs.createBooking.mock.calls.map(([b]) => [b.fromPlaceId, b.toPlaceId]);
+    expect(routes).toEqual([
+      ['pl-tlv', 'pl-dxb'],
+      ['pl-dxb', 'pl-nrt'],
+      // One leg home, over the two ends only — the way back is direct.
+      ['pl-nrt', 'pl-tlv'],
+    ]);
+  });
+
+  /** **The flag and the list are separate**, which is what makes the pill non-destructive and
+   *  is why no confirm dialog has to ask. */
+  it('remembers a diverged return when you go back to the same way and return to it', () => {
+    open({ stopPlaceIds: ['pl-dxb'] });
+    goRoundTrip();
+    pressPill(t.index.form.returnOtherWay);
+    fireEvent.click(backStopRows()[0].querySelector('.pp-clear')!);
+    expect(backStopRows().length).toBe(0);
+
+    pressPill(t.index.form.returnSameWay);
+    expect(backStopRows().length).toBe(0);
+    expect(document.querySelector('.rf-back-same')).not.toBeNull();
+
+    // Back again: the emptied list is restored, NOT re-seeded from the outbound.
+    pressPill(t.index.form.returnOtherWay);
+    expect(backStopRows().length).toBe(0);
+  });
+
+  it('refuses a return stop with no place, at the route, in its own words', () => {
+    open();
+    goRoundTrip();
+    pressPill(t.index.form.returnOtherWay);
+    fireEvent.click(screen.getAllByText(t.index.form.addStop)[1]);
+    press(t.common.steps.next);
+    expect(screen.getByText(t.index.form.returnStopRequired)).toBeTruthy();
+    // Still on the route step: the refusal is at the field it names.
+    expect(document.querySelector('.form-steps-label')!.textContent).toBe(t.index.form.stepWhat);
+  });
+
+  /** **The ends stay mirrored**, and the section says so rather than offering an edit that
+   *  would write to the outbound. Scope decision, not an omission: an open-jaw trip is a
+   *  different feature. */
+  it('states the return’s two ends and offers no picker for them', () => {
+    open();
+    goRoundTrip();
+    pressPill(t.index.form.returnOtherWay);
+    const ends = document.querySelector('.rf-back-ends')!;
+    // The outbound's two ends, SWAPPED: this fixture flies תל אביב → טוקיו.
+    expect(ends.textContent).toBe('טוקיותל אביב');
+    expect(ends.querySelector('.place-picker')).toBeNull();
+    // The arrow is the real `NavArrow` SVG, never a Bidi_Mirrored character (ADR-0118).
+    expect(ends.querySelector('svg.nav-arrow')).not.toBeNull();
+  });
+
   it('names the two steps for the journey they ask about', () => {
     open();
     goRoundTrip();

@@ -1254,7 +1254,15 @@ body.wp-dragging
    `.tp-list button`: that class owns a row's bottom border and its touch box, so reusing it
    drew a dead option and collapsed against the row above. Sticky, so the day the rows below
    belong to stays readable while they scroll past. Amber, which is the hue time already
-   spends (rule 4) — the divider IS a statement about a clock. */
+   spends (rule 4) — the divider IS a statement about a clock.
+
+   **The ground is OPAQUE, and it shipped transparent** (field report, 2026-08-24: "it could
+   go over the time… and it could become hard to read"). A 10% wash over `transparent` leaves
+   the scrolling row visible straight through a band that does not move, so the numerals and
+   the word land on one baseline and neither wins. Mixed into `--card` instead of into nothing:
+   same tint, same weight, and what passes underneath is covered. Centring the label was drawn
+   and rejected — it moves the collision rather than ending it, and this is a caption for the
+   rows below it, so it belongs at the reading edge like every other caption here. */
 .tp-list-turn {
   display: flex;
   align-items: center;
@@ -1263,7 +1271,7 @@ body.wp-dragging
   font-size: 11px;
   font-weight: 700;
   color: var(--amber-deep);
-  background: color-mix(in srgb, var(--amber) 10%, transparent);
+  background: color-mix(in srgb, var(--amber) 13%, var(--card));
   border-block: 1px solid color-mix(in srgb, var(--amber) 26%, transparent);
   position: sticky;
   top: 0;

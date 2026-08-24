@@ -1,6 +1,6 @@
 # 0203 — A journey has **one date**, its arrival is a **clock plus a relative day**, and a suggestion is a **table of sources**
 
-**Status:** Accepted (owner sign-off 2026-08-23). **Built 2026-08-23** — §1, §2, §3, §4, §5, §7 and §9 are in the form; §8's search-kind axis and suggestion machinery are in. **Amended 2026-08-23 (§10, and §3 twice) after six field reports on the shipped rail** — see [§10](#10--a-clock-offers-forward-from-the-moment-before-it-amendment-2026-08-23) and the second build log; one of the six was a form that could not be completed at all. **§6 (the independent, non-mirrored return) and §8's in-form place suggestion are deferred** — the build log at the foot says what they turned out to touch, and why bundling them is how this lands half-wired. §3's branch is corrected there: it is `isSpan && titlesFromRoute(type)`, not `isSpan && isTransport`, because a hire is not a journey (ADR-0163).
+**Status:** Accepted (owner sign-off 2026-08-23). **Built 2026-08-23** — §1, §2, §3, §4, §5, §7 and §9 are in the form; §8's search-kind axis and suggestion machinery are in. **Amended 2026-08-23 (§10, and §3 twice) and 2026-08-24 (§6 built, §10's ground)** after nine field reports on the shipped rail — see [§10](#10--a-clock-offers-forward-from-the-moment-before-it-amendment-2026-08-23) and the second build log; one of the six was a form that could not be completed at all. **§6 is BUILT (2026-08-24)** — see the third build log; the field asked for it with a dimension this ADR did not have (a different NUMBER of stops). **§8's in-form place suggestion is still deferred** — the build log at the foot says what they turned out to touch, and why bundling them is how this lands half-wired. §3's branch is corrected there: it is `isSpan && titlesFromRoute(type)`, not `isSpan && isTransport`, because a hire is not a journey (ADR-0163).
 **Date:** 2026-08-23
 **Design reference:** [`mockups/a-journey-has-one-date-v1.html`](../../mockups/a-journey-has-one-date-v1.html) for §1–§9; [`mockups/a-clock-follows-the-one-before-it-v1.html`](../../mockups/a-clock-follows-the-one-before-it-v1.html) for §10 and the §3 amendments — every number below is read from that file's live DOM in a headless browser, at 360px and 390px, in both themes. **It falsified this ADR's first §7 and its own first draft of §4; both corrections are recorded here rather than quietly applied.**
 **Session note:** [`planning/2026-08-23-the-arrival-was-read-as-a-return.md`](../planning/2026-08-23-the-arrival-was-read-as-a-return.md)
@@ -311,3 +311,38 @@ Two fixes, because there were two bugs stacked:
 **And a step's children got the rhythm the sheet around them already has.** `.form-step` carried the entry animation and no layout at all, so the type row and the journey block measured **0px** apart while `.booking-sheet` one level up spends 12px between its own children. Every field on every step of this form was relying on a margin somebody remembered to add.
 
 **What the mockup falsified, twice, in the same way.** `mockups/a-clock-follows-the-one-before-it-v1.html` was written _with_ its change, so it inlines stylesheets that already carry it — and the "before" columns were therefore drawing the fix and grading it a win. First render: 8px of zone-chip gap in both columns. Second: 44px rows and 12px seams in both. Every baseline is now explicitly drawn back under `.bld-was*`, and the file says so where a reader will look. This is the third time in two sessions that rendering caught something reading could not, and the first time the thing it caught was the mockup itself.
+
+## Build log — 2026-08-24 (third pass: §6, and two more field reports)
+
+### §6 is built, and the field added the dimension that made it hard
+
+> when doing a round trip with layovers, theres a good chance that it isn't going to be the same stops exactly - it could be different stops **and/or a different number of stops**. Right now after you chose round-trip you can't change it per journey, and that's bad ux.
+
+**Why this was never a small change, stated properly this time.** `routePoints = [from, ...stops, to]` and `reversed` is that same array read backwards — so "different stops" was expressible only as "the same places in the other order". And `legCount = routePoints.length - 1` was **one number for both journeys**. Nine call sites read it, and each had to learn which side it was talking about before a return could have a different number of legs. The two earlier deferrals named three layers; the real count was the leg count plus those nine readers.
+
+**What is built:**
+
+- `returnStopPlaceIds` on the draft, `null` while the way back is still a mirror — so the common case carries no second list, no second leg count and no new state.
+- `pointsFor(side)` and `legCountFor(side)` replace the single number. `legCount` survives as the OUTBOUND's, because three readers genuinely mean that journey.
+- A way-back section in `RouteField`, opening as a derived sentence (`אותן עצירות, בסדר הפוך`) with a two-pill choice. `דרך אחרת` seeds from the outbound reversed — you edit a route rather than start from nothing, which is this section's own original wording.
+- `returnStopPlaceIds` as its own `PlaceErrandField`. `assignErrandPlace` already handled a list-with-index generically, so the Map errand needed no change at all.
+- The refusal a return stop owes, in its own words, at the route field.
+
+**The ENDS stay mirrored, and that is the scope decision.** You fly home from where you landed, so what varies is the middle. An open-jaw trip (in to Tbilisi, out of Kutaisi) is a different feature and is named here rather than half-built.
+
+**Two bugs the build produced, both caught by specs rather than by reading:**
+
+- **`backPoints` is a `const`, and a hoisted `function` cannot save it.** `legCountFor` is hoisted, so the leg resize above it compiled — and then threw `cannot access 'backPoints' before initialization` on every round trip. Eight specs failed at once. The route derivations now sit above their first reader, which is less natural to read than beside `legZones` and is the reason the block carries a note saying so.
+- **"Give me my own route" and "I cleared the last stop" arrived on the same callback**, so emptying the return's list restored the stop that had just been removed. Split into `onReturnStopsChange` (a list edit, `null` for back-to-mirror) and `onReturnDiverge` (the host decides what it opens with). And `returnStopsDraft` had to become `list | null`, because `[]` is a real answer — "diverged, and the way home is direct" — that the first version could not tell from "never diverged".
+
+**Measured, at the deepest form the feature can produce:** `MAX_ROUTE_STOPS` on both sides is **646px** against ADR-0155's 675px of visible sheet — it fits, with 29px spare. What buys that margin is the mirrored default, which keeps the ordinary cases at 306–462px. This is why the section stays on the route step (ADR-0192 §3: where before when) rather than becoming a step of its own.
+
+**Rejected, with reasons, after drawing both:** a text offer instead of pills — its revert has to say `חזרה לאותה דרך`, and `חזרה` is already the name of the section, so the app would use one word for two things in adjacent lines; and a `ConfirmDialog` on going back to a mirror — unnecessary once the flag and the list are separate fields, which is why they are.
+
+### §10's divider was transparent
+
+> when crossing the day, the label `למחרת` is sticked to the top which I liked, but the it could go over the time … Maybe center, maybe make it not transparent.
+
+`background: color-mix(in srgb, var(--amber) 10%, transparent)` — a 90%-transparent ground on a band that does not move, so the scrolling row shows straight through it and the numerals and the word land on one baseline. Mixed into `--card` instead of into nothing: same tint, same weight, alpha **0.1 → 1**.
+
+**Centring was drawn and rejected.** It moves the collision rather than ending it — only the ground fixes legibility — and it changes what the label _is_: this is a caption for the rows below it, and every caption in this app sits at the reading edge (`.field-label`, `.zchip-cap`, `.jf-node-lbl`). Centred, it reads as a divider ornament and competes with the numerals aligned in the same band.
