@@ -252,6 +252,22 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
 - A hand-rolled floating overlay (`createPortal`/`position:fixed`) instead of
   `Modal` + `useOverlay` — silently breaks system-back/Escape for that one
   surface (ADR-0090); lint-blocked for a reason.
+- **A hit layer stretched over a card to make the whole card tappable** (owner report,
+  2026-08-24). The Plan day row opened its read from `.bld-main`, which is ONE cell of the
+  row's grid (ADR-0178 §1) — so the padding, the badge's column and the width beside the when
+  line answered nothing — and the obvious fix is the one that does not work. A tap is
+  arbitrated against each candidate's **own layout box**, so a layer covering the card loses
+  to the row element, whose box contains the point and which is a candidate itself the moment
+  it carries pointer handlers (here, the drag's). Both layers were tried against
+  `e2e/plan-row-tap.spec.ts`'s taps — a `::after`, then a real child span — and both read the
+  same: `elementFromPoint` returned the layer at every point in the card while every tap
+  outside the title still dispatched its click to `.bld`. jsdom can see none of it. **Expanding a target past
+  its own edges is untouched** — the same run has the time chip's ±8px reaching the chip
+  (ADR-0161 §7), because a few px out it is still the nearest candidate. What fails is
+  covering the neighbours. So a whole-card tap is handled on the card element, with the
+  controls on it recognised by what they are (`closest('button, [role="button"]')`) — and
+  since a React portal bubbles to its REACT parent, such a handler must also ignore what its
+  own sheets send it (`e.currentTarget.contains(e.target)`).
 - A bespoke empty/loading/error `<div>` per screen instead of the
   `ui/feedback/` family (ADR-0078).
 - A form-level "something is wrong" caption, or a per-form `.invalid` class, instead of

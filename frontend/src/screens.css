@@ -1871,6 +1871,9 @@ body.wp-dragging
    belongs to the row's own box, so no screen passes a number. */
 .bld {
   scroll-margin-top: 8px;
+  /* The whole card opens the read (`BuilderRow`'s `openFromCard`), so the whole card says
+     so. A soft row keeps `grab` — `.bld.draggable` below is the more specific rule. */
+  cursor: pointer;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 14px;

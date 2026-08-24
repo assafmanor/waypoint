@@ -198,6 +198,53 @@ describe('BuilderRow — the row opens a read', () => {
     fireEvent.click(main);
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
+
+  // …and **the WHOLE card is that tap** (owner report, 2026-08-24): the button is one cell
+  // of the row's grid, so the padding, the badge's column and the width beside the when line
+  // used to answer nothing. What a real finger hits there is `.bld` itself — measured in
+  // `e2e/plan-row-tap.spec.ts`, which is where the geometry half of this lives; these pin
+  // the arbitration, which is the half that can be got wrong in jsdom.
+  it('opens the read from the card itself, not only from the title', () => {
+    const onOpen = vi.fn();
+    const { container } = row(A, { onOpen });
+    fireEvent.click(container.querySelector('.bld')!);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens it ONCE when the title inside the card is tapped', () => {
+    const onOpen = vi.fn();
+    const { container } = row(A, { onOpen });
+    fireEvent.click(container.querySelector('.bld-ttl')!);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  // A control on the card answers first, or the card would open on every press.
+  it('leaves the read shut when a control on the card is tapped', () => {
+    const onOpen = vi.fn();
+    const onPickTime = vi.fn();
+    // Scoped to this render's own container: the describe block above keeps its rows
+    // mounted, so a page-wide query would find several of each control.
+    const { container } = row(A, { onOpen, onPickTime });
+
+    fireEvent.click(container.querySelector('button.bld-time')!);
+    expect(onPickTime).toHaveBeenCalledTimes(1);
+    fireEvent.click(container.querySelector('.bld-icon')!);
+
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  // The row's own sheets are rendered INSIDE the row and portal out, and a React portal
+  // bubbles to its react parent — so without the containment check, dismissing the ⋯ sheet
+  // would open the read behind it.
+  it('ignores what its own sheet sends it — a backdrop dismiss is not a tap on the card', () => {
+    const onOpen = vi.fn();
+    const { container } = row(A, { onOpen });
+    fireEvent.click(container.querySelector('.bld-icon')!);
+
+    fireEvent.click(document.querySelector('.modal-overlay')!);
+
+    expect(onOpen).not.toHaveBeenCalled();
+  });
 });
 
 // **ONE LOCK, BESIDE THE THING IT LOCKS** (ADR-0178 §4). Hard/soft used to be drawn three
