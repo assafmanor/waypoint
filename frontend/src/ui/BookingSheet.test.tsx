@@ -859,34 +859,45 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
 
   /** The reported case: a DIFFERENT NUMBER of stops, which `reversed` could never express —
    *  it was one array read backwards, and `legCount` was one number for both journeys. */
-  it('lets the two journeys have a different number of stops, and writes a leg for each', async () => {
-    indexVerbs.createBooking.mockResolvedValue({ id: 'b' });
-    open({ stopPlaceIds: ['pl-dxb'] });
-    goRoundTrip();
-    pressPill(t.index.form.returnOtherWay);
-    // Drop the seeded stop: the way home is direct, while the way out has one.
-    fireEvent.click(backStopRows()[0].querySelector('.pp-clear')!);
-    expect(backStopRows().length).toBe(0);
+  /** **The one spec in this file that needs its own budget.** It drives six time pickers
+   *  through a full save, and since §10 each panel renders the whole rotated 96-slot list plus
+   *  its day divider — then §9's threshold moved, so at one stop nothing collapses any more and
+   *  every control stays live between picks. Measured at ~4.5s against the 5s default: not
+   *  stuck, just the most expensive path in the suite. Raised deliberately rather than thinned,
+   *  because what makes it slow (a real save over two journeys of different depth) is exactly
+   *  what it exists to prove. */
+  it(
+    'lets the two journeys have a different number of stops, and writes a leg for each',
+    { timeout: 15_000 },
+    async () => {
+      indexVerbs.createBooking.mockResolvedValue({ id: 'b' });
+      open({ stopPlaceIds: ['pl-dxb'] });
+      goRoundTrip();
+      pressPill(t.index.form.returnOtherWay);
+      // Drop the seeded stop: the way home is direct, while the way out has one.
+      fireEvent.click(backStopRows()[0].querySelector('.pp-clear')!);
+      expect(backStopRows().length).toBe(0);
 
-    next();
-    fillJourney('2026-07-19', ['00:30', '06:10', '08:50', '11:35']);
-    next();
-    // The return is ONE leg now, so its rail has two nodes rather than three.
-    expect(railNodes().length).toBe(2);
-    fillJourney('2026-07-22', ['09:00', '15:00']);
-    next();
-    save();
+      next();
+      fillJourney('2026-07-19', ['00:30', '06:10', '08:50', '11:35']);
+      next();
+      // The return is ONE leg now, so its rail has two nodes rather than three.
+      expect(railNodes().length).toBe(2);
+      fillJourney('2026-07-22', ['09:00', '15:00']);
+      next();
+      save();
 
-    // Two legs out (one stop) plus one leg back = three bookings, from one save.
-    await waitFor(() => expect(indexVerbs.createBooking).toHaveBeenCalledTimes(3));
-    const routes = indexVerbs.createBooking.mock.calls.map(([b]) => [b.fromPlaceId, b.toPlaceId]);
-    expect(routes).toEqual([
-      ['pl-tlv', 'pl-dxb'],
-      ['pl-dxb', 'pl-nrt'],
-      // One leg home, over the two ends only — the way back is direct.
-      ['pl-nrt', 'pl-tlv'],
-    ]);
-  });
+      // Two legs out (one stop) plus one leg back = three bookings, from one save.
+      await waitFor(() => expect(indexVerbs.createBooking).toHaveBeenCalledTimes(3));
+      const routes = indexVerbs.createBooking.mock.calls.map(([b]) => [b.fromPlaceId, b.toPlaceId]);
+      expect(routes).toEqual([
+        ['pl-tlv', 'pl-dxb'],
+        ['pl-dxb', 'pl-nrt'],
+        // One leg home, over the two ends only — the way back is direct.
+        ['pl-nrt', 'pl-tlv'],
+      ]);
+    },
+  );
 
   /** **The flag and the list are separate**, which is what makes the pill non-destructive and
    *  is why no confirm dialog has to ask. */
@@ -1253,12 +1264,15 @@ describe('BookingSheet — a stop makes one save a chain of bookings', () => {
    *  layover made reachable, reported from the field. Every moment filled puts the open node
    *  at the last one (§9), so the leg whose arrival rolls past the trip's end is behind a
    *  summary; the form declined to advance and said nothing at all, which is the single
-   *  failure `useFormErrors` exists to prevent. Two nodes never summarise, so a plain
-   *  flight could not show this and a stop could. */
+   *  failure `useFormErrors` exists to prevent.
+   *
+   *  **Two stops, not one** — the threshold moved (§9, 2026-08-24): a one-stop journey fits
+   *  the fold, so it no longer summarises and could no longer stage this. The defect is
+   *  unchanged; the shape that reaches it is one stop deeper. */
   it('delivers a refusal that lands on a summarised node, and opens it', () => {
-    open();
+    open({ stopPlaceIds: ['pl-dxb', 'pl-tlv'] });
     next();
-    fillChain('2026-07-30', ['20:00', '02:00', '03:00', '05:00']);
+    fillChain('2026-07-30', ['20:00', '02:00', '03:00', '05:00', '06:00', '07:00']);
     expect(document.querySelectorAll('.jf-sum-tok').length).toBeGreaterThan(0);
 
     next();
@@ -1383,32 +1397,83 @@ describe('BookingSheet — a stop makes one save a chain of bookings', () => {
 
   /** **§9, wired**: nobody picks a node, so the form derives which one is open — the first
    *  whose moments are still empty — and the ones BEHIND it collapse to the line they read as.
-   *  That is what keeps a three-node journey inside a fold instead of the 708px §7 measured,
-   *  and it is why the ADR's compaction claim is about filling rather than about arriving. */
+   *  That is what keeps a deep journey inside a fold instead of the 708px §7 measured, and it
+   *  is why the ADR's compaction claim is about filling rather than about arriving.
+   *
+   *  **At two stops, which is where compaction starts earning its keep** (§9's threshold,
+   *  corrected 2026-08-24). The spec used one stop until a field report pointed out that a
+   *  one-stop form never overflowed, so collapsing it was all cost. */
   it('walks the rail as you fill it, summarising only what is behind you', () => {
-    open();
+    open({ stopPlaceIds: ['pl-dxb', 'pl-tlv'] });
     next();
     const summarised = () => railNodes().map((node) => node.querySelector('.jf-sum-tok') != null);
     // On arrival nothing is filled, so nothing is compacted: an empty node has no line to
     // read as, and a blank pill where a clock should be is worse than the height.
-    expect(summarised()).toEqual([false, false, false]);
+    expect(summarised()).toEqual([false, false, false, false]);
 
     setJourneyDate('2026-07-19');
     setNodeTime(0, 'depart', '00:30');
     // The departure is answered, so the rail moves on and the node behind it summarises.
-    expect(summarised()).toEqual([true, false, false]);
+    expect(summarised()).toEqual([true, false, false, false]);
 
     setNodeTime(1, 'arrive', '06:10');
     setNodeTime(1, 'depart', '08:50');
-    expect(summarised()).toEqual([true, true, false]);
+    expect(summarised()).toEqual([true, true, false, false]);
 
     // A summarised node is still a control (§9): tapping its line reopens it, and the rail
     // does not lose the journey's one date by collapsing the node that holds it.
     openRailNode(0);
-    expect(summarised()).toEqual([false, true, false]);
+    expect(summarised()).toEqual([false, true, false, false]);
     expect((document.querySelector('.jf .vt-date input') as HTMLInputElement).value).toBe(
       '2026-07-19',
     );
+  });
+
+  /** **The threshold itself, pinned** — reported from the field: "the lines collapsing under
+   *  your fingers could be a little confusing and so maybe do it only when the form is very
+   *  long". §9's own fold table already said so: 0–1 stops are inside the fold on both a
+   *  390×844 and a 360×640 phone, and the cases compaction was written for are two stops
+   *  (718.5px all-open against 675px) and three (894px). The code shipped the threshold one
+   *  stop too low, so a journey that never overflowed paid for the fix anyway.
+   *
+   *  Both arms in one spec on purpose: the number is only meaningful as the line between them,
+   *  and a spec that asserted just the quiet side would pass with compaction deleted. */
+  it('never summarises at one stop, and still does at two', () => {
+    const anySummarised = () => document.querySelectorAll('.jf-sum-tok').length > 0;
+
+    open({ stopPlaceIds: ['pl-dxb'] });
+    next();
+    expect(railNodes().length).toBe(3);
+    fillChain('2026-07-19', ['00:30', '06:10', '08:50', '11:35']);
+    // Everything filled, and every node still open: the form fits, so there is nothing to buy.
+    expect(anySummarised()).toBe(false);
+    cleanup();
+
+    open({ stopPlaceIds: ['pl-dxb', 'pl-tlv'] });
+    next();
+    expect(railNodes().length).toBe(4);
+    fillChain('2026-07-19', ['00:30', '06:10', '08:50', '11:35', '13:00', '15:20']);
+    expect(anySummarised()).toBe(true);
+  });
+
+  /** **A tap does not survive the rail shrinking under it.** `openNode[side]` is the node you
+   *  PICKED, and it used to be read before the threshold — so tapping a summary at two stops
+   *  and then removing a stop brought the pick back to a rail that no longer summarises, and a
+   *  pick left pointing past the end matched no node and collapsed every one of them. Found by
+   *  re-reading the diff, not by a report. */
+  it('drops a node pick when the rail falls back below the threshold', () => {
+    open({ stopPlaceIds: ['pl-dxb', 'pl-tlv'] });
+    next();
+    fillChain('2026-07-19', ['00:30', '06:10', '08:50', '11:35', '13:00', '15:20']);
+    // Pick the LAST node explicitly, which is the pick that would dangle once one goes.
+    fireEvent.click([...document.querySelectorAll('.jf-sum-tok')].slice(-1)[0]);
+
+    // Back to the route, drop a stop, and return: three nodes, and nothing compacted.
+    press(t.common.steps.back);
+    fireEvent.click(document.querySelectorAll('.place-picker-stop .pp-clear')[1]);
+    next();
+    expect(railNodes().length).toBe(3);
+    expect(document.querySelectorAll('.jf-sum-tok').length).toBe(0);
   });
 
   it('refuses a stop with no place, at the route', () => {

@@ -559,6 +559,14 @@ What the build already carried, kept for the reader who wonders whether it was c
 - **Three device questions, all wired as controls in the mockup with the recommendation as the default:** whether `באותו יום` shows always or only when it differs, whether the date suggestion is a pill or a pre-filled value with a latch, and whether `הלוך ושוב` is pre-offered from the trip's readiness. The last one is where the owner's approval was explicitly conditional, so it wants glass before it ships.
 - **A cross-trip place memory ("the airport you usually fly from") is deferred with its reason**: `Place` is `@@unique([tripId, googlePlaceId])` and the schema comment states the deliberate reason. It is one more row in §8's source table when it comes, and the gap is only the very first endpoint of a first trip.
 
+## §9 compacted a form that already fitted (owner, 2026-08-24)
+
+Fixed the same day; [ADR-0203](decisions/0203-a-journey-has-one-date-and-its-arrival-is-a-clock.md) §9's threshold corrected in place and named (`SUMMARISE_FROM_NODES`). The finding worth keeping: **the ADR's own fold table already said 0–1 stops need no compaction**, and the code applied it from one stop up. A measurement that justifies a feature also bounds it, and nothing was checking the bound.
+
+Still open, and deliberately not guessed at:
+
+- **Whether the collapse should fire on FINISHING a node or on OPENING another.** Today it fires the moment a node's last time is picked, in the same frame the time panel closes — so a large layout change is already underway and the collapse rides with it. The owner's "and even then I'm not sure" is about that movement at two and three stops, where compaction does earn its height. The cheap alternative is to collapse when another node opens instead: same end state, movement attached to a tap already being made. Wants a device pass at two stops before either is chosen.
+
 ## Three more on the rail, and §6 lands (owner, 2026-08-24)
 
 All three fixed the same day. [ADR-0203](decisions/0203-a-journey-has-one-date-and-its-arrival-is-a-clock.md) §6 is **built** and [ADR-0184](decisions/0184-an-edge-can-be-a-window.md) §2 amended; design reference [`mockups/the-way-back-is-its-own-route-v1.html`](../mockups/the-way-back-is-its-own-route-v1.html). Kept here for the findings that outlive the fixes:

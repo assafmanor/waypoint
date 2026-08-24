@@ -376,6 +376,20 @@ export const QUICK_TILE_MAX_COLS = 4;
  *  and a whole booking on save. */
 export const MAX_ROUTE_STOPS = 3;
 
+/** **From how many rail nodes a journey's filled nodes summarise** (ADR-0203 §9, corrected
+ *  2026-08-24) — at or below this, everything stays open.
+ *
+ *  Four nodes is TWO stops, and the number is the fold rather than a taste: §9's own table
+ *  measures a two-stop journey at 718.5px all-open against a 675px sheet (and 894px at three
+ *  stops), while 0–1 stops fit on both a 390×844 and a 360×640 phone with nothing collapsed.
+ *
+ *  **It shipped at 3, which is one stop, and that was the bug.** A one-stop journey compacted
+ *  to fix an overflow it did not have — reported as "the lines collapsing under your fingers
+ *  could be a little confusing… maybe do it only when the form is very long". Compaction trades
+ *  a control for the line it reads as, so it has to be paid for by height that is actually
+ *  there; below the fold threshold it is all cost. */
+export const SUMMARISE_FROM_NODES = 3;
+
 /** **How many days forward a single moment may be resolved to** (ADR-0203 §2). A journey's
  *  later moments take the nearest forward instant, and this bounds the search.
  *
