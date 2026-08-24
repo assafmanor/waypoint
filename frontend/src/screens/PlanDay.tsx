@@ -22,6 +22,7 @@ import {
   useState,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from 'react';
 import {
@@ -2151,6 +2152,40 @@ export function BuilderRow({
   const hasWhenSlot = !!event.startsAt || !!onPickTime;
   const hardLock = isHard ? <HardLock /> : null;
 
+  /**
+   * **THE WHOLE CARD OPENS THE READ** (owner report, 2026-08-24). The row's tap has been a
+   * read since ADR-0174 §4 and only the title line carried it: `.bld-main` is ONE cell of
+   * the grid ADR-0178 §1 laid out, so the row's padding, the badge's column and the free
+   * width beside the when line answered nothing at all.
+   *
+   * **And the fix is here rather than in the stylesheet, which is the part worth keeping.**
+   * The obvious answer is a hit layer stretched over the card from the button — the trade
+   * `button.bld-time::after` already makes one slot over — and at THIS size it does not
+   * survive a finger. A tap is arbitrated against each candidate's own layout box, so a
+   * layer covering the whole card loses to `.bld`, whose box contains the point outright and
+   * which is a candidate itself (the drag's pointer handlers make it one). Both layers were
+   * tried against `e2e/plan-row-tap.spec.ts`'s taps — a `::after`, then a real child span —
+   * and both read the same: `elementFromPoint` returned the layer at every point in the card
+   * while every tap outside the title still dispatched its click to `.bld`.
+   *
+   * **This does not retire the idiom** — the same run has the chip's own ±8px reaching the
+   * chip, because a few px out it is still the nearest candidate. It bounds it: expanding a
+   * target past its neighbours' boxes is not the same trick as covering them. So the read is
+   * opened from the element the browser actually hands the tap to, and the button keeps its
+   * own `onClick` for the title, the keyboard and the accessible name.
+   */
+  const openFromCard = (e: ReactMouseEvent<HTMLDivElement>) => {
+    const target = e.target as Element;
+    // This row's sheets are rendered inside this element and portal out, and a React portal
+    // bubbles to its REACT parent — so a tap on a sheet's backdrop arrives here. Only a real
+    // descendant is a tap on the card.
+    if (!e.currentTarget.contains(target)) return;
+    // A control on the card answered it already: the time, the ⋯, the badge's way to the map,
+    // the settle mark — and `.bld-main`, whose own click is this same read.
+    if (target.closest('button, [role="button"]')) return;
+    onOpen();
+  };
+
   const mainContent = (
     <>
       <span className="bld-t">
@@ -2183,7 +2218,12 @@ export function BuilderRow({
     // could only arm on contact from a dedicated handle before; a press-and-hold can
     // arm from anywhere without eating the row's tap, so the row gets that width back
     // and the gesture matches the shelf's exactly.
-    <div className={cls} {...{ [EVENT_ROW_ATTR]: event.id }} {...(dragProps ?? refuseProps)}>
+    <div
+      className={cls}
+      {...{ [EVENT_ROW_ATTR]: event.id }}
+      {...(dragProps ?? refuseProps)}
+      onClick={openFromCard}
+    >
       {/* The badge is the way to the map, and it survives `readOnly` — a finished
           trip is a browsable archive (ADR-0040) and looking at a place changes
           nothing. */}
