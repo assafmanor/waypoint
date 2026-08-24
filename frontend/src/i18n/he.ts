@@ -145,6 +145,71 @@ export const t = {
       action: 'רענון האפליקציה',
     },
   },
+  // "Put this on your home screen" (ADR-0204). Its own top-level block rather than a member
+  // of `shell.account`, because the settings row is only one of four places it is said and
+  // the others are nowhere near the account screen.
+  install: {
+    // THE TWO UNPROMPTED ASKS (§2). Each states the fact that earned it, and they are two
+    // strings and not one parameterised one on purpose: a generic "install our app" is
+    // exactly the sentence that turns this into a nag, and a shared template invites one.
+    ask: {
+      // Door A — the first arrival after joining. `tripName` is the trip you just joined,
+      // which is what makes this an observation rather than a pitch.
+      joined: (tripName: string) => `הצטרפתם ל${tripName} · אפשר לקחת אותו איתכם למסך הבית.`,
+      // Door B — departure is close. `days` is 1-3 (INSTALL_DEPARTURE_WINDOW_DAYS), and the
+      // singular is spelled out because `בעוד 1 ימים` is not Hebrew.
+      soon: (days: number) =>
+        days === 1
+          ? 'הטיול מתחיל מחר · על מסך הבית הוא עובד גם בלי רשת.'
+          : `הטיול מתחיל בעוד ${days} ימים · על מסך הבית הוא עובד גם בלי רשת.`,
+      action: 'התקנה',
+    },
+    // Door C (§3) — the blocked want. It names what was just asked for rather than the app,
+    // because the person did not ask for an app, they asked to be reminded. The verb is
+    // `איך` and not `התקנה`: on iOS nothing here can install, and the sheet teaches.
+    blocked: {
+      text: 'כדי שהתזכורת הזו תגיע באייפון, האפליקציה צריכה להיות על מסך הבית.',
+      action: 'איך',
+    },
+    // THE SHEET (§4).
+    sheet: {
+      title: 'Travelive על מסך הבית',
+      sub: 'אותה אפליקציה · בלי סרגל הדפדפן',
+      // Three reasons, one line each, in the order they become true on a trip.
+      whyOffline: 'עובדת בלי רשת · היומן, המסמכים והאינדקס',
+      whyNotify: 'תזכורות מגיעות בזמן, גם כשהיא סגורה',
+      whyHome: 'נפתחת במסך מלא, בנגיעה אחת',
+      // Chrome: one tap, a real install.
+      doInstall: 'התקנה',
+      // iOS: nothing here can install, so the button closes and says so honestly.
+      doGot: 'הבנתי',
+      // The taught gesture. The gershayim are the app's own quoting convention (`נתב״ג`),
+      // not straight quotes — and the WORDS are what identify the menu item, because the
+      // glyph beside them is our nearest shape and not Apple's mark.
+      stepShare: 'הקישו על כפתור השיתוף בסרגל הדפדפן',
+      stepAdd: 'בחרו ״הוספה למסך הבית״',
+      // The embedded-browser path, which is the common first open of a link-only-join app
+      // (ADR-0030) and not an edge case.
+      inAppTitle: 'הקישור נפתח בתוך אפליקציה אחרת',
+      inAppBody:
+        'מכאן אי אפשר להתקין. פתחו את Travelive בדפדפן של הטלפון, ומשם אפשר להוסיף אותו למסך הבית.',
+      inAppCopy: 'העתקת הקישור',
+      inAppCopied: 'הקישור הועתק',
+      note: 'אפשר תמיד להתקין מההגדרות.',
+    },
+    // THE PERMANENT HOME (§6).
+    settings: {
+      section: 'האפליקציה',
+      label: 'התקנה למסך הבית',
+      installed: 'מותקנת',
+      notInstalled: 'לא מותקנת',
+      action: 'התקנה',
+      hint: 'על מסך הבית Travelive נפתחת במסך מלא, עובדת בלי רשת ויכולה לשלוח תזכורות.',
+      // What the row says where no path exists at all — honest rather than absent, so the
+      // section does not silently disappear on a desktop browser.
+      unavailable: 'בדפדפן הזה אין התקנה · בטלפון זה יעבוד.',
+    },
+  },
   // No arrow lives in the copy: every visible arrow renders as an SVG (ui/NavArrow,
   // ui/Icon) because the Assistant body font has no arrow glyphs and the fallback
   // sits low. The one textual arrow left in the app is the route-title separator
@@ -1710,8 +1775,13 @@ export const t = {
       // own bold tags is a second templating language living in the i18n file, and the
       // sentence carries itself. The gershayim are the app's own quoting convention
       // (`נתב״ג`, `ק״מ`), not straight quotes.
+      // Shortened when the install surface arrived (ADR-0204 §6). It used to teach the
+      // share-sheet gesture here, in full, because this was the only place that could —
+      // and that made two places in the app explaining one gesture. Now it states the
+      // rule and points at the row directly below it, which is where the gesture is
+      // actually drawn.
       notifyNeedsInstall:
-        'באייפון ההתראות עובדות רק כשהאפליקציה על מסך הבית · בתפריט השיתוף של הדפדפן בחרו ״הוספה למסך הבית״, ואז חזרו לכאן.',
+        'באייפון ההתראות עובדות רק כשהאפליקציה על מסך הבית · אפשר להתקין אותה בשורה שמתחת.',
       notifyUnsupported: 'הדפדפן הזה לא יודע לקבל התראות · בכרום או בספארי זה יעבוד.',
       notifyFailed: 'לא הצלחנו להפעיל התראות במכשיר הזה. אפשר לנסות שוב.',
       notifyOff: '-',
