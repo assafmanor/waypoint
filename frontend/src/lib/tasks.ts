@@ -305,7 +305,8 @@ export function countTasksByFacet(
 /** The deadline as the row prints it (ADR-0188 §3): the relative day, plus the time when
  *  the task carries one. `late` drives the hue — `--miss-deep`, because overdue is a status
  *  and not a priority. Returns `undefined` for an undated task, which prints no deadline at
- *  all rather than a placeholder.
+ *  all rather than a placeholder — and for a SETTLED one, for the same reason (owner,
+ *  2026-08-24: a completed row on `הושלמו` read `באיחור · לפני 3 ימים 15:00`).
  *
  *  The words are ADR-0171's shipped `עד` and ADR-0085's relative-day phrasing, reused
  *  rather than re-invented; `time` is kept separable because the row isolates the numeric
@@ -317,7 +318,16 @@ export interface TaskDue {
 }
 
 export function taskDue(task: Task, clock: TaskClock): TaskDue | undefined {
-  if (!task.dueAt) return undefined;
+  // **A task that is finished owes nothing, so it reports no deadline.** `באיחור` and
+  // `עד עוד 8 ימים` are claims about what is still due; on a struck-through row they name an
+  // obligation that no longer exists, and the late one spends `--miss` on it. This is
+  // ADR-0191 §6's rule ("a done event's task is not due in 3 days") applied to the task's own
+  // done-ness rather than its host's.
+  //
+  // Suppressed HERE and not in the three rows that print it — `IndexTasksView`, `TaskSection`
+  // and `TaskBandRow` all format from this one derivation (root rule 8), so a fourth surface
+  // cannot bring it back. Ordering is untouched: `sortTasks` and `taskBand` read `dueAt`.
+  if (!task.dueAt || isSettled(task)) return undefined;
   const zone = dueZone(task, clock);
   const readerZone = currentZone(clock.nowMs, clock.crossings, clock.primaryZone);
   return {
