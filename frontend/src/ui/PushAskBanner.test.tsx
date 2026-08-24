@@ -32,6 +32,15 @@ vi.mock('../lib/push', async (importOriginal) => {
   };
 });
 
+// Door C's verb opens `InstallSheet`, which is a `Modal` and so registers with the back
+// stack. In the app that provider is always above it (this banner lives inside `TaskSheet`);
+// here it is stubbed, because the back contract is `Modal.test.tsx`'s subject and not this
+// file's.
+vi.mock('../state/nav-state', () => ({
+  useOverlay: () => {},
+  useHasOverlay: () => () => false,
+}));
+
 vi.mock('../state/auth-state', () => ({
   useMaybeAuth: () => (session.present ? { me: { push: { vapidPublicKey: session.key } } } : null),
 }));
@@ -63,19 +72,48 @@ describe('when it appears', () => {
   });
 
   it('does not appear where this device could never receive', () => {
-    // Including NEEDS_INSTALL: the settings section explains how to fix that, and a task form
-    // is not the place to teach somebody to add a web app to their home screen.
-    for (const value of [
-      PUSH_BLOCKER.SERVER,
-      PUSH_BLOCKER.DENIED,
-      PUSH_BLOCKER.UNSUPPORTED,
-      PUSH_BLOCKER.NEEDS_INSTALL,
-    ]) {
+    // NEEDS_INSTALL is deliberately absent from this list — see the next block. The three
+    // here have no cure the user can perform from inside the app: a denied permission is
+    // recoverable only in browser settings, an unsupported browser has no path at all, and
+    // SERVER is a fact about the deployment rather than about this device.
+    for (const value of [PUSH_BLOCKER.SERVER, PUSH_BLOCKER.DENIED, PUSH_BLOCKER.UNSUPPORTED]) {
       cleanup();
       blocker.value = value;
       render(<PushAskBanner visible />);
       expect(ask()).toBeNull();
     }
+  });
+
+  // ADR-0204 §3. This case used to assert the opposite, and the opposite was a wall: an
+  // iPhone user who has just asked to be reminded was told nothing at the highest-intent
+  // install moment in the product.
+  describe('NEEDS_INSTALL is answered, not declined', () => {
+    beforeEach(() => {
+      blocker.value = PUSH_BLOCKER.NEEDS_INSTALL;
+    });
+
+    it('offers the install instead of the permission', () => {
+      render(<PushAskBanner visible />);
+      expect(screen.getByText(t.install.blocked.text)).toBeTruthy();
+      // The verb is `איך`, not `התקנה`: nothing on this platform can install from a button.
+      expect(screen.getByRole('button', { name: t.install.blocked.action })).toBeTruthy();
+      expect(screen.queryByText(t.tasks.sheet.notifyAsk.text)).toBeNull();
+    });
+
+    it('never tries to subscribe — there is nothing here that could', () => {
+      render(<PushAskBanner visible />);
+      screen.getByRole('button', { name: t.install.blocked.action }).click();
+      expect(calls.subscribe).toBe(0);
+    });
+
+    it('spends this install’s push ask when dismissed, so the wall is not re-shown', () => {
+      render(<PushAskBanner visible />);
+      act(() => screen.getByLabelText(t.feedback.dismiss).click());
+      expect(screen.queryByText(t.install.blocked.text)).toBeNull();
+      cleanup();
+      render(<PushAskBanner visible />);
+      expect(screen.queryByText(t.install.blocked.text)).toBeNull();
+    });
   });
 
   it('does not appear with no session at all', () => {

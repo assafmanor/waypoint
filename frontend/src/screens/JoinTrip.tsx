@@ -45,6 +45,7 @@ import {
   joinTrip,
 } from '../lib/api';
 import { saveIntent } from '../lib/intent';
+import { armInstallAskAfterJoin } from '../lib/install';
 import { dayCount } from '../lib/hebrew';
 import { countdownParts, formatTripDates } from '../lib/time';
 import {
@@ -56,6 +57,7 @@ import {
   MS_PER_DAY,
 } from '../constants';
 import { t } from '../i18n/he';
+import { AppMark } from '../ui/AppMark';
 
 type LoadState =
   | { status: 'loading' }
@@ -123,6 +125,10 @@ export function JoinTrip() {
     try {
       const membership = await joinTrip(token);
       setTripId(membership.tripId);
+      // Door A's arm (ADR-0204 §2). Once the trip surface has loaded, the join is history
+      // and a membership looks like any other — so the ONE moment that can know this
+      // happened is this one. A one-shot flag; the next trip surface consumes it.
+      armInstallAskAfterJoin();
       // The stamp lands on the SERVER'S success and never optimistically: a stamp
       // that has to be un-stamped when the join fails is worse than no stamp, so the
       // spinner covers the request and this only runs on a real membership.
@@ -186,51 +192,7 @@ export function JoinTrip() {
     >
       <div className="join-top">
         <div className="join-logo">{APP_NAME}</div>
-        {/* The Travelive mark (see Login.tsx's .land-icon for the rationale) —
-            marker + amber "now" core on a board disc, mirroring
-            public/icon-mark-bright.svg. Inlined so it stays crisp at this size. */}
-        <svg className="join-icon" viewBox="0 0 512 512" aria-hidden="true">
-          <defs>
-            <linearGradient id="jg-teal" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#37B3A3" />
-              <stop offset="1" stopColor="#1F7D73" />
-            </linearGradient>
-            <linearGradient id="jg-amber" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#F2B65A" />
-              <stop offset="1" stopColor="#E09A2F" />
-            </linearGradient>
-            <linearGradient id="jg-board" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#182642" />
-              <stop offset="1" stopColor="#0E1729" />
-            </linearGradient>
-          </defs>
-          <circle cx="256" cy="256" r="256" fill="url(#jg-board)" />
-          <circle
-            cx="256"
-            cy="256"
-            r="246"
-            fill="none"
-            stroke="#3FB3A3"
-            strokeWidth="18"
-            opacity={0.9}
-          />
-          <g transform="translate(256 268) scale(0.66) translate(-256 -260)">
-            <path
-              d="M256 44 C150 44 66 126 66 230 C66 348 206 436 256 476 C306 436 446 348 446 230 C446 126 362 44 256 44 Z"
-              fill="url(#jg-teal)"
-            />
-            <circle
-              cx="256"
-              cy="216"
-              r="96"
-              fill="none"
-              stroke="#F2B65A"
-              strokeWidth="9"
-              opacity={0.42}
-            />
-            <circle cx="256" cy="216" r="60" fill="url(#jg-amber)" />
-          </g>
-        </svg>
+        <AppMark className="join-icon" />
       </div>
 
       {load.status === 'loading' && <PassSkeleton />}

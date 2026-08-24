@@ -1,0 +1,161 @@
+/* The install sheet's inside (ADR-0204 §4), and nothing else.
+ *
+ * This file is deliberately short, and its shortness is the argument: the ASK is
+ * `StatusBanner` on the existing `.app-update` mount, the SETTINGS row is the existing
+ * `.set-card`/`.id-row` family, and the sheet itself is `Modal`'s `sheet` variant. What is
+ * left — the only thing the app had to grow — is the layout of one card's contents.
+ *
+ * Nothing here spends the semantic budget (ADR-0028): installing is not a time fact, not a
+ * place fact and not plan mode, so it is `--cta` and neutrals throughout. That is also what
+ * keeps it visually quiet, which is half of what the surface is for. Every colour is a
+ * token, so dark mode arrives by remap rather than by a second block. */
+
+/* The head. The real mark at icon size, so the thing you are about to put on your home
+   screen is the thing you are looking at. It carries the sheet's name — there is no
+   `.modal-title` above it, which is why the name lives here. */
+.inst-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-block-end: var(--space-4);
+}
+.inst-mark {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-12);
+  flex: none;
+}
+.inst-name {
+  font-family: var(--font-head);
+  font-size: var(--text-h3);
+  color: var(--ink);
+  line-height: 1.1;
+}
+.inst-sub {
+  font-size: var(--text-caption);
+  color: var(--muted);
+}
+
+/* Three reasons, one line each. */
+.inst-why {
+  display: grid;
+  gap: var(--space-2);
+  padding-block-end: var(--space-4);
+}
+.inst-why-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-secondary);
+  color: var(--ink);
+}
+.inst-why-row svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--muted);
+}
+
+.inst-body {
+  margin: 0;
+  font-size: var(--text-secondary);
+  color: var(--muted);
+  line-height: var(--leading-normal);
+}
+
+/* The taught gesture — WebKit only, because WebKit is the only platform with no API.
+   Numbered steps rather than prose: a gesture is a sequence, and prose hides that. */
+.inst-steps {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-12);
+  background: var(--screen);
+  border: 1px solid var(--line);
+}
+.inst-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-secondary);
+  color: var(--ink);
+}
+.inst-step-text {
+  flex: 1 1 auto;
+}
+.inst-step-n {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--cta);
+  color: var(--cta-text);
+  font-size: var(--text-caption);
+  font-weight: 700;
+}
+/* The glyph shown INSIDE the sentence, boxed at roughly the size it appears in the
+   browser's own toolbar — a drawn instruction rather than a described one. It locates the
+   control; the WORDS beside it identify it, because this is our nearest shape and not
+   Apple's mark. `aria-hidden` at the call site for the same reason. */
+.inst-glyph {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: var(--radius-8);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+}
+.inst-glyph svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* The single action. `--cta`, never amber: a generic primary is neutral. 48px rather than
+   the 44px floor because this is a large surface's primary, not a control in a row. */
+.inst-do {
+  margin-block-start: var(--space-4);
+  width: 100%;
+  min-height: 48px;
+  border: 0;
+  border-radius: var(--radius-12);
+  background: var(--cta);
+  color: var(--cta-text);
+  font-family: inherit;
+  font-size: var(--text-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+.inst-do:disabled {
+  opacity: 0.6;
+}
+/* On WebKit the button acknowledges rather than installs, and it must not look like a
+   primary that could — a filled button there would promise the one thing that platform
+   cannot give. */
+.inst-do[data-quiet='true'] {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+.inst-alt {
+  margin-block-start: var(--space-2);
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  background: transparent;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-secondary);
+  cursor: pointer;
+}
+.inst-note {
+  margin-block-start: var(--space-3);
+  font-size: var(--text-caption);
+  color: var(--muted);
+  text-align: center;
+}

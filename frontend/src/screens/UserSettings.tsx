@@ -17,6 +17,7 @@ import { readThemePick, setThemePick, THEME_PICK, type ThemePick } from '../lib/
 import { currencyForDeviceRegion } from '../lib/currency';
 import { Avatar } from '../ui/primitives/Avatar';
 import { NotificationSettings } from '../ui/NotificationSettings';
+import { InstallSettings } from '../ui/InstallSettings';
 import { PushDebugPanel } from '../ui/PushDebugPanel';
 import { ChoiceGrid } from '../ui/primitives/ChoiceGrid';
 import { CurrencyPicker, currencyLabel } from '../ui/primitives/CurrencyPicker';
@@ -254,6 +255,11 @@ export default function UserSettings() {
           }}
           onPatchPrefs={patchMe}
         />
+
+        {/* Immediately after notifications, because that section's iPhone sentence now points
+            at this row instead of re-teaching the gesture (ADR-0204 §6) — the thing it points
+            at should be the next thing you see. */}
+        <InstallSettings />
 
         <div className="set-sec-title">{t.shell.account.mapStorage}</div>
         <div className="set-card">

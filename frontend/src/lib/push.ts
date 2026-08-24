@@ -6,6 +6,10 @@
 // preference follows the person, and keeping them apart is what makes a new phone work
 // without re-choosing anything.
 import { deletePushSubscription, registerPushSubscription } from './api';
+// Both were private HERE first, because push needed them before anything else did.
+// They moved to `lib/install.ts` when the install offer became the second consumer
+// (ADR-0204 §7 / rule 8): the second caller generalises the one-off, it does not copy it.
+import { isInstalled, isWebKit } from './install';
 
 /**
  * **The id of THIS device's subscription row**, so the settings list can mark which row is
@@ -62,21 +66,6 @@ export const PUSH_BLOCKER = {
   SERVER: 'server',
 } as const;
 export type PushBlocker = (typeof PUSH_BLOCKER)[keyof typeof PUSH_BLOCKER];
-
-/** Whether the app is running as an installed PWA. Two checks because the platforms differ:
- *  `display-mode: standalone` is the standard, `navigator.standalone` is WebKit's older
- *  answer and is the one that reports correctly on an iPhone home-screen app. */
-function isInstalled(): boolean {
-  if (window.matchMedia('(display-mode: standalone)').matches) return true;
-  return (navigator as { standalone?: boolean }).standalone === true;
-}
-
-/** Apple's engine, which is what makes the install requirement apply. Deliberately a
- *  capability sniff rather than a UA string: every iOS browser is WebKit, so what matters
- *  is the engine, and `standalone` on `navigator` is a WebKit-only property. */
-function isWebKit(): boolean {
-  return 'standalone' in navigator;
-}
 
 /**
  * Can this device be subscribed, and if not, why.

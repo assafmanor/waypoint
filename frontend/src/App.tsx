@@ -54,6 +54,8 @@ import { mapPaneAvailable } from './lib/map-config';
 import { BootScreen, HomeSkeleton, LoadingState } from './ui/feedback';
 import { SyncReviewSheet } from './ui/SyncReviewSheet';
 import { AppUpdateNotice } from './ui/AppUpdateNotice';
+import { InstallAskBanner } from './ui/InstallAskBanner';
+import { startInstallCapture } from './lib/install';
 import { Icon } from './ui/Icon';
 import { NavArrow } from './ui/NavArrow';
 import { DayStrip } from './ui/domain/DayStrip';
@@ -721,6 +723,13 @@ function TripSettingsRoute() {
   );
 }
 
+/** `InstallAskBanner` wants the trip and `useTrip` is a hook, so this is the one-line
+ *  component that reads it — the same shape as `ZeroStateRoute`/`AllTripsRoute` above. */
+function InstallAsk() {
+  const { trip } = useTrip();
+  return <InstallAskBanner trip={trip} />;
+}
+
 function RootSurface() {
   const [trips, setTrips] = useState<Trip[] | null>(null);
   const { tripId: storedTripId, pickedThisSession } = useActiveTripId();
@@ -753,6 +762,12 @@ function RootSurface() {
 
   return (
     <TripProvider tripId={landing.tripId} knownTrip={knownTrip}>
+      {/* Inside TripProvider, unlike `AppUpdateNotice` at the root, and for the mirror of
+          that component's reason: a build swap is not a fact about any trip, and both of
+          the install asks ARE facts about this one (ADR-0204 §2) — you just joined it, or
+          it starts in three days. It still paints on `.app-update`, which is a mount and
+          not a second banner. */}
+      <InstallAsk />
       <ModeProvider>
         <MapScopeProvider>
           <DragProvider>
@@ -919,6 +934,15 @@ function OutboxAutoFlush() {
   return null;
 }
 
+/** `beforeinstallprompt` fires ONCE, early, and is gone if nothing catches it — which is
+ *  why this is at the root on first load and not inside the surface that offers the install
+ *  (ADR-0204 §4). Catching it is also what suppresses Chrome's own mini-infobar, so the app
+ *  picks the moment rather than the browser. */
+function InstallCapture() {
+  useEffect(() => startInstallCapture(), []);
+  return null;
+}
+
 export function App() {
   return (
     <AuthProvider>
@@ -927,6 +951,7 @@ export function App() {
           <NavProvider>
             <ConfirmProvider>
               <OutboxAutoFlush />
+              <InstallCapture />
               <AppRoutes />
               {/* Also outside AppRoutes, and for the same shape of reason: a service
                   worker swapping the build under an open tab is not a fact about the

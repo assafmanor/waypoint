@@ -17,6 +17,20 @@
 // this door costs no infrastructure at all: it is that primitive, with the permission gesture
 // wired to its action.
 //
+// ── AND THE ONE BLOCKER THAT IS NOW ANSWERED RATHER THAN DECLINED ─────────────────────────
+//
+// `NEEDS_INSTALL` used to return `null` here, with the reason: "a task form is not the place
+// to teach somebody to add a web app to their home screen." **That was right about the
+// teaching and wrong about the silence** (ADR-0204 §3). Somebody who has just put a deadline
+// on a task has just asked to be reminded, and on iOS the true answer is "you cannot be,
+// unless this is on your home screen" — so the highest-intent install moment in the product
+// was a wall. The teaching still does not happen here: the banner's verb opens `InstallSheet`,
+// which is where a gesture can be shown at the size it is performed.
+//
+// It is deliberately **outside** the install ask budget (ADR-0204 §5), because it only ever
+// reaches somebody who has just asked for the thing it enables. It is an answer, not an
+// approach. The push ask's OWN "once per install" still governs it, so it cannot repeat.
+//
 // ── AND WHY IT ANSWERS ITSELF EITHER WAY ──────────────────────────────────────────────────
 //
 // §7 says "once per install, dismissible, never re-asked". **Both buttons are answers**: a
@@ -27,12 +41,14 @@ import { useState } from 'react';
 import { t } from '../i18n/he';
 import { useMaybeAuth } from '../state/auth-state';
 import {
+  PUSH_BLOCKER,
   markPushAskAnswered,
   pushAskAnswered,
   pushBlocker,
   subscribeThisDevice,
 } from '../lib/push';
 import { StatusBanner } from './feedback/StatusBanner';
+import { InstallSheet } from './InstallSheet';
 
 /**
  * `null` unless this install can be asked and has not been.
@@ -58,10 +74,14 @@ export function PushAskBanner({
   const [answered, setAnswered] = useState(pushAskAnswered);
   const [busy, setBusy] = useState(false);
 
-  // A blocker of any kind means no ask. Notably including `NEEDS_INSTALL`: the settings
-  // section explains how to fix that, and a task form is not the place to teach somebody to
-  // add a web app to their home screen.
-  if (!visible || answered || pushBlocker(vapidPublicKey) !== null) return null;
+  if (!visible || answered) return null;
+  const blocker = pushBlocker(vapidPublicKey);
+  // `NEEDS_INSTALL` is the one blocker with a cure the user can perform, so it gets an
+  // answer instead of a silence (ADR-0204 §3). Every other blocker still means no ask:
+  // `DENIED` is not recoverable in-app, `UNSUPPORTED` has no cure, and `SERVER` is not
+  // about this device at all.
+  const needsInstall = blocker === PUSH_BLOCKER.NEEDS_INSTALL;
+  if (blocker !== null && !needsInstall) return null;
 
   const enable = () => {
     setBusy(true);
@@ -81,6 +101,8 @@ export function PushAskBanner({
     setAnswered(true);
   };
 
+  if (needsInstall) return <InstallOffer onAnswered={dismiss} />;
+
   return (
     <StatusBanner
       tone="neutral"
@@ -89,5 +111,39 @@ export function PushAskBanner({
     >
       {t.tasks.sheet.notifyAsk.text}
     </StatusBanner>
+  );
+}
+
+/**
+ * Door C (ADR-0204 §3): the same banner, with the verb that actually helps.
+ *
+ * The copy names what was just asked for rather than the app, because the person did not ask
+ * for an app — they asked to be reminded. And the verb is `איך` rather than `התקנה`, because
+ * on the platform this appears on nothing can install: the sheet teaches.
+ *
+ * It answers the PUSH ask when it is dismissed or the sheet is closed, so this install's push
+ * ask is spent either way — which is what stops the same wall being re-shown on the next
+ * deadline. It does not touch the install budget; see the header.
+ */
+function InstallOffer({ onAnswered }: { onAnswered: () => void }) {
+  const [sheetOpen, setSheetOpen] = useState(false);
+  return (
+    <>
+      <StatusBanner
+        tone="neutral"
+        action={{ label: t.install.blocked.action, onClick: () => setSheetOpen(true) }}
+        onDismiss={onAnswered}
+      >
+        {t.install.blocked.text}
+      </StatusBanner>
+      {sheetOpen && (
+        <InstallSheet
+          onClose={() => {
+            setSheetOpen(false);
+            onAnswered();
+          }}
+        />
+      )}
+    </>
   );
 }

@@ -178,6 +178,24 @@ export const SW_UPDATE_IDLE_APPLY_MS = 5 * 60 * 1000;
 export const SW_UPDATE_RECHECK_MS = 30 * 1000;
 export const SW_UPDATE_NOTICE_AFTER_MS = 10 * 60 * 1000;
 
+/** **The install offer's pressure budget** (ADR-0204 §5) — the "not invasive" half, as
+ *  numbers rather than as an intention.
+ *
+ *  `BUDGET` is how many times the app may raise it UNPROMPTED, ever, per install. Two,
+ *  because the two moments worth using say different things: you have just joined a trip,
+ *  and the trip is about to start. After that the settings row is the only way in.
+ *  Deliberately not one — the second ask is the one that lands, since installing is worth
+ *  most when departure is near — and deliberately not three, which reads as pursuit. This
+ *  is the one number here that is a judgement rather than a derivation.
+ *
+ *  `GAP_MS` keeps the two apart: a second ask a day after the first is the same ask.
+ *
+ *  `DEPARTURE_WINDOW_DAYS` is door B — near enough that offline, notifications and a full
+ *  screen are about to matter, far enough to act on before leaving. */
+export const INSTALL_ASK_BUDGET = 2;
+export const INSTALL_ASK_GAP_MS = 7 * MS_PER_DAY;
+export const INSTALL_DEPARTURE_WINDOW_DAYS = 3;
+
 /** How long a self-healing reload suppresses the next one (`lib/lazy-chunk.ts`).
  *  A chunk that 404s because the build swapped underneath the page is cured by
  *  one reload; a chunk that 404s because it was never deployed is not, and
