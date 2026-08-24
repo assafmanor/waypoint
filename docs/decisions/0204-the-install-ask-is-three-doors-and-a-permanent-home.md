@@ -1,6 +1,6 @@
 # 0204 — The install ask is three doors and a permanent home
 
-**Status:** Proposed
+**Status:** Accepted (built 2026-08-24)
 **Date:** 2026-08-24
 **Mockup:** [`mockups/install-is-three-doors-v1.html`](../../mockups/install-is-three-doors-v1.html)
 **Touches:** [ADR-0007](0007-platform-pwa.md) (the PWA is installable — this is the first
@@ -126,6 +126,26 @@ quiet, which is half the brief.
   wants a real-usage pass rather than a mockup.
 - `beforeinstallprompt` must be captured at app root from first load, or the Chrome branch has
   nothing to fire.
+
+## What the build changed
+
+Three things the design did not know, recorded because they are decisions rather than
+adjustments.
+
+- **The Travelive mark was already inlined twice**, byte for byte, in `screens/Login.tsx` and
+  `screens/JoinTrip.tsx` — differing only in the prefix of its three gradient ids (`lg-`,
+  `jg-`). That difference is the tell: SVG ids are document-global, and whoever wrote the
+  second copy was avoiding a collision by convention. The sheet would have been the third
+  copy, so it is now `ui/AppMark.tsx` with `useId`, and the collision is avoided by
+  construction. Both call sites converted in the same change (rule 8).
+- **The in-app-browser branch offers "copy the link", not "open in browser".** No platform
+  exposes a way to hand a URL to the default browser from inside someone else's webview, and
+  a button that silently did nothing would be worse than the sentence above it.
+- **`isInstalled()` guards its `matchMedia` call.** Not because a browser might lack it —
+  every one has it — but because it now runs during the render of an ordinary screen, and the
+  DOM the app is tested in has none. Three spec files had to stub a global they had no
+  interest in before the guard existed. The WebKit check decides the iOS case regardless, so
+  a missing `matchMedia` degrades to the right answer rather than to a throw.
 
 ## Alternatives considered
 

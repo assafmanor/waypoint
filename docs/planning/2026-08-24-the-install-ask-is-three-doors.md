@@ -5,8 +5,8 @@ PWA app. I want it to: 1. Not be too invasive and annoying. 2. On the other hand
 encourage switching."_
 
 **Produced:** [ADR-0204](../decisions/0204-the-install-ask-is-three-doors-and-a-permanent-home.md)
-(Proposed) + [`mockups/install-is-three-doors-v1.html`](../../mockups/install-is-three-doors-v1.html).
-Nothing built — this is a design session.
+(Accepted) + [`mockups/install-is-three-doors-v1.html`](../../mockups/install-is-three-doors-v1.html),
+designed and then **built in the same session** on the owner's approval.
 
 ## What reading the code changed
 
@@ -76,3 +76,33 @@ The render found two things reading could not. The proposal duplicated its own t
 to paint below the first viewport, which is the `overflow: clip` trap `pitfalls.md` already
 records **twice** — walked into because that file was read after the symptom instead of before
 the first render. Worth stating plainly: the pitfalls list is cheap to read up front and was not.
+
+## The build, same session
+
+Approved off the mockup and built without changing the design. Three things the design did
+not know, all recorded in ADR-0204's _What the build changed_:
+
+- **`ui/AppMark.tsx`.** The Travelive mark was already inlined byte-identically in `Login` and
+  `JoinTrip`, differing only in its gradient-id prefix — which is exactly the tell that SVG
+  ids are document-global and that the second author was avoiding a collision by hand. The
+  sheet would have been the third copy. Extracted with `useId`, both call sites converted.
+- **No "open in browser" button** in the embedded-browser body. No platform lets a page hand a
+  URL to the default browser from inside someone else's webview, so the honest surface is the
+  sentence plus "copy the link".
+- **`isInstalled()` guards its `matchMedia` call** — not for a browser that lacks it, but
+  because it now runs during an ordinary screen's render and the test DOM has none. Three spec
+  files had to stub a global they had no interest in before the guard existed.
+
+**And one slip worth writing down, because it is invisible by construction.** Four token names
+in the mockup's hand-written block did not exist (`--ink-dim`, `--font-display`,
+`--text-title`, `--sunken`). An unknown custom property is _invalid at computed-value time_
+rather than an error, so those declarations silently did nothing and the render still looked
+plausible — the mistake surfaced only when the same block was written against `tokens.css`
+for real. Re-measured after the fix, the sheet heights moved by 30-33px; the banner and the
+interstitial, which are what the argument rests on, did not move at all. Grep the token before
+you spend it.
+
+**Verified:** 262 spec files / 4461 tests green, `pnpm lint` clean (one pre-existing warning in
+an e2e spec this branch does not touch), `pnpm typecheck` and `pnpm build` green across all
+four packages, and the mockup re-rendered at 4/4 theme x width combinations with no console
+errors.

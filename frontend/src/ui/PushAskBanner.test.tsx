@@ -90,13 +90,7 @@ describe('when it appears', () => {
   describe('NEEDS_INSTALL is answered, not declined', () => {
     beforeEach(() => {
       blocker.value = PUSH_BLOCKER.NEEDS_INSTALL;
-      // `InstallSheet` resolves the install path at mount, which reads `matchMedia` —
-      // jsdom implements none, so it is stubbed here for the same reason `push.test.ts`
-      // stubs it rather than the source guarding a call every real browser supports.
-      vi.stubGlobal('matchMedia', () => ({ matches: false }));
     });
-
-    afterEach(() => vi.unstubAllGlobals());
 
     it('offers the install instead of the permission', () => {
       render(<PushAskBanner visible />);

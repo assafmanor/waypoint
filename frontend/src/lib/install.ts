@@ -20,7 +20,16 @@ import { INSTALL_ASK_BUDGET, INSTALL_ASK_GAP_MS } from '../constants';
  * exactly the platform that most needs the offer.
  */
 export function isInstalled(): boolean {
-  if (window.matchMedia('(display-mode: standalone)').matches) return true;
+  // **`matchMedia` is called through a guard, not because a browser might lack it** — every
+  // one has it — but because this runs during the render of a component mounted on an
+  // ordinary screen, and the DOM this app is TESTED in has no `matchMedia` at all. Without
+  // the guard, every future spec that renders the settings screen has to remember to stub a
+  // global it has no interest in; three had to before this line existed. The WebKit answer
+  // below is the one that decides the iOS case anyway, so a missing `matchMedia` degrades to
+  // the right answer rather than to a throw.
+  if (typeof window.matchMedia === 'function') {
+    if (window.matchMedia('(display-mode: standalone)').matches) return true;
+  }
   return (navigator as { standalone?: boolean }).standalone === true;
 }
 

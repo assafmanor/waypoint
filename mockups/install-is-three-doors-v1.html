@@ -9682,14 +9682,14 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         flex: none;
       }
       .inst-name {
-        font-family: var(--font-display);
-        font-size: var(--text-title);
+        font-family: var(--font-head);
+        font-size: var(--text-h3);
         color: var(--ink);
         line-height: 1.1;
       }
       .inst-sub {
         font-size: var(--text-caption);
-        color: var(--ink-dim);
+        color: var(--muted);
       }
 
       /* Three reasons, one line each. Icons are `Icon.tsx`'s, and every one is
@@ -9711,7 +9711,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         width: 18px;
         height: 18px;
         flex: none;
-        color: var(--ink-dim);
+        color: var(--muted);
       }
 
       /* The taught gesture — iOS only, because iOS is the only platform with no
@@ -9721,7 +9721,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         gap: var(--space-2);
         padding: var(--space-3);
         border-radius: var(--radius-12);
-        background: var(--sunken);
+        background: var(--screen);
         border: 1px solid var(--line);
       }
       .inst-step {
@@ -9779,7 +9779,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
       }
       .inst-do[data-quiet='true'] {
         background: transparent;
-        color: var(--ink-dim);
+        color: var(--muted);
         border: 1px solid var(--line);
       }
       /* The in-app-browser escape hatch: a second, lesser verb under the first. */
@@ -9797,7 +9797,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
       .inst-note {
         margin-block-start: var(--space-3);
         font-size: var(--text-caption);
-        color: var(--ink-dim);
+        color: var(--muted);
         text-align: center;
       }
     </style>
