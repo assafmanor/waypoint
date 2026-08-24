@@ -100,10 +100,12 @@ export function CreateTrip() {
   const errors = useFormErrors<NewTripField>();
 
   // Auto-suggest the trip name and — from a recognized destination — the flag,
-  // until the user overrides either (ADR-0038: flag auto-fill, overridable).
-  const suggest = (dest: string, start: string) => {
+  // until the user overrides either (ADR-0038: flag auto-fill, overridable). The
+  // pick's resolved country decides the flag when there is one; the text is only
+  // the fallback for a "use as typed" destination.
+  const suggest = (dest: string, start: string, countryCode?: string) => {
     name.redrive(suggestTripName(dest, start));
-    icon.redrive(suggestFlagFromDestination(dest) ?? DEFAULT_TRIP_ICON);
+    icon.redrive(suggestFlagFromDestination(dest, countryCode) ?? DEFAULT_TRIP_ICON);
   };
 
   // A picked destination sets the display name, the structured fields, and the
@@ -122,7 +124,7 @@ export function CreateTrip() {
     // guess, and trip settings is where it becomes editable — see `lib/currency`
     // for why that differs from the edit rule.
     setCurrency(currencyForNewTrip(place.countryCode));
-    suggest(destName, startDate);
+    suggest(destName, startDate, place.countryCode);
   };
 
   // Device-local "today" as YYYY-MM-DD — the floor for a new trip's dates. A
@@ -299,7 +301,7 @@ export function CreateTrip() {
               placeholder={t.shell.newTrip.dateFrom}
               onChange={(next) => {
                 setStartDate(next);
-                suggest(destination, next);
+                suggest(destination, next, destPlace.countryCode);
               }}
             />
             <span className="wf-word">{t.whenField.rangeTo}</span>
