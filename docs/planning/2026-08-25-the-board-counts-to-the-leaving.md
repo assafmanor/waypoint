@@ -83,6 +83,21 @@ Four of the five sections got **smaller** on reading, which is the point of read
 - **`§` is Bidi-neutral, so `§D8` renders `D8§`** in Hebrew prose. Found in this file's own frame
   label. Every ADR reference inside a Hebrew string has this; both fixes are ADR-0118's.
 
+## 5b. M2 landed while this was drawn, and the two agree
+
+[#694](https://github.com/assafmanor/waypoint/pull/694) shipped §V1.1's, §V1.2's and §V1.7's
+arithmetic into `@waypoint/shared` and amended ADR-0206 §V1 in place. Two of its rules are the
+derivations behind states drawn here, which is worth knowing before M6a/M6b start:
+
+- **`leaveBy` is allowed to return an instant already in the past** — it is not clamped, because
+  that fact is §V1.4's whole mark. That instant is what the `באיחור` tile and the day's risk run
+  render; nothing here has to re-derive it.
+- **The fit is a discriminant (`fits` / `overruns` / `unknown`), not a boolean**, and an absent
+  estimate leaves ADR-0159's line untouched rather than guessing. That is the same §D4 posture
+  §5b of the mockup draws for a gate-refused mode: the crow-flies chip, never a failure.
+
+Nothing in the drawing needs changing for it, and §7's amendment text does not touch §V1.
+
 ## 6. Open for the owner
 
 1. **The threshold** — 30 minutes, per §3. A device pass is the right place to disagree: the

@@ -19,6 +19,7 @@ import type {
   PlaceSearchKind,
   TaskDerivedKey,
   TaskStatus,
+  TravelMode,
 } from './entities';
 
 export const AUTH_PROVIDER = { GOOGLE: 'google' } as const satisfies Record<string, AuthProvider>;
@@ -68,6 +69,19 @@ export const EVENT_CATEGORY = {
   SERVICES: 'services',
   OTHER: 'other',
 } as const satisfies Record<string, EventCategory>;
+
+/** How you get from one stop to the next (ADR-0205 / ADR-0206) — see `travelModeSchema` for
+ *  why there are three and why a transit member is absent rather than disabled. */
+export const TRAVEL_MODE = {
+  WALKING: 'walking',
+  DRIVING: 'driving',
+  CYCLING: 'cycling',
+} as const satisfies Record<string, TravelMode>;
+
+/** **Every mode there is**, which is what a batch asks for by default (ADR-0205 §Y2: a mode
+ *  switch must not cost a round-trip, so all of them are fetched together). Derived from the
+ *  object above rather than written out again, so a fourth mode is one line, not two. */
+export const TRAVEL_MODES: readonly TravelMode[] = Object.values(TRAVEL_MODE);
 
 /** The kinds a place search can be restricted to (field report #6). A form names the kind;
  *  the proxy owns the mapping to Google's own type vocabulary. */

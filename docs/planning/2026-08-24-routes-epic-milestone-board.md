@@ -46,9 +46,9 @@ pair the column does not name. Both branch from `main`, not from each other.
 
 | M       | milestone                   | kind   | status | depends on   | ⇉ safe with  | branch / PR                                                                                     | updated    |
 | ------- | --------------------------- | ------ | ------ | ------------ | ------------ | ----------------------------------------------------------------------------------------------- | ---------- |
-| **M0**  | Product decisions           | owner  | ⬜     | —            | —            | —                                                                                               | 2026-08-24 |
+| **M0**  | Product decisions           | owner  | ✅     | —            | —            | —                                                                                               | 2026-08-25 |
 | **M1**  | Measure the parameters      | spike  | ⬜     | M0           | M2, M3       | —                                                                                               | —          |
-| **M2**  | Shared derivations          | impl   | ⬜     | M0           | M1, M3       | —                                                                                               | —          |
+| **M2**  | Shared derivations          | impl   | 🔵     | M0           | M1, M3       | `claude/routes-epic-m2-nkbf4d` · [#694](https://github.com/assafmanor/waypoint/pull/694)        | 2026-08-25 |
 | **M3**  | Design session + mockups    | design | 🔵     | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696) | 2026-08-25 |
 | **M4**  | Backend routing module      | impl   | ⬜     | M1, M2       | M3           | —                                                                                               | —          |
 | **M5**  | Frontend data layer         | impl   | ⬜     | M2, M4       | M3, M10      | —                                                                                               | —          |
@@ -140,7 +140,51 @@ Pure functions and shapes, no network, no React, no Nest. All of it testable wit
 **Exit criteria:** every function specced, including the precision-6 assertion and each gate
 boundary; nothing imported from `backend/` or `frontend/`; `pnpm typecheck && pnpm build` green.
 
-**What the next session needs to know:** _(fill in)_
+**What the next session needs to know:**
+
+**Built on `claude/routes-epic-m2-nkbf4d`** (the session's designated branch, not the card's
+`routes/m2-shared`). Two new files — `packages/shared/src/routing.ts` (ADR-0205's substrate) and
+`travel-time.ts` (ADR-0206's product logic), the ADRs' own split — plus `TRAVEL_MODE` /
+`travelModeSchema` in `constants.ts` / `entities.ts` per this package's convention. 34 specs,
+362 green in the package, `pnpm typecheck && pnpm build && pnpm lint` green.
+
+**What M4 imports:** `routeBatchRequestSchema` (stops + a SET of modes + `withShapes`),
+`routeBatchSchema` / `routedLegSchema` (three buckets per leg: `estimates`, `refusedModes`,
+`pendingModes`), `routeLegSchema` for the Prisma model to mirror, `routeLegKey` for the cache key,
+and `routableLegs` for the pre-filter — which takes `clusterLatLngs(...)` over **every coordinate
+the trip holds**, not the day's stops, because single-link membership is decided by the chain.
+
+**What M5/M6 import:** `travelEstimateFor` (§Z2's instant switch is this lookup, never a fetch),
+`decodeShape` (never `decodePolyline` with a literal precision), `freeAfterTravel`, `leaveBy`,
+`daySequenceFits`.
+
+**Four things you will want and this milestone deliberately did not build:**
+
+1. **The derived trip default mode** (§Z2). It reads `Booking[]`, and M8 owns it. Nothing here
+   picks a default — no `FALLBACK_TRAVEL_MODE` was added, precisely so M8 does not inherit a guess.
+2. **The board's countdown swap** (§Z1) — `leaveBy` is its input, but the threshold at which
+   leaving becomes the live question is M3's to measure, and it interacts with
+   `TRAVEL_BUFFER_SECONDS` (5 min, a placeholder).
+3. **Routing `ERROR_CODE` members** (ADR-0205 §6). Not added preemptively — `constants.ts` says
+   promote once a second layer needs the values. **So M4 will have to touch `packages/shared`,
+   which is outside its declared conflict surface.** It is one or two lines in `ERROR_CODE`; land
+   it after this PR merges rather than in parallel with it.
+4. **A duration ladder** (§D3). It formats, so it stays on the frontend; these functions answer in
+   seconds and metres and never in words.
+
+**Numbers that are placeholders, all of them labelled as such in the code:** `TRAVEL_GATE`'s three
+ceilings and `ROUTE_COORD_DECIMALS` are **M1's to measure**; `TRAVEL_BUFFER_SECONDS` and
+`ROUTE_BATCH_MAX_STOPS` are M3's and M1's respectively. Do not tune any of them from taste.
+
+**Three decisions taken here that the ADRs did not, each amended into the ADR in place:**
+ADR-0205 §1 (the precision travels **with** the shape — `EncodedShape` — so the tenfold-off bug is
+unrepresentable rather than test-covered, and Geoapify's precision 5 is what makes that concrete),
+ADR-0205 §3 (**a cluster is not a ceiling** — single-link clustering at 40 km chains a ring road
+into one area, so "same cluster only" alone admits a 175 km walk that the provider would answer;
+walking and cycling need both, via a per-mode `TRAVEL_GATE` record), and ADR-0205 §6 (the batch
+carries `withShapes`, because the matrix returns **no geometry** — durations are one call for a
+whole day, a line is one call per leg). ADR-0206 §V1 gained the absent-estimate rule: no estimate
+means the slot reads exactly as it does today, and `unknown` is never a verdict.
 
 ---
 
