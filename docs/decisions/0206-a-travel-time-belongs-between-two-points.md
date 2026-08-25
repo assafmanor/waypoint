@@ -239,6 +239,21 @@ a trip whose transport is all rail and flights is a walking-and-transit trip. So
 (derived state, not stored) applying cleanly. A per-leg override is the only thing persisted, and
 only when someone actually sets one.
 
+**Built early, in M7 rather than M8, because M7 shipped without it and that was a defect
+(2026-08-25).** `derivedTravelMode(bookings)` in `packages/shared/src/routing.ts`: a trip with a
+`car` booking drives, every other trip walks. M7 drew its first polylines with a hardcoded
+`walking`, which reaches Valhalla as `pedestrian` costing — and the owner reported it from a leg
+they knew: _"I've added a route that I'm kind of familiar with and it gave me a weird route… unless
+the route that I got was for pedestrians, but it doesn't make sense to default to it."_ That is the
+correct reading. A footpath route over a leg the trip drives is not an imprecise answer, it is a
+**wrong** one, and a default parameter is what made it invisible. `useLegShape`'s `mode` is
+therefore **required**, so no future caller can fall into a default again.
+
+**Its two limits, stated rather than discovered.** It is per **trip**: a hire held Tuesday to
+Friday makes a two-week trip's every day drive, and a single walk inside a driving trip still reads
+as a drive. Both are the **per-leg override**'s job — still M8's, still the only thing persisted —
+and neither is a reason to keep guessing pedestrian for everyone in the meantime.
+
 **Instant.** This is a real technical requirement and it was under-specified. If a mode switch costs
 a network round-trip, "immediately" is a ~1 s wait per switch, and the control feels broken. So
 **every mode the gate admits for a leg is fetched together, up front**, and a switch is a read from
@@ -438,7 +453,7 @@ all-days is a trip's worth of legs with no day to pick from.
 The consequence is a Trip-mode canvas with one solid amber line and **no dashed connector under
 it** — which is correct rather than incomplete: the order is not what Trip mode is asking about.
 
-### AB2. The leg is the one arriving AT the stop you asked about
+### AB2. The leg is the one arriving AT the stop you asked about — and the fallback is the first leg
 
 "Selected or next" names a **stop**; a line needs two. The leg drawn is the journey **into** that
 stop — the selected pin's, or the next stop's when nothing is selected — because that is the
@@ -446,16 +461,59 @@ question both reads answer (§V1.2's `~23 דק׳ · צאו ב־18:37` is the tra
 going). The day's first stop is the one place with no such leg, so it takes the leg **departing**
 it instead.
 
-### AB3. One line drawn buys one mode's geometry
+**Amended 2026-08-25: the rule is `selected → next → the day's FIRST leg`.** As first built it
+stopped at the second arm and drew nothing when neither answered — which meant **Plan mode drew
+nothing at all** unless you tapped a pin, because `nextStopId` is Trip-mode only by design (a live
+"next" says nothing while you are planning). Reported by the owner: _"I'd like to be able to see
+the polyline for plan mode as well."_ A plan opens on the journey it starts with, so the first leg
+is the honest default; in Trip mode the third arm can only fire before the day begins or after it
+ends, where the first leg is the right answer too. §AB1 already put the line in both modes — this
+is what makes that true in practice rather than only in principle.
+
+### AB3. The day buys one mode's geometry, for every leg
 
 §Z2 fetches every mode's **duration** up front so the mode control answers from cache with no
 request. A **shape** is not free the same way: it costs an upstream route call per leg per mode
-(`routing.service.ts`), and §D8 draws one line. So `useLegShape` asks for the drawn mode only.
+(`routing.service.ts`), so geometry is bought only for the mode on screen. A mode switch re-asks
+for that mode's lines once.
 
 **§Z5 §M5's "a switch redraws the polyline from cache with no request" is therefore M8's to
-finish**, and the widening is one array: `modes: [mode]` becomes the modes the gate admits for that
-leg. Recorded here because the two statements otherwise read as a contradiction rather than as a
+finish** — after the first switch to a mode, its lines are cached and every switch back is free.
+Recorded here because the two statements otherwise read as a contradiction rather than as a
 sequence.
+
+**Corrected 2026-08-25 — this first read "one line drawn buys one mode's geometry for ONE leg",
+and that was a misreading of §M3.** See §AB5.
+
+### AB5. Every leg draws its real path — the routed lines REPLACE the straight dashes
+
+**§Z5 §M3 already decided this and M7 shipped it wrong.** Its words are unambiguous — _"every leg
+draws its REAL path; §D8 rations the SOLID AMBER, not the truth of the line"_ (owner's review) —
+and M7 read them as aspirational, drew the focused leg's real path, and left every other leg as
+ADR-0121 §10's **straight** dashed segment. The owner reported it: _"Aren't we going to render
+polylines for all two places that are one after another? … they should replace all straight dashed
+lines between stops."_
+
+**The board is what led M7 astray, and the rule for that is already written.** The M7 card said
+"dashed neutral for the rest", which reads as "keep the straight dash"; §M3 says the dash keeps its
+_treatment_ and loses its _straightness_. Root `CLAUDE.md`: if the board and an ADR disagree about a
+**decision**, the ADR wins and the board is stale. It did, and it was.
+
+**What the dash means now changes, and that is the substantive part.** ADR-0121 §10 chose the dash
+to say _"this is the order, not the route"_ — honest, because there was no geometry to be had. Now
+there is, and a straight segment is both a weaker drawing and a wrong distance (§M3). So the dash's
+job becomes **"this leg is not the one you are looking at"**, and §D8's ration is unaffected: one
+leg solid amber, every other dashed, all of them true. A leg whose shape has not arrived still
+draws its straight segment — §D4's floor, and it reads as a line that has not snapped to the road
+yet rather than as an error.
+
+**And the tripwire survives on its own terms, which is why this is affordable.** The M7 card warns
+that _"a day of N legs issuing N shape calls means it was done wrong"_ — N calls **from the
+device**. `routableLegs` pairs stops **consecutively** (`i → i+1`), so an N-stop day is N-1 legs
+carried in **one** batch request; the per-leg `/route` calls are the server's, paced at
+`SHAPE_CALLS_PER_PASS = 8` and cached for good, with anything unreached returned in `pendingModes`
+for the next ask. One `useDayShapes` hook replaces `useLegShape`, and it stays **separate from
+`useDayTravel`**: the day LIST draws nothing, so it must never buy geometry.
 
 ### AB4. A shapeless answer is "ask again", never "never" — and the mirror stays last-write-wins
 

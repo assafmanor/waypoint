@@ -364,9 +364,10 @@ export interface MapPaneProps {
   onSelectResult?: (googlePlaceId: string) => void;
   /** Where the device is, when near-me is granted. */
   me?: LatLng;
-  /** The day's stops in order — a dashed neutral connector, Plan mode + day scope
-   *  only (§10). Absent (or under two points) draws nothing. */
-  connector?: readonly LatLng[];
+  /** The day's legs, each as its own dashed line — the real routed path where one has arrived,
+   *  the straight segment between the two stops where it has not (ADR-0206 §Z5 §M3). Plan mode +
+   *  day scope only (§10). Absent, or with no leg of two-plus points, draws nothing. */
+  connector?: readonly (readonly LatLng[])[];
   /** **The one drawn route** (ADR-0206 §D1/§D8) — the provider's own geometry for the selected
    *  or next leg, solid and amber over the dash. One at a time is the rule, and it is the
    *  caller's to keep: this draws whatever it is handed. Absent draws nothing. */
@@ -1394,20 +1395,40 @@ const ROUTE = { source: 'wp-route', layer: 'wp-route-line' } as const;
 const pathKey = (path?: readonly LatLng[]): string =>
   path && path.length >= 2 ? JSON.stringify(path.map((at) => lngLat(at))) : '';
 
+/** The same, for the day's legs: **many lines in one geometry**. A `MultiLineString` rather than a
+ *  feature per leg because it is one drawing with one paint — and because it keeps the layer
+ *  count, the guards and the teardown exactly where they were when this was a single polyline. */
+const pathsKey = (paths?: readonly (readonly LatLng[])[]): string => {
+  const drawable = (paths ?? []).filter((path) => path.length >= 2);
+  return drawable.length ? JSON.stringify(drawable.map((p) => p.map((at) => lngLat(at)))) : '';
+};
+
 const lineFeature = (key: string) => ({
   type: 'Feature' as const,
   geometry: { type: 'LineString' as const, coordinates: JSON.parse(key) as number[][] },
   properties: {},
 });
 
+const multiLineFeature = (key: string) => ({
+  type: 'Feature' as const,
+  geometry: { type: 'MultiLineString' as const, coordinates: JSON.parse(key) as number[][][] },
+  properties: {},
+});
+
 /** **The day's two lines, and they say different things.**
  *
- *  `path` is the day's ORDER as a dashed neutral line (§10). Dashed because a straight segment is
- *  not the route you will walk — drawing it solid would claim it is — which also left
- *  **solid + amber** unspent for a real Routes polyline. `route` is that polyline: the provider's
- *  own geometry for **one** leg, solid and amber (ADR-0206 §D1/§D8). Five solid amber lines on a
- *  phone is the fight ADR-0121 §9 says the pins must win, so the caller draws one at a time and
- *  every other leg keeps the dash.
+ *  `path` is the day's order, **one dashed line per leg** (§10). `route` is the focused leg drawn
+ *  again in solid amber over it (ADR-0206 §D1/§D8). Five solid amber lines on a phone is the fight
+ *  ADR-0121 §9 says the pins must win, so the caller marks one leg and every other keeps the dash.
+ *
+ *  **Both are now the REAL route, and the dash no longer means "not the route"** (ADR-0206 §Z5
+ *  §M3, the owner's review): _"every leg draws its REAL path; §D8 rations the SOLID AMBER, not the
+ *  truth of the line."_ ADR-0121 §10 drew straight segments and said so in the dash, because there
+ *  was no geometry to be had; now there is, and a straight segment is both a weaker drawing and a
+ *  wrong distance. So the dash's job changes from _"this is the order, not the route"_ to
+ *  _"this leg is not the one you are looking at"_. A leg whose shape has not arrived — refused,
+ *  warming, offline — still hands down its straight segment, which is §D4's floor and looks like
+ *  a line that has not snapped to the road yet rather than an error.
  *
  *  **One component and one effect, not a layer beside this one** (ADR-0206 §M7): the source/layer
  *  ids, the style-reload guard and the teardown all already live here, and a route is one more
@@ -1427,7 +1448,8 @@ const DayConnector = memo(function DayConnector({
   scheme,
 }: {
   map: MapLibreMap | null;
-  path?: readonly LatLng[];
+  /** One entry per leg, each already the real path or the straight fallback. */
+  path?: readonly (readonly LatLng[])[];
   /** The drawn route for the selected-or-next leg, already decoded (`lib/travel.ts`). Absent —
    *  no leg, no shape yet, offline, refused — draws nothing, and that is the ordinary state
    *  rather than an error (ADR-0206 §D4). */
@@ -1438,7 +1460,7 @@ const DayConnector = memo(function DayConnector({
    *  cannot disagree after a theme flip. */
   scheme: MapColorScheme;
 }) {
-  const shapeKey = pathKey(path);
+  const shapeKey = pathsKey(path);
   const routeKey = pathKey(route);
   const dark = scheme === MAP_COLOR_SCHEME.dark;
 
@@ -1449,18 +1471,23 @@ const DayConnector = memo(function DayConnector({
       // asked rather than remembered — a flag would go stale the moment the ground restyles.
       // Asked per geometry, because the two arrive at different times: a shape fetched while
       // the day was already drawn must not find the connector's answer and skip itself.
-      const put = (ids: { source: string; layer: string }, key: string, layer: object) => {
+      const put = (
+        ids: { source: string; layer: string },
+        key: string,
+        feature: (key: string) => object,
+        layer: object,
+      ) => {
         if (!key) return;
         const existing = map.getSource(ids.source);
         if (existing) {
-          (existing as unknown as { setData: (d: unknown) => void }).setData(lineFeature(key));
+          (existing as unknown as { setData: (d: unknown) => void }).setData(feature(key));
           return;
         }
-        map.addSource(ids.source, { type: 'geojson', data: lineFeature(key) });
+        map.addSource(ids.source, { type: 'geojson', data: feature(key) });
         map.addLayer({ id: ids.layer, type: 'line', source: ids.source, ...layer });
       };
 
-      put(CONNECTOR, shapeKey, {
+      put(CONNECTOR, shapeKey, multiLineFeature, {
         paint: {
           'line-color': dark ? MAP_CONNECTOR.COLOR.dark : MAP_CONNECTOR.COLOR.light,
           'line-width': MAP_CONNECTOR.WEIGHT,
@@ -1468,9 +1495,12 @@ const DayConnector = memo(function DayConnector({
           // arrowhead on a 2.5px dashed line is mush (§10).
           'line-dasharray': [...MAP_CONNECTOR.DASH],
         },
+        // Rounded for the same reason the route is: these follow real roads now, and a
+        // many-vertex line on mitre joins spikes at every turn.
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
       });
       // Added second, so the route sits over the order it is one leg of.
-      put(ROUTE, routeKey, {
+      put(ROUTE, routeKey, lineFeature, {
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': dark ? MAP_CONNECTOR.ROUTE.COLOR.dark : MAP_CONNECTOR.ROUTE.COLOR.light,
