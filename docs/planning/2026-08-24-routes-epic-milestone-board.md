@@ -212,16 +212,33 @@ owner sign-off recorded here. **M6a/M6b/M7 do not start before this closes.**
 
 **What the next session needs to know:**
 
-**Drawn and measured** in [`mockups/a-travel-time-between-two-points-v1.html`](../../mockups/a-travel-time-between-two-points-v1.html)
-(catalogued; both themes, 390×844 and 360×640, every number read from the live DOM). The
-session note is [2026-08-25 — the board counts to the leaving](2026-08-25-the-board-counts-to-the-leaving.md).
+**Drawn, measured, and reviewed once by the owner.** Current file:
+[`a-travel-time-between-two-points-v2.html`](../../mockups/a-travel-time-between-two-points-v2.html);
+[`-v1`](../../mockups/a-travel-time-between-two-points-v1.html) stays the record for the board's
+countdown swap, which the review did not reopen. Session note:
+[2026-08-25 — the board counts to the leaving](2026-08-25-the-board-counts-to-the-leaving.md),
+whose **§8 is the review round** and whose **§7 is the ADR-0206 amendment, ready to paste**.
 
 - **The five §M answers, in one line each.** M1: the board's countdown swaps its **unit**
-  (`55 · דקות` → `10 · ליציאה` → `7 · באיחור`), threshold **30 minutes of time-to-leave**.
-  M2: the travel is a **run inside `.day-gap`'s existing label**, and it **ignores
-  `GAP_MIN_MINUTES`**. M3: solid amber, but **a per-theme pair** — see the defect below.
-  M4: ink and word only, `--miss-deep` on paper and the board's `.tlabel.missed` recipe on the
-  board. M5: **three word chips in `ToggleChip`**, on the selected/next leg only.
+  (`55 · דקות` → `10 · ליציאה`), threshold **30 minutes of time-to-leave**. M2: **the journey is
+  a BLOCK between the two cards** (mode mark, duration, leave-by, the leg's real shape drawn
+  small, chips on it) that **absorbs** the free-time line and **ignores `GAP_MIN_MINUTES`** —
+  the day reads `place · journey · place`. M3: **every leg draws its real path**; §D8 rations
+  only the solid amber, which is **a per-theme pair** — see the defect below. M4: ink and word
+  only, and **it may not say "you are late"** — see the GPS bullet. M5: four chips
+  (`ToggleChip`), on the selected leg, **in the day list and in the Map's sheet — one component,
+  two hosts**.
+- **⚠ M6a/M6b must not infer that anyone left.** The app has no position (ADR-0006 refused
+  member GPS) and a settle mark is not a sensor, so the only supportable claim is
+  `זמן היציאה עבר` — never `אתם באיחור`. The user answers with **`בדרך`**, which already exists
+  on the day row and **writes nothing today** (`verbs.ts:1361` is a toast). Making it state is a
+  small, real piece of §V1.4.
+- **Transit becomes declarable** (owner's suggestion, agreed and drawn): a fourth chip that
+  promises no estimate and exists to silence a wrong walking number. **Not** a fourth member of
+  `travelModeSchema` — the declaration lives on the leg. A declared leg has no leave-by, so the
+  board's swap does not fire for it: M6b and M11 both need to know that.
+- **Three new `ui/Icon.tsx` glyphs are proposed** (walking/cycling/driving) and drawn in the
+  mockup. They need the owner's yes before M8 builds against them.
 - **The swap is a third arm on an existing ternary,** not new machinery: `Home.tsx:452` already
   swaps that tile for ADR-0184 §6's shutting window (`unit: t.board.closesIn`). **M6b should
   budget one line, not a component** — and it inherits a collision this epic had not named: a
