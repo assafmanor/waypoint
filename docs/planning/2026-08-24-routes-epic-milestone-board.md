@@ -18,6 +18,12 @@ section → **your milestone's card only** → ADR-0205 and ADR-0206 → the `CL
 package(s) your card names. That is the whole context budget. Do not read sibling milestone cards
 and do not preload the ADRs your card does not cite (root `CLAUDE.md`, _Context is RAM_).
 
+**And flip the rows your predecessors could not.** Before anything else, check every 🔵 row in
+**Live status** and set the ones whose PR has merged to ✅. This costs one look and it is genuinely
+your job rather than theirs: a session can only ever claim 🔵 about itself — it cannot know whether
+the PR it is opening will be merged — so **you are the first reader who can see the answer**. Left
+undone the board goes stale in exactly one direction, and it has three times.
+
 **Working it.**
 
 - **One milestone, one branch, one PR.** Branch `routes/mN-slug`, named in the card.
@@ -28,9 +34,10 @@ and do not preload the ADRs your card does not cite (root `CLAUDE.md`, _Context 
   found by building — is **amended into the ADR in place**, in the same commit. Not a new ADR, not a
   new note (root `CLAUDE.md`, _"amend that doc in place"_).
 
-**Closing it.** In the same commit as the work: set your row's status, PR link and date in
-**Live status**; fill in **What the next session needs to know** on your card; prune or add the
-backlog lines your milestone completed or discovered. Then open the PR. A milestone is not done
+**Closing it.** In the same commit as the work: set your row to **🔵** with its PR link and date in
+**Live status** — 🔵 and not ✅, for the reason under the legend; fill in **What the next session
+needs to know** on your card; prune or add the backlog lines your milestone completed or
+discovered. Then open the PR. A milestone is not done
 until `pnpm format && pnpm typecheck && pnpm build` are green and the card's **Exit criteria** are
 each demonstrably met — evidence on the PR, not an assertion.
 
@@ -40,28 +47,34 @@ pair the column does not name. Both branch from `main`, not from each other.
 
 **Status legend:** ⬜ not started · 🟡 in progress · 🔵 in review · ✅ done · ⛔ blocked
 
+The middle of that list is where the board rots, so the two statuses either side of the merge are
+defined rather than left to taste. **🔵 is "work done, PR open"** — the last thing a session can
+truthfully say about itself, and therefore what every milestone lands as. **✅ is "merged"**, which
+only a later reader can assert; it is written by the next session under _Opening a milestone_,
+never by the one that did the work.
+
 ---
 
 ## Live status
 
-| M       | milestone                   | kind   | status                  | depends on   | ⇉ safe with  | branch / PR                                                                                           | updated    |
-| ------- | --------------------------- | ------ | ----------------------- | ------------ | ------------ | ----------------------------------------------------------------------------------------------------- | ---------- |
-| **M0**  | Product decisions           | owner  | ✅                      | —            | —            | —                                                                                                     | 2026-08-25 |
-| **M1**  | Measure the parameters      | spike  | ✅ (applied by M2b)     | —            | —            | `claude/routes-travel-time-m1-spike-sn7pod` · [#695](https://github.com/assafmanor/waypoint/pull/695) | 2026-08-25 |
-| **M1b** | Make the dev seed routable  | impl   | 🔵                      | —            | all          | `claude/dev-seed-routable-m1b-6il7cq` · [#700](https://github.com/assafmanor/waypoint/pull/700)       | 2026-08-25 |
-| **M2**  | Shared derivations          | impl   | ✅                      | M0           | M1, M3       | `claude/routes-epic-m2-nkbf4d` · [#694](https://github.com/assafmanor/waypoint/pull/694)              | 2026-08-25 |
-| **M2b** | Apply M1's numbers to code  | impl   | ✅ **M4 unblocked**     | M1, M2       | M3           | `claude/routes-epic-m2b-q0pxkn` · [#699](https://github.com/assafmanor/waypoint/pull/699)             | 2026-08-25 |
-| **M3**  | Design session + mockups    | design | ✅                      | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696)       | 2026-08-25 |
-| **M4**  | Backend routing module      | impl   | 🔵 **M5/M10 unblocked** | M1, M2, M2b  | M3           | `claude/m4-backend-routing-0giz72` · [#702](https://github.com/assafmanor/waypoint/pull/702)          | 2026-08-25 |
-| **M5**  | Frontend data layer         | impl   | ⬜                      | M2, M4       | M3, M10      | —                                                                                                     | —          |
-| **M6a** | The day reads               | impl   | ⬜                      | M3, M5       | M6b, M7, M9  | —                                                                                                     | —          |
-| **M6b** | The hero read               | impl   | ⬜                      | M3, M5       | M6a, M7, M9  | —                                                                                                     | —          |
-| **M7**  | The map polyline            | impl   | ⬜                      | M3, M5       | M6a, M6b, M9 | —                                                                                                     | —          |
-| **M8**  | Mode per leg + trip default | impl   | ⬜                      | M6a, M6b, M7 | M10          | —                                                                                                     | —          |
-| **M9**  | Plan-mode feasibility       | impl   | ⬜                      | M5           | M6a, M6b, M7 | —                                                                                                     | —          |
-| **M10** | Offline route pack          | impl   | ⬜                      | M4           | M5–M9        | —                                                                                                     | —          |
-| **M11** | Day travel total            | impl   | ⬜                      | M6a          | M8, M10      | —                                                                                                     | —          |
-| **M12** | Harden, observe, document   | impl   | ⬜                      | all          | —            | —                                                                                                     | —          |
+| M       | milestone                   | kind   | status                    | depends on   | ⇉ safe with  | branch / PR                                                                                            | updated    |
+| ------- | --------------------------- | ------ | ------------------------- | ------------ | ------------ | ------------------------------------------------------------------------------------------------------ | ---------- |
+| **M0**  | Product decisions           | owner  | ✅                        | —            | —            | —                                                                                                      | 2026-08-25 |
+| **M1**  | Measure the parameters      | spike  | ✅ (applied by M2b)       | —            | —            | `claude/routes-travel-time-m1-spike-sn7pod` · [#695](https://github.com/assafmanor/waypoint/pull/695)  | 2026-08-25 |
+| **M1b** | Make the dev seed routable  | impl   | ✅                        | —            | all          | `claude/dev-seed-routable-m1b-6il7cq` · [#700](https://github.com/assafmanor/waypoint/pull/700)        | 2026-08-25 |
+| **M2**  | Shared derivations          | impl   | ✅                        | M0           | M1, M3       | `claude/routes-epic-m2-nkbf4d` · [#694](https://github.com/assafmanor/waypoint/pull/694)               | 2026-08-25 |
+| **M2b** | Apply M1's numbers to code  | impl   | ✅ **M4 unblocked**       | M1, M2       | M3           | `claude/routes-epic-m2b-q0pxkn` · [#699](https://github.com/assafmanor/waypoint/pull/699)              | 2026-08-25 |
+| **M3**  | Design session + mockups    | design | ✅                        | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696)        | 2026-08-25 |
+| **M4**  | Backend routing module      | impl   | ✅ **M5/M10 unblocked**   | M1, M2, M2b  | M3           | `claude/m4-backend-routing-0giz72` · [#702](https://github.com/assafmanor/waypoint/pull/702)           | 2026-08-25 |
+| **M5**  | Frontend data layer         | impl   | 🔵 **M6/M7/M9 unblocked** | M2, M4       | M3, M10      | `claude/routes-frontend-protocol-fix-9t521y` · [#704](https://github.com/assafmanor/waypoint/pull/704) | 2026-08-25 |
+| **M6a** | The day reads               | impl   | ⬜                        | M3, M5       | M6b, M7, M9  | —                                                                                                      | —          |
+| **M6b** | The hero read               | impl   | ⬜                        | M3, M5       | M6a, M7, M9  | —                                                                                                      | —          |
+| **M7**  | The map polyline            | impl   | ⬜                        | M3, M5       | M6a, M6b, M9 | —                                                                                                      | —          |
+| **M8**  | Mode per leg + trip default | impl   | ⬜                        | M6a, M6b, M7 | M10          | —                                                                                                      | —          |
+| **M9**  | Plan-mode feasibility       | impl   | ⬜                        | M5           | M6a, M6b, M7 | —                                                                                                      | —          |
+| **M10** | Offline route pack          | impl   | ⬜                        | M4           | M5–M9        | —                                                                                                      | —          |
+| **M11** | Day travel total            | impl   | ⬜                        | M6a          | M8, M10      | —                                                                                                      | —          |
+| **M12** | Harden, observe, document   | impl   | ⬜                        | all          | —            | —                                                                                                      | —          |
 
 ### M2b — apply M1's numbers to the code ✅
 
@@ -613,8 +626,10 @@ still answers from cache; the politeness limiter paces a three-mode warm rather 
 
 **Kind:** implementation. **Branch:** `routes/m5-frontend-data` · **Read:** `frontend/CLAUDE.md`.
 **Conflict surface:** `frontend/src/lib/travel.ts` (new), the Dexie schema + a version bump,
-`frontend/src/lib/api.ts`. **No component changes** — that is M6/M7, and keeping them apart is what
-makes those two parallel.
+`frontend/src/lib/api.ts`, and the one line of `lib/cache.ts` that a new table costs — its own
+comments say a dedicated table means "a schema version bump plus edits to `wipeLocalData`", so the
+sign-out wipe is part of adding one rather than a widening. **No component changes** — that is
+M6/M7, and keeping them apart is what makes those two parallel.
 
 - A Dexie table, **not** `byte-cache` (that is for blobs) and **not** the `CACHE_CHANNELS` registry
   (a route is not a syncable entity and has no client writer) — ADR-0205 §7.
@@ -627,7 +642,51 @@ makes those two parallel.
 throw; the `202`/`Retry-After` path re-asks once and then gives up quietly; no component imports the
 provider shape directly.
 
-**What the next session needs to know:** _(fill in)_
+**What the next session needs to know:**
+
+- **The whole surface is `useDayTravel({ tripId, stops, modes? })` → `estimateFor(from, to, mode)`,
+  which answers `TravelEstimate | null`.** `stops` is the day's ordered coordinates; `modes`
+  defaults to all of them, so ADR-0206 §Z2's mode switch is a read from what is already held. There
+  is no loading flag and no error state to render — `null` is offline, refused, warming and
+  provider-down alike (§D4), and every consumer falls back to `formatDistance`. **Nothing else is
+  exported for a component**: `fetchRoutes` and the Dexie helpers exist for this hook and for M10.
+- **Nothing is passed in for "am I the visible day" or "am I offline".** Both are read inside the
+  hook — `useIsDayPreview()` and `useIsOffline()` — because both are facts about the app rather than
+  about the day. **That is what answers the card's fetch-ordering warning:** a peek reads Dexie and
+  never asks, so a swipe costs one matrix and not three. A day you have already visited therefore
+  peeks with its real numbers, and one you have not falls back to the crow-flies chip until the
+  swipe commits. Two specs hold it, and both fail if the guard is removed.
+- **The day's identity is a CONTENT fingerprint, never the `stops` array.** A day surface derives
+  its stops each render and re-renders on the clock, so an array dep would re-ask on a render that
+  changed nothing. The effects depend on the joined leg keys and read the values through a ref. **If
+  a consumer sees a request per second, that is the fingerprint changing** — a coordinate being
+  rebuilt with different float noise, most likely — not the hook polling.
+- **A day answered in full is remembered for the session** (a module-level set), so swiping back and
+  forth costs nothing. Dexie cannot answer that question on its own: a refused mode is never a row,
+  so "do we hold every key we would ask about" is false forever for any day with one refusal in it.
+  **A day that came back still warming is deliberately not remembered** — that is how it gets its
+  numbers: opening it again asks again.
+- **⚠ M8: `TRAVEL_MODES` is the default, and this layer reads it as "every mode the endpoint can
+  answer".** ADR-0206 §AA4's תחב״צ mark is a stored mode value with **no provider** — no gate, no
+  request, ever — so it must not join that list, or every day will ask for a route nobody can
+  compute. `TRAVEL_GATE`'s `Record<TravelMode, TravelGateRule>` is the tripwire: adding the value
+  stops that record compiling until somebody answers this.
+- **⚠ M7 has no way to ask for a line, and its conflict surface says it may not add one.** The
+  request carries `withShapes` and `TravelEstimate` carries `shape`, but this hook never asks for
+  geometry: a matrix has none, so a drawable line is a call per leg, and ADR-0206 §D8 draws one at a
+  time. That is a shape decision M7 should make rather than one M5 should guess — so **M7's card
+  wants `lib/travel.ts` added to its conflict surface**, and the ask it needs is small (one two-stop
+  request with `withShapes: true` for the selected leg, cached and read through the same key).
+- **The Dexie table is `routeLegs` at version 5, keyed by `routeLegKey` — the server's own spelling,
+  imported, never re-derived.** Two spellings is a client that can never hit a row the server
+  stored. It carries no `tripId` (nothing for `clearTripCache` to do), it is cleared by
+  `wipeLocalData`, and `cachedAt` is provenance rather than an expiry — indexed only because it is
+  the ordering an eviction sweep would need. **M10 reads and writes this table** rather than
+  inventing a second store beside it.
+- **`202` is a success and the body says so.** `retryAfterSeconds` on the envelope is zod-validated
+  and duplicates the `Retry-After` header, so nothing here parses the header — `res.ok` already
+  covers `202`. The wait is clamped, because a value we do not control must not park a timer for an
+  hour.
 
 ---
 
