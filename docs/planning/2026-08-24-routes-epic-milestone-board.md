@@ -44,22 +44,56 @@ pair the column does not name. Both branch from `main`, not from each other.
 
 ## Live status
 
-| M       | milestone                   | kind   | status | depends on   | ⇉ safe with  | branch / PR                                                                                           | updated    |
-| ------- | --------------------------- | ------ | ------ | ------------ | ------------ | ----------------------------------------------------------------------------------------------------- | ---------- |
-| **M0**  | Product decisions           | owner  | ✅     | —            | —            | —                                                                                                     | 2026-08-25 |
-| **M1**  | Measure the parameters      | spike  | 🔵     | M0           | M2, M3       | `claude/routes-travel-time-m1-spike-sn7pod` · [#695](https://github.com/assafmanor/waypoint/pull/695) | 2026-08-25 |
-| **M2**  | Shared derivations          | impl   | ✅     | M0           | M1, M3       | `claude/routes-epic-m2-nkbf4d` · [#694](https://github.com/assafmanor/waypoint/pull/694)              | 2026-08-25 |
-| **M3**  | Design session + mockups    | design | 🔵     | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696)       | 2026-08-25 |
-| **M4**  | Backend routing module      | impl   | ⬜     | M1, M2       | M3           | —                                                                                                     | —          |
-| **M5**  | Frontend data layer         | impl   | ⬜     | M2, M4       | M3, M10      | —                                                                                                     | —          |
-| **M6a** | The day reads               | impl   | ⬜     | M3, M5       | M6b, M7, M9  | —                                                                                                     | —          |
-| **M6b** | The hero read               | impl   | ⬜     | M3, M5       | M6a, M7, M9  | —                                                                                                     | —          |
-| **M7**  | The map polyline            | impl   | ⬜     | M3, M5       | M6a, M6b, M9 | —                                                                                                     | —          |
-| **M8**  | Mode per leg + trip default | impl   | ⬜     | M6a, M6b, M7 | M10          | —                                                                                                     | —          |
-| **M9**  | Plan-mode feasibility       | impl   | ⬜     | M5           | M6a, M6b, M7 | —                                                                                                     | —          |
-| **M10** | Offline route pack          | impl   | ⬜     | M4           | M5–M9        | —                                                                                                     | —          |
-| **M11** | Day travel total            | impl   | ⬜     | M6a          | M8, M10      | —                                                                                                     | —          |
-| **M12** | Harden, observe, document   | impl   | ⬜     | all          | —            | —                                                                                                     | —          |
+| M       | milestone                   | kind   | status                           | depends on   | ⇉ safe with  | branch / PR                                                                                           | updated    |
+| ------- | --------------------------- | ------ | -------------------------------- | ------------ | ------------ | ----------------------------------------------------------------------------------------------------- | ---------- |
+| **M0**  | Product decisions           | owner  | ✅                               | —            | —            | —                                                                                                     | 2026-08-25 |
+| **M1**  | Measure the parameters      | spike  | ✅ ⚠ **numbers not yet in code** | —            | —            | `claude/routes-travel-time-m1-spike-sn7pod` · [#695](https://github.com/assafmanor/waypoint/pull/695) | 2026-08-25 |
+| **M2**  | Shared derivations          | impl   | ✅                               | M0           | M1, M3       | `claude/routes-epic-m2-nkbf4d` · [#694](https://github.com/assafmanor/waypoint/pull/694)              | 2026-08-25 |
+| **M2b** | Apply M1's numbers to code  | impl   | ⬜ **blocks M4**                 | M1, M2       | M3           | —                                                                                                     | 2026-08-25 |
+| **M3**  | Design session + mockups    | design | ✅                               | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696)       | 2026-08-25 |
+| **M4**  | Backend routing module      | impl   | ⬜                               | M1, M2, M2b  | M3           | —                                                                                                     | —          |
+| **M5**  | Frontend data layer         | impl   | ⬜                               | M2, M4       | M3, M10      | —                                                                                                     | —          |
+| **M6a** | The day reads               | impl   | ⬜                               | M3, M5       | M6b, M7, M9  | —                                                                                                     | —          |
+| **M6b** | The hero read               | impl   | ⬜                               | M3, M5       | M6a, M7, M9  | —                                                                                                     | —          |
+| **M7**  | The map polyline            | impl   | ⬜                               | M3, M5       | M6a, M6b, M9 | —                                                                                                     | —          |
+| **M8**  | Mode per leg + trip default | impl   | ⬜                               | M6a, M6b, M7 | M10          | —                                                                                                     | —          |
+| **M9**  | Plan-mode feasibility       | impl   | ⬜                               | M5           | M6a, M6b, M7 | —                                                                                                     | —          |
+| **M10** | Offline route pack          | impl   | ⬜                               | M4           | M5–M9        | —                                                                                                     | —          |
+| **M11** | Day travel total            | impl   | ⬜                               | M6a          | M8, M10      | —                                                                                                     | —          |
+| **M12** | Harden, observe, document   | impl   | ⬜                               | all          | —            | —                                                                                                     | —          |
+
+### ⚠ M2b — apply M1's numbers to the code. **This blocks M4.**
+
+**M1 measured the ceilings into [ADR-0205 §Z](../decisions/0205-routes-are-computed-not-bought-and-a-route-is-a-cache.md) and changed no production code** — correctly, since its own card says "produces numbers, not features" and scopes it to `docs/`. **But nobody was assigned to apply them, and that is a gap in this board, not in M1.** `packages/shared/src/routing.ts` on `main` still ships M2's placeholders:
+
+| constant            | shipped   | measured (§Z2) | how wrong                                                                                |
+| ------------------- | --------- | -------------- | ---------------------------------------------------------------------------------------- |
+| `walking.maxMeters` | `25_000`  | **`5_000`**    | 5× too permissive — admits a **127-minute walk** (Senso-ji → Shinjuku, a real seed pair) |
+| `cycling.maxMeters` | `100_000` | **`20_000`**   | 5× — admits 94, 145, 154 and 192-minute rides                                            |
+| `driving.maxMeters` | `800_000` | **`300_000`**  | 2.7×, and above the provider's own 400 km path limit                                     |
+| `ROUTE_MIN_CROW_M`  | _absent_  | **`10`**       | no floor, so a 0.00 km pair costs a matrix cell and a cache row                          |
+
+`ROUTE_COORD_DECIMALS = 5` is confirmed unchanged (§Z1), and `TRAVEL_BUFFER_SECONDS = 5 * 60` stands (§Z6).
+
+**One correction rides with it:** §Z2 measured that once `maxMeters` drops below ADR-0186 §4's 40 km link radius, **`sameClusterOnly` can no longer reject anything** — verified over 2,500+ random global pairs at ≤20 km, every one co-clusters. It looked load-bearing only because M2's placeholders were above the link radius. Do not silently delete the flag; ADR-0205 §Z2 is the record of why it is now inert, and driving still reads it.
+
+**Kind:** implementation, small. **Branch:** `routes/m2b-apply-measurements` · **Conflict surface:** `packages/shared/src/routing.ts` and its spec, `packages/shared/src/constants.ts`. **Exit criteria:** the four numbers above are the shipped values with the measurement cited beside each; a spec asserts the new floor and each new ceiling at its boundary; `pnpm --filter @waypoint/shared test` green; ADR-0205 §Z amended in place to say the code now matches.
+
+### Owner decisions outstanding (2026-08-25)
+
+M3 drew these and could not settle them. None blocks M1 or M4; each blocks the milestone named.
+
+| #   | question                                                                                                | recommendation                                                                                                                                                                         | blocks  |
+| --- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 1   | The swap threshold — **30 minutes** of time-to-leave                                                    | take it; the mockup ships a control to disagree on a device                                                                                                                            | M6b     |
+| 2   | ~~The leave-by **buffer**~~ — **answered by M1** (ADR-0205 §Z6)                                         | `TRAVEL_BUFFER_SECONDS = 5 * 60` **stands**, with its job narrowed to departure overhead: M1 found the number was doing three jobs and two of them are not buffers. Nothing to decide. | —       |
+| 3   | `ליציאה` vs `לצאת` on the tile                                                                          | `ליציאה`, following ADR-0184 §6's `לסגירה` grammar                                                                                                                                     | M6b     |
+| 4   | The **three proposed mode icons** (note §8.1)                                                           | needs an explicit yes — `ui/Icon.tsx` has none, so this mints three                                                                                                                    | M6a, M8 |
+| 5   | The **transit declaration** (note §8.4) — let someone mark a leg תחב״צ with a "we have no data" warning | genuinely contested against §D9's "absent, not disabled"; do not build unasked                                                                                                         | M8      |
+
+**Read the M3 session note's §9.2 before designing the late state.** M3 corrected itself there: the
+app **does** have own-device geolocation (`lib/useGeolocation.ts`, shipping since ADR-0109 §6), and
+ADR-0006 defers only member-to-member sharing. The v2 mockup's three-tier late state depends on it.
 
 **The critical path is M0 → M2 → M4 → M5 → M6a/M6b.** Everything else hangs off it or runs beside
 it. If only one agent is working, run that path and take M3 before M6.
@@ -96,7 +130,14 @@ are updated.
 
 ## M1 — Measure the parameters
 
-**Kind:** spike. **Branch:** `routes/m1-measure` · **Conflict surface:** `docs/` only (an ADR-0205
+**Kind:** spike. **Status 2026-08-25: not started, and M2 raised its stakes.** M2 shipped
+`TRAVEL_GATE`'s ceilings (25 km walking, 100 km cycling, 800 km driving) and
+`TRAVEL_BUFFER_SECONDS` (5 min) as **deliberate placeholders, sized to be obviously absurd rather
+than good** — its own comment says so. M4 is what bakes them into a server that calls a provider,
+so **M1 lands before M4, not beside it.** M3 also handed the buffer here (§D5's hedge, drawn as a
+0/5/10/15 control).
+
+**Branch:** `routes/m1-measure` · **Conflict surface:** `docs/` only (an ADR-0205
 amendment) + throwaway scripts in the scratchpad. **Produces numbers, not features.**
 
 > Ran on `claude/routes-travel-time-m1-spike-sn7pod` rather than `routes/m1-measure` — the session
@@ -332,13 +373,12 @@ whose **§8 is the review round** and whose **§7 is the ADR-0206 amendment, rea
   isolate fixes both.
 - **The buffer in the leave-by is NOT settled here** — it is §D5's hedge and a measured number,
   so it belongs with M1's. The mockup exposes it as a control (0/5/10/15) and says so.
-- **⚠ Scope note, per the protocol's "say so on the PR":** the exit criterion asking for the
-  measurements as an **ADR-0206 amendment** could not be met from this milestone — `docs/decisions/`
-  is outside M3's declared conflict surface and M1/M2 were running in parallel. The amendment is
-  written **verbatim and ready to paste** as §7 of the session note (a `§Z5` block). Whoever holds
-  `docs/decisions/` next — the first of M1/M2/M4 to land, or a docs-only follow-up — should paste
-  it in unchanged and prune this bullet. **Owner sign-off is also still open** (the three questions
-  in the note's §6), so this row stays 🔵 rather than ✅.
+- ~~Scope note: the ADR-0206 amendment could not be written from this milestone.~~ **Resolved
+  2026-08-25** — `§Z5` is pasted into ADR-0206 verbatim by the docs-only follow-up that also wrote
+  this line. **Read ADR-0206 §Z5, not the session note, before M6a/M6b/M7**: the note is
+  orientation, the ADR is the decision (root `CLAUDE.md`, _durable vs. scratch_).
+- **⚠ Owner sign-off is still open on five items** and M6a/M6b/M8 should not build them unasked —
+  see **Owner decisions outstanding** at the head of this board.
 
 ---
 
