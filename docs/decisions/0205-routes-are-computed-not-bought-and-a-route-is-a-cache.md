@@ -387,11 +387,22 @@ import a decided number rather than re-deriving one. Scripts were throwaway.
 
 ### Z0. What was measured against, and the one thing that limits it
 
-**The dev seed carries no coordinates.** Its eight `Place` rows (`backend/prisma/seed.mjs`) are
-name-only Place-lite (ADR-0147) — `lat`/`lng` are `null` on every one, and the comment above them
-says so: _"the Google Places picker fills in googlePlaceId/lat/lng later."_ So "measure against the
-dev seed" could not be taken literally, and **this is a blocker for every downstream milestone that
-needs a routable trip**, not a quirk of M1. It has its own backlog line.
+**The dev seed carried no coordinates when this was measured — it does now.** Its eight `Place`
+rows (`backend/prisma/seed.mjs`) were name-only Place-lite (ADR-0147), `lat`/`lng` `null` on every
+one, and the comment above them said so: _"the Google Places picker fills in googlePlaceId/lat/lng
+later."_ So "measure against the dev seed" could not be taken literally, and **that was a blocker
+for every downstream milestone needing a routable trip**, not a quirk of M1.
+
+**Closed 2026-08-25 by M1b** (the milestone board's card of that name). Every place now carries its
+real coordinate and zone, and the seed exercises each gate path deliberately, with a comment table
+naming which: a walkable Tokyo day, the two 0.00 km pairs the floor below was measured against, a
+gate-refused leg over the driving ceiling, a cross-cluster pair, a gap travel visibly eats, and a
+second trip carrying ADR-0162's car hire so a bookings-derived default mode (ADR-0206 §Z2) has a
+driving trip to derive from at all. **Two consequences for anyone citing this section:** the rates
+below are still the best evidence available and are still small-n, but they are now re-measurable
+against the seed as promised; and M1b's coordinates are what a Places pick would fill rather than
+M1's geocode-by-name, so they differ slightly — Senso-ji → Shinjuku is 9.12 km against the 8.58 km
+quoted in §Z2. No gate outcome changes; a two-digit rate should be re-derived before it is re-cited.
 
 What was measured instead, and how to read each number's weight:
 

@@ -48,6 +48,7 @@ pair the column does not name. Both branch from `main`, not from each other.
 | ------- | --------------------------- | ------ | ------------------- | ------------ | ------------ | ----------------------------------------------------------------------------------------------------- | ---------- |
 | **M0**  | Product decisions           | owner  | ✅                  | —            | —            | —                                                                                                     | 2026-08-25 |
 | **M1**  | Measure the parameters      | spike  | ✅ (applied by M2b) | —            | —            | `claude/routes-travel-time-m1-spike-sn7pod` · [#695](https://github.com/assafmanor/waypoint/pull/695) | 2026-08-25 |
+| **M1b** | Make the dev seed routable  | impl   | 🔵                  | —            | all          | `claude/dev-seed-routable-m1b-6il7cq` · [#PRNUM](https://github.com/assafmanor/waypoint/pull/PRNUM)   | 2026-08-25 |
 | **M2**  | Shared derivations          | impl   | ✅                  | M0           | M1, M3       | `claude/routes-epic-m2-nkbf4d` · [#694](https://github.com/assafmanor/waypoint/pull/694)              | 2026-08-25 |
 | **M2b** | Apply M1's numbers to code  | impl   | ✅ **M4 unblocked** | M1, M2       | M3           | `claude/routes-epic-m2b-q0pxkn` · [#699](https://github.com/assafmanor/waypoint/pull/699)             | 2026-08-25 |
 | **M3**  | Design session + mockups    | design | ✅                  | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696)       | 2026-08-25 |
@@ -195,11 +196,13 @@ constant with the measurement beside it. No production code changed.
 **What the next session needs to know:** all five numbers are in **[ADR-0205 §Z](../decisions/0205-routes-are-computed-not-bought-and-a-route-is-a-cache.md)** —
 read it before writing the gate or the cache key. The five that change other people's work:
 
-1. **The dev seed has no coordinates** (§Z0). All 8 `Place` rows are name-only Place-lite,
-   `lat`/`lng` `null`. **M4, M5, M6a/b, M7, M9 and M11 cannot be exercised end-to-end against the
-   seed as it stands** — whoever hits this first should take the backlog line for it rather than
-   hand-patching a local seed. M1's numbers come from those 8 places geocoded by name plus four
-   ADR-named trip archetypes; n is small and every rate says so.
+1. **The dev seed has no coordinates** (§Z0) — **closed by M1b, 2026-08-25; the seed is routable
+   and §Z0 says so in place.** All 8 `Place` rows were name-only Place-lite, `lat`/`lng` `null`, so
+   **M4, M5, M6a/b, M7, M9 and M11 could not be exercised end-to-end against the seed at all**.
+   Read M1b's card, not the backlog line, for what the fixture now holds. M1's numbers come from
+   those 8 places geocoded by name plus four ADR-named trip archetypes; n is small and every rate
+   says so — and M1b's coordinates are close to but not identical with that geocode, so the rates
+   are worth re-deriving before they are cited again.
 2. **M2's `TRAVEL_GATE` placeholders now have their measured values** (§Z2) — walking **5,000**,
    cycling **20,000**, driving **300,000**, replacing 25k/100k/800k. M2 labelled them "still M1's to
    measure", so this is the handoff landing, not a competing proposal. Plus a floor
@@ -413,6 +416,79 @@ whose **§8 is the review round** and whose **§7 is the ADR-0206 amendment, rea
   orientation, the ADR is the decision (root `CLAUDE.md`, _durable vs. scratch_).
 - **⚠ Owner sign-off is still open on five items** and M6a/M6b/M8 should not build them unasked —
   see **Owner decisions outstanding** at the head of this board.
+
+---
+
+## M1b — Make the dev seed routable ✅
+
+**This milestone was not on the board, and it is the same gap M2b was.** M1's finding 1 named it —
+the seed's eight `Place` rows were name-only Place-lite (ADR-0147) with `lat`/`lng` `null`
+(ADR-0205 §Z0) — and gave it a backlog line, but no card and nobody assigned. **M4, M5, M6a/b, M7,
+M9 and M11 all need a routable trip**, so it lands before M4 rather than beside it.
+
+**Kind:** implementation, small. **Branch:** `routes/m1b-seed` — ran as
+`claude/dev-seed-routable-m1b-6il7cq`, the branch the session was handed. **Conflict surface:**
+`backend/prisma/seed.mjs` only, plus this board, `docs/backlog.md` and ADR-0205 §Z0 — disjoint from
+every other card, so it is ⇉ safe with all of them.
+
+**Exit criteria:** every `Place` row carries real coordinates; the seed exercises, deliberately and
+with a comment naming the path each case is for, a walkable day, a gate-REFUSED leg, a multi-cluster
+pair, the existing 0.00 km pairs, a gap travel genuinely eats, and a second trip with a car hire;
+**additive only** (no existing row renamed, renumbered or restructured); the e2e suite green.
+
+**What the next session needs to know:**
+
+- **The seed is routable, and the fixture is a contract rather than a side effect.** Two comment
+  tables in `seed.mjs` — one above `PLACES`, one above the Iceland trip — say which gate path every
+  consecutive pair is for. **Change a coordinate and you change some milestone's fixture**, so read
+  the table for the case you are about to move.
+- **What the gate actually answers, read back out of the seeded database through the shipped
+  `routableLegs` / `clusterLatLngs` / `TRAVEL_GATE`** — measured, not estimated:
+
+  | trip                           | day   | leg                      |      crow | admitted                        |
+  | ------------------------------ | ----- | ------------------------ | --------: | ------------------------------- |
+  | Tokyo (10 places, 3 clusters)  | today | Asakusa → Tsukiji        |   5.59 km | walking / driving / cycling     |
+  |                                | today | Tsukiji → Senso-ji       |   5.97 km | walking / driving / cycling     |
+  |                                | today | Senso-ji → Shinjuku      |   9.12 km | walking / driving / cycling     |
+  |                                | today | Shinjuku → Shinjuku      |   0.00 km | **REFUSED** — the 10 m floor    |
+  |                                | today | Shinjuku ↔ Golden Gai ×2 |   0.61 km | walking / driving / cycling     |
+  |                                | today | Shinjuku → Shinjuku      |   0.00 km | **REFUSED** — the 10 m floor    |
+  |                                | DAY+1 | Ueno → Ginza             |   4.86 km | walking / driving / cycling     |
+  | Iceland (5 places, 3 clusters) | D+0   | Blue Lagoon → Reykjavík  |  38.55 km | **driving only**, ONE cluster   |
+  |                                | D+1   | Reykjavík → Vík          | 165.39 km | driving only, **cross-cluster** |
+  |                                | D+2   | Vík → Höfn               | 208.04 km | driving only, cross-cluster     |
+  |                                | D+3   | Höfn → Reykjavík         | 325.98 km | **REFUSED** — over the ceiling  |
+
+- **The two REFUSED kinds are different, and both are features.** `0.00 km` is `ROUTE_MIN_CROW_M`'s
+  floor — four events share `pl-shinjuku`, the pair §Z2 measured it against — and `325.98 km` is
+  over the driving ceiling, which §Z9 asked this exact drive about and refused to raise. Both are
+  ADR-0206 §D4's ordinary absence. **M4 and M6a: neither is an error path.**
+- **The `38.55 km` leg is the one that separates the gate's two halves.** It sits inside ONE cluster
+  and is still driving-only, because it is over walking's 15 km and cycling's 20 km. Anything
+  claiming to test "the cluster gate" against a distance refusal should use it.
+- **An ambient row is not a stop.** The hotel span and the car hire have `endDate > date`, so
+  ADR-0054 renders them as backdrops and they contribute no leg — which is why each Iceland day
+  carries two real stops of its own. A one-stop day has nothing to route and the seed keeps one of
+  those too (the outbound-flight day).
+- **The second trip exists for M8, and only M8 could have asked for it.** `trip-iceland-26` carries
+  ADR-0162's `car` booking, because a default mode derived from bookings (ADR-0206 §Z2) cannot be
+  exercised by a trip of flights, a hotel and a restaurant. **Tokyo is now the negative case and
+  Iceland the positive one.** A mixed trip — a hire among flights — is unbuilt and is M8's to add if
+  it wants one. It is set 30 days out so two trips never compete for "today"; if a milestone needs
+  the road trip to BE today, move `ICE_DAY`, do not add a third trip.
+- **`timezone` came with the coordinates, and it is the one thing here a reader could mistake for a
+  routing change.** The picker resolves a zone from the coordinate through geo-tz
+  (`places.service.ts`), so a coordinate with no zone is a row the app never writes. Visible
+  consequence: `pl-tlv` is now `Asia/Jerusalem`, which makes the outbound flight a real ADR-0107
+  zone crossing for the first time. That is the fixture becoming correct.
+- **§Z2's rates can now be re-measured, and should be.** §Z0 measured the seed's places _geocoded by
+  name_; these are the coordinates a picker would fill, so they are close but not identical —
+  Senso-ji → Shinjuku is **9.12 km** here against §Z2's 8.58 km. No gate outcome moves (both admit),
+  but a rate quoted to two digits should be re-derived before it is cited again.
+- **One number in the seed is arithmetic, not a provider answer.** The DAY+1 gap is sized from §Z2's
+  measured 4.9 km/h over §Z7's 1.16 median road/crow — ~69 min for 4.86 km. **M4 will get the real
+  duration and it will differ.** The fixture's job is that travel visibly eats a chunk of a 2:30 gap
+  and that both readings clear `GAP_MIN_MINUTES`, which holds at any plausible pace.
 
 ---
 
