@@ -18,6 +18,12 @@ section → **your milestone's card only** → ADR-0205 and ADR-0206 → the `CL
 package(s) your card names. That is the whole context budget. Do not read sibling milestone cards
 and do not preload the ADRs your card does not cite (root `CLAUDE.md`, _Context is RAM_).
 
+**And flip the rows your predecessors could not.** Before anything else, check every 🔵 row in
+**Live status** and set the ones whose PR has merged to ✅. This costs one look and it is genuinely
+your job rather than theirs: a session can only ever claim 🔵 about itself — it cannot know whether
+the PR it is opening will be merged — so **you are the first reader who can see the answer**. Left
+undone the board goes stale in exactly one direction, and it has three times.
+
 **Working it.**
 
 - **One milestone, one branch, one PR.** Branch `routes/mN-slug`, named in the card.
@@ -28,9 +34,10 @@ and do not preload the ADRs your card does not cite (root `CLAUDE.md`, _Context 
   found by building — is **amended into the ADR in place**, in the same commit. Not a new ADR, not a
   new note (root `CLAUDE.md`, _"amend that doc in place"_).
 
-**Closing it.** In the same commit as the work: set your row's status, PR link and date in
-**Live status**; fill in **What the next session needs to know** on your card; prune or add the
-backlog lines your milestone completed or discovered. Then open the PR. A milestone is not done
+**Closing it.** In the same commit as the work: set your row to **🔵** with its PR link and date in
+**Live status** — 🔵 and not ✅, for the reason under the legend; fill in **What the next session
+needs to know** on your card; prune or add the backlog lines your milestone completed or
+discovered. Then open the PR. A milestone is not done
 until `pnpm format && pnpm typecheck && pnpm build` are green and the card's **Exit criteria** are
 each demonstrably met — evidence on the PR, not an assertion.
 
@@ -40,6 +47,12 @@ pair the column does not name. Both branch from `main`, not from each other.
 
 **Status legend:** ⬜ not started · 🟡 in progress · 🔵 in review · ✅ done · ⛔ blocked
 
+The middle of that list is where the board rots, so the two statuses either side of the merge are
+defined rather than left to taste. **🔵 is "work done, PR open"** — the last thing a session can
+truthfully say about itself, and therefore what every milestone lands as. **✅ is "merged"**, which
+only a later reader can assert; it is written by the next session under _Opening a milestone_,
+never by the one that did the work.
+
 ---
 
 ## Live status
@@ -48,11 +61,11 @@ pair the column does not name. Both branch from `main`, not from each other.
 | ------- | --------------------------- | ------ | ----------------------- | ------------ | ------------ | ----------------------------------------------------------------------------------------------------- | ---------- |
 | **M0**  | Product decisions           | owner  | ✅                      | —            | —            | —                                                                                                     | 2026-08-25 |
 | **M1**  | Measure the parameters      | spike  | ✅ (applied by M2b)     | —            | —            | `claude/routes-travel-time-m1-spike-sn7pod` · [#695](https://github.com/assafmanor/waypoint/pull/695) | 2026-08-25 |
-| **M1b** | Make the dev seed routable  | impl   | 🔵                      | —            | all          | `claude/dev-seed-routable-m1b-6il7cq` · [#700](https://github.com/assafmanor/waypoint/pull/700)       | 2026-08-25 |
+| **M1b** | Make the dev seed routable  | impl   | ✅                      | —            | all          | `claude/dev-seed-routable-m1b-6il7cq` · [#700](https://github.com/assafmanor/waypoint/pull/700)       | 2026-08-25 |
 | **M2**  | Shared derivations          | impl   | ✅                      | M0           | M1, M3       | `claude/routes-epic-m2-nkbf4d` · [#694](https://github.com/assafmanor/waypoint/pull/694)              | 2026-08-25 |
 | **M2b** | Apply M1's numbers to code  | impl   | ✅ **M4 unblocked**     | M1, M2       | M3           | `claude/routes-epic-m2b-q0pxkn` · [#699](https://github.com/assafmanor/waypoint/pull/699)             | 2026-08-25 |
 | **M3**  | Design session + mockups    | design | ✅                      | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696)       | 2026-08-25 |
-| **M4**  | Backend routing module      | impl   | 🔵 **M5/M10 unblocked** | M1, M2, M2b  | M3           | `claude/m4-backend-routing-0giz72` · [#702](https://github.com/assafmanor/waypoint/pull/702)          | 2026-08-25 |
+| **M4**  | Backend routing module      | impl   | ✅ **M5/M10 unblocked** | M1, M2, M2b  | M3           | `claude/m4-backend-routing-0giz72` · [#702](https://github.com/assafmanor/waypoint/pull/702)          | 2026-08-25 |
 | **M5**  | Frontend data layer         | impl   | ⬜                      | M2, M4       | M3, M10      | —                                                                                                     | —          |
 | **M6a** | The day reads               | impl   | ⬜                      | M3, M5       | M6b, M7, M9  | —                                                                                                     | —          |
 | **M6b** | The hero read               | impl   | ⬜                      | M3, M5       | M6a, M7, M9  | —                                                                                                     | —          |
