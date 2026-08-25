@@ -305,6 +305,19 @@ vi.mock('../lib/useMapArchives', () => ({
   }),
 }));
 
+/** **Which leg the amber line was asked for** (ADR-0206 §D8/§AB2). The shape itself is a fetch
+ *  and a decode, both of which are `lib/travel.ts`'s own spec; what belongs HERE is the rule
+ *  that picks the leg, which is the screen's. */
+const askedLeg: { current: unknown } = { current: undefined };
+const askedMode: { current: unknown } = { current: undefined };
+vi.mock('../lib/travel', () => ({
+  useLegShape: ({ leg, mode }: { leg: unknown; mode: unknown }) => {
+    askedLeg.current = leg;
+    askedMode.current = mode;
+    return null;
+  },
+}));
+
 /** The pane, stubbed: it reports what it was told to draw and lets a test tap a pin.
  *  Everything a rendered canvas would do is out of reach of the suite (§13). */
 const paneProps: { current: Record<string, unknown> } = { current: {} };
@@ -3992,6 +4005,102 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       fireEvent.click(listButton(t.map.allDays));
       expect(paneProps.current.connector).toBeUndefined();
       expect(screen.queryByRole('link', { name: new RegExp(t.map.dayRoute) })).toBeNull();
+    });
+  });
+
+  // ADR-0206 §D8 rations the solid amber to ONE leg and §AB2 says which: the journey INTO the
+  // stop you asked about. What picks that stop is `selected → next → the day's first leg`, and
+  // the last of the three is what makes Plan mode draw at all.
+  describe('which leg the route line is spent on (§D8/§AB2)', () => {
+    const seedThreeStopDay = () => {
+      tripPlaces = [
+        place('a', true, { lat: 35.6, lng: 139.6 }),
+        place('b', true, { lat: 35.7, lng: 139.7 }),
+        place('c', true, { lat: 35.8, lng: 139.8 }),
+      ];
+      tripEvents = [
+        event({ id: 'e1', placeId: 'a', startsAt: `${ACTIVE_DATE}T09:00:00Z` }),
+        event({ id: 'e2', placeId: 'b', startsAt: `${ACTIVE_DATE}T13:00:00Z` }),
+        event({ id: 'e3', placeId: 'c', startsAt: `${ACTIVE_DATE}T17:00:00Z` }),
+      ];
+    };
+
+    // **The owner's report.** `nextStopId` is Trip-mode only — a live "next" says nothing while
+    // you are planning — so a Plan day with nothing tapped had no stop to pick and drew no line
+    // at all. The day's first leg is what a plan opens on.
+    it('Plan mode with nothing selected draws the day’s FIRST leg', () => {
+      seedThreeStopDay();
+      currentMode = 'plan';
+      render(wrap(<MapView />));
+
+      expect(askedLeg.current).toEqual({
+        from: { lat: 35.6, lng: 139.6 },
+        to: { lat: 35.7, lng: 139.7 },
+      });
+    });
+
+    it('a tapped stop takes the line, and it is the leg ARRIVING there', () => {
+      seedThreeStopDay();
+      currentMode = 'plan';
+      render(wrap(<MapView />));
+
+      fireEvent.click(pin('c')!);
+
+      expect(askedLeg.current).toEqual({
+        from: { lat: 35.7, lng: 139.7 },
+        to: { lat: 35.8, lng: 139.8 },
+      });
+    });
+
+    // The one stop with no leg arriving at it takes the one departing it instead (§AB2).
+    it('the day’s first stop, tapped, takes the leg departing it', () => {
+      seedThreeStopDay();
+      currentMode = 'plan';
+      render(wrap(<MapView />));
+
+      fireEvent.click(pin('a')!);
+
+      expect(askedLeg.current).toEqual({
+        from: { lat: 35.6, lng: 139.6 },
+        to: { lat: 35.7, lng: 139.7 },
+      });
+    });
+
+    // **The mode is derived, never assumed** (ADR-0206 §Z2). It was a hardcoded `walking`, so the
+    // canvas drew a `pedestrian` route — through alleys and parks — over legs the trip drives.
+    it('asks for the trip’s derived mode: a car hire drives, everything else walks', () => {
+      seedThreeStopDay();
+      currentMode = 'plan';
+      const { unmount } = render(wrap(<MapView />));
+      expect(askedMode.current).toBe('walking');
+      unmount();
+
+      seedThreeStopDay();
+      tripBookings = [
+        {
+          id: 'bk-car',
+          tripId: 't1',
+          type: 'car',
+          title: 'hire',
+          source: 'manual',
+          createdAt: '',
+          updatedAt: '',
+          updatedBy: 'u1',
+        },
+      ];
+      render(wrap(<MapView />));
+      expect(askedMode.current).toBe('driving');
+    });
+
+    // All-days has no "the day's legs" to ration one from, so there is nothing to ask about.
+    it('asks for no leg at all-days scope', () => {
+      seedThreeStopDay();
+      currentMode = 'plan';
+      render(wrap(<MapView />));
+
+      fireEvent.click(listButton(t.map.allDays));
+
+      expect(askedLeg.current).toBeNull();
     });
   });
 

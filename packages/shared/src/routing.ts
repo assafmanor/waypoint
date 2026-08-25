@@ -7,8 +7,8 @@
 // leaks in — Valhalla's costing names, its error codes and its wire format live behind
 // ADR-0205 §2's port, in `backend/src/routing/`.
 import { z } from 'zod';
-import { TRAVEL_MODES } from './constants';
-import { travelModeSchema, type TravelMode } from './entities';
+import { BOOKING_TYPE, TRAVEL_MODE, TRAVEL_MODES } from './constants';
+import { travelModeSchema, type BookingType, type TravelMode } from './entities';
 import { haversineMeters, latLngSchema, type LatLng } from './geo';
 
 /* ── THE GEOMETRY (ADR-0205 §1) ──────────────────────────────────────────────────────────── */
@@ -322,6 +322,39 @@ export function routableLegs(
     });
   }
   return legs;
+}
+
+/* ── THE DEFAULT MODE (ADR-0206 §Z2) ─────────────────────────────────────────────────────── */
+
+/**
+ * **What kind of trip this is, derived from what was booked** — ADR-0206 §Z2's rule, and the
+ * owner's words for it: _"default could be inferred per trip"_. A column somebody sets would be
+ * stored state where a derivation will do (ADR-0018/0027).
+ *
+ * **A car hire is the whole of the inference, and that is not a simplification.** A hire is the
+ * one booking that hands you a vehicle you drive yourself (ADR-0162) — a flight, a train and a
+ * bus all leave you on foot at the far end, which is why §Z2 calls a trip of rail and flights a
+ * *walking* trip. So: a trip with a car in it drives, and every other trip walks.
+ *
+ * **Why this exists at all, stated so it is not "tidied" back to a constant.** Before it, the map
+ * drew every line as a `pedestrian` route because that was the hardcoded default — and on a leg
+ * anyone had actually driven, a footpath route through alleys and parks is not an imprecise
+ * answer, it is a wrong one. Valhalla is asked for `auto` costing now wherever the trip has a
+ * car.
+ *
+ * **What it deliberately does NOT do:** it is per TRIP, not per day and not per leg. A hire held
+ * Tuesday to Friday makes a two-week trip's every day drive, and a single walk inside a driving
+ * trip still reads as a drive. Both are the **per-leg override**'s job (§Z2: _"a per-leg override
+ * is the only thing persisted"_), which is M8's — and neither is a reason to keep guessing
+ * pedestrian for everyone.
+ *
+ * Takes the minimal shape it reads rather than `Booking`, so it stays testable with a literal and
+ * carries no dependency on the entity module.
+ */
+export function derivedTravelMode(bookings: readonly { type: BookingType }[]): TravelMode {
+  return bookings.some((booking) => booking.type === BOOKING_TYPE.CAR)
+    ? TRAVEL_MODE.DRIVING
+    : TRAVEL_MODE.WALKING;
 }
 
 /* ── THE BATCH (ADR-0205 §6, §Y2) ────────────────────────────────────────────────────────── */

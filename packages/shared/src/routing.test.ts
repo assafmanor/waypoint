@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { TRAVEL_MODE, TRAVEL_MODES } from './constants';
-import { travelModeSchema } from './entities';
+import { BOOKING_TYPE, TRAVEL_MODE, TRAVEL_MODES } from './constants';
+import { travelModeSchema, type BookingType } from './entities';
 import {
   EARTH_RADIUS_M,
   MAP_AREA_LINK_RADIUS_M,
@@ -9,6 +9,7 @@ import {
   type LatLng,
 } from './geo';
 import {
+  derivedTravelMode,
   POLYLINE_PRECISION,
   ROUTE_BATCH_MAX_STOPS,
   ROUTE_MIN_CROW_M,
@@ -298,5 +299,40 @@ describe('travelEstimateFor', () => {
     // client's to act on, and the user sees the crow-flies chip either way (ADR-0206 §D4).
     expect(travelEstimateFor(leg, TRAVEL_MODE.CYCLING)).toBeUndefined();
     expect(travelEstimateFor(leg, TRAVEL_MODE.DRIVING)).toBeUndefined();
+  });
+});
+
+/* ── THE DEFAULT MODE (ADR-0206 §Z2) ─────────────────────────────────────────────────────── */
+describe('derivedTravelMode', () => {
+  const booked = (...types: BookingType[]) => types.map((type) => ({ type }));
+
+  // §Z2: "a car hire is a driving trip". It is the one booking that hands you a vehicle you
+  // drive yourself (ADR-0162).
+  it('drives when the trip has a car hire', () => {
+    expect(derivedTravelMode(booked(BOOKING_TYPE.CAR))).toBe(TRAVEL_MODE.DRIVING);
+    expect(
+      derivedTravelMode(booked(BOOKING_TYPE.FLIGHT, BOOKING_TYPE.HOTEL, BOOKING_TYPE.CAR)),
+    ).toBe(TRAVEL_MODE.DRIVING);
+  });
+
+  // §Z2 again, and the half that is easy to get wrong: a flight and a train leave you on foot at
+  // the far end, so a trip of rail and flights is a WALKING trip, not a driving one.
+  it('walks a trip of flights, rail and transit — they all put you on foot at the far end', () => {
+    expect(
+      derivedTravelMode(booked(BOOKING_TYPE.FLIGHT, BOOKING_TYPE.TRAIN, BOOKING_TYPE.TRANSIT)),
+    ).toBe(TRAVEL_MODE.WALKING);
+  });
+
+  it('walks a trip with nothing booked at all', () => {
+    expect(derivedTravelMode([])).toBe(TRAVEL_MODE.WALKING);
+  });
+
+  // Pinned because it is the defect this function exists to close: the value it answers is what
+  // reaches Valhalla as a costing, and `walking` there means `pedestrian` — a footpath route
+  // drawn over a leg the trip drives.
+  it('only ever answers a mode the gate and the provider both know', () => {
+    for (const bookings of [booked(BOOKING_TYPE.CAR), booked(BOOKING_TYPE.FLIGHT), []]) {
+      expect(TRAVEL_MODES).toContain(derivedTravelMode(bookings));
+    }
   });
 });

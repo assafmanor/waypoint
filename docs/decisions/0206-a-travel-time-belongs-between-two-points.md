@@ -239,6 +239,21 @@ a trip whose transport is all rail and flights is a walking-and-transit trip. So
 (derived state, not stored) applying cleanly. A per-leg override is the only thing persisted, and
 only when someone actually sets one.
 
+**Built early, in M7 rather than M8, because M7 shipped without it and that was a defect
+(2026-08-25).** `derivedTravelMode(bookings)` in `packages/shared/src/routing.ts`: a trip with a
+`car` booking drives, every other trip walks. M7 drew its first polylines with a hardcoded
+`walking`, which reaches Valhalla as `pedestrian` costing — and the owner reported it from a leg
+they knew: _"I've added a route that I'm kind of familiar with and it gave me a weird route… unless
+the route that I got was for pedestrians, but it doesn't make sense to default to it."_ That is the
+correct reading. A footpath route over a leg the trip drives is not an imprecise answer, it is a
+**wrong** one, and a default parameter is what made it invisible. `useLegShape`'s `mode` is
+therefore **required**, so no future caller can fall into a default again.
+
+**Its two limits, stated rather than discovered.** It is per **trip**: a hire held Tuesday to
+Friday makes a two-week trip's every day drive, and a single walk inside a driving trip still reads
+as a drive. Both are the **per-leg override**'s job — still M8's, still the only thing persisted —
+and neither is a reason to keep guessing pedestrian for everyone in the meantime.
+
 **Instant.** This is a real technical requirement and it was under-specified. If a mode switch costs
 a network round-trip, "immediately" is a ~1 s wait per switch, and the control feels broken. So
 **every mode the gate admits for a leg is fetched together, up front**, and a switch is a read from
@@ -438,13 +453,22 @@ all-days is a trip's worth of legs with no day to pick from.
 The consequence is a Trip-mode canvas with one solid amber line and **no dashed connector under
 it** — which is correct rather than incomplete: the order is not what Trip mode is asking about.
 
-### AB2. The leg is the one arriving AT the stop you asked about
+### AB2. The leg is the one arriving AT the stop you asked about — and the fallback is the first leg
 
 "Selected or next" names a **stop**; a line needs two. The leg drawn is the journey **into** that
 stop — the selected pin's, or the next stop's when nothing is selected — because that is the
 question both reads answer (§V1.2's `~23 דק׳ · צאו ב־18:37` is the travel _to_ where you are
 going). The day's first stop is the one place with no such leg, so it takes the leg **departing**
 it instead.
+
+**Amended 2026-08-25: the rule is `selected → next → the day's FIRST leg`.** As first built it
+stopped at the second arm and drew nothing when neither answered — which meant **Plan mode drew
+nothing at all** unless you tapped a pin, because `nextStopId` is Trip-mode only by design (a live
+"next" says nothing while you are planning). Reported by the owner: _"I'd like to be able to see
+the polyline for plan mode as well."_ A plan opens on the journey it starts with, so the first leg
+is the honest default; in Trip mode the third arm can only fire before the day begins or after it
+ends, where the first leg is the right answer too. §AB1 already put the line in both modes — this
+is what makes that true in practice rather than only in principle.
 
 ### AB3. One line drawn buys one mode's geometry
 

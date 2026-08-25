@@ -32,6 +32,7 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  derivedTravelMode,
   EVENT_STATUS,
   matchesAnyTerm,
   type Booking,
@@ -1391,19 +1392,31 @@ export function MapView() {
   // Day scope still gates it — all-days has no "the day's legs" to pick one from.
   const routeLeg = useMemo(() => {
     if (allDays || orderedPins.length < 2) return null;
-    const asked = orderedPins.findIndex((pin) => pin.selected);
-    const target = asked >= 0 ? asked : orderedPins.findIndex((pin) => pin.nextStop);
-    if (target < 0) return null;
-    const to = orderedPins[Math.max(target, 1)]!;
-    const from = orderedPins[Math.max(target, 1) - 1]!;
+    const selected = orderedPins.findIndex((pin) => pin.selected);
+    const asked = selected >= 0 ? selected : orderedPins.findIndex((pin) => pin.nextStop);
+    // **Selected → next → the day's FIRST leg**, and the third arm is what makes Plan mode draw
+    // at all: `nextStopId` is Trip-mode only (a live "next" says nothing while you are planning),
+    // so a Plan day with nothing tapped had no stop to pick and drew nothing. A plan opens on the
+    // journey it starts with. In Trip mode the fallback can only fire before the day begins or
+    // after it ends, where the first leg is the honest answer too.
+    const arriveAt = Math.max(asked, 1);
+    const to = orderedPins[arriveAt]!;
+    const from = orderedPins[arriveAt - 1]!;
     return { from: { lat: from.lat, lng: from.lng }, to: { lat: to.lat, lng: to.lng } };
   }, [orderedPins, allDays]);
+
+  // **What kind of trip this is** (ADR-0206 §Z2), derived rather than stored. Not a constant: a
+  // hardcoded `walking` drew footpath routes over legs the trip drives, which is a wrong line
+  // rather than an imprecise one. Per trip, so a single walk inside a driving trip still reads as
+  // a drive — that is the per-leg override's job (M8), not a reason to guess pedestrian for
+  // everyone.
+  const travelMode = useMemo(() => derivedTravelMode(bookings), [bookings]);
 
   // ONE shape request for that one leg, cached and read back through the same `routeLegKey` the
   // day's own numbers use (ADR-0206 §D8) — so a day of N legs never issues N shape calls, and
   // the line and the numbers cannot disagree about a leg. `null` is ordinary: the dashed
   // connector stands and nobody sees an error (§D4).
-  const routeShape = useLegShape({ tripId: trip.id, leg: routeLeg });
+  const routeShape = useLegShape({ tripId: trip.id, leg: routeLeg, mode: travelMode });
 
   const areaCount = useMemo(
     () => (viewBounds ? countPointsInBounds(pins, viewBounds) : null),

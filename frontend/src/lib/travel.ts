@@ -22,7 +22,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   decodeShape,
   routeLegKey,
-  TRAVEL_MODE,
   TRAVEL_MODES,
   type LatLng,
   type RoutedLeg,
@@ -308,6 +307,12 @@ export interface TravelLeg {
  * M8's control does not exist yet. When it does, the widening is this array: `modes: [mode]`
  * becomes the modes the gate admits, and the switch stays request-free (§Z5 §M5).
  *
+ * **`mode` is REQUIRED, and that is the fix for a shipped defect rather than strictness for its
+ * own sake.** It was optional with a `walking` default, so the map drew every line as a
+ * `pedestrian` route — through alleys and parks, on legs the trip drives. A footpath drawn over a
+ * drive is not a rounding error, it is a wrong route, and a default is what made it invisible.
+ * Callers derive the mode (`derivedTravelMode`, ADR-0206 §Z2); the compiler now says so.
+ *
  * It reads back through **the same `routeLegKey` and the same Dexie table** `useDayTravel` uses,
  * so the line and the day's numbers can never disagree about a leg — and a leg whose shape is
  * already stored draws with no request at all.
@@ -319,9 +324,9 @@ export interface TravelLeg {
 export function useLegShape(opts: {
   tripId: string;
   leg: TravelLeg | null;
-  mode?: TravelMode;
+  mode: TravelMode;
 }): readonly LatLng[] | null {
-  const { tripId, leg, mode = TRAVEL_MODE.WALKING } = opts;
+  const { tripId, leg, mode } = opts;
   const preview = useIsDayPreview();
   const offline = useIsOffline();
   const [drawn, setDrawn] = useState<{ key: string; points: readonly LatLng[] } | null>(null);

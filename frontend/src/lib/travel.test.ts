@@ -242,7 +242,9 @@ describe('useLegShape', () => {
   it('asks for ONE two-stop leg with shapes, and decodes what comes back', async () => {
     routes.fetchRoutes.mockResolvedValue(shaped);
 
-    const { result, unmount } = renderHook(() => useLegShape({ tripId: TRIP_ID, leg: LEG }));
+    const { result, unmount } = renderHook(() =>
+      useLegShape({ tripId: TRIP_ID, leg: LEG, mode: TRAVEL_MODE.WALKING }),
+    );
 
     await waitFor(() => expect(result.current).toEqual(ASAKUSA_POINTS));
     expect(routes.fetchRoutes).toHaveBeenCalledTimes(1);
@@ -265,7 +267,9 @@ describe('useLegShape', () => {
   });
 
   it('draws nothing, and asks nothing, with no leg to draw', async () => {
-    const { result, unmount } = renderHook(() => useLegShape({ tripId: TRIP_ID, leg: null }));
+    const { result, unmount } = renderHook(() =>
+      useLegShape({ tripId: TRIP_ID, leg: null, mode: TRAVEL_MODE.WALKING }),
+    );
 
     await act(async () => {});
     expect(result.current).toBeNull();
@@ -277,7 +281,9 @@ describe('useLegShape', () => {
     await cacheTravelEstimates([ASAKUSA, TSUKIJI], [leg([walkWithShape])]);
     setOnline(false);
 
-    const { result, unmount } = renderHook(() => useLegShape({ tripId: TRIP_ID, leg: LEG }));
+    const { result, unmount } = renderHook(() =>
+      useLegShape({ tripId: TRIP_ID, leg: LEG, mode: TRAVEL_MODE.WALKING }),
+    );
 
     await waitFor(() => expect(result.current).toEqual(ASAKUSA_POINTS));
     expect(routes.fetchRoutes).not.toHaveBeenCalled();
@@ -286,7 +292,9 @@ describe('useLegShape', () => {
 
   it('never asks from inside a peek', async () => {
     preview = true;
-    const { result, unmount } = renderHook(() => useLegShape({ tripId: TRIP_ID, leg: LEG }));
+    const { result, unmount } = renderHook(() =>
+      useLegShape({ tripId: TRIP_ID, leg: LEG, mode: TRAVEL_MODE.WALKING }),
+    );
 
     await act(async () => {});
     expect(result.current).toBeNull();
@@ -299,12 +307,16 @@ describe('useLegShape', () => {
   it('answers null for a leg nothing can route, and never asks about it again', async () => {
     routes.fetchRoutes.mockResolvedValue({ legs: [] } satisfies RouteBatch);
 
-    const first = renderHook(() => useLegShape({ tripId: TRIP_ID, leg: LEG }));
+    const first = renderHook(() =>
+      useLegShape({ tripId: TRIP_ID, leg: LEG, mode: TRAVEL_MODE.WALKING }),
+    );
     await waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(1));
     expect(first.result.current).toBeNull();
     first.unmount();
 
-    const second = renderHook(() => useLegShape({ tripId: TRIP_ID, leg: LEG }));
+    const second = renderHook(() =>
+      useLegShape({ tripId: TRIP_ID, leg: LEG, mode: TRAVEL_MODE.WALKING }),
+    );
     await act(async () => {});
     expect(routes.fetchRoutes).toHaveBeenCalledTimes(1);
     second.unmount();
@@ -315,13 +327,17 @@ describe('useLegShape', () => {
   // the rest of the session. An answer that came back WITHOUT a shape is therefore not final.
   it('asks again for a leg whose shape the day’s matrix wrote over', async () => {
     routes.fetchRoutes.mockResolvedValue({ legs: [leg([walk])] } satisfies RouteBatch);
-    const first = renderHook(() => useLegShape({ tripId: TRIP_ID, leg: LEG }));
+    const first = renderHook(() =>
+      useLegShape({ tripId: TRIP_ID, leg: LEG, mode: TRAVEL_MODE.WALKING }),
+    );
     await waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(1));
     expect(first.result.current).toBeNull();
     first.unmount();
 
     routes.fetchRoutes.mockResolvedValue(shaped);
-    const second = renderHook(() => useLegShape({ tripId: TRIP_ID, leg: LEG }));
+    const second = renderHook(() =>
+      useLegShape({ tripId: TRIP_ID, leg: LEG, mode: TRAVEL_MODE.WALKING }),
+    );
 
     await waitFor(() => expect(second.result.current).toEqual(ASAKUSA_POINTS));
     expect(routes.fetchRoutes).toHaveBeenCalledTimes(2);
@@ -333,7 +349,7 @@ describe('useLegShape', () => {
   it('never draws a shape that belongs to the leg before this one', async () => {
     routes.fetchRoutes.mockResolvedValue(shaped);
     const { result, rerender, unmount } = renderHook((leg: typeof LEG | null) =>
-      useLegShape({ tripId: TRIP_ID, leg }),
+      useLegShape({ tripId: TRIP_ID, leg, mode: TRAVEL_MODE.WALKING }),
     );
 
     rerender(LEG);
@@ -348,7 +364,9 @@ describe('useLegShape', () => {
     vi.useFakeTimers();
     routes.fetchRoutes.mockResolvedValue({ legs: [leg([walk])], retryAfterSeconds: 2 });
 
-    const { unmount } = renderHook(() => useLegShape({ tripId: TRIP_ID, leg: LEG }));
+    const { unmount } = renderHook(() =>
+      useLegShape({ tripId: TRIP_ID, leg: LEG, mode: TRAVEL_MODE.WALKING }),
+    );
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
@@ -369,7 +387,9 @@ describe('useLegShape', () => {
 
   it('mirrors the shape it bought, so re-selecting the leg draws it with no request', async () => {
     routes.fetchRoutes.mockResolvedValue(shaped);
-    const { unmount } = renderHook(() => useLegShape({ tripId: TRIP_ID, leg: LEG }));
+    const { unmount } = renderHook(() =>
+      useLegShape({ tripId: TRIP_ID, leg: LEG, mode: TRAVEL_MODE.WALKING }),
+    );
     await waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(1));
     unmount();
 
