@@ -367,6 +367,10 @@ export interface MapPaneProps {
   /** The day's stops in order — a dashed neutral connector, Plan mode + day scope
    *  only (§10). Absent (or under two points) draws nothing. */
   connector?: readonly LatLng[];
+  /** **The one drawn route** (ADR-0206 §D1/§D8) — the provider's own geometry for the selected
+   *  or next leg, solid and amber over the dash. One at a time is the rule, and it is the
+   *  caller's to keep: this draws whatever it is handed. Absent draws nothing. */
+  route?: readonly LatLng[];
   /** Changes exactly when a control changed the pin SET, so the camera re-frames
    *  then and at no other time (§7). */
   setSignal: string;
@@ -595,6 +599,7 @@ function MapPaneInner({
   onSelectResult,
   me,
   connector,
+  route,
   setSignal,
   defaultCentre,
   onSelectPin,
@@ -1032,7 +1037,7 @@ function MapPaneInner({
           ))}
           {me && <MeMarker map={map} gl={gl} at={me} />}
           {draftMarker && <DraftMarker map={map} gl={gl} marker={draftMarker} />}
-          <DayConnector map={map} path={connector} scheme={scheme} />
+          <DayConnector map={map} path={connector} route={route} scheme={scheme} />
           {/* **The wait, stated** (field report #35). Until the first tile paints the canvas
             is empty while our own markers already draw on it — the very picture #28 reported
             as a failure. Over the canvas rather than instead of it: the renderer needs its own
@@ -1378,9 +1383,35 @@ const DRAFT_MARKER_Z = 950;
  *  added and never removed). */
 const CONNECTOR = { source: 'wp-connector', layer: 'wp-connector-line' } as const;
 
-/** The day's order as a dashed neutral line (§10). Dashed because a straight segment is not
- *  the route you will walk — drawing it solid would claim it is — which also leaves
- *  **solid + amber** unspent for a real Routes polyline later.
+/** The route's own pair, for the same reason — and separate ids rather than a second feature in
+ *  the connector's source: the two lines are painted differently and the route comes and goes on
+ *  its own (a selection moves, a shape arrives) while the day's order does not. */
+const ROUTE = { source: 'wp-route', layer: 'wp-route-line' } as const;
+
+/** A content key for a path, so a clock tick handing down a fresh array is not a new line. Same
+ *  trick the screen uses for `pins`, one layer down — and shared by both geometries below, which
+ *  is what keeps "what changed" one question rather than two. */
+const pathKey = (path?: readonly LatLng[]): string =>
+  path && path.length >= 2 ? JSON.stringify(path.map((at) => lngLat(at))) : '';
+
+const lineFeature = (key: string) => ({
+  type: 'Feature' as const,
+  geometry: { type: 'LineString' as const, coordinates: JSON.parse(key) as number[][] },
+  properties: {},
+});
+
+/** **The day's two lines, and they say different things.**
+ *
+ *  `path` is the day's ORDER as a dashed neutral line (§10). Dashed because a straight segment is
+ *  not the route you will walk — drawing it solid would claim it is — which also left
+ *  **solid + amber** unspent for a real Routes polyline. `route` is that polyline: the provider's
+ *  own geometry for **one** leg, solid and amber (ADR-0206 §D1/§D8). Five solid amber lines on a
+ *  phone is the fight ADR-0121 §9 says the pins must win, so the caller draws one at a time and
+ *  every other leg keeps the dash.
+ *
+ *  **One component and one effect, not a layer beside this one** (ADR-0206 §M7): the source/layer
+ *  ids, the style-reload guard and the teardown all already live here, and a route is one more
+ *  geometry through them.
  *
  *  **The fake is gone** (ADR-0186 §2). ADR-0121 §10 had to write _"the Maps API has no
  *  `strokeDasharray`, so a dash is a repeating symbol along a fully transparent stroke"_;
@@ -1392,48 +1423,58 @@ const CONNECTOR = { source: 'wp-connector', layer: 'wp-connector-line' } as cons
 const DayConnector = memo(function DayConnector({
   map,
   path,
+  route,
   scheme,
 }: {
   map: MapLibreMap | null;
   path?: readonly LatLng[];
+  /** The drawn route for the selected-or-next leg, already decoded (`lib/travel.ts`). Absent —
+   *  no leg, no shape yet, offline, refused — draws nothing, and that is the ordinary state
+   *  rather than an error (ADR-0206 §D4). */
+  route?: readonly LatLng[];
   /** The canvas's OWN scheme. This used to be latched at construction because a Map ID's
    *  style could not be changed on a live map (ADR-0121 §11) — ADR-0186 §7 removes that
    *  limit, and the line still takes the same value the ground was painted from so the two
    *  cannot disagree after a theme flip. */
   scheme: MapColorScheme;
 }) {
-  // A content key, so a clock tick handing down a fresh array is not a new line. Same trick
-  // the screen uses for `pins`, one layer down.
-  const shape = path && path.length >= 2 ? path.map((at) => lngLat(at)) : null;
-  const shapeKey = shape ? JSON.stringify(shape) : '';
+  const shapeKey = pathKey(path);
+  const routeKey = pathKey(route);
+  const dark = scheme === MAP_COLOR_SCHEME.dark;
 
   useEffect(() => {
-    if (!map || !shapeKey) return;
-    const data = {
-      type: 'Feature' as const,
-      geometry: { type: 'LineString' as const, coordinates: JSON.parse(shapeKey) as number[][] },
-      properties: {},
-    };
+    if (!map || (!shapeKey && !routeKey)) return;
     const draw = () => {
       // The style is torn down and rebuilt by a theme swap, so "already added" has to be
       // asked rather than remembered — a flag would go stale the moment the ground restyles.
-      const existing = map.getSource(CONNECTOR.source);
-      if (existing) {
-        (existing as unknown as { setData: (d: unknown) => void }).setData(data);
-        return;
-      }
-      map.addSource(CONNECTOR.source, { type: 'geojson', data });
-      map.addLayer({
-        id: CONNECTOR.layer,
-        type: 'line',
-        source: CONNECTOR.source,
+      // Asked per geometry, because the two arrive at different times: a shape fetched while
+      // the day was already drawn must not find the connector's answer and skip itself.
+      const put = (ids: { source: string; layer: string }, key: string, layer: object) => {
+        if (!key) return;
+        const existing = map.getSource(ids.source);
+        if (existing) {
+          (existing as unknown as { setData: (d: unknown) => void }).setData(lineFeature(key));
+          return;
+        }
+        map.addSource(ids.source, { type: 'geojson', data: lineFeature(key) });
+        map.addLayer({ id: ids.layer, type: 'line', source: ids.source, ...layer });
+      };
+
+      put(CONNECTOR, shapeKey, {
         paint: {
-          'line-color':
-            scheme === MAP_COLOR_SCHEME.dark ? MAP_CONNECTOR.COLOR.dark : MAP_CONNECTOR.COLOR.light,
+          'line-color': dark ? MAP_CONNECTOR.COLOR.dark : MAP_CONNECTOR.COLOR.light,
           'line-width': MAP_CONNECTOR.WEIGHT,
           // It carries no arrowheads: the numbers are the order, and at phone size an
           // arrowhead on a 2.5px dashed line is mush (§10).
           'line-dasharray': [...MAP_CONNECTOR.DASH],
+        },
+      });
+      // Added second, so the route sits over the order it is one leg of.
+      put(ROUTE, routeKey, {
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': dark ? MAP_CONNECTOR.ROUTE.COLOR.dark : MAP_CONNECTOR.ROUTE.COLOR.light,
+          'line-width': MAP_CONNECTOR.ROUTE.WEIGHT,
         },
       });
     };
@@ -1446,13 +1487,15 @@ const DayConnector = memo(function DayConnector({
       // Guarded rather than trusted: on unmount the map may already be `remove()`d by
       // `MapCanvas`, in which case there is no style left to take a layer out of.
       try {
-        if (map.getLayer(CONNECTOR.layer)) map.removeLayer(CONNECTOR.layer);
-        if (map.getSource(CONNECTOR.source)) map.removeSource(CONNECTOR.source);
+        for (const ids of [CONNECTOR, ROUTE]) {
+          if (map.getLayer(ids.layer)) map.removeLayer(ids.layer);
+          if (map.getSource(ids.source)) map.removeSource(ids.source);
+        }
       } catch {
         // The map is gone; its layers went with it.
       }
     };
-  }, [map, shapeKey, scheme]);
+  }, [map, shapeKey, routeKey, dark]);
 
   return null;
 });

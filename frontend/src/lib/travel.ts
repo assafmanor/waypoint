@@ -20,7 +20,9 @@
 //   3. **A peek never fetches** (ADR-0200 §7, and see `useDayTravel`).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  decodeShape,
   routeLegKey,
+  TRAVEL_MODE,
   TRAVEL_MODES,
   type LatLng,
   type RoutedLeg,
@@ -60,10 +62,23 @@ const LEG_KEY_SEPARATOR = '|';
  *  numbers at all: the next time you open it, it asks again. */
 const askedDays = new Set<string>();
 
-/** Test seam. The set above is module state by design (it outlives every day surface), so a spec
- *  that mounts the same day twice needs to be able to clear it. */
+/** **Legs there is no geometry to be had for** — `useLegShape`'s half of the set above, and
+ *  deliberately a second one rather than a shared one: a one-leg day's fingerprint IS a
+ *  `routeLegKey`, so a shape ask recorded in `askedDays` would silently convince that day its
+ *  matrix had already been answered.
+ *
+ *  **Only a leg that answered with NOTHING is recorded** — refused by the gate, over the ceiling,
+ *  provider down. A leg that answered without a `shape` is deliberately left askable: that is what
+ *  a day's shapeless matrix leaves behind when it overwrites a row this hook had filled (see
+ *  `cacheTravelEstimates`), and recording it would delete the line for the rest of the session.
+ *  Asking again heals it, at one request per day-visit cycle. */
+const askedLegShapes = new Set<string>();
+
+/** Test seam. Both sets above are module state by design (they outlive every surface), so a spec
+ *  that mounts the same day or the same leg twice needs to be able to clear them. */
 export function resetAskedDaysForTests(): void {
   askedDays.clear();
+  askedLegShapes.clear();
 }
 
 /** Every (consecutive pair × mode) key a day would ask about. Consecutive only: a day is a
@@ -98,7 +113,14 @@ function estimatesOf(
 }
 
 /** Mirror what came back. Idempotent and last-write-wins by nature — the server is the only
- *  author, so there is nothing to reconcile. */
+ *  author, so there is nothing to reconcile.
+ *
+ *  **Last-write-wins costs a shape, deliberately.** A matrix answer carries no geometry (ADR-0205
+ *  §4), so a day's ask overwrites a row `useLegShape` had fetched a `shape` into. The answer to
+ *  that is for the map to ask again, not for this to read-modify-write: reading first lands the
+ *  write an IndexedDB transaction later than a caller can observe it, which trades a race on the
+ *  DAY's hot path for one saved request on the map's. `useLegShape` closes it from its own side
+ *  by never recording a shapeless answer as final. */
 export async function cacheTravelEstimates(
   stops: readonly LatLng[],
   legs: readonly RoutedLeg[],
@@ -258,4 +280,123 @@ export function useDayTravel(opts: {
     }),
     [known],
   );
+}
+
+/** **One leg, as a pair of points.** Not `RoutedLeg`'s index pair: the map names the two ends it
+ *  wants a line between, and indices into an array it does not hold would be a second thing to
+ *  keep in step. */
+export interface TravelLeg {
+  from: LatLng;
+  to: LatLng;
+}
+
+/**
+ * **The drawable geometry of ONE leg** — ADR-0206 §D8's "at most one route line drawn at a time",
+ * as a fetch rather than as a rule someone remembers.
+ *
+ * `useDayTravel` above deliberately never asks for geometry: a matrix answers a whole day's
+ * durations in one call and returns **no shape at all** (ADR-0205 §4), so a drawable line is a
+ * second call **per leg**. Widening the day's own request would therefore put N calls behind
+ * every day view for a surface that draws one line — which is the thing §D8 exists to prevent.
+ * So the ask lives here, one leg at a time, and the map hands it the selected-or-next leg.
+ *
+ * **The tripwire, stated so a later change trips it rather than shipping:** a day of N legs
+ * issuing N shape calls means this was called per leg. One line drawn is one shape asked for.
+ *
+ * **One mode, because one line is drawn.** ADR-0206 §Z2 fetches every mode's DURATION up front
+ * so the mode control answers from cache — but a shape costs an upstream route call per mode, and
+ * M8's control does not exist yet. When it does, the widening is this array: `modes: [mode]`
+ * becomes the modes the gate admits, and the switch stays request-free (§Z5 §M5).
+ *
+ * It reads back through **the same `routeLegKey` and the same Dexie table** `useDayTravel` uses,
+ * so the line and the day's numbers can never disagree about a leg — and a leg whose shape is
+ * already stored draws with no request at all.
+ *
+ * `null` is ordinary, exactly as it is above: no leg, offline, inside a peek, refused by the
+ * gate, still warming, a shape that decoded to nothing. The dashed connector stands and nobody
+ * sees an error (§D4).
+ */
+export function useLegShape(opts: {
+  tripId: string;
+  leg: TravelLeg | null;
+  mode?: TravelMode;
+}): readonly LatLng[] | null {
+  const { tripId, leg, mode = TRAVEL_MODE.WALKING } = opts;
+  const preview = useIsDayPreview();
+  const offline = useIsOffline();
+  const [drawn, setDrawn] = useState<{ key: string; points: readonly LatLng[] } | null>(null);
+
+  // Keyed on CONTENT for the reason the day's fingerprint is: the map derives its pins every
+  // render and re-renders on the clock, so an object dep would re-ask on a render that changed
+  // nothing. The values themselves are read through a ref.
+  const key = leg ? routeLegKey(leg.from, leg.to, mode) : '';
+  const at = useRef({ leg, mode });
+  at.current = { leg, mode };
+
+  useEffect(() => {
+    if (!key) return;
+    const { leg: want, mode: wanted } = at.current;
+    if (!want) return;
+    const stops = [want.from, want.to];
+    const controller = new AbortController();
+    let live = true;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+
+    /** True when the estimate carried geometry worth drawing. A one-point line is not a line. */
+    const take = (estimate?: TravelEstimate): boolean => {
+      const points = estimate?.shape ? decodeShape(estimate.shape) : [];
+      if (points.length < 2) return false;
+      if (live) setDrawn({ key, points });
+      return true;
+    };
+
+    const ask = (isRetry: boolean): void => {
+      void fetchRoutes(tripId, { stops, modes: [wanted], withShapes: true }, controller.signal)
+        .then((batch) => {
+          const answer = estimatesOf(stops, batch.legs).get(key);
+          take(answer);
+          void cacheTravelEstimates(stops, batch.legs).catch(() => {
+            // Storing is an optimisation for the next visit; the line is already drawn.
+          });
+          if (batch.retryAfterSeconds === undefined) {
+            // Nothing answered means nothing ever will; an answer that merely carried no shape
+            // stays askable (see `askedLegShapes`).
+            if (!answer) askedLegShapes.add(key);
+            return;
+          }
+          // Warming: one wait, then let it go — same rule as the day's, and for the same
+          // reason. Not recorded, so selecting this leg again asks again.
+          if (isRetry) return;
+          retry = setTimeout(() => ask(true), warmRetryMs(batch.retryAfterSeconds));
+        })
+        .catch(() => {
+          // Nothing to report (§D4). The dashed connector is a complete state.
+        });
+    };
+
+    const askIfWorthIt = (): void => {
+      if (preview || offline || askedLegShapes.has(key)) return;
+      ask(false);
+    };
+
+    void readCachedTravelEstimates([key])
+      .then((cached) => {
+        if (!live) return;
+        if (!take(cached.get(key))) askIfWorthIt();
+      })
+      .catch(() => {
+        if (live) askIfWorthIt();
+      });
+
+    return () => {
+      live = false;
+      controller.abort();
+      clearTimeout(retry);
+    };
+  }, [tripId, key, preview, offline]);
+
+  // Answering only for the leg currently asked about: a shape that arrives after the selection
+  // moved belongs to a leg nobody is looking at, and drawing it would put an amber line between
+  // two points the map is no longer talking about.
+  return drawn && drawn.key === key ? drawn.points : null;
 }

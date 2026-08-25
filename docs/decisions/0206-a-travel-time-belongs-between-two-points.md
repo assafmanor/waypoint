@@ -417,3 +417,70 @@ design session.
 **What V2's transit row now means:** transit _routing_ — a real ETA from a real feed — is still
 deferred, still needs self-hosted MOTIS, and still gets its own ADR. This changes only who may
 assert the mode.
+
+## AB. Amendment (2026-08-25) — what M7 settled by drawing the line
+
+§Z5 §M3 measured the polyline and §D8 rationed it; building it took four decisions the measurement
+did not cover. All four are small, and all four are the kind that a later reader would otherwise
+have to guess at from the code.
+
+### AB1. The route is NOT gated on Plan mode, though the dashed connector is
+
+ADR-0121 §10 draws the day's order in **Plan mode + day scope only**, on the reasoning that
+revealing a day's shape is a planning question while Trip mode wants "where is next" and a quieter
+canvas. **The route inverts the second half of that**: it _is_ "where is next", drawn between the
+two points §D2 says it belongs between, so Trip mode is where it earns most. It draws in both
+modes.
+
+**Day scope still gates it**, because §D8's "the selected or next leg" has no referent without one:
+all-days is a trip's worth of legs with no day to pick from.
+
+The consequence is a Trip-mode canvas with one solid amber line and **no dashed connector under
+it** — which is correct rather than incomplete: the order is not what Trip mode is asking about.
+
+### AB2. The leg is the one arriving AT the stop you asked about
+
+"Selected or next" names a **stop**; a line needs two. The leg drawn is the journey **into** that
+stop — the selected pin's, or the next stop's when nothing is selected — because that is the
+question both reads answer (§V1.2's `~23 דק׳ · צאו ב־18:37` is the travel _to_ where you are
+going). The day's first stop is the one place with no such leg, so it takes the leg **departing**
+it instead.
+
+### AB3. One line drawn buys one mode's geometry
+
+§Z2 fetches every mode's **duration** up front so the mode control answers from cache with no
+request. A **shape** is not free the same way: it costs an upstream route call per leg per mode
+(`routing.service.ts`), and §D8 draws one line. So `useLegShape` asks for the drawn mode only.
+
+**§Z5 §M5's "a switch redraws the polyline from cache with no request" is therefore M8's to
+finish**, and the widening is one array: `modes: [mode]` becomes the modes the gate admits for that
+leg. Recorded here because the two statements otherwise read as a contradiction rather than as a
+sequence.
+
+### AB4. A shapeless answer is "ask again", never "never" — and the mirror stays last-write-wins
+
+The matrix returns no geometry (ADR-0205 §4), so `useDayTravel`'s day-wide answer **overwrites** the
+shape the map just bought for one of its legs. Two places could hold the line against that, and the
+first one is wrong:
+
+- **Read-modify-write in `cacheTravelEstimates`** — carry a held shape forward. **Rejected, and
+  measured:** reading first lands the write one IndexedDB transaction later than a caller can
+  observe it, and M5's own "does not re-ask a day it already answered in full" spec then fails
+  intermittently, because the next mount's Dexie read wins the race and the day comes up empty
+  forever. That is a race on the DAY's hot path bought for one saved request on the map's.
+- **`useLegShape` not treating a shapeless answer as final.** Only a leg that came back with **no
+  estimate at all** — refused by the gate, over the ceiling, provider down — is remembered as
+  unaskable. A leg that answered without a shape stays askable, so the overwrite heals itself with
+  one request the next time that leg is drawn.
+
+The cost is stated rather than hidden: **one extra shape request per day-visit cycle** for a leg you
+return to. The server pays it from its own cache in most cases (it re-fetches only when `withShapes`
+finds no shape stored), and §D8's tripwire is untouched — one line drawn is still one shape asked
+for.
+
+### The paint, for the record
+
+`MAP_CONNECTOR.ROUTE` in `frontend/src/constants.ts`: `#915e1e` light (`--amber-deep`, **4.50:1**
+on `earth #eee8dc`) and `#f0b254` dark (dark-theme `--amber`, **7.01:1** on `earth #343027`), at
+**3.5px** with round caps and joins — heavier than the 2.5px dash because it makes the opposite
+claim, and round-jointed because a many-vertex line on mitre joins spikes at every turn.

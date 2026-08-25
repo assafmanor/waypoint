@@ -268,6 +268,7 @@ function paint(props: Partial<Parameters<typeof MapPane>[0]> = {}) {
       onHold={props.onHold}
       me={props.me}
       connector={props.connector}
+      route={props.route}
       defaultCentre={props.defaultCentre}
       results={props.results}
       onSelectResult={props.onSelectResult}
@@ -283,10 +284,28 @@ const pins = () => [...document.querySelectorAll('.map-pin')];
  *  is a plain element we own, so its click is in the same stream everything else is. */
 const firePinTap = (pin: Element) => act(() => void fireEvent.click(pin));
 const markers = () => [...document.querySelectorAll<HTMLElement>('.map-marker')];
+/** A line layer by id. **By id and not by type**, because there are two of them now: the day's
+ *  dashed order and the one solid route drawn over it (ADR-0206 §D8). */
+const lineLayer = (id: string) =>
+  mapStub.current.layers.find((layer) => layer.id === id) as
+    { paint: Record<string, unknown>; layout?: Record<string, unknown> } | undefined;
 /** The day connector, as it now exists: a line layer on the map, not a `<Polyline>` element. */
-const connectorLayer = () =>
-  mapStub.current.layers.find((layer) => layer.type === 'line') as
-    { paint: Record<string, unknown> } | undefined;
+const connectorLayer = () => lineLayer('wp-connector-line');
+const routeLayer = () => lineLayer('wp-route-line');
+/** Every solid line on the canvas — §D8's ration is "at most one", so this is what counts it. */
+const solidLines = () =>
+  mapStub.current.layers.filter(
+    (layer) => layer.type === 'line' && !(layer.paint as Record<string, unknown>)['line-dasharray'],
+  );
+const TOKYO_WALK = [
+  { lat: 35.714757, lng: 139.796481 },
+  { lat: 35.71402, lng: 139.79931 },
+  { lat: 35.71099, lng: 139.80572 },
+];
+const TWO_STOPS = [
+  { lat: 1, lng: 1 },
+  { lat: 2, lng: 2 },
+];
 
 afterEach(() => {
   cleanup();
@@ -685,6 +704,139 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
     });
     expect(mapStub.current.getSource('wp-connector')).toBeTruthy();
     unmount();
+    expect(mapStub.current.getLayer('wp-connector-line')).toBeUndefined();
+    expect(mapStub.current.getSource('wp-connector')).toBeUndefined();
+  });
+
+  /* ── THE ROUTE (ADR-0206 §D1/§D8, measured in §Z5 §M3) ─────────────────────────────────── */
+
+  // The treatment the dash above has been reserving: SOLID and AMBER, over the day's order,
+  // for one leg.
+  it('draws the route solid and amber, over the order it is one leg of', () => {
+    paint({ connector: TWO_STOPS, route: TOKYO_WALK });
+
+    const line = routeLayer()!;
+    expect(line.paint['line-color']).toBe(MAP_CONNECTOR.ROUTE.COLOR.light);
+    expect(line.paint['line-width']).toBe(MAP_CONNECTOR.ROUTE.WEIGHT);
+    expect(line.paint['line-dasharray']).toBeUndefined();
+    expect(line.layout).toEqual({ 'line-cap': 'round', 'line-join': 'round' });
+    // Added after the connector, so it paints over it.
+    const ids = mapStub.current.layers.map((layer) => layer.id);
+    expect(ids.indexOf('wp-route-line')).toBeGreaterThan(ids.indexOf('wp-connector-line'));
+    // And the day's dash is untouched by it.
+    expect(connectorLayer()!.paint['line-dasharray']).toEqual([...MAP_CONNECTOR.DASH]);
+  });
+
+  // §M3: solid `--amber` measures **1.72:1** on the day ground, under the 3:1 a graphic owes
+  // what it crosses — so the line is a per-theme pair switched in JS, exactly as the dash is.
+  // One value here is the defect, not a simplification.
+  it('takes the route colour from the canvas it was built for, in each theme', () => {
+    const { unmount } = paint({ route: TOKYO_WALK });
+    expect(routeLayer()!.paint['line-color']).toBe(MAP_CONNECTOR.ROUTE.COLOR.light);
+    unmount();
+
+    paint({ scheme: MAP_COLOR_SCHEME.dark, route: TOKYO_WALK });
+    expect(routeLayer()!.paint['line-color']).toBe(MAP_CONNECTOR.ROUTE.COLOR.dark);
+    expect(MAP_CONNECTOR.ROUTE.COLOR.dark).not.toBe(MAP_CONNECTOR.ROUTE.COLOR.light);
+  });
+
+  // The trap the file already documents, now with a second geometry through it: a theme swap
+  // tears the style down and rebuilds it, so the line has to be re-added and re-coloured.
+  it('survives a theme flip, and repaints for the ground it now crosses', () => {
+    const { rerender } = paint({ connector: TWO_STOPS, route: TOKYO_WALK });
+    expect(routeLayer()!.paint['line-color']).toBe(MAP_CONNECTOR.ROUTE.COLOR.light);
+
+    // What a theme swap does to the style: every layer and source the connector owns is gone.
+    act(() => {
+      mapStub.current.removeLayer('wp-route-line');
+      mapStub.current.removeSource('wp-route');
+      mapStub.current.removeLayer('wp-connector-line');
+      mapStub.current.removeSource('wp-connector');
+    });
+    rerender(
+      <MapPane
+        scheme={MAP_COLOR_SCHEME.dark}
+        urls={URLS}
+        pins={[pin({ placeId: 'a' })]}
+        setSignal="day"
+        onSelectPin={vi.fn()}
+        onCanvasTap={vi.fn()}
+        onViewChange={vi.fn()}
+        areaCount={1}
+        areaSorted={false}
+        onAreaSort={vi.fn()}
+        onLocate={vi.fn()}
+        connector={TWO_STOPS}
+        route={TOKYO_WALK}
+      />,
+    );
+
+    expect(routeLayer()!.paint['line-color']).toBe(MAP_CONNECTOR.ROUTE.COLOR.dark);
+    expect(connectorLayer()!.paint['line-color']).toBe(MAP_CONNECTOR.COLOR.dark);
+    expect(solidLines()).toHaveLength(1);
+  });
+
+  // A day change re-points the line rather than stacking a second one, and §D8's ration holds:
+  // one solid line, whatever moved.
+  it('re-points the line on a day change, and never draws a second solid one', () => {
+    const { rerender } = paint({ connector: TWO_STOPS, route: TOKYO_WALK });
+    expect(solidLines()).toHaveLength(1);
+
+    const tomorrow = [
+      { lat: 48.8584, lng: 2.2945 },
+      { lat: 48.8606, lng: 2.3376 },
+    ];
+    rerender(
+      <MapPane
+        scheme={MAP_COLOR_SCHEME.light}
+        urls={URLS}
+        pins={[pin({ placeId: 'a' })]}
+        setSignal="other-day"
+        onSelectPin={vi.fn()}
+        onCanvasTap={vi.fn()}
+        onViewChange={vi.fn()}
+        areaCount={1}
+        areaSorted={false}
+        onAreaSort={vi.fn()}
+        onLocate={vi.fn()}
+        connector={tomorrow}
+        route={tomorrow}
+      />,
+    );
+
+    expect(solidLines()).toHaveLength(1);
+    const source = mapStub.current.getSource('wp-route') as {
+      data: { geometry: { coordinates: number[][] } };
+    };
+    expect(source.data.geometry.coordinates).toEqual([
+      [2.2945, 48.8584],
+      [2.3376, 48.8606],
+    ]);
+  });
+
+  // `null` from `useLegShape` is ordinary — offline, refused, not yet warm (§D4) — and it must
+  // leave the day's dashed order standing rather than an error.
+  it('draws no route when there is none, and the dashed order still stands', () => {
+    paint({ connector: TWO_STOPS });
+    expect(routeLayer()).toBeUndefined();
+    expect(mapStub.current.getSource('wp-route')).toBeUndefined();
+    expect(connectorLayer()).toBeTruthy();
+  });
+
+  // Trip mode has no dashed connector at all (§10), and the route is the answer to "where is
+  // next" — so it must be able to draw on its own.
+  it('draws the route with no connector beside it', () => {
+    paint({ route: TOKYO_WALK });
+    expect(routeLayer()).toBeTruthy();
+    expect(connectorLayer()).toBeUndefined();
+  });
+
+  it('takes the route layer and source back off the map on unmount', () => {
+    const { unmount } = paint({ connector: TWO_STOPS, route: TOKYO_WALK });
+    expect(mapStub.current.getSource('wp-route')).toBeTruthy();
+    unmount();
+    expect(mapStub.current.getLayer('wp-route-line')).toBeUndefined();
+    expect(mapStub.current.getSource('wp-route')).toBeUndefined();
     expect(mapStub.current.getLayer('wp-connector-line')).toBeUndefined();
     expect(mapStub.current.getSource('wp-connector')).toBeUndefined();
   });
