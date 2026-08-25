@@ -228,11 +228,23 @@ whose **§8 is the review round** and whose **§7 is the ADR-0206 amendment, rea
   only, and **it may not say "you are late"** — see the GPS bullet. M5: four chips
   (`ToggleChip`), on the selected leg, **in the day list and in the Map's sheet — one component,
   two hosts**.
-- **⚠ M6a/M6b must not infer that anyone left.** The app has no position (ADR-0006 refused
-  member GPS) and a settle mark is not a sensor, so the only supportable claim is
-  `זמן היציאה עבר` — never `אתם באיחור`. The user answers with **`בדרך`**, which already exists
-  on the day row and **writes nothing today** (`verbs.ts:1361` is a toast). Making it state is a
-  small, real piece of §V1.4.
+- **⚠ M6a/M6b must not infer that anyone left _from the clock_.** A settle mark is not a
+  sensor, so from the clock alone the only supportable claim is `זמן היציאה עבר` — never
+  `אתם באיחור`. The user answers with **`בדרך`**, which already exists on the day row and
+  **writes nothing today** (`verbs.ts:1361` is a toast). Making it state is a small, real piece
+  of §V1.4, and **that floor is what M6a/M6b build.**
+- **Own-device position is available and already used — a correction to this card's first
+  version.** ADR-0006 puts own-device location **in v1** ("always available, privately,
+  on-device"); only member-to-member sharing is deferred, which is what ADR-0205 §8's
+  "Not member GPS" means. `lib/useGeolocation.ts` ships and feeds the Map's `קרוב עכשיו`.
+  A fix can **earn** the late mark or **withdraw** it entirely — drawn in v2 §3d — but the hook
+  is one-shot by design, the fix is never persisted or sent, and an iOS PWA has no background
+  position. **This is a new capability for the day surface and wants its own ADR**; do not fold
+  it into a routes milestone.
+- **The route's shape is NOT in the day list** (measured): at 46×26 two of four real legs differ
+  by 3.1px in a 46px box, so the thumbnail says "this is a path" and little else, at every hole
+  of the day. Those pixels take `formatDistance` + the existing show-on-map pin instead.
+  **M7 is unaffected — the map draws a real path per leg.**
 - **Transit becomes declarable** (owner's suggestion, agreed and drawn): a fourth chip that
   promises no estimate and exists to silence a wrong walking number. **Not** a fourth member of
   `travelModeSchema` — the declaration lives on the leg. A declared leg has no leave-by, so the

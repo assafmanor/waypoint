@@ -13778,6 +13778,48 @@ button.day-gap:hover .day-gap-lbl {
         inset: -9px 0;
       }
 
+      /* The alternative trailing slot (⁦§1d⁩): a fact plus the way to the shape. Same 46px
+         the thumbnail took, and `--faint`-to-`--muted` because a distance is context, not
+         a commitment — the amber in this block is already spent on the time. */
+      .day-trv-dist {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .day-trv-map {
+        display: inline-flex;
+        color: var(--teal);
+      }
+      .day-trv-map .icon {
+        width: 15px;
+        height: 15px;
+      }
+      /* The located tier (⁦§3d⁩). Teal, because where-you-are is teal and nothing else
+         (rule 4) — and the sentence it carries is a LOCATION fact, which is exactly why
+         it may be said at all. */
+      .day-trv-here {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        color: var(--muted);
+      }
+      /* The hue rides the GLYPH, not the sentence: `--teal` measures 3.35:1 on `--card`,
+         which clears the 3:1 a graphic owes and misses the 4.5 a sentence does. The app
+         already spends teal as ink on two-word buttons (`.wp-event-act.go`); a full line
+         of prose is a worse place to repeat that, so the words stay `--muted` and the
+         location semantics are carried by the pin (rule 4 kept, AA kept). */
+      .day-trv-here .icon {
+        width: 13px;
+        height: 13px;
+        flex: 0 0 auto;
+        color: var(--teal);
+      }
+
       /* THE MAP'S ROUTE LINES. `MAP_CONNECTOR` stays exactly as it is for a leg with no
          geometry; what changes is that a leg WITH geometry draws its own shape rather
          than a straight segment, in the same quiet ink. Only the selected/next leg is
@@ -14121,6 +14163,20 @@ button.day-gap:hover .day-gap-lbl {
         padding: 8px 10px 2px;
         margin-bottom: 8px;
       }
+      .mk-shaperow {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .mk-shape-n {
+        font: 700 11px 'JetBrains Mono', monospace;
+        color: var(--mk-faint);
+      }
+      .mk-shape-m {
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--mk-prose);
+      }
       .mk-canvas {
         position: relative;
         height: 210px;
@@ -14224,6 +14280,21 @@ button.day-gap:hover .day-gap-lbl {
         <div class="pair" id="s1c"></div>
       </section>
 
+        <h3>⁦§1d⁩ · האם הצורה הקטנה בכלל אומרת משהו? (נמדד)</h3>
+        <p class="note">
+          שאלת הבעלים: <b>"i'm not sure if the day view (and plan day) should show the shape of
+          route … all i know is that the map must show it."</b> אפשר למדוד את זה במקום להתווכח:
+          ארבע רגליים אמיתיות ושונות זו מזו, באותו ⁦46×26⁩, ולידן <b>כמה פניות בכלל שורדות</b>
+          בקנה המידה הזה - פישוט דאגלס-פויקר בסף ⁦1px⁩, כלומר מה שהעין באמת מקבלת. הטבלה סופרת.
+        </p>
+        <div class="pair" id="s1d"></div>
+        <p class="note">
+          ומולן, מה שאפשר לשים באותם ⁦46px⁩ במקום: <b>המרחק</b>, דרך
+          <code>formatDistance</code> שכבר קיים - עובדה שאפשר לשפוט לפיה ("זה קרוב" / "זה רחוק"),
+          ומגע אחד אל המפה במקום רמז לצורה.
+        </p>
+        <div class="pair" id="s1e"></div>
+
       <!-- ══════════════════════════ §2 ══════════════════════════ -->
       <section class="case">
         <h2>⁦§2⁩ · מסלול אמיתי לכל שתי עצירות סמוכות</h2>
@@ -14268,6 +14339,32 @@ button.day-gap:hover .day-gap-lbl {
           סיבה להיות מצב.
         </p>
         <div class="pair" id="s3c"></div>
+        <h3>⁦§3d⁩ · תיקון: לאפליקציה <b>כן</b> יש מיקום, והיא כבר משתמשת בו</h3>
+        <p class="note">
+          <b>הטענה של v2 - "לאפליקציה אין מיקום" - שגויה, וההערה של הבעלים צדקה.</b>
+          ADR-0006 מפריד בין שני דברים שנקראים "מיקום": <b>מיקום המכשיר עצמו</b>, שהוא
+          <b>בפנים ל-v1</b> ובלשונו "always available (privately, on-device)", לבין
+          <b>שיתוף מיקום בין חברי הקבוצה</b>, שהוא היחיד שנדחה. ADR-0205 ⁦§8⁩ כותב "Not member
+          GPS", וזה נכון - אבל v2 קרא אותו כאילו אין מיקום כלל. <b>ויש:</b>
+          <code>lib/useGeolocation.ts</code> בנוי, עובד, ומזין את "קרוב עכשיו" בטאב המפה מאז
+          ADR-0109 ⁦§6⁩.
+        </p>
+        <p class="note">
+          מה שזה משנה: המצב הופך ל<b>שתי דרגות</b> ולא לאחת. בלי קיבוע - המשפט הזהיר של
+          ⁦§3a⁩ נשאר בדיוק כפי שהוא, כי הרשאה אפשר לסרב לה ואפליקציה חייבת לעבוד בלעדיה.
+          עם קיבוע - אפשר לומר משהו חזק בהרבה, ואפילו <b>לענות על השאלה במקום המשתמש</b>.
+          שלוש המסגרות הן שלוש הדרגות, בסדר שבו הן מגיעות אליו.
+        </p>
+        <div class="pair" id="s3d"></div>
+        <p class="note">
+          שלושה אילוצים שנקראו מהקוד ולא מהדמיון, וכולם מעצבים את ההצעה: הקיבוע הוא
+          <b>חד-פעמי ולא <code>watchPosition</code></b> - החלטת סוללה מכוונת, כתובה בראש הקובץ -
+          ולכן האפליקציה יודעת <b>כשפותחים אותה</b>, לא בכיס; המיקום <b>לא נשמר ולא נשלח
+          לשרת</b>, ולכן "יצאנו" לא יגיע לקבוצה מהחיישן אלא רק מהפועל <code>בדרך</code>;
+          והתראה שמעירה אתכם בזמן היא עדיין ADR-0197/0198 ולא זה. <b>ומה שזה כן פותח</b> הוא
+          החצי השני של ההערה: אם יש מיקום, "מה קרוב עכשיו" כבר קיים במפה ומחכה למי שיחבר אותו
+          ליום (<code>near-the-day</code> של ADR-0151).
+        </p>
       </section>
 
       <!-- ══════════════════════════ §4 ══════════════════════════ -->
@@ -14328,6 +14425,41 @@ button.day-gap:hover .day-gap-lbl {
             <code>ticket</code> ולא רביעי חדש.
           </li>
           <li>
+            <b>הצורה הקטנה: המלצה - <u>לא</u> ברשימת היום, כן במפה.</b> נמדדו שני דברים,
+            והם אומרים דברים שונים. הגאומטריה <b>שורדת</b> את ⁦46×26⁩ (⁦5–7⁩ נקודות מתוך
+            ⁦6–7⁩ עוברות פישוט בסף ⁦1px⁩) - כלומר הצורה לא נמחקת. אבל שתי הרגליים הקרובות
+            ביותר מתוך ארבע נבדלות זו מזו ב-<b>⁦3.1px⁩ בתוך תיבה של ⁦46px⁩</b>, ובציור
+            למעלה כל הארבע קוראות "קו מתפתל" ותו לא. כלומר התמונה הקטנה אומרת בדיוק ביט אחד -
+            "זו דרך" - וחוזרת עליו בכל חור ביום, במסך שה-ADR עצמו קורא לו "densest surface in
+            the app". באותם ⁦46px⁩ <b>המרחק</b> אומר משהו שאפשר להחליט לפיו, והצורה עצמה
+            נמצאת במגע אחד משם, על המשטח שנבנה לצייר אותה. <b>המפה מציירת מסלול אמיתי לכל רגל
+            (⁦§2⁩) - זה לא משתנה.</b>
+          </li>
+          <li>
+            <b>תיקון: לאפליקציה כן יש מיקום מכשיר, והיא כבר משתמשת בו.</b> v2 כתב "אין
+            מיקום" והציג את ADR-0006 כאילו דחה את כולו. הוא לא: הוא מפריד בין מיקום המכשיר
+            (<b>בפנים ל-v1</b>) לבין שיתוף בין חברי הקבוצה (נדחה), ו-<code>useGeolocation</code>
+            בנוי ומזין את "קרוב עכשיו" מאז ADR-0109 ⁦§6⁩. מה שנשאר נכון: <b>הדרגה
+            הראשונה חייבת לעבוד בלי הרשאה</b>, ולכן המשפט הזהיר נשאר ברירת המחדל ולא נמחק.
+          </li>
+          <li>
+            <b>שלוש דרגות, לא שתיים, ולא מתג.</b> בלי קיבוע - עובדה על לוח הזמנים ופועל ידני.
+            עם קיבוע ואתם במקום הקודם - הסימון <b>מרוויח</b> את עצמו. עם קיבוע ואתם על
+            המסלול - <b>אין סימון בכלל</b>, והשאלה נענית בלי לשאול. הדרגה השלישית היא הסיבה
+            שזה שווה את המאמץ: היא מוחקת התראה שגויה במקום להוסיף נכונה.
+          </li>
+          <li>
+            <b>הגוון רוכב על האייקון ולא על המשפט.</b> ⁦--teal⁩ מודד ⁦3.35:1⁩ על
+            ⁦--card⁩ - עובר את רצפת הגרפיקה ונופל מרצפת הטקסט. האפליקציה כבר משלמת את
+            זה על תוויות של שתי מילים (<code>.wp-event-act.go</code>), ושורה שלמה של פרוזה
+            היא מקום גרוע לחזור על זה. הפין טורקיז, המילים ⁦--muted⁩ ב-⁦5.57:1⁩.
+          </li>
+          <li>
+            <b>נדחה: להסיק "יצאנו" מהחיישן ולשלוח את זה לקבוצה.</b> המיקום לא נשמר ולא נשלח
+            (<code>useGeolocation</code>, בלשונו), ושיתוף מיקום בין חברים הוא בדיוק מה
+            ש-ADR-0006 דחה. מה שהקבוצה רואה מגיע מהפועל <code>בדרך</code>, שאדם לחץ עליו.
+          </li>
+          <li>
             <b>נדחה: שעת הגעה על הבלוק</b> (⁦"מגיעים ב-18:42"⁩). ⁦§D5⁩ פסל את זה, והבלוק
             הגדול יותר לא משנה את זה - מקום פנוי אינו סיבה להבטיח דיוק שאין.
           </li>
@@ -14374,6 +14506,7 @@ button.day-gap:hover .day-gap-lbl {
         clock: 'M12 6.4V12l3.6 2.2 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0',
         warn: 'M12 3.6 22 20.4H2Z M12 9.8v4.6 M12 17.4v.02',
         caret: 'M5 9l7 7 7-7z',
+        pin: 'M12 21.5s6.5-5.9 6.5-10.5a6.5 6.5 0 1 0-13 0C5.5 15.6 12 21.5 12 21.5Z M14.2 10.8a2.2 2.2 0 1 1-4.4 0 2.2 2.2 0 0 1 4.4 0',
         plus: 'M12 4.8v14.4 M4.8 12h14.4',
         ticket:
           'M3.4 8.6V6.8a1.6 1.6 0 0 1 1.6-1.6h14a1.6 1.6 0 0 1 1.6 1.6v1.8a2.2 2.2 0 0 0 0 4.4v1.8a1.6 1.6 0 0 1-1.6 1.6H5a1.6 1.6 0 0 1-1.6-1.6v-1.8a2.2 2.2 0 0 0 0-4.4Z M14.4 5.2v1.9 M14.4 10.2v1.9 M14.4 15.1v1.9',
@@ -14510,6 +14643,53 @@ button.day-gap:hover .day-gap-lbl {
         return `<svg class="day-trv-shape" viewBox="0 0 46 26" aria-hidden="true"><path d="${d}"/></svg>`;
       };
 
+      /** The leg's points, from the same string the map draws. */
+      const ptsOf = (leg) =>
+        leg.real
+          .slice(1)
+          .split(/[ML]/)
+          .map((x) => x.trim())
+          .filter(Boolean)
+          .map((x) => x.split(/\s+/).map(Number));
+      /** Douglas–Peucker. Used to answer a question the eye asks and prose cannot: at the
+       *  thumbnail's scale, how many of a route's bends SURVIVE? Everything below the
+       *  tolerance is drawn but not seen, so this counts what the reader actually gets. */
+      const simplify = (pts, eps) => {
+        if (pts.length < 3) return pts;
+        const [a, b] = [pts[0], pts[pts.length - 1]];
+        const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
+        const den = Math.hypot(dx, dy) || 1;
+        let far = 0;
+        let idx = 0;
+        pts.slice(1, -1).forEach((p, i) => {
+          const d = Math.abs(dy * p[0] - dx * p[1] + b[0] * a[1] - b[1] * a[0]) / den;
+          if (d > far) [far, idx] = [d, i + 1];
+        });
+        return far > eps
+          ? [...simplify(pts.slice(0, idx + 1), eps).slice(0, -1), ...simplify(pts.slice(idx), eps)]
+          : [a, b];
+      };
+      /** The straight-line metres a leg covers, on this drawing's own scale: the map is
+       *  360 units wide and the day's legs are a ~2 km walk, so 1 unit ≈ 6 m. Declared
+       *  rather than implied, because a number with an invented scale has to say so. */
+      const UNIT_M = 6;
+      const legMetres = (leg) => {
+        const pts = ptsOf(leg);
+        let t = 0;
+        for (let i = 1; i < pts.length; i++) t += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+        return Math.round(t * UNIT_M);
+      };
+      /** `formatDistance` + `t.map.near.meters/km` (`lib/distance.ts`, shipped): the numeral
+       *  is the LTR island and the Hebrew unit stays in the RTL flow (ADR-0118's `measure`). */
+      const formatDistance = (m) =>
+        m < 1000 ? `${iso(String(Math.max(50, Math.round(m / 50) * 50)))} מ׳` : `${iso(String(Math.round((m / 1000) * 10) / 10))} ק״מ`;
+
+      /** The alternative to the thumbnail, in the same 46px: a fact you can judge, plus one
+       *  tap to the surface built to draw the shape. `PlaceBadge`'s own `onShowOnMap` mark
+       *  (`Icon name="pin"`) is the affordance the app already uses for exactly this. */
+      const distTrail = (leg) =>
+        `<span class="day-trv-dist">${formatDistance(legMetres(leg))}<span class="day-trv-map">${icon('pin')}</span></span>`;
+
       const chip = (label, on, cls = '') =>
         `<button type="button" class="wp-chip accent${on ? ' on' : ''}${cls}" aria-pressed="${on}">${label}</button>`;
 
@@ -14521,7 +14701,13 @@ button.day-gap:hover .day-gap-lbl {
         const free = freeMin(mode);
         const cls =
           'day-trv' +
-          (declared ? ' declared' : st === 'passed' ? ' passed' : st === 'enroute' ? ' enroute' : '');
+          (declared
+            ? ' declared'
+            : st === 'passed' || st === 'passed-here'
+              ? ' passed'
+              : st === 'enroute' || st === 'passed-moving'
+                ? ' enroute'
+                : '');
         const head = declared
           ? `<span>${m.word}</span>`
           : `<span>${m.word}</span><span class="day-trv-free">·</span><span>${approx(m.mins)}</span>`;
@@ -14529,13 +14715,17 @@ button.day-gap:hover .day-gap-lbl {
           ? `<span class="day-trv-warn">${icon('warn')} אין לנו מידע על קווים · לא נחשב זמן</span>`
           : st === 'enroute'
             ? `<span>יצאתם ב-${iso(clock(lb + 3))}</span><span class="day-trv-free">·</span><span class="day-trv-free">פנוי לפני <b>${hoursPhrase(free)}</b></span>`
-            : st === 'passed'
+            : st === 'passed-here'
+              ? `<span class="day-trv-leave">${icon('warn')} זמן היציאה עבר</span><span class="day-trv-free">·</span><span class="day-trv-here">${icon('pin')}<span>עדיין כאן</span></span>`
+              : st === 'passed-moving'
+                ? `<span class="day-trv-here">${icon('pin')}<span>בדרך · נותרו ${approx(12)}</span></span>`
+                : st === 'passed'
               ? `<span class="day-trv-leave">${icon('warn')} זמן היציאה עבר ב-${iso(clock(lb))}</span>`
               : `<span class="day-trv-leave">יציאה ${iso(clock(lb))}</span><span class="day-trv-free">·</span><span class="day-trv-free">פנוי לפני <b>${hoursPhrase(free)}</b></span>`;
         const modes = (opts.modes ?? true)
           ? `<div class="day-trv-modes">
                ${['walking', 'cycling', 'driving', 'transit'].map((k) => chip(MODES[k].word, k === mode, k === 'transit' ? ' provisional' : '')).join('')}
-               ${st === 'passed' ? `<button type="button" class="day-trv-act">בדרך</button>` : ''}
+               ${st === 'passed' || st === 'passed-here' ? `<button type="button" class="day-trv-act">בדרך</button>` : ''}
              </div>`
           : '';
         return `<div class="${cls}">
@@ -14545,7 +14735,7 @@ button.day-gap:hover .day-gap-lbl {
                 <span class="day-trv-hd">${head}</span>
                 <span class="day-trv-meta">${meta}</span>
               </span>
-              ${declared ? '' : shapeSvg(LEGS[SELECTED])}
+              ${declared ? '' : opts.trail === 'dist' ? distTrail(LEGS[SELECTED]) : shapeSvg(LEGS[SELECTED])}
             </div>
             ${modes}
           </div>`;
@@ -14654,6 +14844,29 @@ button.day-gap:hover .day-gap-lbl {
           .map((m) => col(MODES[m].word, `<div class="mk-cand">${trvBlock(m, 'ontime', { modes: false })}</div>`))
           .join('');
 
+        /* §1d — four different real legs at the thumbnail's size, so "does the shape say
+           anything at 46×26" is answered by looking and by counting rather than by taste. */
+        document.querySelector('#s1d').innerHTML = col(
+          'ארבע רגליים שונות, באותו גודל',
+          LEGS.map(
+            (l, i) =>
+              `<div class="mk-cand mk-shaperow" data-leg="${i}">
+                 <span class="mk-shape-n">${iso(String(i + 1))}</span>
+                 ${shapeSvg(l)}
+                 <span class="mk-shape-m">${formatDistance(legMetres(l))}</span>
+               </div>`,
+          ).join(''),
+        );
+
+        /* §1e — the same 46px spent on a fact instead. */
+        document.querySelector('#s1e').innerHTML = [
+          col('בהצעה · צורה', `<div id="s1e-shape">${day(trvBlock('walking', 'ontime', { modes: false }))}</div>`),
+          col(
+            'חלופה · מרחק, ומגע אל המפה',
+            `<div id="s1e-dist">${day(trvBlock('walking', 'ontime', { modes: false, trail: 'dist' }))}</div>`,
+          ),
+        ].join('');
+
         /* §2a — every leg's real shape, against today's straight segments. */
         document.querySelector('#s2a').innerHTML = [
           col('היום · קו ישר לכל רגל', `<div id="s2a-straight">${mapFrame({ path: 'straight' })}</div>`, true),
@@ -14698,6 +14911,13 @@ button.day-gap:hover .day-gap-lbl {
         document.querySelector('#s3c').innerHTML = [
           col('לפני · הפועל מוצע על הרגל', `<div id="s3c-before">${day(trvBlock('walking', 'passed'))}</div>`),
           col('אחרי לחיצה · "בדרך", ובלי שום ניחוש', `<div id="s3c-after">${day(trvBlock('walking', 'enroute'))}</div>`),
+        ].join('');
+
+        /* §3d — the three tiers, in the order a user meets them. */
+        document.querySelector('#s3d').innerHTML = [
+          col('בלי הרשאה · מה שתמיד נכון', `<div id="s3d-blind">${day(trvBlock('walking', 'passed'))}</div>`),
+          col('עם קיבוע · עדיין במקום הקודם', `<div id="s3d-here">${day(trvBlock('walking', 'passed-here'))}</div>`),
+          col('עם קיבוע · כבר על המסלול · נענה מעצמו', `<div id="s3d-moving">${day(trvBlock('walking', 'passed-moving'))}</div>`),
         ].join('');
 
         /* §4 — transit declared. */
@@ -14763,6 +14983,8 @@ button.day-gap:hover .day-gap-lbl {
         return Math.round(((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)) * 100) / 100;
       };
 
+      const sec = (n) => '⁦§' + n + '⁩';
+
       function measure() {
         const rows = [];
         const th = theme();
@@ -14812,6 +15034,95 @@ button.day-gap:hover .day-gap-lbl {
           '⁦§1⁩ · פנים הבלוק בלי שורת המצבים',
           px(faceH),
           `<span class="verdict ${faceH >= 44 ? 'ok' : 'no'}">רצפת מגע ⁦44px⁩ (ADR-0017)</span> · הבלוק כולו הוא יעד אחד`,
+        ]);
+
+        /* §1d — what the thumbnail actually carries, counted rather than argued. */
+        const bends = LEGS.map((l) => {
+          const pts = ptsOf(l);
+          const xs = pts.map((p) => p[0]);
+          const ys = pts.map((p) => p[1]);
+          const sc = Math.min(
+            42 / Math.max(Math.max(...xs) - Math.min(...xs), 1),
+            20 / Math.max(Math.max(...ys) - Math.min(...ys), 1),
+          );
+          const at = pts.map((p) => [p[0] * sc, p[1] * sc]);
+          return { raw: pts.length, seen: simplify(at, 1).length };
+        });
+        const worst = Math.max(...bends.map((b) => b.seen));
+        rows.push([
+          `${sec('1d')} · נקודות בצורה · במקור מול מה ששורד ב-${iso('46×26')}`,
+          bends.map((b) => iso(b.raw + '→' + b.seen)).join(' · '),
+          `הגאומטריה <b>כן</b> שורדת בגודל הזה · פישוט דאגלס-פויקר בסף ${iso('1px')} · אבל ראו את השורה הבאה`,
+        ]);
+        /* Surviving points is not the same as being TELLABLE APART, and the render made
+           that plain: four different routes read as four wiggly lines. So measure the
+           thing the eye is actually asked to do — how far apart are two normalised
+           thumbnails, in the 46px box they share. */
+        const normed = LEGS.map((l) => {
+          const pts = ptsOf(l);
+          const xs = pts.map((p) => p[0]);
+          const ys = pts.map((p) => p[1]);
+          const [x0, y0] = [Math.min(...xs), Math.min(...ys)];
+          const sc = Math.min(
+            42 / Math.max(Math.max(...xs) - x0, 1),
+            20 / Math.max(Math.max(...ys) - y0, 1),
+          );
+          return pts.map((p) => [(p[0] - x0) * sc, (p[1] - y0) * sc]);
+        });
+        const meanNearest = (A, B) =>
+          A.reduce((acc, a) => acc + Math.min(...B.map((b) => Math.hypot(a[0] - b[0], a[1] - b[1]))), 0) / A.length;
+        const pairs = [];
+        for (let i = 0; i < normed.length; i++)
+          for (let j = i + 1; j < normed.length; j++)
+            pairs.push((meanNearest(normed[i], normed[j]) + meanNearest(normed[j], normed[i])) / 2);
+        const worstPair = Math.round(Math.min(...pairs) * 10) / 10;
+        rows.push([
+          `${sec('1d')} · כמה שתי צורות רחוקות זו מזו · בתיבה של ${iso('46px')}`,
+          `${iso(worstPair + 'px')} – ${iso(Math.round(Math.max(...pairs) * 10) / 10 + 'px')}`,
+          `<span class="verdict ${worstPair >= 8 ? 'ok' : 'no'}">${
+            worstPair >= 8 ? 'אפשר להבחין' : 'הצורות שונות אך לא נבדלות במבט'
+          }</span> · הזוג הקרוב ביותר מתוך ${iso(String(pairs.length))}`,
+        ]);
+
+        const shapeW = w('#s1e-shape .day-trv-shape');
+        const distW = w('#s1e-dist .day-trv-dist');
+        rows.push([
+          `${sec('1e')} · מה שהמשבצת נושאת`,
+          `${px(shapeW)} צורה · ${px(distW)} מרחק`,
+          `אותו מקום בשורה · המרחק הוא עובדה שאפשר לשפוט לפיה, הצורה היא רמז`,
+        ]);
+
+        /* §3d — and does the located sentence fit the line it shares? */
+        const hm = document.querySelector('#s3d-here .day-trv-meta');
+        const hmKids = [...hm.children];
+        const hmInk =
+          hmKids.reduce((a, e) => a + e.scrollWidth, 0) +
+          parseFloat(getComputedStyle(hm).columnGap || 0) * (hmKids.length - 1);
+        rows.push([
+          `${sec('3d')} · המשפט המאותר · דיו מול תיבה`,
+          `${px(hmInk)} מתוך ${px(hm.clientWidth)}`,
+          `<span class="verdict ${hmInk <= hm.clientWidth + 0.5 ? 'ok' : 'no'}">${
+            hmInk <= hm.clientWidth + 0.5 ? 'נכנס' : 'נחתך'
+          }</span> · שם המקום ירד: הכרטיס שמעליו כבר אומר אותו (ADR-0188 ${iso('§1')})`,
+        ]);
+
+        /* §3d — the located tiers, and the one hue each may spend. */
+        const tealInk = ratio(tok('--teal'), tok('--card'));
+        const mutedInk = ratio(tok('--muted'), tok('--card'));
+        rows.push([
+          `${sec('3d')} · ${iso('--teal')} כדיו על ${iso('--card')}`,
+          tealInk + ':1',
+          `<span class="verdict ${tealInk >= 4.5 ? 'ok' : 'no'}">נופל מרצפת הטקסט ${iso('4.5:1')}</span> · עובר את רצפת הגרפיקה ${iso('3:1')}, ולכן <b>הגוון רוכב על האייקון</b>`,
+        ]);
+        rows.push([
+          `${sec('3d')} · המילים עצמן · ${iso('--muted')}`,
+          mutedInk + ':1',
+          `<span class="verdict ${mutedInk >= 4.5 ? 'ok' : 'no'}">רצפת טקסט ${iso('4.5:1')}</span> · כלל 4 נשמר בלי לשלם בקריאוּת`,
+        ]);
+        rows.push([
+          `${sec('3d')} · הפועל הידני · בכמה דרגות הוא נחוץ`,
+          `${iso(String(document.querySelectorAll('#s3d .day-trv-act').length))} מתוך ${iso('3')}`,
+          `<span class="verdict ok">הדרגה השלישית עונה בעצמה</span> · והראשונה עובדת גם בלי הרשאה`,
         ]);
 
         /* §2 — the number that says the straight line was not only a drawing shortcut. */

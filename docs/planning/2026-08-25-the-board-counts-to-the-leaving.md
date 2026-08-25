@@ -133,8 +133,11 @@ at 390×844 and 360×640, in both themes. Session note:
   wins**; drawing both costs 11px of the `הבא בתור` title and a second line at 360.
 - **§M2 — the journey is an OBJECT in the day, not an annotation on a hole** (owner's review,
   round 1). A block between the two cards: the mode mark in the day's own badge column, the
-  duration, the leave-by, the leg's **real shape drawn small** from the same `decodeShape` array
-  the map draws, and the mode chips on it. The day then reads `place · journey · place`, which is
+  duration, the leave-by, **the distance**, and the mode chips on it. **The route's shape is NOT
+  in the day list** (round 2, measured): at 46×26 the geometry survives but two of four real legs
+  differ by 3.1px in a 46px box, so the thumbnail carries one bit — "this is a path" — at every
+  hole of the densest surface in the app. The same pixels carry `formatDistance`, which a reader
+  can act on, plus `PlaceBadge`'s existing "show on map" affordance one tap from the shape. The day then reads `place · journey · place`, which is
   §V1.3's own sentence. It **absorbs** the free-time statement rather than sitting beside it, so
   the slot still holds one object (ADR-0159's rule): measured at 58px against 87px for a
   strip-plus-block, with both of `freeAfterTravel`'s numbers still said. It **ignores
@@ -154,14 +157,24 @@ at 390×844 and 360×640, in both themes. Session note:
 - **§M5 also — the mode control appears on the map too**, in the Map tab's `SnapSheet`, as the
   _same_ block the day list renders. One component, two hosts; a switch redraws the polyline from
   cache with no request (§Z2).
-- **§M4 — the late-risk mark is ink and word only, and it may not say "you are late."** The app
-  has no position — **ADR-0006 refused member GPS and ADR-0205 §8 restates it** — and a settle
-  mark is a record written when convenient, not a sensor. So the only claim this data supports is
-  that **the leave-by has passed**: `זמן היציאה עבר ב-17:15`, never `אתם באיחור`. Same `--miss`,
+- **§M4 — the late-risk mark is ink and word only, and by default it may not say "you are
+  late."** A settle mark is a record written when convenient, not a sensor, so from the clock
+  alone the only supportable claim is that **the leave-by has passed**:
+  `זמן היציאה עבר ב-17:15`, never `אתם באיחור`. **This is the floor, and it is what ships**, because
+  the position below can be refused or absent. Same `--miss`,
   same place, a claim we can stand behind (§D5's rule applied to a sentence rather than a number).
   Paint: `--miss-deep` on paper (6.59:1), the board's brightened `#f0a0a0`/`rgba(198,40,40,.18)`
   recipe on the board (8.73:1) — the one `.tlabel.missed` already uses. No fill, no glow, no
   pulse, so §D6 is untouched.
+- **§M4 also — own-device position may STRENGTHEN it, and that is a separate ADR.** ADR-0006
+  puts own-device location **in v1** (`useGeolocation` ships and feeds the Map's `קרוב עכשיו`);
+  only member-to-member sharing is deferred, which is what ADR-0205 §8's "Not member GPS" means.
+  With a fix the mark can be **earned** (`עדיין כאן`) or **withdrawn** (already on the route, no
+  mark at all) — the second being the real prize, since it deletes a wrong nudge. Three code
+  facts bound it: the hook is **one-shot, not `watchPosition`** (a battery decision), the fix is
+  **never persisted or sent**, and iOS PWAs have no background position — so this is "the app
+  knows when you open it", never "the app watches you". Using it here is a **new capability for
+  this surface and wants its own ADR**; §V1.4 builds the floor.
 - **§M4 also — the user answers it with a verb the app already ships.** `בדרך`
   (`t.actions.onWay`, on the day row since ADR-0161) is the only thing in the app that knows what
   GPS would, because a person says it; on the leg it clears the mark and turns the block teal
@@ -274,3 +287,87 @@ a request. The declaration lives on the leg: `legMode = TravelMode | 'transit'`.
 The threshold (30), the buffer (M1's), and `ליציאה` vs `לצאת` from §6 are unchanged and still
 unanswered. Added to them: **the three proposed icons** (§8.1) and **the transit declaration**
 (§8.4), both of which want an explicit yes before M6a/M8 build them.
+
+---
+
+## 9. Review round 2 — the shape, and a correction about GPS (2026-08-25)
+
+### 9.1 The route shape in the day list — measured, and the recommendation is **no**
+
+> _"i'm not sure if the day view (and plan day) should show the shape of route … all i know
+> is that the map must show it. what do you suggest? is this something that users are gonna
+> like?"_
+
+Two numbers, and they say different things — which is why both are in the file:
+
+- **The geometry survives.** Four real legs at 46×26, simplified at a 1px tolerance: 5–7 of
+  their 6–7 points remain. The size does not destroy the shape.
+- **But two shapes are not tellable apart.** The closest pair of the four differs by
+  **3.1px inside a 46px box**, and the render makes it plain — all four read as "a wiggly
+  line". The thumbnail therefore carries about one bit ("this is a path"), repeated at every
+  hole of the day, on the surface ADR-0206's own Consequences call _"the densest in the app"_.
+
+**Recommendation: the shape lives on the map; the day list spends those 46px on the
+distance** (`formatDistance`, already shipped) plus the pin affordance `PlaceBadge` already
+uses for "show me this on the map". A distance is a fact a reader can act on — _that's close /
+that's far_ — and the shape is then one tap away on the surface built to draw it. **§2 does not
+change: the map draws a real path for every leg.**
+
+Whether users would _like_ the thumbnail is not something this file can answer, and it should
+not pretend to. What it can say is what the thumbnail _carries_, and the answer is: less than
+the same pixels spent on a number.
+
+### 9.2 GPS — **I was wrong, and the app already has it**
+
+> _"are you sure that we can't make it work using gps location and then enable this feature?
+> i think that it's really nice to have, then the app could also pop up close by things, no?"_
+
+**Correct on both counts.** §8.3 above, the v2 mockup and PR #696 all said "the app has no
+position" and cited ADR-0006. That is a misreading, and it should not have survived a session
+whose own rule is to count the call sites before claiming what a derivation does.
+
+**What ADR-0006 actually says.** It separates two things called "location": **own-device
+location** — _"IN for v1 and always available (privately, on-device). It powers all the
+map/location features"_ — and **member-to-member sharing**, which is the only one deferred.
+ADR-0205 §8's "Not member GPS" is true and is about the second. It is not a bar on the first.
+
+**And it is built.** `lib/useGeolocation.ts` ships, and has fed the Map tab's `קרוב עכשיו`
+since ADR-0109 §6, behind that ADR's reason-first card.
+
+**What that changes.** The late state becomes three tiers rather than one, drawn in v2 §3d:
+
+| tier                          | what the app may say                                                                 |
+| ----------------------------- | ------------------------------------------------------------------------------------ |
+| no permission (or refused)    | `זמן היציאה עבר ב-17:15` + the `בדרך` verb. **Unchanged, and it stays the default.** |
+| a fix, still at the last stop | The mark is **earned**: `זמן היציאה עבר · עדיין כאן`.                                |
+| a fix, already on the route   | **No mark at all** — `בדרך · נותרו ~12 דק׳`, answered without asking.                |
+
+The third tier is what makes this worth building: it **removes a wrong nudge** rather than
+adding a right one.
+
+**Four constraints, read from the code rather than assumed:**
+
+1. `useGeolocation` is **one-shot, not `watchPosition`** — a deliberate battery decision stated
+   at the top of the file. So the app knows **when it is opened**, not while it is in a pocket.
+2. The fix is **never persisted and never sent to the backend**. So "we left" reaches the group
+   only through the `בדרך` verb a person pressed — which is also what keeps ADR-0006's second
+   half intact.
+3. Permission can be refused or unavailable, so tier 1 is not a fallback, it is the floor.
+4. A notification that wakes you at the right minute is still ADR-0197/0198, unbuilt, and no
+   amount of geolocation changes that.
+
+**Contrast, measured:** `--teal` is 3.35:1 on `--card` — it clears the 3:1 a graphic owes and
+misses the 4.5 a sentence does. So the location semantics ride the **pin glyph** and the words
+stay `--muted` (5.57:1). Worth noting as an observation, not as this milestone's work: the app
+already spends teal as ink on two-word labels (`.wp-event-act.go`), which sits at that same
+3.35:1.
+
+**And the second half of the note — "pop up close by things"** — is real and is already
+half-built: the near-me sort exists on the Map, and ADR-0151's `near-the-day` suggestion
+strategy is where it meets the day. ADR-0206 §V2 lists isochrones for the same reason.
+
+**Scope, stated rather than taken.** Using a fix to soften or suppress a late mark is a new
+capability for a surface that has never had one, and it touches ADR-0006's ambit and ADR-0109
+§6's consent grammar. That is **an ADR of its own**, not a line inside the routes epic — the
+design is drawn here so the decision has something to look at, but M6a/M6b should build tier 1
+and leave tiers 2–3 behind that ADR.
