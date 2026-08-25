@@ -48,7 +48,7 @@ pair the column does not name. Both branch from `main`, not from each other.
 | ------- | --------------------------- | ------ | ------ | ------------ | ------------ | ----------------------------------------------------------------------------------------------- | ---------- |
 | **M0**  | Product decisions           | owner  | ✅     | —            | —            | —                                                                                               | 2026-08-25 |
 | **M1**  | Measure the parameters      | spike  | ⬜     | M0           | M2, M3       | —                                                                                               | —          |
-| **M2**  | Shared derivations          | impl   | 🔵     | M0           | M1, M3       | `claude/routes-epic-m2-nkbf4d` · [#694](https://github.com/assafmanor/waypoint/pull/694)        | 2026-08-25 |
+| **M2**  | Shared derivations          | impl   | ✅     | M0           | M1, M3       | `claude/routes-epic-m2-nkbf4d` · [#694](https://github.com/assafmanor/waypoint/pull/694)        | 2026-08-25 |
 | **M3**  | Design session + mockups    | design | 🔵     | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696) | 2026-08-25 |
 | **M4**  | Backend routing module      | impl   | ⬜     | M1, M2       | M3           | —                                                                                               | —          |
 | **M5**  | Frontend data layer         | impl   | ⬜     | M2, M4       | M3, M10      | —                                                                                               | —          |
