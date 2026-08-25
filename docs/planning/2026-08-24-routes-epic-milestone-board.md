@@ -66,7 +66,7 @@ never by the one that did the work.
 | **M2b** | Apply M1's numbers to code  | impl   | ✅ **M4 unblocked**       | M1, M2       | M3           | `claude/routes-epic-m2b-q0pxkn` · [#699](https://github.com/assafmanor/waypoint/pull/699)              | 2026-08-25 |
 | **M3**  | Design session + mockups    | design | ✅                        | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696)        | 2026-08-25 |
 | **M4**  | Backend routing module      | impl   | ✅ **M5/M10 unblocked**   | M1, M2, M2b  | M3           | `claude/m4-backend-routing-0giz72` · [#702](https://github.com/assafmanor/waypoint/pull/702)           | 2026-08-25 |
-| **M5**  | Frontend data layer         | impl   | 🔵 **M6/M7/M9 unblocked** | M2, M4       | M3, M10      | `claude/routes-frontend-protocol-fix-9t521y` · [#704](https://github.com/assafmanor/waypoint/pull/704) | 2026-08-25 |
+| **M5**  | Frontend data layer         | impl   | ✅ **M6/M7/M9 unblocked** | M2, M4       | M3, M10      | `claude/routes-frontend-protocol-fix-9t521y` · [#704](https://github.com/assafmanor/waypoint/pull/704) | 2026-08-25 |
 | **M6a** | The day reads               | impl   | ⬜                        | M3, M5       | M6b, M7, M9  | —                                                                                                      | —          |
 | **M6b** | The hero read               | impl   | ⬜                        | M3, M5       | M6a, M7, M9  | —                                                                                                      | —          |
 | **M7**  | The map polyline            | impl   | ⬜                        | M3, M5       | M6a, M6b, M9 | —                                                                                                      | —          |
@@ -728,7 +728,25 @@ with no layout shift.
 ## M7 — The map polyline
 
 **Kind:** implementation. **Branch:** `routes/m7-map` · **Conflict surface:** `MapPane.tsx`
-(`DayConnector` only), `screens/map.css`, `constants.ts` (`MAP_CONNECTOR`).
+(`DayConnector` only), `screens/map.css`, `constants.ts` (`MAP_CONNECTOR`), **and
+`frontend/src/lib/travel.ts` + its spec** — widened 2026-08-25, see the box below.
+
+> **⚠ Read this first: as carded before today, M7 could not draw anything.** M5's handoff found it
+> and could not fix it — another card is not M5's to edit. `useDayTravel` deliberately **never asks
+> for geometry**: a matrix returns none, so a drawable line is a call per leg, and ADR-0206 §D8 draws
+> **one at a time**. M4's endpoint already carries `withShapes` and `TravelEstimate` already carries
+> `shape`, so nothing new is needed on the wire — what is missing is the _ask_, and M5 was right that
+> the shape of that ask is **M7's decision rather than M5's guess**. Hence the wider surface.
+>
+> **What to add, and keep it this small:** one two-stop request with `withShapes: true` for the
+> **selected or next** leg only, cached and read back through the same key `useDayTravel` already
+> uses — so the line and the day's numbers cannot disagree about a leg. It is an addition to
+> `lib/travel.ts`, not a second data layer beside it (rule 8), and **not** a change to
+> `useDayTravel`'s own request: that hook stays geometry-free, because widening it would put a
+> per-leg call behind every day view and §D8 exists to prevent exactly that.
+>
+> **The tripwire if you get it wrong:** a day of N legs issuing N shape calls. One line drawn means
+> one shape asked for.
 
 Extend **`DayConnector`** — do not add a layer beside it, and do not adopt
 `maplibre-gl-directions` (ADR-0205 §1). It already owns the source/layer ids, the style-reload
