@@ -34,6 +34,38 @@ therefore last only, a check-out day first only, and a strictly middle night is 
 exactly the day that has a hotel at each end. A day you change hotels comes out as _A's check-out …
 B's check-in_ for free, because each span only ever answers about itself.
 
+**AMENDED 2026-08-26 — the map has to SAY which end of the day the stay was.** Owner: _"you can't
+see from the map where you check in or out from (unless you connect the lines)"_ — and, on being
+asked, they rejected numbering for the right reason: on a middle night one pin would wear two
+numbers. That objection is diagnostic. A number is an **ordinal** and one pin cannot hold two; _which
+end of the day this is_ is not an ordinal, and "both ends" is a single coherent state. So the answer
+is the word slot the pin already has (ADR-0141), not a new mark. Three things were swallowing it, and
+none of them was the design:
+
+1. **A zoom rule that asked about the wrong thing.** `map-pane.css` dropped the neutral tag under
+   `[data-pins='dot']` in every scope, on the reasoning that "a text-scale claim on a ⁦5px⁩ dot" is a
+   smudge. But the dot tier is **scoped**: in day scope only `.aside` degrades, so a full-size
+   numbered stop below ⁦zoom 11⁩ — a ~⁦30km⁩ span, i.e. every view wider than a town — kept its size and
+   silently lost its word. **Deleted rather than rescoped**, because the corrected rule is inert:
+   the only day-scope pin that becomes a dot is `.aside`, and `Map.tsx` withholds the word from
+   aside pins outright. The trap generalises — a rule keyed only on `[data-pins='dot']` has assumed
+   both scopes degrade alike, and they never have.
+2. **`behind` silenced the check-out you had already done.** ADR-0141 silences that tier because
+   "the transition happened, so a word naming it as ahead is a lie" — right for _what happens next
+   here_, wrong for a stay, whose word says which END of the day this place was. The afternoon does
+   not falsify that. **A stay is exempt; every other tier stays silent**, so a departed flight still
+   cannot name itself as ahead. The grey continues to carry "behind you"; the word only says which
+   moment it was.
+3. **A middle night had no word at all to un-silence**, carrying neither end by construction. It
+   takes one of its own — `לינת לילה`, neutral rather than amber, because it is where you are
+   sleeping and not a commitment on the clock. Owner's wording and owner's call: _"maybe it should
+   just read as a different label … then nothing needs mocking up"_, which is right — this spends no
+   new axis on a pin ladder ADR-0206 §AC3 already recorded as full.
+
+**Not verifiable in the suite:** (1) is CSS at a zoom tier, which jsdom cannot see; it was
+established by reading the `--pin-u` rules it sits beside rather than by a test. (2) and (3) are
+`pinTransition`, and are specced.
+
 **AMENDED 2026-08-26 — a bookend does not outrank a stop that beat you to it.** Owner, from the
 shipped map: _"we rent the car at 00:00 and then go to check in at the hotel … it shows the hotel as
 starting before the car rental"_ — on a night they check in at 02:00 and out again that morning. A

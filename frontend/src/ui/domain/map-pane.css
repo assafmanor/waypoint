@@ -753,15 +753,23 @@
   .pin-tag {
   display: none;
 }
-/* The NEUTRAL tag drops at the dot tier in EVERY scope, which is why it is its own entry
-   rather than another `data-scope` arm above (ADR-0141 §5). The rule above spares the two
-   amber tags deliberately — they are the cues you are meant to find at any zoom — and it
-   only ever degraded a tag in all-days, where a neutral one does not exist at all. What is
-   new is day scope: a planned edge's word now rides an ordinary `upcoming` pin, and a
-   text-scale claim on a 5px dot is exactly the smudge these rules exist to prevent. */
-.map-pane[data-pins='dot'] .map-pin .pin-tag.plain {
-  display: none;
-}
+/* DELETED 2026-08-26: `.map-pane[data-pins='dot'] .map-pin .pin-tag.plain { display: none }`.
+
+   ADR-0141 §5 dropped the neutral tag at the dot tier in EVERY scope, reasoning that "a
+   text-scale claim on a 5px dot is exactly the smudge these rules exist to prevent". The
+   claim was about the PANE's zoom tier; the smudge is a property of the PIN — and in day
+   scope only `.aside` degrades (see the `--pin-u` rules above), so a full-size numbered stop
+   below zoom 11 kept its size and silently lost its word. Owner, from the shipped map:
+   _"the צ׳ק-אין / צ׳ק-אאוט are indeed rendered but only when you're very much zoomed to the
+   hotel"_ — ⁦zoom 11⁩ is a ~⁦30km⁩ span, so that was every view wider than a town.
+
+   It is a deletion rather than a rescoping because the corrected rule would be inert: the
+   only day-scope pin that becomes a dot is `.aside`, and `Map.tsx` withholds the transition
+   word from aside pins outright. All-days is already covered by the block above, which drops
+   EVERY tag on a pin that is not amber. Nothing is left for this selector to catch.
+
+   The trap worth keeping: this file's dot rules are scoped per `data-scope` for a reason, and
+   a rule that reads only `[data-pins='dot']` has quietly assumed both scopes degrade alike. */
 
 /* ── CHOOSING A PLACE: EVERY TRIP PIN IS CONTEXT (owner, session 166) ────────────
    You arrived from a form to pick ONE place, so the trip's own pins are what you are

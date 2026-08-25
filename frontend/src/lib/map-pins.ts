@@ -26,6 +26,7 @@ import { eventEdgeTransition } from './transitions';
 // brackets your day, a car hire does not. Read, not re-asked: its docblock already exports it
 // for a second shape.
 import { countsNights } from './glance';
+import { t } from '../i18n/he';
 
 /**
  * The prominence ladder, one tier per pin (ADR-0121 §6). The list separates
@@ -238,12 +239,23 @@ export function pinTransition(
    *  on surfaces that do not resolve journeys, which then behave exactly as before. */
   connectionWordAt?: (placeId: string, date: string) => string | undefined,
 ): string | undefined {
-  if (placePinTier(usage, ctx) === PIN_TIER.behind) return undefined;
   const day = placeMetaDay(usage, ctx);
+  // **A STAY KEEPS ITS WORD WHEN IT IS BEHIND YOU** (ADR-0054's 2026-08-26 amendment).
+  // The silence below is right for a word that means *what happens next here* — naming a
+  // departed flight as ahead is a lie. A stay's word is not that claim: it is which END of
+  // the day this place was, and the day does not stop having started at the hotel because
+  // it is now the afternoon. Without the exemption the map states the check-IN you are
+  // heading for and stays mute about the check-OUT you already did, which is half a route.
+  // The grey still says "behind you"; the word only says which moment it was.
+  const stay = day ? stayEnds(day, day.date, eventById) : undefined;
+  if (!stay && placePinTier(usage, ctx) === PIN_TIER.behind) return undefined;
   const stop = day?.date ? connectionWordAt?.(usage.placeId, day.date) : undefined;
   if (stop) return stop;
   const event = day?.eventId ? eventById(day.eventId) : undefined;
-  return event ? eventEdgeTransition(event, day?.edge) : undefined;
+  const edge = event ? eventEdgeTransition(event, day?.edge) : undefined;
+  // A strictly middle night carries NEITHER end, so there is no transition word to find —
+  // and it is the one pin sitting at both ends of the route. It says what it is instead.
+  return edge ?? (stay ? t.map.stayNight : undefined);
 }
 
 /**

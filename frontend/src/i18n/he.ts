@@ -425,6 +425,12 @@ export const t = {
     // the two surfaces read one resolver (`deriveNow`), so they must also say one
     // thing. Amber like `nextStop`: both are time (ADR-0028).
     happeningNow: 'עכשיו',
+    // A STRICTLY MIDDLE NIGHT of a stay, in the same pin slot the two words above and
+    // `transition.checkIn`/`checkOut` fill (ADR-0054's 2026-08-26 amendment). It has no
+    // edge, so it has no transition word to say — and it is the one pin that bookends BOTH
+    // ends of the day, which is exactly what a reader cannot otherwise tell. Neutral, not
+    // amber: it is where you are sleeping, not a commitment on the clock.
+    stayNight: 'לינת לילה',
     // The list is three blocks (ADR-0109 session-110 + session-127), keyed by
     // `PlaceBlock` so the header and the order read one vocabulary. The behind header
     // is deliberately NEUTRAL (ADR-0117 §3): it holds three outcomes — visited,
