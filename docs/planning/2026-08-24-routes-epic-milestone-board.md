@@ -923,6 +923,20 @@ the **visible number** was the gate on the polyline, on `mapsDayRouteUrl` and on
 traversal. It reads `dayStops` now — the same derivation one step earlier, where a stop holds a
 position whether or not it can defend a number.
 
+**Follow-up (2026-08-26) — the ordering caveat.** A `first` bookend was pinned to position 0
+unconditionally, which is wrong on the night you check in at 02:00 and out that morning: the midnight
+car pick-up that brought you there sorted after the hotel. Fixed by the narrowest rule that settles
+it — **nothing whose instant precedes the stay's own check-in sorts after it** — an instant
+comparison, so no dawn cut-off and no zone. It declines to reorder the case the data cannot settle
+(an ordinary stay plus a midnight errand), which is what keeps it from growing into a theory of what
+precedes what. The hotel-change day falls out for free.
+
+**Still open from the same report:** the map does not say where you check IN vs OUT. The word exists
+(`pinTransition`) and renders on the hotel you are heading to; it is suppressed on the one you left,
+because ADR-0141 silences the `behind` tier — right for "what's next here", wrong for a bookend whose
+word is positional. A middle night has no edge and so no word at all, which needs a drawn answer
+rather than an un-suppression.
+
 **Three owner answers this card is built on**, all put as forks before any code:
 
 | asked                             | answered                                                                                                                                  |

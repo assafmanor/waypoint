@@ -34,6 +34,23 @@ therefore last only, a check-out day first only, and a strictly middle night is 
 exactly the day that has a hotel at each end. A day you change hotels comes out as _A's check-out …
 B's check-in_ for free, because each span only ever answers about itself.
 
+**AMENDED 2026-08-26 — a bookend does not outrank a stop that beat you to it.** Owner, from the
+shipped map: _"we rent the car at 00:00 and then go to check in at the hotel … it shows the hotel as
+starting before the car rental"_ — on a night they check in at 02:00 and out again that morning. A
+hotel counts that as the previous night, so the day reads it as a check-out and pinned it first; the
+midnight pick-up that brought them there was drawn after it, and the route left the airport,
+teleported to bed, and came back for the car.
+
+The rule is one line and it is **not** a dawn cut-off: **nothing whose instant precedes the stay's
+own check-in can sort after it.** Where the app can see when you arrived, it moves the stops that
+beat you there; where it cannot — an ordinary stay checked into yesterday afternoon, whose 00:00
+errand may equally have been a trip out and back — it moves nothing, because that ordering is
+genuinely unknown and inventing an answer for it is how a bookend becomes a general theory of what
+precedes what. A zone-free instant comparison, so no day boundary has to be resolved to apply it.
+
+A day you check out of one hotel in the morning and into another at night needs nothing further:
+each span answers only about itself, so the compressed stay takes the head and the new one the tail.
+
 **A bookend holds a POSITION and wears no NUMBER.** `knowsMoment` still refuses it the mark — "from
 15:00" is a floor and any hour after it will do ([ADR-0171](0171-a-time-can-be-a-floor-or-a-ceiling.md)
 §10b) — so nothing on screen renumbers, and the day's known stops still count 1, 2, 3 with no hole.

@@ -807,6 +807,79 @@ describe('the stay bookends the day, and wears no number for it', () => {
     expect(stops.map((s) => s.order)).toEqual([undefined, 1, 2]);
   });
 
+  // ── NOTHING THAT HAPPENED BEFORE YOU ARRIVED SORTS AFTER THE STAY YOU WOKE IN ──────
+  // Owner, 2026-08-26: _"we rent the car at 00:00 and then go to check in at the hotel …
+  // it shows the hotel as starting before the car rental"_ — on the night they check in at
+  // 02:00 and out again that morning.
+  describe('a stay you reached during the night does not claim the whole day', () => {
+    const car = event({
+      id: 'car',
+      placeId: 'depot',
+      category: EVENT_CATEGORY.TRANSPORT,
+      icon: '🚗',
+      startsAt: at2('00:00'),
+      endsAt: '2026-07-24T18:00:00Z',
+      endDate: '2026-07-24',
+    });
+    const museum = event({ id: 'm', placeId: 'museum', startsAt: at2('11:00') });
+    /** Booked as the night BEFORE (which is how a hotel counts a 02:00 arrival), so the day
+     *  reads it as a check-out — and it is also where you slept. */
+    const overnight = event({
+      id: 'a',
+      placeId: 'hotelA',
+      category: EVENT_CATEGORY.LODGING,
+      date: PREV_DAY,
+      endDate: DAY,
+      startsAt: at2('02:00'),
+      endsAt: at2('10:00'),
+    });
+    const sequence = (events: TripEvent[], ids: string[]) =>
+      buildDayStopSequence([...usages({ places: ids.map((id) => place(id)), events }).values()], {
+        nameOf,
+        onDate: DAY,
+        eventById: eventsById(events),
+      }).map((s) => s.usage.placeId);
+
+    it('puts the midnight pick-up that brought you there BEFORE the hotel', () => {
+      // Pinned first unconditionally, this read `hotelA → depot → museum`: the route left
+      // the airport, teleported to bed, and came back for the car.
+      expect(sequence([car, overnight, museum], ['hotelA', 'museum', 'depot'])).toEqual([
+        'depot',
+        'hotelA',
+        'museum',
+      ]);
+    });
+
+    it('still ends the day at the DIFFERENT hotel you move to', () => {
+      // The change-over day, with the compressed stay at its head. Each span answers only
+      // about itself, so no rule of its own is needed for this.
+      const next = event({
+        id: 'b',
+        placeId: 'hotelB',
+        category: EVENT_CATEGORY.LODGING,
+        date: DAY,
+        endDate: '2026-07-24',
+        startsAt: at2('20:00'),
+        endsAt: '2026-07-24T10:00:00Z',
+      });
+      expect(
+        sequence([car, overnight, museum, next], ['hotelA', 'hotelB', 'museum', 'depot']),
+      ).toEqual(['depot', 'hotelA', 'museum', 'hotelB']);
+    });
+
+    it('moves NOTHING when the app cannot see when you arrived', () => {
+      // An ordinary stay checked into yesterday afternoon. A 00:00 errand is then genuinely
+      // ambiguous — you may have gone out and come back — so the rule declines to guess,
+      // which is what keeps it from becoming a general theory of what precedes what.
+      const ordinary = { ...overnight, startsAt: `${PREV_DAY}T15:00:00Z` };
+      expect(sequence([car, ordinary, museum], ['hotelA', 'museum', 'depot'])).toEqual([
+        'hotelA',
+        'depot',
+        'museum',
+      ]);
+    });
+  });
+
   it('answers nothing on a surface that cannot resolve events', () => {
     // `eventById` absent means no stay is ever found, so a middle night stays backdrop and
     // the sequence is exactly what it was — the same inertness `knowsMoment` has there.
