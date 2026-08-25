@@ -1,7 +1,7 @@
 # The day's lines read as a route — a design session on the map's polylines
 
 **Date:** 2026-08-25
-**Kind:** design session (M7b of the routes epic; nothing built)
+**Kind:** design session **and the build it was approved into** (M7b of the routes epic)
 **Mockup:** [`mockups/the-days-lines-read-as-a-route-v1.html`](../../mockups/the-days-lines-read-as-a-route-v1.html)
 **Decides:** [ADR-0206](../decisions/0206-a-travel-time-belongs-between-two-points.md) §AC (amended in place)
 **Board:** [routes epic](2026-08-24-routes-epic-milestone-board.md) — M7b
@@ -66,8 +66,10 @@ accidentally produce. Its cost is stated rather than buried: a third source/laye
 
 ## What was put to the owner, and what this session recommends
 
-Nothing is built. The ADR records these as the session's recommendations; the owner's pick on §2 is
-the one that could reasonably go another way.
+The table below is how the session ended: recommendations, drawn but unbuilt. **The owner approved
+them the same evening and the build landed in the same PR** — see _What the build cost_ at the foot,
+and §AC6 for the two things only CI could tell us. The pick on §AC2 was the one that could
+reasonably have gone another way; it went as recommended.
 
 | #    | question                      | recommended                                                             | rejected, and why                                                                                                          |
 | ---- | ----------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
@@ -93,12 +95,25 @@ that a stop's canonical leg, so the two answers cannot disagree), falling back t
 only for the day's first stop. §AC5 records it; the rejected two-tail version is in the mockup's
 notes panel so it is not re-proposed.
 
-## What the build owes when it happens
+## What the build cost, once it happened
 
-- The stub's threshold and the dot's radius are **feel calls**, shipped as controls in the mockup
-  with defaults (16px, r≈3) and handed to a device pass — the same posture ADR-0122's numbers took.
-- The third source/layer pair is the one real cost; it goes in `DayConnector` beside the two it
-  already owns, never as a component beside it.
-- `MAP_CONNECTOR` grows the dot and the stub as named constants, per-theme where they carry colour —
-  the shape the file already has, and the reason it has it (ADR-0158 §16: a colour computed in JS
-  cannot join a CSS remap).
+Approved and built in the same PR. What the session predicted, and what it got wrong:
+
+- **Right:** `MAP_CONNECTOR` grew the dot and the stub as named constants, per-theme where they
+  carry colour (ADR-0158 §16 — a colour computed in JS cannot join a CSS remap). The stub threshold
+  and the dot radius remain **feel calls** on the mockup's defaults (⁦16px⁩, r≈⁦3⁩), still owed a device
+  pass.
+- **Wrong, and by more than a little:** the session costed this at "a third source/layer pair". It
+  is **2 sources and 4 layers** — the three line treatments share one source and split by `filter`,
+  but only the dots could not. §AC6 corrects the estimate rather than leaving it standing.
+- **Not predicted at all, and the expensive one:** §AC3's collar is a screen distance, so the drawn
+  geometry became a function of the camera — and re-deriving it on `zoomend` mutates the map's style
+  exactly as the app settles after a camera fit. That took `e2e/place-know.spec.ts` from **⁦38s⁩ and
+  green** to **⁦1.1m⁩ with its stability assertions failing**, on both e2e jobs. The redraw itself is
+  ⁦12ms⁩; _when_ it landed was the whole problem. Deferred off the settling frame and thresholded at
+  half a zoom level, it is green and slightly faster than before.
+
+**The lesson worth carrying, because four confident guesses came first:** the circle layer, the two
+dashed layers, the near-zero stub dash and the layer count were each blamed, tested against `main`,
+and exonerated. A performance claim about a canvas is a **measurement**, not a reading of the diff —
+and bisecting against the merge base is what actually answered it.

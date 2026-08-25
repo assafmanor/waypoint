@@ -67,6 +67,21 @@ So the fix is not a new ordering rule. **The order asks the same question the nu
 
 Deliberately **not** generalised: the two `rank` functions. They sort different units — places against moments — and the sequence excludes `ambient` outright, so a shared rank would be half-inert in one caller. The predicate is the shared unit; the ranks stay local.
 
+**AMENDED 2026-08-25 — the ORDER and the NUMBER ask different questions again, and this time on purpose.** The line above ("the order asks the same question the number asks") holds for `comparePlacesBySchedule`, which orders a **list**, and is untouched there. It is reversed inside `buildDayStopSequence`, which since [ADR-0206](0206-a-travel-time-belongs-between-two-points.md) §AB5 also orders the map's **route**.
+
+The unification was sound while a position meant one thing. It does not any more:
+
+|                     | a position is…                               | so a floor…                                     |
+| ------------------- | -------------------------------------------- | ----------------------------------------------- |
+| the list (§3 above) | a claim about the **schedule**               | sinks — it cannot defend the hour it carries    |
+| the sequence        | a claim about **geography**, drawn as a line | sits at its hour — that is where your feet were |
+
+A car collected "from 09:00" and returned "until 18:00" is somewhere you physically go at roughly those times ([ADR-0054](0054-ambient-span-events-off-the-day-schedule.md)'s 2026-08-25 amendment records the owner naming exactly this class). Sunk to the tail it was drawn nowhere at all, because the map's route read `pin.order != null`; interleaved at its instant it is drawn where you were. **The number is what refuses to guess, and it still refuses** — `knowsMoment` is unchanged, one block below the sort, so nothing renumbers and the invariant §3 was written to protect (a stop cannot claim a number it cannot back up) is exactly as strong as it was.
+
+So the sequence sorts on `moment.at`, sinking only the genuinely **clockless**, and then relocates a stay to the day's ends per ADR-0054. The list keeps `knowsMoment` and keeps sinking. Two surfaces, one predicate for the mark, two for the order — which is the shape §3's own table was already describing, read one column further along.
+
+The aside about the two `rank` functions stands, with its reason narrowed: the sequence now admits an `ambient` stay night, but as a **bookend**, which never reaches the sort at all.
+
 ### 4. The gesture: capture on recognition, `pan-y`, and no new arbitration.
 
 The fifth gesture does not join the canvas's four-way arbitration, and the reason is structural rather than careful design: **`.map-placecard` is a sibling of `<MapPane>` inside `.map-split`, not a descendant** (wrapping the pane remounts it, and a remount is a billed map load — ADR-0121 §4). `useCanvasGestures` attaches its capture-phase listeners to the **pane**, so a `pointerdown` on the card never reaches the canvas recogniser at all.

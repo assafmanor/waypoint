@@ -1369,12 +1369,28 @@ export function MapView() {
   // is a planning question; in Trip mode you are living the day and need "where is
   // next", so its canvas stays quieter.
   const dayShapeVisible = !allDays && mode === 'plan';
+  // **THE ROUTE IS THE DAY'S SEQUENCE, NOT THE DAY'S NUMBERS** (ADR-0054's 2026-08-25
+  // amendment). This filtered on `pin.order != null`, which quietly made the visible NUMBER
+  // the gate on the line — so the two stops you can be surest of, the hotel you woke in and
+  // the one you are sleeping in, were the two the route could never reach, and a car
+  // collected "from 09:00" was drawn nowhere at all. `dayStops` is the same derivation the
+  // numbers come from ({@link buildDayStopSequence}), read one step earlier: a stop holds a
+  // position whether or not it can defend a number.
+  //
+  // The tail is still out — a place pencilled to the day with no event is not somewhere the
+  // line can claim you went — and so are the aside pins, which is what `ghostsInArea` below
+  // relies on.
+  const pinByPlace = useMemo(() => new Map(pins.map((pin) => [pin.placeId, pin])), [pins]);
   const orderedPins = useMemo(
     () =>
-      pins
-        .filter((pin) => pin.order != null && !isAsidePin(pin.tier))
-        .sort((a, b) => a.order! - b.order!),
-    [pins],
+      dayStops
+        .filter((stop) => !stop.tail)
+        .map((stop) => pinByPlace.get(stop.usage.placeId))
+        .filter((pin): pin is MapPin => pin != null && !isAsidePin(pin.tier))
+        // A stay that bookends both ends of a day with nothing else on it would otherwise
+        // ask for a leg from a place to itself.
+        .filter((pin, i, all) => i === 0 || pin.placeId !== all[i - 1]!.placeId),
+    [dayStops, pinByPlace],
   );
   const orderedStops = useMemo(
     () => orderedPins.map(({ lat, lng }) => ({ lat, lng })),

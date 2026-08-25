@@ -71,6 +71,7 @@ never by the one that did the work.
 | **M6b** | The hero read               | impl   | ⬜                        | M3, M5       | M6a, M7, M9  | —                                                                                                                                                          | —          |
 | **M7**  | The map polyline            | impl   | ✅ (+ follow-up 🔵)       | M3, M5       | M6a, M6b, M9 | `claude/routes-map-polyline-m7-baqobz` · [#706](https://github.com/assafmanor/waypoint/pull/706) · [#707](https://github.com/assafmanor/waypoint/pull/707) | 2026-08-25 |
 | **M7b** | The lines read as a route   | design | 🔵                        | M7           | M8, M9       | `claude/routes-map-polyline-m7-baqobz` · [#708](https://github.com/assafmanor/waypoint/pull/708)                                                           | 2026-08-25 |
+| **M7c** | The day's bookends          | impl   | 🔵                        | M7, M7b      | M8, M9       | `claude/routes-map-polyline-m7-baqobz` · [#709](https://github.com/assafmanor/waypoint/pull/709)                                                           | 2026-08-25 |
 | **M8**  | Mode per leg + trip default | impl   | ⬜                        | M6a, M6b, M7 | M10          | —                                                                                                                                                          | —          |
 | **M9**  | Plan-mode feasibility       | impl   | ⬜                        | M5           | M6a, M6b, M7 | —                                                                                                                                                          | —          |
 | **M10** | Offline route pack          | impl   | ⬜                        | M4           | M5–M9        | —                                                                                                                                                          | —          |
@@ -889,6 +890,56 @@ which is why no pin sat on its own route in the first render (`map-split-v2.html
 mirroring, harmless because its connector is decorative). And **`§` is Bidi-neutral**, so `§D8`
 renders `D8§` inside Hebrew — already recorded in §Z5 from the first routes mockup, and it still
 reached this one.
+
+---
+
+## M7c — The day's bookends
+
+**Kind:** implementation, in [#709](https://github.com/assafmanor/waypoint/pull/709) at the owner's
+instruction. **Decides:** [ADR-0054](../decisions/0054-ambient-span-events-off-the-day-schedule.md)
+(2026-08-25 amendment) · [ADR-0182](../decisions/0182-a-day-is-a-sequence-you-can-step-through.md) §3
+(amended) · [ADR-0206](../decisions/0206-a-travel-time-belongs-between-two-points.md) **§AD** ·
+**Note:** [2026-08-25](2026-08-25-the-day-starts-and-ends-where-you-sleep.md).
+
+Owner, off M7b's canvas: _"Now that we have real paths, I'm starting to feel the absence of some
+stops from the day schedule (the numbered stops), mostly the hotels … you can infer for certain that
+you're gonna start the day in a hotel and end in a hotel."_
+
+**What it changes, and it is two independent gaps rather than one:**
+
+- **A stay bookends the day.** A `countsNights` ambient span joins `buildDayStopSequence` as its
+  first stop when it covered last night and its last when it covers tonight — so a check-in day ends
+  there, a check-out day begins there, and a strictly middle night is **both**. A middle night was
+  invisible for a reason no re-sorting could have reached: it is `prominence: 'ambient'` with no edge
+  and no clock, so it never entered the sequence at all.
+- **A soft-timed booking sorts at its own instant again.** The sequence's sort asks `moment.at`
+  rather than `knowsMoment`, sinking only the genuinely clockless. That is ADR-0182 §3's 2026-08-11
+  unification **reversed for this one sequence** and left standing for the list — the owner's second
+  class, _"car rentals etc. that are from time X or until Y"_, which the sink had been drawing
+  nowhere at all.
+
+**The crux, and it was not in either derivation:** `screens/Map.tsx` filtered `pin.order != null`, so
+the **visible number** was the gate on the polyline, on `mapsDayRouteUrl` and on the card's
+traversal. It reads `dayStops` now — the same derivation one step earlier, where a stop holds a
+position whether or not it can defend a number.
+
+**Three owner answers this card is built on**, all put as forks before any code:
+
+| asked                             | answered                                                                                                                                  |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| what does a bookend get?          | **sequence + route, no number**                                                                                                           |
+| does the day timeline grow a row? | **sequence only, no new rows**                                                                                                            |
+| which other class did you mean?   | **soft-timed bookings** (a car hire "from X"/"until Y"), not flights — which are `exact` at both ends and were already numbered and drawn |
+
+**Cost:** two files, ~⁦60⁩ lines of derivation. The leg count grows by up to two per day and it is
+still **one** `withShapes` request (§Z5 §M3) — `routableLegs` pairs consecutively, so a longer stop
+list is a longer request, not more of them. A day whose only stops are one stay's two ends collapses
+to a single stop and asks for nothing.
+
+**One spec changed sides rather than being deleted**, the shape this branch has now used three times:
+`gives a ceiling no number once it can ask what the time means` asserted the check-out sinking to the
+day's tail — its third answer, after "sorted at 11:00 between two flights". It now asserts the hotel
+leading the day, with the `order` column untouched.
 
 ---
 
