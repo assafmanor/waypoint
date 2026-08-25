@@ -69,9 +69,13 @@ fight ADR-0121 §9 called _"quiet base, loud pins"_, and the pins must win it. T
 leg is solid; every other leg keeps today's dashed connector. Non-negotiable without a mockup that
 disproves it.
 
-**D9. Absent, not disabled.** v1 has no transit, so the mode control has **no transit entry** —
-not a greyed one. ADR-0160 §H's own words: announcing a control and then doing nothing when it is
-activated is the failure. A promise we cannot keep is worse than a silence.
+**D9. Absent, not disabled.** v1 has no transit _routing_, so the mode control offers no transit
+**estimate** — and never a greyed control implying one is coming. ADR-0160 §H's own words:
+announcing a control and then doing nothing when it is activated is the failure. A promise we cannot
+keep is worse than a silence. **Amended by §AA4 (2026-08-25): this rule is about what the APP
+claims, not about what a PERSON may tell it.** A traveller declaring "we are taking the train here"
+is not a promise we made and cannot keep; it is a fact we were given, and it makes the app quieter
+rather than louder. Read §AA4 before applying D9 to the transit mark.
 
 **D10. Copy rules apply, and Hebrew agreement is the trap.** No em dashes (root `CLAUDE.md`); `·` is
 the separator. And `20 דקות הליכה` / `שעה הליכה` disagree in a way the phrase does not expose —
@@ -342,3 +346,74 @@ at 390×844 and 360×640, in both themes. Session note:
 - **Two bidi defects found by rendering**, both ADR-0118's fix and both reaching the build:
   `~40` renders `40~` without `ltrIsolate`, and `§` is neutral so `§D8` renders `D8§` inside
   Hebrew copy.
+
+## AA. Amendment (2026-08-25) — the four open owner decisions, closed
+
+The **Owner decisions outstanding** table on the milestone board is now empty. Three answers took the
+recommendation; the fourth reverses a position this ADR held, and §AA4 is the one to read.
+
+### AA1. The swap threshold is 30 minutes of time-to-leave
+
+`LEAVE_BY_SWAP_MINUTES = 30`, exactly as §Z5 measured it. Confirmed rather than changed, and the
+three grounds stand: it is the number root `CLAUDE.md` already states in prose, anything ≥60 forces
+the tile into `H:MM` under a unit that means minutes, and at 45 the board spends more of a 40-minute
+walk counting to the departure than to the event. **M6b builds it as a third arm on `Home.tsx`'s
+existing ternary.**
+
+### AA2. The tile's unit word is `ליציאה`
+
+Following ADR-0184 §6's `לסגירה` in grammar and in mechanism — the unit slot says what the minutes
+are left **of**. Measured to fit the 74px tile unchanged (§Z5). `לצאת` was the alternative and reads
+as an instruction where this is a measurement.
+
+### AA3. The mode control gets three real icons
+
+`ui/Icon.tsx` gains **walk, car and bicycle**. §Z5 drew the control as word chips, and that was a
+consequence of the icon set not having them rather than a judgement that words read better — the
+session note says so in as many words.
+
+Three reasons to mint them, and the first is this repo's own decision: **ADR-0138 §4 already settled
+that "icons are UI"** and replaced the nav's emoji with `Icon` SVGs, so three glyphs here follow the
+grammar rather than bending it. Second, three word chips eat real width at 360px on the app's
+densest surface. Third, walk/car/bicycle are about as universally legible as glyphs get — this is
+not a case where an icon needs a label to mean anything.
+
+**What this obliges:** they are `Icon` entries like every other, and ADR-0138's rule that a glyph
+carries a content rule applies — a bare bicycle is not a mode until it reads as one at the control's
+size. **M6a and M8 own this, and it wants drawing at 24px before it is coded.**
+
+### AA4. A person may declare תחב״צ, and doing so **suppresses** the estimate
+
+**This reverses §V2's "say nothing about transit" for the declaration only, and §D9 is amended
+above.** The owner asked for it; I argued against it on §D9 and was wrong, and the reason is worth
+writing down because it is the kind of mistake that repeats.
+
+**§D9 is about what the app claims.** A greyed transit control promising routing we do not have is
+the failure it names. **A traveller marking a leg תחב״צ is the opposite move** — it is a fact the
+app was given, and what it buys is _silence where we would otherwise have lied_. In Tokyo the
+unmarked leg reads `~73 דק׳ הליכה` for a journey nobody will walk; marked, it reads as transit with
+no estimate. **The app becomes quieter and more honest, not louder and more promising.** I had this
+filed as a fourth entry in a picker; it is not that.
+
+**The shape, and it costs almost nothing because M8 already built the mechanism:**
+
+- **A fourth stored mode value with no provider.** It rides M8's per-leg override — the same column,
+  the same control — and `TRAVEL_GATE` never sees it, because there is nothing to gate. No request
+  is made, ever. It is not a `RouteProvider` concern and must not become one.
+- **It suppresses the duration and keeps the distance.** §D4's crow-flies floor is unaffected: `2.7
+ק״מ` is still true and still useful. What disappears is the walking number that was wrong.
+- **It is never inferred.** Only a person sets it. The app must not guess that a leg is transit
+  from its length, because a 9 km leg might equally be a taxi or a genuine long walk (§Z8 — the
+  owner raised the walking ceiling precisely because people do choose long walks).
+- **It says what it does not know.** The read carries the mark and no estimate; it must not imply a
+  transit ETA is coming. This is the one place §D9's original caution still bites, and it lands on
+  the _copy_, not on the control.
+
+**Not yet drawn.** §Z5 raised this as a question and did not resolve it into a state, so **M8 needs
+the mockup extended before it codes this** — the mark, the suppressed-duration row, and the copy
+that says "no estimate" without promising one. It is a small addition to an existing file, not a new
+design session.
+
+**What V2's transit row now means:** transit _routing_ — a real ETA from a real feed — is still
+deferred, still needs self-hosted MOTIS, and still gets its own ADR. This changes only who may
+assert the mode.
