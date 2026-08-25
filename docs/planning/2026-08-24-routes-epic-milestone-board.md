@@ -70,6 +70,7 @@ never by the one that did the work.
 | **M6a** | The day reads               | impl   | ⬜                        | M3, M5       | M6b, M7, M9  | —                                                                                                                                                          | —          |
 | **M6b** | The hero read               | impl   | ⬜                        | M3, M5       | M6a, M7, M9  | —                                                                                                                                                          | —          |
 | **M7**  | The map polyline            | impl   | ✅ (+ follow-up 🔵)       | M3, M5       | M6a, M6b, M9 | `claude/routes-map-polyline-m7-baqobz` · [#706](https://github.com/assafmanor/waypoint/pull/706) · [#707](https://github.com/assafmanor/waypoint/pull/707) | 2026-08-25 |
+| **M7b** | The lines read as a route   | design | 🔵                        | M7           | M8, M9       | `claude/routes-map-polyline-m7-baqobz` · [#708](https://github.com/assafmanor/waypoint/pull/708)                                                           | 2026-08-25 |
 | **M8**  | Mode per leg + trip default | impl   | ⬜                        | M6a, M6b, M7 | M10          | —                                                                                                                                                          | —          |
 | **M9**  | Plan-mode feasibility       | impl   | ⬜                        | M5           | M6a, M6b, M7 | —                                                                                                                                                          | —          |
 | **M10** | Offline route pack          | impl   | ⬜                        | M4           | M5–M9        | —                                                                                                                                                          | —          |
@@ -835,6 +836,59 @@ the day's first leg` (§AB2, amended).
   other, so they draw a road route whenever the pair is inside the mode's ceiling. §AA4's
   declaration is the designed answer; whether it also suppresses the POLYLINE is undecided. The M8
   card carries this.
+
+---
+
+## M7b — The lines read as a route (design)
+
+**Kind:** design session **+ the build**, both in one PR on the owner's approval. **Mockup:**
+[`mockups/the-days-lines-read-as-a-route-v1.html`](../../mockups/the-days-lines-read-as-a-route-v1.html) ·
+**Decides:** [ADR-0206](../decisions/0206-a-travel-time-belongs-between-two-points.md) **§AC** ·
+**Note:** [2026-08-25](2026-08-25-the-days-lines-read-as-a-route.md).
+
+Four reports off the shipped canvas, after the owner ran M7 on a real trip. Mocked up first, as the
+owner asked, then approved and built in the same PR.
+
+**What §AC settled, and the two that are deletions:**
+
+- **§AC1 — Plan mode spends no amber.** §AB2's third arm (`→ the day's first leg`) is **deleted**;
+  §D8's "selected or next" stands as written. The arm existed only because Plan drew nothing, and
+  §AB5 removed that reason in the same PR. **The general lesson, because it will recur: a fallback
+  that exists to stop a surface being empty must be re-examined the moment something else fills it.**
+- **§AC2 — a selected stop** marks the leg **arriving** at it in amber (§AB2's own choice, so the two
+  cannot disagree), the departing leg by weight, everything else at `line-opacity` 0.45. Two amber
+  legs was drawn and rejected: 2× §D8's ration, and it reads as a highlighted route rather than a
+  marked stop.
+- **§AC3 — a leg ends in a solid DOT**, and the ⚠ for whoever builds it: **the obvious answer does
+  not work.** A "collar" (a plain gap before the pin) is invisible on a line that is already made of
+  gaps — the shipped dash is 5px on / 5px off, so a 9px collar is 1.8× a gap the eye discards. It is
+  drawn in the mockup beside the measurement that kills it so nobody re-proposes it. **Cost: a third
+  source/layer pair in `DayConnector`** (a `circle` layer over the trimmed endpoints).
+- **§AC4 — no leg numbering.** ADR-0121 §6 already put the order on the pins, for the same reason.
+- **§AC5 — an off-network stop gets an approach stub**, not a stitch: the router snaps every endpoint
+  to the nearest edge, so the gap is permanent rather than a defect. Stitching straight to the pin
+  claims a path nobody walks. **One stub per STOP, never one per leg end** — drawn per end it appears twice at an interior stop and meets in a V, which is a double claim rather than a busy
+  picture, since a stop meets the network in one place. It runs to the **arriving** leg's endpoint
+  (§AB2's own choice), falling back to the departing leg only for the day's first stop.
+
+**What the build learned, and §AC6 records:** the collar is a **screen** distance, so the drawn
+geometry is a function of the camera — `DayConnector` projects, trims in pixels, unprojects, and
+re-derives on `zoomend` (never `zoom`, which would churn every frame of a pinch). It is **2 sources
+and 4 layers**, not the one pair §AC3 predicted: the three line treatments share one source and split
+by `filter`, and only the dots need a point source of their own. `connector` and `route`
+**consolidated** into one `MapDayLeg[]`, because two props describing one set of lines can disagree
+about which leg is which.
+
+**Still a feel call, still unspent:** the stub threshold (⁦16px⁩) and the dot radius (⁦3⁩ / ⁦3.4⁩) ship as
+the mockup's defaults and want a device pass.
+
+**What the next session needs to know:** the mockup's own two render findings are traps for any map
+mockup, not just this one. **A map canvas is the one surface in this RTL app that is not RTL** — pins
+placed with `inset-inline-start` land mirrored against an SVG whose `x` is measured from the left,
+which is why no pin sat on its own route in the first render (`map-split-v2.html` has the same
+mirroring, harmless because its connector is decorative). And **`§` is Bidi-neutral**, so `§D8`
+renders `D8§` inside Hebrew — already recorded in §Z5 from the first routes mockup, and it still
+reached this one.
 
 ---
 

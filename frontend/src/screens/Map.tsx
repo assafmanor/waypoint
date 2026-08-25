@@ -121,6 +121,7 @@ import { mapColorScheme, mapPaneAvailable, mapTileUrls } from '../lib/map-config
 import { useMaybeAuth } from '../state/auth-state';
 import { useMapArchives } from '../lib/useMapArchives';
 import { useDayShapes } from '../lib/travel';
+import type { MapDayLeg } from '../ui/domain/MapPane';
 import { landAtTop } from '../lib/land-at-top';
 import { observeResize } from '../lib/observe-resize';
 import { edgeFadeRef } from '../lib/edge-fade';
@@ -1382,27 +1383,22 @@ export function MapView() {
   const dayRouteUrl = dayShapeVisible ? mapsDayRouteUrl(orderedStops) : null;
 
   // **The one leg the amber is spent on** (ADR-0206 §D8): the journey INTO the stop you are
-  // asking about — the selected one, or the next one when nothing is selected. Into rather than
-  // out of, because that is the question both reads answer — §V1.2's `~23 דק׳ · צאו ב־18:37` is
-  // the travel TO where you are going — and the day's first stop is the one place with no such
-  // leg, so it takes the one departing it instead.
+  // asking about — the selected one, or the next one in Trip mode. Into rather than out of,
+  // because that is the question both reads answer (§V1.2's `~23 דק׳ · צאו ב־18:37` is the travel
+  // TO where you are going), and §AC2 keeps the two answers from diverging.
   //
-  // **Not gated on `dayShapeVisible`**, unlike the dashed connector: the order is a planning
-  // question and the route is a living-the-day one, so Trip mode is where the line earns most.
-  // Day scope still gates it — all-days has no "the day's legs" to pick one from.
-  const routeLeg = useMemo(() => {
-    if (allDays || orderedPins.length < 2) return null;
+  // **There is no third arm, and its deletion is the point** (§AC1). It used to fall back to the
+  // day's first leg, because Plan mode drew nothing at all otherwise — a reason §AB5 removed in
+  // the same PR by making every leg draw its real path. With nothing selected and no live "next",
+  // Plan mode now spends **no amber**, which is §D8 as it was always written.
+  const amberLeg = useMemo(() => {
+    if (allDays || orderedPins.length < 2) return -1;
     const selected = orderedPins.findIndex((pin) => pin.selected);
     const asked = selected >= 0 ? selected : orderedPins.findIndex((pin) => pin.nextStop);
-    // **Selected → next → the day's FIRST leg**, and the third arm is what makes Plan mode draw
-    // at all: `nextStopId` is Trip-mode only (a live "next" says nothing while you are planning),
-    // so a Plan day with nothing tapped had no stop to pick and drew nothing. A plan opens on the
-    // journey it starts with. In Trip mode the fallback can only fire before the day begins or
-    // after it ends, where the first leg is the honest answer too.
-    const arriveAt = Math.max(asked, 1);
-    const to = orderedPins[arriveAt]!;
-    const from = orderedPins[arriveAt - 1]!;
-    return { from: { lat: from.lat, lng: from.lng }, to: { lat: to.lat, lng: to.lng } };
+    if (asked < 0) return -1;
+    // The day's first stop is the one place with no leg arriving at it, so it takes the leg
+    // departing it instead. Leg `i` runs from stop `i` to stop `i + 1`.
+    return Math.max(asked, 1) - 1;
   }, [orderedPins, allDays]);
 
   // **What kind of trip this is** (ADR-0206 §Z2), derived rather than stored. Not a constant: a
@@ -1418,25 +1414,34 @@ export function MapView() {
   const dayShapes = useDayShapes({ tripId: trip.id, stops: orderedStops, mode: travelMode });
 
   // **Every leg drawn along the route it describes**, with the straight segment as the floor for
-  // one whose shape has not arrived (§D4). This is what replaced the single straight polyline:
-  // §D8 rations the SOLID AMBER, not the truth of the line.
-  const legPaths = useMemo(() => {
-    const paths: LatLng[][] = [];
+  // one whose shape has not arrived (§D4) — §D8 rations the SOLID AMBER, not the truth of the
+  // line. Emphasis is §AC2: the amber leg, the one departing the same stop at weight only, and
+  // everything else pushed back. With no amber leg there is nothing to recede FROM, so no leg is
+  // dimmed and a Plan day reads as one even set.
+  const dayLegs = useMemo<MapDayLeg[]>(() => {
+    const legs: MapDayLeg[] = [];
     for (let i = 0; i + 1 < orderedStops.length; i++) {
       const from = orderedStops[i]!;
       const to = orderedStops[i + 1]!;
-      paths.push([...(dayShapes.pathFor(from, to) ?? [from, to])]);
+      const emphasis =
+        amberLeg < 0
+          ? undefined
+          : i === amberLeg
+            ? ('route' as const)
+            : i === amberLeg + 1
+              ? ('near' as const)
+              : ('dim' as const);
+      legs.push({ path: [...(dayShapes.pathFor(from, to) ?? [from, to])], from, to, emphasis });
     }
-    return paths;
-  }, [orderedStops, dayShapes]);
+    return legs;
+  }, [orderedStops, dayShapes, amberLeg]);
 
-  // The one leg that is solid amber, drawn from the same geometry the dash under it uses.
-  const routeShape = useMemo(
-    () =>
-      routeLeg
-        ? (dayShapes.pathFor(routeLeg.from, routeLeg.to) ?? [routeLeg.from, routeLeg.to])
-        : null,
-    [routeLeg, dayShapes],
+  // The dashed ORDER is Plan mode + day scope only (ADR-0121 §10); the one amber leg draws in
+  // either mode, because it answers "where is next" rather than "what shape is this day"
+  // (ADR-0206 §AB1). So Trip mode is handed that leg alone.
+  const paneLegs = useMemo(
+    () => (dayShapeVisible ? dayLegs : dayLegs.filter((leg) => leg.emphasis === 'route')),
+    [dayShapeVisible, dayLegs],
   );
 
   const areaCount = useMemo(
@@ -3780,8 +3785,7 @@ export function MapView() {
           results={results}
           onSelectResult={selectResult}
           me={me}
-          connector={dayShapeVisible ? legPaths : undefined}
-          route={routeShape ?? undefined}
+          connector={paneLegs}
           setSignal={cameraSignal}
           defaultCentre={defaultCentre}
           onSelectPin={selectPin}

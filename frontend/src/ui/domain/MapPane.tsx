@@ -364,14 +364,11 @@ export interface MapPaneProps {
   onSelectResult?: (googlePlaceId: string) => void;
   /** Where the device is, when near-me is granted. */
   me?: LatLng;
-  /** The day's legs, each as its own dashed line — the real routed path where one has arrived,
-   *  the straight segment between the two stops where it has not (ADR-0206 §Z5 §M3). Plan mode +
-   *  day scope only (§10). Absent, or with no leg of two-plus points, draws nothing. */
-  connector?: readonly (readonly LatLng[])[];
-  /** **The one drawn route** (ADR-0206 §D1/§D8) — the provider's own geometry for the selected
-   *  or next leg, solid and amber over the dash. One at a time is the rule, and it is the
-   *  caller's to keep: this draws whatever it is handed. Absent draws nothing. */
-  route?: readonly LatLng[];
+  /** **The day's legs** — each with its drawn geometry (the routed path where one has arrived,
+   *  the straight segment where it has not) and how prominent it is (ADR-0206 §AC). Plan mode +
+   *  day scope only for the dashed set (§10); the amber one is either mode (§AB1). §D8's "one
+   *  solid line" is the caller's rule to keep — this draws what it is handed. */
+  connector?: readonly MapDayLeg[];
   /** Changes exactly when a control changed the pin SET, so the camera re-frames
    *  then and at no other time (§7). */
   setSignal: string;
@@ -600,7 +597,6 @@ function MapPaneInner({
   onSelectResult,
   me,
   connector,
-  route,
   setSignal,
   defaultCentre,
   onSelectPin,
@@ -1038,7 +1034,7 @@ function MapPaneInner({
           ))}
           {me && <MeMarker map={map} gl={gl} at={me} />}
           {draftMarker && <DraftMarker map={map} gl={gl} marker={draftMarker} />}
-          <DayConnector map={map} path={connector} route={route} scheme={scheme} />
+          <DayConnector map={map} legs={connector} scheme={scheme} />
           {/* **The wait, stated** (field report #35). Until the first tile paints the canvas
             is empty while our own markers already draw on it — the very picture #28 reported
             as a failure. Over the canvas rather than instead of it: the renderer needs its own
@@ -1384,148 +1380,329 @@ const DRAFT_MARKER_Z = 950;
  *  added and never removed). */
 const CONNECTOR = { source: 'wp-connector', layer: 'wp-connector-line' } as const;
 
-/** The route's own pair, for the same reason — and separate ids rather than a second feature in
- *  the connector's source: the two lines are painted differently and the route comes and goes on
- *  its own (a selection moves, a shape arrives) while the day's order does not. */
-const ROUTE = { source: 'wp-route', layer: 'wp-route-line' } as const;
+/** The amber leg's own LAYER, over the connector's source rather than beside it: the two are one
+ *  piece of data with two paints, split by `filter` (ADR-0206 §AC). */
+const ROUTE = { layer: 'wp-route-line' } as const;
 
-/** A content key for a path, so a clock tick handing down a fresh array is not a new line. Same
- *  trick the screen uses for `pins`, one layer down — and shared by both geometries below, which
- *  is what keeps "what changed" one question rather than two. */
-const pathKey = (path?: readonly LatLng[]): string =>
-  path && path.length >= 2 ? JSON.stringify(path.map((at) => lngLat(at))) : '';
+/** The stubs and the end dots. **The stubs share the LINE source** — they are one more kind of
+ *  line, split off by `filter` rather than by a parallel copy of the data (rule 8). The dots
+ *  cannot: a `circle` layer needs a point source, and that is the honest cost ADR-0206 §AC3
+ *  names. */
+const STUB = { layer: 'wp-connector-stub' } as const;
+const DOT = { source: 'wp-connector-dot', layer: 'wp-connector-dot-circle' } as const;
 
-/** The same, for the day's legs: **many lines in one geometry**. A `MultiLineString` rather than a
- *  feature per leg because it is one drawing with one paint — and because it keeps the layer
- *  count, the guards and the teardown exactly where they were when this was a single polyline. */
-const pathsKey = (paths?: readonly (readonly LatLng[])[]): string => {
-  const drawable = (paths ?? []).filter((path) => path.length >= 2);
-  return drawable.length ? JSON.stringify(drawable.map((p) => p.map((at) => lngLat(at)))) : '';
-};
+/** **One leg of the day, as the pane is told to draw it.** The screen owns which leg is which —
+ *  `MapPane` is presentational (ADR-0096) and draws what it is handed. */
+export interface MapDayLeg {
+  /** The drawn geometry: the routed path, or the straight segment where none has arrived yet. */
+  path: readonly LatLng[];
+  /** The two stops it runs between. The stub (ADR-0206 §AC5) is measured against these, and they
+   *  are what makes "the leg ARRIVING at a stop" expressible without an index into anything. */
+  from: LatLng;
+  to: LatLng;
+  /** `route` is §D8's one solid amber leg; `near` is prominent without spending amber twice;
+   *  `dim` recedes. Absent is the ordinary leg. */
+  emphasis?: 'route' | 'near' | 'dim';
+}
 
-const lineFeature = (key: string) => ({
+const KIND = { leg: 'leg', stub: 'stub' } as const;
+
+/** A content key, so a clock tick handing down a fresh array is not a new line. Same trick the
+ *  screen uses for `pins`, one layer down. */
+const legsKey = (legs?: readonly MapDayLeg[]): string =>
+  legs && legs.length
+    ? JSON.stringify(
+        legs.map((leg) => [
+          leg.path.map((at) => lngLat(at)),
+          lngLat(leg.from),
+          lngLat(leg.to),
+          leg.emphasis ?? '',
+        ]),
+      )
+    : '';
+
+const feature = (geometry: object, properties: object) => ({
   type: 'Feature' as const,
-  geometry: { type: 'LineString' as const, coordinates: JSON.parse(key) as number[][] },
-  properties: {},
+  geometry,
+  properties,
 });
 
-const multiLineFeature = (key: string) => ({
-  type: 'Feature' as const,
-  geometry: { type: 'MultiLineString' as const, coordinates: JSON.parse(key) as number[][][] },
-  properties: {},
-});
+/** Trim `px` screen pixels off both ends of a projected polyline. Returns fewer than two points
+ *  when the line is shorter than the two collars — the caller's cue to draw nothing. */
+function trimEnds(pts: readonly [number, number][], px: number): [number, number][] {
+  const walk = (points: [number, number][]): [number, number][] => {
+    let left = px;
+    const out = points.slice();
+    while (out.length > 1) {
+      const a = out[out.length - 2]!;
+      const b = out[out.length - 1]!;
+      const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (d > left) {
+        const t = (d - left) / d;
+        out[out.length - 1] = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+        return out;
+      }
+      left -= d;
+      out.pop();
+    }
+    return out;
+  };
+  return walk(walk(pts.slice()).reverse()).reverse();
+}
 
-/** **The day's two lines, and they say different things.**
+/** **The day's lines, and every one of them is the real route** (ADR-0206 §AB5 / §AC).
  *
- *  `path` is the day's order, **one dashed line per leg** (§10). `route` is the focused leg drawn
- *  again in solid amber over it (ADR-0206 §D1/§D8). Five solid amber lines on a phone is the fight
- *  ADR-0121 §9 says the pins must win, so the caller marks one leg and every other keeps the dash.
+ *  Four things are drawn out of TWO sources — one of lines, one of points:
  *
- *  **Both are now the REAL route, and the dash no longer means "not the route"** (ADR-0206 §Z5
- *  §M3, the owner's review): _"every leg draws its REAL path; §D8 rations the SOLID AMBER, not the
- *  truth of the line."_ ADR-0121 §10 drew straight segments and said so in the dash, because there
- *  was no geometry to be had; now there is, and a straight segment is both a weaker drawing and a
- *  wrong distance. So the dash's job changes from _"this is the order, not the route"_ to
- *  _"this leg is not the one you are looking at"_. A leg whose shape has not arrived — refused,
- *  warming, offline — still hands down its straight segment, which is §D4's floor and looks like
- *  a line that has not snapped to the road yet rather than an error.
+ *    1. every leg, dashed and neutral, at its own weight and opacity (§AC2);
+ *    2. the one **selected or next** leg, solid amber over it (§D8 — and §AC1 deleted the
+ *       "otherwise the first leg" arm, so a Plan day with nothing selected spends no amber);
+ *    3. a filled **dot** at each leg's end (§AC3), because a plain gap is invisible on a line
+ *       already made of gaps — that was measured on the mockup, not assumed;
+ *    4. one **stub** per stop (§AC5) where the router's snap point is far from the stop itself.
  *
- *  **One component and one effect, not a layer beside this one** (ADR-0206 §M7): the source/layer
- *  ids, the style-reload guard and the teardown all already live here, and a route is one more
- *  geometry through them.
+ *  **The three line treatments share ONE source and split by `filter`**, so the legs, the amber
+ *  one and the stubs are one piece of data with three renderings rather than three parallel
+ *  copies to keep in step (rule 8). Weight and opacity are data-driven `match` expressions on the
+ *  feature's own `emphasis`, which is what lets a single layer draw legs of different prominence.
  *
- *  **The fake is gone** (ADR-0186 §2). ADR-0121 §10 had to write _"the Maps API has no
- *  `strokeDasharray`, so a dash is a repeating symbol along a fully transparent stroke"_;
- *  MapLibre has `line-dasharray`, so this is now a line with a dash pattern and the
- *  `DASH_SCALE`/`DASH_REPEAT` symbol arithmetic is deleted along with `Polyline`.
+ *  **The dash no longer means "not the route"** (§AB5). ADR-0121 §10 drew straight segments and
+ *  said so in the dash; there is geometry now, so the dash means "not the leg you are looking at".
  *
- *  Imperative because a line is style, not a marker: there is no React element for a layer.
- *  It renders `null` and does its work in an effect, exactly as `PinDensity` does. */
+ *  **One component and one effect, never a layer beside this one** (ADR-0206 §M7): the ids, the
+ *  style-reload guard and the teardown all live here.
+ *
+ *  Imperative because a line is style, not a marker: there is no React element for a layer. It
+ *  renders `null` and does its work in an effect, exactly as `PinDensity` does. */
 const DayConnector = memo(function DayConnector({
   map,
-  path,
-  route,
+  legs,
   scheme,
 }: {
   map: MapLibreMap | null;
-  /** One entry per leg, each already the real path or the straight fallback. */
-  path?: readonly (readonly LatLng[])[];
-  /** The drawn route for the selected-or-next leg, already decoded (`lib/travel.ts`). Absent —
-   *  no leg, no shape yet, offline, refused — draws nothing, and that is the ordinary state
-   *  rather than an error (ADR-0206 §D4). */
-  route?: readonly LatLng[];
+  legs?: readonly MapDayLeg[];
   /** The canvas's OWN scheme. This used to be latched at construction because a Map ID's
    *  style could not be changed on a live map (ADR-0121 §11) — ADR-0186 §7 removes that
    *  limit, and the line still takes the same value the ground was painted from so the two
    *  cannot disagree after a theme flip. */
   scheme: MapColorScheme;
 }) {
-  const shapeKey = pathsKey(path);
-  const routeKey = pathKey(route);
+  const key = legsKey(legs);
   const dark = scheme === MAP_COLOR_SCHEME.dark;
+  const held = useRef<readonly MapDayLeg[]>([]);
+  held.current = legs ?? [];
 
   useEffect(() => {
-    if (!map || (!shapeKey && !routeKey)) return;
-    const draw = () => {
-      // The style is torn down and rebuilt by a theme swap, so "already added" has to be
-      // asked rather than remembered — a flag would go stale the moment the ground restyles.
-      // Asked per geometry, because the two arrive at different times: a shape fetched while
-      // the day was already drawn must not find the connector's answer and skip itself.
-      const put = (
-        ids: { source: string; layer: string },
-        key: string,
-        feature: (key: string) => object,
-        layer: object,
-      ) => {
-        if (!key) return;
-        const existing = map.getSource(ids.source);
-        if (existing) {
-          (existing as unknown as { setData: (d: unknown) => void }).setData(feature(key));
-          return;
+    if (!map || !key) return;
+    const routeColor = dark ? MAP_CONNECTOR.ROUTE.COLOR.dark : MAP_CONNECTOR.ROUTE.COLOR.light;
+    const legColor = dark ? MAP_CONNECTOR.COLOR.dark : MAP_CONNECTOR.COLOR.light;
+    const isRoute = ['==', ['get', 'emphasis'], 'route'];
+    const byEmphasis = (plain: number, near: number, dim: number) => [
+      'match',
+      ['get', 'emphasis'],
+      'near',
+      near,
+      'dim',
+      dim,
+      plain,
+    ];
+
+    /** **The collar and the stub are SCREEN distances, so the drawn geometry depends on the
+     *  camera.** Project, trim/measure in pixels, unproject. A constant in metres was the
+     *  alternative and it is wrong in both directions: invisible at country zoom, enormous at
+     *  street zoom. The STORED shape is never trimmed — only what is painted. */
+    const build = () => {
+      const px = (at: LatLng): [number, number] => {
+        const p = map.project(lngLat(at) as [number, number]);
+        return [p.x, p.y];
+      };
+      const back = (p: [number, number]) => {
+        const at = map.unproject(p);
+        return [at.lng, at.lat];
+      };
+      const lines: object[] = [];
+      const dots: object[] = [];
+
+      held.current.forEach((leg, i) => {
+        if (leg.path.length < 2) return;
+        const emphasis = leg.emphasis ?? '';
+        const trimmed = trimEnds(
+          leg.path.map((at) => px(at)),
+          MAP_CONNECTOR.COLLAR_PX,
+        );
+        if (trimmed.length < 2) return;
+        const coords = trimmed.map(back);
+        lines.push(
+          feature({ type: 'LineString', coordinates: coords }, { kind: KIND.leg, emphasis }),
+        );
+        for (const end of [coords[0]!, coords[coords.length - 1]!]) {
+          dots.push(feature({ type: 'Point', coordinates: end }, { emphasis }));
         }
-        map.addSource(ids.source, { type: 'geojson', data: feature(key) });
-        map.addLayer({ id: ids.layer, type: 'line', source: ids.source, ...layer });
+
+        // **One stub per STOP, not one per leg end** (§AC5). Drawn at the leg's END, which yields
+        // exactly one per stop that has an arriving leg — plus the FIRST leg's start, the one
+        // stop in a day with no arrival. Two tails at one stop would be the same fact twice.
+        const stub = (stop: LatLng, anchor: LatLng) => {
+          const stopPx = px(stop);
+          const anchorPx = px(anchor);
+          const d = Math.hypot(anchorPx[0] - stopPx[0], anchorPx[1] - stopPx[1]);
+          if (d <= MAP_CONNECTOR.STUB.MIN_PX) return;
+          const t = MAP_CONNECTOR.COLLAR_PX / d;
+          lines.push(
+            feature(
+              {
+                type: 'LineString',
+                coordinates: [
+                  lngLat(anchor),
+                  back([
+                    stopPx[0] + (anchorPx[0] - stopPx[0]) * t,
+                    stopPx[1] + (anchorPx[1] - stopPx[1]) * t,
+                  ]),
+                ],
+              },
+              { kind: KIND.stub, emphasis },
+            ),
+          );
+        };
+        stub(leg.to, leg.path[leg.path.length - 1]!);
+        if (i === 0) stub(leg.from, leg.path[0]!);
+      });
+
+      return {
+        lines: { type: 'FeatureCollection' as const, features: lines },
+        dots: { type: 'FeatureCollection' as const, features: dots },
+      };
+    };
+
+    const draw = () => {
+      const data = build();
+      const has = (kind: string, route: boolean) =>
+        data.lines.features.some((f) => {
+          const p = (f as { properties: { kind?: string; emphasis?: string } }).properties;
+          return p.kind === kind && (kind !== KIND.leg || (p.emphasis === 'route') === route);
+        });
+
+      // The style is torn down and rebuilt by a theme swap, so "already added" has to be asked
+      // rather than remembered — a flag would go stale the moment the ground restyles.
+      const source = (id: string, payload: { features: object[] }) => {
+        if (!payload.features.length) return false;
+        const existing = map.getSource(id);
+        if (existing) (existing as unknown as { setData: (d: unknown) => void }).setData(payload);
+        else map.addSource(id, { type: 'geojson', data: payload });
+        return true;
       };
 
-      put(CONNECTOR, shapeKey, multiLineFeature, {
+      /** **Only the layers that have something to draw.** A Trip-mode day draws ONE leg, and
+       *  three more layers beside it — empty, but composited every frame — is work nobody asked
+       *  for. Removed again when the data stops needing them. */
+      const layer = (want: boolean, spec: { id: string; [k: string]: unknown }) => {
+        const there = Boolean(map.getLayer(spec.id));
+        if (want && !there) map.addLayer(spec as never);
+        else if (!want && there) map.removeLayer(spec.id);
+      };
+
+      const lines = source(CONNECTOR.source, data.lines);
+      layer(lines && has(KIND.leg, false), {
+        id: CONNECTOR.layer,
+        type: 'line',
+        source: CONNECTOR.source,
+        filter: ['all', ['==', ['get', 'kind'], KIND.leg], ['!', isRoute]],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': dark ? MAP_CONNECTOR.COLOR.dark : MAP_CONNECTOR.COLOR.light,
-          'line-width': MAP_CONNECTOR.WEIGHT,
-          // It carries no arrowheads: the numbers are the order, and at phone size an
-          // arrowhead on a 2.5px dashed line is mush (§10).
+          'line-color': legColor,
+          'line-width': byEmphasis(
+            MAP_CONNECTOR.WEIGHT,
+            MAP_CONNECTOR.NEAR_WEIGHT,
+            MAP_CONNECTOR.WEIGHT,
+          ),
+          'line-opacity': byEmphasis(1, 1, MAP_CONNECTOR.DIM_OPACITY),
+          // No arrowheads: the numbers are the order, and at phone size an arrowhead on a
+          // 2.5px dashed line is mush (§10).
           'line-dasharray': [...MAP_CONNECTOR.DASH],
         },
-        // Rounded for the same reason the route is: these follow real roads now, and a
-        // many-vertex line on mitre joins spikes at every turn.
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
       });
-      // Added second, so the route sits over the order it is one leg of.
-      put(ROUTE, routeKey, lineFeature, {
+      layer(lines && has(KIND.stub, false), {
+        id: STUB.layer,
+        type: 'line',
+        source: CONNECTOR.source,
+        filter: ['==', ['get', 'kind'], KIND.stub],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': dark ? MAP_CONNECTOR.ROUTE.COLOR.dark : MAP_CONNECTOR.ROUTE.COLOR.light,
-          'line-width': MAP_CONNECTOR.ROUTE.WEIGHT,
+          'line-color': ['case', isRoute, routeColor, legColor],
+          'line-width': MAP_CONNECTOR.STUB.WEIGHT,
+          'line-opacity': MAP_CONNECTOR.STUB.OPACITY,
+          'line-dasharray': [...MAP_CONNECTOR.STUB.DASH],
+        },
+      });
+      // Added after the dash it belongs to, so the one amber leg paints over the order.
+      layer(lines && has(KIND.leg, true), {
+        id: ROUTE.layer,
+        type: 'line',
+        source: CONNECTOR.source,
+        filter: ['all', ['==', ['get', 'kind'], KIND.leg], isRoute],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': routeColor, 'line-width': MAP_CONNECTOR.ROUTE.WEIGHT },
+      });
+      layer(source(DOT.source, data.dots), {
+        id: DOT.layer,
+        type: 'circle',
+        source: DOT.source,
+        paint: {
+          'circle-color': ['case', isRoute, routeColor, legColor],
+          'circle-radius': [
+            'case',
+            isRoute,
+            MAP_CONNECTOR.DOT.RADIUS_ROUTE,
+            MAP_CONNECTOR.DOT.RADIUS,
+          ],
+          'circle-opacity': byEmphasis(1, 1, MAP_CONNECTOR.DIM_OPACITY),
         },
       });
     };
-    // A layer cannot be added before the style exists, and the pane may mount before the
-    // first `load` — so ask, and otherwise wait for it.
+
+    // A layer cannot be added before the style exists, and the pane may mount before the first
+    // `load` — so ask, and otherwise wait for it.
     if (map.isStyleLoaded()) draw();
     else map.once('load', draw);
+    /** **The collar is a screen distance, so a zoom changes what is drawn — and re-deriving it
+     *  the moment the camera stops is what broke `place-know.spec.ts`.** Mutating the style
+     *  inside the `zoomend` handler lands a repaint exactly as the app is settling after a
+     *  camera fit; the map never reaches idle promptly, and the file went from ⁦38s⁩ to ⁦1.1m⁩ with
+     *  its scroll and stability assertions failing. Measured by bisection, not guessed.
+     *
+     *  So the redraw is **deferred out of the settling frame**, and only happens when the zoom
+     *  moved far enough for the collar to be visibly wrong — under half a level, a ⁦9px⁩ setback
+     *  is still a ⁦9px⁩-ish setback and nobody can see the difference. */
+    let builtAt = map.getZoom();
+    let queued: number | undefined;
+    const onZoom = () => {
+      if (Math.abs(map.getZoom() - builtAt) < MAP_CONNECTOR.COLLAR_REDRAW_ZOOM) return;
+      if (queued !== undefined) return;
+      queued = requestAnimationFrame(() => {
+        queued = undefined;
+        builtAt = map.getZoom();
+        draw();
+      });
+    };
+    map.on('zoomend', onZoom);
     return () => {
       map.off('load', draw);
+      map.off('zoomend', onZoom);
+      if (queued !== undefined) cancelAnimationFrame(queued);
       // Guarded rather than trusted: on unmount the map may already be `remove()`d by
       // `MapCanvas`, in which case there is no style left to take a layer out of.
       try {
-        for (const ids of [CONNECTOR, ROUTE]) {
-          if (map.getLayer(ids.layer)) map.removeLayer(ids.layer);
-          if (map.getSource(ids.source)) map.removeSource(ids.source);
+        for (const id of [CONNECTOR.layer, STUB.layer, ROUTE.layer, DOT.layer]) {
+          if (map.getLayer(id)) map.removeLayer(id);
+        }
+        for (const id of [CONNECTOR.source, DOT.source]) {
+          if (map.getSource(id)) map.removeSource(id);
         }
       } catch {
         // The map is gone; its layers went with it.
       }
     };
-  }, [map, shapeKey, routeKey, dark]);
+  }, [map, key, dark]);
 
   return null;
 });

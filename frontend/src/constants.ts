@@ -1249,6 +1249,37 @@ export const MAP_CONNECTOR = {
     },
     WEIGHT: 3.5,
   },
+  /** **A leg not being asked about recedes** (ADR-0206 §AC2). Opacity and weight, never a second
+   *  hue — the budget has none to spare (root rule 4). `NEAR_WEIGHT` is the departing leg of a
+   *  selected stop: prominent without spending amber a second time. */
+  DIM_OPACITY: 0.45,
+  NEAR_WEIGHT: 3.5,
+  /** **Where a leg's end mark sits, in SCREEN pixels** (ADR-0206 §AC3).
+   *
+   *  A plain gap here does nothing — that is measured, not assumed: the dash is 5px on and 5px
+   *  off, so a collar under ~3× that reads as one more dash. What marks the end is `DOT` below;
+   *  this is only how far back from the stop it sits, so the pin's own tip does not cover it.
+   *
+   *  **Pixels, which is why `DayConnector` re-trims on a zoom.** A constant in metres would be
+   *  invisible at country zoom and enormous at street zoom — the collar has to hold its size on
+   *  screen, and that makes the trimmed geometry a function of the camera. */
+  COLLAR_PX: 9,
+  /** **How far the zoom must move before the collar is re-derived.** The trim is in screen
+   *  pixels, so a zoom makes it wrong — but re-deriving on every `zoomend` mutates the style
+   *  exactly as the app settles after a camera fit, which measurably starved the main thread
+   *  (`place-know.spec.ts`: ⁦38s⁩ → ⁦1.1m⁩, with its stability assertions failing). Under half a
+   *  level the setback is still visually a setback, so this is the threshold below which the
+   *  redraw is simply not worth its cost. */
+  COLLAR_REDRAW_ZOOM: 0.5,
+  /** The mark itself: a filled dot, the one thing a dashed line cannot accidentally produce. */
+  DOT: { RADIUS: 3, RADIUS_ROUTE: 3.4 },
+  /** **The unrouted tail between a stop and where it meets the network** (ADR-0206 §AC5).
+   *  Dotted rather than dashed (a 0-length dash with round caps IS a dot), thinner, and slightly
+   *  faded: it is the one line on the canvas that is deliberately not a route.
+   *
+   *  `MIN_PX` is the gap below which there is nothing worth drawing — most stops snap within a
+   *  metre, and a 2px tail is noise. Screen pixels for `COLLAR_PX`'s reason. */
+  STUB: { WEIGHT: 2.5, DASH: [0.04, 2], OPACITY: 0.9, MIN_PX: 16 },
 } as const;
 
 /** Per-row reveal stagger for **every** filtered/searched list (ADR-0120,

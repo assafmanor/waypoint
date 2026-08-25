@@ -542,3 +542,148 @@ for.
 on `earth #eee8dc`) and `#f0b254` dark (dark-theme `--amber`, **7.01:1** on `earth #343027`), at
 **3.5px** with round caps and joins — heavier than the 2.5px dash because it makes the opposite
 claim, and round-jointed because a many-vertex line on mitre joins spikes at every turn.
+
+## AC. Amendment (2026-08-25) — the design session on how the lines READ
+
+Four reports off the shipped canvas, drawn and measured in
+[`mockups/the-days-lines-read-as-a-route-v1.html`](../../mockups/the-days-lines-read-as-a-route-v1.html).
+Session note: [2026-08-25](../planning/2026-08-25-the-days-lines-read-as-a-route.md). **Nothing here
+is built** — §M's rule applies to this pass as it did to the first: the mockup comes before the code.
+
+### AC1. Plan mode spends no amber by default — §AB2's third arm is DELETED
+
+The owner: _"in plan mode it still shows an amber poly line for the first leg of the day which is
+not needed, I would much rather have all lines render the same in plan mode."_
+
+**He is asking for §D8 as it was already written.** §D8 says the **selected or next** leg is solid;
+§AB2 added `→ the day's first leg` for one reason, recorded on the M7 card — Plan mode drew
+**nothing** otherwise, because `nextStopId` is Trip-only. **That reason expired in the same PR that
+introduced it:** §AB5 made every leg draw its real path, so a Plan day is full of lines with or
+without the fallback. Deleting the third arm restores §D8 verbatim and needs no new rule.
+
+The general form, worth keeping because it will recur: **a fallback that exists to stop a surface
+being empty must be re-examined the moment something else fills that surface.** Nothing failed here
+— the workaround simply outlived its reason by one commit.
+
+### AC2. A selected stop marks the leg ARRIVING at it, and dims the rest
+
+Three candidates drawn. **Recommended: the arriving leg takes the amber, the departing leg takes
+weight only, every other leg drops to `line-opacity` 0.45.**
+
+- Two amber legs (drawn, rejected) is **twice what §D8 rations**, and the render makes the reason
+  visible rather than theoretical: two solid legs read as _a highlighted route_, not as _a marked
+  stop_. §Z5 §M3 measured all-solid at **3.7×** the amber on the canvas; this is the same failure in
+  miniature.
+- **Arriving rather than departing** is not a fresh choice — §AB2 already took it for "which leg
+  belongs to a stop", so answering differently here would make the two disagree.
+- Prominence is **weight and opacity, never a second hue** (root rule 4).
+
+### AC3. A leg ends in a DOT, because a collar is invisible — and the render is what proved it
+
+_"a way to easily distinguish what line connects to what stops."_ Two legs meeting under a pin read
+as one long line.
+
+**The obvious candidate was drawn and it does not work.** A "collar" — a constant gap before the pin
+— is invisible on a line that is **already made of gaps**: the shipped dash is `[2, 2]` at
+`WEIGHT` 2.5, i.e. **5px on, 5px off**, so a 9px collar is **1.8×** a gap the eye is already
+discarding. The two frames are indistinguishable on screen. A collar would have to exceed ~3× the
+dash gap to read, which starts eating the short legs.
+
+**A solid dot is the one mark a dashed line cannot accidentally produce**, so the leg's endpoint
+takes one. **Stated cost:** this is a **third source/layer pair** in `DayConnector` — a `circle`
+layer over a point source of the legs' trimmed endpoints. That is the honest price, and it is the
+reason this is an ADR entry rather than a tweak.
+
+### AC4. The legs are NOT numbered — ADR-0121 §6 already answered it
+
+The owner asked for it and doubted it in the same sentence: _"maybe but not sure… Probably not the
+best approach."_ **The doubt is right.** ADR-0121 §6 put the order **on the pins** precisely because
+_"a line between two stops is symmetric and never said which end you reach first"_. A label on the
+line is the **second** place the app states the day's order, and two places can disagree.
+
+Drawn anyway, and measured: **all three labels land on the drawn line itself**, because a leg's
+midpoint is on its own path. What the owner actually asked for — _"some visual aid to help us
+understand the route better at a glance"_ — is answered by §AC3's endpoint dots plus the numbers
+already on the pins.
+
+### AC5. An off-network stop gets an APPROACH STUB, not a stitch
+
+The owner: _"when the stop doesn't sit exactly on a path the line just stops beside it and doesn't
+lead directly to it, which looks kind of awkward and could even be confusing."_
+
+**The cause is the router, not the drawing.** Valhalla snaps each endpoint to the nearest routable
+edge, so a returned shape **always** begins and ends somewhere other than the stop — usually within
+a metre, occasionally hundreds. The gap is a permanent property of routing, not a defect that
+appeared.
+
+- **Stitching straight to the pin (rejected)** draws a solid, confident line across ground nobody
+  walks — the same false claim §Z5 §M3 rejected when it refused straight segments.
+- **Recommended: an approach stub** — the unrouted remainder in the leg's own hue, thinner, dotted
+  rather than dashed, ending at the endpoint dot so it never touches the pin. It says _"this part we
+  do not know"_, which is true, and it is the only line on the canvas that is deliberately not a
+  route.
+- Below a threshold the stub is invisible anyway, so the threshold is a **feel call handed to the
+  device pass**; the mockup ships 16px as its default and makes it a control.
+
+**One stub per STOP, not one per leg end** (the owner's correction on the first draft: _"you rendered
+two lines that connect to the two separated lines for before and after, which looks a little off… you
+should render only one line"_). Drawn per leg end it appears **twice** at an interior stop — a tail
+from the arriving leg and another from the departing one, meeting near the pin in a V. That is not
+merely untidy: **a stop meets the network in one place, so two tails are the same fact drawn twice.**
+The stub therefore belongs to the stop and runs to the **arriving** leg's endpoint — §AB2 already
+makes the arriving leg a stop's canonical one, so the two answers cannot disagree — falling back to
+the departing leg only for the day's first stop, which has no arrival. Where a one-way restriction
+snaps arrival and departure to different edges the choice is visible; ordinarily both snap to the
+same edge and it is moot.
+
+**§AC3 and §AC5 are one mechanism at two scales** — the endpoint dot marks where a leg ends, and the
+stub is what fills an unusually large distance between that dot and the stop.
+
+### AC6. Build log (2026-08-25) — what §AC cost once it was code
+
+Built in the same PR as the mockup, on the owner's approval. Three things the drawing could not
+say:
+
+- **The collar makes the drawn geometry a function of the CAMERA.** §AC3's dot has to sit back from
+  the stop so the pin's own tip does not cover it, and that setback is a **screen** distance. A
+  constant in metres was the alternative and it is wrong in both directions — invisible at country
+  zoom, enormous at street zoom — so `DayConnector` projects, trims in pixels, and unprojects, and
+  re-derives on **`zoomend`**. Not on `zoom`: re-running it every frame of a pinch is exactly the
+  churn ADR-0121 §9 keeps off this canvas. **The stored shape is never trimmed — only what is
+  painted.**
+- **It is 2 sources and 4 layers, not the "third source/layer pair" §AC3 predicted.** The three line
+  treatments — dashed legs, the one amber leg, the stubs — share **one** source and split by
+  `filter`, so they are one piece of data with three renderings rather than three parallel copies
+  (rule 8). Only the dots need a second source, because a `circle` layer cannot read a line source.
+  Prominence rides on each feature's own `emphasis` via data-driven `match` expressions, which is
+  what lets a single layer draw legs of different weight and opacity.
+- **The prop consolidated rather than grew.** `connector` and `route` became one
+  `readonly MapDayLeg[]` — path, its two stops, and an optional `emphasis`. Two props describing one
+  set of lines could disagree about which leg was which; one cannot. The stops travel with the leg
+  because §AC5's stub is measured against them, which is what makes "the leg **arriving** at a stop"
+  expressible without an index into anything.
+
+**And two costs that only CI could find, both measured by bisection rather than guessed.** The
+first build of §AC3's collar re-derived the trimmed geometry on every `zoomend`, which mutates the
+map's style **exactly as the app is settling after a camera fit**. On a software-rendered canvas
+that starves the frame: `e2e/place-know.spec.ts` went from **⁦38s⁩ and green** to **⁦1.1m⁩ with its
+scroll and stability assertions failing** — the DOM never held still long enough to be clicked. The
+work itself was never the problem (the whole redraw measures **⁦12ms⁩** across four draws); _when_ it
+landed was. Two changes fix it and both are worth keeping:
+
+- **The redraw is deferred and thresholded.** Off the settling frame via `requestAnimationFrame`,
+  and only when the zoom has moved at least `COLLAR_REDRAW_ZOOM` (0.5 of a level) since the geometry
+  was built — under half a level a ⁦9px⁩ setback is still visually a ⁦9px⁩ setback.
+- **A layer is added only when something in the data belongs to it**, and removed when nothing
+  does. A Trip-mode day draws one leg; the other three layers sat there empty and were composited
+  every frame.
+
+The bisection is worth recording because four plausible suspects were wrong first: the dot's circle
+layer, the two dashed layers, the near-zero stub dash, and the number of layers. Each was tested and
+exonerated; the listener was the only thing that mattered. **A performance claim about a canvas is a
+measurement, not a reading of the diff.**
+
+**And the spec that asserted the bug is now the spec that forbids it.** `Plan mode with nothing
+selected draws the day's FIRST leg` — written three hours earlier, and a faithful record of §AB2's
+third arm — is inverted to `spends NO amber, and still draws every leg`. That is the shape a
+deletion takes in a suite: the test does not disappear, it changes sides.
