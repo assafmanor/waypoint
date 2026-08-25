@@ -44,22 +44,22 @@ pair the column does not name. Both branch from `main`, not from each other.
 
 ## Live status
 
-| M       | milestone                   | kind   | status | depends on   | ⇉ safe with  | branch / PR | updated    |
-| ------- | --------------------------- | ------ | ------ | ------------ | ------------ | ----------- | ---------- |
-| **M0**  | Product decisions           | owner  | ⬜     | —            | —            | —           | 2026-08-24 |
-| **M1**  | Measure the parameters      | spike  | ⬜     | M0           | M2, M3       | —           | —          |
-| **M2**  | Shared derivations          | impl   | ⬜     | M0           | M1, M3       | —           | —          |
-| **M3**  | Design session + mockups    | design | ⬜     | M0           | M1, M2       | —           | —          |
-| **M4**  | Backend routing module      | impl   | ⬜     | M1, M2       | M3           | —           | —          |
-| **M5**  | Frontend data layer         | impl   | ⬜     | M2, M4       | M3, M10      | —           | —          |
-| **M6a** | The day reads               | impl   | ⬜     | M3, M5       | M6b, M7, M9  | —           | —          |
-| **M6b** | The hero read               | impl   | ⬜     | M3, M5       | M6a, M7, M9  | —           | —          |
-| **M7**  | The map polyline            | impl   | ⬜     | M3, M5       | M6a, M6b, M9 | —           | —          |
-| **M8**  | Mode per leg + trip default | impl   | ⬜     | M6a, M6b, M7 | M10          | —           | —          |
-| **M9**  | Plan-mode feasibility       | impl   | ⬜     | M5           | M6a, M6b, M7 | —           | —          |
-| **M10** | Offline route pack          | impl   | ⬜     | M4           | M5–M9        | —           | —          |
-| **M11** | Day travel total            | impl   | ⬜     | M6a          | M8, M10      | —           | —          |
-| **M12** | Harden, observe, document   | impl   | ⬜     | all          | —            | —           | —          |
+| M       | milestone                   | kind   | status | depends on   | ⇉ safe with  | branch / PR                           | updated    |
+| ------- | --------------------------- | ------ | ------ | ------------ | ------------ | ------------------------------------- | ---------- |
+| **M0**  | Product decisions           | owner  | ⬜     | —            | —            | —                                     | 2026-08-24 |
+| **M1**  | Measure the parameters      | spike  | ⬜     | M0           | M2, M3       | —                                     | —          |
+| **M2**  | Shared derivations          | impl   | ⬜     | M0           | M1, M3       | —                                     | —          |
+| **M3**  | Design session + mockups    | design | 🔵     | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` | 2026-08-25 |
+| **M4**  | Backend routing module      | impl   | ⬜     | M1, M2       | M3           | —                                     | —          |
+| **M5**  | Frontend data layer         | impl   | ⬜     | M2, M4       | M3, M10      | —                                     | —          |
+| **M6a** | The day reads               | impl   | ⬜     | M3, M5       | M6b, M7, M9  | —                                     | —          |
+| **M6b** | The hero read               | impl   | ⬜     | M3, M5       | M6a, M7, M9  | —                                     | —          |
+| **M7**  | The map polyline            | impl   | ⬜     | M3, M5       | M6a, M6b, M9 | —                                     | —          |
+| **M8**  | Mode per leg + trip default | impl   | ⬜     | M6a, M6b, M7 | M10          | —                                     | —          |
+| **M9**  | Plan-mode feasibility       | impl   | ⬜     | M5           | M6a, M6b, M7 | —                                     | —          |
+| **M10** | Offline route pack          | impl   | ⬜     | M4           | M5–M9        | —                                     | —          |
+| **M11** | Day travel total            | impl   | ⬜     | M6a          | M8, M10      | —                                     | —          |
+| **M12** | Harden, observe, document   | impl   | ⬜     | all          | —            | —                                     | —          |
 
 **The critical path is M0 → M2 → M4 → M5 → M6a/M6b.** Everything else hangs off it or runs beside
 it. If only one agent is working, run that path and take M3 before M6.
@@ -146,7 +146,7 @@ boundary; nothing imported from `backend/` or `frontend/`; `pnpm typecheck && pn
 
 ## M3 — Design session + mockups
 
-**Kind:** design. **Branch:** `routes/m3-design` · **Conflict surface:** `mockups/**`, `docs/design/mockups.md`, `docs/planning/**`.
+**Kind:** design. **Branch:** `routes/m3-design` — in the event this ran as `claude/routes-epic-m3-design-kagqpq`, the branch the session was handed. **Conflict surface:** `mockups/**`, `docs/design/mockups.md`, `docs/planning/**`.
 **Invoke the `design-mockups` skill** (ADR-0175). RTL, phone-first, both themes, 390×844 **and** 360×640.
 
 **Read ADR-0206 §Z1 first — §M1 changed.** The question is no longer _whether_ the collapsed board
@@ -166,7 +166,38 @@ either confirms by measurement or overturns with one.
 (ADR-0097); every measurement read from the live DOM and written into ADR-0206 as an amendment;
 owner sign-off recorded here. **M6a/M6b/M7 do not start before this closes.**
 
-**What the next session needs to know:** _(fill in)_
+**What the next session needs to know:**
+
+**Drawn and measured** in [`mockups/a-travel-time-between-two-points-v1.html`](../../mockups/a-travel-time-between-two-points-v1.html)
+(catalogued; both themes, 390×844 and 360×640, every number read from the live DOM). The
+session note is [2026-08-25 — the board counts to the leaving](2026-08-25-the-board-counts-to-the-leaving.md).
+
+- **The five §M answers, in one line each.** M1: the board's countdown swaps its **unit**
+  (`55 · דקות` → `10 · ליציאה` → `7 · באיחור`), threshold **30 minutes of time-to-leave**.
+  M2: the travel is a **run inside `.day-gap`'s existing label**, and it **ignores
+  `GAP_MIN_MINUTES`**. M3: solid amber, but **a per-theme pair** — see the defect below.
+  M4: ink and word only, `--miss-deep` on paper and the board's `.tlabel.missed` recipe on the
+  board. M5: **three word chips in `ToggleChip`**, on the selected/next leg only.
+- **The swap is a third arm on an existing ternary,** not new machinery: `Home.tsx:452` already
+  swaps that tile for ADR-0184 §6's shutting window (`unit: t.board.closesIn`). **M6b should
+  budget one line, not a component** — and it inherits a collision this epic had not named: a
+  shutting window and a live leave-by in the same minute, where **the nearer number wins**.
+- **⚠ A defect for M7, found by rendering:** `--amber` solid measures **1.72:1 on the day map
+  ground** — under the 3:1 floor, the same failure `MAP_CONNECTOR`'s own comment records. The
+  route line must be `--amber-deep` light / `--amber` dark, a TypeScript pair switched in JS.
+  Do not ship one value.
+- **⚠ Two bidi defects that reach any build touching this copy:** `~40` renders `40~` without
+  `ltrIsolate`, and `§` is Bidi-neutral so `§D8` renders `D8§` inside Hebrew strings. ADR-0118's
+  isolate fixes both.
+- **The buffer in the leave-by is NOT settled here** — it is §D5's hedge and a measured number,
+  so it belongs with M1's. The mockup exposes it as a control (0/5/10/15) and says so.
+- **⚠ Scope note, per the protocol's "say so on the PR":** the exit criterion asking for the
+  measurements as an **ADR-0206 amendment** could not be met from this milestone — `docs/decisions/`
+  is outside M3's declared conflict surface and M1/M2 were running in parallel. The amendment is
+  written **verbatim and ready to paste** as §7 of the session note (a `§Z5` block). Whoever holds
+  `docs/decisions/` next — the first of M1/M2/M4 to land, or a docs-only follow-up — should paste
+  it in unchanged and prune this bullet. **Owner sign-off is also still open** (the three questions
+  in the note's §6), so this row stays 🔵 rather than ✅.
 
 ---
 
