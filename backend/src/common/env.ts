@@ -106,6 +106,39 @@ export const VAPID_SUBJECT = 'VAPID_SUBJECT';
  *  the in-app surfaces are the primary and push is the amplifier (ADR-0198 §6). */
 export const PUSH_DISABLED = 'PUSH_DISABLED';
 
+/** **Where the routing engine lives** (ADR-0205 §2), and the one env var in this file that
+ *  exists because getting it wrong is silent. ADR-0205 §2 links
+ *  `https://valhalla.openstreetmap.de/`, which is the **demo web application**: it answers `200`
+ *  with an HTML page for `/status` and for every API path, so a deploy pointed at it does not
+ *  fail, it returns nothing forever. The API host is `valhalla1.openstreetmap.de` (§Z4), and
+ *  `validateConfig` refuses to boot on a value that is not a plain https origin.
+ *
+ *  Env-named for the same reason `MAP_TILES_SOURCE_URL` is: it is §Y1's self-host seam. **A host
+ *  change is still two lines, not one** — the outbound allowlist in `enrichment/outbound-fetch.ts`
+ *  is code on purpose (ADR-0166 §7: "a host you can add by setting a variable is not much of an
+ *  allowlist"), so a self-hosted router is named there as well as here. */
+export const ROUTING_BASE_URL = 'ROUTING_BASE_URL';
+
+/** The FOSSGIS planet server, which ADR-0205 §Y1 keeps as the standing default. */
+export const DEFAULT_ROUTING_BASE_URL = 'https://valhalla1.openstreetmap.de';
+
+/** Per-request timeout for a matrix or a shape. Longer than FX's and enrichment's because this
+ *  is the one outbound call a person can be waiting on: measured **~560 ms median, ~1 s tail**
+ *  for a 6x6 day matrix (ADR-0205 §Z4), and a cold 24-stop matrix or a long drive is slower
+ *  again. Nothing user-facing blocks on it either way — the warm runs in the background — so
+ *  this bounds a hung socket rather than a slow answer. */
+export const ROUTING_FETCH_TIMEOUT_MS = 'ROUTING_FETCH_TIMEOUT_MS';
+export const DEFAULT_ROUTING_FETCH_TIMEOUT_MS = 15_000;
+
+/** **Kill switch for outbound routing** (any truthy value stops every upstream call).
+ *
+ *  The fourth variable of its kind after `ENRICHMENT_DISABLED`, `FX_DISABLED` and
+ *  `PUSH_DISABLED`, and the reason is the one they each state: this is a thing the app does on
+ *  its own initiative against somebody else's server. Reads are unaffected and that is the whole
+ *  point — a route is a cache (ADR-0205 §4), so flipping this serves every leg already stored
+ *  and lets the rest read as ADR-0206 §D4's crow-flies chip. The endpoint still answers. */
+export const ROUTING_DISABLED = 'ROUTING_DISABLED';
+
 /** The FX feed's kill switch (ADR-0180 §7), and the second variable of its kind for
  *  the same reason the first exists: this is now the second thing in the app that
  *  talks to a third party on its own initiative, and it gets the one switch that

@@ -835,3 +835,60 @@ model NotificationSend {
   /// Also what enforces ADR-0198 §5's per-day cap, which is a count of this user's recent rows.
   @@index([userId, sentAt])
 }
+
+/// **A route we asked somebody else for, kept so we never ask again** (ADR-0205 §4) — the third
+/// table of exactly this shape, after `PlaceEnrichment` (ADR-0166 §6) and `FxRateSet` (ADR-0180
+/// §7), and their reasoning transfers verbatim: no `tripId`, one writer (us), never mutated by a
+/// client. So there is no LWW to arbitrate, no undo to offer, no per-trip ordering to keep, and
+/// **nothing here goes through `ChangeService`** — the one hard boundary in the backend, which
+/// this sits outside of rather than making an exception to.
+///
+/// It does not violate ADR-0018/0027's ban on persisting derived state, and §4 says why: a route
+/// is not derived from our data at all, it is an answer from outside that we would otherwise have
+/// to re-ask. Nothing a person authored lives here, which is what licenses evicting it freely.
+model RouteLeg {
+  /// `routeLegKey(from, to, mode)` from `@waypoint/shared`, and the key is **directional on
+  /// purpose**: one-way streets, turn restrictions and toll geometry make A→B and B→A different
+  /// answers. One spelling of it, in the shared package, because the client's own Dexie table
+  /// (ADR-0205 §7) reads what this writes — two spellings is a client that can never hit a row.
+  key String @id
+
+  /// Denormalised out of `key` so the row is legible and evictable without parsing its own id.
+  /// **Coordinates, never a `placeId`**: a `Place` is trip-scoped (ADR-0147), so two trips that
+  /// both save Senso-ji hold two rows and a `placeId` key would never hit across them (§4).
+  mode    String
+  fromLat Float
+  fromLng Float
+  toLat   Float
+  toLng   Float
+
+  /// Seconds and metres, matching `travelEstimateSchema`. `Float` rather than `Int` because
+  /// `/route` answers fractional seconds and rounding at the boundary would make the same leg
+  /// differ by which call fetched it — ADR-0206 §D3's ladder is what rounds, at the surface.
+  durationSeconds Float
+  distanceMeters  Float
+
+  /// The drawable line, and **the precision travels with it** (ADR-0205 §1): decoded at 5 rather
+  /// than Valhalla's 6, a Tokyo walk comes back as a well-formed pair of numbers ten times off,
+  /// with no error and a line drawn nowhere. Null together — the matrix answers durations and no
+  /// geometry at all, so most rows have no shape until something asks to draw one.
+  shapeEncoded   String?
+  shapePrecision Int?
+
+  /// Who answered, so a provider swap (ADR-0205 §Y1) leaves evidence of which rows came from
+  /// where instead of a silently mixed table.
+  provider String
+
+  /// **The provider's tileset date — ADR-0205 §Z5's invalidation signal**, which §4 said a route
+  /// has and a clock does not. A walking route between two fixed points is invalidated by an OSM
+  /// refresh and by nothing else, so this is what M12 evicts on rather than guessing a TTL.
+  /// Nullable: a provider that will not state its vintage yields a row with no eviction handle,
+  /// which still holds a correct estimate.
+  tilesetAt DateTime?
+
+  /// Provenance, **not an expiry** — there is no TTL to compare it against.
+  computedAt DateTime @default(now())
+
+  /// The only non-key query this table has: M12's eviction sweep on a tileset roll.
+  @@index([tilesetAt])
+}

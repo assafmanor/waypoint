@@ -44,24 +44,24 @@ pair the column does not name. Both branch from `main`, not from each other.
 
 ## Live status
 
-| M       | milestone                   | kind   | status              | depends on   | ⇉ safe with  | branch / PR                                                                                           | updated    |
-| ------- | --------------------------- | ------ | ------------------- | ------------ | ------------ | ----------------------------------------------------------------------------------------------------- | ---------- |
-| **M0**  | Product decisions           | owner  | ✅                  | —            | —            | —                                                                                                     | 2026-08-25 |
-| **M1**  | Measure the parameters      | spike  | ✅ (applied by M2b) | —            | —            | `claude/routes-travel-time-m1-spike-sn7pod` · [#695](https://github.com/assafmanor/waypoint/pull/695) | 2026-08-25 |
-| **M1b** | Make the dev seed routable  | impl   | 🔵                  | —            | all          | `claude/dev-seed-routable-m1b-6il7cq` · [#700](https://github.com/assafmanor/waypoint/pull/700)       | 2026-08-25 |
-| **M2**  | Shared derivations          | impl   | ✅                  | M0           | M1, M3       | `claude/routes-epic-m2-nkbf4d` · [#694](https://github.com/assafmanor/waypoint/pull/694)              | 2026-08-25 |
-| **M2b** | Apply M1's numbers to code  | impl   | ✅ **M4 unblocked** | M1, M2       | M3           | `claude/routes-epic-m2b-q0pxkn` · [#699](https://github.com/assafmanor/waypoint/pull/699)             | 2026-08-25 |
-| **M3**  | Design session + mockups    | design | ✅                  | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696)       | 2026-08-25 |
-| **M4**  | Backend routing module      | impl   | ⬜                  | M1, M2, M2b  | M3           | —                                                                                                     | —          |
-| **M5**  | Frontend data layer         | impl   | ⬜                  | M2, M4       | M3, M10      | —                                                                                                     | —          |
-| **M6a** | The day reads               | impl   | ⬜                  | M3, M5       | M6b, M7, M9  | —                                                                                                     | —          |
-| **M6b** | The hero read               | impl   | ⬜                  | M3, M5       | M6a, M7, M9  | —                                                                                                     | —          |
-| **M7**  | The map polyline            | impl   | ⬜                  | M3, M5       | M6a, M6b, M9 | —                                                                                                     | —          |
-| **M8**  | Mode per leg + trip default | impl   | ⬜                  | M6a, M6b, M7 | M10          | —                                                                                                     | —          |
-| **M9**  | Plan-mode feasibility       | impl   | ⬜                  | M5           | M6a, M6b, M7 | —                                                                                                     | —          |
-| **M10** | Offline route pack          | impl   | ⬜                  | M4           | M5–M9        | —                                                                                                     | —          |
-| **M11** | Day travel total            | impl   | ⬜                  | M6a          | M8, M10      | —                                                                                                     | —          |
-| **M12** | Harden, observe, document   | impl   | ⬜                  | all          | —            | —                                                                                                     | —          |
+| M       | milestone                   | kind   | status                  | depends on   | ⇉ safe with  | branch / PR                                                                                           | updated    |
+| ------- | --------------------------- | ------ | ----------------------- | ------------ | ------------ | ----------------------------------------------------------------------------------------------------- | ---------- |
+| **M0**  | Product decisions           | owner  | ✅                      | —            | —            | —                                                                                                     | 2026-08-25 |
+| **M1**  | Measure the parameters      | spike  | ✅ (applied by M2b)     | —            | —            | `claude/routes-travel-time-m1-spike-sn7pod` · [#695](https://github.com/assafmanor/waypoint/pull/695) | 2026-08-25 |
+| **M1b** | Make the dev seed routable  | impl   | 🔵                      | —            | all          | `claude/dev-seed-routable-m1b-6il7cq` · [#700](https://github.com/assafmanor/waypoint/pull/700)       | 2026-08-25 |
+| **M2**  | Shared derivations          | impl   | ✅                      | M0           | M1, M3       | `claude/routes-epic-m2-nkbf4d` · [#694](https://github.com/assafmanor/waypoint/pull/694)              | 2026-08-25 |
+| **M2b** | Apply M1's numbers to code  | impl   | ✅ **M4 unblocked**     | M1, M2       | M3           | `claude/routes-epic-m2b-q0pxkn` · [#699](https://github.com/assafmanor/waypoint/pull/699)             | 2026-08-25 |
+| **M3**  | Design session + mockups    | design | ✅                      | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696)       | 2026-08-25 |
+| **M4**  | Backend routing module      | impl   | 🔵 **M5/M10 unblocked** | M1, M2, M2b  | M3           | `claude/m4-backend-routing-0giz72` · [#702](https://github.com/assafmanor/waypoint/pull/702)          | 2026-08-25 |
+| **M5**  | Frontend data layer         | impl   | ⬜                      | M2, M4       | M3, M10      | —                                                                                                     | —          |
+| **M6a** | The day reads               | impl   | ⬜                      | M3, M5       | M6b, M7, M9  | —                                                                                                     | —          |
+| **M6b** | The hero read               | impl   | ⬜                      | M3, M5       | M6a, M7, M9  | —                                                                                                     | —          |
+| **M7**  | The map polyline            | impl   | ⬜                      | M3, M5       | M6a, M6b, M9 | —                                                                                                     | —          |
+| **M8**  | Mode per leg + trip default | impl   | ⬜                      | M6a, M6b, M7 | M10          | —                                                                                                     | —          |
+| **M9**  | Plan-mode feasibility       | impl   | ⬜                      | M5           | M6a, M6b, M7 | —                                                                                                     | —          |
+| **M10** | Offline route pack          | impl   | ⬜                      | M4           | M5–M9        | —                                                                                                     | —          |
+| **M11** | Day travel total            | impl   | ⬜                      | M6a          | M8, M10      | —                                                                                                     | —          |
+| **M12** | Harden, observe, document   | impl   | ⬜                      | all          | —            | —                                                                                                     | —          |
 
 ### M2b — apply M1's numbers to the code ✅
 
@@ -533,7 +533,68 @@ cross-cluster pair without calling out; the kill switch stops every outbound cal
 still answers from cache; the politeness limiter paces a three-mode warm rather than bursting;
 `X-Client-Id` is sent; migration applies clean.
 
-**What the next session needs to know:** _(fill in)_
+**What the next session needs to know:**
+
+- **`POST /trips/:tripId/routes` is live, and it answers the seed for real.** Documented in
+  [`architecture/api-contract.md`](../architecture/api-contract.md#routes--travel-time-adr-0205).
+  Body is `routeBatchRequestSchema`, answer is `routeBatchSchema` — both already shipped by M2, so
+  **M5 has no new shape to learn**. `200` when everything asked for is answered, **`202` +
+  `Retry-After` while anything is warming**, and the body is the same shape either way.
+- **Every exit criterion was verified end to end against the seeded database and the live
+  provider**, not only in a spec. The three named cases behave as M1b's tables promise, and all
+  three are features:
+
+  | leg                     |    crow | what the endpoint answers                                       |
+  | ----------------------- | ------: | --------------------------------------------------------------- |
+  | Shinjuku → Shinjuku     | 0.00 km | `refusedModes: [all 3]`, **no upstream call, no row**           |
+  | Höfn → Reykjavík        |  326 km | `refusedModes: [all 3]`, **no upstream call**                   |
+  | Blue Lagoon → Reykjavík | 38.6 km | `driving` only · 57.6 min / 53.5 km; walking+cycling refused    |
+  | Asakusa → Tsukiji       | 5.59 km | walking **86.8 min / 6.23 km** — ferry-free, so §Z7 is honoured |
+
+- **Three decisions M4 took that the ADRs left open, all amended into ADR-0205 in place** (no new
+  ADR, per the protocol): **`walking_speed: 4.5`** (§Z6 measured the options and left the choice —
+  4.5 and not 4.0 because ADR-0206 §D5 cuts both ways and the departure buffer is already its own
+  constant); **`ROUTE_BATCH_MAX_STOPS = 24` restated as a deliberate bound** (§Z4 — the provider's
+  real limit is **2,500 cells**, not stops: 26 points answers, 51 does not); and **§Z9 point 1
+  built** (below).
+- **§Z9's "isolate the long pairs" is built, and it turned out to be a stricter rule than that.**
+  `matrix-batches.ts` holds one invariant — _a request may only contain pairs the mode's ceiling
+  admits_ — because a matrix answers **every** pair among the points it is sent, not just the
+  consecutive ones. So a day carrying one long leg would otherwise ship a cross pair nobody gated,
+  and §Z4's `400` would take the whole day down. A long leg now arrives alone as a consequence
+  rather than as a special case. **The ceilings did not move and are still not M4's to move** —
+  but raising the driving one is now a one-number change instead of a shape change.
+- **`M8`, read this before you touch `sameClusterOnly`:** the flag is still inert on distance
+  (§Z2), and the **one** thing it can still change is specced — a stop the trip does not hold sits
+  in no cluster, so walking and cycling are refused for it while driving answers. That is a real
+  behaviour, not a theoretical one, and flipping the flag removes it.
+- **Two files outside the card's conflict surface were touched, both deliberately.**
+  `architecture/deployment.md` is the smaller one and is simply a gap in the card: the routing
+  vars belong in Railway's env table, and that section's kill-switch warning **enumerates the
+  switches by name**, so adding a fifth without amending it would have left a doc that is wrong
+  rather than merely incomplete. (`ROUTING_DISABLED` joined the four that read truthiness rather
+  than `FX_DISABLED`'s `=== '1'` — so the collapse that note has wanted since ADR-0197 is still
+  one switch to move, not four.) The other is rule 8's call rather than a shortcut:
+  `enrichment/outbound-fetch.ts` gained `POST` + custom headers and an `OutboundHttpError` that
+  carries status and body. That file's own header says it is _"the
+  process's ONE outbound seat"_ and that _"a second fetcher would be a second place to get SSRF
+  wrong"_ — and ADR-0166 §8 had already named ETA as a consumer of it. The allowlist stays **code**
+  (`valhalla1.openstreetmap.de` is a line in it), so a self-hosted router is two lines, not one.
+- **The `RouteLeg` table is outside `ChangeService` and must stay there.** No `tripId`, one writer,
+  nothing to undo. Its only non-key index is `tilesetAt` — **that index exists for M12** and for
+  nothing else (§Z5: evict on a tileset roll, never on a TTL).
+- **M10 (offline route pack) reads from this and needs no new endpoint.** Every cell a matrix
+  returns is cached, not just the consecutive pairs, so a day's non-adjacent pairs are already
+  stored: a reorder or an inserted stop costs nothing.
+- **A shape is one call per leg and the warm paces at 8 per pass**, deliberately — a 24-stop day in
+  three modes would otherwise be 69 upstream calls at 1/s. **Nothing is dropped**: a leg not
+  reached stays in `pendingModes`, so the next ask continues where this one stopped. **M7 draws one
+  line at a time (ADR-0206 §D8), so this should never bind in practice** — say so if it does.
+- **The trap that cost the most time here was not the provider.** `PolitenessLimiter` had a
+  defaulted `number` constructor argument and `@Injectable()`, so Nest tried to inject `Number` and
+  **aborted the worker process** — which surfaces only when the whole `AppModule` is constructed
+  (`openapi-contract.spec.ts`, `throttler.e2e.spec.ts`), and as a native crash rather than an
+  error. It is bound through a factory now. If a routing spec passes and those two die, look there.
 
 ---
 

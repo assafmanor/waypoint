@@ -8,10 +8,12 @@ account of the out-of-range failure, and (§Z6/§Z7) answers the orphaned leave-
 buffer and records that **the provider's default pedestrian answer boards scheduled ferries and
 varies with batch size** — `use_ferry: 0` is not optional. **§Z8 then raises the walking ceiling to
 15 km on the owner's call and §Z9 records why the driving one cannot be raised at all — read both
-before touching `TRAVEL_GATE`.** **Built so far: the shared half only** — §1's decoder, §3's
-gate and §4's key and shapes landed with M2 on 2026-08-25. No provider is called, no table exists,
-nothing renders. The provider itself is the one thing still open, and §Y1 records the standing
-default so no work is blocked on it.
+before touching `TRAVEL_GATE`.** **Built so far: the shared half (M2/M2b) and the backend (M4),
+both 2026-08-25** — §1's decoder, §3's gate and §4's key and shapes, plus §2's port with its
+Valhalla implementation, §4's `RouteLeg` table, §6's batch endpoint and its warm-in-background
+flow. **The provider is now actually called**, `use_ferry: 0` and all. Nothing renders yet: the
+frontend half is M5 onward. The provider choice itself remains open behind the port, and §Y1
+records the standing default so no work is blocked on it.
 **Date:** 2026-08-24
 **Research:** [`planning/2026-08-24-routes-and-travel-time-what-is-actually-possible.md`](../planning/2026-08-24-routes-and-travel-time-what-is-actually-possible.md) — every number below was measured live on that date, not read.
 **Plan:** [`planning/2026-08-24-routes-epic-milestone-board.md`](../planning/2026-08-24-routes-epic-milestone-board.md) — the milestone board is the live tracker; this ADR is the decision it executes.
@@ -558,9 +560,19 @@ Measured: a 7-point `auto` matrix of the six Tokyo places plus Kyoto (371.5 km c
 returned **HTTP 200 with 37/49 cells answered and 12 null** — the good pairs survived. Tokyo→Osaka
 (400.8 km crow) returned 400 and killed everything. **So M4 must handle both**: pre-filter on
 crow-flies to avoid the 400 (§3's gate, unchanged in purpose), _and_ treat a null cell as an ordinary
-absence feeding §D4's chip rather than as a parse error. The error message names the limit exactly
-(`"Path distance exceeds the max distance limit: 400000 meters"`), so the ceilings are read from the
-server, not guessed: **`auto` 400 km, `pedestrian` 200 km, both on path distance.**
+absence feeding §D4's chip rather than as a parse error.
+
+> **Both are handled, and re-measured on the same host (M4, 2026-08-25).** Every number above
+> reproduced exactly. `ValhallaRouteProvider` maps `error_code 154` to a **terminal** refusal
+> (`RouteOutOfRangeError`) rather than an outage, so nothing retries a request that will fail
+> identically forever; a `null` cell is **dropped from the result**, never zeroed — a `0 s` leg
+> would render "no route" as "you are already there". Both are specced.
+> **One further limit, which M1 did not reach and §6's batching now depends on: the matrix
+> refuses past 2,500 sources × targets** (`error_code 150`), so 26 points answers and 51 does not.
+> That is a bound on **cells, not stops**, and it is why `ROUTE_BATCH_MAX_STOPS = 24` (576 cells)
+> stands as a deliberate bound rather than a provisional one. The error message names the limit exactly
+> (`"Path distance exceeds the max distance limit: 400000 meters"`), so the ceilings are read from the
+> server, not guessed: **`auto` 400 km, `pedestrian` 200 km, both on path distance.**
 
 **Latency, our pattern (a 6×6 day matrix = 30 ordered pairs, cold, 5 runs each):**
 
@@ -594,6 +606,11 @@ V2. The one thing M1 adds to that ledger is the tileset date the server reports
 (`tileset_last_modified`, 2026-08-24) — **that is the cache invalidation signal §4 said a route has
 and a clock does not.** It is free on `/status`, so M4 should record it on each `RouteLeg` write and
 M12 can evict on a tileset roll rather than guessing a TTL.
+
+> **Built (M4, 2026-08-25).** `RouteLeg.tilesetAt` carries it, indexed, and it is the table's only
+> non-key query — which is M12's eviction sweep and nothing else. `/status` is read at most hourly
+> and memoised, and a provider that will not state a vintage yields a **row with no eviction
+> handle rather than no row**: the estimate is still correct.
 
 ### Z6. Re-checked against M3 (2026-08-25), and the leave-by buffer answered
 
@@ -639,10 +656,20 @@ unmeasurable number. It is three, and two of them are not buffers at all:
 
 **Strip 1 and 2 into the request and what is left is (3), which a constant fits exactly — so
 `TRAVEL_BUFFER_SECONDS = 5 * 60` stands, with its job narrowed to departure overhead and documented
-as such.** That is the answer to the orphan: not "measure it on a real day", but _stop asking one
-number to absorb a scheduled ferry, a pace assumption, and putting your shoes on_. Five minutes for
-a group of five to get out of a door is defensible as a floor; it is the other two that were making
-it look wrong.
+as such.**
+
+> **The pace is `walking_speed: 4.5` (M4, 2026-08-25).** This section measured the options and left
+> the choice, so the choice is recorded here rather than in a new one. Re-measured live on
+> Senso-ji → Shinjuku: default **8,054 s**, `4.5` **9,095 s (+12.9%)**, `4.0` **10,206 s (+26.7%)**
+> — matching the +13% / +27% above. **4.5 and not 4.0** for two reasons. ADR-0206 §D5 cuts both
+> ways: a pessimistic number is as unearned as an optimistic one, and departure overhead already
+> has its own constant, so the pace must not absorb a second copy of it. And §Z8's ceilings were
+> reasoned at the ~4.9 km/h the corpus was measured at — at 4.5 the 15 km walking ceiling is a
+> ~3.9-hour walk against §Z8's ~3.5, where 4.0 would make it 4.4 and quietly move a number the
+> owner set. That is the answer to the orphan: not "measure it on a real day", but _stop asking one
+> number to absorb a scheduled ferry, a pace assumption, and putting your shoes on_. Five minutes for
+> a group of five to get out of a door is defensible as a floor; it is the other two that were making
+> it look wrong.
 
 The interaction M2's comment flags is unchanged and now bounded: the buffer shifts the leave-by
 earlier by exactly its own size, so against M3's `LEAVE_BY_SWAP_MINUTES = 30` a 5-minute buffer
@@ -688,6 +715,12 @@ The ceilings in Z2 are unaffected — they are crow-flies distances, and no ferr
 
 **M4 must send `use_ferry: 0` on pedestrian and cycling.** It is one line, and without it the app
 ships a walking time that assumes a boat.
+
+> **Sent, and re-measured against the same pair (M4, 2026-08-25).** Asakusa → Tsukiji: **3,671 s /
+> 10.1 km with the default, 4,976 s / 6.7 km without the ferry** — the boat, and the 22.7-minute
+> optimism, reproduced exactly. It is set for these two modes and **not** for driving, which §Z7
+> measured as unaffected: a costing option nothing needs is a knob nobody checked. End to end
+> through the shipped endpoint the seed's own leg answers **86.8 min / 6.23 km**, which is a walk.
 
 ### Z8. The owner raises the walking ceiling to 15 km (2026-08-25)
 
@@ -754,6 +787,19 @@ declining to spend a request learning that, and taking the rest of the day's mat
    it fails. That would let the gate admit up to the provider's true boundary (~400 km path)
    instead of the conservative crow proxy. **This is M4's shape, not a number** — and it is the
    only one of the three that is cheap.
+
+   > **Built (M4, 2026-08-25), and it fell out of a stricter rule than "isolate the long ones".**
+   > `backend/src/routing/matrix-batches.ts` holds one invariant: **a request may only contain
+   > pairs the mode's ceiling admits.** That is not the same as "only admitted legs" — a matrix
+   > answers **every** pair among the points it is sent, so a day of five walkable stops plus one
+   > long drive would otherwise carry a cross pair nobody gated. Consecutive pending legs merge
+   > into one request while every pair among them stays under the ceiling, and split the moment one
+   > does not. A long leg therefore arrives **alone**, which is exactly this point, and the
+   > Iceland ring road is the case: Reykjavík→Vík and Vík→Höfn are each admitted while
+   > Reykjavík→Höfn is 326 km, so they go as two requests and neither can be lost to the other.
+   > **The ceiling itself is unchanged** — raising it is now a one-number change rather than a
+   > shape change, and it is still nobody's to make from taste.
+
 2. **Self-host** (§Y1). `max_distance` is a server config; ours to set if the server is ours. This
    is precisely one of §Y1's switch triggers finally having a concrete case behind it.
 3. **A different provider** behind §2's port. Geoapify has its own limits; no one has measured them.

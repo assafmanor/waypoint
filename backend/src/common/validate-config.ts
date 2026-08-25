@@ -6,11 +6,13 @@ import {
   GOOGLE_MAPS_SERVER_KEY,
   GOOGLE_OAUTH_REDIRECT_URI,
   JWT_SECRET,
+  ROUTING_BASE_URL,
   TOKEN_ENCRYPTION_KEY,
   VAPID_PRIVATE_KEY,
   VAPID_PUBLIC_KEY,
   VAPID_SUBJECT,
 } from './env';
+import { isAllowedEnrichmentUrl } from '../enrichment/outbound-fetch';
 
 /** Thrown by {@link validateConfig}; carries the list of problems (var names
  *  only, never their values). */
@@ -109,8 +111,47 @@ export function validateConfig(env: NodeJS.ProcessEnv = process.env): void {
   }
 
   validateVapid(env, problems, isProd);
+  validateRoutingBaseUrl(env, problems);
 
   if (problems.length > 0) throw new ConfigValidationError(problems);
+}
+
+/**
+ * `ROUTING_BASE_URL`, when set (ADR-0205 §Z4).
+ *
+ * It is checked at boot rather than at the first call because of **how** this one goes wrong.
+ * ADR-0205 §2 links `https://valhalla.openstreetmap.de/`, which is the demo **web application**:
+ * it answers `200` with an HTML page for `/status` and for every API path. A deploy pointed there
+ * does not fail — it returns a well-formed success carrying a document nothing can parse, forever,
+ * and every travel time in the app quietly reads as ADR-0206 §D4's absence. §Z4 calls that the
+ * most expensive way to be wrong, so the deploy dies here instead.
+ *
+ * Two rules, and the second is the one that catches it: it must be an https origin with no path
+ * (the API host is the origin; paths are appended), and its host must be one the outbound
+ * allowlist already knows — which is what makes ADR-0166 §7's "the allowlist is code" true rather
+ * than a comment, since a host set only here would never be fetched anyway.
+ */
+function validateRoutingBaseUrl(env: NodeJS.ProcessEnv, problems: string[]): void {
+  const value = env[ROUTING_BASE_URL];
+  if (!value) return;
+  const url = parseUrl(value);
+  if (!url || url.protocol !== 'https:') {
+    problems.push(`${ROUTING_BASE_URL} must be an https URL`);
+    return;
+  }
+  if (url.pathname !== '/' || url.search || url.hash) {
+    problems.push(
+      `${ROUTING_BASE_URL} must be a bare origin with no path ` +
+        `(https://valhalla1.openstreetmap.de, not a link to the demo web app)`,
+    );
+    return;
+  }
+  if (!isAllowedEnrichmentUrl(url.toString())) {
+    problems.push(
+      `${ROUTING_BASE_URL} names a host the outbound allowlist does not carry ` +
+        `(add it in enrichment/outbound-fetch.ts — the allowlist is code on purpose)`,
+    );
+  }
 }
 
 /** Base64url of exactly `bytes` bytes, which is how a VAPID key is carried. Written out

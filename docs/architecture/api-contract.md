@@ -167,6 +167,45 @@ The URL is built by `enrichmentImageContentPath` in `@waypoint/shared`. `enrichm
 
 **No Google-sourced image can ever appear here.** A Google photo name may not be cached at all (§1), so Google's provider policy declares `storable: false` and one guard enforces it (`enrichment.policy.ts`). A GFDL-only Commons file is likewise treated as no image (§12.2) — its attribution terms are heavier than a thumbnail caption can discharge.
 
+## Routes & travel time (ADR-0205)
+
+How long it takes to get from one of a day's stops to the next, held in the **global** `RouteLeg`
+table — no `tripId`, keyed on rounded coordinates and mode, one writer (us), never mutated by a
+client. Like enrichment above, **it deliberately does not go through `ChangeService`** (§4): a
+route is not derived from our data, it is an answer from outside that we would otherwise have to
+re-ask, so there is no LWW to arbitrate and no undo to offer. **There is no write endpoint.**
+
+| Method | Path                    | Body → Response                                                    |
+| ------ | ----------------------- | ------------------------------------------------------------------ |
+| POST   | `/trips/:tripId/routes` | `RouteBatchRequest` → `RouteBatch` (200, or **202** while warming) |
+
+- **A POST, and 200 rather than 201.** A day's coordinates and its modes are a document, not a
+  query string, and asking starts a warm — a question with a side effect. Nothing is created that
+  the caller can address.
+- **Batch-shaped, and it carries a SET of modes** (§6, amended by §Y2). One request per day, not
+  one per day per mode: a per-leg endpoint turns one ~1 s matrix call into five and makes the gate
+  a client concern, and a **per-mode** endpoint puts a round-trip behind every press of the mode
+  control, which ADR-0206 §Z2 forbids by name. `stops` is the day's ordered coordinates (2 to
+  `ROUTE_BATCH_MAX_STOPS`), `modes` is every mode wanted for them, `withShapes` asks for geometry.
+- **Each leg answers in three buckets, and they cover every mode asked for**: `estimates` (we can
+  answer now), `refusedModes` (the gate refused — never coming), `pendingModes` (admitted, not
+  computed yet). The **user** must never be able to tell "not computed" from "not computable"
+  (ADR-0206 §D4), which is exactly why the **client** must: without the split it either polls
+  forever for a refused pair or gives up on a warming one.
+- **`202` with `Retry-After` while anything is warming**, ADR-0187's flow, which
+  `map-archive-cache.ts` already parses. The body is the same shape either way and always usable:
+  a client that ignores the status renders a correct day with fewer numbers in it. Nothing is ever
+  built on the request path.
+- **The gate runs server-side, before the network** (§3), on `@waypoint/shared`'s `routableLegs`.
+  It is not an optimisation: one crow-flies pair over a mode's ceiling returns `400` for an
+  **entire** matrix (§Z4), so a client must never be able to cause that. A refusal costs no
+  upstream request at all.
+- **An absent leg is never an error.** Out of range, out of cluster, still warming, provider down,
+  kill switch on — every one of them leaves `formatDistance`'s crow-flies chip standing
+  (ADR-0206 §D4). This route has no failure the UI is meant to render.
+- **`MembershipGuard`**, like every trip-scoped route. The `tripId` is not decoration: the gate
+  needs the trip's own download clusters (ADR-0186 §4) to decide what may be walked.
+
 ## Destinations (trip creation)
 
 Trip-agnostic destination lookup for **trip creation** (ADR-0113): there's no trip yet, so these are distinct from the trip-scoped place proxy above — authed by the global `JwtAuthGuard`, **per-user** rate-limited (the shared throttler keys on the actor when there's no `tripId`), and **stateless** (nothing is persisted). Reuse the same `GooglePlacesClient` + `geo-tz`.
