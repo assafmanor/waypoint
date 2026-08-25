@@ -375,6 +375,14 @@ was measured live on 2026-08-25 against FOSSGIS Valhalla `3.8.3-49cd28b` (tilese
 using real coordinates. **No production code changed** — the constants are named here so M2 and M4
 import a decided number rather than re-deriving one. Scripts were throwaway.
 
+> **The code now matches (M2b, 2026-08-25).** `packages/shared/src/routing.ts` ships every number
+> below: the three ceilings of §Z2, its new `ROUTE_MIN_CROW_M` floor enforced in `admitsTravelMode`,
+> and §Z1's `ROUTE_COORD_DECIMALS = 5` (unchanged in value, its "M1 measures this" comment replaced
+> by the measurement). Each carries its measurement in the comment beside it, and a spec asserts the
+> four numbers as literals as well as testing each boundary — because a wrong constant shipping
+> unnoticed is the failure this section exists to end. `sameClusterOnly` stays as §Z2 describes it:
+> inert, kept, and commented as inert.
+
 ### Z0. What was measured against, and the one thing that limits it
 
 **The dev seed carries no coordinates.** Its eight `Place` rows (`backend/prisma/seed.mjs`) are
@@ -475,6 +483,16 @@ estimate and never an error"); with a sub-link-radius ceiling in front of it, th
 ever produce. **So `sameClusterOnly` is safe to set `false` for all three modes**, and the gate
 becomes one arithmetic check per mode. Leaving it `true` is harmless but dead, and it is the kind of
 dead check a later reader will assume is protecting something.
+
+**What M2b shipped, and why it is not that (2026-08-25).** The flag and its values are unchanged —
+`true` for walking and cycling, `false` for driving, exactly as the code block above writes them —
+and the reason is that flipping it is a behaviour change, not the application of a measurement:
+today's `true` costs the one-sided false negative described above, and `false` would remove it. That
+is a separate call from "ship the measured numbers", and M2b's card scoped it to the numbers. The
+misreading this paragraph was worried about is answered instead by **saying so where the flag is
+declared**: `TravelGateRule.sameClusterOnly`'s doc comment now carries the 2,500-pair result and the
+words "inert, kept deliberately", so nobody has to reach this ADR to learn the check protects
+nothing. Deleting the field is the option that is genuinely closed — driving still reads it.
 
 ADR-0186's clustering keeps doing what it was built for (map extracts). §3's "one derivation, two
 consumers" instinct was reasonable and the measurement simply does not need it — **this is deleting a

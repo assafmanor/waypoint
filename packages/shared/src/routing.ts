@@ -136,9 +136,11 @@ export type RouteLeg = z.infer<typeof routeLegSchema>;
  *  the same rounding `map-region.ts` applies for the same reason: float noise must not invalidate
  *  an entry describing identical ground.
  *
- *  ADR-0205 §4 leaves the number open on purpose. Coarser buys a cross-trip hit between a pin
- *  dropped by hand and the same place picked from search, and pays for it in accuracy. **M1
- *  measures it against real trips; nobody should tune it from taste.** */
+ *  **Measured and confirmed unchanged (ADR-0205 §Z1).** Coarsening was the wrong instrument, not
+ *  merely the wrong value: 4 and 3 decimals buy *zero* extra hits (32/40 same-place pairs at all
+ *  three, the distribution being bimodal with an empty middle), and Valhalla's own road-graph snap
+ *  already collapses everything within ~10 m. If a hand-dropped pin ever has to meet the same place
+ *  picked from search, the instrument is a ~10 m proximity lookup — never a coarser grid. */
 export const ROUTE_COORD_DECIMALS = 5;
 
 const coordKey = (at: LatLng) =>
@@ -161,9 +163,18 @@ export function routeLegKey(from: LatLng, to: LatLng, mode: TravelMode): string 
 /** What has to be true of a pair before a mode may be asked about it at all. */
 export interface TravelGateRule {
   /** Whether the pair must sit inside ONE of ADR-0186 §4's download clusters. False for driving:
-   *  a road trip crosses clusters by definition, and Reykjavík→Vík is what a road trip IS. */
+   *  a road trip crosses clusters by definition, and Reykjavík→Vík is what a road trip IS.
+   *
+   *  **Inert since the ceilings were measured, and kept deliberately (ADR-0205 §Z2).** Every
+   *  `maxMeters` below now sits under ADR-0186 §4's 40 km link radius, and single-link clustering
+   *  puts any two points inside that radius in one area by direct link — verified over 2,500+
+   *  random global pairs at ≤20 km, every one co-clusters. So this flag can no longer *reject*
+   *  anything; the one outcome it can still change is the false negative §Z2 describes (a point
+   *  missing from the cluster input), which costs a walking estimate and never an error. It looked
+   *  load-bearing only while the ceilings were M2's placeholders, above the link radius. */
   sameClusterOnly: boolean;
-  /** The distance past which we never call, whatever the clusters say. */
+  /** The distance past which we never call, whatever the clusters say. Crow-flies, because the
+   *  gate runs before the network and a road distance is what the network would answer. */
   maxMeters: number;
 }
 
@@ -180,20 +191,41 @@ export interface TravelGateRule {
  * rendered as a travel time. §3's own rule 3 is what forbids that, and a per-mode ceiling is
  * where it lives.
  *
- * **Every number below is provisional and M1 owns them.** They are sized to be obviously-absurd
- * bounds rather than good ones: a real trip is what says whether a 25 km walk should ever be
- * offered. Do not tune them from taste, and do not let a caller pass its own — one gate, so
- * Plan mode and Trip mode cannot disagree about what is routable.
+ * **Every number below is M1's, measured against real trips (ADR-0205 §Z2)** — they replaced M2's
+ * deliberately-absurd placeholders (25 km / 800 km / 100 km) on 2026-08-25. Do not tune them from
+ * taste, and do not let a caller pass its own — one gate, so Plan mode and Trip mode cannot
+ * disagree about what is routable.
+ *
+ * A crow-flies gate is fuzzy at its edge: road/crow is 1.08–1.32 (median 1.16) ferry-free, so a
+ * 60-minute walk can be rejected while a 67-minute one is admitted. That is the price of checking
+ * before the network, and ADR-0206 §D4's chip covers the rejects. Do not "fix" it by routing first.
  */
 export const TRAVEL_GATE = {
-  /** A ~5-hour walk. Past this the answer is not useful, it is merely long. */
-  walking: { sameClusterOnly: true, maxMeters: 25_000 },
-  /** Measured: Tokyo→Kyoto, 457 km, answered in 0.84 s (ADR-0205 §3). The ceiling sits above
-   *  a long road-trip day and far below anything that is really a flight. */
-  driving: { sameClusterOnly: false, maxMeters: 800_000 },
-  /** A day's ride, and the same "absurd rather than long" test as walking. */
-  cycling: { sameClusterOnly: true, maxMeters: 100_000 },
+  /** Admits 9 of 16 measured within-cluster pairs; **worst walk admitted 67 min**, first genuinely
+   *  absurd reject 127 min (Senso-ji → Shinjuku, 8.58 km, a real seed pair). Walking measures
+   *  4.9 km/h on road (ADR-0205 §Z2), which with §Z7's ratios makes ~4 km ≈ an hour on foot. */
+  walking: { sameClusterOnly: true, maxMeters: 5_000 },
+  /** **The provider's own `auto` limit is 400 km of _path_**, server-stated (§Z4), and measured
+   *  `auto` road/crow is 1.23–1.34 — so 400 km road ÷ 1.34 ≈ 298 km crow. Admits every real
+   *  Iceland ring-road leg (longest 209.7 km crow) and rejects only Tokyo→Kyoto and the flight,
+   *  neither of which this provider can answer anyway (ADR-0205 §Z2). */
+  driving: { sameClusterOnly: false, maxMeters: 300_000 },
+  /** Admits 13 of 16; **worst ride admitted 91 min** (19.7 km), rejects 94, 145, 154 and
+   *  192-minute rides. Cycling runs ~3.5× walking on the same pairs, which is why it gets its own
+   *  number rather than sharing walking's (ADR-0205 §Z2). */
+  cycling: { sameClusterOnly: true, maxMeters: 20_000 },
 } as const satisfies Record<TravelMode, TravelGateRule>;
+
+/**
+ * **The floor the gate had no equivalent of** (ADR-0205 §Z2, new in M1's measurements).
+ *
+ * Two of the seed's nine day-adjacent pairs are 0.00 km — four events share one place, and
+ * Place-lite granularity (ADR-0147) makes that ordinary rather than a seed bug. Measured at
+ * separations of 0/1/5/10 m the provider answers **0 s, 0 s, 2 s, 5 s**; at 25 m it jumps to 65 s.
+ * Below 10 m there is no answer worth a matrix cell or a cache row, so the pair reads as ADR-0206
+ * §D4's absence — which is exactly right: these two stops are the same place.
+ */
+export const ROUTE_MIN_CROW_M = 10;
 
 /**
  * **Are these two points in one of the trip's download clusters?**
@@ -230,7 +262,8 @@ export function sameTravelCluster(
 
 /** Whether one mode may be asked about one pair. Runs on `haversineMeters` **before the
  *  network**, because one out-of-range pair returns HTTP 400 for an entire Valhalla matrix
- *  (ADR-0205 §2) — a round-trip spent learning what arithmetic knows for free. */
+ *  (ADR-0205 §2, §Z4) — a round-trip spent learning what arithmetic knows for free. Bounded at
+ *  both ends: `ROUTE_MIN_CROW_M` below, the mode's own ceiling above. */
 export function admitsTravelMode(
   mode: TravelMode,
   from: LatLng,
@@ -239,7 +272,8 @@ export function admitsTravelMode(
 ): boolean {
   const rule = TRAVEL_GATE[mode];
   const metres = haversineMeters(from, to);
-  if (!Number.isFinite(metres) || metres > rule.maxMeters) return false;
+  if (!Number.isFinite(metres) || metres < ROUTE_MIN_CROW_M || metres > rule.maxMeters)
+    return false;
   return rule.sameClusterOnly ? sameTravelCluster(from, to, clusters) : true;
 }
 
