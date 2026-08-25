@@ -371,7 +371,7 @@ export async function wipeLocalData(): Promise<void> {
   try {
     await db.transaction(
       'rw',
-      [db.events, db.bookings, db.documents, db.snapshotMeta, db.tripList, db.outbox],
+      [db.events, db.bookings, db.documents, db.snapshotMeta, db.tripList, db.outbox, db.routeLegs],
       async () => {
         await Promise.all([
           db.events.clear(),
@@ -380,6 +380,10 @@ export async function wipeLocalData(): Promise<void> {
           db.snapshotMeta.clear(),
           db.tripList.clear(),
           db.outbox.clear(),
+          // Route legs carry no `tripId` and nothing anyone authored (ADR-0205 §4), so
+          // `clearTripCache` has nothing to delete for one trip — but a leg IS a pair of
+          // coordinates this session travelled between, so sign-out clears the table.
+          db.routeLegs.clear(),
         ]);
       },
     );

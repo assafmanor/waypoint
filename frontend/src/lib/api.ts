@@ -18,6 +18,7 @@ import {
   placeResultSchema,
   placeSchema,
   removedMemberSchema,
+  routeBatchSchema,
   taskSchema,
   tripDocumentSchema,
   tripEventSchema,
@@ -63,6 +64,8 @@ import {
   type PlacePrediction,
   type ResolvePlaceInput,
   type RemovedMember,
+  type RouteBatch,
+  type RouteBatchRequest,
   type Task,
   type Trip,
   type TripEvent,
@@ -876,6 +879,37 @@ export async function resolvePlace(tripId: string, input: ResolvePlaceInput): Pr
   });
   if (!res.ok) return throwApiError(res);
   return placeSchema.parse(await readJson(res));
+}
+
+// ── ROUTES & TRAVEL TIME (ADR-0205 §6, amended by §Y2) ─────────────────────────────────
+
+/**
+ * **A day's travel times, one request** — its ordered stops × every mode wanted for them.
+ *
+ * One request per day, never one per leg and never one per mode: a per-mode endpoint would put
+ * a round-trip behind every press of the mode control, which ADR-0206 §Z2 forbids by name.
+ *
+ * **`202` is a success here, and the body says so.** The server answers `202` + `Retry-After`
+ * while anything is still warming (ADR-0187's flow) with the same body shape either way, so
+ * `res.ok` already covers it — and the wait is read from the body's own `retryAfterSeconds`,
+ * which zod has validated, rather than from a second parse of the header that duplicates it.
+ * A caller that ignores the field renders a correct day with fewer numbers in it.
+ *
+ * The gate runs server-side (§3), so an out-of-range pair costs a refusal and never a `400`.
+ */
+export async function fetchRoutes(
+  tripId: string,
+  input: RouteBatchRequest,
+  signal?: AbortSignal,
+): Promise<RouteBatch> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/routes`, {
+    method: HTTP_METHOD.POST,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+    signal,
+  });
+  if (!res.ok) return throwApiError(res);
+  return routeBatchSchema.parse(await readJson(res));
 }
 
 // ── Trip-destination lookup (ADR-0113): trip-agnostic, used at creation before a
