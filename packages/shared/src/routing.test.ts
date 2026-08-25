@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { TRAVEL_MODE, TRAVEL_MODES } from './constants';
 import { travelModeSchema } from './entities';
-import { EARTH_RADIUS_M, clusterLatLngs, haversineMeters, type LatLng } from './geo';
+import {
+  EARTH_RADIUS_M,
+  MAP_AREA_LINK_RADIUS_M,
+  clusterLatLngs,
+  haversineMeters,
+  type LatLng,
+} from './geo';
 import {
   POLYLINE_PRECISION,
   ROUTE_BATCH_MAX_STOPS,
@@ -33,15 +39,35 @@ describe('travel modes', () => {
     for (const mode of TRAVEL_MODES) expect(TRAVEL_GATE[mode]).toBeDefined();
   });
 
-  it('ships the measured ceilings and floor, not a placeholder and not a taste', () => {
-    // The one place a literal belongs: these four numbers were MEASURED (ADR-0205 §Z2) and the
-    // failure this milestone exists to undo is a wrong one shipping unnoticed. Every boundary
-    // case below derives from the constants, which proves the gate honours whatever it is given;
-    // this proves it was given what M1 measured. Changing one means re-measuring, not editing.
-    expect(TRAVEL_GATE.walking.maxMeters).toBe(5_000);
+  it('ships the decided ceilings and floor, not a placeholder and not a taste', () => {
+    // The one place a literal belongs: three of these were MEASURED (ADR-0205 §Z2) and walking
+    // was then RAISED by the owner (§Z8) — and the failure this milestone exists to undo is a
+    // wrong one shipping unnoticed. Every boundary case below derives from the constants, which
+    // proves the gate honours whatever it is given; this proves it was given what was decided.
+    // Changing one means a measurement or an owner's call, not an edit.
+    expect(TRAVEL_GATE.walking.maxMeters).toBe(15_000);
     expect(TRAVEL_GATE.cycling.maxMeters).toBe(20_000);
     expect(TRAVEL_GATE.driving.maxMeters).toBe(300_000);
     expect(ROUTE_MIN_CROW_M).toBe(10);
+  });
+
+  it('keeps every cluster-bound ceiling under the link radius that makes the cluster check inert', () => {
+    // ADR-0205 §Z2's "sameClusterOnly can no longer reject anything" is TRUE OF THESE NUMBERS,
+    // not of the code: single-link clustering co-clusters any pair inside ADR-0186 §4's radius,
+    // so the claim survives only while each cluster-bound ceiling stays under it. Raising
+    // walking past 40km would quietly make that flag load-bearing again and the ADR wrong.
+    for (const mode of TRAVEL_MODES) {
+      if (TRAVEL_GATE[mode].sameClusterOnly) {
+        expect(TRAVEL_GATE[mode].maxMeters).toBeLessThan(MAP_AREA_LINK_RADIUS_M);
+      }
+    }
+  });
+
+  it('orders the ceilings the way the modes are ordered', () => {
+    // A leg you may cycle but not walk is ordinary; a leg you may walk but not cycle would be a
+    // mode control that reads as broken. The ladder is what stops that.
+    expect(TRAVEL_GATE.walking.maxMeters).toBeLessThanOrEqual(TRAVEL_GATE.cycling.maxMeters);
+    expect(TRAVEL_GATE.cycling.maxMeters).toBeLessThanOrEqual(TRAVEL_GATE.driving.maxMeters);
   });
 });
 

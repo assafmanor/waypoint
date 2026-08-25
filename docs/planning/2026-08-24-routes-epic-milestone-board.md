@@ -66,12 +66,12 @@ pair the column does not name. Both branch from `main`, not from each other.
 
 **M1 measured the ceilings into [ADR-0205 §Z](../decisions/0205-routes-are-computed-not-bought-and-a-route-is-a-cache.md) and changed no production code** — correctly, since its own card says "produces numbers, not features" and scopes it to `docs/`. **But nobody was assigned to apply them, and that is a gap in this board, not in M1.** `packages/shared/src/routing.ts` on `main` still ships M2's placeholders:
 
-| constant            | was       | now (§Z2)     | how wrong it was                                                                         |
-| ------------------- | --------- | ------------- | ---------------------------------------------------------------------------------------- |
-| `walking.maxMeters` | `25_000`  | **`5_000`**   | 5× too permissive — admits a **127-minute walk** (Senso-ji → Shinjuku, a real seed pair) |
-| `cycling.maxMeters` | `100_000` | **`20_000`**  | 5× — admits 94, 145, 154 and 192-minute rides                                            |
-| `driving.maxMeters` | `800_000` | **`300_000`** | 2.7×, and above the provider's own 400 km path limit                                     |
-| `ROUTE_MIN_CROW_M`  | _absent_  | **`10`**      | no floor, so a 0.00 km pair costs a matrix cell and a cache row                          |
+| constant            | was       | now (§Z2)     | how wrong it was                                                                 |
+| ------------------- | --------- | ------------- | -------------------------------------------------------------------------------- |
+| `walking.maxMeters` | `25_000`  | **`15_000`**  | measured at `5_000`, then raised by the owner — ADR-0205 §Z8, and the note below |
+| `cycling.maxMeters` | `100_000` | **`20_000`**  | 5× — admits 94, 145, 154 and 192-minute rides                                    |
+| `driving.maxMeters` | `800_000` | **`300_000`** | 2.7×, and above the provider's own 400 km path limit                             |
+| `ROUTE_MIN_CROW_M`  | _absent_  | **`10`**      | no floor, so a 0.00 km pair costs a matrix cell and a cache row                  |
 
 `ROUTE_COORD_DECIMALS = 5` is confirmed unchanged (§Z1), and `TRAVEL_BUFFER_SECONDS = 5 * 60` stands (§Z6).
 
@@ -82,8 +82,21 @@ pair the column does not name. Both branch from `main`, not from each other.
 **What the next session needs to know:**
 
 - **The four numbers are shipped and cited** in `routing.ts`; `constants.ts` needed no change — all
-  four constants live in `routing.ts`. 365 green in the package (was 362), `pnpm format`,
+  four constants live in `routing.ts`. 367 green in the package (was 362), `pnpm format`,
   `typecheck`, `build` and `lint` green. **M4 may now import `TRAVEL_GATE` as a decided gate.**
+- **⚠ Walking is 15 km, not §Z2's measured 5 km — the owner raised it** on reading this PR
+  ("there are times where we'd prefer walking for the fun of it"), recorded as **ADR-0205 §Z8**.
+  §Z2's number was never a provider limit; it was a judgement about usefulness, and the owner made
+  it the other way. **Two invariants now hold the new number in place and both are specced:** every
+  cluster-bound ceiling stays under ADR-0186 §4's 40 km link radius (or §Z2's "`sameClusterOnly` is
+  inert" quietly stops being true), and walking ≤ cycling ≤ driving (or the mode control reads as
+  broken). **A future raise past 40 km fails a test, by design.**
+- **The driving ceiling cannot be raised, and ADR-0205 §Z9 is the record of why** — asked of a real
+  Iceland trip. 300 km crow is the provider's hard 400 km _path_ limit ÷ the worst measured ratio,
+  and one over-limit pair `400`s the whole day matrix (§Z4). Every plausible ring-road leg is under
+  it (longest real one measured: Reykjavík → Mývatn, 284 km crow); the two that are not are legs the
+  provider itself refuses. **§Z9 names the one cheap way to move it and it is M4's shape, not a
+  number: send over-ceiling pairs in their own request, where a refusal costs only that pair.**
 - **`ROUTE_MIN_CROW_M` refuses at `< 10 m`, in `admitsTravelMode`**, so a 0.00 km pair yields an
   empty admitted set. **M4 and M6a: that is ADR-0206 §D4's ordinary absence, not an error** — and
   it is the honest read, because the two stops are one place.
@@ -430,6 +443,12 @@ inventing beside it (rule 8):
   and not five per mode.
 - **The gate runs server-side, before the network.** One out-of-range pair returns 400 for the
   _whole_ matrix — measured. The client must never be able to cause that.
+- **Found by M2b (ADR-0205 §Z9): the day matrix is what makes the driving ceiling conservative.**
+  Because a single over-limit pair `400`s every leg in the request, the ceiling has to be the
+  provider's 400 km path limit ÷ the _worst_ observed road/crow ratio. **Send a pair the gate would
+  refuse in its own request instead and a refusal costs only that pair** — which is the one cheap
+  way this epic has to route legs between 300 km and the provider's real boundary. Not required for
+  V1; decide it here rather than leaving the ceiling looking like taste.
 
 **Exit criteria:** a cold day matrix answers and is cached; a second call hits the cache with no
 outbound request (asserted in a spec, not observed by hand); **one request returns every admitted

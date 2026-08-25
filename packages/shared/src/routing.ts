@@ -201,10 +201,13 @@ export interface TravelGateRule {
  * before the network, and ADR-0206 §D4's chip covers the rejects. Do not "fix" it by routing first.
  */
 export const TRAVEL_GATE = {
-  /** Admits 9 of 16 measured within-cluster pairs; **worst walk admitted 67 min**, first genuinely
-   *  absurd reject 127 min (Senso-ji → Shinjuku, 8.58 km, a real seed pair). Walking measures
-   *  4.9 km/h on road (ADR-0205 §Z2), which with §Z7's ratios makes ~4 km ≈ an hour on foot. */
-  walking: { sameClusterOnly: true, maxMeters: 5_000 },
+  /** **15 km, not §Z2's measured 5 km — the owner raised it on 2026-08-25** (ADR-0205 §Z8): a
+   *  group walks a long way on purpose, and 5 km refused the walk they would have chosen. §Z2's
+   *  number was never a limit of the provider (pedestrian answers to 200 km of path); it was a
+   *  judgement that a long walk is not *useful*, and that judgement is the owner's to make.
+   *  At the measured 4.9 km/h and §Z7's 1.16 median road/crow this admits **a ~3.5-hour walk**,
+   *  including the 127-minute Senso-ji → Shinjuku pair §Z2 called absurd. */
+  walking: { sameClusterOnly: true, maxMeters: 15_000 },
   /** **The provider's own `auto` limit is 400 km of _path_**, server-stated (§Z4), and measured
    *  `auto` road/crow is 1.23–1.34 — so 400 km road ÷ 1.34 ≈ 298 km crow. Admits every real
    *  Iceland ring-road leg (longest 209.7 km crow) and rejects only Tokyo→Kyoto and the flight,
