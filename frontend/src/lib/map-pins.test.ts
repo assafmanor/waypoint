@@ -684,11 +684,6 @@ describe('what a pin number is allowed to claim', () => {
     expect(index.get('kef')).toBe(1);
     expect(index.get('tlv')).toBe(2);
 
-    // **AND IT SINKS TO THE END** (ADR-0182 §3, as reversed 2026-08-11). Losing the number
-    // is not leaving the day — the check-out is still traversable — but it no longer sorts
-    // between the two flights on a ceiling it cannot defend. "By 11:00" is any time before,
-    // so placing it at 11:00 claims a position the app does not have; the numbered stops
-    // keep the clock and everything unnumbered follows them.
     const stops = buildDayStopSequence(all, {
       nameOf,
       onDate: DAY,
@@ -705,8 +700,16 @@ describe('what a pin number is allowed to claim', () => {
         event({ id: 'arr', category: 'transport', icon: '✈️', startsAt: at2('15:20') }),
       ]),
     });
-    expect(stops.map((s) => s.usage.placeId)).toEqual(['kef', 'tlv', 'hotel']);
-    expect(stops.map((s) => s.order)).toEqual([1, 2, undefined]);
+    // **AND IT LEADS THE DAY** (ADR-0054's 2026-08-25 amendment, reversing ADR-0182 §3's
+    // 2026-08-11 sink *for this sequence only*). Losing the number was never leaving the day,
+    // and the sink was the second answer this case has had: at its 11:00 ceiling it sat
+    // between the two flights, which claimed a position the app does not have, and at the
+    // tail it sat after the landing in Tel Aviv, which claims one that is simply false. It is
+    // a check-OUT, so the one thing certain about it is that the day began there — and this
+    // sequence is now the map's route, where a position is geography rather than schedule.
+    // The `order` column is untouched: a bookend holds a place and still earns no mark.
+    expect(stops.map((s) => s.usage.placeId)).toEqual(['hotel', 'kef', 'tlv']);
+    expect(stops.map((s) => s.order)).toEqual([undefined, 1, 2]);
   });
 
   it('gives an UNTIMED place no number either — the same claim, unreported', () => {
@@ -728,6 +731,100 @@ describe('what a pin number is allowed to claim', () => {
     });
     expect(index.get('museum')).toBe(1);
     expect(index.has('errand')).toBe(false);
+  });
+});
+
+// ── A DAY STARTS AND ENDS WHERE YOU SLEEP (ADR-0054's 2026-08-25 amendment) ────────────
+describe('the stay bookends the day, and wears no number for it', () => {
+  const at2 = (hhmm: string) => `${DAY}T${hhmm}:00Z`;
+  const eventsById = (all: TripEvent[]) => (id: string) => all.find((e) => e.id === id);
+  /** A stay covering `from`→`to`, plus a museum at 11:00 and dinner at 20:00. */
+  const day = (from: string, to: string) => {
+    const events = [
+      event({
+        id: 'stay',
+        placeId: 'hotel',
+        category: EVENT_CATEGORY.LODGING,
+        date: from,
+        endDate: to,
+        startsAt: `${from}T15:00:00Z`,
+        endsAt: `${to}T11:00:00Z`,
+      }),
+      event({ id: 'm', placeId: 'museum', startsAt: at2('11:00') }),
+      event({ id: 'd', placeId: 'dinner', startsAt: at2('20:00') }),
+    ];
+    const all = [
+      ...usages({ places: [place('hotel'), place('museum'), place('dinner')], events }).values(),
+    ];
+    return buildDayStopSequence(all, { nameOf, onDate: DAY, eventById: eventsById(events) });
+  };
+
+  it('a strictly middle night is BOTH ends of the day', () => {
+    // The night that was invisible here: `prominence: 'ambient'`, no edge, no clock at all,
+    // so no amount of re-sorting could have found it — it never entered the sequence.
+    const stops = day('2026-07-18', '2026-07-22');
+    expect(stops.map((s) => s.usage.placeId)).toEqual(['hotel', 'museum', 'dinner', 'hotel']);
+    // Twice in the sequence, twice unnumbered, and the numbered stops still count 1, 2 with
+    // no hole — the whole point of "sequence + route, no number".
+    expect(stops.map((s) => s.order)).toEqual([undefined, 1, 2, undefined]);
+  });
+
+  it('a check-IN day ends there and does not begin there', () => {
+    // "From 15:00" is a floor, so it used to sort between the museum and dinner on an hour
+    // it cannot defend. You end the day at the hotel; you did not start there.
+    const stops = day(DAY, '2026-07-22');
+    expect(stops.map((s) => s.usage.placeId)).toEqual(['museum', 'dinner', 'hotel']);
+    expect(stops.map((s) => s.order)).toEqual([1, 2, undefined]);
+  });
+
+  it('a check-OUT day begins there and does not end there', () => {
+    const stops = day('2026-07-18', DAY);
+    expect(stops.map((s) => s.usage.placeId)).toEqual(['hotel', 'museum', 'dinner']);
+    expect(stops.map((s) => s.order)).toEqual([undefined, 1, 2]);
+  });
+
+  it('a car hire is NOT a bookend — you hold it, you do not sleep in it', () => {
+    // The owner's second class: a soft-timed booking "from X / until Y". It belongs in the
+    // sequence at its own instant, which is what the sort change buys it — and nowhere near
+    // the day's ends, which is what `countsNights` refuses it (ADR-0163 §4).
+    const events = [
+      event({
+        id: 'car',
+        placeId: 'depot',
+        category: EVENT_CATEGORY.TRANSPORT,
+        icon: '🚗',
+        startsAt: at2('09:00'),
+        endsAt: at2('18:00'),
+      }),
+      event({ id: 'm', placeId: 'museum', startsAt: at2('11:00') }),
+      event({ id: 'd', placeId: 'dinner', startsAt: at2('20:00') }),
+    ];
+    const all = [
+      ...usages({ places: [place('depot'), place('museum'), place('dinner')], events }).values(),
+    ];
+    const stops = buildDayStopSequence(all, { nameOf, onDate: DAY, eventById: eventsById(events) });
+    expect(stops.map((s) => s.usage.placeId)).toEqual(['depot', 'museum', 'dinner']);
+    expect(stops.map((s) => s.order)).toEqual([undefined, 1, 2]);
+  });
+
+  it('answers nothing on a surface that cannot resolve events', () => {
+    // `eventById` absent means no stay is ever found, so a middle night stays backdrop and
+    // the sequence is exactly what it was — the same inertness `knowsMoment` has there.
+    const events = [
+      event({
+        id: 'stay',
+        placeId: 'hotel',
+        category: EVENT_CATEGORY.LODGING,
+        date: '2026-07-18',
+        endDate: '2026-07-22',
+        startsAt: `2026-07-18T15:00:00Z`,
+        endsAt: `2026-07-22T11:00:00Z`,
+      }),
+      event({ id: 'm', placeId: 'museum', startsAt: at2('11:00') }),
+    ];
+    const all = [...usages({ places: [place('hotel'), place('museum')], events }).values()];
+    const stops = buildDayStopSequence(all, { nameOf, onDate: DAY });
+    expect(stops.map((s) => s.usage.placeId)).toEqual(['museum']);
   });
 });
 

@@ -687,3 +687,30 @@ measurement, not a reading of the diff.**
 selected draws the day's FIRST leg` — written three hours earlier, and a faithful record of §AB2's
 third arm — is inverted to `spends NO amber, and still draws every leg`. That is the shape a
 deletion takes in a suite: the test does not disappear, it changes sides.
+
+## AD. Amendment (2026-08-25) — the route's stops are the day's SEQUENCE, not the day's NUMBERS
+
+Owner, off the shipped canvas: _"Now that we have real paths, I'm starting to feel the absence of
+some stops from the day schedule (the numbered stops), mostly the hotels."_
+
+§AB5 made every leg draw its real path, and doing so quietly changed what the stop list **is**. It
+had been the day's numbered schedule, which is a claim about what you committed to; it is now the
+spine of a drawn route, which is a claim about where you were. `screens/Map.tsx` was still gating it
+on `pin.order != null` — the **visible number** — so the two stops nobody schedules and everybody
+makes, the hotel you woke in and the one you are sleeping in, were the two the line could never
+reach. A car collected "from 09:00" was drawn nowhere at all for the same reason.
+
+The decision belongs to [ADR-0054](0054-ambient-span-events-off-the-day-schedule.md)'s 2026-08-25
+amendment (a stay is off the day's schedule and **on** its route, first and/or last, unnumbered) and
+[ADR-0182](0182-a-day-is-a-sequence-you-can-step-through.md) §3's (the sequence orders on the
+instant, the list still orders on `knowsMoment`). What this ADR records is the consequence for
+everything §AB–§AC built:
+
+- **The polyline, `mapsDayRouteUrl` and the selection card's traversal all read
+  `buildDayStopSequence`** rather than the pin numbers. One derivation still, one step earlier.
+- **§D8's ration is untouched.** A bookend can be selected like any other stop and then owns the
+  amber leg arriving at it (§AC2); with nothing selected, Plan mode still spends no amber (§AC1).
+- **The leg count grows by up to two per day**, which is where the shape budget lands: `routableLegs`
+  still pairs consecutively, so it is still **one** `withShapes` request per day (§Z5 §M3), just a
+  slightly longer one. A day whose only stops are the two ends of one stay collapses to a single
+  stop and asks for nothing.

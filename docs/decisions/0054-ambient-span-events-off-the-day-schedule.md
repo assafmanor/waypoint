@@ -4,6 +4,59 @@
 **Date:** 2026-07-17
 **Refines:** [0045](0045-trip-home-real-data-only.md) (the day-at-a-glance card this fixes), [0041](0041-parallel-overlapping-events.md) (`buildTimeTree` / the block model an ambient span must sit outside of), [0018](0018-timeline-data-model-shape.md) (the `endDate` ambient-span field that becomes the discriminator), [0047](0047-booking-event-linkage-and-notes.md) (a hotel = one Booking backing one Event with an `endDate` span), [0037](0037-overnight-events.md) (distinguishes a true multi-day span from a single overnight tail), [0011](0011-hard-soft-event-model.md) (hard/soft is orthogonal; ambient is a third, presentational axis)
 
+## Amendment (2026-08-25) — off the day's SCHEDULE, on the day's ROUTE
+
+Owner, running the shipped map polyline on a real trip: _"Now that we have real paths, I'm starting
+to feel the absence of some stops from the day schedule (the numbered stops), mostly the hotels …
+Basically on most days you can infer for certain that you're gonna start the day in a hotel and end
+in a hotel, so you can add poly lines to them and place them first/last on the schedule."_
+
+§2 below is about a **count** and a **rail**: a stay must not eat the glance's width or inflate
+`נותרו היום`, because a hotel is not something you _perform_ at a point in the day. All of that
+stands, unchanged. What it could not have contemplated is that a day would one day be drawn as a
+**line on a map** ([ADR-0206](0206-a-travel-time-belongs-between-two-points.md) §AB5) — and a route
+is not a schedule. A schedule is a claim about what you committed to; a route is a claim about where
+your feet went, and the stay is the one point on it that needs no scheduling to be certain of.
+
+So the exclusion splits, the same way the 2026-08-05 amendment split `isAmbient` itself when one flag
+turned out to be answering two questions:
+
+- **Off the counted schedule** — unchanged. No block, no rail width, no `remaining`, and **no row of
+  its own**: asked directly whether the day timeline should grow one, the owner said _"sequence only,
+  no new rows"_.
+- **On the day's stop SEQUENCE**, as its first and/or last member (`buildDayStopSequence`) — which
+  is what feeds the map's polyline, the day's Google Maps directions link, and the selection card's
+  traversal.
+
+**Which end it takes needs no rule of its own.** The stay covered last night → you woke there, so it
+is the day's first stop; it covers tonight → you end there, so it is the last. A check-in day is
+therefore last only, a check-out day first only, and a strictly middle night is **both** — which is
+exactly the day that has a hotel at each end. A day you change hotels comes out as _A's check-out …
+B's check-in_ for free, because each span only ever answers about itself.
+
+**A bookend holds a POSITION and wears no NUMBER.** `knowsMoment` still refuses it the mark — "from
+15:00" is a floor and any hour after it will do ([ADR-0171](0171-a-time-can-be-a-floor-or-a-ceiling.md)
+§10b) — so nothing on screen renumbers, and the day's known stops still count 1, 2, 3 with no hole.
+Put to the owner as a fork, and answered: _"sequence + route, no number."_
+
+**The discriminator is `countsNights`, not `isAmbient` alone**
+([ADR-0163](0163-a-hire-is-not-a-journey.md) §4). You sleep in a hotel, so it
+brackets your day; you merely _hold_ a car, so a hire's pick-up and return are ordinary stops at
+their own instants and its middle days stay pure backdrop. That is also the owner's own second class,
+named when asked what else qualifies: _"other non hard times like car rentals etc. that are from time
+X or until Y"_ — they wanted those **placed**, which is a different fix from being bracketed. Both
+halves are read off [ADR-0162](0162-a-car-hire-is-transport-you-drive-yourself.md)'s profile, so a
+future ambient category inherits the answer with nobody naming it here.
+
+**What it cost elsewhere, in two places that had each made a defensible bet:**
+
+- [ADR-0182](0182-a-day-is-a-sequence-you-can-step-through.md) §3 had made the sequence's ORDER ask
+  the numbering's own question, so a stop could not sort as timed and read as unnumbered. Right for a
+  list, wrong for a route — see its 2026-08-25 amendment.
+- `screens/Map.tsx` gated the line on `pin.order != null`, i.e. on the **visible number**. That is
+  what made a hotel unreachable by the line even once the sequence held it, and it is why the fix is
+  in two files rather than one: it now reads the sequence.
+
 ## Amendment (2026-08-05, session 215) — ambient is how a span RENDERS; a journey is what its middle IS
 
 Owner, from the shipped hero: _"when the flight (or anything really) crossed the day boundary, the hero doesn't recognize it as currently happening and just has the landing as the next event."_
