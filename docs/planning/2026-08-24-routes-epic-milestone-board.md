@@ -114,17 +114,28 @@ pair the column does not name. Both branch from `main`, not from each other.
   scope it, so it is left as-is and named here. It binds nothing until M4 builds the endpoint —
   **M4 should either measure it or restate it as a deliberate bound.**
 
-### Owner decisions outstanding (2026-08-25)
+### Owner decisions — ✅ ALL CLOSED (2026-08-25)
 
-M3 drew these and could not settle them. None blocks M1 or M4; each blocks the milestone named.
+Answered by the owner and recorded in **[ADR-0206 §AA](../decisions/0206-a-travel-time-belongs-between-two-points.md)**. Nothing on this epic waits on a decision any more.
 
-| #   | question                                                                                                | recommendation                                                                                                                                                                         | blocks  |
-| --- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| 1   | The swap threshold — **30 minutes** of time-to-leave                                                    | take it; the mockup ships a control to disagree on a device                                                                                                                            | M6b     |
-| 2   | ~~The leave-by **buffer**~~ — **answered by M1** (ADR-0205 §Z6)                                         | `TRAVEL_BUFFER_SECONDS = 5 * 60` **stands**, with its job narrowed to departure overhead: M1 found the number was doing three jobs and two of them are not buffers. Nothing to decide. | —       |
-| 3   | `ליציאה` vs `לצאת` on the tile                                                                          | `ליציאה`, following ADR-0184 §6's `לסגירה` grammar                                                                                                                                     | M6b     |
-| 4   | The **three proposed mode icons** (note §8.1)                                                           | needs an explicit yes — `ui/Icon.tsx` has none, so this mints three                                                                                                                    | M6a, M8 |
-| 5   | The **transit declaration** (note §8.4) — let someone mark a leg תחב״צ with a "we have no data" warning | genuinely contested against §D9's "absent, not disabled"; do not build unasked                                                                                                         | M8      |
+| #   | question                | answer                                                                                                                                                                                                          | who builds it |
+| --- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| 1   | The swap threshold      | **30 minutes** of time-to-leave, as measured — `LEAVE_BY_SWAP_MINUTES = 30` (§AA1)                                                                                                                              | M6b           |
+| 2   | The leave-by buffer     | `TRAVEL_BUFFER_SECONDS = 5 * 60` **stands**, scope narrowed to departure overhead — answered by M1 (ADR-0205 §Z6)                                                                                               | done          |
+| 3   | The tile's unit word    | **`ליציאה`**, following ADR-0184 §6's `לסגירה` (§AA2)                                                                                                                                                           | M6b           |
+| 4   | The three mode icons    | **Mint them** — `ui/Icon.tsx` gains walk, car, bicycle. ADR-0138 §4's "icons are UI" already settled the grammar; §Z5's word chips were a consequence of the icons not existing (§AA3)                          | M6a, M8       |
+| 5   | The transit declaration | **Yes, as a suppression mark** — and it reverses what ADR-0206 argued. A person may declare תחב״צ; it suppresses the wrong walking estimate and keeps the distance. Read §AA4 in full before building it (§AA4) | M8            |
+
+**Two things fall out of #4 and #5 that the cards did not carry:**
+
+- **M6a and M8 own three new `Icon` entries**, and ADR-0138's rule that a glyph carries a content
+  rule applies — draw them at 24px before coding.
+- **⚠ M8 gains scope, and it needs the mockup extended first.** The transit mark is a fourth stored
+  mode value with **no provider**: it rides M8's existing per-leg override, `TRAVEL_GATE` never sees
+  it, and no request is ever made. §Z5 raised it as a question and never resolved it into a drawn
+  state, so the mark, the suppressed-duration row and the "no estimate" copy want adding to
+  `a-travel-time-between-two-points-v2.html` before M8 codes them. Small addition to an existing
+  file, not a new design session.
 
 **Read the M3 session note's §9.2 before designing the late state.** M3 corrected itself there: the
 app **does** have own-device geolocation (`lib/useGeolocation.ts`, shipping since ADR-0109 §6), and
@@ -694,7 +705,16 @@ ADR-0206 **§V1.6 as amended by §Z2** — M0 answered this, so it is no longer 
 - **The switch must be instant**, which is M4's job, not this card's: every gate-admitted mode is
   already fetched and cached (§Y2), so switching is a cache read with no request. If a switch here
   triggers a fetch, M4 is wrong, not M8.
-- **Three entries, not four** — no transit control at all (§D9), confirmed by M0 answer 1.
+- **FOUR entries now, not three** — the owner reversed this on 2026-08-25 (**ADR-0206 §AA4**, and
+  §D9 is amended for it). Walk, drive, cycle **and תחב״צ**. The transit entry is a stored mode value
+  with **no provider**: it rides this card's own per-leg override, `TRAVEL_GATE` never sees it, and
+  **no request is ever made**. It **suppresses the duration and keeps the distance** — the point is
+  silence where the app would otherwise show a walking number for a journey nobody will walk. Never
+  inferred; only a person sets it. **Read §AA4 before building it, and extend the v2 mockup first**
+  — the mark, the suppressed-duration row and the "no estimate" copy were never drawn.
+- **The three modes get real icons** (§AA3): `ui/Icon.tsx` gains walk, car and bicycle. ADR-0138 §4's
+  "icons are UI" is the grammar, and its rule that a glyph carries a content rule applies — draw
+  them at 24px before coding. The תחב״צ entry needs a fourth, or a deliberate reason to stay a word.
 
 **Exit criteria:** switching mode changes every read on the surface at once (they must not disagree)
 and issues **no network request** — asserted, not eyeballed; the derived default is right for a
