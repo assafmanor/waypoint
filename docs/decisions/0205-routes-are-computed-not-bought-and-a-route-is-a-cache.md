@@ -1,11 +1,15 @@
 # 0205 — A route is **computed, not bought** — and a route is a **cache**
 
-**Status:** **Accepted 2026-08-25** on the owner's M0 answers. **§2 and §6 are amended by §Y at the
-end — read it before choosing a provider or shaping the endpoint.** The provider itself is the one
-thing still open, and §Y1 records the standing default so no work is blocked on it. **Built so far:
-the shared half only** — §1's decoder, §3's gate and §4's key and shapes landed with M2 on
-2026-08-25 (§§1, 3 and 6 carry its amendments). No provider is called, no table exists, nothing
-renders.
+**Status:** **Accepted 2026-08-25** on the owner's M0 answers. **§2 and §6 are amended by §Y; §§1,
+3 and 6 by M2's amendments; and §2/§3/§4 by §Z (M1's measurements) — read them before choosing a
+provider, shaping the endpoint, or writing the gate.** §Z picks the numbers §3 and §4 left open —
+including the ceilings M2 committed as deliberate placeholders — corrects §2's API host and its
+account of the out-of-range failure, and (§Z6/§Z7) answers the orphaned leave-by
+buffer and records that **the provider's default pedestrian answer boards scheduled ferries and
+varies with batch size** — `use_ferry: 0` is not optional. **Built so far: the shared half only** — §1's decoder, §3's
+gate and §4's key and shapes landed with M2 on 2026-08-25. No provider is called, no table exists,
+nothing renders. The provider itself is the one thing still open, and §Y1 records the standing
+default so no work is blocked on it.
 **Date:** 2026-08-24
 **Research:** [`planning/2026-08-24-routes-and-travel-time-what-is-actually-possible.md`](../planning/2026-08-24-routes-and-travel-time-what-is-actually-possible.md) — every number below was measured live on that date, not read.
 **Plan:** [`planning/2026-08-24-routes-epic-milestone-board.md`](../planning/2026-08-24-routes-epic-milestone-board.md) — the milestone board is the live tracker; this ADR is the decision it executes.
@@ -363,3 +367,292 @@ three upstream calls paced by the limiter, not a burst.
 
 The gate stays per-mode (§3), so the admitted set differs per leg: a 9 km pair yields driving and
 cycling but no walking answer, and that absence is ADR-0206 §D4's chip rather than an error.
+
+## Z. Amendment (2026-08-25) — M1's measurements: the five numbers, and three corrections
+
+**M1 (the measurement spike) picked the numbers §3 and §4 deliberately left open.** Everything below
+was measured live on 2026-08-25 against FOSSGIS Valhalla `3.8.3-49cd28b` (tileset of 2026-08-24),
+using real coordinates. **No production code changed** — the constants are named here so M2 and M4
+import a decided number rather than re-deriving one. Scripts were throwaway.
+
+### Z0. What was measured against, and the one thing that limits it
+
+**The dev seed carries no coordinates.** Its eight `Place` rows (`backend/prisma/seed.mjs`) are
+name-only Place-lite (ADR-0147) — `lat`/`lng` are `null` on every one, and the comment above them
+says so: _"the Google Places picker fills in googlePlaceId/lat/lng later."_ So "measure against the
+dev seed" could not be taken literally, and **this is a blocker for every downstream milestone that
+needs a routable trip**, not a quirk of M1. It has its own backlog line.
+
+What was measured instead, and how to read each number's weight:
+
+| corpus                  | what it is                                                                                                                                                                        | weight                                                                                                         |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **the seed's own trip** | its 8 places geocoded from OSM by name, its 10 events walked in `sortOrder` — the trip the seed actually describes, with the coordinates a picker would fill                      | primary; **n is small (9 day-adjacent pairs, one routable day)** and every rate below carries that             |
+| **four archetypes**     | Tokyo→Kansai, Iceland ring road (ADR-0162's car hire), a Paris day, a NYC day — real places, real coordinates, trip shapes this repo's own ADRs name as cases the gate must serve | secondary, and the **only** evidence for the driving ceiling: the seed has no long-distance driving leg at all |
+
+29 day-adjacent pairs in total. **Every rate below is over that corpus and should be re-measured
+once the seed has coordinates** — they are the best evidence available today, not a large sample.
+
+### Z1. The cache-key snap: **5 decimals, confirmed** — and coarsening was the wrong instrument
+
+**M2 shipped this one as `ROUTE_COORD_DECIMALS = 5` already** (`packages/shared/src/routing.ts`),
+taking §4's proposal at face value. It is the right value, and the measurement below is why — so this
+section **confirms the shipped constant and closes the question**, and adds no second name for it.
+
+```ts
+export const ROUTE_COORD_DECIMALS = 5; // ~1.1m N-S; 0.9m E-W at Tokyo. Unchanged, now measured.
+```
+
+§4 asked whether coarsening buys cross-trip hits. **Measured: it buys exactly none, and it cannot.**
+Four findings, and the last one is the one that decides it:
+
+1. **Two search pickers do not disagree.** Nominatim and Photon returned **bit-identical**
+   coordinates for all 8 seed places — same OSM object, same centroid. They are not independent
+   sources, so "two trips, two pickers" is already a 100% hit at any precision.
+2. **The same-place distribution is bimodal with an empty middle.** Over 40 same-place pairs (one
+   real place reached by different query spellings): **32 pairs at 0.0 m** (same OSM entity) and
+   **8 pairs at ≥169.5 m** (a different entity — a market's node vs. its way, a station vs. its
+   plaza). Nothing in between. At 5, 4 **and** 3 decimals the hit count is **identical: 32/40.** The
+   smallest real gap (169.5 m) is wider than a 3-decimal cell (111 m N-S, 90 m E-W at Tokyo), so
+   even the coarsest snap considered rescues nothing.
+3. **A grid cell does not collide points inside it.** Monte-Carlo over the 8 real seed coordinates
+   (N=20,000 per point): two coordinates **half a cell apart** share a key only **37–43%** of the
+   time, and **a full cell apart, 0.4–3.4%**. Rounding collides only when both points fall the same
+   side of every boundary. _"An 11 m cell rescues an 11 m pin"_ is false, and it is the intuition
+   this measurement exists to kill.
+4. **The provider already does this job, better, and at ~10 m.** Valhalla snaps every input to its
+   road graph — measured snap distance over the seed places: **min 1.2 m, median 5.5 m, max 35.4 m**.
+   Offsetting a real place and re-asking: **≤10 m → the same graph node and a byte-identical answer;
+   ≥25 m → a different node and a different answer.**
+
+So the collapse radius that matters is **the road graph's ~10 m, not our rounding's**. 5 decimals
+(~1 m) sits safely below it, which is exactly what we want: the key never merges two inputs whose
+answers genuinely differ. **4 decimals would be the worst of both** — its cell (11.1 m N-S, 9.0 m
+E-W at Tokyo) straddles the 10–25 m boundary where answers start to diverge, so it would begin
+merging genuinely-different answers while _still_ not reliably merging identical ones (finding 3).
+
+**If cross-trip hits between a hand-dropped pin and a search result ever become worth buying, the
+instrument is a proximity lookup at ~10 m — nearest cached endpoint within a radius — not a coarser
+grid.** Recorded so the coarsening idea is not re-proposed; it was measured and it does not work.
+
+### Z2. The mode ceilings: per-mode crow-flies distance, and **`sameClusterOnly` becomes a no-op**
+
+**M2 shipped `TRAVEL_GATE` before these numbers existed, with its ceilings labelled placeholders and
+"still M1's to measure" — so this section fills in that `Record`, it does not propose a second gate.**
+The measured values for `packages/shared/src/routing.ts`:
+
+```ts
+export const TRAVEL_GATE = {
+  walking: { sameClusterOnly: true, maxMeters: 5_000 }, // was 25_000 (placeholder)
+  cycling: { sameClusterOnly: true, maxMeters: 20_000 }, // was 100_000 (placeholder)
+  driving: { sameClusterOnly: false, maxMeters: 300_000 }, // was 800_000 (placeholder)
+} as const satisfies Record<TravelMode, TravelGateRule>;
+
+/** New, and `admitsTravelMode` has no floor today: below this the provider answers 0-5s. */
+export const ROUTE_MIN_CROW_M = 10;
+```
+
+**M2 already found half of this by building** — that "a cluster is not a ceiling", so walking and
+cycling need a `maxMeters` too, and it cited a 175 km chained walk to prove it. Measured, the same
+finding, from the other end: **all of these are inside ONE cluster and all pass `sameClusterOnly`** —
+Fushimi Inari → Nara Park, 32.4 km, **a 463-minute walk**; Nara → Osaka Castle, 30.1 km,
+**467 minutes**; Þingvellir → Geysir, 37.9 km, **662 minutes, an 11-hour walk.** M2's reading is
+confirmed and the ceilings above are what close it.
+
+**What the numbers add, and it is the part M2 could not know without them: once `maxMeters` is below
+ADR-0186 §4's 40 km link radius, `sameClusterOnly` can no longer reject anything.** Single-link
+clustering puts any two points within 40 km of each other in one area by direct link, and both
+measured ceilings (5 km, 20 km) are under that. Verified against the shipped `sameTravelCluster` over
+2,500+ random global pairs at ≤20 km separation: **every one co-clusters, so the cluster test never
+changes an outcome.** M2's placeholders were the reason it looked load-bearing — at 25 km walking and
+100 km cycling it genuinely was.
+
+**And it is not merely inert, it is one-sided.** The only outcome it can still change is a **false
+negative**: `sameTravelCluster` answers `false` for a point in no cluster at all, so a pair 140 m
+apart is refused a walking estimate if its coordinates were missing from the cluster input — verified
+against the shipped function. M2 named that behaviour and accepted it deliberately ("costs a walking
+estimate and never an error"); with a sub-link-radius ceiling in front of it, that cost is all it can
+ever produce. **So `sameClusterOnly` is safe to set `false` for all three modes**, and the gate
+becomes one arithmetic check per mode. Leaving it `true` is harmless but dead, and it is the kind of
+dead check a later reader will assume is protecting something.
+
+ADR-0186's clustering keeps doing what it was built for (map extracts). §3's "one derivation, two
+consumers" instinct was reasonable and the measurement simply does not need it — **this is deleting a
+check, not adding a mechanism.**
+
+**Where each number comes from** (walk/bike durations are live Valhalla answers for the corpus pairs):
+
+| constant                             | measurement                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ROUTE_MIN_CROW_M = 10`              | **2 of the seed's 9 day-adjacent pairs are 0.00 km** (four events share `pl-shinjuku`), and Place-lite granularity makes that ordinary, not a seed bug. Measured at separation 0/1/5/10 m the provider answers **0 s, 0 s, 2 s, 5 s**; at 25 m it jumps to 65 s. Below 10 m there is no answer worth a matrix cell or a cache row.                                                                                                                                                                                  |
+| `ROUTE_WALKING_MAX_CROW_M = 5_000`   | Admits **9 of 16** measured within-cluster pairs; **worst walk admitted 67 min**. First rejected is 60 min (5.80 km, an unusually indirect 1.71 road/crow), first genuinely absurd is **127 min** (8.58 km, Senso-ji → Shinjuku — a real seed pair). Measured walking speed **4.9 km/h** road. _(The road/crow figures this line first carried were computed from ferry-contaminated distances — see §Z7: ferry-free it is **1.08–1.32, median 1.16**. The ceiling is a crow-flies distance, so it is unaffected.)_ |
+| `ROUTE_CYCLING_MAX_CROW_M = 20_000`  | Admits **13 of 16**; **worst ride admitted 91 min** (19.7 km). Rejects 94, 145, 154 and 192-minute rides. Cycling runs ~3.5× walking on the same pairs, which is why it gets its own number rather than sharing walking's.                                                                                                                                                                                                                                                                                          |
+| `ROUTE_DRIVING_MAX_CROW_M = 300_000` | **The provider's own `auto` limit is 400 km of _path_ distance** (server-stated, §Z4). Measured `auto` road/crow: **1.23–1.34**, so 400 km road ÷ 1.34 ≈ 298 km crow. Admits **27 of 29** corpus pairs including every real Iceland leg (longest 209.7 km crow); rejects only Tokyo→Kyoto and the flight — **both of which this provider cannot answer anyway** (§Z4).                                                                                                                                              |
+
+**A crow-flies gate is fuzzy at its edge** — a 60-minute walk can be rejected while a 67-minute one
+is admitted, because road/crow is not constant. Ferry-free that spread is **1.08–1.32** (§Z7), which
+is narrow enough that the fuzz is a few minutes rather than a category error. That is the price of
+checking before the network, and §D4's chip covers the rejects. Do not "fix" it by routing first.
+
+### Z3. Cluster-gate hit rate, recorded because M1 was asked for it
+
+Over the 29 day-adjacent pairs, **20 (69%) fall in one cluster**: seed **7/9 (78%)**, archetypes
+**13/20 (65%)**. Per trip: the seed's 8 places make **3 clusters**, Iceland's 8 stops make **7**,
+Tokyo→Kansai makes **2**, the Paris and NYC days make **1** each.
+
+The Iceland number is the one to keep: **only 1 of 7 ring-road legs is intra-cluster.** §3 already
+predicted this in prose ("a road trip crosses clusters by definition"); it is now a number, and it
+is the second reason the cluster gate could never have governed driving.
+
+### Z4. Provider behaviour under our actual access pattern — and two corrections to §2
+
+**Correction 1: the API host is `valhalla1.openstreetmap.de`.** §2 links
+`https://valhalla.openstreetmap.de/`, which is the **demo web application** — it answers `200` with
+an HTML page (`<div id="valhalla-app-root">`) for `/status` and for any API path, and rejects `POST`
+with nginx's `405`. That is a correct link for a human and **a wrong base URL for M4**, and it fails
+in the most expensive way: a `200` carrying HTML. The API host answers both `POST` and
+`GET ?json=` identically. `valhalla2`/`valhalla3` do not resolve.
+
+**Correction 2: there are TWO out-of-range failures, not one, and §2 records only the harsher.**
+§2 says _"One out-of-range pair returns HTTP 400 for the entire matrix — not a `null` cell."_
+Measured, it depends on **which** distance is over:
+
+| condition                            | response                                                                      |
+| ------------------------------------ | ----------------------------------------------------------------------------- |
+| **crow-flies** over the mode limit   | **HTTP 400, `error_code 154`, the whole matrix dies** — as §2 says            |
+| crow-flies under, **road path** over | **HTTP 200 with a `null` cell.** The matrix survives; only that pair is empty |
+
+Measured: a 7-point `auto` matrix of the six Tokyo places plus Kyoto (371.5 km crow, 457 km road)
+returned **HTTP 200 with 37/49 cells answered and 12 null** — the good pairs survived. Tokyo→Osaka
+(400.8 km crow) returned 400 and killed everything. **So M4 must handle both**: pre-filter on
+crow-flies to avoid the 400 (§3's gate, unchanged in purpose), _and_ treat a null cell as an ordinary
+absence feeding §D4's chip rather than as a parse error. The error message names the limit exactly
+(`"Path distance exceeds the max distance limit: 400000 meters"`), so the ceilings are read from the
+server, not guessed: **`auto` 400 km, `pedestrian` 200 km, both on path distance.**
+
+**Latency, our pattern (a 6×6 day matrix = 30 ordered pairs, cold, 5 runs each):**
+
+| costing    | payload | min   | median | max     |
+| ---------- | ------- | ----- | ------ | ------- |
+| pedestrian | 7.53 KB | 536ms | 560ms  | 678ms   |
+| auto       | 7.52 KB | 586ms | 646ms  | 1,034ms |
+| bicycle    | 7.53 KB | 560ms | 589ms  | 684ms   |
+
+**Faster than the 2026-08-24 research measured** (which saw 1.04–2.60 s for a 5×5), so §Y2's
+"~1 s round-trip" arithmetic holds with margin. The tail is the number to design against: **~1 s**,
+and ADR-0187's warm-in-background is already the pattern for it.
+
+**The fair-use limit does not bind.** Six concurrent identical day matrices: **all HTTP 200, zero
+429s, no `Retry-After`, 1.08 s wall** — no enforcement observed at anything near our pattern. **This
+is not licence to burst.** 1 call/user/s is a request from volunteers, the politeness limiter in §Y2
+stands, and absence of a rejection is not permission. Recorded because §Y1 makes it a switch trigger.
+
+**Volume, which §Y1 point 3 said M1 would settle.** One matrix call answers 30 ordered pairs. A
+10-day trip at 6 stops/day across 3 modes is **30 upstream calls and ~226 KB, for the life of the
+trip**, writing ~900 `RouteLeg` rows; at the honoured 1 call/s that is **30 seconds of paced upstream
+time for a whole trip**. §Y1's "~30 calls in its lifetime" was right. **Cache every cell the matrix
+returns, not just the consecutive pairs** — the other 25 are already paid for, and a reorder or an
+inserted stop then costs nothing.
+
+### Z5. What this does to §Y1's switch triggers
+
+**None of the three fired, so the standing default is unchanged: the community server.**
+Fair use does not bind (§Z4), FOSSGIS has neither degraded nor asked us to stop, and transit remains
+V2. The one thing M1 adds to that ledger is the tileset date the server reports
+(`tileset_last_modified`, 2026-08-24) — **that is the cache invalidation signal §4 said a route has
+and a clock does not.** It is free on `/status`, so M4 should record it on each `RouteLeg` write and
+M12 can evict on a tileset roll rather than guessing a TTL.
+
+### Z6. Re-checked against M3 (2026-08-25), and the leave-by buffer answered
+
+M3's design session landed after Z1–Z5 were written. **None of the five constants changes.** But
+re-reading it forced a measurement that found a wrong answer underneath them, so read §Z7 first —
+it corrects two figures this section originally carried.
+
+**The walking ceiling and M3's harmful example.** M3 names Senso-ji → Tokyo Station as the case
+where a walking number is harmful rather than imprecise (73 min walking against 25 by train).
+Measured ferry-free: **4.57 km crow — under `walking.maxMeters` of 5,000, so the gate admits it —
+and a 67-minute walk** over 5.34 km of road, ratio 1.17.
+
+Once §Z7's ferry is out of the data, **road/crow is tight** — 1.08 to 1.32 across every real leg in
+the corpus (median 1.16; the lone 1.96 is a 100 m leg where one block dominates). That makes a
+crow ceiling a **usable** duration proxy, which the contaminated figure had suggested it was not:
+
+| if the product wants a walk bounded at | the crow ceiling is |
+| -------------------------------------- | ------------------- |
+| ~60 min                                | **~4,000 m**        |
+| ~70 min (today's 5,000)                | 5,000 m             |
+
+`walking.maxMeters = 5_000` **stands as the network gate** — its job is to not spend a call and not
+trip §Z4's 400. **Whether it should also be 4,000 to bound the read at an hour is ADR-0206's call,
+not this ADR's**, because it decides what a person sees. The measurement is here so that call is
+made on a number rather than a feeling.
+
+#### The leave-by buffer: it was three things, and only one of them is a buffer
+
+`TRAVEL_BUFFER_SECONDS = 5 * 60` shipped as a placeholder, and it is orphaned — M2 assigned it to
+M3, M3 assigned it to M1, M1's card never listed it. It stayed orphaned because it was posed as one
+unmeasurable number. It is three, and two of them are not buffers at all:
+
+1. **A wrong road network.** §Z7: the default pedestrian answer boards a scheduled tourist ferry.
+   Worth **+22.7 min** on one seed leg alone. **No buffer covers a boat you cannot board** — the fix
+   is `use_ferry: 0` on the request, and it is free.
+2. **Pace.** Valhalla's `walking_speed` defaults to **5.1 km/h**, a brisk solo adult. This app is for
+   **groups of ~5** (root `CLAUDE.md`), which do not move at 5.1. This is a **request parameter**,
+   not a hedge: measured on Senso-ji → Shinjuku, `walking_speed: 4.5` costs **+13%** and `4.0` costs
+   **+27%**, and Valhalla re-models the crossings around it rather than adding a flat lump. Setting
+   the pace we mean is strictly better than buffering the pace we did not mean.
+3. **Departure overhead** — finding the door, settling the bill, gathering five people. Constant,
+   independent of leg length, and genuinely not derivable from a router.
+
+**Strip 1 and 2 into the request and what is left is (3), which a constant fits exactly — so
+`TRAVEL_BUFFER_SECONDS = 5 * 60` stands, with its job narrowed to departure overhead and documented
+as such.** That is the answer to the orphan: not "measure it on a real day", but _stop asking one
+number to absorb a scheduled ferry, a pace assumption, and putting your shoes on_. Five minutes for
+a group of five to get out of a door is defensible as a floor; it is the other two that were making
+it look wrong.
+
+The interaction M2's comment flags is unchanged and now bounded: the buffer shifts the leave-by
+earlier by exactly its own size, so against M3's `LEAVE_BY_SWAP_MINUTES = 30` a 5-minute buffer
+fires the swap 5 minutes early. At 15 it would eat half the threshold — another reason the buffer
+should hold only the constant that has to be there.
+
+### Z7. The provider gives a wrong walking answer by default, and an inconsistent one (2026-08-25)
+
+Found by asking why two corpus legs showed a ~10 km/h "walk". **Both bugs are silent, both are in
+the endpoint we actually call, and one request parameter fixes both.**
+
+**1. Pedestrian routing boards scheduled ferries.** Asakusa → Tsukiji comes back as
+`"Take the 水上バス　浜離宮～浅草 Ferry."` — a **7.48 km maneuver at 16.4 km/h inside a pedestrian
+answer**. It is the Sumida River tourist boat, it runs to a timetable we do not have, and the app
+would render its 64.8 minutes as a walk. Ferry-free the same leg is **87.5 minutes: the default is
+22.7 minutes optimistic**, and optimistic about catching a boat.
+
+Scope, `use_ferry: 0` vs default, day matrices: **Tokyo 2/30 pedestrian legs**, **NYC 6/12**,
+**Iceland 4/12** (worst delta +478 min); **Paris 0/20**. Driving and cycling were unaffected on every
+leg tested — Iceland's and NYC's road legs route identically with and without — so **this is a
+pedestrian (and cycling, defensively) request option, not a global one.**
+
+**2. The matrix answer depends on how many stops are in the batch.** Valhalla silently switches
+algorithm by size, and the two disagree wherever a ferry is reachable:
+
+| request                     | algorithm            | Asakusa → Tsukiji                     |
+| --------------------------- | -------------------- | ------------------------------------- |
+| 1×1, 2×2, 3×3, and `/route` | `timedistancematrix` | 64.8 min / 10.378 km (takes the boat) |
+| 6×6 (a real day)            | `costmatrix`         | 87.4 min / 13.343 km                  |
+
+**Same pair, same mode, a 22.6-minute spread decided by batch size.** For §4's cache that is the
+serious half: the key is `(mode, from, to)` and records nothing about the batch, so which answer a
+leg is cached with becomes a race between whichever day fetched it first. Four of six legs checked
+agree exactly; the two that disagree are the two the ferry reaches.
+
+**`use_ferry: 0` fixes both** — with it the 6×6 and the 1×1 return **87.5 min / 7.08 km**, identical.
+So it is not a preference, it is what makes the cache coherent.
+
+**This also corrects two figures Z2 and Z6 first carried**, both computed from ferry-contaminated
+distances: road/crow is **1.08–1.32 across real legs (median 1.16)**, not "median 1.32, max 2.06",
+and Senso-ji → Tokyo Station is **5.34 km road, ratio 1.17, 67 min**, not 9.80 km / 2.14 / 74 min.
+The ceilings in Z2 are unaffected — they are crow-flies distances, and no ferry moves those.
+
+**M4 must send `use_ferry: 0` on pedestrian and cycling.** It is one line, and without it the app
+ships a walking time that assumes a boat.

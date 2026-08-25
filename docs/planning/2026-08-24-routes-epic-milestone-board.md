@@ -44,34 +44,52 @@ pair the column does not name. Both branch from `main`, not from each other.
 
 ## Live status
 
-| M       | milestone                   | kind   | status                 | depends on   | ⇉ safe with  | branch / PR                                                                                     | updated    |
-| ------- | --------------------------- | ------ | ---------------------- | ------------ | ------------ | ----------------------------------------------------------------------------------------------- | ---------- |
-| **M0**  | Product decisions           | owner  | ✅                     | —            | —            | —                                                                                               | 2026-08-25 |
-| **M1**  | Measure the parameters      | spike  | ⬜ **now blocking M4** | —            | —            | —                                                                                               | 2026-08-25 |
-| **M2**  | Shared derivations          | impl   | ✅                     | M0           | M1, M3       | `claude/routes-epic-m2-nkbf4d` · [#694](https://github.com/assafmanor/waypoint/pull/694)        | 2026-08-25 |
-| **M3**  | Design session + mockups    | design | ✅                     | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696) | 2026-08-25 |
-| **M4**  | Backend routing module      | impl   | ⬜                     | M1, M2       | M3           | —                                                                                               | —          |
-| **M5**  | Frontend data layer         | impl   | ⬜                     | M2, M4       | M3, M10      | —                                                                                               | —          |
-| **M6a** | The day reads               | impl   | ⬜                     | M3, M5       | M6b, M7, M9  | —                                                                                               | —          |
-| **M6b** | The hero read               | impl   | ⬜                     | M3, M5       | M6a, M7, M9  | —                                                                                               | —          |
-| **M7**  | The map polyline            | impl   | ⬜                     | M3, M5       | M6a, M6b, M9 | —                                                                                               | —          |
-| **M8**  | Mode per leg + trip default | impl   | ⬜                     | M6a, M6b, M7 | M10          | —                                                                                               | —          |
-| **M9**  | Plan-mode feasibility       | impl   | ⬜                     | M5           | M6a, M6b, M7 | —                                                                                               | —          |
-| **M10** | Offline route pack          | impl   | ⬜                     | M4           | M5–M9        | —                                                                                               | —          |
-| **M11** | Day travel total            | impl   | ⬜                     | M6a          | M8, M10      | —                                                                                               | —          |
-| **M12** | Harden, observe, document   | impl   | ⬜                     | all          | —            | —                                                                                               | —          |
+| M       | milestone                   | kind   | status                           | depends on   | ⇉ safe with  | branch / PR                                                                                           | updated    |
+| ------- | --------------------------- | ------ | -------------------------------- | ------------ | ------------ | ----------------------------------------------------------------------------------------------------- | ---------- |
+| **M0**  | Product decisions           | owner  | ✅                               | —            | —            | —                                                                                                     | 2026-08-25 |
+| **M1**  | Measure the parameters      | spike  | ✅ ⚠ **numbers not yet in code** | —            | —            | `claude/routes-travel-time-m1-spike-sn7pod` · [#695](https://github.com/assafmanor/waypoint/pull/695) | 2026-08-25 |
+| **M2**  | Shared derivations          | impl   | ✅                               | M0           | M1, M3       | `claude/routes-epic-m2-nkbf4d` · [#694](https://github.com/assafmanor/waypoint/pull/694)              | 2026-08-25 |
+| **M2b** | Apply M1's numbers to code  | impl   | ⬜ **blocks M4**                 | M1, M2       | M3           | —                                                                                                     | 2026-08-25 |
+| **M3**  | Design session + mockups    | design | ✅                               | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696)       | 2026-08-25 |
+| **M4**  | Backend routing module      | impl   | ⬜                               | M1, M2, M2b  | M3           | —                                                                                                     | —          |
+| **M5**  | Frontend data layer         | impl   | ⬜                               | M2, M4       | M3, M10      | —                                                                                                     | —          |
+| **M6a** | The day reads               | impl   | ⬜                               | M3, M5       | M6b, M7, M9  | —                                                                                                     | —          |
+| **M6b** | The hero read               | impl   | ⬜                               | M3, M5       | M6a, M7, M9  | —                                                                                                     | —          |
+| **M7**  | The map polyline            | impl   | ⬜                               | M3, M5       | M6a, M6b, M9 | —                                                                                                     | —          |
+| **M8**  | Mode per leg + trip default | impl   | ⬜                               | M6a, M6b, M7 | M10          | —                                                                                                     | —          |
+| **M9**  | Plan-mode feasibility       | impl   | ⬜                               | M5           | M6a, M6b, M7 | —                                                                                                     | —          |
+| **M10** | Offline route pack          | impl   | ⬜                               | M4           | M5–M9        | —                                                                                                     | —          |
+| **M11** | Day travel total            | impl   | ⬜                               | M6a          | M8, M10      | —                                                                                                     | —          |
+| **M12** | Harden, observe, document   | impl   | ⬜                               | all          | —            | —                                                                                                     | —          |
+
+### ⚠ M2b — apply M1's numbers to the code. **This blocks M4.**
+
+**M1 measured the ceilings into [ADR-0205 §Z](../decisions/0205-routes-are-computed-not-bought-and-a-route-is-a-cache.md) and changed no production code** — correctly, since its own card says "produces numbers, not features" and scopes it to `docs/`. **But nobody was assigned to apply them, and that is a gap in this board, not in M1.** `packages/shared/src/routing.ts` on `main` still ships M2's placeholders:
+
+| constant            | shipped   | measured (§Z2) | how wrong                                                                                |
+| ------------------- | --------- | -------------- | ---------------------------------------------------------------------------------------- |
+| `walking.maxMeters` | `25_000`  | **`5_000`**    | 5× too permissive — admits a **127-minute walk** (Senso-ji → Shinjuku, a real seed pair) |
+| `cycling.maxMeters` | `100_000` | **`20_000`**   | 5× — admits 94, 145, 154 and 192-minute rides                                            |
+| `driving.maxMeters` | `800_000` | **`300_000`**  | 2.7×, and above the provider's own 400 km path limit                                     |
+| `ROUTE_MIN_CROW_M`  | _absent_  | **`10`**       | no floor, so a 0.00 km pair costs a matrix cell and a cache row                          |
+
+`ROUTE_COORD_DECIMALS = 5` is confirmed unchanged (§Z1), and `TRAVEL_BUFFER_SECONDS = 5 * 60` stands (§Z6).
+
+**One correction rides with it:** §Z2 measured that once `maxMeters` drops below ADR-0186 §4's 40 km link radius, **`sameClusterOnly` can no longer reject anything** — verified over 2,500+ random global pairs at ≤20 km, every one co-clusters. It looked load-bearing only because M2's placeholders were above the link radius. Do not silently delete the flag; ADR-0205 §Z2 is the record of why it is now inert, and driving still reads it.
+
+**Kind:** implementation, small. **Branch:** `routes/m2b-apply-measurements` · **Conflict surface:** `packages/shared/src/routing.ts` and its spec, `packages/shared/src/constants.ts`. **Exit criteria:** the four numbers above are the shipped values with the measurement cited beside each; a spec asserts the new floor and each new ceiling at its boundary; `pnpm --filter @waypoint/shared test` green; ADR-0205 §Z amended in place to say the code now matches.
 
 ### Owner decisions outstanding (2026-08-25)
 
 M3 drew these and could not settle them. None blocks M1 or M4; each blocks the milestone named.
 
-| #   | question                                                                                                | recommendation                                                                 | blocks   |
-| --- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | -------- |
-| 1   | The swap threshold — **30 minutes** of time-to-leave                                                    | take it; the mockup ships a control to disagree on a device                    | M6b      |
-| 2   | The leave-by **buffer** (§D5's hedge), drawn at 0/5/10/15                                               | **M1 measures it** — `TRAVEL_BUFFER_SECONDS` shipped at 5 min as a placeholder | M6a, M6b |
-| 3   | `ליציאה` vs `לצאת` on the tile                                                                          | `ליציאה`, following ADR-0184 §6's `לסגירה` grammar                             | M6b      |
-| 4   | The **three proposed mode icons** (note §8.1)                                                           | needs an explicit yes — `ui/Icon.tsx` has none, so this mints three            | M6a, M8  |
-| 5   | The **transit declaration** (note §8.4) — let someone mark a leg תחב״צ with a "we have no data" warning | genuinely contested against §D9's "absent, not disabled"; do not build unasked | M8       |
+| #   | question                                                                                                | recommendation                                                                                                                                                                         | blocks  |
+| --- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 1   | The swap threshold — **30 minutes** of time-to-leave                                                    | take it; the mockup ships a control to disagree on a device                                                                                                                            | M6b     |
+| 2   | ~~The leave-by **buffer**~~ — **answered by M1** (ADR-0205 §Z6)                                         | `TRAVEL_BUFFER_SECONDS = 5 * 60` **stands**, with its job narrowed to departure overhead: M1 found the number was doing three jobs and two of them are not buffers. Nothing to decide. | —       |
+| 3   | `ליציאה` vs `לצאת` on the tile                                                                          | `ליציאה`, following ADR-0184 §6's `לסגירה` grammar                                                                                                                                     | M6b     |
+| 4   | The **three proposed mode icons** (note §8.1)                                                           | needs an explicit yes — `ui/Icon.tsx` has none, so this mints three                                                                                                                    | M6a, M8 |
+| 5   | The **transit declaration** (note §8.4) — let someone mark a leg תחב״צ with a "we have no data" warning | genuinely contested against §D9's "absent, not disabled"; do not build unasked                                                                                                         | M8      |
 
 **Read the M3 session note's §9.2 before designing the late state.** M3 corrected itself there: the
 app **does** have own-device geolocation (`lib/useGeolocation.ts`, shipping since ADR-0109 §6), and
@@ -122,6 +140,9 @@ so **M1 lands before M4, not beside it.** M3 also handed the buffer here (§D5's
 **Branch:** `routes/m1-measure` · **Conflict surface:** `docs/` only (an ADR-0205
 amendment) + throwaway scripts in the scratchpad. **Produces numbers, not features.**
 
+> Ran on `claude/routes-travel-time-m1-spike-sn7pod` rather than `routes/m1-measure` — the session
+> was handed that branch name and may not push to another. Same conflict surface either way.
+
 ADR-0205 deliberately left four numbers unpicked, and M0 added a fifth (§Z1's swap threshold is M3's, but the fair-use question below is now load-bearing — ADR-0205 §Y1 names it as a switch trigger). Pick them by measuring against **real trip data
 from the dev seed**, not against intuition.
 
@@ -137,7 +158,56 @@ from the dev seed**, not against intuition.
 **Exit criteria:** every number above written into ADR-0205 as a dated amendment, each as a named
 constant with the measurement beside it. No production code changed.
 
-**What the next session needs to know:** _(fill in)_
+**What the next session needs to know:** all five numbers are in **[ADR-0205 §Z](../decisions/0205-routes-are-computed-not-bought-and-a-route-is-a-cache.md)** —
+read it before writing the gate or the cache key. The five that change other people's work:
+
+1. **The dev seed has no coordinates** (§Z0). All 8 `Place` rows are name-only Place-lite,
+   `lat`/`lng` `null`. **M4, M5, M6a/b, M7, M9 and M11 cannot be exercised end-to-end against the
+   seed as it stands** — whoever hits this first should take the backlog line for it rather than
+   hand-patching a local seed. M1's numbers come from those 8 places geocoded by name plus four
+   ADR-named trip archetypes; n is small and every rate says so.
+2. **M2's `TRAVEL_GATE` placeholders now have their measured values** (§Z2) — walking **5,000**,
+   cycling **20,000**, driving **300,000**, replacing 25k/100k/800k. M2 labelled them "still M1's to
+   measure", so this is the handoff landing, not a competing proposal. Plus a floor
+   `admitsTravelMode` does not have today: **`ROUTE_MIN_CROW_M` = 10**. M2's own finding that "a
+   cluster is not a ceiling" is confirmed from the other end (an 11-hour walk, 37.9 km, inside one
+   cluster). **What the numbers add: once `maxMeters` is under ADR-0186's 40 km link radius,
+   `sameClusterOnly` can no longer reject anything** — verified against the shipped
+   `sameTravelCluster` — and the only outcome it can still change is a false negative. Safe to set
+   `false` for all three modes. **`ROUTE_COORD_DECIMALS = 5` is confirmed as shipped**, not changed.
+3. **The API host is `valhalla1.openstreetmap.de`** (§Z4). The URL in §2 is the demo web app and
+   answers `200` with HTML for every API path — the most expensive way to be wrong. **M4.**
+4. **Two out-of-range failures, not one** (§Z4). Crow-flies over the limit → `400`, whole matrix
+   dies. Road path over → **`200` with a `null` cell**, matrix survives. §2 records only the first.
+   **M4 must handle both**, and a null cell is an ordinary absence feeding ADR-0206 §D4's chip.
+5. **5 decimals stands, and coarsening is closed** (§Z1). It buys zero measured hits, and rounding
+   is the wrong instrument regardless — the provider's road-graph snap already collapses everything
+   within ~10 m. If it ever matters, the answer is a ~10 m proximity lookup, not a coarser grid.
+
+6. **The provider's default walking answer is wrong, and M4 must fix it in one line** (§Z7).
+   Pedestrian routing **boards scheduled ferries** — Asakusa → Tsukiji returns
+   `"Take the 水上バス Ferry"` as a 16.4 km/h maneuver inside a walk, making the default **22.7 min
+   optimistic**. And the matrix **silently switches algorithm by batch size** (`timedistancematrix`
+   ≤3 points, `costmatrix` above), so the same leg differs by **22.6 min** depending on how many
+   stops were in the request — which the `(mode, from, to)` cache key cannot distinguish, making it
+   a race. **`use_ferry: 0` on pedestrian and cycling fixes both.** Scope: Tokyo 2/30 legs, NYC
+   6/12, Iceland 4/12, Paris 0/20; driving unaffected.
+7. **The orphaned leave-by buffer is answered** (§Z6). It was three things: a wrong network (the
+   ferry → `use_ferry: 0`), pace (Valhalla assumes **5.1 km/h**, a brisk solo adult, and we serve
+   **groups of five** — that is `walking_speed`, a request parameter, not a hedge), and departure
+   overhead. Strip the first two into the request and what remains is a constant, so
+   **`TRAVEL_BUFFER_SECONDS = 5 * 60` stands**, with its job narrowed to getting out of the door.
+8. **A correction to my own numbers** (§Z7). Road/crow is **1.08–1.32, median 1.16** ferry-free, not
+   the 2.06 first published; Senso-ji → Tokyo Station is **67 min, ratio 1.17**, not 74/2.14. The
+   ceilings are crow-flies and unaffected. With clean ratios a crow ceiling **is** a usable duration
+   proxy: **~4,000 m ≈ a 60-minute walk**, if ADR-0206 wants the read bounded at an hour.
+
+Also useful: latency is **~560 ms median, ~1 s tail** for a 6×6 day matrix (faster than the
+2026-08-24 research, so §Y2's arithmetic holds with margin); **fair use did not bind** and none of
+§Y1's switch triggers fired, so the community server stays the default; and `/status` reports
+`tileset_last_modified`, which is the cache-invalidation signal §4 wanted instead of a TTL — **M4
+should record it per `RouteLeg`, M12 evicts on a tileset roll.** Cache every cell a matrix returns,
+not just the consecutive pairs: the other 25 are already paid for.
 
 ---
 
