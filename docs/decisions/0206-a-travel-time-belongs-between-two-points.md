@@ -625,5 +625,16 @@ appeared.
 - Below a threshold the stub is invisible anyway, so the threshold is a **feel call handed to the
   device pass**; the mockup ships 16px as its default and makes it a control.
 
+**One stub per STOP, not one per leg end** (the owner's correction on the first draft: _"you rendered
+two lines that connect to the two separated lines for before and after, which looks a little off… you
+should render only one line"_). Drawn per leg end it appears **twice** at an interior stop — a tail
+from the arriving leg and another from the departing one, meeting near the pin in a V. That is not
+merely untidy: **a stop meets the network in one place, so two tails are the same fact drawn twice.**
+The stub therefore belongs to the stop and runs to the **arriving** leg's endpoint — §AB2 already
+makes the arriving leg a stop's canonical one, so the two answers cannot disagree — falling back to
+the departing leg only for the day's first stop, which has no arrival. Where a one-way restriction
+snaps arrival and departure to different edges the choice is visible; ordinarily both snap to the
+same edge and it is moot.
+
 **§AC3 and §AC5 are one mechanism at two scales** — the endpoint dot marks where a leg ends, and the
 stub is what fills an unusually large distance between that dot and the stop.

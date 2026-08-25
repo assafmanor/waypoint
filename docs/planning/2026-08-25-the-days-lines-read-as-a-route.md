@@ -77,6 +77,22 @@ the one that could reasonably go another way.
 | §AC4 | numbering the legs            | **no** — the pins already carry the order                               | a midpoint label: a second place for one fact, and all three land on the line itself                                       |
 | §AC5 | a stop off the network        | **an approach stub** — thinner, dotted, ending at the dot               | stitching straight to the pin (claims a path nobody walks); dropping the leg (deletes a correct route for an unknown tail) |
 
+## The owner's review of the mockup — one correction
+
+> the "we don't know this" dotted lines for where the stop doesn't sit on the a road — I like this,
+> but you rendered two lines that connect to the two separated lines for before and after, which
+> looks a little off. I think that you should render only one line
+
+Accepted, and it exposes a modelling error rather than a styling one. The first draft drew the stub
+**per leg end**, so an interior off-network stop got **two** — one tail from the arriving leg, one
+from the departing leg, meeting near the pin in a V. **A stop meets the network in one place**, so
+the two tails were the same fact drawn twice: a double claim, not just a busy picture.
+
+The stub now belongs to the **stop**. It runs to the **arriving** leg's endpoint (§AB2 already makes
+that a stop's canonical leg, so the two answers cannot disagree), falling back to the departing leg
+only for the day's first stop. §AC5 records it; the rejected two-tail version is in the mockup's
+notes panel so it is not re-proposed.
+
 ## What the build owes when it happens
 
 - The stub's threshold and the dot's radius are **feel calls**, shipped as controls in the mockup

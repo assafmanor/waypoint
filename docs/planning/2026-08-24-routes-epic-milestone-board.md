@@ -867,7 +867,9 @@ separate card and has not been opened** — the owner's instruction was to mock 
 - **§AC4 — no leg numbering.** ADR-0121 §6 already put the order on the pins, for the same reason.
 - **§AC5 — an off-network stop gets an approach stub**, not a stitch: the router snaps every endpoint
   to the nearest edge, so the gap is permanent rather than a defect. Stitching straight to the pin
-  claims a path nobody walks.
+  claims a path nobody walks. **One stub per STOP, never one per leg end** — drawn per end it appears twice at an interior stop and meets in a V, which is a double claim rather than a busy
+  picture, since a stop meets the network in one place. It runs to the **arriving** leg's endpoint
+  (§AB2's own choice), falling back to the departing leg only for the day's first stop.
 
 **What the build owes:** the stub threshold and the dot radius are **feel calls** — shipped as
 controls in the mockup with defaults (⁦16px⁩, r≈⁦3⁩) and handed to a device pass. `MAP_CONNECTOR` grows

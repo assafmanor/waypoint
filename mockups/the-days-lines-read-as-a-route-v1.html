@@ -12699,6 +12699,14 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           אותה רגל ולא כסוג קו חמישי. מתחת לסף הוא בלתי נראה ממילא, ולכן הסף הוא הפקד למעלה ולא
           החלטה שהקובץ הזה מעמיד פנים שקיבל.
         </p>
+        <p class="note">
+          <b>זנב אחד לעצירה, לא אחד לכל רגל</b> (תיקון הבעלים על הטיוטה הראשונה: ״רינדרת שני קווים
+          שמתחברים לשני הקווים הנפרדים של לפני ואחרי, וזה נראה קצת לא נכון · תרנדר רק קו אחד״).
+          הזנב שייך ל<b>עצירה</b>, לא לרגל: עצירה נפגשת עם הרשת ב<b>מקום אחד</b>, ולכן שני זנבות הם
+          אותה עובדה מצוירת פעמיים — ״V״ ליד הסיכה שטוען טענה כפולה. הזנב רץ אל קצה הרגל
+          ה<b>מגיעה</b>, כי ⁦§AB2⁩ כבר קבע שהיא הרגל הקנונית של עצירה, ונופל אחורה לרגל היוצאת רק
+          בעצירה הראשונה של היום, שאין אליה הגעה.
+        </p>
       </section>
 
       <div class="panel">
@@ -12742,6 +12750,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             <b>נדחה: תווית מספר על כל רגל (⁦§4⁩ ב׳).</b> ⁦ADR-0121⁩ ⁦§6⁩ כבר שם את הסדר על הסיכות
             ונימק למה; תווית על הקו היא מקום שני לאותה עובדה. המדידה בטבלה מראה גם את המחיר
             הפיזי — התוויות נופלות על הקווים עצמם בצפיפות של יום אמיתי.
+          </li>
+          <li>
+            <b>נדחה: זנב לכל קצה רגל, כלומר שניים בעצירה פנימית.</b> כך זה צויר בטיוטה הראשונה,
+            והבעלים פסל את זה במבט: ״שני קווים… נראה קצת לא נכון״. וזו לא רק אסתטיקה — עצירה נפגשת
+            עם הרשת במקום אחד, אז שני זנבות הם <b>טענה כפולה</b> על אותה עובדה. הזנב שייך לעצירה.
           </li>
           <li>
             <b>נדחה: לא לצייר רגל בכלל כשהפער גדול מהסף (⁦§5⁩ ד׳ שלא צויר).</b> זה מוחק מידע נכון
@@ -12955,29 +12968,42 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             }
           }
 
-          // 'stub' (⁦§5⁩ ג) draws the unrouted remainder as its own mark, from the
-          // shape's real end to the collar radius around the stop — so it never
-          // touches the pin and never pretends to be a route.
-          if (stubs === 'stub') {
-            const stubCls = 'bld-stub' + (isAmber ? ' is-route' : '');
-            if (gapA > stubMin) {
-              const from = pts[0];
-              const t = collar / gapA;
-              out += poly(
-                [from, [stopA[0] + (from[0] - stopA[0]) * t, stopA[1] + (from[1] - stopA[1]) * t]],
-                stubCls,
-              );
-            }
-            if (gapB > stubMin) {
-              const from = pts[pts.length - 1];
-              const t = collar / gapB;
-              out += poly(
-                [from, [stopB[0] + (from[0] - stopB[0]) * t, stopB[1] + (from[1] - stopB[1]) * t]],
-                stubCls,
-              );
-            }
-          }
         });
+
+        // 'stub' (⁦§5⁩ ג) draws the unrouted remainder — and it belongs to the STOP,
+        // not to a leg. That is the owner's correction on the first draft. Drawn per
+        // leg END it came out TWICE at an interior stop, one tail from the arriving
+        // leg and one from the departing leg, meeting near the pin in a V:
+        //
+        //   "you rendered two lines that connect to the two separated lines for
+        //    before and after, which looks a little off · render only one line"
+        //
+        // And the V is not merely untidy, it is a DOUBLE CLAIM: a stop meets the
+        // network in ONE place, so the two tails are the same fact drawn twice.
+        // One stop, one stub. It runs to the ARRIVING leg's endpoint — ⁦§AB2⁩ already
+        // makes the arriving leg a stop's canonical one, so the two answers cannot
+        // disagree — and falls back to the departing leg for the day's first stop,
+        // which has no arrival. Usually both legs snap to the same edge and the
+        // choice is moot; it shows only where a one-way restriction snaps arrival
+        // and departure to different edges.
+        if (stubs === 'stub') {
+          STOPS.forEach((stop, si) => {
+            const at = toPx([stop.x, stop.y], w, h);
+            const arriveIdx = LEGS.findIndex((l) => l.to === si);
+            const departIdx = LEGS.findIndex((l) => l.from === si);
+            const useIdx = arriveIdx >= 0 ? arriveIdx : departIdx;
+            if (useIdx < 0) return;
+            const path = LEGS[useIdx].path.map((pt) => toPx(pt, w, h));
+            const anchor = arriveIdx >= 0 ? path[path.length - 1] : path[0];
+            const gap = dist(at, anchor);
+            if (gap <= stubMin) return;
+            const t = collar / gap;
+            out += poly(
+              [anchor, [at[0] + (anchor[0] - at[0]) * t, at[1] + (anchor[1] - at[1]) * t]],
+              'bld-stub' + (amber.includes(useIdx) ? ' is-route' : ''),
+            );
+          });
+        }
         svg.innerHTML = out;
       }
 
