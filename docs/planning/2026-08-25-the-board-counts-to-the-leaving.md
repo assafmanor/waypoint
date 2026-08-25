@@ -371,3 +371,75 @@ capability for a surface that has never had one, and it touches ADR-0006's ambit
 §6's consent grammar. That is **an ADR of its own**, not a line inside the routes epic — the
 design is drawn here so the decision has something to look at, but M6a/M6b should build tier 1
 and leave tiers 2–3 behind that ADR.
+
+---
+
+## 10. Coverage audit — every surface, every interaction, every state (2026-08-25)
+
+> _"This mockup is incomplete … Please take the time to reflect what we're missing so that it
+> doesn't bite us later on."_
+
+Fair, and the gap was structural rather than accidental: ADR-0206 §M named **five things to
+settle** and the session settled exactly those five, which is not the same as designing the
+feature. What follows is the inventory that should have come first. **Each row is either
+decided (with where), owned by a named milestone, or explicitly out — no row is silent.**
+
+### 10.1 Surfaces that render a day, a sequence, or a place-to-place relation
+
+| #   | surface                                                      | must it say something about travel?                                                                                                                   | state                                                           |
+| --- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| 1   | Home · **collapsed board**                                   | Yes — the countdown swaps to a leave-by                                                                                                               | **Decided** (v1 §1)                                             |
+| 2   | Home · **lifted hero horizon**                               | Yes — the full read between two points                                                                                                                | **Decided** (v1 §1d)                                            |
+| 3   | Home · **GlanceCard day rail**                               | **Yes, and it was missed.** The rail draws free time as the emptiness between blocks — the same overstatement §V1.1 corrects, one elevation up        | **NOW DESIGNED** (`where-a-route-shows-up-v1` §1)               |
+| 4   | Trip · **DayView rows**                                      | Yes — the journey block                                                                                                                               | **Decided** (v2 §1)                                             |
+| 5   | Trip · **DayPeek** (the swiped neighbour)                    | Inherits #4 **by construction** — it renders the real day surface, deliberately (ADR-0200 §7)                                                         | Free, **but see 10.3's fetch-scope row**                        |
+| 6   | Plan · **PlanDay rows**                                      | **Yes, and differently.** Plan's slot is a _control_ (`FreeSlot`: `＋ שבץ` chip / drag seam), not a statement, and Plan has no "now" so no leave-by   | **NOW DESIGNED** (§2)                                           |
+| 7   | Plan · **SlotFillSheet** ranking                             | **Yes — ADR-0206's own extends line says so:** ADR-0151's `near-the-day` "gains a better metric". `slotStops`+`rankIdeas` rank by **haversine** today | **Named, deferred** — belongs with M9, not M3                   |
+| 8   | Map · **canvas polyline**                                    | Yes — a real path per leg, one solid                                                                                                                  | **Decided** (v2 §2)                                             |
+| 9   | Map · **SnapSheet leg row**                                  | Yes — the same block as the day                                                                                                                       | **Decided** (v2 §2b)                                            |
+| 10  | Map · **stop traversal track** (ADR-0182 §1)                 | It steps stop → stop, which _is_ moving along a leg. It should say the leg's cost                                                                     | **NOW DESIGNED** (§3)                                           |
+| 11  | Map · **whole-day directions deep link** (`mapsDayRouteUrl`) | It already exists and hands the whole day to Google. Its relationship to our polyline and to a **per-leg `ניווט`** was undecided                      | **NOW DECIDED** (§3) — they are different promises, both stay   |
+| 12  | Plan · **day feasibility** (§V1.7)                           | Yes                                                                                                                                                   | **M9 owns it**; this session states the surface, not the design |
+| 13  | Day header / Plan summary · **day travel total** (§V1.9)     | Yes                                                                                                                                                   | **M11 owns it**                                                 |
+| 14  | **Notifications** ("leave now")                              | Yes eventually                                                                                                                                        | **Out** — ADR-0206 §V2, blocked on ADR-0197/0198                |
+| 15  | Index · bookings, documents, members, settings               | No — none of them is a sequence                                                                                                                       | **Out, stated so it is not re-asked**                           |
+
+### 10.2 Interactions — what each gesture does
+
+| gesture                                  | answer                                                                                                                                                                                                                                         |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Tap the journey block** (day / Plan)   | Opens the block's own detail — the leg on the map, framed, with the sheet row selected. It is the only tap the block has, and it is why the whole block is one target (56px face measured).                                                    |
+| **Tap a mode chip**                      | Instant switch, no request (§Z2). Persists a **per-leg override**; the trip default stays derived.                                                                                                                                             |
+| **Tap `בדרך`**                           | Clears the late mark, turns the leg teal. Needs `verbs.ts:1361` to become a write.                                                                                                                                                             |
+| **Tap a route line on the map**          | **Nothing, in v1 — and this is a decision, not an omission.** See §3: it would need the app's first `queryRenderedFeatures` hit-test, and a 3px line needs a ±10px tolerance that competes with pins on the surface ADR-0121 §9 says pins win. |
+| **Tap the glance rail's travel segment** | Whatever the rail already does — the glance is a read that opens the day. Travel adds no new gesture.                                                                                                                                          |
+| **Long press**                           | Unchanged. The canvas long-press is ADR-0157's place-drop; a leg has nothing to drop.                                                                                                                                                          |
+| **`ניווט` per leg**                      | **Yes, on the block** — `mapsDirectionsUrl` already exists, and ADR-0205 §8 keeps the hand-off ("we estimate; we do not guide"). It does **not** replace the Map's whole-day `mapsDayRouteUrl`: one is this leg, the other is the day.         |
+| **Drag an event across a leg** (Plan)    | The legs either side recompute on drop. A leg that no longer fits is §V1.7's feasibility mark, not a refusal — Plan may build an infeasible day and **say so** (ADR-0206's Consequences: "a builder with an opinion").                         |
+
+### 10.3 States — answered once, for every surface
+
+| state                                | what every surface does                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Routes not fetched yet**           | The block renders with the crow-flies chip and **no duration** — never a spinner per row. `LoadingState`/`Skeleton` exist but a row-level shimmer on every gap would be the loudest thing on the day.                                                                                                                                                                                |
+| **Offline**                          | Same as above, plus the offline pack (§V1.8/M10) usually means there IS an answer. Never an error (§D4).                                                                                                                                                                                                                                                                             |
+| **Gate refused for this mode**       | `.wp-chip.provisional`, the chip stays, the tap lands on the crow-flies chip (§Z2).                                                                                                                                                                                                                                                                                                  |
+| **One or both events have no place** | No block at all — the gap strip stays exactly as today. `locatedStops` already excludes them, so this falls out for free.                                                                                                                                                                                                                                                            |
+| **Same place both sides**            | No block. A leg to where you already are is not a journey; drawing "0 דק׳" would be noise on every consecutive pair at one venue.                                                                                                                                                                                                                                                    |
+| **Past day**                         | The block renders (it is history worth reading) but carries **no leave-by and no late mark** — ADR-0029's read-only posture, and a leave-by for a day that is over is nonsense.                                                                                                                                                                                                      |
+| **Parallel / concurrent events**     | The leg is to the **next stop the board is pointing at**, not to each of them. The board already picks one `next`; travel follows that choice rather than making a second one.                                                                                                                                                                                                       |
+| **An untimed event**                 | No leave-by (nothing to be late for); the duration still renders. Same rule the gap derivation already uses.                                                                                                                                                                                                                                                                         |
+| **Crosses midnight**                 | Falls out of the instants — nothing special, the block is between two events, not inside a day.                                                                                                                                                                                                                                                                                      |
+| **Fetch scope (DayPeek's cost)**     | **A real finding.** The peek mounts _both_ neighbouring days as real surfaces, so a naive "fetch this day's matrix" fires **three days** on every swipe. The batch is per-day and cached forever (§4), so the fix is ordering, not architecture: fetch the visible day, and let the peek render its crow-flies fallback until it becomes the visible day. **M5 must not miss this.** |
+
+### 10.4 What this does to M3's scope
+
+Three of the rows above are new design work that the M3 card did not name (#3 glance, #6 Plan,
+#10/#11 map traversal + hand-off). They are drawn in
+[`where-a-route-shows-up-v1.html`](../../mockups/where-a-route-shows-up-v1.html) rather than
+squeezed into v2, because they answer a different question — _where does a route appear and what
+does it do_ — and because v2 is already the file for _what a leg says_.
+
+Two rows are named and **handed on rather than drawn**: #7 (`near-the-day`'s better metric) to
+M9, and #12/#13 to M9/M11. Naming them is the point; the previous version of this note left them
+unmentioned, which is how they would have arrived as surprises.

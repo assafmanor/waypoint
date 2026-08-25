@@ -251,6 +251,22 @@ whose **§8 is the review round** and whose **§7 is the ADR-0206 amendment, rea
   board's swap does not fire for it: M6b and M11 both need to know that.
 - **Three new `ui/Icon.tsx` glyphs are proposed** (walking/cycling/driving) and drawn in the
   mockup. They need the owner's yes before M8 builds against them.
+- **⚠ The coverage sweep found three surfaces this epic had not named** — the session note's
+  §10 is the full inventory (15 surfaces, 8 gestures, 10 states), and
+  [`where-a-route-shows-up-v1.html`](../../mockups/where-a-route-shows-up-v1.html) draws them:
+  - **The Home GlanceCard rail** (nobody's card had it) commits §V1.1's overstatement one
+    elevation up — it draws free time as the emptiness between blocks. One new `.seg` kind, no
+    redesign; **M6a should take it, and its card does not currently say so.**
+  - **Plan's `FreeSlot` is a control, not a statement**, so it _offers_ a slot `gapBetween`
+    sized without travel. **M9 owns the feasibility, but the offered number is M6a-shaped** —
+    decide which card carries it before either starts.
+  - **`near-the-day` ranks by haversine** (`slotStops`/`rankIdeas`), and ADR-0206's own extends
+    line promises it "a better metric". **Unowned today** — M9 is the natural home.
+- **A route line is NOT tappable in v1**, and M7 should not add it casually: it needs the app's
+  first `queryRenderedFeatures` plus a ±10px tolerance box measured at 59% of a pin's width.
+- **⚠ M5, fetch ordering:** `DayPeek` mounts both neighbouring days as real surfaces
+  (ADR-0200 §7), so a naive per-day fetch fires **three** matrices per swipe. Fetch the visible
+  day; let the peek fall back to crow-flies until it becomes visible.
 - **The swap is a third arm on an existing ternary,** not new machinery: `Home.tsx:452` already
   swaps that tile for ADR-0184 §6's shutting window (`unit: t.board.closesIn`). **M6b should
   budget one line, not a component** — and it inherits a collision this epic had not named: a
