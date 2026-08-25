@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { TRAVEL_MODE, TRAVEL_MODES } from './constants';
 import { travelModeSchema } from './entities';
-import { EARTH_RADIUS_M, clusterLatLngs, haversineMeters, type LatLng } from './geo';
+import {
+  EARTH_RADIUS_M,
+  MAP_AREA_LINK_RADIUS_M,
+  clusterLatLngs,
+  haversineMeters,
+  type LatLng,
+} from './geo';
 import {
   POLYLINE_PRECISION,
   ROUTE_BATCH_MAX_STOPS,
+  ROUTE_MIN_CROW_M,
   TRAVEL_GATE,
   admitsTravelMode,
   admittedTravelModes,
@@ -30,6 +37,37 @@ describe('travel modes', () => {
     // Derived from the mode list rather than fixtured, so a fourth mode fails here as well as
     // at the compiler — the gate is what decides whether it may be called at all.
     for (const mode of TRAVEL_MODES) expect(TRAVEL_GATE[mode]).toBeDefined();
+  });
+
+  it('ships the decided ceilings and floor, not a placeholder and not a taste', () => {
+    // The one place a literal belongs: three of these were MEASURED (ADR-0205 §Z2) and walking
+    // was then RAISED by the owner (§Z8) — and the failure this milestone exists to undo is a
+    // wrong one shipping unnoticed. Every boundary case below derives from the constants, which
+    // proves the gate honours whatever it is given; this proves it was given what was decided.
+    // Changing one means a measurement or an owner's call, not an edit.
+    expect(TRAVEL_GATE.walking.maxMeters).toBe(15_000);
+    expect(TRAVEL_GATE.cycling.maxMeters).toBe(20_000);
+    expect(TRAVEL_GATE.driving.maxMeters).toBe(300_000);
+    expect(ROUTE_MIN_CROW_M).toBe(10);
+  });
+
+  it('keeps every cluster-bound ceiling under the link radius that makes the cluster check inert', () => {
+    // ADR-0205 §Z2's "sameClusterOnly can no longer reject anything" is TRUE OF THESE NUMBERS,
+    // not of the code: single-link clustering co-clusters any pair inside ADR-0186 §4's radius,
+    // so the claim survives only while each cluster-bound ceiling stays under it. Raising
+    // walking past 40km would quietly make that flag load-bearing again and the ADR wrong.
+    for (const mode of TRAVEL_MODES) {
+      if (TRAVEL_GATE[mode].sameClusterOnly) {
+        expect(TRAVEL_GATE[mode].maxMeters).toBeLessThan(MAP_AREA_LINK_RADIUS_M);
+      }
+    }
+  });
+
+  it('orders the ceilings the way the modes are ordered', () => {
+    // A leg you may cycle but not walk is ordinary; a leg you may walk but not cycle would be a
+    // mode control that reads as broken. The ladder is what stops that.
+    expect(TRAVEL_GATE.walking.maxMeters).toBeLessThanOrEqual(TRAVEL_GATE.cycling.maxMeters);
+    expect(TRAVEL_GATE.cycling.maxMeters).toBeLessThanOrEqual(TRAVEL_GATE.driving.maxMeters);
   });
 });
 
@@ -117,6 +155,10 @@ describe('the routing gate', () => {
   });
   const tokyo: LatLng = { lat: 35.6812, lng: 139.7671 };
   const kyoto: LatLng = { lat: 35.0116, lng: 135.7681 };
+  // ADR-0205 §Z2's own driving corpus: the Iceland ring road (ADR-0162's car hire), whose longest
+  // real leg is 209.7km crow — the case the 300km ceiling was measured to keep admitting.
+  const reykjavik: LatLng = { lat: 64.1466, lng: -21.9426 };
+  const vik: LatLng = { lat: 63.4187, lng: -19.006 };
 
   const clustersOf = (...points: LatLng[]) => clusterLatLngs(points);
 
@@ -127,12 +169,35 @@ describe('the routing gate', () => {
       TRAVEL_MODE.DRIVING,
       TRAVEL_MODE.CYCLING,
     ]);
-    // Tokyo→Kyoto is 457km: two clusters, and only driving crosses them. This is the car-hire
+    // Reykjavík→Vík is ~166km: two clusters, and only driving crosses them. This is the car-hire
     // trip (ADR-0162) working rather than every leg of the ring road reading as unavailable.
-    expect(haversineMeters(tokyo, kyoto)).toBeGreaterThan(TRAVEL_GATE.cycling.maxMeters);
-    expect(admittedTravelModes(tokyo, kyoto, clustersOf(tokyo, kyoto))).toEqual([
+    expect(haversineMeters(reykjavik, vik)).toBeGreaterThan(TRAVEL_GATE.cycling.maxMeters);
+    expect(haversineMeters(reykjavik, vik)).toBeLessThan(TRAVEL_GATE.driving.maxMeters);
+    expect(admittedTravelModes(reykjavik, vik, clustersOf(reykjavik, vik))).toEqual([
       TRAVEL_MODE.DRIVING,
     ]);
+  });
+
+  it('refuses even driving for a pair the provider itself would refuse', () => {
+    // Tokyo→Kyoto, 367km crow. It used to be this file's cross-cluster driving case; at the
+    // measured 300km ceiling it is a reject, and ADR-0205 §Z2 says so deliberately — the
+    // provider's own `auto` limit is 400km of PATH, which this pair exceeds at a 1.23-1.34
+    // road/crow ratio. Refusing it in arithmetic is what stops one pair killing a whole matrix.
+    expect(haversineMeters(tokyo, kyoto)).toBeGreaterThan(TRAVEL_GATE.driving.maxMeters);
+    expect(admittedTravelModes(tokyo, kyoto, clustersOf(tokyo, kyoto))).toEqual([]);
+  });
+
+  it('refuses every mode for two stops that are really the same place', () => {
+    // ADR-0205 §Z2's floor. Two of the seed's nine day-adjacent pairs are 0.00km — four events
+    // sharing one Place-lite row — and the provider answers 0-5s for anything under 10m. The
+    // pair reads as an ordinary absence (ADR-0206 §D4), which is the truth: it is one place.
+    const sameSpot = northOf(tokyo, ROUTE_MIN_CROW_M - 1);
+    expect(admittedTravelModes(tokyo, tokyo, clustersOf(tokyo))).toEqual([]);
+    expect(admittedTravelModes(tokyo, sameSpot, clustersOf(tokyo, sameSpot))).toEqual([]);
+
+    // And it is a floor, not a neighbourhood: a metre past it every mode answers again.
+    const justPast = northOf(tokyo, ROUTE_MIN_CROW_M + 1);
+    expect(admittedTravelModes(tokyo, justPast, clustersOf(tokyo, justPast))).toEqual(TRAVEL_MODES);
   });
 
   it('refuses a walk that is merely long even when the whole chain is ONE cluster', () => {
@@ -180,7 +245,8 @@ describe('the routing gate', () => {
 
   it('answers a day as consecutive legs, each with its own admitted set', () => {
     const near = northOf(tokyo, 3_000);
-    const legs = routableLegs([tokyo, near, kyoto], clustersOf(tokyo, near, kyoto));
+    const far = northOf(tokyo, 100_000);
+    const legs = routableLegs([tokyo, near, far], clustersOf(tokyo, near, far));
     expect(legs.map((leg) => [leg.fromIndex, leg.toIndex])).toEqual([
       [0, 1],
       [1, 2],

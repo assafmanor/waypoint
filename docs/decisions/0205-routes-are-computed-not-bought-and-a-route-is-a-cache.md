@@ -6,7 +6,9 @@ provider, shaping the endpoint, or writing the gate.** §Z picks the numbers §3
 including the ceilings M2 committed as deliberate placeholders — corrects §2's API host and its
 account of the out-of-range failure, and (§Z6/§Z7) answers the orphaned leave-by
 buffer and records that **the provider's default pedestrian answer boards scheduled ferries and
-varies with batch size** — `use_ferry: 0` is not optional. **Built so far: the shared half only** — §1's decoder, §3's
+varies with batch size** — `use_ferry: 0` is not optional. **§Z8 then raises the walking ceiling to
+15 km on the owner's call and §Z9 records why the driving one cannot be raised at all — read both
+before touching `TRAVEL_GATE`.** **Built so far: the shared half only** — §1's decoder, §3's
 gate and §4's key and shapes landed with M2 on 2026-08-25. No provider is called, no table exists,
 nothing renders. The provider itself is the one thing still open, and §Y1 records the standing
 default so no work is blocked on it.
@@ -375,6 +377,14 @@ was measured live on 2026-08-25 against FOSSGIS Valhalla `3.8.3-49cd28b` (tilese
 using real coordinates. **No production code changed** — the constants are named here so M2 and M4
 import a decided number rather than re-deriving one. Scripts were throwaway.
 
+> **The code now matches (M2b, 2026-08-25).** `packages/shared/src/routing.ts` ships every number
+> below: the three ceilings of §Z2, its new `ROUTE_MIN_CROW_M` floor enforced in `admitsTravelMode`,
+> and §Z1's `ROUTE_COORD_DECIMALS = 5` (unchanged in value, its "M1 measures this" comment replaced
+> by the measurement). Each carries its measurement in the comment beside it, and a spec asserts the
+> four numbers as literals as well as testing each boundary — because a wrong constant shipping
+> unnoticed is the failure this section exists to end. `sameClusterOnly` stays as §Z2 describes it:
+> inert, kept, and commented as inert.
+
 ### Z0. What was measured against, and the one thing that limits it
 
 **The dev seed carries no coordinates.** Its eight `Place` rows (`backend/prisma/seed.mjs`) are
@@ -443,6 +453,7 @@ The measured values for `packages/shared/src/routing.ts`:
 
 ```ts
 export const TRAVEL_GATE = {
+  // ⚠ walking is 15_000 in the code — the owner raised it, see §Z8. The rest is as measured.
   walking: { sameClusterOnly: true, maxMeters: 5_000 }, // was 25_000 (placeholder)
   cycling: { sameClusterOnly: true, maxMeters: 20_000 }, // was 100_000 (placeholder)
   driving: { sameClusterOnly: false, maxMeters: 300_000 }, // was 800_000 (placeholder)
@@ -475,6 +486,16 @@ estimate and never an error"); with a sub-link-radius ceiling in front of it, th
 ever produce. **So `sameClusterOnly` is safe to set `false` for all three modes**, and the gate
 becomes one arithmetic check per mode. Leaving it `true` is harmless but dead, and it is the kind of
 dead check a later reader will assume is protecting something.
+
+**What M2b shipped, and why it is not that (2026-08-25).** The flag and its values are unchanged —
+`true` for walking and cycling, `false` for driving, exactly as the code block above writes them —
+and the reason is that flipping it is a behaviour change, not the application of a measurement:
+today's `true` costs the one-sided false negative described above, and `false` would remove it. That
+is a separate call from "ship the measured numbers", and M2b's card scoped it to the numbers. The
+misreading this paragraph was worried about is answered instead by **saying so where the flag is
+declared**: `TravelGateRule.sameClusterOnly`'s doc comment now carries the 2,500-pair result and the
+words "inert, kept deliberately", so nobody has to reach this ADR to learn the check protects
+nothing. Deleting the field is the option that is genuinely closed — driving still reads it.
 
 ADR-0186's clustering keeps doing what it was built for (map extracts). §3's "one derivation, two
 consumers" instinct was reasonable and the measurement simply does not need it — **this is deleting a
@@ -656,3 +677,76 @@ The ceilings in Z2 are unaffected — they are crow-flies distances, and no ferr
 
 **M4 must send `use_ferry: 0` on pedestrian and cycling.** It is one line, and without it the app
 ships a walking time that assumes a boat.
+
+### Z8. The owner raises the walking ceiling to 15 km (2026-08-25)
+
+**`TRAVEL_GATE.walking.maxMeters` is `15_000`, not §Z2's measured `5_000`.** The owner's reason, on
+reading M2b: _"there are times where we'd prefer walking for the fun of it."_
+
+**§Z2's 5 km was never a limit of the provider** — pedestrian answers to 200 km of path, and the
+ceiling exists only so the gate can run before the network. It was a judgement that a walk past
+about an hour stops being _useful_, drawn from "worst walk admitted 67 min, first genuinely absurd
+127 min". That judgement is the owner's to make and it has been made the other way: a group that
+chooses a three-hour walk is not a group that wants it refused. **What the measurement is for is
+telling you what you are buying** — at the measured 4.9 km/h and §Z7's 1.16 median road/crow,
+15 km crow is a **~3.5-hour walk**, and it admits the 127-minute Senso-ji → Shinjuku pair by name.
+
+**Two constraints on the new number, and both are why it is 15 and not larger:**
+
+1. **It must stay under ADR-0186 §4's 40 km link radius**, or §Z2's "`sameClusterOnly` can no
+   longer reject anything" quietly stops being true and that flag becomes load-bearing again
+   without anyone deciding it should. A spec now asserts this for every cluster-bound mode, so the
+   next raise fails a test rather than falsifying this ADR.
+2. **It must stay at or under cycling's 20 km.** A leg you may cycle but not walk is ordinary; a leg
+   you may walk but not cycle would read as a broken mode control. Also specced.
+
+Above 15 km the honest instrument is not a bigger ceiling but ADR-0206 §D3's ladder having something
+sensible to say about a five-hour walk, which nothing has designed yet.
+
+### Z9. Why the driving ceiling cannot simply be raised (2026-08-25)
+
+Asked on M2b, of a real trip: _"we have days in our upcoming Iceland trip where we cover much
+greater distances between stops."_ Recorded because "raise the number" is the obvious response and
+it is the wrong one.
+
+**300 km crow is not our taste, it is the provider's 400 km of _path_ divided by the worst measured
+road/crow ratio (1.34).** Past its own limit the provider does not answer badly, it answers `400`
+with `error_code 154` — and §Z4 measured that **one such pair kills the entire day matrix**, not
+just that leg. So raising our ceiling past ~300 km does not buy longer answers; it buys days that
+return nothing.
+
+**And the ceiling is not what an Iceland ring road hits.** Crow-flies over the real stops (computed
+2026-08-25; the live provider could not be re-queried from that session's network):
+
+| leg                       | crow km | at the 300 km ceiling |
+| ------------------------- | ------: | --------------------- |
+| Reykjavík → Vík           |   165.4 | admitted              |
+| Vík → Jökulsárlón         |   154.9 | admitted              |
+| Jökulsárlón → Egilsstaðir |   158.4 | admitted              |
+| Egilsstaðir → Akureyri    |   178.3 | admitted              |
+| Höfn → Akureyri           |   210.0 | admitted              |
+| Reykjavík → Akureyri      |   248.1 | admitted              |
+| Reykjavík → Jökulsárlón   |   277.3 | admitted              |
+| Reykjavík → Mývatn        |   284.1 | admitted              |
+| Reykjavík → Höfn          |   326.0 | **refused**           |
+| Reykjavík → Egilsstaðir   |   379.3 | **refused**           |
+
+**Every plausible ring-road day leg is admitted**, including the long transfer days. The two
+refusals are both legs whose _road_ distance is well past the provider's 400 km limit (Reykjavík →
+Egilsstaðir is ~650 km by road), so they are refused by the provider too — the gate is only
+declining to spend a request learning that, and taking the rest of the day's matrix down with it.
+
+**Three ways the limit could actually move, none of them this constant:**
+
+1. **Isolate the long pairs.** §Z4's two failure modes are not equal: a `400` kills the matrix, a
+   `null` cell does not. A pair over the ceiling sent in **its own** request costs only itself when
+   it fails. That would let the gate admit up to the provider's true boundary (~400 km path)
+   instead of the conservative crow proxy. **This is M4's shape, not a number** — and it is the
+   only one of the three that is cheap.
+2. **Self-host** (§Y1). `max_distance` is a server config; ours to set if the server is ours. This
+   is precisely one of §Y1's switch triggers finally having a concrete case behind it.
+3. **A different provider** behind §2's port. Geoapify has its own limits; no one has measured them.
+
+Until one of those, a leg past the ceiling reads as ADR-0206 §D4's ordinary absence — which for a
+650 km road day is arguably the true answer anyway: that is not a leg, it is a travel day, and
+ADR-0011 says a real commitment inside it is a hard event with its own time.
