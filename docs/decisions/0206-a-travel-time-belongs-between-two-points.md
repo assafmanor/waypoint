@@ -542,3 +542,88 @@ for.
 on `earth #eee8dc`) and `#f0b254` dark (dark-theme `--amber`, **7.01:1** on `earth #343027`), at
 **3.5px** with round caps and joins — heavier than the 2.5px dash because it makes the opposite
 claim, and round-jointed because a many-vertex line on mitre joins spikes at every turn.
+
+## AC. Amendment (2026-08-25) — the design session on how the lines READ
+
+Four reports off the shipped canvas, drawn and measured in
+[`mockups/the-days-lines-read-as-a-route-v1.html`](../../mockups/the-days-lines-read-as-a-route-v1.html).
+Session note: [2026-08-25](../planning/2026-08-25-the-days-lines-read-as-a-route.md). **Nothing here
+is built** — §M's rule applies to this pass as it did to the first: the mockup comes before the code.
+
+### AC1. Plan mode spends no amber by default — §AB2's third arm is DELETED
+
+The owner: _"in plan mode it still shows an amber poly line for the first leg of the day which is
+not needed, I would much rather have all lines render the same in plan mode."_
+
+**He is asking for §D8 as it was already written.** §D8 says the **selected or next** leg is solid;
+§AB2 added `→ the day's first leg` for one reason, recorded on the M7 card — Plan mode drew
+**nothing** otherwise, because `nextStopId` is Trip-only. **That reason expired in the same PR that
+introduced it:** §AB5 made every leg draw its real path, so a Plan day is full of lines with or
+without the fallback. Deleting the third arm restores §D8 verbatim and needs no new rule.
+
+The general form, worth keeping because it will recur: **a fallback that exists to stop a surface
+being empty must be re-examined the moment something else fills that surface.** Nothing failed here
+— the workaround simply outlived its reason by one commit.
+
+### AC2. A selected stop marks the leg ARRIVING at it, and dims the rest
+
+Three candidates drawn. **Recommended: the arriving leg takes the amber, the departing leg takes
+weight only, every other leg drops to `line-opacity` 0.45.**
+
+- Two amber legs (drawn, rejected) is **twice what §D8 rations**, and the render makes the reason
+  visible rather than theoretical: two solid legs read as _a highlighted route_, not as _a marked
+  stop_. §Z5 §M3 measured all-solid at **3.7×** the amber on the canvas; this is the same failure in
+  miniature.
+- **Arriving rather than departing** is not a fresh choice — §AB2 already took it for "which leg
+  belongs to a stop", so answering differently here would make the two disagree.
+- Prominence is **weight and opacity, never a second hue** (root rule 4).
+
+### AC3. A leg ends in a DOT, because a collar is invisible — and the render is what proved it
+
+_"a way to easily distinguish what line connects to what stops."_ Two legs meeting under a pin read
+as one long line.
+
+**The obvious candidate was drawn and it does not work.** A "collar" — a constant gap before the pin
+— is invisible on a line that is **already made of gaps**: the shipped dash is `[2, 2]` at
+`WEIGHT` 2.5, i.e. **5px on, 5px off**, so a 9px collar is **1.8×** a gap the eye is already
+discarding. The two frames are indistinguishable on screen. A collar would have to exceed ~3× the
+dash gap to read, which starts eating the short legs.
+
+**A solid dot is the one mark a dashed line cannot accidentally produce**, so the leg's endpoint
+takes one. **Stated cost:** this is a **third source/layer pair** in `DayConnector` — a `circle`
+layer over a point source of the legs' trimmed endpoints. That is the honest price, and it is the
+reason this is an ADR entry rather than a tweak.
+
+### AC4. The legs are NOT numbered — ADR-0121 §6 already answered it
+
+The owner asked for it and doubted it in the same sentence: _"maybe but not sure… Probably not the
+best approach."_ **The doubt is right.** ADR-0121 §6 put the order **on the pins** precisely because
+_"a line between two stops is symmetric and never said which end you reach first"_. A label on the
+line is the **second** place the app states the day's order, and two places can disagree.
+
+Drawn anyway, and measured: **all three labels land on the drawn line itself**, because a leg's
+midpoint is on its own path. What the owner actually asked for — _"some visual aid to help us
+understand the route better at a glance"_ — is answered by §AC3's endpoint dots plus the numbers
+already on the pins.
+
+### AC5. An off-network stop gets an APPROACH STUB, not a stitch
+
+The owner: _"when the stop doesn't sit exactly on a path the line just stops beside it and doesn't
+lead directly to it, which looks kind of awkward and could even be confusing."_
+
+**The cause is the router, not the drawing.** Valhalla snaps each endpoint to the nearest routable
+edge, so a returned shape **always** begins and ends somewhere other than the stop — usually within
+a metre, occasionally hundreds. The gap is a permanent property of routing, not a defect that
+appeared.
+
+- **Stitching straight to the pin (rejected)** draws a solid, confident line across ground nobody
+  walks — the same false claim §Z5 §M3 rejected when it refused straight segments.
+- **Recommended: an approach stub** — the unrouted remainder in the leg's own hue, thinner, dotted
+  rather than dashed, ending at the endpoint dot so it never touches the pin. It says _"this part we
+  do not know"_, which is true, and it is the only line on the canvas that is deliberately not a
+  route.
+- Below a threshold the stub is invisible anyway, so the threshold is a **feel call handed to the
+  device pass**; the mockup ships 16px as its default and makes it a control.
+
+**§AC3 and §AC5 are one mechanism at two scales** — the endpoint dot marks where a leg ends, and the
+stub is what fills an unusually large distance between that dot and the stop.
