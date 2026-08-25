@@ -2,8 +2,10 @@
 
 **Status:** **Accepted 2026-08-25** on the owner's M0 answers. **§2 and §6 are amended by §Y at the
 end — read it before choosing a provider or shaping the endpoint.** The provider itself is the one
-thing still open, and §Y1 records the standing default so no work is blocked on it. **Nothing here
-is built.**
+thing still open, and §Y1 records the standing default so no work is blocked on it. **Built so far:
+the shared half only** — §1's decoder, §3's gate and §4's key and shapes landed with M2 on
+2026-08-25 (§§1, 3 and 6 carry its amendments). No provider is called, no table exists, nothing
+renders.
 **Date:** 2026-08-24
 **Research:** [`planning/2026-08-24-routes-and-travel-time-what-is-actually-possible.md`](../planning/2026-08-24-routes-and-travel-time-what-is-actually-possible.md) — every number below was measured live on that date, not read.
 **Plan:** [`planning/2026-08-24-routes-epic-milestone-board.md`](../planning/2026-08-24-routes-epic-milestone-board.md) — the milestone board is the live tracker; this ADR is the decision it executes.
@@ -58,6 +60,19 @@ polyline decoder, and that is ~25 lines in `@waypoint/shared` rather than a pack
 > walk comes back as `(357.14757, 1397.96481)` — a valid-looking number, ten times off, no error,
 > a line drawn nowhere. The decoder takes precision as an argument and its spec asserts a real
 > decoded coordinate, not a round-trip.
+
+**Amended by M2 (2026-08-25), built: the precision travels WITH the shape, so the trap becomes
+unrepresentable rather than test-covered.** An argument is only as good as every call site, and no
+runtime check can catch this one — the wrong answer is a well-formed pair of numbers. So a stored
+geometry is `EncodedShape = { encoded, precision }` and the two cannot be separated; `decodeShape`
+reads the precision off the record and nothing outside `routing.ts` names a precision at all. What
+makes this concrete rather than defensive is §2's own fallback: **Geoapify encodes at 5**, so the
+provider switch §Y1 keeps cheap is exactly the switch that would otherwise move every drawn line
+ten times off the map. Two further details, recorded because each is a decision someone would
+otherwise undo: **there is deliberately no encoder** (the round-trip test it enables passes at the
+wrong precision, which is the bug), and a **malformed or truncated shape decodes to nothing** rather
+than to the points that did parse — a partial line goes somewhere the route does not, and ADR-0206
+§D4 makes "no line" free.
 
 ### 2. The provider is a **port with one implementation**, and the first one costs nothing
 
@@ -120,6 +135,23 @@ because a 400 costs a round-trip to learn what arithmetic knows for free. **The 
 to measure against real trips in M1, not to pick here.**
 
 The pre-filter is a pure function in `@waypoint/shared` and it is tested without a network.
+
+**Amended by M2 (2026-08-25), found by building: a cluster is not a ceiling, so walking and cycling
+need both.** Rule 1 reads as "same cluster only" for those two, and that is not sufficient, because
+ADR-0186 §4's clustering is **single-link at 40 km on purpose** — a chain of stops each under 40 km
+apart is ONE area, which is what keeps a coastline from becoming a string of boxes. So a ring road
+whose stops are 35 km apart is one cluster, "same cluster" alone admits a **175 km walk**, and it is
+under the provider's own 200 km pedestrian refusal, so Valhalla would answer it: a forty-hour walk,
+rendered as a travel time. Rule 3 is what forbids that; a **per-mode ceiling** is where it lives.
+
+The gate is therefore one rule per mode — `TRAVEL_GATE`, a `Record<TravelMode, {sameClusterOnly,
+maxMeters}>` rather than a `switch`, so a fourth mode does not compile until somebody decides what
+it admits (ADR-0094/0095). **The ceilings are still M1's to measure and the committed numbers are
+placeholders**: they are sized to be obviously-absurd bounds (25 km walking, 100 km cycling, 800 km
+driving) rather than good ones, because only a real trip says whether a 25 km walk should ever be
+offered. Two smaller findings: cluster membership is matched on the **rounded** coordinate (§4's own
+snap, so a day's stop and the trip's point cannot miss each other over float noise), and a point in
+**no** cluster answers "not same cluster" — which costs a walking estimate and never an error.
 
 ### 4. The cache is **server-owned, cross-trip, and outside the change log**
 
@@ -189,6 +221,19 @@ make the pre-filter of §3 a client concern, which it must not be.
 **Warm-in-background, answer immediately.** ADR-0187's flow exactly: a cold batch returns what it
 has plus `202`/`Retry-After` and builds the rest; it never holds a socket open. The client already
 knows how to read that — `map-archive-cache.ts` parses `Retry-After` today.
+
+**Amended by M2 (2026-08-25), on the provider's own shape: the batch also carries `withShapes`,
+because the matrix has no geometry.** `sources_to_targets` answers a whole day's durations in one
+~1 s call and returns **no shape at all** — a drawable line is a second call, per leg. So the two
+answers this endpoint gives have very different costs, ADR-0206 §D8 draws at most one line anyway,
+and a flag is what lets the day read stay one call while the map asks for the one line it draws.
+Off by default; a shape we already hold is returned either way, because stripping a cached field to
+honour a flag would cost a second request to get it back.
+
+**And the answer per leg is three buckets, not one list** — the modes we can answer, the modes the
+gate **refused**, and the modes still **pending**. §D4 says the _user_ must never be able to tell
+"not computed" from "not computable", and that is exactly why the _client_ must: without the split
+it either polls forever for a refused pair or gives up on a warming one.
 
 ### 7. Frontend: no new layer, three existing ones extended
 

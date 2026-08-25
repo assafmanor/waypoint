@@ -1,6 +1,6 @@
 # 0206 — A travel time belongs **between** two points, and the day owes you the truth about it
 
-**Status:** **Accepted 2026-08-25** on the owner's M0 answers, and **amended by them** — read §Z before §M1 or §V1.6, which both changed. **Nothing here is built, and nothing here ships without a mockup** (§M).
+**Status:** **Accepted 2026-08-25** on the owner's M0 answers, and **amended by them** — read §Z before §M1 or §V1.6, which both changed. **Built so far: the arithmetic only** — §V1.1's, §V1.2's and §V1.7's derivations landed in `@waypoint/shared` with M2 on 2026-08-25 (see §V1's amendment). **Nothing renders yet, and nothing here ships without a mockup** (§M).
 **Date:** 2026-08-24
 **Companion:** [ADR-0205](0205-routes-are-computed-not-bought-and-a-route-is-a-cache.md) decides where a route comes from. This one decides **what it says, what v1 answers, and what v2 waits for.**
 **Research:** [`planning/2026-08-24-routes-and-travel-time-what-is-actually-possible.md`](../planning/2026-08-24-routes-and-travel-time-what-is-actually-possible.md)
@@ -95,6 +95,26 @@ Ranked by **usefulness first, cost second**, and each line names where it lands.
 
 **1.1 through 1.5 are the product.** 1.6–1.9 are what make it not feel like a demo, and each is
 cheap **only because** the ones before it exist. That ordering is the milestone board's, too.
+
+**Amended by M2 (2026-08-25), which built §V1.1's and §V1.7's arithmetic: an absent estimate is not
+a small estimate, and it is not a verdict either.** Both rules follow from §D4 and both are the kind
+of thing a later implementation would get subtly wrong, so they are written down rather than left to
+the code:
+
+- **With no estimate, the slot reads exactly as it reads today** — the whole gap, free. Never a
+  pessimistic guess: §D4 says the reader must not be able to tell "not computed" from "not
+  computable", and inventing a walk we did not measure fails that in the direction that costs
+  someone their afternoon. So the correction §V1.1 makes is applied **only where there is a
+  measurement**, and everywhere else ADR-0159's line survives untouched.
+- **"We cannot tell" is a third answer, so the fit is a discriminant and not a boolean** — `fits`,
+  `overruns`, `unknown`. §V1.7's day therefore says no **only on evidence**: a day whose stops have
+  no times, or whose legs have no estimates, fits. Plan mode refusing a day it cannot measure would
+  land as refusal rather than help, which is precisely what this ADR's Consequences warn against.
+
+One smaller decision in the same place: the derivations take and return **instants and seconds**,
+never formatted strings, and they take `now` from the caller — so `leaveBy` is allowed to answer an
+instant already in the past, because that fact is §V1.4's whole mark and clamping it would delete
+it.
 
 ### V1 — the driving exception, which is not a detail
 
