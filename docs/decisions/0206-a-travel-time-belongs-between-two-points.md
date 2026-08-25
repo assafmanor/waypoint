@@ -257,3 +257,88 @@ M0's second question came back as a question (community server versus self-host)
 matter, so the pros, the cons and the standing default live in
 [ADR-0205 §2's own 2026-08-25 amendment](0205-routes-are-computed-not-bought-and-a-route-is-a-cache.md),
 not here. Nothing in this ADR depends on the answer.
+
+### Z5. What the mockup settled (2026-08-25)
+
+Measured in [`mockups/a-travel-time-between-two-points-v1.html`](../../mockups/a-travel-time-between-two-points-v1.html),
+at 390×844 and 360×640, in both themes. Session note:
+[2026-08-25](../planning/2026-08-25-the-board-counts-to-the-leaving.md).
+
+- **§M1 — the swap threshold is `LEAVE_BY_SWAP_MINUTES = 30`**, measured on **time-to-leave**,
+  not time-to-event. Above 60 the tile is forced into `H:MM` under a unit that means minutes,
+  which is a contradiction; below ~20 a long leg is lost before the board says anything. 30 is
+  also the number root `CLAUDE.md` already states. The tile's unit becomes `ליציאה`, following
+  ADR-0184 §6's `לסגירה` in both grammar and mechanism — this is a **third arm on
+  `Home.tsx`'s existing countdown ternary**, not a new element, and all three candidate words
+  fit the 74px tile unchanged.
+- **§M1 also — the collision this ADR did not name.** A shutting check-in window (ADR-0184 §6)
+  and a live leave-by can both be true in one minute. There is one tile, so the **nearer number
+  wins**; drawing both costs 11px of the `הבא בתור` title and a second line at 360.
+- **§M2 — the journey is an OBJECT in the day, not an annotation on a hole** (owner's review,
+  round 1). A block between the two cards: the mode mark in the day's own badge column, the
+  duration, the leave-by, **the distance**, and the mode chips on it. **The route's shape is NOT
+  in the day list** (round 2, measured): at 46×26 the geometry survives but two of four real legs
+  differ by 3.1px in a 46px box, so the thumbnail carries one bit — "this is a path" — at every
+  hole of the densest surface in the app. The same pixels carry `formatDistance`, which a reader
+  can act on, plus `PlaceBadge`'s existing "show on map" affordance one tap from the shape. The day then reads `place · journey · place`, which is
+  §V1.3's own sentence. It **absorbs** the free-time statement rather than sitting beside it, so
+  the slot still holds one object (ADR-0159's rule): measured at 58px against 87px for a
+  strip-plus-block, with both of `freeAfterTravel`'s numbers still said. It **ignores
+  `GAP_MIN_MINUTES`** for ADR-0159's own reason, or a 45-minute hole holding a 40-minute walk
+  stays silent. Three **new** `ui/Icon.tsx` glyphs — walking, cycling, driving — are part of the
+  proposal; transit reuses `ticket`.
+- **§M3 — §D1's "solid + amber" cannot be one value.** `--amber` measures **1.72:1** on the day
+  map ground (`earth #eee8dc`), under the 3:1 floor a graphic owes what it crosses, and 7.01:1
+  on the night ground. The route line is therefore a **per-theme pair, in TypeScript, switched
+  in JS** exactly as `MAP_CONNECTOR.COLOR` is: `--amber-deep` (4.5:1) light, `--amber` dark. No
+  new hue — `--amber-deep` is amber's paper variant (ADR-0158 §6).
+- **§M3 also — every leg draws its REAL path; §D8 rations the SOLID AMBER, not the truth of the
+  line** (owner's review). A straight segment is both a weaker drawing and a wrong number — it
+  under-reports distance by construction. All-solid puts **3.7×** the amber on the canvas, so §D8
+  stands. And hue cannot separate the line from a pin (1.02–1.28:1 against every category hue in
+  dark); what does is the 2px `--card` ring the pin already carries.
+- **§M5 also — the mode control appears on the map too**, in the Map tab's `SnapSheet`, as the
+  _same_ block the day list renders. One component, two hosts; a switch redraws the polyline from
+  cache with no request (§Z2).
+- **§M4 — the late-risk mark is ink and word only, and by default it may not say "you are
+  late."** A settle mark is a record written when convenient, not a sensor, so from the clock
+  alone the only supportable claim is that **the leave-by has passed**:
+  `זמן היציאה עבר ב-17:15`, never `אתם באיחור`. **This is the floor, and it is what ships**, because
+  the position below can be refused or absent. Same `--miss`,
+  same place, a claim we can stand behind (§D5's rule applied to a sentence rather than a number).
+  Paint: `--miss-deep` on paper (6.59:1), the board's brightened `#f0a0a0`/`rgba(198,40,40,.18)`
+  recipe on the board (8.73:1) — the one `.tlabel.missed` already uses. No fill, no glow, no
+  pulse, so §D6 is untouched.
+- **§M4 also — own-device position may STRENGTHEN it, and that is a separate ADR.** ADR-0006
+  puts own-device location **in v1** (`useGeolocation` ships and feeds the Map's `קרוב עכשיו`);
+  only member-to-member sharing is deferred, which is what ADR-0205 §8's "Not member GPS" means.
+  With a fix the mark can be **earned** (`עדיין כאן`) or **withdrawn** (already on the route, no
+  mark at all) — the second being the real prize, since it deletes a wrong nudge. Three code
+  facts bound it: the hook is **one-shot, not `watchPosition`** (a battery decision), the fix is
+  **never persisted or sent**, and iOS PWAs have no background position — so this is "the app
+  knows when you open it", never "the app watches you". Using it here is a **new capability for
+  this surface and wants its own ADR**; §V1.4 builds the floor.
+- **§M4 also — the user answers it with a verb the app already ships.** `בדרך`
+  (`t.actions.onWay`, on the day row since ADR-0161) is the only thing in the app that knows what
+  GPS would, because a person says it; on the leg it clears the mark and turns the block teal
+  (ADR-0141's journey grammar). **It writes nothing today** — `verbs.ts:1361` is a toast — and
+  this is its first consumer with a reason to be state.
+- **§D9/§Z3 amended — transit is DECLARABLE, never estimated.** §D9 refuses a control that
+  announces a mode and answers nothing; this one announces up front that it _has_ no answer, and
+  its value is silencing a wrong one (Senso-ji → Tokyo Station: 73 min walking against 25 by
+  train — on a transit leg the walking number is harmful, not merely imprecise). It takes the
+  existing `ticket` icon and `.wp-chip.provisional`'s dashed off-state, and four chips still fit
+  one row at 360 (239px of 312px). **The cost, stated here so it is not found in the build:** a
+  declared leg carries no duration and therefore no leave-by, so the board's swap does not fire
+  for it and the day travel total skips it. It is **not** a fourth member of `travelModeSchema` —
+  that schema is what the server is asked for, and no provider can route it; the declaration
+  lives on the leg (`legMode = TravelMode | 'transit'`).
+- **§M5 — three word chips in `ToggleChip`**, not icons: `ui/Icon.tsx` has no walking, cycling or
+  driving glyph and this is not the place to mint three. 29px painted, 51px target via an
+  `::after` overlay (the trick `button.day-gap` already uses), one row at 360. It appears on the
+  **selected or next leg only** — §D8's rule, generalised from the polyline to the control. A
+  mode the gate refuses keeps its chip in `.wp-chip.provisional`'s dashed state and the tap lands
+  on §D4's crow-flies chip, which is §Z2's "not this way" rather than a failure.
+- **Two bidi defects found by rendering**, both ADR-0118's fix and both reaching the build:
+  `~40` renders `40~` without `ltrIsolate`, and `§` is neutral so `§D8` renders `D8§` inside
+  Hebrew copy.
