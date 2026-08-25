@@ -44,22 +44,22 @@ pair the column does not name. Both branch from `main`, not from each other.
 
 ## Live status
 
-| M       | milestone                   | kind   | status | depends on   | ⇉ safe with  | branch / PR                                                                              | updated    |
-| ------- | --------------------------- | ------ | ------ | ------------ | ------------ | ---------------------------------------------------------------------------------------- | ---------- |
-| **M0**  | Product decisions           | owner  | ✅     | —            | —            | —                                                                                        | 2026-08-25 |
-| **M1**  | Measure the parameters      | spike  | ⬜     | M0           | M2, M3       | —                                                                                        | —          |
-| **M2**  | Shared derivations          | impl   | ✅     | M0           | M1, M3       | `claude/routes-epic-m2-nkbf4d` · [#694](https://github.com/assafmanor/waypoint/pull/694) | 2026-08-25 |
-| **M3**  | Design session + mockups    | design | ⬜     | M0           | M1, M2       | —                                                                                        | —          |
-| **M4**  | Backend routing module      | impl   | ⬜     | M1, M2       | M3           | —                                                                                        | —          |
-| **M5**  | Frontend data layer         | impl   | ⬜     | M2, M4       | M3, M10      | —                                                                                        | —          |
-| **M6a** | The day reads               | impl   | ⬜     | M3, M5       | M6b, M7, M9  | —                                                                                        | —          |
-| **M6b** | The hero read               | impl   | ⬜     | M3, M5       | M6a, M7, M9  | —                                                                                        | —          |
-| **M7**  | The map polyline            | impl   | ⬜     | M3, M5       | M6a, M6b, M9 | —                                                                                        | —          |
-| **M8**  | Mode per leg + trip default | impl   | ⬜     | M6a, M6b, M7 | M10          | —                                                                                        | —          |
-| **M9**  | Plan-mode feasibility       | impl   | ⬜     | M5           | M6a, M6b, M7 | —                                                                                        | —          |
-| **M10** | Offline route pack          | impl   | ⬜     | M4           | M5–M9        | —                                                                                        | —          |
-| **M11** | Day travel total            | impl   | ⬜     | M6a          | M8, M10      | —                                                                                        | —          |
-| **M12** | Harden, observe, document   | impl   | ⬜     | all          | —            | —                                                                                        | —          |
+| M       | milestone                   | kind   | status | depends on   | ⇉ safe with  | branch / PR                                                                                     | updated    |
+| ------- | --------------------------- | ------ | ------ | ------------ | ------------ | ----------------------------------------------------------------------------------------------- | ---------- |
+| **M0**  | Product decisions           | owner  | ✅     | —            | —            | —                                                                                               | 2026-08-25 |
+| **M1**  | Measure the parameters      | spike  | ⬜     | M0           | M2, M3       | —                                                                                               | —          |
+| **M2**  | Shared derivations          | impl   | ✅     | M0           | M1, M3       | `claude/routes-epic-m2-nkbf4d` · [#694](https://github.com/assafmanor/waypoint/pull/694)        | 2026-08-25 |
+| **M3**  | Design session + mockups    | design | 🔵     | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696) | 2026-08-25 |
+| **M4**  | Backend routing module      | impl   | ⬜     | M1, M2       | M3           | —                                                                                               | —          |
+| **M5**  | Frontend data layer         | impl   | ⬜     | M2, M4       | M3, M10      | —                                                                                               | —          |
+| **M6a** | The day reads               | impl   | ⬜     | M3, M5       | M6b, M7, M9  | —                                                                                               | —          |
+| **M6b** | The hero read               | impl   | ⬜     | M3, M5       | M6a, M7, M9  | —                                                                                               | —          |
+| **M7**  | The map polyline            | impl   | ⬜     | M3, M5       | M6a, M6b, M9 | —                                                                                               | —          |
+| **M8**  | Mode per leg + trip default | impl   | ⬜     | M6a, M6b, M7 | M10          | —                                                                                               | —          |
+| **M9**  | Plan-mode feasibility       | impl   | ⬜     | M5           | M6a, M6b, M7 | —                                                                                               | —          |
+| **M10** | Offline route pack          | impl   | ⬜     | M4           | M5–M9        | —                                                                                               | —          |
+| **M11** | Day travel total            | impl   | ⬜     | M6a          | M8, M10      | —                                                                                               | —          |
+| **M12** | Harden, observe, document   | impl   | ⬜     | all          | —            | —                                                                                               | —          |
 
 **The critical path is M0 → M2 → M4 → M5 → M6a/M6b.** Everything else hangs off it or runs beside
 it. If only one agent is working, run that path and take M3 before M6.
@@ -190,7 +190,7 @@ means the slot reads exactly as it does today, and `unknown` is never a verdict.
 
 ## M3 — Design session + mockups
 
-**Kind:** design. **Branch:** `routes/m3-design` · **Conflict surface:** `mockups/**`, `docs/design/mockups.md`, `docs/planning/**`.
+**Kind:** design. **Branch:** `routes/m3-design` — in the event this ran as `claude/routes-epic-m3-design-kagqpq`, the branch the session was handed. **Conflict surface:** `mockups/**`, `docs/design/mockups.md`, `docs/planning/**`.
 **Invoke the `design-mockups` skill** (ADR-0175). RTL, phone-first, both themes, 390×844 **and** 360×640.
 
 **Read ADR-0206 §Z1 first — §M1 changed.** The question is no longer _whether_ the collapsed board
@@ -210,7 +210,83 @@ either confirms by measurement or overturns with one.
 (ADR-0097); every measurement read from the live DOM and written into ADR-0206 as an amendment;
 owner sign-off recorded here. **M6a/M6b/M7 do not start before this closes.**
 
-**What the next session needs to know:** _(fill in)_
+**What the next session needs to know:**
+
+**Drawn, measured, and reviewed once by the owner.** Current file:
+[`a-travel-time-between-two-points-v2.html`](../../mockups/a-travel-time-between-two-points-v2.html);
+[`-v1`](../../mockups/a-travel-time-between-two-points-v1.html) stays the record for the board's
+countdown swap, which the review did not reopen. Session note:
+[2026-08-25 — the board counts to the leaving](2026-08-25-the-board-counts-to-the-leaving.md),
+whose **§8 is the review round** and whose **§7 is the ADR-0206 amendment, ready to paste**.
+
+- **The five §M answers, in one line each.** M1: the board's countdown swaps its **unit**
+  (`55 · דקות` → `10 · ליציאה`), threshold **30 minutes of time-to-leave**. M2: **the journey is
+  a BLOCK between the two cards** (mode mark, duration, leave-by, the leg's real shape drawn
+  small, chips on it) that **absorbs** the free-time line and **ignores `GAP_MIN_MINUTES`** —
+  the day reads `place · journey · place`. M3: **every leg draws its real path**; §D8 rations
+  only the solid amber, which is **a per-theme pair** — see the defect below. M4: ink and word
+  only, and **it may not say "you are late"** — see the GPS bullet. M5: four chips
+  (`ToggleChip`), on the selected leg, **in the day list and in the Map's sheet — one component,
+  two hosts**.
+- **⚠ M6a/M6b must not infer that anyone left _from the clock_.** A settle mark is not a
+  sensor, so from the clock alone the only supportable claim is `זמן היציאה עבר` — never
+  `אתם באיחור`. The user answers with **`בדרך`**, which already exists on the day row and
+  **writes nothing today** (`verbs.ts:1361` is a toast). Making it state is a small, real piece
+  of §V1.4, and **that floor is what M6a/M6b build.**
+- **Own-device position is available and already used — a correction to this card's first
+  version.** ADR-0006 puts own-device location **in v1** ("always available, privately,
+  on-device"); only member-to-member sharing is deferred, which is what ADR-0205 §8's
+  "Not member GPS" means. `lib/useGeolocation.ts` ships and feeds the Map's `קרוב עכשיו`.
+  A fix can **earn** the late mark or **withdraw** it entirely — drawn in v2 §3d — but the hook
+  is one-shot by design, the fix is never persisted or sent, and an iOS PWA has no background
+  position. **This is a new capability for the day surface and wants its own ADR**; do not fold
+  it into a routes milestone.
+- **The route's shape is NOT in the day list** (measured): at 46×26 two of four real legs differ
+  by 3.1px in a 46px box, so the thumbnail says "this is a path" and little else, at every hole
+  of the day. Those pixels take `formatDistance` + the existing show-on-map pin instead.
+  **M7 is unaffected — the map draws a real path per leg.**
+- **Transit becomes declarable** (owner's suggestion, agreed and drawn): a fourth chip that
+  promises no estimate and exists to silence a wrong walking number. **Not** a fourth member of
+  `travelModeSchema` — the declaration lives on the leg. A declared leg has no leave-by, so the
+  board's swap does not fire for it: M6b and M11 both need to know that.
+- **Three new `ui/Icon.tsx` glyphs are proposed** (walking/cycling/driving) and drawn in the
+  mockup. They need the owner's yes before M8 builds against them.
+- **⚠ The coverage sweep found three surfaces this epic had not named** — the session note's
+  §10 is the full inventory (15 surfaces, 8 gestures, 10 states), and
+  [`where-a-route-shows-up-v1.html`](../../mockups/where-a-route-shows-up-v1.html) draws them:
+  - **The Home GlanceCard rail** (nobody's card had it) commits §V1.1's overstatement one
+    elevation up — it draws free time as the emptiness between blocks. One new `.seg` kind, no
+    redesign; **M6a should take it, and its card does not currently say so.**
+  - **Plan's `FreeSlot` is a control, not a statement**, so it _offers_ a slot `gapBetween`
+    sized without travel. **M9 owns the feasibility, but the offered number is M6a-shaped** —
+    decide which card carries it before either starts.
+  - **`near-the-day` ranks by haversine** (`slotStops`/`rankIdeas`), and ADR-0206's own extends
+    line promises it "a better metric". **Unowned today** — M9 is the natural home.
+- **A route line is NOT tappable in v1**, and M7 should not add it casually: it needs the app's
+  first `queryRenderedFeatures` plus a ±10px tolerance box measured at 59% of a pin's width.
+- **⚠ M5, fetch ordering:** `DayPeek` mounts both neighbouring days as real surfaces
+  (ADR-0200 §7), so a naive per-day fetch fires **three** matrices per swipe. Fetch the visible
+  day; let the peek fall back to crow-flies until it becomes visible.
+- **The swap is a third arm on an existing ternary,** not new machinery: `Home.tsx:452` already
+  swaps that tile for ADR-0184 §6's shutting window (`unit: t.board.closesIn`). **M6b should
+  budget one line, not a component** — and it inherits a collision this epic had not named: a
+  shutting window and a live leave-by in the same minute, where **the nearer number wins**.
+- **⚠ A defect for M7, found by rendering:** `--amber` solid measures **1.72:1 on the day map
+  ground** — under the 3:1 floor, the same failure `MAP_CONNECTOR`'s own comment records. The
+  route line must be `--amber-deep` light / `--amber` dark, a TypeScript pair switched in JS.
+  Do not ship one value.
+- **⚠ Two bidi defects that reach any build touching this copy:** `~40` renders `40~` without
+  `ltrIsolate`, and `§` is Bidi-neutral so `§D8` renders `D8§` inside Hebrew strings. ADR-0118's
+  isolate fixes both.
+- **The buffer in the leave-by is NOT settled here** — it is §D5's hedge and a measured number,
+  so it belongs with M1's. The mockup exposes it as a control (0/5/10/15) and says so.
+- **⚠ Scope note, per the protocol's "say so on the PR":** the exit criterion asking for the
+  measurements as an **ADR-0206 amendment** could not be met from this milestone — `docs/decisions/`
+  is outside M3's declared conflict surface and M1/M2 were running in parallel. The amendment is
+  written **verbatim and ready to paste** as §7 of the session note (a `§Z5` block). Whoever holds
+  `docs/decisions/` next — the first of M1/M2/M4 to land, or a docs-only follow-up — should paste
+  it in unchanged and prune this bullet. **Owner sign-off is also still open** (the three questions
+  in the note's §6), so this row stays 🔵 rather than ✅.
 
 ---
 
