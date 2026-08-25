@@ -69,7 +69,7 @@ never by the one that did the work.
 | **M5**  | Frontend data layer         | impl   | ✅ **M6/M7/M9 unblocked** | M2, M4       | M3, M10      | `claude/routes-frontend-protocol-fix-9t521y` · [#704](https://github.com/assafmanor/waypoint/pull/704) | 2026-08-25 |
 | **M6a** | The day reads               | impl   | ⬜                        | M3, M5       | M6b, M7, M9  | —                                                                                                      | —          |
 | **M6b** | The hero read               | impl   | ⬜                        | M3, M5       | M6a, M7, M9  | —                                                                                                      | —          |
-| **M7**  | The map polyline            | impl   | ⬜                        | M3, M5       | M6a, M6b, M9 | —                                                                                                      | —          |
+| **M7**  | The map polyline            | impl   | 🔵                        | M3, M5       | M6a, M6b, M9 | `claude/routes-map-polyline-m7-baqobz` · [#706](https://github.com/assafmanor/waypoint/pull/706)       | 2026-08-25 |
 | **M8**  | Mode per leg + trip default | impl   | ⬜                        | M6a, M6b, M7 | M10          | —                                                                                                      | —          |
 | **M9**  | Plan-mode feasibility       | impl   | ⬜                        | M5           | M6a, M6b, M7 | —                                                                                                      | —          |
 | **M10** | Offline route pack          | impl   | ⬜                        | M4           | M5–M9        | —                                                                                                      | —          |
@@ -729,7 +729,10 @@ with no layout shift.
 
 **Kind:** implementation. **Branch:** `routes/m7-map` · **Conflict surface:** `MapPane.tsx`
 (`DayConnector` only), `screens/map.css`, `constants.ts` (`MAP_CONNECTOR`), **and
-`frontend/src/lib/travel.ts` + its spec** — widened 2026-08-25, see the box below.
+`frontend/src/lib/travel.ts` + its spec** — widened 2026-08-25, see the box below. **Widened once
+more while building, to `screens/Map.tsx`** — the reason is under _What the next session needs to
+know_; `screens/map.css` turned out not to be needed at all (a MapLibre layer is painted from
+TypeScript, not from a stylesheet).
 
 > **⚠ Read this first: as carded before today, M7 could not draw anything.** M5's handoff found it
 > and could not fix it — another card is not M5's to edit. `useDayTravel` deliberately **never asks
@@ -764,7 +767,38 @@ them.
 360px in both themes; no layer or source leaks on unmount (assert via `getLayer` after teardown);
 `MapPane`'s existing tests stay green.
 
-**What the next session needs to know:** _(fill in)_
+**What the next session needs to know:**
+
+- **The surface needed `screens/Map.tsx` and the card could not have avoided it.** The shape ask is
+  a hook (`useLegShape`) and it needs a `tripId` and a selection; `MapPane` is presentational by
+  ADR-0096's `ui/domain` rule — _"every pin arrives as PRIMITIVES"_ — so the container is the only
+  place that can call it. What landed there is small and is the whole of it: one memo that picks the
+  leg, one hook call, one prop. **`DayConnector` was extended, not duplicated**, and the ids, the
+  style-reload guard and the teardown are the ones that were already there.
+- **`useLegShape({ tripId, leg, mode? })` → `readonly LatLng[] | null` is the whole new surface of
+  `lib/travel.ts`.** One two-stop `withShapes` request, read back through the same `routeLegKey` and
+  the same Dexie table `useDayTravel` uses. `useDayTravel` is **unchanged** and still geometry-free.
+  `null` is ordinary, exactly as it is there.
+- **Four decisions the ADR did not carry are now in it, as [ADR-0206 §AB](../decisions/0206-a-travel-time-belongs-between-two-points.md#ab-amendment-2026-08-25--what-m7-settled-by-drawing-the-line).**
+  Read it before M8 touches the mode control: **§AB3 is M8's** — one line drawn buys one mode's
+  geometry today, and §Z5 §M5's request-free mode switch is finished by widening `modes: [mode]` to
+  the modes the gate admits for that leg. §AB1 (the route draws in Trip mode too, unlike the dashed
+  connector) and §AB2 (the leg is the one arriving AT the stop you asked about) are the two a
+  reader would otherwise have to reverse-engineer from the code.
+- **⚠ Do not "fix" the shape being overwritten by the day's matrix with a read-modify-write.** It
+  was built, and it broke M5's `does not re-ask a day it already answered in full` spec
+  intermittently: reading before writing lands the write one IndexedDB transaction later than the
+  next mount's read, so the day comes up empty and never re-reads. `cacheTravelEstimates` stays a
+  plain `bulkPut`; `useLegShape` holds the line from the other side by recording only a leg that
+  answered with **nothing** as unaskable. §AB4 has the full account.
+- **`connectorLayer()` in `MapPane.test.tsx` used to find the first `type: 'line'` layer.** There
+  are two now, so it — and its new sibling `routeLayer()` — look up by **id**. A third geometry
+  should do the same rather than reintroduce the type search.
+- **`travel.test.ts` registers no auto-cleanup**, so every `renderHook` there must be unmounted: a
+  hook left mounted keeps its effects and its in-flight promises alive inside the next test, which
+  is how a warming leg was seen re-asking before its timer had moved.
+- **Not done, and not M7's:** the mode chips on the map's `SnapSheet` (§Z5 §M5) are M8's, and the
+  `בדרך` verb turning the drawn leg teal (§Z5 §M4) waits on that verb becoming state.
 
 ---
 

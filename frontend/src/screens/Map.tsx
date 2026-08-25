@@ -119,6 +119,7 @@ import {
 import { mapColorScheme, mapPaneAvailable, mapTileUrls } from '../lib/map-config';
 import { useMaybeAuth } from '../state/auth-state';
 import { useMapArchives } from '../lib/useMapArchives';
+import { useLegShape } from '../lib/travel';
 import { landAtTop } from '../lib/land-at-top';
 import { observeResize } from '../lib/observe-resize';
 import { edgeFadeRef } from '../lib/edge-fade';
@@ -1366,15 +1367,43 @@ export function MapView() {
   // is a planning question; in Trip mode you are living the day and need "where is
   // next", so its canvas stays quieter.
   const dayShapeVisible = !allDays && mode === 'plan';
-  const orderedStops = useMemo(
+  const orderedPins = useMemo(
     () =>
       pins
         .filter((pin) => pin.order != null && !isAsidePin(pin.tier))
-        .sort((a, b) => a.order! - b.order!)
-        .map(({ lat, lng }) => ({ lat, lng })),
+        .sort((a, b) => a.order! - b.order!),
     [pins],
   );
+  const orderedStops = useMemo(
+    () => orderedPins.map(({ lat, lng }) => ({ lat, lng })),
+    [orderedPins],
+  );
   const dayRouteUrl = dayShapeVisible ? mapsDayRouteUrl(orderedStops) : null;
+
+  // **The one leg the amber is spent on** (ADR-0206 §D8): the journey INTO the stop you are
+  // asking about — the selected one, or the next one when nothing is selected. Into rather than
+  // out of, because that is the question both reads answer — §V1.2's `~23 דק׳ · צאו ב־18:37` is
+  // the travel TO where you are going — and the day's first stop is the one place with no such
+  // leg, so it takes the one departing it instead.
+  //
+  // **Not gated on `dayShapeVisible`**, unlike the dashed connector: the order is a planning
+  // question and the route is a living-the-day one, so Trip mode is where the line earns most.
+  // Day scope still gates it — all-days has no "the day's legs" to pick one from.
+  const routeLeg = useMemo(() => {
+    if (allDays || orderedPins.length < 2) return null;
+    const asked = orderedPins.findIndex((pin) => pin.selected);
+    const target = asked >= 0 ? asked : orderedPins.findIndex((pin) => pin.nextStop);
+    if (target < 0) return null;
+    const to = orderedPins[Math.max(target, 1)]!;
+    const from = orderedPins[Math.max(target, 1) - 1]!;
+    return { from: { lat: from.lat, lng: from.lng }, to: { lat: to.lat, lng: to.lng } };
+  }, [orderedPins, allDays]);
+
+  // ONE shape request for that one leg, cached and read back through the same `routeLegKey` the
+  // day's own numbers use (ADR-0206 §D8) — so a day of N legs never issues N shape calls, and
+  // the line and the numbers cannot disagree about a leg. `null` is ordinary: the dashed
+  // connector stands and nobody sees an error (§D4).
+  const routeShape = useLegShape({ tripId: trip.id, leg: routeLeg });
 
   const areaCount = useMemo(
     () => (viewBounds ? countPointsInBounds(pins, viewBounds) : null),
@@ -3718,6 +3747,7 @@ export function MapView() {
           onSelectResult={selectResult}
           me={me}
           connector={dayShapeVisible ? orderedStops : undefined}
+          route={routeShape ?? undefined}
           setSignal={cameraSignal}
           defaultCentre={defaultCentre}
           onSelectPin={selectPin}

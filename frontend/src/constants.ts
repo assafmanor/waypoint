@@ -1227,6 +1227,28 @@ export const MAP_CONNECTOR = {
    *  is in LINE WIDTHS, not pixels: at `WEIGHT` 2.5 this is a ~5px dash and a ~5px gap, which
    *  is what the symbol version measured out to. */
   DASH: [2, 2],
+  /** **The drawn route** — ADR-0206 §D1's "solid + amber", the treatment the dash above has
+   *  been reserving. One leg at a time (§D8): five solid amber lines on a phone is the fight
+   *  ADR-0121 §9 says the pins must win.
+   *
+   *  **It cannot be one value, and that is measured** (ADR-0206 §Z5 §M3). Solid `--amber`
+   *  (`#e9a63c`) is **1.72:1** on the day ground (`earth #eee8dc`) — under the 3:1 a graphic
+   *  owes what it crosses. So the pair is amber's paper variant on paper and amber itself on
+   *  the night ground: `--amber-deep` **4.50:1** light, dark-theme `--amber` **7.01:1** on
+   *  `earth #343027`. No new hue is minted (ADR-0158 §6). Hex rather than a CSS variable for
+   *  the same reason `COLOR` above is, and it takes the same `scheme` the ground was painted
+   *  from so the two cannot disagree after a theme flip.
+   *
+   *  Heavier than the dash and round-jointed because it is the opposite claim: this IS the
+   *  path, drawn from the provider's own geometry, and a many-vertex line on mitre joins
+   *  spikes at every turn. */
+  ROUTE: {
+    COLOR: {
+      light: '#915e1e',
+      dark: '#f0b254',
+    },
+    WEIGHT: 3.5,
+  },
 } as const;
 
 /** Per-row reveal stagger for **every** filtered/searched list (ADR-0120,
