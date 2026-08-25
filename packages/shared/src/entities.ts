@@ -65,6 +65,19 @@ export const eventCategorySchema = z.enum([
 ]);
 export type EventCategory = z.infer<typeof eventCategorySchema>;
 
+/** **How you get from one stop to the next** (ADR-0205, ADR-0206 §V1.6).
+ *
+ *  **Three members, and the absence of a fourth is a decision** (ADR-0206 §D9, confirmed by
+ *  §Z3): there is no transit entry — not a disabled one — because the router we can reach
+ *  carries no GTFS, and a control that announces a mode and then answers nothing is worse
+ *  than a control that never mentions it.
+ *
+ *  Our vocabulary, not a provider's: Valhalla spells these `pedestrian`/`auto`/`bicycle` and
+ *  a second provider will spell them differently again, so the translation belongs in the
+ *  provider adapter behind ADR-0205 §2's port and nowhere else. */
+export const travelModeSchema = z.enum(['walking', 'driving', 'cycling']);
+export type TravelMode = z.infer<typeof travelModeSchema>;
+
 // creator is admin — ADR-0005/0018
 export const membershipRoleSchema = z.enum(['admin', 'peer']);
 export type MembershipRole = z.infer<typeof membershipRoleSchema>;

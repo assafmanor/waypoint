@@ -15,6 +15,8 @@ export * from './server-routes';
 export * from './search-terms';
 export * from './suggestions';
 export * from './readiness';
+export * from './routing';
 export * from './task-time';
+export * from './travel-time';
 export * from './trip-dates';
 export * from './zones';
