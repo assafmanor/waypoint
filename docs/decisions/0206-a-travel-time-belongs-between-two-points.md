@@ -638,3 +638,32 @@ same edge and it is moot.
 
 **§AC3 and §AC5 are one mechanism at two scales** — the endpoint dot marks where a leg ends, and the
 stub is what fills an unusually large distance between that dot and the stop.
+
+### AC6. Build log (2026-08-25) — what §AC cost once it was code
+
+Built in the same PR as the mockup, on the owner's approval. Three things the drawing could not
+say:
+
+- **The collar makes the drawn geometry a function of the CAMERA.** §AC3's dot has to sit back from
+  the stop so the pin's own tip does not cover it, and that setback is a **screen** distance. A
+  constant in metres was the alternative and it is wrong in both directions — invisible at country
+  zoom, enormous at street zoom — so `DayConnector` projects, trims in pixels, and unprojects, and
+  re-derives on **`zoomend`**. Not on `zoom`: re-running it every frame of a pinch is exactly the
+  churn ADR-0121 §9 keeps off this canvas. **The stored shape is never trimmed — only what is
+  painted.**
+- **It is 2 sources and 4 layers, not the "third source/layer pair" §AC3 predicted.** The three line
+  treatments — dashed legs, the one amber leg, the stubs — share **one** source and split by
+  `filter`, so they are one piece of data with three renderings rather than three parallel copies
+  (rule 8). Only the dots need a second source, because a `circle` layer cannot read a line source.
+  Prominence rides on each feature's own `emphasis` via data-driven `match` expressions, which is
+  what lets a single layer draw legs of different weight and opacity.
+- **The prop consolidated rather than grew.** `connector` and `route` became one
+  `readonly MapDayLeg[]` — path, its two stops, and an optional `emphasis`. Two props describing one
+  set of lines could disagree about which leg was which; one cannot. The stops travel with the leg
+  because §AC5's stub is measured against them, which is what makes "the leg **arriving** at a stop"
+  expressible without an index into anything.
+
+**And the spec that asserted the bug is now the spec that forbids it.** `Plan mode with nothing
+selected draws the day's FIRST leg` — written three hours earlier, and a faithful record of §AB2's
+third arm — is inverted to `spends NO amber, and still draws every leg`. That is the shape a
+deletion takes in a suite: the test does not disappear, it changes sides.

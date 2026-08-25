@@ -100,6 +100,20 @@ class FakeMapLibreMap {
   isStyleLoaded() {
     return true;
   }
+  /** **A projection, because the connector's collar and stub are SCREEN distances** (ADR-0206
+   *  §AC3/§AC5). Linear and deliberately simple: 1° = 100px, y inverted like a real screen. That
+   *  makes every px assertion below arithmetic a reader can check, which a real Mercator would
+   *  not. */
+  project(at: [number, number]) {
+    return { x: at[0] * 100, y: -at[1] * 100 };
+  }
+  unproject(p: [number, number]) {
+    return { lng: p[0] / 100, lat: -p[1] / 100 };
+  }
+  /** Fire what `zoomend` would: the collar is a px distance, so a zoom re-derives the geometry. */
+  zoomEnded() {
+    this.handlers.get('zoomend')?.forEach((fn) => fn());
+  }
   /** **The ground sources the style declares** — what `styleState` counts. A test can empty this
    *  to model the state `sdk:` could not distinguish: a camera that answers perfectly on a map
    *  whose style never arrived, so no source exists and no tile is ever requested. */
@@ -115,8 +129,15 @@ class FakeMapLibreMap {
       layers: this.layers,
     };
   }
+  /** A GeoJSON source, with the one method the connector calls on an existing one. The real
+   *  `GeoJSONSource` has `setData`; without it here the "already added, so update in place" path
+   *  — the whole style-reload guard — was never exercised. */
   addSource(id: string, source: unknown) {
-    this.sources.set(id, source);
+    const src = source as { data?: unknown; setData?: (d: unknown) => void };
+    src.setData = (d: unknown) => {
+      src.data = d;
+    };
+    this.sources.set(id, src);
   }
   getSource(id: string) {
     return this.sources.get(id);
@@ -268,7 +289,6 @@ function paint(props: Partial<Parameters<typeof MapPane>[0]> = {}) {
       onHold={props.onHold}
       me={props.me}
       connector={props.connector}
-      route={props.route}
       defaultCentre={props.defaultCentre}
       results={props.results}
       onSelectResult={props.onSelectResult}
@@ -284,30 +304,43 @@ const pins = () => [...document.querySelectorAll('.map-pin')];
  *  is a plain element we own, so its click is in the same stream everything else is. */
 const firePinTap = (pin: Element) => act(() => void fireEvent.click(pin));
 const markers = () => [...document.querySelectorAll<HTMLElement>('.map-marker')];
-/** A line layer by id. **By id and not by type**, because there are two of them now: the day's
- *  dashed order and the one solid route drawn over it (ADR-0206 §D8). */
-const lineLayer = (id: string) =>
+/** A layer by id. **By id and not by type**, because there are four now (ADR-0206 §AC): the
+ *  dashed legs, the one solid amber leg, the stubs, and the end dots. */
+const layerById = (id: string) =>
   mapStub.current.layers.find((layer) => layer.id === id) as
-    { paint: Record<string, unknown>; layout?: Record<string, unknown> } | undefined;
-/** The day connector, as it now exists: a line layer on the map, not a `<Polyline>` element. */
-const connectorLayer = () => lineLayer('wp-connector-line');
-const routeLayer = () => lineLayer('wp-route-line');
-/** Every solid line on the canvas — §D8's ration is "at most one", so this is what counts it. */
-const solidLines = () =>
-  mapStub.current.layers.filter(
-    (layer) => layer.type === 'line' && !(layer.paint as Record<string, unknown>)['line-dasharray'],
-  );
-const TOKYO_WALK = [
-  { lat: 35.714757, lng: 139.796481 },
-  { lat: 35.71402, lng: 139.79931 },
-  { lat: 35.71099, lng: 139.80572 },
-];
-/** One leg's worth of connector — the prop is now a list OF legs (ADR-0206 §Z5 §M3). */
-const TWO_STOPS = [
-  [
-    { lat: 1, lng: 1 },
-    { lat: 2, lng: 2 },
-  ],
+    | {
+        paint: Record<string, unknown>;
+        layout?: Record<string, unknown>;
+        filter?: unknown;
+        source?: string;
+      }
+    | undefined;
+const connectorLayer = () => layerById('wp-connector-line');
+const routeLayer = () => layerById('wp-route-line');
+const stubLayer = () => layerById('wp-connector-stub');
+const dotLayer = () => layerById('wp-connector-dot-circle');
+
+interface Feature {
+  geometry: { type: string; coordinates: number[][] & number[] };
+  properties: { kind?: string; emphasis?: string };
+}
+const featuresOf = (source: string): Feature[] => {
+  const src = mapStub.current.getSource(source) as { data?: { features?: Feature[] } } | undefined;
+  return src?.data?.features ?? [];
+};
+const legFeatures = () => featuresOf('wp-connector').filter((f) => f.properties.kind === 'leg');
+const stubFeatures = () => featuresOf('wp-connector').filter((f) => f.properties.kind === 'stub');
+const dotFeatures = () => featuresOf('wp-connector-dot');
+
+const A = { lat: 1, lng: 1 };
+const B = { lat: 2, lng: 2 };
+const C = { lat: 3, lng: 1 };
+/** One leg, the ordinary case: two stops sitting on their own route. */
+const ONE_LEG = [{ path: [A, B], from: A, to: B }];
+/** Two legs, so "which leg" and "how many dots" have answers worth asserting. */
+const TWO_LEGS = [
+  { path: [A, B], from: A, to: B },
+  { path: [B, C], from: B, to: C },
 ];
 
 afterEach(() => {
@@ -646,121 +679,207 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
     expect(document.querySelector('.map-me')).toBeTruthy();
   });
 
-  // Dashed, neutral, no arrowheads — it says "this is the order", not "this is the route"
-  // (§10). **And the dash is REAL now** (ADR-0186 §2): ADR-0121 §10 had to fake one as a
-  // repeating symbol along a fully transparent stroke because the Maps API had no dash array,
-  // so the assertion changes from "transparent-stroked with icons" to the thing anyone would
-  // have written in the first place.
-  it('draws the day connector only with a leg of two or more points, dashed and neutral', () => {
-    const { unmount } = paint({ connector: [[{ lat: 1, lng: 1 }]] });
-    expect(connectorLayer()).toBeUndefined();
+  // Dashed, neutral, no arrowheads — it says "this is the order", not "this is the route" (§10).
+  // **And since ADR-0206 §AB5 it follows the real routed path**, so the dash means "not the leg
+  // you are looking at" rather than "not a route" (§AC).
+  it('draws one dashed feature per leg, neutral, at the shipped dash', () => {
+    const { unmount } = paint({ connector: [{ path: [A], from: A, to: B }] });
+    expect(legFeatures()).toHaveLength(0);
     unmount();
-    // **Two legs now, not one polyline through three stops** (ADR-0206 §Z5 §M3): each leg is
-    // drawn along its own path, so the geometry is a MultiLineString and the middle stop is a
-    // shared endpoint rather than a vertex on one line.
-    paint({
-      connector: [
-        [
-          { lat: 1, lng: 1 },
-          { lat: 1.5, lng: 1.5 },
-          { lat: 2, lng: 2 },
-        ],
-        [
-          { lat: 2, lng: 2 },
-          { lat: 3, lng: 3 },
-        ],
-      ],
-    });
+
+    paint({ connector: TWO_LEGS });
     const line = connectorLayer()!;
     expect(line.paint['line-color']).toBe(MAP_CONNECTOR.COLOR.light);
     expect(line.paint['line-dasharray']).toEqual([...MAP_CONNECTOR.DASH]);
-    expect(line.paint['line-width']).toBe(MAP_CONNECTOR.WEIGHT);
-    const source = mapStub.current.getSource('wp-connector') as {
-      data: { geometry: { type: string; coordinates: number[][][] } };
-    };
-    expect(source.data.geometry.type).toBe('MultiLineString');
-    // Each leg's own vertices, in MapLibre's coordinate order — the bend in the first leg is a
-    // routed path and has to survive.
-    expect(source.data.geometry.coordinates).toEqual([
-      [
-        [1, 1],
-        [1.5, 1.5],
-        [2, 2],
-      ],
-      [
-        [2, 2],
-        [3, 3],
-      ],
-    ]);
+    // Two legs, two features — not one polyline through three stops, which is what lets each
+    // leg carry its own geometry and its own prominence.
+    expect(legFeatures()).toHaveLength(2);
+    expect(legFeatures()[0]!.geometry.type).toBe('LineString');
   });
 
   // The dash colour was a TS constant handed to Google, so it sat out the CSS remap entirely
-  // and measured 1.01:1 on the night style's land — invisible (ADR-0158 §16). It takes the same
-  // scheme the ground was painted from, so the line and the canvas cannot disagree.
+  // and measured 1.01:1 on the night style's land (ADR-0158 §16). It takes the same scheme the
+  // ground was painted from, so the line and the canvas cannot disagree.
   it('takes the connector colour from the canvas it was built for, not the document', () => {
-    paint({ scheme: MAP_COLOR_SCHEME.dark, connector: TWO_STOPS });
+    paint({ scheme: MAP_COLOR_SCHEME.dark, connector: ONE_LEG });
     expect(connectorLayer()!.paint['line-color']).toBe(MAP_CONNECTOR.COLOR.dark);
   });
 
-  it('draws no connector when none is given (Trip mode, or all-days scope)', () => {
+  it('draws no connector when none is given (Trip mode with no live next, or all-days)', () => {
     paint();
     expect(connectorLayer()).toBeUndefined();
-  });
-
-  // The layer and its source are the map's, not React's, so nothing unmounts them for us — and
-  // a leak here would stack a second `wp-connector` on the next mount and throw.
-  it('takes its layer and source back off the map on unmount', () => {
-    const { unmount } = paint({ connector: TWO_STOPS });
-    expect(mapStub.current.getSource('wp-connector')).toBeTruthy();
-    unmount();
-    expect(mapStub.current.getLayer('wp-connector-line')).toBeUndefined();
     expect(mapStub.current.getSource('wp-connector')).toBeUndefined();
   });
 
-  /* ── THE ROUTE (ADR-0206 §D1/§D8, measured in §Z5 §M3) ─────────────────────────────────── */
+  /* ── THE COLLAR AND THE END DOT (ADR-0206 §AC3) ────────────────────────────────────────── */
 
-  // The treatment the dash above has been reserving: SOLID and AMBER, over the day's order,
-  // for one leg.
-  it('draws the route solid and amber, over the order it is one leg of', () => {
-    paint({ connector: TWO_STOPS, route: TOKYO_WALK });
+  // **A plain gap is invisible on a line already made of gaps** — measured on the mockup, where
+  // a 9px collar against a 5px dash gap could not be told apart. The mark is a filled DOT; the
+  // collar only decides how far back from the stop it sits, so the pin's tip does not cover it.
+  it('trims each leg back from its stops and marks the ends with dots', () => {
+    paint({ connector: ONE_LEG });
 
-    const line = routeLayer()!;
-    expect(line.paint['line-color']).toBe(MAP_CONNECTOR.ROUTE.COLOR.light);
-    expect(line.paint['line-width']).toBe(MAP_CONNECTOR.ROUTE.WEIGHT);
-    expect(line.paint['line-dasharray']).toBeUndefined();
-    expect(line.layout).toEqual({ 'line-cap': 'round', 'line-join': 'round' });
-    // Added after the connector, so it paints over it.
-    const ids = mapStub.current.layers.map((layer) => layer.id);
-    expect(ids.indexOf('wp-route-line')).toBeGreaterThan(ids.indexOf('wp-connector-line'));
-    // And the day's dash is untouched by it.
-    expect(connectorLayer()!.paint['line-dasharray']).toEqual([...MAP_CONNECTOR.DASH]);
+    // 1° = 100px in the stub's projection, so the leg is ~141px and the collar takes 9px off
+    // each end: the drawn line starts and ends INSIDE the two stops.
+    const drawn = legFeatures()[0]!.geometry.coordinates as number[][];
+    expect(drawn[0]![0]).toBeGreaterThan(A.lng);
+    expect(drawn[drawn.length - 1]![0]).toBeLessThan(B.lng);
+
+    // One dot per leg END, so two for one leg — and they sit on the trimmed ends, not the stops.
+    expect(dotFeatures()).toHaveLength(2);
+    expect(dotFeatures()[0]!.geometry.coordinates).toEqual(drawn[0]);
+    expect(dotLayer()!.paint['circle-radius']).toBeDefined();
   });
 
-  // §M3: solid `--amber` measures **1.72:1** on the day ground, under the 3:1 a graphic owes
-  // what it crosses — so the line is a per-theme pair switched in JS, exactly as the dash is.
-  // One value here is the defect, not a simplification.
-  it('takes the route colour from the canvas it was built for, in each theme', () => {
-    const { unmount } = paint({ route: TOKYO_WALK });
-    expect(routeLayer()!.paint['line-color']).toBe(MAP_CONNECTOR.ROUTE.COLOR.light);
+  // The dot needs a point source of its own — a `circle` layer cannot read a line source. That
+  // is the cost §AC3 names, and it is asserted so a later change cannot quietly drop it.
+  it('keeps the dots in their own point source, and the three line treatments in one', () => {
+    paint({ connector: TWO_LEGS });
+    expect(dotLayer()!.source).toBe('wp-connector-dot');
+    for (const layer of [connectorLayer()!, routeLayer()!, stubLayer()!]) {
+      expect(layer.source).toBe('wp-connector');
+    }
+  });
+
+  // The collar is a SCREEN distance, so the drawn geometry is a function of the camera.
+  it('re-derives the trimmed geometry when the zoom ends', () => {
+    paint({ connector: ONE_LEG });
+    const before = JSON.stringify(legFeatures()[0]!.geometry.coordinates);
+
+    mapStub.current.project = (at: [number, number]) => ({ x: at[0] * 400, y: -at[1] * 400 });
+    mapStub.current.unproject = (p: [number, number]) => ({ lng: p[0] / 400, lat: -p[1] / 400 });
+    act(() => mapStub.current.zoomEnded());
+
+    // Same collar in pixels, four times the scale, so it eats a quarter of the degrees it did.
+    expect(JSON.stringify(legFeatures()[0]!.geometry.coordinates)).not.toBe(before);
+  });
+
+  /* ── THE ONE AMBER LEG (ADR-0206 §D1/§D8/§AC1/§AC2) ────────────────────────────────────── */
+
+  // §AC1: the "otherwise the first leg" arm is gone, so a day with nothing selected and no live
+  // next spends NO amber. The screen decides; the pane must not invent one.
+  it('spends no amber when no leg is marked as the route', () => {
+    paint({ connector: TWO_LEGS });
+    expect(legFeatures().every((f) => f.properties.emphasis !== 'route')).toBe(true);
+    expect(dotFeatures().every((f) => f.properties.emphasis !== 'route')).toBe(true);
+  });
+
+  // §M3: solid `--amber` measures 1.72:1 on the day ground, under the 3:1 a graphic owes what it
+  // crosses — so the line is a per-theme pair switched in JS. One value here is the defect.
+  it('paints the marked leg solid and amber, per theme, over the dash', () => {
+    const { unmount } = paint({
+      connector: [{ ...TWO_LEGS[0]!, emphasis: 'route' }, TWO_LEGS[1]!],
+    });
+    const route = routeLayer()!;
+    expect(route.paint['line-color']).toBe(MAP_CONNECTOR.ROUTE.COLOR.light);
+    expect(route.paint['line-width']).toBe(MAP_CONNECTOR.ROUTE.WEIGHT);
+    expect(route.paint['line-dasharray']).toBeUndefined();
+    // Painted after the dash it belongs to.
+    const ids = mapStub.current.layers.map((l) => l.id);
+    expect(ids.indexOf('wp-route-line')).toBeGreaterThan(ids.indexOf('wp-connector-line'));
     unmount();
 
-    paint({ scheme: MAP_COLOR_SCHEME.dark, route: TOKYO_WALK });
+    paint({
+      scheme: MAP_COLOR_SCHEME.dark,
+      connector: [{ ...TWO_LEGS[0]!, emphasis: 'route' }],
+    });
     expect(routeLayer()!.paint['line-color']).toBe(MAP_CONNECTOR.ROUTE.COLOR.dark);
     expect(MAP_CONNECTOR.ROUTE.COLOR.dark).not.toBe(MAP_CONNECTOR.ROUTE.COLOR.light);
   });
 
-  // The trap the file already documents, now with a second geometry through it: a theme swap
-  // tears the style down and rebuilds it, so the line has to be re-added and re-coloured.
+  // §D8 rations the amber to ONE leg, and the two layers split by filter rather than by a second
+  // copy of the data — so "how many solid lines" is a property of the features, not of the layers.
+  it('draws exactly one solid leg, whatever else is on the canvas', () => {
+    paint({
+      connector: [
+        { ...TWO_LEGS[0]!, emphasis: 'route' },
+        { ...TWO_LEGS[1]!, emphasis: 'near' },
+      ],
+    });
+    expect(legFeatures().filter((f) => f.properties.emphasis === 'route')).toHaveLength(1);
+  });
+
+  // §AC2: prominence is weight and opacity, never a second hue — the budget has none spare.
+  it('carries prominence as data, so one layer draws legs of different weight', () => {
+    paint({
+      connector: [
+        { ...TWO_LEGS[0]!, emphasis: 'route' },
+        { ...TWO_LEGS[1]!, emphasis: 'near' },
+      ],
+    });
+    expect(legFeatures().find((f) => f.properties.emphasis === 'near')).toBeTruthy();
+    // Data-driven `match` expressions rather than a per-leg layer.
+    expect(connectorLayer()!.paint['line-width']).toEqual(
+      expect.arrayContaining(['match', ['get', 'emphasis']]),
+    );
+    expect(connectorLayer()!.paint['line-opacity']).toEqual(
+      expect.arrayContaining(['match', ['get', 'emphasis']]),
+    );
+  });
+
+  /* ── THE APPROACH STUB (ADR-0206 §AC5) ─────────────────────────────────────────────────── */
+
+  // A stop that sits on its route needs no tail at all; most do.
+  it('draws no stub when the route already reaches the stop', () => {
+    paint({ connector: ONE_LEG });
+    expect(stubFeatures()).toHaveLength(0);
+  });
+
+  // **One per STOP, never one per leg end.** Drawn per end, an interior off-network stop got two
+  // tails meeting in a V — the same fact drawn twice, since a stop meets the network in one place.
+  it('draws ONE stub for an interior stop the route only comes near', () => {
+    const OFF = { lat: 2.4, lng: 2.4 };
+    paint({
+      connector: [
+        { path: [A, B], from: A, to: OFF },
+        { path: [B, C], from: OFF, to: C },
+      ],
+    });
+
+    expect(stubFeatures()).toHaveLength(1);
+    // It anchors on the ARRIVING leg's end (§AB2's own choice), not the departing leg's start.
+    const stub = stubFeatures()[0]!.geometry.coordinates as number[][];
+    expect(stub[0]).toEqual([B.lng, B.lat]);
+  });
+
+  // The day's FIRST stop is the one with no arriving leg, so it takes the departing one.
+  it('gives the day’s first stop a stub from the leg departing it', () => {
+    const OFF = { lat: 0.6, lng: 0.6 };
+    paint({ connector: [{ path: [A, B], from: OFF, to: B }] });
+
+    expect(stubFeatures()).toHaveLength(1);
+    expect(stubFeatures()[0]!.geometry.coordinates[0]).toEqual([A.lng, A.lat]);
+  });
+
+  it('paints the stub dotted and faded, and never as a route', () => {
+    const OFF = { lat: 2.4, lng: 2.4 };
+    paint({ connector: [{ path: [A, B], from: A, to: OFF }] });
+    const stub = stubLayer()!;
+    expect(stub.paint['line-dasharray']).toEqual([...MAP_CONNECTOR.STUB.DASH]);
+    expect(stub.paint['line-width']).toBe(MAP_CONNECTOR.STUB.WEIGHT);
+    expect(stub.paint['line-opacity']).toBe(MAP_CONNECTOR.STUB.OPACITY);
+  });
+
+  /* ── TEARDOWN AND THE THEME FLIP ───────────────────────────────────────────────────────── */
+
+  // The trap this file already documents, now with four layers through it: a theme swap tears the
+  // style down and rebuilds it, so everything has to be re-added and re-coloured.
   it('survives a theme flip, and repaints for the ground it now crosses', () => {
-    const { rerender } = paint({ connector: TWO_STOPS, route: TOKYO_WALK });
+    const legs = [{ ...TWO_LEGS[0]!, emphasis: 'route' as const }, TWO_LEGS[1]!];
+    const { rerender } = paint({ connector: legs });
     expect(routeLayer()!.paint['line-color']).toBe(MAP_CONNECTOR.ROUTE.COLOR.light);
 
-    // What a theme swap does to the style: every layer and source the connector owns is gone.
     act(() => {
-      mapStub.current.removeLayer('wp-route-line');
-      mapStub.current.removeSource('wp-route');
-      mapStub.current.removeLayer('wp-connector-line');
+      for (const id of [
+        'wp-connector-line',
+        'wp-connector-stub',
+        'wp-route-line',
+        'wp-connector-dot-circle',
+      ]) {
+        mapStub.current.removeLayer(id);
+      }
       mapStub.current.removeSource('wp-connector');
+      mapStub.current.removeSource('wp-connector-dot');
     });
     rerender(
       <MapPane
@@ -775,79 +894,37 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
         areaSorted={false}
         onAreaSort={vi.fn()}
         onLocate={vi.fn()}
-        connector={TWO_STOPS}
-        route={TOKYO_WALK}
+        connector={legs}
       />,
     );
 
     expect(routeLayer()!.paint['line-color']).toBe(MAP_CONNECTOR.ROUTE.COLOR.dark);
     expect(connectorLayer()!.paint['line-color']).toBe(MAP_CONNECTOR.COLOR.dark);
-    expect(solidLines()).toHaveLength(1);
+    expect(legFeatures().filter((f) => f.properties.emphasis === 'route')).toHaveLength(1);
   });
 
-  // A day change re-points the line rather than stacking a second one, and §D8's ration holds:
-  // one solid line, whatever moved.
-  it('re-points the line on a day change, and never draws a second solid one', () => {
-    const { rerender } = paint({ connector: TWO_STOPS, route: TOKYO_WALK });
-    expect(solidLines()).toHaveLength(1);
+  // The layers and their sources are the map's, not React's, so nothing unmounts them for us —
+  // and a leak would stack a second set on the next mount and throw.
+  it('takes every layer and both sources back off the map on unmount', () => {
+    const OFF = { lat: 2.4, lng: 2.4 };
+    const { unmount } = paint({
+      connector: [{ path: [A, B], from: A, to: OFF, emphasis: 'route' as const }],
+    });
+    expect(mapStub.current.getSource('wp-connector')).toBeTruthy();
+    expect(mapStub.current.getSource('wp-connector-dot')).toBeTruthy();
 
-    const tomorrow = [
-      { lat: 48.8584, lng: 2.2945 },
-      { lat: 48.8606, lng: 2.3376 },
-    ];
-    rerender(
-      <MapPane
-        scheme={MAP_COLOR_SCHEME.light}
-        urls={URLS}
-        pins={[pin({ placeId: 'a' })]}
-        setSignal="other-day"
-        onSelectPin={vi.fn()}
-        onCanvasTap={vi.fn()}
-        onViewChange={vi.fn()}
-        areaCount={1}
-        areaSorted={false}
-        onAreaSort={vi.fn()}
-        onLocate={vi.fn()}
-        connector={[tomorrow]}
-        route={tomorrow}
-      />,
-    );
-
-    expect(solidLines()).toHaveLength(1);
-    const source = mapStub.current.getSource('wp-route') as {
-      data: { geometry: { coordinates: number[][] } };
-    };
-    expect(source.data.geometry.coordinates).toEqual([
-      [2.2945, 48.8584],
-      [2.3376, 48.8606],
-    ]);
-  });
-
-  // `null` from `useLegShape` is ordinary — offline, refused, not yet warm (§D4) — and it must
-  // leave the day's dashed order standing rather than an error.
-  it('draws no route when there is none, and the dashed order still stands', () => {
-    paint({ connector: TWO_STOPS });
-    expect(routeLayer()).toBeUndefined();
-    expect(mapStub.current.getSource('wp-route')).toBeUndefined();
-    expect(connectorLayer()).toBeTruthy();
-  });
-
-  // Trip mode has no dashed connector at all (§10), and the route is the answer to "where is
-  // next" — so it must be able to draw on its own.
-  it('draws the route with no connector beside it', () => {
-    paint({ route: TOKYO_WALK });
-    expect(routeLayer()).toBeTruthy();
-    expect(connectorLayer()).toBeUndefined();
-  });
-
-  it('takes the route layer and source back off the map on unmount', () => {
-    const { unmount } = paint({ connector: TWO_STOPS, route: TOKYO_WALK });
-    expect(mapStub.current.getSource('wp-route')).toBeTruthy();
     unmount();
-    expect(mapStub.current.getLayer('wp-route-line')).toBeUndefined();
-    expect(mapStub.current.getSource('wp-route')).toBeUndefined();
-    expect(mapStub.current.getLayer('wp-connector-line')).toBeUndefined();
+
+    for (const id of [
+      'wp-connector-line',
+      'wp-connector-stub',
+      'wp-route-line',
+      'wp-connector-dot-circle',
+    ]) {
+      expect(mapStub.current.getLayer(id)).toBeUndefined();
+    }
     expect(mapStub.current.getSource('wp-connector')).toBeUndefined();
+    expect(mapStub.current.getSource('wp-connector-dot')).toBeUndefined();
   });
 
   // ADR-0106 §4 decided pan/zoom IS the area filter and no chip is ever built. This

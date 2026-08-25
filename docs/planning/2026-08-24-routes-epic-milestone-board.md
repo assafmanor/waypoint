@@ -841,13 +841,13 @@ the day's first leg` (§AB2, amended).
 
 ## M7b — The lines read as a route (design)
 
-**Kind:** design session, **done — nothing built.** **Mockup:**
+**Kind:** design session **+ the build**, both in one PR on the owner's approval. **Mockup:**
 [`mockups/the-days-lines-read-as-a-route-v1.html`](../../mockups/the-days-lines-read-as-a-route-v1.html) ·
 **Decides:** [ADR-0206](../decisions/0206-a-travel-time-belongs-between-two-points.md) **§AC** ·
 **Note:** [2026-08-25](2026-08-25-the-days-lines-read-as-a-route.md).
 
-Four reports off the shipped canvas, after the owner ran M7 on a real trip. **The build is a
-separate card and has not been opened** — the owner's instruction was to mock all four up first.
+Four reports off the shipped canvas, after the owner ran M7 on a real trip. Mocked up first, as the
+owner asked, then approved and built in the same PR.
 
 **What §AC settled, and the two that are deletions:**
 
@@ -871,9 +871,16 @@ separate card and has not been opened** — the owner's instruction was to mock 
   picture, since a stop meets the network in one place. It runs to the **arriving** leg's endpoint
   (§AB2's own choice), falling back to the departing leg only for the day's first stop.
 
-**What the build owes:** the stub threshold and the dot radius are **feel calls** — shipped as
-controls in the mockup with defaults (⁦16px⁩, r≈⁦3⁩) and handed to a device pass. `MAP_CONNECTOR` grows
-both as named constants, per-theme where they carry colour.
+**What the build learned, and §AC6 records:** the collar is a **screen** distance, so the drawn
+geometry is a function of the camera — `DayConnector` projects, trims in pixels, unprojects, and
+re-derives on `zoomend` (never `zoom`, which would churn every frame of a pinch). It is **2 sources
+and 4 layers**, not the one pair §AC3 predicted: the three line treatments share one source and split
+by `filter`, and only the dots need a point source of their own. `connector` and `route`
+**consolidated** into one `MapDayLeg[]`, because two props describing one set of lines can disagree
+about which leg is which.
+
+**Still a feel call, still unspent:** the stub threshold (⁦16px⁩) and the dot radius (⁦3⁩ / ⁦3.4⁩) ship as
+the mockup's defaults and want a device pass.
 
 **What the next session needs to know:** the mockup's own two render findings are traps for any map
 mockup, not just this one. **A map canvas is the one surface in this RTL app that is not RTL** — pins

@@ -2077,7 +2077,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         currentMode = 'plan';
         seed();
         render(wrap(<MapView />));
-        // Two STOPS is one leg (ADR-0206 §Z5 §M3: the prop is a line per leg now).
+        // Two STOPS is one leg (ADR-0206 §Z5 §M3: the prop is a leg per leg now).
         expect(paneProps.current.connector).toHaveLength(1);
 
         // The connector follows the FILTERED set, exactly as it does for a category chip,
@@ -3987,10 +3987,13 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       ];
     };
 
-    it('Trip mode draws no connector: you are living the day, not auditing its shape', () => {
+    it('Trip mode draws no dashed order: you are living the day, not auditing its shape', () => {
       seedDay();
       render(wrap(<MapView />));
-      expect(paneProps.current.connector).toBeUndefined();
+      // Trip mode is handed the AMBER leg only — the day's shape is a planning question, so the
+      // dashed order stays out of it (ADR-0121 §10 / ADR-0206 §AB1).
+      const drawn = (paneProps.current.connector ?? []) as { emphasis?: string }[];
+      expect(drawn.every((leg) => leg.emphasis === 'route')).toBe(true);
       expect(screen.queryByRole('link', { name: new RegExp(t.map.dayRoute) })).toBeNull();
     });
 
@@ -4000,7 +4003,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       render(wrap(<MapView />));
       // Plan now OPENS day-scoped (ADR-0109's 2026-07-27 amendment), so the day's
       // shape is on screen without a chip tap.
-      expect(paneProps.current.connector).toEqual([
+      expect((paneProps.current.connector as { path: unknown }[]).map((leg) => leg.path)).toEqual([
         [
           { lat: 35.6, lng: 139.6 },
           { lat: 35.7, lng: 139.7 },
@@ -4011,7 +4014,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
 
       // Widening to all days drops it: connecting every day would be spaghetti.
       fireEvent.click(listButton(t.map.allDays));
-      expect(paneProps.current.connector).toBeUndefined();
+      expect(paneProps.current.connector).toEqual([]);
       expect(screen.queryByRole('link', { name: new RegExp(t.map.dayRoute) })).toBeNull();
     });
   });
@@ -4031,17 +4034,38 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         event({ id: 'e3', placeId: 'c', startsAt: `${ACTIVE_DATE}T17:00:00Z` }),
       ];
     };
-    const route = () => paneProps.current.route;
+    type Leg = { path: unknown[]; emphasis?: string };
+    const legs = () => (paneProps.current.connector ?? []) as Leg[];
+    /** The one leg §D8 rations the amber to, or `undefined` when none is marked. */
+    const amber = () => legs().find((leg) => leg.emphasis === 'route')?.path;
 
-    // **The owner's report.** `nextStopId` is Trip-mode only — a live "next" says nothing while
-    // you are planning — so a Plan day with nothing tapped had no stop to pick and drew no line
-    // at all. The day's first leg is what a plan opens on.
-    it('Plan mode with nothing selected draws the day’s FIRST leg', () => {
+    // **The owner's report, and the spec that used to assert the bug.** `nextStopId` is
+    // Trip-mode only — a live "next" says nothing while you are planning — so a Plan day with
+    // nothing tapped has no stop to pick. It used to fall back to the day's FIRST leg, which
+    // painted amber nobody asked for: "in plan mode it still shows an amber poly line for the
+    // first leg of the day which is not needed". §AC1 deletes that arm, and §AB5 is why it can
+    // go — every leg draws its real path now, so the day is not empty without it.
+    it('Plan mode with nothing selected spends NO amber, and still draws every leg', () => {
       seedThreeStopDay();
       currentMode = 'plan';
       render(wrap(<MapView />));
 
-      expect(route()).toEqual([A, B]);
+      expect(amber()).toBeUndefined();
+      expect(legs()).toHaveLength(2);
+      // And nothing is dimmed either: with no leg to recede FROM, the day reads as one even set.
+      expect(legs().every((leg) => leg.emphasis === undefined)).toBe(true);
+    });
+
+    // Trip mode has no dashed ORDER (ADR-0121 §10 — the day's shape is a planning question), but
+    // it DOES get the one amber leg, because that answers "where is next" (§AB1). So the pane is
+    // handed exactly one leg, and it is the marked one.
+    it('Trip mode is handed the amber leg alone, never the dashed order', () => {
+      seedThreeStopDay();
+      currentMode = 'trip';
+      render(wrap(<MapView />));
+
+      expect(legs()).toHaveLength(1);
+      expect(legs()[0]!.emphasis).toBe('route');
     });
 
     it('a tapped stop takes the line, and it is the leg ARRIVING there', () => {
@@ -4051,7 +4075,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
 
       fireEvent.click(pin('c')!);
 
-      expect(route()).toEqual([B, C]);
+      expect(amber()).toEqual([B, C]);
     });
 
     // The one stop with no leg arriving at it takes the one departing it instead (§AB2).
@@ -4062,7 +4086,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
 
       fireEvent.click(pin('a')!);
 
-      expect(route()).toEqual([A, B]);
+      expect(amber()).toEqual([A, B]);
     });
 
     // **The mode is derived, never assumed** (ADR-0206 §Z2). It was a hardcoded `walking`, so the
@@ -4099,7 +4123,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
 
       fireEvent.click(listButton(t.map.allDays));
 
-      expect(route()).toBeUndefined();
+      expect(amber()).toBeUndefined();
     });
   });
 
@@ -4111,6 +4135,9 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     const B = { lat: 35.7, lng: 139.7 };
     const C = { lat: 35.8, lng: 139.8 };
     const BEND = { lat: 35.65, lng: 139.68 };
+
+    const legPaths = () =>
+      ((paneProps.current.connector ?? []) as { path: unknown }[]).map((leg) => leg.path);
 
     beforeEach(() => {
       stubShapes.clear();
@@ -4128,7 +4155,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     it('hands the pane one line per leg, in day order', () => {
       render(wrap(<MapView />));
 
-      expect(paneProps.current.connector).toEqual([
+      expect(legPaths()).toEqual([
         [A, B],
         [B, C],
       ]);
@@ -4140,7 +4167,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
 
       // The routed leg keeps its bend; the one with no shape yet keeps its straight segment,
       // which is §D4's floor rather than an error.
-      expect(paneProps.current.connector).toEqual([
+      expect(legPaths()).toEqual([
         [A, BEND, B],
         [B, C],
       ]);
@@ -4151,9 +4178,14 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     it('spends the amber on the same geometry the dash under it uses', () => {
       stubShapes.set(`${A.lat}>${B.lat}`, [A, BEND, B]);
       render(wrap(<MapView />));
+      // A selection is what marks a leg now (§AC1) — tapping stop 2 makes the leg arriving at it
+      // the amber one, and it must be the SAME geometry, or the map would state two paths for
+      // one leg.
+      fireEvent.click(pin('b')!);
 
-      expect(paneProps.current.route).toEqual([A, BEND, B]);
-      expect((paneProps.current.connector as unknown[])[0]).toEqual([A, BEND, B]);
+      const drawn = (paneProps.current.connector ?? []) as { path: unknown; emphasis?: string }[];
+      expect(drawn.find((leg) => leg.emphasis === 'route')?.path).toEqual([A, BEND, B]);
+      expect(drawn[0]!.path).toEqual([A, BEND, B]);
     });
   });
 
