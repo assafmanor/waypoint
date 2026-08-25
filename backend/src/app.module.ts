@@ -19,6 +19,7 @@ import { TasksModule } from './tasks/tasks.module';
 import { DocumentAttachmentsModule } from './document-attachments/document-attachments.module';
 import { PlacesModule } from './places/places.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { RoutingModule } from './routing/routing.module';
 import { SyncModule } from './sync/sync.module';
 import { TripsModule } from './trips/trips.module';
 
@@ -45,6 +46,7 @@ import { TripsModule } from './trips/trips.module';
     PlacesModule,
     DocumentsModule,
     MapModule,
+    RoutingModule,
     // Out-of-band and route-less in Phase 1 (ADR-0166 §6): registered so it is proven to
     // construct, called by nothing yet.
     EnrichmentModule,

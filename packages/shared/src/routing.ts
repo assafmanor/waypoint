@@ -326,9 +326,17 @@ export function routableLegs(
 
 /* ── THE BATCH (ADR-0205 §6, §Y2) ────────────────────────────────────────────────────────── */
 
-/** A bound on what one request may ask about, so a broken or hostile client cannot ask for a
- *  matrix of thousands of pairs. Well above any real day; **provisional, and M1 measures what a
- *  day actually holds.** */
+/**
+ * A bound on what one request may ask about, so a broken or hostile client cannot ask for a
+ * matrix of thousands of pairs.
+ *
+ * **Kept at 24 as a deliberate bound, not a provisional one** (M4, 2026-08-25 — M1's §Z never
+ * measured it and M2b's card named the gap). The provider's own ceiling is on **cells, not
+ * stops**: measured live, `sources_to_targets` refuses past **2,500 sources × targets**
+ * (`error_code 150`), so 26 points answers and 51 does not. 24 stops is 576 cells — under a
+ * quarter of that, which is the headroom that lets M4 merge a run of a day's legs into one
+ * request without ever approaching the limit. It stays well above any real day either way.
+ */
 export const ROUTE_BATCH_MAX_STOPS = 24;
 
 /** **One request carries the day's ordered stops and every mode wanted for them** (ADR-0205 §6,
