@@ -1,7 +1,7 @@
 # Routes & travel time — the milestone board
 
 **Date opened:** 2026-08-24
-**Status:** **M0 open — the epic is blocked on owner answers.** Nothing is built.
+**Status:** **M0 CLOSED 2026-08-25. The epic is unblocked — M1, M2 and M3 can all start now, in parallel.** Nothing is built yet.
 **Decisions:** [ADR-0205](../decisions/0205-routes-are-computed-not-bought-and-a-route-is-a-cache.md) (the substrate) · [ADR-0206](../decisions/0206-a-travel-time-belongs-between-two-points.md) (what it says, and the V1/V2 split)
 **Research:** [2026-08-24 — what is actually possible](2026-08-24-routes-and-travel-time-what-is-actually-possible.md)
 
@@ -76,35 +76,30 @@ M0 ─┬─ M1 ─┐
 
 ---
 
-## M0 — Product decisions
+## M0 — Product decisions ✅
 
-**Kind:** owner · no code, no branch. **Blocks the entire epic.**
+**Closed 2026-08-25** by the owner. Both ADRs are now **Accepted**; three answers changed what they
+said, and those changes live in [ADR-0206 §Z](../decisions/0206-a-travel-time-belongs-between-two-points.md)
+and [ADR-0205 §Y](../decisions/0205-routes-are-computed-not-bought-and-a-route-is-a-cache.md) — **read
+those two amendments, not just the sections they amend.**
 
-Four questions. ADR-0205 and ADR-0206 are `Proposed` until they are answered; M0 closes by
-recording the answers here and flipping both to `Accepted`.
+| #   | question                                 | answer                                                                                                                                                                                                                                                                                                               |
+| --- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | V1 without transit?                      | **Yes.** _"I can live without transit on V1."_ §V2's transit row stands; §D9 holds — the mode control says nothing about transit at all.                                                                                                                                                                             |
+| 2   | Community server or self-host?           | **Still open — came back as a question.** The trade is weighed in **ADR-0205 §Y1**; the **standing default is the community server** behind §2's port, with the switch triggers named. Reversible by construction, so **nothing is blocked**.                                                                        |
+| 3   | Board or horizon for an urgent leave-by? | **The board too — my recommendation was withdrawn.** _"if something is urgent, then it should be on the board and not only the Horizon, right?"_ And it lands as a **swap of the countdown the board already has**, not an addition: see **ADR-0206 §Z1**. §M1's remaining job is the _threshold_, not the question. |
+| 4   | Default travel mode?                     | **Inferred per trip from its bookings — derived, never stored — and the switch must be instant.** Which means every gate-admitted mode is fetched together up front: **ADR-0206 §Z2** and **ADR-0205 §Y2**.                                                                                                          |
 
-1. **Is V1 without transit acceptable?** Senso-ji→Tokyo Station is 73 min walking and 25 min by
-   train. ADR-0206 §D9 says we stay silent about transit rather than half-promise it. _If the answer
-   is no, V2's transit line becomes M1 and the epic is a much larger one._
-2. **Does a community server belong on the critical path?** FOSSGIS Valhalla is free, fair-use and
-   run by volunteers — behind our proxy and our cache, but on the path the first time. The
-   alternative is operating Valhalla ourselves from the start (a Railway service, a volume, a
-   per-region graph build).
-3. **Does the collapsed board carry an urgent leave-by, or only the horizon?** ADR-0206 §M1
-   recommends the horizon alone. This is the one that most changes the design session.
-4. **Is a per-trip default travel mode right**, or should it be per-day, or inferred from the trip's
-   transport bookings? (A trip with a car hire is a driving trip; ADR-0162 already knows that.)
-
-**Answers:** _(record here)_
-
----
+**What M0 changed downstream:** M4's endpoint takes a set of modes (§Y2), M6b gains the board swap
+(§Z1), and M8 becomes inference-plus-override rather than a stored setting (§Z2). Those three cards
+are updated.
 
 ## M1 — Measure the parameters
 
 **Kind:** spike. **Branch:** `routes/m1-measure` · **Conflict surface:** `docs/` only (an ADR-0205
 amendment) + throwaway scripts in the scratchpad. **Produces numbers, not features.**
 
-ADR-0205 deliberately left four numbers unpicked. Pick them by measuring against **real trip data
+ADR-0205 deliberately left four numbers unpicked, and M0 added a fifth (§Z1's swap threshold is M3's, but the fair-use question below is now load-bearing — ADR-0205 §Y1 names it as a switch trigger). Pick them by measuring against **real trip data
 from the dev seed**, not against intuition.
 
 - **The cache-key snap.** ADR-0205 §4 proposes 5 decimals (~1 m), matching `map-region.ts`. Coarser
@@ -154,7 +149,12 @@ boundary; nothing imported from `backend/` or `frontend/`; `pnpm typecheck && pn
 **Kind:** design. **Branch:** `routes/m3-design` · **Conflict surface:** `mockups/**`, `docs/design/mockups.md`, `docs/planning/**`.
 **Invoke the `design-mockups` skill** (ADR-0175). RTL, phone-first, both themes, 390×844 **and** 360×640.
 
-Draw and **measure** the five things in ADR-0206 §M — 1) where an urgent leave-by lives, 2) the gap
+**Read ADR-0206 §Z1 first — §M1 changed.** The question is no longer _whether_ the collapsed board
+carries an urgent leave-by (the owner says it does) but **at what threshold its countdown swaps** from
+`עוד 45 דק׳` to `צאו עוד 10 דק׳`, and how the passed-leave-by state reads as `--miss` without minting a
+second live mark. Draw both countdown states on the same board.
+
+Draw and **measure** the five things in ADR-0206 §M — 1) the swap threshold above, 2) the gap
 slot carrying three meanings, 3) solid amber against ADR-0125's ground and ADR-0123's pin hues, 4) the late-risk mark reading as status not as a second live mark, 5) the mode control at three
 entries.
 
@@ -191,14 +191,19 @@ inventing beside it (rule 8):
 
 - **Never touch `ChangeService`.** A route is not data-plane. ADR-0205 §4 says why, and
   `backend/CLAUDE.md` calls the boundary _"the one hard boundary in this codebase"_.
-- **The endpoint is batch-shaped**, carrying a day's ordered stops. One matrix call, not five.
+- **The endpoint is batch-shaped, and it carries a SET of modes** (ADR-0205 §Y2, from M0 answer 4):
+  a day's ordered stops × every mode the gate admits for them, in one request. A per-mode endpoint
+  makes ADR-0206 §Z2's instant mode switch impossible. One request per day, not one per day per mode,
+  and not five per mode.
 - **The gate runs server-side, before the network.** One out-of-range pair returns 400 for the
   _whole_ matrix — measured. The client must never be able to cause that.
 
 **Exit criteria:** a cold day matrix answers and is cached; a second call hits the cache with no
-outbound request (asserted in a spec, not observed by hand); the gate rejects a cross-cluster pair
-without calling out; the kill switch stops every outbound call while the endpoint still answers
-from cache; `X-Client-Id` is sent; migration applies clean.
+outbound request (asserted in a spec, not observed by hand); **one request returns every admitted
+mode, and a leg the gate refuses for one mode still returns the others**; the gate rejects a
+cross-cluster pair without calling out; the kill switch stops every outbound call while the endpoint
+still answers from cache; the politeness limiter paces a three-mode warm rather than bursting;
+`X-Client-Id` is sent; migration applies clean.
 
 **What the next session needs to know:** _(fill in)_
 
@@ -234,9 +239,14 @@ provider shape directly.
 `i18n/he.ts`. Ships ADR-0206 **§V1.1** (gap minus travel — the correction), **§V1.3** (per-leg
 travel) and **§V1.4** (late risk) in the ADR-0159 slot that already exists.
 
-**M6b** · branch `routes/m6b-hero` · surface: the hero horizon components, `i18n/he.ts`,
-`screens/home.css`. Ships **§V1.2** — `~23 דק׳ · צאו ב־18:37` — **between** two points, per §D2, and
-answers the third of the app's three questions for the first time.
+**M6b** · branch `routes/m6b-hero` · surface: the hero horizon components, **the collapsed board's
+countdown**, `i18n/he.ts`, `screens/home.css`. Ships **§V1.2** — `~23 דק׳ · צאו ב־18:37` — **between**
+two points per §D2, and answers the third of the app's three questions for the first time.
+
+**It also ships ADR-0206 §Z1, which M0 added:** the collapsed board's existing countdown **swaps its
+referent** when leaving is the live question — `עוד 45 דק׳` becomes `צאו עוד 10 דק׳`, and a passed
+leave-by becomes the `--miss` mark. **A swap, never a second element** — the board's budget is spent
+(ADR-0160 §3/§4) and showing both would state a contradiction. M3 sets the threshold.
 
 > **`i18n/he.ts` is in both surfaces.** It is the one guaranteed conflict, it is append-only, and a
 > collision in it is trivial to resolve — but whoever lands second rebases rather than merges, so
@@ -284,15 +294,24 @@ them.
 ## M8 — Mode per leg + trip default
 
 **Kind:** implementation. **Branch:** `routes/m8-mode` · **Conflict surface:** `schema.prisma` + a
-migration, `packages/shared` (the trip shape), trip settings, the day/hero controls, `he.ts`.
+migration (**for the per-leg override only** — the default is derived, §Z2), `packages/shared` (the
+inference), trip settings, the day/hero controls, `he.ts`.
 
-ADR-0206 **§V1.6**. A leg-level mode defaulted by the trip — and **three entries, not four**: no
-transit control at all (§D9). Whether the default is per-trip, per-day or inferred from the trip's
-transport bookings is **M0 question 4**; do not guess it here.
+ADR-0206 **§V1.6 as amended by §Z2** — M0 answered this, so it is no longer open:
 
-**Exit criteria:** switching mode changes every read on the surface at once (they must not disagree);
-the default survives a reload and an offline session; a driving leg crossing clusters resolves while
-the walking one falls back, and that reads as intended rather than broken.
+- **The default is DERIVED from the trip's bookings, not stored.** A car hire (ADR-0162) makes it a
+  driving trip. This is ADR-0018/0027's rule applying cleanly — the only thing persisted is a
+  per-leg override, and only when someone sets one. **Do not add a `defaultTravelMode` column.**
+- **The switch must be instant**, which is M4's job, not this card's: every gate-admitted mode is
+  already fetched and cached (§Y2), so switching is a cache read with no request. If a switch here
+  triggers a fetch, M4 is wrong, not M8.
+- **Three entries, not four** — no transit control at all (§D9), confirmed by M0 answer 1.
+
+**Exit criteria:** switching mode changes every read on the surface at once (they must not disagree)
+and issues **no network request** — asserted, not eyeballed; the derived default is right for a
+car-hire trip and for a rail-and-flights trip, and changes when a booking is added; an override
+survives a reload and an offline session; a driving leg crossing clusters resolves while the walking
+one falls back to the crow-flies chip, and that reads as "not this way" rather than as a failure.
 
 ---
 

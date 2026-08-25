@@ -1,7 +1,9 @@
 # 0205 — A route is **computed, not bought** — and a route is a **cache**
 
-**Status:** Proposed. Needs owner sign-off on §2 (the provider), §3 (the cache key), and the four
-questions in the research note. **Nothing here is built.**
+**Status:** **Accepted 2026-08-25** on the owner's M0 answers. **§2 and §6 are amended by §Y at the
+end — read it before choosing a provider or shaping the endpoint.** The provider itself is the one
+thing still open, and §Y1 records the standing default so no work is blocked on it. **Nothing here
+is built.**
 **Date:** 2026-08-24
 **Research:** [`planning/2026-08-24-routes-and-travel-time-what-is-actually-possible.md`](../planning/2026-08-24-routes-and-travel-time-what-is-actually-possible.md) — every number below was measured live on that date, not read.
 **Plan:** [`planning/2026-08-24-routes-epic-milestone-board.md`](../planning/2026-08-24-routes-epic-milestone-board.md) — the milestone board is the live tracker; this ADR is the decision it executes.
@@ -249,3 +251,70 @@ knows how to read that — `map-archive-cache.ts` parses `Retry-After` today.
 
 Deliberately **not** listed here. The milestone board owns it, is updated as work lands, and names
 what can run in parallel: [`planning/2026-08-24-routes-epic-milestone-board.md`](../planning/2026-08-24-routes-epic-milestone-board.md).
+
+## Y. Amendment (2026-08-25) — the provider, weighed; and the endpoint takes a set of modes
+
+### Y1. Community server vs. self-host, and why the default is the community server
+
+The owner asked for the trade rather than answering it: _"What's the pros and cons of running on a
+community server vs. a self host? Is self hosting more complex or something?"_
+
+**Yes — and the complexity is not the server. It is the graph build.**
+
+|                   | FOSSGIS Valhalla (community)                | self-hosted Valhalla                                                                                                                                                                                                                                                                                                  |
+| ----------------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **coverage**      | **the whole planet, today**                 | only the regions we build                                                                                                                                                                                                                                                                                             |
+| **ops**           | none                                        | a second Railway service + a persistent volume, where today the whole app is one service (`deployment.md`)                                                                                                                                                                                                            |
+| **the real cost** | —                                           | **a per-region graph build.** Measured in the research: a city-sized PBF builds in minutes, **a country takes hours, the planet takes days.** So planet is off the table for our hosting, which means building per trip-region — a pipeline keyed to ADR-0186 §4's clusters, i.e. the PMTiles extract pipeline's twin |
+| **memory**        | —                                           | 4–8 GB is workable (Valhalla loads tiles on demand), still well above what a small Nest app needs                                                                                                                                                                                                                     |
+| **freshness**     | theirs, maintained                          | ours to re-run as OSM moves                                                                                                                                                                                                                                                                                           |
+| **limits**        | fair use, 1 call/user/s, not ours to change | none                                                                                                                                                                                                                                                                                                                  |
+| **availability**  | volunteers, best-effort, no SLA             | ours                                                                                                                                                                                                                                                                                                                  |
+| **transit later** | **impossible** — their tiles carry no GTFS  | the only path (§V2's transit needs GTFS tiles)                                                                                                                                                                                                                                                                        |
+
+**The sharpest con, stated plainly because it rhymes with a mistake this repo already paid for:** a
+community server is a third-party runtime dependency, and deleting exactly that from the map is what
+[ADR-0186](0186-the-map-is-ours-and-it-works-on-a-plane.md) was written to do. Field report #35 had
+four causes and every one was a variation on "the map cannot work without fetching third-party code
+at runtime."
+
+**But the failure mode is categorically milder, and that is what decides it.** ADR-0186's problem was
+a hard dependency in the render path with page-global one-shot state: no Google script, no map at
+all. Here, provider down means travel times are **absent** and ADR-0206 §D4's crow-flies chip stands
+in — a quieter app, not a dead screen. The shape rhymes; the blast radius does not.
+
+**So the standing default is the community server**, on three grounds:
+
+1. **Our load on them is genuinely negligible, and §4 is why.** The cache means we ask once per
+   place-pair _ever_ — a whole trip is ~30 calls in its lifetime. This is not a service we would be
+   leaning on; it is one we would touch and then stop touching.
+2. **§2's port makes the switch cheap by construction.** Same wire format, so self-hosting later is
+   a deployment, not a rewrite. Committing now would spend a service, a volume and a build pipeline
+   before one read exists to justify them.
+3. **We do not yet know our real volume.** M1 measures it. Buying infrastructure before that
+   measurement is the decision we would most likely regret.
+
+**And there is a middle rung, so "self-host or nothing" is a false pair.** If FOSSGIS becomes
+unavailable or asks us to stop, **Geoapify** (3,000 credits/day free, commercial use allowed, caching
+explicitly permitted) is a config change behind the same port — not a project.
+
+**Switch to self-hosting when any of these fires**, and not before: the fair-use limit binds in M1's
+measurements; FOSSGIS asks us to stop or degrades; or **transit is taken up**, which forces it
+regardless, since GTFS tiles cannot come from anyone else's build.
+
+**This remains the owner's call and it is reversible either way** — that is the whole purpose of the
+port. Work proceeds on the default meanwhile.
+
+### Y2. The batch endpoint takes a **set of modes**, not one
+
+§6 described a batch carrying a day's ordered stops. It must also carry **every mode the gate admits
+for those stops**, fetched together, because ADR-0206 §Z2 requires a mode switch to be instant and a
+per-mode endpoint makes each switch a ~1 s round-trip.
+
+The arithmetic makes this a non-decision: one day matrix is 2.3 KB and ~1 s, three modes is ~7 KB,
+and §4's cache means it happens once per place-pair ever. **One request per day, not one per day per
+mode** — and the politeness limiter counts what actually leaves the process, so a three-mode warm is
+three upstream calls paced by the limiter, not a burst.
+
+The gate stays per-mode (§3), so the admitted set differs per leg: a 9 km pair yields driving and
+cycling but no walking answer, and that absence is ADR-0206 §D4's chip rather than an error.

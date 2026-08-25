@@ -1,6 +1,6 @@
 # 0206 — A travel time belongs **between** two points, and the day owes you the truth about it
 
-**Status:** Proposed. **Nothing here is built, and nothing here ships without a mockup** (§M).
+**Status:** **Accepted 2026-08-25** on the owner's M0 answers, and **amended by them** — read §Z before §M1 or §V1.6, which both changed. **Nothing here is built, and nothing here ships without a mockup** (§M).
 **Date:** 2026-08-24
 **Companion:** [ADR-0205](0205-routes-are-computed-not-bought-and-a-route-is-a-cache.md) decides where a route comes from. This one decides **what it says, what v1 answers, and what v2 waits for.**
 **Research:** [`planning/2026-08-24-routes-and-travel-time-what-is-actually-possible.md`](../planning/2026-08-24-routes-and-travel-time-what-is-actually-possible.md)
@@ -81,17 +81,17 @@ ADR-0159 §1 dodged the identical problem by leading with the noun, and the same
 
 Ranked by **usefulness first, cost second**, and each line names where it lands.
 
-| #       | feature                                                    | why it ranks here                                                                                                                                                                                       | where                                  |
-| ------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| **1.1** | **Gap minus travel** — `פנוי · 2:00 שע׳ · אחרי 40 דק׳ דרך` | **A correction, not a feature.** The app currently overstates free time. Nothing else on this list is a bug fix.                                                                                        | `DayJoinRow`, ADR-0159's slot          |
-| **1.2** | **Time-to-next + leave-by** — `~23 דק׳ · צאו ב־18:37`      | The U-06 payoff and the sentence the backlog has carried since ADR-0106. Answers the third of the app's three questions.                                                                                | hero horizon, between two points (D2)  |
-| **1.3** | **Per-leg travel in the day**                              | Makes 1.1 legible: the day reads as _place · journey · place_ rather than as holes.                                                                                                                     | `DayJoinRow`                           |
-| **1.4** | **Late-risk mark**                                         | A leave-by already past is the single most actionable thing this data can say. Costs one derivation on top of 1.2.                                                                                      | wherever 1.2/1.3 render, `--miss` (D7) |
-| **1.5** | **The real polyline**                                      | The visualisation the owner asked for. Cheap — `DayConnector` already draws a line.                                                                                                                     | `MapPane`, solid + amber (D1, D8)      |
-| **1.6** | **Mode per leg + trip default**                            | A car trip in Iceland and a metro trip in Tokyo want different defaults, and every number above is wrong under the wrong mode.                                                                          | leg-level, defaulted by trip           |
-| **1.7** | **Plan-mode day feasibility** — "this day does not fit"    | Plan mode's whole job is building a day that works, and it currently builds days that cannot be walked. Same matrix, no new fetch.                                                                      | `PlanDay`                              |
-| **1.8** | **Offline route pack**                                     | Our stops are known in advance, so routes are precomputable at ~410 bytes each and ride ADR-0186 §5/§6's existing download, budget and eviction machinery. **This is what makes it work on the plane.** | `MapService` extract pipeline          |
-| **1.9** | **Day travel total** — `3.2 ק״מ · 48 דק׳ הליכה`            | One line, free from data 1.3 already fetched, and it is the day-shape read a planner actually wants.                                                                                                    | day header or Plan summary             |
+| #       | feature                                                    | why it ranks here                                                                                                                                                                                                       | where                                  |
+| ------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| **1.1** | **Gap minus travel** — `פנוי · 2:00 שע׳ · אחרי 40 דק׳ דרך` | **A correction, not a feature.** The app currently overstates free time. Nothing else on this list is a bug fix.                                                                                                        | `DayJoinRow`, ADR-0159's slot          |
+| **1.2** | **Time-to-next + leave-by** — `~23 דק׳ · צאו ב־18:37`      | The U-06 payoff and the sentence the backlog has carried since ADR-0106. Answers the third of the app's three questions.                                                                                                | hero horizon, between two points (D2)  |
+| **1.3** | **Per-leg travel in the day**                              | Makes 1.1 legible: the day reads as _place · journey · place_ rather than as holes.                                                                                                                                     | `DayJoinRow`                           |
+| **1.4** | **Late-risk mark**                                         | A leave-by already past is the single most actionable thing this data can say. Costs one derivation on top of 1.2.                                                                                                      | wherever 1.2/1.3 render, `--miss` (D7) |
+| **1.5** | **The real polyline**                                      | The visualisation the owner asked for. Cheap — `DayConnector` already draws a line.                                                                                                                                     | `MapPane`, solid + amber (D1, D8)      |
+| **1.6** | **Mode per leg, inferred default, instant switch**         | A car trip in Iceland and a metro trip in Tokyo want different defaults, and every number above is wrong under the wrong mode. **The default is derived from the trip's bookings and the switch is instant** — see §Z2. | leg-level, default derived (§Z2)       |
+| **1.7** | **Plan-mode day feasibility** — "this day does not fit"    | Plan mode's whole job is building a day that works, and it currently builds days that cannot be walked. Same matrix, no new fetch.                                                                                      | `PlanDay`                              |
+| **1.8** | **Offline route pack**                                     | Our stops are known in advance, so routes are precomputable at ~410 bytes each and ride ADR-0186 §5/§6's existing download, budget and eviction machinery. **This is what makes it work on the plane.**                 | `MapService` extract pipeline          |
+| **1.9** | **Day travel total** — `3.2 ק״מ · 48 דק׳ הליכה`            | One line, free from data 1.3 already fetched, and it is the day-shape read a planner actually wants.                                                                                                                    | day header or Plan summary             |
 
 **1.1 through 1.5 are the product.** 1.6–1.9 are what make it not feel like a demo, and each is
 cheap **only because** the ones before it exist. That ordering is the milestone board's, too.
@@ -164,3 +164,76 @@ Per ADR-0175 / the `design-mockups` skill, in `mockups/`, RTL, phone-first, both
 - **Wait for transit and ship it all at once.** Rejected: transit needs a self-hosted service, and
   holding nine features behind it trades a year of value for one. The honest cost is D9 — say
   nothing about transit rather than half-say it.
+
+## Z. Amendment (2026-08-25) — the owner's M0 answers, and the two they changed
+
+M0 is answered. Two answers **reverse or extend what this ADR proposed**, so they are recorded here
+rather than edited invisibly into the sections above.
+
+### Z1. The board DOES carry an urgent leave-by — and it does it by **replacing the countdown**
+
+§M1 recommended the horizon alone, on the grounds that the collapsed board's budget is spent
+(ADR-0160 §3). The owner's answer: _"if something is urgent, then it should be on the board and not
+only the Horizon, right?"_ **That is right, and §M1's recommendation is withdrawn.** The board is
+the glance surface, "what do I need in the next 30 minutes" is the question it exists to answer, and
+putting the single most actionable fact in the app behind a tap is hiding it.
+
+**But it is not an addition, and this is the part that makes it affordable.** The collapsed board
+already carries a **countdown** — and a leave-by is the same kind of fact, pointed one step earlier:
+time-to-act instead of time-to-start. So the board's one countdown **changes what it counts to**:
+
+| condition                                   | the board's countdown says                 |
+| ------------------------------------------- | ------------------------------------------ |
+| leaving is not yet the live question        | `עוד 45 דק׳` — time to the event, as today |
+| the leave-by is the nearer, actionable fact | `צאו עוד 10 דק׳` — time to leave           |
+| the leave-by has passed                     | the late-risk mark, `--miss` (§D7)         |
+
+Three things follow, and they are why this is the right shape rather than a compromise:
+
+- **It costs no space and adds no element.** ADR-0160 §4 left the collapsed board with no
+  interactive children and a spent budget; a swap spends nothing further.
+- **`עוד 45 דק׳` is not merely less useful when you should already be leaving — it is wrong.** It
+  says you have 45 minutes. Showing the two side by side would state a contradiction and make the
+  reader resolve it.
+- **§D6 survives untouched.** One live mark, and re-pointing it is not a second one. The owner's ask
+  turned out to fit _inside_ a principle rather than against one — which is the test that says take
+  it.
+
+**What §M1 now has to settle** is no longer _whether_ but **when the swap fires** — the threshold at
+which leaving becomes the live question. It is a number to measure on a real day, not to pick here,
+and it interacts with the buffer §D5 already requires. The horizon keeps the full read either way
+(`~23 דק׳ · צאו ב־18:37`); the board carries only the one urgent phrase.
+
+### Z2. The default mode is **derived, not stored** — and switching must be instant
+
+The owner: _"default could be inferred per trip, but it should be easy to switch between modes and
+immediately get the results."_ Both halves change §V1.6.
+
+**Derived.** The trip already knows what kind of trip it is: a car hire (ADR-0162) is a driving trip,
+a trip whose transport is all rail and flights is a walking-and-transit trip. So the default is
+**computed from the trip's bookings**, not a column someone sets — which is ADR-0018/0027's own rule
+(derived state, not stored) applying cleanly. A per-leg override is the only thing persisted, and
+only when someone actually sets one.
+
+**Instant.** This is a real technical requirement and it was under-specified. If a mode switch costs
+a network round-trip, "immediately" is a ~1 s wait per switch, and the control feels broken. So
+**every mode the gate admits for a leg is fetched together, up front**, and a switch is a read from
+cache with no request at all. The arithmetic makes this free: a day matrix is 2.3 KB, three modes is
+~7 KB, and the cache means it happens once per place-pair ever. **ADR-0205 §6's batch endpoint
+therefore takes a set of modes, not one** — amended there.
+
+Note what this does _not_ buy: a mode the gate refuses for that leg (a 9 km walk, a cross-cluster
+bike ride) has no answer to switch to, and §D4's crow-flies chip is what the switch lands on. §M5's
+control has to make that read as "not this way" rather than as a failure.
+
+### Z3. Transit stays out of V1, confirmed
+
+_"I can live without transit on V1."_ §V2's first row stands, and §D9 with it — the mode control has
+three entries and says nothing about transit at all.
+
+### Z4. The provider is still open
+
+M0's second question came back as a question (community server versus self-host). It is a substrate
+matter, so the pros, the cons and the standing default live in
+[ADR-0205 §2's own 2026-08-25 amendment](0205-routes-are-computed-not-bought-and-a-route-is-a-cache.md),
+not here. Nothing in this ADR depends on the answer.
