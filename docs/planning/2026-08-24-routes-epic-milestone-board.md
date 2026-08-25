@@ -568,9 +568,15 @@ still answers from cache; the politeness limiter paces a three-mode warm rather 
   (§Z2), and the **one** thing it can still change is specced — a stop the trip does not hold sits
   in no cluster, so walking and cycling are refused for it while driving answers. That is a real
   behaviour, not a theoretical one, and flipping the flag removes it.
-- **One file outside the card's conflict surface was touched, deliberately, and it is rule 8's
-  call rather than a shortcut:** `enrichment/outbound-fetch.ts` gained `POST` + custom headers and
-  an `OutboundHttpError` that carries status and body. That file's own header says it is _"the
+- **Two files outside the card's conflict surface were touched, both deliberately.**
+  `architecture/deployment.md` is the smaller one and is simply a gap in the card: the routing
+  vars belong in Railway's env table, and that section's kill-switch warning **enumerates the
+  switches by name**, so adding a fifth without amending it would have left a doc that is wrong
+  rather than merely incomplete. (`ROUTING_DISABLED` joined the four that read truthiness rather
+  than `FX_DISABLED`'s `=== '1'` — so the collapse that note has wanted since ADR-0197 is still
+  one switch to move, not four.) The other is rule 8's call rather than a shortcut:
+  `enrichment/outbound-fetch.ts` gained `POST` + custom headers and an `OutboundHttpError` that
+  carries status and body. That file's own header says it is _"the
   process's ONE outbound seat"_ and that _"a second fetcher would be a second place to get SSRF
   wrong"_ — and ADR-0166 §8 had already named ETA as a consumer of it. The allowlist stays **code**
   (`valhalla1.openstreetmap.de` is a line in it), so a self-hosted router is two lines, not one.
