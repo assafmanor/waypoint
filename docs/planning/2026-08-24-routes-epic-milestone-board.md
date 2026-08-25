@@ -44,22 +44,22 @@ pair the column does not name. Both branch from `main`, not from each other.
 
 ## Live status
 
-| M       | milestone                   | kind   | status | depends on   | ⇉ safe with  | branch / PR                           | updated    |
-| ------- | --------------------------- | ------ | ------ | ------------ | ------------ | ------------------------------------- | ---------- |
-| **M0**  | Product decisions           | owner  | ⬜     | —            | —            | —                                     | 2026-08-24 |
-| **M1**  | Measure the parameters      | spike  | ⬜     | M0           | M2, M3       | —                                     | —          |
-| **M2**  | Shared derivations          | impl   | ⬜     | M0           | M1, M3       | —                                     | —          |
-| **M3**  | Design session + mockups    | design | 🔵     | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` | 2026-08-25 |
-| **M4**  | Backend routing module      | impl   | ⬜     | M1, M2       | M3           | —                                     | —          |
-| **M5**  | Frontend data layer         | impl   | ⬜     | M2, M4       | M3, M10      | —                                     | —          |
-| **M6a** | The day reads               | impl   | ⬜     | M3, M5       | M6b, M7, M9  | —                                     | —          |
-| **M6b** | The hero read               | impl   | ⬜     | M3, M5       | M6a, M7, M9  | —                                     | —          |
-| **M7**  | The map polyline            | impl   | ⬜     | M3, M5       | M6a, M6b, M9 | —                                     | —          |
-| **M8**  | Mode per leg + trip default | impl   | ⬜     | M6a, M6b, M7 | M10          | —                                     | —          |
-| **M9**  | Plan-mode feasibility       | impl   | ⬜     | M5           | M6a, M6b, M7 | —                                     | —          |
-| **M10** | Offline route pack          | impl   | ⬜     | M4           | M5–M9        | —                                     | —          |
-| **M11** | Day travel total            | impl   | ⬜     | M6a          | M8, M10      | —                                     | —          |
-| **M12** | Harden, observe, document   | impl   | ⬜     | all          | —            | —                                     | —          |
+| M       | milestone                   | kind   | status | depends on   | ⇉ safe with  | branch / PR                                                                                     | updated    |
+| ------- | --------------------------- | ------ | ------ | ------------ | ------------ | ----------------------------------------------------------------------------------------------- | ---------- |
+| **M0**  | Product decisions           | owner  | ⬜     | —            | —            | —                                                                                               | 2026-08-24 |
+| **M1**  | Measure the parameters      | spike  | ⬜     | M0           | M2, M3       | —                                                                                               | —          |
+| **M2**  | Shared derivations          | impl   | ⬜     | M0           | M1, M3       | —                                                                                               | —          |
+| **M3**  | Design session + mockups    | design | 🔵     | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696) | 2026-08-25 |
+| **M4**  | Backend routing module      | impl   | ⬜     | M1, M2       | M3           | —                                                                                               | —          |
+| **M5**  | Frontend data layer         | impl   | ⬜     | M2, M4       | M3, M10      | —                                                                                               | —          |
+| **M6a** | The day reads               | impl   | ⬜     | M3, M5       | M6b, M7, M9  | —                                                                                               | —          |
+| **M6b** | The hero read               | impl   | ⬜     | M3, M5       | M6a, M7, M9  | —                                                                                               | —          |
+| **M7**  | The map polyline            | impl   | ⬜     | M3, M5       | M6a, M6b, M9 | —                                                                                               | —          |
+| **M8**  | Mode per leg + trip default | impl   | ⬜     | M6a, M6b, M7 | M10          | —                                                                                               | —          |
+| **M9**  | Plan-mode feasibility       | impl   | ⬜     | M5           | M6a, M6b, M7 | —                                                                                               | —          |
+| **M10** | Offline route pack          | impl   | ⬜     | M4           | M5–M9        | —                                                                                               | —          |
+| **M11** | Day travel total            | impl   | ⬜     | M6a          | M8, M10      | —                                                                                               | —          |
+| **M12** | Harden, observe, document   | impl   | ⬜     | all          | —            | —                                                                                               | —          |
 
 **The critical path is M0 → M2 → M4 → M5 → M6a/M6b.** Everything else hangs off it or runs beside
 it. If only one agent is working, run that path and take M3 before M6.
