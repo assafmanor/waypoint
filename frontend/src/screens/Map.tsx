@@ -120,7 +120,7 @@ import {
 import { mapColorScheme, mapPaneAvailable, mapTileUrls } from '../lib/map-config';
 import { useMaybeAuth } from '../state/auth-state';
 import { useMapArchives } from '../lib/useMapArchives';
-import { useLegShape } from '../lib/travel';
+import { useDayShapes } from '../lib/travel';
 import { landAtTop } from '../lib/land-at-top';
 import { observeResize } from '../lib/observe-resize';
 import { edgeFadeRef } from '../lib/edge-fade';
@@ -1412,11 +1412,32 @@ export function MapView() {
   // everyone.
   const travelMode = useMemo(() => derivedTravelMode(bookings), [bookings]);
 
-  // ONE shape request for that one leg, cached and read back through the same `routeLegKey` the
-  // day's own numbers use (ADR-0206 §D8) — so a day of N legs never issues N shape calls, and
-  // the line and the numbers cannot disagree about a leg. `null` is ordinary: the dashed
-  // connector stands and nobody sees an error (§D4).
-  const routeShape = useLegShape({ tripId: trip.id, leg: routeLeg, mode: travelMode });
+  // **ONE request for the whole day's geometry** (ADR-0206 §Z5 §M3), read back through the same
+  // `routeLegKey` the day's numbers use, so the lines and the numbers cannot disagree about a leg.
+  // The per-leg `/route` calls are the server's, paced and cached — from here it is one ask.
+  const dayShapes = useDayShapes({ tripId: trip.id, stops: orderedStops, mode: travelMode });
+
+  // **Every leg drawn along the route it describes**, with the straight segment as the floor for
+  // one whose shape has not arrived (§D4). This is what replaced the single straight polyline:
+  // §D8 rations the SOLID AMBER, not the truth of the line.
+  const legPaths = useMemo(() => {
+    const paths: LatLng[][] = [];
+    for (let i = 0; i + 1 < orderedStops.length; i++) {
+      const from = orderedStops[i]!;
+      const to = orderedStops[i + 1]!;
+      paths.push([...(dayShapes.pathFor(from, to) ?? [from, to])]);
+    }
+    return paths;
+  }, [orderedStops, dayShapes]);
+
+  // The one leg that is solid amber, drawn from the same geometry the dash under it uses.
+  const routeShape = useMemo(
+    () =>
+      routeLeg
+        ? (dayShapes.pathFor(routeLeg.from, routeLeg.to) ?? [routeLeg.from, routeLeg.to])
+        : null,
+    [routeLeg, dayShapes],
+  );
 
   const areaCount = useMemo(
     () => (viewBounds ? countPointsInBounds(pins, viewBounds) : null),
@@ -3759,7 +3780,7 @@ export function MapView() {
           results={results}
           onSelectResult={selectResult}
           me={me}
-          connector={dayShapeVisible ? orderedStops : undefined}
+          connector={dayShapeVisible ? legPaths : undefined}
           route={routeShape ?? undefined}
           setSignal={cameraSignal}
           defaultCentre={defaultCentre}

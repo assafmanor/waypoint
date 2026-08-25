@@ -308,13 +308,18 @@ vi.mock('../lib/useMapArchives', () => ({
 /** **Which leg the amber line was asked for** (ADR-0206 §D8/§AB2). The shape itself is a fetch
  *  and a decode, both of which are `lib/travel.ts`'s own spec; what belongs HERE is the rule
  *  that picks the leg, which is the screen's. */
-const askedLeg: { current: unknown } = { current: undefined };
 const askedMode: { current: unknown } = { current: undefined };
+/** A leg's drawn path, keyed the way the real hook keys it — so a spec can hand the screen a
+ *  routed path for one leg and assert that the straight segment is what the others fall back to. */
+const stubShapes = new Map<string, { lat: number; lng: number }[]>();
+const legId = (from: { lat: number }, to: { lat: number }) => `${from.lat}>${to.lat}`;
 vi.mock('../lib/travel', () => ({
-  useLegShape: ({ leg, mode }: { leg: unknown; mode: unknown }) => {
-    askedLeg.current = leg;
+  useDayShapes: ({ mode }: { mode: unknown }) => {
     askedMode.current = mode;
-    return null;
+    return {
+      pathFor: (from: { lat: number }, to: { lat: number }) =>
+        stubShapes.get(legId(from, to)) ?? null,
+    };
   },
 }));
 
@@ -2072,7 +2077,8 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         currentMode = 'plan';
         seed();
         render(wrap(<MapView />));
-        expect(paneProps.current.connector).toHaveLength(2);
+        // Two STOPS is one leg (ADR-0206 §Z5 §M3: the prop is a line per leg now).
+        expect(paneProps.current.connector).toHaveLength(1);
 
         // The connector follows the FILTERED set, exactly as it does for a category chip,
         // so a query that leaves one ghost leaves no route — and the point is that the
@@ -3995,8 +4001,10 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       // Plan now OPENS day-scoped (ADR-0109's 2026-07-27 amendment), so the day's
       // shape is on screen without a chip tap.
       expect(paneProps.current.connector).toEqual([
-        { lat: 35.6, lng: 139.6 },
-        { lat: 35.7, lng: 139.7 },
+        [
+          { lat: 35.6, lng: 139.6 },
+          { lat: 35.7, lng: 139.7 },
+        ],
       ]);
       const link = screen.getByRole('link', { name: new RegExp(t.map.dayRoute) });
       expect(link.getAttribute('href')).toContain('/maps/dir/?api=1&origin=35.6%2C139.6');
@@ -4012,18 +4020,18 @@ describe('the embedded map’s shell (ADR-0121)', () => {
   // stop you asked about. What picks that stop is `selected → next → the day's first leg`, and
   // the last of the three is what makes Plan mode draw at all.
   describe('which leg the route line is spent on (§D8/§AB2)', () => {
+    const A = { lat: 35.6, lng: 139.6 };
+    const B = { lat: 35.7, lng: 139.7 };
+    const C = { lat: 35.8, lng: 139.8 };
     const seedThreeStopDay = () => {
-      tripPlaces = [
-        place('a', true, { lat: 35.6, lng: 139.6 }),
-        place('b', true, { lat: 35.7, lng: 139.7 }),
-        place('c', true, { lat: 35.8, lng: 139.8 }),
-      ];
+      tripPlaces = [place('a', true, A), place('b', true, B), place('c', true, C)];
       tripEvents = [
         event({ id: 'e1', placeId: 'a', startsAt: `${ACTIVE_DATE}T09:00:00Z` }),
         event({ id: 'e2', placeId: 'b', startsAt: `${ACTIVE_DATE}T13:00:00Z` }),
         event({ id: 'e3', placeId: 'c', startsAt: `${ACTIVE_DATE}T17:00:00Z` }),
       ];
     };
+    const route = () => paneProps.current.route;
 
     // **The owner's report.** `nextStopId` is Trip-mode only — a live "next" says nothing while
     // you are planning — so a Plan day with nothing tapped had no stop to pick and drew no line
@@ -4033,10 +4041,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       currentMode = 'plan';
       render(wrap(<MapView />));
 
-      expect(askedLeg.current).toEqual({
-        from: { lat: 35.6, lng: 139.6 },
-        to: { lat: 35.7, lng: 139.7 },
-      });
+      expect(route()).toEqual([A, B]);
     });
 
     it('a tapped stop takes the line, and it is the leg ARRIVING there', () => {
@@ -4046,10 +4051,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
 
       fireEvent.click(pin('c')!);
 
-      expect(askedLeg.current).toEqual({
-        from: { lat: 35.7, lng: 139.7 },
-        to: { lat: 35.8, lng: 139.8 },
-      });
+      expect(route()).toEqual([B, C]);
     });
 
     // The one stop with no leg arriving at it takes the one departing it instead (§AB2).
@@ -4060,10 +4062,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
 
       fireEvent.click(pin('a')!);
 
-      expect(askedLeg.current).toEqual({
-        from: { lat: 35.6, lng: 139.6 },
-        to: { lat: 35.7, lng: 139.7 },
-      });
+      expect(route()).toEqual([A, B]);
     });
 
     // **The mode is derived, never assumed** (ADR-0206 §Z2). It was a hardcoded `walking`, so the
@@ -4092,15 +4091,69 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       expect(askedMode.current).toBe('driving');
     });
 
-    // All-days has no "the day's legs" to ration one from, so there is nothing to ask about.
-    it('asks for no leg at all-days scope', () => {
+    // All-days has no "the day's legs" to ration one from, so there is nothing to draw.
+    it('draws no route line at all-days scope', () => {
       seedThreeStopDay();
       currentMode = 'plan';
       render(wrap(<MapView />));
 
       fireEvent.click(listButton(t.map.allDays));
 
-      expect(askedLeg.current).toBeNull();
+      expect(route()).toBeUndefined();
+    });
+  });
+
+  // **Every leg draws its REAL path** (ADR-0206 §Z5 §M3, the owner's review): the routed lines
+  // REPLACE the straight dashed segments rather than sitting beside them. §D8 rations the solid
+  // amber, not the truth of the line.
+  describe('the day’s legs are drawn along their routes (§Z5 §M3)', () => {
+    const A = { lat: 35.6, lng: 139.6 };
+    const B = { lat: 35.7, lng: 139.7 };
+    const C = { lat: 35.8, lng: 139.8 };
+    const BEND = { lat: 35.65, lng: 139.68 };
+
+    beforeEach(() => {
+      stubShapes.clear();
+      tripPlaces = [place('a', true, A), place('b', true, B), place('c', true, C)];
+      tripEvents = [
+        event({ id: 'e1', placeId: 'a', startsAt: `${ACTIVE_DATE}T09:00:00Z` }),
+        event({ id: 'e2', placeId: 'b', startsAt: `${ACTIVE_DATE}T13:00:00Z` }),
+        event({ id: 'e3', placeId: 'c', startsAt: `${ACTIVE_DATE}T17:00:00Z` }),
+      ];
+      currentMode = 'plan';
+    });
+
+    // One entry per leg, not one polyline through every stop — that is what lets each leg carry
+    // its own geometry.
+    it('hands the pane one line per leg, in day order', () => {
+      render(wrap(<MapView />));
+
+      expect(paneProps.current.connector).toEqual([
+        [A, B],
+        [B, C],
+      ]);
+    });
+
+    it('draws a leg along its routed path once one has arrived', () => {
+      stubShapes.set(`${A.lat}>${B.lat}`, [A, BEND, B]);
+      render(wrap(<MapView />));
+
+      // The routed leg keeps its bend; the one with no shape yet keeps its straight segment,
+      // which is §D4's floor rather than an error.
+      expect(paneProps.current.connector).toEqual([
+        [A, BEND, B],
+        [B, C],
+      ]);
+    });
+
+    // The solid line and the dash beneath it must come from the SAME geometry, or the map would
+    // state two different paths for one leg.
+    it('spends the amber on the same geometry the dash under it uses', () => {
+      stubShapes.set(`${A.lat}>${B.lat}`, [A, BEND, B]);
+      render(wrap(<MapView />));
+
+      expect(paneProps.current.route).toEqual([A, BEND, B]);
+      expect((paneProps.current.connector as unknown[])[0]).toEqual([A, BEND, B]);
     });
   });
 

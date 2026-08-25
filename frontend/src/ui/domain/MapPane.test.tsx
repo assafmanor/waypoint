@@ -302,9 +302,12 @@ const TOKYO_WALK = [
   { lat: 35.71402, lng: 139.79931 },
   { lat: 35.71099, lng: 139.80572 },
 ];
+/** One leg's worth of connector — the prop is now a list OF legs (ADR-0206 §Z5 §M3). */
 const TWO_STOPS = [
-  { lat: 1, lng: 1 },
-  { lat: 2, lng: 2 },
+  [
+    { lat: 1, lng: 1 },
+    { lat: 2, lng: 2 },
+  ],
 ];
 
 afterEach(() => {
@@ -648,29 +651,46 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
   // repeating symbol along a fully transparent stroke because the Maps API had no dash array,
   // so the assertion changes from "transparent-stroked with icons" to the thing anyone would
   // have written in the first place.
-  it('draws the day connector only with two or more stops, dashed and neutral', () => {
-    const { unmount } = paint({ connector: [{ lat: 1, lng: 1 }] });
+  it('draws the day connector only with a leg of two or more points, dashed and neutral', () => {
+    const { unmount } = paint({ connector: [[{ lat: 1, lng: 1 }]] });
     expect(connectorLayer()).toBeUndefined();
     unmount();
+    // **Two legs now, not one polyline through three stops** (ADR-0206 §Z5 §M3): each leg is
+    // drawn along its own path, so the geometry is a MultiLineString and the middle stop is a
+    // shared endpoint rather than a vertex on one line.
     paint({
       connector: [
-        { lat: 1, lng: 1 },
-        { lat: 2, lng: 2 },
-        { lat: 3, lng: 3 },
+        [
+          { lat: 1, lng: 1 },
+          { lat: 1.5, lng: 1.5 },
+          { lat: 2, lng: 2 },
+        ],
+        [
+          { lat: 2, lng: 2 },
+          { lat: 3, lng: 3 },
+        ],
       ],
     });
     const line = connectorLayer()!;
     expect(line.paint['line-color']).toBe(MAP_CONNECTOR.COLOR.light);
     expect(line.paint['line-dasharray']).toEqual([...MAP_CONNECTOR.DASH]);
     expect(line.paint['line-width']).toBe(MAP_CONNECTOR.WEIGHT);
-    // All three stops, in MapLibre's own coordinate order.
     const source = mapStub.current.getSource('wp-connector') as {
-      data: { geometry: { coordinates: number[][] } };
+      data: { geometry: { type: string; coordinates: number[][][] } };
     };
+    expect(source.data.geometry.type).toBe('MultiLineString');
+    // Each leg's own vertices, in MapLibre's coordinate order — the bend in the first leg is a
+    // routed path and has to survive.
     expect(source.data.geometry.coordinates).toEqual([
-      [1, 1],
-      [2, 2],
-      [3, 3],
+      [
+        [1, 1],
+        [1.5, 1.5],
+        [2, 2],
+      ],
+      [
+        [2, 2],
+        [3, 3],
+      ],
     ]);
   });
 
@@ -678,13 +698,7 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
   // and measured 1.01:1 on the night style's land — invisible (ADR-0158 §16). It takes the same
   // scheme the ground was painted from, so the line and the canvas cannot disagree.
   it('takes the connector colour from the canvas it was built for, not the document', () => {
-    paint({
-      scheme: MAP_COLOR_SCHEME.dark,
-      connector: [
-        { lat: 1, lng: 1 },
-        { lat: 2, lng: 2 },
-      ],
-    });
+    paint({ scheme: MAP_COLOR_SCHEME.dark, connector: TWO_STOPS });
     expect(connectorLayer()!.paint['line-color']).toBe(MAP_CONNECTOR.COLOR.dark);
   });
 
@@ -696,12 +710,7 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
   // The layer and its source are the map's, not React's, so nothing unmounts them for us — and
   // a leak here would stack a second `wp-connector` on the next mount and throw.
   it('takes its layer and source back off the map on unmount', () => {
-    const { unmount } = paint({
-      connector: [
-        { lat: 1, lng: 1 },
-        { lat: 2, lng: 2 },
-      ],
-    });
+    const { unmount } = paint({ connector: TWO_STOPS });
     expect(mapStub.current.getSource('wp-connector')).toBeTruthy();
     unmount();
     expect(mapStub.current.getLayer('wp-connector-line')).toBeUndefined();
@@ -799,7 +808,7 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
         areaSorted={false}
         onAreaSort={vi.fn()}
         onLocate={vi.fn()}
-        connector={tomorrow}
+        connector={[tomorrow]}
         route={tomorrow}
       />,
     );

@@ -26,8 +26,8 @@ import {
   cacheTravelEstimates,
   readCachedTravelEstimates,
   resetAskedDaysForTests,
+  useDayShapes,
   useDayTravel,
-  useLegShape,
 } from './travel';
 
 const ASAKUSA = { lat: 35.7148, lng: 139.7967 };
@@ -229,36 +229,36 @@ describe('useDayTravel', () => {
   });
 });
 
-/* ── THE DRAWN LINE (ADR-0206 §D8) ───────────────────────────────────────────────────────── */
+/* ── THE DRAWN LINES (ADR-0206 §D8, §Z5 §M3) ─────────────────────────────────────────────── */
 
-const LEG = { from: ASAKUSA, to: TSUKIJI };
 const shaped: RouteBatch = { legs: [leg([walkWithShape])] };
 
 /** **Every mount here is taken down again**, and it is not tidiness: this file registers no
  *  auto-cleanup, so a hook left mounted keeps its own effects and its own in-flight promises
- *  alive inside the NEXT test — which is how a warming leg was seen re-asking before its timer
- *  had moved at all. */
-describe('useLegShape', () => {
-  it('asks for ONE two-stop leg with shapes, and decodes what comes back', async () => {
+ *  alive inside the NEXT test. */
+describe('useDayShapes', () => {
+  const render = (stops = STOPS) =>
+    renderHook(() => useDayShapes({ tripId: TRIP_ID, stops, mode: TRAVEL_MODE.WALKING }));
+
+  // **One request for the whole day, and that is the tripwire's own terms.** The card warns that
+  // "a day of N legs issuing N shape calls means it was done wrong" — N calls from THIS device.
+  // The per-leg `/route` calls are the server's, paced and cached behind one batch.
+  it('asks ONCE for the whole day, with shapes and one mode', async () => {
     routes.fetchRoutes.mockResolvedValue(shaped);
 
-    const { result, unmount } = renderHook(() =>
-      useLegShape({ tripId: TRIP_ID, leg: LEG, mode: TRAVEL_MODE.WALKING }),
-    );
+    const { result, unmount } = render();
 
-    await waitFor(() => expect(result.current).toEqual(ASAKUSA_POINTS));
+    await waitFor(() => expect(result.current.pathFor(ASAKUSA, TSUKIJI)).toEqual(ASAKUSA_POINTS));
     expect(routes.fetchRoutes).toHaveBeenCalledTimes(1);
     const [, request] = routes.fetchRoutes.mock.calls[0]!;
-    expect(request.stops).toEqual([ASAKUSA, TSUKIJI]);
+    expect(request.stops).toEqual(STOPS);
     expect(request.withShapes).toBe(true);
-    // One line is drawn, so one mode's geometry is bought (§Z5 §M5 widens this with M8's control).
     expect(request.modes).toEqual([TRAVEL_MODE.WALKING]);
     unmount();
   });
 
-  // **The tripwire the card names**: a day of N legs issuing N shape calls means the ask was put
-  // behind the day rather than behind the drawn line. The day's own hook must stay geometry-free.
-  it('does not put a shape call behind a day view — the day asks once, without geometry', async () => {
+  // The day LIST reads `useDayTravel`, which draws nothing — so it must never buy geometry.
+  it('leaves the day’s own numbers geometry-free', async () => {
     const { unmount } = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
 
     await waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(1));
@@ -266,107 +266,72 @@ describe('useLegShape', () => {
     unmount();
   });
 
-  it('draws nothing, and asks nothing, with no leg to draw', async () => {
-    const { result, unmount } = renderHook(() =>
-      useLegShape({ tripId: TRIP_ID, leg: null, mode: TRAVEL_MODE.WALKING }),
-    );
+  // §D4's floor: a leg with no geometry answers `null` and the caller draws the straight segment.
+  // Nobody sees an error, and the other legs still draw their real paths.
+  it('answers null for a leg with no shape, while its neighbours still draw', async () => {
+    routes.fetchRoutes.mockResolvedValue(shaped);
 
-    await act(async () => {});
-    expect(result.current).toBeNull();
+    const { result, unmount } = render();
+
+    await waitFor(() => expect(result.current.pathFor(ASAKUSA, TSUKIJI)).toEqual(ASAKUSA_POINTS));
+    expect(result.current.pathFor(TSUKIJI, SENSOJI)).toBeNull();
+    unmount();
+  });
+
+  it('reads stored shapes without asking — offline included', async () => {
+    await cacheTravelEstimates([ASAKUSA, TSUKIJI], [leg([walkWithShape])]);
+    setOnline(false);
+
+    const { result, unmount } = render([ASAKUSA, TSUKIJI]);
+
+    await waitFor(() => expect(result.current.pathFor(ASAKUSA, TSUKIJI)).toEqual(ASAKUSA_POINTS));
     expect(routes.fetchRoutes).not.toHaveBeenCalled();
     unmount();
   });
 
-  it('reads a stored shape without asking — offline included', async () => {
+  // A day already drawn in full costs nothing on a revisit — which is what makes swiping back
+  // and forth free. The check is on the LINE, not on the estimate.
+  it('does not re-ask a day whose every leg already has a line', async () => {
     await cacheTravelEstimates([ASAKUSA, TSUKIJI], [leg([walkWithShape])]);
-    setOnline(false);
 
-    const { result, unmount } = renderHook(() =>
-      useLegShape({ tripId: TRIP_ID, leg: LEG, mode: TRAVEL_MODE.WALKING }),
-    );
+    const { result, unmount } = render([ASAKUSA, TSUKIJI]);
+    await waitFor(() => expect(result.current.pathFor(ASAKUSA, TSUKIJI)).toEqual(ASAKUSA_POINTS));
 
-    await waitFor(() => expect(result.current).toEqual(ASAKUSA_POINTS));
     expect(routes.fetchRoutes).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  // **The counterpart, and the reason the check is on the line.** A day whose estimates are all
+  // cached but whose SHAPES are not is exactly what `useDayTravel` leaves behind — asking again
+  // is how the map gets its lines at all.
+  it('asks when the estimates are cached but the lines are not', async () => {
+    await cacheTravelEstimates([ASAKUSA, TSUKIJI], [leg([walk])]);
+    routes.fetchRoutes.mockResolvedValue(shaped);
+
+    const { result, unmount } = render([ASAKUSA, TSUKIJI]);
+
+    await waitFor(() => expect(result.current.pathFor(ASAKUSA, TSUKIJI)).toEqual(ASAKUSA_POINTS));
+    expect(routes.fetchRoutes).toHaveBeenCalledTimes(1);
     unmount();
   });
 
   it('never asks from inside a peek', async () => {
     preview = true;
-    const { result, unmount } = renderHook(() =>
-      useLegShape({ tripId: TRIP_ID, leg: LEG, mode: TRAVEL_MODE.WALKING }),
-    );
+    const { result, unmount } = render();
 
     await act(async () => {});
-    expect(result.current).toBeNull();
+    expect(result.current.pathFor(ASAKUSA, TSUKIJI)).toBeNull();
     expect(routes.fetchRoutes).not.toHaveBeenCalled();
     unmount();
   });
 
-  // §D4: a leg the gate refused comes back with no estimate at all, which is the crow-flies
-  // chip's case and the dashed connector's — never an error, and never a retry loop.
-  it('answers null for a leg nothing can route, and never asks about it again', async () => {
-    routes.fetchRoutes.mockResolvedValue({ legs: [] } satisfies RouteBatch);
-
-    const first = renderHook(() =>
-      useLegShape({ tripId: TRIP_ID, leg: LEG, mode: TRAVEL_MODE.WALKING }),
-    );
-    await waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(1));
-    expect(first.result.current).toBeNull();
-    first.unmount();
-
-    const second = renderHook(() =>
-      useLegShape({ tripId: TRIP_ID, leg: LEG, mode: TRAVEL_MODE.WALKING }),
-    );
-    await act(async () => {});
-    expect(routes.fetchRoutes).toHaveBeenCalledTimes(1);
-    second.unmount();
-  });
-
-  // **The one case that must stay askable.** A day's matrix carries no geometry, so its write
-  // overwrites the row this hook filled — and a leg remembered as "asked" would lose its line for
-  // the rest of the session. An answer that came back WITHOUT a shape is therefore not final.
-  it('asks again for a leg whose shape the day’s matrix wrote over', async () => {
-    routes.fetchRoutes.mockResolvedValue({ legs: [leg([walk])] } satisfies RouteBatch);
-    const first = renderHook(() =>
-      useLegShape({ tripId: TRIP_ID, leg: LEG, mode: TRAVEL_MODE.WALKING }),
-    );
-    await waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(1));
-    expect(first.result.current).toBeNull();
-    first.unmount();
-
-    routes.fetchRoutes.mockResolvedValue(shaped);
-    const second = renderHook(() =>
-      useLegShape({ tripId: TRIP_ID, leg: LEG, mode: TRAVEL_MODE.WALKING }),
-    );
-
-    await waitFor(() => expect(second.result.current).toEqual(ASAKUSA_POINTS));
-    expect(routes.fetchRoutes).toHaveBeenCalledTimes(2);
-    second.unmount();
-  });
-
-  // The selection moves while a shape is in flight: the answer belongs to a leg nobody is
-  // looking at, and drawing it would put amber between two points the map has stopped naming.
-  it('never draws a shape that belongs to the leg before this one', async () => {
-    routes.fetchRoutes.mockResolvedValue(shaped);
-    const { result, rerender, unmount } = renderHook((leg: typeof LEG | null) =>
-      useLegShape({ tripId: TRIP_ID, leg, mode: TRAVEL_MODE.WALKING }),
-    );
-
-    rerender(LEG);
-    await waitFor(() => expect(result.current).toEqual(ASAKUSA_POINTS));
-
-    rerender({ from: TSUKIJI, to: SENSOJI });
-    expect(result.current).toBeNull();
-    unmount();
-  });
-
-  it('re-asks a warming leg once, then gives up quietly', async () => {
+  // Shapes arrive in passes (`SHAPE_CALLS_PER_PASS`), so a warming answer is the ORDINARY case
+  // for a long day. One wait, then the next natural read finishes it.
+  it('re-asks a warming day once, then lets the next read finish it', async () => {
     vi.useFakeTimers();
     routes.fetchRoutes.mockResolvedValue({ legs: [leg([walk])], retryAfterSeconds: 2 });
 
-    const { unmount } = renderHook(() =>
-      useLegShape({ tripId: TRIP_ID, leg: LEG, mode: TRAVEL_MODE.WALKING }),
-    );
+    const { unmount } = render();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
@@ -385,11 +350,9 @@ describe('useLegShape', () => {
     unmount();
   });
 
-  it('mirrors the shape it bought, so re-selecting the leg draws it with no request', async () => {
+  it('mirrors the shapes it bought, so the next visit draws with no request', async () => {
     routes.fetchRoutes.mockResolvedValue(shaped);
-    const { unmount } = renderHook(() =>
-      useLegShape({ tripId: TRIP_ID, leg: LEG, mode: TRAVEL_MODE.WALKING }),
-    );
+    const { unmount } = render();
     await waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(1));
     unmount();
 

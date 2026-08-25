@@ -470,16 +470,50 @@ is the honest default; in Trip mode the third arm can only fire before the day b
 ends, where the first leg is the right answer too. §AB1 already put the line in both modes — this
 is what makes that true in practice rather than only in principle.
 
-### AB3. One line drawn buys one mode's geometry
+### AB3. The day buys one mode's geometry, for every leg
 
 §Z2 fetches every mode's **duration** up front so the mode control answers from cache with no
 request. A **shape** is not free the same way: it costs an upstream route call per leg per mode
-(`routing.service.ts`), and §D8 draws one line. So `useLegShape` asks for the drawn mode only.
+(`routing.service.ts`), so geometry is bought only for the mode on screen. A mode switch re-asks
+for that mode's lines once.
 
 **§Z5 §M5's "a switch redraws the polyline from cache with no request" is therefore M8's to
-finish**, and the widening is one array: `modes: [mode]` becomes the modes the gate admits for that
-leg. Recorded here because the two statements otherwise read as a contradiction rather than as a
+finish** — after the first switch to a mode, its lines are cached and every switch back is free.
+Recorded here because the two statements otherwise read as a contradiction rather than as a
 sequence.
+
+**Corrected 2026-08-25 — this first read "one line drawn buys one mode's geometry for ONE leg",
+and that was a misreading of §M3.** See §AB5.
+
+### AB5. Every leg draws its real path — the routed lines REPLACE the straight dashes
+
+**§Z5 §M3 already decided this and M7 shipped it wrong.** Its words are unambiguous — _"every leg
+draws its REAL path; §D8 rations the SOLID AMBER, not the truth of the line"_ (owner's review) —
+and M7 read them as aspirational, drew the focused leg's real path, and left every other leg as
+ADR-0121 §10's **straight** dashed segment. The owner reported it: _"Aren't we going to render
+polylines for all two places that are one after another? … they should replace all straight dashed
+lines between stops."_
+
+**The board is what led M7 astray, and the rule for that is already written.** The M7 card said
+"dashed neutral for the rest", which reads as "keep the straight dash"; §M3 says the dash keeps its
+_treatment_ and loses its _straightness_. Root `CLAUDE.md`: if the board and an ADR disagree about a
+**decision**, the ADR wins and the board is stale. It did, and it was.
+
+**What the dash means now changes, and that is the substantive part.** ADR-0121 §10 chose the dash
+to say _"this is the order, not the route"_ — honest, because there was no geometry to be had. Now
+there is, and a straight segment is both a weaker drawing and a wrong distance (§M3). So the dash's
+job becomes **"this leg is not the one you are looking at"**, and §D8's ration is unaffected: one
+leg solid amber, every other dashed, all of them true. A leg whose shape has not arrived still
+draws its straight segment — §D4's floor, and it reads as a line that has not snapped to the road
+yet rather than as an error.
+
+**And the tripwire survives on its own terms, which is why this is affordable.** The M7 card warns
+that _"a day of N legs issuing N shape calls means it was done wrong"_ — N calls **from the
+device**. `routableLegs` pairs stops **consecutively** (`i → i+1`), so an N-stop day is N-1 legs
+carried in **one** batch request; the per-leg `/route` calls are the server's, paced at
+`SHAPE_CALLS_PER_PASS = 8` and cached for good, with anything unreached returned in `pendingModes`
+for the next ask. One `useDayShapes` hook replaces `useLegShape`, and it stays **separate from
+`useDayTravel`**: the day LIST draws nothing, so it must never buy geometry.
 
 ### AB4. A shapeless answer is "ask again", never "never" — and the mirror stays last-write-wins
 

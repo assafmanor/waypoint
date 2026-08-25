@@ -758,6 +758,14 @@ guard and the teardown; a route is one more geometry through the same effect.
 Spends the treatment `DayConnector`'s own comment reserved: **solid + amber** for the selected or
 next leg, dashed neutral for the rest (§D1, §D8).
 
+> **⚠ "dashed neutral for the rest" means the DASH, not a straight line — this wording misled M7
+> and cost a follow-up.** ADR-0206 §Z5 §M3 is the decision: _"every leg draws its REAL path; §D8
+> rations the SOLID AMBER, not the truth of the line."_ Every leg is drawn along its route; exactly
+> one of them is solid amber. A leg with no shape yet falls back to its straight segment (§D4), and
+> that is the only straight line left. See §AB5.</br>
+> The rule that would have caught it is already in root `CLAUDE.md`: **if the board and an ADR
+> disagree about a decision, the ADR wins and the board is stale.**
+
 **The two traps already documented in that file**, both of which will bite again: the style is torn
 down and rebuilt by a theme swap, so _"already added" has to be asked rather than remembered_; and a
 layer cannot be added before the style exists. Both guards exist — extend them, do not re-derive
@@ -813,6 +821,16 @@ merged milestone — read this before M8:**
 - **Plan mode drew nothing unless you tapped a pin.** `nextStopId` is Trip-mode only, so the
   `selected → next` rule had no second arm to fall back on there. It is now `selected → next →
 the day's first leg` (§AB2, amended).
+- **Every leg now draws its REAL path, and the routed lines REPLACED the straight dashes** (§Z5
+  §M3, reported by the owner: _"they should replace all straight dashed lines between stops"_). M7
+  drew one real path and left the rest straight, having read §M3 as aspirational — it is not. The
+  dash's meaning moves with it: from ADR-0121 §10's _"this is the order, not the route"_ to _"this
+  leg is not the one you are looking at"_. §AB5 has the reasoning.
+- **`useLegShape` is gone; `useDayShapes` replaced it** — one request for the whole day's geometry
+  in one mode. **The card's tripwire still holds on its own terms**: `routableLegs` pairs stops
+  consecutively, so N stops is N-1 legs in ONE batch from this device; the per-leg `/route` calls
+  are the server's, paced at `SHAPE_CALLS_PER_PASS` and cached. It is deliberately **separate from
+  `useDayTravel`**, which stays geometry-free because the day LIST draws nothing.
 - **⚠ Still open and genuinely M8's:** a `train`/`transit` booking's two ends are a leg like any
   other, so they draw a road route whenever the pair is inside the mode's ceiling. §AA4's
   declaration is the designed answer; whether it also suppresses the POLYLINE is undecided. The M8
