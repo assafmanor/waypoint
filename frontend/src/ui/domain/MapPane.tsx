@@ -1576,94 +1576,119 @@ const DayConnector = memo(function DayConnector({
 
     const draw = () => {
       const data = build();
+      const has = (kind: string, route: boolean) =>
+        data.lines.features.some((f) => {
+          const p = (f as { properties: { kind?: string; emphasis?: string } }).properties;
+          return p.kind === kind && (kind !== KIND.leg || (p.emphasis === 'route') === route);
+        });
+
       // The style is torn down and rebuilt by a theme swap, so "already added" has to be asked
       // rather than remembered — a flag would go stale the moment the ground restyles.
-      const put = (id: string, payload: object, layers: object[]) => {
+      const source = (id: string, payload: { features: object[] }) => {
+        if (!payload.features.length) return false;
         const existing = map.getSource(id);
-        if (existing) {
-          (existing as unknown as { setData: (d: unknown) => void }).setData(payload);
-          return;
-        }
-        map.addSource(id, { type: 'geojson', data: payload });
-        for (const layer of layers) map.addLayer(layer as never);
+        if (existing) (existing as unknown as { setData: (d: unknown) => void }).setData(payload);
+        else map.addSource(id, { type: 'geojson', data: payload });
+        return true;
       };
 
-      put(CONNECTOR.source, data.lines, [
-        {
-          id: CONNECTOR.layer,
-          type: 'line',
-          source: CONNECTOR.source,
-          filter: ['all', ['==', ['get', 'kind'], KIND.leg], ['!', isRoute]],
-          layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: {
-            'line-color': legColor,
-            'line-width': byEmphasis(
-              MAP_CONNECTOR.WEIGHT,
-              MAP_CONNECTOR.NEAR_WEIGHT,
-              MAP_CONNECTOR.WEIGHT,
-            ),
-            'line-opacity': byEmphasis(1, 1, MAP_CONNECTOR.DIM_OPACITY),
-            // No arrowheads: the numbers are the order, and at phone size an arrowhead on a
-            // 2.5px dashed line is mush (§10).
-            'line-dasharray': [...MAP_CONNECTOR.DASH],
-          },
+      /** **Only the layers that have something to draw.** A Trip-mode day draws ONE leg, and
+       *  three more layers beside it — empty, but composited every frame — is work nobody asked
+       *  for. Removed again when the data stops needing them. */
+      const layer = (want: boolean, spec: { id: string; [k: string]: unknown }) => {
+        const there = Boolean(map.getLayer(spec.id));
+        if (want && !there) map.addLayer(spec as never);
+        else if (!want && there) map.removeLayer(spec.id);
+      };
+
+      const lines = source(CONNECTOR.source, data.lines);
+      layer(lines && has(KIND.leg, false), {
+        id: CONNECTOR.layer,
+        type: 'line',
+        source: CONNECTOR.source,
+        filter: ['all', ['==', ['get', 'kind'], KIND.leg], ['!', isRoute]],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': legColor,
+          'line-width': byEmphasis(
+            MAP_CONNECTOR.WEIGHT,
+            MAP_CONNECTOR.NEAR_WEIGHT,
+            MAP_CONNECTOR.WEIGHT,
+          ),
+          'line-opacity': byEmphasis(1, 1, MAP_CONNECTOR.DIM_OPACITY),
+          // No arrowheads: the numbers are the order, and at phone size an arrowhead on a
+          // 2.5px dashed line is mush (§10).
+          'line-dasharray': [...MAP_CONNECTOR.DASH],
         },
-        {
-          id: STUB.layer,
-          type: 'line',
-          source: CONNECTOR.source,
-          filter: ['==', ['get', 'kind'], KIND.stub],
-          layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: {
-            'line-color': ['case', isRoute, routeColor, legColor],
-            'line-width': MAP_CONNECTOR.STUB.WEIGHT,
-            'line-opacity': MAP_CONNECTOR.STUB.OPACITY,
-            'line-dasharray': [...MAP_CONNECTOR.STUB.DASH],
-          },
+      });
+      layer(lines && has(KIND.stub, false), {
+        id: STUB.layer,
+        type: 'line',
+        source: CONNECTOR.source,
+        filter: ['==', ['get', 'kind'], KIND.stub],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': ['case', isRoute, routeColor, legColor],
+          'line-width': MAP_CONNECTOR.STUB.WEIGHT,
+          'line-opacity': MAP_CONNECTOR.STUB.OPACITY,
+          'line-dasharray': [...MAP_CONNECTOR.STUB.DASH],
         },
-        // Last of the line layers, so the one amber leg paints over the order it belongs to.
-        {
-          id: ROUTE.layer,
-          type: 'line',
-          source: CONNECTOR.source,
-          filter: ['all', ['==', ['get', 'kind'], KIND.leg], isRoute],
-          layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: {
-            'line-color': routeColor,
-            'line-width': MAP_CONNECTOR.ROUTE.WEIGHT,
-          },
+      });
+      // Added after the dash it belongs to, so the one amber leg paints over the order.
+      layer(lines && has(KIND.leg, true), {
+        id: ROUTE.layer,
+        type: 'line',
+        source: CONNECTOR.source,
+        filter: ['all', ['==', ['get', 'kind'], KIND.leg], isRoute],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': routeColor, 'line-width': MAP_CONNECTOR.ROUTE.WEIGHT },
+      });
+      layer(source(DOT.source, data.dots), {
+        id: DOT.layer,
+        type: 'circle',
+        source: DOT.source,
+        paint: {
+          'circle-color': ['case', isRoute, routeColor, legColor],
+          'circle-radius': [
+            'case',
+            isRoute,
+            MAP_CONNECTOR.DOT.RADIUS_ROUTE,
+            MAP_CONNECTOR.DOT.RADIUS,
+          ],
+          'circle-opacity': byEmphasis(1, 1, MAP_CONNECTOR.DIM_OPACITY),
         },
-      ]);
-      put(DOT.source, data.dots, [
-        {
-          id: DOT.layer,
-          type: 'circle',
-          source: DOT.source,
-          paint: {
-            'circle-color': ['case', isRoute, routeColor, legColor],
-            'circle-radius': [
-              'case',
-              isRoute,
-              MAP_CONNECTOR.DOT.RADIUS_ROUTE,
-              MAP_CONNECTOR.DOT.RADIUS,
-            ],
-            'circle-opacity': byEmphasis(1, 1, MAP_CONNECTOR.DIM_OPACITY),
-          },
-        },
-      ]);
+      });
     };
 
     // A layer cannot be added before the style exists, and the pane may mount before the first
     // `load` — so ask, and otherwise wait for it.
     if (map.isStyleLoaded()) draw();
     else map.once('load', draw);
-    // The collar is a screen distance, so a zoom changes what is drawn. `zoomend` and not `zoom`:
-    // this is a data update, and re-running it every frame of a pinch is exactly the churn
-    // ADR-0121 §9 keeps off this canvas.
-    map.on('zoomend', draw);
+    /** **The collar is a screen distance, so a zoom changes what is drawn — and re-deriving it
+     *  the moment the camera stops is what broke `place-know.spec.ts`.** Mutating the style
+     *  inside the `zoomend` handler lands a repaint exactly as the app is settling after a
+     *  camera fit; the map never reaches idle promptly, and the file went from ⁦38s⁩ to ⁦1.1m⁩ with
+     *  its scroll and stability assertions failing. Measured by bisection, not guessed.
+     *
+     *  So the redraw is **deferred out of the settling frame**, and only happens when the zoom
+     *  moved far enough for the collar to be visibly wrong — under half a level, a ⁦9px⁩ setback
+     *  is still a ⁦9px⁩-ish setback and nobody can see the difference. */
+    let builtAt = map.getZoom();
+    let queued: number | undefined;
+    const onZoom = () => {
+      if (Math.abs(map.getZoom() - builtAt) < MAP_CONNECTOR.COLLAR_REDRAW_ZOOM) return;
+      if (queued !== undefined) return;
+      queued = requestAnimationFrame(() => {
+        queued = undefined;
+        builtAt = map.getZoom();
+        draw();
+      });
+    };
+    map.on('zoomend', onZoom);
     return () => {
       map.off('load', draw);
-      map.off('zoomend', draw);
+      map.off('zoomend', onZoom);
+      if (queued !== undefined) cancelAnimationFrame(queued);
       // Guarded rather than trusted: on unmount the map may already be `remove()`d by
       // `MapCanvas`, in which case there is no style left to take a layer out of.
       try {

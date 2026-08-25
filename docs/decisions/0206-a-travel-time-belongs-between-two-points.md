@@ -663,6 +663,26 @@ say:
   because §AC5's stub is measured against them, which is what makes "the leg **arriving** at a stop"
   expressible without an index into anything.
 
+**And two costs that only CI could find, both measured by bisection rather than guessed.** The
+first build of §AC3's collar re-derived the trimmed geometry on every `zoomend`, which mutates the
+map's style **exactly as the app is settling after a camera fit**. On a software-rendered canvas
+that starves the frame: `e2e/place-know.spec.ts` went from **⁦38s⁩ and green** to **⁦1.1m⁩ with its
+scroll and stability assertions failing** — the DOM never held still long enough to be clicked. The
+work itself was never the problem (the whole redraw measures **⁦12ms⁩** across four draws); _when_ it
+landed was. Two changes fix it and both are worth keeping:
+
+- **The redraw is deferred and thresholded.** Off the settling frame via `requestAnimationFrame`,
+  and only when the zoom has moved at least `COLLAR_REDRAW_ZOOM` (0.5 of a level) since the geometry
+  was built — under half a level a ⁦9px⁩ setback is still visually a ⁦9px⁩ setback.
+- **A layer is added only when something in the data belongs to it**, and removed when nothing
+  does. A Trip-mode day draws one leg; the other three layers sat there empty and were composited
+  every frame.
+
+The bisection is worth recording because four plausible suspects were wrong first: the dot's circle
+layer, the two dashed layers, the near-zero stub dash, and the number of layers. Each was tested and
+exonerated; the listener was the only thing that mattered. **A performance claim about a canvas is a
+measurement, not a reading of the diff.**
+
 **And the spec that asserted the bug is now the spec that forbids it.** `Plan mode with nothing
 selected draws the day's FIRST leg` — written three hours earlier, and a faithful record of §AB2's
 third arm — is inverted to `spends NO amber, and still draws every leg`. That is the shape a

@@ -1264,6 +1264,13 @@ export const MAP_CONNECTOR = {
    *  invisible at country zoom and enormous at street zoom — the collar has to hold its size on
    *  screen, and that makes the trimmed geometry a function of the camera. */
   COLLAR_PX: 9,
+  /** **How far the zoom must move before the collar is re-derived.** The trim is in screen
+   *  pixels, so a zoom makes it wrong — but re-deriving on every `zoomend` mutates the style
+   *  exactly as the app settles after a camera fit, which measurably starved the main thread
+   *  (`place-know.spec.ts`: ⁦38s⁩ → ⁦1.1m⁩, with its stability assertions failing). Under half a
+   *  level the setback is still visually a setback, so this is the threshold below which the
+   *  redraw is simply not worth its cost. */
+  COLLAR_REDRAW_ZOOM: 0.5,
   /** The mark itself: a filled dot, the one thing a dashed line cannot accidentally produce. */
   DOT: { RADIUS: 3, RADIUS_ROUTE: 3.4 },
   /** **The unrouted tail between a stop and where it meets the network** (ADR-0206 §AC5).

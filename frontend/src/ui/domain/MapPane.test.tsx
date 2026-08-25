@@ -110,8 +110,10 @@ class FakeMapLibreMap {
   unproject(p: [number, number]) {
     return { lng: p[0] / 100, lat: -p[1] / 100 };
   }
-  /** Fire what `zoomend` would: the collar is a px distance, so a zoom re-derives the geometry. */
-  zoomEnded() {
+  /** Fire what `zoomend` would, at a new zoom: the collar is a px distance, so a big enough zoom
+   *  re-derives the geometry — and a small one deliberately does not. */
+  zoomEnded(to?: number) {
+    if (to !== undefined) this.zoom = to;
     this.handlers.get('zoomend')?.forEach((fn) => fn());
   }
   /** **The ground sources the style declares** — what `styleState` counts. A test can empty this
@@ -733,25 +735,105 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
 
   // The dot needs a point source of its own — a `circle` layer cannot read a line source. That
   // is the cost §AC3 names, and it is asserted so a later change cannot quietly drop it.
-  it('keeps the dots in their own point source, and the three line treatments in one', () => {
-    paint({ connector: TWO_LEGS });
+  it('keeps the dots in their own point source, and the line treatments in one', () => {
+    const OFF = { lat: 2.4, lng: 2.4 };
+    paint({
+      connector: [
+        { path: [A, B], from: A, to: OFF, emphasis: 'route' as const },
+        { path: [B, C], from: OFF, to: C },
+      ],
+    });
     expect(dotLayer()!.source).toBe('wp-connector-dot');
     for (const layer of [connectorLayer()!, routeLayer()!, stubLayer()!]) {
       expect(layer.source).toBe('wp-connector');
     }
   });
 
-  // The collar is a SCREEN distance, so the drawn geometry is a function of the camera.
-  it('re-derives the trimmed geometry when the zoom ends', () => {
+  // **A layer with no features is not free, and that is measured rather than tidiness.** A
+  // Trip-mode day draws ONE leg; adding the other three layers beside it — empty, but composited
+  // every frame — tripled `place-know.spec.ts` from ⁦38s⁩ to ⁦1.1m⁩ on a software-rendered canvas
+  // and made its scroll assertions fail outright. So a layer is added only when something in the
+  // data belongs to it, and removed when nothing does.
+  it('adds only the layers that have something to draw', () => {
+    // Trip mode's shape: one amber leg, nothing dashed, no stub.
+    const { unmount } = paint({
+      connector: [{ path: [A, B], from: A, to: B, emphasis: 'route' as const }],
+    });
+    expect(routeLayer()).toBeTruthy();
+    expect(connectorLayer()).toBeUndefined();
+    expect(stubLayer()).toBeUndefined();
+    unmount();
+
+    // Plan mode's: dashed legs and their dots, but still no amber and no stub.
+    paint({ connector: TWO_LEGS });
+    expect(connectorLayer()).toBeTruthy();
+    expect(dotLayer()).toBeTruthy();
+    expect(routeLayer()).toBeUndefined();
+    expect(stubLayer()).toBeUndefined();
+  });
+
+  // …and it gives them back when the data stops needing them, rather than leaving them behind.
+  it('takes a layer away again once nothing belongs to it', () => {
+    const OFF = { lat: 2.4, lng: 2.4 };
+    const { rerender } = paint({ connector: [{ path: [A, B], from: A, to: OFF }] });
+    expect(stubLayer()).toBeTruthy();
+
+    rerender(
+      <MapPane
+        scheme={MAP_COLOR_SCHEME.light}
+        urls={URLS}
+        pins={[pin({ placeId: 'a' })]}
+        setSignal="day"
+        onSelectPin={vi.fn()}
+        onCanvasTap={vi.fn()}
+        onViewChange={vi.fn()}
+        areaCount={1}
+        areaSorted={false}
+        onAreaSort={vi.fn()}
+        onLocate={vi.fn()}
+        connector={[{ path: [A, B], from: A, to: B }]}
+      />,
+    );
+
+    expect(stubLayer()).toBeUndefined();
+    expect(connectorLayer()).toBeTruthy();
+  });
+
+  // The collar is a SCREEN distance, so the drawn geometry is a function of the camera — but the
+  // redraw is DEFERRED and THRESHOLDED, because doing it inside the `zoomend` handler mutates the
+  // style exactly as the app settles after a camera fit. That is measured: it took
+  // `place-know.spec.ts` from 38s to 1.1m and made its stability assertions fail.
+  it('re-derives the trimmed geometry after a real zoom, off the settling frame', async () => {
     paint({ connector: ONE_LEG });
     const before = JSON.stringify(legFeatures()[0]!.geometry.coordinates);
 
     mapStub.current.project = (at: [number, number]) => ({ x: at[0] * 400, y: -at[1] * 400 });
     mapStub.current.unproject = (p: [number, number]) => ({ lng: p[0] / 400, lat: -p[1] / 400 });
-    act(() => mapStub.current.zoomEnded());
+    act(() => mapStub.current.zoomEnded(16));
+    // Nothing yet — the handler only queues the work.
+    expect(JSON.stringify(legFeatures()[0]!.geometry.coordinates)).toBe(before);
+
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    });
 
     // Same collar in pixels, four times the scale, so it eats a quarter of the degrees it did.
     expect(JSON.stringify(legFeatures()[0]!.geometry.coordinates)).not.toBe(before);
+  });
+
+  // Under half a level a 9px setback is still a 9px-ish setback, and the redraw is not worth what
+  // it costs the frame it lands in.
+  it('leaves the geometry alone for a zoom too small to see', async () => {
+    paint({ connector: ONE_LEG });
+    const before = JSON.stringify(legFeatures()[0]!.geometry.coordinates);
+
+    mapStub.current.project = (at: [number, number]) => ({ x: at[0] * 400, y: -at[1] * 400 });
+    act(() => mapStub.current.zoomEnded(14.2));
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    });
+
+    expect(JSON.stringify(legFeatures()[0]!.geometry.coordinates)).toBe(before);
   });
 
   /* ── THE ONE AMBER LEG (ADR-0206 §D1/§D8/§AC1/§AC2) ────────────────────────────────────── */
