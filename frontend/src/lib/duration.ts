@@ -62,6 +62,11 @@ export function hoursPhrase(minutes: number): string {
 export function approxDuration(minutes: number): string | null {
   if (!Number.isFinite(minutes) || minutes <= 0) return null;
   const total = Math.round(minutes);
+  // **Nothing the ladder can say is nothing to say** (2026-08-26). A ⁦20m⁩ hop is ⁦24⁩ seconds, which
+  // rounded onto ADR-0114's minutes rung is zero — and `~0 דק׳` is not a hedged duration, it is a
+  // row about nothing. The guard above only caught a non-positive input, so anything under half a
+  // minute walked straight through it and printed the zero.
+  if (total <= 0) return null;
   const h = Math.floor(total / MINUTES_PER_HOUR);
   const m = total % MINUTES_PER_HOUR;
   if (h && !m) return `${t.common.about}${hoursPhrase(total)}`;
@@ -77,6 +82,45 @@ export function approxDuration(minutes: number): string | null {
  *  `approxDuration`'s, so the hero's `~40 דק׳` and the day's are one number. */
 export const approxTravelTime = (seconds: number): string | null =>
   approxDuration(seconds / SECONDS_PER_MINUTE);
+
+/**
+ * **What is free, as a phrase that agrees with itself** (ADR-0206 §AH1) — `46 דק׳ פנויות`,
+ * `שעתיים פנויות`, `שעה פנויה`.
+ *
+ * The ladder above is noun-led everywhere else (`פנוי · 2:40 שע׳`) precisely so nothing has to
+ * agree with a number it does not expose. Here the natural word order puts the number first, and
+ * the shipped dodge for that was `פנוי לפני 46 דק׳` — which the owner read as bad Hebrew and was
+ * right to (2026-08-26). So the agreement is composed instead, and it is cheap: `hoursPhrase` has
+ * exactly two singular rungs, an exact hour and one minute.
+ *
+ * `null` below a minute, which is the same answer `approxDuration` gives for the same reason —
+ * `0 דק׳ פנויות` is a sentence about nothing. **Whether a small-but-real length is worth stating
+ * is a different question and not this function's**: that is `statesFreeTime` (`lib/gaps.ts`),
+ * asked by the caller, because it is a judgement about the day rather than about the words.
+ */
+export function freeTimePhrase(minutes: number): string | null {
+  if (!Number.isFinite(minutes)) return null;
+  const total = Math.round(minutes);
+  if (total <= 0) return null;
+  if (total === 1) return t.travel.freeTimeOneMinute;
+  if (total === MINUTES_PER_HOUR) return t.travel.freeTimeOneHour;
+  return t.travel.freeTime(hoursPhrase(total));
+}
+
+/**
+ * **By how much a journey misses the hole it sits in** — `חסרות 18 דק׳ לדרך`.
+ *
+ * The number to act on, and the only one: how much has to move. Agreement is the exact hour's
+ * alone, because `TRAVEL_FIT_TOLERANCE_SECONDS` means a reported shortfall never rounds below two
+ * minutes — so there is no singular-minute rung to reach.
+ */
+export function shortfallPhrase(minutes: number): string | null {
+  if (!Number.isFinite(minutes)) return null;
+  const total = Math.round(minutes);
+  if (total <= 0) return null;
+  if (total === MINUTES_PER_HOUR) return t.travel.shortfallOneHour;
+  return t.travel.shortfall(hoursPhrase(total));
+}
 
 /** **The clock jump, as a sentence** (session 215) — `מזיזים את השעון שעה קדימה`.
  *

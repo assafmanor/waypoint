@@ -15,7 +15,6 @@ import {
   type Booking,
   type MaybeItem,
   type Place,
-  type TravelMode,
   type TripEvent,
   typicalMinutesFor,
 } from '@waypoint/shared';
@@ -25,7 +24,6 @@ import {
   useShowMaybesOnMap,
   useShowPlaceOnMap,
 } from '../state/map-scope-state';
-import { ltrIsolate } from '../lib/bidi';
 import { prefersReducedMotion } from '../lib/motion';
 import { landAtTop } from '../lib/land-at-top';
 import { useDaySurface } from '../lib/useDaySurface';
@@ -91,7 +89,14 @@ import {
   stopReasonText,
   tileReasonText,
 } from '../lib/shelf';
-import { blockFor, ideaBlock, nextSlot, type Gap, type GapDefaults } from '../lib/gaps';
+import {
+  blockFor,
+  ideaBlock,
+  nextSlot,
+  statesFreeTime,
+  type Gap,
+  type GapDefaults,
+} from '../lib/gaps';
 import { dayPositions, firstPositionFitting } from '../lib/day-positions';
 import {
   dayTransitions,
@@ -119,22 +124,15 @@ import { clearOnWay, useOnWay } from '../lib/on-way';
 import { nowLinePlacement } from '../lib/now-line';
 import { UnplacedCommitment } from '../ui/domain/UnplacedCommitment';
 import { bookingWhen } from '../lib/booking-journey';
-import { approxTravelTime, hoursPhrase } from '../lib/duration';
+import { hoursPhrase } from '../lib/duration';
 import {
   ConnectionBand,
   GapStrip,
   JourneyRow,
   type JourneyRowProps,
 } from '../ui/domain/DayJoinRow';
-import {
-  CODE_PREFIX,
-  DEFAULT_STAY_ICON,
-  MS_PER_DAY,
-  SECONDS_PER_MINUTE,
-  SHELF_POOL_CAP,
-} from '../constants';
+import { CODE_PREFIX, DEFAULT_STAY_ICON, MS_PER_DAY, SHELF_POOL_CAP } from '../constants';
 import { ambientSpanLabel, dayBookendStays } from '../lib/glance';
-import { formatDistance } from '../lib/distance';
 import { edgeSentence } from '../lib/transitions';
 import { t } from '../i18n/he';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
@@ -232,22 +230,28 @@ function JoinRow({
    *  never takes one: you are inside a commitment for the whole of it, so there is nothing
    *  free there to fill. */
   onFillGap?: (free: Gap) => void;
-} & Omit<JourneyRowProps, 'journey' | 'onFill' | 'fillMinutes'>) {
+} & Omit<JourneyRowProps, 'journey'>) {
   const length = hoursPhrase(join.minutes);
   if (join.kind === 'gap') {
-    if (!journey) {
-      return <GapStrip length={length} onFill={onFillGap && (() => onFillGap(join.free))} />;
-    }
-    // **The slot the tap lands on is narrowed by the journey too** — the statement and the
-    // control must not disagree about one hole, which is what §V1.1 is about one elevation down.
-    const slot = narrowGapForTravel(join.free, journey, journeyRest.tz);
+    // **The slot is narrowed by the journey** — the statement and the control must not disagree
+    // about one hole, which is what §V1.1 is about one elevation down.
+    const slot = journey ? narrowGapForTravel(join.free, journey, journeyRest.tz) : join.free;
+    // **And it is stated below the block rather than inside it** (owner, 2026-08-26: _"do we
+    // really want to state on this row that we have free time, or should it be written in a quiet
+    // way and not in the row?"_). M6a absorbed the strip into the block to keep ADR-0159's one
+    // object per hole, and the absorption put two subjects on one ⁦180px⁩ line: the block is about
+    // the LEG (mode, distance, when to go) and free time is about the HOLE. The measurement that
+    // shipped M6a is the argument against it — ⁦219.70px⁩ of ink in that box, "fixed" by hiding the
+    // free time on half the arms, which is what a line holding two subjects looks like.
+    const strip = statesFreeTime(slot.minutes) ? (
+      <GapStrip minutes={slot.minutes} onFill={onFillGap && (() => onFillGap(slot))} />
+    ) : null;
+    if (!journey) return strip;
     return (
-      <JourneyRow
-        journey={journey}
-        {...journeyRest}
-        onFill={onFillGap && (() => onFillGap(slot))}
-        fillMinutes={slot.minutes}
-      />
+      <>
+        <JourneyRow journey={journey} {...journeyRest} />
+        {strip}
+      </>
     );
   }
   return (

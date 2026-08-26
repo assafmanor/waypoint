@@ -12,29 +12,31 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { BOOKING_TYPE, TRAVEL_MODE } from '@waypoint/shared';
 import { ConnectionBand, GapStrip, JourneyBlock, JourneyRow } from './DayJoinRow';
-import { approxTravelTime, hoursPhrase } from '../../lib/duration';
+import { approxTravelTime, freeTimePhrase, hoursPhrase, shortfallPhrase } from '../../lib/duration';
 import { dayJourney } from '../../lib/day-joins';
 import { formatDistance } from '../../lib/distance';
 import { t } from '../../i18n/he';
 
-const LENGTH = 'שעתיים';
+const MINUTES = 120;
+const LENGTH = hoursPhrase(MINUTES);
+const FREE = freeTimePhrase(MINUTES)!;
 
 describe('GapStrip', () => {
   afterEach(() => cleanup());
 
   it('states the free time as a measurement, in both postures', () => {
-    render(<GapStrip length={LENGTH} />);
-    expect(screen.getByText(t.day.join.free(LENGTH))).toBeTruthy();
+    render(<GapStrip minutes={MINUTES} />);
+    expect(screen.getByText(FREE)).toBeTruthy();
     cleanup();
-    render(<GapStrip length={LENGTH} onFill={vi.fn()} />);
-    expect(screen.getByText(t.day.join.free(LENGTH))).toBeTruthy();
+    render(<GapStrip minutes={MINUTES} onFill={vi.fn()} />);
+    expect(screen.getByText(FREE)).toBeTruthy();
   });
 
   // ADR-0159 §1 made this a `<span>` on purpose; §9 amended that, because filling a hole on
   // the ground is Tier-1 work (ADR-0025) and this is the one surface that states the hole.
   it('is a button that answers, when the host can act on it', () => {
     const onFill = vi.fn();
-    render(<GapStrip length={LENGTH} onFill={onFill} />);
+    render(<GapStrip minutes={MINUTES} onFill={onFill} />);
     const strip = screen.getByRole('button', { name: t.day.join.fillFree(LENGTH) });
     fireEvent.click(strip);
     expect(onFill).toHaveBeenCalledTimes(1);
@@ -45,7 +47,7 @@ describe('GapStrip', () => {
   // A past day is a read-only archive (ADR-0029), and a strip that looks tappable and is not
   // would be worse than the statement it replaced.
   it('stays the statement it was when the host passes no handler', () => {
-    const { container } = render(<GapStrip length={LENGTH} />);
+    const { container } = render(<GapStrip minutes={MINUTES} />);
     expect(screen.queryByRole('button')).toBeNull();
     expect(container.querySelector('.day-gap-add')).toBeNull();
     expect(container.querySelector('div.day-gap')).toBeTruthy();
@@ -54,9 +56,9 @@ describe('GapStrip', () => {
   // The words did not change with the posture — the tap is a `＋`. The verb exists only as the
   // accessible name, because a screen reader has no glyph to read.
   it('says the same thing either way, and names the verb only to a screen reader', () => {
-    render(<GapStrip length={LENGTH} onFill={vi.fn()} />);
+    render(<GapStrip minutes={MINUTES} onFill={vi.fn()} />);
     expect(screen.queryByText(t.day.join.fillFree(LENGTH))).toBeNull();
-    expect(screen.getByRole('button').textContent).toBe(t.day.join.free(LENGTH));
+    expect(screen.getByRole('button').textContent).toBe(FREE);
   });
 });
 
@@ -94,17 +96,23 @@ describe('JourneyBlock', () => {
     duration: approxTravelTime(40 * 60) ?? '',
     distance: '2.4 ק״מ',
     leave: t.travel.leaveAtDay('17:15'),
-    free: t.travel.freeBefore('שעתיים'),
     tone: 'time' as const,
   };
 
-  it('reads place · journey · place: the mode, the duration, the leave-by and what is free', () => {
+  it('reads place · journey · place: the mode, the duration, the leave-by, the distance', () => {
     render(<JourneyBlock {...props} />);
     expect(screen.getByText(t.travelMode.walking)).toBeTruthy();
     expect(screen.getByText(props.duration)).toBeTruthy();
     expect(screen.getByText(t.travel.leaveAtDay('17:15'))).toBeTruthy();
-    expect(screen.getByText(t.travel.freeBefore('שעתיים'))).toBeTruthy();
     expect(screen.getByText('2.4 ק״מ')).toBeTruthy();
+  });
+
+  // **AND IT SAYS NOTHING ABOUT FREE TIME** (owner, 2026-08-26 — ADR-0206 §AH3). The block is
+  // about the LEG; what is free is about the HOLE, and it is stated by the quiet strip below.
+  it('carries no free-time run at all', () => {
+    const { container } = render(<JourneyBlock {...props} />);
+    expect(container.querySelector('.day-trv-free')).toBeNull();
+    expect(container.textContent).not.toContain(freeTimePhrase(120)!);
   });
 
   // **The hedge, and the `~` INSIDE the isolate.** Verified by measurement rather than by reading
@@ -153,34 +161,14 @@ describe('JourneyBlock', () => {
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
-  // **ADR-0161 §9 survives the absorption.** The block replaces the strip, so deleting the strip's
-  // one affordance with it would take a Tier-1 action off the surface that states the hole.
-  it('keeps the strip’s fill tap, on the FACE so the mark and the verb do not nest', () => {
-    const onFill = vi.fn();
-    const { container } = render(
-      <JourneyBlock
-        {...props}
-        tone="miss"
-        onFill={onFill}
-        fillLabel={t.day.join.fillFree('שעתיים')}
-        action={{ label: t.actions.onWay, onPress: vi.fn() }}
-      />,
-    );
-    const face = screen.getByRole('button', { name: t.day.join.fillFree('שעתיים') });
-    fireEvent.click(face);
-    expect(onFill).toHaveBeenCalledTimes(1);
-    expect(container.querySelector('.day-trv-add')).toBeTruthy();
-    // A button inside a button is invalid markup, which is why the face is the control and the
-    // acts row is its sibling — asserted, because the alternative renders and only fails in a
-    // validator.
-    expect(face.querySelector('button')).toBeNull();
-  });
-
-  // A past day is a read-only archive (ADR-0029), exactly as on `GapStrip`.
-  it('stays a statement when the host passes no fill', () => {
+  // **AND THE FILL LEFT WITH IT.** ADR-0161 §9's affordance belongs to the thing that states the
+  // free time, which is the strip again — two `＋` marks for one hole is what keeping both would
+  // have drawn.
+  it('is a statement and not a control', () => {
     const { container } = render(<JourneyBlock {...props} />);
     expect(screen.queryByRole('button')).toBeNull();
     expect(container.querySelector('.day-trv-add')).toBeNull();
+    expect(container.querySelector('button.day-trv-face')).toBeNull();
   });
 
   // §AD's bookend leg, and M8's declared תחב״צ, both land on the same shape: a block that says
@@ -219,11 +207,11 @@ describe('JourneyRow — the journey does not fit', () => {
 
   it('says the shortfall, and never states free time it does not have', () => {
     const { container } = row(60, 78);
-    expect(screen.getByText(t.travel.tooLongBy(hoursPhrase(18)))).toBeTruthy();
+    expect(screen.getByText(shortfallPhrase(18)!)).toBeTruthy();
     expect(container.querySelector('.day-trv.miss')).toBeTruthy();
     // The number that was reported: nought minutes of free time.
-    expect(container.textContent).not.toContain(t.travel.freeBefore(hoursPhrase(0)));
-    expect(container.querySelector('.day-trv-free')).toBeNull();
+    expect(container.textContent).not.toContain(freeTimePhrase(1)!);
+    expect(container.textContent).not.toContain(hoursPhrase(0));
   });
 
   // The coverage mockup's `tight` state puts the warn glyph in the badge column, where the day
@@ -251,7 +239,7 @@ describe('JourneyRow — the journey does not fit', () => {
   it('says there is no time, rather than a shortfall, when the rows touch', () => {
     const { container } = row(0, 12);
     expect(screen.getByText(t.travel.noTimeForTravel)).toBeTruthy();
-    expect(container.textContent).not.toContain(t.travel.tooLongBy(hoursPhrase(12)));
+    expect(container.textContent).not.toContain(shortfallPhrase(12)!);
     // …and the duration is stated exactly once, in the head.
     expect(container.querySelectorAll('.day-trv-hd').length).toBe(1);
   });
@@ -259,6 +247,84 @@ describe('JourneyRow — the journey does not fit', () => {
   it('is still the ordinary read where the journey fits', () => {
     const { container } = row(160, 40);
     expect(container.querySelector('.day-trv.miss')).toBeNull();
-    expect(screen.getByText(t.travel.freeBefore(hoursPhrase(120)))).toBeTruthy();
+    expect(container.querySelector('.day-trv-ic .icon')).toBeTruthy();
+    // The leave-by is the line, and free time is the strip's below (§AH3).
+    expect(container.textContent).toContain('יציאה');
+    expect(container.textContent).not.toContain(freeTimePhrase(120)!);
+  });
+});
+
+// ── A LEG THAT WAS NEVER MAKEABLE, READ AFTER THE FACT (ADR-0206 §AH1) ────────────────────
+//
+// Reported off the deploy: a past hole holding a walk longer than itself read `פנוי לפני 0 דק׳`.
+// `dayJourney` checks `PAST` before `OVERRUNS` on purpose — advice about a departure is useless
+// once the next row has started — but `freeSeconds` is CLAMPED at zero, so the record it keeps
+// was the one number that is not true. A record states what happened; it does not invent nought
+// minutes of free time.
+describe('JourneyRow — a hole behind you that the journey never fitted', () => {
+  afterEach(() => cleanup());
+
+  const START = Date.parse('2026-07-12T05:00:00Z');
+  const MIN = 60_000;
+  const past = (holeMinutes: number, walkMinutes: number) =>
+    render(
+      <JourneyRow
+        journey={dayJourney({
+          departAfterMs: START,
+          arriveByMs: START + holeMinutes * MIN,
+          travelSeconds: walkMinutes * 60,
+          nowMs: START + (holeMinutes + 30) * MIN,
+        })!}
+        travelMode={TRAVEL_MODE.WALKING}
+        tz="Asia/Tokyo"
+      />,
+    );
+
+  it('states the shortfall rather than nought minutes free', () => {
+    const { container } = past(60, 78);
+    expect(screen.getByText(shortfallPhrase(18)!)).toBeTruthy();
+    expect(container.textContent).not.toContain(hoursPhrase(0));
+  });
+
+  // The record keeps the measurement and drops the advice — there was never a departure to make.
+  it('offers no leave-by on a hole behind you', () => {
+    const { container } = past(60, 78);
+    expect(container.textContent).not.toContain('יציאה');
+  });
+
+  // **And it stays quiet.** The tone is the one thing `PAST` still decides: a finished day painted
+  // in `--miss` is a warning about something nobody can act on, which is the opposite of §D7's
+  // reason for existing. Same sentence, no alarm.
+  it('keeps the past arm quiet — no `--miss`, no warn glyph', () => {
+    const { container } = past(60, 78);
+    expect(container.querySelector('.day-trv.miss')).toBeNull();
+  });
+
+  // What was free is the STRIP's to say now, on this arm as on every other (§AH3).
+  it('says nothing about free time itself, where the journey did fit', () => {
+    const { container } = past(160, 40);
+    expect(container.textContent).not.toContain(freeTimePhrase(120)!);
+    expect(screen.getByText(approxTravelTime(40 * 60)!)).toBeTruthy();
+  });
+});
+
+// ── A JOURNEY THE LADDER CANNOT NAME (ADR-0206 §AH2) ──────────────────────────────────────
+describe('dayJourney — a hop too short to be a journey', () => {
+  const START = Date.parse('2026-07-12T05:00:00Z');
+  const MIN = 60_000;
+
+  // **A twenty-metre hop is not a journey at all** (owner, 2026-08-26). The tolerance in
+  // `freeAfterTravel` stops it being called impossible; this stops it being drawn. `~0 דק׳` over
+  // a block of its own is a row about nothing, and the ladder cannot even state the length.
+  it('is no journey at all below what the ladder can say', () => {
+    expect(
+      dayJourney({
+        departAfterMs: START,
+        arriveByMs: START,
+        travelSeconds: 24,
+        distanceMeters: 20,
+        nowMs: START - 10 * MIN,
+      }),
+    ).toBeNull();
   });
 });

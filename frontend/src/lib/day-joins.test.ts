@@ -439,13 +439,26 @@ describe('narrowGapForTravel', () => {
   // of a hole, so a 60-minute block at its start is untouched by a 40-minute walk two hours later.
   it('leaves a slot alone when the journey does not reach it', () => {
     const gap = gapAt('14:00', '15:00');
-    expect(narrowGapForTravel(gap, journeyFreeing(120 * 60), TZ)).toBe(gap);
+    expect(narrowGapForTravel(gap, journeyFreeing(120 * 60), TZ).fill).toEqual(gap.fill);
+  });
+
+  // **AND IT CORRECTS `minutes` EVEN THEN.** The first draft rewrote only `fill.end`, so a Gap
+  // whose block needed no capping still reported the whole hole — and the free-time strip, which
+  // asks a Gap how long it is, then stated a length a walk had already eaten (ADR-0206 §AH3).
+  it('reports what is free, not how long the hole is', () => {
+    expect(narrowGapForTravel(gapAt('14:00', '15:00'), journeyFreeing(120 * 60), TZ).minutes).toBe(
+      120,
+    );
+    expect(narrowGapForTravel(gapAt('14:00', '15:00'), journeyFreeing(30 * 60), TZ).minutes).toBe(
+      30,
+    );
   });
 
   // …and the margin, which is where the control was handing out a slot the walk eats.
   it('caps the slot at what is actually free', () => {
     const narrowed = narrowGapForTravel(gapAt('14:00', '15:00'), journeyFreeing(30 * 60), TZ);
     expect(narrowed.fill.end).toBe('14:30');
+    expect(narrowed.minutes).toBe(30);
     expect(narrowed.fill.start).toBe('14:00');
   });
 
