@@ -67,7 +67,7 @@ never by the one that did the work.
 | **M3**  | Design session + mockups    | design | ✅                        | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696)                                                                                                                      | 2026-08-25 |
 | **M4**  | Backend routing module      | impl   | ✅ **M5/M10 unblocked**   | M1, M2, M2b  | M3           | `claude/m4-backend-routing-0giz72` · [#702](https://github.com/assafmanor/waypoint/pull/702)                                                                                                                         | 2026-08-25 |
 | **M5**  | Frontend data layer         | impl   | ✅ **M6/M7/M9 unblocked** | M2, M4       | M3, M10      | `claude/routes-frontend-protocol-fix-9t521y` · [#704](https://github.com/assafmanor/waypoint/pull/704)                                                                                                               | 2026-08-25 |
-| **M6a** | The day reads               | impl   | 🔵 **M8/M11 unblocked**   | M3, M5       | M6b, M7, M9  | `claude/m6a-day-reads-yfowam` · [#715](https://github.com/assafmanor/waypoint/pull/715)                                                                                                                              | 2026-08-26 |
+| **M6a** | The day reads               | impl   | 🔵 (+ 5 field fixes)      | M3, M5       | M6b, M7, M9  | `claude/m6a-day-reads-yfowam` · [#715](https://github.com/assafmanor/waypoint/pull/715) · [#716](https://github.com/assafmanor/waypoint/pull/716)                                                                    | 2026-08-26 |
 | **M6b** | The hero read               | impl   | ✅ (+ 1 field fix)        | M3, M5       | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#712](https://github.com/assafmanor/waypoint/pull/712)                                                                                                                       | 2026-08-26 |
 | **M6c** | A fix withdraws the mark    | impl   | ✅                        | M6b          | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#713](https://github.com/assafmanor/waypoint/pull/713)                                                                                                                       | 2026-08-26 |
 | **M6d** | A claim stands on something | impl   | ✅                        | M6b, M6c     | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#714](https://github.com/assafmanor/waypoint/pull/714)                                                                                                                       | 2026-08-26 |
@@ -769,10 +769,11 @@ with no layout shift.
 - **What M9 still owns, and it is unchanged in size:** §V1.7's day-level verdict (`daySequenceFits`,
   "this day does not fit"), and the **slot picker's** own `פנוי` line, which still states the raw
   hole (`PlanDay.tsx`'s `positionOption`, off `dayPositions` in `lib/day-positions.ts` — a different
-  derivation, and correcting it means teaching that one about pairs). **`earnsChip` deliberately
-  still asks the RAW hole**: whether a position is a chip or a drag-only seam is ADR-0161 §2's
-  threshold on a drop TARGET, and moving it onto the corrected number changes which positions exist
-  rather than what one says.
+  derivation, and correcting it means teaching that one about pairs). ~~**`earnsChip` deliberately
+  still asks the RAW hole**~~ — **withdrawn by M6a's own field reports** (ADR-0206 §AG5): the
+  coverage mockup's §2 had already decided this (`if (left >= 60)`), and leaving it shipped a chip
+  offering `פער של 0 דק׳`. It asks the corrected number now, via `earnsChipAt`; the drag-only seam
+  below the threshold is untouched.
 - **A fourth arm, and it is the one the ADR did not name** (§AF1). `past` — the row below has already
   started — states the measurement and **drops the leave-by and the mark**. Without it a day read at
   22:00 prints `זמן היציאה עבר` on every hole of the afternoon. Checked first, so a leg that ran long
@@ -822,6 +823,62 @@ with no layout shift.
 - **M11 can read `journey.distanceMeters` and `journey.travelSeconds` off the same hook** with no new
   request, which is its own exit criterion. **M9 should start from `useDayTravelReads`, not from
   `useDayTravel`.**
+
+---
+
+### M6a's field reports — five fixes off one deploy, and four are one mistake
+
+**Decided:** [ADR-0206 §AG](../decisions/0206-a-travel-time-belongs-between-two-points.md). **PR:**
+[#716](https://github.com/assafmanor/waypoint/pull/716).
+
+Owner, from the deployed app, in three messages: _"I don't see the transit times in the plan day"_ ·
+_"Plan day shows a 0 minute gap"_ · _"the map lines are messed up when a place has two events in
+one"_ · _"the walking/distance/warning when no time to get between stops is shown"_ · _"when there's
+no gap at all don't say that the way is longer than the gap"_ · and _"don't call it חור"_.
+
+**Four of the five are the same failure, and it is the one this board already warned about.** The
+design existed for all of it — §Z5 §M2, and `where-a-route-shows-up-v1.html` §2 — and M6a **built
+the drawings' numbers and skipped their states and their stated exceptions.** §AE6 wrote that lesson
+down ("the drawing is the spec; a brief quoting the drawing is not") and M6a quoted it on this very
+card while doing it again. If you take one thing from this row: **open the mockup, not the catalog
+entry about the mockup.**
+
+| #   | report                                         | what it was                                                                                                       | whose   |
+| --- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------- |
+| 1   | no travel time in Plan                         | §2's Plan column is `trvBlock() + planSlot(…)` — the block **and** the chip. Only the chip was built              | M6a     |
+| 2   | `פער של 0 דק׳` offered                         | `earnsChip` left on the raw hole, where §2 drew `if (left >= 60)`; plus the unrendered `overruns`                 | M6a     |
+| 3   | the map's line came from the wrong stop        | `findIndex` over pins answers the FIRST of a twice-visited place — and M7c's bookends made that the ordinary case | **M7c** |
+| 4   | `פנוי לפני 0 דק׳` where the leg cannot be made | `freeAfterTravel`'s `overruns` has existed since M2 and was never rendered                                        | M6a     |
+| 5   | a hole under an hour said nothing at all       | the leg was gated on the **floored** `gap` join, so §Z5 §M2's own example stayed silent                           | M6a     |
+
+**What the next session needs to know:**
+
+- **`OVERRUNS` is a fifth arm and it is checked before every clock arm** (§AG1). An infeasible leg's
+  leave-by is behind the previous stop's own end, so `PASSED` would own it for ever and say
+  `זמן היציאה עבר` about a departure that was never possible. `PAST` still leads: a gap behind you is
+  a record however impossible it was.
+- **With no gap at all the line is `אין זמן לדרך`, not a shortfall** (§AG2) — there is no gap to be
+  longer than, and the shortfall would be the duration the head already carries. `availableSeconds`
+  is what to branch on, and `freeAfterTravel` deliberately does not clamp it.
+- **⚠ `פער`, never `חור`** (§AG3, owner's call). The drawing says `חור` and mockups are not
+  retrofitted, so `he.ts` carries the note at the string. `חלון` is refused — the app spends
+  "window" on a check-in's own (ADR-0184 §6).
+- **Both day surfaces render one `JourneyRow` now**, moved into `ui/domain/DayJoinRow.tsx` (§AG4).
+  **Plan gets the block without its controls** — `בדרך`/`עדיין כאן` stay Trip's, which is ADR-0171
+  §10e's posture difference, and the drawing's Plan column has no action row either.
+- **⚠ M9's card is corrected.** M6a wrote that moving `earnsChip` onto the corrected number
+  "belongs to M9". It did not: §2 had decided it, and leaving it produced the `0 דק׳` chip. `earnsChipAt`
+  is that threshold in the shape the corrected number can ask. **What is still M9's** is §V1.7's
+  day-level verdict and the slot picker's own `פנוי` line.
+- **`DayBlockEntry.from` is set on every adjacency, not only where a join survived the floor**
+  (§AG6). Anything reading it for travel must not re-add a `join?.kind === 'gap'` gate: `gapBetween`
+  is floored, the floor is about free time, and travel was never its business.
+- **⚠ `amberLegIndex` is in `lib/map-pins.ts` now, not a `useMemo` in `Map.tsx`** (§AG7), and
+  `orderedRoute` keeps each stop beside its pin. A place visited twice is **two stops and one pin**;
+  resolve the occurrence with `relevantMoment`, which is what `buildPinOrderIndex` already does for
+  the pin's number — that agreement is the fix. M8 and M11 both walk this list.
+- **Measured at 360 in Chromium, both themes** (§AG8): every new arm fits its box unclipped, nothing
+  paints outside the column, `scrollWidth` exactly ⁦360⁩, every arm still ⁦58px⁩.
 
 ---
 
@@ -1338,9 +1395,11 @@ one falls back to the crow-flies chip, and that reads as "not this way" rather t
 > about one hole (ADR-0159 §1 forbids a difference about a fact). The chip, the seam and the
 > between-row label now read `useDayTravelReads` (`lib/day-travel.ts`) — **start from that hook, not
 > from `useDayTravel`**. What is still yours: §V1.7's day-level verdict, the **slot picker's** own
-> `פנוי` line (off `dayPositions`, a different derivation that would have to learn about pairs), and
-> whether `earnsChip`'s chip-vs-seam threshold should move onto the corrected number — which M6a
-> deliberately left alone, because it changes which drop targets EXIST rather than what one says.
+> `פנוי` line (off `dayPositions`, a different derivation that would have to learn about pairs).
+> **The `earnsChip` threshold is no longer yours** (ADR-0206 §AG5): M6a's card handed it here, the
+> coverage mockup's §2 had already decided it, and leaving it shipped a chip offering `פער של 0 דק׳`.
+> **And Plan renders the journey block now**, one `JourneyRow` shared with Trip mode — so your
+> day-level verdict sits above a surface that already states each leg.
 
 ADR-0206 **§V1.7**, and its Consequence is the thing to hold on to: Plan mode gains the ability to
 say no, which changes its character from a builder to a builder with an opinion. **It must read as

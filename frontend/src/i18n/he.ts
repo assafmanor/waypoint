@@ -1998,6 +1998,32 @@ export const t = {
     // the same agreement dodge — `שעה פנויה` / `שעתיים פנויות` / `45 דקות פנויות` all disagree
     // with a number the phrase does not expose (§D10).
     freeBefore: (length: string) => `פנוי לפני ${length}`,
+    // **THE LEG THAT DOES NOT FIT** (ADR-0206 §V1.1's third `fit`, drawn in
+    // `where-a-route-shows-up-v1.html` §2's `tight` state). `freeAfterTravel` has answered
+    // `overruns` since M2 and nothing rendered it, so a 78-minute walk into a 60-minute hole read
+    // `פנוי לפני 0 דק׳` — which is not a small amount of free time, it is a journey nobody can
+    // make. It says the SHORTFALL, because that is the number you act on: how much has to move.
+    //
+    // Noun-led like every other line here (§D10), and no `~` on the shortfall: the estimate is
+    // hedged and the arithmetic on it is not, so hedging twice would be theatre. The one hedge is
+    // already on the duration beside it.
+    //
+    // **`פער` and not `חור`, on the owner's call (2026-08-26)** — and it is the app's own word for
+    // this exact slot already (`t.planDay.gap`: `פער של שעתיים · שבץ`), so this is one name for one
+    // thing rather than a third. `חלון` was the other candidate and is refused: the app spends
+    // "window" on a check-in's own (ADR-0184 §6's `לסגירה`), and two windows would be worse than
+    // two gaps. **The drawing says `חור`** (`where-a-route-shows-up-v1.html` §2) and the drawing is
+    // not retrofitted; this note is here so nobody restores it from there.
+    tooLongBy: (length: string) => `הדרך ארוכה מהפער ב־${length}`,
+    // **And when there is no gap at all, the shortfall is not the thing to say.** Two rows that
+    // touch — the next stop starting exactly when the previous one ends — have no gap for the
+    // journey to be longer THAN, so `הדרך ארוכה מהפער ב־12 דק׳` is arithmetically true and reads
+    // as nonsense. It is also the same number twice: with a zero gap the shortfall IS the
+    // journey's own duration, which the head above already states, and printing one number in two
+    // places is the ambiguity ADR-0207 §6 removed from the `בדרך` line.
+    //
+    // Covers an overlap too (a negative gap), where it is just as true.
+    noTimeForTravel: 'אין זמן לדרך',
   },
   hero: {
     title: 'עכשיו והבא בתור',
@@ -2397,6 +2423,12 @@ export const t = {
     parkDropHere: 'שחררו כאן להעברה למדף · ליום הזה',
     parkSomedayDropHere: 'שחררו כאן להעברה למדף · מתישהו',
     gap: (label: string) => `פער של ${label} · שבץ`,
+    // **Why the offer is smaller than the hole** (`where-a-route-shows-up-v1.html` §2's drawn
+    // `bld-slot-note`). Plan mode does not display a hole, it OFFERS it — so when ADR-0206 §V1.1's
+    // correction shrinks the offer, the chip owes the reader the arithmetic rather than a smaller
+    // number with no account of itself. Both values are `gapLabel`'s, the same ladder the chip
+    // above is written in.
+    gapOfWhich: (hole: string, travel: string) => `מתוך ${hole} · ${travel} מהם דרך`,
     // A SEAM (ADR-0161 §2): the same position a gap chip offers, below the chip
     // threshold — including zero, two rows that touch. It exists only while a drag is
     // live, so it names its OUTCOME the way every other drop zone in the builder does

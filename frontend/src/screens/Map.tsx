@@ -95,6 +95,7 @@ import { attachmentCountForContext, attachmentCountsByHost } from '../lib/attach
 import { resolveHostContext } from '../lib/host-context';
 import { useCenterSelected } from '../lib/useCenterSelected';
 import {
+  amberLegIndex,
   buildDayStopSequence,
   buildPinOrderIndex,
   isAsidePin,
@@ -1402,17 +1403,25 @@ export function MapView() {
   // line can claim you went — and so are the aside pins, which is what `ghostsInArea` below
   // relies on.
   const pinByPlace = useMemo(() => new Map(pins.map((pin) => [pin.placeId, pin])), [pins]);
-  const orderedPins = useMemo(
+  // **The route keeps its STOPS beside its pins, and that is what fixes a reported defect.** A
+  // place visited twice is two stops and one pin — since M7c's bookends, routinely: a middle
+  // night's stay is the day's first stop and its last. Mapping straight to pins threw away which
+  // occurrence each entry was, so `findIndex` on a place id answered the FIRST one and the amber
+  // leg was drawn into the morning visit when the evening one was selected.
+  const orderedRoute = useMemo(
     () =>
       dayStops
         .filter((stop) => !stop.tail)
-        .map((stop) => pinByPlace.get(stop.usage.placeId))
-        .filter((pin): pin is MapPin => pin != null && !isAsidePin(pin.tier))
+        .map((stop) => ({ stop, pin: pinByPlace.get(stop.usage.placeId) }))
+        .filter((entry): entry is { stop: DayStop; pin: MapPin } => {
+          return entry.pin != null && !isAsidePin(entry.pin.tier);
+        })
         // A stay that bookends both ends of a day with nothing else on it would otherwise
         // ask for a leg from a place to itself.
-        .filter((pin, i, all) => i === 0 || pin.placeId !== all[i - 1]!.placeId),
+        .filter((entry, i, all) => i === 0 || entry.pin.placeId !== all[i - 1]!.pin.placeId),
     [dayStops, pinByPlace],
   );
+  const orderedPins = useMemo(() => orderedRoute.map(({ pin }) => pin), [orderedRoute]);
   const orderedStops = useMemo(
     () => orderedPins.map(({ lat, lng }) => ({ lat, lng })),
     [orderedPins],
@@ -1428,15 +1437,24 @@ export function MapView() {
   // day's first leg, because Plan mode drew nothing at all otherwise — a reason §AB5 removed in
   // the same PR by making every leg draw its real path. With nothing selected and no live "next",
   // Plan mode now spends **no amber**, which is §D8 as it was always written.
+  //
+  // **Which OCCURRENCE is `relevantMoment`'s**, the same rule that decides the number the pin
+  // wears (`buildPinOrderIndex`) — so the line and the badge agree, which is exactly what a reader
+  // checks when they tap `5` and look for a line from `4`. The decision itself is
+  // `lib/map-pins.ts`'s, because `frontend/CLAUDE.md` puts what the canvas draws in a pure
+  // function rather than in a `useMemo` here; this is where it got the twice-visited day wrong.
   const amberLeg = useMemo(() => {
-    if (allDays || orderedPins.length < 2) return -1;
-    const selected = orderedPins.findIndex((pin) => pin.selected);
-    const asked = selected >= 0 ? selected : orderedPins.findIndex((pin) => pin.nextStop);
-    if (asked < 0) return -1;
-    // The day's first stop is the one place with no leg arriving at it, so it takes the leg
-    // departing it instead. Leg `i` runs from stop `i` to stop `i + 1`.
-    return Math.max(asked, 1) - 1;
-  }, [orderedPins, allDays]);
+    if (allDays) return -1;
+    return amberLegIndex(
+      orderedRoute.map(({ stop }) => stop),
+      {
+        selectedPlaceId: orderedRoute.find(({ pin }) => pin.selected)?.pin.placeId,
+        nextStopPlaceId: orderedRoute.find(({ pin }) => pin.nextStop)?.pin.placeId,
+        eventById: eventLookup,
+        nowMs: nowRef.current,
+      },
+    );
+  }, [orderedRoute, allDays, eventLookup, orderMinute]);
 
   // **What kind of trip this is** (ADR-0206 §Z2), derived rather than stored. Not a constant: a
   // hardcoded `walking` drew footpath routes over legs the trip drives, which is a wrong line

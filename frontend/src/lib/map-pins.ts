@@ -580,6 +580,76 @@ export function buildDayStopSequence(
   return [...sequence, ...tail];
 }
 
+/**
+ * **Which of a place's stops the day is CURRENTLY about**, as an index into an ordered route.
+ *
+ * A place visited twice in one day is two stops, and since M7c's bookends that is the ORDINARY
+ * case rather than an edge one: on a middle night the stay is the day's first stop and its last.
+ * So "the stop you asked about" cannot be answered from a place id alone, and the reported defect
+ * is what happens when you try — `findIndex` on a place id returns the FIRST occurrence, so
+ * selecting the evening visit drew the leg into the morning one.
+ *
+ * The rule is not new and is deliberately not re-invented here: {@link relevantMoment} already
+ * decides which visit a place is about, and {@link buildPinOrderIndex} already uses it to pick the
+ * NUMBER the pin wears. Reading it here too is what makes the amber line agree with the badge on
+ * the pin it is drawn to — which is the whole of what a reader expects when they tap `5` and watch
+ * for a line from `4`.
+ *
+ * `-1` when the place is not in this route at all.
+ */
+export function stopIndexOf(
+  route: readonly DayStop[],
+  placeId: string,
+  ctx: { eventById?: DayStopContext['eventById']; nowMs?: number } = {},
+): number {
+  const mine = route
+    .map((stop, index) => ({ stop, index }))
+    .filter(({ stop }) => stop.usage.placeId === placeId);
+  if (mine.length === 0) return -1;
+  if (mine.length === 1) return mine[0]!.index;
+  const naming = relevantMoment(mine[0]!.stop.day, ctx.nowMs);
+  if (!naming) return mine[0]!.index;
+  const at = mine.find(
+    ({ stop }) =>
+      stop.moment.at === naming.at &&
+      stop.moment.eventId === naming.eventId &&
+      stop.moment.edge === naming.edge,
+  );
+  return (at ?? mine[0]!).index;
+}
+
+/**
+ * **The one leg the day spends its solid amber on** (ADR-0206 §D8 / §AC2) — the journey INTO the
+ * stop you are asking about: the selected one, or the next one in Trip mode.
+ *
+ * Pure and here rather than a `useMemo` in `screens/Map.tsx`, which is where it was when it got
+ * the twice-visited case wrong: `frontend/CLAUDE.md` puts every decision about what the canvas
+ * draws in a `lib/` function precisely so it can be tested without a renderer.
+ *
+ * `-1` for "spend none", which is a real answer: Plan mode with nothing selected spends no amber
+ * at all (§AC1), and a route of fewer than two stops has no leg to spend it on.
+ */
+export function amberLegIndex(
+  route: readonly DayStop[],
+  ctx: {
+    selectedPlaceId?: string;
+    nextStopPlaceId?: string;
+    eventById?: DayStopContext['eventById'];
+    nowMs?: number;
+  },
+): number {
+  if (route.length < 2) return -1;
+  const asked = ctx.selectedPlaceId
+    ? stopIndexOf(route, ctx.selectedPlaceId, ctx)
+    : ctx.nextStopPlaceId
+      ? stopIndexOf(route, ctx.nextStopPlaceId, ctx)
+      : -1;
+  if (asked < 0) return -1;
+  // The day's first stop is the one place with no leg arriving at it, so it takes the leg
+  // departing it instead. Leg `i` runs from stop `i` to stop `i + 1`.
+  return Math.max(asked, 1) - 1;
+}
+
 export function buildPinOrderIndex(
   usages: readonly PlaceUsage[],
   ctx: DayStopContext & { nowMs?: number },

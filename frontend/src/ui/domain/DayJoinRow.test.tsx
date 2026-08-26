@@ -10,9 +10,11 @@
 // what it says, and what it does — and that is what §9 changed.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { BOOKING_TYPE } from '@waypoint/shared';
-import { ConnectionBand, GapStrip, JourneyBlock } from './DayJoinRow';
-import { approxTravelTime } from '../../lib/duration';
+import { BOOKING_TYPE, TRAVEL_MODE } from '@waypoint/shared';
+import { ConnectionBand, GapStrip, JourneyBlock, JourneyRow } from './DayJoinRow';
+import { approxTravelTime, hoursPhrase } from '../../lib/duration';
+import { dayJourney } from '../../lib/day-joins';
+import { formatDistance } from '../../lib/distance';
 import { t } from '../../i18n/he';
 
 const LENGTH = 'שעתיים';
@@ -189,5 +191,74 @@ describe('JourneyBlock', () => {
     );
     expect(container.querySelector('.day-trv-meta')).toBeNull();
     expect(container.querySelector('.day-trv-dist')).toBeNull();
+  });
+});
+
+// ── THE LEG THAT DOES NOT FIT, RENDERED (ADR-0206 §AG) ────────────────────────────────────
+//
+// Reported on both day surfaces: a 78-minute walk into a 60-minute gap read `פנוי לפני 0 דק׳` —
+// not a small amount of free time, a journey nobody can make. `JourneyRow` is where the arm
+// becomes words, so it is asserted here rather than through a screen.
+describe('JourneyRow — the journey does not fit', () => {
+  afterEach(() => cleanup());
+
+  const START = Date.parse('2026-07-12T05:00:00Z');
+  const MIN = 60_000;
+  const row = (holeMinutes: number, walkMinutes: number, nowOffsetMinutes = -10) => {
+    const journey = dayJourney({
+      departAfterMs: START,
+      arriveByMs: START + holeMinutes * MIN,
+      travelSeconds: walkMinutes * 60,
+      distanceMeters: 5500,
+      nowMs: START + nowOffsetMinutes * MIN,
+    })!;
+    return render(
+      <JourneyRow journey={journey} travelMode={TRAVEL_MODE.WALKING} tz="Asia/Tokyo" />,
+    );
+  };
+
+  it('says the shortfall, and never states free time it does not have', () => {
+    const { container } = row(60, 78);
+    expect(screen.getByText(t.travel.tooLongBy(hoursPhrase(18)))).toBeTruthy();
+    expect(container.querySelector('.day-trv.miss')).toBeTruthy();
+    // The number that was reported: nought minutes of free time.
+    expect(container.textContent).not.toContain(t.travel.freeBefore(hoursPhrase(0)));
+    expect(container.querySelector('.day-trv-free')).toBeNull();
+  });
+
+  // The coverage mockup's `tight` state puts the warn glyph in the badge column, where the day
+  // says what kind of thing a row is — and what this row is is a problem. The mode is still named
+  // beside the duration, so nothing is lost.
+  it('marks it in the badge column, and still names the mode and the distance', () => {
+    row(60, 78);
+    expect(screen.getByText(t.travelMode[TRAVEL_MODE.WALKING])).toBeTruthy();
+    // `formatDistance`'s own output, not a literal: it isolates the numeral (ADR-0118), so a
+    // hand-written string never matches what renders.
+    expect(screen.getByText(formatDistance(5500))).toBeTruthy();
+    expect(document.querySelector('.day-trv-ic .icon')).toBeTruthy();
+  });
+
+  // It offers no departure, because there was never one to make — and no `בדרך`, because the
+  // answer to an impossible leg is to move something, not to say you are on your way.
+  it('offers no leave-by', () => {
+    const { container } = row(60, 78);
+    expect(container.textContent).not.toContain('יציאה');
+  });
+
+  // **AND WITH NO GAP AT ALL IT DOES NOT TALK ABOUT ONE** (owner, 2026-08-26). Two rows that touch
+  // have no gap for the journey to be longer THAN, and the shortfall would be the journey's own
+  // duration — already in the head one line up.
+  it('says there is no time, rather than a shortfall, when the rows touch', () => {
+    const { container } = row(0, 12);
+    expect(screen.getByText(t.travel.noTimeForTravel)).toBeTruthy();
+    expect(container.textContent).not.toContain(t.travel.tooLongBy(hoursPhrase(12)));
+    // …and the duration is stated exactly once, in the head.
+    expect(container.querySelectorAll('.day-trv-hd').length).toBe(1);
+  });
+
+  it('is still the ordinary read where the journey fits', () => {
+    const { container } = row(160, 40);
+    expect(container.querySelector('.day-trv.miss')).toBeNull();
+    expect(screen.getByText(t.travel.freeBefore(hoursPhrase(120)))).toBeTruthy();
   });
 });

@@ -120,7 +120,12 @@ import { nowLinePlacement } from '../lib/now-line';
 import { UnplacedCommitment } from '../ui/domain/UnplacedCommitment';
 import { bookingWhen } from '../lib/booking-journey';
 import { approxTravelTime, hoursPhrase } from '../lib/duration';
-import { ConnectionBand, GapStrip, JourneyBlock } from '../ui/domain/DayJoinRow';
+import {
+  ConnectionBand,
+  GapStrip,
+  JourneyRow,
+  type JourneyRowProps,
+} from '../ui/domain/DayJoinRow';
 import {
   CODE_PREFIX,
   DEFAULT_STAY_ICON,
@@ -256,108 +261,6 @@ function JoinRow({
       tight={join.tight}
     />
   );
-}
-
-interface JourneyRowProps {
-  journey: DayJourney;
-  travelMode: TravelMode;
-  /** The DAY's own zone, which is what the leave-by is read in: it is a moment on the wrist of
-   *  whoever is leaving, and this list is that day's. */
-  tz: string;
-  /** The live hole's one control — `בדרך`, or `ביטול סימון` to take that back (ADR-0207 §7).
-   *  Absent on every other hole: a mark is about the journey you are on. */
-  action?: { label: string; onPress: () => void };
-  /** `עדיין כאן` — what a fix at the leg's origin lets the app say that the clock could not
-   *  (ADR-0207 §2). */
-  located?: string;
-  onFill?: () => void;
-  /** The length the fill's accessible name states — the NARROWED slot's, not the hole's. */
-  fillMinutes?: number;
-}
-
-/**
- * **A journey, formatted.** Its own component and not an inline branch of `JoinRow`, because the
- * day's first leg has no join above it (ADR-0206 §AD) and renders outside the block loop — two
- * assemblies of these props is how the bookend leg and every other hole would start saying
- * different things about one journey.
- */
-function JourneyRow({
-  journey,
-  travelMode,
-  tz,
-  action,
-  located,
-  onFill,
-  fillMinutes,
-}: JourneyRowProps) {
-  // **THE FREE TIME RIDES THE QUIET ARMS ONLY**, which is what the v2 mockup's §1 drew and what
-  // the render then insisted on. Three independent reasons, and the last is why it is not a taste
-  // call: on a passed leave-by "what is free before the walk" is a number about a departure you
-  // have already missed, so the urgent fact should have the line to itself; the drawing carries
-  // the mark alone on both urgent states; and measured at 360 in Chromium the two runs together
-  // are ⁦219.70px⁩ of ink in a ⁦180.75px⁩ box — `text-overflow: ellipsis` was eating the free time on
-  // exactly the arm that matters, and pushing `עדיין כאן` out of the block's own edge.
-  const freeSeconds =
-    journey.arm === DAY_JOURNEY_ARM.PASSED || journey.arm === DAY_JOURNEY_ARM.ON_WAY
-      ? undefined
-      : journey.free?.freeSeconds;
-  const free =
-    freeSeconds === undefined
-      ? undefined
-      : t.travel.freeBefore(hoursPhrase(Math.round(freeSeconds / SECONDS_PER_MINUTE)));
-  return (
-    <JourneyBlock
-      mode={t.travelMode[travelMode]}
-      icon={travelMode}
-      duration={approxTravelTime(journey.travelSeconds) ?? undefined}
-      distance={
-        journey.distanceMeters === null ? undefined : formatDistance(journey.distanceMeters)
-      }
-      leave={journeyLeaveLine(journey, tz)}
-      free={free}
-      tone={
-        journey.arm === DAY_JOURNEY_ARM.PASSED
-          ? 'miss'
-          : journey.arm === DAY_JOURNEY_ARM.ON_WAY
-            ? 'on-way'
-            : 'time'
-      }
-      located={located}
-      action={action}
-      onFill={onFill}
-      fillLabel={
-        fillMinutes === undefined ? undefined : t.day.join.fillFree(hoursPhrase(fillMinutes))
-      }
-    />
-  );
-}
-
-/**
- * **What the journey's second line says about leaving**, and the arms are what keep it honest.
- *
- * `PAST` says nothing: a hole whose next row has already started is a record, and a leave-by
- * there is advice about a departure nobody is about to make — without this, a day read at 22:00
- * prints `זמן היציאה עבר` on every hole of it, which is true and useless.
- *
- * `ON_WAY` reports what is LEFT rather than the leg's total (ADR-0207 §6), because the stale
- * total reads as "44 minutes still to walk" two minutes from the door — not more honest but less.
- * The remaining figure is scaled by the crow fraction and hedged; where the ratio is noise it
- * refuses and the line carries the mark alone.
- *
- * The clock is read in the DAY's own zone and isolated: it is a digit run inside Hebrew, and the
- * maqaf before it is a strong RTL character (ADR-0118).
- */
-function journeyLeaveLine(journey: DayJourney, tz: string): string | undefined {
-  if (journey.arm === DAY_JOURNEY_ARM.ON_WAY) {
-    const left = journey.remainingSeconds;
-    const phrase = left === null ? null : approxTravelTime(left);
-    return phrase ? `${t.actions.onWay} · ${t.travel.remaining(phrase)}` : t.actions.onWay;
-  }
-  if (journey.leaveByMs === null) return undefined;
-  const clock = ltrIsolate(formatTime(new Date(journey.leaveByMs), tz));
-  return journey.arm === DAY_JOURNEY_ARM.PASSED
-    ? t.travel.leavePassed(clock)
-    : t.travel.leaveAtDay(clock);
 }
 
 export function DayView() {
@@ -665,9 +568,11 @@ export function DayView() {
     const between: DayLeg[] = [];
     for (const block of blocks) {
       for (const { entry, join, from } of block.entries) {
-        // A connection is presence and never free time, so it has no journey to draw: you are
-        // inside one commitment for the whole of it (`joinBetween`'s own rule).
-        if (!from || join?.kind !== 'gap' || entry.kind !== 'event') continue;
+        // **A connection is the one join that has no journey to draw** — you are inside one
+        // commitment for the whole of it (`joinBetween`'s own rule). Everything else does,
+        // INCLUDING a hole too short to earn a `gap` join at all: the floor is about whether free
+        // time is worth stating and says nothing about travel (§Z5 §M2, and `DayBlockEntry.from`).
+        if (!from || join?.kind === 'connection' || entry.kind !== 'event') continue;
         between.push({ from, to: groupStartEvent(entry.group) });
       }
     }

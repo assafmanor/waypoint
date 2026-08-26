@@ -15,6 +15,7 @@ import {
 import { buildPlaceUsageIndex, type PlaceUsage } from './place-usage';
 import { dayBookendStays } from './glance';
 import {
+  amberLegIndex,
   buildDayStopSequence,
   buildPinOrderIndex,
   hasScheduleSlot,
@@ -867,6 +868,85 @@ describe('the stay bookends the day, and wears no number for it', () => {
     const placeOf = (id?: string) => (id ? events.find((e) => e.id === id)?.placeId : undefined);
     expect(stops[0]?.usage.placeId).toBe(placeOf(woke) ?? 'museum');
     expect(stops[stops.length - 1]?.usage.placeId).toBe(placeOf(sleeps) ?? 'dinner');
+  });
+
+  // ── THE AMBER LEG ON A PLACE YOU VISIT TWICE (owner report, 2026-08-26) ─────────────────
+  //
+  // _"instead of stretching a line from #4 to #5 which is what it was supposed to do, it stretched
+  // from #1"_. A place with two events in one day is two STOPS and one PIN, and since this
+  // milestone's own bookends that is the ordinary case rather than an edge one — a middle night's
+  // stay is the day's first stop AND its last. `screens/Map.tsx` resolved the selection with
+  // `findIndex` over pins, which answers the FIRST occurrence, so selecting the evening visit drew
+  // the leg into the morning one.
+  //
+  // The rule is `relevantMoment`'s, the same one `buildPinOrderIndex` uses to decide which NUMBER
+  // the pin wears — which is why the fix makes the line agree with the badge.
+  describe('the amber leg, on a place the day visits twice', () => {
+    const at2 = (hhmm: string) => `${DAY}T${hhmm}:00Z`;
+    const eventsById = (all: TripEvent[]) => (id: string) => all.find((e) => e.id === id);
+    /** Morning at the gate, lunch at the hall, dinner back at the gate: stops 1, 2, 3 where the
+     *  gate is both 1 and 3. The leg into the evening visit is leg 1 (stop 2 → stop 3). */
+    const twiceVisited = () => {
+      const events = [
+        event({ id: 'm', placeId: 'gate', startsAt: at2('09:00') }),
+        event({ id: 'l', placeId: 'hall', startsAt: at2('13:00') }),
+        event({ id: 'd', placeId: 'gate', startsAt: at2('19:00') }),
+      ];
+      const all = [...usages({ places: [place('gate'), place('hall')], events }).values()];
+      const route = buildDayStopSequence(all, {
+        nameOf,
+        onDate: DAY,
+        eventById: eventsById(events),
+      });
+      return { route, events };
+    };
+
+    it('the day really does hold the same place twice', () => {
+      expect(twiceVisited().route.map((s) => s.usage.placeId)).toEqual(['gate', 'hall', 'gate']);
+    });
+
+    // The reported case: it is the EVENING visit that is live, so the amber leg is the one
+    // arriving at it — `hall → gate`, leg 1 — and not `gate → hall`, leg 0.
+    it('spends the amber on the leg into the visit the clock is about, not the first one', () => {
+      const { route } = twiceVisited();
+      // **The shipped shape, pinned so the defect is legible here rather than only in a
+      // changelog:** `findIndex` over a place id answers the FIRST occurrence, and the leg into
+      // stop 1 is leg 0 — the line from the morning gate, which is what was drawn.
+      const naive = route.findIndex((stop) => stop.usage.placeId === 'gate');
+      expect(Math.max(naive, 1) - 1).toBe(0);
+      // …and what the evening visit actually owes: the leg arriving at stop 3.
+      expect(
+        amberLegIndex(route, { selectedPlaceId: 'gate', nowMs: Date.parse(at2('18:00')) }),
+      ).toBe(1);
+    });
+
+    // …and in the morning the same tap means the other visit, which is the whole point of asking
+    // the clock rather than the array.
+    it('spends it on the FIRST visit’s leg when that is the one the clock is about', () => {
+      const { route } = twiceVisited();
+      // Stop 1 is the day's first, which has no leg arriving at it, so it takes the leg
+      // departing it — leg 0.
+      expect(
+        amberLegIndex(route, { selectedPlaceId: 'gate', nowMs: Date.parse(at2('08:00')) }),
+      ).toBe(0);
+    });
+
+    it('answers the same way for the NEXT stop as for a selection', () => {
+      const { route } = twiceVisited();
+      expect(
+        amberLegIndex(route, { nextStopPlaceId: 'gate', nowMs: Date.parse(at2('18:00')) }),
+      ).toBe(1);
+    });
+
+    // A place visited once needs no clock at all, and a route with nothing asked of it spends no
+    // amber — Plan mode with no selection (§AC1).
+    it('needs no clock for a place visited once, and spends none when nothing is asked', () => {
+      const { route } = twiceVisited();
+      expect(amberLegIndex(route, { selectedPlaceId: 'hall' })).toBe(0);
+      expect(amberLegIndex(route, {})).toBe(-1);
+      expect(amberLegIndex(route, { selectedPlaceId: 'nowhere' })).toBe(-1);
+      expect(amberLegIndex(route.slice(0, 1), { selectedPlaceId: 'gate' })).toBe(-1);
+    });
   });
 
   it('a car hire is NOT a bookend — you hold it, you do not sleep in it', () => {

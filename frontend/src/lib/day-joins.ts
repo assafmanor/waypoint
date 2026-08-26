@@ -15,6 +15,7 @@ import {
   edgeMeaning,
   freeAfterTravel,
   isTightConnection,
+  TRAVEL_FIT,
   type Booking,
   type BookingType,
   type BookingWhen,
@@ -94,12 +95,19 @@ export interface DayBlockEntry {
   index: number;
   /** The join between the previous row and this one; absent on the first. */
   join?: DayJoin;
-  /** **The row the join was measured FROM** (ADR-0206 §V1.3) — the leg's first point, so a
-   *  surface can ask what the journey across this hole costs without walking the list a second
-   *  time and risking a different answer about which rows are adjacent. Recorded here rather
-   *  than re-derived because `dayBlocks` is the one place that knows: `prevEnd` is what a
+  /** **The row above this one, whenever there is one** (ADR-0206 §V1.3) — the leg's first point,
+   *  so a surface can ask what the journey across this hole costs without walking the list a
+   *  second time and risking a different answer about which rows are adjacent. Recorded here
+   *  rather than re-derived because `dayBlocks` is the one place that knows: `prevEnd` is what a
    *  flexible edge is transparent to (ADR-0171 §5), and a second walk would have to reproduce
-   *  that rule to agree with the join beside it. */
+   *  that rule to agree with the join beside it.
+   *
+   *  **Set independently of `join`, and that is the fix for a silence §Z5 §M2 forbade.** A hole
+   *  under `GAP_MIN_MINUTES` — including a zero-length one, two rows that touch — produces no
+   *  `gap` join at all, because `gapBetween` is floored. The JOURNEY in it is still real: _"a
+   *  45-minute hole holding a 40-minute walk"_ is the case that ADR said must not stay silent, and
+   *  gating the leg on the floored gap is exactly how it stayed silent. The floor decides whether
+   *  free time is worth STATING; it has never had anything to say about travel. */
   from?: TripEvent;
 }
 
@@ -139,7 +147,7 @@ export function dayBlocks(entries: readonly DayEntry[], ctx: JoinContext): DayBl
     const leaf = entry.kind === 'event' && entry.group.kind !== 'cluster';
     const start = leaf ? groupStartEvent(entry.group) : null;
     const join = prevEnd && start ? (joinBetween(prevEnd, start, ctx) ?? undefined) : undefined;
-    const from = join ? (prevEnd ?? undefined) : undefined;
+    const from = start ? (prevEnd ?? undefined) : undefined;
     const last = blocks[blocks.length - 1];
     // A connection continues the block above it; everything else starts a new one.
     if (join?.kind === 'connection' && last && last.entries.length > 0) {
@@ -240,6 +248,13 @@ export const DAY_JOURNEY_ARM = {
   /** The hole is behind you — the row below it has already started. A record, so it states the
    *  measurement and nothing else. */
   PAST: 'past',
+  /** **The journey does not fit the hole at all** — `freeAfterTravel`'s third `fit`, which the
+   *  shared derivation has answered since M2 and nothing rendered until it was reported. It says
+   *  the shortfall rather than a leave-by, and it outranks every clock arm below: "this cannot be
+   *  done" is a fact about the PLAN, it does not decay as the hour passes, and it is what you act
+   *  on. Without it an infeasible leg reads `פנוי לפני 0 דק׳` — nought minutes of free time,
+   *  where the truth is a journey nobody can make. */
+  OVERRUNS: 'overruns',
   /** Ahead of the leave-by, or not yet claimable: the journey and when to go. */
   AHEAD: 'ahead',
   /** The leave-by has gone by and nothing has withdrawn that (§V1.4). `--miss`. */
@@ -262,6 +277,9 @@ export interface DayJourney {
   /** What is free once the journey is counted (§V1.1). `null` where the hole has no measurable
    *  window at all, which is the day's first leg out of an ambient stay. */
   free: TravelWindow | null;
+  /** **By how much the journey misses**, in seconds, on the `OVERRUNS` arm — `null` elsewhere.
+   *  The number to act on is the shortfall, not the zero that clamping leaves behind. */
+  overrunSeconds: number | null;
   /** **What is LEFT of the journey**, on the `ON_WAY` arm (ADR-0207 §6) — scaled by the remaining
    *  crow fraction rather than re-routed, and `null` where that ratio is noise. The stale total is
    *  not more honest here but less: it reads as "44 minutes still to walk" two minutes from the
@@ -333,11 +351,24 @@ export function dayJourney(input: {
     distanceMeters: input.distanceMeters ?? null,
     free,
     remainingSeconds: null,
+    overrunSeconds: null,
   };
   // The row below has started: whatever the leave-by says, the departure is not the question any
   // more. Checked FIRST, so a finished day is quiet however late its legs ran.
   if (nowMs >= arriveByMs) {
     return { ...measurement, arm: DAY_JOURNEY_ARM.PAST, leaveByMs: null };
+  }
+  // **Checked before every clock arm, and that ordering is the decision.** An infeasible leg's
+  // leave-by is behind the previous stop's own end, so `PASSED` fires on it almost at once and
+  // would say `זמן היציאה עבר` for ever — advice about a departure that was never possible. The
+  // shortfall does not decay, so it is what the row says until somebody moves something.
+  if (free && free.fit === TRAVEL_FIT.OVERRUNS) {
+    return {
+      ...measurement,
+      arm: DAY_JOURNEY_ARM.OVERRUNS,
+      leaveByMs: null,
+      overrunSeconds: free.overrunSeconds,
+    };
   }
   if (onWay) {
     return {

@@ -24,7 +24,14 @@
 // `.nowline`, and the app gets one live mark.
 //
 // `ui/domain/`: presentational, every value via props.
+import type { TravelMode } from '@waypoint/shared';
 import { Icon, type IconName } from '../Icon';
+import { DAY_JOURNEY_ARM, type DayJourney } from '../../lib/day-joins';
+import { approxTravelTime, hoursPhrase } from '../../lib/duration';
+import { formatDistance } from '../../lib/distance';
+import { formatTime } from '../../lib/time';
+import { ltrIsolate } from '../../lib/bidi';
+import { SECONDS_PER_MINUTE } from '../../constants';
 import { t } from '../../i18n/he';
 import './day-join.css';
 
@@ -232,4 +239,127 @@ export function JourneyBlock({
       )}
     </div>
   );
+}
+
+/** Everything a journey row needs, so the two day surfaces and the day's bookend leg cannot
+ *  assemble it three different ways. */
+export interface JourneyRowProps {
+  journey: DayJourney;
+  travelMode: TravelMode;
+  /** The DAY's own zone, which is what the leave-by is read in: it is a moment on the wrist of
+   *  whoever is leaving, and this list is that day's. */
+  tz: string;
+  /** The live hole's one control — `בדרך`, or `ביטול סימון` to take that back (ADR-0207 §7).
+   *  **Trip mode's alone**: Plan has no inline settle pair (ADR-0159 §1 / ADR-0171 §10e), and the
+   *  coverage mockup's Plan column draws the block with no action row for the same reason. */
+  action?: { label: string; onPress: () => void };
+  /** `עדיין כאן` — what a fix at the leg's origin lets the app say that the clock could not
+   *  (ADR-0207 §2). Trip mode's, for the same reason as `action`. */
+  located?: string;
+  onFill?: () => void;
+  /** The length the fill's accessible name states — the NARROWED slot's, not the hole's. */
+  fillMinutes?: number;
+}
+
+/**
+ * **A journey, formatted.** One component, three hosts: Trip mode's holes, Trip mode's bookend leg
+ * (which has no join above it, ADR-0206 §AD, so it renders outside the block loop), and **Plan
+ * mode**, whose own column in [`where-a-route-shows-up-v1.html`](../../../../mockups/where-a-route-shows-up-v1.html)
+ * §2 draws `trvBlock() + planSlot(…)` — the block AND the chip. Three assemblies of these props is
+ * how the same journey would start reading three ways.
+ */
+export function JourneyRow({
+  journey,
+  travelMode,
+  tz,
+  action,
+  located,
+  onFill,
+  fillMinutes,
+}: JourneyRowProps) {
+  const overrunning = journey.arm === DAY_JOURNEY_ARM.OVERRUNS;
+  // **THE FREE TIME RIDES THE QUIET ARMS ONLY**, which is what the v2 mockup's §1 drew and what
+  // the render then insisted on. Three independent reasons, and the last is why it is not a taste
+  // call: on a passed leave-by "what is free before the walk" is a number about a departure you
+  // have already missed, so the urgent fact should have the line to itself; the drawing carries
+  // the mark alone on both urgent states; and measured at 360 in Chromium the two runs together
+  // are ⁦219.70px⁩ of ink in a ⁦180.75px⁩ box — `text-overflow: ellipsis` was eating the free time on
+  // exactly the arm that matters, and pushing `עדיין כאן` out of the block's own edge.
+  const quiet = journey.arm === DAY_JOURNEY_ARM.AHEAD || journey.arm === DAY_JOURNEY_ARM.PAST;
+  const freeSeconds = quiet ? journey.free?.freeSeconds : undefined;
+  return (
+    <JourneyBlock
+      mode={t.travelMode[travelMode]}
+      // **The warn glyph REPLACES the mode mark on an infeasible leg**, as the coverage mockup's
+      // `tight` state draws it: the badge column is where the day says what kind of thing this
+      // row is, and what this row is is a problem. The mode is still named in the head beside the
+      // duration, so nothing is lost.
+      icon={overrunning ? 'warn' : travelMode}
+      duration={approxTravelTime(journey.travelSeconds) ?? undefined}
+      distance={
+        journey.distanceMeters === null ? undefined : formatDistance(journey.distanceMeters)
+      }
+      leave={journeyMetaLine(journey, tz)}
+      free={
+        freeSeconds === undefined
+          ? undefined
+          : t.travel.freeBefore(hoursPhrase(Math.round(freeSeconds / SECONDS_PER_MINUTE)))
+      }
+      tone={
+        // An overrun is a negative status about the plan, so it takes §D7's own paint — the same
+        // `--miss` a passed leave-by does, because they are the same kind of fact about a journey
+        // you are not going to make on time.
+        overrunning || journey.arm === DAY_JOURNEY_ARM.PASSED
+          ? 'miss'
+          : journey.arm === DAY_JOURNEY_ARM.ON_WAY
+            ? 'on-way'
+            : 'time'
+      }
+      located={located}
+      action={action}
+      onFill={onFill}
+      fillLabel={
+        fillMinutes === undefined ? undefined : t.day.join.fillFree(hoursPhrase(fillMinutes))
+      }
+    />
+  );
+}
+
+/**
+ * **What the journey's second line says**, and each arm is a decision about what may be claimed.
+ *
+ * `OVERRUNS` says the **shortfall** and nothing about leaving: a leg that does not fit has a
+ * leave-by behind the previous stop's own end, so an instruction to go would be advice about a
+ * departure that was never possible. The number you act on is how much has to move.
+ *
+ * `PAST` says nothing at all: a hole whose next row has already started is a record, and without
+ * this a day read at 22:00 prints `זמן היציאה עבר` on every hole of the afternoon.
+ *
+ * `ON_WAY` reports what is LEFT rather than the leg's total (ADR-0207 §6), because the stale total
+ * reads as "44 minutes still to walk" two minutes from the door — not more honest but less. It
+ * refuses when the crow ratio is noise, and then carries the mark alone.
+ *
+ * The clock is read in the DAY's own zone and isolated: it is a digit run inside Hebrew and the
+ * maqaf before it is a strong RTL character (ADR-0118).
+ */
+function journeyMetaLine(journey: DayJourney, tz: string): string | undefined {
+  if (journey.arm === DAY_JOURNEY_ARM.OVERRUNS) {
+    // No gap to be longer than, so the shortfall is not what to say — and with a zero gap it is
+    // the journey's own duration, which the head already carries.
+    if ((journey.free?.availableSeconds ?? 0) <= 0) return t.travel.noTimeForTravel;
+    const over = journey.overrunSeconds;
+    return over === null
+      ? undefined
+      : t.travel.tooLongBy(hoursPhrase(Math.max(1, Math.round(over / SECONDS_PER_MINUTE))));
+  }
+  if (journey.arm === DAY_JOURNEY_ARM.ON_WAY) {
+    const left = journey.remainingSeconds;
+    const phrase = left === null ? null : approxTravelTime(left);
+    return phrase ? `${t.actions.onWay} · ${t.travel.remaining(phrase)}` : t.actions.onWay;
+  }
+  if (journey.leaveByMs === null) return undefined;
+  const clock = ltrIsolate(formatTime(new Date(journey.leaveByMs), tz));
+  return journey.arm === DAY_JOURNEY_ARM.PASSED
+    ? t.travel.leavePassed(clock)
+    : t.travel.leaveAtDay(clock);
 }

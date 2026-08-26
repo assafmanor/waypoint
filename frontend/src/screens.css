@@ -2253,11 +2253,28 @@ button.bld-time.empty {
 .gap {
   margin: 0 0 9px;
   padding: 2px 6px;
+  /* So the note line below can take a row of its own. On `.gap` only and not on the shared block
+     above: a seam never carries a note, and that block's own comment is about not widening what
+     `.gap`'s selectors match. */
+  flex-wrap: wrap;
 }
 .gap-line {
   flex: 1;
   height: 1px;
   background: repeating-linear-gradient(90deg, var(--soft-line) 0 5px, transparent 5px 10px);
+}
+/* **WHY THE OFFER IS SMALLER THAN THE GAP** — `where-a-route-shows-up-v1.html` §2's drawn
+   `bld-slot-note`. It sits under the chip on its own line rather than inside it: the chip is the
+   control and says what it offers, and the arithmetic behind the offer is context, so it takes
+   `--faint` and the row's own quiet size. Full width so it centres under the chip whatever the
+   chip's width is, which is what keeps it reading as that chip's note and not as a row. */
+.bld-slot-note {
+  flex: 0 0 100%;
+  text-align: center;
+  margin-top: 3px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--faint);
 }
 .gap-add {
   font: inherit;
