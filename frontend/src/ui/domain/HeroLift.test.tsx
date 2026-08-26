@@ -532,7 +532,7 @@ describe('HeroLift — the journey between two points (ADR-0206 §V1.2 / §D2)',
       duration: '⁦~23⁩ דק׳',
       leave: t.hero.leavePassed('18:37'),
       tone: 'miss',
-      onOnWay,
+      action: { label: t.actions.onWay, onPress: onOnWay },
     });
     const row = container.querySelector('.hero-trv')!;
     expect(row.classList.contains('miss')).toBe(true);
@@ -573,5 +573,58 @@ describe('HeroLift — the journey between two points (ADR-0206 §V1.2 / §D2)',
     });
     expect(container.querySelector('.wp-board-countdown.missed')).toBeTruthy();
     expect(container.querySelector('.wp-board-countdown .u')?.textContent).toBe(t.board.sinceLeave);
+  });
+});
+
+describe('HeroLift — what a device position adds (ADR-0207 §2)', () => {
+  afterEach(() => cleanup());
+
+  const withTravel = (travel: Parameters<typeof HeroLift>[0]['travel']) =>
+    show({
+      now: [point()],
+      next: point({ key: 'next', title: <span>מלון סנטרו</span> }),
+      nextTime: '18:00',
+      travel,
+    });
+
+  // The one claim a fix licenses that the clock could not: the app saying it CHECKED, rather than
+  // assuming. Teal inside a `--miss` row on purpose — two different facts, one mark.
+  it('draws עדיין כאן beside a passed leave-by, and only when the fix says so', () => {
+    const located = withTravel({
+      mode: t.travelMode.walking,
+      leave: t.hero.leavePassed('⁦18:37⁩'),
+      tone: 'miss',
+      located: t.hero.stillHere,
+    });
+    expect(located.querySelector('.hero-trv-here')?.textContent).toContain(t.hero.stillHere);
+    cleanup();
+    // §2: absent is the DEFAULT — no permission, a refusal, a stale fix, a position that settles
+    // nothing. The row then reads exactly as it did before ADR-0207.
+    const blind = withTravel({
+      mode: t.travelMode.walking,
+      leave: t.hero.leavePassed('⁦18:37⁩'),
+      tone: 'miss',
+    });
+    expect(blind.querySelector('.hero-trv-here')).toBeNull();
+    expect(blind.querySelector('.hero-trv')?.textContent).toContain('זמן היציאה עבר');
+  });
+
+  // §7 — the second half of the same report: the mark had no way back. `ביטול סימון` is the word
+  // `SettleControl` already uses for taking back a mark you set, not a new one.
+  it('offers a way BACK on the on-way row, because a toast is transient and a mark is not', () => {
+    const onPress = vi.fn();
+    const container = withTravel({
+      mode: t.travelMode.walking,
+      leave: `${t.actions.onWay} · ${t.hero.remaining('⁦~12⁩ דק׳')}`,
+      tone: 'on-way',
+      action: { label: t.actions.undoSettle, onPress },
+    });
+    expect(container.querySelector('.hero-trv')?.classList.contains('on-way')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: t.actions.undoSettle }));
+    expect(onPress).toHaveBeenCalled();
+    // §6: what is LEFT, not the leg's total — the total read as "still to walk" from the door.
+    expect(withoutBidiControls(container.querySelector('.hero-trv')?.textContent ?? '')).toContain(
+      'נותרו ~12 דק׳',
+    );
   });
 });
