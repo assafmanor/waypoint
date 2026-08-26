@@ -380,3 +380,34 @@ describe('Board', () => {
     expect(container.querySelector('.wp-board')!.className).not.toContain('is-lifted');
   });
 });
+
+describe('Board — the countdown swaps what it counts to (ADR-0206 §Z1)', () => {
+  const board = (countdown: { value?: string; unit: string; missed?: boolean }) =>
+    render(
+      <Board
+        variant="free"
+        clock="17:22"
+        next={{ title: <span>ארוחת ערב</span>, time: '18:00' }}
+        countdown={countdown}
+      />,
+    );
+
+  // The `unit` slot has said what the minutes are left OF since ADR-0184 §6's `לסגירה`; a live
+  // leave-by is the same fact pointed one step earlier. One tile, three referents.
+  it('is the SAME tile under all three units, never a second box', () => {
+    for (const unit of ['דקות', t.board.leaveIn, t.board.sinceLeave]) {
+      const { container, unmount } = board({ value: '10', unit });
+      expect(container.querySelectorAll('.wp-board-countdown')).toHaveLength(1);
+      expect(container.querySelector('.wp-board-countdown .u')?.textContent).toBe(unit);
+      unmount();
+    }
+  });
+
+  it('paints the tile --miss once the leave-by has passed, and only then', () => {
+    const live = board({ value: '10', unit: t.board.leaveIn });
+    expect(live.container.querySelector('.wp-board-countdown.missed')).toBeNull();
+    live.unmount();
+    const passed = board({ value: '7', unit: t.board.sinceLeave, missed: true });
+    expect(passed.container.querySelector('.wp-board-countdown.missed')).toBeTruthy();
+  });
+});

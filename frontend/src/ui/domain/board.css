@@ -377,6 +377,22 @@
   letter-spacing: 0.08em;
   margin-top: 3px;
 }
+/* **A leave-by that has gone by** (ADR-0206 §Z1's third row, §D7). The SAME tile — the board's
+   one countdown swaps what it counts to rather than growing a second box — in the same
+   low-alpha-fill-plus-brightened-ink recipe `.tlabel.missed` already uses one block up, so this
+   spends no new value. Measured on the fill rather than on the bare board: #f0a0a0 is 7.80:1 over
+   `--board` under an 18% `--miss` wash, and the dimmed unit ink is 6.51:1 at 10px. The pair
+   mirrors the amber `.t`/`.u` split it replaces (ink, then dimmed ink), not a single flat colour. */
+.wp-board-countdown.missed {
+  background: rgba(198, 40, 40, 0.18);
+  border-color: rgba(198, 40, 40, 0.42);
+}
+.wp-board-countdown.missed .t {
+  color: #f0a0a0;
+}
+.wp-board-countdown.missed .u {
+  color: #d79494;
+}
 
 .wp-board-progress {
   margin-top: 16px;

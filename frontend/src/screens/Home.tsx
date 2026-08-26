@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   canPrice,
+  derivedTravelMode,
   EVENT_KIND,
   eventTransitionKeys,
   isAmbient,
@@ -43,6 +44,7 @@ import { orderTaskRows, tasksDueSoon, type TaskClock } from '../lib/tasks';
 import { TripHomeTaskBand } from '../ui/TripHomeTaskBand';
 import {
   dayZoneContext,
+  eventPlaceId,
   liveZone,
   liveZoneContext,
   eventRoute,
@@ -53,7 +55,7 @@ import {
 import { placeLabelOf, shortRoute } from '../lib/place-label';
 import { usePlaceLabels } from '../state/place-labels';
 import { eventMidSpanWords, transitionLabel } from '../lib/transitions';
-import { clockShiftSentence, formatDuration } from '../lib/duration';
+import { approxDuration, clockShiftSentence, formatDuration } from '../lib/duration';
 import { TAB_PARAM, FOCUS_PARAM, INDEX_FOCUS, INDEX_TAB } from '../state/nav-state';
 import {
   countdownParts,
@@ -77,9 +79,17 @@ import {
   countsNights,
 } from '../lib/glance';
 import { deriveHeroBooking } from '../lib/hero-booking';
+import { LEAVE_PHASE, heroLeaveBy, travelOrigin } from '../lib/hero-travel';
+import { useDayTravel } from '../lib/travel';
+import { useOnWay } from '../lib/on-way';
 import { canLift, heroHorizon, type HeroPoint } from '../lib/hero-horizon';
 import { BEAT, playBeat } from '../lib/one-shot';
-import { HeroLift, type HeroLiftPoint, type HeroLiftTask } from '../ui/domain/HeroLift';
+import {
+  HeroLift,
+  type HeroLiftPoint,
+  type HeroLiftTask,
+  type HeroLiftTravel,
+} from '../ui/domain/HeroLift';
 import { toHeroTask } from '../lib/hero-task';
 import { ConverterSheet } from '../ui/domain/ConverterSheet';
 import { currencyForDeviceRegion } from '../lib/currency';
@@ -431,6 +441,78 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     };
   };
 
+  // ── THE JOURNEY BETWEEN TWO POINTS (ADR-0206 §V1.2 / §Z1) ──────────────────
+  // The app's third question — _what do I need in the next 30 minutes_ — answered for the
+  // first time, and answered in the slot that is already BETWEEN the horizon's two points
+  // (§D2). Not a fifth point-depth item: a journey is a property of neither point, which is
+  // how this answers ADR-0160 §U0's admission rule instead of spending it.
+  //
+  // **What kind of trip this is, derived rather than stored** (§Z2) — the same read the Map
+  // makes, off the same function, so a leg cannot be a drive on the canvas and a walk here.
+  const travelMode = useMemo(() => derivedTravelMode(bookings), [bookings]);
+  // **Where the journey starts.** The leg is between two SCHEDULED stops, which is what makes
+  // it a fact about the plan rather than a claim about a person: during an event the schedule
+  // says you are at that event's place, and in a gap it says the last thing that started is
+  // where it left you. That is the same leg `DayJoinRow` measures a hole with (§V1.1), so the
+  // day row's leave-by and the board's cannot differ.
+  //
+  // The now point's own `placeId` is read from the horizon rather than re-resolved, because
+  // mid-span it already resolves to where you are GOING (`midSpanEventId`) — a flight in the
+  // air measures the leg out of the airport it lands at, not the one it left.
+  //
+  // Scoped to the CLOCK's own day and not to `activeDate`: the board is the live surface, so
+  // swiping the day strip to tomorrow must not change where the journey it draws starts from.
+  const travelPrev = travelOrigin({
+    events: events.filter((e) => e.date === today),
+    nowMs,
+    excludeEventId: shownNext?.id,
+  });
+  const travelFromId =
+    horizon.now[0]?.placeId ??
+    (travelPrev
+      ? eventPlaceId(
+          travelPrev,
+          travelPrev.bookingId ? bookings.find((b) => b.id === travelPrev.bookingId) : undefined,
+        )
+      : undefined);
+  const travelToId = horizon.next?.placeId;
+  const coordOf = (placeId?: string) => {
+    const place = placeId ? places.find((p) => p.id === placeId) : undefined;
+    return place?.lat != null && place.lng != null ? { lat: place.lat, lng: place.lng } : undefined;
+  };
+  const travelFrom = coordOf(travelFromId);
+  const travelTo = coordOf(travelToId);
+  // Two stops that are one place is not a journey — and `ROUTE_MIN_CROW_M` would refuse it
+  // anyway, so asking costs a request to be told what we already know.
+  const travelLeg =
+    travelFrom && travelTo && travelFromId !== travelToId
+      ? { from: travelFrom, to: travelTo }
+      : null;
+  // One leg, every mode the gate admits, so §Z2's switch stays a read from cache when M8 builds
+  // it. An empty `stops` asks for nothing at all — the hook's own fingerprint is empty.
+  const dayTravel = useDayTravel({
+    tripId: trip.id,
+    stops: travelLeg ? [travelLeg.from, travelLeg.to] : [],
+  });
+  const travelEstimate = travelLeg
+    ? dayTravel.estimateFor(travelLeg.from, travelLeg.to, travelMode)
+    : null;
+  // **`null` is the ordinary answer** (§D4): offline, refused, over the ceiling, still warming,
+  // provider down, or a leg somebody declared תחב״צ (§AA4 — a stored mode with no provider, so
+  // `estimateFor` cannot be asked for it and this cannot be anything but `null`). Every one of
+  // them leaves the board counting to the event and this block absent, with no layout shift.
+  const leave = nextInstant
+    ? heroLeaveBy({
+        arriveByMs: Date.parse(nextInstant),
+        travelSeconds: travelEstimate?.durationSeconds ?? null,
+        nowMs,
+      })
+    : null;
+  // **Somebody said `בדרך`** (§Z5 §M4) — the one thing on this screen that knows what a sensor
+  // would, because a person said it. It withdraws the whole leave read: once they are moving,
+  // counting to a departure they have already made is the wrong question.
+  const onWayToNext = useOnWay(trip.id, shownNext?.id);
+
   const progress = Math.round(dayProgress(now, tz) * 100);
   // Board countdown: minutes/hours while the next event is under a day out; past
   // that, a calendar-relative day word (ADR-0085) — "מחר"/"מחרתיים" derived from
@@ -448,14 +530,43 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // floor has passed, so a countdown to it would be negative and meaningless, while the
   // ceiling is the moment you can no longer check in at all.
   const closingMins = hero.closing && hero.closesAt ? minutesUntil(hero.closesAt, now) : null;
+  // **The board's ONE countdown changes what it counts to** (ADR-0206 §Z1). `עוד 45 דק׳` is not
+  // merely less useful once you should be leaving — it is wrong, it says you have 45 minutes —
+  // so this is a third arm on the ternary above rather than a second tile beside it. The `unit`
+  // slot has said what the minutes are left OF since ADR-0184 §6, which is the whole mechanism.
+  //
+  // Measured on time-to-leave and not time-to-event (§AA1): on the other end the length of the
+  // walk would move the swap. Suppressed once somebody says they are moving.
+  //
+  // `at` rides along because the collision below compares the two CANDIDATES rather than the
+  // words they print, and a formatted `H:MM` cannot be compared to a minute count.
+  const leaveTile =
+    leave && !onWayToNext && leave.phase !== LEAVE_PHASE.AHEAD
+      ? {
+          at: leave.minutesToLeave,
+          countdown:
+            leave.phase === LEAVE_PHASE.PASSED
+              ? {
+                  ...formatCountdown(-leave.minutesToLeave),
+                  unit: t.board.sinceLeave,
+                  missed: true,
+                }
+              : { ...formatCountdown(leave.minutesToLeave), unit: t.board.leaveIn },
+        }
+      : null;
+  // ⚠ **A shutting check-in window and a live leave-by can both be true in one minute**, and
+  // this epic inherited the collision rather than creating it (§Z5 §M1). There is ONE tile, so
+  // the NEARER NUMBER WINS — drawing both costs 11px of the `הבא בתור` title and breaks it onto
+  // a second line at 360px. A passed leave-by is negative, so it is nearer than any window.
   const countdown =
-    closingMins != null
+    closingMins != null && (leaveTile === null || closingMins <= leaveTile.at)
       ? { ...formatCountdown(closingMins), unit: t.board.closesIn }
-      : !nextInstant
-        ? null
-        : minsToNext >= MINUTES_PER_DAY
-          ? countdownParts(nextDayDelta)
-          : formatCountdown(minsToNext);
+      : (leaveTile?.countdown ??
+        (!nextInstant
+          ? null
+          : minsToNext >= MINUTES_PER_DAY
+            ? countdownParts(nextDayDelta)
+            : formatCountdown(minsToNext)));
 
   const nowZones = zonesOf(nowEvent);
   // The NEXT slot's instant is a start for an ordinary event but an **end** for a
@@ -474,6 +585,40 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       ? ltrIsolate(
           `${formatTime(nextInstant, nextZone ?? tz)}–${formatTime(nextWindowBound, nextZone ?? tz)}`,
         )
+      : undefined;
+
+  /** **§V1.2's read, for the horizon** — `~23 דק׳ · צאו ב־18:37`, where the collapsed board
+   *  carries only the one urgent phrase (§Z1's last paragraph).
+   *
+   *  Three things about the strings, each of which is a rule rather than a preference. The
+   *  duration is `approxDuration`'s, so the `~` sits INSIDE the bidi isolate and the number
+   *  rounds onto ADR-0114's ladder (§D3/§D5) — `~40` renders `40~` without it. The leave-by is
+   *  read in the **live** zone and not the destination's, because it is a moment on the wrist of
+   *  whoever is leaving (ADR-0107 §4). And a passed leave-by says only that it passed
+   *  (`זמן היציאה עבר ב־18:37`), never `אתם באיחור`: the app has no sensor, a settle mark is not
+   *  one, and own-device position wants its own ADR before this surface reads it (§Z5 §M4). */
+  const leaveClock = leave ? ltrIsolate(formatTime(new Date(leave.leaveByMs), tz)) : '';
+  const heroTravel: HeroLiftTravel | undefined =
+    leave && travelEstimate
+      ? {
+          // **The mode leads, as the M3 mockup drew it** — §D10's noun-first dodge, and the thing
+          // that makes the number mean anything: 40 minutes is a different fact walking and
+          // driving. The mode is DERIVED (§Z2), so naming it claims nothing a control has to
+          // back; §AA3's three icons are the control's, and M8's.
+          mode: t.travelMode[travelMode],
+          duration: approxDuration(travelEstimate.durationSeconds / 60) ?? undefined,
+          leave: onWayToNext
+            ? t.actions.onWay
+            : leave.phase === LEAVE_PHASE.PASSED
+              ? t.hero.leavePassed(leaveClock)
+              : t.hero.leaveAt(leaveClock),
+          tone: onWayToNext ? 'on-way' : leave.phase === LEAVE_PHASE.PASSED ? 'miss' : 'time',
+          // The mark's own answer, offered where the mark is drawn — a nudge you have to change
+          // tabs to dismiss is a nudge that stays on screen.
+          ...(shownNext && !onWayToNext && leave.phase === LEAVE_PHASE.PASSED
+            ? { onOnWay: () => verbs.onWay(shownNext) }
+            : {}),
+        }
       : undefined;
 
   const wifi = hotelWifi(bookings, events, nowMs);
@@ -754,6 +899,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           nextTime={boardNext?.time}
           nextCode={nextCode}
           countdown={countdown}
+          travel={heroTravel}
           then={
             horizon.then
               ? { title: horizon.then.title, time: formatTime(horizon.then.startsAt, tz) }

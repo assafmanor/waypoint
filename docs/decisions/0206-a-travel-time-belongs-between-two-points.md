@@ -1,6 +1,6 @@
 # 0206 — A travel time belongs **between** two points, and the day owes you the truth about it
 
-**Status:** **Accepted 2026-08-25** on the owner's M0 answers, and **amended by them** — read §Z before §M1 or §V1.6, which both changed. **Built so far: the arithmetic only** — §V1.1's, §V1.2's and §V1.7's derivations landed in `@waypoint/shared` with M2 on 2026-08-25 (see §V1's amendment). **Nothing renders yet, and nothing here ships without a mockup** (§M).
+**Status:** **Accepted 2026-08-25** on the owner's M0 answers, and **amended by them** — read §Z before §M1 or §V1.6, which both changed. **Built so far:** the arithmetic (M2), the map's polyline and how it reads (§AB–§AD, M7/M7b/M7c), and **§V1.2 + §Z1 — the hero read and the board's countdown swap (§AE, M6b, 2026-08-26)**. §V1.1/§V1.3/§V1.4's day row is M6a's and is not built. **Nothing here ships without a mockup** (§M).
 **Date:** 2026-08-24
 **Companion:** [ADR-0205](0205-routes-are-computed-not-bought-and-a-route-is-a-cache.md) decides where a route comes from. This one decides **what it says, what v1 answers, and what v2 waits for.**
 **Research:** [`planning/2026-08-24-routes-and-travel-time-what-is-actually-possible.md`](../planning/2026-08-24-routes-and-travel-time-what-is-actually-possible.md)
@@ -714,3 +714,133 @@ everything §AB–§AC built:
   still pairs consecutively, so it is still **one** `withShapes` request per day (§Z5 §M3), just a
   slightly longer one. A day whose only stops are the two ends of one stay collapses to a single
   stop and asks for nothing.
+
+## AE. Amendment (2026-08-26) — what M6b settled by building the hero read
+
+§V1.2 and §Z1 are built. Seven notes, each recorded here rather than left in the code for a later
+reader to reconstruct. **Nothing in §D or §V changed**: six are gaps in the record being filled, and
+§AE6 is a regression against the M3 drawing being undone.
+
+**On the mockup gate (§M).** Four of these are decisions the drawing did not make, and none of them
+was taken back to a mockup — a judgement call, on the owner's instruction to draw only what is not
+trivial, and the precedent is the board's own: _"a word in an existing slot spends no new axis, where
+a mark would have spent one"_ (M7c's second field report). §AE1 is a word in a slot §Z5 already
+measured; §AE2's teal line and its `בדרך` control are the v2 journey block one elevation up, which is
+ADR-0160's whole thesis rather than a new surface; §AE3 and §AE4 are arithmetic with no drawing to
+make. **§AE2's other half is not a drawing question at all** and is the one flagged for the owner:
+whether a device-only mark is the right floor.
+
+### AE1. The passed arm's unit word is `מהיציאה` — the same noun, the preposition flipped
+
+§Z5 §M1 measured `ליציאה` for the live arm and §AA2 confirmed it. **Neither answered what the tile
+says once the leave-by has gone by**, and the two mockups disagree: v1 drew `7 · באיחור`, and v2 §3
+refused exactly that — _"How will the app know whether you're on time or late?"_ It cannot, so
+`באיחור` is a claim about a person over data that is only about a clock.
+
+**`מהיציאה` is the answer, and the mechanism is why.** ADR-0184 §6 made the unit slot say what the
+minutes are left **of**; `ליציאה` follows it; this flips the preposition so the minutes are counted
+**from** the leave-by instead of **to** it. It states that the time passed and by how much — both
+facts about the clock — and claims nothing about where anybody is. The `--miss` paint carries the
+urgency (§D7), which is why the word does not have to.
+
+Rejected: `באיחור` (above); a bare `עבר` (a verb where the slot holds a noun phrase, and it reads as
+an event rather than a measurement); and dropping the number to fit a longer sentence, which throws
+away the difference between two minutes past and forty.
+
+### AE2. `בדרך` writes state, and it is a DEVICE mark — the group-visible one is deferred
+
+§Z5 §M4 named `בדרך` as the mark's own answer and recorded that `verbs.ts:1361` was a toast with no
+write. It writes now, into `frontend/src/lib/on-way.ts`: a `localStorage` map keyed by trip and
+event, pruned by a 24-hour window on read, read through `useSyncExternalStore` so the board, the
+horizon and the day row cannot hold different answers.
+
+**What it buys is the whole of what the mark needs** — the person who pressed it stops being nudged,
+on both elevations, and the leave read disappears rather than turning into a second claim.
+
+**What it does not buy is the share, and the copy no longer claims one.** `t.toast.onWayShared` read
+`שותף לקבוצה · בדרך` over a verb that wrote nothing at all, which made it the one confirmation in the
+app that was false; it is now `בדרך · לא שותף לקבוצה עדיין`. A group-visible mark is a stored field,
+a Prisma migration and a `CACHE_CHANNELS` mirror — a milestone rather than a line, and on the
+backlog. **A device mark is the honest floor, not a placeholder for the real one:** what the group
+sees still comes only from a verb a person pressed (§M4's rule), and this is that verb finally
+keeping its own record.
+
+### AE3. The journey's ORIGIN is the previous SCHEDULED stop, never a guess about where anyone is
+
+The ADR says the travel time belongs between two points (§D2) and never says which two when nothing
+is in progress — and a gap is most of a real day, so the question is not an edge case.
+
+**The origin is the primary now point when there is one, and otherwise the latest stop that has
+already started.** That makes the leg a fact about the **plan**: during an event the schedule itself
+says you are at that event's place, and in a gap it says the last thing that started is where it left
+you. It is deliberately the same leg `DayJoinRow` measures its hole with (§V1.1), so the day row's
+leave-by and the board's cannot differ about one journey.
+
+**It does not walk further back when that stop has no coordinates.** The stop before it is somewhere
+you have already left, and offering it would invent a position — the same refusal §M4 makes about the
+clock, applied to place. No coordinates is §D4's absence, like every other missing estimate.
+
+**Two limits, stated rather than discovered.** It is scoped to the **clock's own day**, so swiping
+the day strip does not change where the journey the board draws starts from — and a morning before
+anything has started therefore has no origin and no read. And it does **not** reach for §AD's
+bookends: the stay you woke in is the honest origin for that morning, but finding it needs
+`buildDayStopSequence` and the place-usage index the Map holds, which is a widening of this surface
+rather than a line in it. **That is the first thing M6a or M11 should reconcile**, because whichever
+of them derives an origin differently makes the two surfaces state different leave-bys for one
+journey.
+
+### AE4. The collision is decided in code, and a passed leave-by is negative for that reason
+
+§Z5 §M1 named the collision — a shutting check-in window (ADR-0184 §6) and a live leave-by, both true
+in one minute, one tile — and said the nearer number wins. The implementation detail worth recording:
+`heroLeaveBy` returns **signed** minutes, so a passed leave-by is below zero and therefore nearer
+than any window that has not shut yet. That ordering is not a separate rule; it falls out of not
+clamping, which `leaveBy` already refuses to do for §V1.4's sake.
+
+### AE5. The tile widens on `H:MM`, and that is arm 1's shipped behaviour rather than the swap's
+
+Measured in Chromium at 360px. All four unit words — `דקות`, `לסגירה`, `ליציאה`, `מהיציאה` — fit the
+`74px` tile unchanged, confirming §Z5's measurement for the new word. **What widens the tile is the
+VALUE:** `2:00 · שעות`, which arm 1 shows today for any next event an hour or more out, measures
+`76.58px` and breaks a long `הבא בתור` title onto a second line (`21px` → `41px`). A leave-by passed
+by more than an hour reaches the same rung, so the swap inherits the behaviour and does not cause it.
+
+Recorded here because the obvious reading of §AA1 — _"anything ≥60 forces the tile into `H:MM`"_ — is
+about the contradiction between `H:MM` and a unit meaning minutes, and this is the **width** half of
+the same fact, which nobody had measured. Left unfixed on purpose: it is a `.wp-board-next-row`
+question, not a routes one, and it is on the backlog.
+
+### AE6. The mode leads the line, and dropping it was a regression against the drawing
+
+The first build of this shipped `~23 דק׳ · צאו ב־18:37` — the sentence §V1.2 names — and **the M3
+mockup's §1d had drawn `הליכה · ~40 דק׳ · צאו ב־18:37`**, with the mode. Restored, because the mode
+was carrying two things and neither is decoration:
+
+- **It is §D10's dodge.** `~23 דקות הליכה` and `שעה הליכה` disagree, which is the trap §D10 names and
+  ADR-0159 §1 already solved by leading with the noun. `הליכה · ~23 דק׳` has no adjective to agree.
+- **It is what makes the number mean anything.** Forty minutes is a different fact walking and
+  driving, and §Z2 makes the mode a **derived** fact — so naming it claims nothing a control has to
+  stand behind. §AA3's three icons belong to the mode CONTROL, which is M8's; these are the words.
+
+`t.travelMode` is a `Record<TravelMode, string>` at the top level of `he.ts` rather than under
+`hero`, because M6a's journey block and M8's control name the same three things (root rule 8).
+
+**Measured at 360px, and it costs nothing:** every state stays exactly the height it was without the
+word — `time` and `on-way` one line at `30px`, the `--miss` row two lines at `46px` **with or
+without** it, because what takes that width is the `בדרך` button rather than the copy. No horizontal
+overflow in any state.
+
+### AE7. The hedge is one function, because two would disagree
+
+`~` + ADR-0114's ladder is `approxDuration` in `lib/duration.ts`, beside `hoursPhrase` and
+`formatDuration` rather than in either surface. **M6a needs the identical token**, and a second copy
+is how the hero and the day row start saying `~40 דק׳` and `40 דק׳` about one leg.
+
+Two things it decides that the ADR left implicit:
+
+- **The `~` goes inside the bidi isolate, with the digits** — verified by measurement rather than by
+  reading, because §Z5's own report of this defect did not stop it reaching the second mockup. In
+  Chromium at 360px, with the isolate the `~` renders at x`314` and the `2` at x`326`, so it reads
+  `~23`; without it the `~` is at x`336`, to the **right** of both digits, and reads `23~`.
+- **The exact-hour rungs are words, so they take `כ` instead**: `שעה` hedged is `כשעה`. A tilde in
+  front of a Hebrew word means nothing and is a second neutral character in an RTL run.

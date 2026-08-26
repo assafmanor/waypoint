@@ -421,3 +421,70 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── THE JOURNEY BETWEEN TWO POINTS (ADR-0206 §V1.2 / §D2) ────────────────────
+   `~23 דק׳ · צאו ב־18:37`, in the slot that is already between two points: this sits under
+   `.wp-board-divider` rather than beside a point, because a journey is a property of neither
+   one. That is what keeps §D2 from becoming a fifth point-depth item and answers ADR-0160
+   §U0's admission rule instead of spending it.
+
+   The recipe is the board's own — a low-alpha semantic fill under a brightened ink, exactly
+   as `.wp-board-countdown`, `.code`, `.tlabel` and `.hero-act` already do it on this
+   always-dark surface — so no new value is minted and rule 4 is untouched. Amber is the
+   travel time (§D1), `--miss` is the risk (§D7), teal is somebody saying where they are
+   (ADR-0141's journey grammar). `--amber-deep` would be wrong here: it is amber's PAPER
+   variant, and this ground is the board.
+
+   §D6 is why there is no animation in this block. The app has one live mark, `.nowline` is
+   it, and a swap is not a second one — so a leave-by that has passed is ink and a word, never
+   a pulse or a glow. */
+.hero-trv {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 10px 0 12px;
+  padding: 7px 11px;
+  border-radius: 11px;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(233, 166, 60, 0.12);
+  border: 1px solid rgba(233, 166, 60, 0.26);
+  color: var(--amber);
+}
+.hero-trv .icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+/* The runs wrap together rather than the row breaking between the glyph and the words —
+   `זמן היציאה עבר ב־18:37` beside a duration is the widest state and it reaches two lines at
+   360px, which is a scroller's business and not a tile's. */
+.hero-trv-txt {
+  min-width: 0;
+}
+.hero-trv .sep {
+  opacity: 0.55;
+  font-weight: 400;
+}
+/* 7.80:1 over the board under this fill, measured — the same `#f0a0a0` the board's shut-window
+   label uses, and the same reason: `--miss` as a graphic fails what it crosses, so the ink is
+   the brightened variant (§D7's own note that the fill fails AA as ink). */
+.hero-trv.miss {
+  background: rgba(198, 40, 40, 0.18);
+  border-color: rgba(198, 40, 40, 0.42);
+  color: #f0a0a0;
+}
+/* Somebody said `בדרך` (§Z5 §M4). Teal because it is a claim about where they are, which is
+   the only thing rule 4 spends teal on — 8.91:1 over the board under this fill. */
+.hero-trv.on-way {
+  background: rgba(44, 156, 144, 0.14);
+  border-color: rgba(44, 156, 144, 0.34);
+  color: #7fd8cc;
+}
+/* The one control in the block, and it exists so the mark can be withdrawn where it is drawn
+   rather than one tab away. `.hero-act` unchanged, pushed to the row's end. */
+.hero-trv-act {
+  margin-inline-start: auto;
+  min-height: 30px;
+  font-size: 12px;
+}

@@ -16,6 +16,7 @@ import {
   MINUTES_PER_DAY,
   MINUTES_PER_HOUR,
 } from '../constants';
+import { ltrIsolate } from './bidi';
 import { dayPhrase, monthPhrase, weekPhrase, yearPhrase } from './hebrew';
 import { t } from '../i18n/he';
 
@@ -34,6 +35,38 @@ export function hoursPhrase(minutes: number): string {
         ? t.eventForm.durTwoHours
         : t.eventForm.durHours(h);
   return t.eventForm.durMinutes(m);
+}
+
+/**
+ * **A travel time, hedged** (ADR-0206 §D5 over §D3) — `~23 דק׳`, `~1:13 שע׳`, `כשעה`.
+ *
+ * The ladder is `hoursPhrase`'s, untouched: an estimate is a duration and this app has one
+ * duration ladder (ADR-0114, read a second way). A route that answers 1,268 s is `~21 דק׳` and
+ * one that answers 4,355 s is `~1:13 שע׳`, never `~72 דק׳`. What this adds is the `~`, because an
+ * OSM pedestrian estimate is an estimate and §D5 refuses a number that claims otherwise.
+ *
+ * **The `~` goes INSIDE the isolate, with the digits.** It is bidi-neutral, so beside a numeral
+ * in an RTL flow it resolves right and lands on the far side of the number: `~40` renders `40~`.
+ * ADR-0206 §Z5 found it by rendering the first routes mockup and it reached the second one
+ * anyway, which is why it is stated here rather than left to each caller.
+ *
+ * **The exact-hour rungs are words, so they take the Hebrew prefix instead.** `שעה` hedged is
+ * `כשעה`; a tilde in front of a Hebrew word means nothing and is a second bidi trap. That is
+ * also why the number-led rungs are rebuilt here rather than sliced out of the phrase — the head
+ * is computed, so nothing depends on parsing `hoursPhrase`'s output back apart.
+ *
+ * `null` for nothing to measure, exactly as `formatDuration` answers it — a zero-second leg is
+ * two stops that are one place (`ROUTE_MIN_CROW_M`), which is §D4's absence and not a `0 דק׳`.
+ */
+export function approxDuration(minutes: number): string | null {
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+  const total = Math.round(minutes);
+  const h = Math.floor(total / MINUTES_PER_HOUR);
+  const m = total % MINUTES_PER_HOUR;
+  if (h && !m) return `${t.common.about}${hoursPhrase(total)}`;
+  const head = h ? `${h}:${String(m).padStart(2, '0')}` : String(m);
+  const phrase = hoursPhrase(total);
+  return `${ltrIsolate(`~${head}`)}${phrase.slice(head.length)}`;
 }
 
 /** **The clock jump, as a sentence** (session 215) — `מזיזים את השעון שעה קדימה`.

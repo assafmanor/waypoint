@@ -6,6 +6,7 @@ import { DayRail } from './Board';
 import { HeroLift, type HeroLiftPoint, type HeroLiftTask } from './HeroLift';
 import { t } from '../../i18n/he';
 import { wrapNav } from '../../test/nav-harness';
+import { withoutBidiControls } from '../../lib/bidi';
 
 /** The lifted hero registers a back layer (it is a `Modal`), so it cannot be
  *  rendered bare — `wrapNav` supplies the provider stack rather than this file
@@ -450,5 +451,127 @@ describe('HeroLift', () => {
       nextTime: '16:00',
     });
     expect(container.querySelectorAll('.wp-tzshift')).toHaveLength(2);
+  });
+});
+
+describe('HeroLift — the journey between two points (ADR-0206 §V1.2 / §D2)', () => {
+  afterEach(() => cleanup());
+
+  const withTravel = (travel: Parameters<typeof HeroLift>[0]['travel']) =>
+    show({
+      now: [point()],
+      next: point({ key: 'next', title: <span>מלון סנטרו</span>, kind: 'hard' }),
+      nextTime: '18:00',
+      travel,
+    });
+
+  // §D2 is a claim about WHERE it lives, so the assertion is structural rather than about the
+  // words: between the divider and the `הבא בתור` block, which is the slot that was already
+  // between two points. Anywhere else and it has become a fifth point-depth item — the thing
+  // ADR-0160 §U0's rule refuses and §D2 answers instead of spending.
+  it('renders BETWEEN the two points, not on either of them', () => {
+    const container = withTravel({
+      mode: t.travelMode.walking,
+      duration: '⁦~23⁩ דק׳',
+      leave: 'צאו ב־⁦18:37⁩',
+      tone: 'time',
+    });
+    const parts = [...container.querySelectorAll('.hero-scroll > *')];
+    const divider = parts.findIndex((el) => el.classList.contains('wp-board-divider'));
+    const travel = parts.findIndex((el) => el.querySelector('.hero-trv'));
+    const next = parts.findIndex((el) => el.querySelector('.wp-board-next-row'));
+    expect(divider).toBeGreaterThanOrEqual(0);
+    expect(travel).toBe(divider + 1);
+    expect(next).toBe(travel + 1);
+    // Not inside a point, and the points keep the depth blocks they had.
+    expect(container.querySelector('.hero-point .hero-trv')).toBeNull();
+  });
+
+  // **The mode LEADS**, which is §D10's dodge (`~23 דקות הליכה` disagrees; `הליכה · ~23 דק׳` does
+  // not) and is how the mockup drew it — 40 minutes is a different fact walking and driving.
+  it('reads mode · hedged duration · leave-by, in that order, as one line', () => {
+    const container = withTravel({
+      mode: t.travelMode.walking,
+      duration: '⁦~23⁩ דק׳',
+      leave: 'צאו ב־⁦18:37⁩',
+      tone: 'time',
+    });
+    const row = container.querySelector('.hero-trv')!;
+    const text = withoutBidiControls(row.textContent ?? '');
+    expect(text).toContain('הליכה');
+    expect(text.indexOf('הליכה')).toBeLessThan(text.indexOf('~23'));
+    expect(text.indexOf('~23')).toBeLessThan(text.indexOf('צאו'));
+    // §D10: the separator is the middle dot, never an em dash — and one dot per join, so a
+    // three-run line carries two.
+    expect(row.querySelectorAll('.sep')).toHaveLength(2);
+    expect(row.textContent).not.toContain('—');
+  });
+
+  // A run that is absent takes its separator with it, rather than leaving a leading dot.
+  it('joins only the runs it has', () => {
+    const container = withTravel({ leave: 'צאו ב־⁦18:37⁩', tone: 'time' });
+    const row = container.querySelector('.hero-trv')!;
+    expect(row.querySelectorAll('.sep')).toHaveLength(0);
+    expect((row.textContent ?? '').trim().startsWith('צאו')).toBe(true);
+  });
+
+  // **§D4, and the exit criterion.** An absent estimate is the ordinary case, so the card must
+  // read exactly as it did before this milestone — no empty row, no placeholder, no height.
+  it('renders NOTHING at all with no estimate, so there is no layout shift', () => {
+    const container = withTravel(undefined);
+    expect(container.querySelector('.hero-trv')).toBeNull();
+    expect(container.querySelectorAll('.wp-board-divider')).toHaveLength(1);
+  });
+
+  // §M4: from the clock alone the only supportable claim is that the leave-by has passed. The
+  // sentence is the caller's, so what this asserts is that the tone reaches the ink and the
+  // answer reaches the row — a mark you have to change tabs to withdraw stays on screen.
+  it('a passed leave-by wears --miss and offers בדרך, which is the mark’s own answer', () => {
+    const onOnWay = vi.fn();
+    const container = withTravel({
+      duration: '⁦~23⁩ דק׳',
+      leave: t.hero.leavePassed('18:37'),
+      tone: 'miss',
+      onOnWay,
+    });
+    const row = container.querySelector('.hero-trv')!;
+    expect(row.classList.contains('miss')).toBe(true);
+    expect(row.textContent).toContain('זמן היציאה עבר');
+    expect(row.textContent).not.toContain('באיחור');
+    fireEvent.click(screen.getByRole('button', { name: t.actions.onWay }));
+    expect(onOnWay).toHaveBeenCalled();
+  });
+
+  // §D6: the app has one live mark and `.nowline` is it. A swap re-points a countdown; it does
+  // not mint a second pulse, glow or countdown, and the risk mark is text (§D7).
+  it('spends no second live mark and no second countdown', () => {
+    const container = withTravel({
+      duration: '⁦~23⁩ דק׳',
+      leave: t.hero.leavePassed('18:37'),
+      tone: 'miss',
+    });
+    expect(container.querySelectorAll('.wp-board-countdown')).toHaveLength(0);
+    expect(container.querySelectorAll('.nowline')).toHaveLength(0);
+    expect(container.querySelector('.hero-trv')?.querySelector('button')).toBeNull();
+  });
+
+  it('once somebody says בדרך the row is teal and the leave-by is gone', () => {
+    const container = withTravel({ duration: '⁦~23⁩ דק׳', leave: t.actions.onWay, tone: 'on-way' });
+    const row = container.querySelector('.hero-trv')!;
+    expect(row.classList.contains('on-way')).toBe(true);
+    expect(row.textContent).not.toContain('צאו');
+    expect(row.textContent).not.toContain('עבר');
+    expect(screen.queryByRole('button', { name: t.actions.onWay })).toBeNull();
+  });
+
+  // The tile is the collapsed board's, one elevation up, so §Z1's third arm has to reach it
+  // here too — the two elevations may not disagree about what the countdown counts to.
+  it('carries the board’s own missed countdown', () => {
+    const container = show({
+      next: point({ key: 'next', title: <span>מלון</span> }),
+      countdown: { value: '7', unit: t.board.sinceLeave, missed: true },
+    });
+    expect(container.querySelector('.wp-board-countdown.missed')).toBeTruthy();
+    expect(container.querySelector('.wp-board-countdown .u')?.textContent).toBe(t.board.sinceLeave);
   });
 });

@@ -32,9 +32,13 @@ export type TravelFit = (typeof TRAVEL_FIT)[keyof typeof TRAVEL_FIT];
  * the false precision §D5 refuses. Five minutes is a placeholder with a shape: it is the smallest
  * amount that is visibly not zero.
  *
- * **M3 owns the real number**, together with the threshold at which the collapsed board swaps its
- * countdown (§Z1) — the two interact, because a buffer that is large enough makes the swap fire
- * early, and both are numbers to measure on a real day rather than pick here.
+ * **The swap threshold half of this note is answered; the buffer half is not** (2026-08-26). §Z1's
+ * threshold is `LEAVE_BY_SWAP_MINUTES = 30`, measured by M3 and confirmed as §AA1, and it lives in
+ * the frontend's `lib/hero-travel.ts` because no server surface asks it — the same call `TRAVEL_FIT`
+ * above makes. **This number is still five minutes and still a placeholder**: M3's mockup exposed it
+ * as a control (0/5/10/15) and handed it to the device pass, so it is a feel call on a real day
+ * rather than a decision anyone has taken. The two do still interact — a large enough buffer makes
+ * the swap fire early — which is why raising this one is a read of §AA1 and not a one-line change.
  */
 export const TRAVEL_BUFFER_SECONDS = 5 * 60;
 
