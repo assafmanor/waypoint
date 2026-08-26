@@ -11,6 +11,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   EVENT_KIND,
   EVENT_STATUS,
+  edgeMeaning,
   isAmbient,
   isExactEdge,
   type Booking,
@@ -102,6 +103,7 @@ import { dayPositions, firstPositionFitting } from '../lib/day-positions';
 import {
   dayTransitions,
   edgeEntryOf,
+  groupEndEvent,
   groupStartEvent,
   mergeDayEntries,
   placeDayEntries,
@@ -124,6 +126,8 @@ import { travelOrigin } from '../lib/hero-travel';
 import { useGeolocation } from '../lib/useGeolocation';
 import { clearOnWay, useOnWay } from '../lib/on-way';
 import { nowLinePlacement } from '../lib/now-line';
+import { StayRow } from '../ui/domain/StayRow';
+import { type SettleOutcome } from '../ui/domain/SettleControl';
 import { UnplacedCommitment } from '../ui/domain/UnplacedCommitment';
 import { bookingWhen } from '../lib/booking-journey';
 import { hoursPhrase } from '../lib/duration';
@@ -551,10 +555,19 @@ export function DayView() {
   // sit between two flight legs stops suppressing the join between them (`dayBlocks`
   // ends a run on anything that is not a leaf event entry, so no gap AND no connection
   // band could be derived for that window at all).
+  // **THE TWO FACTS A STAY GETS A ROW FOR** (ADR-0209 §1): you started the day there, and/or you
+  // end it there. `dayBookendStays` is the same answer the MAP already reads for its stop sequence
+  // (ADR-0054's 2026-08-25 amendment), so the list and the canvas cannot disagree about a night.
+  const bookends = dayBookendStays(events, activeDate);
+  const stayRowIds = useMemo(
+    () => new Set([bookends.woke?.id, bookends.sleeps?.id].filter((id): id is string => !!id)),
+    [bookends.woke?.id, bookends.sleeps?.id],
+  );
   const placement = placeDayEntries(
     mergeDayEntries(groups, dayTransitions(events, activeDate)),
     dayEvents.filter((e) => !e.startsAt),
     groups,
+    stayRowIds,
   );
   const merged = placement.positioned;
 
@@ -600,12 +613,28 @@ export function DayView() {
     // returned SEPARATELY rather than unshifted into the list, because it renders outside the
     // block loop: there is no join for it to hang off.
     const firstRow = blocks[0]?.entries[0]?.entry;
-    const woke = dayBookendStays(events, activeDate).woke;
+    const woke = bookends.woke;
     const first = firstRow?.kind === 'event' ? groupStartEvent(firstRow.group) : undefined;
     const wake =
       woke && first && first.id !== woke.id ? { from: woke, to: first, bookend: true } : undefined;
-    return { between, wake, legs: wake ? [wake, ...between] : between };
-  }, [blocks, events, activeDate]);
+    // **AND THE LEG BACK** (ADR-0209 §1/§3), which is the other half of §AD and did not exist: the
+    // day's last row is where you end it, so the journey into tonight's stay is as certain as the
+    // one out of last night's. `bookend` on it too — a stay has no per-day arrival instant, so
+    // reading its `startsAt` as this hole's deadline would measure a window from its check-in day.
+    const lastBlock = blocks[blocks.length - 1];
+    const lastEntry = lastBlock?.entries[lastBlock.entries.length - 1]?.entry;
+    const last = lastEntry?.kind === 'event' ? groupEndEvent(lastEntry.group) : undefined;
+    const home =
+      bookends.sleeps && last && last.id !== bookends.sleeps.id
+        ? { from: last, to: bookends.sleeps, bookend: true }
+        : undefined;
+    return {
+      between,
+      wake,
+      home,
+      legs: [wake, ...between, home].filter((l): l is DayLeg => !!l),
+    };
+  }, [blocks, bookends.woke, bookends.sleeps]);
   const dayLegs = day.legs;
 
   const travelReads = useDayTravelReads({ tripId: trip.id, legs: dayLegs, bookings, places });
@@ -788,6 +817,36 @@ export function DayView() {
    *  it because it has no row above it, so it renders outside the block loop rather than inside
    *  one; everything it says is the same component saying it. */
   const wakeJourney = day.wake ? journeyFor(day.wake.from, day.wake.to) : null;
+  const homeJourney = day.home ? journeyFor(day.home.from, day.home.to) : null;
+
+  /** **The stay's own bound, in the words the strip already used** (ADR-0209 §1) — `edgeSentence`
+   *  where the day is an edge of it, `ambientSpanLabel` where it is not. Both sentences existed in
+   *  the band this row replaces, so nothing is reworded: `placement.stayEdges` is that edge, kept
+   *  precisely so its sentence survives leaving the list. */
+  const stayBound = (stay: TripEvent): string | undefined => {
+    const edge = placement.stayEdges.find((e) => e.event.id === stay.id);
+    return edge
+      ? edgeSentence(edge, transitionZoneProps(edge, zoneCtx).zone)
+      : ambientSpanLabel(stay, activeDate);
+  };
+
+  /** **The settle pair, on a FLOOR only** — inherited from the edge row this replaces, and
+   *  load-bearing rather than parity: `glance.ts` keeps a `not-before` edge in `נותרו היום` until
+   *  it is `DONE`, because 15:01 does not mean anybody checked in (ADR-0171 §6). A ceiling and a
+   *  window expire by their own clock and need none. Gated on the archive like every other write
+   *  (ADR-0029). */
+  const staySettle = (stay: TripEvent) => {
+    if (readOnly || edgeMeaning(stay, 'start') !== 'not-before') return {};
+    return {
+      outcome:
+        stay.status === EVENT_STATUS.DONE || stay.status === EVENT_STATUS.SKIPPED
+          ? (stay.status as SettleOutcome)
+          : undefined,
+      onDone: () => verbs.done(stay),
+      onSkip: () => verbs.skip(stay),
+      onUndo: () => verbs.restore(stay),
+    };
+  };
 
   // The now-line: only on today (a past/future day has no "now"). Where it lands is
   // `lib/now-line.ts` — one derivation shared with Plan's static now-reference, and
@@ -870,22 +929,27 @@ export function DayView() {
               being arrived at tonight — is the same words for opposite events. The sentence
               comes from the day's PLACED entry, so this line and the row below it cannot
               print two different clocks for one edge. */}
-            {staysToday.map((e) => {
-              const edge = edgeEntryOf(placement.positioned, e.id);
-              return (
-                <div className="ambient" key={e.id}>
-                  <span className="ai" aria-hidden="true">
-                    {e.icon ?? DEFAULT_STAY_ICON}
-                  </span>
-                  <span className="an">{e.title}</span>
-                  <span className="as">
-                    {edge
-                      ? edgeSentence(edge, transitionZoneProps(edge, zoneCtx).zone)
-                      : ambientSpanLabel(e, activeDate)}
-                  </span>
-                </div>
-              );
-            })}
+            {staysToday
+              // **A stay named by its own row is not also named in the strip** (ADR-0209 §1). This
+              // is the subtraction the whole ADR turns on: one hotel was reading twice on one
+              // screen, here and as a row at its bound.
+              .filter((e) => !stayRowIds.has(e.id))
+              .map((e) => {
+                const edge = edgeEntryOf(placement.positioned, e.id);
+                return (
+                  <div className="ambient" key={e.id}>
+                    <span className="ai" aria-hidden="true">
+                      {e.icon ?? DEFAULT_STAY_ICON}
+                    </span>
+                    <span className="an">{e.title}</span>
+                    <span className="as">
+                      {edge
+                        ? edgeSentence(edge, transitionZoneProps(edge, zoneCtx).zone)
+                        : ambientSpanLabel(e, activeDate)}
+                    </span>
+                  </div>
+                );
+              })}
             {/* **A commitment with no position reads at the TOP** (ADR-0171 §10a-i) — a
               claim on your day, carried all day, rather than something buried at its
               foot. It lands in the strip a multi-night stay's MIDDLE days already use,
@@ -910,6 +974,19 @@ export function DayView() {
           {/* **The walk out of the bed** (ADR-0206 §AD). Above the first row rather than between
             two, which is the one place in the day where a journey has no hole to sit in — and the
             leg you can be surest of, since the hotel is where you both started and finished. */}
+          {/* **WHERE THE DAY STARTS** (ADR-0209 §1) — the row §AD's leg has never had an origin
+            for. It states the place and, quietly, the stay's own bound; the leg below it is an
+            ordinary journey block, which is why this row carries no clock (§3). */}
+          {bookends.woke && (
+            <StayRow
+              stay={bookends.woke}
+              bound={stayBound(bookends.woke)}
+              bookings={bookings}
+              onOpen={setDetailTarget}
+              onShowOnMap={eventShowOnMap(bookends.woke, bookings, places, showPlaceOnMap)}
+              {...staySettle(bookends.woke)}
+            />
+          )}
           {wakeJourney && day.wake && (
             <JourneyRow
               {...journeyProps(wakeJourney, day.wake.to === liveLeg?.to)}
@@ -996,6 +1073,25 @@ export function DayView() {
               <Fragment key={blockKey(block)}>{rows}</Fragment>
             );
           })}
+          {/* **AND WHERE THE DAY ENDS** (ADR-0209 §1) — the other half of §AD, which only ever
+            built the leg OUT of a stay. The journey back is as certain as the one out, and it
+            reads above the row it arrives at, exactly like every other leg in the day. */}
+          {homeJourney && day.home && (
+            <JourneyRow
+              {...journeyProps(homeJourney, day.home.to === liveLeg?.to)}
+              tz={trip.timezone}
+            />
+          )}
+          {bookends.sleeps && (
+            <StayRow
+              stay={bookends.sleeps}
+              bound={stayBound(bookends.sleeps)}
+              bookings={bookings}
+              onOpen={setDetailTarget}
+              onShowOnMap={eventShowOnMap(bookends.sleeps, bookings, places, showPlaceOnMap)}
+              {...staySettle(bookends.sleeps)}
+            />
+          )}
           {showNowLine && nowLineIndex === merged.length && (
             <NowLine ref={nowLineRef} now={now} tz={nowZone} />
           )}

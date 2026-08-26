@@ -523,6 +523,18 @@ body.wp-dragging
   white-space: nowrap;
 }
 
+/* **The stay's own bound, beside a row that states no clock** (ADR-0209 §1). Quiet and not
+   amber, because it is not a moment: a ceiling says "out by 09:40" and a window says "in from
+   17:00", and where in the day you actually walked through the door is not a fact the app holds.
+   Rule 4 / ADR-0028 — amber is the clock's, and this is a constraint rather than a commitment. */
+.tr-bound {
+  font-family: 'Assistant', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 /* Zone-shift pill on a transition edge (ADR-0107): the clock jump vs the day's
    ambient zone, amber like the time it annotates. Usually absent. */
 /* Surface tweak only — the pill itself is ui/zone-shift-pill.css. */

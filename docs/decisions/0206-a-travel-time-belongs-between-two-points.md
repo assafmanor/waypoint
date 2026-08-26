@@ -1305,7 +1305,24 @@ leave-by that exists is still computed and rendered exactly as it is today. Both
 **when the app may state one at all**, which is the same shape as §AF2's claim-denied arm — the
 measurement stands, the advice is withheld.
 
-**Not verifiable in the current suite as written.** `dayJourney` takes instants, not events, so it
-cannot ask `edgeMeaning` anything — AI1's gate belongs at the caller that already holds the
-`TripEvent` (`DayView`'s `journeys` memo and `PlanDay`'s equivalent, which is both day surfaces and
-therefore `frontend/CLAUDE.md`'s own warning about changing one of them only).
+**BUILT 2026-08-26.** `dayJourney` takes instants, not events, so the gate is asked at each caller
+that holds the `TripEvent` — both day surfaces and `Home` (the board and the lifted hero read the
+same `heroLeaveBy`) — over `isExactEdge`, which already existed. `flexibleArrival` and
+`windowClosesMs` go in; `arriveAtMs` and `arrivesAfterClose` come out; the `PASSED` arm cannot fire
+without a leave-by.
+
+**And the build found a third face of the same mistake, which no amount of reading had.** The
+**fit** was measured to the window's OPENING too, so `אין זמן לדרך` fired about a check-in you had
+three more hours to make — and "arrives after it closes" was unreachable, because `OVERRUNS` got
+there first. The fit now measures to the last moment that still works, which on a window is its
+close; missing the close and not fitting the window are then one fact, riding the `OVERRUNS` arm
+with a sentence you can act on (`הגעה ~20:32 · אחרי סגירת החלון`) rather than the generic shortfall.
+
+**A fourth thing fell out of the same specs, and it belongs to §AG6 rather than here.** That section
+recorded the sub-hour hole as fixed by setting `DayBlockEntry.from` on every adjacency. It was half
+fixed: the leg was derived and then **not rendered**, because `DayView`'s list read
+`{join && <JoinRow/>}` and `gapBetween` is floored at `GAP_MIN_MINUTES`. So §Z5 §M2's own example —
+a 45-minute hole holding a 40-minute walk — was still silent in Trip mode, while **Plan gates on
+`prevEnd` and had been drawing it all along**: the two day surfaces disagreeing about a fact, which
+ADR-0159 §1 forbids and ADR-0171 §10e already repaired once. `JoinRow` takes a nullable join now, and
+a journey renders whether or not the hole earned a join.

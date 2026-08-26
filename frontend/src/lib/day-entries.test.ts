@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { EVENT_KIND, EVENT_SOURCE, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
-import { dayTransitions, mergeDayEntries, placeDayEntries, staysOnDate } from './day-entries';
+import {
+  dayTransitions,
+  mergeDayEntries,
+  placeDayEntries,
+  staysOnDate,
+  type DayEntry,
+} from './day-entries';
 import { buildTimeTree } from './time';
 
 const OFF = '+09:00';
@@ -352,5 +358,54 @@ describe('placeDayEntries — a closed window comes back into the list (ADR-0184
     const out = positioned.filter((e) => e.kind === 'transition');
     // Day 1 carries the check-in only; the check-out belongs to the 9th.
     expect(out.every((e) => e.edge === 'start')).toBe(true);
+  });
+});
+
+// ── A STAY NAMED BY ITS OWN ROW IS NOT ALSO A ROW AT ITS BOUND (ADR-0209 §1) ───────────────
+//
+// The moment of checking out or in is not a fact the app holds — a ceiling says "by 09:40" and a
+// window says "from 17:00" — so positioning it read as coming back to the hotel after driving
+// away. The edge leaves the list and is **returned** rather than dropped, because the row that
+// replaces it still says the bound and this is where that sentence comes from.
+describe('placeDayEntries — stay edges leave the list when the stay has its own row', () => {
+  const AT = (hhmm: string) => Date.parse(`2026-08-03T${hhmm}:00Z`);
+  const hotel = ev({
+    id: 'hotel',
+    title: 'מלון',
+    category: 'lodging',
+    startsAt: '2026-08-01T13:00:00Z',
+    endsAt: `2026-08-03T09:40:00Z`,
+  });
+  const entries = (): DayEntry[] => [
+    { kind: 'transition', event: hotel, edge: 'end', atMs: AT('09:40'), labelKey: 'checkout' },
+  ];
+
+  it('keeps the edge positioned when nothing names the stay', () => {
+    const placed = placeDayEntries(entries(), [], []);
+    expect(placed.positioned).toHaveLength(1);
+    expect(placed.stayEdges).toHaveLength(0);
+  });
+
+  it('takes it out of the list when the stay has a row, and hands it back', () => {
+    const placed = placeDayEntries(entries(), [], [], new Set(['hotel']));
+    expect(placed.positioned).toHaveLength(0);
+    expect(placed.stayEdges).toHaveLength(1);
+    expect(placed.stayEdges[0].event.id).toBe('hotel');
+  });
+
+  it('touches nothing else', () => {
+    const other = ev({ id: 'other', startsAt: `2026-08-03T11:00:00Z` });
+    const placed = placeDayEntries(
+      [
+        ...entries(),
+        { kind: 'transition', event: other, edge: 'start', atMs: AT('11:00'), labelKey: 'x' },
+      ],
+      [],
+      [],
+      new Set(['hotel']),
+    );
+    expect(placed.positioned.map((e) => (e.kind === 'transition' ? e.event.id : ''))).toEqual([
+      'other',
+    ]);
   });
 });

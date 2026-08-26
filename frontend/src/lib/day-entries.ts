@@ -124,6 +124,11 @@ export interface DayPlacement {
   commitments: UnplacedRow[];
   /** Unpositioned **ideas**: the tail below it, under one line. */
   ideas: UnplacedRow[];
+  /** **The stay edges taken OUT of the list** (ADR-0209 §1), so a stay is named once per day —
+   *  as the row where the day starts or ends, rather than as a row at a bound whose moment the app
+   *  does not know. Returned rather than dropped, because that row still says the bound and this
+   *  is where its sentence comes from (`edgeSentence`). Empty unless the caller names ids. */
+  stayEdges: TransitionEntry[];
 }
 
 /** **Where a flexible edge actually sits** (ADR-0171 §10b, both ends since ADR-0184's
@@ -195,8 +200,12 @@ export function placeDayEntries(
   merged: DayEntry[],
   untimed: readonly TripEvent[],
   groups: TimeGroup[],
+  /** **Stays that are named by a row of their own today** (ADR-0209 §1) — their edges leave the
+   *  list rather than sitting in it at a bound. Both day surfaces pass the same set, from the same
+   *  `dayBookendStays`, because ADR-0159 §1 forbids them differing about a fact. */
+  stayRowIds?: ReadonlySet<string>,
 ): DayPlacement {
-  const placement: DayPlacement = { positioned: [], commitments: [], ideas: [] };
+  const placement: DayPlacement = { positioned: [], commitments: [], ideas: [], stayEdges: [] };
   const park = (row: UnplacedRow) =>
     (row.event.kind === EVENT_KIND.HARD ? placement.commitments : placement.ideas).push(row);
   // An edge pinned to a hard fact has to read on the near side of it — "be out by then"
@@ -223,6 +232,14 @@ export function placeDayEntries(
       edgeMeaning(entry.event, entry.edge) === 'exact'
         ? entry.atMs
         : edgeAt(entry.atMs, entry.edge, groups);
+    // **A stay named by its own row is not also a row at its bound** (ADR-0209 §1). The moment
+    // of checking out or in is not a fact the app holds — a ceiling says "by 09:40" and a window
+    // says "from 17:00" — so positioning it read as coming back to the hotel after driving away.
+    // The edge is kept here for its sentence and nothing else.
+    if (stayRowIds?.has(entry.event.id)) {
+      placement.stayEdges.push(entry);
+      continue;
+    }
     const moved: DayEntry = { ...entry, atMs };
     if (atMs !== entry.atMs) pinned.add(moved);
     placement.positioned.push(moved);

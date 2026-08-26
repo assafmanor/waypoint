@@ -71,14 +71,34 @@ The generalisation the owner's counter-examples force, and the sentence the ADR 
 does not know when the transition happens**, so every position is a fiction and choosing a different
 fiction is not a fix. What contradicts is two rows about one event printing two clocks.
 
+## What the BUILD found, after the owner approved the drawing
+
+Both ADRs shipped the same day. Two things the drawing could not have told us:
+
+- **A third face of §AI1's mistake**, found by a spec that would not go green: the **fit** measured
+  to the window's OPENING as well, so `אין זמן לדרך` fired about a check-in you had three more hours
+  to make — and "arrives after it closes" was unreachable, because `OVERRUNS` got there first. The
+  fit measures to the close now.
+- **§AG6 was only half fixed, and Plan had been right all along.** It recorded the sub-hour hole as
+  solved by setting `DayBlockEntry.from` on every adjacency; the leg was derived and then not
+  rendered, because Trip's list read `{join && <JoinRow/>}` and `gapBetween` is floored. Plan gates
+  on `prevEnd`, so it had been drawing that leg since M6a — the two day surfaces disagreeing about a
+  fact, which is what ADR-0159 §1 forbids. **Checking both surfaces is what found it**, which is the
+  rule `frontend/CLAUDE.md` states and the reason it is stated.
+
+Four fixtures were wrong before they were right, and all four were wrong by asserting against the
+design rather than by sloppiness: one expected a leave-by from a hole whose leave-by is behind its
+own origin; one stretched an event until it contained the check-in it measured to, so the two
+clustered and there was no leg; one expected two journey blocks where the new return leg makes three;
+one passed an id to a helper that takes only a partial.
+
 ## For the next session
 
-- **ADR-0209 is `Proposed`, nothing built.** The build touches both day surfaces
-  (`frontend/CLAUDE.md`: changing a day-surface derivation in `DayView` only has cost a release
-  twice), and ADR-0206 §AI1's gate belongs at the caller that holds the `TripEvent`, since
-  `dayJourney` takes instants and cannot ask `edgeMeaning` anything.
-- **ADR-0206 §AI is a defect record, not a milestone.** It can ship on its own, before or without
-  ADR-0209, and probably should: two of the three defects are live in the deployed app.
+- **The day-level measurements in ADR-0209 are still the mockup's.** The shipped row is measured
+  (⁦54px⁩, constant across all four bound states); the per-day totals are not, and an e2e pass over
+  the five shapes is owed.
+- **Open, and the owner's:** whether the app ever _suggests_ the return stop, rather than leaving it
+  to the gap strip and `＋ אירוע חדש`.
 - **The row has no label**, on the owner's question — position and bound each already say which end
   it is. If a build re-adds one, that is a reversal and wants a reason.
 - **Open, deliberately:** whether the app ever _suggests_ the return stop, rather than leaving it to

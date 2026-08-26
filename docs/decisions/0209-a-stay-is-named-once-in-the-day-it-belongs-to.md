@@ -1,6 +1,6 @@
 # 0209 — A stay is named once, in the day it belongs to
 
-**Status:** Proposed 2026-08-26. **Nothing built.**
+**Status:** Accepted 2026-08-26. **Built** the same day, on the owner's approval of the mockup.
 **Date:** 2026-08-26
 **Reported:** the owner, off the shipped M6a build — _"When we know that a day starts or ends at a
 hotel (most days), the hotels should be added as rows at the start and end of the days. Maybe even
@@ -205,9 +205,16 @@ lands.
 that row is one (ADR-0206 §D10) and the position says which end. Neither word is load-bearing; the
 structure is.
 
-**Not verifiable in the suite:** every number above is a rendered box, so jsdom can see none of it.
-The build owes an e2e measurement of the day surface at 360 across the five shapes, in the shape
-`e2e/measure.ts`'s `stableBox` already provides.
+**Measured again on the SHIPPED row, in Chromium at 360, both themes:** `.transition-row` as
+`StayRow` renders it is **⁦54px⁩** — ⁦6px⁩ cheaper than the mockup drew it — and **constant across all
+four bound states** (a check-out ceiling, a check-in window, a middle night's count, and no bound at
+all), so the bound changing costs no layout shift. `scrollWidth` exactly ⁦360⁩, no run outside the
+column. Every per-day total in the table above is therefore ⁦6px⁩ better per stay row the day carries:
+a middle night is nearer ⁦+147px⁩ than ⁦+159px⁩.
+
+**Still not verifiable in the unit suite:** those are rendered boxes, so jsdom sees none of them. The
+day-level totals remain the mockup's, and an e2e measurement of the real day surface across the five
+shapes — in the shape `e2e/measure.ts`'s `stableBox` already provides — is owed and not written.
 
 ## Alternatives rejected
 

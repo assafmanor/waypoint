@@ -473,10 +473,32 @@ describe('DayView — the walk out of the bed', () => {
     setSimulatedNow(null);
   });
 
-  it('draws a journey above the day’s first row', () => {
+  it('draws a journey above the day’s first row, and one back into it', () => {
     show();
-    // Two blocks now: the walk out of the hotel and the walk to the theatre.
-    expect(document.querySelectorAll('.day-trv')).toHaveLength(2);
+    // **Three blocks since ADR-0209 §1**: out of the hotel, on to the theatre, and back to the
+    // hotel — the return being the half of §AD that never existed, because that milestone only
+    // built the leg OUT of the stay you woke in.
+    expect(document.querySelectorAll('.day-trv')).toHaveLength(3);
+  });
+
+  // **The stay is named twice on a middle night, and that is the day's two ends** — which is what
+  // ADR-0054's map amendment already decided a middle night is, and the band's single entry was
+  // the thing that could not express it. Once each, not once here and once in the strip.
+  it('names the stay as the day’s two ends, and not in the strip as well', () => {
+    show();
+    const staysNamed = [...document.querySelectorAll('.tr-title')].filter((el) =>
+      el.textContent?.includes('מלון'),
+    );
+    expect(staysNamed).toHaveLength(2);
+    expect(document.querySelector('.day-ambient .an')).toBeNull();
+  });
+
+  // …and neither row states a clock, which is what lets every leg stay an ordinary block (§3).
+  it('states the stay’s bound and no clock of its own', () => {
+    show();
+    const row = document.querySelector('.transition-row')!;
+    expect(row.querySelector('.tr-bound')).toBeTruthy();
+    expect(row.querySelector('.tr-time')).toBeNull();
   });
 
   // **It says the journey and it does NOT say what is free.** A middle night has no check-out

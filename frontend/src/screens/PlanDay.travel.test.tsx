@@ -245,3 +245,47 @@ describe('PlanDay — a leg into a window states no departure either (§AI1)', (
     expect(document.querySelector('.day-trv')!.textContent).toContain('הגעה');
   });
 });
+
+// ── THE STAY'S TWO ROWS, ON PLAN'S SURFACE TOO (ADR-0209 §1) ──────────────────────────────
+//
+// The same two facts, off the same `dayBookendStays` the map's stop sequence reads. ADR-0159 §1
+// allows the two day surfaces to differ in POSTURE and forbids a difference about a FACT, and "you
+// slept there" is not a posture — so what differs here is only the settle pair, which Plan takes
+// through a row menu (ADR-0171 §10e).
+describe('PlanDay — the day says where it starts and ends', () => {
+  const stay = ev('stay', {
+    title: 'מלון סנטרו',
+    category: 'lodging',
+    kind: EVENT_KIND.HARD,
+    placeId: 'p-lunch',
+    date: '2026-08-01',
+    endDate: '2026-08-05',
+    startsAt: '2026-08-01T13:00:00Z',
+    endsAt: '2026-08-05T09:00:00Z',
+  });
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    tripEvents = [stay, lunch, theatre];
+    travelSeconds = WALK_MINUTES * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  it('names it once at each end, and not in the strip as well', () => {
+    show();
+    const named = [...document.querySelectorAll('.tr-title')].filter((el) =>
+      el.textContent?.includes('מלון'),
+    );
+    expect(named).toHaveLength(2);
+    expect(document.querySelector('.day-ambient .an')).toBeNull();
+  });
+
+  // Plan's posture: no inline settle pair on the row (ADR-0171 §10e).
+  it('offers no settle pair on it', () => {
+    show();
+    expect(document.querySelector('.transition-row .wp-settle')).toBeNull();
+  });
+});
