@@ -848,11 +848,19 @@ describe('the stay bookends the day, and wears no number for it', () => {
     expect(stops.map((s) => s.order)).toEqual([undefined, 1, 2]);
   });
 
-  // ── NOTHING THAT HAPPENED BEFORE YOU ARRIVED SORTS AFTER THE STAY YOU WOKE IN ──────
-  // Owner, 2026-08-26: _"we rent the car at 00:00 and then go to check in at the hotel …
-  // it shows the hotel as starting before the car rental"_ — on the night they check in at
-  // 02:00 and out again that morning.
+  // ── WHAT BROUGHT YOU IN THROUGH THE NIGHT SORTS BEFORE THE BED ─────────────────────
+  // Owner, 2026-08-26: _"we only land at 23:20 and pick up the car at 00:00 so realistically
+  // we only check in at like 2:00, but check in starts at like 15:00 … the route shows it
+  // before the car pick up"_.
+  //
+  // **THE FIXTURES BELOW ARE THE POINT.** The first pass at this shipped green with
+  // `startsAt: at2('02:00')` — a check-in instant on the day itself — which is not the shape
+  // the report is about. The real booking carries a FLOOR on the previous afternoon, so the
+  // rule (compare each stop against `startsAt`) moved nothing, and the spec that asserted
+  // that outcome asserted the bug. A fixture built from the rule proves the rule.
   describe('a stay you reached during the night does not claim the whole day', () => {
+    /** The day's morning, resolved by the screen in the day's own zone. */
+    const dawnMs = Date.parse(at2('07:00'));
     const car = event({
       id: 'car',
       placeId: 'depot',
@@ -863,22 +871,25 @@ describe('the stay bookends the day, and wears no number for it', () => {
       endDate: '2026-07-24',
     });
     const museum = event({ id: 'm', placeId: 'museum', startsAt: at2('11:00') });
-    /** Booked as the night BEFORE (which is how a hotel counts a 02:00 arrival), so the day
-     *  reads it as a check-out — and it is also where you slept. */
+    /** The owner's booking: the night BEFORE (which is how a hotel counts a 02:00 arrival),
+     *  and its `startsAt` is the room's ⁦15:00⁩ FLOOR on that previous afternoon — not an
+     *  arrival, which is exactly what `knowsMoment` already refuses to call a moment. */
     const overnight = event({
       id: 'a',
       placeId: 'hotelA',
       category: EVENT_CATEGORY.LODGING,
       date: PREV_DAY,
       endDate: DAY,
-      startsAt: at2('02:00'),
+      startsAt: `${PREV_DAY}T15:00:00Z`,
       endsAt: at2('10:00'),
     });
-    const sequence = (events: TripEvent[], ids: string[]) =>
+    const sequence = (events: TripEvent[], ids: string[], ctx?: { dawnMs?: number }) =>
       buildDayStopSequence([...usages({ places: ids.map((id) => place(id)), events }).values()], {
         nameOf,
         onDate: DAY,
         eventById: eventsById(events),
+        dawnMs,
+        ...ctx,
       }).map((s) => s.usage.placeId);
 
     it('puts the midnight pick-up that brought you there BEFORE the hotel', () => {
@@ -887,6 +898,32 @@ describe('the stay bookends the day, and wears no number for it', () => {
       expect(sequence([car, overnight, museum], ['hotelA', 'museum', 'depot'])).toEqual([
         'depot',
         'hotelA',
+        'museum',
+      ]);
+    });
+
+    it('leaves the hotel first for an EXACT pre-dawn departure', () => {
+      // The case a bare dawn cut-off gets wrong, and the reason the rule asks two questions.
+      // A ⁦06:30⁩ flight is a moment the app KNOWS, so it is something you left the bed for —
+      // where a car "available from ⁦00:00⁩" claims no hour at all and is the shape of a night
+      // arrival. Same day, same dawn, opposite answers.
+      const flight = event({
+        id: 'f',
+        placeId: 'kef',
+        category: EVENT_CATEGORY.TRANSPORT,
+        icon: '✈️',
+        startsAt: at2('06:30'),
+      });
+      expect(sequence([flight, overnight], ['hotelA', 'kef'])).toEqual(['hotelA', 'kef']);
+    });
+
+    it('leaves an AFTER-dawn floor where it falls', () => {
+      // Dawn is the other half of the gate: a car collected at ⁦09:00⁩ is a floor too, and you
+      // were plainly already up for it.
+      const late = { ...car, startsAt: at2('09:00') };
+      expect(sequence([late, overnight, museum], ['hotelA', 'museum', 'depot'])).toEqual([
+        'hotelA',
+        'depot',
         'museum',
       ]);
     });
@@ -908,16 +945,12 @@ describe('the stay bookends the day, and wears no number for it', () => {
       ).toEqual(['depot', 'hotelA', 'museum', 'hotelB']);
     });
 
-    it('moves NOTHING when the app cannot see when you arrived', () => {
-      // An ordinary stay checked into yesterday afternoon. A 00:00 errand is then genuinely
-      // ambiguous — you may have gone out and come back — so the rule declines to guess,
-      // which is what keeps it from becoming a general theory of what precedes what.
-      const ordinary = { ...overnight, startsAt: `${PREV_DAY}T15:00:00Z` };
-      expect(sequence([car, ordinary, museum], ['hotelA', 'museum', 'depot'])).toEqual([
-        'hotelA',
-        'depot',
-        'museum',
-      ]);
+    it('moves nothing on a surface that resolves no dawn', () => {
+      // `dawnMs` needs a zone, so a surface without one behaves exactly as it did — the same
+      // inertness `eventById` and `isConnectionStop` already have here.
+      expect(
+        sequence([car, overnight, museum], ['hotelA', 'museum', 'depot'], { dawnMs: undefined }),
+      ).toEqual(['hotelA', 'depot', 'museum']);
     });
   });
 

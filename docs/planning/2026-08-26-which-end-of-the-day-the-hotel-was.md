@@ -101,3 +101,33 @@ The third and fourth time on this branch, which makes it the local idiom rather 
   because this is the one pin sitting at both ends of the route.
 - The `behind` silence keeps its spec **and gains its counter-example** — a departed flight still
   says nothing, so the exemption is visibly the stay rather than the tier.
+
+## Corrected the same day: the rule above used a number that proves nothing
+
+The ordering fix shipped in [#710](https://github.com/assafmanor/waypoint/pull/710) and the owner ran
+it: _"the route shows it before the car pick up"_ — unchanged.
+
+**`startsAt` is not the arrival.** A lodging start is a floor, which is the one thing ADR-0171 §10b
+exists to say is not a moment; the rule then compared against it as though it were. On the real
+booking the room was available from 15:00 the previous afternoon while they were in the air until
+23:20, so every stop of the day fell after it and nothing moved. Table A in the section above is
+still a true reading of the data — the fix built on it was not.
+
+**The specs stayed green through all of it, and that is the part worth carrying.** The fixture
+carried a 02:00 check-in _on the day itself_, because that was the shape the rule was reasoning
+about — so it proved the rule against the rule. And the spec covering the owner's real shape existed,
+asserting `moves NOTHING`, with a comment arguing the ordering was genuinely unknown. **A fixture
+built from the rule proves the rule; take the shape from the report.**
+
+The replacement is the dawn boundary this session had drafted and discarded, plus the half that makes
+it safe: a stop sorts ahead of the stay when it is **before dawn** _and_ **not a moment the app
+knows**. A car "available from 00:00" is a floor and moves; a 06:30 flight is exact and does not, so
+the early-departure morning still reads `hotel → flight`. Dawn arrives as an instant from the screen
+(`dayWindowMs`, lifted out of `Home.tsx` so the glance's rail and the route share one boundary),
+because a wall-clock hour needs a zone and this file holds none. ADR-0054 carries the trade it costs.
+
+**And the label was never wrong.** The same report asked why the pin read `צ׳ק-אאוט` instead of
+`לינת לילה`: the stay is one night, so that day is the check-out day and `צ׳ק-אאוט` is the true word.
+`לינת לילה` belongs to a strictly middle night. Two screenshots settled it in one reading — day 11
+shows `צ׳ק-אין 15:00`, day 12 shows `צ׳ק-אאוט` — which is worth noting because the previous three
+rounds of this bug were all lost to guessing at the data instead.

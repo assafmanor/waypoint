@@ -668,3 +668,27 @@ export function buildTimeTree(events: TripEvent[]): TimeGroup[] {
 
   return layout(childrenOf.get(null) ?? []);
 }
+
+/** An hour of the day as the app's own wall-clock string — `7` → `07:00`. */
+export const hourLabel = (hour: number) => `${String(hour).padStart(2, '0')}:00`;
+
+/**
+ * **The instants the day's window opens and closes**, on `date`, in `zone` (ADR-0045's
+ * 07:00→23:00 window, ADR-0037's dawn boundary).
+ *
+ * Lifted out of `Home.tsx`, where it was two inline `Date.parse(zonedIso(...))` calls with
+ * a private `hourLabel` beside them, when the Map's route needed the SAME dawn instant
+ * (root rule 8 — generalise the one-off rather than write a second beside it). The two must
+ * agree: the glance draws its rail from this boundary and the day's route decides what
+ * belongs to the night before it, so a copy that drifted would put a stop on one side of
+ * dawn in one surface and the other side in the other.
+ *
+ * A wall-clock hour needs a zone, which is why this takes one and the pure `map-pins`
+ * derivations take the resolved INSTANT instead.
+ */
+export function dayWindowMs(date: string, zone: string): { startMs: number; endMs: number } {
+  return {
+    startMs: Date.parse(zonedIso(date, hourLabel(DAY_WINDOW.START_HOUR), zone)),
+    endMs: Date.parse(zonedIso(date, hourLabel(DAY_WINDOW.END_HOUR), zone)),
+  };
+}

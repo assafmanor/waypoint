@@ -74,6 +74,7 @@ import {
   mapsPredictionUrl,
   nextDestination,
   referencedPlaceIds,
+  dayZoneContext,
 } from '../lib/places';
 import {
   PLACE_REF_KIND,
@@ -132,7 +133,7 @@ import { countVisible, revealRows, visibleItems, type Revealed } from '../lib/fi
 import { daySelectTarget, useBackLayer, withBookingFormReturn } from '../state/nav-state';
 import { useNoteHostWayIn } from '../state/note-host-nav';
 import { useNavigate } from 'react-router-dom';
-import { formatTime, relativeDayLabel } from '../lib/time';
+import { dayWindowMs, formatTime, relativeDayLabel } from '../lib/time';
 import { eventEdgeTransition } from '../lib/transitions';
 import { connectionStopKey, connectionStops } from '../lib/day-joins';
 import { bookingWhen } from '../lib/booking-journey';
@@ -1144,6 +1145,13 @@ export function MapView() {
     // The same lookup the pin's WORD reads (ADR-0159 §6), so a place cannot be a
     // layover in one sentence and two stops in the other.
     isConnectionStop: (placeId: string, date: string) => connectionWordAt(placeId, date) != null,
+    // **WHERE THIS DAY'S MORNING STARTS**, so the route can tell a night arrival from an early
+    // start (ADR-0054's 2026-08-26 second amendment). A wall-clock hour needs a zone, which the
+    // derivation deliberately has none of — so the screen resolves it, in the DAY's own ambient
+    // zone rather than the live one, the same rule every other day-scoped read here follows.
+    dawnMs: scopedDate
+      ? dayWindowMs(scopedDate, dayZoneContext(scopedDate, zoneEvidence).ambientZone).startMs
+      : undefined,
   };
   const orderIndex = useMemo(
     () => buildPinOrderIndex(dayScoped, { ...dayStopCtx, nowMs: nowRef.current }),
