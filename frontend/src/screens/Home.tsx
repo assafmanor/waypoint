@@ -67,7 +67,8 @@ import {
   minutesUntil,
   relativeDayLabel,
   todayInTz,
-  zonedIso,
+  dayWindowMs,
+  hourLabel,
 } from '../lib/time';
 import {
   ambientEventsOnDate,
@@ -103,8 +104,6 @@ import { useSettledHosts } from '../ui/HostTasks';
  *  by mode — a flight's take-off, a train's departure (via eventTransitionKeys). */
 const startTransitionKey = (e: TripEvent): string | undefined =>
   isBracketed(e) ? eventTransitionKeys(e)?.startKey : undefined;
-
-const hourLabel = (hour: number) => `${String(hour).padStart(2, '0')}:00`;
 
 export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const {
@@ -508,8 +507,10 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     navigate(`/?${TAB_PARAM}=${INDEX_TAB}&${FOCUS_PARAM}=${INDEX_FOCUS.TASKS}`);
 
   // ── Day at a glance (derived) — a proportional time rail (lib/glance) ──
-  const day07 = Date.parse(zonedIso(activeDate, hourLabel(DAY_WINDOW.START_HOUR), tz));
-  const day23 = Date.parse(zonedIso(activeDate, hourLabel(DAY_WINDOW.END_HOUR), tz));
+  // One derivation, because the Map's route now reads the SAME dawn instant to tell a night
+  // arrival from an early start (root rule 8) — a copy that drifted would put a stop on one
+  // side of dawn here and the other side there.
+  const { startMs: day07, endMs: day23 } = dayWindowMs(activeDate, tz);
   // The glance is a **day** surface, so its anchors' shifts read against the day's
   // own ambient zone (the same context both day timelines use) — not the live zone,
   // which would nag on every anchor of a day you're merely browsing.

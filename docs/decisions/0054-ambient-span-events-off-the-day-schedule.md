@@ -66,22 +66,56 @@ none of them was the design:
 established by reading the `--pin-u` rules it sits beside rather than by a test. (2) and (3) are
 `pinTransition`, and are specced.
 
-**AMENDED 2026-08-26 — a bookend does not outrank a stop that beat you to it.** Owner, from the
-shipped map: _"we rent the car at 00:00 and then go to check in at the hotel … it shows the hotel as
-starting before the car rental"_ — on a night they check in at 02:00 and out again that morning. A
-hotel counts that as the previous night, so the day reads it as a check-out and pinned it first; the
-midnight pick-up that brought them there was drawn after it, and the route left the airport,
-teleported to bed, and came back for the car.
+**AMENDED 2026-08-26 — a bookend does not outrank what brought you in through the night.** Owner,
+from the shipped map: _"we rent the car at 00:00 and then go to check in at the hotel … it shows the
+hotel as starting before the car rental"_. A hotel counts a 02:00 arrival as the previous night, so
+the day reads that stay as a check-out and pinned it first; the midnight pick-up that brought them
+there was drawn after it, and the route left the airport, teleported to bed, and came back for the
+car.
 
-The rule is one line and it is **not** a dawn cut-off: **nothing whose instant precedes the stay's
-own check-in can sort after it.** Where the app can see when you arrived, it moves the stops that
-beat you there; where it cannot — an ordinary stay checked into yesterday afternoon, whose 00:00
-errand may equally have been a trip out and back — it moves nothing, because that ordering is
-genuinely unknown and inventing an answer for it is how a bookend becomes a general theory of what
-precedes what. A zone-free instant comparison, so no day boundary has to be resolved to apply it.
+**This is the second rule written for it, and the first one is worth keeping on the page.** That one
+said: _nothing whose instant precedes the stay's own check-in can sort after it_ — a zone-free
+instant comparison, chosen over a dawn cut-off precisely because it looked like it needed no day
+boundary. The sentence is fine. **`startsAt` is not the arrival.** A lodging start is a **floor** —
+the hour the room opens — which is the one thing
+[ADR-0171](0171-a-time-can-be-a-floor-or-a-ceiling.md) §10b exists to say is not a moment, and it
+was then used as one. On the owner's day the room was available from 15:00 the previous afternoon
+while they were still in the air until 23:20, so every stop of the day fell after it, the comparison
+moved nothing, and the report came back unchanged.
 
-A day you check out of one hotel in the morning and into another at night needs nothing further:
-each span answers only about itself, so the compressed stay takes the head and the new one the tail.
+**The specs shipped green through all of it, and that is the transferable part.** The fixture carried
+`startsAt: 02:00` on the day itself — a check-in instant, because that is what the rule was reasoning
+about. A fixture built from the rule proves the rule. Worse, the spec covering the owner's actual
+shape (a floor on the previous afternoon) existed and asserted `moves NOTHING`, in a comment arguing
+that the ordering was genuinely unknown. **Before writing the fixture, take the shape from the
+report.**
+
+The rule that replaces it asks **two** questions, and either alone answers a different day wrongly:
+
+|                                             | before dawn               | after dawn |
+| ------------------------------------------- | ------------------------- | ---------- |
+| a **floor** (a hire "available from 00:00") | **sorts before the stay** | stays put  |
+| a **known** moment (a 06:30 flight)         | stays put                 | stays put  |
+
+- **Dawn** is `dayWindowMs(date, zone).startMs` — ADR-0045's own 07:00 window boundary, resolved by
+  the screen and handed to the derivation as an **instant**, because a wall-clock hour needs a zone
+  and `map-pins.ts` deliberately holds none. Absent, nothing moves and the sequence behaves as it
+  did. It was lifted out of `Home.tsx`, where it was two inline calls and a private `hourLabel`, so
+  the glance's rail and the day's route cannot disagree about where dawn is (root rule 8).
+- **`knowsMoment`** is the half a bare cut-off misses: a 06:30 flight is an exact commitment you left
+  the bed for, while a car claiming no hour at all is the shape of a night arrival.
+
+**Its cost, stated rather than buried:** a pre-dawn stop with an exact time that you genuinely went
+out for after checking in (a 01:00 table) keeps the hotel ahead of it. That leaves the bookend where
+it already was, which is the safer of the two wrong answers, and it is what buys the early-flight
+morning.
+
+A day you check out of one hotel and into another needs nothing further: each span answers only about
+itself, so the compressed stay takes the head and the new one the tail.
+
+**And the label was not wrong.** The same report asked why the pin read `צ׳ק-אאוט` rather than
+`לינת לילה`. It is a one-night stay, so that day **is** the check-out day and `צ׳ק-אאוט` is the true
+word; `לינת לילה` belongs to a strictly middle night, which this day is not. Nothing changed there.
 
 **A bookend holds a POSITION and wears no NUMBER.** `knowsMoment` still refuses it the mark — "from
 15:00" is a floor and any hour after it will do ([ADR-0171](0171-a-time-can-be-a-floor-or-a-ceiling.md)

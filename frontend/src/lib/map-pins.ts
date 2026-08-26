@@ -325,6 +325,11 @@ export interface DayStopContext {
    *  derivation the day's band and the pin's word already read (ADR-0159 §6). Absent
    *  where journeys are not resolved. */
   isConnectionStop?: (placeId: string, date: string) => boolean;
+  /** **When this day's morning begins**, as an instant — `dayWindowMs(onDate, zone).startMs`
+   *  (ADR-0045's window / ADR-0037's dawn). Resolved by the screen because a wall-clock hour
+   *  needs a zone and these derivations deliberately hold none. Absent means no stop is ever
+   *  read as a night arrival, so the sequence behaves exactly as it did. */
+  dawnMs?: number;
 }
 
 /** A stop before it is numbered: a place, the day it sits on, and one of that day's moments. */
@@ -354,27 +359,19 @@ function stayEnds(
   day: DayUsage,
   date: string,
   eventById?: (id: string) => TripEvent | undefined,
-): { first: boolean; last: boolean; arrivedAt?: number } | undefined {
+): { first: boolean; last: boolean } | undefined {
   const moments = day.moments?.length ? day.moments : [{ eventId: day.eventId }];
   let found = false;
   let first = false;
   let last = false;
-  let arrivedAt: number | undefined;
   for (const moment of moments) {
     const event = moment.eventId ? eventById?.(moment.eventId) : undefined;
     if (!event?.endDate || !isAmbient(event) || !countsNights(event)) continue;
     found = true;
+    first ||= event.date < date;
     last ||= date < event.endDate;
-    if (event.date >= date) continue;
-    first = true;
-    // **WHEN YOU ACTUALLY GOT THERE**, for the stays that bookend the day's START. A span's
-    // own `startsAt` is the check-in, which the day usage for a LATER day does not carry —
-    // its `at` is the check-out. Kept as an instant and compared as one, so no zone is
-    // needed to know that 00:00 came before 02:00.
-    const from = event.startsAt ? Date.parse(event.startsAt) : undefined;
-    if (from != null && (arrivedAt == null || from < arrivedAt)) arrivedAt = from;
   }
-  return found ? { first, last, arrivedAt } : undefined;
+  return found ? { first, last } : undefined;
 }
 
 /**
@@ -407,7 +404,7 @@ export function buildDayStopSequence(
   usages: readonly PlaceUsage[],
   ctx: DayStopContext,
 ): DayStop[] {
-  const { nameOf, onDate, eventById, isConnectionStop } = ctx;
+  const { nameOf, onDate, eventById, isConnectionStop, dawnMs } = ctx;
   // No day, no sequence to be an index in — and renumbering per day is worse than
   // nothing: two pins both reading `1` on one canvas, with nothing on either saying
   // which day it belongs to. Which is also why an all-days scope has no traversal:
@@ -487,22 +484,13 @@ export function buildDayStopSequence(
   const first: DayStopEntry[] = [];
   const middle: DayStopEntry[] = [];
   const last: DayStopEntry[] = [];
-  // **WHEN YOU GOT TO THE STAY YOU WOKE IN**, across every span that bookends the day's
-  // start. The earliest, so a stop has to precede ALL of them to be pulled ahead.
-  let arrivedAt: number | undefined;
-  const arrived = (at?: number) => {
-    if (at != null && (arrivedAt == null || at < arrivedAt)) arrivedAt = at;
-  };
   for (const stop of merged) {
     const ends = stayEnds(stop.day, onDate, eventById);
     if (!ends) {
       middle.push(stop);
       continue;
     }
-    if (ends.first) {
-      first.push(stop);
-      arrived(ends.arrivedAt);
-    }
+    if (ends.first) first.push(stop);
     if (ends.last) last.push(stop);
     if (!ends.first && !ends.last) middle.push(stop);
   }
@@ -514,24 +502,41 @@ export function buildDayStopSequence(
     const ends = stayEnds(day, onDate, eventById);
     if (!ends) continue;
     const stop = { usage, day, moment: { eventId: day.eventId, edge: day.edge } };
-    if (ends.first) {
-      first.push(stop);
-      arrived(ends.arrivedAt);
-    }
+    if (ends.first) first.push(stop);
     if (ends.last) last.push(stop);
   }
-  // **NOTHING THAT HAPPENED BEFORE YOU ARRIVED CAN SORT AFTER THE STAY YOU WOKE IN**
-  // (owner, 2026-08-26). A `first` bookend claims the day STARTED there, and on the day you
-  // check in at 02:00 and out again that morning, it does not: the midnight car pick-up that
-  // brought you to the hotel was drawn after it, so the route left the airport, teleported to
-  // bed, and came back for the car.
+  // **WHAT BROUGHT YOU IN THROUGH THE NIGHT SORTS BEFORE THE BED** — and this is the SECOND
+  // answer this question has had, because the first one used a number that proves nothing.
   //
-  // The check is the arrival INSTANT, not a dawn cut-off — which is what keeps this from
-  // being a general theory of what precedes what. Where the app can see when you got there it
-  // moves the stops that beat you to it, and where it cannot (an ordinary stay checked into
-  // yesterday afternoon, whose 00:00 errand is honestly ambiguous) it moves nothing at all.
+  // Earlier today this compared each stop against the stay's own `startsAt`, on the reasoning
+  // that "nothing that happened before you arrived can sort after the stay you woke in". The
+  // sentence is fine; `startsAt` is not the arrival. A lodging start is a **floor** — the hour
+  // the room opens — which is exactly what `knowsMoment` already refuses to treat as a moment
+  // (ADR-0171 §10b), and I then treated it as one. Owner's day: the room was available from
+  // ⁦15:00⁩ the previous afternoon, they landed at ⁦23:20⁩, collected a car at ⁦00:00⁩ and reached
+  // the hotel around ⁦02:00⁩. Every stop of the day is after ⁦15:00⁩ the day before, so the
+  // comparison moved nothing and the route still ran bed → car.
+  //
+  // What actually separates "this brought me in" from "I left the hotel for this" is TWO
+  // questions, and one alone gets the other case wrong:
+  //
+  //  - **Is it before dawn** (`dawnMs`, the day window's own 07:00 — ADR-0045/0037, resolved
+  //    by the screen because a wall-clock hour needs a zone and this file has none). After
+  //    dawn you are up and out, whatever it is.
+  //  - **Is it a moment the app KNOWS** (`knowsMoment`). A ⁦06:30⁩ flight before dawn is an
+  //    exact commitment you left the bed for, so the hotel still leads. A car "available from
+  //    ⁦00:00⁩" is a floor: it claims no hour, and a floor in the small hours is the shape of
+  //    a night arrival rather than of an early start.
+  //
+  // Its known cost, stated rather than buried: a pre-dawn stop with an EXACT time that you
+  // genuinely went out for after checking in (a ⁦01:00⁩ table) keeps the hotel ahead of it. That
+  // leaves the bookend where it was, which is the safer of the two wrong answers, and it is
+  // the trade that buys the early-flight morning.
   const early = (stop: DayStopEntry) =>
-    arrivedAt != null && stop.moment.at != null && stop.moment.at < arrivedAt;
+    dawnMs != null &&
+    stop.moment.at != null &&
+    stop.moment.at < dawnMs &&
+    !knowsMoment(stop.moment, eventById);
   const bookended = [
     ...middle.filter(early),
     ...first,
