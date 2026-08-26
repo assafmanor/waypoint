@@ -35,6 +35,7 @@ import {
   type EventCategory,
   type MaybeItem,
   type Place,
+  type TravelMode,
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
@@ -85,6 +86,7 @@ import {
 } from '../lib/time';
 import {
   earnsChip,
+  earnsChipAt,
   freeAfterLast,
   freeBeforeFirst,
   freeBetween,
@@ -95,6 +97,8 @@ import {
   type GapDefaults,
 } from '../lib/gaps';
 import { useDayTravelReads, type DayLeg } from '../lib/day-travel';
+import { dayJourney, type DayJourney } from '../lib/day-joins';
+import { JourneyRow } from '../ui/domain/DayJoinRow';
 import {
   dayStops,
   ideaCategory,
@@ -428,6 +432,38 @@ export function PlanDay() {
     return free.fit === TRAVEL_FIT.UNKNOWN
       ? hole
       : Math.round(free.freeSeconds / SECONDS_PER_MINUTE);
+  };
+  /** **The line saying WHY the offer shrank** — `where-a-route-shows-up-v1.html` §2 drew it as
+   *  `מתוך 160 דק׳ · 40 דק׳ מהם דרך` beneath the chip, and shipping the number without it is what
+   *  made the smaller offer read as an unexplained one. Absent where there is no estimate, so a
+   *  hole the app cannot measure looks exactly as it did before (§D4).
+   *
+   *  Both numbers go through `gapLabel`, not the drawing's raw `דק׳`: it is the ladder the chip
+   *  above it already uses, and a note in a different unit from the number it explains is a second
+   *  answer to one question. */
+  const slotNote = (from: TripEvent, to: TripEvent, hole: number): string | undefined => {
+    const estimate = planTravel.estimateFor(from, to);
+    if (!estimate) return undefined;
+    const travelMinutes = Math.round(estimate.durationSeconds / SECONDS_PER_MINUTE);
+    return travelMinutes > 0
+      ? t.planDay.gapOfWhich(gapLabel(hole), gapLabel(travelMinutes))
+      : undefined;
+  };
+  /** **And the journey itself, because Plan mode draws the block too** —
+   *  `where-a-route-shows-up-v1.html` §2's Plan column is `trvBlock() + planSlot(…)`, the block AND
+   *  the chip. It is the same `dayJourney` Trip mode reads, so the two surfaces cannot describe one
+   *  leg differently; what Plan does NOT get is the block's controls (`בדרך`, `עדיין כאן`), because
+   *  Plan has no inline settle pair (ADR-0159 §1 / ADR-0171 §10e) and the drawing's Plan column has
+   *  no action row for that reason. */
+  const planJourney = (from: TripEvent, to: TripEvent): DayJourney | null => {
+    const estimate = planTravel.estimateFor(from, to);
+    return dayJourney({
+      departAfterMs: Date.parse(from.endsAt ?? from.startsAt ?? ''),
+      arriveByMs: Date.parse(to.startsAt ?? ''),
+      travelSeconds: estimate?.durationSeconds ?? null,
+      distanceMeters: estimate?.distanceMeters ?? null,
+      nowMs: now.getTime(),
+    });
   };
 
   // Reorder acts on soft events only (hard events are pinned anchors, ADR-0011).
@@ -1072,6 +1108,9 @@ export function PlanDay() {
     softIndex,
     drag,
     travelFreeMinutes,
+    slotNote,
+    planJourney,
+    travelMode: planTravel.mode,
     rowDragProps,
     rowRefuseProps,
     onEdit: (e) => {
@@ -1701,6 +1740,12 @@ interface BuilderCtx {
    *  list uses, so the two surfaces cannot differ about one hole (`frontend/CLAUDE.md`:
    *  ADR-0159 §1 allows a difference in posture and forbids one about a fact). */
   travelFreeMinutes: (from: TripEvent, to: TripEvent, hole: number) => number;
+  /** The chip's own explanation of why it shrank (§2's drawn `bld-slot-note`). */
+  slotNote: (from: TripEvent, to: TripEvent, hole: number) => string | undefined;
+  /** The journey across a hole, for the block Plan draws above its chip (§2's own drawing). */
+  planJourney: (from: TripEvent, to: TripEvent) => DayJourney | null;
+  /** The trip's derived mode, so the block names the same three words everywhere (§Z2). */
+  travelMode: TravelMode;
   rowDragProps: (id: string) => HoldToDragProps;
   /** Shared by every hard row — the hold is answered rather than armed (ADR-0199 §1). */
   rowRefuseProps: HoldToDragProps;
@@ -1756,23 +1801,35 @@ function overlapSeam(items: TimeItem[], idx: number): string | undefined {
  *  to every caller downstream. */
 function FreeSlot({
   free,
+  freeMinutes,
   label,
+  note,
   seamLabel,
   over,
   onFill,
 }: {
   free: Gap;
+  /** **What is actually free here**, which since ADR-0206 §V1.1 is not always the hole's own
+   *  length — and it is what decides chip-versus-seam. `where-a-route-shows-up-v1.html` §2 drew
+   *  `if (left >= 60)` and said what happens below it: _"there is simply no chip — exactly as
+   *  today. The seam is NOT given a second job."_ Without this a 60-minute hole a 78-minute walk
+   *  eats still earned a chip, and the chip then advertised `פער של 0 דק׳` — an offer nobody can
+   *  take. Defaults to the hole, so the edge slots (which have no leg yet) read as before. */
+  freeMinutes?: number;
   /** The chip's copy, when there is enough free time to earn one. */
   label: string;
+  /** Why the offer is smaller than the hole (§2's drawn note line). Absent with no estimate. */
+  note?: string;
   /** The seam's copy — its OUTCOME, like every other drop zone in the builder. */
   seamLabel: string;
   over: boolean;
   /** The whole position, not its slot: a filler needs the room to cap a length against. */
   onFill: (free: Gap) => void;
 }) {
-  // Asked of `lib/gaps.ts`, never re-derived here: the threshold that decides chip-vs-seam
-  // is the same one `gapBetween` applies, and two copies of it would drift.
-  const isChip = earnsChip(free);
+  // Asked of `lib/gaps.ts`, never re-derived here: the threshold that decides chip-vs-seam is the
+  // same one `gapBetween` applies, and two copies of it would drift. What it is asked ABOUT is the
+  // free minutes rather than the hole, since §V1.1 — see `freeMinutes`.
+  const isChip = earnsChipAt(freeMinutes ?? free.minutes);
   return (
     <div
       // Two classes, one shared geometry block in `screens.css`. Deliberately NOT
@@ -1791,6 +1848,7 @@ function FreeSlot({
             <Icon name="plus" /> {label}
           </button>
           <span className="gap-line" />
+          {note && <span className="bld-slot-note">{note}</span>}
         </>
       ) : (
         <>
@@ -1881,12 +1939,26 @@ function BuilderGroups({
         return (
           <Fragment key={key}>
             {nowRef}
+            {/* **The journey, then what is left of the hole** — the drawing's own order, and the
+              reason Plan needs both: the chip is a CONTROL and says what it offers, while the
+              block is the fact it is offering it around. An infeasible leg has no chip at all
+              (below), so the block is the only thing that can say so. */}
+            {prevEnd &&
+              depth === 0 &&
+              (() => {
+                const journey = ctx.planJourney(prevEnd, groupStartEvent(g));
+                return journey ? (
+                  <JourneyRow journey={journey} travelMode={ctx.travelMode} tz={ctx.tz} />
+                ) : null;
+              })()}
             {free && prevEnd && (
               <FreeSlot
                 free={free}
+                freeMinutes={ctx.travelFreeMinutes(prevEnd, groupStartEvent(g), free.minutes)}
                 label={t.planDay.gap(
                   gapLabel(ctx.travelFreeMinutes(prevEnd, groupStartEvent(g), free.minutes)),
                 )}
+                note={ctx.slotNote(prevEnd, groupStartEvent(g), free.minutes)}
                 seamLabel={t.planDay.seamAfter(prevEnd.title)}
                 over={ctx.overGap(free.fill)}
                 onFill={ctx.onGapFill}

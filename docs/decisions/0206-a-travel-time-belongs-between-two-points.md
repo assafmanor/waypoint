@@ -989,3 +989,118 @@ request, so the rows below a hole move once per cold day-open — ⁦38px⁩ per
 §D4 requires absence to cost nothing, so an empty ⁦58px⁩ hole in every gap of every day is the one
 outcome that is worse. Cached after the first visit, so a revisit does not shift. **Recorded rather
 than fixed**, and on the backlog.
+
+## AG. Amendment (2026-08-26) — five field reports on M6a, and four of them are one mistake
+
+M6a deployed and came back with five things in three messages. **Four are the same failure and it is
+worth naming before the individual fixes:** the design for all of it already existed — §Z5 §M2, §AF's
+own drawings, and `where-a-route-shows-up-v1.html` §2 — and M6a **built the drawings' numbers and
+skipped their states and their stated exceptions.** That is §AE6's lesson (_"the drawing is the spec;
+a brief quoting the drawing is not"_) arriving one milestone later, from a session that had read
+§AE6 and written it into the board.
+
+**No new mockup was drawn, and that is the point rather than a shortcut.** Three of the five are
+drawn states being built for the first time; one is arithmetic; one is a copy word the owner
+overrode. A mockup here would be re-deciding what is decided.
+
+### AG1. `overruns` was never rendered, so a journey nobody can make read as nought free minutes
+
+`freeAfterTravel` has answered a **three-way** `fit` since M2 — `fits` / `overruns` / `unknown` —
+and §V1.1's own amendment says why (_"the fit is a discriminant and not a boolean"_). M6a carried
+`TravelWindow` through `DayJourney` and then rendered only `freeSeconds`, which is clamped at zero.
+So a 78-minute walk into a 60-minute gap printed `פנוי לפני 0 דק׳` on the day and `פער של 0 דק׳` on
+Plan's chip: not a small amount of free time, a journey nobody can make.
+
+**It is a fifth arm, `OVERRUNS`, and it is checked before every clock arm.** An infeasible leg's
+leave-by is behind the previous stop's own end, so `PASSED` fires on it almost at once and would say
+`זמן היציאה עבר` for ever — advice about a departure that was never possible. The shortfall does not
+decay. `PAST` still leads it: a gap behind you is a record however impossible it was.
+
+Drawn already, in `where-a-route-shows-up-v1.html` §2's `tight` state, and built as drawn: the
+`warn` glyph **replaces** the mode mark in the badge column (that column is where the day says what
+kind of thing a row is, and what this row is is a problem), `--miss` for §D7's reason, no leave-by
+and no `בדרך` — the answer to an impossible leg is to move something.
+
+### AG2. With no gap at all, the shortfall is the wrong thing to say
+
+Owner, on the first fix: _"when there's no gap at all don't say that the way is longer than the gap
+by X minutes."_ Right on two counts. Two rows that touch have no gap for the journey to be longer
+**than**, so the sentence is arithmetically true and reads as nonsense; and with a zero gap the
+shortfall **is** the journey's own duration, which the head one line up already states — printing
+one number in two places is the ambiguity ADR-0207 §6 removed from the `בדרך` line.
+
+So the arm splits on `availableSeconds`, which `freeAfterTravel` deliberately does not clamp: at or
+below zero the line is `אין זמן לדרך`, and it covers an overlap as truthfully as a touch.
+
+### AG3. `פער`, not `חור` — and the drawing is not the authority on a word
+
+Owner's call. The app already calls this slot `פער` (`t.planDay.gap`: `פער של שעתיים · שבץ`), so
+this is one name for one thing rather than a third; `חלון` was the other candidate and is refused
+because the app spends "window" on a check-in's own (ADR-0184 §6's `לסגירה`) and two windows would
+be worse than two gaps. **The drawing says `חור`**, mockups are never retrofitted, and `he.ts`
+carries a note at the string so nobody restores it from there.
+
+### AG4. Plan mode draws the BLOCK, not just a smaller number
+
+Reported as _"I don't see the transit times in the plan day"_, and the drawing had answered it:
+`where-a-route-shows-up-v1.html` §2's Plan column is literally `trvBlock() + planSlot(…)` — the
+block **and** the chip. M6a shipped only the chip's corrected number, so Plan had no travel time
+anywhere and no way at all to learn that a leg was infeasible (its chip simply vanishes below the
+threshold).
+
+Both surfaces now render one `JourneyRow` off one `dayJourney`, which is ADR-0159 §1 as written.
+**What Plan does not get is the block's controls** — `בדרך` and `עדיין כאן` — because Plan has no
+inline settle pair (ADR-0171 §10e) and the drawing's Plan column has no action row for that reason.
+That is a difference in posture, which §1 allows; the numbers are a fact, which it does not.
+
+**And the chip's own note line was drawn and skipped too**: `מתוך 160 דק׳ · 40 דק׳ מהם דרך`
+beneath it. Shipping a smaller offer with no account of itself is what made the correction read as
+an unexplained number. Both values take `gapLabel`'s ladder rather than the drawing's raw `דק׳`, so
+a note cannot be in a different unit from the chip it explains.
+
+### AG5. The chip threshold asks the CORRECTED number — the drawing had already decided it
+
+`planSlot`'s drawn condition is `if (left >= 60)`, with the consequence written beside it:
+_"Below the chip threshold there is simply no chip — exactly as today. The seam is NOT given a
+second job."_ M6a left `earnsChip` on the raw hole and recorded in §AF and on M9's card that moving
+it "belongs to M9". **That was wrong twice over** — the drawing had settled it, and leaving it
+produced a chip advertising `פער של 0 דק׳`, an offer nobody can take. `earnsChipAt` is the same
+threshold in the shape the corrected number can ask it. The **position** is untouched: below the
+threshold it is the drag-only seam it has always been, sized by the raw hole, because a drop target
+is about where a row may land and not about how much of the slot is free.
+
+### AG6. A hole too short for a `gap` join still has a journey in it — §Z5 §M2, unbuilt
+
+§Z5 §M2 says the journey block _"**ignores** `GAP_MIN_MINUTES` for ADR-0159's own reason, or a
+45-minute hole holding a 40-minute walk stays silent."_ M6a gated the leg on
+`join?.kind === 'gap'` — and `gapBetween` is **floored** by that very constant, so the block only
+appeared where a `שבץ` chip would have. Every hole under an hour, a zero-length one included, said
+nothing about travel at all: exactly the silence that sentence forbids, reached by building the
+gate on the floored gap.
+
+`DayBlockEntry.from` is now recorded on every adjacency rather than only where a join survived. The
+floor decides whether **free time** is worth stating; it has never had anything to say about travel.
+
+### AG7. A place visited twice is two stops and one pin — the map drew the wrong leg
+
+The only report that is not M6a's. Owner: _"instead of stretching a line from #4 to #5 which is what
+it was supposed to do, it stretched from #1."_ `screens/Map.tsx` resolved the selection with
+`orderedPins.findIndex((pin) => pin.selected)`, and `orderedPins` mapped stops **to pins** — one pin
+per place — so a place with two events in a day appeared twice as the same object and `findIndex`
+answered the first occurrence.
+
+**M7c's bookends made this the ordinary case rather than an edge one:** on a middle night the stay
+is the day's first stop _and_ its last, so the duplicate is there on most days.
+
+No new rule was needed. {@link relevantMoment} already decides which visit a place is about, and
+`buildPinOrderIndex` already uses it to pick the **number** the pin wears — so reading it here is
+what makes the amber line agree with the badge, which is precisely what the report was checking.
+The decision moved out of a `useMemo` into `lib/map-pins.ts`'s `amberLegIndex`, per
+`frontend/CLAUDE.md`'s rule that what the canvas draws belongs in a pure function: it was untestable
+where it was, which is why it shipped wrong.
+
+### AG8. Measured at 360, in Chromium, both themes
+
+Every new arm fits: the shortfall line is ⁦153.03px⁩ of ink in its ⁦207.75px⁩ box and ⁦165.42px⁩ at the
+`H:MM` rung; `אין זמן לדרך` is ⁦63.16px⁩. Nothing clipped, no run outside the column, `scrollWidth`
+exactly ⁦360⁩ in both themes, and every arm stays the ⁦58px⁩ the quiet arms already were.

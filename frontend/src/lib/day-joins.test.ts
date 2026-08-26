@@ -454,3 +454,126 @@ describe('narrowGapForTravel', () => {
     expect(narrowGapForTravel(gap, null, TZ)).toBe(gap);
   });
 });
+
+// ── THE LEG THAT DOES NOT FIT (ADR-0206 §V1.1's third `fit`) ──────────────────────────────
+//
+// `freeAfterTravel` has answered `overruns` since M2 and **nothing rendered it**, so a 78-minute
+// walk into a 60-minute gap read `פנוי לפני 0 דק׳` — not a small amount of free time, a journey
+// nobody can make. Reported from a real day on both surfaces.
+describe('dayJourney — the journey does not fit (§AG)', () => {
+  const START = Date.parse('2026-07-12T05:00:00Z');
+  const overrunning = (holeMinutes: number, walkMinutes: number) =>
+    dayJourney({
+      departAfterMs: START,
+      arriveByMs: START + holeMinutes * MIN,
+      travelSeconds: walkMinutes * 60,
+      nowMs: START,
+    });
+
+  it('reports OVERRUNS with the shortfall, not zero free time', () => {
+    const journey = overrunning(60, 78);
+    expect(journey?.arm).toBe(DAY_JOURNEY_ARM.OVERRUNS);
+    expect(journey?.overrunSeconds).toBe(18 * 60);
+    // …and it offers no departure, because there was never one to make.
+    expect(journey?.leaveByMs).toBeNull();
+  });
+
+  // **Checked before every clock arm, and that ordering is the decision.** An infeasible leg's
+  // leave-by is behind the previous stop's own end, so `PASSED` fires on it at once and would say
+  // `זמן היציאה עבר` for ever — advice about a departure that was never possible. The shortfall
+  // does not decay, so it is what the row says until somebody moves something.
+  it('outranks a passed leave-by, whose arm would otherwise always win', () => {
+    const journey = dayJourney({
+      departAfterMs: START,
+      arriveByMs: START + 60 * MIN,
+      travelSeconds: 78 * 60,
+      nowMs: START + 59 * MIN,
+    });
+    expect(journey?.arm).toBe(DAY_JOURNEY_ARM.OVERRUNS);
+    expect(journey?.arm).not.toBe(DAY_JOURNEY_ARM.PASSED);
+  });
+
+  // A gap behind you is a record whatever it never was, so `PAST` still leads.
+  it('yields to PAST, because a gap behind you is history', () => {
+    const journey = dayJourney({
+      departAfterMs: START,
+      arriveByMs: START + 60 * MIN,
+      travelSeconds: 78 * 60,
+      nowMs: START + 61 * MIN,
+    });
+    expect(journey?.arm).toBe(DAY_JOURNEY_ARM.PAST);
+  });
+
+  it('is not reached while the journey does fit', () => {
+    expect(overrunning(160, 40)?.arm).toBe(DAY_JOURNEY_ARM.AHEAD);
+    expect(overrunning(160, 40)?.overrunSeconds).toBeNull();
+  });
+
+  // **TWO ROWS THAT TOUCH.** The whole journey is the shortfall, and `availableSeconds` is what a
+  // renderer branches on to say so without repeating the duration it already printed.
+  //
+  // `nowMs` sits INSIDE the earlier event rather than on the boundary, which is the live state
+  // this describes: you are still in the first row and the second begins the moment it ends. On
+  // the boundary itself `PAST` correctly wins — a gap behind you is a record however impossible it
+  // was — and the first draft of this fixture sat exactly there and asserted the wrong arm.
+  it('reports a zero gap as a zero window, with the journey as the whole shortfall', () => {
+    const journey = dayJourney({
+      departAfterMs: START,
+      arriveByMs: START,
+      travelSeconds: 12 * 60,
+      nowMs: START - 10 * MIN,
+    });
+    expect(journey?.arm).toBe(DAY_JOURNEY_ARM.OVERRUNS);
+    expect(journey?.free?.availableSeconds).toBe(0);
+    expect(journey?.overrunSeconds).toBe(12 * 60);
+  });
+
+  // The bookend leg has no window at all (§AF3), so it can never overrun — there is nothing to
+  // overrun. It must not fall into this arm by way of a `null` free.
+  it('never overruns the day’s first leg, which has no window', () => {
+    const bookend = dayJourney({
+      arriveByMs: START + 60 * MIN,
+      travelSeconds: 78 * 60,
+      nowMs: START,
+    });
+    expect(bookend?.arm).not.toBe(DAY_JOURNEY_ARM.OVERRUNS);
+    expect(bookend?.free).toBeNull();
+  });
+});
+
+// ── A HOLE TOO SHORT FOR A `gap` JOIN STILL HAS A JOURNEY (§Z5 §M2) ───────────────────────
+//
+// `gapBetween` is FLOORED by `GAP_MIN_MINUTES`, so a hole under an hour — including a zero-length
+// one, two rows that touch — produces no `gap` join at all. Gating the journey on that join is
+// exactly how the case §Z5 §M2 forbade stayed silent: _"a 45-minute hole holding a 40-minute walk"_.
+describe('dayBlocks — the row above is recorded whether or not a join survived the floor', () => {
+  const at = (hhmm: string) => `2026-07-12T${hhmm}:00+09:00`;
+  // **Both rows carry an END, and the first draft of this omitted the second one's.** A start-only
+  // row landing exactly on the previous row's end is CONTAINED by it (ADR-0041), so the two nest
+  // into one group and there is no adjacency to record at all — a fixture that proved nothing
+  // about the floor it meant to test.
+  const pair = (endsAt: string, nextStartsAt: string, nextEndsAt = at('23:00')) => {
+    const a = ev({ id: 'a', startsAt: at('09:00'), endsAt, placeId: 'pa' });
+    const b = ev({ id: 'b', startsAt: nextStartsAt, endsAt: nextEndsAt, placeId: 'pb' });
+    const entries = mergeDayEntries(buildTimeTree([a, b]), []);
+    return dayBlocks(entries, { bookings: [], when: bookingWhen([]), tz: TZ });
+  };
+  const originsOf = (blocks: ReturnType<typeof dayBlocks>) =>
+    blocks.flatMap((b) => b.entries.map((e) => e.from?.id));
+
+  it('records it for a 45-minute hole, which earns no chip and no join', () => {
+    const blocks = pair(at('11:00'), at('11:45'));
+    expect(
+      gapBetween(ev({ id: 'a', endsAt: at('11:00') }), ev({ id: 'b', startsAt: at('11:45') }), TZ),
+    ).toBeNull();
+    expect(originsOf(blocks)).toEqual([undefined, 'a']);
+  });
+
+  it('records it for two rows that TOUCH, where there is no hole at all', () => {
+    expect(originsOf(pair(at('11:00'), at('11:00')))).toEqual([undefined, 'a']);
+  });
+
+  it('still records it where the hole is long enough to earn a join', () => {
+    expect(originsOf(pair(at('11:00'), at('14:00')))).toEqual([undefined, 'a']);
+  });
+});
