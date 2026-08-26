@@ -16,13 +16,14 @@ import {
   freeAfterTravel,
   isTightConnection,
   TRAVEL_FIT,
+  windowBoundOf,
   type Booking,
   type BookingType,
   type BookingWhen,
   type TravelWindow,
   type TripEvent,
 } from '@waypoint/shared';
-import { SECONDS_PER_MINUTE } from '../constants';
+import { MS_PER_SECOND, SECONDS_PER_MINUTE } from '../constants';
 import { gapBetween, type Gap } from './gaps';
 import { LEAVE_PHASE, heroLeaveBy } from './hero-travel';
 import { isoToTimeInput, zonedIso } from './time';
@@ -281,6 +282,26 @@ export interface DayJourney {
   /** **By how much the journey misses**, in seconds, on the `OVERRUNS` arm — `null` elsewhere.
    *  The number to act on is the shortfall, not the zero that clamping leaves behind. */
   overrunSeconds: number | null;
+  /**
+   * **WHAT THE DAY PREDICTS YOU WILL ARRIVE AT** (ADR-0206 §AI) — `null` wherever the leave-by is
+   * the statement, which is the ordinary case and most of the app.
+   *
+   * It exists because a departure is not always something the app may name. Two ways it is not:
+   * the destination has no **deadline** to count back from (a check-in window's opening is a
+   * floor, so counting back from it advises leaving in time to arrive the instant the door opens),
+   * or the departure it computes lands **inside the row it leaves from**. Either way the honest
+   * statement is when you will get there, given when you can go.
+   */
+  arriveAtMs: number | null;
+  /** **True where that arrival lands after the destination's window has SHUT** — the one thing
+   *  nobody can currently be warned about at plan time (`hero-booking.ts`'s own `missed` fires off
+   *  the clock, once it is already too late).
+   *
+   *  It rides the `OVERRUNS` arm rather than a sixth one, and that falls out of the fit measuring
+   *  to the close: missing the close and not fitting the window are the same fact. What it changes
+   *  is the SENTENCE — "you will get there after it shuts" is what you act on, where the generic
+   *  shortfall makes you work out why. */
+  arrivesAfterClose: boolean;
   /** **What is LEFT of the journey**, on the `ON_WAY` arm (ADR-0207 §6) — scaled by the remaining
    *  crow fraction rather than re-routed, and `null` where that ratio is noise. The stale total is
    *  not more honest here but less: it reads as "44 minutes still to walk" two minutes from the
@@ -331,6 +352,18 @@ export function dayJourney(input: {
    *  the caller from `remainingTravelSeconds`, because the fix is the SCREEN's — this file holds no
    *  position and issues no request (§1). */
   remainingSeconds?: number | null;
+  /** **The destination has no deadline** (ADR-0206 §AI1) — its start edge is not `exact`, which
+   *  `isExactEdge` answers and the caller asks, because this file holds instants and cannot see an
+   *  event. A check-in's `17:00` is the hour the door OPENS; counting back from it invents a
+   *  deadline nobody set, and then marks you late against it. Withholding the printed clock is not
+   *  enough — the arm is what paints `--miss` and what the board reads for `באיחור` — so this
+   *  withdraws the leave-by itself, which is ADR-0208's shape: the measurement stands, the advice
+   *  is not given. */
+  flexibleArrival?: boolean;
+  /** Where that flexible arrival is a **closed** window, the instant it shuts
+   *  (`windowBoundOf(event, 'start')`, ADR-0184). Absent on an open floor, which can be missed by
+   *  nothing. */
+  windowClosesMs?: number;
   /** **The plan's claim about where you are, when it has been denied** (ADR-0208 §2) — a skipped
    *  origin. It removes the CLAIM (the leave-by, the mark) and leaves the MEASUREMENT standing:
    *  the hole is still the hole and the walk is still in it, so §V1.1's correction is not a claim
@@ -349,16 +382,38 @@ export function dayJourney(input: {
   if (!Number.isFinite(arriveByMs)) return null;
   const leave = heroLeaveBy({ arriveByMs, travelSeconds, nowMs });
   if (!leave) return null;
-  const free =
-    departAfterMs !== undefined && Number.isFinite(departAfterMs)
-      ? freeAfterTravel(departAfterMs, arriveByMs, travelSeconds)
-      : null;
+  const measurableFrom = departAfterMs !== undefined && Number.isFinite(departAfterMs);
+  // **THE FIT MEASURES TO THE LAST MOMENT THAT STILL WORKS, WHICH ON A WINDOW IS ITS CLOSE.**
+  // The third face of §AI1's mistake, and the one only a spec found: `freeAfterTravel` was being
+  // handed the window's OPENING as the deadline, so a leg that could not reach the door the
+  // instant it opened read as `OVERRUNS` — `אין זמן לדרך` about a check-in you had three more
+  // hours to make. A floor with no close keeps the opening, which is all the app knows about it.
+  const fitBy =
+    input.flexibleArrival === true && input.windowClosesMs !== undefined
+      ? input.windowClosesMs
+      : arriveByMs;
+  const free = measurableFrom ? freeAfterTravel(departAfterMs!, fitBy, travelSeconds) : null;
+  // **THE ONE RULE BOTH OF §AI's DEFECTS COLLAPSE INTO.** The app states a departure only when it
+  // has a deadline to count back from AND that departure is one you could actually make. A leg
+  // into a floor fails the first; a leave-by behind its own origin fails the second — and the
+  // second is reachable only since §AH2 widened the tolerance, because the 2-minute shortfall that
+  // used to read `OVERRUNS` (and printed no leave-by at all) now reads as fitting.
+  const statesLeaveBy =
+    input.flexibleArrival !== true && (!measurableFrom || leave.leaveByMs >= departAfterMs!);
+  // When you can go, plus the leg. Never counted back from a bound the app invented.
+  const arriveAt = measurableFrom ? departAfterMs! + travelSeconds * MS_PER_SECOND : null;
   const measurement = {
     travelSeconds,
     distanceMeters: input.distanceMeters ?? null,
     free,
     remainingSeconds: null,
     overrunSeconds: null,
+    arriveAtMs: statesLeaveBy ? null : arriveAt,
+    arrivesAfterClose:
+      !statesLeaveBy &&
+      arriveAt !== null &&
+      input.windowClosesMs !== undefined &&
+      arriveAt > input.windowClosesMs,
   };
   // The row below has started: whatever the leave-by says, the departure is not the question any
   // more. Checked FIRST, so a finished day is quiet however late its legs ran.
@@ -381,7 +436,7 @@ export function dayJourney(input: {
     return {
       ...measurement,
       arm: DAY_JOURNEY_ARM.ON_WAY,
-      leaveByMs: leave.leaveByMs,
+      leaveByMs: statesLeaveBy ? leave.leaveByMs : null,
       remainingSeconds: input.remainingSeconds ?? null,
     };
   }
@@ -391,11 +446,30 @@ export function dayJourney(input: {
   if (claimDenied) {
     return { ...measurement, arm: DAY_JOURNEY_ARM.AHEAD, leaveByMs: null };
   }
+  // A departure the app may not state cannot have passed, so the late mark goes with it.
+  if (!statesLeaveBy) {
+    return { ...measurement, arm: DAY_JOURNEY_ARM.AHEAD, leaveByMs: null };
+  }
   return {
     ...measurement,
     arm: leave.phase === LEAVE_PHASE.PASSED ? DAY_JOURNEY_ARM.PASSED : DAY_JOURNEY_ARM.AHEAD,
     leaveByMs: leave.leaveByMs,
   };
+}
+
+/**
+ * **When a closed check-in window shuts**, or `undefined` for an open floor — which can be missed
+ * by nothing (ADR-0184's `not-before`).
+ *
+ * Lives here rather than at each day surface because both of them need it to call
+ * {@link dayJourney} and neither should own the rule: `startWindowEnd` is a full ISO instant, so
+ * no zone is threaded, and an unparseable one is absent rather than `NaN` walking into a
+ * comparison.
+ */
+export function windowClosesMs(event: TripEvent): number | undefined {
+  const shuts = windowBoundOf(event, 'start');
+  const ms = shuts ? Date.parse(shuts) : NaN;
+  return Number.isFinite(ms) ? ms : undefined;
 }
 
 /**

@@ -2013,6 +2013,21 @@ export const t = {
     freeTime: (length: string) => `${length} פנויות`,
     freeTimeOneMinute: 'דקה פנויה',
     freeTimeOneHour: 'שעה פנויה',
+    // **WHEN YOU WILL GET THERE, WHERE THE APP MAY NOT SAY WHEN TO LEAVE** (ADR-0206 §AI).
+    //
+    // A check-in window's `17:00` is the hour the door OPENS, so counting back from it invents a
+    // deadline nobody set — and a departure that lands inside the row it leaves from is one you
+    // could not have made. In both cases the arrival is what the app can stand behind: when you
+    // can go, plus the leg.
+    //
+    // **Hedged, and the `~` is inside the isolate** — it is derived from an estimate, so it owes
+    // the same admission `approxDuration` makes about a duration (§D5). The clock arrives already
+    // isolated from the caller (ADR-0118).
+    arriveAt: (clock: string) => `הגעה ${clock}`,
+    // …and the one warning nobody can currently be given at plan time: `hero-booking.ts` computes
+    // `missed` off the CLOCK, once it is already too late. This is the same fact predicted, on the
+    // surface that holds the plan, readable at breakfast.
+    arriveAfterClose: (clock: string) => `הגעה ${clock} · אחרי סגירת החלון`,
     // **THE LEG THAT DOES NOT FIT** (ADR-0206 §V1.1's third `fit`, drawn in
     // `where-a-route-shows-up-v1.html` §2's `tight` state). `freeAfterTravel` has answered
     // `overruns` since M2 and nothing rendered it, so a 78-minute walk into a 60-minute hole read

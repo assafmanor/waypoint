@@ -28,6 +28,7 @@ import {
 import {
   EVENT_KIND,
   EVENT_STATUS,
+  isExactEdge,
   freeAfterTravel,
   isAmbient,
   TRAVEL_FIT,
@@ -97,8 +98,9 @@ import {
   type GapDefaults,
 } from '../lib/gaps';
 import { useDayTravelReads, type DayLeg } from '../lib/day-travel';
-import { dayJourney, type DayJourney } from '../lib/day-joins';
+import { dayJourney, windowClosesMs, type DayJourney } from '../lib/day-joins';
 import { JourneyRow } from '../ui/domain/DayJoinRow';
+import { StayRow } from '../ui/domain/StayRow';
 import {
   dayStops,
   ideaCategory,
@@ -149,7 +151,7 @@ import {
   staysOnDate,
 } from '../lib/day-entries';
 import { nowLinePlacement } from '../lib/now-line';
-import { ambientSpanLabel } from '../lib/glance';
+import { ambientSpanLabel, dayBookendStays } from '../lib/glance';
 import { edgeSentence } from '../lib/transitions';
 import { t } from '../i18n/he';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
@@ -389,10 +391,20 @@ export function PlanDay() {
   // reading it. So Plan places nothing differently; what it does not do is offer to act
   // on it, because there is nowhere yet to store a placement.
   const planGroups = buildTimeTree(dayEvents);
+  // **THE SAME TWO FACTS, FROM THE SAME FUNCTION** (ADR-0209 §1). Trip mode reads
+  // `dayBookendStays` too, and so does the map's stop sequence — ADR-0159 §1 allows the two day
+  // surfaces to differ in posture and forbids a difference about a fact, and "you slept there" is
+  // not a posture.
+  const bookends = dayBookendStays(events, activeDate);
+  const stayRowIds = useMemo(
+    () => new Set([bookends.woke?.id, bookends.sleeps?.id].filter((id): id is string => !!id)),
+    [bookends.woke?.id, bookends.sleeps?.id],
+  );
   const placement = placeDayEntries(
     mergeDayEntries(planGroups, transitions),
     dayEvents.filter((e) => !e.startsAt),
     planGroups,
+    stayRowIds,
   );
 
   // ── THE JOURNEY IN A HOLE, ON THE CONTROL SIDE (ADR-0206 §V1.1) ─────────────────────────
@@ -411,8 +423,18 @@ export function PlanDay() {
       if (prev) legs.push({ from: prev, to: start });
       prev = groupEndEvent(group);
     }
+    // **The day's two bookend legs** (ADR-0209 §1) — out of the stay you woke in and back into
+    // the one you sleep in. `bookend: true` on both: a stay has no per-day instant, so reading its
+    // own ends as this hole's bounds measures a window from its check-in day (§AF3).
+    const first = planGroups.length ? groupStartEvent(planGroups[0]) : undefined;
+    if (bookends.woke && first && first.id !== bookends.woke.id) {
+      legs.unshift({ from: bookends.woke, to: first, bookend: true });
+    }
+    if (bookends.sleeps && prev && prev.id !== bookends.sleeps.id) {
+      legs.push({ from: prev, to: bookends.sleeps, bookend: true });
+    }
     return legs;
-  }, [planGroups]);
+  }, [planGroups, bookends.woke, bookends.sleeps]);
   const planTravel = useDayTravelReads({ tripId: trip.id, legs: planLegs, bookings, places });
   /** The hole's free minutes once its journey is counted, or the hole itself where there is no
    *  estimate (§D4 — never a pessimistic guess, and the chip reads exactly as it read before).
@@ -455,11 +477,24 @@ export function PlanDay() {
    *  leg differently; what Plan does NOT get is the block's controls (`בדרך`, `עדיין כאן`), because
    *  Plan has no inline settle pair (ADR-0159 §1 / ADR-0171 §10e) and the drawing's Plan column has
    *  no action row for that reason. */
+  /** The stay's bound in the words the strip already used — `edgeSentence` where the day is an
+   *  edge of it, `ambientSpanLabel` where it is not (ADR-0209 §1). Trip mode reads the same pair. */
+  const planStayBound = (stay: TripEvent): string | undefined => {
+    const edge = placement.stayEdges.find((e) => e.event.id === stay.id);
+    return edge
+      ? edgeSentence(edge, eventEdgeZone(edge.event, edge.edge, zoneCtx).zone)
+      : ambientSpanLabel(stay, activeDate);
+  };
   const planJourney = (from: TripEvent, to: TripEvent): DayJourney | null => {
     const estimate = planTravel.estimateFor(from, to);
     return dayJourney({
       departAfterMs: Date.parse(from.endsAt ?? from.startsAt ?? ''),
       arriveByMs: Date.parse(to.startsAt ?? ''),
+      // Same gate as Trip mode's, and it is here rather than only there because
+      // `frontend/CLAUDE.md` names "changing a day-surface derivation in `DayView` only" as
+      // having cost a release twice (ADR-0206 §AI1).
+      flexibleArrival: !isExactEdge(to, 'start'),
+      windowClosesMs: windowClosesMs(to),
       travelSeconds: estimate?.durationSeconds ?? null,
       distanceMeters: estimate?.distanceMeters ?? null,
       nowMs: now.getTime(),
@@ -1175,22 +1210,25 @@ export function PlanDay() {
               {/* An edge day says the edge, a middle day says the count — the same rule Trip
                 reads, from the same two functions (ADR-0171 §10e). No posture difference
                 here: what the strip STATES is a fact about the booking. */}
-              {staysToday.map((e) => {
-                const edge = edgeEntryOf(placement.positioned, e.id);
-                return (
-                  <div className="ambient" key={e.id}>
-                    <span className="ai" aria-hidden="true">
-                      {e.icon ?? DEFAULT_STAY_ICON}
-                    </span>
-                    <span className="an">{e.title}</span>
-                    <span className="as">
-                      {edge
-                        ? edgeSentence(edge, eventEdgeZone(edge.event, edge.edge, zoneCtx).zone)
-                        : ambientSpanLabel(e, activeDate)}
-                    </span>
-                  </div>
-                );
-              })}
+              {staysToday
+                // A stay named by its own row is not also named here (ADR-0209 §1).
+                .filter((e) => !stayRowIds.has(e.id))
+                .map((e) => {
+                  const edge = edgeEntryOf(placement.positioned, e.id);
+                  return (
+                    <div className="ambient" key={e.id}>
+                      <span className="ai" aria-hidden="true">
+                        {e.icon ?? DEFAULT_STAY_ICON}
+                      </span>
+                      <span className="an">{e.title}</span>
+                      <span className="as">
+                        {edge
+                          ? edgeSentence(edge, eventEdgeZone(edge.event, edge.edge, zoneCtx).zone)
+                          : ambientSpanLabel(e, activeDate)}
+                      </span>
+                    </div>
+                  );
+                })}
               {/* **The same row, without the control** (ADR-0171 §10e). Plan settles through
                 a sheet off the row menu and never inline, and `נותרו היום` — the number
                 that made settling load-bearing on Trip's copy — is a Trip-mode number.
@@ -1264,12 +1302,54 @@ export function PlanDay() {
                 containment, violet clusters for partial overlap. Gap chips sit
                 only between top-level groups — never inside an overlap.
                 Transition points interleave by instant at the top level (§B). */}
+              {/* **WHERE THE DAY STARTS** (ADR-0209 §1), with the leg out of it below — the same
+                two rows Trip mode draws, off the same `dayBookendStays`. **Without the settle
+                pair**, which is ADR-0171 §10e's posture difference: Plan settles through a row
+                menu, not inline. */}
+              {bookends.woke && (
+                <>
+                  <StayRow
+                    stay={bookends.woke}
+                    bound={planStayBound(bookends.woke)}
+                    bookings={bookings}
+                    onOpen={setDetailTarget}
+                  />
+                  {planGroups.length > 0 &&
+                    (() => {
+                      const j = planJourney(bookends.woke!, groupStartEvent(planGroups[0]));
+                      return j ? (
+                        <JourneyRow journey={j} travelMode={planTravel.mode} tz={tz} />
+                      ) : null;
+                    })()}
+                </>
+              )}
               <BuilderGroups
                 groups={planGroups}
                 depth={0}
                 ctx={builderCtx}
                 entries={placement.positioned}
               />
+              {/* …and where it ends, with the leg back into it above. */}
+              {bookends.sleeps && (
+                <>
+                  {planGroups.length > 0 &&
+                    (() => {
+                      const j = planJourney(
+                        groupEndEvent(planGroups[planGroups.length - 1]),
+                        bookends.sleeps!,
+                      );
+                      return j ? (
+                        <JourneyRow journey={j} travelMode={planTravel.mode} tz={tz} />
+                      ) : null;
+                    })()}
+                  <StayRow
+                    stay={bookends.sleeps}
+                    bound={planStayBound(bookends.sleeps)}
+                    bookings={bookings}
+                    onOpen={setDetailTarget}
+                  />
+                </>
+              )}
               {/* The day's tail: free time after the last event. It stays ABOVE the line
                 below, because a drop slot IS a position — everything that has one sits
                 above everything that does not. */}

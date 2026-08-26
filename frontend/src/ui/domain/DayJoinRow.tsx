@@ -251,7 +251,7 @@ export function JourneyRow({ journey, travelMode, tz, action, located }: Journey
         // An overrun is a negative status about the plan, so it takes §D7's own paint — the same
         // `--miss` a passed leave-by does, because they are the same kind of fact about a journey
         // you are not going to make on time.
-        overrunning || journey.arm === DAY_JOURNEY_ARM.PASSED
+        overrunning || journey.arm === DAY_JOURNEY_ARM.PASSED || journey.arrivesAfterClose
           ? 'miss'
           : journey.arm === DAY_JOURNEY_ARM.ON_WAY
             ? 'on-way'
@@ -300,6 +300,13 @@ function shortfallLine(free: TravelWindow): string | undefined {
  */
 function journeyMetaLine(journey: DayJourney, tz: string): string | undefined {
   if (journey.arm === DAY_JOURNEY_ARM.OVERRUNS) {
+    // A window you will reach after it shuts is the same fact as a leg that does not fit it, so
+    // it rides this arm — and says the thing you act on rather than the arithmetic behind it.
+    if (journey.arrivesAfterClose && journey.arriveAtMs !== null) {
+      return t.travel.arriveAfterClose(
+        ltrIsolate(`~${formatTime(new Date(journey.arriveAtMs), tz)}`),
+      );
+    }
     return journey.free ? shortfallLine(journey.free) : undefined;
   }
   if (journey.arm === DAY_JOURNEY_ARM.PAST) {
@@ -310,7 +317,14 @@ function journeyMetaLine(journey: DayJourney, tz: string): string | undefined {
     const phrase = left === null ? null : approxTravelTime(left);
     return phrase ? `${t.actions.onWay} · ${t.travel.remaining(phrase)}` : t.actions.onWay;
   }
-  if (journey.leaveByMs === null) return undefined;
+  // **THE ARRIVAL, WHERE A DEPARTURE MAY NOT BE STATED** (ADR-0206 §AI). `dayJourney` has already
+  // decided that — a flexible destination, or a leave-by behind its own origin — so this only asks
+  // which fact it was left with. Hedged, because it is an estimate carried forward.
+  if (journey.leaveByMs === null) {
+    if (journey.arriveAtMs === null) return undefined;
+    const at = ltrIsolate(`~${formatTime(new Date(journey.arriveAtMs), tz)}`);
+    return journey.arrivesAfterClose ? t.travel.arriveAfterClose(at) : t.travel.arriveAt(at);
+  }
   const clock = ltrIsolate(formatTime(new Date(journey.leaveByMs), tz));
   return journey.arm === DAY_JOURNEY_ARM.PASSED
     ? t.travel.leavePassed(clock)

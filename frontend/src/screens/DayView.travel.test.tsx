@@ -473,10 +473,32 @@ describe('DayView — the walk out of the bed', () => {
     setSimulatedNow(null);
   });
 
-  it('draws a journey above the day’s first row', () => {
+  it('draws a journey above the day’s first row, and one back into it', () => {
     show();
-    // Two blocks now: the walk out of the hotel and the walk to the theatre.
-    expect(document.querySelectorAll('.day-trv')).toHaveLength(2);
+    // **Three blocks since ADR-0209 §1**: out of the hotel, on to the theatre, and back to the
+    // hotel — the return being the half of §AD that never existed, because that milestone only
+    // built the leg OUT of the stay you woke in.
+    expect(document.querySelectorAll('.day-trv')).toHaveLength(3);
+  });
+
+  // **The stay is named twice on a middle night, and that is the day's two ends** — which is what
+  // ADR-0054's map amendment already decided a middle night is, and the band's single entry was
+  // the thing that could not express it. Once each, not once here and once in the strip.
+  it('names the stay as the day’s two ends, and not in the strip as well', () => {
+    show();
+    const staysNamed = [...document.querySelectorAll('.tr-title')].filter((el) =>
+      el.textContent?.includes('מלון'),
+    );
+    expect(staysNamed).toHaveLength(2);
+    expect(document.querySelector('.day-ambient .an')).toBeNull();
+  });
+
+  // …and neither row states a clock, which is what lets every leg stay an ordinary block (§3).
+  it('states the stay’s bound and no clock of its own', () => {
+    show();
+    const row = document.querySelector('.transition-row')!;
+    expect(row.querySelector('.tr-bound')).toBeTruthy();
+    expect(row.querySelector('.tr-time')).toBeNull();
   });
 
   // **It says the journey and it does NOT say what is free.** A middle night has no check-out
@@ -489,5 +511,127 @@ describe('DayView — the walk out of the bed', () => {
     expect(first.textContent).toContain('15');
     expect(first.textContent).toContain('יציאה');
     expect(first.textContent).not.toContain('פנוי');
+  });
+});
+
+// ── A DESTINATION WITH NO DEADLINE (ADR-0206 §AI1) ────────────────────────────────────────
+//
+// Read off ADR-0209's mockup by the owner, on shipped code: _"on check in day … it says that you're
+// suggesting to leave before the previous stop is finished and ahead of time, getting to the hotel
+// even before check in starts, even though you have enough time to just arrive later"_ — and then
+// the half that would have shipped broken: _"we must make sure that if you haven't left by the time
+// that the app suggests the app doesn't show you as being late."_
+//
+// `theatre` is given a check-in window here, so `edgeMeaning` answers `window` rather than `exact`.
+// Everything else about the day is the file's own scenario.
+describe('DayView — a leg into a window states an arrival, never a departure (§AI1)', () => {
+  const windowed = { ...theatre, startWindowEnd: `${DAY}T19:00:00Z` };
+  /** When you can go (lunch's end) plus the leg — never counted back from the window's opening. */
+  const arrival = ltrIsolate(
+    `~${formatTime(new Date(Date.parse(lunch.endsAt!) + WALK_MINUTES * 60_000), ZONE)}`,
+  );
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    resetOnWayForTests();
+    tripEvents = [lunch, windowed];
+    tripPlaces = places;
+    travelSeconds = WALK_MINUTES * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    resetOnWayForTests();
+    setSimulatedNow(null);
+  });
+
+  it('offers no departure at all', () => {
+    show();
+    expect(document.querySelector('.day-trv')!.textContent).not.toContain('יציאה');
+  });
+
+  it('states when you will get there instead', () => {
+    show();
+    expect(screen.getByText(t.travel.arriveAt(arrival))).toBeTruthy();
+  });
+
+  // **The arm, not the sentence.** Past the leave-by the old arithmetic produced, the row must not
+  // turn `--miss` — there is no deadline to have missed.
+  it('never marks you late against a deadline it invented', () => {
+    setSimulatedNow(Date.parse(theatre.startsAt!) - 10 * 60_000);
+    show();
+    expect(document.querySelector('.day-trv.miss')).toBeNull();
+    expect(document.querySelector('.day-trv')!.textContent).not.toContain('עבר');
+  });
+
+  // …and the one warning nobody can currently be given at plan time.
+  //
+  // **The window has to shut BEFORE the walk lands, which constrains the fixture and not the
+  // rule.** The first version of this spec stretched lunch to 18:40 to push the arrival late, and
+  // that made lunch contain the check-in's own start — so the two clustered (ADR-0041) and there
+  // was no leg at all. A window cannot close before it opens either (`schemas.ts` refuses it), so
+  // the honest fixture moves the WINDOW early rather than the day late.
+  it('says so when the day lands after the window has shut', () => {
+    const shuts = ev('shuts', {
+      title: 'צ׳ק-אין',
+      kind: EVENT_KIND.HARD,
+      placeId: 'p-theatre',
+      startsAt: `${DAY}T13:30:00Z`,
+      startWindowEnd: `${DAY}T13:45:00Z`,
+      endsAt: `${DAY}T18:30:00Z`,
+    });
+    tripEvents = [lunch, shuts];
+    show();
+    // Lunch ends 13:20 and the walk is 40 minutes, so you reach it at 14:00 — fifteen minutes
+    // after it shut.
+    const late = ltrIsolate(
+      `~${formatTime(new Date(Date.parse(lunch.endsAt!) + WALK_MINUTES * 60_000), ZONE)}`,
+    );
+    expect(screen.getByText(t.travel.arriveAfterClose(late))).toBeTruthy();
+    expect(document.querySelector('.day-trv.miss')).toBeTruthy();
+  });
+});
+
+// ── A HOLE TOO SHORT FOR A JOIN STILL HOLDS A LEG (ADR-0206 §AG6, finished) ────────────────
+//
+// §Z5 §M2's own example, and §AG6 recorded it as fixed by setting `DayBlockEntry.from` on every
+// adjacency. It was **half** fixed: the leg was derived and then not rendered, because the render
+// read `{join && <JoinRow/>}` and `gapBetween` is floored at `GAP_MIN_MINUTES`. **Plan mode gates
+// on `prevEnd` instead and had been drawing it all along**, so the two day surfaces disagreed
+// about a fact — what ADR-0159 §1 forbids and ADR-0171 §10e already repaired once.
+describe('DayView — a 45-minute hole with a 40-minute walk is not silent', () => {
+  const SHORT = 45;
+  const tight = ev('tight', {
+    title: 'תיאטרון',
+    kind: EVENT_KIND.HARD,
+    placeId: 'p-theatre',
+    startsAt: `${DAY}T${String(13 + Math.floor((20 + SHORT) / 60)).padStart(2, '0')}:${String((20 + SHORT) % 60).padStart(2, '0')}:00Z`,
+    endsAt: `${DAY}T18:30:00Z`,
+  });
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    resetOnWayForTests();
+    tripEvents = [lunch, tight];
+    tripPlaces = places;
+    travelSeconds = WALK_MINUTES * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    resetOnWayForTests();
+    setSimulatedNow(null);
+  });
+
+  it('draws the journey even though the hole earns no gap join', () => {
+    show();
+    const block = document.querySelector('.day-trv');
+    expect(block).toBeTruthy();
+    expect(block!.textContent).toContain(t.travelMode[TRAVEL_MODE.WALKING]);
+  });
+
+  // …and no free-time strip, because the hole earns no join and 5 minutes is not free time
+  // anyway (§AH1's `statesFreeTime`). The walk is stated; the remainder is the transition.
+  it('states the walk and not the remainder', () => {
+    show();
+    expect(document.querySelector('.day-gap')).toBeNull();
   });
 });

@@ -1237,3 +1237,92 @@ gives time back. **Where:** the board's countdown tile, the lifted hero and the 
 `heroLeaveBy` so they cannot name three minutes for one departure, which means the rounding belongs
 there and therefore also moves **when the late mark fires** (§V1.4), up to four minutes earlier.
 That is a §V1.4 change wearing a copy change's clothes.
+
+## AI. Two defects in M6a's leave-by, found by drawing it (2026-08-26)
+
+Neither was reported off the app. Both were read off
+[`mockups/a-day-starts-and-ends-at-a-hotel-v1.html`](../../mockups/a-day-starts-and-ends-at-a-hotel-v1.html)
+by the owner while reviewing ADR-0209's proposal — the format doing exactly what
+`.claude/skills/design-mockups` claims for it, on shipped code the drawing merely reproduced
+faithfully. Owner: _"on check in day, in the mockup it says that you're suggesting to leave before the
+previous stop is finished and ahead of time, getting to the hotel even before check in starts, even
+though you have enough time to just arrive later."_
+
+### AI1. A leave-by may only be counted back from a DEADLINE, and a window's opening is not one
+
+`dayJourney` reads `arriveByMs: Date.parse(leg.to.startsAt ?? '')` **unconditionally**. For an
+ordinary event that is right: the start is the moment you have to be there. For a **held** span it is
+not — `edgeMeaning` answers `not-before` for a check-in's start, and `window` once its other bound is
+authored (ADR-0184) — so the block counted back from `17:00`, which is the hour the door **opens**,
+and printed `יציאה 16:18`: leave now to arrive the instant the hotel will take you, when nothing was
+due until `20:00`.
+
+**The fix is a gate, not a formula.** Where the destination's start edge is not `exact`, there is no
+deadline to count back from, so the leg states **no departure** — and what replaces it is ADR-0209
+§4's derived arrival, which is a statement the app can stand behind: `הגעה ~17:02`, with `--miss` ink
+only when it lands after the window **closes**.
+
+**And the gate is on the LEAVE-BY, not on the sentence** — owner, immediately, and it is the half that
+would have shipped broken: _"on drives/walks to a flexible event like a check in, we must make sure
+that if you haven't left by the time that the app suggests (16:40 in your example) the app doesn't
+show you as being late."_ Withholding the printed departure is not enough. `dayJourney` still derives
+`heroLeaveBy` and sets `arm: PASSED` from its phase, so the block would turn `--miss` the minute that
+invented deadline passed; the board's countdown tile, reading the same function, would put `באיחור` in
+its unit slot (ADR-0208 §1). A late mark against a deadline the app made up is the exact thing
+ADR-0207 and ADR-0208 are both about: **a claim needs something to stand on.**
+
+So a flexible destination licenses **no leave-by at all** — no clock, no `PASSED` arm, no late mark,
+on any surface that reads it. **This needs no new arm**: it is the shape ADR-0208's denied claim
+already has, `{ ...measurement, arm: AHEAD, leaveByMs: null }` — the measurement stands and the advice
+is withheld. One predicate over `edgeMeaning(to, 'start') === 'exact'`, asked by every surface that
+derives a leave-by (the day's two, the lifted hero, the board), rather than a check at each place a
+string is printed.
+
+This is §D5 one level up. The buffer exists because the app must not state a confidence it does not
+have about a _duration_; this is the same refusal about a _deadline_ the app invented.
+
+### AI2. A leave-by may not be earlier than the row it leaves from
+
+`leaveBy` is `arriveByMs − (travelSeconds + buffer)`, with no clamp against `departAfterMs`. So the
+same block advised leaving at `16:18` from a stop that runs to `16:40` — a departure from inside an
+event you are still in.
+
+**And §AH2's tolerance makes this MORE reachable, which is worth stating plainly.** With a 20-minute
+window and a 22-minute drive the shortfall is 2 minutes, now inside `TRAVEL_FIT_TOLERANCE_SECONDS`,
+so the leg reads as fitting — and the leave-by it hands back is behind its own origin. Before the
+tolerance this case was `OVERRUNS` and printed no leave-by at all, so widening the grace uncovered
+it. The tolerance is still right (§AH2's argument is unaffected); it needs the clamp beside it.
+
+The clamp is the honest one: a leave-by at or before the origin's end is **not** a leave-by, it is
+"as soon as you are done here". Options for the build, and this is deliberately left open — the
+number is not the question, the sentence is: state nothing, or state the arrival (as AI1 does), or
+say the departure is the previous row's own end.
+
+### AI3. What this does not change
+
+`heroLeaveBy`'s arms, the buffer, §Z1's swap threshold and §V1.4's late mark are all untouched: a
+leave-by that exists is still computed and rendered exactly as it is today. Both fixes are about
+**when the app may state one at all**, which is the same shape as §AF2's claim-denied arm — the
+measurement stands, the advice is withheld.
+
+**BUILT 2026-08-26.** `dayJourney` takes instants, not events, so the gate is asked at each caller
+that holds the `TripEvent` — both day surfaces and `Home` (the board and the lifted hero read the
+same `heroLeaveBy`) — over `isExactEdge`, which already existed. `flexibleArrival` and
+`windowClosesMs` go in; `arriveAtMs` and `arrivesAfterClose` come out; the `PASSED` arm cannot fire
+without a leave-by.
+
+**And the build found a third face of the same mistake, which no amount of reading had.** The
+**fit** was measured to the window's OPENING too, so `אין זמן לדרך` fired about a check-in you had
+three more hours to make — and "arrives after it closes" was unreachable, because `OVERRUNS` got
+there first. The fit now measures to the last moment that still works, which on a window is its
+close; missing the close and not fitting the window are then one fact, riding the `OVERRUNS` arm
+with a sentence you can act on (`הגעה ~20:32 · אחרי סגירת החלון`) rather than the generic shortfall.
+
+**A fourth thing fell out of the same specs, and it belongs to §AG6 rather than here.** That section
+recorded the sub-hour hole as fixed by setting `DayBlockEntry.from` on every adjacency. It was half
+fixed: the leg was derived and then **not rendered**, because `DayView`'s list read
+`{join && <JoinRow/>}` and `gapBetween` is floored at `GAP_MIN_MINUTES`. So §Z5 §M2's own example —
+a 45-minute hole holding a 40-minute walk — was still silent in Trip mode, while **Plan gates on
+`prevEnd` and had been drawing it all along**: the two day surfaces disagreeing about a fact, which
+ADR-0159 §1 forbids and ADR-0171 §10e already repaired once. `JoinRow` takes a nullable join now, and
+a journey renders whether or not the hole earned a join.

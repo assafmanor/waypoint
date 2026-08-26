@@ -18,6 +18,7 @@ export { APP_NAME } from './app-name';
 export const MS_PER_DAY = 86_400_000;
 /** One minute, for the derivations that are minute-grained on a screen whose clock ticks
  *  every second — a memo keyed on this rebuilds 60 times an hour instead of 3,600. */
+export const MS_PER_SECOND = 1000;
 export const MS_PER_MINUTE = 60_000;
 
 /**
