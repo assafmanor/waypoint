@@ -86,3 +86,15 @@ Vitest. Unit-test services; the hard-event guard, ripple, LWW reconciliation,
 `CLAUDE.md`/`conventions.md`). A new shared guard util (`trip-scope.util.ts`-
 style) gets its own spec, not only indirect coverage through the services that
 call it.
+
+**Never assert an elapsed duration against the real clock.** `politeness.limiter.spec.ts`
+asserted its pacing as real `Date.now()` gaps with a ±5 ms tolerance and CI read **19 ms for a
+30 ms gap** — shorter than the `setTimeout` that produced it, so a slow runner cannot explain
+it and no tolerance can cover it (a wall clock under NTP correction steps backwards). Anything
+whose behaviour is a delay, a gap or a timeout goes on `vi.useFakeTimers()` +
+`await vi.advanceTimersByTimeAsync(ms)`, which makes the numbers exact — so the assertion is
+`toEqual`, not a `toBeGreaterThanOrEqual` with slack. Widening the slack is the repair that
+hides the next one. Where the delay is not ours to fake — `change.service.spec.ts` proves the
+per-trip lock with a real `pg_sleep` — the real clock stays, and the assertion is an **ordering**
+between two events rather than a duration. And a "did not await it" claim needs no clock at all:
+give the dependency a promise that never settles, as `fx.service.spec.ts` does.
