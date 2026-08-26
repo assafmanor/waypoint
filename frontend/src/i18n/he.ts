@@ -1870,11 +1870,16 @@ export const t = {
     // precedent in grammar and in mechanism: a preposition plus the noun the minutes are left
     // of. `לצאת` was the alternative and reads as an instruction where this is a measurement.
     leaveIn: 'ליציאה',
-    // **And the same noun once the leave-by has gone by**, with the preposition flipped: the
-    // minutes are now counted FROM it. It says the leave-by passed and by how much, which is
-    // the whole of what the clock can support — never `אתם באיחור`, which is a claim about a
-    // person the app has no sensor for (§Z5 §M4).
-    sinceLeave: 'מהיציאה',
+    // **And once the leave-by has gone by, the minutes are minutes of lateness** (ADR-0208 §1).
+    // `מהיציאה` shipped here first and was reported as unclear in as many words: `מ־` reads as
+    // _measured from_, so `15 · מהיציאה` says "15, counted from the departure" where the thing
+    // worth saying is that you should have left a quarter of an hour ago.
+    //
+    // **This is a measurement, not the accusation §Z5 §M4 refused.** `אתם באיחור` is a claim
+    // about people, who may well be walking; `באיחור` in the unit slot says what the NUMBER
+    // is — and by the time it can print, `בדרך` and a device fix have both had their chance to
+    // withdraw it (ADR-0207 §2), which is what M6b had no way to wait for.
+    late: 'באיחור',
     endOfDay: 'סוף היום',
     // Concurrency on the board (ADR-0041): the "ועוד N עכשיו" expander for extra
     // in-progress events, and the group-split header when several run at once.

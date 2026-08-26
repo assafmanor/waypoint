@@ -395,7 +395,7 @@ describe('Board — the countdown swaps what it counts to (ADR-0206 §Z1)', () =
   // The `unit` slot has said what the minutes are left OF since ADR-0184 §6's `לסגירה`; a live
   // leave-by is the same fact pointed one step earlier. One tile, three referents.
   it('is the SAME tile under all three units, never a second box', () => {
-    for (const unit of ['דקות', t.board.leaveIn, t.board.sinceLeave]) {
+    for (const unit of ['דקות', t.board.leaveIn, t.board.late]) {
       const { container, unmount } = board({ value: '10', unit });
       expect(container.querySelectorAll('.wp-board-countdown')).toHaveLength(1);
       expect(container.querySelector('.wp-board-countdown .u')?.textContent).toBe(unit);
@@ -407,7 +407,7 @@ describe('Board — the countdown swaps what it counts to (ADR-0206 §Z1)', () =
     const live = board({ value: '10', unit: t.board.leaveIn });
     expect(live.container.querySelector('.wp-board-countdown.missed')).toBeNull();
     live.unmount();
-    const passed = board({ value: '7', unit: t.board.sinceLeave, missed: true });
+    const passed = board({ value: '7', unit: t.board.late, missed: true });
     expect(passed.container.querySelector('.wp-board-countdown.missed')).toBeTruthy();
   });
 });

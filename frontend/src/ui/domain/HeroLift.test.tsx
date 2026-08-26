@@ -569,10 +569,10 @@ describe('HeroLift — the journey between two points (ADR-0206 §V1.2 / §D2)',
   it('carries the board’s own missed countdown', () => {
     const container = show({
       next: point({ key: 'next', title: <span>מלון</span> }),
-      countdown: { value: '7', unit: t.board.sinceLeave, missed: true },
+      countdown: { value: '7', unit: t.board.late, missed: true },
     });
     expect(container.querySelector('.wp-board-countdown.missed')).toBeTruthy();
-    expect(container.querySelector('.wp-board-countdown .u')?.textContent).toBe(t.board.sinceLeave);
+    expect(container.querySelector('.wp-board-countdown .u')?.textContent).toBe(t.board.late);
   });
 });
 

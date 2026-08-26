@@ -259,7 +259,7 @@ describe('Home — the board counts to the leaving (ADR-0206 §Z1)', () => {
     expect(toLeave(15, 20)).toBe(-10);
     show();
     expect(value()).toBe('10');
-    expect(unit()).toBe(t.board.sinceLeave);
+    expect(unit()).toBe(t.board.late);
     expect(tile()?.classList.contains('missed')).toBe(true);
   });
 
@@ -304,7 +304,7 @@ describe('Home — the board counts to the leaving (ADR-0206 §Z1)', () => {
     tripBookings = [stayBooking];
     travelSeconds = 20 * 60;
     show();
-    expect(unit()).toBe(t.board.sinceLeave);
+    expect(unit()).toBe(t.board.late);
   });
 
   // §V1.2's whole sentence, in the slot §D2 puts it in. The board carries the one urgent
@@ -397,7 +397,7 @@ describe('Home — a position may withdraw a claim the clock made (ADR-0207)', (
   it('does not ask for a position without standing consent, and behaves as before', () => {
     show();
     expect(geoRequest).not.toHaveBeenCalled();
-    expect(unit()).toBe(t.board.sinceLeave);
+    expect(unit()).toBe(t.board.late);
     expect(tile()?.classList.contains('missed')).toBe(true);
   });
 
@@ -437,14 +437,15 @@ describe('Home — a position may withdraw a claim the clock made (ADR-0207)', (
   it('EARNS the mark when the fix says they are still at the previous stop', () => {
     geoFix = atFraction(0);
     show();
-    expect(unit()).toBe(t.board.sinceLeave);
+    expect(unit()).toBe(t.board.late);
     expect(tile()?.classList.contains('missed')).toBe(true);
     fireEvent.click(document.querySelector('.wp-board')!);
     const row = document.querySelector('.hero-trv')!;
     expect(row.classList.contains('miss')).toBe(true);
     expect(row.querySelector('.hero-trv-here')?.textContent).toContain(t.hero.stillHere);
-    // Still only ever a claim about the clock and the place, never about the person.
-    expect(row.textContent).not.toContain('באיחור');
+    // The tile's word stays on the tile: the sentence says the leave-by passed and where they
+    // are, never that the people are late (§Z5 §M4, and ADR-0208 §1 keeps the distinction).
+    expect(row.textContent).not.toContain(t.board.late);
   });
 
   // **§4 — a stale fix is worse than no fix.** Twenty minutes old at the origin would EARN a mark
@@ -452,7 +453,7 @@ describe('Home — a position may withdraw a claim the clock made (ADR-0207)', (
   it('ignores a stale fix rather than earning a mark from it', () => {
     geoFix = { coords: between(0), fixedAt: Date.parse(NOW) - 20 * 60_000 };
     show();
-    expect(unit()).toBe(t.board.sinceLeave);
+    expect(unit()).toBe(t.board.late);
     fireEvent.click(document.querySelector('.wp-board')!);
     expect(document.querySelector('.hero-trv-here')).toBeNull();
   });
@@ -465,6 +466,86 @@ describe('Home — a position may withdraw a claim the clock made (ADR-0207)', (
     expect(screen.getByRole('button', { name: t.actions.undoSettle })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: t.actions.undoSettle }));
     // Cleared, so the leave read comes back — the mark was not a one-way door.
-    expect(unit()).toBe(t.board.sinceLeave);
+    expect(unit()).toBe(t.board.late);
+  });
+});
+
+describe('Home — a read needs something to stand on (ADR-0208 §2)', () => {
+  /** The same stop, with the group's answer on it: they did not go. */
+  const skippedMuseum = { ...museum, status: EVENT_STATUS.SKIPPED };
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    resetOnWayForTests();
+    tripEvents = [skippedMuseum, dinner(15)];
+    tripBookings = [];
+    travelSeconds = 20 * 60;
+    geoFix = null;
+    geoRequest.mockClear();
+    onWay.mockClear();
+  });
+  afterEach(() => {
+    cleanup();
+    resetOnWayForTests();
+    setSimulatedNow(null);
+  });
+
+  // **THE REPORTED BUG.** The group skipped the stop they were at, and the board went on
+  // measuring the leg out of it — a leave-by, and then a late mark, derived from a claim the
+  // group had explicitly denied. With nothing to stand on the whole read is absent (§D4): the
+  // tile counts to the event as it always has.
+  it("makes no claim at all when the plan's claim was denied and nothing backs it", () => {
+    show();
+    expect(unit()).toBe('דקות');
+    expect(value()).toBe('15');
+    expect(tile()?.classList.contains('missed')).toBe(false);
+    fireEvent.click(document.querySelector('.wp-board')!);
+    expect(document.querySelector('.hero-trv')).toBeNull();
+  });
+
+  // A skip says nothing about place in either direction — so a fix AT the skipped stop restores
+  // the leg, and with it everything the clock had to say about leaving it.
+  it('stands the read back up when a fix puts them at the stop they skipped', () => {
+    geoFix = atFraction(0);
+    show();
+    expect(unit()).toBe(t.board.late);
+    expect(tile()?.classList.contains('missed')).toBe(true);
+    fireEvent.click(document.querySelector('.wp-board')!);
+    expect(document.querySelector('.hero-trv-here')?.textContent).toContain(t.hero.stillHere);
+  });
+
+  it('reads as on the way when the fix puts them along the leg they denied starting', () => {
+    geoFix = atFraction(0.75);
+    show();
+    expect(unit()).toBe('דקות');
+    fireEvent.click(document.querySelector('.wp-board')!);
+    const row = document.querySelector('.hero-trv')!;
+    expect(row.classList.contains('on-way')).toBe(true);
+    expect(withoutBidiControls(row.textContent ?? '')).toContain('נותרו');
+  });
+
+  // The rule is about a DENIED claim, not about any settle mark: `done` is the strongest origin
+  // there is, and it must keep reading exactly as an unanswered stop does.
+  it('changes nothing when the stop was marked done instead', () => {
+    tripEvents = [{ ...museum, status: EVENT_STATUS.DONE }, dinner(15)];
+    show();
+    expect(unit()).toBe(t.board.late);
+    expect(tile()?.classList.contains('missed')).toBe(true);
+  });
+
+  // And the denial only bites where the leg actually starts from that stop: a later stop that
+  // nobody denied is the origin, and the read stands on it.
+  it('is unaffected when a later stop is the one the plan left them at', () => {
+    tripEvents = [
+      skippedMuseum,
+      ev('gelato', {
+        placeId: 'p-museum',
+        startsAt: `${DAY}T12:10:00Z`,
+        endsAt: `${DAY}T12:20:00Z`,
+      }),
+      dinner(15),
+    ];
+    show();
+    expect(unit()).toBe(t.board.late);
   });
 });

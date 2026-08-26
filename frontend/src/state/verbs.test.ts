@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
   EVENT_STATUS,
   type CreateBookingInput,
@@ -10,7 +10,9 @@ import {
   type Place,
 } from '@waypoint/shared';
 import { db } from '../db';
-import { EVENTS, MAYBE_ITEMS } from '../fixtures';
+import { DEMO_NOW, EVENTS, MAYBE_ITEMS } from '../fixtures';
+import { t } from '../i18n/he';
+import { setSimulatedNow } from '../lib/useClock';
 import { initOutboxCount, OUTBOX_VERB } from '../lib/outbox';
 import { DEFAULT_SCHEDULE_SLOT } from '../constants';
 import { zonedIso } from '../lib/time';
@@ -189,10 +191,19 @@ describe('applyGuardedDelay (hard-event confirmation gate, ADR-0011)', () => {
   const hardEvent = EVENTS.find((e) => e.id === 'ev-ichiran')!;
   const softEvent = EVENTS.find((e) => e.id === 'ev-goldengai')!;
 
+  // **Pinned, because the guard below reads the clock** (`frontend/CLAUDE.md`): the fixtures
+  // carry a fixed day, so without this every nudge in here lands in the past on any day after
+  // the trip, and these specs would fail for a reason that has nothing to do with them.
+  beforeEach(() => setSimulatedNow(DEMO_NOW.getTime()));
+  afterEach(() => setSimulatedNow(null));
+
   it('asks for confirmation and applies the delay when a hard event is confirmed', async () => {
+    // The `{ event }` envelope `moveEvent` actually parses — a bare event throws in `zod`, and
+    // this spec asserted a successful apply against one for as long as the verb swallowed its
+    // own failures (ADR-0208 §3).
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(new Response(JSON.stringify(hardEvent), { status: 200 }));
+      .mockResolvedValue(new Response(JSON.stringify({ event: hardEvent }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
     const confirmHardEdit = vi.fn().mockResolvedValue(true);
     const deps = fakeDeps(confirmHardEdit);
@@ -226,7 +237,7 @@ describe('applyGuardedDelay (hard-event confirmation gate, ADR-0011)', () => {
   it('applies a soft-event delay without asking for confirmation', async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(new Response(JSON.stringify(softEvent), { status: 200 }));
+      .mockResolvedValue(new Response(JSON.stringify({ event: softEvent }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
     const confirmHardEdit = vi.fn().mockResolvedValue(true);
     const deps = fakeDeps(confirmHardEdit);
@@ -240,6 +251,38 @@ describe('applyGuardedDelay (hard-event confirmation gate, ADR-0011)', () => {
       expect.not.stringContaining('confirm=true'),
       expect.anything(),
     );
+  });
+
+  // ── ADR-0208 §3: a confirmation may not outlive the write ──────────────────
+  // Reported: `דחה` toasted `נדחה` on a move the server had refused, because this resolved
+  // normally after catching its own failure. The toast is the app's only account of what
+  // happened to the plan, so a false one is worse than none.
+  it('refuses a nudge that would land in the past, before anything is dispatched or queued', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const deps = fakeDeps();
+
+    // 21:30 pulled five hours back is 16:30, and the pinned clock is 18:52.
+    const applied = await applyGuardedDelay(deps, softEvent, -300);
+
+    expect(applied).toBe(false);
+    expect(deps.actions).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(deps.toast).toHaveBeenCalledWith(expect.anything(), t.toast.moveIntoPast);
+    // Nothing queued either — the offline path is where the server's own refusal would
+    // otherwise have arrived on a flush nobody was watching.
+    expect(await db.outbox.count()).toBe(0);
+  });
+
+  it('reports a failed write as not applied, so the caller cannot confirm it', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
+    const deps = fakeDeps();
+
+    const applied = await applyGuardedDelay(deps, softEvent, 30);
+
+    expect(applied).toBe(false);
+    expect(deps.actions.map((a) => a.type)).toEqual([TRIP_ACTION.DELAY, TRIP_ACTION.UNDO]);
+    expect(deps.toast).toHaveBeenCalledTimes(1);
   });
 });
 

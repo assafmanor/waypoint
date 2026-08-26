@@ -69,7 +69,8 @@ never by the one that did the work.
 | **M5**  | Frontend data layer         | impl   | ✅ **M6/M7/M9 unblocked** | M2, M4       | M3, M10      | `claude/routes-frontend-protocol-fix-9t521y` · [#704](https://github.com/assafmanor/waypoint/pull/704)                                                                                                               | 2026-08-25 |
 | **M6a** | The day reads               | impl   | ⬜                        | M3, M5       | M6b, M7, M9  | —                                                                                                                                                                                                                    | —          |
 | **M6b** | The hero read               | impl   | ✅ (+ 1 field fix)        | M3, M5       | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#712](https://github.com/assafmanor/waypoint/pull/712)                                                                                                                       | 2026-08-26 |
-| **M6c** | A fix withdraws the mark    | impl   | 🔵                        | M6b          | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#713](https://github.com/assafmanor/waypoint/pull/713)                                                                                                                       | 2026-08-26 |
+| **M6c** | A fix withdraws the mark    | impl   | ✅                        | M6b          | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#713](https://github.com/assafmanor/waypoint/pull/713)                                                                                                                       | 2026-08-26 |
+| **M6d** | A claim stands on something | impl   | 🔵                        | M6b, M6c     | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · PR pending                                                                                                                                                                    | 2026-08-26 |
 | **M7**  | The map polyline            | impl   | ✅                        | M3, M5       | M6a, M6b, M9 | `claude/routes-map-polyline-m7-baqobz` · [#706](https://github.com/assafmanor/waypoint/pull/706) · [#707](https://github.com/assafmanor/waypoint/pull/707)                                                           | 2026-08-25 |
 | **M7b** | The lines read as a route   | design | ✅                        | M7           | M8, M9       | `claude/routes-map-polyline-m7-baqobz` · [#708](https://github.com/assafmanor/waypoint/pull/708)                                                                                                                     | 2026-08-25 |
 | **M7c** | The day's bookends          | impl   | ✅ (+ 2 field fixes)      | M7, M7b      | M8, M9       | `claude/routes-map-polyline-m7-baqobz` · [#709](https://github.com/assafmanor/waypoint/pull/709) · [#710](https://github.com/assafmanor/waypoint/pull/710) · [#711](https://github.com/assafmanor/waypoint/pull/711) | 2026-08-26 |
@@ -858,6 +859,57 @@ untouched. Four stances, `unknown` first because it is the default:
 - **What this does NOT do:** the group still learns nothing from a sensor (ADR-0006 §8 untouched —
   the position is never persisted or sent), and `near-the-day`'s "better metric" is now one step away
   but unbuilt.
+
+---
+
+## M6d — A claim stands on something, and a toast tells the truth
+
+**Kind:** implementation, off three reports in one message after M6c deployed. **Decides:**
+[ADR-0208](../decisions/0208-a-claim-needs-something-to-stand-on.md) · **Amends** ADR-0206 §AE1 and
+§AE3, **extends** ADR-0207 · **Note:**
+[2026-08-26](2026-08-26-a-claim-stands-on-something.md).
+
+Owner, from the deployed board: _"`15 מהיציאה` is not clear enough. It should say that you're late
+right? But the phrasing is bad"_ · _"when you're past a stop and not exactly on it, it shows you as on
+the way because we skipped"_ · _"when I click on postpone on the day view, a pop up says postponed but
+it doesn't allow it"_.
+
+**Two of the three are the same mistake:** the app asserting something it had not earned.
+
+| report                  | what it was                                                  | what it is now                                       |
+| ----------------------- | ------------------------------------------------------------ | ---------------------------------------------------- |
+| `15 · מהיציאה`          | "counted from the departure" — grammar right, reading wrong  | `15 · באיחור`, and the sentence still accuses no one |
+| on the way after a skip | a skipped stop was still the leg's origin                    | a **denied** claim, which licenses nothing alone     |
+| `נדחה` on a refusal     | `applyDelay` swallowed its own failure and resolved normally | the verb reports it, and checks the target first     |
+
+**What the next session needs to know:**
+
+- **`travelOrigin` returns a CLAIM, not an event** (`{ event?, denied }`). Anything that grows a
+  second consumer — M6a's day row, M9's feasibility — inherits the denial instead of rediscovering
+  it, which is the reason it lives in the derivation rather than in `Home.tsx`.
+- **A skip says nothing about place in EITHER direction**, and that is the whole rule. It is why the
+  origin is not replaced by the previous non-skipped stop: that swaps a wrong claim for a staler one,
+  and errs toward a **louder** app, since a longer leg is an earlier leave-by is a more confident late
+  mark. Do not "fix" this by walking back.
+- **The gate is on the request.** `useDayTravel` is handed no stops when the claim is denied and no
+  fix backs it, so there is one boolean and the estimate, the tile and the horizon row cannot
+  disagree — and a leg nobody may be shown costs nothing against §D8.
+- **`באיחור` is now sayable, and the reason is cumulative.** Three withdrawals have to fail first
+  (`בדרך`, a fix on the leg, a claim that stands). If any of them is ever removed, §1's argument goes
+  with it. `אתם באיחור` as a **sentence** is still refused, and a spec holds the tile's word out of
+  the hero row.
+- **⚠ Two specs were passing for the wrong reason and the verb fix exposed them.** The delay gate's
+  mocks returned a bare event where `moveEvent` parses a `{ event }` envelope, so `zod` threw, the
+  verb swallowed it, and `applied` was hardcoded `true` — a spec asserting a successful apply against
+  a response that fails in production. They also never pinned the clock, so the new past-target guard
+  refused every fixture nudge; `frontend/CLAUDE.md`'s rule, and this is what it is for.
+- **Ripple was never the problem and is fully built** — the backend returns a suggestion for an
+  overlap and `DayView` renders it with yes/no. What refused the reported move was `MOVE_INTO_PAST`.
+- **Deliberately not built:** re-anchoring the nudge to NOW so a late stop can be postponed at all.
+  It is the strongest rejected option and it is blocked on ripple learning a **clearing** delta rather
+  than the mover's own — backlogged, with the reasoning in ADR-0208's alternatives.
+- **Measured:** `באיחור` is ⁦30.50px⁩ of ink at 10px/0.08em against `מהיציאה`'s ⁦37.81px⁩ and the live
+  arm's `ליציאה` at ⁦30.27px⁩ — the ⁦74px⁩ tile cannot widen, one line in every arm.
 
 ---
 

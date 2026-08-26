@@ -150,6 +150,12 @@ one is not.
 
 ## Consequences
 
+> **EXTENDED 2026-08-26 by [ADR-0208](0208-a-claim-needs-something-to-stand-on.md) §2.** A position
+> was the only thing that could withdraw a claim here. A **settle mark** can now deny one: a
+> `skipped` stop is still where the plan left you and no longer somewhere the plan may say you are,
+> so the clock alone licenses nothing on that leg — and `at-origin`/`en-route` are what stand the
+> read back up. Same thesis, one input wider.
+
 - **The app now behaves differently depending on a permission**, which it has avoided on read surfaces
   until now. §2's ordering is the mitigation: `unknown` is the shipped behaviour, so the surface is
   complete without consent and better with it.

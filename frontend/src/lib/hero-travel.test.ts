@@ -95,25 +95,62 @@ describe('travelOrigin — which stop the journey leaves from', () => {
   const events = [morning, museum, later];
 
   it('is the point in progress when there is one', () => {
-    expect(travelOrigin({ nowEvent: museum, events, nowMs: NOW })?.id).toBe('museum');
+    expect(travelOrigin({ nowEvent: museum, events, nowMs: NOW }).event?.id).toBe('museum');
   });
 
   // In a gap the schedule's own last claim is where it left you — the same leg the day row
   // measures its hole with, so the two surfaces cannot disagree about one journey.
   it('falls back to the latest stop that has already started', () => {
-    expect(travelOrigin({ events, nowMs: NOW })?.id).toBe('museum');
+    expect(travelOrigin({ events, nowMs: NOW }).event?.id).toBe('museum');
   });
 
   it('never takes something that has not started, and never the destination itself', () => {
-    expect(travelOrigin({ events: [later], nowMs: NOW })).toBeUndefined();
-    expect(travelOrigin({ events, nowMs: NOW, excludeEventId: 'museum' })?.id).toBe('morning');
+    expect(travelOrigin({ events: [later], nowMs: NOW }).event).toBeUndefined();
+    expect(travelOrigin({ events, nowMs: NOW, excludeEventId: 'museum' }).event?.id).toBe(
+      'morning',
+    );
   });
 
   it('ignores a clockless stop, which cannot claim a position it does not have', () => {
-    expect(travelOrigin({ events: [ev({ id: 'idea' })], nowMs: NOW })).toBeUndefined();
+    expect(travelOrigin({ events: [ev({ id: 'idea' })], nowMs: NOW }).event).toBeUndefined();
   });
 
   it('has no origin on a day nothing has started on', () => {
-    expect(travelOrigin({ events: [], nowMs: NOW })).toBeUndefined();
+    expect(travelOrigin({ events: [], nowMs: NOW }).event).toBeUndefined();
+  });
+
+  // **ADR-0208 §2**, reported from a real day: the group skipped the stop they were at, and the
+  // board went on measuring the leg out of a place nobody went to — a leave-by, and then a late
+  // mark, derived from a claim the group had explicitly denied.
+  describe('a claim the group denied (ADR-0208 §2)', () => {
+    const skipped = ev({ id: 'museum', startsAt: museum.startsAt, status: 'skipped' });
+
+    it('still names the stop, and says the plan may no longer claim it', () => {
+      const origin = travelOrigin({ events: [morning, skipped, later], nowMs: NOW });
+      expect(origin.event?.id).toBe('museum');
+      expect(origin.denied).toBe(true);
+    });
+
+    // **It does NOT walk back to the morning.** A skip says nothing about place in either
+    // direction — you may have skipped the café while standing outside it — so an older stop
+    // is not a better answer, it is a staler one. The caller asks a fix instead.
+    it('does not hand the role to an older stop', () => {
+      expect(travelOrigin({ events: [morning, skipped, later], nowMs: NOW }).event?.id).not.toBe(
+        'morning',
+      );
+    });
+
+    it('is not denied when a later stop was the one that started', () => {
+      const after = ev({ id: 'after', startsAt: new Date(at(-30)).toISOString() });
+      const origin = travelOrigin({ events: [skipped, after, later], nowMs: NOW });
+      expect(origin.event?.id).toBe('after');
+      expect(origin.denied).toBe(false);
+    });
+
+    // `done` is the strongest origin there is — somebody said they were there.
+    it('is not denied by a settle mark that says they went', () => {
+      const done = ev({ id: 'museum', startsAt: museum.startsAt, status: 'done' });
+      expect(travelOrigin({ events: [morning, done], nowMs: NOW }).denied).toBe(false);
+    });
   });
 });

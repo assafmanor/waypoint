@@ -360,12 +360,35 @@ export async function applySetStatus(
   }
 }
 
-export async function applyDelay(deps: VerbDeps, event: TripEvent, minutes: number): Promise<void> {
+/**
+ * **Resolves to whether the nudge stuck** (ADR-0208 §3), which is the whole of a reported
+ * defect: this used to swallow its own failure and resolve normally, so the caller posted
+ * `נדחה ב-30 דקות` over the error toast that had just said why it could not. A confirmation
+ * that outlives the write is worse than no confirmation — the app was the last thing telling
+ * the truth about the plan.
+ *
+ * **And the target is checked here, before anything is dispatched or queued.** The server
+ * refuses a move into the past (`MOVE_INTO_PAST`) and that is the refusal the owner actually
+ * hit — a stop that had already started, nudged by a step that landed behind the clock anyway.
+ * Asking first is not a duplicated rule so much as the only way to state it offline: without
+ * this, `restOrQueue` queues the move, the optimistic shift stands, and the refusal arrives on
+ * a flush nobody is watching.
+ */
+export async function applyDelay(
+  deps: VerbDeps,
+  event: TripEvent,
+  minutes: number,
+): Promise<boolean> {
+  const target = event.startsAt ? shiftForMove(event.startsAt, minutes) : undefined;
+  if (target !== undefined && Date.parse(target) <= getNow()) {
+    deps.toast(CONTROL_ICON.warn, t.toast.moveIntoPast);
+    return false;
+  }
   const previous = { date: event.date, startsAt: event.startsAt };
   const isHard = event.kind === EVENT_KIND.HARD;
   deps.dispatch({ type: TRIP_ACTION.DELAY, id: event.id, minutes });
   deps.lastAction.current = { kind: 'move', id: event.id, previous, isHard };
-  const input = { startsAt: event.startsAt ? shiftForMove(event.startsAt, minutes) : undefined };
+  const input = { startsAt: target };
   try {
     const result = await restOrQueue<MoveEventResult>(
       deps.tripId,
@@ -376,9 +399,11 @@ export async function applyDelay(deps: VerbDeps, event: TripEvent, minutes: numb
       deps.dispatch({ type: TRIP_ACTION.RECONCILE_EVENT, event: result.event });
       deps.dispatch({ type: TRIP_ACTION.SET_RIPPLE, ripple: result.rippleSuggestion ?? null });
     }
+    return true;
   } catch (err) {
     deps.dispatch({ type: TRIP_ACTION.UNDO });
     writeErrorToast(deps.toast, err);
+    return false;
   }
 }
 
@@ -401,8 +426,7 @@ export async function applyGuardedDelay(
     const confirmed = await deps.confirmHardEdit(event);
     if (!confirmed) return false;
   }
-  await applyDelay(deps, event, minutes);
-  return true;
+  return applyDelay(deps, event, minutes);
 }
 
 export interface ScheduleFields {
@@ -1350,9 +1374,13 @@ export function useVerbs() {
         else toast(CONTROL_ICON.delay, t.toast.softDelayed(DELAY_STEP_MINUTES), undo);
       });
     },
+    // Same rule as `delay` above, and it was missing the check entirely: pulling an event
+    // earlier is the direction that lands in the past most easily, so the toast has to wait
+    // for the write (ADR-0208 §3).
     earlier: (e: TripEvent) => {
-      void applyDelay(deps, e, -DELAY_STEP_MINUTES);
-      toast(CONTROL_ICON.delay, t.toast.softEarlier(DELAY_STEP_MINUTES), undo);
+      void applyDelay(deps, e, -DELAY_STEP_MINUTES).then((applied) => {
+        if (applied) toast(CONTROL_ICON.delay, t.toast.softEarlier(DELAY_STEP_MINUTES), undo);
+      });
     },
     // `moveBy` lived here — an arbitrary minute delta, for the `הזז` overlap-resolve's two
     // hand-built options (ADR-0041). It is gone with them: a position is named, not offset,

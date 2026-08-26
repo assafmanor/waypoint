@@ -469,14 +469,21 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     nowMs,
     excludeEventId: shownNext?.id,
   });
+  const prevEvent = travelPrev.event;
+  const nowPlaceId = horizon.now[0]?.placeId;
   const travelFromId =
-    horizon.now[0]?.placeId ??
-    (travelPrev
+    nowPlaceId ??
+    (prevEvent
       ? eventPlaceId(
-          travelPrev,
-          travelPrev.bookingId ? bookings.find((b) => b.id === travelPrev.bookingId) : undefined,
+          prevEvent,
+          prevEvent.bookingId ? bookings.find((b) => b.id === prevEvent.bookingId) : undefined,
         )
       : undefined);
+  // **And whether the plan may still claim it** (ADR-0208 §2). A skipped stop is still the last
+  // thing that started, so it is still where the plan left you — except the group has said they
+  // did not go, which denies exactly that. Only when the leg actually starts from that stop: an
+  // in-progress point supplies its own place, and `deriveNow` never hands back a skipped one.
+  const originDenied = nowPlaceId === undefined && travelPrev.denied;
   const travelToId = horizon.next?.placeId;
   const coordOf = (placeId?: string) => {
     const place = placeId ? places.find((p) => p.id === placeId) : undefined;
@@ -490,31 +497,6 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     travelFrom && travelTo && travelFromId !== travelToId
       ? { from: travelFrom, to: travelTo }
       : null;
-  // One leg, every mode the gate admits, so §Z2's switch stays a read from cache when M8 builds
-  // it. An empty `stops` asks for nothing at all — the hook's own fingerprint is empty.
-  const dayTravel = useDayTravel({
-    tripId: trip.id,
-    stops: travelLeg ? [travelLeg.from, travelLeg.to] : [],
-  });
-  const travelEstimate = travelLeg
-    ? dayTravel.estimateFor(travelLeg.from, travelLeg.to, travelMode)
-    : null;
-  // **`null` is the ordinary answer** (§D4): offline, refused, over the ceiling, still warming,
-  // provider down, or a leg somebody declared תחב״צ (§AA4 — a stored mode with no provider, so
-  // `estimateFor` cannot be asked for it and this cannot be anything but `null`). Every one of
-  // them leaves the board counting to the event and this block absent, with no layout shift.
-  const leave = nextInstant
-    ? heroLeaveBy({
-        arriveByMs: Date.parse(nextInstant),
-        travelSeconds: travelEstimate?.durationSeconds ?? null,
-        nowMs,
-      })
-    : null;
-  // **Somebody said `בדרך`** (§Z5 §M4) — a person telling the app what it should have been able
-  // to see. It withdraws the whole leave read: once they are moving, counting to a departure they
-  // have already made is the wrong question. It stays the floor, and ADR-0207 is the ceiling.
-  const onWayToNext = useOnWay(trip.id, shownNext?.id);
-
   // ── WHAT A DEVICE POSITION LETS THIS SURFACE CLAIM (ADR-0207) ──────────────
   // Reported twice from a real day: the board said the leave-by had passed while the owner stood
   // ⁦200m⁩ from the door of the next stop, and the Map tab was drawing their blue dot beside that
@@ -552,6 +534,42 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         nowMs,
       })
     : null;
+  // **A read needs something to stand on** (ADR-0208 §2). With the plan's claim denied, the
+  // clock alone can say nothing about this leg — so it is believed only where a fix puts the
+  // traveller ON it, at either end or between them. `unknown` (no consent, a stale fix, a leg
+  // too short to resolve) is §D4's absence: no duration, no leave-by, and above all no late
+  // mark. **Gated here rather than at the two reads** because the request is the thing worth
+  // not making: a route nobody may be shown is a call against §D8's budget for nothing.
+  const originStands =
+    !originDenied ||
+    stance?.stance === TRAVEL_STANCE.AT_ORIGIN ||
+    stance?.stance === TRAVEL_STANCE.EN_ROUTE;
+  // One leg, every mode the gate admits, so §Z2's switch stays a read from cache when M8 builds
+  // it. An empty `stops` asks for nothing at all — the hook's own fingerprint is empty.
+  const dayTravel = useDayTravel({
+    tripId: trip.id,
+    stops: travelLeg && originStands ? [travelLeg.from, travelLeg.to] : [],
+  });
+  const travelEstimate =
+    travelLeg && originStands
+      ? dayTravel.estimateFor(travelLeg.from, travelLeg.to, travelMode)
+      : null;
+  // **`null` is the ordinary answer** (§D4): offline, refused, over the ceiling, still warming,
+  // provider down, or a leg somebody declared תחב״צ (§AA4 — a stored mode with no provider, so
+  // `estimateFor` cannot be asked for it and this cannot be anything but `null`). Every one of
+  // them leaves the board counting to the event and this block absent, with no layout shift.
+  const leave = nextInstant
+    ? heroLeaveBy({
+        arriveByMs: Date.parse(nextInstant),
+        travelSeconds: travelEstimate?.durationSeconds ?? null,
+        nowMs,
+      })
+    : null;
+  // **Somebody said `בדרך`** (§Z5 §M4) — a person telling the app what it should have been able
+  // to see. It withdraws the whole leave read: once they are moving, counting to a departure they
+  // have already made is the wrong question. It stays the floor, and ADR-0207 is the ceiling.
+  const onWayToNext = useOnWay(trip.id, shownNext?.id);
+
   // **`arrived` and `en-route` answer the leave-by question, so the mark goes** — automatically,
   // with nobody having to press anything (v2 §3d's _"נענה מעצמו"_). `at-origin` is the one arm
   // that makes the app LOUDER, and it is the one that earns it. `unknown` changes nothing.
@@ -594,7 +612,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
             leave.phase === LEAVE_PHASE.PASSED
               ? {
                   ...formatCountdown(-leave.minutesToLeave),
-                  unit: t.board.sinceLeave,
+                  unit: t.board.late,
                   missed: true,
                 }
               : { ...formatCountdown(leave.minutesToLeave), unit: t.board.leaveIn },
