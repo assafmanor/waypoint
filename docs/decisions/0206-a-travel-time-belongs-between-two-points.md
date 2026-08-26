@@ -1446,3 +1446,65 @@ Two things the leg needs that no other leg did, both now on `DayLeg`:
   transport is the **destination**: right for a flight you got off, wrong for a hire you just picked
   up, whose place is its origin. A pickup and a return at the same counter hides this completely —
   which is exactly the trip it was found on, so it is written down rather than discovered twice.
+
+## AK. An infeasible leg is still a JOURNEY — the warn glyph keeps its mode (2026-08-26)
+
+Owner, off the shipped day: _"we should create specific icons for not enough time, so that instead
+of showing a warning glyph, it should show a car with a warning, and for walking a person with a
+warning… That way it's clearer that they're of the same class of rows."_
+
+**Agreed, and it reverses a decision this ADR shipped one PR ago.** `DayJoinRow.tsx` swaps the mode
+mark out entirely — `icon={overrunning ? 'warn' : travelMode}` — with a comment giving its reason:
+_"the badge column is where the day says what kind of thing this row is, and what this row is is a
+problem."_ **Nothing here is built** — §M's rule holds, the mockup comes before the code.
+
+### AK1. Why the swap is wrong, and it is not a matter of taste
+
+**The container already says "problem", so the glyph is spending its slot on a repeat.** Measured in
+the shipped code: an overrunning journey takes `tone: 'miss'` (`DayJoinRow.tsx:254`), which paints
+the block and its text in §D7's `--miss`. The row is _already_ unmistakably negative before the
+glyph is chosen. Swapping the glyph adds no state information and costs the only thing the glyph was
+carrying.
+
+**And what it costs is the row's class.** The shipped comment's own premise is right — the badge
+column says what kind of thing a row is — but the conclusion inverts it: two journey rows that
+differ only in feasibility end up in **different visual classes**, one reading "journey" and one
+reading "error". A day of five stops with two tight legs reads as three journeys and two failures
+rather than as five journeys, two of which are tight. That is the owner's "same class of rows", and
+it is a fact about the drawing rather than a preference.
+
+**"The mode is still named in the head" is true and does not answer it.** The head is what you get
+when you _read_ a row; the glyph is what you get when you _scan_ a day. The scan loses the mode
+exactly on the rows where it matters most — 49 minutes short **driving** is a different problem from
+49 minutes short **walking**, and the ladder ADR-0206 §D3 rounds to cannot tell you which.
+
+### AK2. Compose the mark; do not mint the matrix
+
+**The obvious build is the wrong one.** A glyph per mode per state is 3 × 2 = **six**, eight once
+§AA4's תחב״צ has one, and every future mode doubles its own row. That is a combinatorial mint of
+hand-drawn SVGs, all of which must stay consistent with each other.
+
+**One mode glyph plus one composited warning mark** is four assets — walk, car, bicycle, mark — and a
+fourth mode costs **one** glyph rather than two. The repo already has this idiom rather than needing
+a new one: `ui/Icon.tsx` composites the avatar-hero badge (ADR-0133 §6/§12), and
+[ADR-0167](0167-the-badge-is-the-thumbnails-frame.md) is the frame-and-badge rule. **Start from
+those, not from a blank canvas** (rule 8).
+
+### AK3. What the mockup has to settle, because none of it is decidable from here
+
+1. **How loud the mark is when the block is already `--miss`.** Two full-strength negative cues on
+   one row is the failure §D8 exists to prevent in a different register. The mark and the tint have
+   to be measured together, in both themes, or the row shouts.
+2. **Where the mark sits, at the badge column's real size**, and whether it survives there — a
+   corner mark on a small glyph is exactly the sort of thing §AC3's collar turned out not to be.
+3. **Whether `PASS`-armed rows take the mark at all.** `DayJoinRow.tsx:292` already refuses `--miss`
+   on a finished day, on the grounds that _"a finished day painted in `--miss` warns about something
+   nobody can act on, which is the opposite of §D7's reason to exist."_ The same argument may refuse
+   the mark; it is not automatic that the two follow each other.
+4. **The `ON_WAY` and `arrivesAfterClose` arms** take `miss` too and are not overruns. Whether they
+   read the mark, the plain mode glyph, or something else is a question this amendment deliberately
+   does not answer.
+
+**Whose it is:** the icon work §AA3 opened — `ui/Icon.tsx` gains walk, car and bicycle — is the same
+work, so this rides with it rather than beside it. Its home is a **follow-up to M6a** (which shipped
+the swap) and it must land before or with §AA3's glyphs, so that the set is drawn once as a set.

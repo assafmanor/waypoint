@@ -131,6 +131,26 @@ never by the one that did the work.
   scope it, so it is left as-is and named here. It binds nothing until M4 builds the endpoint —
   **M4 should either measure it or restate it as a deliberate bound.**
 
+### M6e — an infeasible leg keeps its mode glyph (owner, 2026-08-26)
+
+⬜ **not started · blocks nothing · design-first.** Owner off the shipped day: an infeasible journey
+should read as a **journey with a warning**, not as a warning — _"clearer that they're of the same
+class of rows"_. Full reasoning and the four open questions in
+**[ADR-0206 §AK](../decisions/0206-a-travel-time-belongs-between-two-points.md)**; read it rather
+than this summary.
+
+**It reverses something M6a shipped**, deliberately and with a stated reason
+(`DayJoinRow.tsx:244` — `icon={overrunning ? 'warn' : travelMode}`). §AK1 is why the reason does not
+hold: the block already takes `tone: 'miss'`, so the glyph swap repeats the state and spends the only
+slot carrying the mode.
+
+**⚠ Do not mint a glyph per mode per state** — that is 6, then 8 with תחב״צ, and every new mode
+doubles. §AK2: one mode glyph plus a **composited** warning mark is 4 assets, and the repo already
+has the idiom (ADR-0133 §6/§12's avatar badge, ADR-0167's frame-and-badge rule).
+
+**Sequencing:** this is the same work as §AA3's three new `ui/Icon.tsx` glyphs, so it lands **with**
+them and the set gets drawn once as a set. **Mockup before code** (§M).
+
 ### Owner decisions — ✅ ALL CLOSED (2026-08-25)
 
 Answered by the owner and recorded in **[ADR-0206 §AA](../decisions/0206-a-travel-time-belongs-between-two-points.md)**. Nothing on this epic waits on a decision any more.
