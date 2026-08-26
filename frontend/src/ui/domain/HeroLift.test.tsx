@@ -569,10 +569,19 @@ describe('HeroLift — the journey between two points (ADR-0206 §V1.2 / §D2)',
   it('carries the board’s own missed countdown', () => {
     const container = show({
       next: point({ key: 'next', title: <span>מלון</span> }),
-      countdown: { value: '7', unit: t.board.sinceLeave, missed: true },
+      countdown: {
+        value: '7',
+        unit: t.board.lateBy('דקות'),
+        unitBelow: t.board.leaveIn,
+        missed: true,
+      },
     });
     expect(container.querySelector('.wp-board-countdown.missed')).toBeTruthy();
-    expect(container.querySelector('.wp-board-countdown .u')?.textContent).toBe(t.board.sinceLeave);
+    // Both lines, because the two elevations render two copies of this tile and a field added to
+    // one and not the other is how they start saying different things about one leave-by.
+    expect(
+      [...container.querySelectorAll('.wp-board-countdown .u')].map((u) => u.textContent),
+    ).toEqual([t.board.lateBy('דקות'), t.board.leaveIn]);
   });
 });
 

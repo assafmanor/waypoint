@@ -732,6 +732,14 @@ whether a device-only mark is the right floor.
 
 ### AE1. The passed arm's unit word is `מהיציאה` — the same noun, the preposition flipped
 
+> **SUPERSEDED 2026-08-26 by [ADR-0208](0208-a-claim-needs-something-to-stand-on.md) §1.** The word
+> is `באיחור`. The owner reported `מהיציאה` as unclear in as many words — `מ־` reads as _measured
+> from_, so the tile said "15, counted from the departure" — and the refusal below no longer holds:
+> by the time the arm can print, `בדרך` (§AE2), a device fix (ADR-0207 §2) and the plan's own claim
+> about where you are (ADR-0208 §2) have each had a chance to withdraw it. The reasoning below is
+> kept because the **distinction** it draws is what survives: `אתם באיחור` is still refused
+> everywhere, and what the unit slot carries is a measurement rather than an accusation.
+
 §Z5 §M1 measured `ליציאה` for the live arm and §AA2 confirmed it. **Neither answered what the tile
 says once the leave-by has gone by**, and the two mockups disagree: v1 drew `7 · באיחור`, and v2 §3
 refused exactly that — _"How will the app know whether you're on time or late?"_ It cannot, so
@@ -743,9 +751,10 @@ minutes are left **of**; `ליציאה` follows it; this flips the preposition s
 facts about the clock — and claims nothing about where anybody is. The `--miss` paint carries the
 urgency (§D7), which is why the word does not have to.
 
-Rejected: `באיחור` (above); a bare `עבר` (a verb where the slot holds a noun phrase, and it reads as
-an event rather than a measurement); and dropping the number to fit a longer sentence, which throws
-away the difference between two minutes past and forty.
+Rejected: `באיחור` (above — and reversed the same day; see the note at the head of this section); a
+bare `עבר` (a verb where the slot holds a noun phrase, and it reads as an event rather than a
+measurement); and dropping the number to fit a longer sentence, which throws away the difference
+between two minutes past and forty.
 
 ### AE2. `בדרך` writes state, and it is a DEVICE mark — the group-visible one is deferred
 

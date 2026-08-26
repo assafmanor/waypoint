@@ -10,7 +10,7 @@
 // **The estimate itself is not this file's** — `useDayTravel` holds it (ADR-0205 §7) and
 // `leaveBy` computes the instant (`@waypoint/shared`'s `travel-time.ts`, so the sweep that will
 // one day fire a "leave now" reminder reads it the same way this does).
-import { leaveBy, type TripEvent } from '@waypoint/shared';
+import { EVENT_STATUS, leaveBy, type TripEvent } from '@waypoint/shared';
 
 const MS_PER_MIN = 60_000;
 
@@ -100,6 +100,23 @@ export function heroLeaveBy(input: {
   return { travelSeconds, leaveByMs, minutesToLeave, phase };
 }
 
+/** What the plan says about where you are, and whether that claim still stands. */
+export interface TravelOriginClaim {
+  /** The stop the plan puts you at, when it names one. */
+  event?: TripEvent;
+  /**
+   * **The group said they did not go** (ADR-0208 §2). The stop is still returned — it is the
+   * leg's first point, and a fix has to be able to test it — but the plan's claim about where
+   * you are has been **denied**, so nothing may be asserted on it alone.
+   *
+   * A skip says nothing about place in either direction: you may have skipped the café while
+   * standing outside it, or skipped it from three neighbourhoods away. That is exactly why the
+   * answer is `denied` rather than a walk back to an older stop, which would swap a wrong claim
+   * for a stale one — the leg from where you were six hours ago is not less of a guess.
+   */
+  denied: boolean;
+}
+
 /**
  * **Where the horizon's journey starts.**
  *
@@ -108,6 +125,10 @@ export function heroLeaveBy(input: {
  * event's place, and in a gap it says the last thing that started is where you were left. That
  * is the same leg `DayJoinRow` measures its hole with (§V1.1), so the day row's leave-by and the
  * board's cannot differ.
+ *
+ * **And a claim the group denied is reported as denied** (ADR-0208 §2): a `skipped` stop is
+ * still the last thing that started, so it is still the answer — with the flag that says the
+ * caller may not build a read on it unless something else backs it up.
  *
  * It deliberately does **not** walk further back when the answer has no coordinates: the stop
  * before it is somewhere you have already left, and offering it would invent a position. No
@@ -126,9 +147,12 @@ export function travelOrigin(input: {
   /** The destination — never its own origin, which is what a day whose only stop is one stay's
    *  two ends would otherwise ask for. */
   excludeEventId?: string;
-}): TripEvent | undefined {
+}): TravelOriginClaim {
   const { nowEvent, events, nowMs, excludeEventId } = input;
-  if (nowEvent) return nowEvent;
+  // `deriveNow` admits only PLANNED events, so an in-progress point can never be the denied
+  // one — skipping the thing you are inside removes it from `now` and this falls to the branch
+  // below on the same render.
+  if (nowEvent) return { event: nowEvent, denied: false };
   let latest: TripEvent | undefined;
   for (const event of events) {
     if (!event.startsAt || event.id === excludeEventId) continue;
@@ -136,5 +160,5 @@ export function travelOrigin(input: {
     if (!Number.isFinite(startedAt) || startedAt > nowMs) continue;
     if (!latest || startedAt > Date.parse(latest.startsAt!)) latest = event;
   }
-  return latest;
+  return { event: latest, denied: latest?.status === EVENT_STATUS.SKIPPED };
 }

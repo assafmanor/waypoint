@@ -7,7 +7,14 @@
 // with each component.
 
 export { Board, DayRail, TransitProgress } from './Board';
-export type { BoardProps, BoardVariant, BoardRow, BoardTransit, BoardNext } from './Board';
+export type {
+  BoardProps,
+  BoardVariant,
+  BoardRow,
+  BoardTransit,
+  BoardNext,
+  BoardCountdown,
+} from './Board';
 
 export { EventCard } from './EventCard';
 export type { EventCardProps, EventKind, EventPhaseName } from './EventCard';

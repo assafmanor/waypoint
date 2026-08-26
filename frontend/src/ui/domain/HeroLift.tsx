@@ -24,6 +24,7 @@ import { Avatar, type AvatarPerson } from '../primitives/Avatar';
 import { Icon } from '../Icon';
 import { ZoneShiftPill } from '../ZoneShiftPill';
 import { SettleControl, type SettleOutcome } from './SettleControl';
+import type { BoardCountdown } from './Board';
 import { t } from '../../i18n/he';
 import './hero-lift.css';
 
@@ -229,7 +230,7 @@ export interface HeroLiftProps {
   /** The collapsed board's countdown, unchanged — including ADR-0206 §Z1's swap and its
    *  `missed` arm, because the hero IS that board one elevation up and the two may not
    *  disagree about what the tile counts to. */
-  countdown?: { value?: string; unit: string; missed?: boolean } | null;
+  countdown?: BoardCountdown | null;
   /** ADR-0206 §V1.2's read, drawn between the two points it belongs between. */
   travel?: HeroLiftTravel;
   then?: HeroLiftThen;
@@ -718,6 +719,7 @@ export function HeroLift(props: HeroLiftProps) {
                           </div>
                         )}
                         <div className="u">{countdown.unit}</div>
+                        {countdown.unitBelow && <div className="u">{countdown.unitBelow}</div>}
                       </div>
                     )}
                   </div>

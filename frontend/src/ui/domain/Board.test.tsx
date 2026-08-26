@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { Board } from './Board';
+import { Board, type BoardCountdown } from './Board';
 import { t } from '../../i18n/he';
 
 describe('Board', () => {
@@ -382,7 +382,7 @@ describe('Board', () => {
 });
 
 describe('Board — the countdown swaps what it counts to (ADR-0206 §Z1)', () => {
-  const board = (countdown: { value?: string; unit: string; missed?: boolean }) =>
+  const board = (countdown: BoardCountdown) =>
     render(
       <Board
         variant="free"
@@ -395,7 +395,7 @@ describe('Board — the countdown swaps what it counts to (ADR-0206 §Z1)', () =
   // The `unit` slot has said what the minutes are left OF since ADR-0184 §6's `לסגירה`; a live
   // leave-by is the same fact pointed one step earlier. One tile, three referents.
   it('is the SAME tile under all three units, never a second box', () => {
-    for (const unit of ['דקות', t.board.leaveIn, t.board.sinceLeave]) {
+    for (const unit of ['דקות', t.board.leaveIn, t.board.lateBy('דקות')]) {
       const { container, unmount } = board({ value: '10', unit });
       expect(container.querySelectorAll('.wp-board-countdown')).toHaveLength(1);
       expect(container.querySelector('.wp-board-countdown .u')?.textContent).toBe(unit);
@@ -407,7 +407,26 @@ describe('Board — the countdown swaps what it counts to (ADR-0206 §Z1)', () =
     const live = board({ value: '10', unit: t.board.leaveIn });
     expect(live.container.querySelector('.wp-board-countdown.missed')).toBeNull();
     live.unmount();
-    const passed = board({ value: '7', unit: t.board.sinceLeave, missed: true });
+    const passed = board({ value: '7', unit: t.board.lateBy('דקות'), missed: true });
     expect(passed.container.querySelector('.wp-board-countdown.missed')).toBeTruthy();
+  });
+
+  // **ADR-0208 §1.** Three parts will not fit on one line inside the tile's own ⁦48px⁩, so the
+  // sentence wraps: the number, then what it measures, then what it is late FOR. Explicit lines
+  // rather than a `max-width` and a hope — a font fallback would wrap where nothing measured it.
+  it('carries a second unit line, and only when it is given one', () => {
+    const passed = board({
+      value: '7',
+      unit: t.board.lateBy('דקות'),
+      unitBelow: t.board.leaveIn,
+      missed: true,
+    });
+    const lines = [...passed.container.querySelectorAll('.wp-board-countdown .u')].map(
+      (u) => u.textContent,
+    );
+    expect(lines).toEqual([t.board.lateBy('דקות'), t.board.leaveIn]);
+    passed.unmount();
+    const live = board({ value: '10', unit: t.board.leaveIn });
+    expect(live.container.querySelectorAll('.wp-board-countdown .u')).toHaveLength(1);
   });
 });

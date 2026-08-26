@@ -1870,11 +1870,26 @@ export const t = {
     // precedent in grammar and in mechanism: a preposition plus the noun the minutes are left
     // of. `לצאת` was the alternative and reads as an instruction where this is a measurement.
     leaveIn: 'ליציאה',
-    // **And the same noun once the leave-by has gone by**, with the preposition flipped: the
-    // minutes are now counted FROM it. It says the leave-by passed and by how much, which is
-    // the whole of what the clock can support — never `אתם באיחור`, which is a claim about a
-    // person the app has no sensor for (§Z5 §M4).
-    sinceLeave: 'מהיציאה',
+    // **And once the leave-by has gone by: `15 · דקות באיחור · ליציאה`** (ADR-0208 §1). Two
+    // words were reported unclear here before this one, and each was missing a different half
+    // of the sentence. `מהיציאה` read as _measured from_ — "15, counted from the departure".
+    // Then a bare `באיחור` said the number was lateness and named nothing it was late FOR, so
+    // `15` could as easily have meant the event started a quarter of an hour ago.
+    //
+    // So the slot says all three parts: **how much** (the ladder's own word, below), **that it
+    // is lateness**, and **what for** — and the third is `leaveIn` above, reused verbatim,
+    // because the two arms are about the same departure and only differ on which side of it
+    // the clock is.
+    //
+    // **The measure word is the LADDER's, never a literal** — `formatCountdown` steps to `H:MM`
+    // past an hour, and a leg long enough to be an hour late is a drive, not a walk. A
+    // hardcoded `דק׳` would have labelled `1:20` as minutes.
+    //
+    // **Still a measurement, not the accusation §Z5 §M4 refused.** `אתם באיחור` is a claim
+    // about people, who may well be walking; this says what the NUMBER is — and by the time it
+    // can print, `בדרך`, a device fix and the plan's own claim have each had a chance to
+    // withdraw it (ADR-0207 §2, ADR-0208 §2).
+    lateBy: (unit: string) => `${unit} באיחור`,
     endOfDay: 'סוף היום',
     // Concurrency on the board (ADR-0041): the "ועוד N עכשיו" expander for extra
     // in-progress events, and the group-split header when several run at once.

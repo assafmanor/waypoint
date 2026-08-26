@@ -33,6 +33,7 @@ import {
   GlanceCard,
   RateCard,
   TransitProgress,
+  type BoardCountdown,
   type BoardNext,
   type BoardRow,
   type BoardTransit,
@@ -79,7 +80,7 @@ import {
   countsNights,
 } from '../lib/glance';
 import { deriveHeroBooking } from '../lib/hero-booking';
-import { LEAVE_PHASE, heroLeaveBy, travelOrigin } from '../lib/hero-travel';
+import { LEAVE_PHASE, heroLeaveBy, travelOrigin, type HeroLeaveBy } from '../lib/hero-travel';
 import { TRAVEL_STANCE, remainingTravelSeconds, travelStance } from '../lib/travel-position';
 import { useGeolocation } from '../lib/useGeolocation';
 import { useDayTravel } from '../lib/travel';
@@ -116,6 +117,29 @@ import { useSettledHosts } from '../ui/HostTasks';
  *  by mode — a flight's take-off, a train's departure (via eventTransitionKeys). */
 const startTransitionKey = (e: TripEvent): string | undefined =>
   isBracketed(e) ? eventTransitionKeys(e)?.startKey : undefined;
+
+/**
+ * **The passed-leave arm's three parts** (ADR-0208 §1) — `15 · דקות באיחור · ליציאה`.
+ *
+ * Two words were reported unclear in this slot before this one, each missing a different half of
+ * the sentence: `מהיציאה` read as _measured from_ ("15, counted from the departure"), and a bare
+ * `באיחור` said the number was lateness while naming nothing it was late FOR — so `15` could as
+ * easily have meant the event started a quarter of an hour ago.
+ *
+ * **The measure word is the ladder's own, never a literal.** `formatCountdown` steps to `H:MM`
+ * past an hour, and a leg long enough to be an hour late is a drive rather than a walk — so a
+ * hardcoded `דק׳` would have labelled `1:20` as minutes. The third part is `leaveIn` verbatim,
+ * because both arms are about the same departure and differ only on which side of it the clock is.
+ */
+function passedLeaveCountdown(leave: HeroLeaveBy): BoardCountdown {
+  const ladder = formatCountdown(-leave.minutesToLeave);
+  return {
+    ...ladder,
+    unit: t.board.lateBy(ladder.unit),
+    unitBelow: t.board.leaveIn,
+    missed: true,
+  };
+}
 
 export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const {
@@ -469,14 +493,21 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     nowMs,
     excludeEventId: shownNext?.id,
   });
+  const prevEvent = travelPrev.event;
+  const nowPlaceId = horizon.now[0]?.placeId;
   const travelFromId =
-    horizon.now[0]?.placeId ??
-    (travelPrev
+    nowPlaceId ??
+    (prevEvent
       ? eventPlaceId(
-          travelPrev,
-          travelPrev.bookingId ? bookings.find((b) => b.id === travelPrev.bookingId) : undefined,
+          prevEvent,
+          prevEvent.bookingId ? bookings.find((b) => b.id === prevEvent.bookingId) : undefined,
         )
       : undefined);
+  // **And whether the plan may still claim it** (ADR-0208 §2). A skipped stop is still the last
+  // thing that started, so it is still where the plan left you — except the group has said they
+  // did not go, which denies exactly that. Only when the leg actually starts from that stop: an
+  // in-progress point supplies its own place, and `deriveNow` never hands back a skipped one.
+  const originDenied = nowPlaceId === undefined && travelPrev.denied;
   const travelToId = horizon.next?.placeId;
   const coordOf = (placeId?: string) => {
     const place = placeId ? places.find((p) => p.id === placeId) : undefined;
@@ -490,31 +521,6 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     travelFrom && travelTo && travelFromId !== travelToId
       ? { from: travelFrom, to: travelTo }
       : null;
-  // One leg, every mode the gate admits, so §Z2's switch stays a read from cache when M8 builds
-  // it. An empty `stops` asks for nothing at all — the hook's own fingerprint is empty.
-  const dayTravel = useDayTravel({
-    tripId: trip.id,
-    stops: travelLeg ? [travelLeg.from, travelLeg.to] : [],
-  });
-  const travelEstimate = travelLeg
-    ? dayTravel.estimateFor(travelLeg.from, travelLeg.to, travelMode)
-    : null;
-  // **`null` is the ordinary answer** (§D4): offline, refused, over the ceiling, still warming,
-  // provider down, or a leg somebody declared תחב״צ (§AA4 — a stored mode with no provider, so
-  // `estimateFor` cannot be asked for it and this cannot be anything but `null`). Every one of
-  // them leaves the board counting to the event and this block absent, with no layout shift.
-  const leave = nextInstant
-    ? heroLeaveBy({
-        arriveByMs: Date.parse(nextInstant),
-        travelSeconds: travelEstimate?.durationSeconds ?? null,
-        nowMs,
-      })
-    : null;
-  // **Somebody said `בדרך`** (§Z5 §M4) — a person telling the app what it should have been able
-  // to see. It withdraws the whole leave read: once they are moving, counting to a departure they
-  // have already made is the wrong question. It stays the floor, and ADR-0207 is the ceiling.
-  const onWayToNext = useOnWay(trip.id, shownNext?.id);
-
   // ── WHAT A DEVICE POSITION LETS THIS SURFACE CLAIM (ADR-0207) ──────────────
   // Reported twice from a real day: the board said the leave-by had passed while the owner stood
   // ⁦200m⁩ from the door of the next stop, and the Map tab was drawing their blue dot beside that
@@ -552,6 +558,42 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         nowMs,
       })
     : null;
+  // **A read needs something to stand on** (ADR-0208 §2). With the plan's claim denied, the
+  // clock alone can say nothing about this leg — so it is believed only where a fix puts the
+  // traveller ON it, at either end or between them. `unknown` (no consent, a stale fix, a leg
+  // too short to resolve) is §D4's absence: no duration, no leave-by, and above all no late
+  // mark. **Gated here rather than at the two reads** because the request is the thing worth
+  // not making: a route nobody may be shown is a call against §D8's budget for nothing.
+  const originStands =
+    !originDenied ||
+    stance?.stance === TRAVEL_STANCE.AT_ORIGIN ||
+    stance?.stance === TRAVEL_STANCE.EN_ROUTE;
+  // One leg, every mode the gate admits, so §Z2's switch stays a read from cache when M8 builds
+  // it. An empty `stops` asks for nothing at all — the hook's own fingerprint is empty.
+  const dayTravel = useDayTravel({
+    tripId: trip.id,
+    stops: travelLeg && originStands ? [travelLeg.from, travelLeg.to] : [],
+  });
+  const travelEstimate =
+    travelLeg && originStands
+      ? dayTravel.estimateFor(travelLeg.from, travelLeg.to, travelMode)
+      : null;
+  // **`null` is the ordinary answer** (§D4): offline, refused, over the ceiling, still warming,
+  // provider down, or a leg somebody declared תחב״צ (§AA4 — a stored mode with no provider, so
+  // `estimateFor` cannot be asked for it and this cannot be anything but `null`). Every one of
+  // them leaves the board counting to the event and this block absent, with no layout shift.
+  const leave = nextInstant
+    ? heroLeaveBy({
+        arriveByMs: Date.parse(nextInstant),
+        travelSeconds: travelEstimate?.durationSeconds ?? null,
+        nowMs,
+      })
+    : null;
+  // **Somebody said `בדרך`** (§Z5 §M4) — a person telling the app what it should have been able
+  // to see. It withdraws the whole leave read: once they are moving, counting to a departure they
+  // have already made is the wrong question. It stays the floor, and ADR-0207 is the ceiling.
+  const onWayToNext = useOnWay(trip.id, shownNext?.id);
+
   // **`arrived` and `en-route` answer the leave-by question, so the mark goes** — automatically,
   // with nobody having to press anything (v2 §3d's _"נענה מעצמו"_). `at-origin` is the one arm
   // that makes the app LOUDER, and it is the one that earns it. `unknown` changes nothing.
@@ -592,11 +634,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           at: leave.minutesToLeave,
           countdown:
             leave.phase === LEAVE_PHASE.PASSED
-              ? {
-                  ...formatCountdown(-leave.minutesToLeave),
-                  unit: t.board.sinceLeave,
-                  missed: true,
-                }
+              ? passedLeaveCountdown(leave)
               : { ...formatCountdown(leave.minutesToLeave), unit: t.board.leaveIn },
         }
       : null;
