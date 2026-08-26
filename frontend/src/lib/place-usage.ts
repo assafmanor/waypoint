@@ -734,6 +734,40 @@ export function knowsMoment(
   return event ? isExactEdge(event, moment.edge ?? 'start') : true;
 }
 
+/**
+ * **WHAT BROUGHT YOU IN THROUGH THE NIGHT** (ADR-0054's 2026-08-26 amendment) — a moment
+ * before dawn that the app does not KNOW is an arrival from the night before, not something
+ * you left the bed for.
+ *
+ * Two questions, and one alone gets the other case wrong. Before dawn ({@link dayWindowMs}'s
+ * own 07:00, resolved by the caller because a wall-clock hour needs a zone): after it you are
+ * up and out, whatever it is. And not a moment the app knows ({@link knowsMoment}): a 06:30
+ * flight is an exact commitment you got up for, so the bed still leads it, while a car
+ * "available from 00:00" is a floor claiming no hour at all — and a floor in the small hours
+ * is the shape of a night arrival.
+ *
+ * **It had one reader and now has two**, which is why it is here rather than inside the map's
+ * `buildDayStopSequence` where it was written (root rule 8). The map has sorted a midnight car
+ * hire ahead of the hotel since 2026-08-25; the day list went on drawing the hotel first and a
+ * ⁦25km⁩ drive out to the counter beneath it, which is the same fact answered two ways on two
+ * surfaces (ADR-0159 §1) — and the owner reported the list's version.
+ *
+ * Its known cost, stated rather than buried: a pre-dawn stop with an EXACT time that you
+ * genuinely went out for after checking in (a 01:00 table) keeps the bed ahead of it. That is
+ * the safer of the two wrong answers and it is what buys the early-flight morning.
+ */
+export function broughtInOvernight(
+  moment: { at?: number; eventId?: string; edge?: 'start' | 'end' },
+  ctx: { dawnMs?: number; eventById?: (id: string) => TripEvent | undefined },
+): boolean {
+  return (
+    ctx.dawnMs != null &&
+    moment.at != null &&
+    moment.at < ctx.dawnMs &&
+    !knowsMoment(moment, ctx.eventById)
+  );
+}
+
 /** The list's three blocks, in reading order (ADR-0109 session-110 + its session-127
  *  amendment). Named because the list both **orders** by them and **labels** them:
  *  the group a row lands in is the one the header above it claims. */

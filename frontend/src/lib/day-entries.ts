@@ -17,6 +17,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { bookingTransitionsOnDate, type BookingTransition } from './glance';
+import { broughtInOvernight } from './place-usage';
 import type { TimeGroup, TimeItem } from './time';
 
 /** The events a group holds — one, or a cluster's several (ADR-0041). */
@@ -65,6 +66,16 @@ export function edgeEntryOf(
     (e): e is TransitionEntry => e.kind === 'transition' && e.event.id === eventId,
   );
 }
+
+/** **The edge entry for an event wherever the day placed it** — the list, or the overnight run
+ *  above the bed. Two lookups behind one name because the strip's sentence comes from the placed
+ *  entry: without this a midnight pickup silently fell back to `יום 1 מתוך 10`, losing the very
+ *  clock the strip exists to say. */
+export const placedEdgeOf = (
+  placement: Pick<DayPlacement, 'positioned' | 'overnight'>,
+  eventId: string,
+): TransitionEntry | undefined =>
+  edgeEntryOf(placement.positioned, eventId) ?? edgeEntryOf(placement.overnight, eventId);
 
 /** **The ambient-span stays covering `date`, edges INCLUDED** (owner, 2026-08-13, amending
  *  ADR-0064 §C): the strip above the list, on every day of a stay rather than only its
@@ -129,6 +140,17 @@ export interface DayPlacement {
    *  does not know. Returned rather than dropped, because that row still says the bound and this
    *  is where its sentence comes from (`edgeSentence`). Empty unless the caller names ids. */
   stayEdges: TransitionEntry[];
+  /** **What brought you in through the night** (ADR-0054's 2026-08-26 amendment) — span edges
+   *  before dawn whose moment the app does not know, taken out of the list so they can read
+   *  ABOVE the row for the stay you woke in. The map has sorted them that way since 2026-08-25
+   *  (`broughtInOvernight`); the list had them below the bed, so a midnight car hire read as a
+   *  ⁦25km⁩ drive out to the counter after breakfast.
+   *
+   *  **Transition entries only, and that bound is what makes this free of side effects.** A
+   *  span edge is never a leg's endpoint and a flexible one is already transparent to
+   *  `prevEnd` (ADR-0171 §5), so moving these out of `positioned` cannot change one gap, one
+   *  journey or one adjacency. Empty unless the caller supplies a `dawnMs`. */
+  overnight: TransitionEntry[];
 }
 
 /** **Where a flexible edge actually sits** (ADR-0171 §10b, both ends since ADR-0184's
@@ -204,8 +226,18 @@ export function placeDayEntries(
    *  list rather than sitting in it at a bound. Both day surfaces pass the same set, from the same
    *  `dayBookendStays`, because ADR-0159 §1 forbids them differing about a fact. */
   stayRowIds?: ReadonlySet<string>,
+  /** **When the day's window opens** (`dayWindowMs(...).startMs`), for the one question below that
+   *  needs it. An instant rather than a zone, exactly as `map-pins.ts` takes it: the wall-clock
+   *  hour belongs to the screen that owns the zone, and this file owns no clock. */
+  dawnMs?: number,
 ): DayPlacement {
-  const placement: DayPlacement = { positioned: [], commitments: [], ideas: [], stayEdges: [] };
+  const placement: DayPlacement = {
+    positioned: [],
+    commitments: [],
+    ideas: [],
+    stayEdges: [],
+    overnight: [],
+  };
   const park = (row: UnplacedRow) =>
     (row.event.kind === EVENT_KIND.HARD ? placement.commitments : placement.ideas).push(row);
   // An edge pinned to a hard fact has to read on the near side of it — "be out by then"
@@ -240,7 +272,20 @@ export function placeDayEntries(
       placement.stayEdges.push(entry);
       continue;
     }
-    const moved: DayEntry = { ...entry, atMs };
+    const moved: TransitionEntry = { ...entry, atMs };
+    // **Asked on the PLACED instant, not the authored one.** `edgeAt` has already bounded the
+    // edge by the day's hard facts, and that is the instant the row prints — so a floor dragged
+    // past dawn by a landing is no longer a night arrival, and asking the raw bound would sort
+    // it by a clock the reader never sees.
+    if (
+      broughtInOvernight(
+        { at: atMs, eventId: entry.event.id, edge: entry.edge },
+        { dawnMs, eventById: () => entry.event },
+      )
+    ) {
+      placement.overnight.push(moved);
+      continue;
+    }
     if (atMs !== entry.atMs) pinned.add(moved);
     placement.positioned.push(moved);
   }

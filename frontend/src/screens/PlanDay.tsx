@@ -84,6 +84,7 @@ import {
   type TimeItem,
   tripDates,
   relativeDayLabel,
+  dayWindowMs,
 } from '../lib/time';
 import {
   earnsChip,
@@ -141,7 +142,7 @@ import {
 } from '../constants';
 import {
   dayTransitions,
-  edgeEntryOf,
+  placedEdgeOf,
   placeDayEntries,
   type DayEntry,
   groupEndEvent,
@@ -400,11 +401,19 @@ export function PlanDay() {
     () => new Set([bookends.woke?.id, bookends.sleeps?.id].filter((id): id is string => !!id)),
     [bookends.woke?.id, bookends.sleeps?.id],
   );
+  /** **When this day's window opens** (ADR-0045/0037's 07:00) — the boundary that decides what
+   *  belongs to the night before it. The same instant the Map resolves, and memoized for the same
+   *  reason: `zonedIso` builds an `Intl.DateTimeFormat` and this screen re-renders on the drag. */
+  const dawnMs = useMemo(
+    () => dayWindowMs(activeDate, dayZoneContext(activeDate, zoneEvidence).ambientZone).startMs,
+    [activeDate, zoneEvidence],
+  );
   const placement = placeDayEntries(
     mergeDayEntries(planGroups, transitions),
     dayEvents.filter((e) => !e.startsAt),
     planGroups,
     stayRowIds,
+    dawnMs,
   );
 
   // ── THE JOURNEY IN A HOLE, ON THE CONTROL SIDE (ADR-0206 §V1.1) ─────────────────────────
@@ -488,7 +497,17 @@ export function PlanDay() {
   const planJourney = (from: TripEvent, to: TripEvent): DayJourney | null => {
     const estimate = planTravel.estimateFor(from, to);
     return dayJourney({
-      departAfterMs: Date.parse(from.endsAt ?? from.startsAt ?? ''),
+      // **THERE IS NO WINDOW OUT OF A BED** (ADR-0206 §AF3, amended 2026-08-26 off the field
+      // report). A stay's own `endsAt` is its check-out: a **ceiling**, days away on a middle
+      // night, and never the hour you left. Reading it as this hole's departure measured the walk
+      // to a ⁦07:15⁩ waterfall against an ⁦11:00⁩ check-out and reported `אין זמן לדרך` about a drive
+      // you make at dawn with three hours to spare. Trip mode has omitted it since §AD; this
+      // surface kept passing it, which is `frontend/CLAUDE.md`'s "changing a day-surface
+      // derivation in `DayView` only" — the docblock below cites that rule and the line above it
+      // was the one that had drifted.
+      ...(stayRowIds.has(from.id)
+        ? {}
+        : { departAfterMs: Date.parse(from.endsAt ?? from.startsAt ?? '') }),
       arriveByMs: Date.parse(to.startsAt ?? ''),
       // Same gate as Trip mode's, and it is here rather than only there because
       // `frontend/CLAUDE.md` names "changing a day-surface derivation in `DayView` only" as
@@ -1214,7 +1233,7 @@ export function PlanDay() {
                 // A stay named by its own row is not also named here (ADR-0209 §1).
                 .filter((e) => !stayRowIds.has(e.id))
                 .map((e) => {
-                  const edge = edgeEntryOf(placement.positioned, e.id);
+                  const edge = placedEdgeOf(placement, e.id);
                   return (
                     <div className="ambient" key={e.id}>
                       <span className="ai" aria-hidden="true">
@@ -1287,21 +1306,24 @@ export function PlanDay() {
           )}
           {!isEmptyDay && (
             <div>
-              {/* The day's head: free time before the first event, which `freeBetween`
-                cannot see because it has an event on one side only (session-123). */}
-              {edgeFree.before && !heldAtEdge(edgeFree.before, timed[0]) && (
-                <FreeSlot
-                  free={edgeFree.before}
-                  label={t.planDay.gapBefore(gapLabel(edgeFree.before.minutes))}
-                  seamLabel={t.planDay.seamDayStart}
-                  over={overGap(edgeFree.before.fill)}
-                  onFill={setGapChoice}
-                />
-              )}
               {/* Overlaps render as the concurrency forest (ADR-0041): nests for
                 containment, violet clusters for partial overlap. Gap chips sit
                 only between top-level groups — never inside an overlap.
                 Transition points interleave by instant at the top level (§B). */}
+              {/* **WHAT BROUGHT YOU IN THROUGH THE NIGHT** (ADR-0054's 2026-08-26 amendment) —
+                above the bed, because that is the order it happened in. The map has sorted a
+                midnight car hire ahead of the hotel since 2026-08-25 and both lists drew it
+                below: one fact, two answers (ADR-0159 §1). */}
+              {placement.overnight.map((entry) => (
+                <TransitionRow
+                  key={`${entry.event.id}-${entry.edge}`}
+                  entry={entry}
+                  tz={tz}
+                  {...eventEdgeZone(entry.event, entry.edge, zoneCtx)}
+                  bookings={bookings}
+                  onOpen={setDetailTarget}
+                />
+              ))}
               {/* **WHERE THE DAY STARTS** (ADR-0209 §1), with the leg out of it below — the same
                 two rows Trip mode draws, off the same `dayBookendStays`. **Without the settle
                 pair**, which is ADR-0171 §10e's posture difference: Plan settles through a row
@@ -1322,6 +1344,19 @@ export function PlanDay() {
                       ) : null;
                     })()}
                 </>
+              )}
+              {/* The day's head: free time before the first event, which `freeBetween` cannot
+                see because it has an event on one side only (session-123). **Below the row the
+                day starts at** since ADR-0209 put one there — a drop target for the morning was
+                reading above the bed it belongs after. */}
+              {edgeFree.before && !heldAtEdge(edgeFree.before, timed[0]) && (
+                <FreeSlot
+                  free={edgeFree.before}
+                  label={t.planDay.gapBefore(gapLabel(edgeFree.before.minutes))}
+                  seamLabel={t.planDay.seamDayStart}
+                  over={overGap(edgeFree.before.fill)}
+                  onFill={setGapChoice}
+                />
               )}
               <BuilderGroups
                 groups={planGroups}

@@ -13,6 +13,7 @@ import { chosenIcon, DEFAULT_PLACE_ICON, MAP_PIN } from '../constants';
 import {
   isDayUsagePast,
   isOnShelf,
+  broughtInOvernight,
   knowsMoment,
   placeDay,
   relevantMoment,
@@ -517,26 +518,12 @@ export function buildDayStopSequence(
   // the hotel around ⁦02:00⁩. Every stop of the day is after ⁦15:00⁩ the day before, so the
   // comparison moved nothing and the route still ran bed → car.
   //
-  // What actually separates "this brought me in" from "I left the hotel for this" is TWO
-  // questions, and one alone gets the other case wrong:
-  //
-  //  - **Is it before dawn** (`dawnMs`, the day window's own 07:00 — ADR-0045/0037, resolved
-  //    by the screen because a wall-clock hour needs a zone and this file has none). After
-  //    dawn you are up and out, whatever it is.
-  //  - **Is it a moment the app KNOWS** (`knowsMoment`). A ⁦06:30⁩ flight before dawn is an
-  //    exact commitment you left the bed for, so the hotel still leads. A car "available from
-  //    ⁦00:00⁩" is a floor: it claims no hour, and a floor in the small hours is the shape of
-  //    a night arrival rather than of an early start.
-  //
-  // Its known cost, stated rather than buried: a pre-dawn stop with an EXACT time that you
-  // genuinely went out for after checking in (a ⁦01:00⁩ table) keeps the hotel ahead of it. That
-  // leaves the bookend where it was, which is the safer of the two wrong answers, and it is
-  // the trade that buys the early-flight morning.
-  const early = (stop: DayStopEntry) =>
-    dawnMs != null &&
-    stop.moment.at != null &&
-    stop.moment.at < dawnMs &&
-    !knowsMoment(stop.moment, eventById);
+  // What actually separates "this brought me in" from "I left the hotel for this" is
+  // `broughtInOvernight` (`place-usage.ts`), whose two questions and known cost are written
+  // there. **It moved out of this file on 2026-08-26**, when the day list needed the same
+  // answer: the list drew the bed first and the midnight car hire beneath it, which is one
+  // fact answered two ways on two surfaces (ADR-0159 §1) — and the owner reported the list's.
+  const early = (stop: DayStopEntry) => broughtInOvernight(stop.moment, { dawnMs, eventById });
   const bookended = [
     ...middle.filter(early),
     ...first,

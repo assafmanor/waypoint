@@ -635,3 +635,89 @@ describe('DayView — a 45-minute hole with a 40-minute walk is not silent', () 
     expect(document.querySelector('.day-gap')).toBeNull();
   });
 });
+
+// **WHAT BROUGHT YOU IN THROUGH THE NIGHT SORTS BEFORE THE BED** (ADR-0054's 2026-08-26
+// amendment), reported off the deploy: a car collected at ⁦00:00⁩ after a late landing read BELOW
+// the hotel row, so the day said "wake at the hotel, then drive ⁦25km⁩ out to the counter". The map
+// has sorted that pickup ahead of the bed since 2026-08-25 (`broughtInOvernight`) — this was one
+// fact answered two ways on two surfaces (ADR-0159 §1).
+describe('DayView — a midnight pickup reads above the bed', () => {
+  const hotelPlace: Place = {
+    id: 'p-hotel',
+    tripId: 't1',
+    name: 'מלון',
+    lat: 40.86,
+    lng: 14.24,
+    createdAt: `${DAY}T00:00:00Z`,
+    updatedAt: `${DAY}T00:00:00Z`,
+    updatedBy: 'u1',
+  };
+  /** Checked into the night before and out THIS morning — the edge day the report came from. */
+  const stay = ev('stay', {
+    title: 'Gissurarbúð 5',
+    category: 'lodging',
+    placeId: 'p-hotel',
+    date: '2026-08-02',
+    endDate: DAY,
+    startsAt: '2026-08-02T13:00:00Z',
+    endsAt: `${DAY}T09:00:00Z`,
+  });
+  /** A ten-day hire collected at midnight. The glyph is load-bearing: ADR-0162 makes a hire a
+   *  HELD resource, so its start is the floor `מ-00:00` — a clock claiming no hour. */
+  const hire = ev('hire', {
+    title: 'Iceland Car Rental',
+    category: 'transport',
+    icon: '🚗',
+    placeId: 'p-lunch',
+    date: DAY,
+    endDate: '2026-08-12',
+    startsAt: `${DAY}T00:00:00Z`,
+    endsAt: '2026-08-12T08:00:00Z',
+  });
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    resetOnWayForTests();
+    tripEvents = [stay, hire, lunch, theatre];
+    tripPlaces = [...places, hotelPlace];
+    travelSeconds = 15 * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    resetOnWayForTests();
+    setSimulatedNow(null);
+  });
+
+  // RED against `main`, where the pickup row sat below the stay row.
+  it('puts the pickup row above the stay row', () => {
+    show();
+    const rows = [...document.querySelectorAll('.day-list .transition-row')];
+    const titles = rows.map((r) => r.querySelector('.tr-title')?.textContent ?? '');
+    expect(titles.indexOf('Iceland Car Rental')).toBeGreaterThanOrEqual(0);
+    expect(titles.indexOf('Iceland Car Rental')).toBeLessThan(titles.indexOf('Gissurarbúð 5'));
+  });
+
+  // Green on `main` and a guard on the fix rather than a report: the strip's sentence comes from
+  // the PLACED entry, and the entry moved buckets — so without `placedEdgeOf` it would fall back
+  // to the span count (`יום 1 מתוך 11`), losing the very clock the strip exists to say.
+  it('keeps the strip saying the pickup clock rather than the day count', () => {
+    show();
+    expect(document.querySelector('.day-ambient')?.textContent).toContain(
+      t.glance.transition.carPickup,
+    );
+  });
+
+  // **No journey block into the bed above it** — also a guard rather than a report. A stay has no
+  // per-day arrival instant, so the only deadline on offer is its check-in floor from YESTERDAY,
+  // and counting back from a bound the app invented is the mistake §AI was written about.
+  it('draws no journey between the pickup and the stay row', () => {
+    show();
+    const nodes = [...document.querySelectorAll('.day-list > *')];
+    const stayIndex = nodes.findIndex((n) => n.textContent?.includes('Gissurarbúð 5'));
+    const pickupIndex = nodes.findIndex((n) => n.textContent?.includes('Iceland Car Rental'));
+    expect(pickupIndex).toBeGreaterThanOrEqual(0);
+    expect(nodes.slice(pickupIndex + 1, stayIndex).some((n) => n.querySelector('.day-trv'))).toBe(
+      false,
+    );
+  });
+});

@@ -4,6 +4,7 @@ import {
   dayTransitions,
   mergeDayEntries,
   placeDayEntries,
+  placedEdgeOf,
   staysOnDate,
   type DayEntry,
 } from './day-entries';
@@ -407,5 +408,105 @@ describe('placeDayEntries — stay edges leave the list when the stay has its ow
     expect(placed.positioned.map((e) => (e.kind === 'transition' ? e.event.id : ''))).toEqual([
       'other',
     ]);
+  });
+});
+
+// **WHAT BROUGHT YOU IN THROUGH THE NIGHT** (ADR-0054's 2026-08-26 amendment).
+//
+// Reported off the deploy: a car collected at ⁦00:00⁩ after a late landing read BELOW the hotel row
+// on both day surfaces, with a ⁦25km⁩ drive out to the counter drawn in between — the map has sorted
+// that pickup ahead of the bed since 2026-08-25, so this was one fact answered two ways
+// (ADR-0159 §1). The predicate is the map's own (`broughtInOvernight`), and every case below is
+// one of its two questions.
+describe('placeDayEntries — the overnight run comes out of the list (ADR-0054, 2026-08-26)', () => {
+  const AT = (hhmm: string) => Date.parse(`2026-08-03T${hhmm}:00Z`);
+  const DAWN = AT('07:00');
+  const hire = ev({
+    id: 'hire',
+    title: 'Iceland Car Rental',
+    category: 'transport',
+    // The glyph is the fixture's point: ADR-0162 makes a hire a HELD resource, so its start is a
+    // floor (`מ-00:00`) rather than a departure — and a floor is what the app does not know.
+    icon: '\u{1F697}',
+    date: '2026-08-03',
+    endDate: '2026-08-12',
+    startsAt: '2026-08-03T00:00:00Z',
+    endsAt: '2026-08-12T10:00:00Z',
+  });
+  /** A floor at midnight: `מ-00:00` claims no hour, which is the shape of a night arrival. */
+  const pickup = (atMs = AT('00:00')): DayEntry => ({
+    kind: 'transition',
+    event: hire,
+    edge: 'start',
+    atMs,
+    labelKey: 'pickup',
+  });
+
+  it('diverts a pre-dawn floor, and hands it back in its own bucket', () => {
+    const placed = placeDayEntries([pickup()], [], [], undefined, DAWN);
+    expect(placed.positioned).toHaveLength(0);
+    expect(placed.overnight.map((e) => e.event.id)).toEqual(['hire']);
+  });
+
+  it('leaves it in the list when no dawn is supplied', () => {
+    const placed = placeDayEntries([pickup()], [], []);
+    expect(placed.overnight).toHaveLength(0);
+    expect(placed.positioned).toHaveLength(1);
+  });
+
+  // The second of the predicate's two questions, and the one a dawn test alone would miss: a
+  // ⁦06:30⁩ flight is an exact commitment you got out of bed for, so the bed still leads it.
+  it('keeps a pre-dawn EXACT moment in the list', () => {
+    const flight = ev({
+      id: 'flight',
+      category: 'transport',
+      date: '2026-08-03',
+      endDate: '2026-08-04',
+      startsAt: '2026-08-03T06:30:00Z',
+      endsAt: '2026-08-04T09:00:00Z',
+    });
+    const placed = placeDayEntries(
+      [{ kind: 'transition', event: flight, edge: 'start', atMs: AT('06:30'), labelKey: 'dep' }],
+      [],
+      [],
+      undefined,
+      DAWN,
+    );
+    expect(placed.overnight).toHaveLength(0);
+    expect(placed.positioned).toHaveLength(1);
+  });
+
+  it('keeps a floor AFTER dawn in the list', () => {
+    const placed = placeDayEntries([pickup(AT('09:00'))], [], [], undefined, DAWN);
+    expect(placed.overnight).toHaveLength(0);
+    expect(placed.positioned).toHaveLength(1);
+  });
+
+  // A stay named by its own row is a stay row first: the two buckets are asked in that order, or a
+  // pre-dawn check-in floor would be drawn twice.
+  it('a stay with a row stays a stay row', () => {
+    const placed = placeDayEntries(
+      [
+        {
+          kind: 'transition',
+          event: hotel2Nights,
+          edge: 'start',
+          atMs: AT('03:00'),
+          labelKey: 'i',
+        },
+      ],
+      [],
+      [],
+      new Set(['hotel']),
+      DAWN,
+    );
+    expect(placed.overnight).toHaveLength(0);
+    expect(placed.stayEdges).toHaveLength(1);
+  });
+
+  it('placedEdgeOf finds the sentence in either bucket', () => {
+    const placed = placeDayEntries([pickup()], [], [], undefined, DAWN);
+    expect(placedEdgeOf(placed, 'hire')?.edge).toBe('start');
+    expect(placedEdgeOf(placed, 'nobody')).toBeUndefined();
   });
 });
