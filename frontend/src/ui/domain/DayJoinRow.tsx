@@ -24,7 +24,7 @@
 // `.nowline`, and the app gets one live mark.
 //
 // `ui/domain/`: presentational, every value via props.
-import { Icon } from '../Icon';
+import { Icon, type IconName } from '../Icon';
 import { t } from '../../i18n/he';
 import './day-join.css';
 
@@ -77,6 +77,159 @@ export function ConnectionBand({
     <div className={'journey-stop' + (tight ? ' tight' : '')}>
       <Icon name="clock" />
       <span>{t.day.join.text(tight ? t.day.join.short(word) : word, length, placeName)}</span>
+    </div>
+  );
+}
+
+/**
+ * **THE JOURNEY, AS AN OBJECT IN THE DAY** (ADR-0206 §V1.1 / §V1.3 / §V1.4, drawn in
+ * [`a-travel-time-between-two-points-v2.html`](../../../../mockups/a-travel-time-between-two-points-v2.html) §1).
+ *
+ * It **replaces** `GapStrip` in a hole that has a journey in it rather than sitting beside it —
+ * owner's review, round 1: _"much more route oriented … a real visual thing … we need this
+ * crystal clear."_ The first draft of that was a run of text inside the strip and it was measured
+ * against the wrong thing (how much dashed rule survived); what the day owes is to read
+ * `place · journey · place`, which is §V1.3's own sentence.
+ *
+ * **And it absorbs the free-time statement rather than adding a second row**, which is what keeps
+ * ADR-0159's one-slot rule: measured at ⁦58px⁩ against ⁦87px⁩ for a strip plus a block, with both of
+ * `freeAfterTravel`'s numbers still said. It also **ignores `GAP_MIN_MINUTES`**, for
+ * `ConnectionBand`'s own reason — a 45-minute hole holding a 40-minute walk is exactly the one
+ * the day must not stay silent about, and no free-time threshold would ever surface it.
+ *
+ * Every value arrives formatted, isolated and hedged, like every other `ui/domain/` component:
+ * `duration` is `approxDuration`'s (the `~` INSIDE the bidi isolate — outside it renders `23~`),
+ * `distance` is `formatDistance` over the ROUTED metres, and `leave` is `t.travel`'s.
+ *
+ * **The mode row is deliberately absent and M8 owns it** (§AA4): the four chips and the declared
+ * תחב״צ state ride the per-leg override, and `.day-trv-acts`' `margin-inline-start: auto` is the
+ * slot they land in — a one-line addition rather than a reshape.
+ */
+export function JourneyBlock({
+  /** The mode's noun, leading the line as the M3 mockup drew it — §D10's dodge (`הליכה · ~40 דק׳`
+   *  rather than `~40 דקות הליכה`, which disagrees), and what makes the number mean anything. */
+  mode,
+  /** The glyph for that mode (ADR-0206 §AA3). Passed rather than derived, because this component
+   *  takes every value via props and a `TravelMode`→`IconName` map at a presentational host is
+   *  the branching `frontend/CLAUDE.md` asks to keep beside the type it feeds. */
+  icon,
+  /** `~40 דק׳`. Absent on a leg with no duration, which nothing produces until M8's declared
+   *  תחב״צ — the shape is here so that leg has somewhere to land. */
+  duration,
+  /** `2.4 ק״מ`, the routed distance. Absent where the estimate carries none. */
+  distance,
+  /** `יציאה 17:15`, or `זמן היציאה עבר ב־17:15`, or the `בדרך` line. Absent on a hole that is
+   *  behind you and on one whose origin claim was denied (ADR-0208 §2) — both are journeys the
+   *  day may still MEASURE and may not give advice about. */
+  leave,
+  /** What is free once the journey is counted (§V1.1) — the correction this epic leads with.
+   *  Absent on the day's first leg, which has no window to measure against (§AD). */
+  free,
+  /** `time` is amber (§D1). `miss` is the leave-by gone by, in `--miss` — **ink and word only**,
+   *  no fill on the block, no glow and no pulse, because the app has one live mark and `.nowline`
+   *  is it (§D6/§D7). `on-way` is teal, because somebody said they are moving and that is a
+   *  location claim (rule 4, ADR-0141's journey grammar). */
+  tone,
+  /** **What a device position adds, when there is one** (ADR-0207 §2) — `עדיין כאן` beside a
+   *  passed leave-by, which is the app saying it checked rather than assumed. */
+  located,
+  /** **The one control on the block**, and the tone decides what it means: `בדרך` on `miss`
+   *  (answer the mark), `ביטול סימון` on `on-way` (take it back — ADR-0207 §7, because a toast is
+   *  transient and a mark is not). */
+  action,
+  /** What a tap on the block opens (ADR-0161 §9) — the same fill the strip it replaces offers,
+   *  because absorbing the free-time statement must not delete the free time's one affordance.
+   *  Absent on a read-only archive, exactly as on `GapStrip`. */
+  onFill,
+  /** The accessible name for that tap. */
+  fillLabel,
+}: {
+  mode: string;
+  icon: IconName;
+  duration?: string;
+  distance?: string;
+  leave?: string;
+  free?: string;
+  tone: 'time' | 'miss' | 'on-way';
+  located?: string;
+  action?: { label: string; onPress: () => void };
+  onFill?: () => void;
+  fillLabel?: string;
+}) {
+  // Each run carries its own tone rather than being matched back to the prop it came from: the
+  // leave-by is the clock's (amber, or `--miss` once it has gone by) and the free time has no hue
+  // at all, because free time is neither commitment nor location and rule 4 has no fourth colour.
+  const meta = [
+    { text: leave, cls: 'day-trv-leave' },
+    { text: free, cls: 'day-trv-free' },
+  ].filter((run): run is { text: string; cls: string } => !!run.text);
+  const face = (
+    <>
+      <span className="day-trv-ic">
+        <Icon name={icon} />
+      </span>
+      <span className="day-trv-main">
+        <span className="day-trv-hd">
+          <span>{mode}</span>
+          {duration && (
+            <>
+              <span className="sep">·</span>
+              <span>{duration}</span>
+            </>
+          )}
+        </span>
+        {meta.length > 0 && (
+          <span className="day-trv-meta">
+            {meta.map((run, i) => (
+              // `·` is the app's separator and it is a NODE rather than part of a string, so a
+              // dimmed dot needs no second copy of the runs around it (§D10: never an em dash).
+              <span key={run.cls} className={run.cls}>
+                {i > 0 && <span className="sep">· </span>}
+                {run.text}
+              </span>
+            ))}
+          </span>
+        )}
+      </span>
+      {distance && <span className="day-trv-dist">{distance}</span>}
+      {onFill && (
+        <span className="day-trv-add" aria-hidden="true">
+          <Icon name="plus" />
+        </span>
+      )}
+    </>
+  );
+  return (
+    <div className={'day-trv ' + tone}>
+      {onFill ? (
+        <button type="button" className="day-trv-face" onClick={onFill} aria-label={fillLabel}>
+          {face}
+        </button>
+      ) : (
+        <div className="day-trv-face">{face}</div>
+      )}
+      {(action || located) && (
+        // **`עדיין כאן` sits on the ACTS row, not on the meta line**, and the reason is a
+        // measurement rather than a preference: beside `זמן היציאה עבר ב־17:15` it is ⁦187.09px⁩ of
+        // ink in a ⁦180.75px⁩ box at 360, so `text-overflow: ellipsis` ate the end of it. Here it
+        // costs zero extra height — the row already exists on every arm that can earn the mark —
+        // and it is also where the mark BELONGS: the app saying it checked, beside the verb that
+        // answers it, which is the pairing the hero's own row already makes.
+        <div className="day-trv-acts">
+          {located && (
+            <span className="day-trv-here">
+              <Icon name="pin" />
+              <span>{located}</span>
+            </span>
+          )}
+          {action && (
+            <button type="button" className="day-trv-act" onClick={action.onPress}>
+              <Icon name="navigate" />
+              {action.label}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

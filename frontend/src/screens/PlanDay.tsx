@@ -28,7 +28,9 @@ import {
 import {
   EVENT_KIND,
   EVENT_STATUS,
+  freeAfterTravel,
   isAmbient,
+  TRAVEL_FIT,
   type Booking,
   type EventCategory,
   type MaybeItem,
@@ -92,6 +94,7 @@ import {
   type Gap,
   type GapDefaults,
 } from '../lib/gaps';
+import { useDayTravelReads, type DayLeg } from '../lib/day-travel';
 import {
   dayStops,
   ideaCategory,
@@ -106,7 +109,7 @@ import {
   stopReasonText,
   tileReasonText,
 } from '../lib/shelf';
-import { SHELF_POOL_CAP } from '../constants';
+import { SECONDS_PER_MINUTE, SHELF_POOL_CAP } from '../constants';
 import {
   resolveRowDrop,
   resolveShelfDrop,
@@ -387,6 +390,45 @@ export function PlanDay() {
     dayEvents.filter((e) => !e.startsAt),
     planGroups,
   );
+
+  // ── THE JOURNEY IN A HOLE, ON THE CONTROL SIDE (ADR-0206 §V1.1) ─────────────────────────
+  // Plan mode does not display a hole, it OFFERS it (ADR-0161 §2), so §V1.1's overstatement
+  // reaches a person here as a **slot**: a chip saying `פער של 3 שעות` over a hole a 40-minute
+  // walk eats. ADR-0159 §1 allows Trip and Plan to differ in POSTURE and forbids a difference
+  // about a FACT, and how much of a hole is free is a fact — so both surfaces read the one hook.
+  //
+  // Memoized like the day list's, and for the same reason: this screen re-renders on the drag and
+  // on the clock, and the legs array is what `useDayTravelReads` fingerprints.
+  const planLegs = useMemo<DayLeg[]>(() => {
+    const legs: DayLeg[] = [];
+    let prev: TripEvent | null = null;
+    for (const group of planGroups) {
+      const start = groupStartEvent(group);
+      if (prev) legs.push({ from: prev, to: start });
+      prev = groupEndEvent(group);
+    }
+    return legs;
+  }, [planGroups]);
+  const planTravel = useDayTravelReads({ tripId: trip.id, legs: planLegs, bookings, places });
+  /** The hole's free minutes once its journey is counted, or the hole itself where there is no
+   *  estimate (§D4 — never a pessimistic guess, and the chip reads exactly as it read before).
+   *
+   *  **`earnsChip` still asks the RAW hole**, deliberately: whether a position is a chip or a
+   *  drag-only seam is ADR-0161 §2's threshold on a drop target, and moving it onto the corrected
+   *  number would change which positions exist at all rather than what one of them says. That is a
+   *  decision about the builder's targets and it belongs to M9, not to a copy fix. */
+  const travelFreeMinutes = (from: TripEvent, to: TripEvent, hole: number): number => {
+    const estimate = planTravel.estimateFor(from, to);
+    if (!estimate) return hole;
+    const free = freeAfterTravel(
+      Date.parse(from.endsAt ?? from.startsAt ?? ''),
+      Date.parse(to.startsAt ?? ''),
+      estimate.durationSeconds,
+    );
+    return free.fit === TRAVEL_FIT.UNKNOWN
+      ? hole
+      : Math.round(free.freeSeconds / SECONDS_PER_MINUTE);
+  };
 
   // Reorder acts on soft events only (hard events are pinned anchors, ADR-0011).
   const softEvents = dayEvents.filter((e) => e.kind === EVENT_KIND.SOFT);
@@ -1029,6 +1071,7 @@ export function PlanDay() {
     softEvents,
     softIndex,
     drag,
+    travelFreeMinutes,
     rowDragProps,
     rowRefuseProps,
     onEdit: (e) => {
@@ -1651,6 +1694,13 @@ interface BuilderCtx {
   softEvents: TripEvent[];
   softIndex: Map<string, number>;
   drag: { id: string; overId: string | null } | null;
+  /** **What a hole's own journey costs** (ADR-0206 §V1.1) — the correction, applied to the
+   *  CONTROL rather than to the statement. Plan mode does not display a hole, it OFFERS it, so
+   *  the overstatement Trip mode was making reaches a person here as a slot: a 45-minute chip
+   *  over a hole a 40-minute walk eats. The read is `useDayTravelReads`, the same hook the day
+   *  list uses, so the two surfaces cannot differ about one hole (`frontend/CLAUDE.md`:
+   *  ADR-0159 §1 allows a difference in posture and forbids one about a fact). */
+  travelFreeMinutes: (from: TripEvent, to: TripEvent, hole: number) => number;
   rowDragProps: (id: string) => HoldToDragProps;
   /** Shared by every hard row — the hold is answered rather than armed (ADR-0199 §1). */
   rowRefuseProps: HoldToDragProps;
@@ -1834,7 +1884,9 @@ function BuilderGroups({
             {free && prevEnd && (
               <FreeSlot
                 free={free}
-                label={t.planDay.gap(gapLabel(free.minutes))}
+                label={t.planDay.gap(
+                  gapLabel(ctx.travelFreeMinutes(prevEnd, groupStartEvent(g), free.minutes)),
+                )}
                 seamLabel={t.planDay.seamAfter(prevEnd.title)}
                 over={ctx.overGap(free.fill)}
                 onFill={ctx.onGapFill}

@@ -1,0 +1,457 @@
+// @vitest-environment jsdom
+//
+// **THE DAY'S OWN TRAVEL READ** (ADR-0206 §V1.1 / §V1.3 / §V1.4) — and this file exists for two
+// reasons, only one of which is the feature.
+//
+// The first is §V1.1, which is a **bug fix**: the day has stated the whole of a hole as free
+// since ADR-0159 shipped, so a hole with a forty-minute walk in it tells you about time you do
+// not have, on the one surface built to be a statement. A bug fix without a failing test is a
+// claim, so the two assertions at the top of this file were written against `main` and were red
+// there — `פנוי · 2:40 שע׳` where the day owes `פנוי · 2:00 שע׳`.
+//
+// The second is that **`DayView` had no screen test at all**, which is how `frontend/CLAUDE.md`'s
+// named anti-pattern — "changing a day-surface derivation in `DayView` only" — cost a release
+// twice while every unit around it stayed green. The derivations are tested pure in
+// `lib/day-joins.test.ts` and the block is tested with hand-built props in
+// `ui/domain/DayJoinRow.test.tsx`; what is only observable here is that the screen connects one
+// to the other, over the day's real rows.
+//
+// The GEOMETRY is not asserted here and cannot be (jsdom loads no CSS, resolves no `var()` and
+// reports every rect as zero) — the 360px measurements are in the PR.
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+import {
+  EVENT_KIND,
+  EVENT_SOURCE,
+  EVENT_STATUS,
+  TRAVEL_BUFFER_SECONDS,
+  TRAVEL_MODE,
+  type Booking,
+  type Place,
+  type TravelEstimate,
+  type TripEvent,
+} from '@waypoint/shared';
+import { setSimulatedNow } from '../lib/useClock';
+import { hoursPhrase } from '../lib/duration';
+import { markOnWay, resetOnWayForTests } from '../lib/on-way';
+import { ltrIsolate } from '../lib/bidi';
+import { formatTime } from '../lib/time';
+import { t } from '../i18n/he';
+import { wrapNav } from '../test/nav-harness';
+import { MapScopeProvider } from '../state/map-scope-state';
+import { DragProvider } from '../state/drag-state';
+import { buildHostContextIndex } from '../lib/host-context';
+// jsdom implements no scrolling, and the day's "land on now" effect calls it on mount.
+import '../test/scroll-into-view';
+
+const DAY = '2026-08-03';
+/** Pinned — the fixtures carry fixed instants, so reading the real clock would make this file
+ *  mean something different every day it ran (`frontend/CLAUDE.md`). Rome is UTC+2 in August. */
+const NOW = `${DAY}T09:00:00Z`;
+const ZONE = 'Europe/Rome';
+
+const ev = (id: string, e: Partial<TripEvent> = {}): TripEvent => ({
+  id,
+  tripId: 't1',
+  title: `event ${id}`,
+  kind: EVENT_KIND.SOFT,
+  status: EVENT_STATUS.PLANNED,
+  source: EVENT_SOURCE.MANUAL,
+  date: DAY,
+  sortOrder: 0,
+  createdAt: `${DAY}T00:00:00Z`,
+  updatedAt: `${DAY}T00:00:00Z`,
+  updatedBy: 'u1',
+  ...e,
+});
+
+/** Two real coordinates, because the leg is looked up by coordinate and a place-lite row
+ *  (ADR-0147) has none — which is itself one of §D4's absences, and a case below. */
+const places: Place[] = [
+  {
+    id: 'p-lunch',
+    tripId: 't1',
+    name: 'שוק צוקיג׳י',
+    lat: 40.867,
+    lng: 14.25,
+    createdAt: `${DAY}T00:00:00Z`,
+    updatedAt: `${DAY}T00:00:00Z`,
+    updatedBy: 'u1',
+  },
+  {
+    id: 'p-theatre',
+    tripId: 't1',
+    name: 'קאבוקי-זה',
+    lat: 40.851,
+    lng: 14.258,
+    createdAt: `${DAY}T00:00:00Z`,
+    updatedAt: `${DAY}T00:00:00Z`,
+    updatedBy: 'u1',
+  },
+  {
+    id: 'p-morning',
+    tripId: 't1',
+    name: 'שער טוריי',
+    lat: 40.845,
+    lng: 14.262,
+    createdAt: `${DAY}T00:00:00Z`,
+    updatedAt: `${DAY}T00:00:00Z`,
+    updatedBy: 'u1',
+  },
+];
+
+/** **The mockup's own scenario, and the ADR's own example** — a ⁦2:40⁩ hole with ⁦40⁩ minutes of
+ *  walking in it, leaving ⁦2:00⁩ free (§V1.1's line reads `פנוי · 2:00 שע׳ · אחרי 40 דק׳ דרך`).
+ *  The numbers are the drawing's so that this file and `a-travel-time-between-two-points-v2.html`
+ *  cannot disagree about the case. */
+const GAP_MINUTES = 160;
+const WALK_MINUTES = 40;
+
+/** A row BEFORE the skip, so the day still has a hole once the skipped one leaves the list — and
+ *  at its OWN place, because two rows that are one place have no journey between them at all
+ *  (`ROUTE_MIN_CROW_M`, ADR-0205 §Z2), which is §D4's absence and would have made this spec pass
+ *  for the wrong reason. */
+const morning = ev('morning', {
+  title: 'בוקר',
+  placeId: 'p-morning',
+  startsAt: `${DAY}T08:00:00Z`,
+  endsAt: `${DAY}T08:30:00Z`,
+});
+const lunch = ev('lunch', {
+  title: 'ארוחת צהריים',
+  placeId: 'p-lunch',
+  startsAt: `${DAY}T11:00:00Z`,
+  endsAt: `${DAY}T13:20:00Z`,
+});
+const theatre = ev('theatre', {
+  title: 'תיאטרון',
+  kind: EVENT_KIND.HARD,
+  placeId: 'p-theatre',
+  startsAt: `${DAY}T16:00:00Z`,
+  endsAt: `${DAY}T18:30:00Z`,
+});
+
+let tripEvents: TripEvent[] = [];
+const tripBookings: Booking[] = [];
+let tripPlaces: Place[] = places;
+
+vi.mock('../state/trip-state', () => ({
+  byStart: (a: TripEvent, b: TripEvent) =>
+    Date.parse(a.startsAt ?? a.date) - Date.parse(b.startsAt ?? b.date),
+  useTrip: () => ({
+    documentAttachments: [],
+    hostContexts: buildHostContextIndex(tripEvents, tripBookings),
+    trip: { id: 't1', timezone: ZONE, startDate: DAY, endDate: '2026-08-05', updatedBy: 'u1' },
+    bookings: tripBookings,
+    places: tripPlaces,
+    events: tripEvents,
+    maybeItems: [],
+    justAddedIdea: null,
+    notes: [],
+    documents: [],
+    members: [],
+    zoneEvidence: {
+      events: tripEvents,
+      bookings: tripBookings,
+      places: tripPlaces,
+      crossings: [],
+      primaryZone: ZONE,
+    },
+    activeDate: DAY,
+    ripple: null,
+    setActiveDate: () => {},
+    changeFeed: [],
+    dismissChange: () => {},
+    clearChangeFeed: () => {},
+    fxRates: null,
+    refreshFx: async () => {},
+    tasks: [],
+    users: [],
+    zoneCrossings: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+      tickTask: async () => {},
+    },
+  }),
+}));
+
+vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: null }) }));
+
+vi.mock('../state/verbs', () => ({
+  useVerbs: () => ({
+    done: vi.fn(),
+    skip: vi.fn(),
+    restore: vi.fn(),
+    onWay: vi.fn(),
+    rippleApply: vi.fn(),
+    rippleDismiss: vi.fn(),
+    reorder: vi.fn(),
+    delay: vi.fn(),
+    earlier: vi.fn(),
+  }),
+}));
+
+/** **The estimate arrives from `useDayTravel`, so it is mocked at that seam** — the hook is M5's
+ *  and tested there. `null` is the ordinary answer (§D4) and it is a case below rather than an
+ *  omission. */
+let travelSeconds: number | null = null;
+vi.mock('../lib/travel', () => ({
+  useDayTravel: () => ({
+    estimateFor: (): TravelEstimate | null =>
+      travelSeconds === null
+        ? null
+        : { mode: TRAVEL_MODE.WALKING, durationSeconds: travelSeconds, distanceMeters: 2400 },
+  }),
+  useDayShapes: () => ({ pathFor: () => null }),
+}));
+
+const { DayView } = await import('./DayView');
+
+/** `useDaySurface` reaches for the Map tab's scope (the day strip and the Map share one selected
+ *  day) and for the drag state (the edge dwell that turns the page), so the day surface cannot be
+ *  rendered without both. Not in `wrapNav`: those two are the day/Map surfaces' own, and the
+ *  harness is for what every back-stack participant needs. */
+const show = () =>
+  render(
+    wrapNav(
+      <MapScopeProvider>
+        <DragProvider>
+          <DayView />
+        </DragProvider>
+      </MapScopeProvider>,
+    ),
+  );
+
+/** The corrected free time, derived here the way the code derives it rather than written out —
+ *  §D5's buffer is a constant and not a number this file also believes. */
+const freeAfterWalk = GAP_MINUTES - WALK_MINUTES;
+
+describe('DayView — a hole states what is free AFTER the journey (ADR-0206 §V1.1)', () => {
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    resetOnWayForTests();
+    tripEvents = [lunch, theatre];
+    tripPlaces = places;
+    travelSeconds = WALK_MINUTES * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    resetOnWayForTests();
+    setSimulatedNow(null);
+  });
+
+  // **THE BUG FIX, AND THE SPEC THAT WAS RED ON `main`.** The day said `2:40` because the hole is
+  // 2:40 long; forty of those minutes are the walk to the theatre, so the app was telling you
+  // about time you do not have.
+  it('says what is free after the walk, not the whole hole', () => {
+    show();
+    expect(screen.getByText(t.travel.freeBefore(hoursPhrase(freeAfterWalk)))).toBeTruthy();
+  });
+
+  it('no longer states the whole hole as free', () => {
+    show();
+    expect(screen.queryByText(t.day.join.free(hoursPhrase(GAP_MINUTES)))).toBeNull();
+    expect(screen.queryByText(t.travel.freeBefore(hoursPhrase(GAP_MINUTES)))).toBeNull();
+  });
+
+  // §V1.3 — the day reads `place · journey · place`, which is what makes §V1.1 legible.
+  it('names the journey between the two rows: the mode, the hedged duration and the leave-by', () => {
+    show();
+    expect(screen.getByText(t.travelMode[TRAVEL_MODE.WALKING])).toBeTruthy();
+    // The hedge is `approxDuration`'s and it carries bidi controls, so the assertion is on the
+    // block's own text rather than on a bare literal.
+    const block = document.querySelector('.day-trv');
+    expect(block).toBeTruthy();
+    expect(block!.textContent).toContain(String(WALK_MINUTES));
+    // The leave-by: the next row's start, less the walk, less §D5's buffer.
+    const leaveBy = new Date(
+      Date.parse(theatre.startsAt!) - (WALK_MINUTES * 60 + TRAVEL_BUFFER_SECONDS) * 1000,
+    );
+    expect(block!.textContent).toContain(String(leaveBy.getUTCHours() + 2));
+  });
+
+  // **§D4 — with no estimate the slot reads exactly as it read before this milestone.** Never a
+  // pessimistic guess: the reader must not be able to tell "not computed" from "not computable",
+  // and inventing a walk we did not measure fails that in the direction that costs an afternoon.
+  it('falls back to the plain free-time strip when there is no estimate', () => {
+    travelSeconds = null;
+    show();
+    expect(screen.getByText(t.day.join.free(hoursPhrase(GAP_MINUTES)))).toBeTruthy();
+    expect(document.querySelector('.day-trv')).toBeNull();
+  });
+
+  // A place-lite row (ADR-0147) has no coordinates, so there is no leg to ask about — the same
+  // absence, reached a different way.
+  it('falls back when a row has no coordinates to measure from', () => {
+    tripPlaces = places.map((p) =>
+      p.id === 'p-lunch' ? { ...p, lat: undefined, lng: undefined } : p,
+    );
+    show();
+    expect(screen.getByText(t.day.join.free(hoursPhrase(GAP_MINUTES)))).toBeTruthy();
+    expect(document.querySelector('.day-trv')).toBeNull();
+  });
+});
+
+describe('DayView — the four arms of a journey (ADR-0206 §V1.3/§V1.4)', () => {
+  beforeEach(() => {
+    resetOnWayForTests();
+    tripEvents = [lunch, theatre];
+    tripPlaces = places;
+    travelSeconds = WALK_MINUTES * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    resetOnWayForTests();
+    setSimulatedNow(null);
+  });
+
+  /** The leave-by for the theatre leg, in ms — written out through the shared buffer rather than
+   *  hardcoded, so §D5's constant stays the one source of it. */
+  const leaveByMs =
+    Date.parse(theatre.startsAt!) - (WALK_MINUTES * 60 + TRAVEL_BUFFER_SECONDS) * 1000;
+  const block = () => document.querySelector('.day-trv');
+  /** **Scoped to the block, because the event CARD carries a `בדרך` of its own** (ADR-0161) and an
+   *  unscoped query matches both — which is how an assertion here would pass on the card's button
+   *  while the block's was missing entirely. */
+  const blockAction = (label: string) =>
+    [...(block()?.querySelectorAll('button') ?? [])].find((b) => b.textContent?.includes(label));
+
+  it('states the leave-by as a NOUN, because a day list is a schedule and not an instruction', () => {
+    setSimulatedNow(Date.parse(NOW));
+    show();
+    const clock = ltrIsolate(formatTime(new Date(leaveByMs), ZONE));
+    expect(screen.getByText(t.travel.leaveAtDay(clock))).toBeTruthy();
+    // …and never the hero's imperative, which speaks to the one journey you are on.
+    expect(screen.queryByText(t.travel.leaveAt(clock))).toBeNull();
+  });
+
+  // §V1.4 / §D7 — the single most actionable thing this data can say.
+  it('marks the live hole --miss once its leave-by has gone by', () => {
+    setSimulatedNow(leaveByMs + 10 * 60_000);
+    show();
+    expect(document.querySelector('.day-trv.miss')).toBeTruthy();
+    expect(
+      screen.getByText(t.travel.leavePassed(ltrIsolate(formatTime(new Date(leaveByMs), ZONE)))),
+    ).toBeTruthy();
+    // The one control, where the question is actually asked (ADR-0207 §7 / §Z5 §M4).
+    expect(blockAction(t.actions.onWay)).toBeTruthy();
+  });
+
+  // **The arm the ADR did not name.** Every leave-by of a finished day has gone by, so without a
+  // `PAST` arm a day read in the evening prints `זמן היציאה עבר` on every hole of it.
+  it('says nothing about leaving once the row below has started', () => {
+    setSimulatedNow(Date.parse(theatre.startsAt!) + 60_000);
+    show();
+    expect(block()).toBeTruthy();
+    expect(document.querySelector('.day-trv.miss')).toBeNull();
+    expect(blockAction(t.actions.onWay)).toBeUndefined();
+    // …and it keeps the correction, because that is a measurement and not advice.
+    expect(screen.getByText(t.travel.freeBefore(hoursPhrase(freeAfterWalk)))).toBeTruthy();
+    expect(block()!.textContent).not.toContain('יציאה');
+  });
+
+  // `בדרך` withdraws the mark on every elevation at once, because all three read `lib/on-way.ts`.
+  it('turns teal and offers the way back once somebody says בדרך', () => {
+    setSimulatedNow(leaveByMs + 10 * 60_000);
+    markOnWay('t1', theatre.id);
+    show();
+    expect(document.querySelector('.day-trv.on-way')).toBeTruthy();
+    expect(document.querySelector('.day-trv.miss')).toBeNull();
+    expect(blockAction(t.actions.undoSettle)).toBeTruthy();
+  });
+
+  // ── ADR-0208 §2 — THE REPORT THIS SURFACE INHERITS ──────────────────────────────────────
+  //
+  // **THE FIXTURE'S SHAPE IS THE POINT, and the first version of it proved nothing.** With only
+  // `lunch` and `theatre`, skipping `lunch` leaves ONE row and therefore no hole at all — a
+  // fixture built from the rule rather than from the report, which is exactly how #710 shipped
+  // green and fixed nothing. The reported shape has a row BEFORE the skip: the day list drops a
+  // skipped event (ADR-0027's parking lot), so the hole is silently measured from the earlier row
+  // — the longer, staler leg ADR-0208 §2 refuses in as many words, because a longer leg is an
+  // earlier leave-by is a more confident late mark.
+  it('withdraws the leave-by and the mark when the plan’s claim was skipped', () => {
+    setSimulatedNow(leaveByMs + 10 * 60_000);
+    tripEvents = [morning, { ...lunch, status: EVENT_STATUS.SKIPPED }, theatre];
+    show();
+    // The block is still there and still measures the hole: §V1.1's correction is a fact about the
+    // plan, not a claim about the traveller, so a denial does not take it away.
+    expect(block()).toBeTruthy();
+    expect(block()!.textContent).toContain(t.travelMode[TRAVEL_MODE.WALKING]);
+    // …and the advice is gone: no leave-by, and above all no late mark derived from a walk out of
+    // a place nobody went to.
+    expect(document.querySelector('.day-trv.miss')).toBeNull();
+    expect(block()!.textContent).not.toContain('יציאה');
+    expect(blockAction(t.actions.onWay)).toBeUndefined();
+  });
+
+  // The control case, on the same three rows: nothing skipped, so the claim stands and the mark
+  // is made. Without this the spec above would pass on a day that simply had no journey in it.
+  it('…and still marks it late on the same three rows when nothing was skipped', () => {
+    setSimulatedNow(leaveByMs + 10 * 60_000);
+    tripEvents = [morning, lunch, theatre];
+    show();
+    expect(document.querySelector('.day-trv.miss')).toBeTruthy();
+  });
+});
+
+// ── THE DAY'S FIRST LEG (ADR-0206 §AD) ────────────────────────────────────────────────────
+//
+// A journey block sits between two ROWS, and on a mid-stay day the hotel is ambient — off the
+// day's schedule (ADR-0054) — so the first row has nothing above it and the walk out of the bed
+// was the one leg the list could never draw. §AE3 named this as the first thing to reconcile.
+describe('DayView — the walk out of the bed', () => {
+  const hotelPlace: Place = {
+    id: 'p-hotel',
+    tripId: 't1',
+    name: 'מלון',
+    lat: 40.86,
+    lng: 14.24,
+    createdAt: `${DAY}T00:00:00Z`,
+    updatedAt: `${DAY}T00:00:00Z`,
+    updatedBy: 'u1',
+  };
+  /** A stay covering the night before and the night after, so this day is a strictly middle one:
+   *  ambient in both directions, and the case no edge row can stand in for. */
+  const stay = ev('stay', {
+    title: 'מלון',
+    category: 'lodging',
+    placeId: 'p-hotel',
+    date: '2026-08-01',
+    endDate: '2026-08-05',
+    startsAt: '2026-08-01T13:00:00Z',
+    endsAt: '2026-08-05T09:00:00Z',
+  });
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    resetOnWayForTests();
+    tripEvents = [stay, lunch, theatre];
+    tripPlaces = [...places, hotelPlace];
+    travelSeconds = 15 * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    resetOnWayForTests();
+    setSimulatedNow(null);
+  });
+
+  it('draws a journey above the day’s first row', () => {
+    show();
+    // Two blocks now: the walk out of the hotel and the walk to the theatre.
+    expect(document.querySelectorAll('.day-trv')).toHaveLength(2);
+  });
+
+  // **It says the journey and it does NOT say what is free.** A middle night has no check-out
+  // instant, so there is no window to measure against — and reaching for the day window's dawn
+  // instead would claim you could have left at 07:00 (ADR-0206 §AF3).
+  it('states the journey and its leave-by, and claims no free time before it', () => {
+    show();
+    const first = document.querySelectorAll('.day-trv')[0]!;
+    expect(first.textContent).toContain(t.travelMode[TRAVEL_MODE.WALKING]);
+    expect(first.textContent).toContain('15');
+    expect(first.textContent).toContain('יציאה');
+    expect(first.textContent).not.toContain('פנוי');
+  });
+});

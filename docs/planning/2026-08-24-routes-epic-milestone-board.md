@@ -67,10 +67,10 @@ never by the one that did the work.
 | **M3**  | Design session + mockups    | design | ✅                        | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696)                                                                                                                      | 2026-08-25 |
 | **M4**  | Backend routing module      | impl   | ✅ **M5/M10 unblocked**   | M1, M2, M2b  | M3           | `claude/m4-backend-routing-0giz72` · [#702](https://github.com/assafmanor/waypoint/pull/702)                                                                                                                         | 2026-08-25 |
 | **M5**  | Frontend data layer         | impl   | ✅ **M6/M7/M9 unblocked** | M2, M4       | M3, M10      | `claude/routes-frontend-protocol-fix-9t521y` · [#704](https://github.com/assafmanor/waypoint/pull/704)                                                                                                               | 2026-08-25 |
-| **M6a** | The day reads               | impl   | ⬜                        | M3, M5       | M6b, M7, M9  | —                                                                                                                                                                                                                    | —          |
+| **M6a** | The day reads               | impl   | 🔵 **M8/M11 unblocked**   | M3, M5       | M6b, M7, M9  | `claude/m6a-day-reads-yfowam` · [#715](https://github.com/assafmanor/waypoint/pull/715)                                                                                                                              | 2026-08-26 |
 | **M6b** | The hero read               | impl   | ✅ (+ 1 field fix)        | M3, M5       | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#712](https://github.com/assafmanor/waypoint/pull/712)                                                                                                                       | 2026-08-26 |
 | **M6c** | A fix withdraws the mark    | impl   | ✅                        | M6b          | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#713](https://github.com/assafmanor/waypoint/pull/713)                                                                                                                       | 2026-08-26 |
-| **M6d** | A claim stands on something | impl   | 🔵                        | M6b, M6c     | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#714](https://github.com/assafmanor/waypoint/pull/714)                                                                                                                       | 2026-08-26 |
+| **M6d** | A claim stands on something | impl   | ✅                        | M6b, M6c     | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#714](https://github.com/assafmanor/waypoint/pull/714)                                                                                                                       | 2026-08-26 |
 | **M7**  | The map polyline            | impl   | ✅                        | M3, M5       | M6a, M6b, M9 | `claude/routes-map-polyline-m7-baqobz` · [#706](https://github.com/assafmanor/waypoint/pull/706) · [#707](https://github.com/assafmanor/waypoint/pull/707)                                                           | 2026-08-25 |
 | **M7b** | The lines read as a route   | design | ✅                        | M7           | M8, M9       | `claude/routes-map-polyline-m7-baqobz` · [#708](https://github.com/assafmanor/waypoint/pull/708)                                                                                                                     | 2026-08-25 |
 | **M7c** | The day's bookends          | impl   | ✅ (+ 2 field fixes)      | M7, M7b      | M8, M9       | `claude/routes-map-polyline-m7-baqobz` · [#709](https://github.com/assafmanor/waypoint/pull/709) · [#710](https://github.com/assafmanor/waypoint/pull/710) · [#711](https://github.com/assafmanor/waypoint/pull/711) | 2026-08-26 |
@@ -698,9 +698,22 @@ provider shape directly.
 
 **Kind:** implementation. **These two are the product**, and they are split so they can run at once.
 
-**M6a** · branch `routes/m6a-day` · surface: `DayJoinRow.tsx`, `lib/day-joins.ts`, `screens/day.css`,
-`i18n/he.ts`. Ships ADR-0206 **§V1.1** (gap minus travel — the correction), **§V1.3** (per-leg
-travel) and **§V1.4** (late risk) in the ADR-0159 slot that already exists.
+**M6a** · branch `routes/m6a-day` — ran as `claude/m6a-day-reads-yfowam`, the branch the session
+was handed · surface: `DayJoinRow.tsx`, `lib/day-joins.ts`, ~~`screens/day.css`~~
+**`ui/domain/day-join.css`**, `i18n/he.ts`. Ships ADR-0206 **§V1.1** (gap minus travel — the
+correction), **§V1.3** (per-leg travel) and **§V1.4** (late risk) in the ADR-0159 slot that already
+exists.
+
+> **`screens/day.css` does not exist and never did** — `.day-gap` lives in `ui/domain/day-join.css`
+> (the block above is `.journey`, in the same file), with the Plan-mode twin of its geometry in
+> `screens.css`. Corrected in place rather than worked around, exactly as M6b's card was for
+> `screens/home.css`. **M6a's real surface was five files wider than this card**, and the card was
+> wrong rather than the work: `screens/DayView.tsx` hosts the slot and derives everything in it, so
+> the render and its derivation are lines there; `ui/Icon.tsx` gains the three mode glyphs the board
+> itself assigned to M6a (§AA3); `lib/glance.ts` gains the bookend rule; `lib/hero-travel.ts` and
+> `screens/Home.tsx` take §AD's fallback, which is one change serving both surfaces; plus two new
+> files — `lib/day-travel.ts` (the day's legs → the cache) and `src/test/scroll-into-view.ts` (a
+> jsdom gap). **And `screens/PlanDay.tsx`, which is the widening the owner approved** — see below.
 
 **M6b** · branch `routes/m6b-hero` — ran as `claude/m6b-hero-read-routes-wlxj67`, the branch the
 session was handed · surface: the hero horizon components, **the collapsed board's countdown**,
@@ -737,6 +750,80 @@ with no layout shift.
 > **The first clause is M6a's, not M6b's**, and saying so is not a narrowing: §V1.1 is the gap slot,
 > which is `DayJoinRow`'s. M6b's own exit criteria are the second and third, plus §Z1's three arms
 > and §V1.2's line. Both are met and measured — see below.
+
+**What the next session needs to know (M6a, 2026-08-26)** — decisions in
+[ADR-0206 §AF](../decisions/0206-a-travel-time-belongs-between-two-points.md):
+
+- **§V1.1, §V1.3 and §V1.4 are shipped, on BOTH day surfaces.** A hole with a journey in it renders
+  the v2 mockup's §1 block — `הליכה · ~40 דק׳` over `יציאה 17:15 · פנוי לפני שעתיים`, with the routed
+  distance — and it **replaces** the free-time strip rather than sitting beside it (§Z5 §M2). The
+  arithmetic is `dayJourney` in `lib/day-joins.ts`; the leave-by inside it is **`heroLeaveBy`'s**, so
+  the board, the hero and the day row cannot name three different minutes for one departure.
+- **⚠ M6a's exit criterion was met on Plan mode too, and that took `PlanDay.tsx` — M9's conflict
+  surface.** Put to the owner, who chose it: the two surfaces do **not** share this slot (Trip's is
+  `GapStrip`, a statement; Plan's is `FreeSlot`, a control) and Plan overstated by the identical
+  arithmetic at five `gapLabel` call sites. Fixing only Trip would have shipped a release where the
+  statement says ⁦2:00⁩ and the chip says ⁦2:40⁩ about one hole, which ADR-0159 §1 forbids.
+  **`useDayTravelReads` (`lib/day-travel.ts`) is the one hook both screens read**, so M9 inherits the
+  corrected number rather than a second copy of it.
+- **What M9 still owns, and it is unchanged in size:** §V1.7's day-level verdict (`daySequenceFits`,
+  "this day does not fit"), and the **slot picker's** own `פנוי` line, which still states the raw
+  hole (`PlanDay.tsx`'s `positionOption`, off `dayPositions` in `lib/day-positions.ts` — a different
+  derivation, and correcting it means teaching that one about pairs). **`earnsChip` deliberately
+  still asks the RAW hole**: whether a position is a chip or a drag-only seam is ADR-0161 §2's
+  threshold on a drop TARGET, and moving it onto the corrected number changes which positions exist
+  rather than what one says.
+- **A fourth arm, and it is the one the ADR did not name** (§AF1). `past` — the row below has already
+  started — states the measurement and **drops the leave-by and the mark**. Without it a day read at
+  22:00 prints `זמן היציאה עבר` on every hole of the afternoon. Checked first, so a leg that ran long
+  is still behind you.
+- **⚠ §AD is CLOSED, and it needed neither `buildDayStopSequence` nor the place-usage index** (§AF3).
+  The question is which ambient night-counting span covers the previous night, which is
+  `ambientEventsOnDate` + `countsNights` — both already exported. `dayBookendStays(events, date)` in
+  `lib/glance.ts` serves the day's first leg **and** `travelOrigin`'s new `wokeIn`, so **the hero's
+  quiet morning is answered by the same change**. `map-pins.ts`'s `stayEnds` is deliberately not
+  merged with it (inverse question, different shape); a spec in `map-pins.test.ts` asserts the two
+  agree, which is cheaper than refactoring a function M7c has already fixed twice.
+- **⚠ The day gates the CLAIM where ADR-0208 §2 gates the REQUEST, and a skip reaches it
+  structurally** (§AF2). A skipped event leaves the day list entirely (ADR-0027's parking lot), so
+  `dayBlocks` measures the hole from the previous **non-skipped** row — the staler, longer, louder
+  leg §2 refuses. The first build compared the claim's own stop against the hole's origin, so the two
+  ids never matched and the denial could never fire; it reads `travelOrigin`'s verdict directly now.
+  **The measurement survives a denial and the advice does not** — the hole is still the hole.
+- **⚠ And the spec that found it only worked once its fixture came from the report.** With two events,
+  skipping one leaves a single row and no hole at all: the spec passed and proved nothing, which is
+  #710's lesson arriving again in the same epic. The shape needs a row BEFORE the skip, at its own
+  place (two rows that are one place have no journey between them at all — `ROUTE_MIN_CROW_M`).
+- **`DayView` has a screen test now** (`DayView.travel.test.tsx`), and it had none at all — which is
+  how `frontend/CLAUDE.md`'s named anti-pattern cost a release twice while every unit around it
+  stayed green. It needs `MapScopeProvider` + `DragProvider` on top of `wrapNav`, and
+  `src/test/scroll-into-view.ts` for the "land on now" effect. `PlanDay.travel.test.tsx` is the same
+  harness. **Both were red against `main` before the fix**, per the card's exit criteria.
+- **`t.hero`'s four travel strings moved to a top-level `t.travel`**, on `t.travelMode`'s own
+  argument (§AE6): the hero's line and the day's block name one journey. The day's leave-by has its
+  own form — `יציאה 17:15`, the noun — because the hero speaks to you about the one journey you are
+  on and a list is a schedule; an imperative on every hole is the app telling you to leave four times
+  before breakfast.
+- **`approxTravelTime(seconds)` is in `lib/duration.ts`** beside `approxDuration(minutes)`: every
+  consumer in this epic holds seconds and each was dividing by a bare `60`.
+- **The three mode glyphs are minted** (§AA3) — `walking`, `cycling`, `driving` in `ui/Icon.tsx`, the
+  paths the v2 mockup drew on the real 24 grid. **M8 takes them as they are** and needs a fourth, or
+  a stated reason for תחב״צ to stay a word.
+- **M8's slot is shaped and empty.** `.day-trv-acts` exists with `margin-inline-start: auto` on the
+  one control, so the four mode chips are a one-line addition at that row's leading edge. §AA4's
+  declared תחב״צ still cannot be estimated by construction: it is not a `travelModeSchema` member, so
+  `estimateFor` cannot be asked for it, `travelSeconds` is `null`, and `dayJourney` answers `null`.
+- **⚠ Two things measured and NOT fixed, both the app's rather than this milestone's** (§AF6/§AF7).
+  `--faint` on the free-time run is ⁦3.42:1⁩ — against ⁦3.03:1⁩ for the `.day-gap-lbl` it replaces, so
+  the block improves it and still misses ⁦4.5⁩; the `בדרך` chip's teal is ⁦3.07:1⁩, which is
+  `.wp-event-act.go`'s shipped value. Changing either here would make the block disagree with the row
+  beside it. **And the block's arrival is a ⁦38px⁩-per-hole layout shift** on a cold day-open: it
+  cannot be reserved, because §D4 requires absence to cost nothing.
+- **M11 can read `journey.distanceMeters` and `journey.travelSeconds` off the same hook** with no new
+  request, which is its own exit criterion. **M9 should start from `useDayTravelReads`, not from
+  `useDayTravel`.**
+
+---
 
 **What the next session needs to know (M6b, 2026-08-26)** — note:
 [2026-08-26](2026-08-26-the-board-counts-to-the-leaving-for-real.md):
@@ -1244,6 +1331,16 @@ one falls back to the crow-flies chip, and that reads as "not this way" rather t
 
 **Kind:** implementation. **Branch:** `routes/m9-plan` · **Conflict surface:** `PlanDay` and its
 `lib/`, `he.ts`. Uses `daySequenceFits` from M2 — **no new fetch**, the day matrix is already warm.
+
+> **⚠ M6a took part of this card's surface, with the owner's approval — and did not shrink the
+> card.** `PlanDay.tsx`'s gap chip overstated free time by §V1.1's exact arithmetic, so fixing Trip
+> mode alone would have shipped a release where the statement says ⁦2:00⁩ and the chip says ⁦2:40⁩
+> about one hole (ADR-0159 §1 forbids a difference about a fact). The chip, the seam and the
+> between-row label now read `useDayTravelReads` (`lib/day-travel.ts`) — **start from that hook, not
+> from `useDayTravel`**. What is still yours: §V1.7's day-level verdict, the **slot picker's** own
+> `פנוי` line (off `dayPositions`, a different derivation that would have to learn about pairs), and
+> whether `earnsChip`'s chip-vs-seam threshold should move onto the corrected number — which M6a
+> deliberately left alone, because it changes which drop targets EXIST rather than what one says.
 
 ADR-0206 **§V1.7**, and its Consequence is the thing to hold on to: Plan mode gains the ability to
 say no, which changes its character from a builder to a builder with an opinion. **It must read as

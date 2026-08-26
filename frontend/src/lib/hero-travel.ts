@@ -134,6 +134,14 @@ export interface TravelOriginClaim {
  * before it is somewhere you have already left, and offering it would invent a position. No
  * coordinates is §D4's absence, like every other missing estimate.
  *
+ * **A morning before anything has started reaches for the BED** (§AD, built in M6a — this is the
+ * gap §AE3 named as the first thing to reconcile). Scoped to the clock's own day, there is no
+ * started stop until the day's first one begins, so the board drew no journey at all on a quiet
+ * morning. `wokeIn` is not a walk back to an older stop, which this function still refuses: it is
+ * where the plan says you SLEPT, the one position on a day nobody schedules and everybody makes.
+ * It is only ever the fallback — a stop that has actually started is later, and therefore a
+ * stronger claim about where the plan left you.
+ *
  * `nowEvent` first, because that is the point the hero leads with — and mid-span its own place
  * already resolves to where you are **going** (`heroHorizon`'s `midSpanEventId`), so a flight in
  * the air measures the leg out of the airport it lands at rather than the one it left.
@@ -147,8 +155,13 @@ export function travelOrigin(input: {
   /** The destination — never its own origin, which is what a day whose only stop is one stay's
    *  two ends would otherwise ask for. */
   excludeEventId?: string;
+  /** **The stay you woke in** (`dayBookendStays(events, date).woke`, ADR-0206 §AD) — the fallback
+   *  for a morning before anything has started, which had no origin and therefore no read at all.
+   *  Resolved by the caller because it is a question about the day's DATE and this function is
+   *  handed a clock; absent leaves the behaviour §AE3 shipped, exactly. */
+  wokeIn?: TripEvent;
 }): TravelOriginClaim {
-  const { nowEvent, events, nowMs, excludeEventId } = input;
+  const { nowEvent, events, nowMs, excludeEventId, wokeIn } = input;
   // `deriveNow` admits only PLANNED events, so an in-progress point can never be the denied
   // one — skipping the thing you are inside removes it from `now` and this falls to the branch
   // below on the same render.
@@ -160,5 +173,8 @@ export function travelOrigin(input: {
     if (!Number.isFinite(startedAt) || startedAt > nowMs) continue;
     if (!latest || startedAt > Date.parse(latest.startsAt!)) latest = event;
   }
-  return { event: latest, denied: latest?.status === EVENT_STATUS.SKIPPED };
+  // The bed only answers when nothing else has: a stop that has started is a later and therefore
+  // stronger claim about where the plan left you, and a stay is never `skipped`.
+  const event = latest ?? (wokeIn?.id === excludeEventId ? undefined : wokeIn);
+  return { event, denied: event?.status === EVENT_STATUS.SKIPPED };
 }

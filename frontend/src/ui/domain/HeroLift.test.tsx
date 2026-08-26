@@ -530,7 +530,7 @@ describe('HeroLift — the journey between two points (ADR-0206 §V1.2 / §D2)',
     const onOnWay = vi.fn();
     const container = withTravel({
       duration: '⁦~23⁩ דק׳',
-      leave: t.hero.leavePassed('18:37'),
+      leave: t.travel.leavePassed('18:37'),
       tone: 'miss',
       action: { label: t.actions.onWay, onPress: onOnWay },
     });
@@ -547,7 +547,7 @@ describe('HeroLift — the journey between two points (ADR-0206 §V1.2 / §D2)',
   it('spends no second live mark and no second countdown', () => {
     const container = withTravel({
       duration: '⁦~23⁩ דק׳',
-      leave: t.hero.leavePassed('18:37'),
+      leave: t.travel.leavePassed('18:37'),
       tone: 'miss',
     });
     expect(container.querySelectorAll('.wp-board-countdown')).toHaveLength(0);
@@ -601,17 +601,17 @@ describe('HeroLift — what a device position adds (ADR-0207 §2)', () => {
   it('draws עדיין כאן beside a passed leave-by, and only when the fix says so', () => {
     const located = withTravel({
       mode: t.travelMode.walking,
-      leave: t.hero.leavePassed('⁦18:37⁩'),
+      leave: t.travel.leavePassed('⁦18:37⁩'),
       tone: 'miss',
-      located: t.hero.stillHere,
+      located: t.travel.stillHere,
     });
-    expect(located.querySelector('.hero-trv-here')?.textContent).toContain(t.hero.stillHere);
+    expect(located.querySelector('.hero-trv-here')?.textContent).toContain(t.travel.stillHere);
     cleanup();
     // §2: absent is the DEFAULT — no permission, a refusal, a stale fix, a position that settles
     // nothing. The row then reads exactly as it did before ADR-0207.
     const blind = withTravel({
       mode: t.travelMode.walking,
-      leave: t.hero.leavePassed('⁦18:37⁩'),
+      leave: t.travel.leavePassed('⁦18:37⁩'),
       tone: 'miss',
     });
     expect(blind.querySelector('.hero-trv-here')).toBeNull();
@@ -624,7 +624,7 @@ describe('HeroLift — what a device position adds (ADR-0207 §2)', () => {
     const onPress = vi.fn();
     const container = withTravel({
       mode: t.travelMode.walking,
-      leave: `${t.actions.onWay} · ${t.hero.remaining('⁦~12⁩ דק׳')}`,
+      leave: `${t.actions.onWay} · ${t.travel.remaining('⁦~12⁩ דק׳')}`,
       tone: 'on-way',
       action: { label: t.actions.undoSettle, onPress },
     });

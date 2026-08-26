@@ -58,6 +58,14 @@ export type IconName =
   | 'clipboard'
   | 'currency'
   | 'ticket'
+  // ── The three travel modes (ADR-0206 §AA3). A mode is UI and not content, so it is a
+  // glyph rather than a word — the owner reversed §Z5 §M5's "not the place to mint three"
+  // on the review that asked for the journey to be "crystal clear". `ticket` above stands
+  // in for a declared תחב״צ leg (§AA4) rather than a fourth being minted for a mode with
+  // no provider.
+  | 'walking'
+  | 'cycling'
+  | 'driving'
   | 'wifi'
   | 'documents'
   | 'share'
@@ -219,6 +227,22 @@ const PATHS: Record<IconName, string> = {
   // A ticket with its stub perforation. Replaces 🎫.
   ticket:
     'M3.4 8.6V6.8a1.6 1.6 0 0 1 1.6-1.6h14a1.6 1.6 0 0 1 1.6 1.6v1.8a2.2 2.2 0 0 0 0 4.4v1.8a1.6 1.6 0 0 1-1.6 1.6H5a1.6 1.6 0 0 1-1.6-1.6v-1.8a2.2 2.2 0 0 0 0-4.4Z M14.4 5.2v1.9 M14.4 10.2v1.9 M14.4 15.1v1.9',
+  // ── THE THREE TRAVEL MODES (ADR-0206 §AA3, drawn in `a-travel-time-between-two-points-v2.html`)
+  // Drawn on the same 24 grid at the same stroke weight as everything above, and each carries a
+  // CONTENT rule (ADR-0138 §4), which is what makes them icons rather than pictures: the glyph
+  // says which mode a duration was measured on, and forty minutes is a different fact walking and
+  // driving. They serve the day's journey block and M8's mode control from one place — a second
+  // set is how the list and the control start disagreeing about what a leg is.
+  //
+  // A walker: head, torso, both legs and the leading arm.
+  walking:
+    'M14.6 4.4a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0 M12.6 8.4 10.2 13l2.6 2.2 1 5.4 M10.2 13 7.2 20.4 M12.9 9.6 16.4 11.4 M12.4 9.4 9 10.8',
+  // Two wheels, a frame and the bars.
+  cycling:
+    'M6.2 20a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z M17.8 20a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z M6.2 16.6h4.6l3.4-6.4 M10.8 16.6h4.4 M14.2 10.2h-2.4 M14.2 10.2l3.6 6.4 M15.6 7.2h2.2',
+  // A cabin over a body, two wheels under it.
+  driving:
+    'M4.4 16.2h15.2 M6 16.2l1.5-4.8a1.7 1.7 0 0 1 1.6-1.2h5.8a1.7 1.7 0 0 1 1.6 1.2l1.5 4.8 M5.4 16.2v2.6h2.4v-2.6 M16.2 16.2v2.6h2.4v-2.6 M8 13.4h8',
   // Signal arcs — `offline` above is this shape with a slash through it, which is
   // the point: the pair reads as one state and its negation.
   wifi: 'M12 19.6h.02 M8.6 16.2a4.8 4.8 0 0 1 6.8 0 M5.2 12.8a9.6 9.6 0 0 1 13.6 0 M2 9.4a14.4 14.4 0 0 1 20 0',

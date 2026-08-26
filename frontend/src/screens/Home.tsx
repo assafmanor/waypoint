@@ -56,7 +56,7 @@ import {
 import { placeLabelOf, shortRoute } from '../lib/place-label';
 import { usePlaceLabels } from '../state/place-labels';
 import { eventMidSpanWords, transitionLabel } from '../lib/transitions';
-import { approxDuration, clockShiftSentence, formatDuration } from '../lib/duration';
+import { approxTravelTime, clockShiftSentence, formatDuration } from '../lib/duration';
 import { TAB_PARAM, FOCUS_PARAM, INDEX_FOCUS, INDEX_TAB } from '../state/nav-state';
 import {
   countdownParts,
@@ -78,6 +78,7 @@ import {
   ambientSpanPosition,
   buildDayGlance,
   countsNights,
+  dayBookendStays,
 } from '../lib/glance';
 import { deriveHeroBooking } from '../lib/hero-booking';
 import { LEAVE_PHASE, heroLeaveBy, travelOrigin, type HeroLeaveBy } from '../lib/hero-travel';
@@ -488,10 +489,18 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   //
   // Scoped to the CLOCK's own day and not to `activeDate`: the board is the live surface, so
   // swiping the day strip to tomorrow must not change where the journey it draws starts from.
+  //
+  // **And on a morning before anything has started, the bed** (§AD, built in M6a). Until then the
+  // clock's own day had no started stop, so the board drew no journey at all on the read where
+  // "when do I have to leave" is asked most — while the one position the plan is surest of, the
+  // hotel you woke in, sat one derivation away. `dayBookendStays` is that derivation, and the day
+  // list's own first leg reads it too, so the two surfaces start their morning in one place.
+  const wokeIn = useMemo(() => dayBookendStays(events, today).woke, [events, today]);
   const travelPrev = travelOrigin({
     events: events.filter((e) => e.date === today),
     nowMs,
     excludeEventId: shownNext?.id,
+    ...(wokeIn ? { wokeIn } : {}),
   });
   const prevEvent = travelPrev.event;
   const nowPlaceId = horizon.now[0]?.placeId;
@@ -707,19 +716,19 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           // length — so the labelled one is the one that survives.
           duration: enRoute
             ? undefined
-            : (approxDuration(travelEstimate.durationSeconds / 60) ?? undefined),
+            : (approxTravelTime(travelEstimate.durationSeconds) ?? undefined),
           leave: enRoute
             ? remainingSeconds !== null
-              ? `${t.actions.onWay} · ${t.hero.remaining(approxDuration(remainingSeconds / 60) ?? '')}`
+              ? `${t.actions.onWay} · ${t.travel.remaining(approxTravelTime(remainingSeconds) ?? '')}`
               : t.actions.onWay
             : leave.phase === LEAVE_PHASE.PASSED
-              ? t.hero.leavePassed(leaveClock)
-              : t.hero.leaveAt(leaveClock),
+              ? t.travel.leavePassed(leaveClock)
+              : t.travel.leaveAt(leaveClock),
           tone: enRoute ? 'on-way' : leave.phase === LEAVE_PHASE.PASSED ? 'miss' : 'time',
           // **`עדיין כאן` — the app saying it CHECKED**, and the only claim a position licenses
           // that the clock could not (§2). Only where the fix actually puts them at the origin.
           ...(stance?.stance === TRAVEL_STANCE.AT_ORIGIN && leave.phase === LEAVE_PHASE.PASSED
-            ? { located: t.hero.stillHere }
+            ? { located: t.travel.stillHere }
             : {}),
           // One control, and the tone decides what it does: answer the mark, or take back a mark
           // you set. A nudge you must change tabs to dismiss is a nudge that stays on screen, and
