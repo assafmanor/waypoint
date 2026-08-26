@@ -76,6 +76,7 @@ import {
   type TimeItem,
   tripDates,
   relativeDayLabel,
+  dayWindowMs,
 } from '../lib/time';
 import {
   dayStops,
@@ -102,7 +103,7 @@ import {
 import { dayPositions, firstPositionFitting } from '../lib/day-positions';
 import {
   dayTransitions,
-  edgeEntryOf,
+  placedEdgeOf,
   groupEndEvent,
   groupStartEvent,
   mergeDayEntries,
@@ -501,6 +502,13 @@ export function DayView() {
   // Per-event display zones (ADR-0107): one builder over the one evidence, shared
   // with the Plan-mode builder so the two day surfaces cannot diverge.
   const zoneCtx = dayZoneContext(activeDate, zoneEvidence);
+  /** **When this day's window opens** (ADR-0045/0037's 07:00) — the boundary that decides what
+   *  belongs to the night before it. Memoized for the reason the Map's copy is: `zonedIso` builds
+   *  an `Intl.DateTimeFormat`, and this screen re-renders every second on the clock. */
+  const dawnMs = useMemo(
+    () => dayWindowMs(activeDate, dayZoneContext(activeDate, zoneEvidence).ambientZone).startMs,
+    [activeDate, zoneEvidence],
+  );
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
   // The third mark's tally (ADR-0191 §2) — OPEN tasks only, unlike the two beside it.
   const settledHosts = useSettledHosts();
@@ -568,6 +576,7 @@ export function DayView() {
     dayEvents.filter((e) => !e.startsAt),
     groups,
     stayRowIds,
+    dawnMs,
   );
   const merged = placement.positioned;
 
@@ -935,7 +944,7 @@ export function DayView() {
               // screen, here and as a row at its bound.
               .filter((e) => !stayRowIds.has(e.id))
               .map((e) => {
-                const edge = edgeEntryOf(placement.positioned, e.id);
+                const edge = placedEdgeOf(placement, e.id);
                 return (
                   <div className="ambient" key={e.id}>
                     <span className="ai" aria-hidden="true">
@@ -977,6 +986,34 @@ export function DayView() {
           {/* **WHERE THE DAY STARTS** (ADR-0209 §1) — the row §AD's leg has never had an origin
             for. It states the place and, quietly, the stay's own bound; the leg below it is an
             ordinary journey block, which is why this row carries no clock (§3). */}
+          {/* **WHAT BROUGHT YOU IN THROUGH THE NIGHT** (ADR-0054's 2026-08-26 amendment) — above
+            the bed, because that is the order it happened in. The map has sorted a midnight car
+            hire ahead of the hotel since 2026-08-25 and the list drew it below, with a ⁦25km⁩ drive
+            out to the counter in between: one fact, two answers (ADR-0159 §1).
+            **No journey block into the stay above it**, deliberately — a stay has no per-day
+            arrival instant, so the only deadline available is its check-in floor from YESTERDAY,
+            and inventing one is the mistake ADR-0206 §AI was written about. */}
+          {placement.overnight.map((entry) => (
+            <TransitionRow
+              key={`${entry.event.id}-${entry.edge}`}
+              entry={entry}
+              tz={dayCtx.tz}
+              {...transitionZoneProps(entry, dayCtx.zoneCtx)}
+              bookings={dayCtx.bookings}
+              onOpen={dayCtx.onOpenDetail}
+              onNavigate={dayCtx.readOnly ? undefined : navigateHandler(entry.event, dayCtx)}
+              onShowOnMap={eventShowOnMap(
+                entry.event,
+                dayCtx.bookings,
+                dayCtx.places,
+                dayCtx.showPlaceOnMap,
+                entry.edge,
+              )}
+              onDone={dayCtx.readOnly ? undefined : () => verbs.done(entry.event)}
+              onSkip={dayCtx.readOnly ? undefined : () => verbs.skip(entry.event)}
+              onUndo={dayCtx.readOnly ? undefined : () => verbs.restore(entry.event)}
+            />
+          ))}
           {bookends.woke && (
             <StayRow
               stay={bookends.woke}

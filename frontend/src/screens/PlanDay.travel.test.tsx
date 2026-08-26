@@ -98,6 +98,10 @@ const theatre = ev('theatre', {
 });
 
 let tripEvents: TripEvent[] = [];
+/** Mutable like `DayView.travel.test.tsx`'s, so a describe can add the place its own fixture
+ *  needs: `useDayTravelReads` skips any leg whose two ends do not both resolve to coordinates,
+ *  which is a silently ABSENT journey block rather than a failure. */
+let tripPlaces: Place[] = places;
 const tripBookings: Booking[] = [];
 
 vi.mock('../state/trip-state', () => ({
@@ -108,7 +112,7 @@ vi.mock('../state/trip-state', () => ({
     hostContexts: buildHostContextIndex(tripEvents, tripBookings),
     trip: { id: 't1', timezone: ZONE, startDate: DAY, endDate: '2026-08-05', updatedBy: 'u1' },
     bookings: tripBookings,
-    places,
+    places: tripPlaces,
     events: tripEvents,
     maybeItems: [],
     justAddedIdea: null,
@@ -189,6 +193,7 @@ describe('PlanDay — the chip offers what is free AFTER the journey (ADR-0206 �
   beforeEach(() => {
     setSimulatedNow(Date.parse(NOW));
     tripEvents = [lunch, theatre];
+    tripPlaces = places;
     travelSeconds = WALK_MINUTES * 60;
   });
   afterEach(() => {
@@ -287,5 +292,88 @@ describe('PlanDay — the day says where it starts and ends', () => {
   it('offers no settle pair on it', () => {
     show();
     expect(document.querySelector('.transition-row .wp-settle')).toBeNull();
+  });
+});
+
+// **THE DAY'S HEAD, AS PLAN MODE DRAWS IT** — both halves of the 2026-08-26 field report.
+//
+// Plan mode's copies of two derivations had drifted from Trip mode's, which is
+// `frontend/CLAUDE.md`'s "changing a day-surface derivation in `DayView` only" for the third
+// time. ADR-0159 §1 allows the two surfaces to differ in POSTURE and forbids a difference about
+// a FACT, and both of these are facts.
+describe('PlanDay — the day starts where the day started', () => {
+  const hotelPlace: Place = {
+    id: 'p-hotel',
+    tripId: 't1',
+    name: 'מלון',
+    lat: 40.86,
+    lng: 14.24,
+    createdAt: `${DAY}T00:00:00Z`,
+    updatedAt: `${DAY}T00:00:00Z`,
+    updatedBy: 'u1',
+  };
+  /** Checked in the night before, out at ⁦11:00⁩ today — the check-out day the report came from. */
+  const stay = ev('stay', {
+    title: 'The Hill Hotel at Fludir',
+    category: 'lodging',
+    placeId: 'p-hotel',
+    date: '2026-08-02',
+    endDate: DAY,
+    startsAt: '2026-08-02T13:00:00Z',
+    endsAt: `${DAY}T11:00:00Z`,
+  });
+  /** The day's first stop, EARLIER than the check-out ceiling — which is the ordinary shape of a
+   *  travel day and the shape that read `אין זמן לדרך`. */
+  const falls = ev('falls', {
+    title: 'Háifoss',
+    placeId: 'p-theatre',
+    startsAt: `${DAY}T08:00:00Z`,
+    endsAt: `${DAY}T09:00:00Z`,
+  });
+  const hire = ev('hire', {
+    title: 'Iceland Car Rental',
+    category: 'transport',
+    icon: '🚗',
+    placeId: 'p-lunch',
+    date: DAY,
+    endDate: '2026-08-12',
+    startsAt: `${DAY}T00:00:00Z`,
+    endsAt: '2026-08-12T08:00:00Z',
+  });
+
+  beforeEach(() => {
+    // Before the first stop, so the leg is the AHEAD arm and prints a clock to read.
+    setSimulatedNow(Date.parse(`${DAY}T06:00:00Z`));
+    tripEvents = [stay, hire, falls];
+    tripPlaces = [...places, hotelPlace];
+    travelSeconds = 62 * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  // RED against `main`: `planJourney` passed the stay's own `endsAt` — its check-out CEILING —
+  // as the hole's earliest departure, so an ⁦11:00⁩ check-out measured against an ⁦08:00⁩ waterfall
+  // reported a journey nobody can make. Trip mode has omitted it since ADR-0206 §AD.
+  it('states when to leave for a stop that is before the check-out', () => {
+    show();
+    const block = document.querySelector('.day-trv');
+    expect(block).toBeTruthy();
+    expect(block!.textContent).not.toContain(t.travel.noTimeForTravel);
+    expect(block!.textContent).toContain('יציאה');
+  });
+
+  // RED against `main`: the pickup row sat below the bed, so the day read "wake at the hotel,
+  // then drive out to the counter at midnight". Same rule, same predicate as the map's.
+  it('puts a midnight pickup above the stay row', () => {
+    show();
+    const titles = [...document.querySelectorAll('.transition-row .tr-title')].map(
+      (n) => n.textContent ?? '',
+    );
+    expect(titles.indexOf('Iceland Car Rental')).toBeGreaterThanOrEqual(0);
+    expect(titles.indexOf('Iceland Car Rental')).toBeLessThan(
+      titles.indexOf('The Hill Hotel at Fludir'),
+    );
   });
 });

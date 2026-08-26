@@ -113,6 +113,46 @@ morning.
 A day you check out of one hotel and into another needs nothing further: each span answers only about
 itself, so the compressed stay takes the head and the new one the tail.
 
+**EXTENDED the same day — the DAY LIST asks it too, and had been answering the opposite.** Owner,
+off the M6a/ADR-0209 deploy: _"it doesn't handle a car rental late at the night before. Should be
+handled like the map handles this."_ The screenshot is the same Iceland day, one surface over: the
+hotel row at the head of the day, the midnight pick-up beneath it, and a 25 km journey block drawn
+between them — the list reading "wake up, then drive out to the counter", which is exactly the
+teleport this amendment removed from the route.
+
+[ADR-0209](0209-a-stay-is-named-once-in-the-day-it-belongs-to.md) is what surfaced it. Before it,
+the stay had no row of its own on an edge day, so nothing could sort ahead of anything; giving the
+day a **first row** created the ordering question the map had already answered a day earlier, and
+neither day surface knew about it. That is [ADR-0159](0159-what-sits-between-two-rows.md) §1's line
+— posture may differ, a fact may not — and "you picked the car up before you reached the hotel" is
+a fact.
+
+So the predicate moved out of `map-pins.ts`'s `buildDayStopSequence`, where it was a local `early`,
+and became `broughtInOvernight` in `place-usage.ts` beside the `knowsMoment` it asks (root rule 8:
+it had one reader and now has three). Its two questions and its stated cost are unchanged — this
+extension is about **who reads it**, not what it says.
+
+**In the list it is a bucket rather than a sort.** `placeDayEntries` returns the overnight edges in
+their own `overnight` array, out of `positioned`, and both day surfaces render that run above the
+stay row. Two reasons it is not a comparator:
+
+- **The day list's order is not the route's.** The list interleaves rows by instant and the stay
+  row is not in that stream at all (ADR-0209 §3: it carries no clock), so there is nothing for a
+  midnight edge to sort against.
+- **A bucket is provably free of side effects, and a re-sort is not.** Only **transition** entries
+  are diverted, and a span edge is never a leg's endpoint — a flexible one is already transparent
+  to `prevEnd` ([ADR-0171](0171-a-time-can-be-a-floor-or-a-ceiling.md) §5) — so no gap, journey or
+  adjacency can change. The one thing that did have to follow the entry is the ambient strip's
+  sentence, which reads the PLACED edge (`placedEdgeOf` now looks in both buckets, or a midnight
+  pick-up silently fell back to `יום 1 מתוך 10`).
+
+**And no journey block into the bed above it**, deliberately: a stay has no per-day arrival
+instant, so the only deadline available is its check-in floor from _yesterday_, and counting back
+from a bound the app invented is the whole of
+[ADR-0206](0206-a-travel-time-belongs-between-two-points.md) §AI. The drive from the counter to the
+hotel really happened, and the app cannot say when — so it says the two rows in the right order and
+nothing about the road between them.
+
 **And the label was not wrong.** The same report asked why the pin read `צ׳ק-אאוט` rather than
 `לינת לילה`. It is a one-night stay, so that day **is** the check-out day and `צ׳ק-אאוט` is the true
 word; `לינת לילה` belongs to a strictly middle night, which this day is not. Nothing changed there.

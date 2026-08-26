@@ -88,6 +88,20 @@ cannot make.
 gone, that pair belongs on the stay's own row. A build that drops it re-opens the report ADR-0184
 §2 fixed.
 
+**AMENDED 2026-08-26 — "the day starts there" is not the same as "it is the day's first row."**
+Owner, off this ADR's own deploy: _"it doesn't handle a car rental late at the night before. Should
+be handled like the map handles this."_ A car collected at 00:00 after a late landing was drawn
+BELOW the stay row, so the day read "wake at the hotel, then drive 25 km out to the counter" — and
+the map had answered exactly this the day before
+([ADR-0054](0054-ambient-multi-day-spans.md)'s 2026-08-26 amendment, extended there rather than
+restated here).
+
+The row that this ADR created is what surfaced it: before it, an edge day had no first row for
+anything to sort ahead of. **What brought you in through the night reads above the bed**, on the
+list as on the route, off the same `broughtInOvernight` predicate — and no journey block is drawn
+between the two, because a stay has no per-day arrival instant and the only deadline on offer would
+be yesterday's check-in floor.
+
 ### §2 · ADR-0054 §2 is kept in full — a stay's row is not a schedule block
 
 No block, no rail width, nothing added to `נותרו היום`. A stay is not something you _perform_ at a

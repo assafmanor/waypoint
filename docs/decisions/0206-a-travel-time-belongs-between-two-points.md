@@ -1,6 +1,6 @@
 # 0206 — A travel time belongs **between** two points, and the day owes you the truth about it
 
-**Status:** **Accepted 2026-08-25** on the owner's M0 answers, and **amended by them** — read §Z before §M1 or §V1.6, which both changed. **Built so far:** the arithmetic (M2), the map's polyline and how it reads (§AB–§AD, M7/M7b/M7c), and **§V1.2 + §Z1 — the hero read and the board's countdown swap (§AE, M6b, 2026-08-26)**. §V1.1/§V1.3/§V1.4's day row is M6a's and is not built. **Nothing here ships without a mockup** (§M).
+**Status:** **Accepted 2026-08-25** on the owner's M0 answers, and **amended by them** — read §Z before §M1 or §V1.6, which both changed. **Built so far:** the arithmetic (M2), the map's polyline and how it reads (§AB–§AD, M7/M7b/M7c), and **§V1.2 + §Z1 — the hero read and the board's countdown swap (§AE, M6b, 2026-08-26)**. §V1.1/§V1.3/§V1.4's day row (M6a, 2026-08-26) with §AH/§AI's field rounds on top of it. **Nothing here ships without a mockup** (§M).
 **Date:** 2026-08-24
 **Companion:** [ADR-0205](0205-routes-are-computed-not-bought-and-a-route-is-a-cache.md) decides where a route comes from. This one decides **what it says, what v1 answers, and what v2 waits for.**
 **Research:** [`planning/2026-08-24-routes-and-travel-time-what-is-actually-possible.md`](../planning/2026-08-24-routes-and-travel-time-what-is-actually-possible.md)
@@ -940,6 +940,29 @@ have left at 07:00. It carries the journey, the distance and the leave-by; the f
 absent, which is §D4's absence in the one place it is structural rather than incidental. **The first
 build read the stay's own `endsAt` instead and reported `פנוי לפני 0 דק׳`** — a window measured from
 next Wednesday's check-out. The bookend-ness is a property of the LEG now, not of its event.
+
+**AMENDED 2026-08-26 — Plan mode never applied this, and a check-out day is where it shows.** Owner,
+off the ADR-0209 deploy: _"check out before the day's first stop is treated like you don't have
+enough time and not like we've agreed it should behave."_ `PlanDay`'s `planJourney` passed
+`departAfterMs: from.endsAt ?? from.startsAt` **unconditionally**, so an 11:00 check-out became the
+earliest departure for a 07:15 waterfall, the hole measured −3:45, and the row said `אין זמן לדרך`
+about a drive you make at dawn with three hours to spare.
+
+Three things are worth keeping about how it got there:
+
+- **A check-out is a CEILING, so it is not a floor on anything.** "Be out by 11:00" says you may
+  leave any time before it, and the arithmetic read it as "you cannot leave before it" — the same
+  confusion between the two directions of a bound that ADR-0171 §10b was written for, one axis
+  over. On a middle night the same line reads next Wednesday, which is the paragraph above.
+- **The fix is not a new input, it is the rule this section already states.** Trip mode has omitted
+  `departAfterMs` on a bookend leg since §AD; the repair is Plan asking the same question it
+  already had the answer to (`stayRowIds.has(from.id)`), derived rather than a flag a call site can
+  forget.
+- **The docblock above the drifted line cited the rule it was breaking.** `planJourney`'s comment
+  names `frontend/CLAUDE.md`'s _"changing a day-surface derivation in `DayView` only"_ — for
+  `flexibleArrival`, added in the same session, one line below the departure that had never been
+  ported. Citing a rule beside one line does not apply it to the others: **when a shared
+  derivation gets a new input on one surface, diff the whole call, not the line you are adding.**
 
 ### AF4. The free time rides the QUIET arms only, and the render is what insisted
 
