@@ -47,7 +47,16 @@ export type Gap = { minutes: number; fill: GapDefaults };
  *  Exported because the RENDERER needs the same answer, and asking it twice is how the
  *  two densities would drift: `PlanDay` reads this rather than comparing against
  *  `GAP_MIN_MINUTES` itself, so "is this a chip or a seam" has exactly one definition. */
-export const earnsChip = (free: Gap): boolean => free.minutes >= GAP_MIN_MINUTES;
+export const earnsChip = (free: Gap): boolean => earnsChipAt(free.minutes);
+
+/** **The same threshold, asked of a MINUTE COUNT** — because since ADR-0206 §V1.1 the number that
+ *  decides is not always the hole's own. A hole with a journey in it earns its chip on what is
+ *  FREE, not on how long the hole is: `where-a-route-shows-up-v1.html` §2 drew `if (left >= 60)`
+ *  and said in as many words that below it "there is simply no chip — exactly as today". A
+ *  45-minute chip over a hole a 40-minute walk eats is an offer nobody can take.
+ *
+ *  Both forms read one constant, so the two callers cannot drift. */
+export const earnsChipAt = (minutes: number): boolean => minutes >= GAP_MIN_MINUTES;
 
 const floored = (free: Gap | null): Gap | null => (free && earnsChip(free) ? free : null);
 
