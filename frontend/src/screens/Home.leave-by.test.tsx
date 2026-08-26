@@ -584,3 +584,57 @@ describe('Home — a read needs something to stand on (ADR-0208 §2)', () => {
     expect(unit()).toBe(lateUnit(10));
   });
 });
+
+// ── THE BOARD DOES NOT COUNT TO A DEPARTURE NOBODY SET (ADR-0206 §AI1) ────────────────────
+//
+// The half that would have shipped broken, caught by the owner reading ADR-0209's mockup: _"we
+// must make sure that if you haven't left by the time that the app suggests the app doesn't show
+// you as being late."_ Withholding the day row's printed clock is not enough — the board reads the
+// same `heroLeaveBy`, so it would swap its countdown to a departure derived from a check-in
+// window's OPENING, and then put `באיחור` in its unit slot (ADR-0208 §1) for being late to nothing.
+//
+// The gate is on the REQUEST, which is ADR-0208's own shape, so `null` flows through every
+// consumer below exactly as an absent estimate already does (§D4).
+describe('Home — a flexible next event licenses no leave-by (ADR-0206 §AI1)', () => {
+  /** `הבא בתור` with a check-in WINDOW: its start is the hour the door opens, not a deadline. */
+  const windowedNext = (minutes: number) => ({
+    ...dinner(minutes),
+    title: 'צ׳ק-אין',
+    startWindowEnd: new Date(Date.parse(NOW) + (minutes + 180) * 60_000).toISOString(),
+  });
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    resetOnWayForTests();
+    tripEvents = [];
+    tripBookings = [];
+    travelSeconds = null;
+    geoFix = null;
+    geoRequest.mockClear();
+    onWay.mockClear();
+  });
+  afterEach(() => {
+    cleanup();
+    resetOnWayForTests();
+    setSimulatedNow(null);
+  });
+
+  // The swap threshold is 30 minutes of time-to-leave (§Z1/§AA1), so a 20-minute drive to an
+  // event 25 minutes out would normally hand the tile over to the departure.
+  it('keeps counting to the event, where it would otherwise swap to the departure', () => {
+    tripEvents = [museum, windowedNext(25)];
+    travelSeconds = 20 * 60;
+    show();
+    expect(value()).toBe('25');
+    expect(unit()).toBe(formatCountdown(25).unit);
+  });
+
+  it('never marks the tile late against it', () => {
+    // Well past the departure the old arithmetic produced (25 − 20 − 5 = now).
+    tripEvents = [museum, windowedNext(10)];
+    travelSeconds = 20 * 60;
+    show();
+    expect(tile()?.classList.contains('missed')).toBe(false);
+    expect(unit()).not.toBe(lateUnit(15));
+  });
+});

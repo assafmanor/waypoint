@@ -12,6 +12,7 @@ import {
   EVENT_KIND,
   EVENT_STATUS,
   isAmbient,
+  isExactEdge,
   type Booking,
   type MaybeItem,
   type Place,
@@ -112,6 +113,7 @@ import {
   dayBlocks,
   dayJourney,
   narrowGapForTravel,
+  windowClosesMs,
   type DayBlock,
   type DayJoin,
   type DayJourney,
@@ -220,7 +222,14 @@ function JoinRow({
   onFillGap,
   ...journeyRest
 }: {
-  join: DayJoin;
+  /** **Nullable, and that is ADR-0206 §AG6 finished.** `gapBetween` is floored at
+   *  `GAP_MIN_MINUTES`, so a hole under an hour has no join at all — and gating the JOURNEY on the
+   *  join left §Z5 §M2's own example silent ("a 45-minute hole holding a 40-minute walk"), which
+   *  §AG6 recorded as fixed by setting `DayBlockEntry.from` on every adjacency. It was half-fixed:
+   *  the leg was derived and then not rendered. **Plan mode gates on `prevEnd` instead and has
+   *  been drawing it all along**, so the two day surfaces disagreed about a fact — the thing
+   *  ADR-0159 §1 forbids and ADR-0171 §10e already had to repair once. */
+  join: DayJoin | null;
   /** What the journey across this hole costs and says, or `null` — which is the ordinary answer
    *  (§D4) and leaves the strip below reading exactly as it read before this milestone. */
   journey: DayJourney | null;
@@ -231,11 +240,14 @@ function JoinRow({
    *  free there to fill. */
   onFillGap?: (free: Gap) => void;
 } & Omit<JourneyRowProps, 'journey'>) {
-  const length = hoursPhrase(join.minutes);
-  if (join.kind === 'gap') {
+  if (join === null || join.kind === 'gap') {
     // **The slot is narrowed by the journey** — the statement and the control must not disagree
     // about one hole, which is what §V1.1 is about one elevation down.
-    const slot = journey ? narrowGapForTravel(join.free, journey, journeyRest.tz) : join.free;
+    const slot = join
+      ? journey
+        ? narrowGapForTravel(join.free, journey, journeyRest.tz)
+        : join.free
+      : null;
     // **And it is stated below the block rather than inside it** (owner, 2026-08-26: _"do we
     // really want to state on this row that we have free time, or should it be written in a quiet
     // way and not in the row?"_). M6a absorbed the strip into the block to keep ADR-0159's one
@@ -243,9 +255,10 @@ function JoinRow({
     // the LEG (mode, distance, when to go) and free time is about the HOLE. The measurement that
     // shipped M6a is the argument against it — ⁦219.70px⁩ of ink in that box, "fixed" by hiding the
     // free time on half the arms, which is what a line holding two subjects looks like.
-    const strip = statesFreeTime(slot.minutes) ? (
-      <GapStrip minutes={slot.minutes} onFill={onFillGap && (() => onFillGap(slot))} />
-    ) : null;
+    const strip =
+      slot && statesFreeTime(slot.minutes) ? (
+        <GapStrip minutes={slot.minutes} onFill={onFillGap && (() => onFillGap(slot))} />
+      ) : null;
     if (!journey) return strip;
     return (
       <>
@@ -257,7 +270,7 @@ function JoinRow({
   return (
     <ConnectionBand
       word={t.day.join.word[join.type] ?? t.day.join.word.flight}
-      length={length}
+      length={hoursPhrase(join.minutes)}
       // The SHORT label, like every other route surface (ADR-0059 §3's amendment):
       // `נמל התעופה דובאי (DXB)` in a one-line band pushes the length out of the
       // row, and the two cards around it already name the place in full.
@@ -717,6 +730,13 @@ export function DayView() {
           ? {}
           : { departAfterMs: Date.parse(leg.from.endsAt ?? leg.from.startsAt!) }),
         arriveByMs: Date.parse(leg.to.startsAt ?? ''),
+        // **A destination with no DEADLINE licenses no leave-by** (ADR-0206 §AI1). A check-in's
+        // `17:00` is the hour the door opens, and counting back from it told you to leave in time
+        // to arrive the instant it does — then marked you late against it. `isExactEdge` is the
+        // predicate (`@waypoint/shared`), asked here because `dayJourney` holds instants and
+        // cannot see an event.
+        flexibleArrival: !isExactEdge(leg.to, 'start'),
+        windowClosesMs: windowClosesMs(leg.to),
         travelSeconds: estimate?.durationSeconds ?? null,
         distanceMeters: estimate?.distanceMeters ?? null,
         nowMs,
@@ -909,22 +929,26 @@ export function DayView() {
               >
                 {/* The join reads BEFORE the now-line: it is a fact about the plan, and
                   the now-line is the clock arriving inside it. */}
-                {join && (
-                  <JoinRow
-                    join={join}
-                    {...(() => {
-                      const to = entry.kind === 'event' ? groupStartEvent(entry.group) : undefined;
-                      const journey = to ? journeyFor(from, to) : null;
-                      return journey
+                {(() => {
+                  const to = entry.kind === 'event' ? groupStartEvent(entry.group) : undefined;
+                  const journey = to ? journeyFor(from, to) : null;
+                  // **A join OR a journey**: the two are independent facts about one hole, and a
+                  // hole too short for a join can still hold a leg (§AG6, and Plan has always
+                  // drawn it).
+                  if (!join && !journey) return null;
+                  return (
+                    <JoinRow
+                      join={join ?? null}
+                      {...(journey
                         ? journeyProps(journey, to === liveLeg?.to && from === liveLeg?.from)
-                        : { journey: null, travelMode: travelReads.mode };
-                    })()}
-                    tz={trip.timezone}
-                    places={places}
-                    placeLabels={placeLabels}
-                    onFillGap={readOnly ? undefined : setGapTarget}
-                  />
-                )}
+                        : { journey: null, travelMode: travelReads.mode })}
+                      tz={trip.timezone}
+                      places={places}
+                      placeLabels={placeLabels}
+                      onFillGap={readOnly ? undefined : setGapTarget}
+                    />
+                  );
+                })()}
                 {showNowLine && index === nowLineIndex && (
                   <NowLine ref={nowLineRef} now={now} tz={nowZone} />
                 )}

@@ -590,3 +590,116 @@ describe('dayBlocks — the row above is recorded whether or not a join survived
     expect(originsOf(pair(at('11:00'), at('14:00')))).toEqual([undefined, 'a']);
   });
 });
+
+// ── A DEPARTURE THE APP MAY STATE (ADR-0206 §AI) ──────────────────────────────────────────
+//
+// Two defects, one rule. The owner read both off ADR-0209's mockup, on shipped code:
+//
+//   §AI1 · `dayJourney` read `arriveByMs` from the destination's `startsAt` unconditionally, so a
+//   check-in WINDOW's opening was used as a deadline — `יציאה 16:18` to arrive the instant the
+//   door opens, with nothing due until 20:00. And withholding the printed clock is not enough:
+//   `arm` still went `PASSED` off that invented deadline, so the row turned `--miss` at 16:19 and
+//   the board would say `באיחור` for being late to nothing.
+//
+//   §AI2 · `leaveBy` has no clamp against `departAfterMs`, so the same block advised leaving at
+//   16:18 from a stop running to 16:40 — a departure from inside an event you are still in.
+//
+// The rule both collapse into: **the app states a departure only when it has a deadline to count
+// back from AND the departure is one you could actually make.** Otherwise it states the ARRIVAL,
+// which is what it can stand behind — and licenses no late mark, because there is nothing to be
+// late for (ADR-0208's own thesis: a claim needs something to stand on).
+describe('dayJourney — a flexible arrival licenses no leave-by (ADR-0206 §AI1)', () => {
+  const AT = (hhmm: string) => Date.parse(`2026-07-12T${hhmm}:00Z`);
+  const leg = (extra: Parameters<typeof dayJourney>[0]) => dayJourney(extra)!;
+
+  /** The mockup's own case: Systrakaffi to 16:40, a 22-minute drive, a window from 17:00. */
+  const WINDOW_CASE = {
+    departAfterMs: AT('16:40'),
+    arriveByMs: AT('17:00'),
+    travelSeconds: 22 * 60,
+    distanceMeters: 18_000,
+  };
+
+  it('states no departure at all, where the destination has no deadline', () => {
+    const j = leg({ ...WINDOW_CASE, nowMs: AT('16:00'), flexibleArrival: true });
+    expect(j.leaveByMs).toBeNull();
+  });
+
+  // **The half that would have shipped broken** (owner). The arm is what paints `--miss` and what
+  // the board reads for `באיחור`, so gating only the sentence leaves the claim standing.
+  it('never turns PASSED off a deadline it invented', () => {
+    // 16:19 is past the leave-by the old arithmetic produced (16:18 = 17:00 − 22min − buffer).
+    const j = leg({ ...WINDOW_CASE, nowMs: AT('16:19'), flexibleArrival: true });
+    expect(j.arm).toBe(DAY_JOURNEY_ARM.AHEAD);
+    expect(j.leaveByMs).toBeNull();
+  });
+
+  it('states the arrival instead, which is what it can stand behind', () => {
+    const j = leg({ ...WINDOW_CASE, nowMs: AT('16:00'), flexibleArrival: true });
+    // When you can leave, plus the leg — not counted back from a floor.
+    expect(j.arriveAtMs).toBe(AT('17:02'));
+    expect(j.arrivesAfterClose).toBe(false);
+  });
+
+  it('says when that arrival lands after the window has shut', () => {
+    const j = leg({
+      ...WINDOW_CASE,
+      departAfterMs: AT('20:10'),
+      arriveByMs: AT('17:00'),
+      nowMs: AT('19:00'),
+      flexibleArrival: true,
+      windowClosesMs: AT('20:00'),
+    });
+    expect(j.arriveAtMs).toBe(AT('20:32'));
+    expect(j.arrivesAfterClose).toBe(true);
+  });
+
+  // §D4 again: an ordinary destination is untouched, which is most of the app.
+  //
+  // **And the hole has to be roomy, which is the point rather than fixture hygiene.** The first
+  // version of this spec reused `WINDOW_CASE` and failed — its leave-by (16:33) is behind its own
+  // origin (16:40), so §AI2 withholds it on an exact arrival too. That is correct behaviour and
+  // the spec was asserting against it: the two halves of the rule are independent, and a tight
+  // hole triggers the second whatever the destination's edge means.
+  it('leaves an exact arrival exactly as it was', () => {
+    const j = leg({
+      departAfterMs: AT('12:00'),
+      arriveByMs: AT('14:40'),
+      travelSeconds: 40 * 60,
+      nowMs: AT('12:10'),
+    });
+    expect(j.leaveByMs).not.toBeNull();
+    expect(j.arriveAtMs).toBeNull();
+    expect(j.arrivesAfterClose).toBe(false);
+  });
+});
+
+describe('dayJourney — a leave-by inside the row it leaves from (ADR-0206 §AI2)', () => {
+  const AT = (hhmm: string) => Date.parse(`2026-07-12T${hhmm}:00Z`);
+
+  // The tolerance is what uncovered this: a 20-minute window with a 22-minute drive is a
+  // 2-minute shortfall, inside `TRAVEL_FIT_TOLERANCE_SECONDS`, so the leg reads as fitting — and
+  // the leave-by it hands back is behind its own origin.
+  it('withholds a departure it could not have been made from', () => {
+    const j = dayJourney({
+      departAfterMs: AT('16:40'),
+      arriveByMs: AT('17:00'),
+      travelSeconds: 22 * 60,
+      nowMs: AT('16:00'),
+    })!;
+    expect(j.leaveByMs).toBeNull();
+    // …and says the arrival, the same answer §AI1 gives for the same reason.
+    expect(j.arriveAtMs).toBe(AT('17:02'));
+  });
+
+  it('keeps a departure that sits after the origin ends', () => {
+    const j = dayJourney({
+      departAfterMs: AT('12:00'),
+      arriveByMs: AT('14:40'),
+      travelSeconds: 40 * 60,
+      nowMs: AT('12:10'),
+    })!;
+    expect(j.leaveByMs).toBe(AT('13:55'));
+    expect(j.arriveAtMs).toBeNull();
+  });
+});

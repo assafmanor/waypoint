@@ -28,6 +28,7 @@ import {
 import {
   EVENT_KIND,
   EVENT_STATUS,
+  isExactEdge,
   freeAfterTravel,
   isAmbient,
   TRAVEL_FIT,
@@ -97,7 +98,7 @@ import {
   type GapDefaults,
 } from '../lib/gaps';
 import { useDayTravelReads, type DayLeg } from '../lib/day-travel';
-import { dayJourney, type DayJourney } from '../lib/day-joins';
+import { dayJourney, windowClosesMs, type DayJourney } from '../lib/day-joins';
 import { JourneyRow } from '../ui/domain/DayJoinRow';
 import {
   dayStops,
@@ -460,6 +461,11 @@ export function PlanDay() {
     return dayJourney({
       departAfterMs: Date.parse(from.endsAt ?? from.startsAt ?? ''),
       arriveByMs: Date.parse(to.startsAt ?? ''),
+      // Same gate as Trip mode's, and it is here rather than only there because
+      // `frontend/CLAUDE.md` names "changing a day-surface derivation in `DayView` only" as
+      // having cost a release twice (ADR-0206 §AI1).
+      flexibleArrival: !isExactEdge(to, 'start'),
+      windowClosesMs: windowClosesMs(to),
       travelSeconds: estimate?.durationSeconds ?? null,
       distanceMeters: estimate?.distanceMeters ?? null,
       nowMs: now.getTime(),

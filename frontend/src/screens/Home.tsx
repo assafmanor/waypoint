@@ -13,6 +13,7 @@ import {
   eventTransitionKeys,
   isAmbient,
   isBracketed,
+  isExactEdge,
   isJourney,
   windowBoundOf,
   type DocumentSummary,
@@ -591,13 +592,22 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // provider down, or a leg somebody declared תחב״צ (§AA4 — a stored mode with no provider, so
   // `estimateFor` cannot be asked for it and this cannot be anything but `null`). Every one of
   // them leaves the board counting to the event and this block absent, with no layout shift.
-  const leave = nextInstant
-    ? heroLeaveBy({
-        arriveByMs: Date.parse(nextInstant),
-        travelSeconds: travelEstimate?.durationSeconds ?? null,
-        nowMs,
-      })
-    : null;
+  //
+  // **And a destination with no DEADLINE is not asked at all** (ADR-0206 §AI1). A check-in's
+  // `17:00` is the hour the door OPENS; counting back from it would put a departure on the board
+  // for a deadline nobody set, and then `באיחור` in the countdown tile's unit slot (ADR-0208 §1)
+  // for being late to nothing. The gate is on the REQUEST rather than on the words, which is
+  // ADR-0208's own shape — and `null` here is already the ordinary answer every consumer below
+  // renders, so nothing else changes.
+  const arrivalIsDeadline = !shownNext || isExactEdge(shownNext, 'start');
+  const leave =
+    nextInstant && arrivalIsDeadline
+      ? heroLeaveBy({
+          arriveByMs: Date.parse(nextInstant),
+          travelSeconds: travelEstimate?.durationSeconds ?? null,
+          nowMs,
+        })
+      : null;
   // **Somebody said `בדרך`** (§Z5 §M4) — a person telling the app what it should have been able
   // to see. It withdraws the whole leave read: once they are moving, counting to a departure they
   // have already made is the wrong question. It stays the floor, and ADR-0207 is the ceiling.

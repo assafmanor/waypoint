@@ -215,3 +215,33 @@ describe('PlanDay — the chip offers what is free AFTER the journey (ADR-0206 �
     expect(screen.getByText(chip(t.planDay.gapHours(3)))).toBeTruthy();
   });
 });
+
+// ── THE SAME FACT ON PLAN'S SURFACE (ADR-0206 §AI1) ───────────────────────────────────────
+//
+// ADR-0159 §1 allows the two day surfaces to differ in POSTURE and forbids a difference about a
+// FACT, and whether the app may name a departure is a fact. `frontend/CLAUDE.md` names "changing a
+// day-surface derivation in `DayView` only" as having cost a release twice.
+describe('PlanDay — a leg into a window states no departure either (§AI1)', () => {
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    tripEvents = [lunch, { ...theatre, startWindowEnd: `${DAY}T19:00:00Z` }];
+    travelSeconds = WALK_MINUTES * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  it('offers no departure, and no late mark to go with it', () => {
+    show();
+    const block = document.querySelector('.day-trv');
+    expect(block).toBeTruthy();
+    expect(block!.textContent).not.toContain('יציאה');
+    expect(document.querySelector('.day-trv.miss')).toBeNull();
+  });
+
+  it('states the arrival instead', () => {
+    show();
+    expect(document.querySelector('.day-trv')!.textContent).toContain('הגעה');
+  });
+});
