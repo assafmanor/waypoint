@@ -68,7 +68,8 @@ never by the one that did the work.
 | **M4**  | Backend routing module      | impl   | ✅ **M5/M10 unblocked**   | M1, M2, M2b  | M3           | `claude/m4-backend-routing-0giz72` · [#702](https://github.com/assafmanor/waypoint/pull/702)                                                                                                                         | 2026-08-25 |
 | **M5**  | Frontend data layer         | impl   | ✅ **M6/M7/M9 unblocked** | M2, M4       | M3, M10      | `claude/routes-frontend-protocol-fix-9t521y` · [#704](https://github.com/assafmanor/waypoint/pull/704)                                                                                                               | 2026-08-25 |
 | **M6a** | The day reads               | impl   | ⬜                        | M3, M5       | M6b, M7, M9  | —                                                                                                                                                                                                                    | —          |
-| **M6b** | The hero read               | impl   | 🔵                        | M3, M5       | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#712](https://github.com/assafmanor/waypoint/pull/712)                                                                                                                       | 2026-08-26 |
+| **M6b** | The hero read               | impl   | ✅ (+ 1 field fix)        | M3, M5       | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#712](https://github.com/assafmanor/waypoint/pull/712)                                                                                                                       | 2026-08-26 |
+| **M6c** | A fix withdraws the mark    | impl   | 🔵                        | M6b          | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#713](https://github.com/assafmanor/waypoint/pull/713)                                                                                                                       | 2026-08-26 |
 | **M7**  | The map polyline            | impl   | ✅                        | M3, M5       | M6a, M6b, M9 | `claude/routes-map-polyline-m7-baqobz` · [#706](https://github.com/assafmanor/waypoint/pull/706) · [#707](https://github.com/assafmanor/waypoint/pull/707)                                                           | 2026-08-25 |
 | **M7b** | The lines read as a route   | design | ✅                        | M7           | M8, M9       | `claude/routes-map-polyline-m7-baqobz` · [#708](https://github.com/assafmanor/waypoint/pull/708)                                                                                                                     | 2026-08-25 |
 | **M7c** | The day's bookends          | impl   | ✅ (+ 2 field fixes)      | M7, M7b      | M8, M9       | `claude/routes-map-polyline-m7-baqobz` · [#709](https://github.com/assafmanor/waypoint/pull/709) · [#710](https://github.com/assafmanor/waypoint/pull/710) · [#711](https://github.com/assafmanor/waypoint/pull/711) | 2026-08-26 |
@@ -797,6 +798,66 @@ with no layout shift.
   the bidi isolate with the digits. Measured in Chromium at 360 — with the isolate the `~` renders
   at x⁦314⁩ and the `2` at x⁦326⁩ (reads `~23`); without it the `~` is at x⁦336⁩, to the RIGHT of both
   digits (reads `23~`). `approxDuration` owns it so no caller can get it wrong again.
+
+---
+
+## M6c — A position withdraws a claim the clock made
+
+**Kind:** implementation, off a field report on M6b's first real day. **Decides:**
+[ADR-0207](../decisions/0207-a-fix-may-withdraw-a-claim-it-may-not-make-one.md) · **Drawn already:**
+[`a-travel-time-between-two-points-v2.html`](../../mockups/a-travel-time-between-two-points-v2.html)
+**§3d**, which drew all three tiers and was never built · **Note:**
+[2026-08-26](2026-08-26-a-fix-withdraws-the-mark.md).
+
+Owner, twice, from the shipped board: _"the app doesn't recognize that I'm no longer at the last stop
+and close to the next one so it shows me being late… the distance and time should be relative to your
+actual GPS location or else it should be more clear that this doesn't take your real location into
+account."_ They were ⁦200m⁩ from the door, **and the Map tab was drawing their blue dot beside that
+stop's pin at the same moment.**
+
+**M6b was not wrong on its own terms and that is the point.** §AE3 measures the leg between two
+SCHEDULED stops, so the number described the plan correctly. The defect is the **silence**: the app
+had a position, was already using it fifty pixels away, and did not let the surface making a claim
+about the traveller consult it. **The board's own instruction was that this "wants its own ADR" — so
+the ADR is the deliverable alongside the code, not a step that was skipped.**
+
+**The thesis, and it is what keeps the change small:** a fix decides what we may **claim**, never what
+we **estimate**. No route request is ever issued from a position, so ADR-0205 §4's place-keyed cache is
+untouched. Four stances, `unknown` first because it is the default:
+
+| stance      | the fix says           | the surface then                            |
+| ----------- | ---------------------- | ------------------------------------------- |
+| `unknown`   | nothing usable         | reads **exactly** as M6b shipped            |
+| `at-origin` | still at the last stop | **earns** the mark — `עדיין כאן` beside it  |
+| `en-route`  | along the leg          | withdraws it, with nobody pressing anything |
+| `arrived`   | at the next stop       | reports no journey at all                   |
+
+**What the next session needs to know:**
+
+- **Home never prompts** (§3). It calls `request()` only when `permission === 'granted'`, so anyone
+  who has used the Map gets the fix free and anyone who has not is never asked. **A prompt on Home
+  needs its own reason-first card and its own decision** (ADR-0109 §6) — do not add one casually.
+- **`useGeolocation` grew `fixedAt` and `accuracyMeters`.** Both come straight off the browser's
+  `GeolocationPosition`; neither existed because "near me now" answers the instant it asks. The
+  timestamp is the platform's, never stamped on arrival — with `maximumAge` set the browser may hand
+  back an older fix, and re-stamping would call it fresh.
+- **⚠ Two bugs the arithmetic hid, both found by writing the spec and the render rather than by
+  reading the diff.** The radius was `min(accuracy, fraction)`, which let the leg's fraction cap it
+  **below the fix's own error bar** — the exact noise §5 exists to refuse. And `en-route` tested
+  "closer to the destination than the origin", which only fires past the **midpoint**, so somebody a
+  third of the way along kept a mark they had plainly answered. Both are specced now.
+- **⚠ And one the render caught:** the `en-route` line printed the duration twice
+  (`~12 דק׳ · בדרך · נותרו ~12 דק׳`). The bare number is the ambiguity §6 exists to remove, so the
+  labelled one survives and the `duration` slot goes empty on that arm.
+- **Measured at 360:** every action row is 2 lines at ⁦46px⁩ and `עדיין כאן` costs **zero extra
+  lines** — the `--miss` row was already two because of the `בדרך` button. No horizontal overflow.
+- **`בדרך` is reversible now** (§7) — `clearOnWay`, the toast's undo, and `ביטול סימון` on the row
+  because a toast is transient and a mark is not. **M6a inherits that too.**
+- **Two numbers are judgements, not measurements**, and both are on the backlog with §D5's buffer:
+  `ARRIVAL_FRACTION` (0.12) and `ARRIVAL_RADIUS_MAX_M` (⁦2km⁩). They want a real day.
+- **What this does NOT do:** the group still learns nothing from a sensor (ADR-0006 §8 untouched —
+  the position is never persisted or sent), and `near-the-day`'s "better metric" is now one step away
+  but unbuilt.
 
 ---
 

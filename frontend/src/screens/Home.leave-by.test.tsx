@@ -161,6 +161,27 @@ vi.mock('../state/trip-state', () => ({
 
 vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: null }) }));
 
+/** **The fix, at the seam Home reads it from** (ADR-0207 §3). `permission` drives whether Home asks
+ *  at all, so `denied` is how a spec says "this device never granted" — which is the DEFAULT case
+ *  and has to keep reading exactly as it did before ADR-0207. */
+let geoFix: {
+  coords: { lat: number; lng: number };
+  fixedAt: number;
+  accuracyMeters?: number;
+} | null = null;
+const geoRequest = vi.fn();
+vi.mock('../lib/useGeolocation', () => ({
+  useGeolocation: () => ({
+    status: geoFix ? 'granted' : 'denied',
+    coords: geoFix?.coords,
+    fixedAt: geoFix?.fixedAt,
+    accuracyMeters: geoFix?.accuracyMeters,
+    blocked: false,
+    permission: geoFix ? 'granted' : 'denied',
+    request: geoRequest,
+  }),
+}));
+
 const onWay = vi.fn();
 vi.mock('../state/verbs', () => ({
   useVerbs: () => ({ done: vi.fn(), skip: vi.fn(), restore: vi.fn(), onWay }),
@@ -199,6 +220,8 @@ describe('Home — the board counts to the leaving (ADR-0206 §Z1)', () => {
     tripEvents = [];
     tripBookings = [];
     travelSeconds = null;
+    geoFix = null;
+    geoRequest.mockClear();
     onWay.mockClear();
   });
   afterEach(() => {
@@ -331,5 +354,117 @@ describe('Home — the board counts to the leaving (ADR-0206 §Z1)', () => {
     expect(row.classList.contains('on-way')).toBe(true);
     expect(row.textContent).toContain(t.actions.onWay);
     expect(row.textContent).not.toContain('עבר');
+  });
+});
+
+/** **Interpolated between the two REAL stops** above — the museum and the restaurant, ~⁦1.9km⁩
+ *  apart — so `0` is the leg's origin, `1` its destination and `0.75` three quarters along. Built
+ *  from `places` rather than written out, because a hand-typed coordinate that drifts from the
+ *  fixture reads as `unknown` and every stance assertion then passes for the wrong reason (it
+ *  did: the first draft kept another spec's longitude and put the fix ⁦1700km⁩ away). */
+const between = (fraction: number) => {
+  const [from, to] = places;
+  return {
+    lat: from!.lat! + (to!.lat! - from!.lat!) * fraction,
+    lng: from!.lng! + (to!.lng! - from!.lng!) * fraction,
+  };
+};
+const atFraction = (fraction: number, over: Partial<{ accuracyMeters: number }> = {}) => ({
+  coords: between(fraction),
+  fixedAt: Date.parse(NOW),
+  ...over,
+});
+
+describe('Home — a position may withdraw a claim the clock made (ADR-0207)', () => {
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    resetOnWayForTests();
+    tripEvents = [museum, dinner(15)];
+    tripBookings = [];
+    travelSeconds = 20 * 60;
+    geoFix = null;
+    geoRequest.mockClear();
+    onWay.mockClear();
+  });
+  afterEach(() => {
+    cleanup();
+    resetOnWayForTests();
+    setSimulatedNow(null);
+  });
+
+  // **§3 — Home never prompts.** The front door is not an intent to be located, so with no
+  // standing consent nothing is even asked, and the surface reads as it did before ADR-0207.
+  it('does not ask for a position without standing consent, and behaves as before', () => {
+    show();
+    expect(geoRequest).not.toHaveBeenCalled();
+    expect(unit()).toBe(t.board.sinceLeave);
+    expect(tile()?.classList.contains('missed')).toBe(true);
+  });
+
+  // **THE REPORTED BUG.** 200m from the door of the next stop, and the board was calling them
+  // late. The fix answers the leave-by question, so the mark goes — with nobody pressing anything.
+  it('withdraws the late mark when the fix puts them at the destination', () => {
+    geoFix = atFraction(1);
+    show();
+    expect(unit()).toBe('דקות');
+    expect(tile()?.classList.contains('missed')).toBe(false);
+    // Arrived is the one state with nothing to report, so the block goes entirely.
+    fireEvent.click(document.querySelector('.wp-board')!);
+    expect(document.querySelector('.hero-trv')).toBeNull();
+  });
+
+  // Along the leg: the mark goes too, and the line stops claiming the whole walk is still ahead.
+  it('reads as on the way when the fix is along the leg, and reports what is LEFT', () => {
+    geoFix = atFraction(0.75);
+    show();
+    expect(unit()).toBe('דקות');
+    fireEvent.click(document.querySelector('.wp-board')!);
+    const row = document.querySelector('.hero-trv')!;
+    expect(row.classList.contains('on-way')).toBe(true);
+    const text = withoutBidiControls(row.textContent ?? '');
+    expect(text).toContain(t.actions.onWay);
+    // A quarter of a 20-minute walk left, not the twenty — and the number appears ONCE, labelled.
+    // Rendering the first build showed it twice (`~12 דק׳ · בדרך · נותרו ~12 דק׳`), and a bare
+    // number on this row reads as the leg's length, which is what §6 exists to stop.
+    expect(text).toContain('נותרו');
+    expect(text).not.toContain('~20 דק׳');
+    expect(text.match(/נותרו/g)).toHaveLength(1);
+    expect(text.match(/דק׳/g)).toHaveLength(1);
+  });
+
+  // **The one arm that makes the app louder, and the one that earns it** (§2). A fix at the
+  // origin turns a claim about a clock into one the app has checked.
+  it('EARNS the mark when the fix says they are still at the previous stop', () => {
+    geoFix = atFraction(0);
+    show();
+    expect(unit()).toBe(t.board.sinceLeave);
+    expect(tile()?.classList.contains('missed')).toBe(true);
+    fireEvent.click(document.querySelector('.wp-board')!);
+    const row = document.querySelector('.hero-trv')!;
+    expect(row.classList.contains('miss')).toBe(true);
+    expect(row.querySelector('.hero-trv-here')?.textContent).toContain(t.hero.stillHere);
+    // Still only ever a claim about the clock and the place, never about the person.
+    expect(row.textContent).not.toContain('באיחור');
+  });
+
+  // **§4 — a stale fix is worse than no fix.** Twenty minutes old at the origin would EARN a mark
+  // for somebody who left fifteen minutes ago, which is a hedge turned into an assertion.
+  it('ignores a stale fix rather than earning a mark from it', () => {
+    geoFix = { coords: between(0), fixedAt: Date.parse(NOW) - 20 * 60_000 };
+    show();
+    expect(unit()).toBe(t.board.sinceLeave);
+    fireEvent.click(document.querySelector('.wp-board')!);
+    expect(document.querySelector('.hero-trv-here')).toBeNull();
+  });
+
+  // §7 — the mark is reversible now, and the way back is on the row rather than only in a toast.
+  it('offers a way back once somebody has said בדרך', () => {
+    markOnWay('t1', 'dinner');
+    show();
+    fireEvent.click(document.querySelector('.wp-board')!);
+    expect(screen.getByRole('button', { name: t.actions.undoSettle })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: t.actions.undoSettle }));
+    // Cleared, so the leave read comes back — the mark was not a one-way door.
+    expect(unit()).toBe(t.board.sinceLeave);
   });
 });

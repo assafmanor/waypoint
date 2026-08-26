@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { isOnWay, markOnWay, resetOnWayForTests } from './on-way';
+import { clearOnWay, isOnWay, markOnWay, resetOnWayForTests } from './on-way';
 import { setSimulatedNow } from './useClock';
 
 const NOW = Date.parse('2026-08-26T14:00:00Z');
@@ -56,5 +56,27 @@ describe('בדרך as state (ADR-0206 §Z5 §M4)', () => {
     localStorage.setItem('wp_on_way', 'not json');
     expect(() => isOnWay('trip', 'dinner')).not.toThrow();
     expect(isOnWay('trip', 'dinner')).toBe(false);
+  });
+
+  // **ADR-0207 §7.** The first build only ever SET — reported by the owner, and out of family with
+  // every other state-writing verb in the app, all of which pass an undo to the toast.
+  it('can be taken back, and the reversal persists like the mark did', () => {
+    markOnWay('trip', 'dinner');
+    clearOnWay('trip', 'dinner');
+    expect(isOnWay('trip', 'dinner')).toBe(false);
+    expect(localStorage.getItem('wp_on_way')).not.toContain('trip:dinner');
+  });
+
+  it('clears only the leg it was asked about', () => {
+    markOnWay('trip', 'dinner');
+    markOnWay('trip', 'museum');
+    clearOnWay('trip', 'dinner');
+    expect(isOnWay('trip', 'dinner')).toBe(false);
+    expect(isOnWay('trip', 'museum')).toBe(true);
+  });
+
+  it('clearing something unmarked is a no-op rather than a write', () => {
+    expect(() => clearOnWay('trip', 'never-marked')).not.toThrow();
+    expect(isOnWay('trip', 'never-marked')).toBe(false);
   });
 });

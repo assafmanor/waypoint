@@ -82,6 +82,24 @@ export function markOnWay(tripId: string, eventId: string): void {
   emit();
 }
 
+/** **Take it back** (ADR-0207 §7). `markOnWay` only ever set, and the verb toasted without an undo
+ *  callback while `done`, `skip` and `restore` all pass one — so the app's one device-local mark was
+ *  also the one state-writing verb with no way out of it, reported by the owner in as many words.
+ *  ADR-0019 makes the toast's undo button *the* way undo surfaces, and this is what it calls. */
+export function clearOnWay(tripId: string, eventId: string): void {
+  const key = markKey(tripId, eventId);
+  if (all()[key] === undefined) return;
+  const next = { ...all() };
+  delete next[key];
+  marks = next;
+  try {
+    localStorage.setItem(ON_WAY_STORAGE_KEY, JSON.stringify(marks));
+  } catch {
+    // The in-memory clear stands for this session, which is what the press asked for.
+  }
+  emit();
+}
+
 /** Synchronous, so the derivation that decides what the tile says can ask it inline. */
 export function isOnWay(tripId: string, eventId: string): boolean {
   return all()[markKey(tripId, eventId)] !== undefined;

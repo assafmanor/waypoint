@@ -767,6 +767,15 @@ keeping its own record.
 
 ### AE3. The journey's ORIGIN is the previous SCHEDULED stop, never a guess about where anyone is
 
+> **Superseded in part by [ADR-0207](0207-a-fix-may-withdraw-a-claim-it-may-not-make-one.md)
+> (2026-08-26), on a field report the next morning.** Everything below still describes how the leg is
+> MEASURED — between two scheduled stops, which is a fact about the plan. What changed is what the
+> surface may then CLAIM about it: with a device position the mark can be withdrawn (`en-route`,
+> `arrived`) or earned (`at-origin`), and without one this section's behaviour is exactly what still
+> ships. The owner stood ⁦200m⁩ from the door while the board called the leave-by passed, and the Map
+> tab was drawing their blue dot beside that stop's pin at the same moment: **the arithmetic here was
+> right and the silence was the defect.**
+
 The ADR says the travel time belongs between two points (§D2) and never says which two when nothing
 is in progress — and a gap is most of a real day, so the question is not an edge case.
 

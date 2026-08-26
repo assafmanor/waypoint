@@ -80,8 +80,10 @@ import {
 } from '../lib/glance';
 import { deriveHeroBooking } from '../lib/hero-booking';
 import { LEAVE_PHASE, heroLeaveBy, travelOrigin } from '../lib/hero-travel';
+import { TRAVEL_STANCE, remainingTravelSeconds, travelStance } from '../lib/travel-position';
+import { useGeolocation } from '../lib/useGeolocation';
 import { useDayTravel } from '../lib/travel';
-import { useOnWay } from '../lib/on-way';
+import { clearOnWay, useOnWay } from '../lib/on-way';
 import { canLift, heroHorizon, type HeroPoint } from '../lib/hero-horizon';
 import { BEAT, playBeat } from '../lib/one-shot';
 import {
@@ -508,10 +510,48 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         nowMs,
       })
     : null;
-  // **Somebody said `בדרך`** (§Z5 §M4) — the one thing on this screen that knows what a sensor
-  // would, because a person said it. It withdraws the whole leave read: once they are moving,
-  // counting to a departure they have already made is the wrong question.
+  // **Somebody said `בדרך`** (§Z5 §M4) — a person telling the app what it should have been able
+  // to see. It withdraws the whole leave read: once they are moving, counting to a departure they
+  // have already made is the wrong question. It stays the floor, and ADR-0207 is the ceiling.
   const onWayToNext = useOnWay(trip.id, shownNext?.id);
+
+  // ── WHAT A DEVICE POSITION LETS THIS SURFACE CLAIM (ADR-0207) ──────────────
+  // Reported twice from a real day: the board said the leave-by had passed while the owner stood
+  // ⁦200m⁩ from the door of the next stop, and the Map tab was drawing their blue dot beside that
+  // stop's pin at the same moment. The arithmetic was right about the PLAN and wrong about the
+  // world, and the app had the answer one tab over.
+  //
+  // **Requested only where consent already exists, so Home never prompts** (§3). `permission`
+  // exists for exactly this: the front door is not an intent to be located, so anyone who has
+  // used the Map gets the fix free and anyone who has not sees today's behaviour and is never
+  // asked. A prompt here would need its own reason-first card (ADR-0109 §6) and its own decision.
+  const geo = useGeolocation();
+  useEffect(() => {
+    if (geo.permission === 'granted' && geo.status === 'idle') geo.request();
+  }, [geo]);
+  // **A fix decides what we may CLAIM, and is never an input to an estimate** (§1) — no request
+  // is issued from a position, so ADR-0205 §4's place-keyed cache is untouched.
+  const stance = travelLeg
+    ? travelStance({
+        fix:
+          geo.coords && geo.fixedAt !== undefined
+            ? {
+                coords: geo.coords,
+                fixedAt: geo.fixedAt,
+                ...(geo.accuracyMeters !== undefined ? { accuracyMeters: geo.accuracyMeters } : {}),
+              }
+            : undefined,
+        from: travelLeg.from,
+        to: travelLeg.to,
+        nowMs,
+      })
+    : null;
+  // **`arrived` and `en-route` answer the leave-by question, so the mark goes** — automatically,
+  // with nobody having to press anything (v2 §3d's _"נענה מעצמו"_). `at-origin` is the one arm
+  // that makes the app LOUDER, and it is the one that earns it. `unknown` changes nothing.
+  const positionAnswered =
+    stance?.stance === TRAVEL_STANCE.ARRIVED || stance?.stance === TRAVEL_STANCE.EN_ROUTE;
+  const leaveAnswered = onWayToNext || positionAnswered;
 
   const progress = Math.round(dayProgress(now, tz) * 100);
   // Board countdown: minutes/hours while the next event is under a day out; past
@@ -541,7 +581,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // `at` rides along because the collision below compares the two CANDIDATES rather than the
   // words they print, and a formatted `H:MM` cannot be compared to a minute count.
   const leaveTile =
-    leave && !onWayToNext && leave.phase !== LEAVE_PHASE.AHEAD
+    leave && !leaveAnswered && leave.phase !== LEAVE_PHASE.AHEAD
       ? {
           at: leave.minutesToLeave,
           countdown:
@@ -598,26 +638,58 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
    *  (`זמן היציאה עבר ב־18:37`), never `אתם באיחור`: the app has no sensor, a settle mark is not
    *  one, and own-device position wants its own ADR before this surface reads it (§Z5 §M4). */
   const leaveClock = leave ? ltrIsolate(formatTime(new Date(leave.leaveByMs), tz)) : '';
+  // **§6 — what is LEFT, once the fix says you are on the way.** Scaled by the remaining crow
+  // fraction rather than re-routed (§1), and `~` is what says it is an approximation. The
+  // alternative was the untouched total, which read as "44 minutes still to walk" two minutes
+  // from the door — not more honest but less, because it was confidently wrong.
+  const remainingSeconds = stance
+    ? remainingTravelSeconds(stance, travelEstimate?.durationSeconds ?? null)
+    : null;
+  const enRoute = stance?.stance === TRAVEL_STANCE.EN_ROUTE || onWayToNext;
   const heroTravel: HeroLiftTravel | undefined =
-    leave && travelEstimate
+    // **Arrived is the one state with nothing to report**, so the block goes entirely rather
+    // than saying something quieter about a journey that is over (§2, §D4).
+    leave && travelEstimate && stance?.stance !== TRAVEL_STANCE.ARRIVED
       ? {
           // **The mode leads, as the M3 mockup drew it** — §D10's noun-first dodge, and the thing
           // that makes the number mean anything: 40 minutes is a different fact walking and
           // driving. The mode is DERIVED (§Z2), so naming it claims nothing a control has to
           // back; §AA3's three icons are the control's, and M8's.
           mode: t.travelMode[travelMode],
-          duration: approxDuration(travelEstimate.durationSeconds / 60) ?? undefined,
-          leave: onWayToNext
-            ? t.actions.onWay
+          // **En route the duration slot goes empty**, and that is a correction caught by
+          // rendering: printing the remaining time here AND in the labelled run below put the
+          // same number on the line twice (`~12 דק׳ · בדרך · נותרו ~12 דק׳`). The bare number is
+          // also the exact ambiguity §6 exists to remove — unlabelled, it reads as the leg's
+          // length — so the labelled one is the one that survives.
+          duration: enRoute
+            ? undefined
+            : (approxDuration(travelEstimate.durationSeconds / 60) ?? undefined),
+          leave: enRoute
+            ? remainingSeconds !== null
+              ? `${t.actions.onWay} · ${t.hero.remaining(approxDuration(remainingSeconds / 60) ?? '')}`
+              : t.actions.onWay
             : leave.phase === LEAVE_PHASE.PASSED
               ? t.hero.leavePassed(leaveClock)
               : t.hero.leaveAt(leaveClock),
-          tone: onWayToNext ? 'on-way' : leave.phase === LEAVE_PHASE.PASSED ? 'miss' : 'time',
-          // The mark's own answer, offered where the mark is drawn — a nudge you have to change
-          // tabs to dismiss is a nudge that stays on screen.
-          ...(shownNext && !onWayToNext && leave.phase === LEAVE_PHASE.PASSED
-            ? { onOnWay: () => verbs.onWay(shownNext) }
+          tone: enRoute ? 'on-way' : leave.phase === LEAVE_PHASE.PASSED ? 'miss' : 'time',
+          // **`עדיין כאן` — the app saying it CHECKED**, and the only claim a position licenses
+          // that the clock could not (§2). Only where the fix actually puts them at the origin.
+          ...(stance?.stance === TRAVEL_STANCE.AT_ORIGIN && leave.phase === LEAVE_PHASE.PASSED
+            ? { located: t.hero.stillHere }
             : {}),
+          // One control, and the tone decides what it does: answer the mark, or take back a mark
+          // you set. A nudge you must change tabs to dismiss is a nudge that stays on screen, and
+          // a mark with no way out was the second half of the same report (§7).
+          ...(shownNext && onWayToNext
+            ? {
+                action: {
+                  label: t.actions.undoSettle,
+                  onPress: () => clearOnWay(trip.id, shownNext.id),
+                },
+              }
+            : shownNext && !enRoute && leave.phase === LEAVE_PHASE.PASSED
+              ? { action: { label: t.actions.onWay, onPress: () => verbs.onWay(shownNext) } }
+              : {}),
         }
       : undefined;
 

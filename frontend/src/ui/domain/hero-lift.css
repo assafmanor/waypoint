@@ -488,3 +488,20 @@
   min-height: 30px;
   font-size: 12px;
 }
+/* **What the fix adds** (ADR-0207 §2) — `📍 עדיין כאן` beside a passed leave-by. Teal, because
+   where-you-are is the only thing rule 4 spends teal on, and it sits INSIDE a `--miss` row on
+   purpose: the two are different claims (the clock passed · you are still here), and the mark
+   they justify together is the row's own. Absent whenever the position settles nothing, which is
+   the default. */
+.hero-trv-here {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  color: #7fd8cc;
+  font-weight: 700;
+}
+.hero-trv-here .icon {
+  width: 12px;
+  height: 12px;
+}

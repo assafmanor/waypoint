@@ -193,11 +193,16 @@ export interface HeroLiftTravel {
    *  `.nowline` is it (§D6). `on-way` is teal, because somebody said they are moving and that
    *  is a location claim (rule 4, ADR-0141's journey grammar). */
   tone: 'time' | 'miss' | 'on-way';
-  /** **The answer to the mark** (§Z5 §M4) — `בדרך`, the verb the app has shipped since
-   *  ADR-0161 and which wrote nothing until §V1.4 gave it a reason to be state. Present only
-   *  on `miss`: drawing the mark with no way to withdraw it would send a reader one tab over
-   *  to dismiss a nudge. */
-  onOnWay?: () => void;
+  /** **What a device position adds, when there is one** (ADR-0207 §2) — `עדיין כאן` beside a
+   *  passed leave-by, which is the app saying it checked rather than assumed. Absent is the
+   *  common case and the default: no permission, a refusal, a stale fix, or a position that
+   *  settles nothing all read exactly as this surface read before ADR-0207. */
+  located?: string;
+  /** **The one control on the line**, and the tone decides what it means: `בדרך` on `miss`
+   *  (answer the mark), `ביטול סימון` on `on-way` (take it back — ADR-0207 §7, because a toast
+   *  is transient and a mark is not). A label rather than two named callbacks, so the host owns
+   *  the word and this component owns the chip. */
+  action?: { label: string; onPress: () => void };
 }
 
 export interface HeroLiftProps {
@@ -580,10 +585,20 @@ function TravelBetween({ travel }: { travel: HeroLiftTravel }) {
               </span>
             ))}
         </span>
-        {travel.onOnWay && (
-          <button type="button" className="hero-act loc hero-trv-act" onClick={travel.onOnWay}>
+        {travel.located && (
+          <span className="hero-trv-here">
+            <Icon name="pin" />
+            {travel.located}
+          </span>
+        )}
+        {travel.action && (
+          <button
+            type="button"
+            className="hero-act loc hero-trv-act"
+            onClick={travel.action.onPress}
+          >
             <Icon name="navigate" />
-            {t.actions.onWay}
+            {travel.action.label}
           </button>
         )}
       </div>

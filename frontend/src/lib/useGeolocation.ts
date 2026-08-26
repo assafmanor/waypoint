@@ -37,6 +37,17 @@ export interface Geolocation {
   status: GeoStatus;
   /** The last fix, kept while the screen lives. Absent unless `status` is granted. */
   coords?: LatLng;
+  /** **When that fix was taken**, and it is not bookkeeping (ADR-0207 §4). This hook is
+   *  one-shot by design and holds its answer for the life of the screen, so the honest reading
+   *  of the capability is "where you were when you last opened it" — never "where you are". A
+   *  consumer that makes a CLAIM about the traveller has to be able to expire the fix, because
+   *  a twenty-minute-old position at the leg's origin would earn a late mark for somebody who
+   *  left fifteen minutes ago. "Near me now" never needed it: it answers the instant it asks. */
+  fixedAt?: number;
+  /** **The fix's own error bar, in metres**, where the platform reports one. ADR-0207 §5 floors
+   *  its arrival radius on this: a radius smaller than the accuracy is measuring noise, and it
+   *  would flicker between stances while the traveller stood still. */
+  accuracyMeters?: number;
   /** The permission is *hard*-denied, so a retry cannot re-prompt — the UI must
    *  say "allow it in your browser settings" rather than offer a dead button. */
   blocked: boolean;
@@ -54,6 +65,10 @@ const queryable = () => typeof navigator !== 'undefined' && !!navigator.permissi
 export function useGeolocation(): Geolocation {
   const [status, setStatus] = useState<GeoStatus>('idle');
   const [coords, setCoords] = useState<LatLng | undefined>();
+  // Held beside the fix rather than derived, because both are properties OF the fix: a
+  // re-request replaces all three together or none of them.
+  const [fixedAt, setFixedAt] = useState<number | undefined>();
+  const [accuracyMeters, setAccuracyMeters] = useState<number | undefined>();
   const [blocked, setBlocked] = useState(false);
   // Seeded synchronously, so a caller never mistakes "no API here" for "still
   // loading" — the two lead to different decisions.
@@ -111,6 +126,13 @@ export function useGeolocation(): Geolocation {
       (position) => {
         if (!alive.current) return;
         setCoords({ lat: position.coords.latitude, lng: position.coords.longitude });
+        // `position.timestamp` is the platform's own, not ours: with `maximumAge` set the
+        // browser may hand back a fix it took earlier, and stamping it on arrival would call
+        // that cached position fresh.
+        setFixedAt(position.timestamp);
+        setAccuracyMeters(
+          Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : undefined,
+        );
         setBlocked(false);
         setPermission('granted');
         setStatus('granted');
@@ -126,5 +148,5 @@ export function useGeolocation(): Geolocation {
     );
   }, []);
 
-  return { status, coords, blocked, permission, request };
+  return { status, coords, fixedAt, accuracyMeters, blocked, permission, request };
 }

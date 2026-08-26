@@ -54,7 +54,7 @@ import {
   type OutboxOp,
 } from '../lib/outbox';
 import { generateId } from '../lib/id';
-import { markOnWay } from '../lib/on-way';
+import { clearOnWay, markOnWay } from '../lib/on-way';
 import { getNow } from '../lib/useClock';
 import { eventDisplayZones } from '../lib/places';
 import { ideaCategory, ideaGlyph } from '../lib/shelf';
@@ -1369,9 +1369,13 @@ export function useVerbs() {
     // **A DEVICE mark, and the toast now says so.** The group-visible answer is a stored field
     // plus a migration plus a cache mirror (backlogged); this is the whole of what the mark
     // needs and it claims nothing the app does not do.
+    //
+    // **And it is reversible** (ADR-0207 §7), which it was not: the first build wrote a mark with
+    // no way back, reported by the owner. The undo is this verb's own rather than `applyUndo` —
+    // that one reverses the last OUTBOX write, and a device mark never enters the outbox.
     onWay: (e: TripEvent) => {
       markOnWay(trip.id, e.id);
-      toast(CONTROL_ICON.navigate, t.toast.onWayMarked);
+      toast(CONTROL_ICON.navigate, t.toast.onWayMarked, () => clearOnWay(trip.id, e.id));
     },
     // Place a shelf idea onto a day. With `fields` (from the builder's
     // EventForm picker) the user chose the day/time/kind; without them it's the

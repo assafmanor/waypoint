@@ -1979,6 +1979,15 @@ export const t = {
     // about where a person is would be a claim it cannot stand behind (§D5 applied to a
     // sentence rather than to a number).
     leavePassed: (clock: string) => `זמן היציאה עבר ב־${clock}`,
+    // **The one thing a fix lets the app say that the clock could not** (ADR-0207 §2). A passed
+    // leave-by was a claim about a clock; with a position at the leg's first stop it becomes one
+    // the app has actually checked, and this is that check said out loud. Drawn in the v2
+    // mockup's §3d. It is still not `אתם באיחור` — it reports where you are, not what you are.
+    stillHere: 'עדיין כאן',
+    // What is LEFT of the journey, once the fix says you are on it (§6). An approximation of an
+    // approximation, and `~` is what says so; the alternative was the untouched total, which read
+    // as "44 minutes still to walk" two minutes from the door.
+    remaining: (duration: string) => `נותרו ${duration}`,
   },
   // Real, offline-safe shortcuts only (ADR-0045): next confirmation code, WiFi,
   // documents. Empty tiles are an "add" affordance; documents stays a fixture
