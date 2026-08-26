@@ -358,10 +358,12 @@ describe('PlanDay — the day starts where the day started', () => {
   // reported a journey nobody can make. Trip mode has omitted it since ADR-0206 §AD.
   it('states when to leave for a stop that is before the check-out', () => {
     show();
-    const block = document.querySelector('.day-trv');
-    expect(block).toBeTruthy();
-    expect(block!.textContent).not.toContain(t.travel.noTimeForTravel);
-    expect(block!.textContent).toContain('יציאה');
+    // Across ALL the day's blocks, not `.first()`: the fixture also carries the midnight hire, so
+    // the drive that brought you to the bed is a block of its own above the stay row.
+    const blocks = [...document.querySelectorAll('.day-trv')].map((b) => b.textContent ?? '');
+    expect(blocks.length).toBeGreaterThan(0);
+    expect(blocks.some((b) => b.includes(t.travel.noTimeForTravel))).toBe(false);
+    expect(blocks.some((b) => b.includes('יציאה'))).toBe(true);
   });
 
   // RED against `main`: the pickup row sat below the bed, so the day read "wake at the hotel,
@@ -375,5 +377,139 @@ describe('PlanDay — the day starts where the day started', () => {
     expect(titles.indexOf('Iceland Car Rental')).toBeLessThan(
       titles.indexOf('The Hill Hotel at Fludir'),
     );
+  });
+});
+
+// **THE LAST LEG OF DAY 1** (ADR-0206 §AJ1), reported off the §AI deploy: the flight lands at 23:20
+// and the hotel checked into that night opens `מ-15:00`, so the fit measured the 1:42 drive against
+// a deadline **eight hours behind its own origin** and said `אין זמן לדרך` about the one leg of the
+// day nobody can be late for. The owner's own framing — _"we're checking in technically the day
+// after check in day, at like 2am"_ — is the shape: an open floor is not a deadline.
+describe('PlanDay — the drive into tonight’s hotel cannot be impossible', () => {
+  const hotelPlace: Place = {
+    id: 'p-hotel',
+    tripId: 't1',
+    name: 'מלון',
+    lat: 40.86,
+    lng: 14.24,
+    createdAt: `${DAY}T00:00:00Z`,
+    updatedAt: `${DAY}T00:00:00Z`,
+    updatedBy: 'u1',
+  };
+  /** Checked in TODAY and out tomorrow, so this day's bookend is `sleeps`. Its `startsAt` is the
+   *  desk's opening hour, which is the bound the fit was reading as a deadline. */
+  const stay = ev('stay', {
+    title: 'Gissurarbúð 5',
+    category: 'lodging',
+    placeId: 'p-hotel',
+    date: DAY,
+    endDate: '2026-08-04',
+    startsAt: `${DAY}T15:00:00Z`,
+    endsAt: '2026-08-04T09:00:00Z',
+  });
+  /** The day's last row: a flight landing well after the desk opened. */
+  const landing = ev('landing', {
+    title: 'קפלאוויק ← וינה',
+    category: 'transport',
+    kind: EVENT_KIND.HARD,
+    placeId: 'p-theatre',
+    startsAt: `${DAY}T18:40:00Z`,
+    endsAt: `${DAY}T23:20:00Z`,
+  });
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(`${DAY}T09:00:00Z`));
+    tripEvents = [stay, landing];
+    tripPlaces = [...places, hotelPlace];
+    travelSeconds = 102 * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  // RED against `main`.
+  it('says when you will get there instead of refusing the drive', () => {
+    show();
+    const block = document.querySelector('.day-trv');
+    expect(block).toBeTruthy();
+    expect(block!.textContent).not.toContain(t.travel.noTimeForTravel);
+    expect(block!.textContent).toContain('הגעה');
+  });
+});
+
+// **THE DRIVE THAT BROUGHT YOU TO THE BED** (owner, 2026-08-26: _"it should also show the way from
+// the car rental to the hotel, right?"_). ADR-0054's amendment refused it that morning because a leg
+// into a check-in FLOOR read `אין זמן לדרך`; §AJ1 removed that, so the leg is drawn and says the one
+// thing it can.
+describe('PlanDay — the drive from the pickup into the bed', () => {
+  const hotelPlace: Place = {
+    id: 'p-hotel',
+    tripId: 't1',
+    name: 'מלון',
+    lat: 40.86,
+    lng: 14.24,
+    createdAt: `${DAY}T00:00:00Z`,
+    updatedAt: `${DAY}T00:00:00Z`,
+    updatedBy: 'u1',
+  };
+  /** Woke here: checked in yesterday, out this morning. */
+  const stay = ev('stay', {
+    title: 'Gissurarbúð 5',
+    category: 'lodging',
+    placeId: 'p-hotel',
+    date: '2026-08-02',
+    endDate: DAY,
+    startsAt: '2026-08-02T13:00:00Z',
+    endsAt: `${DAY}T11:00:00Z`,
+  });
+  /** Collected at midnight — a floor, so it reads above the bed (ADR-0054). Its `endsAt` is the
+   *  RETURN, nine days out, which is why the leg carries the edge's own instant instead. */
+  const hire = ev('hire', {
+    title: 'Iceland Car Rental',
+    category: 'transport',
+    icon: '🚗',
+    placeId: 'p-lunch',
+    date: DAY,
+    endDate: '2026-08-12',
+    startsAt: `${DAY}T00:00:00Z`,
+    endsAt: '2026-08-12T08:00:00Z',
+  });
+  const falls = ev('falls', {
+    title: 'Háifoss',
+    placeId: 'p-theatre',
+    startsAt: `${DAY}T09:00:00Z`,
+    endsAt: `${DAY}T10:00:00Z`,
+  });
+
+  beforeEach(() => {
+    // Before the drive itself, so the block is the AHEAD arm rather than a record of last night.
+    setSimulatedNow(Date.parse(`${DAY}T00:05:00Z`));
+    tripEvents = [stay, hire, falls];
+    tripPlaces = [...places, hotelPlace];
+    travelSeconds = 31 * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  it('says the arrival rather than refusing the drive', () => {
+    show();
+    const blocks = [...document.querySelectorAll('.day-trv')].map((b) => b.textContent ?? '');
+    expect(blocks.some((b) => b.includes('הגעה'))).toBe(true);
+    expect(blocks.some((b) => b.includes(t.travel.noTimeForTravel))).toBe(false);
+  });
+
+  // The whole reason the leg carries `departAfterMs`: read off the hire's own `endsAt` the arrival
+  // would be nine days out, and off its `startsAt` via `endsAt ?? startsAt` it would never be read.
+  it('measures it from the pickup instant, not the hire’s return', () => {
+    show();
+    const arrival = [...document.querySelectorAll('.day-trv')]
+      .map((b) => b.textContent ?? '')
+      .find((b) => b.includes('הגעה'))!;
+    // ⁦00:00⁩Z + ⁦31⁩ min, printed in the day's own zone (`Europe/Rome`, so ⁦02:31⁩) — the fixture's zone
+    // rather than UTC, which is the whole point of reading a clock through `formatTime`.
+    expect(arrival).toContain('02:31');
   });
 });

@@ -153,6 +153,20 @@ from a bound the app invented is the whole of
 hotel really happened, and the app cannot say when — so it says the two rows in the right order and
 nothing about the road between them.
 
+**REVERSED the same day — the block is drawn, and this paragraph was a workaround for a bug.** Owner,
+within the hour: _"btw it should also show the way from the car rental to the hotel, right?"_ Yes. The
+reasoning above accurately describes what [ADR-0206](0206-a-travel-time-belongs-between-two-points.md)
+§AI's code did to a leg into a check-in floor (`אין זמן לדרך`, measured against a deadline eight hours
+behind its own origin) and it is not a reason to withhold a row. §AJ1 makes a floor a non-deadline, so
+the leg says the one thing it can — `הגעה ~00:31` — which is what somebody landing at midnight wants
+to know. What it needs that no other leg did is on `DayLeg`: the **edge's** own instant, because a
+hire's `endsAt` is its return nine days out, and which **end** of the span it leaves from, because a
+pickup's place is the span's origin where a landing's is its destination.
+
+**The transferable half:** a design decision whose only argument is "the derivation cannot express
+this" is a bug report wearing a decision's clothes. This one was written as `deliberately` and read as
+settled for six hours.
+
 **And the label was not wrong.** The same report asked why the pin read `צ׳ק-אאוט` rather than
 `לינת לילה`. It is a one-night stay, so that day **is** the check-out day and `צ׳ק-אאוט` is the true
 word; `לינת לילה` belongs to a strictly middle night, which this day is not. Nothing changed there.

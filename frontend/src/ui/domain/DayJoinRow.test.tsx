@@ -328,3 +328,64 @@ describe('dayJourney — a hop too short to be a journey', () => {
     ).toBeNull();
   });
 });
+
+// **THE TWO SENTENCES, AND WHEN EACH IS SAID** (ADR-0206 §AI, amended 2026-08-26).
+//
+// Owner, off the deploy: _"why does it sometimes say יציאה ב and some other times הגעה ב? Don't we
+// prefer consistency?"_ — and they were reading THREE situations wearing two sentences. The
+// amendment makes the split mean something a reader can act on: `יציאה` wherever the app has a
+// deadline to advise against, the arrival beside it where the buffer had to be given up, and the
+// arrival ALONE only where there is no deadline at all.
+describe('JourneyRow — a departure, an arrival, or both (ADR-0206 §AI)', () => {
+  afterEach(() => cleanup());
+
+  const AT = (hhmm: string) => Date.parse(`2026-07-12T${hhmm}:00Z`);
+  const meta = (journey: ReturnType<typeof dayJourney>) => {
+    render(<JourneyRow journey={journey!} travelMode={TRAVEL_MODE.DRIVING} tz="UTC" />);
+    return document.querySelector('.day-trv-meta')?.textContent ?? '';
+  };
+
+  it('says the departure alone where the buffer fits', () => {
+    const line = meta(
+      dayJourney({
+        departAfterMs: AT('12:00'),
+        arriveByMs: AT('14:40'),
+        travelSeconds: 40 * 60,
+        nowMs: AT('12:10'),
+      }),
+    );
+    expect(line).toContain('יציאה');
+    expect(line).not.toContain('הגעה');
+  });
+
+  // The reported row: a 60-minute hole, a 59-minute drive, a hard ⁦15:00⁩ start. The drive fits and
+  // the BUFFER does not, so the departure is the origin's own end and the arrival says why.
+  it('says both where the departure had to be pulled forward', () => {
+    const line = meta(
+      dayJourney({
+        departAfterMs: AT('14:00'),
+        arriveByMs: AT('15:00'),
+        travelSeconds: 59 * 60,
+        nowMs: AT('09:00'),
+      }),
+    );
+    expect(line).toContain('יציאה');
+    expect(line).toContain('הגעה');
+    // The clamp is the origin's end, not the buffered ⁦13:56⁩ §AI2 refused to print.
+    expect(line).toContain('14:00');
+  });
+
+  it('says the arrival alone where there is no deadline at all', () => {
+    const line = meta(
+      dayJourney({
+        departAfterMs: AT('23:20'),
+        arriveByMs: AT('15:00'),
+        travelSeconds: 40 * 60,
+        nowMs: AT('09:00'),
+        flexibleArrival: true,
+      }),
+    );
+    expect(line).toContain('הגעה');
+    expect(line).not.toContain('יציאה');
+  });
+});

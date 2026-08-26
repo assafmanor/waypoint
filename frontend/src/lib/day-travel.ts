@@ -36,6 +36,19 @@ export interface DayLeg {
    *  hole's start measures a window from next Wednesday. Carried on the leg because it is a fact
    *  about the leg's shape, not about its event. */
   bookend?: boolean;
+  /** **Which END of a span this leg leaves from** (2026-08-26) — set only where the origin is a
+   *  span EDGE rather than a whole row, which today means the overnight run above the bed: you
+   *  collected the car at ⁦00:00⁩ and drove to the hotel.
+   *
+   *  It exists because the endpoint question inverts. `endpointPlaceId(from, 'leaving')` answers
+   *  "where did this row leave you" and for transport that is the DESTINATION — right for a flight
+   *  you got off, wrong for a hire you just picked up, whose place is its origin. A pickup and a
+   *  return at the same counter hides this completely, which is exactly the trip it was found on. */
+  fromEdge?: 'start' | 'end';
+  /** **When this leg may leave**, where the origin's own `endsAt` is not it. A span's `endsAt` is
+   *  its RETURN — ten days out on a car hire — so a leg off its pickup edge has to carry the edge's
+   *  own placed instant or it measures the drive to the hotel from next week. */
+  departAfterMs?: number;
 }
 
 export interface DayTravelReads {
@@ -103,7 +116,13 @@ export function useDayTravelReads(opts: {
     const byRows = new Map<string, { from: LatLng; to: LatLng }>();
     const stops: LatLng[] = [];
     for (const leg of legs) {
-      const fromId = endpointPlaceId(leg.from, bookings, 'leaving');
+      // A leg off a span's START edge leaves from that span's ORIGIN — the counter you collected
+      // the car at, not the one you will return it to. See `DayLeg.fromEdge`.
+      const fromId = endpointPlaceId(
+        leg.from,
+        bookings,
+        leg.fromEdge === 'start' ? 'arriving' : 'leaving',
+      );
       const toId = endpointPlaceId(leg.to, bookings, 'arriving');
       const from = coordOf(places, fromId);
       const to = coordOf(places, toId);

@@ -1321,6 +1321,9 @@ The clamp is the honest one: a leave-by at or before the origin's end is **not**
 number is not the question, the sentence is: state nothing, or state the arrival (as AI1 does), or
 say the departure is the previous row's own end.
 
+**ANSWERED 2026-08-26 in §AJ2, by the third of the three options** — and the build took the first
+one, which the owner then reported as an inconsistency. See §AJ.
+
 ### AI3. What this does not change
 
 `heroLeaveBy`'s arms, the buffer, §Z1's swap threshold and §V1.4's late mark are all untouched: a
@@ -1349,3 +1352,97 @@ a 45-minute hole holding a 40-minute walk — was still silent in Trip mode, whi
 `prevEnd` and had been drawing it all along**: the two day surfaces disagreeing about a fact, which
 ADR-0159 §1 forbids and ADR-0171 §10e already repaired once. `JoinRow` takes a nullable join now, and
 a journey renders whether or not the hole earned a join.
+
+## AJ. §AI's third round — a floor is not a deadline, and a clamped departure is one the app may state (2026-08-26)
+
+Three reports off the §AI/ADR-0209 deploy. The first is a defect §AI shipped; the second closes the
+question §AI2 deliberately left open, and closes it the other way from how the build guessed; the
+third un-refuses a row ADR-0054 had refused the same morning, because §AJ1 removes its reason.
+
+### AJ1. An open floor is a deadline the app does not have
+
+> _"It shipped but with a bug on the day prior to the car rental … we're checking in technically the
+> day after check in day, at like 2am and also after the car rental at 00:00."_
+
+Day 1 of the trip: the last flight lands at `23:20` and the hotel checked into that night opens
+`מ-15:00`. The fit measured the 1:42 drive against **15:00 the same morning** — a deadline eight
+hours behind its own origin — so the one leg of the day nobody can be late for read `אין זמן לדרך`.
+
+**§AI got the leave-by right and left the FIT keyed on the opening whenever there was no close.** The
+line was written down at the time as _"a floor with no close keeps the opening, which is all the app
+knows about it"_, and the opening is precisely the half a floor says you may arrive **after**. The
+same sentence in `windowClosesMs`' own docblock — _"absent on an open floor, which can be missed by
+nothing"_ — was already the counter-argument, one function away.
+
+So the two ideas are separated, and naming them apart is the whole fix:
+
+| the destination's start          | fits against  | advises a departure |
+| -------------------------------- | ------------- | ------------------- |
+| exact (`15:00`)                  | that moment   | yes                 |
+| a window that shuts (`15–19:30`) | the **close** | no (§AJ2)           |
+| an open floor (`מ-15:00`)        | **nothing**   | no                  |
+
+`deadlineMs` is that column; `undefined` means the journey cannot fail to fit, so there is no
+free-time half either — the same structural absence the day's first leg out of a bed reports (§AF3).
+
+**And the floor's own hour must not retire the row.** `PAST` was keyed on `arriveByMs`, so at 20:00
+— airborne — the block went quiet because the hotel's desk had opened at 15:00, dropping `הגעה ~01:02`
+exactly where somebody wants it most. It is keyed on the deadline now, and on the predicted
+**arrival** where there is none.
+
+### AJ2. §AI2's open question, answered: the departure is the origin's own end, and both are said
+
+§AI2 listed three options and the build took the first (state nothing). The owner read the result as
+an inconsistency:
+
+> _"Why does it sometimes say יציאה ב and some other times הגעה ב? Don't we prefer consistency? Maybe
+> we should show both?"_
+
+**They were reading three situations wearing two sentences.** `הגעה` was serving a genuinely flexible
+destination ("come when you like"), a window, **and** a leg with no slack — and the last of those is a
+warning that looked exactly like the first, which is reassurance. The reported row is the third: a
+60-minute hole, a 59-minute drive, a hard `15:00` start. The **drive** fits; the **buffer** does not
+(`15:00 − 59 = 14:01`, and `15:00 − 59 − 5 = 13:56` is inside the stop that runs to 14:00). So the app
+had a deadline, had advice, and said nothing about going.
+
+So: **the departure is pulled forward to the earliest one that exists — the origin's own end — and the
+arrival rides beside it.** `יציאה 14:00 · הגעה ~14:58`. Two nouns, the day row's own voice, the app's
+own `·`. `יציאה` now means "there is a deadline to advise against" and `הגעה` **alone** means "there
+is none", which is a difference a reader can act on.
+
+**What makes the clock printable is that the clamp is a departure you could make**, so the late mark
+it licenses is defensible — and `PASSED` is therefore measured against the **clamped** instant, never
+the buffered one. Firing it off `13:56` is exactly the `באיחור`-for-nothing §AI2 removed. The owner's
+constraint — _"if you haven't left by the time that the app suggests the app doesn't show you as
+being late"_ — was about a **flexible** destination, which still states no departure at all.
+
+**A closed window still gets no departure**, deliberately, though it now has a deadline for the fit:
+`יציאה 18:26` for a lagoon open from 15:00 is arithmetically true and nobody plans against it.
+
+**Measured before the sentence was chosen, and the measurement corrected a claim made from memory.**
+The meta line's box is **206.95px** at 360 (237px at 390), not the 180.75px §AF4 recorded — that
+figure was measured with the free-time run and the acts mark in the same line. Every candidate fits:
+the combined sentence is **140.06px** of ink and the widest already shipping in that slot
+(`הגעה ~20:40 · אחרי סגירת החלון`) is **171px**. Width was the argument against "show both" and it
+was not a real argument.
+
+### AJ3. The leg from the pickup into the bed exists
+
+> _"And btw it should also show the way from the car rental to the hotel, right?"_
+
+Yes. [ADR-0054](0054-ambient-span-events-off-the-day-schedule.md)'s amendment refused this leg the
+same morning, on the reasoning that a stay has no per-day arrival instant and the only bound on offer
+is its check-in floor from _yesterday_. That reasoning was **correct about §AI's code and wrong as a
+decision**: what it was avoiding is precisely the `אין זמן לדרך` §AJ1 has now removed. With a floor a
+non-deadline, the leg says the one thing it can — `הגעה ~00:31` — which is what somebody landing at
+midnight actually wants to know.
+
+Two things the leg needs that no other leg did, both now on `DayLeg`:
+
+- **`departAfterMs`.** The origin is a span **edge**, and a span's `endsAt` is its RETURN — nine days
+  out on a car hire — so `endsAt ?? startsAt` measures the drive to the hotel from next week. The leg
+  carries the edge's own placed instant.
+- **`fromEdge`.** `endpointPlaceId(from, 'leaving')` answers "where did this row leave you", which for
+  transport is the **destination**: right for a flight you got off, wrong for a hire you just picked
+  up, whose place is its origin. A pickup and a return at the same counter hides this completely —
+  which is exactly the trip it was found on, so it is written down rather than discovered twice.

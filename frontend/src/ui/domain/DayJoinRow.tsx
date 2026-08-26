@@ -317,16 +317,20 @@ function journeyMetaLine(journey: DayJourney, tz: string): string | undefined {
     const phrase = left === null ? null : approxTravelTime(left);
     return phrase ? `${t.actions.onWay} · ${t.travel.remaining(phrase)}` : t.actions.onWay;
   }
-  // **THE ARRIVAL, WHERE A DEPARTURE MAY NOT BE STATED** (ADR-0206 §AI). `dayJourney` has already
-  // decided that — a flexible destination, or a leave-by behind its own origin — so this only asks
-  // which fact it was left with. Hedged, because it is an estimate carried forward.
+  // **WHICH OF THE TWO FACTS THE DERIVATION LEFT US** (ADR-0206 §AI, amended 2026-08-26).
+  // `dayJourney` owns the decision and this only reads it: a destination with no deadline gets the
+  // arrival ALONE, a leg with no slack gets both, and everything else gets the departure. Hedged
+  // wherever it is an arrival, because that is an estimate carried forward.
+  const at =
+    journey.arriveAtMs === null
+      ? null
+      : ltrIsolate(`~${formatTime(new Date(journey.arriveAtMs), tz)}`);
   if (journey.leaveByMs === null) {
-    if (journey.arriveAtMs === null) return undefined;
-    const at = ltrIsolate(`~${formatTime(new Date(journey.arriveAtMs), tz)}`);
+    if (at === null) return undefined;
     return journey.arrivesAfterClose ? t.travel.arriveAfterClose(at) : t.travel.arriveAt(at);
   }
   const clock = ltrIsolate(formatTime(new Date(journey.leaveByMs), tz));
-  return journey.arm === DAY_JOURNEY_ARM.PASSED
-    ? t.travel.leavePassed(clock)
-    : t.travel.leaveAtDay(clock);
+  if (journey.arm === DAY_JOURNEY_ARM.PASSED) return t.travel.leavePassed(clock);
+  // Both: the departure is the origin's own end and the arrival is why that matters.
+  return at === null ? t.travel.leaveAtDay(clock) : t.travel.leaveThenArrive(clock, at);
 }

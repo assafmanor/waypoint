@@ -415,6 +415,7 @@ export function PlanDay() {
     stayRowIds,
     dawnMs,
   );
+  const overnight = placement.overnight;
 
   // ── THE JOURNEY IN A HOLE, ON THE CONTROL SIDE (ADR-0206 §V1.1) ─────────────────────────
   // Plan mode does not display a hole, it OFFERS it (ADR-0161 §2), so §V1.1's overstatement
@@ -439,11 +440,25 @@ export function PlanDay() {
     if (bookends.woke && first && first.id !== bookends.woke.id) {
       legs.unshift({ from: bookends.woke, to: first, bookend: true });
     }
+    // **AND THE DRIVE THAT BROUGHT YOU TO THE BED** (owner, 2026-08-26) — off the last overnight
+    // edge, carrying the EDGE's placed instant, because a hire's `endsAt` is its return ten days
+    // out (`DayLeg.departAfterMs`). Refused by ADR-0054's amendment the same morning for a reason
+    // §AJ1 has since removed: a leg into a check-in floor no longer reads as impossible.
+    const cameIn = overnight[overnight.length - 1];
+    if (bookends.woke && cameIn && cameIn.event.id !== bookends.woke.id) {
+      legs.unshift({
+        from: cameIn.event,
+        to: bookends.woke,
+        bookend: true,
+        fromEdge: cameIn.edge,
+        departAfterMs: cameIn.atMs,
+      });
+    }
     if (bookends.sleeps && prev && prev.id !== bookends.sleeps.id) {
       legs.push({ from: prev, to: bookends.sleeps, bookend: true });
     }
     return legs;
-  }, [planGroups, bookends.woke, bookends.sleeps]);
+  }, [planGroups, bookends.woke, bookends.sleeps, overnight]);
   const planTravel = useDayTravelReads({ tripId: trip.id, legs: planLegs, bookings, places });
   /** The hole's free minutes once its journey is counted, or the hole itself where there is no
    *  estimate (§D4 — never a pessimistic guess, and the chip reads exactly as it read before).
@@ -494,7 +509,11 @@ export function PlanDay() {
       ? edgeSentence(edge, eventEdgeZone(edge.event, edge.edge, zoneCtx).zone)
       : ambientSpanLabel(stay, activeDate);
   };
-  const planJourney = (from: TripEvent, to: TripEvent): DayJourney | null => {
+  const planJourney = (
+    from: TripEvent,
+    to: TripEvent,
+    departAfterMs?: number,
+  ): DayJourney | null => {
     const estimate = planTravel.estimateFor(from, to);
     return dayJourney({
       // **THERE IS NO WINDOW OUT OF A BED** (ADR-0206 §AF3, amended 2026-08-26 off the field
@@ -505,9 +524,11 @@ export function PlanDay() {
       // surface kept passing it, which is `frontend/CLAUDE.md`'s "changing a day-surface
       // derivation in `DayView` only" — the docblock below cites that rule and the line above it
       // was the one that had drifted.
-      ...(stayRowIds.has(from.id)
-        ? {}
-        : { departAfterMs: Date.parse(from.endsAt ?? from.startsAt ?? '') }),
+      ...(departAfterMs !== undefined
+        ? { departAfterMs }
+        : stayRowIds.has(from.id)
+          ? {}
+          : { departAfterMs: Date.parse(from.endsAt ?? from.startsAt ?? '') }),
       arriveByMs: Date.parse(to.startsAt ?? ''),
       // Same gate as Trip mode's, and it is here rather than only there because
       // `frontend/CLAUDE.md` names "changing a day-surface derivation in `DayView` only" as
@@ -1314,7 +1335,7 @@ export function PlanDay() {
                 above the bed, because that is the order it happened in. The map has sorted a
                 midnight car hire ahead of the hotel since 2026-08-25 and both lists drew it
                 below: one fact, two answers (ADR-0159 §1). */}
-              {placement.overnight.map((entry) => (
+              {overnight.map((entry) => (
                 <TransitionRow
                   key={`${entry.event.id}-${entry.edge}`}
                   entry={entry}
@@ -1324,6 +1345,15 @@ export function PlanDay() {
                   onOpen={setDetailTarget}
                 />
               ))}
+              {/* …and the drive from that edge into the bed (owner, 2026-08-26). */}
+              {bookends.woke &&
+                overnight.length > 0 &&
+                (() => {
+                  const cameIn = overnight[overnight.length - 1]!;
+                  if (cameIn.event.id === bookends.woke!.id) return null;
+                  const j = planJourney(cameIn.event, bookends.woke!, cameIn.atMs);
+                  return j ? <JourneyRow journey={j} travelMode={planTravel.mode} tz={tz} /> : null;
+                })()}
               {/* **WHERE THE DAY STARTS** (ADR-0209 §1), with the leg out of it below — the same
                 two rows Trip mode draws, off the same `dayBookendStays`. **Without the settle
                 pair**, which is ADR-0171 §10e's posture difference: Plan settles through a row
