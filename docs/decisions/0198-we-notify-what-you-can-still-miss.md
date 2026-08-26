@@ -109,6 +109,43 @@ Extending the table rather than adding one is the point (root rule 8): a tenth c
 Each of these is a real idea, rejected with the condition that would reopen it — so the next session does not re-derive them.
 
 - **"Leave now" / travel-time departure alerts.** The most-wanted notification in any travel app, and we cannot make it true: it needs travel time (Routes API — not built, ADR-0106/0108's later phases) **and** the traveller's position (ADR-0006 refuses live location in v1). Without both, "leave in 10 minutes" is a guess, and a wrong one is precisely the send that gets the whole feature switched off. **Reopens when** both exist, and then it belongs to `event.hard.soon` as a dynamic lead rather than as a new kind.
+
+  > **⚠ REOPENED 2026-08-26 — both conditions are met, and one of them was never true.** The owner
+  > raised it independently, wanting `תתחילו להתכונן ליציאה · כדאי לצאת לפני X`.
+  >
+  > **Travel time exists.** [ADR-0205](0205-routes-are-computed-not-bought-and-a-route-is-a-cache.md)
+  > /[0206](0206-a-travel-time-belongs-between-two-points.md) built it, and not through the Routes
+  > API this bullet was waiting on — it is OSM-derived, cached per place-pair, and free. `leaveBy` is
+  > a shipped derivation in `@waypoint/shared`.
+  >
+  > **And the position premise was wrong when written.** ADR-0006 puts **own-device** location _in_
+  > v1 — _"always available, privately, on-device"_ — and defers only member-to-member sharing.
+  > `lib/useGeolocation.ts` has shipped since ADR-0109 §6. This is the same misreading the routes
+  > epic's own design session made and corrected (M3 session note §9.2); it is recorded twice now
+  > because it has cost two sessions.
+  >
+  > **What survives unchanged is the reason for the caution, and it is the load-bearing part:** _"a
+  > wrong one is precisely the send that gets the whole feature switched off."_ §D5 of ADR-0206 is
+  > the same rule from the other side — an OSM walking estimate is an estimate, so a send must
+  > hedge as the app's own surfaces do. And ADR-0206 §Z6's departure buffer already exists for it.
+  >
+  > **Three things the reopen has to settle, none of which this bullet's "dynamic lead" answers:**
+  >
+  > 1. **One send or two.** The owner asked for a _prepare_ beat as well as a _leave_ beat. This
+  >    bullet assumed one. Two is a different object: a dynamic lead makes `event.hard.soon` fire
+  >    earlier, it does not make it fire twice.
+  > 2. **Volume.** §5 exempts `event.hard.soon` from every cap because _"a flight does not wait for
+  >    a quota"_. That exemption was granted for a handful of hard commitments, **not** for two sends
+  >    per stop across a day of stops. A travel-aware lead on a soft-event day is the case §5 never
+  >    priced, and it is the one that could make the app a nag.
+  > 3. **Which events qualify.** §1's filter is ADR-0011 applied literally: hard events only. But
+  >    the leave-by is most useful for the _soft_ stop you will otherwise drift past — and admitting
+  >    soft events reopens §1, which is this ADR's foundation. **Do not assume either answer.**
+  >
+  > **Still blocked, and not on routes:** ADR-0197's sweep is designed and **nothing is built**, so
+  > there is no pipe to send down. This belongs to the notifications epic when that starts, not to a
+  > routes milestone — the dependency runs that way round.
+
 - **A soft plan starting, or slipping** (ADR-0027's shelf/slip). §1.
 - **A per-change ping.** Rejected once already (ADR-0081), for reasons that did not change.
 - **Somebody joined / left the trip.** Visible on the roster, and nobody is late for it.
