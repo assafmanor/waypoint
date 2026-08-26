@@ -526,9 +526,15 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // used the Map gets the fix free and anyone who has not sees today's behaviour and is never
   // asked. A prompt here would need its own reason-first card (ADR-0109 §6) and its own decision.
   const geo = useGeolocation();
+  // Keyed on the two values it reads and the stable `request`, never on `geo` itself: the hook
+  // returns a fresh object every render and this screen re-renders on the CLOCK, so an object dep
+  // would re-run this effect once a second forever (`frontend/CLAUDE.md`'s rule for exactly this
+  // screen). The guard would still hold — `request` leaves `status` at `locating` — but a
+  // per-second effect on the app's front door is the kind of thing that is cheap until it is not.
+  const { permission: geoPermission, status: geoStatus, request: requestGeo } = geo;
   useEffect(() => {
-    if (geo.permission === 'granted' && geo.status === 'idle') geo.request();
-  }, [geo]);
+    if (geoPermission === 'granted' && geoStatus === 'idle') requestGeo();
+  }, [geoPermission, geoStatus, requestGeo]);
   // **A fix decides what we may CLAIM, and is never an input to an estimate** (§1) — no request
   // is issued from a position, so ADR-0205 §4's place-keyed cache is untouched.
   const stance = travelLeg
