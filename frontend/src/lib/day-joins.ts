@@ -13,13 +13,17 @@
 import {
   connectionMinutes,
   edgeMeaning,
+  freeAfterTravel,
   isTightConnection,
   type Booking,
   type BookingType,
   type BookingWhen,
+  type TravelWindow,
   type TripEvent,
 } from '@waypoint/shared';
 import { gapBetween, type Gap } from './gaps';
+import { LEAVE_PHASE, heroLeaveBy } from './hero-travel';
+import { isoToTimeInput, zonedIso } from './time';
 import { routeEndpointDay } from './place-usage';
 import type { DayEntry } from './day-entries';
 import { groupEndEvent, groupStartEvent } from './day-entries';
@@ -90,6 +94,13 @@ export interface DayBlockEntry {
   index: number;
   /** The join between the previous row and this one; absent on the first. */
   join?: DayJoin;
+  /** **The row the join was measured FROM** (ADR-0206 §V1.3) — the leg's first point, so a
+   *  surface can ask what the journey across this hole costs without walking the list a second
+   *  time and risking a different answer about which rows are adjacent. Recorded here rather
+   *  than re-derived because `dayBlocks` is the one place that knows: `prevEnd` is what a
+   *  flexible edge is transparent to (ADR-0171 §5), and a second walk would have to reproduce
+   *  that rule to agree with the join beside it. */
+  from?: TripEvent;
 }
 
 /** A run of rows drawn as one thing. `journey: true` means every entry after the first
@@ -128,13 +139,14 @@ export function dayBlocks(entries: readonly DayEntry[], ctx: JoinContext): DayBl
     const leaf = entry.kind === 'event' && entry.group.kind !== 'cluster';
     const start = leaf ? groupStartEvent(entry.group) : null;
     const join = prevEnd && start ? (joinBetween(prevEnd, start, ctx) ?? undefined) : undefined;
+    const from = join ? (prevEnd ?? undefined) : undefined;
     const last = blocks[blocks.length - 1];
     // A connection continues the block above it; everything else starts a new one.
     if (join?.kind === 'connection' && last && last.entries.length > 0) {
       last.journey = true;
-      last.entries.push({ entry, index, join });
+      last.entries.push({ entry, index, join, from });
     } else {
-      blocks.push({ entries: [{ entry, index, join }], journey: false });
+      blocks.push({ entries: [{ entry, index, join, from }], journey: false });
     }
     // **A flexible edge is TRANSPARENT to the measurement** (ADR-0171 §5). Free time is
     // time between commitments, and a check-out "by 11:00" does not consume a particular
@@ -209,4 +221,167 @@ export function connectionStops(
     }
   }
   return stops;
+}
+
+// ── THE JOURNEY IN A HOLE (ADR-0206 §V1.1 / §V1.3 / §V1.4) ────────────────────────────────
+//
+// A gap is absence and a connection is presence — and a **journey** is the third thing that can
+// be true of one slot (§D2's "one slot, three meanings"). It is not a fourth `DayJoin` kind: it
+// ABSORBS the gap rather than sitting beside it (§Z5 §M2, measured at ⁦58px⁩ against ⁦87px⁩ for a
+// strip plus a block), so the slot still holds one object, which is ADR-0159's own rule.
+//
+// Clock-injected like everything else here: instants and seconds in, a discriminant out. What it
+// SAYS is `i18n/he.ts`'s and `JourneyBlock`'s.
+
+/** **Which of the four things is true of this hole.** A discriminant rather than three booleans,
+ *  for `LEAVE_PHASE`'s own reason: the states are exclusive, and a caller branching on
+ *  `passed && !onWay` is one negation away from drawing two of them. */
+export const DAY_JOURNEY_ARM = {
+  /** The hole is behind you — the row below it has already started. A record, so it states the
+   *  measurement and nothing else. */
+  PAST: 'past',
+  /** Ahead of the leave-by, or not yet claimable: the journey and when to go. */
+  AHEAD: 'ahead',
+  /** The leave-by has gone by and nothing has withdrawn that (§V1.4). `--miss`. */
+  PASSED: 'passed',
+  /** Somebody said `בדרך`, or a fix puts them along the leg (ADR-0207 §2). Teal. */
+  ON_WAY: 'on-way',
+} as const;
+export type DayJourneyArm = (typeof DAY_JOURNEY_ARM)[keyof typeof DAY_JOURNEY_ARM];
+
+export interface DayJourney {
+  arm: DayJourneyArm;
+  /** What the leg costs, in seconds, on the mode that was asked about. */
+  travelSeconds: number;
+  /** What the leg covers, in metres — the ROUTED distance, per mode, never crow-flies: a
+   *  ⁦1.9km⁩ crow-flies leg is a ⁦2.4km⁩ walk, and this is the number you act on. `null` where the
+   *  estimate carries none. */
+  distanceMeters: number | null;
+  /** The instant behind `יציאה 17:15`, or `null` on the `PAST` arm — see {@link dayJourney}. */
+  leaveByMs: number | null;
+  /** What is free once the journey is counted (§V1.1). `null` where the hole has no measurable
+   *  window at all, which is the day's first leg out of an ambient stay. */
+  free: TravelWindow | null;
+  /** **What is LEFT of the journey**, on the `ON_WAY` arm (ADR-0207 §6) — scaled by the remaining
+   *  crow fraction rather than re-routed, and `null` where that ratio is noise. The stale total is
+   *  not more honest here but less: it reads as "44 minutes still to walk" two minutes from the
+   *  door. `null` on every other arm, where the leg's own total is the question. */
+  remainingSeconds: number | null;
+}
+
+/**
+ * **What a hole says once there is a journey in it.**
+ *
+ * `null` when there is no estimate, and that is the ordinary answer (§D4): offline, refused by the
+ * gate, over the ceiling, still warming, provider down, a leg somebody declared תחב״צ (§AA4), or
+ * two stops that are one place. Every one of them leaves ADR-0159's free-time strip standing
+ * exactly as it reads today — never a pessimistic guess, because the reader must not be able to
+ * tell "not computed" from "not computable" and inventing a walk we did not measure fails that in
+ * the direction that costs somebody their afternoon.
+ *
+ * **The leave-by is `heroLeaveBy`'s, not a second copy** (§AE7's argument applied one level up):
+ * the board, the lifted hero and this row all describe one journey, so the buffer, the rounding
+ * and the sign have to come from one function or the day will tell you to leave at a different
+ * minute than the board does. What the day ignores is that function's `LIVE` arm — the ⁦30⁩-minute
+ * swap is the countdown TILE's question and this row has no tile.
+ *
+ * **Four arms, and `PAST` is the one the ADR did not name.** Without it a day list read at 22:00
+ * prints `זמן היציאה עבר` on every hole of the day, because every leave-by of a finished day has
+ * gone by — which is true and useless. A hole whose next row has already started is a **record**:
+ * it keeps the measurement and the corrected free time and drops the leave-by and the mark, since
+ * both are advice about a departure nobody is about to make.
+ *
+ * **`departAfterMs` may be absent, and then there is no free-time half.** That is the day's first
+ * leg, out of the stay you woke in (§AD): an ambient stay has no check-out instant on a middle
+ * night, and reaching for the day window's dawn instead would claim you could have left at 07:00.
+ * The journey and the leave-by are still facts; what is free before it is not one we have.
+ */
+export function dayJourney(input: {
+  /** The earliest the journey may leave — the previous row's end. Absent for the day's first leg. */
+  departAfterMs?: number;
+  /** When you have to be there: the next row's own start. */
+  arriveByMs: number;
+  /** The estimate for the leg, or `null` (§D4). */
+  travelSeconds: number | null;
+  distanceMeters?: number | null;
+  nowMs: number;
+  /** **Somebody said `בדרך`, or a fix put them on the leg** (§Z5 §M4 / ADR-0207 §2). Withdraws
+   *  the mark on both elevations at once, because both read the same module. */
+  onWay?: boolean;
+  /** What is left of the leg, where a fix says the traveller is on it (ADR-0207 §6). Computed by
+   *  the caller from `remainingTravelSeconds`, because the fix is the SCREEN's — this file holds no
+   *  position and issues no request (§1). */
+  remainingSeconds?: number | null;
+  /** **The plan's claim about where you are, when it has been denied** (ADR-0208 §2) — a skipped
+   *  origin. It removes the CLAIM (the leave-by, the mark) and leaves the MEASUREMENT standing:
+   *  the hole is still the hole and the walk is still in it, so §V1.1's correction is not a claim
+   *  about the traveller and does not need standing up. See ADR-0206 §AF2 for why this surface
+   *  gates the claim where the hero gates the request. */
+  claimDenied?: boolean;
+}): DayJourney | null {
+  const { departAfterMs, arriveByMs, travelSeconds, nowMs, onWay, claimDenied } = input;
+  if (travelSeconds === null || !Number.isFinite(travelSeconds) || travelSeconds <= 0) return null;
+  if (!Number.isFinite(arriveByMs)) return null;
+  const leave = heroLeaveBy({ arriveByMs, travelSeconds, nowMs });
+  if (!leave) return null;
+  const free =
+    departAfterMs !== undefined && Number.isFinite(departAfterMs)
+      ? freeAfterTravel(departAfterMs, arriveByMs, travelSeconds)
+      : null;
+  const measurement = {
+    travelSeconds,
+    distanceMeters: input.distanceMeters ?? null,
+    free,
+    remainingSeconds: null,
+  };
+  // The row below has started: whatever the leave-by says, the departure is not the question any
+  // more. Checked FIRST, so a finished day is quiet however late its legs ran.
+  if (nowMs >= arriveByMs) {
+    return { ...measurement, arm: DAY_JOURNEY_ARM.PAST, leaveByMs: null };
+  }
+  if (onWay) {
+    return {
+      ...measurement,
+      arm: DAY_JOURNEY_ARM.ON_WAY,
+      leaveByMs: leave.leaveByMs,
+      remainingSeconds: input.remainingSeconds ?? null,
+    };
+  }
+  // A claim nobody may make reads as the ordinary ahead arm minus its advice: the leave-by is
+  // derived from a stop the group said they did not go to, so it is not offered and the mark it
+  // would have licensed is not made.
+  if (claimDenied) {
+    return { ...measurement, arm: DAY_JOURNEY_ARM.AHEAD, leaveByMs: null };
+  }
+  return {
+    ...measurement,
+    arm: leave.phase === LEAVE_PHASE.PASSED ? DAY_JOURNEY_ARM.PASSED : DAY_JOURNEY_ARM.AHEAD,
+    leaveByMs: leave.leaveByMs,
+  };
+}
+
+/**
+ * **The slot a fill lands on, narrowed by the journey in it** (§V1.1 applied to the CONTROL rather
+ * than to the statement).
+ *
+ * `Gap.fill` prefills a block at the hole's start, capped at the room — and the room it was capped
+ * against is the whole hole. The journey sits at the **end** of it (you leave in time to arrive),
+ * so the offer only overstates once what is free is shorter than the default block; there it hands
+ * out a slot that eats the walk. One helper, both surfaces: Trip's tap on the journey block and
+ * Plan's `שבץ` chip land on the same slot, which is ADR-0161 §9's whole point.
+ *
+ * Returns the gap unchanged where there is nothing to narrow, so a caller may apply it blindly.
+ */
+export function narrowGapForTravel(free: Gap, journey: DayJourney | null, tz: string): Gap {
+  const freeSeconds = journey?.free?.freeSeconds;
+  if (freeSeconds === undefined) return free;
+  const startMs = Date.parse(zonedIso(free.fill.date, free.fill.start, tz));
+  const endMs = Date.parse(zonedIso(free.fill.date, free.fill.end, tz));
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return free;
+  const cappedMs = startMs + Math.max(0, freeSeconds) * 1000;
+  if (endMs <= cappedMs) return free;
+  return {
+    ...free,
+    fill: { ...free.fill, end: isoToTimeInput(new Date(cappedMs).toISOString(), tz) },
+  };
 }

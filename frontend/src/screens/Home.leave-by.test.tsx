@@ -477,7 +477,7 @@ describe('Home — a position may withdraw a claim the clock made (ADR-0207)', (
     fireEvent.click(document.querySelector('.wp-board')!);
     const row = document.querySelector('.hero-trv')!;
     expect(row.classList.contains('miss')).toBe(true);
-    expect(row.querySelector('.hero-trv-here')?.textContent).toContain(t.hero.stillHere);
+    expect(row.querySelector('.hero-trv-here')?.textContent).toContain(t.travel.stillHere);
     // The tile's word stays on the tile: the sentence says the leave-by passed and where they
     // are, never that the people are late (§Z5 §M4, and ADR-0208 §1 keeps the distinction).
     expect(row.textContent).not.toContain(lateUnit(10));
@@ -546,7 +546,7 @@ describe('Home — a read needs something to stand on (ADR-0208 §2)', () => {
     expect(unit()).toBe(lateUnit(10));
     expect(tile()?.classList.contains('missed')).toBe(true);
     fireEvent.click(document.querySelector('.wp-board')!);
-    expect(document.querySelector('.hero-trv-here')?.textContent).toContain(t.hero.stillHere);
+    expect(document.querySelector('.hero-trv-here')?.textContent).toContain(t.travel.stillHere);
   });
 
   it('reads as on the way when the fix puts them along the leg they denied starting', () => {

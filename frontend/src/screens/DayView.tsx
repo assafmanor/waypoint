@@ -15,6 +15,7 @@ import {
   type Booking,
   type MaybeItem,
   type Place,
+  type TravelMode,
   type TripEvent,
   typicalMinutesFor,
 } from '@waypoint/shared';
@@ -24,6 +25,7 @@ import {
   useShowMaybesOnMap,
   useShowPlaceOnMap,
 } from '../state/map-scope-state';
+import { ltrIsolate } from '../lib/bidi';
 import { prefersReducedMotion } from '../lib/motion';
 import { landAtTop } from '../lib/land-at-top';
 import { useDaySurface } from '../lib/useDaySurface';
@@ -39,6 +41,7 @@ import {
   eventRoute,
   eventShowOnMap,
   eventDisplayZones,
+  eventPlaceId,
   eventZones,
   dayZoneContext,
   isDayOver,
@@ -93,19 +96,40 @@ import { dayPositions, firstPositionFitting } from '../lib/day-positions';
 import {
   dayTransitions,
   edgeEntryOf,
+  groupStartEvent,
   mergeDayEntries,
   placeDayEntries,
   staysOnDate,
   type TransitionEntry,
 } from '../lib/day-entries';
-import { dayBlocks, type DayBlock, type DayJoin } from '../lib/day-joins';
+import {
+  DAY_JOURNEY_ARM,
+  dayBlocks,
+  dayJourney,
+  narrowGapForTravel,
+  type DayBlock,
+  type DayJoin,
+  type DayJourney,
+} from '../lib/day-joins';
+import { useDayTravelReads, type DayLeg } from '../lib/day-travel';
+import { travelStance, remainingTravelSeconds, TRAVEL_STANCE } from '../lib/travel-position';
+import { travelOrigin } from '../lib/hero-travel';
+import { useGeolocation } from '../lib/useGeolocation';
+import { clearOnWay, useOnWay } from '../lib/on-way';
 import { nowLinePlacement } from '../lib/now-line';
 import { UnplacedCommitment } from '../ui/domain/UnplacedCommitment';
 import { bookingWhen } from '../lib/booking-journey';
-import { hoursPhrase } from '../lib/duration';
-import { ConnectionBand, GapStrip } from '../ui/domain/DayJoinRow';
-import { CODE_PREFIX, DEFAULT_STAY_ICON, MS_PER_DAY, SHELF_POOL_CAP } from '../constants';
-import { ambientSpanLabel } from '../lib/glance';
+import { approxTravelTime, hoursPhrase } from '../lib/duration';
+import { ConnectionBand, GapStrip, JourneyBlock } from '../ui/domain/DayJoinRow';
+import {
+  CODE_PREFIX,
+  DEFAULT_STAY_ICON,
+  MS_PER_DAY,
+  SECONDS_PER_MINUTE,
+  SHELF_POOL_CAP,
+} from '../constants';
+import { ambientSpanLabel, dayBookendStays } from '../lib/glance';
+import { formatDistance } from '../lib/distance';
 import { edgeSentence } from '../lib/transitions';
 import { t } from '../i18n/he';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
@@ -176,27 +200,50 @@ const blockKey = (block: DayBlock) => {
 const shortPlaceName = (places: Place[], labels: PlaceLabels, id: string | undefined) =>
   placeLabelOf(labels, id, placeName(places, id));
 
-/** The one row that draws whatever sits above an entry (ADR-0159). A gap states free
- *  time; a connection names the stop and how long you are in it, and only ever renders
- *  inside a `.journey` block, because that is what makes it part of an object instead
- *  of a mark between two cards. */
+/** The one row that draws whatever sits above an entry (ADR-0159). A gap states free time; a
+ *  connection names the stop and how long you are in it, and only ever renders inside a
+ *  `.journey` block, because that is what makes it part of an object instead of a mark between
+ *  two cards.
+ *
+ *  **And a gap with a journey in it is a third thing** (ADR-0206 §V1.3): the same slot, saying
+ *  what is true of it, which is §D2's own "one slot, three meanings". The journey ABSORBS the
+ *  free-time statement — one object, both of `freeAfterTravel`'s numbers (§Z5 §M2) — so this
+ *  function chooses between two renders rather than stacking them. */
 function JoinRow({
   join,
+  journey,
   places,
   placeLabels,
   onFillGap,
+  ...journeyRest
 }: {
   join: DayJoin;
+  /** What the journey across this hole costs and says, or `null` — which is the ordinary answer
+   *  (§D4) and leaves the strip below reading exactly as it read before this milestone. */
+  journey: DayJourney | null;
   places: Place[];
   placeLabels: PlaceLabels;
   /** What a tap on a gap opens (ADR-0161 §9), or absent where a write is gated. A connection
    *  never takes one: you are inside a commitment for the whole of it, so there is nothing
    *  free there to fill. */
   onFillGap?: (free: Gap) => void;
-}) {
+} & Omit<JourneyRowProps, 'journey' | 'onFill' | 'fillMinutes'>) {
   const length = hoursPhrase(join.minutes);
   if (join.kind === 'gap') {
-    return <GapStrip length={length} onFill={onFillGap && (() => onFillGap(join.free))} />;
+    if (!journey) {
+      return <GapStrip length={length} onFill={onFillGap && (() => onFillGap(join.free))} />;
+    }
+    // **The slot the tap lands on is narrowed by the journey too** — the statement and the
+    // control must not disagree about one hole, which is what §V1.1 is about one elevation down.
+    const slot = narrowGapForTravel(join.free, journey, journeyRest.tz);
+    return (
+      <JourneyRow
+        journey={journey}
+        {...journeyRest}
+        onFill={onFillGap && (() => onFillGap(slot))}
+        fillMinutes={slot.minutes}
+      />
+    );
   }
   return (
     <ConnectionBand
@@ -209,6 +256,108 @@ function JoinRow({
       tight={join.tight}
     />
   );
+}
+
+interface JourneyRowProps {
+  journey: DayJourney;
+  travelMode: TravelMode;
+  /** The DAY's own zone, which is what the leave-by is read in: it is a moment on the wrist of
+   *  whoever is leaving, and this list is that day's. */
+  tz: string;
+  /** The live hole's one control — `בדרך`, or `ביטול סימון` to take that back (ADR-0207 §7).
+   *  Absent on every other hole: a mark is about the journey you are on. */
+  action?: { label: string; onPress: () => void };
+  /** `עדיין כאן` — what a fix at the leg's origin lets the app say that the clock could not
+   *  (ADR-0207 §2). */
+  located?: string;
+  onFill?: () => void;
+  /** The length the fill's accessible name states — the NARROWED slot's, not the hole's. */
+  fillMinutes?: number;
+}
+
+/**
+ * **A journey, formatted.** Its own component and not an inline branch of `JoinRow`, because the
+ * day's first leg has no join above it (ADR-0206 §AD) and renders outside the block loop — two
+ * assemblies of these props is how the bookend leg and every other hole would start saying
+ * different things about one journey.
+ */
+function JourneyRow({
+  journey,
+  travelMode,
+  tz,
+  action,
+  located,
+  onFill,
+  fillMinutes,
+}: JourneyRowProps) {
+  // **THE FREE TIME RIDES THE QUIET ARMS ONLY**, which is what the v2 mockup's §1 drew and what
+  // the render then insisted on. Three independent reasons, and the last is why it is not a taste
+  // call: on a passed leave-by "what is free before the walk" is a number about a departure you
+  // have already missed, so the urgent fact should have the line to itself; the drawing carries
+  // the mark alone on both urgent states; and measured at 360 in Chromium the two runs together
+  // are ⁦219.70px⁩ of ink in a ⁦180.75px⁩ box — `text-overflow: ellipsis` was eating the free time on
+  // exactly the arm that matters, and pushing `עדיין כאן` out of the block's own edge.
+  const freeSeconds =
+    journey.arm === DAY_JOURNEY_ARM.PASSED || journey.arm === DAY_JOURNEY_ARM.ON_WAY
+      ? undefined
+      : journey.free?.freeSeconds;
+  const free =
+    freeSeconds === undefined
+      ? undefined
+      : t.travel.freeBefore(hoursPhrase(Math.round(freeSeconds / SECONDS_PER_MINUTE)));
+  return (
+    <JourneyBlock
+      mode={t.travelMode[travelMode]}
+      icon={travelMode}
+      duration={approxTravelTime(journey.travelSeconds) ?? undefined}
+      distance={
+        journey.distanceMeters === null ? undefined : formatDistance(journey.distanceMeters)
+      }
+      leave={journeyLeaveLine(journey, tz)}
+      free={free}
+      tone={
+        journey.arm === DAY_JOURNEY_ARM.PASSED
+          ? 'miss'
+          : journey.arm === DAY_JOURNEY_ARM.ON_WAY
+            ? 'on-way'
+            : 'time'
+      }
+      located={located}
+      action={action}
+      onFill={onFill}
+      fillLabel={
+        fillMinutes === undefined ? undefined : t.day.join.fillFree(hoursPhrase(fillMinutes))
+      }
+    />
+  );
+}
+
+/**
+ * **What the journey's second line says about leaving**, and the arms are what keep it honest.
+ *
+ * `PAST` says nothing: a hole whose next row has already started is a record, and a leave-by
+ * there is advice about a departure nobody is about to make — without this, a day read at 22:00
+ * prints `זמן היציאה עבר` on every hole of it, which is true and useless.
+ *
+ * `ON_WAY` reports what is LEFT rather than the leg's total (ADR-0207 §6), because the stale
+ * total reads as "44 minutes still to walk" two minutes from the door — not more honest but less.
+ * The remaining figure is scaled by the crow fraction and hedged; where the ratio is noise it
+ * refuses and the line carries the mark alone.
+ *
+ * The clock is read in the DAY's own zone and isolated: it is a digit run inside Hebrew, and the
+ * maqaf before it is a strong RTL character (ADR-0118).
+ */
+function journeyLeaveLine(journey: DayJourney, tz: string): string | undefined {
+  if (journey.arm === DAY_JOURNEY_ARM.ON_WAY) {
+    const left = journey.remainingSeconds;
+    const phrase = left === null ? null : approxTravelTime(left);
+    return phrase ? `${t.actions.onWay} · ${t.travel.remaining(phrase)}` : t.actions.onWay;
+  }
+  if (journey.leaveByMs === null) return undefined;
+  const clock = ltrIsolate(formatTime(new Date(journey.leaveByMs), tz));
+  return journey.arm === DAY_JOURNEY_ARM.PASSED
+    ? t.travel.leavePassed(clock)
+    : t.travel.leaveAtDay(clock);
 }
 
 export function DayView() {
@@ -352,6 +501,7 @@ export function DayView() {
   // §4), so "today" rolls at THAT zone's midnight — cross a zone and the calendar
   // day re-anchors. Trip mode only; Plan mode frames everything in the trip primary.
   const nowZone = liveZone(now.getTime(), zoneEvidence);
+  const nowMs = now.getTime();
   const today = liveToday(now.getTime(), zoneEvidence);
   const dayScope: DayScope = activeDate < today ? 'past' : activeDate > today ? 'future' : 'today';
   // A past day is a read-only archive within a live trip (ADR-0029) — but "past"
@@ -494,6 +644,222 @@ export function DayView() {
   // from, so the two modes cannot disagree about where a hole is.
   const blocks = dayBlocks(merged, { bookings, when: bookingWhen(events), tz: trip.timezone });
 
+  // ══ THE JOURNEY IN A HOLE (ADR-0206 §V1.1 / §V1.3 / §V1.4) ═══════════════════════════════
+  //
+  // §V1.1 is the one line of that ADR that is a **bug fix**: the day has stated the whole of a
+  // hole as free since ADR-0159 shipped, so a 2:40 hole holding a 40-minute walk told you about
+  // forty minutes you do not have — on the one surface built to be a statement. The block that
+  // corrects it **absorbs** the free-time strip rather than sitting beside it (§Z5 §M2), so the
+  // slot still holds one object.
+  //
+  // **Every derivation here is memoized, and on this screen that is a defect class rather than a
+  // preference.** `useClock` ticks once a second, so anything in this render body runs 3,600 times
+  // an hour — the shape `frontend/CLAUDE.md` names for exactly this screen family, and what turned
+  // `e2e (preview)` red on M7c's second field report.
+  //
+  // **The legs are read off `dayBlocks` rather than re-derived**, because that function is the one
+  // place that knows which rows are adjacent: a flexible edge is transparent to the measurement
+  // (ADR-0171 §5), and a second walk would have to reproduce that rule to agree with the join it
+  // sits beside.
+  const day = useMemo(() => {
+    const between: DayLeg[] = [];
+    for (const block of blocks) {
+      for (const { entry, join, from } of block.entries) {
+        // A connection is presence and never free time, so it has no journey to draw: you are
+        // inside one commitment for the whole of it (`joinBetween`'s own rule).
+        if (!from || join?.kind !== 'gap' || entry.kind !== 'event') continue;
+        between.push({ from, to: groupStartEvent(entry.group) });
+      }
+    }
+    // **THE DAY'S FIRST LEG, OUT OF THE STAY YOU WOKE IN** (§AD, and §AE3 named it as the first
+    // thing to reconcile here). A journey block sits between two ROWS, and on a mid-stay day the
+    // hotel is ambient — off the day's schedule (ADR-0054) — so the first row has nothing above
+    // it and the one leg you are certain to make was the one leg the list could never draw. It is
+    // returned SEPARATELY rather than unshifted into the list, because it renders outside the
+    // block loop: there is no join for it to hang off.
+    const firstRow = blocks[0]?.entries[0]?.entry;
+    const woke = dayBookendStays(events, activeDate).woke;
+    const first = firstRow?.kind === 'event' ? groupStartEvent(firstRow.group) : undefined;
+    const wake =
+      woke && first && first.id !== woke.id ? { from: woke, to: first, bookend: true } : undefined;
+    return { between, wake, legs: wake ? [wake, ...between] : between };
+  }, [blocks, events, activeDate]);
+  const dayLegs = day.legs;
+
+  const travelReads = useDayTravelReads({ tripId: trip.id, legs: dayLegs, bookings, places });
+
+  // **WHAT A DEVICE POSITION LETS THIS SURFACE CLAIM** (ADR-0207). The day row inherits the same
+  // four stances the hero reads, off the same module, so the two elevations withdraw one claim at
+  // the same moment rather than one of them keeping a mark the other has dropped.
+  //
+  // **Requested only where consent already exists, so the day never prompts** (§3) — the same rule
+  // Home follows: a read is never blocked on a permission, and a surface you swiped to is not an
+  // intent to be located.
+  const geo = useGeolocation();
+  const { permission: geoPermission, status: geoStatus, request: requestGeo } = geo;
+  useEffect(() => {
+    if (geoPermission === 'granted' && geoStatus === 'idle') requestGeo();
+  }, [geoPermission, geoStatus, requestGeo]);
+
+  // **WHICH HOLE IS THE LIVE ONE.** Only one hole of a day is the journey you are about to make,
+  // and it is the only one a position or a `בדרך` mark can say anything about: the rest are a
+  // record (behind you) or a plan (ahead of the row you are in). Scoped to today, because a day
+  // you swiped to has no "now" in it at all.
+  const liveLeg = useMemo(() => {
+    if (dayScope !== 'today') return null;
+    let soonest: DayLeg | null = null;
+    let soonestAt = Infinity;
+    for (const leg of dayLegs) {
+      const at = Date.parse(leg.to.startsAt ?? '');
+      if (!Number.isFinite(at) || at <= nowMs || at >= soonestAt) continue;
+      soonest = leg;
+      soonestAt = at;
+    }
+    return soonest;
+  }, [dayLegs, dayScope, nowMs]);
+
+  // **AND WHETHER THE PLAN MAY STILL CLAIM IT** (ADR-0208 §2). `travelOrigin` is the hero's own
+  // derivation, read here rather than re-implemented — which is what stops the day row asserting a
+  // leave-by out of a café nobody went to while the board correctly says nothing.
+  //
+  // **The verdict is read WITHOUT matching it to the row above the hole, and that is the point.**
+  // A skipped event leaves the day list entirely (ADR-0027's parking lot, `dayEvents` above), so
+  // the hole is measured from the previous NON-SKIPPED row — which is precisely the repair
+  // ADR-0208 §2 refuses in as many words: _"it swaps a wrong claim for a staler one, and errs
+  // toward a louder app, since a longer leg is an earlier leave-by is a more confident late
+  // mark."_ The list does it structurally rather than deliberately, and the first version of this
+  // compared the claim's stop against the hole's own origin, which meant the two ids never matched
+  // and the denial could never fire. The MEASUREMENT still stands — the hole is the hole and the
+  // walk is in it — so what is withdrawn is the leave-by and the mark, never §V1.1's correction.
+  const liveClaim = useMemo(
+    () =>
+      liveLeg
+        ? travelOrigin({
+            events: events.filter((e) => e.date === today),
+            nowMs,
+            excludeEventId: liveLeg.to.id,
+          })
+        : null,
+    [liveLeg, events, today, nowMs],
+  );
+  const liveOriginDenied = liveClaim?.denied === true;
+
+  /** The one thing this screen needs a coordinate lookup for: the live leg's two ends, so the fix
+   *  can be tested against them. Only that leg — a stance on a hole you are not in answers a
+   *  question nobody asked, and §1 forbids a request from a position either way. */
+  const liveStance = useMemo(() => {
+    if (!liveLeg) return null;
+    const coordOf = (event: TripEvent, leaving: boolean) => {
+      const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
+      const id = eventPlaceId(event, booking, leaving);
+      const place = id ? places.find((p) => p.id === id) : undefined;
+      return place?.lat != null && place.lng != null
+        ? { lat: place.lat, lng: place.lng }
+        : undefined;
+    };
+    const from = coordOf(liveLeg.from, true);
+    const to = coordOf(liveLeg.to, false);
+    if (!from || !to) return null;
+    return travelStance({
+      fix:
+        geo.coords && geo.fixedAt !== undefined
+          ? {
+              coords: geo.coords,
+              fixedAt: geo.fixedAt,
+              ...(geo.accuracyMeters !== undefined ? { accuracyMeters: geo.accuracyMeters } : {}),
+            }
+          : undefined,
+      from,
+      to,
+      nowMs,
+    });
+  }, [liveLeg, places, bookings, geo.coords, geo.fixedAt, geo.accuracyMeters, nowMs]);
+
+  // **Somebody said `בדרך`** — a person telling the app what it should have been able to see, and
+  // reversible since ADR-0207 §7. Read through the same `useOnWay` the hero and the board read, so
+  // a mark set on one elevation withdraws the nudge on all three.
+  const liveOnWay = useOnWay(trip.id, liveLeg?.to.id);
+
+  /** **Every hole's journey, computed once per tick and read by key.** The arithmetic is
+   *  `dayJourney`'s (`lib/day-joins.ts`) and the leave-by inside it is `heroLeaveBy`'s, so the
+   *  board, the lifted hero and this row cannot name three different minutes for one departure.
+   *
+   *  The live hole is the only one handed a position or a mark: a stance on a hole you are not in
+   *  answers a question nobody asked, and a `בדרך` mark is about the journey you are on. */
+  const journeys = useMemo(() => {
+    const byLeg = new Map<string, DayJourney>();
+    const remaining =
+      liveStance && liveStance.stance === TRAVEL_STANCE.EN_ROUTE
+        ? remainingTravelSeconds(
+            liveStance,
+            travelReads.estimateFor(liveLeg!.from, liveLeg!.to)?.durationSeconds ?? null,
+          )
+        : null;
+    for (const leg of dayLegs) {
+      const estimate = travelReads.estimateFor(leg.from, leg.to);
+      const live = leg === liveLeg;
+      const journey = dayJourney({
+        // **Absent on the day's first leg, and that is a property of the LEG rather than of its
+        // event** (ADR-0206 §AF3). A stay's own `endsAt` is its check-out, days away on a middle
+        // night — reading it as this hole's departure measured a window from next Wednesday and
+        // reported zero minutes free. There is no window out of a bed: the day window's dawn
+        // would claim you could have left at 07:00, and the stay's ends are not this day's.
+        ...(leg.bookend
+          ? {}
+          : { departAfterMs: Date.parse(leg.from.endsAt ?? leg.from.startsAt!) }),
+        arriveByMs: Date.parse(leg.to.startsAt ?? ''),
+        travelSeconds: estimate?.durationSeconds ?? null,
+        distanceMeters: estimate?.distanceMeters ?? null,
+        nowMs,
+        // `arrived` needs no separate arm here: a fix at the next stop means you got there, and
+        // the day list is a record either way — what it must not do is keep offering a departure.
+        onWay:
+          live &&
+          (liveOnWay ||
+            liveStance?.stance === TRAVEL_STANCE.EN_ROUTE ||
+            liveStance?.stance === TRAVEL_STANCE.ARRIVED),
+        remainingSeconds: live ? remaining : null,
+        claimDenied: live && liveOriginDenied,
+      });
+      if (journey) byLeg.set(`${leg.from.id}>${leg.to.id}`, journey);
+    }
+    return byLeg;
+  }, [dayLegs, travelReads, nowMs, liveLeg, liveOnWay, liveStance, liveOriginDenied]);
+  const journeyFor = (from: TripEvent | undefined, to: TripEvent) =>
+    (from && journeys.get(`${from.id}>${to.id}`)) ?? null;
+
+  /** The live hole's one control, and the arm decides what it means: `בדרך` answers the mark,
+   *  `ביטול סימון` takes it back (ADR-0207 §7 — a toast is transient and a mark is not). Nothing
+   *  on a read-only archive, where every other write is gated too (ADR-0029). */
+  const liveAction = (journey: DayJourney): { label: string; onPress: () => void } | undefined => {
+    if (readOnly || !liveLeg) return undefined;
+    if (journey.arm === DAY_JOURNEY_ARM.ON_WAY) {
+      return liveOnWay
+        ? { label: t.actions.undoSettle, onPress: () => clearOnWay(trip.id, liveLeg.to.id) }
+        : undefined;
+    }
+    if (journey.arm !== DAY_JOURNEY_ARM.PASSED) return undefined;
+    return { label: t.actions.onWay, onPress: () => verbs.onWay(liveLeg.to) };
+  };
+  /** `עדיין כאן` — the app saying it CHECKED, and the only claim a position licenses that the
+   *  clock could not (ADR-0207 §2). Only where the fix actually puts them at the origin. */
+  const liveLocated = (journey: DayJourney) =>
+    liveStance?.stance === TRAVEL_STANCE.AT_ORIGIN && journey.arm === DAY_JOURNEY_ARM.PASSED
+      ? t.travel.stillHere
+      : undefined;
+  /** **The props a hole's journey block needs**, in one place, because the day's first leg renders
+   *  outside the block loop and a second assembly is how the two would drift. */
+  const journeyProps = (journey: DayJourney, live: boolean) => ({
+    journey,
+    travelMode: travelReads.mode,
+    ...(live ? { action: liveAction(journey), located: liveLocated(journey) } : {}),
+  });
+
+  /** **The day's first leg — out of the stay you woke in** (ADR-0206 §AD). It has no `join` above
+   *  it because it has no row above it, so it renders outside the block loop rather than inside
+   *  one; everything it says is the same component saying it. */
+  const wakeJourney = day.wake ? journeyFor(day.wake.from, day.wake.to) : null;
+
   // The now-line: only on today (a past/future day has no "now"). Where it lands is
   // `lib/now-line.ts` — one derivation shared with Plan's static now-reference, and
   // the seam for the generalization that will let it sit INSIDE a running event
@@ -612,12 +978,21 @@ export function DayView() {
         )}
 
         <div className={'day-list' + (readOnly ? ' archive' : '')}>
+          {/* **The walk out of the bed** (ADR-0206 §AD). Above the first row rather than between
+            two, which is the one place in the day where a journey has no hole to sit in — and the
+            leg you can be surest of, since the hotel is where you both started and finished. */}
+          {wakeJourney && day.wake && (
+            <JourneyRow
+              {...journeyProps(wakeJourney, day.wake.to === liveLeg?.to)}
+              tz={trip.timezone}
+            />
+          )}
           {/* Overlapping events render as the concurrency forest (ADR-0041): nests
             for containment, quiet clusters for partial overlap. The now-line is
             interleaved at the top level; untimed events have no span to place, so
             they stay plain leaf rows at the end. */}
           {blocks.map((block) => {
-            const rows = block.entries.map(({ entry, index, join }) => (
+            const rows = block.entries.map(({ entry, index, join, from }) => (
               <Fragment
                 key={
                   entry.kind === 'event' ? groupKey(entry.group) : `${entry.event.id}-${entry.edge}`
@@ -628,6 +1003,14 @@ export function DayView() {
                 {join && (
                   <JoinRow
                     join={join}
+                    {...(() => {
+                      const to = entry.kind === 'event' ? groupStartEvent(entry.group) : undefined;
+                      const journey = to ? journeyFor(from, to) : null;
+                      return journey
+                        ? journeyProps(journey, to === liveLeg?.to && from === liveLeg?.from)
+                        : { journey: null, travelMode: travelReads.mode };
+                    })()}
+                    tz={trip.timezone}
                     places={places}
                     placeLabels={placeLabels}
                     onFillGap={readOnly ? undefined : setGapTarget}

@@ -1957,6 +1957,48 @@ export const t = {
     cycling: 'אופניים',
     driving: 'רכב',
   } satisfies Record<TravelMode, string>,
+  // ── WHAT A JOURNEY SAYS, ON EITHER ELEVATION (ADR-0206 §V1.2 / §V1.3 / §V1.4) ─────────
+  // Top level beside `travelMode`, and for the identical reason: the horizon's line, the day's
+  // journey block and the board all name one journey, so a second copy of `זמן היציאה עבר` is
+  // how they start describing it differently (root rule 8). These four lived under `hero` while
+  // the hero was the only surface that had them; M6a is the second, which is the moment they
+  // move rather than get copied.
+  travel: {
+    // The clock arrives already isolated: `18:37` is a digit run inside Hebrew, and the maqaf
+    // before it is a strong RTL character, so the run needs the isolate its caller gives it
+    // (ADR-0118).
+    //
+    // **Two forms, because the two elevations are asking different things.** The hero is the
+    // live surface and speaks to you — `צאו ב־18:37`, an instruction. The day list is a
+    // schedule, and most of its holes are not the one you are standing in: an imperative on
+    // every hole of the day would be the app telling you to leave four times before breakfast.
+    // So the day's form is the NOUN (`יציאה 18:37`), which is §D10's own dodge again and reads
+    // as a fact wherever it lands.
+    leaveAt: (clock: string) => `צאו ב־${clock}`,
+    leaveAtDay: (clock: string) => `יציאה ${clock}`,
+    // **What a passed leave-by may claim, and it is only this** (§Z5 §M4): the time has gone
+    // by. Never `אתם באיחור` — the app has no sensor and a settle mark is not one, so a claim
+    // about where a person is would be a claim it cannot stand behind (§D5 applied to a
+    // sentence rather than to a number). ADR-0208 §1 lets the countdown TILE carry `באיחור` in
+    // its unit slot, where it labels a number rather than a person; this sentence is unchanged.
+    leavePassed: (clock: string) => `זמן היציאה עבר ב־${clock}`,
+    // **The one thing a fix lets the app say that the clock could not** (ADR-0207 §2). A passed
+    // leave-by was a claim about a clock; with a position at the leg's first stop it becomes one
+    // the app has actually checked, and this is that check said out loud. Drawn in the v2
+    // mockup's §3d. It is still not `אתם באיחור` — it reports where you are, not what you are.
+    stillHere: 'עדיין כאן',
+    // What is LEFT of the journey, once the fix says you are on it (ADR-0207 §6). An
+    // approximation of an approximation, and `~` is what says so; the alternative was the
+    // untouched total, which read as "44 minutes still to walk" two minutes from the door.
+    remaining: (duration: string) => `נותרו ${duration}`,
+    // **§V1.1's correction, said in the day's own slot.** `פנוי לפני` and not `פנוי · 2:00 שע׳`,
+    // because the journey block absorbs the free-time statement rather than sitting beside it
+    // (§Z5 §M2) and the reader now needs to know WHICH side of the hole is free: the walk is at
+    // the end of it, so what is free is what comes before. Noun-led like `t.day.join.free`, for
+    // the same agreement dodge — `שעה פנויה` / `שעתיים פנויות` / `45 דקות פנויות` all disagree
+    // with a number the phrase does not expose (§D10).
+    freeBefore: (length: string) => `פנוי לפני ${length}`,
+  },
   hero: {
     title: 'עכשיו והבא בתור',
     close: 'סגירה',
@@ -1980,29 +2022,6 @@ export const t = {
     // a label naming a list does not inflect to the length of the list it happens to have.
     task: 'משימות',
     moreTasks: (n: number) => (n === 1 ? 'ועוד משימה אחת' : `ועוד ${n} משימות`),
-    // ── THE JOURNEY BETWEEN TWO POINTS (ADR-0206 §V1.2, §D2) ────────────────────────────
-    // The horizon's own slot, and the third of the app's three questions answered for the
-    // first time. It sits between `עכשיו` and `הבא בתור` because a journey is a property of
-    // neither point (§D2) — it is not a fifth point-depth item.
-    //
-    // The clock arrives already isolated: `18:37` is a digit run inside Hebrew, and the
-    // maqaf before it is a strong RTL character, so the run needs the isolate its caller
-    // gives it (ADR-0118).
-    leaveAt: (clock: string) => `צאו ב־${clock}`,
-    // **What a passed leave-by may claim, and it is only this** (§Z5 §M4): the time has gone
-    // by. Never `אתם באיחור` — the app has no sensor and a settle mark is not one, so a claim
-    // about where a person is would be a claim it cannot stand behind (§D5 applied to a
-    // sentence rather than to a number).
-    leavePassed: (clock: string) => `זמן היציאה עבר ב־${clock}`,
-    // **The one thing a fix lets the app say that the clock could not** (ADR-0207 §2). A passed
-    // leave-by was a claim about a clock; with a position at the leg's first stop it becomes one
-    // the app has actually checked, and this is that check said out loud. Drawn in the v2
-    // mockup's §3d. It is still not `אתם באיחור` — it reports where you are, not what you are.
-    stillHere: 'עדיין כאן',
-    // What is LEFT of the journey, once the fix says you are on it (§6). An approximation of an
-    // approximation, and `~` is what says so; the alternative was the untouched total, which read
-    // as "44 minutes still to walk" two minutes from the door.
-    remaining: (duration: string) => `נותרו ${duration}`,
   },
   // Real, offline-safe shortcuts only (ADR-0045): next confirmation code, WiFi,
   // documents. Empty tiles are an "add" affordance; documents stays a fixture

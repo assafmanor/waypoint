@@ -15,6 +15,7 @@ import {
   ambientSpanPosition,
   buildDayGlance,
   countsNights,
+  dayBookendStays,
 } from './glance';
 import { DEFAULT_EVENT_ICON } from '../constants';
 import { tripZoneCrossings, type ZoneContext } from './places';
@@ -948,5 +949,74 @@ describe('a windowed check-in expires from נותרו היום (ADR-0184 §6)', 
     expect(
       count([stay({ startWindowEnd: at('21:00'), status: EVENT_STATUS.DONE })], ms('18:30')),
     ).toBe(0);
+  });
+});
+
+// ── THE STAYS THAT BRACKET A DAY (ADR-0054's amendment / ADR-0206 §AD) ────────────────────
+//
+// The day list's own use of the fact ADR-0054 established for the route: the journey blocks sit
+// between two ROWS, so the first row of a mid-stay day has nothing above it and the walk out of
+// the hotel was the one leg the list could never draw. That the answer here agrees with
+// `buildDayStopSequence`'s first/last position is asserted in `map-pins.test.ts`, beside that
+// function's own harness.
+describe('dayBookendStays', () => {
+  const stay = (from: string, to: string) =>
+    ev({
+      id: 'stay',
+      category: 'lodging',
+      date: from,
+      endDate: to,
+      startsAt: `${from}T15:00:00${OFF}`,
+      endsAt: `${to}T11:00:00${OFF}`,
+    });
+  const museum = ev({ id: 'm', startsAt: at('11:00') });
+
+  // Which end needs no third rule: the span covered last night → you woke there; it covers
+  // tonight → you end there.
+  it('a middle night is both ends — the day with a hotel at each', () => {
+    const bookends = dayBookendStays([stay('2026-07-05', '2026-07-09'), museum], DATE);
+    expect(bookends.woke?.id).toBe('stay');
+    expect(bookends.sleeps?.id).toBe('stay');
+  });
+
+  it('a check-in day is only the one you sleep in', () => {
+    const bookends = dayBookendStays([stay(DATE, '2026-07-09'), museum], DATE);
+    expect(bookends.woke).toBeUndefined();
+    expect(bookends.sleeps?.id).toBe('stay');
+  });
+
+  it('a check-out day is only the one you woke in', () => {
+    const bookends = dayBookendStays([stay('2026-07-05', DATE), museum], DATE);
+    expect(bookends.woke?.id).toBe('stay');
+    expect(bookends.sleeps).toBeUndefined();
+  });
+
+  // **`countsNights` is the half that separates a hotel from a car hire** — you sleep in one, so
+  // it brackets your day; you merely hold the other, so its pickup and return are ordinary stops.
+  // Both are read off ADR-0162's profile rather than compared against a category here.
+  it('a car hire brackets nothing, however many days it spans', () => {
+    const hire = ev({
+      id: 'car',
+      category: 'transport',
+      icon: '🚗',
+      date: '2026-07-05',
+      endDate: '2026-07-09',
+      startsAt: `2026-07-05T09:00:00${OFF}`,
+      endsAt: `2026-07-09T09:00:00${OFF}`,
+    });
+    expect(dayBookendStays([hire, museum], DATE)).toEqual({ woke: undefined, sleeps: undefined });
+  });
+
+  it('a single-day stay is ambient in neither direction, so it brackets nothing', () => {
+    expect(dayBookendStays([stay(DATE, DATE), museum], DATE)).toEqual({
+      woke: undefined,
+      sleeps: undefined,
+    });
+  });
+
+  it('answers nothing on a day the stay does not cover', () => {
+    const bookends = dayBookendStays([stay('2026-07-01', '2026-07-03')], DATE);
+    expect(bookends.woke).toBeUndefined();
+    expect(bookends.sleeps).toBeUndefined();
   });
 });

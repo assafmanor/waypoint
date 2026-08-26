@@ -13,6 +13,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { buildPlaceUsageIndex, type PlaceUsage } from './place-usage';
+import { dayBookendStays } from './glance';
 import {
   buildDayStopSequence,
   buildPinOrderIndex,
@@ -822,6 +823,50 @@ describe('the stay bookends the day, and wears no number for it', () => {
     const stops = day('2026-07-18', DAY);
     expect(stops.map((s) => s.usage.placeId)).toEqual(['hotel', 'museum', 'dinner']);
     expect(stops.map((s) => s.order)).toEqual([undefined, 1, 2]);
+  });
+
+  // **THE DRIFT GUARD** (ADR-0206 §AD, M6a). The day LIST needs the same fact for its own first
+  // leg — the journey block sits between two rows, so a mid-stay day's first row has nothing above
+  // it — and it asks `dayBookendStays(events, date)` rather than this sequence, because a leg is
+  // not a sequence. Two shapes of one rule, so what holds them together is this: the stay that
+  // function names is the stay this one puts first. If either drifts, the day row and the map's
+  // route disagree about where the morning starts, and the whole reason §AD exists is that they
+  // must not.
+  const bookendAgreement = (from: string, to: string) => {
+    const events = [
+      event({
+        id: 'stay',
+        placeId: 'hotel',
+        category: EVENT_CATEGORY.LODGING,
+        date: from,
+        endDate: to,
+        startsAt: `${from}T15:00:00Z`,
+        endsAt: `${to}T11:00:00Z`,
+      }),
+      event({ id: 'm', placeId: 'museum', startsAt: at2('11:00') }),
+      event({ id: 'd', placeId: 'dinner', startsAt: at2('20:00') }),
+    ];
+    const all = [
+      ...usages({ places: [place('hotel'), place('museum'), place('dinner')], events }).values(),
+    ];
+    const stops = buildDayStopSequence(all, { nameOf, onDate: DAY, eventById: eventsById(events) });
+    return { bookends: dayBookendStays(events, DAY), stops, events };
+  };
+
+  it.each([
+    ['a middle night', '2026-07-18', '2026-07-22', 'stay', 'stay'],
+    ['a check-in day', DAY, '2026-07-22', undefined, 'stay'],
+    ['a check-out day', '2026-07-18', DAY, 'stay', undefined],
+  ])('%s: the list and the route name the same bookends', (_label, from, to, woke, sleeps) => {
+    const { bookends, stops, events } = bookendAgreement(from, to);
+    expect(bookends.woke?.id).toBe(woke);
+    expect(bookends.sleeps?.id).toBe(sleeps);
+    // …and the sequence agrees, read off the stop rather than asserted from the same rule: the
+    // first stop is the woken stay's place exactly when there is one, and the last the slept-in
+    // stay's. Anything else means one of the two derivations moved.
+    const placeOf = (id?: string) => (id ? events.find((e) => e.id === id)?.placeId : undefined);
+    expect(stops[0]?.usage.placeId).toBe(placeOf(woke) ?? 'museum');
+    expect(stops[stops.length - 1]?.usage.placeId).toBe(placeOf(sleeps) ?? 'dinner');
   });
 
   it('a car hire is NOT a bookend — you hold it, you do not sleep in it', () => {

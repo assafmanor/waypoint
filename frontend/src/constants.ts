@@ -122,6 +122,7 @@ export const DEVICE_REGION: string | undefined = (() => {
     return undefined;
   }
 })();
+export const SECONDS_PER_MINUTE = 60;
 export const MINUTES_PER_HOUR = 60;
 export const MINUTES_PER_DAY = MINUTES_PER_HOUR * 24;
 

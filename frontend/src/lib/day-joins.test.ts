@@ -3,16 +3,25 @@ import {
   BOOKING_TYPE,
   EVENT_KIND,
   EVENT_STATUS,
+  TRAVEL_BUFFER_SECONDS,
   type Booking,
   type TripEvent,
 } from '@waypoint/shared';
-import { connectionStops, dayBlocks, joinBetween } from './day-joins';
+import {
+  DAY_JOURNEY_ARM,
+  connectionStops,
+  dayBlocks,
+  dayJourney,
+  joinBetween,
+  narrowGapForTravel,
+} from './day-joins';
 import { bookingWhen } from './booking-journey';
 import { mergeDayEntries } from './day-entries';
 import { buildTimeTree } from './time';
 import { gapBetween } from './gaps';
 
 const TZ = 'Asia/Tokyo';
+const MIN = 60_000;
 const STAMP = '2026-07-01T00:00:00Z';
 
 const ev = (over: Partial<TripEvent> & { id: string }): TripEvent => ({
@@ -298,5 +307,150 @@ describe('a flexible edge is transparent to the measurement (ADR-0171 §5)', () 
       .flatMap((b) => b.entries.map((e) => e.join))
       .filter(Boolean);
     expect(joins).toHaveLength(0);
+  });
+});
+
+// ── THE JOURNEY IN A HOLE (ADR-0206 §V1.1 / §V1.3 / §V1.4) ────────────────────────────────
+//
+// The arithmetic only. What the row SAYS is `DayJoinRow.test.tsx`'s and what the screen wires is
+// `screens/DayView.travel.test.tsx`'s — including the failing spec §V1.1 owes as a bug fix.
+describe('dayJourney', () => {
+  /** The mockup's own scenario and the ADR's own example: a 2:40 hole with a 40-minute walk in
+   *  it, leaving 2:00 free. Taken from the drawing rather than invented, so this file and
+   *  `a-travel-time-between-two-points-v2.html` cannot disagree about the case. */
+  const HOLE_START = Date.parse('2026-07-12T05:00:00Z');
+  const HOLE_END = HOLE_START + 160 * MIN;
+  const WALK = 40 * 60;
+  const journey = (over: Parameters<typeof dayJourney>[0] extends infer T ? Partial<T> : never) =>
+    dayJourney({
+      departAfterMs: HOLE_START,
+      arriveByMs: HOLE_END,
+      travelSeconds: WALK,
+      nowMs: HOLE_START,
+      ...over,
+    });
+
+  it('takes the journey out of the free time — the correction §V1.1 leads with', () => {
+    expect(journey({})?.free?.freeSeconds).toBe(120 * 60);
+    expect(journey({})?.free?.availableSeconds).toBe(160 * 60);
+  });
+
+  // §D4, and the direction of the failure is the point: inventing a walk we did not measure
+  // costs somebody their afternoon, where saying nothing costs them a number they never had.
+  it('answers null with no estimate, so the slot reads exactly as it read before', () => {
+    expect(journey({ travelSeconds: null })).toBeNull();
+  });
+
+  // `ROUTE_MIN_CROW_M`'s own absence (ADR-0205 §Z2): two stops that are one place.
+  it('answers null for a zero-length leg rather than saying `0 דק׳`', () => {
+    expect(journey({ travelSeconds: 0 })).toBeNull();
+  });
+
+  // **The leave-by is `heroLeaveBy`'s**, so the board, the hero and this row cannot name three
+  // different minutes for one departure. Asserted against the shared buffer, never a literal.
+  it('derives the leave-by through the shared function, buffer included', () => {
+    expect(journey({})?.leaveByMs).toBe(HOLE_END - (WALK + TRAVEL_BUFFER_SECONDS) * 1000);
+  });
+
+  it('is AHEAD while the leave-by is still to come', () => {
+    expect(journey({})?.arm).toBe(DAY_JOURNEY_ARM.AHEAD);
+  });
+
+  it('is PASSED once the leave-by has gone by', () => {
+    const passed = journey({ nowMs: HOLE_END - 10 * MIN });
+    expect(passed?.arm).toBe(DAY_JOURNEY_ARM.PASSED);
+    expect(passed?.leaveByMs).not.toBeNull();
+  });
+
+  // **The arm the ADR did not name, and the reason it exists.** Every leave-by of a finished day
+  // has gone by, so without this a day read at 22:00 prints `זמן היציאה עבר` on every hole of it
+  // — true, useless, and four wrong nudges before breakfast.
+  it('is PAST once the row below has started, and offers no departure there', () => {
+    const past = journey({ nowMs: HOLE_END + MIN });
+    expect(past?.arm).toBe(DAY_JOURNEY_ARM.PAST);
+    expect(past?.leaveByMs).toBeNull();
+    // …and it keeps the measurement, because the correction is a fact and not advice.
+    expect(past?.free?.freeSeconds).toBe(120 * 60);
+  });
+
+  // PAST is checked FIRST: a leg that ran late is still behind you.
+  it('reads a late hole that is already behind you as PAST, not PASSED', () => {
+    expect(journey({ nowMs: HOLE_END + MIN, travelSeconds: 200 * 60 })?.arm).toBe(
+      DAY_JOURNEY_ARM.PAST,
+    );
+  });
+
+  it('is ON_WAY once somebody says so, whatever the clock says', () => {
+    const moving = journey({ nowMs: HOLE_END - 10 * MIN, onWay: true });
+    expect(moving?.arm).toBe(DAY_JOURNEY_ARM.ON_WAY);
+  });
+
+  // ADR-0207 §6 — what is LEFT, and only on the arm that is about being under way.
+  it('carries the remaining time on ON_WAY and nowhere else', () => {
+    expect(journey({ onWay: true, remainingSeconds: 12 * 60 })?.remainingSeconds).toBe(12 * 60);
+    expect(journey({ remainingSeconds: 12 * 60 })?.remainingSeconds).toBeNull();
+  });
+
+  // ── ADR-0208 §2: a claim needs something to stand on ────────────────────────────────────
+  //
+  // **The measurement survives a denied claim and the advice does not**, and the split is the
+  // whole of this surface's reading of §2: the hole is still the hole and the walk is still in
+  // it, so §V1.1's correction is a fact about the plan rather than a claim about the traveller.
+  // What may not be said is where to be and when.
+  it('withdraws the leave-by on a denied claim and keeps the measurement', () => {
+    const denied = journey({ nowMs: HOLE_END - 10 * MIN, claimDenied: true });
+    expect(denied?.leaveByMs).toBeNull();
+    expect(denied?.arm).toBe(DAY_JOURNEY_ARM.AHEAD);
+    expect(denied?.free?.freeSeconds).toBe(120 * 60);
+    expect(denied?.travelSeconds).toBe(WALK);
+  });
+
+  it('never marks a denied claim late, which is the report ADR-0208 answers', () => {
+    expect(journey({ nowMs: HOLE_END - 10 * MIN, claimDenied: true })?.arm).not.toBe(
+      DAY_JOURNEY_ARM.PASSED,
+    );
+  });
+
+  // A mark is a person's own statement, so it outranks the denial rather than being blocked by it.
+  it('still honours `בדרך` on a denied claim', () => {
+    expect(journey({ claimDenied: true, onWay: true })?.arm).toBe(DAY_JOURNEY_ARM.ON_WAY);
+  });
+
+  // **§AD — the day's first leg, out of the stay you woke in.** An ambient stay has no check-out
+  // instant on a middle night, and the day window's dawn would claim you could have left at 07:00.
+  it('reports no free time where there is no window, and still reports the journey', () => {
+    const bookend = dayJourney({ arriveByMs: HOLE_END, travelSeconds: WALK, nowMs: HOLE_START });
+    expect(bookend?.free).toBeNull();
+    expect(bookend?.travelSeconds).toBe(WALK);
+    expect(bookend?.leaveByMs).toBe(HOLE_END - (WALK + TRAVEL_BUFFER_SECONDS) * 1000);
+  });
+});
+
+describe('narrowGapForTravel', () => {
+  const gapAt = (startHHMM: string, endHHMM: string) => ({
+    minutes: 0,
+    fill: { date: '2026-07-12', start: startHHMM, end: endHHMM },
+  });
+
+  const journeyFreeing = (freeSeconds: number) =>
+    ({ free: { freeSeconds } }) as unknown as Parameters<typeof narrowGapForTravel>[1];
+
+  // The common case, and why the offer was only wrong at the margin: the journey sits at the END
+  // of a hole, so a 60-minute block at its start is untouched by a 40-minute walk two hours later.
+  it('leaves a slot alone when the journey does not reach it', () => {
+    const gap = gapAt('14:00', '15:00');
+    expect(narrowGapForTravel(gap, journeyFreeing(120 * 60), TZ)).toBe(gap);
+  });
+
+  // …and the margin, which is where the control was handing out a slot the walk eats.
+  it('caps the slot at what is actually free', () => {
+    const narrowed = narrowGapForTravel(gapAt('14:00', '15:00'), journeyFreeing(30 * 60), TZ);
+    expect(narrowed.fill.end).toBe('14:30');
+    expect(narrowed.fill.start).toBe('14:00');
+  });
+
+  it('leaves the slot alone when there is nothing to narrow against (§D4)', () => {
+    const gap = gapAt('14:00', '15:00');
+    expect(narrowGapForTravel(gap, null, TZ)).toBe(gap);
   });
 });

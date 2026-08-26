@@ -119,6 +119,52 @@ describe('travelOrigin — which stop the journey leaves from', () => {
     expect(travelOrigin({ events: [], nowMs: NOW }).event).toBeUndefined();
   });
 
+  // ── THE MORNING BEFORE ANYTHING HAS STARTED (ADR-0206 §AD, built in M6a) ────────────────
+  //
+  // §AE3 shipped with no answer here and named it as the first thing to reconcile: scoped to the
+  // clock's own day, there is no started stop until the day's first one begins, so on the read
+  // where "when do I have to leave" matters most the board drew nothing at all.
+  describe('the stay you woke in (ADR-0206 §AD)', () => {
+    const hotel = ev({
+      id: 'hotel',
+      category: 'lodging',
+      date: '2026-08-01',
+      endDate: '2026-08-05',
+      startsAt: '2026-08-01T15:00:00Z',
+      endsAt: '2026-08-05T11:00:00Z',
+    });
+
+    it('answers the bed on a morning nothing has started on', () => {
+      expect(travelOrigin({ events: [later], nowMs: NOW, wokeIn: hotel }).event?.id).toBe('hotel');
+    });
+
+    // **Only ever the fallback.** A stop that has actually started is later, and therefore a
+    // stronger claim about where the plan left you — the bed is not a walk back, which this
+    // function still refuses (see the skip case below).
+    it('never displaces a stop that has already started', () => {
+      expect(travelOrigin({ events, nowMs: NOW, wokeIn: hotel }).event?.id).toBe('museum');
+    });
+
+    it('never displaces the point in progress either', () => {
+      expect(travelOrigin({ nowEvent: museum, events, nowMs: NOW, wokeIn: hotel }).event?.id).toBe(
+        'museum',
+      );
+    });
+
+    // The day whose only stops are one stay's two ends would otherwise ask for a leg from a
+    // place to itself.
+    it('is not its own origin when the bed IS the destination', () => {
+      expect(
+        travelOrigin({ events: [], nowMs: NOW, wokeIn: hotel, excludeEventId: 'hotel' }).event,
+      ).toBeUndefined();
+    });
+
+    // Absent leaves §AE3's shipped behaviour untouched, which is what makes this additive.
+    it('changes nothing when the caller has no bed to offer', () => {
+      expect(travelOrigin({ events: [later], nowMs: NOW }).event).toBeUndefined();
+    });
+  });
+
   // **ADR-0208 §2**, reported from a real day: the group skipped the stop they were at, and the
   // board went on measuring the leg out of a place nobody went to — a leave-by, and then a late
   // mark, derived from a claim the group had explicitly denied.

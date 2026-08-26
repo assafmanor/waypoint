@@ -205,6 +205,52 @@ export function ambientEventsOnDate(events: TripEvent[], date: string): TripEven
 export const countsNights = (event: Pick<TripEvent, 'category' | 'icon'>): boolean =>
   eventDurationUnit(event) === 'nights';
 
+/** **The stays that bracket a day** — the one you woke in and the one you sleep in
+ *  (ADR-0054's 2026-08-25 amendment; ADR-0206 §AD). */
+export interface DayBookendStays {
+  /** The stay whose span began BEFORE this day, so you woke there. */
+  woke?: TripEvent;
+  /** The stay whose span runs PAST this day, so you sleep there. */
+  sleeps?: TripEvent;
+}
+
+/**
+ * **Which stays bookend `date`** — the two stops nobody schedules and everybody makes.
+ *
+ * Owner, off the shipped canvas: _"on most days you can infer for certain that you're gonna start
+ * the day in a hotel and end in a hotel."_ ADR-0054's amendment made that the route's first and
+ * last position; **this is the same fact for the day LIST**, which needs it for a different
+ * reason: the day's journey blocks sit between two ROWS (ADR-0206 §V1.3), and the first row of a
+ * mid-stay day has no row above it — so the walk out of the hotel is the one leg the list could
+ * never draw (§AD, and §AE3 named it as the first thing M6a should reconcile).
+ *
+ * **Which end needs no third rule, exactly as it does not on the route:** the span covered last
+ * night → you woke there; it covers tonight → you end there. A check-in day is `sleeps` only, a
+ * check-out day `woke` only, a middle night both, and a day you change hotels gets A's and B's for
+ * free because each answers about its own span.
+ *
+ * Both halves of the gate are load-bearing and neither is new here: `isAmbient` (through
+ * `ambientEventsOnDate`) is what makes a stay backdrop rather than a stop, and `countsNights` is
+ * what separates a hotel from a car hire — you sleep in one, so it brackets your day, and you
+ * merely hold the other, so its pickup and return are ordinary stops at their own instants. Both
+ * read ADR-0162's profile, so a future ambient category inherits the answer.
+ *
+ * **This is deliberately NOT a second copy of `map-pins.ts`'s `stayEnds`.** That one asks the
+ * inverse question — _does THIS place's stay bookend the day_ — over a place's own moments, for a
+ * sequence of stops; this one asks _which stay does_, for a leg. The rule they share is the two
+ * comparisons plus `ambientEventsOnDate`, and it is shared. What holds them together is a spec:
+ * `glance.test.ts` asserts the stay named here is the one `buildDayStopSequence` puts first, which
+ * is a cheaper guard against drift than a refactor of a function two field reports have been fixed
+ * inside (M7c).
+ */
+export function dayBookendStays(events: TripEvent[], date: string): DayBookendStays {
+  const stays = ambientEventsOnDate(events, date).filter(countsNights);
+  return {
+    woke: stays.find((e) => e.date < date),
+    sleeps: stays.find((e) => date < e.endDate!),
+  };
+}
+
 /** **Where you are inside an ambient span, and how long the whole span is** — the
  *  `2` and the `4` of `לילה 2 מתוך 4` (ADR-0054 / ADR-0163).
  *

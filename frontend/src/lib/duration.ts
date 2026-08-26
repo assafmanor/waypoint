@@ -15,6 +15,7 @@ import {
   DAYS_PER_YEAR,
   MINUTES_PER_DAY,
   MINUTES_PER_HOUR,
+  SECONDS_PER_MINUTE,
 } from '../constants';
 import { ltrIsolate } from './bidi';
 import { dayPhrase, monthPhrase, weekPhrase, yearPhrase } from './hebrew';
@@ -68,6 +69,14 @@ export function approxDuration(minutes: number): string | null {
   const phrase = hoursPhrase(total);
   return `${ltrIsolate(`~${head}`)}${phrase.slice(head.length)}`;
 }
+
+/** **The same hedge, from the unit a route answers in.** Every consumer in the routes epic holds
+ *  SECONDS — `TravelEstimate.durationSeconds`, `remainingTravelSeconds`, `DayJourney` — and each
+ *  of them was dividing by a bare `60` at its own call site, which is the literal
+ *  `frontend/CLAUDE.md` asks to name once it has a second reader. The rounding stays
+ *  `approxDuration`'s, so the hero's `~40 דק׳` and the day's are one number. */
+export const approxTravelTime = (seconds: number): string | null =>
+  approxDuration(seconds / SECONDS_PER_MINUTE);
 
 /** **The clock jump, as a sentence** (session 215) — `מזיזים את השעון שעה קדימה`.
  *

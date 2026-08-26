@@ -862,3 +862,130 @@ Two things it decides that the ADR left implicit:
   `~23`; without it the `~` is at x`336`, to the **right** of both digits, and reads `23~`.
 - **The exact-hour rungs are words, so they take `כ` instead**: `שעה` hedged is `כשעה`. A tilde in
   front of a Hebrew word means nothing and is a second neutral character in an RTL run.
+
+## AF. Amendment (2026-08-26) — what M6a settled by building the day read
+
+§V1.1, §V1.3 and §V1.4 are built, in the ADR-0159 slot that already existed. **Nothing in §D or §V
+changed.** Seven notes: five are decisions the ADR left open and the build had to take, one is a
+gap in §AD closed, and one is a defect the render found in this milestone's own first draft.
+
+**On the mockup gate (§M).** None of these went back to a drawing, on the same ground §AE recorded:
+the block itself IS drawn — [`a-travel-time-between-two-points-v2.html`](../../mockups/a-travel-time-between-two-points-v2.html)
+§1, and this build follows it including round 2's choice of the distance over the route thumbnail —
+so what is below is either arithmetic with no drawing to make (§AF1, §AF2, §AF3) or the drawing's
+own answer being confirmed by measurement (§AF4, §AF5). §AF6 and §AF7 are measurements.
+
+### AF1. A hole that is BEHIND you says the measurement and nothing else — a fourth arm
+
+§V1.4 says a passed leave-by is the most actionable thing this data can say, and §Z1's three rows
+are about the ONE journey the board is counting to. **Neither answers what a hole says once the row
+below it has already started**, and on a list that is most of a day: every leave-by of a finished
+day has gone by, so read literally §V1.4 prints `זמן היציאה עבר` on every hole of the afternoon.
+That is true and useless, and four wrong nudges before breakfast is how a surface stops being read.
+
+So `dayJourney` answers a **four-way** discriminant, and `past` is checked first — a leg that ran
+long is still behind you:
+
+| arm      | when                                             | what the block says                                                        |
+| -------- | ------------------------------------------------ | -------------------------------------------------------------------------- |
+| `past`   | the row below has started                        | mode · `~40 דק׳` · the distance · what was free. **No leave-by, no mark.** |
+| `ahead`  | otherwise                                        | + `יציאה 17:15`                                                            |
+| `passed` | the leave-by has gone by and nothing withdrew it | `--miss`, `זמן היציאה עבר ב־17:15`, `בדרך`                                 |
+| `on-way` | `בדרך`, or a fix along the leg (ADR-0207 §2)     | teal, `בדרך · נותרו ~12 דק׳`, `ביטול סימון`                                |
+
+**The measurement is not advice, and that split is what the arms are for.** §V1.1's correction is a
+fact about the plan — the hole is that long and the walk is in it — so it survives on every arm.
+What the quiet arms drop is the _instruction_.
+
+### AF2. This surface gates the CLAIM where the hero gates the REQUEST — and a skip reaches it structurally
+
+ADR-0208 §2 puts the gate on the request: `useDayTravel` is handed no stops, so "the estimate, the
+tile and the horizon row cannot disagree." **The day cannot do that and should not.** Its matrix is
+one call for every hole of the day, so gating one leg out buys no request back; and the day's
+duration, distance and free time are statements about the plan rather than claims about the
+traveller. So a denied claim withdraws the **leave-by and the mark** and leaves the measurement
+standing. Same thesis, one surface's worth of difference in where it lands.
+
+**And the skip arrives here without going through `travelOrigin` at all**, which is the part worth
+recording because the first build of this got it wrong. A skipped event leaves the day list
+entirely (ADR-0027's parking lot), so `dayBlocks` measures the hole from the previous
+**non-skipped** row — which is exactly the repair §2 refuses in as many words: _"it swaps a wrong
+claim for a staler one, and errs toward a louder app, since a longer leg is an earlier leave-by is
+a more confident late mark."_ The list does it structurally rather than deliberately. The first
+draft compared the claim's own stop against the hole's origin, the two ids therefore never matched
+when a skip intervened, and the denial could never fire; it now reads `travelOrigin`'s verdict
+directly. **Found by a spec, and only after its first fixture was rebuilt from the report rather
+than from the rule** — with two events, skipping one leaves a single row and no hole at all, so the
+spec passed while proving nothing.
+
+### AF3. The day's first leg reports no free time, because there is no window to report
+
+§AD said the stay you woke in is the honest origin for a morning and that reaching it needed
+`buildDayStopSequence` plus the place-usage index. **It needs neither.** The question is which
+ambient night-counting span covers the previous night, which is `ambientEventsOnDate` and
+`countsNights` — both already exported, both already the rule `map-pins.ts`'s `stayEnds` encodes
+per place. `dayBookendStays(events, date)` in `lib/glance.ts` is that, and it serves both consumers:
+the day list's first leg and `travelOrigin`'s `wokeIn`, so **the hero's quiet morning is answered by
+the same change** rather than waiting for its own.
+
+The two functions are deliberately **not** merged: `stayEnds` asks the inverse question (does THIS
+place's stay bookend the day) over a place's moments, for a sequence; this asks which stay does, for
+a leg. What holds them together is a spec in `map-pins.test.ts` asserting the stay one names is the
+stay the other puts first — a cheaper guard than refactoring a function two field reports have
+already been fixed inside (M7c).
+
+**What that leg may not say is what is free before it.** A middle night has no check-out instant, so
+there is no `departAfter` to measure a window from — and the day window's dawn would claim you could
+have left at 07:00. It carries the journey, the distance and the leave-by; the free-time run is
+absent, which is §D4's absence in the one place it is structural rather than incidental. **The first
+build read the stay's own `endsAt` instead and reported `פנוי לפני 0 דק׳`** — a window measured from
+next Wednesday's check-out. The bookend-ness is a property of the LEG now, not of its event.
+
+### AF4. The free time rides the QUIET arms only, and the render is what insisted
+
+The drawing carries the mark alone on both urgent states, and the measurement says why it has to:
+`זמן היציאה עבר ב־17:15 · פנוי לפני שעתיים` is ⁦219.70px⁩ of ink in the meta line's ⁦180.75px⁩ box at
+360, so `text-overflow: ellipsis` was eating the free time on **exactly the arm that matters** and
+pushing `עדיין כאן` ⁦6px⁩ past the block's own edge. Three reasons and they agree: on a passed
+leave-by "what is free before the walk" is a number about a departure already missed, the drawing
+says so, and it does not fit.
+
+### AF5. `עדיין כאן` sits on the ACTS row, and the hue rides the glyph
+
+At ⁦187.09px⁩ in a ⁦180.75px⁩ box it clipped on the meta line even with the free time gone. On the
+acts row it costs **zero** extra height — that row exists on every arm that can earn the mark — and
+it is where the mark belongs: the app saying it checked, beside the verb that answers it, which is
+the pairing the hero's own row already makes.
+
+The paint follows §Z5 §M4's own argument rather than restating it: `--teal` as ink on this block's
+tinted ground measures **3.08:1**, over the 3:1 a graphic owes and under the 4.5 a sentence does. So
+the pin carries the location semantics and the words take `--muted` (**5.12:1**). The mode word on
+the `on-way` arm keeps teal — it is one word there, which is the two-word-label case
+`.wp-event-act.go` already spends teal on.
+
+### AF6. Measured at 360, in Chromium, both themes
+
+`scrollWidth` is exactly ⁦360⁩ and no run paints outside the column in either theme. Heights: the
+quiet arms are ⁦58px⁩ — the number the mockup measured for the absorbed block against ⁦87px⁩ for a
+strip plus a block — and the arms carrying a control are ⁦96px⁩. Every ink clears AA against the
+block's own ground: the amber head/leave ⁦5.15⁩ light / ⁦4.92⁩ dark, `--miss-deep` ⁦6.03⁩ / ⁦5.20⁩, the
+distance ⁦5.23⁩ / ⁦4.76⁩.
+
+**One number does not, and it is the app's and not this milestone's:** `--faint` on the free-time
+run is ⁦3.42:1⁩ here, against **⁦3.03:1⁩ for the shipped `.day-gap-lbl`** it replaces — so the block
+improves it and the ⁦4.5⁩ floor is still missed. Same for the `בדרך` chip's teal at ⁦3.07⁩, which is
+`.wp-event-act.go`'s own shipped value. Both are the backlogged app-wide contrast sweep; changing
+either here would make the block disagree with the row beside it.
+
+**And the `~` inside the isolate is proven rather than asserted**, with a control: shipped, the tilde
+paints at x⁦337.94⁩ and the first digit at x⁦345.52⁩, so it reads `~40`; with the isolate stripped from
+the same string the tilde is at x⁦352.41⁩, to the right of both digits, and reads `40~`. §AE7's own
+measurement, re-run against the shipped block.
+
+### AF7. The block's arrival IS a layout shift, and it is the design's own trade
+
+A hole with no estimate is ⁦20px⁩ of strip; with one it is a ⁦58px⁩ block. The estimate arrives from a
+request, so the rows below a hole move once per cold day-open — ⁦38px⁩ per hole. It cannot be reserved:
+§D4 requires absence to cost nothing, so an empty ⁦58px⁩ hole in every gap of every day is the one
+outcome that is worse. Cached after the first visit, so a revisit does not shift. **Recorded rather
+than fixed**, and on the backlog.
