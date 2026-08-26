@@ -880,6 +880,45 @@ entry about the mockup.**
 - **Measured at 360 in Chromium, both themes** (§AG8): every new arm fits its box unclipped, nothing
   paints outside the column, `scrollWidth` exactly ⁦360⁩, every arm still ⁦58px⁩.
 
+### M6a's second round — the Hebrew, the tolerance, and free time off the row
+
+**Decided:** [ADR-0206 §AH](../decisions/0206-a-travel-time-belongs-between-two-points.md). **PR:**
+see the branch `claude/m6a-hebrew-and-tolerance`.
+
+Owner, off the same deploy: _"`פנוי לפני X דקות` is bad Hebrew · I'm not even sure what you meant to
+say"_ · _"for a 20m distance it says that we don't have enough time"_ · _"`הדרך ארוכה מהפער ב X
+דקות` is also bad phrasing"_ · _"let's give a huge emphasis on sounding natural with our Hebrew"_ —
+and, in the middle of the round, the question that reversed a decision: _"do we really want to state
+on this row that we have free time, or should it be written in a quiet way and not in the row?"_
+
+| #   | report                                    | what it was                                                                               | whose |
+| --- | ----------------------------------------- | ----------------------------------------------------------------------------------------- | ----- |
+| 1   | `פנוי לפני X` is not Hebrew               | my phrasing, and it hid a real defect: `PAST` reads the CLAMPED `freeSeconds`, so `0 דק׳` | M6a   |
+| 2   | a ⁦20m⁩ hop declared impossible           | `freeAfterTravel` had no tolerance at all; `approxDuration` printed `~0 דק׳` beside it    | M6a   |
+| 3   | `הדרך ארוכה מהפער ב־X` is bad phrasing    | my phrasing — ⁦153px⁩ of a ⁦180px⁩ line, and two stacked prepositions                     | M6a   |
+| 4   | free time stated on the journey row       | **M6a's own decision, taken the wrong way** — §AH3 is the entry worth reading             | M6a   |
+| 5   | `רכב`/`הליכה` mixes vehicles with actions | `t.travelMode` — two of three named the object, so only the walk read as a length of time | M3    |
+
+**What the next session needs to know:**
+
+- **The free-time statement is the STRIP's again, below the block** (§AH3), and the fill affordance
+  went with it — the thing that states the free time is the thing that offers it. `JourneyBlock` has
+  no `free` prop and no `onFill`; `.day-trv-free` and `.day-trv-add` are gone. The cost is ⁦88px⁩ per
+  hole against the absorbed ⁦58px⁩, which is the ⁦87px⁩ M6a rejected — and the ⁦15⁩-minute floor is what
+  pays part of it back.
+- **Two floors, and they answer different questions.** `GAP_MIN_MINUTES` (⁦60⁩) asks whether a hole is
+  worth OFFERING as a slot; `statesFreeTime` (⁦15⁩, owner's number) asks whether it is worth STATING
+  as free. Do not collapse them.
+- **`TRAVEL_FIT_TOLERANCE_SECONDS` is `TRAVEL_BUFFER_SECONDS`, derived on purpose** (§AH2) — the
+  buffer is the error bar the app already admits to, so retuning it retunes what the day calls an
+  impossible leg. The grace is seconds against seconds; distance never enters it.
+- **Agreement is composed, not dodged** (`freeTimePhrase` / `shortfallPhrase` in `lib/duration.ts`).
+  Reuse them; a `${length} פנויות` inlined at a new call site says `שעה פנויות`.
+- **`narrowGapForTravel` now corrects `minutes` too**, not only `fill.end`. It used to return an
+  object that contradicted itself, and the strip that asks a `Gap` how long it is stated the hole.
+- **Deferred with the decision taken:** a leave-by floored to the nearest 5 minutes (§AH6) — floored
+  and never nearest, in `heroLeaveBy`, and it moves when the late mark fires. On the backlog.
+
 ---
 
 **What the next session needs to know (M6b, 2026-08-26)** — note:

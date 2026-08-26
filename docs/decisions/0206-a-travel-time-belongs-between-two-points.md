@@ -1104,3 +1104,136 @@ where it was, which is why it shipped wrong.
 Every new arm fits: the shortfall line is ⁦153.03px⁩ of ink in its ⁦207.75px⁩ box and ⁦165.42px⁩ at the
 `H:MM` rung; `אין זמן לדרך` is ⁦63.16px⁩. Nothing clipped, no run outside the column, `scrollWidth`
 exactly ⁦360⁩ in both themes, and every arm stays the ⁦58px⁩ the quiet arms already were.
+
+## AH. M6a's second round of field reports — the Hebrew, the tolerance, and where free time belongs (2026-08-26)
+
+The owner read the deployed rows and sent four reports plus two questions. Only one is a defect in
+the sense §AG's were: the rest are the app **saying** things badly, and the owner's framing is the
+entry worth keeping — _"let's give a huge emphasis on sounding natural with our Hebrew."_
+
+Three of the four were mine to get right the first time and one was a decision M6a took and
+recorded, with measurements, in the wrong direction. That last one is the interesting entry.
+
+### AH1. `פנוי לפני X דקות` was not Hebrew, and the phrase it hid was the arithmetic
+
+Owner: _"`פנוי לפני X דקות` is bad Hebrew · I'm not even sure what you meant to say."_ It meant "of
+this hole, X is actually yours; the rest is the walk", and it reached for `לפני` because the journey
+sits at the **end** of the hole — which is a fact about the shape of the slot that no reader asked
+for, wrapped in a phrase that reads as "free 46 minutes ago".
+
+`46 דק׳ פנויות` replaces it, and the agreement is **composed** rather than dodged
+(`freeTimePhrase`, `lib/duration.ts`): the ladder has exactly two singular rungs, so agreeing costs
+three lines and buys `שעה פנויה` instead of `שעה פנויות`. Every other length in the app is noun-led
+precisely to avoid that (`פנוי · 2:40 שע׳`), and the plain gap strip now reads the same phrase — one
+fact said one way, whether or not the hole has a journey in it.
+
+**And `פנוי לפני 0 דק׳` was a real defect underneath the phrasing.** `dayJourney` checks `PAST`
+before `OVERRUNS` on purpose — advice about a departure is useless once the next row has started —
+but `freeSeconds` is **clamped at zero**, so the record a past hole kept was the one number that is
+not true. The shortfall is stated there now, in the live arm's own words, and the **tone** stays
+`PAST`'s quiet: a finished day painted in `--miss` warns about something nobody can act on, which is
+the opposite of §D7's reason to exist.
+
+Two floors follow from the same report, and they answer different questions:
+
+- **`statesFreeTime` = ⁦15⁩ minutes** (`lib/gaps.ts`, owner's number). `GAP_MIN_MINUTES` asks whether
+  a hole is worth **offering** as a slot; this asks whether it is worth **stating** as free. Sixty
+  for the offer and fifteen for the statement is not a contradiction. It also repairs a silence M6a
+  broke: a 45-minute hole earns no `gap` join, so Trip mode said nothing about it, and the block —
+  which ignores that floor on purpose (§Z5 §M2) — carried the free-time run in with it and started
+  reporting `5 דק׳ פנויות`. The walk is still stated. The five minutes are not.
+- **A journey the ladder cannot name is not a journey.** `ROUTE_MIN_CROW_M` is ⁦10m⁩, so a ⁦20m⁩ hop
+  is routed, answers ⁦24⁩ seconds, and drew a whole block reading `~0 דק׳`. `approxDuration` now
+  answers `null` below half a minute — its existing guard only caught a non-positive input — and
+  `dayJourney` returns `null` there, so the block does not exist rather than existing empty.
+
+### AH2. The tolerance is the buffer, and the grace is on the time
+
+Owner: _"for a 20m distance it says that we don't have enough time · for any distance that takes a
+really short time we must add some tolerance"_, then, of a ⁦1.2km⁩ minute-long drive between two
+touching stops: _"you're handling this right? giving a grace based on the time and not the
+distance?"_
+
+`freeAfterTravel` had no slack at all, so any shortfall was `OVERRUNS`. It now tolerates
+`TRAVEL_FIT_TOLERANCE_SECONDS`, and **the number is derived rather than chosen**: it is
+`TRAVEL_BUFFER_SECONDS`. The first attempt was a hand-picked two minutes, and the owner's _"only 2
+minutes? is this enough time to give?"_ is what found the better argument — the buffer is padding
+this app adds to **every** leave-by because it does not trust an OSM estimate to the minute, so it
+is the error bar we have already admitted to. A shortfall inside that bar is indistinguishable from
+zero given what we know, and calling it a broken plan reads one uncertainty two ways: generous when
+recommending a departure, strict when assigning blame. Derived, so the device pass retunes both at
+once.
+
+The grace is **seconds against seconds**. A ⁦1.2km⁩ drive that takes a minute is inside it and a
+⁦1.2km⁩ walk that takes twenty is not, which is the point: distance is what a leg looks like, time is
+what it costs you. The backlog's "proportional half" line still stands and this does not close it.
+
+### AH3. Free time does not belong on the journey row — reversing M6a's absorption
+
+The entry worth reading. Owner: _"do we really want to state on this row that we have free time, or
+should it be written in a quiet way and not in the row?"_
+
+M6a **absorbed** the free-time strip into the journey block on purpose, and §Z5 §M2 and the v2
+mockup's §1 both drew it that way: one object per hole (ADR-0159), measured at ⁦58px⁩ against ⁦87px⁩
+for a strip plus a block, with both of `freeAfterTravel`'s numbers still said. The reasoning was
+about **space**, and it was answering the wrong question. The block is about the **leg** — mode,
+distance, when to leave. What is free is about the **hole**. Two subjects on one ⁦180px⁩ line.
+
+**M6a's own measurements were the argument against it and were read as a layout problem instead.**
+§AF's build log records the two runs together at ⁦219.70px⁩ of ink in a ⁦180.75px⁩ box, with
+`text-overflow: ellipsis` eating the free time on exactly the arm that mattered — and the fix taken
+was to hide the free time on half the arms (`quiet` gating the free run). A line that can only hold
+both facts sometimes is a line holding two subjects; the gate was the evidence, dressed as the
+repair.
+
+So the strip is back, below the block, carrying the corrected number — and the fill affordance
+(ADR-0161 §9) went with it, because the thing that states the free time is the thing that offers
+it, and keeping both would draw two `＋` marks for one hole. `JourneyBlock` lost its `free` prop,
+its `onFill`, and the `.day-trv-free` / `.day-trv-add` rules with them.
+
+**The cost, measured rather than asserted:** a hole with a journey and free time worth stating is
+⁦88px⁩ where the absorbed version was ⁦58px⁩ — which is, to a pixel, the ⁦87px⁩ M6a rejected. What pays
+part of it back is §AH1's floor: a hole whose remainder is under ⁦15⁩ minutes renders no strip at all
+and stays at ⁦58px⁩, and those are exactly the holes where the absorbed line had least to say.
+
+`narrowGapForTravel` had to be fixed to make this true. It spread `...free` and rewrote only
+`fill.end`, so a narrowed slot still reported the whole hole's `minutes` — an object contradicting
+itself, and the strip that asks a `Gap` how long it is duly stated a length the walk had eaten.
+
+### AH4. `הדרך ארוכה מהפער ב־X` → `חסרות X לדרך`, and the modes are activities now
+
+Owner: _"`הדרך ארוכה מהפער ב X דקות` is also bad phrasing · maybe `הדרך ארוכה ב-X דקות מהזמן שיש
+לנו`"_. Their version is right about what was wrong — `ארוכה מהפער ב־` stacks two prepositions and
+asks the reader to hold `פער` in their head to parse it — and it is **41 characters** where the meta
+line has ⁦180px⁩ of box. `חסרות 18 דק׳ לדרך` says the same thing in ⁦101.89px⁩ where the shipped line
+took ⁦153.03px⁩, leads with the number you act on, and is the sibling of `אין זמן לדרך` rather than a
+third way of talking about one hole. The word `פער` leaves the sentence and nothing is lost: what
+the journey is longer than is the hole it is drawn inside.
+
+And `t.travelMode` was mixing categories. Owner: _"it says `רכב`/`הליכה` · maybe it should be
+changed to `נסיעה`?"_ — `הליכה` is the activity, `רכב` is the vehicle and `אופניים` are the objects,
+so of the three only the walk read as a length of time. Every call site uses these as the noun
+leading a duration (§D10's agreement dodge), so all three are gerunds now: `הליכה` · `רכיבה` ·
+`נסיעה`. A fourth mode joins as a gerund or the set reads as an inventory.
+
+### AH5. Measured at 360, in Chromium, both themes
+
+`scrollWidth` exactly ⁦360⁩, no run outside the column, nothing clipped, in light and dark. Every
+meta line got shorter: the shortfall arm ⁦101.89px⁩ of ink in its ⁦207.75px⁩ box (⁦153.03px⁩ before),
+⁦114.28px⁩ at the `H:MM` rung, `אין זמן לדרך` ⁦63.16px⁩, the leave-by alone ⁦62.19px⁩. Heights: every
+quiet arm ⁦58px⁩, the two arms carrying an acts row ⁦96px⁩, the strip ⁦20px⁩ as a control and ⁦16px⁩ as a
+statement — and the whole hole ⁦88px⁩ / ⁦58px⁩ per §AH3.
+
+### AH6. Deferred, with the decision already taken
+
+Owner: _"should leave by's be rounded to the closest 5 minute divisible time?"_ Yes — `יציאה 14:11`
+is false precision, and §D5 is the principle: the duration it derives from is hedged (`~44 דק׳`) and
+the instant printed from it is not, so the hedge evaporates where it matters most.
+
+Two things make it more than a formatter change, and are why it is a backlog line rather than part
+of this round. **Direction:** rounding to nearest can round **later** (14:13 → 14:15), telling you
+to leave after the honest instant and quietly eating the buffer — so it floors, which only ever
+gives time back. **Where:** the board's countdown tile, the lifted hero and the day row all read one
+`heroLeaveBy` so they cannot name three minutes for one departure, which means the rounding belongs
+there and therefore also moves **when the late mark fires** (§V1.4), up to four minutes earlier.
+That is a §V1.4 change wearing a copy change's clothes.

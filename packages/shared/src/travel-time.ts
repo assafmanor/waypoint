@@ -42,6 +42,36 @@ export type TravelFit = (typeof TRAVEL_FIT)[keyof typeof TRAVEL_FIT];
  */
 export const TRAVEL_BUFFER_SECONDS = 5 * 60;
 
+/**
+ * **The shortfall a leg is allowed before the app calls it impossible** (ADR-0206 §AH2).
+ *
+ * Reported off the deploy: two stops ⁦20m⁩ apart with no gap between them read `אין זמן לדרך` — a
+ * ⁦24⁩-second walk declared undoable, because the comparison below had no slack at all. It is
+ * arithmetically true and it is not a fact about anybody's day: nobody schedules the time it takes
+ * to leave a room, and a warning nobody can act on trains the reader to ignore the ones they can.
+ *
+ * **It is the buffer, and that is a derivation rather than a coincidence.** `TRAVEL_BUFFER_SECONDS`
+ * is padding this app adds to EVERY leave-by because it does not trust an OSM estimate to the
+ * minute — so it is the error bar the app has already admitted to. A shortfall inside that bar is
+ * indistinguishable from zero given what we know, and declaring it a broken plan would be reading
+ * one uncertainty two ways: generous when recommending a departure, strict when assigning blame.
+ * Derived so the device pass retunes both at once (owner, 2026-08-26: _"only 2 minutes? is this
+ * enough time to give?"_ — it was not, and picking a second number would have been a guess where
+ * the app already had an answer).
+ *
+ * **Grace on the TIME and never on the distance.** The comparison is seconds against seconds: a
+ * ⁦1.2km⁩ drive that takes a minute is inside it and a ⁦1.2km⁩ walk that takes twenty is not, which is
+ * the whole point — distance is what a leg looks like, and time is what it costs you.
+ *
+ * **It decides WHETHER to speak and nothing about what is said** — past it, `overrunSeconds`
+ * reports the whole shortfall, never the excess over the tolerance.
+ *
+ * The backlog's "proportional half" line still stands and this does not close it: estimate error
+ * scales with the leg, so a flat bar is right for the ⁦24⁩-second case that prompted it and is not
+ * the final shape for a 40-minute walk.
+ */
+export const TRAVEL_FIT_TOLERANCE_SECONDS = TRAVEL_BUFFER_SECONDS;
+
 const MS = 1000;
 
 /**
@@ -73,7 +103,8 @@ export interface TravelWindow {
   travelSeconds: number | null;
   /** What is actually free, clamped at zero — the number behind `פנוי · 2:00 שע׳`. */
   freeSeconds: number;
-  /** By how much the journey does not fit. Zero whenever it does, so a surface can branch on
+  /** By how much the journey does not fit — the WHOLE shortfall, past `TRAVEL_FIT_TOLERANCE_SECONDS`.
+   *  Zero whenever it fits (a shortfall inside the tolerance included), so a surface can branch on
    *  this alone without re-deriving the comparison. */
   overrunSeconds: number;
   fit: TravelFit;
@@ -106,12 +137,15 @@ export function freeAfterTravel(
     };
   }
   const remaining = availableSeconds - travelSeconds;
+  // The tolerance gates the VERDICT only: past it the shortfall is reported whole, because a
+  // 20-minute shortfall is 20 minutes of moving to do and never 18.
+  const overruns = remaining < -TRAVEL_FIT_TOLERANCE_SECONDS;
   return {
     availableSeconds,
     travelSeconds,
     freeSeconds: Math.max(0, remaining),
-    overrunSeconds: Math.max(0, -remaining),
-    fit: remaining < 0 ? TRAVEL_FIT.OVERRUNS : TRAVEL_FIT.FITS,
+    overrunSeconds: overruns ? -remaining : 0,
+    fit: overruns ? TRAVEL_FIT.OVERRUNS : TRAVEL_FIT.FITS,
   };
 }
 

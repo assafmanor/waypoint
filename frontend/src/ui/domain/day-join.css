@@ -209,12 +209,6 @@ button.day-trv-face:focus-visible {
 .day-trv-leave {
   color: var(--amber-deep);
 }
-/* …and the free time inside the journey keeps `.day-gap-lbl`'s own answer: `--faint`, no hue.
-   Free time is neither commitment (amber) nor location (teal) nor a plan action (violet), and
-   rule 4 has no fourth colour to lend it. */
-.day-trv-free {
-  color: var(--faint);
-}
 /* The routed distance — `formatDistance` over `distanceMeters`, per mode, never the crow-flies
    helper (a 1.9 km crow-flies leg is a 2.4 km walk). `--muted` because a distance is context
    rather than a commitment: the amber in this block is already spent on the time. */
@@ -224,14 +218,6 @@ button.day-trv-face:focus-visible {
   font-weight: 700;
   color: var(--muted);
   white-space: nowrap;
-}
-/* The fill mark the strip carries, in the block that absorbed the strip — `.day-gap-add`'s own
-   recipe rather than a second one. No 44px of paint here either: the face is already ⁦56px⁩ tall,
-   which clears ADR-0017's floor without an overlay. */
-.day-trv-add {
-  flex: 0 0 auto;
-  display: inline-flex;
-  color: var(--faint);
 }
 /* THE LEAVE-BY HAS GONE BY (§V1.4). Ink and word, never a fill on the block, no glow and no
    pulse — the app has one live mark and `.nowline` is it (§D6). `--miss-deep` is the ink

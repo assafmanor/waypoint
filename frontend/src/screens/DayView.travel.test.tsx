@@ -32,7 +32,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { setSimulatedNow } from '../lib/useClock';
-import { hoursPhrase } from '../lib/duration';
+import { freeTimePhrase } from '../lib/duration';
 import { markOnWay, resetOnWayForTests } from '../lib/on-way';
 import { ltrIsolate } from '../lib/bidi';
 import { formatTime } from '../lib/time';
@@ -247,13 +247,30 @@ describe('DayView — a hole states what is free AFTER the journey (ADR-0206 §V
   // about time you do not have.
   it('says what is free after the walk, not the whole hole', () => {
     show();
-    expect(screen.getByText(t.travel.freeBefore(hoursPhrase(freeAfterWalk)))).toBeTruthy();
+    expect(screen.getByText(freeTimePhrase(freeAfterWalk)!)).toBeTruthy();
   });
 
   it('no longer states the whole hole as free', () => {
     show();
-    expect(screen.queryByText(t.day.join.free(hoursPhrase(GAP_MINUTES)))).toBeNull();
-    expect(screen.queryByText(t.travel.freeBefore(hoursPhrase(GAP_MINUTES)))).toBeNull();
+    expect(screen.queryByText(freeTimePhrase(GAP_MINUTES)!)).toBeNull();
+  });
+
+  // **AND IT IS THE STRIP THAT SAYS IT, BELOW THE BLOCK** (owner, 2026-08-26 — ADR-0206 §AH3).
+  // M6a absorbed the strip INTO the block to keep one object per hole, and that put two subjects
+  // on one line: the block is about the leg, the strip about the hole. Both render now, and the
+  // number on the strip is the corrected one — which is the whole reason the absorption was
+  // tempting in the first place, and is not a reason to say two things in one sentence.
+  it('states it on the quiet strip, not inside the journey row', () => {
+    show();
+    const block = document.querySelector('.day-trv')!;
+    const strip = document.querySelector('.day-gap')!;
+    expect(block).toBeTruthy();
+    expect(strip).toBeTruthy();
+    expect(block.textContent).not.toContain(freeTimePhrase(freeAfterWalk)!);
+    expect(strip.textContent).toContain(freeTimePhrase(freeAfterWalk)!);
+    // …and the strip comes AFTER the block: you leave at the end of the hole, so the journey is
+    // the last thing in it and the free time is what precedes it.
+    expect(block.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   // §V1.3 — the day reads `place · journey · place`, which is what makes §V1.1 legible.
@@ -278,8 +295,27 @@ describe('DayView — a hole states what is free AFTER the journey (ADR-0206 §V
   it('falls back to the plain free-time strip when there is no estimate', () => {
     travelSeconds = null;
     show();
-    expect(screen.getByText(t.day.join.free(hoursPhrase(GAP_MINUTES)))).toBeTruthy();
+    expect(screen.getByText(freeTimePhrase(GAP_MINUTES)!)).toBeTruthy();
     expect(document.querySelector('.day-trv')).toBeNull();
+  });
+
+  // **THE FLOOR THE OWNER SET** (2026-08-26: _"a gap below say 15 minutes is not really free
+  // time"_). This is where M6a regressed a silence: a hole under `GAP_MIN_MINUTES` earns no `gap`
+  // join, so Trip mode said nothing about it — and the block, which ignores that floor on purpose
+  // (§Z5 §M2), carried the free-time run in with it. The walk is still stated; the remainder is
+  // the transition, not an afternoon.
+  it('says nothing about what is left when a walk eats nearly all of the hole', () => {
+    travelSeconds = (GAP_MINUTES - 5) * 60;
+    show();
+    expect(document.querySelector('.day-trv')).toBeTruthy();
+    expect(document.querySelector('.day-gap')).toBeNull();
+    expect(screen.queryByText(freeTimePhrase(5)!)).toBeNull();
+  });
+
+  it('states it again once what is left is a slice somebody could spend', () => {
+    travelSeconds = (GAP_MINUTES - 15) * 60;
+    show();
+    expect(screen.getByText(freeTimePhrase(15)!)).toBeTruthy();
   });
 
   // A place-lite row (ADR-0147) has no coordinates, so there is no leg to ask about — the same
@@ -289,7 +325,7 @@ describe('DayView — a hole states what is free AFTER the journey (ADR-0206 §V
       p.id === 'p-lunch' ? { ...p, lat: undefined, lng: undefined } : p,
     );
     show();
-    expect(screen.getByText(t.day.join.free(hoursPhrase(GAP_MINUTES)))).toBeTruthy();
+    expect(screen.getByText(freeTimePhrase(GAP_MINUTES)!)).toBeTruthy();
     expect(document.querySelector('.day-trv')).toBeNull();
   });
 });
@@ -348,7 +384,7 @@ describe('DayView — the four arms of a journey (ADR-0206 §V1.3/§V1.4)', () =
     expect(document.querySelector('.day-trv.miss')).toBeNull();
     expect(blockAction(t.actions.onWay)).toBeUndefined();
     // …and it keeps the correction, because that is a measurement and not advice.
-    expect(screen.getByText(t.travel.freeBefore(hoursPhrase(freeAfterWalk)))).toBeTruthy();
+    expect(screen.getByText(freeTimePhrase(freeAfterWalk)!)).toBeTruthy();
     expect(block()!.textContent).not.toContain('יציאה');
   });
 

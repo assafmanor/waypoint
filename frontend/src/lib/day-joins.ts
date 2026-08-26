@@ -22,6 +22,7 @@ import {
   type TravelWindow,
   type TripEvent,
 } from '@waypoint/shared';
+import { SECONDS_PER_MINUTE } from '../constants';
 import { gapBetween, type Gap } from './gaps';
 import { LEAVE_PHASE, heroLeaveBy } from './hero-travel';
 import { isoToTimeInput, zonedIso } from './time';
@@ -338,7 +339,13 @@ export function dayJourney(input: {
   claimDenied?: boolean;
 }): DayJourney | null {
   const { departAfterMs, arriveByMs, travelSeconds, nowMs, onWay, claimDenied } = input;
-  if (travelSeconds === null || !Number.isFinite(travelSeconds) || travelSeconds <= 0) return null;
+  // **A journey the ladder cannot state is not a journey** (2026-08-26). `ROUTE_MIN_CROW_M` is
+  // ⁦10m⁩, so a ⁦20m⁩ hop is routed, answers ⁦24⁩ seconds, and drew a whole block reading `~0 דק׳` over
+  // `אין זמן לדרך` — a warning about the time it takes to walk out of a door. The floor is the
+  // display's own: below half a minute ADR-0114's minutes rung rounds to nothing, and a block
+  // whose head cannot name a length has nothing to say.
+  if (travelSeconds === null || !Number.isFinite(travelSeconds)) return null;
+  if (Math.round(travelSeconds / SECONDS_PER_MINUTE) < 1) return null;
   if (!Number.isFinite(arriveByMs)) return null;
   const leave = heroLeaveBy({ arriveByMs, travelSeconds, nowMs });
   if (!leave) return null;
@@ -406,13 +413,19 @@ export function dayJourney(input: {
 export function narrowGapForTravel(free: Gap, journey: DayJourney | null, tz: string): Gap {
   const freeSeconds = journey?.free?.freeSeconds;
   if (freeSeconds === undefined) return free;
+  // **`minutes` is corrected whether or not the FILL needs capping**, and the two used to
+  // disagree: the first draft spread `...free` and rewrote only `fill.end`, so a narrowed slot
+  // still reported the whole hole's length — an object contradicting itself, which is what
+  // handed the free-time strip a 2:40 hole to describe as free after a 40-minute walk. A caller
+  // asks a Gap how long it is; it must not have to know which field was corrected.
+  const narrowed = { ...free, minutes: Math.max(0, Math.round(freeSeconds / SECONDS_PER_MINUTE)) };
   const startMs = Date.parse(zonedIso(free.fill.date, free.fill.start, tz));
   const endMs = Date.parse(zonedIso(free.fill.date, free.fill.end, tz));
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return free;
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return narrowed;
   const cappedMs = startMs + Math.max(0, freeSeconds) * 1000;
-  if (endMs <= cappedMs) return free;
+  if (endMs <= cappedMs) return narrowed;
   return {
-    ...free,
+    ...narrowed,
     fill: { ...free.fill, end: isoToTimeInput(new Date(cappedMs).toISOString(), tz) },
   };
 }

@@ -58,6 +58,27 @@ export const earnsChip = (free: Gap): boolean => earnsChipAt(free.minutes);
  *  Both forms read one constant, so the two callers cannot drift. */
 export const earnsChipAt = (minutes: number): boolean => minutes >= GAP_MIN_MINUTES;
 
+/** **Below this, free time is not free time — it is the transition** (owner, 2026-08-26:
+ *  _"a gap below say 15 minutes is not really free time"_).
+ *
+ *  A SECOND threshold and not a re-tune of the one above, because they answer different
+ *  questions: `GAP_MIN_MINUTES` asks whether a hole is worth **offering** as a slot (can you put
+ *  something in it), and this asks whether it is worth **stating** as free (can you spend it).
+ *  Sixty for the offer and fifteen for the statement is not a contradiction — it is the range
+ *  where the day says "you have a bit of time" without pretending you could schedule anything.
+ *
+ *  **It exists because M6a regressed the silence.** A 45-minute hole earns no `gap` join at all,
+ *  so before the journey block Trip mode said nothing about it; the block ignores that floor on
+ *  purpose (§Z5 §M2 — a 40-minute walk in a 45-minute hole is the one thing the day must not be
+ *  quiet about) and carried the free-time run in with it, so the same hole started reporting
+ *  `5 דק׳ פנויות`. The walk is still stated. The five minutes are not. */
+export const FREE_TIME_MIN_MINUTES = 15;
+
+/** **Is this worth calling free time at all.** Asked rather than compared, for `earnsChipAt`'s own
+ *  reason: the moment two surfaces compare against the constant themselves is the moment one of
+ *  them uses `>` and the other `>=`. */
+export const statesFreeTime = (minutes: number): boolean => minutes >= FREE_TIME_MIN_MINUTES;
+
 const floored = (free: Gap | null): Gap | null => (free && earnsChip(free) ? free : null);
 
 /**

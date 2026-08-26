@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   TRAVEL_BUFFER_SECONDS,
   TRAVEL_FIT,
+  TRAVEL_FIT_TOLERANCE_SECONDS,
   daySequenceFits,
   freeAfterTravel,
   leaveBy,
@@ -128,5 +129,52 @@ describe('daySequenceFits', () => {
 
   it('has nothing to verdict for a day with one stop', () => {
     expect(daySequenceFits([day[0]!], [])).toEqual({ legs: [], fits: true, overrunSeconds: 0 });
+  });
+});
+
+/* ── THE TOLERANCE (ADR-0206 §AH2) ───────────────────────────────────────────────────────── */
+describe('freeAfterTravel — the tolerance a very short leg gets', () => {
+  it('does not call a twenty-metre hop impossible', () => {
+    // The field report: two stops ⁦20m⁩ apart with no gap between them read `אין זמן לדרך`, which
+    // is arithmetically true and useless — nobody schedules the twenty seconds it takes to walk
+    // out of a door. RED before the tolerance: `fit` was `overruns` for any shortfall at all.
+    const window = freeAfterTravel(AT('18:30'), AT('18:30'), 24);
+    expect(window.fit).toBe(TRAVEL_FIT.FITS);
+    expect(window.overrunSeconds).toBe(0);
+  });
+
+  it('still refuses a shortfall somebody could act on', () => {
+    // The tolerance is the app's admitted error bar, not optimism: past it there is a number a
+    // person can move something by, so it is still reported.
+    const window = freeAfterTravel(AT('18:30'), AT('18:30'), 8 * MINUTES);
+    expect(window.fit).toBe(TRAVEL_FIT.OVERRUNS);
+    expect(window.overrunSeconds).toBe(8 * MINUTES);
+  });
+
+  it('is the buffer, so the device pass cannot retune one and leave the other', () => {
+    // Derived rather than written twice (§AH2): the buffer is the uncertainty this app has already
+    // admitted to, and a shortfall inside it is indistinguishable from none.
+    expect(TRAVEL_FIT_TOLERANCE_SECONDS).toBe(TRAVEL_BUFFER_SECONDS);
+  });
+
+  it('graces the TIME and not the distance — a one-minute drive over a kilometre is fine', () => {
+    // Owner, 2026-08-26: a ⁦1.2km⁩ drive between two stops with no gap read `אין זמן לדרך`. The
+    // comparison is seconds against seconds; how far the leg looks never enters it.
+    expect(freeAfterTravel(AT('18:30'), AT('18:30'), 1 * MINUTES).fit).toBe(TRAVEL_FIT.FITS);
+    // …and the same distance on foot, at twenty minutes, still does not fit.
+    expect(freeAfterTravel(AT('18:30'), AT('18:30'), 20 * MINUTES).fit).toBe(TRAVEL_FIT.OVERRUNS);
+  });
+
+  it('reports the whole shortfall once it is past the tolerance, not the excess over it', () => {
+    // A 20-minute shortfall is 20 minutes of moving to do, never 18. The tolerance decides
+    // WHETHER to speak, and changes nothing about what is said.
+    const window = freeAfterTravel(AT('12:00'), AT('12:30'), 50 * MINUTES);
+    expect(window.overrunSeconds).toBe(20 * MINUTES);
+  });
+
+  it('keeps free time truthful inside the tolerance — there is none', () => {
+    const window = freeAfterTravel(AT('18:30'), AT('18:30'), 24);
+    expect(window.freeSeconds).toBe(0);
+    expect(window.availableSeconds).toBe(0);
   });
 });

@@ -1952,10 +1952,17 @@ export const t = {
   // A `Record<TravelMode, string>`, so the compiler flags a missing case when the enum grows
   // (`frontend/CLAUDE.md`'s per-enum-lookup rule). These are the WORDS, not the control: §AA3
   // gives the chips three real icons and M6a/M8 own those.
+  // **THE ACTIVITY, NEVER THE VEHICLE** (owner, 2026-08-26: _"it says רכב/הליכה · maybe it should
+  // be changed to נסיעה?"_). Every call site uses these as the noun LEADING a duration —
+  // `נסיעה · ~44 דק׳` on the day's journey block, the lifted hero's line, the Map — which is
+  // §D10's agreement dodge, and the noun therefore has to name the thing being measured. Two of
+  // the three named the OBJECT instead (`אופניים` is bicycles, `רכב` is a vehicle), so the set
+  // mixed "walking" with "car" and only the walk read as a length of time. A fourth mode joins as
+  // a gerund or it will read as an inventory.
   travelMode: {
     walking: 'הליכה',
-    cycling: 'אופניים',
-    driving: 'רכב',
+    cycling: 'רכיבה',
+    driving: 'נסיעה',
   } satisfies Record<TravelMode, string>,
   // ── WHAT A JOURNEY SAYS, ON EITHER ELEVATION (ADR-0206 §V1.2 / §V1.3 / §V1.4) ─────────
   // Top level beside `travelMode`, and for the identical reason: the horizon's line, the day's
@@ -1991,13 +1998,21 @@ export const t = {
     // approximation of an approximation, and `~` is what says so; the alternative was the
     // untouched total, which read as "44 minutes still to walk" two minutes from the door.
     remaining: (duration: string) => `נותרו ${duration}`,
-    // **§V1.1's correction, said in the day's own slot.** `פנוי לפני` and not `פנוי · 2:00 שע׳`,
-    // because the journey block absorbs the free-time statement rather than sitting beside it
-    // (§Z5 §M2) and the reader now needs to know WHICH side of the hole is free: the walk is at
-    // the end of it, so what is free is what comes before. Noun-led like `t.day.join.free`, for
-    // the same agreement dodge — `שעה פנויה` / `שעתיים פנויות` / `45 דקות פנויות` all disagree
-    // with a number the phrase does not expose (§D10).
-    freeBefore: (length: string) => `פנוי לפני ${length}`,
+    // **§V1.1's correction, said in the day's own slot** — and said the way somebody would say it
+    // (owner, 2026-08-26: _"פנוי לפני X דקות is bad Hebrew · I'm not even sure what you meant to
+    // say"_). It meant "of this hole, X is actually yours; the rest is the walk", and it reached
+    // for `לפני` because the journey sits at the END of the hole — which is a fact about the
+    // SHAPE of the slot that no reader was asking for, wrapped in a phrase that reads as "free
+    // 46 minutes ago". Which side is free is answered by the `יציאה 14:11` beside it anyway.
+    //
+    // **The agreement is composed rather than dodged** (`freeTimePhrase`, `lib/duration.ts`).
+    // Every other length in this app is noun-led precisely to avoid it — `פנוי · 2:40 שע׳` —
+    // but here the natural word order puts the number first, and the ladder has exactly two
+    // singular rungs (`שעה`, one minute) so agreeing costs three lines and buys `שעה פנויה`
+    // instead of `שעה פנויות`. Reuse it; do not inline the plural.
+    freeTime: (length: string) => `${length} פנויות`,
+    freeTimeOneMinute: 'דקה פנויה',
+    freeTimeOneHour: 'שעה פנויה',
     // **THE LEG THAT DOES NOT FIT** (ADR-0206 §V1.1's third `fit`, drawn in
     // `where-a-route-shows-up-v1.html` §2's `tight` state). `freeAfterTravel` has answered
     // `overruns` since M2 and nothing rendered it, so a 78-minute walk into a 60-minute hole read
@@ -2008,13 +2023,19 @@ export const t = {
     // hedged and the arithmetic on it is not, so hedging twice would be theatre. The one hedge is
     // already on the duration beside it.
     //
-    // **`פער` and not `חור`, on the owner's call (2026-08-26)** — and it is the app's own word for
-    // this exact slot already (`t.planDay.gap`: `פער של שעתיים · שבץ`), so this is one name for one
-    // thing rather than a third. `חלון` was the other candidate and is refused: the app spends
-    // "window" on a check-in's own (ADR-0184 §6's `לסגירה`), and two windows would be worse than
-    // two gaps. **The drawing says `חור`** (`where-a-route-shows-up-v1.html` §2) and the drawing is
-    // not retrofitted; this note is here so nobody restores it from there.
-    tooLongBy: (length: string) => `הדרך ארוכה מהפער ב־${length}`,
+    // **The wording is the owner's correction, the length is the measured constraint**
+    // (2026-08-26: _"`הדרך ארוכה מהפער ב X דקות` is also bad phrasing · maybe `הדרך ארוכה ב-X
+    // דקות מהזמן שיש לנו`"_). Their version is right about what was wrong — `ארוכה מהפער ב־`
+    // stacks two prepositions and asks the reader to hold `פער` in their head to parse it — and
+    // it is **41 characters** where the meta line has ⁦180px⁩ of box at 360px, so it ellipsises on
+    // the one arm that matters. `חסרות 18 דק׳ לדרך` says the same thing in half of it, leads with
+    // the number you act on, and is the sibling of `אין זמן לדרך` below rather than a third way
+    // of talking about the same hole. **The word `פער` is gone from the sentence** and nothing is
+    // lost: what the journey is longer than is the hole it is drawn inside.
+    shortfall: (length: string) => `חסרות ${length} לדרך`,
+    // Agreement again, and only the hour rung needs it — the tolerance in
+    // `TRAVEL_FIT_TOLERANCE_SECONDS` means a shortfall never rounds below two minutes.
+    shortfallOneHour: 'חסרה שעה לדרך',
     // **And when there is no gap at all, the shortfall is not the thing to say.** Two rows that
     // touch — the next stop starting exactly when the previous one ends — have no gap for the
     // journey to be longer THAN, so `הדרך ארוכה מהפער ב־12 דק׳` is arithmetically true and reads
@@ -2422,6 +2443,12 @@ export const t = {
     // zones name their outcome rather than both saying "drop here".
     parkDropHere: 'שחררו כאן להעברה למדף · ליום הזה',
     parkSomedayDropHere: 'שחררו כאן להעברה למדף · מתישהו',
+    // **`פער` and not `חור`, on the owner's call (2026-08-26)**, and this is the string that
+    // settled it: the app already had a name for this slot, so `חור` was a third word for one
+    // thing. `חלון` was the other candidate and is refused — the app spends "window" on a
+    // check-in's own (ADR-0184 §6's `לסגירה`), and two windows would be worse than two gaps.
+    // **The drawing says `חור`** (`where-a-route-shows-up-v1.html` §2) and a drawing is not
+    // retrofitted; the note lives here so nobody restores it from there.
     gap: (label: string) => `פער של ${label} · שבץ`,
     // **Why the offer is smaller than the hole** (`where-a-route-shows-up-v1.html` §2's drawn
     // `bld-slot-note`). Plan mode does not display a hole, it OFFERS it — so when ADR-0206 §V1.1's

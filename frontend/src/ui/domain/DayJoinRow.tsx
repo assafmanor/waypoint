@@ -24,10 +24,10 @@
 // `.nowline`, and the app gets one live mark.
 //
 // `ui/domain/`: presentational, every value via props.
-import type { TravelMode } from '@waypoint/shared';
+import { TRAVEL_FIT, type TravelMode, type TravelWindow } from '@waypoint/shared';
 import { Icon, type IconName } from '../Icon';
 import { DAY_JOURNEY_ARM, type DayJourney } from '../../lib/day-joins';
-import { approxTravelTime, hoursPhrase } from '../../lib/duration';
+import { approxTravelTime, freeTimePhrase, hoursPhrase, shortfallPhrase } from '../../lib/duration';
 import { formatDistance } from '../../lib/distance';
 import { formatTime } from '../../lib/time';
 import { ltrIsolate } from '../../lib/bidi';
@@ -36,17 +36,21 @@ import { t } from '../../i18n/he';
 import './day-join.css';
 
 /** Free time between two rows, stated — and offered, where the host can act on it.
- *  `length` is the shared elapsed phrase (`hoursPhrase`, ADR-0114): the precise one, not
- *  Plan's rounded `gapLabel`, because a statement has to be a measurement (ADR-0159 §2).
+ *  `minutes` is the precise elapsed count, not Plan's rounded `gapLabel`, because a statement
+ *  has to be a measurement (ADR-0159 §2); the phrase is `freeTimePhrase`'s, which is the same
+ *  one the journey block uses — one fact said one way, whether or not the hole has a journey in
+ *  it (ADR-0206 §AH1). It took MINUTES rather than a formatted string from that change onward,
+ *  because the agreement is composed from the count.
  *
  *  `onFill` is what makes it a control. Absent it stays the `<span>` row it was — a past day
  *  is read-only (ADR-0029), and a strip that looks tappable and is not would be worse than
  *  the statement it replaced. */
-export function GapStrip({ length, onFill }: { length: string; onFill?: () => void }) {
+export function GapStrip({ minutes, onFill }: { minutes: number; onFill?: () => void }) {
+  const length = hoursPhrase(minutes);
   const body = (
     <>
       <span className="day-gap-line" />
-      <span className="day-gap-lbl">{t.day.join.free(length)}</span>
+      <span className="day-gap-lbl">{freeTimePhrase(minutes) ?? t.day.join.free(length)}</span>
       <span className="day-gap-line" />
       {onFill && (
         <span className="day-gap-add" aria-hidden="true">
@@ -129,9 +133,6 @@ export function JourneyBlock({
    *  behind you and on one whose origin claim was denied (ADR-0208 §2) — both are journeys the
    *  day may still MEASURE and may not give advice about. */
   leave,
-  /** What is free once the journey is counted (§V1.1) — the correction this epic leads with.
-   *  Absent on the day's first leg, which has no window to measure against (§AD). */
-  free,
   /** `time` is amber (§D1). `miss` is the leave-by gone by, in `--miss` — **ink and word only**,
    *  no fill on the block, no glow and no pulse, because the app has one live mark and `.nowline`
    *  is it (§D6/§D7). `on-way` is teal, because somebody said they are moving and that is a
@@ -144,32 +145,16 @@ export function JourneyBlock({
    *  (answer the mark), `ביטול סימון` on `on-way` (take it back — ADR-0207 §7, because a toast is
    *  transient and a mark is not). */
   action,
-  /** What a tap on the block opens (ADR-0161 §9) — the same fill the strip it replaces offers,
-   *  because absorbing the free-time statement must not delete the free time's one affordance.
-   *  Absent on a read-only archive, exactly as on `GapStrip`. */
-  onFill,
-  /** The accessible name for that tap. */
-  fillLabel,
 }: {
   mode: string;
   icon: IconName;
   duration?: string;
   distance?: string;
   leave?: string;
-  free?: string;
   tone: 'time' | 'miss' | 'on-way';
   located?: string;
   action?: { label: string; onPress: () => void };
-  onFill?: () => void;
-  fillLabel?: string;
 }) {
-  // Each run carries its own tone rather than being matched back to the prop it came from: the
-  // leave-by is the clock's (amber, or `--miss` once it has gone by) and the free time has no hue
-  // at all, because free time is neither commitment nor location and rule 4 has no fourth colour.
-  const meta = [
-    { text: leave, cls: 'day-trv-leave' },
-    { text: free, cls: 'day-trv-free' },
-  ].filter((run): run is { text: string; cls: string } => !!run.text);
   const face = (
     <>
       <span className="day-trv-ic">
@@ -185,36 +170,18 @@ export function JourneyBlock({
             </>
           )}
         </span>
-        {meta.length > 0 && (
+        {leave && (
           <span className="day-trv-meta">
-            {meta.map((run, i) => (
-              // `·` is the app's separator and it is a NODE rather than part of a string, so a
-              // dimmed dot needs no second copy of the runs around it (§D10: never an em dash).
-              <span key={run.cls} className={run.cls}>
-                {i > 0 && <span className="sep">· </span>}
-                {run.text}
-              </span>
-            ))}
+            <span className="day-trv-leave">{leave}</span>
           </span>
         )}
       </span>
       {distance && <span className="day-trv-dist">{distance}</span>}
-      {onFill && (
-        <span className="day-trv-add" aria-hidden="true">
-          <Icon name="plus" />
-        </span>
-      )}
     </>
   );
   return (
     <div className={'day-trv ' + tone}>
-      {onFill ? (
-        <button type="button" className="day-trv-face" onClick={onFill} aria-label={fillLabel}>
-          {face}
-        </button>
-      ) : (
-        <div className="day-trv-face">{face}</div>
-      )}
+      <div className="day-trv-face">{face}</div>
       {(action || located) && (
         // **`עדיין כאן` sits on the ACTS row, not on the meta line**, and the reason is a
         // measurement rather than a preference: beside `זמן היציאה עבר ב־17:15` it is ⁦187.09px⁩ of
@@ -256,9 +223,6 @@ export interface JourneyRowProps {
   /** `עדיין כאן` — what a fix at the leg's origin lets the app say that the clock could not
    *  (ADR-0207 §2). Trip mode's, for the same reason as `action`. */
   located?: string;
-  onFill?: () => void;
-  /** The length the fill's accessible name states — the NARROWED slot's, not the hole's. */
-  fillMinutes?: number;
 }
 
 /**
@@ -268,25 +232,8 @@ export interface JourneyRowProps {
  * §2 draws `trvBlock() + planSlot(…)` — the block AND the chip. Three assemblies of these props is
  * how the same journey would start reading three ways.
  */
-export function JourneyRow({
-  journey,
-  travelMode,
-  tz,
-  action,
-  located,
-  onFill,
-  fillMinutes,
-}: JourneyRowProps) {
+export function JourneyRow({ journey, travelMode, tz, action, located }: JourneyRowProps) {
   const overrunning = journey.arm === DAY_JOURNEY_ARM.OVERRUNS;
-  // **THE FREE TIME RIDES THE QUIET ARMS ONLY**, which is what the v2 mockup's §1 drew and what
-  // the render then insisted on. Three independent reasons, and the last is why it is not a taste
-  // call: on a passed leave-by "what is free before the walk" is a number about a departure you
-  // have already missed, so the urgent fact should have the line to itself; the drawing carries
-  // the mark alone on both urgent states; and measured at 360 in Chromium the two runs together
-  // are ⁦219.70px⁩ of ink in a ⁦180.75px⁩ box — `text-overflow: ellipsis` was eating the free time on
-  // exactly the arm that matters, and pushing `עדיין כאן` out of the block's own edge.
-  const quiet = journey.arm === DAY_JOURNEY_ARM.AHEAD || journey.arm === DAY_JOURNEY_ARM.PAST;
-  const freeSeconds = quiet ? journey.free?.freeSeconds : undefined;
   return (
     <JourneyBlock
       mode={t.travelMode[travelMode]}
@@ -300,11 +247,6 @@ export function JourneyRow({
         journey.distanceMeters === null ? undefined : formatDistance(journey.distanceMeters)
       }
       leave={journeyMetaLine(journey, tz)}
-      free={
-        freeSeconds === undefined
-          ? undefined
-          : t.travel.freeBefore(hoursPhrase(Math.round(freeSeconds / SECONDS_PER_MINUTE)))
-      }
       tone={
         // An overrun is a negative status about the plan, so it takes §D7's own paint — the same
         // `--miss` a passed leave-by does, because they are the same kind of fact about a journey
@@ -317,12 +259,21 @@ export function JourneyRow({
       }
       located={located}
       action={action}
-      onFill={onFill}
-      fillLabel={
-        fillMinutes === undefined ? undefined : t.day.join.fillFree(hoursPhrase(fillMinutes))
-      }
     />
   );
+}
+
+/**
+ * **What a leg that does not fit says**, shared by the live arm and the record so the same hole
+ * cannot be described two ways depending on the hour it is read at.
+ *
+ * With **no gap at all** the shortfall is the wrong thing to say: two rows that touch have no gap
+ * for the journey to be longer THAN, and the shortfall would be the journey's own duration, which
+ * the head one line up already carries. Covers an overlap too, where it is just as true.
+ */
+function shortfallLine(free: TravelWindow): string | undefined {
+  if (free.availableSeconds <= 0) return t.travel.noTimeForTravel;
+  return shortfallPhrase(free.overrunSeconds / SECONDS_PER_MINUTE) ?? undefined;
 }
 
 /**
@@ -332,8 +283,13 @@ export function JourneyRow({
  * leave-by behind the previous stop's own end, so an instruction to go would be advice about a
  * departure that was never possible. The number you act on is how much has to move.
  *
- * `PAST` says nothing at all: a hole whose next row has already started is a record, and without
- * this a day read at 22:00 prints `זמן היציאה עבר` on every hole of the afternoon.
+ * `PAST` drops the leave-by — a day read at 22:00 would otherwise print `זמן היציאה עבר` on every
+ * hole of the afternoon — and keeps the **shortfall**, where there was one. That is ADR-0206 §AH1:
+ * `dayJourney` checks `PAST` first on purpose, so a hole behind you that the walk never fitted was
+ * falling through to `freeSeconds`, which is CLAMPED at zero, and the record it kept read
+ * `פנוי לפני 0 דק׳` — nought minutes of free time, where the truth is a journey nobody could make.
+ * Same sentence as the live arm, and the TONE stays `PAST`'s quiet: a finished day painted in
+ * `--miss` warns about something nobody can act on, which is the opposite of §D7's reason to exist.
  *
  * `ON_WAY` reports what is LEFT rather than the leg's total (ADR-0207 §6), because the stale total
  * reads as "44 minutes still to walk" two minutes from the door — not more honest but less. It
@@ -344,13 +300,10 @@ export function JourneyRow({
  */
 function journeyMetaLine(journey: DayJourney, tz: string): string | undefined {
   if (journey.arm === DAY_JOURNEY_ARM.OVERRUNS) {
-    // No gap to be longer than, so the shortfall is not what to say — and with a zero gap it is
-    // the journey's own duration, which the head already carries.
-    if ((journey.free?.availableSeconds ?? 0) <= 0) return t.travel.noTimeForTravel;
-    const over = journey.overrunSeconds;
-    return over === null
-      ? undefined
-      : t.travel.tooLongBy(hoursPhrase(Math.max(1, Math.round(over / SECONDS_PER_MINUTE))));
+    return journey.free ? shortfallLine(journey.free) : undefined;
+  }
+  if (journey.arm === DAY_JOURNEY_ARM.PAST) {
+    return journey.free?.fit === TRAVEL_FIT.OVERRUNS ? shortfallLine(journey.free) : undefined;
   }
   if (journey.arm === DAY_JOURNEY_ARM.ON_WAY) {
     const left = journey.remainingSeconds;
