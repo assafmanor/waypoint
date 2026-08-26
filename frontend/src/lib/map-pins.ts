@@ -26,6 +26,7 @@ import { eventEdgeTransition } from './transitions';
 // brackets your day, a car hire does not. Read, not re-asked: its docblock already exports it
 // for a second shape.
 import { countsNights } from './glance';
+import { t } from '../i18n/he';
 
 /**
  * The prominence ladder, one tier per pin (ADR-0121 §6). The list separates
@@ -238,12 +239,23 @@ export function pinTransition(
    *  on surfaces that do not resolve journeys, which then behave exactly as before. */
   connectionWordAt?: (placeId: string, date: string) => string | undefined,
 ): string | undefined {
-  if (placePinTier(usage, ctx) === PIN_TIER.behind) return undefined;
   const day = placeMetaDay(usage, ctx);
+  // **A STAY KEEPS ITS WORD WHEN IT IS BEHIND YOU** (ADR-0054's 2026-08-26 amendment).
+  // The silence below is right for a word that means *what happens next here* — naming a
+  // departed flight as ahead is a lie. A stay's word is not that claim: it is which END of
+  // the day this place was, and the day does not stop having started at the hotel because
+  // it is now the afternoon. Without the exemption the map states the check-IN you are
+  // heading for and stays mute about the check-OUT you already did, which is half a route.
+  // The grey still says "behind you"; the word only says which moment it was.
+  const stay = day ? stayEnds(day, day.date, eventById) : undefined;
+  if (!stay && placePinTier(usage, ctx) === PIN_TIER.behind) return undefined;
   const stop = day?.date ? connectionWordAt?.(usage.placeId, day.date) : undefined;
   if (stop) return stop;
   const event = day?.eventId ? eventById(day.eventId) : undefined;
-  return event ? eventEdgeTransition(event, day?.edge) : undefined;
+  const edge = event ? eventEdgeTransition(event, day?.edge) : undefined;
+  // A strictly middle night carries NEITHER end, so there is no transition word to find —
+  // and it is the one pin sitting at both ends of the route. It says what it is instead.
+  return edge ?? (stay ? t.map.stayNight : undefined);
 }
 
 /**
@@ -342,19 +354,27 @@ function stayEnds(
   day: DayUsage,
   date: string,
   eventById?: (id: string) => TripEvent | undefined,
-): { first: boolean; last: boolean } | undefined {
+): { first: boolean; last: boolean; arrivedAt?: number } | undefined {
   const moments = day.moments?.length ? day.moments : [{ eventId: day.eventId }];
   let found = false;
   let first = false;
   let last = false;
+  let arrivedAt: number | undefined;
   for (const moment of moments) {
     const event = moment.eventId ? eventById?.(moment.eventId) : undefined;
     if (!event?.endDate || !isAmbient(event) || !countsNights(event)) continue;
     found = true;
-    first ||= event.date < date;
     last ||= date < event.endDate;
+    if (event.date >= date) continue;
+    first = true;
+    // **WHEN YOU ACTUALLY GOT THERE**, for the stays that bookend the day's START. A span's
+    // own `startsAt` is the check-in, which the day usage for a LATER day does not carry —
+    // its `at` is the check-out. Kept as an instant and compared as one, so no zone is
+    // needed to know that 00:00 came before 02:00.
+    const from = event.startsAt ? Date.parse(event.startsAt) : undefined;
+    if (from != null && (arrivedAt == null || from < arrivedAt)) arrivedAt = from;
   }
-  return found ? { first, last } : undefined;
+  return found ? { first, last, arrivedAt } : undefined;
 }
 
 /**
@@ -467,13 +487,22 @@ export function buildDayStopSequence(
   const first: DayStopEntry[] = [];
   const middle: DayStopEntry[] = [];
   const last: DayStopEntry[] = [];
+  // **WHEN YOU GOT TO THE STAY YOU WOKE IN**, across every span that bookends the day's
+  // start. The earliest, so a stop has to precede ALL of them to be pulled ahead.
+  let arrivedAt: number | undefined;
+  const arrived = (at?: number) => {
+    if (at != null && (arrivedAt == null || at < arrivedAt)) arrivedAt = at;
+  };
   for (const stop of merged) {
     const ends = stayEnds(stop.day, onDate, eventById);
     if (!ends) {
       middle.push(stop);
       continue;
     }
-    if (ends.first) first.push(stop);
+    if (ends.first) {
+      first.push(stop);
+      arrived(ends.arrivedAt);
+    }
     if (ends.last) last.push(stop);
     if (!ends.first && !ends.last) middle.push(stop);
   }
@@ -485,10 +514,30 @@ export function buildDayStopSequence(
     const ends = stayEnds(day, onDate, eventById);
     if (!ends) continue;
     const stop = { usage, day, moment: { eventId: day.eventId, edge: day.edge } };
-    if (ends.first) first.push(stop);
+    if (ends.first) {
+      first.push(stop);
+      arrived(ends.arrivedAt);
+    }
     if (ends.last) last.push(stop);
   }
-  const bookended = [...first, ...middle, ...last];
+  // **NOTHING THAT HAPPENED BEFORE YOU ARRIVED CAN SORT AFTER THE STAY YOU WOKE IN**
+  // (owner, 2026-08-26). A `first` bookend claims the day STARTED there, and on the day you
+  // check in at 02:00 and out again that morning, it does not: the midnight car pick-up that
+  // brought you to the hotel was drawn after it, so the route left the airport, teleported to
+  // bed, and came back for the car.
+  //
+  // The check is the arrival INSTANT, not a dawn cut-off — which is what keeps this from
+  // being a general theory of what precedes what. Where the app can see when you got there it
+  // moves the stops that beat you to it, and where it cannot (an ordinary stay checked into
+  // yesterday afternoon, whose 00:00 errand is honestly ambiguous) it moves nothing at all.
+  const early = (stop: DayStopEntry) =>
+    arrivedAt != null && stop.moment.at != null && stop.moment.at < arrivedAt;
+  const bookended = [
+    ...middle.filter(early),
+    ...first,
+    ...middle.filter((s) => !early(s)),
+    ...last,
+  ];
   // **A NUMBER IS ONLY EVER THE INDEX OF A MOMENT THE APP KNOWS** (ADR-0171 §10b). A
   // number asserts "this is the Nth place you were at", and a floor, a ceiling and a row
   // with no clock cannot back that up: "from 15:00" is any hour after, and numbering a

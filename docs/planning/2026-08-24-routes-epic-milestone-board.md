@@ -923,6 +923,26 @@ the **visible number** was the gate on the polyline, on `mapsDayRouteUrl` and on
 traversal. It reads `dayStops` now — the same derivation one step earlier, where a stop holds a
 position whether or not it can defend a number.
 
+**Follow-up (2026-08-26) — the ordering caveat.** A `first` bookend was pinned to position 0
+unconditionally, which is wrong on the night you check in at 02:00 and out that morning: the midnight
+car pick-up that brought you there sorted after the hotel. Fixed by the narrowest rule that settles
+it — **nothing whose instant precedes the stay's own check-in sorts after it** — an instant
+comparison, so no dawn cut-off and no zone. It declines to reorder the case the data cannot settle
+(an ordinary stay plus a midnight errand), which is what keeps it from growing into a theory of what
+precedes what. The hotel-change day falls out for free.
+
+**Follow-up (2026-08-26) — the map now says which end of the day the hotel was.** Three things were
+swallowing a word that already existed, and the loudest was a **zoom rule asking about the pane when
+the question was about the pin**: the neutral tag dropped under `[data-pins='dot']` in every scope,
+but in day scope only `.aside` degrades — so a full-size stop below ⁦zoom 11⁩ (a ~⁦30km⁩ span) kept its
+size and lost its word. Deleted, not rescoped: the corrected rule is inert. Beyond that, a stay is
+now exempt from ADR-0141's `behind` silence (its word says which END of the day this was, which the
+afternoon does not falsify) and a middle night, which carries no edge to name, says `לינת לילה`.
+**No mockup needed and that was the owner's call** — a word in an existing slot spends no new axis,
+where a mark would have spent one on a ladder §AC3 already records as full. Numbering was rejected
+for the reason that turned out diagnostic: a number is an ordinal and one pin cannot wear two, while
+"both ends of the day" is a single coherent state.
+
 **Three owner answers this card is built on**, all put as forks before any code:
 
 | asked                             | answered                                                                                                                                  |
