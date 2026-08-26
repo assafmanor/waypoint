@@ -1138,6 +1138,25 @@ export function MapView() {
   // pins and the sequence the card steps through are the same derivation asked twice, so
   // they cannot disagree about what a stop is — which is the failure ADR-0121 §6's
   // 2026-08-06 amendment was written to end, reached from a second direction.
+  // **WHERE THIS DAY'S MORNING STARTS**, so the route can tell a night arrival from an early
+  // start (ADR-0054's 2026-08-26 second amendment). A wall-clock hour needs a zone, which the
+  // derivation deliberately has none of — so the screen resolves it, in the DAY's own ambient
+  // zone rather than the live one, the same rule every other day-scoped read here follows.
+  //
+  // **MEMOIZED, and that is not a micro-optimisation on this screen.** `dayAmbientZone` builds
+  // an `Intl.DateTimeFormat` per event of the day and `zonedIso` up to three more, and this
+  // screen re-renders EVERY SECOND on the clock (ADR-0121 §4) — so in the render body it was
+  // that whole cost per tick, for a value that changes only when the day or the itinerary's
+  // zone evidence does. The same rule the pins array, the handlers and `defaultCentre` here
+  // already follow, and the shape §AC6 was written about: the work was never the problem, WHEN
+  // it lands is.
+  const dawnMs = useMemo(
+    () =>
+      scopedDate
+        ? dayWindowMs(scopedDate, dayZoneContext(scopedDate, zoneEvidence).ambientZone).startMs
+        : undefined,
+    [scopedDate, zoneEvidence],
+  );
   const dayStopCtx = {
     nameOf,
     onDate: scopedDate,
@@ -1145,17 +1164,11 @@ export function MapView() {
     // The same lookup the pin's WORD reads (ADR-0159 §6), so a place cannot be a
     // layover in one sentence and two stops in the other.
     isConnectionStop: (placeId: string, date: string) => connectionWordAt(placeId, date) != null,
-    // **WHERE THIS DAY'S MORNING STARTS**, so the route can tell a night arrival from an early
-    // start (ADR-0054's 2026-08-26 second amendment). A wall-clock hour needs a zone, which the
-    // derivation deliberately has none of — so the screen resolves it, in the DAY's own ambient
-    // zone rather than the live one, the same rule every other day-scoped read here follows.
-    dawnMs: scopedDate
-      ? dayWindowMs(scopedDate, dayZoneContext(scopedDate, zoneEvidence).ambientZone).startMs
-      : undefined,
+    dawnMs,
   };
   const orderIndex = useMemo(
     () => buildPinOrderIndex(dayScoped, { ...dayStopCtx, nowMs: nowRef.current }),
-    [dayScoped, scopedDate, placeById, orderMinute],
+    [dayScoped, scopedDate, placeById, orderMinute, dawnMs],
   );
   /** **The day's stops, in order** — what the card's track steps through (ADR-0182 §1).
    *  Clock-free by construction, so it is NOT keyed on `orderMinute`: a tick must not
@@ -1163,7 +1176,7 @@ export function MapView() {
    *  which is why there is no traversal there and nothing to disable (§11). */
   const dayStops = useMemo(
     () => buildDayStopSequence(dayScoped, dayStopCtx),
-    [dayScoped, scopedDate, placeById],
+    [dayScoped, scopedDate, placeById, dawnMs],
   );
 
   // `planning` withdraws the behind-you tier in Plan mode (ADR-0130 §2): the clock still
