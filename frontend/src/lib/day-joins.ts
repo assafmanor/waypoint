@@ -23,9 +23,9 @@ import {
   type TravelWindow,
   type TripEvent,
 } from '@waypoint/shared';
-import { MS_PER_SECOND, SECONDS_PER_MINUTE } from '../constants';
+import { MS_PER_MINUTE, MS_PER_SECOND, SECONDS_PER_MINUTE } from '../constants';
 import { gapBetween, type Gap } from './gaps';
-import { LEAVE_PHASE, heroLeaveBy } from './hero-travel';
+import { heroLeaveBy } from './hero-travel';
 import { isoToTimeInput, zonedIso } from './time';
 import { routeEndpointDay } from './place-usage';
 import type { DayEntry } from './day-entries';
@@ -383,41 +383,83 @@ export function dayJourney(input: {
   const leave = heroLeaveBy({ arriveByMs, travelSeconds, nowMs });
   if (!leave) return null;
   const measurableFrom = departAfterMs !== undefined && Number.isFinite(departAfterMs);
-  // **THE FIT MEASURES TO THE LAST MOMENT THAT STILL WORKS, WHICH ON A WINDOW IS ITS CLOSE.**
-  // The third face of §AI1's mistake, and the one only a spec found: `freeAfterTravel` was being
-  // handed the window's OPENING as the deadline, so a leg that could not reach the door the
-  // instant it opened read as `OVERRUNS` — `אין זמן לדרך` about a check-in you had three more
-  // hours to make. A floor with no close keeps the opening, which is all the app knows about it.
-  const fitBy =
-    input.flexibleArrival === true && input.windowClosesMs !== undefined
-      ? input.windowClosesMs
-      : arriveByMs;
-  const free = measurableFrom ? freeAfterTravel(departAfterMs!, fitBy, travelSeconds) : null;
-  // **THE ONE RULE BOTH OF §AI's DEFECTS COLLAPSE INTO.** The app states a departure only when it
-  // has a deadline to count back from AND that departure is one you could actually make. A leg
-  // into a floor fails the first; a leave-by behind its own origin fails the second — and the
-  // second is reachable only since §AH2 widened the tolerance, because the 2-minute shortfall that
-  // used to read `OVERRUNS` (and printed no leave-by at all) now reads as fitting.
-  const statesLeaveBy =
-    input.flexibleArrival !== true && (!measurableFrom || leave.leaveByMs >= departAfterMs!);
+  /**
+   * **THE DEADLINE THIS LEG ACTUALLY HAS, and `undefined` where it has none** (ADR-0206 §AI1/§AJ1).
+   *
+   * An exact start IS the deadline. A **closed** window's is the moment it shuts — measuring to its
+   * opening said `אין זמן לדרך` about a check-in you had three more hours to make. And an **open
+   * floor has no deadline at all**: `מ-15:00` is the hour you may arrive AFTER, so nothing can be
+   * late for it and nothing can fail to fit inside it.
+   *
+   * §AI1 fixed the first two and left this line reading `: arriveByMs`, written down at the time as
+   * _"a floor with no close keeps the opening, which is all the app knows about it"_. The opening is
+   * exactly the wrong half. Reported off that deploy, on the day BEFORE the one §AI1 was written
+   * for: the last flight of day 1 lands at 23:20 into a hotel open from 15:00, so the fit measured a
+   * 1:42 drive against a deadline **eight hours behind its own origin** and called the one leg of
+   * the day nobody can be late for impossible.
+   */
+  const deadlineMs = input.flexibleArrival === true ? input.windowClosesMs : arriveByMs;
+  // No deadline means no window to be free inside, so there is no free-time half and no fit — the
+  // same structural absence the day's first leg out of a bed reports (§AF3), for the same reason.
+  const free =
+    measurableFrom && deadlineMs !== undefined
+      ? freeAfterTravel(departAfterMs!, deadlineMs, travelSeconds)
+      : null;
+  /**
+   * **WHETHER THE APP WILL ADVISE A DEPARTURE AT ALL** — an EXACT start is the only deadline it
+   * will count back from (§AI1). A window's opening is not one, and its close is a deadline nobody
+   * plans against: `יציאה 18:26` for a lagoon open from 15:00 is arithmetically true and useless.
+   */
+  const statesLeaveBy = input.flexibleArrival !== true;
+  /**
+   * **THE BUFFERED DEPARTURE, PULLED FORWARD WHERE IT LANDS INSIDE THE ROW IT LEAVES FROM**
+   * (§AJ2 — §AI2's open question, answered).
+   *
+   * §AI2 was right that `יציאה 13:56` must not be printed when the stop you are in runs to 14:00 —
+   * and wrong to then say nothing about going. The earliest departure that exists is the origin's
+   * own end, so that is what the row offers, with the arrival beside it: `יציאה 14:00 · הגעה ~14:58`
+   * on a hard 15:00 start. The owner reported the silence as an inconsistency (_"why does it
+   * sometimes say יציאה and some other times הגעה"_), and they were reading two different situations
+   * wearing one sentence: a destination with no deadline, and a leg with no slack.
+   *
+   * **What makes it printable is that the clamp is a departure you could make**, so the late mark it
+   * licenses is defensible. `PASSED` is therefore measured against the CLAMPED instant, never the
+   * buffered one — firing it off 13:56 is exactly the `באיחור`-for-nothing §AI2 removed, and the
+   * owner's constraint (_"if you haven't left by the time that the app suggests the app doesn't show
+   * you as being late"_) was about a **flexible** destination, which still states no departure.
+   */
+  const clamped = statesLeaveBy && measurableFrom && leave.leaveByMs < departAfterMs!;
+  const leaveByMs = statesLeaveBy ? (clamped ? departAfterMs! : leave.leaveByMs) : null;
   // When you can go, plus the leg. Never counted back from a bound the app invented.
   const arriveAt = measurableFrom ? departAfterMs! + travelSeconds * MS_PER_SECOND : null;
+  // **The arrival is said wherever the app cannot promise the buffer**: no deadline to advise
+  // against, or a departure it had to pull forward to make possible.
+  const statesArrival = !statesLeaveBy || clamped;
+  // The same rounding `heroLeaveBy` phases on, asked of the clamped instant. Local rather than
+  // `leave.phase`, which is keyed to the buffered one and would mark a clamped leg late at once.
+  const departurePassed = leaveByMs !== null && Math.round((leaveByMs - nowMs) / MS_PER_MINUTE) < 0;
   const measurement = {
     travelSeconds,
     distanceMeters: input.distanceMeters ?? null,
     free,
     remainingSeconds: null,
     overrunSeconds: null,
-    arriveAtMs: statesLeaveBy ? null : arriveAt,
+    arriveAtMs: statesArrival ? arriveAt : null,
     arrivesAfterClose:
-      !statesLeaveBy &&
+      statesArrival &&
       arriveAt !== null &&
       input.windowClosesMs !== undefined &&
       arriveAt > input.windowClosesMs,
   };
   // The row below has started: whatever the leave-by says, the departure is not the question any
   // more. Checked FIRST, so a finished day is quiet however late its legs ran.
-  if (nowMs >= arriveByMs) {
+  //
+  // **Against the deadline, and against the ARRIVAL where there is none** (§AJ1). A floor's own
+  // hour retires nothing: at 20:00 you are still in the air, and going quiet at 15:00 because the
+  // hotel's desk opened then is a block that has stopped saying when you land — on the one leg of
+  // the day you most want that from. Where the app has neither a deadline nor a prediction it falls
+  // back to the raw bound, which is exactly what every leg did before this.
+  if (nowMs >= (deadlineMs ?? arriveAt ?? arriveByMs)) {
     return { ...measurement, arm: DAY_JOURNEY_ARM.PAST, leaveByMs: null };
   }
   // **Checked before every clock arm, and that ordering is the decision.** An infeasible leg's
@@ -436,7 +478,7 @@ export function dayJourney(input: {
     return {
       ...measurement,
       arm: DAY_JOURNEY_ARM.ON_WAY,
-      leaveByMs: statesLeaveBy ? leave.leaveByMs : null,
+      leaveByMs,
       remainingSeconds: input.remainingSeconds ?? null,
     };
   }
@@ -447,13 +489,13 @@ export function dayJourney(input: {
     return { ...measurement, arm: DAY_JOURNEY_ARM.AHEAD, leaveByMs: null };
   }
   // A departure the app may not state cannot have passed, so the late mark goes with it.
-  if (!statesLeaveBy) {
+  if (leaveByMs === null) {
     return { ...measurement, arm: DAY_JOURNEY_ARM.AHEAD, leaveByMs: null };
   }
   return {
     ...measurement,
-    arm: leave.phase === LEAVE_PHASE.PASSED ? DAY_JOURNEY_ARM.PASSED : DAY_JOURNEY_ARM.AHEAD,
-    leaveByMs: leave.leaveByMs,
+    arm: departurePassed ? DAY_JOURNEY_ARM.PASSED : DAY_JOURNEY_ARM.AHEAD,
+    leaveByMs,
   };
 }
 

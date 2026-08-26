@@ -2024,6 +2024,21 @@ export const t = {
     // the same admission `approxDuration` makes about a duration (§D5). The clock arrives already
     // isolated from the caller (ADR-0118).
     arriveAt: (clock: string) => `הגעה ${clock}`,
+    // **AND BOTH, WHERE THERE IS A DEADLINE BUT NO SLACK** (§AJ2). The
+    // departure is the origin's own end — go the moment you are done — and the arrival is why that
+    // matters: `יציאה 14:00 · הגעה ~14:58` in front of a ⁦15:00⁩ start says "leave now and you only
+    // just make it" in one line. Two nouns, the row's own voice, and the `·` the app separates
+    // peer facts with.
+    //
+    // **It is what answers the owner's _"why does it sometimes say יציאה and some other times
+    // הגעה"_.** The two words were serving three situations: no deadline at all, a window, and a
+    // leg with no slack — the last of which is a warning and read exactly like the first, which is
+    // reassurance. Now `יציאה` means the app has a deadline to advise against and `הגעה` alone
+    // means it has none, which is a difference a reader can act on.
+    //
+    // Measured before it was written: ⁦140.06px⁩ of ink in the meta line's ⁦206.95px⁩ box at 360, so it
+    // does not clip — and the widest sentence already shipping in that slot is ⁦171px⁩.
+    leaveThenArrive: (leave: string, arrive: string) => `יציאה ${leave} · הגעה ${arrive}`,
     // …and the one warning nobody can currently be given at plan time: `hero-booking.ts` computes
     // `missed` off the CLOCK, once it is already too late. This is the same fact predicted, on the
     // surface that holds the plan, readable at breakfast.

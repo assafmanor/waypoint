@@ -680,16 +680,35 @@ describe('dayJourney — a leave-by inside the row it leaves from (ADR-0206 §AI
   // The tolerance is what uncovered this: a 20-minute window with a 22-minute drive is a
   // 2-minute shortfall, inside `TRAVEL_FIT_TOLERANCE_SECONDS`, so the leg reads as fitting — and
   // the leave-by it hands back is behind its own origin.
-  it('withholds a departure it could not have been made from', () => {
+  // **AMENDED 2026-08-26 — it offers the origin's own end instead of saying nothing.** Withholding
+  // ⁦16:33⁩ was right; withholding every departure was not, and the owner read the resulting silence
+  // as an inconsistency with the rows that do state one. The clamp is a departure you could make.
+  it('pulls the departure forward to the earliest one that exists', () => {
     const j = dayJourney({
       departAfterMs: AT('16:40'),
       arriveByMs: AT('17:00'),
       travelSeconds: 22 * 60,
       nowMs: AT('16:00'),
     })!;
-    expect(j.leaveByMs).toBeNull();
-    // …and says the arrival, the same answer §AI1 gives for the same reason.
+    expect(j.leaveByMs).toBe(AT('16:40'));
+    // …and says the arrival beside it, because the buffer is what it could not promise.
     expect(j.arriveAtMs).toBe(AT('17:02'));
+    expect(j.arm).toBe(DAY_JOURNEY_ARM.AHEAD);
+  });
+
+  // The whole reason the clock may be printed at all: the mark it licenses is measured against the
+  // CLAMPED instant. Off the buffered ⁦16:33⁩ this row would read `זמן היציאה עבר` from ⁦16:34⁩ — the
+  // `באיחור`-for-nothing §AI2 was written to remove.
+  it('is not late before the clamped departure, and is late after it', () => {
+    const at = (hhmm: string) =>
+      dayJourney({
+        departAfterMs: AT('16:40'),
+        arriveByMs: AT('17:00'),
+        travelSeconds: 22 * 60,
+        nowMs: AT(hhmm),
+      })!.arm;
+    expect(at('16:35')).toBe(DAY_JOURNEY_ARM.AHEAD);
+    expect(at('16:45')).toBe(DAY_JOURNEY_ARM.PASSED);
   });
 
   it('keeps a departure that sits after the origin ends', () => {
@@ -701,5 +720,70 @@ describe('dayJourney — a leave-by inside the row it leaves from (ADR-0206 §AI
     })!;
     expect(j.leaveByMs).toBe(AT('13:55'));
     expect(j.arriveAtMs).toBeNull();
+  });
+});
+
+// **AN OPEN FLOOR IS A DEADLINE THE APP DOES NOT HAVE** (ADR-0206 §AJ1).
+//
+// Reported off the §AI deploy, on the day BEFORE the one §AI1 was written for: the last flight of
+// day 1 lands at 23:20 and the hotel checked into that night opens `מ-15:00`, so the fit measured a
+// 1:42 drive against a deadline **eight hours behind its own origin** and said `אין זמן לדרך` about
+// the one leg of the day nobody can be late for.
+//
+// §AI1 got the leave-by right and left the FIT keyed on the opening whenever there was no close.
+// Written down at the time as _"a floor with no close keeps the opening, which is all the app knows
+// about it"_ — and the opening is precisely what a floor says you may arrive AFTER.
+describe('dayJourney — a leg into an open floor has no fit to fail (ADR-0206 §AJ1)', () => {
+  const AT = (hhmm: string) => Date.parse(`2026-09-11T${hhmm}:00Z`);
+  /** The reported shape: land 23:20, hotel open from 15:00, a 1:42 drive to it. */
+  const landingIntoTheHotel = {
+    departAfterMs: AT('23:20'),
+    arriveByMs: AT('15:00'),
+    travelSeconds: 102 * 60,
+    nowMs: AT('09:00'),
+    flexibleArrival: true,
+  };
+
+  it('does not call the drive to tonight’s hotel impossible', () => {
+    const j = dayJourney(landingIntoTheHotel)!;
+    expect(j.arm).not.toBe(DAY_JOURNEY_ARM.OVERRUNS);
+    expect(j.overrunSeconds).toBeNull();
+    // No window to be free inside, so there is no free-time half either — the same structural
+    // absence the day's first leg out of a bed reports (§AF3).
+    expect(j.free).toBeNull();
+  });
+
+  it('says when you will get there instead', () => {
+    const j = dayJourney(landingIntoTheHotel)!;
+    expect(j.leaveByMs).toBeNull();
+    expect(j.arriveAtMs).toBe(AT('23:20') + 102 * 60 * 1000);
+    expect(j.arrivesAfterClose).toBe(false);
+  });
+
+  // The floor's own hour must not retire the row either: at 20:00 you are in the air, and a block
+  // that has gone quiet is a block that has stopped saying when you land.
+  it('is not a record just because the floor’s hour has passed', () => {
+    const j = dayJourney({ ...landingIntoTheHotel, nowMs: AT('20:00') })!;
+    expect(j.arm).toBe(DAY_JOURNEY_ARM.AHEAD);
+    expect(j.arriveAtMs).not.toBeNull();
+  });
+
+  it('is a record once the predicted arrival has gone by', () => {
+    const j = dayJourney({ ...landingIntoTheHotel, nowMs: AT('23:20') + 110 * 60 * 1000 })!;
+    expect(j.arm).toBe(DAY_JOURNEY_ARM.PAST);
+  });
+
+  // A CLOSED window is untouched: it has a real deadline, and §AI1 measures the fit to it.
+  it('still measures the fit on a window that shuts', () => {
+    const j = dayJourney({
+      departAfterMs: AT('16:00'),
+      arriveByMs: AT('17:00'),
+      windowClosesMs: AT('17:30'),
+      travelSeconds: 4 * 60 * 60,
+      nowMs: AT('09:00'),
+      flexibleArrival: true,
+    })!;
+    expect(j.arm).toBe(DAY_JOURNEY_ARM.OVERRUNS);
+    expect(j.arrivesAfterClose).toBe(true);
   });
 });

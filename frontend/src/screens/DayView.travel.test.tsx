@@ -707,17 +707,27 @@ describe('DayView — a midnight pickup reads above the bed', () => {
     );
   });
 
-  // **No journey block into the bed above it** — also a guard rather than a report. A stay has no
-  // per-day arrival instant, so the only deadline on offer is its check-in floor from YESTERDAY,
-  // and counting back from a bound the app invented is the mistake §AI was written about.
-  it('draws no journey between the pickup and the stay row', () => {
+  // **AND THE DRIVE BETWEEN THEM** (owner, 2026-08-26: _"it should also show the way from the car
+  // rental to the hotel, right?"_). This spec asserted the OPPOSITE six hours earlier, on
+  // ADR-0054's reasoning that a leg into a check-in FLOOR had no deadline to measure against and
+  // would read `אין זמן לדרך`. §AJ1 makes a floor a non-deadline, so the leg says `הגעה ~X` — the
+  // refusal was a workaround for a bug rather than a decision.
+  //
+  // **The version it replaces was also vacuous**, which is the more useful lesson: it asked
+  // `node.querySelector('.day-trv')` over the nodes between the two rows, and `querySelector` does
+  // not match the node itself — so a `JourneyRow` sitting right there answered `null` and the
+  // absence passed for a reason that had nothing to do with the absence.
+  it('draws the drive from the pickup into the stay row', () => {
     show();
     const nodes = [...document.querySelectorAll('.day-list > *')];
-    const stayIndex = nodes.findIndex((n) => n.textContent?.includes('Gissurarbúð 5'));
-    const pickupIndex = nodes.findIndex((n) => n.textContent?.includes('Iceland Car Rental'));
-    expect(pickupIndex).toBeGreaterThanOrEqual(0);
-    expect(nodes.slice(pickupIndex + 1, stayIndex).some((n) => n.querySelector('.day-trv'))).toBe(
-      false,
-    );
+    const idx = (text: string) => nodes.findIndex((n) => n.textContent?.includes(text));
+    const pickup = idx('Iceland Car Rental');
+    const stay = idx('Gissurarbúð 5');
+    expect(pickup).toBeGreaterThanOrEqual(0);
+    expect(stay).toBeGreaterThan(pickup);
+    const between = nodes
+      .slice(pickup + 1, stay)
+      .filter((n) => n.classList.contains('day-trv') || n.querySelector('.day-trv'));
+    expect(between).toHaveLength(1);
   });
 });

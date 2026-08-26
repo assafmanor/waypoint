@@ -67,7 +67,7 @@ never by the one that did the work.
 | **M3**  | Design session + mockups    | design | ✅                        | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696)                                                                                                                                                                       | 2026-08-25 |
 | **M4**  | Backend routing module      | impl   | ✅ **M5/M10 unblocked**   | M1, M2, M2b  | M3           | `claude/m4-backend-routing-0giz72` · [#702](https://github.com/assafmanor/waypoint/pull/702)                                                                                                                                                                          | 2026-08-25 |
 | **M5**  | Frontend data layer         | impl   | ✅ **M6/M7/M9 unblocked** | M2, M4       | M3, M10      | `claude/routes-frontend-protocol-fix-9t521y` · [#704](https://github.com/assafmanor/waypoint/pull/704)                                                                                                                                                                | 2026-08-25 |
-| **M6a** | The day reads               | impl   | 🔵 (+ 7 field fixes)      | M3, M5       | M6b, M7, M9  | `claude/m6a-day-reads-yfowam` · [#715](https://github.com/assafmanor/waypoint/pull/715) · [#716](https://github.com/assafmanor/waypoint/pull/716) · [#718](https://github.com/assafmanor/waypoint/pull/718) · [#719](https://github.com/assafmanor/waypoint/pull/719) | 2026-08-26 |
+| **M6a** | The day reads               | impl   | 🔵 (+ 10 field fixes)     | M3, M5       | M6b, M7, M9  | `claude/m6a-day-reads-yfowam` · [#715](https://github.com/assafmanor/waypoint/pull/715) · [#716](https://github.com/assafmanor/waypoint/pull/716) · [#718](https://github.com/assafmanor/waypoint/pull/718) · [#719](https://github.com/assafmanor/waypoint/pull/719) | 2026-08-26 |
 | **M6b** | The hero read               | impl   | ✅ (+ 1 field fix)        | M3, M5       | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#712](https://github.com/assafmanor/waypoint/pull/712)                                                                                                                                                                        | 2026-08-26 |
 | **M6c** | A fix withdraws the mark    | impl   | ✅                        | M6b          | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#713](https://github.com/assafmanor/waypoint/pull/713)                                                                                                                                                                        | 2026-08-26 |
 | **M6d** | A claim stands on something | impl   | ✅                        | M6b, M6c     | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#714](https://github.com/assafmanor/waypoint/pull/714)                                                                                                                                                                        | 2026-08-26 |
@@ -1028,6 +1028,40 @@ ADR-0206 §AF3 amended · ADR-0054 + ADR-0209 §1 amended.
 comments say which, because a guard labelled as a report is a lie about what was broken. Plus five
 pure cases on `placeDayEntries` covering both halves of the predicate — including the ⁦06:30⁩ flight
 the bed still leads, which a dawn-only test would have passed while proving nothing.
+
+### M6a's fourth round — a floor is not a deadline (2026-08-26)
+
+Three reports in one evening, all on the same 200 lines of `dayJourney`, and **two of the three were
+things this session had shipped hours earlier and defended in writing**:
+[`planning/2026-08-26-a-floor-is-not-a-deadline.md`](2026-08-26-a-floor-is-not-a-deadline.md) ·
+ADR-0206 §AJ · ADR-0054's amendment reversed in place.
+
+- **§AJ1 · an open floor is a deadline the app does not have.** Day 1 lands at 23:20 into a hotel
+  open `מ-15:00`; the fit measured the drive against a deadline **eight hours behind its own
+  origin** and said `אין זמן לדרך`. §AI shipped that fallback six hours earlier with the wrong half
+  in the comment — and the counter-argument was in `windowClosesMs`' own docblock, one function
+  away. **Carry it: when a fix introduces a fallback, the fallback is a second decision and does not
+  inherit the argument for the first.**
+- **§AJ2 · `יציאה` vs `הגעה`, and two claims made from memory.** The first answer misdiagnosed the
+  owner's screenshot (read against the first of `statesLeaveBy`'s two clauses, when the actual branch
+  was the second, four lines down) and asserted that "show both" would not fit from §AF4's
+  remembered ⁦180.75px⁩. Measured on the real CSS: the box is **⁦206.95px⁩** at 360, the combined
+  sentence **⁦140.06px⁩**, and the widest already shipping in that slot **⁦171px⁩** — §AF4's figure was
+  a different line. **A measurement is about a configuration; quoting it outside that configuration
+  is memory.**
+- **§AJ3 · the leg into the bed.** Refused that morning in an ADR amendment with the word
+  `deliberately`, on an argument that was a description of what §AI's code did to such a leg.
+  **A design decision whose only argument is "the derivation cannot express this" is a bug report
+  wearing a decision's clothes** — and it read as settled for six hours because it was in an ADR.
+- **⚠ One of this session's own specs was vacuous and would have stayed green through the change:**
+  `node.querySelector('.day-trv')` over the nodes between two rows never matches the node itself, so
+  an absence assertion passed for a reason unrelated to the absence.
+
+**New on `DayLeg`, and both are M8/M11-relevant:** `departAfterMs` (a span's `endsAt` is its RETURN,
+nine days out on a hire) and `fromEdge` — `endpointPlaceId(from, 'leaving')` answers the
+**destination**, right for a flight you got off and wrong for a hire you just collected. The second
+is invisible whenever a pickup and a return share a counter, which is exactly the trip it was found
+on.
 
 ---
 

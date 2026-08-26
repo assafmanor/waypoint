@@ -626,6 +626,26 @@ export function DayView() {
     const first = firstRow?.kind === 'event' ? groupStartEvent(firstRow.group) : undefined;
     const wake =
       woke && first && first.id !== woke.id ? { from: woke, to: first, bookend: true } : undefined;
+    // **AND THE DRIVE THAT BROUGHT YOU TO THE BED** (owner, 2026-08-26: _"it should also show the
+    // way from the car rental to the hotel, right?"_). ADR-0054's amendment refused this leg the
+    // same day and gave a reason that has since been fixed: a stay's only arrival bound is its
+    // check-in FLOOR, and a leg into a floor used to read `אין זמן לדרך`. §AJ1 makes a floor a
+    // non-deadline, so the leg now says the one thing it can — `הגעה ~00:31` — which is the fact
+    // somebody landing at midnight actually wants.
+    //
+    // `departAfterMs` is the EDGE's placed instant, not the event's `endsAt`: a hire's `endsAt` is
+    // its return, ten days out (`DayLeg.departAfterMs`).
+    const cameIn = placement.overnight[placement.overnight.length - 1];
+    const arrive =
+      woke && cameIn && cameIn.event.id !== woke.id
+        ? {
+            from: cameIn.event,
+            to: woke,
+            bookend: true,
+            fromEdge: cameIn.edge,
+            departAfterMs: cameIn.atMs,
+          }
+        : undefined;
     // **AND THE LEG BACK** (ADR-0209 §1/§3), which is the other half of §AD and did not exist: the
     // day's last row is where you end it, so the journey into tonight's stay is as certain as the
     // one out of last night's. `bookend` on it too — a stay has no per-day arrival instant, so
@@ -641,9 +661,10 @@ export function DayView() {
       between,
       wake,
       home,
-      legs: [wake, ...between, home].filter((l): l is DayLeg => !!l),
+      arrive,
+      legs: [arrive, wake, ...between, home].filter((l): l is DayLeg => !!l),
     };
-  }, [blocks, bookends.woke, bookends.sleeps]);
+  }, [blocks, bookends.woke, bookends.sleeps, placement.overnight]);
   const dayLegs = day.legs;
 
   const travelReads = useDayTravelReads({ tripId: trip.id, legs: dayLegs, bookings, places });
@@ -764,9 +785,11 @@ export function DayView() {
         // night — reading it as this hole's departure measured a window from next Wednesday and
         // reported zero minutes free. There is no window out of a bed: the day window's dawn
         // would claim you could have left at 07:00, and the stay's ends are not this day's.
-        ...(leg.bookend
-          ? {}
-          : { departAfterMs: Date.parse(leg.from.endsAt ?? leg.from.startsAt!) }),
+        ...(leg.departAfterMs !== undefined
+          ? { departAfterMs: leg.departAfterMs }
+          : leg.bookend
+            ? {}
+            : { departAfterMs: Date.parse(leg.from.endsAt ?? leg.from.startsAt!) }),
         arriveByMs: Date.parse(leg.to.startsAt ?? ''),
         // **A destination with no DEADLINE licenses no leave-by** (ADR-0206 §AI1). A check-in's
         // `17:00` is the hour the door opens, and counting back from it told you to leave in time
@@ -826,6 +849,7 @@ export function DayView() {
    *  it because it has no row above it, so it renders outside the block loop rather than inside
    *  one; everything it says is the same component saying it. */
   const wakeJourney = day.wake ? journeyFor(day.wake.from, day.wake.to) : null;
+  const arriveJourney = day.arrive ? journeyFor(day.arrive.from, day.arrive.to) : null;
   const homeJourney = day.home ? journeyFor(day.home.from, day.home.to) : null;
 
   /** **The stay's own bound, in the words the strip already used** (ADR-0209 §1) — `edgeSentence`
@@ -1014,6 +1038,12 @@ export function DayView() {
               onUndo={dayCtx.readOnly ? undefined : () => verbs.restore(entry.event)}
             />
           ))}
+          {arriveJourney && day.arrive && (
+            <JourneyRow
+              {...journeyProps(arriveJourney, day.arrive.to === liveLeg?.to)}
+              tz={trip.timezone}
+            />
+          )}
           {bookends.woke && (
             <StayRow
               stay={bookends.woke}
