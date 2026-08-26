@@ -26,7 +26,12 @@
 // קבוצה — and `משתתפים` in particular reads like a webinar, not a trip. And an INVITATION
 // is a `לינק`, never a bare `הזמנה`: that word is a booking everywhere in the Index, so
 // `טוען הזמנה…` on the join screen read as "loading booking".
-import { NOTE_HOST_FIELD, type BookingType, type DocumentType } from '@waypoint/shared';
+import {
+  NOTE_HOST_FIELD,
+  type BookingType,
+  type DocumentType,
+  type TravelMode,
+} from '@waypoint/shared';
 import { countdownText } from '../lib/time';
 import { type OutboxVerb } from '../lib/outbox';
 import { measure } from '../lib/bidi';
@@ -85,6 +90,10 @@ export const t = {
     no: 'לא',
     now: 'עכשיו',
     loading: 'טוען',
+    // **"About"** — the hedge on an estimate, for the ladder rungs that are WORDS rather than
+    // numbers (`כשעה`, `כשעתיים`). The number-led rungs take `~` inside the bidi isolate
+    // instead; `approxDuration` owns which is which and why (ADR-0206 §D5).
+    about: 'כ',
     // Canonical action labels — one wording shared by every FormActions bar and
     // confirm dialog (U-02), so Save/Cancel/Delete never drift between forms.
     save: 'שמירה',
@@ -1856,6 +1865,16 @@ export const t = {
     // The countdown's unit while a window is shutting (ADR-0184 §6) — the number is the
     // minutes left, so this says what they are left OF.
     closesIn: 'לסגירה',
+    // **The same slot, pointed one step earlier** (ADR-0206 §Z1/§AA2). The board's one
+    // countdown swaps what it counts TO once leaving is the live question, and `לסגירה` is the
+    // precedent in grammar and in mechanism: a preposition plus the noun the minutes are left
+    // of. `לצאת` was the alternative and reads as an instruction where this is a measurement.
+    leaveIn: 'ליציאה',
+    // **And the same noun once the leave-by has gone by**, with the preposition flipped: the
+    // minutes are now counted FROM it. It says the leave-by passed and by how much, which is
+    // the whole of what the clock can support — never `אתם באיחור`, which is a claim about a
+    // person the app has no sensor for (§Z5 §M4).
+    sinceLeave: 'מהיציאה',
     endOfDay: 'סוף היום',
     // Concurrency on the board (ADR-0041): the "ועוד N עכשיו" expander for extra
     // in-progress events, and the group-split header when several run at once.
@@ -1905,6 +1924,24 @@ export const t = {
   // them. `הבא בתור`, `עד`, `עכשיו · במקביל`, `קשיח`/`גמיש`, `היינו`/`דילגנו` are
   // NOT here — the lifted hero reads the board's and the settle control's own words,
   // which is what keeps one surface from renaming a thing the other already names.
+  // **The three travel modes, as words** (ADR-0206). Top level rather than under `hero`, because
+  // the hero's line, M6a's journey block and M8's mode control all name the same three things and
+  // a second copy is how they start disagreeing (root rule 8).
+  //
+  // **The mode LEADS a travel line, and that is §D10 rather than decoration.** `~23 דקות הליכה`
+  // and `שעה הליכה` disagree in a way the phrase does not expose, and ADR-0159 §1 dodged the
+  // identical problem by leading with the noun (`פנוי · 2:40 שע׳`) — so `הליכה · ~23 דק׳`. It is
+  // also what makes the number legible: 40 minutes is a different fact walking and driving.
+  // Drawn that way in the M3 mockup's §1d.
+  //
+  // A `Record<TravelMode, string>`, so the compiler flags a missing case when the enum grows
+  // (`frontend/CLAUDE.md`'s per-enum-lookup rule). These are the WORDS, not the control: §AA3
+  // gives the chips three real icons and M6a/M8 own those.
+  travelMode: {
+    walking: 'הליכה',
+    cycling: 'אופניים',
+    driving: 'רכב',
+  } satisfies Record<TravelMode, string>,
   hero: {
     title: 'עכשיו והבא בתור',
     close: 'סגירה',
@@ -1928,6 +1965,20 @@ export const t = {
     // a label naming a list does not inflect to the length of the list it happens to have.
     task: 'משימות',
     moreTasks: (n: number) => (n === 1 ? 'ועוד משימה אחת' : `ועוד ${n} משימות`),
+    // ── THE JOURNEY BETWEEN TWO POINTS (ADR-0206 §V1.2, §D2) ────────────────────────────
+    // The horizon's own slot, and the third of the app's three questions answered for the
+    // first time. It sits between `עכשיו` and `הבא בתור` because a journey is a property of
+    // neither point (§D2) — it is not a fifth point-depth item.
+    //
+    // The clock arrives already isolated: `18:37` is a digit run inside Hebrew, and the
+    // maqaf before it is a strong RTL character, so the run needs the isolate its caller
+    // gives it (ADR-0118).
+    leaveAt: (clock: string) => `צאו ב־${clock}`,
+    // **What a passed leave-by may claim, and it is only this** (§Z5 §M4): the time has gone
+    // by. Never `אתם באיחור` — the app has no sensor and a settle mark is not one, so a claim
+    // about where a person is would be a claim it cannot stand behind (§D5 applied to a
+    // sentence rather than to a number).
+    leavePassed: (clock: string) => `זמן היציאה עבר ב־${clock}`,
   },
   // Real, offline-safe shortcuts only (ADR-0045): next confirmation code, WiFi,
   // documents. Empty tiles are an "add" affordance; documents stays a fixture
@@ -2440,7 +2491,10 @@ export const t = {
     hardDelayed: 'נדחה · צריך לעדכן גם את ההזמנה',
     softDelayed: (minutes: number) => `נדחה ב-${minutes} דקות`,
     softEarlier: (minutes: number) => `הוקדם ב-${minutes} דקות`,
-    onWayShared: 'שותף לקבוצה · בדרך',
+    // `בדרך` writes a device mark now (ADR-0206 §Z5 §M4) and the toast says exactly that. It
+    // used to read `שותף לקבוצה · בדרך` over a verb that wrote nothing at all, which made it
+    // the one confirmation in the app that was false.
+    onWayMarked: 'בדרך · לא שותף לקבוצה עדיין',
     scheduled: (title: string, time: string) => `${title} שובץ ל-${time}`,
     rippleApplied: 'האירועים הבאים נדחו',
     hardConfirmRequired: 'שינוי אירוע קשיח מחייב אישור',

@@ -57,26 +57,26 @@ never by the one that did the work.
 
 ## Live status
 
-| M       | milestone                   | kind   | status                    | depends on   | ⇉ safe with  | branch / PR                                                                                                                                                | updated    |
-| ------- | --------------------------- | ------ | ------------------------- | ------------ | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| **M0**  | Product decisions           | owner  | ✅                        | —            | —            | —                                                                                                                                                          | 2026-08-25 |
-| **M1**  | Measure the parameters      | spike  | ✅ (applied by M2b)       | —            | —            | `claude/routes-travel-time-m1-spike-sn7pod` · [#695](https://github.com/assafmanor/waypoint/pull/695)                                                      | 2026-08-25 |
-| **M1b** | Make the dev seed routable  | impl   | ✅                        | —            | all          | `claude/dev-seed-routable-m1b-6il7cq` · [#700](https://github.com/assafmanor/waypoint/pull/700)                                                            | 2026-08-25 |
-| **M2**  | Shared derivations          | impl   | ✅                        | M0           | M1, M3       | `claude/routes-epic-m2-nkbf4d` · [#694](https://github.com/assafmanor/waypoint/pull/694)                                                                   | 2026-08-25 |
-| **M2b** | Apply M1's numbers to code  | impl   | ✅ **M4 unblocked**       | M1, M2       | M3           | `claude/routes-epic-m2b-q0pxkn` · [#699](https://github.com/assafmanor/waypoint/pull/699)                                                                  | 2026-08-25 |
-| **M3**  | Design session + mockups    | design | ✅                        | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696)                                                            | 2026-08-25 |
-| **M4**  | Backend routing module      | impl   | ✅ **M5/M10 unblocked**   | M1, M2, M2b  | M3           | `claude/m4-backend-routing-0giz72` · [#702](https://github.com/assafmanor/waypoint/pull/702)                                                               | 2026-08-25 |
-| **M5**  | Frontend data layer         | impl   | ✅ **M6/M7/M9 unblocked** | M2, M4       | M3, M10      | `claude/routes-frontend-protocol-fix-9t521y` · [#704](https://github.com/assafmanor/waypoint/pull/704)                                                     | 2026-08-25 |
-| **M6a** | The day reads               | impl   | ⬜                        | M3, M5       | M6b, M7, M9  | —                                                                                                                                                          | —          |
-| **M6b** | The hero read               | impl   | ⬜                        | M3, M5       | M6a, M7, M9  | —                                                                                                                                                          | —          |
-| **M7**  | The map polyline            | impl   | ✅ (+ follow-up 🔵)       | M3, M5       | M6a, M6b, M9 | `claude/routes-map-polyline-m7-baqobz` · [#706](https://github.com/assafmanor/waypoint/pull/706) · [#707](https://github.com/assafmanor/waypoint/pull/707) | 2026-08-25 |
-| **M7b** | The lines read as a route   | design | 🔵                        | M7           | M8, M9       | `claude/routes-map-polyline-m7-baqobz` · [#708](https://github.com/assafmanor/waypoint/pull/708)                                                           | 2026-08-25 |
-| **M7c** | The day's bookends          | impl   | 🔵                        | M7, M7b      | M8, M9       | `claude/routes-map-polyline-m7-baqobz` · [#709](https://github.com/assafmanor/waypoint/pull/709)                                                           | 2026-08-25 |
-| **M8**  | Mode per leg + trip default | impl   | ⬜                        | M6a, M6b, M7 | M10          | —                                                                                                                                                          | —          |
-| **M9**  | Plan-mode feasibility       | impl   | ⬜                        | M5           | M6a, M6b, M7 | —                                                                                                                                                          | —          |
-| **M10** | Offline route pack          | impl   | ⬜                        | M4           | M5–M9        | —                                                                                                                                                          | —          |
-| **M11** | Day travel total            | impl   | ⬜                        | M6a          | M8, M10      | —                                                                                                                                                          | —          |
-| **M12** | Harden, observe, document   | impl   | ⬜                        | all          | —            | —                                                                                                                                                          | —          |
+| M       | milestone                   | kind   | status                    | depends on   | ⇉ safe with  | branch / PR                                                                                                                                                                                                          | updated    |
+| ------- | --------------------------- | ------ | ------------------------- | ------------ | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| **M0**  | Product decisions           | owner  | ✅                        | —            | —            | —                                                                                                                                                                                                                    | 2026-08-25 |
+| **M1**  | Measure the parameters      | spike  | ✅ (applied by M2b)       | —            | —            | `claude/routes-travel-time-m1-spike-sn7pod` · [#695](https://github.com/assafmanor/waypoint/pull/695)                                                                                                                | 2026-08-25 |
+| **M1b** | Make the dev seed routable  | impl   | ✅                        | —            | all          | `claude/dev-seed-routable-m1b-6il7cq` · [#700](https://github.com/assafmanor/waypoint/pull/700)                                                                                                                      | 2026-08-25 |
+| **M2**  | Shared derivations          | impl   | ✅                        | M0           | M1, M3       | `claude/routes-epic-m2-nkbf4d` · [#694](https://github.com/assafmanor/waypoint/pull/694)                                                                                                                             | 2026-08-25 |
+| **M2b** | Apply M1's numbers to code  | impl   | ✅ **M4 unblocked**       | M1, M2       | M3           | `claude/routes-epic-m2b-q0pxkn` · [#699](https://github.com/assafmanor/waypoint/pull/699)                                                                                                                            | 2026-08-25 |
+| **M3**  | Design session + mockups    | design | ✅                        | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696)                                                                                                                      | 2026-08-25 |
+| **M4**  | Backend routing module      | impl   | ✅ **M5/M10 unblocked**   | M1, M2, M2b  | M3           | `claude/m4-backend-routing-0giz72` · [#702](https://github.com/assafmanor/waypoint/pull/702)                                                                                                                         | 2026-08-25 |
+| **M5**  | Frontend data layer         | impl   | ✅ **M6/M7/M9 unblocked** | M2, M4       | M3, M10      | `claude/routes-frontend-protocol-fix-9t521y` · [#704](https://github.com/assafmanor/waypoint/pull/704)                                                                                                               | 2026-08-25 |
+| **M6a** | The day reads               | impl   | ⬜                        | M3, M5       | M6b, M7, M9  | —                                                                                                                                                                                                                    | —          |
+| **M6b** | The hero read               | impl   | 🔵                        | M3, M5       | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#712](https://github.com/assafmanor/waypoint/pull/712)                                                                                                                       | 2026-08-26 |
+| **M7**  | The map polyline            | impl   | ✅                        | M3, M5       | M6a, M6b, M9 | `claude/routes-map-polyline-m7-baqobz` · [#706](https://github.com/assafmanor/waypoint/pull/706) · [#707](https://github.com/assafmanor/waypoint/pull/707)                                                           | 2026-08-25 |
+| **M7b** | The lines read as a route   | design | ✅                        | M7           | M8, M9       | `claude/routes-map-polyline-m7-baqobz` · [#708](https://github.com/assafmanor/waypoint/pull/708)                                                                                                                     | 2026-08-25 |
+| **M7c** | The day's bookends          | impl   | ✅ (+ 2 field fixes)      | M7, M7b      | M8, M9       | `claude/routes-map-polyline-m7-baqobz` · [#709](https://github.com/assafmanor/waypoint/pull/709) · [#710](https://github.com/assafmanor/waypoint/pull/710) · [#711](https://github.com/assafmanor/waypoint/pull/711) | 2026-08-26 |
+| **M8**  | Mode per leg + trip default | impl   | ⬜                        | M6a, M6b, M7 | M10          | —                                                                                                                                                                                                                    | —          |
+| **M9**  | Plan-mode feasibility       | impl   | ⬜                        | M5           | M6a, M6b, M7 | —                                                                                                                                                                                                                    | —          |
+| **M10** | Offline route pack          | impl   | ⬜                        | M4           | M5–M9        | —                                                                                                                                                                                                                    | —          |
+| **M11** | Day travel total            | impl   | ⬜                        | M6a          | M8, M10      | —                                                                                                                                                                                                                    | —          |
+| **M12** | Harden, observe, document   | impl   | ⬜                        | all          | —            | —                                                                                                                                                                                                                    | —          |
 
 ### M2b — apply M1's numbers to the code ✅
 
@@ -700,9 +700,18 @@ provider shape directly.
 `i18n/he.ts`. Ships ADR-0206 **§V1.1** (gap minus travel — the correction), **§V1.3** (per-leg
 travel) and **§V1.4** (late risk) in the ADR-0159 slot that already exists.
 
-**M6b** · branch `routes/m6b-hero` · surface: the hero horizon components, **the collapsed board's
-countdown**, `i18n/he.ts`, `screens/home.css`. Ships **§V1.2** — `~23 דק׳ · צאו ב־18:37` — **between**
+**M6b** · branch `routes/m6b-hero` — ran as `claude/m6b-hero-read-routes-wlxj67`, the branch the
+session was handed · surface: the hero horizon components, **the collapsed board's countdown**,
+`i18n/he.ts`, `screens/home.css`. Ships **§V1.2** — `~23 דק׳ · צאו ב־18:37` — **between**
 two points per §D2, and answers the third of the app's three questions for the first time.
+
+> **M6b's surface was four files wider than this card said**, and the card was wrong rather than the
+> work: `screens/Home.tsx` is the host of both the board and the hero and derives every datum either
+> one renders, so "the collapsed board's countdown" is a line in `Home.tsx` and a class in
+> `board.css`. Plus three new files — `lib/hero-travel.ts` (the arithmetic), `lib/on-way.ts`
+> (`בדרך` as state) and `lib/duration.ts`'s `approxDuration`, which **M6a needs too**: the hedged
+> `~N דק׳` is one function or it is two that will disagree. `screens/home.css` was NOT touched — the
+> hero's stylesheet is `ui/domain/hero-lift.css`, which is where the block lives.
 
 **It also ships ADR-0206 §Z1, which M0 added:** the collapsed board's existing countdown **swaps its
 referent** when leaving is the live question — `עוד 45 דק׳` becomes `צאו עוד 10 דק׳`, and a passed
@@ -723,7 +732,71 @@ that fails against today's code**, because §V1.1 is a bug fix and a bug fix wit
 is a claim; every string reads correctly RTL at 360px; a `null` estimate renders the crow-flies chip
 with no layout shift.
 
-**What the next session needs to know:** _(fill in)_
+> **The first clause is M6a's, not M6b's**, and saying so is not a narrowing: §V1.1 is the gap slot,
+> which is `DayJoinRow`'s. M6b's own exit criteria are the second and third, plus §Z1's three arms
+> and §V1.2's line. Both are met and measured — see below.
+
+**What the next session needs to know (M6b, 2026-08-26)** — note:
+[2026-08-26](2026-08-26-the-board-counts-to-the-leaving-for-real.md):
+
+- **§V1.2 and §Z1 are shipped.** The horizon carries `~23 דק׳ · צאו ב־18:37` in a `.hero-trv` block
+  under `.wp-board-divider` — **between** the two points, so §D2 answers ADR-0160 §U0's admission
+  rule rather than spending it — and the collapsed board's one countdown swaps its unit
+  (`דקות` → `ליציאה` → `מהיציאה`, the last in `--miss`). ADR-0206 **§AE** is the build log; read it
+  rather than the session note.
+- **The swap is one `Home.tsx` ternary, as the card predicted, and `Board`/`HeroLift` gained one
+  optional field between them** (`countdown.missed`). The tile is `.wp-board-countdown.missed`,
+  reusing `.tlabel.missed`'s recipe — no new value.
+- **⚠ The mode word was dropped and then restored** (§AE6). The mockup's §1d draws
+  `הליכה · ~40 דק׳ · צאו ב־18:37`; the milestone brief quotes the sentence without the mode, and the
+  first build followed the quote. **The drawing is the spec; a brief quoting it is not.** `הליכה`
+  leading is also §D10's own dodge, and it is free — measured at 360, every state is the height it
+  was without it. The three words are `t.travelMode`, a `Record<TravelMode, string>` at the top
+  level of `he.ts` because **M6a's journey block and M8's control name the same three things**.
+- **Four decisions were taken WITHOUT going back to a mockup, on the owner's instruction to draw
+  only what is not trivial** — §AE's preamble records which and why, using this board's own
+  precedent (M7c's second field report: a word in an existing slot spends no new axis). The one
+  that is not a drawing question is `בדרך`'s storage, and it is flagged for the owner rather than
+  settled.
+- **The third unit word is `מהיציאה`, and it is a decision this milestone took** (§AE1). §Z5 measured
+  `ליציאה` for the live arm and left the passed arm's word open; v1 drew `באיחור`, which v2 §3 then
+  refused because the app has no sensor. `מהיציאה` is the same noun with the preposition flipped —
+  the minutes are counted FROM the leave-by instead of TO it — and it claims nothing about a person.
+- **⚠ The tile widens to ⁦76.58px⁩ whenever its VALUE steps to `H:MM`, and that is shipped behaviour,
+  not this milestone's.** Measured in Chromium at 360: all four unit words (`דקות`, `לסגירה`,
+  `ליציאה`, `מהיציאה`) fit the ⁦74px⁩ tile unchanged, but `2:00 · שעות` — arm 1, on `main` today, for
+  any next event an hour or more out — is ⁦76.58px⁩ and breaks a long `הבא בתור` title onto a second
+  line (⁦21px⁩ → ⁦41px⁩). A leave-by passed by over an hour reaches the same rung. **Backlogged, not
+  fixed here:** it is not the swap's, and fixing it is a `.wp-board-next-row` question.
+- **`בדרך` writes now** (`lib/on-way.ts`), which is what withdraws the mark. **It is a DEVICE mark**
+  and the toast says so — it used to read `שותף לקבוצה` over a verb that wrote nothing, which made
+  it the one confirmation in the app that was false. The group-visible version is a stored field
+  plus a migration plus a cache mirror, and it is on the backlog rather than smuggled into a routes
+  milestone. **M6a reads the same module** for the day row's own mark.
+- **The collision is settled in code and specced both ways** (§Z5 §M1): `Home.tsx` compares
+  `closingMins` against `minutesToLeave` and the nearer wins, with a passed leave-by negative and so
+  always nearer. `Home.leave-by.test.tsx` asserts both directions and the passed case.
+- **⚠ M6a: the leg's ORIGIN is a shared question and this card answered it one way.**
+  `travelOrigin` takes the primary now point, else the latest stop that has already started **on
+  the clock's own day** — never further back, because the stop before that is somewhere you have
+  already left and offering it would invent a position. That is deliberately the same leg
+  `DayJoinRow` measures a hole with, so **if M6a derives its own origin differently the two
+  surfaces will state different leave-bys for one journey.** Reuse it. Its one gap is §AD's
+  bookends: the stay you woke in is the honest origin for a morning before anything has started,
+  and reaching it needs `buildDayStopSequence` plus the Map's place-usage index — a widening of
+  M6b's surface rather than a line in it, and §AE3 says so.
+- **A leg declared תחב״צ (§AA4) cannot fire the swap, and it is by construction rather than by a
+  guard**: the declaration is not a member of `travelModeSchema`, so `estimateFor` cannot be asked
+  for it, so `travelSeconds` is `null` and `heroLeaveBy` answers `null`. M8 needs to keep it that
+  way — the moment anything makes it a `TravelMode`, the board starts counting to a departure
+  nobody can estimate.
+- **Own-device position was NOT built**, per this board's own instruction. It is still the thing
+  that would let the mark be **withdrawn** rather than only answered, and it still wants its own ADR
+  (M3's card, ADR-0006).
+- **⚠ Verified by measurement, because reading the code cannot settle it:** the `~` must sit INSIDE
+  the bidi isolate with the digits. Measured in Chromium at 360 — with the isolate the `~` renders
+  at x⁦314⁩ and the `2` at x⁦326⁩ (reads `~23`); without it the `~` is at x⁦336⁩, to the RIGHT of both
+  digits (reads `23~`). `approxDuration` owns it so no caller can get it wrong again.
 
 ---
 
@@ -923,17 +996,28 @@ the **visible number** was the gate on the polyline, on `mapsDayRouteUrl` and on
 traversal. It reads `dayStops` now — the same derivation one step earlier, where a stop holds a
 position whether or not it can defend a number.
 
-**Follow-up (2026-08-26) — the ordering caveat.** A `first` bookend was pinned to position 0
-unconditionally, which is wrong on the night you check in at 02:00 and out that morning: the midnight
-car pick-up that brought you there sorted after the hotel. Fixed by the narrowest rule that settles
-it — **nothing whose instant precedes the stay's own check-in sorts after it** — an instant
-comparison, so no dawn cut-off and no zone. It declines to reorder the case the data cannot settle
-(an ordinary stay plus a midnight errand), which is what keeps it from growing into a theory of what
-precedes what. The hotel-change day falls out for free.
+### M7c's field reports — two fixes off the shipped canvas
 
-**Follow-up (2026-08-26) — the map now says which end of the day the hotel was.** Three things were
-swallowing a word that already existed, and the loudest was a **zoom rule asking about the pane when
-the question was about the pin**: the neutral tag dropped under `[data-pins='dot']` in every scope,
+**Both are M7c's, not milestones of their own**, and both amended
+[ADR-0054](../decisions/0054-ambient-span-events-off-the-day-schedule.md) in place. Recorded here
+because a fix that changed a documented decision and left no mark on the tracker is the failure this
+board exists to prevent — and because the second one **replaced** the first one's rule rather than
+adding to it, which is only legible if both are on the page.
+
+**[#710](https://github.com/assafmanor/waypoint/pull/710) — the ordering caveat, and the map says
+which end of the day the hotel was.** Note:
+[2026-08-26](2026-08-26-which-end-of-the-day-the-hotel-was.md). Two things in one PR.
+
+A `first` bookend was pinned to position 0 unconditionally, which is wrong on the night you check in
+at 02:00 and out that morning: the midnight car pick-up that brought you there sorted after the
+hotel. The rule written for it was _nothing whose instant precedes the stay's own check-in sorts
+after it_ — an instant comparison, so no dawn cut-off and no zone. **That rule is gone; see #711
+below.** It is left on the page rather than edited out because the sentence was fine and the input
+was not, which is the transferable half.
+
+And the pin now says which end of the day it was. Three things were swallowing a word that already
+existed, and the loudest was a **zoom rule asking about the pane when the question was about the
+pin** — the neutral tag dropped under `[data-pins='dot']` in every scope,
 but in day scope only `.aside` degrades — so a full-size stop below ⁦zoom 11⁩ (a ~⁦30km⁩ span) kept its
 size and lost its word. Deleted, not rescoped: the corrected rule is inert. Beyond that, a stay is
 now exempt from ADR-0141's `behind` silence (its word says which END of the day this was, which the
@@ -942,6 +1026,22 @@ afternoon does not falsify) and a middle night, which carries no edge to name, s
 where a mark would have spent one on a ladder §AC3 already records as full. Numbering was rejected
 for the reason that turned out diagnostic: a number is an ordinal and one pin cannot wear two, while
 "both ends of the day" is a single coherent state.
+
+**[#711](https://github.com/assafmanor/waypoint/pull/711) — a floor is not an arrival, so the night
+sorts before the bed.** Same note, second round. #710's rule **moved nothing on the day it was
+written for**: `startsAt` on a lodging span is a **floor** — the hour the room opens, which
+[ADR-0171](../decisions/0171-a-time-can-be-a-floor-or-a-ceiling.md) §10b exists to say is not a
+moment — and it was used as one. The room was available from 15:00 the previous afternoon while the
+owner was still in the air until 23:20, so every stop of the day fell after it. The replacement asks
+**two** questions, and either alone answers a different day wrongly: a **floor** before dawn sorts
+before the stay, a **known** moment (a 06:30 flight) never does. Dawn is `dayWindowMs`'s own 07:00
+boundary, resolved by the screen and handed in as an instant, and lifted out of `Home.tsx` so the
+glance's rail and the day's route cannot disagree about where dawn is (root rule 8).
+
+**The transferable finding, and it is a testing one:** the specs shipped green through all of it. The
+fixture carried a 02:00 check-in **because that is what the rule was reasoning about** — a fixture
+built from the rule proves the rule — and the spec covering the owner's actual shape existed and
+asserted `moves NOTHING`. **Before writing the fixture, take the shape from the report.**
 
 **Three owner answers this card is built on**, all put as forks before any code:
 

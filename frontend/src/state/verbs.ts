@@ -54,6 +54,7 @@ import {
   type OutboxOp,
 } from '../lib/outbox';
 import { generateId } from '../lib/id';
+import { markOnWay } from '../lib/on-way';
 import { getNow } from '../lib/useClock';
 import { eventDisplayZones } from '../lib/places';
 import { ideaCategory, ideaGlyph } from '../lib/shelf';
@@ -1358,7 +1359,20 @@ export function useVerbs() {
     // so the resolve sheet writes through `update` with the slot the picker handed back —
     // the same write a drop on that position performs (ADR-0161 §4). `delay`/`earlier` above
     // keep their fixed step, which is a nudge rather than a move to somewhere.
-    onWay: (_e: TripEvent) => toast(CONTROL_ICON.share, t.toast.onWayShared),
+    // **`בדרך` writes now** (ADR-0206 §Z5 §M4, built by M6b). It was a toast claiming
+    // `שותף לקבוצה` and no write at all, which made it the one verb in the app whose
+    // confirmation was false. §V1.4's late mark is its first consumer with a reason to be
+    // state: the mark says the leave-by has passed, and the only honest way to withdraw it is
+    // for a person to say they are moving — a settle mark is not a sensor, and own-device
+    // position wants its own ADR before this surface reads it.
+    //
+    // **A DEVICE mark, and the toast now says so.** The group-visible answer is a stored field
+    // plus a migration plus a cache mirror (backlogged); this is the whole of what the mark
+    // needs and it claims nothing the app does not do.
+    onWay: (e: TripEvent) => {
+      markOnWay(trip.id, e.id);
+      toast(CONTROL_ICON.navigate, t.toast.onWayMarked);
+    },
     // Place a shelf idea onto a day. With `fields` (from the builder's
     // EventForm picker) the user chose the day/time/kind; without them it's the
     // Trip-mode one-tap quick-schedule onto today at a default slot (Tier-1).

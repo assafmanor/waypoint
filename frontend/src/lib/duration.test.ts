@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { clockShiftSentence, formatDuration, hoursPhrase } from './duration';
+import { approxDuration, clockShiftSentence, formatDuration, hoursPhrase } from './duration';
+import { withoutBidiControls } from './bidi';
 
 const H = 60;
 const D = 24 * H;
@@ -93,5 +94,39 @@ describe('clockShiftSentence — the zone crossing in words', () => {
 
   it('is null when there is no shift — every single-zone trip', () => {
     expect(clockShiftSentence(0)).toBeNull();
+  });
+});
+
+describe('approxDuration — a travel time, hedged (ADR-0206 §D5 over §D3)', () => {
+  // The `~` belongs INSIDE the isolate, with the digits: it is bidi-neutral, so beside a numeral
+  // in an RTL flow it lands on the far side of the number and `~40` renders `40~`. ADR-0206 §Z5
+  // found it by rendering the first routes mockup and it reached the second one anyway, so the
+  // assertion is on the control characters rather than on the eye (ADR-0118's own rule).
+  it('isolates the number together with its tilde, never the unit', () => {
+    expect(approxDuration(23)).toBe('⁦~23⁩ דק׳');
+    expect(withoutBidiControls(approxDuration(23)!)).toBe('~23 דק׳');
+    expect(approxDuration(23)!.indexOf('~')).toBeLessThan(approxDuration(23)!.indexOf('2'));
+  });
+
+  // §D3: one ladder, read a second way. 4,355 s is not `72 דק׳`.
+  it("rounds onto ADR-0114's ladder rather than reporting minutes forever", () => {
+    expect(withoutBidiControls(approxDuration(4355 / 60)!)).toBe('~1:13 שע׳');
+    expect(withoutBidiControls(approxDuration(1268 / 60)!)).toBe('~21 דק׳');
+    expect(withoutBidiControls(approxDuration(135)!)).toBe('~2:15 שע׳');
+  });
+
+  // A tilde in front of a Hebrew word means nothing and is a second bidi trap, so the word
+  // rungs take the Hebrew prefix instead.
+  it('hedges the word rungs with כ, and carries no isolate there', () => {
+    expect(approxDuration(60)).toBe('כשעה');
+    expect(approxDuration(120)).toBe('כשעתיים');
+    expect(approxDuration(180)).toBe('כ3 שעות');
+  });
+
+  // Two stops that are one place (`ROUTE_MIN_CROW_M`) is §D4's absence, not a `0 דק׳`.
+  it('answers null for nothing to measure', () => {
+    expect(approxDuration(0)).toBeNull();
+    expect(approxDuration(-5)).toBeNull();
+    expect(approxDuration(Number.NaN)).toBeNull();
   });
 });

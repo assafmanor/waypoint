@@ -168,6 +168,38 @@ export interface HeroLiftThen {
   time: string;
 }
 
+/** **The journey BETWEEN two points** (ADR-0206 §V1.2 / §D2) — `~23 דק׳ · צאו ב־18:37`.
+ *
+ *  It renders in the slot that is already between two points on this card, the one
+ *  `.wp-board-divider` marks: a journey is not a property of either point, so it is **not** a
+ *  fifth point-depth item (§D2 answers ADR-0160 §U0's admission rule rather than spending it).
+ *  Absent when there is no estimate, which is the ordinary case (§D4) and costs no height.
+ *
+ *  Every string arrives formatted, isolated and hedged, like every other datum on this card:
+ *  `duration` is `approxDuration`'s (`~` inside the bidi isolate, ADR-0114's ladder), and
+ *  `leave` is either `צאו ב־18:37` or, once the leave-by has gone by, `זמן היציאה עבר ב־18:37`.
+ *  **Never `אתם באיחור`** — the app has no sensor for where a person is (§Z5 §M4). */
+export interface HeroLiftTravel {
+  /** The mode's noun, leading the line as the M3 mockup drew it — §D10's dodge (`הליכה · ~23 דק׳`
+   *  rather than `~23 דקות הליכה`, which disagrees), and what makes the number mean anything. */
+  mode?: string;
+  /** `~23 דק׳`. Absent for a leg with a leave-by and no duration, which nothing produces
+   *  today — the shape is here so a declared תחב״צ leg (§AA4) has somewhere to land. */
+  duration?: string;
+  /** The leave-by sentence, already in the point's own zone. */
+  leave: string;
+  /** `time` is amber (§D1). `miss` is the leave-by gone by, in `--miss` (§D7) — **ink and word
+   *  only**, no fill on the row, no glow and no pulse, because the app has one live mark and
+   *  `.nowline` is it (§D6). `on-way` is teal, because somebody said they are moving and that
+   *  is a location claim (rule 4, ADR-0141's journey grammar). */
+  tone: 'time' | 'miss' | 'on-way';
+  /** **The answer to the mark** (§Z5 §M4) — `בדרך`, the verb the app has shipped since
+   *  ADR-0161 and which wrote nothing until §V1.4 gave it a reason to be state. Present only
+   *  on `miss`: drawing the mark with no way to withdraw it would send a reader one tab over
+   *  to dismiss a nudge. */
+  onOnWay?: () => void;
+}
+
 export interface HeroLiftProps {
   /** Current time, pre-formatted — the board clock, unchanged. */
   clock: string;
@@ -189,7 +221,12 @@ export interface HeroLiftProps {
   nextLabel?: ReactNode;
   nextTime?: string;
   nextCode?: string;
-  countdown?: { value?: string; unit: string } | null;
+  /** The collapsed board's countdown, unchanged — including ADR-0206 §Z1's swap and its
+   *  `missed` arm, because the hero IS that board one elevation up and the two may not
+   *  disagree about what the tile counts to. */
+  countdown?: { value?: string; unit: string; missed?: boolean } | null;
+  /** ADR-0206 §V1.2's read, drawn between the two points it belongs between. */
+  travel?: HeroLiftTravel;
   then?: HeroLiftThen;
   /** Whatever the collapsed board pins at its bottom, pinned here too — the day rail
    *  normally, and **the flight's own progress in transit**, which is ADR-0059 §2's rule
@@ -515,6 +552,45 @@ function Point({ point, lead }: { point: HeroLiftPoint; lead?: boolean }) {
   );
 }
 
+/** ADR-0206 §V1.2's line. One row: the mode-less glyph, the hedged duration, the leave-by, and
+ *  on the missed arm the one verb that can withdraw the mark.
+ *
+ *  **The glyph carries the tone and the word says the fact** — `--miss` as TEXT rather than as a
+ *  fill (§D7: the fill fails AA as ink), and no second live mark anywhere in here (§D6). */
+function TravelBetween({ travel }: { travel: HeroLiftTravel }) {
+  const glyph = travel.tone === 'miss' ? 'warn' : travel.tone === 'on-way' ? 'navigate' : 'clock';
+  return (
+    <div className="hero-part">
+      <div className={`hero-trv ${travel.tone}`}>
+        <Icon name={glyph} />
+        <span className="hero-trv-txt">
+          {[travel.mode, travel.duration, travel.leave]
+            .filter((run): run is string => !!run)
+            .map((run, i) => (
+              // `·` is the app's separator and it is a NODE rather than part of a string, so a
+              // dimmed dot needs no second copy of the runs around it (§D10: never an em dash).
+              <span key={i}>
+                {i > 0 && (
+                  <>
+                    {' '}
+                    <span className="sep">·</span>{' '}
+                  </>
+                )}
+                {run}
+              </span>
+            ))}
+        </span>
+        {travel.onOnWay && (
+          <button type="button" className="hero-act loc hero-trv-act" onClick={travel.onOnWay}>
+            <Icon name="navigate" />
+            {t.actions.onWay}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function HeroLift(props: HeroLiftProps) {
   const {
     clock,
@@ -526,6 +602,7 @@ export function HeroLift(props: HeroLiftProps) {
     nextTime,
     nextCode,
     countdown,
+    travel,
     then,
     foot,
   } = props;
@@ -588,6 +665,10 @@ export function HeroLift(props: HeroLiftProps) {
             {next && (
               <>
                 <div className="wp-board-divider" />
+                {/* **The between-slot, finally saying something** (ADR-0206 §V1.2). The divider
+                    was already the element between two points; this gives it a sentence instead
+                    of adding a block, which is what keeps §D2 from becoming a fifth point. */}
+                {travel && <TravelBetween travel={travel} />}
                 <div className="hero-part">
                   <div className="wp-board-next-row">
                     <div>
@@ -615,7 +696,7 @@ export function HeroLift(props: HeroLiftProps) {
                       </div>
                     </div>
                     {countdown && (
-                      <div className="wp-board-countdown">
+                      <div className={'wp-board-countdown' + (countdown.missed ? ' missed' : '')}>
                         {countdown.value && (
                           <div className="t" dir="auto">
                             {countdown.value}

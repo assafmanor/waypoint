@@ -148,7 +148,16 @@ export interface BoardProps {
 
   // NEXT slot + progress (hidden in transit).
   next?: BoardNext | null;
-  countdown?: { value?: string; unit: string } | null;
+  /** **The board's ONE countdown, and it changes what it counts to** (ADR-0206 §Z1). The `unit`
+   *  slot has said what the minutes are left OF since ADR-0184 §6's `לסגירה`; a live leave-by is
+   *  the same fact pointed one step earlier, so it is a third arm on that ternary and not a
+   *  second element — `עוד 45 · דקות` is not merely less useful once you should be leaving, it
+   *  is wrong, and drawing both would state a contradiction the reader has to resolve.
+   *
+   *  `missed` paints the tile in the board's own `--miss` recipe (§D7) for a leave-by that has
+   *  gone by. **It is a swap, not a second live mark** (§D6): `.nowline` is still the app's
+   *  only one, and re-pointing a countdown is not another. */
+  countdown?: { value?: string; unit: string; missed?: boolean } | null;
   /** Day progress 0..100. */
   progress?: number;
   windowStartHour?: string;
@@ -456,7 +465,7 @@ export function Board(props: BoardProps) {
               )}
             </div>
             {countdown && (
-              <div className="wp-board-countdown">
+              <div className={'wp-board-countdown' + (countdown.missed ? ' missed' : '')}>
                 {countdown.value && (
                   <div className="t" dir="auto">
                     {countdown.value}
