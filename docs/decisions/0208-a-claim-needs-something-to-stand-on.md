@@ -23,7 +23,7 @@ same mistake in different clothes: **the app asserting something it had not earn
 
 ## Decision
 
-### 1. The passed arm says `באיחור`, because by the time it can print, everything that could withdraw it has had its turn
+### 1. The passed arm says `15 · דקות באיחור · ליציאה` — all three parts, because two words each shipped missing a different one
 
 §AE1 chose `מהיציאה` — the leave-by's own noun with the preposition flipped, so the minutes are
 counted **from** it. The grammar was right and the reading was not: `מ־` says _measured from_, so
@@ -43,10 +43,41 @@ still refused everywhere. `באיחור` in the **unit slot** says what the NUMB
 `ליציאה` do — a measurement, not an accusation. The hero's sentence one elevation up still reads
 `זמן היציאה עבר ב־18:37` and a spec holds the tile's word out of it.
 
-**Measured**, because the slot is the one place this could cost a line: at 10px with the shipped
-`0.08em` tracking, `באיחור` is ⁦30.50px⁩ of ink against `מהיציאה`'s ⁦37.81px⁩ — a hair over the live
-arm's `ליציאה` (⁦30.27px⁩), which has been in this slot since M6b. The tile stays on its ⁦74px⁩
-min-width, one line, in every arm.
+**And `באיחור` alone was still ambiguous, which is the second half of this section.** Reported the
+same day: _"15 what? Minutes? And what does this mean — that the event started 15 minutes ago or
+that we should've left 15 minutes ago?"_ Both questions are fair, and they are the same defect from
+two sides: the unit slot has always carried **either** the measure (`דקות`) **or** the referent
+(`ליציאה`), and `באיחור` carried neither. The number then floats — and the board's own default
+referent is the next event, which is exactly the wrong reading.
+
+**So the slot says all three parts:** how much, that it is lateness, and what it is late FOR.
+
+| arm                   | value  | unit line 1   | unit line 2 |
+| --------------------- | ------ | ------------- | ----------- |
+| counting to the event | `2:00` | `שעות`        | —           |
+| leaving is live       | `10`   | `ליציאה`      | —           |
+| the leave-by passed   | `15`   | `דקות באיחור` | `ליציאה`    |
+
+Three things about that row, each of which is a rule rather than a preference:
+
+- **The measure word is the LADDER's, never a literal.** `formatCountdown` steps to `H:MM` past an
+  hour, and a leg long enough to be an hour late is a drive rather than a walk — so a hardcoded
+  `דק׳` would have labelled `1:10` as minutes. The arm reads `1:10 · שעות באיחור · ליציאה`, and a
+  spec asserts the word changes with the rung rather than asserting the word.
+- **The third part is `leaveIn` verbatim** — the live arm's own word, reused. Both arms are about the
+  same departure and differ only on which side of it the clock is, so inventing a second noun for it
+  would be two names for one thing.
+- **It is two explicit lines, not a `max-width` and a hope.** Three parts do not fit the tile's own
+  ⁦48px⁩ content box on one line, and wrapping-by-width would land wherever a font fallback put it.
+
+**Measured at 360 in Chromium, against the real stylesheet.** `באיחור` is ⁦30.50px⁩ of ink and
+`מהיציאה` ⁦37.81px⁩, so both fit one line — the reason the ambiguity was cheap and the fix is not.
+`דקות באיחור` is ⁦55.63px⁩ and `שעות באיחור` ⁦56.39px⁩, which takes the tile to ⁦81.63/82.39px⁩ against
+the ⁦74px⁩ min-width, and the second line takes it from ⁦55px⁩ to ⁦68px⁩ tall. **The price is ⁦6px⁩ of
+board height in this arm and ⁦7.6px⁩ of the `הבא בתור` title** — and where the title already wraps,
+the row is unchanged at ⁦86px⁩ and the height costs nothing at all. Arm 1 already spends ⁦2.4px⁩ of
+that title on `2:00 · שעות` today, so this is the same axis, four times over, in the one arm that
+is about somebody missing a booking.
 
 ### 2. A skipped stop DENIES the plan's claim about where you are — and a read with nothing to stand on is not made
 
@@ -112,6 +143,14 @@ fixed step from the event's own start, not from the clock.
 - **The board can now say `באיחור`**, which is heavier than what it said this morning. Three
   independent withdrawals have to fail before it prints, and §2 adds a fourth; that is what pays for
   the word.
+- **The countdown tile can be two lines tall, and its shape is named once.** `BoardCountdown` lives
+  in `Board.tsx` and `HeroLift` imports it: the two elevations render two copies of that markup, and
+  a field added to one and not the other is how they start saying different things about one
+  leave-by. A spec on each holds both lines.
+- **`לסגירה` and the live arm still carry no measure word** (`10 · ליציאה`). Left deliberately: the
+  `ל־` already frames the number as a count toward something, which is the half `באיחור` was
+  missing, and widening the arms nobody reported would spend the same title pixels on every state.
+  If the question comes back for those, the composer is already there.
 - **The travel read disappears on a day of skips, for anyone without location consent.** This is the
   cost, it is deliberate, and it is the honest direction: the surface is complete without the block
   (§D4) and was lying with it.
@@ -130,6 +169,17 @@ fixed step from the event's own start, not from the clock.
 - **Keep `מהיציאה` and explain it elsewhere.** Rejected: it was reported as unclear by the person who
   asked for the constraint that produced it, and there is nowhere on a collapsed board to explain a
   unit word.
+- **One line that says it all.** Rejected on measurement, not taste: `באיחור ליציאה` is ⁦63.56px⁩ of
+  ink (a ⁦89.56px⁩ tile, ⁦16px⁩ off the title) and `דקות באיחור ליציאה` is ⁦81.73px⁩ (⁦107.73px⁩). The
+  tile's content box is ⁦48px⁩. Height was the cheaper axis and the measurement said so.
+- **`אחרתם לצאת`** — "you were late to leave", a sentence rather than a measurement, and ⁦59.38px⁩
+  wide. Rejected on both counts: §Z5 §M4's refusal is about claims over people, and this is one.
+- **`דק׳ באיחור` on one line** (⁦48.67px⁩, and it fits). Rejected because the abbreviation is a
+  literal: it labels `1:10` as minutes the first time a drive is an hour late, which is precisely
+  the class of bug §1's ladder rule exists to prevent.
+- **The leave-by clock in the tile** (`18:37 · יציאה`). Rejected: an `H:MM` value plus a noun is a
+  ⁦89px⁩ tile, and it deletes the thing the arm is for — the difference between two minutes past and
+  forty.
 - **`באיחור` only when a fix EARNS it, and `מהיציאה` when the app cannot tell.** Genuinely tempting —
   it is 0207's grammar — and rejected because the fallback is the word that was just reported as
   unreadable. Two words for one state also costs the reader the thing the tile is for: a glance.

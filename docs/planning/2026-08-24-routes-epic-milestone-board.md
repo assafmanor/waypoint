@@ -876,11 +876,11 @@ it doesn't allow it"_.
 
 **Two of the three are the same mistake:** the app asserting something it had not earned.
 
-| report                  | what it was                                                  | what it is now                                       |
-| ----------------------- | ------------------------------------------------------------ | ---------------------------------------------------- |
-| `15 · מהיציאה`          | "counted from the departure" — grammar right, reading wrong  | `15 · באיחור`, and the sentence still accuses no one |
-| on the way after a skip | a skipped stop was still the leg's origin                    | a **denied** claim, which licenses nothing alone     |
-| `נדחה` on a refusal     | `applyDelay` swallowed its own failure and resolved normally | the verb reports it, and checks the target first     |
+| report                  | what it was                                                  | what it is now                                                        |
+| ----------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------- |
+| `15 · מהיציאה`          | "counted from the departure" — grammar right, reading wrong  | `15 · דקות באיחור · ליציאה` — how much, that it is lateness, what for |
+| on the way after a skip | a skipped stop was still the leg's origin                    | a **denied** claim, which licenses nothing alone                      |
+| `נדחה` on a refusal     | `applyDelay` swallowed its own failure and resolved normally | the verb reports it, and checks the target first                      |
 
 **What the next session needs to know:**
 
@@ -898,6 +898,16 @@ it doesn't allow it"_.
   (`בדרך`, a fix on the leg, a claim that stands). If any of them is ever removed, §1's argument goes
   with it. `אתם באיחור` as a **sentence** is still refused, and a spec holds the tile's word out of
   the hero row.
+- **⚠ The word alone was not enough, and that was reported within the hour.** _"15 what? Minutes?
+  And what does this mean — that the event started 15 minutes ago or that we should've left?"_ The
+  unit slot has always carried **either** the measure (`דקות`) **or** the referent (`ליציאה`), and
+  `באיחור` carried neither, so the number floated against the board's default referent — the next
+  event. The arm now spends a **second unit line** on all three parts, and two rules come with it:
+  the measure word is `formatCountdown`'s own (a hardcoded `דק׳` labels `1:10` as minutes the first
+  time a drive is an hour late), and the lines are **explicit** rather than a `max-width` and a hope.
+- **The tile's shape is `BoardCountdown` now, named in `Board.tsx` and imported by `HeroLift`** —
+  those two render two copies of the same markup, so a field added to one and not the other is how
+  the collapsed board and the hero start disagreeing about one leave-by.
 - **⚠ Two specs were passing for the wrong reason and the verb fix exposed them.** The delay gate's
   mocks returned a bare event where `moveEvent` parses a `{ event }` envelope, so `zod` threw, the
   verb swallowed it, and `applied` was hardcoded `true` — a spec asserting a successful apply against
@@ -908,8 +918,13 @@ it doesn't allow it"_.
 - **Deliberately not built:** re-anchoring the nudge to NOW so a late stop can be postponed at all.
   It is the strongest rejected option and it is blocked on ripple learning a **clearing** delta rather
   than the mover's own — backlogged, with the reasoning in ADR-0208's alternatives.
-- **Measured:** `באיחור` is ⁦30.50px⁩ of ink at 10px/0.08em against `מהיציאה`'s ⁦37.81px⁩ and the live
-  arm's `ליציאה` at ⁦30.27px⁩ — the ⁦74px⁩ tile cannot widen, one line in every arm.
+- **Measured at 360 against the real stylesheet:** `באיחור` ⁦30.50px⁩ / `מהיציאה` ⁦37.81px⁩ /
+  `ליציאה` ⁦30.27px⁩ all fit one line in a ⁦48px⁩ content box — which is why the ambiguity was cheap
+  and the fix is not. `דקות באיחור` is ⁦55.63px⁩ and `שעות באיחור` ⁦56.39px⁩, so the tile goes to
+  ⁦81.63/82.39px⁩ wide and ⁦55→68px⁩ tall: **⁦6px⁩ of board height and ⁦7.6px⁩ of the `הבא בתור` title,
+  in this arm only**, and nothing at all where the title already wraps (row ⁦86px⁩ either way). The
+  one-line alternatives were rejected on the same numbers — `באיחור ליציאה` needs an ⁦89.56px⁩ tile
+  and the full sentence ⁦107.73px⁩.
 
 ---
 

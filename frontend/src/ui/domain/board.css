@@ -377,6 +377,14 @@
   letter-spacing: 0.08em;
   margin-top: 3px;
 }
+/* **A second unit line hugs the first** (ADR-0208 §1) — the passed-leave arm needs three parts
+   (`15 · דקות באיחור · ליציאה`) and the tile's own content box is ⁦48px⁩, so the sentence wraps
+   where the number cannot. The 3px belongs BETWEEN the number and the words, not inside them:
+   measured at 360, the tile goes ⁦55→68px⁩ against a row that is ⁦62px⁩ on a short title, so the
+   board grows ⁦6px⁩ in this arm and nothing at all where the title already wraps. */
+.wp-board-countdown .u + .u {
+  margin-top: 0;
+}
 /* **A leave-by that has gone by** (ADR-0206 §Z1's third row, §D7). The SAME tile — the board's
    one countdown swaps what it counts to rather than growing a second box — in the same
    low-alpha-fill-plus-brightened-ink recipe `.tlabel.missed` already uses one block up, so this

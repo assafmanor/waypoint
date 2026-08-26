@@ -41,9 +41,32 @@ withdraw it. The owner asked for the word and the ground for refusing it had alr
 distinction that keeps §Z5 §M4 intact is that `אתם באיחור` is a sentence about people and `באיחור` in
 the unit slot is a measurement, like `לסגירה` and `ליציאה` beside it.
 
-**Measured** rather than reasoned about, because the slot is the one place a word can cost a line: at
-10px with the shipped `0.08em` tracking, `באיחור` is ⁦30.50px⁩ of ink against `מהיציאה`'s ⁦37.81px⁩,
-a hair over `ליציאה`'s ⁦30.27px⁩. The tile stays on its ⁦74px⁩ min-width, one line, in every arm.
+**And the word alone was not enough** — reported within the hour, and the second report is the
+sharper one: _"15 what? Minutes? And what does this mean — that the event started 15 minutes ago or
+that we should've left?"_
+
+Both questions are one defect seen from two sides. The unit slot has always carried **either** the
+measure (`דקות`, arm 1) **or** the referent (`ליציאה`, arm 2), never both — and `באיחור` carried
+neither, so the number floated against the board's default referent, which is the next event. That
+is the wrong reading, and it is the reading the tile invited.
+
+So the arm spends a second unit line and says all three parts: `15 · דקות באיחור · ליציאה`. Two
+rules came out of building it. The measure word is **`formatCountdown`'s own**, because a hardcoded
+`דק׳` labels `1:10` as minutes the first time a drive is an hour late — and the spec asserts the
+word _changes with the rung_ rather than asserting the word. And the two lines are **explicit**
+rather than a `max-width` and a hope, because wrapping-by-width lands wherever a font fallback puts
+it.
+
+**Measured at 360 against the real stylesheet, which is what chose the axis.** One line was the
+first instinct and the numbers killed it: the tile's content box is ⁦48px⁩, `באיחור ליציאה` is
+⁦63.56px⁩ of ink (an ⁦89.56px⁩ tile — ⁦16px⁩ off the title) and the full sentence ⁦81.73px⁩ (⁦107.73px⁩).
+Height was the cheap axis: `דקות באיחור` ⁦55.63px⁩ / `שעות באיחור` ⁦56.39px⁩ takes the tile to
+⁦81.63/82.39px⁩ wide and ⁦55→68px⁩ tall, which is **⁦6px⁩ of board height and ⁦7.6px⁩ of title** in this
+arm — and nothing at all where the title already wraps, since the row is ⁦86px⁩ either way.
+
+Worth keeping for the next copy question in this slot: the tile was measured with the app's own
+`board.css` and `tokens.css` **loaded**, not with values copied into a scratch page. Seven phrasings
+were rendered, and the four that read best were the four that did not fit.
 
 ## Two specs that were passing for the wrong reason
 
@@ -77,7 +100,10 @@ day into tomorrow. Ripple has to learn a clearing delta first. On the backlog.
 
 ## Checks
 
-`pnpm format` / `lint` / `typecheck` / `build` clean. **Frontend 267 files / 4594 tests**, all green
-— **11 new specs**: `hero-travel` +4 (the denied claim, and that it does not walk back),
-`Home.leave-by` +5 (the reported case end to end, the fix standing it back up, and `done` changing
-nothing), `verbs` +2 (the refusal before the queue, and a failed write reported as one).
+`pnpm format` / `lint` / `typecheck` / `build` clean. **Frontend 267 files / 4597 tests**, all green
+— **14 new** against `main`'s 4583: `hero-travel` +4 (the denied claim, and that it does not walk
+back), `Home.leave-by` +7 (the reported case end to end, the fix standing it back up, `done`
+changing nothing, the three-part sentence, and an hour-plus lateness labelled in hours), `Board` +1
+and `HeroLift` +1 (both unit lines, on both elevations), and `verbs` +2 whose file count nets out
+against the two mocks they corrected (the refusal before the queue, and a failed write reported as
+one).

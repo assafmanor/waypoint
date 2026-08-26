@@ -123,6 +123,22 @@ export interface BoardNext {
   missed?: boolean;
 }
 
+/** **The tile under `הבא בתור`** — one number, and the words that say what it is a number OF.
+ *
+ *  Named here and imported by `HeroLift`, which renders the same tile one elevation up: the two
+ *  copies of this markup predate the lift, and a field added to one and not the other is exactly
+ *  how the collapsed board and the hero start saying different things about one leave-by.
+ *
+ *  `unitBelow` is a **second unit line**, and only the passed-leave arm uses it (ADR-0208 §1).
+ *  Three parts will not fit on one line inside the tile's own ⁦48px⁩ — measured — and the row has
+ *  the height to spare, so the sentence wraps rather than the number losing a word. */
+export interface BoardCountdown {
+  value?: string;
+  unit: string;
+  unitBelow?: string;
+  missed?: boolean;
+}
+
 export interface BoardProps {
   variant: BoardVariant;
   /** Current time (pre-formatted) — the board clock. */
@@ -157,7 +173,7 @@ export interface BoardProps {
    *  `missed` paints the tile in the board's own `--miss` recipe (§D7) for a leave-by that has
    *  gone by. **It is a swap, not a second live mark** (§D6): `.nowline` is still the app's
    *  only one, and re-pointing a countdown is not another. */
-  countdown?: { value?: string; unit: string; missed?: boolean } | null;
+  countdown?: BoardCountdown | null;
   /** Day progress 0..100. */
   progress?: number;
   windowStartHour?: string;
@@ -472,6 +488,7 @@ export function Board(props: BoardProps) {
                   </div>
                 )}
                 <div className="u">{countdown.unit}</div>
+                {countdown.unitBelow && <div className="u">{countdown.unitBelow}</div>}
               </div>
             )}
           </div>

@@ -33,6 +33,7 @@ import {
   GlanceCard,
   RateCard,
   TransitProgress,
+  type BoardCountdown,
   type BoardNext,
   type BoardRow,
   type BoardTransit,
@@ -79,7 +80,7 @@ import {
   countsNights,
 } from '../lib/glance';
 import { deriveHeroBooking } from '../lib/hero-booking';
-import { LEAVE_PHASE, heroLeaveBy, travelOrigin } from '../lib/hero-travel';
+import { LEAVE_PHASE, heroLeaveBy, travelOrigin, type HeroLeaveBy } from '../lib/hero-travel';
 import { TRAVEL_STANCE, remainingTravelSeconds, travelStance } from '../lib/travel-position';
 import { useGeolocation } from '../lib/useGeolocation';
 import { useDayTravel } from '../lib/travel';
@@ -116,6 +117,29 @@ import { useSettledHosts } from '../ui/HostTasks';
  *  by mode — a flight's take-off, a train's departure (via eventTransitionKeys). */
 const startTransitionKey = (e: TripEvent): string | undefined =>
   isBracketed(e) ? eventTransitionKeys(e)?.startKey : undefined;
+
+/**
+ * **The passed-leave arm's three parts** (ADR-0208 §1) — `15 · דקות באיחור · ליציאה`.
+ *
+ * Two words were reported unclear in this slot before this one, each missing a different half of
+ * the sentence: `מהיציאה` read as _measured from_ ("15, counted from the departure"), and a bare
+ * `באיחור` said the number was lateness while naming nothing it was late FOR — so `15` could as
+ * easily have meant the event started a quarter of an hour ago.
+ *
+ * **The measure word is the ladder's own, never a literal.** `formatCountdown` steps to `H:MM`
+ * past an hour, and a leg long enough to be an hour late is a drive rather than a walk — so a
+ * hardcoded `דק׳` would have labelled `1:20` as minutes. The third part is `leaveIn` verbatim,
+ * because both arms are about the same departure and differ only on which side of it the clock is.
+ */
+function passedLeaveCountdown(leave: HeroLeaveBy): BoardCountdown {
+  const ladder = formatCountdown(-leave.minutesToLeave);
+  return {
+    ...ladder,
+    unit: t.board.lateBy(ladder.unit),
+    unitBelow: t.board.leaveIn,
+    missed: true,
+  };
+}
 
 export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const {
@@ -610,11 +634,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           at: leave.minutesToLeave,
           countdown:
             leave.phase === LEAVE_PHASE.PASSED
-              ? {
-                  ...formatCountdown(-leave.minutesToLeave),
-                  unit: t.board.late,
-                  missed: true,
-                }
+              ? passedLeaveCountdown(leave)
               : { ...formatCountdown(leave.minutesToLeave), unit: t.board.leaveIn },
         }
       : null;
