@@ -620,6 +620,34 @@ export function eventEdgeZone(
   return { zone, deltaMinutes: deltaMinutes || undefined };
 }
 
+/** **The two zones a JOURNEY between two rows reads in** (ADR-0107 §4, ADR-0159's
+ *  _"a leg reads in its own two zones"_, ADR-0206 §AQ).
+ *
+ *  A departure is a moment on the wrist of whoever is leaving, so it reads where they are
+ *  standing — the ORIGIN row's own end zone. An arrival is read where they get to, which is the
+ *  destination's start zone. Identical on a single-zone day, which is every day of most trips;
+ *  they part on the one day that crosses a zone, and there each clock then agrees with the card
+ *  it is about rather than with the trip's primary.
+ *
+ *  **The origin's end, and the two ends are not interchangeable** — the same inversion
+ *  `endpointPlaceId` makes one file over: you leave a flight where it LANDS, so the origin's zone
+ *  is its `end`. `fromEdge: 'start'` is the exception that proves it (`DayLeg.fromEdge`): a leg off
+ *  a hire's PICKUP edge leaves from the counter it was collected at, which is the span's start.
+ *
+ *  Beside `eventEdgeZone` because it is the same question asked of two rows at once, and shared
+ *  rather than answered at each day surface because ADR-0159 §1 forbids them differing about a
+ *  fact — and a clock is one. */
+export function legDisplayZones(
+  leg: { from: TripEvent; to: TripEvent; fromEdge?: 'start' | 'end' },
+  ctx: ZoneContext,
+): { depart: string; arrive: string } {
+  const from = eventDisplayZones(leg.from, ctx);
+  return {
+    depart: leg.fromEdge === 'start' ? from.start : from.end,
+    arrive: eventDisplayZones(leg.to, ctx).start,
+  };
+}
+
 /** The elapsed-duration label to show on a timeline row, or undefined when it
  *  shouldn't (ADR-0107/0084). A zone shift makes the raw times misread the span
  *  (07:15→11:00 with −3 looks like 3h45 but is 6h45), so show duration whenever

@@ -347,6 +347,17 @@ export function JourneyBlock({
   );
 }
 
+/** **Which zone each of the block's two clocks reads in** — `legDisplayZones` answers it, once,
+ *  for both day surfaces. Two fields rather than one because a leg that crosses a zone has two
+ *  answers, and the pair is then deliberately not subtractable: each clock agrees with the card it
+ *  names, which is ADR-0107's grammar and what the row above and below this block already do. */
+export interface JourneyZones {
+  /** Where you are standing when you leave — the origin row's own end zone. */
+  depart: string;
+  /** Where the clock reads when you arrive — the destination's start zone. */
+  arrive: string;
+}
+
 /** Everything a journey row needs, so the two day surfaces and the day's bookend leg cannot
  *  assemble it three different ways. */
 export interface JourneyRowProps {
@@ -355,9 +366,15 @@ export interface JourneyRowProps {
    *  `LegTravelMode` and not a `TravelMode`: a declared leg is a thing this row must be able to
    *  say, and a thing no provider may be asked. */
   travelMode: LegTravelMode;
-  /** The DAY's own zone, which is what the leave-by is read in: it is a moment on the wrist of
-   *  whoever is leaving, and this list is that day's. */
-  tz: string;
+  /** **The leg's own two zones** (`legDisplayZones`, ADR-0206 §AQ) — the departure read where
+   *  the traveller is standing when they go, the arrival where they get to.
+   *
+   *  It was one `tz`, and both hosts handed it `trip.timezone`: the trip's PRIMARY zone, which
+   *  is not the day's and not the leg's. On a trip whose primary sits an hour off its events —
+   *  a Georgia trip whose stops are all in Israel — the block advised `יציאה 20:31` for an event
+   *  that starts at 20:00, a departure after the arrival it was counted back from. Same instant,
+   *  two zones, and the row was the only clock on the screen not reading in the itinerary's. */
+  zones: JourneyZones;
   /** The live hole's one control — `בדרך`, or `ביטול סימון` to take that back (ADR-0207 §7).
    *  **Trip mode's alone**: Plan has no inline settle pair (ADR-0159 §1 / ADR-0171 §10e), and the
    *  coverage mockup's Plan column draws the block with no action row for the same reason. */
@@ -389,7 +406,7 @@ export interface JourneyRowProps {
 export function JourneyRow({
   journey,
   travelMode,
-  tz,
+  zones,
   action,
   located,
   modes,
@@ -424,7 +441,7 @@ export function JourneyRow({
       distance={
         journey.distanceMeters === null ? undefined : formatDistance(journey.distanceMeters)
       }
-      leave={declared ? t.travel.noEstimate : journeyMetaLine(journey, tz)}
+      leave={declared ? t.travel.noEstimate : journeyMetaLine(journey, zones)}
       tone={
         // An overrun is a negative status about the plan, so it takes §D7's own paint — the same
         // `--miss` a passed leave-by does, because they are the same kind of fact about a journey
@@ -478,13 +495,13 @@ function shortfallLine(free: TravelWindow): string | undefined {
  * The clock is read in the DAY's own zone and isolated: it is a digit run inside Hebrew and the
  * maqaf before it is a strong RTL character (ADR-0118).
  */
-function journeyMetaLine(journey: DayJourney, tz: string): string | undefined {
+function journeyMetaLine(journey: DayJourney, zones: JourneyZones): string | undefined {
   if (journey.arm === DAY_JOURNEY_ARM.OVERRUNS) {
     // A window you will reach after it shuts is the same fact as a leg that does not fit it, so
     // it rides this arm — and says the thing you act on rather than the arithmetic behind it.
     if (journey.arrivesAfterClose && journey.arriveAtMs !== null) {
       return t.travel.arriveAfterClose(
-        ltrIsolate(`~${formatTime(new Date(journey.arriveAtMs), tz)}`),
+        ltrIsolate(`~${formatTime(new Date(journey.arriveAtMs), zones.arrive)}`),
       );
     }
     return journey.free ? shortfallLine(journey.free) : undefined;
@@ -504,12 +521,12 @@ function journeyMetaLine(journey: DayJourney, tz: string): string | undefined {
   const at =
     journey.arriveAtMs === null
       ? null
-      : ltrIsolate(`~${formatTime(new Date(journey.arriveAtMs), tz)}`);
+      : ltrIsolate(`~${formatTime(new Date(journey.arriveAtMs), zones.arrive)}`);
   if (journey.leaveByMs === null) {
     if (at === null) return undefined;
     return journey.arrivesAfterClose ? t.travel.arriveAfterClose(at) : t.travel.arriveAt(at);
   }
-  const clock = ltrIsolate(formatTime(new Date(journey.leaveByMs), tz));
+  const clock = ltrIsolate(formatTime(new Date(journey.leaveByMs), zones.depart));
   if (journey.arm === DAY_JOURNEY_ARM.PASSED) return t.travel.leavePassed(clock);
   // Both: the departure is the origin's own end and the arrival is why that matters.
   return at === null ? t.travel.leaveAtDay(clock) : t.travel.leaveThenArrive(clock, at);

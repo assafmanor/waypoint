@@ -64,6 +64,7 @@ import {
   eventShowOnMap,
   ideaShowOnMap,
   legShowOnMap,
+  legDisplayZones,
   eventZones,
   dayZoneContext,
   liveToday,
@@ -114,7 +115,7 @@ import {
   type DayJourney,
 } from '../lib/day-joins';
 import { dayShortfallPhrase, infeasibleLegsPhrase } from '../lib/duration';
-import { JourneyRow } from '../ui/domain/DayJoinRow';
+import { JourneyRow, type JourneyZones } from '../ui/domain/DayJoinRow';
 import { StayRow } from '../ui/domain/StayRow';
 import {
   dayStops,
@@ -590,6 +591,19 @@ export function PlanDay() {
   );
   const journeyFor = (from: TripEvent, to: TripEvent): DayJourney | null =>
     journeyByRows.get(`${from.id}>${to.id}`) ?? null;
+  /** **The zones the block's two clocks read in** (ADR-0206 §AQ) — the leg is looked up in
+   *  `planLegs` rather than rebuilt from the two rows, because `fromEdge` is the one thing that
+   *  decides WHICH end of a span this leg leaves from and `planLegs` is where that is known.
+   *
+   *  Trip mode reads the same function off the same shape. It has to: ADR-0159 §1 forbids the two
+   *  day surfaces differing about a **fact**, and which hour a departure is stated in is one — this
+   *  is the amendment that fixed it landing on `DayView` alone, which `frontend/CLAUDE.md` names as
+   *  having cost a release twice. */
+  const legZones = (from: TripEvent, to: TripEvent): JourneyZones =>
+    legDisplayZones(
+      planLegs.find((leg) => leg.from.id === from.id && leg.to.id === to.id) ?? { from, to },
+      zoneCtx,
+    );
   /** **One tap from a leg to that leg on the canvas** (owner, 2026-08-27) — the same read Trip
    *  mode makes, off the same pair, because a way to the map is not a posture (ADR-0159 §1). */
   const legOnMap = (from: TripEvent, to: TripEvent) =>
@@ -1291,6 +1305,7 @@ export function PlanDay() {
     slotNote,
     journeyFor,
     legOnMap,
+    legZones,
     modeFor: planTravel.modeFor,
     modeControl,
     rowDragProps,
@@ -1504,7 +1519,7 @@ export function PlanDay() {
                         planTravel.pairFor(cameIn.event, bookends.woke!),
                         showPlaceOnMap,
                       )}
-                      tz={tz}
+                      zones={legZones(cameIn.event, bookends.woke!)}
                     />
                   ) : null;
                 })()}
@@ -1533,7 +1548,7 @@ export function PlanDay() {
                             planTravel.pairFor(bookends.woke!, to),
                             showPlaceOnMap,
                           )}
-                          tz={tz}
+                          zones={legZones(bookends.woke!, to)}
                         />
                       ) : null;
                     })()}
@@ -1574,7 +1589,7 @@ export function PlanDay() {
                             planTravel.pairFor(from, bookends.sleeps!),
                             showPlaceOnMap,
                           )}
-                          tz={tz}
+                          zones={legZones(from, bookends.sleeps!)}
                         />
                       ) : null;
                     })()}
@@ -2064,6 +2079,10 @@ interface BuilderCtx {
   journeyFor: (from: TripEvent, to: TripEvent) => DayJourney | null;
   /** One tap from a leg to that leg on the canvas (owner, 2026-08-27). */
   legOnMap: (from: TripEvent, to: TripEvent) => (() => void) | undefined;
+  /** **Which zone each of a journey block's two clocks reads in** (ADR-0206 §AQ) — threaded
+   *  rather than derived here, because `legZones` looks the leg up in `planLegs` and this
+   *  component only has two rows. */
+  legZones: (from: TripEvent, to: TripEvent) => JourneyZones;
   /** The trip's derived mode, so the block names the same three words everywhere (§Z2). */
   /** **The LEG's mode** (ADR-0206 §AM) — the override where one was set, the trip's derivation
    *  otherwise. A function rather than a value, because Plan draws several legs per day and they
@@ -2279,7 +2298,7 @@ function BuilderGroups({
                     travelMode={ctx.modeFor(prevEnd, groupStartEvent(g))}
                     {...ctx.modeControl(prevEnd, groupStartEvent(g))}
                     onShowOnMap={ctx.legOnMap(prevEnd, groupStartEvent(g))}
-                    tz={ctx.tz}
+                    zones={ctx.legZones(prevEnd, groupStartEvent(g))}
                   />
                 ) : null;
               })()}

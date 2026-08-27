@@ -109,8 +109,14 @@ const coordOf = (places: readonly Place[], placeId: string | undefined): LatLng 
  * already owns both — the same rule `routeEndpointDay` reads for which day an end falls on — so
  * asking it the right way round is the whole of it. Getting it backwards draws the leg between
  * the two ends of one flight.
+ *
+ * **Exported since ADR-0206 §AQ, for the hero.** `Home` resolved its own leg's origin with
+ * `eventPlaceId(event, booking)` — the default, which is `arriving` — so the leg out of a flight
+ * you had just got off was measured from the airport it TOOK OFF from. It is the same inversion
+ * this function exists to get right, asked a second time and answered the other way; there is one
+ * of it now.
  */
-function endpointPlaceId(
+export function endpointPlaceId(
   event: TripEvent,
   bookings: readonly Booking[],
   end: 'leaving' | 'arriving',

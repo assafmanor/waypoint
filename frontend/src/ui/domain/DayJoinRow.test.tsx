@@ -18,6 +18,10 @@ import { dayJourney } from '../../lib/day-joins';
 import { formatDistance } from '../../lib/distance';
 import { t } from '../../i18n/he';
 
+/** A single-zone leg — the ordinary case, where the departure and the arrival read in one zone.
+ *  The two-zone case has its own spec (`DayJoinRow.zones.test.tsx`, ADR-0206 §AQ). */
+const zonesIn = (zone: string) => ({ depart: zone, arrive: zone });
+
 const MINUTES = 120;
 const LENGTH = hoursPhrase(MINUTES);
 const FREE = freeTimePhrase(MINUTES)!;
@@ -265,7 +269,11 @@ describe('JourneyRow — the journey does not fit', () => {
       nowMs: START + nowOffsetMinutes * MIN,
     })!;
     return render(
-      <JourneyRow journey={journey} travelMode={TRAVEL_MODE.WALKING} tz="Asia/Tokyo" />,
+      <JourneyRow
+        journey={journey}
+        travelMode={TRAVEL_MODE.WALKING}
+        zones={zonesIn('Asia/Tokyo')}
+      />,
     );
   };
 
@@ -366,7 +374,7 @@ describe('JourneyRow — a hole behind you that the journey never fitted', () =>
           nowMs: START + (holeMinutes + 30) * MIN,
         })!}
         travelMode={TRAVEL_MODE.WALKING}
-        tz="Asia/Tokyo"
+        zones={zonesIn('Asia/Tokyo')}
       />,
     );
 
@@ -431,7 +439,9 @@ describe('JourneyRow — a departure, an arrival, or both (ADR-0206 §AI)', () =
 
   const AT = (hhmm: string) => Date.parse(`2026-07-12T${hhmm}:00Z`);
   const meta = (journey: ReturnType<typeof dayJourney>) => {
-    render(<JourneyRow journey={journey!} travelMode={TRAVEL_MODE.DRIVING} tz="UTC" />);
+    render(
+      <JourneyRow journey={journey!} travelMode={TRAVEL_MODE.DRIVING} zones={zonesIn('UTC')} />,
+    );
     return document.querySelector('.day-trv-meta')?.textContent ?? '';
   };
 

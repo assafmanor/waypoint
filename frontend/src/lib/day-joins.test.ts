@@ -946,3 +946,63 @@ describe('dayTravelTotal — the kilometres cover every leg, the minutes only th
     expect(total.travelSeconds).toBe(30 * 60);
   });
 });
+
+// **A STATED DEPARTURE IS NEVER LATER THAN THE ARRIVAL IT IS COUNTED BACK FROM** (ADR-0206 §AQ1).
+//
+// The invariant nothing asserted, written after a field report where the day row advised
+// `יציאה 20:31` into an event that starts at 20:00. It was NOT this derivation — the cause was the
+// ZONE the clock was printed in (§AQ1, and `DayJoinRow.zones.test.tsx` is the spec that would have
+// caught it) — and the guard belongs here anyway, at the level where the number is made: it is
+// cheap, it is the property every arm of this function is supposed to have, and the only reason
+// nobody had written it down is that it had always happened to be true.
+//
+// Swept over the arms rather than asserted once, because the two that state a clock reach it by
+// different routes: the ordinary one counts back from the deadline, and the clamped one is pulled
+// forward to the origin's own end (§AJ2) — which is exactly the arm an off-by-one would land in.
+describe('dayJourney — the departure it states can never be after the arrival (ADR-0206 §AQ1)', () => {
+  const AT = (hhmm: string) => Date.parse(`2026-08-27T${hhmm}:00Z`);
+  /** Every shape in this file that produces a leave-by, plus the reported one. `travelSeconds`
+   *  spans "comfortably fits" to "does not fit at all" so the clamp and the shortfall are both in. */
+  const cases = [
+    {
+      name: 'the reported leg — a 60-minute hole, a 23-minute drive',
+      departAfterMs: AT('19:00'),
+      arriveByMs: AT('20:00'),
+      travelSeconds: 1403,
+    },
+    {
+      name: 'a leg with hours to spare',
+      departAfterMs: AT('12:00'),
+      arriveByMs: AT('16:00'),
+      travelSeconds: 20 * 60,
+    },
+    {
+      name: 'a leg whose buffer does not fit, so the departure is clamped',
+      departAfterMs: AT('16:40'),
+      arriveByMs: AT('17:00'),
+      travelSeconds: 22 * 60,
+    },
+    {
+      name: 'a leg with no origin to clamp against',
+      arriveByMs: AT('20:00'),
+      travelSeconds: 40 * 60,
+    },
+    {
+      name: 'a leg that does not fit its hole',
+      departAfterMs: AT('19:45'),
+      arriveByMs: AT('20:00'),
+      travelSeconds: 23 * 60,
+    },
+  ];
+  for (const { name, ...input } of cases) {
+    it(`holds for ${name}`, () => {
+      // Read across the day rather than at one instant: the arms are keyed on the clock, so a
+      // single `nowMs` would exercise one of them and call the invariant proven.
+      for (const hhmm of ['06:00', '18:00', '19:30', '19:50', '20:30', '23:00']) {
+        const j = dayJourney({ ...input, nowMs: AT(hhmm) });
+        if (!j || j.leaveByMs === null) continue;
+        expect(j.leaveByMs).toBeLessThanOrEqual(input.arriveByMs);
+      }
+    });
+  }
+});

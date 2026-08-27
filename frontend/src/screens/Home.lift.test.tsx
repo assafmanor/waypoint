@@ -22,6 +22,7 @@ import {
   type Booking,
   type Note,
   type Place,
+  type TravelModeOverride,
   type TripEvent,
 } from '@waypoint/shared';
 import { setSimulatedNow } from '../lib/useClock';
@@ -116,10 +117,17 @@ let tripNotes: Note[] = [];
 let tripBookings: Booking[] = [];
 let tripPlaces: Place[] = [];
 
+const tripOverrides: TravelModeOverride[] = [];
+
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
     // The attachment link list every documents surface reads (ADR-0173/0174).
     documentAttachments: [],
+    // **The declared legs** (ADR-0206 §AM/§AQ2), mutable so a spec can declare one and re-render.
+    // Stated rather than omitted: `useDayTravelReads` takes it as a REQUIRED list precisely so a
+    // surface cannot forget to wire it and silently ignore every declaration on the trip — and the
+    // board reads it since §AQ2, which is why this fixture gained it.
+    travelModeOverrides: tripOverrides,
     // The one context index every note surface resolves through (ADR-0172 §1);
     // built from this file's own fixtures so pairing is real rather than stubbed.
     hostContexts: buildHostContextIndex(tripEvents, tripBookings),
