@@ -85,17 +85,17 @@ ADR-0159 §1 dodged the identical problem by leading with the noun, and the same
 
 Ranked by **usefulness first, cost second**, and each line names where it lands.
 
-| #       | feature                                                    | why it ranks here                                                                                                                                                                                                       | where                                  |
-| ------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| **1.1** | **Gap minus travel** — `פנוי · 2:00 שע׳ · אחרי 40 דק׳ דרך` | **A correction, not a feature.** The app currently overstates free time. Nothing else on this list is a bug fix.                                                                                                        | `DayJoinRow`, ADR-0159's slot          |
-| **1.2** | **Time-to-next + leave-by** — `~23 דק׳ · צאו ב־18:37`      | The U-06 payoff and the sentence the backlog has carried since ADR-0106. Answers the third of the app's three questions.                                                                                                | hero horizon, between two points (D2)  |
-| **1.3** | **Per-leg travel in the day**                              | Makes 1.1 legible: the day reads as _place · journey · place_ rather than as holes.                                                                                                                                     | `DayJoinRow`                           |
-| **1.4** | **Late-risk mark**                                         | A leave-by already past is the single most actionable thing this data can say. Costs one derivation on top of 1.2.                                                                                                      | wherever 1.2/1.3 render, `--miss` (D7) |
-| **1.5** | **The real polyline**                                      | The visualisation the owner asked for. Cheap — `DayConnector` already draws a line.                                                                                                                                     | `MapPane`, solid + amber (D1, D8)      |
-| **1.6** | **Mode per leg, inferred default, instant switch**         | A car trip in Iceland and a metro trip in Tokyo want different defaults, and every number above is wrong under the wrong mode. **The default is derived from the trip's bookings and the switch is instant** — see §Z2. | leg-level, default derived (§Z2)       |
-| **1.7** | **Plan-mode day feasibility** — "this day does not fit"    | Plan mode's whole job is building a day that works, and it currently builds days that cannot be walked. Same matrix, no new fetch.                                                                                      | `PlanDay`                              |
-| **1.8** | **Offline route pack**                                     | Our stops are known in advance, so routes are precomputable at ~410 bytes each and ride ADR-0186 §5/§6's existing download, budget and eviction machinery. **This is what makes it work on the plane.**                 | `MapService` extract pipeline          |
-| **1.9** | **Day travel total** — `3.2 ק״מ · 48 דק׳ הליכה`            | One line, free from data 1.3 already fetched, and it is the day-shape read a planner actually wants.                                                                                                                    | day header or Plan summary             |
+| #       | feature                                                    | why it ranks here                                                                                                                                                                                                                                                                              | where                                      |
+| ------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| **1.1** | **Gap minus travel** — `פנוי · 2:00 שע׳ · אחרי 40 דק׳ דרך` | **A correction, not a feature.** The app currently overstates free time. Nothing else on this list is a bug fix.                                                                                                                                                                               | `DayJoinRow`, ADR-0159's slot              |
+| **1.2** | **Time-to-next + leave-by** — `~23 דק׳ · צאו ב־18:37`      | The U-06 payoff and the sentence the backlog has carried since ADR-0106. Answers the third of the app's three questions.                                                                                                                                                                       | hero horizon, between two points (D2)      |
+| **1.3** | **Per-leg travel in the day**                              | Makes 1.1 legible: the day reads as _place · journey · place_ rather than as holes.                                                                                                                                                                                                            | `DayJoinRow`                               |
+| **1.4** | **Late-risk mark**                                         | A leave-by already past is the single most actionable thing this data can say. Costs one derivation on top of 1.2.                                                                                                                                                                             | wherever 1.2/1.3 render, `--miss` (D7)     |
+| **1.5** | **The real polyline**                                      | The visualisation the owner asked for. Cheap — `DayConnector` already draws a line.                                                                                                                                                                                                            | `MapPane`, solid + amber (D1, D8)          |
+| **1.6** | **Mode per leg, inferred default, instant switch**         | A car trip in Iceland and a metro trip in Tokyo want different defaults, and every number above is wrong under the wrong mode. **The default is derived from the trip's bookings and the switch is instant** — see §Z2.                                                                        | leg-level, default derived (§Z2)           |
+| **1.7** | **Plan-mode day feasibility** — "this day does not fit"    | Plan mode's whole job is building a day that works, and it currently builds days that cannot be walked. Same matrix, no new fetch.                                                                                                                                                             | `PlanDay`                                  |
+| **1.8** | **Offline route pack**                                     | Our stops are known in advance, so routes are precomputable at ~410 bytes each and ride ADR-0186 §5/§6's existing download, budget and eviction machinery. **This is what makes it work on the plane.**                                                                                        | `MapService` extract pipeline              |
+| **1.9** | **Day travel total** — `3.2 ק״מ · ~48 דק׳`                 | One line, free from data 1.3 already fetched, and it is the day-shape read a planner actually wants. **The mode name is dropped and the minutes hedged — owner, 2026-08-27: the row predates the per-leg mode, so `הליכה` names one leg of a mixed day and is false about the rest. See §AP.** | the `day-ambient` strip, BOTH day surfaces |
 
 **1.1 through 1.5 are the product.** 1.6–1.9 are what make it not feel like a demo, and each is
 cheap **only because** the ones before it exist. That ordering is the milestone board's, too.
@@ -2300,3 +2300,100 @@ card asked for) but does not by itself pull a fresh copy to a device that alread
 the extract's own behaviour today, not something this milestone introduced: no client reads
 `/trips/:id/map/region`, so nothing on the device knows the signature moved. Fixing it is one
 mechanism for both artefacts and belongs with the backlog line about a map's age, not here.
+
+---
+
+## AP. Amendment (2026-08-27) — the day's total drops the mode name and hedges the minutes
+
+**§V1.9's line was stale before it was ever built, and that is amended in its own row above rather
+than restated here.** The row was written 2026-08-24 as `3.2 ק״מ · 48 דק׳ הליכה`, when a trip had
+one mode. §AM shipped the per-leg mode three days later, so on a real day — a walk to the station, a
+declared תחב״צ leg to the next town, a drive for the last stretch — `הליכה` names one leg of three
+and is false about the other two. There is no true word to put there, because the day has no single
+mode. **Owner, 2026-08-27: drop the mode name, hedge the minutes.** The line is `3.2 ק״מ · ~48 דק׳`.
+
+### AP1. The two halves do not cover the same legs, and a naive build gets it wrong in both directions
+
+This is the whole derivation, and it follows from §AA4 as §AM6 sharpened it — a declared leg is _"a
+journey with NO duration, not an absent journey"_. So:
+
+- **The kilometres cover every leg, declared ones included.** §AA4 is explicit that the declaration
+  _"suppresses the duration and keeps the distance … `2.7 ק״מ` is still true and still useful"_, and
+  `distanceFor` has answered the crow-flies floor for such a leg since §AM6. Dropping it here would
+  understate a day somebody is genuinely crossing, on the one read whose job is the day's shape.
+- **The minutes cover only the legs that could be timed.** Inventing a duration for a declared leg
+  prints exactly the walking number the declaration exists to suppress — §Z5's own `73 דק׳ הליכה`
+  against 25 by train, one scope up and harder to catch, because a total nobody can decompose hides
+  which leg the wrong number came from.
+
+**What carries that asymmetry to the reader is §D5's `~`, and nothing else does.** It is already the
+app's mark for "this is an estimate"; here it does a second job — _this counts what could be
+counted_ — and the two readings do not conflict, because both are refusals to claim more than we
+have. A total whose minutes were exact would be claiming a completeness the declaration itself
+denies. No new copy was minted for it: `approxTravelTime` (`lib/duration.ts`) owns the hedge along
+with the two traps a second implementation would walk into — the exact-hour rungs are WORDS and take
+the Hebrew prefix (`כשעה`, never `~שעה`), and `~0 דק׳` is a sub-rung value rounding to nothing rather
+than a hedged duration.
+
+**A day of nothing but declared legs states its distance alone.** Half a line is the honest read
+there, and it falls out of the rule rather than being a case bolted onto it.
+
+### AP2. It is a roll-up of the JOURNEYS, not a second pass over the day's legs
+
+`dayTravelTotal` (`lib/day-joins.ts`) takes the same `DayJourney` objects the rows render, which is
+§AN's argument for `dayFeasibility` applied to a second day-level read — and it is worth restating
+because the wrong version is the obvious one. A total rebuilt from `dayLegs` would count holes that
+draw no block: a leg with no estimate is §D4's absence in the list and would be kilometres in the
+header, so a day claiming ⁦4.1 ק״מ⁩ over three journeys the list shows two of. Reading the journeys
+makes the header and the list describe the same objects rather than agree by care.
+
+It also settles the **no new request** criterion structurally rather than by inspection: the
+function takes an array of already-derived values and can fetch nothing. Asserted anyway, on both
+surfaces — one `useDayTravel` stops fingerprint per screen, the legs' own stops, and no `fetch` at
+all during the render.
+
+### AP3. Both day surfaces, because a total distance is a FACT
+
+ADR-0159 §1 allows `DayView` and `PlanDay` a difference in **posture** and forbids one about a
+**fact**. Plan's day-level VERDICT (§AN) is a posture difference and correctly Plan's alone — an
+opinion about a day nobody has lived yet. **How far the day goes is not**: it is the same number on
+both screens or the app has two answers. So the derivation is one function and the render is one
+component (`ui/domain/DayTravelTotal`), which is what makes the agreement structural — the failure
+`frontend/CLAUDE.md` names as having cost a release twice is an amendment reaching one call site of
+a shared component, and there is only one call site to reach.
+
+### AP4. It is the one row in the day-ambient strip that is NOT a card
+
+Its two neighbours there are tinted boxes because each asserts something to locate (teal, a place)
+or to act on (amber, §AN's verdict). A total is neither — you read it and read past it — and
+painting it amber would put **two amber cards in one strip** on an overrunning Plan day, where one
+means "this day does not fit" and the other means "here is your mileage". That is the loudest
+possible reading of the quietest fact on the surface, and it is the failure this ADR's own
+Consequences warn about, arriving through styling rather than through copy.
+
+So: the cards' own inline padding, so the ink lines up with theirs, and nothing else. **Rule 4 is
+spent on the glyph alone** — a travel time is time (§D1) — at `--amber-deep`, for §AN's reason (plain
+`--amber` measures 2.1:1 on `--card` in light). The glyph is `navigate` and deliberately not a mode
+mark: the mode is per-leg now, so a `walking` glyph here would be the same false claim the copy just
+dropped.
+
+### AP5. Measured on the live page at 360×640, both surfaces, both themes
+
+§M2 records that a THREE-part line is where the day breaks at 360; this one is two-part, and it
+measures **⁦128.1px⁩ of a ⁦328.0px⁩ box** — the same number on the day list and in Plan, in light and in
+dark. The string measured is the widest honest one this line can produce rather than a typical one:
+`H:MM שע׳` is the ladder's longest rung and a whole-kilometre distance is `formatDistance`'s, so
+`12 ק״מ · ~2:23 שע׳`.
+
+**Measured in `e2e/day-total.spec.ts` against the running app, and §AN6's three traps are why it is
+an e2e rather than a number in a mockup's table.** The artefact's own `measurements.md` is
+snapshotted before `document.fonts.ready`, so its numbers are the fallback font's; `scrollWidth` on
+an ellipsised child reports the CLIPPED width, so a row ending in `…` measures as fitting; and
+summing only the text halves drops the glyph and one gap. The spec waits on `document.fonts.ready`,
+takes each child's natural width from an off-screen span carrying that child's own computed font,
+and sums **every** child, gap and padding. Verified non-vacuous by widening the line until it
+clipped — ⁦533.5px⁩ of ⁦328.0px⁩, and it went red.
+
+The truncation on `.day-total-n` therefore guards a text scale rather than this measurement: a
+scale is a box the app does not control, and a total that wraps pushes the day's first row down.
+The distance leads, so what an ellipsis takes is the hedged half.

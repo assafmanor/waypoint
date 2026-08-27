@@ -11,6 +11,31 @@ import {
   type Place,
 } from '@waypoint/shared';
 
+/**
+ * **THE SLOWEST FILE IN THE SUITE GETS ITS OWN BUDGET** (2026-08-27).
+ *
+ * Vitest's default `testTimeout` is ⁦5s⁩, and it is the right default for ~4,800 tests that run in
+ * milliseconds. This file is the one that does not: its journey specs drive a multi-step form
+ * through a whole chain — a date, then eight moments, each `fireEvent` re-rendering the sheet and
+ * its rail — so the work is real jsdom rendering rather than a wait, and there is no artificial
+ * delay to delete instead.
+ *
+ * **Measured before the number was picked, rather than after it failed a second time.** Of the ten
+ * slowest tests in the entire suite, **nine are in this file** and eight are in the chain describe
+ * below; the only outsider is `ZonePicker`'s suggested-zones spec at ⁦1.6s⁩. So the exposure is here
+ * and a global raise would spend everyone's hang-detection on one file's problem.
+ *
+ * **Why the default was not enough.** Slowest here: ⁦3.1s⁩ locally, ⁦2.6s⁩ on a CI runner — about half
+ * the budget, which reads as comfortable and is not. A contended runner stretched a ⁦1.9s⁩ test past
+ * ⁦5s⁩ (~2.7×) and turned a green PR red with no code path to this file; at that factor the ⁦2.6s⁩ one
+ * needs ⁦7s⁩. ⁦20s⁩ is ~6× the measured worst case, which absorbs a considerably worse runner.
+ *
+ * **This hides no hang.** Every test still runs and still asserts everything — a test that genuinely
+ * stops making progress fails here in ⁦20s⁩ instead of ⁦5s⁩, against a file that already takes ~⁦29s⁩ on
+ * CI. Nothing is skipped, disabled or quarantined; the budget moved, not the coverage.
+ */
+vi.setConfig({ testTimeout: 20_000 });
+
 Element.prototype.scrollIntoView = vi.fn();
 
 // The one thing this sheet says to the Map (ADR-0134 §1): "find me a place for this field".

@@ -28,8 +28,9 @@ import {
   type TravelModeOverride,
   type TripEvent,
 } from '@waypoint/shared';
-import { hoursPhrase } from '../lib/duration';
+import { approxTravelTime, hoursPhrase } from '../lib/duration';
 import { setSimulatedNow } from '../lib/useClock';
+import { formatDistance, haversineMeters } from '../lib/distance';
 import { t } from '../i18n/he';
 import { wrapNav } from '../test/nav-harness';
 import { MapScopeProvider } from '../state/map-scope-state';
@@ -177,13 +178,19 @@ vi.mock('../state/verbs', () => ({
 }));
 
 let travelSeconds: number | null = null;
+/** Every ask this screen makes for a route — the day total's exit criterion is that it adds none
+ *  (ADR-0206 §V1.9), and `useDayTravel` is the one seam a request can leave through. */
+const travelAsks: { tripId: string; stops: readonly { lat: number; lng: number }[] }[] = [];
 vi.mock('../lib/travel', () => ({
-  useDayTravel: () => ({
-    estimateFor: (): TravelEstimate | null =>
-      travelSeconds === null
-        ? null
-        : { mode: TRAVEL_MODE.WALKING, durationSeconds: travelSeconds, distanceMeters: 2400 },
-  }),
+  useDayTravel: (opts: { tripId: string; stops: readonly { lat: number; lng: number }[] }) => {
+    travelAsks.push(opts);
+    return {
+      estimateFor: (): TravelEstimate | null =>
+        travelSeconds === null
+          ? null
+          : { mode: TRAVEL_MODE.WALKING, durationSeconds: travelSeconds, distanceMeters: 2400 },
+    };
+  },
   useDayShapes: () => ({ pathFor: () => null }),
 }));
 
@@ -846,5 +853,101 @@ describe('PlanDay — the distance is the way to the leg on the map', () => {
     tripPlaces = [];
     show();
     expect(mapTouch()).toBeNull();
+  });
+});
+
+// ── HOW FAR THE DAY GOES, ON THE OTHER DAY SURFACE (ADR-0206 §V1.9 / §AP) ────────────────
+//
+// **The point of this block is that it is not a posture difference.** Plan mode's day-level
+// VERDICT is Plan's alone (§AN — an opinion about a day you have not lived), but a day's total
+// distance is a FACT, and ADR-0159 §1 forbids the two surfaces differing about one. So the same
+// derivation and the same component render here, and these specs are what would go red if a
+// later change reached only `DayView` — `frontend/CLAUDE.md`'s named anti-pattern.
+describe('PlanDay — the day says how far it goes (ADR-0206 §V1.9)', () => {
+  const morningPlace: Place = {
+    id: 'p-morning',
+    tripId: 't1',
+    name: 'שער טוריי',
+    lat: 40.845,
+    lng: 14.262,
+    createdAt: `${DAY}T00:00:00Z`,
+    updatedAt: `${DAY}T00:00:00Z`,
+    updatedBy: 'u1',
+  };
+  const morning = ev('morning', {
+    title: 'בוקר',
+    placeId: 'p-morning',
+    startsAt: `${DAY}T08:00:00Z`,
+    endsAt: `${DAY}T08:30:00Z`,
+  });
+  const coordOf = (id: string) => {
+    const place = [...places, morningPlace].find((pl) => pl.id === id)!;
+    return { lat: place.lat!, lng: place.lng! };
+  };
+  const declaredLeg = (fromPlaceId: string, toPlaceId: string): TravelModeOverride => ({
+    id: `tmo-${fromPlaceId}`,
+    tripId: 't1',
+    fromPlaceId,
+    toPlaceId,
+    mode: TRANSIT_LEG_MODE,
+    createdBy: 'u1',
+    createdAt: `${DAY}T00:00:00Z`,
+    updatedAt: `${DAY}T00:00:00Z`,
+  });
+  const ROUTED_M = 2400;
+  const line = () => document.querySelector('.day-total')!;
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    tripEvents = [morning, lunch, theatre];
+    tripPlaces = [...places, morningPlace];
+    tripOverrides = [];
+    travelSeconds = WALK_MINUTES * 60;
+    travelAsks.length = 0;
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+    tripPlaces = places;
+  });
+
+  it('states the distance and the hedged duration, exactly as the day list does', () => {
+    show();
+    expect(line().textContent).toBe(
+      t.travel.dayTotal(formatDistance(ROUTED_M * 2), approxTravelTime(WALK_MINUTES * 2 * 60)!),
+    );
+  });
+
+  it('counts a declared leg in the kilometres and not in the minutes', () => {
+    tripOverrides = [declaredLeg('p-lunch', 'p-theatre')];
+    show();
+    const crow = Math.round(haversineMeters(coordOf('p-lunch'), coordOf('p-theatre')));
+    expect(line().textContent).toBe(
+      t.travel.dayTotal(formatDistance(ROUTED_M + crow), approxTravelTime(WALK_MINUTES * 60)!),
+    );
+  });
+
+  it('renders no line at all when nothing on the day is routable', () => {
+    travelSeconds = null;
+    show();
+    expect(document.querySelector('.day-total')).toBeNull();
+  });
+
+  it('adds no request of its own', () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      show();
+      expect(line()).toBeTruthy();
+      expect(new Set(travelAsks.map((ask) => JSON.stringify(ask.stops))).size).toBe(1);
+      expect(travelAsks[0]!.stops).toEqual([
+        coordOf('p-morning'),
+        coordOf('p-lunch'),
+        coordOf('p-theatre'),
+      ]);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

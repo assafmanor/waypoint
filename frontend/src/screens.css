@@ -441,6 +441,47 @@ body.wp-dragging
   color: var(--amber-deep);
 }
 
+/* **HOW FAR THE DAY GOES** (ADR-0206 §V1.9, amended §AP) — both day surfaces, because a day's
+   total distance is a FACT and ADR-0159 §1 lets the two differ only in posture.
+
+   **The one row in this strip that is NOT a card, and that is the decision.** Its two neighbours
+   are tinted boxes because each asserts something to locate (teal, a place) or to act on (amber,
+   `.day-fit`'s verdict); a total is neither — you read it and read past it. Painting it amber
+   would also put two amber cards in one strip on an overrunning Plan day, where one means "this
+   day does not fit" and the other means "here is your mileage", which is the loudest possible
+   reading of the quietest fact here. So: the cards' own inline padding, so the ink lines up with
+   theirs, and nothing else.
+
+   Amber survives on the GLYPH alone, which is rule 4 spent where it is true — a travel time is
+   time (§D1) — at the one strength a summary can carry. */
+.day-ambient .day-total {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+}
+.day-ambient .day-total-ic {
+  display: flex;
+  flex: 0 0 auto;
+  color: var(--amber-deep);
+}
+.day-ambient .day-total-ic .icon {
+  width: 14px;
+  height: 14px;
+}
+/* `.an`'s truncation, for `.an`'s reason: at 360 the line measures well inside the box (§AP), but
+   a text scale is a box this app does not control, and a total that wraps pushes the day's first
+   row down. The distance leads, so what an ellipsis takes is the hedged half. */
+.day-ambient .day-total-n {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
 /* An unpositioned COMMITMENT sharing the strip (ADR-0171 §10a-i). Same box as the
    ambient backdrop beside it — one hotel reads the same way on every day of itself,
    edges included — with two differences it earns: its title is a button (there is a

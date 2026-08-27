@@ -31,6 +31,7 @@ import { prefersReducedMotion } from '../lib/motion';
 import { landAtTop } from '../lib/land-at-top';
 import { useDaySurface } from '../lib/useDaySurface';
 import { DayPeeks } from '../ui/domain/DayPeek';
+import { DayTravelTotal } from '../ui/domain/DayTravelTotal';
 import { useIsDayPreview } from '../state/day-preview';
 import { edgeFadeRef } from '../lib/edge-fade';
 import {
@@ -117,6 +118,7 @@ import {
   DAY_JOURNEY_ARM,
   dayBlocks,
   dayJourney,
+  dayTravelTotal,
   narrowGapForTravel,
   windowClosesMs,
   type DayBlock,
@@ -834,6 +836,12 @@ export function DayView() {
   const journeyFor = (from: TripEvent | undefined, to: TripEvent) =>
     (from && journeys.get(`${from.id}>${to.id}`)) ?? null;
 
+  /** **The day's total, off the journeys the rows above drew** (ADR-0206 §V1.9) — a roll-up
+   *  rather than a second pass over `dayLegs`, so the header cannot claim kilometres for a hole
+   *  the list shows no block for. `dayTravelTotal`'s docblock owns the asymmetry between the two
+   *  halves; Plan mode reads the same function over its own map. */
+  const dayTotal = useMemo(() => dayTravelTotal([...journeys.values()]), [journeys]);
+
   /** The live hole's one control, and the arm decides what it means: `בדרך` answers the mark,
    *  `ביטול סימון` takes it back (ADR-0207 §7 — a toast is transient and a mark is not). Nothing
    *  on a read-only archive, where every other write is gated too (ADR-0029). */
@@ -987,8 +995,16 @@ export function DayView() {
           </span>
         </div>
 
-        {(staysToday.length > 0 || placement.commitments.length > 0) && (
+        {(staysToday.length > 0 ||
+          placement.commitments.length > 0 ||
+          dayTotal.distanceMeters !== null) && (
           <div className="day-ambient">
+            {/* **HOW FAR THE DAY GOES** (ADR-0206 §V1.9 / §AP). Trip mode AND Plan mode, off one
+              derivation and one component: a day's total distance is a FACT, and ADR-0159 §1
+              allows the two surfaces a difference in posture and forbids one about a fact. It
+              leads the strip because it is the widest-scope thing in it — the whole day, where
+              the rows below are each about one booking. */}
+            <DayTravelTotal total={dayTotal} />
             {/* **AN EDGE DAY SAYS THE EDGE; A MIDDLE DAY SAYS THE COUNT** (owner, 2026-08-13).
               `לילה 1 מתוך 1` on both of two guesthouses — one being left this morning, one
               being arrived at tonight — is the same words for opposite events. The sentence

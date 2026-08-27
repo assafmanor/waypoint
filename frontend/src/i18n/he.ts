@@ -2119,6 +2119,22 @@ export const t = {
     // seen one should not have to learn a second vocabulary for the other.
     dayShortfall: (length: string) => `חסרות ${length}`,
     dayShortfallOneHour: 'חסרה שעה',
+    // ── HOW FAR THE DAY GOES (ADR-0206 §V1.9, amended §AP) ────────────────────────────
+    //
+    // **No mode word, and that is a correction rather than a trim.** §V1.9 was written
+    // `3.2 ק״מ · 48 דק׳ הליכה` on 2026-08-24, when a trip had one mode; M8b made the mode per-leg
+    // three days later, so on a real day — walk to the station, declared תחב״צ to the next town,
+    // drive the last stretch — `הליכה` names one leg of three and is simply false about the other
+    // two. There is no true word to put there, because the day has no single mode.
+    //
+    // **And the minutes are hedged where the kilometres are not**, which is §D5 doing exactly the
+    // job it was written for: the two halves do not cover the same legs (a declared leg keeps its
+    // distance and has no duration, §AA4/§AM6), so the `~` is what says this counts what could be
+    // counted. `approxTravelTime` owns it, along with the exact-hour rungs that take `כ` instead.
+    //
+    // Both halves are noun-led, so nothing has to agree with a number the phrase does not expose
+    // (ADR-0159 §1's dodge, root `CLAUDE.md`'s separator).
+    dayTotal: (distance: string, duration: string) => `${distance} · ${duration}`,
   },
   hero: {
     title: 'עכשיו והבא בתור',
