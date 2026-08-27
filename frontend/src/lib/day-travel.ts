@@ -36,11 +36,20 @@ import { useDayTravel } from './travel';
 export interface DayLeg {
   from: TripEvent;
   to: TripEvent;
-  /** **This leg leaves a BOOKEND rather than a row** (ADR-0206 §AD) — the stay you woke in. It has
-   *  no departure window: a middle night's `endsAt` is a check-out days away, so reading it as this
-   *  hole's start measures a window from next Wednesday. Carried on the leg because it is a fact
-   *  about the leg's shape, not about its event. */
-  bookend?: boolean;
+  /** **The ORIGIN is a stay, so it has no usable end instant** (ADR-0206 §AD, renamed in §AS).
+   *
+   *  A middle night's `endsAt` is a check-out days away, so reading it as this hole's departure
+   *  measures a window from next Wednesday. Carried on the leg because it is a fact about the
+   *  leg's shape, not about its event.
+   *
+   *  **It was called `bookend`, and that name is what broke it.** The day has three bookend legs —
+   *  out of the bed, in off the overnight edge, and back into tonight's bed — and all three were
+   *  marked `bookend: true`, because all three are. But the flag's one reader asks about the
+   *  ORIGIN, and on the leg back into the bed the stay is the DESTINATION: its origin is an
+   *  ordinary row with a perfectly good `endsAt`. So that leg lost its departure instant, and with
+   *  it the arrival — silent on Trip mode at every hour of every day (§AS1). The name now states
+   *  the fact it encodes, which is the one thing a writer cannot get wrong. */
+  fromIsStay?: boolean;
   /** **Which END of a span this leg leaves from** (2026-08-26) — set only where the origin is a
    *  span EDGE rather than a whole row, which today means the overnight run above the bed: you
    *  collected the car at ⁦00:00⁩ and drove to the hotel.

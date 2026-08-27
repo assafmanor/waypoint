@@ -2067,6 +2067,17 @@ export const t = {
     // `missed` off the CLOCK, once it is already too late. This is the same fact predicted, on the
     // surface that holds the plan, readable at breakfast.
     arriveAfterClose: (clock: string) => `הגעה ${clock} · אחרי סגירת החלון`,
+    // **A LEG THAT DOES NOT FIT STILL LANDS SOMEWHERE** (ADR-0206 §AS5). The shortfall says how
+    // much has to move; it does not say when you would actually get there, and those are different
+    // questions when you are deciding what to cut. Reported off the deploy: _"I see the
+    // חסרות 8 דקות לדרך row doesn't show the (late) arrival time. We'd want to know how late we
+    // arrive, no?"_
+    //
+    // **The arrival here is the earliest one that exists** — you leave the instant the row above
+    // frees you, because on this arm there is no departure to advise (`leaveByMs` is null and the
+    // clamp already pulled it to the origin's own end). So it is a prediction the app can stand
+    // behind rather than the best case of advice nobody can follow.
+    overrunThenArrive: (shortfall: string, clock: string) => `${shortfall} · הגעה ${clock}`,
     // **THE LEG THAT DOES NOT FIT** (ADR-0206 §V1.1's third `fit`, drawn in
     // `where-a-route-shows-up-v1.html` §2's `tight` state). `freeAfterTravel` has answered
     // `overruns` since M2 and nothing rendered it, so a 78-minute walk into a 60-minute hole read

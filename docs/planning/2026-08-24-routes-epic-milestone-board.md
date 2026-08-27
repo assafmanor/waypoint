@@ -67,7 +67,7 @@ never by the one that did the work.
 | **M3**  | Design session + mockups    | design | ✅                                              | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696)                                                                                                                                                                                                                                                                                           | 2026-08-25 |
 | **M4**  | Backend routing module      | impl   | ✅ **M5/M10 unblocked**                         | M1, M2, M2b  | M3           | `claude/m4-backend-routing-0giz72` · [#702](https://github.com/assafmanor/waypoint/pull/702)                                                                                                                                                                                                                                                                                              | 2026-08-25 |
 | **M5**  | Frontend data layer         | impl   | ✅ **M6/M7/M9 unblocked**                       | M2, M4       | M3, M10      | `claude/routes-frontend-protocol-fix-9t521y` · [#704](https://github.com/assafmanor/waypoint/pull/704)                                                                                                                                                                                                                                                                                    | 2026-08-25 |
-| **M6a** | The day reads               | impl   | ✅ (+ 12 field fixes)                           | M3, M5       | M6b, M7, M9  | `claude/m6a-day-reads-yfowam` · [#715](https://github.com/assafmanor/waypoint/pull/715) · [#716](https://github.com/assafmanor/waypoint/pull/716) · [#718](https://github.com/assafmanor/waypoint/pull/718) · [#719](https://github.com/assafmanor/waypoint/pull/719) · [#722](https://github.com/assafmanor/waypoint/pull/722) · [#724](https://github.com/assafmanor/waypoint/pull/724) | 2026-08-26 |
+| **M6a** | The day reads               | impl   | ✅ (+ 13 field fixes)                           | M3, M5       | M6b, M7, M9  | `claude/m6a-day-reads-yfowam` · [#715](https://github.com/assafmanor/waypoint/pull/715) · [#716](https://github.com/assafmanor/waypoint/pull/716) · [#718](https://github.com/assafmanor/waypoint/pull/718) · [#719](https://github.com/assafmanor/waypoint/pull/719) · [#722](https://github.com/assafmanor/waypoint/pull/722) · [#724](https://github.com/assafmanor/waypoint/pull/724) | 2026-08-26 |
 | **M6b** | The hero read               | impl   | ✅ (+ 2 field fixes)                            | M3, M5       | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#712](https://github.com/assafmanor/waypoint/pull/712)                                                                                                                                                                                                                                                                                            | 2026-08-26 |
 | **M6c** | A fix withdraws the mark    | impl   | ✅                                              | M6b          | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#713](https://github.com/assafmanor/waypoint/pull/713)                                                                                                                                                                                                                                                                                            | 2026-08-26 |
 | **M6d** | A claim stands on something | impl   | ✅                                              | M6b, M6c     | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#714](https://github.com/assafmanor/waypoint/pull/714)                                                                                                                                                                                                                                                                                            | 2026-08-26 |
@@ -1495,6 +1495,34 @@ had just touched, which is how they got looked at.
   conclusion held, the numbers did not — so it was re-measured rather than quoted (one line at both
   360 and 390, no overflow, row unchanged at 58px). Re-measure anything this row's geometry rests
   on; three milestones have added controls to it since §AF4 first measured it.
+
+### M6a — the leg back to the bed was blank, and a flag's NAME is why (2026-08-27)
+
+ADR-0206 §AS · found by the owner reading §AR's own screenshot (_"why not on the walking rows?"_).
+
+- **It was not the walking rows.** `dayJourney` takes no mode at all, and the same walking row that
+  was silent at 19:25 printed both clocks at 08:00. What the silent rows shared was being **bookend**
+  legs — and only one of them was silent for a good reason.
+- **`bookend` was written six times to mean "this leg is a bookend" and read once to mean "its
+  ORIGIN is a stay".** All three bookend legs set it; on the leg BACK to the bed the stay is the
+  destination, so it threw away the departure instant the last row's own `endsAt` provides — blank
+  at every hour of every day since ADR-0209 §1 built it. The field is **`fromIsStay`** now.
+- **Plan mode had it right the whole time**, because it asked the origin question directly rather
+  than reading the flag. Two implementations of one predicate — rule 8's usual disguise — so
+  `planJourney` takes the leg and both surfaces read one field.
+
+**Three things to carry, and the last one is the sharpest.**
+
+- **A count is not a read.** The spec for this leg asserted `toHaveLength(3)` and never asked what
+  the third block said. That is how a permanently blank row shipped under a green suite.
+- **The comment above the bad line was right about a hazard the flag never addressed.** It reasoned
+  about the destination and reached for a flag about the origin. When a flag's name is a category
+  ("bookend") rather than a fact ("the origin is a stay"), it will be reached for by analogy —
+  ADR-0184 §9a deleted `edgeHoldsPosition` for the same reason.
+- **⚠ Plan mode cannot be entered by URL.** It is in-memory session state (ADR-0016,
+  `mode-state.tsx`), so `?mode=plan` silently stays in Trip mode — which is how §AR's "verified on
+  both surfaces" was Trip mode twice, and why this defect survived that round. **Click the toggle
+  and assert `aria-pressed`.** Any Plan/Trip comparison that does not is not comparing them.
 
 ### M7c's field reports — two fixes off the shipped canvas
 
