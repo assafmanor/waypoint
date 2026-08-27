@@ -800,6 +800,26 @@ forbid.
 The pane takes the day's legs as one prop and hands the same array to `DayConnector` and to the
 camera, so the line the canvas paints amber and the line the camera frames cannot be different legs.
 
+> **Corrected 2026-08-27, same day, off a screenshot of the result — the two effects each derived
+> the subject for themselves, and on a refused leg they disagreed.** `framePath` is allowed to say
+> **no** (the floor above), and the band effect did not know that: it took the leg's centre
+> whenever a leg **existed**. So on a leg the floor refuses — long ones, which on an Iceland day is
+> most of them — the selection effect panned correctly to the stop and the band effect then dragged
+> the camera straight off it to the middle of a ⁦40 km⁩ leg, at street zoom. `recentreInBand` pans
+> the whole offset and does not care that the point is off screen, so what the owner got was an
+> empty hillside reading `אין מקומות באזור`.
+>
+> The fix is not a guard, it is the fact: **the selection effect records what it actually put the
+> camera on, and the band effect reads that** — the leg's centre where the leg was framed, the stop
+> where it was not. It closes a second case for free: a leg's **shape arriving from the network** is
+> not a selection, and under the derivation it silently changed what the camera was keeping in
+> view.
+>
+> **And the first regression test written for it passed against the defect**, which is worth more
+> than the fix: it asserted on **longitude**, and `keepCentred` pans **vertically only**. An
+> assertion on an axis the code cannot move is not a test. The one that stands asserts latitude,
+> and was checked red against the merged commit before being kept.
+
 ## AD. Amendment (2026-08-25) — the route's stops are the day's SEQUENCE, not the day's NUMBERS
 
 Owner, off the shipped canvas: _"Now that we have real paths, I'm starting to feel the absence of
