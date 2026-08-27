@@ -17,6 +17,8 @@ import { approxTravelTime, freeTimePhrase, hoursPhrase, shortfallPhrase } from '
 import { dayJourney } from '../../lib/day-joins';
 import { formatDistance } from '../../lib/distance';
 import { withoutBidiControls } from '../../lib/bidi';
+import { formatTime } from '../../lib/time';
+import { ltrIsolate } from '../../lib/bidi';
 import { t } from '../../i18n/he';
 
 /** A single-zone leg — the ordinary case, where the departure and the arrival read in one zone.
@@ -278,9 +280,22 @@ describe('JourneyRow — the journey does not fit', () => {
     );
   };
 
+  // **AND WHERE IT LANDS** (ADR-0206 §AS5). The shortfall is the size of the problem; the arrival
+  // is the consequence, and a reader deciding what to drop needs both. Reported off the deploy:
+  // _"we'd want to know how late we arrive, no?"_ The instant was already on the arm since §AR1 —
+  // `departAfterMs + travel`, the earliest you could be there, which on this arm is the only
+  // departure there is — it simply was not printed.
+  it('says how late it lands, beside the shortfall', () => {
+    const { container } = row(60, 78);
+    const lands = ltrIsolate(`~${formatTime(new Date(START + 78 * MIN), 'Asia/Tokyo')}`);
+    expect(container.querySelector('.day-trv-meta')?.textContent).toBe(
+      t.travel.overrunThenArrive(shortfallPhrase(18)!, lands),
+    );
+  });
+
   it('says the shortfall, and never states free time it does not have', () => {
     const { container } = row(60, 78);
-    expect(screen.getByText(shortfallPhrase(18)!)).toBeTruthy();
+    expect(screen.getByText(new RegExp(shortfallPhrase(18)!))).toBeTruthy();
     expect(container.querySelector('.day-trv.miss')).toBeTruthy();
     // The number that was reported: nought minutes of free time.
     expect(container.textContent).not.toContain(freeTimePhrase(1)!);
@@ -335,9 +350,15 @@ describe('JourneyRow — the journey does not fit', () => {
   // **AND WITH NO GAP AT ALL IT DOES NOT TALK ABOUT ONE** (owner, 2026-08-26). Two rows that touch
   // have no gap for the journey to be longer THAN, and the shortfall would be the journey's own
   // duration — already in the head one line up.
+  // **The arrival rides this half of the arm too** (ADR-0206 §AS5): two rows that touch have no
+  // gap for the journey to be longer THAN, so the shortfall is the wrong sentence — but you still
+  // land somewhere, and how late that is, is the thing you act on.
   it('says there is no time, rather than a shortfall, when the rows touch', () => {
     const { container } = row(0, 12);
-    expect(screen.getByText(t.travel.noTimeForTravel)).toBeTruthy();
+    const lands = ltrIsolate(`~${formatTime(new Date(START + 12 * MIN), 'Asia/Tokyo')}`);
+    expect(container.querySelector('.day-trv-meta')?.textContent).toBe(
+      t.travel.overrunThenArrive(t.travel.noTimeForTravel, lands),
+    );
     expect(container.textContent).not.toContain(shortfallPhrase(12)!);
     // …and the duration is stated exactly once, in the head.
     expect(container.querySelectorAll('.day-trv-hd').length).toBe(1);

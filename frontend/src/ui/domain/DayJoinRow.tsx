@@ -504,7 +504,16 @@ function journeyMetaLine(journey: DayJourney, zones: JourneyZones): string | und
         ltrIsolate(`~${formatTime(new Date(journey.arriveAtMs), zones.arrive)}`),
       );
     }
-    return journey.free ? shortfallLine(journey.free) : undefined;
+    // **The shortfall AND where it lands** (ADR-0206 §AS5). `חסרות 8 דק׳ לדרך` is the size of the
+    // problem; `הגעה ~13:38` is the consequence, and a reader deciding what to drop needs both.
+    // The arrival is already on the arm — it has been since §AR1 — it was simply not printed.
+    const shortfall = journey.free ? shortfallLine(journey.free) : undefined;
+    if (!shortfall) return undefined;
+    const lands =
+      journey.arriveAtMs === null
+        ? null
+        : ltrIsolate(`~${formatTime(new Date(journey.arriveAtMs), zones.arrive)}`);
+    return lands === null ? shortfall : t.travel.overrunThenArrive(shortfall, lands);
   }
   if (journey.arm === DAY_JOURNEY_ARM.PAST) {
     return journey.free?.fit === TRAVEL_FIT.OVERRUNS ? shortfallLine(journey.free) : undefined;

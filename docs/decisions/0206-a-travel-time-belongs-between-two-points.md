@@ -2681,3 +2681,118 @@ same question from different distances.
   ladder's own measure words. Verified red against the old wiring, where it fails on exactly the two
   arms that had the defect and passes on the two that did not. A per-arm assertion is what was
   missing — §1 asserted the arm it fixed.
+
+## AS. The leg back into tonight's bed was silent, and a flag's NAME is why (2026-08-27)
+
+Found by the owner reading §AR's own screenshot: _"I can see that the הגעה is not on all transits,
+why not on the walking rows? Wouldn't it be better to be more consistent?"_
+
+**It was not the walking rows**, and establishing that took one experiment rather than an argument:
+`dayJourney` takes instants, an estimate and a clock, and **no mode at all** — so mode cannot reach
+the sentence. Read at 08:00 with the whole day ahead, the same walking row that was silent at 19:25
+printed `יציאה 16:23 · הגעה ~16:55`. What the two silent rows shared was not the walk. It was that
+both were the day's **bookend** legs — and only one of them was silent for a good reason.
+
+### AS1. `bookend` was written six times to mean one thing and read once to mean another
+
+`DayLeg.bookend`'s own docblock says what it is: _"this leg leaves a BOOKEND rather than a row — the
+stay you woke in. It has no departure window: a middle night's `endsAt` is a check-out days away."_
+That is a fact about the leg's **origin**, and its one reader — the `departAfterMs` ternary — asks
+exactly that.
+
+The day has three bookend legs and all three were marked `bookend: true`, because in plain English
+all three are bookend legs:
+
+| leg                               | origin           | destination | `bookend` was | correct?                                   |
+| --------------------------------- | ---------------- | ----------- | ------------- | ------------------------------------------ |
+| out of the bed (§AD)              | the stay         | first row   | `true`        | ✅                                         |
+| in off the night (§AJ3)           | a span edge      | the stay    | `true`        | inert — it carries its own `departAfterMs` |
+| **back to the bed** (ADR-0209 §1) | **the last row** | the stay    | `true`        | ❌                                         |
+
+On the third the stay is the **destination**; its origin is an ordinary row whose `endsAt` is
+exactly when you leave. So the flag suppressed the one instant that leg needed, and §AR1's arrival —
+which is `leaveByMs ?? departAfterMs` plus the leg — had nothing to count from. **The row was blank
+at every hour of every day**, and had been since ADR-0209 §1 built it.
+
+**The comment above that write is the whole story, and it was right about a hazard the flag never
+addressed.** It read: _"`bookend` on it too — a stay has no per-day arrival instant, so reading its
+`startsAt` as this hole's deadline would measure a window from its check-in day."_ True, and that
+hazard is handled by `flexibleArrival`, which asks `isExactEdge(to, 'start')` and gets `not-before`
+from any stay. The author reasoned about the **destination**, reached for a flag about the
+**origin**, and the name did not stop them — which is the same lesson ADR-0184 §9a wrote when it
+deleted `edgeHoldsPosition`: _"a name that contradicts the behaviour is what the next reader
+trusts."_ So the field is **`fromIsStay`** now. It states the fact it encodes, and a writer cannot
+reach for it by analogy.
+
+### AS2. The two day surfaces disagreed about a fact, and one of them was right
+
+**Plan mode printed `הגעה ~21:26` on this leg the whole time.** It never read `bookend`: it asked
+`stayRowIds.has(from.id)` — the origin question, directly — and got the right answer. Trip mode read
+the flag and got the wrong one. That is ADR-0159 §1's forbidden case, and it is the **third** time
+this pair has drifted (§AG6, §AM7's two singular-mode consumers).
+
+**The cause is that the same question had two implementations**, which is root `CLAUDE.md`'s rule 8
+in its usual disguise: not a duplicated mechanism, a duplicated _predicate_. So `planJourney` takes
+the **leg** now rather than its two ends, and reads `leg.fromIsStay` — one flag, set where the legs
+are built, read identically by both screens. There is nothing left to answer twice.
+
+**This is also why the round that shipped §AR1 did not catch it.** §AR1 widened the arrival and was
+verified on both surfaces — but through a URL that does not exist: Plan mode is **in-memory state**
+(`mode-state.tsx`, session-only by ADR-0016), so `?mode=plan` silently stayed in Trip mode and the
+"both surfaces" check was Trip mode twice. **Plan mode has to be entered by clicking its toggle**,
+and any future check of a Plan/Trip difference must assert which mode it is actually in — the specs
+below read the toggle's `aria-pressed` for exactly that reason.
+
+### AS3. What guards it
+
+`DayView.travel.test.tsx` already had a spec for this leg — **it counted three blocks and never
+asked what the third one said**, which is precisely how a permanently blank row shipped under a
+green suite. A count is not a read.
+
+**And the asymmetry in the specs is the asymmetry in the bug.** `PlanDay.travel.test.tsx` has had
+_"the drive into tonight's hotel cannot be impossible"_ since §AJ1, asserting `הגעה` on this exact
+leg. Trip mode had a count. So the surface with the assertion is the surface that was right, and the
+one with the count is the one that was blank — which is not a coincidence and is the most useful
+thing in this section: **when two surfaces must agree about a fact, the spec has to be written twice
+or the agreement is untested.** It now asserts the sentence, on both surfaces, off the last
+row's own end; and that the row states `הגעה` **alone**, because a check-in floor is not a deadline
+(§AI1) and the absence of `יציאה` there is a decision rather than the old suppression.
+
+### AS4. This closes the backlog line §AQ4 opened
+
+§AQ4 filed this as _"the day's LAST bookend leg reads an instant that is not this day's"_ and blamed
+`arriveByMs` — the stay's check-in, a week in the past. That diagnosis was **half right and named
+the wrong half**: `arriveByMs` is inert on this leg (a stay's start is not exact, so `deadlineMs` is
+`undefined` and it is never consulted once an arrival exists). The silence was `departAfterMs`. The
+backlog line is pruned with this change, and the difference is worth keeping: the first diagnosis
+was written from reading, the true one came from dumping the leg's actual inputs in the browser.
+
+### AS5. A leg that does not fit still lands somewhere, and now says when
+
+> _"I see the חסרות 8 דקות לדרך row doesn't show the (late) arrival time. We'd want to know how late
+> we arrive, no?"_
+
+Yes. §AR1 widened the arrival to every arm that states a departure and **left `OVERRUNS` alone**,
+recorded there as _"it states the shortfall you act on"_. That was half the sentence: the shortfall
+is the **size of the problem** — how much has to move — and it says nothing about **when you would
+actually be there**, which is the other half of the same decision when somebody is choosing what to
+drop from a day.
+
+The row says both now: `חסרות 8 דק׳ לדרך · הגעה ~20:08`, and the two agree by construction (a
+20:00 start plus an 8-minute shortfall is a 20:08 arrival), which is itself worth having on screen.
+
+**No new derivation** — the instant has been on this arm since §AR1. On an infeasible leg the clamp
+pulls the departure to the origin's own end (there is no buffered departure that exists), so
+`arriveAtMs` is already `departAfterMs + travelSeconds`: _leave the moment the row above frees you,
+land here_. It is the earliest arrival that exists rather than the best case of advice nobody can
+follow, which is why the app can state it.
+
+**Both halves of the arm take it, including `אין זמן לדרך`.** Two rows that touch have no gap for
+the journey to be longer than, so the shortfall is the wrong sentence there — but you still land
+somewhere, and how late is exactly as actionable. The one that does not take it is
+`arrivesAfterClose`, which already led with the arrival and names the thing that makes it matter
+(`הגעה ~20:32 · אחרי סגירת החלון`).
+
+**`PASSED` still says only that the departure passed**, unchanged and for §AR1's reason: it names a
+departure nobody is going to make, so an arrival beside it would be a prediction off advice already
+withdrawn.

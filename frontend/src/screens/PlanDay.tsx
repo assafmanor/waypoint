@@ -452,11 +452,14 @@ export function PlanDay() {
       prev = groupEndEvent(group);
     }
     // **The day's two bookend legs** (ADR-0209 §1) — out of the stay you woke in and back into
-    // the one you sleep in. `bookend: true` on both: a stay has no per-day instant, so reading its
-    // own ends as this hole's bounds measures a window from its check-in day (§AF3).
+    // the one you sleep in. **Only the first carries `fromIsStay`**, and the flag says which:
+    // a stay's own `endsAt` is a check-out days away, so the leg LEAVING one has no departure
+    // window (§AF3), while the leg arriving AT one leaves an ordinary row that ends when it ends.
+    // Both were `bookend: true` until §AS1, where the name let Trip mode read the second as the
+    // first and go silent.
     const first = planGroups.length ? groupStartEvent(planGroups[0]) : undefined;
     if (bookends.woke && first && first.id !== bookends.woke.id) {
-      legs.unshift({ from: bookends.woke, to: first, bookend: true });
+      legs.unshift({ from: bookends.woke, to: first, fromIsStay: true });
     }
     // **AND THE DRIVE THAT BROUGHT YOU TO THE BED** (owner, 2026-08-26) — off the last overnight
     // edge, carrying the EDGE's placed instant, because a hire's `endsAt` is its return ten days
@@ -467,13 +470,12 @@ export function PlanDay() {
       legs.unshift({
         from: cameIn.event,
         to: bookends.woke,
-        bookend: true,
         fromEdge: cameIn.edge,
         departAfterMs: cameIn.atMs,
       });
     }
     if (bookends.sleeps && prev && prev.id !== bookends.sleeps.id) {
-      legs.push({ from: prev, to: bookends.sleeps, bookend: true });
+      legs.push({ from: prev, to: bookends.sleeps });
     }
     return legs;
   }, [planGroups, bookends.woke, bookends.sleeps, overnight]);
@@ -537,11 +539,12 @@ export function PlanDay() {
       ? edgeSentence(edge, eventEdgeZone(edge.event, edge.edge, zoneCtx).zone)
       : ambientSpanLabel(stay, activeDate);
   };
-  const planJourney = (
-    from: TripEvent,
-    to: TripEvent,
-    departAfterMs?: number,
-  ): DayJourney | null => {
+  /** **Takes the LEG, not its two ends** (ADR-0206 §AS1) — because the one thing this needs beyond
+   *  the two rows is whether the ORIGIN is a stay, and the leg is where that is recorded. It used
+   *  to re-derive it here as `stayRowIds.has(from.id)`: the right question, asked a second way,
+   *  which is how Trip mode could get it wrong on one leg while this surface got it right. */
+  const planJourney = (leg: DayLeg): DayJourney | null => {
+    const { from, to, departAfterMs } = leg;
     const estimate = planTravel.estimateFor(from, to);
     return dayJourney({
       // **THERE IS NO WINDOW OUT OF A BED** (ADR-0206 §AF3, amended 2026-08-26 off the field
@@ -554,7 +557,7 @@ export function PlanDay() {
       // was the one that had drifted.
       ...(departAfterMs !== undefined
         ? { departAfterMs }
-        : stayRowIds.has(from.id)
+        : leg.fromIsStay
           ? {}
           : { departAfterMs: Date.parse(from.endsAt ?? from.startsAt ?? '') }),
       arriveByMs: Date.parse(to.startsAt ?? ''),
@@ -584,10 +587,7 @@ export function PlanDay() {
    *  inside one screen: a render site that drifts would otherwise silently take the verdict
    *  with it, and the verdict is the half nobody would notice was wrong. */
   const journeyByRows = new Map(
-    planLegs.map((leg) => [
-      `${leg.from.id}>${leg.to.id}`,
-      planJourney(leg.from, leg.to, leg.departAfterMs),
-    ]),
+    planLegs.map((leg) => [`${leg.from.id}>${leg.to.id}`, planJourney(leg)]),
   );
   const journeyFor = (from: TripEvent, to: TripEvent): DayJourney | null =>
     journeyByRows.get(`${from.id}>${to.id}`) ?? null;

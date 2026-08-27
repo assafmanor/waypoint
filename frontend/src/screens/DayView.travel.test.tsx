@@ -627,6 +627,25 @@ describe('DayView — the walk out of the bed', () => {
     expect(document.querySelectorAll('.day-trv')).toHaveLength(3);
   });
 
+  // **AND THE RETURN SAYS SOMETHING** (ADR-0206 §AS1). The spec above counted three blocks and
+  // never asked what the third one said — which is exactly how it shipped **silent at every hour
+  // of every day**. It carried `bookend: true`, and that flag's one reader asks whether the
+  // ORIGIN is a stay; here the stay is the DESTINATION, so the leg lost the departure instant it
+  // should have taken from the theatre's own end, and with it the arrival.
+  //
+  // A stay's start edge is `not-before`, so there is no deadline to advise a departure against —
+  // `הגעה` ALONE is the right sentence here, and §AJ2's distinction is what says so.
+  it('states when you get back to the bed, off the last row’s own end', () => {
+    show();
+    const back = [...document.querySelectorAll('.day-trv-meta')].map((m) => m.textContent ?? '');
+    const arriveAt = ltrIsolate(
+      `~${formatTime(new Date(Date.parse(theatre.endsAt!) + 15 * 60_000), ZONE)}`,
+    );
+    expect(back).toContain(t.travel.arriveAt(arriveAt));
+    // …and no departure, because a floor is not a deadline (§AI1) — not because it was withheld.
+    expect(back.some((m) => m.includes('יציאה') && m.includes(arriveAt))).toBe(false);
+  });
+
   // **The stay is named twice on a middle night, and that is the day's two ends** — which is what
   // ADR-0054's map amendment already decided a middle night is, and the band's single entry was
   // the thing that could not express it. Once each, not once here and once in the strip.

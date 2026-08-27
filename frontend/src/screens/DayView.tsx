@@ -635,7 +635,9 @@ export function DayView() {
     const woke = bookends.woke;
     const first = firstRow?.kind === 'event' ? groupStartEvent(firstRow.group) : undefined;
     const wake =
-      woke && first && first.id !== woke.id ? { from: woke, to: first, bookend: true } : undefined;
+      woke && first && first.id !== woke.id
+        ? { from: woke, to: first, fromIsStay: true }
+        : undefined;
     // **AND THE DRIVE THAT BROUGHT YOU TO THE BED** (owner, 2026-08-26: _"it should also show the
     // way from the car rental to the hotel, right?"_). ADR-0054's amendment refused this leg the
     // same day and gave a reason that has since been fixed: a stay's only arrival bound is its
@@ -651,21 +653,30 @@ export function DayView() {
         ? {
             from: cameIn.event,
             to: woke,
-            bookend: true,
             fromEdge: cameIn.edge,
             departAfterMs: cameIn.atMs,
           }
         : undefined;
     // **AND THE LEG BACK** (ADR-0209 §1/§3), which is the other half of §AD and did not exist: the
     // day's last row is where you end it, so the journey into tonight's stay is as certain as the
-    // one out of last night's. `bookend` on it too — a stay has no per-day arrival instant, so
-    // reading its `startsAt` as this hole's deadline would measure a window from its check-in day.
+    // one out of last night's.
+    //
+    // **This carried `bookend: true` and the line above said why, and the why was right about a
+    // hazard the flag never addressed** (ADR-0206 §AS1). _"A stay has no per-day arrival instant,
+    // so reading its `startsAt` as this hole's deadline would measure a window from its check-in
+    // day"_ — true, and what handles it is `flexibleArrival`, which asks `isExactEdge(to, 'start')`
+    // and gets `not-before` from any stay. The flag's only reader asks about the ORIGIN, so setting
+    // it here suppressed this leg's `departAfterMs` instead — and with no departure instant there
+    // was no arrival either, leaving the row silent at every hour of every day while Plan mode,
+    // which asked the origin question directly, printed `הגעה ~21:26` all along.
     const lastBlock = blocks[blocks.length - 1];
     const lastEntry = lastBlock?.entries[lastBlock.entries.length - 1]?.entry;
     const last = lastEntry?.kind === 'event' ? groupEndEvent(lastEntry.group) : undefined;
     const home =
       bookends.sleeps && last && last.id !== bookends.sleeps.id
-        ? { from: last, to: bookends.sleeps, bookend: true }
+        ? // **No `fromIsStay` here, and that is §AS1's fix.** The stay is this leg's DESTINATION;
+          // its origin is the day's last ordinary row, whose `endsAt` is exactly when you leave.
+          { from: last, to: bookends.sleeps }
         : undefined;
     return {
       between,
@@ -803,7 +814,7 @@ export function DayView() {
         // would claim you could have left at 07:00, and the stay's ends are not this day's.
         ...(leg.departAfterMs !== undefined
           ? { departAfterMs: leg.departAfterMs }
-          : leg.bookend
+          : leg.fromIsStay
             ? {}
             : { departAfterMs: Date.parse(leg.from.endsAt ?? leg.from.startsAt!) }),
         arriveByMs: Date.parse(leg.to.startsAt ?? ''),
