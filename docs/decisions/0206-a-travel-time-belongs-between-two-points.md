@@ -383,6 +383,10 @@ as an instruction where this is a measurement.
 
 ### AA3. The mode control gets three real icons
 
+> **Superseded in part by §AL1/§AL2/§AL7 (2026-08-27).** The three glyphs were coded before they were
+> drawn; the drawing confirms them, mints a **fourth** (`transit` — `ticket` was never free, §AL2),
+> and settles the control's shape as glyph-only chips at the touch floor (§AL7).
+
 `ui/Icon.tsx` gains **walk, car and bicycle**. §Z5 drew the control as word chips, and that was a
 consequence of the icon set not having them rather than a judgement that words read better — the
 session note says so in as many words.
@@ -398,6 +402,11 @@ carries a content rule applies — a bare bicycle is not a mode until it reads a
 size. **M6a and M8 own this, and it wants drawing at 24px before it is coded.**
 
 ### AA4. A person may declare תחב״צ, and doing so **suppresses** the estimate
+
+> **Drawn, and amended, in §AL (2026-08-27).** The mark is its own glyph and not `ticket` (§AL2), the
+> read carries no `warn` (§AL3), the segment's styling is §AL6, the mode row is §AL7 — whose table
+> corrects this section's own "four chips fit one row at 360 (239px of 312px)", measured in the wrong
+> box — a fourth stated cost is in §AL9, and §AL8 mirrors the two mode glyphs that have a facing.
 
 **This reverses §V2's "say nothing about transit" for the declaration only, and §D9 is amended
 above.** The owner asked for it; I argued against it on §D9 and was wrong, and the reason is worth
@@ -1461,6 +1470,11 @@ Two things the leg needs that no other leg did, both now on `DayLeg`:
 
 ## AK. An infeasible leg is still a JOURNEY — the warn glyph keeps its mode (2026-08-26)
 
+> **§AK3's four questions are answered in §AL4/§AL5 (2026-08-27), off the drawing.** Two corrections
+> to this section land there too: §AK2's stated precedent (the avatar badge) **does not exist in the
+> code**, and the idiom to start from is `PlaceBadge`'s corner mark (§AL4); and its matrix count is
+> seven rather than eight, because transit × mark is unreachable (§AL5).
+
 Owner, off the shipped day: _"we should create specific icons for not enough time, so that instead
 of showing a warning glyph, it should show a car with a warning, and for walking a person with a
 warning… That way it's clearer that they're of the same class of rows."_
@@ -1520,3 +1534,304 @@ those, not from a blank canvas** (rule 8).
 **Whose it is:** the icon work §AA3 opened — `ui/Icon.tsx` gains walk, car and bicycle — is the same
 work, so this rides with it rather than beside it. Its home is a **follow-up to M6a** (which shipped
 the swap) and it must land before or with §AA3's glyphs, so that the set is drawn once as a set.
+
+## AL. Amendment (2026-08-27) — what M8a settled by drawing the set
+
+**Drawn in [`mockups/the-mode-set-and-transit-declared-v1.html`](../../mockups/the-mode-set-and-transit-declared-v1.html).**
+§AA3, §AA4 and §AK each asked for part of one icon set and none of them could answer the questions
+the other two raised, which is why M8a drew all of it in one pass. **Nothing below is built** — §M
+still holds, and the file is awaiting the owner. Ten sections in, this amendment is the one place a
+later reader should look for the marks themselves.
+
+Two of the amendments below **correct this ADR** rather than extending it. Both were found by
+rendering, and both are recorded with the mistake rather than quietly fixed.
+
+### AL1. The three mode glyphs were already coded, so §AA3 has been half-satisfied since M6a
+
+`ui/Icon.tsx:238-245` carries `walking`, `cycling` and `driving`, minted by M6a from the v2 mockup's
+own **proposal** frame — the one thing that file labelled as not from the code. §AA3's instruction
+was "draw them at 24px **before** coding", and the order came out reversed.
+
+**Nothing about them needs changing**, which is the useful half of the finding: on the real 24 grid
+at the real stroke weight they hold, and the set reads as a set. What it costs is that M8a's §1 is a
+**confirmation pass on shipped assets**, so §Z5 §M5's word chips had to be drawn back by hand to
+have a baseline at all — the mockup's `.msq-was`. A mockup written after its change otherwise draws
+the fix in both columns and reports a win it never measured.
+
+### AL2. תחב״צ gets its OWN glyph, and `ticket` was never free
+
+**§AA4's shape and `Icon.tsx`'s own comment both stand `ticket` in for a declared leg. That is
+wrong, and by this repo's own rule.** `constants.ts:1520` is `booking: 'ticket'`, and four screens
+already spend the glyph on exactly that meaning — `Index.tsx:234`, `Home.tsx:1107`,
+`IndexBookingsView.tsx:246`, `HeroLift.tsx:308` (`t.hero.toBooking`). Two meanings behind one glyph
+is the drift [ADR-0138](0138-the-row-menu-is-one-surface-and-icons-are-ui.md) was written to end,
+and `Icon.tsx`'s own `sync` comment states it: _"Two meanings behind one emoji is exactly the drift
+this sweep exists to end."_ A mode is not a booking.
+
+**So `transit` is minted — a vehicle from the FRONT:** body, windscreen band, two headlights, two
+mirrors, on the same 24 grid at the same `stroke-width: 2` with the same round caps.
+
+- **Front-facing is the decision, not a style.** Every other member of the set is a side view, so a
+  side-view bus differs from `driving` only by a cabin arch against a wheel box — ~3px at the 21px
+  the tile paints. A front is the one silhouette in this set that cannot be confused with another
+  member of it.
+- **The mirrors cost two segments and are what make it a bus rather than a train.** תחב״צ is buses
+  **and** trains; a train front declares rail, which is the narrower claim.
+
+**The set is therefore FOUR glyphs and ONE new asset**, because §AK's mark is `warn`, which already
+exists.
+
+### AL3. `warn` may not also say "no estimate" — §AK takes it
+
+The v2 mockup's §4 drew the declared leg's line as `icon('warn') אין לנו מידע על קווים`. **§AK now
+makes `warn` mean "this journey does not fit", so both meanings would land on the same block, on the
+same surface, in the same release** — §AL2's rule one line up, arriving from the other direction.
+
+It was also wrong on its own: **an absent estimate is a fact, not a warning.** So the declared read
+carries no mark at all. What states the absence is the **missing continuation of the head** — no
+`·`, no number — and the meta line names it so it does not read as data that failed to load:
+**`בלי הערכת זמן`**. It says exactly what is not there and promises nothing (no `עדיין`, no `טרם`),
+which is the one place §D9's original caution still bites.
+
+### AL4. The mark composites on `PlaceBadge`'s corner geometry — §AK2's stated precedent does not exist
+
+**§AK2 says to start from "`ui/Icon.tsx` composites the avatar-hero badge (ADR-0133 §6/§12)".
+There is no such thing.** `ui/primitives/avatar.css` has no badge, no pseudo-element and no overlay,
+and ADR-0133 §6/§12 are the avatar picture page's two states and the uploaded avatar's trust class.
+
+**The idiom that ships is `PlaceBadge`'s corner mark** — `.wp-placebadge-mark`,
+[ADR-0167](0167-the-badge-is-the-thumbnails-frame.md) §1 with §11.2/§12 — and it is the better
+precedent anyway: a corner mark on a **32–40px rounded badge**, which is `.day-trv-ic`'s box
+exactly, and its own owner review already answered §AK3.1 (_"a bare teal pin, not a pin in a teal
+disc"_ — the disc was doing two jobs and paid for them in size).
+
+Measured at 360 and 390, both themes:
+
+| what                                | value                              | against                                             |
+| ----------------------------------- | ---------------------------------- | --------------------------------------------------- |
+| the tile the mark hangs on          | `.day-trv-ic` **38×38**, radius 12 | the glyph inside it is 21px                         |
+| the mark                            | **15px** · 39% of the tile         | `PlaceBadge`'s 17px on 32–40px · 42–53%             |
+| its overhang                        | **5.8px** per axis (`size / -2.6`) | `.wp-placebadge-mark`'s own ratio                   |
+| clipped by `.day-trv`'s `overflow`? | **no**, 4.2px of slack             | ADR-0167 §11.2 — the one trap this geometry carries |
+| it covers of the mode glyph's tile  | **38%** of the mark's own area     | most of the mark is outside the tile                |
+| block height with / without         | **58px / 58px**                    | §AK2's whole claim, checked                         |
+
+**And it takes no hue of its own, which is §AK3.1's answer.** The tile is already tinted by the
+block's tone and the glyph in it already carries that tone's ink, so the mark inherits
+`currentColor`: the **shape** is new, the colour is not. A `--miss` triangle on a `--miss` tile
+inside a `--miss` bordered block is the third statement of one fact.
+
+### AL5. §AK3.3 and §AK3.4, answered by one rule rather than a table
+
+**The mark says the JOURNEY does not work; it does not say the clock moved.**
+
+| arm                               | mark | why                                                                           |
+| --------------------------------- | ---- | ----------------------------------------------------------------------------- |
+| `OVERRUNS`                        | yes  | the leg does not fit the hole — a fact about the journey                      |
+| `arrivesAfterClose`               | yes  | you reach it after it shuts — the same class of fact (§AK3.4)                 |
+| `PASSED`                          | no   | the leg is fine, the hour moved, and the block already says so in words       |
+| `ON_WAY`                          | no   | somebody is moving; a warning contradicts what the state asserts              |
+| a day that has ended, overrunning | yes  | the record stands; the **tone** carries the quiet, not a second rule (§AK3.3) |
+
+That last row is what §AL4's `currentColor` buys: the finished day's own quiet ink takes the same
+mark with no extra rule, so `DayJoinRow.tsx:292`'s refusal of `--miss` on a finished day and this
+mark are no longer coupled the way §AK3.3 worried they might be.
+
+**And the render found a cell §AK2 counted that cannot be reached: transit × mark.** A declared leg
+carries no duration, so `freeAfterTravel` has nothing to subtract — it can never overrun, never
+arrive after a close, and never pass a leave-by it does not have. The mockup draws the mark over the
+bus **labelled as a demonstration** that the composition is glyph-agnostic (which a fifth
+_routable_ mode will need), not as a state. §AK2's "eight with תחב״צ" is really **seven**; the
+conclusion is unchanged and the count in the ADR should be right.
+
+### AL6. The declared leg's segment: amber, route weight, long dash, BUTT caps
+
+§AA4's 2026-08-27 amendment said the declared leg draws its own straight segment and left the
+styling to the drawing. Here it is, as `MAP_CONNECTOR` values:
+
+| line                           | colour                              | weight | dash (line-widths → px) | caps  | end dot |
+| ------------------------------ | ----------------------------------- | ------ | ----------------------- | ----- | ------- |
+| routed (`ROUTE`)               | `#915e1e` / `#f0b254`               | 3.5    | solid                   | round | 3.4     |
+| **declared תחב״צ**             | the **same** amber pair             | 3.5    | `[3, 1.2]` → 10.5 / 4.2 | butt  | 3.4     |
+| day order / un-routed (`DASH`) | ink `rgba(22,35,61,.5)` / light .42 | 2.5    | `[2, 2]` → 5 / 5        | round | 3.0     |
+
+**Three channels separate it from the fallback, and that is the point** — being mistaken for "we
+could not route this" is its one real failure mode, and the shape cannot help, because
+`MapPane.tsx`'s `MapDayLeg.path` is documented as _"the routed path, or the straight segment where
+none has arrived yet"_ and both take the connector's paint. **The two are the same geometry by
+construction.** So: hue (amber is time and commitment — the budget already owns this, and it is the
+strongest channel: 4.50:1 light / 7.01:1 dark on the real `earth` ground against the connector's
+3.01:1 / 3.25:1), weight (3.5 against 2.5), and rhythm (a long dash against a 5/5 stipple). Against
+the **routed** line one channel is enough and is the right one: solid says "this is the path",
+dashed says "there is a journey, we are not drawing its path".
+
+**The weight and the rhythm do NOT ride §D8's amber ration.** If the structure depended on the
+ration, a declared leg that is not the asked-about one would fall straight back to reading as the
+fallback. So the ration governs **hue and opacity**; the rhythm and the weight are the leg's own.
+
+**And a rendering trap worth more than the values:** `line-cap: round` adds half the stroke width at
+each end of **every dash**, so at weight 3.5 it eats 3.5px — a 4.2px gap becomes 0.7px and the line
+reads nearly solid, i.e. it asserts the very path it exists to disclaim. The declared segment takes
+**butt** caps, deliberately unlike `ROUTE`, whose own comment explains why it is round.
+
+### AL7. The mode row is `.wp-chip.touch` squared — and the box it was measured in was wrong twice
+
+**§AA4's own sentence is the error, and I repeated it before the render caught me.** §AA4 states
+_"four chips still fit one row at 360 (239px of 312px)"_. The chips were compared against the row's
+`getBoundingClientRect().width`, **which includes its 12px inline padding on each side** — so the
+space is overstated by 24px and a row that visibly clips a control reports as fitting. M8a's first
+draft made the identical comparison and concluded the opposite of the truth, twice in two
+directions, before measuring the row's **content** box.
+
+Against the real inner box, at 360:
+
+| shape               | chips            | chip height | verdict                                            |
+| ------------------- | ---------------- | ----------- | -------------------------------------------------- |
+| glyph + word        | **327px** of 308 | 31px        | wraps, and **clipped outright** before the guard   |
+| word only (§Z5 §M5) | 243px of 308     | 29px        | fits, never met ADR-0017's floor                   |
+| **glyph only**      | **194px** of 308 | **44px**    | fits with 114px spare · on the touch floor exactly |
+
+**So the mode control is four glyph-only `.wp-chip.touch` chips**, squared, with the mode word
+moving to `aria-label` — it stops drawing, it does not disappear. Two measured reasons, and the
+second is the decisive one: 114px of headroom means a fifth mode cannot break the row, and it is the
+**only** shape that reaches 44px on a control that is its surface's primary one.
+
+**Plus one guard, and the clip is why it exists:** `.wp-chip` is `flex: 0 0 auto` with
+`white-space: nowrap` inside a `.day-trv` that carries `overflow: hidden`, so a row that does not fit
+**disappears** rather than growing — a control cut in half, silently, with the measurement table
+still saying "fits". The row therefore declares `flex-wrap: wrap`. It should never fire; what it buys
+is that an overflow costs height instead of eating a control.
+
+### AL8. A glyph with a facing mirrors with the reading direction — and it lives in ADR-0138 §10
+
+Owner, on the drawing: _"All glyphs that have a direction should have RTL variants. For example the
+person should be facing left and not right if the app is in Hebrew. The bike as well."_
+
+**Agreed, and the decision is recorded in [ADR-0138 §10](0138-the-row-menu-is-one-surface-and-icons-are-ui.md)
+rather than here** — §AA3 is what made it visible, because a walker and a bicycle are the app's first
+`Icon` entries that depict a person moving, but the rule is about the icon vocabulary and that is
+ADR-0138's subject. Drawn in the mockup's §5. Three results this ADR needs to carry:
+
+- **Only 2 of the 4 mode glyphs have a facing.** `driving` and §AL2's new `transit` are symmetric, so
+  the rule reaches `walking` and `cycling` and stops. **The front view §AL2 chose for legibility is
+  what makes `transit` need no RTL variant either** — one decision paying twice, and worth knowing
+  before a later session "fixes" the bus into a side view.
+- **It is one declaration, not a mechanism**: `scaleX(var(--dir))`, off the token `tokens.css`
+  already calls the one place a direction is named. `NavArrow` is the precedent.
+- **The list is an allowlist and `clock` is why** — mirrored, it reads a different time. 30 of 58
+  entries are asymmetric and only 9 have a facing; the other 7 are a backlogged sweep, not this
+  card.
+
+### AL9. What a declared leg costs, stated so the build does not discover it
+
+§AA4 already named three: no duration, therefore no leave-by, therefore the board's countdown swap
+does not fire for it and the day travel total skips it. **The drawing adds a fourth.**
+
+**The free-time strip below a declared leg states the RAW hole.** §AH3 moved free time off the block
+and onto the strip, and the strip's number is the hole minus the journey — so with no journey
+duration there is nothing to net out and the strip says the whole 2:40. That is honest and it is the
+price of silence; it is not a defect to be fixed by inventing a number.
+
+**The distance stays**, and this is what the declaration buys rather than what it costs: `2.7 ק״מ`
+is true and useful (§D4's crow-flies floor is untouched). What disappears is the walking number that
+was wrong.
+
+**And the block keeps amber, undashed.** A dashed border was considered and rejected: that is the
+hard/soft grammar, and a declared leg is not provisional — it is a fact a person gave. Its quiet
+comes from carrying **one** fact where the estimating block carries three, not from a different hue.
+Measured: 58px for the block itself either way; the declared block is 111px only because it is the
+one carrying the mode row.
+
+### AL10. The mode row is a DISCLOSURE, and the caret is the day's own
+
+Owner, on the drawing: _"Does the transit line expand to enable choosing which transit? (walking,
+driving, cycling, public transit) if so then it should have a small downward facing arrow like we
+already use for events no?"_
+
+**Yes — and the question found a hole in the drawing rather than a preference.** §AL7 settled what
+the mode row looks like and never said **when it appears**. The mockup drew it always-visible, which
+is a decision nobody took: measured, the row adds **55px** to a block (58 → 113), so a four-hole day
+pays **452px** against 232px collapsed — most of a 640px screen, on the surface this ADR itself calls
+the densest in the app, for a control most days never touch.
+
+**§Z5 §M5's answer does not work here either.** It said the control appears "on the selected or next
+leg only" — but the day LIST has no leg selection; that is the Map's model (§AC2). So every leg but
+the next would have no way to change its mode, while the override is keyed on a **place pair** and is
+exactly the sort of thing set while planning rather than while standing in it.
+
+**So: a disclosure, and almost all of it already exists.**
+
+- **The caret is `.wp-event-chev` re-pointed** — trailing edge, `rotate(180deg)` when open,
+  `transition: transform var(--t-base)`. The day already has one disclosure mark and the journey
+  block joins it rather than inventing a second.
+- **`button.day-trv-face` IS ALREADY IN `day-join.css`, AND IT IS DEAD CODE.** Nothing renders it —
+  `DayJoinRow.tsx:184` is unconditionally a `<div>` — and `DayJoinRow.test.tsx:171` asserts its
+  absence under the name _"is a statement and not a control"_. The rules were written for exactly
+  this, and the component's own docblock explains why the acts row is a **sibling** of the face
+  rather than a child: _"the `בדרך` control is a button too and one inside the other is invalid."_
+  The face becoming a button is the shape that comment was holding open.
+- **The container is `ui/primitives/Collapsible`** (rule 8) — max-height + opacity, children always
+  rendered, reduced motion handled globally by `App.css`'s wildcard.
+- **It registers no back layer.** This is a pane _of_ the row, not a layer _over_ it — the
+  `SnapSheet` distinction in `frontend/CLAUDE.md`. Back navigates; it does not close a disclosure.
+
+**Measured: the collapsed block is 58px, byte-identical to the statement block that has no mode row
+at all** — the caret rides the existing flex line and costs nothing.
+
+**Two things this changes, both deliberate and both needing to be said rather than discovered:**
+
+1. **`DayJoinRow.test.tsx`'s "is a statement and not a control" falls.** §AH3 took the free-time `＋`
+   off the block on the grounds that _"the block is about the leg and free time is about the hole"_ —
+   and the mode is emphatically **about the leg**, so it belongs here by that same rule rather than in
+   spite of it.
+2. **`Collapsible`'s transition is a `0.32s` literal while the caret rides `--t-base` (240ms)**, so
+   the two halves of one gesture are visibly out of step. The primitive is where that gets fixed
+   (ADR-0140's "waits are `motionDurationMs`, timings come from the ramp"), not the host.
+
+### AL11. Switching a mode issues NO request — and the two absences are not the same
+
+Owner: _"When you switch to a different transit mode, say from walking to driving, does it retrigger
+the route path and time estimates so that it shows up as soon as we have it? (and maybe adding an in
+progress indication or something?)"_
+
+**No, and by design.** `useDayTravel` (`lib/travel.ts:184`) takes `modes = TRAVEL_MODES` as its
+default, and its own docblock states the reason: _"which is what makes ADR-0206 §Z2's mode switch a
+read from what the client already holds rather than a fetch."_ **One matrix per day carries all three
+modes**, so a switch is a Dexie/memory read with zero requests. That is already M8b's exit criterion
+and it is asserted with a network spy, not eyeballed: **if a switch fetches, M4 is wrong, not M8.**
+
+**There is a cold window, but it belongs to the DAY, not to the switch.** The same docblock names
+three: a **warming** answer (ADR-0187 — the server returns what it has plus how long to wait; the
+client re-asks once and lets go), a **peek** (`DayPeek` mounts the neighbouring days as real surfaces
+and must not reach out, so it draws whatever Dexie holds), and **offline**. In that window the mode
+you pick may carry no number, and the shipped answer is §D4's absence: **the distance, and no
+duration.**
+
+**A progress indicator is refused, and it was already refused once.**
+`where-a-route-shows-up-v1.html`'s notes: _"Rejected: a spinner per leg while loading. On a day with
+five holes that is the loudest thing on the screen. The 'not yet loaded' state is simply §D4's state
+— a crow-flies chip with no duration."_ ADR-0140 §6 rations it independently — a looping animation
+claims "this is still happening", which is why `pending` sync deliberately stays still, since "a
+spinner on pending reads as strain". **Noted for the owner: that file is still awaiting sign-off, so
+this is an open call rather than a closed one.**
+
+**What the question did surface: "no number yet" and "the gate refused this pair" render
+identically.** One is transient and one is permanent, and that is precisely the confusion §AA4 fixed
+for the polyline — the declared segment against the un-routed connector — arriving one surface over.
+**The resolution splits them by WHERE they are said:**
+
+- **The chip carries availability only.** The chips are glyphs with no numbers (§AL7), so they have
+  nothing to lose; the gate is a permanent fact about the pair, so it is the chip's to state —
+  `.wp-chip.provisional`'s dashed off-state, **still tappable**, the tap landing on §D4's chip
+  (§Z5 §M5). Measured at 44px, so the refused chip is a control and not a disabled button.
+- **The absence is said on the BLOCK**, where §D4 already answers it. A transient absence therefore
+  never touches the chip row, and the two can never be mistaken for each other.
+- **`0 דק׳` never appears.** `ROUTE_MIN_CROW_M` already makes a sub-10m pair read as absence.
+
+**And the copy for a refused mode may claim only what the app knows — the obvious wording is
+false.** `רחוק מדי להליכה` reads best, and `TRAVEL_GATE.walking.maxMeters` would justify it, but the
+gate has a second clause: `sameClusterOnly`, and `sameTravelCluster`'s own docblock says **"A point in
+no cluster at all answers `false`"** — so an isolated place refuses walking **at any distance**, and a
+2 km stroll would be told it is too far. The recommendation is **`אין הערכה ל<מצב> כאן`**: one
+template composed from `t.travelMode`, true in every refusal case, and separated from the declared
+leg's `בלי הערכת זמן` by `כאן` — the pair rather than the mode. Drawn beside both alternatives.
