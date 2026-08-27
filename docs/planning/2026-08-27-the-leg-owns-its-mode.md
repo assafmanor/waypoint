@@ -1,7 +1,7 @@
 # M8b — the leg owns its mode (2026-08-27)
 
 **Milestone:** M8b of the routes epic ([board](2026-08-24-routes-epic-milestone-board.md)).
-**Branch:** `routes/m8b-mode`.
+**Branch:** `routes/m8b-mode` · **PR:** [#727](https://github.com/assafmanor/waypoint/pull/727).
 **Drawing it implements:** [`mockups/the-mode-set-and-transit-declared-v1.html`](../../mockups/the-mode-set-and-transit-declared-v1.html) (M8a, signed off).
 **Decisions:** amended in place into [ADR-0206 §AM](../decisions/0206-a-travel-time-belongs-between-two-points.md) (§AM1–§AM7).
 **Also closes:** M6e (the infeasible leg keeps its mode glyph) and §Z5's live canvas defect.
