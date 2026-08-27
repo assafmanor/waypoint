@@ -10,6 +10,7 @@ import {
   type Change,
   type DeliveredEnrichmentFields,
   type DocumentAttachment,
+  type TravelModeOverride,
   type EntityType,
   type MaybeItem,
   type Membership,
@@ -21,6 +22,7 @@ import {
   type TripEnrichments,
   type TripSnapshot,
   type User,
+  travelOverridePair,
 } from '@waypoint/shared';
 import { type Table } from 'dexie';
 import { db } from '../db';
@@ -34,7 +36,7 @@ import { getNow } from './useClock';
 import { dropNotesForHostChange } from './notes';
 import { dropTasksForHostChange } from './tasks';
 import { dropAttachmentsForHostChange } from './attachments';
-import { clearPlaceRefsForChange, deletedPlaceId } from './place-refs';
+import { clearPlaceRefsForChange, deletedPlaceId, dropOverridesForPlace } from './place-refs';
 
 /** The slice of TripSnapshot with no dedicated Dexie table of its own. */
 export interface SnapshotMeta {
@@ -51,6 +53,12 @@ export interface SnapshotMeta {
    *  a trip's worth is a few dozen tiny rows, and a Dexie table of its own would cost a
    *  schema version bump plus edits to `wipeLocalData` and three transaction lists. */
   documentAttachments: DocumentAttachment[];
+  /** **The per-leg travel-mode overrides** (ADR-0206 §V1.6/§Z2, keyed per §AM). Rides
+   *  `snapshotMeta` for the same reason notes do, and more so: the default is DERIVED, so a trip
+   *  nobody has overridden carries an empty array and this costs nothing at all. Mirroring it is
+   *  what makes root rule 5 true for a declared leg — offline, the day must still say תחב״צ
+   *  rather than quietly reverting to a walking number. */
+  travelModeOverrides: TravelModeOverride[];
   /** Enrichment for the trip's places, keyed by `placeId` (ADR-0166 §6). Rides `snapshotMeta`
    *  for the same reason notes do: a trip's worth is a few dozen small entries, and a
    *  dedicated Dexie table would cost a schema version bump plus edits to `wipeLocalData` and
@@ -92,6 +100,7 @@ export async function cacheSnapshot(tripId: string, snapshot: TripSnapshot): Pro
       notes: snapshot.notes,
       tasks: snapshot.tasks,
       documentAttachments: snapshot.documentAttachments,
+      travelModeOverrides: snapshot.travelModeOverrides,
       enrichments: snapshot.enrichments,
       fxRates: snapshot.fxRates,
       latestSeq: snapshot.latestSeq,
@@ -166,6 +175,7 @@ async function reconstructSnapshot(tripId: string): Promise<TripSnapshot | null>
     tasks: meta.tasks ?? [],
     // Same fallback, same reason: a trip cached before attachments shipped has no list.
     documentAttachments: meta.documentAttachments ?? [],
+    travelModeOverrides: meta.travelModeOverrides ?? [],
     // Same fallback, same reason: a trip cached before enrichment shipped has no map.
     enrichments: meta.enrichments ?? {},
     // Same fallback, same reason: a trip cached before rates shipped has no set, and
@@ -199,7 +209,16 @@ function applyToRow<T extends { id: string }>(
 type CacheRow = { id: string; tripId?: string };
 type CacheChannel =
   | { table: Table<CacheRow, string> }
-  | { metaList: 'maybeItems' | 'places' | 'members' | 'notes' | 'tasks' | 'documentAttachments' }
+  | {
+      metaList:
+        | 'maybeItems'
+        | 'places'
+        | 'members'
+        | 'notes'
+        | 'tasks'
+        | 'documentAttachments'
+        | 'travelModeOverrides';
+    }
   | { metaTrip: true };
 
 const CACHE_CHANNELS: Record<EntityType, CacheChannel> = {
@@ -218,6 +237,9 @@ const CACHE_CHANNELS: Record<EntityType, CacheChannel> = {
   [ENTITY_TYPE.TASK]: { metaList: 'tasks' },
   // Attachments ride `snapshotMeta` for the same reason notes do (ADR-0173's reuse audit).
   [ENTITY_TYPE.DOCUMENT_ATTACHMENT]: { metaList: 'documentAttachments' },
+  // Overrides ride it for the same reason, and the count is the smallest of the lot — most trips
+  // have none, because the default is derived (ADR-0206 §Z2).
+  [ENTITY_TYPE.TRAVEL_MODE_OVERRIDE]: { metaList: 'travelModeOverrides' },
   [ENTITY_TYPE.PLACE]: { metaList: 'places' },
   // Trip settings are data-plane (ADR-0039), so the roster + trip row stay
   // coherent too — else an offline reader shows a stale name/member on cold load.
@@ -228,7 +250,14 @@ const CACHE_CHANNELS: Record<EntityType, CacheChannel> = {
 /** Upsert/delete a change into one of `snapshotMeta`'s embedded lists. */
 async function applyChangeToMetaList(
   tripId: string,
-  listKey: 'maybeItems' | 'places' | 'members' | 'notes' | 'tasks' | 'documentAttachments',
+  listKey:
+    | 'maybeItems'
+    | 'places'
+    | 'members'
+    | 'notes'
+    | 'tasks'
+    | 'documentAttachments'
+    | 'travelModeOverrides',
   change: EntityChange,
 ): Promise<void> {
   const meta = await db.snapshotMeta.get(tripId);
@@ -279,8 +308,8 @@ async function dropCachedAttachmentsForHost(tripId: string, change: EntityChange
 }
 
 /** The place cascade's cache half (`lib/place-refs.ts`'s `clearPlaceRefsForChange`,
- *  ADR-0157 §3) — the same shape as the note cascade above, over the three stores that hold
- *  a place FK. Two tables and one meta list, each written only when the delete actually
+ *  ADR-0157 §3) — the same shape as the note cascade above, over the four stores that hold
+ *  a place FK. Two tables and two meta lists, each written only when the delete actually
  *  cleared something, so a change that is not a place delete costs three reads and no write.
  *  A `deletedPlaceId` test up front keeps even those off the common path. */
 async function clearCachedPlaceRefs(tripId: string, change: EntityChange): Promise<void> {
@@ -294,9 +323,21 @@ async function clearCachedPlaceRefs(tripId: string, change: EntityChange): Promi
   if (nextBookings !== bookings) await db.bookings.bulkPut(nextBookings);
 
   const meta = await db.snapshotMeta.get(tripId);
-  if (!meta?.maybeItems?.length) return;
-  const maybeItems = clearPlaceRefsForChange(meta.maybeItems, ENTITY_TYPE.MAYBE_ITEM, change);
-  if (maybeItems !== meta.maybeItems) await db.snapshotMeta.put({ ...meta, maybeItems });
+  if (!meta) return;
+  const ideas = meta.maybeItems ?? [];
+  const maybeItems = clearPlaceRefsForChange(ideas, ENTITY_TYPE.MAYBE_ITEM, change);
+  // **The override is DELETED with its place, not nulled** — its two place ids are its identity
+  // (ADR-0206 §AM1), so there is no row left once one end is gone, and Postgres cascades it away
+  // writing no `Change` (the backend spec asserts that cascade). Hence the fifth member of this
+  // family lives here rather than in `clearPlaceRefs`, whose whole shape is clearing a FIELD.
+  const declared = meta.travelModeOverrides ?? [];
+  const travelModeOverrides = dropOverridesForPlace(declared, deletedPlaceId(change));
+  if (maybeItems !== ideas || travelModeOverrides !== declared)
+    await db.snapshotMeta.put({
+      ...meta,
+      maybeItems,
+      travelModeOverrides: [...travelModeOverrides],
+    });
 }
 
 /** Keeps the Dexie cache coherent with every data-plane entity type in the
@@ -704,6 +745,30 @@ async function outboxOpToCacheChanges(tripId: string, op: OutboxOp): Promise<Ent
       return one({
         entityType: ENTITY_TYPE.DOCUMENT_ATTACHMENT,
         entityId: op.attachmentId,
+        action: CHANGE_ACTION.DELETE,
+      });
+    case OUTBOX_VERB.SET_TRAVEL_MODE: {
+      if (!op.input.id) return [];
+      // **The pair is canonicalised here too, not only server-side.** The cached row has to be
+      // the one `legTravelMode` will look up, and that read keys on the sorted pair — a row
+      // stored in the caller's order would simply not be found while offline, which is the
+      // failure this whole mirror exists to prevent (root rule 5).
+      const pair = travelOverridePair(op.input.fromPlaceId, op.input.toPlaceId);
+      // `updatedAt` is the server's, so the queued row states it — otherwise the row read back
+      // from a cold cache fails `travelModeOverrideSchema`, and `legTravelMode`'s newest-match
+      // rule would have nothing to compare. Same clock as the optimistic row, so the two agree.
+      const at = new Date(getNow()).toISOString();
+      return one({
+        entityType: ENTITY_TYPE.TRAVEL_MODE_OVERRIDE,
+        entityId: op.input.id,
+        action: CHANGE_ACTION.CREATE,
+        after: { ...op.input, ...pair, createdAt: at, updatedAt: at },
+      });
+    }
+    case OUTBOX_VERB.CLEAR_TRAVEL_MODE:
+      return one({
+        entityType: ENTITY_TYPE.TRAVEL_MODE_OVERRIDE,
+        entityId: op.overrideId,
         action: CHANGE_ACTION.DELETE,
       });
     case OUTBOX_VERB.UPLOAD_DOCUMENT:

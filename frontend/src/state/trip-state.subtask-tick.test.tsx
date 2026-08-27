@@ -90,6 +90,7 @@ const snapshotOf = (tasks: Task[]): TripSnapshot => ({
   places: [],
   notes: [],
   tasks,
+  travelModeOverrides: [],
   documentAttachments: [],
   enrichments: {},
   fxRates: null,

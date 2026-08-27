@@ -29,6 +29,7 @@ import {
   EVENT_KIND,
   EVENT_STATUS,
   isExactEdge,
+  isRoutableMode,
   freeAfterTravel,
   isAmbient,
   TRAVEL_FIT,
@@ -36,7 +37,7 @@ import {
   type EventCategory,
   type MaybeItem,
   type Place,
-  type TravelMode,
+  type LegTravelMode,
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
@@ -277,6 +278,7 @@ export function PlanDay() {
     places,
     notes,
     documentAttachments,
+    travelModeOverrides,
     hostContexts,
     activeDate,
     setActiveDate,
@@ -459,7 +461,13 @@ export function PlanDay() {
     }
     return legs;
   }, [planGroups, bookends.woke, bookends.sleeps, overnight]);
-  const planTravel = useDayTravelReads({ tripId: trip.id, legs: planLegs, bookings, places });
+  const planTravel = useDayTravelReads({
+    tripId: trip.id,
+    legs: planLegs,
+    bookings,
+    places,
+    overrides: travelModeOverrides,
+  });
   /** The hole's free minutes once its journey is counted, or the hole itself where there is no
    *  estimate (§D4 — never a pessimistic guess, and the chip reads exactly as it read before).
    *
@@ -536,7 +544,12 @@ export function PlanDay() {
       flexibleArrival: !isExactEdge(to, 'start'),
       windowClosesMs: windowClosesMs(to),
       travelSeconds: estimate?.durationSeconds ?? null,
-      distanceMeters: estimate?.distanceMeters ?? null,
+      // Both of these are Trip mode's, for the reason the comment above names twice: a declared leg
+      // keeps a distance it has no estimate for (ADR-0206 §AA4), and it is a journey with no
+      // duration rather than no journey — so `distanceFor` owns the first and `declared` the
+      // second, in both surfaces off one derivation.
+      distanceMeters: planTravel.distanceFor(from, to),
+      declared: !isRoutableMode(planTravel.modeFor(from, to)),
       nowMs: now.getTime(),
     });
   };
@@ -1185,7 +1198,7 @@ export function PlanDay() {
     travelFreeMinutes,
     slotNote,
     planJourney,
-    travelMode: planTravel.mode,
+    modeFor: planTravel.modeFor,
     rowDragProps,
     rowRefuseProps,
     onEdit: (e) => {
@@ -1352,7 +1365,13 @@ export function PlanDay() {
                   const cameIn = overnight[overnight.length - 1]!;
                   if (cameIn.event.id === bookends.woke!.id) return null;
                   const j = planJourney(cameIn.event, bookends.woke!, cameIn.atMs);
-                  return j ? <JourneyRow journey={j} travelMode={planTravel.mode} tz={tz} /> : null;
+                  return j ? (
+                    <JourneyRow
+                      journey={j}
+                      travelMode={planTravel.modeFor(cameIn.event, bookends.woke!)}
+                      tz={tz}
+                    />
+                  ) : null;
                 })()}
               {/* **WHERE THE DAY STARTS** (ADR-0209 §1), with the leg out of it below — the same
                 two rows Trip mode draws, off the same `dayBookendStays`. **Without the settle
@@ -1368,9 +1387,14 @@ export function PlanDay() {
                   />
                   {planGroups.length > 0 &&
                     (() => {
-                      const j = planJourney(bookends.woke!, groupStartEvent(planGroups[0]));
+                      const to = groupStartEvent(planGroups[0]);
+                      const j = planJourney(bookends.woke!, to);
                       return j ? (
-                        <JourneyRow journey={j} travelMode={planTravel.mode} tz={tz} />
+                        <JourneyRow
+                          journey={j}
+                          travelMode={planTravel.modeFor(bookends.woke!, to)}
+                          tz={tz}
+                        />
                       ) : null;
                     })()}
                 </>
@@ -1399,12 +1423,14 @@ export function PlanDay() {
                 <>
                   {planGroups.length > 0 &&
                     (() => {
-                      const j = planJourney(
-                        groupEndEvent(planGroups[planGroups.length - 1]),
-                        bookends.sleeps!,
-                      );
+                      const from = groupEndEvent(planGroups[planGroups.length - 1]);
+                      const j = planJourney(from, bookends.sleeps!);
                       return j ? (
-                        <JourneyRow journey={j} travelMode={planTravel.mode} tz={tz} />
+                        <JourneyRow
+                          journey={j}
+                          travelMode={planTravel.modeFor(from, bookends.sleeps!)}
+                          tz={tz}
+                        />
                       ) : null;
                     })()}
                   <StayRow
@@ -1890,7 +1916,10 @@ interface BuilderCtx {
   /** The journey across a hole, for the block Plan draws above its chip (§2's own drawing). */
   planJourney: (from: TripEvent, to: TripEvent) => DayJourney | null;
   /** The trip's derived mode, so the block names the same three words everywhere (§Z2). */
-  travelMode: TravelMode;
+  /** **The LEG's mode** (ADR-0206 §AM) — the override where one was set, the trip's derivation
+   *  otherwise. A function rather than a value, because Plan draws several legs per day and they
+   *  need not agree. */
+  modeFor: (from: TripEvent, to: TripEvent) => LegTravelMode;
   rowDragProps: (id: string) => HoldToDragProps;
   /** Shared by every hard row — the hold is answered rather than armed (ADR-0199 §1). */
   rowRefuseProps: HoldToDragProps;
@@ -2093,7 +2122,11 @@ function BuilderGroups({
               (() => {
                 const journey = ctx.planJourney(prevEnd, groupStartEvent(g));
                 return journey ? (
-                  <JourneyRow journey={journey} travelMode={ctx.travelMode} tz={ctx.tz} />
+                  <JourneyRow
+                    journey={journey}
+                    travelMode={ctx.modeFor(prevEnd, groupStartEvent(g))}
+                    tz={ctx.tz}
+                  />
                 ) : null;
               })()}
             {free && prevEnd && (

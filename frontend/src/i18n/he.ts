@@ -30,7 +30,7 @@ import {
   NOTE_HOST_FIELD,
   type BookingType,
   type DocumentType,
-  type TravelMode,
+  type LegTravelMode,
 } from '@waypoint/shared';
 import { countdownText } from '../lib/time';
 import { type OutboxVerb } from '../lib/outbox';
@@ -664,6 +664,8 @@ export const t = {
       deleteTask: 'מחיקת משימה',
       createDocumentAttachment: 'צירוף מסמך',
       deleteDocumentAttachment: 'ביטול צירוף מסמך',
+      setTravelMode: 'שינוי אופן הנסיעה',
+      clearTravelMode: 'ביטול אופן הנסיעה',
       // `satisfies Record<OutboxVerb, string>`, not `as Record<string, string>`: this map is
       // read as `t.sync.verb[f.verb]`, so a verb missing from it renders a queued failure with
       // NO name — and the loose cast made that silent. Typed, a new outbox verb is a compile
@@ -1949,7 +1951,7 @@ export const t = {
   // also what makes the number legible: 40 minutes is a different fact walking and driving.
   // Drawn that way in the M3 mockup's §1d.
   //
-  // A `Record<TravelMode, string>`, so the compiler flags a missing case when the enum grows
+  // A `Record<LegTravelMode, string>`, so the compiler flags a missing case when the enum grows
   // (`frontend/CLAUDE.md`'s per-enum-lookup rule). These are the WORDS, not the control: §AA3
   // gives the chips three real icons and M6a/M8 own those.
   // **THE ACTIVITY, NEVER THE VEHICLE** (owner, 2026-08-26: _"it says רכב/הליכה · maybe it should
@@ -1963,7 +1965,12 @@ export const t = {
     walking: 'הליכה',
     cycling: 'רכיבה',
     driving: 'נסיעה',
-  } satisfies Record<TravelMode, string>,
+    // **The fourth is a leg's mode and not a routable one** (ADR-0206 §AA4/§AM5). This is the ONE
+    // `Record<…>` of the three that widens: `TRAVEL_GATE` and the provider's `COSTING` keep three
+    // entries, because a transit mode reaching either of those is the bug. Here it just needs a
+    // word.
+    transit: 'תחב״צ',
+  } satisfies Record<LegTravelMode, string>,
   // ── WHAT A JOURNEY SAYS, ON EITHER ELEVATION (ADR-0206 §V1.2 / §V1.3 / §V1.4) ─────────
   // Top level beside `travelMode`, and for the identical reason: the horizon's line, the day's
   // journey block and the board all name one journey, so a second copy of `זמן היציאה עבר` is
@@ -1994,6 +2001,13 @@ export const t = {
     // the app has actually checked, and this is that check said out loud. Drawn in the v2
     // mockup's §3d. It is still not `אתם באיחור` — it reports where you are, not what you are.
     stillHere: 'עדיין כאן',
+    // **WHAT A DECLARED תחב״צ LEG SAYS** (ADR-0206 §AA4/§AL3). It names exactly what is absent and
+    // promises nothing — no `עדיין`, no `טרם` — because the one thing §D9's original caution still
+    // forbids is implying a transit ETA is coming. **It carries no `warn` glyph**, deliberately:
+    // §AK claims that mark for "this journey does not fit", and two meanings on one block in one
+    // release is the drift ADR-0138 exists to end. The absent duration is the statement; this only
+    // labels the absence so it does not read as data that failed to load.
+    noEstimate: 'בלי הערכת זמן',
     // What is LEFT of the journey, once the fix says you are on it (ADR-0207 §6). An
     // approximation of an approximation, and `~` is what says so; the alternative was the
     // untouched total, which read as "44 minutes still to walk" two minutes from the door.

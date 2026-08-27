@@ -37,6 +37,7 @@ import {
   toMaybeItemDto,
   toMembershipDto,
   toDocumentAttachmentDto,
+  toTravelModeOverrideDto,
   toNoteDto,
   toTaskDto,
   toPlaceDto,
@@ -454,6 +455,7 @@ export class TripsService {
       notes,
       tasks,
       documentAttachments,
+      travelModeOverrides,
     ] = await this.prisma.$transaction(
       [
         this.prisma.change.findFirst({
@@ -497,6 +499,16 @@ export class TripsService {
           where: { tripId },
           orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         }),
+        // **Inside the transaction, unlike enrichment below.** An override is a trip entity with
+        // its own `Change` (ADR-0206 §AM), so it belongs to the `latestSeq` coherence guarantee —
+        // a declared leg that landed between the cursor read and this one would otherwise be a
+        // change the client re-applies harmlessly, which is the tolerated direction, but there is
+        // no reason to leave the door open. Order is stable rather than meaningful: nothing reads
+        // these as a list, only as a lookup by pair.
+        this.prisma.travelModeOverride.findMany({
+          where: { tripId },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        }),
       ],
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
     );
@@ -533,6 +545,7 @@ export class TripsService {
       notes: notes.map(toNoteDto),
       tasks: tasks.map(toTaskDto),
       documentAttachments: documentAttachments.map(toDocumentAttachmentDto),
+      travelModeOverrides: travelModeOverrides.map(toTravelModeOverrideDto),
       enrichments,
       fxRates,
       latestSeq: latestChange ? latestChange.seq.toString() : '0',

@@ -24,8 +24,15 @@
 // `.nowline`, and the app gets one live mark.
 //
 // `ui/domain/`: presentational, every value via props.
-import { TRAVEL_FIT, type TravelMode, type TravelWindow } from '@waypoint/shared';
+import {
+  isRoutableMode,
+  LEG_TRAVEL_MODES,
+  TRAVEL_FIT,
+  type LegTravelMode,
+  type TravelWindow,
+} from '@waypoint/shared';
 import { Icon, type IconName } from '../Icon';
+import { Collapsible } from '../primitives/Collapsible';
 import { DAY_JOURNEY_ARM, type DayJourney } from '../../lib/day-joins';
 import { approxTravelTime, freeTimePhrase, hoursPhrase, shortfallPhrase } from '../../lib/duration';
 import { formatDistance } from '../../lib/distance';
@@ -121,9 +128,13 @@ export function JourneyBlock({
    *  rather than `~40 דקות הליכה`, which disagrees), and what makes the number mean anything. */
   mode,
   /** The glyph for that mode (ADR-0206 §AA3). Passed rather than derived, because this component
-   *  takes every value via props and a `TravelMode`→`IconName` map at a presentational host is
+   *  takes every value via props and a `LegTravelMode`→`IconName` map at a presentational host is
    *  the branching `frontend/CLAUDE.md` asks to keep beside the type it feeds. */
   icon,
+  /** **The composited warning mark** (ADR-0206 §AK2/§AL4) — `warn` at the tile's corner, over
+   *  whatever mode glyph is there. Not a glyph per mode per state: that is 8 assets and doubles
+   *  with every mode, where this is one mark that already exists. */
+  flag,
   /** `~40 דק׳`. Absent on a leg with no duration, which nothing produces until M8's declared
    *  תחב״צ — the shape is here so that leg has somewhere to land. */
   duration,
@@ -145,20 +156,46 @@ export function JourneyBlock({
    *  (answer the mark), `ביטול סימון` on `on-way` (take it back — ADR-0207 §7, because a toast is
    *  transient and a mark is not). */
   action,
+  /** **The mode control, behind a disclosure** (ADR-0206 §AL10). Absent where the surface offers
+   *  no switch — a read-only archive (ADR-0029), and Plan's own posture. Given, the face becomes a
+   *  `<button>` and the caret appears: `button.day-trv-face` has been in `day-join.css` all along
+   *  and was dead code, and the docblock above explains why the acts row is a SIBLING of the face
+   *  rather than a child — this is the shape that comment was holding open. */
+  modes,
 }: {
   mode: string;
   icon: IconName;
+  flag?: boolean;
   duration?: string;
   distance?: string;
   leave?: string;
   tone: 'time' | 'miss' | 'on-way';
   located?: string;
   action?: { label: string; onPress: () => void };
+  modes?: {
+    current: LegTravelMode;
+    onPick: (mode: LegTravelMode) => void;
+    /** Open state is the HOST's, not this component's: the day owns which hole is expanded, so
+     *  two holes cannot both be open and a re-render cannot forget. */
+    open: boolean;
+    onToggle: () => void;
+  };
 }) {
   const face = (
     <>
       <span className="day-trv-ic">
         <Icon name={icon} />
+        {/* **`PlaceBadge`'s corner-mark geometry, re-pointed** (ADR-0167 §1, via §AL4) — and NOT
+            the avatar badge §AK2 named, which does not exist in this codebase. It takes no hue of
+            its own: the tile is already tinted by the tone and the glyph already carries that
+            tone's ink, so the mark adds a SHAPE rather than a second full-strength negative cue,
+            which is §AK3.1's answer. Measured: the block is 58px with it and 58px without, and
+            `.day-trv`'s `overflow: hidden` does not clip the overhang. */}
+        {flag && (
+          <span className="day-trv-flag">
+            <Icon name="warn" />
+          </span>
+        )}
       </span>
       <span className="day-trv-main">
         <span className="day-trv-hd">
@@ -180,8 +217,50 @@ export function JourneyBlock({
     </>
   );
   return (
-    <div className={'day-trv ' + tone}>
-      <div className="day-trv-face">{face}</div>
+    <div className={'day-trv ' + tone + (modes?.open ? ' open' : '')}>
+      {modes ? (
+        <button
+          type="button"
+          className="day-trv-face"
+          aria-expanded={modes.open}
+          onClick={modes.onToggle}
+        >
+          {face}
+          <span className="day-trv-chev">
+            <Icon name="caret" />
+          </span>
+        </button>
+      ) : (
+        <div className="day-trv-face">{face}</div>
+      )}
+      {modes && (
+        // `Collapsible` rather than a hand-rolled height animation (rule 8): max-height + opacity,
+        // children always rendered, reduced motion handled globally by `App.css`'s wildcard. NOT a
+        // `Modal` — this is a pane OF the row, not a layer over it, so it registers no back layer
+        // (`frontend/CLAUDE.md`'s `SnapSheet` distinction: back navigates, it does not close a
+        // disclosure).
+        <Collapsible expanded={modes.open}>
+          <div className="day-trv-modes">
+            {LEG_TRAVEL_MODES.map((m) => (
+              <button
+                key={m}
+                type="button"
+                // `.touch` is the shipped answer to "this chip is its surface's primary control,
+                // so it owes 44px" (ADR-0017) — reached for, not re-derived.
+                className={'wp-chip accent touch' + (m === modes.current ? ' on' : '')}
+                aria-pressed={m === modes.current}
+                // **The word moves to the accessible name; it does not disappear** (§AL7). A
+                // labelled chip paints 29–31px against ADR-0017's 44px floor, and glyph-only is
+                // the only shape that both fits the block's 308px inner box and reaches it.
+                aria-label={t.travelMode[m]}
+                onClick={() => modes.onPick(m)}
+              >
+                <Icon name={m} />
+              </button>
+            ))}
+          </div>
+        </Collapsible>
+      )}
       {(action || located) && (
         // **`עדיין כאן` sits on the ACTS row, not on the meta line**, and the reason is a
         // measurement rather than a preference: beside `זמן היציאה עבר ב־17:15` it is ⁦187.09px⁩ of
@@ -212,7 +291,10 @@ export function JourneyBlock({
  *  assemble it three different ways. */
 export interface JourneyRowProps {
   journey: DayJourney;
-  travelMode: TravelMode;
+  /** **The LEG's mode** (ADR-0206 §AM) — `transit` included, which is why this is a
+   *  `LegTravelMode` and not a `TravelMode`: a declared leg is a thing this row must be able to
+   *  say, and a thing no provider may be asked. */
+  travelMode: LegTravelMode;
   /** The DAY's own zone, which is what the leave-by is read in: it is a moment on the wrist of
    *  whoever is leaving, and this list is that day's. */
   tz: string;
@@ -223,6 +305,13 @@ export interface JourneyRowProps {
   /** `עדיין כאן` — what a fix at the leg's origin lets the app say that the clock could not
    *  (ADR-0207 §2). Trip mode's, for the same reason as `action`. */
   located?: string;
+  /** **The mode control** (ADR-0206 §AL10). Absent where the surface offers no switch. */
+  modes?: {
+    current: LegTravelMode;
+    onPick: (mode: LegTravelMode) => void;
+    open: boolean;
+    onToggle: () => void;
+  };
 }
 
 /**
@@ -232,21 +321,37 @@ export interface JourneyRowProps {
  * §2 draws `trvBlock() + planSlot(…)` — the block AND the chip. Three assemblies of these props is
  * how the same journey would start reading three ways.
  */
-export function JourneyRow({ journey, travelMode, tz, action, located }: JourneyRowProps) {
+export function JourneyRow({ journey, travelMode, tz, action, located, modes }: JourneyRowProps) {
   const overrunning = journey.arm === DAY_JOURNEY_ARM.OVERRUNS;
+  /** **A declared תחב״צ leg has no duration by nature** (ADR-0206 §AA4). Not "missing" and not
+   *  "loading": the whole point of the declaration is silence where the app would otherwise print
+   *  a walking number for a journey nobody will walk.
+   *
+   *  Read off BOTH the mode and the absent number, because they are two answers to the same
+   *  question and the compiler only knows about the second: `DECLARED` is the one arm carrying no
+   *  `travelSeconds`, so a caller that has the arm and a caller that has the mode agree. */
+  const seconds = journey.travelSeconds;
+  const declared = !isRoutableMode(travelMode) || seconds === null;
   return (
     <JourneyBlock
       mode={t.travelMode[travelMode]}
-      // **The warn glyph REPLACES the mode mark on an infeasible leg**, as the coverage mockup's
-      // `tight` state draws it: the badge column is where the day says what kind of thing this
-      // row is, and what this row is is a problem. The mode is still named in the head beside the
-      // duration, so nothing is lost.
-      icon={overrunning ? 'warn' : travelMode}
-      duration={approxTravelTime(journey.travelSeconds) ?? undefined}
+      // **The mode mark KEEPS its slot, and the warning composites over it** (ADR-0206 §AK/§AL4).
+      // M6a swapped the glyph out — `overrunning ? 'warn' : travelMode` — and §AK1 is why that was
+      // wrong rather than a taste: the block already takes `tone: 'miss'`, so the swap repeated the
+      // state and spent the one slot carrying the mode. A day of five stops then read as three
+      // journeys and two errors instead of five journeys, two of them tight.
+      icon={travelMode}
+      // **The mark says the JOURNEY does not work; it does not say the clock moved** (§AL5) — which
+      // is one rule where §AK3.3/§AK3.4 asked for a table. `OVERRUNS` and an arrival after the
+      // window shuts are facts about the leg; a passed leave-by is a fact about the hour, and the
+      // block already says it in words. `ON_WAY` never takes it: somebody is moving, and a warning
+      // would contradict what the state asserts.
+      flag={overrunning || journey.arrivesAfterClose}
+      duration={seconds === null || declared ? undefined : (approxTravelTime(seconds) ?? undefined)}
       distance={
         journey.distanceMeters === null ? undefined : formatDistance(journey.distanceMeters)
       }
-      leave={journeyMetaLine(journey, tz)}
+      leave={declared ? t.travel.noEstimate : journeyMetaLine(journey, tz)}
       tone={
         // An overrun is a negative status about the plan, so it takes §D7's own paint — the same
         // `--miss` a passed leave-by does, because they are the same kind of fact about a journey
@@ -259,6 +364,7 @@ export function JourneyRow({ journey, travelMode, tz, action, located }: Journey
       }
       located={located}
       action={action}
+      modes={modes}
     />
   );
 }

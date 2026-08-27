@@ -19,16 +19,19 @@
 // The GEOMETRY is not asserted here and cannot be (jsdom loads no CSS, resolves no `var()` and
 // reports every rect as zero) — the 360px measurements are in the PR.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import {
   EVENT_KIND,
   EVENT_SOURCE,
   EVENT_STATUS,
   TRAVEL_BUFFER_SECONDS,
+  TRANSIT_LEG_MODE,
   TRAVEL_MODE,
   type Booking,
+  type LegTravelMode,
   type Place,
   type TravelEstimate,
+  type TravelModeOverride,
   type TripEvent,
 } from '@waypoint/shared';
 import { setSimulatedNow } from '../lib/useClock';
@@ -36,6 +39,7 @@ import { freeTimePhrase } from '../lib/duration';
 import { markOnWay, resetOnWayForTests } from '../lib/on-way';
 import { ltrIsolate } from '../lib/bidi';
 import { formatTime } from '../lib/time';
+import { formatDistance, haversineMeters } from '../lib/distance';
 import { t } from '../i18n/he';
 import { wrapNav } from '../test/nav-harness';
 import { MapScopeProvider } from '../state/map-scope-state';
@@ -100,6 +104,13 @@ const places: Place[] = [
   },
 ];
 
+/** The two coordinates the declared leg runs between, read OFF the fixtures rather than copied
+ *  beside them — the crow-flies assertion below is derived, so moving a fixture moves both. */
+const coordOf = (id: string) => {
+  const place = places.find((p) => p.id === id)!;
+  return { lat: place.lat!, lng: place.lng! };
+};
+
 /** **The mockup's own scenario, and the ADR's own example** — a ⁦2:40⁩ hole with ⁦40⁩ minutes of
  *  walking in it, leaving ⁦2:00⁩ free (§V1.1's line reads `פנוי · 2:00 שע׳ · אחרי 40 דק׳ דרך`).
  *  The numbers are the drawing's so that this file and `a-travel-time-between-two-points-v2.html`
@@ -131,6 +142,12 @@ const theatre = ev('theatre', {
   endsAt: `${DAY}T18:30:00Z`,
 });
 
+let tripOverrides: TravelModeOverride[] = [];
+const travelModeVerbs = {
+  setLegMode: vi.fn(async () => {}),
+  clearLegMode: vi.fn(async () => {}),
+};
+
 let tripEvents: TripEvent[] = [];
 const tripBookings: Booking[] = [];
 let tripPlaces: Place[] = places;
@@ -140,6 +157,11 @@ vi.mock('../state/trip-state', () => ({
     Date.parse(a.startsAt ?? a.date) - Date.parse(b.startsAt ?? b.date),
   useTrip: () => ({
     documentAttachments: [],
+    // The declared legs, mutable so a spec can declare one and re-render (ADR-0206 §AM). Stated
+    // rather than omitted: `useDayTravelReads` takes it as a REQUIRED list precisely so a surface
+    // cannot forget to wire it and silently ignore every declaration on the trip.
+    travelModeOverrides: tripOverrides,
+    travelModeVerbs,
     hostContexts: buildHostContextIndex(tripEvents, tripBookings),
     trip: { id: 't1', timezone: ZONE, startDate: DAY, endDate: '2026-08-05', updatedBy: 'u1' },
     bookings: tripBookings,
@@ -227,6 +249,118 @@ const show = () =>
 /** The corrected free time, derived here the way the code derives it rather than written out —
  *  §D5's buffer is a constant and not a number this file also believes. */
 const freeAfterWalk = GAP_MINUTES - WALK_MINUTES;
+
+// One reset for the whole file rather than one per describe: a declaration leaking from a spec
+// into the next would change what every following read says, and the leak would look like a bug in
+// the derivation rather than in the fixture.
+beforeEach(() => {
+  tripOverrides = [];
+  travelModeVerbs.setLegMode.mockClear();
+  travelModeVerbs.clearLegMode.mockClear();
+});
+
+// ── THE MODE, PER LEG, ON THE REAL SCREEN (ADR-0206 §AM / §M5) ────────────────────────────
+//
+// The unit reads are asserted in `lib/day-travel.mode.test.ts` and the block's own shape in
+// `ui/domain/DayJoinRow.test.tsx`. What is only observable HERE is that the screen connects them:
+// that the disclosure is wired to the leg's own pair, that a declaration reaches every read on the
+// surface at once, and that picking your way back to the derived mode CLEARS the row rather than
+// storing one that says what the derivation already says.
+describe('DayView — the leg mode is declarable (ADR-0206 §AM)', () => {
+  const PAIR = { fromPlaceId: 'p-lunch', toPlaceId: 'p-theatre' };
+  const declared = (mode: LegTravelMode): TravelModeOverride => ({
+    id: 'tmo-1',
+    tripId: 't1',
+    ...PAIR,
+    mode,
+    createdBy: 'u1',
+    createdAt: `${DAY}T00:00:00Z`,
+    updatedAt: `${DAY}T00:00:00Z`,
+  });
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    resetOnWayForTests();
+    tripEvents = [lunch, theatre];
+    tripPlaces = places;
+    travelSeconds = WALK_MINUTES * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    resetOnWayForTests();
+    setSimulatedNow(null);
+  });
+
+  /** The default, so the assertions below are differences and not coincidences. */
+  it('reads the trip derivation with nothing declared', () => {
+    show();
+    expect(screen.getByText(t.travelMode[TRAVEL_MODE.WALKING])).toBeTruthy();
+    expect(document.querySelector('.day-trv')!.textContent).toContain(String(WALK_MINUTES));
+  });
+
+  // **§AA4's whole point, end to end.** Senso-ji → Tokyo Station is a 73-minute walk and a
+  // 25-minute train; declaring the leg תחב״צ silences the number rather than replacing it with
+  // one we cannot compute — the block keeps the distance and says `ללא הערכה`.
+  it('declared תחב״צ, the surface says the mode and no duration', () => {
+    tripOverrides = [declared(TRANSIT_LEG_MODE)];
+    show();
+    const block = document.querySelector('.day-trv')!;
+    expect(screen.getByText(t.travelMode[TRANSIT_LEG_MODE])).toBeTruthy();
+    expect(block.textContent).toContain(t.travel.noEstimate);
+    // The number that WAS there under the derived mode is gone, and no leave-by took its place:
+    // there is no departure to compute from a duration nobody has.
+    expect(block.textContent).not.toContain(String(WALK_MINUTES));
+    expect(block.textContent).not.toContain('יציאה');
+    // **AND THE DISTANCE STAYS** — §AA4 in as many words: `2.7 ק״מ` is still true and still
+    // useful, and what disappears is the walking number that was wrong. On a declared leg it is
+    // the crow-flies floor, which is the same claim the canvas makes by drawing a straight line.
+    expect(block.textContent).toContain(
+      formatDistance(Math.round(haversineMeters(coordOf('p-lunch'), coordOf('p-theatre')))),
+    );
+  });
+
+  // **The price of the declaration, stated in the mockup and asserted here**: with no duration to
+  // subtract, the strip below states the RAW hole again. §V1.1 corrected it by the journey; a leg
+  // nobody estimated leaves ADR-0159's line exactly as it read before any of this existed.
+  it('lets the strip state the whole hole again, rather than guessing', () => {
+    tripOverrides = [declared(TRANSIT_LEG_MODE)];
+    show();
+    expect(screen.getByText(freeTimePhrase(GAP_MINUTES)!)).toBeTruthy();
+    expect(screen.queryByText(freeTimePhrase(freeAfterWalk)!)).toBeNull();
+  });
+
+  // A declaration is not only about the words — the glyph moves with it, which is what makes the
+  // active mode obvious at a glance (§V1's "the control has to make the active mode obvious").
+  it('declared driving, the surface reads the drive', () => {
+    tripOverrides = [declared(TRAVEL_MODE.DRIVING)];
+    show();
+    expect(screen.getByText(t.travelMode[TRAVEL_MODE.DRIVING])).toBeTruthy();
+    expect(screen.queryByText(t.travelMode[TRAVEL_MODE.WALKING])).toBeNull();
+  });
+
+  it('opens the mode row from the block and writes on the leg’s own pair', () => {
+    show();
+    fireEvent.click(document.querySelector('button.day-trv-face')!);
+    fireEvent.click(screen.getByRole('button', { name: t.travelMode[TRANSIT_LEG_MODE] }));
+    expect(travelModeVerbs.setLegMode).toHaveBeenCalledWith(
+      PAIR.fromPlaceId,
+      PAIR.toPlaceId,
+      TRANSIT_LEG_MODE,
+    );
+  });
+
+  // **Picking the derived mode CLEARS**, rather than storing a row that agrees with the
+  // derivation: §Z2 keeps the persisted set to genuine overrides, so a trip whose bookings later
+  // make it a driving trip still moves.
+  it('clears rather than storing the derived mode back', () => {
+    tripOverrides = [declared(TRANSIT_LEG_MODE)];
+    show();
+    fireEvent.click(document.querySelector('button.day-trv-face')!);
+    fireEvent.click(screen.getByRole('button', { name: t.travelMode[TRAVEL_MODE.WALKING] }));
+    expect(travelModeVerbs.clearLegMode).toHaveBeenCalledWith(PAIR.fromPlaceId, PAIR.toPlaceId);
+    expect(travelModeVerbs.setLegMode).not.toHaveBeenCalled();
+  });
+});
 
 describe('DayView — a hole states what is free AFTER the journey (ADR-0206 §V1.1)', () => {
   beforeEach(() => {

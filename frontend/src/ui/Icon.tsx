@@ -66,6 +66,10 @@ export type IconName =
   | 'walking'
   | 'cycling'
   | 'driving'
+  // The fourth mode's own glyph (ADR-0206 §AL2). `ticket` above is NOT it — `constants.ts`'s
+  // `booking: 'ticket'` already spends that shape on "a booking" in four screens, and two
+  // meanings behind one glyph is the drift this sweep exists to end (see `sync` above).
+  | 'transit'
   | 'wifi'
   | 'documents'
   | 'share'
@@ -245,6 +249,17 @@ const PATHS: Record<IconName, string> = {
     'M4.4 16.2h15.2 M6 16.2l1.5-4.8a1.7 1.7 0 0 1 1.6-1.2h5.8a1.7 1.7 0 0 1 1.6 1.2l1.5 4.8 M5.4 16.2v2.6h2.4v-2.6 M16.2 16.2v2.6h2.4v-2.6 M8 13.4h8',
   // Signal arcs — `offline` above is this shape with a slash through it, which is
   // the point: the pair reads as one state and its negation.
+  // **A vehicle FROM THE FRONT** (ADR-0206 §AL2): body, windscreen band, two headlights, two
+  // mirrors. Front-facing is the decision, not a style: every other member of this set is a side
+  // view, so a side-view bus differs from `driving` only by a cabin arch against a wheel box —
+  // ~3px at the 21px the day's badge column paints. A front is the one silhouette here that cannot
+  // be confused with another member of the set. The mirrors are what make it a bus rather than a
+  // train, and תחב״צ is buses AND trains; a train front declares rail, the narrower claim.
+  //
+  // **And it needs no RTL variant**, because a front has no facing — which is the same choice
+  // paying twice (ADR-0138 §10.2, and it is why `MIRRORED` below has two members and not three).
+  transit:
+    'M8 3.4h8a2 2 0 0 1 2 2v12.2a1.8 1.8 0 0 1-1.8 1.8H7.8A1.8 1.8 0 0 1 6 17.6V5.4a2 2 0 0 1 2-2Z M6 11h12 M9 14.6h.02 M15 14.6h.02 M4.4 8.2v2.8 M19.6 8.2v2.8',
   wifi: 'M12 19.6h.02 M8.6 16.2a4.8 4.8 0 0 1 6.8 0 M5.2 12.8a9.6 9.6 0 0 1 13.6 0 M2 9.4a14.4 14.4 0 0 1 20 0',
   // An ID page — portrait block plus lines. Replaces 🛂, which was passport CONTROL
   // signage rather than the documents themselves. The per-type badges inside the
@@ -358,6 +373,27 @@ const PATHS: Record<IconName, string> = {
 const FILLED: ReadonlySet<IconName> = new Set(['caret', 'flight', 'star']);
 const ROTATE: Record<Dir, number> = { down: 0, left: 90, up: 180, right: 270 };
 
+/**
+ * **The glyphs whose FACING follows the reading direction** (ADR-0138 §10, drawn in
+ * `mockups/the-mode-set-and-transit-declared-v1.html` §5). Owner: _"all glyphs that have a
+ * direction should have RTL variants — the person should be facing left, not right, if the app is
+ * in Hebrew. The bike as well."_
+ *
+ * Mirrored in CSS off `--dir`, `tokens.css`'s "one place a direction is named" — so the paths stay
+ * authored right-facing (the icon-set convention, and what already shipped) and nothing here
+ * hard-codes a sign. `NavArrow` is the same move one layer down.
+ *
+ * **An ALLOWLIST, never "mirror what looks asymmetric", and `clock` is the witness**: its hand
+ * reads ~1:10 and mirrored it reads a DIFFERENT TIME, in an app whose whole subject is time. A
+ * mirrored `check` is not a ✓ either. Measured over all 58 entries, 30 are asymmetric and only 9
+ * have a facing (§10.2) — the gap is why this is a list.
+ *
+ * **A member may not also take `dir`** (§10.3): the rotation below is an INLINE transform and
+ * would win over the stylesheet, so a glyph cannot be both rotated and mirrored. The spec asserts
+ * the two sets are disjoint rather than leaving it to notice.
+ */
+export const MIRRORED: ReadonlySet<IconName> = new Set(['walking', 'cycling']);
+
 export function Icon({
   name,
   dir,
@@ -379,6 +415,7 @@ export function Icon({
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
+      {...(MIRRORED.has(name) ? { 'data-mirror': '' } : {})}
     >
       <path d={PATHS[name]} />
     </svg>

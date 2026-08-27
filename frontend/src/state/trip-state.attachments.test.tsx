@@ -94,6 +94,7 @@ const SNAPSHOT: TripSnapshot = {
   places: [],
   notes: [],
   tasks: [],
+  travelModeOverrides: [],
   documentAttachments: [
     link('a1', { bookingId: 'b1' }),
     link('a2', { eventId: 'e1' }),

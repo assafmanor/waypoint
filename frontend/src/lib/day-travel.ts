@@ -17,11 +17,16 @@
 import { useMemo } from 'react';
 import {
   derivedTravelMode,
+  haversineMeters,
+  isRoutableMode,
+  legTravelMode,
   type Booking,
   type LatLng,
+  type LegTravelMode,
   type Place,
   type TravelEstimate,
   type TravelMode,
+  type TravelModeOverride,
   type TripEvent,
 } from '@waypoint/shared';
 import { eventPlaceId } from './places';
@@ -52,11 +57,42 @@ export interface DayLeg {
 }
 
 export interface DayTravelReads {
-  /** The trip's mode, derived rather than stored (§Z2) — the same read the Map and the hero make,
-   *  off the same function, so one leg cannot be a drive on the canvas and a walk in the list. */
+  /** The trip's DERIVED mode (§Z2) — the same read the Map and the hero make, off the same
+   *  function, so one leg cannot be a drive on the canvas and a walk in the list.
+   *
+   *  **This is the trip's default, not any particular leg's**: ask `modeFor` for a leg. It stays
+   *  exposed because the mode CONTROL needs to say what the leg would fall back to. */
   mode: TravelMode;
-  /** The estimate for the journey between two rows, or `null` — which is ordinary (§D4). */
+  /**
+   * **What mode THIS leg is** (ADR-0206 §AM) — the override where somebody set one, the derived
+   * mode otherwise. A `LegTravelMode`, so it can answer `transit`, which no provider ever sees.
+   */
+  modeFor(from: TripEvent, to: TripEvent): LegTravelMode;
+  /**
+   * The estimate for the journey between two rows, or `null` — which is ordinary (§D4).
+   *
+   * **`null` for a DECLARED leg, always** (§AA4). A declared תחב״צ leg has no duration by nature:
+   * the point of the declaration is silence where the app would otherwise print a walking number
+   * for a journey nobody will walk. The block then reads the same way it does for any absent
+   * estimate — §D4's distance and no time — which is why suppressing it here is the whole change
+   * rather than a branch on every surface.
+   */
   estimateFor(from: TripEvent, to: TripEvent): TravelEstimate | null;
+  /**
+   * **How far the leg covers, in metres** — the ROUTED distance where there is an estimate, and on
+   * a DECLARED leg the crow-flies floor between its two ends (ADR-0206 §AA4: _"it suppresses the
+   * duration and keeps the distance … `2.7 ק״מ` is still true and still useful"_).
+   *
+   * One derivation rather than a rule each day surface applies, and the crow-flies fallback is the
+   * same claim the canvas makes for a declared leg: a straight segment, because we do not know the
+   * road it takes. `null` where the leg has neither.
+   */
+  distanceFor(from: TripEvent, to: TripEvent): number | null;
+  /** **The two place ids this leg runs between**, or `undefined` where either end is unresolved.
+   *  Exposed because the mode control writes an override keyed on exactly this pair, and it must
+   *  not re-derive it — `endpointPlaceId`'s transport inversion is the kind of rule that goes
+   *  wrong when it is answered twice. */
+  pairFor(from: TripEvent, to: TripEvent): { fromPlaceId: string; toPlaceId: string } | undefined;
 }
 
 const NOTHING: DayTravelReads['estimateFor'] = () => null;
@@ -107,13 +143,27 @@ export function useDayTravelReads(opts: {
   legs: readonly DayLeg[];
   bookings: readonly Booking[];
   places: readonly Place[];
+  /** **The declared legs** (ADR-0206 §AM). Empty on almost every trip, because the default is
+   *  derived — so a trip nobody has overridden takes exactly the path it took before this existed.
+   *
+   *  **Required, and deliberately so** — the same reasoning as `useLegShape`'s `mode`. An optional
+   *  list with an empty default reads as harmless and isn't: a surface that forgets to wire it
+   *  silently ignores every declaration on the trip, which is indistinguishable from nobody having
+   *  made one. A screen passing `[]` is stating that; a screen passing nothing must not compile. */
+  overrides: readonly TravelModeOverride[];
 }): DayTravelReads {
-  const { tripId, legs, bookings, places } = opts;
+  const { tripId, legs, bookings, places, overrides } = opts;
   const mode = useMemo(() => derivedTravelMode(bookings), [bookings]);
 
-  /** Every leg's two coordinates, keyed by the pair of row ids the caller will ask with. */
+  /** Every leg's two coordinates AND its two place ids, keyed by the pair of row ids the caller
+   *  will ask with. The place ids ride along because the override is keyed on them (§AM1) and this
+   *  is the one function that resolves them — re-deriving `endpointPlaceId` at a screen is how the
+   *  transport inversion starts being answered two ways. */
   const resolved = useMemo(() => {
-    const byRows = new Map<string, { from: LatLng; to: LatLng }>();
+    const byRows = new Map<
+      string,
+      { from: LatLng; to: LatLng; fromPlaceId: string; toPlaceId: string }
+    >();
     const stops: LatLng[] = [];
     for (const leg of legs) {
       // A leg off a span's START edge leaves from that span's ORIGIN — the counter you collected
@@ -126,8 +176,8 @@ export function useDayTravelReads(opts: {
       const toId = endpointPlaceId(leg.to, bookings, 'arriving');
       const from = coordOf(places, fromId);
       const to = coordOf(places, toId);
-      if (!from || !to || fromId === toId) continue;
-      byRows.set(legKey(leg.from, leg.to), { from, to });
+      if (!from || !to || fromId === toId || !fromId || !toId) continue;
+      byRows.set(legKey(leg.from, leg.to), { from, to, fromPlaceId: fromId, toPlaceId: toId });
       // Consecutive and deduped: hole `n`'s destination is hole `n + 1`'s origin whenever the
       // rows between them are placed, so the day's holes collapse into the ordered stop list the
       // matrix wants. Where placement breaks the chain the array simply has a seam, and the leg
@@ -142,18 +192,40 @@ export function useDayTravelReads(opts: {
 
   const travel = useDayTravel({ tripId, stops: resolved.stops });
 
-  return useMemo(
-    () => ({
+  return useMemo(() => {
+    const legFor = (from: TripEvent, to: TripEvent) => resolved.byRows.get(legKey(from, to));
+    const modeOf = (from: TripEvent, to: TripEvent): LegTravelMode => {
+      const leg = legFor(from, to);
+      return legTravelMode(overrides, leg?.fromPlaceId, leg?.toPlaceId, mode);
+    };
+    return {
       mode,
+      modeFor: modeOf,
+      distanceFor: (from: TripEvent, to: TripEvent) => {
+        const leg = legFor(from, to);
+        if (!leg) return null;
+        const legMode = modeOf(from, to);
+        if (!isRoutableMode(legMode)) return Math.round(haversineMeters(leg.from, leg.to));
+        return travel.estimateFor(leg.from, leg.to, legMode)?.distanceMeters ?? null;
+      },
+      pairFor: (from, to) => {
+        const leg = legFor(from, to);
+        return leg ? { fromPlaceId: leg.fromPlaceId, toPlaceId: leg.toPlaceId } : undefined;
+      },
       estimateFor: resolved.byRows.size
         ? (from: TripEvent, to: TripEvent) => {
-            const leg = resolved.byRows.get(legKey(from, to));
-            return leg ? travel.estimateFor(leg.from, leg.to, mode) : null;
+            const leg = legFor(from, to);
+            if (!leg) return null;
+            const legMode = modeOf(from, to);
+            // **A declared leg has no estimate to read**, and this is the one place that has to
+            // say so: `isRoutableMode` is the single narrowing at the provider boundary (§AM5),
+            // so `transit` cannot even be passed to a cache keyed by `TravelMode`.
+            if (!isRoutableMode(legMode)) return null;
+            return travel.estimateFor(leg.from, leg.to, legMode);
           }
         : NOTHING,
-    }),
-    [resolved, travel, mode],
-  );
+    };
+  }, [resolved, travel, mode, overrides]);
 }
 
 const legKey = (from: TripEvent, to: TripEvent) => `${from.id}>${to.id}`;
