@@ -277,7 +277,12 @@ describe('Home — the board counts to the leaving (ADR-0206 §Z1)', () => {
     show();
     expect(document.querySelectorAll('.wp-board-countdown')).toHaveLength(1);
     expect(value()).toBe('5');
-    expect(unit()).toBe(t.board.leaveIn);
+    // **The measure word STAYS, and `ליציאה` sits below it** (ADR-0206 §AR2). This asserted
+    // `unit() === t.board.leaveIn` and was green while the tile read `5 · ליציאה` — a number with
+    // no measure at all, reported as _"5 what?"_. Both lines are asserted now, so the slot cannot
+    // lose one of them again.
+    expect(unit()).toBe('דקות');
+    expect(unitBelow()).toBe(t.board.leaveIn);
   });
 
   // Arm 3. §D7's status hue, and §M4's claim: the time passed, which is all the clock supports.
@@ -340,7 +345,8 @@ describe('Home — the board counts to the leaving (ADR-0206 §Z1)', () => {
     // The window shuts in 15; the leave-by is 5 out. The leave-by is nearer.
     show();
     expect(value()).toBe('5');
-    expect(unit()).toBe(t.board.leaveIn);
+    expect(unit()).toBe('דקות');
+    expect(unitBelow()).toBe(t.board.leaveIn);
     cleanup();
 
     // Same window, a leg that leaves 25 minutes from now. The window is nearer, and it keeps
@@ -350,7 +356,11 @@ describe('Home — the board counts to the leaving (ADR-0206 §Z1)', () => {
     expect(toLeave(50, 20)).toBe(25);
     show();
     expect(value()).toBe('15');
-    expect(unit()).toBe(t.board.closesIn);
+    // **The same slot, the same amendment** (ADR-0206 §AR2). `closesIn` is the precedent `leaveIn`
+    // copied, overwrite included, so a shutting window read `15 · לסגירה` — a number with no
+    // measure either. Never reported; found by fixing its sibling and asserted with it.
+    expect(unit()).toBe('דקות');
+    expect(unitBelow()).toBe(t.board.closesIn);
   });
 
   // A passed leave-by is negative, so it is nearer than any window that has not shut.
@@ -744,7 +754,8 @@ describe('Home — the leg’s declared mode is the board’s mode (ADR-0206 §A
     declareDriving();
     show();
     expect(value()).toBe(String(toLeave(50, 23)));
-    expect(unit()).toBe(t.board.leaveIn);
+    expect(unit()).toBe('דקות');
+    expect(unitBelow()).toBe(t.board.leaveIn);
     expect(tile()?.classList.contains('missed')).toBe(false);
   });
 
@@ -775,5 +786,88 @@ describe('Home — the leg’s declared mode is the board’s mode (ADR-0206 §A
     expect(value()).toBe('30');
     fireEvent.click(document.querySelector('.wp-board')!);
     expect(document.querySelector('.hero-trv')).toBeNull();
+  });
+});
+
+// **THE TILE'S NUMBER ALWAYS CARRIES A MEASURE WORD** (ADR-0206 §AR2).
+//
+// Reported in one line off the deploy: _"it says 6 to take off, but 6 what?"_ Two of the tile's
+// four arms spread `formatCountdown` and then **overwrote its `unit`** with a preposition phrase —
+// `ליציאה`, `לסגירה` — so the ladder's own word was discarded and the number floated. ADR-0208 §1
+// had already found and fixed exactly this on the passed arm (_"the unit slot has always carried
+// EITHER the measure OR the referent, and `באיחור` carried neither"_); the two arms beside it kept
+// carrying only the referent.
+//
+// **Swept across the arms rather than asserted at one**, because the defect was that a fix landed
+// on one of four and the other three were never asked the same question.
+describe('Home — every arm of the tile says what its number measures (ADR-0206 §AR2)', () => {
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    resetOnWayForTests();
+    travelSeconds = null;
+    travelSecondsByMode = {};
+    tripBookings = [];
+    tripOverrides = [];
+  });
+  afterEach(() => {
+    cleanup();
+    resetOnWayForTests();
+    setSimulatedNow(null);
+  });
+
+  /** Every measure word the ladder can hand this slot (`formatCountdown`) — the assertion is that
+   *  the tile's FIRST unit line is one of them, never a bare preposition. Read off the ladder
+   *  rather than listed, so a new rung cannot fall out of the sweep. */
+  const LADDER_WORDS = ['דקה', 'דקות', 'שעות', 'ימים', 'יום', 'יומיים'];
+
+  const arms: { name: string; setup: () => void }[] = [
+    {
+      name: 'counting to the event',
+      setup: () => {
+        tripEvents = [museum, dinner(120)];
+        travelSeconds = 20 * 60;
+      },
+    },
+    {
+      name: 'leaving is the live question',
+      setup: () => {
+        tripEvents = [museum, dinner(30)];
+        travelSeconds = 20 * 60;
+      },
+    },
+    {
+      name: 'the leave-by has passed',
+      setup: () => {
+        tripEvents = [museum, dinner(15)];
+        travelSeconds = 20 * 60;
+      },
+    },
+    {
+      name: 'a check-in window is shutting',
+      setup: () => {
+        tripEvents = [museum, shuttingStay, dinner(50)];
+        tripBookings = [stayBooking];
+        travelSeconds = 20 * 60;
+      },
+    },
+  ];
+
+  for (const { name, setup } of arms) {
+    it(`says a measure word while ${name}`, () => {
+      setup();
+      show();
+      expect(value()).toBeTruthy();
+      // The first line is the LADDER's word in every arm. `lateBy` wraps it rather than replacing
+      // it, so the passed arm passes this test by containing one rather than being one.
+      expect(LADDER_WORDS.some((word) => unit()?.includes(word))).toBe(true);
+    });
+  }
+
+  // …and the referent is never lost in the process: it moves to the second line, it does not go.
+  it('keeps the referent on its own line, below the measure', () => {
+    tripEvents = [museum, dinner(30)];
+    travelSeconds = 20 * 60;
+    show();
+    expect(unitBelow()).toBe(t.board.leaveIn);
   });
 });

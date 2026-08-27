@@ -1866,11 +1866,21 @@ export const t = {
     nextLabel: 'הבא בתור',
     // The countdown's unit while a window is shutting (ADR-0184 §6) — the number is the
     // minutes left, so this says what they are left OF.
+    //
+    // **It sits BELOW the measure word, it does not replace it** (ADR-0206 §AR2). The tile spread
+    // `formatCountdown` and then overwrote its `unit` with this, so a shutting window read
+    // `15 · לסגירה` — a number with nothing saying what it counts. Same defect as `leaveIn`, and
+    // found by fixing that one.
     closesIn: 'לסגירה',
     // **The same slot, pointed one step earlier** (ADR-0206 §Z1/§AA2). The board's one
     // countdown swaps what it counts TO once leaving is the live question, and `לסגירה` is the
     // precedent in grammar and in mechanism: a preposition plus the noun the minutes are left
     // of. `לצאת` was the alternative and reads as an instruction where this is a measurement.
+    //
+    // **The referent, on its own line UNDER the measure** (ADR-0206 §AR2). It used to replace
+    // `formatCountdown`'s own word rather than join it, so the tile read `6 · ליציאה` and the owner
+    // asked the obvious question — _"6 what?"_. That is ADR-0208 §1's rule, which this arm had
+    // escaped: the slot carries the measure AND the referent, never one of the two.
     leaveIn: 'ליציאה',
     // **And once the leave-by has gone by: `15 · דקות באיחור · ליציאה`** (ADR-0208 §1). Two
     // words were reported unclear here before this one, and each was missing a different half

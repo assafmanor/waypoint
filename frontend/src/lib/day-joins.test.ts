@@ -663,6 +663,11 @@ describe('dayJourney — a flexible arrival licenses no leave-by (ADR-0206 §AI1
   // origin (16:40), so §AI2 withholds it on an exact arrival too. That is correct behaviour and
   // the spec was asserting against it: the two halves of the rule are independent, and a tight
   // hole triggers the second whatever the destination's edge means.
+  // **AMENDED by ADR-0206 §AR1** — this asserted `arriveAtMs === null` on an exact arrival, which
+  // was §AJ2's gate ("the arrival is said only where the app cannot promise the buffer"). Every row
+  // that has an arrival states it now, so what this holds is the half that did not change: an exact
+  // destination still gets a departure, and nothing here can be `after the close` because a
+  // destination with a deadline has no window to shut.
   it('leaves an exact arrival exactly as it was', () => {
     const j = leg({
       departAfterMs: AT('12:00'),
@@ -671,7 +676,6 @@ describe('dayJourney — a flexible arrival licenses no leave-by (ADR-0206 §AI1
       nowMs: AT('12:10'),
     });
     expect(j.leaveByMs).not.toBeNull();
-    expect(j.arriveAtMs).toBeNull();
     expect(j.arrivesAfterClose).toBe(false);
   });
 });
@@ -713,7 +717,11 @@ describe('dayJourney — a leave-by inside the row it leaves from (ADR-0206 §AI
     expect(at('16:45')).toBe(DAY_JOURNEY_ARM.PASSED);
   });
 
-  it('keeps a departure that sits after the origin ends', () => {
+  // **AMENDED by ADR-0206 §AR1.** The unclamped case: the buffer fits, so the departure is the
+  // buffered one and NOT the origin's end. It used to say nothing about arriving; it now says the
+  // arrival that departure implies — `13:55 + 40 min`, which is §D5's buffer before the `14:40`
+  // deadline, and the whole point is that a reader can see that arithmetic.
+  it('keeps a departure that sits after the origin ends, and says where it lands', () => {
     const j = dayJourney({
       departAfterMs: AT('12:00'),
       arriveByMs: AT('14:40'),
@@ -721,7 +729,7 @@ describe('dayJourney — a leave-by inside the row it leaves from (ADR-0206 §AI
       nowMs: AT('12:10'),
     })!;
     expect(j.leaveByMs).toBe(AT('13:55'));
-    expect(j.arriveAtMs).toBeNull();
+    expect(j.arriveAtMs).toBe(AT('14:35'));
   });
 });
 
@@ -1005,4 +1013,61 @@ describe('dayJourney — the departure it states can never be after the arrival 
       }
     });
   }
+});
+
+// **THE ARRIVAL IS THE ONE THE STATED DEPARTURE IMPLIES** (ADR-0206 §AR1).
+//
+// Reported off the deploy: _"the transit rows should also display the arrival time (if you take off
+// at the suggested time) so then we immediately know why they tell us to take off at that time."_
+//
+// **The parenthesis is the whole spec.** There are two arrivals a leg can name and they are not the
+// same number: `departAfterMs + travel` is the earliest you could be there, and
+// `leaveByMs + travel` is where the departure the row is advising actually lands. Only the second
+// explains the clock beside it, and the first is what this used to compute — so a spec that merely
+// asserted "an arrival is present" would have passed on the wrong one.
+describe('dayJourney — the arrival explains the departure beside it (ADR-0206 §AR1)', () => {
+  const AT = (hhmm: string) => Date.parse(`2026-08-27T${hhmm}:00Z`);
+
+  it('lands the buffer before the deadline, not the moment the previous row ends', () => {
+    const j = dayJourney({
+      departAfterMs: AT('12:00'),
+      arriveByMs: AT('14:40'),
+      travelSeconds: 40 * 60,
+      nowMs: AT('12:10'),
+    })!;
+    expect(j.leaveByMs).toBe(AT('13:55'));
+    // `13:55 + 40` — the departure it states, carried forward.
+    expect(j.arriveAtMs).toBe(AT('14:35'));
+    // NOT `12:00 + 40`, which is the earliest you could be there and explains nothing.
+    expect(j.arriveAtMs).not.toBe(AT('12:40'));
+  });
+
+  // A flexible destination states no departure, so the earliest you could be there IS the answer —
+  // the behaviour §AI1 shipped, unchanged, and the one case where the old formula was right.
+  it('falls back to the origin’s own end where the app advises no departure', () => {
+    const j = dayJourney({
+      departAfterMs: AT('12:00'),
+      arriveByMs: AT('14:40'),
+      travelSeconds: 40 * 60,
+      nowMs: AT('12:10'),
+      flexibleArrival: true,
+    })!;
+    expect(j.leaveByMs).toBeNull();
+    expect(j.arriveAtMs).toBe(AT('12:40'));
+  });
+
+  // **The one arm that must stay silent** (ADR-0208 §2). The instant is derived from the end of a
+  // stop the group said they did not go to, so stating it would be exactly the claim this arm
+  // withholds — in the confident voice of a prediction.
+  it('says nothing at all where the plan’s claim about where you are has been denied', () => {
+    const j = dayJourney({
+      departAfterMs: AT('12:00'),
+      arriveByMs: AT('14:40'),
+      travelSeconds: 40 * 60,
+      nowMs: AT('12:10'),
+      claimDenied: true,
+    })!;
+    expect(j.leaveByMs).toBeNull();
+    expect(j.arriveAtMs).toBeNull();
+  });
 });

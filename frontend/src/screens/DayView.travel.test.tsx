@@ -495,11 +495,16 @@ describe('DayView — the four arms of a journey (ADR-0206 §V1.3/§V1.4)', () =
   const blockAction = (label: string) =>
     [...(block()?.querySelectorAll('button') ?? [])].find((b) => b.textContent?.includes(label));
 
+  // **The row says BOTH clocks since ADR-0206 §AR1** — the departure and where it lands — because a
+  // lone departure is an instruction with its reasoning withheld. The arrival is `leaveByMs` plus
+  // the leg, which is §D5's buffer before the theatre's own start: derived here rather than written
+  // out, so the buffer stays one constant and not a number this file also believes.
   it('states the leave-by as a NOUN, because a day list is a schedule and not an instruction', () => {
     setSimulatedNow(Date.parse(NOW));
     show();
     const clock = ltrIsolate(formatTime(new Date(leaveByMs), ZONE));
-    expect(screen.getByText(t.travel.leaveAtDay(clock))).toBeTruthy();
+    const at = ltrIsolate(`~${formatTime(new Date(leaveByMs + WALK_MINUTES * 60_000), ZONE)}`);
+    expect(screen.getByText(t.travel.leaveThenArrive(clock, at))).toBeTruthy();
     // …and never the hero's imperative, which speaks to the one journey you are on.
     expect(screen.queryByText(t.travel.leaveAt(clock))).toBeNull();
   });
@@ -1012,18 +1017,17 @@ describe('DayView — a journey states its hours where the traveller is (ADR-020
   it('states the departure in the stops’ zone, and never in the trip’s', () => {
     setSimulatedNow(Date.parse(NOW));
     show();
-    expect(
-      screen.getByText(
-        t.travel.leaveAtDay(ltrIsolate(formatTime(new Date(leaveByMs), STOPS_ARE_IN))),
-      ),
-    ).toBeTruthy();
+    const inZone = (zone: string) =>
+      t.travel.leaveThenArrive(
+        ltrIsolate(formatTime(new Date(leaveByMs), zone)),
+        ltrIsolate(`~${formatTime(new Date(leaveByMs + WALK_MINUTES * 60_000), zone)}`),
+      );
+    expect(screen.getByText(inZone(STOPS_ARE_IN))).toBeTruthy();
     // **The hour the defect printed** — `trip.timezone`, which is what this screen handed the row
     // until §AQ1. Asserted as absent rather than merely "the right one is present", because the
     // two differ by exactly the offset and a spec that only checked the positive would pass on a
     // single-zone trip and say nothing about this one.
-    expect(
-      screen.queryByText(t.travel.leaveAtDay(ltrIsolate(formatTime(new Date(leaveByMs), ZONE)))),
-    ).toBeNull();
+    expect(screen.queryByText(inZone(ZONE))).toBeNull();
   });
 
   // **The invariant, read off the screen the way the report was.** Whatever the block says about
