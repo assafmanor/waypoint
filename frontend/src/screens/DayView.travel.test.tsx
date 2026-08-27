@@ -35,7 +35,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { setSimulatedNow } from '../lib/useClock';
-import { freeTimePhrase } from '../lib/duration';
+import { approxTravelTime, freeTimePhrase } from '../lib/duration';
 import { markOnWay, resetOnWayForTests } from '../lib/on-way';
 import { ltrIsolate } from '../lib/bidi';
 import { formatTime } from '../lib/time';
@@ -219,13 +219,20 @@ vi.mock('../state/verbs', () => ({
  *  and tested there. `null` is the ordinary answer (§D4) and it is a case below rather than an
  *  omission. */
 let travelSeconds: number | null = null;
+/** **Every ask this screen makes for a route**, recorded rather than eyeballed: `useDayTravel` is
+ *  the one seam a request can leave through, and its `stops` are what a request is keyed on. The
+ *  day total's exit criterion is that it adds neither (ADR-0206 §V1.9). */
+const travelAsks: { tripId: string; stops: readonly { lat: number; lng: number }[] }[] = [];
 vi.mock('../lib/travel', () => ({
-  useDayTravel: () => ({
-    estimateFor: (): TravelEstimate | null =>
-      travelSeconds === null
-        ? null
-        : { mode: TRAVEL_MODE.WALKING, durationSeconds: travelSeconds, distanceMeters: 2400 },
-  }),
+  useDayTravel: (opts: { tripId: string; stops: readonly { lat: number; lng: number }[] }) => {
+    travelAsks.push(opts);
+    return {
+      estimateFor: (): TravelEstimate | null =>
+        travelSeconds === null
+          ? null
+          : { mode: TRAVEL_MODE.WALKING, durationSeconds: travelSeconds, distanceMeters: 2400 },
+    };
+  },
   useDayShapes: () => ({ pathFor: () => null }),
 }));
 
@@ -863,5 +870,105 @@ describe('DayView — a midnight pickup reads above the bed', () => {
       .slice(pickup + 1, stay)
       .filter((n) => n.classList.contains('day-trv') || n.querySelector('.day-trv'));
     expect(between).toHaveLength(1);
+  });
+});
+
+// ── HOW FAR THE DAY GOES (ADR-0206 §V1.9 / §AP) ──────────────────────────────────────────
+//
+// The mixed-mode day is the case a naive build gets wrong in both directions, so it is the case
+// with the most assertions here: a declared leg keeps its distance and has no duration (§AA4 /
+// §AM6), which means the kilometres cover every leg and the minutes cover only the ones that
+// could be timed. `PlanDay.travel.test.tsx` asserts the same line on the other day surface —
+// ADR-0159 §1 forbids the two differing about a fact, and a total distance is one.
+describe('DayView — the day says how far it goes (ADR-0206 §V1.9)', () => {
+  const declaredLeg = (fromPlaceId: string, toPlaceId: string): TravelModeOverride => ({
+    id: `tmo-${fromPlaceId}`,
+    tripId: 't1',
+    fromPlaceId,
+    toPlaceId,
+    mode: TRANSIT_LEG_MODE,
+    createdBy: 'u1',
+    createdAt: `${DAY}T00:00:00Z`,
+    updatedAt: `${DAY}T00:00:00Z`,
+  });
+  /** The mocked estimate's own distance, so this file and the seam it stubs cannot disagree. */
+  const ROUTED_M = 2400;
+  const line = () => document.querySelector('.day-total')!;
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    resetOnWayForTests();
+    tripEvents = [morning, lunch, theatre];
+    tripPlaces = places;
+    travelSeconds = WALK_MINUTES * 60;
+    travelAsks.length = 0;
+  });
+  afterEach(() => {
+    cleanup();
+    resetOnWayForTests();
+    setSimulatedNow(null);
+  });
+
+  it('states the distance and the hedged duration for a day that is all one mode', () => {
+    show();
+    expect(line().textContent).toBe(
+      t.travel.dayTotal(formatDistance(ROUTED_M * 2), approxTravelTime(WALK_MINUTES * 2 * 60)!),
+    );
+  });
+
+  // **The crux.** Both halves are derived here the way the code derives them rather than written
+  // out, so a fixture that moves moves the expectation with it.
+  it('counts a declared leg in the kilometres and not in the minutes', () => {
+    tripOverrides = [declaredLeg('p-lunch', 'p-theatre')];
+    show();
+    const crow = Math.round(haversineMeters(coordOf('p-lunch'), coordOf('p-theatre')));
+    expect(line().textContent).toBe(
+      t.travel.dayTotal(formatDistance(ROUTED_M + crow), approxTravelTime(WALK_MINUTES * 60)!),
+    );
+    // Asserted as an absence too, because the failure this guards is a plausible-looking line:
+    // the declared leg's minutes must not have been invented from its walking estimate.
+    expect(line().textContent).not.toContain(String(WALK_MINUTES * 2));
+  });
+
+  // §AA4's own day: real kilometres, and no duration this app may state.
+  it('states a distance alone when every leg was declared', () => {
+    tripOverrides = [declaredLeg('p-morning', 'p-lunch'), declaredLeg('p-lunch', 'p-theatre')];
+    show();
+    const crow =
+      Math.round(haversineMeters(coordOf('p-morning'), coordOf('p-lunch'))) +
+      Math.round(haversineMeters(coordOf('p-lunch'), coordOf('p-theatre')));
+    expect(line().textContent).toBe(formatDistance(crow));
+  });
+
+  // Hidden rather than zero (§D4 / the card's own exit criterion) — the provider answering
+  // nothing and a day with nothing in it read the same, which is the rule, not an omission.
+  it('renders no line at all when nothing on the day is routable', () => {
+    travelSeconds = null;
+    show();
+    expect(document.querySelector('.day-total')).toBeNull();
+  });
+
+  // **The other exit criterion, asserted rather than eyeballed.** The total is a roll-up of the
+  // journeys the rows already drew, so it must ask for nothing: one `useDayTravel` fingerprint
+  // for the whole screen, the legs' own stops, and no request leaving by any other route.
+  it('adds no request of its own', () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      show();
+      expect(line()).toBeTruthy();
+      const fingerprints = new Set(travelAsks.map((ask) => JSON.stringify(ask.stops)));
+      expect(fingerprints.size).toBe(1);
+      // The three rows' two legs, consecutive and deduped — exactly what the ROWS need, with no
+      // stop added for the total.
+      expect(travelAsks[0]!.stops).toEqual([
+        coordOf('p-morning'),
+        coordOf('p-lunch'),
+        coordOf('p-theatre'),
+      ]);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

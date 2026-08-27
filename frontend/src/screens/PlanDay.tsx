@@ -106,7 +106,13 @@ import {
   type LegModeControl,
   type DayLeg,
 } from '../lib/day-travel';
-import { dayFeasibility, dayJourney, windowClosesMs, type DayJourney } from '../lib/day-joins';
+import {
+  dayFeasibility,
+  dayJourney,
+  dayTravelTotal,
+  windowClosesMs,
+  type DayJourney,
+} from '../lib/day-joins';
 import { dayShortfallPhrase, infeasibleLegsPhrase } from '../lib/duration';
 import { JourneyRow } from '../ui/domain/DayJoinRow';
 import { StayRow } from '../ui/domain/StayRow';
@@ -187,6 +193,7 @@ import {
   TaskMark,
 } from '../ui/domain';
 import { DaySlotPicker, type DaySlotOption } from '../ui/domain/DaySlotPicker';
+import { DayTravelTotal } from '../ui/domain/DayTravelTotal';
 import { dayPositions, POSITION_AT, type DayPosition } from '../lib/day-positions';
 import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
 import { MaybeManageSheet } from '../ui/MaybeManageSheet';
@@ -592,6 +599,11 @@ export function PlanDay() {
    *  Trip mode is a verdict on a day you are already living. `UNKNOWN` and `FITS` both render
    *  nothing, which is §D4 rather than an omission — see `dayFeasibility`. */
   const planFit = dayFeasibility([...journeyByRows.values()]);
+  /** **And how far it goes** (ADR-0206 §V1.9), off the same map for the same reason — except
+   *  that this one is NOT Plan's alone: the verdict above is an opinion about a day you have not
+   *  lived yet, where a total distance is a fact, and ADR-0159 §1 lets the two surfaces differ
+   *  only about the former. Trip mode renders the same component off the same function. */
+  const dayTotal = dayTravelTotal([...journeyByRows.values()]);
 
   // Reorder acts on soft events only (hard events are pinned anchors, ADR-0011).
   /** **The mode switch, the same one Trip mode offers** (ADR-0206 §AM9). Plan is where §AL10 said
@@ -1342,8 +1354,13 @@ export function PlanDay() {
 
           {(staysToday.length > 0 ||
             placement.commitments.length > 0 ||
-            planFit.fit === TRAVEL_FIT.OVERRUNS) && (
+            planFit.fit === TRAVEL_FIT.OVERRUNS ||
+            dayTotal.distanceMeters !== null) && (
             <div className="day-ambient">
+              {/* **HOW FAR THE DAY GOES** (ADR-0206 §V1.9 / §AP) — the same component Trip mode
+                renders, above the verdict rather than below it: the total is true of every day
+                and the verdict is true of few, so the strip reads the same on both. */}
+              <DayTravelTotal total={dayTotal} />
               {/* **THE DAY'S OWN VERDICT** (ADR-0206 §V1.7 / §AN) — Plan mode's one opinion, in
                 the strip the day already keeps for facts true of the whole of it. Three things
                 about it are decisions rather than styling, and each is drawn in

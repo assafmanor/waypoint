@@ -584,6 +584,48 @@ export function dayFeasibility(journeys: readonly (DayJourney | null)[]): DayFea
   return { fit: measured ? TRAVEL_FIT.FITS : TRAVEL_FIT.UNKNOWN, legs: 0, overrunSeconds: 0 };
 }
 
+/** **How far the day travels and how long of it could be timed** — see {@link dayTravelTotal}. */
+export interface DayTravelTotal {
+  /** Every leg's distance added up, declared legs included. `null` where no leg had one. */
+  distanceMeters: number | null;
+  /** Only the legs that could be TIMED, added up. `null` where none could — a day of declared
+   *  legs travels a real distance for no duration this app may state. */
+  travelSeconds: number | null;
+}
+
+/**
+ * **HOW FAR THE DAY GOES** (ADR-0206 §V1.9) — `3.2 ק״מ · ~48 דק׳`, the day-shape read a planner
+ * wants, off the journeys the rows already drew.
+ *
+ * **A roll-up of the SAME objects the rows render**, for {@link dayFeasibility}'s reason one
+ * paragraph up: a total rebuilt from the day's legs would count a hole that draws no block, and a
+ * day whose header claims ⁦4.1km⁩ over three journeys the list shows two of is worse than no header.
+ * So a leg with no estimate contributes nothing here exactly as it renders nothing there (§D4).
+ *
+ * **The two halves do not cover the same legs, and that asymmetry is the whole derivation.** A
+ * declared תחב״צ leg keeps its distance and has no duration by nature (§AA4 / §AM6: _"a journey
+ * with NO duration, not an absent journey"_) — so the kilometres count it and the minutes cannot.
+ * Dropping it from both would understate a day somebody is genuinely crossing; inventing minutes
+ * for it would print the walking number the declaration exists to suppress. What carries the
+ * difference to the reader is §D5's `~` on the minutes, which already says this counts what could
+ * be counted.
+ *
+ * `null` on either half where nothing contributed to it, never a zero: §D4's absence is silence,
+ * and `0 ק״מ · ~0 דק׳` on a day nobody could measure is precisely the tell that rule forbids.
+ */
+export function dayTravelTotal(journeys: readonly (DayJourney | null)[]): DayTravelTotal {
+  let distanceMeters: number | null = null;
+  let travelSeconds: number | null = null;
+  for (const journey of journeys) {
+    if (!journey) continue;
+    if (journey.distanceMeters !== null && Number.isFinite(journey.distanceMeters))
+      distanceMeters = (distanceMeters ?? 0) + journey.distanceMeters;
+    if (journey.travelSeconds !== null && Number.isFinite(journey.travelSeconds))
+      travelSeconds = (travelSeconds ?? 0) + journey.travelSeconds;
+  }
+  return { distanceMeters, travelSeconds };
+}
+
 /**
  * **When a closed check-in window shuts**, or `undefined` for an open floor — which can be missed
  * by nothing (ADR-0184's `not-before`).

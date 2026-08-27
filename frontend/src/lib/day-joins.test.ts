@@ -13,6 +13,7 @@ import {
   dayBlocks,
   dayFeasibility,
   dayJourney,
+  dayTravelTotal,
   joinBetween,
   narrowGapForTravel,
 } from './day-joins';
@@ -864,5 +865,84 @@ describe('dayFeasibility — a day says no only on evidence', () => {
     });
     expect(behindYou!.arm).toBe(DAY_JOURNEY_ARM.PAST);
     expect(dayFeasibility([behindYou]).fit).not.toBe('overruns');
+  });
+});
+
+// ── HOW FAR THE DAY GOES (ADR-0206 §V1.9 / §AP) ──────────────────────────────────────────
+//
+// The asymmetry is the whole derivation and a naive build gets it wrong in both directions, so
+// every spec here is about which legs each half counts. `dayTravelTotal` rolls up the SAME
+// journeys the rows drew, for `dayFeasibility`'s reason above.
+describe('dayTravelTotal — the kilometres cover every leg, the minutes only the timed ones', () => {
+  const AT = (min: number) => Date.parse('2026-07-12T08:00:00Z') + min * MIN;
+  /** An ordinary routed leg: a real estimate, so it has both halves. */
+  const routed = (travelMin: number, meters: number | null) =>
+    dayJourney({
+      departAfterMs: AT(0),
+      arriveByMs: AT(travelMin + 60),
+      travelSeconds: travelMin * 60,
+      distanceMeters: meters,
+      nowMs: AT(-60),
+    });
+  /** A leg somebody declared תחב״צ: distance, no duration (§AA4 / §AM6). */
+  const declared = (meters: number) =>
+    dayJourney({
+      departAfterMs: AT(0),
+      arriveByMs: AT(90),
+      travelSeconds: null,
+      distanceMeters: meters,
+      declared: true,
+      nowMs: AT(-60),
+    });
+
+  it('adds every leg up when the whole day is routed', () => {
+    const total = dayTravelTotal([routed(18, 1_400), routed(30, 1_800)]);
+    expect(total.distanceMeters).toBe(3_200);
+    expect(total.travelSeconds).toBe(48 * 60);
+  });
+
+  // **The crux.** A mixed-mode day is the ordinary one since M8b: the declared leg's kilometres
+  // are counted and its minutes are not — dropping it from both understates a day somebody is
+  // genuinely crossing, and inventing minutes prints the walking number the declaration exists
+  // to suppress.
+  it('counts a declared leg in the distance and not in the duration', () => {
+    const total = dayTravelTotal([routed(18, 1_400), declared(9_000), routed(30, 1_800)]);
+    expect(total.distanceMeters).toBe(12_200);
+    expect(total.travelSeconds).toBe(48 * 60);
+  });
+
+  // A day of declared legs travels a real distance for no duration this app may state.
+  it('answers a distance with no duration when every leg is declared', () => {
+    const total = dayTravelTotal([declared(2_700), declared(9_000)]);
+    expect(total.distanceMeters).toBe(11_700);
+    expect(total.travelSeconds).toBeNull();
+  });
+
+  // §D4: absence is silence, never a zero — the reader must not be able to tell "not computed"
+  // from "not computable", and `0 ק״מ` is exactly that tell.
+  it('is null on both halves rather than zero when nothing was measured', () => {
+    expect(dayTravelTotal([null, null])).toEqual({ distanceMeters: null, travelSeconds: null });
+    expect(dayTravelTotal([])).toEqual({ distanceMeters: null, travelSeconds: null });
+  });
+
+  // A hole that renders no block contributes nothing, which is what makes the header and the
+  // list describe one day: an estimate the provider refused is a leg neither of them counts.
+  it('ignores a hole that drew no journey', () => {
+    const unrouted = dayJourney({
+      departAfterMs: AT(0),
+      arriveByMs: AT(90),
+      travelSeconds: null,
+      nowMs: AT(-60),
+    });
+    expect(unrouted).toBeNull();
+    expect(dayTravelTotal([unrouted, routed(18, 1_400)]).distanceMeters).toBe(1_400);
+  });
+
+  // An estimate that carries no distance still carries a duration, and the halves are counted
+  // independently rather than gated on each other.
+  it('counts a duration whose leg reported no distance', () => {
+    const total = dayTravelTotal([routed(18, 1_400), routed(12, null)]);
+    expect(total.distanceMeters).toBe(1_400);
+    expect(total.travelSeconds).toBe(30 * 60);
   });
 });
