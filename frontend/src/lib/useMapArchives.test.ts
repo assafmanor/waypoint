@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const archives = vi.hoisted(() => ({
   list: vi.fn(),
   download: vi.fn(),
+  hydrate: vi.fn(),
 }));
 
 // The hook asks for the METADATA listing, never for the archives themselves: opening one
@@ -13,6 +14,10 @@ vi.mock('./map-archive-cache', () => ({
   listMapArchives: archives.list,
   downloadMapArchive: archives.download,
 }));
+
+// The route pack's own reading is `route-pack.test.ts`'s; here it is the third artefact a trip
+// downloads, and what matters is that it rides the SAME decisions (ADR-0206 §V1.8).
+vi.mock('./route-pack', () => ({ hydrateRoutePack: archives.hydrate }));
 
 import { useMapArchives } from './useMapArchives';
 import { setSimulatedNow } from './useClock';
@@ -23,10 +28,14 @@ const urls = {
   extract: 'https://app.example/trips/t1/map/extract.pmtiles',
 };
 
+/** What `routePackUrl('t1')` answers with `VITE_API_BASE_URL` pinned empty under test. */
+const PACK = '/trips/t1/routes/pack';
+
 beforeEach(() => {
   localStorage.clear();
   archives.list.mockReset().mockResolvedValue([]);
   archives.download.mockReset().mockResolvedValue({ status: 'stored', sizeBytes: 4 });
+  archives.hydrate.mockReset().mockResolvedValue(0);
 });
 
 afterEach(() => {
@@ -50,9 +59,21 @@ const stored = (url: string, vintage: string | undefined, ageDays: number) => ({
   sizeBytes: 4,
   lastUsedAt: NOW,
   downloadedAt: NOW - ageDays * DAY,
-  kind: url === urls.extract ? ('extract' as const) : ('world' as const),
+  kind:
+    url === urls.extract
+      ? ('extract' as const)
+      : url === PACK
+        ? ('routes' as const)
+        : ('world' as const),
   ...(vintage ? { vintage } : {}),
 });
+
+/** A downloaded trip holds three artefacts now, not two. */
+const allStored = (vintage: string | undefined, ageDays: number) => [
+  stored(urls.world, vintage, ageDays),
+  stored(urls.extract, vintage, ageDays),
+  stored(PACK, vintage, ageDays),
+];
 
 describe('useMapArchives', () => {
   it('renders a downloaded extract offline and otherwise keeps the world floor visible', async () => {
@@ -78,7 +99,8 @@ describe('useMapArchives', () => {
     );
 
     await waitFor(() => expect(view.result.current.status).toBe('ready'));
-    expect(archives.download).toHaveBeenCalledTimes(2);
+    // World, extract and the route pack — §V1.8 rides this download rather than adding one.
+    expect(archives.download).toHaveBeenCalledTimes(3);
     expect(view.result.current.visible).toBe(false);
   });
 
@@ -123,6 +145,7 @@ describe('useMapArchives', () => {
         worldStored = true;
         return { status: 'stored', sizeBytes: 4 };
       }
+      if (url === PACK) return { status: 'stored', sizeBytes: 4 };
       extractAttempts += 1;
       return extractAttempts === 1
         ? { status: 'preparing', retryAfterSeconds: 0.01 }
@@ -133,14 +156,14 @@ describe('useMapArchives', () => {
     );
 
     await waitFor(() => expect(view.result.current.status).toBe('ready'));
-    expect(archives.download).toHaveBeenCalledTimes(3);
+    expect(archives.download).toHaveBeenCalledTimes(4);
     expect(view.result.current.visible).toBe(false);
   });
 
   it('leaves a current-vintage archive alone', async () => {
     setSimulatedNow(NOW);
     vi.stubGlobal('navigator', { connection: { type: 'wifi', saveData: false } });
-    archives.list.mockResolvedValue([stored(urls.world, 'v7', 90), stored(urls.extract, 'v7', 90)]);
+    archives.list.mockResolvedValue(allStored('v7', 90));
     const view = renderHook(() =>
       useMapArchives({
         tripId: 't1',
@@ -159,7 +182,7 @@ describe('useMapArchives', () => {
   it('replaces a superseded archive on an unmetered connection, quietly', async () => {
     setSimulatedNow(NOW);
     vi.stubGlobal('navigator', { connection: { type: 'wifi', saveData: false } });
-    archives.list.mockResolvedValue([stored(urls.world, 'v6', 40), stored(urls.extract, 'v6', 40)]);
+    archives.list.mockResolvedValue(allStored('v6', 40));
     const view = renderHook(() =>
       useMapArchives({
         tripId: 't1',
@@ -171,7 +194,7 @@ describe('useMapArchives', () => {
       }),
     );
 
-    await waitFor(() => expect(archives.download).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(archives.download).toHaveBeenCalledTimes(3));
     // Labelled with what the server said it is cutting, so the next window can tell the
     // difference — and no banner: nothing is missing, so there is nothing to announce.
     expect(archives.download).toHaveBeenCalledWith(expect.objectContaining({ vintage: 'v7' }));
@@ -183,7 +206,7 @@ describe('useMapArchives', () => {
     vi.stubGlobal('navigator', { connection: { type: 'wifi', saveData: false } });
     // Downloaded three days ago, one window behind: a refresh here is 80 MB for three days of
     // OSM edits, which is the trade this guard exists to refuse.
-    archives.list.mockResolvedValue([stored(urls.world, 'v6', 3), stored(urls.extract, 'v6', 3)]);
+    archives.list.mockResolvedValue(allStored('v6', 3));
     const view = renderHook(() =>
       useMapArchives({
         tripId: 't1',
@@ -204,7 +227,7 @@ describe('useMapArchives', () => {
     // No `navigator.connection` — Safari, where §5 cannot tell wifi from roaming. A MISSING
     // archive earns its one-time prompt; a merely stale one does not get to nag.
     vi.stubGlobal('navigator', {});
-    archives.list.mockResolvedValue([stored(urls.world, 'v6', 90), stored(urls.extract, 'v6', 90)]);
+    archives.list.mockResolvedValue(allStored('v6', 90));
     const view = renderHook(() =>
       useMapArchives({
         tripId: 't1',
@@ -264,6 +287,81 @@ describe('useMapArchives', () => {
     await waitFor(() => expect(view.result.current.checked).toBe(true));
     expect(view.result.current.status).toBe('idle');
     expect(view.result.current.visible).toBe(false);
+    expect(archives.download).not.toHaveBeenCalled();
+  });
+
+  // ── THE OFFLINE ROUTE PACK (ADR-0206 §V1.8) ────────────────────────────────────────────
+  //
+  // Its whole claim is that it costs nothing new: the same download pass, the same wanted-ness,
+  // the same retry, the same prompt. These assert that rather than the pack's own contents.
+
+  it('downloads the route pack in the same pass as the archive, tagged to the trip', async () => {
+    vi.stubGlobal('navigator', { connection: { type: 'wifi', saveData: false } });
+    const view = renderHook(() =>
+      useMapArchives({ tripId: 't1', offline: false, ended: false, hasMappedPlaces: true, urls }),
+    );
+
+    await waitFor(() => expect(view.result.current.status).toBe('ready'));
+    expect(archives.download).toHaveBeenCalledWith(
+      // `tripId` is what makes the existing size readout count it and the existing delete
+      // remove it — both group by trip.
+      expect.objectContaining({ url: PACK, kind: 'routes', tripId: 't1' }),
+    );
+  });
+
+  it('hydrates a pack it downloaded, and one that was already on the device', async () => {
+    vi.stubGlobal('navigator', { connection: { type: 'wifi', saveData: false } });
+    const fresh = renderHook(() =>
+      useMapArchives({ tripId: 't1', offline: false, ended: false, hasMappedPlaces: true, urls }),
+    );
+    await waitFor(() => expect(fresh.result.current.status).toBe('ready'));
+    expect(archives.hydrate).toHaveBeenCalledWith(PACK);
+    fresh.unmount();
+
+    // The plane case: nothing is downloaded, and the legs still have to reach the day.
+    archives.hydrate.mockClear();
+    archives.download.mockClear();
+    archives.list.mockResolvedValue(allStored(undefined, 0));
+    const offline = renderHook(() =>
+      useMapArchives({ tripId: 't1', offline: true, ended: false, hasMappedPlaces: true, urls }),
+    );
+    await waitFor(() => expect(archives.hydrate).toHaveBeenCalledWith(PACK));
+    expect(archives.download).not.toHaveBeenCalled();
+    offline.unmount();
+  });
+
+  it('treats a still-warming pack as preparing, and stores nothing until it is complete', async () => {
+    vi.stubGlobal('navigator', { connection: { type: 'wifi', saveData: false } });
+    archives.download.mockImplementation(async ({ url }: { url: string }) =>
+      url === PACK
+        ? { status: 'preparing', retryAfterSeconds: 4 }
+        : { status: 'stored', sizeBytes: 4 },
+    );
+    const view = renderHook(() =>
+      useMapArchives({ tripId: 't1', offline: false, ended: false, hasMappedPlaces: true, urls }),
+    );
+
+    await waitFor(() => expect(view.result.current.status).toBe('preparing'));
+    expect(view.result.current.retryAfterSeconds).toBe(4);
+    expect(archives.hydrate).not.toHaveBeenCalled();
+  });
+
+  it('asks for nothing when the archive and the pack are both current', async () => {
+    setSimulatedNow(NOW);
+    vi.stubGlobal('navigator', { connection: { type: 'wifi', saveData: false } });
+    archives.list.mockResolvedValue(allStored('v7', 90));
+    const view = renderHook(() =>
+      useMapArchives({
+        tripId: 't1',
+        offline: false,
+        ended: false,
+        hasMappedPlaces: true,
+        urls,
+        archiveVintage: 'v7',
+      }),
+    );
+
+    await waitFor(() => expect(view.result.current.status).toBe('ready'));
     expect(archives.download).not.toHaveBeenCalled();
   });
 });

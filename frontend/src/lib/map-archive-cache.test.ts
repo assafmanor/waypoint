@@ -157,3 +157,75 @@ describe('retainMapArchives', () => {
     expect((await listMapArchives()).map((entry) => entry.tripId)).not.toContain('removed');
   });
 });
+
+// ── THE ROUTE PACK RIDES THIS STORE (ADR-0206 §V1.8) ────────────────────────────────────────
+//
+// M10's two device-side exit criteria, and they are both about the pack being ORDINARY here:
+// counted in the readout the size grouping already builds, and removed by the delete that
+// already exists. Neither needed new machinery — which is the whole claim of §V1.8.
+
+describe('the offline route pack', () => {
+  it('is a trip artefact: counted with the trip and removed by the trip delete', async () => {
+    const { seedMapArchiveForTests, listMapArchives, removeTripMapArchives } =
+      await import('./map-archive-cache');
+    await seedMapArchiveForTests('https://app.example/t1/extract', 100, {
+      kind: 'extract',
+      tripId: 't1',
+      now: 1,
+    });
+    await seedMapArchiveForTests('https://app.example/t1/pack', 20, {
+      kind: 'routes',
+      tripId: 't1',
+      now: 2,
+    });
+
+    // What `UserSettings` sums per trip row.
+    const held = await listMapArchives();
+    expect(held.filter((e) => e.tripId === 't1').reduce((n, e) => n + e.sizeBytes, 0)).toBe(120);
+
+    await removeTripMapArchives('t1');
+    expect((await listMapArchives()).map((entry) => entry.key)).toEqual([]);
+  });
+
+  it('is swept off an ended trip by the SAME retention as the extract', async () => {
+    // Before §V1.8 this swept `kind === 'extract'` and would have left a pack behind for good.
+    const { seedMapArchiveForTests, retainMapArchives, listMapArchives } =
+      await import('./map-archive-cache');
+    await seedMapArchiveForTests('https://app.example/expired/pack', 4, {
+      kind: 'routes',
+      tripId: 'expired',
+      now: 1,
+    });
+    await seedMapArchiveForTests('https://app.example/current/pack', 4, {
+      kind: 'routes',
+      tripId: 'current',
+      now: 2,
+    });
+
+    await retainMapArchives({
+      trips: [trip('current', '2026-08-20'), trip('expired', '2026-07-01')],
+      currentTripId: 'current',
+      now: Date.parse('2026-08-14T00:00:00Z'),
+    });
+
+    const keys = (await listMapArchives()).map((entry) => entry.key);
+    expect(keys).toEqual(['https://app.example/current/pack']);
+  });
+
+  it('is not stored while the server is still warming it', async () => {
+    // `202` with a body that is already usable but not yet complete — storing it would freeze a
+    // half-warm trip onto the device (ADR-0187's flow, `Retry-After` and all).
+    apiFetch.mockResolvedValue(
+      new Response('{"signature":"s","legs":[]}', {
+        status: 202,
+        headers: { 'Retry-After': '7', 'Content-Length': '27' },
+      }),
+    );
+    const { downloadMapArchive, listMapArchives } = await import('./map-archive-cache');
+
+    await expect(
+      downloadMapArchive({ url: 'https://app.example/t1/pack', kind: 'routes', tripId: 't1' }),
+    ).resolves.toEqual({ status: 'preparing', retryAfterSeconds: 7 });
+    await expect(listMapArchives()).resolves.toEqual([]);
+  });
+});

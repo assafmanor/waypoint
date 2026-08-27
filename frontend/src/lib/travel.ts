@@ -120,6 +120,31 @@ export async function cacheTravelEstimates(
   );
 }
 
+/**
+ * **Fill the gaps from an offline route pack** (ADR-0206 §V1.8) — the same table, the same
+ * `routeLegKey`, written the one way a pack may write it.
+ *
+ * **It never overwrites a row this device already holds**, and that is the difference from
+ * `cacheTravelEstimates` above rather than an omission. A pack carries no geometry (§AO, measured
+ * at ten times the bytes), so a plain `bulkPut` would wipe every `shape` `useDayShapes` had
+ * fetched — and the note above says the map simply asks again, which is exactly what a device on
+ * a plane cannot do. A pack is a **floor** under what is known, never an update to it.
+ */
+export async function fillCachedRouteLegs(
+  entries: readonly { key: string; estimate: TravelEstimate }[],
+): Promise<number> {
+  if (!entries.length) return 0;
+  const held = await db.routeLegs.bulkGet(entries.map((entry) => entry.key));
+  const now = getNow();
+  const missing = entries.filter((_, index) => !held[index]);
+  if (missing.length) {
+    await db.routeLegs.bulkPut(
+      missing.map((entry) => ({ key: entry.key, estimate: entry.estimate, cachedAt: now })),
+    );
+  }
+  return missing.length;
+}
+
 /** What this device already holds for the given keys. Missing keys are simply absent. */
 export async function readCachedTravelEstimates(
   keys: readonly string[],

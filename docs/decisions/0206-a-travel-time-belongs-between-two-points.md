@@ -2200,3 +2200,103 @@ measures this way.
 And one about the tooling rather than the file: **`render.mjs`'s `measurements.md` is snapshotted
 before `document.fonts.ready` re-measures**, so its numbers are the fallback font's and ran ~⁦35px⁩
 narrow here. Read the live page's table, not the artefact.
+
+---
+
+## AO. Amendment (2026-08-27) — what M10 settled by building the offline pack
+
+§V1.8 is one table row and a promise: _"our stops are known in advance, so routes are precomputable
+at ~410 bytes each and ride ADR-0186 §5/§6's existing download, budget and eviction machinery. This
+is what makes it work on the plane."_ Building it kept the promise and moved four things the row did
+not say. None of them is a new mechanism; three are the opposite.
+
+### AO1. The pack is a slice of `RouteLeg`, served live — not a file cut beside the archive
+
+The card places this in `MapService`'s extract pipeline, and the obvious reading is a fourth
+artefact in the byte sink: `map_<trip>_<sig>.routes.json`, cut by `readyOrWarm`, keyed by
+`mapExtractKey`'s sibling. **Rejected, and the reason is that a pack has no bytes of its own.** An
+extract exists because slicing 42.7 MB of planet takes ten seconds and the result cannot be
+recomputed per request; a pack is one indexed `WHERE key IN (…)` over rows that are already stored,
+and the JSON is assembled in single-digit milliseconds. Cutting it would buy nothing and cost three
+things: a second copy that goes stale the moment a leg is warmed, a storage key to invalidate, and
+an eviction rule M12 does not have.
+
+So the artefact is a **response**, and everything ADR-0186 §5/§6 governs still governs it — because
+what those rules bound is what sits on the **device**, and there the pack is an ordinary byte-cache
+entry (`kind: 'routes'`) beside the archives.
+
+### AO2. Which legs it carries: every ordered pair within a day, and the day is a SET
+
+Two decisions, and the second is the one worth reading.
+
+**The server does not re-derive the day's ORDER.** `lib/day-travel.ts` owns which stop follows
+which, with the place-authority rule and the transport inversion (`endpointPlaceId`) inside it — a
+flight leaves you at its destination, a car hire at its origin. A server-side second answer to that
+question is precisely the divergence rule 8 exists to prevent, and it would fail silently: a pack
+built on a different adjacency is a pack full of keys nothing ever looks up.
+
+**So a day contributes a SET of coordinates and the pack carries every ordered pair among them.** A
+multi-day stay contributes its place to every date it covers (§AD's bookend — the stay you woke in),
+and a booking contributes **both** its endpoints, so either resolution is covered. This is ADR-0205
+§Z4's own argument applied to the device: _"cache every cell the matrix returned, not just the
+consecutive pairs — the others are already paid for, so a reorder or an inserted stop costs nothing
+later."_ On a plane that reasoning is stronger, not weaker: a reorder mid-flight has nothing to
+re-ask.
+
+**Measured on the dev seed:** Tokyo is **108 legs / 16.6 KB**, Iceland **16 legs / 2.5 KB**. A
+fortnight of six-stop days is ~1,260 legs, ~170 KB — under 1% of the 22.7 MB city extract it rides
+with. `ROUTE_PACK_MAX_LEGS = 4000` bounds it and **logs what it dropped**, because a silent
+truncation reads as "covered everything".
+
+**The warm is `RoutingService.batch`, once per day** — the same call a person opening that day makes,
+through the same gate, the same §Z9 batching and the same politeness limiter. Nothing in
+`route-pack.service.ts` speaks to a provider. One consequence to know: a **cold** trip's day merges
+into one matrix request, so every pair of that day is cached and carried; an **incremental** change
+(a stop added later) warms only the newly-pending consecutive legs, so the pairs across it arrive
+only if a merged batch happened to cover them. Missing pairs are §D4's absence, never an error.
+
+### AO3. No geometry in the pack, and the number is why
+
+A shapeless leg is **138 bytes** of JSON (157–162 measured on the seed, where coordinates carry
+signs and mode names differ in length). The same leg carrying a city walk's polyline is **~1,375** —
+**ten times the artefact** for a line §D8 draws one of at a time. So the pack carries durations and
+distances only. What a device already fetched a shape for it still holds (`useDayShapes` writes
+them); what it has not falls back to the straight segment the map drew before M7, which is §D4's
+floor and is unchanged by this milestone.
+
+This has a client-side consequence that is not obvious and is the one bug this design could have
+shipped: **hydrating a pack must never overwrite a leg the device already holds.** `travel.ts`'s own
+note says a `bulkPut` costs a shape and that `useDayShapes` simply asks again — which is exactly
+what a device on a plane cannot do. `fillCachedRouteLegs` writes only the keys Dexie is missing. A
+pack is a **floor** under what is known, never an update to it.
+
+### AO4. `202`, not `503`, and what makes it terminate
+
+The archive routes answer `503` because they have nothing to send until the cut lands. The pack
+always has a body — whatever is stored now — so it answers **`202` with `Retry-After`** while more
+legs are coming and `200` when they are not, which is `routeBatchSchema`'s flow rather than a new
+one. `map-archive-cache.ts` now reads both statuses as "preparing" and stores neither: a `202` pack
+frozen onto a device is a half-warm trip that never completes.
+
+**What stops the client polling for ever** is that "complete" means _the warm pass has settled_, not
+_every key has a row_. `RoutePackService` remembers the region signature it last warmed for; once a
+pass finishes, the pack answers `200` with its holes. That matters because some holes are permanent:
+ADR-0205 §Z4's `error_code 154` is terminal, and a client waiting on it would poll a leg nobody can
+ever compute.
+
+### AO5. Where the code lives, and it is a dependency fact rather than a preference
+
+M10's card names `backend/src/map/**` as the conflict surface. The service is in
+`backend/src/routing/` instead, because a `RoutePackService` in `MapModule` would need
+`RoutingService`, and `RoutingModule` already imports `MapModule` for the trip's clusters (ADR-0205
+§3) — a module cycle. It sits on the side that already imports the other; the endpoint is
+`GET /trips/:tripId/routes/pack` on the controller that is already trip-scoped and guarded. The
+region signature is still `map-region.ts`'s, read through `MapService.regionFor`.
+
+**The client refresh is the archive's, and inherits its one gap.** A pack is wanted when it is
+missing or a vintage behind — the same `wanted()` the extract uses — so a places change rebuilds the
+pack on the **server** off the existing signature (M10's third exit criterion, and the mechanism the
+card asked for) but does not by itself pull a fresh copy to a device that already holds one. That is
+the extract's own behaviour today, not something this milestone introduced: no client reads
+`/trips/:id/map/region`, so nothing on the device knows the signature moved. Fixing it is one
+mechanism for both artefacts and belongs with the backlog line about a map's age, not here.

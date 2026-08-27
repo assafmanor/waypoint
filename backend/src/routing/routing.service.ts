@@ -373,8 +373,10 @@ function toEstimate(row: RouteLegRow, mode: TravelMode): TravelEstimate {
   };
 }
 
-/** One second per started upstream call, which is the limiter's own rate, bounded at both ends. */
-function retryAfterFor(plannedCalls: number): number {
+/** One second per started upstream call, which is the limiter's own rate, bounded at both ends.
+ *  **Exported for the pack** (ADR-0206 §AO): a warm it starts is paced by the same limiter, so
+ *  the wait it offers has to be the same derivation rather than a second guess at it. */
+export function retryAfterFor(plannedCalls: number): number {
   return Math.min(RETRY_MAX_SECONDS, Math.max(RETRY_MIN_SECONDS, plannedCalls));
 }
 
