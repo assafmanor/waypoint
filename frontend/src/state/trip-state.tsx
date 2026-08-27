@@ -35,6 +35,9 @@ import {
   type MaybeItem,
   type Membership,
   type DocumentAttachment,
+  type LegTravelMode,
+  type TravelModeOverride,
+  travelOverridePair,
   type Note,
   type MembershipRole,
   type Trip,
@@ -62,6 +65,8 @@ import {
   deletePlace as apiDeletePlace,
   deleteBooking as apiDeleteBooking,
   deleteDocumentAttachment as apiDeleteDocumentAttachment,
+  setTravelMode as apiSetTravelMode,
+  clearTravelMode as apiClearTravelMode,
   deleteNote as apiDeleteNote,
   deleteTask as apiDeleteTask,
   deleteTrip as apiDeleteTrip,
@@ -95,7 +100,13 @@ import { dropTasksForHostChange, planSubtaskTick, splitSubtasks, tickedStatus } 
 import { attachmentsForHost, dropAttachmentsForHostChange } from '../lib/attachments';
 import { derivedPlaceLabel, type PlaceLabels } from '../lib/place-label';
 import { PlaceLabelsProvider } from './place-labels';
-import { clearPlaceRefs, deletedPlaceId, placeLinks, type PlaceLink } from '../lib/place-refs';
+import {
+  clearPlaceRefs,
+  deletedPlaceId,
+  dropOverridesForPlace,
+  placeLinks,
+  type PlaceLink,
+} from '../lib/place-refs';
 import {
   flushOutbox,
   getSyncFailures,
@@ -575,6 +586,22 @@ export interface AttachmentVerbs {
   detachDocument: (attachmentId: string) => Promise<void>;
 }
 
+/** **Declaring how a pair of places is travelled** (ADR-0206 §V1.6/§Z2, keyed per §AM).
+ *
+ *  Two verbs, and the second is not a delete of a mode but a return to the DERIVED one — there is
+ *  no "no mode" state, only "nobody said otherwise" (§Z2). Which is why `setLegMode` takes the
+ *  pair rather than a row id: the caller is a day surface that knows two places, and has no reason
+ *  to know whether a row already exists. */
+export interface TravelModeVerbs {
+  setLegMode: (
+    fromPlaceId: string,
+    toPlaceId: string,
+    mode: LegTravelMode,
+  ) => Promise<TravelModeOverride | undefined>;
+  /** Back to the derivation. A no-op when the pair was never overridden. */
+  clearLegMode: (fromPlaceId: string, toPlaceId: string) => Promise<void>;
+}
+
 export interface IndexVerbs {
   /** `silent` suppresses the saved/queued toast, for a caller that is doing more than one
    *  write and owes the user ONE message about the whole thing (ADR-0136 §3's conversion).
@@ -655,6 +682,10 @@ interface TripContextValue {
    *  attachment from widening visibility (§6): a link whose document this reader cannot see
    *  resolves to nothing. */
   documentAttachments: DocumentAttachment[];
+  /** **Only the legs somebody actually declared** (ADR-0206 §Z2/§AM). Empty on an untouched trip,
+   *  because the default is derived — so a reader that never sees one reads exactly as it did
+   *  before this existed. */
+  travelModeOverrides: TravelModeOverride[];
   /** **What the world knows about the trip's places, keyed by `placeId`** (ADR-0166 §6).
    *  Server-owned: no surface writes it, and a missing key is the normal "we know nothing"
    *  state rather than a loading one — most places have nothing and never will (§11.3). */
@@ -682,6 +713,7 @@ interface TripContextValue {
   noteVerbs: NoteVerbs;
   taskVerbs: TaskVerbs;
   attachmentVerbs: AttachmentVerbs;
+  travelModeVerbs: TravelModeVerbs;
   // Group change-feed (ADR-0081, U-09): a bounded, newest-first list of recent
   // SHARED peer edits, narrated (not re-applied) off the same WS `change` stream.
   // Own edits are filtered out; resets on trip switch (TripReady remounts).
@@ -864,6 +896,14 @@ function TripReady({
     snapshot.documentAttachments,
   );
 
+  // **The per-leg travel-mode overrides** (ADR-0206 §V1.6/§Z2, keyed per §AM). A reactive list for
+  // the same reason the links are: a peer's declaration and our own optimistic one both have to
+  // reach every day surface through the one applier below, or the list and the map disagree about
+  // what a leg IS — the divergence ADR-0159 §1 forbids.
+  const [travelModeOverrides, setTravelModeOverrides] = useState<TravelModeOverride[]>(
+    snapshot.travelModeOverrides,
+  );
+
   // Enrichment rides the snapshot as a reactive map keyed by placeId (ADR-0166 §6), updated
   // by the server's own nudge rather than by any write of ours — there is no optimistic path
   // and no outbox verb, because no client authors this.
@@ -1032,6 +1072,8 @@ function TripReady({
       [ENTITY_TYPE.TASK]: (change) => setTasks((prev) => applyControlChangeToList(prev, change)),
       [ENTITY_TYPE.DOCUMENT_ATTACHMENT]: (change) =>
         setDocumentAttachments((prev) => applyControlChangeToList(prev, change)),
+      [ENTITY_TYPE.TRAVEL_MODE_OVERRIDE]: (change) =>
+        setTravelModeOverrides((prev) => applyControlChangeToList(prev, change)),
       [ENTITY_TYPE.DOCUMENT]: (change) => {
         // A replace/delete invalidates the client blob cache: the /content URL is
         // reused across a replace with no fresh updatedAt to re-key it (ADR-0055/0058).
@@ -1077,6 +1119,9 @@ function TripReady({
       const gonePlaceId = deletedPlaceId(change);
       if (gonePlaceId) {
         setBookings((prev) => clearPlaceRefs(prev, ENTITY_TYPE.BOOKING, gonePlaceId));
+        // The one FK in that family that CASCADES rather than nulls (ADR-0206 §AM1): a declared
+        // leg is its pair of places, so a deleted end leaves no row to clear.
+        setTravelModeOverrides((prev) => [...dropOverridesForPlace(prev, gonePlaceId)]);
         dispatch({ type: TRIP_ACTION.REMOTE_PLACE_DELETED, placeId: gonePlaceId });
       }
       memoryChannels[change.entityType](change);
@@ -1126,6 +1171,7 @@ function TripReady({
           setNotes(s.notes);
           setTasks(s.tasks);
           setDocumentAttachments(s.documentAttachments);
+          setTravelModeOverrides(s.travelModeOverrides);
           setEnrichments(s.enrichments);
           setFxRates(s.fxRates);
           onReconnected();
@@ -1625,6 +1671,7 @@ function TripReady({
         const previousNotes = notes;
         setPlaces((prev) => prev.filter((p) => p.id !== placeId));
         setBookings((prev) => clearPlaceRefs(prev, ENTITY_TYPE.BOOKING, placeId));
+        setTravelModeOverrides((prev) => [...dropOverridesForPlace(prev, placeId)]);
         // Both cascades at once: the place's own notes, and the idea's — the idea is being
         // deleted, so Postgres takes its notes exactly as it takes the place's.
         setNotes((prev) =>
@@ -1870,6 +1917,74 @@ function TripReady({
     [tripId, documentAttachments, toast, authorId],
   );
 
+  // **The mode of one leg** (ADR-0206 §AM). The same optimistic shape as every other verb here:
+  // write the list, queue or POST, roll back on failure. The pair is canonicalised by
+  // `travelOverridePair` so the optimistic row is the one `legTravelMode` will find — the read
+  // keys on the sorted pair, and a row in the caller's order would be invisible.
+  const travelModeVerbs = useMemo<TravelModeVerbs>(
+    () => ({
+      setLegMode: async (fromPlaceId, toPlaceId, mode) => {
+        const pair = travelOverridePair(fromPlaceId, toPlaceId);
+        const previous = travelModeOverrides;
+        const existing = previous.find(
+          (o) => o.fromPlaceId === pair.fromPlaceId && o.toPlaceId === pair.toPlaceId,
+        );
+        const at = new Date(getNow()).toISOString();
+        const optimistic: TravelModeOverride = {
+          id: existing?.id ?? generateId(),
+          tripId,
+          ...pair,
+          mode,
+          createdBy: existing?.createdBy ?? authorId,
+          createdAt: existing?.createdAt ?? at,
+          updatedAt: at,
+        };
+        setTravelModeOverrides((prev) =>
+          existing
+            ? prev.map((o) => (o.id === existing.id ? optimistic : o))
+            : [...prev, optimistic],
+        );
+        try {
+          const saved = await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.SET_TRAVEL_MODE, input: { id: optimistic.id, ...pair, mode } },
+            () => apiSetTravelMode(tripId, { id: optimistic.id, ...pair, mode }),
+          );
+          if (saved) {
+            setTravelModeOverrides((prev) => prev.map((o) => (o.id === saved.id ? saved : o)));
+          }
+          return saved ?? optimistic;
+        } catch (err) {
+          setTravelModeOverrides(previous);
+          toast(CONTROL_ICON.warn, t.toast.writeFailed);
+          throw err;
+        }
+      },
+      clearLegMode: async (fromPlaceId, toPlaceId) => {
+        const pair = travelOverridePair(fromPlaceId, toPlaceId);
+        const previous = travelModeOverrides;
+        const existing = previous.find(
+          (o) => o.fromPlaceId === pair.fromPlaceId && o.toPlaceId === pair.toPlaceId,
+        );
+        // Nothing to take back — the leg is already on the derived mode.
+        if (!existing) return;
+        setTravelModeOverrides((prev) => prev.filter((o) => o.id !== existing.id));
+        try {
+          await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.CLEAR_TRAVEL_MODE, overrideId: existing.id },
+            () => apiClearTravelMode(tripId, existing.id),
+          );
+        } catch (err) {
+          setTravelModeOverrides(previous);
+          toast(CONTROL_ICON.warn, t.toast.writeFailed);
+          throw err;
+        }
+      },
+    }),
+    [tripId, travelModeOverrides, toast, authorId],
+  );
+
   const value = useMemo<TripContextValue>(
     () => ({
       trip,
@@ -1886,6 +2001,7 @@ function TripReady({
       tasks: taskTree.roots,
       subtasks: taskTree.byParent,
       documentAttachments,
+      travelModeOverrides,
       enrichments,
       fxRates,
       refreshFx,
@@ -1901,6 +2017,7 @@ function TripReady({
       noteVerbs,
       taskVerbs,
       attachmentVerbs,
+      travelModeVerbs,
       changeFeed,
       dismissChange,
       clearChangeFeed,
@@ -1922,6 +2039,7 @@ function TripReady({
       notes,
       taskTree,
       documentAttachments,
+      travelModeOverrides,
       enrichments,
       fxRates,
       refreshFx,
@@ -1930,6 +2048,7 @@ function TripReady({
       noteVerbs,
       taskVerbs,
       attachmentVerbs,
+      travelModeVerbs,
       changeFeed,
       dismissChange,
       clearChangeFeed,

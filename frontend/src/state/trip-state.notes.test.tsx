@@ -86,6 +86,7 @@ const SNAPSHOT: TripSnapshot = {
   places: [],
   notes: [note('n1', { eventId: 'e1' }), note('n2', { eventId: 'e2' }), note('n3')],
   tasks: [],
+  travelModeOverrides: [],
   documentAttachments: [],
   enrichments: {},
   fxRates: null,

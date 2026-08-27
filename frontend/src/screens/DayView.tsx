@@ -14,9 +14,11 @@ import {
   edgeMeaning,
   isAmbient,
   isExactEdge,
+  isRoutableMode,
   type Booking,
   type MaybeItem,
   type Place,
+  type LegTravelMode,
   type TripEvent,
   typicalMinutesFor,
 } from '@waypoint/shared';
@@ -295,6 +297,8 @@ export function DayView() {
     places,
     notes,
     documentAttachments,
+    travelModeOverrides,
+    travelModeVerbs,
     hostContexts,
     zoneEvidence,
     activeDate,
@@ -667,7 +671,16 @@ export function DayView() {
   }, [blocks, bookends.woke, bookends.sleeps, placement.overnight]);
   const dayLegs = day.legs;
 
-  const travelReads = useDayTravelReads({ tripId: trip.id, legs: dayLegs, bookings, places });
+  /** **Which hole's mode row is open** (ADR-0206 §AL10). The DAY owns it, not the block: two holes
+   *  must not both be open, and a per-block `useState` would forget on every clock re-render. */
+  const [openModes, setOpenModes] = useState<string | null>(null);
+  const travelReads = useDayTravelReads({
+    tripId: trip.id,
+    legs: dayLegs,
+    bookings,
+    places,
+    overrides: travelModeOverrides,
+  });
 
   // **WHAT A DEVICE POSITION LETS THIS SURFACE CLAIM** (ADR-0207). The day row inherits the same
   // four stances the hero reads, off the same module, so the two elevations withdraw one claim at
@@ -799,7 +812,13 @@ export function DayView() {
         flexibleArrival: !isExactEdge(leg.to, 'start'),
         windowClosesMs: windowClosesMs(leg.to),
         travelSeconds: estimate?.durationSeconds ?? null,
-        distanceMeters: estimate?.distanceMeters ?? null,
+        // **The distance is the reads' own, not the estimate's** (ADR-0206 §AA4): a declared leg
+        // has no estimate to take one from and still keeps a distance, and `distanceFor` is the one
+        // place that rule lives so Plan mode cannot answer it differently.
+        distanceMeters: travelReads.distanceFor(leg.from, leg.to),
+        // A declared leg is a journey with no duration rather than no journey — and it is also the
+        // only thing carrying the mode control, so it must render (§AA4).
+        declared: !isRoutableMode(travelReads.modeFor(leg.from, leg.to)),
         nowMs,
         // `arrived` needs no separate arm here: a fix at the next stop means you got there, and
         // the day list is a record either way — what it must not do is keep offering a departure.
@@ -839,11 +858,46 @@ export function DayView() {
       : undefined;
   /** **The props a hole's journey block needs**, in one place, because the day's first leg renders
    *  outside the block loop and a second assembly is how the two would drift. */
-  const journeyProps = (journey: DayJourney, live: boolean) => ({
+  const journeyProps = (
+    journey: DayJourney,
+    live: boolean,
+    leg: { from: TripEvent; to: TripEvent },
+  ) => ({
     journey,
-    travelMode: travelReads.mode,
+    // **The LEG's mode, not the trip's** (ADR-0206 §AM). `modeFor` answers the override where one
+    // was set and the derivation otherwise, and it is the same read the Map makes — one leg cannot
+    // be a train in the list and a drive on the canvas (ADR-0159 §1).
+    travelMode: travelReads.modeFor(leg.from, leg.to),
     ...(live ? { action: liveAction(journey), located: liveLocated(journey) } : {}),
+    ...modeControl(leg),
   });
+
+  /** **The mode control's props for one leg** (ADR-0206 §AL10), or nothing.
+   *
+   *  Absent on a read-only archive, where every other write is gated too (ADR-0029), and absent on
+   *  a leg whose two ends do not both resolve to places — there is no pair to key an override on,
+   *  and §AM4 is explicit that such a leg is inert rather than broken.
+   *
+   *  **`clearLegMode` when the picked mode IS the derived one**, rather than storing a row that
+   *  says what the derivation already says: §Z2 keeps the persisted set to genuine overrides, so
+   *  picking your way back to the default takes the row away. */
+  const modeControl = (leg: { from: TripEvent; to: TripEvent }) => {
+    const pair = travelReads.pairFor(leg.from, leg.to);
+    if (readOnly || !pair) return {};
+    const key = `${leg.from.id}>${leg.to.id}`;
+    return {
+      modes: {
+        current: travelReads.modeFor(leg.from, leg.to),
+        open: openModes === key,
+        onToggle: () => setOpenModes((prev) => (prev === key ? null : key)),
+        onPick: (picked: LegTravelMode) => {
+          void (picked === travelReads.mode
+            ? travelModeVerbs.clearLegMode(pair.fromPlaceId, pair.toPlaceId)
+            : travelModeVerbs.setLegMode(pair.fromPlaceId, pair.toPlaceId, picked));
+        },
+      },
+    };
+  };
 
   /** **The day's first leg — out of the stay you woke in** (ADR-0206 §AD). It has no `join` above
    *  it because it has no row above it, so it renders outside the block loop rather than inside
@@ -1040,7 +1094,7 @@ export function DayView() {
           ))}
           {arriveJourney && day.arrive && (
             <JourneyRow
-              {...journeyProps(arriveJourney, day.arrive.to === liveLeg?.to)}
+              {...journeyProps(arriveJourney, day.arrive.to === liveLeg?.to, day.arrive)}
               tz={trip.timezone}
             />
           )}
@@ -1056,7 +1110,7 @@ export function DayView() {
           )}
           {wakeJourney && day.wake && (
             <JourneyRow
-              {...journeyProps(wakeJourney, day.wake.to === liveLeg?.to)}
+              {...journeyProps(wakeJourney, day.wake.to === liveLeg?.to, day.wake)}
               tz={trip.timezone}
             />
           )}
@@ -1083,8 +1137,11 @@ export function DayView() {
                   return (
                     <JoinRow
                       join={join ?? null}
-                      {...(journey
-                        ? journeyProps(journey, to === liveLeg?.to && from === liveLeg?.from)
+                      {...(journey && from && to
+                        ? journeyProps(journey, to === liveLeg?.to && from === liveLeg?.from, {
+                            from,
+                            to,
+                          })
                         : { journey: null, travelMode: travelReads.mode })}
                       tz={trip.timezone}
                       places={places}
@@ -1145,7 +1202,7 @@ export function DayView() {
             reads above the row it arrives at, exactly like every other leg in the day. */}
           {homeJourney && day.home && (
             <JourneyRow
-              {...journeyProps(homeJourney, day.home.to === liveLeg?.to)}
+              {...journeyProps(homeJourney, day.home.to === liveLeg?.to, day.home)}
               tz={trip.timezone}
             />
           )}

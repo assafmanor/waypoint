@@ -33,6 +33,8 @@ import {
 } from 'react';
 import {
   derivedTravelMode,
+  isRoutableMode,
+  legTravelMode,
   EVENT_STATUS,
   matchesAnyTerm,
   type Booking,
@@ -275,6 +277,7 @@ export function MapView() {
     indexVerbs,
     notes,
     documentAttachments,
+    travelModeOverrides,
     hostContexts,
     noteVerbs,
     // What the world knows about these places (ADR-0166 §6) — server-owned, and a missing key
@@ -1486,10 +1489,30 @@ export function MapView() {
             : i === amberLeg + 1
               ? ('near' as const)
               : ('dim' as const);
-      legs.push({ path: [...(dayShapes.pathFor(from, to) ?? [from, to])], from, to, emphasis });
+      // **A DECLARED leg draws its own straight segment, never the road route** (ADR-0206 §AA4's
+      // 2026-08-27 amendment). This is §Z5's live defect: a train booking's two ends were drawn as
+      // a road route whenever the pair sat under the mode's ceiling — Senso-ji → Tokyo Station is
+      // 4.6 km, well inside walking's 15 km — so the canvas made a false claim about the PATH, the
+      // same failure as the false NUMBER the declaration silences. `pathFor` is not consulted at
+      // all here, which is what makes the claim impossible rather than merely unlikely.
+      const declared = !isRoutableMode(
+        legTravelMode(
+          travelModeOverrides,
+          orderedPins[i]?.placeId,
+          orderedPins[i + 1]?.placeId,
+          travelMode,
+        ),
+      );
+      legs.push({
+        path: declared ? [from, to] : [...(dayShapes.pathFor(from, to) ?? [from, to])],
+        from,
+        to,
+        emphasis,
+        ...(declared ? { declared: true } : {}),
+      });
     }
     return legs;
-  }, [orderedStops, dayShapes, amberLeg]);
+  }, [orderedStops, orderedPins, dayShapes, amberLeg, travelModeOverrides, travelMode]);
 
   // The dashed ORDER is Plan mode + day scope only (ADR-0121 §10); the one amber leg draws in
   // either mode, because it answers "where is next" rather than "what shape is this day"

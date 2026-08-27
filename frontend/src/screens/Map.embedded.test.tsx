@@ -109,6 +109,10 @@ const updatePlace = indexVerbs.updatePlace;
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
     zoneCrossings: [],
+    // Every leg on this canvas takes the trip's derived mode: nobody has declared one, which is
+    // the ordinary trip (ADR-0206 §AM). Stated rather than omitted — the context field is not
+    // optional, and `legTravelMode` is right to refuse a non-array rather than defend a stale mock.
+    travelModeOverrides: [],
     // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
     tasks: [],
     taskVerbs: {

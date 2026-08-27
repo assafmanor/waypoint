@@ -135,12 +135,12 @@ model User {
   // Phases A and B. `notifyGroup` arrives only if phase D is ever built (ADR-0198 §6,
   // amended 2026-08-21) — an unused column would be a preference for a feature that may
   // never come.
-  notifyTasks       Boolean  @default(true)
+  notifyTasks       Boolean      @default(true)
   // Phase B: hard events, span edges, and the evening-before send. A separate switch from
   // `notifyTasks` because they are different registers — one is what a person wrote down,
   // the other is what the itinerary already committed them to. Somebody may well want the
   // flight and not the chores.
-  notifyObligations Boolean  @default(true)
+  notifyObligations Boolean      @default(true)
 
   createdAt DateTime @default(now())
 
@@ -225,6 +225,7 @@ model Trip {
   tasks       Task[]
 
   documentAttachments DocumentAttachment[]
+  travelModeOverrides TravelModeOverride[]
 
   @@index([createdBy])
 }
@@ -397,7 +398,46 @@ model Place {
   notes        Note[]
   tasks        Task[]
 
+  travelOverridesFrom TravelModeOverride[] @relation("TravelOverrideFromPlace")
+  travelOverridesTo   TravelModeOverride[] @relation("TravelOverrideToPlace")
+
   @@unique([tripId, googlePlaceId])
+  @@index([tripId])
+}
+
+// **How you get between two places on this trip, where a person has said** (ADR-0206 §V1.6 as
+// amended by §Z2; keyed per §AM).
+//
+// The default mode is DERIVED (`derivedTravelMode`) and there is deliberately **no
+// `defaultTravelMode` column** — §Z2 forbids one. This table is the only persisted half, and it
+// holds a row only where somebody actually overrode the derivation for one journey.
+//
+// **Keyed on the place PAIR, canonicalised** (§AM1/§AM2): `fromPlaceId <= toPlaceId`, enforced by
+// `travelOverridePair` in `@waypoint/shared` and by the unique constraint below, so one row serves
+// the pair in both directions. An event key was rejected because it dies on every reorder and is
+// finer than the coordinate-keyed estimate cache it modifies.
+//
+// `mode` is a `LegTravelMode` — the three routable modes plus `transit`, which no provider ever
+// sees (§AA4). Stored as a string for the same reason every other enum here is: the zod schema in
+// `packages/shared` is the validator, and widening a Postgres enum needs a migration where
+// widening a union does not.
+model TravelModeOverride {
+  id          String   @id @default(cuid())
+  tripId      String
+  fromPlaceId String
+  toPlaceId   String
+  mode        String
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  trip      Trip  @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  // Cascade, because the row's whole meaning is the pair: a dangling override would be a mode
+  // for a journey that no longer has two ends (§AM4).
+  fromPlace Place @relation("TravelOverrideFromPlace", fields: [fromPlaceId], references: [id], onDelete: Cascade)
+  toPlace   Place @relation("TravelOverrideToPlace", fields: [toPlaceId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, fromPlaceId, toPlaceId])
   @@index([tripId])
 }
 

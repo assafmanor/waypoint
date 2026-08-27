@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { BOOKING_TYPE, TRAVEL_MODE, TRAVEL_MODES } from './constants';
-import { travelModeSchema, type BookingType } from './entities';
+import {
+  BOOKING_TYPE,
+  isRoutableMode,
+  LEG_TRAVEL_MODES,
+  TRANSIT_LEG_MODE,
+  TRAVEL_MODE,
+  TRAVEL_MODES,
+} from './constants';
+import {
+  travelModeSchema,
+  type BookingType,
+  type LegTravelMode,
+  type TravelModeOverride,
+} from './entities';
 import {
   EARTH_RADIUS_M,
   MAP_AREA_LINK_RADIUS_M,
@@ -18,6 +30,9 @@ import {
   admittedTravelModes,
   decodePolyline,
   decodeShape,
+  legTravelMode,
+  travelOverrideKey,
+  travelOverridePair,
   routableLegs,
   routeBatchRequestSchema,
   routeLegKey,
@@ -334,5 +349,73 @@ describe('derivedTravelMode', () => {
     for (const bookings of [booked(BOOKING_TYPE.CAR), booked(BOOKING_TYPE.FLIGHT), []]) {
       expect(TRAVEL_MODES).toContain(derivedTravelMode(bookings));
     }
+  });
+});
+
+/* ── THE LEG'S OWN MODE (ADR-0206 §AM) ────────────────────────────────────────────────────────
+   The override is keyed on the PLACE PAIR — a fact about the journey between two places rather
+   than about an event, so it survives reordering the day. Three properties carry that, and each
+   fails silently: the pair is unordered, the newest row wins, and `transit` is a mode a LEG may
+   hold while `TravelMode` stays the three the provider knows. */
+describe('the per-leg travel mode', () => {
+  const row = (mode: LegTravelMode, over: Partial<TravelModeOverride> = {}): TravelModeOverride =>
+    ({
+      id: 'o1',
+      tripId: 't1',
+      fromPlaceId: 'p-a',
+      toPlaceId: 'p-b',
+      mode,
+      createdBy: 'u1',
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+      ...over,
+    }) as TravelModeOverride;
+
+  it('widens the LEG’s modes by one without widening the provider’s', () => {
+    expect(LEG_TRAVEL_MODES).toEqual([...TRAVEL_MODES, TRANSIT_LEG_MODE]);
+    // The narrowing that keeps `transit` off every provider and out of the gate (§AM5).
+    for (const mode of TRAVEL_MODES) expect(isRoutableMode(mode)).toBe(true);
+    expect(isRoutableMode(TRANSIT_LEG_MODE)).toBe(false);
+  });
+
+  it('canonicalises the pair, so one row serves both directions', () => {
+    expect(travelOverridePair('p-b', 'p-a')).toEqual({ fromPlaceId: 'p-a', toPlaceId: 'p-b' });
+    expect(travelOverridePair('p-a', 'p-b')).toEqual({ fromPlaceId: 'p-a', toPlaceId: 'p-b' });
+    expect(travelOverrideKey('p-b', 'p-a')).toBe(travelOverrideKey('p-a', 'p-b'));
+  });
+
+  it('answers the fallback where nothing is declared', () => {
+    expect(legTravelMode([], 'p-a', 'p-b', TRAVEL_MODE.DRIVING)).toBe(TRAVEL_MODE.DRIVING);
+    // An unresolved end has no pair to key on, so it is inert rather than broken (§AM4).
+    expect(legTravelMode([row(TRANSIT_LEG_MODE)], undefined, 'p-b', TRAVEL_MODE.WALKING)).toBe(
+      TRAVEL_MODE.WALKING,
+    );
+  });
+
+  it('answers the declaration whichever way round the leg is traversed', () => {
+    const declared = [row(TRANSIT_LEG_MODE)];
+    expect(legTravelMode(declared, 'p-a', 'p-b', TRAVEL_MODE.WALKING)).toBe(TRANSIT_LEG_MODE);
+    expect(legTravelMode(declared, 'p-b', 'p-a', TRAVEL_MODE.WALKING)).toBe(TRANSIT_LEG_MODE);
+  });
+
+  it('ignores a declaration about a different pair', () => {
+    expect(legTravelMode([row(TRANSIT_LEG_MODE)], 'p-a', 'p-c', TRAVEL_MODE.WALKING)).toBe(
+      TRAVEL_MODE.WALKING,
+    );
+  });
+
+  // **The newest row wins, and it is not `find`.** The unique index makes one row per pair the
+  // steady state, but an optimistic write and its echo can both be in the list for a frame — and
+  // `find` would answer whichever the array happened to hold first, so the block would flicker
+  // between two modes on a re-render rather than settling on the one that was just written.
+  it('takes the newest declaration where two are momentarily present', () => {
+    const both = [
+      row(TRAVEL_MODE.CYCLING, { id: 'old', updatedAt: '2026-08-01T00:00:00.000Z' }),
+      row(TRANSIT_LEG_MODE, { id: 'new', updatedAt: '2026-08-02T00:00:00.000Z' }),
+    ];
+    expect(legTravelMode(both, 'p-a', 'p-b', TRAVEL_MODE.WALKING)).toBe(TRANSIT_LEG_MODE);
+    expect(legTravelMode([...both].reverse(), 'p-a', 'p-b', TRAVEL_MODE.WALKING)).toBe(
+      TRANSIT_LEG_MODE,
+    );
   });
 });

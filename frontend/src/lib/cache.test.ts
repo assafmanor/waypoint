@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
   Booking,
   Change,
+  TravelModeOverride,
   DocumentAttachment,
   DocumentSummary,
   Note,
@@ -11,7 +12,7 @@ import type {
   TripEvent,
   TripSnapshot,
 } from '@waypoint/shared';
-import { BOOKING_TYPE, CHANGE_ACTION, ENTITY_TYPE } from '@waypoint/shared';
+import { BOOKING_TYPE, CHANGE_ACTION, ENTITY_TYPE, TRANSIT_LEG_MODE } from '@waypoint/shared';
 import { db } from '../db';
 import { EVENTS, MAYBE_ITEMS } from '../fixtures';
 import {
@@ -54,6 +55,7 @@ function snapshot(overrides: Partial<TripSnapshot> = {}): TripSnapshot {
     places: [],
     notes: [],
     tasks: [],
+    travelModeOverrides: [],
     documentAttachments: [],
     enrichments: {},
     fxRates: null,
@@ -894,5 +896,133 @@ describe('readCachedSnapshot is bounded', () => {
 
     await vi.advanceTimersByTimeAsync(1);
     await expect(read).resolves.toBeNull();
+  });
+});
+
+/**
+ * **A declared leg has to survive a reload and a whole offline session** (ADR-0206 §AM, and M8b's
+ * card asks for exactly these two). The mode a member declared is a user write like any other, so
+ * it rides the same three paths every other entity does: the snapshot mirror (a reload), the
+ * outbox mirror (declared with no network), and the host cascade (its place went away).
+ */
+describe('a declared travel mode in the offline cache (ADR-0206 §AM)', () => {
+  const declared = (over: Partial<TravelModeOverride> = {}): TravelModeOverride => ({
+    id: 'tmo-1',
+    tripId: TRIP_ID,
+    fromPlaceId: 'pl-1',
+    toPlaceId: 'pl-2',
+    mode: TRANSIT_LEG_MODE,
+    createdBy: 'u-assaf',
+    createdAt: '2026-07-01T00:00:00.000Z',
+    updatedAt: '2026-07-01T00:00:00.000Z',
+    ...over,
+  });
+
+  it('round-trips a declaration through the snapshot cache (survives a reload)', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot({ travelModeOverrides: [declared()] }));
+    const cached = await readCachedSnapshot(TRIP_ID);
+    expect(cached?.travelModeOverrides).toEqual([declared()]);
+  });
+
+  it('reads a trip cached BEFORE this shipped as having none, not undefined', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot());
+    const meta = await db.snapshotMeta.get(TRIP_ID);
+    // The pre-upgrade row simply has no `travelModeOverrides` key — and `undefined` here would
+    // reach `legTravelMode` as a non-array and take every leg's mode with it.
+    delete (meta as unknown as Record<string, unknown>).travelModeOverrides;
+    await db.snapshotMeta.put(meta!);
+    expect((await readCachedSnapshot(TRIP_ID))?.travelModeOverrides).toEqual([]);
+  });
+
+  // The offline half: declared on the plane, so the mirror is the only thing that remembers it
+  // until the flush. Note the canonicalised pair — the caller passed the ends the other way
+  // round, and `legTravelMode` looks the row up sorted.
+  it('mirrors an offline declaration, canonicalised, so a cold reopen still reads it', async () => {
+    setSimulatedNow(Date.parse('2026-07-20T09:00:00.000Z'));
+    await cacheSnapshot(TRIP_ID, snapshot());
+    await applyOutboxOpToCache(TRIP_ID, {
+      verb: OUTBOX_VERB.SET_TRAVEL_MODE,
+      input: { id: 'tmo-offline', fromPlaceId: 'pl-2', toPlaceId: 'pl-1', mode: TRANSIT_LEG_MODE },
+    });
+
+    const written = (await readCachedSnapshot(TRIP_ID))?.travelModeOverrides[0];
+    expect(written).toMatchObject({
+      id: 'tmo-offline',
+      fromPlaceId: 'pl-1',
+      toPlaceId: 'pl-2',
+      mode: TRANSIT_LEG_MODE,
+    });
+    // The server stamps these; the queued row states them, or a cold load fails the schema.
+    expect(written?.createdAt).toBe('2026-07-20T09:00:00.000Z');
+    expect(written?.updatedAt).toBe('2026-07-20T09:00:00.000Z');
+    setSimulatedNow(null);
+  });
+
+  it('mirrors an offline clear', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot({ travelModeOverrides: [declared()] }));
+    await applyOutboxOpToCache(TRIP_ID, {
+      verb: OUTBOX_VERB.CLEAR_TRAVEL_MODE,
+      overrideId: 'tmo-1',
+    });
+    expect((await readCachedSnapshot(TRIP_ID))?.travelModeOverrides).toEqual([]);
+  });
+
+  it('applies a peer’s declaration and a peer’s clear', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot());
+    await applyChangeToCache(TRIP_ID, {
+      entityType: ENTITY_TYPE.TRAVEL_MODE_OVERRIDE,
+      entityId: 'tmo-1',
+      action: CHANGE_ACTION.CREATE,
+      after: declared(),
+    } as unknown as Change);
+    expect((await readCachedSnapshot(TRIP_ID))?.travelModeOverrides[0]?.mode).toBe(
+      TRANSIT_LEG_MODE,
+    );
+
+    await applyChangeToCache(TRIP_ID, {
+      entityType: ENTITY_TYPE.TRAVEL_MODE_OVERRIDE,
+      entityId: 'tmo-1',
+      action: CHANGE_ACTION.DELETE,
+    } as unknown as Change);
+    expect((await readCachedSnapshot(TRIP_ID))?.travelModeOverrides).toEqual([]);
+  });
+
+  // The family trap, and this is its FIFTH member: Postgres cascades the row away with either
+  // end and writes no `Change` for it, so without this the cache serves a declaration whose
+  // place is gone. It cascades rather than nulls because the pair IS the row's identity (§AM1).
+  it('drops a declaration when either of its places is deleted, though no Change was sent', async () => {
+    await cacheSnapshot(
+      TRIP_ID,
+      snapshot({
+        travelModeOverrides: [
+          declared(),
+          declared({ id: 'tmo-2', fromPlaceId: 'pl-2', toPlaceId: 'pl-3' }),
+          declared({ id: 'tmo-3', fromPlaceId: 'pl-3', toPlaceId: 'pl-4' }),
+        ],
+      }),
+    );
+    await applyChangeToCache(TRIP_ID, {
+      entityType: ENTITY_TYPE.PLACE,
+      entityId: 'pl-2',
+      action: CHANGE_ACTION.DELETE,
+    } as unknown as Change);
+
+    // Both legs that touched `pl-2` are gone — the one that named it first and the one that
+    // named it second — and the leg that never touched it is untouched.
+    expect((await readCachedSnapshot(TRIP_ID))?.travelModeOverrides.map((o) => o.id)).toEqual([
+      'tmo-3',
+    ]);
+  });
+
+  it('leaves the declarations alone when the deleted place is not an end', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot({ travelModeOverrides: [declared()] }));
+    await applyChangeToCache(TRIP_ID, {
+      entityType: ENTITY_TYPE.PLACE,
+      entityId: 'pl-9',
+      action: CHANGE_ACTION.DELETE,
+    } as unknown as Change);
+    expect((await readCachedSnapshot(TRIP_ID))?.travelModeOverrides.map((o) => o.id)).toEqual([
+      'tmo-1',
+    ]);
   });
 });

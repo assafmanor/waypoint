@@ -8,7 +8,12 @@
 // ADR-0205 §2's port, in `backend/src/routing/`.
 import { z } from 'zod';
 import { BOOKING_TYPE, TRAVEL_MODE, TRAVEL_MODES } from './constants';
-import { travelModeSchema, type BookingType, type TravelMode } from './entities';
+import {
+  travelModeSchema,
+  type BookingType,
+  type LegTravelMode,
+  type TravelMode,
+} from './entities';
 import { haversineMeters, latLngSchema, type LatLng } from './geo';
 
 /* ── THE GEOMETRY (ADR-0205 §1) ──────────────────────────────────────────────────────────── */
@@ -355,6 +360,67 @@ export function derivedTravelMode(bookings: readonly { type: BookingType }[]): T
   return bookings.some((booking) => booking.type === BOOKING_TYPE.CAR)
     ? TRAVEL_MODE.DRIVING
     : TRAVEL_MODE.WALKING;
+}
+
+/* ── THE PER-LEG OVERRIDE (ADR-0206 §V1.6 / §Z2, keyed per §AM) ───────────────────────────── */
+
+/**
+ * **The pair, canonicalised — one row for both directions** (ADR-0206 §AM2).
+ *
+ * Sorting the two ids here rather than at each call site is what makes the unique constraint on
+ * `(tripId, fromPlaceId, toPlaceId)` mean "one mode per pair" instead of "one mode per direction",
+ * and it means no read has to try both orders. **Every writer and every reader goes through this**;
+ * a call site that builds the pair by hand is how the two orders start diverging.
+ *
+ * If the owner ever wants direction-sensitive overrides, this function is the one-line change §AM2
+ * names: return the arguments untouched.
+ */
+export function travelOverridePair(
+  a: string,
+  b: string,
+): { fromPlaceId: string; toPlaceId: string } {
+  return a <= b ? { fromPlaceId: a, toPlaceId: b } : { fromPlaceId: b, toPlaceId: a };
+}
+
+/** The same pair as one string, for keying a `Map` on the read side. */
+export function travelOverrideKey(a: string, b: string): string {
+  const pair = travelOverridePair(a, b);
+  return `${pair.fromPlaceId}>${pair.toPlaceId}`;
+}
+
+/**
+ * **What mode this leg is, override first and the derivation behind it** (§Z2).
+ *
+ * The one place the two halves meet, so the day list, the hero and the Map cannot disagree about a
+ * leg — the same reason `derivedTravelMode` is shared rather than inlined. `fallback` is the trip's
+ * derived mode; the override is consulted only when both ends are known, because a leg with an
+ * unresolved end has no pair to look up (§AM4: inert, not broken).
+ */
+export function legTravelMode(
+  overrides: readonly {
+    fromPlaceId: string;
+    toPlaceId: string;
+    mode: LegTravelMode;
+    updatedAt?: string;
+  }[],
+  fromPlaceId: string | undefined,
+  toPlaceId: string | undefined,
+  fallback: TravelMode,
+): LegTravelMode {
+  if (!fromPlaceId || !toPlaceId) return fallback;
+  const key = travelOverrideKey(fromPlaceId, toPlaceId);
+  // **The NEWEST match, not the first**, and that is a robustness choice rather than a style one.
+  // The unique constraint means storage holds one row per pair — but a client can briefly hold two:
+  // its own optimistic row for a pair a peer created while it was offline, until the next snapshot
+  // replaces the cache wholesale. `find` would then answer nondeterministically and the mode would
+  // flicker; taking the latest `updatedAt` makes the transient state resolve the same way every
+  // render. Absent timestamps sort as oldest, so a caller passing the minimal shape still works.
+  let hit: (typeof overrides)[number] | undefined;
+  for (const o of overrides) {
+    if (travelOverrideKey(o.fromPlaceId, o.toPlaceId) !== key) continue;
+    if (!hit || (o.updatedAt ?? '') >= (hit.updatedAt ?? '')) hit = o;
+  }
+  return hit?.mode ?? fallback;
 }
 
 /* ── THE BATCH (ADR-0205 §6, §Y2) ────────────────────────────────────────────────────────── */

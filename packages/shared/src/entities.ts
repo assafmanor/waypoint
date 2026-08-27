@@ -78,6 +78,24 @@ export type EventCategory = z.infer<typeof eventCategorySchema>;
 export const travelModeSchema = z.enum(['walking', 'driving', 'cycling']);
 export type TravelMode = z.infer<typeof travelModeSchema>;
 
+/**
+ * **What a LEG may be, which is one more thing than what a router may be asked** (ADR-0206 §AA4,
+ * shaped by §AM5).
+ *
+ * `travelModeSchema` above is the **routable** set: the values a provider can answer, and therefore
+ * the only ones that may appear in a `RouteBatchRequest`. תחב״צ is a fourth thing a leg can BE and
+ * not a fourth thing to ask about — declared by a person, never inferred, with no provider behind
+ * it. §AA4 is explicit that it is _"not a fourth member of `travelModeSchema`"_, and keeping the two
+ * types apart is what makes "no request is ever made for transit" a fact about the type system
+ * rather than a rule everyone has to remember.
+ *
+ * **Counted, the split lands on exactly three `Record<TravelMode, …>` sites** (§AM5): `TRAVEL_GATE`
+ * and the provider's `COSTING` keep three entries — a transit mode reaching either of those is the
+ * bug — and only the frontend's copy widens, because it is the one that needs a word for it.
+ */
+export const legTravelModeSchema = z.enum([...travelModeSchema.options, 'transit']);
+export type LegTravelMode = z.infer<typeof legTravelModeSchema>;
+
 // creator is admin — ADR-0005/0018
 export const membershipRoleSchema = z.enum(['admin', 'peer']);
 export type MembershipRole = z.infer<typeof membershipRoleSchema>;
@@ -111,6 +129,7 @@ export const entityTypeSchema = z.enum([
   'note',
   'task',
   'documentAttachment',
+  'travelModeOverride',
 ]);
 export type EntityType = z.infer<typeof entityTypeSchema>;
 
@@ -405,6 +424,51 @@ export const documentAttachmentSchema = z.object({
 });
 export type DocumentAttachment = z.infer<typeof documentAttachmentSchema>;
 
+/**
+ * **HOW YOU GET BETWEEN TWO PLACES ON THIS TRIP, WHERE A PERSON HAS SAID** (ADR-0206 §V1.6 as
+ * amended by §Z2, and §AM says what the row is about).
+ *
+ * The default mode is **derived** (`derivedTravelMode`, `routing.ts`) and there is deliberately no
+ * `defaultTravelMode` column — §Z2 forbids one. This row is the only persisted half: it exists when
+ * somebody actually overrode the derivation for one journey, and not otherwise.
+ *
+ * **Keyed on the PLACE PAIR, not on an event** (§AM1). The two ids are **canonicalised (sorted)**, so
+ * one row serves the pair in both directions — a rail corridor is a rail corridor either way, and
+ * the failure that matters is the silent one: declaring תחב״צ on A→B and having the return leg keep
+ * printing a walking number (§AM2). An event key would die on every reorder and is finer than the
+ * coordinate-keyed cache it modifies, which is incoherent rather than merely awkward.
+ *
+ * `mode` is a `LegTravelMode`, so `transit` is expressible here and nowhere a provider can see it.
+ */
+export const travelModeOverrideSchema = z.object({
+  id: idSchema,
+  tripId: idSchema,
+  /** The lower of the two place ids. Canonicalised by `travelOverridePair`, never by a call site. */
+  fromPlaceId: idSchema,
+  /** The higher of the two. Same canonicalisation. */
+  toPlaceId: idSchema,
+  mode: legTravelModeSchema,
+  createdBy: idSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type TravelModeOverride = z.infer<typeof travelModeOverrideSchema>;
+
+/** **Setting one is idempotent on the pair** — the same two places, a mode, and the server upserts.
+ *  There is no separate create/update at the edge because there is nothing to distinguish: a person
+ *  is stating what this journey is, and stating it twice is stating it once. */
+export const setTravelModeOverrideSchema = z.object({
+  /** **Client-minted, like every other offline-capable write** (ADR-0056's shape). It is what lets
+   *  the queued row and the row the server writes be the same row, so an offline declaration does
+   *  not become a second one when the queue flushes. The server honours it on a create and keeps
+   *  the EXISTING id on an update, because the pair is the identity and the id is only its handle. */
+  id: idSchema.optional(),
+  fromPlaceId: idSchema,
+  toPlaceId: idSchema,
+  mode: legTravelModeSchema,
+});
+export type SetTravelModeOverride = z.infer<typeof setTravelModeOverrideSchema>;
+
 export const maybeItemSchema = z.object({
   id: idSchema,
   tripId: idSchema,
@@ -613,6 +677,11 @@ export const tripSnapshotSchema = z.object({
    *  against `documents` above, so an attachment whose document this reader cannot see
    *  renders as nothing (§6). */
   documentAttachments: z.array(documentAttachmentSchema),
+  /** **The per-leg travel-mode overrides** (ADR-0206 §V1.6/§Z2, keyed per §AM). Only the ones
+   *  somebody actually set — the default is derived, so an untouched trip carries an empty array
+   *  and reads exactly as it did before this existed. Defaulted rather than required for the same
+   *  compatibility reason `fxRates` is: a client on an older snapshot must not fail to parse. */
+  travelModeOverrides: z.array(travelModeOverrideSchema).default([]),
   /** **The world's facts about the trip's places, keyed by `placeId`** (ADR-0166 §6). A
    *  server-owned read model joined onto the snapshot, not an entity of the trip: the store
    *  is global and no client writes it, so it carries no `Change` and never appears in the

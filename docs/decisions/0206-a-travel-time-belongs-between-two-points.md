@@ -230,6 +230,11 @@ and it interacts with the buffer §D5 already requires. The horizon keeps the fu
 
 ### Z2. The default mode is **derived, not stored** — and switching must be instant
 
+> **§AM (2026-08-27) says what "a per-leg override" is a row ABOUT**, which this section left open and
+> M8b could not be built without: the **place pair**, `(tripId, fromPlaceId, toPlaceId)` with the ids
+> sorted. §AM5 also records why the compile trap this section set never fires — `travelModeSchema`
+> keeps its three routable members and a leg stores `LegTravelMode` instead.
+
 The owner: _"default could be inferred per trip, but it should be easy to switch between modes and
 immediately get the results."_ Both halves change §V1.6.
 
@@ -1784,6 +1789,15 @@ at all** — the caret rides the existing flex line and costs nothing.
    off the block on the grounds that _"the block is about the leg and free time is about the hole"_ —
    and the mode is emphatically **about the leg**, so it belongs here by that same rule rather than in
    spite of it.
+
+   **Corrected in the build (M8b, 2026-08-27): it did not fall, and the reason matters.** The
+   disclosure is **opt-in per host** — `modes` is an optional prop, absent on a read-only archive
+   (ADR-0029) and on any leg whose two ends do not both resolve to a place — so a block given no
+   `modes` is still exactly the statement that spec describes, and it still renders a `<div>`. The
+   spec now covers the posture rather than the component: what M8b added beside it is the disclosure's
+   own describe block, so both shapes are asserted. **The prediction was drawn from the mockup, where
+   the row is always visible; the mockup could not see the prop.**
+
 2. **`Collapsible`'s transition is a `0.32s` literal while the caret rides `--t-base` (240ms)**, so
    the two halves of one gesture are visibly out of step. The primitive is where that gets fixed
    (ADR-0140's "waits are `motionDurationMs`, timings come from the ramp"), not the host.
@@ -1835,3 +1849,141 @@ no cluster at all answers `false`"** — so an isolated place refuses walking **
 2 km stroll would be told it is too far. The recommendation is **`אין הערכה ל<מצב> כאן`**: one
 template composed from `t.travelMode`, true in every refusal case, and separated from the declared
 leg's `בלי הערכת זמן` by `כאן` — the pair rather than the mode. Drawn beside both alternatives.
+
+## AM. Amendment (2026-08-27) — the per-leg override keys on the PLACE PAIR, and §V1.6/§Z2 say what it is
+
+§V1.6 as amended by §Z2 settled that the default is derived and only an **override** is persisted.
+It did not say what an override is a row _about_, and M8b cannot be built without that: **there is no
+`travelMode` column anywhere in `schema.prisma` today, and `DayJourney` (`lib/day-joins.ts`) carries
+no leg identity at all** — no `fromId`, no `toId`. It takes two instants and a duration. So
+"per-leg override" did not yet name a row.
+
+**Decided: `(tripId, fromPlaceId, toPlaceId)`, with the two place ids CANONICALISED (sorted), so one
+row serves the pair in both directions.**
+
+### AM1. Why the place pair, and the strongest argument is from the code
+
+1. **The app already resolves exactly this pair, in exactly one place.**
+   `useDayTravelReads` (`lib/day-travel.ts`) turns each hole into
+   `endpointPlaceId(leg.from, …, 'leaving')` and `endpointPlaceId(leg.to, …, 'arriving')` — the
+   place-authority rule, including the transport inversion (you leave a flight where it _lands_).
+   That derivation exists, is memoised, and is the one thing both day surfaces share. Keying the
+   override on the pair means it needs **no new identity and no new derivation**: it is read where
+   both ends are already known.
+2. **It sits at the same granularity as the thing it overrides.** The estimate is cached by the
+   **rounded coordinate pair**, not by an event — `estimateFor(from, to, mode)` takes `LatLng`s. An
+   event-keyed override would be _finer_ than the cache it modifies, so two events between the same
+   two places could disagree about the mode while sharing one cached estimate. That is incoherent
+   rather than merely awkward.
+3. **It survives reordering, deleting and re-adding.** An override keyed on the arriving `Event`
+   dies the moment the day is reordered (a different event now arrives) or the event is deleted and
+   re-created — so the traveller re-declares it after every edit. The pair does not move.
+4. **It matches the fact being recorded.** "Senso-ji ↔ Tokyo Station is a train" is a claim about the
+   world, not about this itinerary. §AG7 already established that a place visited twice is two stops
+   and one pin; both occurrences of the pair are the same journey and take the same mode, which is
+   right.
+
+### AM2. Why UNORDERED, and what that costs
+
+The owner's own phrasing is the pair rather than the direction — _"however you get from A to B on
+this trip, it's transit"_ — and a rail corridor is a rail corridor both ways.
+
+**The deciding argument is which failure is worse.** Ordered is strictly more expressive, and the
+cost is silent: you declare תחב״צ on A→B, and the return leg keeps printing the wrong walking number
+because it is a different row. That is the common case. Unordered's cost is that a genuinely
+asymmetric pair — a funicular up and a walk down — **cannot be expressed at all**. That is the rare
+case, and it is loud rather than silent: the mode reads wrong on one leg and the traveller can see
+that it does.
+
+So: sorted ids, and the `@@unique([tripId, fromPlaceId, toPlaceId])` constraint enforces one row per
+pair. **If the owner wants ordered instead it is a one-line change** — drop the canonicalisation and
+let both rows exist; nothing else in this design depends on the symmetry.
+
+**Revisit trigger:** a real trip where one pair genuinely takes two different modes by direction.
+
+### AM3. Rejected
+
+- **Key on the arriving `Event`.** §AM1.3 and §AM1.2 — it dies on reorder and it is finer than the
+  cache it modifies. This is what "per-leg" would have meant if nobody had checked what a leg is.
+- **Key on the `Booking`.** A declared transit leg most often has **no booking at all** — that is
+  rather the point, you buy the ticket at the station. An override that requires a booking cannot
+  express the case it exists for.
+- **A `defaultTravelMode` column on `Trip`.** Forbidden by §Z2 and unnecessary:
+  `derivedTravelMode(bookings)` already ships (M7's follow-up) and is read identically by the day,
+  the hero and the Map.
+
+### AM4. Two consequences worth stating before the build finds them
+
+- **An override on a pair with no coordinates is inert, not broken.** `useDayTravelReads` skips a leg
+  whose either end is a Place-lite row (ADR-0147), so the override simply has nothing to apply to —
+  and it starts applying if that place is later enriched. Nothing to guard.
+- **A deleted place takes its overrides with it** (`onDelete: Cascade`), because the row's whole
+  meaning is the pair. A dangling override would be a mode for a journey that no longer has two ends.
+
+### AM5. `travelModeSchema` does NOT gain a fourth member, so the compile trap never fires
+
+M8b's card anticipated the build breaking on purpose: `TRAVEL_GATE` is
+`as const satisfies Record<TravelMode, TravelGateRule>`, so widening `travelModeSchema` would stop it
+compiling until somebody answered what transit costs as. **§AA4 forbids widening it**, so the trap is
+never sprung — and that is worth writing down, because a later reader working from the card will go
+looking for a compile error that is not there.
+
+The shape instead: **`TravelMode` stays the three ROUTABLE modes** (what the server is asked for) and
+a new **`LegTravelMode = TravelMode | 'transit'`** is what a leg stores. Counted, there are exactly
+three `Record<TravelMode, …>` sites and the split lands cleanly across them:
+
+| site                               | gains transit? | why                                                     |
+| ---------------------------------- | -------------- | ------------------------------------------------------- |
+| `routing.ts`'s `TRAVEL_GATE`       | **no**         | §AA4 — the gate never sees it; there is nothing to gate |
+| `valhalla.provider.ts`'s `COSTING` | **no**         | a transit mode reaching a provider IS the bug           |
+| `he.ts`'s `travelMode`             | **yes**        | it is the one that needs a word for it                  |
+
+`isRoutableMode(m): m is TravelMode` is the single narrowing at that boundary, so "no request is ever
+made for transit" is one function rather than a condition repeated at each call site.
+
+### AM6. What the build found: a declared leg is a journey with NO duration, not an absent journey
+
+Suppressing the estimate at the reads layer was the whole of the plan, and it was wrong in a way only
+the screen spec could see. `dayJourney` answers `null` when there is no `travelSeconds` — §D4's
+absence, correctly — so a declared leg produced **no block at all**. Two things follow, and the
+second is the serious one:
+
+- §AA4 says the declaration _"suppresses the duration and keeps the distance"_. A hole that renders
+  nothing keeps neither.
+- **The block is the only thing carrying the mode control.** So declaring תחב״צ removed the control
+  that declared it: a one-way door, on the surface that opened it.
+
+**So `DAY_JOURNEY_ARM` gains a fifth member, `DECLARED`**, and `DayJourney.travelSeconds` widens to
+`number | null` with that arm as the one place it is null. Counted before changing it: exactly **one**
+consumer outside `day-joins.ts` reads `travelSeconds`, and it was already inside the `declared` guard.
+Every arm consumer is a positive `=== ARM` test, so a new arm reaches none of them — a declared leg
+offers no `בדרך`, takes the neutral tone, and carries no warning mark, all by falling through.
+
+**And the distance is one derivation, not a rule each surface applies.** `useDayTravelReads` gained
+`distanceFor`: the ROUTED distance where there is an estimate, the **crow-flies floor** on a declared
+leg. That is the same claim the canvas already makes for such a leg — a straight segment, because we
+do not know the road it takes — so the block and the map state one thing. It is also the one place
+`DayJourney.distanceMeters` is not routed, which its own docblock now says.
+
+The price, stated in the mockup and now asserted: **the free-time strip below a declared leg states
+the raw hole again.** There is no duration to subtract, and §V1.1 is explicit that absence leaves
+ADR-0159's line exactly as it read before any of this existed — never a pessimistic guess.
+
+### AM7. Three smaller findings from the build, each written where it will be looked for
+
+- **The override cascade is the FIFTH member of a family this codebase documents four times.**
+  Postgres removes a declaration with either of its places and writes no `Change` for it (the service
+  spec asserts that cascade), so the cache and the in-memory list need the same drop the notes, tasks,
+  attachments and place-FK cascades already have. It **deletes** rather than nulls, because the pair
+  IS the row's identity (§AM1) — which is why it is `dropOverridesForPlace` beside `clearPlaceRefs`
+  rather than a `PLACE_FK` entry, whose whole shape is emptying a field.
+- **`useDayTravelReads`' `overrides` is REQUIRED**, for the reason `useLegShape`'s `mode` is. An
+  optional list with an empty default reads as harmless and is not: a surface that forgets to wire it
+  silently ignores every declaration on the trip, which is indistinguishable from nobody having made
+  one. Making it required turned two stale test fixtures into failures immediately, which is the
+  point.
+- **A glyph with a facing mirrors with the reading direction, and the two transform channels are
+  disjoint** — ADR-0138 §10 owns the rule; what M8b added is the spec. `MIRRORED` (the `--dir` scaleX)
+  and `dir` (an inline `rotate`) would collide silently, so `ui/icon-mirroring.contract.test.ts`
+  asserts over the source that no `MIRRORED` member is ever passed a `dir`, and that the mirror is
+  declared exactly once.

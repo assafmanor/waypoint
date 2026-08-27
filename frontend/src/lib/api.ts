@@ -8,6 +8,9 @@ import {
   invitePreviewSchema,
   destinationResultSchema,
   documentAttachmentSchema,
+  travelModeOverrideSchema,
+  type SetTravelModeOverride,
+  type TravelModeOverride,
   fxRefreshResultSchema,
   type FxRates,
   maybeItemSchema,
@@ -90,6 +93,7 @@ export { API_BASE_URL };
  *  rather than at compile time. GET is the fetch default and left implicit. */
 export const HTTP_METHOD = {
   POST: 'POST',
+  PUT: 'PUT',
   PATCH: 'PATCH',
   DELETE: 'DELETE',
 } as const;
@@ -435,6 +439,9 @@ const taskUrl = (tripId: string, taskId: string) => `${tasksUrl(tripId)}/${taskI
 const attachmentsUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/document-attachments`;
 const attachmentUrl = (tripId: string, attachmentId: string) =>
   `${attachmentsUrl(tripId)}/${attachmentId}`;
+const travelModesUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/travel-modes`;
+const travelModeUrl = (tripId: string, overrideId: string) =>
+  `${travelModesUrl(tripId)}/${overrideId}`;
 const bookingsUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/bookings`;
 const bookingUrl = (tripId: string, bookingId: string) => `${bookingsUrl(tripId)}/${bookingId}`;
 const placesUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/places`;
@@ -692,6 +699,29 @@ export async function deleteDocumentAttachment(
   const res = await apiFetch(attachmentUrl(tripId, attachmentId), {
     method: HTTP_METHOD.DELETE,
   });
+  if (!res.ok) return throwApiError(res);
+}
+
+/** **Declare how a pair of places is travelled** (ADR-0206 §V1.6/§Z2, keyed per §AM). `PUT`,
+ *  because the row is identified by the pair in the body and the write is idempotent — stating the
+ *  same thing twice is stating it once. */
+export async function setTravelMode(
+  tripId: string,
+  input: SetTravelModeOverride,
+): Promise<TravelModeOverride> {
+  const res = await apiFetch(travelModesUrl(tripId), {
+    method: HTTP_METHOD.PUT,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return travelModeOverrideSchema.parse(await readJson(res));
+}
+
+/** Take the declaration back, which returns the leg to the DERIVED mode — there is no "no mode"
+ *  state, only "nobody said otherwise" (§Z2). */
+export async function clearTravelMode(tripId: string, overrideId: string): Promise<void> {
+  const res = await apiFetch(travelModeUrl(tripId, overrideId), { method: HTTP_METHOD.DELETE });
   if (!res.ok) return throwApiError(res);
 }
 

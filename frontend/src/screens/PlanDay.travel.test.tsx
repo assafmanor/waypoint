@@ -24,6 +24,7 @@ import {
   type Booking,
   type Place,
   type TravelEstimate,
+  type TravelModeOverride,
   type TripEvent,
 } from '@waypoint/shared';
 import { setSimulatedNow } from '../lib/useClock';
@@ -97,6 +98,12 @@ const theatre = ev('theatre', {
   endsAt: `${DAY}T18:30:00Z`,
 });
 
+let tripOverrides: TravelModeOverride[] = [];
+const travelModeVerbs = {
+  setLegMode: vi.fn(async () => {}),
+  clearLegMode: vi.fn(async () => {}),
+};
+
 let tripEvents: TripEvent[] = [];
 /** Mutable like `DayView.travel.test.tsx`'s, so a describe can add the place its own fixture
  *  needs: `useDayTravelReads` skips any leg whose two ends do not both resolve to coordinates,
@@ -109,6 +116,11 @@ vi.mock('../state/trip-state', () => ({
     Date.parse(a.startsAt ?? a.date) - Date.parse(b.startsAt ?? b.date),
   useTrip: () => ({
     documentAttachments: [],
+    // The declared legs, mutable so a spec can declare one and re-render (ADR-0206 §AM). Stated
+    // rather than omitted: `useDayTravelReads` takes it as a REQUIRED list precisely so a surface
+    // cannot forget to wire it and silently ignore every declaration on the trip.
+    travelModeOverrides: tripOverrides,
+    travelModeVerbs,
     hostContexts: buildHostContextIndex(tripEvents, tripBookings),
     trip: { id: 't1', timezone: ZONE, startDate: DAY, endDate: '2026-08-05', updatedBy: 'u1' },
     bookings: tripBookings,
@@ -188,6 +200,15 @@ const show = () =>
 
 /** Plan's own rounded wording, read through the screen's copy rather than written out. */
 const chip = (hoursWord: string) => t.planDay.gap(hoursWord);
+
+// One reset for the whole file rather than one per describe: a declaration leaking from a spec
+// into the next would change what every following read says, and the leak would look like a bug in
+// the derivation rather than in the fixture.
+beforeEach(() => {
+  tripOverrides = [];
+  travelModeVerbs.setLegMode.mockClear();
+  travelModeVerbs.clearLegMode.mockClear();
+});
 
 describe('PlanDay — the chip offers what is free AFTER the journey (ADR-0206 §V1.1)', () => {
   beforeEach(() => {

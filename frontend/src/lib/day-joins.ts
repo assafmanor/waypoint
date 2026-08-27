@@ -263,13 +263,21 @@ export const DAY_JOURNEY_ARM = {
   PASSED: 'passed',
   /** Somebody said `בדרך`, or a fix puts them along the leg (ADR-0207 §2). Teal. */
   ON_WAY: 'on-way',
+  /** **Somebody declared this leg תחב״צ** (ADR-0206 §AA4). Its own arm rather than an absence,
+   *  because the block still has to RENDER — §AA4 is explicit that the declaration "suppresses the
+   *  duration and keeps the distance", and it is also the only thing carrying the mode control, so
+   *  a hole that vanishes on declaration is a door that does not open again. Neutral tone: there is
+   *  nothing wrong with this leg, we simply do not estimate it. */
+  DECLARED: 'declared',
 } as const;
 export type DayJourneyArm = (typeof DAY_JOURNEY_ARM)[keyof typeof DAY_JOURNEY_ARM];
 
 export interface DayJourney {
   arm: DayJourneyArm;
-  /** What the leg costs, in seconds, on the mode that was asked about. */
-  travelSeconds: number;
+  /** What the leg costs, in seconds, on the mode that was asked about — and `null` on the
+   *  `DECLARED` arm alone, where there is no estimate by nature (§AA4). Every other arm has one:
+   *  a leg with no estimate is no journey at all (§D4), which is what makes this the ONE null. */
+  travelSeconds: number | null;
   /** What the leg covers, in metres — the ROUTED distance, per mode, never crow-flies: a
    *  ⁦1.9km⁩ crow-flies leg is a ⁦2.4km⁩ walk, and this is the number you act on. `null` where the
    *  estimate carries none. */
@@ -313,8 +321,9 @@ export interface DayJourney {
  * **What a hole says once there is a journey in it.**
  *
  * `null` when there is no estimate, and that is the ordinary answer (§D4): offline, refused by the
- * gate, over the ceiling, still warming, provider down, a leg somebody declared תחב״צ (§AA4), or
- * two stops that are one place. Every one of them leaves ADR-0159's free-time strip standing
+ * gate, over the ceiling, still warming, provider down, or two stops that are one place. **A leg
+ * somebody declared תחב״צ is NOT one of them** — it has no estimate either, but it is a statement
+ * rather than a gap, so it takes the `DECLARED` arm above and renders (§AA4). Every one of them leaves ADR-0159's free-time strip standing
  * exactly as it reads today — never a pessimistic guess, because the reader must not be able to
  * tell "not computed" from "not computable" and inventing a walk we did not measure fails that in
  * the direction that costs somebody their afternoon.
@@ -370,8 +379,29 @@ export function dayJourney(input: {
    *  about the traveller and does not need standing up. See ADR-0206 §AF2 for why this surface
    *  gates the claim where the hero gates the request. */
   claimDenied?: boolean;
+  /** **Somebody declared this leg תחב״צ** (ADR-0206 §AA4). Given, the estimate is not consulted at
+   *  all: the leg keeps its distance and says it has no time, which is the whole declaration. */
+  declared?: boolean;
 }): DayJourney | null {
   const { departAfterMs, arriveByMs, travelSeconds, nowMs, onWay, claimDenied } = input;
+  // **A declared leg is a journey with no duration, not an absent journey** (ADR-0206 §AA4). It
+  // has to come BEFORE the floor below, because every one of those bails on exactly the missing
+  // estimate the declaration guarantees — and a hole that renders nothing also renders no mode
+  // control, so the declaration would be irreversible on the surface that made it.
+  if (input.declared)
+    return {
+      arm: DAY_JOURNEY_ARM.DECLARED,
+      travelSeconds: null,
+      distanceMeters: input.distanceMeters ?? null,
+      leaveByMs: null,
+      // No estimate means the hole reads exactly as it read before any of this existed (§V1.1's
+      // own rule): never a pessimistic guess about a journey nobody measured.
+      free: null,
+      overrunSeconds: null,
+      arriveAtMs: null,
+      arrivesAfterClose: false,
+      remainingSeconds: null,
+    };
   // **A journey the ladder cannot state is not a journey** (2026-08-26). `ROUTE_MIN_CROW_M` is
   // ⁦10m⁩, so a ⁦20m⁩ hop is routed, answers ⁦24⁩ seconds, and drew a whole block reading `~0 דק׳` over
   // `אין זמן לדרך` — a warning about the time it takes to walk out of a door. The floor is the

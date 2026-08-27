@@ -166,6 +166,8 @@ button.day-trv-face:focus-visible {
    rather than starting a second. */
 .day-trv-ic {
   flex: 0 0 auto;
+  /* The composited mark hangs off this tile's corner (ADR-0206 §AK2/§AL4). */
+  position: relative;
   width: 38px;
   height: 38px;
   display: grid;
@@ -177,6 +179,100 @@ button.day-trv-face:focus-visible {
 .day-trv-ic .icon {
   width: 21px;
   height: 21px;
+}
+
+/* **THE COMPOSITED WARNING MARK** (ADR-0206 §AK2, drawn and measured in
+   `mockups/the-mode-set-and-transit-declared-v1.html` §2).
+
+   `PlaceBadge`'s corner-mark geometry, re-pointed — `.wp-placebadge-mark`, ADR-0167 §1 — and NOT
+   the avatar badge §AK2 cited, which does not exist in this codebase (§AL4). It is the better
+   precedent anyway: a corner mark on a 32-40px rounded badge, which is this tile exactly, and its
+   own owner review already settled the loudness question ("a bare pin, not a pin in a disc").
+
+   **One mark, composited, rather than a glyph per mode per state**: that matrix is 8 assets and
+   doubles with every mode, where this is `warn` - which already exists - plus one offset.
+
+   **It takes NO hue of its own**, and that is §AK3.1's answer: the tile is already tinted by the
+   block's tone and the glyph in it already carries that tone's ink, so the mark adds a SHAPE and
+   not a second full-strength negative cue. It is also what lets a finished day take the same mark
+   in its own quiet ink with no extra rule.
+
+   Measured at 360 and 390, both themes: the block is 58px with the mark and 58px without - a corner
+   mark adds no box, which is §AK2's whole claim - and `.day-trv`'s `overflow: hidden` does NOT clip
+   the 5.8px overhang (4.2px of slack). That last one is ADR-0167 §11.2's trap, checked rather than
+   assumed. */
+.day-trv-flag {
+  position: absolute;
+  /* `/-2.6` is `.wp-placebadge-mark`'s own overhang ratio, so the app's two corner marks sit the
+     same way off their badge rather than each choosing. */
+  inset-block-end: calc(var(--trv-flag, 15px) / -2.6);
+  inset-inline-end: calc(var(--trv-flag, 15px) / -2.6);
+  display: grid;
+  color: inherit;
+}
+.day-trv-flag .icon {
+  width: var(--trv-flag, 15px);
+  height: var(--trv-flag, 15px);
+  /* The halo. `warn` is an OUTLINED glyph, so `.wp-placebadge-mark`'s trick - a wider stroke under
+     the fill via `paint-order` - buys nothing here: with no fill, a wider stroke is just a fatter
+     triangle. A drop-shadow ring is one declaration and no second element, and the tile behind it
+     is a tinted surface with no separation of its own. */
+  filter: drop-shadow(0 0 1.4px var(--card)) drop-shadow(0 0 1.4px var(--card));
+}
+
+/* **THE MODE ROW, BEHIND A DISCLOSURE** (ADR-0206 §AL10, drawn in the same mockup's §6).
+   Owner: _"if it expands ... it should have a small downward facing arrow like we already use for
+   events"_.
+
+   The caret is `.wp-event-chev`'s, re-pointed: same trailing position, same `rotate(180deg)` when
+   open, same `--t-base`. The container is `ui/primitives/Collapsible`, so this adds no mechanism.
+
+   **Why a disclosure and not an always-on row**: measured, the row is 55px per block, so a
+   four-hole day pays 452px against 232px collapsed - most of a 640px screen, on the surface this
+   ADR calls the densest in the app, for a control most days never touch. §Z5 §M5's "selected or
+   next leg only" cannot work here either: the day LIST has no leg selection (that is the Map's
+   model, §AC2), and the override is keyed on a place PAIR set while planning.
+
+   Measured: the collapsed block is 58px, identical to the statement block that has no row at all -
+   the caret rides the existing flex line and costs nothing. */
+.day-trv-chev {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-inline-start: var(--space-2);
+  color: #b5bcc9;
+  font-size: var(--text-secondary);
+  display: grid;
+  place-items: center;
+  transition: transform var(--t-base);
+}
+.day-trv.open .day-trv-chev {
+  transform: rotate(180deg);
+}
+.day-trv-modes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px 9px;
+  /* **A guard, not a layout wish.** `.wp-chip` is `flex: 0 0 auto` with `nowrap` inside a
+     `.day-trv` that carries `overflow: hidden`, so a row that does not fit is silently CLIPPED -
+     a control cut in half, with no error anywhere. The mockup drew exactly that before this line.
+     The recommended shape leaves 114px, so this should never fire; what it buys is that an
+     overflow costs height instead of eating a control. */
+  flex-wrap: wrap;
+}
+/* GLYPH ONLY, and the render decided it (§AL7). Not on width alone - glyph-and-word is 327px
+   against the block's 308px inner box at 360 - but on the TOUCH FLOOR: a labelled chip paints
+   29-31px against ADR-0017's 44, and this one is 44 exactly while taking 194px of 308, so a fifth
+   mode can never break the row. `.wp-chip.touch` already IS "a chip that is its surface's primary
+   control, therefore 44px", so the chips carry it and this only squares them. */
+.day-trv-modes .wp-chip {
+  width: 44px;
+  justify-content: center;
+  padding-inline: 0;
+}
+.day-trv-modes .wp-chip .icon {
+  width: 17px;
+  height: 17px;
 }
 .day-trv-main {
   flex: 1 1 auto;

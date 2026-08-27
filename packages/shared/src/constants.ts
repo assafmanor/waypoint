@@ -13,6 +13,7 @@ import type {
   EventKind,
   EventSource,
   EventStatus,
+  LegTravelMode,
   MembershipRole,
   NoteHostKey,
   NoteSource,
@@ -82,6 +83,27 @@ export const TRAVEL_MODE = {
  *  switch must not cost a round-trip, so all of them are fetched together). Derived from the
  *  object above rather than written out again, so a fourth mode is one line, not two. */
 export const TRAVEL_MODES: readonly TravelMode[] = Object.values(TRAVEL_MODE);
+
+/** **The one value a leg can hold that no router can answer** (ADR-0206 §AA4). Named rather than
+ *  spelled at each call site for ADR-0095's reason, and named SEPARATELY from `TRAVEL_MODE` above
+ *  because the separation is the whole point: `TRAVEL_MODE` is what may be asked for. */
+export const TRANSIT_LEG_MODE = 'transit' as const satisfies LegTravelMode;
+
+/** Every mode a LEG may be, in the order the mode control draws them — the routable three, then
+ *  the declared one. Derived from `TRAVEL_MODES` so a fourth routable mode is still one line. */
+export const LEG_TRAVEL_MODES: readonly LegTravelMode[] = [...TRAVEL_MODES, TRANSIT_LEG_MODE];
+
+/**
+ * **The single narrowing at the provider boundary** (ADR-0206 §AM5).
+ *
+ * "No request is ever made for תחב״צ" is a rule that would otherwise have to be remembered at
+ * every call site that builds a batch, reads the gate, or picks a costing. Here it is one guard,
+ * and the type system carries it: a `LegTravelMode` cannot reach `TRAVEL_GATE` or the provider's
+ * `COSTING` without passing through this.
+ */
+export function isRoutableMode(mode: LegTravelMode): mode is TravelMode {
+  return mode !== TRANSIT_LEG_MODE;
+}
 
 /** The kinds a place search can be restricted to (field report #6). A form names the kind;
  *  the proxy owns the mapping to Google's own type vocabulary. */
@@ -195,6 +217,7 @@ export const ENTITY_TYPE = {
   NOTE: 'note',
   TASK: 'task',
   DOCUMENT_ATTACHMENT: 'documentAttachment',
+  TRAVEL_MODE_OVERRIDE: 'travelModeOverride',
 } as const satisfies Record<string, EntityType>;
 
 /** A task's lifecycle (tasks brief §5). `dismissed` is a real outcome and not a soft

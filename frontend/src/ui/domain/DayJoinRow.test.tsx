@@ -10,8 +10,9 @@
 // what it says, and what it does — and that is what §9 changed.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { BOOKING_TYPE, TRAVEL_MODE } from '@waypoint/shared';
+import { BOOKING_TYPE, LEG_TRAVEL_MODES, TRANSIT_LEG_MODE, TRAVEL_MODE } from '@waypoint/shared';
 import { ConnectionBand, GapStrip, JourneyBlock, JourneyRow } from './DayJoinRow';
+import { Icon } from '../Icon';
 import { approxTravelTime, freeTimePhrase, hoursPhrase, shortfallPhrase } from '../../lib/duration';
 import { dayJourney } from '../../lib/day-joins';
 import { formatDistance } from '../../lib/distance';
@@ -171,6 +172,69 @@ describe('JourneyBlock', () => {
     expect(container.querySelector('button.day-trv-face')).toBeNull();
   });
 
+  // **THE MODE DISCLOSURE** (M8b, the owner's round-3 question: _"does the transit line expand to
+  // enable choosing which transit … it should have a small downward facing arrow like we already
+  // use for events no?"_). It is OPT-IN per host, which is what keeps the spec above true: a
+  // block given no `modes` is still a statement, so a read-only archive and Plan's own posture
+  // are unchanged by this existing at all.
+  describe('the mode disclosure (ADR-0206 §M5)', () => {
+    const withModes = (
+      over: Partial<Parameters<typeof JourneyBlock>[0]['modes'] & object> = {},
+    ) => {
+      const onPick = vi.fn();
+      const onToggle = vi.fn();
+      const result = render(
+        <JourneyBlock
+          {...props}
+          modes={{
+            current: TRAVEL_MODE.WALKING,
+            open: false,
+            onPick,
+            onToggle,
+            ...over,
+          }}
+        />,
+      );
+      return { ...result, onPick, onToggle };
+    };
+
+    it('turns the face into a button with the caret events already use', () => {
+      const { container, onToggle } = withModes();
+      const face = container.querySelector('button.day-trv-face')!;
+      expect(face.getAttribute('aria-expanded')).toBe('false');
+      expect(container.querySelector('.day-trv-chev .icon')).toBeTruthy();
+      fireEvent.click(face);
+      expect(onToggle).toHaveBeenCalledTimes(1);
+    });
+
+    it('says it is open, so the caret and the panel cannot disagree', () => {
+      const { container } = withModes({ open: true });
+      expect(container.querySelector('button.day-trv-face')!.getAttribute('aria-expanded')).toBe(
+        'true',
+      );
+      expect(container.querySelector('.day-trv.open')).toBeTruthy();
+    });
+
+    // Four chips and not three: תחב״צ is a mode you can DECLARE and never one we route (§AA4).
+    // Glyph-only, with the word as the accessible name — §AL7's measurement, not a preference.
+    it('offers all four modes, named to a screen reader, with the current one pressed', () => {
+      withModes({ open: true });
+      for (const m of LEG_TRAVEL_MODES) {
+        const chip = screen.getByRole('button', { name: t.travelMode[m] });
+        expect(chip.querySelector('svg')).toBeTruthy();
+        expect(chip.textContent).toBe('');
+        expect(chip.getAttribute('aria-pressed')).toBe(String(m === TRAVEL_MODE.WALKING));
+      }
+      expect(LEG_TRAVEL_MODES).toContain(TRANSIT_LEG_MODE);
+    });
+
+    it('hands the picked mode back, transit included', () => {
+      const { onPick } = withModes({ open: true });
+      fireEvent.click(screen.getByRole('button', { name: t.travelMode[TRANSIT_LEG_MODE] }));
+      expect(onPick).toHaveBeenCalledWith(TRANSIT_LEG_MODE);
+    });
+  });
+
   // §AD's bookend leg, and M8's declared תחב״צ, both land on the same shape: a block that says
   // less. Neither may print an empty separator or a stray dot.
   it('drops a run it was given nothing for, without leaving a separator behind', () => {
@@ -231,6 +295,32 @@ describe('JourneyRow — the journey does not fit', () => {
   it('offers no leave-by', () => {
     const { container } = row(60, 78);
     expect(container.textContent).not.toContain('יציאה');
+  });
+
+  // **§AK, and it is a REVERSAL of what shipped in M7**: an infeasible leg used to have its mode
+  // glyph REPLACED by the warn mark, which deletes the answer to "which mode is this?" exactly
+  // when the reader is deciding whether to switch it. The mark is composited over the glyph
+  // instead — one mark that overlays any of the four modes, rather than a glyph per mode per
+  // state (M8a measured that as 6 now and 8 with תחב״צ). Asserted as geometry, because both
+  // versions render "an icon in the badge column" and the old spec could not tell them apart.
+  it('keeps the leg its own mode glyph and composites the warning over it (§AK)', () => {
+    const { container } = row(60, 78);
+    const badge = container.querySelector('.day-trv-ic')!;
+    const walking = render(<Icon name={TRAVEL_MODE.WALKING} />).container.querySelector('svg')!;
+    expect(badge.querySelector('svg')!.querySelector('path')!.getAttribute('d')).toBe(
+      walking.querySelector('path')!.getAttribute('d'),
+    );
+    // …and the warning is a second mark ON that tile, not the tile's content.
+    const flag = badge.querySelector('.day-trv-flag');
+    expect(flag).toBeTruthy();
+    expect(flag!.querySelector('svg')).toBeTruthy();
+  });
+
+  // The other half of the same reversal: a leg that FITS carries no mark at all, so the
+  // composited mark still means something.
+  it('composites nothing where the journey fits', () => {
+    const { container } = row(160, 40);
+    expect(container.querySelector('.day-trv-flag')).toBeNull();
   });
 
   // **AND WITH NO GAP AT ALL IT DOES NOT TALK ABOUT ONE** (owner, 2026-08-26). Two rows that touch

@@ -1384,6 +1384,11 @@ const CONNECTOR = { source: 'wp-connector', layer: 'wp-connector-line' } as cons
  *  piece of data with two paints, split by `filter` (ADR-0206 §AC). */
 const ROUTE = { layer: 'wp-route-line' } as const;
 
+/** The declared leg's own layer (ADR-0206 §AL6). Its own layer rather than a `case` inside
+ *  `ROUTE`'s paint, because it differs in `line-dasharray` and `line-cap` — both of which are
+ *  LAYOUT/paint properties MapLibre cannot switch per feature with a data expression. */
+const TRANSIT = { layer: 'wp-route-transit' } as const;
+
 /** The stubs and the end dots. **The stubs share the LINE source** — they are one more kind of
  *  line, split off by `filter` rather than by a parallel copy of the data (rule 8). The dots
  *  cannot: a `circle` layer needs a point source, and that is the honest cost ADR-0206 §AC3
@@ -1403,6 +1408,11 @@ export interface MapDayLeg {
   /** `route` is §D8's one solid amber leg; `near` is prominent without spending amber twice;
    *  `dim` recedes. Absent is the ordinary leg. */
   emphasis?: 'route' | 'near' | 'dim';
+  /** **A declared תחב״צ leg** (ADR-0206 §AA4/§AL6). Its `path` is the straight segment and MUST be:
+   *  a road polyline for a rail journey is a false claim about the path. Drawn in the route's amber
+   *  at the route's weight with a long dash and butt caps, which is three channels away from the
+   *  un-routed connector — the one thing it could be mistaken for. */
+  declared?: boolean;
 }
 
 const KIND = { leg: 'leg', stub: 'stub' } as const;
@@ -1417,6 +1427,7 @@ const legsKey = (legs?: readonly MapDayLeg[]): string =>
           lngLat(leg.from),
           lngLat(leg.to),
           leg.emphasis ?? '',
+          leg.declared ? 'd' : '',
         ]),
       )
     : '';
@@ -1497,6 +1508,8 @@ const DayConnector = memo(function DayConnector({
     const routeColor = dark ? MAP_CONNECTOR.ROUTE.COLOR.dark : MAP_CONNECTOR.ROUTE.COLOR.light;
     const legColor = dark ? MAP_CONNECTOR.COLOR.dark : MAP_CONNECTOR.COLOR.light;
     const isRoute = ['==', ['get', 'emphasis'], 'route'];
+    /** A declared תחב״צ leg (ADR-0206 §AL6) — its own layer, and excluded from the other two. */
+    const isDeclared = ['==', ['get', 'declared'], 1];
     const byEmphasis = (plain: number, near: number, dim: number) => [
       'match',
       ['get', 'emphasis'],
@@ -1533,7 +1546,10 @@ const DayConnector = memo(function DayConnector({
         if (trimmed.length < 2) return;
         const coords = trimmed.map(back);
         lines.push(
-          feature({ type: 'LineString', coordinates: coords }, { kind: KIND.leg, emphasis }),
+          feature(
+            { type: 'LineString', coordinates: coords },
+            { kind: KIND.leg, emphasis, declared: leg.declared ? 1 : 0 },
+          ),
         );
         for (const end of [coords[0]!, coords[coords.length - 1]!]) {
           dots.push(feature({ type: 'Point', coordinates: end }, { emphasis }));
@@ -1578,9 +1594,20 @@ const DayConnector = memo(function DayConnector({
       const data = build();
       const has = (kind: string, route: boolean) =>
         data.lines.features.some((f) => {
-          const p = (f as { properties: { kind?: string; emphasis?: string } }).properties;
-          return p.kind === kind && (kind !== KIND.leg || (p.emphasis === 'route') === route);
+          const p = (f as { properties: { kind?: string; emphasis?: string; declared?: number } })
+            .properties;
+          if (p.kind !== kind) return false;
+          if (kind !== KIND.leg) return true;
+          // A declared leg belongs to neither of the other two layers, so it must not keep them
+          // mounted either — an empty layer composited every frame is work nobody asked for, which
+          // is the whole reason `layer()` is conditional.
+          return !p.declared && (p.emphasis === 'route') === route;
         });
+      const hasDeclared = data.lines.features.some(
+        (f) =>
+          (f as { properties: { kind?: string; declared?: number } }).properties.kind ===
+            KIND.leg && Boolean((f as { properties: { declared?: number } }).properties.declared),
+      );
 
       // The style is torn down and rebuilt by a theme swap, so "already added" has to be asked
       // rather than remembered — a flag would go stale the moment the ground restyles.
@@ -1606,7 +1633,7 @@ const DayConnector = memo(function DayConnector({
         id: CONNECTOR.layer,
         type: 'line',
         source: CONNECTOR.source,
-        filter: ['all', ['==', ['get', 'kind'], KIND.leg], ['!', isRoute]],
+        filter: ['all', ['==', ['get', 'kind'], KIND.leg], ['!', isRoute], ['!', isDeclared]],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': legColor,
@@ -1639,9 +1666,26 @@ const DayConnector = memo(function DayConnector({
         id: ROUTE.layer,
         type: 'line',
         source: CONNECTOR.source,
-        filter: ['all', ['==', ['get', 'kind'], KIND.leg], isRoute],
+        filter: ['all', ['==', ['get', 'kind'], KIND.leg], isRoute, ['!', isDeclared]],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': routeColor, 'line-width': MAP_CONNECTOR.ROUTE.WEIGHT },
+      });
+      // **The declared leg** (ADR-0206 §AL6). The route's amber and the route's weight, because it
+      // IS a journey — but a long dash and BUTT caps, because it is not a claim about the path.
+      // Round caps would eat the gap (3.5px off 4.2px at this weight) and the line would read
+      // nearly solid, asserting exactly what it exists to disclaim.
+      layer(lines && hasDeclared, {
+        id: TRANSIT.layer,
+        type: 'line',
+        source: CONNECTOR.source,
+        filter: ['all', ['==', ['get', 'kind'], KIND.leg], isDeclared],
+        layout: { 'line-cap': MAP_CONNECTOR.TRANSIT.CAP, 'line-join': 'round' },
+        paint: {
+          'line-color': routeColor,
+          'line-width': MAP_CONNECTOR.ROUTE.WEIGHT,
+          'line-opacity': byEmphasis(1, 1, MAP_CONNECTOR.DIM_OPACITY),
+          'line-dasharray': [...MAP_CONNECTOR.TRANSIT.DASH],
+        },
       });
       layer(source(DOT.source, data.dots), {
         id: DOT.layer,
@@ -1692,7 +1736,7 @@ const DayConnector = memo(function DayConnector({
       // Guarded rather than trusted: on unmount the map may already be `remove()`d by
       // `MapCanvas`, in which case there is no style left to take a layer out of.
       try {
-        for (const id of [CONNECTOR.layer, STUB.layer, ROUTE.layer, DOT.layer]) {
+        for (const id of [CONNECTOR.layer, STUB.layer, ROUTE.layer, TRANSIT.layer, DOT.layer]) {
           if (map.getLayer(id)) map.removeLayer(id);
         }
         for (const id of [CONNECTOR.source, DOT.source]) {

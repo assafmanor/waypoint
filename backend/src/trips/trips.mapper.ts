@@ -8,6 +8,7 @@ import type {
   Note,
   Place,
   Task,
+  TravelModeOverride as PrismaTravelModeOverride,
   Trip,
   User,
 } from '@prisma/client';
@@ -23,6 +24,7 @@ import type {
   Place as SharedPlace,
   Task as SharedTask,
   TaskDerivedKey,
+  TravelModeOverride as SharedTravelModeOverride,
   Trip as SharedTrip,
   TripEvent,
   User as SharedUser,
@@ -209,6 +211,20 @@ export const toDocumentAttachmentDto = (a: DocumentAttachment): SharedDocumentAt
   bookingId: a.bookingId ?? undefined,
   createdBy: a.createdBy,
   createdAt: a.createdAt.toISOString(),
+});
+
+/** **The override, as the snapshot and the change feed carry it** (ADR-0206 §AM). The pair is
+ *  already canonicalised in storage, so nothing here has to sort — reading it back out in the
+ *  same order it went in is what keeps the client's lookup a single key. */
+export const toTravelModeOverrideDto = (o: PrismaTravelModeOverride): SharedTravelModeOverride => ({
+  id: o.id,
+  tripId: o.tripId,
+  fromPlaceId: o.fromPlaceId,
+  toPlaceId: o.toPlaceId,
+  mode: o.mode as SharedTravelModeOverride['mode'],
+  createdBy: o.createdBy,
+  createdAt: o.createdAt.toISOString(),
+  updatedAt: o.updatedAt.toISOString(),
 });
 
 export const toInvitePreviewDto = (t: Trip, memberCount: number): InvitePreview => ({

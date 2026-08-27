@@ -66,6 +66,7 @@ const SNAPSHOT: TripSnapshot = {
   places: [],
   notes: [],
   tasks: [],
+  travelModeOverrides: [],
   documentAttachments: [],
   enrichments: {},
   fxRates: null,

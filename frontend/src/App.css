@@ -2009,6 +2009,21 @@
   height: 1em;
   flex: 0 0 auto;
 }
+/* **A glyph with a FACING mirrors with the reading direction** (ADR-0138 §10, drawn in
+   `mockups/the-mode-set-and-transit-declared-v1.html` §5). Owner: the walker and the bike should
+   face LEFT in Hebrew, i.e. the way the reader is going.
+
+   One declaration and no new mechanism: `--dir` is `tokens.css`'s own "the one place a direction is
+   named" (−1 RTL / 1 LTR, with the `[dir='ltr']` override after the `:root` block), so a path
+   authored right-facing — the icon-set convention, and what already ships — mirrors in RTL and is
+   left alone in LTR. Nothing here writes a sign.
+
+   WHICH glyphs is `Icon.tsx`'s `MIRRORED` allowlist, not a rule of thumb: `clock` is asymmetric and
+   mirrored it reads a different time. `.icon` is the `<svg>` root, an ordinary replaced box, so the
+   origin is already its centre. */
+.icon[data-mirror] {
+  transform: scaleX(var(--dir));
+}
 .nav-arrow-back {
   transform: scaleX(-1);
 }

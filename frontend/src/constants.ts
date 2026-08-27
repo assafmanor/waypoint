@@ -1251,6 +1251,36 @@ export const MAP_CONNECTOR = {
     },
     WEIGHT: 3.5,
   },
+  /** **A DECLARED תחב״צ LEG DRAWS ITS OWN STRAIGHT SEGMENT** (ADR-0206 §AA4's 2026-08-27
+   *  amendment, styled in §AL6 and drawn in `mockups/the-mode-set-and-transit-declared-v1.html` §4).
+   *
+   *  **Why it exists at all:** the map was drawing a ROAD ROUTE between a declared leg's two ends
+   *  whenever the pair sat under the mode's ceiling — §Z5's own worked example, Senso-ji → Tokyo
+   *  Station at 4.6 km, well inside walking's 15 km. A road polyline for a rail journey is a false
+   *  claim about the PATH, which is the same failure as the false NUMBER the declaration silences.
+   *  Drawing nothing is also wrong: a declared leg is a journey that happens.
+   *
+   *  **Three channels separate it from the un-routed dashed connector, and it needs all three**,
+   *  because being mistaken for that fallback is its one real failure mode — "this is not a road
+   *  journey" and "we could not route this" are different statements. The shape cannot help:
+   *  `MapDayLeg.path` is documented as either the routed path or the straight segment, so the two
+   *  are the same geometry by construction. So: the ROUTE's amber (time and commitment, the
+   *  strongest channel — 4.50:1 light / 7.01:1 dark on the real ground against the connector's
+   *  3.01/3.25), the ROUTE's weight, and a LONG dash against the connector's 5/5 stipple.
+   *
+   *  **`CAP: 'butt'`, deliberately unlike `ROUTE`'s round, and the measurement is why.** A round cap
+   *  adds half the stroke at each end of EVERY dash — 3.5px at this weight — so a 4.2px gap becomes
+   *  0.7px and the line reads nearly solid, i.e. it asserts the very path it exists to disclaim.
+   *
+   *  **The weight and the rhythm do NOT ride §D8's amber ration**: if they did, a declared leg that
+   *  is not the asked-about one would fall straight back to reading as the fallback. The ration
+   *  governs hue and opacity; the structure is the leg's own. */
+  TRANSIT: {
+    /** In LINE WIDTHS like every `line-dasharray` here: at `ROUTE.WEIGHT` 3.5 this is a 10.5px
+     *  dash and a 4.2px gap. */
+    DASH: [3, 1.2],
+    CAP: 'butt',
+  },
   /** **A leg not being asked about recedes** (ADR-0206 §AC2). Opacity and weight, never a second
    *  hue — the budget has none to spare (root rule 4). `NEAR_WEIGHT` is the departing leg of a
    *  selected stop: prominent without spending amber a second time. */

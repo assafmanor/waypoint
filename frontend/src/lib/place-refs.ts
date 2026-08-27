@@ -346,3 +346,20 @@ export function clearPlaceRefs<T extends object>(
   });
   return touched ? next : rows;
 }
+
+/**
+ * **The one place FK that is `Cascade` rather than `SetNull`** (ADR-0206 §AM1): a travel-mode
+ * override IS its pair of place ids, so a deleted end leaves no row to null — Postgres removes
+ * it, and (as with every cascade in this family) writes no `Change` for it.
+ *
+ * Hence a drop and not a clear, and hence its own function rather than a `PLACE_FK` entry, whose
+ * whole shape is emptying a field. Same reference discipline as its neighbours above.
+ */
+export function dropOverridesForPlace<T extends { fromPlaceId: string; toPlaceId: string }>(
+  overrides: readonly T[],
+  placeId: string | null | undefined,
+): readonly T[] {
+  if (!placeId) return overrides;
+  const next = overrides.filter((o) => o.fromPlaceId !== placeId && o.toPlaceId !== placeId);
+  return next.length === overrides.length ? overrides : next;
+}
