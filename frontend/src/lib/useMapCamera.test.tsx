@@ -1125,3 +1125,41 @@ describe('a settled result set moves the camera (ADR-0168 §1)', () => {
     expect(map.idleListeners).toBe(0);
   });
 });
+
+// **A SELECTION IS ABOUT A LEG, NOT A DOT** (ADR-0206 §AC8). Centring the stop is what put the
+// amber route under the place card: the camera knew the card was there and did not know a leg
+// was. `framePath` fits the leg — and refuses, moving nothing, when the fit would drop below the
+// zoom at which every pin is a dot anyway, so a train journey does not pull the map to country
+// scale for a stop you asked about.
+describe('framing the leg a selection is about (ADR-0206 §AC8)', () => {
+  const LEG = [TOKYO, { lat: 35.7, lng: 139.8 }];
+
+  it('fits the whole leg, not just its end', () => {
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const view = mount(map, DAY);
+    map.fits.length = 0;
+
+    expect(view.result.current.framePath(LEG)).toBe(true);
+    const fitted = map.fits.at(-1)!.bounds;
+    expect(fitted.south).toBeCloseTo(TOKYO.lat, 5);
+    expect(fitted.north).toBeCloseTo(LEG[1]!.lat, 5);
+    expect(fitted.west).toBeCloseTo(TOKYO.lng, 5);
+    expect(fitted.east).toBeCloseTo(LEG[1]!.lng, 5);
+  });
+
+  it('refuses a leg it could only frame from country zoom, and leaves the camera alone', () => {
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const view = mount(map, DAY);
+    const before = { ...map.center, zoom: map.zoom };
+
+    // What `fitBounds` would resolve Tokyo→Kyoto to: below `DOT_BELOW`, where a pin is a dot
+    // and the leg is unreadable — so the answer is "no", and the caller pans to the stop.
+    map.fitResultZoom = MAP_ZOOM.DOT_BELOW - 1;
+    expect(view.result.current.framePath([TOKYO, KYOTO])).toBe(false);
+    expect(map.center.lat).toBeCloseTo(before.lat, 5);
+    expect(map.center.lng).toBeCloseTo(before.lng, 5);
+    expect(map.zoom).toBe(before.zoom);
+  });
+});

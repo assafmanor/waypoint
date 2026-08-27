@@ -1643,6 +1643,73 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
     });
 
+    // **THE OTHER HALF OF THE SAME OWNER ASK** (_"a way to close the card and/or collapse
+    // it"_), reopened 2026-08-27: _"clicking on a stop highlights the route to it, but the place
+    // details pops up and hides most of the path … sometimes you only want to see the path"_.
+    // Folding is not hiding: the place stays selected, its pin stays ringed and its leg stays
+    // amber — what goes is the card's CONTENT, leaving the identity row every list already
+    // draws (ADR-0122 §7's 2026-08-27 amendment).
+    it('the card folds to its identity row, keeping the selection', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(toggle(t.map.view.map));
+      fireEvent.click(pin('lunch')!);
+      expect(cardSlide()!.querySelector('.map-refs')).toBeTruthy();
+
+      fireEvent.click(placeCard()!.querySelector('.map-cardfold') as HTMLElement);
+      // The card is still there and still names the place: this is a fold, not a dismissal.
+      expect(cardName()).toBe('lunch');
+      expect(cardSlide()!.querySelector('.map-refs')).toBeNull();
+      expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
+
+      // And the same one control brings it back — the caret turns, it does not swap places.
+      fireEvent.click(placeCard()!.querySelector('.map-cardfold') as HTMLElement);
+      expect(cardSlide()!.querySelector('.map-refs')).toBeTruthy();
+    });
+
+    // **STICKY FOR THE SESSION** (owner, 2026-08-27). Folding is a state of the READER — "I am
+    // reading the map, not the cards" — where the research expansion right beside it is a state
+    // of a PLACE. So it deliberately survives selecting another stop, which is the whole of what
+    // makes it useful: you fold once and the tab stops covering the canvas.
+    it('stays folded when the selection moves to another stop', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(toggle(t.map.view.map));
+      fireEvent.click(pin('lunch')!);
+      fireEvent.click(placeCard()!.querySelector('.map-cardfold') as HTMLElement);
+
+      fireEvent.click(pin('museum')!);
+      expect(cardName()).toBe('museum');
+      expect(cardSlide()!.querySelector('.map-refs')).toBeNull();
+    });
+
+    // The same reading of the same gesture the ring's own commit takes: the first tap already
+    // said "this one", so a second on the SAME pin cannot mean that again. A shortcut for a
+    // thumb already there — never the only way in, since nothing about it is discoverable.
+    it('a second tap on the same pin folds the card, and a third opens it', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(toggle(t.map.view.map));
+      fireEvent.click(pin('lunch')!);
+      expect(cardSlide()!.querySelector('.map-refs')).toBeTruthy();
+
+      fireEvent.click(pin('lunch')!);
+      expect(cardName()).toBe('lunch');
+      expect(cardSlide()!.querySelector('.map-refs')).toBeNull();
+
+      fireEvent.click(pin('lunch')!);
+      expect(cardSlide()!.querySelector('.map-refs')).toBeTruthy();
+    });
+
+    // The LIST is not a card, so it has nothing to fold: at `half` and `full` the row is in the
+    // list and a repeat tap already means `onDeselect` there (ADR-0168 §4).
+    it('the list’s rows carry no fold', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(row('lunch')!);
+      expect(document.querySelector('.map-cardfold')).toBeNull();
+    });
+
     it('the LIST’s rows carry no close: a second tap is already their answer', () => {
       seed();
       render(wrap(<MapView />));

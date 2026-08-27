@@ -48,6 +48,7 @@ import {
   fitPaddingFor,
   mapFitPadding,
   cameraFrame,
+  boundsOfPoints,
   focusBoundsFor,
   recentreInBand,
   panShiftForReserve,
@@ -94,6 +95,11 @@ export interface MapCamera {
   /** Frame a place together with what is around it — the arrival, and the place card's
    *  way in to its own pin (ADR-0129 §1/§2). Returns whether it moved. */
   frameOn: (point: LatLng) => boolean;
+  /** **Frame a PATH — the amber leg — rather than the stop at the end of it** (ADR-0206 §AC8).
+   *  Returns `false` when the leg is too long to be worth framing (the fit would drop below
+   *  `MAP_ZOOM.DOT_BELOW`, where every pin degrades to a dot and the leg is unreadable anyway),
+   *  leaving nothing moved so the caller can fall back to focusing the stop. */
+  framePath: (path: readonly LatLng[]) => boolean;
   /** **Keep `point` in the middle of what you can actually SEE, as that changes underneath it**
    *  (ADR-0122 §7's 2026-08-06 amendment). The same target `focus` pans a new selection to —
    *  so the two agree by construction — re-applied when the CARD or the CANVAS changes rather
@@ -384,7 +390,17 @@ export function useMapCamera(
    *  `false` also covers "the map is not ready to be fitted", which is what lets the
    *  caller retry rather than record a framing that never happened. */
   const apply = useCallback(
-    (candidates: readonly LatLng[], view: MapBounds | null, want?: MapBounds): boolean => {
+    (
+      candidates: readonly LatLng[],
+      view: MapBounds | null,
+      want?: MapBounds,
+      /** **The zoom below which this fit is not worth making**, for a caller that would
+       *  rather do something else than be pulled back that far (`framePath`). The fit is
+       *  learned from `fitBounds` either way, so the only way to ask is to try it and put
+       *  the camera back — which is exactly what happens below, and costs no frame because
+       *  both calls are synchronous inside one. */
+      floorZoom?: number,
+    ): boolean => {
       if (!map) return false;
       // An explicit `want` is a caller that has already decided the extent (`frameOn`'s
       // neighbour-derived box). It skips the "does the view already frame this" guard on
@@ -430,6 +446,12 @@ export function useMapCamera(
       const fitted = map.getZoom();
       const centre = map.getCenter();
       if (fitted == null || !centre) return true;
+      if (floorZoom != null && fitted < floorZoom) {
+        if (before && beforeZoom != null) {
+          map.moveCamera({ center: { lat: before.lat(), lng: before.lng() }, zoom: beforeZoom });
+        }
+        return false;
+      }
       const to: CameraAt = {
         center: { lat: centre.lat(), lng: centre.lng() },
         zoom: Math.min(fitted, tune(TUNE.zoomMaxFit, MAP_ZOOM.MAX_FIT)),
@@ -540,6 +562,27 @@ export function useMapCamera(
   const frameOnRef = useRef(frameOn);
   frameOnRef.current = frameOn;
 
+  /** **A selected stop's subject is its LEG, not its dot** (ADR-0206 §AC8; owner report,
+   *  2026-08-27: _"clicking on a stop highlights the route to it … but the place details pops up
+   *  and hides most of the path"_). Centring the one point is what put the amber leg under the
+   *  card: the camera knew the card was there (`bottomReserve`, ADR-0128 §2) and did not know a
+   *  leg was. Framing the path answers both at once, because a fit already reserves the card's
+   *  band.
+   *
+   *  **The floor is `DOT_BELOW` and it is reused rather than minted** (rule 8): that is already
+   *  the zoom at which a pin stops being a pin, so a leg that cannot be framed above it is one
+   *  you could not read after the move either — and being pulled to country zoom for a train
+   *  journey is worse than not framing at all. Below the floor nothing moves and `false` sends
+   *  the caller back to the stop. */
+  const framePath = useCallback(
+    (path: readonly LatLng[]) => {
+      const bounds = boundsOfPoints(path);
+      if (!bounds) return false;
+      return apply(path, null, bounds, tune(TUNE.zoomDotBelow, MAP_ZOOM.DOT_BELOW));
+    },
+    [apply],
+  );
+
   /**
    * **A SETTLED RESULT SET MOVES THE CAMERA** (ADR-0168 §1), which is a narrow reversal of
    * ADR-0131 §5 rather than a general one: typing still moves nothing, because this is
@@ -639,7 +682,17 @@ export function useMapCamera(
     [map, easeTo],
   );
 
-  return { reframe, focus, frameOn, keepCentred, showResults, locate, zoomTo, stepZoomIn };
+  return {
+    reframe,
+    focus,
+    frameOn,
+    framePath,
+    keepCentred,
+    showResults,
+    locate,
+    zoomTo,
+    stepZoomIn,
+  };
 }
 
 /** The map's camera as our own shape, or `null` before it has one. */

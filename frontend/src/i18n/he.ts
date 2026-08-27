@@ -551,6 +551,13 @@ export const t = {
     // them is visible on it. Names the card, because `סגירה` alone sits beside a filter close
     // and a search close on the same screen.
     closeCard: 'סגירת כרטיס המקום',
+    // The other half of the same owner ask, built a year of sessions later (ADR-0122 §7's
+    // 2026-08-27 amendment): folding the card away leaves the place selected, its pin ringed
+    // and its amber leg drawn — so the words are about the CARD and never about the place.
+    // `כיווץ`/`פתיחה` rather than `הסתרה`/`הצגה`, because nothing is hidden: the card's
+    // identity row stays on screen and is what you tap to bring the rest back.
+    collapseCard: 'כיווץ כרטיס המקום',
+    expandCard: 'פתיחת כרטיס המקום',
     // The way-in block's one primary action (ADR-0135 §1): a place in the trip could only
     // ever be an idea, and nothing said "put this on Tuesday at 14:00". Names the verb, not
     // the schema — "event or booking?" is the app's question, not the traveller's.

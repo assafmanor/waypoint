@@ -1296,6 +1296,14 @@ export const MAP_CONNECTOR = {
    *  invisible at country zoom and enormous at street zoom — the collar has to hold its size on
    *  screen, and that makes the trimmed geometry a function of the camera. */
   COLLAR_PX: 9,
+  /** **The most of one end SEGMENT the collar may eat.** The setback is cosmetic and the path is
+   *  a claim, so the trim shortens the leg's final straight and is never allowed to reach the
+   *  vertex behind it — a vertex is a turn the route actually makes. Without this the trim spent
+   *  its pixels by deleting points, which is invisible at street zoom and a lie at trip zoom
+   *  where ⁦9px⁩ is hundreds of metres: it erased a route's last turn, and on a leg shorter than
+   *  two collars it erased the leg. A half rather than the whole so a very short leg still reads
+   *  as a line rather than collapsing to a dot. */
+  COLLAR_MAX_SEGMENT: 0.5,
   /** **How far the zoom must move before the collar is re-derived.** The trim is in screen
    *  pixels, so a zoom makes it wrong — but re-deriving on every `zoomend` mutates the style
    *  exactly as the app settles after a camera fit, which measurably starved the main thread

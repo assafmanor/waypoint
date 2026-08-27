@@ -4,6 +4,7 @@ import {
   focusBoundsFor,
   boundsContain,
   boundsOfPoints,
+  centreOfPoints,
   cameraTargetFor,
   countPointsInBounds,
   fitPaddingFor,
@@ -28,6 +29,28 @@ import {
 
 const TOKYO = { lat: 35.68, lng: 139.76 };
 const KYOTO = { lat: 35.01, lng: 135.77 };
+
+// **The middle of a leg, as a FIT would centre it** (ADR-0206 §AC8) — the middle of its extent,
+// which is what `keepCentred` has to be handed if the band changing under a framed leg is to
+// re-centre the same thing the fit did.
+describe('centreOfPoints (ADR-0206 §AC8)', () => {
+  it('is null for an empty set, like the bounds it reads', () => {
+    expect(centreOfPoints([])).toBeNull();
+  });
+
+  it('is the middle of the EXTENT, so a cluster at one end cannot drag it', () => {
+    // Two points at Tokyo against one at Kyoto: an average would sit two-thirds of the way
+    // east, and a fit centres the box.
+    expect(centreOfPoints([TOKYO, TOKYO, KYOTO])).toEqual({
+      lat: (35.68 + 35.01) / 2,
+      lng: (139.76 + 135.77) / 2,
+    });
+  });
+
+  it('is the point itself for a single one', () => {
+    expect(centreOfPoints([TOKYO])).toEqual({ lat: 35.68, lng: 139.76 });
+  });
+});
 
 describe('boundsOfPoints (ADR-0121 §7)', () => {
   it('is null for an empty set — no pins, so the camera is left alone', () => {

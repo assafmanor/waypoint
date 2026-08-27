@@ -613,6 +613,28 @@ Still open, and both narrow:
 - **Fixed 2026-08-23, and the class is what matters.** ADR-0200 §1 put `html, body { overflow: clip }` in `styles/tokens.css` (the app's document never scrolls; an inner `.body` does), and **every mockup that inlines that sheet applies the rule to its own page** — which has no inner scroller and is several viewports tall. `clip` is not a scroll container, so the root's `scrollHeight` collapses to `clientHeight` and everything below the fold is **unreachable rather than hidden**; the obvious check (`scrollHeight > clientHeight`) then answers **no**, exactly like a page that fits, which is why four renders and a measurement pass all missed it and a human trying to scroll found it in a second. Measured at **9713px of content against 700px reachable** on `a-journey-has-one-date-v1.html`, 6650 and 5084 on `a-day-turns-under-a-held-card-v1/v2.html` — **the latter two are the promoted build specs for [ADR-0116](decisions/0116-day-aware-shelf-and-idea-target-day.md) §2d and [ADR-0200](decisions/0200-a-day-steps-with-a-swipe-and-the-shell-stops-scrolling.md), so that documentation was inert for a day.** All three now end with an `html, body { overflow: visible }` chrome block; the template carries it and `.claude/skills/design-mockups/references/pitfalls.md` carries the trap.
 - **What is still open: nothing checks it.** `mockups/tools/inline-app-css.mjs` is the one place that knows a mockup inlines app CSS, and the renderer is the one place that opens a page — either could assert that the document scrolls (or that no app rule reaches `html`/`body`) and neither does. Worth doing when the next sheet-level rule lands rather than pre-emptively: the general form is "an inlined app rule that targets the document root is a mockup bug", and `overflow` is the only instance so far.
 
+## Selecting a stop and seeing its path want the same canvas (owner report, 2026-08-27)
+
+**All three reports are shipped** (branch `claude/map-polyline-rendering-ux-su4lqo`,
+[session note](planning/2026-08-27-the-line-draws-and-the-card-folds.md)). Two were bugs —
+the amber route sometimes not rendering at all on a stop tap, and the drawn line losing its last
+turn or ending a block short of its pin as the camera pulls back —
+[ADR-0206](decisions/0206-a-travel-time-belongs-between-two-points.md) §AC7. The third was the
+design question, settled with the owner in the thread rather than on a mockup, and built as two
+halves: the camera **frames the leg** rather than the stop at the end of it (ADR-0206 §AC8), and
+the place card **folds to its identity row**, sticky for as long as you are on the tab
+([ADR-0122](decisions/0122-map-split-controls-over-the-canvas.md)'s 2026-08-27 amendment).
+
+- **What is left is a device pass, and it is the honest kind.** Three feel calls this was decided
+  without a phone for: whether the caret beside the `✕` is findable at 16px on a real thumb (the
+  fallback named in the ADR is a swipe-down, deliberately not built — it competes with the track's
+  horizontal snap and the sheet's drag region); whether folding the whole track reads as one choice
+  or as three broken slides; and whether `DOT_BELOW` is the right floor for framing a leg, which is
+  the one number here that wants a real day's walk under it rather than a unit test.
+- **Not built, on purpose: a swipe-down to fold**, and persisting the fold across visits to the
+  tab. Both are argued in ADR-0122's amendment §6/§4 — reopen them from there rather than from
+  scratch.
+
 ## Agent tooling
 
 - **Nothing enforces the skill pins** ([ADR-0201](decisions/0201-vendored-skills-are-advice-and-they-are-pinned.md), 2026-08-21) — `node .claude/vendor/sync-skills.mjs --check` exists and exits 1 when `.claude/skills` has drifted from `skills.json`, and nothing runs it. The failure it guards is quiet: someone edits a vendored skill in place to fix one sentence, the next `--bump` reverts it, and the reason the edit existed is gone. `.claude/**` is outside `pnpm format`/`lint` (`.prettierignore`), so this needs its own CI step rather than a hook onto an existing one. Cheap, and worth waiting until the pins have actually been bumped once — the check is only as useful as the update habit it protects.
