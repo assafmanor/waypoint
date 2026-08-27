@@ -475,6 +475,48 @@ describe('narrowGapForTravel', () => {
 // `freeAfterTravel` has answered `overruns` since M2 and **nothing rendered it**, so a 78-minute
 // walk into a 60-minute gap read `פנוי לפני 0 דק׳` — not a small amount of free time, a journey
 // nobody can make. Reported from a real day on both surfaces.
+// **A MODE THE GATE REFUSES IS AN ANSWER, NOT AN ABSENCE** (ADR-0206 §AM10). Field report,
+// 2026-08-27: _"I changed a drive to a walk and the route simply disappeared from the plan day"_.
+// The gate refuses a walk past ⁦15 km⁩, so no estimate is ever coming, so `dayJourney` answered
+// `null` and the hole rendered nothing — including the mode control that had just been used, which
+// made the change irreversible on the surface that made it. Exactly the failure §AA4's `DECLARED`
+// arm was added to prevent, in the sibling case nobody covered.
+describe('dayJourney — the mode chosen cannot cover the leg (§AM10)', () => {
+  const START = Date.parse('2026-07-12T05:00:00Z');
+  const refused = (over: Partial<Parameters<typeof dayJourney>[0]> = {}) =>
+    dayJourney({
+      departAfterMs: START,
+      arriveByMs: START + 160 * MIN,
+      // What the gate leaves behind: no estimate, ever.
+      travelSeconds: null,
+      distanceMeters: 41_000,
+      nowMs: START,
+      tooFarForMode: true,
+      ...over,
+    });
+
+  it('renders a journey rather than nothing, so the mode control survives the choice', () => {
+    expect(refused()).not.toBeNull();
+    expect(refused()?.arm).toBe(DAY_JOURNEY_ARM.TOO_FAR);
+  });
+
+  it('keeps the distance and states no duration — the two facts it does have', () => {
+    expect(refused()?.distanceMeters).toBe(41_000);
+    expect(refused()?.travelSeconds).toBeNull();
+  });
+
+  it('gives no leave-by and corrects no free time: there is nothing measured to correct', () => {
+    expect(refused()?.leaveByMs).toBeNull();
+    expect(refused()?.free).toBeNull();
+  });
+
+  // A declared leg is never asked about, so it can never be refused — and it says something
+  // different (`בלי הערכת זמן` against `רחוק מדי`). The order between them is not arbitrary.
+  it('ranks below the declaration, which is never asked and so never refused', () => {
+    expect(refused({ declared: true })?.arm).toBe(DAY_JOURNEY_ARM.DECLARED);
+  });
+});
+
 describe('dayJourney — the journey does not fit (§AG)', () => {
   const START = Date.parse('2026-07-12T05:00:00Z');
   const overrunning = (holeMinutes: number, walkMinutes: number) =>

@@ -92,6 +92,14 @@ const museum = ev('museum', {
   endsAt: `${DAY}T12:00:00Z`,
 });
 
+/** **The same origin, ended early enough that the buffered departure lands AFTER it.**
+ *
+ *  `museum` runs to ⁦12:00⁩ and now is ⁦12:30⁩, so §AJ2's floor is half an hour behind — which is
+ *  the right answer for most specs here and the wrong fixture for the two that are about the
+ *  BUFFER's own arithmetic. Those two take this one, so what they measure is the thing they name
+ *  rather than the clamp (ADR-0206 §AJ3). */
+const museumEndedEarly = { ...museum, endsAt: `${DAY}T10:30:00Z` };
+
 /** `הבא בתור`, `minutes` out from now. */
 const dinner = (minutes: number) =>
   ev('dinner', {
@@ -313,7 +321,7 @@ describe('Home — the board counts to the leaving (ADR-0206 §Z1)', () => {
   // late is a drive rather than a walk, and `formatCountdown` steps to `H:MM` there — so a
   // hardcoded `דק׳` would label `1:10` as minutes. This is the spec that stops that coming back.
   it('labels an hour-plus lateness in HOURS, on the same ladder as the number', () => {
-    tripEvents = [museum, dinner(15)];
+    tripEvents = [museumEndedEarly, dinner(15)];
     travelSeconds = 80 * 60;
     expect(toLeave(15, 80)).toBe(-70);
     show();
@@ -321,6 +329,24 @@ describe('Home — the board counts to the leaving (ADR-0206 §Z1)', () => {
     expect(unit()).toBe(lateUnit(70));
     expect(unit()).not.toBe(lateUnit(10));
     expect(unitBelow()).toBe(t.board.leaveIn);
+  });
+
+  // **THE BOARD AND THE DAY MUST NOT DISAGREE ABOUT WHEN TO LEAVE** (ADR-0206 §AJ3). Field report,
+  // 2026-08-27, two screenshots one minute apart: the day view printed `יציאה 00:30` — the end of
+  // the event the traveller was sitting in — and this board said `6 דקות באיחור ליציאה` off the
+  // same estimate. §AJ2 decided the clamp and only `dayJourney` implemented it, so the board
+  // counted from a buffered instant that sat INSIDE the origin. §AJ2's own name for that is
+  // `באיחור`-for-nothing, and ADR-0159 §1 forbids the two elevations differing about a fact.
+  it('never marks you late for a departure inside the event you are still in', () => {
+    // The origin runs ⁦30⁩ minutes past now, so no earlier departure exists to be late for.
+    tripEvents = [{ ...museum, endsAt: `${DAY}T13:00:00Z` }, dinner(45)];
+    travelSeconds = 50 * 60;
+    // Unclamped this is ⁦10⁩ minutes late (⁦45 − 50 − 5⁩); clamped it is the origin's own end.
+    expect(toLeave(45, 50)).toBe(-10);
+    show();
+    expect(tile()?.classList.contains('missed')).toBe(false);
+    expect(unitBelow()).toBe(t.board.leaveIn);
+    expect(value()).toBe('30');
   });
 
   // **§D4, and the exit criterion.** With no estimate the board reads exactly as it did before
@@ -744,7 +770,7 @@ describe('Home — the leg’s declared mode is the board’s mode (ADR-0206 §A
   // says you are late; on the drive it is 22 minutes away and the tile says when to go. One leg,
   // one moment, and the board was reading the wrong one of them by 53 minutes.
   it('counts to the departure the declared mode implies', () => {
-    tripEvents = [museum, dinner(50)];
+    tripEvents = [museumEndedEarly, dinner(50)];
     show();
     expect(value()).toBe(String(-toLeave(50, 76)));
     expect(unit()).toBe(lateUnit(-toLeave(50, 76)));

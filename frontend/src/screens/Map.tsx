@@ -33,6 +33,7 @@ import {
 } from 'react';
 import {
   derivedTravelMode,
+  exceedsTravelCeiling,
   isRoutableMode,
   legTravelMode,
   EVENT_STATUS,
@@ -1544,12 +1545,20 @@ export function MapView() {
       // modes have one. A declared leg is not asked at all: `pathFor` is never reached for it.
       const legMode = legModes[i] ?? travelMode;
       const routed = isRoutableMode(legMode) ? dayShapes.pathFor(from, to, legMode) : null;
+      // **A leg the GATE refuses draws the same disclaiming line a declared one does** (ADR-0206
+      // §AM10). `pathFor` answers `null` for it exactly as it does for a leg still warming, and
+      // the two must not be drawn the same way: a warming leg gets its road in a moment, while a
+      // 40 km walk never will — so painting the straight segment between its ends in solid amber
+      // asserts a road journey nobody can make. `exceedsTravelCeiling` is the gate's own ceiling
+      // (the same one the day surfaces read through `refusedFor`), asked here rather than plumbed
+      // because this screen holds coordinates and the day surfaces hold rows.
+      const refused = isRoutableMode(legMode) && exceedsTravelCeiling(legMode, from, to);
       legs.push({
         path: [...(routed ?? [from, to])],
         from,
         to,
         emphasis,
-        ...(isRoutableMode(legMode) ? {} : { declared: true }),
+        ...(!isRoutableMode(legMode) || refused ? { unrouted: true } : {}),
       });
     }
     return legs;

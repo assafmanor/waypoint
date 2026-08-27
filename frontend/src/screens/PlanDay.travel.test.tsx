@@ -313,6 +313,39 @@ describe('PlanDay — the leg mode is declarable here too (ADR-0206 §AM9)', () 
     expect(travelModeVerbs.setLegMode).not.toHaveBeenCalled();
   });
 
+  // **A MODE THE GATE REFUSES KEEPS ITS BLOCK, FOR THE DECLARATION'S EXACT REASON** (ADR-0206
+  // §AM10). Field report, 2026-08-27: _"I changed a drive to a walk and the route simply
+  // disappeared from the plan day"_. A walk past walking's ⁦15 km⁩ ceiling has no estimate and
+  // never will, so `dayJourney` answered `null` and the hole rendered nothing — including the
+  // control that had just been used, which made the change irreversible on the surface that made
+  // it. And it must not borrow `בלי הערכת זמן`: that says we are not estimating, where this says
+  // what you asked for cannot be done.
+  it('keeps the block for a leg too far for its mode, and says why', () => {
+    // ⁦~46 km⁩ apart: over walking's ceiling, under driving's.
+    tripPlaces = [places[0]!, { ...places[1]!, lat: 40.45, lng: 14.258 }];
+    travelSeconds = null;
+    tripOverrides = [
+      {
+        id: 'tmo-1',
+        tripId: 't1',
+        ...PAIR,
+        mode: TRAVEL_MODE.WALKING,
+        createdBy: 'u1',
+        createdAt: `${DAY}T00:00:00Z`,
+        updatedAt: `${DAY}T00:00:00Z`,
+      } as TravelModeOverride,
+    ];
+    show();
+
+    const block = document.querySelector('.day-trv');
+    expect(block).toBeTruthy();
+    expect(block!.textContent).toContain(t.travel.tooFarFor(t.travelMode[TRAVEL_MODE.WALKING]));
+    // Not the declaration's words, which mean something else.
+    expect(block!.textContent).not.toContain(t.travel.noEstimate);
+    // And the way back: the control that set this is still on screen.
+    expect(document.querySelector('button.day-trv-face')).toBeTruthy();
+  });
+
   // A declared leg reads the same here as in Trip mode: the mode word, no duration, and the block
   // still standing — which is what keeps the control reachable to switch back (§AM6).
   it('reads a declared leg as תחב״צ with no duration, control still there', () => {

@@ -27,6 +27,7 @@ import {
   ROUTE_MIN_CROW_M,
   TRAVEL_GATE,
   admitsTravelMode,
+  exceedsTravelCeiling,
   admittedTravelModes,
   decodePolyline,
   decodeShape,
@@ -417,5 +418,40 @@ describe('the per-leg travel mode', () => {
     expect(legTravelMode([...both].reverse(), 'p-a', 'p-b', TRAVEL_MODE.WALKING)).toBe(
       TRANSIT_LEG_MODE,
     );
+  });
+});
+
+// **The gate's ceiling, asked on its own** (ADR-0206 §AM10) — no clusters, no network, so a day
+// surface can say `רחוק מדי להליכה` about the mode somebody just picked instead of rendering the
+// blank that took the mode control with it (field report, 2026-08-27).
+describe('exceedsTravelCeiling', () => {
+  const TOKYO = { lat: 35.68, lng: 139.76 };
+  /** ~⁦22 km⁩ north of Tokyo Station: over walking's ⁦15 km⁩ and cycling's ⁦20 km⁩, well under driving's. */
+  const FAR = { lat: 35.88, lng: 139.76 };
+  /** ~⁦1.1 km⁩: inside every ceiling. */
+  const NEAR = { lat: 35.69, lng: 139.76 };
+
+  it('answers the ceiling per mode, not one number for all three', () => {
+    expect(exceedsTravelCeiling('walking', TOKYO, FAR)).toBe(true);
+    expect(exceedsTravelCeiling('cycling', TOKYO, FAR)).toBe(true);
+    expect(exceedsTravelCeiling('driving', TOKYO, FAR)).toBe(false);
+  });
+
+  it('is false for a pair inside the ceiling', () => {
+    for (const mode of TRAVEL_MODES) expect(exceedsTravelCeiling(mode, TOKYO, NEAR)).toBe(false);
+  });
+
+  // **The FLOOR is not its business, and that is the whole reason it is not `!admitsTravelMode`.**
+  // Two stops at one place are under `ROUTE_MIN_CROW_M` and the gate refuses them — but "too far
+  // to walk" is exactly the wrong thing to say about two rows in the same building.
+  it('says nothing about a pair that is too CLOSE', () => {
+    expect(exceedsTravelCeiling('walking', TOKYO, TOKYO)).toBe(false);
+  });
+
+  // One set of numbers, two callers: the ceiling read here and the gate the server runs cannot
+  // drift, because the gate is this function's only other caller.
+  it('is the same ceiling the gate applies', () => {
+    expect(admitsTravelMode('walking', TOKYO, FAR, [[TOKYO, FAR]])).toBe(false);
+    expect(admitsTravelMode('driving', TOKYO, FAR, [[TOKYO, FAR]])).toBe(true);
   });
 });

@@ -84,12 +84,40 @@ export function heroLeaveBy(input: {
   travelSeconds: number | null;
   nowMs: number;
   swapMinutes?: number;
+  /**
+   * **The earliest departure that actually exists** — the origin row's own end
+   * (`legDepartAfterMs`), where the leg has one. Absent means "no floor", which is what a leg out
+   * of a bed has (§AF3).
+   *
+   * **The clamp lives HERE now, and that is the fix rather than a tidy-up** (ADR-0206 §AJ3). §AJ2
+   * decided it, and only `dayJourney` implemented it — so the board, reading this function's raw
+   * answer, told a traveller sitting inside an event that runs to ⁦00:30⁩ that they were
+   * `6 דקות באיחור ליציאה`, while the day view one tab away printed `יציאה 00:30` off the same
+   * estimate (field report, 2026-08-27). The buffered instant was ⁦00:21⁩: arithmetically true, and
+   * a departure nobody could have made. §AJ2's own words for it are `באיחור`-for-nothing.
+   *
+   * ADR-0159 §1 allows the two elevations to differ in POSTURE and forbids a difference about a
+   * FACT, and when to leave is a fact. One function, both callers, no drift left to have.
+   */
+  departAfterMs?: number;
 }): HeroLeaveBy | null {
-  const { arriveByMs, travelSeconds, nowMs, swapMinutes = LEAVE_BY_SWAP_MINUTES } = input;
+  const {
+    arriveByMs,
+    travelSeconds,
+    nowMs,
+    departAfterMs,
+    swapMinutes = LEAVE_BY_SWAP_MINUTES,
+  } = input;
   if (travelSeconds === null || !Number.isFinite(travelSeconds) || !Number.isFinite(arriveByMs)) {
     return null;
   }
-  const leaveByMs = leaveBy(arriveByMs, travelSeconds);
+  const buffered = leaveBy(arriveByMs, travelSeconds);
+  /** Pulled forward to the floor where the buffer puts it behind one (§AJ2). What makes the late
+   *  mark it licenses defensible is that the instant is a departure you could actually make. */
+  const leaveByMs =
+    departAfterMs !== undefined && Number.isFinite(departAfterMs) && buffered < departAfterMs
+      ? departAfterMs
+      : buffered;
   const minutesToLeave = Math.round((leaveByMs - nowMs) / MS_PER_MIN);
   const phase =
     minutesToLeave < 0

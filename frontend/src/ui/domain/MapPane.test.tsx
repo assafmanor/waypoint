@@ -1481,6 +1481,24 @@ describe('the dot tier degrades a pin below a zoom threshold (ADR-0128 §1)', ()
     expect(mapStub.current.fits.at(-1)!.padding!.bottom).toBeGreaterThan(plain);
   });
 
+  // **A LEG NOTHING ROUTES DRAWS THE LINE THAT SAYS SO** (ADR-0206 §AL6/§AM10). Two causes, one
+  // treatment: a declared תחב״צ leg, and a leg whose chosen mode the gate refuses. Both hand the
+  // pane a straight segment, and painting that in the route's SOLID amber would assert a road
+  // journey — the false claim §AA4 exists to forbid, reached the second way.
+  it('draws an unrouted leg in its own disclaiming layer, never as the route', () => {
+    paint({
+      connector: [{ path: [A, B], from: A, to: B, emphasis: 'route' as const, unrouted: true }],
+    });
+    const transit = mapStub.current.getLayer('wp-route-transit')!;
+    expect(transit).toBeTruthy();
+    // Butt caps, so the long dash keeps its gap and the line cannot read as solid.
+    expect(transit.layout).toMatchObject({ 'line-cap': MAP_CONNECTOR.TRANSIT.CAP });
+    expect(transit.paint).toMatchObject({ 'line-dasharray': [...MAP_CONNECTOR.TRANSIT.DASH] });
+    // And it belongs to NEITHER of the other two, or an empty layer would be composited beside it.
+    expect(mapStub.current.getLayer('wp-route-line')).toBeUndefined();
+    expect(mapStub.current.getLayer('wp-connector-line')).toBeUndefined();
+  });
+
   // **A SELECTION IS ABOUT ITS LEG, NOT ITS DOT** (ADR-0206 §AC8; owner report, 2026-08-27:
   // _"the place details pops up and hides most of the path"_). The camera already refused to
   // put the selected PIN under the card (the test above) and knew nothing about the leg — so it

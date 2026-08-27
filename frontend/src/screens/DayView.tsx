@@ -126,7 +126,12 @@ import {
   type DayJoin,
   type DayJourney,
 } from '../lib/day-joins';
-import { useDayTravelReads, useLegModeControl, type DayLeg } from '../lib/day-travel';
+import {
+  legDepartAfterMs,
+  useDayTravelReads,
+  useLegModeControl,
+  type DayLeg,
+} from '../lib/day-travel';
 import { travelStance, remainingTravelSeconds, TRAVEL_STANCE } from '../lib/travel-position';
 import { travelOrigin } from '../lib/hero-travel';
 import { useGeolocation } from '../lib/useGeolocation';
@@ -807,16 +812,13 @@ export function DayView() {
       const estimate = travelReads.estimateFor(leg.from, leg.to);
       const live = leg === liveLeg;
       const journey = dayJourney({
-        // **Absent on the day's first leg, and that is a property of the LEG rather than of its
-        // event** (ADR-0206 §AF3). A stay's own `endsAt` is its check-out, days away on a middle
-        // night — reading it as this hole's departure measured a window from next Wednesday and
-        // reported zero minutes free. There is no window out of a bed: the day window's dawn
-        // would claim you could have left at 07:00, and the stay's ends are not this day's.
-        ...(leg.departAfterMs !== undefined
-          ? { departAfterMs: leg.departAfterMs }
-          : leg.fromIsStay
-            ? {}
-            : { departAfterMs: Date.parse(leg.from.endsAt ?? leg.from.startsAt!) }),
+        // **`legDepartAfterMs` owns the three rules** (ADR-0206 §AJ3): the leg's own placed
+        // instant, **no floor out of a bed** (§AF3 — a stay's `endsAt` is a check-out days away,
+        // and reading it here measured a window from next Wednesday), otherwise the origin's end.
+        // It was written out here, again in Plan mode, and nowhere on the board — which is how the
+        // board came to skip §AJ2's clamp entirely and mark a traveller late for a departure this
+        // surface was correctly printing as the origin's own end.
+        departAfterMs: legDepartAfterMs(leg),
         arriveByMs: Date.parse(leg.to.startsAt ?? ''),
         // **A destination with no DEADLINE licenses no leave-by** (ADR-0206 §AI1). A check-in's
         // `17:00` is the hour the door opens, and counting back from it told you to leave in time
@@ -833,6 +835,9 @@ export function DayView() {
         // A declared leg is a journey with no duration rather than no journey — and it is also the
         // only thing carrying the mode control, so it must render (§AA4).
         declared: !isRoutableMode(travelReads.modeFor(leg.from, leg.to)),
+        // …and a mode the gate refuses is the same shape of fact (ADR-0206 §AM10): no estimate is
+        // ever coming, and the block is the only thing carrying the control that would change it.
+        tooFarForMode: travelReads.refusedFor(leg.from, leg.to),
         nowMs,
         // `arrived` needs no separate arm here: a fix at the next stop means you got there, and
         // the day list is a record either way — what it must not do is keep offering a departure.
