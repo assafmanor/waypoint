@@ -273,7 +273,10 @@ export function useDayTravel(opts: {
  *  warming, offline — and the caller falls back to the straight segment between the two stops,
  *  which is what the map drew for every leg before this existed. */
 export interface DayShapes {
-  pathFor(from: LatLng, to: LatLng): readonly LatLng[] | null;
+  /** **The mode is the LEG's, not the day's** (ADR-0206 §AM8). A walking line and a driving line
+   *  between the same two stops are different roads — one-way streets, motorway ramps, footpaths —
+   *  so asking without the mode is what drew a walk's geometry under a declared drive. */
+  pathFor(from: LatLng, to: LatLng, mode: TravelMode): readonly LatLng[] | null;
 }
 
 const NO_SHAPES: DayShapes = { pathFor: () => null };
@@ -293,9 +296,16 @@ const NO_SHAPES: DayShapes = { pathFor: () => null };
  * cached for good. A leg the server did not reach this pass comes back in `pendingModes` with a
  * `retryAfterSeconds`, so nothing is dropped — it simply arrives on the next ask.
  *
- * **One mode, because one day is drawn in one mode.** `useDayTravel` next door still fetches every
- * mode's DURATION so §Z2's switch is instant; geometry is bought only for the mode on screen, and
- * a switch re-asks for that mode's lines once.
+ * **The modes the day's legs actually use, which is usually one** (corrected 2026-08-27, ADR-0206
+ * §AM8). This said _"one mode, because one day is drawn in one mode"_ and M8b falsified it without
+ * revisiting it: the mode is per LEG now, so a day can hold a walk and a declared drive at once,
+ * and one mode for the whole day drew the wrong road under the overridden leg — reported from a
+ * one-way street the drive entered from the wrong end.
+ *
+ * Still **one request**, which is what keeps §D8's tripwire satisfied: the union of the day's modes
+ * is one mode on a trip nobody has overridden (byte-identical to before) and two on a day with an
+ * override. `useDayTravel` next door still fetches every mode's DURATION so §Z2's switch is
+ * instant; geometry is bought only for the modes actually drawn, never for all three.
  *
  * Deliberately **separate from `useDayTravel`** rather than a widening of it: the day LIST reads
  * that hook and needs no geometry at all, and putting shapes behind it would buy lines for a
@@ -304,19 +314,24 @@ const NO_SHAPES: DayShapes = { pathFor: () => null };
 export function useDayShapes(opts: {
   tripId: string;
   stops: readonly LatLng[];
-  mode: TravelMode;
+  /** Every routable mode the day's legs are drawn in. The caller derives it from its own per-leg
+   *  modes, deduped — so the common day asks for exactly what it asked for before this was a set. */
+  modes: readonly TravelMode[];
 }): DayShapes {
-  const { tripId, stops, mode } = opts;
+  const { tripId, stops, modes } = opts;
   const preview = useIsDayPreview();
   const offline = useIsOffline();
   const [known, setKnown] = useState<ReadonlyMap<string, TravelEstimate>>(NOTHING_KNOWN);
 
   // Content-keyed for `useDayTravel`'s own reason: the map rebuilds its pins every render and
   // re-renders on the clock, so an array dep would re-ask on a render that changed nothing.
-  const legKeys = dayLegKeys(stops, [mode]);
+  const legKeys = dayLegKeys(stops, modes);
   const fingerprint = legKeys.join(LEG_KEY_SEPARATOR);
-  const day = useRef({ stops, legKeys });
-  day.current = { stops, legKeys };
+  // `modes` rides the ref beside the stops for the same reason they do, and the same way
+  // `useDayTravel` above does it: the ask happens after an async cache read, so it must read the
+  // day it is asking about rather than the one the effect closed over.
+  const day = useRef({ stops, modes, legKeys });
+  day.current = { stops, modes, legKeys };
 
   useEffect(() => {
     if (!fingerprint) return;
@@ -325,10 +340,10 @@ export function useDayShapes(opts: {
     let retry: ReturnType<typeof setTimeout> | undefined;
 
     const ask = (isRetry: boolean): void => {
-      const at = day.current.stops;
+      const { stops: at, modes: want } = day.current;
       void fetchRoutes(
         tripId,
-        { stops: [...at], modes: [mode], withShapes: true },
+        { stops: [...at], modes: [...want], withShapes: true },
         controller.signal,
       )
         .then((batch) => {
@@ -373,12 +388,14 @@ export function useDayShapes(opts: {
       controller.abort();
       clearTimeout(retry);
     };
-  }, [tripId, fingerprint, mode, preview, offline]);
+    // `fingerprint` already carries every mode (it is built from `legKeys`), so `modes` is not a
+    // dep of its own — an array literal at the call site would re-ask on every render.
+  }, [tripId, fingerprint, preview, offline]);
 
   return useMemo(() => {
     if (!known.size) return NO_SHAPES;
     return {
-      pathFor: (from: LatLng, to: LatLng) => {
+      pathFor: (from: LatLng, to: LatLng, mode: TravelMode) => {
         const shape = known.get(routeLegKey(from, to, mode))?.shape;
         if (!shape) return null;
         const points = decodeShape(shape);
@@ -387,5 +404,5 @@ export function useDayShapes(opts: {
         return points.length >= 2 ? points : null;
       },
     };
-  }, [known, mode]);
+  }, [known]);
 }

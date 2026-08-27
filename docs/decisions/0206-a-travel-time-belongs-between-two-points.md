@@ -1982,8 +1982,81 @@ ADR-0159's line exactly as it read before any of this existed — never a pessim
   silently ignores every declaration on the trip, which is indistinguishable from nobody having made
   one. Making it required turned two stale test fixtures into failures immediately, which is the
   point.
+- **Two consumers were left reading the mode in the SINGULAR**, and both were reported off the
+  deploy: the canvas's geometry (§AM8) and Plan mode's control (§AM9). Read those two before
+  touching either surface.
 - **A glyph with a facing mirrors with the reading direction, and the two transform channels are
   disjoint** — ADR-0138 §10 owns the rule; what M8b added is the spec. `MIRRORED` (the `--dir` scaleX)
   and `dir` (an inline `rotate`) would collide silently, so `ui/icon-mirroring.contract.test.ts`
   asserts over the source that no `MIRRORED` member is ever passed a `dir`, and that the mirror is
   declared exactly once.
+
+## AM8. Amendment (2026-08-27) — the drawn LINE is per leg too, and this is the second time it took the wrong mode
+
+Reported off the M8b deploy, from a leg the owner knows better than any fixture: _"I changed a walk
+to a drive to my home and I know for certain that the drive route is wrong because it enters my
+street (which is one way only) from the wrong direction."_
+
+**The diagnosis, and it is one line of code.** `Map.tsx` asked `useDayShapes` for **one** mode — the
+trip's derivation — while §AM had just made the mode per leg. So the overridden leg was drawn with
+the **walk's** geometry. A footpath route legitimately goes the wrong way up a one-way street; a car
+following it does not. The duration and the distance were both correct, which is why only the canvas
+showed it: §AM made `estimateFor` per leg and left the geometry behind.
+
+**`useDayShapes`' own docblock asserted the falsified premise in as many words** — _"One mode,
+because one day is drawn in one mode"_ — and M8b did not revisit it. That is the lesson worth more
+than the fix: **a hook's docblock is a claim about its callers, and a change to the callers can make
+it false without touching the hook.** When a fact becomes per-leg, grep the things that consume it in
+the singular.
+
+**And it is the second time the drawn line took the wrong mode.** §Z5's build made
+`useLegShape`'s `mode` optional and drew `pedestrian` routes on every trip; the repair then was to
+make the parameter **required**, so no caller could fall into a default. The parameter stayed
+required — and the bug came back one level up, because the _set_ of modes was the thing that had
+become plural. `pathFor(from, to, mode)` now takes the mode too, so the leg's own mode has to be
+named at the point of the draw, not inherited from the day.
+
+**The shape of the fix:**
+
+- `useDayShapes({ stops, modes })` takes the modes the day's legs are actually drawn in, deduped.
+  **Still one request** — which is what keeps §D8's tripwire satisfied — and on a trip nobody has
+  overridden it is byte-identical to before: one mode.
+- `DayShapes.pathFor(from, to, mode)` requires the mode. A mode nobody asked for answers `null`
+  rather than falling back to another mode's line: the failure here was a silent substitution, so
+  the absence is asserted too.
+- Declared legs are filtered out of the ask: `TRAVEL_GATE` has no rule for `transit` and no provider
+  has a costing (§AM5), and the leg draws its straight segment (§AA4).
+- Geometry is still bought only for the modes actually drawn, never for all three. The union is one
+  mode on the common day and two on a day holding an override.
+
+## AM9. Amendment (2026-08-27) — the mode control belongs to BOTH day surfaces
+
+Reported in the same message: _"Right now you can only change the mode on the day view and not on
+plan day!"_
+
+M8b wired the **reads** on both surfaces and the **control** on one. That is
+`frontend/CLAUDE.md`'s named anti-pattern — _"changing a day-surface derivation in `DayView` only"_ —
+for the third recorded time, and it is worse than the average instance of it, because §AL10's own
+argument for keying the override on the place pair is that the declaration _"is exactly the sort of
+thing set while planning rather than while standing in it"_. **Plan mode is the surface that needed
+it most and the one that did not get it.**
+
+ADR-0159 §1 is the rule that decides this and it decides it cleanly: the two surfaces may differ in
+**posture** and not about a **fact**. Plan has no inline settle pair and its gap is a `שבץ` control
+where Trip's is a statement — those are postures. Which mode a leg is travelled in is a **fact**, and
+being able to state it is not Trip mode's privilege.
+
+**The fix is a shared hook rather than a second copy** (`useLegModeControl`, in `lib/day-travel.ts`
+beside `useDayTravelReads`, whose subject it is the write half of). Writing Plan its own
+`modeControl` would have been the second one-off root rule 8 forbids, and it would have put three
+decisions in two places: that the **open state is the day's** (two holes must not both be open, and
+a per-block `useState` forgets on every clock re-render), that **picking the derived mode clears the
+row** rather than storing one that agrees with the derivation, and that there is **no control on a
+read-only day or on a leg whose ends do not both resolve to a place**. `DayView` now calls the hook
+too, so its copy is gone rather than duplicated.
+
+**What the two reports have in common** is worth stating, because it is the same mistake twice in one
+milestone: M8b changed a fact from per-trip to per-leg, then updated the consumers it was thinking
+about — the day list's numbers — and not the ones it was not: the canvas's geometry, and Plan's
+control. **The audit is the deliverable.** Both fixes here were found by asking "what else reads this
+in the singular", which is the question the milestone should have closed with.

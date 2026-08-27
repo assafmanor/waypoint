@@ -14,7 +14,7 @@
 //
 // Pure plumbing otherwise: it decides nothing about what a journey says. That is `dayJourney`'s
 // (`lib/day-joins.ts`) and `JourneyBlock`'s.
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   derivedTravelMode,
   haversineMeters,
@@ -146,7 +146,8 @@ export function useDayTravelReads(opts: {
   /** **The declared legs** (ADR-0206 §AM). Empty on almost every trip, because the default is
    *  derived — so a trip nobody has overridden takes exactly the path it took before this existed.
    *
-   *  **Required, and deliberately so** — the same reasoning as `useLegShape`'s `mode`. An optional
+   *  **Required, and deliberately so** — the same reasoning that made `useDayShapes`' mode required
+   *  when it replaced `useLegShape`, whose optional one drew pedestrian routes on every trip. An optional
    *  list with an empty default reads as harmless and isn't: a surface that forgets to wire it
    *  silently ignores every declaration on the trip, which is indistinguishable from nobody having
    *  made one. A screen passing `[]` is stating that; a screen passing nothing must not compile. */
@@ -229,3 +230,66 @@ export function useDayTravelReads(opts: {
 }
 
 const legKey = (from: TripEvent, to: TripEvent) => `${from.id}>${to.id}`;
+
+/** What a `JourneyRow` needs to offer the mode switch, or nothing at all. */
+export interface LegModeControl {
+  modes?: {
+    current: LegTravelMode;
+    onPick: (mode: LegTravelMode) => void;
+    open: boolean;
+    onToggle: () => void;
+  };
+}
+
+/**
+ * **THE MODE SWITCH, FOR EVERY SURFACE THAT DRAWS A JOURNEY** (ADR-0206 §AL10/§AM9).
+ *
+ * A hook rather than a per-screen assembly because there are two day surfaces and they may not
+ * differ about a **fact** (ADR-0159 §1) — and M8b shipped this in `DayView` alone, so Plan mode
+ * could read a leg's mode and not change it. `frontend/CLAUDE.md` names that exact failure ("changing
+ * a day-surface derivation in `DayView` only") as having cost a release twice; this is the third.
+ *
+ * **Plan mode is where the override matters MOST**, which is what makes the omission a defect
+ * rather than a missing nicety: §AL10's own argument for keying on the place pair is that the
+ * declaration "is exactly the sort of thing set while planning rather than while standing in it".
+ *
+ * Three rules live in here so neither host re-decides them:
+ *
+ * - **The open state is the DAY's**, not the block's. Two holes must not both be open, and a
+ *   per-block `useState` would forget on every clock re-render (both surfaces re-render on the
+ *   clock).
+ * - **Picking the derived mode CLEARS the row** rather than storing one that says what the
+ *   derivation already says — §Z2 keeps the persisted set to genuine overrides, so a trip whose
+ *   bookings later make it a driving trip still moves.
+ * - **No control on a read-only day, or on a leg whose two ends do not both resolve to a place**:
+ *   every other write is gated on the former (ADR-0029), and the latter has no pair to key an
+ *   override on (§AM4 — such a leg is inert rather than broken).
+ */
+export function useLegModeControl(opts: {
+  reads: Pick<DayTravelReads, 'mode' | 'modeFor' | 'pairFor'>;
+  verbs: {
+    setLegMode: (fromPlaceId: string, toPlaceId: string, mode: LegTravelMode) => unknown;
+    clearLegMode: (fromPlaceId: string, toPlaceId: string) => unknown;
+  };
+  readOnly?: boolean;
+}): (from: TripEvent, to: TripEvent) => LegModeControl {
+  const { reads, verbs, readOnly = false } = opts;
+  const [open, setOpen] = useState<string | null>(null);
+  return (from: TripEvent, to: TripEvent) => {
+    const pair = reads.pairFor(from, to);
+    if (readOnly || !pair) return {};
+    const key = legKey(from, to);
+    return {
+      modes: {
+        current: reads.modeFor(from, to),
+        open: open === key,
+        onToggle: () => setOpen((prev) => (prev === key ? null : key)),
+        onPick: (picked: LegTravelMode) => {
+          void (picked === reads.mode
+            ? verbs.clearLegMode(pair.fromPlaceId, pair.toPlaceId)
+            : verbs.setLegMode(pair.fromPlaceId, pair.toPlaceId, picked));
+        },
+      },
+    };
+  };
+}

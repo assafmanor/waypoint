@@ -1,7 +1,8 @@
 # M8b — the leg owns its mode (2026-08-27)
 
 **Milestone:** M8b of the routes epic ([board](2026-08-24-routes-epic-milestone-board.md)).
-**Branch:** `routes/m8b-mode` · **PR:** [#727](https://github.com/assafmanor/waypoint/pull/727).
+**Branch:** `routes/m8b-mode` · **PR:** [#727](https://github.com/assafmanor/waypoint/pull/727) (merged).
+**Follow-up:** two field fixes off the deploy, on `routes/m8b-fixes` — see §"What the deploy found" below.
 **Drawing it implements:** [`mockups/the-mode-set-and-transit-declared-v1.html`](../../mockups/the-mode-set-and-transit-declared-v1.html) (M8a, signed off).
 **Decisions:** amended in place into [ADR-0206 §AM](../decisions/0206-a-travel-time-belongs-between-two-points.md) (§AM1–§AM7).
 **Also closes:** M6e (the infeasible leg keeps its mode glyph) and §Z5's live canvas defect.
@@ -69,3 +70,34 @@ could not tell them apart.
 - **A shared `tripSnapshotFixture()` builder.** Nineteen snapshots are hand-built across the test
   suite and every new snapshot field touches all of them (this card touched seven). It is the obvious
   next extraction and it is not this card's surface.
+
+## What the deploy found, and it is one mistake made twice
+
+Both reported in one message, minutes after merge. Decisions in
+[ADR-0206 §AM8/§AM9](../decisions/0206-a-travel-time-belongs-between-two-points.md).
+
+1. **The canvas drew the wrong mode's road.** _"I changed a walk to a drive to my home and I know for
+   certain that the drive route is wrong because it enters my street (which is one way only) from the
+   wrong direction."_ `Map.tsx` asked `useDayShapes` for ONE mode — the trip's derivation — while this
+   card had just made the mode per leg, so the overridden leg was drawn with the **walk's** geometry.
+   The duration and the distance were both right, which is why only the canvas showed it.
+
+   Two things worth carrying. `useDayShapes`' docblock **asserted the falsified premise in as many
+   words** — _"One mode, because one day is drawn in one mode"_ — so a docblock is a claim about your
+   callers that a change to the callers can silently invalidate. And this is the **second** time the
+   drawn line took the wrong mode: §Z5 made `useLegShape`'s `mode` required after it drew pedestrian
+   routes on every trip. The parameter stayed required; the _set_ of modes was what became plural.
+
+2. **Only Trip mode could change a mode.** _"Right now you can only change the mode on the day view
+   and not on plan day!"_ The reads were wired on both surfaces and the control on one — the third
+   recorded instance of `frontend/CLAUDE.md`'s "changing a day-surface derivation in `DayView` only",
+   and the worst of them, because §AL10's own argument for the place-pair key is that an override is
+   _"set while planning rather than while standing in it"_. Fixed with a **shared hook**
+   (`useLegModeControl`) rather than a second copy, so the open state, the clear-vs-set rule and both
+   gates live in one place; `DayView`'s copy is gone rather than duplicated.
+
+**The lesson, and it is a process one rather than a knowledge one.** This card changed a fact from
+per-trip to per-leg and then updated the consumers it had in mind. Root `CLAUDE.md` already says
+"count the call sites before claiming what a derivation does" — the same rule applies to a fact whose
+_arity_ changes, and the question that would have found both of these in one pass is **"what else
+reads this in the singular?"**. One `grep` for `travelMode` across the day surfaces answers it.

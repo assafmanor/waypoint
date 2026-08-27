@@ -18,7 +18,6 @@ import {
   type Booking,
   type MaybeItem,
   type Place,
-  type LegTravelMode,
   type TripEvent,
   typicalMinutesFor,
 } from '@waypoint/shared';
@@ -123,7 +122,7 @@ import {
   type DayJoin,
   type DayJourney,
 } from '../lib/day-joins';
-import { useDayTravelReads, type DayLeg } from '../lib/day-travel';
+import { useDayTravelReads, useLegModeControl, type DayLeg } from '../lib/day-travel';
 import { travelStance, remainingTravelSeconds, TRAVEL_STANCE } from '../lib/travel-position';
 import { travelOrigin } from '../lib/hero-travel';
 import { useGeolocation } from '../lib/useGeolocation';
@@ -671,9 +670,6 @@ export function DayView() {
   }, [blocks, bookends.woke, bookends.sleeps, placement.overnight]);
   const dayLegs = day.legs;
 
-  /** **Which hole's mode row is open** (ADR-0206 §AL10). The DAY owns it, not the block: two holes
-   *  must not both be open, and a per-block `useState` would forget on every clock re-render. */
-  const [openModes, setOpenModes] = useState<string | null>(null);
   const travelReads = useDayTravelReads({
     tripId: trip.id,
     legs: dayLegs,
@@ -856,6 +852,11 @@ export function DayView() {
     liveStance?.stance === TRAVEL_STANCE.AT_ORIGIN && journey.arm === DAY_JOURNEY_ARM.PASSED
       ? t.travel.stillHere
       : undefined;
+  /** **The mode control, shared with Plan mode** (ADR-0206 §AM9) — the hook owns the open state,
+   *  the clear-vs-set rule and both gates, so the two day surfaces cannot offer different switches
+   *  for the same leg. It lived here alone in M8b, which is what left Plan unable to change a mode. */
+  const modeControl = useLegModeControl({ reads: travelReads, verbs: travelModeVerbs, readOnly });
+
   /** **The props a hole's journey block needs**, in one place, because the day's first leg renders
    *  outside the block loop and a second assembly is how the two would drift. */
   const journeyProps = (
@@ -869,35 +870,8 @@ export function DayView() {
     // be a train in the list and a drive on the canvas (ADR-0159 §1).
     travelMode: travelReads.modeFor(leg.from, leg.to),
     ...(live ? { action: liveAction(journey), located: liveLocated(journey) } : {}),
-    ...modeControl(leg),
+    ...modeControl(leg.from, leg.to),
   });
-
-  /** **The mode control's props for one leg** (ADR-0206 §AL10), or nothing.
-   *
-   *  Absent on a read-only archive, where every other write is gated too (ADR-0029), and absent on
-   *  a leg whose two ends do not both resolve to places — there is no pair to key an override on,
-   *  and §AM4 is explicit that such a leg is inert rather than broken.
-   *
-   *  **`clearLegMode` when the picked mode IS the derived one**, rather than storing a row that
-   *  says what the derivation already says: §Z2 keeps the persisted set to genuine overrides, so
-   *  picking your way back to the default takes the row away. */
-  const modeControl = (leg: { from: TripEvent; to: TripEvent }) => {
-    const pair = travelReads.pairFor(leg.from, leg.to);
-    if (readOnly || !pair) return {};
-    const key = `${leg.from.id}>${leg.to.id}`;
-    return {
-      modes: {
-        current: travelReads.modeFor(leg.from, leg.to),
-        open: openModes === key,
-        onToggle: () => setOpenModes((prev) => (prev === key ? null : key)),
-        onPick: (picked: LegTravelMode) => {
-          void (picked === travelReads.mode
-            ? travelModeVerbs.clearLegMode(pair.fromPlaceId, pair.toPlaceId)
-            : travelModeVerbs.setLegMode(pair.fromPlaceId, pair.toPlaceId, picked));
-        },
-      },
-    };
-  };
 
   /** **The day's first leg — out of the stay you woke in** (ADR-0206 §AD). It has no `join` above
    *  it because it has no row above it, so it renders outside the block loop rather than inside

@@ -1466,10 +1466,37 @@ export function MapView() {
   // everyone.
   const travelMode = useMemo(() => derivedTravelMode(bookings), [bookings]);
 
+  /** **Each leg's own mode** (ADR-0206 §AM), in the day's order — the same `legTravelMode` read the
+   *  day list makes, so one leg cannot be a drive in the list and a walk on the canvas. */
+  const legModes = useMemo(
+    () =>
+      orderedStops
+        .slice(0, -1)
+        .map((_, i) =>
+          legTravelMode(
+            travelModeOverrides,
+            orderedPins[i]?.placeId,
+            orderedPins[i + 1]?.placeId,
+            travelMode,
+          ),
+        ),
+    [orderedStops, orderedPins, travelModeOverrides, travelMode],
+  );
+
   // **ONE request for the whole day's geometry** (ADR-0206 §Z5 §M3), read back through the same
   // `routeLegKey` the day's numbers use, so the lines and the numbers cannot disagree about a leg.
   // The per-leg `/route` calls are the server's, paced and cached — from here it is one ask.
-  const dayShapes = useDayShapes({ tripId: trip.id, stops: orderedStops, mode: travelMode });
+  //
+  // **The modes are the LEGS', deduped, and asking with ONE was a reported defect** (§AM8): a leg
+  // overridden to driving on a walking trip drew the WALK's geometry, which is a different road —
+  // the report was a drive entering a one-way street from the wrong end. Declared legs are filtered
+  // out because nothing routes them (§AA4); no re-ask is needed to keep this stable, since
+  // `useDayShapes` gates its own effect on a fingerprint of the keys rather than on this array.
+  const shapeModes = useMemo(
+    () => [...new Set(legModes.filter(isRoutableMode))].sort(),
+    [legModes],
+  );
+  const dayShapes = useDayShapes({ tripId: trip.id, stops: orderedStops, modes: shapeModes });
 
   // **Every leg drawn along the route it describes**, with the straight segment as the floor for
   // one whose shape has not arrived (§D4) — §D8 rations the SOLID AMBER, not the truth of the
@@ -1495,24 +1522,21 @@ export function MapView() {
       // 4.6 km, well inside walking's 15 km — so the canvas made a false claim about the PATH, the
       // same failure as the false NUMBER the declaration silences. `pathFor` is not consulted at
       // all here, which is what makes the claim impossible rather than merely unlikely.
-      const declared = !isRoutableMode(
-        legTravelMode(
-          travelModeOverrides,
-          orderedPins[i]?.placeId,
-          orderedPins[i + 1]?.placeId,
-          travelMode,
-        ),
-      );
+      // **Asked with the LEG's mode** (§AM8) — a walk and a drive between two stops are different
+      // roads, so a shape read under the wrong mode is a false claim about the path even where both
+      // modes have one. A declared leg is not asked at all: `pathFor` is never reached for it.
+      const legMode = legModes[i] ?? travelMode;
+      const routed = isRoutableMode(legMode) ? dayShapes.pathFor(from, to, legMode) : null;
       legs.push({
-        path: declared ? [from, to] : [...(dayShapes.pathFor(from, to) ?? [from, to])],
+        path: [...(routed ?? [from, to])],
         from,
         to,
         emphasis,
-        ...(declared ? { declared: true } : {}),
+        ...(isRoutableMode(legMode) ? {} : { declared: true }),
       });
     }
     return legs;
-  }, [orderedStops, orderedPins, dayShapes, amberLeg, travelModeOverrides, travelMode]);
+  }, [orderedStops, dayShapes, amberLeg, legModes, travelMode]);
 
   // The dashed ORDER is Plan mode + day scope only (ADR-0121 §10); the one amber leg draws in
   // either mode, because it answers "where is next" rather than "what shape is this day"
