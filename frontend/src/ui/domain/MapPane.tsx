@@ -1396,6 +1396,17 @@ const TRANSIT = { layer: 'wp-route-transit' } as const;
 const STUB = { layer: 'wp-connector-stub' } as const;
 const DOT = { source: 'wp-connector-dot', layer: 'wp-connector-dot-circle' } as const;
 
+/** **Bottom to top, the order these must paint in** — the neutral dash under the amber leg it is
+ *  the background for, the end dots over both. Read by `layer()` for its `beforeId` and by the
+ *  teardown for what to take away. */
+const PAINT_ORDER: readonly string[] = [
+  CONNECTOR.layer,
+  STUB.layer,
+  ROUTE.layer,
+  TRANSIT.layer,
+  DOT.layer,
+];
+
 /** **One leg of the day, as the pane is told to draw it.** The screen owns which leg is which —
  *  `MapPane` is presentational (ADR-0096) and draws what it is handed. */
 export interface MapDayLeg {
@@ -1438,27 +1449,31 @@ const feature = (geometry: object, properties: object) => ({
   properties,
 });
 
-/** Trim `px` screen pixels off both ends of a projected polyline. Returns fewer than two points
- *  when the line is shorter than the two collars — the caller's cue to draw nothing. */
+/** Pull the last point back along its own final segment by up to `px` screen pixels, in place.
+ *
+ *  **Bounded by that ONE segment, and that is the whole point.** The collar is a cosmetic
+ *  setback; the path is a claim. So it may shorten a straight run into a stop and it must never
+ *  delete a vertex — a vertex is a turn the route actually makes. The first build spent its `px`
+ *  by popping points until the budget ran out, which is fine at street zoom and a lie at trip
+ *  zoom, where ⁦9px⁩ is hundreds of metres of real road: it erased the last turn of the route
+ *  (reported 2026-08-27, with a screenshot) and, on a leg shorter than two collars, returned
+ *  fewer than two points and erased the LEG. Neither is expressible here — the point count out
+ *  is the point count in, and `COLLAR_MAX_SEGMENT` keeps the segment itself from collapsing. */
+function trimEnd(out: [number, number][], px: number): [number, number][] {
+  if (out.length < 2) return out;
+  const a = out[out.length - 2]!;
+  const b = out[out.length - 1]!;
+  const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  if (d === 0) return out;
+  const t = 1 - Math.min(px, d * MAP_CONNECTOR.COLLAR_MAX_SEGMENT) / d;
+  out[out.length - 1] = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  return out;
+}
+
+/** Trim `px` screen pixels off both ends of a projected polyline, one final segment at each end
+ *  (see `trimEnd`). Always returns as many points as it was given. */
 function trimEnds(pts: readonly [number, number][], px: number): [number, number][] {
-  const walk = (points: [number, number][]): [number, number][] => {
-    let left = px;
-    const out = points.slice();
-    while (out.length > 1) {
-      const a = out[out.length - 2]!;
-      const b = out[out.length - 1]!;
-      const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      if (d > left) {
-        const t = (d - left) / d;
-        out[out.length - 1] = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-        return out;
-      }
-      left -= d;
-      out.pop();
-    }
-    return out;
-  };
-  return walk(walk(pts.slice()).reverse()).reverse();
+  return trimEnd(trimEnd(pts.slice(), px).reverse(), px).reverse();
 }
 
 /** **The day's lines, and every one of them is the real route** (ADR-0206 §AB5 / §AC).
@@ -1543,7 +1558,6 @@ const DayConnector = memo(function DayConnector({
           leg.path.map((at) => px(at)),
           MAP_CONNECTOR.COLLAR_PX,
         );
-        if (trimmed.length < 2) return;
         const coords = trimmed.map(back);
         lines.push(
           feature(
@@ -1615,17 +1629,31 @@ const DayConnector = memo(function DayConnector({
         if (!payload.features.length) return false;
         const existing = map.getSource(id);
         if (existing) (existing as unknown as { setData: (d: unknown) => void }).setData(payload);
-        else map.addSource(id, { type: 'geojson', data: payload });
+        // **`tolerance: 0`, against MapLibre's default `0.375`.** The default is a
+        // Douglas-Peucker budget applied per TILE ZOOM, so the further out the camera is the more
+        // of the route it is allowed to straighten — on a line whose entire job is to be the
+        // provider's own geometry (§AB5), the one thing it must never do. A handful of features
+        // costs nothing to tile exactly.
+        else map.addSource(id, { type: 'geojson', data: payload, tolerance: 0 });
         return true;
       };
 
       /** **Only the layers that have something to draw.** A Trip-mode day draws ONE leg, and
        *  three more layers beside it — empty, but composited every frame — is work nobody asked
-       *  for. Removed again when the data stops needing them. */
+       *  for. Removed again when the data stops needing them.
+       *
+       *  **Added at its place in `PAINT_ORDER`, never on top.** A `draw()` off a zoom does not
+       *  tear the set down first, so a layer that becomes needed later would otherwise land
+       *  above one added earlier — and the neutral dash painting over the amber leg it is the
+       *  background for is the exact ordering this file already asserts. */
       const layer = (want: boolean, spec: { id: string; [k: string]: unknown }) => {
         const there = Boolean(map.getLayer(spec.id));
-        if (want && !there) map.addLayer(spec as never);
-        else if (!want && there) map.removeLayer(spec.id);
+        if (want && !there) {
+          const above = PAINT_ORDER.slice(PAINT_ORDER.indexOf(spec.id) + 1).find((id) =>
+            map.getLayer(id),
+          );
+          map.addLayer(spec as never, above);
+        } else if (!want && there) map.removeLayer(spec.id);
       };
 
       const lines = source(CONNECTOR.source, data.lines);
@@ -1704,10 +1732,53 @@ const DayConnector = memo(function DayConnector({
       });
     };
 
-    // A layer cannot be added before the style exists, and the pane may mount before the first
-    // `load` — so ask, and otherwise wait for it.
-    if (map.isStyleLoaded()) draw();
-    else map.once('load', draw);
+    /** The zoom the geometry now in the source was actually built at, `null` until a draw has
+     *  landed. Recorded INSIDE `drew()` and never beside a call to it: a draw the style refused
+     *  must not be remembered as one that happened, or the collar stays measured at the camera
+     *  it was refused at while the map moves on — which is a route ending a block short of its
+     *  pin, the worst shape of the 2026-08-27 report. */
+    let builtAt: number | null = null;
+
+    /** **Draw if the style will take a layer, and say whether it did.**
+     *
+     *  The first build asked `isStyleLoaded()` and otherwise waited for `load`. Both halves are
+     *  wrong, and together they LOSE the line — the reported _"I tap a stop and the amber route
+     *  to it sometimes doesn't render at all"_. `isStyleLoaded()` is false while **any tile is
+     *  in flight**, which is exactly the state tapping a stop creates, because the tap moves the
+     *  camera; and `load` fires **once per map instance**, so a draw deferred to it after the
+     *  first paint is deferred for ever. This effect's own teardown had already taken the layers
+     *  down, so the line did not come back until something else changed the key.
+     *
+     *  What adding a layer actually needs is the style **spec**, not loaded tiles — so try
+     *  first. `addSource`/`addLayer` reject a spec that has not parsed **before mutating
+     *  anything**, so a refused attempt costs nothing and the ordinary case draws immediately. */
+    const drew = (): boolean => {
+      try {
+        draw();
+      } catch (err) {
+        // Only a style that has not parsed yet is allowed to refuse. Anything a LOADED style
+        // throws is ours, and eating it would hide it for good.
+        if (map.isStyleLoaded()) throw err;
+        return false;
+      }
+      builtAt = map.getZoom();
+      return true;
+    };
+
+    /** The retry, for the one case `drew()` cannot serve at once: the pane mounted before the
+     *  style spec arrived. `styledata` is what that spec arriving fires — including the one a
+     *  theme flip installs — and `idle` is the backstop, since a map cannot come to rest
+     *  without it. */
+    const retry = () => {
+      if (!drew()) return;
+      map.off('styledata', retry);
+      map.off('idle', retry);
+    };
+    if (!drew()) {
+      map.on('styledata', retry);
+      map.on('idle', retry);
+    }
+
     /** **The collar is a screen distance, so a zoom changes what is drawn — and re-deriving it
      *  the moment the camera stops is what broke `place-know.spec.ts`.** Mutating the style
      *  inside the `zoomend` handler lands a repaint exactly as the app is settling after a
@@ -1716,27 +1787,36 @@ const DayConnector = memo(function DayConnector({
      *
      *  So the redraw is **deferred out of the settling frame**, and only happens when the zoom
      *  moved far enough for the collar to be visibly wrong — under half a level, a ⁦9px⁩ setback
-     *  is still a ⁦9px⁩-ish setback and nobody can see the difference. */
-    let builtAt = map.getZoom();
+     *  is still a ⁦9px⁩-ish setback and nobody can see the difference.
+     *
+     *  **On `idle` as well as `zoomend`**, and that is not belt-and-braces: the threshold is
+     *  measured against the zoom the geometry was BUILT at, so a `zoomend` that arrives while
+     *  the style is still refusing would leave a stale collar with no second event to correct
+     *  it. `idle` is the one event a camera cannot come to rest without, and the handler returns
+     *  on a comparison unless the collar is genuinely wrong. */
     let queued: number | undefined;
-    const onZoom = () => {
+    const redraw = () => {
+      // Nothing has been drawn yet; that is `retry`'s job, not this one's.
+      if (builtAt === null) return;
       if (Math.abs(map.getZoom() - builtAt) < MAP_CONNECTOR.COLLAR_REDRAW_ZOOM) return;
       if (queued !== undefined) return;
       queued = requestAnimationFrame(() => {
         queued = undefined;
-        builtAt = map.getZoom();
-        draw();
+        drew();
       });
     };
-    map.on('zoomend', onZoom);
+    map.on('zoomend', redraw);
+    map.on('idle', redraw);
     return () => {
-      map.off('load', draw);
-      map.off('zoomend', onZoom);
+      map.off('styledata', retry);
+      map.off('idle', retry);
+      map.off('zoomend', redraw);
+      map.off('idle', redraw);
       if (queued !== undefined) cancelAnimationFrame(queued);
       // Guarded rather than trusted: on unmount the map may already be `remove()`d by
       // `MapCanvas`, in which case there is no style left to take a layer out of.
       try {
-        for (const id of [CONNECTOR.layer, STUB.layer, ROUTE.layer, TRANSIT.layer, DOT.layer]) {
+        for (const id of PAINT_ORDER) {
           if (map.getLayer(id)) map.removeLayer(id);
         }
         for (const id of [CONNECTOR.source, DOT.source]) {
