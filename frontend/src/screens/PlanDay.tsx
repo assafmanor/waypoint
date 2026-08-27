@@ -99,7 +99,12 @@ import {
   type Gap,
   type GapDefaults,
 } from '../lib/gaps';
-import { useDayTravelReads, type DayLeg } from '../lib/day-travel';
+import {
+  useDayTravelReads,
+  useLegModeControl,
+  type LegModeControl,
+  type DayLeg,
+} from '../lib/day-travel';
 import { dayJourney, windowClosesMs, type DayJourney } from '../lib/day-joins';
 import { JourneyRow } from '../ui/domain/DayJoinRow';
 import { StayRow } from '../ui/domain/StayRow';
@@ -279,6 +284,7 @@ export function PlanDay() {
     notes,
     documentAttachments,
     travelModeOverrides,
+    travelModeVerbs,
     hostContexts,
     activeDate,
     setActiveDate,
@@ -555,6 +561,16 @@ export function PlanDay() {
   };
 
   // Reorder acts on soft events only (hard events are pinned anchors, ADR-0011).
+  /** **The mode switch, the same one Trip mode offers** (ADR-0206 §AM9). Plan is where §AL10 said
+   *  the override would mostly be set — _"the sort of thing set while planning rather than while
+   *  standing in it"_ — and M8b shipped it in `DayView` alone, so a leg's mode was readable here
+   *  and not changeable. The hook is shared, so the two surfaces cannot drift about it. */
+  const modeControl = useLegModeControl({
+    reads: planTravel,
+    verbs: travelModeVerbs,
+    readOnly,
+  });
+
   const softEvents = dayEvents.filter((e) => e.kind === EVENT_KIND.SOFT);
   const softIndex = new Map(softEvents.map((e, i) => [e.id, i]));
 
@@ -1199,6 +1215,7 @@ export function PlanDay() {
     slotNote,
     planJourney,
     modeFor: planTravel.modeFor,
+    modeControl,
     rowDragProps,
     rowRefuseProps,
     onEdit: (e) => {
@@ -1369,6 +1386,7 @@ export function PlanDay() {
                     <JourneyRow
                       journey={j}
                       travelMode={planTravel.modeFor(cameIn.event, bookends.woke!)}
+                      {...modeControl(cameIn.event, bookends.woke!)}
                       tz={tz}
                     />
                   ) : null;
@@ -1393,6 +1411,7 @@ export function PlanDay() {
                         <JourneyRow
                           journey={j}
                           travelMode={planTravel.modeFor(bookends.woke!, to)}
+                          {...modeControl(bookends.woke!, to)}
                           tz={tz}
                         />
                       ) : null;
@@ -1429,6 +1448,7 @@ export function PlanDay() {
                         <JourneyRow
                           journey={j}
                           travelMode={planTravel.modeFor(from, bookends.sleeps!)}
+                          {...modeControl(from, bookends.sleeps!)}
                           tz={tz}
                         />
                       ) : null;
@@ -1920,6 +1940,9 @@ interface BuilderCtx {
    *  otherwise. A function rather than a value, because Plan draws several legs per day and they
    *  need not agree. */
   modeFor: (from: TripEvent, to: TripEvent) => LegTravelMode;
+  /** **The mode switch for one leg** (ADR-0206 §AM9), or `{}` where the surface offers none — a
+   *  read-only past day, or a leg whose ends do not both resolve to a place. */
+  modeControl: (from: TripEvent, to: TripEvent) => LegModeControl;
   rowDragProps: (id: string) => HoldToDragProps;
   /** Shared by every hard row — the hold is answered rather than armed (ADR-0199 §1). */
   rowRefuseProps: HoldToDragProps;
@@ -2125,6 +2148,7 @@ function BuilderGroups({
                   <JourneyRow
                     journey={journey}
                     travelMode={ctx.modeFor(prevEnd, groupStartEvent(g))}
+                    {...ctx.modeControl(prevEnd, groupStartEvent(g))}
                     tz={ctx.tz}
                   />
                 ) : null;

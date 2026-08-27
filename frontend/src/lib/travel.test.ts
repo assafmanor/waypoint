@@ -3,11 +3,13 @@ import 'fake-indexeddb/auto';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  decodeShape,
   POLYLINE_PRECISION,
   routeLegKey,
   TRAVEL_MODE,
   type RouteBatch,
   type RoutedLeg,
+  type TravelMode,
 } from '@waypoint/shared';
 
 const routes = vi.hoisted(() => ({ fetchRoutes: vi.fn() }));
@@ -55,7 +57,16 @@ const ASAKUSA_POINTS = [
   { lat: 35.71099, lng: 139.80572 },
 ];
 const walkWithShape = { ...walk, shape: ASAKUSA_SHAPE };
+/** **A DIFFERENT road between the same two stops**, which is the whole point of §AM8: the drive
+ *  does not follow the footpath. Two points is enough to tell the two lines apart, and it is a real
+ *  decode rather than a hand-built array. */
+const DRIVE_SHAPE = { encoded: 'ikzbcAa_osiGrhBgrE', precision: POLYLINE_PRECISION.VALHALLA };
+/** Decoded rather than written out: the decoder is `routing.test.ts`'s subject, and what these
+ *  specs are about is which MODE's line comes back — so the expectation must not also be a second
+ *  copy of the decoding. The guard below asserts the two roads differ, so it is not vacuous. */
+const DRIVE_POINTS = decodeShape(DRIVE_SHAPE);
 const drive = { mode: TRAVEL_MODE.DRIVING, durationSeconds: 1268, distanceMeters: 7100 };
+const driveWithShape = { ...drive, shape: DRIVE_SHAPE };
 
 const leg = (estimates: RoutedLeg['estimates']): RoutedLeg => ({
   fromIndex: 0,
@@ -237,8 +248,8 @@ const shaped: RouteBatch = { legs: [leg([walkWithShape])] };
  *  auto-cleanup, so a hook left mounted keeps its own effects and its own in-flight promises
  *  alive inside the NEXT test. */
 describe('useDayShapes', () => {
-  const render = (stops = STOPS) =>
-    renderHook(() => useDayShapes({ tripId: TRIP_ID, stops, mode: TRAVEL_MODE.WALKING }));
+  const render = (stops = STOPS, modes: TravelMode[] = [TRAVEL_MODE.WALKING]) =>
+    renderHook(() => useDayShapes({ tripId: TRIP_ID, stops, modes }));
 
   // **One request for the whole day, and that is the tripwire's own terms.** The card warns that
   // "a day of N legs issuing N shape calls means it was done wrong" — N calls from THIS device.
@@ -248,7 +259,9 @@ describe('useDayShapes', () => {
 
     const { result, unmount } = render();
 
-    await waitFor(() => expect(result.current.pathFor(ASAKUSA, TSUKIJI)).toEqual(ASAKUSA_POINTS));
+    await waitFor(() =>
+      expect(result.current.pathFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toEqual(ASAKUSA_POINTS),
+    );
     expect(routes.fetchRoutes).toHaveBeenCalledTimes(1);
     const [, request] = routes.fetchRoutes.mock.calls[0]!;
     expect(request.stops).toEqual(STOPS);
@@ -273,8 +286,10 @@ describe('useDayShapes', () => {
 
     const { result, unmount } = render();
 
-    await waitFor(() => expect(result.current.pathFor(ASAKUSA, TSUKIJI)).toEqual(ASAKUSA_POINTS));
-    expect(result.current.pathFor(TSUKIJI, SENSOJI)).toBeNull();
+    await waitFor(() =>
+      expect(result.current.pathFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toEqual(ASAKUSA_POINTS),
+    );
+    expect(result.current.pathFor(TSUKIJI, SENSOJI, TRAVEL_MODE.WALKING)).toBeNull();
     unmount();
   });
 
@@ -284,7 +299,9 @@ describe('useDayShapes', () => {
 
     const { result, unmount } = render([ASAKUSA, TSUKIJI]);
 
-    await waitFor(() => expect(result.current.pathFor(ASAKUSA, TSUKIJI)).toEqual(ASAKUSA_POINTS));
+    await waitFor(() =>
+      expect(result.current.pathFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toEqual(ASAKUSA_POINTS),
+    );
     expect(routes.fetchRoutes).not.toHaveBeenCalled();
     unmount();
   });
@@ -295,7 +312,9 @@ describe('useDayShapes', () => {
     await cacheTravelEstimates([ASAKUSA, TSUKIJI], [leg([walkWithShape])]);
 
     const { result, unmount } = render([ASAKUSA, TSUKIJI]);
-    await waitFor(() => expect(result.current.pathFor(ASAKUSA, TSUKIJI)).toEqual(ASAKUSA_POINTS));
+    await waitFor(() =>
+      expect(result.current.pathFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toEqual(ASAKUSA_POINTS),
+    );
 
     expect(routes.fetchRoutes).not.toHaveBeenCalled();
     unmount();
@@ -310,8 +329,75 @@ describe('useDayShapes', () => {
 
     const { result, unmount } = render([ASAKUSA, TSUKIJI]);
 
-    await waitFor(() => expect(result.current.pathFor(ASAKUSA, TSUKIJI)).toEqual(ASAKUSA_POINTS));
+    await waitFor(() =>
+      expect(result.current.pathFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toEqual(ASAKUSA_POINTS),
+    );
     expect(routes.fetchRoutes).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  /**
+   * **THE LEG'S OWN MODE, AND THIS IS THE SPEC THAT WAS MISSING** (ADR-0206 §AM8, reported from a
+   * deploy). M8b made the mode per leg and left this hook asking in ONE — so a leg overridden to
+   * driving on a walking trip drew the WALK's geometry. Both modes have a line between the same two
+   * stops and they are different roads: the owner's report was a drive entering a one-way street
+   * from the wrong end, which is exactly what a footpath route looks like when a car is told to
+   * follow it. Neither the duration nor the distance was wrong, which is why only the map showed it.
+   */
+  it('draws each mode its own road between the same two stops', async () => {
+    routes.fetchRoutes.mockResolvedValue({
+      legs: [leg([walkWithShape, driveWithShape])],
+    } satisfies RouteBatch);
+
+    const { result, unmount } = render(
+      [ASAKUSA, TSUKIJI],
+      [TRAVEL_MODE.WALKING, TRAVEL_MODE.DRIVING],
+    );
+
+    await waitFor(() =>
+      expect(result.current.pathFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.DRIVING)).toEqual(DRIVE_POINTS),
+    );
+    // The two lines are different, and the walk's is still its own — asking with the wrong mode is
+    // what the report was, so this asserts they cannot be confused rather than that one exists.
+    expect(result.current.pathFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toEqual(ASAKUSA_POINTS);
+    expect(DRIVE_POINTS).not.toEqual(ASAKUSA_POINTS);
+    unmount();
+  });
+
+  // A mode nobody drew has no line, rather than falling back to another mode's — the failure this
+  // family had was a silent substitution, so the absence has to be asserted too.
+  it('answers null for a mode it never asked about', async () => {
+    routes.fetchRoutes.mockResolvedValue(shaped);
+
+    const { result, unmount } = render([ASAKUSA, TSUKIJI]);
+
+    await waitFor(() =>
+      expect(result.current.pathFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toEqual(ASAKUSA_POINTS),
+    );
+    expect(result.current.pathFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.CYCLING)).toBeNull();
+    unmount();
+  });
+
+  // One request still, with both modes in it — §D8's tripwire is about the number of CALLS from
+  // this device, and a day holding an override must not double them.
+  it('asks once for a day that holds two modes, naming both', async () => {
+    routes.fetchRoutes.mockResolvedValue({
+      legs: [leg([walkWithShape, driveWithShape])],
+    } satisfies RouteBatch);
+
+    const { result, unmount } = render(
+      [ASAKUSA, TSUKIJI],
+      [TRAVEL_MODE.WALKING, TRAVEL_MODE.DRIVING],
+    );
+
+    await waitFor(() =>
+      expect(result.current.pathFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.DRIVING)).toEqual(DRIVE_POINTS),
+    );
+    expect(routes.fetchRoutes).toHaveBeenCalledTimes(1);
+    expect(routes.fetchRoutes.mock.calls[0]![1].modes).toEqual([
+      TRAVEL_MODE.WALKING,
+      TRAVEL_MODE.DRIVING,
+    ]);
     unmount();
   });
 
@@ -320,7 +406,7 @@ describe('useDayShapes', () => {
     const { result, unmount } = render();
 
     await act(async () => {});
-    expect(result.current.pathFor(ASAKUSA, TSUKIJI)).toBeNull();
+    expect(result.current.pathFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toBeNull();
     expect(routes.fetchRoutes).not.toHaveBeenCalled();
     unmount();
   });

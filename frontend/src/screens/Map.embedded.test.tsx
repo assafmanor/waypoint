@@ -106,13 +106,17 @@ const indexVerbs = {
 };
 const updatePlace = indexVerbs.updatePlace;
 
+/** Declared legs, per spec. A mutable module-level fixture like `tripEvents` beside it — the mock
+ *  factory reads it when `useTrip()` is CALLED, so a spec can set it before rendering. */
+let tripOverrides: { fromPlaceId: string; toPlaceId: string; mode: string }[] = [];
+
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
     zoneCrossings: [],
-    // Every leg on this canvas takes the trip's derived mode: nobody has declared one, which is
-    // the ordinary trip (ADR-0206 §AM). Stated rather than omitted — the context field is not
+    // The declared legs, mutable so a spec can override one (ADR-0206 §AM). Empty is the ordinary
+    // trip — every leg takes the derivation. Stated rather than omitted: the context field is not
     // optional, and `legTravelMode` is right to refuse a non-array rather than defend a stale mock.
-    travelModeOverrides: [],
+    travelModeOverrides: tripOverrides,
     // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
     tasks: [],
     taskVerbs: {
@@ -312,17 +316,20 @@ vi.mock('../lib/useMapArchives', () => ({
 /** **Which leg the amber line was asked for** (ADR-0206 §D8/§AB2). The shape itself is a fetch
  *  and a decode, both of which are `lib/travel.ts`'s own spec; what belongs HERE is the rule
  *  that picks the leg, which is the screen's. */
-const askedMode: { current: unknown } = { current: undefined };
+const askedModes: { current: readonly unknown[] } = { current: [] };
 /** A leg's drawn path, keyed the way the real hook keys it — so a spec can hand the screen a
  *  routed path for one leg and assert that the straight segment is what the others fall back to. */
 const stubShapes = new Map<string, { lat: number; lng: number }[]>();
-const legId = (from: { lat: number }, to: { lat: number }) => `${from.lat}>${to.lat}`;
+/** Keyed by MODE as well as by the pair, because that is the bug §AM8 fixed: the screen used to
+ *  read one mode's line for every leg, and a stub that ignored the mode could not tell. */
+const legId = (from: { lat: number }, to: { lat: number }, mode: unknown) =>
+  `${from.lat}>${to.lat}:${String(mode)}`;
 vi.mock('../lib/travel', () => ({
-  useDayShapes: ({ mode }: { mode: unknown }) => {
-    askedMode.current = mode;
+  useDayShapes: ({ modes }: { modes: readonly unknown[] }) => {
+    askedModes.current = modes;
     return {
-      pathFor: (from: { lat: number }, to: { lat: number }) =>
-        stubShapes.get(legId(from, to)) ?? null,
+      pathFor: (from: { lat: number }, to: { lat: number }, mode: unknown) =>
+        stubShapes.get(legId(from, to, mode)) ?? null,
     };
   },
 }));
@@ -625,6 +632,8 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     tripPlaces = [];
     tripNotes = [];
     tripBookings = [];
+    tripOverrides = [];
+    stubShapes.clear();
     tripEnrichments = {};
     currentMode = 'trip';
     isOffline = false;
@@ -4099,7 +4108,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       seedThreeStopDay();
       currentMode = 'plan';
       const { unmount } = render(wrap(<MapView />));
-      expect(askedMode.current).toBe('walking');
+      expect(askedModes.current).toEqual(['walking']);
       unmount();
 
       seedThreeStopDay();
@@ -4116,7 +4125,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         },
       ];
       render(wrap(<MapView />));
-      expect(askedMode.current).toBe('driving');
+      expect(askedModes.current).toEqual(['driving']);
     });
 
     // All-days has no "the day's legs" to ration one from, so there is nothing to draw.
@@ -4166,7 +4175,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     });
 
     it('draws a leg along its routed path once one has arrived', () => {
-      stubShapes.set(`${A.lat}>${B.lat}`, [A, BEND, B]);
+      stubShapes.set(legId(A, B, 'walking'), [A, BEND, B]);
       render(wrap(<MapView />));
 
       // The routed leg keeps its bend; the one with no shape yet keeps its straight segment,
@@ -4177,10 +4186,54 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       ]);
     });
 
+    /**
+     * **THE REPORTED DEFECT** (ADR-0206 §AM8, off the M8b deploy): _"I changed a walk to a drive to
+     * my home and I know for certain that the drive route is wrong because it enters my street
+     * (which is one way only) from the wrong direction."_
+     *
+     * M8b made the mode per LEG and left the geometry asking in ONE — the trip's derived mode — so
+     * an overridden leg was drawn with the WALK's shape. A footpath route legitimately goes the
+     * wrong way up a one-way street; a car following it does not. Neither the duration nor the
+     * distance was wrong, which is why only the canvas showed it.
+     */
+    it('asks for the OVERRIDDEN leg’s mode too, and draws that mode’s road', () => {
+      tripOverrides = [{ fromPlaceId: 'a', toPlaceId: 'b', mode: 'driving' }];
+      // Two different roads between the same two stops. The walk is the one the bug drew.
+      stubShapes.set(legId(A, B, 'driving'), [A, BEND, B]);
+      stubShapes.set(legId(A, B, 'walking'), [A, C, B]);
+      render(wrap(<MapView />));
+
+      // Both modes are asked for in one request: the overridden leg's and the rest of the day's.
+      expect([...askedModes.current].sort()).toEqual(['driving', 'walking']);
+      // …and the leg is drawn along the DRIVE, not the walk it used to borrow.
+      expect(legPaths()[0]).toEqual([A, BEND, B]);
+    });
+
+    // The other half of the same rule: a leg nobody overrode is untouched by the one that was.
+    it('leaves the day’s other legs on the derived mode', () => {
+      tripOverrides = [{ fromPlaceId: 'a', toPlaceId: 'b', mode: 'driving' }];
+      stubShapes.set(legId(B, C, 'walking'), [B, BEND, C]);
+      stubShapes.set(legId(B, C, 'driving'), [B, A, C]);
+      render(wrap(<MapView />));
+
+      expect(legPaths()[1]).toEqual([B, BEND, C]);
+    });
+
+    // A declared תחב״צ leg is not asked about at all (§AA4), so its mode must not reach the request
+    // — `TRAVEL_GATE` has no rule for it and a provider has no costing.
+    it('never asks for a declared leg’s mode, and draws it straight', () => {
+      tripOverrides = [{ fromPlaceId: 'a', toPlaceId: 'b', mode: 'transit' }];
+      stubShapes.set(legId(A, B, 'walking'), [A, C, B]);
+      render(wrap(<MapView />));
+
+      expect(askedModes.current).not.toContain('transit');
+      expect(legPaths()[0]).toEqual([A, B]);
+    });
+
     // The solid line and the dash beneath it must come from the SAME geometry, or the map would
     // state two different paths for one leg.
     it('spends the amber on the same geometry the dash under it uses', () => {
-      stubShapes.set(`${A.lat}>${B.lat}`, [A, BEND, B]);
+      stubShapes.set(legId(A, B, 'walking'), [A, BEND, B]);
       render(wrap(<MapView />));
       // A selection is what marks a leg now (§AC1) — tapping stop 2 makes the leg arriving at it
       // the amber one, and it must be the SAME geometry, or the map would state two paths for

@@ -76,7 +76,7 @@ never by the one that did the work.
 | **M7b** | The lines read as a route   | design | ✅                        | M7           | M8, M9       | `claude/routes-map-polyline-m7-baqobz` · [#708](https://github.com/assafmanor/waypoint/pull/708)                                                                                                                                                                                                                                                                                          | 2026-08-25 |
 | **M7c** | The day's bookends          | impl   | ✅ (+ 2 field fixes)      | M7, M7b      | M8, M9       | `claude/routes-map-polyline-m7-baqobz` · [#709](https://github.com/assafmanor/waypoint/pull/709) · [#710](https://github.com/assafmanor/waypoint/pull/710) · [#711](https://github.com/assafmanor/waypoint/pull/711)                                                                                                                                                                      | 2026-08-26 |
 | **M8a** | Draw the mode set + תחב״צ   | design | ✅                        | M6a, M6b, M7 | M9, M10, M11 | `routes/m8a-draw` · [#726](https://github.com/assafmanor/waypoint/pull/726)                                                                                                                                                                                                                                                                                                               | 2026-08-27 |
-| **M8b** | Mode per leg + trip default | impl   | 🔵 **in review**          | M8a          | M10          | `routes/m8b-mode` · [#727](https://github.com/assafmanor/waypoint/pull/727)                                                                                                                                                                                                                                                                                                               | 2026-08-27 |
+| **M8b** | Mode per leg + trip default | impl   | ✅ **+ 2 field fixes**    | M8a          | M10          | `routes/m8b-mode` · [#727](https://github.com/assafmanor/waypoint/pull/727) · `routes/m8b-fixes`                                                                                                                                                                                                                                                                                          | 2026-08-27 |
 | **M9**  | Plan-mode feasibility       | impl   | ⬜                        | M5           | M6a, M6b, M7 | —                                                                                                                                                                                                                                                                                                                                                                                         | —          |
 | **M10** | Offline route pack          | impl   | ⬜                        | M4           | M5–M9        | —                                                                                                                                                                                                                                                                                                                                                                                         | —          |
 | **M11** | Day travel total            | impl   | ⬜                        | M6a          | M8, M10      | —                                                                                                                                                                                                                                                                                                                                                                                         | —          |
@@ -1653,6 +1653,23 @@ reason is that suppressing the estimate alone made the block vanish, taking the 
 - **What is still open, and neither is M8b's:** `Collapsible`'s `0.32s` literal against the caret's
   `--t-base` (§AL10's second point — the primitive is where that gets fixed), and the seven further
   mirroring candidates M8a's audit found (a sweep, on the backlog).
+
+**Two field fixes off the deploy (2026-08-27, ADR-0206 §AM8/§AM9), and they are the same mistake
+twice.** M8b changed the mode from per-trip to per-leg, updated the consumers it was thinking about
+(the day list's numbers) and not the two it was not:
+
+1. **The canvas drew the wrong mode's road.** `Map.tsx` asked `useDayShapes` for ONE mode, so an
+   overridden leg was drawn with the walk's geometry — reported as a drive entering a one-way street
+   from the wrong end. `useDayShapes({ modes })` and `pathFor(from, to, mode)` now. Note this is the
+   **second** time the drawn line took the wrong mode (§Z5 made `useLegShape`'s mode required for the
+   first); the parameter stayed required and the _set_ was what became plural.
+2. **Only Trip mode could change a mode.** The control lived in `DayView` alone — the third recorded
+   instance of "changing a day-surface derivation in `DayView` only", and the worst, since §AL10's own
+   argument is that an override is set while planning. `useLegModeControl` is shared now and
+   `DayView`'s copy is gone.
+
+**So the question to close a milestone with is "what else reads this in the singular".** Both of these
+were one grep away and neither was grepped.
 
 ---
 

@@ -15,11 +15,12 @@
 // which positions exist at all is untouched. That is a decision about the builder's drop targets
 // (ADR-0161 §2) and it belongs to M9.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import {
   EVENT_KIND,
   EVENT_SOURCE,
   EVENT_STATUS,
+  TRANSIT_LEG_MODE,
   TRAVEL_MODE,
   type Booking,
   type Place,
@@ -239,6 +240,88 @@ describe('PlanDay — the chip offers what is free AFTER the journey (ADR-0206 �
     travelSeconds = null;
     show();
     expect(screen.getByText(chip(t.planDay.gapHours(3)))).toBeTruthy();
+  });
+});
+
+// ── PLAN CAN CHANGE A LEG'S MODE (ADR-0206 §AM9) ──────────────────────────────────────────
+//
+// **The reported defect:** _"Right now you can only change the mode on the day view and not on plan
+// day!"_ M8b wired the READS on both surfaces and the CONTROL on one, which is `frontend/CLAUDE.md`'s
+// "changing a day-surface derivation in `DayView` only" for the third time. And Plan is where §AL10
+// argued the override would mostly be set — "the sort of thing set while planning rather than while
+// standing in it" — so this was the surface that needed it most.
+describe('PlanDay — the leg mode is declarable here too (ADR-0206 §AM9)', () => {
+  const PAIR = { fromPlaceId: 'p-lunch', toPlaceId: 'p-theatre' };
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    tripEvents = [lunch, theatre];
+    tripPlaces = places;
+    travelSeconds = WALK_MINUTES * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  it('offers the disclosure on the journey block', () => {
+    show();
+    const face = document.querySelector('button.day-trv-face');
+    expect(face).toBeTruthy();
+    expect(face!.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('writes the override on the leg’s own pair', () => {
+    show();
+    fireEvent.click(document.querySelector('button.day-trv-face')!);
+    fireEvent.click(screen.getByRole('button', { name: t.travelMode[TRANSIT_LEG_MODE] }));
+    expect(travelModeVerbs.setLegMode).toHaveBeenCalledWith(
+      PAIR.fromPlaceId,
+      PAIR.toPlaceId,
+      TRANSIT_LEG_MODE,
+    );
+  });
+
+  // The same clear-vs-set rule Trip mode follows, because it is the hook's and not the screen's.
+  it('clears rather than storing the derived mode back', () => {
+    tripOverrides = [
+      {
+        id: 'tmo-1',
+        tripId: 't1',
+        ...PAIR,
+        mode: TRANSIT_LEG_MODE,
+        createdBy: 'u1',
+        createdAt: `${DAY}T00:00:00Z`,
+        updatedAt: `${DAY}T00:00:00Z`,
+      } as TravelModeOverride,
+    ];
+    show();
+    fireEvent.click(document.querySelector('button.day-trv-face')!);
+    fireEvent.click(screen.getByRole('button', { name: t.travelMode[TRAVEL_MODE.WALKING] }));
+    expect(travelModeVerbs.clearLegMode).toHaveBeenCalledWith(PAIR.fromPlaceId, PAIR.toPlaceId);
+    expect(travelModeVerbs.setLegMode).not.toHaveBeenCalled();
+  });
+
+  // A declared leg reads the same here as in Trip mode: the mode word, no duration, and the block
+  // still standing — which is what keeps the control reachable to switch back (§AM6).
+  it('reads a declared leg as תחב״צ with no duration, control still there', () => {
+    tripOverrides = [
+      {
+        id: 'tmo-1',
+        tripId: 't1',
+        ...PAIR,
+        mode: TRANSIT_LEG_MODE,
+        createdBy: 'u1',
+        createdAt: `${DAY}T00:00:00Z`,
+        updatedAt: `${DAY}T00:00:00Z`,
+      } as TravelModeOverride,
+    ];
+    show();
+    expect(screen.getByText(t.travelMode[TRANSIT_LEG_MODE])).toBeTruthy();
+    const block = document.querySelector('.day-trv')!;
+    expect(block.textContent).toContain(t.travel.noEstimate);
+    expect(block.textContent).not.toContain(String(WALK_MINUTES));
+    expect(document.querySelector('button.day-trv-face')).toBeTruthy();
   });
 });
 
