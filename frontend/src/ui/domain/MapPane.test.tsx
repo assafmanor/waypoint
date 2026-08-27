@@ -91,8 +91,13 @@ class FakeMapLibreMap {
   /** The adapter hands MapLibre `[[west, south], [east, north]]`, so that is what a test
    *  reading `fits` gets — and reading it is how "the camera framed the LEG, not the stop"
    *  is asserted at all (ADR-0206 §AC8). */
+  /** What `fitBounds` resolves the camera to, which is how the leg-framing floor is exercised
+   *  from here (`useMapCamera` learns a fit by asking the map and reading the zoom back).
+   *  `undefined` leaves the zoom alone — what every test that does not care about it wants. */
+  fitResultZoom: number | undefined = undefined;
   fitBounds(bounds: unknown, options?: { padding?: { bottom: number } }) {
     this.fits.push({ bounds, padding: options?.padding });
+    if (this.fitResultZoom !== undefined) this.zoom = this.fitResultZoom;
   }
   resize() {
     this.resizes += 1;
@@ -372,6 +377,9 @@ const TWO_LEGS = [
 
 afterEach(() => {
   cleanup();
+  // One test asks its question under reduced motion (a camera move becomes a single jump), and
+  // a leaked `matchMedia` would silently answer it for every test after it.
+  vi.unstubAllGlobals();
   mapStub.current = new FakeMapLibreMap();
   canvas.firstPaint = undefined;
   canvas.idle = undefined;
@@ -1473,6 +1481,24 @@ describe('the dot tier degrades a pin below a zoom threshold (ADR-0128 §1)', ()
     expect(mapStub.current.fits.at(-1)!.padding!.bottom).toBeGreaterThan(plain);
   });
 
+  // **A LEG NOTHING ROUTES DRAWS THE LINE THAT SAYS SO** (ADR-0206 §AL6/§AM10). Two causes, one
+  // treatment: a declared תחב״צ leg, and a leg whose chosen mode the gate refuses. Both hand the
+  // pane a straight segment, and painting that in the route's SOLID amber would assert a road
+  // journey — the false claim §AA4 exists to forbid, reached the second way.
+  it('draws an unrouted leg in its own disclaiming layer, never as the route', () => {
+    paint({
+      connector: [{ path: [A, B], from: A, to: B, emphasis: 'route' as const, unrouted: true }],
+    });
+    const transit = mapStub.current.getLayer('wp-route-transit')!;
+    expect(transit).toBeTruthy();
+    // Butt caps, so the long dash keeps its gap and the line cannot read as solid.
+    expect(transit.layout).toMatchObject({ 'line-cap': MAP_CONNECTOR.TRANSIT.CAP });
+    expect(transit.paint).toMatchObject({ 'line-dasharray': [...MAP_CONNECTOR.TRANSIT.DASH] });
+    // And it belongs to NEITHER of the other two, or an empty layer would be composited beside it.
+    expect(mapStub.current.getLayer('wp-route-line')).toBeUndefined();
+    expect(mapStub.current.getLayer('wp-connector-line')).toBeUndefined();
+  });
+
   // **A SELECTION IS ABOUT ITS LEG, NOT ITS DOT** (ADR-0206 §AC8; owner report, 2026-08-27:
   // _"the place details pops up and hides most of the path"_). The camera already refused to
   // put the selected PIN under the card (the test above) and knew nothing about the leg — so it
@@ -1512,6 +1538,41 @@ describe('the dot tier degrades a pin below a zoom threshold (ADR-0128 §1)', ()
         ]),
     );
     expect(framedLeg).toBe(false);
+  });
+
+  // **AND WHAT THE BAND EFFECT KEEPS CENTRED IS WHAT THE CAMERA WAS PUT ON — never a second
+  // derivation of its own** (field report, 2026-08-27, with a screenshot). The two effects each
+  // decided for themselves: the band effect took the leg's centre whenever a leg existed, while
+  // the selection effect frames the leg only when `framePath` AGREES to. So on a leg the floor
+  // refuses — long ones, which on an Iceland day is most of them — the camera panned correctly to
+  // the stop and was then dragged straight off it to the middle of a ⁦40 km⁩ leg, at street zoom,
+  // because `recentreInBand` pans the whole offset and does not care that the point is off
+  // screen. What the owner saw was an empty hillside reading `אין מקומות באזור`.
+  it('never re-centres on a leg the camera refused to frame', () => {
+    mapStub.current.box = { width: 390, height: 517 };
+    mapStub.current.viewport = { north: 60, south: 10, east: 160, west: 110 };
+    // What the fit would resolve this leg to: under the floor, so `framePath` refuses it and the
+    // stop takes the pan instead.
+    mapStub.current.fitResultZoom = MAP_ZOOM.DOT_BELOW - 1;
+    // Under reduced motion a camera move is a single `moveCamera` to the destination — a real
+    // shipped path (ADR-0098 §4), not a test-only shortcut — so this asks WHERE the camera went
+    // rather than how it travelled, which is the whole question here.
+    vi.stubGlobal('matchMedia', () => ({ matches: true }) as unknown as MediaQueryList);
+    paint({
+      pins: [
+        pin({ placeId: 'a', lat: A.lat, lng: A.lng }),
+        pin({ placeId: 'b', lat: B.lat, lng: B.lng, selected: true }),
+      ],
+      connector: [{ path: [A, B], from: A, to: B, emphasis: 'route' as const }],
+      cardReserve: 160,
+    });
+
+    // **Latitude, because `keepCentred` pans VERTICALLY only** — an assertion on longitude
+    // cannot see this bug at all, and one written that way passed against the defect. The camera
+    // is on the stop's parallel, not on ⁦1.5⁩, the middle of a leg nobody framed. A band
+    // correction is a few pixels, i.e. thousandths of a degree at this zoom; the defect is half
+    // a degree, so this gap is the whole of the question.
+    expect(Math.abs(mapStub.current.centre.lat - B.lat)).toBeLessThan(0.1);
   });
 
   // ADR-0128 §1's session-154 amendment: **demote what claims precision, keep what claims

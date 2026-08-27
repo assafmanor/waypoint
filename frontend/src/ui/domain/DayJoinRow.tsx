@@ -421,7 +421,13 @@ export function JourneyRow({
    *  question and the compiler only knows about the second: `DECLARED` is the one arm carrying no
    *  `travelSeconds`, so a caller that has the arm and a caller that has the mode agree. */
   const seconds = journey.travelSeconds;
-  const declared = !isRoutableMode(travelMode) || seconds === null;
+  /** **A mode the gate refuses is the OTHER reason there is no number** (ADR-0206 §AM10), and it
+   *  must not borrow the declaration's words: `בלי הערכת זמן` is a statement about US, and this is
+   *  a statement about the leg — nothing is coming, and the fix is to pick another mode. Read off
+   *  the arm rather than off the absent number, because the absent number is now ambiguous between
+   *  the two. */
+  const tooFar = journey.arm === DAY_JOURNEY_ARM.TOO_FAR;
+  const declared = !tooFar && (!isRoutableMode(travelMode) || seconds === null);
   return (
     <JourneyBlock
       mode={t.travelMode[travelMode]}
@@ -436,17 +442,25 @@ export function JourneyRow({
       // window shuts are facts about the leg; a passed leave-by is a fact about the hour, and the
       // block already says it in words. `ON_WAY` never takes it: somebody is moving, and a warning
       // would contradict what the state asserts.
-      flag={overrunning || journey.arrivesAfterClose}
+      // …and a mode that cannot cover the leg takes it too: like an overrun it is a fact about the
+      // PLAN rather than about the hour, which is exactly the line §AL5 draws.
+      flag={overrunning || journey.arrivesAfterClose || tooFar}
       duration={seconds === null || declared ? undefined : (approxTravelTime(seconds) ?? undefined)}
       distance={
         journey.distanceMeters === null ? undefined : formatDistance(journey.distanceMeters)
       }
-      leave={declared ? t.travel.noEstimate : journeyMetaLine(journey, zones)}
+      leave={
+        tooFar
+          ? t.travel.tooFarFor(t.travelMode[travelMode])
+          : declared
+            ? t.travel.noEstimate
+            : journeyMetaLine(journey, zones)
+      }
       tone={
         // An overrun is a negative status about the plan, so it takes §D7's own paint — the same
         // `--miss` a passed leave-by does, because they are the same kind of fact about a journey
         // you are not going to make on time.
-        overrunning || journey.arm === DAY_JOURNEY_ARM.PASSED || journey.arrivesAfterClose
+        overrunning || tooFar || journey.arm === DAY_JOURNEY_ARM.PASSED || journey.arrivesAfterClose
           ? 'miss'
           : journey.arm === DAY_JOURNEY_ARM.ON_WAY
             ? 'on-way'

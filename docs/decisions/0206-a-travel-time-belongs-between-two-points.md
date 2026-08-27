@@ -800,6 +800,110 @@ forbid.
 The pane takes the day's legs as one prop and hands the same array to `DayConnector` and to the
 camera, so the line the canvas paints amber and the line the camera frames cannot be different legs.
 
+> **Corrected 2026-08-27, same day, off a screenshot of the result — the two effects each derived
+> the subject for themselves, and on a refused leg they disagreed.** `framePath` is allowed to say
+> **no** (the floor above), and the band effect did not know that: it took the leg's centre
+> whenever a leg **existed**. So on a leg the floor refuses — long ones, which on an Iceland day is
+> most of them — the selection effect panned correctly to the stop and the band effect then dragged
+> the camera straight off it to the middle of a ⁦40 km⁩ leg, at street zoom. `recentreInBand` pans
+> the whole offset and does not care that the point is off screen, so what the owner got was an
+> empty hillside reading `אין מקומות באזור`.
+>
+> The fix is not a guard, it is the fact: **the selection effect records what it actually put the
+> camera on, and the band effect reads that** — the leg's centre where the leg was framed, the stop
+> where it was not. It closes a second case for free: a leg's **shape arriving from the network** is
+> not a selection, and under the derivation it silently changed what the camera was keeping in
+> view.
+>
+> **And the first regression test written for it passed against the defect**, which is worth more
+> than the fix: it asserted on **longitude**, and `keepCentred` pans **vertically only**. An
+> assertion on an axis the code cannot move is not a test. The one that stands asserts latitude,
+> and was checked red against the merged commit before being kept.
+
+### AM10. Amendment (2026-08-27) — a mode the gate refuses is an ANSWER, and §D4 does not cover it
+
+Field report off the shipped mode control: _"I changed a drive to a walk and the route simply
+disappeared from the plan day (and day view too probably). On the map it drew a straight line. I'm
+guessing that maybe a walk wasn't a legitimate option so it sort of crashed it."_
+
+Nothing crashed, and the guess was exactly right. The pair is past walking's ⁦15 km⁩ ceiling
+([ADR-0205](0205-routes-are-computed-not-bought-and-a-route-is-a-cache.md) §3's gate), so no
+estimate exists or ever will — and every surface renders that as **absence**, per §D4's "absent is
+absent, never an error".
+
+**§D4 is right about a mode the APP picked and wrong about one a PERSON picked**, and that is the
+whole of this amendment. A mode nobody chose having no estimate is a gap in what we know. A mode
+somebody just chose having no estimate is an **answer to what they asked**, and rendering it as a
+gap costs the one thing that must not be lost: **the block is the only thing carrying the mode
+control**, so the hole vanished and the change could not be undone on the surface that made it.
+
+**That is not a new failure — it is §AM6's, in the sibling case nobody covered.** The declaration
+hit it first (_"suppressing the estimate made the block disappear, and with it the control that had
+just declared the leg"_), and `DAY_JOURNEY_ARM.DECLARED` was added for exactly this reason. A
+refused mode is the second way to have no estimate by nature, and it needed the same treatment.
+
+1. **`DAY_JOURNEY_ARM.TOO_FAR`**, ranked directly below `DECLARED` — a declared leg is never asked
+   about and so can never be refused. Like the declaration it keeps the distance and states no
+   duration; **unlike** it, it is a problem with the PLAN rather than a silence we chose, so it
+   takes the miss tone and the warning mark alongside `OVERRUNS`, which is the same family of fact.
+2. **The words are its own.** `בלי הערכת זמן` is a statement about us; `רחוק מדי להליכה` is a
+   statement about the leg, and names the mode because a hole showing four chips has to say which
+   one it means.
+3. **The distance falls back to the crow, as a declared leg's does** — and deliberately **not** for
+   a mode still _warming_, which is the distinction that keeps §D4 intact: there we genuinely do
+   not know yet, and a crow-flies number that later becomes a routed one is a figure that changes
+   under the reader. Here no routed number is ever coming, and the distance is the very fact that
+   explains the refusal.
+4. **`exceedsTravelCeiling` is the gate's ceiling asked on its own** — no clusters, no network, so
+   the answer is instant on a mode switch and available offline. The ceiling and not the whole
+   gate, deliberately: `sameClusterOnly` can no longer _reject_ anything, and what is left of it is
+   a false negative when a point is missing from the cluster input — a gap in our data, not a
+   statement about the journey. `admitsTravelMode` is its only other caller, so the two cannot
+   drift.
+5. **One derivation, both day surfaces**: `DayTravelReads.refusedFor`, beside `modeFor` and
+   `distanceFor`, for the reason `frontend/CLAUDE.md` gives — "changing a day-surface derivation in
+   `DayView` only" has cost a release twice, and a leg that reads impossible in Plan and blank in
+   Trip is that failure again.
+
+**And the map stops drawing a claim it cannot support.** `pathFor` answers `null` for a refused leg
+exactly as it does for one still warming, and the two must not be painted the same way: a warming
+leg gets its road in a moment, while a ⁦40 km⁩ walk never will — so the solid amber straight segment
+between its ends asserted a road journey nobody can make. It takes §AL6's disclaiming treatment
+instead, and `MapDayLeg.declared` is renamed **`unrouted`** to say what the renderer is actually
+being told: two causes, one treatment, one flag, named for what the line may assert rather than for
+one of the two reasons it may not (rule 8).
+
+### AJ3. Amendment (2026-08-27) — §AJ2's clamp belongs to `heroLeaveBy`, not to `dayJourney`
+
+Field report, two screenshots one minute apart. The day view: `יציאה 00:30 · הגעה ~01:03`, above a
+⁦01:00⁩ stop, out of an event running ⁦00:00–00:30⁩. The board, at ⁦00:27⁩: **`6 דקות באיחור ליציאה`**.
+One trip, one estimate, two answers ⁦9⁩ minutes apart.
+
+Both are §AJ2's arithmetic, and only one surface finished it. The buffered departure is
+⁦01:00 − 34 − 5 = 00:21⁩; the earliest departure that **exists** is ⁦00:30⁩, the end of the event
+the traveller is sitting in. §AJ2 decided that the clamp is what makes a late mark defensible —
+_"what makes it printable is that the clamp is a departure you could make"_ — and implemented it
+**inside `dayJourney`**, right down to a local `departurePassed` whose own comment says
+`leave.phase` "is keyed to the buffered one and would mark a clamped leg late at once". That
+comment describes the board exactly. The board reads `heroLeaveBy` directly and got the unclamped
+answer, so it marked a traveller late for a departure nobody could have made — §AJ2's own
+`באיחור`-for-nothing, reached by the one route it had not closed.
+
+- **The clamp moves into `heroLeaveBy`**, which both elevations already call. `dayJourney` loses
+  its local copy and behaves identically; the board gains the rule by asking the same question.
+  ADR-0159 §1 allows the two to differ in **posture** and forbids a difference about a **fact**,
+  and when to leave is a fact.
+- **`legDepartAfterMs` is the floor, and it was written out three times** (`DayView`, `PlanDay`,
+  and not at all on the board). Three rules in one function now: the leg's own placed instant where
+  it has one (§AS), **no floor out of a bed** (§AF3 — a middle night's `endsAt` is a check-out days
+  away), otherwise the origin row's end. The board never had it because it built its leg as
+  `{ from, to }` and nothing else, so it could not have applied the clamp even had it tried —
+  which is why the fix is a shared derivation rather than a second copy of the ternary.
+- **Two existing board specs changed their numbers and both were fixture artefacts, not the rule.**
+  Their origin ended ⁦30⁩ minutes before `now`, so the clamp bit and the lateness they asserted
+  shrank; they measure the buffer's arithmetic, so they take an origin that ends early enough for
+  the buffer to be what is under test. Nothing about the ladder or the mode they exist for moved.
+
 ## AD. Amendment (2026-08-25) — the route's stops are the day's SEQUENCE, not the day's NUMBERS
 
 Owner, off the shipped canvas: _"Now that we have real paths, I'm starting to feel the absence of

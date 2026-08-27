@@ -2025,6 +2025,12 @@ export const t = {
     // release is the drift ADR-0138 exists to end. The absent duration is the statement; this only
     // labels the absence so it does not read as data that failed to load.
     noEstimate: 'בלי הערכת זמן',
+    // **WHAT A MODE THE GATE REFUSES SAYS** (ADR-0206 §AM10). Deliberately NOT `noEstimate` above,
+    // which reads as "we are not estimating this" — a statement about us. This is a statement about
+    // the leg: the distance is past what that mode admits, so nothing is coming and the fix is to
+    // pick another mode. It names the mode, because a hole showing four chips has to say which one
+    // it means. A middle dot separates the two facts, never an em dash (root CLAUDE.md).
+    tooFarFor: (mode: string) => `רחוק מדי ל${mode}`,
     // What is LEFT of the journey, once the fix says you are on it (ADR-0207 §6). An
     // approximation of an approximation, and `~` is what says so; the alternative was the
     // untouched total, which read as "44 minutes still to walk" two minutes from the door.

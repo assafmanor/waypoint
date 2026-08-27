@@ -18,6 +18,7 @@ import { useMemo, useState } from 'react';
 import {
   derivedTravelMode,
   haversineMeters,
+  exceedsTravelCeiling,
   isRoutableMode,
   legTravelMode,
   type Booking,
@@ -65,6 +66,27 @@ export interface DayLeg {
   departAfterMs?: number;
 }
 
+/**
+ * **The earliest instant this leg's journey could start**, or `undefined` where there is none.
+ *
+ * Three rules in one place, because there were **three copies of them** and a fourth was about to
+ * be written (ADR-0206 §AJ3): the leg's own placed instant wins where it has one (a span edge's
+ * pickup, §AS); a leg **out of a stay** has none, since a middle night's `endsAt` is a check-out
+ * days away and reading it as this hole's departure measures a window from next Wednesday (§AF3);
+ * otherwise it is the origin row's own end.
+ *
+ * It is exported because the BOARD needs it too, and that is the whole reason this exists as a
+ * function: the hero built its leg without one and so never applied §AJ2's clamp, which is how it
+ * came to say `6 דקות באיחור ליציאה` about a departure the day view — correctly — printed as
+ * ⁦00:30⁩, the end of the event the traveller was sitting in (field report, 2026-08-27).
+ */
+export function legDepartAfterMs(leg: DayLeg): number | undefined {
+  if (leg.departAfterMs !== undefined) return leg.departAfterMs;
+  if (leg.fromIsStay) return undefined;
+  const at = Date.parse(leg.from.endsAt ?? leg.from.startsAt ?? '');
+  return Number.isFinite(at) ? at : undefined;
+}
+
 export interface DayTravelReads {
   /** The trip's DERIVED mode (§Z2) — the same read the Map and the hero make, off the same
    *  function, so one leg cannot be a drive on the canvas and a walk in the list.
@@ -102,6 +124,17 @@ export interface DayTravelReads {
    *  not re-derive it — `endpointPlaceId`'s transport inversion is the kind of rule that goes
    *  wrong when it is answered twice. */
   pairFor(from: TripEvent, to: TripEvent): { fromPlaceId: string; toPlaceId: string } | undefined;
+  /**
+   * **Is this leg's own mode simply too far for it?** (ADR-0206 §AM10.)
+   *
+   * The gate's ceiling, asked locally — no network, no clusters, instant on a mode switch. It is
+   * ONE derivation with two surfaces for the reason every read here is: `frontend/CLAUDE.md` names
+   * "changing a day-surface derivation in `DayView` only" as having cost a release twice, and a
+   * leg that reads impossible in Plan mode and blank in Trip mode is that failure again.
+   *
+   * `false` for a declared leg — nothing routes it, so nothing refuses it either (§AA4).
+   */
+  refusedFor(from: TripEvent, to: TripEvent): boolean;
 }
 
 const NOTHING: DayTravelReads['estimateFor'] = () => null;
@@ -222,11 +255,29 @@ export function useDayTravelReads(opts: {
         if (!leg) return null;
         const legMode = modeOf(from, to);
         if (!isRoutableMode(legMode)) return Math.round(haversineMeters(leg.from, leg.to));
-        return travel.estimateFor(leg.from, leg.to, legMode)?.distanceMeters ?? null;
+        const routed = travel.estimateFor(leg.from, leg.to, legMode)?.distanceMeters;
+        if (routed !== undefined) return routed;
+        // **A REFUSED MODE FALLS BACK TO THE CROW, exactly as a declared leg does** (ADR-0206
+        // §AM10). Not for a PENDING one, which is the distinction that keeps §D4 intact: there we
+        // genuinely do not know yet, and a crow-flies number that later becomes a routed one is a
+        // figure that changes under the reader. Here no routed number is ever coming, and the
+        // distance is the very fact that explains the refusal — `רחוק מדי להליכה` over a blank
+        // says the leg is too far without saying how far.
+        return exceedsTravelCeiling(legMode, leg.from, leg.to)
+          ? Math.round(haversineMeters(leg.from, leg.to))
+          : null;
       },
       pairFor: (from, to) => {
         const leg = legFor(from, to);
         return leg ? { fromPlaceId: leg.fromPlaceId, toPlaceId: leg.toPlaceId } : undefined;
+      },
+      refusedFor: (from: TripEvent, to: TripEvent) => {
+        const leg = legFor(from, to);
+        if (!leg) return false;
+        const legMode = modeOf(from, to);
+        // A declared leg is not refused, it is simply not asked — §AA4's own distinction, and the
+        // same `isRoutableMode` narrowing every other read here makes at the provider boundary.
+        return isRoutableMode(legMode) && exceedsTravelCeiling(legMode, leg.from, leg.to);
       },
       estimateFor: resolved.byRows.size
         ? (from: TripEvent, to: TripEvent) => {

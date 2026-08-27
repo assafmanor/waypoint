@@ -278,11 +278,33 @@ export function admitsTravelMode(
   to: LatLng,
   clusters: readonly (readonly LatLng[])[],
 ): boolean {
-  const rule = TRAVEL_GATE[mode];
   const metres = haversineMeters(from, to);
-  if (!Number.isFinite(metres) || metres < ROUTE_MIN_CROW_M || metres > rule.maxMeters)
-    return false;
-  return rule.sameClusterOnly ? sameTravelCluster(from, to, clusters) : true;
+  if (!Number.isFinite(metres) || metres < ROUTE_MIN_CROW_M) return false;
+  if (exceedsTravelCeiling(mode, from, to)) return false;
+  return TRAVEL_GATE[mode].sameClusterOnly ? sameTravelCluster(from, to, clusters) : true;
+}
+
+/**
+ * **Is this pair simply too far for this mode?** — the gate's ceiling asked on its own, with no
+ * clusters and no network (ADR-0206 §AM10).
+ *
+ * It exists because a mode the TRAVELLER chose has to be answerable on the surface they chose it
+ * on. A day reads "no estimate" for a refused mode exactly as it reads one for a mode still
+ * warming (§D4: absent is absent), and that is right for the mode the app picked and wrong for
+ * the one a person picked — a `40 km` walk is not a gap in our knowledge, it is an answer, and a
+ * hole that renders nothing renders no mode control either, so the choice becomes irreversible on
+ * the surface that made it (field report, 2026-08-27).
+ *
+ * **The ceiling and not the whole gate, deliberately.** `sameClusterOnly` can no longer *reject*
+ * anything (see `TravelGateRule`) — what is left of it is a false negative when a point is missing
+ * from the cluster input, which is a gap in our data and not a statement about the journey. So
+ * this answers the half that IS a statement, and it needs no cluster set to do it, which is what
+ * makes it available offline and instantly on a mode switch. It is the same numbers by
+ * construction: `admitsTravelMode` above is its only other caller.
+ */
+export function exceedsTravelCeiling(mode: TravelMode, from: LatLng, to: LatLng): boolean {
+  const metres = haversineMeters(from, to);
+  return Number.isFinite(metres) && metres > TRAVEL_GATE[mode].maxMeters;
 }
 
 /** **Which modes this pair can be asked about at all**, in `TRAVEL_MODES` order. An empty answer

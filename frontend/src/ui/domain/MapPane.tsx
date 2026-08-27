@@ -1386,7 +1386,7 @@ const CONNECTOR = { source: 'wp-connector', layer: 'wp-connector-line' } as cons
  *  piece of data with two paints, split by `filter` (ADR-0206 §AC). */
 const ROUTE = { layer: 'wp-route-line' } as const;
 
-/** The declared leg's own layer (ADR-0206 §AL6). Its own layer rather than a `case` inside
+/** The unrouted leg's own layer (ADR-0206 §AL6). Its own layer rather than a `case` inside
  *  `ROUTE`'s paint, because it differs in `line-dasharray` and `line-cap` — both of which are
  *  LAYOUT/paint properties MapLibre cannot switch per feature with a data expression. */
 const TRANSIT = { layer: 'wp-route-transit' } as const;
@@ -1421,11 +1421,17 @@ export interface MapDayLeg {
   /** `route` is §D8's one solid amber leg; `near` is prominent without spending amber twice;
    *  `dim` recedes. Absent is the ordinary leg. */
   emphasis?: 'route' | 'near' | 'dim';
-  /** **A declared תחב״צ leg** (ADR-0206 §AA4/§AL6). Its `path` is the straight segment and MUST be:
-   *  a road polyline for a rail journey is a false claim about the path. Drawn in the route's amber
-   *  at the route's weight with a long dash and butt caps, which is three channels away from the
-   *  un-routed connector — the one thing it could be mistaken for. */
-  declared?: boolean;
+  /** **A leg drawn as a straight segment that is NOT a claim about the path** (ADR-0206 §AL6).
+   *
+   *  Two causes, one treatment, and one flag — because the renderer's question is what this line
+   *  may assert, not why (rule 8). A **declared תחב״צ** leg (§AA4): a road polyline for a rail
+   *  journey is a false claim about the path. And a leg whose chosen mode the gate **refuses**
+   *  (§AM10): a 40 km walk has no route and never will, and drawing the road between its ends in
+   *  solid amber says it is one.
+   *
+   *  Drawn in the route's amber at the route's weight with a long dash and butt caps, which is
+   *  three channels away from the un-routed connector — the one thing it could be mistaken for. */
+  unrouted?: boolean;
 }
 
 const KIND = { leg: 'leg', stub: 'stub' } as const;
@@ -1440,7 +1446,7 @@ const legsKey = (legs?: readonly MapDayLeg[]): string =>
           lngLat(leg.from),
           lngLat(leg.to),
           leg.emphasis ?? '',
-          leg.declared ? 'd' : '',
+          leg.unrouted ? 'u' : '',
         ]),
       )
     : '';
@@ -1525,8 +1531,8 @@ const DayConnector = memo(function DayConnector({
     const routeColor = dark ? MAP_CONNECTOR.ROUTE.COLOR.dark : MAP_CONNECTOR.ROUTE.COLOR.light;
     const legColor = dark ? MAP_CONNECTOR.COLOR.dark : MAP_CONNECTOR.COLOR.light;
     const isRoute = ['==', ['get', 'emphasis'], 'route'];
-    /** A declared תחב״צ leg (ADR-0206 §AL6) — its own layer, and excluded from the other two. */
-    const isDeclared = ['==', ['get', 'declared'], 1];
+    /** An unrouted leg (ADR-0206 §AL6/§AM10) — its own layer, and excluded from the other two. */
+    const isUnrouted = ['==', ['get', 'unrouted'], 1];
     const byEmphasis = (plain: number, near: number, dim: number) => [
       'match',
       ['get', 'emphasis'],
@@ -1564,7 +1570,7 @@ const DayConnector = memo(function DayConnector({
         lines.push(
           feature(
             { type: 'LineString', coordinates: coords },
-            { kind: KIND.leg, emphasis, declared: leg.declared ? 1 : 0 },
+            { kind: KIND.leg, emphasis, unrouted: leg.unrouted ? 1 : 0 },
           ),
         );
         for (const end of [coords[0]!, coords[coords.length - 1]!]) {
@@ -1610,19 +1616,19 @@ const DayConnector = memo(function DayConnector({
       const data = build();
       const has = (kind: string, route: boolean) =>
         data.lines.features.some((f) => {
-          const p = (f as { properties: { kind?: string; emphasis?: string; declared?: number } })
+          const p = (f as { properties: { kind?: string; emphasis?: string; unrouted?: number } })
             .properties;
           if (p.kind !== kind) return false;
           if (kind !== KIND.leg) return true;
-          // A declared leg belongs to neither of the other two layers, so it must not keep them
+          // An unrouted leg belongs to neither of the other two layers, so it must not keep them
           // mounted either — an empty layer composited every frame is work nobody asked for, which
           // is the whole reason `layer()` is conditional.
-          return !p.declared && (p.emphasis === 'route') === route;
+          return !p.unrouted && (p.emphasis === 'route') === route;
         });
-      const hasDeclared = data.lines.features.some(
+      const hasUnrouted = data.lines.features.some(
         (f) =>
-          (f as { properties: { kind?: string; declared?: number } }).properties.kind ===
-            KIND.leg && Boolean((f as { properties: { declared?: number } }).properties.declared),
+          (f as { properties: { kind?: string; unrouted?: number } }).properties.kind ===
+            KIND.leg && Boolean((f as { properties: { unrouted?: number } }).properties.unrouted),
       );
 
       // The style is torn down and rebuilt by a theme swap, so "already added" has to be asked
@@ -1663,7 +1669,7 @@ const DayConnector = memo(function DayConnector({
         id: CONNECTOR.layer,
         type: 'line',
         source: CONNECTOR.source,
-        filter: ['all', ['==', ['get', 'kind'], KIND.leg], ['!', isRoute], ['!', isDeclared]],
+        filter: ['all', ['==', ['get', 'kind'], KIND.leg], ['!', isRoute], ['!', isUnrouted]],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': legColor,
@@ -1696,19 +1702,20 @@ const DayConnector = memo(function DayConnector({
         id: ROUTE.layer,
         type: 'line',
         source: CONNECTOR.source,
-        filter: ['all', ['==', ['get', 'kind'], KIND.leg], isRoute, ['!', isDeclared]],
+        filter: ['all', ['==', ['get', 'kind'], KIND.leg], isRoute, ['!', isUnrouted]],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': routeColor, 'line-width': MAP_CONNECTOR.ROUTE.WEIGHT },
       });
-      // **The declared leg** (ADR-0206 §AL6). The route's amber and the route's weight, because it
-      // IS a journey — but a long dash and BUTT caps, because it is not a claim about the path.
+      // **The unrouted leg** (ADR-0206 §AL6/§AM10). The route's amber and the route's weight,
+      // because it IS a journey — but a long dash and BUTT caps, because it is not a claim about
+      // the path.
       // Round caps would eat the gap (3.5px off 4.2px at this weight) and the line would read
       // nearly solid, asserting exactly what it exists to disclaim.
-      layer(lines && hasDeclared, {
+      layer(lines && hasUnrouted, {
         id: TRANSIT.layer,
         type: 'line',
         source: CONNECTOR.source,
-        filter: ['all', ['==', ['get', 'kind'], KIND.leg], isDeclared],
+        filter: ['all', ['==', ['get', 'kind'], KIND.leg], isUnrouted],
         layout: { 'line-cap': MAP_CONNECTOR.TRANSIT.CAP, 'line-join': 'round' },
         paint: {
           'line-color': routeColor,
@@ -1953,11 +1960,34 @@ function MapCameraControls({
   // either end (§AC5), and the thing you tapped must be in frame whatever the router did.
   routeLegRef.current = routeLeg ? [routeLeg.from, routeLeg.to, ...routeLeg.path] : undefined;
 
+  /** **What the camera was actually put on for this selection**, written by the effect below and
+   *  read by the band effect further down. `undefined` until a selection has moved it.
+   *
+   *  **The two must read ONE fact, and the first build had them each derive their own** (field
+   *  report, 2026-08-27, with a screenshot of the result). The band effect took the leg's centre
+   *  whenever a leg existed; the selection effect frames the leg only when `framePath` **agrees**
+   *  to. So on a leg the floor refuses — long ones, which on an Iceland day is most of them — the
+   *  camera panned to the stop and was then dragged straight off it to the middle of a ⁦40 km⁩ leg,
+   *  at street zoom, because `recentreInBand` pans the whole offset and does not care that the
+   *  point is off-screen. The screenshot is an empty hillside reading `אין מקומות באזור`.
+   *
+   *  It also answers a second case the derivation got wrong for free: a leg's SHAPE arriving from
+   *  the network is not a selection, so it must not change what the camera is keeping in view. */
+  const subjectRef = useRef<LatLng | undefined>(undefined);
+
   useEffect(() => {
-    if (!selectedId || !focusRef.current) return;
+    if (!selectedId || !focusRef.current) {
+      subjectRef.current = undefined;
+      return;
+    }
+    const leg = routeLegRef.current;
     // A leg too long to frame moves nothing and answers `false`, so the stop still gets its pan.
-    if (routeLegRef.current && framePath(routeLegRef.current)) return;
+    if (leg && framePath(leg)) {
+      subjectRef.current = centreOfPoints(leg) ?? focusRef.current;
+      return;
+    }
     focus(focusRef.current);
+    subjectRef.current = focusRef.current;
   }, [selectedId, focus, framePath]);
 
   // **AND WHEN THE BAND CHANGES UNDER A SELECTION THAT DID NOT** (ADR-0122 §7's 2026-08-06
@@ -1996,16 +2026,14 @@ function MapCameraControls({
     [paneRef],
   );
   //
-  // **And what it keeps centred is the SUBJECT, not always the stop** (ADR-0206 §AC8). The
-  // effect above framed the amber leg where there is one, so re-centring the stop when the card
-  // collapses would undo exactly the framing the collapse was asked for. The leg's midpoint is
-  // what the fit centred, so passing it here means the two agree by construction — and it stays
-  // a tolerance-guarded PAN rather than a second fit, which is what keeps a sheet drag from
-  // turning into a camera animation per frame.
+  // **And what it keeps centred is whatever the selection effect PUT the camera on** (ADR-0206
+  // §AC8) — `subjectRef`, never a fresh derivation of its own. The leg's centre where the leg was
+  // framed, so folding the card does not undo the framing it was asked for; the stop where it was
+  // not, which is the whole of the field report `subjectRef`'s own note records. It stays a
+  // tolerance-guarded PAN rather than a second fit, which is what keeps a sheet drag from turning
+  // into a camera animation per frame.
   useEffect(() => {
-    const leg = routeLegRef.current;
-    const subject = (leg && centreOfPoints(leg)) ?? focusRef.current;
-    if (selectedId && subject) keepCentred(subject);
+    if (selectedId && subjectRef.current) keepCentred(subjectRef.current);
   }, [selectedId, cardReserve, canvasH, keepCentred]);
 
   // **AND A SETTLED RESULT SET GETS THE SAME TREATMENT** (ADR-0168 §1): at the map extreme

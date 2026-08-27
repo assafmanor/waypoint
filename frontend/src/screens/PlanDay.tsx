@@ -102,6 +102,7 @@ import {
   type GapDefaults,
 } from '../lib/gaps';
 import {
+  legDepartAfterMs,
   useDayTravelReads,
   useLegModeControl,
   type LegModeControl,
@@ -544,22 +545,14 @@ export function PlanDay() {
    *  to re-derive it here as `stayRowIds.has(from.id)`: the right question, asked a second way,
    *  which is how Trip mode could get it wrong on one leg while this surface got it right. */
   const planJourney = (leg: DayLeg): DayJourney | null => {
-    const { from, to, departAfterMs } = leg;
+    const { from, to } = leg;
     const estimate = planTravel.estimateFor(from, to);
     return dayJourney({
-      // **THERE IS NO WINDOW OUT OF A BED** (ADR-0206 §AF3, amended 2026-08-26 off the field
-      // report). A stay's own `endsAt` is its check-out: a **ceiling**, days away on a middle
-      // night, and never the hour you left. Reading it as this hole's departure measured the walk
-      // to a ⁦07:15⁩ waterfall against an ⁦11:00⁩ check-out and reported `אין זמן לדרך` about a drive
-      // you make at dawn with three hours to spare. Trip mode has omitted it since §AD; this
-      // surface kept passing it, which is `frontend/CLAUDE.md`'s "changing a day-surface
-      // derivation in `DayView` only" — the docblock below cites that rule and the line above it
-      // was the one that had drifted.
-      ...(departAfterMs !== undefined
-        ? { departAfterMs }
-        : leg.fromIsStay
-          ? {}
-          : { departAfterMs: Date.parse(from.endsAt ?? from.startsAt ?? '') }),
+      // **One derivation, three readers** (ADR-0206 §AJ3). This surface, Trip mode and the board
+      // each need the same three rules — the leg's own placed instant, no floor out of a bed
+      // (§AF3), otherwise the origin's end — and two of them wrote it out while the board could
+      // not apply it at all. `legDepartAfterMs` carries the reasoning; nothing is re-decided here.
+      departAfterMs: legDepartAfterMs(leg),
       arriveByMs: Date.parse(to.startsAt ?? ''),
       // Same gate as Trip mode's, and it is here rather than only there because
       // `frontend/CLAUDE.md` names "changing a day-surface derivation in `DayView` only" as
@@ -573,6 +566,9 @@ export function PlanDay() {
       // second, in both surfaces off one derivation.
       distanceMeters: planTravel.distanceFor(from, to),
       declared: !isRoutableMode(planTravel.modeFor(from, to)),
+      // …and the same for a mode the gate refuses (ADR-0206 §AM10), read off the one derivation
+      // rather than re-asked here, for the reason the comment above gives twice.
+      tooFarForMode: planTravel.refusedFor(from, to),
       nowMs: now.getTime(),
     });
   };

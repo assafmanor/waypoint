@@ -83,7 +83,12 @@ import { deriveHeroBooking } from '../lib/hero-booking';
 import { LEAVE_PHASE, heroLeaveBy, travelOrigin, type HeroLeaveBy } from '../lib/hero-travel';
 import { TRAVEL_STANCE, remainingTravelSeconds, travelStance } from '../lib/travel-position';
 import { useGeolocation } from '../lib/useGeolocation';
-import { endpointPlaceId, useDayTravelReads, type DayLeg } from '../lib/day-travel';
+import {
+  endpointPlaceId,
+  legDepartAfterMs,
+  useDayTravelReads,
+  type DayLeg,
+} from '../lib/day-travel';
 import { clearOnWay, useOnWay } from '../lib/on-way';
 import { canLift, heroHorizon, type HeroPoint } from '../lib/hero-horizon';
 import { BEAT, playBeat } from '../lib/one-shot';
@@ -535,7 +540,17 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
    *  stays coordinates because it answers a different question — where the traveller IS (§1's
    *  stance) — and a fix is never an input to an estimate. */
   const heroLeg: DayLeg | null =
-    originEvent && destEvent ? { from: originEvent, to: destEvent } : null;
+    originEvent && destEvent
+      ? {
+          from: originEvent,
+          to: destEvent,
+          // **THERE IS NO WINDOW OUT OF A BED** (ADR-0206 §AF3), and the board's origin can be one:
+          // `travelOrigin` reaches for `wokeIn` on a morning before anything has started (§AD). The
+          // flag is what stops `legDepartAfterMs` reading a middle night's check-out — days away —
+          // as the instant this journey may leave.
+          ...(originEvent.id === wokeIn?.id ? { fromIsStay: true } : {}),
+        }
+      : null;
   // ── WHAT A DEVICE POSITION LETS THIS SURFACE CLAIM (ADR-0207) ──────────────
   // Reported twice from a real day: the board said the leave-by had passed while the owner stood
   // ⁦200m⁩ from the door of the next stop, and the Map tab was drawing their blue dot beside that
@@ -634,6 +649,13 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           arriveByMs: Date.parse(nextInstant),
           travelSeconds: travelEstimate?.durationSeconds ?? null,
           nowMs,
+          // **The floor the day view has always applied and this board never did** (ADR-0206
+          // §AJ3). Without it the buffered instant can sit inside the event you are still in, and
+          // the board marks you late for a departure nobody could have made — reported as
+          // `6 דקות באיחור` beside a day view reading `יציאה 00:30`, off one estimate.
+          ...(heroLeg && legDepartAfterMs(heroLeg) !== undefined
+            ? { departAfterMs: legDepartAfterMs(heroLeg)! }
+            : {}),
         })
       : null;
   // **Somebody said `בדרך`** (§Z5 §M4) — a person telling the app what it should have been able

@@ -270,14 +270,26 @@ export const DAY_JOURNEY_ARM = {
    *  a hole that vanishes on declaration is a door that does not open again. Neutral tone: there is
    *  nothing wrong with this leg, we simply do not estimate it. */
   DECLARED: 'declared',
+  /** **The mode somebody CHOSE cannot cover this leg** (ADR-0206 §AM10) — a walk over walking's
+   *  ⁦15 km⁩ ceiling, a cycle over cycling's ⁦20 km⁩. Its own arm for `DECLARED`'s exact reason and
+   *  then one more: the gate refuses it, so there is no estimate and the block vanished — taking
+   *  the mode control with it, which made the override irreversible on the surface that set it
+   *  (field report, 2026-08-27: _"I changed a drive to a walk and the route simply disappeared"_).
+   *
+   *  **Not neutral like `DECLARED`, and that is the difference between the two.** A declaration
+   *  says "do not estimate this"; this says "what you asked for cannot be done", which is a fact
+   *  about the PLAN in the same family as `OVERRUNS` — so it says the ceiling in words and takes
+   *  the miss tone. It outranks the clock arms for the same reason `OVERRUNS` does. */
+  TOO_FAR: 'too-far',
 } as const;
 export type DayJourneyArm = (typeof DAY_JOURNEY_ARM)[keyof typeof DAY_JOURNEY_ARM];
 
 export interface DayJourney {
   arm: DayJourneyArm;
-  /** What the leg costs, in seconds, on the mode that was asked about — and `null` on the
-   *  `DECLARED` arm alone, where there is no estimate by nature (§AA4). Every other arm has one:
-   *  a leg with no estimate is no journey at all (§D4), which is what makes this the ONE null. */
+  /** What the leg costs, in seconds, on the mode that was asked about — and `null` on the two arms
+   *  where there is no estimate **by nature**: `DECLARED`, which is never asked (§AA4), and
+   *  `TOO_FAR`, which the gate refuses (§AM10). Every other arm has one: a leg with no estimate is
+   *  no journey at all (§D4), which is what makes those two the only nulls. */
   travelSeconds: number | null;
   /** What the leg covers, in metres — the ROUTED distance, per mode, never crow-flies: a
    *  ⁦1.9km⁩ crow-flies leg is a ⁦2.4km⁩ walk, and this is the number you act on. `null` where the
@@ -383,6 +395,12 @@ export function dayJourney(input: {
   /** **Somebody declared this leg תחב״צ** (ADR-0206 §AA4). Given, the estimate is not consulted at
    *  all: the leg keeps its distance and says it has no time, which is the whole declaration. */
   declared?: boolean;
+  /** **The mode chosen for this leg is past that mode's ceiling** (ADR-0206 §AM10) —
+   *  `DayTravelReads.refusedFor`. Like `declared` the estimate is not consulted, because the gate
+   *  guarantees there will never be one; unlike `declared` it is a problem with the plan and says
+   *  so. Ranked BELOW the declaration, since a declared leg is never asked about and so can never
+   *  be refused. */
+  tooFarForMode?: boolean;
 }): DayJourney | null {
   const { departAfterMs, arriveByMs, travelSeconds, nowMs, onWay, claimDenied } = input;
   // **A declared leg is a journey with no duration, not an absent journey** (ADR-0206 §AA4). It
@@ -403,6 +421,24 @@ export function dayJourney(input: {
       arrivesAfterClose: false,
       remainingSeconds: null,
     };
+  // **A REFUSED MODE IS AN ANSWER, NOT AN ABSENCE** (ADR-0206 §AM10). Same position and the same
+  // argument as the declaration above — it has to come BEFORE the floor, because the floor bails
+  // on exactly the missing estimate the gate guarantees, and a hole that renders nothing renders
+  // no mode control, so the ⁦40 km⁩ walk somebody picked by mistake could not be picked back.
+  // The distance is the caller's crow-flies fallback: there is no route to take a routed one from.
+  if (input.tooFarForMode)
+    return {
+      arm: DAY_JOURNEY_ARM.TOO_FAR,
+      travelSeconds: null,
+      distanceMeters: input.distanceMeters ?? null,
+      leaveByMs: null,
+      // No estimate, so no correction to make — §V1.1's rule, exactly as the declaration takes it.
+      free: null,
+      overrunSeconds: null,
+      arriveAtMs: null,
+      arrivesAfterClose: false,
+      remainingSeconds: null,
+    };
   // **A journey the ladder cannot state is not a journey** (2026-08-26). `ROUTE_MIN_CROW_M` is
   // ⁦10m⁩, so a ⁦20m⁩ hop is routed, answers ⁦24⁩ seconds, and drew a whole block reading `~0 דק׳` over
   // `אין זמן לדרך` — a warning about the time it takes to walk out of a door. The floor is the
@@ -411,9 +447,17 @@ export function dayJourney(input: {
   if (travelSeconds === null || !Number.isFinite(travelSeconds)) return null;
   if (Math.round(travelSeconds / SECONDS_PER_MINUTE) < 1) return null;
   if (!Number.isFinite(arriveByMs)) return null;
-  const leave = heroLeaveBy({ arriveByMs, travelSeconds, nowMs });
-  if (!leave) return null;
   const measurableFrom = departAfterMs !== undefined && Number.isFinite(departAfterMs);
+  // **The clamp is `heroLeaveBy`'s now** (ADR-0206 §AJ3): it was implemented here and nowhere
+  // else, so the board — reading the same function's unclamped answer — marked a traveller late
+  // for a departure this surface was correctly printing as the origin's own end.
+  const leave = heroLeaveBy({
+    arriveByMs,
+    travelSeconds,
+    nowMs,
+    ...(measurableFrom ? { departAfterMs: departAfterMs! } : {}),
+  });
+  if (!leave) return null;
   /**
    * **THE DEADLINE THIS LEG ACTUALLY HAS, and `undefined` where it has none** (ADR-0206 §AI1/§AJ1).
    *
@@ -459,8 +503,7 @@ export function dayJourney(input: {
    * owner's constraint (_"if you haven't left by the time that the app suggests the app doesn't show
    * you as being late"_) was about a **flexible** destination, which still states no departure.
    */
-  const clamped = statesLeaveBy && measurableFrom && leave.leaveByMs < departAfterMs!;
-  const leaveByMs = statesLeaveBy ? (clamped ? departAfterMs! : leave.leaveByMs) : null;
+  const leaveByMs = statesLeaveBy ? leave.leaveByMs : null;
   /**
    * **THE ARRIVAL THE STATED DEPARTURE IMPLIES** (ADR-0206 §AR1) — leave when the row says to, and
    * this is when you are there. Never counted back from a bound the app invented.
@@ -486,8 +529,9 @@ export function dayJourney(input: {
    */
   const goesAtMs = leaveByMs ?? (measurableFrom ? departAfterMs! : null);
   const arriveAt = goesAtMs === null ? null : goesAtMs + travelSeconds * MS_PER_SECOND;
-  // The same rounding `heroLeaveBy` phases on, asked of the clamped instant. Local rather than
-  // `leave.phase`, which is keyed to the buffered one and would mark a clamped leg late at once.
+  // The same rounding `heroLeaveBy` phases on, asked of the clamped instant — which is what
+  // `leave.phase` is keyed to since §AJ3 moved the clamp there. Kept local only because this must
+  // also be false wherever the app states no departure at all (`statesLeaveBy`).
   const departurePassed = leaveByMs !== null && Math.round((leaveByMs - nowMs) / MS_PER_MINUTE) < 0;
   const measurement = {
     travelSeconds,

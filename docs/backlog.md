@@ -635,6 +635,32 @@ the place card **folds to its identity row**, sticky for as long as you are on t
   tab. Both are argued in ADR-0122's amendment §6/§4 — reopen them from there rather than from
   scratch.
 
+## Three more off the shipped routes work (owner reports, 2026-08-27)
+
+All three fixed on `claude/map-polyline-rendering-ux-su4lqo`; recorded because two of them name a
+class rather than a case.
+
+- **The camera re-centred on a leg it had refused to frame** — [ADR-0206](decisions/0206-a-travel-time-belongs-between-two-points.md)
+  §AC8's correction. The selection effect and the band effect each derived the camera's subject for
+  themselves, and `framePath` is allowed to say **no**; on a leg past the floor they disagreed and
+  the map landed on empty ground. **The class:** two effects deriving one fact is one fact too
+  many — the one that acts records what it did, and the other reads it.
+- **A mode the gate refuses vanished the journey block** — §AM10. §D4's "absent is absent" is right
+  for a mode the app picked and wrong for one a person picked, and the block is the only thing
+  carrying the mode control, so the change could not be undone where it was made. **The class:**
+  this is §AM6's failure (the declaration's) in the sibling case, which is worth remembering the
+  next time something legitimately has no estimate.
+- **The board marked you late for a departure the day view was printing as ⁦00:30⁩** — §AJ3.
+  §AJ2's clamp lived inside `dayJourney` and the board reads `heroLeaveBy` directly.
+  **The class:** `frontend/CLAUDE.md`'s "changing a day-surface derivation in `DayView` only",
+  reached from the third elevation nobody counts as a day surface.
+
+**Still open, and named as such:** `TRAVEL_FIT_TOLERANCE_SECONDS`' flat bar (the backlog's
+"proportional half" line, unchanged), and whether the ceilings themselves are right for a driving
+trip whose legs are routinely near them — the Iceland day that produced two of these reports has
+legs long enough that framing a leg is refused more often than it fires, which is a device-pass
+question and not a code one.
+
 ## Agent tooling
 
 - **Nothing enforces the skill pins** ([ADR-0201](decisions/0201-vendored-skills-are-advice-and-they-are-pinned.md), 2026-08-21) — `node .claude/vendor/sync-skills.mjs --check` exists and exits 1 when `.claude/skills` has drifted from `skills.json`, and nothing runs it. The failure it guards is quiet: someone edits a vendored skill in place to fix one sentence, the next `--bump` reverts it, and the reason the edit existed is gone. `.claude/**` is outside `pnpm format`/`lint` (`.prettierignore`), so this needs its own CI step rather than a hook onto an existing one. Cheap, and worth waiting until the pins have actually been bumped once — the check is only as useful as the update habit it protects.
