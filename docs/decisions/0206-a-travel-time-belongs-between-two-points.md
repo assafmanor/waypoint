@@ -2060,3 +2060,143 @@ milestone: M8b changed a fact from per-trip to per-leg, then updated the consume
 about — the day list's numbers — and not the ones it was not: the canvas's geometry, and Plan's
 control. **The audit is the deliverable.** Both fixes here were found by asking "what else reads this
 in the singular", which is the question the milestone should have closed with.
+
+## AN. Amendment (2026-08-27) — what M9 settled by building the day's own verdict
+
+§V1.7 is the last unbuilt read on §V1, and the last one **§M never gated**: the five things a mockup
+had to settle before any of §V1 was coded do not include a day-level verdict, so it had never been
+drawn. M9 drew it (`a-travel-time-between-two-points-v2.html` §5, round 3) and built it. Four things
+came out of the drawing and the code, and the first is the one that matters.
+
+### AN1. `daySequenceFits` is NOT the source of the verdict, and the milestone card was wrong to say it was
+
+M9's card names `daySequenceFits` — built in M2, eight test references, **zero consumers** — and
+treats wiring it as the work. It is the wrong source, and the reason is not style: it measures raw
+stop times, and every rule about whether a leg _can_ be infeasible has since accumulated in
+`dayJourney` (`lib/day-joins.ts`) and nowhere else.
+
+| the gate                               | where it was decided | what raw stops would do                          |
+| -------------------------------------- | -------------------- | ------------------------------------------------ |
+| A flexible arrival has no **deadline** | §AI1 / §AJ1          | measure to a window's **opening**, or to nothing |
+| A declared תחב״צ leg has no estimate   | §AA4                 | read the suppressed walking number               |
+| A leg out of a bed has no window       | §AF3                 | measure from a check-out days away               |
+| A sub-minute hop is not a journey      | 2026-08-26           | draw a verdict on a ⁦24⁩-second walk             |
+| A hole behind you is a **record**      | §AF1 / the PAST arm  | warn about a day nobody can still change         |
+
+A verdict rebuilt from stops therefore re-commits **§AJ1's own bug one scope up** — it calls a day
+impossible over the single leg nobody can be late for, which is the exact field report §AJ1 exists
+for. So `dayFeasibility(journeys)` takes the `DayJourney` arms **the rows already render**, and
+`PlanDay` derives them once into a map both the rows and the verdict read. Agreement is then
+structural rather than careful: the day and its rows are describing the same objects.
+
+**`daySequenceFits` stays unconsumed, and that is now a recorded state rather than an oversight.** It
+is the pure-arithmetic form and it is correct for a caller that holds nothing but stops and seconds —
+a server surface, or §V2's notification sweep. It is wrong for a day surface that has already gated
+its legs. Do not "finish" M2 by wiring it in.
+
+### AN2. There is no positive arm, and that is §D4 rather than a saving
+
+A day that fits and a day nothing could be measured on **render identically: nothing at all.** §D4
+says the reader must not be able to tell "not computed" from "not computable", and a `✓` on a day
+whose legs were all gated out is precisely that tell — in the direction that costs somebody their
+afternoon. Measured on the drawing as a DOM fact: both silent, and the unmeasured day carries **0**
+journey blocks against the other two's **3**, so it reads exactly as the app read before this epic.
+
+**The fit is still a three-way discriminant in code** (`TRAVEL_FIT.FITS` / `OVERRUNS` / `UNKNOWN`)
+even though one arm draws, and `dayFeasibility` answers `UNKNOWN` rather than `FITS` for a day with
+nothing measurable. A boolean would render the same and be a lie in the second case, and the moment
+it collapses somebody draws the tick. `FITS` additionally requires a leg measured **against a
+window** — a journey with a duration and no window (a bed's leg, an open floor) was never asked the
+question and cannot answer it either way.
+
+### AN3. Help, not refusal, is bought with the COUNT — and `--miss` on the day is refused
+
+The row says two things: **how many** journeys do not fit, and **the sum** of what has to move.
+Only the second is a number a leg's own block can also state, so without the count the row is an
+echo of the block below it — and then it really is only a telling-off. `שתי דרכים לא נכנסות ·
+חסרות 35 דק׳`, subject the **journeys** and never the planner.
+
+**Amber, not `--miss`.** What is missing is time (rule 4), and §D7's status colour stays where it
+earns its keep — the one leg that cannot be made. Drawn and measured: `--miss` on the day puts a
+**third** `--miss` box on a screen that already has two, without adding a fact, which is this ADR's
+own Consequence arriving as colour. The ink is `--amber-deep` (⁦5.49:1⁩ light, ⁦5.84:1⁩ dark) because
+plain `--amber` is ⁦2.1:1⁩ on `--card` in light — it passes in dark, and the **failing theme picks the
+token**.
+
+The row is **`.day-ambient .ambient` at a second density**, not a new region: that strip already
+stacks one-line facts true of the whole day and already protects its read-out while the name gives
+way, which is the same trade here. Eighteen declarations, ⁦35px⁩.
+
+**Two words were drawn and cut.** `שתי דרכים לא נכנסות ביום · חסרות 35 דק׳ בסך הכול` measures
+⁦314.9px⁩ of ink in a ⁦308px⁩ box at 360 and loses the end of the count; both are recoverable from
+context (the row is inside the day; a count beside a duration is already a sum) and what they cost
+is the measurement. The trim lands at ⁦233.9px⁩.
+
+**Plan-only, deliberately.** ADR-0159 §1 forbids the two day surfaces differing about a **fact** and
+allows a difference in **posture**: a day-level verdict in Trip mode is a verdict on a day you are
+already living, where each leg's own row is the useful scope. Do not mirror it into `DayView`.
+
+**ADR-0011 is untouched.** It is a read: nothing moves, nothing is guarded, and the verdict names no
+row at all — which is the strongest form of "a hard event is never implicated", and the reason it
+says a count rather than a title.
+
+### AN4. The slot picker was the last surface stating the raw hole
+
+§V1.1's correction reached the chip, the seam and the between-row label in M6a and stopped there.
+`PlanDay`'s slot **picker** — the sheet behind a row's own time button, off `dayPositions` — still
+offered ⁦3⁩ hours in the hole its own chip offered two in, which is ADR-0159 §1's forbidden
+disagreement about a fact, one tap deeper than anything that had been reported.
+
+It is a lookup rather than a second derivation: a `DayPosition` names the rows either side of it,
+which is exactly the pair `useDayTravelReads` is keyed on. `earnsChipAt` asks the **corrected**
+number (§AG5), so a hole a walk eats loses its offer entirely instead of advertising nought.
+
+**Two positions keep the raw hole, and both are §D4 rather than a compromise:** the day's two edges
+have a row on one side only, and a position joined around the row being **moved** has two rows that
+are not adjacent on the day as it stands. Neither has a leg to ask about, and the app does not invent
+a walk it did not measure.
+
+### AN5. The distance is the way to the leg on the map — §1e's unbuilt half, on the owner's call
+
+Owner, on §5 (2026-08-27): _"No shape on the day row · I prefer מרחק, ומגע אל המפה, and it's what we
+mostly have today (minus the touch for map)."_ This **confirms** §1e's recommendation (the route
+thumbnail stays out of the day list: four real legs read as four wiggly lines at ⁦46×26⁩, one bit
+repeated at every hole of the densest surface in the app) and **adds the half that was drawn and
+never built** — the distance shipped, the touch did not.
+
+It lands on `.day-trv-dist` itself in `PlaceBadge`'s grammar: the hue rides the **mark** and the
+words stay `--muted`, ADR-0017's 44px is an `::after` overlay so meeting it never grows the line
+(ADR-0177), and it shows the leg's **destination**, because §AB2/§AC2 have the map mark the leg
+_arriving_ at the stop you ask about.
+
+**A `role="button"` span and not a `<button>`, for a reason already written down once:** the block's
+face is a `<button>` whenever the mode disclosure is offered (§AL10), and nested buttons are invalid
+HTML. `PlaceBadge` solved exactly this problem and its solution is reused rather than a second one
+invented — including the propagation stop, so a tap reaches the map instead of expanding the mode
+row underneath it.
+
+**It is on BOTH day surfaces**, and that is not a posture question: ADR-0159 §1 forbids them
+differing about a fact, and where a leg is on the ground is one. `legShowOnMap` is the fourth peer of
+`eventShowOnMap`/`bookingShowOnMap`/`ideaShowOnMap`, collapsing the same two absences so no call site
+remembers either.
+
+**It widened M9 past its card's conflict surface** (`ui/domain/DayJoinRow.tsx`, `day-join.css`,
+`lib/places.ts`, `screens/DayView.tsx`), which the board's protocol says to declare rather than do
+quietly. Declared here and on M9's card.
+
+### AN6. Two ways the mockup's own measurement harness under-reported a line that clipped
+
+Both looked comfortable, and neither failed loudly. Worth carrying because every mockup in this repo
+measures this way.
+
+- **`scrollWidth` on an ellipsised child reports the CLIPPED width.** This is §1's own trap one level
+  down — there the flex CONTAINER reported its own width, here the child with `overflow: hidden`
+  does — so a row visibly ending in `…` measured as fitting. A `Range` over the text node is **not**
+  a reliable fix inside `overflow: hidden`; an off-screen span carrying the element's computed font
+  is.
+- **Summing only the text halves drops the glyph and one gap** — ⁦24px⁩ of a ⁦308px⁩ box, which is most
+  of the margin a too-long line appears to have. Sum every child and every gap, or do not sum.
+
+And one about the tooling rather than the file: **`render.mjs`'s `measurements.md` is snapshotted
+before `document.fonts.ready` re-measures**, so its numbers are the fallback font's and ran ~⁦35px⁩
+narrow here. Read the live page's table, not the artefact.

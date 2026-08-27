@@ -20,6 +20,7 @@ import {
   type Booking,
   type BookingType,
   type BookingWhen,
+  type TravelFit,
   type TravelWindow,
   type TripEvent,
 } from '@waypoint/shared';
@@ -527,6 +528,60 @@ export function dayJourney(input: {
     arm: departurePassed ? DAY_JOURNEY_ARM.PASSED : DAY_JOURNEY_ARM.AHEAD,
     leaveByMs,
   };
+}
+
+/** **What a whole day answers about its journeys** (ADR-0206 §V1.7 / §AN). */
+export interface DayFeasibility {
+  /** **A three-way discriminant, and it stays one even though only `OVERRUNS` draws.** `FITS` and
+   *  `UNKNOWN` are both silent — §D4 says a reader must not be able to tell "not computed" from
+   *  "not computable" — so a boolean would render identically and be a lie in the second case. The
+   *  moment this collapses, somebody puts a `✓` on a day nothing was measured on. */
+  fit: TravelFit;
+  /** How many of the day's legs the rows themselves call infeasible. Zero unless `OVERRUNS`. */
+  legs: number;
+  /** Their shortfalls added up — how much of the day has to move, in seconds. The one number no
+   *  single leg's row can state. */
+  overrunSeconds: number;
+}
+
+/**
+ * **DOES THIS DAY FIT?** (ADR-0206 §V1.7.) Plan mode's whole job is building a day that works and
+ * it has always been able to build days that cannot be walked; this is the read that lets it say
+ * so — and Plan's alone, which ADR-0159 §1 permits as a difference in **posture**: a day-level
+ * verdict in Trip mode is a verdict on a day you are already living.
+ *
+ * **It takes the JOURNEYS the rows render, not the day's stops — and that is the whole design
+ * decision** (§AN). `daySequenceFits` (`@waypoint/shared`, M2) is the obvious source and is the
+ * wrong one: it measures raw stop times, while every rule about whether a leg *can* be infeasible
+ * has since accumulated in {@link dayJourney} and nowhere else — a flexible arrival has no
+ * deadline to miss (§AI1/§AJ1), a declared leg has no estimate (§AA4), a leg out of a bed has no
+ * departure window (§AF3), a sub-minute hop is not a journey, and a hole behind you is a record.
+ * A verdict rebuilt from stops re-commits §AJ1's own bug one scope up: it calls a day impossible
+ * over the single leg nobody can be late for. Reading the arms instead makes agreement structural
+ * rather than careful — the day and its rows are describing the same objects.
+ *
+ * **It is a read and it moves nothing.** ADR-0011 is untouched: no event is implicated in "this
+ * does not fit", nothing is guarded, nothing is offered a move. Ripple learning about travel is
+ * §V2's and waits until these reads are trusted.
+ */
+export function dayFeasibility(journeys: readonly (DayJourney | null)[]): DayFeasibility {
+  let legs = 0;
+  let overrunSeconds = 0;
+  let measured = false;
+  for (const journey of journeys) {
+    if (!journey) continue;
+    if (journey.arm === DAY_JOURNEY_ARM.OVERRUNS) {
+      legs += 1;
+      overrunSeconds += journey.overrunSeconds ?? 0;
+    }
+    // **`FITS` needs a leg that was measured AGAINST A WINDOW**, which is what `free` being
+    // present means. A journey with no window (a bed's leg, an open floor) has a duration and no
+    // verdict, so counting it here would report a day as feasible on the strength of a leg that
+    // was never asked the question.
+    if (journey.free) measured = true;
+  }
+  if (legs) return { fit: TRAVEL_FIT.OVERRUNS, legs, overrunSeconds };
+  return { fit: measured ? TRAVEL_FIT.FITS : TRAVEL_FIT.UNKNOWN, legs: 0, overrunSeconds: 0 };
 }
 
 /**

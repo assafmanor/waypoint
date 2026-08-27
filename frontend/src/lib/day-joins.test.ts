@@ -11,6 +11,7 @@ import {
   DAY_JOURNEY_ARM,
   connectionStops,
   dayBlocks,
+  dayFeasibility,
   dayJourney,
   joinBetween,
   narrowGapForTravel,
@@ -785,5 +786,83 @@ describe('dayJourney — a leg into an open floor has no fit to fail (ADR-0206 �
     })!;
     expect(j.arm).toBe(DAY_JOURNEY_ARM.OVERRUNS);
     expect(j.arrivesAfterClose).toBe(true);
+  });
+});
+
+// ── THE DAY'S OWN VERDICT (ADR-0206 §V1.7 / §AN) ─────────────────────────────────────────
+//
+// `dayFeasibility` rolls up the ARMS the rows render rather than re-measuring the day's stops,
+// which is the decision §AN records: every rule about whether a leg can be infeasible lives in
+// `dayJourney` and nowhere else, so a verdict built from raw stops calls a day impossible over
+// legs its own rows say are fine. These specs are that guarantee, stated as behaviour.
+describe('dayFeasibility — a day says no only on evidence', () => {
+  /** ⁦08:00⁩ + n minutes, so the fixtures read as a morning rather than as epoch arithmetic. */
+  const AT = (min: number) => Date.parse('2026-07-12T08:00:00Z') + min * MIN;
+  /** A leg with a real window, so it has a `fit` to report. */
+  const leg = (holeMin: number, travelMin: number) =>
+    dayJourney({
+      departAfterMs: AT(0),
+      arriveByMs: AT(holeMin),
+      travelSeconds: travelMin * 60,
+      nowMs: AT(-60),
+    });
+
+  it('overruns, and reports how many legs and their whole shortfall', () => {
+    const v = dayFeasibility([leg(30, 60), leg(120, 40), leg(60, 100)]);
+    expect(v.fit).toBe('overruns');
+    expect(v.legs).toBe(2);
+    // ⁦30⁩ short and ⁦40⁩ short. The tolerance decides whether to speak, never what is said.
+    expect(v.overrunSeconds).toBe((30 + 40) * 60);
+  });
+
+  it('fits when every measured leg fits', () => {
+    const v = dayFeasibility([leg(120, 40), leg(90, 20)]);
+    expect(v.fit).toBe('fits');
+    expect(v.legs).toBe(0);
+    expect(v.overrunSeconds).toBe(0);
+  });
+
+  // §D4's own case, and the reason the answer is a discriminant rather than a boolean: a day
+  // nothing could be measured on is NOT a day that fits, even though both render nothing.
+  it('is UNKNOWN, not FITS, when nothing was measurable', () => {
+    expect(dayFeasibility([null, null]).fit).toBe('unknown');
+    expect(dayFeasibility([]).fit).toBe('unknown');
+  });
+
+  // A leg with a duration but no WINDOW — the day's first leg out of a bed (§AF3) — was never
+  // asked the question, so it cannot answer it either way.
+  it('does not read a leg with no window as a leg that fits', () => {
+    const noWindow = dayJourney({ arriveByMs: AT(120), travelSeconds: 40 * 60, nowMs: AT(-60) });
+    expect(noWindow).not.toBeNull();
+    expect(noWindow!.free).toBeNull();
+    expect(dayFeasibility([noWindow]).fit).toBe('unknown');
+  });
+
+  // **The gate that would have been re-committed by measuring raw stops** (§AJ1): an open
+  // check-in floor is an hour you may arrive AFTER, so nothing can fail to fit inside it. The row
+  // already knows this; the day inherits it by reading the row.
+  it('does not flag a leg into an open floor, however long the drive', () => {
+    const intoAFloor = dayJourney({
+      departAfterMs: AT(0),
+      arriveByMs: AT(30),
+      travelSeconds: 6 * 60 * 60,
+      nowMs: AT(-60),
+      flexibleArrival: true,
+    });
+    expect(dayFeasibility([intoAFloor]).fit).not.toBe('overruns');
+  });
+
+  // And the same for a hole that is behind you: `dayJourney` checks PAST first, so a finished
+  // day is quiet however badly its legs ran — advice nobody can act on is what §D7 exists to
+  // avoid, and the day-level row would be the loudest possible form of it.
+  it('is quiet about a day that has already happened', () => {
+    const behindYou = dayJourney({
+      departAfterMs: AT(0),
+      arriveByMs: AT(30),
+      travelSeconds: 90 * 60,
+      nowMs: AT(600),
+    });
+    expect(behindYou!.arm).toBe(DAY_JOURNEY_ARM.PAST);
+    expect(dayFeasibility([behindYou]).fit).not.toBe('overruns');
   });
 });

@@ -25,6 +25,11 @@
 //
 // `ui/domain/`: presentational, every value via props.
 import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from 'react';
+import {
   isRoutableMode,
   LEG_TRAVEL_MODES,
   TRAVEL_FIT,
@@ -123,6 +128,51 @@ export function ConnectionBand({
  * תחב״צ state ride the per-leg override, and `.day-trv-acts`' `margin-inline-start: auto` is the
  * slot they land in — a one-line addition rather than a reshape.
  */
+/**
+ * **THE DISTANCE, AND ONE TAP TO THE MAP** — the owner's call on the block's trailing slot
+ * (2026-08-27): _"No shape on the day row · I prefer מרחק, ומגע אל המפה, and it's what we mostly
+ * have today (minus the touch for map)."_ The route thumbnail was measured out of the day list in
+ * `a-travel-time-between-two-points-v2.html` §1d — four real legs read as four wiggly lines at
+ * 46×26, one bit repeated at every hole of the densest surface in the app — and the distance in
+ * that same 46px is a fact you can act on. This is the half of §1e that was drawn and never built.
+ *
+ * **A `role="button"` span and not a `<button>`, for `PlaceBadge`'s own documented reason:** the
+ * face is itself a `<button>` once the mode disclosure is offered (§AL10), and nested buttons are
+ * invalid HTML. The propagation stop is the other half of it — a tap here must reach the map, not
+ * expand the mode row underneath it. Same idiom, same file's-worth of reasoning, not a second one.
+ */
+function DistanceToMap({
+  children,
+  onShowOnMap,
+}: {
+  children: ReactNode;
+  onShowOnMap: () => void;
+}) {
+  const fire = (e: ReactMouseEvent | ReactKeyboardEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onShowOnMap();
+  };
+  return (
+    <span
+      className="day-trv-dist day-trv-map"
+      role="button"
+      tabIndex={0}
+      aria-label={t.actions.showOnMap}
+      title={t.actions.showOnMap}
+      onClick={fire}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') fire(e);
+      }}
+    >
+      {children}
+      <span className="day-trv-map-mark" aria-hidden="true">
+        <Icon name="pin" />
+      </span>
+    </span>
+  );
+}
+
 export function JourneyBlock({
   /** The mode's noun, leading the line as the M3 mockup drew it — §D10's dodge (`הליכה · ~40 דק׳`
    *  rather than `~40 דקות הליכה`, which disagrees), and what makes the number mean anything. */
@@ -140,6 +190,10 @@ export function JourneyBlock({
   duration,
   /** `2.4 ק״מ`, the routed distance. Absent where the estimate carries none. */
   distance,
+  /** **The way from this leg to the same leg on the canvas** (owner, 2026-08-27). Given, the
+   *  distance carries a small pin and becomes tappable; absent, it is the plain read-out it
+   *  has always been ("absent, not broken", ADR-0121 §8). */
+  onShowOnMap,
   /** `יציאה 17:15`, or `זמן היציאה עבר ב־17:15`, or the `בדרך` line. Absent on a hole that is
    *  behind you and on one whose origin claim was denied (ADR-0208 §2) — both are journeys the
    *  day may still MEASURE and may not give advice about. */
@@ -168,6 +222,7 @@ export function JourneyBlock({
   flag?: boolean;
   duration?: string;
   distance?: string;
+  onShowOnMap?: () => void;
   leave?: string;
   tone: 'time' | 'miss' | 'on-way';
   located?: string;
@@ -213,7 +268,12 @@ export function JourneyBlock({
           </span>
         )}
       </span>
-      {distance && <span className="day-trv-dist">{distance}</span>}
+      {distance &&
+        (onShowOnMap ? (
+          <DistanceToMap onShowOnMap={onShowOnMap}>{distance}</DistanceToMap>
+        ) : (
+          <span className="day-trv-dist">{distance}</span>
+        ))}
     </>
   );
   return (
@@ -312,6 +372,11 @@ export interface JourneyRowProps {
     open: boolean;
     onToggle: () => void;
   };
+  /** **One tap to this leg on the canvas** (owner, 2026-08-27) — `legShowOnMap`, so the host does
+   *  not decide which of the leg's two ends the map should light. **Both day surfaces**, because a
+   *  way to the map is not a posture: ADR-0159 §1 forbids them differing about a fact, and where
+   *  a leg is on the ground is one. */
+  onShowOnMap?: () => void;
 }
 
 /**
@@ -321,7 +386,15 @@ export interface JourneyRowProps {
  * §2 draws `trvBlock() + planSlot(…)` — the block AND the chip. Three assemblies of these props is
  * how the same journey would start reading three ways.
  */
-export function JourneyRow({ journey, travelMode, tz, action, located, modes }: JourneyRowProps) {
+export function JourneyRow({
+  journey,
+  travelMode,
+  tz,
+  action,
+  located,
+  modes,
+  onShowOnMap,
+}: JourneyRowProps) {
   const overrunning = journey.arm === DAY_JOURNEY_ARM.OVERRUNS;
   /** **A declared תחב״צ leg has no duration by nature** (ADR-0206 §AA4). Not "missing" and not
    *  "loading": the whole point of the declaration is silence where the app would otherwise print
@@ -365,6 +438,7 @@ export function JourneyRow({ journey, travelMode, tz, action, located, modes }: 
       located={located}
       action={action}
       modes={modes}
+      onShowOnMap={onShowOnMap}
     />
   );
 }

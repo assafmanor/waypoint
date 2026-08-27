@@ -315,6 +315,45 @@ button.day-trv-face:focus-visible {
   color: var(--muted);
   white-space: nowrap;
 }
+/* **THE DISTANCE IS THE WAY TO THE LEG ON THE MAP** (owner, 2026-08-27) — the trailing slot
+   was measured in `a-travel-time-between-two-points-v2.html` §1d/§1e and the distance won it
+   over the route thumbnail: four real legs read as four wiggly lines at 46×26, where a
+   distance is a fact you can act on and the shape itself is one tap away on the surface built
+   to draw it.
+
+   `PlaceBadge`'s grammar, not a second one: the hue rides the MARK and the words stay
+   `--muted`, so no sentence is asked to carry teal at 3.35:1 (§AC/§3d's own measurement). The
+   44px target is an `::after` overlay for ADR-0177's reason — meeting ADR-0017's floor must
+   not grow the line the block is trying to keep to one row. */
+.day-trv-map {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.day-trv-map-mark {
+  display: inline-flex;
+  color: var(--teal);
+}
+.day-trv-map-mark .icon {
+  width: 13px;
+  height: 13px;
+}
+/* The touch target, over the line rather than in it. */
+.day-trv-map::after {
+  content: '';
+  position: absolute;
+  inset: 50% 50%;
+  min-width: 44px;
+  min-height: 44px;
+  transform: translate(50%, -50%);
+}
+.day-trv-map:focus-visible {
+  outline: 2.5px solid var(--cta);
+  outline-offset: 3px;
+  border-radius: var(--radius-8, 8px);
+}
 /* THE LEAVE-BY HAS GONE BY (§V1.4). Ink and word, never a fill on the block, no glow and no
    pulse — the app has one live mark and `.nowline` is it (§D6). `--miss-deep` is the ink
    because `--miss` itself fails AA as text (§D7, design-language). */

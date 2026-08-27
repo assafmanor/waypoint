@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { approxDuration, clockShiftSentence, formatDuration, hoursPhrase } from './duration';
+import {
+  approxDuration,
+  clockShiftSentence,
+  dayShortfallPhrase,
+  formatDuration,
+  hoursPhrase,
+  infeasibleLegsPhrase,
+} from './duration';
 import { withoutBidiControls } from './bidi';
 
 const H = 60;
@@ -128,5 +135,45 @@ describe('approxDuration — a travel time, hedged (ADR-0206 §D5 over §D3)', (
     expect(approxDuration(0)).toBeNull();
     expect(approxDuration(-5)).toBeNull();
     expect(approxDuration(Number.NaN)).toBeNull();
+  });
+});
+
+// ── THE DAY'S OWN VERDICT, IN WORDS (ADR-0206 §V1.7 / §AN) ───────────────────────────────
+describe('infeasibleLegsPhrase', () => {
+  // Hebrew agrees the verb with a count the phrase would otherwise have to expose, so the first
+  // two rungs spell the number as a word — the same dodge `planDay.gapHour`/`gapTwoHours` makes.
+  it('inflects one, two and many', () => {
+    expect(infeasibleLegsPhrase(1)).toBe('דרך אחת לא נכנסת');
+    expect(infeasibleLegsPhrase(2)).toBe('שתי דרכים לא נכנסות');
+    expect(withoutBidiControls(infeasibleLegsPhrase(3)!)).toBe('3 דרכים לא נכנסות');
+  });
+
+  // The numeral rung is a digit run inside Hebrew prose and takes the isolate (ADR-0118); the two
+  // word rungs have no numeral to isolate and must not carry one.
+  it('isolates the numeral, and only where there is one', () => {
+    expect(infeasibleLegsPhrase(3)).not.toBe(withoutBidiControls(infeasibleLegsPhrase(3)!));
+    expect(infeasibleLegsPhrase(1)).toBe(withoutBidiControls(infeasibleLegsPhrase(1)!));
+  });
+
+  // **There is deliberately no phrase for a day that fits.** §D4: a day that fits and a day
+  // nothing was measured on must read identically, so the caller has nothing to render for either
+  // and cannot accidentally reach for a positive one.
+  it('answers null when nothing fails', () => {
+    expect(infeasibleLegsPhrase(0)).toBeNull();
+    expect(infeasibleLegsPhrase(-1)).toBeNull();
+    expect(infeasibleLegsPhrase(Number.NaN)).toBeNull();
+  });
+});
+
+describe('dayShortfallPhrase', () => {
+  it('reads the sum on the same ladder as the leg it summarises', () => {
+    expect(dayShortfallPhrase(35)).toBe('חסרות 35 דק׳');
+    expect(dayShortfallPhrase(60)).toBe('חסרה שעה');
+    expect(dayShortfallPhrase(120)).toBe('חסרות שעתיים');
+  });
+
+  it('answers null for nothing to state', () => {
+    expect(dayShortfallPhrase(0)).toBeNull();
+    expect(dayShortfallPhrase(Number.NaN)).toBeNull();
   });
 });

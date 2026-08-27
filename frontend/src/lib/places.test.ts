@@ -31,6 +31,7 @@ import {
   isDayOver,
   liveToday,
   liveZone,
+  legShowOnMap,
   liveZoneContext,
   mapsDirectionsUrl,
   mapsDayRouteUrl,
@@ -1416,5 +1417,25 @@ describe('effectiveTitle', () => {
     expect(effectiveTitle('   ', 'איצ׳ירן')).toBe('איצ׳ירן');
     expect(effectiveTitle('  ארוחת ערב  ', 'איצ׳ירן')).toBe('ארוחת ערב');
     expect(effectiveTitle('   ', '  ')).toBe('');
+  });
+});
+
+// ── THE JOURNEY'S WAY TO THE MAP (owner, 2026-08-27) ─────────────────────────────────────
+describe('legShowOnMap', () => {
+  const pair = { fromPlaceId: 'p-from', toPlaceId: 'p-to' };
+
+  // ADR-0206 §AB2/§AC2: the map marks the leg ARRIVING at the stop you ask about, so asking for
+  // the DESTINATION is asking for this leg. The origin would light the leg before it.
+  it('shows the leg’s destination, because that is what selects this leg', () => {
+    const shown: string[] = [];
+    legShowOnMap(pair, (id) => shown.push(id))!();
+    expect(shown).toEqual(['p-to']);
+  });
+
+  // Both ordinary absences, collapsed here so no call site has to remember either — the same
+  // contract its three siblings above follow ("absent, not broken", ADR-0121 §8).
+  it('drops the affordance with no pair, and outside the trip shell', () => {
+    expect(legShowOnMap(undefined, () => {})).toBeUndefined();
+    expect(legShowOnMap(pair, null)).toBeUndefined();
   });
 });

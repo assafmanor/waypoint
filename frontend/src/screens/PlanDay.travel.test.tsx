@@ -28,6 +28,7 @@ import {
   type TravelModeOverride,
   type TripEvent,
 } from '@waypoint/shared';
+import { hoursPhrase } from '../lib/duration';
 import { setSimulatedNow } from '../lib/useClock';
 import { t } from '../i18n/he';
 import { wrapNav } from '../test/nav-harness';
@@ -615,5 +616,235 @@ describe('PlanDay — the drive from the pickup into the bed', () => {
     // ⁦00:00⁩Z + ⁦31⁩ min, printed in the day's own zone (`Europe/Rome`, so ⁦02:31⁩) — the fixture's zone
     // rather than UTC, which is the whole point of reading a clock through `formatTime`.
     expect(arrival).toContain('02:31');
+  });
+});
+
+// ── M9 · THE DAY'S OWN VERDICT (ADR-0206 §V1.7 / §AN) ────────────────────────────────────
+//
+// Plan mode learns to say "this day does not fit". Three things are under test and only the first
+// is the feature — the other two are the ways it goes wrong:
+//
+//   1. an over-stuffed day is flagged, and says how many and by how much;
+//   2. a feasible day is SILENT — there is no positive arm, deliberately;
+//   3. a day whose legs are all gated out is silent in the SAME way, which is §D4: a reader must
+//      not be able to tell "not computed" from "not computable", and a pessimistic guess fails
+//      that in the direction that costs somebody their afternoon.
+//
+// ADR-0011 is untouched throughout: this is a read, nothing moves, and no event — hard or soft —
+// is named by the verdict.
+describe('PlanDay — the day says it does not fit (ADR-0206 §V1.7)', () => {
+  /** The verdict's own row, or `null`. Read by class rather than by copy, so a test for
+   *  "silent" cannot pass because the wording changed underneath it. */
+  const verdict = () => document.querySelector('.day-fit');
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    tripEvents = [lunch, theatre];
+    tripPlaces = places;
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  // The 2:40 hole with a 3:20 walk in it — 40 minutes short, well past
+  // `TRAVEL_FIT_TOLERANCE_SECONDS`.
+  it('flags an over-stuffed day, and says how many legs and by how much', () => {
+    travelSeconds = 200 * 60;
+    show();
+    const row = verdict();
+    expect(row).toBeTruthy();
+    expect(row!.textContent).toContain(t.travel.dayInfeasibleOne);
+    // `hoursPhrase`, not `gapLabel` — the day's sum is a MEASUREMENT on ADR-0114's ladder,
+    // like the leg's own `חסרות 18 דק׳ לדרך` beneath it, where `gapLabel` is Plan's rounded
+    // OFFER (ADR-0159 §1). The two ladders disagree by design and this row wants the first.
+    expect(row!.textContent).toContain(t.travel.dayShortfall(hoursPhrase(40)));
+  });
+
+  it('is silent on a day that fits', () => {
+    travelSeconds = WALK_MINUTES * 60;
+    show();
+    expect(verdict()).toBeNull();
+  });
+
+  // §D4, and the case the whole discriminant exists for: `daySequenceFits` answers `true` for a
+  // day nothing was measured on, so a verdict that rendered a positive arm would put a tick on a
+  // day it never asked about.
+  it('is silent in the same way when every leg is gated out', () => {
+    travelSeconds = null;
+    show();
+    expect(verdict()).toBeNull();
+  });
+
+  // The count is the half no single leg's row can state, so it has to inflect rather than print a
+  // numeral the Hebrew would then disagree with.
+  it('counts the legs, in the plural', () => {
+    travelSeconds = 200 * 60;
+    tripEvents = [
+      lunch,
+      theatre,
+      ev('dinner', {
+        title: 'ארוחת ערב',
+        placeId: 'p-lunch',
+        startsAt: `${DAY}T18:40:00Z`,
+        endsAt: `${DAY}T20:00:00Z`,
+      }),
+    ];
+    show();
+    expect(verdict()!.textContent).toContain(t.travel.dayInfeasibleTwo);
+  });
+
+  // **The verdict is a roll-up of the arms the ROWS render, never a second derivation off the raw
+  // stops** (§AN). This is the guard on that: an infeasible leg draws `חסרות … לדרך` on its own
+  // block, and the day's count must be the number of blocks saying it.
+  it('agrees with the blocks it sits above', () => {
+    travelSeconds = 200 * 60;
+    show();
+    const failing = [...document.querySelectorAll('.day-trv.miss')].length;
+    expect(failing).toBe(1);
+    expect(verdict()!.textContent).toContain(t.travel.dayInfeasibleOne);
+  });
+
+  // ADR-0011: a hard event is never implicated. The verdict names no row at all — which is the
+  // strongest form of that, and the reason it says a COUNT rather than a title.
+  it('names no event, so no hard event is implicated (ADR-0011)', () => {
+    travelSeconds = 200 * 60;
+    show();
+    expect(verdict()!.textContent).not.toContain(theatre.title);
+    expect(verdict()!.textContent).not.toContain(lunch.title);
+  });
+});
+
+// ── M9 · THE SLOT PICKER'S OWN `פנוי` LINE (ADR-0206 §V1.1's last surface) ────────────────
+//
+// The chip, the seam and the between-row label were corrected in M6a; the picker was not, because
+// `dayPositions` answers with POSITIONS where the correction is about PAIRS. So it offered ⁦3⁩ hours
+// in the same hole the chip above it offered two — ADR-0159 §1's forbidden disagreement about a
+// fact, one tap deeper than anything that had been reported.
+describe('PlanDay — the slot picker states what is free, not the hole (ADR-0206 §AN)', () => {
+  /** Open the day-as-a-picker the way a person does: tap a row's own time. */
+  const openPicker = (title: string) => {
+    fireEvent.click(screen.getByLabelText(t.planDay.slotMoveTitle(title)));
+    return screen.getByText(t.planDay.slotWhen);
+  };
+  /** **The free line of ONE position, found by the clock it resolves to.** Reading the whole
+   *  list and asserting a phrase is absent from it is vacuous the moment an unrelated position
+   *  happens to hold that length — which it did on the first draft of this spec, where the day's
+   *  tail was also three hours. The position under test is the one after lunch, and its clock is
+   *  lunch's own end. */
+  const freeAt = (clock: string) =>
+    [...document.querySelectorAll('.slotpick-opt')]
+      .find((row) => row.querySelector('.tm')?.textContent === clock)
+      ?.querySelector('.free')?.textContent ?? null;
+  /** Lunch ends ⁦13:20⁩Z, which is ⁦15:20⁩ in the day's own zone (`Europe/Rome`, +2 in August). */
+  const AFTER_LUNCH = '15:20';
+
+  /** **A THIRD ROW, and it is the fixture's whole point.** `dayPositions` drops the row being
+   *  moved (`exclude`) and re-joins the day around it, so opening the picker ON lunch deletes the
+   *  very lunch→theatre pair under test — the sheet then honestly reports the raw hole, which is
+   *  §D4 and not the case this describe is about. Moving a row somewhere else keeps the pair. */
+  const dinner = ev('dinner', {
+    title: 'ארוחת ערב',
+    placeId: 'p-lunch',
+    startsAt: `${DAY}T19:00:00Z`,
+    endsAt: `${DAY}T20:30:00Z`,
+  });
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    tripEvents = [lunch, theatre, dinner];
+    tripPlaces = places;
+    travelSeconds = WALK_MINUTES * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  // RED before M9: the position after lunch read the raw 2:40 hole and offered three hours, while
+  // the chip on that same hole already said two.
+  it('offers what the chip on the same hole offers', () => {
+    show();
+    openPicker(dinner.title);
+    expect(freeAt(AFTER_LUNCH)).toBe(t.planDay.slotFree(t.planDay.gapTwoHours));
+    // And the chip on that same hole says the same thing, which is the point of the whole fix
+    // (ADR-0159 §1: two surfaces, one fact).
+    expect(screen.getByText(chip(t.planDay.gapTwoHours))).toBeTruthy();
+  });
+
+  // §D4 — with no estimate the sheet reads exactly as it read before any of this, because the app
+  // does not invent a walk it did not measure.
+  it('states the whole hole when there is no estimate', () => {
+    travelSeconds = null;
+    show();
+    openPicker(dinner.title);
+    expect(freeAt(AFTER_LUNCH)).toBe(t.planDay.slotFree(t.planDay.gapHours(3)));
+  });
+
+  // The other half of §D4, and the one a reader would not predict: a position joined around the
+  // MOVED row has two rows that are not adjacent on the day as it stands, so there is no leg to
+  // ask about and the raw hole is the honest answer. Asserted rather than left to chance, because
+  // the alternative — reaching for some nearby leg's estimate — would be a guess.
+  it('leaves a position joined around the moved row on the raw hole', () => {
+    show();
+    openPicker(theatre.title);
+    // With the theatre gone the hole after lunch runs to dinner — ⁦15:20⁩→⁦21:00⁩, and those two
+    // rows are not adjacent on the day as it stands, so there is no leg and no correction.
+    expect(freeAt(AFTER_LUNCH)).toBe(t.planDay.slotFree(t.planDay.gapHours(6)));
+  });
+});
+
+// ── THE LEG'S WAY TO THE MAP (owner, 2026-08-27) ─────────────────────────────────────────
+//
+// _"No shape on the day row · I prefer מרחק, ומגע אל המפה, and it's what we mostly have today
+// (minus the touch for map)."_ The distance shipped; the touch was drawn in §1e and never built.
+describe('PlanDay — the distance is the way to the leg on the map', () => {
+  const mapTouch = () => document.querySelector('.day-trv-map');
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    tripEvents = [lunch, theatre];
+    tripPlaces = places;
+    travelSeconds = WALK_MINUTES * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  it('offers the touch on a leg whose two ends resolve', () => {
+    show();
+    const touch = mapTouch();
+    expect(touch).toBeTruthy();
+    expect(touch!.getAttribute('aria-label')).toBe(t.actions.showOnMap);
+    // The distance is still the read-out; the pin is added to it rather than replacing it.
+    expect(touch!.textContent).toContain('ק״מ');
+  });
+
+  // **`role="button"` and not a `<button>`, and this is the assertion that keeps it that way**:
+  // the face is a `<button>` whenever the mode disclosure is offered, and nested buttons are
+  // invalid HTML. `PlaceBadge` already had to solve exactly this.
+  it('is not a nested button inside the face', () => {
+    show();
+    expect(mapTouch()!.tagName).toBe('SPAN');
+    expect(mapTouch()!.getAttribute('role')).toBe('button');
+    expect(mapTouch()!.closest('button.day-trv-face')).toBeTruthy();
+  });
+
+  // The other half of that: a tap must reach the map, not expand the mode row underneath it.
+  it('does not toggle the mode disclosure', () => {
+    show();
+    const face = mapTouch()!.closest('button.day-trv-face')!;
+    expect(face.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(mapTouch()!);
+    expect(face.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  // "Absent, not broken" (ADR-0121 §8): a leg whose ends do not both resolve to a place has no
+  // pair to ask about, so the block keeps whatever it can say and offers no way in.
+  it('drops the touch where the leg has no resolved pair', () => {
+    tripPlaces = [];
+    show();
+    expect(mapTouch()).toBeNull();
   });
 });

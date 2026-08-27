@@ -122,6 +122,43 @@ export function shortfallPhrase(minutes: number): string | null {
   return t.travel.shortfall(hoursPhrase(total));
 }
 
+/**
+ * **How many of the day's journeys do not fit** — `שתי דרכים לא נכנסות` (ADR-0206 §V1.7 / §AN).
+ *
+ * Composed here, beside `shortfallPhrase` above, because it is the same fact one scope up and
+ * the two must not drift into two vocabularies. `null` at zero, which is the ordinary day: the
+ * caller has nothing to render and there is deliberately no positive phrase to reach for — a day
+ * that fits says nothing at all, so `daySequenceFits`-style `true` can never become a `✓` on a
+ * day nobody measured (§D4).
+ *
+ * The three rungs are Hebrew agreement, not a style: `דרך אחת לא נכנסת` / `שתי דרכים לא נכנסות` /
+ * `3 דרכים לא נכנסות`. The count is a numeral run inside Hebrew prose from the third rung on, so
+ * it takes `ltrIsolate` (ADR-0118) — the first two spell the number as a word and need none.
+ */
+export function infeasibleLegsPhrase(count: number): string | null {
+  if (!Number.isFinite(count)) return null;
+  const total = Math.round(count);
+  if (total <= 0) return null;
+  if (total === 1) return t.travel.dayInfeasibleOne;
+  if (total === 2) return t.travel.dayInfeasibleTwo;
+  return t.travel.dayInfeasible(ltrIsolate(String(total)));
+}
+
+/**
+ * **By how much the day is over, added up** — `חסרות 35 דק׳`.
+ *
+ * `shortfallPhrase`'s sibling and its agreement rule is the same one: only the exact hour has a
+ * singular rung, because `TRAVEL_FIT_TOLERANCE_SECONDS` keeps any reported shortfall above a
+ * minute and a SUM of such shortfalls is larger still.
+ */
+export function dayShortfallPhrase(minutes: number): string | null {
+  if (!Number.isFinite(minutes)) return null;
+  const total = Math.round(minutes);
+  if (total <= 0) return null;
+  if (total === MINUTES_PER_HOUR) return t.travel.dayShortfallOneHour;
+  return t.travel.dayShortfall(hoursPhrase(total));
+}
+
 /** **The clock jump, as a sentence** (session 215) — `מזיזים את השעון שעה קדימה`.
  *
  *  The lifted hero's form of `ZoneShiftPill`'s `🕐 +1 ש׳`, which stays on the collapsed
