@@ -137,7 +137,10 @@ vi.mock('../state/trip-state', () => ({
     zoneEvidence: {
       events: tripEvents,
       bookings: tripBookings,
-      places,
+      // `tripPlaces`, not the static fixture: a spec that swaps the places in (to give them a
+      // zone, or to take their coordinates away) must have the zone derivation see the same rows
+      // the screen does, or it reads every event in the trip's primary and the two disagree.
+      places: tripPlaces,
       crossings: [],
       primaryZone: ZONE,
     },
@@ -949,5 +952,44 @@ describe('PlanDay — the day says how far it goes (ADR-0206 §V1.9)', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+// **PLAN MODE STATES ITS HOURS IN THE SAME ZONE TRIP MODE DOES** (ADR-0206 §AQ1).
+//
+// ADR-0159 §1 forbids the two day surfaces differing about a **fact**, and which hour a departure
+// is stated in is one — a leave-by that reads 19:31 on the day list and 20:31 here is the same
+// divergence `frontend/CLAUDE.md` records as having cost a release twice.
+//
+// This surface had the identical wiring and the identical defect: `tz={tz}`, where `tz` is
+// `trip.timezone`. It is asserted here rather than left to `DayView`'s spec for exactly the reason
+// that rule exists — the fix landing on one surface is how the pair drifts, and §AM7 already had to
+// record two consumers found reading the mode in the singular for the same reason.
+describe('PlanDay — a journey states its hours where the traveller is (ADR-0206 §AQ1)', () => {
+  /** Two hours behind this file's trip primary (Rome, UTC+2) — the reported direction, where the
+   *  trip's own zone pushes a printed departure PAST the hour its destination card names. */
+  const STOPS_ARE_IN = 'Atlantic/Reykjavik';
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    tripEvents = [lunch, theatre];
+    tripPlaces = places.map((p) => ({ ...p, timezone: STOPS_ARE_IN }));
+    travelSeconds = WALK_MINUTES * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  it('states the departure in the stops’ zone, and never in the trip’s', () => {
+    show();
+    const meta = [...document.querySelectorAll('.day-trv')]
+      .map((b) => b.textContent ?? '')
+      .find((b) => b.includes('יציאה'))!;
+    // `theatre` starts 16:00Z; the walk plus §D5's buffer puts the departure at 15:15Z, which is
+    // 15:15 where the stops are and 17:15 where the trip is filed — an hour and a quarter after
+    // the event it is for, which is the report.
+    expect(meta).toContain('15:15');
+    expect(meta).not.toContain('17:15');
   });
 });

@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { wrapNav } from './test/nav-harness';
 import { setSimulatedNow } from './lib/useClock';
+import type { TravelModeOverride } from '@waypoint/shared';
 import { t } from './i18n/he';
 
 // jsdom has no layout engine, so it implements neither of these — `useShrinkToFit`
@@ -45,9 +46,16 @@ let pending = 0;
 let failures: unknown[] = [];
 const setOverride = vi.fn();
 
+const tripOverrides: TravelModeOverride[] = [];
+
 vi.mock('./state/trip-state', () => ({
   useTrip: () => ({
     zoneCrossings: [],
+    // **The declared legs** (ADR-0206 §AM/§AQ2), mutable so a spec can declare one and re-render.
+    // Stated rather than omitted: `useDayTravelReads` takes it as a REQUIRED list precisely so a
+    // surface cannot forget to wire it and silently ignore every declaration on the trip — and the
+    // board reads it since §AQ2, which is why this fixture gained it.
+    travelModeOverrides: tripOverrides,
     // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
     tasks: [],
     taskVerbs: {

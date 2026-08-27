@@ -17,11 +17,15 @@ import {
   EVENT_KIND,
   EVENT_SOURCE,
   EVENT_STATUS,
+  TRANSIT_LEG_MODE,
   TRAVEL_BUFFER_SECONDS,
   TRAVEL_MODE,
   type Booking,
   type Place,
+  type LegTravelMode,
   type TravelEstimate,
+  type TravelMode,
+  type TravelModeOverride,
   type TripEvent,
 } from '@waypoint/shared';
 import { setSimulatedNow } from '../lib/useClock';
@@ -123,9 +127,16 @@ const stayBooking: Booking = {
 let tripEvents: TripEvent[] = [];
 let tripBookings: Booking[] = [];
 
+let tripOverrides: TravelModeOverride[] = [];
+
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
     documentAttachments: [],
+    // **The declared legs** (ADR-0206 §AM/§AQ2), mutable so a spec can declare one and re-render.
+    // Stated rather than omitted: `useDayTravelReads` takes it as a REQUIRED list precisely so a
+    // surface cannot forget to wire it and silently ignore every declaration on the trip — and the
+    // board reads it since §AQ2, which is why this fixture gained it.
+    travelModeOverrides: tripOverrides,
     hostContexts: buildHostContextIndex(tripEvents, tripBookings),
     trip: { id: 't1', timezone: ZONE, startDate: DAY, endDate: '2026-08-05', updatedBy: 'u1' },
     bookings: tripBookings,
@@ -192,12 +203,21 @@ vi.mock('../state/verbs', () => ({
  *  and tested there; what this file is about is what Home does with an answer. `null` is the
  *  ordinary answer (§D4) and it is a case here rather than an omission. */
 let travelSeconds: number | null = null;
+/** **WHICH MODE THE BOARD ACTUALLY ASKED ABOUT** (ADR-0206 §AQ2), recorded rather than ignored.
+ *  The reported defect was invisible in the duration: the board asked for a WALK on a leg somebody
+ *  had switched to a car, and a mock that answers one number whatever it is asked would have stayed
+ *  green straight through it. */
+const askedModes: LegTravelMode[] = [];
+/** Seconds per mode, where a spec needs the two answers to differ the way they did on the real
+ *  trip — `~23 דק׳` by car against `~1:16` on foot, over one 6 km leg. */
+let travelSecondsByMode: Partial<Record<string, number>> = {};
 vi.mock('../lib/travel', () => ({
   useDayTravel: () => ({
-    estimateFor: (): TravelEstimate | null =>
-      travelSeconds === null
-        ? null
-        : { mode: TRAVEL_MODE.WALKING, durationSeconds: travelSeconds, distanceMeters: 1800 },
+    estimateFor: (_from: unknown, _to: unknown, mode: TravelMode): TravelEstimate | null => {
+      askedModes.push(mode);
+      const seconds = travelSecondsByMode[mode] ?? travelSeconds;
+      return seconds == null ? null : { mode, durationSeconds: seconds, distanceMeters: 1800 };
+    },
   }),
 }));
 
@@ -636,5 +656,124 @@ describe('Home — a flexible next event licenses no leave-by (ADR-0206 §AI1)',
     show();
     expect(tile()?.classList.contains('missed')).toBe(false);
     expect(unit()).not.toBe(lateUnit(15));
+  });
+});
+
+// **THE BOARD READS THE LEG'S MODE, NOT THE TRIP'S** (ADR-0206 §AQ2).
+//
+// Reported off a real day, from one screen at one moment: the day row read `נסיעה · ~23 דק׳` with
+// the car selected on that leg, and the board read `הליכה · ~1:16 שע׳` and, off that figure,
+// `51 דקות באיחור ליציאה`. The board was 53 minutes wrong about a departure because it was using a
+// mode nobody had chosen.
+//
+// The cause was one line: `derivedTravelMode(bookings)` — the **trip's** default, from before §AM
+// made the mode per LEG. Passing a mode into the board's own call would have fixed the symptom and
+// left the shape that produced it, so the board asks `useDayTravelReads` instead: the same function
+// both day surfaces ask, about the same leg. `useDayTravelReads`' `overrides` docblock is the
+// argument in as many words — a surface that resolves the mode itself can forget to, and forgetting
+// is indistinguishable from nobody having declared anything.
+describe('Home — the leg’s declared mode is the board’s mode (ADR-0206 §AQ2)', () => {
+  const WALK_SECONDS = 76 * 60;
+  const DRIVE_SECONDS = 23 * 60;
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    resetOnWayForTests();
+    askedModes.length = 0;
+    travelSeconds = null;
+    travelSecondsByMode = {
+      [TRAVEL_MODE.WALKING]: WALK_SECONDS,
+      [TRAVEL_MODE.DRIVING]: DRIVE_SECONDS,
+    };
+    tripEvents = [museum, dinner(120)];
+    tripBookings = [];
+    tripOverrides = [];
+  });
+  afterEach(() => {
+    cleanup();
+    resetOnWayForTests();
+    setSimulatedNow(null);
+    travelSecondsByMode = {};
+    tripOverrides = [];
+  });
+
+  /** The override as the app stores it (§AM): keyed on the canonicalised place PAIR, so it serves
+   *  the leg in both directions and survives the day being reordered. */
+  const declareDriving = () => {
+    tripOverrides = [
+      {
+        id: 'ov-1',
+        tripId: 't1',
+        fromPlaceId: 'p-dinner',
+        toPlaceId: 'p-museum',
+        mode: TRAVEL_MODE.DRIVING,
+        createdBy: 'u1',
+        createdAt: `${DAY}T00:00:00Z`,
+        updatedAt: `${DAY}T00:00:00Z`,
+      } as TravelModeOverride,
+    ];
+  };
+
+  it('asks for the trip’s derived mode where nobody has declared one', () => {
+    show();
+    expect(askedModes).toContain(TRAVEL_MODE.WALKING);
+    expect(askedModes).not.toContain(TRAVEL_MODE.DRIVING);
+  });
+
+  // The report itself: the leg is declared a drive and the board keeps printing the walk.
+  it('asks for the declared mode once the leg has been switched', () => {
+    declareDriving();
+    show();
+    expect(askedModes).toContain(TRAVEL_MODE.DRIVING);
+    expect(askedModes).not.toContain(TRAVEL_MODE.WALKING);
+  });
+
+  // **And the number the board ACTS on moves with it**, which is the half a mode assertion alone
+  // would not prove. The reported minute, reproduced: dinner 50 minutes out, a 76-minute walk and a
+  // 23-minute drive over the same leg. On the walk the departure is 31 minutes gone and the tile
+  // says you are late; on the drive it is 22 minutes away and the tile says when to go. One leg,
+  // one moment, and the board was reading the wrong one of them by 53 minutes.
+  it('counts to the departure the declared mode implies', () => {
+    tripEvents = [museum, dinner(50)];
+    show();
+    expect(value()).toBe(String(-toLeave(50, 76)));
+    expect(unit()).toBe(lateUnit(-toLeave(50, 76)));
+    expect(tile()?.classList.contains('missed')).toBe(true);
+    cleanup();
+
+    declareDriving();
+    show();
+    expect(value()).toBe(String(toLeave(50, 23)));
+    expect(unit()).toBe(t.board.leaveIn);
+    expect(tile()?.classList.contains('missed')).toBe(false);
+  });
+
+  // §AA4 / §D4 — a leg declared תחב״צ has no provider and therefore no duration. The board must
+  // degrade to silence rather than to the walking number it used to fall back on, and `estimateFor`
+  // never reaching a request is what `isRoutableMode` guarantees (§AM5).
+  it('says nothing at all about a leg declared תחב״צ', () => {
+    tripOverrides = [
+      {
+        id: 'ov-2',
+        tripId: 't1',
+        fromPlaceId: 'p-dinner',
+        toPlaceId: 'p-museum',
+        mode: TRANSIT_LEG_MODE,
+        createdBy: 'u1',
+        createdAt: `${DAY}T00:00:00Z`,
+        updatedAt: `${DAY}T00:00:00Z`,
+      } as TravelModeOverride,
+    ];
+    tripEvents = [museum, dinner(30)];
+    show();
+    // No request is made for a mode no provider has — `isRoutableMode` is the one narrowing at
+    // that boundary (§AM5), and this is what "the gate is never sprung" looks like from outside.
+    expect(askedModes).toHaveLength(0);
+    // …so the board reads exactly as it does with no estimate at all: counting to the event, and
+    // no travel row on the horizon. §D4's absence, never a pessimistic walking guess.
+    expect(unit()).toBe('דקות');
+    expect(value()).toBe('30');
+    fireEvent.click(document.querySelector('.wp-board')!);
+    expect(document.querySelector('.hero-trv')).toBeNull();
   });
 });

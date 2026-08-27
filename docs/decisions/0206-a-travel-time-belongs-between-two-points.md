@@ -2397,3 +2397,165 @@ clipped — ⁦533.5px⁩ of ⁦328.0px⁩, and it went red.
 The truncation on `.day-total-n` therefore guards a text scale rather than this measurement: a
 scale is a box the app does not control, and a total that wraps pushes the day's first row down.
 The distance leads, so what an ellipsis takes is the hedged half.
+
+## AQ. Three field reports off a real trip, and only one of them was where it looked (2026-08-27)
+
+Georgia, day 27, dark mode, phone. Three things reported off one screen at one moment, ahead of
+M13 — two of them make the app state a falsehood, which outranks a new feature. **Reproduced with
+the dev seed against a pinned clock before anything was changed** (`DEV_AUTH=1`, a Tbilisi trip
+whose stops are all in Israel, `waypoint:dev-now` at 19:30), because the report was a screenshot
+and a screenshot is evidence rather than a diagnosis. All three reproduced; **none of the three had
+the cause the report implied**, and the third turned out not to be a defect of its own at all.
+
+### AQ1. The day row advised leaving AFTER the event — and the arithmetic was never wrong
+
+> Destination `כולי עלמא` runs 20:00–21:00. The journey row into it reads `נסיעה · ~23 דק׳ · 6 ק״מ`
+> and states `יציאה 20:31`.
+
+Two causes were proposed before the reproduction and **both were wrong**, which is the reason this
+section exists in the shape it does.
+
+The first was that the leg's `arriveByMs` was being taken from the destination's `endsAt`: `21:00 −
+23 − 6` is `20:31` to the minute. It is not — both day surfaces read `Date.parse(leg.to.startsAt)`,
+they always have, and the seeded reproduction of exactly that row printed a correct `יציאה 19:31`.
+The second was §AJ's clamp on a floor (the card is dashed, so an ambient span, ADR-0054). Also not:
+a flexible arrival states no departure at all, so that path cannot print `יציאה` in the first place.
+
+**The cause is the ZONE the clock is printed in, and the owner is who found it:** _"the time
+displayed there is the trip's timezone instead of the current timezone, because the trip is in
+Georgia but my events are in Israel."_ Georgia is UTC+4 and Israel UTC+3 in August. `20:00 − 23 min
+− ADR-0206 §D5's buffer` is **19:31 in Israel, which is 20:31 in Georgia** — one instant, printed on
+a wall nobody on the trip was reading. The number was right the whole time.
+
+**What made it reachable is that `JourneyRowProps.tz` was one prop serving two questions.** Its own
+docblock said _"the DAY's own zone"_ and both hosts handed it `trip.timezone` — the zone the trip is
+**filed under**, which ADR-0107 demoted to the trip _primary_ years ago and which no other clock on
+either screen reads. The card above the block, the card below it and the now-line between them all
+resolve through the itinerary; this row was the only one that did not. Meanwhile `JoinRow` was using
+the same prop for `narrowGapForTravel`, where `trip.timezone` is **correct** — `gapBetween` built
+those wall-clock strings in it — so the one value could not be fixed without splitting it.
+
+**Decided: a journey reads in the leg's own two zones** — `legDisplayZones` (`lib/places.ts`), beside
+`eventEdgeZone` because it is the same question asked of two rows at once. The departure takes the
+**origin's** end zone (where you are standing when you go — which is ADR-0107 §4 as `Home` already
+states it: _"a moment on the wrist of whoever is leaving"_) and the arrival takes the
+**destination's** start zone. It honours `DayLeg.fromEdge` for the same reason `endpointPlaceId`
+does: a leg off a hire's pickup leaves from the counter it was collected at.
+
+**The two zones are deliberately not subtractable across a crossing**, and that is the trade. `יציאה
+19:05 · הגעה ~20:28` over a 23-minute drive looks like arithmetic that does not add up; the
+alternative — one zone for the block — makes the arrival disagree with the card it is about. Each
+clock agreeing with the row it names is ADR-0107's own grammar and what the two cards either side of
+the block already do, so the block joins them rather than inventing a third convention. On a
+single-zone day, which is nearly every day of nearly every trip, the two are identical.
+
+**The regression guard is at the RENDER level, deliberately.** The invariant nobody had written
+down — _a stated departure is never later than the arrival it is counted back from_ — is now asserted
+over `dayJourney`'s arms (`lib/day-joins.test.ts`), and **it was true on `main` throughout the
+defect**: the derivation was never the thing that was wrong. Only a spec that reads the string a
+person sees could have caught this, so `ui/domain/DayJoinRow.zones.test.tsx` pins the reported
+`20:31` against the zone that produced it, and both day screens assert it over their own wiring
+(`DayView.travel.test.tsx`, `PlanDay.travel.test.tsx`). Verified red against the old wiring before
+being made green.
+
+**And the fixture's DIRECTION is load-bearing**, which is worth writing down because it is why this
+survived a shipped screen spec: a trip primary _behind_ its stops prints a departure that is merely
+**early** — true, unalarming, invisible. Only a primary _ahead_ of them pushes the clock past the
+hour it is counted back from. The specs use the reported direction.
+
+### AQ2. The hero used a mode nobody had chosen, and the fix is a call site rather than an argument
+
+> The day row shows `נסיעה · ~23 דק׳` with the car selected. The hero shows `הליכה · ~1:16 שע׳` and,
+> off that figure, `51 דקות באיחור ליציאה`.
+
+Owner, on what the report actually was: _"I switched from walking to driving but it stayed at
+walking."_ Confirmed on the seeded trip at one moment: the day row honoured the override on the pair
+and the board printed the walk, **53 minutes wrong about a departure**.
+
+One line: `Home.tsx`'s `derivedTravelMode(bookings)` — the **trip's** default, from before §AM made
+the mode per LEG. The board never learned, and `useDayTravel`'s options (`{ tripId, stops, modes? }`)
+have no way to be told about an override, where both day surfaces go through `useDayTravelReads`,
+whose `overrides` parameter is **required** for precisely this reason (§AM7): _"an optional list with
+an empty default reads as harmless and isn't, because a surface that forgets to wire it silently
+ignores every declaration on the trip, which is indistinguishable from nobody having made one."_ The
+board is that sentence coming true, and it is `frontend/CLAUDE.md`'s _"an amendment applied to ONE
+call site of a shared component is not applied, and nothing fails"_ a third time.
+
+**So the fix is not to pass a mode into the board's existing call**, which would repair the symptom
+and leave the shape that produced it. The board asks `useDayTravelReads` — the same function the two
+day surfaces ask, about the same leg — and holds no derivation of its own. **Counted before
+changing it: `derivedTravelMode` had three production consumers** (`day-travel.ts`, `Home.tsx`,
+`Map.tsx`). It has **two** now, and both are correct: `day-travel.ts` is the shared derivation, and
+`Map.tsx` reads it as the _fallback_ it hands `legTravelMode` (§AM8 fixed the canvas already). The
+board's was the only one standing in for a leg's own answer.
+
+**A second inversion fell out of the same change and is a fix, not a side effect.** The board
+resolved its leg's origin with `eventPlaceId(prevEvent, booking)` — whose default is `arriving` — so
+the leg out of a flight you had just got off was measured from the airport it **took off** from. That
+is the inversion `endpointPlaceId` exists to get right, asked a second time and answered the other
+way; it is exported now and there is one of it. Where an in-progress row supplies the origin the two
+agreed already, because `heroHorizon` passes `heading` for the mid-span event and a transport row is
+the only one that can be in progress.
+
+**§AA4 re-checked, as the card asked.** `hero-travel.ts`'s docblock claims a leg declared תחב״צ
+_"cannot reach this function with a duration, by construction"_, and that still holds — for a better
+reason than before. `useDayTravelReads.estimateFor` narrows through `isRoutableMode` (§AM5's single
+narrowing at the provider boundary), so no request is made at all and `travelSeconds` is `null`;
+`heroLeaveBy` answers `null`, and the whole block is absent. **The board degrades to §D4's silence,
+never to a walking number** — asserted. It does not show the leg as `תחב״צ` with no estimate the way
+the day row does, and that asymmetry is right: §AM6's argument for the `DECLARED` arm was that the
+block is the only thing carrying the mode control, and the board carries none.
+
+### AQ3. `בדרך` on the day was a SYMPTOM of §AQ2 — and there was a real gap underneath it
+
+> The hero offers `בדרך`. The day view's journey rows offer a mode switcher and a caret, and no way
+> to say you have set off.
+
+**Reproduced, and then not reproduced.** Driven against the running app, the day's journey block
+offers `בדרך` and, once pressed, `ביטול סימון` — which survives the toast, so the guessed shape
+("marking is reachable and unmarking is only the toast's transient undo") is not what was happening.
+Both surfaces gate the offer identically, on the leave-by having **passed**.
+
+The reported screen is §AQ2: the board was on the walk (departure 51 minutes gone → `PASSED` → the
+control) and the day row was on the drive (departure a minute away → `AHEAD` → no control). One leg,
+one moment, two arms, because the two surfaces disagreed about the mode. **Fixing §AQ2 fixes the
+report**, and it is recorded here rather than fixed twice.
+
+**Underneath it there is a real gap that §AQ2 does not touch.** `dayJourney` checks `OVERRUNS`
+before it ever looks at `onWay` — deliberately, §AH1 — so on a leg that does **not fit**, the arm is
+always `OVERRUNS` and this screen's control, keyed on `PASSED`, offered nothing. That is the leg
+where saying so matters most: an infeasible leg has no leave-by at all, so the clock can never make
+the offer, and the board (which has no `OVERRUNS` arm) goes on offering `בדרך` about the same leg.
+
+**Decided: `OVERRUNS` earns the mark, and a mark that is set is always takeable back.** Both arms are
+one question — _is the departure still the live thing to say_ — and `liveAction` now asks `liveOnWay`
+**first**, which is the half that was actually missing: with the arm pinned at `OVERRUNS`, a branch
+keyed on `ON_WAY` could never offer the undo either. This is the board's own rule
+(`onWayToNext ? undoSettle : …`), which is the point. **The row keeps saying the shortfall**: what
+the mark withdraws is the nudge, not the warning, and the warning is still true once you are moving.
+
+**Nothing new was built.** The store, the verb, its toast, its undo and the read were all shipped
+(ADR-0161, ADR-0207 §7, §Z5 §M4); this is one predicate. Per the `SettleControl` family's own
+lesson — three hand-rolled settle affordances drifted on four axes while every test stayed green,
+because the **vocabulary** diverged and not the geometry (ADR-0139) — the existing verb, the existing
+copy and the existing button are reused exactly.
+
+**Trip mode only, and that is ADR-0159 §1 rather than an omission.** "Have I set off" is a fact about
+the present, and §1 forbids the two day surfaces differing about a fact — but Plan mode has no
+inline settle pair at all (ADR-0171 §10e), and a screen for building a day is not a screen you stand
+in. The posture clause is what licenses the difference; the _facts_ on this block — the mode, the
+distance, the way to the map, and now the hours it states — are shared, and §AQ1 above had to fix
+one of them on both surfaces for exactly that reason.
+
+### AQ4. One thing found on the way, and deliberately not fixed here
+
+The day's **last** bookend leg — the journey into the stay you sleep in (ADR-0209 §1) — passes
+`arriveByMs: Date.parse(leg.to.startsAt)`, and a stay's `startsAt` is its **check-in**, which on a
+middle night is days in the past. So the leg takes the `PAST` arm and says nothing at all, while the
+comment directly above the call already states the rule it breaks: _"a stay has no per-day arrival
+instant, so reading its `startsAt` as this hole's deadline would measure a window from its check-in
+day."_ Reproduced on the seeded trip (the row printed its duration and distance and no clock).
+
+It is the same family as §AF3 and §AJ1 — a bookend leg reading an instant that is not this day's —
+and it is a fourth defect rather than one of the three reported. It is on the backlog with this
+reproduction, not smuggled into this round.

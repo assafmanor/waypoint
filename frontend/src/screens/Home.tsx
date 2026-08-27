@@ -8,7 +8,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   canPrice,
-  derivedTravelMode,
   EVENT_KIND,
   eventTransitionKeys,
   isAmbient,
@@ -46,7 +45,6 @@ import { orderTaskRows, tasksDueSoon, type TaskClock } from '../lib/tasks';
 import { TripHomeTaskBand } from '../ui/TripHomeTaskBand';
 import {
   dayZoneContext,
-  eventPlaceId,
   liveZone,
   liveZoneContext,
   eventRoute,
@@ -85,7 +83,7 @@ import { deriveHeroBooking } from '../lib/hero-booking';
 import { LEAVE_PHASE, heroLeaveBy, travelOrigin, type HeroLeaveBy } from '../lib/hero-travel';
 import { TRAVEL_STANCE, remainingTravelSeconds, travelStance } from '../lib/travel-position';
 import { useGeolocation } from '../lib/useGeolocation';
-import { useDayTravel } from '../lib/travel';
+import { endpointPlaceId, useDayTravelReads, type DayLeg } from '../lib/day-travel';
 import { clearOnWay, useOnWay } from '../lib/on-way';
 import { canLift, heroHorizon, type HeroPoint } from '../lib/hero-horizon';
 import { BEAT, playBeat } from '../lib/one-shot';
@@ -164,6 +162,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     subtasks,
     users,
     zoneCrossings,
+    travelModeOverrides,
     taskVerbs,
   } = useTrip();
   const { me } = useAuth();
@@ -475,9 +474,6 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // (§D2). Not a fifth point-depth item: a journey is a property of neither point, which is
   // how this answers ADR-0160 §U0's admission rule instead of spending it.
   //
-  // **What kind of trip this is, derived rather than stored** (§Z2) — the same read the Map
-  // makes, off the same function, so a leg cannot be a drive on the canvas and a walk here.
-  const travelMode = useMemo(() => derivedTravelMode(bookings), [bookings]);
   // **Where the journey starts.** The leg is between two SCHEDULED stops, which is what makes
   // it a fact about the plan rather than a claim about a person: during an event the schedule
   // says you are at that event's place, and in a gap it says the last thing that started is
@@ -505,14 +501,18 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   });
   const prevEvent = travelPrev.event;
   const nowPlaceId = horizon.now[0]?.placeId;
-  const travelFromId =
-    nowPlaceId ??
-    (prevEvent
-      ? eventPlaceId(
-          prevEvent,
-          prevEvent.bookingId ? bookings.find((b) => b.id === prevEvent.bookingId) : undefined,
-        )
-      : undefined);
+  /** **THE LEG, AS TWO ROWS** (ADR-0206 §AQ) — and it is two ROWS rather than two coordinates
+   *  because that is the only shape the day's own derivation can be asked about. The board used to
+   *  resolve its own places, its own mode and its own estimate here, which is how it ended up
+   *  reading a leg somebody had declared a drive as a walk (§AQ2). */
+  const originEvent = horizon.now[0]?.event ?? prevEvent;
+  const destEvent = horizon.next?.event;
+  /** **`endpointPlaceId`'s inversion, asked the right way round** (`lib/day-travel.ts`). This line
+   *  read `eventPlaceId(prevEvent, booking)` — whose default is `arriving` — so the leg out of a
+   *  flight you had just got off started at the airport it TOOK OFF from. Where the now point
+   *  supplies the origin the two agree by construction: `heroHorizon` passes `heading` for the
+   *  mid-span event, which is the only transport row that can be in progress. */
+  const travelFromId = originEvent ? endpointPlaceId(originEvent, bookings, 'leaving') : undefined;
   // **And whether the plan may still claim it** (ADR-0208 §2). A skipped stop is still the last
   // thing that started, so it is still where the plan left you — except the group has said they
   // did not go, which denies exactly that. Only when the leg actually starts from that stop: an
@@ -531,6 +531,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     travelFrom && travelTo && travelFromId !== travelToId
       ? { from: travelFrom, to: travelTo }
       : null;
+  /** The same leg as two ROWS, which is what `useDayTravelReads` is asked about. `travelLeg` above
+   *  stays coordinates because it answers a different question — where the traveller IS (§1's
+   *  stance) — and a fix is never an input to an estimate. */
+  const heroLeg: DayLeg | null =
+    originEvent && destEvent ? { from: originEvent, to: destEvent } : null;
   // ── WHAT A DEVICE POSITION LETS THIS SURFACE CLAIM (ADR-0207) ──────────────
   // Reported twice from a real day: the board said the leave-by had passed while the owner stood
   // ⁦200m⁩ from the door of the next stop, and the Map tab was drawing their blue dot beside that
@@ -578,16 +583,39 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     !originDenied ||
     stance?.stance === TRAVEL_STANCE.AT_ORIGIN ||
     stance?.stance === TRAVEL_STANCE.EN_ROUTE;
-  // One leg, every mode the gate admits, so §Z2's switch stays a read from cache when M8 builds
-  // it. An empty `stops` asks for nothing at all — the hook's own fingerprint is empty.
-  const dayTravel = useDayTravel({
+  /**
+   * **THE SAME READS THE TWO DAY SURFACES MAKE** (ADR-0206 §AQ2) — the mode of THIS leg and the
+   * estimate for it, off `useDayTravelReads`, which is where that pair already lives.
+   *
+   * The board used to hold its own two: `derivedTravelMode(bookings)` for the mode and
+   * `useDayTravel` for the estimate. The first is the **trip's** default, and §AM made the mode
+   * per LEG — so a leg somebody had switched to a car kept printing the walk, on the one surface
+   * whose whole job is "when do I have to leave". Reported off a real day: the day row said
+   * `נסיעה · ~23 דק׳` and the hero said `הליכה · ~1:16 שע׳` about one leg at one moment, and the
+   * hero was 53 minutes wrong about the departure because of it.
+   *
+   * **Passing the mode into the old call would have been the wrong fix**, and the reason is
+   * written into `useDayTravelReads`' own `overrides` docblock: a surface that resolves the mode
+   * itself is a surface that can forget to, and forgetting is indistinguishable from nobody having
+   * declared anything. So the board asks the same function the day asks, about the same leg, and
+   * there is no second derivation left to drift.
+   *
+   * **An empty `legs` asks for nothing at all**, which is the gate the old `stops` was: a route
+   * nobody may be shown is a call against §D8's budget for nothing.
+   */
+  const travelReads = useDayTravelReads({
     tripId: trip.id,
-    stops: travelLeg && originStands ? [travelLeg.from, travelLeg.to] : [],
+    legs: heroLeg && travelLeg && originStands ? [heroLeg] : [],
+    bookings,
+    places,
+    overrides: travelModeOverrides,
   });
+  /** The LEG's mode, falling back to the trip's where there is no leg to ask about — the same
+   *  fallback `useDayTravelReads` itself applies, so the word the block leads with is never a
+   *  claim about a different journey. */
+  const travelMode = heroLeg ? travelReads.modeFor(heroLeg.from, heroLeg.to) : travelReads.mode;
   const travelEstimate =
-    travelLeg && originStands
-      ? dayTravel.estimateFor(travelLeg.from, travelLeg.to, travelMode)
-      : null;
+    heroLeg && travelLeg && originStands ? travelReads.estimateFor(heroLeg.from, heroLeg.to) : null;
   // **`null` is the ordinary answer** (§D4): offline, refused, over the ceiling, still warming,
   // provider down, or a leg somebody declared תחב״צ (§AA4 — a stored mode with no provider, so
   // `estimateFor` cannot be asked for it and this cannot be anything but `null`). Every one of

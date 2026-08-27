@@ -48,6 +48,7 @@ import {
   eventZones,
   dayZoneContext,
   isDayOver,
+  legDisplayZones,
   liveToday,
   liveZone,
   placeName,
@@ -226,6 +227,7 @@ const shortPlaceName = (places: Place[], labels: PlaceLabels, id: string | undef
 function JoinRow({
   join,
   journey,
+  tz,
   places,
   placeLabels,
   onFillGap,
@@ -242,21 +244,23 @@ function JoinRow({
   /** What the journey across this hole costs and says, or `null` — which is the ordinary answer
    *  (§D4) and leaves the strip below reading exactly as it read before this milestone. */
   journey: DayJourney | null;
+  /** **The zone the GAP's own wall-clocks are in**, and not the journey's — `gapBetween` built
+   *  `fill.start`/`fill.end` as strings in `dayBlocks`' `ctx.tz`, so `narrowGapForTravel` has to
+   *  read them back in that same zone or it caps the slot against a different hour. The block's
+   *  clocks take `zones` instead (ADR-0206 §AQ): one prop was serving two questions, and the
+   *  answer only one of them wanted was the one that shipped. */
+  tz: string;
   places: Place[];
   placeLabels: PlaceLabels;
   /** What a tap on a gap opens (ADR-0161 §9), or absent where a write is gated. A connection
    *  never takes one: you are inside a commitment for the whole of it, so there is nothing
    *  free there to fill. */
   onFillGap?: (free: Gap) => void;
-} & Omit<JourneyRowProps, 'journey'>) {
+} & Omit<JourneyRowProps, 'journey' | 'tz'>) {
   if (join === null || join.kind === 'gap') {
     // **The slot is narrowed by the journey** — the statement and the control must not disagree
     // about one hole, which is what §V1.1 is about one elevation down.
-    const slot = join
-      ? journey
-        ? narrowGapForTravel(join.free, journey, journeyRest.tz)
-        : join.free
-      : null;
+    const slot = join ? (journey ? narrowGapForTravel(join.free, journey, tz) : join.free) : null;
     // **And it is stated below the block rather than inside it** (owner, 2026-08-26: _"do we
     // really want to state on this row that we have free time, or should it be written in a quiet
     // way and not in the row?"_). M6a absorbed the strip into the block to keep ADR-0159's one
@@ -847,13 +851,28 @@ export function DayView() {
    *  on a read-only archive, where every other write is gated too (ADR-0029). */
   const liveAction = (journey: DayJourney): { label: string; onPress: () => void } | undefined => {
     if (readOnly || !liveLeg) return undefined;
-    if (journey.arm === DAY_JOURNEY_ARM.ON_WAY) {
-      return liveOnWay
-        ? { label: t.actions.undoSettle, onPress: () => clearOnWay(trip.id, liveLeg.to.id) }
-        : undefined;
+    // **A mark that is set is always takeable back, whatever the block went on to say** (ADR-0206
+    // §AQ3). Asked FIRST, and that ordering is the fix: `dayJourney` answers `OVERRUNS` before it
+    // ever looks at `onWay`, so on a leg that does not fit the arm stays `OVERRUNS` after somebody
+    // presses `בדרך` — and the branch below, keyed on `ON_WAY`, then offered nothing to undo. This
+    // is the hero's own rule (`Home.tsx`: `onWayToNext ? undoSettle : …`), which is the point.
+    if (liveOnWay) {
+      return { label: t.actions.undoSettle, onPress: () => clearOnWay(trip.id, liveLeg.to.id) };
     }
-    if (journey.arm !== DAY_JOURNEY_ARM.PASSED) return undefined;
-    return { label: t.actions.onWay, onPress: () => verbs.onWay(liveLeg.to) };
+    // The position said so rather than a person: there is no mark of theirs to withdraw, and the
+    // app does not offer to take back something it worked out for itself (ADR-0207 §2).
+    if (journey.arm === DAY_JOURNEY_ARM.ON_WAY) return undefined;
+    // **`OVERRUNS` earns the mark too, and that is the half that was missing.** The two arms are
+    // one question — is the departure still the live thing to say — and an infeasible leg answers
+    // it more loudly than a passed one: there was never a leave-by to pass, so `בדרך` is the only
+    // way to tell an app with no sensor that you went anyway. Withheld, the day offered a shortfall
+    // and no way to answer it on exactly the leg where being late is already the fact.
+    //
+    // The row keeps saying the shortfall (`journeyMetaLine` is untouched): what the mark withdraws
+    // is the NUDGE, not the warning, and the warning is still true once you are moving.
+    return journey.arm === DAY_JOURNEY_ARM.PASSED || journey.arm === DAY_JOURNEY_ARM.OVERRUNS
+      ? { label: t.actions.onWay, onPress: () => verbs.onWay(liveLeg.to) }
+      : undefined;
   };
   /** `עדיין כאן` — the app saying it CHECKED, and the only claim a position licenses that the
    *  clock could not (ADR-0207 §2). Only where the fix actually puts them at the origin. */
@@ -871,13 +890,18 @@ export function DayView() {
   const journeyProps = (
     journey: DayJourney,
     live: boolean,
-    leg: { from: TripEvent; to: TripEvent },
+    leg: { from: TripEvent; to: TripEvent; fromEdge?: 'start' | 'end' },
   ) => ({
     journey,
     // **The LEG's mode, not the trip's** (ADR-0206 §AM). `modeFor` answers the override where one
     // was set and the derivation otherwise, and it is the same read the Map makes — one leg cannot
     // be a train in the list and a drive on the canvas (ADR-0159 §1).
     travelMode: travelReads.modeFor(leg.from, leg.to),
+    // **The leg's own two zones, never the trip's primary** (ADR-0206 §AQ). This row used to take
+    // `trip.timezone`, which is the zone the trip is FILED under and not the one anybody on it is
+    // reading a watch in — so on a trip whose primary sits an hour off its stops the block printed
+    // a departure after the arrival it was counted back from.
+    zones: legDisplayZones(leg, zoneCtx),
     // **One tap to this leg on the canvas** (owner, 2026-08-27) — the pair comes from the one
     // function that resolves it, so the map lights the leg this row is about (ADR-0206 §AB2).
     onShowOnMap: legShowOnMap(travelReads.pairFor(leg.from, leg.to), showPlaceOnMap),
@@ -1089,7 +1113,6 @@ export function DayView() {
           {arriveJourney && day.arrive && (
             <JourneyRow
               {...journeyProps(arriveJourney, day.arrive.to === liveLeg?.to, day.arrive)}
-              tz={trip.timezone}
             />
           )}
           {bookends.woke && (
@@ -1103,10 +1126,7 @@ export function DayView() {
             />
           )}
           {wakeJourney && day.wake && (
-            <JourneyRow
-              {...journeyProps(wakeJourney, day.wake.to === liveLeg?.to, day.wake)}
-              tz={trip.timezone}
-            />
+            <JourneyRow {...journeyProps(wakeJourney, day.wake.to === liveLeg?.to, day.wake)} />
           )}
           {/* Overlapping events render as the concurrency forest (ADR-0041): nests
             for containment, quiet clusters for partial overlap. The now-line is
@@ -1136,7 +1156,17 @@ export function DayView() {
                             from,
                             to,
                           })
-                        : { journey: null, travelMode: travelReads.mode })}
+                        : {
+                            journey: null,
+                            travelMode: travelReads.mode,
+                            // No block renders on this branch — the row is a gap — but the zones
+                            // are required so a journey can never reach it without them (§AQ),
+                            // and they are the same two this hole would state if one appeared.
+                            zones:
+                              from && to
+                                ? legDisplayZones({ from, to }, zoneCtx)
+                                : { depart: zoneCtx.ambientZone, arrive: zoneCtx.ambientZone },
+                          })}
                       tz={trip.timezone}
                       places={places}
                       placeLabels={placeLabels}
@@ -1195,10 +1225,7 @@ export function DayView() {
             built the leg OUT of a stay. The journey back is as certain as the one out, and it
             reads above the row it arrives at, exactly like every other leg in the day. */}
           {homeJourney && day.home && (
-            <JourneyRow
-              {...journeyProps(homeJourney, day.home.to === liveLeg?.to, day.home)}
-              tz={trip.timezone}
-            />
+            <JourneyRow {...journeyProps(homeJourney, day.home.to === liveLeg?.to, day.home)} />
           )}
           {bookends.sleeps && (
             <StayRow

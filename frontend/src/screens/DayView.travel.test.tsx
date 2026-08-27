@@ -37,7 +37,7 @@ import {
 import { setSimulatedNow } from '../lib/useClock';
 import { approxTravelTime, freeTimePhrase } from '../lib/duration';
 import { markOnWay, resetOnWayForTests } from '../lib/on-way';
-import { ltrIsolate } from '../lib/bidi';
+import { ltrIsolate, withoutBidiControls } from '../lib/bidi';
 import { formatTime } from '../lib/time';
 import { formatDistance, haversineMeters } from '../lib/distance';
 import { t } from '../i18n/he';
@@ -970,5 +970,124 @@ describe('DayView — the day says how far it goes (ADR-0206 §V1.9)', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+// **THE BLOCK'S CLOCK READS IN THE LEG'S OWN ZONE, NOT THE TRIP'S** (ADR-0206 §AQ1).
+//
+// The field report: a Georgia trip (UTC+4) whose stops were all in Israel (UTC+3). The card read
+// `20:00–21:00` and the row above it advised `יציאה 20:31` — a departure after the arrival it was
+// counted back from. One instant, two zones: this screen handed `JoinRow` `trip.timezone`, the zone
+// the trip is FILED under, while every other clock on it reads through the itinerary's own.
+//
+// Asserted HERE and not only in `ui/domain/DayJoinRow.zones.test.tsx` because what was wrong was
+// the wiring, not the component: the row rendered exactly what it was given. This is
+// `frontend/CLAUDE.md`'s named anti-pattern in its other direction — a screen handing a shared
+// component the wrong argument, with every unit around it green.
+describe('DayView — a journey states its hours where the traveller is (ADR-0206 §AQ1)', () => {
+  /** The reported shape: the trip is filed under one zone and every stop on it is in another.
+   *  `ZONE` is this file's trip primary (Rome, UTC+2) and the stops sit two hours behind it.
+   *
+   *  **The DIRECTION is the fixture's whole point.** On the real trip the primary was AHEAD of the
+   *  stops (Georgia UTC+4, Israel UTC+3), which is what pushed the printed departure past the hour
+   *  the destination card named. A primary BEHIND the stops is the same defect and reads as merely
+   *  early — true, unalarming, and the reason nobody caught it sooner. */
+  const STOPS_ARE_IN = 'Atlantic/Reykjavik';
+
+  beforeEach(() => {
+    resetOnWayForTests();
+    tripEvents = [lunch, theatre];
+    tripPlaces = places.map((p) => ({ ...p, timezone: STOPS_ARE_IN }));
+    travelSeconds = WALK_MINUTES * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    resetOnWayForTests();
+    setSimulatedNow(null);
+  });
+
+  const leaveByMs =
+    Date.parse(theatre.startsAt!) - (WALK_MINUTES * 60 + TRAVEL_BUFFER_SECONDS) * 1000;
+
+  it('states the departure in the stops’ zone, and never in the trip’s', () => {
+    setSimulatedNow(Date.parse(NOW));
+    show();
+    expect(
+      screen.getByText(
+        t.travel.leaveAtDay(ltrIsolate(formatTime(new Date(leaveByMs), STOPS_ARE_IN))),
+      ),
+    ).toBeTruthy();
+    // **The hour the defect printed** — `trip.timezone`, which is what this screen handed the row
+    // until §AQ1. Asserted as absent rather than merely "the right one is present", because the
+    // two differ by exactly the offset and a spec that only checked the positive would pass on a
+    // single-zone trip and say nothing about this one.
+    expect(
+      screen.queryByText(t.travel.leaveAtDay(ltrIsolate(formatTime(new Date(leaveByMs), ZONE)))),
+    ).toBeNull();
+  });
+
+  // **The invariant, read off the screen the way the report was.** Whatever the block says about
+  // leaving must be earlier than the hour the destination card beside it prints — and both are read
+  // in the zone that card is in, which is the whole of what went wrong.
+  it('never advises leaving after the hour the destination card names', () => {
+    setSimulatedNow(Date.parse(NOW));
+    show();
+    const meta = document.querySelector('.day-trv-meta')?.textContent ?? '';
+    const stated = /(\d{2}):(\d{2})/.exec(withoutBidiControls(meta))!;
+    const starts = /(\d{2}):(\d{2})/.exec(formatTime(new Date(theatre.startsAt!), STOPS_ARE_IN))!;
+    const mins = (m: RegExpExecArray) => Number(m[1]) * 60 + Number(m[2]);
+    expect(mins(stated)).toBeLessThan(mins(starts));
+  });
+});
+
+// **AN INFEASIBLE LEG EARNS THE MARK TOO** (ADR-0206 §AQ3).
+//
+// `dayJourney` answers `OVERRUNS` before it ever looks at `onWay`, and this screen's control was
+// keyed on `PASSED` — so on a leg that does not fit, the day offered a shortfall and no way at all
+// to say you had set off. That is the leg where saying so matters most: there was never a leave-by
+// to pass, so the clock can never make the offer, and the hero (which has no `OVERRUNS` arm) was
+// offering `בדרך` on the same leg at the same moment.
+describe('DayView — a leg that does not fit can still be answered (ADR-0206 §AQ3)', () => {
+  beforeEach(() => {
+    resetOnWayForTests();
+    // A hole far too short for the walk in it, so the block takes the `OVERRUNS` arm.
+    tripEvents = [{ ...lunch, endsAt: `${DAY}T15:50:00Z` }, theatre];
+    tripPlaces = places;
+    travelSeconds = WALK_MINUTES * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    resetOnWayForTests();
+    setSimulatedNow(null);
+  });
+
+  const block = () => document.querySelector('.day-trv');
+  const blockAction = (label: string) =>
+    [...(block()?.querySelectorAll('button') ?? [])].find((b) => b.textContent?.includes(label));
+
+  it('offers the mark on the shortfall arm, and takes it back once set', () => {
+    setSimulatedNow(Date.parse(`${DAY}T15:45:00Z`));
+    show();
+    // The arm, so this cannot pass by the leg quietly becoming feasible.
+    expect(document.querySelector('.day-trv.miss')).toBeTruthy();
+    expect(blockAction(t.actions.onWay)).toBeTruthy();
+
+    fireEvent.click(blockAction(t.actions.onWay)!);
+    cleanup();
+    markOnWay('t1', theatre.id); // the verb is mocked at this seam; the store is the real one
+    show();
+    // **The undo has to survive the arm staying `OVERRUNS`** — which is the half that was missing:
+    // the old control looked for `ON_WAY`, an arm a leg that does not fit can never reach.
+    expect(blockAction(t.actions.undoSettle)).toBeTruthy();
+    expect(blockAction(t.actions.onWay)).toBeFalsy();
+  });
+
+  // The shortfall is still true once you are moving, so the mark withdraws the NUDGE and not the
+  // warning — a row that went quiet about a leg that does not fit would be the opposite of §D7.
+  it('keeps saying the shortfall while the mark is set', () => {
+    markOnWay('t1', theatre.id);
+    setSimulatedNow(Date.parse(`${DAY}T15:45:00Z`));
+    show();
+    expect(document.querySelector('.day-trv.miss')).toBeTruthy();
   });
 });
