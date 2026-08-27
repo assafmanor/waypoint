@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { MapTileUrls } from './map-config';
+import { routePackUrl, type MapTileUrls } from './map-config';
 import { MAP_ARCHIVE_VINTAGE_DAYS } from '@waypoint/shared';
 import { downloadMapArchive, listMapArchives, type MapArchiveMeta } from './map-archive-cache';
+import { hydrateRoutePack } from './route-pack';
 import { getNow } from './useClock';
 
 const VINTAGE_WINDOW_MS = MAP_ARCHIVE_VINTAGE_DAYS * 24 * 60 * 60 * 1000;
@@ -79,16 +80,22 @@ function wanted(entry: LocalArchive, vintage: string | null | undefined): boolea
   return !entry || isMapArchiveStale(entry, vintage, getNow());
 }
 
-/** Identity of what we hold, for the "did anything change" test above. `lastUsedAt` is
+/** The three artefacts a trip downloads. */
+interface LocalArchives {
+  world: LocalArchive;
+  extract: LocalArchive;
+  /** **The offline route pack** (ADR-0206 §V1.8) — the trip's travel times, downloaded with the
+   *  archive and wanted on exactly the same terms: missing, or a vintage behind. */
+  routes: LocalArchive;
+}
+
+/** Identity of what we hold, for the "did anything change" test below. `lastUsedAt` is
  *  deliberately not in it: reading an archive touches it, and that is not news. */
-function sameArchives(
-  a: { world: LocalArchive; extract: LocalArchive },
-  b: { world: LocalArchive; extract: LocalArchive },
-): boolean {
+function sameArchives(a: LocalArchives, b: LocalArchives): boolean {
   const same = (x: LocalArchive, y: LocalArchive) =>
     x === y ||
     (!!x && !!y && x.key === y.key && x.vintage === y.vintage && x.downloadedAt === y.downloadedAt);
-  return same(a.world, b.world) && same(a.extract, b.extract);
+  return same(a.world, b.world) && same(a.extract, b.extract) && same(a.routes, b.routes);
 }
 
 export function useMapArchives(opts: {
@@ -102,15 +109,14 @@ export function useMapArchives(opts: {
    *  forever, which is a map of the world as it was the day you installed the app. */
   archiveVintage?: string | null;
 }) {
-  const [local, setLocal] = useState<{ world: LocalArchive; extract: LocalArchive }>({
-    world: null,
-    extract: null,
-  });
+  const [local, setLocal] = useState<LocalArchives>({ world: null, extract: null, routes: null });
   const [checked, setChecked] = useState(false);
   const [status, setStatus] = useState<MapArchiveStatus>('idle');
   const [retryAfterSeconds, setRetryAfterSeconds] = useState<number>();
   const [visible, setVisible] = useState(false);
   const running = useRef(false);
+
+  const packUrl = routePackUrl(opts.tripId);
 
   /**
    * **What is on the device — from the METADATA, never by opening the archives.**
@@ -121,22 +127,30 @@ export function useMapArchives(opts: {
    * beyond tidiness: this runs on the Map's mount, and the arrival landing that follows a tap on
    * the Map is timed against a scroller settling (`lib/land-at-top.ts`). Main-thread work here is
    * paid for over there.
+   *
+   * The route pack is the one exception, and a deliberate one: it is a few hundred KB rather than
+   * tens of MB, and putting its legs where the day reads them is the whole of §V1.8.
    */
   const inspect = useCallback(async () => {
     const entries = await listMapArchives().catch(() => []);
     const byKey = new Map(entries.map((entry) => [entry.key, entry]));
-    const found = {
+    const found: LocalArchives = {
       world: byKey.get(opts.urls.world) ?? null,
       extract:
         opts.hasMappedPlaces && opts.urls.extract ? (byKey.get(opts.urls.extract) ?? null) : null,
+      routes: opts.hasMappedPlaces ? (byKey.get(packUrl) ?? null) : null,
     };
+    // **A pack on the device is put where the day looks, whether or not this pass downloaded
+    // it.** The two caches are evicted by different rules, and the one that matters on a plane is
+    // the one holding the legs.
+    if (found.routes) void hydrateRoutePack(packUrl);
     // **Only when the answer CHANGED.** A fresh object every inspect re-renders the Map — and
     // `MapPane` is memoized on prop identity precisely because a needless re-diff there costs
     // every marker (`frontend/CLAUDE.md`).
     setLocal((prev) => (sameArchives(prev, found) ? prev : found));
     setChecked(true);
     return found;
-  }, [opts.hasMappedPlaces, opts.urls.extract, opts.urls.world]);
+  }, [opts.hasMappedPlaces, opts.urls.extract, opts.urls.world, packUrl]);
 
   useEffect(() => {
     setChecked(false);
@@ -167,6 +181,13 @@ export function useMapArchives(opts: {
           opts.urls.extract
             ? [{ url: opts.urls.extract, kind: 'extract' as const, tripId: opts.tripId }]
             : []),
+          // **The pack rides the archive's download, and its own retry with it** (§V1.8). It is
+          // last because it is the small one: a `202` here parks the SAME `preparing` timer the
+          // extract's `503` does, and parking it before the 22 MB cut has started would trade a
+          // map for a few hundred KB of travel times.
+          ...(wanted(found.routes, opts.archiveVintage) && opts.hasMappedPlaces
+            ? [{ url: packUrl, kind: 'routes' as const, tripId: opts.tripId }]
+            : []),
         ];
         for (const target of targets) {
           const result = await downloadMapArchive({
@@ -183,6 +204,7 @@ export function useMapArchives(opts: {
             setStatus('no-space');
             return;
           }
+          if (target.kind === 'routes') await hydrateRoutePack(target.url);
         }
         await inspect();
         setStatus('ready');
@@ -201,6 +223,7 @@ export function useMapArchives(opts: {
       opts.tripId,
       opts.urls.extract,
       opts.urls.world,
+      packUrl,
     ],
   );
 
@@ -223,12 +246,14 @@ export function useMapArchives(opts: {
   useEffect(() => {
     if (!checked || status !== 'idle' || opts.offline || opts.ended) return;
     const needsExtract = opts.hasMappedPlaces && !!opts.urls.extract;
-    const missing = !local.world || (needsExtract && !local.extract);
+    const missing =
+      !local.world || (needsExtract && !local.extract) || (opts.hasMappedPlaces && !local.routes);
     const stale =
       (!!local.world && isMapArchiveStale(local.world, opts.archiveVintage, getNow())) ||
       (needsExtract &&
         !!local.extract &&
-        isMapArchiveStale(local.extract, opts.archiveVintage, getNow()));
+        isMapArchiveStale(local.extract, opts.archiveVintage, getNow())) ||
+      (!!local.routes && isMapArchiveStale(local.routes, opts.archiveVintage, getNow()));
     if (!missing && !stale) {
       setStatus('ready');
       return;

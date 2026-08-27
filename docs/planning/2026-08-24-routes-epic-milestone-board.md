@@ -78,7 +78,7 @@ never by the one that did the work.
 | **M8a** | Draw the mode set + תחב״צ   | design | ✅                        | M6a, M6b, M7 | M9, M10, M11 | `routes/m8a-draw` · [#726](https://github.com/assafmanor/waypoint/pull/726)                                                                                                                                                                                                                                                                                                               | 2026-08-27 |
 | **M8b** | Mode per leg + trip default | impl   | ✅ **+ 2 field fixes**    | M8a          | M10          | `routes/m8b-mode` · [#727](https://github.com/assafmanor/waypoint/pull/727) · `routes/m8b-fixes`                                                                                                                                                                                                                                                                                          | 2026-08-27 |
 | **M9**  | Plan-mode feasibility       | impl   | 🔵 **+ 1 owner call**     | M5           | M6a, M6b, M7 | `routes/m9-plan` · [#729](https://github.com/assafmanor/waypoint/pull/729)                                                                                                                                                                                                                                                                                                                | 2026-08-27 |
-| **M10** | Offline route pack          | impl   | ⬜                        | M4           | M5–M9        | —                                                                                                                                                                                                                                                                                                                                                                                         | —          |
+| **M10** | Offline route pack          | impl   | 🔵                        | M4           | M5–M9        | `routes/m10-offline`                                                                                                                                                                                                                                                                                                                                                                      | 2026-08-27 |
 | **M11** | Day travel total            | impl   | ⬜                        | M6a          | M8, M10      | —                                                                                                                                                                                                                                                                                                                                                                                         | —          |
 | **M13** | Leave-by notification       | impl   | ⬜                        | M6b          | M9, M10, M11 | —                                                                                                                                                                                                                                                                                                                                                                                         | 2026-08-27 |
 | **M12** | Harden, observe, document   | impl   | ⬜                        | all          | —            | —                                                                                                                                                                                                                                                                                                                                                                                         | —          |
@@ -1755,6 +1755,40 @@ Do not restate them locally — reuse the mechanisms that enforce them.
 **Exit criteria:** aeroplane mode on a downloaded trip shows travel times for every day-adjacent
 leg; the pack is counted in the existing size readout and removed by the existing delete; a trip
 whose places changed rebuilds the pack via the existing signature, not a new one.
+
+### What the next session needs to know (M10, 2026-08-27)
+
+**Decisions are in [ADR-0206 §AO](../decisions/0206-a-travel-time-belongs-between-two-points.md)
+(§AO1–§AO5)** — what was rejected, the two measurements, and the one bug the design could have
+shipped. Read §AO2 before changing what a pack contains and §AO3 before adding a field to it.
+
+- **The conflict surface moved, with the reason recorded.** The card says `backend/src/map/**`; the
+  service is `backend/src/routing/route-pack.service.ts`, because a `RoutePackService` in
+  `MapModule` needs `RoutingService`, which already needs `MapService` — a module cycle (§AO5). The
+  region signature is still `map-region.ts`'s, read through `MapService.regionFor`. `map/` is
+  untouched. The frontend surface is the card's exactly, plus one new `lib/route-pack.ts` and one
+  exported writer added to `lib/travel.ts`.
+- **Nothing was cut into the byte sink** (§AO1). A pack is one indexed query over rows that already
+  exist, so it is served live; the artefact ADR-0186 §5/§6 bounds is the copy on the **device**,
+  which is an ordinary byte-cache entry (`kind: 'routes'`). One fix fell out of that:
+  `retainMapArchives` swept `kind === 'extract'` and would have left a pack on an ended trip for
+  ever — it sweeps every non-`world` entry now.
+- **A pack never overwrites a leg the device holds** (§AO3), because it carries no geometry and a
+  plain `bulkPut` would wipe the shapes `useDayShapes` fetched — which a device on a plane cannot
+  ask for again. `fillCachedRouteLegs` fills gaps only.
+- **Measured, against §V1.8's ~410 bytes:** a shapeless leg is **138 B** of JSON (157–162 on the
+  seed), so the Tokyo trip's whole pack is **108 legs / 16.6 KB** and Iceland's **16 / 2.5 KB**. A
+  shaped leg would be ~1,375 B, which is why there is no geometry in it.
+- **What is still open, and it is the extract's rather than the pack's:** a places change rebuilds
+  the pack on the server off the existing signature, but no client reads `/trips/:id/map/region`, so
+  a device holding an archive does not learn the signature moved. §AO5 states it; the fix is one
+  mechanism for both artefacts and sits with the backlog's "nothing tells a person how old their
+  map is" line.
+- **Not demonstrable in a sandbox:** `valhalla1.openstreetmap.de` is unreachable from the agent
+  environment (502/timeouts), and the outbound allowlist is code, so it cannot be pointed at a local
+  stand-in. What that run **did** prove is §D4: the endpoint answered `202` then `200` with an empty
+  pack and no error anywhere. `route-pack.seed.spec.ts` covers the real path against the seeded
+  Postgres with a fake provider.
 
 ---
 

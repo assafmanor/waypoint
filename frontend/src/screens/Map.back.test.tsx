@@ -128,6 +128,7 @@ vi.mock('../lib/map-config', () => ({
     detail: '/map/planet-20260813.pmtiles',
   }),
   mapPaneAvailable: () => true,
+  routePackUrl: (tripId: string) => `/trips/${tripId}/routes/pack`,
 }));
 vi.mock('../ui/domain/MapPane', () => ({ MapPane: () => <div data-pane /> }));
 

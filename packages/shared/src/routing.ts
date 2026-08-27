@@ -490,3 +490,45 @@ export type RouteBatch = z.infer<typeof routeBatchSchema>;
 export function travelEstimateFor(leg: RoutedLeg, mode: TravelMode): TravelEstimate | undefined {
   return leg.estimates.find((estimate) => estimate.mode === mode);
 }
+
+/* ── THE OFFLINE PACK (ADR-0206 §V1.8) ───────────────────────────────────────────────────── */
+
+/**
+ * **One leg as the pack ships it** — the `RouteLeg` key the server wrote, and the estimate under
+ * it. Nothing else: the coordinates are already inside the key, and a client that re-derived them
+ * from `from`/`to` would be spelling the key a second time, which ADR-0205 §4 forbids by name.
+ *
+ * **A duration and a distance, never a shape** (ADR-0206 §AO, measured): a shapeless leg is 138
+ * bytes and the same leg carrying a city walk's polyline is ~1,375 — ten times the artefact for a
+ * line §D8 draws one of at a time. `travelEstimateSchema.shape` stays optional here because it is
+ * the same shape every other reader takes; the pack simply never fills it.
+ */
+export const routePackLegSchema = z.object({
+  /** `routeLegKey(from, to, mode)`, **copied from the stored row and never rebuilt**. This is the
+   *  one spelling of it (see `routeLegKey`), so a pack entry and the client's own Dexie lookup
+   *  cannot miss each other. Directional, like every other use of it. */
+  key: z.string(),
+  estimate: travelEstimateSchema,
+});
+export type RoutePackLeg = z.infer<typeof routePackLegSchema>;
+
+/**
+ * **Every travel time a downloaded trip can read on the plane** (ADR-0206 §V1.8).
+ *
+ * A cache of a cache: the server's `RouteLeg` table is itself the cache of an answer from outside
+ * (ADR-0205 §4), and this is the slice of it one trip needs, handed to the device beside the map
+ * archive. Nothing here is data — losing a pack costs a re-download, which is what licenses the
+ * same eviction the tile archives get (ADR-0186 §6).
+ */
+export const routePackSchema = z.object({
+  /** **The region signature these legs were gathered for** (`map-region.ts`), carried so a reader
+   *  can tell which shape of the trip the pack describes. The existing signature, deliberately:
+   *  a second one would be a second answer to "did the covered ground change". */
+  signature: z.string(),
+  /** Set while the server is still computing legs it does not hold yet — ADR-0187's flow, the same
+   *  one `routeBatchSchema` uses. Absent means there is nothing left to wait for, which is what
+   *  makes the pack safe to store. */
+  retryAfterSeconds: z.number().int().nonnegative().optional(),
+  legs: z.array(routePackLegSchema),
+});
+export type RoutePack = z.infer<typeof routePackSchema>;

@@ -19,7 +19,17 @@ const MAP_ARCHIVE_PATH = {
   world: '/map/world.pmtiles',
   live: mapPlanetArchivePath,
   extract: (tripId: string) => `/trips/${tripId}/map/extract.pmtiles`,
+  /** **The offline route pack** (ADR-0206 §V1.8) — the trip's travel times, downloaded beside the
+   *  archive and stored in the same byte cache, so one size readout counts them and one delete
+   *  removes them. Named here with the other archive routes for ADR-0095's reason. */
+  routes: (tripId: string) => `/trips/${tripId}/routes/pack`,
 } as const;
+
+/** Where this trip's route pack is fetched from. Separate from `mapTileUrls` because it is not a
+ *  tile source: nothing renders it, `useMapArchives` downloads it and `route-pack.ts` reads it. */
+export function routePackUrl(tripId: string): string {
+  return apiAssetUrl(MAP_ARCHIVE_PATH.routes(tripId));
+}
 
 /**
  * The archives this build reads, always through our backend rather than a vendor URL.

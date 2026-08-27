@@ -9,6 +9,7 @@ import { MapModule } from '../map/map.module';
 import { MembershipGuard } from '../trips/membership.guard';
 import { PolitenessLimiter } from './politeness.limiter';
 import { ROUTE_PROVIDER, type RouteProvider } from './route-provider';
+import { RoutePackService } from './route-pack.service';
 import { RoutingController } from './routing.controller';
 import { RoutingService } from './routing.service';
 import { ValhallaRouteProvider } from './valhalla.provider';
@@ -36,7 +37,11 @@ import { ValhallaRouteProvider } from './valhalla.provider';
       useFactory: (fetcher: EnrichmentFetcher): RouteProvider => new ValhallaRouteProvider(fetcher),
     },
     RoutingService,
+    // The offline pack (ADR-0206 §V1.8). Here rather than in `MapModule` because it needs
+    // both `RoutingService` and `MapService`, and routing is the side that already imports map —
+    // the other way round is a module cycle (§AO).
+    RoutePackService,
   ],
-  exports: [RoutingService],
+  exports: [RoutingService, RoutePackService],
 })
 export class RoutingModule {}
