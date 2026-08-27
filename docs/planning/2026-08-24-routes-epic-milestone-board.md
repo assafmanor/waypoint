@@ -1550,7 +1550,19 @@ expected to find:
 And two things M8b now knows it does not have to build: **transit × warning mark is unreachable** (a
 declared leg has no duration, so no arm that earns the mark can occur — §AL5), and a declared leg's
 **free-time strip states the raw hole** by construction, which is a cost to state and not a bug to
-fix (§AL8).
+fix (§AL9).
+
+**Round 2 (2026-08-27, owner's review of the drawing) adds a sixth**, and its decision record is
+[ADR-0138 §10](../decisions/0138-the-row-menu-is-one-surface-and-icons-are-ui.md) rather than
+ADR-0206: _"All glyphs that have a direction should have RTL variants."_ **A glyph with a facing
+mirrors off `scaleX(var(--dir))`** — one declaration, `NavArrow`'s precedent, and a named `MIRRORED`
+allowlist beside `Icon.tsx`'s existing `FILLED`/`ROTATE`. M8b codes it for the **two** mode glyphs
+that have a facing (`walking`, `cycling`); `driving` and `transit` are symmetric, so the front view
+§AL2 chose for legibility is also why the bus needs no variant. Two constraints the card must not
+lose: the list is an **allowlist**, because `clock` mirrored reads a different time (30 of 58 entries
+are asymmetric and only 9 have a facing), and **a member may not also take `dir`**, since `Icon`
+writes rotation as an inline transform — assert the two sets are disjoint. The seven further
+candidates the audit found are a **backlog line, not M8b's**.
 
 ---
 

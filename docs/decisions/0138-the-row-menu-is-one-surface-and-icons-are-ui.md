@@ -406,3 +406,83 @@ Two carve-outs, both deliberate and both named so the next pass does not "finish
 **What §6 got right and is kept:** the menu's actions and the same actions elsewhere must read as one vocabulary. That is now true in the other direction — `actions.edit`, `index.detail.edit` and `docs.manage.edit` are all `עריכה`, and they match `common.save`/`cancel`/`delete`, the `map.make.edit`/`del.action` pair, and every `notes.manage`/`tasks.manage` row, which were nouns the whole time. §1–§5 and §7–§9 are untouched; nothing here reopens the fifth-copy problem or the emoji guard.
 
 **The one gendered verb left in the app is the change feed**, and it is the narration that forces it: the feed reports what a _named_ person did, so there is a grammatical subject. A verbal noun drops the actor (`הזזה של האירוע` says nothing about who), and so does the passive. It stays masculine-by-convention, documented at `changeFeed` in `he.ts`, and is worth revisiting only if `Member` ever carries a pronoun.
+
+## Amendment (2026-08-27) — §10: a glyph with a FACING mirrors with the reading direction
+
+Owner, reviewing M8a's mode-set drawing: _"All glyphs that have a direction should have RTL
+variants. For example the person should be facing left and not right if the app is in Hebrew. The
+bike as well."_
+
+**Agreed, and it belongs here rather than in ADR-0206.** ADR-0206 §AA3 is what made this visible —
+it is the amendment that put a walker and a bicycle into the set, and those are the app's first
+`Icon` entries that depict a person moving — but the rule is about the icon vocabulary, so this ADR
+is its home. Drawn and measured in
+[`mockups/the-mode-set-and-transit-declared-v1.html`](../../mockups/the-mode-set-and-transit-declared-v1.html)
+§5; **nothing here is built.**
+
+### §10.1 One declaration, because the mechanism already exists
+
+```css
+.icon[data-mirror] {
+  transform: scaleX(var(--dir));
+}
+```
+
+`--dir` is `tokens.css`'s **"one place a direction is named"** — `-1` under `:root`, `1` under the
+`[dir='ltr']` block that sits after it — and its own comment already says _"nothing else may
+hard-code a direction."_ So the mirror is correct in both directions with no second copy of
+anything, and `NavArrow` is the precedent one layer down: it authors its arrow RTL-first and lets
+`[dir='ltr']` mirror it.
+
+**The sign lands the other way round here, and that is deliberate.** These glyphs are authored
+**right-facing** — the icon-set convention, and what already ships — so RTL is the mirroring case.
+Reading the token rather than writing `-1` is what keeps that honest: nothing in the rule knows
+which direction is which.
+
+**`.icon` is the `<svg>` root**, i.e. an ordinary replaced box, so the transform origin is already
+its centre and no `transform-box`/`transform-origin` is needed.
+
+### §10.2 A named allowlist, and `clock` is why it cannot be a rule of thumb
+
+The set is `MIRRORED`, beside this file's existing `FILLED` and `ROTATE` — the same shape, so the
+three lists that qualify a glyph live together.
+
+**"Mirror whatever looks asymmetric" is wrong, and the app's own subject is the counter-example:**
+`clock`'s hand reads ~1:10, and mirrored it reads a **different time**. A clock runs clockwise in
+every locale. `check` is the second: a mirrored ✓ is not a ✓, it is a tick drawn backwards. Both are
+asymmetric and neither may ever mirror.
+
+**Measured over all 58 entries** (the 57 shipped plus §AA3's new `transit`), by sampling each path at
+240 points and matching the mirrored point set to its nearest neighbours:
+
+| bucket                                  | count  | what it is                                                                                                            |
+| --------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------- |
+| symmetric — the question does not arise | **28** | `driving` and `transit` among them, so **only 2 of the 4 mode glyphs** need the rule                                  |
+| asymmetric, no facing — never mirror    | **21** | `edit` (a pencil), `members`, the `cloud-*` trio, `map`, `share`, `link`, `offline`, `sparkle`, `swap`, `currency`, … |
+| asymmetric **with** a facing            | **9**  | `walking` + `cycling` (this milestone) and the 7 in §10.4                                                             |
+
+**The threshold is not a judgement call.** Symmetric glyphs top out at **0.33** (`calendar`) and
+asymmetric ones start at **1.74** (`members`) — an empty band, so any value inside it gives the same
+58 answers. The sampler compares **nearest neighbour** rather than index-to-index, because mirroring
+reverses the traversal order of every subpath; an index comparison reports a large error for a
+perfectly symmetric glyph.
+
+**"Asymmetric" and "has a direction" are different sets — 30 against 9 — and that gap is the whole
+reason the list is explicit.**
+
+### §10.3 A member may not also take `dir`
+
+`Icon` writes its `dir` rotation as an **inline** transform, which out-ranks a stylesheet rule, so a
+glyph cannot be both rotated and mirrored. No member of `MIRRORED` takes `dir` today; the unit test
+should assert the two sets are disjoint rather than leaving it to notice.
+
+### §10.4 Seven more candidates, and they are a sweep rather than this change
+
+The audit names seven glyphs that have a facing and do not mirror today: **`exit`**, **`undo`**,
+**`external`**, **`navigate`**, **`search`**, **`bracket`**, **`ticket`**. Two of them (`exit`,
+`undo`) are the same class as `NavArrow` — leaving and going back are directions of travel — and two
+are a genuine argument rather than an oversight (a magnifier's handle, a compass needle).
+
+**They are a backlog line, not part of M8a.** Seven glyphs across eight screens is exactly the quiet
+widening root `CLAUDE.md` rule 8 forbids, and each of the arguable ones deserves its own look rather
+than being carried in on a mode set's coat-tails.

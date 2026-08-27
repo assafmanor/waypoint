@@ -65,11 +65,39 @@
        §2 the composited mark      → ADR-0206 §AK2 / §AK3 (all four questions)
        §3 the declared read        → ADR-0206 §AA4
        §4 the canvas               → ADR-0206 §AA4's 2026-08-27 amendment
+       §5 mirroring with the read  → ADR-0138 §10 (the icon grammar's own home)
 
      ─────────────────────────────────────────────────────────────────────────
-     Interactive: theme (light · dark), screen (360×640 · 390×844), the glyph size,
-     the תחב״צ candidate (bus · ticket · word), the mark's corner and its halo
-     treatment, its size, the transit dash rhythm and its line-cap.
+     §5 IS A SECOND ROUND, added on the owner's review of the first: _"All glyphs
+     that have a direction should have RTL variants. For example the person
+     should be facing left and not right if the app is in Hebrew. The bike as
+     well."_ Correct, and the app already owns the mechanism — `--dir` is
+     `tokens.css`'s "one place a direction is named" and `NavArrow` already
+     mirrors off `[dir='ltr']`. So the proposal is ONE declaration,
+     `scaleX(var(--dir))`, plus a named `MIRRORED` allowlist beside `Icon.tsx`'s
+     existing `FILLED`/`ROTATE`.
+
+     Three things §5 measured that were worth measuring:
+
+     - **Only 2 of the 4 mode glyphs have a facing.** `driving` and the new
+       `transit` are symmetric, so the rule reaches `walking` and `cycling` and
+       stops. The front view §1c chose for LEGIBILITY is what makes `transit`
+       need no RTL variant either — one decision paying twice.
+     - **"Asymmetric" and "has a direction" are different sets, and the gap is
+       the whole reason the list is explicit.** 30 of 58 entries are asymmetric;
+       only 9 of those have a facing. `clock` is the witness for why a rule of
+       thumb would be wrong: mirrored, it reads a different time.
+     - **The audit is app-wide, so this file carries all 57 shipped paths**,
+       extracted mechanically. An audit over the 11 glyphs the drawing happens to
+       use would report on 11 and claim 57. It names 7 further candidates
+       (`exit`, `undo`, `external`, `navigate`, `search`, `bracket`, `ticket`)
+       and leaves them to a backlogged sweep rather than widening this card.
+
+     ─────────────────────────────────────────────────────────────────────────
+     Interactive: theme (light · dark), DIRECTION (rtl · ltr), screen (360×640 ·
+     390×844), the glyph size, the תחב״צ candidate (bus · ticket · word), the
+     mark's corner / halo / size, the mode row's shape, and the transit dash
+     rhythm and line-cap.
      Every number at the foot is read from THIS page's rendered DOM. -->
 <html lang="he" dir="rtl" data-theme="light">
   <head>
@@ -11258,6 +11286,37 @@ button.day-trv-face:focus-visible {
         inset-block-start: calc(var(--trv-flag) / -2.6);
       }
 
+      /* ── §5 · A GLYPH WITH A FACING MIRRORS WITH THE READING DIRECTION ────
+         Owner, 2026-08-27: _"All glyphs that have a direction should have RTL
+         variants. For example the person should be facing left and not right if
+         the app is in Hebrew. The bike as well."_
+
+         **One declaration, and no new mechanism.** `--dir` is already "the one
+         place a direction is named" (`tokens.css`: −1 in RTL, 1 in LTR, with the
+         `[dir='ltr']` override after the `:root` block) — so `scaleX(var(--dir))`
+         mirrors a right-facing glyph in RTL and leaves it alone in LTR, and it
+         is correct in both directions without a second copy of anything. It is
+         the same move `NavArrow` makes, one layer down: that file authors its
+         arrow RTL-first and lets `[dir='ltr']` mirror it. These glyphs are
+         authored right-facing (the icon-set convention, and what already
+         ships), so the sign lands the other way round — which is why reading
+         the token rather than hard-coding `-1` is what keeps it honest.
+
+         **An ALLOWLIST, never "mirror what looks asymmetric"** — and `clock` is
+         the witness: its hand reads ~1:10, and mirrored it reads a different
+         time, in an app whose whole subject is time. The set is a named
+         `MIRRORED` beside `Icon.tsx`'s existing `FILLED` and `ROTATE`, so the
+         compiler holds the list where a rule of thumb would not.
+
+         **A member may not also take `dir`.** `Icon` writes rotation as an
+         INLINE transform, which beats this rule — so a glyph cannot be both
+         rotated and mirrored. No member is today, and the unit test can say so. */
+      .icon[data-mirror] {
+        /* `.icon` is the `<svg>` root, i.e. an ordinary replaced box, so the
+           origin is already its centre and no `transform-box` is needed. */
+        transform: scaleX(var(--dir));
+      }
+
       /* ── §3 · THE MODE ROW ────────────────────────────────────────────────
          The slot `.day-trv-acts` was shaped to take (ADR-0206 §AF, and
          `DayJoinRow.tsx`'s own docblock says so). It is the shipped
@@ -11561,6 +11620,42 @@ button.day-trv-face:focus-visible {
         text-align: center;
         line-height: 1.5;
       }
+      /* §5's audit table gets its own density — 51 rows is a list, not a
+         measurement of this page's boxes, so it sits apart from the `table.m`
+         at the foot rather than swelling it. */
+      table.aud {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      table.aud th,
+      table.aud td {
+        text-align: start;
+        padding: 5px 16px;
+        border-block-start: 1px solid var(--mk-line);
+      }
+      table.aud th {
+        color: var(--mk-faint);
+        font-size: 11px;
+      }
+      table.aud td:first-child {
+        font:
+          600 11.5px 'JetBrains Mono',
+          monospace;
+        direction: ltr;
+      }
+      table.aud .gl {
+        width: 22px;
+        height: 22px;
+        color: var(--ink);
+      }
+      /* A frame that forces ONE direction regardless of the page, so the pair
+         can be seen side by side rather than by flipping and remembering.
+         `dir` on the element is what sets `--dir`, exactly as the app's own
+         `[dir='ltr']` block does — nothing here hard-codes a sign. */
+      .msq-dirbox {
+        display: contents;
+      }
       /* The mode-word row, on its own so a chip strip can be measured without a
          flex parent stretching it (`pitfalls.md`: a flex row is not a neutral
          place to measure). */
@@ -11726,6 +11821,10 @@ button.day-trv-face:focus-visible {
         <span class="lbl">ערכת צבעים</span>
         <button type="button" data-theme="light" aria-pressed="true">בהיר</button>
         <button type="button" data-theme="dark">כהה</button>
+        <span class="sep"></span>
+        <span class="lbl">כיוון</span>
+        <button type="button" data-dir="rtl" aria-pressed="true">RTL · עברית</button>
+        <button type="button" data-dir="ltr">LTR</button>
         <span class="sep"></span>
         <span class="lbl">מסך</span>
         <!-- `⁦…⁩` is U+2066/U+2069, the isolate `lib/bidi.ts`'s `ltrIsolate`
@@ -11958,6 +12057,86 @@ button.day-trv-face:focus-visible {
         <div class="pair" id="s4b"></div>
       </section>
 
+      <!-- ══════════════════════════ §5 ══════════════════════════ -->
+      <section class="case">
+        <h2>⁦§5⁩ · סימן שיש לו כיוון מסתובב עם כיוון הקריאה</h2>
+        <p class="note">
+          <b>הבעלים, 2026-08-27:</b> _"All glyphs that have a direction should have RTL variants.
+          For example the person should be facing left and not right if the app is in Hebrew. The
+          bike as well."_ נכון, ו<b>האפליקציה כבר יודעת לעשות את זה</b> - <code>NavArrow</code>
+          עושה בדיוק את זה שכבה אחת למטה, והטוקן <code>--dir</code> הוא לפי הערתו שלו "המקום היחיד
+          שבו כיוון נקרא בשמו". לכן ההצעה היא <b>הצהרה אחת</b>, לא מנגנון:
+          <code>transform: scaleX(var(--dir))</code>. הסימנים משורטטים פונים ימינה (מה שכבר נשלח,
+          וזו גם המוסכמה בכל ערכת סימנים), ולכן ב-RTL הם מתהפכים וב-LTR הם נשארים - ובלי עותק שני
+          של שום דבר.
+        </p>
+
+        <h3>⁦§5a⁩ · ארבעת המצבים · מה שנמדד, לא מה שנראה</h3>
+        <p class="note">
+          <b>סימטריה נמדדת מהנתיב עצמו, לא מהעין.</b> כל סימן נדגם ב-⁦240⁩ נקודות דרך
+          <code>getPointAtLength</code>, הקבוצה משוקפת סביב ⁦x=12⁩, ומה שמדווח הוא <b>השגיאה
+          הגדולה ביותר</b> בין נקודה משוקפת לשכנה הקרובה לה במקור, ביחידות הרשת. קרוב לאפס
+          פירושו שהסימן סימטרי ו<b>השאלה בכלל לא מתעוררת</b> בשבילו.
+        </p>
+        <p class="note">
+          <b>והסף אינו שיקול דעת.</b> על ⁦58⁩ הרשומות, הסימטריים נעצרים ב-⁦0.33⁩
+          (<code>calendar</code>) והאסימטריים מתחילים ב-⁦1.74⁩ (<code>members</code>) - כלומר יש
+          שם <b>רצועה ריקה</b>, וכל ערך בתוכה נותן את אותן ⁦58⁩ תשובות. הדגימה משווה
+          <b>שכן קרוב</b> ולא אינדקס מול אינדקס, כי שיקוף הופך את סדר המעבר של כל תת-נתיב -
+          השוואה לפי אינדקס הייתה מדווחת שגיאה עצומה על סימן סימטרי לחלוטין.
+        </p>
+        <div class="msq-plate" id="s5a"></div>
+        <p class="note">
+          <b>ומזה יוצא משהו שלא תוכנן:</b> מתוך ארבעת המצבים רק <b>שניים</b> צריכים את הכלל -
+          <code>walking</code> ו-<code>cycling</code>. <code>driving</code> הוא רכב מלפנים-מאחור
+          סימטרי, ו-<code>transit</code> נבחר כ<b>חזית</b> ב-⁦§1c⁩ מטעמי קריאות מול
+          <code>driving</code> - ובדיוק בגלל זה גם לו אין כיוון. בחירה אחת שילמה פעמיים.
+        </p>
+
+        <h3>⁦§5b⁩ · הכלל מופעל · שני הכיוונים זה ליד זה</h3>
+        <p class="note">
+          שתי המסגרות למטה הן אותו עץ בדיוק; מה שמשתנה הוא <code>dir</code> על המסגרת, שזה מה
+          שקובע את <code>--dir</code> - כמו הבלוק <code>[dir='ltr']</code> של האפליקציה עצמה.
+          <b>שום דבר כאן לא מקודד סימן.</b> החליפו את פקד "כיוון" למעלה כדי לראות את כל העמוד זז.
+        </p>
+        <div class="pair" id="s5b"></div>
+
+        <h3>⁦§5c⁩ · הביקורת על כל הסט · ולמה זו רשימת היתר ולא כלל אצבע</h3>
+        <p class="note">
+          <b><code>clock</code> הוא העדות.</b> המחוג שלו קורא בסביבות ⁦1:10⁩; משוקף הוא קורא שעה
+          <b>אחרת</b>, באפליקציה שכל נושאה הוא זמן. שעון הוא עם כיוון השעון בכל שפה, ו-<code>check</code>
+          משוקף אינו וי אלא וי מצויר לאחור. כלומר "להפוך כל מה שאסימטרי" הוא כלל <b>שגוי</b>, ולכן
+          הרשימה היא <code>MIRRORED</code> מפורש ליד <code>FILLED</code> ו-<code>ROTATE</code>
+          שכבר קיימים ב-<code>Icon.tsx</code> - הקומפיילר מחזיק את הרשימה במקום שכלל אצבע לא יחזיק.
+        </p>
+        <p class="note">
+          <b>ומה שהביקורת מוסיפה מעבר לסט המצבים היא סחיפה, ואני לא מרחיב אליה כאן.</b> הטבלה
+          מסמנת <b>⁦7⁩ מועמדים נוספים</b> בכל האפליקציה שיש להם כיוון ואינם מתהפכים היום -
+          <code>exit</code>, <code>undo</code>, <code>external</code>, <code>navigate</code>,
+          <code>search</code>, <code>bracket</code>, <code>ticket</code>. שניים מהם הם ממש אותה
+          מחלקה כמו <code>NavArrow</code> (יציאה וחזרה הם כיוון נסיעה), וחלקם ויכוח של ממש -
+          זכוכית מגדלת ומצפן. <b>הם שורה בבקלוג, לא בכרטיס הזה</b>: M8a הוא סט המצבים, וסחיפה
+          שקטה לתוך שבעה סימנים בשמונה מסכים היא בדיוק מה שהכלל השמיני של השורש אוסר.
+        </p>
+        <p class="note">
+          <b>וההפרדה שהטבלה עושה היא העיקר: ⁦30⁩ סימנים אסימטריים, ומתוכם ⁦9⁩ בלבד יש להם
+          <u>כיוון</u>.</b> ⁦21⁩ הנותרים אסימטריים בלי לתאר תנועה או קריאה - עיפרון, זוג
+          אנשים, ענן עם סימן, מפה מקופלת - ושיקוף שלהם היה שינוי לשם שינוי, עם סיכון ובלי תמורה. זה
+          ההפרש בין "אסימטרי" ל"יש לו כיוון", והוא כל הסיבה שהרשימה מפורשת.
+        </p>
+        <table class="aud" id="s5c">
+          <thead>
+            <tr>
+              <th>הסימן</th>
+              <th></th>
+              <th>שגיאת שיקוף</th>
+              <th>הכרעה</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
       <div class="panel">
         <h2>מדידה · נקראת מה-DOM החי</h2>
         <p>
@@ -12030,6 +12209,25 @@ button.day-trv-face:focus-visible {
             (⁦§Z8⁩). רק אדם מצהיר.
           </li>
           <li>
+            <b>נדחה: "להפוך כל סימן אסימטרי".</b> ⁦30⁩ מתוך ⁦58⁩ הרשומות אסימטריות ורק ⁦9⁩ מהן יש
+            להן <u>כיוון</u>. <code>clock</code> הוא העדות - משוקף הוא קורא שעה אחרת, באפליקציה
+            שכל נושאה זמן - וגם <code>check</code> משוקף אינו וי. לכן <code>MIRRORED</code> היא
+            רשימה מפורשת ליד <code>FILLED</code> ו-<code>ROTATE</code>, ולא כלל אצבע.
+          </li>
+          <li>
+            <b>נדחה: לשרטט מחדש את הסימנים כך שיפנו שמאלה.</b> <code>NavArrow</code> משרטט
+            RTL-first ונותן ל-<code>[dir='ltr']</code> להפוך; לסימני המצבים המוסכמה הפוכה
+            (וגם מה שכבר נשלח), אז שינוי הנתיבים היה שינוי לשם שינוי. הסימן נשאר כפי שמשורטט
+            והטוקן עושה את העבודה - וזו גם הסיבה לקרוא את <code>--dir</code> ולא לכתוב ⁦-1⁩.
+          </li>
+          <li>
+            <b>נדחה: להרחיב את הכלל לשבעת המועמדים האחרים <u>כאן</u>.</b> הביקורת מצאה אותם
+            (<code>exit</code>, <code>undo</code>, <code>external</code>, <code>navigate</code>,
+            <code>search</code>, <code>bracket</code>, <code>ticket</code>) והם אמיתיים - שניים
+            מהם אותה מחלקה כמו <code>NavArrow</code>. אבל M8a הוא סט המצבים, ושבעה סימנים
+            בשמונה מסכים הם סחיפה שקטה מחוץ למשטח הכרטיס. שורה בבקלוג.
+          </li>
+          <li>
             <b>מה שנשאר לא-מוכרע, במכוון:</b> גודל הסימן המורכב הוא פקד ולא החלטה. ⁦15px⁩ הוא
             ההמלצה - ⁦13px⁩ מאבד את הקריאה בתוך המשולש ו-⁦17px⁩ מתחיל לגזול מהסימן שמתחתיו - אבל
             סימן של ⁦15px⁩ נשפט על זכוכית אמיתית, לא בצילום מסך של דסקטופ.
@@ -12053,34 +12251,86 @@ button.day-trv-face:focus-visible {
       /* ── Icon paths, COPIED from `ui/Icon.tsx` ──────────────────────────────
          Never re-drawn: a hand-drawn glyph inside a file that inlines the real
          css lies in the one place the file promises truth. */
-      const ICON = {
-        walking:
-          'M14.6 4.4a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0 M12.6 8.4 10.2 13l2.6 2.2 1 5.4 M10.2 13 7.2 20.4 M12.9 9.6 16.4 11.4 M12.4 9.4 9 10.8',
-        cycling:
-          'M6.2 20a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z M17.8 20a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z M6.2 16.6h4.6l3.4-6.4 M10.8 16.6h4.4 M14.2 10.2h-2.4 M14.2 10.2l3.6 6.4 M15.6 7.2h2.2',
-        driving:
-          'M4.4 16.2h15.2 M6 16.2l1.5-4.8a1.7 1.7 0 0 1 1.6-1.2h5.8a1.7 1.7 0 0 1 1.6 1.2l1.5 4.8 M5.4 16.2v2.6h2.4v-2.6 M16.2 16.2v2.6h2.4v-2.6 M8 13.4h8',
-        ticket:
-          'M3.4 8.6V6.8a1.6 1.6 0 0 1 1.6-1.6h14a1.6 1.6 0 0 1 1.6 1.6v1.8a2.2 2.2 0 0 0 0 4.4v1.8a1.6 1.6 0 0 1-1.6 1.6H5a1.6 1.6 0 0 1-1.6-1.6v-1.8a2.2 2.2 0 0 0 0-4.4Z M14.4 5.2v1.9 M14.4 10.2v1.9 M14.4 15.1v1.9',
-        warn: 'M12 3.6 22 20.4H2Z M12 9.8v4.6 M12 17.4v.02',
-        pin: 'M12 21.5s6.5-5.9 6.5-10.5a6.5 6.5 0 1 0-13 0C5.5 15.6 12 21.5 12 21.5Z M14.2 10.8a2.2 2.2 0 1 1-4.4 0 2.2 2.2 0 0 1 4.4 0',
-        clock: 'M12 6.4V12l3.6 2.2 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0',
-        plus: 'M12 4.8v14.4 M4.8 12h14.4',
-        caret: 'M5 9l7 7 7-7z',
-        navigate:
-          'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M15.6 8.4l-2.2 5.2-5.2 2.2 2.2-5.2Z',
+      /* ── Icon paths, COPIED from `ui/Icon.tsx` ──────────────────────────────
+         **The WHOLE set, all 57 entries, extracted mechanically rather than by
+         hand** — §5c audits every glyph in the app for a facing, so a subset
+         would be an audit that reports on eleven and claims fifty-seven. The
+         three `cloud-*` entries have `Icon.tsx`'s shared `CLOUD` base inlined.
+         Never re-drawn: a hand-drawn glyph inside a file that inlines the real
+         css lies in the one place the file promises truth.
 
-        /* ── THE ONE NEW ASSET (§1c) ─────────────────────────────────────────
+         **One exception, and it is the milestone's deliverable:** `transit` at
+         the foot is NEW (§1c) and is the only path here that is a proposal. */
+      const ICON = {
+        caret: 'M5 9l7 7 7-7z',
+        undo: 'M9 14L4 9l5-5M20 20v-7a4 4 0 0 0-4-4H4',
+        reset: 'M3 4v6h6M3.5 15a9 9 0 1 0 2.2-9.4L3 10',
+        download: 'M12 3v12m-5-5l5 5 5-5M5 20h14',
+        settings: 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1zM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
+        search: 'm21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z',
+        close: 'M6 18 18 6M6 6l12 12',
+        locate: 'M12 2v3 M12 19v3 M2 12h3 M19 12h3 M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0 M13.5 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0',
+        frame: 'M4 9V6a2 2 0 0 1 2-2h3 M15 4h3a2 2 0 0 1 2 2v3 M20 15v3a2 2 0 0 1-2 2h-3 M9 20H6a2 2 0 0 1-2-2v-3',
+        pin: 'M12 21.5s6.5-5.9 6.5-10.5a6.5 6.5 0 1 0-13 0C5.5 15.6 12 21.5 12 21.5Z M14.2 10.8a2.2 2.2 0 1 1-4.4 0 2.2 2.2 0 0 1 4.4 0',
+        external: 'M14 4h6v6 M20 4 11 13 M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4',
+        camera: 'M4 8h2.5l1.4-2.2a1 1 0 0 1 .84-.46h6.52a1 1 0 0 1 .84.46L17.5 8H20a1 1 0 0 1 1 1v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a1 1 0 0 1 1-1Z M15 13.2a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
+        check: 'M5 12.6l4.7 4.7L19 7.4',
+        skip: 'M7.5 7.5l9 9 M16.5 7.5l-9 9',
+        'cloud-check': 'M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z M9.3 13.6l1.9 1.9 3.6-3.8',
+        'cloud-up': 'M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z M11.8 16.6v-4.6 M9.6 14l2.2-2.2 2.2 2.2',
+        'cloud-bang': 'M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z M11.8 11.9v2.7 M11.8 16.3v.02',
+        edit: 'M12 20h9 M16.4 3.6a2.12 2.12 0 0 1 3 3L7.5 18.5l-4.2 1.2 1.2-4.2Z',
+        trash: 'M4 6.5h16 M9 6.5V4.7a1.2 1.2 0 0 1 1.2-1.2h3.6A1.2 1.2 0 0 1 15 4.7v1.8 M6.4 6.5l.8 12.3A2 2 0 0 0 9.2 20.7h5.6a2 2 0 0 0 2-1.9l.8-12.3 M10.4 10.4v6 M13.6 10.4v6',
+        shelf: 'M12 3v7.5 M8.8 7.6 12 10.8l3.2-3.2 M20 14.5v3.6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3.6 M4 14.5h3.8l1.4 2h5.6l1.4-2H20',
+        swap: 'M8 20.5V4.2 M4.8 7.4 8 4.2l3.2 3.2 M16 3.5v16.3 M12.8 16.6 16 19.8l3.2-3.2',
+        roundTrip: 'M3.5 12 20.5 12 M8 6.5 3.5 12 8 17.5 M16 6.5 20.5 12 16 17.5',
+        calendar: 'M8 2.6v3.4 M16 2.6v3.4 M3.4 10.2h17.2 M5.4 4.3h13.2a2 2 0 0 1 2 2v13.1a2 2 0 0 1-2 2H5.4a2 2 0 0 1-2-2V6.3a2 2 0 0 1 2-2Z',
+        lock: 'M7.4 10.4V7.6a4.6 4.6 0 0 1 9.2 0v2.8 M5.8 10.4h12.4a1.4 1.4 0 0 1 1.4 1.4v8a1.4 1.4 0 0 1-1.4 1.4H5.8a1.4 1.4 0 0 1-1.4-1.4v-8a1.4 1.4 0 0 1 1.4-1.4Z',
+        warn: 'M12 3.6 22 20.4H2Z M12 9.8v4.6 M12 17.4v.02',
+        clock: 'M12 6.4V12l3.6 2.2 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0',
+        offline: 'M12 19.6h.02 M8.6 16.2a4.8 4.8 0 0 1 6.8 0 M5.2 12.8a9.6 9.6 0 0 1 13.6 0 M3 3l18 18',
+        sync: 'M20.5 5.5v5h-5 M3.5 18.5v-5h5 M19.4 10.5a7.6 7.6 0 0 0-13.3-3.2L3.5 10.5 M4.6 13.5a7.6 7.6 0 0 0 13.3 3.2l2.6-3.2',
+        plus: 'M12 4.8v14.4 M4.8 12h14.4',
+        more: 'M6 12h.02 M12 12h.02 M18 12h.02',
+        checkbox: 'M5.5 4.5h13a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1Z M8.5 12l2.5 2.5 4.5-5',
+        'checkbox-empty': 'M5.5 4.5h13a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1Z',
+        ticket: 'M3.4 8.6V6.8a1.6 1.6 0 0 1 1.6-1.6h14a1.6 1.6 0 0 1 1.6 1.6v1.8a2.2 2.2 0 0 0 0 4.4v1.8a1.6 1.6 0 0 1-1.6 1.6H5a1.6 1.6 0 0 1-1.6-1.6v-1.8a2.2 2.2 0 0 0 0-4.4Z M14.4 5.2v1.9 M14.4 10.2v1.9 M14.4 15.1v1.9',
+        walking: 'M14.6 4.4a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0 M12.6 8.4 10.2 13l2.6 2.2 1 5.4 M10.2 13 7.2 20.4 M12.9 9.6 16.4 11.4 M12.4 9.4 9 10.8',
+        cycling: 'M6.2 20a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z M17.8 20a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z M6.2 16.6h4.6l3.4-6.4 M10.8 16.6h4.4 M14.2 10.2h-2.4 M14.2 10.2l3.6 6.4 M15.6 7.2h2.2',
+        driving: 'M4.4 16.2h15.2 M6 16.2l1.5-4.8a1.7 1.7 0 0 1 1.6-1.2h5.8a1.7 1.7 0 0 1 1.6 1.2l1.5 4.8 M5.4 16.2v2.6h2.4v-2.6 M16.2 16.2v2.6h2.4v-2.6 M8 13.4h8',
+        wifi: 'M12 19.6h.02 M8.6 16.2a4.8 4.8 0 0 1 6.8 0 M5.2 12.8a9.6 9.6 0 0 1 13.6 0 M2 9.4a14.4 14.4 0 0 1 20 0',
+        documents: 'M5.4 2.8h13.2a1.6 1.6 0 0 1 1.6 1.6v15.2a1.6 1.6 0 0 1-1.6 1.6H5.4a1.6 1.6 0 0 1-1.6-1.6V4.4a1.6 1.6 0 0 1 1.6-1.6Z M10.6 9.4a1.9 1.9 0 1 1-3.8 0 1.9 1.9 0 0 1 3.8 0 M6.8 15.4c0-1.5 1-2.4 1.9-2.4s1.9.9 1.9 2.4 M13.6 9.2h3.6 M13.6 12.6h3.6 M13.6 16h3.6',
+        currency: 'M3.4 8.4a2 2 0 0 1 2-2h13.2a2 2 0 0 1 2 2v9.2a2 2 0 0 1-2 2H5.4a2 2 0 0 1-2-2Z M3.4 9.6h13.2a1.6 1.6 0 0 1 1.6 1.6v3.6a1.6 1.6 0 0 1-1.6 1.6H3.4 M14.6 13.4h.02',
+        clipboard: 'M9 4.4H7.4a2 2 0 0 0-2 2v12.2a2 2 0 0 0 2 2h9.2a2 2 0 0 0 2-2V6.4a2 2 0 0 0-2-2H15 M9.6 2.6h4.8a.9.9 0 0 1 .9.9v1.8a.9.9 0 0 1-.9.9H9.6a.9.9 0 0 1-.9-.9V3.5a.9.9 0 0 1 .9-.9Z',
+        share: 'M18 8.2a2.6 2.6 0 1 0 0-5.2 2.6 2.6 0 0 0 0 5.2Z M6 14.6a2.6 2.6 0 1 0 0-5.2 2.6 2.6 0 0 0 0 5.2Z M18 21a2.6 2.6 0 1 0 0-5.2A2.6 2.6 0 0 0 18 21Z M8.3 10.7l7.4-4.3 M8.3 13.3l7.4 4.3',
+        link: 'M10.6 13.4a4 4 0 0 0 6 .4l2.4-2.4a4 4 0 0 0-5.6-5.6l-1.4 1.4 M13.4 10.6a4 4 0 0 0-6-.4L5 12.6a4 4 0 0 0 5.6 5.6l1.4-1.4',
+        upload: 'M12 16.2V3.6m-5 5 5-5 5 5M4.6 20.4h14.8',
+        navigate: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M15.6 8.4l-2.2 5.2-5.2 2.2 2.2-5.2Z',
+        crown: 'M3.4 7.2 6.8 12l5.2-6.8L17.2 12l3.4-4.8v10a1.4 1.4 0 0 1-1.4 1.4H4.8a1.4 1.4 0 0 1-1.4-1.4Z',
+        exit: 'M14.6 20.4H18.4a2 2 0 0 0 2-2V5.6a2 2 0 0 0-2-2h-3.8 M8 16.6 3.4 12 8 7.4 M3.4 12h11.2',
+        userMinus: 'M17.6 8a3.1 3.1 0 1 1-6.2 0 3.1 3.1 0 0 1 6.2 0 M21 20.6v-1.7a3.5 3.5 0 0 0-3.5-3.5h-6a3.5 3.5 0 0 0-3.5 3.5v1.7 M2 11.4h5.6',
+        home: 'M3.4 10.2 12 3.4l8.6 6.8v9.2a1.6 1.6 0 0 1-1.6 1.6H5a1.6 1.6 0 0 1-1.6-1.6Z M9.4 21V13h5.2v8',
+        map: 'M2.8 6.6 9 4.2v13.2l-6.2 2.4Zm6.2-2.4 6 2.4v13.2l-6-2.4Zm6 2.4 6.2-2.4v13.2L15 19.8Z',
+        cards: 'M7.4 6.6V4.8a1.6 1.6 0 0 1 1.6-1.6h9.8a1.6 1.6 0 0 1 1.6 1.6v9.8a1.6 1.6 0 0 1-1.6 1.6h-1.8 M4.8 6.6h10.4a1.6 1.6 0 0 1 1.6 1.6v11a1.6 1.6 0 0 1-1.6 1.6H4.8a1.6 1.6 0 0 1-1.6-1.6v-11a1.6 1.6 0 0 1 1.6-1.6Z M6.6 11.2h7 M6.6 14.8h4.2',
+        flight: 'M2.6 12c0-1.1.9-2 2-2h5.2l4.4-6.4h2.9l-2.6 6.4h4.6l1.8-2.4h1.6l-1.2 4.4 1.2 4.4h-1.6l-1.8-2.4h-4.6l2.6 6.4h-2.9L9.8 14H4.6c-1.1 0-2-.9-2-2Z',
+        hotel: 'M2.8 19.6v-7.2a1.8 1.8 0 0 1 1.8-1.8h14.8a1.8 1.8 0 0 1 1.8 1.8v7.2 M4.6 10.6V6.8a1.8 1.8 0 0 1 1.8-1.8h11.2a1.8 1.8 0 0 1 1.8 1.8v3.8 M2.8 16h18.4',
+        members: 'M10.4 7.8a2.9 2.9 0 1 1-5.8 0 2.9 2.9 0 0 1 5.8 0 M12.4 20.4v-1.7a3.4 3.4 0 0 0-3.4-3.4H6a3.4 3.4 0 0 0-3.4 3.4v1.7 M19.4 7.8a2.9 2.9 0 1 1-5.8 0 2.9 2.9 0 0 1 5.8 0 M21.4 20.4v-1.7a3.4 3.4 0 0 0-3.4-3.4H15',
+        archive: 'M3.4 8.6h17.2 M5 8.6v10a1.6 1.6 0 0 0 1.6 1.6h10.8a1.6 1.6 0 0 0 1.6-1.6v-10 M4.2 3.8h15.6a.8.8 0 0 1 .8.8v3.2a.8.8 0 0 1-.8.8H4.2a.8.8 0 0 1-.8-.8V4.6a.8.8 0 0 1 .8-.8Z M10.2 12.6h3.6',
+        star: 'M12 2.8l2.9 5.9 6.5.95-4.7 4.58 1.11 6.47L12 17.65l-5.81 3.05 1.11-6.47-4.7-4.58 6.5-.95Z',
+        sparkle: 'M11 3.4l1.5 4.1 4.1 1.5-4.1 1.5L11 14.6 9.5 10.5 5.4 9l4.1-1.5Z M17.8 14.4l.8 2.1 2.1.8-2.1.8-.8 2.1-.8-2.1-2.1-.8 2.1-.8Z',
+        bracket: 'M16.4 4.2h-4.8a2 2 0 0 0-2 2v11.6a2 2 0 0 0 2 2h4.8 M9.6 12H5.4',
+
+        /* ── THE ONE NEW ASSET (⁦§1c⁩) — the only path above that is a proposal.
            A vehicle FROM THE FRONT: body, windscreen band, two headlights and
-           two mirrors. Drawn on the same 24 grid at the same `stroke-width: 2`
-           with the same round caps, and the same ~3.4-unit margin the rest of
-           the set keeps.
+           two mirrors. Same 24 grid, same `stroke-width: 2`, same round caps,
+           and the same ~3.4-unit margin the rest of the set keeps.
 
            **The front view is the point.** Every other glyph in this set is a
            side view — a walker, a bicycle, a car — so a side-view bus differs
            from `driving` only in a cabin arch against a box, which is ~3px at
            21px. A front is the one silhouette in the set that cannot be
-           confused with another member of it.
+           confused with another member of it. **And ⁦5b⁩ found it pays twice:**
+           a front has no facing, so it needs no RTL variant either.
 
            **The mirrors are what make it a bus rather than a train**, and they
            cost two segments. תחב״צ is buses AND trains; a train front declares
@@ -12089,8 +12339,26 @@ button.day-trv-face:focus-visible {
           'M8 3.4h8a2 2 0 0 1 2 2v12.2a1.8 1.8 0 0 1-1.8 1.8H7.8A1.8 1.8 0 0 1 6 17.6V5.4a2 2 0 0 1 2-2Z M6 11h12 M9 14.6h.02 M15 14.6h.02 M4.4 8.2v2.8 M19.6 8.2v2.8',
       };
       /** `Icon`'s own `FILLED` set — `caret` is the only member here. */
-      const FILLED = new Set(['caret']);
+      const FILLED = new Set(['caret', 'flight']);
+
+      /** **§5's proposal: the glyphs whose facing follows the reading direction.**
+       *  An ALLOWLIST beside `FILLED`/`ROTATE`, never a rule of thumb — `clock`
+       *  is asymmetric and must never mirror, because mirrored it reads a
+       *  different time. M8a's scope is the mode set, so only its two
+       *  directional members are in it; §5c names the seven candidates the audit
+       *  found elsewhere in the app and leaves them to a backlogged sweep. */
+      const MIRRORED = new Set(['walking', 'cycling']);
+
       const icon = (name, cls = '') =>
+        `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="${
+          FILLED.has(name) ? 'currentColor' : 'none'
+        }" stroke="${
+          FILLED.has(name) ? 'none' : 'currentColor'
+        }" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${
+          MIRRORED.has(name) ? ' data-mirror' : ''
+        }><path d="${ICON[name]}"/></svg>`;
+      /** The same glyph with the rule deliberately OFF, for §5a's pair. */
+      const iconAsDrawn = (name, cls = '') =>
         `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="${
           FILLED.has(name) ? 'currentColor' : 'none'
         }" stroke="${
@@ -12242,6 +12510,91 @@ button.day-trv-face:focus-visible {
            <span class="day-gap-add">${icon('plus')}</span>
          </button>`;
       const day = (middle) => eventCard(CARDS.prev) + middle + eventCard(CARDS.next);
+
+      /* ══ §5's symmetry measurement ════════════════════════════════════════
+         **Read off the rendered path, not from the eye and not from the `d`
+         string.** A hidden `<svg>` is built per glyph, sampled at 240 points via
+         `getPointAtLength` (which walks every subpath), the point set is
+         mirrored about x=12, and each mirrored point is matched to its nearest
+         neighbour in the original. What is reported is the WORST of those
+         distances, in grid units — so 0 means "this glyph is its own mirror and
+         the question does not arise", and a large number means the asymmetry is
+         real, which is a different question from whether it should mirror.
+
+         Nearest-neighbour rather than index-matched, because mirroring reverses
+         the traversal order of every subpath and reorders the subpaths among
+         themselves; comparing point `i` to point `i` would report a huge error
+         for a perfectly symmetric glyph. */
+      const SAMPLES = 240;
+      const symmetryError = (() => {
+        const svgNS = 'http://www.w3.org/2000/svg';
+        const holder = document.createElementNS(svgNS, 'svg');
+        holder.setAttribute('viewBox', '0 0 24 24');
+        holder.setAttribute('width', '24');
+        holder.setAttribute('height', '24');
+        holder.style.position = 'absolute';
+        holder.style.opacity = '0';
+        holder.style.pointerEvents = 'none';
+        const path = document.createElementNS(svgNS, 'path');
+        holder.appendChild(path);
+        document.body.appendChild(holder);
+        const cache = new Map();
+        return (name) => {
+          if (cache.has(name)) return cache.get(name);
+          path.setAttribute('d', ICON[name]);
+          const total = path.getTotalLength();
+          if (!total) {
+            cache.set(name, 0);
+            return 0;
+          }
+          const pts = [];
+          for (let i = 0; i < SAMPLES; i++) {
+            const p = path.getPointAtLength((total * i) / (SAMPLES - 1));
+            pts.push([p.x, p.y]);
+          }
+          let worst = 0;
+          for (const [x, y] of pts) {
+            const mx = 24 - x;
+            let best = Infinity;
+            for (const [ox, oy] of pts) {
+              const d = (ox - mx) * (ox - mx) + (oy - y) * (oy - y);
+              if (d < best) best = d;
+            }
+            worst = Math.max(worst, Math.sqrt(best));
+          }
+          const out = Math.round(worst * 100) / 100;
+          cache.set(name, out);
+          return out;
+        };
+      })();
+      /** Below this, the sampler's own noise — arc flattening, and the mirror of
+       *  a round join — is bigger than the asymmetry.
+       *
+       *  **The threshold is not a judgement call, and the measurement is what
+       *  says so:** across all 58 entries the symmetric ones top out at ⁦0.33⁩
+       *  (`calendar`) and the asymmetric ones start at ⁦1.74⁩ (`members`). Nothing
+       *  lands between, so anywhere in that band gives the same 58 answers. */
+      const SYM_EPS = 0.6;
+
+      /** The audit's verdict per glyph. `mirror` is the proposal; `never` is the
+       *  half that matters, because it is what makes the set an allowlist. */
+      const AUDIT = {
+        walking: ['mirror', 'הליכה · פונה לכיוון ההתקדמות'],
+        cycling: ['mirror', 'רכיבה · פונה לכיוון ההתקדמות'],
+        clock: ['never', 'שעון · משוקף הוא קורא שעה אחרת'],
+        check: ['never', 'וי · משוקף אינו וי'],
+        sync: ['never', 'סיבוב · שיקוף הופך את כיוון הרענון'],
+        reset: ['never', 'סיבוב · אותו נימוק'],
+        edit: ['never', 'עיפרון · משוקף קורא שמאלי'],
+        flight: ['never', 'מטוס · תג תוכן, לא כיוון קריאה'],
+        exit: ['sweep', 'יציאה · אותה מחלקה כמו NavArrow'],
+        undo: ['sweep', 'ביטול · חץ שמשמעותו "חזרה"'],
+        external: ['sweep', 'נפתח בחוץ · חץ אלכסוני'],
+        navigate: ['sweep', 'מצפן · ויכוח של ממש'],
+        search: ['sweep', 'זכוכית מגדלת · ויכוח של ממש'],
+        bracket: ['sweep', 'סוגר · נפתח לצד אחד'],
+        ticket: ['sweep', 'כרטיס · צד התלישה'],
+      };
 
       const phone = (inner, cls = '') => `<div class="phone ${cls}"><div class="fbody">${inner}</div></div>`;
       const col = (tag, inner, cls = '') => `<div class="col">${tag}${phone(inner, cls)}</div>`;
@@ -12509,6 +12862,73 @@ button.day-trv-face:focus-visible {
           ),
         ].join('');
 
+        /* §5a — each mode glyph as drawn, beside its mirror, with the measured
+           error. A symmetric glyph makes the two cells identical, which is the
+           point: the reader sees that the question does not arise for it. */
+        document.querySelector('#s5a').innerHTML = ORDER.map((k) => {
+          const g = glyphOf(k);
+          if (!g) return glyphCell(null, MODES[k].word, 'מילה · אין סימן');
+          const err = symmetryError(g);
+          const sym = err <= SYM_EPS;
+          return `<div class="msq-cell" style="min-width:150px">
+              <div style="display:flex;gap:10px;justify-content:center">
+                <span class="msq-grid">${iconAsDrawn(g)}</span>
+                <span class="msq-grid"><span style="display:block;width:100%;height:100%;transform:scaleX(-1)">${iconAsDrawn(
+                  g,
+                )}</span></span>
+              </div>
+              <span class="msq-cap">${MODES[k].word} · <code>${g}</code><br />
+                <span style="font-weight:400">שגיאת שיקוף ⁦${err}⁩</span><br />
+                <b class="${sym ? 'ok' : 'bad'}">${
+                  sym ? 'סימטרי · אין שאלה' : 'יש כיוון · צריך את הכלל'
+                }</b>
+              </span>
+            </div>`;
+        }).join('');
+
+        /* §5b — the rule applied, both directions side by side. The `dir`
+           attribute on the frame is what sets `--dir`; nothing is hard-coded. */
+        document.querySelector('#s5b').innerHTML = ['rtl', 'ltr']
+          .map(
+            (d) =>
+              `<div class="col" dir="${d}">${tagOf(
+                d === 'rtl' ? 'RTL · פונה שמאלה, לכיוון ההתקדמות' : 'LTR · כפי שמשורטט',
+                d === 'rtl' ? 'after' : '',
+              )}${phone(
+                ORDER.map((k) => trvBlock(k)).join('') +
+                  trvBlock('transit', { modes: true, chips: 'glyph' }),
+              )}</div>`,
+          )
+          .join('');
+
+        /* §5c — the audit, over EVERY entry in the set rather than the four this
+           card owns: the count is the deliverable, not the preamble. */
+        const order = { mirror: 0, never: 1, sweep: 2, none: 3 };
+        const rows = Object.keys(ICON)
+          .map((name) => {
+            const err = symmetryError(name);
+            const [verdict, why] = AUDIT[name] ?? [
+              err <= SYM_EPS ? 'none' : 'never',
+              err <= SYM_EPS ? 'סימטרי · השאלה לא מתעוררת' : 'אסימטרי, אבל בלי כיוון קריאה',
+            ];
+            return { name, err, verdict, why };
+          })
+          .sort((a, b) => order[a.verdict] - order[b.verdict] || b.err - a.err);
+        const LABEL = {
+          mirror: ['<b class="ok">מתהפך · בכרטיס הזה</b>', ''],
+          never: ['<b class="bad">אף פעם לא</b>', ''],
+          sweep: ['<b>מועמד · בבקלוג</b>', ''],
+          none: ['סימטרי', ''],
+        };
+        document.querySelector('#s5c tbody').innerHTML = rows
+          .map(
+            (r) =>
+              `<tr><td>${r.name}</td><td><span class="gl">${iconAsDrawn(r.name)}</span></td><td>⁦${
+                r.err
+              }⁩</td><td>${LABEL[r.verdict][0]} · ${r.why}</td></tr>`,
+          )
+          .join('');
+
         /* §4b — all three on one canvas, which is the real read: the question is
            not whether each is legible alone but whether two of them are ever
            mistaken for each other with the third in the frame. */
@@ -12546,6 +12966,11 @@ button.day-trv-face:focus-visible {
         );
       };
       group('data-theme', (v) => document.documentElement.setAttribute('data-theme', v));
+      /* `dir` on <html> is what the app's own `[dir='ltr']` token block keys on,
+         so flipping it moves `--dir` and every mirrored glyph with it — and it
+         also exercises that block, which `frontend/CLAUDE.md` warns is the easy
+         one to break (splitting `:root` to hold it once unset half the tokens). */
+      group('data-dir', (v) => document.documentElement.setAttribute('dir', v));
       group('data-w', (v) => document.documentElement.style.setProperty('--fw', v + 'px'));
       group('data-gs', (v) => (state.gs = Number(v)));
       group('data-t4', (v) => (state.t4 = v));
@@ -12746,6 +13171,44 @@ button.day-trv-face:focus-visible {
             'דיו המחבר על הקרקע · רצפת גרפיקה',
             verdict(ratio(legColor(), ground()), 3),
             '<code>MAP_CONNECTOR.COLOR</code> · הערוץ שמפריד בין השניים',
+          ],
+          [
+            'סימני המצבים · כמה מהם יש להם כיוון',
+            (() => {
+              const dir = ORDER.map(glyphOf)
+                .filter(Boolean)
+                .filter((g) => symmetryError(g) > SYM_EPS);
+              return `<b>${dir.length} מתוך 4</b> · ${dir.join(' · ')}`;
+            })(),
+            '<code>driving</code> ו-<code>transit</code> סימטריים · חזית לא מסתובבת',
+          ],
+          [
+            'הכלל מופעל · האם הסימן אכן משוקף',
+            (() => {
+              const el = document.querySelector('#s5b .col[dir="rtl"] .icon[data-mirror]');
+              const m = el ? new DOMMatrixReadOnly(getComputedStyle(el).transform) : null;
+              /* Sample the COMPUTED matrix rather than the custom property: a
+                 var() reads as its own text and says nothing about what painted
+                 (`frontend/CLAUDE.md`'s `--swipe-dx` lesson, one axis over). */
+              return m
+                ? `<b class="${m.a === -1 ? 'ok' : 'bad'}">⁦scaleX ${m.a}⁩</b> ב-RTL`
+                : '-';
+            })(),
+            (() => {
+              const el = document.querySelector('#s5b .col[dir="ltr"] .icon[data-mirror]');
+              const m = el ? new DOMMatrixReadOnly(getComputedStyle(el).transform) : null;
+              return m ? `⁦scaleX ${m.a}⁩ ב-LTR · טוקן אחד, שני הכיוונים` : '-';
+            })(),
+          ],
+          [
+            'הביקורת · כל הסט',
+            (() => {
+              const all = Object.keys(ICON);
+              const asym = all.filter((n) => symmetryError(n) > SYM_EPS);
+              const sweep = all.filter((n) => (AUDIT[n] ?? [])[0] === 'sweep');
+              return `<b>${asym.length}</b> אסימטריים מתוך ${all.length} · <b>${sweep.length}</b> מועמדים לסחיפה`;
+            })(),
+            'רשימת היתר ולא כלל אצבע · <code>clock</code> הוא העדות',
           ],
           [
             'הפרש עובי · מוצהר מול מקף',

@@ -6,8 +6,10 @@
 **Decisions:** amended in place into [ADR-0206 §AL](../decisions/0206-a-travel-time-belongs-between-two-points.md).
 **Scope:** `mockups/` + `docs/` only. No app code, so M9/M10/M11 were never blocked.
 
-**Status: with the owner.** §M forbids coding what has not been drawn, and M8b may not start until
-this drawing is signed off.
+**Status: with the owner, round 2.** §M forbids coding what has not been drawn, and M8b may not
+start until this drawing is signed off. Round 1's review asked for RTL variants of the directional
+glyphs; that is §5 below, and [ADR-0138 §10](../decisions/0138-the-row-menu-is-one-surface-and-icons-are-ui.md)
+is its decision record.
 
 ## Why one file rather than three
 
@@ -78,18 +80,67 @@ guard.
 
 Everything below is drawn, defaulted to the recommendation, and switchable in the file.
 
-| #   | fork                                             | recommendation                                                                                                                                                              | where      |
-| --- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| 1   | The תחב״צ mark: a new glyph, `ticket`, or a word | **A new glyph** — a front-facing bus. `ticket` means "a booking" in four screens; a lone word inside a row of three glyphs is ADR-0138's own inconsistency                  | §1c · §AL2 |
-| 2   | The composited mark's halo                       | **A drop-shadow ring** in `--card` — the bare mark and a `--card` disc are both drawn beside it                                                                             | §2a · §AL4 |
-| 3   | Which corner the mark hangs on                   | **Bottom-inline-end**, `PlaceBadge`'s own corner                                                                                                                            | §2a        |
-| 4   | The mark's size                                  | **15px** on the 38px tile (39%) — 13px loses the bang inside the triangle, 17px starts taking from the mode glyph. **A control, not a decision: this one wants real glass** | §2a · §AL4 |
-| 5   | The mode row's shape                             | **Glyph only**, at 44px, word in `aria-label` — the only shape that fits AND meets the touch floor                                                                          | §3b · §AL7 |
-| 6   | The declared segment's dash rhythm               | **`[3, 1.2]`** → 10.5px on / 4.2px off at weight 3.5                                                                                                                        | §4 · §AL6  |
-| 7   | Its line-cap                                     | **Butt** — round eats the gap and the line reads as the route                                                                                                               | §4 · §AL6  |
+| #   | fork                                             | recommendation                                                                                                                                                              | where             |
+| --- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| 1   | The תחב״צ mark: a new glyph, `ticket`, or a word | **A new glyph** — a front-facing bus. `ticket` means "a booking" in four screens; a lone word inside a row of three glyphs is ADR-0138's own inconsistency                  | §1c · §AL2        |
+| 2   | The composited mark's halo                       | **A drop-shadow ring** in `--card` — the bare mark and a `--card` disc are both drawn beside it                                                                             | §2a · §AL4        |
+| 3   | Which corner the mark hangs on                   | **Bottom-inline-end**, `PlaceBadge`'s own corner                                                                                                                            | §2a               |
+| 4   | The mark's size                                  | **15px** on the 38px tile (39%) — 13px loses the bang inside the triangle, 17px starts taking from the mode glyph. **A control, not a decision: this one wants real glass** | §2a · §AL4        |
+| 5   | The mode row's shape                             | **Glyph only**, at 44px, word in `aria-label` — the only shape that fits AND meets the touch floor                                                                          | §3b · §AL7        |
+| 6   | The declared segment's dash rhythm               | **`[3, 1.2]`** → 10.5px on / 4.2px off at weight 3.5                                                                                                                        | §4 · §AL6         |
+| 7   | Its line-cap                                     | **Butt** — round eats the gap and the line reads as the route                                                                                                               | §4 · §AL6         |
+| 8   | Which glyphs mirror in RTL                       | **`walking` + `cycling` only** — a named allowlist, not "everything asymmetric" (`clock` mirrored reads a different time). The other 7 candidates are a backlog line        | §5 · ADR-0138 §10 |
+
+## Round 2 — the owner's review of the drawing (2026-08-27)
+
+> _"All glyphs that have a direction should have RTL variants. For example the person should be
+> facing left and not right if the app is in Hebrew. The bike as well."_
+
+Right, and the app already owns the mechanism — which is what makes this cheap. The decision is
+recorded in **[ADR-0138 §10](../decisions/0138-the-row-menu-is-one-surface-and-icons-are-ui.md)**,
+not in ADR-0206: §AA3 is only what made it _visible_ (a walker and a bicycle are the app's first
+`Icon` entries depicting a person moving), but the rule is about the icon vocabulary, and that is
+ADR-0138's subject. Drawn as the mockup's §5, with a direction toggle over the whole page.
+
+- **One declaration.** `scaleX(var(--dir))`, off the token `tokens.css` already calls "the one place
+  a direction is named", with `NavArrow` as the precedent one layer down. Verified off the computed
+  matrix rather than the custom property: `scaleX -1` in RTL, `scaleX 1` in LTR.
+- **The sign lands opposite to `NavArrow`'s, deliberately.** That file authors RTL-first; an icon set
+  authors right-facing, and these paths already ship that way. Reading the token instead of writing
+  `-1` is what keeps the rule from caring which is which.
+- **A named `MIRRORED` allowlist, and `clock` is why it cannot be a rule of thumb** — mirrored it
+  reads a different time, in an app whose whole subject is time. `check` is the second case.
+
+### What the measurement changed about the answer
+
+Symmetry is read off the rendered path (240 samples via `getPointAtLength`, matched
+nearest-neighbour against the set mirrored about `x=12` — nearest-neighbour because mirroring
+reverses every subpath's traversal order, so an index comparison reports a huge error for a
+perfectly symmetric glyph).
+
+- **Only 2 of the 4 mode glyphs need the rule.** `driving` and the new `transit` are symmetric — and
+  **the front view §1c chose for legibility is what makes `transit` need no RTL variant either.** One
+  decision paid twice, and worth knowing before someone later "fixes" the bus into a side view.
+- **"Asymmetric" and "has a direction" are different sets: 30 against 9.** That gap is the entire
+  reason the list is explicit rather than derived.
+- **The threshold is not a judgement call.** Symmetric glyphs top out at 0.33 (`calendar`),
+  asymmetric ones start at 1.74 (`members`) — an empty band, so any value inside gives the same 58
+  answers.
+- **The audit had to be app-wide, so the file now carries all 57 shipped paths**, extracted
+  mechanically rather than by hand. The first pass audited the 11 glyphs the drawing happens to use
+  while claiming to cover the set — an audit that reports on 11 and says 57.
+
+### What was deliberately not done
+
+Seven further glyphs have a facing and do not mirror: `exit`, `undo`, `external`, `navigate`,
+`search`, `bracket`, `ticket`. Two are the same class as `NavArrow`, two are a genuine argument
+rather than an oversight. **They are a backlog line.** Seven glyphs across eight screens is the quiet
+widening rule 8 forbids, and the arguable ones deserve their own look rather than riding in on a mode
+set's coat-tails.
 
 ## What M8b inherits
 
 The board's M8a card carries the handoff list. In one line: **read §AL, not the card** — one new
 asset (`transit`), `Icon.tsx:63`'s comment to correct, `warn` reserved for the mark, the mode control
-as four squared `.wp-chip.touch` chips, and `.wp-placebadge-mark` as the geometry to start from.
+as four squared `.wp-chip.touch` chips, `.wp-placebadge-mark` as the geometry to start from, and
+ADR-0138 §10's `MIRRORED` set for the two mode glyphs that have a facing.

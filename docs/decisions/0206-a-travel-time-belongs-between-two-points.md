@@ -406,7 +406,7 @@ size. **M6a and M8 own this, and it wants drawing at 24px before it is coded.**
 > **Drawn, and amended, in §AL (2026-08-27).** The mark is its own glyph and not `ticket` (§AL2), the
 > read carries no `warn` (§AL3), the segment's styling is §AL6, the mode row is §AL7 — whose table
 > corrects this section's own "four chips fit one row at 360 (239px of 312px)", measured in the wrong
-> box — and a fourth stated cost is in §AL8.
+> box — a fourth stated cost is in §AL9, and §AL8 mirrors the two mode glyphs that have a facing.
 
 **This reverses §V2's "say nothing about transit" for the declaration only, and §D9 is amended
 above.** The owner asked for it; I argued against it on §D9 and was wrong, and the reason is worth
@@ -1702,7 +1702,27 @@ second is the decisive one: 114px of headroom means a fifth mode cannot break th
 still saying "fits". The row therefore declares `flex-wrap: wrap`. It should never fire; what it buys
 is that an overflow costs height instead of eating a control.
 
-### AL8. What a declared leg costs, stated so the build does not discover it
+### AL8. A glyph with a facing mirrors with the reading direction — and it lives in ADR-0138 §10
+
+Owner, on the drawing: _"All glyphs that have a direction should have RTL variants. For example the
+person should be facing left and not right if the app is in Hebrew. The bike as well."_
+
+**Agreed, and the decision is recorded in [ADR-0138 §10](0138-the-row-menu-is-one-surface-and-icons-are-ui.md)
+rather than here** — §AA3 is what made it visible, because a walker and a bicycle are the app's first
+`Icon` entries that depict a person moving, but the rule is about the icon vocabulary and that is
+ADR-0138's subject. Drawn in the mockup's §5. Three results this ADR needs to carry:
+
+- **Only 2 of the 4 mode glyphs have a facing.** `driving` and §AL2's new `transit` are symmetric, so
+  the rule reaches `walking` and `cycling` and stops. **The front view §AL2 chose for legibility is
+  what makes `transit` need no RTL variant either** — one decision paying twice, and worth knowing
+  before a later session "fixes" the bus into a side view.
+- **It is one declaration, not a mechanism**: `scaleX(var(--dir))`, off the token `tokens.css`
+  already calls the one place a direction is named. `NavArrow` is the precedent.
+- **The list is an allowlist and `clock` is why** — mirrored, it reads a different time. 30 of 58
+  entries are asymmetric and only 9 have a facing; the other 7 are a backlogged sweep, not this
+  card.
+
+### AL9. What a declared leg costs, stated so the build does not discover it
 
 §AA4 already named three: no duration, therefore no leave-by, therefore the board's countdown swap
 does not fire for it and the day travel total skips it. **The drawing adds a fourth.**
