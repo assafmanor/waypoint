@@ -4,22 +4,33 @@
 // The reason this is worth a spec rather than a comment: §Z4 measured that FOSSGIS does not
 // enforce the limit — six concurrent day matrices all answered 200 with no `429`. Nothing will
 // ever tell us we broke this, so a test has to.
-import { describe, expect, it } from 'vitest';
+//
+// **The clock is fake, and that is not a convenience.** The two pacing cases first shipped
+// asserting REAL elapsed `Date.now()` gaps with a ±5 ms tolerance, and CI read `19` for a 30 ms
+// gap — a gap shorter than the `setTimeout` that produced it, which a loaded runner cannot cause
+// by being slow. A wall clock under NTP correction can step backwards; a tolerance cannot be
+// widened enough to cover that, only enough to hide it. On a fake clock the gaps are exact, so
+// these read `toEqual` rather than `toBeGreaterThanOrEqual` — do not put a tolerance back.
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PolitenessLimiter } from './politeness.limiter';
 
-/** Short enough to keep the suite fast, long enough that ordering is unambiguous. The RATE is
- *  configuration (`ROUTING_MIN_CALL_GAP_MS` is the shipped 1 call/s); the QUEUEING is the
- *  behaviour under test. */
+/** The RATE is configuration (`ROUTING_MIN_CALL_GAP_MS` is the shipped 1 call/s); the QUEUEING is
+ *  the behaviour under test. Any value works now that no real time passes. */
 const GAP_MS = 30;
 
 describe('PolitenessLimiter', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('paces a three-mode warm instead of bursting it', async () => {
+    vi.useFakeTimers();
     const limiter = new PolitenessLimiter(GAP_MS);
     const at: number[] = [];
     const start = Date.now();
 
     // Exactly §Y2's case: one day, three modes, three upstream calls started together.
-    await Promise.all(
+    const warming = Promise.all(
       (['walking', 'driving', 'cycling'] as const).map((mode) =>
         limiter.run(() => {
           at.push(Date.now() - start);
@@ -27,23 +38,23 @@ describe('PolitenessLimiter', () => {
         }),
       ),
     );
+    await vi.advanceTimersByTimeAsync(GAP_MS * 3);
+    await warming;
 
-    expect(at).toHaveLength(3);
-    for (let i = 1; i < at.length; i++) {
-      expect(at[i]! - at[i - 1]!).toBeGreaterThanOrEqual(GAP_MS - 5);
-    }
+    expect(at).toEqual([0, GAP_MS, GAP_MS * 2]);
   });
 
   it('is a queue, not a bucket — an idle spell does not buy a burst', async () => {
     // The difference matters at this rate. A token bucket refills while nothing is happening and
     // then lets several calls leave at once, which is the one thing this exists to prevent.
+    vi.useFakeTimers();
     const limiter = new PolitenessLimiter(GAP_MS);
     await limiter.run(() => Promise.resolve());
-    await new Promise((resolve) => setTimeout(resolve, GAP_MS * 4));
+    await vi.advanceTimersByTimeAsync(GAP_MS * 4);
 
     const at: number[] = [];
     const start = Date.now();
-    await Promise.all(
+    const running = Promise.all(
       [0, 1, 2].map(() =>
         limiter.run(() => {
           at.push(Date.now() - start);
@@ -51,7 +62,12 @@ describe('PolitenessLimiter', () => {
         }),
       ),
     );
-    expect(at[2]! - at[0]!).toBeGreaterThanOrEqual(GAP_MS * 2 - 5);
+    await vi.advanceTimersByTimeAsync(GAP_MS * 3);
+    await running;
+
+    // The idle spell has already paid the first call's gap, so it leaves at once — and the second
+    // and third still queue behind it, which is the claim.
+    expect(at).toEqual([0, GAP_MS, GAP_MS * 2]);
   });
 
   it('does not let one failed call poison every later one', async () => {
