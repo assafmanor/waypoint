@@ -71,14 +71,16 @@ never by the one that did the work.
 | **M6b** | The hero read               | impl   | ✅ (+ 1 field fix)        | M3, M5       | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#712](https://github.com/assafmanor/waypoint/pull/712)                                                                                                                                                                                                                                                                                            | 2026-08-26 |
 | **M6c** | A fix withdraws the mark    | impl   | ✅                        | M6b          | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#713](https://github.com/assafmanor/waypoint/pull/713)                                                                                                                                                                                                                                                                                            | 2026-08-26 |
 | **M6d** | A claim stands on something | impl   | ✅                        | M6b, M6c     | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#714](https://github.com/assafmanor/waypoint/pull/714)                                                                                                                                                                                                                                                                                            | 2026-08-26 |
-| **M6e** | Infeasible leg keeps mode   | design | ⬜                        | M6a          | M9, M10, M11 | —                                                                                                                                                                                                                                                                                                                                                                                         | 2026-08-26 |
+| **M6e** | Infeasible leg keeps mode   | design | ⬜ **ships with M8a**     | M6a          | M9, M10, M11 | —                                                                                                                                                                                                                                                                                                                                                                                         | 2026-08-27 |
 | **M7**  | The map polyline            | impl   | ✅                        | M3, M5       | M6a, M6b, M9 | `claude/routes-map-polyline-m7-baqobz` · [#706](https://github.com/assafmanor/waypoint/pull/706) · [#707](https://github.com/assafmanor/waypoint/pull/707)                                                                                                                                                                                                                                | 2026-08-25 |
 | **M7b** | The lines read as a route   | design | ✅                        | M7           | M8, M9       | `claude/routes-map-polyline-m7-baqobz` · [#708](https://github.com/assafmanor/waypoint/pull/708)                                                                                                                                                                                                                                                                                          | 2026-08-25 |
 | **M7c** | The day's bookends          | impl   | ✅ (+ 2 field fixes)      | M7, M7b      | M8, M9       | `claude/routes-map-polyline-m7-baqobz` · [#709](https://github.com/assafmanor/waypoint/pull/709) · [#710](https://github.com/assafmanor/waypoint/pull/710) · [#711](https://github.com/assafmanor/waypoint/pull/711)                                                                                                                                                                      | 2026-08-26 |
-| **M8**  | Mode per leg + trip default | impl   | ⬜                        | M6a, M6b, M7 | M10          | —                                                                                                                                                                                                                                                                                                                                                                                         | —          |
+| **M8a** | Draw the mode set + תחב״צ   | design | ⬜ **next**               | M6a, M6b, M7 | M9, M10, M11 | —                                                                                                                                                                                                                                                                                                                                                                                         | 2026-08-27 |
+| **M8b** | Mode per leg + trip default | impl   | ⬜                        | M8a          | M10          | —                                                                                                                                                                                                                                                                                                                                                                                         | 2026-08-27 |
 | **M9**  | Plan-mode feasibility       | impl   | ⬜                        | M5           | M6a, M6b, M7 | —                                                                                                                                                                                                                                                                                                                                                                                         | —          |
 | **M10** | Offline route pack          | impl   | ⬜                        | M4           | M5–M9        | —                                                                                                                                                                                                                                                                                                                                                                                         | —          |
 | **M11** | Day travel total            | impl   | ⬜                        | M6a          | M8, M10      | —                                                                                                                                                                                                                                                                                                                                                                                         | —          |
+| **M13** | Leave-by notification       | impl   | ⬜                        | M6b          | M9, M10, M11 | —                                                                                                                                                                                                                                                                                                                                                                                         | 2026-08-27 |
 | **M12** | Harden, observe, document   | impl   | ⬜                        | all          | —            | —                                                                                                                                                                                                                                                                                                                                                                                         | —          |
 
 ### M2b — apply M1's numbers to the code ✅
@@ -151,6 +153,11 @@ has the idiom (ADR-0133 §6/§12's avatar badge, ADR-0167's frame-and-badge rule
 
 **Sequencing:** this is the same work as §AA3's three new `ui/Icon.tsx` glyphs, so it lands **with**
 them and the set gets drawn once as a set. **Mockup before code** (§M).
+
+**→ FOLDED INTO M8a** (2026-08-27). The sequencing note above is now a card: M8a draws this mark
+together with §AA3's four mode glyphs and §AA4's transit read, and M8b codes them. This entry stays
+as the DECISION record (ADR-0206 §AK) — do not take it as a standalone task, or the set gets drawn
+twice and the two drawings disagree.
 
 ### Owner decisions — ✅ ALL CLOSED (2026-08-25)
 
@@ -1475,11 +1482,47 @@ leading the day, with the `order` column untouched.
 
 ---
 
-## M8 — Mode per leg + trip default
+## M8a — Draw the mode set and תחב״צ (design)
 
-**Kind:** implementation. **Branch:** `routes/m8-mode` · **Conflict surface:** `schema.prisma` + a
+**Kind:** design. **Branch:** `routes/m8a-draw` · **Conflict surface:** `mockups/` only, plus the
+`docs/design/mockups.md` catalog entry. **Touches no app code**, so it runs in parallel with M9,
+M10 and M11.
+
+**Why the drawing is its own milestone, and why M6e is inside it.** Three separate cards had each
+asked for part of one icon set — §AA3's walk/car/bicycle glyphs, §AA4's תחב״צ mark and suppressed
+row, and §AK's composited warning mark — and M6e's card already said its work "lands **with** them
+and the set gets drawn once". Drawn separately they will not agree with each other, which is the
+failure ADR-0139 records for the three settle affordances. So: one pass, one set, at 24px, before
+any of it is coded.
+
+**What has to come out of it:**
+
+- **Four mode glyphs** — walk, car, bicycle, and either a תחב״צ glyph or a stated reason it stays a
+  word (§AA3). ADR-0138 §4's "icons are UI" is the grammar and its rule that a glyph carries a
+  content rule applies.
+- **The composited warning mark** (ADR-0206 §AK2) — one mark that overlays any mode glyph. **Not a
+  glyph per mode per state**: that is 6 now and 8 with תחב״צ, doubling with every mode. The repo
+  has the idiom already (ADR-0133 §6/§12's avatar badge, ADR-0167's frame-and-badge rule). §AK3
+  lists the four things only the drawing can settle.
+- **The תחב״צ read** — the mark, the suppressed-duration row, and copy that says "no estimate"
+  without promising one (§AA4).
+- **The תחב״צ straight segment on the canvas** (§AA4, decided 2026-08-27). It must **not** read as
+  the un-routed dashed connector — "this is not a road journey" and "we could not route this" are
+  different statements and the map now has to make both.
+
+**Exit criteria:** every mark above exists in a `mockups/*.html` file at 24px in both themes, the
+warning mark is shown composited over **each** mode rather than drawn once, the transit segment is
+shown beside a routed line and beside the un-routed fallback so the three are visibly distinct, and
+`docs/design/mockups.md` has the entry. No app code changes.
+
+---
+
+## M8b — Mode per leg + trip default
+
+**Kind:** implementation. **Branch:** `routes/m8b-mode` · **Conflict surface:** `schema.prisma` + a
 migration (**for the per-leg override only** — the default is derived, §Z2), ~~`packages/shared`
-(the inference)~~, trip settings, the day/hero controls, `he.ts`.
+(the inference)~~, trip settings, the day/hero controls, `he.ts`. **Depends on M8a** — §M forbids
+coding this before it is drawn.
 
 > **⚠ The inference already shipped, in M7's follow-up ([#707](https://github.com/assafmanor/waypoint/pull/707)).**
 > `derivedTravelMode(bookings)` is in `packages/shared/src/routing.ts` with its specs — M7 drew its
@@ -1490,12 +1533,17 @@ migration (**for the per-leg override only** — the default is derived, §Z2), 
 > so the two cases it deliberately gets wrong are exactly the ones the override exists for: a hire
 > held for part of a longer trip, and a single walk inside a driving trip.
 >
-> **And the second half of the same report is still open**, because it is genuinely M8's: a
-> `train` or `transit` booking's own two ends are drawn as a road route between them whenever the
-> pair is under the mode's ceiling (Senso-ji → Tokyo Station is 4.6 km, well inside walking's
-> 15 km — §Z5's own "73 min walking against 25 by train" example, now on the canvas as a line).
-> §AA4's declaration is the designed answer and it suppresses the estimate; **decide whether it
-> suppresses the polyline too**, and say so on the card before coding.
+> **And the second half of the same report is a live defect on the shipped canvas:** a `train` or
+> `transit` booking's own two ends are drawn as a road route between them whenever the pair is
+> under the mode's ceiling (Senso-ji → Tokyo Station is 4.6 km, well inside walking's 15 km —
+> §Z5's own "73 min walking against 25 by train" example, rendered as geometry). **This card is
+> what fixes it.**
+>
+> **✅ The polyline question is CLOSED** (owner, 2026-08-27; ADR-0206 §AA4 amended). A declared
+> תחב״צ leg draws **its own straight segment with its own styling** — not the road route (a false
+> claim about the path) and not nothing (a declared leg is a journey that happens). The un-routed
+> dashed connector is **not** the fallback here: it means "we could not route this", which is a
+> different statement. M8a draws it; do not code it before then.
 
 ADR-0206 **§V1.6 as amended by §Z2** — M0 answered this, so it is no longer open:
 
@@ -1581,6 +1629,43 @@ routable.
 
 ---
 
+## M13 — Leave-by notification
+
+**Kind:** implementation. **Branch:** `routes/m13-leaveby` · **Conflict surface:** the notification
+sweep (ADR-0197/0198), `he.ts`. **Sequenced after M8 by the owner** (2026-08-27), not by dependency
+— its derivation (`leaveBy`) shipped in M6b and its position source shipped long before that.
+
+Owner, raising it unprompted while M6a was landing: _"תתחילו להתכונן ליציאה (ליעד הבא) · כדאי לצאת
+לפני X"_.
+
+**[ADR-0198](../decisions/0198-we-notify-what-you-can-still-miss.md) §4 excluded this and is now
+formally REOPENED**, because both things it was waiting on turned out to exist:
+
+- **Travel time exists**, and not through the Routes API that bullet was waiting on. ADR-0205/0206
+  built it OSM-derived, cached per place-pair, free. `leaveBy` is a shipped derivation in
+  `@waypoint/shared`.
+- **The position premise was wrong when it was written.** ADR-0006 puts own-device location _in_ v1
+  and defers only member-to-member sharing; `lib/useGeolocation.ts` has shipped since ADR-0109 §6.
+  This is the same misreading the routes epic's own design session made and corrected (M3 session
+  note §9.2) — **recorded twice now because it has cost two sessions.**
+
+**What this card must NOT do**, and it is the whole risk: ADR-0198's title is _we notify what you
+can still miss_. A leave-by fires on something you can still act on, which qualifies — but the same
+clock that makes it useful makes it a repeating alarm if it is naive. Read ADR-0198's own rules on
+suppression, the once-per-fact rule and quiet hours **before** designing the trigger, and reuse the
+existing sweep rather than adding a second scheduler (rule 8).
+
+**Open at carding time, and the owner decides:** how long before `leaveBy` it fires (§AA1's
+`LEAVE_BY_SWAP_MINUTES = 30` is the board's on-screen swap threshold and the obvious candidate, but
+a notification and a screen need not share a number), and whether it fires for a soft leg at all or
+only where a hard event is downstream (ADR-0011).
+
+**Exit criteria:** fires once per leg; never for a leg already departed or settled; never twice for
+the same fact after a re-render or a resync; degrades silently when routing is disabled (§D4) or
+position is refused.
+
+---
+
 ## M12 — Harden, observe, document
 
 **Kind:** implementation + docs. **Branch:** `routes/m12-harden`.
@@ -1600,8 +1685,9 @@ routable.
 ## V2 — sketched, not planned
 
 Each is its own ADR when it is taken; ADR-0206 §V2 holds the reasons. In rough value order:
-**transit** (the 48-minute gap — and its own epic, not a milestone) · **"leave now" notifications**
-(unblocks the moment ADR-0197's sweep is built) · **ripple gains travel** (touches ADR-0011's core)
+**transit** (the 48-minute gap — and its own epic, not a milestone) · ~~**"leave now"
+notifications**~~ (**promoted to M13** on 2026-08-27 — the blocker written here was already gone;
+see its card) · **ripple gains travel** (touches ADR-0011's core)
 · **optimised day ordering** · **isochrones / reachability** · **elevation & step-free** ·
 **live traffic** (last, and it breaks the cache model).
 

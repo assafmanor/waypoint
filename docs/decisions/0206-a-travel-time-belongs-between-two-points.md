@@ -424,10 +424,22 @@ filed as a fourth entry in a picker; it is not that.
   transit ETA is coming. This is the one place §D9's original caution still bites, and it lands on
   the _copy_, not on the control.
 
+- **And it draws a STRAIGHT segment, not a road route and not nothing** (owner, 2026-08-27, closing
+  the question M8's card was told to settle before coding). The suppression is about the estimate;
+  the LINE had never been decided, and the map was left drawing a road route between a declared
+  leg's two ends whenever the pair sat under the mode's ceiling — §Z5's own worked example, `73 דק׳
+הליכה` against 25 by train, rendered as geometry. **A road polyline for a rail journey is a false
+  claim about the PATH**, which is the same failure as the false number one line up, so it goes.
+  **Drawing nothing is also wrong**: a declared leg is a journey that genuinely happens, and the
+  un-routed dashed connector the map already has means "we could not route this", which is a
+  different statement from "this is not a road journey". So the transit leg gets its **own straight
+  segment with its own styling** — it asserts the connection and asserts nothing about the route.
+  This is more drawing than the fallback would have been, and §M applies to it.
+
 **Not yet drawn.** §Z5 raised this as a question and did not resolve it into a state, so **M8 needs
-the mockup extended before it codes this** — the mark, the suppressed-duration row, and the copy
-that says "no estimate" without promising one. It is a small addition to an existing file, not a new
-design session.
+the mockup extended before it codes this** — the mark, the suppressed-duration row, the copy that
+says "no estimate" without promising one, and now the straight segment's own styling on the canvas
+(it must not read as the un-routed fallback, which is the one thing it could be confused with).
 
 **What V2's transit row now means:** transit _routing_ — a real ETA from a real feed — is still
 deferred, still needs self-hosted MOTIS, and still gets its own ADR. This changes only who may
