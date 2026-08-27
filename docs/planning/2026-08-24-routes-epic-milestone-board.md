@@ -77,7 +77,7 @@ never by the one that did the work.
 | **M7c** | The day's bookends          | impl   | ✅ (+ 2 field fixes)      | M7, M7b      | M8, M9       | `claude/routes-map-polyline-m7-baqobz` · [#709](https://github.com/assafmanor/waypoint/pull/709) · [#710](https://github.com/assafmanor/waypoint/pull/710) · [#711](https://github.com/assafmanor/waypoint/pull/711)                                                                                                                                                                      | 2026-08-26 |
 | **M8a** | Draw the mode set + תחב״צ   | design | ✅                        | M6a, M6b, M7 | M9, M10, M11 | `routes/m8a-draw` · [#726](https://github.com/assafmanor/waypoint/pull/726)                                                                                                                                                                                                                                                                                                               | 2026-08-27 |
 | **M8b** | Mode per leg + trip default | impl   | ✅ **+ 2 field fixes**    | M8a          | M10          | `routes/m8b-mode` · [#727](https://github.com/assafmanor/waypoint/pull/727) · `routes/m8b-fixes`                                                                                                                                                                                                                                                                                          | 2026-08-27 |
-| **M9**  | Plan-mode feasibility       | impl   | ⬜                        | M5           | M6a, M6b, M7 | —                                                                                                                                                                                                                                                                                                                                                                                         | —          |
+| **M9**  | Plan-mode feasibility       | impl   | 🔵 **+ 1 owner call**     | M5           | M6a, M6b, M7 | `routes/m9-plan` · [#729](https://github.com/assafmanor/waypoint/pull/729)                                                                                                                                                                                                                                                                                                                | 2026-08-27 |
 | **M10** | Offline route pack          | impl   | ⬜                        | M4           | M5–M9        | —                                                                                                                                                                                                                                                                                                                                                                                         | —          |
 | **M11** | Day travel total            | impl   | ⬜                        | M6a          | M8, M10      | —                                                                                                                                                                                                                                                                                                                                                                                         | —          |
 | **M13** | Leave-by notification       | impl   | ⬜                        | M6b          | M9, M10, M11 | —                                                                                                                                                                                                                                                                                                                                                                                         | 2026-08-27 |
@@ -1698,6 +1698,43 @@ scolding you for planning.
 **Exit criteria:** an over-stuffed day is flagged and a feasible one is silent; the flag never fires
 on a day whose legs are all ungated-out; no gate violation of ADR-0011 (a hard event is never
 implicated in "this does not fit").
+
+**What the next session needs to know:**
+
+- **⚠ `daySequenceFits` is NOT what shipped, and this card was wrong to name it** ([ADR-0206
+  §AN1](../decisions/0206-a-travel-time-belongs-between-two-points.md)). It measures raw stop times,
+  and every rule about whether a leg _can_ be infeasible has since accumulated in `dayJourney` —
+  a flexible arrival (§AI1/§AJ1), a declared leg (§AA4), a leg out of a bed (§AF3), a sub-minute
+  hop, and the PAST arm. Building the verdict from stops re-commits **§AJ1's own bug one scope up**:
+  it fails a day over the one leg nobody can be late for. What shipped is `dayFeasibility(journeys)`
+  in `lib/day-joins.ts`, a roll-up of the arms **the rows already render** — `PlanDay` derives them
+  once into a map that both the rows and the verdict read, so agreement is structural.
+  **`daySequenceFits` therefore still has zero consumers, and that is now a recorded state, not a
+  gap. Do not "finish" M2 by wiring it in** — it is the right shape for a caller holding only stops
+  and seconds (a server surface, §V2's sweep) and the wrong one for a gated day surface.
+- **There is no positive arm** (§AN2). A day that fits and a day nothing could be measured on render
+  identically — nothing at all — because §D4 forbids the reader telling "not computed" from "not
+  computable". The fit stays a three-way discriminant in code anyway; the moment it collapses to a
+  boolean somebody draws a `✓` on a day nobody measured.
+- **The row is `.day-ambient .ambient` at a second density**, amber not `--miss` (§AN3), and it says
+  a **count** plus a **sum** — the count is what makes it help rather than an echo of the block
+  below it. Two words were drawn and cut on measurement (`ביום`, `בסך הכול`): ⁦314.9px⁩ in a ⁦308px⁩
+  box at 360.
+- **Plan-only, and do not mirror it into `DayView`** — ADR-0159 §1's posture clause. A day-level
+  verdict in Trip mode is a verdict on a day you are already living.
+- **The slot picker is corrected** (§AN4) and the backlog line for it is pruned. Two positions keep
+  the raw hole and both are §D4: the day's edges, and a position joined around the row being moved.
+- **⚠ THE CARD'S CONFLICT SURFACE WAS WIDENED, on an owner call taken on the mockup** (§AN5): _"No
+  shape on the day row · I prefer מרחק, ומגע אל המפה, and it's what we mostly have today (minus the
+  touch for map)."_ That confirms §1e's recommendation and adds its unbuilt half, so the journey
+  block's distance is now the way to that leg on the canvas — on **both** day surfaces, because
+  ADR-0159 §1 forbids them differing about a fact. Beyond `PlanDay`/`lib/`/`he.ts` this touched
+  `ui/domain/DayJoinRow.tsx`, `ui/domain/day-join.css`, `lib/places.ts` and `screens/DayView.tsx`.
+  Declared rather than done quietly, per the protocol.
+- **Three traps in measuring a mockup, all in §AN6** and all of which report a comfortable number
+  for a line that clips: `scrollWidth` on an ellipsised child, a sum that omits the glyph and a gap,
+  and `render.mjs`'s `measurements.md` being snapshotted before `document.fonts.ready`. **Read the
+  live page's table, not the artefact.**
 
 ---
 

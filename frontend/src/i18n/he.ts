@@ -2089,6 +2089,36 @@ export const t = {
     //
     // Covers an overlap too (a negative gap), where it is just as true.
     noTimeForTravel: 'אין זמן לדרך',
+    // ── THE DAY'S OWN VERDICT (ADR-0206 §V1.7 / §AN) ──────────────────────────────────
+    //
+    // **Plan mode only, and that is a posture difference rather than a disagreement about a
+    // fact** (ADR-0159 §1): a day-level verdict in Trip mode is a verdict on a day you are
+    // already living, where every leg's own row is the useful scope. The words are here rather
+    // than under `planDay` because they are about travel and `lib/duration.ts` composes them
+    // beside `shortfall` above.
+    //
+    // **It must read as help, not refusal** — ADR-0206's own Consequence, and the copy is where
+    // that is won or lost. So the subject is the JOURNEYS and never the planner: `לא נכנסות`
+    // is a fact about how long the roads take, where anything shaped like `היום עמוס מדי` is
+    // the app having an opinion about somebody's holiday.
+    //
+    // Two lines and not one, because they answer different questions — how many there are, and
+    // how much has to move — and only the second is a number a leg's own row can also say.
+    // Hebrew makes the verb agree with a count the phrase would otherwise have to expose, so
+    // this takes the same three-rung dodge `planDay.gapHour`/`gapTwoHours`/`gapHours` does.
+    //
+    // **`ביום` and `בסך הכול` were drawn and then cut** (2026-08-27, measured on the mockup's
+    // §5): with both, the row is ⁦314.9px⁩ of ink in a ⁦308px⁩ box at 360 and the count loses its
+    // end. Neither word carries anything the reader cannot recover — the row is inside the day,
+    // and a count beside a duration is already a sum — and what they cost is the measurement.
+    dayInfeasibleOne: 'דרך אחת לא נכנסת',
+    dayInfeasibleTwo: 'שתי דרכים לא נכנסות',
+    dayInfeasible: (n: string) => `${n} דרכים לא נכנסות`,
+    // The sum, on ADR-0114's one ladder like every other duration here. Deliberately the same
+    // opening word as the leg's `חסרות X לדרך`: one scope up, same fact, and a reader who has
+    // seen one should not have to learn a second vocabulary for the other.
+    dayShortfall: (length: string) => `חסרות ${length}`,
+    dayShortfallOneHour: 'חסרה שעה',
   },
   hero: {
     title: 'עכשיו והבא בתור',

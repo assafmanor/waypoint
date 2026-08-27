@@ -4174,6 +4174,62 @@ body.wp-dragging
   margin-bottom: 12px;
 }
 
+/* **THE DAY'S OWN VERDICT** (ADR-0206 §V1.7 / §AN, drawn in
+   `a-travel-time-between-two-points-v2.html` §5) — Plan mode only, and only ever when a
+   journey does not fit: there is no positive arm to style, because a day that fits and a
+   day nothing was measured on must read the same (§D4).
+
+   **It is `.ambient` above at a second density, not a new region.** That row already
+   stacks one-line facts true of the whole day and already protects its read-out while the
+   name gives way, which is exactly the trade here — so this swaps the hue and inherits the
+   rest. Amber and NOT `--miss`: what is missing is time (rule 4), and `--miss` across the
+   whole day is the app scolding you for planning, which is the failure ADR-0206's own
+   Consequence names. The status colour stays on the one leg that cannot be made. */
+.day-ambient .day-fit {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: color-mix(in srgb, var(--amber) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--amber) 32%, transparent);
+  border-radius: 12px;
+  padding: 9px 12px;
+}
+/* The same `warn` glyph an infeasible LEG carries (ADR-0206 §AL4), at the same meaning:
+   one mark for one fact, at two scopes. */
+.day-ambient .day-fit-ic {
+  display: flex;
+  flex: 0 0 auto;
+  color: var(--amber-deep);
+}
+.day-ambient .day-fit-ic .icon {
+  width: 15px;
+  height: 15px;
+}
+/* `.an`'s treatment, for `.an`'s reason: the COUNT is what gives way, because the
+   measurement beside it is the fact the row exists for. Measured at 360 (mockup §5): the
+   whole row is 233.9px of ink in a 308px box, and the copy that did not fit was 314.9px —
+   `ביום` and `בסך הכול`, both recoverable from context, neither worth the shortfall. */
+.day-ambient .day-fit-n {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* `.as`'s position; `--amber-deep`'s ink, because plain `--amber` measures 2.1:1 on
+   `--card` in light. It passes in dark (7.95:1) and the failing theme is what picks the
+   token, or the app ships a sentence nobody can read on the surface it was designed on. */
+.day-ambient .day-fit-s {
+  margin-inline-start: auto;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--amber-deep);
+}
+
 /* An unpositioned COMMITMENT sharing the strip (ADR-0171 §10a-i). Same box as the
    ambient backdrop beside it — one hotel reads the same way on every day of itself,
    edges included — with two differences it earns: its title is a button (there is a
@@ -9688,6 +9744,45 @@ button.day-trv-face:focus-visible {
   color: var(--muted);
   white-space: nowrap;
 }
+/* **THE DISTANCE IS THE WAY TO THE LEG ON THE MAP** (owner, 2026-08-27) — the trailing slot
+   was measured in `a-travel-time-between-two-points-v2.html` §1d/§1e and the distance won it
+   over the route thumbnail: four real legs read as four wiggly lines at 46×26, where a
+   distance is a fact you can act on and the shape itself is one tap away on the surface built
+   to draw it.
+
+   `PlaceBadge`'s grammar, not a second one: the hue rides the MARK and the words stay
+   `--muted`, so no sentence is asked to carry teal at 3.35:1 (§AC/§3d's own measurement). The
+   44px target is an `::after` overlay for ADR-0177's reason — meeting ADR-0017's floor must
+   not grow the line the block is trying to keep to one row. */
+.day-trv-map {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.day-trv-map-mark {
+  display: inline-flex;
+  color: var(--teal);
+}
+.day-trv-map-mark .icon {
+  width: 13px;
+  height: 13px;
+}
+/* The touch target, over the line rather than in it. */
+.day-trv-map::after {
+  content: '';
+  position: absolute;
+  inset: 50% 50%;
+  min-width: 44px;
+  min-height: 44px;
+  transform: translate(50%, -50%);
+}
+.day-trv-map:focus-visible {
+  outline: 2.5px solid var(--cta);
+  outline-offset: 3px;
+  border-radius: var(--radius-8, 8px);
+}
 /* THE LEAVE-BY HAS GONE BY (§V1.4). Ink and word, never a fill on the block, no glow and no
    pulse — the app has one live mark and `.nowline` is it (§D6). `--miss-deep` is the ink
    because `--miss` itself fails AA as text (§D7, design-language). */
@@ -15133,6 +15228,17 @@ button.day-trv-face:focus-visible {
             שהשורות כבר מציירות</b>, ושני המשטחים לא יכולים לחלוק כי הם אותם אובייקטים.
           </li>
           <li>
+            <b>⁦§5⁩ · המרחק הוא הדרך אל המפה, והצורה הקטנה לא חוזרת.</b> הבעלים, על ⁦§5⁩
+            (2026-08-27): <i>"No shape on the day row · I prefer מרחק, ומגע אל המפה, and it's
+            what we mostly have today (minus the touch for map)"</i>. זה מאשר את ההמלצה
+            של ⁦§1e⁩ ומוסיף את החצי שלה שלא נבנה: המרחק נשלח, המגע לא. הוא חי על
+            <code>.day-trv-dist</code> עצמו, בדקדוק של <code>PlaceBadge</code> - הגוון על
+            <b>הסימן</b> והמילים ⁦--muted⁩ - ובתור <code>role="button"</code> ולא
+            <code>&lt;button&gt;</code>, כי הפנים של הבלוק הן כפתור מאז ⁦§AL10⁩ וכפתור בתוך
+            כפתור אינו HTML תקין. <b>אותה בעיה בדיוק שכבר נפתרה פעם אחת</b>, ולכן אותו פתרון
+            ולא שני.
+          </li>
+          <li>
             <b>⁦§5c⁩ · הבורר מתקן רק עמדה שיש לה זוג סמוך.</b> קצה יום, ועמדה שנוצרה סביב
             שורה שמזיזים (<code>exclude</code>), הן עמדות בלי רגל לשאול עליה - והתשובה
             שם נשארת החור, כמו היום. זה ⁦§D4⁩ ולא פשרה: לא ממציאים הליכה שלא נמדדה.
@@ -15557,6 +15663,19 @@ button.day-trv-face:focus-visible {
       /* ── the day's rows, in the shipped shape ───────────────────────────── */
       /** The journey block AS SHIPPED — not §1's drawing, which absorbed the free
        *  time and was reversed by the owner in §AH3. §5 sits on top of what exists. */
+      /** **THE TRAILING SLOT, AS IT NOW SHIPS** — the distance, and one touch to the leg on the
+       *  map (owner, 2026-08-27: _"No shape on the day row · I prefer מרחק, ומגע אל המפה, and
+       *  it's what we mostly have today (minus the touch for map)"_). §1e drew this and only the
+       *  distance half was built; §5's frames carry the whole thing.
+       *
+       *  Its own renderer rather than §1e's `distTrail`, and deliberately: that one is the DATED
+       *  drawing (`.day-trv-map` as the pin's own class, one metre figure for the whole file) and
+       *  a mockup is never retrofitted. This is the shipped tree — `.day-trv-dist.day-trv-map`
+       *  carrying a `.day-trv-map-mark` — so §5 measures what the app will actually paint. */
+      const planTrail = (i) =>
+        `<span class="day-trv-dist day-trv-map" role="button" tabindex="0" aria-label="מפה">${formatDistance(
+          PLAN.metres[i],
+        )}<span class="day-trv-map-mark">${icon('pin')}</span></span>`;
       const planTrv = (leg, i) => {
         if (leg.mins == null) return '';
         const over = leg.fit === 'overruns';
@@ -15572,7 +15691,7 @@ button.day-trv-face:focus-visible {
                 <span class="day-trv-hd"><span>הליכה</span><span class="sep">·</span><span>${approx(leg.mins)}</span></span>
                 <span class="day-trv-meta"><span class="day-trv-leave">${meta}</span></span>
               </span>
-              <span class="day-trv-dist">${formatDistance(PLAN.metres[i])}</span>
+              ${planTrail(i)}
             </div>
           </div>`;
       };
@@ -16119,6 +16238,25 @@ button.day-trv-face:focus-visible {
               : ' · <b>לא מספיק למשפט</b>, וזה המצב שקובע'
           }`,
         ]);
+        /* §5 — the trailing slot, now that it is the way to the map. Two things worth a number:
+           it must not push the block's one line into two, and it owes ADR-0017's 44px. */
+        const trail = document.querySelector('#s5a-over .day-trv-map');
+        const trailBox = trail?.getBoundingClientRect();
+        const trailHit = trail ? getComputedStyle(trail, '::after') : null;
+        rows.push([
+          `${sec('5')} · המרחק כדרך אל המפה · רוחב מול יעד המגע`,
+          `${px(trailBox?.width)} · מגע ${trailHit?.minWidth ?? '-'}`,
+          `<span class="verdict ${parseFloat(trailHit?.minWidth ?? '0') >= 44 ? 'ok' : 'no'}">רצפת מגע ${iso(
+            '44px',
+          )} (ADR-0017)</span> · היעד הוא שכבת <code>::after</code>, כך שהוא לא מגדיל את השורה (ADR-0177)`,
+        ]);
+        const trvLine = document.querySelector('#s5a-over .day-trv-face')?.getBoundingClientRect();
+        rows.push([
+          `${sec('5')} · גובה פנים הבלוק עם הפין`,
+          px(trvLine?.height),
+          `<span class="verdict ok">שורה אחת</span> · הפין נוסף למרחק ולא לידו, ולכן אינו קונה רוחב`,
+        ]);
+
         /* §5c — the picker against the chip, on the SAME hole. One fact, two surfaces. */
         /* Read by POSITION KEY, never by the index of the rendered `.free` nodes: the
            correction can DELETE a line (a hole whose walk eats all of it earns no offer,

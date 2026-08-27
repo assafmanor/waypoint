@@ -41,6 +41,7 @@ import {
   eventEdgeZone,
   eventRoute,
   eventShowOnMap,
+  legShowOnMap,
   eventDisplayZones,
   eventPlaceId,
   eventZones,
@@ -869,6 +870,9 @@ export function DayView() {
     // was set and the derivation otherwise, and it is the same read the Map makes — one leg cannot
     // be a train in the list and a drive on the canvas (ADR-0159 §1).
     travelMode: travelReads.modeFor(leg.from, leg.to),
+    // **One tap to this leg on the canvas** (owner, 2026-08-27) — the pair comes from the one
+    // function that resolves it, so the map lights the leg this row is about (ADR-0206 §AB2).
+    onShowOnMap: legShowOnMap(travelReads.pairFor(leg.from, leg.to), showPlaceOnMap),
     ...(live ? { action: liveAction(journey), located: liveLocated(journey) } : {}),
     ...modeControl(leg.from, leg.to),
   });

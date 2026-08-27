@@ -63,6 +63,7 @@ import {
   eventRoute,
   eventShowOnMap,
   ideaShowOnMap,
+  legShowOnMap,
   eventZones,
   dayZoneContext,
   liveToday,
@@ -105,7 +106,8 @@ import {
   type LegModeControl,
   type DayLeg,
 } from '../lib/day-travel';
-import { dayJourney, windowClosesMs, type DayJourney } from '../lib/day-joins';
+import { dayFeasibility, dayJourney, windowClosesMs, type DayJourney } from '../lib/day-joins';
+import { dayShortfallPhrase, infeasibleLegsPhrase } from '../lib/duration';
 import { JourneyRow } from '../ui/domain/DayJoinRow';
 import { StayRow } from '../ui/domain/StayRow';
 import {
@@ -477,10 +479,14 @@ export function PlanDay() {
   /** The hole's free minutes once its journey is counted, or the hole itself where there is no
    *  estimate (§D4 — never a pessimistic guess, and the chip reads exactly as it read before).
    *
-   *  **`earnsChip` still asks the RAW hole**, deliberately: whether a position is a chip or a
-   *  drag-only seam is ADR-0161 §2's threshold on a drop target, and moving it onto the corrected
-   *  number would change which positions exist at all rather than what one of them says. That is a
-   *  decision about the builder's targets and it belongs to M9, not to a copy fix. */
+   *  **Three readers now, which is why it is a function and not a line inside the chip**
+   *  (2026-08-27): the `שבץ` chip, its `מתוך` note, and the slot PICKER's `פנוי` line, which was
+   *  the last surface still stating the raw hole. Its docblock used to say the chip-versus-seam
+   *  threshold "belongs to M9"; §AG5 settled that it did not — `earnsChipAt` asks the corrected
+   *  number, and both callers ask it, so the sheet cannot offer a slot the day refuses to draw.
+   *
+   *  **The POSITION is still the raw hole's**, and that part of the old note stands: a drop target
+   *  is about where a row may land (ADR-0161 §2), not about how much of the slot is free. */
   const travelFreeMinutes = (from: TripEvent, to: TripEvent, hole: number): number => {
     const estimate = planTravel.estimateFor(from, to);
     if (!estimate) return hole;
@@ -559,6 +565,33 @@ export function PlanDay() {
       nowMs: now.getTime(),
     });
   };
+
+  /** **THE DAY'S JOURNEYS, DERIVED ONCE AND READ BY BOTH THE ROWS AND THE VERDICT**
+   *  (ADR-0206 §AN).
+   *
+   *  Every `JourneyRow` on this screen reads its journey out of here rather than calling
+   *  `planJourney` at its own site, so the day-level verdict below is a roll-up of **the same
+   *  objects the rows draw** rather than a second derivation that happens to agree. That is
+   *  `frontend/CLAUDE.md`'s rule about a day-surface derivation living in one place, applied
+   *  inside one screen: a render site that drifts would otherwise silently take the verdict
+   *  with it, and the verdict is the half nobody would notice was wrong. */
+  const journeyByRows = new Map(
+    planLegs.map((leg) => [
+      `${leg.from.id}>${leg.to.id}`,
+      planJourney(leg.from, leg.to, leg.departAfterMs),
+    ]),
+  );
+  const journeyFor = (from: TripEvent, to: TripEvent): DayJourney | null =>
+    journeyByRows.get(`${from.id}>${to.id}`) ?? null;
+  /** **One tap from a leg to that leg on the canvas** (owner, 2026-08-27) — the same read Trip
+   *  mode makes, off the same pair, because a way to the map is not a posture (ADR-0159 §1). */
+  const legOnMap = (from: TripEvent, to: TripEvent) =>
+    legShowOnMap(planTravel.pairFor(from, to), showPlaceOnMap);
+  /** **"This day does not fit"** (ADR-0206 §V1.7) — Plan mode's one opinion, and the reason it
+   *  is allowed here and not in `DayView` is ADR-0159 §1's posture clause: a day-level verdict in
+   *  Trip mode is a verdict on a day you are already living. `UNKNOWN` and `FITS` both render
+   *  nothing, which is §D4 rather than an omission — see `dayFeasibility`. */
+  const planFit = dayFeasibility([...journeyByRows.values()]);
 
   // Reorder acts on soft events only (hard events are pinned anchors, ADR-0011).
   /** **The mode switch, the same one Trip mode offers** (ADR-0206 §AM9). Plan is where §AL10 said
@@ -1089,6 +1122,26 @@ export function PlanDay() {
   // this only turns each one into words and performs the pick.
   const [timeTarget, setTimeTarget] = useState<TripEvent | null>(null);
   const closeTimePicker = () => setTimeTarget(null);
+  /**
+   * **A position's free time, once the journey into it is counted** (ADR-0206 §V1.1's correction,
+   * reaching its last surface — §AN).
+   *
+   * A `DayPosition` is a hole with the rows either side of it named, which is exactly the pair
+   * `useDayTravelReads` is keyed on — so the correction is a lookup rather than a second
+   * derivation, and the sheet reads the number the chip already shows for the same hole
+   * (ADR-0159 §1: two surfaces, one fact).
+   *
+   * **Absent where there is no pair to ask about, and that is most of them.** The day's two edges
+   * have a row on one side only, and a position joined around the row being MOVED
+   * (`dayPositions`' `exclude`) has two rows that are not adjacent on the day as it stands. Both
+   * keep the raw hole, which is §D4 rather than a compromise: the app does not invent a walk it
+   * did not measure, so a position it cannot correct reads precisely as it read before any of
+   * this existed.
+   */
+  const positionFreeMinutes = (p: DayPosition): number =>
+    p.afterEvent && p.beforeEvent
+      ? travelFreeMinutes(p.afterEvent, p.beforeEvent, p.free.minutes)
+      : p.free.minutes;
   /** A position, said in the same words the drag's seams use — deliberately, so the two
    *  ways to reach a position do not name it differently. */
   const positionOption = (p: DayPosition): DaySlotOption => ({
@@ -1115,9 +1168,20 @@ export function PlanDay() {
         t.planDay.seamDayStart
       ),
     time: p.free.fill.start,
-    // `earnsChip`, not a second comparison against the threshold: the picker says "free
-    // 2 hours" exactly where the day would have drawn a chip rather than a seam.
-    free: earnsChip(p.free) ? t.planDay.slotFree(gapLabel(p.free.minutes)) : undefined,
+    // **What is FREE here, not how long the hole is** (ADR-0206 §V1.1 / §AN) — the last
+    // surface still stating the raw gap. The chip, the seam and the between-row label were
+    // corrected in M6a; this one was not, because `dayPositions` answers with **positions**
+    // and the correction is about **pairs**. So the pair is looked up where there is one and
+    // the position is left exactly as it was where there is not.
+    //
+    // `earnsChipAt` on the corrected number, not `earnsChip` on the hole (§AG5): a 45-minute
+    // hole a 40-minute walk eats is not an offer, and the sheet must not list one the day
+    // itself refuses to draw. That is the same threshold asked the same question, so a
+    // position offered here and a chip drawn there cannot disagree.
+    free: (() => {
+      const minutes = positionFreeMinutes(p);
+      return earnsChipAt(minutes) ? t.planDay.slotFree(gapLabel(minutes)) : undefined;
+    })(),
     fill: p.free.fill,
   });
   /** The day's positions with one event taken out, as picker options — the row's time button
@@ -1213,7 +1277,8 @@ export function PlanDay() {
     drag,
     travelFreeMinutes,
     slotNote,
-    planJourney,
+    journeyFor,
+    legOnMap,
     modeFor: planTravel.modeFor,
     modeControl,
     rowDragProps,
@@ -1275,8 +1340,39 @@ export function PlanDay() {
             </span>
           </div>
 
-          {(staysToday.length > 0 || placement.commitments.length > 0) && (
+          {(staysToday.length > 0 ||
+            placement.commitments.length > 0 ||
+            planFit.fit === TRAVEL_FIT.OVERRUNS) && (
             <div className="day-ambient">
+              {/* **THE DAY'S OWN VERDICT** (ADR-0206 §V1.7 / §AN) — Plan mode's one opinion, in
+                the strip the day already keeps for facts true of the whole of it. Three things
+                about it are decisions rather than styling, and each is drawn in
+                `a-travel-time-between-two-points-v2.html` §5:
+
+                **It only ever appears.** There is no positive arm: a day that fits and a day
+                nothing could be measured on are the same silence, because §D4 says a reader must
+                not be able to tell "not computed" from "not computable" — and a `✓` on an
+                unmeasured day is exactly that tell, in the direction that costs someone their
+                afternoon. `dayFeasibility` still answers three ways so the code cannot forget it.
+
+                **It is amber, not `--miss`** — what is missing is time (rule 4), and painting the
+                whole day with the status colour is the app scolding you for planning, which is
+                the failure ADR-0206's own Consequence names. `--miss` stays where it earns its
+                keep: on the one leg that cannot be made.
+
+                **It says what no leg's row can** — how many, and the sum. Without the count it is
+                an echo of the block below it, and then it really is only a telling-off. */}
+              {planFit.fit === TRAVEL_FIT.OVERRUNS && (
+                <div className="day-fit">
+                  <span className="day-fit-ic">
+                    <Icon name="warn" />
+                  </span>
+                  <span className="day-fit-n">{infeasibleLegsPhrase(planFit.legs)}</span>
+                  <span className="day-fit-s">
+                    {dayShortfallPhrase(planFit.overrunSeconds / SECONDS_PER_MINUTE)}
+                  </span>
+                </div>
+              )}
               {/* An edge day says the edge, a middle day says the count — the same rule Trip
                 reads, from the same two functions (ADR-0171 §10e). No posture difference
                 here: what the strip STATES is a fact about the booking. */}
@@ -1381,12 +1477,16 @@ export function PlanDay() {
                 (() => {
                   const cameIn = overnight[overnight.length - 1]!;
                   if (cameIn.event.id === bookends.woke!.id) return null;
-                  const j = planJourney(cameIn.event, bookends.woke!, cameIn.atMs);
+                  const j = journeyFor(cameIn.event, bookends.woke!);
                   return j ? (
                     <JourneyRow
                       journey={j}
                       travelMode={planTravel.modeFor(cameIn.event, bookends.woke!)}
                       {...modeControl(cameIn.event, bookends.woke!)}
+                      onShowOnMap={legShowOnMap(
+                        planTravel.pairFor(cameIn.event, bookends.woke!),
+                        showPlaceOnMap,
+                      )}
                       tz={tz}
                     />
                   ) : null;
@@ -1406,12 +1506,16 @@ export function PlanDay() {
                   {planGroups.length > 0 &&
                     (() => {
                       const to = groupStartEvent(planGroups[0]);
-                      const j = planJourney(bookends.woke!, to);
+                      const j = journeyFor(bookends.woke!, to);
                       return j ? (
                         <JourneyRow
                           journey={j}
                           travelMode={planTravel.modeFor(bookends.woke!, to)}
                           {...modeControl(bookends.woke!, to)}
+                          onShowOnMap={legShowOnMap(
+                            planTravel.pairFor(bookends.woke!, to),
+                            showPlaceOnMap,
+                          )}
                           tz={tz}
                         />
                       ) : null;
@@ -1443,12 +1547,16 @@ export function PlanDay() {
                   {planGroups.length > 0 &&
                     (() => {
                       const from = groupEndEvent(planGroups[planGroups.length - 1]);
-                      const j = planJourney(from, bookends.sleeps!);
+                      const j = journeyFor(from, bookends.sleeps!);
                       return j ? (
                         <JourneyRow
                           journey={j}
                           travelMode={planTravel.modeFor(from, bookends.sleeps!)}
                           {...modeControl(from, bookends.sleeps!)}
+                          onShowOnMap={legShowOnMap(
+                            planTravel.pairFor(from, bookends.sleeps!),
+                            showPlaceOnMap,
+                          )}
                           tz={tz}
                         />
                       ) : null;
@@ -1933,8 +2041,12 @@ interface BuilderCtx {
   travelFreeMinutes: (from: TripEvent, to: TripEvent, hole: number) => number;
   /** The chip's own explanation of why it shrank (§2's drawn `bld-slot-note`). */
   slotNote: (from: TripEvent, to: TripEvent, hole: number) => string | undefined;
-  /** The journey across a hole, for the block Plan draws above its chip (§2's own drawing). */
-  planJourney: (from: TripEvent, to: TripEvent) => DayJourney | null;
+  /** The journey across a hole, for the block Plan draws above its chip (§2's own drawing).
+   *  **Read out of the day's one derivation, never re-derived here** (ADR-0206 §AN) — the same
+   *  objects the day-level verdict is rolled up from. */
+  journeyFor: (from: TripEvent, to: TripEvent) => DayJourney | null;
+  /** One tap from a leg to that leg on the canvas (owner, 2026-08-27). */
+  legOnMap: (from: TripEvent, to: TripEvent) => (() => void) | undefined;
   /** The trip's derived mode, so the block names the same three words everywhere (§Z2). */
   /** **The LEG's mode** (ADR-0206 §AM) — the override where one was set, the trip's derivation
    *  otherwise. A function rather than a value, because Plan draws several legs per day and they
@@ -2143,12 +2255,13 @@ function BuilderGroups({
             {prevEnd &&
               depth === 0 &&
               (() => {
-                const journey = ctx.planJourney(prevEnd, groupStartEvent(g));
+                const journey = ctx.journeyFor(prevEnd, groupStartEvent(g));
                 return journey ? (
                   <JourneyRow
                     journey={journey}
                     travelMode={ctx.modeFor(prevEnd, groupStartEvent(g))}
                     {...ctx.modeControl(prevEnd, groupStartEvent(g))}
+                    onShowOnMap={ctx.legOnMap(prevEnd, groupStartEvent(g))}
                     tz={ctx.tz}
                   />
                 ) : null;

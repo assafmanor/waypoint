@@ -824,6 +824,31 @@ export function eventShowOnMap(
   return place && show ? () => show(place.id) : undefined;
 }
 
+/**
+ * **The JOURNEY peer of {@link eventShowOnMap}** (owner, 2026-08-27) — the way from a leg in the
+ * day list to that leg on the canvas.
+ *
+ * It shows the leg's **destination** stop, and that is ADR-0206 §AB2/§AC2 rather than a choice
+ * made here: the map marks the leg ARRIVING at the stop you asked about and dims the rest, so
+ * asking for the arrival is asking for this leg. Handing it the origin would light the leg
+ * before this one.
+ *
+ * Takes the pair `useDayTravelReads.pairFor` already resolved rather than two events, because
+ * `endpointPlaceId`'s transport inversion (you leave a flight where it LANDS) is exactly the rule
+ * that goes wrong when it is answered twice — the mode override is keyed on the same pair for the
+ * same reason.
+ *
+ * `undefined` on either of the two ordinary absences, collapsed here like its three siblings so
+ * no call site has to remember them: a leg whose ends do not both resolve to a place, and a host
+ * outside the trip shell where there is no Map tab to route to ("absent, not broken", ADR-0121 §8).
+ */
+export function legShowOnMap(
+  pair: { fromPlaceId: string; toPlaceId: string } | undefined,
+  show: ShowPlaceOnMap,
+): (() => void) | undefined {
+  return pair && show ? () => show(pair.toPlaceId) : undefined;
+}
+
 /** The booking peer of {@link eventShowOnMap}. */
 export function bookingShowOnMap(
   booking: Booking,

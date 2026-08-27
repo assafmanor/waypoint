@@ -385,6 +385,62 @@ body.wp-dragging
   margin-bottom: 12px;
 }
 
+/* **THE DAY'S OWN VERDICT** (ADR-0206 §V1.7 / §AN, drawn in
+   `a-travel-time-between-two-points-v2.html` §5) — Plan mode only, and only ever when a
+   journey does not fit: there is no positive arm to style, because a day that fits and a
+   day nothing was measured on must read the same (§D4).
+
+   **It is `.ambient` above at a second density, not a new region.** That row already
+   stacks one-line facts true of the whole day and already protects its read-out while the
+   name gives way, which is exactly the trade here — so this swaps the hue and inherits the
+   rest. Amber and NOT `--miss`: what is missing is time (rule 4), and `--miss` across the
+   whole day is the app scolding you for planning, which is the failure ADR-0206's own
+   Consequence names. The status colour stays on the one leg that cannot be made. */
+.day-ambient .day-fit {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: color-mix(in srgb, var(--amber) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--amber) 32%, transparent);
+  border-radius: 12px;
+  padding: 9px 12px;
+}
+/* The same `warn` glyph an infeasible LEG carries (ADR-0206 §AL4), at the same meaning:
+   one mark for one fact, at two scopes. */
+.day-ambient .day-fit-ic {
+  display: flex;
+  flex: 0 0 auto;
+  color: var(--amber-deep);
+}
+.day-ambient .day-fit-ic .icon {
+  width: 15px;
+  height: 15px;
+}
+/* `.an`'s treatment, for `.an`'s reason: the COUNT is what gives way, because the
+   measurement beside it is the fact the row exists for. Measured at 360 (mockup §5): the
+   whole row is 233.9px of ink in a 308px box, and the copy that did not fit was 314.9px —
+   `ביום` and `בסך הכול`, both recoverable from context, neither worth the shortfall. */
+.day-ambient .day-fit-n {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* `.as`'s position; `--amber-deep`'s ink, because plain `--amber` measures 2.1:1 on
+   `--card` in light. It passes in dark (7.95:1) and the failing theme is what picks the
+   token, or the app ships a sentence nobody can read on the surface it was designed on. */
+.day-ambient .day-fit-s {
+  margin-inline-start: auto;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--amber-deep);
+}
+
 /* An unpositioned COMMITMENT sharing the strip (ADR-0171 §10a-i). Same box as the
    ambient backdrop beside it — one hotel reads the same way on every day of itself,
    edges included — with two differences it earns: its title is a button (there is a
