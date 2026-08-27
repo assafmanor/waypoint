@@ -284,6 +284,89 @@ drag and a scroll really do compete. The handle row and the view toggle both sti
 this is a convenience gap on dense lists rather than a dead end, and it is stated here so the next
 reader knows it was scoped out rather than missed.
 
+## Amendment (2026-08-27) — the card folds, and it stays folded
+
+Owner report off the shipped canvas, with screenshots: _"clicking on a stop highlights the route to
+it (or from it), but the place details pops up and hides most of the path. Sometimes you want to get
+the details but sometimes you only want to see the path … and this applies also to places that
+aren't necessarily on the schedule (maybe items for example) and don't have paths leading to/from
+them — maybe you want them selected but not show the details."_
+
+§7 gave a pin tap a card on the canvas and gave the card no size but its own. [ADR-0182](0182-a-day-is-a-sequence-you-can-step-through.md)'s
+device pass then added the `✕` on the owner's ask for _"a way to close the card **and/or collapse
+it**"_ — and built the first half only. This is the second half, plus the camera half the report
+made visible, which is [ADR-0206 §AC8](0206-a-travel-time-belongs-between-two-points.md).
+
+### 1. Two problems wearing one costume, and only one of them is the card
+
+The obvious reading is "the card is too big". It is not: **the camera was framing the wrong
+object.** A pin tap centres the selected stop in the band above the card (`bottomReserve`,
+[ADR-0128](0128-map-dot-tier-and-the-cards-camera-reserve.md) §2) — so the camera has always
+known the card is there, and has never known that what the selection is ABOUT is a **leg**. Centre
+one end of a line and the other half of it goes under whatever is at the bottom of the screen.
+
+So the two halves are separable and both were built:
+
+- **The camera frames the leg** (ADR-0206 §AC8) — which is where the report goes away for a stop
+  that has one, with no gesture to learn and nothing to choose.
+- **The card folds** — which is the only half that can serve the second sentence of the report, a
+  shelf idea or a maybe with no leg at all. There is nothing to frame there; there is only a card
+  in the way.
+
+### 2. Folding is not hiding, and the folded card is the row every list already draws
+
+`renderRow` passes `revealed: !collapsed`, so a folded card renders **the identity row** —
+badge, name, meta line, `✕` — and nothing else. That is deliberate reuse rather than a smaller
+card beside the real one (rule 8): `revealed` is already the axis that decides a row's density
+(ADR-0182's density amendment), and a one-line bar built beside it would be a second answer to a
+question the row had already answered.
+
+Everything that says "this place is selected" survives: the pin's ring, the amber leg, the row's
+chrome, the selection itself. **What goes is the content, and the words say so** — `כיווץ כרטיס
+המקום` / `פתיחת כרטיס המקום`, never `הסתרה`.
+
+### 3. The control is a caret beside the `✕`, and a repeat pin tap is a shortcut, not the way
+
+The caret sits in the identity row for exactly the reason the `✕` does: the card becomes a scroller
+once its pinned rows exceed the cap, and an absolutely-positioned corner control scrolls out of
+reach precisely when the card is tallest. One control both ways — the caret turns — because a fold
+button and an unfold button in different places is two controls for one state.
+
+A **second tap on the pin you are already on** folds it too, and a third opens it: the same reading
+of the same gesture the rings' own commit takes (a first tap already said "this one", so a second
+cannot mean that again), gated on the map extreme where a card is what a pin tap raises. It is a
+shortcut for a thumb already there and never the only way in — nothing about a repeat tap is
+discoverable, which is why the caret exists.
+
+### 4. Sticky for the session, and `useState` IS the session (owner, 2026-08-27)
+
+The question a mockup would have been drawn to answer: does the next stop you tap open folded or
+open full? **Folded** — the owner's call, and the reasoning holds it up: folding is a state of the
+**reader** ("I am reading the map, not the cards"), where `expandedId` right beside it in the same
+component is a state of a **place**, which is why that one is an id and must not survive a new
+selection.
+
+So it is one screen-level boolean, and it needs no clearing anywhere: the Map screen unmounts with
+the tab, so a fold is remembered for as long as you are on the map and forgotten when you leave it.
+**That is the reset, and nobody has to be given a control for it.** Persisting it across visits was
+considered and refused — it is a `waypoint:*` key for a preference nobody asked to keep, and a
+folded card on a fresh visit to a tab whose whole payload is cards reads as a broken screen.
+
+### 5. Folding folds the whole track
+
+The card is a previous · current · next track (ADR-0182). All three slides fold, because the
+neighbours exist to say what is either side of the card you are on — three identity rows is that
+statement at the folded size, where one folded card between two full ones reads as a broken slide
+rather than as a choice you made. `onToggleCollapsed` is still passed to the **current** slide
+only, like `✕`: folding from a neighbour would act on a card you are not looking at.
+
+### 6. What this does not do
+
+**No swipe-down to fold.** A drag on the card would compete with the track's horizontal snap and
+with the sheet's own drag region two elements away (§4's amendment), which is the genuinely hard
+gesture problem this ADR already scoped out once. Two taps reach the same state and neither is
+ambiguous. Worth revisiting only if the caret measures as hard to find on a device.
+
 ## The device pass, and what it owns
 
 **The stops cannot be honestly tuned without a phone, and this ADR does not pretend otherwise.** What is decided here is the _shape_: what the controls cost, where they live, how the stops are derived, and how the gesture behaves. The numbers printed above are the derivations' output on a measured 390×844 baseline — a starting point, not a calibration. Specifically the device pass owns:

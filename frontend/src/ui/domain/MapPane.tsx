@@ -58,6 +58,7 @@ import { observeResize } from '../../lib/observe-resize';
 import { observeVisibility } from '../../lib/visibility';
 import { RELOAD_GUARD_KEY, reloadOnce } from '../../lib/guarded-reload';
 import { PhaseTimeoutError, withDeadline } from '../../lib/deadline';
+import { centreOfPoints } from '../../lib/map-camera';
 import type { LatLng, MapArrival, MapBounds } from '../../lib/map-camera';
 import { MAP_COLOR_SCHEME, type MapColorScheme, type MapTileUrls } from '../../lib/map-config';
 import {
@@ -1096,6 +1097,7 @@ function MapPaneInner({
             onAreaSort={onAreaSort}
             onLocate={onLocate}
             arrival={arrival}
+            legs={connector}
             cardReserve={cardReserve}
             cardReserveAt={cardReserveAt}
             onHold={handleHold}
@@ -1848,6 +1850,7 @@ function MapCameraControls({
   onAreaSort,
   onLocate,
   arrival,
+  legs,
   cardReserve,
   cardReserveAt,
   onHold,
@@ -1866,6 +1869,10 @@ function MapCameraControls({
   onLocate: () => void;
   /** See `MapPaneProps` — the pane hands it straight to the camera. */
   arrival?: MapArrival | null;
+  /** The day's lines, so the camera can frame the one the selection is ABOUT (ADR-0206 §AC8).
+   *  The same array `DayConnector` draws — one fact, two readers, so the line the canvas paints
+   *  amber and the line the camera frames cannot be different legs. */
+  legs?: readonly MapDayLeg[];
   cardReserve?: number;
   cardReserveAt?: () => number;
   /** The long press lives here rather than beside `PinDensity` for the same reason the
@@ -1900,6 +1907,7 @@ function MapCameraControls({
     showResults,
     locate: locateCamera,
     keepCentred,
+    framePath,
     zoomTo,
     stepZoomIn,
   } = useMapCamera(map, {
@@ -1933,9 +1941,24 @@ function MapCameraControls({
   const selectedId = selected?.placeId;
   const focusRef = useRef<{ lat: number; lng: number } | undefined>(undefined);
   focusRef.current = selected ? { lat: selected.lat, lng: selected.lng } : undefined;
+
+  /** **The amber leg, which is what a selection is ACTUALLY about** (ADR-0206 §AC8). §AC2 makes
+   *  it the leg arriving at the selected stop, so the stop is one of its two ends — framing the
+   *  leg shows you the stop and the road to it, where centring the stop showed you the stop and
+   *  put the road under the card. `undefined` for a stop with no leg (a day's first stop, a
+   *  shelf idea, an all-days scope), which is the ordinary focus this has always done. */
+  const routeLegRef = useRef<readonly LatLng[] | undefined>(undefined);
+  const routeLeg = legs?.find((leg) => leg.emphasis === 'route');
+  // The two stops as well as the path: the drawn path is trimmed and may be snapped short of
+  // either end (§AC5), and the thing you tapped must be in frame whatever the router did.
+  routeLegRef.current = routeLeg ? [routeLeg.from, routeLeg.to, ...routeLeg.path] : undefined;
+
   useEffect(() => {
-    if (selectedId && focusRef.current) focus(focusRef.current);
-  }, [selectedId, focus]);
+    if (!selectedId || !focusRef.current) return;
+    // A leg too long to frame moves nothing and answers `false`, so the stop still gets its pan.
+    if (routeLegRef.current && framePath(routeLegRef.current)) return;
+    focus(focusRef.current);
+  }, [selectedId, focus, framePath]);
 
   // **AND WHEN THE BAND CHANGES UNDER A SELECTION THAT DID NOT** (ADR-0122 §7's 2026-08-06
   // amendment; owner: _"the card … completely covers the pin"_, then _"switching from full map
@@ -1972,8 +1995,17 @@ function MapCameraControls({
       }),
     [paneRef],
   );
+  //
+  // **And what it keeps centred is the SUBJECT, not always the stop** (ADR-0206 §AC8). The
+  // effect above framed the amber leg where there is one, so re-centring the stop when the card
+  // collapses would undo exactly the framing the collapse was asked for. The leg's midpoint is
+  // what the fit centred, so passing it here means the two agree by construction — and it stays
+  // a tolerance-guarded PAN rather than a second fit, which is what keeps a sheet drag from
+  // turning into a camera animation per frame.
   useEffect(() => {
-    if (selectedId && focusRef.current) keepCentred(focusRef.current);
+    const leg = routeLegRef.current;
+    const subject = (leg && centreOfPoints(leg)) ?? focusRef.current;
+    if (selectedId && subject) keepCentred(subject);
   }, [selectedId, cardReserve, canvasH, keepCentred]);
 
   // **AND A SETTLED RESULT SET GETS THE SAME TREATMENT** (ADR-0168 §1): at the map extreme

@@ -760,6 +760,46 @@ of wrong line:
 bullet stands), the redraw is still deferred and thresholded (the `place-know.spec.ts` measurement
 stands), and a layer is still added only when something belongs to it.
 
+### AC8. Amendment (2026-08-27) — a selection is about its LEG, not the dot at the end of it
+
+Third of the three reports in §AC7, and the one that turned out not to be a rendering bug at all:
+_"clicking on a stop highlights the route to it (or from it), but the place details pops up and
+hides most of the path."_
+
+The tempting fix is to make the card smaller. **The camera was framing the wrong object.** A pin tap
+called `focus(point)` — a pan that centres the selected stop in the band above the card
+([ADR-0128](0128-map-dot-tier-and-the-cards-camera-reserve.md) §2's `bottomReserve`). So the camera
+has always known the card is there, and never knew that §AC2 makes the amber leg the leg **arriving
+at** that stop: centre one end of a line and the other end goes under whatever is at the bottom of
+the screen. The card was where you noticed it; it was not what caused it.
+
+- **`framePath` frames the leg**, through the ordinary fit path — so it inherits the controls-row
+  inset, the card's reserve, the `MAX_FIT` cap and the ease, all of it unchanged. The stop is one of
+  the leg's two ends, so framing the leg shows you the stop **and** the road to it.
+- **The two stops go in with the path**, because the drawn path is trimmed by the collar and may be
+  snapped short of either end (§AC5): the thing you tapped has to be in frame whatever the router
+  did with it.
+- **The floor is `MAP_ZOOM.DOT_BELOW`, reused rather than minted** (rule 8). That is already the
+  zoom at which every pin degrades to a dot, so a leg that cannot be framed above it is one you
+  could not read after the move either — and being pulled to country zoom for a declared train
+  journey is worse than not framing at all. Below the floor `framePath` **moves nothing** and
+  answers `false`, and the caller falls back to the pan it always did. A leg needs no separate
+  km ceiling: the zoom the fit resolves to already is the readability question.
+- **A selection with no leg is untouched** — a day's first stop, a shelf idea, an all-days scope.
+  This is a new branch, not a changed one.
+
+**And `keepCentred` is handed the leg's centre, not the stop's.** ADR-0122 §7's 2026-08-06
+amendment re-centres the selection when the band changes underneath it — a card raised over it, an
+enrichment growing it, and now a card **folded** away from it. Left reading the stop, that effect
+would undo the framing the fold was asked for, one commit after the fold made room for it. It takes
+`centreOfPoints(leg)` — the middle of the leg's **extent**, which is what the fit centred, so the
+two agree by construction. Still a tolerance-guarded pan and not a second fit: a sheet drag emits a
+continuous stream of canvas heights, and a fit per frame is the camera thrash ADR-0129 §3 exists to
+forbid.
+
+The pane takes the day's legs as one prop and hands the same array to `DayConnector` and to the
+camera, so the line the canvas paints amber and the line the camera frames cannot be different legs.
+
 ## AD. Amendment (2026-08-25) — the route's stops are the day's SEQUENCE, not the day's NUMBERS
 
 Owner, off the shipped canvas: _"Now that we have real paths, I'm starting to feel the absence of

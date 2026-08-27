@@ -832,14 +832,35 @@
 .map-placecard:is(:has(.note-sec), :has(.map-hero)) > .place:not(.result):has(> .map-cardclose) {
   grid-template-columns: auto 1fr auto auto;
 }
-.map-placecard > .place > .map-cardclose {
+.map-placecard > .place > :is(.map-cardclose, .map-cardfold) {
   grid-row: 1;
   grid-column: 4;
   /* Aligned with the badge's top rather than the row's middle: on a two-line identity row the
      middle puts it beside the meta line, where it reads as belonging to a fact. */
   align-self: start;
 }
-.map-cardclose {
+/* **THE FOLD IS A FIFTH COLUMN BESIDE THE FOURTH** (ADR-0122 §7's 2026-08-27 amendment — the
+   other half of the same owner ask the `✕` above answered). Declared where the control is for
+   the reason the block above gives: a fifth `auto` in the template itself would give every
+   neighbour slide in the track an empty column's 11px gap. Everything else about it is
+   `.map-cardclose`'s, by sharing its rules rather than restating them — it is the same kind of
+   control, on the same row, at the same 16px of layout and 44px of target. */
+.map-placecard:is(:has(.note-sec), :has(.map-hero))
+  > .place:not(.result):has(> .map-cardfold):has(> .map-cardclose) {
+  grid-template-columns: auto 1fr auto auto auto;
+}
+.map-placecard > .place:has(> .map-cardfold) > .map-cardclose {
+  grid-column: 5;
+}
+/* The caret turns rather than swapping glyph: one control, one position, and the direction it
+   points is the whole message. Not mirrored under RTL — a rotation has no handedness. */
+.map-cardfold[data-folded] .icon {
+  transform: rotate(180deg);
+}
+.map-cardfold .icon {
+  transition: transform var(--t-base) var(--ease-standard);
+}
+:is(.map-cardclose, .map-cardfold) {
   position: relative;
   flex: 0 0 auto;
   display: inline-flex;
@@ -854,20 +875,20 @@
   cursor: pointer;
   border-radius: 8px;
 }
-.map-cardclose::after {
+:is(.map-cardclose, .map-cardfold)::after {
   content: '';
   position: absolute;
   inset: -14px;
 }
-.map-cardclose .icon {
+:is(.map-cardclose, .map-cardfold) .icon {
   width: 14px;
   height: 14px;
   display: block;
 }
-.map-cardclose:active {
+:is(.map-cardclose, .map-cardfold):active {
   transform: scale(var(--press-scale));
 }
-.map-cardclose:focus-visible {
+:is(.map-cardclose, .map-cardfold):focus-visible {
   outline: 2px solid var(--cta);
   outline-offset: 2px;
 }

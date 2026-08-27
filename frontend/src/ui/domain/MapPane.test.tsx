@@ -48,7 +48,7 @@ class FakeMapLibreMap {
   viewport: { north: number; south: number; east: number; west: number } | null = null;
   /** 0×0 by default: an unsized container has no honest fit. */
   box = { width: 0, height: 0 };
-  readonly fits: { padding?: { bottom: number } }[] = [];
+  readonly fits: { bounds: unknown; padding?: { bottom: number } }[] = [];
   readonly sources = new Map<string, unknown>();
   readonly layers: Record<string, unknown>[] = [];
   removed = 0;
@@ -88,8 +88,11 @@ class FakeMapLibreMap {
     if (at.center) this.centre = { lat: at.center[1], lng: at.center[0] };
     if (at.zoom != null) this.zoom = at.zoom;
   }
-  fitBounds(_bounds: unknown, options?: { padding?: { bottom: number } }) {
-    this.fits.push({ padding: options?.padding });
+  /** The adapter hands MapLibre `[[west, south], [east, north]]`, so that is what a test
+   *  reading `fits` gets — and reading it is how "the camera framed the LEG, not the stop"
+   *  is asserted at all (ADR-0206 §AC8). */
+  fitBounds(bounds: unknown, options?: { padding?: { bottom: number } }) {
+    this.fits.push({ bounds, padding: options?.padding });
   }
   resize() {
     this.resizes += 1;
@@ -1468,6 +1471,47 @@ describe('the dot tier degrades a pin below a zoom threshold (ADR-0128 §1)', ()
     mapStub.current.viewport = WIDE;
     paint({ pins: two, cardReserve: 160 });
     expect(mapStub.current.fits.at(-1)!.padding!.bottom).toBeGreaterThan(plain);
+  });
+
+  // **A SELECTION IS ABOUT ITS LEG, NOT ITS DOT** (ADR-0206 §AC8; owner report, 2026-08-27:
+  // _"the place details pops up and hides most of the path"_). The camera already refused to
+  // put the selected PIN under the card (the test above) and knew nothing about the leg — so it
+  // centred one point and the amber route ran off underneath. Framing the leg answers both at
+  // once, because a fit already reserves the card's band. The wiring is one prop, which is
+  // exactly the shape of thing that silently fails to exist, so it is asserted at the pane.
+  it('frames the amber leg a selection is about, not just the stop', () => {
+    mapStub.current.box = { width: 390, height: 517 };
+    mapStub.current.viewport = { north: 60, south: 10, east: 160, west: 110 };
+    const stop = pin({ placeId: 'b', lat: 35.9, lng: 139.9, selected: true });
+    paint({
+      pins: [pin({ placeId: 'a' }), stop],
+      connector: [{ path: [A, B], from: A, to: B, emphasis: 'route' as const }],
+    });
+
+    // `[[west, south], [east, north]]`, the shape the adapter hands MapLibre: the LEG's extent,
+    // which contains the stop rather than being it.
+    const fitted = mapStub.current.fits.at(-1)!.bounds as number[][];
+    expect(fitted).toEqual([
+      [A.lng, A.lat],
+      [B.lng, B.lat],
+    ]);
+  });
+
+  // …and a selection with no leg is the ordinary pan it has always been. A day's first stop,
+  // a shelf idea, an all-days scope: there is no path to frame, so nothing about this changed.
+  it('still pans to a selected stop that has no leg', () => {
+    mapStub.current.box = { width: 390, height: 517 };
+    mapStub.current.viewport = { north: 60, south: 10, east: 160, west: 110 };
+    paint({ pins: [pin({ placeId: 'a', selected: true })] });
+    const framedLeg = mapStub.current.fits.some(
+      (fit) =>
+        JSON.stringify(fit.bounds) ===
+        JSON.stringify([
+          [A.lng, A.lat],
+          [B.lng, B.lat],
+        ]),
+    );
+    expect(framedLeg).toBe(false);
   });
 
   // ADR-0128 §1's session-154 amendment: **demote what claims precision, keep what claims

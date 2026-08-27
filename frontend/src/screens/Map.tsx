@@ -659,6 +659,23 @@ export function MapView() {
   // place you are no longer looking at — the state that would otherwise need clearing in the
   // five places `setSelectedId` is called.
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  /** **Is the canvas card folded to its identity row?** (ADR-0122 §7's 2026-08-27 amendment.)
+   *
+   *  Owner report: _"clicking on a stop highlights the route to it, but the place details pops up
+   *  and hides most of the path … sometimes you want to get the details but sometimes you only
+   *  want to see the path"_ — and the same for a place with no path at all, a shelf idea you want
+   *  lit on the canvas without two thirds of the screen explaining it.
+   *
+   *  **A screen-level boolean, unlike `expandedId` right above it, and the difference is the
+   *  point.** The expansion is a state OF a place: carrying it to the next selection would leave
+   *  a research card open on something you are no longer looking at. Folding is a state of the
+   *  READER — "I am reading the map, not the cards" — so it deliberately survives selecting
+   *  another stop, and the owner asked for exactly that (_"sticky for the session"_). Plain
+   *  `useState` **is** that session: this screen unmounts with the tab, so folding is remembered
+   *  for as long as you are on the map and forgotten when you leave it, which is the reset
+   *  nobody has to be given a control for. */
+  const [cardCollapsed, setCardCollapsed] = useState(false);
+  const toggleCardCollapsed = useCallback(() => setCardCollapsed((folded) => !folded), []);
   /** **Did the selection come from this ROW's own tap?** (ADR-0168 §4.)
    *
    *  "Clicking again" means clicking the same thing again, and without this it did not: a
@@ -2407,6 +2424,19 @@ export function MapView() {
       finishErrand(placeId);
       return;
     }
+    // **AND WHERE THERE IS NOTHING TO COMMIT TO, THE SECOND TAP FOLDS THE CARD** (ADR-0122 §7's
+    // 2026-08-27 amendment). Same reading of the same gesture the branch above takes: the first
+    // tap already said "this one", so a second one on the SAME pin cannot mean that again — here
+    // it means "and now let me look at the map". Gated on the map extreme because that is the
+    // only stop where a card is what a pin tap raises; at `half` and `full` the row is in the
+    // list and folding it would fold something you are not looking at.
+    //
+    // It is a second way in, never the only one: nothing about a repeat tap is discoverable, so
+    // the caret on the card is the affordance and this is the shortcut for a thumb already there.
+    if (selectedId === placeId && sheetView === MAP_SHEET_VIEW.map) {
+      toggleCardCollapsed();
+      return;
+    }
     const usage = usageIndex.get(placeId);
     // An aside pin's row is not in the sheet, so the tap surfaces that one row instead.
     // Keyed on the REASON rather than on one tier: what makes the row missing is that the
@@ -2754,6 +2784,11 @@ export function MapView() {
        *  card only, and only for the slide that IS the selection: a `✕` on a neighbour would
        *  close a card you are not on. */
       onClose?: () => void;
+      /** **The card folded to its identity row** — see `PlaceRow`'s own note. Passed by the
+       *  canvas card only, and it is what `revealed` is derived from there, so a folded card is
+       *  the row the list already draws rather than a second small card of its own. */
+      collapsed?: boolean;
+      onToggleCollapsed?: () => void;
     }) =>
     (usage: PlaceUsage) => {
       const place = placeById.get(usage.placeId);
@@ -2879,6 +2914,8 @@ export function MapView() {
           // wherever the row is — the sheet's list AND the canvas card, one `renderRow`.
           onDelete={selected && !pendingErrand ? () => setDeletingId(usage.placeId) : undefined}
           onClose={opts.onClose}
+          collapsed={opts.collapsed}
+          onToggleCollapsed={opts.onToggleCollapsed}
         />
       );
     };
@@ -3340,9 +3377,15 @@ export function MapView() {
           // **One density across the track, one selection in it.** The neighbours read as
           // cards rather than as short rows floating at the bottom of a tall one, which is
           // what the peek has to show for the edge to mean anything.
-          revealed: true,
+          // **One density across the track — and folding folds the whole track**, because the
+          // neighbours exist to say what is either side of the card you are on: three
+          // identity rows is that statement at the folded size, where one folded card between
+          // two full ones would read as a broken slide rather than a choice you made.
+          revealed: !cardCollapsed,
           slideRef: isCurrent ? trackSlideRef : undefined,
           onClose: isCurrent ? clearSelection : undefined,
+          collapsed: cardCollapsed,
+          onToggleCollapsed: isCurrent ? toggleCardCollapsed : undefined,
         })(usage)}
       </Fragment>
     );
@@ -3364,6 +3407,9 @@ export function MapView() {
             onFrame: frameSelected,
             onChoose: errandTakesOurPlaces ? finishErrand : undefined,
             onClose: clearSelection,
+            revealed: !cardCollapsed,
+            collapsed: cardCollapsed,
+            onToggleCollapsed: toggleCardCollapsed,
           })(cardUsage)}
     </div>
   );
@@ -4038,6 +4084,8 @@ function PlaceRow({
   onRename,
   onDelete,
   onClose,
+  collapsed,
+  onToggleCollapsed,
 }: {
   /** Attached by the card's track to the slide that is the current selection, so
    *  `useCenterSelected` can scroll it to the centre (ADR-0182). Absent in the list. */
@@ -4179,6 +4227,16 @@ function PlaceRow({
    *  It is `clearSelection` itself and not a handler beside it: whatever dismisses a surface runs
    *  the same function system back does (ADR-0103's 2026-07-29 amendments). */
   onClose?: () => void;
+  /** **Is the card folded to its identity row?** (ADR-0122 §7's 2026-08-27 amendment.) The card's
+   *  own `onClose` note already quoted the half of the owner's ask that was built — _"a way to
+   *  close the card **and/or collapse it**"_ — and this is the other half. The content is not
+   *  hidden here but never asked for: `renderRow` passes `revealed: !collapsed`, so a folded card
+   *  renders exactly the row every list already renders, rather than a second, smaller card
+   *  beside the real one. What this flag decides is the CHROME — which way the caret points, and
+   *  whether the body's own tap opens it again. */
+  collapsed?: boolean;
+  /** Fold the card away, or bring it back. The canvas card's only, like `onClose`. */
+  onToggleCollapsed?: () => void;
 }) {
   // **THE WAY-IN BLOCK IS FOLDED BY DEFAULT** (ADR-0121 §8's 2026-08-05 amendment). A hub
   // place carries a reference per leg, and the block sits between the notes and the row's
@@ -4251,7 +4309,13 @@ function PlaceRow({
   // ADR-0122 §7) and no `onDeselect`, but it does pass `onCollapse` — so an expanded card
   // there becomes tappable to return, and a collapsed one stays inert, with no branch about
   // which host we are in.
-  const onBodyTap = expanded ? onCollapse : (selected && onDeselect) || onSelect;
+  // A FOLDED card opens on its own tap, which is the whole of what a one-line bar is for — and
+  // it is safe to give the body a second job here because it has none: `onSelect`/`onDeselect`
+  // are deliberately absent on the canvas card (see `onSelect`'s note), and the two controls
+  // inside it that mean something else (the badge, the `✕`) both stop the event themselves.
+  const onBodyTap = expanded
+    ? onCollapse
+    : (collapsed && onToggleCollapsed) || (selected && onDeselect) || onSelect;
   // **EXPANDED, THE BODY IS A TARGET AND NOT A CONTROL** — no `role`, no `tabIndex`, no name.
   // `‹ חזרה לפרטי המקום` is inside it and is the named, focusable way back, so announcing the
   // body as a second button with the same label reads it out twice; the keyboard path is that
@@ -4430,6 +4494,29 @@ function PlaceRow({
           />
         )}
       </span>
+      {/* **AND ITS WAY OUT OF THE WAY** (ADR-0122 §7's 2026-08-27 amendment; owner report:
+          _"sometimes you want to get the details but sometimes you only want to see the path"_).
+          Beside the `✕` and in the same identity row for the same reason it is: the card becomes
+          a scroller once its pinned rows exceed the cap, and a corner overlay scrolls away
+          exactly when the card is tallest. One control both ways rather than a fold and an
+          unfold — the caret turns, which is the same grammar every disclosure in the app uses.
+          `stopPropagation` because the folded body's own tap now means "open me". */}
+      {onToggleCollapsed && (
+        <button
+          type="button"
+          className="map-cardfold"
+          data-folded={collapsed ? '' : undefined}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? t.map.expandCard : t.map.collapseCard}
+          title={collapsed ? t.map.expandCard : t.map.collapseCard}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleCollapsed();
+          }}
+        >
+          <Icon name="caret" />
+        </button>
+      )}
       {/* **THE CARD'S ONE VISIBLE WAY OUT** (ADR-0182's device pass). A fourth column of the
           identity row rather than a corner overlay, and that is what keeps it PINNED: the card
           becomes a scroller once its pinned rows alone exceed the cap (§9's amendment), and an

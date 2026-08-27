@@ -66,6 +66,16 @@ export function boundsOfPoints(points: readonly LatLng[]): MapBounds | null {
   return { north, south, east, west };
 }
 
+/** **The middle of a set of points, as a fit would centre them** — the centre of their extent,
+ *  not the average of them, so a dense cluster at one end of a leg cannot drag it. `null` for an
+ *  empty set, like `boundsOfPoints`. Read by the camera to keep the SUBJECT of a selection in
+ *  the visible band when the card under it changes size (ADR-0206 §AC8). */
+export function centreOfPoints(points: readonly LatLng[]): LatLng | null {
+  const bounds = boundsOfPoints(points);
+  if (!bounds) return null;
+  return { lat: (bounds.north + bounds.south) / 2, lng: (bounds.east + bounds.west) / 2 };
+}
+
 export function pointInBounds(bounds: MapBounds, point: LatLng): boolean {
   return (
     point.lat <= bounds.north &&
