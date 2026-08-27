@@ -6,7 +6,7 @@
 **Decisions:** amended in place into [ADR-0206 §AL](../decisions/0206-a-travel-time-belongs-between-two-points.md).
 **Scope:** `mockups/` + `docs/` only. No app code, so M9/M10/M11 were never blocked.
 
-**Status: with the owner, round 2.** §M forbids coding what has not been drawn, and M8b may not
+**Status: with the owner, round 3.** §M forbids coding what has not been drawn, and M8b may not
 start until this drawing is signed off. Round 1's review asked for RTL variants of the directional
 glyphs; that is §5 below, and [ADR-0138 §10](../decisions/0138-the-row-menu-is-one-surface-and-icons-are-ui.md)
 is its decision record.
@@ -90,6 +90,9 @@ Everything below is drawn, defaulted to the recommendation, and switchable in th
 | 6   | The declared segment's dash rhythm               | **`[3, 1.2]`** → 10.5px on / 4.2px off at weight 3.5                                                                                                                        | §4 · §AL6         |
 | 7   | Its line-cap                                     | **Butt** — round eats the gap and the line reads as the route                                                                                                               | §4 · §AL6         |
 | 8   | Which glyphs mirror in RTL                       | **`walking` + `cycling` only** — a named allowlist, not "everything asymmetric" (`clock` mirrored reads a different time). The other 7 candidates are a backlog line        | §5 · ADR-0138 §10 |
+| 9   | The mode row: always-on or a disclosure          | **A disclosure**, caret from `.wp-event-chev` — 55px/block and 452px on a four-hole day otherwise                                                                           | §6 · §AL10        |
+| 10  | An in-progress indicator on a switch             | **None** — a switch issues no request. A per-leg spinner was already rejected, and that file still awaits your sign-off, so it is open                                      | §7 · §AL11        |
+| 11  | What a gate-refused mode says                    | **`אין הערכה ל<מצב> כאן`** — `רחוק מדי` reads better and is false for a point in no cluster                                                                                 | §7b · §AL11       |
 
 ## Round 2 — the owner's review of the drawing (2026-08-27)
 
@@ -138,9 +141,65 @@ rather than an oversight. **They are a backlog line.** Seven glyphs across eight
 widening rule 8 forbids, and the arguable ones deserve their own look rather than riding in on a mode
 set's coat-tails.
 
+## Round 3 — the owner's two follow-ups (2026-08-27)
+
+### "Does the transit line expand? Then it should have a caret like events, no?"
+
+**Yes, and the question found a hole rather than stating a preference.** §3 drew the mode row as
+always visible, never said when it appears, and never measured what it costs. It costs **55px** per
+block (58 → 113), so a four-hole day pays **452px** against 232px collapsed — most of a 640px screen,
+on the surface the ADR calls the densest in the app, for a control most days never touch.
+
+§Z5 §M5's existing answer — "the selected or next leg only" — does not work here either: the day
+**list** has no leg selection (that is the Map's model, §AC2), so every leg but the next would have no
+way to change its mode, while the override is keyed on a place **pair** and is the sort of thing set
+while planning.
+
+**And almost all of it already exists.** `button.day-trv-face` is in `day-join.css` _now_ and is
+**dead code** — nothing renders it, and `DayJoinRow.test.tsx:171` asserts its absence as "is a
+statement and not a control". The component's own docblock says why the acts row is a _sibling_ of the
+face rather than a child: "the `בדרך` control is a button too and one inside the other is invalid."
+The face becoming a button is the shape that comment was holding open. The caret is `.wp-event-chev`
+re-pointed; the container is `ui/primitives/Collapsible`; it registers no back layer (a pane _of_ the
+row, the `SnapSheet` distinction). Collapsed measures 58px — identical to a statement block.
+
+Two things change deliberately: that spec falls (§AH3's rule cuts the _other_ way here, because the
+mode is about the leg), and `Collapsible`'s `0.32s` literal is visibly out of step with the caret's
+`--t-base`, which the primitive owns rather than the host.
+
+### "Does switching re-trigger the fetch? Maybe an in-progress indication?"
+
+**No, and that is the design.** `useDayTravel` defaults to `modes = TRAVEL_MODES`, so one matrix per
+day carries all three and a switch is a cache read — its docblock says exactly that, and M8b asserts
+it with a network spy.
+
+**There is a cold window, but it belongs to the day, not the switch:** a warming answer (ADR-0187), a
+peek (which must not reach out), offline. There §D4 already answers — the distance, no duration.
+
+**A spinner is refused, and was already refused once:** `where-a-route-shows-up-v1.html` — "on a day
+with five holes that is the loudest thing on the screen" — with ADR-0140 §6 rationing loops
+independently. **Flagged as an open call**, since that file still awaits sign-off.
+
+**What the question did surface:** "no number yet" and "the gate refused this pair" render
+identically — §AA4's polyline confusion, one surface over. Split by where they are said: the chip
+carries availability only (dashed, still tappable at 44px), and the absence is said on the block.
+
+**And the obvious copy is false.** `רחוק מדי להליכה` reads best, but `sameTravelCluster`'s docblock
+says "a point in no cluster at all answers `false`" — so an isolated place refuses walking at _any_
+distance, and a 2 km stroll would be told it is too far. Recommendation: `אין הערכה ל<מצב> כאן`.
+
+### A process note
+
+An edit dropped the `>` from the face tag and swallowed every block's children. The renderer reported
+**no console errors** and the measurement table filled in — with numbers off malformed boxes, one of
+which I wrote up as a finding before the screenshots caught it. A clean console and a full table are
+not evidence the page is the page.
+
 ## What M8b inherits
 
 The board's M8a card carries the handoff list. In one line: **read §AL, not the card** — one new
 asset (`transit`), `Icon.tsx:63`'s comment to correct, `warn` reserved for the mark, the mode control
 as four squared `.wp-chip.touch` chips, `.wp-placebadge-mark` as the geometry to start from, and
-ADR-0138 §10's `MIRRORED` set for the two mode glyphs that have a facing.
+ADR-0138 §10's `MIRRORED` set for the two mode glyphs that have a facing. Plus §AL10's disclosure —
+which is mostly rendering CSS that already ships — and §AL11's two rules: no request on a switch, and
+the chip carries availability while the block carries the absence.

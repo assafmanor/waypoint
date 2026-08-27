@@ -1564,6 +1564,19 @@ are asymmetric and only 9 have a facing), and **a member may not also take `dir`
 writes rotation as an inline transform — assert the two sets are disjoint. The seven further
 candidates the audit found are a **backlog line, not M8b's**.
 
+**Round 3 (2026-08-27, the owner's two follow-ups) settles the mode control's posture** —
+[ADR-0206 §AL10/§AL11](../decisions/0206-a-travel-time-belongs-between-two-points.md). **The mode row
+is a DISCLOSURE, not always-on**: it costs 55px per block and 452px on a four-hole day, and §Z5 §M5's
+"selected or next leg only" cannot work because the day list has no leg selection (§AC2). The caret is
+`.wp-event-chev` re-pointed, the container is `ui/primitives/Collapsible`, it registers **no back
+layer**, and **`button.day-trv-face` already ships as dead code** — so M8b renders what
+`day-join.css` has been holding open, and retires `DayJoinRow.test.tsx:171`'s "is a statement and not
+a control" with §AL10's stated reason. **A switch issues no request** (one matrix, all three modes)
+and **no progress indicator**: the cold window is the day's, and §D4's absence answers it. The chip
+carries **availability only** — a gate-refused mode is dashed and still tappable at 44px — and the
+refused copy is `אין הערכה ל<מצב> כאן`, because `רחוק מדי` is false for a point in no cluster
+(§AL11).
+
 ---
 
 ## M8b — Mode per leg + trip default

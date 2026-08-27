@@ -1741,3 +1741,97 @@ hard/soft grammar, and a declared leg is not provisional — it is a fact a pers
 comes from carrying **one** fact where the estimating block carries three, not from a different hue.
 Measured: 58px for the block itself either way; the declared block is 111px only because it is the
 one carrying the mode row.
+
+### AL10. The mode row is a DISCLOSURE, and the caret is the day's own
+
+Owner, on the drawing: _"Does the transit line expand to enable choosing which transit? (walking,
+driving, cycling, public transit) if so then it should have a small downward facing arrow like we
+already use for events no?"_
+
+**Yes — and the question found a hole in the drawing rather than a preference.** §AL7 settled what
+the mode row looks like and never said **when it appears**. The mockup drew it always-visible, which
+is a decision nobody took: measured, the row adds **55px** to a block (58 → 113), so a four-hole day
+pays **452px** against 232px collapsed — most of a 640px screen, on the surface this ADR itself calls
+the densest in the app, for a control most days never touch.
+
+**§Z5 §M5's answer does not work here either.** It said the control appears "on the selected or next
+leg only" — but the day LIST has no leg selection; that is the Map's model (§AC2). So every leg but
+the next would have no way to change its mode, while the override is keyed on a **place pair** and is
+exactly the sort of thing set while planning rather than while standing in it.
+
+**So: a disclosure, and almost all of it already exists.**
+
+- **The caret is `.wp-event-chev` re-pointed** — trailing edge, `rotate(180deg)` when open,
+  `transition: transform var(--t-base)`. The day already has one disclosure mark and the journey
+  block joins it rather than inventing a second.
+- **`button.day-trv-face` IS ALREADY IN `day-join.css`, AND IT IS DEAD CODE.** Nothing renders it —
+  `DayJoinRow.tsx:184` is unconditionally a `<div>` — and `DayJoinRow.test.tsx:171` asserts its
+  absence under the name _"is a statement and not a control"_. The rules were written for exactly
+  this, and the component's own docblock explains why the acts row is a **sibling** of the face
+  rather than a child: _"the `בדרך` control is a button too and one inside the other is invalid."_
+  The face becoming a button is the shape that comment was holding open.
+- **The container is `ui/primitives/Collapsible`** (rule 8) — max-height + opacity, children always
+  rendered, reduced motion handled globally by `App.css`'s wildcard.
+- **It registers no back layer.** This is a pane _of_ the row, not a layer _over_ it — the
+  `SnapSheet` distinction in `frontend/CLAUDE.md`. Back navigates; it does not close a disclosure.
+
+**Measured: the collapsed block is 58px, byte-identical to the statement block that has no mode row
+at all** — the caret rides the existing flex line and costs nothing.
+
+**Two things this changes, both deliberate and both needing to be said rather than discovered:**
+
+1. **`DayJoinRow.test.tsx`'s "is a statement and not a control" falls.** §AH3 took the free-time `＋`
+   off the block on the grounds that _"the block is about the leg and free time is about the hole"_ —
+   and the mode is emphatically **about the leg**, so it belongs here by that same rule rather than in
+   spite of it.
+2. **`Collapsible`'s transition is a `0.32s` literal while the caret rides `--t-base` (240ms)**, so
+   the two halves of one gesture are visibly out of step. The primitive is where that gets fixed
+   (ADR-0140's "waits are `motionDurationMs`, timings come from the ramp"), not the host.
+
+### AL11. Switching a mode issues NO request — and the two absences are not the same
+
+Owner: _"When you switch to a different transit mode, say from walking to driving, does it retrigger
+the route path and time estimates so that it shows up as soon as we have it? (and maybe adding an in
+progress indication or something?)"_
+
+**No, and by design.** `useDayTravel` (`lib/travel.ts:184`) takes `modes = TRAVEL_MODES` as its
+default, and its own docblock states the reason: _"which is what makes ADR-0206 §Z2's mode switch a
+read from what the client already holds rather than a fetch."_ **One matrix per day carries all three
+modes**, so a switch is a Dexie/memory read with zero requests. That is already M8b's exit criterion
+and it is asserted with a network spy, not eyeballed: **if a switch fetches, M4 is wrong, not M8.**
+
+**There is a cold window, but it belongs to the DAY, not to the switch.** The same docblock names
+three: a **warming** answer (ADR-0187 — the server returns what it has plus how long to wait; the
+client re-asks once and lets go), a **peek** (`DayPeek` mounts the neighbouring days as real surfaces
+and must not reach out, so it draws whatever Dexie holds), and **offline**. In that window the mode
+you pick may carry no number, and the shipped answer is §D4's absence: **the distance, and no
+duration.**
+
+**A progress indicator is refused, and it was already refused once.**
+`where-a-route-shows-up-v1.html`'s notes: _"Rejected: a spinner per leg while loading. On a day with
+five holes that is the loudest thing on the screen. The 'not yet loaded' state is simply §D4's state
+— a crow-flies chip with no duration."_ ADR-0140 §6 rations it independently — a looping animation
+claims "this is still happening", which is why `pending` sync deliberately stays still, since "a
+spinner on pending reads as strain". **Noted for the owner: that file is still awaiting sign-off, so
+this is an open call rather than a closed one.**
+
+**What the question did surface: "no number yet" and "the gate refused this pair" render
+identically.** One is transient and one is permanent, and that is precisely the confusion §AA4 fixed
+for the polyline — the declared segment against the un-routed connector — arriving one surface over.
+**The resolution splits them by WHERE they are said:**
+
+- **The chip carries availability only.** The chips are glyphs with no numbers (§AL7), so they have
+  nothing to lose; the gate is a permanent fact about the pair, so it is the chip's to state —
+  `.wp-chip.provisional`'s dashed off-state, **still tappable**, the tap landing on §D4's chip
+  (§Z5 §M5). Measured at 44px, so the refused chip is a control and not a disabled button.
+- **The absence is said on the BLOCK**, where §D4 already answers it. A transient absence therefore
+  never touches the chip row, and the two can never be mistaken for each other.
+- **`0 דק׳` never appears.** `ROUTE_MIN_CROW_M` already makes a sub-10m pair read as absence.
+
+**And the copy for a refused mode may claim only what the app knows — the obvious wording is
+false.** `רחוק מדי להליכה` reads best, and `TRAVEL_GATE.walking.maxMeters` would justify it, but the
+gate has a second clause: `sameClusterOnly`, and `sameTravelCluster`'s own docblock says **"A point in
+no cluster at all answers `false`"** — so an isolated place refuses walking **at any distance**, and a
+2 km stroll would be told it is too far. The recommendation is **`אין הערכה ל<מצב> כאן`**: one
+template composed from `t.travelMode`, true in every refusal case, and separated from the declared
+leg's `בלי הערכת זמן` by `כאן` — the pair rather than the mode. Drawn beside both alternatives.
