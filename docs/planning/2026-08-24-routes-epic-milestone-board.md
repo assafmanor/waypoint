@@ -67,8 +67,8 @@ never by the one that did the work.
 | **M3**  | Design session + mockups    | design | ✅                                              | M0           | M1, M2       | `claude/routes-epic-m3-design-kagqpq` · [#696](https://github.com/assafmanor/waypoint/pull/696)                                                                                                                                                                                                                                                                                           | 2026-08-25 |
 | **M4**  | Backend routing module      | impl   | ✅ **M5/M10 unblocked**                         | M1, M2, M2b  | M3           | `claude/m4-backend-routing-0giz72` · [#702](https://github.com/assafmanor/waypoint/pull/702)                                                                                                                                                                                                                                                                                              | 2026-08-25 |
 | **M5**  | Frontend data layer         | impl   | ✅ **M6/M7/M9 unblocked**                       | M2, M4       | M3, M10      | `claude/routes-frontend-protocol-fix-9t521y` · [#704](https://github.com/assafmanor/waypoint/pull/704)                                                                                                                                                                                                                                                                                    | 2026-08-25 |
-| **M6a** | The day reads               | impl   | ✅ (+ 11 field fixes)                           | M3, M5       | M6b, M7, M9  | `claude/m6a-day-reads-yfowam` · [#715](https://github.com/assafmanor/waypoint/pull/715) · [#716](https://github.com/assafmanor/waypoint/pull/716) · [#718](https://github.com/assafmanor/waypoint/pull/718) · [#719](https://github.com/assafmanor/waypoint/pull/719) · [#722](https://github.com/assafmanor/waypoint/pull/722) · [#724](https://github.com/assafmanor/waypoint/pull/724) | 2026-08-26 |
-| **M6b** | The hero read               | impl   | ✅ (+ 1 field fix)                              | M3, M5       | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#712](https://github.com/assafmanor/waypoint/pull/712)                                                                                                                                                                                                                                                                                            | 2026-08-26 |
+| **M6a** | The day reads               | impl   | ✅ (+ 12 field fixes)                           | M3, M5       | M6b, M7, M9  | `claude/m6a-day-reads-yfowam` · [#715](https://github.com/assafmanor/waypoint/pull/715) · [#716](https://github.com/assafmanor/waypoint/pull/716) · [#718](https://github.com/assafmanor/waypoint/pull/718) · [#719](https://github.com/assafmanor/waypoint/pull/719) · [#722](https://github.com/assafmanor/waypoint/pull/722) · [#724](https://github.com/assafmanor/waypoint/pull/724) | 2026-08-26 |
+| **M6b** | The hero read               | impl   | ✅ (+ 2 field fixes)                            | M3, M5       | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#712](https://github.com/assafmanor/waypoint/pull/712)                                                                                                                                                                                                                                                                                            | 2026-08-26 |
 | **M6c** | A fix withdraws the mark    | impl   | ✅                                              | M6b          | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#713](https://github.com/assafmanor/waypoint/pull/713)                                                                                                                                                                                                                                                                                            | 2026-08-26 |
 | **M6d** | A claim stands on something | impl   | ✅                                              | M6b, M6c     | M6a, M7, M9  | `claude/m6b-hero-read-routes-wlxj67` · [#714](https://github.com/assafmanor/waypoint/pull/714)                                                                                                                                                                                                                                                                                            | 2026-08-26 |
 | **M6e** | Infeasible leg keeps mode   | design | ✅ **coded in M8b**                             | M6a          | M9, M10, M11 | `routes/m8a-draw` · [#726](https://github.com/assafmanor/waypoint/pull/726) · [#727](https://github.com/assafmanor/waypoint/pull/727)                                                                                                                                                                                                                                                     | 2026-08-27 |
@@ -1464,6 +1464,37 @@ it is counted back from — was true on `main` throughout, because the defect wa
 It is asserted anyway, and the specs that would actually have caught it read the string a person
 sees, in the reported zone DIRECTION (a trip primary _behind_ its stops prints a departure that is
 merely early, and invisible).
+
+### M6a + M6b — two more off the §AQ deploy, both older than it (2026-08-27)
+
+ADR-0206 §AR · same branch, a second round. Neither was introduced by §AQ; both are on surfaces it
+had just touched, which is how they got looked at.
+
+- **§AR1 · M6a — the journey now says the arrival beside the departure, always.** _"The transit rows
+  should also display the arrival time (if you take off at the suggested time) so we immediately
+  know WHY they tell us to take off at that time."_ A lone `יציאה 20:46` is an instruction with its
+  reasoning withheld. **This amends §AJ2 in place**, and the parenthesis in the report is the whole
+  spec: there are two candidate arrivals and only one explains the departure —
+  `leaveByMs + travel`, not the `departAfterMs + travel` the code had. §AJ2's actual distinction
+  (`יציאה` = there is a deadline, `הגעה` alone = there is none) survives; what it also encoded, the
+  clamp, was never something a reader had to recover from the shape.
+- **§AR2 · M6b — the countdown tile's number carries its measure word.** _"It says 6 to take off,
+  but 6 what?"_ Two of four arms spread `formatCountdown` and then overwrote its `unit` with a
+  preposition. **ADR-0208 §1 had already found and fixed this exact defect on a third arm** and
+  nobody asked the other two the same question. `closesIn` had it too and was never reported.
+
+**Two things to carry.**
+
+- **A gate coming off is a second decision at every arm it reaches.** Widening the arrival hit
+  `claimDenied` (ADR-0208 §2), where the old gate had been withholding it for an unrelated reason
+  and the widening would have made the app predict off a stop the group said they never went to.
+  §AJ1 wrote the same lesson about a fallback going ON; it runs both directions.
+- **§AJ2's own measurements had gone stale, and §AJ2 is the section that wrote the rule about
+  that.** It recorded the meta box at 206.95px and the combined line at 140.06px; today they are
+  **165.28px** and **122.63px**, because M8b put the mode chip in that row afterwards. The
+  conclusion held, the numbers did not — so it was re-measured rather than quoted (one line at both
+  360 and 390, no overflow, row unchanged at 58px). Re-measure anything this row's geometry rests
+  on; three milestones have added controls to it since §AF4 first measured it.
 
 ### M7c's field reports — two fixes off the shipped canvas
 

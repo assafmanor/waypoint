@@ -16,6 +16,7 @@ import { Icon } from '../Icon';
 import { approxTravelTime, freeTimePhrase, hoursPhrase, shortfallPhrase } from '../../lib/duration';
 import { dayJourney } from '../../lib/day-joins';
 import { formatDistance } from '../../lib/distance';
+import { withoutBidiControls } from '../../lib/bidi';
 import { t } from '../../i18n/he';
 
 /** A single-zone leg — the ordinary case, where the departure and the arrival read in one zone.
@@ -445,7 +446,11 @@ describe('JourneyRow — a departure, an arrival, or both (ADR-0206 §AI)', () =
     return document.querySelector('.day-trv-meta')?.textContent ?? '';
   };
 
-  it('says the departure alone where the buffer fits', () => {
+  // **AMENDED by ADR-0206 §AR1** — this asserted the arrival was ABSENT where the buffer fits, and
+  // that was §AJ2's rule. Reported off the deploy: a lone departure is an instruction with its
+  // reasoning withheld. The row states both now, and `13:55 + 40 min` lands §D5's buffer before the
+  // `14:40` deadline — which is the working the reader was asking to see.
+  it('says the departure AND where it lands, where the buffer fits', () => {
     const line = meta(
       dayJourney({
         departAfterMs: AT('12:00'),
@@ -454,8 +459,9 @@ describe('JourneyRow — a departure, an arrival, or both (ADR-0206 §AI)', () =
         nowMs: AT('12:10'),
       }),
     );
-    expect(line).toContain('יציאה');
-    expect(line).not.toContain('הגעה');
+    expect(withoutBidiControls(line)).toBe(
+      withoutBidiControls(t.travel.leaveThenArrive('13:55', '~14:35')),
+    );
   });
 
   // The reported row: a 60-minute hole, a 59-minute drive, a hard ⁦15:00⁩ start. The drive fits and

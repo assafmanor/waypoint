@@ -461,11 +461,31 @@ export function dayJourney(input: {
    */
   const clamped = statesLeaveBy && measurableFrom && leave.leaveByMs < departAfterMs!;
   const leaveByMs = statesLeaveBy ? (clamped ? departAfterMs! : leave.leaveByMs) : null;
-  // When you can go, plus the leg. Never counted back from a bound the app invented.
-  const arriveAt = measurableFrom ? departAfterMs! + travelSeconds * MS_PER_SECOND : null;
-  // **The arrival is said wherever the app cannot promise the buffer**: no deadline to advise
-  // against, or a departure it had to pull forward to make possible.
-  const statesArrival = !statesLeaveBy || clamped;
+  /**
+   * **THE ARRIVAL THE STATED DEPARTURE IMPLIES** (ADR-0206 §AR1) — leave when the row says to, and
+   * this is when you are there. Never counted back from a bound the app invented.
+   *
+   * `leaveByMs` first, and that is the amendment: this line read `departAfterMs + travelSeconds`,
+   * which answers a different question ("the earliest you could be there") and therefore could not
+   * explain the departure sitting beside it. Where the app states no departure at all — a flexible
+   * destination — the earliest you could be there IS the answer, and `departAfterMs` is still it.
+   *
+   * **AND EVERY ROW THAT HAS ONE NOW SAYS IT**, which is the other half of §AR1. `arriveAtMs` was
+   * gated on `!statesLeaveBy || clamped` — said only where the app could not promise the buffer.
+   * Reported off the deploy: _"the transit rows should also display the arrival time, so then we
+   * immediately know WHY they tell us to take off at that time."_ A lone departure cannot answer
+   * that. `יציאה 20:46` is an instruction with its reasoning withheld; `יציאה 20:46 · הגעה ~21:09`
+   * above a table at 21:15 shows its whole working, §D5's buffer included.
+   *
+   * **§AJ2's distinction survives, and it is the half worth keeping**: `יציאה` still means "there
+   * is a deadline to advise against" and `הגעה` ALONE still means "there is none". What the old
+   * gate also happened to encode was whether the departure had been CLAMPED — never a fact the
+   * reader was asked to recover from the shape, and legible from the two clocks themselves.
+   *
+   * The one arm that must still withhold it is `claimDenied`, below.
+   */
+  const goesAtMs = leaveByMs ?? (measurableFrom ? departAfterMs! : null);
+  const arriveAt = goesAtMs === null ? null : goesAtMs + travelSeconds * MS_PER_SECOND;
   // The same rounding `heroLeaveBy` phases on, asked of the clamped instant. Local rather than
   // `leave.phase`, which is keyed to the buffered one and would mark a clamped leg late at once.
   const departurePassed = leaveByMs !== null && Math.round((leaveByMs - nowMs) / MS_PER_MINUTE) < 0;
@@ -475,12 +495,9 @@ export function dayJourney(input: {
     free,
     remainingSeconds: null,
     overrunSeconds: null,
-    arriveAtMs: statesArrival ? arriveAt : null,
+    arriveAtMs: arriveAt,
     arrivesAfterClose:
-      statesArrival &&
-      arriveAt !== null &&
-      input.windowClosesMs !== undefined &&
-      arriveAt > input.windowClosesMs,
+      arriveAt !== null && input.windowClosesMs !== undefined && arriveAt > input.windowClosesMs,
   };
   // The row below has started: whatever the leave-by says, the departure is not the question any
   // more. Checked FIRST, so a finished day is quiet however late its legs ran.
@@ -517,7 +534,11 @@ export function dayJourney(input: {
   // derived from a stop the group said they did not go to, so it is not offered and the mark it
   // would have licensed is not made.
   if (claimDenied) {
-    return { ...measurement, arm: DAY_JOURNEY_ARM.AHEAD, leaveByMs: null };
+    // **The arrival goes with it** (ADR-0208 §2, held through §AR1's widening). Every other arm
+    // states one now, and this is the one that must not: the instant is derived from the end of a
+    // stop the group said they did not go to, so `הגעה ~14:58` would be precisely the claim this
+    // arm exists to withhold — offered in the confident voice of a prediction.
+    return { ...measurement, arm: DAY_JOURNEY_ARM.AHEAD, leaveByMs: null, arriveAtMs: null };
   }
   // A departure the app may not state cannot have passed, so the late mark goes with it.
   if (leaveByMs === null) {

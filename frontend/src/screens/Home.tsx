@@ -682,7 +682,12 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           countdown:
             leave.phase === LEAVE_PHASE.PASSED
               ? passedLeaveCountdown(leave)
-              : { ...formatCountdown(leave.minutesToLeave), unit: t.board.leaveIn },
+              : // **The ladder's word STAYS, and `ליציאה` goes below it** (ADR-0208 §1 as amended
+                // by ADR-0206 §AR2). This spread the ladder and then overwrote its `unit`, so the
+                // tile read `6 · ליציאה` — a number with no measure at all. Reported in one line:
+                // _"it says 6 to take off, but 6 what?"_ The passed arm one function up has said
+                // all three parts since §1; this is the same slot, two arms apart, and it had one.
+                { ...formatCountdown(leave.minutesToLeave), unitBelow: t.board.leaveIn },
         }
       : null;
   // ⚠ **A shutting check-in window and a live leave-by can both be true in one minute**, and
@@ -691,7 +696,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // a second line at 360px. A passed leave-by is negative, so it is nearer than any window.
   const countdown =
     closingMins != null && (leaveTile === null || closingMins <= leaveTile.at)
-      ? { ...formatCountdown(closingMins), unit: t.board.closesIn }
+      ? // **The same defect, one arm over, and it was never reported** (ADR-0206 §AR2). `closesIn`
+        // is the precedent `leaveIn` copied — including the overwrite — so a shutting window read
+        // `15 · לסגירה`, a number with no measure either. Fixed with it rather than after it: they
+        // are one slot, and leaving the sibling wrong is the shape `frontend/CLAUDE.md` names.
+        { ...formatCountdown(closingMins), unitBelow: t.board.closesIn }
       : (leaveTile?.countdown ??
         (!nextInstant
           ? null

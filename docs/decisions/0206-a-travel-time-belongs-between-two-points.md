@@ -2559,3 +2559,125 @@ day."_ Reproduced on the seeded trip (the row printed its duration and distance 
 It is the same family as §AF3 and §AJ1 — a bookend leg reading an instant that is not this day's —
 and it is a fourth defect rather than one of the three reported. It is on the backlog with this
 reproduction, not smuggled into this round.
+
+## AR. Two more off the same deploy — a departure with its reasoning withheld, and a number with no unit (2026-08-27)
+
+Both reported off the §AQ deploy, both on surfaces §AQ had just touched, and neither is a defect
+§AQ introduced — they are older than it. Reproduced against the same seeded fixture and pinned
+clock before either was changed.
+
+### AR1. The journey states the arrival beside the departure, always — amending §AJ2
+
+> _"I think that the transit rows should also display the arrival time (if you take off at the
+> suggested time) so then we immediately know why they tell us to take off at that time."_
+
+`יציאה 20:46` is an **instruction with its reasoning withheld**. The reader is told to go at a
+minute the app worked out and given nothing to check it against — and the whole point of a
+statement surface (ADR-0159 §1) is that it states rather than instructs.
+
+**This amends §AJ2, which decided the opposite six weeks of reports ago**, and it is worth being
+exact about which half moves. That section gave the slot three shapes:
+
+| shape               | meant                                              |
+| ------------------- | -------------------------------------------------- |
+| `יציאה X`           | there is a deadline; the buffer fits               |
+| `יציאה X · הגעה ~Y` | there is a deadline; the departure was **clamped** |
+| `הגעה ~Y`           | there is **no** deadline                           |
+
+**The distinction §AJ2 was defending survives untouched**: `יציאה` still means "there is a deadline
+to advise against" and `הגעה` **alone** still means "there is none", which is the difference §AJ2
+called _"a difference a reader can act on"_. What the old gate also happened to encode was whether
+the departure had been **clamped** — and that was never something a reader was asked to recover
+from the shape. It is legible from the two clocks themselves: a clamped departure is the previous
+row's own end, which is sitting directly above.
+
+So the second row of that table absorbs the first, and the third is unchanged.
+
+**Which arrival, and the parenthesis in the report is the whole answer.** A leg has two candidate
+arrivals and they are different numbers:
+
+- `departAfterMs + travel` — the earliest you could be there. **What the code computed**, and it
+  cannot explain the departure beside it, because it is not about that departure.
+- `leaveByMs + travel` — where the departure the row is advising actually lands. _"If you take off
+  at the suggested time."_
+
+It is the second. On an ordinary leg that resolves to `arriveBy − buffer`, so the row shows §D5's
+buffer rather than describing it: `יציאה 19:31 · הגעה ~19:55` above a table at `20:00`. The two
+coincide on a clamped leg (there `leaveByMs` **is** `departAfterMs`), which is why §AJ2's shipped
+sentence needed no change, and the old formula is still right for a **flexible** destination, where
+the app advises no departure and the earliest you could be there is genuinely the answer.
+
+**One arm must still say nothing, and it is the one that would look most helpful.** A `claimDenied`
+leg (ADR-0208 §2 — the group said they did not go to the stop the leg starts from) now has an
+arrival where before the gate happened to withhold it. It is nulled explicitly: the instant is
+derived from the end of a stop nobody was at, so stating it is exactly the claim that arm exists to
+refuse, offered in the confident voice of a prediction. **A widening is a second decision at every
+arm it reaches**, which is §AJ1's own lesson about fallbacks, applied to a gate coming off.
+
+**Measured, and the measurement corrects §AJ2's.** That section recorded the meta line's box at
+**206.95px** at 360 and the combined sentence at **140.06px**. Today the box is **165.28px** at 360
+(195.28 at 390) and the sentence **122.63px** — because M8b put the mode chip in that row after
+§AJ2 measured it. The conclusion is unchanged and the numbers are not: the combined line renders on
+**one line at both 360 and 390**, does not overflow, leaves the row at **58px**, and is still
+narrower than the widest string already shipping in the slot (`הגעה ~20:40 · אחרי סגירת החלון`, now
+**148.36px**). §AJ2's own rule caught its own figures — _a measurement is about a configuration, and
+quoting it outside that configuration is memory_.
+
+**`PASSED` keeps saying only that the departure passed.** `זמן היציאה עבר ב־20:31` names a departure
+nobody is going to make, so an arrival beside it would be a prediction off an instruction already
+withdrawn. The OVERRUNS arm is unchanged for the same reason: it states the shortfall, which is the
+number you act on.
+
+### AR2. The countdown tile's number carries its measure word in every arm
+
+> _"It says 6 to take off, but 6 what? It should have the time units, like in other places."_
+
+`6 · ליציאה`. Two of the board's four tile arms spread `formatCountdown` and then **overwrote its
+`unit`** with a preposition phrase, so the ladder's own word was discarded and the number floated:
+
+```
+{ ...formatCountdown(leave.minutesToLeave), unit: t.board.leaveIn }
+```
+
+**ADR-0208 §1 had already found this exact defect and fixed it on one arm.** Its own words: _"the
+unit slot has always carried **either** the measure (`דקות`) **or** the referent (`ליציאה`), and
+`באיחור` carried neither"_ — and the repair gave the passed arm all three parts over two lines. The
+two arms beside it were carrying only the referent, which is the same half-empty slot, and nobody
+asked them the same question. It is `frontend/CLAUDE.md`'s one-call-site failure inside a single
+component's props.
+
+**`closesIn` had it too and was never reported.** `לסגירה` is the precedent `leaveIn` was written
+from — overwrite included — so a shutting check-in window read `15 · לסגירה`. Fixed with its
+sibling rather than after it: they are one slot, and repairing the reported one alone is how this
+came back the second time.
+
+**Both arms keep the ladder's word and move the preposition to `unitBelow`** — the second unit line
+ADR-0208 §1 built for exactly this, so no new mechanism. The table there gains nothing and loses a
+row:
+
+| arm                   | value  | unit line 1   | unit line 2 |
+| --------------------- | ------ | ------------- | ----------- |
+| counting to the event | `2:00` | `שעות`        | —           |
+| leaving is live       | `6`    | `דקות`        | `ליציאה`    |
+| a window is shutting  | `15`   | `דקות`        | `לסגירה`    |
+| the leave-by passed   | `15`   | `דקות באיחור` | `ליציאה`    |
+
+**Two lines rather than one, and this was measured rather than assumed.** `דקות ליציאה` is 55.39px
+of ink and **does** fit one line — it would take the tile from 74px to 81.4px, which is a width the
+passed arm already occupies. The reason it is two lines anyway is the **row**, not the tile: at 360
+against a long `הבא בתור` title, the one-line form costs the title **7.4px** (9.2px at its worst,
+`שעות לסגירה`) where the two-line form costs it **nothing at all** — the tile stays at its 74px
+min-width and grows 13px downward instead. §Z5 §M1 already recorded 11px of that title as the point
+where it breaks onto a second line, so this spends none of a budget known to be nearly out. It also
+leaves all four arms structurally identical, which is right: they are the same tile answering the
+same question from different distances.
+
+### AR3. What guards them
+
+- **The arrival**: a spec that asserts the arrival is `leaveByMs + travel` and **not**
+  `departAfterMs + travel` — the two are both "an arrival", so a spec that only checked one was
+  present would have passed on the wrong number.
+- **The tile**: a sweep over **all four arms** asserting the first unit line contains one of the
+  ladder's own measure words. Verified red against the old wiring, where it fails on exactly the two
+  arms that had the defect and passes on the two that did not. A per-arm assertion is what was
+  missing — §1 asserted the arm it fixed.
