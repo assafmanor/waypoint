@@ -1,7 +1,7 @@
 # 0210 — A day is points, lines and envelopes
 
-**Status:** Proposed 2026-08-28. **Nothing built** — the owner's instruction was to mock it up and
-recommend, and to build after approving.
+**Status:** Accepted 2026-08-28, on the owner's approval of the mockup. **Built** the same day —
+see the build log at the foot, which records four things the build changed or added.
 **Date:** 2026-08-28
 **Reported:** the owner, against a real Iceland day on a phone — _"I feel like the car pick up, check
 in/out, drive... They all look very similar visually. I want you to brainstorm and try to make them
@@ -203,3 +203,52 @@ Urriðavatn`, ⁦202px⁩) where א and ב do not.
 - **The bracket has nothing to bracket at a list edge.** A day whose first row is a drive overshoots
   into nothing and the track shows a short tail. Measured, and deliberately not special-cased — a
   day that starts in motion is a day that starts in motion.
+
+## Build log (2026-08-28)
+
+Built as drawn, with **four changes the drawing could not have caught** — three of them the same
+class of defect this ADR is about (a rule that reads correct and paints wrong), found by rendering
+the shipped sheets back through the mockup's own layout trees and by driving the real app.
+
+1. **A block with more than a line in it gets its card back**, and the mockup never drew that: it
+   drew the collapsed statement only. An open mode disclosure, or an arm carrying the acts row, is
+   no longer one line — it is an object with contents, and its contents need a container or they sit
+   loose on the day's ground. The condition is `.day-trv.open` and `:has(.day-trv-acts)`, chosen over
+   a third class because the acts row's presence is a render decision in `DayJoinRow`, not a state
+   the block is told about; `:has()` already ships in `tasks.css` and `map-pane.css`.
+
+   This **amends §3's `on-way` arm in place**: that arm loses its box when it is a bare line and
+   keeps it when it has grown a row. What §3 actually decided — that `on-way` is quiet, the hue
+   rides the mark, the prose stays `--muted` — is unchanged; what decides the box is structure, not
+   which arm it is on.
+
+2. **`.day-trv.on-way`'s fill was still painting on the line arm.** Its shipped rule sets
+   `border-color` and `background`; with the base rule now at `border: 0`, the `border-color` half
+   is inert and says nothing, while the `background` half drew a **square-cornered teal band**
+   across the list where a strand should be. Scoped to the carded case. Nothing in the diff showed
+   it — only the render did.
+
+3. **The `warn` corner mark was anchored to a tile that no longer exists.** `.day-trv-flag`'s
+   `/-2.6` overhang was measured against a ⁦38×38⁩ tile (ADR-0206 §AK2); against the new invisible
+   stretched column it dropped the triangle into the gutter, pointing at nothing. Re-anchored to the
+   **glyph** on the line arm (`50% - 15.3px`: the ⁦19px⁩ glyph's corner plus the same overhang), with
+   the carded arms taking the shipped offset back. Measured on both arms: the mark's centre lands
+   within ⁦2–4px⁩ of the glyph's trailing-bottom corner, inside the column.
+
+4. **`StayRow`'s `edge` is required, not defaulted.** A bookend is always one end or the other, and
+   a default would silently draw every stay as a wake row on the day a caller forgot — the failure
+   would be a bracket pointing the wrong way, which nothing would report. The type refused all seven
+   existing test call sites, which is the check working.
+
+**Verified:** `pnpm typecheck`, `pnpm lint` and `pnpm build` green; the full frontend suite (275
+files, 4903 tests) green, including two new `StayRow` cases — one asserting the two ends differ
+(a single-arm assertion passes a build where both ends draw the same bracket), one asserting the
+row keeps `.transition-row`'s tree while dropping its commitment paint. Rendered in the running app
+against the seeded trip in both themes: the wake bookend brackets down and the sleep bookend up,
+both with `background: transparent`.
+
+**Do not re-run `inline-app-css.mjs` on the mockup.** Its inlined block is the sheet **as it stood
+before this build**, which is what makes its before/after columns mean anything; refreshing it would
+make both columns draw the fix and the file would silently report a win it never measured — the
+"grades its own homework" trap in `pitfalls.md`. The file is the dated record of the proposal, and
+this build log is the record of what shipped.

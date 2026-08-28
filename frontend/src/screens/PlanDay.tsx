@@ -1530,6 +1530,7 @@ export function PlanDay() {
                 <>
                   <StayRow
                     stay={bookends.woke}
+                    edge="wake"
                     bound={planStayBound(bookends.woke)}
                     bookings={bookings}
                     onOpen={setDetailTarget}
@@ -1594,6 +1595,7 @@ export function PlanDay() {
                     })()}
                   <StayRow
                     stay={bookends.sleeps}
+                    edge="sleep"
                     bound={planStayBound(bookends.sleeps)}
                     bookings={bookings}
                     onOpen={setDetailTarget}

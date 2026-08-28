@@ -49,7 +49,15 @@ describe('StayRow', () => {
   afterEach(() => cleanup());
 
   it('names the place and states the bound', () => {
-    render(<StayRow stay={stay()} bound="לילה ⁦2⁩ מתוך ⁦4⁩" bookings={[]} onOpen={vi.fn()} />);
+    render(
+      <StayRow
+        edge="wake"
+        stay={stay()}
+        bound="לילה ⁦2⁩ מתוך ⁦4⁩"
+        bookings={[]}
+        onOpen={vi.fn()}
+      />,
+    );
     expect(screen.getByText('מלון סנטרו')).toBeTruthy();
     expect(screen.getByText('לילה ⁦2⁩ מתוך ⁦4⁩')).toBeTruthy();
   });
@@ -58,7 +66,13 @@ describe('StayRow', () => {
   // (ADR-0209 §3): with nothing here to contradict, the merge an earlier draft needed is gone.
   it('carries no clock of its own', () => {
     const { container } = render(
-      <StayRow stay={stay()} bound="צ׳ק-אאוט · עד ⁦09:40⁩" bookings={[]} onOpen={vi.fn()} />,
+      <StayRow
+        edge="wake"
+        stay={stay()}
+        bound="צ׳ק-אאוט · עד ⁦09:40⁩"
+        bookings={[]}
+        onOpen={vi.fn()}
+      />,
     );
     expect(container.querySelector('.tr-time')).toBeNull();
     expect(container.querySelector('.tr-bound')).toBeTruthy();
@@ -69,19 +83,27 @@ describe('StayRow', () => {
   // cascade — with the paint measured in Chromium instead.
   it('keeps the bound out of the clock’s slot', () => {
     const { container } = render(
-      <StayRow stay={stay()} bound="צ׳ק-אין · ⁦17:00–20:00⁩" bookings={[]} onOpen={vi.fn()} />,
+      <StayRow
+        edge="wake"
+        stay={stay()}
+        bound="צ׳ק-אין · ⁦17:00–20:00⁩"
+        bookings={[]}
+        onOpen={vi.fn()}
+      />,
     );
     expect(container.querySelector('.tr-main > .tr-bound')).toBeTruthy();
   });
 
   it('opens the booking it is backed by, and refuses when there is none', () => {
     const onOpen = vi.fn();
-    render(<StayRow stay={stay({ bookingId: 'bk' })} bookings={[booking]} onOpen={onOpen} />);
+    render(
+      <StayRow edge="wake" stay={stay({ bookingId: 'bk' })} bookings={[booking]} onOpen={onOpen} />,
+    );
     fireEvent.click(screen.getByRole('button'));
     expect(onOpen).toHaveBeenCalledWith(booking);
 
     cleanup();
-    render(<StayRow stay={stay()} bookings={[]} onOpen={onOpen} />);
+    render(<StayRow edge="wake" stay={stay()} bookings={[]} onOpen={onOpen} />);
     // `toBeDisabled` is jest-dom's and this suite does not load it, so the attribute is the
     // assertion — which is also what the DOM actually carries.
     expect(screen.getByRole('button').hasAttribute('disabled')).toBe(true);
@@ -94,6 +116,7 @@ describe('StayRow', () => {
     const onDone = vi.fn();
     render(
       <StayRow
+        edge="wake"
         stay={stay()}
         bookings={[]}
         onOpen={vi.fn()}
@@ -109,7 +132,53 @@ describe('StayRow', () => {
   });
 
   it('is a statement where the host supplies none — a past day is read-only', () => {
-    const { container } = render(<StayRow stay={stay()} bookings={[]} onOpen={vi.fn()} />);
+    const { container } = render(
+      <StayRow edge="wake" stay={stay()} bookings={[]} onOpen={vi.fn()} />,
+    );
     expect(container.querySelector('.wp-settle')).toBeNull();
+  });
+
+  // **THE BRACKET OPENS INTO THE DAY** (ADR-0210 §4) — down on the row you woke in, up on the
+  // row you sleep in. Asserted on the CLASS rather than on a computed border, because jsdom
+  // applies no stylesheet: what this can prove is that the row states which end it is, and the
+  // direction is a pair of `border-block-*` rules in `screens.css` keyed on exactly this class.
+  //
+  // Asserting both arms in one test on purpose: the failure worth catching is not "the class is
+  // missing" but "both ends draw the same bracket", which a single-arm assertion passes.
+  it('says which end of the day it is, and the two ends differ', () => {
+    const { container: wake } = render(
+      <StayRow edge="wake" stay={stay()} bookings={[]} onOpen={vi.fn()} />,
+    );
+    const wakeRow = wake.querySelector('.stay-bookend')!;
+    expect(wakeRow).toBeTruthy();
+    expect(wakeRow.classList.contains('at-sleep')).toBe(false);
+
+    cleanup();
+
+    const { container: sleep } = render(
+      <StayRow edge="sleep" stay={stay()} bookings={[]} onOpen={vi.fn()} />,
+    );
+    expect(sleep.querySelector('.stay-bookend.at-sleep')).toBeTruthy();
+  });
+
+  // **IT IS NO LONGER A COMMITMENT BOX** (ADR-0210 §4). The row still reuses `.transition-row`'s
+  // geometry — the badge column, the title, the trailing slot — and `stay-bookend` is what takes
+  // the amber tint, the amber border and the 3px amber spine back off. A regression here is
+  // silent: the row would look exactly like the car pick-up above it again, which is the report
+  // this ADR answers.
+  it('keeps the transition row tree and drops its commitment paint', () => {
+    const { container } = render(
+      <StayRow
+        edge="wake"
+        stay={stay()}
+        bound="צ׳ק-אאוט · עד ⁦11:00⁩"
+        bookings={[]}
+        onOpen={vi.fn()}
+      />,
+    );
+    const row = container.querySelector('.transition-row')!;
+    expect(row.classList.contains('stay-bookend')).toBe(true);
+    expect(container.querySelector('.tr-badge')).toBeTruthy();
+    expect(container.querySelector('.tr-title')).toBeTruthy();
   });
 });

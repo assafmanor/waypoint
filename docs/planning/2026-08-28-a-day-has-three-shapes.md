@@ -75,7 +75,33 @@ one Hebrew word and nothing else.
    duplication ADR-0209 §1 removed for stays and never applied to hires. Drawn as a third frame,
    deliberately not folded into the shape rule: which of the two gives way is a real choice.
 
-## Not done
+## Approved and built, the same day
 
-Nothing is built. The mockup is the proposal and ADR-0210 records it as **Proposed**, per the
-owner's instruction to approve first.
+The owner approved the recommended defaults — drive **א** (the strand), stay **א** (the bracket),
+the bound box, the circular badge — and asked for the build on the same PR. ADR-0210 is **Accepted**
+and its build log records what shipped.
+
+**The build found four things the drawing could not**, and three are the same class of defect this
+ADR is about — a rule that reads correct and paints wrong:
+
+1. **A block with more than a line in it needs its card back.** The mockup drew the collapsed
+   statement only; an open disclosure or an acts row has contents, and contents need a container.
+   This **amends §3's `on-way` arm in place**: structure decides the box, not which arm it is on.
+2. **`.day-trv.on-way`'s fill was still painting on the borderless arm** — a square-cornered teal
+   band across the list. Its `border-color` half had gone inert against `border: 0`, so nothing
+   said the `background` half was still live.
+3. **The `warn` corner mark was anchored to a tile that no longer exists**, and dropped into the
+   gutter pointing at nothing. Re-anchored to the glyph, measured on both arms.
+4. **`StayRow`'s `edge` was made required rather than defaulted** — a default draws every stay as a
+   wake row on the day a caller forgets, and nothing would report it.
+
+Both (2) and (3) were found by **rendering the shipped sheets back through the mockup's own layout
+trees** with the proposal block stripped — if the "today" column draws the new design from shipped
+CSS alone, the build carries it. Worth keeping as a technique: it is the mockup format run
+backwards, and it cost one scratch copy.
+
+## Still open, and deliberately not built
+
+Both were flagged in the mockup as needing an owner call and neither was answered, so neither
+shipped: whether an edge with no authored time should print a clock at all (`מ-00:00`), and the
+hire being named twice one row apart with the same clock.

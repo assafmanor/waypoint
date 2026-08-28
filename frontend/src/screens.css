@@ -592,10 +592,16 @@ body.wp-dragging
   outline: 2.5px solid var(--amber);
   outline-offset: -2px;
 }
+/* **A POINT IS A DOT** (ADR-0210 §2). One property, and it is the cheapest half of
+   the whole rule: a moment you must be somewhere takes a circle, a place you spend
+   time at keeps `.wp-event-badge`'s rounded square, and a movement has no tile at
+   all (`day-join.css`). Three marks on ONE leading edge — `.day-trv-ic`'s stated
+   rule kept, not broken. `StayRow`'s bookend overrides it below; it is not a
+   moment, and the code has said so twice for weeks. */
 .tr-badge {
   width: 32px;
   height: 32px;
-  border-radius: 10px;
+  border-radius: 50%;
   display: grid;
   place-items: center;
   font-size: 16px;
@@ -641,6 +647,58 @@ body.wp-dragging
   white-space: nowrap;
 }
 
+/* **THE CLOCK SAYS WHAT KIND OF BOUND IT IS** (ADR-0210 §2, drawn and measured in
+   `a-day-has-three-shapes-v1.html` §4).
+
+   `edgeMeaning` has returned `exact | not-before | not-after | window` since
+   ADR-0171/ADR-0184, and the row drew that difference in ONE Hebrew word (`מ-` /
+   `עד`) and nothing else — so a ⁦06:30⁩ flight, a `מ-00:00` car pick-up and an
+   `עד 11:00` return rendered as the same box with the same mono clock. That is the
+   owner's report almost exactly: two of the three rows named in it are the same
+   value to the model, and the third is categorically different and looked
+   identical anyway.
+
+   The box is OPEN on the side time runs free — a floor at the inline-end (time runs
+   on from here), a ceiling at the inline-start (time runs up to here), a window
+   closed on both, an exact moment no box at all, because a moment has no bound.
+   Logical properties throughout, so the openness follows the direction time runs in
+   the list rather than a hard-coded side.
+
+   `.vt`'s geometry (ADR-0177 §2) as a READ-OUT — same hairline, near-same radius, no
+   press, no target, no `cursor` — and deliberately NOT `.vt`'s class: that primitive
+   means "a value you can change" and this is not one. Borrowing it would be a second
+   `.vt` semantics rather than a first re-use.
+
+   ADR-0028's non-colour-redundancy rule runs the other way here for once: the word is
+   already in the row and is the redundancy FOR the shape, so the shape can be quiet.
+
+   Measured cost: ⁦2px⁩ of row height. At `padding-block: 2px` it was ⁦4px⁩, charged to
+   every transition row in the app — and the clock line already paid ~⁦20px⁩ when it
+   moved under the title (2026-08-13), so it must not be re-charged for it. */
+.tr-clock {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border: 1px solid color-mix(in srgb, var(--amber) 34%, transparent);
+  border-radius: 8px;
+}
+.tr-clock[data-bound='exact'] {
+  border: 0;
+  padding-inline: 0;
+}
+.tr-clock[data-bound='not-before'] {
+  border-inline-end: 0;
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+  padding-inline-end: 2px;
+}
+.tr-clock[data-bound='not-after'] {
+  border-inline-start: 0;
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+  padding-inline-start: 2px;
+}
+
 /* **The stay's own bound, beside a row that states no clock** (ADR-0209 §1). Quiet and not
    amber, because it is not a moment: a ceiling says "out by 09:40" and a window says "in from
    17:00", and where in the day you actually walked through the door is not a fact the app holds.
@@ -651,6 +709,65 @@ body.wp-dragging
   font-weight: 600;
   color: var(--muted);
   white-space: nowrap;
+}
+
+/* **A STAY IS AN ENVELOPE, NOT A COMMITMENT** (ADR-0210 §4, drawn in
+   `a-day-has-three-shapes-v1.html` §3).
+
+   The code already said this twice and then drew the opposite. `StayRow` carries no
+   clock at all — "where in the day you actually walked through the door is not
+   something the app knows" — and `.tr-bound` right above is deliberately `--muted`
+   rather than amber, because a ceiling is a constraint and not a moment. Both facts
+   were then painted inside `.transition-row`'s amber tint, amber border and ⁦3px⁩
+   amber spine: the loudest commitment mark in the list, on the one row that asserts
+   no commitment.
+
+   So the bookend gives up the box AND the amber. What it takes instead is a bracket
+   whose OPEN SIDE POINTS INTO THE DAY — down on the row you woke in, up on the row
+   you sleep in. `dayBookendStays` already returns `{woke, sleeps}` (ADR-0209 §1), so
+   the direction is data the app holds, not a new prop on the derivation; only the
+   row is told which end it is.
+
+   No hue: rule 4 / ADR-0028 has none to spend on a condition, and that is the
+   finding rather than a compromise. Measured ⁦60px⁩ → ⁦52px⁩.
+
+   The bracket rides a pseudo-element rather than the badge's own borders — drawn on
+   the ⁦34px⁩ badge (the first pass) it read as a stray corner beside the hotel glyph;
+   at the row's height it embraces the row and the direction becomes legible. */
+.transition-row.stay-bookend {
+  position: relative;
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+.stay-bookend::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: 26px;
+  border-inline-start: 1.5px solid var(--soft-line);
+  border-block-start: 1.5px solid var(--soft-line);
+  border-start-start-radius: 9px;
+  pointer-events: none;
+}
+.stay-bookend.at-sleep::before {
+  border-block-start: 0;
+  border-block-end: 1.5px solid var(--soft-line);
+  border-start-start-radius: 0;
+  border-end-start-radius: 9px;
+}
+.stay-bookend .tr-face {
+  padding: 7px 12px 7px 0;
+}
+/* The badge keeps the day's leading column and gives up its tile — it is not a
+   moment, so it is not a dot either (`.tr-badge` above). */
+.stay-bookend .tr-badge {
+  width: 38px;
+  height: 34px;
+  border-radius: 0;
+  background: none;
+  font-size: 15px;
 }
 
 /* Zone-shift pill on a transition edge (ADR-0107): the clock jump vs the day's

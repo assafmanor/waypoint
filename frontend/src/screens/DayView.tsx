@@ -1143,6 +1143,7 @@ export function DayView() {
           {bookends.woke && (
             <StayRow
               stay={bookends.woke}
+              edge="wake"
               bound={stayBound(bookends.woke)}
               bookings={bookings}
               onOpen={setDetailTarget}
@@ -1255,6 +1256,7 @@ export function DayView() {
           {bookends.sleeps && (
             <StayRow
               stay={bookends.sleeps}
+              edge="sleep"
               bound={stayBound(bookends.sleeps)}
               bookings={bookings}
               onOpen={setDetailTarget}
