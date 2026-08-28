@@ -193,13 +193,28 @@ Urriðavatn`, ⁦202px⁩) where א and ב do not.
   entered**. §2's open bracket makes that newly conspicuous: a floor drawn around a clock that says
   nothing. This is not §2's bug, it is §2 declining to hide it; whether an edge with no authored
   time should print a clock at all belongs to ADR-0171.
-- **The hire is named twice, one row apart, with the same clock** — the ambient band says
-  `Iceland Car Rental · איסוף הרכב · מ-00:00` and the row below says
-  `איסוף הרכב · קפלאוויק · מ-00:00`. ADR-0209 §1 removed exactly this duplication for **stays**
-  eight weeks ago; the hire never got the pass. It is a subtraction of one line and it is drawn as a
-  third frame in the mockup's §5, deliberately **not** claimed as part of the shape rule: the
-  question of which of the two gives way (the band's sentence, or the row) is a real choice and
-  ADR-0209's reasoning does not settle it here.
+- **~~The hire is named twice, one row apart, with the same clock~~ — ANSWERED 2026-08-28, and
+  built.** The owner: _"for consistency I'm voting no — same as hotel check in/check out days,
+  right?"_ Right about the hotel, and the code confirms the mechanism: `DayView`'s strip already
+  carries `.filter((e) => !stayRowIds.has(e.id))` — _"a stay named by its own row is not also named
+  in the strip"_ (ADR-0209 §1).
+
+  **But the hire is not given the hotel's treatment, and the difference is the point.** A bookend
+  stay leaves the strip _entirely_ because its row carries the hotel's NAME, so nothing is lost. A
+  hire's row carries the **place** and the strip carries the **company** (`Iceland Car Rental`,
+  ADR-0163 §3) — dropping the strip row would delete the company from that day. So the row stays
+  and **the clock gives way**: the strip prints `ambientSpanLabel`'s span count, the row keeps the
+  edge. Named once, timed once.
+
+  **What this amends:** the 2026-08-13 call that made the strip _borrow_ the row's placed clock so
+  the two could not disagree. That solved consistency; the owner's answer is that they should not
+  both print it at all. `placedEdgeOf` had exactly one production consumer on each day surface —
+  this branch — so removing it leaves the helper used only by its own unit test, noted rather than
+  deleted because the derivation is sound and a future surface may want it.
+
+  **It generalises past hires.** The replaced branch fired for any ambient span whose edge holds its
+  own row — a red-eye's departure/landing takes the same subtraction.
+
 - **The bracket has nothing to bracket at a list edge.** A day whose first row is a drive overshoots
   into nothing and the track shows a short tail. Measured, and deliberately not special-cased — a
   day that starts in motion is a day that starts in motion.
