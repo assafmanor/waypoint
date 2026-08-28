@@ -385,51 +385,74 @@ export function derivedTravelMode(bookings: readonly { type: BookingType }[]): T
 }
 
 /**
- * **The distance past which a leg is not a walk by default** (ADR-0206 §AU2).
+ * **How long a walk may be before it stops being the obvious default** (ADR-0206 §AV1).
  *
- * Not a ceiling and not a limit — `TRAVEL_GATE.walking.maxMeters` is that, and it stays at ⁦15 km⁩
- * because §Z8's judgement is unchanged: a group walks a long way **on purpose**, and a walk that
- * far must still be pickable. This is the weaker question underneath it: with nobody having picked
- * anything, is a walk what this leg most likely IS?
+ * ⁦10 minutes⁩, and it is the owner's number in their own words: _"walking should be defaulted to
+ * only when it makes sense, definitely not a four hour walk, max 10 minutes probably."_
  *
- * **⁦2.5 km⁩, derived rather than chosen.** At §Z2's measured ⁦4.9 km/h⁩ and §Z7's ⁦1.16⁩ median
- * road/crow, that is a **~35-minute walk** — the length past which the answer stops being obvious,
- * and the one number in this file a device pass may retune from feel. Below it the app assumes you
- * walk; above it, that you do not.
+ * **This is a duration and the thing it replaced was a distance, which is the whole correction.**
+ * §AU2 asked the question of the CROW, and a crow line cannot answer it: Bjólfur stands ⁦1.4 km⁩
+ * above Seyðisfjörður as the crow flies and ⁦12 km⁩ of switchbacks on foot, so the day printed
+ * `הליכה · ~4:18 שע׳` and told a group to set out at ⁦03:06⁩. No crow threshold fixes that class —
+ * to be safe against a mountain it would have to sit near ⁦200 m⁩, which would drive everything.
+ * Time is what the reader is deciding about, and the router already answers it.
  *
- * **Deliberately far below the ceiling**, so the band between them is real: a ⁦6 km⁩ leg defaults to
- * driving and switches to walking in one tap, which is the whole shape of §AU2 — a default that is
- * usually right and never final.
+ * **Far below `TRAVEL_GATE.walking.maxMeters` (⁦15 km⁩), which is untouched.** §Z8 raised that
+ * deliberately — a group walks a long way **on purpose** — and it is a ceiling on what may be
+ * PICKED. This is only what the app guesses when nobody has picked anything.
  */
-export const WALK_DEFAULT_MAX_M = 2_500;
+export const WALK_DEFAULT_MAX_SECONDS = 10 * 60;
 
 /**
- * **What mode a leg is when nobody has said** (ADR-0206 §AU2) — the distance decides, and the
- * trip's own derivation is what answers where there is no distance to read.
+ * **The crow floor under the rule above**, for a leg whose walking time is not known yet
+ * (ADR-0206 §AV1) — still warming, offline, or refused by the gate before it was ever asked.
  *
- * **This replaces `derivedTravelMode` as the per-leg fallback, and the two now answer different
- * questions.** §Z2's inference asks _is there a car on this trip_, which is a fact about the trip
- * and the right one for the mode control's "the trip's default" line. It was also being used as
- * every leg's mode, and that is what the owner reported (2026-08-28): a trip of flights and trains
- * is a **walking** trip by §Z2, so the ⁦127 km⁩ hop from Tel Aviv to the Galilee was measured as a
- * walk, refused by the gate at ⁦15 km⁩, and rendered as nothing at all. Nobody walks to the Galilee,
- * and no car booking was ever going to say so — you take a bus, a taxi or a lift, and every one of
- * them is `driving` as far as a router is concerned.
+ * **⁦700 m⁩, calibrated to the same ten minutes and then rounded DOWN.** At §Z2's measured
+ * ⁦4.9 km/h⁩ that is ⁦817 m⁩ of path, and §Z7's ⁦1.16⁩ median road/crow puts it at ~⁦700 m⁩ of crow.
  *
- * **So distance outranks the booking, in BOTH directions**, which is what makes the rule one
- * sentence rather than two: a long leg drives even where the trip has no car (the report above),
- * and a ⁦300 m⁩ hop walks even where the trip has one, because you park and you walk. §Z2's own
- * closing line — that a per-leg answer is _"the per-leg override's job"_ — was written when the
- * only per-leg input was a person; a leg's LENGTH is a per-leg input the app has had all along.
+ * **It errs low on purpose, because the two mistakes are not equally loud.** Guessing `driving`
+ * for a leg somebody would have walked is one tap to correct and says nothing false in the
+ * meantime. Guessing `walking` for a leg nobody would walk is the reported defect: a ⁦4:18⁩ hike
+ * printed as the plan, with a departure time counted back from it. Where the ratio is unusual —
+ * which is exactly where this floor is doing any work — it is unusual in the direction that makes
+ * the crow understate the walk, never overstate it.
+ */
+export const WALK_DEFAULT_MAX_M = 700;
+
+/**
+ * **What mode a leg is when nobody has said** (ADR-0206 §AU2, corrected by §AV1) — how long the
+ * WALK takes decides, with the crow as the floor under it and the trip's own derivation behind
+ * both.
  *
- * `fallback` is read only where the leg has no measurable distance — an end nobody placed — and
- * there the trip's derivation is still the best thing anyone knows.
+ * **The three inputs are ranked, and the ranking is the design:**
+ *
+ *   1. **`walkSeconds`, where the router has answered** — a walk inside `WALK_DEFAULT_MAX_SECONDS`
+ *      is the default, and anything longer is not. This is the authority because it is the only
+ *      one of the three that knows about terrain.
+ *   2. **The crow distance**, where it has not. `WALK_DEFAULT_MAX_M` is the same judgement made on
+ *      worse information, deliberately rounded down.
+ *   3. **`fallback`** — the trip's own `derivedTravelMode` — where the leg has no measurable
+ *      distance at all, an end nobody placed (§AM4's inert leg).
+ *
+ * **Distance outranks the booking in BOTH directions**, which is §AU2's rule and is unchanged: a
+ * long leg drives even where the trip has no car, and a ⁦300 m⁩ hop walks even where the trip has
+ * one, because you park and then you walk. What §AV1 corrects is only which measure of "long".
+ *
+ * **A leg may therefore change its default once, when the estimate lands** — walking while the
+ * matrix is warming, driving once the walk turns out to be four hours. That is a guess being
+ * corrected by evidence rather than a value churning: the row it sits on says `מחשב מסלול…` while
+ * it happens (§AU1), and holding the wrong guess to avoid the flicker is the defect this exists to
+ * end. An override still outranks all three and never moves.
  */
 export function defaultLegTravelMode(
   from: LatLng | undefined,
   to: LatLng | undefined,
   fallback: TravelMode,
+  walkSeconds?: number | null,
 ): TravelMode {
+  if (walkSeconds != null && Number.isFinite(walkSeconds)) {
+    return walkSeconds > WALK_DEFAULT_MAX_SECONDS ? TRAVEL_MODE.DRIVING : TRAVEL_MODE.WALKING;
+  }
   if (!from || !to) return fallback;
   const metres = haversineMeters(from, to);
   if (!Number.isFinite(metres)) return fallback;
@@ -479,9 +502,15 @@ export function legTravelMode(
   }[],
   fromPlaceId: string | undefined,
   toPlaceId: string | undefined,
-  fallback: TravelMode,
+  /** **A value or a thunk**, and the thunk is what makes the default LAZY (ADR-0206 §AV1). Since
+   *  the default reads the leg's walking estimate, computing it for a leg somebody has already
+   *  declared is work whose answer is discarded — and on a declared תחב״צ leg it is observable:
+   *  §AM5's guarantee is that nothing about that leg is ever asked of the provider, and the
+   *  board's own spec asserts the estimate is never looked up at all. */
+  fallback: TravelMode | (() => TravelMode),
 ): LegTravelMode {
-  if (!fromPlaceId || !toPlaceId) return fallback;
+  const derived = () => (typeof fallback === 'function' ? fallback() : fallback);
+  if (!fromPlaceId || !toPlaceId) return derived();
   const key = travelOverrideKey(fromPlaceId, toPlaceId);
   // **The NEWEST match, not the first**, and that is a robustness choice rather than a style one.
   // The unique constraint means storage holds one row per pair — but a client can briefly hold two:
@@ -494,7 +523,7 @@ export function legTravelMode(
     if (travelOverrideKey(o.fromPlaceId, o.toPlaceId) !== key) continue;
     if (!hit || (o.updatedAt ?? '') >= (hit.updatedAt ?? '')) hit = o;
   }
-  return hit?.mode ?? fallback;
+  return hit?.mode ?? derived();
 }
 
 /* ── THE BATCH (ADR-0205 §6, §Y2) ────────────────────────────────────────────────────────── */

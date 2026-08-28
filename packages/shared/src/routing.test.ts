@@ -28,6 +28,7 @@ import {
   ROUTE_MIN_CROW_M,
   TRAVEL_GATE,
   WALK_DEFAULT_MAX_M,
+  WALK_DEFAULT_MAX_SECONDS,
   admitsTravelMode,
   exceedsTravelCeiling,
   admittedTravelModes,
@@ -366,42 +367,96 @@ describe('derivedTravelMode', () => {
 describe('defaultLegTravelMode', () => {
   const TLV = { lat: 32.0853, lng: 34.7818 };
   const GALILEE = { lat: 32.8, lng: 35.5 };
-  const NEARBY = { lat: 32.09, lng: 34.79 };
+  const NEARBY = { lat: 32.089, lng: 34.7818 };
 
-  it('drives a leg past the walk default, whatever the trip booked', () => {
-    expect(defaultLegTravelMode(TLV, GALILEE, TRAVEL_MODE.WALKING)).toBe(TRAVEL_MODE.DRIVING);
-    expect(defaultLegTravelMode(TLV, GALILEE, TRAVEL_MODE.DRIVING)).toBe(TRAVEL_MODE.DRIVING);
+  /**
+   * **THE FIELD REPORT §AV1 EXISTS FOR** (2026-08-28). Bjólfur stands ⁦1.4 km⁩ above
+   * Seyðisfjörður as the crow flies and ⁦12 km⁩ of switchbacks on foot. §AU2 asked the crow, so
+   * the day printed `הליכה · ~4:18 שע׳` and told a group to set out at ⁦03:06⁩. The walk's own
+   * length is the only input that could have known.
+   */
+  describe('the walking TIME decides, where the router has answered', () => {
+    const BJOLFUR = { lat: 65.2735, lng: -14.0295 };
+    const SEYDISFJORDUR = { lat: 65.2606, lng: -14.0107 };
+
+    it('drives a mountain the crow calls a stroll', () => {
+      // Crow-close enough that the floor alone would say walking…
+      expect(haversineMeters(SEYDISFJORDUR, BJOLFUR)).toBeLessThan(2_500);
+      // …and the ⁦4:18⁩ the router answered is what overrules it.
+      expect(
+        defaultLegTravelMode(SEYDISFJORDUR, BJOLFUR, TRAVEL_MODE.DRIVING, 4 * 3600 + 18 * 60),
+      ).toBe(TRAVEL_MODE.DRIVING);
+    });
+
+    it('walks anything inside ten minutes, and drives the first second past it', () => {
+      expect(
+        defaultLegTravelMode(TLV, GALILEE, TRAVEL_MODE.WALKING, WALK_DEFAULT_MAX_SECONDS),
+      ).toBe(TRAVEL_MODE.WALKING);
+      expect(
+        defaultLegTravelMode(TLV, GALILEE, TRAVEL_MODE.WALKING, WALK_DEFAULT_MAX_SECONDS + 1),
+      ).toBe(TRAVEL_MODE.DRIVING);
+    });
+
+    /** The owner's number, pinned: _"max 10 minutes probably"_. */
+    it('is ten minutes', () => {
+      expect(WALK_DEFAULT_MAX_SECONDS).toBe(600);
+    });
+
+    /** A duration outranks the crow in BOTH directions — a long crow with a short walk is a
+     *  walk, which is what keeps this a rule about time rather than a second distance test. */
+    it('walks a short walk between two far-apart-looking points', () => {
+      expect(defaultLegTravelMode(TLV, GALILEE, TRAVEL_MODE.DRIVING, 300)).toBe(
+        TRAVEL_MODE.WALKING,
+      );
+    });
   });
 
-  /** The symmetric half, and the one that makes the rule a sentence rather than two: you park the
-   *  hire car and you walk the last ⁦600 m⁩. */
-  it('walks a leg inside it, whatever the trip booked', () => {
-    expect(defaultLegTravelMode(TLV, NEARBY, TRAVEL_MODE.DRIVING)).toBe(TRAVEL_MODE.WALKING);
-    expect(defaultLegTravelMode(TLV, NEARBY, TRAVEL_MODE.WALKING)).toBe(TRAVEL_MODE.WALKING);
+  describe('the crow is the floor, where it has not', () => {
+    it('drives a leg past the crow floor', () => {
+      expect(defaultLegTravelMode(TLV, GALILEE, TRAVEL_MODE.WALKING)).toBe(TRAVEL_MODE.DRIVING);
+    });
+
+    /** The symmetric half, and the one that makes the rule a sentence rather than two: you park
+     *  the hire car and you walk the last few hundred metres. */
+    it('walks a leg inside it, whatever the trip booked', () => {
+      expect(haversineMeters(TLV, NEARBY)).toBeLessThan(WALK_DEFAULT_MAX_M);
+      expect(defaultLegTravelMode(TLV, NEARBY, TRAVEL_MODE.DRIVING)).toBe(TRAVEL_MODE.WALKING);
+    });
+
+    /** **It errs LOW on purpose** (§AV1): a wrong `driving` guess costs one tap, a wrong
+     *  `walking` guess prints a four-hour hike as the plan. ⁦700 m⁩ of crow is ~⁦10⁩ minutes of
+     *  path at the measured pace, rounded down. */
+    it('sits at ten minutes of walking, rounded down', () => {
+      expect(WALK_DEFAULT_MAX_M).toBe(700);
+      expect(WALK_DEFAULT_MAX_M).toBeLessThan(TRAVEL_GATE.walking.maxMeters);
+    });
+
+    /** The default and the CEILING are different questions, and the band between them is every
+     *  leg the app guesses `driving` for and a person may still walk (§Z8). */
+    it('leaves a real band between the guess and what may be picked', () => {
+      const SIX_KM = { lat: 32.139, lng: 34.7818 };
+      expect(defaultLegTravelMode(TLV, SIX_KM, TRAVEL_MODE.WALKING)).toBe(TRAVEL_MODE.DRIVING);
+      expect(exceedsTravelCeiling(TRAVEL_MODE.WALKING, TLV, SIX_KM)).toBe(false);
+    });
   });
 
-  /** **The threshold is a DEFAULT and the gate is a CEILING**, and they are far apart on purpose:
-   *  the band between them is every leg the app guesses `driving` for and a person may still pick
-   *  a walk on (§Z8 — a group walks a long way on purpose). */
-  it('sits well inside walking’s own ceiling, so the band is real', () => {
-    expect(WALK_DEFAULT_MAX_M).toBeLessThan(TRAVEL_GATE.walking.maxMeters);
-    const SIX_KM = { lat: 32.139, lng: 34.7818 };
-    expect(defaultLegTravelMode(TLV, SIX_KM, TRAVEL_MODE.WALKING)).toBe(TRAVEL_MODE.DRIVING);
-    expect(exceedsTravelCeiling(TRAVEL_MODE.WALKING, TLV, SIX_KM)).toBe(false);
-  });
-
-  /** The only input left for §Z2's answer: no distance to read (§AM4's inert leg). */
+  /** The only input left for §Z2's answer: no distance and no duration (§AM4's inert leg). */
   it('falls back to the trip derivation where an end is unplaced', () => {
     expect(defaultLegTravelMode(undefined, GALILEE, TRAVEL_MODE.DRIVING)).toBe(TRAVEL_MODE.DRIVING);
     expect(defaultLegTravelMode(TLV, undefined, TRAVEL_MODE.WALKING)).toBe(TRAVEL_MODE.WALKING);
   });
 
+  /** …but a duration needs no coordinates at all, which is what lets a caller holding only an
+   *  estimate answer without re-resolving the pair. */
+  it('answers from a duration even with no coordinates', () => {
+    expect(defaultLegTravelMode(undefined, undefined, TRAVEL_MODE.WALKING, 9_000)).toBe(
+      TRAVEL_MODE.DRIVING,
+    );
+  });
+
   it('only ever answers a mode the gate and the provider both know', () => {
-    for (const pair of [
-      [TLV, GALILEE],
-      [TLV, NEARBY],
-    ] as const) {
-      expect(TRAVEL_MODES).toContain(defaultLegTravelMode(pair[0], pair[1], TRAVEL_MODE.WALKING));
+    for (const walk of [undefined, 120, 9_000]) {
+      expect(TRAVEL_MODES).toContain(defaultLegTravelMode(TLV, NEARBY, TRAVEL_MODE.WALKING, walk));
     }
   });
 });

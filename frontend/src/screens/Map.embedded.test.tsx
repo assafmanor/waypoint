@@ -324,6 +324,9 @@ const stubShapes = new Map<string, { lat: number; lng: number }[]>();
  *  read one mode's line for every leg, and a stub that ignored the mode could not tell. */
 const legId = (from: { lat: number }, to: { lat: number }, mode: unknown) =>
   `${from.lat}>${to.lat}:${String(mode)}`;
+/** The walking seconds this screen's mode derivation reads (ADR-0206 §AV1), per test. `null` is
+ *  the ordinary case here — a day whose matrix has not answered — and the crow floor decides. */
+const stubWalkSeconds: { current: number | null } = { current: null };
 vi.mock('../lib/travel', () => ({
   useDayShapes: ({ modes }: { modes: readonly unknown[] }) => {
     askedModes.current = modes;
@@ -332,6 +335,14 @@ vi.mock('../lib/travel', () => ({
         stubShapes.get(legId(from, to, mode)) ?? null,
     };
   },
+  useDayTravel: () => ({
+    estimateFor: (_from: unknown, _to: unknown, mode: unknown) =>
+      mode === 'walking' && stubWalkSeconds.current !== null
+        ? { mode, durationSeconds: stubWalkSeconds.current, distanceMeters: 0 }
+        : null,
+    warmingFor: () => false,
+    settled: true,
+  }),
 }));
 
 /** The pane, stubbed: it reports what it was told to draw and lets a test tap a pin.
@@ -623,6 +634,9 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     // Most tests here are about the map, not about location: a standing refusal is
     // the branch that offers nothing, so the on-open offer stays out of their way.
     permissionState = 'denied';
+    // No walking estimate by default (ADR-0206 §AV1), so the crow floor decides and every spec
+    // written before durations reached this screen still reads the same.
+    stubWalkSeconds.current = null;
   });
   afterEach(() => {
     cleanup();
@@ -4104,14 +4118,15 @@ describe('the embedded map’s shell (ADR-0121)', () => {
   // the last of the three is what makes Plan mode draw at all.
   describe('which leg the route line is spent on (§D8/§AB2)', () => {
     // **Walkable spacing, and since ADR-0206 §AU2 that is load-bearing rather than incidental.**
-    // These were ⁦0.1°⁩ apart — ⁦14 km⁩ a leg — which the distance-aware default now correctly calls a
-    // DRIVE. Every assertion in this block is about which leg takes the line and which mode is
-    // asked for, never about how far apart the stops are, so the spacing moves to ~⁦1.2 km⁩ and the
-    // day stays the walking day these specs were written around. §AU2's own rule has its cases
-    // below.
+    // These were ⁦0.1°⁩ apart — ⁦14 km⁩ a leg — which the distance-aware default correctly calls a
+    // DRIVE, and then ⁦0.01°⁩ (~⁦1.4 km⁩), which §AV1's tighter crow floor also calls a drive. Every
+    // assertion in this block is about which leg takes the line and which mode is asked for, never
+    // about how far apart the stops are, so the spacing is ~⁦570 m⁩ — inside `WALK_DEFAULT_MAX_M`,
+    // so the day stays the walking day these specs were written around. The rule's own cases are
+    // below, and the shared unit specs own its arithmetic.
     const A = { lat: 35.6, lng: 139.6 };
-    const B = { lat: 35.61, lng: 139.61 };
-    const C = { lat: 35.62, lng: 139.62 };
+    const B = { lat: 35.604, lng: 139.604 };
+    const C = { lat: 35.608, lng: 139.608 };
     const seedThreeStopDay = () => {
       tripPlaces = [place('a', true, A), place('b', true, B), place('c', true, C)];
       tripEvents = [
@@ -4209,6 +4224,30 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       expect(askedModes.current).toEqual(['walking']);
     });
 
+    /** **§AV1's own case, on the canvas.** Bjólfur is crow-close to Seyðisfjörður and a ⁦4:18⁩ walk;
+     *  the crow floor alone would have this screen asking for PEDESTRIAN geometry while the day
+     *  list, holding the estimate, correctly draws a drive. That is §AM8's divergence with a new
+     *  cause, and it is why this screen reads the durations at all. */
+    it('drives a mountain the crow calls a stroll, exactly as the day list does (§AV1)', () => {
+      seedThreeStopDay();
+      stubWalkSeconds.current = 4 * 3600 + 18 * 60;
+      currentMode = 'plan';
+      render(wrap(<MapView />));
+
+      expect(askedModes.current).toEqual(['driving']);
+    });
+
+    /** …and the same stops with a short walk stay a walk, so the assertion above is about the
+     *  duration rather than about the fixture. */
+    it('keeps a ten-minute walk a walk (§AV1)', () => {
+      seedThreeStopDay();
+      stubWalkSeconds.current = 9 * 60;
+      currentMode = 'plan';
+      render(wrap(<MapView />));
+
+      expect(askedModes.current).toEqual(['walking']);
+    });
+
     it('drives a leg no one would walk even where the trip hired nothing (§AU2)', () => {
       // ⁦127 km⁩ north — the field report's own leg, Tel Aviv to the Galilee.
       const FAR = { lat: 32.8, lng: 35.5 };
@@ -4240,15 +4279,16 @@ describe('the embedded map’s shell (ADR-0121)', () => {
   // amber, not the truth of the line.
   describe('the day’s legs are drawn along their routes (§Z5 §M3)', () => {
     // **Walkable spacing, and since ADR-0206 §AU2 that is load-bearing rather than incidental.**
-    // These were ⁦0.1°⁩ apart — ⁦14 km⁩ a leg — which the distance-aware default now correctly calls a
-    // DRIVE. Every assertion in this block is about which leg takes the line and which mode is
-    // asked for, never about how far apart the stops are, so the spacing moves to ~⁦1.2 km⁩ and the
-    // day stays the walking day these specs were written around. §AU2's own rule has its cases
-    // below.
+    // These were ⁦0.1°⁩ apart — ⁦14 km⁩ a leg — which the distance-aware default correctly calls a
+    // DRIVE, and then ⁦0.01°⁩ (~⁦1.4 km⁩), which §AV1's tighter crow floor also calls a drive. Every
+    // assertion in this block is about which leg takes the line and which mode is asked for, never
+    // about how far apart the stops are, so the spacing is ~⁦570 m⁩ — inside `WALK_DEFAULT_MAX_M`,
+    // so the day stays the walking day these specs were written around. The rule's own cases are
+    // below, and the shared unit specs own its arithmetic.
     const A = { lat: 35.6, lng: 139.6 };
-    const B = { lat: 35.61, lng: 139.61 };
-    const C = { lat: 35.62, lng: 139.62 };
-    const BEND = { lat: 35.605, lng: 139.608 };
+    const B = { lat: 35.604, lng: 139.604 };
+    const C = { lat: 35.608, lng: 139.608 };
+    const BEND = { lat: 35.602, lng: 139.6032 };
 
     const legPaths = () =>
       ((paneProps.current.connector ?? []) as { path: unknown }[]).map((leg) => leg.path);

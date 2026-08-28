@@ -407,8 +407,9 @@ describe('Home — the board counts to the leaving (ADR-0206 §Z1)', () => {
     fireEvent.click(document.querySelector('.wp-board')!);
     const row = document.querySelector('.hero-trv')!;
     const text = withoutBidiControls(row.textContent ?? '');
-    // The mode leads, and it is DERIVED (§Z2): this trip has no car booking, so it walks.
-    expect(text.indexOf(t.travelMode.walking)).toBe(0);
+    // The mode leads, and it is DERIVED — from the WALK's own length since §AV1, not from the
+    // trip's bookings: ⁦23⁩ minutes is past `WALK_DEFAULT_MAX_SECONDS`, so this leg is a drive.
+    expect(text.indexOf(t.travelMode.driving)).toBe(0);
     expect(text).toContain('~23 דק׳');
     // 12:30Z + 60min − 23min − 5min buffer = 13:02Z, which is 15:02 in Rome. Read in the LIVE
     // zone, because a leave-by is a moment on the wrist of whoever is leaving (ADR-0107 §4).
@@ -735,14 +736,14 @@ describe('Home — the leg’s declared mode is the board’s mode (ADR-0206 §A
 
   /** The override as the app stores it (§AM): keyed on the canonicalised place PAIR, so it serves
    *  the leg in both directions and survives the day being reordered. */
-  const declareDriving = () => {
+  const declareWalking = () => {
     tripOverrides = [
       {
         id: 'ov-1',
         tripId: 't1',
         fromPlaceId: 'p-dinner',
         toPlaceId: 'p-museum',
-        mode: TRAVEL_MODE.DRIVING,
+        mode: TRAVEL_MODE.WALKING,
         createdBy: 'u1',
         createdAt: `${DAY}T00:00:00Z`,
         updatedAt: `${DAY}T00:00:00Z`,
@@ -750,18 +751,22 @@ describe('Home — the leg’s declared mode is the board’s mode (ADR-0206 §A
     ];
   };
 
-  it('asks for the trip’s derived mode where nobody has declared one', () => {
+  // **The polarity of this pair flipped with §AV1, and that IS the fix landing.** These fixtures
+  // are the reported leg — a ⁦76⁩-minute walk against a ⁦23⁩-minute drive — and the app now derives
+  // the drive on its own rather than needing somebody to declare it. So the DERIVED case asserts
+  // the drive, and the meaningful override is the walk: a declaration is only testable against a
+  // mode the derivation would not have picked.
+  it('derives the drive where nobody has declared anything, on a leg nobody would walk', () => {
+    show();
+    expect(askedModes).toContain(TRAVEL_MODE.DRIVING);
+  });
+
+  // The report itself, one layer on: the leg is declared and the board reads the declaration.
+  it('asks for the declared mode once the leg has been switched', () => {
+    declareWalking();
     show();
     expect(askedModes).toContain(TRAVEL_MODE.WALKING);
     expect(askedModes).not.toContain(TRAVEL_MODE.DRIVING);
-  });
-
-  // The report itself: the leg is declared a drive and the board keeps printing the walk.
-  it('asks for the declared mode once the leg has been switched', () => {
-    declareDriving();
-    show();
-    expect(askedModes).toContain(TRAVEL_MODE.DRIVING);
-    expect(askedModes).not.toContain(TRAVEL_MODE.WALKING);
   });
 
   // **And the number the board ACTS on moves with it**, which is the half a mode assertion alone
@@ -769,20 +774,24 @@ describe('Home — the leg’s declared mode is the board’s mode (ADR-0206 §A
   // 23-minute drive over the same leg. On the walk the departure is 31 minutes gone and the tile
   // says you are late; on the drive it is 22 minutes away and the tile says when to go. One leg,
   // one moment, and the board was reading the wrong one of them by 53 minutes.
-  it('counts to the departure the declared mode implies', () => {
+  it('counts to the departure the leg’s mode implies', () => {
     tripEvents = [museumEndedEarly, dinner(50)];
-    show();
-    expect(value()).toBe(String(-toLeave(50, 76)));
-    expect(unit()).toBe(lateUnit(-toLeave(50, 76)));
-    expect(tile()?.classList.contains('missed')).toBe(true);
-    cleanup();
-
-    declareDriving();
+    // Derived, and since §AV1 that is the DRIVE: ⁦22⁩ minutes to go, and the tile says when to go.
     show();
     expect(value()).toBe(String(toLeave(50, 23)));
     expect(unit()).toBe('דקות');
     expect(unitBelow()).toBe(t.board.leaveIn);
     expect(tile()?.classList.contains('missed')).toBe(false);
+    cleanup();
+
+    // Declared a walk, and the number the board ACTS on moves with it — the reported minute, from
+    // the other side now: ⁦31⁩ minutes gone and the tile says you are late. One leg, one moment,
+    // ⁦53⁩ minutes apart, which is what a mode assertion alone would not have proved.
+    declareWalking();
+    show();
+    expect(value()).toBe(String(-toLeave(50, 76)));
+    expect(unit()).toBe(lateUnit(-toLeave(50, 76)));
+    expect(tile()?.classList.contains('missed')).toBe(true);
   });
 
   // §AA4 / §D4 — a leg declared תחב״צ has no provider and therefore no duration. The board must

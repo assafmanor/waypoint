@@ -198,6 +198,49 @@ describe('the distance-aware default (ADR-0206 §AU2)', () => {
     expect(defaultLegTravelMode(TLV, undefined, TRAVEL_MODE.WALKING)).toBe(TRAVEL_MODE.WALKING);
   });
 
+  /**
+   * **THE FIELD REPORT §AV1 EXISTS FOR, through the hook** (2026-08-28). Senso-ji → Tokyo Station
+   * is the pair this file already holds and it makes the point at the reads layer: the crow is
+   * ⁦5.1 km⁩, but what settles it is the ⁦4380s⁩ walk the matrix answered — over ten minutes, so the
+   * leg is a drive. Bjólfur is the same shape with the crow pointing the other way.
+   */
+  it('reads the walking DURATION, not the crow, once the matrix has answered', async () => {
+    const { result } = read();
+    await waitFor(() => expect(result.current.estimateFor(FROM, TO)).not.toBeNull());
+    expect(result.current.defaultModeFor(FROM, TO)).toBe(TRAVEL_MODE.DRIVING);
+  });
+
+  /** …and the walk stays a walk where the router says it is one, which is what makes the test
+   *  above about the duration rather than about these two coordinates. */
+  it('keeps a short walk a walk', async () => {
+    const near = ev('e3', 'p-kaminarimon', `${DAY}T19:00:00Z`);
+    // The shared `BATCH` answers the ⁦4380s⁩ Senso-ji walk by leg INDEX, so this leg needs its own:
+    // what is being asserted is the duration's effect, and inheriting another pair's would assert
+    // the opposite of the intent while still passing for a while.
+    routes.fetchRoutes.mockResolvedValue({
+      legs: [
+        {
+          fromIndex: 0,
+          toIndex: 1,
+          estimates: [{ mode: TRAVEL_MODE.WALKING, durationSeconds: 8 * 60, distanceMeters: 640 }],
+          refusedModes: [],
+          pendingModes: [],
+        },
+      ],
+    });
+    const { result } = renderHook(() =>
+      useDayTravelReads({
+        tripId: TRIP_ID,
+        legs: [{ from: FROM, to: near }],
+        bookings: [{ type: BOOKING_TYPE.CAR } as Booking],
+        places,
+        overrides: [],
+      }),
+    );
+    await waitFor(() => expect(result.current.estimateFor(FROM, near)).not.toBeNull());
+    expect(result.current.modeFor(FROM, near)).toBe(TRAVEL_MODE.WALKING);
+  });
+
   /** …and the same answer through the hook, so the day surfaces read what the derivation says. */
   it('answers per leg through the reads, not once per trip', () => {
     const near = ev('e3', 'p-kaminarimon', `${DAY}T19:00:00Z`);
