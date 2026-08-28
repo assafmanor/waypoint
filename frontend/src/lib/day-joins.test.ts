@@ -4,6 +4,7 @@ import {
   EVENT_KIND,
   EVENT_STATUS,
   TRAVEL_BUFFER_SECONDS,
+  TRAVEL_FIT,
   type Booking,
   type TripEvent,
 } from '@waypoint/shared';
@@ -514,6 +515,64 @@ describe('dayJourney — the mode chosen cannot cover the leg (§AM10)', () => {
   // different (`בלי הערכת זמן` against `רחוק מדי`). The order between them is not arbitrary.
   it('ranks below the declaration, which is never asked and so never refused', () => {
     expect(refused({ declared: true })?.arm).toBe(DAY_JOURNEY_ARM.DECLARED);
+  });
+});
+
+/**
+ * **THE ROW HAS TO EXIST WHILE THE NUMBER IS BEING WORKED OUT** (ADR-0206 §AU1).
+ *
+ * The report: two stops added to a day, and the holes into them drew nothing at all — no time, no
+ * distance, and no mode control, because the block that carries it is the thing that did not
+ * render. The estimate was coming; the app simply never said so.
+ */
+describe('dayJourney — the number is still being computed (§AU1)', () => {
+  const START = Date.parse('2026-07-12T05:00:00Z');
+  const computing = (over: Partial<Parameters<typeof dayJourney>[0]> = {}) =>
+    dayJourney({
+      departAfterMs: START,
+      arriveByMs: START + 120 * MIN,
+      // The state this arm is about: asked for, not answered yet.
+      travelSeconds: null,
+      nowMs: START,
+      warming: true,
+      ...over,
+    });
+
+  it('renders a journey rather than nothing, so the row and its mode control appear at once', () => {
+    expect(computing()).not.toBeNull();
+    expect(computing()?.arm).toBe(DAY_JOURNEY_ARM.WARMING);
+  });
+
+  /** **No crow-flies stand-in** — §AM10 already drew this line for the pending case: a number that
+   *  later becomes a routed one is a figure that changes under the reader, and the day's total
+   *  reads these journeys. */
+  it('states no duration and no distance, because it has neither yet', () => {
+    expect(computing()?.travelSeconds).toBeNull();
+    expect(computing({ distanceMeters: 4100 })?.distanceMeters).toBeNull();
+  });
+
+  /** §V1.1's rule: never a pessimistic guess about a journey nobody has measured. */
+  it('gives no leave-by and corrects no free time', () => {
+    expect(computing()?.leaveByMs).toBeNull();
+    expect(computing()?.free).toBeNull();
+  });
+
+  /** Ranked last of the three no-estimate flags, because it is the only temporary one: a declared
+   *  leg is never asked and a refused one is never coming, so either makes this irrelevant. */
+  it('ranks below the declaration and the refusal, which are both permanent', () => {
+    expect(computing({ declared: true })?.arm).toBe(DAY_JOURNEY_ARM.DECLARED);
+    expect(computing({ tooFarForMode: true })?.arm).toBe(DAY_JOURNEY_ARM.TOO_FAR);
+  });
+
+  /** And it contributes nothing to the day's roll-ups, which stay the settled claim they were. */
+  it('is invisible to the day total and to the verdict', () => {
+    const journeys = [computing()];
+    expect(dayTravelTotal(journeys, 0)).toEqual({
+      distanceMeters: null,
+      travelSeconds: null,
+      partial: false,
+    });
+    expect(dayFeasibility(journeys).fit).toBe(TRAVEL_FIT.UNKNOWN);
   });
 });
 

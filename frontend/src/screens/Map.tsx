@@ -32,6 +32,7 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  defaultLegTravelMode,
   derivedTravelMode,
   exceedsTravelCeiling,
   isRoutableMode,
@@ -1479,13 +1480,19 @@ export function MapView() {
 
   // **What kind of trip this is** (ADR-0206 §Z2), derived rather than stored. Not a constant: a
   // hardcoded `walking` drew footpath routes over legs the trip drives, which is a wrong line
-  // rather than an imprecise one. Per trip, so a single walk inside a driving trip still reads as
-  // a drive — that is the per-leg override's job (M8), not a reason to guess pedestrian for
-  // everyone.
+  // rather than an imprecise one.
+  //
+  // **The trip's answer is only the FLOOR under each leg's** since §AU2 — see `legModes` below.
   const travelMode = useMemo(() => derivedTravelMode(bookings), [bookings]);
 
-  /** **Each leg's own mode** (ADR-0206 §AM), in the day's order — the same `legTravelMode` read the
-   *  day list makes, so one leg cannot be a drive in the list and a walk on the canvas. */
+  /** **Each leg's own mode** (ADR-0206 §AM), in the day's order — the same two derivations the day
+   *  list makes, in the same order, so one leg cannot be a drive in the list and a walk on the
+   *  canvas.
+   *
+   *  **`defaultLegTravelMode` is the half added by §AU2**, and leaving it out here is exactly the
+   *  divergence §AM8 already reported once from the other side: the day list would call the ⁦127 km⁩
+   *  hop a drive and this canvas would ask for its PEDESTRIAN geometry, which is a different road
+   *  and — past walking's ⁦15 km⁩ ceiling — no road at all. Two call sites, one pair of rules. */
   const legModes = useMemo(
     () =>
       orderedStops
@@ -1495,7 +1502,7 @@ export function MapView() {
             travelModeOverrides,
             orderedPins[i]?.placeId,
             orderedPins[i + 1]?.placeId,
-            travelMode,
+            defaultLegTravelMode(orderedStops[i], orderedStops[i + 1], travelMode),
           ),
         ),
     [orderedStops, orderedPins, travelModeOverrides, travelMode],

@@ -11,6 +11,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BOOKING_TYPE,
+  defaultLegTravelMode,
   derivedTravelMode,
   routeLegKey,
   TRANSIT_LEG_MODE,
@@ -38,6 +39,10 @@ const DAY = '2026-08-04';
 
 const SENSOJI = { lat: 35.7148, lng: 139.7967 };
 const TOKYO_STN = { lat: 35.6812, lng: 139.7671 };
+/** **⁦700 m⁩ from Senso-ji**, which is the other side of §AU2's ⁦2.5 km⁩ default — Kaminarimon, the
+ *  gate you actually walk to. The pair above is ⁦5.1 km⁩ crow and now defaults to DRIVING; this one
+ *  is the case that must still default to a walk, or the rule has simply moved the wrong answer. */
+const KAMINARIMON = { lat: 35.7113, lng: 139.7967 };
 
 const places: Place[] = [
   {
@@ -54,6 +59,15 @@ const places: Place[] = [
     tripId: TRIP_ID,
     name: 'תחנת טוקיו',
     ...TOKYO_STN,
+    createdAt: '',
+    updatedAt: '',
+    updatedBy: 'u1',
+  },
+  {
+    id: 'p-kaminarimon',
+    tripId: TRIP_ID,
+    name: 'קמינרימון',
+    ...KAMINARIMON,
     createdAt: '',
     updatedAt: '',
     updatedBy: 'u1',
@@ -156,10 +170,68 @@ describe('the derived default (ADR-0206 §Z2)', () => {
   });
 });
 
+/**
+ * **THE DISTANCE DECIDES, AND THE TRIP'S DERIVATION IS THE FLOOR UNDER IT** (ADR-0206 §AU2).
+ *
+ * The field report this exists for: a trip of flights and hotels is a WALKING trip by §Z2, so the
+ * ⁦127 km⁩ hop from Tel Aviv to the Galilee was measured as a walk, refused by the gate at ⁦15 km⁩,
+ * and rendered as nothing at all — no row, no distance, and no control to change it with.
+ */
+describe('the distance-aware default (ADR-0206 §AU2)', () => {
+  const TLV = { lat: 32.0853, lng: 34.7818 };
+  const GALILEE = { lat: 32.8, lng: 35.5 };
+
+  it('drives a leg no one would walk, on a trip with no car at all', () => {
+    expect(defaultLegTravelMode(TLV, GALILEE, TRAVEL_MODE.WALKING)).toBe(TRAVEL_MODE.DRIVING);
+  });
+
+  it('walks a short hop, on a trip that hired a car', () => {
+    expect(defaultLegTravelMode(SENSOJI, KAMINARIMON, TRAVEL_MODE.DRIVING)).toBe(
+      TRAVEL_MODE.WALKING,
+    );
+  });
+
+  /** The only input left for §Z2's answer: a leg with an end nobody placed has no distance to
+   *  read, and there the trip's own derivation is still the best thing anyone knows (§AM4). */
+  it('falls back to the trip derivation where there is no distance to read', () => {
+    expect(defaultLegTravelMode(undefined, GALILEE, TRAVEL_MODE.DRIVING)).toBe(TRAVEL_MODE.DRIVING);
+    expect(defaultLegTravelMode(TLV, undefined, TRAVEL_MODE.WALKING)).toBe(TRAVEL_MODE.WALKING);
+  });
+
+  /** …and the same answer through the hook, so the day surfaces read what the derivation says. */
+  it('answers per leg through the reads, not once per trip', () => {
+    const near = ev('e3', 'p-kaminarimon', `${DAY}T19:00:00Z`);
+    const { result } = renderHook(() =>
+      useDayTravelReads({
+        tripId: TRIP_ID,
+        legs: [
+          { from: FROM, to: TO },
+          { from: TO, to: near },
+        ],
+        bookings: [],
+        places,
+        overrides: [],
+      }),
+    );
+    // One trip, one derived mode (`walking`, no car) — and two legs that disagree about it.
+    expect(result.current.mode).toBe(TRAVEL_MODE.WALKING);
+    expect(result.current.modeFor(FROM, TO)).toBe(TRAVEL_MODE.DRIVING);
+    expect(result.current.defaultModeFor(FROM, TO)).toBe(TRAVEL_MODE.DRIVING);
+  });
+});
+
 describe('the per-leg override (ADR-0206 §AM)', () => {
-  it('falls back to the trip derivation with no override', () => {
+  it('falls back to the leg default with no override', () => {
     const { result } = read([], [{ type: BOOKING_TYPE.CAR } as Booking]);
     expect(result.current.modeFor(FROM, TO)).toBe(TRAVEL_MODE.DRIVING);
+  });
+
+  /** **An override still outranks the distance**, which is what keeps §AU2 a DEFAULT: the ⁦5.1 km⁩
+   *  pair drives by derivation and walks the moment somebody says so. */
+  it('lets a person overrule the distance', () => {
+    const { result } = read([override(TRAVEL_MODE.WALKING)]);
+    expect(result.current.defaultModeFor(FROM, TO)).toBe(TRAVEL_MODE.DRIVING);
+    expect(result.current.modeFor(FROM, TO)).toBe(TRAVEL_MODE.WALKING);
   });
 
   it('answers the override where one is set', () => {
@@ -191,7 +263,10 @@ describe('the per-leg override (ADR-0206 §AM)', () => {
 describe('a declared leg suppresses the estimate (ADR-0206 §AA4)', () => {
   it('reads the routed estimate on a routable mode', async () => {
     const { result } = read();
-    await waitFor(() => expect(result.current.estimateFor(FROM, TO)?.durationSeconds).toBe(4380));
+    // ⁦900⁩ and not ⁦4380⁩ since §AU2: this pair is ⁦5.1 km⁩ crow, so the leg's default is the drive.
+    // The test's own note two lines down — "73 min against 25 by train" — is the same judgement
+    // the derivation now makes on its own.
+    await waitFor(() => expect(result.current.estimateFor(FROM, TO)?.durationSeconds).toBe(900));
   });
 
   /** The whole point of the declaration: silence where the app would otherwise print a walking
@@ -213,13 +288,14 @@ describe('switching mode issues no request', () => {
   it('re-reads the same matrix instead of asking again', async () => {
     const { result, rerender } = read();
     // Wait on the ESTIMATE, not on the call: the fetch resolves a tick before the batch lands.
-    await waitFor(() => expect(result.current.estimateFor(FROM, TO)?.durationSeconds).toBe(4380));
+    // The leg's default is the drive since §AU2 — ⁦5.1 km⁩ crow, past the ⁦2.5 km⁩ walk default.
+    await waitFor(() => expect(result.current.estimateFor(FROM, TO)?.durationSeconds).toBe(900));
     expect(routes.fetchRoutes).toHaveBeenCalledTimes(1);
 
-    // Declare the leg driving — a different mode, and every read must move to it.
-    rerender({ overrides: [override(TRAVEL_MODE.DRIVING)] });
-    await waitFor(() => expect(result.current.modeFor(FROM, TO)).toBe(TRAVEL_MODE.DRIVING));
-    expect(result.current.estimateFor(FROM, TO)?.durationSeconds).toBe(900);
+    // Declare the leg a walk — a different mode, and every read must move to it.
+    rerender({ overrides: [override(TRAVEL_MODE.WALKING)] });
+    await waitFor(() => expect(result.current.modeFor(FROM, TO)).toBe(TRAVEL_MODE.WALKING));
+    expect(result.current.estimateFor(FROM, TO)?.durationSeconds).toBe(4380);
 
     // …and back again, through the fourth mode on the way.
     rerender({ overrides: [override(TRANSIT_LEG_MODE)] });

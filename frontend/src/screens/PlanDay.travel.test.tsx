@@ -192,6 +192,10 @@ vi.mock('../lib/travel', () => ({
         travelSeconds === null
           ? null
           : { mode: TRAVEL_MODE.WALKING, durationSeconds: travelSeconds, distanceMeters: 2400 },
+      // These specs are about what a day SAYS once its numbers are in, so the double is never
+      // warming (ADR-0206 §AU1). The computing arm has its own coverage in `day-joins.test.ts`
+      // and `travel.test.ts`; asserting it here too would only re-test the double.
+      warmingFor: () => false,
     };
   },
   useDayShapes: () => ({ pathFor: () => null }),

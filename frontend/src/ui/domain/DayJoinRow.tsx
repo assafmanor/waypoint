@@ -38,6 +38,7 @@ import {
 } from '@waypoint/shared';
 import { Icon, type IconName } from '../Icon';
 import { Collapsible } from '../primitives/Collapsible';
+import { Skeleton } from '../feedback/Skeleton';
 import { DAY_JOURNEY_ARM, type DayJourney } from '../../lib/day-joins';
 import { approxTravelTime, freeTimePhrase, hoursPhrase, shortfallPhrase } from '../../lib/duration';
 import { formatDistance } from '../../lib/distance';
@@ -190,6 +191,13 @@ export function JourneyBlock({
   duration,
   /** `2.4 ק״מ`, the routed distance. Absent where the estimate carries none. */
   distance,
+  /** **The number is being computed right now** (ADR-0206 §AU1). Given, the head's duration slot
+   *  holds a `Skeleton` where the `~40 דק׳` will land, so the row keeps the height it is about to
+   *  have and the reader sees the shape of the answer rather than a gap. It is a placeholder and
+   *  not a live mark: `.nowline` is the app's one of those (§D6), so this neither pulses nor
+   *  glows — `Skeleton`'s own shimmer is the shared idle treatment every other loading surface in
+   *  `ui/feedback/` already uses, which is the point of taking it from there. */
+  pending,
   /** **The way from this leg to the same leg on the canvas** (owner, 2026-08-27). Given, the
    *  distance carries a small pin and becomes tappable; absent, it is the plain read-out it
    *  has always been ("absent, not broken", ADR-0121 §8). */
@@ -222,6 +230,7 @@ export function JourneyBlock({
   flag?: boolean;
   duration?: string;
   distance?: string;
+  pending?: boolean;
   onShowOnMap?: () => void;
   leave?: string;
   tone: 'time' | 'miss' | 'on-way';
@@ -259,6 +268,12 @@ export function JourneyBlock({
             <>
               <span className="sep">·</span>
               <span>{duration}</span>
+            </>
+          )}
+          {!duration && pending && (
+            <>
+              <span className="sep">·</span>
+              <Skeleton className="day-trv-wait" />
             </>
           )}
         </span>
@@ -427,7 +442,13 @@ export function JourneyRow({
    *  the arm rather than off the absent number, because the absent number is now ambiguous between
    *  the two. */
   const tooFar = journey.arm === DAY_JOURNEY_ARM.TOO_FAR;
-  const declared = !tooFar && (!isRoutableMode(travelMode) || seconds === null);
+  /** **And the THIRD reason there is no number is that it has not arrived yet** (ADR-0206 §AU1).
+   *  Read off the arm for `tooFar`'s exact reason, and asked BEFORE `declared` below, which infers
+   *  a declaration from the absent number — an inference that was safe while `DECLARED` and
+   *  `TOO_FAR` were the only two arms carrying one, and would now label a leg the server is still
+   *  computing as one nobody is estimating. */
+  const warming = journey.arm === DAY_JOURNEY_ARM.WARMING;
+  const declared = !tooFar && !warming && (!isRoutableMode(travelMode) || seconds === null);
   return (
     <JourneyBlock
       mode={t.travelMode[travelMode]}
@@ -444,17 +465,22 @@ export function JourneyRow({
       // would contradict what the state asserts.
       // …and a mode that cannot cover the leg takes it too: like an overrun it is a fact about the
       // PLAN rather than about the hour, which is exactly the line §AL5 draws.
+      // …and a leg still being computed never takes it: nothing is wrong with it, the number is
+      // simply on its way (§AU1).
       flag={overrunning || journey.arrivesAfterClose || tooFar}
       duration={seconds === null || declared ? undefined : (approxTravelTime(seconds) ?? undefined)}
+      pending={warming}
       distance={
         journey.distanceMeters === null ? undefined : formatDistance(journey.distanceMeters)
       }
       leave={
         tooFar
           ? t.travel.tooFarFor(t.travelMode[travelMode])
-          : declared
-            ? t.travel.noEstimate
-            : journeyMetaLine(journey, zones)
+          : warming
+            ? t.travel.computing
+            : declared
+              ? t.travel.noEstimate
+              : journeyMetaLine(journey, zones)
       }
       tone={
         // An overrun is a negative status about the plan, so it takes §D7's own paint — the same

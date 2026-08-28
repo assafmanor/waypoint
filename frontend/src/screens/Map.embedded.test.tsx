@@ -4103,9 +4103,15 @@ describe('the embedded map’s shell (ADR-0121)', () => {
   // stop you asked about. What picks that stop is `selected → next → the day's first leg`, and
   // the last of the three is what makes Plan mode draw at all.
   describe('which leg the route line is spent on (§D8/§AB2)', () => {
+    // **Walkable spacing, and since ADR-0206 §AU2 that is load-bearing rather than incidental.**
+    // These were ⁦0.1°⁩ apart — ⁦14 km⁩ a leg — which the distance-aware default now correctly calls a
+    // DRIVE. Every assertion in this block is about which leg takes the line and which mode is
+    // asked for, never about how far apart the stops are, so the spacing moves to ~⁦1.2 km⁩ and the
+    // day stays the walking day these specs were written around. §AU2's own rule has its cases
+    // below.
     const A = { lat: 35.6, lng: 139.6 };
-    const B = { lat: 35.7, lng: 139.7 };
-    const C = { lat: 35.8, lng: 139.8 };
+    const B = { lat: 35.61, lng: 139.61 };
+    const C = { lat: 35.62, lng: 139.62 };
     const seedThreeStopDay = () => {
       tripPlaces = [place('a', true, A), place('b', true, B), place('c', true, C)];
       tripEvents = [
@@ -4171,7 +4177,26 @@ describe('the embedded map’s shell (ADR-0121)', () => {
 
     // **The mode is derived, never assumed** (ADR-0206 §Z2). It was a hardcoded `walking`, so the
     // canvas drew a `pedestrian` route — through alleys and parks — over legs the trip drives.
-    it('asks for the trip’s derived mode: a car hire drives, everything else walks', () => {
+    //
+    // **And since §AU2 the DISTANCE is what derives it**, which is what these two cases now assert:
+    // a ⁦1.2 km⁩ hop is a walk on a trip that hired a car (you park, then you walk), and a ⁦127 km⁩
+    // one is a drive on a trip that booked nothing but flights. The canvas has to make both reads
+    // exactly as the day list does — the same defect §AM8 reported from the other side, where one
+    // leg was a drive in the list and a walk on this canvas.
+    const carHire = () => [
+      {
+        id: 'bk-car',
+        tripId: 't1',
+        type: 'car',
+        title: 'hire',
+        source: 'manual',
+        createdAt: '',
+        updatedAt: '',
+        updatedBy: 'u1',
+      },
+    ];
+
+    it('walks a short hop even where the trip hired a car (§AU2)', () => {
       seedThreeStopDay();
       currentMode = 'plan';
       const { unmount } = render(wrap(<MapView />));
@@ -4179,19 +4204,22 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       unmount();
 
       seedThreeStopDay();
-      tripBookings = [
-        {
-          id: 'bk-car',
-          tripId: 't1',
-          type: 'car',
-          title: 'hire',
-          source: 'manual',
-          createdAt: '',
-          updatedAt: '',
-          updatedBy: 'u1',
-        },
-      ];
+      tripBookings = carHire() as typeof tripBookings;
       render(wrap(<MapView />));
+      expect(askedModes.current).toEqual(['walking']);
+    });
+
+    it('drives a leg no one would walk even where the trip hired nothing (§AU2)', () => {
+      // ⁦127 km⁩ north — the field report's own leg, Tel Aviv to the Galilee.
+      const FAR = { lat: 32.8, lng: 35.5 };
+      tripPlaces = [place('a', true, { lat: 32.0853, lng: 34.7818 }), place('b', true, FAR)];
+      tripEvents = [
+        event({ id: 'e1', placeId: 'a', startsAt: `${ACTIVE_DATE}T09:00:00Z` }),
+        event({ id: 'e2', placeId: 'b', startsAt: `${ACTIVE_DATE}T17:00:00Z` }),
+      ];
+      currentMode = 'plan';
+      render(wrap(<MapView />));
+
       expect(askedModes.current).toEqual(['driving']);
     });
 
@@ -4211,10 +4239,16 @@ describe('the embedded map’s shell (ADR-0121)', () => {
   // REPLACE the straight dashed segments rather than sitting beside them. §D8 rations the solid
   // amber, not the truth of the line.
   describe('the day’s legs are drawn along their routes (§Z5 §M3)', () => {
+    // **Walkable spacing, and since ADR-0206 §AU2 that is load-bearing rather than incidental.**
+    // These were ⁦0.1°⁩ apart — ⁦14 km⁩ a leg — which the distance-aware default now correctly calls a
+    // DRIVE. Every assertion in this block is about which leg takes the line and which mode is
+    // asked for, never about how far apart the stops are, so the spacing moves to ~⁦1.2 km⁩ and the
+    // day stays the walking day these specs were written around. §AU2's own rule has its cases
+    // below.
     const A = { lat: 35.6, lng: 139.6 };
-    const B = { lat: 35.7, lng: 139.7 };
-    const C = { lat: 35.8, lng: 139.8 };
-    const BEND = { lat: 35.65, lng: 139.68 };
+    const B = { lat: 35.61, lng: 139.61 };
+    const C = { lat: 35.62, lng: 139.62 };
+    const BEND = { lat: 35.605, lng: 139.608 };
 
     const legPaths = () =>
       ((paneProps.current.connector ?? []) as { path: unknown }[]).map((leg) => leg.path);

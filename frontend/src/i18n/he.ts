@@ -2031,6 +2031,15 @@ export const t = {
     // pick another mode. It names the mode, because a hole showing four chips has to say which one
     // it means. A middle dot separates the two facts, never an em dash (root CLAUDE.md).
     tooFarFor: (mode: string) => `רחוק מדי ל${mode}`,
+    // **WHAT A LEG STILL BEING COMPUTED SAYS** (ADR-0206 §AU1). Deliberately none of the three
+    // sentences above: `noEstimate` says we are not estimating this, `tooFarFor` says it cannot be
+    // done, and both are permanent. This one is temporary and says so — present tense, with the
+    // three dots that are the only thing in the phrase promising anything.
+    //
+    // **`מחשב` and not `טוען`.** Nothing is being fetched from anywhere the reader can picture; a
+    // route is being worked out, which is what the app is actually doing and the word people use
+    // for it. And no `~`: §D5's hedge belongs on a NUMBER, and there is no number here yet.
+    computing: 'מחשב מסלול…',
     // What is LEFT of the journey, once the fix says you are on it (ADR-0207 §6). An
     // approximation of an approximation, and `~` is what says so; the alternative was the
     // untouched total, which read as "44 minutes still to walk" two minutes from the door.

@@ -23,7 +23,7 @@ vi.mock('./api', async (importOriginal) => {
 let preview = false;
 vi.mock('../state/day-preview', () => ({ useIsDayPreview: () => preview }));
 
-import { DAY_TRAVEL_SETTLE_MAX_MS } from '../constants';
+import { DAY_TRAVEL_SETTLE_MAX_MS, DAY_TRAVEL_WARM_ATTEMPTS } from '../constants';
 import { db } from '../db';
 import {
   cacheTravelEstimates,
@@ -157,7 +157,13 @@ describe('useDayTravel', () => {
     expect(routes.fetchRoutes).not.toHaveBeenCalled();
   });
 
-  it('re-asks a warming day once, then gives up quietly', async () => {
+  /**
+   * **THE FIELD REPORT THIS BOUND EXISTS FOR** (ADR-0206 §AU1). It asked once, retried once and
+   * gave up — and a cold day's warm is three matrix calls paced ⁦1/s⁩ server-side against a
+   * `Retry-After` floored at ⁦2s⁩, so the single retry regularly landed mid-warm and the day sat
+   * silent until the app was left and reopened.
+   */
+  it('keeps re-asking a warming day, and stops at the bound', async () => {
     vi.useFakeTimers();
     routes.fetchRoutes.mockResolvedValue(warming);
 
@@ -168,16 +174,62 @@ describe('useDayTravel', () => {
     });
     expect(routes.fetchRoutes).toHaveBeenCalledTimes(1);
 
+    // The round the old behaviour stopped at, and the one after it — which is the fix.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
     expect(routes.fetchRoutes).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(routes.fetchRoutes).toHaveBeenCalledTimes(3);
 
-    // The second answer is warming too, and nothing follows it.
+    // **And it terminates.** A provider that never answers must not leave a client polling it
+    // forever — past the bound the day is correct with fewer numbers in it (§D4).
     await act(async () => {
       await vi.advanceTimersByTimeAsync(120_000);
     });
-    expect(routes.fetchRoutes).toHaveBeenCalledTimes(2);
+    expect(routes.fetchRoutes).toHaveBeenCalledTimes(DAY_TRAVEL_WARM_ATTEMPTS);
+  });
+
+  /** **The row has to be able to SAY it is computing** (ADR-0206 §AU1) — the second half of the
+   *  same report: the number was coming and the day showed nothing at all while it did. */
+  it('reports a leg as warming while it asks, and stops when the answer lands', async () => {
+    routes.fetchRoutes.mockResolvedValueOnce(warming);
+    const { result } = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+
+    await waitFor(() =>
+      expect(result.current.warmingFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toBe(true),
+    );
+
+    routes.fetchRoutes.mockResolvedValue({ legs: [leg([walk])] });
+    await waitFor(() =>
+      expect(result.current.estimateFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toEqual(walk),
+    );
+    expect(result.current.warmingFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toBe(false);
+  });
+
+  /** A mode the GATE refused is never coming, so it must never read as computing — otherwise the
+   *  ⁦127 km⁩ walk spins for the whole bound and then blanks (§AM10 meets §AU1). */
+  it('never calls a refused mode warming', async () => {
+    routes.fetchRoutes.mockResolvedValue({
+      legs: [{ ...leg([]), refusedModes: [TRAVEL_MODE.WALKING], pendingModes: [] }],
+      retryAfterSeconds: 2,
+    });
+    const { result } = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+
+    await waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(result.current.warmingFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toBe(false),
+    );
+  });
+
+  /** Offline there is no ask, so there is nothing to be waiting on — §D4's chip, as before. */
+  it('is not warming offline', async () => {
+    setOnline(false);
+    const { result } = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    expect(result.current.warmingFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toBe(false);
   });
 
   it('does not re-ask a day it already answered in full', async () => {

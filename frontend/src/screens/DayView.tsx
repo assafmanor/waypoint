@@ -837,6 +837,10 @@ export function DayView() {
         // …and a mode the gate refuses is the same shape of fact (ADR-0206 §AM10): no estimate is
         // ever coming, and the block is the only thing carrying the control that would change it.
         tooFarForMode: travelReads.refusedFor(leg.from, leg.to),
+        // …and a leg whose number has not arrived yet is the third (ADR-0206 §AU1): it must RENDER,
+        // because the block is what tells the reader a route is coming and what carries the control
+        // that would pick a different mode for it. Ranked last of the three by `dayJourney` itself.
+        warming: travelReads.warmingFor(leg.from, leg.to),
         nowMs,
         // `arrived` needs no separate arm here: a fix at the next stop means you got there, and
         // the day list is a record either way — what it must not do is keep offering a departure.

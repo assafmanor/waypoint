@@ -568,6 +568,10 @@ export function PlanDay() {
       // …and the same for a mode the gate refuses (ADR-0206 §AM10), read off the one derivation
       // rather than re-asked here, for the reason the comment above gives twice.
       tooFarForMode: planTravel.refusedFor(from, to),
+      // …and a leg whose number has not arrived yet is the third (ADR-0206 §AU1): it must RENDER,
+      // because the block is what tells the reader a route is coming and what carries the control
+      // that would pick a different mode for it. Ranked last of the three by `dayJourney` itself.
+      warming: planTravel.warmingFor(from, to),
       nowMs: now.getTime(),
     });
   };

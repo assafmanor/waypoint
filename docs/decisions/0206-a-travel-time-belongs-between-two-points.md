@@ -3115,3 +3115,127 @@ forgets it silently claims completeness it has not got). Where it is non-zero th
 
 The arithmetic is untouched. What a floor changes is the claim, not the numbers — inventing a
 distance for a leg with no coordinates would be the same failure one step further on.
+
+## AU. A stop added to the day had no route, and three separate things had to be true for that (2026-08-28)
+
+> _"I've added two stops to my trip, and no route or time estimations. I'm not sure why, maybe
+> because the default transportation for this trip is walking (as there's no car rental here)."_
+>
+> _"I think that the transportation mode should be decided based on the distance (walking or
+> driving). Of course you should always see it and should be able to switch between modes."_
+>
+> _"Perhaps the reason is that the route is not automatically triggered when you add stops - which
+> it should. That's actually my biggest suspicion, because I left the app and came back after some
+> time, and then I had a route."_
+
+The owner's second guess is the right one, and their first is a real defect standing behind it. A
+day with two new stops in the Galilee showed **no journey row at all** on either hole — no time, no
+distance, and **no mode control**, because the block that carries the control is the thing that did
+not render. Three faults compose:
+
+1. **The ask gave up too early** (§AU1). `useDayTravel` asked once, retried once, and let go — and
+   a cold day's warm is three matrix calls the server paces at ⁦1/s⁩, against a `Retry-After` it
+   floors at ⁦2s⁩. The one retry regularly lands mid-warm. Nothing re-asks after that, so the day
+   stays silent until the fingerprint changes or the surface remounts, which is exactly _"I left
+   the app and came back after some time, and then I had a route."_
+2. **Nothing said a number was coming** (§AU1). §D4 makes absence silent, so "still computing" and
+   "not computable" render identically — and since M6a that means the row does not exist. The
+   reader is given no reason to wait and no control to act with.
+3. **The mode was the TRIP's, so a ⁦127 km⁩ hop was a walk** (§AU2). §Z2 derives a walking trip from
+   the absence of a car hire, and the gate refuses walking past ⁦15 km⁩ — so the leg was unanswerable
+   by construction, on a trip where nobody was ever going to walk it.
+
+Each one alone is survivable. Together they are a feature that looks broken and cannot be argued
+with.
+
+### AU1. "Being computed" is a third state, and §D4 never covered it
+
+**§D4 is amended a second time, by the same argument §AT made.** That rule says the reader must not
+be able to tell "we have not computed this" from "this is not computable". Both of those are
+**settled** states — the number is not coming, or it is not coming from us. A leg the server is
+warming right now is neither: it resolves into a visible event a few seconds later, and a rule
+about indistinguishable absences has nothing to say about a state that ends.
+
+§AT already made this move for the **local** read (_"we have not read our own cache yet is not
+absence"_). This is the same claim one layer out, for the **network** one, and it is what §AT1's own
+deferral asked for in as many words: _"the version that fixes it without waiting reserves the row's
+slot … which needs a state the journey block does not have today (§D4 has no 'asked, not yet
+answered')."_ It has one now.
+
+**Two halves, and both were needed:**
+
+- **The client keeps asking.** `DAY_TRAVEL_WARM_ATTEMPTS = 6` rounds, each sleeping the interval
+  the answer itself carried (⁦2–30s⁩). It bounds **rounds and not seconds**, so a slow warm is
+  waited out and a dead provider still terminates into §D4's silence. Every extra round is a DB
+  read plus a warm the server already dedupes (`RoutingService.once`) — the cost is a request, never
+  provider work.
+- **The row says so.** A `WARMING` arm on `dayJourney`, ranked below `DECLARED` and `TOO_FAR` (both
+  permanent) and **above** the floor that bails on a missing estimate — that bail is what deleted
+  the row. It renders the mode, the mode control, and `מחשב מסלול…` where the duration will land,
+  with a sized `Skeleton` holding the slot so the row does not resize when the number arrives.
+
+**What it deliberately does not do:**
+
+- **No crow-flies distance.** §AM10 already drew this line for the pending case: _"a crow-flies
+  number that later becomes a routed one is a figure that changes under the reader."_ The day's
+  total reads these journeys, so a stand-in here would also make the header climb leg by leg.
+- **No correction to the free time, no leave-by.** §V1.1's rule — never a guess we did not measure,
+  in the direction that costs somebody their afternoon.
+- **No second live mark.** §D6: `.nowline` is the app's one. `Skeleton`'s existing shimmer is the
+  shared idle treatment, taken from `ui/feedback/` rather than minted here.
+- **It is not "the server said `pendingModes`".** The gap opens _before_ the first answer lands —
+  a day whose stops just changed holds nothing and has been told nothing, and that is the second
+  the reader is looking at the screen. So the signal reads the **ask**, narrowed by `refusedModes`
+  as answers arrive: a mode the gate refused must never spin for six rounds and then blank.
+
+### AU2. The DISTANCE decides a leg's mode; the trip's bookings are the floor under it
+
+**§Z2 is amended: `derivedTravelMode` is no longer any leg's default.** It answers _is there a car
+on this trip_, which is a fact about the trip, and it was being used as a fact about every leg.
+
+The report is the proof. A trip of flights and hotels is a **walking** trip by §Z2 — correctly, by
+that rule's own reasoning — so the hop from Tel Aviv to the Galilee was measured as a walk, refused
+by the gate at ⁦15 km⁩, and rendered as nothing. **No car booking was ever going to fix that**: you
+take a bus, a taxi or a lift, and every one of them is `driving` as far as a router is concerned.
+
+So: `defaultLegTravelMode(from, to, tripMode)` — over `WALK_DEFAULT_MAX_M` (⁦2.5 km⁩) the leg drives,
+under it the leg walks, and `tripMode` answers only where there is no distance to read (an end
+nobody placed, §AM4's inert leg).
+
+- **It outranks the booking in BOTH directions**, which is what makes the rule one sentence rather
+  than two: a long leg drives on a trip with no car, and a ⁦300 m⁩ hop walks on a trip with one,
+  because you park and then you walk. §Z2's closing line — that a per-leg answer is _"the per-leg
+  override's job"_ — was written when the only per-leg input was a person. **A leg's length is a
+  per-leg input the app has had all along.**
+- **⁦2.5 km⁩ is a DEFAULT, not a limit.** `TRAVEL_GATE.walking.maxMeters` stays at ⁦15 km⁩ and §Z8's
+  judgement is untouched: a group walks a long way **on purpose**, and a walk that far must still
+  be pickable. The two numbers are far apart deliberately — the band between them is every leg the
+  app guesses `driving` for and a person may still switch to a walk in one tap.
+- **⁦2.5 km⁩ is derived, not chosen.** At §Z2's measured ⁦4.9 km/h⁩ and §Z7's ⁦1.16⁩ median road/crow
+  that is a **~35-minute walk**: the length past which the answer stops being obvious. It is the
+  one number here a device pass may retune from feel.
+- **An override still wins.** §AM is untouched — this changes what the app guesses, never what a
+  person said.
+- **The comparison that clears an override moves with it.** `useLegModeControl` cleared the stored
+  row when the pick equalled the **trip's** mode; it now asks `defaultModeFor` for that leg.
+  Unchanged, a walking trip's short hop picked as `הליכה` would have persisted a row saying what
+  the derivation already says, and then held it against a later change.
+
+**Two call sites, counted rather than assumed** (root `CLAUDE.md`'s own rule, and §AM8 is the
+report from the other side of it). `legTravelMode` is read by `useDayTravelReads` — which the day
+list, Plan mode and the board all go through — and by the **Map**, which builds its own `legModes`.
+The Map was passing the trip's mode as the fallback, so without the same change it would have asked
+for the ⁦127 km⁩ leg's **pedestrian** geometry: a different road, and past walking's ceiling, no road
+at all. Both call sites take the same pair of derivations, in the same order.
+
+### AU3. What this leaves open
+
+- **The threshold wants a device pass**, with `TRAVEL_BUFFER_SECONDS` and `ARRIVAL_RADIUS_MAX_M`,
+  which the backlog already groups as judgements of the same standing.
+- **The warming row's copy has not been seen on a real phone.** `מחשב מסלול…` is drawn in
+  [`mockups/a-route-is-on-its-way-v1.html`](../../mockups/a-route-is-on-its-way-v1.html) and
+  measured at 360 in both themes; whether it reads as reassurance or as noise on a day with four
+  cold holes is a judgement only a real cold day makes.
+- **`WARMING` is a Trip-and-Plan arm only.** The board (`Home`) reads the same journeys through
+  `useDayTravelReads`, so it inherits the state, but the countdown TILE has no shape for "computing"
+  and deliberately keeps saying nothing rather than guessing at one.

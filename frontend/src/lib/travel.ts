@@ -28,7 +28,7 @@ import {
   type TravelEstimate,
   type TravelMode,
 } from '@waypoint/shared';
-import { DAY_TRAVEL_SETTLE_MAX_MS } from '../constants';
+import { DAY_TRAVEL_SETTLE_MAX_MS, DAY_TRAVEL_WARM_ATTEMPTS } from '../constants';
 import { db } from '../db';
 import { fetchRoutes } from './api';
 import { useIsDayPreview } from '../state/day-preview';
@@ -98,10 +98,11 @@ function dayLegKeys(stops: readonly LatLng[], modes: readonly TravelMode[]): str
   return keys;
 }
 
-/** The answered legs of a batch, keyed the way the table is. `refusedModes` and `pendingModes`
- *  are read by nobody here on purpose: both render as absence (ADR-0206 §D4), and the split
- *  exists so the CLIENT can tell "never coming" from "not yet" — which is the retry decision
- *  below, taken from the envelope's `retryAfterSeconds` rather than per leg. */
+/** The answered legs of a batch, keyed the way the table is. `pendingModes` is read by nobody
+ *  here — the retry decision below is taken from the envelope's `retryAfterSeconds` rather than
+ *  per leg — but `refusedModes` now is, by `refusedOf` beneath this: ADR-0206 §AU1 turns the
+ *  split the server has always sent into a state the READER can see, and "never coming" is
+ *  exactly the half that must not read as `מחשב…`. */
 function estimatesOf(
   stops: readonly LatLng[],
   legs: readonly RoutedLeg[],
@@ -116,6 +117,20 @@ function estimatesOf(
     }
   }
   return found;
+}
+
+/** **Every (leg, mode) the gate refused**, keyed the same way. Never coming, whatever anyone waits
+ *  for (ADR-0205 §3) — so this is the set that keeps `warmingFor` honest: a refused mode holds no
+ *  estimate for the same reason a warming one does, and only the server can tell them apart. */
+function refusedOf(stops: readonly LatLng[], legs: readonly RoutedLeg[]): Set<string> {
+  const refused = new Set<string>();
+  for (const leg of legs) {
+    const from = stops[leg.fromIndex];
+    const to = stops[leg.toIndex];
+    if (!from || !to) continue;
+    for (const mode of leg.refusedModes) refused.add(routeLegKey(from, to, mode));
+  }
+  return refused;
 }
 
 /** Mirror what came back. Idempotent and last-write-wins by nature — the server is the only
@@ -182,6 +197,23 @@ export async function readCachedTravelEstimates(
 export interface DayTravel {
   estimateFor(from: LatLng, to: LatLng, mode: TravelMode): TravelEstimate | null;
   /**
+   * **Is this leg's number still being computed?** (ADR-0206 §AU1.)
+   *
+   * `true` while this day has an ask in flight or scheduled AND holds no estimate for the pair —
+   * minus what the server has told us it REFUSED, which is the one absence that is never coming.
+   *
+   * **It is deliberately not "the server said `pendingModes`".** The gap the field report fell
+   * into opens *before* the first answer lands: a day whose stops just changed holds nothing and
+   * has been told nothing, and that is precisely the second the reader is looking at the screen
+   * asking why their new stop has no route. So this reads the ASK rather than the answer, and
+   * narrows it with `refusedModes` as answers arrive.
+   *
+   * **`false` the moment this day stops asking** — answered in full, out of attempts, offline, or
+   * a peek that never asks at all — at which point every consumer is back on §D4's crow-flies
+   * chip. A spinner that outlives the request it describes is worse than no spinner.
+   */
+  warmingFor(from: LatLng, to: LatLng, mode: TravelMode): boolean;
+  /**
    * **Has this device said what it holds yet?** (ADR-0206 §AT.)
    *
    * `false` only while the local read for this day's legs is still in flight — never for a
@@ -198,6 +230,14 @@ export interface DayTravel {
 }
 
 const NOTHING_KNOWN: ReadonlyMap<string, TravelEstimate> = new Map();
+
+/** The resting state of the warm signal: nothing asked, nothing refused. Shared rather than a
+ *  fresh literal so a day that never asks (a peek, an offline device) keeps one identity and the
+ *  memo below does not rebuild its reads on every render. */
+const NOT_WARMING: { asking: boolean; refused: ReadonlySet<string> } = {
+  asking: false,
+  refused: new Set(),
+};
 
 function merge(
   prev: ReadonlyMap<string, TravelEstimate>,
@@ -245,10 +285,13 @@ const warmRetryMs = (seconds: number) => Math.min(Math.max(seconds, 0) * 1000, W
  * renders whatever Dexie already holds and falls back to the crow-flies chip for the rest, until
  * the swipe commits and it becomes the visible day.
  *
- * **A warming answer is re-asked once and then let go.** ADR-0187's flow: the server answers
- * what it has plus how long to wait, so one wait covers the ordinary cold day. Beyond that the
- * day is already correct with fewer numbers in it (§D4), and a client that keeps polling a day
- * nobody is looking at is the failure this whole layer is shaped to avoid.
+ * **A warming answer is re-asked until it lands, up to `DAY_TRAVEL_WARM_ATTEMPTS` rounds**
+ * (ADR-0206 §AU1). ADR-0187's flow: the server answers what it has plus how long to wait, and each
+ * round sleeps the interval that answer carried. This said "one wait covers the ordinary cold day"
+ * and measurement says it does not — see the effect below for the arithmetic and the field report.
+ * The bound is what keeps the old rule's point intact: past it the day is already correct with
+ * fewer numbers in it (§D4), and a client that keeps polling a day nobody is looking at is the
+ * failure this whole layer is shaped to avoid.
  */
 export function useDayTravel(opts: {
   tripId: string;
@@ -276,6 +319,11 @@ export function useDayTravel(opts: {
   // value is read once by `useState`; a day whose fingerprint changes under the same hook is
   // covered by the effect below, which merges into whatever is there.
   const [known, setKnown] = useState<ReadonlyMap<string, TravelEstimate>>(() => knownHere(legKeys));
+  /** **What this day is still waiting on** (ADR-0206 §AU1) — `asking` is true from the moment the
+   *  request effect starts until it has nothing left to wait for, and `refused` narrows it with
+   *  the modes the server has said it will never answer. A day whose fingerprint changes remounts
+   *  the effect below, which resets both: a new stop starts a new wait, not a continued one. */
+  const [warm, setWarm] = useState<{ asking: boolean; refused: ReadonlySet<string> }>(NOT_WARMING);
   // Bumped when a local read lands, and that is its whole job: an empty cache read merges nothing,
   // so `setKnown` would change no state at all and the hold below would never lift. The SET is
   // where the answer actually lives (it outlives this mount); this is only what re-renders.
@@ -312,39 +360,82 @@ export function useDayTravel(opts: {
     };
   }, [fingerprint]);
 
+  // **THE ASK, AND IT KEEPS ASKING UNTIL THE DAY IS ANSWERED** (ADR-0206 §AU1).
+  //
+  // It used to ask once, retry once, and let go — written as "one wait covers the ordinary cold
+  // day", which measurement says it does not: a cold day is three matrix calls paced ⁦1/s⁩ by the
+  // server's `PolitenessLimiter`, and `retryAfterFor` floors `Retry-After` at ⁦2s⁩, so the single
+  // retry regularly landed while the last call was still in flight. The day then sat silent with
+  // no route and no way to get one, until something changed the fingerprint or the surface
+  // remounted — which is exactly the shape of the report: _"I left the app and came back after
+  // some time, and then I had a route."_
+  //
+  // Each pass now sleeps the interval the ANSWER carried, up to `DAY_TRAVEL_WARM_ATTEMPTS` rounds,
+  // and every one of them is a DB read plus a warm the server dedupes (`RoutingService.once`) —
+  // so the extra rounds cost requests, never provider work.
   useEffect(() => {
-    if (preview || offline || !fingerprint || askedDays.has(fingerprint)) return;
+    if (preview || offline || !fingerprint || askedDays.has(fingerprint)) {
+      setWarm(NOT_WARMING);
+      return;
+    }
 
     const controller = new AbortController();
     let retry: ReturnType<typeof setTimeout> | undefined;
+    let live = true;
+    // **The wait opens with the request, not with the first answer.** The second a stop is added
+    // the day holds nothing and has been told nothing, and that is the second the reader is
+    // looking at it — see `DayTravel.warmingFor`.
+    setWarm({ asking: true, refused: new Set() });
+    // Whatever happens, the day stops claiming to be computing: answered, out of attempts, or
+    // failed. `asking` outliving its request is the one way this signal could lie.
+    const done = () => {
+      if (live) setWarm((prev) => (prev.asking ? { ...prev, asking: false } : prev));
+    };
 
-    const ask = (isRetry: boolean): void => {
+    const ask = (attempt: number): void => {
       const { stops: at, modes: want } = day.current;
       void fetchRoutes(tripId, { stops: [...at], modes: [...want] }, controller.signal)
         .then((batch) => {
           const found = estimatesOf(at, batch.legs);
           setKnown((prev) => merge(prev, found));
+          // A refused mode is never coming, so it must stop reading as "computing" the moment the
+          // server says so — otherwise the ⁦127 km⁩ walk would spin for six rounds and then blank.
+          const refused = refusedOf(at, batch.legs);
+          if (live && refused.size) {
+            setWarm((prev) => ({
+              asking: prev.asking,
+              refused: new Set([...prev.refused, ...refused]),
+            }));
+          }
           void cacheTravelEstimates(at, batch.legs).catch(() => {
             // Storing is an optimisation for the next visit; failing it costs this visit
             // nothing, since the answer is already in state.
           });
           if (batch.retryAfterSeconds === undefined) {
             askedDays.add(fingerprint);
+            done();
             return;
           }
-          if (isRetry) return;
-          retry = setTimeout(() => ask(true), warmRetryMs(batch.retryAfterSeconds));
+          // Out of rounds. The day is already CORRECT with fewer numbers in it (§D4) and a client
+          // that polls a day nobody is looking at is what this whole layer is shaped to avoid.
+          if (attempt >= DAY_TRAVEL_WARM_ATTEMPTS) {
+            done();
+            return;
+          }
+          retry = setTimeout(() => ask(attempt + 1), warmRetryMs(batch.retryAfterSeconds));
         })
         .catch(() => {
           // **Nothing to report.** Offline, a refused request, a failed one, an aborted one —
           // all of them leave the day exactly as it looks before any answer arrives, and that
           // is a complete state (ADR-0206 §D4). Not recorded either, so opening the day again
           // asks again.
+          done();
         });
     };
-    ask(false);
+    ask(1);
 
     return () => {
+      live = false;
       controller.abort();
       clearTimeout(retry);
     };
@@ -356,9 +447,14 @@ export function useDayTravel(opts: {
     () => ({
       estimateFor: (from: LatLng, to: LatLng, mode: TravelMode) =>
         known.get(routeLegKey(from, to, mode)) ?? null,
+      warmingFor: (from: LatLng, to: LatLng, mode: TravelMode) => {
+        if (!warm.asking) return false;
+        const key = routeLegKey(from, to, mode);
+        return !known.has(key) && !warm.refused.has(key);
+      },
       settled,
     }),
-    [known, settled],
+    [known, settled, warm],
   );
 }
 
