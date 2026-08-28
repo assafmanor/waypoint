@@ -332,6 +332,26 @@ export function zoomStepIn(
 }
 
 /**
+ * **The zoom a pan may keep when the camera could not frame what the pan is ABOUT** — `cap` when
+ * the camera is tighter than that, and `null` for "keep the one you are on", which is `moveTo`'s
+ * existing contract rather than a second dialect.
+ *
+ * It exists because a refusal is not the same as "nothing happened". `framePath` declines a leg it
+ * could only frame from country zoom, and before this the fallback pan inherited whatever zoom the
+ * camera was at — which, since the camera started framing legs itself, is the zoom IT chose for the
+ * previous, shorter leg. So walking a day from two stops on one street to two an hour apart left
+ * you at street zoom on a leg that leaves the canvas immediately (owner, 2026-08-28: _"after moving
+ * from close stops to more far stops, the zoom stays instead of zooming out"_).
+ *
+ * **It only ever pulls BACK.** A view already wider than `cap` is owed nothing — the rule the
+ * re-fit guard runs one level up — and zooming IN on a subject the camera has just admitted it
+ * cannot frame is movement nobody asked for.
+ */
+export function zoomNoTighterThan(current: number | null | undefined, cap: number): number | null {
+  return current != null && current > cap ? cap : null;
+}
+
+/**
  * **How much ground to show around a place you were sent to look at** (ADR-0129 §2).
  *
  * A fixed zoom cannot know whether it is dropping you in a dense district or an empty

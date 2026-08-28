@@ -1140,7 +1140,7 @@ describe('framing the leg a selection is about (ADR-0206 §AC8)', () => {
     const view = mount(map, DAY);
     map.fits.length = 0;
 
-    expect(view.result.current.framePath(LEG)).toBe(true);
+    expect(view.result.current.framePath(LEG, TOKYO)).toBe(true);
     const fitted = map.fits.at(-1)!.bounds;
     expect(fitted.south).toBeCloseTo(TOKYO.lat, 5);
     expect(fitted.north).toBeCloseTo(LEG[1]!.lat, 5);
@@ -1148,18 +1148,51 @@ describe('framing the leg a selection is about (ADR-0206 §AC8)', () => {
     expect(fitted.east).toBeCloseTo(LEG[1]!.lng, 5);
   });
 
-  it('refuses a leg it could only frame from country zoom, and leaves the camera alone', () => {
+  it('refuses a leg it could only frame from country zoom, and fits nothing', () => {
     const map = new FakeMap();
     map.bounds = WORLD;
     const view = mount(map, DAY);
-    const before = { ...map.center, zoom: map.zoom };
+    map.fits.length = 0;
 
     // What `fitBounds` would resolve Tokyo→Kyoto to: below `DOT_BELOW`, where a pin is a dot
-    // and the leg is unreadable — so the answer is "no", and the caller pans to the stop.
+    // and the leg is unreadable — so the answer is "no", and the camera lands on the stop.
     map.fitResultZoom = MAP_ZOOM.DOT_BELOW - 1;
-    expect(view.result.current.framePath([TOKYO, KYOTO])).toBe(false);
-    expect(map.center.lat).toBeCloseTo(before.lat, 5);
-    expect(map.center.lng).toBeCloseTo(before.lng, 5);
-    expect(map.zoom).toBe(before.zoom);
+    expect(view.result.current.framePath([TOKYO, KYOTO], KYOTO)).toBe(false);
+    // The probe is not a framing: the camera is not left on the country-scale zoom `fitBounds`
+    // resolved to, which is the whole reason the floor exists.
+    expect(map.zoom).not.toBe(MAP_ZOOM.DOT_BELOW - 1);
+  });
+
+  // **THE REFUSAL IS ABOUT THE LEG, NOT A LICENCE TO KEEP THE PREVIOUS ONE'S ZOOM** (§AC8's
+  // 2026-08-28 amendment; owner: _"after moving from close stops to more far stops, the zoom
+  // stays instead of zooming out"_). The fallback pan keeps the zoom you are on — which, once
+  // the camera frames legs itself, is the zoom IT chose for the leg before this one. So a day
+  // walked from two stops on one street to two an hour apart stayed at street zoom, on a leg
+  // that leaves the canvas at any zoom tighter than the floor.
+  it('pulls back to the floor when it refuses a leg from a tighter zoom', () => {
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const view = mount(map, DAY);
+    // Where framing a SHORT leg has just left the camera.
+    map.zoom = MAP_ZOOM.MAX_FIT;
+    map.fitResultZoom = MAP_ZOOM.DOT_BELOW - 1;
+
+    expect(view.result.current.framePath([TOKYO, KYOTO], KYOTO)).toBe(false);
+    // Where the ease is heading, which under a fake clock is the last frame it wrote.
+    expect(map.moves.at(-1)!.zoom).toBe(MAP_ZOOM.DOT_BELOW);
+    expect(map.moves.at(-1)!.center.lat).toBeCloseTo(KYOTO.lat, 1);
+  });
+
+  // …and only ever back. A view already wider than the floor is owed nothing, so the refusal
+  // does not zoom IN on a leg the camera has just said it cannot frame.
+  it('leaves a view already wider than the floor at its own zoom', () => {
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const view = mount(map, DAY);
+    map.zoom = MAP_ZOOM.DOT_BELOW - 4;
+    map.fitResultZoom = MAP_ZOOM.DOT_BELOW - 1;
+
+    expect(view.result.current.framePath([TOKYO, KYOTO], KYOTO)).toBe(false);
+    expect(map.moves.at(-1)!.zoom).toBe(MAP_ZOOM.DOT_BELOW - 4);
   });
 });

@@ -830,6 +830,29 @@ camera, so the line the canvas paints amber and the line the camera frames canno
 > assertion on an axis the code cannot move is not a test. The one that stands asserts latitude,
 > and was checked red against the merged commit before being kept.
 
+> **Corrected again 2026-08-28 — a refusal is not a licence to keep the previous leg's zoom.**
+> Owner, on the shipped framing: _"it does it very well. It even zooms in when the stops are close
+> to each other. The small issue that after moving from close stops to more far stops, the zoom
+> stays instead of zooming out."_ Both halves are this amendment's own doing. A fit sets the zoom,
+> so close stops zoom in — and the refusal above fell back to `focus`, **a pan, which keeps the
+> zoom you are on**. That inheritance was harmless while the only thing that ever set a tight zoom
+> was the user's own fingers ([ADR-0129](0129-the-camera-moves-when-you-ask-it-to.md) §1's rule,
+> and "a manual zoom wins" is why the pan reads it). Once the CAMERA sets one per leg, it is
+> inheriting **its own** decision about a different leg: walk a day from two stops on one street to
+> two an hour apart and you stay at street zoom, looking at a leg that leaves the canvas.
+>
+> So the floor now caps the fallback instead of merely declining: `framePath` takes the **stop** as
+> a second argument and owns both outcomes — the fit when the leg clears the floor, and otherwise
+> the pan to the stop at `zoomNoTighterThan(current, DOT_BELOW)`. The caller keeps exactly one
+> question ("which subject did the camera end up on"), which is what the correction above made it
+> for.
+>
+> **It only ever pulls back**, and that is the same "nothing owed, nothing moved" the re-fit guard
+> runs one level up: a view already wider than the floor keeps its zoom, because zooming IN on a
+> leg the camera has just admitted it cannot frame is movement nobody asked for. And the floor
+> stays one number — a leg refused at ⁦11⁩ is shown from ⁦11⁩, so crossing the threshold changes the
+> **subject** (leg centre → stop) rather than the scale.
+
 ### AM10. Amendment (2026-08-27) — a mode the gate refuses is an ANSWER, and §D4 does not cover it
 
 Field report off the shipped mode control: _"I changed a drive to a walk and the route simply
