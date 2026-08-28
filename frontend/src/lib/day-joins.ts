@@ -656,6 +656,10 @@ export interface DayTravelTotal {
   /** Only the legs that could be TIMED, added up. `null` where none could — a day of declared
    *  legs travels a real distance for no duration this app may state. */
   travelSeconds: number | null;
+  /** **The day travels further than this and we cannot say how much further** (ADR-0206 §AT2) —
+   *  at least one hole has an end nobody placed, so it is missing from both halves above. The
+   *  total is then a FLOOR, and the line says so rather than reading as the day's whole travel. */
+  partial: boolean;
 }
 
 /**
@@ -677,8 +681,21 @@ export interface DayTravelTotal {
  *
  * `null` on either half where nothing contributed to it, never a zero: §D4's absence is silence,
  * and `0 ק״מ · ~0 דק׳` on a day nobody could measure is precisely the tell that rule forbids.
+ *
+ * **`unplacedLegs` is what the roll-up cannot see, and it is required for that reason** (ADR-0206
+ * §AT2). Reading the journeys is what keeps the header and the list describing the same objects
+ * (§AP2) — and its cost is that a hole the list shows no block for is invisible here too. That is
+ * right for a leg still warming, which will gain its number; it is wrong for a hole with an end
+ * nobody placed, which never will. A day of five hops where two run through an unplaced stop then
+ * prints the three it could measure as if they were the day, and the reader has no way to tell.
+ * So the count comes from `useDayTravelReads`, which is the layer that resolved the ends, and the
+ * total says it is a floor. Required rather than optional for `useDayTravelReads`' own reason: a
+ * surface that forgets to pass it silently claims completeness it has not got.
  */
-export function dayTravelTotal(journeys: readonly (DayJourney | null)[]): DayTravelTotal {
+export function dayTravelTotal(
+  journeys: readonly (DayJourney | null)[],
+  unplacedLegs: number,
+): DayTravelTotal {
   let distanceMeters: number | null = null;
   let travelSeconds: number | null = null;
   for (const journey of journeys) {
@@ -688,7 +705,7 @@ export function dayTravelTotal(journeys: readonly (DayJourney | null)[]): DayTra
     if (journey.travelSeconds !== null && Number.isFinite(journey.travelSeconds))
       travelSeconds = (travelSeconds ?? 0) + journey.travelSeconds;
   }
-  return { distanceMeters, travelSeconds };
+  return { distanceMeters, travelSeconds, partial: unplacedLegs > 0 };
 }
 
 /**

@@ -155,6 +155,14 @@ export const TOAST_DURATION_MS = 3600;
 /** Live-clock tick. */
 export const CLOCK_TICK_MS = 1000;
 
+/** **The longest a day surface holds its first paint waiting on the local travel read**
+ *  (ADR-0206 §AT). The hold is an IndexedDB round trip and nothing else — measured at ⁦75–175ms⁩ —
+ *  so this is not a budget for it, it is the floor under the one failure the hold could otherwise
+ *  cause: a Dexie read that never settles (a blocked upgrade from another tab) would leave the day
+ *  laid out and never painted. Past this the day paints with whatever it has, which is exactly
+ *  what it did before the hold existed. */
+export const DAY_TRAVEL_SETTLE_MAX_MS = 700;
+
 /** How often an open tab asks the browser to re-check `sw.js` for a new build
  *  (ADR-0181). The browser only checks on navigation and roughly every 24h, and
  *  this app is a standalone PWA that is left open for days on a trip — without a
