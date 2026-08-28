@@ -16,6 +16,7 @@
 // (`lib/day-joins.ts`) and `JourneyBlock`'s.
 import { useMemo, useState } from 'react';
 import {
+  defaultLegTravelMode,
   derivedTravelMode,
   haversineMeters,
   exceedsTravelCeiling,
@@ -91,8 +92,10 @@ export interface DayTravelReads {
   /** The trip's DERIVED mode (§Z2) — the same read the Map and the hero make, off the same
    *  function, so one leg cannot be a drive on the canvas and a walk in the list.
    *
-   *  **This is the trip's default, not any particular leg's**: ask `modeFor` for a leg. It stays
-   *  exposed because the mode CONTROL needs to say what the leg would fall back to. */
+   *  **This is the trip's default, not any particular leg's**: ask `modeFor` for a leg, which
+   *  since §AU2 is a distance-aware answer that this one is only the floor under. It stays exposed
+   *  because the mode CONTROL needs to know which pick means "no override" — see
+   *  `useLegModeControl`, which had to stop comparing against it. */
   mode: TravelMode;
   /**
    * **What mode THIS leg is** (ADR-0206 §AM) — the override where somebody set one, the derived
@@ -155,6 +158,25 @@ export interface DayTravelReads {
    * `false` for a declared leg — nothing routes it, so nothing refuses it either (§AA4).
    */
   refusedFor(from: TripEvent, to: TripEvent): boolean;
+  /**
+   * **Is this leg's number still being computed?** (ADR-0206 §AU1.) `useDayTravel`'s own signal,
+   * asked for the leg's OWN mode — the one thing this layer adds, and the reason it is not read
+   * straight off that hook at a screen: a leg reads as computing only in the mode it is actually
+   * drawn in, so a declared תחב״צ leg (never asked) and a refused one (never coming) are both
+   * `false` here whatever the other two modes are still doing.
+   */
+  warmingFor(from: TripEvent, to: TripEvent): boolean;
+  /**
+   * **What this leg would be with no override on it** (ADR-0206 §AU2) — the distance-aware
+   * default, per leg.
+   *
+   * Exposed because the mode control needs it and may not re-derive it: picking the default is
+   * what CLEARS the stored row (§Z2 keeps the persisted set to genuine overrides), and comparing
+   * the pick against the TRIP's mode instead would store a row on every leg whose default the
+   * distance had already changed — a walking trip's ⁦300 m⁩ hop picked as `הליכה` would write an
+   * override saying what the derivation already says, and then hold it against a later change.
+   */
+  defaultModeFor(from: TripEvent, to: TripEvent): TravelMode;
 }
 
 const NOTHING: DayTravelReads['estimateFor'] = () => null;
@@ -272,9 +294,16 @@ export function useDayTravelReads(opts: {
 
   return useMemo(() => {
     const legFor = (from: TripEvent, to: TripEvent) => resolved.byRows.get(legKey(from, to));
+    // **The fallback is the LEG's, not the trip's** (ADR-0206 §AU2) — `defaultLegTravelMode` reads
+    // the distance and answers the trip's derived mode only where there is none. Composed here
+    // rather than inside `legTravelMode` because that function is the OVERRIDE lookup and knows no
+    // coordinates; this is the one place that holds both, which is what keeps the day list, the
+    // hero and the Map on one answer.
+    const defaultFor = (leg: ReturnType<typeof legFor>): TravelMode =>
+      defaultLegTravelMode(leg?.from, leg?.to, mode);
     const modeOf = (from: TripEvent, to: TripEvent): LegTravelMode => {
       const leg = legFor(from, to);
-      return legTravelMode(overrides, leg?.fromPlaceId, leg?.toPlaceId, mode);
+      return legTravelMode(overrides, leg?.fromPlaceId, leg?.toPlaceId, defaultFor(leg));
     };
     return {
       mode,
@@ -301,6 +330,17 @@ export function useDayTravelReads(opts: {
       pairFor: (from, to) => {
         const leg = legFor(from, to);
         return leg ? { fromPlaceId: leg.fromPlaceId, toPlaceId: leg.toPlaceId } : undefined;
+      },
+      defaultModeFor: (from: TripEvent, to: TripEvent) => defaultFor(legFor(from, to)),
+      warmingFor: (from: TripEvent, to: TripEvent) => {
+        const leg = legFor(from, to);
+        if (!leg) return false;
+        const legMode = modeOf(from, to);
+        // Same two narrowings every other read here makes: a declared leg is never asked about
+        // (§AA4) and a refused one is never coming (§AM10), so neither is ever "computing".
+        if (!isRoutableMode(legMode) || exceedsTravelCeiling(legMode, leg.from, leg.to))
+          return false;
+        return travel.warmingFor(leg.from, leg.to, legMode);
       },
       refusedFor: (from: TripEvent, to: TripEvent) => {
         const leg = legFor(from, to);
@@ -357,13 +397,14 @@ export interface LegModeControl {
  *   clock).
  * - **Picking the derived mode CLEARS the row** rather than storing one that says what the
  *   derivation already says — §Z2 keeps the persisted set to genuine overrides, so a trip whose
- *   bookings later make it a driving trip still moves.
+ *   bookings later make it a driving trip still moves. Since §AU2 the derivation is **per leg**
+ *   (`defaultModeFor`), so the comparison is too.
  * - **No control on a read-only day, or on a leg whose two ends do not both resolve to a place**:
  *   every other write is gated on the former (ADR-0029), and the latter has no pair to key an
  *   override on (§AM4 — such a leg is inert rather than broken).
  */
 export function useLegModeControl(opts: {
-  reads: Pick<DayTravelReads, 'mode' | 'modeFor' | 'pairFor'>;
+  reads: Pick<DayTravelReads, 'mode' | 'modeFor' | 'pairFor' | 'defaultModeFor'>;
   verbs: {
     setLegMode: (fromPlaceId: string, toPlaceId: string, mode: LegTravelMode) => unknown;
     clearLegMode: (fromPlaceId: string, toPlaceId: string) => unknown;
@@ -382,7 +423,11 @@ export function useLegModeControl(opts: {
         open: open === key,
         onToggle: () => setOpen((prev) => (prev === key ? null : key)),
         onPick: (picked: LegTravelMode) => {
-          void (picked === reads.mode
+          // **Against THIS leg's default, not the trip's** (ADR-0206 §AU2). The rule is unchanged
+          // — picking the default clears the row — but the default is per leg now, and comparing
+          // against the trip's would persist an override that says exactly what the derivation
+          // already says on every leg the distance rule had already moved.
+          void (picked === reads.defaultModeFor(from, to)
             ? verbs.clearLegMode(pair.fromPlaceId, pair.toPlaceId)
             : verbs.setLegMode(pair.fromPlaceId, pair.toPlaceId, picked));
         },

@@ -21,11 +21,13 @@ import {
   type LatLng,
 } from './geo';
 import {
+  defaultLegTravelMode,
   derivedTravelMode,
   POLYLINE_PRECISION,
   ROUTE_BATCH_MAX_STOPS,
   ROUTE_MIN_CROW_M,
   TRAVEL_GATE,
+  WALK_DEFAULT_MAX_M,
   admitsTravelMode,
   exceedsTravelCeiling,
   admittedTravelModes,
@@ -349,6 +351,57 @@ describe('derivedTravelMode', () => {
   it('only ever answers a mode the gate and the provider both know', () => {
     for (const bookings of [booked(BOOKING_TYPE.CAR), booked(BOOKING_TYPE.FLIGHT), []]) {
       expect(TRAVEL_MODES).toContain(derivedTravelMode(bookings));
+    }
+  });
+});
+
+/**
+ * **THE DEFAULT IS THE LEG'S, AND THE DISTANCE IS WHAT DECIDES IT** (ADR-0206 §AU2).
+ *
+ * `derivedTravelMode` above answers _is there a car on this trip_. That is a fact about the TRIP,
+ * and using it as every leg's mode is what the owner reported: a trip of flights and hotels is a
+ * walking trip by §Z2, so a ⁦127 km⁩ hop to the Galilee was measured as a walk, refused by the gate
+ * at ⁦15 km⁩, and drew nothing at all.
+ */
+describe('defaultLegTravelMode', () => {
+  const TLV = { lat: 32.0853, lng: 34.7818 };
+  const GALILEE = { lat: 32.8, lng: 35.5 };
+  const NEARBY = { lat: 32.09, lng: 34.79 };
+
+  it('drives a leg past the walk default, whatever the trip booked', () => {
+    expect(defaultLegTravelMode(TLV, GALILEE, TRAVEL_MODE.WALKING)).toBe(TRAVEL_MODE.DRIVING);
+    expect(defaultLegTravelMode(TLV, GALILEE, TRAVEL_MODE.DRIVING)).toBe(TRAVEL_MODE.DRIVING);
+  });
+
+  /** The symmetric half, and the one that makes the rule a sentence rather than two: you park the
+   *  hire car and you walk the last ⁦600 m⁩. */
+  it('walks a leg inside it, whatever the trip booked', () => {
+    expect(defaultLegTravelMode(TLV, NEARBY, TRAVEL_MODE.DRIVING)).toBe(TRAVEL_MODE.WALKING);
+    expect(defaultLegTravelMode(TLV, NEARBY, TRAVEL_MODE.WALKING)).toBe(TRAVEL_MODE.WALKING);
+  });
+
+  /** **The threshold is a DEFAULT and the gate is a CEILING**, and they are far apart on purpose:
+   *  the band between them is every leg the app guesses `driving` for and a person may still pick
+   *  a walk on (§Z8 — a group walks a long way on purpose). */
+  it('sits well inside walking’s own ceiling, so the band is real', () => {
+    expect(WALK_DEFAULT_MAX_M).toBeLessThan(TRAVEL_GATE.walking.maxMeters);
+    const SIX_KM = { lat: 32.139, lng: 34.7818 };
+    expect(defaultLegTravelMode(TLV, SIX_KM, TRAVEL_MODE.WALKING)).toBe(TRAVEL_MODE.DRIVING);
+    expect(exceedsTravelCeiling(TRAVEL_MODE.WALKING, TLV, SIX_KM)).toBe(false);
+  });
+
+  /** The only input left for §Z2's answer: no distance to read (§AM4's inert leg). */
+  it('falls back to the trip derivation where an end is unplaced', () => {
+    expect(defaultLegTravelMode(undefined, GALILEE, TRAVEL_MODE.DRIVING)).toBe(TRAVEL_MODE.DRIVING);
+    expect(defaultLegTravelMode(TLV, undefined, TRAVEL_MODE.WALKING)).toBe(TRAVEL_MODE.WALKING);
+  });
+
+  it('only ever answers a mode the gate and the provider both know', () => {
+    for (const pair of [
+      [TLV, GALILEE],
+      [TLV, NEARBY],
+    ] as const) {
+      expect(TRAVEL_MODES).toContain(defaultLegTravelMode(pair[0], pair[1], TRAVEL_MODE.WALKING));
     }
   });
 });

@@ -417,6 +417,17 @@ button.day-trv-face:focus-visible {
   opacity: 0.55;
   font-weight: 400;
 }
+/* **THE SLOT THE DURATION IS ABOUT TO LAND IN** (ADR-0206 §AU1). Sized to `~40 דק׳` at this
+   line's own metrics, so the row does not resize when the number arrives — the whole reason this
+   is a sized placeholder and not a spinner. `Skeleton` brings its own shimmer and its own
+   reduced-motion behaviour; nothing here adds a second animation, because `.nowline` is the app's
+   one live mark (§D6). */
+.day-trv-hd .day-trv-wait {
+  inline-size: 52px;
+  block-size: 9px;
+  border-radius: 5px;
+  align-self: center;
+}
 /* The leave-by is a time you owe, so it is the clock's hue (§D1). */
 .day-trv-leave {
   color: var(--amber-deep);

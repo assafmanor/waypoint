@@ -1640,3 +1640,20 @@ export const TASK_BAND_LOOKAHEAD_DAYS = 7;
  *  it late: it used to fold by a semantic near/far rule, which could leave zero rows visible
  *  and did — see `PlanHome`. */
 export const PLAN_TASK_CAP = 5;
+
+/**
+ * **How many times a day re-asks for legs the server is still computing** (ADR-0206 §AU1).
+ *
+ * It was **one**, and that was the defect: a cold day's warm is three matrix calls paced ⁦1/s⁩ by
+ * `PolitenessLimiter`, so the server's own `Retry-After` — derived from the call count, floored at
+ * ⁦2s⁩ — lands the single retry at about the moment the last call is still in flight. Miss it and
+ * the day gave up silently, which is why a stop added at ⁦16:44⁩ had no route until the app was
+ * left and reopened (field report, 2026-08-28).
+ *
+ * **Six, because the wait is the server's number and not ours.** Each pass sleeps the
+ * `retryAfterSeconds` the answer carried (⁦2–30s⁩), so this bounds the *rounds*, not the seconds:
+ * six covers a cold day many times over and still terminates on a provider that is simply down,
+ * where §D4's silence is the right answer. Every re-ask is a DB read plus a deduped no-op warm
+ * (`RoutingService.once`), so the cost of the extra rounds is a request, not provider work.
+ */
+export const DAY_TRAVEL_WARM_ATTEMPTS = 6;

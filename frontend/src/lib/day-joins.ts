@@ -270,6 +270,21 @@ export const DAY_JOURNEY_ARM = {
    *  a hole that vanishes on declaration is a door that does not open again. Neutral tone: there is
    *  nothing wrong with this leg, we simply do not estimate it. */
   DECLARED: 'declared',
+  /** **The number is on its way** (ADR-0206 §AU1). Its own arm rather than an absence, because the
+   *  absence is what was reported: a stop added to the day had no journey row at all — no
+   *  duration, no distance, and **no mode control**, since the block that carries it is the thing
+   *  that did not render — until the app was left and reopened. §D4 says the reader must not be
+   *  able to tell "not computed" from "not computable", and this is the state that rule never
+   *  covered: it is neither, it is *being* computed, and it resolves into a visible event a few
+   *  seconds later. §AT already made that argument once for the local cache read; this is the same
+   *  argument for the network one.
+   *
+   *  Ranked BELOW `DECLARED` and `TOO_FAR`, which are both facts that will not change, and ABOVE
+   *  the floor beneath them, which bails on exactly the missing estimate this arm exists to
+   *  explain. Quiet by nature: it says the mode, the crow-flies distance and that the time is
+   *  coming, and it claims nothing about the hole (§V1.1's rule — never a guess we did not
+   *  measure). */
+  WARMING: 'warming',
   /** **The mode somebody CHOSE cannot cover this leg** (ADR-0206 §AM10) — a walk over walking's
    *  ⁦15 km⁩ ceiling, a cycle over cycling's ⁦20 km⁩. Its own arm for `DECLARED`'s exact reason and
    *  then one more: the gate refuses it, so there is no estimate and the block vanished — taking
@@ -286,10 +301,12 @@ export type DayJourneyArm = (typeof DAY_JOURNEY_ARM)[keyof typeof DAY_JOURNEY_AR
 
 export interface DayJourney {
   arm: DayJourneyArm;
-  /** What the leg costs, in seconds, on the mode that was asked about — and `null` on the two arms
-   *  where there is no estimate **by nature**: `DECLARED`, which is never asked (§AA4), and
-   *  `TOO_FAR`, which the gate refuses (§AM10). Every other arm has one: a leg with no estimate is
-   *  no journey at all (§D4), which is what makes those two the only nulls. */
+  /** What the leg costs, in seconds, on the mode that was asked about — and `null` on the three
+   *  arms where there is no estimate to read: `DECLARED`, which is never asked (§AA4), `TOO_FAR`,
+   *  which the gate refuses (§AM10), and `WARMING`, which has not been answered **yet** (§AU1).
+   *  The first two are permanent and the third is not, which is the whole difference between them
+   *  and why the third says so out loud. Every other arm has one: a leg with no estimate is no
+   *  journey at all (§D4), which is what makes these three the only nulls. */
   travelSeconds: number | null;
   /** What the leg covers, in metres — the ROUTED distance, per mode, never crow-flies: a
    *  ⁦1.9km⁩ crow-flies leg is a ⁦2.4km⁩ walk, and this is the number you act on. `null` where the
@@ -401,6 +418,11 @@ export function dayJourney(input: {
    *  so. Ranked BELOW the declaration, since a declared leg is never asked about and so can never
    *  be refused. */
   tooFarForMode?: boolean;
+  /** **The estimate for this leg is still being computed** (ADR-0206 §AU1) —
+   *  `DayTravelReads.warmingFor`. Ranked last of the three no-estimate flags, because it is the
+   *  only one of them that is temporary: a declared leg is never asked and a refused one is never
+   *  coming, so either of those being true makes this one irrelevant rather than merely lower. */
+  warming?: boolean;
 }): DayJourney | null {
   const { departAfterMs, arriveByMs, travelSeconds, nowMs, onWay, claimDenied } = input;
   // **A declared leg is a journey with no duration, not an absent journey** (ADR-0206 §AA4). It
@@ -433,6 +455,33 @@ export function dayJourney(input: {
       distanceMeters: input.distanceMeters ?? null,
       leaveByMs: null,
       // No estimate, so no correction to make — §V1.1's rule, exactly as the declaration takes it.
+      free: null,
+      overrunSeconds: null,
+      arriveAtMs: null,
+      arrivesAfterClose: false,
+      remainingSeconds: null,
+    };
+  // **A NUMBER ON ITS WAY IS NOT AN ABSENT NUMBER** (ADR-0206 §AU1). Third of the three flags that
+  // stand in for a missing estimate, and last for the reason its docblock gives — but still BEFORE
+  // the floor below, which bails on exactly the `null` this arm exists to explain. That bail is
+  // what deleted the row, and with it the mode control, on every leg the server had not answered
+  // yet: the reader could not see that a route was coming, and could not pick a different mode to
+  // get one sooner.
+  if (input.warming)
+    return {
+      arm: DAY_JOURNEY_ARM.WARMING,
+      travelSeconds: null,
+      // **No distance either, and that is §AM10's rule rather than an omission.** It already drew
+      // this exact line: a refused mode falls back to the crow "…not for a PENDING one, which is
+      // the distinction that keeps §D4 intact: there we genuinely do not know yet, and a
+      // crow-flies number that later becomes a routed one is a figure that changes under the
+      // reader." The day's TOTAL reads these journeys (`dayTravelTotal`), so a crow number here
+      // would also make the header climb as each leg lands. The mode and the word are the row.
+      distanceMeters: null,
+      leaveByMs: null,
+      // **No correction to the hole, and that is §V1.1's own rule rather than a shortcut.** We do
+      // not know the number yet, and subtracting a guess from the free time would be exactly the
+      // pessimistic invention §D4 forbids — in the direction that costs somebody their afternoon.
       free: null,
       overrunSeconds: null,
       arriveAtMs: null,

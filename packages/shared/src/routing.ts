@@ -384,6 +384,58 @@ export function derivedTravelMode(bookings: readonly { type: BookingType }[]): T
     : TRAVEL_MODE.WALKING;
 }
 
+/**
+ * **The distance past which a leg is not a walk by default** (ADR-0206 §AU2).
+ *
+ * Not a ceiling and not a limit — `TRAVEL_GATE.walking.maxMeters` is that, and it stays at ⁦15 km⁩
+ * because §Z8's judgement is unchanged: a group walks a long way **on purpose**, and a walk that
+ * far must still be pickable. This is the weaker question underneath it: with nobody having picked
+ * anything, is a walk what this leg most likely IS?
+ *
+ * **⁦2.5 km⁩, derived rather than chosen.** At §Z2's measured ⁦4.9 km/h⁩ and §Z7's ⁦1.16⁩ median
+ * road/crow, that is a **~35-minute walk** — the length past which the answer stops being obvious,
+ * and the one number in this file a device pass may retune from feel. Below it the app assumes you
+ * walk; above it, that you do not.
+ *
+ * **Deliberately far below the ceiling**, so the band between them is real: a ⁦6 km⁩ leg defaults to
+ * driving and switches to walking in one tap, which is the whole shape of §AU2 — a default that is
+ * usually right and never final.
+ */
+export const WALK_DEFAULT_MAX_M = 2_500;
+
+/**
+ * **What mode a leg is when nobody has said** (ADR-0206 §AU2) — the distance decides, and the
+ * trip's own derivation is what answers where there is no distance to read.
+ *
+ * **This replaces `derivedTravelMode` as the per-leg fallback, and the two now answer different
+ * questions.** §Z2's inference asks _is there a car on this trip_, which is a fact about the trip
+ * and the right one for the mode control's "the trip's default" line. It was also being used as
+ * every leg's mode, and that is what the owner reported (2026-08-28): a trip of flights and trains
+ * is a **walking** trip by §Z2, so the ⁦127 km⁩ hop from Tel Aviv to the Galilee was measured as a
+ * walk, refused by the gate at ⁦15 km⁩, and rendered as nothing at all. Nobody walks to the Galilee,
+ * and no car booking was ever going to say so — you take a bus, a taxi or a lift, and every one of
+ * them is `driving` as far as a router is concerned.
+ *
+ * **So distance outranks the booking, in BOTH directions**, which is what makes the rule one
+ * sentence rather than two: a long leg drives even where the trip has no car (the report above),
+ * and a ⁦300 m⁩ hop walks even where the trip has one, because you park and you walk. §Z2's own
+ * closing line — that a per-leg answer is _"the per-leg override's job"_ — was written when the
+ * only per-leg input was a person; a leg's LENGTH is a per-leg input the app has had all along.
+ *
+ * `fallback` is read only where the leg has no measurable distance — an end nobody placed — and
+ * there the trip's derivation is still the best thing anyone knows.
+ */
+export function defaultLegTravelMode(
+  from: LatLng | undefined,
+  to: LatLng | undefined,
+  fallback: TravelMode,
+): TravelMode {
+  if (!from || !to) return fallback;
+  const metres = haversineMeters(from, to);
+  if (!Number.isFinite(metres)) return fallback;
+  return metres > WALK_DEFAULT_MAX_M ? TRAVEL_MODE.DRIVING : TRAVEL_MODE.WALKING;
+}
+
 /* ── THE PER-LEG OVERRIDE (ADR-0206 §V1.6 / §Z2, keyed per §AM) ───────────────────────────── */
 
 /**
