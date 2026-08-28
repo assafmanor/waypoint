@@ -139,9 +139,8 @@ button.day-gap:hover .day-gap-lbl {
    TRACK in the badge column, and the mark stays in the column, so `.day-trv-ic`'s
    own rule — the day has ONE leading edge for icons — still holds.
 
-   `overflow: visible` because the track deliberately overshoots this box; the
-   carded arms below take `hidden` back, which is where the mode chips live and
-   where that guard was written. */
+   `overflow: visible` because the track deliberately overshoots this box, on every
+   arm — since 2026-08-28 there is no arm that takes `hidden` back. */
 .day-trv {
   position: relative;
   border: 0;
@@ -150,40 +149,37 @@ button.day-gap:hover .day-gap-lbl {
   margin: 0 0 10px;
   overflow: visible;
 }
-/* **A BLOCK WITH MORE THAN A LINE IN IT GETS ITS CARD BACK**, and this is the rule
-   the mockup did not draw — it drew the collapsed statement only. A disclosure that
-   is open, or an arm carrying the acts row, is no longer one line: it is an object
-   with contents, and its contents need a container or they sit loose on the day's
-   ground. `miss` joins them for a reason of its own (below). `:has()` rather than a
-   third class because the acts row's presence is a render decision in
-   `DayJoinRow`, not a state the block is told about — and `:has()` already ships
-   here (`tasks.css`, `map-pane.css`). */
-.day-trv.miss,
-.day-trv.open,
-.day-trv:has(.day-trv-acts) {
-  border: 1px solid color-mix(in srgb, var(--amber) 38%, var(--line));
-  border-radius: 15px;
-  background: color-mix(in srgb, var(--amber) 9%, var(--card));
-  overflow: hidden;
-}
-/* The track. It crosses the ⁦10px⁩ gutter this block already owns, so it reaches the
-   card above and the card below — which is the whole difference from ADR-0159 §3's
-   rail, removed because it kept the list's rhythm and therefore touched neither of
-   the two things it connected. A connector that touches is a connector.
+/* **EVERY ARM IS THE LINE — there is no carded arm** (owner, 2026-08-28, correcting
+   ADR-0210's build log). The build kept the box for `miss`, for an open disclosure
+   and for any arm carrying the acts row, reasoning that a block with contents needs
+   a container. Seen on a real day that reasoning is backwards: the two `miss` legs
+   were the only cards in a list of tracks, so the ONE shape the eye uses to tell a
+   leg from a stop was spent on a state instead — _"the rows for being late should be
+   adapted to the same style... also when on the way. Basically all leftovers."_
 
-   On a carded arm there is nothing to connect across, so it is not drawn. */
-.day-trv-ic::before {
+   The tone still lands: it rides the track, the glyph and the ink, which is where
+   ADR-0210 §3 put it in the first place. What a state may not do is change what KIND
+   of row this is.
+
+   **The track therefore hangs off the BLOCK, not off the badge tile.** It used to sit
+   on `.day-trv-ic::before`, which lives inside the face — so on a block with a modes
+   or acts row the line stopped at the face's foot and the rest of the block hung off
+   nothing. On the block it spans every row the leg owns. The offset is the badge
+   column's centre, stated once: the face's ⁦12px⁩ inline padding plus half of
+   `.day-trv-ic`'s ⁦38px⁩. */
+.day-trv {
+  --trv-track: calc(12px + 19px);
+}
+/* It crosses the ⁦10px⁩ gutter this block already owns, so it reaches the card above
+   and the card below — the whole difference from ADR-0159 §3's rail, which kept the
+   list's rhythm and therefore touched neither of the two things it connected. */
+.day-trv::before {
   content: '';
   position: absolute;
   inset-block: -10px;
-  inset-inline-start: calc(50% - 1px);
+  inset-inline-start: calc(var(--trv-track) - 1px);
   inline-size: 0;
   border-inline-start: 2px dashed color-mix(in srgb, var(--amber) 60%, transparent);
-}
-.day-trv.miss .day-trv-ic::before,
-.day-trv.open .day-trv-ic::before,
-.day-trv:has(.day-trv-acts) .day-trv-ic::before {
-  content: none;
 }
 /* The face is the button, not the block — because the `בדרך` control is a button too and one
    inside the other is invalid. Same reason the acts row is a sibling rather than a child of the
@@ -193,10 +189,9 @@ button.day-gap:hover .day-gap-lbl {
   display: flex;
   align-items: center;
   gap: 11px;
-  /* ⁦3px⁩ on the line arm, ⁦9px⁩ back on a carded one — a card needs its inset, a line
-     does not, and the block measures ⁦58px⁩ → ⁦40px⁩ against the ⁦70px⁩ event card it
-     sits between. That gap was an inverted hierarchy nobody had named: the
-     connector was nearly as tall as the thing connected. */
+  /* ⁦3px⁩ on every arm — a line needs no inset, and the block measures ⁦58px⁩ → ⁦40px⁩
+     against the ⁦70px⁩ event card it sits between. That gap was an inverted hierarchy
+     nobody had named: the connector was nearly as tall as the thing connected. */
   padding: 3px 12px;
   width: 100%;
   text-align: start;
@@ -244,25 +239,6 @@ button.day-trv-face:focus-visible {
   background: var(--screen);
   box-shadow: 0 0 0 4.5px var(--screen);
 }
-/* A carded arm keeps the shipped tile exactly as it was. */
-.day-trv.miss .day-trv-ic,
-.day-trv.open .day-trv-ic,
-.day-trv:has(.day-trv-acts) .day-trv-ic {
-  height: 38px;
-  align-self: center;
-  min-height: 0;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--amber) 20%, transparent);
-}
-.day-trv.miss .day-trv-ic .icon,
-.day-trv.open .day-trv-ic .icon,
-.day-trv:has(.day-trv-acts) .day-trv-ic .icon {
-  width: 21px;
-  height: 21px;
-  border-radius: 0;
-  background: none;
-  box-shadow: none;
-}
 /* THE TARGET STAYS WHERE THE PAINT SHRANK — `button.day-gap::after`'s trick, for
    `button.day-gap`'s reason: this row's height is the list's rhythm, and ⁦44px⁩ of
    real box here would push the two events it connects apart. Measured ⁦48px⁩. */
@@ -273,11 +249,6 @@ button.day-trv-face:focus-visible {
   content: '';
   position: absolute;
   inset: -4px 0;
-}
-.day-trv.miss button.day-trv-face::after,
-.day-trv.open button.day-trv-face::after,
-.day-trv:has(.day-trv-acts) button.day-trv-face::after {
-  content: none;
 }
 
 /* **THE COMPOSITED WARNING MARK** (ADR-0206 §AK2, drawn and measured in
@@ -305,17 +276,10 @@ button.day-trv-face:focus-visible {
    — which was measured against a ⁦38×38⁩ tile — would drop the warn triangle into the
    gutter below the glyph, pointing at nothing. The glyph is ⁦19px⁩ centred, so its
    trailing/bottom corner is `50% - 9.5px`, and the same overhang off that corner is
-   a further ⁦5.8px⁩. The carded arms below put the tile back and take the shipped
-   offset back with it. */
+   a further ⁦5.8px⁩. One anchor, because since 2026-08-28 there is one silhouette. */
 .day-trv .day-trv-flag {
   inset-block-end: calc(50% - 15.3px);
   inset-inline-end: calc(50% - 15.3px);
-}
-.day-trv.miss .day-trv-flag,
-.day-trv.open .day-trv-flag,
-.day-trv:has(.day-trv-acts) .day-trv-flag {
-  inset-block-end: calc(var(--trv-flag, 15px) / -2.6);
-  inset-inline-end: calc(var(--trv-flag, 15px) / -2.6);
 }
 .day-trv-flag {
   position: absolute;
@@ -368,12 +332,18 @@ button.day-trv-face:focus-visible {
   display: flex;
   align-items: center;
   gap: 6px;
+  /* **Indented to the TEXT column, so the chips clear the track** (2026-08-28): the
+     leg's line now runs the full height of the block, and a control sitting on top of
+     it reads as threaded onto the rule. ⁦61px⁩ is the face's own arithmetic — ⁦12px⁩ of
+     inline padding, the ⁦38px⁩ badge column, the ⁦11px⁩ gap — so the chips start where
+     the words above them start. */
   padding: 0 12px 9px;
-  /* **A guard, not a layout wish.** `.wp-chip` is `flex: 0 0 auto` with `nowrap` inside a
-     `.day-trv` that carries `overflow: hidden`, so a row that does not fit is silently CLIPPED -
-     a control cut in half, with no error anywhere. The mockup drew exactly that before this line.
-     The recommended shape leaves 114px, so this should never fire; what it buys is that an
-     overflow costs height instead of eating a control. */
+  padding-inline-start: 61px;
+  /* **A guard, not a layout wish.** `.wp-chip` is `flex: 0 0 auto` with `nowrap`, so a row
+     that does not fit would be CLIPPED — a control cut in half, with no error anywhere.
+     The mockup drew exactly that before this line. (It used to say the clipping came from
+     `.day-trv`'s `overflow: hidden`; that box is gone since 2026-08-28, and the guard is
+     kept because the reason it exists never depended on it.) */
   flex-wrap: wrap;
 }
 /* GLYPH ONLY, and the render decided it (§AL7). Not on width alone - glyph-and-word is 327px
@@ -484,22 +454,15 @@ button.day-trv-face:focus-visible {
 /* THE LEAVE-BY HAS GONE BY (§V1.4). Ink and word, never a fill on the block, no glow and no
    pulse — the app has one live mark and `.nowline` is it (§D6). `--miss-deep` is the ink
    because `--miss` itself fails AA as text (§D7, design-language). */
-.day-trv.miss {
-  border-color: color-mix(in srgb, var(--miss) 45%, var(--line));
-  background: color-mix(in srgb, var(--miss) 7%, var(--card));
+/* **A missed leg is still a leg** (owner, 2026-08-28, reversing ADR-0210's build log).
+   It keeps the line and takes `--miss` on the track, the glyph and the words — and it
+   still carries the `warn` mark, which is the shape doing the work that the box was
+   doing. `--miss-deep` is the ink because `--miss` itself fails AA as text (§D7). */
+.day-trv.miss::before {
+  border-color: color-mix(in srgb, var(--miss) 70%, transparent);
 }
 .day-trv.miss .day-trv-ic {
-  background: color-mix(in srgb, var(--miss) 16%, transparent);
   color: var(--miss-deep);
-}
-/* **A MISSED LEG IS ALWAYS A CARD** (ADR-0210 §3). It has stopped carrying you
-   between two things, so it stops being drawn as the line between them — and a box
-   is how this list says "look here". It is also the one arm that must survive being
-   scanned past. The carded rule above already restores the box and the tile; this
-   only keeps the icon's own halo from painting over a tinted ground. */
-.day-trv.miss .day-trv-ic .icon {
-  background: none;
-  box-shadow: none;
 }
 .day-trv.miss .day-trv-hd,
 .day-trv.miss .day-trv-leave {
@@ -509,36 +472,15 @@ button.day-trv-face:focus-visible {
    mark for (ADR-0207 §2). Teal, which is where-you-are and nothing else (rule 4), exactly as the
    board's own journey words are (`.tlabel.loc`, ADR-0141). Not amber: the clock has stopped being
    the question. */
-/* **Scoped to the carded case, and the render is why.** Left unscoped, `background`
-   painted on the LINE arm too — where the base rule has already taken the border and
-   the radius off — so an `on-way` leg drew a square-cornered teal band across the
-   list instead of a strand. `border-color` alone is inert on a `border: 0` box, so
-   nothing said the fill was still live. Caught by rendering the shipped sheets back
-   through the mockup's trees; invisible in the diff. */
-.day-trv.on-way.open,
-.day-trv.on-way:has(.day-trv-acts) {
-  border-color: color-mix(in srgb, var(--teal) 42%, var(--line));
-  background: color-mix(in srgb, var(--teal) 8%, var(--card));
+/* **The hue rides the mark, and there is one silhouette to ride** (owner,
+   2026-08-28). The box this arm used to take when it grew an acts row is gone with
+   every other box; teal takes the track, the glyph and the mode word, and the
+   sentence beside it stays `--muted` (the measured split below). */
+.day-trv.on-way::before {
+  border-color: color-mix(in srgb, var(--teal) 70%, transparent);
 }
-/* **The hue rides the mark, on either silhouette** (ADR-0210 §3). `on-way` keeps its
-   quiet tone whether it is a line or a card — what decides the box is whether the
-   block has grown a second row, not which arm it is on (the ADR's build log records
-   this: it argued the arm loses its box, and drew only the collapsed state; an acts
-   row with no container sits loose on the day's ground).
-
-   The tile's TINT is scoped to the carded case on purpose: on the line arm
-   `.day-trv-ic` is a stretched column with no radius, so an unscoped background
-   paints a full-height teal bar. Found by reading the new geometry back against the
-   shipped rule, which is the class of thing this ADR exists to stop. */
 .day-trv.on-way .day-trv-ic {
   color: var(--teal);
-}
-.day-trv.on-way.open .day-trv-ic,
-.day-trv.on-way:has(.day-trv-acts) .day-trv-ic {
-  background: color-mix(in srgb, var(--teal) 18%, transparent);
-}
-.day-trv.on-way .day-trv-ic::before {
-  border-color: color-mix(in srgb, var(--teal) 70%, transparent);
 }
 .day-trv.on-way .day-trv-hd {
   color: var(--teal);
@@ -580,7 +522,9 @@ button.day-trv-face:focus-visible {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+  /* The text column, for `.day-trv-modes`' reason: the track runs past this row now. */
   padding: 0 12px 10px;
+  padding-inline-start: 61px;
 }
 .day-trv-act {
   margin-inline-start: auto;

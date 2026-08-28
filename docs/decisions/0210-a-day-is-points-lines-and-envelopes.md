@@ -267,3 +267,42 @@ before this build**, which is what makes its before/after columns mean anything;
 make both columns draw the fix and the file would silently report a win it never measured — the
 "grades its own homework" trap in `pitfalls.md`. The file is the dated record of the proposal, and
 this build log is the record of what shipped.
+
+## 2026-08-28 amendment — there is no carded arm, and §3's build log was wrong about it
+
+**Owner, against the shipped build on a real day:** _"I think that the rows for being late (not
+enough time) should be adapted to the same style now as well no? … Also when on the way / should
+take off. Basically all leftovers."_
+
+**They are right, and the build log's reasoning was backwards.** Item 1 above kept the box for
+`miss`, for an open disclosure, and for any arm carrying the acts row, on the grounds that a block
+with contents needs a container. On a real day that reads as the opposite of what this ADR decided:
+the two late legs were the **only cards in a list of tracks**, so the one shape the eye uses to tell
+a leg from a stop was spent on a **state** instead. A state may change a row's tone; it may not
+change what kind of row it is. That is §1's whole argument, and the build spent it in the first
+place it was tested.
+
+So **every arm is the line.** `miss` takes `--miss` on the track, the glyph and the words and keeps
+its `warn` mark — which is the shape doing the work the box was doing. `on-way` takes teal the same
+way, with the sentence beside it still `--muted` (§3's measured split, unchanged).
+
+**What made the card seem necessary, and what actually fixes it.** The track hung off
+`.day-trv-ic::before`, which lives inside the _face_ — so on a block with a modes or acts row the
+line stopped at the face's foot and the rest of the block hung off nothing, which is what read as
+"loose on the day's ground". Moving the track to `.day-trv::before` makes it span every row the leg
+owns, and the extra rows indent to the **text** column so they sit beside the line rather than on
+it. The offset is stated once as the face's own arithmetic (`--trv-track`: ⁦12px⁩ of inline padding
+plus half the ⁦38px⁩ badge column) rather than repeated as a literal.
+
+**Measured on the case the mockup could not draw** (an `on-way` leg with a real acts row grafted
+onto the rendered shipped CSS): the track spans past the face into the acts row, the acts row's
+inline start lands on the text column exactly (⁦762px⁩ against ⁦762px⁩), the `עדיין כאן` mark clears
+the track, and the block reports `background: rgba(0,0,0,0)` with `border-width: 0`.
+
+**Two comments in the sheet were left describing arms that no longer exist** and have been
+corrected in place — the `overflow: visible` note and the face's padding note both explained
+themselves by contrast with a carded arm. A comment that survives the rule it describes is the
+same defect class as the specificity ties above, one layer up.
+
+**`:has(.day-trv-acts)` is gone with them**, so the sheet no longer branches on whether a block grew
+a row: `.day-trv` has one silhouette and three tones.
