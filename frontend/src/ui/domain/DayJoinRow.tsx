@@ -249,20 +249,27 @@ export function JourneyBlock({
     <>
       <span className="day-trv-ic">
         <Icon name={icon} />
-        {/* **`PlaceBadge`'s corner-mark geometry, re-pointed** (ADR-0167 §1, via §AL4) — and NOT
-            the avatar badge §AK2 named, which does not exist in this codebase. It takes no hue of
-            its own: the tile is already tinted by the tone and the glyph already carries that
-            tone's ink, so the mark adds a SHAPE rather than a second full-strength negative cue,
-            which is §AK3.1's answer. Measured: the block is 58px with it and 58px without, and
-            `.day-trv`'s `overflow: hidden` does not clip the overhang. */}
-        {flag && (
-          <span className="day-trv-flag">
-            <Icon name="warn" />
-          </span>
-        )}
       </span>
       <span className="day-trv-main">
         <span className="day-trv-hd">
+          {/* **THE MARK LEFT THE GLYPH, TO KEEP §AK1'S OWN PROMISE** (owner, 2026-08-28: _"the
+              warning icon is hiding the car glyph"_).
+
+              §AK1 is the rule and it still stands: the mode mark keeps its slot, because swapping
+              it for `warn` made a day of five stops read as _"three journeys and two errors"_.
+              §AK2's CORNER geometry was only that rule's implementation, and it assumed the ⁦38px⁩
+              tile ADR-0210 removed. A ⁦15px⁩ badge on the ⁦19px⁩ glyph that replaced it is 79% of its
+              host — measured, it covers 23% of the glyph outright and its `--card` halo hides most
+              of the rest — so the corner mark had begun defeating the very rule it was serving.
+
+              Inline at the head is where §AK1 survives with no tile: the mode keeps the column, the
+              warning sits with the words that say what is wrong, and it is still ONE mark taking no
+              hue of its own (§AK3.1) — the head is already `--miss-deep` on this arm. */}
+          {flag && (
+            <span className="day-trv-flag">
+              <Icon name="warn" />
+            </span>
+          )}
           <span>{mode}</span>
           {duration && (
             <>
