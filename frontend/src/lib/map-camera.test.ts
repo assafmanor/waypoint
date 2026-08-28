@@ -13,6 +13,7 @@ import {
   panShiftForReserve,
   pointInBounds,
   searchCameraTarget,
+  zoomNoTighterThan,
   zoomStepIn,
 } from './map-camera';
 import { pinHeightFor } from './map-pins';
@@ -336,6 +337,28 @@ describe('the zoom ladder (ADR-0127 §2)', () => {
     it('is a pure function of the current zoom, so no tap count can desynchronise', () => {
       expect(step(MAP_ZOOM.PLACE)).toBe(step(MAP_ZOOM.PLACE));
       expect(step(null)).toBe(MAP_ZOOM.PLACE);
+    });
+  });
+
+  // **The other end of the same ladder** (ADR-0206 §AC8's 2026-08-28 amendment): what a pan may
+  // keep when the camera has just admitted it cannot frame what the pan is about.
+  describe('zoomNoTighterThan', () => {
+    const cap = (z: number | null | undefined) => zoomNoTighterThan(z, MAP_ZOOM.DOT_BELOW);
+
+    // The report itself: a leg framed at street zoom, then a leg the floor refuses. `null` would
+    // have kept the street zoom, which is how the map stayed in close on a leg it could not show.
+    it('pulls a zoom tighter than the cap back to it', () => {
+      expect(cap(MAP_ZOOM.MAX_FIT)).toBe(MAP_ZOOM.DOT_BELOW);
+      expect(cap(MAP_ZOOM.DOT_BELOW + 0.5)).toBe(MAP_ZOOM.DOT_BELOW);
+    });
+
+    // And only ever pulls BACK: a view already wider is owed nothing, so it keeps its zoom
+    // rather than being zoomed IN on a subject the camera cannot frame.
+    it('leaves a view already wider than the cap alone', () => {
+      expect(cap(MAP_ZOOM.DOT_BELOW)).toBeNull();
+      expect(cap(MAP_ZOOM.DOT_BELOW - 3)).toBeNull();
+      expect(cap(null)).toBeNull();
+      expect(cap(undefined)).toBeNull();
     });
   });
 });

@@ -53,6 +53,7 @@ import {
   recentreInBand,
   panShiftForReserve,
   searchCameraTarget,
+  zoomNoTighterThan,
   zoomStepIn,
   type CameraAt,
   type CameraTarget,
@@ -97,9 +98,11 @@ export interface MapCamera {
   frameOn: (point: LatLng) => boolean;
   /** **Frame a PATH — the amber leg — rather than the stop at the end of it** (ADR-0206 §AC8).
    *  Returns `false` when the leg is too long to be worth framing (the fit would drop below
-   *  `MAP_ZOOM.DOT_BELOW`, where every pin degrades to a dot and the leg is unreadable anyway),
-   *  leaving nothing moved so the caller can fall back to focusing the stop. */
-  framePath: (path: readonly LatLng[]) => boolean;
+   *  `MAP_ZOOM.DOT_BELOW`, where every pin degrades to a dot and the leg is unreadable anyway) —
+   *  and then pans to `anchor`, the stop the selection is on, at no tighter than that same floor
+   *  (§AC8's 2026-08-28 amendment). The refusal is about the LEG, never a reason to keep a zoom
+   *  chosen for the previous one. */
+  framePath: (path: readonly LatLng[], anchor: LatLng) => boolean;
   /** **Keep `point` in the middle of what you can actually SEE, as that changes underneath it**
    *  (ADR-0122 §7's 2026-08-06 amendment). The same target `focus` pans a new selection to —
    *  so the two agree by construction — re-applied when the CARD or the CANVAS changes rather
@@ -572,15 +575,26 @@ export function useMapCamera(
    *  **The floor is `DOT_BELOW` and it is reused rather than minted** (rule 8): that is already
    *  the zoom at which a pin stops being a pin, so a leg that cannot be framed above it is one
    *  you could not read after the move either — and being pulled to country zoom for a train
-   *  journey is worse than not framing at all. Below the floor nothing moves and `false` sends
-   *  the caller back to the stop. */
+   *  journey is worse than not framing at all. Below the floor the leg is not framed and `false`
+   *  says so — but the camera still moves: it pans to `anchor`, the stop, and caps the zoom at
+   *  that same floor rather than keeping one the previous leg earned. */
   const framePath = useCallback(
-    (path: readonly LatLng[]) => {
+    (path: readonly LatLng[], anchor: LatLng) => {
       const bounds = boundsOfPoints(path);
       if (!bounds) return false;
-      return apply(path, null, bounds, tune(TUNE.zoomDotBelow, MAP_ZOOM.DOT_BELOW));
+      const floor = tune(TUNE.zoomDotBelow, MAP_ZOOM.DOT_BELOW);
+      if (apply(path, null, bounds, floor)) return true;
+      // **A refused leg still says how tight the camera may be** (§AC8's 2026-08-28 amendment).
+      // The pan itself is the one this always fell back to; what it may no longer do is inherit
+      // the zoom. Below the floor the leg leaves the canvas at any zoom tighter than it, and
+      // since AC8 that tight zoom is one the CAMERA chose for the previous, shorter leg — so
+      // walking a day from two stops on one street to two an hour apart stayed at street zoom.
+      // The zoom the ease is heading for, when one is in flight, for `locate`'s reason: a second
+      // selection during the first move's 480ms must not read an interpolated value.
+      moveTo(anchor, zoomNoTighterThan(going.current?.zoom ?? map?.getZoom(), floor));
+      return false;
     },
-    [apply],
+    [map, apply, moveTo],
   );
 
   /**

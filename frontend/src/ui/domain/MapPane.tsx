@@ -1980,14 +1980,20 @@ function MapCameraControls({
       subjectRef.current = undefined;
       return;
     }
+    const stop = focusRef.current;
     const leg = routeLegRef.current;
-    // A leg too long to frame moves nothing and answers `false`, so the stop still gets its pan.
-    if (leg && framePath(leg)) {
-      subjectRef.current = centreOfPoints(leg) ?? focusRef.current;
+    // **A leg the floor refuses is `framePath`'s to fall back from, not this effect's** (§AC8's
+    // 2026-08-28 amendment). The refusal used to send the pan back here, and a pan keeps the zoom
+    // you are on — which since AC8 is the zoom the camera itself chose for the PREVIOUS leg, so
+    // walking a day from two stops on one street to two an hour apart stayed at street zoom
+    // (owner: _"the zoom stays instead of zooming out"_). The floor is what caps it, and the floor
+    // is `framePath`'s number; the answer here stays "which subject did the camera end up on".
+    if (leg) {
+      subjectRef.current = (framePath(leg, stop) ? centreOfPoints(leg) : null) ?? stop;
       return;
     }
-    focus(focusRef.current);
-    subjectRef.current = focusRef.current;
+    focus(stop);
+    subjectRef.current = stop;
   }, [selectedId, focus, framePath]);
 
   // **AND WHEN THE BAND CHANGES UNDER A SELECTION THAT DID NOT** (ADR-0122 §7's 2026-08-06

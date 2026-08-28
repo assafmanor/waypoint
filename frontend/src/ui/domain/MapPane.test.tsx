@@ -1575,6 +1575,53 @@ describe('the dot tier degrades a pin below a zoom threshold (ADR-0128 §1)', ()
     expect(Math.abs(mapStub.current.centre.lat - B.lat)).toBeLessThan(0.1);
   });
 
+  // **AND A REFUSED LEG DOES NOT KEEP THE PREVIOUS LEG'S ZOOM** (§AC8's 2026-08-28 amendment;
+  // owner: _"after moving from close stops to more far stops, the zoom stays instead of zooming
+  // out"_). The fallback was a pan, and a pan keeps the zoom you are on — which since AC8 is a
+  // zoom the CAMERA chose, for a leg two stops on one street earned. So the map stayed in close
+  // on a leg that leaves the canvas immediately. Asserted at the pane because the report is about
+  // walking a day: the leg prop changes with the selection, and the camera reads both.
+  it('pulls the zoom back to the dot floor when it refuses the leg', () => {
+    mapStub.current.box = { width: 390, height: 517 };
+    mapStub.current.viewport = { north: 60, south: 10, east: 160, west: 110 };
+    vi.stubGlobal('matchMedia', () => ({ matches: true }) as unknown as MediaQueryList);
+    // Two stops on one street: the fit resolves tight, and the camera is left there.
+    mapStub.current.fitResultZoom = MAP_ZOOM.MAX_FIT;
+    const { rerender } = paint({
+      pins: [
+        pin({ placeId: 'a', lat: A.lat, lng: A.lng }),
+        pin({ placeId: 'b', lat: B.lat, lng: B.lng, selected: true }),
+      ],
+      connector: [{ path: [A, B], from: A, to: B, emphasis: 'route' as const }],
+    });
+    expect(mapStub.current.zoom).toBe(MAP_ZOOM.MAX_FIT);
+
+    // Now a stop an hour away, whose leg the fit resolves below the floor — so it is refused,
+    // and the pan that answers it must not carry the previous leg's zoom with it.
+    mapStub.current.fitResultZoom = MAP_ZOOM.DOT_BELOW - 1;
+    rerender(
+      <MapPane
+        scheme={MAP_COLOR_SCHEME.light}
+        urls={URLS}
+        pins={[
+          pin({ placeId: 'b', lat: B.lat, lng: B.lng }),
+          pin({ placeId: 'c', lat: C.lat, lng: C.lng, selected: true }),
+        ]}
+        setSignal="day"
+        onSelectPin={vi.fn()}
+        onCanvasTap={vi.fn()}
+        onViewChange={vi.fn()}
+        areaCount={1}
+        areaSorted={false}
+        onAreaSort={vi.fn()}
+        onLocate={vi.fn()}
+        connector={[{ path: [B, C], from: B, to: C, emphasis: 'route' as const }]}
+      />,
+    );
+
+    expect(mapStub.current.zoom).toBe(MAP_ZOOM.DOT_BELOW);
+  });
+
   // ADR-0128 §1's session-154 amendment: **demote what claims precision, keep what claims
   // priority.** The glyph, the number and the tip answer "which one" and "where exactly",
   // which a 30km view cannot support. The amber cue answers "what matters right now",
