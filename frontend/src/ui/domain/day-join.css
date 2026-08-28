@@ -251,53 +251,39 @@ button.day-trv-face:focus-visible {
   inset: -4px 0;
 }
 
-/* **THE COMPOSITED WARNING MARK** (ADR-0206 §AK2, drawn and measured in
-   `mockups/the-mode-set-and-transit-declared-v1.html` §2).
+/* **THE WARNING MARK, INLINE AT THE HEAD** (ADR-0206 §AK2 amended 2026-08-28; the
+   reasoning is in `DayJoinRow.tsx` at the render site).
 
-   `PlaceBadge`'s corner-mark geometry, re-pointed — `.wp-placebadge-mark`, ADR-0167 §1 — and NOT
-   the avatar badge §AK2 cited, which does not exist in this codebase (§AL4). It is the better
-   precedent anyway: a corner mark on a 32-40px rounded badge, which is this tile exactly, and its
-   own owner review already settled the loudness question ("a bare pin, not a pin in a disc").
+   It used to be `PlaceBadge`'s corner-mark geometry hung off the ⁦38px⁩ mode tile.
+   ADR-0210 removed that tile, and a ⁦15px⁩ badge on the ⁦19px⁩ glyph that replaced it is
+   79% of its host: measured, it covered 23% of the glyph outright and its halo hid
+   most of the rest, so the mark was obliterating the very mode glyph §AK1 exists to
+   protect.
 
-   **One mark, composited, rather than a glyph per mode per state**: that matrix is 8 assets and
-   doubles with every mode, where this is `warn` - which already exists - plus one offset.
+   Inline it needs none of that machinery — no absolute placement, no overhang ratio,
+   and **no halo**: a corner badge needed one because it sat on a tinted tile, and this
+   sits on the row's own ground. (The halo it carried was `--card`, which was already
+   the wrong ground for this arm — the same mistake the glyph's own halo had, fixed in
+   ADR-0210 and missed here.)
 
-   **It takes NO hue of its own**, and that is §AK3.1's answer: the tile is already tinted by the
-   block's tone and the glyph in it already carries that tone's ink, so the mark adds a SHAPE and
-   not a second full-strength negative cue. It is also what lets a finished day take the same mark
-   in its own quiet ink with no extra rule.
-
-   Measured at 360 and 390, both themes: the block is 58px with the mark and 58px without - a corner
-   mark adds no box, which is §AK2's whole claim - and `.day-trv`'s `overflow: hidden` does NOT clip
-   the 5.8px overhang (4.2px of slack). That last one is ADR-0167 §11.2's trap, checked rather than
-   assumed. */
-/* **On the line arm the mark hangs off the GLYPH, not off the column** (ADR-0210 §3).
-   `.day-trv-ic` is now an invisible stretched column, so the shipped `/-2.6` overhang
-   — which was measured against a ⁦38×38⁩ tile — would drop the warn triangle into the
-   gutter below the glyph, pointing at nothing. The glyph is ⁦19px⁩ centred, so its
-   trailing/bottom corner is `50% - 9.5px`, and the same overhang off that corner is
-   a further ⁦5.8px⁩. One anchor, because since 2026-08-28 there is one silhouette. */
-.day-trv .day-trv-flag {
-  inset-block-end: calc(50% - 15.3px);
-  inset-inline-end: calc(50% - 15.3px);
-}
+   It takes no hue of its own (§AK3.1): the head is already `--miss-deep` on the arm
+   that can carry it. */
 .day-trv-flag {
-  position: absolute;
-  /* `/-2.6` is `.wp-placebadge-mark`'s own overhang ratio, so the app's two corner marks sit the
-     same way off their badge rather than each choosing. */
-  inset-block-end: calc(var(--trv-flag, 15px) / -2.6);
-  inset-inline-end: calc(var(--trv-flag, 15px) / -2.6);
-  display: grid;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
   color: inherit;
+  /* **`.day-trv-hd` is `align-items: baseline`, and an inline SVG has no baseline** —
+     the trap `docs/backlog.md` records from an owner report on a real phone (2026-08-09).
+     A flex item that is itself a flex box takes its first child's baseline, and an
+     `<svg>` supplies none, so the mark would hang off the line box's bottom edge
+     instead of sitting on the words. `center` is the fix, stated rather than
+     inherited. */
+  align-self: center;
 }
 .day-trv-flag .icon {
-  width: var(--trv-flag, 15px);
-  height: var(--trv-flag, 15px);
-  /* The halo. `warn` is an OUTLINED glyph, so `.wp-placebadge-mark`'s trick - a wider stroke under
-     the fill via `paint-order` - buys nothing here: with no fill, a wider stroke is just a fatter
-     triangle. A drop-shadow ring is one declaration and no second element, and the tile behind it
-     is a tinted surface with no separation of its own. */
-  filter: drop-shadow(0 0 1.4px var(--card)) drop-shadow(0 0 1.4px var(--card));
+  width: var(--trv-flag, 14px);
+  height: var(--trv-flag, 14px);
 }
 
 /* **THE MODE ROW, BEHIND A DISCLOSURE** (ADR-0206 §AL10, drawn in the same mockup's §6).

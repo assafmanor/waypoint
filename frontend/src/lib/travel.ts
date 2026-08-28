@@ -411,8 +411,24 @@ export function useDayTravel(opts: {
             // Storing is an optimisation for the next visit; failing it costs this visit
             // nothing, since the answer is already in state.
           });
+          // **RECORDED ONLY IF IT TAUGHT US SOMETHING** (owner, 2026-08-28: _"sometimes …
+          // the driving/walking rows don't show up, and it stays that way until I restart the
+          // app"_). `retryAfterSeconds === undefined` means "nothing more is coming"; it does
+          // NOT mean "something arrived". A batch that answers with no legs used to be recorded
+          // here all the same — and since `merge` stores nothing for an empty set, the day was
+          // marked answered in full while holding no numbers, in `askedDays`, which is module
+          // state. Every later visit then early-returned, and only a reload could clear it.
+          // "Until I restart the app" is that set, exactly.
+          //
+          // The rule was already written for the neighbouring case and simply not applied to
+          // this one: a still-warming day is deliberately not recorded, because "that is how it
+          // gets its numbers at all". A day that learned nothing is in the same position.
+          //
+          // Refusals count as learning: they are an answer that is never coming again, which is
+          // the whole reason `refusedOf` exists — so a day of nothing but refusals is settled and
+          // must not re-ask on every visit.
           if (batch.retryAfterSeconds === undefined) {
-            askedDays.add(fingerprint);
+            if (found.size || refused.size) askedDays.add(fingerprint);
             done();
             return;
           }

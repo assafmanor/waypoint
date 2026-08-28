@@ -321,21 +321,30 @@ describe('JourneyRow — the journey does not fit', () => {
     expect(container.textContent).not.toContain('יציאה');
   });
 
-  // **§AK, and it is a REVERSAL of what shipped in M7**: an infeasible leg used to have its mode
+  // **§AK1, and it is a REVERSAL of what shipped in M7**: an infeasible leg used to have its mode
   // glyph REPLACED by the warn mark, which deletes the answer to "which mode is this?" exactly
-  // when the reader is deciding whether to switch it. The mark is composited over the glyph
-  // instead — one mark that overlays any of the four modes, rather than a glyph per mode per
-  // state (M8a measured that as 6 now and 8 with תחב״צ). Asserted as geometry, because both
-  // versions render "an icon in the badge column" and the old spec could not tell them apart.
-  it('keeps the leg its own mode glyph and composites the warning over it (§AK)', () => {
+  // when the reader is deciding whether to switch it. One mark accompanies any of the four modes
+  // instead, rather than a glyph per mode per state (M8a measured that as 6 now and 8 with תחב״צ).
+  //
+  // **Where that mark LIVES changed on 2026-08-28** and the rule did not. It was a corner badge on
+  // the ⁦38px⁩ mode tile; ADR-0210 removed the tile, and a ⁦15px⁩ badge on the ⁦19px⁩ glyph that
+  // replaced it covered the glyph — so the corner mark had started doing the very thing §AK1
+  // reversed M7 for. It now sits inline at the head, and this spec asserts the RULE (the mode
+  // glyph survives intact, and the warning is a second mark elsewhere) rather than the placement,
+  // which is what let the old version pass while the glyph was being obliterated.
+  it('keeps the leg its own mode glyph, and the warning is a second mark (§AK1)', () => {
     const { container } = row(60, 78);
     const badge = container.querySelector('.day-trv-ic')!;
     const walking = render(<Icon name={TRAVEL_MODE.WALKING} />).container.querySelector('svg')!;
     expect(badge.querySelector('svg')!.querySelector('path')!.getAttribute('d')).toBe(
       walking.querySelector('path')!.getAttribute('d'),
     );
-    // …and the warning is a second mark ON that tile, not the tile's content.
-    const flag = badge.querySelector('.day-trv-flag');
+    // The mode column holds the mode and NOTHING else — the mark is not in it, which is the half
+    // that would have caught the regression the owner reported.
+    expect(badge.querySelectorAll('svg')).toHaveLength(1);
+    expect(badge.querySelector('.day-trv-flag')).toBeNull();
+    // …and the warning is still rendered, beside the words that say what is wrong.
+    const flag = container.querySelector('.day-trv-hd .day-trv-flag');
     expect(flag).toBeTruthy();
     expect(flag!.querySelector('svg')).toBeTruthy();
   });

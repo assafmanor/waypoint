@@ -3239,3 +3239,54 @@ at all. Both call sites take the same pair of derivations, in the same order.
 - **`WARMING` is a Trip-and-Plan arm only.** The board (`Home`) reads the same journeys through
   `useDayTravelReads`, so it inherits the state, but the countdown TILE has no shape for "computing"
   and deliberately keeps saying nothing rather than guessing at one.
+
+## 2026-08-28 amendment — two field reports off the shipped day
+
+Both from the owner, against the day list after ADR-0210 landed.
+
+### §AK2 — the warning mark leaves the mode tile, because the tile is gone
+
+_"The warning icon is hiding the car glyph."_
+
+**§AK1 is the rule and it stands:** the mode mark keeps its slot, because M7 swapped the glyph for
+`warn` and a day of five stops then read as _"three journeys and two errors"_. §AK2's **corner
+badge** was only that rule's implementation, and it assumed the ⁦38px⁩ tile
+[ADR-0210](0210-a-day-is-points-lines-and-envelopes.md) removed. Measured against the ⁦19px⁩ glyph
+that replaced it, a ⁦15px⁩ badge is **79% of its host**: it covered 23% of the glyph outright and its
+halo hid most of the rest — so the corner mark had begun doing the exact thing §AK1 reversed M7
+for. (Its halo was `--card` besides, which stopped being this arm's ground when the card did — the
+same mistake ADR-0210 fixed on the glyph's own halo and missed one element away.)
+
+**The mark now sits inline at the head**, before the mode word. §AK1 survives with no tile: the mode
+keeps the column, the warning sits with the words that say what is wrong, and it is still ONE mark
+taking no hue of its own (§AK3.1) — the head is already `--miss-deep` on the arm that can carry it.
+It needs no absolute placement, no overhang ratio and no halo, because it no longer sits on a tinted
+tile. It does need `align-self: center`: `.day-trv-hd` is `align-items: baseline` and an inline SVG
+has no baseline, which `docs/backlog.md` already records from an owner report.
+
+**The spec that should have caught this asserted the placement rather than the rule** — it checked
+that the mode glyph was in the badge column and that a flag existed somewhere in it, which stayed
+true while the flag was obliterating the glyph. It now asserts §AK1 itself: the mode column holds the
+mode **and nothing else**, and the warning is a second mark elsewhere.
+
+### §AU1 — a day is recorded as answered only if it learned something
+
+_"Sometimes, I'm not sure when, on plan day/day view, the driving/walking rows don't show up, and it
+stays that way until I restart the app."_
+
+**"Until I restart" names the mechanism**: `askedDays` is module state, cleared only by a reload, and
+a day in it is never asked again. It was recorded on `retryAfterSeconds === undefined` **alone** —
+which means "nothing more is coming", not "something arrived". A batch that came back with **no
+legs** therefore marked the day answered in full while teaching it nothing; `merge` stores nothing
+for an empty set, so no estimate reached `sessionKnown` or Dexie either, and every later visit
+early-returned on a day holding no numbers. The rows were absent, permanently, until reload.
+
+The rule was **already written for the neighbouring case and simply not applied to this one** — a
+still-warming day is deliberately not recorded, _"that is how it gets its numbers at all"_. A day
+that learned nothing is in the same position. So the day is recorded only when the batch carried an
+estimate or a refusal; refusals count, because a refusal is an answer that is never coming again,
+which is what `refusedOf` exists to say.
+
+Guarded by a pair, because either half alone is satisfiable the wrong way: one spec asserts an empty
+batch leaves the day re-askable **and** that re-opening it recovers real numbers, the other that a
+day which _did_ learn something is still asked exactly once.

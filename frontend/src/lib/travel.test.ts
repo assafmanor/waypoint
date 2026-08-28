@@ -145,6 +145,56 @@ describe('useDayTravel', () => {
     expect(request.modes).toEqual([TRAVEL_MODE.WALKING, TRAVEL_MODE.DRIVING, TRAVEL_MODE.CYCLING]);
   });
 
+  /**
+   * **THE FIELD REPORT THIS GUARD EXISTS FOR** (owner, 2026-08-28): _"sometimes, I'm not sure
+   * when, on plan day/day view, the driving/walking rows don't show up, and it stays that way
+   * until I restart the app."_
+   *
+   * "Until I restart" is the tell: `askedDays` is module state, so only a reload clears it. A day
+   * recorded there is never asked again — and it was recorded on `retryAfterSeconds === undefined`
+   * ALONE, i.e. on "nothing more is coming", without checking whether anything had actually
+   * arrived. A batch that answers with no legs therefore marked the day answered in full while
+   * teaching it nothing, and `merge` stores nothing for an empty set, so no estimate reached
+   * `sessionKnown` or Dexie either. Every later visit early-returned on a day that held no numbers.
+   *
+   * The rule was already written for the neighbouring case and simply not applied to this one:
+   * a still-warming day is deliberately not recorded, "that is how it gets its numbers at all".
+   */
+  it('does not record a day as answered when the batch taught it nothing', async () => {
+    // The server says nothing more is coming — and hands back no legs at all.
+    routes.fetchRoutes.mockResolvedValue({ legs: [] } satisfies RouteBatch);
+
+    const first = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+    await waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(1));
+    expect(first.result.current.estimateFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toBeNull();
+    first.unmount();
+
+    // Re-opening the day must ask again: nothing was learned, so there is nothing to reuse — and
+    // this is the only path back to numbers short of restarting the app.
+    routes.fetchRoutes.mockResolvedValue(answered);
+    const second = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+
+    await waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(second.result.current.estimateFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toEqual(
+        walk,
+      ),
+    );
+  });
+
+  /** The other half of the pair: a day that DID learn something is still asked only once, so the
+   *  guard above cannot be satisfied by simply never recording anything. */
+  it('still records a day that learned something, and does not re-ask it', async () => {
+    const first = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+    await waitFor(() =>
+      expect(first.result.current.estimateFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toEqual(walk),
+    );
+    first.unmount();
+
+    renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+    await waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(1));
+  });
+
   it('reads a stored estimate offline, without asking', async () => {
     await cacheTravelEstimates(STOPS, [leg([walk])]);
     setOnline(false);
