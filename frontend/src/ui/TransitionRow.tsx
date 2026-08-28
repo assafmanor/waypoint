@@ -135,7 +135,17 @@ export function TransitionRow({
               Cost, stated because it is charged to every transition row now and not only to
               a windowed one: ~20px of height. */}
           <span className="tr-time">
-            {time}
+            {/* **The clock says what KIND of bound it is** (ADR-0210 §2). `meaning` is
+                already in hand a few lines up — `edgeTimePhrase` asks the same question to
+                choose the word — so the shape costs a wrapper and an attribute, and it
+                cannot drift from the word beside it. The attribute carries the derivation's
+                own value rather than a mapped class name, so a fifth `TimeMeaning` would
+                arrive here as a stylesheet question and not a TypeScript one.
+                `ZoneShiftPill` stays OUTSIDE the box: it annotates the clock, it is not
+                part of the bound. */}
+            <span className="tr-clock" data-bound={meaning}>
+              {time}
+            </span>
             {deltaMinutes != null && (
               <ZoneShiftPill minutes={deltaMinutes} className="tr-tzdelta" />
             )}

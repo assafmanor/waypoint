@@ -862,14 +862,23 @@ describe('DayView — a midnight pickup reads above the bed', () => {
     expect(titles.indexOf('Iceland Car Rental')).toBeLessThan(titles.indexOf('Gissurarbúð 5'));
   });
 
-  // Green on `main` and a guard on the fix rather than a report: the strip's sentence comes from
-  // the PLACED entry, and the entry moved buckets — so without `placedEdgeOf` it would fall back
-  // to the span count (`יום 1 מתוך 11`), losing the very clock the strip exists to say.
-  it('keeps the strip saying the pickup clock rather than the day count', () => {
+  // **REVERSED by the owner (2026-08-28): the strip says the COUNT, and the row says the clock.**
+  // This spec used to assert the opposite, and its reasoning was that falling back to the span
+  // count would lose "the very clock the strip exists to say". What it did not weigh is that the
+  // ROW below says that clock too — so the strip was not saying it, it was repeating it. Asked
+  // directly, the owner: _"for consistency I'm voting no, same as hotel check in/check out days"_.
+  //
+  // The pair below is the whole point and neither half is enough alone: the count has to be in the
+  // strip AND the transition word has to be out of it, or a fallback that merely reworded the
+  // sentence would pass.
+  it('says the day count in the strip, and leaves the pickup clock to the row', () => {
     show();
-    expect(document.querySelector('.day-ambient')?.textContent).toContain(
-      t.glance.transition.carPickup,
-    );
+    const strip = document.querySelector('.day-ambient')?.textContent ?? '';
+    expect(strip).toContain('Iceland Car Rental');
+    expect(strip).not.toContain(t.glance.transition.carPickup);
+    const rows = [...document.querySelectorAll('.day-list .transition-row')];
+    const pickup = rows.find((r) => r.textContent?.includes(t.glance.transition.carPickup));
+    expect(pickup).toBeTruthy();
   });
 
   // **AND THE DRIVE BETWEEN THEM** (owner, 2026-08-26: _"it should also show the way from the car

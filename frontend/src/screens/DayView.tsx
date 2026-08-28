@@ -107,7 +107,6 @@ import {
 import { dayPositions, firstPositionFitting } from '../lib/day-positions';
 import {
   dayTransitions,
-  placedEdgeOf,
   groupEndEvent,
   groupStartEvent,
   mergeDayEntries,
@@ -1065,7 +1064,6 @@ export function DayView() {
               // screen, here and as a row at its bound.
               .filter((e) => !stayRowIds.has(e.id))
               .map((e) => {
-                const edge = placedEdgeOf(placement, e.id);
                 return (
                   <div className="ambient" key={e.id}>
                     <span className="ai" aria-hidden="true">
@@ -1073,9 +1071,27 @@ export function DayView() {
                     </span>
                     <span className="an">{e.title}</span>
                     <span className="as">
-                      {edge
-                        ? edgeSentence(edge, transitionZoneProps(edge, zoneCtx).zone)
-                        : ambientSpanLabel(e, activeDate)}
+                      {/* **A SPAN NAMED BY ITS OWN ROW SAYS THE COUNT HERE, NOT THE CLOCK** (owner,
+                          2026-08-28, amending the 2026-08-13 call above and extending ADR-0209 §1
+                          past stays). That call made this line BORROW the row's placed clock so the
+                          two could not disagree; the owner's answer now is that they should not both
+                          print it at all — _"for consistency I'm voting no, same as hotel check
+                          in/check out days"_.
+
+                          **`placedEdgeOf` only ever finds an edge that already has its own row**,
+                          which is what makes this a subtraction rather than a loss: a bookend stay
+                          is filtered out of this strip two lines up and its edge lives in
+                          `stayEdges`, never in `positioned`. So the branch this replaces fired for
+                          exactly the duplicated cases — a car hire's pick-up/return, a red-eye's
+                          departure/landing.
+
+                          **It is NOT the hotel's treatment, and that is deliberate.** A bookend stay
+                          leaves the strip entirely because its row carries the hotel's NAME, so
+                          nothing is lost. A hire's row carries the PLACE and the strip carries the
+                          COMPANY (ADR-0163 §3) — dropping the strip row would delete the company
+                          from the day. So the row stays and the CLOCK gives way: named once,
+                          timed once. */}
+                      {ambientSpanLabel(e, activeDate)}
                     </span>
                   </div>
                 );
@@ -1143,6 +1159,7 @@ export function DayView() {
           {bookends.woke && (
             <StayRow
               stay={bookends.woke}
+              edge="wake"
               bound={stayBound(bookends.woke)}
               bookings={bookings}
               onOpen={setDetailTarget}
@@ -1255,6 +1272,7 @@ export function DayView() {
           {bookends.sleeps && (
             <StayRow
               stay={bookends.sleeps}
+              edge="sleep"
               bound={stayBound(bookends.sleeps)}
               bookings={bookings}
               onOpen={setDetailTarget}

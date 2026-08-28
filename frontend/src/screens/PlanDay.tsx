@@ -158,7 +158,6 @@ import {
 } from '../constants';
 import {
   dayTransitions,
-  placedEdgeOf,
   placeDayEntries,
   type DayEntry,
   groupEndEvent,
@@ -1411,7 +1410,6 @@ export function PlanDay() {
                 // A stay named by its own row is not also named here (ADR-0209 §1).
                 .filter((e) => !stayRowIds.has(e.id))
                 .map((e) => {
-                  const edge = placedEdgeOf(placement, e.id);
                   return (
                     <div className="ambient" key={e.id}>
                       <span className="ai" aria-hidden="true">
@@ -1419,9 +1417,11 @@ export function PlanDay() {
                       </span>
                       <span className="an">{e.title}</span>
                       <span className="as">
-                        {edge
-                          ? edgeSentence(edge, eventEdgeZone(edge.event, edge.edge, zoneCtx).zone)
-                          : ambientSpanLabel(e, activeDate)}
+                        {/* Trip mode's rule, and it must be Trip mode's rule: ADR-0159 §1 lets the two
+                            surfaces differ in posture and forbids one about a FACT, and whether a
+                            span is named twice on one screen is a fact. See `DayView.tsx` for why
+                            this is a subtraction and why it is not the hotel's treatment. */}
+                        {ambientSpanLabel(e, activeDate)}
                       </span>
                     </div>
                   );
@@ -1530,6 +1530,7 @@ export function PlanDay() {
                 <>
                   <StayRow
                     stay={bookends.woke}
+                    edge="wake"
                     bound={planStayBound(bookends.woke)}
                     bookings={bookings}
                     onOpen={setDetailTarget}
@@ -1594,6 +1595,7 @@ export function PlanDay() {
                     })()}
                   <StayRow
                     stay={bookends.sleeps}
+                    edge="sleep"
                     bound={planStayBound(bookends.sleeps)}
                     bookings={bookings}
                     onOpen={setDetailTarget}

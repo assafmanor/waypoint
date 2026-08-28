@@ -25,6 +25,7 @@ import { chosenIcon, DEFAULT_STAY_ICON } from '../../constants';
 
 export function StayRow({
   stay,
+  edge,
   bound,
   bookings,
   onOpen,
@@ -35,6 +36,13 @@ export function StayRow({
   onUndo,
 }: {
   stay: TripEvent;
+  /** **Which end of the day this is** (ADR-0210 §4) — the direction the bracket opens,
+   *  which is INTO the day: down on the row you woke in, up on the row you sleep in.
+   *  `dayBookendStays` already answers this for both callers as `{woke, sleeps}`
+   *  (ADR-0209 §1), so nothing new is derived; the row is only told which one it got.
+   *  Required rather than defaulted: a bookend is always one end or the other, and a
+   *  default would silently draw every stay as a wake row on the day a caller forgot. */
+  edge: 'wake' | 'sleep';
   /** The stay's own constraint or count, already worded by the caller — `צ׳ק-אאוט · עד 09:40` from
    *  `edgeSentence` where the day is an edge of it, `לילה 2 מתוך 4` from `ambientSpanLabel` where it
    *  is not. Both sentences already existed, in the strip this row replaces. */
@@ -56,7 +64,7 @@ export function StayRow({
 }) {
   const booking = stay.bookingId ? bookings.find((b) => b.id === stay.bookingId) : undefined;
   return (
-    <div className="transition-row">
+    <div className={'transition-row stay-bookend' + (edge === 'sleep' ? ' at-sleep' : '')}>
       <button
         type="button"
         className="tr-face"
