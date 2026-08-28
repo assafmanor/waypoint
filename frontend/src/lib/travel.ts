@@ -28,6 +28,7 @@ import {
   type TravelEstimate,
   type TravelMode,
 } from '@waypoint/shared';
+import { DAY_TRAVEL_SETTLE_MAX_MS } from '../constants';
 import { db } from '../db';
 import { fetchRoutes } from './api';
 import { useIsDayPreview } from '../state/day-preview';
@@ -61,10 +62,29 @@ const LEG_KEY_SEPARATOR = '|';
  *  numbers at all: the next time you open it, it asks again. */
 const askedDays = new Set<string>();
 
-/** Test seam. The set above is module state by design (it outlives every day surface), so a spec
+/** **Days whose LOCAL read has finished during this session**, which is a different question from
+ *  the set above and the reason `settled` can be answered during the first render (ADR-0206 §AT).
+ *
+ *  `askedDays` is about the SERVER: has this day been answered in full. This is about the DEVICE:
+ *  has Dexie told us what it holds for this day yet. A day is in here whether the read found
+ *  everything, something or nothing — the point is only that the answer is in, so a remount does
+ *  not have to hold for a read whose result it already has. */
+const readDays = new Set<string>();
+
+/** **What this session has read out of Dexie or been told by the server**, so a day mounting a
+ *  second time starts with its numbers rather than waiting a frame for them (ADR-0206 §AT).
+ *
+ *  The peek is what makes this load-bearing rather than a saving: `DayPeek` mounts the two
+ *  neighbouring days as real surfaces, so by the time a swipe commits, the day it lands on has
+ *  already read its own legs — and the committed mount is then complete on its first paint. */
+const sessionKnown = new Map<string, TravelEstimate>();
+
+/** Test seam. The state above is module state by design (it outlives every day surface), so a spec
  *  that mounts the same day twice needs to be able to clear it. */
 export function resetAskedDaysForTests(): void {
   askedDays.clear();
+  readDays.clear();
+  sessionKnown.clear();
 }
 
 /** Every (consecutive pair × mode) key a day would ask about. Consecutive only: a day is a
@@ -161,6 +181,20 @@ export async function readCachedTravelEstimates(
  *  estimate, or `null` — and `null` is ordinary. */
 export interface DayTravel {
   estimateFor(from: LatLng, to: LatLng, mode: TravelMode): TravelEstimate | null;
+  /**
+   * **Has this device said what it holds yet?** (ADR-0206 §AT.)
+   *
+   * `false` only while the local read for this day's legs is still in flight — never for a
+   * network answer, which no surface may wait on. It exists because §D4 collapses two states
+   * into one absence, and M6a/M11 made that collapse STRUCTURAL: a journey row and the day's
+   * total appear when an estimate lands, so a day that paints before its own cache has answered
+   * paints twice, the second time ⁦162px⁩ taller. The surfaces hold their first paint on this;
+   * nothing else reads it, and no derivation branches on it.
+   *
+   * `true` immediately for a day with no legs to read, for a peek (which never fetches and must
+   * not hold a pane mid-gesture), and for any day this session has already read.
+   */
+  settled: boolean;
 }
 
 const NOTHING_KNOWN: ReadonlyMap<string, TravelEstimate> = new Map();
@@ -170,9 +204,21 @@ function merge(
   next: ReadonlyMap<string, TravelEstimate>,
 ): ReadonlyMap<string, TravelEstimate> {
   if (!next.size) return prev;
+  for (const [key, estimate] of next) sessionKnown.set(key, estimate);
   const merged = new Map(prev);
   for (const [key, estimate] of next) merged.set(key, estimate);
   return merged;
+}
+
+/** What this session already holds for the keys a day asks about — the synchronous half of the
+ *  cache read, so a day already seen renders complete on its first paint. */
+function knownHere(legKeys: readonly string[]): ReadonlyMap<string, TravelEstimate> {
+  const found = new Map<string, TravelEstimate>();
+  for (const key of legKeys) {
+    const estimate = sessionKnown.get(key);
+    if (estimate) found.set(key, estimate);
+  }
+  return found.size ? found : NOTHING_KNOWN;
 }
 
 const warmRetryMs = (seconds: number) => Math.min(Math.max(seconds, 0) * 1000, WARM_RETRY_MAX_MS);
@@ -212,7 +258,6 @@ export function useDayTravel(opts: {
   const { tripId, stops, modes = TRAVEL_MODES } = opts;
   const preview = useIsDayPreview();
   const offline = useIsOffline();
-  const [known, setKnown] = useState<ReadonlyMap<string, TravelEstimate>>(NOTHING_KNOWN);
 
   // **Keyed on CONTENT, never on the array's identity.** A day surface derives `stops` from its
   // entries, so it hands us a fresh array on every render — and this screen re-renders on the
@@ -226,22 +271,44 @@ export function useDayTravel(opts: {
   const day = useRef({ stops, modes, legKeys });
   day.current = { stops, modes, legKeys };
 
+  // **Seeded from what this session already read**, which is what makes a second mount of the same
+  // day complete on its first paint rather than one Dexie read later (ADR-0206 §AT). The initial
+  // value is read once by `useState`; a day whose fingerprint changes under the same hook is
+  // covered by the effect below, which merges into whatever is there.
+  const [known, setKnown] = useState<ReadonlyMap<string, TravelEstimate>>(() => knownHere(legKeys));
+  // Bumped when a local read lands, and that is its whole job: an empty cache read merges nothing,
+  // so `setKnown` would change no state at all and the hold below would never lift. The SET is
+  // where the answer actually lives (it outlives this mount); this is only what re-renders.
+  const [, markRead] = useState(0);
+  const settled = !fingerprint || preview || readDays.has(fingerprint);
+
   // **What the device already knows — first, and regardless of everything else.** This is the
   // whole of "an estimate survives a reload offline", and it runs inside a peek too: reading
   // Dexie reaches out of nothing, so a day you have already visited peeks with its real numbers.
   useEffect(() => {
-    if (!fingerprint) return;
+    if (!fingerprint || readDays.has(fingerprint)) return;
     let live = true;
+    // A read that fails settles the day exactly as an empty one does: every consumer falls back to
+    // the crow-flies chip, which is a complete state rather than a degraded one — and a surface
+    // holding its paint for a read that will never answer is the one outcome worse than a jump.
+    const done = () => {
+      clearTimeout(deadline);
+      readDays.add(fingerprint);
+      if (live) markRead((n) => n + 1);
+    };
+    // …and a read that never settles at all is the one failure the hold could cause rather than
+    // cure: a Dexie upgrade blocked by another tab would leave the day laid out and never painted.
+    // Past the deadline it paints with what it has, which is what it did before the hold existed.
+    const deadline = setTimeout(done, DAY_TRAVEL_SETTLE_MAX_MS);
     void readCachedTravelEstimates(day.current.legKeys)
       .then((cached) => {
         if (live) setKnown((prev) => merge(prev, cached));
+        done();
       })
-      .catch(() => {
-        // A cache read that fails leaves every consumer on the crow-flies chip, which is a
-        // complete state rather than a degraded one.
-      });
+      .catch(done);
     return () => {
       live = false;
+      clearTimeout(deadline);
     };
   }, [fingerprint]);
 
@@ -289,8 +356,9 @@ export function useDayTravel(opts: {
     () => ({
       estimateFor: (from: LatLng, to: LatLng, mode: TravelMode) =>
         known.get(routeLegKey(from, to, mode)) ?? null,
+      settled,
     }),
-    [known],
+    [known, settled],
   );
 }
 

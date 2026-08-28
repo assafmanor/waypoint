@@ -2169,6 +2169,16 @@ export const t = {
     // Both halves are noun-led, so nothing has to agree with a number the phrase does not expose
     // (ADR-0159 §1's dodge, root `CLAUDE.md`'s separator).
     dayTotal: (distance: string, duration: string) => `${distance} · ${duration}`,
+    // **AND WHEN THE TOTAL IS A FLOOR** (ADR-0206 §AT2). A hole with an end nobody placed is a leg
+    // this app can never measure, so it is missing from both halves — and a total that covers three
+    // of five hops while reading as the day's whole travel is §D4's own "the reader must not be
+    // able to tell" failing in the direction that matters: it does not look absent, it looks wrong.
+    //
+    // One word, wrapping whatever the line already is, so the half-line case (a day of declared
+    // legs, distance alone) needs no second string and cannot drift from this one. `לפחות` is true
+    // of both halves at once, which is why it leads rather than trailing as a qualifier: the
+    // kilometres and the minutes are each a floor, and a tag at the end would attach to the minutes.
+    dayTotalFloor: (line: string) => `לפחות ${line}`,
   },
   hero: {
     title: 'עכשיו והבא בתור',

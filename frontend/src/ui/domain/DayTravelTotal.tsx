@@ -27,19 +27,23 @@ import { Icon } from '../Icon';
  * **No mode glyph.** The mode is per-leg since M8b, so `navigate` is the one mark that stays true
  * on a day that walks, declares and drives; a `walking` glyph here would be the same false claim
  * the copy just dropped.
+ *
+ * **And a floor says it is one** (ADR-0206 §AT2). Where a hole has an end nobody placed, both
+ * halves are missing that leg for good, so the line leads with `לפחות` — the same numbers, saying
+ * what they cover. It wraps the whole line rather than tagging the end of it, because each half is
+ * a floor and a trailing qualifier would read as belonging to the minutes.
  */
 export function DayTravelTotal({ total }: { total: DayTravelTotalValue }) {
   const distance = total.distanceMeters !== null ? formatDistance(total.distanceMeters) : null;
   if (!distance) return null;
   const duration = total.travelSeconds !== null ? approxTravelTime(total.travelSeconds) : null;
+  const line = duration ? t.travel.dayTotal(distance, duration) : distance;
   return (
     <div className="day-total">
       <span className="day-total-ic" aria-hidden="true">
         <Icon name="navigate" />
       </span>
-      <span className="day-total-n">
-        {duration ? t.travel.dayTotal(distance, duration) : distance}
-      </span>
+      <span className="day-total-n">{total.partial ? t.travel.dayTotalFloor(line) : line}</span>
     </div>
   );
 }

@@ -946,7 +946,7 @@ describe('dayTravelTotal — the kilometres cover every leg, the minutes only th
     });
 
   it('adds every leg up when the whole day is routed', () => {
-    const total = dayTravelTotal([routed(18, 1_400), routed(30, 1_800)]);
+    const total = dayTravelTotal([routed(18, 1_400), routed(30, 1_800)], 0);
     expect(total.distanceMeters).toBe(3_200);
     expect(total.travelSeconds).toBe(48 * 60);
   });
@@ -956,14 +956,14 @@ describe('dayTravelTotal — the kilometres cover every leg, the minutes only th
   // genuinely crossing, and inventing minutes prints the walking number the declaration exists
   // to suppress.
   it('counts a declared leg in the distance and not in the duration', () => {
-    const total = dayTravelTotal([routed(18, 1_400), declared(9_000), routed(30, 1_800)]);
+    const total = dayTravelTotal([routed(18, 1_400), declared(9_000), routed(30, 1_800)], 0);
     expect(total.distanceMeters).toBe(12_200);
     expect(total.travelSeconds).toBe(48 * 60);
   });
 
   // A day of declared legs travels a real distance for no duration this app may state.
   it('answers a distance with no duration when every leg is declared', () => {
-    const total = dayTravelTotal([declared(2_700), declared(9_000)]);
+    const total = dayTravelTotal([declared(2_700), declared(9_000)], 0);
     expect(total.distanceMeters).toBe(11_700);
     expect(total.travelSeconds).toBeNull();
   });
@@ -971,8 +971,16 @@ describe('dayTravelTotal — the kilometres cover every leg, the minutes only th
   // §D4: absence is silence, never a zero — the reader must not be able to tell "not computed"
   // from "not computable", and `0 ק״מ` is exactly that tell.
   it('is null on both halves rather than zero when nothing was measured', () => {
-    expect(dayTravelTotal([null, null])).toEqual({ distanceMeters: null, travelSeconds: null });
-    expect(dayTravelTotal([])).toEqual({ distanceMeters: null, travelSeconds: null });
+    expect(dayTravelTotal([null, null], 0)).toEqual({
+      distanceMeters: null,
+      travelSeconds: null,
+      partial: false,
+    });
+    expect(dayTravelTotal([], 0)).toEqual({
+      distanceMeters: null,
+      travelSeconds: null,
+      partial: false,
+    });
   });
 
   // A hole that renders no block contributes nothing, which is what makes the header and the
@@ -985,15 +993,53 @@ describe('dayTravelTotal — the kilometres cover every leg, the minutes only th
       nowMs: AT(-60),
     });
     expect(unrouted).toBeNull();
-    expect(dayTravelTotal([unrouted, routed(18, 1_400)]).distanceMeters).toBe(1_400);
+    expect(dayTravelTotal([unrouted, routed(18, 1_400)], 0).distanceMeters).toBe(1_400);
   });
 
   // An estimate that carries no distance still carries a duration, and the halves are counted
   // independently rather than gated on each other.
   it('counts a duration whose leg reported no distance', () => {
-    const total = dayTravelTotal([routed(18, 1_400), routed(12, null)]);
+    const total = dayTravelTotal([routed(18, 1_400), routed(12, null)], 0);
     expect(total.distanceMeters).toBe(1_400);
     expect(total.travelSeconds).toBe(30 * 60);
+  });
+
+  // ── AND WHAT THE ROLL-UP CANNOT SEE (ADR-0206 §AT2) ────────────────────────────────────
+  //
+  // Reading the journeys is what keeps the header and the list describing one day (§AP2), and
+  // its cost is that a hole with an unplaced end is invisible here — so a day of five hops where
+  // two run through an event nobody gave a place prints the three it could measure AS IF they
+  // were the day. That is not §D4's silence: the line is present and reads complete.
+  it('is a FLOOR when a hole had an end nobody placed', () => {
+    const total = dayTravelTotal([routed(18, 1_400), routed(30, 1_800)], 2);
+    expect(total.partial).toBe(true);
+    // The numbers are unchanged — what a floor changes is the claim, not the arithmetic. An
+    // unmeasurable leg has no distance to add, so inventing one here would be §D4's own failure.
+    expect(total.distanceMeters).toBe(3_200);
+    expect(total.travelSeconds).toBe(48 * 60);
+  });
+
+  // The distinction the flag turns on: a leg still WARMING will gain its number and says nothing
+  // (§D4), while a leg with an unplaced end never will. Both draw no block; only one is a
+  // permanent hole in what the total covers, and `unplacedLegs` counts that one alone.
+  it('is not a floor merely because a hole drew no journey', () => {
+    const pending = dayJourney({
+      departAfterMs: AT(0),
+      arriveByMs: AT(90),
+      travelSeconds: null,
+      nowMs: AT(-60),
+    });
+    expect(dayTravelTotal([pending, routed(18, 1_400)], 0).partial).toBe(false);
+  });
+
+  // A day nothing could be measured on stays silent whether or not the holes were placeable —
+  // the component renders nothing without a distance, so the flag has nothing to qualify.
+  it('reports the floor even where there is nothing to state', () => {
+    expect(dayTravelTotal([], 3)).toEqual({
+      distanceMeters: null,
+      travelSeconds: null,
+      partial: true,
+    });
   });
 });
 

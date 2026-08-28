@@ -860,7 +860,10 @@ export function DayView() {
    *  rather than a second pass over `dayLegs`, so the header cannot claim kilometres for a hole
    *  the list shows no block for. `dayTravelTotal`'s docblock owns the asymmetry between the two
    *  halves; Plan mode reads the same function over its own map. */
-  const dayTotal = useMemo(() => dayTravelTotal([...journeys.values()]), [journeys]);
+  const dayTotal = useMemo(
+    () => dayTravelTotal([...journeys.values()], travelReads.unplacedLegs),
+    [journeys, travelReads.unplacedLegs],
+  );
 
   /** The live hole's one control, and the arm decides what it means: `בדרך` answers the mark,
    *  `ביטול סימון` takes it back (ADR-0207 §7 — a toast is transient and a mark is not). Nothing
@@ -994,7 +997,13 @@ export function DayView() {
           <DayView />
         </DayPeeks>
       )}
-      <div className="day-page">
+      {/* **THE DAY PAINTS ONCE** (ADR-0206 §AT). Held — laid out, not painted — until this device
+        has said what travel it holds for these legs, because the journey rows and the total
+        APPEAR when an estimate lands: measured on a warm cache the day painted, then ⁦174ms⁩ later
+        redrew ⁦162px⁩ taller, on every open and every swipe. `settled` is the local read only and
+        never the network, so nothing here waits on a request; `visibility` rather than a mount
+        gate so the surface's own layout, refs and scroll restoration are unaffected by the hold. */}
+      <div className="day-page" data-measuring={!travelReads.settled || undefined}>
         {ripple && (
           <div className="ripple show">
             <span className="rt">{t.ripple.prompt(ripple.movedTitle, ripple.direction)}</span>

@@ -125,6 +125,26 @@ export interface DayTravelReads {
    *  wrong when it is answered twice. */
   pairFor(from: TripEvent, to: TripEvent): { fromPlaceId: string; toPlaceId: string } | undefined;
   /**
+   * **Has this device said what it holds for this day yet?** (ADR-0206 §AT.) Passed straight
+   * through from `useDayTravel` — the day surfaces hold their first paint on it, and no
+   * derivation here branches on it.
+   */
+  settled: boolean;
+  /**
+   * **How many of the day's holes could not be measured AT ALL** (ADR-0206 §AT2) — a leg with an
+   * end that resolves to no place, or to a place with no coordinates.
+   *
+   * Counted here because this is where the resolution happens, and kept apart from every other
+   * kind of missing number on purpose: a pending or refused leg is §D4's ordinary absence and will
+   * or will not gain a number later, but a hole with an unplaced end is a leg this app can never
+   * measure. That is the one gap the day's total may not stay silent about, because it is a
+   * PERMANENT hole in what the total covers rather than a transient one.
+   *
+   * A hole whose two ends are the SAME place is not counted: it travels nothing, which is measured
+   * rather than missing.
+   */
+  unplacedLegs: number;
+  /**
    * **Is this leg's own mode simply too far for it?** (ADR-0206 §AM10.)
    *
    * The gate's ceiling, asked locally — no network, no clusters, instant on a mode switch. It is
@@ -214,6 +234,9 @@ export function useDayTravelReads(opts: {
       { from: LatLng; to: LatLng; fromPlaceId: string; toPlaceId: string }
     >();
     const stops: LatLng[] = [];
+    // Holes this app can never measure, kept apart from the ones it simply has no answer for yet
+    // (see `DayTravelReads.unplacedLegs`).
+    let unplacedLegs = 0;
     for (const leg of legs) {
       // A leg off a span's START edge leaves from that span's ORIGIN — the counter you collected
       // the car at, not the one you will return it to. See `DayLeg.fromEdge`.
@@ -225,7 +248,13 @@ export function useDayTravelReads(opts: {
       const toId = endpointPlaceId(leg.to, bookings, 'arriving');
       const from = coordOf(places, fromId);
       const to = coordOf(places, toId);
-      if (!from || !to || fromId === toId || !fromId || !toId) continue;
+      // A hole between two rows at the same place travels nothing and is not a gap in what the
+      // total covers; a hole with an end nobody placed is, so the two are counted apart.
+      if (fromId !== undefined && fromId === toId) continue;
+      if (!from || !to || !fromId || !toId) {
+        unplacedLegs += 1;
+        continue;
+      }
       byRows.set(legKey(leg.from, leg.to), { from, to, fromPlaceId: fromId, toPlaceId: toId });
       // Consecutive and deduped: hole `n`'s destination is hole `n + 1`'s origin whenever the
       // rows between them are placed, so the day's holes collapse into the ordered stop list the
@@ -236,7 +265,7 @@ export function useDayTravelReads(opts: {
       if (!last || last.lat !== from.lat || last.lng !== from.lng) stops.push(from);
       stops.push(to);
     }
-    return { byRows, stops };
+    return { byRows, stops, unplacedLegs };
   }, [legs, bookings, places]);
 
   const travel = useDayTravel({ tripId, stops: resolved.stops });
@@ -249,6 +278,8 @@ export function useDayTravelReads(opts: {
     };
     return {
       mode,
+      settled: travel.settled,
+      unplacedLegs: resolved.unplacedLegs,
       modeFor: modeOf,
       distanceFor: (from: TripEvent, to: TripEvent) => {
         const leg = legFor(from, to);

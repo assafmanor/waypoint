@@ -23,6 +23,7 @@ vi.mock('./api', async (importOriginal) => {
 let preview = false;
 vi.mock('../state/day-preview', () => ({ useIsDayPreview: () => preview }));
 
+import { DAY_TRAVEL_SETTLE_MAX_MS } from '../constants';
 import { db } from '../db';
 import {
   cacheTravelEstimates,
@@ -237,6 +238,90 @@ describe('useDayTravel', () => {
     await waitFor(async () =>
       expect((await readCachedTravelEstimates([WALK_KEY])).get(WALK_KEY)).toEqual(walk),
     );
+  });
+
+  // ── HAS THIS DEVICE SAID WHAT IT HOLDS YET (ADR-0206 §AT) ────────────────────────────────
+  //
+  // The day surfaces hold their first paint on `settled`, because a journey row and the day's
+  // total APPEAR when an estimate lands — so a day painting before its own cache has answered
+  // paints twice. Every spec here is about what the flag waits for, and every one of them is
+  // about what it must NOT wait for.
+  describe('settled', () => {
+    it('is false until the local read answers, and true whether or not it found anything', async () => {
+      const { result } = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+
+      expect(result.current.settled).toBe(false);
+      // Nothing is cached here, so the read comes back empty — which settles the day exactly as a
+      // full one does. A hold that only lifts on a hit would never lift on a first visit.
+      await waitFor(() => expect(result.current.settled).toBe(true));
+    });
+
+    // **The network is not what it waits for**, and this is the boundary rather than an
+    // optimisation: an estimate arriving from the server is new information, and holding a whole
+    // day's content on a request is what `CLAUDE.md`'s "never assume the network" refuses.
+    it('settles before the ask comes back', async () => {
+      let answer: (batch: RouteBatch) => void = () => {};
+      routes.fetchRoutes.mockReturnValue(
+        new Promise<RouteBatch>((resolve) => {
+          answer = resolve;
+        }),
+      );
+
+      const { result } = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+
+      await waitFor(() => expect(result.current.settled).toBe(true));
+      expect(result.current.estimateFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toBeNull();
+      answer({ legs: [leg([walk])] });
+    });
+
+    // The swipe is what makes this load-bearing rather than a saving: `DayPeek` mounts the two
+    // neighbours as real surfaces, so the day a page turn lands on has already read its own legs
+    // — and the committed mount must be complete on its FIRST render, not one read later.
+    it('is true on the first render of a day this session already read', async () => {
+      const first = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+      await waitFor(() => expect(first.result.current.settled).toBe(true));
+      first.unmount();
+
+      const second = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+      expect(second.result.current.settled).toBe(true);
+    });
+
+    // A peek mounts MID-GESTURE, so a pane that held its paint would slide in blank — and it
+    // never fetches, so there is nothing it could be holding for that it has not already got.
+    it('never holds a peek', () => {
+      preview = true;
+      const { result } = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+      expect(result.current.settled).toBe(true);
+    });
+
+    // A day with no legs has nothing to read and nothing to wait for.
+    it('is true for a day with no legs to read', () => {
+      const { result } = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: [] }));
+      expect(result.current.settled).toBe(true);
+    });
+
+    // **The one failure the hold could cause rather than cure.** A Dexie read blocked by another
+    // tab's upgrade would leave the day laid out and never painted, so the deadline settles it
+    // with whatever it has — which is what the day did before the hold existed.
+    it('settles on the deadline when the local read never answers', async () => {
+      vi.useFakeTimers();
+      // Restored by hand: this file registers no `restoreAllMocks`, and a `bulkGet` that never
+      // answers would take every spec after this one down with it.
+      const stalled = vi
+        .spyOn(db.routeLegs, 'bulkGet')
+        .mockReturnValue(new Promise(() => {}) as never);
+      try {
+        const { result } = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+        expect(result.current.settled).toBe(false);
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(DAY_TRAVEL_SETTLE_MAX_MS);
+        });
+        expect(result.current.settled).toBe(true);
+      } finally {
+        stalled.mockRestore();
+      }
+    });
   });
 });
 

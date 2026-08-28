@@ -60,6 +60,27 @@
      same discipline `motionDurationMs` follows for durations). */
   --swipe-page-gap: var(--space-6);
 }
+/* **THE DAY PAINTS ONCE** (ADR-0206 §AT). The day's journey rows and its total APPEAR when a
+   travel estimate lands, so a day that paints before its own cache has answered paints twice —
+   measured on a warm cache at ⁦174ms⁩ apart and ⁦162px⁩ taller the second time, on every open and
+   every swipe. The surface therefore holds while its LOCAL read is in flight, which is bounded
+   by an IndexedDB round trip and never by the network.
+
+   `visibility` and not a mount gate, and the difference is the point: the day lays out, keeps its
+   refs, its scroll position and its measured boxes, and simply is not painted for that frame or
+   two. Removing the rows instead would make the hold a second structural state — the one thing
+   this is here to stop — and would re-run every arrival the moment they came back.
+
+   No transition on it. A fade would be a second beat over the body's own (`.body`'s `fade`), and
+   what the hold is worth is that there is no beat at all: the day appears once, complete.
+
+   `data-measuring` and deliberately not `data-settling`, which this file already spends twice on
+   a different fact — `.day-swipe[data-swipe-settling]` is a page turn coming to rest and
+   `.doc-viewer-lift[data-settling]` is an exit animation finishing. Both are motion ending; this
+   is a read in flight. */
+.day-page[data-measuring] {
+  visibility: hidden;
+}
 /* **`>` and not a descendant space, and a render is what caught it.** A peek holds a whole day
    surface, so `.day-page` and `.day-swipe` both exist again INSIDE each pane — a descendant
    selector therefore also translated every pane's own inner page by the same `--swipe-dx` the

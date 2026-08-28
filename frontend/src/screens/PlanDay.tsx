@@ -613,7 +613,7 @@ export function PlanDay() {
    *  that this one is NOT Plan's alone: the verdict above is an opinion about a day you have not
    *  lived yet, where a total distance is a fact, and ADR-0159 §1 lets the two surfaces differ
    *  only about the former. Trip mode renders the same component off the same function. */
-  const dayTotal = dayTravelTotal([...journeyByRows.values()]);
+  const dayTotal = dayTravelTotal([...journeyByRows.values()], planTravel.unplacedLegs);
 
   // Reorder acts on soft events only (hard events are pinned anchors, ADR-0011).
   /** **The mode switch, the same one Trip mode offers** (ADR-0206 §AM9). Plan is where §AL10 said
@@ -1348,7 +1348,10 @@ export function PlanDay() {
           <PlanDay />
         </DayPeeks>
       )}
-      <div className="day-page">
+      {/* Held until this device has said what travel it holds, exactly as Trip mode is and for
+        the same measured reason (ADR-0206 §AT) — the two day surfaces may not differ about a
+        fact, and "does the day assemble in one paint or two" is one. */}
+      <div className="day-page" data-measuring={!planTravel.settled || undefined}>
         <div className="builder-main">
           <div className="sec-title">
             {t.day.heading(dayNumber, weekday, trip.destination)}

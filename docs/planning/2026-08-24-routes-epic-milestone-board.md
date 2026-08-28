@@ -1934,6 +1934,28 @@ request; hidden rather than zero when nothing is routable.
 - **M11 was the last V1 ⬜, so M13 is unblocked** by the board's own rule — see the line below the
   V2 sketch. M12 stays last by dependency (`all`).
 
+### M11's field reports — the day painted twice, and the total covered less than it claimed
+
+**Decided:** [ADR-0206 §AT](../decisions/0206-a-travel-time-belongs-between-two-points.md).
+
+Owner, from the deployed app: _"the day/plan day views started blinking after adding calculated rows
+like the total travel time etc"_ · _"sometimes the events don't have locations and so the total time
+and distance calculations could be misleading"_.
+
+**Both are §D4 met by a feature that changed what absence LOOKS like.** M6a/M11 made an absent
+estimate structural — the journey row and the total do not fill in, they **appear** — so (a) a day
+painting before its own Dexie read has answered paints twice, ⁦174ms⁩ and ⁦162px⁩ apart, on every open
+of every day, and (b) a total silently missing the hops through an unplaced stop reads as the day's.
+§AT holds the first paint for the local read only (never the network) and leads the total with
+`לפחות` where a hole can never be measured.
+
+**What to take from it, if you build anything else that appears when data lands:** neither report
+could fail a unit test, and not by accident — jsdom has no paint, and both frames of the blink are
+correct renders of what the app knew when it drew them. The defect was in their **sequence**. The
+harness that found it and the spec that guards it (`e2e/day-paints-once.spec.ts`) sample
+`visibility` every frame and assert a **count of distinct painted shapes**, because a spec asserting
+the finished shape goes green on a day that paints it twice.
+
 ---
 
 ## M13 — Leave-by notification
