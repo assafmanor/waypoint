@@ -34,6 +34,7 @@ import {
   RateCard,
   TransitProgress,
   type BoardCountdown,
+  type BoardGap,
   type BoardNext,
   type BoardRow,
   type BoardTransit,
@@ -69,6 +70,7 @@ import {
   minutesUntil,
   relativeDayLabel,
   todayInTz,
+  tzParts,
   dayWindowMs,
   hourLabel,
 } from '../lib/time';
@@ -81,6 +83,7 @@ import {
 } from '../lib/glance';
 import { deriveHeroBooking } from '../lib/hero-booking';
 import { LEAVE_PHASE, heroLeaveBy, travelOrigin, type HeroLeaveBy } from '../lib/hero-travel';
+import { gapCharacter, gapDrawsDayRail } from '../lib/gap-character';
 import { TRAVEL_STANCE, remainingTravelSeconds, travelStance } from '../lib/travel-position';
 import { useGeolocation } from '../lib/useGeolocation';
 import {
@@ -338,7 +341,15 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // shows a next that is not `deriveNow`'s — and a horizon built off `nextAll`
   // would name a different "next" than the board it grew out of.
   const horizon = heroHorizon({
-    events: dayEvents,
+    // **The whole trip, so `אחר כך` stops stopping at midnight** (ADR-0211 §7). This was
+    // `dayEvents`, and `thenAfter` is the ONLY consumer of the field (grepped, not assumed) —
+    // it looks for the first event starting after the `next` cluster. `next` has always been
+    // trip-scoped (`deriveNow` has no date filter), so a day-scoped `events` meant the third
+    // point could never follow it past midnight: at ⁦22:40⁩ the lifted hero showed tomorrow's
+    // flight and then nothing, while the same function handed the whole trip finds the stop
+    // after it. `thenAfter` keys off `nextAll[0].startsAt` rather than the clock, so widening
+    // the pool cannot pull in anything earlier than the point it follows.
+    events,
     // Mid-flight the point's place is where you are GOING; the authority rule's origin is
     // the airport you have already left (session 215).
     midSpanEventId: transitEvent?.id,
@@ -935,6 +946,47 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           ? 'now'
           : 'free';
   const boardNowEvent = inTransit && transitEvent ? transitEvent : nowEvent;
+  /** **What the now-slot says when nothing is running** (ADR-0211).
+   *
+   *  Derived here and handed to BOTH elevations, because `Board` and `HeroLift` rendering one
+   *  answer is the whole of §2 — ADR-0160 §S had to repair this drift once already.
+   *
+   *  Every input is something the screen already holds for another reason: `onWayToNext` is the
+   *  device mark the leave-by reads, `travelPrev.event` is `travelOrigin`'s answer (which falls
+   *  through to the bed exactly when nothing has started today, ADR-0206 §AD), and `today` is
+   *  the CLOCK's day rather than `activeDate` — swiping the day strip must not change what the
+   *  live surface says about the minute you are in.
+   *
+   *  **`clockDayEvents` is not `sameDayEvents`**, which is `activeDate`-scoped for the glance.
+   *  Same distinction the journey origin above already makes, and for the same reason. */
+  const clockDayEvents = useMemo(
+    () => events.filter((e) => e.date === today && !isAmbient(e) && e.startsAt),
+    [events, today],
+  );
+  const gapRead = gapCharacter({
+    hour: tzParts(now, tz).hour,
+    ...(shownNext ? { next: shownNext } : {}),
+    today,
+    dayHasEvents: clockDayEvents.length > 0,
+    // `travelOrigin` reaches the bed only when nothing has started today; asking `wokeIn`
+    // directly would claim it all day, which is the stale read `gapCharacter`'s window bound
+    // exists to refuse.
+    ...(travelPrev.event && travelPrev.event.id === wokeIn?.id ? { wokeIn: travelPrev.event } : {}),
+    onWay: onWayToNext,
+  });
+  const boardGap: BoardGap | null =
+    nowEvent || inTransit || groupSplit
+      ? null
+      : {
+          read: gapRead,
+          // **The stay's own title, which is how this app names a stay** — `.stay-strip` one
+          // surface down renders `<b>{stayNow.title}</b>`, so the hero saying anything else
+          // would be two names for one bed (ADR-0138's "one word per thing").
+          ...(gapRead.stay ? { stayName: gapRead.stay.title } : {}),
+          // `עד HH:MM` — the fact the `free` branch never said while `GlanceCard` said it two
+          // inches lower (§5). Only when the gap actually runs to something today.
+          ...(freeUntil ? { until: freeUntil } : {}),
+        };
   const transit: BoardTransit | undefined =
     inTransit && transitEvent && transitWords
       ? {
@@ -990,6 +1042,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         labelKey: nextLabelKey,
         // A window reads as its range; everything else is the one clock it always was.
         time: nextRange ?? (nextInstant ? formatTime(nextInstant, nextZone ?? tz) : undefined),
+        // **Which day, when it is not today** (ADR-0211 §6). `deriveNow` has no date filter, so
+        // this slot has always crossed midnight and never said so — `07:00` at ⁦22:40⁩ reads as
+        // this morning. `relativeDayLabel` is the same derivation five other surfaces use, and
+        // the same words `BoardTransit.endDay` already puts one row up (ADR-0160 §M).
+        ...(shownNext.date !== today ? { day: relativeDayLabel(shownNext.date, today) } : {}),
         missed: hero.missed && shownNext === hero.event,
         hard: shownNext.kind === EVENT_KIND.HARD,
         code: nextCode,
@@ -1073,9 +1130,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         alsoNow={alsoNowRows}
         next={boardNext}
         countdown={countdown}
+        gap={boardGap}
         progress={progress}
         windowStartHour={hourLabel(DAY_WINDOW.START_HOUR)}
         windowEndHour={hourLabel(DAY_WINDOW.END_HOUR)}
+        showRail={!boardGap || gapDrawsDayRail(boardGap.read.kind)}
       />
 
       {/* The board, promoted (ADR-0160). Mounted only while lifted, so it registers
@@ -1091,7 +1150,9 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           next={horizon.next ? liftPoint(horizon.next, 'next') : undefined}
           nextLabel={nextLabelKey ? transitionLabel(nextLabelKey) : undefined}
           nextTime={boardNext?.time}
+          {...(boardNext?.day ? { nextDay: boardNext.day } : {})}
           nextCode={nextCode}
+          gap={boardGap}
           countdown={countdown}
           travel={heroTravel}
           then={
@@ -1105,7 +1166,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
             // it describes, and the day rail stays out (ADR-0059 §2 — the flight IS the
             // day's current activity). Pinning the rail here is what made it read as the
             // progress of `הבא בתור`, the block directly above it (session 215).
-            inTransit && transit ? undefined : (
+            // **The same question the collapsed board asks** (ADR-0211 §4). The transit gate was
+            // already here for ADR-0059 §2's reason; the night is that reason from the other
+            // end, so it is one condition rather than a second one beside it.
+            (inTransit && transit) ||
+            (boardGap && !gapDrawsDayRail(boardGap.read.kind)) ? undefined : (
               <DayRail
                 progress={progress}
                 startHour={hourLabel(DAY_WINDOW.START_HOUR)}

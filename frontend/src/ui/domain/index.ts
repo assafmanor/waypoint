@@ -14,6 +14,7 @@ export type {
   BoardTransit,
   BoardNext,
   BoardCountdown,
+  BoardGap,
 } from './Board';
 
 export { EventCard } from './EventCard';
