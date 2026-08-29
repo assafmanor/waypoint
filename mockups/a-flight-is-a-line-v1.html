@@ -73,7 +73,7 @@
      ─────────────────────────────────────────────────────────────────────────
      THIS FILE'S SECTIONS AGAINST THE ADR'S:
 
-       §1 המפקד      → ADR §Context     §4 קומה        → ADR §3
+       §1 המפקד      → ADR §Context     §4 עצירת ביניים → ADR §5
        §2 המועמדות   → ADR §1           §5 סך היום     → ADR §4
        §3 מה הקו אומר → ADR §2
 
@@ -10717,10 +10717,10 @@ button.day-trv-face:focus-visible {
         </p>
         <p class="note">
           <b>ושבב הפער בין שתי הטיסות הוא באג, לא בחירה</b> (הבעלים, 2026-08-29: ״לא צריך להראות
-          שיש פער, אלא אם הפער הוא בין טיסות · כלומר קומה״). <code>joinBetween</code> כבר מסכים:
-          הוא שואל על קומה <b>לפני</b> פער ונותן לה לנצח, בדיוק כדי שקומה של שבע שעות לא תיקרא
+          שיש פער, אלא אם הפער הוא בין טיסות · כלומר עצירת ביניים״). <code>joinBetween</code> כבר מסכים:
+          הוא שואל על עצירת ביניים <b>לפני</b> פער ונותן לה לנצח, בדיוק כדי שעצירת ביניים של שבע שעות לא תיקרא
           ״אחר צהריים פנוי״. המסגרת הזו היא היחידה בקובץ שמציירת את השבב, כי היא היחידה שמציירת את
-          המצב הקיים · מ-§2 והלאה מצוירת קומה.
+          המצב הקיים · מ-§2 והלאה מצוירת עצירת ביניים.
         </p>
         <div class="pair" id="s1"></div>
       </section>
@@ -10764,10 +10764,10 @@ button.day-trv-face:focus-visible {
 
       <!-- ══════════════════════════ §4 ══════════════════════════ -->
       <section class="case">
-        <h2>§4 · קומה · שתי טיסות שנפגשות, ומה שהיום מצייר במקום</h2>
+        <h2>§4 · עצירת ביניים · שתי טיסות שנפגשות, ומה שהיום מצייר במקום</h2>
         <p class="note">
           <code>ConnectionBand</code> ו-<code>.journey</code> כבר עושים את זה מאז ADR-0159, ואין
-          פה מה להמציא: שתי רגליים של מסע אחד נכנסות לתוך מכל אחד עם הקומה ביניהן. מה שמשתנה הוא
+          פה מה להמציא: שתי רגליים של מסע אחד נכנסות לתוך מכל אחד עם עצירת הביניים שלהן. מה שמשתנה הוא
           שהמכל יושב עכשיו על הקו, וש<b>הקו נמשך דרך שתי הרגליים</b> · מסע אחד, שתי רגליים, קו אחד.
         </p>
         <p class="note">
@@ -11051,7 +11051,19 @@ button.day-trv-face:focus-visible {
        *  whole RUN rather than one leg, which is also the honest drawing: one
        *  journey, two legs, one line. */
       const CARD_CANDIDATES = new Set(['ב', 'ד']);
-      const LAYOVER = 'קומה · 2:45 שע׳ · וינה';
+      /** **THE APP'S OWN WORD, AND ITS OWN ORDER** — `t.day.join.word.flight` and
+       *  `t.day.join.text`, copied rather than paraphrased (owner, 2026-08-29: _"don't call it
+       *  קומה, call it עצירת ביניים, like the other vocabulary used on the app"_).
+       *
+       *  This file's first draft invented `קומה` and put the parts in the wrong order. The app
+       *  has said `עצירת ביניים · <place> · <length>` since ADR-0159 — one word per transport
+       *  mode, because a train CHANGES (`החלפה`) and a flight stops over — so the drawing was
+       *  proposing vocabulary the shipped copy already had, which is the exact drift a mockup
+       *  that inlines the real stylesheets exists to prevent one layer down. */
+      const JOIN_WORD = { flight: 'עצירת ביניים', train: 'החלפה', transit: 'החלפה' };
+      const joinText = (word, length, place) =>
+        place ? `${word} · ${place} · ${length}` : `${word} · ${length}`;
+      const LAYOVER = joinText(JOIN_WORD.flight, '2:45 שע׳', 'וינה');
       const flightRun = (k) => {
         const legs = CANDIDATES[k](F1) + connBand(LAYOVER, false) + CANDIDATES[k](F2);
         if (!CARD_CANDIDATES.has(k)) return legs;
@@ -11116,7 +11128,7 @@ button.day-trv-face:focus-visible {
         // §4 — the layover, drawn as `.journey` already draws it.
         document.querySelector('#s4').innerHTML =
           col(tag('before', 'היום · שבב פער, וזה באג'), todayScreen()) +
-          col(tag('after', 'קומה · מה שאמור להיווצר'), candidateScreen('ב'));
+          col(tag('after', 'עצירת ביניים · מה שאמור להיווצר'), candidateScreen('ב'));
 
         // §5 — the three treatments of the day's total.
         const ground = DRIVE.meters;

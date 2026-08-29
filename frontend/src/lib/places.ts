@@ -47,6 +47,8 @@ import {
 } from './time';
 import { DAY_NOON, LIVE_ZONE_WINDOW_MS } from '../constants';
 import { formatDuration } from './duration';
+import { formatDistance } from './distance';
+import { carriedBookingMeters } from './day-travel';
 
 /** Whether a booking carries a route rather than a single place — one call into the
  *  shared profile (ADR-0154 §2), which is where that question now lives for both
@@ -664,6 +666,22 @@ export function eventDurationLabel(
   if (!transport && zones.deltaMinutes == null) return undefined;
   const minutes = (Date.parse(event.endsAt) - Date.parse(event.startsAt)) / 60000;
   return formatDuration(minutes, eventDurationUnit(event)) ?? undefined;
+}
+
+/**
+ * **The distance label for a carried row** (ADR-0212), or `undefined` where there is none —
+ * `eventDurationLabel`'s sibling, and here for the same reason: both day surfaces need one
+ * answer, and ADR-0159 §1 lets them differ in posture but never about a fact.
+ *
+ * The rule about which bookings have a distance is `carriedLegMeters`', the coordinates are
+ * `carriedBookingMeters`', and the wording is `formatDistance`'s. This only joins them up.
+ */
+export function eventDistanceLabel(
+  booking: Booking | undefined,
+  places: readonly Place[],
+): string | undefined {
+  const metres = booking ? carriedBookingMeters(booking, places) : null;
+  return metres === null ? undefined : formatDistance(metres);
 }
 
 // ── Google Maps deep-links (Phase 2, ADR-0106/0109) ─────────────────────────

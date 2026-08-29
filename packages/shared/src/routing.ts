@@ -15,6 +15,7 @@ import {
   type TravelMode,
 } from './entities';
 import { haversineMeters, latLngSchema, type LatLng } from './geo';
+import { spendsSpanInMotion } from './icons';
 
 /* ── THE GEOMETRY (ADR-0205 §1) ──────────────────────────────────────────────────────────── */
 
@@ -234,6 +235,35 @@ export const TRAVEL_GATE = {
  * §D4's absence — which is exactly right: these two stops are the same place.
  */
 export const ROUTE_MIN_CROW_M = 10;
+
+/**
+ * **HOW FAR A CARRIED LEG GOES** (ADR-0212 §Context 5), in metres, or `null` for a type whose
+ * span is not spent in motion.
+ *
+ * It sits beside the gate rather than inside it because it is the gate's **counterpart**:
+ * `admittedTravelModes` answers `[]` for these pairs on purpose (_"Tokyo→Paris is a flight, and
+ * ADR-0011 already says nobody is estimating a hard commitment"_), and this is what such a pair
+ * gets instead. Nothing here reaches a provider, a cache or the network — two coordinates and
+ * arithmetic, so it works offline and returns on the first paint.
+ *
+ * **The crow-flies number is not a floor here, and that is the whole reason this is safe.**
+ * ADR-0206 §D4 has to call it a floor for a walk, because a ⁦1.9km⁩ crow leg is a ⁦2.4km⁩ walk and
+ * the reader acts on the difference. A great circle IS roughly the path a plane flies, so for a
+ * carried leg the same arithmetic is the answer rather than the lower bound of one — which is
+ * also why it carries no `~`, exactly like the duration beside it (§Context 4).
+ *
+ * **`spendsSpanInMotion` and not `carriesRoute`, and the car hire is why** — it carries a route
+ * and would report the distance between two counters as though somebody had been flown across
+ * it. That predicate already draws this exact line for ADR-0061's bed-shaped gap, so a fourth
+ * carried mode joins by being one, with nothing here to change.
+ */
+export function carriedLegMeters(type: BookingType, from: LatLng, to: LatLng): number | null {
+  if (!spendsSpanInMotion(type)) return null;
+  const metres = haversineMeters(from, to);
+  // Two endpoints that resolve to one place are the same absence `ROUTE_MIN_CROW_M` names for a
+  // routed pair, and are read the same way rather than as `0 ק״מ` (ADR-0206 §D4).
+  return Number.isFinite(metres) && metres >= ROUTE_MIN_CROW_M ? metres : null;
+}
 
 /**
  * **Are these two points in one of the trip's download clusters?**

@@ -709,6 +709,19 @@ export interface DayTravelTotal {
    *  at least one hole has an end nobody placed, so it is missing from both halves above. The
    *  total is then a FLOOR, and the line says so rather than reading as the day's whole travel. */
   partial: boolean;
+  /** **How far the day goes in the AIR, kept apart from how far it goes on the ground**
+   *  (ADR-0212 §3), or `null` on a day that flies nowhere.
+   *
+   *  A separate field rather than more metres in `distanceMeters`, and the measurement is the
+   *  argument rather than a preference: on the day this was drawn against, folding the two makes
+   *  the total ⁦69 ק״מ⁩ → ⁦5,362 ק״מ⁩ — **78×** — and the number that answered "how far does this
+   *  day go" stops answering it. The ground half is what you walk, drive and leave time for; the
+   *  air half is what you are carried across. One line, two facts, neither swallowing the other.
+   *
+   *  It is also why this arrives as an ARGUMENT rather than being summed out of `journeys` below:
+   *  a flight is not a hole between two rows, it is a row, so nothing in the journey list has
+   *  ever known about it. */
+  airMeters: number | null;
 }
 
 /**
@@ -744,6 +757,9 @@ export interface DayTravelTotal {
 export function dayTravelTotal(
   journeys: readonly (DayJourney | null)[],
   unplacedLegs: number,
+  /** The day's carried legs, already in metres — `carriedLegMeters` per in-motion booking. Kept
+   *  out of the ground sum for the reason `DayTravelTotal.airMeters` gives. */
+  airMeters: number | null = null,
 ): DayTravelTotal {
   let distanceMeters: number | null = null;
   let travelSeconds: number | null = null;
@@ -754,7 +770,12 @@ export function dayTravelTotal(
     if (journey.travelSeconds !== null && Number.isFinite(journey.travelSeconds))
       travelSeconds = (travelSeconds ?? 0) + journey.travelSeconds;
   }
-  return { distanceMeters, travelSeconds, partial: unplacedLegs > 0 };
+  return {
+    distanceMeters,
+    travelSeconds,
+    partial: unplacedLegs > 0,
+    airMeters: airMeters !== null && Number.isFinite(airMeters) ? airMeters : null,
+  };
 }
 
 /**

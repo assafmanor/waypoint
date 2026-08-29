@@ -464,7 +464,9 @@ export const t = {
       // Number-then-unit via `measure` (ADR-0118): the numeral is the LTR island,
       // the Hebrew unit stays in the RTL flow, so the chip reads "9 ק״מ".
       meters: (m: number) => measure(m, 'מ׳'),
-      km: (km: number) => measure(km, 'ק״מ'),
+      // `string` as well as `number` since ADR-0212: past ⁦1,000 ק״מ⁩ the caller does the
+      // grouping, and `measure` has always taken either.
+      km: (km: number | string) => measure(km, 'ק״מ'),
       // Offline: you can't re-locate, so a number would be a stale claim.
       unavailable: 'מרחק לא זמין',
       prompt: {

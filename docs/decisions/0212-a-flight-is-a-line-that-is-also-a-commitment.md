@@ -1,7 +1,8 @@
 # 0212 — A flight is a line that is also a commitment
 
-**Status:** **Proposed.** Drawn, measured and rendered; nothing built. §1's four candidates are a
-fork for the owner, and §4 is a question the drawing cannot answer.
+**Status:** **Accepted 2026-08-29** on the owner's _"other than that I take your recommendations,
+let's build this"_, and **built the same day** — see the build log at the foot, which records four
+things the drawing could not have caught and one thing it got wrong.
 **Date:** 2026-08-29
 **Reported:** the owner, the day after ADR-0210 shipped — _"We've recently added a new design for
 driving/walking etc. between stops. Now I want to add a similar design for flights. It doesn't have
@@ -134,10 +135,16 @@ airborne half takes `flight`.
 
 ### §4 · `formatDistance` has never seen four digits
 
-`lib/distance.ts:20` rounds to whole kilometres above ⁦10 ק״מ⁩ with no thousands separator, because
-nothing in this app has ever handed it more than a ring-road leg. A flight prints `2931 ק״מ`. One
-`toLocaleString` fixes it, and the mockup's §3 renders both so the difference is looked at rather
-than argued.
+`lib/distance.ts:20` rounds to whole kilometres above ⁦10 ק״מ⁩ with no thousands separator, so a
+flight prints `2931 ק״מ`. One `toLocaleString` fixes it, and the mockup's §3 renders both so the
+difference is looked at rather than argued.
+
+**Corrected while building, and worth recording because the first draft of this ADR said
+otherwise.** The claim was that the function had "never seen four digits". It had:
+`distance.test.ts` already pinned `plain(9_200_000) === '9200 ק״מ'`. What is true — and is the
+actual argument — is that **no caller could ever produce one**, so the ungrouped output was
+_recorded_ by a test rather than _read_ by anyone on a row. A spec can pin a rendering nobody has
+looked at, which is a thing to remember about specs rather than a fault in that one.
 
 ### §6 · One defect the drawing nearly shipped
 
@@ -147,14 +154,10 @@ false the moment §5 groups two legs inside `.journey`: the rule stops matching,
 ADR-0210's build log, and it was caught the same way, by looking at the render rather than at the
 rule. A build must state both children.
 
-## Open, and the owner's call
+## Answered
 
-- **Which candidate.** §1 recommends ב and measures the other three.
-- **Whether a flight enters `dayTravelTotal` at all**, or only the split line's second half. §3
-  recommends the split; ground-only is the zero-work answer and is drawn beside it.
-- **Which side the ⁦5px⁩ closes on.** §2 recommends moving the drive's track.
-- **Whether the Vienna place records are the cause of §5's defect** — worth one look at the data
-  before anything is built on the grouping.
+The owner took all three recommendations: candidate **ב**, the **split** total, and the ⁦5px⁩
+closing on **the leg's** column. What is left open is one question about data, below.
 
 ### §5 · What sits between two flights is a layover, never a gap
 
@@ -175,3 +178,55 @@ the ⁦24h⁩ flight window — which leaves exactly `a.toPlaceId !== b.fromPlac
 (`booking-journey.ts:109`), i.e. two different Vienna place records. **Unverified against the
 owner's data.** If that is it, the fix is a data or place-picker question rather than a design one,
 and it is worth confirming before §1 is built on top of the grouping.
+
+## Build log (2026-08-29)
+
+Built as drawn, with **four things the drawing could not have caught** and **one it got wrong**.
+
+1. **The word was invented, and the app already had it.** The mockup drew the layover as `קומה`.
+   The owner: _"don't call it עצירת ביניים… like the other vocabulary used on the app"_ — and he
+   was right twice, because `t.day.join.word.flight` has read `עצירת ביניים` since ADR-0159, with
+   `החלפה` for a train and a bus, and `t.day.join.text` puts the parts in a different order than
+   the drawing did (`word · place · length`). **Nothing in the app changed for this**; the drawing
+   was proposing vocabulary the shipped copy already had, which is the drift a mockup that inlines
+   the real stylesheets exists to prevent one layer down. The mockup now copies the composer
+   rather than paraphrasing it.
+
+2. **`spendsSpanInMotion` replaced "is it a flight" everywhere, and generalised the ADR.** The
+   predicate already separates a carried leg from a car hire for ADR-0061's bed-shaped gap — _"a
+   hire carries a route and would report the distance between two counters as though somebody had
+   been flown across it"_ — so a train and a bus get the thread, the distance and the air total by
+   being what they are, and a fourth carried mode joins with nothing to change. The ADR is written
+   about flights because that is what was reported; the code is about being carried.
+
+3. **The ⁦5px⁩ is not a rule you can move on its own.** `--trv-track` positions the TRACK, and the
+   leg's glyph sits at its face's padding plus half its mark — so aligning the rule alone would
+   have slid the line off the glyph it runs behind. The column moves as one thing: face padding
+   ⁦12px⁩ → ⁦16px⁩, mark ⁦38px⁩ → ⁦40px⁩ (the badge's own box), `--trv-track` to `calc(16px + 20px)`.
+   The variable is now declared on `.day-trv, .day-thread` together, so the two cannot drift.
+
+4. **`DayTravelTotal`'s guard had to widen, and the drawing never showed the day that needs it.**
+   It returned `null` on a missing ground distance, which used to mean "no travel" and now means
+   "a day whose whole movement is a flight" — the exact day this ADR is about, rendering nothing.
+
+5. **The mockup's own near-miss shipped as a rule** (§6): `.day-thread`'s z-index names both
+   `.wp-event` and `.journey`, because a run of two legs is the second and a single flight the
+   first.
+
+**Deliberately not built, and stated rather than skipped quietly:** the thread is on **Trip mode
+only**. Plan mode gets both facts — the card's distance and the split total, because ADR-0159 §1
+forbids the two surfaces disagreeing about a fact — but its rows are `BuilderRow` inside the
+reorder/drag machinery, which the mockup never drew and a wrapper could interfere with. That is a
+drawing and a decision of its own, not an oversight.
+
+**Still open, and it is a data question rather than a design one:** §5's layover defect. The
+behaviour is confirmed wrong by the owner; the cause remains the untested hypothesis that the two
+Vienna endpoints are different place records. Nothing built here depends on the answer — the
+grouping this ADR threads is `.journey`, which is whatever `joinBetween` already produces.
+
+**Verified:** `pnpm typecheck`, `pnpm build`, and 5,367 tests green (`@waypoint/shared` 404,
+`@waypoint/frontend` 4,963), including new specs for `carriedLegMeters`' rule and floor, the air
+half's separation from the ground half, and — on the real screen — that the thread wraps a flight
+row and not a hire's, and that the card's distance carries no `~`. The shipped stylesheets were
+then rendered back through the mockup's own layout tree to confirm the thread paints and the two
+columns line up, which jsdom cannot see.

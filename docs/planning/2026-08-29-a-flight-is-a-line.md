@@ -1,7 +1,8 @@
 # 2026-08-29 — A flight is a line (design session)
 
 Promotes [ADR-0212](../decisions/0212-a-flight-is-a-line-that-is-also-a-commitment.md), drawn in
-[`mockups/a-flight-is-a-line-v1.html`](../../mockups/a-flight-is-a-line-v1.html). **Nothing built.**
+[`mockups/a-flight-is-a-line-v1.html`](../../mockups/a-flight-is-a-line-v1.html). **Approved and built
+the same day** — the ADR's build log is the record of what changed on the way.
 
 ## What was asked
 
@@ -99,3 +100,32 @@ The bead wrapper's z-index rule named `.wp-event` only. That was true while a fl
 card and false the moment two legs group inside `.journey` — the rule stops matching and the track
 paints over the cards instead of behind them. Caught by looking at the render, which is the same way
 ADR-0210's specificity tie was caught, and it is in the ADR as §6 so a build states both children.
+
+## The third correction, and the build
+
+The owner took all three recommendations (candidate ב, the split total, the ⁦5px⁩ closing on the
+leg's column) and asked for it in the same PR. One more correction came with it:
+
+> Don't call it קומה, call it עצירת ביניים, like the other vocabulary used on the app
+
+He was right twice. `t.day.join.word.flight` has read `עצירת ביניים` since ADR-0159 — with `החלפה`
+for a train and a bus, one word per mode — and `t.day.join.text` orders the parts
+`word · place · length`, which is not what the drawing did either. So the mockup had invented
+vocabulary the shipped copy already had. **Nothing in the app changed for it**; the mockup now
+copies the composer instead of paraphrasing it, which is the same rule that makes these files
+inline the real stylesheets rather than hand-copy token values.
+
+**The most useful thing the build changed** is that "is it a flight" became `spendsSpanInMotion`
+everywhere. That predicate already separates a carried leg from a car hire for ADR-0061's
+bed-shaped gap, so a train and a bus now get the thread, the distance and the air total by being
+what they are. The ADR is written about flights because that is what was reported; the code is
+about being carried.
+
+**And the ⁦5px⁩ turned out not to be a rule you can move on its own** — `--trv-track` positions the
+track, while the glyph sits at the face's padding plus half the mark, so moving the rule alone
+would have slid the line off the glyph it runs behind. The column moves as one thing.
+
+Full list in the ADR's build log, including what was deliberately **not** built: the thread is
+Trip mode's only, because Plan's rows sit inside the reorder/drag machinery that no drawing has
+covered yet. Plan gets both facts, since ADR-0159 §1 forbids the two surfaces disagreeing about
+one.

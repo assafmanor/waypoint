@@ -78,6 +78,14 @@ export interface EventCardProps {
    *  passes it for transport + zone-shifted rows, where the raw start–end can
    *  misread the real span; absent otherwise. */
   duration?: string;
+  /** **How far a carried leg goes** (ADR-0212), already formatted — `carriedLegMeters` through
+   *  `formatDistance`. Present only on a booking whose span is spent in motion, so a hire and
+   *  every non-transport row pass nothing and are untouched.
+   *
+   *  It sits beside `duration` because it is the same kind of fact about the same object, and
+   *  neither is hedged: both are read off a booking somebody filled in rather than computed
+   *  (ADR-0206 §D5, from its other end). */
+  distance?: string;
   /** The first hard conflict, if any (drives the amber conflict flag). */
   conflict?: { title: string; startsAt: string };
   /** "כולל N" contents count on an envelope event that nests others. */
@@ -178,6 +186,7 @@ export function EventCard(props: EventCardProps) {
     tz,
     zones,
     duration,
+    distance,
     conflict,
     nestedCount,
     notes,
@@ -311,9 +320,13 @@ export function EventCard(props: EventCardProps) {
           </sup>
         )}
       </span>
-      {(duration || zones?.deltaMinutes != null) && (
+      {(duration || distance || zones?.deltaMinutes != null) && (
         <span className="wp-event-timemeta">
           {duration && <span className="when-dur wp-event-dur">{duration}</span>}
+          {/* The distance follows the duration and never leads it: this row is a WHEN slot, and
+              a carried leg's length is context on it — the same order and the same `--muted`
+              standing `.day-trv-dist` gives it one row family over (ADR-0212). */}
+          {distance && <span className="wp-event-dist">{distance}</span>}
           {zones?.deltaMinutes != null && <ZoneShiftPill minutes={zones.deltaMinutes} />}
         </span>
       )}
