@@ -15,7 +15,7 @@ import { useMemo, useState } from 'react';
 import { TASK_STATUS, type CreateTaskInput, type Task, type TaskHostKey } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useClock } from '../lib/useClock';
-import { settledHostKeys, tasksForHost, taskHostInput, type TaskClock } from '../lib/tasks';
+import { settledHostKeys, tasksForHost, taskHostInput, type TaskDueClock } from '../lib/tasks';
 import type { NoteHostKind } from '../lib/notes';
 import { TaskSection } from './TaskSection';
 import { TaskSheet, createTaskInput, writeSubtasks, type TaskDraft } from './TaskSheet';
@@ -44,11 +44,11 @@ export function useHostTaskCount(kind: NoteHostKind, id: string | undefined): nu
 
 /** The clock every task derivation takes, assembled once (`frontend/CLAUDE.md`'s rule that a
  *  derivation is handed `now` rather than reading it). */
-function useTaskClock(now: Date): TaskClock {
+function useTaskClock(now: Date): TaskDueClock {
   const { trip, zoneCrossings } = useTrip();
   return useMemo(
-    () => ({ nowMs: now.getTime(), crossings: zoneCrossings, primaryZone: trip.timezone }),
-    [now, zoneCrossings, trip.timezone],
+    () => ({ nowMs: now.getTime(), crossings: zoneCrossings, primaryZone: trip.timezone, trip }),
+    [now, zoneCrossings, trip],
   );
 }
 

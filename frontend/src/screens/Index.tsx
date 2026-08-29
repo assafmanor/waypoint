@@ -13,7 +13,7 @@ import { useClock } from '../lib/useClock';
 import { splitBookings, scheduleLabel } from '../lib/index-bookings';
 import { groupDocuments } from '../lib/documents';
 import { noteTitleText, sortNotes } from '../lib/notes';
-import { taskDue, taskPreview, type TaskClock } from '../lib/tasks';
+import { taskDue, taskPreview, type TaskDueClock } from '../lib/tasks';
 import { useAutomaticTasks } from '../lib/useAutomaticTasks';
 import { BookingTitle } from '../ui/BookingTitle';
 import { IndexBookingsView } from '../ui/IndexBookingsView';
@@ -164,7 +164,7 @@ export function Index() {
     <>
       <Icon name="link" /> {t.index.tile.nextPrefix}{' '}
       <BookingTitle booking={next.booking} places={places} />
-      {next.event && <> · {scheduleLabel(next.event, next.booking, zoneEvidence, now)}</>}
+      {next.event && <> · {scheduleLabel(next.event, next.booking, zoneEvidence, now, trip)}</>}
       {past.length > 0 && <> · {t.index.tile.pastCount(past.length)}</>}
     </>
   ) : (
@@ -198,10 +198,11 @@ export function Index() {
   // collection has no "newest" worth a glance the way notes do and no type groups the way
   // documents do — what it has is a deadline that is about to bite, which is also the only
   // line here that moves on its own. Rejected: a raw open-count, which barely changes.
-  const clock: TaskClock = {
+  const clock: TaskDueClock = {
     nowMs: now.getTime(),
     crossings: zoneCrossings,
     primaryZone: trip.timezone,
+    trip,
   };
   // The readiness checks count toward the tile (owner, 2026-08-16, amending ADR-0190 §1):
   // a trip nobody has prepared has five things to do, and the tile is what says so.

@@ -50,7 +50,7 @@ import {
   taskDue,
   taskRowKey,
   taskRowMatchesFacet,
-  type TaskClock,
+  type TaskDueClock,
   type TaskFacet,
   type TaskRow,
 } from '../lib/tasks';
@@ -121,9 +121,9 @@ export function IndexTasksView({
   const [openId, setOpenId] = useState<string | null>(null);
 
   const meId = me?.user.id ?? '';
-  const clock: TaskClock = useMemo(
-    () => ({ nowMs: now.getTime(), crossings: zoneCrossings, primaryZone: trip.timezone }),
-    [now, zoneCrossings, trip.timezone],
+  const clock: TaskDueClock = useMemo(
+    () => ({ nowMs: now.getTime(), crossings: zoneCrossings, primaryZone: trip.timezone, trip }),
+    [now, zoneCrossings, trip],
   );
 
   const manualTasks = useMemo(() => tasks.filter(isManual), [tasks]);

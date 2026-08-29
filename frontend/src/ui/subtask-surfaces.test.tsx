@@ -30,6 +30,7 @@ const CLOCK = {
   nowMs: Date.parse('2026-08-18T09:00:00.000Z'),
   crossings: [],
   primaryZone: 'Asia/Jerusalem',
+  trip: { startDate: '2026-08-01', endDate: '2026-08-31' },
 };
 
 const task = (over: Partial<Task> & { id: string }): Task =>

@@ -81,7 +81,8 @@ import {
   type TimeGroup,
   type TimeItem,
   tripDates,
-  relativeDayLabel,
+  dayLabel,
+  tripDayNumber,
   dayWindowMs,
 } from '../lib/time';
 import {
@@ -151,7 +152,7 @@ import {
   JourneyRow,
   type JourneyRowProps,
 } from '../ui/domain/DayJoinRow';
-import { CODE_PREFIX, DEFAULT_STAY_ICON, MS_PER_DAY, SHELF_POOL_CAP } from '../constants';
+import { CODE_PREFIX, DEFAULT_STAY_ICON, SHELF_POOL_CAP } from '../constants';
 import { ambientSpanLabel, dayBookendStays } from '../lib/glance';
 import { edgeSentence } from '../lib/transitions';
 import { t } from '../i18n/he';
@@ -179,9 +180,6 @@ import { HostTasks } from '../ui/HostTasks';
 import { HostDocuments } from '../ui/HostDocuments';
 import { EntitySyncBadge, useUnsynced } from '../ui/EntitySyncBadge';
 import { Icon } from '../ui/Icon';
-
-const daysBetween = (from: string, to: string) =>
-  Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
 
 // Open a Google Maps universal URL in a new tab (on device it hands off to the
 // Maps app). Only ever called with a non-null URL — the ניווט button is hidden
@@ -446,6 +444,10 @@ export function DayView() {
   const nowZone = liveZone(now.getTime(), zoneEvidence);
   const nowMs = now.getTime();
   const today = liveToday(now.getTime(), zoneEvidence);
+  // How this screen names a day (`dayLabel`): relative on a live trip, anchored on the day
+  // ON SCREEN so an idea's "מחר" is the day after the one being built (ADR-0151); by trip-day
+  // number off it, where "עוד 15 ימים" is only the day number plus a constant.
+  const dayNaming = { trip, today, anchor: activeDate };
   const dayScope: DayScope = activeDate < today ? 'past' : activeDate > today ? 'future' : 'today';
   // A past day is a read-only archive within a live trip (ADR-0029) — but "past"
   // for EDITING is not the live zone's answer, nor even this day's ambient: a day
@@ -499,13 +501,13 @@ export function DayView() {
    *  (ADR-0151's amendment). Absent when the ranking had nothing to say about it. */
   const ideaWhy = (m: MaybeItem) => {
     const reason = poolReasonById.get(m.id) ?? forDayReasons.get(m.id);
-    return reason ? reasonText(reason, activeDate) : undefined;
+    return reason ? reasonText(reason, dayNaming) : undefined;
   };
   const markForDay = (m: MaybeItem) => {
     const date = proposedDay(poolReasonById.get(m.id));
     if (!date) return undefined;
     return {
-      label: t.day.idea.markForDay(relativeDayLabel(date, activeDate)),
+      label: t.day.idea.markForDay(dayLabel(date, { trip, today, anchor: activeDate })),
       onSelect: () => {
         verbs.acceptDay(m, date);
         setIdeaSheet(null);
@@ -513,7 +515,7 @@ export function DayView() {
     };
   };
 
-  const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
+  const dayNumber = tripDayNumber(activeDate, trip.startDate);
   const weekday = weekdayName(activeDate, trip.timezone);
   const heading = t.day.heading(dayNumber, weekday, trip.destination);
 
@@ -1463,7 +1465,7 @@ export function DayView() {
                       compact
                       icon={ideaGlyph(m, places)}
                       title={m.title}
-                      meta={tileReasonText(reason, activeDate)}
+                      meta={tileReasonText(reason, dayNaming)}
                       notes={noteCountFor(noteCounts, 'maybeItem', m.id)}
                       onShowOnMap={ideaShowOnMap(m, places, showPlaceOnMap)}
                       onOpen={() => setIdeaSheet(m)}
@@ -1547,7 +1549,7 @@ export function DayView() {
               clockRange(slotOf(replaceTarget).start, slotOf(replaceTarget).end),
             )}
             mode="trip"
-            date={replaceTarget.date}
+            naming={{ ...dayNaming, anchor: replaceTarget.date }}
             ideas={shelfForSlot(shelf, slotOf(replaceTarget), trip.timezone, {
               events,
               bookings,
@@ -1583,7 +1585,7 @@ export function DayView() {
           <SlotFillSheet
             title={t.slotFill.gapTitle(clockRange(gapTarget.fill.start, gapTarget.fill.end))}
             mode="trip"
-            date={gapTarget.fill.date}
+            naming={{ ...dayNaming, anchor: gapTarget.fill.date }}
             ideas={shelfForSlot(shelf, gapTarget.fill, trip.timezone, { events, bookings, places })}
             glyph={(m) => ideaGlyph(m, places)}
             onPickIdea={(m) => {

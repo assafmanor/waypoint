@@ -14,7 +14,7 @@
 // vocabulary. This surface is where you see what was done about this booking; the tasks SCREEN
 // is where the settled collapse lives.
 import type { Task, User } from '@waypoint/shared';
-import { subtaskProgress, taskDue, tickedStatus, type TaskClock } from '../lib/tasks';
+import { subtaskProgress, taskDue, tickedStatus, type TaskDueClock } from '../lib/tasks';
 import { isSettled } from '../lib/tasks';
 import { ltrIsolate } from '../lib/bidi';
 import { Avatar } from './primitives/Avatar';
@@ -44,7 +44,7 @@ export function TaskSection({
    *  beside a note section — so the arc and the count are the whole statement, and the count
    *  is what brings back the meta line a bare task row does not print at all. */
   subtasks: Map<string, Task[]>;
-  clock: TaskClock;
+  clock: TaskDueClock;
   /** **Whether the HOST itself is done or skipped** (ADR-0191 §6). Its tasks then read as
    *  settled here and stop counting everywhere else — the mark, the Home bands and the Index
    *  tile — because a closed host has no open obligations. Nothing is written: this is a

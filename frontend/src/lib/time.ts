@@ -419,6 +419,58 @@ export function relativeDayLabel(date: string, today: string): string {
   return relativeDay(delta);
 }
 
+/** **Which day of the trip a date is** (1-based, `startDate` = day 1). Trip-local
+ *  calendar arithmetic on UTC midnights, so no timezone re-reads the day. Five
+ *  surfaces had hand-rolled this same line (the header anchor, Plan Home, the two
+ *  day-view headings, the automatic-task checks); it is one function now, and
+ *  {@link dayLabel} is its sixth reader.  */
+export function tripDayNumber(date: string, startDate: string): number {
+  return (
+    Math.round(
+      (Date.parse(`${date}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / MS_PER_DAY,
+    ) + 1
+  );
+}
+
+/** Everything naming a day needs: the trip's window, and the clock read against it.
+ *  Shaped to take the `Trip` itself so a surface holding one passes `{ trip, today }`. */
+export interface DayNaming {
+  trip: { startDate: string; endDate: string };
+  /** Trip-local today. Inside the trip's window the trip is live — the same window
+   *  test as `tripPhase`, inlined because `lib/mode.ts` reads this file. */
+  today: string;
+  /** What "מחר" counts from while the trip is live; defaults to `today`. The day
+   *  surfaces name days against the day ON SCREEN, so an idea's "tomorrow" is the
+   *  day after the one being built, not the day after now (ADR-0151). Off-trip the
+   *  anchor is irrelevant — a day number is not measured from anything. */
+  anchor?: string;
+}
+
+/** **How a day is named on a row** — the one vocabulary every "when is this?" surface
+ *  reads, replacing the bare {@link relativeDayLabel} at all six of its call sites.
+ *
+ *  ADR-0085 made this relative ("מחר", "עוד 3 ימים") because that is the question a
+ *  traveller ON THE GROUND asks. Off the ground it is the wrong question, and provably
+ *  so: before departure every date's distance from today is its trip-day number plus
+ *  the days-until-departure, one constant the screen never states. So a pre-trip index
+ *  read `עוד 13 ימים` / `עוד 14` / `עוד 15` down seven consecutive rows — the day
+ *  numbers 2, 3, 4, re-encoded so you cannot use them (owner, 2026-08-29). Once the
+ *  trip is live that constant is zero and relative wins again, exactly as 0085 says.
+ *
+ *  So: **inside the trip's window, relative; outside it, the day number.** A finished
+ *  trip is named the same way for the same reason — "לפני 47 ימים" places a booking
+ *  against a today that has nothing to do with the trip.
+ *
+ *  A date outside `[start, end]` has no day number and falls back to relative — a prep
+ *  task due next week is genuinely "עוד 8 ימים", not a day of a trip it precedes. */
+export function dayLabel(date: string, { trip, today, anchor }: DayNaming): string {
+  const live = today >= trip.startDate && today <= trip.endDate;
+  if (live || date < trip.startDate || date > trip.endDate) {
+    return relativeDayLabel(date, anchor ?? today);
+  }
+  return `יום ${tripDayNumber(date, trip.startDate)}`;
+}
+
 /** Forward countdown to a future date, split for display (ADR-0085): the board
  *  hero's next-event countdown, the trip-list "בעוד" chip, the header
  *  "יוצאים בעוד", the join ticket, the Plan departure count all read this. The

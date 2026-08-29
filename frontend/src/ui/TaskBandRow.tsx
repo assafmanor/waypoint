@@ -7,7 +7,7 @@
 // no open-in-place, no sync column, no kebab. A band is a window onto the list, so the verbs
 // that need room live where the list does.
 import type { Task, User } from '@waypoint/shared';
-import { isSettled, taskDue, type SubtaskProgress, type TaskClock } from '../lib/tasks';
+import { isSettled, taskDue, type SubtaskProgress, type TaskDueClock } from '../lib/tasks';
 import { ltrIsolate } from '../lib/bidi';
 import { ListRow } from './domain';
 import { Avatar } from './primitives/Avatar';
@@ -26,7 +26,7 @@ export function TaskBandRow({
 }: {
   task: Task;
   users: User[];
-  clock: TaskClock;
+  clock: TaskDueClock;
   /** **A checklist reads here as the same two elements it reads as everywhere** (ADR-0196
    *  §6): the arc in the lead and `2/5` beside the deadline. This band is where the design is
    *  actually tested — there is no room for five rows, so the two elements are all there is,

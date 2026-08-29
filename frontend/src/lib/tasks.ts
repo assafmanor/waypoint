@@ -34,7 +34,7 @@ import {
 } from '@waypoint/shared';
 
 export { dueZone, TASK_BAND, taskBand, type TaskBand, type TaskClock };
-import { addDays, formatTime, relativeDayLabel, todayInTz } from './time';
+import { addDays, dayLabel, formatTime, todayInTz, type DayNaming } from './time';
 
 /** The facet axis (brief §13). ONE axis, because `ChoiceGrid` is single-select — ownership
  *  and lifecycle share it, and `important` is carried by the sort rather than by a chip so
@@ -302,6 +302,15 @@ export function countTasksByFacet(
   };
 }
 
+/** `TaskClock` plus the one thing a *printed* deadline needs that a fired one does not:
+ *  the trip's window, so `dayLabel` can name the day. It rides on the clock rather than
+ *  arriving as a second argument because the clock is already threaded to every row that
+ *  prints a deadline — and it stays out of `@waypoint/shared`'s `TaskClock` because the
+ *  server's reminder sweep reads deadlines without ever naming a day. */
+export interface TaskDueClock extends TaskClock {
+  trip: DayNaming['trip'];
+}
+
 /** The deadline as the row prints it (ADR-0188 §3): the relative day, plus the time when
  *  the task carries one. `late` drives the hue — `--miss-deep`, because overdue is a status
  *  and not a priority. Returns `undefined` for an undated task, which prints no deadline at
@@ -317,7 +326,7 @@ export interface TaskDue {
   late: boolean;
 }
 
-export function taskDue(task: Task, clock: TaskClock): TaskDue | undefined {
+export function taskDue(task: Task, clock: TaskDueClock): TaskDue | undefined {
   // **A task that is finished owes nothing, so it reports no deadline.** `באיחור` and
   // `עד עוד 8 ימים` are claims about what is still due; on a struck-through row they name an
   // obligation that no longer exists, and the late one spends `--miss` on it. This is
@@ -331,10 +340,13 @@ export function taskDue(task: Task, clock: TaskClock): TaskDue | undefined {
   const zone = dueZone(task, clock);
   const readerZone = currentZone(clock.nowMs, clock.crossings, clock.primaryZone);
   return {
-    day: relativeDayLabel(
-      todayInTz(zone, new Date(task.dueAt)),
-      todayInTz(readerZone, new Date(clock.nowMs)),
-    ),
+    // A prep task due before departure falls OUTSIDE the trip's window and keeps its
+    // relative reading — `dayLabel`'s fallback, and the right answer: "עוד 8 ימים" is a
+    // deadline, while a day of a trip that hasn't started is not.
+    day: dayLabel(todayInTz(zone, new Date(task.dueAt)), {
+      trip: clock.trip,
+      today: todayInTz(readerZone, new Date(clock.nowMs)),
+    }),
     time: task.dueHasTime ? formatTime(task.dueAt, zone) : undefined,
     late: Date.parse(task.dueAt) < clock.nowMs,
   };

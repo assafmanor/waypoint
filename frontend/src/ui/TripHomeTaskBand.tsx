@@ -17,7 +17,7 @@
 // null rather than an empty card with a reassuring sentence in it.
 import type { Task, User } from '@waypoint/shared';
 import { TRIP_HOME_TASK_BAND_CAP } from '../constants';
-import { subtaskProgress, taskBand, TASK_BAND, type TaskClock } from '../lib/tasks';
+import { subtaskProgress, taskBand, TASK_BAND, type TaskDueClock } from '../lib/tasks';
 import { TaskBandRow } from './TaskBandRow';
 import { NavArrow } from './NavArrow';
 import { t } from '../i18n/he';
@@ -40,7 +40,7 @@ export function TripHomeTaskBand({
    *  Handed in rather than read here, like every other derivation this component takes: the
    *  host owns the data so this stays presentational. */
   subtasks: Map<string, Task[]>;
-  clock: TaskClock;
+  clock: TaskDueClock;
   onTick: (task: Task) => void;
   onOpen: (task: Task) => void;
   onSeeAll: () => void;

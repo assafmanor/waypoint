@@ -25,6 +25,7 @@ import { RevealList } from '../primitives/RevealList';
 import { countVisible, revealRows } from '../../lib/filter-reveal';
 import { SLOT_FILL_CAP, SLOT_FILL_SEARCH_AT } from '../../constants';
 import { reasonText, type RankedIdea } from '../../lib/shelf';
+import type { DayNaming } from '../../lib/time';
 import type { Mode } from '../../lib/mode';
 import { t } from '../../i18n/he';
 import './slot-fill-sheet.css';
@@ -33,7 +34,7 @@ export function SlotFillSheet({
   title,
   sub,
   mode,
-  date,
+  naming,
   ideas,
   glyph,
   onPickIdea,
@@ -51,7 +52,9 @@ export function SlotFillSheet({
    *  mechanism, and the same reason, as `.header`/`.mode-chrome`. */
   mode: Mode;
   /** The slot's day, which is what makes a reason readable ("מחר", "היום"). */
-  date: string;
+  /** How a day is named in a ranking reason (`dayLabel`) — anchored on the slot's own
+   *  day, so a live trip's "מחר" is the day after the one being filled. */
+  naming: DayNaming;
   /** Already ranked against this slot's own neighbours, each with its reason. */
   ideas: RankedIdea[];
   /** **The glyph a row shows**, resolved by the host (`ideaGlyph`) rather than read off the
@@ -104,7 +107,7 @@ export function SlotFillSheet({
                 {/* The ranking REASON, never a score and never a star: it says which
                     fact put this row here, so a wrong order is arguable instead of
                     magic (ADR-0151 §8). */}
-                <span className="slotfill-m">{reasonText(reason, date)}</span>
+                <span className="slotfill-m">{reasonText(reason, naming)}</span>
               </span>
               <span className="slotfill-add">
                 <Icon name="plus" />

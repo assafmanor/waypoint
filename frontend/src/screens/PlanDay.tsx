@@ -87,7 +87,8 @@ import {
   type TimeGroup,
   type TimeItem,
   tripDates,
-  relativeDayLabel,
+  dayLabel,
+  tripDayNumber,
   dayWindowMs,
 } from '../lib/time';
 import {
@@ -155,7 +156,6 @@ import {
   DEFAULT_STAY_ICON,
   DOT_SEPARATOR,
   DRAG_DAY_DWELL_MS,
-  MS_PER_DAY,
   MINUTES_PER_HOUR,
 } from '../constants';
 import {
@@ -207,9 +207,6 @@ import { useSettledHosts } from '../ui/HostTasks';
 import { attachmentCountForContext, attachmentCountsByHost } from '../lib/attachments';
 import { resolveHostContext, type HostContextIndex } from '../lib/host-context';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
-
-const daysBetween = (from: string, to: string) =>
-  Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
 
 /** What is being dragged off the shelf. Both kinds travel the same drag: only the
  *  drop WRITE differs (`lib/shelf-drop.ts` decides which), so this is a tagged
@@ -330,6 +327,11 @@ export function PlanDay() {
   // modes, so which day counts as "today" — and what the now-reference shows —
   // doesn't shift when you switch over to build.
   const nowZone = liveZone(now.getTime(), zoneEvidence);
+  const today = liveToday(now.getTime(), zoneEvidence);
+  // How this screen names a day (`dayLabel`): relative on a live trip, anchored on the day
+  // ON SCREEN so an idea's "מחר" is the day after the one being built (ADR-0151); by trip-day
+  // number off it, where "עוד 15 ימים" is only the day number plus a constant.
+  const dayNaming = { trip, today, anchor: activeDate };
   const nowRefMs =
     tripPhase(trip, now) === 'live' && activeDate === liveToday(now.getTime(), zoneEvidence)
       ? now.getTime()
@@ -1051,7 +1053,7 @@ export function PlanDay() {
         // distance or nothing (ADR-0116 §2, ADR-0151 §8).
         meta={
           reasonById.has(m.id)
-            ? tileReasonText(reasonById.get(m.id)!, activeDate)
+            ? tileReasonText(reasonById.get(m.id)!, dayNaming)
             : stopReasonText(forDayReasons.get(m.id))
         }
         notes={noteCountFor(noteCounts, 'maybeItem', m.id)}
@@ -1240,13 +1242,13 @@ export function PlanDay() {
    *  (ADR-0151's amendment). Absent when the ranking had nothing to say about it. */
   const ideaWhy = (m: MaybeItem) => {
     const reason = poolReasonById.get(m.id) ?? forDayReasons.get(m.id);
-    return reason ? reasonText(reason, activeDate) : undefined;
+    return reason ? reasonText(reason, dayNaming) : undefined;
   };
   const markForDay = (m: MaybeItem) => {
     const date = proposedDay(poolReasonById.get(m.id));
     if (!date) return undefined;
     return {
-      label: t.day.idea.markForDay(relativeDayLabel(date, activeDate)),
+      label: t.day.idea.markForDay(dayLabel(date, { trip, today, anchor: activeDate })),
       onSelect: () => {
         verbs.acceptDay(m, date);
         setIdeaSheet(null);
@@ -1254,7 +1256,7 @@ export function PlanDay() {
     };
   };
 
-  const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
+  const dayNumber = tripDayNumber(activeDate, trip.startDate);
   const weekday = weekdayName(activeDate, trip.timezone);
 
   // Multi-zone display (ADR-0107): literally the same context the Trip-mode day
@@ -1735,7 +1737,7 @@ export function PlanDay() {
           <SlotFillSheet
             title={t.slotFill.gapTitle(clockRange(gapChoice.fill.start, gapChoice.fill.end))}
             mode="plan"
-            date={gapChoice.fill.date}
+            naming={{ trip, today, anchor: gapChoice.fill.date }}
             ideas={shelfForSlot(shelf, gapChoice.fill, tz, { events, bookings, places })}
             glyph={(m) => ideaGlyph(m, places)}
             onPickIdea={(m) => {

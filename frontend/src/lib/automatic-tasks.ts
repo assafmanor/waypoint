@@ -21,8 +21,8 @@
 import type { Task, TaskDerivedKey, TaskStatus } from '@waypoint/shared';
 import { TASK_STATUS } from '@waypoint/shared';
 import type { ReadinessCheck } from '@waypoint/shared';
-import { MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
+import { tripDayNumber } from './time';
 
 /** **The one verb that resolves each check** (ADR-0061 §1: the CTA does the thing). An id
  *  rather than a callback, because the two hosts reach the same destination differently —
@@ -61,12 +61,6 @@ export interface AutomaticTaskContext {
   travelerCount: number;
 }
 
-/** Trip-local day number (1-based), matching the header's day-strip numbering. */
-const dayNumberOf = (date: string, startDate: string) =>
-  Math.round(
-    (Date.parse(`${date}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / MS_PER_DAY,
-  ) + 1;
-
 /** A check's words and its verb. Lifted from `PlanHome.rowFor` unchanged in wording — the
  *  copy keys are the same `t.planHome.checklist` entries, so nothing re-translates. */
 function copyFor(
@@ -102,7 +96,7 @@ function copyFor(
         meta: check.done
           ? c.itineraryDoneMeta
           : c.itineraryMeta(
-              ctx.emptyDates.map((d) => dayNumberOf(d, ctx.tripStartDate)).join(', '),
+              ctx.emptyDates.map((d) => tripDayNumber(d, ctx.tripStartDate)).join(', '),
             ),
         action: AUTOMATIC_TASK_ACTION.BUILD_DAY,
       };

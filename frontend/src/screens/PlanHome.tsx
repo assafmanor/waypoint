@@ -17,7 +17,7 @@ import { useClock } from '../lib/useClock';
 import { useCountUp } from '../lib/useCountUp';
 import { daysUntilStart, tripPhase } from '../lib/mode';
 import { dayPhrase } from '../lib/hebrew';
-import { countdownParts, formatTripDates } from '../lib/time';
+import { countdownParts, formatTripDates, tripDayNumber } from '../lib/time';
 import { useAutomaticTasks } from '../lib/useAutomaticTasks';
 import {
   AUTOMATIC_TASK_ACTION,
@@ -39,7 +39,7 @@ import {
   taskRowKey,
   type TaskRow,
   taskPreview,
-  type TaskClock,
+  type TaskDueClock,
 } from '../lib/tasks';
 import { toHeroTask } from '../lib/hero-task';
 import { PlanLift } from '../ui/domain/PlanLift';
@@ -61,16 +61,9 @@ import { StatTile } from '../ui/domain';
 import { EmptyState } from '../ui/feedback';
 import { Icon } from '../ui/Icon';
 import { Collapsible } from '../ui/primitives/Collapsible';
-import { DOT_SEPARATOR, MS_PER_DAY, PLAN_TASK_CAP, type TabId } from '../constants';
+import { DOT_SEPARATOR, PLAN_TASK_CAP, type TabId } from '../constants';
 import { t } from '../i18n/he';
 import { useSettledHosts } from '../ui/HostTasks';
-
-// Trip-local day number (1-based) for a calendar-date string — matches the
-// header's day-strip numbering. UTC-midnight diff, no timezone re-reading.
-const dayNumberOf = (date: string, startDate: string) =>
-  Math.round(
-    (Date.parse(`${date}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / MS_PER_DAY,
-  ) + 1;
 
 export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   const {
@@ -154,7 +147,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
     wasLifted.current = lifted;
   }, [lifted]);
 
-  const total = dayNumberOf(trip.endDate, trip.startDate);
+  const total = tripDayNumber(trip.endDate, trip.startDate);
   // Called unconditionally, above the past/upcoming branch below, because both
   // branches' StatTiles share these same three counts (ADR-0143: "a value that
   // changes should be seen to change" — day/event/booking counts were named but
@@ -206,10 +199,11 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   // checks, then the rest — so the two surfaces cannot disagree about what leads. Which
   // manual tasks: the band's, i.e. overdue or due within the week, because Plan Home is
   // where you prepare and a task due next month is not yet preparation.
-  const taskClock: TaskClock = {
+  const taskClock: TaskDueClock = {
     nowMs: now.getTime(),
     crossings: zoneCrossings,
     primaryZone: trip.timezone,
+    trip,
   };
   const settledHosts = useSettledHosts();
   /** **Everything open, with no date window** (ADR-0193 §1). `tasksDueSoon` used to be this

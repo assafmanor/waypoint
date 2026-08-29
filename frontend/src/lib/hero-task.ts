@@ -10,14 +10,14 @@
 // A pure formatter, not a component: it takes the clock and the roster and returns data.
 // Both heroes stay presentational, which is what `HeroLift`'s own header promises.
 import type { Task, User } from '@waypoint/shared';
-import { subtaskProgress, taskDue, type TaskClock } from './tasks';
+import { subtaskProgress, taskDue, type TaskDueClock } from './tasks';
 import { ltrIsolate } from './bidi';
 import { t } from '../i18n/he';
 import type { HeroLiftTask } from '../ui/domain/HeroLift';
 
 export function toHeroTask(
   task: Task,
-  clock: TaskClock,
+  clock: TaskDueClock,
   users: User[],
   steps?: Task[],
 ): HeroLiftTask {
