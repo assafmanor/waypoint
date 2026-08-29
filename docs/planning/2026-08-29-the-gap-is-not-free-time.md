@@ -35,7 +35,7 @@ So the proposal isn't "add more strings". It's: the gap gets a **character**, de
 
 3. **The `free` branch renders no meta row, and `now` does.** `now` prints `.wp-board-now-meta` (`עד HH:MM`); `free` prints label + title and stops. Meanwhile `GlanceCard` prints `פנוי עד 11:45 · מסתיים ~12:45` two inches lower — it's in the owner's screenshot. The board owns a slot for the fact and leaves it empty while another card carries it.
 
-4. **The same disease is in the next slot.** `סוף היום` is `next`'s `else` (`Board.tsx:459`), so a day with nothing planned at 11:00 reads `זמן חופשי` over `סוף היום` — two fall-throughs stacked, the second announcing the end of a day that hasn't happened.
+4. **The next slot already crosses midnight, and says nothing about it.** `סוף היום` is `next`'s `else` (`Board.tsx:459`) — but `deriveNow` is handed the whole _trip's_ events and carries no date filter, so at 22:40 on day 3 the board is already showing tomorrow's 07:00 flight. `07:00` with no day token reads as this morning. See the correction below.
 
 And one thing worth stating because it's the cheap part: `freeLabel`/`freeTitle` are read at `Board.tsx:444-445` and `HeroLift.tsx:668-669` and nowhere else (grepped). A derivation feeding both is one line at each.
 
@@ -70,7 +70,7 @@ Measured off the page's own DOM, 360px:
 - **ב׳** `בדרך ל־BBQ Mirage` as the title. Reads best. Names the destination twice 28px apart, and `ל־` breaks agreement before a definite article.
 - **ג׳ (recommended)** just `כרגע` / `בדרך`. Says only what was asserted, the destination is already sitting right below it, and the countdown doesn't move.
 
-**2 — where `הבא בתור` points when the day is done.** At 22:40 the useful read is tomorrow's first thing (and by extension when you'd have to be up). Against it: ADR-0160 §12. The slot isn't new, it's just aimed at another day — so it's a real fork rather than an expansion.
+**2 — ~~where `הבא בתור` points when the day is done~~.** Withdrawn: it already points at tomorrow. See the correction below — what's left of it is the day token and `אחר כך`'s scope, neither of which is a fork.
 
 ## One claim this file made and then withdrew
 
@@ -82,3 +82,42 @@ The draft rejected option ב׳ as "ADR-0118's bidi trap". Probing the rendered t
 - **No `ישנים` as the night title.** That's a claim about a person and there's no sensor. What's allowed is a _place_.
 - **No separate "about to leave" state.** The countdown already swaps to the leave-by (ADR-0206 §Z1); a title state would say it twice, and would turn a passed clock into a claim about a person.
 - **No third slot.** All five characters fit the two slots that exist plus the meta row the branch should have been drawing anyway.
+
+## Correction (same session) — the evening lookahead already exists
+
+The owner asked a follow-up: _"I think that at night when the day is over (no more plans for today) the hero should also have some kind of a lookahead. Like what's coming up tomorrow. Should it be on the lifted hero? I'm not sure."_
+
+Answering it turned up a claim above that was wrong, and it's worth recording how rather than just fixing it. The draft said `סוף היום` is `next`'s `else`, so an unplanned day at 11:00 stacks two fall-throughs. The `else` is real. The **scenario** was wrong, and reading `Board.tsx` alone is what produced it.
+
+`deriveNow` (`lib/time.ts:312`) is handed `scheduleEvents` — the whole trip's events — and carries **no date filter**:
+
+```ts
+const future = timed.filter((e) => Date.parse(e.startsAt!) > t).sort(…);
+```
+
+So `הבא בתור` already crosses midnight, on both elevations (`heroHorizon` is passed `shownNext` itself). `סוף היום` fires only when the trip has no timed event left at all.
+
+Proved with a throwaway `vitest` file against the real `deriveNow` and `heroHorizon` rather than by reading a second time. Six assertions, all passing — these are what the build should pin:
+
+1. At 22:40 on day 3, `deriveNow` returns tomorrow's 07:00 flight as `next`; `now` is undefined.
+2. So `next` is defined and `Board`'s `next?.title ?? endOfDay` never reaches its `??`.
+3. `minsToNext` is 500 — under `MINUTES_PER_DAY`, so the countdown stays `formatCountdown` and never reaches `countdownParts`' `מחר`.
+4. The lifted hero gets the same cross-day next point.
+5. `אחר כך` is **empty**, because `thenAfter` filters `input.events` = `dayEvents`. Handed the whole trip, the same function finds tomorrow's second stop.
+6. `dayProgress` returns exactly 1 at 23:30 and exactly 0 at 02:40 — the §2 clamp, confirmed.
+
+The test was deleted (nothing is built for it to guard); it's listed here so the build carries it.
+
+### So the answer to the question is better than "add a lookahead"
+
+**It's already there, on both elevations, and it's silent about which day it's pointing at.** Three concrete gaps, none of them a new slot:
+
+- **No day token on the next slot.** `07:00` doesn't say tomorrow. The app already ships the fix for exactly this ambiguity — `endDay` on the in-transit meta row (ADR-0160 §M: _"a red-eye landing at 06:00 reads as this morning"_), through `relativeDayLabel`. `.wp-board-next-meta` never got it.
+- **`אחר כך` stops at midnight.** The one place the lift genuinely has less than it could. Same function, wider scope.
+- **`סוף היום` in both slots on the trip's last day.** Two ways of saying one nothing — still open, and now the only place that phrase appears.
+
+### And on "should it be on the lifted hero?"
+
+Both, and ADR-0160 §1 already made the split: one object at two elevations. The collapsed board carries the **point** — it already does, it just needs the day token. The lifted hero carries the **depth** on that point — place, note, file, tasks — and it already resolves all of them for a cross-day next.
+
+§12 isn't strained by this. No third slot, no new way in: `אחר כך` stays one quiet line, it just stops stopping at midnight. Measured at **30px** on the rendered page (§12 priced the third point at 28px; the difference is the loaded webfont, not a design change), and the lifted card goes 369px → 399px with nothing else added.
