@@ -24,7 +24,7 @@ import {
 } from '@waypoint/shared';
 import { eventPlaceId } from './places';
 import { formatDistance } from './distance';
-import { relativeDayLabel, zonedIso } from './time';
+import { dayLabel, zonedIso, type DayNaming } from './time';
 import type { GapDefaults } from './gaps';
 import { chosenIcon, DEFAULT_MAYBE_ICON } from '../constants';
 import { t } from '../i18n/he';
@@ -352,21 +352,22 @@ export function shelfForSlot(
 
 /** The reason as a full sentence, for the slot sheet's full-width row. The contract
  *  carries the fact and the frontend spells it (ADR-0151 §8, and `packages/shared`
- *  holds no UI copy). `today` is the date the relative phrasing is read against —
- *  the day being viewed, so "מחר" means the day after the one on screen. */
-export function reasonText(reason: SuggestionReason, today: string): string {
+ *  holds no UI copy). `naming` carries the day being viewed as its `anchor`, so on a
+ *  live trip "מחר" means the day after the one on screen; off-trip the day is named by
+ *  its number instead and the anchor doesn't apply (`dayLabel`). */
+export function reasonText(reason: SuggestionReason, naming: DayNaming): string {
   switch (reason.code) {
     case SUGGESTION_REASON.NEAR_STOP:
       return t.day.why.nearStop(formatDistance(reason.meters), reason.stopName);
     case SUGGESTION_REASON.AIMED_AT_DAY:
-      return t.day.why.aimedAtDay(relativeDayLabel(reason.targetDate, today));
+      return t.day.why.aimedAtDay(dayLabel(reason.targetDate, naming));
     case SUGGESTION_REASON.RECENTLY_ADDED:
       return t.day.why.recentlyAdded;
     // The whole sentence, stop name included — this is the sheet, which has the room the
     // tile does not (ADR-0151's amendment, measured).
     case SUGGESTION_REASON.FITS_DAY:
       return t.day.why.fitsDayFull(
-        relativeDayLabel(reason.date, today),
+        dayLabel(reason.date, naming),
         formatDistance(reason.meters),
         reason.stopName,
       );
@@ -384,19 +385,19 @@ export function reasonText(reason: SuggestionReason, today: string): string {
  *
  * Recency gets no line: on a strip it is chrome, not a fact worth the height.
  */
-export function tileReasonText(reason: SuggestionReason, today: string): string | undefined {
+export function tileReasonText(reason: SuggestionReason, naming: DayNaming): string | undefined {
   switch (reason.code) {
     case SUGGESTION_REASON.NEAR_STOP:
       return formatDistance(reason.meters);
     case SUGGESTION_REASON.AIMED_AT_DAY:
-      return relativeDayLabel(reason.targetDate, today);
+      return dayLabel(reason.targetDate, naming);
     case SUGGESTION_REASON.RECENTLY_ADDED:
       return undefined;
     // The day and the distance, and NOT the stop name — which wraps this line and costs the
     // tile 8px (ADR-0151's amendment, measured). `reasonText` above says the whole sentence,
     // in the sheet, which has room for it.
     case SUGGESTION_REASON.FITS_DAY:
-      return t.day.why.fitsDay(relativeDayLabel(reason.date, today), formatDistance(reason.meters));
+      return t.day.why.fitsDay(dayLabel(reason.date, naming), formatDistance(reason.meters));
   }
 }
 

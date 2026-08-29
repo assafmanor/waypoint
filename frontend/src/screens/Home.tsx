@@ -42,7 +42,7 @@ import {
 } from '../ui/domain';
 import { useClock } from '../lib/useClock';
 import { hotelWifi, nextCodedBooking } from '../lib/home-quick';
-import { orderTaskRows, tasksDueSoon, type TaskClock } from '../lib/tasks';
+import { orderTaskRows, tasksDueSoon, type TaskDueClock } from '../lib/tasks';
 import { TripHomeTaskBand } from '../ui/TripHomeTaskBand';
 import {
   dayZoneContext,
@@ -68,7 +68,7 @@ import {
   formatTime,
   hardConflicts,
   minutesUntil,
-  relativeDayLabel,
+  dayLabel,
   todayInTz,
   tzParts,
   dayWindowMs,
@@ -291,7 +291,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     const zone = transitZones?.endZone;
     if (!transitEvent?.endsAt || !zone) return undefined;
     const landsOn = todayInTz(zone, new Date(transitEvent.endsAt));
-    return landsOn === today ? undefined : relativeDayLabel(landsOn, today);
+    return landsOn === today ? undefined : dayLabel(landsOn, { trip, today });
   })();
 
   const conflicts = nowEvent ? hardConflicts(nowEvent, dayEvents) : [];
@@ -325,9 +325,9 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // Declared here rather than beside the band below, because the lifted hero reads tasks too
   // (ADR-0160 §U) and both must be the SAME clock and the SAME settled-host set — a hero that
   // still offers a task the band has already dropped is two answers to one question.
-  const taskClock: TaskClock = useMemo(
-    () => ({ nowMs, crossings: zoneCrossings, primaryZone: trip.timezone }),
-    [nowMs, zoneCrossings, trip.timezone],
+  const taskClock: TaskDueClock = useMemo(
+    () => ({ nowMs, crossings: zoneCrossings, primaryZone: trip.timezone, trip }),
+    [nowMs, zoneCrossings, trip],
   );
   const settledHosts = useSettledHosts();
 
@@ -1046,7 +1046,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         // this slot has always crossed midnight and never said so — `07:00` at ⁦22:40⁩ reads as
         // this morning. `relativeDayLabel` is the same derivation five other surfaces use, and
         // the same words `BoardTransit.endDay` already puts one row up (ADR-0160 §M).
-        ...(shownNext.date !== today ? { day: relativeDayLabel(shownNext.date, today) } : {}),
+        ...(shownNext.date !== today ? { day: dayLabel(shownNext.date, { trip, today }) } : {}),
         missed: hero.missed && shownNext === hero.event,
         hard: shownNext.kind === EVENT_KIND.HARD,
         code: nextCode,

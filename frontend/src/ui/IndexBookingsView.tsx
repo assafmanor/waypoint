@@ -6,6 +6,7 @@
 // registers on top of that via its own Modal, so it closes first in turn.
 import { useEffect, useMemo, useState } from 'react';
 import { BOOKING_TYPE, type Booking, type Place } from '@waypoint/shared';
+import type { DayNaming } from '../lib/time';
 import { useTrip } from '../state/trip-state';
 import { usePlaceErrandReturn, useShowPlaceOnMap } from '../state/map-scope-state';
 import {
@@ -207,6 +208,7 @@ export function IndexBookingsView({
       row={row}
       places={places}
       zoneEvidence={zoneEvidence}
+      tripWindow={trip}
       now={now}
       onOpen={openDetail}
       onManage={setManage}
@@ -388,6 +390,7 @@ function BookingLi({
   row,
   places,
   zoneEvidence,
+  tripWindow,
   now,
   onOpen,
   onManage,
@@ -402,6 +405,10 @@ function BookingLi({
   /** The row's clocks read in each event's OWN resolved zone (ADR-0107); this replaced the
    *  `Trip` prop, which the row only ever consulted for `timezone`. */
   zoneEvidence: ZoneEvidence;
+  /** The trip's calendar window — how the schedule line names a day (`dayLabel`): its
+   *  day number off-trip, relative on it. The window only, not the `Trip` the prop above
+   *  replaced: the row still has no business reading trip fields. */
+  tripWindow: DayNaming['trip'];
   now: Date;
   onOpen: (booking: Booking) => void;
   onManage: (booking: Booking) => void;
@@ -428,7 +435,7 @@ function BookingLi({
   // A queued (pending) write fades the row to read as provisional (ADR-0092).
   const unsynced = useUnsynced(booking.id);
 
-  const schedule = event ? scheduleParts(event, booking, zoneEvidence, now) : undefined;
+  const schedule = event ? scheduleParts(event, booking, zoneEvidence, now, tripWindow) : undefined;
   // THE VERB IS DRAWN WHERE IT DISAMBIGUATES (ADR-0179 §2d): on a span's closing edge it
   // is the only thing that can say which end this time is, and on a start edge the badge
   // glyph already says it — the type→verb map is 1:1.

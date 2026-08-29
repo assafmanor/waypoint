@@ -27,6 +27,12 @@ import type { Mode } from '../../lib/mode';
 
 const DAY = '2026-07-20';
 const GAP = { date: DAY, start: '14:00', end: '16:00' };
+// A window containing the anchor keeps the trip live, so a ranking reason reads relative.
+const naming = (day: string) => ({
+  trip: { startDate: '2026-07-01', endDate: '2026-07-31' },
+  today: day,
+  anchor: day,
+});
 
 const ranked = (title: string, i: number): RankedIdea => ({
   item: { id: `m${i}`, tripId: 't', title, consumed: false } as MaybeItem,
@@ -42,7 +48,7 @@ const openSheet = (ideas: RankedIdea[], onPickIdea = vi.fn(), mode: Mode = 'plan
       <SlotFillSheet
         title={t.slotFill.gapTitle(clockRange(GAP.start, GAP.end))}
         mode={mode}
-        date={GAP.date}
+        naming={naming(GAP.date)}
         ideas={ideas}
         glyph={(m) => m.icon ?? ''}
         onPickIdea={onPickIdea}
@@ -152,7 +158,7 @@ describe('SlotFillSheet', () => {
             title={t.slotFill.replaceTitle('מוזיאון אדו')}
             sub={t.slotFill.replaceSub(clockRange('14:00', '16:00'))}
             mode="trip"
-            date={DAY}
+            naming={naming(DAY)}
             ideas={pool(2)}
             glyph={(m) => m.icon ?? ''}
             onPickIdea={vi.fn()}

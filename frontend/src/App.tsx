@@ -96,7 +96,6 @@ import { observeVisibility } from './lib/visibility';
 import { useShrinkToFit } from './lib/useShrinkToFit';
 import {
   DEFAULT_TRIP_ICON,
-  MS_PER_DAY,
   OUTBOX_RETRY_MS,
   PEOPLE_STACK_CAP,
   TABS,
@@ -104,7 +103,7 @@ import {
   type TabId,
 } from './constants';
 import { type Mode } from './lib/mode';
-import { monthLabelFor, tripDates, weekdayLetter } from './lib/time';
+import { monthLabelFor, tripDates, tripDayNumber, weekdayLetter } from './lib/time';
 import { liveToday } from './lib/places';
 import { t } from './i18n/he';
 import './App.css';
@@ -289,8 +288,7 @@ export function Header({
   const [syncReviewOpen, setSyncReviewOpen] = useState(false);
   const dates = tripDates(trip.startDate, trip.endDate);
   const total = dates.length;
-  const dayNumber =
-    Math.round((Date.parse(activeDate) - Date.parse(trip.startDate)) / MS_PER_DAY) + 1;
+  const dayNumber = tripDayNumber(activeDate, trip.startDate);
   let prevDate: string | undefined;
   const days = dates.map((date) => {
     const monthLabel = monthLabelFor(date, prevDate);

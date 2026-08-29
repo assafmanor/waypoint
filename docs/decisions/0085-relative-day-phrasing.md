@@ -37,3 +37,21 @@ A subtlety made this worth a decision rather than a find-replace: **relative-day
 - **Relabel the hero's duration-count** (map its day-count to מחר/מחרתיים). Rejected — wrong at the edges (a 37 h gap is calendar-"מחרתיים", duration-"יום"); the hero must read the date.
 - **Relative for upcoming Index rows only, keep trip day-number for past.** Rejected in favour of relative both ways (product call): אתמול/שלשום/לפני N is more informative than "יום 3" for a booking behind you, and one vocabulary is simpler.
 - **Switch the 3+ countdown wording to "עוד N ימים" too** (matching the Index). Left as "בעוד N ימים" for the countdown surfaces — that copy wasn't the complaint, and "בעוד" is the established connective there; only the יום/יומיים → מחר/מחרתיים swap was asked for.
+
+## Amendment (2026-08-29) — off the ground, a day is named by its number
+
+**Trigger.** A pre-trip Index (owner, field report). A trip on 12-11..12-22, read on 11-29, printed its bookings as `עוד 13 ימים`, `עוד 14`, `עוד 15`, `עוד 16`, `עוד 17`, `עוד 18`, `עוד 19` down seven consecutive rows. The Map's place sheet did the same (`עוד 15 ימים · 07:15`).
+
+Those are the trip-day numbers 2..8, each plus 11 — and 11 is the days-until-departure, the one constant no screen states. So before the trip starts the relative reading carries the same information as the day number, encoded so you cannot use it: every row's numeral clusters in a narrow band and none of them places the row in the plan. The Decision above chose relative for "the question a traveller **on the ground** actually asks" — that reasoning is about the live phase, and it was never tested against the phase where the offset is not zero.
+
+**Refinement.** The vocabulary is unchanged; **which vocabulary applies now depends on where the trip is**, in one derivation:
+
+- **`dayLabel(date, { trip, today, anchor? })`** in `lib/time.ts` replaces the bare `relativeDayLabel` at all six of its call sites (Index booking rows, Map row meta + place-sheet refs, Home hero, shelf ranking reasons, task deadlines, the `סמנו ל…` labels).
+- **Inside the trip's window, relative** (`מחר`, `עוד 3 ימים`) — §Decision, untouched. **Outside it, the day number** (`יום 3`), before the trip and after it alike: `לפני 47 ימים` places an archived booking against a today that has nothing to do with the trip.
+- **A date outside `[startDate, endDate]` has no day number and stays relative.** This is what keeps a pre-departure prep task honest: its deadline is `עוד 8 ימים`, not a day of a trip it precedes.
+- **The phase is read from `today`, not from the mode.** A mid-trip Plan-mode override still reads relative, because switching to Plan to build must not change what a date means — the same invariant the header anchor already keeps (ADR-0043 / `App.tsx`).
+- **`anchor` is preserved and only applies while live.** The day surfaces name days against the day _on screen_ (ADR-0151), so an idea's `מחר` is the day after the one being built. A day number is not measured from anything, so off-trip the anchor is ignored.
+- **The countdown surfaces are untouched.** Plan Home's departure count, the join ticket and the trip-list chip still read `בעוד 15 ימים` through `countdownParts` — that number is about _you_, not about a position in the plan, and it is the very constant the rows above were hiding.
+- `tripDayNumber(date, startDate)` is exported beside it, and the five hand-rolled copies of that one-liner (the header anchor, Plan Home, the two day-view headings, the automatic-task checks) now read it (root rule 8).
+
+**What this does not reverse.** §Context's complaint stands: `יום 7` was wrong on the Index _of a live trip_, where "how far off is this" is the question and the answer is `מחר`. Both readings were right about their own phase; the defect was one vocabulary answering for both.

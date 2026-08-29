@@ -17,7 +17,7 @@ import {
   placeName,
   type ZoneEvidence,
 } from './places';
-import { formatTime, isEventPast, relativeDayLabel, todayInTz } from './time';
+import { dayLabel, formatTime, isEventPast, todayInTz, type DayNaming } from './time';
 import { plainTimingLabel, timingLabels } from './booking-timing';
 import { revealRows, type Revealed } from './filter-reveal';
 import { BOOKING_TYPE_ICON } from '../constants';
@@ -215,6 +215,7 @@ export function scheduleParts(
   booking: Booking,
   evidence: ZoneEvidence,
   now: Date,
+  trip: DayNaming['trip'],
 ): ScheduleParts {
   // **The clock reads in the EDGE's own resolved zone** (ADR-0107) — a departure in its
   // origin, an arrival in its destination — which is what the day card and the two detail
@@ -228,7 +229,7 @@ export function scheduleParts(
   const past = isEventPast(event, now, evidence.primaryZone);
 
   if (multiDay && today > event.date) {
-    const day = relativeDayLabel(event.endDate!, today);
+    const day = dayLabel(event.endDate!, { trip, today });
     const verb = past ? undefined : plainTimingLabel(labels.end);
     // Before the check-out day the day is enough; on the day itself, name the time.
     return event.endDate === today && event.endsAt
@@ -236,7 +237,7 @@ export function scheduleParts(
       : { verb, day, edge: 'end' };
   }
 
-  const day = relativeDayLabel(event.date, today);
+  const day = dayLabel(event.date, { trip, today });
   if (!event.startsAt) return { day, edge: 'start' };
   const verb = past ? undefined : plainTimingLabel(labels.start);
   return { verb, day, time: formatTime(event.startsAt, zones.start), edge: 'start' };
@@ -249,7 +250,8 @@ export function scheduleLabel(
   booking: Booking,
   evidence: ZoneEvidence,
   now: Date,
+  trip: DayNaming['trip'],
 ): string {
-  const { verb, day, time } = scheduleParts(event, booking, evidence, now);
+  const { verb, day, time } = scheduleParts(event, booking, evidence, now, trip);
   return [verb, day, time].filter(Boolean).join(' · ');
 }

@@ -18,6 +18,8 @@ import {
   weekdayName,
   formatTripDates,
   relativeDay,
+  dayLabel,
+  tripDayNumber,
   hardConflicts,
   isCalendarDay,
   isoToTimeInput,
@@ -497,6 +499,57 @@ describe('relativeDay', () => {
     expect(relativeDay(9)).toBe('עוד 9 ימים');
     expect(relativeDay(-3)).toBe('לפני 3 ימים');
     expect(relativeDay(-7)).toBe('לפני 7 ימים');
+  });
+});
+
+describe('dayLabel (ADR-0085 amendment: off the ground, a day has a number)', () => {
+  const trip = { trip: { startDate: '2026-12-11', endDate: '2026-12-22' } };
+
+  it('numbers the day before the trip starts, where relative would only re-encode it', () => {
+    // The bug this exists for: from 2026-11-29 the first four trip days read
+    // `עוד 12/13/14/15 ימים` — the day numbers plus a constant nothing states.
+    const naming = { ...trip, today: '2026-11-29' };
+    expect(dayLabel('2026-12-11', naming)).toBe('יום 1');
+    expect(dayLabel('2026-12-13', naming)).toBe('יום 3');
+    expect(dayLabel('2026-12-22', naming)).toBe('יום 12');
+  });
+
+  it('numbers the days of a finished trip too', () => {
+    expect(dayLabel('2026-12-13', { ...trip, today: '2027-02-01' })).toBe('יום 3');
+  });
+
+  it('stays relative while the trip is live, on every day of it', () => {
+    expect(dayLabel('2026-12-14', { ...trip, today: '2026-12-13' })).toBe('מחר');
+    expect(dayLabel('2026-12-11', { ...trip, today: '2026-12-11' })).toBe('היום');
+    expect(dayLabel('2026-12-22', { ...trip, today: '2026-12-22' })).toBe('היום');
+    expect(dayLabel('2026-12-11', { ...trip, today: '2026-12-14' })).toBe('לפני 3 ימים');
+  });
+
+  it('measures live-trip relatives from `anchor` when the surface names a day on screen', () => {
+    const naming = { ...trip, today: '2026-12-13', anchor: '2026-12-15' };
+    expect(dayLabel('2026-12-16', naming)).toBe('מחר');
+  });
+
+  it('ignores `anchor` off-trip — a day number is not measured from anything', () => {
+    const naming = { ...trip, today: '2026-11-29', anchor: '2026-12-15' };
+    expect(dayLabel('2026-12-16', naming)).toBe('יום 6');
+  });
+
+  it('falls back to relative for a date outside the trip window', () => {
+    const naming = { ...trip, today: '2026-11-29' };
+    expect(dayLabel('2026-12-01', naming)).toBe('מחרתיים');
+    expect(dayLabel('2026-12-23', naming)).toBe('עוד 24 ימים');
+  });
+});
+
+describe('tripDayNumber', () => {
+  it('is 1-based from the trip start', () => {
+    expect(tripDayNumber('2026-12-11', '2026-12-11')).toBe(1);
+    expect(tripDayNumber('2026-12-13', '2026-12-11')).toBe(3);
+  });
+
+  it('crosses a DST boundary without drifting (UTC-midnight arithmetic)', () => {
+    expect(tripDayNumber('2026-11-05', '2026-10-25')).toBe(12);
   });
 });
 

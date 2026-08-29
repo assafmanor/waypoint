@@ -5,13 +5,14 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { TASK_STATUS, type Task, type User } from '@waypoint/shared';
 import { TripHomeTaskBand } from './TripHomeTaskBand';
 import { TRIP_HOME_TASK_BAND_CAP } from '../constants';
-import type { TaskClock } from '../lib/tasks';
+import type { TaskDueClock } from '../lib/tasks';
 import { t } from '../i18n/he';
 
-const CLOCK: TaskClock = {
+const CLOCK: TaskDueClock = {
   nowMs: Date.parse('2026-08-15T09:00:00.000Z'),
   crossings: [],
   primaryZone: 'Asia/Jerusalem',
+  trip: { startDate: '2026-08-01', endDate: '2026-08-31' },
 };
 
 const users: User[] = [

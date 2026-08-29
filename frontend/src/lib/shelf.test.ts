@@ -28,6 +28,13 @@ import { withoutBidiControls } from './bidi';
 import { DEFAULT_MAYBE_ICON, SHELF_POOL_CAP } from '../constants';
 
 const DAY = '2026-07-20';
+// `reasonText`/`tileReasonText` name a day through `dayLabel` now: a window containing the
+// anchor keeps the trip LIVE, which is the relative phrasing these cases assert.
+const naming = (day: string) => ({
+  trip: { startDate: '2026-07-01', endDate: '2026-07-31' },
+  today: day,
+  anchor: day,
+});
 
 const idea = (id: string, targetDate?: string, consumed = false): MaybeItem =>
   ({ id, tripId: 't', title: id, consumed, targetDate }) as MaybeItem;
@@ -221,13 +228,13 @@ describe('fits-a-day, rendered', () => {
     } as const;
 
     it('the tile says the day and the distance, and NOT the stop', () => {
-      const line = withoutBidiControls(tileReasonText(reason, DAY_1)!);
+      const line = withoutBidiControls(tileReasonText(reason, naming(DAY_1))!);
       expect(line).toContain('300');
       expect(line).not.toContain('מוזיאון אדו');
     });
 
     it('the sheet says all three', () => {
-      const line = withoutBidiControls(reasonText(reason, DAY_1));
+      const line = withoutBidiControls(reasonText(reason, naming(DAY_1)));
       expect(line).toContain('300');
       expect(line).toContain('מוזיאון אדו');
     });
@@ -422,7 +429,7 @@ describe('the reason, in Hebrew', () => {
       consumed: false,
       placeId: 'p-near',
     } as MaybeItem);
-    expect(withoutBidiControls(reasonText(r.reason, DAY))).toBe('300 מ׳ ממסעדת מון');
+    expect(withoutBidiControls(reasonText(r.reason, naming(DAY)))).toBe('300 מ׳ ממסעדת מון');
   });
 
   it('names the day an idea is aimed at', () => {
@@ -433,12 +440,12 @@ describe('the reason, in Hebrew', () => {
       consumed: false,
       targetDate: '2026-07-21',
     } as MaybeItem);
-    expect(reasonText(r.reason, DAY)).toBe('מכוון למחר');
+    expect(reasonText(r.reason, naming(DAY))).toBe('מכוון למחר');
   });
 
   it('says recency when there is nothing else true to say', () => {
     const r = only({ id: 'a', tripId: 't', title: 'a', consumed: false } as MaybeItem);
-    expect(reasonText(r.reason, DAY)).toBe('נוסף לאחרונה');
+    expect(reasonText(r.reason, naming(DAY))).toBe('נוסף לאחרונה');
   });
 
   // The tile is 140px and its one line is what bought its height: the full sentence
@@ -453,7 +460,7 @@ describe('the reason, in Hebrew', () => {
         consumed: false,
         placeId: 'p-near',
       } as MaybeItem);
-      expect(withoutBidiControls(tileReasonText(r.reason, DAY)!)).toBe('300 מ׳');
+      expect(withoutBidiControls(tileReasonText(r.reason, naming(DAY))!)).toBe('300 מ׳');
     });
 
     it('states the day alone, which is what the shipped pool card already said', () => {
@@ -464,12 +471,12 @@ describe('the reason, in Hebrew', () => {
         consumed: false,
         targetDate: '2026-07-21',
       } as MaybeItem);
-      expect(tileReasonText(r.reason, DAY)).toBe('מחר');
+      expect(tileReasonText(r.reason, naming(DAY))).toBe('מחר');
     });
 
     it('spends no line on recency — on a strip that is chrome, not a fact', () => {
       const r = only({ id: 'a', tripId: 't', title: 'a', consumed: false } as MaybeItem);
-      expect(tileReasonText(r.reason, DAY)).toBeUndefined();
+      expect(tileReasonText(r.reason, naming(DAY))).toBeUndefined();
     });
   });
 

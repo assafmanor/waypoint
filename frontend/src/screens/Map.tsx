@@ -139,7 +139,7 @@ import { countVisible, revealRows, visibleItems, type Revealed } from '../lib/fi
 import { daySelectTarget, useBackLayer, withBookingFormReturn } from '../state/nav-state';
 import { useNoteHostWayIn } from '../state/note-host-nav';
 import { useNavigate } from 'react-router-dom';
-import { dayWindowMs, formatTime, relativeDayLabel } from '../lib/time';
+import { dayLabel, dayWindowMs, formatTime } from '../lib/time';
 import { eventEdgeTransition } from '../lib/transitions';
 import { connectionStopKey, connectionStops } from '../lib/day-joins';
 import { bookingWhen } from '../lib/booking-journey';
@@ -2596,7 +2596,8 @@ export function MapView() {
     // Which day only matters when the list spans several: day-scoped, the strip and
     // the scope hint already name it, so `היום ·` on every row would be pure noise.
     // A surfaced ghost row is the exception — naming its day is the whole point.
-    const day = listSpansTrip || opts.forceDay ? relativeDayLabel(usageDay.date, today) : undefined;
+    const day =
+      listSpansTrip || opts.forceDay ? dayLabel(usageDay.date, { trip, today }) : undefined;
     const event = usageDay.eventId ? eventById.get(usageDay.eventId) : undefined;
     // No event owns this day, so the day came from an idea's pencilled-in target
     // (ADR-0116 §1). It's named, not claimed: amber is time & commitment (ADR-0028)
@@ -2687,8 +2688,8 @@ export function MapView() {
     // already names it and `היום ·` on every entry is noise. A reference with no day
     // at all says so in either scope: inside a scoped block, silence would read as
     // "on this day".
-    const dayLabel = (date: string | undefined): string | undefined =>
-      date == null ? t.map.noDay : onDate != null ? undefined : relativeDayLabel(date, today);
+    const refDayLabel = (date: string | undefined): string | undefined =>
+      date == null ? t.map.noDay : onDate != null ? undefined : dayLabel(date, { trip, today });
 
     const entries = placeRefs(usage.placeId, { events, bookings, maybeItems }, { onDate }).map(
       (ref): Omit<RefEntry, 'rank'> => {
@@ -2704,7 +2705,7 @@ export function MapView() {
             key: ref.key,
             kind: t.map.refs.idea,
             label: idea?.title || t.map.shelfTag,
-            day: dayLabel(ref.date),
+            day: refDayLabel(ref.date),
             onOpen: () => goToDay(ref.date ?? today),
           };
         }
@@ -2731,7 +2732,7 @@ export function MapView() {
           // second opinion about which entity names this reference.
           kind: booking ? t.map.refs.booking : t.map.refs.event,
           label: [title, edgeWord].filter(Boolean).join(` ${DOT_SEPARATOR} `),
-          day: dayLabel(ref.date),
+          day: refDayLabel(ref.date),
           time: ref.at != null && zone ? formatTime(new Date(ref.at), zone) : undefined,
           at: ref.at,
           // **AND THE EVENT'S OWN CARD IS WHAT IT OPENS** (owner, 2026-08-20: _"going from a

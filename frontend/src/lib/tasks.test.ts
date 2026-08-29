@@ -11,7 +11,7 @@ import {
   taskPreview,
   taskRowMatchesFacet,
   tickedStatus,
-  type TaskClock,
+  type TaskDueClock,
   type TaskRow,
 } from './tasks';
 import type { AutomaticTask } from './automatic-tasks';
@@ -22,7 +22,14 @@ const JLM = 'Asia/Jerusalem';
 const TYO = 'Asia/Tokyo';
 // 2026-08-15 10:00 in Jerusalem = 16:00 in Tokyo.
 const NOW = Date.parse('2026-08-15T07:00:00.000Z');
-const clock: TaskClock = { nowMs: NOW, crossings: [], primaryZone: JLM };
+// The trip window rides on the clock so a printed deadline can name its day (`dayLabel`).
+// It CONTAINS these tests' now, so the deadlines read relative, as they always have.
+const clock: TaskDueClock = {
+  nowMs: NOW,
+  crossings: [],
+  primaryZone: JLM,
+  trip: { startDate: '2026-08-01', endDate: '2026-08-31' },
+};
 
 const task = (id: string, over: Partial<Task> = {}): Task => ({
   id,
@@ -55,7 +62,7 @@ describe('taskBand', () => {
   // The two halves of the band deliberately use different zones: whether a deadline has
   // passed is absolute, while "today" is the day the reader is standing in.
   it('does not call a deadline overdue just because it is tomorrow where it falls due', () => {
-    const tokyo: TaskClock = { ...clock, primaryZone: TYO };
+    const tokyo: TaskDueClock = { ...clock, primaryZone: TYO };
     // 2026-08-16 00:30 Tokyo is 2026-08-15 18:30 Jerusalem — still in the future either way,
     // but a different calendar day depending on whose day you ask about.
     const soon = task('s', { dueAt: '2026-08-15T15:30:00.000Z' });
@@ -197,6 +204,20 @@ describe('taskMatchesFacet', () => {
 });
 
 describe('taskDue', () => {
+  it('a deadline INSIDE a not-yet-started trip is named by its trip day; one outside is not', () => {
+    // The pre-trip reading (ADR-0085's 2026-08-29 amendment) with the fallback that
+    // matters most here: a prep task due before departure is a deadline, not a day of a
+    // trip that hasn't started, so it keeps counting down.
+    const preTrip = {
+      ...clock,
+      trip: { startDate: '2026-08-20', endDate: '2026-08-30' },
+    };
+    expect(taskDue(task('in', { dueAt: '2026-08-22T09:00:00.000Z' }), preTrip)?.day).toBe('יום 3');
+    expect(taskDue(task('out', { dueAt: '2026-08-18T09:00:00.000Z' }), preTrip)?.day).toBe(
+      'עוד 3 ימים',
+    );
+  });
+
   it('says nothing at all for an undated task', () => {
     expect(taskDue(task('u'), clock)).toBeUndefined();
   });
