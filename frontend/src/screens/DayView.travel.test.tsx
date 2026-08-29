@@ -27,6 +27,7 @@ import {
   TRAVEL_BUFFER_SECONDS,
   TRANSIT_LEG_MODE,
   TRAVEL_MODE,
+  WALK_DEFAULT_MAX_SECONDS,
   type Booking,
   type LegTravelMode,
   type Place,
@@ -219,6 +220,18 @@ vi.mock('../state/verbs', () => ({
  *  and tested there. `null` is the ordinary answer (§D4) and it is a case below rather than an
  *  omission. */
 let travelSeconds: number | null = null;
+/**
+ * **The mode these fixtures DERIVE to** (ADR-0206 §AV1), read live off `travelSeconds`.
+ *
+ * The double answers one duration for every mode, and the leg's default is now a function of how
+ * long the WALK takes — so a ⁦40⁩-minute journey is a drive, and the ⁦8⁩-minute one below is a walk.
+ * A function rather than a constant because the specs retune `travelSeconds` per describe, and
+ * naming it here is what keeps a threshold change to one line instead of six expectations.
+ */
+const derivedMode = () =>
+  travelSeconds !== null && travelSeconds > WALK_DEFAULT_MAX_SECONDS
+    ? TRAVEL_MODE.DRIVING
+    : TRAVEL_MODE.WALKING;
 /** **Every ask this screen makes for a route**, recorded rather than eyeballed: `useDayTravel` is
  *  the one seam a request can leave through, and its `stops` are what a request is keyed on. The
  *  day total's exit criterion is that it adds neither (ADR-0206 §V1.9). */
@@ -305,7 +318,7 @@ describe('DayView — the leg mode is declarable (ADR-0206 §AM)', () => {
   /** The default, so the assertions below are differences and not coincidences. */
   it('reads the trip derivation with nothing declared', () => {
     show();
-    expect(screen.getByText(t.travelMode[TRAVEL_MODE.WALKING])).toBeTruthy();
+    expect(screen.getByText(t.travelMode[derivedMode()])).toBeTruthy();
     expect(document.querySelector('.day-trv')!.textContent).toContain(String(WALK_MINUTES));
   });
 
@@ -342,11 +355,16 @@ describe('DayView — the leg mode is declarable (ADR-0206 §AM)', () => {
 
   // A declaration is not only about the words — the glyph moves with it, which is what makes the
   // active mode obvious at a glance (§V1's "the control has to make the active mode obvious").
-  it('declared driving, the surface reads the drive', () => {
-    tripOverrides = [declared(TRAVEL_MODE.DRIVING)];
+  //
+  // **It declares CYCLING since §AV1, and the swap is the point rather than a detail.** It
+  // declared `driving`, which this fixture's ⁦40⁩-minute journey now DERIVES to on its own — so the
+  // spec would have passed without an override at all, asserting nothing. A declaration is only
+  // testable against a mode the derivation would not have picked.
+  it('declared cycling, the surface reads the ride', () => {
+    tripOverrides = [declared(TRAVEL_MODE.CYCLING)];
     show();
-    expect(screen.getByText(t.travelMode[TRAVEL_MODE.DRIVING])).toBeTruthy();
-    expect(screen.queryByText(t.travelMode[TRAVEL_MODE.WALKING])).toBeNull();
+    expect(screen.getByText(t.travelMode[TRAVEL_MODE.CYCLING])).toBeTruthy();
+    expect(screen.queryByText(t.travelMode[derivedMode()])).toBeNull();
   });
 
   it('opens the mode row from the block and writes on the leg’s own pair', () => {
@@ -367,7 +385,7 @@ describe('DayView — the leg mode is declarable (ADR-0206 §AM)', () => {
     tripOverrides = [declared(TRANSIT_LEG_MODE)];
     show();
     fireEvent.click(document.querySelector('button.day-trv-face')!);
-    fireEvent.click(screen.getByRole('button', { name: t.travelMode[TRAVEL_MODE.WALKING] }));
+    fireEvent.click(screen.getByRole('button', { name: t.travelMode[derivedMode()] }));
     expect(travelModeVerbs.clearLegMode).toHaveBeenCalledWith(PAIR.fromPlaceId, PAIR.toPlaceId);
     expect(travelModeVerbs.setLegMode).not.toHaveBeenCalled();
   });
@@ -421,7 +439,7 @@ describe('DayView — a hole states what is free AFTER the journey (ADR-0206 §V
   // §V1.3 — the day reads `place · journey · place`, which is what makes §V1.1 legible.
   it('names the journey between the two rows: the mode, the hedged duration and the leave-by', () => {
     show();
-    expect(screen.getByText(t.travelMode[TRAVEL_MODE.WALKING])).toBeTruthy();
+    expect(screen.getByText(t.travelMode[derivedMode()])).toBeTruthy();
     // The hedge is `approxDuration`'s and it carries bidi controls, so the assertion is on the
     // block's own text rather than on a bare literal.
     const block = document.querySelector('.day-trv');
@@ -564,7 +582,7 @@ describe('DayView — the four arms of a journey (ADR-0206 §V1.3/§V1.4)', () =
     // The block is still there and still measures the hole: §V1.1's correction is a fact about the
     // plan, not a claim about the traveller, so a denial does not take it away.
     expect(block()).toBeTruthy();
-    expect(block()!.textContent).toContain(t.travelMode[TRAVEL_MODE.WALKING]);
+    expect(block()!.textContent).toContain(t.travelMode[derivedMode()]);
     // …and the advice is gone: no leave-by, and above all no late mark derived from a walk out of
     // a place nobody went to.
     expect(document.querySelector('.day-trv.miss')).toBeNull();
@@ -676,7 +694,7 @@ describe('DayView — the walk out of the bed', () => {
   it('states the journey and its leave-by, and claims no free time before it', () => {
     show();
     const first = document.querySelectorAll('.day-trv')[0]!;
-    expect(first.textContent).toContain(t.travelMode[TRAVEL_MODE.WALKING]);
+    expect(first.textContent).toContain(t.travelMode[derivedMode()]);
     expect(first.textContent).toContain('15');
     expect(first.textContent).toContain('יציאה');
     expect(first.textContent).not.toContain('פנוי');
@@ -794,7 +812,7 @@ describe('DayView — a 45-minute hole with a 40-minute walk is not silent', () 
     show();
     const block = document.querySelector('.day-trv');
     expect(block).toBeTruthy();
-    expect(block!.textContent).toContain(t.travelMode[TRAVEL_MODE.WALKING]);
+    expect(block!.textContent).toContain(t.travelMode[derivedMode()]);
   });
 
   // …and no free-time strip, because the hole earns no join and 5 minutes is not free time

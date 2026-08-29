@@ -22,6 +22,7 @@ import {
   exceedsTravelCeiling,
   isRoutableMode,
   legTravelMode,
+  TRAVEL_MODE,
   type Booking,
   type LatLng,
   type LegTravelMode,
@@ -295,15 +296,27 @@ export function useDayTravelReads(opts: {
   return useMemo(() => {
     const legFor = (from: TripEvent, to: TripEvent) => resolved.byRows.get(legKey(from, to));
     // **The fallback is the LEG's, not the trip's** (ADR-0206 §AU2) — `defaultLegTravelMode` reads
-    // the distance and answers the trip's derived mode only where there is none. Composed here
-    // rather than inside `legTravelMode` because that function is the OVERRIDE lookup and knows no
-    // coordinates; this is the one place that holds both, which is what keeps the day list, the
-    // hero and the Map on one answer.
+    // how long the WALK takes and answers the trip's derived mode only where there is nothing to
+    // measure. Composed here rather than inside `legTravelMode` because that function is the
+    // OVERRIDE lookup and knows neither coordinates nor estimates; this is the one place that
+    // holds all three, which is what keeps the day list, the hero and the Map on one answer.
+    //
+    // **The walking duration is read even on a leg drawn as a drive** (§AV1), and that is not a
+    // waste: `useDayTravel` fetches every mode's duration in one matrix precisely so a mode
+    // question costs no request, and the walk's own length is what decides whether this leg is a
+    // walk. Asking about the leg's CURRENT mode instead would be circular.
     const defaultFor = (leg: ReturnType<typeof legFor>): TravelMode =>
-      defaultLegTravelMode(leg?.from, leg?.to, mode);
+      defaultLegTravelMode(
+        leg?.from,
+        leg?.to,
+        mode,
+        leg ? travel.estimateFor(leg.from, leg.to, TRAVEL_MODE.WALKING)?.durationSeconds : null,
+      );
     const modeOf = (from: TripEvent, to: TripEvent): LegTravelMode => {
       const leg = legFor(from, to);
-      return legTravelMode(overrides, leg?.fromPlaceId, leg?.toPlaceId, defaultFor(leg));
+      // **The default is passed as a THUNK**, so a leg somebody has declared never probes the
+      // walking estimate it would discard (§AV1) — which the board asserts by name for תחב״צ.
+      return legTravelMode(overrides, leg?.fromPlaceId, leg?.toPlaceId, () => defaultFor(leg));
     };
     return {
       mode,

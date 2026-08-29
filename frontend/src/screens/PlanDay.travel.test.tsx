@@ -22,6 +22,7 @@ import {
   EVENT_STATUS,
   TRANSIT_LEG_MODE,
   TRAVEL_MODE,
+  WALK_DEFAULT_MAX_SECONDS,
   type Booking,
   type Place,
   type TravelEstimate,
@@ -181,6 +182,13 @@ vi.mock('../state/verbs', () => ({
 }));
 
 let travelSeconds: number | null = null;
+/** **The mode these fixtures DERIVE to** (ADR-0206 §AV1) — see `DayView.travel.test.tsx`, whose
+ *  copy of this carries the reasoning. The two day surfaces must not differ about a FACT, so the
+ *  helper is the same shape on both. */
+const derivedMode = () =>
+  travelSeconds !== null && travelSeconds > WALK_DEFAULT_MAX_SECONDS
+    ? TRAVEL_MODE.DRIVING
+    : TRAVEL_MODE.WALKING;
 /** Every ask this screen makes for a route — the day total's exit criterion is that it adds none
  *  (ADR-0206 §V1.9), and `useDayTravel` is the one seam a request can leave through. */
 const travelAsks: { tripId: string; stops: readonly { lat: number; lng: number }[] }[] = [];
@@ -312,7 +320,7 @@ describe('PlanDay — the leg mode is declarable here too (ADR-0206 §AM9)', () 
     ];
     show();
     fireEvent.click(document.querySelector('button.day-trv-face')!);
-    fireEvent.click(screen.getByRole('button', { name: t.travelMode[TRAVEL_MODE.WALKING] }));
+    fireEvent.click(screen.getByRole('button', { name: t.travelMode[derivedMode()] }));
     expect(travelModeVerbs.clearLegMode).toHaveBeenCalledWith(PAIR.fromPlaceId, PAIR.toPlaceId);
     expect(travelModeVerbs.setLegMode).not.toHaveBeenCalled();
   });

@@ -34,6 +34,7 @@ import {
 import {
   defaultLegTravelMode,
   derivedTravelMode,
+  TRAVEL_MODE,
   exceedsTravelCeiling,
   isRoutableMode,
   legTravelMode,
@@ -126,7 +127,7 @@ import {
 import { mapColorScheme, mapPaneAvailable, mapTileUrls } from '../lib/map-config';
 import { useMaybeAuth } from '../state/auth-state';
 import { useMapArchives } from '../lib/useMapArchives';
-import { useDayShapes } from '../lib/travel';
+import { useDayShapes, useDayTravel } from '../lib/travel';
 import type { MapDayLeg } from '../ui/domain/MapPane';
 import { landAtTop } from '../lib/land-at-top';
 import { observeResize } from '../lib/observe-resize';
@@ -1485,14 +1486,25 @@ export function MapView() {
   // **The trip's answer is only the FLOOR under each leg's** since §AU2 — see `legModes` below.
   const travelMode = useMemo(() => derivedTravelMode(bookings), [bookings]);
 
-  /** **Each leg's own mode** (ADR-0206 §AM), in the day's order — the same two derivations the day
-   *  list makes, in the same order, so one leg cannot be a drive in the list and a walk on the
+  /** **The day's DURATIONS, which this screen reads for one reason: the walk's own length is what
+   *  decides whether a leg is a walk** (ADR-0206 §AV1).
+   *
+   *  Not a second source of truth and not a second request in the ordinary case: it is the same
+   *  hook, the same `routeLegKey` and the same Dexie table `useDayShapes` below already reads, and
+   *  a day whose numbers the day surface has fetched answers this from the cache with no network
+   *  at all. What it buys is that the canvas and the list decide a leg's mode from the same fact —
+   *  the crow floor alone would have this screen calling Bjólfur a walk while the day, holding the
+   *  ⁦4:18⁩ estimate, correctly calls it a drive. That is §AM8's divergence with a new cause. */
+  const dayTravel = useDayTravel({ tripId: trip.id, stops: orderedStops });
+
+  /** **Each leg's own mode** (ADR-0206 §AM), in the day's order — the same three derivations the
+   *  day list makes, in the same order, so one leg cannot be a drive in the list and a walk on the
    *  canvas.
    *
    *  **`defaultLegTravelMode` is the half added by §AU2**, and leaving it out here is exactly the
    *  divergence §AM8 already reported once from the other side: the day list would call the ⁦127 km⁩
    *  hop a drive and this canvas would ask for its PEDESTRIAN geometry, which is a different road
-   *  and — past walking's ⁦15 km⁩ ceiling — no road at all. Two call sites, one pair of rules. */
+   *  and — past walking's ⁦15 km⁩ ceiling — no road at all. Two call sites, one set of rules. */
   const legModes = useMemo(
     () =>
       orderedStops
@@ -1502,10 +1514,18 @@ export function MapView() {
             travelModeOverrides,
             orderedPins[i]?.placeId,
             orderedPins[i + 1]?.placeId,
-            defaultLegTravelMode(orderedStops[i], orderedStops[i + 1], travelMode),
+            defaultLegTravelMode(
+              orderedStops[i],
+              orderedStops[i + 1],
+              travelMode,
+              orderedStops[i] && orderedStops[i + 1]
+                ? dayTravel.estimateFor(orderedStops[i]!, orderedStops[i + 1]!, TRAVEL_MODE.WALKING)
+                    ?.durationSeconds
+                : null,
+            ),
           ),
         ),
-    [orderedStops, orderedPins, travelModeOverrides, travelMode],
+    [orderedStops, orderedPins, travelModeOverrides, travelMode, dayTravel],
   );
 
   // **ONE request for the whole day's geometry** (ADR-0206 §Z5 §M3), read back through the same

@@ -3290,3 +3290,93 @@ which is what `refusedOf` exists to say.
 Guarded by a pair, because either half alone is satisfiable the wrong way: one spec asserts an empty
 batch leaves the day re-askable **and** that re-opening it recovers real numbers, the other that a
 day which _did_ learn something is still asked exactly once.
+
+## AV. §AU2 asked the crow, and a mountain is crow-close (2026-08-28)
+
+> _"I noticed that after your change (?), sometimes the map defaults to walking. I think that
+> walking should be defaulted to only when it makes sense, definitely not a four hour walk, max 10
+> minutes probably (or an urban trip but that's probably a whole epic so don't worry about it)."_
+
+Reported off the Iceland trip, one day after §AU2 shipped. The day's first leg — Hafaldan hostel in
+Seyðisfjörður to **Baugur Bjólfs** — read `הליכה · ~4:18 שע׳ · ⁦12 ק״מ⁩`, with a departure counted
+back to **⁦03:06⁩**.
+
+**§AU2's rule was right and its instrument was wrong.** Bjólfur is the mountain standing directly
+above the town: **⁦1.4 km⁩ as the crow flies, ⁦12 km⁩ of switchbacks on foot.** The default asked
+`haversineMeters`, got a number under ⁦2.5 km⁩, and called a four-hour ascent a stroll.
+
+### AV1. The walking TIME decides, and the crow is only the floor under it
+
+**No crow threshold fixes this class.** To be safe against a mountain the number would have to sit
+near ⁦200 m⁩, which would drive everything including the walks people obviously take. Distance was a
+proxy for the question, and the question is time — which the reader is deciding about, and which
+the router already answers.
+
+So `defaultLegTravelMode` takes three inputs, ranked:
+
+1. **`walkSeconds`, where the router has answered.** A walk inside `WALK_DEFAULT_MAX_SECONDS`
+   (**⁦10 minutes⁩**, the owner's own number) is the default; anything longer is not. This is the
+   authority because it is the only input that knows about terrain.
+2. **The crow distance**, where it has not — still warming, offline, or refused by the gate before
+   it was ever asked. `WALK_DEFAULT_MAX_M` drops from ⁦2.5 km⁩ to **⁦700 m⁩**: the same ten minutes
+   at §Z2's measured ⁦4.9 km/h⁩ and §Z7's ⁦1.16⁩ road/crow, **rounded down**.
+3. **The trip's own `derivedTravelMode`**, where the leg has no measurable distance at all (§AM4's
+   inert leg). §Z2's inference keeps exactly this much of its old job.
+
+**The floor errs low on purpose, because the two mistakes are not equally loud.** Guessing
+`driving` for a leg somebody would have walked costs one tap and says nothing false meanwhile.
+Guessing `walking` for a leg nobody would walk is this report: a ⁦4:18⁩ hike printed as the plan,
+with a departure time counted back from it. And where the ratio is unusual — which is the only
+place the floor does any work — it is unusual in the direction that makes the crow **understate**
+the walk, never overstate it.
+
+**§AU2's rule is otherwise untouched:** the distance still outranks the booking in both directions,
+an override still outranks everything, and `TRAVEL_GATE.walking.maxMeters` stays at ⁦15 km⁩ (§Z8: a
+group walks a long way **on purpose**). What changes is only which measure of "long".
+
+**A leg may now change its default once, when the estimate lands** — walking while the matrix is
+warming, driving once the walk turns out to be four hours. That is a guess corrected by evidence
+rather than a value churning, and §AU1's own row says `מחשב מסלול…` while it happens. Holding a
+known-wrong guess to avoid the flicker is the defect this closes.
+
+### AV2. The canvas reads the durations too, or it disagrees by construction
+
+The Map builds its own `legModes` (§AM8's call site). Left on the crow floor alone it would ask for
+Bjólfur's **pedestrian** geometry while the day list, holding the ⁦4:18⁩ estimate, correctly drew a
+drive — §AM8's divergence with a new cause, and the second time counting the call sites is what
+found it.
+
+So `Map.tsx` now reads `useDayTravel` as well: the same hook, the same `routeLegKey`, and the same
+Dexie table `useDayShapes` beside it already reads, so a day whose numbers the day surface has
+fetched answers from cache with no network at all.
+
+### AV3. The default is lazy, and that is observable rather than tidy
+
+`legTravelMode`'s `fallback` now accepts a **thunk**. Since the default reads an estimate,
+computing it for a leg somebody has already declared is work whose answer is discarded — and on a
+declared תחב״צ leg it is visible: §AM5 guarantees nothing about that leg is ever asked of the
+provider, and the board's own spec asserts the estimate is never looked up at all. That spec is
+what caught it.
+
+### AV4. What the suite said, and it is the change stating itself
+
+Thirteen specs failed first, and the interesting ones inverted rather than broke:
+
+- The board's `§AQ2` pair encoded the original report — _"the leg is declared a drive and the board
+  keeps printing the walk"_ — over a ⁦76⁩-minute walk against a ⁦23⁩-minute drive. **The app now
+  derives that drive on its own**, so the derived case asserts the drive and the meaningful
+  override is the walk. A declaration is only testable against a mode the derivation would not have
+  picked, which is also why `DayView`'s _"declared driving, the surface reads the drive"_ became
+  `declared cycling`: it would have passed with no override at all.
+- The day surfaces' specs render ⁦15⁩- and ⁦40⁩-minute journeys, both past the threshold. Their
+  durations are load-bearing for the gap arithmetic and are unchanged; what moved is the mode word,
+  now read through a named `derivedMode()` helper so retuning the threshold is one line rather than
+  six expectations.
+
+### AV5. Still open
+
+- **Urban trips**, which the owner named and set aside: _"or an urban trip but that's probably a
+  whole epic so don't worry about it."_ It is — a city where the honest default is transit needs
+  V2's transit routing before it can mean anything, and guessing `walking` harder is not it.
+- **⁦10 minutes⁩ is a feel call and stays on the backlog** with `TRAVEL_BUFFER_SECONDS` and
+  `ARRIVAL_RADIUS_MAX_M`. The owner's own _"probably"_ is the reason it is a named constant.
