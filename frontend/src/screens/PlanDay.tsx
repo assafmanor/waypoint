@@ -58,6 +58,7 @@ import {
 } from '../state/map-scope-state';
 import { useClock } from '../lib/useClock';
 import {
+  eventDistanceLabel,
   eventDurationLabel,
   eventEdgeZone,
   eventRoute,
@@ -102,6 +103,7 @@ import {
   type GapDefaults,
 } from '../lib/gaps';
 import {
+  dayAirMeters,
   legDepartAfterMs,
   useDayTravelReads,
   useLegModeControl,
@@ -616,7 +618,13 @@ export function PlanDay() {
    *  that this one is NOT Plan's alone: the verdict above is an opinion about a day you have not
    *  lived yet, where a total distance is a fact, and ADR-0159 §1 lets the two surfaces differ
    *  only about the former. Trip mode renders the same component off the same function. */
-  const dayTotal = dayTravelTotal([...journeyByRows.values()], planTravel.unplacedLegs);
+  const dayTotal = dayTravelTotal(
+    [...journeyByRows.values()],
+    planTravel.unplacedLegs,
+    // The air half is a FACT about the day, so it is not Plan's to differ about either
+    // (ADR-0212 §3, and ADR-0159 §1's posture clause read the same way as the line above).
+    dayAirMeters(dayEvents, bookings, places),
+  );
 
   // Reorder acts on soft events only (hard events are pinned anchors, ADR-0011).
   /** **The mode switch, the same one Trip mode offers** (ADR-0206 §AM9). Plan is where §AL10 said
@@ -2407,6 +2415,7 @@ function BuilderNode({
         title={route.title}
         zones={zones}
         duration={eventDurationLabel(e, booking, zones)}
+        distance={eventDistanceLabel(booking, ctx.places)}
         readOnly={ctx.readOnly}
         notes={hostCountForContext(
           ctx.noteCounts,
@@ -2471,6 +2480,7 @@ export function BuilderRow({
   title,
   zones,
   duration,
+  distance,
   readOnly,
   notes,
   documents,
@@ -2500,6 +2510,8 @@ export function BuilderRow({
   zones?: EventZones;
   /** Elapsed-duration label for transport + zone-shifted rows (ADR-0107/0084). */
   duration?: string;
+  /** **How far a carried leg goes** (ADR-0212), formatted — see `EventCard`'s own prop. */
+  distance?: string;
   // A finished trip is a read-only archive (ADR-0040): the row is browsable but
   // carries no edit/reorder/delete affordances.
   readOnly?: boolean;
@@ -2740,9 +2752,13 @@ export function BuilderRow({
                     </sup>
                   )}
               </span>
-              {(duration || zones?.deltaMinutes != null) && (
+              {(duration || distance || zones?.deltaMinutes != null) && (
                 <span className="bld-timemeta">
                   {duration && <span className="when-dur bld-dur">{duration}</span>}
+                  {/* The carried leg's length, the same fact the Trip row states and in the same
+                      order (ADR-0212). ADR-0159 §1 lets the two surfaces differ in posture and
+                      never about a fact. */}
+                  {distance && <span className="bld-dist">{distance}</span>}
                   {zones?.deltaMinutes != null && (
                     <ZoneShiftPill minutes={zones.deltaMinutes} className="bld-tzdelta" />
                   )}

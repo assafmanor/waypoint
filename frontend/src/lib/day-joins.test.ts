@@ -571,6 +571,8 @@ describe('dayJourney — the number is still being computed (§AU1)', () => {
       distanceMeters: null,
       travelSeconds: null,
       partial: false,
+
+      airMeters: null,
     });
     expect(dayFeasibility(journeys).fit).toBe(TRAVEL_FIT.UNKNOWN);
   });
@@ -1034,11 +1036,15 @@ describe('dayTravelTotal — the kilometres cover every leg, the minutes only th
       distanceMeters: null,
       travelSeconds: null,
       partial: false,
+
+      airMeters: null,
     });
     expect(dayTravelTotal([], 0)).toEqual({
       distanceMeters: null,
       travelSeconds: null,
       partial: false,
+
+      airMeters: null,
     });
   });
 
@@ -1098,6 +1104,8 @@ describe('dayTravelTotal — the kilometres cover every leg, the minutes only th
       distanceMeters: null,
       travelSeconds: null,
       partial: true,
+
+      airMeters: null,
     });
   });
 });

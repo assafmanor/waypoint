@@ -16,6 +16,7 @@
 // (`lib/day-joins.ts`) and `JourneyBlock`'s.
 import { useMemo, useState } from 'react';
 import {
+  carriedLegMeters,
   defaultLegTravelMode,
   derivedTravelMode,
   haversineMeters,
@@ -182,10 +183,60 @@ export interface DayTravelReads {
 
 const NOTHING: DayTravelReads['estimateFor'] = () => null;
 
-const coordOf = (places: readonly Place[], placeId: string | undefined): LatLng | undefined => {
+/** Exported since ADR-0212: a carried leg needs the same place→coordinate resolution a routed
+ *  leg does, and a second copy of `places.find(...)` beside this one is how two surfaces start
+ *  disagreeing about whether a place is placed (root rule 8). */
+export const coordOf = (
+  places: readonly Place[],
+  placeId: string | undefined,
+): LatLng | undefined => {
   const place = placeId ? places.find((p) => p.id === placeId) : undefined;
   return place?.lat != null && place.lng != null ? { lat: place.lat, lng: place.lng } : undefined;
 };
+
+/**
+ * **HOW FAR THIS BOOKING CARRIES YOU** (ADR-0212), in metres, or `null` when it is not a carried
+ * type or either endpoint has no coordinates.
+ *
+ * The rule about WHICH types answer lives in `carriedLegMeters` (`@waypoint/shared`) with the
+ * routing gate it is the counterpart to; this resolves the two places and nothing else, so the
+ * two halves stay where they belong and a backend surface can ask the same question.
+ */
+export function carriedBookingMeters(
+  booking: Pick<Booking, 'type' | 'fromPlaceId' | 'toPlaceId'>,
+  places: readonly Place[],
+): number | null {
+  const from = coordOf(places, booking.fromPlaceId ?? undefined);
+  const to = coordOf(places, booking.toPlaceId ?? undefined);
+  return from && to ? carriedLegMeters(booking.type, from, to) : null;
+}
+
+/**
+ * **HOW FAR THE DAY GOES IN THE AIR** (ADR-0212 §3) — the carried half of the day's total, or
+ * `null` on a day that flies nowhere.
+ *
+ * **Deduped by booking**, because a booking can hold more than one row on a day: ADR-0064's
+ * departure and landing edges are two entries pointing at one flight, and summing per ROW would
+ * report the trip to Keflavík twice. The events are the day's, so a red-eye counts on the day its
+ * row falls on and nowhere else — the same rule every other number on this strip follows.
+ */
+export function dayAirMeters(
+  events: readonly TripEvent[],
+  bookings: readonly Booking[],
+  places: readonly Place[],
+): number | null {
+  const counted = new Set<string>();
+  let metres: number | null = null;
+  for (const event of events) {
+    if (!event.bookingId || counted.has(event.bookingId)) continue;
+    const booking = bookings.find((b) => b.id === event.bookingId);
+    if (!booking) continue;
+    counted.add(booking.id);
+    const leg = carriedBookingMeters(booking, places);
+    if (leg !== null) metres = (metres ?? 0) + leg;
+  }
+  return metres;
+}
 
 /**
  * **Where a row leaves you, and where a row wants you.** Two questions and not one, and the

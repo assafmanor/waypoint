@@ -35,15 +35,42 @@ import { Icon } from '../Icon';
  */
 export function DayTravelTotal({ total }: { total: DayTravelTotalValue }) {
   const distance = total.distanceMeters !== null ? formatDistance(total.distanceMeters) : null;
-  if (!distance) return null;
+  const air = total.airMeters !== null ? formatDistance(total.airMeters) : null;
+  // **A day that only flies still has a total**, which is the reason the guard widened: before
+  // ADR-0212 no distance meant no travel, and now a day whose whole movement is a flight has a
+  // real number and an empty ground half. Absent stays absent — a day with neither reads exactly
+  // as it always did (§D4).
+  if (!distance && !air) return null;
   const duration = total.travelSeconds !== null ? approxTravelTime(total.travelSeconds) : null;
-  const line = duration ? t.travel.dayTotal(distance, duration) : distance;
+  const ground = distance && duration ? t.travel.dayTotal(distance, duration) : distance;
   return (
     <div className="day-total">
-      <span className="day-total-ic" aria-hidden="true">
-        <Icon name="navigate" />
-      </span>
-      <span className="day-total-n">{total.partial ? t.travel.dayTotalFloor(line) : line}</span>
+      {ground && (
+        <>
+          <span className="day-total-ic" aria-hidden="true">
+            <Icon name="navigate" />
+          </span>
+          <span className="day-total-n">
+            {total.partial ? t.travel.dayTotalFloor(ground) : ground}
+          </span>
+        </>
+      )}
+      {/* **THE AIR HALF TAKES `flight`, AND THAT IS THIS COMPONENT'S OWN RULE APPLIED TWICE**
+          (ADR-0212 §3). The docblock above already refuses a mode glyph here because _"a
+          `walking` glyph would be the same false claim the copy just dropped"_ — and a total
+          that is 98% airborne under a navigation arrow is that sentence one row later. So the
+          ground half keeps `navigate`, which is true of everything it counts, and the carried
+          half says what it is. The floor qualifier is the GROUND half's: an unplaced hole is a
+          leg nobody could measure, and a flight's two endpoints are picked places or it has no
+          distance at all. */}
+      {air && (
+        <span className="day-total-air">
+          <span className="day-total-ic" aria-hidden="true">
+            <Icon name="flight" />
+          </span>
+          <span className="day-total-n">{air}</span>
+        </span>
+      )}
     </div>
   );
 }

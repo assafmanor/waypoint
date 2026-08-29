@@ -21,6 +21,7 @@ import {
   type LatLng,
 } from './geo';
 import {
+  carriedLegMeters,
   defaultLegTravelMode,
   derivedTravelMode,
   POLYLINE_PRECISION,
@@ -561,5 +562,52 @@ describe('exceedsTravelCeiling', () => {
   it('is the same ceiling the gate applies', () => {
     expect(admitsTravelMode('walking', TOKYO, FAR, [[TOKYO, FAR]])).toBe(false);
     expect(admitsTravelMode('driving', TOKYO, FAR, [[TOKYO, FAR]])).toBe(true);
+  });
+});
+
+// ── carriedLegMeters — the gate's counterpart (ADR-0212) ─────────────────────────────────────
+//
+// The gate answers `[]` for these pairs on purpose; this is what such a pair gets instead. The
+// specs are about the RULE (which types, and the floor), never about the arithmetic —
+// `haversineMeters` has its own tests and asserting a metre count here would pin two things.
+describe('carriedLegMeters — how far a carried leg goes', () => {
+  const TLV = { lat: 32.0114, lng: 34.8867 };
+  const VIE = { lat: 48.1103, lng: 16.5697 };
+
+  it('answers for every type whose span is spent in motion', () => {
+    for (const type of ['flight', 'train', 'transit'] as const) {
+      expect(carriedLegMeters(type, TLV, VIE)).toBeGreaterThan(0);
+    }
+  });
+
+  // **The car hire is the whole reason this asks `spendsSpanInMotion` and not `carriesRoute`.**
+  // A hire carries a route and would report the distance between two counters as though somebody
+  // had been flown across it — and its span is mostly a parked car.
+  it('answers null for a hire, which carries a route and does not carry YOU', () => {
+    expect(carriedLegMeters('car', TLV, VIE)).toBeNull();
+  });
+
+  it('answers null for a type with no route at all', () => {
+    expect(carriedLegMeters('hotel', TLV, VIE)).toBeNull();
+  });
+
+  // Two endpoints resolving to one place is the same absence `ROUTE_MIN_CROW_M` names for a
+  // routed pair, and reads the same way rather than as `0 ק״מ` (ADR-0206 §D4).
+  it('answers null rather than zero for two endpoints at one place', () => {
+    expect(carriedLegMeters('flight', TLV, TLV)).toBeNull();
+  });
+
+  // The floor is the gate's own constant, read here so the two cannot drift apart.
+  it('answers null below the floor the routed pair uses', () => {
+    const almost = { lat: TLV.lat + 0.00005, lng: TLV.lng };
+    expect(haversineMeters(TLV, almost)).toBeLessThan(ROUTE_MIN_CROW_M);
+    expect(carriedLegMeters('flight', TLV, almost)).toBeNull();
+  });
+
+  // It is a great circle and NOT the gate's judgement: a flight is past every ceiling in
+  // `TRAVEL_GATE`, which is exactly why it needs an answer of its own.
+  it('answers for a pair no travel mode would admit', () => {
+    expect(admittedTravelModes(TLV, VIE, [[TLV, VIE]])).toEqual([]);
+    expect(carriedLegMeters('flight', TLV, VIE)).toBeGreaterThan(2_000_000);
   });
 });

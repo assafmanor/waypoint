@@ -167,8 +167,21 @@ button.day-gap:hover .day-gap-lbl {
    nothing. On the block it spans every row the leg owns. The offset is the badge
    column's centre, stated once: the face's ⁦12px⁩ inline padding plus half of
    `.day-trv-ic`'s ⁦38px⁩. */
-.day-trv {
-  --trv-track: calc(12px + 19px);
+.day-trv,
+.day-thread {
+  /* **THE CARD'S COLUMN, NOT THIS ROW'S OWN** (ADR-0212 §2), and it moved because a LINE finally
+     had to cross both. The event card's badge centre is its `1px` border plus `15px` of face
+     padding plus half of a `40px` badge — ⁦36px⁩ — and this block sat at ⁦31px⁩. Measured, not read:
+     the stylesheets alone say ⁦4px⁩ and the rendered difference is ⁦5px⁩, because the border is
+     easy to forget and a ruler is not.
+
+     ⁦5px⁩ was invisible while these were two badges sitting still, which is exactly why
+     `.day-trv-ic`'s claim that the day has ONE leading edge for icons read as true for a year. A
+     track that runs from a card into a leg and out again is the first thing that could tell, and
+     what it drew was two parallel lines. The face's padding and the mark's box below take the
+     card's numbers so the mark stays ON the track; moving the card instead would move every
+     event badge in the app. */
+  --trv-track: calc(16px + 20px);
 }
 /* It crosses the ⁦10px⁩ gutter this block already owns, so it reaches the card above
    and the card below — the whole difference from ADR-0159 §3's rail, which kept the
@@ -181,6 +194,41 @@ button.day-gap:hover .day-gap-lbl {
   inline-size: 0;
   border-inline-start: 2px dashed color-mix(in srgb, var(--amber) 60%, transparent);
 }
+
+/* ── THE THREAD THROUGH A CARRIED LEG (ADR-0212 §1) ─────────────────────────
+   A flight is a movement AND the day's strongest commitment, so it is the one row that is both
+   of ADR-0210's families at once. It keeps the box — §1 there reserved that for commitments on
+   purpose — and gains the line: a bead on a string.
+
+   **The track is SOLID, and that distinction is spent rather than minted.** `DayConnector` wrote
+   it down before any of this existed — dashed because a straight segment is not the route you
+   will walk, _"which also leaves solid + amber unspent for a real Routes polyline later"_ — and
+   ADR-0206 §D1 spent it on the routed map line. So: dashed is a line we guessed, solid is a line
+   somebody can stand behind. A booked flight is the second.
+
+   A wrapper and not a rule on the card, because `.wp-event` and `.journey` both carry
+   `overflow: hidden` and this track has to overshoot the gutter at both ends the way
+   `.day-trv::before` does — clipped, it stops at the card's edge and connects nothing. */
+.day-thread {
+  position: relative;
+}
+.day-thread::before {
+  content: '';
+  position: absolute;
+  inset-block: -10px;
+  inset-inline-start: calc(var(--trv-track) - 1px);
+  inline-size: 0;
+  border-inline-start: 2px solid color-mix(in srgb, var(--amber) 60%, transparent);
+}
+/* **BOTH children, and the second is the defect the mockup nearly shipped** (ADR-0212 §6). The
+   rule named `.wp-event` alone, which is true while a run is one card and false the moment two
+   legs group inside `.journey` — the selector stops matching, and the track paints OVER the
+   cards instead of behind them. Same class as the specificity tie in ADR-0210's build log. */
+.day-thread > .wp-event,
+.day-thread > .journey {
+  position: relative;
+  z-index: 1;
+}
 /* The face is the button, not the block — because the `בדרך` control is a button too and one
    inside the other is invalid. Same reason the acts row is a sibling rather than a child of the
    face. Everything a button brings with it comes back off, exactly as on `button.day-gap`: what
@@ -191,8 +239,11 @@ button.day-gap:hover .day-gap-lbl {
   gap: 11px;
   /* ⁦3px⁩ on every arm — a line needs no inset, and the block measures ⁦58px⁩ → ⁦40px⁩
      against the ⁦70px⁩ event card it sits between. That gap was an inverted hierarchy
-     nobody had named: the connector was nearly as tall as the thing connected. */
-  padding: 3px 12px;
+     nobody had named: the connector was nearly as tall as the thing connected.
+
+     The INLINE ⁦12px⁩ became ⁦16px⁩ with ADR-0212 §2 — see `--trv-track` above; the mark has to
+     land on the line, so the column moves as one thing rather than the rule moving alone. */
+  padding: 3px 16px;
   width: 100%;
   text-align: start;
   font: inherit;
@@ -218,7 +269,9 @@ button.day-trv-face:focus-visible {
   flex: 0 0 auto;
   /* The composited mark hangs off this tile's corner (ADR-0206 §AK2/§AL4). */
   position: relative;
-  width: 38px;
+  /* ⁦38px⁩ → ⁦40px⁩ (ADR-0212 §2): the badge's own box, so the leg's mark and the card's badge are
+     one column rather than two that nearly agree. */
+  width: 40px;
   align-self: stretch;
   min-height: 32px;
   display: grid;

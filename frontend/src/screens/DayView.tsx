@@ -18,6 +18,7 @@ import {
   type Booking,
   type MaybeItem,
   type Place,
+  spendsSpanInMotion,
   type TripEvent,
   typicalMinutesFor,
 } from '@waypoint/shared';
@@ -38,6 +39,7 @@ import {
   authoringZone,
   ideaShowOnMap,
   eventDirectionsUrl,
+  eventDistanceLabel,
   eventDurationLabel,
   eventEdgeZone,
   eventRoute,
@@ -112,6 +114,7 @@ import {
   mergeDayEntries,
   placeDayEntries,
   staysOnDate,
+  type DayEntry,
   type TransitionEntry,
 } from '../lib/day-entries';
 import {
@@ -126,6 +129,7 @@ import {
   type DayJourney,
 } from '../lib/day-joins';
 import {
+  dayAirMeters,
   legDepartAfterMs,
   useDayTravelReads,
   useLegModeControl,
@@ -859,13 +863,38 @@ export function DayView() {
   const journeyFor = (from: TripEvent | undefined, to: TripEvent) =>
     (from && journeys.get(`${from.id}>${to.id}`)) ?? null;
 
+  /** **Is this row a leg you are carried on?** (ADR-0212 §1) — the one question the thread is
+   *  drawn off, asked through `spendsSpanInMotion` so a hire is excluded for the reason that
+   *  predicate already exists to state. */
+  const carriedRow = (entry: DayEntry): boolean => {
+    if (entry.kind !== 'event') return false;
+    const event = groupStartEvent(entry.group);
+    const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
+    return !!booking && spendsSpanInMotion(booking.type);
+  };
+
+  /** **How far the day goes in the AIR** (ADR-0212 §3) — computed off the day's own events rather
+   *  than rolled up from `journeys`, because a flight is not a hole between two rows: it IS a
+   *  row, and nothing in the journey list has ever known about one. Kept apart from the ground
+   *  total for the reason `DayTravelTotal.airMeters` measures.
+   *
+   *  `dayEvents` and not `merged`, so a leg counts on the day it DEPARTS and on no other. The
+   *  merged list also carries ADR-0064's transition rows, and a red-eye owns one on each side of
+   *  midnight — reading those would count Keflavík twice across two days, each of them looking
+   *  perfectly reasonable on its own. `staysToday` is out of `dayEvents` already, and a stay is
+   *  not carried anyway. */
+  const airMeters = useMemo(
+    () => dayAirMeters(dayEvents, bookings, places),
+    [dayEvents, bookings, places],
+  );
+
   /** **The day's total, off the journeys the rows above drew** (ADR-0206 §V1.9) — a roll-up
    *  rather than a second pass over `dayLegs`, so the header cannot claim kilometres for a hole
    *  the list shows no block for. `dayTravelTotal`'s docblock owns the asymmetry between the two
    *  halves; Plan mode reads the same function over its own map. */
   const dayTotal = useMemo(
-    () => dayTravelTotal([...journeys.values()], travelReads.unplacedLegs),
-    [journeys, travelReads.unplacedLegs],
+    () => dayTravelTotal([...journeys.values()], travelReads.unplacedLegs, airMeters),
+    [journeys, travelReads.unplacedLegs, airMeters],
   );
 
   /** The live hole's one control, and the arm decides what it means: `בדרך` answers the mark,
@@ -1178,6 +1207,11 @@ export function DayView() {
             for containment, quiet clusters for partial overlap. The now-line is
             interleaved at the top level; untimed events have no span to place, so
             they stay plain leaf rows at the end. */}
+          {/* **Which rows ride the thread** (ADR-0212 §1) — `spendsSpanInMotion` and not
+            `carriesRoute`, because a car hire carries a route and is the one transport you
+            drive yourself: threading it would draw a line through a counter you walked to.
+            That predicate already separates the two for ADR-0061's bed-shaped gap, so a
+            fourth carried mode joins by being one. */}
           {blocks.map((block) => {
             const rows = block.entries.map(({ entry, index, join, from }) => (
               <Fragment
@@ -1224,7 +1258,18 @@ export function DayView() {
                   <NowLine ref={nowLineRef} now={now} tz={nowZone} />
                 )}
                 {entry.kind === 'event' ? (
-                  <GroupNode group={entry.group} depth={0} ctx={dayCtx} />
+                  // **A CARRIED LEG SITS ON THE DAY'S THREAD** (ADR-0212 §1). The card is
+                  // untouched — ADR-0210 §1 reserved the box for commitments and a flight is the
+                  // strongest one a day holds — and the wrapper adds only the line it sits on.
+                  // Skipped when the block is a journey run: the thread then belongs to the whole
+                  // run (below), and a wrapper per leg would draw one line per card.
+                  !block.journey && carriedRow(entry) ? (
+                    <div className="day-thread">
+                      <GroupNode group={entry.group} depth={0} ctx={dayCtx} />
+                    </div>
+                  ) : (
+                    <GroupNode group={entry.group} depth={0} ctx={dayCtx} />
+                  )
                 ) : (
                   <TransitionRow
                     entry={entry}
@@ -1258,10 +1303,12 @@ export function DayView() {
               </Fragment>
             ));
             // A journey's legs live INSIDE one block, so the band between them belongs to
-            // an object rather than floating between two cards (ADR-0159 §3).
+            // an object rather than floating between two cards (ADR-0159 §3) — and the thread
+            // wraps the whole RUN rather than each leg (ADR-0212 §1/§5), which is also the
+            // honest drawing: one journey, two legs, one line.
             return block.journey ? (
-              <div className="journey" key={blockKey(block)}>
-                {rows}
+              <div className="day-thread" key={blockKey(block)}>
+                <div className="journey">{rows}</div>
               </div>
             ) : (
               <Fragment key={blockKey(block)}>{rows}</Fragment>
@@ -1739,6 +1786,7 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       tz={ctx.tz}
       zones={zones}
       duration={eventDurationLabel(e, booking, zones)}
+      distance={eventDistanceLabel(booking, ctx.places)}
       conflict={
         conflicts.length > 0
           ? { title: conflicts[0].title, startsAt: conflicts[0].startsAt! }

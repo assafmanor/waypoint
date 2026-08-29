@@ -1145,3 +1145,117 @@ describe('DayView — a leg that does not fit can still be answered (ADR-0206 §
     expect(document.querySelector('.day-trv.miss')).toBeTruthy();
   });
 });
+
+// ── A CARRIED LEG IS A LINE THAT IS ALSO A COMMITMENT (ADR-0212) ──────────────────────────────
+//
+// What is only observable HERE is that the screen connects the derivations to the rows: that the
+// thread wraps the row a flight renders as and not the row a hire renders as, that the card
+// states a distance nobody hedged, and that the day's two totals stay apart. The arithmetic is
+// `carriedLegMeters`' own spec in `@waypoint/shared`, and the component's contract is
+// `DayTravelTotal.test.tsx`; neither can see the wiring.
+//
+// The GEOMETRY is not asserted (jsdom loads no CSS) — the alignment measurements are in the PR.
+describe('DayView — a carried leg rides the day thread (ADR-0212)', () => {
+  const TLV = { lat: 32.0114, lng: 34.8867 };
+  const KEF = { lat: 63.985, lng: -22.6056 };
+  const airport = (id: string, name: string, at: { lat: number; lng: number }): Place => ({
+    id,
+    tripId: 't1',
+    name,
+    lat: at.lat,
+    lng: at.lng,
+    createdAt: `${DAY}T00:00:00Z`,
+    updatedAt: `${DAY}T00:00:00Z`,
+    updatedBy: 'u1',
+  });
+
+  const flightEvent = ev('flight', {
+    title: 'נתב״ג ← קפלאוויק',
+    kind: EVENT_KIND.HARD,
+    bookingId: 'b-flight',
+    startsAt: `${DAY}T06:00:00Z`,
+    endsAt: `${DAY}T10:20:00Z`,
+  });
+
+  const booking = (type: Booking['type']): Booking =>
+    ({
+      id: 'b-flight',
+      tripId: 't1',
+      type,
+      title: 'נתב״ג ← קפלאוויק',
+      fromPlaceId: 'p-tlv',
+      toPlaceId: 'p-kef',
+      createdAt: `${DAY}T00:00:00Z`,
+      updatedAt: `${DAY}T00:00:00Z`,
+      updatedBy: 'u1',
+    }) as Booking;
+
+  const legMetres = haversineMeters(TLV, KEF);
+
+  const setUp = (type: Booking['type']) => {
+    tripPlaces = [...places, airport('p-tlv', 'נתב״ג', TLV), airport('p-kef', 'קפלאוויק', KEF)];
+    tripEvents = [flightEvent, lunch, theatre];
+    tripBookings.length = 0;
+    tripBookings.push(booking(type));
+  };
+
+  afterEach(() => {
+    tripPlaces = places;
+    tripEvents = [];
+    tripBookings.length = 0;
+  });
+
+  it('wraps the flight row in the thread', () => {
+    setUp('flight');
+    const { container } = show();
+    const thread = container.querySelector('.day-thread');
+    expect(thread).toBeTruthy();
+    // The CARD is inside it and keeps its box — ADR-0210 §1 reserved that for commitments, and
+    // this is the strongest one the day holds. A thread that replaced the card would pass a
+    // "the thread exists" assertion just as happily.
+    expect(thread!.querySelector('.wp-event')).toBeTruthy();
+  });
+
+  // **The hire is why the predicate is `spendsSpanInMotion` and not `carriesRoute`.** It has two
+  // endpoints and a route title, so every route-shaped test passes for it — and its span is a
+  // parked car, so threading it would draw a line through a counter you walked to.
+  it('does NOT thread a car hire, which carries a route and does not carry you', () => {
+    setUp('car');
+    const { container } = show();
+    expect(container.querySelector('.day-thread')).toBeNull();
+  });
+
+  // §Context 4: the duration beside it is authored and so is this, so neither is hedged. An
+  // asserted absence, because a `~` here would render a perfectly plausible-looking row.
+  it('states the distance on the card, with no hedge on it', () => {
+    setUp('flight');
+    const { container } = show();
+    const distance = container.querySelector('.wp-event-dist');
+    expect(distance).toBeTruthy();
+    expect(withoutBidiControls(distance!.textContent!)).toBe(
+      withoutBidiControls(formatDistance(legMetres)),
+    );
+    expect(distance!.textContent).not.toContain('~');
+  });
+
+  it('gives a hire no distance either', () => {
+    setUp('car');
+    const { container } = show();
+    expect(container.querySelector('.wp-event-dist')).toBeNull();
+  });
+
+  // §3 — the separation is the claim, so the spec is what the two numbers do to each other.
+  it('keeps the air half out of the ground half of the day total', () => {
+    setUp('flight');
+    travelSeconds = WALK_MINUTES * 60;
+    const { container } = show();
+    const total = container.querySelector('.day-total')!.textContent ?? '';
+    expect(withoutBidiControls(total)).toContain(withoutBidiControls(formatDistance(legMetres)));
+    // The ground half is the walk the double reports (2400 m), and the combined number — the
+    // defect this rule exists to prevent — must appear nowhere.
+    expect(withoutBidiControls(total)).not.toContain(
+      withoutBidiControls(formatDistance(legMetres + 2400)),
+    );
+    travelSeconds = null;
+  });
+});

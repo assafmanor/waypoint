@@ -503,6 +503,17 @@ body.wp-dragging
   color: var(--muted);
 }
 
+/* **THE AIR HALF** (ADR-0212 §3) — the same two elements at the same weights, so the two facts
+   read as one line rather than as a fact and a footnote. It cannot shrink: the ground half owns
+   the ellipsis above (the hedged half is what an overflow should take), and a carried distance
+   is four digits of pure number with nothing in it to truncate gracefully. */
+.day-ambient .day-total-air {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 0 0 auto;
+}
+
 /* An unpositioned COMMITMENT sharing the strip (ADR-0171 §10a-i). Same box as the
    ambient backdrop beside it — one hotel reads the same way on every day of itself,
    edges included — with two differences it earns: its title is a button (there is a
@@ -2281,6 +2292,20 @@ body.wp-dragging
    booking row copy it a third time. */
 .bld-dur {
   font-size: 10px;
+}
+/* **How far a carried leg goes** (ADR-0212), at the builder row's tighter density. Same standing
+   as `.wp-event-dist` on the Trip card — `--muted`, no wrap — because it is the same fact, and
+   the separator likewise belongs to the JOIN rather than to the distance. */
+.bld-dist {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.bld-dur + .bld-dist::before {
+  content: '·';
+  margin-inline-end: 5px;
+  opacity: 0.7;
 }
 /* Zone-shift pill on a Plan-builder row (ADR-0107): matches the day-view pill —
    amber, mono, how far the clock jumps. Only shown when the shift is non-zero. */
