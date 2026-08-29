@@ -402,6 +402,14 @@
   color: #d79494;
 }
 
+/* **A board that ends at its next-row needs its bottom padding back** (ADR-0211 §4). The rail
+   comes off at the stay and on an empty day — `dayProgress` clamps, so at ⁦02:40⁩ it drew a knob
+   at ⁦0%⁩ labelled `עכשיו` — and `.wp-board-progress`'s own `margin-top` was the only thing
+   holding the next row off the card's edge. The one declaration this feature adds. */
+.wp-board:not(.transit) .wp-board-next-row:last-child {
+  padding-block-end: 2px;
+}
+
 .wp-board-progress {
   margin-top: 16px;
   position: relative;

@@ -25,6 +25,7 @@ import { Icon } from '../Icon';
 import { TitleLabel } from '../TitleLabel';
 import { ZoneShiftPill } from '../ZoneShiftPill';
 import { transitionLabel } from '../../lib/transitions';
+import { gapIsLocative, gapWords, type GapRead } from '../../lib/gap-character';
 import { t } from '../../i18n/he';
 import './board.css';
 
@@ -46,6 +47,24 @@ export interface BoardRow {
   until?: string;
   hard?: boolean;
   shift?: ZoneShift;
+}
+
+/** **What the now-slot says when nothing is running** (ADR-0211).
+ *
+ *  The board no longer decides this: `זמן חופשי` was its final `else`, which is how it came to
+ *  print a claim on a bus, in bed and on a day nobody planned. The screen derives the character
+ *  and the board draws it, exactly as it already does for every other slot.
+ *
+ *  Absent → the board is not in a gap at all (`now`, `in-transit`, `group-split` all supply
+ *  their own words), so nothing here fires. */
+export interface BoardGap {
+  read: GapRead;
+  /** The stay's resolved display name, for `at-the-stay`. */
+  stayName?: string;
+  /** Pre-formatted `HH:MM` the gap runs to, for `open` — the fact the `free` branch never said
+   *  while `GlanceCard` said it two inches lower (ADR-0211 §5). Times arrive formatted; the
+   *  board reads no zone. */
+  until?: string;
 }
 
 export interface BoardTransit {
@@ -113,6 +132,19 @@ export interface BoardNext {
   labelKey?: string;
   /** Instant (pre-formatted) — in the zone that instant happens in. */
   time?: string;
+  /** **Which day that instant falls on, when it is not today** (ADR-0211 §6) — `מחר`,
+   *  `מחרתיים`, `עוד 3 ימים`, from `relativeDayLabel`.
+   *
+   *  `deriveNow` has no date filter (`lib/time.ts:312`), so this slot has ALWAYS crossed
+   *  midnight: at ⁦22:40⁩ it is already showing tomorrow's ⁦07:00⁩ flight, and `07:00` alone
+   *  reads as this morning. That is the ambiguity ADR-0160 §M named for the in-transit
+   *  landing — _"a red-eye landing at 06:00 reads as this morning"_ — and solved with
+   *  `BoardTransit.endDay`. The same fact, the same words, the sibling meta row that never
+   *  got them.
+   *
+   *  **It rides WITH the time it qualifies**, never on the countdown — §M's own rule, for
+   *  §M's own reason: what is ambiguous is `07:00`, not `בעוד 8 שעות`. */
+  day?: string;
   hard?: boolean;
   code?: string;
   /** That zone vs where you are now → the pill beside the time. */
@@ -174,10 +206,21 @@ export interface BoardProps {
    *  gone by. **It is a swap, not a second live mark** (§D6): `.nowline` is still the app's
    *  only one, and re-pointing a countdown is not another. */
   countdown?: BoardCountdown | null;
+  /** **What the now-slot says when nothing is running** (ADR-0211). Absent on every
+   *  variant that supplies its own words. */
+  gap?: BoardGap | null;
   /** Day progress 0..100. */
   progress?: number;
   windowStartHour?: string;
   windowEndHour?: string;
+  /** **Whether the day rail still describes the frame you are in** (`gapDrawsDayRail`).
+   *
+   *  Generalised from the `in-transit` gate that was already here for exactly this reason
+   *  (ADR-0059 §2: the flight IS the day's current activity). The night is the same case from
+   *  the other end — `dayProgress` clamps, so at ⁦02:40⁩ the rail drew a knob at ⁦0%⁩ labelled
+   *  `עכשיו`, telling somebody in bed they were standing at ⁦07:00⁩. One boolean, two callers,
+   *  rather than a second bespoke condition beside the first. */
+  showRail?: boolean;
 
   /** Press the whole board to lift it (ADR-0160 §1). Present → the board renders
    *  as a `<button>` and takes the large press step; absent → a plain `<div>`, as
@@ -221,6 +264,37 @@ export interface BoardProps {
  * the one-off rather than add a second one beside it, so the copy is gone and there is one
  * of each.
  */
+/**
+ * **The now-slot in a gap**, rendered once and read at both elevations (ADR-0211 §2).
+ *
+ * Exported for `HeroLift`, which draws the same two lines one elevation up — the same reason
+ * `DayRail` and `BoardCountdown` are exported from here. ADR-0160 §S had to repair this exact
+ * drift once already, when `free` was `Board`'s `else` and an empty array in the hero, so the
+ * words vanished on the way up; a second copy of these lines is how that comes back.
+ *
+ * The markup is the board's own `.wp-board-now-label` / `.wp-board-now-title` / `.wp-board-now-meta`
+ * trio, unchanged. What is new is that the `meta` line now fires in a gap at all: the `free`
+ * branch never rendered one, so the board left a slot empty for a fact `GlanceCard` was carrying
+ * two inches lower (§5).
+ */
+export function BoardGapSlot({ gap }: { gap: BoardGap }) {
+  const { label, title } = gapWords(gap.read, gap.stayName);
+  const loc = gapIsLocative(gap.read.kind);
+  return (
+    <>
+      <div className={loc ? 'wp-board-now-label loc' : 'wp-board-now-label'}>{label}</div>
+      <div className="wp-board-now-title" dir="auto">
+        {title}
+      </div>
+      {gap.until && (
+        <div className="wp-board-now-meta">
+          {t.board.until} <span dir="auto">{gap.until}</span>
+        </div>
+      )}
+    </>
+  );
+}
+
 export function DayRail({
   progress,
   startHour,
@@ -326,21 +400,36 @@ export function Board(props: BoardProps) {
     alsoNow,
     next,
     countdown,
+    gap,
     progress = 0,
     windowStartHour,
     windowEndHour,
+    // The rail is drawn unless the caller says the day is not the frame you are in. Defaulting
+    // to `true` keeps every existing caller (and every test) rendering exactly what it did.
+    showRail = true,
     onLift,
     onRebuff,
     lifted,
   } = props;
   const inTransit = variant === 'in-transit';
+  /** The gap that speaks in teal — only `on-the-way` (`gapIsLocative`). */
+  const gapLoc = !!gap && gapIsLocative(gap.read.kind);
 
   const body = (
     <>
       <div className="wp-board-top">
-        <div className={'wp-board-live' + (inTransit ? ' loc' : '')}>
+        {/* **A journey somebody asserted wears the same costume as one the plan brackets**
+            (ADR-0211 §3). `in-transit` already swaps this badge to the mode's own teal word;
+            `בדרך` is the same fact from a person rather than from a bracket, so it takes the
+            same swap rather than printing amber `עכשיו` over a teal label two lines down —
+            which is the contradiction, one register over, that this ADR is about. */}
+        <div className={'wp-board-live' + (inTransit || gapLoc ? ' loc' : '')}>
           <span className="blip" />
-          {inTransit && transit ? transit.liveWord : t.common.now}
+          {inTransit && transit
+            ? transit.liveWord
+            : gapLoc
+              ? gapWords(gap!.read, gap!.stayName).title
+              : t.common.now}
         </div>
         <div className="wp-board-clock" dir="auto">
           {clock}
@@ -440,10 +529,7 @@ export function Board(props: BoardProps) {
           )}
         </>
       ) : (
-        <>
-          <div className="wp-board-now-label">{t.board.freeLabel}</div>
-          <div className="wp-board-now-title">{t.board.freeTitle}</div>
-        </>
+        gap && <BoardGapSlot gap={gap} />
       )}
 
       {/* In transit the progress bar replaces the next-row + day rail (the flight
@@ -466,6 +552,9 @@ export function Board(props: BoardProps) {
                     </span>
                   )}
                   {next.time && <span dir="auto">{next.time}</span>}
+                  {/* WITH the time, never on the countdown (ADR-0160 §M / ADR-0211 §6): what
+                      is ambiguous is `07:00`, not `בעוד 8 שעות`. */}
+                  {next.day && <span>{next.day}</span>}
                   {next.shift != null && <ZoneShiftPill minutes={next.shift} className="on-dark" />}
                   {next.hard && (
                     <span className="lockmini">
@@ -493,7 +582,9 @@ export function Board(props: BoardProps) {
             )}
           </div>
 
-          <DayRail progress={progress} startHour={windowStartHour} endHour={windowEndHour} />
+          {showRail && (
+            <DayRail progress={progress} startHour={windowStartHour} endHour={windowEndHour} />
+          )}
         </>
       )}
     </>

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { Board, type BoardCountdown } from './Board';
+import { Board, type BoardCountdown, type BoardGap, type BoardProps } from './Board';
+import { GAP_CHARACTER, NIGHT_BAND } from '../../lib/gap-character';
 import { t } from '../../i18n/he';
 
 describe('Board', () => {
@@ -43,10 +44,96 @@ describe('Board', () => {
     expect(label?.textContent).not.toContain(t.event.hard);
   });
 
-  it('free: the calm empty hero, no now-title event', () => {
-    const { container } = render(<Board variant="free" clock="14:30" next={null} />);
-    expect(screen.getByText(t.board.freeTitle)).toBeTruthy();
-    expect(container.querySelector('.wp-board-now-label')?.textContent).toBe(t.board.freeLabel);
+  // ── THE GAP'S CHARACTER (ADR-0211) ─────────────────────────────────────────
+  // `זמן חופשי` used to be this component's final `else`, so it printed on a bus, in bed and
+  // on a day nobody planned. The board no longer decides: it draws the answer the screen
+  // derived, and each of these is one `read` away from the next.
+  describe('the gap says which gap it is', () => {
+    const gapBoard = (gap: BoardGap, extra?: Partial<BoardProps>) =>
+      render(<Board variant="free" clock="14:30" next={null} gap={gap} {...extra} />).container;
+
+    it('open: a real gap keeps the words it always had, and finally says until when', () => {
+      const c = gapBoard({ read: { kind: GAP_CHARACTER.OPEN }, until: '16:20' });
+      expect(c.querySelector('.wp-board-now-label')?.textContent).toBe(t.board.freeLabel);
+      expect(c.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.freeTitle);
+      // The meta line the `free` branch never rendered, while `GlanceCard` said it two
+      // inches lower (§5).
+      expect(c.querySelector('.wp-board-now-meta')?.textContent).toContain('16:20');
+    });
+
+    it('on the way: the reported contradiction, from the side that was wrong', () => {
+      const c = gapBoard({ read: { kind: GAP_CHARACTER.ON_THE_WAY } });
+      expect(c.querySelector('.wp-board-now-label')?.textContent).toBe(t.board.gap.onTheWay.label);
+      expect(c.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.gap.onTheWay.title);
+      expect(c.textContent).not.toContain(t.board.freeTitle);
+      // The teal register, and it is the shipped one: `in-transit` already paints
+      // `כרגע · בדרך` this way. A journey a person asserted is the same fact as one the
+      // plan brackets, so it must not read amber over a teal line two rows down.
+      expect(c.querySelector('.wp-board-now-label')?.className).toContain('loc');
+      expect(c.querySelector('.wp-board-live')?.className).toContain('loc');
+      expect(c.querySelector('.wp-board-live')?.textContent).toBe(t.board.gap.onTheWay.title);
+    });
+
+    it('at the stay: a PLACE and an hour, never a claim about sleeping', () => {
+      const night = gapBoard({
+        read: { kind: GAP_CHARACTER.AT_THE_STAY, band: NIGHT_BAND.NIGHT },
+        stayName: 'Rooms Hotel Tbilisi',
+      });
+      expect(night.querySelector('.wp-board-now-label')?.textContent).toBe(
+        t.board.gap.atTheStay.night,
+      );
+      expect(night.querySelector('.wp-board-now-title')?.textContent).toBe('Rooms Hotel Tbilisi');
+      // `לילה` is a claim about the CLOCK, and the clock is amber's (root rule 4).
+      expect(night.querySelector('.wp-board-now-label')?.className).not.toContain('loc');
+      expect(night.querySelector('.wp-board-live')?.textContent).toBe(t.common.now);
+
+      const morning = gapBoard({
+        read: { kind: GAP_CHARACTER.AT_THE_STAY, band: NIGHT_BAND.MORNING },
+        stayName: 'Rooms Hotel Tbilisi',
+      });
+      expect(morning.querySelector('.wp-board-now-label')?.textContent).toBe(
+        t.board.gap.atTheStay.morning,
+      );
+    });
+
+    it('a day that is over and a day nobody planned read differently', () => {
+      expect(
+        gapBoard({ read: { kind: GAP_CHARACTER.DAY_DONE } }).querySelector('.wp-board-now-title')
+          ?.textContent,
+      ).toBe(t.board.endOfDay);
+      expect(
+        gapBoard({ read: { kind: GAP_CHARACTER.EMPTY_DAY } }).querySelector('.wp-board-now-title')
+          ?.textContent,
+      ).toBe(t.board.gap.emptyDay.title);
+    });
+
+    // The rail clamps (`dayProgress`), so at 02:40 it drew a knob at 0% under a label
+    // reading `עכשיו` — the board placing somebody in bed at 07:00.
+    it('the rail is drawn only where the day is the frame you are in', () => {
+      const withRail = gapBoard({ read: { kind: GAP_CHARACTER.OPEN } }, { showRail: true });
+      expect(withRail.querySelector('.wp-board-progress')).toBeTruthy();
+      const night = gapBoard(
+        { read: { kind: GAP_CHARACTER.AT_THE_STAY }, stayName: 'X' },
+        { showRail: false },
+      );
+      expect(night.querySelector('.wp-board-progress')).toBeNull();
+    });
+  });
+
+  // `deriveNow` has no date filter, so this slot has always crossed midnight — and said
+  // nothing about it, which is what makes `07:00` at 22:40 read as this morning.
+  it('the next slot says which day it is, beside the time it qualifies', () => {
+    const { container } = render(
+      <Board
+        variant="free"
+        clock="22:40"
+        gap={{ read: { kind: GAP_CHARACTER.DAY_DONE } }}
+        next={{ title: <span>טיסה לבטומי</span>, time: '07:00', day: 'מחר' }}
+      />,
+    );
+    const meta = container.querySelector('.wp-board-next-meta');
+    expect(meta?.textContent).toContain('07:00');
+    expect(meta?.textContent).toContain('מחר');
   });
 
   it('group-split: concurrent soft events read as equals', () => {

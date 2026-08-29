@@ -354,6 +354,26 @@ export type PlaceCorpus = (typeof PLACE_CORPUS)[keyof typeof PLACE_CORPUS];
 /** The waking window the day-progress bar spans, in trip-local hours. */
 export const DAY_WINDOW = { START_HOUR: 7, END_HOUR: 23 } as const;
 
+/**
+ * **Where the night stops being the night**, in trip-local hours — the ONE number this
+ * feature adds, and it is named here rather than inlined because it is a feel call.
+ *
+ * `DAY_WINDOW`'s complement is the eight hours the board's rail refuses to draw, and that
+ * complement is what `gapCharacter` stands the `at-the-stay` read on (ADR-0211 §3). But the
+ * owner asked for two messages, not one — _"at night or early in the morning"_ — and the
+ * complement is a single band: ⁦02:40⁩ and ⁦06:40⁩ are both outside `DAY_WINDOW` and are not the
+ * same situation to be in.
+ *
+ * So the band splits once, here. Everything else in that read is derived from something the
+ * app already stores; this is the exception, and it buys the difference between _you should be
+ * asleep_ and _you are up before the day starts_. **It is a claim about the CLOCK, never about
+ * the person** (ADR-0208) — the word says what hour it is, not what you are doing in it.
+ *
+ * ⁦05:00⁩ because it is early enough that nothing before it reads as morning, and late enough
+ * that a ⁦06:00⁩ airport run does. Wants a device pass on a real early start.
+ */
+export const NIGHT_ENDS_HOUR = 5;
+
 /** How many ranked ideas the pool strip keeps (ADR-0116 session-202 §5). This is
  *  what makes the strip's width independent of N: the mockup measured swipes-to-last
  *  going 2 · 10 · 24 at 5 · 18 · 40 ideas, against a constant 3 once capped. The tail

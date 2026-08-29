@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-29
 **Mockup:** [`mockups/the-gap-is-not-free-time-v1.html`](../../mockups/the-gap-is-not-free-time-v1.html)
-**Status:** brainstormed and drawn. Nothing built, no ADR yet — §1 and §5 have real forks and they're the owner's to call.
+**Status:** brainstormed, drawn, and **built the same day** — [ADR-0211](../decisions/0211-a-gap-has-a-character.md). The owner answered with "let's build this"; §1 shipped as the recommended option ג׳, and the build log at the foot of the ADR records the three places the code deviates from the drawing.
 
 ## What was asked
 
@@ -121,3 +121,17 @@ The test was deleted (nothing is built for it to guard); it's listed here so the
 Both, and ADR-0160 §1 already made the split: one object at two elevations. The collapsed board carries the **point** — it already does, it just needs the day token. The lifted hero carries the **depth** on that point — place, note, file, tasks — and it already resolves all of them for a cross-day next.
 
 §12 isn't strained by this. No third slot, no new way in: `אחר כך` stays one quiet line, it just stops stopping at midnight. Measured at **30px** on the rendered page (§12 priced the third point at 28px; the difference is the loaded webfont, not a design change), and the lifted card goes 369px → 399px with nothing else added.
+
+## Built (same day)
+
+The owner said "let's build this", so ג׳ shipped as recommended. What the build added beyond the drawing, and what it changed:
+
+- **`lib/gap-character.ts`** — the derivation plus `gapWords`, which resolves the phrase from the discriminant so the two components cannot drift (`lib/transitions.ts`' own reason for existing).
+- **`BoardGapSlot`**, exported from `Board` and imported by `HeroLift` — the same path `DayRail` and `BoardCountdown` already take.
+- **`NIGHT_ENDS_HOUR = 5`** in `constants.ts`, the one number this feature adds. Flagged in its own docblock as a feel call wanting a device pass on a real early start.
+- **A bug the spec caught before the code shipped:** the band was one comparison (`hour < NIGHT_ENDS_HOUR`), which reads 23:30 as morning because the night wraps midnight. Morning is the narrow slice from `NIGHT_ENDS_HOUR` to the window opening.
+- **A fixture bug the same suite caught:** the first Home-level tests set the UTC hour to the local one they meant, and the fixture trip is `Europe/Rome` (+2 in August) — so 22:40 landed on the following calendar day and the evening case read as `open`. The derivation was right and the test was in the wrong day.
+
+Three deviations from the drawing, all in the ADR's build log: the live badge stays `עכשיו` except on `on-the-way` (the drawing said the same word twice, 20px apart); the stay is named by its own title, matching `.stay-strip`; and §5's `יום 3 מתוך 12` is not built, because a trip-position read is a separate question.
+
+Green: `pnpm typecheck`, and the full unit suite at 4953 tests across 276 files, with 25 new specs.

@@ -1910,6 +1910,27 @@ export const t = {
     // withdraw it (ADR-0207 §2, ADR-0208 §2).
     lateBy: (unit: string) => `${unit} באיחור`,
     endOfDay: 'סוף היום',
+    /** **WHAT THE NOW-SLOT SAYS WHEN NOTHING IS RUNNING** (ADR-0211), keyed by
+     *  `GapCharacter`. A `Record<…>`, so the compiler flags a missing case when that union
+     *  grows (`frontend/CLAUDE.md`'s per-enum-lookup rule) — a sixth character has to say
+     *  what it prints or the build stops.
+     *
+     *  **`open` reuses `freeLabel`/`freeTitle` above rather than restating them**, because
+     *  the gap that really is a gap is the one case `זמן חופשי` was always right about, and a
+     *  second copy of the phrase is how the board and the lifted hero would start disagreeing
+     *  about it (root rule 8). Same for `day-done`, which reads `endOfDay` — the words the
+     *  `הבא בתור` slot has always used for this.
+     *
+     *  **`at-the-stay` has no title here on purpose.** Its title is the stay's own NAME, which
+     *  is data. What it does carry is the two band words, and they are claims about the HOUR
+     *  rather than about the person (ADR-0208): `ישנים` would say what you are doing, and the
+     *  app has no sensor for that. */
+    gap: {
+      onTheWay: { label: 'כרגע', title: 'בדרך' },
+      atTheStay: { night: 'לילה', morning: 'בוקר' },
+      dayDone: { label: 'היום' },
+      emptyDay: { label: 'היום', title: 'יום פנוי' },
+    },
     // Concurrency on the board (ADR-0041): the "ועוד N עכשיו" expander for extra
     // in-progress events, and the group-split header when several run at once.
     alsoNow: (n: number) => `ועוד ${n} עכשיו`,

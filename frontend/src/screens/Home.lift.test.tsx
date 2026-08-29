@@ -204,6 +204,92 @@ describe('Home — the lift wiring', () => {
     setSimulatedNow(null);
   });
 
+  // ── THE GAP'S CHARACTER, END TO END (ADR-0211) ─────────────────────────────
+  // `lib/gap-character.ts` is tested pure and both components are tested with hand-built
+  // props, so this is the only place that asserts Home actually connects them — and that the
+  // collapsed board and the lifted hero render the ONE answer rather than two.
+  describe('the gap says which gap it is', () => {
+    // **Every clock here is written in UTC and read in `Europe/Rome`** (the fixture trip's
+    // zone, +2 in August). The first draft of these tests set the UTC hour to the local one
+    // it meant and put ⁦22:40⁩ on the following calendar day, which made the evening case read
+    // as `open` — the derivation was right and the fixture was in the wrong day.
+    const NIGHT_DAY = '2026-08-04';
+    /** A stay spanning the night: `dayBookendStays(events, today).woke` finds it because its
+     *  own date is before the clock's day, which is exactly "the bed you woke in". */
+    const stay = () =>
+      ev('stay', {
+        title: 'Rooms Hotel Tbilisi',
+        category: 'lodging',
+        date: DAY,
+        endDate: '2026-08-06',
+        startsAt: `${DAY}T13:00:00Z`,
+        endsAt: '2026-08-06T08:00:00Z',
+      });
+    /** ⁦07:00⁩ Rome on the next calendar day, and it carries a place so the horizon has depth
+     *  to lift onto. */
+    const tomorrowFlight = () =>
+      ev('fl2', {
+        title: 'טיסה לבטומי',
+        date: NIGHT_DAY,
+        placeId: 'p1',
+        startsAt: `${NIGHT_DAY}T05:00:00Z`,
+        endsAt: `${NIGHT_DAY}T06:30:00Z`,
+      });
+    /** ⁦18:00⁩–⁦21:30⁩ Rome — over by the time the evening cases look. */
+    const dinner = () => ev('dinner', { startsAt: `${DAY}T16:00:00Z`, endsAt: `${DAY}T19:30:00Z` });
+    /** ⁦22:40⁩ Rome, still `DAY`. */
+    const EVENING = `${DAY}T20:40:00Z`;
+
+    it('an evening with nothing left says so, and the next slot says it is tomorrow', () => {
+      setSimulatedNow(Date.parse(EVENING));
+      tripEvents = [dinner(), tomorrowFlight()];
+      show();
+      // Not `זמן חופשי`: the day is over, and that is a different thing from a gap in it.
+      expect(document.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.endOfDay);
+      // The lookahead was always here (`deriveNow` has no date filter) and never said which
+      // day it meant — ⁦07:00⁩ at ⁦22:40⁩ reads as this morning.
+      expect(document.querySelector('.wp-board-next-meta')?.textContent).toContain('מחר');
+    });
+
+    it('the small hours name the BED and drop the rail that was pinning a lie', () => {
+      setSimulatedNow(Date.parse(`${NIGHT_DAY}T00:40:00Z`)); // 02:40 Rome
+      tripActiveDate = NIGHT_DAY;
+      tripEvents = [stay(), tomorrowFlight()];
+      show();
+      expect(document.querySelector('.wp-board-now-label')?.textContent).toBe(
+        t.board.gap.atTheStay.night,
+      );
+      expect(document.querySelector('.wp-board-now-title')?.textContent).toBe(
+        'Rooms Hotel Tbilisi',
+      );
+      // `dayProgress` clamps, so the rail would have drawn a knob at ⁦0%⁩ labelled `עכשיו`.
+      expect(document.querySelector('.wp-board-progress')).toBeNull();
+    });
+
+    it('and the same hour before the day opens is the other band', () => {
+      setSimulatedNow(Date.parse(`${NIGHT_DAY}T04:40:00Z`)); // 06:40 Rome
+      tripActiveDate = NIGHT_DAY;
+      tripEvents = [stay(), tomorrowFlight()];
+      show();
+      expect(document.querySelector('.wp-board-now-label')?.textContent).toBe(
+        t.board.gap.atTheStay.morning,
+      );
+    });
+
+    // ADR-0160 §1: one object at two elevations. The lifted card must not word the minute
+    // differently from the board it grew out of.
+    it('the lifted hero carries the same character, not the free words', () => {
+      setSimulatedNow(Date.parse(EVENING));
+      tripEvents = [dinner(), tomorrowFlight()];
+      tripPlaces = [place];
+      show();
+      fireEvent.click(board()!);
+      const hero = document.querySelector('.hero-lifted');
+      expect(hero?.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.endOfDay);
+      expect(hero?.textContent).not.toContain(t.board.freeTitle);
+    });
+  });
+
   it('a board whose whole horizon adds nothing is NOT a button', () => {
     // In progress, but no place, no note, no booking, nothing concurrent, nothing
     // after. The collapsed board already says everything there is, so there is

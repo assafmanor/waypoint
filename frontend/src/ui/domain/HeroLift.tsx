@@ -24,7 +24,7 @@ import { Avatar, type AvatarPerson } from '../primitives/Avatar';
 import { Icon } from '../Icon';
 import { ZoneShiftPill } from '../ZoneShiftPill';
 import { SettleControl, type SettleOutcome } from './SettleControl';
-import type { BoardCountdown } from './Board';
+import { BoardGapSlot, type BoardCountdown, type BoardGap } from './Board';
 import { t } from '../../i18n/he';
 import './hero-lift.css';
 
@@ -222,10 +222,17 @@ export interface HeroLiftProps {
   now: HeroLiftPoint[];
   /** True when `now` has no primary — swaps the label for `עכשיו · במקביל`. */
   split?: boolean;
+  /** **The gap's own words** (ADR-0211), the SAME answer the collapsed board is rendering —
+   *  passed down rather than re-derived, which is what keeps the two elevations from wording
+   *  one minute differently (ADR-0160 §1). */
+  gap?: BoardGap | null;
   next?: HeroLiftPoint;
   /** The `הבא בתור` transition chip (`צ׳ק-אין` / `המראה` …), already resolved. */
   nextLabel?: ReactNode;
   nextTime?: string;
+  /** The day token beside it, when the next point is not today (ADR-0211 §6) — the same
+   *  string the collapsed board's `BoardNext.day` carries, passed rather than re-derived. */
+  nextDay?: string;
   nextCode?: string;
   /** The collapsed board's countdown, unchanged — including ADR-0206 §Z1's swap and its
    *  `missed` arm, because the hero IS that board one elevation up and the two may not
@@ -613,9 +620,11 @@ export function HeroLift(props: HeroLiftProps) {
     liveWord,
     now,
     split,
+    gap,
     next,
     nextLabel,
     nextTime,
+    nextDay,
     nextCode,
     countdown,
     travel,
@@ -663,10 +672,9 @@ export function HeroLift(props: HeroLiftProps) {
                 `זמן חופשי` the board was showing a frame earlier vanished on the way
                 up. Reported from a device. Same words one elevation up, which is what
                 every other state on this card already does. */}
-            {now.length === 0 && (
+            {now.length === 0 && gap && (
               <div className="hero-part">
-                <div className="wp-board-now-label">{t.board.freeLabel}</div>
-                <div className="wp-board-now-title">{t.board.freeTitle}</div>
+                <BoardGapSlot gap={gap} />
               </div>
             )}
             {split && (
@@ -696,6 +704,7 @@ export function HeroLift(props: HeroLiftProps) {
                       <div className="wp-board-next-meta">
                         {nextLabel && <span className="tlabel">{nextLabel}</span>}
                         {nextTime && <span dir="auto">{nextTime}</span>}
+                        {nextDay && <span>{nextDay}</span>}
                         {next.shift != null && (
                           <ZoneShiftPill minutes={next.shift} className="on-dark" />
                         )}

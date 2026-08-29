@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { EVENT_STATUS } from '@waypoint/shared';
 import { DayRail } from './Board';
 import { HeroLift, type HeroLiftPoint, type HeroLiftTask } from './HeroLift';
+import { GAP_CHARACTER } from '../../lib/gap-character';
 import { t } from '../../i18n/he';
 import { wrapNav } from '../../test/nav-harness';
 import { withoutBidiControls } from '../../lib/bidi';
@@ -244,6 +245,7 @@ describe('HeroLift', () => {
   it('says זמן חופשי when nothing is in progress', () => {
     const container = show({
       now: [],
+      gap: { read: { kind: GAP_CHARACTER.OPEN } },
       next: point({ key: 'next', title: <span>מלון סנטרו</span>, place: 'Via Toledo' }),
       nextTime: '16:00',
     });
@@ -251,6 +253,32 @@ describe('HeroLift', () => {
     expect(container.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.freeTitle);
     // …and the horizon it opened onto is still there under it.
     expect(screen.getByText('מלון סנטרו')).toBeTruthy();
+  });
+
+  // ONE answer, rendered at both elevations (ADR-0211 §2). §S had to repair this drift once
+  // already, when `free` was `Board`'s `else` and an empty array here — so the words vanished
+  // on the way up. A second copy of them is how that comes back.
+  it('carries the gap CHARACTER up, not just the free words', () => {
+    const container = show({
+      now: [],
+      gap: { read: { kind: GAP_CHARACTER.ON_THE_WAY } },
+      next: point({ key: 'next', title: <span>BBQ Mirage</span> }),
+    });
+    expect(container.querySelector('.wp-board-now-title')?.textContent).toBe(
+      t.board.gap.onTheWay.title,
+    );
+    expect(container.querySelector('.hero-lifted')?.textContent).not.toContain(t.board.freeTitle);
+  });
+
+  it('and says which day the next point is on', () => {
+    const container = show({
+      now: [],
+      gap: { read: { kind: GAP_CHARACTER.DAY_DONE } },
+      next: point({ key: 'next', title: <span>טיסה לבטומי</span> }),
+      nextTime: '07:00',
+      nextDay: 'מחר',
+    });
+    expect(container.querySelector('.wp-board-next-meta')?.textContent).toContain('מחר');
   });
 
   // The free words belong to the empty case ALONE — a board with something in progress
