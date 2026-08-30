@@ -3099,6 +3099,10 @@ export const t = {
         failed: 'לא הצלחנו להכין את הקובץ. נסו שוב.',
       },
       copied: 'הלינק הועתק',
+      // **Said out loud, because the link changed under whoever already holds it** (owner,
+      // 2026-08-30). The level is not a draft: moving the control moves what the live link
+      // shows, so the sheet confirms it by name rather than leaving the press silent.
+      levelSaved: (level: string) => `הלינק החי מעודכן · ${level}`,
       manage: 'ניהול הלינק',
       rotate: 'החלפת הלינק',
       rotateTitle: 'להחליף את הלינק?',
@@ -3188,6 +3192,12 @@ export const t = {
       },
       /** Names the route strip, which is otherwise an unexplained list of place names. */
       route: 'המסלול',
+      // **A flight has to say when it lands** (owner, 2026-08-30: _"important time ranges, for
+      // example flights must show when they start and when they finish"_). Both ends were in
+      // the projection all along and both renderers printed only the first, so an eleven-hour
+      // leg and a forty-minute one were the same shape of line. The numbers are isolated by
+      // the caller; the en dash is the app's own range mark (`formatTripDates`).
+      timeRange: (from: string, to: string) => `${from}–${to}`,
       appendix: {
         title: 'פרטים נוספים',
         bookingSecrets: 'פרטי הזמנה שנבחרו',

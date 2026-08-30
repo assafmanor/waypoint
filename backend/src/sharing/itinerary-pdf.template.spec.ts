@@ -76,6 +76,16 @@ describe('itineraryPdfHtml', () => {
     );
   });
 
+  // **A flight has to say when it lands** (owner, 2026-08-30). Both ends were in the
+  // projection all along and both renderers printed only the first, so an eleven-hour leg and
+  // a forty-minute one were the same shape of line.
+  it('prints a range where the event carries both ends, and one hour where it does not', () => {
+    expect(full).toContain('09:20\u201314:05');
+    // …and an event with only a start is untouched, not padded into a fake range.
+    expect(full).toContain('15:00');
+    expect(full).not.toContain('15:00\u201315:00');
+  });
+
   // **The words the renderer owns** (ADR-0213's 2026-08-30 amendment). The projection ships
   // `{ kind, …values }`, so a day headline exists only if this file said it.
   it('says the derived day headlines and the booking captions in Hebrew', () => {

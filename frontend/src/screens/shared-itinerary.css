@@ -139,46 +139,6 @@
   font: 500 12px/1.4 var(--font-mono);
 }
 
-.sh-route {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-block-start: 15px;
-  overflow: hidden;
-  color: var(--on-dark-dim);
-  font-size: 10px;
-  white-space: nowrap;
-}
-
-.sh-route-stop {
-  min-width: 0;
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 7px;
-}
-
-.sh-route-stop strong {
-  overflow: hidden;
-  color: var(--on-dark-strong);
-  text-overflow: ellipsis;
-}
-
-.sh-route-dot {
-  width: 6px;
-  height: 6px;
-  flex: 0 0 auto;
-  border: 1px solid var(--teal);
-  border-radius: 50%;
-}
-
-.sh-route-line {
-  height: 1px;
-  min-width: 12px;
-  flex: 1;
-  background: color-mix(in srgb, var(--teal) 55%, transparent);
-}
-
 .sh-story {
   margin: -1px 14px 14px;
   padding: 14px;

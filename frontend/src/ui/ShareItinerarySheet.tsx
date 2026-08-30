@@ -22,7 +22,7 @@ import {
 } from '../lib/api';
 import { inviteLink, publicAppLink } from '../lib/invite-link';
 import { shareFileOrDownload, shareUrlOrCopy } from '../lib/system-share';
-import { CONTROL_ICON } from '../constants';
+import { CONTROL_ICON, SHARE_LEVEL_SAVE_MS } from '../constants';
 import { useToast } from './Toast';
 import { Icon } from './Icon';
 import { TripLinkRow } from './TripLinkRow';
@@ -168,6 +168,59 @@ export function ShareItinerarySheet({
 
   const link = config ? publicAppLink(config.shareUrl) : undefined;
 
+  /**
+   * **A LEVEL IS A SETTING ON A LIVE LINK, NOT A DRAFT** (owner, 2026-08-30: _"No indication
+   * that the live sharing detail level was changed when switching"_ and _"I actually don't
+   * understand how the detail level for the live link changes, every time I open the sharing
+   * menu it's on תקציר"_).
+   *
+   * Both reports are one defect. `upsertTripShare` was reachable only through `ensureShare`,
+   * and `ensureShare` only from the two send buttons — so changing the level, closing the
+   * sheet and reopening it showed the STORED level again, because nothing had been stored.
+   * The change had silently never happened, and the sheet said nothing either way.
+   *
+   * A link that is already live is already showing something to whoever holds it, so the
+   * honest model is that moving the control moves the link. It saves on change, and says so.
+   * Debounced because the file checkboxes are the same draft and a per-tick write would be
+   * one request per tap.
+   *
+   * **Only for a share that already exists.** With no link yet there is nothing live to
+   * change, and minting one from a control the reader was only looking at would be a grant
+   * nobody asked for — the first send still creates it (`ensureShare`).
+   */
+  const draft = useMemo(() => {
+    const everything = level === SHARE_DETAIL_LEVEL.EVERYTHING;
+    return {
+      detailLevel: level,
+      sensitive: everything ? sensitive : NO_SENSITIVE_FIELDS,
+      documentIds: everything ? [...documentIds].sort() : [],
+    };
+  }, [documentIds, level, sensitive]);
+
+  useEffect(() => {
+    if (!isAdmin || !config || loading) return;
+    const stored = {
+      detailLevel: config.detailLevel,
+      sensitive: config.sensitive,
+      documentIds: [...config.documentIds].sort(),
+    };
+    if (JSON.stringify(stored) === JSON.stringify(draft)) return;
+    let live = true;
+    const timer = setTimeout(() => {
+      void upsertTripShare(tripId, draft)
+        .then((next) => {
+          if (!live) return;
+          setConfig(next);
+          setNote(t.share.owner.levelSaved(t.share.owner.levels[next.detailLevel]));
+        })
+        .catch(() => live && setError(t.share.owner.failed));
+    }, SHARE_LEVEL_SAVE_MS);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [config, draft, isAdmin, loading, tripId]);
+
   /** Persist the current draft and hand back the live config. A peer never reaches this —
    *  they have no controls to change, so their outcome presses use what already exists. */
   const ensureShare = useCallback(async (): Promise<TripShareConfig> => {
@@ -175,15 +228,10 @@ export function ShareItinerarySheet({
       if (!config) throw new Error('not shared');
       return config;
     }
-    const everything = level === SHARE_DETAIL_LEVEL.EVERYTHING;
-    const next = await upsertTripShare(tripId, {
-      detailLevel: level,
-      sensitive: everything ? sensitive : NO_SENSITIVE_FIELDS,
-      documentIds: everything ? documentIds : [],
-    });
+    const next = await upsertTripShare(tripId, draft);
     setConfig(next);
     return next;
-  }, [config, documentIds, isAdmin, level, sensitive, tripId]);
+  }, [config, draft, isAdmin, tripId]);
 
   const run = useCallback(
     async (kind: 'link' | 'pdf', action: (config: TripShareConfig) => Promise<void>) => {

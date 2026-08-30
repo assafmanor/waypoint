@@ -149,6 +149,13 @@ export const COUNTDOWN_MONTHS_THRESHOLD = 2;
 /** How far a "delay" verb pushes an event. */
 export const DELAY_STEP_MINUTES = 30;
 
+/** **How long the share sheet waits before writing a changed detail level** (ADR-0213's
+ *  2026-08-30 amendment). The level, the sensitive switches and the per-file checkboxes are
+ *  one draft, and a file list is tapped several times in a row — so this is what makes a
+ *  handful of taps one request instead of one each. Short enough that closing the sheet
+ *  straight after a change still lands the write. */
+export const SHARE_LEVEL_SAVE_MS = 400;
+
 /** Toast auto-dismiss. */
 export const TOAST_DURATION_MS = 3600;
 
@@ -168,7 +175,13 @@ export const DAY_TRAVEL_SETTLE_MAX_MS = 700;
  *  this app is a standalone PWA that is left open for days on a trip — without a
  *  poll, a tab opened before a deploy can run the old build for the rest of the
  *  trip. An hour is well under a day and costs one small conditional GET; the
- *  poll is skipped while offline, so a plane costs nothing. */
+ *  poll is skipped while offline, so a plane costs nothing.
+ *
+ *  **The poll is not the only trigger, and on a phone it is not the main one** (2026-08-30).
+ *  The browser re-checks `sw.js` on navigation and this is a SPA, so it never does — which
+ *  left the hourly tick as the only way a running app learned about a deploy. Coming back to
+ *  a backgrounded PWA now checks immediately (`onResume`), which is both the moment a new
+ *  build is most likely to exist and the moment before the one that can quietly apply it. */
 export const SW_UPDATE_CHECK_MS = 60 * 60 * 1000;
 
 /** The three clocks the automatic build swap runs on (ADR-0185). A waiting build
@@ -187,6 +200,15 @@ export const SW_UPDATE_CHECK_MS = 60 * 60 * 1000;
 export const SW_UPDATE_IDLE_APPLY_MS = 5 * 60 * 1000;
 export const SW_UPDATE_RECHECK_MS = 30 * 1000;
 export const SW_UPDATE_NOTICE_AFTER_MS = 10 * 60 * 1000;
+
+/** **How long a posted SKIP_WAITING may go unanswered before it is posted again**
+ *  (2026-08-30). `takeIt` used to ask once and once only, on the reasoning that a page whose
+ *  swap never lands is still whole and still safe — which is true, and still leaves a
+ *  standalone PWA running a build from before the deploy for the rest of the trip, because
+ *  the "next cold load" that reasoning relies on may never come. A swap that has not landed
+ *  after this is treated as unheard rather than as declined, and the next quiet moment asks
+ *  again. */
+export const SW_UPDATE_ASK_RETRY_MS = 60 * 1000;
 
 /** **The install offer's pressure budget** (ADR-0204 §5) — the "not invasive" half, as
  *  numbers rather than as an intention.
