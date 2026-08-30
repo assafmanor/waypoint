@@ -90,9 +90,13 @@ COPY --from=pmtiles /usr/local/bin/pmtiles /usr/local/bin/pmtiles
 COPY --from=build /out ./
 # Served by the backend when <dist>/../public exists (all-exceptions.filter.ts).
 COPY --from=build /repo/frontend/dist ./public
-# The PDF renderer reads these off disk and inlines them into the document; the frontend
-# source tree is not in the runtime image, so they are copied to the path
-# `itinerary-pdf.template.ts` looks in first.
+# The PDF renderer reads these off disk and inlines them into the document; neither source
+# tree is in the runtime image, so both sets are copied to the path
+# `itinerary-pdf.template.ts` looks in first. The second is the emoji face the APP has no
+# use for and the paper does — an event's icon is an emoji, and this base image has no
+# emoji coverage at all, so without it every icon prints as a rectangle
+# (`backend/assets/fonts/README.md`).
 COPY --from=build /repo/frontend/src/assets/fonts ./pdf-fonts
+COPY --from=build /repo/backend/assets/fonts/noto-emoji.woff2 ./pdf-fonts/
 EXPOSE 3000
 CMD ["node", "dist/main.js"]

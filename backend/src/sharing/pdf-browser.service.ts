@@ -15,7 +15,17 @@ import {
   PDF_RENDER_CONCURRENCY,
   PDF_RENDER_TIMEOUT_MS,
 } from '../common/env';
-import { itineraryPdfHtml } from './itinerary-pdf.template';
+import { itineraryPdfFooterHtml, itineraryPdfHtml } from './itinerary-pdf.template';
+
+/**
+ * **The paper's margins, and they belong here rather than in the template's `@page`.**
+ *
+ * `displayHeaderFooter` renders the running footer INSIDE the bottom margin, so the two
+ * numbers are one decision: the bottom band has to hold the footer and still leave air above
+ * it. Generous rather than tight — a document read on paper is not a screen competing for
+ * density, and the first pass at 12/13/15mm put the last day card against the footer.
+ */
+const PDF_PAGE_MARGIN = { top: '16mm', right: '17mm', bottom: '18mm', left: '17mm' } as const;
 
 const numberEnv = (name: string, fallback: number): number => {
   const parsed = Number(process.env[name]);
@@ -64,19 +74,37 @@ export class PdfBrowserService implements OnModuleDestroy {
       try {
         // Before `setContent`, so the document cannot make a single outbound request.
         await page.route('**/*', (route) => route.abort());
-        await page.setContent(
-          itineraryPdfHtml({
-            projection,
-            publicUrl,
-            qrDataUrl: await QRCode.toDataURL(`https://${publicUrl}`, { margin: 0, width: 176 }),
-            generatedAtLabel: generatedAtLabel(projection.generatedAt),
-          }),
-          { waitUntil: 'load', timeout: this.timeoutMs },
-        );
-        // `preferCSSPageSize` so the template's own `@page { size: A4 }` is authoritative
-        // rather than a second size declared here that could drift from it.
+        const input = {
+          projection,
+          publicUrl,
+          qrDataUrl: await QRCode.toDataURL(`https://${publicUrl}`, { margin: 0, width: 176 }),
+          generatedAtLabel: generatedAtLabel(projection.generatedAt),
+        };
+        await page.setContent(itineraryPdfHtml(input), {
+          waitUntil: 'load',
+          timeout: this.timeoutMs,
+        });
+        // The faces are `font-display: block` data URLs, so they resolve without the network
+        // — but `load` fires before the last of them is applied, and a page printed a frame
+        // early lays its Hebrew out in fallback metrics. Passed as a string because this
+        // package compiles without the DOM lib: the expression runs in the page, not here.
+        await page.evaluate('document.fonts.ready.then(() => undefined)');
+        // **The page count is the paginator's, never ours** (see `itineraryPdfFooterHtml`).
+        // `displayHeaderFooter` puts the running footer in the page MARGIN, which is why the
+        // margins are declared here and the template's `@page` carries only the size: the
+        // footer and the content cannot then be asked to share the same band.
         return Buffer.from(
-          await page.pdf({ format: 'A4', printBackground: true, preferCSSPageSize: true }),
+          await page.pdf({
+            format: 'A4',
+            printBackground: true,
+            preferCSSPageSize: true,
+            displayHeaderFooter: true,
+            // Chromium's default header is a date and a title in a font this container does
+            // not have; an empty element is how you say "no header" and keep the footer.
+            headerTemplate: '<span></span>',
+            footerTemplate: itineraryPdfFooterHtml(input),
+            margin: PDF_PAGE_MARGIN,
+          }),
         );
       } finally {
         await page.close().catch(() => undefined);

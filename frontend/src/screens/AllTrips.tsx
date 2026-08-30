@@ -138,8 +138,8 @@ export function AllTrips({
 
   // **Share is a SIBLING of the card, never inside it** (ADR-0213, and the mockup rejected
   // the alternative by name): a button nested in a button is invalid HTML and gives the
-  // thumb two competing targets on the same rect. The wrapper is positioned so the action
-  // can sit at the card's inline edge without the card itself being restyled.
+  // thumb two competing targets on the same rect. The wrapper overlays both in one grid
+  // cell so the action lands on the card's inline edge without the card being restyled.
   const shareAction = (trip: Trip) => (
     <button
       type="button"
@@ -152,7 +152,7 @@ export function AllTrips({
   );
 
   const hero = (trip: Trip) => (
-    <div className="trip-share-wrap" key={trip.id}>
+    <div className="trip-share-wrap is-live" key={trip.id}>
       <button className="trip-hero" onClick={(e) => pick(trip, e.currentTarget)}>
         <span className="flag">{trip.icon ?? DEFAULT_TRIP_ICON}</span>
         <span className="main">

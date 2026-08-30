@@ -28,6 +28,7 @@ import { useFormErrors, type FieldProblem } from '../ui/primitives/useFormErrors
 import { DestinationPicker, type PickedDestination } from '../ui/DestinationPicker';
 import { Icon } from '../ui/Icon';
 import { IconPicker } from '../ui/IconPicker';
+import { TripLinkRow } from '../ui/TripLinkRow';
 import { useToast } from '../ui/Toast';
 import { useIsOffline, useOutboxCount } from '../lib/outbox';
 import { formatTripDates } from '../lib/time';
@@ -321,15 +322,11 @@ export function TripSettings() {
             </button>
           )}
         </div>
+        {/* The same row the share sheet shows (ADR-0213's 2026-08-30 amendment) — one
+            component, not a second copy of "the trip's link", and neutral rather than the
+            plan violet `.invite-box` painted here outside Plan mode. */}
         {invite && invite !== 'loading' ? (
-          <div className="invite-box" onClick={copyInvite}>
-            <span className="code" dir="auto">
-              {invite.url}
-            </span>
-            <span className="cp">
-              <Icon name="clipboard" />
-            </span>
-          </div>
+          <TripLinkRow url={invite.url} onCopy={copyInvite} />
         ) : (
           <button
             className="set-invite-btn"

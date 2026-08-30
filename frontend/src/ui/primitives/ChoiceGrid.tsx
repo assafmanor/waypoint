@@ -13,8 +13,11 @@ export interface Choice<T extends string> {
   /** Leading glyph (emoji or short symbol); decorative, hidden from a11y. An
    *  empty string omits the icon slot entirely (e.g. a plain "all" option). */
   icon: string;
-  /** `pills` only — a rendered mark at the LEADING edge, where `icon` is a trailing glyph.
-   *  Exists for an axis whose options are PEOPLE (the task editor's `מי אחראי`, ADR-0189):
+  /** A rendered mark rather than a glyph — in `pills` at the LEADING edge (where `icon` is
+   *  a trailing glyph), in `grid` in the card's own icon slot, where it REPLACES `icon`.
+   *
+   *  Two reasons a card wants it, and the second is a rule rather than a convenience. It
+   *  exists for an axis whose options are PEOPLE (the task editor's `מי אחראי`, ADR-0189):
    *  the host passes `<Avatar>`, the app's one renderer for a person (ADR-0133 §3), and
    *  the scroll, the snap, the edge mask, `useCenterSelected` and the radiogroup ARIA all
    *  keep arriving from here instead of from a second grid.
@@ -23,7 +26,14 @@ export interface Choice<T extends string> {
    *  unassigned option is a **person-shaped absence** and there is no person to pass for
    *  it, so a typed field would have forced it to be a differently-shaped chip beside the
    *  people — saying "this is a different kind of answer" about the same question's
-   *  default one. Decorative: the label beside it is the option's accessible name. */
+   *  default one. Decorative: the label beside it is the option's accessible name.
+   *
+   *  And it is how a card draws an `Icon` instead of an emoji. `icon` is a **string**, so
+   *  every card that wanted a mark used to have to be content — which is fine for an event
+   *  category and wrong for a control (design-language: "emoji are content, icons are UI",
+   *  and a glyph with a sibling control drawing an icon IS a control). The share sheet's
+   *  audience fork is the first such card; passing `<Icon>` here is the whole fix, and it
+   *  needed no second card shape. */
   lead?: ReactNode;
   label: string;
   /** Trailing count badge, `pills` layout only (the Index category filter,
@@ -42,6 +52,7 @@ export function ChoiceGrid<T extends string>({
   ariaLabel,
   layout = 'grid',
   compact = false,
+  className = '',
 }: {
   options: Choice<T>[];
   /** The selected value, or `undefined` for no selection yet (a single-select
@@ -67,6 +78,10 @@ export function ChoiceGrid<T extends string>({
    *  visually would leave a pill named by its count alone. An option with no glyph
    *  (`הכל`) keeps its word — there is nothing to stand in for it. */
   compact?: boolean;
+  /** A modifier for the HOST's own rule about this instance — the share sheet's audience
+   *  fork sizes its two cards differently from the detail levels below them. Deliberately
+   *  a modifier and not a style prop: the geometry stays in the stylesheet. */
+  className?: string;
 }) {
   const pills = layout === 'pills';
   // The selected pill centres itself in the row (`lib/useCenterSelected`) — only in `pills`,
@@ -77,7 +92,10 @@ export function ChoiceGrid<T extends string>({
       // `edge-fade` only in `pills`: the grid doesn't scroll, so it has no edge to fade
       // and nothing behind one (`lib/edge-fade.ts`, ADR-0100 §6).
       className={
-        'choice-grid' + (pills ? ' pills edge-fade' : '') + (pills && compact ? ' compact' : '')
+        'choice-grid' +
+        (pills ? ' pills edge-fade' : '') +
+        (pills && compact ? ' compact' : '') +
+        (className ? ` ${className}` : '')
       }
       ref={pills ? edgeFadeRef : undefined}
       role="radiogroup"
@@ -113,9 +131,9 @@ export function ChoiceGrid<T extends string>({
               </>
             ) : (
               <>
-                {o.icon !== '' && (
+                {(o.lead !== undefined || o.icon !== '') && (
                   <span className="choice-card-ic" aria-hidden="true">
-                    {o.icon}
+                    {o.lead ?? o.icon}
                   </span>
                 )}
                 <span className="choice-card-lbl">{o.label}</span>

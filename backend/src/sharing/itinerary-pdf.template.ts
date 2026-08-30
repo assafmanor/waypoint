@@ -23,11 +23,15 @@ import { PDF_COPY, PDF_DAYPART_MARK } from './itinerary-pdf.copy';
  */
 
 const FONT_DIR_CANDIDATES = [
-  // The runtime image copies the built app's fonts here.
+  // The runtime image copies both sets — the app's faces and the PDF-only emoji — here.
   '/app/pdf-fonts',
-  // Running from source (`pnpm dev`, specs): the frontend's own copies.
+  // Running from source (`pnpm dev`, specs): the frontend's own copies…
   join(__dirname, '..', '..', '..', 'frontend', 'src', 'assets', 'fonts'),
   join(process.cwd(), '..', 'frontend', 'src', 'assets', 'fonts'),
+  // …and the one face the app has no use for (see `backend/assets/fonts/README.md`).
+  join(__dirname, '..', '..', 'assets', 'fonts'),
+  join(process.cwd(), 'assets', 'fonts'),
+  join(process.cwd(), 'backend', 'assets', 'fonts'),
 ];
 
 let fontCache: string | undefined;
@@ -47,6 +51,25 @@ const LATIN_RANGE =
   'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, ' +
   'U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD';
 
+/**
+ * **An event's icon is an emoji, so the paper needs emoji glyphs of its own** (owner report,
+ * 2026-08-30: every icon printed as a rectangle).
+ *
+ * `icons.ts` calls the glyph content, and the runtime image is `node:22-slim` plus
+ * `fonts-liberation` — which has no emoji coverage at all. The first version of this
+ * template asked for none, so Chromium fell through to a system face that does not exist
+ * and drew `.notdef` boxes. It looked correct on every developer machine, because a desktop
+ * has an emoji font; the tell in the artifact was a NUL where each glyph should be.
+ *
+ * Deliberately excludes the ranges the app faces already answer — U+2000-206F (which
+ * carries the bidi isolates `ltr()` writes) and U+25CC (Assistant's dotted circle) — so the
+ * only codepoints that reach this face are ones nothing else can draw.
+ */
+const EMOJI_RANGE =
+  'U+203C, U+2049, U+2139, U+2194-21AA, U+231A-231B, U+2328, U+23CF-23FA, U+24C2, ' +
+  'U+25AA-25AB, U+25B6, U+25C0, U+25FB-25FE, U+2600-27BF, U+2934-2935, U+2B00-2B55, ' +
+  'U+3030, U+303D, U+3297, U+3299, U+FE0F, U+20E3, U+1F000-1FAFF';
+
 const FONT_FACES = [
   ['Assistant', '200 800', 'assistant-hebrew.woff2', HEBREW_RANGE],
   ['Assistant', '200 800', 'assistant-latin.woff2', LATIN_RANGE],
@@ -55,6 +78,10 @@ const FONT_FACES = [
   // Latin-only on purpose (design-language.md): it carries times, codes and money, never
   // prose, so it ships no Hebrew glyphs and must not be asked for any.
   ['JetBrains Mono', '100 800', 'jetbrains-mono-latin.woff2', LATIN_RANGE],
+  // Monochrome on purpose: the document is a fixed light palette that has to stay legible
+  // in grayscale, and a colour (CBDT) face embeds as images, which would stop the glyph
+  // being extractable — the property the container smoke actually checks.
+  ['Noto Emoji', '400', 'noto-emoji.woff2', EMOJI_RANGE],
 ] as const;
 
 /** Inline `@font-face` rules. Read once — the bytes are ~100 KB and identical per render,
@@ -98,11 +125,6 @@ const escapeHtml = (value: string): string =>
  *  The same instrument `lib/bidi.ts` uses on screen, spelled here because the print
  *  renderer cannot import the frontend. */
 const ltr = (value: string | number): string => `⁦${escapeHtml(String(value))}⁩`;
-
-/** Days per page. The nine-day reference trip is two pages at Full, which is the density
- *  target ADR-0213 §4 set — a target, not a truncation rule: a longer trip takes more pages
- *  rather than dropping below the print typography floor. */
-const DAYS_PER_PAGE = 5;
 
 const dayLabel = (date: string): { day: string; weekday: string } => {
   const [year, month, day] = date.split('-').map(Number);
@@ -193,6 +215,43 @@ export interface PdfRenderInput {
   generatedAtLabel: string;
 }
 
+/**
+ * **The running footer, and why it is a second document rather than an element in the first.**
+ *
+ * A page number can only be true if the thing counting pages is the thing that made them.
+ * The first version of this renderer split the days into fixed groups of five, wrapped each
+ * in a 297mm box and printed "עמוד 2 מתוך 3" from that arithmetic — so a dense trip whose
+ * group overflowed its box produced five physical pages numbered up to three, and the
+ * absolutely-positioned footer inside an overflowing box printed ON TOP of the schedule
+ * (owner report, 2026-08-30: page numbers, lines over lines). Chromium's `footerTemplate`
+ * asks the paginator, which cannot disagree with itself.
+ *
+ * Its cost is that the template renders in a separate document that shares nothing with the
+ * page — no stylesheet, no fonts — and the container has no Hebrew coverage, so a footer
+ * that simply said `עמוד` would print boxes. It carries its own inlined `@font-face` for
+ * exactly that reason. Verified in a real render, not assumed.
+ */
+export function itineraryPdfFooterHtml({
+  projection,
+  publicUrl,
+  generatedAtLabel,
+}: Omit<PdfRenderInput, 'qrDataUrl'>): string {
+  return (
+    `<style>${fontFaces()}` +
+    `.wp-foot{width:100%;box-sizing:border-box;padding:0 13mm;` +
+    `display:flex;align-items:center;justify-content:space-between;gap:12px;` +
+    `direction:rtl;font-family:'Assistant',sans-serif;font-size:7.5px;color:#626b7e;}` +
+    `.wp-foot b{color:#16233d;}.wp-foot .u{font-family:'JetBrains Mono',monospace;}` +
+    `</style>` +
+    `<div class="wp-foot"><span><b>${PDF_COPY.brand}</b> · ` +
+    `<span dir="auto">${escapeHtml(projection.trip.name)}</span> · ` +
+    `${PDF_COPY.updatedAt} ${ltr(generatedAtLabel)}</span>` +
+    `<span><span class="u">${ltr(publicUrl)}</span> · ` +
+    `${PDF_COPY.pagePrefix}<span class="pageNumber"></span> ${PDF_COPY.pageOf}` +
+    `<span class="totalPages"></span></span></div>`
+  );
+}
+
 export function itineraryPdfHtml({
   projection,
   publicUrl,
@@ -200,74 +259,64 @@ export function itineraryPdfHtml({
   generatedAtLabel,
 }: PdfRenderInput): string {
   const summary = projection.detailLevel === SHARE_DETAIL_LEVEL.SUMMARY;
-  const pages: SharedDay[][] = summary
-    ? [projection.days]
-    : Array.from(
-        { length: Math.max(1, Math.ceil(projection.days.length / DAYS_PER_PAGE)) },
-        (_, i) => projection.days.slice(i * DAYS_PER_PAGE, (i + 1) * DAYS_PER_PAGE),
-      );
-  const total = pages.length;
   const appendix = appendixBlock(projection);
 
-  const masthead = (page: number) =>
-    page === 1
-      ? `<header class="pdf-mast"><div>` +
-        `<div class="pdf-eyebrow">${PDF_COPY.eyebrow} · <span dir="auto">${escapeHtml(projection.trip.destination)}</span></div>` +
-        `<h1 class="pdf-title" dir="auto">${escapeHtml(projection.trip.name)}</h1>` +
-        `<div class="pdf-subtitle">${ltr(projection.trip.startDate)} - ${ltr(projection.trip.endDate)} · ${PDF_COPY.days(projection.trip.dayCount)}</div>` +
-        `</div><div class="pdf-route-mini"><strong dir="auto">${escapeHtml(projection.narrative.title)}</strong>` +
-        `<span dir="auto">${projection.trip.routeLabels.map(escapeHtml).join(' · ')}</span></div></header>`
-      : `<header class="pdf-continuation"><strong dir="auto">${escapeHtml(projection.trip.name)}</strong>` +
-        `<span>${PDF_COPY.continuation(page)}</span></header>`;
+  const masthead =
+    `<header class="pdf-mast"><div class="pdf-mast-copy">` +
+    `<div class="pdf-eyebrow">${PDF_COPY.eyebrow} · <span dir="auto">${escapeHtml(projection.trip.destination)}</span></div>` +
+    `<h1 class="pdf-title" dir="auto">${escapeHtml(projection.trip.name)}</h1>` +
+    `<div class="pdf-subtitle">${ltr(projection.trip.startDate)} - ${ltr(projection.trip.endDate)} · ${PDF_COPY.days(projection.trip.dayCount)} · ${PDF_COPY.updatedAt} ${ltr(generatedAtLabel)}</div>` +
+    `</div><div class="pdf-route-mini"><strong dir="auto">${escapeHtml(projection.narrative.title)}</strong>` +
+    `<span dir="auto">${projection.trip.routeLabels.map(escapeHtml).join(' · ')}</span></div>` +
+    // The QR is printed ONCE, beside the title, rather than on every page: it is how a
+    // reader walks the paper back to the live link, and one legible code does that.
+    `<div class="pdf-qr-block"><img class="pdf-qr" src="${qrDataUrl}" alt="" />` +
+    `<span class="pdf-qr-cap">${ltr(publicUrl)}</span></div></header>`;
 
-  const lede = () =>
+  const lede =
     `<div class="pdf-lede"><div class="pdf-story"><strong dir="auto">${escapeHtml(projection.narrative.title)}</strong>` +
-    `<p dir="auto">${escapeHtml(projection.narrative.summary)}</p></div>` +
+    // Skipped rather than emptied: a generated summary is optional, and an empty paragraph
+    // still takes its line-height and leaves a gap that reads as a missing sentence.
+    (projection.narrative.summary
+      ? `<p dir="auto">${escapeHtml(projection.narrative.summary)}</p>`
+      : '') +
+    `</div>` +
     `<div class="pdf-facts">` +
     `<div class="pdf-fact"><strong>${ltr(projection.trip.dayCount)}</strong><span>${PDF_COPY.days(projection.trip.dayCount).replace(/^\d+\s/, '')}</span></div>` +
     `<div class="pdf-fact"><strong>${ltr(projection.trip.routeLabels.length)}</strong><span>${PDF_COPY.stops(projection.trip.routeLabels.length).replace(/^\d+\s/, '')}</span></div>` +
     `<div class="pdf-fact"><strong>${ltr(projection.trip.eventCount)}</strong><span>${PDF_COPY.events(projection.trip.eventCount).replace(/^\d+\s/, '')}</span></div>` +
     `</div></div>`;
 
-  const footer = (page: number) =>
-    `<footer class="pdf-foot"><div><strong>${PDF_COPY.brand}</strong> · ${PDF_COPY.updatedAt} ${ltr(generatedAtLabel)}<br />` +
-    `<span class="pdf-link">${ltr(publicUrl)}</span></div>` +
-    `<div>${PDF_COPY.page(page, total)}</div>` +
-    `<img class="pdf-qr" src="${qrDataUrl}" alt="" /></footer>`;
-
-  const sheet = (days: SharedDay[], page: number) =>
-    `<section class="pdf-paper">${masthead(page)}${page === 1 ? lede() : ''}` +
-    `<div class="pdf-section-title"><h2>${
-      summary
-        ? PDF_COPY.summaryTitle
-        : page === 1
-          ? PDF_COPY.scheduleTitle
-          : appendix
-            ? PDF_COPY.continuedAppendixTitle
-            : PDF_COPY.continuedTitle
-    }</h2><span>${summary ? PDF_COPY.summaryHint : PDF_COPY.scheduleHint}</span></div>` +
-    `<div class="pdf-day-grid">${days.map((day) => dayCard(day, summary)).join('')}</div>` +
-    `${page === total ? appendix : ''}${footer(page)}</section>`;
+  const sectionTitle =
+    `<div class="pdf-section-title"><h2>${summary ? PDF_COPY.summaryTitle : PDF_COPY.scheduleTitle}</h2>` +
+    `<span>${summary ? PDF_COPY.summaryHint : PDF_COPY.scheduleHint}</span></div>`;
 
   return `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8" /><style>
 ${fontFaces()}
 /* Fixed light. The PDF has no theme: a document printed on paper has one palette, and
    structure stays legible in grayscale (ADR-0213 §4). */
 :root{--pdf-ink:#16233d;--pdf-muted:#626b7e;--pdf-line:#d8dde6;--pdf-soft:#f3f5f8;--pdf-amber:#915e1e;--pdf-teal:#237d7a;}
-@page{size:A4;margin:0;}
+/* **No @page margin and no paper box.** The margins are Chromium's, declared beside
+   displayHeaderFooter in pdf-browser.service.ts, because the running footer lives IN the
+   page margin box — set them here and the footer would print over the last line of every
+   page, which is the defect this replaced. Only the SIZE stays here, so preferCSSPageSize
+   has something to prefer. */
+@page{size:A4;}
 *{box-sizing:border-box;}
-html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',system-ui,sans-serif;}
-.pdf-paper{position:relative;width:210mm;min-height:297mm;padding:11mm 13mm 14mm;background:#fff;break-after:page;}
-.pdf-paper:last-child{break-after:auto;}
-.pdf-mast{display:flex;align-items:end;justify-content:space-between;gap:22px;margin-block-end:17px;padding-block-end:13px;border-block-end:2px solid var(--pdf-ink);}
+html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant','Noto Emoji',system-ui,sans-serif;}
+.pdf-mast{display:flex;align-items:end;justify-content:space-between;gap:18px;margin-block-end:15px;padding-block-end:11px;border-block-end:2px solid var(--pdf-ink);}
+.pdf-mast-copy{min-width:0;flex:1;}
 .pdf-eyebrow{margin-block-end:4px;color:var(--pdf-muted);font-size:9px;font-weight:700;letter-spacing:.08em;}
 .pdf-title{margin:0;font:27px/1.1 'Secular One',sans-serif;}
 .pdf-subtitle{margin-block-start:6px;color:var(--pdf-muted);font:500 9px 'JetBrains Mono',monospace;}
-.pdf-route-mini{min-width:160px;text-align:end;}
+.pdf-route-mini{min-width:130px;text-align:end;}
 .pdf-route-mini strong,.pdf-route-mini span{display:block;}
 .pdf-route-mini strong{font-size:12px;}
 .pdf-route-mini span{margin-block-start:3px;color:var(--pdf-teal);font-size:9px;}
-.pdf-lede{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(220px,1fr);gap:16px;margin-block-end:17px;border:1px solid var(--pdf-line);border-radius:11px;overflow:hidden;}
+.pdf-qr-block{flex:0 0 auto;text-align:center;}
+.pdf-qr{display:block;width:46px;height:46px;}
+.pdf-qr-cap{display:block;margin-block-start:3px;color:var(--pdf-muted);font:7px 'JetBrains Mono',monospace;}
+.pdf-lede{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(200px,1fr);gap:16px;margin-block-end:15px;border:1px solid var(--pdf-line);border-radius:11px;overflow:hidden;}
 .pdf-story{padding:11px 13px;}
 .pdf-story strong{font:15px 'Secular One',sans-serif;}
 .pdf-story p{margin:3px 0 0;color:var(--pdf-muted);font-size:9px;line-height:1.5;}
@@ -280,9 +329,14 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
 .pdf-section-title{display:flex;align-items:baseline;justify-content:space-between;margin:0 0 9px;}
 .pdf-section-title h2{margin:0;font:17px 'Secular One',sans-serif;}
 .pdf-section-title span{color:var(--pdf-muted);font-size:9px;}
-.pdf-day-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;}
+/* **Two columns as a MULTICOL, not a grid.** Chromium fragments a multi-column block across
+   printed pages a column at a time and honours break-inside inside it; a grid container that
+   outgrows the page fragments by ROW, which is where the overlapping lines came from. The
+   flow is one list from the first day to the last, so a page holds whatever fits and the
+   next one continues — nothing here decides how many days a page takes. */
+.pdf-days{column-count:2;column-gap:11px;}
 /* A day is the break-safe unit and an event row never splits across a page. */
-.pdf-day{break-inside:avoid;overflow:hidden;border:1px solid var(--pdf-line);border-radius:10px;}
+.pdf-day{break-inside:avoid;margin-block-end:9px;overflow:hidden;border:1px solid var(--pdf-line);border-radius:10px;}
 .pdf-day-head{display:grid;grid-template-columns:48px minmax(0,1fr);min-height:47px;background:var(--pdf-soft);}
 .pdf-date{display:grid;place-items:center;align-content:center;border-inline-end:1px solid var(--pdf-line);}
 .pdf-date strong{font:17px/1 'Secular One',sans-serif;}
@@ -308,17 +362,12 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
 .pdf-summary-event span:first-child{text-align:center;}
 .pdf-summary-event strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .pdf-journey{padding:2px 0;color:var(--pdf-muted);font-size:7px;}
-.pdf-ops{break-inside:avoid;display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin-block-start:12px;}
+.pdf-ops{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin-block-start:12px;}
 .pdf-ops-title{grid-column:1/-1;margin:0;font:13px 'Secular One',sans-serif;}
-.pdf-op{padding:8px 9px;border:1px solid var(--pdf-line);border-radius:9px;}
+.pdf-op{break-inside:avoid;padding:8px 9px;border:1px solid var(--pdf-line);border-radius:9px;}
 .pdf-op strong{display:block;font-size:9px;}
 .pdf-op span{display:block;margin-block-start:2px;color:var(--pdf-muted);font-size:7.8px;line-height:1.4;}
-.pdf-foot{position:absolute;inset-inline:13mm;inset-block-end:7mm;display:flex;align-items:end;justify-content:space-between;gap:16px;padding-block-start:9px;border-block-start:1px solid var(--pdf-line);color:var(--pdf-muted);font-size:8px;}
-.pdf-foot strong{color:var(--pdf-ink);}
-.pdf-link{font-family:'JetBrains Mono',monospace;}
-.pdf-qr{width:44px;height:44px;}
-.pdf-continuation{margin-block-end:15px;padding-block-end:10px;border-block-end:2px solid var(--pdf-ink);}
-.pdf-continuation strong{font:21px 'Secular One',sans-serif;}
-.pdf-continuation span{display:block;color:var(--pdf-muted);font-size:9px;}
-</style></head><body>${pages.map((days, index) => sheet(days, index + 1)).join('')}</body></html>`;
+</style></head><body>${masthead}${lede}${sectionTitle}<div class="pdf-days">${projection.days
+    .map((day) => dayCard(day, summary))
+    .join('')}</div>${appendix}</body></html>`;
 }

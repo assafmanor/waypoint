@@ -6,6 +6,7 @@ import { t } from '../i18n/he';
 import { wrapNav } from '../test/nav-harness';
 
 const CODE = '7Kq2mB9x';
+const INVITE = '4Rn8pT2w';
 const ADMIN = 'u-assaf';
 const PEER = 'u-noam';
 
@@ -19,6 +20,8 @@ const config: TripShareConfig = {
 };
 
 const api = vi.hoisted(() => ({
+  createInvite: vi.fn(),
+  rotateInvite: vi.fn(),
   fetchTripShare: vi.fn(),
   fetchTripWithMembers: vi.fn(),
   upsertTripShare: vi.fn(),
@@ -56,10 +59,19 @@ const renderSheet = () =>
     wrapNav(<ShareItinerarySheet tripId="t1" tripName="איסלנד עם המשפחה" onClose={() => {}} />),
   );
 
+/** **Join is the default audience** (ADR-0213's 2026-08-30 amendment), so every assertion
+ *  about the read-only half has to cross the fork first. Written once here rather than at
+ *  each call site, so what the fork costs the suite is one line and visible. */
+const openRead = async () => {
+  fireEvent.click(await screen.findByRole('radio', { name: t.share.owner.audience.read }));
+};
+
 describe('ShareItinerarySheet', () => {
   beforeEach(() => {
     auth.userId = ADMIN;
     api.fetchTripWithMembers.mockResolvedValue(members('admin'));
+    api.createInvite.mockResolvedValue({ inviteUrl: `/join/${INVITE}` });
+    api.rotateInvite.mockResolvedValue({ inviteUrl: '/join/New8Code' });
     api.fetchTripShare.mockResolvedValue(undefined);
     api.upsertTripShare.mockResolvedValue(config);
     api.rotateTripShare.mockResolvedValue({ ...config, code: 'New8Code', shareUrl: '/s/New8Code' });
@@ -78,6 +90,7 @@ describe('ShareItinerarySheet', () => {
   // Save step between them, which is exactly why the API had to be idempotent.
   it('keeps the ordinary path to preset then system share', async () => {
     renderSheet();
+    await openRead();
     await screen.findByRole('button', { name: new RegExp(t.share.owner.actions.liveLink) });
 
     fireEvent.click(screen.getByRole('radio', { name: t.share.owner.levels.full }));
@@ -97,6 +110,7 @@ describe('ShareItinerarySheet', () => {
 
   it('defaults to Full with every sensitive family off', async () => {
     renderSheet();
+    await openRead();
     const full = await screen.findByRole('radio', { name: t.share.owner.levels.full });
     expect(full.getAttribute('aria-checked')).toBe('true');
     expect(screen.queryByText(t.share.owner.privateRows.bookingSecrets.title)).toBeNull();
@@ -104,6 +118,7 @@ describe('ShareItinerarySheet', () => {
 
   it('reveals the four private rows only at Everything, all off', async () => {
     renderSheet();
+    await openRead();
     await screen.findByRole('radio', { name: t.share.owner.levels.everything });
     fireEvent.click(screen.getByRole('radio', { name: t.share.owner.levels.everything }));
 
@@ -118,6 +133,7 @@ describe('ShareItinerarySheet', () => {
   // needs it, and only once.
   it('fetches the file list lazily, and only at Everything', async () => {
     renderSheet();
+    await openRead();
     await screen.findByRole('radio', { name: t.share.owner.levels.summary });
 
     fireEvent.click(screen.getByRole('radio', { name: t.share.owner.levels.summary }));
@@ -130,6 +146,7 @@ describe('ShareItinerarySheet', () => {
 
   it('sends only the files that were ticked', async () => {
     renderSheet();
+    await openRead();
     await screen.findByRole('radio', { name: t.share.owner.levels.everything });
     fireEvent.click(screen.getByRole('radio', { name: t.share.owner.levels.everything }));
     await screen.findByText('כרטיסים.pdf');
@@ -150,6 +167,7 @@ describe('ShareItinerarySheet', () => {
   it('produces a PDF and hands it to the system, not a bare download link', async () => {
     api.fetchTripShare.mockResolvedValue(config);
     renderSheet();
+    await openRead();
     await screen.findByRole('button', { name: new RegExp(t.share.owner.actions.pdf) });
 
     fireEvent.click(screen.getByRole('button', { name: new RegExp(t.share.owner.actions.pdf) }));
@@ -161,6 +179,7 @@ describe('ShareItinerarySheet', () => {
   it('says the link was copied when there is no native sheet, and nothing when it was shared', async () => {
     systemShare.shareUrlOrCopy.mockResolvedValue('copied');
     renderSheet();
+    await openRead();
     await screen.findByRole('button', { name: new RegExp(t.share.owner.actions.liveLink) });
 
     fireEvent.click(
@@ -173,6 +192,7 @@ describe('ShareItinerarySheet', () => {
   it('says nothing at all when the person dismissed the system sheet', async () => {
     systemShare.shareUrlOrCopy.mockResolvedValue('cancelled');
     renderSheet();
+    await openRead();
     await screen.findByRole('button', { name: new RegExp(t.share.owner.actions.liveLink) });
 
     fireEvent.click(
@@ -186,6 +206,7 @@ describe('ShareItinerarySheet', () => {
   it('confirms rotation and replaces the shown link', async () => {
     api.fetchTripShare.mockResolvedValue(config);
     renderSheet();
+    await openRead();
 
     fireEvent.click(await screen.findByRole('button', { name: t.share.owner.manage }));
     fireEvent.click(screen.getByRole('button', { name: t.share.owner.rotate }));
@@ -202,6 +223,7 @@ describe('ShareItinerarySheet', () => {
   it('confirms before it stops sharing, and returns to the not-shared state', async () => {
     api.fetchTripShare.mockResolvedValue(config);
     renderSheet();
+    await openRead();
 
     fireEvent.click(await screen.findByRole('button', { name: t.share.owner.manage }));
     fireEvent.click(screen.getByRole('button', { name: t.share.owner.stop }));
@@ -215,6 +237,82 @@ describe('ShareItinerarySheet', () => {
     );
   });
 
+  // **The two links are two GRANTS, and the sheet asks which one before anything else**
+  // (ADR-0213's 2026-08-30 amendment). Everything here is about keeping them separable: a
+  // press meant for one must never reach the other.
+  describe('the audience fork', () => {
+    it('opens on join, because that is the audience settings used to hide', async () => {
+      renderSheet();
+      const join = await screen.findByRole('radio', { name: t.share.owner.audience.join });
+      expect(join.getAttribute('aria-checked')).toBe('true');
+      expect(await screen.findByText(`localhost:3000/join/${INVITE}`)).toBeTruthy();
+    });
+
+    // `POST …/invite` is get-or-create (ADR-0067), so it is safe to ask — and it must be
+    // asked ONCE. Crossing to the read branch and back is the same trip's same link, and a
+    // second call per visit would be a write on every toggle.
+    it('asks for the invite once, however many times the fork is crossed', async () => {
+      renderSheet();
+      await screen.findByText(`localhost:3000/join/${INVITE}`);
+      expect(api.createInvite).toHaveBeenCalledTimes(1);
+
+      await openRead();
+      fireEvent.click(screen.getByRole('radio', { name: t.share.owner.audience.join }));
+      await screen.findByText(`localhost:3000/join/${INVITE}`);
+      expect(api.createInvite).toHaveBeenCalledTimes(1);
+    });
+
+    // The read branch's own lazy read is unaffected by the fork: a Summary link must still
+    // never pay for the authenticated snapshot.
+    it('still leaves the file list to Everything', async () => {
+      renderSheet();
+      await openRead();
+      expect(api.fetchSnapshot).not.toHaveBeenCalled();
+    });
+
+    it('sends the join link, and never touches the read-only share', async () => {
+      renderSheet();
+      await screen.findByRole('button', { name: new RegExp(t.share.owner.join.action) });
+
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.share.owner.join.action) }));
+
+      await waitFor(() =>
+        expect(systemShare.shareUrlOrCopy).toHaveBeenCalledWith(
+          expect.objectContaining({ url: `https://localhost:3000/join/${INVITE}` }),
+        ),
+      );
+      expect(api.upsertTripShare).not.toHaveBeenCalled();
+      expect(api.fetchSharedItineraryPdf).not.toHaveBeenCalled();
+    });
+
+    // A `/join/` link has no second format — there is no PDF of a membership.
+    it('offers one outcome on join and two on read', async () => {
+      renderSheet();
+      await screen.findByRole('button', { name: new RegExp(t.share.owner.join.action) });
+      expect(
+        screen.queryByRole('button', { name: new RegExp(t.share.owner.actions.pdf) }),
+      ).toBeNull();
+
+      await openRead();
+      expect(
+        await screen.findByRole('button', { name: new RegExp(t.share.owner.actions.pdf) }),
+      ).toBeTruthy();
+    });
+
+    it('confirms before it replaces the invite, and shows the new one', async () => {
+      renderSheet();
+      fireEvent.click(await screen.findByRole('button', { name: t.share.owner.join.rotate }));
+      expect(screen.getByText(t.share.owner.join.rotateTitle)).toBeTruthy();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: t.share.owner.join.rotateConfirm }));
+      });
+
+      expect(api.rotateInvite).toHaveBeenCalledWith('t1');
+      expect(await screen.findByText('localhost:3000/join/New8Code')).toBeTruthy();
+    });
+  });
+
   describe('a peer', () => {
     beforeEach(() => {
       auth.userId = PEER;
@@ -222,8 +320,21 @@ describe('ShareItinerarySheet', () => {
       api.fetchTripShare.mockResolvedValue(config);
     });
 
+    // Not a new authorization rule: `POST …/invite` is already get-or-create for any
+    // member and only `rotate` is the admin's (ADR-0067) — the same split this sheet
+    // already draws for the read-only link.
+    it('sees the whole invite branch, without the control that revokes it', async () => {
+      renderSheet();
+      expect(await screen.findByText(`localhost:3000/join/${INVITE}`)).toBeTruthy();
+      expect(
+        screen.getByRole('button', { name: new RegExp(t.share.owner.join.action) }),
+      ).toBeTruthy();
+      expect(screen.queryByRole('button', { name: t.share.owner.join.rotate })).toBeNull();
+    });
+
     it('can share an existing link but sees no configuration', async () => {
       renderSheet();
+      await openRead();
       await screen.findByText(t.share.owner.peerNote);
 
       expect(screen.queryByRole('radio', { name: t.share.owner.levels.everything })).toBeNull();

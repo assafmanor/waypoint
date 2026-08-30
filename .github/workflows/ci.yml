@@ -72,8 +72,10 @@ jobs:
   # the environment this is not.
   #
   # The artifact is verified on the HOST rather than by the container reporting on itself:
-  # `verify-pdf-smoke.mjs` opens it with pdfjs and asserts two pages and extractable HEBREW,
-  # the one failure that renders as boxes and looks fine to everything upstream of it.
+  # `verify-pdf-smoke.mjs` opens each with pdfjs and asserts what no upstream test can see:
+  # extractable Hebrew AND emoji (a container missing either renders boxes while looking fine
+  # to the renderer), every page's own footer naming the sheet it is printed on, no blank
+  # page, and no text run printed on top of another.
   pdf-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -94,15 +96,19 @@ jobs:
       - name: Build the production image
         run: docker build -t waypoint-sharing-pdf .
 
-      - name: Render the reference itinerary inside it
+      - name: Render the reference and dense itineraries inside it
         run: |
           mkdir -p tmp/pdf-smoke
           docker run --rm -v "$PWD/tmp/pdf-smoke:/out" \
             --entrypoint node waypoint-sharing-pdf \
-            dist/sharing/pdf-container-smoke.js /out/sample.pdf
+            dist/sharing/pdf-container-smoke.js /out/sample.pdf /out/dense.pdf
 
-      - name: Verify the artifact on the host
-        run: node scripts/verify-pdf-smoke.mjs tmp/pdf-smoke/sample.pdf
+      # Both, because only the dense one fragments: the page-number and over-print defects
+      # this checks for were invisible on a trip that fits comfortably.
+      - name: Verify the artifacts on the host
+        run: |
+          node scripts/verify-pdf-smoke.mjs tmp/pdf-smoke/sample.pdf
+          node scripts/verify-pdf-smoke.mjs tmp/pdf-smoke/dense.pdf
 
       # Kept on failure only: it is the thing you actually want to look at when this breaks,
       # and it is a private itinerary-shaped document the rest of the time.
@@ -110,7 +116,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pdf-smoke
-          path: tmp/pdf-smoke/sample.pdf
+          path: tmp/pdf-smoke/
 
   # Browser-contract e2e (ADR-0090 system-back). Hermetic — the frontend dev
   # server boots with the API route-mocked in-test (frontend/e2e/boot.ts), so no

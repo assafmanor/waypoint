@@ -104,6 +104,11 @@ const DAYS: [string, string, string, [string, string, string, keyof typeof SHARE
 
 const SHARE_DAYPART_KEY = SHARE_DAYPART;
 
+/** Glyphs from the curated set (`packages/shared/src/icons.ts`), cycled per event. An icon
+ *  is CONTENT, and Summary prints it — so a fixture with none would have left the emoji
+ *  coverage check with nothing to find but the daypart marks. */
+const FIXTURE_ICONS = ['✈️', '🏨', '🍽️', '⛰️', '🚗', '♨️', '🐳', '⛩️'] as const;
+
 const days: SharedDay[] = DAYS.map(([date, title, summary, events], index) => {
   const byDaypart = new Map<string, { time: string; title: string; place: string }[]>();
   for (const [time, eventTitle, place, key] of events) {
@@ -119,8 +124,9 @@ const days: SharedDay[] = DAYS.map(([date, title, summary, events], index) => {
     summary,
     sections: [...byDaypart.entries()].map(([daypart, bucket]) => ({
       daypart: daypart as SharedDay['sections'][number]['daypart'],
-      events: bucket.map((event) => ({
+      events: bucket.map((event, position) => ({
         title: event.title,
+        icon: FIXTURE_ICONS[(index + position) % FIXTURE_ICONS.length],
         daypart: daypart as SharedDay['sections'][number]['daypart'],
         hard: event.title.includes('טיסה') || event.title.includes('נחיתה'),
         ...(event.time ? { startLabel: event.time } : {}),
@@ -151,7 +157,58 @@ export const NINE_DAY_REFERENCE_TRIP: SharedItinerary = {
   narrative: {
     source: 'deterministic',
     title: 'רייקיאוויק ← סנייפלסנס',
-    summary: '',
+    summary: 'תשעה ימים סביב האי, מהמעגל הזהוב ועד הפיורדים המזרחיים וחזרה דרך סנייפלסנס.',
   },
   days,
+};
+
+/**
+ * **A trip dense enough to fragment**, and the reason it exists is the defect it now guards.
+ *
+ * The reference trip above fits comfortably and proved nothing about pagination: the shipped
+ * renderer sliced days into fixed groups, and it was a real twelve-day itinerary — whose
+ * group overflowed the box drawn for it — that produced five sheets numbered to three, a
+ * footer printed over the schedule and a blank page. Everything upstream of the paginator
+ * was green for all of it. So the container smoke renders this too, and
+ * `scripts/verify-pdf-smoke.mjs` checks each page's own footer against the sheet it is on.
+ *
+ * Derived from the reference trip rather than written out: what has to be dense is the day
+ * COUNT and the rows per day, and repeating the same nine days with more sections in each
+ * says that without another 120 lines of Hebrew fixture nobody will keep true.
+ */
+const denseDays: SharedDay[] = Array.from({ length: 12 }, (_, index) => {
+  const source = days[index % days.length];
+  return {
+    ...source,
+    ordinal: index + 1,
+    date: `2026-09-${String(index + 1).padStart(2, '0')}`,
+    sections: source.sections.map((section) => ({
+      ...section,
+      // Three copies of each row, so a day card is taller than a column can hold whole.
+      events: [...section.events, ...section.events, ...section.events],
+    })),
+  };
+});
+
+export const DENSE_REFERENCE_TRIP: SharedItinerary = {
+  ...NINE_DAY_REFERENCE_TRIP,
+  detailLevel: SHARE_DETAIL_LEVEL.EVERYTHING,
+  trip: {
+    ...NINE_DAY_REFERENCE_TRIP.trip,
+    startDate: '2026-09-01',
+    endDate: '2026-09-12',
+    dayCount: 12,
+    eventCount: denseDays.reduce(
+      (total, day) => total + day.sections.reduce((n, s) => n + s.events.length, 0),
+      0,
+    ),
+  },
+  appendix: {
+    bookingSecrets: [
+      { title: 'טיסה הלוך', lines: ['FI 562', 'אישור KEF-4821'] },
+      { title: 'רכב שכור', lines: ['Blue Car Rental', 'אישור BC-99120'] },
+    ],
+    travelers: ['דנה', 'יואב', 'מיכל', 'רון', 'תמר'],
+  },
+  days: denseDays,
 };
