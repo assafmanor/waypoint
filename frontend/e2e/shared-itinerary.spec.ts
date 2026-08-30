@@ -9,7 +9,13 @@
 // Deliberately hermetic like the rest of the suite: the one public endpoint is route-mocked,
 // nothing else is, and the absence of an auth mock IS the anonymity assertion.
 import { test, expect, type Page } from '@playwright/test';
-import { SHARE_DAYPART, SHARE_DETAIL_LEVEL, type SharedItinerary } from '@waypoint/shared';
+import {
+  SHARE_DAY_KIND,
+  SHARE_DAY_SUMMARY_KIND,
+  SHARE_DAYPART,
+  SHARE_DETAIL_LEVEL,
+  type SharedItinerary,
+} from '@waypoint/shared';
 import { t } from '../src/i18n/he';
 
 const CODE = '7Kq2mB9x';
@@ -32,14 +38,17 @@ const SUMMARY: SharedItinerary = {
     dayCount: 3,
     eventCount: 3,
     routeLabels: ['רייקיאוויק', 'ויק'],
+    routeStopCount: 2,
   },
   narrative: { source: 'deterministic', title: 'רייקיאוויק ← ויק', summary: '' },
   days: [
     {
       ordinal: 1,
       date: '2026-08-29',
-      title: 'קפלוויק ← רייקיאוויק',
-      summary: 'נחיתה בקפלוויק',
+      // The derived shapes, not sentences — the words are the renderer's (ADR-0213's
+      // 2026-08-30 amendment), so this fixture is also the check that it has them.
+      title: { kind: SHARE_DAY_KIND.FLIGHT_OUT, to: 'איסלנד' },
+      summary: { kind: SHARE_DAY_SUMMARY_KIND.STAY, place: 'Laugavegur 22' },
       sections: [
         {
           daypart: SHARE_DAYPART.MORNING,
@@ -47,8 +56,20 @@ const SUMMARY: SharedItinerary = {
         },
       ],
     },
-    { ordinal: 2, date: '2026-08-30', title: '', summary: '', sections: [] },
-    { ordinal: 3, date: '2026-08-31', title: '', summary: '', sections: [] },
+    {
+      ordinal: 2,
+      date: '2026-08-30',
+      title: { kind: SHARE_DAY_KIND.NONE },
+      summary: { kind: SHARE_DAY_SUMMARY_KIND.NONE },
+      sections: [],
+    },
+    {
+      ordinal: 3,
+      date: '2026-08-31',
+      title: { kind: SHARE_DAY_KIND.NONE },
+      summary: { kind: SHARE_DAY_SUMMARY_KIND.NONE },
+      sections: [],
+    },
   ],
 };
 

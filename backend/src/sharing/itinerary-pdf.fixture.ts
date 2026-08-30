@@ -1,7 +1,13 @@
 import {
+  BOOKING_TYPE,
+  SHARE_DAY_KIND,
+  SHARE_DAY_SUMMARY_KIND,
   SHARE_DAYPART,
   SHARE_DETAIL_LEVEL,
+  type BookingType,
   type SharedDay,
+  type SharedDayTitle,
+  type SharedDaySummary,
   type SharedItinerary,
 } from '@waypoint/shared';
 
@@ -13,94 +19,109 @@ import {
  * it too: a fixture that only the unit test can see would leave the one check that runs a
  * real browser in a real image with nothing realistic to render.
  */
-const DAYS: [string, string, string, [string, string, string, keyof typeof SHARE_DAYPART_KEY][]][] =
+/**
+ * **Every derived shape the renderers can be handed**, which is what makes this fixture the
+ * check on the 2026-08-30 amendment rather than a pretty page: the outbound flight day, the
+ * returning one, a route day, a day that stayed put, a night that belongs to the evening
+ * before it, and a lodging that phrases the second line. A kind with no example here is a
+ * kind nothing renders in CI.
+ */
+const DAYS: [
+  string,
+  SharedDayTitle,
+  SharedDaySummary,
+  [string, string, string, keyof typeof SHARE_DAYPART_KEY, BookingType?][],
+][] = [
   [
+    '2026-08-29',
+    { kind: SHARE_DAY_KIND.FLIGHT_OUT, to: 'איסלנד' },
+    { kind: SHARE_DAY_SUMMARY_KIND.STAY, place: 'Laugavegur 22' },
     [
-      '2026-08-29',
-      'קפלוויק ← רייקיאוויק',
-      'נחיתה בקפלוויק · כניסה לדירה',
-      [
-        ['09:20', 'נחיתה בקפלוויק', 'KEF', 'MORNING'],
-        ['15:00', 'כניסה לדירה', 'Laugavegur 22', 'AFTERNOON'],
-        ['19:30', 'ארוחת ערב בעיר', 'רייקיאוויק', 'EVENING'],
-      ],
+      ['09:20', 'נחיתה בקפלוויק', 'KEF', 'MORNING', BOOKING_TYPE.FLIGHT],
+      ['15:00', 'כניסה לדירה', 'Laugavegur 22', 'AFTERNOON', BOOKING_TYPE.HOTEL],
+      ['19:30', 'ארוחת ערב בעיר', 'רייקיאוויק', 'EVENING', BOOKING_TYPE.RESTAURANT],
+      // 01:40 sits in NIGHT and is rolled back onto this card by `sharePreviousNight`,
+      // which is the layout the owner reported: without it, it prints at the bottom of
+      // the 30th, below an evening nineteen hours later.
+      ['01:40', 'אורות הצפון מהמרפסת', 'Laugavegur 22', 'NIGHT'],
     ],
+  ],
+  [
+    '2026-08-30',
+    { kind: SHARE_DAY_KIND.ROUTE, from: 'רייקיאוויק', to: 'מעגל הזהב' },
+    { kind: SHARE_DAY_SUMMARY_KIND.EVENTS, titles: ['הפארק הלאומי ת׳ינגווליר', 'גייזר וסטרוקור'] },
     [
-      '2026-08-30',
-      'רייקיאוויק ← מעגל הזהב',
-      'הפארק הלאומי ת׳ינגווליר · גייזר וסטרוקור',
-      [
-        ['09:30', 'הפארק הלאומי ת׳ינגווליר', 'Þingvellir', 'MORNING'],
-        ['13:15', 'גייזר וסטרוקור', 'Haukadalur', 'NOON'],
-        ['16:00', 'מפל גולפוס', 'Gullfoss', 'AFTERNOON'],
-        ['19:00', 'ארוחת ערב ליד המלון', 'Selfoss', 'EVENING'],
-      ],
+      ['09:30', 'הפארק הלאומי ת׳ינגווליר', 'Þingvellir', 'MORNING'],
+      ['13:15', 'גייזר וסטרוקור', 'Haukadalur', 'NOON'],
+      ['16:00', 'מפל גולפוס', 'Gullfoss', 'AFTERNOON'],
+      ['19:00', 'ארוחת ערב ליד המלון', 'Selfoss', 'EVENING'],
     ],
+  ],
+  [
+    '2026-08-31',
+    { kind: SHARE_DAY_KIND.ROUTE, from: 'ויק', to: 'הפיורדים המזרחיים' },
+    { kind: SHARE_DAY_SUMMARY_KIND.EVENTS, titles: ['החוף השחור רייניספיארה', 'נסיעה מזרחה'] },
     [
-      '2026-08-31',
-      'ויק ← הפיורדים המזרחיים',
-      'החוף השחור רייניספיארה · נסיעה מזרחה',
-      [
-        ['08:30', 'החוף השחור רייניספיארה', 'Vík', 'MORNING'],
-        ['15:00', 'נסיעה מזרחה', 'כביש 1', 'AFTERNOON'],
-      ],
+      ['08:30', 'החוף השחור רייניספיארה', 'Vík', 'MORNING'],
+      ['15:00', 'נסיעה מזרחה', 'כביש 1', 'AFTERNOON'],
     ],
+  ],
+  [
+    '2026-09-01',
+    { kind: SHARE_DAY_KIND.PLACE, at: 'סיידיספיורדור' },
+    { kind: SHARE_DAY_SUMMARY_KIND.STAY, place: 'Norðurgata 2' },
     [
-      '2026-09-01',
-      'סיידיספיורדור',
-      'שביל ב׳יולפור · קפה בנורד אוסטור',
-      [
-        ['09:00', 'שביל ב׳יולפור', 'Bjólfur', 'MORNING'],
-        ['15:30', 'קפה בנורד אוסטור', 'Norðurgata 2', 'AFTERNOON'],
-        ['', 'הליכה לאורך הפיורד', 'הטיילת', 'FLEXIBLE'],
-      ],
+      ['09:00', 'שביל ב׳יולפור', 'Bjólfur', 'MORNING'],
+      ['15:30', 'קפה בנורד אוסטור', 'Norðurgata 2', 'AFTERNOON'],
+      ['', 'הליכה לאורך הפיורד', 'הטיילת', 'FLEXIBLE'],
     ],
+  ],
+  [
+    '2026-09-02',
+    { kind: SHARE_DAY_KIND.ROUTE, from: 'סיידיספיורדור', to: 'אגם מיוואטן' },
+    { kind: SHARE_DAY_SUMMARY_KIND.EVENTS, titles: ['מרחצאות מיוואטן', 'הר הגעש קרפלה'] },
     [
-      '2026-09-02',
-      'סיידיספיורדור ← אגם מיוואטן',
-      'מרחצאות מיוואטן · הר הגעש קרפלה',
-      [
-        ['10:00', 'מרחצאות מיוואטן', 'Jarðbaðshólar', 'MORNING'],
-        ['14:30', 'הר הגעש קרפלה', 'Krafla', 'AFTERNOON'],
-      ],
+      ['10:00', 'מרחצאות מיוואטן', 'Jarðbaðshólar', 'MORNING'],
+      ['14:30', 'הר הגעש קרפלה', 'Krafla', 'AFTERNOON'],
     ],
+  ],
+  [
+    '2026-09-03',
+    { kind: SHARE_DAY_KIND.ROUTE, from: 'אגם מיוואטן', to: 'אקוריירי' },
+    { kind: SHARE_DAY_SUMMARY_KIND.EVENTS, titles: ['הגן הבוטני', 'שיט לווייתנים'] },
     [
-      '2026-09-03',
-      'אגם מיוואטן ← אקוריירי',
-      'הגן הבוטני · שיט לווייתנים',
-      [
-        ['09:30', 'הגן הבוטני', 'Eyrarlandsvegur', 'MORNING'],
-        ['13:00', 'שיט לווייתנים', 'Eyjafjörður', 'NOON'],
-      ],
+      ['09:30', 'הגן הבוטני', 'Eyrarlandsvegur', 'MORNING'],
+      ['13:00', 'שיט לווייתנים', 'Eyjafjörður', 'NOON'],
     ],
+  ],
+  [
+    '2026-09-04',
+    { kind: SHARE_DAY_KIND.ROUTE, from: 'אקוריירי', to: 'סנייפלסנס' },
+    { kind: SHARE_DAY_SUMMARY_KIND.EVENTS, titles: ['קירקיופל', 'חוף דג׳ופלון'] },
     [
-      '2026-09-04',
-      'אקוריירי ← סנייפלסנס',
-      'קירקיופל · חוף דג׳ופלון',
-      [
-        ['10:00', 'קירקיופל', 'Grundarfjörður', 'MORNING'],
-        ['16:30', 'חוף דג׳ופלון', 'Djúpalónssandur', 'AFTERNOON'],
-      ],
+      ['10:00', 'קירקיופל', 'Grundarfjörður', 'MORNING'],
+      ['16:30', 'חוף דג׳ופלון', 'Djúpalónssandur', 'AFTERNOON'],
     ],
+  ],
+  [
+    '2026-09-05',
+    { kind: SHARE_DAY_KIND.ROUTE, from: 'סנייפלסנס', to: 'הלגונה הכחולה' },
+    { kind: SHARE_DAY_SUMMARY_KIND.EVENTS, titles: ['הלגונה הכחולה', 'ארוחת פרידה'] },
     [
-      '2026-09-05',
-      'סנייפלסנס ← הלגונה הכחולה',
-      'הלגונה הכחולה · ארוחת פרידה',
-      [
-        ['11:00', 'הלגונה הכחולה', 'Norðurljósavegur 9', 'MORNING'],
-        ['18:00', 'ארוחת פרידה', 'Grindavík', 'EVENING'],
-      ],
+      ['11:00', 'הלגונה הכחולה', 'Norðurljósavegur 9', 'MORNING'],
+      ['18:00', 'ארוחת פרידה', 'Grindavík', 'EVENING'],
     ],
+  ],
+  [
+    '2026-09-06',
+    { kind: SHARE_DAY_KIND.FLIGHT_HOME },
+    { kind: SHARE_DAY_SUMMARY_KIND.EVENTS, titles: ['החזרת הרכב'] },
     [
-      '2026-09-06',
-      'גרינדוויק ← קפלוויק',
-      'החזרת הרכב · טיסה הביתה',
-      [
-        ['07:00', 'החזרת הרכב', 'KEF', 'MORNING'],
-        ['09:40', 'טיסה הביתה', 'FI 562', 'MORNING'],
-      ],
+      ['07:00', 'החזרת הרכב', 'KEF', 'MORNING', BOOKING_TYPE.CAR],
+      ['09:40', 'טיסה הביתה', 'FI 562', 'MORNING', BOOKING_TYPE.FLIGHT],
     ],
-  ];
+  ],
+];
 
 const SHARE_DAYPART_KEY = SHARE_DAYPART;
 
@@ -110,11 +131,14 @@ const SHARE_DAYPART_KEY = SHARE_DAYPART;
 const FIXTURE_ICONS = ['✈️', '🏨', '🍽️', '⛰️', '🚗', '♨️', '🐳', '⛩️'] as const;
 
 const days: SharedDay[] = DAYS.map(([date, title, summary, events], index) => {
-  const byDaypart = new Map<string, { time: string; title: string; place: string }[]>();
-  for (const [time, eventTitle, place, key] of events) {
+  const byDaypart = new Map<
+    string,
+    { time: string; title: string; place: string; bookingType?: BookingType }[]
+  >();
+  for (const [time, eventTitle, place, key, bookingType] of events) {
     const daypart = SHARE_DAYPART_KEY[key];
     const bucket = byDaypart.get(daypart) ?? [];
-    bucket.push({ time, title: eventTitle, place });
+    bucket.push({ time, title: eventTitle, place, bookingType });
     byDaypart.set(daypart, bucket);
   }
   return {
@@ -130,6 +154,7 @@ const days: SharedDay[] = DAYS.map(([date, title, summary, events], index) => {
         daypart: daypart as SharedDay['sections'][number]['daypart'],
         hard: event.title.includes('טיסה') || event.title.includes('נחיתה'),
         ...(event.time ? { startLabel: event.time } : {}),
+        ...(event.bookingType ? { bookingType: event.bookingType } : {}),
         placeName: event.place,
       })),
     })),
@@ -153,6 +178,9 @@ export const NINE_DAY_REFERENCE_TRIP: SharedItinerary = {
       0,
     ),
     routeLabels: ['רייקיאוויק', 'מעגל הזהב', 'ויק', 'הפיורדים', 'אקוריירי', 'סנייפלסנס'],
+    // Deliberately larger than the strip above it: the masthead's `אזורים` fact reads THIS,
+    // and reading `routeLabels.length` is what made a capped strip report the trip's size.
+    routeStopCount: 9,
   },
   narrative: {
     source: 'deterministic',

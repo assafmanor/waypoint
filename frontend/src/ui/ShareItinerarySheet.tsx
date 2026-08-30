@@ -354,6 +354,48 @@ export function ShareItinerarySheet({
               </div>
             </div>
 
+            {/* The same send unit as the invite branch — one block, two outcomes instead of
+            one, because a read-only link has a second format and a membership has none.
+
+            **It sits above the refinements, not under them** (owner, 2026-08-30, looking at
+            this sheet: _"Where's the sharing link here?"_). It used to follow the sensitive
+            toggles AND the per-file document list, which is variable-length — so on
+            Everything with a few files, the one thing the sheet exists to hand over was
+            below the fold. The order is now audience → scope → send → refine, which also
+            matches how often each is touched: the configuration is stored on the share and
+            sticky, so every send after the first needs none of it. */}
+            <div className="share-send">
+              {link ? (
+                <TripLinkRow
+                  url={link}
+                  onCopy={() => {
+                    void navigator.clipboard?.writeText(link);
+                    toast(CONTROL_ICON.clipboard, t.share.owner.copied);
+                  }}
+                />
+              ) : null}
+              <div className="share-outcomes">
+                <button
+                  type="button"
+                  className="share-outcome primary"
+                  onClick={shareLink}
+                  disabled={busy !== undefined || loading || (!isAdmin && !config)}
+                >
+                  <Icon name="share" />
+                  {t.share.owner.actions.liveLink}
+                </button>
+                <button
+                  type="button"
+                  className="share-outcome"
+                  onClick={sharePdf}
+                  disabled={busy !== undefined || loading || (!isAdmin && !config)}
+                >
+                  <Icon name="download" />
+                  {busy === 'pdf' ? t.share.owner.pdf.preparing : t.share.owner.actions.pdf}
+                </button>
+              </div>
+            </div>
+
             {isAdmin && level === SHARE_DETAIL_LEVEL.EVERYTHING ? (
               <div className="share-private">
                 {SENSITIVE_KEYS.map((key) => (
@@ -401,40 +443,6 @@ export function ShareItinerarySheet({
                 </div>
               </div>
             ) : null}
-
-            {/* The same send unit as the invite branch — one block, two outcomes instead of
-            one, because a read-only link has a second format and a membership has none. */}
-            <div className="share-send">
-              {link ? (
-                <TripLinkRow
-                  url={link}
-                  onCopy={() => {
-                    void navigator.clipboard?.writeText(link);
-                    toast(CONTROL_ICON.clipboard, t.share.owner.copied);
-                  }}
-                />
-              ) : null}
-              <div className="share-outcomes">
-                <button
-                  type="button"
-                  className="share-outcome primary"
-                  onClick={shareLink}
-                  disabled={busy !== undefined || loading || (!isAdmin && !config)}
-                >
-                  <Icon name="share" />
-                  {t.share.owner.actions.liveLink}
-                </button>
-                <button
-                  type="button"
-                  className="share-outcome"
-                  onClick={sharePdf}
-                  disabled={busy !== undefined || loading || (!isAdmin && !config)}
-                >
-                  <Icon name="download" />
-                  {busy === 'pdf' ? t.share.owner.pdf.preparing : t.share.owner.actions.pdf}
-                </button>
-              </div>
-            </div>
 
             {note ? <div className="share-live-note">{note}</div> : null}
             {error ? <div className="share-error">{error}</div> : null}

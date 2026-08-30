@@ -61,10 +61,53 @@ describe('itineraryPdfHtml', () => {
     expect(full).toContain('@page{size:A4;}');
   });
 
+  /** The same first-strong isolate the template wraps every foreign value in. */
+  const auto = (value: string) => `\u2068${value}\u2069`;
+
   it('prints a daypart heading only above events that belong to it', () => {
     expect(full).toContain(PDF_COPY.dayparts[SHARE_DAYPART.MORNING]);
-    // No event anywhere in the fixture is at night, so that heading must not appear.
-    expect(full).not.toContain(PDF_COPY.dayparts[SHARE_DAYPART.NIGHT]);
+    // The fixture carries exactly one night event — the 01:40 aurora on day one, which is
+    // there to exercise `sharePreviousNight` — so the heading appears exactly once.
+    expect(full.match(new RegExp(PDF_COPY.dayparts[SHARE_DAYPART.NIGHT], 'g'))).toHaveLength(1);
+    // …and no `צהריים` on a day that has nothing at noon: an empty section is never
+    // projected, so this is the claim the heading is a group and not a spine.
+    expect(full).not.toContain(
+      PDF_COPY.dayparts[SHARE_DAYPART.FLEXIBLE] + '</span></header></section>',
+    );
+  });
+
+  // **The words the renderer owns** (ADR-0213's 2026-08-30 amendment). The projection ships
+  // `{ kind, …values }`, so a day headline exists only if this file said it.
+  it('says the derived day headlines and the booking captions in Hebrew', () => {
+    expect(full).toContain(PDF_COPY.dayTitle.flightOut(auto('איסלנד')));
+    expect(full).toContain(PDF_COPY.dayTitle.flightHome);
+    expect(full).toContain(PDF_COPY.daySummary.stay(auto('Laugavegur 22')));
+    expect(full).toContain(PDF_COPY.bookingType.hotel);
+    expect(full).toContain(PDF_COPY.bookingType.car);
+  });
+
+  // **The masthead said the trip's title twice** — here and in the lede one centimetre
+  // below — which is what made the block read as an unexplained leak (owner, 2026-08-30).
+  it('prints the trip title once, and labels the route strip', () => {
+    expect(full.match(/רייקיאוויק ← סנייפלסנס/g)).toHaveLength(1);
+    expect(full).toContain(PDF_COPY.routeLabel);
+  });
+
+  // Two lines by design rather than by wrapping, in the app's own date shape — it printed
+  // `2026-09-11 - 2026-09-22 · 12 ימים · עודכן …` on one line and overflowed the column.
+  it('splits the trip facts from the provenance stamp, in the app date shape', () => {
+    expect(full).toContain('29.08–06.09');
+    expect(full).not.toContain('2026-08-29 - 2026-09-06');
+    expect(full).toContain('class="pdf-stamp"');
+  });
+
+  // `routeLabels` is capped; printing its length as the trip's stop count is what told a
+  // long trip it had eight.
+  it('counts the whole route rather than the drawn strip', () => {
+    expect(NINE_DAY_REFERENCE_TRIP.trip.routeStopCount).toBeGreaterThan(
+      NINE_DAY_REFERENCE_TRIP.trip.routeLabels.length,
+    );
+    expect(full).toContain(`<strong>⁦${NINE_DAY_REFERENCE_TRIP.trip.routeStopCount}⁩</strong>`);
   });
 
   it('shows exact times at Full and none at Summary', () => {
