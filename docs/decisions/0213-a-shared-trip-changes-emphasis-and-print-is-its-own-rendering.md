@@ -173,6 +173,103 @@ the Docker leg and its host-side verifier (`.github/workflows/ci.yml`,
 through its system Chromium, and the host-side `pdfjs` verifier confirmed two pages,
 extractable Latin and Hebrew, and the written URL. The runtime image can render.
 
+## Amendment — four field reports, and what the repairs changed (2026-08-30)
+
+Shipped, merged, and four things wrong in a day's use. All four are worth recording because
+none of them was a knowledge gap: each had a test that passed while the defect was on screen.
+
+**A sibling control needs a rule that lays it out.** The All Trips share action rendered on a
+line of its own, because `.trip-share-wrap` was written into the JSX and never into the CSS —
+so an unstyled block wrapper let a `width: 100%` card push its sibling to the next row. The
+unit test that guarded the split asserted the button was not NESTED inside the card, which is
+true of a control anywhere on the page. **jsdom reports every rect as zero, so a claim about
+where something SITS cannot be a unit test** — `e2e/trip-share-entry.spec.ts` now measures the
+action against the card's own band, at both phone widths and in both list shapes.
+
+**A screen outside the shell inherits its refusal to scroll and none of its scroller.** The
+public reader could not be scrolled at all. `html, body { overflow: clip }` is app-wide and
+deliberate (every scroll belongs to `.body`, a sheet or a strip), and `/s/<code>` renders
+outside `AppShell` — so `.sh-page` had to own a scroll container and did not. It is sized in
+`dvh` rather than `%` for the reason `tokens.css` already gives: a percentage resolves against
+the large viewport, which would have hidden the last ~125px behind the phone's toolbar with
+nothing able to scroll to it.
+
+**A page number is only true if the paginator is what counted.** The print renderer sliced
+days into fixed groups of five, wrapped each in a `min-height: 297mm` box and printed that
+arithmetic as `עמוד N מתוך M`. A dense twelve-day trip overflowed those boxes, so five
+physical sheets were numbered to three, the `position: absolute` footer inside an overflowing
+box printed **on top of** the schedule, and one document ended on a blank page. The repair is
+to stop paginating: the days are one multi-column flow, Chromium breaks it on
+`break-inside: avoid`, and the running footer is Chromium's `footerTemplate` reading
+`.pageNumber`/`.totalPages`. Its cost is that the footer renders as a **separate document**
+that inherits no stylesheet and no font from the page, so it carries its own inlined
+`@font-face` — a footer saying `עמוד` in a container with no Hebrew coverage would print
+boxes. Two columns are a `column-count`, never a grid: a grid container that outgrows the page
+fragments by row, which is where the overlapping lines came from.
+
+**An emoji is content, and the runtime image has none.** Every icon printed as a rectangle.
+`icons.ts` says the glyph is content and `node:22-slim` + `fonts-liberation` has no emoji
+coverage at all, so Chromium drew `.notdef` for each one — invisible on every developer
+machine, because a desktop has an emoji font. Monochrome Noto Emoji is now vendored and
+inlined like the other faces (`backend/assets/fonts/README.md` records why monochrome, why
+vendored, and why not subsetted). The lesson generalises past emoji: **the smoke check must
+run where the fonts are missing, and it must open the artifact.** It now asserts extractable
+emoji beside extractable Hebrew, that each page's own footer names the sheet it is printed on,
+that no page is blank, and that no text run is printed over another — against **two**
+documents, the reference trip and a deliberately dense one, because only the dense one
+fragments and the comfortable one was green through all of the above.
+
+## Amendment — four field reports, and what the repairs changed (2026-08-30)
+
+Shipped, merged, and four things wrong in a day's use. Worth recording because none was a
+knowledge gap: each had a passing test while the defect was on screen.
+
+**A sibling control needs a rule that lays it out.** The All Trips share action rendered on a
+line of its own, because `.trip-share-wrap` was written into the JSX and never into the CSS —
+so an unstyled block wrapper let a `width: 100%` card push its sibling to the next row. The
+unit test guarding the split asserted the button was not NESTED inside the card, which is true
+of a control anywhere on the page. **jsdom reports every rect as zero, so a claim about where
+something SITS cannot be a unit test** — `e2e/trip-share-entry.spec.ts` now measures the action
+against the card's own band, at both phone widths and in both list shapes.
+
+**A screen outside the shell inherits its refusal to scroll and none of its scroller.** The
+public reader could not be scrolled at all. `html, body { overflow: clip }` is app-wide and
+deliberate — every scroll belongs to `.body`, a sheet or a strip — and `/s/<code>` renders
+outside `AppShell`, so `.sh-page` had to own a scroll container and did not. Sized in `dvh`
+rather than `%` for the reason `tokens.css` already gives: a percentage resolves against the
+LARGE viewport, so the last ~125px would sit behind the phone's toolbar with nothing able to
+scroll to it.
+
+**A page number is only true if the paginator is what counted.** The print renderer sliced days
+into fixed groups of five, wrapped each in a `min-height: 297mm` box and printed that
+arithmetic as `עמוד N מתוך M`. A dense twelve-day trip overflowed those boxes, so five physical
+sheets were numbered to three, the `position: absolute` footer inside an overflowing box
+printed **on top of** the schedule, and one document ended on a blank page. The repair is to
+stop paginating: the days are one multi-column flow, Chromium breaks it on `break-inside:
+avoid`, and the running footer is Chromium's `footerTemplate` reading `.pageNumber` /
+`.totalPages`. Two consequences worth knowing. The footer renders as a **separate document**
+that inherits no stylesheet and no font from the page, so it carries its own inlined
+`@font-face` — a footer saying `עמוד` in a container with no Hebrew coverage prints boxes. And
+the page margins move to `page.pdf()`, because that footer lives in the bottom margin: the band
+has to hold it and still leave air above it, which the first pass at 12/13/15mm did not.
+
+Two columns are a `column-count`, never a grid — a grid container that outgrows the page
+fragments by row, which is where the overlapping lines came from.
+
+**An emoji is content, and the runtime image has none.** Every icon printed as a rectangle.
+`icons.ts` says the glyph is content, and `node:22-slim` + `fonts-liberation` has no emoji
+coverage at all, so Chromium drew `.notdef` for each — invisible on every developer machine,
+because a desktop has an emoji font. Monochrome Noto Emoji is now vendored and inlined like the
+other faces (`backend/assets/fonts/README.md` records why monochrome, why vendored, why not
+subsetted).
+
+**What the smoke check learned from all of it.** It must run where the fonts are missing, it
+must open the artifact, and it must be given a document that actually fragments. It now asserts
+extractable emoji beside extractable Hebrew, that each page's own footer names the sheet it is
+printed on, that no page is blank, and that no text run is printed over another — against
+**two** documents, the reference trip and a deliberately dense one, because only the dense one
+fragments and the comfortable one stayed green through every defect above.
+
 ## Alternatives considered
 
 - **One page with fields progressively removed.** Rejected: less information is not automatically the right emphasis.

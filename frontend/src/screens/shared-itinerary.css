@@ -9,18 +9,39 @@
    The hero keeps its dark trip identity in BOTH themes — it is always-dark chrome, so its
    ink is the theme-fixed `--on-dark-*` ramp (ADR-0158 §3), not a re-mapping fill. */
 
-.sh-page {
-  min-height: 100%;
+/* **This page owns its own scroll, because nothing above it will do it for you** (owner
+   report, 2026-08-30: the shared link could not be scrolled at all). `html, body` are
+   `overflow: clip` app-wide (tokens.css) — every scroll in this app is `.body`'s, a sheet's
+   or a strip's — and the public reader renders OUTSIDE `AppShell`, so it inherited the
+   refusal and none of the scroller. Sized in `dvh` like `.app` and not in `%`: a percentage
+   resolves against the LARGE viewport, so the last ~125px would sit behind the phone's
+   browser toolbar with the document itself unable to scroll to them.
+
+   Its own scroll container also means `overscroll-behavior` can stop the pull-to-refresh
+   here exactly as it does in the app. */
+.sh-page,
+.sh-boot,
+.sh-unavailable {
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   background: var(--screen);
+}
+
+/* A stranger's device is a phone (ADR-0017), but the link also lands in a desktop browser —
+   bound to the same column the app frames itself in rather than stretching a phone layout
+   across 1600px. */
+.sh-page {
+  max-width: 560px;
+  margin-inline: auto;
   color: var(--ink);
 }
 
 .sh-boot {
-  min-height: 100%;
   display: grid;
   place-items: center;
   padding: 28px;
-  background: var(--screen);
   color: var(--muted);
 }
 
@@ -478,7 +499,8 @@
 }
 
 .sh-footer {
-  padding: 19px 16px 25px;
+  /* The tail clears the phone's home indicator — this page has no tab bar to do it. */
+  padding: 19px 16px calc(25px + var(--safe-bottom));
   border-block-start: 1px solid var(--line);
   text-align: center;
 }
@@ -508,11 +530,9 @@
 }
 
 .sh-unavailable {
-  min-height: 100%;
   display: grid;
   place-items: center;
   padding: 28px;
-  background: var(--screen);
   text-align: center;
 }
 

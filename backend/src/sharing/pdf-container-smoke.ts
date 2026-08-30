@@ -1,5 +1,5 @@
 import { writeFileSync } from 'node:fs';
-import { NINE_DAY_REFERENCE_TRIP } from './itinerary-pdf.fixture';
+import { DENSE_REFERENCE_TRIP, NINE_DAY_REFERENCE_TRIP } from './itinerary-pdf.fixture';
 import { PdfBrowserService } from './pdf-browser.service';
 
 /**
@@ -15,17 +15,26 @@ import { PdfBrowserService } from './pdf-browser.service';
  * Deliberately not a spec: it runs as the container's entrypoint under `node`, with no
  * vitest, no source transform and no DATABASE_URL — the same shape the deployed process has.
  *
- *   node dist/sharing/pdf-container-smoke.js /out/sample.pdf
+ * **Two documents, because one of them never broke.** The reference trip fits with room to
+ * spare; what shipped wrong was a DENSE itinerary, whose pages the template had numbered by
+ * its own arithmetic and whose footer then printed over the schedule. A smoke that renders
+ * only the comfortable case is a smoke that was green through all of it.
+ *
+ *   node dist/sharing/pdf-container-smoke.js /out/sample.pdf /out/dense.pdf
  */
 async function main(): Promise<void> {
-  const out = process.argv[2];
-  if (!out) throw new Error('usage: pdf-container-smoke <output.pdf>');
+  const outputs = process.argv.slice(2);
+  if (outputs.length < 2) {
+    throw new Error('usage: pdf-container-smoke <reference.pdf> <dense.pdf>');
+  }
 
   const service = new PdfBrowserService();
   try {
-    const pdf = await service.render(NINE_DAY_REFERENCE_TRIP, 'travelive.app/s/7Kq2mB9x');
-    writeFileSync(out, pdf);
-    console.log(`wrote=${out} bytes=${pdf.byteLength}`);
+    for (const [index, projection] of [NINE_DAY_REFERENCE_TRIP, DENSE_REFERENCE_TRIP].entries()) {
+      const pdf = await service.render(projection, 'travelive.app/s/7Kq2mB9x');
+      writeFileSync(outputs[index], pdf);
+      console.log(`wrote=${outputs[index]} bytes=${pdf.byteLength}`);
+    }
   } finally {
     await service.onModuleDestroy();
   }

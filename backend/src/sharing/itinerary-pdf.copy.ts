@@ -26,10 +26,11 @@ export const PDF_COPY = {
   scheduleHint: 'חלקי יום · שעות · מקומות · נסיעות',
   summaryTitle: 'המסע במבט אחד',
   summaryHint: 'אירועים לפי חלקי היום, בלי שעות',
-  continuedTitle: 'המשך הלו״ז',
-  continuedAppendixTitle: 'המשך ונספח',
-  continuation: (page: number) => `המשך המסלול · עמוד ${page}`,
-  page: (page: number, total: number) => `עמוד ${page} מתוך ${total}`,
+  // Split rather than a `page(n, total)` function: the two numbers are Chromium's, written
+  // into `<span class="pageNumber">` / `<span class="totalPages">` by the paginator, so the
+  // words around them have to be able to sit either side of a placeholder.
+  pagePrefix: 'עמוד ',
+  pageOf: 'מתוך ',
   updatedAt: 'עודכן',
   days: (count: number) => `${count} ${count === 1 ? 'יום' : 'ימים'}`,
   events: (count: number) => `${count} ${count === 1 ? 'אירוע' : 'אירועים'}`,

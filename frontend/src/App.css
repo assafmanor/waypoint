@@ -1848,8 +1848,9 @@
   letter-spacing: 0.04em;
   margin: 2px 4px 9px;
 }
-.trip-card + .sec,
-.trip-hero + .sec {
+/* The cards are wrapped by `.trip-share-wrap` (the share entry is their sibling, not a
+   nested button), so the section label follows the WRAPPER, never the card itself. */
+.trip-share-wrap + .sec {
   margin-top: 16px;
 }
 

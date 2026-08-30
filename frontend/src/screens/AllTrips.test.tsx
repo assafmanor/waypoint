@@ -95,6 +95,11 @@ describe('AllTrips sharing entry', () => {
 
   // The mockup rejected nesting the action inside the card button by name: a button in a
   // button is invalid HTML and gives the thumb two targets on the same rect.
+  //
+  // **This is the whole of what jsdom can say, and on its own it was not enough** — the
+  // action shipped on a line of its own and this test stayed green, because a sibling that
+  // has wrapped is still a sibling. Same-ROW is `e2e/trip-share-entry.spec.ts`'s, where
+  // there are rects.
   it('keeps the share control a sibling of the card, never nested inside it', async () => {
     const { container } = renderTrips();
     await screen.findByText('איסלנד עם המשפחה');

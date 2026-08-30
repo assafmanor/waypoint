@@ -10,6 +10,7 @@
 // nothing else is, and the absence of an auth mock IS the anonymity assertion.
 import { test, expect, type Page } from '@playwright/test';
 import { SHARE_DAYPART, SHARE_DETAIL_LEVEL, type SharedItinerary } from '@waypoint/shared';
+import { t } from '../src/i18n/he';
 
 const CODE = '7Kq2mB9x';
 const PHONES = [
@@ -193,4 +194,36 @@ test('the dark theme renders the page, with the trip identity staying dark', asy
 
   await expect(page.getByRole('heading', { name: 'איסלנד עם המשפחה' })).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+/** Enough days to be taller than any phone — the state the reader is actually in. */
+const LONG: SharedItinerary = {
+  ...FULL,
+  trip: { ...FULL.trip, dayCount: 14, endDate: '2026-09-11' },
+  days: Array.from({ length: 14 }, (_, index) => ({
+    ...FULL.days[0],
+    ordinal: index + 1,
+    date: new Date(Date.UTC(2026, 7, 29 + index)).toISOString().slice(0, 10),
+  })),
+};
+
+/**
+ * **The page a stranger sees has to scroll, and it did not** (owner report, 2026-08-30).
+ *
+ * The app shell refuses to scroll on purpose — `html, body { overflow: clip }`, every scroll
+ * belongs to `.body`, a sheet or a strip (`e2e/shell-does-not-scroll.spec.ts` asserts that
+ * refusal) — and this screen renders OUTSIDE the shell, so it inherited the refusal and none
+ * of the scroller. A day past the fold was simply unreachable. Only a real browser can say
+ * so: in jsdom every element is 0px tall and therefore never overflows.
+ */
+test('the reader scrolls to its last day and its footer', async ({ page }) => {
+  await open(page, LONG);
+  const reader = page.locator('.sh-page');
+
+  const overflow = await reader.evaluate((el) => el.scrollHeight - el.clientHeight);
+  expect(overflow).toBeGreaterThan(0);
+
+  await reader.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+  await expect(reader).not.toHaveJSProperty('scrollTop', 0);
+  await expect(page.getByText(t.share.public.inviteTitle)).toBeInViewport();
 });

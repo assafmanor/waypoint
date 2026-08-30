@@ -1,18 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { SHARE_DAYPART, SHARE_DETAIL_LEVEL, type SharedItinerary } from '@waypoint/shared';
-import { itineraryPdfHtml, resetPdfFontCache } from './itinerary-pdf.template';
+import {
+  itineraryPdfFooterHtml,
+  itineraryPdfHtml,
+  resetPdfFontCache,
+} from './itinerary-pdf.template';
 import { PDF_COPY } from './itinerary-pdf.copy';
 import { NINE_DAY_REFERENCE_TRIP } from './itinerary-pdf.fixture';
 
 const QR = 'data:image/png;base64,iVBORw0KGgo=';
 
-const render = (projection: SharedItinerary) =>
-  itineraryPdfHtml({
-    projection,
-    publicUrl: 'travelive.app/s/7Kq2mB9x',
-    qrDataUrl: QR,
-    generatedAtLabel: '29.08.2026 08:10',
-  });
+const input = (projection: SharedItinerary) => ({
+  projection,
+  publicUrl: 'travelive.app/s/7Kq2mB9x',
+  qrDataUrl: QR,
+  generatedAtLabel: '29.08.2026 08:10',
+});
+
+const render = (projection: SharedItinerary) => itineraryPdfHtml(input(projection));
 
 describe('itineraryPdfHtml', () => {
   const full = render(NINE_DAY_REFERENCE_TRIP);
@@ -37,21 +42,23 @@ describe('itineraryPdfHtml', () => {
     expect(full.match(/https?:\/\//g)).toBeNull();
   });
 
-  it('carries the written URL, the generated stamp and a page count', () => {
+  it('carries the written URL and the generated stamp', () => {
     expect(full).toContain('travelive.app/s/7Kq2mB9x');
     expect(full).toContain('29.08.2026 08:10');
-    expect(full).toContain(PDF_COPY.page(1, 2));
-    expect(full).toContain(PDF_COPY.page(2, 2));
   });
 
-  // ADR-0213 §4's density target for the nine-day reference trip.
-  it('paginates the reference trip to two pages at Full and one at Summary', () => {
-    expect(full.match(/class="pdf-paper"/g)).toHaveLength(2);
-    const summary = render({
-      ...NINE_DAY_REFERENCE_TRIP,
-      detailLevel: SHARE_DETAIL_LEVEL.SUMMARY,
-    });
-    expect(summary.match(/class="pdf-paper"/g)).toHaveLength(1);
+  // **The document does not paginate itself, and that is the point.** It used to slice the
+  // days into groups of five, wrap each in a 297mm box and print the resulting arithmetic
+  // as the page number — which a dense trip made false (five sheets numbered to three) and
+  // whose absolutely-positioned footer then printed over the schedule. The days are one
+  // flow; Chromium breaks it and Chromium counts it.
+  it('lays the days out as one flow with no page boxes of its own', () => {
+    expect(full).not.toContain('pdf-paper');
+    expect(full).not.toContain('break-after:page');
+    expect(full.match(/class="pdf-days"/g)).toHaveLength(1);
+    expect(full.match(/class="pdf-day"/g)).toHaveLength(NINE_DAY_REFERENCE_TRIP.days.length);
+    // The margins belong to `page.pdf()`, because the running footer sits in the margin box.
+    expect(full).toContain('@page{size:A4;}');
   });
 
   it('prints a daypart heading only above events that belong to it', () => {
@@ -75,10 +82,10 @@ describe('itineraryPdfHtml', () => {
     });
     expect(everything).toContain(PDF_COPY.appendix.title);
     expect(everything.match(/class="pdf-ops"/g)).toHaveLength(1);
-    // It belongs to the LAST sheet: measured against the final `<section class="pdf-paper">`
-    // rather than the first mention of the class, which is in the stylesheet.
+    // After the whole schedule — it is the tail of the document, so it lands on whatever
+    // page the days end on and never interrupts them.
     expect(everything.indexOf('class="pdf-ops"')).toBeGreaterThan(
-      everything.lastIndexOf('<section class="pdf-paper">'),
+      everything.lastIndexOf('class="pdf-day"'),
     );
   });
 
@@ -95,8 +102,20 @@ describe('itineraryPdfHtml', () => {
   it('finds the app fonts rather than falling back silently', () => {
     resetPdfFontCache();
     const fresh = render(NINE_DAY_REFERENCE_TRIP);
-    // Five faces: two Assistant, two Secular One, one JetBrains Mono.
-    expect(fresh.match(/@font-face/g)).toHaveLength(5);
+    // Six faces: two Assistant, two Secular One, one JetBrains Mono, one Noto Emoji.
+    expect(fresh.match(/@font-face/g)).toHaveLength(6);
+  });
+
+  // An event's icon is an emoji and therefore content (`icons.ts`). The container has no
+  // emoji coverage of its own, so a face that is merely absent prints rectangles — which is
+  // what shipped, and which looked correct on every machine that has one.
+  it('inlines an emoji face and asks for it after the app faces', () => {
+    expect(full).toContain("font-family:'Noto Emoji'");
+    expect(full).toContain("font-family:'Assistant','Noto Emoji'");
+    const emojiFace = (full.match(/@font-face\{[^}]*Noto Emoji[^}]*\}/g) ?? [])[0] ?? '';
+    expect(emojiFace).toContain('U+1F000-1FAFF');
+    // Never the bidi isolates `ltr()` writes, which Assistant already carries.
+    expect(emojiFace).not.toContain('U+2000-206F');
   });
 
   // The bug this caught: with no `unicode-range`, the Latin Assistant face wins for every
@@ -105,12 +124,43 @@ describe('itineraryPdfHtml', () => {
   // extracted at all. So the ranges are asserted, not just present.
   it('gives every face a unicode-range, and the Hebrew one to a Hebrew file', () => {
     const faces = full.match(/@font-face\{[^}]*\}/g) ?? [];
-    expect(faces).toHaveLength(5);
+    expect(faces).toHaveLength(6);
     for (const face of faces) expect(face).toContain('unicode-range:');
 
     const hebrewFaces = faces.filter((face) => face.includes('U+0590-05FF'));
     expect(hebrewFaces).toHaveLength(2); // Assistant + Secular One
     // JetBrains Mono ships no Hebrew glyphs and must never be asked for any.
     expect(faces.filter((f) => f.includes('U+0590-05FF') && f.includes('JetBrains'))).toEqual([]);
+  });
+});
+
+// The footer is a SEPARATE document Chromium renders into the page margin. It shares no
+// stylesheet and no font with the page, and the container has no Hebrew coverage — so a
+// footer that did not carry its own faces would print the word `עמוד` as boxes.
+describe('itineraryPdfFooterHtml', () => {
+  const footer = itineraryPdfFooterHtml(input(NINE_DAY_REFERENCE_TRIP));
+
+  it('leaves both numbers to the paginator', () => {
+    expect(footer).toContain('<span class="pageNumber"></span>');
+    expect(footer).toContain('<span class="totalPages"></span>');
+    expect(footer).toContain(PDF_COPY.pagePrefix);
+    expect(footer).toContain(PDF_COPY.pageOf);
+  });
+
+  it('inlines its own fonts, because it inherits none from the page', () => {
+    expect(footer).toContain('src:url(data:font/woff2;base64,');
+    expect(footer).toContain("font-family:'Assistant'");
+  });
+
+  it('names the trip and the live link on every page, and escapes both', () => {
+    expect(footer).toContain('travelive.app/s/7Kq2mB9x');
+    expect(
+      itineraryPdfFooterHtml(
+        input({
+          ...NINE_DAY_REFERENCE_TRIP,
+          trip: { ...NINE_DAY_REFERENCE_TRIP.trip, name: '<script>alert(1)</script>' },
+        }),
+      ),
+    ).toContain('&lt;script&gt;');
   });
 });
