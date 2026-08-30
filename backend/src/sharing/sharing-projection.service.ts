@@ -1,7 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { EVENT_KIND, TRAVEL_MODES } from '@waypoint/shared';
 import {
-  NARRATIVE_SOURCE,
   SHARE_DAYPART_ORDER,
   SHARE_DETAIL_LEVEL,
   routeLegKey,
@@ -20,11 +19,13 @@ import {
 import { eventDisplayZone, type TripZoneContext } from '../common/event-zone.util';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  applyNarrative,
   fallbackDaySummary,
   fallbackDayTitle,
   fallbackTripTitle,
   routeLabelsFrom,
 } from './itinerary-narrative.fallback';
+import { ItineraryNarrativeService } from './itinerary-narrative.service';
 import {
   SHARE_EVENT_SELECT,
   SHARE_PLACE_SELECT,
@@ -51,6 +52,11 @@ const dayKey = (date: Date): string => date.toISOString().slice(0, 10);
 
 const GOOGLE_MAPS_SEARCH = 'https://www.google.com/maps/search/?api=1&query=';
 
+/** The app's only locale today (ADR-0009). A parameter rather than a constant at the call
+ *  site because a generated narrative is keyed by it, and a second locale must not silently
+ *  reuse the first one's words. */
+const DEFAULT_LOCALE = 'he';
+
 /** A place's public label: the nickname a traveller chose, else the official name
  *  (ADR-0166 §18). Never the `googlePlaceId`, never the coordinates. */
 const placeLabel = (place: { name: string; nickname: string | null } | null): string | undefined =>
@@ -68,13 +74,16 @@ const placeLabel = (place: { name: string; nickname: string | null } | null): st
  */
 @Injectable()
 export class SharingProjectionService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly narrative: ItineraryNarrativeService,
+  ) {}
 
   /** Resolve a public code to its live projection. A missing, revoked or rotated code is
    *  the same `NotFoundException` — the response must not distinguish "never existed" from
    *  "was withdrawn", or the 404 becomes a trip-existence oracle. */
-  async byCode(code: string): Promise<SharedItinerary> {
-    return this.project(await this.requireActiveShare(code));
+  async byCode(code: string, locale = DEFAULT_LOCALE): Promise<SharedItinerary> {
+    return this.project(await this.requireActiveShare(code), locale);
   }
 
   async requireActiveShare(code: string): Promise<SharePolicy> {
@@ -94,7 +103,7 @@ export class SharingProjectionService {
     return share;
   }
 
-  async project(share: SharePolicy): Promise<SharedItinerary> {
+  async project(share: SharePolicy, locale = DEFAULT_LOCALE): Promise<SharedItinerary> {
     const detail = share.detailLevel;
     const orienting = detail !== SHARE_DETAIL_LEVEL.SUMMARY;
 
@@ -151,6 +160,16 @@ export class SharingProjectionService {
       ),
     );
 
+    // Words last, and never in the reader's way: a stored generated narrative may replace
+    // these strings, and anything else — no result, a stale hash, an invalid one, no
+    // provider at all — returns the deterministic ones without waiting (ADR-0213 §2).
+    const narrative = await this.narrative.resolve(share.id, days, routeLabels, locale, {
+      title: fallbackTripTitle(routeLabels, trip.name),
+      // Deliberately empty for a deterministic narrative: the counts beside it are
+      // `trip.*` fields, and the sentence joining them is each renderer's own copy.
+      summary: '',
+    });
+
     return sharedItinerarySchema.parse({
       status: 'live',
       detailLevel: detail,
@@ -167,13 +186,11 @@ export class SharingProjectionService {
         routeLabels,
       },
       narrative: {
-        source: NARRATIVE_SOURCE.DETERMINISTIC,
-        title: fallbackTripTitle(routeLabels, trip.name),
-        // Deliberately empty for a deterministic narrative: the counts beside it are
-        // `trip.*` fields, and the sentence joining them is each renderer's own copy.
-        summary: '',
+        source: narrative.source,
+        title: narrative.title,
+        summary: narrative.summary,
       },
-      days,
+      days: applyNarrative(days, narrative),
       appendix:
         detail === SHARE_DETAIL_LEVEL.EVERYTHING ? await this.buildAppendix(share) : undefined,
     });

@@ -5,6 +5,8 @@ import { SHARE_DAYPART, SHARE_DETAIL_LEVEL, type ShareDetailLevel } from '@waypo
 import { PrismaService } from '../prisma/prisma.service';
 import { generatePublicCode } from '../common/public-code.util';
 import { SharingProjectionService } from './sharing-projection.service';
+import { ItineraryNarrativeService } from './itinerary-narrative.service';
+import { DisabledItineraryNarrativeGenerator } from './itinerary-narrative.generator';
 
 /**
  * The leak fixture, and the point of this whole file.
@@ -30,7 +32,12 @@ const SECRET = {
 
 describe('SharingProjectionService', () => {
   const prisma = new PrismaService();
-  const service = new SharingProjectionService(prisma);
+  const service = new SharingProjectionService(
+    prisma,
+    // The narrative that actually ships: no provider, so every projection below reads the
+    // deterministic strings — which is also the state a provider outage produces.
+    new ItineraryNarrativeService(prisma, new DisabledItineraryNarrativeGenerator()),
+  );
   const tripIds: string[] = [];
   let tripId: string;
   let documentId: string;
