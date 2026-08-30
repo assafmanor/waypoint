@@ -71,6 +71,23 @@ Also rejected: shrinking the control (44px is ADR-0017's floor and the saving wa
 letting the meta ellipsise rather than wrap — the first thing cut is the member count, the one
 fact in that row that appears nowhere else on the card.
 
+**Built the same day, at the middle weight.** The mockup left the countdown's loudness
+(`שקט · נייר · מלא`) to a device pass; the owner handed the call back (_"Do what looks best in
+your opinion"_), so it ships as `נייר` — the `.hdr-anchor.is-back` recipe exactly, at 12px and
+`5px 10px`. The solid amber fill was the alternative and was declined on the same ground §2
+already states: an amber _fill_ on a nav card starts borrowing the rationed board's grammar,
+and this list is deliberately glowless. `.chip.past` and its `chipPast` string are gone,
+`.chip` collapsed into the one `.chip.soon` rule it has a consumer for, and `.trip-share-wrap`
+/ `.trip-share-action` / `t.share.entryFor` are deleted with the control they existed for.
+
+What the specs hold, and the split is the usual one: the unit suite (`AllTrips.test.tsx`) has
+the hold firing on the card the finger is on and _not_ firing when the finger moves, since
+jsdom implements no `PointerEvent` and the hook is written for exactly that shape of event.
+The browser (`e2e/trip-share-entry.spec.ts`) has the half jsdom cannot see — that the click
+landing on **release** is swallowed rather than opening the trip behind the sheet — plus the
+width, as the card's height: 74px on the e2e fixture against the 104px the mockup measured on
+the shipped one.
+
 ## Consequences
 
 - Supersedes the "switcher is a sheet, not a route" line of ADR-0024 §5; that section now describes the All-trips page. Routing map gains `/trips` and the live-vs-not landing branch.

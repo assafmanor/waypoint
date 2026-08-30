@@ -154,3 +154,29 @@ The lesson worth keeping is about the shape of the disagreement. v1 was measured
 numbers were right; what it got wrong was treating "make the state quieter" as the obvious
 consequence of "the row is too tight", when the state is the fact the row is _for_. The
 measurement told us where the pixels were, not what to spend them on.
+
+## Built, and the one call handed back
+
+_"Build"_ … _"Do what looks best in your opinion"_. The only thing v2 deliberately left open
+was the countdown's weight, so it ships at `נייר` — the `.hdr-anchor.is-back` recipe verbatim,
+12px on `5px 10px` padding. `מלא` (a solid amber fill) was the alternative and lost on the
+ground §2 of the amendment already states: an amber _fill_ on a nav card starts borrowing the
+board's grammar, and ADR-0033 keeps this list glowless on purpose. Picking the recipe the app
+already had also meant the diff introduces no new colour treatment at all.
+
+Everything else was deletion. `.trip-share-wrap`, `.trip-share-action`, `t.share.entryFor`,
+`.chip.past` and `chipPast` all existed for a control that no longer does; `.chip` had exactly
+one consumer left, so it collapsed into `.chip.soon`. The card's own `margin-bottom` came back
+from the wrapper, and `.trip-card + .sec` / `.trip-hero + .sec` returned to what they were
+before the wrapper existed. The whole build is ~40 lines net negative.
+
+**Where the two suites split, and it is the usual place.** jsdom implements no `PointerEvent`,
+which `useHoldToOpen` is written to survive — so the unit spec can hold a card and assert the
+sheet opens for the card the finger was on, and can assert a hold that becomes a scroll opens
+nothing. What it cannot see is the half that actually breaks: a hold fires with the finger
+still down, so the click that lands on **release** would open the trip behind the sheet unless
+`armClickSwallow` eats it. That is an e2e assertion, and it is the one this file would fail if
+the gesture were ever rewired.
+
+Measured on the way out, against the mockup's numbers for the shipped card: 104px and three
+meta lines before, **74px and one** after, on the e2e fixture at 360px.
