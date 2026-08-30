@@ -4851,8 +4851,8 @@ textarea {
         <button type="button" data-w="390">⁦390×844⁩</button>
         <span class="sep"></span>
         <span class="lbl">שעה בעצירה חופשית</span>
-        <button type="button" data-soft="none" aria-pressed="true">בלי</button>
-        <button type="button" data-soft="start">התחלה בלבד</button>
+        <button type="button" data-soft="start" aria-pressed="true">התחלה בלבד</button>
+        <button type="button" data-soft="none">בלי</button>
         <span class="sep"></span>
         <span class="lbl">תמונת יום</span>
         <button type="button" data-photo="on" aria-pressed="true">יש</button>
@@ -4874,7 +4874,7 @@ textarea {
 
       <!-- ══════════════════════════ §2 ══════════════════════════ -->
       <section class="case">
-        <h2>§2 · מה שקבוע · חמש שורות לפני שבעים ותשע</h2>
+        <h2>§2 · ההזמנות · חמש שורות לפני שבעים ותשע</h2>
         <p class="note">
           <b>"Maybe these sharings should have sections for important stuff, like flights,
           reservations etc."</b> · לא טאב (ADR-0004) ולא ספַּיין שני · רשימה אחת מעל הימים, שכל
@@ -4970,6 +4970,14 @@ textarea {
             נקרא ישר, ועמוד שבו שלושה ימים מראים את ההר הלא נכון הורס את האמון בתשעה האחרים.
           </li>
           <li>
+            <b>באג שנשלח, שהרינדור מצא · <code>dir="auto"</code> על בלוק של ערך.</b> הוא קובע
+            את כיוון הבסיס, וכיוון הבסיס קובע גם את <code>text-align: start</code> · אז שם
+            לטיני נצמד לקצה ההפוך מהכיתוב שלו, באותה עמודה. נמדד 229px הפרדה בעמודה של 288px
+            (§6 במוקאפ ההדפסה), ושני הרנדררים כותבים את זה. התיקון הוא
+            <code>autoIsolate</code> שכבר קיים · והדוקבלוק שלו מכסה <b>שורה מורכבת</b> שמצרפת
+            כמה ערכים, לא ערך יחיד לבדו בבלוק, ולכן הפער נשאר פתוח.
+          </li>
+          <li>
             <b>נבחר · אותה פונקציית דירוג לשלושה שימושים.</b> תמונת היום, שם היום כשאין אזור,
             ותמונת הפתיחה של הטיול · שאלה אחת, לא שלוש.
           </li>
@@ -5013,6 +5021,14 @@ textarea {
       // Hebrew prose reverses without it, which is how `12:20–22:15` became
       // `22:15–12:20` on the shipped page.
       const lri = (s) => `⁦${s}⁩`;
+      // U+2068/2069 — `autoIsolate`. **NOT `dir="auto"` on the block**, which is
+      // what ships: `auto` sets the element's BASE DIRECTION, and base direction
+      // drives `text-align: start` as well as bidi resolution — so a Latin place
+      // name lands against the opposite edge of the column from its own caption.
+      // Measured at 229px of separation in the print mockup's §6, on a 288px
+      // column. FSI resolves direction for the RUN and leaves the block RTL, so
+      // the alignment is inherited. Every renderer in this file uses it.
+      const fsi = (s) => `⁨${s}⁩`;
       const ARROW = `⁦ ← ⁩`; // NARRATIVE arrow, isolated — `ROUTE_ARROW`
 
       /* ══ THE TRIP. Owner's איסלנד 26', 12 days, 79 events. Only the days the
@@ -5194,7 +5210,7 @@ textarea {
 
       const phone = (inner) => `<div class="phone"><div class="fbody">${inner}</div></div>`;
       const col = (tag, inner) => `<div class="col">${tag}${phone(inner)}</div>`;
-      let SOFT = 'none'; // control: do soft stops carry a start time?
+      let SOFT = 'start'; // control: do soft stops carry a start time?
       let PHOTO = 'on'; // control: did the day's photo clear the gate?
 
       /* ── §1 · the masthead ─────────────────────────────────────────────── */
@@ -5222,7 +5238,7 @@ textarea {
       /* ── §2 · what is fixed ────────────────────────────────────────────── */
       const fixedList = () => `
         <div class="sh-fixed">
-          <h2>מה שקבוע</h2>
+          <h2>ההזמנות</h2>
           ${FIXED.map(
             (r) => `<button type="button" class="sh-fixed-row">
               ${icon(r.icon)}
@@ -5268,7 +5284,7 @@ textarea {
         const town = e.place.split(',')[0].trim();
         const where =
           town && town !== e.t
-            ? `${when ? ' · ' : ''}<span dir="auto">${town}</span>`
+            ? `${when ? ' · ' : ''}<span>${fsi(town)}</span>`
             : '';
         const ops = [
           ...(e.ops ?? []).map(
@@ -5284,9 +5300,9 @@ textarea {
         <article class="sh-event${hard ? ' hard' : ' soft'}">
           <span class="sh-event-glyph" aria-hidden="true">•</span>
           <span class="sh-event-main">
-            <strong dir="auto">${e.t}</strong>
+            <strong>${fsi(e.t)}</strong>
             <span class="sh-place-line">${e.kind ? `<b class="sh-kind">${e.kind}</b> · ` : ''}${when}${where}</span>
-            ${e.cap ? `<span class="sh-place-line sh-cap" dir="auto">${e.cap}</span>` : ''}
+            ${e.cap ? `<span class="sh-place-line sh-cap">${fsi(e.cap)}</span>` : ''}
             ${
               ops.length
                 ? `<details class="sh-ops"><summary>${icon('caret')}פרטים · ${ops.length}</summary>
@@ -5330,8 +5346,8 @@ textarea {
             <button class="sh-day-head" type="button" aria-expanded="true">
               <span class="sh-day-date"><strong>${lri(day.date)}</strong><span>${day.weekday}</span></span>
               <span class="sh-day-copy">
-                <strong dir="auto">${day.title}</strong>
-                <span>${day.stay ? `<span class="sh-stay">${icon('hotel')}<span dir="auto">לנים ב-${day.stay}</span></span>` : ''}</span>
+                <strong>${fsi(day.title)}</strong>
+                <span>${day.stay ? `<span class="sh-stay">${icon('hotel')}<span>לנים ב-${fsi(day.stay)}</span></span>` : ''}</span>
               </span>
               <span class="sh-caret">${icon('caret')}</span>
             </button>
@@ -5388,7 +5404,7 @@ textarea {
           <button class="sh-day-head" type="button" aria-expanded="true">
             <span class="sh-day-date"><strong>${lri(DAY1.date)}</strong><span>${DAY1.weekday}</span></span>
             <span class="sh-day-copy"><strong dir="auto">${DAY1.title}</strong>
-              <span><span class="sh-stay">${icon('hotel')}<span dir="auto">לנים ב-${DAY1.stay}</span></span></span></span>
+              <span><span class="sh-stay">${icon('hotel')}<span>לנים ב-${fsi(DAY1.stay)}</span></span></span></span>
             <span class="sh-caret">${icon('caret')}</span>
           </button>
           <div class="sh-day-body">
@@ -5500,7 +5516,7 @@ textarea {
             'הפס הטורקיז והשורה שמעליו יורדים',
           ],
           [
-            'שורת "מה שקבוע"',
+            'שורת הזמנה',
             h('#s2 .sh-fixed-row') + 'px',
             'רצפת מגע 44px · ADR-0017',
           ],
@@ -5510,6 +5526,25 @@ textarea {
             'אותן 11 עצירות, שתי צורות',
           ],
           ['שורת עצירה חופשית', h('#s3 .col:last-child .sh-event.soft') + 'px', 'מול 44px'],
+          [
+            'דיו של כותרת לטינית · מרחק מקצה ההתחלה',
+            (() => {
+              const ink = (sel) => {
+                const el = document.querySelector(sel);
+                if (!el) return null;
+                const r = document.createRange();
+                r.selectNodeContents(el);
+                const b = r.getBoundingClientRect();
+                const col = el.closest('.sh-event-main').getBoundingClientRect();
+                return Math.round(col.right - b.right); // RTL: start edge is the right one
+              };
+              // Third row of the morning section — `Selfoss`, Latin, in both frames.
+              const before = ink('#s3 .col:first-child .sh-part:first-child .sh-event:nth-of-type(3) strong');
+              const after = ink('#s3 .col:last-child .sh-part:first-child .sh-event:nth-of-type(3) strong');
+              return `${before} ← ${after}px`;
+            })(),
+            'הכיתוב שלה יושב ב-0 · כל פער הוא הקרע',
+          ],
           ['כותרת יום עם לינה', h('#s3 .col:last-child .sh-day-head') + 'px', 'הלינה עלתה לכאן'],
           [
             'המסע · היום מול ההצעה',

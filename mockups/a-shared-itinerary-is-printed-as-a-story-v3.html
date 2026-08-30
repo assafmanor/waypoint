@@ -1,0 +1,1062 @@
+<!doctype html>
+<!-- הדפסה שמספרת — WHAT THE A4 RENDERER SAYS, AND WHAT IT ONLY PRINTS — v3 (2026-08-30)
+
+     WHAT THIS IS. The print half of the same rehaul as
+     `a-shared-itinerary-tells-the-trip-v4.html`, from the owner reading the PDF
+     of their own 12-day Iceland trip:
+
+       "The pdf and the live shares need total rehauls. It's ridiculous how bad
+        everything looks, the texts are meaningless and the alignment is so bad …
+        Why נתב״ג to Frankfurt?? What does it have to do with anything? What's the
+        teal random places on top? Bad event ordering when it comes to the flights
+        and hotels and I suppose lots of other things! no layover detection and
+        visualization"
+
+     Supersedes `a-shared-itinerary-is-printed-by-daypart-v2.html`, which won the
+     multicol fragmentation, the break-safe day and the daypart headings — all of
+     which stay. What it never asked is what a printed ROW says.
+
+     ─────────────────────────────────────────────────────────────────────────
+     WHY THIS IS A SEPARATE FILE FROM THE READER PAGE, and not a section in it:
+     the two renderers share the projection and share none of their affordances,
+     and exactly one decision inverts between them.
+
+     • **PAPER HAS NO FOLD.** The reader page hides a booking code behind a
+       `<details>` because a reader wants the schedule and an operator wants the
+       code. Print has no such setting: whoever carries the printout is BY THAT
+       ACT the operator. So the same material that folds on screen is printed
+       inline, small, in mono — and the appendix is dissolved on both.
+
+     • **AND PAPER HAS NO SCROLL, SO A PHOTO COSTS PAGES.** A 116px band per day
+       is nothing on a page you scroll and roughly a page and a half across
+       twelve days at this column density. §3 draws the photo as a 34px square in
+       the day's own header instead — same picture, same gate, no page.
+
+     ─────────────────────────────────────────────────────────────────────────
+     WHAT READING THE CODE CHANGED:
+
+     • THE TEAL STRIP IS THE SAME DEFECT, ONE RENDERER BEHIND. `routeLabels` was
+       deleted from `SharedItinerary.tsx` on 2026-08-30 — "no one can get any
+       info from just the initials" — and `.pdf-route-mini` still prints it in
+       `--pdf-teal` beside the QR. Nothing recorded that the page's fix owed the
+       PDF anything, which is the argument for one ADR section covering both.
+
+     • `.pdf-day-copy strong` IS `white-space:nowrap` + ELLIPSIS, and that is
+       where the reported alignment comes from. A 60-character day title with a
+       Latin run inside it ellipsises MID-STRING under bidi — the owner's
+       `טיסה לנמל התעופה של פרנקפורט (Frankfurter Flughafen – FRA)…rter Flughafen – FRA)`.
+       The clamp is not the bug; the 60-character title is. Fix the title (§1/§3)
+       and the clamp never fires.
+
+     • THE `12 אזורים` TILE IS `routeStopCount`, WHICH IS RIGHT AND MEANINGLESS.
+       It counts pins, and an Iceland ring road has as many pins as it has stops.
+       §2 spends that tile on something a reader can use.
+
+     ─────────────────────────────────────────────────────────────────────────
+     THIS FILE'S SECTIONS AGAINST THE ADR'S:
+
+       §1 masthead   → ADR-0213 §3/§4     §3 the day    → ADR-0213 §4
+       §2 the tiles  → ADR-0213 §4        §4 journey    → ADR-0213 §1
+                                          §5 operations → ADR-0213 §4
+
+     ─────────────────────────────────────────────────────────────────────────
+     Interactive: projection (תקציר · לו״ז מלא · הכל), preview scale, and the
+     feel call this file does not settle — whether a day's photo prints at all,
+     since it is the only decision here that costs paper.
+     Measurements at the foot are read from THIS page's rendered DOM, UNSCALED
+     (divided back out by the preview scale) so they are the numbers Chromium
+     lays out at A4, not the numbers this screen shows. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>הדפסה שמספרת · מוקאפ v3</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- The A4 renderer's own stylesheet, extracted verbatim rather than
+         hand-copied. The print mockups have hand-copied it since ADR-0213 was
+         designed and `docs/design/mockups.md` records drift as the catalog's
+         chronic failure — so this one has a generator, and the generator
+         REFUSES a block containing an interpolation rather than inlining a
+         guess at one of its outputs.
+
+             node mockups/tools/extract-pdf-css.mjs mockups/<this-file>.html -->
+    <!-- PDF-CSS: backend/src/sharing/itinerary-pdf.template.ts -->
+    <style data-pdf-css>
+      /* GENERATED — do not edit. Extracted verbatim from
+         backend/src/sharing/itinerary-pdf.template.ts by mockups/tools/extract-pdf-css.mjs.
+         Re-run after any change to that renderer. */
+:root{--pdf-ink:#16233d;--pdf-muted:#626b7e;--pdf-line:#d8dde6;--pdf-soft:#f3f5f8;--pdf-amber:#915e1e;--pdf-teal:#237d7a;}
+/* **No @page margin and no paper box.** The margins are Chromium's, declared beside
+   displayHeaderFooter in pdf-browser.service.ts, because the running footer lives IN the
+   page margin box — set them here and the footer would print over the last line of every
+   page, which is the defect this replaced. Only the SIZE stays here, so preferCSSPageSize
+   has something to prefer. */
+@page{size:A4;}
+*{box-sizing:border-box;}
+html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant','Noto Emoji',system-ui,sans-serif;}
+.pdf-mast{display:flex;align-items:end;justify-content:space-between;gap:18px;margin-block-end:15px;padding-block-end:11px;border-block-end:2px solid var(--pdf-ink);}
+/* Takes what it needs before the strip does — it holds the title and the dates, which are the
+   two things a reader looks at first. */
+.pdf-mast-copy{min-width:0;flex:1 1 auto;}
+.pdf-eyebrow{margin-block-end:4px;color:var(--pdf-muted);font-size:9px;font-weight:700;letter-spacing:.08em;}
+.pdf-title{margin:0;font:27px/1.1 'Secular One',sans-serif;}
+/* **The trip's own facts may not wrap** (owner, 2026-08-30: _"why is the title area on the pdf
+   so compact … it doesn't need to be compacted to the right like that"_). The masthead is a flex
+   row and the copy block was the only shrinkable thing in it, so the strip and the QR took their
+   width first and the date-and-length line broke across three lines mid-phrase. It is short
+   and fixed; it says so, and the strip beside it yields instead. */
+.pdf-subtitle{margin-block-start:6px;color:var(--pdf-muted);font:500 9px 'Assistant',sans-serif;white-space:nowrap;}
+/* The provenance stamp: a line of its own and a step quieter, so it cannot push the trip's
+   own dates into a wrap (owner report, 2026-08-30). */
+.pdf-stamp{margin-block-start:2px;color:var(--pdf-muted);font:500 8px 'Assistant',sans-serif;opacity:0.8;white-space:nowrap;}
+/* The derived kind in front of an event's place line — the noun, so it reads as a label
+   rather than as part of the address. */
+.pdf-kind{font-weight:700;color:var(--pdf-ink);}
+/* Mono is for the RUN, never the row: the font SHORTHAND drops the family list, and
+   JetBrains Mono has no Hebrew glyphs, so a Hebrew word in a mono row prints as boxes. */
+.pdf-num{font-family:'JetBrains Mono',monospace;}
+/* Yields. It is a summary of a route whose ends the title already names, so it is the part of
+   the masthead that can afford to be narrow. */
+.pdf-route-mini{min-width:0;max-width:34%;flex:0 1 auto;text-align:end;}
+.pdf-route-mini b,.pdf-route-mini span{display:block;}
+.pdf-route-mini b{font-size:9px;font-weight:700;color:var(--pdf-muted);}
+.pdf-route-mini span{margin-block-start:3px;color:var(--pdf-teal);font-size:9px;}
+.pdf-qr-block{flex:0 0 auto;text-align:center;}
+.pdf-qr{display:block;width:46px;height:46px;}
+/* Latin by construction (a host and a path), so mono over the whole element is correct. */
+.pdf-qr-cap{display:block;margin-block-start:3px;color:var(--pdf-muted);font:7px 'JetBrains Mono',monospace;}
+.pdf-lede{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(200px,1fr);gap:16px;margin-block-end:15px;border:1px solid var(--pdf-line);border-radius:11px;overflow:hidden;}
+.pdf-story{padding:11px 13px;}
+.pdf-story strong{font:15px 'Secular One',sans-serif;}
+.pdf-story p{margin:3px 0 0;color:var(--pdf-muted);font-size:9px;line-height:1.5;}
+.pdf-facts{display:grid;grid-template-columns:repeat(3,1fr);border-inline-start:1px solid var(--pdf-line);}
+.pdf-fact{display:grid;align-content:center;justify-items:center;padding:8px 5px;}
+.pdf-fact+.pdf-fact{border-inline-start:1px solid var(--pdf-line);}
+.pdf-fact strong,.pdf-fact span{display:block;}
+.pdf-fact strong{font:17px/1 'Secular One',sans-serif;}
+.pdf-fact span{margin-block-start:3px;color:var(--pdf-muted);font-size:8px;}
+.pdf-section-title{display:flex;align-items:baseline;justify-content:space-between;margin:0 0 9px;}
+.pdf-section-title h2{margin:0;font:17px 'Secular One',sans-serif;}
+.pdf-section-title span{color:var(--pdf-muted);font-size:9px;}
+/* **Two columns as a MULTICOL, not a grid.** Chromium fragments a multi-column block across
+   printed pages a column at a time and honours break-inside inside it; a grid container that
+   outgrows the page fragments by ROW, which is where the overlapping lines came from. The
+   flow is one list from the first day to the last, so a page holds whatever fits and the
+   next one continues — nothing here decides how many days a page takes. */
+.pdf-days{column-count:2;column-gap:11px;}
+/* A day is the break-safe unit and an event row never splits across a page. */
+.pdf-day{break-inside:avoid;margin-block-end:9px;overflow:hidden;border:1px solid var(--pdf-line);border-radius:10px;}
+.pdf-day-head{display:grid;grid-template-columns:48px minmax(0,1fr);min-height:47px;background:var(--pdf-soft);}
+.pdf-date{display:grid;place-items:center;align-content:center;border-inline-end:1px solid var(--pdf-line);}
+.pdf-date strong{font:17px/1 'Secular One',sans-serif;}
+.pdf-date span{margin-block-start:3px;color:var(--pdf-muted);font-size:8px;}
+.pdf-day-copy{min-width:0;align-self:center;padding:6px 8px;}
+.pdf-day-copy strong,.pdf-day-copy span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pdf-day-copy strong{font-size:11px;}
+.pdf-day-copy span{margin-block-start:2px;color:var(--pdf-muted);font-size:8px;}
+.pdf-parts{padding:4px 8px 6px;}
+.pdf-part{break-inside:avoid;}
+.pdf-part-head{min-height:18px;display:flex;align-items:center;gap:4px;color:var(--pdf-amber);font-size:7.5px;font-weight:700;}
+.pdf-part-head::after{content:'';height:1px;flex:1;background:color-mix(in srgb,var(--pdf-amber) 24%,var(--pdf-line));}
+.pdf-part-mark{width:15px;font-size:10px;text-align:center;}
+.pdf-event{break-inside:avoid;display:grid;grid-template-columns:38px minmax(0,1fr);gap:6px;padding:4px 0;border-block-start:1px solid var(--pdf-line);}
+/* A commitment reads firmer on paper too — ADR-0011's distinction survives printing. */
+.pdf-event.hard{border-inline-start:2px solid var(--pdf-amber);padding-inline-start:4px;}
+.pdf-event-time{color:var(--pdf-amber);font:600 8px 'JetBrains Mono',monospace;}
+.pdf-event-copy{min-width:0;}
+.pdf-event-copy strong,.pdf-event-copy span{display:block;}
+.pdf-event-copy strong{font-size:8.5px;}
+.pdf-event-copy span{margin-block-start:1px;overflow:hidden;color:var(--pdf-teal);font-size:7.4px;text-overflow:ellipsis;white-space:nowrap;}
+.pdf-summary-event{break-inside:avoid;min-height:18px;display:grid;grid-template-columns:17px minmax(0,1fr);align-items:center;gap:3px;border-block-start:1px solid var(--pdf-line);font-size:8.2px;}
+.pdf-summary-event span:first-child{text-align:center;}
+.pdf-summary-event strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pdf-journey{padding:2px 0;color:var(--pdf-muted);font-size:7px;}
+.pdf-ops{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin-block-start:12px;}
+.pdf-ops-title{grid-column:1/-1;margin:0;font:13px 'Secular One',sans-serif;}
+.pdf-op{break-inside:avoid;padding:8px 9px;border:1px solid var(--pdf-line);border-radius:9px;}
+.pdf-op strong{display:block;font-size:9px;}
+.pdf-op span{display:block;margin-block-start:2px;color:var(--pdf-muted);font-size:7.8px;line-height:1.4;}
+    </style>
+
+    <style>
+      /* ══════════════════════════════════════════════════════════════════════
+         PROPOSED — the only renderer CSS this file writes by hand. Everything
+         above is extracted from the shipped template; everything here is new
+         and moves into `itinerary-pdf.template.ts` when ADR-0213's amendment is
+         built. Namespaced `pdf-*` because it EXTENDS that sheet.
+
+         Deliberately short. The day card, the multicol fragmentation, the
+         break-safe day, the daypart heading, the amber hard rail and the whole
+         palette are the shipped ones — what is new is a stay in the header, a
+         photo square, a journey frame, a layover line, and an operations line
+         that prints instead of folding.
+         ══════════════════════════════════════════════════════════════════════ */
+
+      /* §1 · the masthead says what the trip IS. `.pdf-route-mini` is deleted,
+         not restyled: a capped sample of stop names is not a route, on either
+         renderer. */
+      .pdf-what {
+        margin-block-start: 3px;
+        font: 600 10px 'Assistant', sans-serif;
+        color: var(--pdf-ink);
+      }
+
+      /* §3 · the day's photo. A SQUARE IN THE HEADER, not a band: the reader
+         page can spend 116px on a picture because it scrolls, and twelve of
+         those across a two-column A4 is about a page and a half of paper. At
+         34px it fits inside the header's existing 47px minimum and costs
+         nothing. */
+      .pdf-day-head {
+        grid-template-columns: 48px 34px minmax(0, 1fr);
+      }
+      .pdf-day-head.no-photo {
+        grid-template-columns: 48px minmax(0, 1fr);
+      }
+      .pdf-shot {
+        align-self: center;
+        justify-self: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 5px;
+        object-fit: cover;
+        background: repeating-linear-gradient(
+          135deg,
+          color-mix(in srgb, var(--pdf-teal) 26%, #fff) 0 5px,
+          color-mix(in srgb, var(--pdf-teal) 14%, #fff) 5px 10px
+        );
+      }
+
+      /* §3 · where you sleep frames the day. It stops being a row that sorts
+         itself into the afternoon by its check-in hour — which is also what
+         made a stay print `15:00–11:00`, a range that reads backwards because
+         it spans midnight. */
+      .pdf-day-copy .pdf-stay {
+        color: var(--pdf-teal);
+      }
+
+      /* §3 · a stop's one-line description. TWO lines on paper where the page
+         clamps to two as well — the measure is wider here, so the same sentence
+         usually fits in one. */
+      .pdf-cap {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        overflow: hidden;
+        white-space: normal !important;
+        color: var(--pdf-muted) !important;
+      }
+
+      /* §4 · the journey. One frame over N legs with the waits named between
+         them; the leg rows are `.pdf-event` unchanged. `break-inside: avoid` so
+         a flight and its layover never land on two pages. */
+      .pdf-trek {
+        break-inside: avoid;
+        margin: 3px 0;
+        border: 1px solid var(--pdf-line);
+        border-radius: 7px;
+        overflow: hidden;
+      }
+      .pdf-trek-head {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 6px;
+        background: var(--pdf-soft);
+        font-size: 8px;
+        font-weight: 700;
+      }
+      .pdf-trek-head em {
+        margin-inline-start: auto;
+        font-style: normal;
+        font: 600 7.5px 'JetBrains Mono', monospace;
+        color: var(--pdf-amber);
+      }
+      .pdf-trek .pdf-event {
+        padding-inline: 6px;
+      }
+      .pdf-layover {
+        padding: 2px 6px 2px 44px;
+        background: color-mix(in srgb, var(--pdf-ink) 3%, transparent);
+        color: var(--pdf-muted);
+        font-size: 7px;
+      }
+
+      /* §5 · the operational material, PRINTED under its row rather than folded
+         behind a disclosure. Whoever is holding the paper is the operator. */
+      .pdf-ops-line {
+        display: block;
+        margin-block-start: 2px;
+        color: var(--pdf-ink) !important;
+        font: 600 7.2px 'JetBrains Mono', monospace;
+        white-space: normal !important;
+      }
+      .pdf-ops-line b {
+        font-family: 'Assistant', sans-serif;
+        font-weight: 700;
+        color: var(--pdf-muted);
+      }
+    </style>
+
+    <style>
+      /* ══ mk-* — this file's own chrome. Nothing below prints. ══
+         The paper is ALWAYS fixed light: a document printed on paper has one
+         palette (ADR-0213 §4), so there is no theme toggle here and its absence
+         is a decision rather than an omission. */
+      :root {
+        --mk-page: #eef1f6;
+        --mk-surface: #ffffff;
+        --mk-sub: #f7f8fa;
+        --mk-ink: #16233d;
+        --mk-prose: #45506b;
+        --mk-faint: #8b94a8;
+        --mk-line: #d8dde6;
+        --mk-cta: #3d5a99;
+        --paper-scale: 0.86;
+      }
+      body {
+        margin: 0;
+        background: var(--mk-page);
+        font-family: 'Assistant', system-ui, sans-serif;
+        color: var(--mk-ink);
+      }
+      .wrap {
+        max-width: 1320px;
+        margin: 0 auto;
+        padding: 26px 18px 70px;
+      }
+      .doc-h h1 {
+        font-family: 'Secular One', sans-serif;
+        font-size: 25px;
+        margin: 0 0 8px;
+      }
+      .doc-h p {
+        margin: 0 0 8px;
+        font-size: 13px;
+        line-height: 1.8;
+        color: var(--mk-prose);
+        max-width: 92ch;
+      }
+      code {
+        font: 600 11.5px 'JetBrains Mono', monospace;
+        background: color-mix(in srgb, var(--mk-ink) 7%, transparent);
+        padding: 1px 4px;
+        border-radius: 4px;
+        direction: ltr;
+        display: inline-block;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        background: var(--mk-surface);
+        border: 1px solid var(--mk-line);
+        border-radius: 14px;
+        padding: 10px 14px;
+        margin-bottom: 20px;
+        position: sticky;
+        top: 8px;
+        z-index: 5;
+      }
+      .controls .lbl {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--mk-faint);
+      }
+      .controls .sep {
+        width: 1px;
+        height: 18px;
+        background: var(--mk-line);
+        margin-inline: 6px;
+      }
+      .controls button {
+        font: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 6px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--mk-line);
+        background: var(--mk-surface);
+        color: var(--mk-prose);
+        cursor: pointer;
+      }
+      .controls button[aria-pressed='true'] {
+        border-color: var(--mk-cta);
+        color: var(--mk-cta);
+        background: color-mix(in srgb, var(--mk-cta) 12%, transparent);
+      }
+      section.case,
+      .panel {
+        background: var(--mk-surface);
+        border: 1px solid var(--mk-line);
+        border-radius: 18px;
+        overflow: hidden;
+        margin-bottom: 24px;
+      }
+      section.case > h2,
+      .panel > h2 {
+        margin: 0;
+        padding: 12px 16px;
+        font-size: 14.5px;
+        font-weight: 700;
+        border-block-end: 1px solid var(--mk-line);
+        background: var(--mk-sub);
+      }
+      section.case > .note,
+      .panel > p,
+      .panel > ul {
+        margin: 0;
+        padding: 11px 16px;
+        font-size: 12.5px;
+        line-height: 1.75;
+        color: var(--mk-prose);
+      }
+      section.case > .note b {
+        color: var(--mk-ink);
+      }
+      .tag {
+        display: block;
+        width: fit-content;
+        margin: 0 auto 8px;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 999px;
+      }
+      .tag.before {
+        background: rgba(198, 40, 40, 0.1);
+        color: #b33;
+      }
+      .tag.after {
+        background: rgba(60, 154, 107, 0.12);
+        color: #2c7a55;
+      }
+      /* A4 at 96dpi is 794×1123. The paper renders at full size and is SCALED
+         for preview, so every measurement below divides the scale back out —
+         a number read off the scaled box is not the number Chromium lays out. */
+      .sheet {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        padding: 18px 16px;
+        justify-content: center;
+        align-items: flex-start;
+      }
+      .scale {
+        width: calc(794px * var(--paper-scale));
+      }
+      .paper {
+        width: 794px;
+        min-height: 1075px;
+        padding: 42px 48px 58px;
+        background: #fff;
+        color: var(--pdf-ink);
+        box-shadow: 0 14px 38px rgba(15, 25, 43, 0.16);
+        font-family: 'Assistant', sans-serif;
+        transform: scale(var(--paper-scale));
+        transform-origin: top right;
+      }
+      /* A cropped detail, at full size, for the sections whose argument is a
+         row and not a page. */
+      .crop {
+        width: 380px;
+        padding: 14px;
+        background: #fff;
+        border: 1px solid var(--mk-line);
+        border-radius: 10px;
+        color: var(--pdf-ink);
+        font-family: 'Assistant', sans-serif;
+      }
+      table.m {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12.5px;
+      }
+      table.m th,
+      table.m td {
+        text-align: start;
+        padding: 8px 16px;
+        border-block-start: 1px solid var(--mk-line);
+      }
+      table.m th {
+        color: var(--mk-faint);
+        font-size: 11px;
+      }
+      html,
+      body {
+        overflow: visible;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="wrap">
+      <div class="doc-h">
+        <h1>הדפסה שמספרת</h1>
+        <p>
+          אותן חמש ההחלטות של העמוד החי, על נייר · <b>עם היפוך אחד</b>. במסך פרטי ההזמנה
+          מקופלים מאחורי גילוי, כי קורא רוצה את הלו״ז ומפעיל רוצה את הקוד. לנייר אין הגדרה כזו:
+          מי שמחזיק את התדפיס הוא, בעצם ההחזקה, המפעיל · אז אותו חומר בדיוק מודפס בשורה.
+        </p>
+        <p>
+          כל מספר בטבלה למטה נמדד מה-DOM הזה ומחולק בחזרה בקנה המידה של התצוגה · כלומר אלה
+          המספרים ש-Chromium פורש ב-A4, לא מה שהמסך מראה.
+        </p>
+      </div>
+
+      <div class="controls">
+        <span class="lbl">רמת פירוט</span>
+        <button type="button" data-level="summary">תקציר</button>
+        <button type="button" data-level="full" aria-pressed="true">לו״ז מלא</button>
+        <button type="button" data-level="everything">הכל</button>
+        <span class="sep"></span>
+        <span class="lbl">תמונת יום</span>
+        <button type="button" data-shot="on" aria-pressed="true">מדפיסים</button>
+        <button type="button" data-shot="off">לא מדפיסים</button>
+        <span class="sep"></span>
+        <span class="lbl">תצוגה</span>
+        <button type="button" data-scale="0.86" aria-pressed="true">⁦86%⁩</button>
+        <button type="button" data-scale="1">⁦100%⁩</button>
+      </div>
+
+      <section class="case">
+        <h2>§1 · הכותרת · שני שדות תעופה ומדגם עצירות יוצאים משם</h2>
+        <p class="note">
+          <b>"?Why נתב״ג to Frankfurt"</b> ו-<b>"?What's the teal random places on top"</b> ·
+          שתי שורות, אותה סיבה: שתיהן מתארות את הלו״ז במקום את הטיול. הפס הטורקיז
+          (<code>.pdf-route-mini</code>) כבר נמחק מהעמוד החי באותו יום ונשאר כאן · אותו תיקון,
+          רנדרר אחד מאחור.
+        </p>
+        <div class="sheet" id="s1"></div>
+      </section>
+
+      <section class="case">
+        <h2>§2 · שלוש האריחים · אחד מהם סופר סיכות</h2>
+        <p class="note">
+          <code>12 אזורים</code> הוא <code>routeStopCount</code> · נכון לחלוטין וחסר שימוש,
+          כי בטבעת כביש יש בדיוק כמה סיכות שיש עצירות. במקומו: כמה לילות, וכמה מהן הזמנות
+          שאי אפשר להזיז.
+        </p>
+        <div class="sheet" id="s2"></div>
+      </section>
+
+      <section class="case">
+        <h2>§3 · היום · שם, לינה בכותרת, ותמונה בגודל שלא עולה דף</h2>
+        <p class="note">
+          <b>"the texts are meaningless and the alignment is so bad"</b> ·
+          <code>.pdf-day-copy strong</code> הוא <code>nowrap</code> עם חיתוך, אז כותרת בת 60
+          תווים עם רצף לטיני בתוכה נחתכת <b>באמצע</b> · זה מקור השורה
+          <code dir="ltr">…rter Flughafen – FRA)</code> שדווחה. החיתוך לא הבאג · הכותרת בת 60
+          התווים כן, ואחרי §1 הוא לא נדרש. שורת המקום מדפיסה רק את מה שהכותרת לא אמרה, במקום
+          <code dir="ltr">address · same name again</code>.
+        </p>
+        <div class="sheet" id="s3"></div>
+      </section>
+
+      <section class="case">
+        <h2>§4 · מסע אחד עם ההמתנה בתוכו</h2>
+        <p class="note">
+          <b>"no layover detection and visualization"</b> · והמסגרת נושאת
+          <code>break-inside: avoid</code>, כך שטיסה וההמתנה שלה לא נוחתות על שני דפים.
+        </p>
+        <div class="sheet" id="s4"></div>
+      </section>
+
+      <section class="case">
+        <h2>§5 · הנספח מתפרק · על נייר הוא מודפס, לא מקופל</h2>
+        <p class="note">
+          זה ההיפוך היחיד מול העמוד החי, והוא שווה לומר בקול: <b>אין קיפול על נייר</b>. אותם
+          פרטים בדיוק, אותה שיוך לשורה · רק שכאן הם נדפסים במונו מתחת לשורה שלהם במקום להסתתר
+          מאחורי <code>&lt;details&gt;</code>.
+        </p>
+        <div class="sheet" id="s5"></div>
+      </section>
+
+
+      <section class="case">
+        <h2>§6 · באג שנשלח · שם לטיני נצמד לקצה ההפוך מהכיתוב שלו</h2>
+        <p class="note">
+          <b>"the alignment is so bad"</b> · זה נמדד ולא התרשמות.
+          <code>&lt;strong dir="auto"&gt;</code> קובע את <b>כיוון הבסיס</b> של האלמנט, וכיוון
+          הבסיס קובע גם את פענוח ה-bidi <b>וגם</b> את <code>text-align: start</code> · אז
+          כותרת לטינית נצמדת לקצה השני של אותה עמודה שבה הכיתוב העברי שלה יושב. שני הרנדררים
+          כותבים <code>dir="auto"</code> על השורה הזו, אז זה חי בשניהם, ובטיול באיסלנד רוב
+          העצירות לטיניות. התיקון הוא <code>autoIsolate</code> מ-<code>lib/bidi.ts</code>
+          (FSI…PDI): הבידוד פותר כיוון ל<b>רצף</b>, הבלוק נשאר בכיוון העמוד ויורש את היישור.
+          <code>ltrIsolate</code> לא מתאים כאן · הוא יפרוש שם עברי הפוך.
+        </p>
+        <div class="sheet" id="s6"></div>
+      </section>
+
+      <div class="panel">
+        <h2>מדידה · נקראת מה-DOM החי, ללא קנה המידה</h2>
+        <p>
+          כל גובה כאן מחולק בחזרה ב-<code>--paper-scale</code> · אלה המספרים של A4 עצמו.
+          מספר העמודים הוא ספירת <code>.paper</code>, כלומר מה שבאמת נפרש.
+        </p>
+        <table class="m" id="meas">
+          <thead>
+            <tr>
+              <th>מה נמדד</th>
+              <th>גובה</th>
+              <th>מול מה</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>הערות · מה נבחר, ומה נדחה ולמה</h2>
+        <ul>
+          <li>
+            <b>נדחה · תמונת יום ברוחב מלא, כמו בעמוד החי.</b> 116px ליום זה כלום כשגוללים
+            וכ-דף וחצי על פני שנים-עשר ימים בשתי עמודות. הריבוע בכותרת נכנס בתוך 47px שכבר
+            קיימים שם · אותה תמונה, אותו שער, בלי לשלם דף.
+          </li>
+          <li>
+            <b>נדחה · לקצר את <code>.pdf-day-copy</code> כדי לתקן את היישור.</b> זה מטפל
+            בסימפטום · החיתוך באמצע-מחרוזת קורה כי הכותרת בת 60 תווים ומכילה רצף לטיני. תקנו
+            את הכותרת ו-<code>nowrap</code> לא נורה בכלל, וגם לא צריך לוותר עליו.
+          </li>
+          <li>
+            <b>נדחה · לקפל את פרטי ההזמנה גם על נייר (כלומר להשמיט אותם).</b> מי שמחזיק את
+            התדפיס הוא המפעיל · זו כל הסיבה שהוא הדפיס.
+          </li>
+          <li>
+            <b>נדחה · להעתיק את ה-CSS של הרנדרר ביד, כמו שלוש המוקאפים של ההדפסה שלפני.</b>
+            <code>docs/design/mockups.md</code> מתעד את הדריפט הזה כתקלה הכרונית של הקטלוג,
+            והסגנון הזה חי בתוך <code>template literal</code> ולכן ה-inliner הקיים לא רואה
+            אותו. <code>mockups/tools/extract-pdf-css.mjs</code> מושך אותו לפי סמנים ו<b>מסרב</b>
+            לבלוק שמכיל אינטרפולציה · העתקה של ניחוש היא בדיוק מה שהכלי אמור למנוע.
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <script>
+      /* ══════════════════════════════════════════════════════════════════════
+         Every frame is BUILT from the data, never written twice. The trip is the
+         owner's real איסלנד 26', transcribed from the PDF they sent on
+         2026-08-30 — including the two rows the reports are about: a stay whose
+         check-in sorts between two flight legs, and a `15:00–11:00` range that
+         reads backwards because it spans midnight.
+         ══════════════════════════════════════════════════════════════════════ */
+
+      const lri = (s) => `⁦${s}⁩`; // U+2066/2069 — `ltrIsolate`, ADR-0118
+      // U+2068/2069 — `autoIsolate`. First-strong, so a Hebrew value still lays
+      // out RTL; see §6 for why this replaces `dir="auto"` on a value block.
+      const fsi = (s) => `⁨${s}⁩`;
+      const ARROW = `⁦ ← ⁩`;
+      let LEVEL = 'full';
+      let SHOT = 'on';
+
+      const TRIP = {
+        name: "איסלנד '26",
+        destination: 'איסלנד',
+        range: '11.09–22.09',
+        updated: '30.08.2026 18:10',
+        url: 'travelive.app/s/wQkG5JbL',
+        oldRoute: `נתב״ג${ARROW}נמל התעופה של פרנקפורט (Frankfurter Flughafen – FRA)`,
+        oldStrip: 'Dyrhólaey · G… Stokksnes · Svartifoss · נמל התעופה של פרנקפורט (Frankfurter)',
+        what: '12 ימים באיסלנד · טבעת הכביש',
+        oldFacts: [
+          ['12', 'ימים'],
+          ['12', 'אזורים'],
+          ['79', 'אירועים'],
+        ],
+        newFacts: [
+          ['12', 'ימים'],
+          ['11', 'לילות'],
+          ['5', 'הזמנות'],
+        ],
+      };
+
+      /* Day 9 · Mývatn. Eleven stops, one of them a stay that sorts into 16:00,
+         two of them car parks with no article and therefore no caption. */
+      const DAY9 = {
+        date: '19',
+        weekday: 'שבת',
+        oldTitle: `אספרינג׳י${ARROW}גודאפוס`,
+        oldSummary: 'לינה ב-Tryggvabraut 24 308 600',
+        title: 'מיוואטן',
+        stay: 'Reykjahlíð',
+        shot: true,
+        parts: [
+          {
+            name: 'בוקר',
+            mark: '🌅',
+            events: [
+              {
+                t: 'אספרינג׳י',
+                s: '07:00',
+                e: '08:00',
+                place: 'אספרינג׳י, איסלנד',
+                town: 'אספרינג׳י',
+                cap: 'מפל בצפון-מזרח איסלנד, בקניון יוקולסארגליופור',
+                travel: 'נסיעה · 37 דק׳ · 30.5 ק״מ',
+              },
+              {
+                t: 'מפלי דטיפוס',
+                s: '09:00',
+                e: '10:30',
+                place: 'מפלי דטיפוס, איסלנד',
+                town: 'מפלי דטיפוס',
+                cap: 'המפל החזק באירופה לפי ספיקה',
+                travel: 'נסיעה · 6 דק׳ · 4.3 ק״מ',
+              },
+              { t: 'Viti parking', s: '11:30', e: '12:30', place: 'Viti, איסלנד', town: 'Viti' },
+            ],
+          },
+          {
+            name: 'אחר הצהריים',
+            mark: '⛅',
+            events: [
+              {
+                t: 'Grjótagjá cave',
+                s: '14:00',
+                e: '14:30',
+                place: 'Reykjahlíð, איסלנד',
+                town: 'Reykjahlíð',
+                cap: 'מערת לבה עם מעיין חם, סגורה לרחצה',
+              },
+              // The stay. A row today, the day's frame in the proposal.
+              {
+                t: 'Tryggvabraut 24 308 600',
+                s: '16:00',
+                e: '10:00',
+                place: 'Reykjahlíð, איסלנד',
+                town: 'Reykjahlíð',
+                kind: 'לינה',
+                stay: true,
+                ops: [['קוד', 'HMXXJZ2FCT · Airbnb']],
+              },
+              {
+                t: 'Lava field Dimmuborgir',
+                s: '16:00',
+                e: '17:00',
+                place: 'Skútustaðir, איסלנד',
+                town: 'Skútustaðir',
+                cap: 'שדה לבה של עמודים וקשתות',
+                travel: 'נסיעה · 15 דק׳ · 11.4 ק״מ',
+              },
+            ],
+          },
+          {
+            name: 'ערב',
+            mark: '🌆',
+            events: [
+              {
+                t: 'גודאפוס',
+                s: '18:30',
+                e: '19:15',
+                place: 'גודאפוס, איסלנד',
+                town: 'גודאפוס',
+                cap: 'מפל האלים · לשם הושלכו פסלי האלים הנורדיים בשנת 1000',
+                travel: 'נסיעה · 32 דק׳ · 38 ק״מ',
+                ops: [['פתק', 'חניה בצד המערבי · הצד המזרחי סגור בחורף']],
+              },
+            ],
+          },
+        ],
+      };
+
+      /* Day 1 · the journey the shipped renderer splits across two dayparts. */
+      const DAY1 = {
+        date: '11',
+        weekday: 'שישי',
+        oldTitle: 'טסים לאיסלנד',
+        title: 'טסים לאיסלנד',
+        stay: 'רייקיאוויק',
+        shot: false, // two airports and a car rental — nothing clears the gate
+        journey: {
+          from: 'תל אביב',
+          to: 'רייקיאוויק',
+          total: '14ש׳ 50דק׳',
+          legs: [
+            { t: `תל אביב${ARROW}וינה`, code: 'TLV → VIE', s: '14:30', e: '18:15' },
+            { wait: 'המתנה בוינה · 45 דקות' },
+            { t: `וינה${ARROW}רייקיאוויק`, code: 'VIE → KEF', s: '19:00', e: '23:20' },
+          ],
+          ops: [
+            ['קוד', '8JHEI4 · Lufthansa'],
+            ['קובץ', 'boarding-tlv-kef.pdf'],
+          ],
+        },
+      };
+
+      /* ══ Renderers ═══════════════════════════════════════════════════════ */
+
+      const opsLine = (ops) =>
+        LEVEL === 'everything' && ops
+          ? ops
+              .map(([label, value]) => `<span class="pdf-ops-line"><b>${label}</b> ${lri(value)}</span>`)
+              .join('')
+          : '';
+
+      // The shipped row, class for class.
+      const oldEvent = (e) => `
+        ${e.travel ? `<div class="pdf-journey">${e.travel}</div>` : ''}
+        <div class="pdf-event${e.stay || e.kind ? ' hard' : ''}">
+          <span class="pdf-event-time">${lri(`${e.s}–${e.e}`)}</span>
+          <span class="pdf-event-copy">
+            <strong dir="auto">${e.t}</strong>
+            <span dir="auto">${e.place} · ${e.t}</span>
+          </span>
+        </div>`;
+
+      const newEvent = (e) => {
+        if (e.stay) return ''; // a stay is the day's frame now
+        const hard = Boolean(e.kind);
+        const where = e.town && e.town !== e.t ? `<span>${fsi(e.town)}</span>` : '';
+        return `
+        ${e.travel ? `<div class="pdf-journey">${e.travel}</div>` : ''}
+        <div class="pdf-event${hard ? ' hard' : ''}">
+          <span class="pdf-event-time">${lri(LEVEL === 'summary' ? '' : `${e.s}–${e.e}`)}</span>
+          <span class="pdf-event-copy">
+            <strong>${fsi(e.t)}</strong>
+            ${where}
+            ${e.cap ? `<span class="pdf-cap">${fsi(e.cap)}</span>` : ''}
+            ${opsLine(e.ops)}
+          </span>
+        </div>`;
+      };
+
+      const trek = (j) => `
+        <div class="pdf-trek">
+          <div class="pdf-trek-head"><span>✈</span><span dir="auto">${j.from}${ARROW}${j.to}</span><em>${lri(j.total)}</em></div>
+          ${j.legs
+            .map((l) =>
+              l.wait
+                ? `<div class="pdf-layover" dir="auto">${l.wait}</div>`
+                : `<div class="pdf-event hard">
+                     <span class="pdf-event-time">${lri(`${l.s}–${l.e}`)}</span>
+                     <span class="pdf-event-copy"><strong dir="auto">${l.t}</strong><span>${lri(l.code)}</span></span>
+                   </div>`,
+            )
+            .join('')}
+          ${opsLine(j.ops) ? `<div style="padding:3px 6px 5px">${opsLine(j.ops)}</div>` : ''}
+        </div>`;
+
+      const parts = (day, event) =>
+        day.parts
+          .map((p) => {
+            const rows = p.events.map(event).join('');
+            return rows.trim()
+              ? `<div class="pdf-part"><div class="pdf-part-head"><span class="pdf-part-mark">${p.mark}</span><span>${p.name}</span></div>${rows}</div>`
+              : '';
+          })
+          .join('');
+
+      const oldDay = (day) => `
+        <div class="pdf-day">
+          <div class="pdf-day-head">
+            <span class="pdf-date"><strong>${lri(day.date)}</strong><span>${day.weekday}</span></span>
+            <span class="pdf-day-copy"><strong dir="auto">${day.oldTitle}</strong><span dir="auto">${day.oldSummary ?? ''}</span></span>
+          </div>
+          <div class="pdf-parts">${day.parts ? parts(day, oldEvent) : ''}</div>
+        </div>`;
+
+      const newDay = (day, body) => {
+        const shot = SHOT === 'on' && day.shot;
+        return `
+        <div class="pdf-day">
+          <div class="pdf-day-head${shot ? '' : ' no-photo'}">
+            <span class="pdf-date"><strong>${lri(day.date)}</strong><span>${day.weekday}</span></span>
+            ${shot ? '<span class="pdf-shot" role="img" aria-label="גודאפוס"></span>' : ''}
+            <span class="pdf-day-copy">
+              <strong>${fsi(day.title)}</strong>
+              <span class="pdf-stay">לנים ב-${fsi(day.stay)}</span>
+            </span>
+          </div>
+          <div class="pdf-parts">${body ?? parts(day, newEvent)}</div>
+        </div>`;
+      };
+
+      /* ── frames ─────────────────────────────────────────────────────────── */
+      const oldMast = () => `
+        <header class="pdf-mast">
+          <div class="pdf-mast-copy">
+            <div class="pdf-eyebrow">מסלול משותף · איסלנד</div>
+            <h1 class="pdf-title" dir="auto">${TRIP.name}</h1>
+            <div class="pdf-subtitle">${lri(TRIP.range)} · 12 ימים<br />עודכן ${lri(TRIP.updated)}</div>
+          </div>
+          <div class="pdf-route-mini"><b>המסלול</b><span dir="auto">${TRIP.oldStrip}</span></div>
+          <div class="pdf-qr-block"><span class="pdf-qr" style="display:block;background:repeating-conic-gradient(#16233d 0 25%,#fff 0 50%) 0 0/8px 8px"></span><span class="pdf-qr-cap">${lri(TRIP.url)}</span></div>
+        </header>
+        <div class="pdf-lede"><div class="pdf-story"><strong dir="auto">${TRIP.oldRoute}</strong></div>
+          <div class="pdf-facts">${TRIP.oldFacts.map(([n, w]) => `<div class="pdf-fact"><strong>${lri(n)}</strong><span>${w}</span></div>`).join('')}</div></div>`;
+
+      const newMast = () => `
+        <header class="pdf-mast">
+          <div class="pdf-mast-copy">
+            <div class="pdf-eyebrow">מסלול משותף</div>
+            <h1 class="pdf-title" dir="auto">${TRIP.name}</h1>
+            <div class="pdf-what">${TRIP.what}</div>
+            <div class="pdf-subtitle">${lri(TRIP.range)} · עודכן ${lri(TRIP.updated)}</div>
+          </div>
+          <div class="pdf-qr-block"><span class="pdf-qr" style="display:block;background:repeating-conic-gradient(#16233d 0 25%,#fff 0 50%) 0 0/8px 8px"></span><span class="pdf-qr-cap">${lri(TRIP.url)}</span></div>
+        </header>
+        <div class="pdf-lede"><div class="pdf-story"><strong>הלו״ז</strong><p dir="auto">טבעת הכביש נגד כיוון השעון, מרייקיאוויק דרך החוף הדרומי והפיורדים המזרחיים למיוואטן וחזרה דרך סנייפלסנס.</p></div>
+          <div class="pdf-facts">${TRIP.newFacts.map(([n, w]) => `<div class="pdf-fact"><strong>${lri(n)}</strong><span>${w}</span></div>`).join('')}</div></div>`;
+
+      const paper = (inner) => `<div class="scale"><div class="paper">${inner}</div></div>`;
+      // **Frames carry `data-frame`, and the measurement reads that** — never a
+      // positional selector. `#s1 div:last-child` matched a div nested INSIDE
+      // the before frame (any last child qualifies, with no child combinator),
+      // so the first render of this table reported every pair as `x ← x` and
+      // looked like a design that changed nothing.
+      const crop = (tag, inner) =>
+        `<div data-frame="${tag[0]}"><div class="tag ${tag[0]}">${tag[1]}</div><div class="crop">${inner}</div></div>`;
+
+      const paint = () => {
+        document.querySelector('#s1').innerHTML =
+          `<div data-frame="before"><div class="tag before">היום</div>${paper(oldMast())}</div>` +
+          `<div data-frame="after"><div class="tag after">בהצעה</div>${paper(newMast())}</div>`;
+
+        const facts = (rows) =>
+          `<div class="pdf-facts" style="border:1px solid var(--pdf-line);border-radius:9px">${rows.map(([n, w]) => `<div class="pdf-fact"><strong>${lri(n)}</strong><span>${w}</span></div>`).join('')}</div>`;
+        document.querySelector('#s2').innerHTML =
+          crop(['before', 'היום'], facts(TRIP.oldFacts)) + crop(['after', 'בהצעה'], facts(TRIP.newFacts));
+
+        document.querySelector('#s3').innerHTML =
+          crop(['before', 'היום'], `<div class="pdf-days" style="column-count:1">${oldDay(DAY9)}</div>`) +
+          crop(['after', 'בהצעה'], `<div class="pdf-days" style="column-count:1">${newDay(DAY9)}</div>`);
+
+        const oldJ = {
+          parts: [
+            {
+              name: 'אחר הצהריים',
+              mark: '⛅',
+              events: [
+                { t: 'נמל התעופה בן גוריון' + ARROW + 'נמל התעופה הבינלאומי של וינה', s: '14:30', e: '18:15', place: 'וינה', kind: 'טיסה' },
+                { t: 'Gissurarbud 5', s: '17:00', e: '13:00', place: 'רייקיאוויק', kind: 'לינה', stay: true },
+              ],
+            },
+            {
+              name: 'ערב',
+              mark: '🌆',
+              events: [{ t: 'נמל התעופה הבינלאומי של וינה' + ARROW + 'נמל התעופה הבינלאומי קפלאוויק', s: '19:00', e: '23:20', place: 'קפלאוויק', kind: 'טיסה' }],
+            },
+          ],
+          date: '11',
+          weekday: 'שישי',
+          oldTitle: 'טסים לאיסלנד',
+          oldSummary: 'לינה ב-Gissurarbud 5',
+        };
+        document.querySelector('#s4').innerHTML =
+          crop(['before', 'היום'], `<div class="pdf-days" style="column-count:1">${oldDay(oldJ)}</div>`) +
+          crop(
+            ['after', 'בהצעה'],
+            `<div class="pdf-days" style="column-count:1">${newDay(DAY1, `<div class="pdf-part"><div class="pdf-part-head"><span class="pdf-part-mark">⛅</span><span>אחר הצהריים</span></div>${trek(DAY1.journey)}</div>`)}</div>`,
+          );
+
+        const alignRow = (isolate) => {
+          const e = { t: 'Grjótagjá cave', town: 'Reykjahlíð', cap: 'מערת לבה עם מעיין חם, סגורה לרחצה', s: '14:00', e: '14:30' };
+          const wrap = (v) => (isolate ? `<strong>${fsi(v)}</strong>` : `<strong dir="auto">${v}</strong>`);
+          const cap = isolate
+            ? `<span class="pdf-cap">${fsi(e.cap)}</span>`
+            : `<span class="pdf-cap" dir="auto">${e.cap}</span>`;
+          return `<div class="pdf-days" style="column-count:1"><div class="pdf-day"><div class="pdf-parts"><div class="pdf-part">
+            <div class="pdf-event"><span class="pdf-event-time">${lri('14:00–14:30')}</span>
+              <span class="pdf-event-copy">${wrap(e.t)}<span>${isolate ? fsi(e.town) : e.town}</span>${cap}</span></div>
+            <div class="pdf-event"><span class="pdf-event-time">${lri('18:30–19:15')}</span>
+              <span class="pdf-event-copy">${wrap('גודאפוס')}<span>${isolate ? fsi('גודאפוס') : 'גודאפוס'}</span>
+                ${isolate ? `<span class="pdf-cap">${fsi('מפל האלים')}</span>` : '<span class="pdf-cap" dir="auto">מפל האלים</span>'}</span></div>
+          </div></div></div></div>`;
+        };
+        document.querySelector('#s6').innerHTML =
+          crop(['before', 'dir="auto" · היום'], alignRow(false)) +
+          crop(['after', 'autoIsolate · בהצעה'], alignRow(true));
+
+        document.querySelector('#s5').innerHTML =
+          crop(
+            ['before', 'היום · נספח בסוף המסמך'],
+            `<h3 class="pdf-ops-title">פרטים נוספים</h3><div class="pdf-ops">
+               <div class="pdf-op"><strong dir="auto">Tryggvabraut 24 308 600</strong><span>${lri('HMXXJZ2FCT · Airbnb')}</span></div>
+               <div class="pdf-op"><strong dir="auto">טיסה TLV → VIE</strong><span>${lri('8JHEI4 · Lufthansa')}</span></div>
+               <div class="pdf-op"><strong dir="auto">חניה בצד המערבי</strong><span>הצד המזרחי סגור בחורף</span></div>
+             </div>`,
+          ) +
+          crop(
+            ['after', 'בהצעה · מתחת לשורה שלו'],
+            `<div class="pdf-days" style="column-count:1">${newDay({ ...DAY9, parts: [DAY9.parts[2]] })}</div>`,
+          );
+      };
+
+      /* ══ Controls ════════════════════════════════════════════════════════ */
+      const press = (b, on) => b.forEach((x) => x.setAttribute('aria-pressed', String(x === on)));
+      const group = (sel, apply) => {
+        const b = [...document.querySelectorAll(sel)];
+        b.forEach((x) =>
+          x.addEventListener('click', () => {
+            apply(x);
+            press(b, x);
+            paint();
+            requestAnimationFrame(measure);
+          }),
+        );
+      };
+      group('.controls button[data-level]', (b) => (LEVEL = b.dataset.level));
+      group('.controls button[data-shot]', (b) => (SHOT = b.dataset.shot));
+      group('.controls button[data-scale]', (b) =>
+        document.documentElement.style.setProperty('--paper-scale', b.dataset.scale),
+      );
+
+      /* ══ Measurement · UNSCALED, so these are A4's own numbers ═══════════ */
+      function measure() {
+        const scale = Number(getComputedStyle(document.documentElement).getPropertyValue('--paper-scale')) || 1;
+        // A cropped detail is NOT inside `.paper`, so it carries no transform —
+        // dividing it by the scale would report a number that never existed.
+        const raw = (sel) => {
+          const el = document.querySelector(sel);
+          return el ? Math.round(el.getBoundingClientRect().height * 10) / 10 : null;
+        };
+        const unscaled = (sel) => {
+          const h = raw(sel);
+          return h === null ? null : Math.round((h / scale) * 10) / 10;
+        };
+        const rows = [
+          ['כותרת המסמך · היום מול ההצעה', `${unscaled('#s1 [data-frame=before] .pdf-mast')} ← ${unscaled('#s1 [data-frame=after] .pdf-mast')}px`, 'הפס הטורקיז יורד'],
+          ['הפתיח · היום מול ההצעה', `${unscaled('#s1 [data-frame=before] .pdf-lede')} ← ${unscaled('#s1 [data-frame=after] .pdf-lede')}px`, 'מסלול-בין-שדות ← משפט על הטיול'],
+          ['כותרת יום', `${raw('#s3 [data-frame=before] .pdf-day-head')} ← ${raw('#s3 [data-frame=after] .pdf-day-head')}px`, 'הריבוע נכנס ב-47px הקיימים'],
+          ['תמונת היום', raw('#s3 [data-frame=after] .pdf-shot') + 'px', 'מול 116px של פס ברוחב מלא'],
+          ['יום 9 · כל הכרטיס', `${raw('#s3 [data-frame=before] .pdf-day')} ← ${raw('#s3 [data-frame=after] .pdf-day')}px`, 'אותן עצירות, שתי צורות'],
+          ['שורת אירוע', raw('#s3 [data-frame=after] .pdf-event') + 'px', 'קריאות בהדפסה'],
+          ['שורת ההמתנה', raw('#s4 .pdf-layover') + 'px', 'חדשה · לא הייתה בכלל'],
+          ['המסע · היום מול ההצעה', `${raw('#s4 [data-frame=before] .pdf-day')} ← ${raw('#s4 [data-frame=after] .pdf-day')}px`, 'שני חלקי יום מול בלוק אחד'],
+          [
+            'דיו של כותרת לטינית · מרחק מקצה ההתחלה',
+            (() => {
+              const ink = (sel) => {
+                const el = document.querySelector(sel);
+                if (!el) return null;
+                const r = document.createRange();
+                r.selectNodeContents(el);
+                const b = r.getBoundingClientRect();
+                const col = el.closest('.pdf-event-copy').getBoundingClientRect();
+                // RTL: the start edge is the RIGHT one.
+                return Math.round(col.right - b.right);
+              };
+              return `${ink('#s6 [data-frame=before] .pdf-event-copy > strong')} ← ${ink('#s6 [data-frame=after] .pdf-event-copy > strong')}px`;
+            })(),
+            'הכיתוב שלה יושב ב-0 · כל פער הוא הקרע',
+          ],
+          ['נספח מול שורה', `${raw('#s5 [data-frame=before] .crop')} ← ${raw('#s5 [data-frame=after] .crop')}px`, 'אותו חומר, שני מקומות'],
+        ];
+        document.querySelector('#meas tbody').innerHTML = rows
+          .map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`)
+          .join('');
+      }
+      paint();
+      requestAnimationFrame(measure);
+    </script>
+  </body>
+</html>
