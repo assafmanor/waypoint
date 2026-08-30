@@ -40,6 +40,22 @@ export class PublicSharingController {
     return this.sharing.byCode(code);
   }
 
+  /**
+   * The paper. Its own, tighter cap: a PDF render is a browser tab and several seconds of
+   * CPU, where the JSON read is one query — so 5/min per IP rather than 20, and the render
+   * queue itself answers 503 with a `Retry-After` when it is saturated.
+   */
+  @Get(':code/pdf')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  async pdf(@Param('code') code: string, @Res() res: Response): Promise<void> {
+    const { buffer, filename } = await this.sharing.pdf(code);
+    applyPublicShareHeaders(res);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', attachmentDisposition(filename));
+    res.send(buffer);
+  }
+
   @Get(':code/documents/:documentId')
   async document(
     @Param('code') code: string,

@@ -74,12 +74,25 @@ WORKDIR /app
 #
 # `openssl` rides along for Prisma, which logs `failed to detect the libssl/openssl version`
 # on slim images and falls back to guessing an engine. Same class of omission, same fix.
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates openssl \
+#
+# **`chromium` is here for the itinerary PDF** (ADR-0213 §4), and it is a SYSTEM package
+# rather than a Playwright download on purpose: `backend/package.json` depends on
+# `playwright-core`, which ships no browser, so nothing in this build fetches ~150 MB from
+# a CDN at image-build time or (worse) at first request. `PDF_CHROMIUM_PATH` defaults to
+# where this package puts it. `fonts-liberation` is Chromium's own baseline — the app's
+# Hebrew faces are inlined into the document as data URLs, so the PDF does not depend on
+# any system font, but a browser with no fontconfig match at all fails to start.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates openssl chromium fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=pmtiles /usr/local/bin/pmtiles /usr/local/bin/pmtiles
 # /out carries the prisma CLI + migrations for Railway's pre-deploy migrate.
 COPY --from=build /out ./
-# Served by the backend when <dist>/../public exists (spa-fallback.filter.ts).
+# Served by the backend when <dist>/../public exists (all-exceptions.filter.ts).
 COPY --from=build /repo/frontend/dist ./public
+# The PDF renderer reads these off disk and inlines them into the document; the frontend
+# source tree is not in the runtime image, so they are copied to the path
+# `itinerary-pdf.template.ts` looks in first.
+COPY --from=build /repo/frontend/src/assets/fonts ./pdf-fonts
 EXPOSE 3000
 CMD ["node", "dist/main.js"]

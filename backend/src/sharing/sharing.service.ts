@@ -5,10 +5,12 @@ import {
   type TripShareConfig,
   type UpsertTripShareInput,
 } from '@waypoint/shared';
+import { FRONTEND_URL } from '../common/env';
 import { generatePublicCode } from '../common/public-code.util';
 import { assertTripAdmin } from '../common/trip-scope.util';
 import { DocumentsService } from '../documents/documents.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PdfBrowserService } from './pdf-browser.service';
 import { SharingProjectionService } from './sharing-projection.service';
 
 const SHARE_CONFIG_SELECT = {
@@ -62,6 +64,7 @@ export class SharingService {
     private readonly prisma: PrismaService,
     private readonly projection: SharingProjectionService,
     private readonly documents: DocumentsService,
+    private readonly pdfBrowser: PdfBrowserService,
   ) {}
 
   /** The trip's current share, or 404. A read never creates one: opening the sheet to look
@@ -191,6 +194,23 @@ export class SharingService {
     return this.projection.byCode(code);
   }
 
+  /**
+   * The PDF of exactly what the live link shows.
+   *
+   * It renders from the same projection the page consumes, resolved fresh — a snapshot of
+   * the itinerary *now*, not of a cached response. There is deliberately no stored PDF: a
+   * file that outlives a revocation is the thing the whole `no-store` posture exists to
+   * prevent, and regenerating costs one render.
+   */
+  async pdf(code: string): Promise<{ buffer: Buffer; filename: string }> {
+    const share = await this.projection.requireActiveShare(code);
+    const projection = await this.projection.project(share);
+    return {
+      buffer: await this.pdfBrowser.render(projection, publicShareUrl(projection.shareUrl)),
+      filename: `${projection.trip.name}.pdf`,
+    };
+  }
+
   private async assertDocumentsInTrip(tripId: string, documentIds: string[]): Promise<void> {
     if (documentIds.length === 0) return;
     const found = await this.prisma.document.count({
@@ -202,4 +222,16 @@ export class SharingService {
       throw new NotFoundException('Unknown document for this trip');
     }
   }
+}
+
+/**
+ * The link as the PDF prints it: host and path, no scheme.
+ *
+ * The projection carries a root-relative path because the client owns the origin
+ * (`lib/invite-link.ts`) — but a printed page has no client, so the server has to name the
+ * host once. `PUBLIC_APP_HOST`, else the canonical host the deploy already knows about.
+ */
+function publicShareUrl(sharePath: string): string {
+  const host = (process.env[FRONTEND_URL] ?? 'https://travelive.app').replace(/\/+$/, '');
+  return `${host.replace(/^https?:\/\//, '').replace(/^www\./i, '')}${sharePath}`;
 }

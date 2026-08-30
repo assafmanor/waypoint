@@ -13,6 +13,7 @@ import { DisabledItineraryNarrativeGenerator } from './itinerary-narrative.gener
 import { ItineraryNarrativeService } from './itinerary-narrative.service';
 import { SharingProjectionService } from './sharing-projection.service';
 import { SharingService } from './sharing.service';
+import type { PdfBrowserService } from './pdf-browser.service';
 
 const ADMIN = 'u-assaf';
 const PEER = 'u-noam';
@@ -39,7 +40,12 @@ describe('SharingService', () => {
       title: 'הזמנת הדירה.pdf',
     }),
   } as unknown as DocumentsService;
-  const service = new SharingService(prisma, projection, documents);
+  // The renderer is a real browser; the service spec is about authorization, so it takes a
+  // stub. `pdf-browser.service.spec.ts` drives the real Chromium.
+  const pdfBrowser = {
+    render: async () => Buffer.from('%PDF-1.4'),
+  } as unknown as PdfBrowserService;
+  const service = new SharingService(prisma, projection, documents, pdfBrowser);
 
   let tripId: string;
   let otherTripId: string;
