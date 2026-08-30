@@ -189,3 +189,20 @@ export function envInt(name: string, fallback: number): number {
 export function isDevAuthEnabled(): boolean {
   return process.env[DEV_AUTH] === '1' && process.env.NODE_ENV !== 'production';
 }
+
+// The itinerary PDF renderer (ADR-0213 §4). All three optional: absent means the
+// production defaults below, which is what the container ships with.
+//
+// `PDF_CHROMIUM_PATH` points at the SYSTEM chromium the runtime image installs — nothing
+// here downloads a browser, so `playwright-core` is the dependency rather than
+// `playwright`. `PDF_RENDER_CONCURRENCY` bounds how many pages may render at once: each is
+// a real browser tab, and an unbounded public route is a memory-exhaustion lever anyone
+// with a link can pull. `PDF_RENDER_TIMEOUT_MS` is what turns a queue behind that bound
+// into a 503 rather than a request that never answers.
+export const PDF_CHROMIUM_PATH = 'PDF_CHROMIUM_PATH';
+export const PDF_RENDER_TIMEOUT_MS = 'PDF_RENDER_TIMEOUT_MS';
+export const PDF_RENDER_CONCURRENCY = 'PDF_RENDER_CONCURRENCY';
+
+export const DEFAULT_PDF_CHROMIUM_PATH = '/usr/bin/chromium';
+export const DEFAULT_PDF_RENDER_TIMEOUT_MS = 15_000;
+export const DEFAULT_PDF_RENDER_CONCURRENCY = 2;

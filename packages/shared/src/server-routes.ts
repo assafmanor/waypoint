@@ -25,6 +25,12 @@ export const SERVER_ROUTE_PREFIXES = [
   // under `trips`: a subscription belongs to a person and a device, and one device is
   // reached about every trip that person is in.
   'notifications',
+  // The unauthenticated itinerary share reads (ADR-0213 §5). Here for BOTH halves, and
+  // the service-worker one is the trap: the public page's own path is `/s/<code>`, an
+  // ordinary SPA route that must keep getting the cached shell, while the JSON and PDF it
+  // then fetches must reach the backend. Two different prefixes for one feature, on
+  // purpose — miss this one and production answers the API call with `index.html`.
+  'shared-itineraries',
   'trips',
   // Uploaded avatar bytes (ADR-0133 §12). It has to be here for the SERVICE WORKER
   // half, not just the contract test: an avatar is loaded by a plain `<img src>`, so

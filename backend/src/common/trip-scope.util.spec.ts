@@ -1,12 +1,13 @@
 import 'reflect-metadata';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   assertBookingInTrip,
   assertEntityRefsInTrip,
   assertMemberInTrip,
   assertPlacesInTrip,
+  assertTripAdmin,
 } from './trip-scope.util';
 
 // The shared scope guard, tested directly rather than only through the services that call it
@@ -142,6 +143,45 @@ describe('trip-scope guards', () => {
       const tripId = await newTrip();
       await expect(assertMemberInTrip(prisma, tripId, 'u-nobody')).rejects.toBeInstanceOf(
         BadRequestException,
+      );
+    });
+  });
+
+  // `assertTripAdmin` is an authorization check rather than a scope one, and it moved here
+  // when ADR-0213's sharing module needed the same answer `TripsService` already had. It gets
+  // its own coverage for the reason backend/CLAUDE.md gives: a shared guard tested only
+  // through one of its callers can drift for the other without anything going red.
+  describe('assertTripAdmin', () => {
+    const PEER = 'u-noam';
+
+    it('admits an admin of this trip', async () => {
+      const tripId = await newTrip();
+      await prisma.membership.create({ data: { tripId, userId: DEV_USER, role: 'admin' } });
+      await expect(assertTripAdmin(prisma, tripId, DEV_USER)).resolves.toBeUndefined();
+    });
+
+    it('rejects a peer when admin authority is required', async () => {
+      const tripId = await newTrip();
+      await prisma.membership.create({ data: { tripId, userId: PEER, role: 'peer' } });
+      await expect(assertTripAdmin(prisma, tripId, PEER)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+    });
+
+    it('rejects an admin of a DIFFERENT trip', async () => {
+      const [tripId, otherTripId] = [await newTrip(), await newTrip()];
+      await prisma.membership.create({
+        data: { tripId: otherTripId, userId: DEV_USER, role: 'admin' },
+      });
+      await expect(assertTripAdmin(prisma, tripId, DEV_USER)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+    });
+
+    it('rejects a non-member with the same refusal a peer gets', async () => {
+      const tripId = await newTrip();
+      await expect(assertTripAdmin(prisma, tripId, PEER)).rejects.toBeInstanceOf(
+        ForbiddenException,
       );
     });
   });

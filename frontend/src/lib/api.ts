@@ -78,10 +78,16 @@ import {
   type UpdatePlaceInput,
   type UpdateMeInput,
   type UpdateTripInput,
+  tripShareConfigSchema,
+  tripWithMembersSchema,
+  type TripWithMembers,
+  type TripShareConfig,
+  type UpsertTripShareInput,
 } from '@waypoint/shared';
 import { API_BASE_URL, API_PHASE, API_TIMEOUT_MS, AVATAR_UPLOAD_FILENAME } from '../constants';
 import type { MapBounds } from './map-camera';
 import { withDeadline } from './deadline';
+import { sharedItineraryPdfUrl } from './share-itinerary';
 import { evictCachedDocument, readCachedBlob, writeCachedBlob } from './doc-cache';
 
 // Defined in `constants.ts` (a primitive needs it without importing this module) and
@@ -1095,4 +1101,68 @@ export async function refreshFxRates(tripId: string): Promise<FxRates | null> {
   });
   if (!res.ok) return throwApiError(res);
   return fxRefreshResultSchema.parse(await readJson(res)).fxRates;
+}
+
+// ── Itinerary sharing (ADR-0213) ────────────────────────────────────────────────────────
+//
+// The owner side of the one public link. All four are online-only and go straight to the
+// server rather than through the outbox: a share is a capability the world can see, and a
+// queued "stop sharing" that lands ten minutes later is a promise the app did not keep.
+
+/** The trip's current share, or `undefined` when it is not shared — a 404 here is the
+ *  ordinary answer, not a failure, because reading must never publish anything. */
+export async function fetchTripShare(tripId: string): Promise<TripShareConfig | undefined> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/share`);
+  if (res.status === 404) return undefined;
+  if (!res.ok) return throwApiError(res);
+  return tripShareConfigSchema.parse(await readJson(res));
+}
+
+/** Create or reconfigure the link. Idempotent, which is what lets the sheet's first
+ *  outcome press do this with no separate Save step. Admin-only server-side. */
+export async function upsertTripShare(
+  tripId: string,
+  input: UpsertTripShareInput,
+): Promise<TripShareConfig> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/share`, {
+    method: HTTP_METHOD.PUT,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return tripShareConfigSchema.parse(await readJson(res));
+}
+
+/** New code, same policy — the previously shared URL stops resolving at once. */
+export async function rotateTripShare(tripId: string): Promise<TripShareConfig> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/share/rotate`, {
+    method: HTTP_METHOD.POST,
+  });
+  if (!res.ok) return throwApiError(res);
+  return tripShareConfigSchema.parse(await readJson(res));
+}
+
+export async function stopTripShare(tripId: string): Promise<void> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/share`, {
+    method: HTTP_METHOD.DELETE,
+  });
+  if (!res.ok) return throwApiError(res);
+}
+
+/** The PDF of exactly what the live link shows. A plain `fetch`: the route is public, so it
+ *  carries no bearer token — and going through `apiFetch` would let a 401 on it start a
+ *  token refresh for a request that never needed one. */
+export async function fetchSharedItineraryPdf(code: string): Promise<Blob> {
+  const res = await fetch(sharedItineraryPdfUrl(code));
+  if (!res.ok) return throwApiError(res);
+  return res.blob();
+}
+
+/** The trip and its roster. A small read beside `fetchSnapshot`, used where a surface needs
+ *  only "who is in this trip and what may I do" — the share sheet reaches for it rather than
+ *  its two entry points each having to already know the viewer's role. */
+export async function fetchTripWithMembers(tripId: string): Promise<TripWithMembers> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}`);
+  if (!res.ok) return throwApiError(res);
+  return tripWithMembersSchema.parse(await readJson(res));
 }

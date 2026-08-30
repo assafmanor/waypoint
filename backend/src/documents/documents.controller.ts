@@ -36,6 +36,7 @@ import type { Response } from 'express';
 import { createZodDto, ZodSerializerDto } from 'nestjs-zod';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { Principal } from '../auth/principal';
+import { attachmentDisposition } from '../common/attachment-disposition';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { MembershipGuard } from '../trips/membership.guard';
 import { DocumentsService } from './documents.service';
@@ -121,16 +122,4 @@ export class DocumentsController {
     res.setHeader('Content-Disposition', attachmentDisposition(title));
     res.send(buffer);
   }
-}
-
-/** RFC 6266/5987 `attachment` disposition. Titles are Hebrew (non-ASCII), so the
- *  Unicode name rides `filename*` (percent-encoded, header-injection-safe by
- *  construction) with an ASCII `filename` fallback. */
-function attachmentDisposition(title: string): string {
-  const asciiFallback =
-    title
-      .replace(/[^\x20-\x7e]/g, '_')
-      .replace(/["\\]/g, '_')
-      .trim() || 'document';
-  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(title)}`;
 }

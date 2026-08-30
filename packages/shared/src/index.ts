@@ -20,3 +20,4 @@ export * from './task-time';
 export * from './travel-time';
 export * from './trip-dates';
 export * from './zones';
+export * from './sharing';

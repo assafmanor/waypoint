@@ -86,6 +86,9 @@ const CreateTrip = lazyRoute(() =>
 const JoinTrip = lazyRoute(() =>
   import('./screens/JoinTrip').then((m) => ({ default: m.JoinTrip })),
 );
+const SharedItinerary = lazyRoute(() =>
+  import('./screens/SharedItinerary').then((m) => ({ default: m.SharedItinerary })),
+);
 const TripSettings = lazyRoute(() =>
   import('./screens/TripSettings').then((m) => ({ default: m.TripSettings })),
 );
@@ -120,6 +123,7 @@ import './styles/beats.css';
 import './styles/edge-fade.css';
 import { Avatar } from './ui/primitives/Avatar';
 import { RosterSheet } from './ui/RosterSheet';
+import { useShareSheet } from './ui/useShareSheet';
 import { ltrIsolate } from './lib/bidi';
 import { readDurationMs } from './lib/motion';
 import { memberCluster } from './lib/member-cluster';
@@ -211,6 +215,7 @@ export function Header({
   onOpenSwitcher,
   onOpenPeople,
   onOpenSettings,
+  onShare,
   allDays,
   otherTripCount = 0,
 }: {
@@ -218,6 +223,10 @@ export function Header({
   onOpenSwitcher: () => void;
   onOpenPeople: () => void;
   onOpenSettings: () => void;
+  /** Opens the trip's share sheet (ADR-0213). One of the feature's two visible entries —
+   *  the other is on every All Trips card — and both drive the SAME sheet instance the
+   *  shell owns, rather than each surface mounting its own. */
+  onShare: () => void;
   /** The Map's all-days scope is on (ADR-0110 §4) — screen-local state the shell
    *  hands down, since the app tracks exactly one active date. Whether the strip
    *  then singles out a day is this header's own call (see `unscoped` below). */
@@ -376,6 +385,13 @@ export function Header({
             <Icon name="warn" />
           </button>
         )}
+        <button
+          className="chrome-ghost-btn share-header-btn"
+          onClick={onShare}
+          aria-label={t.share.entry}
+        >
+          <Icon name="share" />
+        </button>
         <button className="gear-btn" onClick={onOpenSettings} aria-label={t.shell.stub.settings}>
           <Icon name="settings" />
         </button>
@@ -512,6 +528,7 @@ function Shell({ otherTripCount }: { otherTripCount: number }) {
   // strip reads it again for its own drop targets.
   const { dragging } = useDragState();
   const [rosterOpen, setRosterOpen] = useState(false);
+  const share = useShareSheet();
   // The roster's own data. The header already renders the cluster from `users`; the
   // sheet needs the memberships too, for each person's role and joined date.
   const { members, users } = useTrip();
@@ -632,23 +649,27 @@ function Shell({ otherTripCount }: { otherTripCount: number }) {
           onOpenSwitcher={() => navigate('/trips')}
           onOpenPeople={() => setRosterOpen(true)}
           onOpenSettings={() => navigate(`/trip/${trip.id}/settings`)}
+          onShare={() => share.open(trip)}
           allDays={allDays}
           otherTripCount={otherTripCount}
         />
       }
       overlay={
-        rosterOpen && (
-          <RosterSheet
-            members={members}
-            users={users}
-            myUserId={me?.user.id}
-            onOpenAccount={() => {
-              setRosterOpen(false);
-              navigate(settingsPath(SETTINGS_FROM.HOME));
-            }}
-            onClose={() => setRosterOpen(false)}
-          />
-        )
+        <>
+          {share.sheet}
+          {rosterOpen && (
+            <RosterSheet
+              members={members}
+              users={users}
+              myUserId={me?.user.id}
+              onOpenAccount={() => {
+                setRosterOpen(false);
+                navigate(settingsPath(SETTINGS_FROM.HOME));
+              }}
+              onClose={() => setRosterOpen(false)}
+            />
+          )}
+        </>
       }
       nav={
         <nav className="nav">
@@ -700,7 +721,16 @@ function ZeroStateRoute() {
 
 function AllTripsRoute() {
   const navigate = useNavigate();
-  return <AllTrips onOpenAccount={() => navigate(settingsPath(SETTINGS_FROM.TRIPS))} />;
+  const share = useShareSheet();
+  return (
+    <>
+      <AllTrips
+        onOpenAccount={() => navigate(settingsPath(SETTINGS_FROM.TRIPS))}
+        onShare={share.open}
+      />
+      {share.sheet}
+    </>
+  );
 }
 
 // Settings is a full-page route outside the mode Shell (ADR-0039: mode-neutral),
@@ -788,11 +818,19 @@ function RootSurface() {
 // its preview is a public endpoint and must render before any auth check —
 // the screen's own "Continue with Google" CTA is what saves the intent and
 // starts sign-in, not this eager gate.
+//
+// `/s/<code>` is exempt for a stronger reason (ADR-0213): its reader has no account and
+// never will. Sending them to /login would not defer the screen, it would replace it.
+/** **Paths that must render for somebody with no account.** One predicate rather than a
+ *  growing `startsWith` chain inside the gate: /join defers sign-in, /s never asks for it. */
+export const publicAppPath = (pathname: string): boolean =>
+  pathname === '/login' || pathname.startsWith('/join/') || pathname.startsWith('/s/');
+
 export function AuthGate() {
   const { status } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const isJoinRoute = location.pathname.startsWith('/join/');
+  const isPublicRoute = publicAppPath(location.pathname);
   // Whether a saved deep-link intent is still waiting to be resolved. Kept in
   // React state (not a bare hasIntent() read at render time) so that *consuming*
   // an intent always triggers a re-render that lifts this gate — even when the
@@ -805,7 +843,7 @@ export function AuthGate() {
   useEffect(() => {
     if (status === 'loading') return;
     if (status === 'anon') {
-      if (location.pathname !== '/login' && !isJoinRoute) {
+      if (location.pathname !== '/login' && !isPublicRoute) {
         saveIntent(location.pathname);
         setIntentPending(true);
         navigate('/login', { replace: true });
@@ -819,11 +857,11 @@ export function AuthGate() {
       navigate('/', { replace: true });
     }
     setIntentPending(false);
-  }, [status, location.pathname, navigate, isJoinRoute]);
+  }, [status, location.pathname, navigate, isPublicRoute]);
 
   if (status === 'loading') return <BootScreen />;
   if (status === 'anon') {
-    return location.pathname === '/login' || isJoinRoute ? <Outlet /> : <BootScreen />;
+    return location.pathname === '/login' || isPublicRoute ? <Outlet /> : <BootScreen />;
   }
   // A pending deep-link intent (e.g. mid-join after OAuth's redirect to "/")
   // must not let RootSurface mount even for one render — its fetchTrips()
@@ -856,6 +894,10 @@ function AppRoutes() {
             <Route path="trips" element={<AllTripsRoute />} />
             <Route path="new" element={<CreateTrip />} />
             <Route path="join/:token" element={<JoinTrip />} />
+            {/* The anonymous itinerary reader (ADR-0213). Inside the gate, which lets it
+              through unauthenticated, so a signed-in owner opening their own link sees the
+              same page a stranger does. */}
+            <Route path="s/:code" element={<SharedItinerary />} />
             <Route path="trip/:id/settings" element={<TripSettingsRoute />} />
             {/* Your own settings + its picture page (ADR-0133). User-scoped, so
               deliberately NOT nested under a trip — the thing they edit is you, and

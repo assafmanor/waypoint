@@ -5,7 +5,7 @@
 // questions is where a second, subtly-different answer gets written. In particular `eventZone`
 // — which wall clock an event's time means — has to be the display's own derivation or a
 // notification will print an hour the screen never showed (ADR-0197 §5).
-import { currentZone, type ZoneCrossing } from '@waypoint/shared';
+import { eventDisplayZone } from '../../common/event-zone.util';
 import type { TripZones } from '../notification-kind';
 
 /** Exactly the columns the phase-B kinds select. Narrow on purpose: a kind that starts reading
@@ -51,11 +51,12 @@ export const EVENT_SELECT = {
  * The same shape `dueZone` has for a task deadline, and for the same reason: a pinned zone is
  * a wall clock somebody typed, and deriving over it would print an hour they never chose
  * (ADR-0107 §7).
+ *
+ * The derivation itself moved to `common/event-zone.util.ts` when ADR-0213's shared
+ * itinerary became its second reader; this stays as the name the phase-B kinds call.
  */
 export function eventZone(event: EventRow, zones: TripZones, atMs?: number): string {
-  if (event.displayTimezone) return event.displayTimezone;
-  const instant = atMs ?? event.startsAt?.getTime() ?? event.date.getTime();
-  return currentZone(instant, zones.crossings as ZoneCrossing[], zones.primaryZone);
+  return eventDisplayZone(event, zones, atMs);
 }
 
 /** The calendar day an event belongs to, as the day route keys it. Read in the event's own

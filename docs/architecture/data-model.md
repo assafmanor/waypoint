@@ -180,6 +180,35 @@ A device this user can be reached on. Control plane, for the same three structur
 - **An attachment never widens visibility** (ADR-0173 §6). A `Document` may be owned; this row is a pointer, not a permission, and a reader resolves it through the document list they already have — so an attachment whose document they cannot see renders as nothing.
 - Which hosts share one attachment list is **derived, never stored** — `lib/host-context.ts`, the same module Notes read (ADR-0172 §1–§3). Notes and attachments share the derivation and the grammar; they do not share the storage.
 
+### TripShare, TripShareDocument, ItineraryNarrative (ADR-0213)
+
+**The public face of a trip, as policy rather than content.** One `TripShare` per trip
+(`tripId @unique`), holding a code and a projection policy — and holding **no itinerary at
+all**. Every public read projects the live rows, which is exactly what makes revoking the
+row sufficient to stop disclosure.
+
+- `TripShare`: `id`, `tripId @unique`, `code @unique` (8 base58, the same durable-row
+  technique as `Invite` — ADR-0067), `detailLevel` (`summary`|`full`|`everything`), the three
+  `include*` booleans, `createdBy`, `createdAt`, `updatedAt`, `revokedAt?`. Cascades from
+  `Trip`.
+- **`revokedAt` rather than a delete**, so stopping a share keeps the owner's configuration
+  for when they come back. Re-sharing mints a **fresh** code: reviving the old one would
+  silently reopen a URL somebody has already pasted somewhere, which is the opposite of what
+  "stop sharing" said.
+- `TripShareDocument`: `@@id([shareId, documentId])`, cascading from both ends. Explicit rows
+  rather than a "share my documents" flag — a promise about a whole folder is one nobody can
+  check later, and this row IS the download route's authorization.
+- `ItineraryNarrative`: `@@unique([shareId, locale, inputHash, skillVersion])`, plus
+  `provider`, `model`, `output Json`, `generatedAt`. **The compound unique is the eligibility
+  rule made structural**: change any of those four — an event was renamed, the locale differs,
+  the prompt was revised — and there is simply no row to find, so the deterministic fallback
+  serves while regeneration runs behind the response. That is why staleness needs no expiry
+  column and no sweeper.
+- **None of the three writes a `Change` row.** A share is not trip content: it is not synced,
+  not undoable, and not part of any client's timeline. Owner writes go straight to the server
+  and are online-only (a queued "stop sharing" that lands ten minutes later is a promise the
+  app did not keep).
+
 ### Change (the sync/undo/feed substrate — ADR-0019)
 
 - `id`, `seq BigInt @default(autoincrement())` (strictly-increasing cursor), `tripId`, `actorUserId`

@@ -1,0 +1,73 @@
+import { Prisma } from '@prisma/client';
+
+/**
+ * **What a public read is allowed to load**, written as explicit `select`s rather than
+ * enforced after the fact.
+ *
+ * The rejected shape was: load the trip snapshot the app already builds, then delete what
+ * this share level may not show. That inverts the safe default — a column added to `Event`
+ * next year is published by silence, and the only thing standing between a new
+ * `providerPayload` and an anonymous reader is somebody remembering to add it to a
+ * blocklist. Here, a new column is invisible until someone names it below, and the strict
+ * response schema turns "named it but shouldn't have" into a failed request rather than a
+ * disclosure.
+ *
+ * Nothing here selects an email, a coordinate the reader could re-identify a home from, a
+ * `googlePlaceId`, a provider payload, or an entity id. Coordinates ARE loaded for places —
+ * the zone crossings and the stored travel legs are both keyed by them — but they live only
+ * in this service's locals and have no field in `sharedItinerarySchema` to travel out
+ * through.
+ */
+
+/** The event columns every level reads. Zone resolution needs `displayTimezone` and
+ *  `date`; ADR-0011's hard/soft distinction needs `kind`. */
+export const SHARE_EVENT_SELECT = {
+  id: true,
+  title: true,
+  icon: true,
+  category: true,
+  kind: true,
+  date: true,
+  startsAt: true,
+  endsAt: true,
+  displayTimezone: true,
+  sortOrder: true,
+  placeId: true,
+  bookingId: true,
+  place: { select: { id: true, name: true, nickname: true, address: true, lat: true, lng: true } },
+  booking: { select: { id: true, placeId: true, fromPlaceId: true, toPlaceId: true } },
+} as const satisfies Prisma.EventSelect;
+
+/** Only what ADR-0107's crossing derivation reads. Deliberately NOT `confirmationCode`,
+ *  `provider` or `details`: a Summary read must not pull a booking secret into memory at
+ *  all, let alone into a response. */
+export const SHARE_ZONE_BOOKING_SELECT = {
+  id: true,
+  type: true,
+  placeId: true,
+  fromPlaceId: true,
+  toPlaceId: true,
+  startDisplayTimezone: true,
+  endDisplayTimezone: true,
+} as const satisfies Prisma.BookingSelect;
+
+/** The second booking query, run **only** when Everything enables booking secrets. */
+export const SHARE_SECRET_BOOKING_SELECT = {
+  title: true,
+  type: true,
+  confirmationCode: true,
+  provider: true,
+  details: true,
+} as const satisfies Prisma.BookingSelect;
+
+export const SHARE_PLACE_SELECT = {
+  id: true,
+  name: true,
+  nickname: true,
+  timezone: true,
+  lat: true,
+  lng: true,
+} as const satisfies Prisma.PlaceSelect;
+
+export type ShareEventRow = Prisma.EventGetPayload<{ select: typeof SHARE_EVENT_SELECT }>;
+export type SharePlaceRow = Prisma.PlaceGetPayload<{ select: typeof SHARE_PLACE_SELECT }>;

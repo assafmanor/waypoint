@@ -37,4 +37,28 @@ describe('rate limiting (B-10)', () => {
     expect(statuses.slice(0, 5).every((s) => s !== 429)).toBe(true);
     expect(retryAfter).not.toBeNull();
   });
+
+  // ADR-0213: the public sharing routes are the second family of guessable short codes on
+  // this server, so they carry the invite's cap for the invite's reason — an 8-character
+  // keyspace with no auth in front of it is enumerable at any rate we do not bound.
+  it('429s the public shared-itinerary read past the per-IP cap', async () => {
+    const url = `${baseUrl}/shared-itineraries/zzzzzzzz`;
+    const statuses: number[] = [];
+    for (let i = 0; i < 25; i++) statuses.push((await fetch(url)).status);
+
+    expect(statuses.slice(0, 5).every((status) => status !== 429)).toBe(true);
+    expect(statuses).toContain(429);
+  });
+
+  // Tighter than the JSON read, because the cost is different in kind: a PDF is a browser
+  // tab and seconds of CPU where the read is one query.
+  it('caps the public PDF route harder than the JSON one', async () => {
+    const url = `${baseUrl}/shared-itineraries/zzzzzzzz/pdf`;
+    const statuses: number[] = [];
+    for (let i = 0; i < 8; i++) statuses.push((await fetch(url)).status);
+
+    expect(statuses).toContain(429);
+    // It trips inside 8 requests, where the JSON route survives 20.
+    expect(statuses.filter((status) => status === 429).length).toBeGreaterThanOrEqual(2);
+  });
 });

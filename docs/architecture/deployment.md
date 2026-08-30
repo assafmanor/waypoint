@@ -96,6 +96,25 @@ Two things that were silent failures and now aren't. `validateConfig` **refuses 
 
 That second half is the one operational gotcha: **moving to a self-hosted router is two changes, not one.** The allowlist in `backend/src/enrichment/outbound-fetch.ts` is code on purpose (ADR-0166 §7 — _"a host you can add by setting a variable is not much of an allowlist"_), so a new host needs a line there as well as the variable here, and setting only the variable fails at boot with a message saying exactly that. `ROUTING_DISABLED` is the kill switch, and it stops **outbound calls only**: every leg already in the `RouteLeg` table is still served and the endpoint still answers, because a route is a cache (§4) rather than data.
 
+**Itinerary PDF (ADR-0213 §4).** All three vars are optional and the shipped image needs
+none of them. The runtime stage installs **system `chromium`** (with `fonts-liberation`,
+Chromium's own baseline) and `PDF_CHROMIUM_PATH` defaults to where that lands; the backend
+depends on `playwright-core`, which ships no browser, so nothing in the build or at first
+request downloads ~150 MB from a CDN. The app's Hebrew faces are read from `/app/pdf-fonts`
+(copied out of the frontend source at build) and **inlined into the document as data URLs**,
+so a rendered PDF depends on no system font and makes no outbound request at all — the page
+aborts every request before its content is set.
+
+The one worth tuning is **`PDF_RENDER_CONCURRENCY`** (default 2). Each render is a real
+browser tab holding tens of megabytes on an **unauthenticated** route, so an unbounded value
+is a memory-exhaustion lever anyone holding a link can pull; the per-IP throttle in front of
+it (5/min) does not help against many IPs. Work queued behind the cap is refused after
+`PDF_RENDER_TIMEOUT_MS` (default 15 s) with `503` + `Retry-After: 5`, which is an honest
+answer rather than a request that never returns. There is **no kill switch and no stored
+PDF**: a file that outlives a revocation is what the whole `no-store` posture exists to
+prevent, and the browser is launched lazily, so an instance that is never asked for a PDF
+never starts one.
+
 ## One-time setup runbook
 
 1. **Railway**: sign up (GitHub login), **Hobby plan**; optionally set a workspace usage limit (e.g. $10/mo) as a cost guardrail.
@@ -139,6 +158,7 @@ The alternative, recorded only so nobody re-derives it: staying on GoDaddy DNS w
 - Realtime: a change made on one device appears live on another (WS carries the cookie same-origin).
 - Documents: upload a file and re-open it. The `S3_*` vars are **required in production** — with them unset the backend refuses the dev-only local-disk fallback and fails loud (`S3_BUCKET not configured`) rather than silently writing to the ephemeral container filesystem and losing every blob on the next redeploy (storage.ts).
 - Routes (ADR-0205): open a day with two stops close enough to walk and confirm a travel time appears within a few seconds — the first ask answers `202` and warms, the next `200`. **A silence here is indistinguishable from a correct absence** (§D4 is the design), so if nothing ever appears, check the logs for `routing warm failed` rather than the UI: the endpoint answering is not evidence the provider is reachable.
+- Sharing (ADR-0213): open a trip's share sheet, press **Live Link**, and open the resulting `/s/<code>` in a signed-out browser — it must render without redirecting to `/login`, and `curl -sI` on it must carry `cache-control: private, no-store` and `x-robots-tag: noindex...`. Then press **PDF**. **A PDF failure is the deploy-specific one here**: it is the only feature that needs a browser binary inside the image, so a `500` on `/shared-itineraries/<code>/pdf` almost always means `chromium` is missing from the runtime stage or `PDF_CHROMIUM_PATH` points somewhere else — check the logs for a launch error rather than the UI. CI's `pdf-smoke` job renders the reference trip inside the built image and verifies the artifact with pdfjs, so this should already be proven before a deploy.
 - Note: the API connects to Postgres at boot (`PrismaService.onModuleInit`) — the healthcheck failing right after a deploy usually means `DATABASE_URL` is wrong/missing, not app breakage.
 
 ## Staging environment (ADR-0104)

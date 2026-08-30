@@ -106,6 +106,7 @@ const renderHeader = (props: Partial<Parameters<typeof Header>[0]> & { at?: stri
         onOpenSwitcher={props.onOpenSwitcher ?? noop}
         onOpenPeople={props.onOpenPeople ?? noop}
         onOpenSettings={props.onOpenSettings ?? noop}
+        onShare={props.onShare ?? noop}
         otherTripCount={props.otherTripCount}
         allDays={props.allDays}
       />,
@@ -347,5 +348,14 @@ describe('the mode control', () => {
     phase = 'before';
     const { container } = renderHeader();
     expect(container.querySelector('.hdr-mode')).toBeNull();
+  });
+
+  // ADR-0213: sharing is one of the trip's visible capabilities, not something behind a
+  // menu — the header entry and the All Trips card entry are the two, and both are 44px.
+  it('offers sharing beside the trip actions', () => {
+    const onShare = vi.fn();
+    renderHeader({ onShare });
+    fireEvent.click(screen.getByRole('button', { name: t.share.entry }));
+    expect(onShare).toHaveBeenCalledTimes(1);
   });
 });
