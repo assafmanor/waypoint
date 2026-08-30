@@ -471,9 +471,17 @@ test.describe('a day surface steps day to day with a swipe', () => {
     // The pill for the day after tomorrow — a day away from both today and the one a swipe
     // would reach, so this cannot pass on the swipe's behaviour. Found by the number it shows
     // (the pill carries no date attribute, and adding one just for this would be a test seam
-    // in shipped markup); matched exactly, so `2` cannot select `22`.
+    // in shipped markup); matched exactly, so `02` cannot select `22`.
+    //
+    // **The number is ZERO-PADDED, and stripping it was a latent date bomb.** The pill renders
+    // `date.slice(8)` (`App.tsx`), i.e. `01`, which is what makes every pill in the strip the
+    // same width. This read `.replace(/^0/, '')` from the day it was written, so the locator
+    // could not match on the 1st-9th of any month — about nine days in thirty, whenever
+    // `NOW + 2` happened to land there. It passed for weeks because it was never run on one of
+    // them, and then failed on `main` on 2026-08-30 with nothing to do with the change under
+    // test. A date-dependent spec is only as green as the date it last ran on.
     const target = iso(NOW + 2 * DAY);
-    const dayOfMonth = target.slice(8).replace(/^0/, '');
+    const dayOfMonth = target.slice(8);
     await page
       .locator('.wp-daystrip button')
       .filter({ has: page.locator('.n', { hasText: new RegExp(`^${dayOfMonth}$`) }) })
