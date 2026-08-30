@@ -10,11 +10,12 @@ import { NINE_DAY_REFERENCE_TRIP } from './itinerary-pdf.fixture';
 
 const QR = 'data:image/png;base64,iVBORw0KGgo=';
 
-const input = (projection: SharedItinerary) => ({
+const input = (projection: SharedItinerary, photoDataUrls: Record<string, string> = {}) => ({
   projection,
   publicUrl: 'travelive.app/s/7Kq2mB9x',
   qrDataUrl: QR,
   generatedAtLabel: '29.08.2026 08:10',
+  photoDataUrls,
 });
 
 const render = (projection: SharedItinerary) => itineraryPdfHtml(input(projection));
@@ -91,16 +92,26 @@ describe('itineraryPdfHtml', () => {
   it('says the derived day headlines and the booking captions in Hebrew', () => {
     expect(full).toContain(PDF_COPY.dayTitle.flightOut(auto('איסלנד')));
     expect(full).toContain(PDF_COPY.dayTitle.flightHome);
-    expect(full).toContain(PDF_COPY.daySummary.stay(auto('Laugavegur 22')));
+    // **The stay is the day's frame now**, so it prints in the header's second line
+    // instead of the derived `לינה ב…` summary (ADR-0213's 2026-08-30 amendment).
+    expect(full).toContain(PDF_COPY.stay(auto('Reykjavík')));
+    expect(full).toContain('class="pdf-stay"');
     expect(full).toContain(PDF_COPY.bookingType.hotel);
     expect(full).toContain(PDF_COPY.bookingType.car);
   });
 
   // **The masthead said the trip's title twice** — here and in the lede one centimetre
   // below — which is what made the block read as an unexplained leak (owner, 2026-08-30).
-  it('prints the trip title once, and labels the route strip', () => {
+  it('prints the trip title once, and no stop sample beside the QR', () => {
     expect(full.match(/רייקיאוויק ← סנייפלסנס/g)).toHaveLength(1);
-    expect(full).toContain(PDF_COPY.routeLabel);
+    // **The teal strip is gone** (ADR-0213's 2026-08-30 amendment; owner: _"What's the
+    // teal random places on top?"_). `routeLabels` is CAPPED, so it was never the route —
+    // it came off the reader page first and printed here for a week longer.
+    expect(full).not.toContain('class="pdf-route-mini"');
+    expect(full).not.toContain(PDF_COPY.routeLabel);
+    // And what took its place says what the trip is, from values already on the projection.
+    expect(full).toContain('pdf-what');
+    expect(full).toContain(NINE_DAY_REFERENCE_TRIP.trip.destination);
   });
 
   // Two lines by design rather than by wrapping, in the app's own date shape — it printed
@@ -131,7 +142,7 @@ describe('itineraryPdfHtml', () => {
     const everything = render({
       ...NINE_DAY_REFERENCE_TRIP,
       detailLevel: SHARE_DETAIL_LEVEL.EVERYTHING,
-      appendix: { bookingSecrets: [{ title: 'טיסה', lines: ['KEF-4821'] }] },
+      appendix: { notesAndTasks: [{ title: 'רשימת ציוד', lines: ['נעלי הליכה'] }] },
     });
     expect(everything).toContain(PDF_COPY.appendix.title);
     expect(everything.match(/class="pdf-ops"/g)).toHaveLength(1);
@@ -171,6 +182,32 @@ describe('itineraryPdfHtml', () => {
     expect(emojiFace).not.toContain('U+2000-206F');
   });
 
+  /**
+   * **The amendment's rules must come LAST in the sheet**, and this is the guard for a
+   * failure that is otherwise silent: `.pdf-event` is redefined at equal specificity, so
+   * above the original it simply loses. The first render measured a 38px time cell against
+   * 52.9px of ink and printed a flight's range over its own title — and the PDF smoke
+   * verifier's `no-overprint` check passed the whole time, because an inline overflowing
+   * its grid cell is not two runs colliding as far as the paginator is concerned.
+   */
+  it('places the overriding rules after the ones they override', () => {
+    const override = full.lastIndexOf('.pdf-event{grid-template-columns:56px');
+    const original = full.indexOf('.pdf-event{break-inside:avoid');
+    expect(override).toBeGreaterThan(-1);
+    expect(original).toBeGreaterThan(-1);
+    expect(override).toBeGreaterThan(original);
+  });
+
+  it('prints a range only for a commitment, and a start for everything else', () => {
+    // A flight has to say when it lands; a viewpoint's end is when somebody typed they
+    // would leave, and a window there claims a precision the plan does not have.
+    const times = [...full.matchAll(/class="pdf-event-time">([^<]*)</g)].map((m) =>
+      m[1].replace(/[\u2066-\u2069]/g, ''),
+    );
+    expect(times.some((value) => value.includes('\u2013'))).toBe(true);
+    expect(times.filter((value) => value.includes('\u2013')).length).toBeLessThan(times.length);
+  });
+
   // **Hebrew must never be inside a mono element** (design-language: JetBrains Mono ships no
   // Hebrew glyphs). `.pdf-subtitle` was `font: … 'JetBrains Mono', monospace`, and the `font`
   // SHORTHAND replaces the family list — so Assistant was not behind it, the fallback was the
@@ -198,15 +235,16 @@ describe('itineraryPdfHtml', () => {
   // the join.
   it('isolates the values it joins, and lets none of those lines sniff', () => {
     const composed = [
-      /<div class="pdf-route-mini">.*?<\/div>/s,
       /<span class="pdf-day-copy">.*?<\/span><\/header>/s,
+      // The masthead's own line, which joins the day count with the destination.
+      /<div class="pdf-what">.*?<\/div>/s,
     ];
     for (const pattern of composed) {
       const block = pattern.exec(full)?.[0] ?? '';
       expect(block).not.toBe('');
       expect(block).not.toContain('dir="auto"');
     }
-    // The route strip's stops each arrive first-strong isolated.
+    // Every value the page prints arrives first-strong isolated.
     expect(full).toContain('\u2068');
   });
 
@@ -223,6 +261,37 @@ describe('itineraryPdfHtml', () => {
     expect(hebrewFaces).toHaveLength(2); // Assistant + Secular One
     // JetBrains Mono ships no Hebrew glyphs and must never be asked for any.
     expect(faces.filter((f) => f.includes('U+0590-05FF') && f.includes('JetBrains'))).toEqual([]);
+  });
+});
+
+// **The renderer aborts every request the page makes** (`PdfBrowserService`), so the day
+// photo cannot arrive by URL the way it does on the reader page — it arrives as bytes, and
+// the template's job is to use the bytes it was handed and to print nothing when it wasn't.
+describe('day photos on paper', () => {
+  const PHOTO_URL = '/enrichment/images/enr-abc123';
+  const withPhoto: SharedItinerary = {
+    ...NINE_DAY_REFERENCE_TRIP,
+    days: NINE_DAY_REFERENCE_TRIP.days.map((day, index) =>
+      index === 0
+        ? { ...day, photo: { url: PHOTO_URL, of: 'Skogafoss', credit: 'CC BY-SA 4.0' } }
+        : day,
+    ),
+  };
+  const PHOTO_DATA_URL = 'data:image/jpeg;base64,/9j/4AAQ';
+
+  it('prints the inlined bytes, never the URL the page could not fetch', () => {
+    const html = itineraryPdfHtml(input(withPhoto, { [PHOTO_URL]: PHOTO_DATA_URL }));
+    expect(html).toContain(`<img class="pdf-shot" src="${PHOTO_DATA_URL}"`);
+    expect(html).toContain('alt="Skogafoss"');
+    expect(html).not.toContain(PHOTO_URL);
+  });
+
+  // A blob that has gone yields no entry, and a header that reserved a column for an image
+  // it cannot draw leaves a 34px hole beside the date.
+  it('falls back to the no-photo header when the bytes are missing', () => {
+    const html = itineraryPdfHtml(input(withPhoto));
+    expect(html).not.toContain('class="pdf-shot"');
+    expect(html).toContain('class="pdf-day-head no-photo"');
   });
 });
 

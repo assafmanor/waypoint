@@ -4,10 +4,12 @@ import {
   ROUTE_ARROW,
   SHARE_DAY_KIND,
   SHARE_DAY_SUMMARY_KIND,
+  SHARE_TRIP_SHAPE,
   type BookingType,
   type SharedDay,
   type SharedDayTitle,
   type SharedDaySummary,
+  type ShareTripShape,
 } from '@waypoint/shared';
 
 /**
@@ -99,6 +101,19 @@ export interface DayFacts {
   /** …and the returning one: the last flight day, on the last day holding anything, and not
    *  the same day as the outbound — a single flight day is an departure, never a return. */
   returning?: boolean;
+  /** **The region the day's stops share** (Wikidata `P131`), when a clear majority agree.
+   *  The best name a day can have, because it is where you WERE rather than what you
+   *  happened to stop at — a day whose eleven stops are all in Skútustaðahreppur is
+   *  `מיוואטן`, not two of its waterfalls. */
+  region?: string;
+  /** **What the day's stops ARE** (Wikidata `P31`), when a clear majority agree. Below the
+   *  region, because where beats what. */
+  kind?: string;
+  /** **The trip's shape** (owner, 2026-08-30). On a `base` trip every day leaves from and
+   *  returns to the same bed, so a `from ← to` title describes the commute rather than the
+   *  day — `רייקיאוויק ← גולפוס` on nine consecutive days says the same false thing nine
+   *  times. Absent is treated as "we do not know", which takes today's behaviour. */
+  tripShape?: ShareTripShape;
 }
 
 /**
@@ -118,8 +133,21 @@ export function fallbackDayTitle(facts: DayFacts): SharedDayTitle {
     }
     if (facts.flightTo) return { kind: SHARE_DAY_KIND.FLIGHT, to: facts.flightTo };
   }
+  // **Where you were, then what you saw, then where you went** (ADR-0166's 2026-08-30
+  // amendment). Both come from claims the enrichment pass already reads, and both beat a
+  // route made of two arbitrary stop names — which is the rule these replace.
+  if (facts.region) return { kind: SHARE_DAY_KIND.REGION, at: facts.region };
+  if (facts.kind) return { kind: SHARE_DAY_KIND.KIND, of: facts.kind };
   const stops = dedupeConsecutive(facts.stops);
   if (stops.length === 0) return { kind: SHARE_DAY_KIND.NONE };
+  // **On a star trip a day is a PLACE, never a route.** Every day of one starts and ends at
+  // the same base, so `base ← wherever` describes the commute — and it repeats, nearly
+  // identically, for every day of the trip. The furthest stop is what the day was about;
+  // the base is already in the header, on the stay line.
+  if (facts.tripShape === SHARE_TRIP_SHAPE.BASE) {
+    const away = stops.find((stop) => stop !== facts.lodgingPlace) ?? stops[0];
+    return { kind: SHARE_DAY_KIND.PLACE, at: away };
+  }
   // **A round trip is a place, not a route.** A leg contributes both its endpoints, so a day
   // that leaves Reykjavík and comes back has the same label at both ends, and
   // `רייקיאוויק ← רייקיאוויק` says less than the bare name does.
@@ -175,7 +203,22 @@ function titleValues(title: SharedDayTitle): string[] {
  * it sniffs. Takes `routeLabels` UNCAPPED: the endpoints are the trip's, not the strip's.
  */
 export function fallbackTripTitle(routeLabels: readonly string[], tripName: string): string {
-  if (routeLabels.length === 0) return isolate(tripName);
+  // **THE TRIP'S NAME IS THE TRIP'S TITLE** (ADR-0213's 2026-08-30 amendment; owner, on the
+  // masthead: _"Why נתב״ג to Frankfurt?? What does it have to do with anything?"_).
+  //
+  // This used to compose first-stop → last-stop, and on any trip you fly to both ends are
+  // transit airports — so the loudest line on the page named two places the trip is not
+  // about. It is the same defect on a non-flight trip too, one level quieter:
+  // `רייקיאוויק ← סנייפלסנס` describes a drive, not a holiday in Iceland.
+  //
+  // A person already named this trip, in `Trip.name`, and that name is what they call it
+  // when they talk about it. The route stays available — `routeLabels` still feeds the
+  // narrative generator's input — it just stops being the headline.
+  const name = tripName.trim();
+  if (name) return isolate(name);
+  // Nameless is possible (a trip created by an import), and only then is the route the best
+  // thing we have to call it.
+  if (routeLabels.length === 0) return '';
   if (routeLabels.length === 1) return isolate(routeLabels[0]);
   const from = routeLabels[0];
   const to = routeLabels[routeLabels.length - 1];

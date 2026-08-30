@@ -4,6 +4,7 @@ export * from './booking-event';
 export * from './currency';
 export * from './destinations';
 export * from './enrichment';
+export * from './place-label';
 export * from './fx';
 export * from './geo';
 export * from './icons';

@@ -3185,6 +3185,10 @@ export const t = {
         // on every returning day.
         flightHome: 'טסים הביתה',
         flight: (to: string) => `טיסה ל${to}`,
+        // **A day named by what its stops ARE** (Wikidata `P31`). Four waterfalls in one
+        // day is a day of waterfalls — a better name than any two of their names. `region`
+        // needs no entry: its value is a place name and prints as itself.
+        kind: (noun: string) => `יום ${noun}`,
       },
       /** The owner's own phrasing for the day's second line: _"night at…, Sleeping at…"_. */
       daySummary: {
@@ -3198,12 +3202,42 @@ export const t = {
       // leg and a forty-minute one were the same shape of line. The numbers are isolated by
       // the caller; the en dash is the app's own range mark (`formatTripDates`).
       timeRange: (from: string, to: string) => `${from}–${to}`,
+      // **How the trip moves**, in the owner's own words (2026-08-30): a circumnavigation
+      // where the base changes every day or two is a different thing from a trip you take
+      // from one place. `הקפה` is mine — a rolling trip that closes its circle is common
+      // enough, and different enough in feel from a one-way traverse, to earn a word.
+      tripShape: {
+        base: 'טיול כוכב',
+        loop: 'הקפה',
+        line: 'טיול מתגלגל',
+        // No nights recorded: the shape is unknown, and the clause is simply absent.
+        unknown: '',
+      },
+      bases: (count: number) => `${count} ${count === 1 ? 'בסיס' : 'בסיסים'}`,
+      // **Where you sleep, as the day's frame** (ADR-0213's 2026-08-30 amendment). The
+      // value arrives isolated, so this joins it rather than composing around a raw name.
+      stay: (place: string) => `לנים ב-${place}`,
+      // The wait between two legs of one journey. Named by the place you wait IN, because
+      // "45 דקות" alone says nothing about where you are standing.
+      layover: (place: string, minutes: number) => `המתנה ב${place} · ${minutes} דקות`,
+      ops: {
+        // A count, because the row is otherwise a bare disclosure with nothing to promise.
+        more: (count: number) => (count === 1 ? 'פרט אחד' : `${count} פרטים`),
+      },
+      commitments: {
+        // **Not `מה שקבוע`** (owner, 2026-08-30: _"makes no sense in Hebrew"_). Every row
+        // in this block is booking-backed — a flight, a car, a stay, a booked tour — so the
+        // plain word for what they are is both accurate and what a person would say.
+        title: 'ההזמנות',
+      },
       appendix: {
-        title: 'פרטים נוספים',
-        bookingSecrets: 'פרטי הזמנה שנבחרו',
-        notesAndTasks: 'פתקים ומשימות',
+        // **Not `פרטים נוספים`.** What is left here after the amendment is only what is
+        // attached to no moment in the trip — the packing list, the group's own reminders.
+        // That is a real category and deserves its own name rather than a catch-all.
+        title: 'לקראת הנסיעה',
+        notesAndTasks: 'רשימות',
         travelers: 'הנוסעים',
-        documents: 'קבצים שנבחרו',
+        documents: 'קבצים',
       },
       unavailableTitle: 'המסלול לא זמין',
       unavailableBody: 'יכול להיות שהלינק בוטל או שהטיול כבר לא קיים. בקשו לינק חדש ממי ששלח.',

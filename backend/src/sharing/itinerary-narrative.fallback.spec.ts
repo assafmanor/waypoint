@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { BOOKING_TYPE, SHARE_DAY_KIND, SHARE_DAY_SUMMARY_KIND } from '@waypoint/shared';
+import {
+  BOOKING_TYPE,
+  SHARE_DAY_KIND,
+  SHARE_DAY_SUMMARY_KIND,
+  SHARE_TRIP_SHAPE,
+  type ShareTripShape,
+} from '@waypoint/shared';
 import {
   fallbackDaySummary,
   fallbackDayTitle,
@@ -102,5 +108,98 @@ describe('fallbackDaySummary', () => {
         at: 'ויק',
       }),
     ).toEqual({ kind: SHARE_DAY_SUMMARY_KIND.NONE });
+  });
+  /**
+   * **A star trip's day is a place, not a route** (owner, 2026-08-30). This is the rule the
+   * shape classification exists to serve: on a trip with one base, every day leaves from
+   * and returns to the same bed, so `base ← wherever` is a description of the commute — and
+   * it repeats, nearly identically, on every day of the trip.
+   */
+  describe('the day title depends on the trip shape', () => {
+    const facts = (tripShape?: ShareTripShape): DayFacts => ({
+      stops: ['Tokyo', 'Nikko', 'Tokyo'],
+      bookingTypes: [],
+      lodgingPlace: 'Tokyo',
+      eventTitles: [],
+      tripShape,
+    });
+
+    it('names the day by where it went, on a star trip', () => {
+      expect(fallbackDayTitle(facts(SHARE_TRIP_SHAPE.BASE))).toEqual({
+        kind: SHARE_DAY_KIND.PLACE,
+        // Not `Tokyo`, which is where it slept and is already on the stay line.
+        at: 'Nikko',
+      });
+    });
+
+    it('still says a route on a rolling trip', () => {
+      expect(
+        fallbackDayTitle({
+          ...facts(SHARE_TRIP_SHAPE.LINE),
+          stops: ['Lisboa', 'Porto'],
+          lodgingPlace: 'Porto',
+        }),
+      ).toEqual({ kind: SHARE_DAY_KIND.ROUTE, from: 'Lisboa', to: 'Porto' });
+    });
+
+    it('takes the old behaviour when the shape is not known', () => {
+      // A trip that records no nights has no shape, and a title rule that guessed one
+      // would be inventing exactly the thing this derivation refuses to invent.
+      expect(fallbackDayTitle(facts(undefined))).toEqual({
+        kind: SHARE_DAY_KIND.PLACE,
+        at: 'Tokyo',
+      });
+    });
+
+    it('falls back to the first stop when every stop IS the base', () => {
+      // A day spent entirely at home base: there is no "away" stop to name, and the base
+      // itself is the only true answer.
+      expect(
+        fallbackDayTitle({ ...facts(SHARE_TRIP_SHAPE.BASE), stops: ['Tokyo', 'Tokyo'] }),
+      ).toEqual({ kind: SHARE_DAY_KIND.PLACE, at: 'Tokyo' });
+    });
+  });
+  /**
+   * **Where you were, then what you saw, then where you went** (ADR-0166's 2026-08-30
+   * amendment). Both new rungs come from claims the enrichment pass already reads, and both
+   * beat a route made of two arbitrary stop names — which is the rule they replace.
+   */
+  describe('a day named from its enrichment', () => {
+    const base: DayFacts = {
+      stops: ['Baugur Bjólfs', 'Hengifoss', 'Stuðlagil Canyon'],
+      bookingTypes: [],
+      eventTitles: [],
+    };
+
+    it('prefers the region to a route between two of its stops', () => {
+      expect(fallbackDayTitle({ ...base, region: 'מיוואטן' })).toEqual({
+        kind: SHARE_DAY_KIND.REGION,
+        at: 'מיוואטן',
+      });
+    });
+
+    it('falls to what the stops ARE when there is no region', () => {
+      expect(fallbackDayTitle({ ...base, kind: 'מפל מים' })).toEqual({
+        kind: SHARE_DAY_KIND.KIND,
+        of: 'מפל מים',
+      });
+    });
+
+    it('prefers the region to the kind — where beats what', () => {
+      expect(fallbackDayTitle({ ...base, region: 'מיוואטן', kind: 'מפל מים' }).kind).toBe(
+        SHARE_DAY_KIND.REGION,
+      );
+    });
+
+    it('still says a flight first, because a flight renames its whole day', () => {
+      expect(
+        fallbackDayTitle({
+          ...base,
+          region: 'מיוואטן',
+          bookingTypes: [BOOKING_TYPE.FLIGHT],
+          returning: true,
+        }),
+      ).toEqual({ kind: SHARE_DAY_KIND.FLIGHT_HOME });
+    });
   });
 });

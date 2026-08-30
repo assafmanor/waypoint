@@ -6,8 +6,10 @@ import {
   SHARE_DAY_SUMMARY_KIND,
   SHARE_DAYPART,
   SHARE_DETAIL_LEVEL,
+  SHARE_OP_KIND,
   type ShareDetailLevel,
 } from '@waypoint/shared';
+import { EnrichmentService } from '../enrichment/enrichment.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { generatePublicCode } from '../common/public-code.util';
 import { SharingProjectionService } from './sharing-projection.service';
@@ -26,6 +28,10 @@ import { DisabledItineraryNarrativeGenerator } from './itinerary-narrative.gener
  */
 const OWNER = 'u-assaf';
 const PEER = 'u-noam';
+/** The trip's own name, which is now its title — so the assertion and the fixture cannot
+ *  drift apart the way a repeated literal would. */
+const TRIP_NAME = 'איסלנד עם המשפחה';
+
 const SECRET = {
   email: 'assaf@example.com',
   confirmationCode: 'KEF-4821',
@@ -44,6 +50,41 @@ const PDI = '\u2069';
 /** The words, with the bidi controls taken back off. */
 const plain = (value: string): string => value.replace(/[\u2066-\u2069]/g, '');
 
+/** **A trip whose places carry no enrichment**, which is what every fixture below is and
+ *  what a freshly picked place is until a pass runs. The projection reads the store to
+ *  reach rung 2 of the place-label chain (the city an airport serves) and takes rung 3 —
+ *  the stripped name — when there is nothing there, so this stub exercises the fallback
+ *  rather than skipping the chain. `readForPlaces` is the only method it calls, and it
+ *  ignores the `stale` half deliberately: a public read must never trigger a fetch. */
+const noEnrichment = () =>
+  ({ readForPlaces: async () => ({ enrichments: {}, stale: [] }) }) as unknown as EnrichmentService;
+
+/** A store that answers with exactly what a test hands it, keyed by place id. `readForPlaces`
+ *  is the only method the projection calls, and it drops the `stale` half deliberately — a
+ *  public read must never trigger a fetch. */
+const enrichmentOf = (byPlaceId: Record<string, unknown>) =>
+  ({
+    readForPlaces: async () => ({ enrichments: byPlaceId, stale: [] }),
+  }) as unknown as EnrichmentService;
+
+/** The provenance a delivered value carries. `confidence` is the field under test; the rest
+ *  is the shape `deliveredImageValueSchema` requires. */
+const imageValue = (confidence: number, extra: Record<string, unknown> = {}) => ({
+  url: '/enrichment/images/abc',
+  mimeType: 'image/jpeg',
+  width: 1200,
+  height: 800,
+  sizeBytes: 90_000,
+  source: 'commons',
+  license: 'CC BY-SA 4.0',
+  attribution: 'A. Photographer',
+  fetchedAt: '2026-08-01T00:00:00.000Z',
+  method: 'name_proximity',
+  ref: 'Q38519',
+  confidence,
+  ...extra,
+});
+
 describe('SharingProjectionService', () => {
   const prisma = new PrismaService();
   const service = new SharingProjectionService(
@@ -51,6 +92,7 @@ describe('SharingProjectionService', () => {
     // The narrative that actually ships: no provider, so every projection below reads the
     // deterministic strings — which is also the state a provider outage produces.
     new ItineraryNarrativeService(prisma, new DisabledItineraryNarrativeGenerator()),
+    noEnrichment(),
   );
   const tripIds: string[] = [];
   let tripId: string;
@@ -60,7 +102,7 @@ describe('SharingProjectionService', () => {
   async function seedTrip(): Promise<string> {
     const trip = await prisma.trip.create({
       data: {
-        name: 'איסלנד עם המשפחה',
+        name: TRIP_NAME,
         destination: 'Iceland',
         icon: '🇮🇸',
         startDate: new Date('2026-08-29'),
@@ -350,7 +392,15 @@ describe('SharingProjectionService', () => {
     const projection = await service.byCode(
       await shareAt(SHARE_DETAIL_LEVEL.EVERYTHING, { includeBookingSecrets: true }),
     );
-    expect(projection.appendix?.bookingSecrets?.[0].lines).toContain(SECRET.confirmationCode);
+    // **The code travels on its row now, not in an appendix** (ADR-0213's 2026-08-30
+    // amendment). The toggle is unchanged and still governs whether it exists at all —
+    // what changed is where it lands, which is the row whose booking carries it.
+    const ops = projection.days.flatMap((day) =>
+      day.sections.flatMap((section) => section.events.flatMap((event) => event.ops ?? [])),
+    );
+    expect(ops).toContainEqual(
+      expect.objectContaining({ kind: SHARE_OP_KIND.CODE, code: SECRET.confirmationCode }),
+    );
     expect(projection.appendix?.notesAndTasks).toBeUndefined();
     expect(projection.appendix?.travelers).toBeUndefined();
     expect(JSON.stringify(projection)).not.toContain(SECRET.noteBody);
@@ -446,11 +496,16 @@ describe('SharingProjectionService', () => {
     // narrative replaces it with prose and there is no kind to give that. Day titles moved
     // out: they are now a kind plus its values, and each renderer isolates them itself —
     // which is why those assertions are the renderers' and this one is not.
-    it('isolates each value in the composed trip title, and not the punctuation', async () => {
+    it('titles the trip by its NAME, isolated, and not by a route', async () => {
       const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
 
-      expect(projection.narrative.title).toBe(`${FSI}רייקיאוויק${PDI}`);
-      expect(plain(projection.narrative.title)).toBe('רייקיאוויק');
+      // **The trip's own name** (ADR-0213's 2026-08-30 amendment; owner: _"Why נתב״ג to
+      // Frankfurt?? What does it have to do with anything?"_). `fallbackTripTitle` composed
+      // first-stop → last-stop, and on any trip you fly to both ends are transit airports.
+      // A person already named this trip; that name is what they call it.
+      expect(projection.narrative.title).toBe(`${FSI}${TRIP_NAME}${PDI}`);
+      expect(plain(projection.narrative.title)).toBe(TRIP_NAME);
+      expect(projection.narrative.title).not.toContain('←');
     });
 
     // A day ships raw values now, so the guarantee the renderers depend on is that nothing
@@ -469,5 +524,301 @@ describe('SharingProjectionService', () => {
 
     await expect(service.byCode(code)).rejects.toBeInstanceOf(NotFoundException);
     await expect(service.byCode('zzzzzzzz')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  /**
+   * **The three defects the shipped page showed on the owner's own trip** (ADR-0213's
+   * 2026-08-30 amendment). Its own trip, because each needs a shape the fixture above
+   * deliberately does not have: two chained flight legs, a stay whose check-in sorts
+   * between them, and a note attached to nothing.
+   */
+  describe('a journey, a stay and what is attached to what', () => {
+    let journeyTripId = '';
+    let checkInEventId = '';
+
+    beforeAll(async () => {
+      const trip = await prisma.trip.create({
+        data: {
+          name: "איסלנד '26",
+          destination: 'איסלנד',
+          startDate: new Date('2026-09-11'),
+          endDate: new Date('2026-09-12'),
+          timezone: 'Atlantic/Reykjavik',
+          createdBy: OWNER,
+          updatedBy: OWNER,
+        },
+      });
+      journeyTripId = trip.id;
+      await prisma.membership.create({
+        data: { tripId: trip.id, userId: OWNER, role: 'admin' },
+      });
+
+      const place = (name: string) =>
+        prisma.place.create({
+          data: { tripId: trip.id, name, timezone: 'UTC', updatedBy: OWNER },
+        });
+      const [tlv, vie, kef, hotel] = await Promise.all([
+        place('נמל התעופה בן גוריון'),
+        place('נמל התעופה הבינלאומי של וינה'),
+        place('נמל התעופה הבינלאומי קפלאוויק'),
+        place('Gissurarbud 5'),
+      ]);
+
+      const leg = async (from: string, to: string, startsAt: string, endsAt: string) => {
+        const booking = await prisma.booking.create({
+          data: {
+            tripId: trip.id,
+            type: 'flight',
+            title: 'טיסה',
+            fromPlaceId: from,
+            toPlaceId: to,
+            updatedBy: OWNER,
+          },
+        });
+        return prisma.event.create({
+          data: {
+            tripId: trip.id,
+            date: new Date('2026-09-11'),
+            title: 'טיסה',
+            kind: 'hard',
+            startsAt: new Date(startsAt),
+            endsAt: new Date(endsAt),
+            bookingId: booking.id,
+            updatedBy: OWNER,
+          },
+        });
+      };
+      await leg(tlv.id, vie.id, '2026-09-11T14:30:00Z', '2026-09-11T18:15:00Z');
+
+      // **The row that made the report.** Its 17:00 check-in sorts between the two legs,
+      // and its 17:00→13:00 span reads backwards because it crosses midnight.
+      const stayBooking = await prisma.booking.create({
+        data: {
+          tripId: trip.id,
+          type: 'hotel',
+          title: 'Gissurarbud 5',
+          confirmationCode: 'HMXXJZ2FCT',
+          provider: 'Airbnb',
+          placeId: hotel.id,
+          updatedBy: OWNER,
+        },
+      });
+      const checkIn = await prisma.event.create({
+        data: {
+          tripId: trip.id,
+          date: new Date('2026-09-11'),
+          title: 'Gissurarbud 5',
+          kind: 'hard',
+          startsAt: new Date('2026-09-11T17:00:00Z'),
+          endsAt: new Date('2026-09-12T13:00:00Z'),
+          placeId: hotel.id,
+          bookingId: stayBooking.id,
+          updatedBy: OWNER,
+        },
+      });
+      checkInEventId = checkIn.id;
+      await leg(vie.id, kef.id, '2026-09-11T19:00:00Z', '2026-09-11T23:20:00Z');
+
+      await prisma.note.createMany({
+        data: [
+          {
+            tripId: trip.id,
+            title: 'חניה בצד המערבי',
+            eventId: checkIn.id,
+            createdBy: OWNER,
+            updatedBy: OWNER,
+          },
+          // Attached to nothing — the packing list, and the row the shipped page published
+          // under a toggle promising `רק תוכן שמחובר למסלול`.
+          { tripId: trip.id, title: 'נעלי הליכה', createdBy: OWNER, updatedBy: OWNER },
+        ],
+      });
+    });
+
+    afterAll(async () => {
+      if (journeyTripId) await prisma.trip.deleteMany({ where: { id: journeyTripId } });
+    });
+
+    const project = async (
+      sensitive: Partial<{ includeNotesAndTasks: boolean; includeBookingSecrets: boolean }> = {},
+    ) => {
+      const code = generatePublicCode();
+      await prisma.tripShare.deleteMany({ where: { tripId: journeyTripId } });
+      await prisma.tripShare.create({
+        data: {
+          tripId: journeyTripId,
+          code,
+          detailLevel: SHARE_DETAIL_LEVEL.EVERYTHING,
+          includeBookingSecrets: sensitive.includeBookingSecrets ?? false,
+          includeNotesAndTasks: sensitive.includeNotesAndTasks ?? false,
+          includeTravelerIdentity: false,
+          createdBy: OWNER,
+        },
+      });
+      return service.byCode(code);
+    };
+
+    it('makes two chained legs one journey, and names the wait between them', async () => {
+      const rows = (await project()).days[0].sections.flatMap((section) => section.events);
+
+      // One row for the pair, not two — and not three, which is what the shipped page drew
+      // once the check-in had sorted itself into the middle.
+      const journeys = rows.filter((event) => event.legs);
+      expect(journeys).toHaveLength(1);
+      expect(journeys[0].legs).toHaveLength(2);
+
+      // 18:15 to 19:00. The gap is derived, never stored — which is why the half-built
+      // `layoverMinutes` column written for this was reverted rather than migrated.
+      expect(journeys[0].legs?.[0].layoverMinutes).toBeUndefined();
+      expect(journeys[0].legs?.[1].layoverMinutes).toBe(45);
+
+      // The journey carries the WHOLE span: the first leg's departure and the last leg's
+      // arrival, so a renderer ignoring `legs` still shows one true row.
+      expect(journeys[0].startLabel).toBe('14:30');
+      expect(journeys[0].endLabel).toBe('23:20');
+    });
+
+    it('lifts the stay out of the schedule and onto the day', async () => {
+      const day = (await project()).days[0];
+      expect(day.stay).toBe('Gissurarbud 5');
+
+      // And it is no longer a row, so nothing can sort between the flight legs and nothing
+      // prints `17:00–13:00`.
+      const rows = day.sections.flatMap((section) => section.events);
+      expect(rows.map((event) => event.title)).not.toContain('Gissurarbud 5');
+    });
+
+    it('strips the airport noise the app already strips everywhere else', async () => {
+      const rows = (await project()).days[0].sections.flatMap((section) => section.events);
+      const journey = rows.find((event) => event.legs);
+      // `shortPlaceLabel`, reached through the shared chain. With no enrichment stored
+      // there is no `servedCity`, so this is rung 3 — and rung 3 alone already turns
+      // `נמל התעופה הבינלאומי של וינה` into `וינה`.
+      expect(plain(journey?.legs?.[0].title ?? '')).toContain('וינה');
+      expect(journey?.legs?.[0].title).not.toContain('נמל התעופה');
+    });
+
+    it('publishes only the notes attached to the itinerary, and says where the rest go', async () => {
+      const projection = await project({ includeNotesAndTasks: true });
+      const rows = projection.days[0].sections.flatMap((section) => section.events);
+
+      // **The privacy defect.** The toggle promises `רק תוכן שמחובר למסלול` and the query
+      // was `where: { tripId }` with no linkage filter, so an unattached packing list was
+      // published on the schedule. It is still published — the toggle is on — but under
+      // the block that says what it is, never as itinerary content.
+      // This note hangs off the CHECK-IN, and a check-in is the day's stay rather than one
+      // of its rows — so it travels with the stay into the commitments block. That is the
+      // one place the row's material can land once the row itself has left the schedule,
+      // and it is where a reader looks for a hotel anyway.
+      const attached = [
+        ...rows.flatMap((event) => event.ops ?? []),
+        ...projection.commitments.flatMap((row) => row.ops ?? []),
+      ];
+      expect(attached).toContainEqual({ kind: SHARE_OP_KIND.NOTE, title: 'חניה בצד המערבי' });
+      expect(attached).not.toContainEqual(expect.objectContaining({ title: 'נעלי הליכה' }));
+      expect(projection.appendix?.notesAndTasks).toContainEqual(
+        expect.objectContaining({ title: 'נעלי הליכה' }),
+      );
+    });
+
+    it('never publishes an op when its family is switched off', async () => {
+      const projection = await project();
+      const ops = projection.days[0].sections.flatMap((section) =>
+        section.events.flatMap((event) => event.ops ?? []),
+      );
+      expect(ops).toHaveLength(0);
+      expect(JSON.stringify(projection)).not.toContain('HMXXJZ2FCT');
+      expect(JSON.stringify(projection)).not.toContain('חניה בצד המערבי');
+    });
+
+    it('lists the trip fixed points once, with the nights collapsed', async () => {
+      const { commitments } = await project();
+      expect(commitments.map((row) => row.bookingType)).toEqual(['flight', 'hotel', 'flight']);
+      expect(commitments.every((row) => row.dayOrdinal === 1)).toBe(true);
+    });
+
+    it('keeps the check-in event reachable by id for its own ops', async () => {
+      const projection = await project({ includeBookingSecrets: true });
+      // The stay left the schedule, so its confirmation code has no row to sit on — it
+      // travels on the day's commitment row instead of vanishing.
+      expect(checkInEventId).not.toBe('');
+      expect(JSON.stringify(projection)).toContain('HMXXJZ2FCT');
+    });
+  });
+  /**
+   * **The photo gate and the majority rule** (ADR-0213 / ADR-0166's 2026-08-30 amendments).
+   * Both are places where a confident wrong answer is expensive and a missing answer is
+   * cheap, so both are tested for what they REFUSE as much as for what they produce.
+   */
+  describe('what enrichment adds, and what it refuses to add', () => {
+    /** The projection, with a store that answers for the trip's places. Built per test
+     *  because the enrichment is the variable under test. */
+    const project = async (byPlaceId: Record<string, unknown>) => {
+      const withStore = new SharingProjectionService(
+        prisma,
+        new ItineraryNarrativeService(prisma, new DisabledItineraryNarrativeGenerator()),
+        enrichmentOf(byPlaceId),
+      );
+      return withStore.byCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
+    };
+
+    const placeIds = async () =>
+      (await prisma.place.findMany({ where: { tripId }, select: { id: true, name: true } })).reduce<
+        Record<string, string>
+      >((all, place) => ({ ...all, [place.name]: place.id }), {});
+
+    it('publishes no photo below the confidence floor, and one at it', async () => {
+      const ids = await placeIds();
+      const under = await project({ [ids['Reykjavík']]: { image: imageValue(0.8) } });
+      // 0.8 is `geosearch`: found by coordinates, corroborated by nothing readable. Enough
+      // for a summary, not enough for a picture — a wrong photo is visibly wrong.
+      expect(under.days.some((day) => day.photo)).toBe(false);
+
+      const at = await project({ [ids['Reykjavík']]: { image: imageValue(0.9) } });
+      // 0.9 is `name_proximity`: the name agreed.
+      expect(at.days.some((day) => day.photo)).toBe(true);
+    });
+
+    it('publishes no photo it cannot credit, however confident the match', async () => {
+      const ids = await placeIds();
+      // 27 of the 32 Commons files ADR-0166 §12.2 surveyed require attribution. A file we
+      // cannot credit is one we may not publish — the licence is not ours to drop.
+      const projection = await project({
+        [ids['Reykjavík']]: { image: imageValue(1, { attribution: undefined, license: '' }) },
+      });
+      expect(projection.days.some((day) => day.photo)).toBe(false);
+    });
+
+    it('carries the credit with the photo, never the photo alone', async () => {
+      const ids = await placeIds();
+      const projection = await project({ [ids['Reykjavík']]: { image: imageValue(1) } });
+      const photo = projection.days.find((day) => day.photo)?.photo;
+      expect(photo?.credit).toContain('A. Photographer');
+      expect(photo?.credit).toContain('CC BY-SA 4.0');
+      expect(photo?.url).toBe('/enrichment/images/abc');
+    });
+
+    it('names a stop by what it is, in the reader language', async () => {
+      const ids = await placeIds();
+      const projection = await project({
+        [ids['Reykjavík']]: {
+          summary: { he: { value: 'בירת איסלנד ועיר הנמל שלה', lang: 'he' } },
+        },
+      });
+      const captions = projection.days.flatMap((day) =>
+        day.sections.flatMap((section) => section.events.map((event) => event.caption)),
+      );
+      expect(captions).toContain('בירת איסלנד ועיר הנמל שלה');
+    });
+
+    it('refuses to name a day for a region only one of its stops agrees on', async () => {
+      const ids = await placeIds();
+      // One stop out of several is not a day about that region, and naming it one is the
+      // same confident-and-wrong move as `Stuðlagil Canyon ← Baugur Bjólfs`.
+      const projection = await project({
+        [ids['Reykjavík']]: { region: { he: { value: 'מיוואטן', lang: 'he' } } },
+      });
+      expect(projection.days.every((day) => day.title.kind !== 'region')).toBe(true);
+    });
   });
 });

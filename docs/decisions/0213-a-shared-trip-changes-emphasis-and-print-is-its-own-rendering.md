@@ -492,6 +492,77 @@ nothing stored says two legs are one journey, but a leg continues the one before
 when the previous leg's `toPlaceId` is its `fromPlaceId`. A half-built contract for it was
 written and reverted rather than shipped ahead of the drawing.
 
+## Amendment — a share tells the trip's story, not its database (2026-08-30, fourth pass)
+
+The owner opened their own twelve-day Iceland trip at `הכל` and reported: _"the live sharing when all is shared is an abomination, looks disgusting, nothing is linked to the events!"_, then on the PDF _"the texts are meaningless and the alignment is so bad … Why נתב״ג to Frankfurt?? What does it have to do with anything? What's the teal random places on top? Bad event ordering when it comes to the flights and hotels … no layover detection and visualization"_. The frame they set for the fix is the section title: _"Sharing should tell a story, not present information in a misleading way like it does now."_
+
+Two mockups were drawn against that trip and rendered before anything was built — [`a-shared-itinerary-tells-the-trip-v4.html`](../../mockups/a-shared-itinerary-tells-the-trip-v4.html) and [`a-shared-itinerary-is-printed-as-a-story-v3.html`](../../mockups/a-shared-itinerary-is-printed-as-a-story-v3.html) — and the catalog entries carry their measurements. What follows is what they promoted and what shipped.
+
+### §1 · The appendix dissolves, and this reverses §4's third bullet
+
+§4 said _"Everything moves selected sensitive data into an appendix."_ That was wrong, and the diagnosis is not a privacy one: **the flatness was a missing `join`, not a constraint.** `Note.eventId | bookingId | placeId | documentId` has been a closed union since the first migration, and `buildAppendix` queried `where: { tripId }` and dropped it — so seventy-nine notes printed as one undifferentiated list at the end of a page whose events they belonged to, which is exactly _"nothing is linked to the events"_.
+
+So a note, a task, a confirmation code and a file now ride the row they are attached to, as one `SharedOp` union (`SHARE_OP_KIND` = `CODE | NOTE | TASK | FILE`) behind a per-row fold on the reader page. **The appendix survives, narrowed to what is attached to nothing** — a packing list is a real thing and it has no event. The booking block left it entirely: `Event.bookingId` is `@unique`, so every booking has a host by construction and its code prints under its own row.
+
+**A privacy defect closed with it, and it deserves naming separately.** The share sheet's toggle says `רק תוכן שמחובר למסלול` and the query said `where: { tripId }`; the promise and the code disagreed, and the repair is the linkage filter the copy always described.
+
+### §2 · A journey is one row, and the gap between its legs has a name
+
+The third pass deferred this to a mockup (_"Layovers must be represented … Flights should be clumped together, not split by days"_). The mockup was drawn; this is the build. Nothing stored says two legs are one journey, and nothing needs to: a leg continues the one before it exactly when `previous.booking.toPlaceId === next.booking.fromPlaceId`, and the layover is the gap between the previous leg's `endsAt` and the next leg's `startsAt`. `SharedEvent.legs` (minimum two, each with its own code and endpoints) is the shape; a single-leg journey stays an ordinary row rather than a one-item list.
+
+### §3 · Where you sleep frames the day
+
+The stay was a row, sorted into the afternoon by its check-in hour — which on the outbound day put a hotel between the two legs of a flight (the _"bad event ordering"_) and printed `15:00–11:00`, a range that reads backwards because a stay crosses midnight. It moves into the day header as `לינה ב-X`, which is what it always was: the frame, not an item.
+
+### §4 · A trip has a shape, and the day titles follow it
+
+Owner, on the fixture: _"it says Reykjavik → Snæfellsnes but it is actually a circumnavigation (טיול מתגלגל maybe), where you switch locations every day … Then there's טיול כוכב where you stay at one place … we should differentiate between them and display the titles accordingly."_
+
+`tripShapeOf` reads the sequence of stays, collapses consecutive repeats, and classifies: one base is a **star** trip, first base equal to last is a **loop**, otherwise a **line**; no stays at all is `UNKNOWN` and says nothing. The masthead states the shape and, where the shape implies several, the base count — suppressed at one, since `1 בסיס` on a star trip is the same sentence twice.
+
+The shape then picks the day's title: **region → kind → (on a star trip) the day's own significant place → the route**. A day of four waterfalls in Suðurland is named for the region, not for two of its waterfalls; and on a star trip, where every day's route starts and ends at the same base, the route is the one derivation guaranteed to say nothing. `region` and `kind` come from two new enrichment fields (ADR-0166 §23, `P131` and `P31`) — both claims on an entity the identity pass already reads.
+
+`fallbackTripTitle` now returns the trip's **name** first. Its first-place-to-last-place derivation over the whole schedule is why the masthead read `נתב״ג → Frankfurt`: on any trip you fly to, both ends of the schedule are transit airports. Both values were already in the projection.
+
+### §5 · One photo a day, which reverses §3's "no new media dependency"
+
+§3 refused imagery, and the refusal named its reasons: _"media, licensing, privacy, attribution, and availability work."_ Every one of those was answered in the eight weeks since, by a pipe built for a different purpose. ADR-0166 §7 holds **our own bytes at our own URL** under a free licence with a stored credit, cached by the service worker, refreshed out of band. So this is not "adds media"; it is spending something already paid for.
+
+What is new is the **gate**, and it is stricter than any read surface's: `MATCH_METHOD_CONFIDENCE ≥ 0.9` **and** a non-empty credit. A wrong thumbnail in your own app is a shrug; a wrong photograph on a page you hand to somebody else is not recoverable. There is no default image and no placeholder — a day whose stops clear no gate simply has no photo, and both renderers have a no-photo layout rather than a hole.
+
+**Which stop's photo** is a ranked choice, not the first pin: dwell minutes, plus a bonus for a booked or hard commitment, plus `log10(1 + userRatingsTotal) × 30`, plus a small bonus if anybody bothered to nickname or icon it. Sitelink count was considered and rejected — the provider filters sitelinks to `hewiki|enwiki` (Tokyo has hundreds), and `userRatingsTotal` gives the same tiebreak free. `rating` was rejected too: every scenic place is 4.5–4.8.
+
+**On paper the same decision inverts twice.** A 116px band is nothing on a page you scroll and about a page and a half across twelve days at two-column density, so print gets a 34px square inside the header's existing 47px minimum. And the credit rides the `alt` rather than a caption, because the licence line for a whole document is the appendix's job and not every square's.
+
+**The renderer aborts every request the page makes**, so the photo arrives as bytes: `dayPhotoDataUrls` reads each blob behind the same key-prefix check the public route makes and inlines it as a data URL, exactly as the QR and the fonts already do. This is not a policy the renderer may make an exception to — it is what makes a PDF of somebody's itinerary unable to phone anywhere.
+
+### §6 · The row says what a thing IS before it says where
+
+_"hotels and other derivable stuff texts should be enhanced … and that also includes bookings."_ A booking states its type, so `The Hill Hotel at Fludir` gets `לינה` in front of its hour and stops being a bare proper noun. An event no booking backs is captioned with nothing: a guess in that slot is worse than a gap.
+
+Times follow the owner's call from the mockup round — **the start only, except for hard pins and bookings**, where both ends print. A flight's arrival is a fact you plan against; a soft stop's end is an estimate, and printing it as a range makes it look like one of the former.
+
+A bookings block (`ההזמנות`) sits above the schedule on the reader page, each row jumping to its day. It is deliberately **not** on paper: whoever holds a printout has the whole document in hand, and the count already prints as a tile. The section was first drawn as `מה שקבוע` and renamed on the owner's call — _"makes no sense in Hebrew"_.
+
+### §7 · The teal strip goes from paper too, one renderer behind
+
+`.pdf-route-mini` was the capped `routeLabels` sample beside the QR — Dyrhólaey, Stokksnes, Svartifoss and an airport, on a ring road. It came off the reader page in the third pass and kept printing for a week: **the same defect one renderer behind**, which is the argument for one ADR section covering both renderers rather than two fixes. The tiles beside it changed with it — days, **nights** and bookings, all three derived from what is already there, replacing a pin count that read `12 אזורים` and told nobody anything.
+
+### §8 · A shipped bidi defect both renderers wrote
+
+`<strong dir="auto">` sets the element's **base direction**, and base direction drives `text-align: start` as well as bidi resolution. So a Latin place name landed **229px from the start edge of a 288px column** while its own Hebrew caption sat at 0 — most of what _"the alignment is so bad"_ meant on a trip where most stops are Latin. The fix is `autoIsolate` (FSI…PDI) from `lib/bidi.ts`, whose docblock covers a **composed line joining several values** and therefore left the case of a single value alone in a block uncovered — which is why it survived ADR-0118's sweep. Both renderers now measure 0px. The same shape is worth a repo-wide grep and that line stays in the backlog.
+
+### §9 · Two field reports that were not about sharing's design
+
+- **The link at `הכל` was invisible, and it was not a stale bundle.** The owner refused that explanation twice (_"no matter what you say I don't buy your explanation … I think that you're missing something"_) and was right. `.share-send` is a flex item with `overflow: hidden`, and CSS Flexbox §4.5 removes a flex item's automatic minimum size once its overflow is not `visible` — so in a scrolling flex column it shrank to zero. `flex: none` fixes it. **A DOM test could not see this**: the element was present, mounted, and had the right text.
+- **A shared document downloaded with no extension.** A document's name here is its **title**, and a title has no extension — so the reader saved `כרטיס טיסה TLV`, which the phone has no type for. In the app this never showed, because the viewer fetches bytes and renders them against the `mimeType` it already holds; a download has only the name. `attachmentDisposition` now appends the extension for the served `Content-Type`, skipping it when the title already ends in one.
+
+### What was verified
+
+`pnpm typecheck`, `pnpm test` (all four packages) and `pnpm build` green. Both mockups rendered at both themes and 360/390px with no console errors and their measurements read off the live DOM. Both PDFs re-rendered to page images and inspected. The day photo was rendered into a real A4 page with the route abort in place: five squares, five loaded, **zero failed requests**, header height unchanged at 47px, and the no-photo header collapsing to `48px minmax(0,1fr)`.
+
+Two build hazards are written here because they cost real time and neither could fail a test. **The new print CSS was appended above the original block** and lost silently at equal specificity — a flight's range printed over its own title while the smoke verifier's overprint check passed throughout; the block now sits last in the sheet and a spec asserts that ordering. And **`ltrIsolate` around a duration reorders it**: `14ש׳ 50דק׳` became `שׂ50דק׳ 14`, because the isolate must island the **number**, not the number-and-unit — that is what `measure()` is for.
+
 ## Alternatives considered
 
 - **One page with fields progressively removed.** Rejected: less information is not automatically the right emphasis.

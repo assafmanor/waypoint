@@ -6,14 +6,16 @@ import {
   SHARE_DAY_KIND,
   SHARE_DAY_SUMMARY_KIND,
   SHARE_DETAIL_LEVEL,
+  SHARE_OP_KIND,
+  type ShareOpKind,
   type SharedDay,
   type SharedDaySummary,
   type SharedDayTitle,
   type SharedEvent,
   type SharedItinerary as SharedItineraryProjection,
 } from '@waypoint/shared';
-import { GLYPH } from '../constants';
-import { Icon } from '../ui/Icon';
+import { BOOKING_TYPE_MARK, GLYPH } from '../constants';
+import { Icon, type IconName } from '../ui/Icon';
 import { t } from '../i18n/he';
 import { autoIsolate, ltrIsolate } from '../lib/bidi';
 import { formatTripDates } from '../lib/time';
@@ -61,11 +63,29 @@ function dayTitleText(title: SharedDayTitle): string {
       return `${autoIsolate(title.from)}${ROUTE_ARROW}${autoIsolate(title.to)}`;
     case SHARE_DAY_KIND.PLACE:
       return autoIsolate(title.at);
+    case SHARE_DAY_KIND.REGION:
+      return autoIsolate(title.at);
+    case SHARE_DAY_KIND.KIND:
+      return t.share.public.dayTitle.kind(autoIsolate(title.of));
     case SHARE_DAY_KIND.TEXT:
       return title.text;
-    default:
+    case SHARE_DAY_KIND.NONE:
+      // A day with no places has no true title, and the server sends none rather than
+      // inventing one — the caller falls back to the date.
       return '';
+    default:
+      // **Exhaustive, and it has to be.** A `default: return ''` swallowed a new kind
+      // silently — the two added on 2026-08-30 would have rendered as nothing at all, on a
+      // typecheck that passed. `never` makes the next one a compile error here.
+      return assertNever(title);
   }
+}
+
+/** The compiler's proof that a union was handled. Throwing is unreachable by construction;
+ *  it exists so the type error is the one that fires. */
+function assertNever(value: never): string {
+  void value;
+  return '';
 }
 
 function daySummaryText(summary: SharedDaySummary): string {
@@ -151,8 +171,23 @@ export function SharedItinerary() {
       </div>
 
       <header className="sh-hero">
+        {/* **How the trip moves**, beside where it goes (owner, 2026-08-30). Two trips with
+            the same destination and length read completely differently depending on it, and
+            the page said nothing — worse, it printed a ROUTE for both, which on a star trip
+            describes the commute. The base count is only added where the shape implies
+            several; on a star trip `1 בסיס` is the same sentence twice. */}
         <div className="sh-kicker">
-          {t.share.public.kicker} · <span dir="auto">{projection.trip.destination}</span>
+          {[
+            t.share.public.kicker,
+            t.share.public.tripShape[projection.trip.shape],
+            projection.trip.baseCount > 1
+              ? t.share.public.bases(projection.trip.baseCount)
+              : undefined,
+          ]
+            .filter(Boolean)
+            .join(NARRATIVE_SEPARATOR)}
+          {' · '}
+          <span>{autoIsolate(projection.trip.destination)}</span>
         </div>
         <h1 className="sh-title">
           {projection.trip.icon ? (
@@ -205,6 +240,12 @@ export function SharedItinerary() {
         </div>
       ) : null}
 
+      {/* **Above the days, not among them** — a reader looks for the flights first, and the
+          day spine stays the spine (ADR-0004: no second tab, and this is not one). */}
+      {projection.commitments.length > 0 ? (
+        <Commitments commitments={projection.commitments} code={code} />
+      ) : null}
+
       <main className="sh-days">
         <div className="sh-days-head">
           <h2>{summary ? t.share.public.days : t.share.public.schedule}</h2>
@@ -216,6 +257,7 @@ export function SharedItinerary() {
             day={day}
             open={openDay === index}
             onToggle={() => setOpenDay(openDay === index ? -1 : index)}
+            code={code}
           />
         ))}
       </main>
@@ -231,10 +273,34 @@ export function SharedItinerary() {
   );
 }
 
-function DayCard({ day, open, onToggle }: { day: SharedDay; open: boolean; onToggle: () => void }) {
+function DayCard({
+  day,
+  open,
+  onToggle,
+  code,
+}: {
+  day: SharedDay;
+  open: boolean;
+  onToggle: () => void;
+  code: string;
+}) {
   const { day: dayNumber, weekday } = dayParts(day.date);
   return (
-    <section className={`sh-day${open ? ' open' : ''}`}>
+    <section className={`sh-day${open ? ' open' : ''}`} id={`day-${day.ordinal}`}>
+      {/* **A real photo of a real stop, credited** (ADR-0213's 2026-08-30 amendment). Not
+          stock and not generated: a Commons file already in the store, already licensed,
+          already rendered elsewhere in the app — which is why §3's refusal of "a new media
+          dependency" does not reach it. `loading="lazy"` because twelve of these below the
+          fold is twelve requests nobody asked for. */}
+      {day.photo ? (
+        <figure className="sh-shot">
+          <img src={day.photo.url} alt={day.photo.of} loading="lazy" decoding="async" />
+          <figcaption>
+            <strong>{autoIsolate(day.photo.of)}</strong>
+            <span>{autoIsolate(day.photo.credit)}</span>
+          </figcaption>
+        </figure>
+      ) : null}
       <button className="sh-day-head" onClick={onToggle} aria-expanded={open} type="button">
         <span className="sh-day-date">
           <strong>{ltrIsolate(dayNumber)}</strong>
@@ -246,7 +312,18 @@ function DayCard({ day, open, onToggle }: { day: SharedDay; open: boolean; onTog
           {/* Composed server-side with its values already isolated — see the story line
               above for why this must not sniff. */}
           <strong>{dayTitleText(day.title) || `${weekday} ${ltrIsolate(dayNumber)}`}</strong>
-          <span>{daySummaryText(day.summary)}</span>
+          {/* **Where you sleep frames the day** (ADR-0213's 2026-08-30 amendment). It used
+              to be a row in the afternoon, sorted there by its check-in hour — which on the
+              outbound day put it between the two legs of the flight, and printed
+              `15:00–11:00` because a stay's span crosses midnight. */}
+          {day.stay ? (
+            <span className="sh-stay">
+              <Icon name="hotel" />
+              {t.share.public.stay(autoIsolate(day.stay))}
+            </span>
+          ) : (
+            <span>{daySummaryText(day.summary)}</span>
+          )}
         </span>
         <span className="sh-caret">
           <Icon name="caret" />
@@ -263,7 +340,7 @@ function DayCard({ day, open, onToggle }: { day: SharedDay; open: boolean; onTog
                 <span>{t.share.dayparts[section.daypart]}</span>
               </header>
               {section.events.map((event, index) => (
-                <EventRow key={`${event.title}-${index}`} event={event} />
+                <EventRow key={`${event.title}-${index}`} event={event} code={code} />
               ))}
             </section>
           ))}
@@ -273,7 +350,7 @@ function DayCard({ day, open, onToggle }: { day: SharedDay; open: boolean; onTog
   );
 }
 
-function EventRow({ event }: { event: SharedEvent }) {
+function EventRow({ event, code }: { event: SharedEvent; code: string }) {
   // Summary carries no time, place, address, map link or journey at all, so the compact row
   // is not a different rendering of the same data — it is all the data there is.
   const detailed = event.startLabel !== undefined || event.placeName !== undefined;
@@ -283,7 +360,7 @@ function EventRow({ event }: { event: SharedEvent }) {
         <span className="sh-mark" aria-hidden="true">
           {event.icon ?? '•'}
         </span>
-        <strong dir="auto">{event.title}</strong>
+        <strong>{autoIsolate(event.title)}</strong>
       </div>
     );
   }
@@ -307,7 +384,17 @@ function EventRow({ event }: { event: SharedEvent }) {
           {event.icon ?? '•'}
         </span>
         <span className="sh-event-main">
-          <strong dir="auto">{event.title}</strong>
+          {/* **`autoIsolate`, NEVER `dir="auto"` on a value block** (found by rendering
+              `a-shared-itinerary-is-printed-as-a-story-v3.html` §6). `auto` sets the
+              element's BASE DIRECTION, and base direction drives `text-align: start` as
+              well as bidi resolution — so a Latin place name lands against the opposite
+              edge of the column from its own caption. Measured 212px of separation here
+              and 229px on paper, in a 288px column, and on an Iceland trip most stops are
+              Latin. FSI resolves direction for the RUN and leaves the block RTL, so the
+              alignment is inherited. `lib/bidi.ts`'s docblock covers a composed line
+              joining several values, which is why one value alone in a block slipped
+              ADR-0118's sweep. */}
+          <strong>{autoIsolate(event.title)}</strong>
           <span className="sh-place-line">
             {/* **The row says what it IS before it says where** (owner, 2026-08-30: _"hotels
                 and other derivable stuff texts should be enhanced … and that also includes
@@ -336,16 +423,22 @@ function EventRow({ event }: { event: SharedEvent }) {
             {event.placeName ? (
               <>
                 {event.startLabel ? ' · ' : null}
-                <span dir="auto">{event.placeName}</span>
+                <span>{autoIsolate(event.placeName)}</span>
               </>
             ) : null}
             {event.address ? (
               <>
                 {' · '}
-                <span dir="auto">{event.address}</span>
+                <span>{autoIsolate(event.address)}</span>
               </>
             ) : null}
           </span>
+          {/* **A stop's one-line description, at every level** (owner, 2026-08-30). Clamped
+              to two lines: a caption is two lines, and four is a paragraph — the mockup
+              measured day 9 growing 230px on captions alone before the clamp. */}
+          {event.caption ? (
+            <span className="sh-place-line sh-cap">{autoIsolate(event.caption)}</span>
+          ) : null}
           {event.mapUrl ? (
             <a
               className="sh-map-link"
@@ -357,8 +450,39 @@ function EventRow({ event }: { event: SharedEvent }) {
               {t.share.public.map}
             </a>
           ) : null}
+          {event.ops?.length ? <Ops ops={event.ops} code={code} /> : null}
         </span>
       </article>
+      {/* **The legs, under the journey they belong to** — with the wait named between them.
+          The frame above already says the whole span, so this is the detail inside it and
+          not a second copy of the row. */}
+      {event.legs?.length ? (
+        <div className="sh-legs">
+          {event.legs.map((leg, index) => (
+            <div className="sh-leg" key={`${leg.title}-${index}`}>
+              {leg.layoverMinutes ? (
+                <span className="sh-layover">
+                  <Icon name="clock" />
+                  {t.share.public.layover(leg.title, leg.layoverMinutes)}
+                </span>
+              ) : null}
+              <span className="sh-leg-row">
+                <span className="sh-time">
+                  {ltrIsolate(
+                    leg.endLabel && leg.endLabel !== leg.startLabel
+                      ? t.share.public.timeRange(leg.startLabel ?? '', leg.endLabel)
+                      : (leg.startLabel ?? ''),
+                  )}
+                </span>
+                <span>
+                  <strong>{autoIsolate(leg.title)}</strong>
+                  {leg.code ? <span className="sh-kind">{ltrIsolate(leg.code)}</span> : null}
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </>
   );
 }
@@ -373,24 +497,13 @@ function Appendix({
   return (
     <section className="sh-appendix">
       <h2>{t.share.public.appendix.title}</h2>
-      {appendix.bookingSecrets?.length ? (
-        <Block title={t.share.public.appendix.bookingSecrets}>
-          {appendix.bookingSecrets.map((entry, index) => (
-            // The line joins values from different sources, so each is isolated on its
-            // own and the row keeps the page's direction — never `dir="auto"` over a
-            // composition (`lib/bidi.ts`). Codes are Latin by construction; the title is
-            // not.
-            <p key={`${entry.title}-${index}`}>
-              <strong dir="auto">{entry.title}</strong> {entry.lines.map(ltrIsolate).join(' · ')}
-            </p>
-          ))}
-        </Block>
-      ) : null}
+      {/* No booking block: every booking has a host by construction, so a confirmation
+          code now travels under its own row (`Ops`). */}
       {appendix.notesAndTasks?.length ? (
         <Block title={t.share.public.appendix.notesAndTasks}>
           {appendix.notesAndTasks.map((entry, index) => (
             <p key={`${entry.title}-${index}`}>
-              <strong dir="auto">{entry.title}</strong> {entry.lines.map(autoIsolate).join(' · ')}
+              <strong>{autoIsolate(entry.title)}</strong> {entry.lines.map(autoIsolate).join(' · ')}
             </p>
           ))}
         </Block>
@@ -404,15 +517,108 @@ function Appendix({
         <Block title={t.share.public.appendix.documents}>
           {appendix.documents.map((document) => (
             <p key={document.handle}>
-              <a href={sharedDocumentUrl(code, document.handle)} dir="auto">
-                {document.title}
-              </a>
+              <a href={sharedDocumentUrl(code, document.handle)}>{autoIsolate(document.title)}</a>
             </p>
           ))}
         </Block>
       ) : null}
     </section>
   );
+}
+
+/**
+ * **The operational material, under the row it belongs to and folded** (ADR-0213's
+ * 2026-08-30 amendment, reversing §4's appendix).
+ *
+ * Closed by default, and that is the whole reason a fold rather than a printed line: a
+ * reader wants the schedule and an operator wants the code, and the two are the same person
+ * at different moments. The print renderer inverts this — paper has no setting, and whoever
+ * is holding the printout is by that act the operator.
+ */
+function Ops({ ops, code }: { ops: NonNullable<SharedEvent['ops']>; code: string }) {
+  return (
+    <details className="sh-ops">
+      {/* 44px of target without 44px of line — the summary keeps its own 28px box and the
+          hit area is an `::after` overlay, exactly as `ValueToken` does it (ADR-0177). A
+          `min-height` here would add 16px to every row that carries a detail. */}
+      <summary>
+        <Icon name="caret" />
+        {t.share.public.ops.more(ops.length)}
+      </summary>
+      <span className="sh-ops-body">
+        {ops.map((op, index) => (
+          <span className="sh-op" key={`${op.kind}-${index}`}>
+            <Icon name={OP_ICON[op.kind]} />
+            {op.kind === SHARE_OP_KIND.CODE ? (
+              <>
+                <code>{ltrIsolate(op.code)}</code>
+                {op.provider ? <span>{autoIsolate(op.provider)}</span> : null}
+              </>
+            ) : null}
+            {op.kind === SHARE_OP_KIND.NOTE ? (
+              <span>
+                {autoIsolate([op.title, op.body].filter(Boolean).join(NARRATIVE_SEPARATOR))}
+              </span>
+            ) : null}
+            {op.kind === SHARE_OP_KIND.TASK ? <span>{autoIsolate(op.title)}</span> : null}
+            {op.kind === SHARE_OP_KIND.FILE ? (
+              <a href={sharedDocumentUrl(code, op.handle)}>{autoIsolate(op.title)}</a>
+            ) : null}
+          </span>
+        ))}
+      </span>
+    </details>
+  );
+}
+
+/** One glyph per op kind, as a `Record` over the closed union — so a sixth kind is a
+ *  compile error here rather than a missing icon in production (`frontend/CLAUDE.md`'s
+ *  constants convention). */
+const OP_ICON = {
+  [SHARE_OP_KIND.CODE]: 'clipboard',
+  [SHARE_OP_KIND.NOTE]: 'edit',
+  [SHARE_OP_KIND.TASK]: 'check',
+  [SHARE_OP_KIND.FILE]: 'documents',
+} as const satisfies Record<ShareOpKind, IconName>;
+
+/**
+ * **The trip's fixed points, above the schedule** (owner, 2026-08-30: _"Maybe these
+ * sharings should have sections for important stuff, like flights, reservations etc."_).
+ *
+ * Not a tab (ADR-0004) and not a second spine — a list of five or six lines above the days,
+ * each jumping to its own. It is what a reader looks for first and what they screenshot.
+ */
+function Commitments({
+  commitments,
+  code,
+}: {
+  commitments: SharedItineraryProjection['commitments'];
+  code: string;
+}) {
+  return (
+    <section className="sh-fixed">
+      <h2>{t.share.public.commitments.title}</h2>
+      {commitments.map((row, index) => (
+        <a className="sh-fixed-row" href={`#day-${row.dayOrdinal}`} key={`${row.title}-${index}`}>
+          <Icon name={BOOKING_TYPE_MARK[row.bookingType]} />
+          <span>
+            <b>{autoIsolate(row.title)}</b>
+            {row.detail ? <i>{autoIsolate(row.detail)}</i> : null}
+            {row.ops?.length ? <Ops ops={row.ops} code={code} /> : null}
+          </span>
+          <span className="sh-fixed-when">{ltrIsolate(commitmentWhen(row))}</span>
+        </a>
+      ))}
+    </section>
+  );
+}
+
+/** `11.09`, or `11–21.09` for a stay that spans nights. Day-and-month only: the year is on
+ *  the masthead and a reader checking a flight date does not need it twice. */
+function commitmentWhen(row: SharedItineraryProjection['commitments'][number]): string {
+  const short = (date: string) => date.slice(8, 10) + '.' + date.slice(5, 7);
+  if (!row.endDate || row.endDate === row.date) return short(row.date);
+  return `${row.date.slice(8, 10)}–${short(row.endDate)}`;
 }
 
 const Block = ({ title, children }: { title: string; children: React.ReactNode }) => (

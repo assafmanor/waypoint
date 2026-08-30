@@ -4,6 +4,7 @@ import {
   SHARE_DAY_SUMMARY_KIND,
   SHARE_DAYPART,
   SHARE_DETAIL_LEVEL,
+  SHARE_TRIP_SHAPE,
   type BookingType,
   type SharedDay,
   type SharedDayTitle,
@@ -131,6 +132,10 @@ const SHARE_DAYPART_KEY = SHARE_DAYPART;
  *  coverage check with nothing to find but the daypart marks. */
 const FIXTURE_ICONS = ['✈️', '🏨', '🍽️', '⛰️', '🚗', '♨️', '🐳', '⛩️'] as const;
 
+/** Where the reference trip sleeps. Real Icelandic towns, so the label is the shape the
+ *  renderer actually meets — a Latin run inside a Hebrew line. */
+const FIXTURE_STAYS = ['Reykjavík', 'Vík', 'Höfn', 'Egilsstaðir', 'Reykjahlíð', 'Akureyri'];
+
 const days: SharedDay[] = DAYS.map(([date, title, summary, events], index) => {
   const byDaypart = new Map<
     string,
@@ -147,6 +152,12 @@ const days: SharedDay[] = DAYS.map(([date, title, summary, events], index) => {
     date,
     title,
     summary,
+    // **The reference trip has to exercise what the renderer draws.** Without a stay on any
+    // day the masthead's nights tile printed `0 לילות` in the smoke render, which looks
+    // like a defect and hides one. Every day but the last has a night; the day you fly
+    // home does not, which is also the shape that proves the tile counts rather than
+    // assuming `dayCount - 1`.
+    ...(index < DAYS.length - 1 ? { stay: FIXTURE_STAYS[index % FIXTURE_STAYS.length] } : {}),
     sections: [...byDaypart.entries()].map(([daypart, bucket]) => ({
       daypart: daypart as SharedDay['sections'][number]['daypart'],
       events: bucket.map((event, position) => ({
@@ -172,6 +183,10 @@ export const NINE_DAY_REFERENCE_TRIP: SharedItinerary = {
     name: 'איסלנד עם המשפחה',
     destination: 'Iceland',
     icon: '🇮🇸',
+    // A ring: it sleeps in Reykjavík at both ends, which is what makes it a loop rather
+    // than a traverse — and what `FIXTURE_STAYS` above produces.
+    shape: SHARE_TRIP_SHAPE.LOOP,
+    baseCount: 6,
     startDate: '2026-08-29',
     endDate: '2026-09-06',
     dayCount: 9,
@@ -184,6 +199,39 @@ export const NINE_DAY_REFERENCE_TRIP: SharedItinerary = {
     // and reading `routeLabels.length` is what made a capped strip report the trip's size.
     routeStopCount: 9,
   },
+  // Derived from the same schedule in production; written out here because a fixture has
+  // no projection to derive from. Two flights, a car and the nights.
+  commitments: [
+    {
+      bookingType: 'flight',
+      title: 'תל אביב',
+      detail: 'דרך וינה',
+      date: '2026-08-29',
+      dayOrdinal: 1,
+    },
+    {
+      bookingType: 'car',
+      title: 'Iceland Car Rental',
+      detail: 'Keflavík',
+      date: '2026-08-29',
+      dayOrdinal: 1,
+    },
+    {
+      bookingType: 'hotel',
+      title: '8 לילות',
+      detail: 'Reykjavík',
+      date: '2026-08-29',
+      endDate: '2026-09-05',
+      dayOrdinal: 1,
+    },
+    {
+      bookingType: 'flight',
+      title: 'תל אביב',
+      detail: 'דרך וינה',
+      date: '2026-09-06',
+      dayOrdinal: 9,
+    },
+  ],
   narrative: {
     source: 'deterministic',
     title: 'רייקיאוויק ← סנייפלסנס',
@@ -234,10 +282,6 @@ export const DENSE_REFERENCE_TRIP: SharedItinerary = {
     ),
   },
   appendix: {
-    bookingSecrets: [
-      { title: 'טיסה הלוך', lines: ['FI 562', 'אישור KEF-4821'] },
-      { title: 'רכב שכור', lines: ['Blue Car Rental', 'אישור BC-99120'] },
-    ],
     travelers: ['דנה', 'יואב', 'מיכל', 'רון', 'תמר'],
   },
   days: denseDays,

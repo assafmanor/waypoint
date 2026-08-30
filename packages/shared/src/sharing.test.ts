@@ -3,6 +3,10 @@ import {
   SHARE_DAY_KIND,
   SHARE_DAY_SUMMARY_KIND,
   SHARE_DAYPART,
+  SHARE_OP_KIND,
+  SHARE_TRIP_SHAPE,
+  tripShapeOf,
+  sharedLegSchema,
   SHARE_DETAIL_LEVEL,
   shareDaypart,
   sharePreviousNight,
@@ -175,8 +179,13 @@ describe('sharedItinerarySchema', () => {
       eventCount: 21,
       routeLabels: ['רייקיאוויק', 'ויק'],
       routeStopCount: 2,
+      shape: SHARE_TRIP_SHAPE.LINE,
+      baseCount: 2,
     },
     narrative: { source: 'deterministic', title: 'רייקיאוויק ← ויק', summary: '9 ימים' },
+    // Empty is the honest value for a trip with nothing booked — the block is then absent
+    // from a renderer rather than present and blank.
+    commitments: [],
     days: [
       {
         ordinal: 1,
@@ -228,6 +237,75 @@ describe('sharedItinerarySchema', () => {
     (days[0].sections[0].events[0] as Record<string, unknown>).lat = 64.13;
     expect(() => sharedItinerarySchema.parse({ ...projection, days })).toThrow();
   });
+
+  describe('what the 2026-08-30 amendment added', () => {
+    const withDay = (day: Record<string, unknown>) =>
+      sharedItinerarySchema.parse({
+        ...projection,
+        days: [{ ...projection.days[0], ...day }],
+      });
+
+    it('takes a stay on the day and a photo that must carry its credit', () => {
+      expect(withDay({ stay: 'Reykjahlíð' }).days[0].stay).toBe('Reykjahlíð');
+      // Required, never optional: 27 of the 32 Commons files ADR-0166 §12.2 surveyed
+      // demand attribution, so a credit a renderer could forget is a licence breach.
+      expect(() => withDay({ photo: { url: '/enrichment/images/abc', of: 'גודאפוס' } })).toThrow();
+      // **Root-relative, never absolute.** The server has no reliable view of its own
+      // public origin and never writes one — `deliveredImageValueSchema` says so, and a
+      // `.url()` here rejected every real value until a test fed it one.
+      expect(() =>
+        withDay({
+          photo: { url: 'https://example.org/a.jpg', of: 'גודאפוס', credit: 'CC0' },
+        }),
+      ).toThrow();
+      expect(
+        withDay({ photo: { url: '/enrichment/images/abc', of: 'גודאפוס', credit: 'CC0' } }).days[0]
+          .photo?.url,
+      ).toBe('/enrichment/images/abc');
+    });
+
+    it('refuses a journey with fewer than two legs', () => {
+      const leg = { title: 'תל אביב', startLabel: '14:30' };
+      const withLegs = (legs: unknown[]) =>
+        withDay({
+          sections: [
+            {
+              daypart: SHARE_DAYPART.AFTERNOON,
+              events: [{ ...projection.days[0].sections[0].events[0], legs }],
+            },
+          ],
+        });
+      // One leg is not a journey — it is an event, and drawing a journey frame around it
+      // would say there is a connection to see.
+      expect(() => withLegs([leg])).toThrow();
+      expect(
+        withLegs([leg, { ...leg, layoverMinutes: 45 }]).days[0].sections[0].events[0].legs,
+      ).toHaveLength(2);
+    });
+
+    it('keeps every op kind closed, and a layover positive', () => {
+      const ops = (value: unknown) =>
+        withDay({
+          sections: [
+            {
+              daypart: SHARE_DAYPART.AFTERNOON,
+              events: [{ ...projection.days[0].sections[0].events[0], ops: [value] }],
+            },
+          ],
+        });
+      expect(ops({ kind: SHARE_OP_KIND.CODE, code: '8JHEI4' })).toBeTruthy();
+      expect(() => ops({ kind: 'secret', code: '8JHEI4' })).toThrow();
+      // A code with no value is not a code; the discriminant does not excuse the payload.
+      expect(() => ops({ kind: SHARE_OP_KIND.CODE })).toThrow();
+    });
+
+    it('will not take a zero-minute layover', () => {
+      // A wait we measured as nothing is a wait we could not measure — printing `0 דקות`
+      // between two legs claims a fact the clock never gave us.
+      expect(() => sharedLegSchema.parse({ title: 'וינה', layoverMinutes: 0 })).toThrow();
+      expect(sharedLegSchema.parse({ title: 'וינה', layoverMinutes: 45 }).layoverMinutes).toBe(45);
+    });
+  });
 });
 
 describe('tripShareConfigSchema', () => {
@@ -254,5 +332,55 @@ describe('tripShareConfigSchema', () => {
         updatedAt: '2026-08-29T08:10:00.000Z',
       }),
     ).toThrow();
+  });
+  /** The shapes ADR-0213's 2026-08-30 amendment added, each asserted at its edge — a
+   *  `strictObject` is only a contract if something proves it refuses. */
+});
+describe('tripShapeOf', () => {
+  /** Owner, 2026-08-30: a circumnavigation where the base changes every day or two is a
+   *  different thing from a trip you take from one place, and the titles should say so. */
+  it('calls one base a star trip', () => {
+    expect(tripShapeOf(['Tokyo', 'Tokyo', 'Tokyo'])).toEqual({
+      shape: SHARE_TRIP_SHAPE.BASE,
+      baseCount: 1,
+    });
+  });
+
+  it('calls a ring a loop, and counts the bases DISTINCTLY', () => {
+    // Reykjavík at both ends is one base slept at twice, not two — counting runs would
+    // tell the reader the trip stayed somewhere it did not.
+    expect(tripShapeOf(['Reykjavík', 'Vík', 'Höfn', 'Reykjavík'])).toEqual({
+      shape: SHARE_TRIP_SHAPE.LOOP,
+      baseCount: 3,
+    });
+  });
+
+  it('calls a traverse a line', () => {
+    expect(tripShapeOf(['Lisboa', 'Porto', 'Braga'])).toEqual({
+      shape: SHARE_TRIP_SHAPE.LINE,
+      baseCount: 3,
+    });
+  });
+
+  it('collapses consecutive nights in one place into one base', () => {
+    // Three nights in Vík is one base, so a trip that sleeps Reykjavík-Vík-Vík-Vík is a
+    // two-base traverse rather than a four-base sprint.
+    expect(tripShapeOf(['Reykjavík', 'Vík', 'Vík', 'Vík'])).toEqual({
+      shape: SHARE_TRIP_SHAPE.LINE,
+      baseCount: 2,
+    });
+  });
+
+  it('says unknown rather than guessing when no nights are recorded', () => {
+    // A day trip, or a trip whose lodging was never entered. Both are real states, and
+    // neither is a star trip — which is what a `length === 0 -> BASE` default would claim.
+    expect(tripShapeOf([])).toEqual({ shape: SHARE_TRIP_SHAPE.UNKNOWN, baseCount: 0 });
+    expect(tripShapeOf([undefined, undefined])).toEqual({
+      shape: SHARE_TRIP_SHAPE.UNKNOWN,
+      baseCount: 0,
+    });
+    // A single recorded night among unrecorded ones is still one base — absent is absent,
+    // not a different place.
+    expect(tripShapeOf([undefined, 'Vík', undefined]).shape).toBe(SHARE_TRIP_SHAPE.BASE);
   });
 });

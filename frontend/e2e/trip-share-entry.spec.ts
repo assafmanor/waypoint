@@ -9,12 +9,37 @@
 // RELEASE (unswallowed, it opens the trip the hold just shared) and the width the row got
 // back.
 import { expect, test } from '@playwright/test';
-import { bootIntoAllTrips } from './boot';
+import { bootIntoAllTrips, twoTrips } from './boot';
 import { stableBox } from './measure';
 import { DRAG_HOLD_MS } from '../src/constants';
 import { t } from '../src/i18n/he';
 
 const PHONE = { width: 360, height: 640 };
+
+/** What `GET /trips/:id` answers, which is the only thing that makes the sheet draw the
+ *  admin's level cards. Local to this spec rather than exported from `boot.ts`: it is the
+ *  one route no other e2e needs, and the boot fixture's membership is not otherwise shaped
+ *  like this response. */
+const TRIP_WITH_MEMBERS = {
+  // `tripSchema` is strict about the whole entity, and `fetchTripWithMembers`
+  // swallows a parse failure — so a half-built trip here reads as "not an admin"
+  // and the level cards silently never render.
+  trip: {
+    ...twoTrips()[0],
+    id: 't1',
+  },
+  members: [
+    {
+      id: 'm1',
+      tripId: 't1',
+      userId: 'u1',
+      role: 'admin',
+      calendarSyncEnabled: false,
+      joinedAt: '2024-01-01T00:00:00.000Z',
+    },
+  ],
+  users: [],
+};
 
 // Both list shapes: the live trip's hero and an upcoming trip's row (`AllTrips.tsx`).
 const SHAPES = [
@@ -94,4 +119,69 @@ test('the meta no longer wraps the card open at 360px', async ({ page }) => {
   const main = await stableBox(page.locator('.trip-card .main').first());
   const chip = await stableBox(page.locator('.trip-card .chip.soon').first());
   expect(main.x).toBeGreaterThan(chip.x + chip.width);
+});
+
+// **THE SEND UNIT COLLAPSED TO ITS OWN TWO BORDERS, ON EVERY PHONE** (owner, 2026-08-30,
+// after four reports and three wrong explanations from me: _"I still don't see the link when
+// on all and no matter what you say I don't buy your explanation … I think that you're
+// missing something"_ — correct).
+//
+// `.modal-form` is a scrolling flex column, so its children are flex items. An item whose
+// `overflow` is not `visible` loses its automatic minimum size (Flexbox §4.5), and
+// `.share-send` is the sheet's only clipping child — so once the content passed 75dvh the
+// browser satisfied the overflow by squashing THAT box instead of scrolling. Measured 2.0px
+// against the 92px its link row and two buttons need.
+//
+// This file, and not the unit spec beside the component, is the whole point: the unit test
+// asserting DOM order and both buttons' presence PASSED throughout, because jsdom lays
+// nothing out. Only a real engine can be asked how tall a box came out.
+test('the link and both send buttons survive the sheet at Everything', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await bootIntoAllTrips(page);
+
+  // A share that already exists, which is the worse case: it adds the 44px link row on top
+  // of the two 48px outcomes, and it is the state every owner is in after their first send.
+  // The level cards are the admin's, and the sheet resolves that from
+  // `GET /trips/:id` — unstubbed, `isAdmin` stays false and there is no
+  // Everything to select. The boot fixture's own membership is the admin one.
+  await page.route(
+    (u) => /^\/trips\/[^/]+$/.test(u.pathname),
+    (r) =>
+      r.request().resourceType() === 'document'
+        ? r.continue()
+        : r.fulfill({ json: TRIP_WITH_MEMBERS }),
+  );
+  await page.route(
+    (u) => /^\/trips\/[^/]+\/share$/.test(u.pathname),
+    (r) =>
+      r.fulfill({
+        json: {
+          code: '3JARS9gq',
+          shareUrl: '/s/3JARS9gq',
+          detailLevel: 'everything',
+          sensitive: { bookingSecrets: false, notesAndTasks: false, travelerIdentity: false },
+          documentIds: [],
+          updatedAt: new Date().toISOString(),
+        },
+      }),
+  );
+  await settled(page);
+
+  await hold(page, '.trip-hero');
+  await page.getByRole('radio', { name: t.share.owner.audience.read }).click();
+  await page.getByRole('radio', { name: t.share.owner.levels.everything }).click();
+
+  const send = page.locator('.share-send');
+  await expect(send).toBeVisible();
+
+  // The assertion is the HEIGHT, not the presence — presence is what stayed true while this
+  // was broken. A box that holds a 44px row and a 48px button row cannot be under 88px.
+  const box = await stableBox(send);
+  expect(Math.round(box.height)).toBeGreaterThanOrEqual(88);
+
+  // And what it holds is actually inside it, rather than clipped away by `overflow: hidden`.
+  const link = await stableBox(page.locator('.share-send .share-link-row'));
+  const outcomes = await stableBox(page.locator('.share-send .share-outcomes'));
+  expect(link.y + link.height).toBeLessThanOrEqual(box.y + box.height + 1);
+  expect(outcomes.y + outcomes.height).toBeLessThanOrEqual(box.y + box.height + 1);
 });

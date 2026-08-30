@@ -532,6 +532,30 @@ export const DEFAULT_EVENT_ICON = '📌';
  *  event's user-picked icon always wins" was the stated rule and stayed right; the
  *  reading of it was what slipped, because a DEFAULT was counted as a pick. Every
  *  reader of this map goes through `chosenIcon`. */
+/**
+ * **The same eight types as SVG marks, for a surface whose siblings draw SVG** (ADR-0138
+ * §4; the shared page's fixed-commitments block).
+ *
+ * A second table beside `BOOKING_TYPE_ICON` and not a replacement for it, on the same
+ * distinction this file already draws for `hotel` further down: an emoji is a unit inside a
+ * sentence, and a glyph on a control is a control. Every row in that block is a link that
+ * jumps to a day, so it takes marks — and the block sits beside `Icon`-drawn siblings, where
+ * a row of emoji reads as decoration.
+ *
+ * `restaurant` has no food glyph in `Icon.tsx` and takes the ticket, which is what a
+ * reservation IS; adding a sixteenth icon for one row would be the more expensive answer.
+ */
+export const BOOKING_TYPE_MARK = {
+  flight: 'flight',
+  hotel: 'hotel',
+  restaurant: 'ticket',
+  train: 'transit',
+  transit: 'transit',
+  car: 'driving',
+  activity: 'ticket',
+  other: 'documents',
+} as const satisfies Record<BookingType, IconName>;
+
 export const BOOKING_TYPE_ICON = {
   flight: '✈️',
   hotel: '🏨',

@@ -46,9 +46,44 @@ export const PDF_COPY = {
   days: (count: number) => `${count} ${count === 1 ? 'יום' : 'ימים'}`,
   events: (count: number) => `${count} ${count === 1 ? 'אירוע' : 'אירועים'}`,
   stops: (count: number) => `${count} ${count === 1 ? 'אזור' : 'אזורים'}`,
+  /** **The two counts somebody planning against this page uses.** `אזורים` was
+   *  `routeStopCount` — pins, which on a ring road equals the number of stops. */
+  nights: (count: number) => `${count} ${count === 1 ? 'לילה' : 'לילות'}`,
+  bookings: (count: number) => `${count} ${count === 1 ? 'הזמנה' : 'הזמנות'}`,
+  /** What the trip IS, under its name — replacing the first-place → last-place line that
+   *  named two transit airports on any trip you fly to. */
+  // `ב-` and not a bare `ב`: the destination arrives isolated and may be Latin, where
+  // `ב Iceland` reads as a stray particle. The hyphen is the Hebrew convention for exactly
+  // this, and it is what the stay line already uses.
+  what: (days: number, destination: string) => `${days} ימים ב-${destination}`,
+  /**
+   * **How the trip moves**, in the owner's own words (2026-08-30). Two trips with the same
+   * destination and length read completely differently depending on this, and the page was
+   * saying nothing about it.
+   *
+   * `הקפה` is mine rather than theirs: they named מתגלגל and כוכב, and a rolling trip that
+   * closes its circle is common enough — and different enough in feel from a one-way
+   * traverse — to be worth its own word. Correct it if it is wrong.
+   */
+  tripShape: {
+    base: 'טיול כוכב',
+    loop: 'הקפה',
+    line: 'טיול מתגלגל',
+    // Nothing true to say: no nights are recorded, so the shape is unknown rather than any
+    // of the three. The renderer prints no clause at all.
+    unknown: '',
+  },
+  bases: (count: number) => `${count} ${count === 1 ? 'בסיס' : 'בסיסים'}`,
+  /** Where you sleep, as the day's frame rather than a row in its afternoon. */
+  stay: (place: string) => `לנים ב-${place}`,
+  /** The wait between two legs of one journey, named by the place you wait IN. */
+  layover: (place: string, minutes: number) => `המתנה ב${place} · ${minutes} דקות`,
+  /** Four words for the four op kinds, printed inline because paper has no fold. */
+  ops: { code: 'קוד', note: 'פתק', task: 'משימה', file: 'קובץ' },
   appendix: {
-    title: 'פרטים נוספים',
-    bookingSecrets: 'פרטי הזמנה',
+    // Only what is attached to nothing is left here, so it gets a name that says so.
+    title: 'לקראת הנסיעה',
+
     notesAndTasks: 'פתקים ומשימות',
     travelers: 'נוסעים',
     documents: 'מסמכים שנבחרו',
@@ -85,6 +120,10 @@ export const PDF_COPY = {
     [SHARE_DAY_KIND.FLIGHT_HOME]: 'טסים הביתה',
     [SHARE_DAY_KIND.FLIGHT]: (to: string) => `טיסה ל${to}`,
     [SHARE_DAY_KIND.ROUTE]: (from: string, to: string) => `${from}${ROUTE_ARROW}${to}`,
+    /** **A day named by what its stops ARE** (Wikidata `P31`). Four waterfalls in one day
+     *  is a day of waterfalls, and that is a better name than any two of their names.
+     *  `REGION` needs no entry: its value is a place name and prints as itself. */
+    [SHARE_DAY_KIND.KIND]: (noun: string) => `יום ${noun}`,
   },
   /** The owner's own phrasing for the day's second line: _"night at…, Sleeping at…"_. */
   daySummary: {

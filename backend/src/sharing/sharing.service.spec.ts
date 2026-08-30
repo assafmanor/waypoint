@@ -8,6 +8,7 @@ import {
 } from '@waypoint/shared';
 import { PUBLIC_CODE_PATTERN } from '../common/public-code.util';
 import { DocumentsService } from '../documents/documents.service';
+import { EnrichmentService } from '../enrichment/enrichment.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { DisabledItineraryNarrativeGenerator } from './itinerary-narrative.generator';
 import { ItineraryNarrativeService } from './itinerary-narrative.service';
@@ -25,11 +26,21 @@ const FULL: UpsertTripShareInput = {
   documentIds: [],
 };
 
+/** **A trip whose places carry no enrichment**, which is what every fixture below is and
+ *  what a freshly picked place is until a pass runs. The projection reads the store to
+ *  reach rung 2 of the place-label chain (the city an airport serves) and takes rung 3 —
+ *  the stripped name — when there is nothing there, so this stub exercises the fallback
+ *  rather than skipping the chain. `readForPlaces` is the only method it calls, and it
+ *  ignores the `stale` half deliberately: a public read must never trigger a fetch. */
+const noEnrichment = () =>
+  ({ readForPlaces: async () => ({ enrichments: {}, stale: [] }) }) as unknown as EnrichmentService;
+
 describe('SharingService', () => {
   const prisma = new PrismaService();
   const projection = new SharingProjectionService(
     prisma,
     new ItineraryNarrativeService(prisma, new DisabledItineraryNarrativeGenerator()),
+    noEnrichment(),
   );
   // The document content path is exercised through its own module's spec; here only the
   // authorization in front of it matters, so the decryption is stubbed.

@@ -61,6 +61,11 @@ const CLAIM_COORDINATE = 'P625';
 const CLAIM_INSTANCE_OF = 'P31';
 const CLAIM_IATA = 'P238';
 const CLAIM_PLACE_SERVED = 'P931';
+/** **"Located in the administrative territorial entity"** — the region a place is in, and
+ *  free: `ENTITY_PROPS` already asks for `claims` wholesale, so this is a key in a payload
+ *  we were parsing anyway. It answers structurally what parsing `Place.address` would only
+ *  guess at, and it carries a Hebrew label wherever Wikidata has one. */
+const CLAIM_LOCATED_IN = 'P131';
 
 /** Wikipedia editions we ask for sitelinks from — the two languages the summary provider
  *  reads (`he` → `en`, §11.5). Filtered rather than fetched wholesale: an item like Tokyo has
@@ -237,25 +242,70 @@ export class WikidataProvider implements EnrichmentProvider {
     match: ProviderMatch,
     fields: readonly EnrichmentField[],
   ): Promise<ProviderFieldValues> {
-    const wanted = fields.filter(
+    // **Two families, and only one of them is about airports.** `iata`/`servedCity` are
+    // gated on the class because a café with a three-letter name is not an airport; `kind`
+    // and `region` are questions every place can answer, and gating them the same way was
+    // the first draft's bug.
+    const airportPair = fields.filter(
       (field) => field === ENRICHMENT_FIELD.IATA || field === ENRICHMENT_FIELD.SERVED_CITY,
     );
-    if (wanted.length === 0) return {};
-    if (!isAirportEntity(match.evidence.instanceOf ?? [])) return {};
+    const placeFacts = fields.filter(
+      (field) => field === ENRICHMENT_FIELD.KIND || field === ENRICHMENT_FIELD.REGION,
+    );
+    // **The class guard runs BEFORE the read, and that is not an optimisation.** The airport
+    // pair is refused for a city on evidence the match already carried, without spending a
+    // request — `wikidata.provider.spec.ts` asserts the request count, and the first draft
+    // of this change read the entity first and broke it.
+    const airportWanted =
+      airportPair.length > 0 && isAirportEntity(match.evidence.instanceOf ?? []);
+    if (!airportWanted && placeFacts.length === 0) return {};
 
-    const entity = await this.airportEntity(match.ref);
+    const entity = await this.memoizedEntity(match.ref);
     if (!entity) return {};
 
     const values: ProviderFieldValues = {};
-    if (wanted.includes(ENRICHMENT_FIELD.IATA)) {
-      const code = stringClaim(entity, CLAIM_IATA)?.trim().toUpperCase();
-      if (code) values[ENRICHMENT_FIELD.IATA] = { value: code };
+    if (airportWanted) {
+      if (airportPair.includes(ENRICHMENT_FIELD.IATA)) {
+        const code = stringClaim(entity, CLAIM_IATA)?.trim().toUpperCase();
+        if (code) values[ENRICHMENT_FIELD.IATA] = { value: code };
+      }
+      if (airportPair.includes(ENRICHMENT_FIELD.SERVED_CITY)) {
+        const city = await this.servedCity(entity);
+        if (city) values[ENRICHMENT_FIELD.SERVED_CITY] = city;
+      }
     }
-    if (wanted.includes(ENRICHMENT_FIELD.SERVED_CITY)) {
-      const city = await this.servedCity(entity);
-      if (city) values[ENRICHMENT_FIELD.SERVED_CITY] = city;
+    // **What the matcher already resolves and throws away** (ADR-0166's 2026-08-30
+    // amendment). `classNouns` reads `P31` labels to decide whether a candidate is the
+    // right KIND of thing and keeps none of them; this stores the answer, which is what
+    // lets a day of four waterfalls be named for what they are.
+    if (placeFacts.includes(ENRICHMENT_FIELD.KIND)) {
+      const kind = await this.claimLabel(entity, CLAIM_INSTANCE_OF);
+      if (kind) values[ENRICHMENT_FIELD.KIND] = kind;
+    }
+    if (placeFacts.includes(ENRICHMENT_FIELD.REGION)) {
+      const region = await this.claimLabel(entity, CLAIM_LOCATED_IN);
+      if (region) values[ENRICHMENT_FIELD.REGION] = region;
     }
     return values;
+  }
+
+  /**
+   * The label of whatever item a claim points at, in the reader's language.
+   *
+   * `servedCity` below is this shape plus `commonName`, and the two stayed separate on
+   * purpose: a city's label wants its shortest common alias (`תל אביב`, not
+   * `תל אביב-יפו`), and a class noun or a region does not — `Suðurland` is not improved by
+   * being aliased, and a waterfall's noun has no alias worth preferring.
+   */
+  private async claimLabel(entity: WbEntity, claim: string): Promise<ProviderValue | undefined> {
+    const qid = bestRankedItemClaim(entity, claim);
+    if (!qid) return undefined;
+    const target = await this.memoizedEntity(qid);
+    for (const lang of CITY_LANG_PREFERENCE) {
+      const label = target?.labels?.[lang]?.value?.trim();
+      if (label) return { value: label, lang };
+    }
+    return undefined;
   }
 
   /** The city `P931` names, as a value in the reader's language.
@@ -267,7 +317,7 @@ export class WikidataProvider implements EnrichmentProvider {
   private async servedCity(airport: WbEntity): Promise<ProviderValue | undefined> {
     const qid = bestRankedItemClaim(airport, CLAIM_PLACE_SERVED);
     if (!qid) return undefined;
-    const city = await this.airportEntity(qid);
+    const city = await this.memoizedEntity(qid);
     for (const lang of CITY_LANG_PREFERENCE) {
       const label = city?.labels?.[lang]?.value;
       if (!label) continue;
@@ -281,12 +331,12 @@ export class WikidataProvider implements EnrichmentProvider {
    *
    * Not a cache tier and deliberately not shaped like one (`blob-cache.ts` is the template for
    * those): the orchestrator resolves fields one at a time, so a single pass asks this provider
-   * for `iata` and then for `servedCity` **off the same QID** — without this, one airport is
+   * for `iata`, then `servedCity`, then `kind`, then `region` **off the same QID** — without this, one airport is
    * two identical reads of the same item plus two of its city's. Tiny, evict-oldest, and
    * expiring in a minute, because the only hit it is built for happens seconds apart. A miss
    * costs one more request and nothing else, which is why it needs no invalidation story.
    */
-  private async airportEntity(qid: string): Promise<WbEntity | null> {
+  private async memoizedEntity(qid: string): Promise<WbEntity | null> {
     const held = this.entityMemo.get(qid);
     if (held && Date.now() - held.at < ENTITY_MEMO_TTL_MS) return held.entity;
     const entity = await this.entity(qid);

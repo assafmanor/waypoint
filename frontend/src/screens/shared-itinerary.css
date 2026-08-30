@@ -528,3 +528,220 @@
   color: var(--muted);
   line-height: 1.55;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   ADR-0213's 2026-08-30 amendment — drawn in
+   `mockups/a-shared-itinerary-tells-the-trip-v4.html`, whose measurement table is
+   the source of every number below.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* **The trip's fixed points, above the schedule.** A LIST, not cards: the day card's
+   shape at this size would out-shout the spine it sits above. */
+.sh-fixed {
+  margin: 0 0 var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-16);
+  background: var(--card);
+  overflow: hidden;
+}
+.sh-fixed > h2 {
+  margin: 0;
+  padding: 11px 14px;
+  font: 700 var(--text-secondary) var(--font-body);
+  color: var(--ink);
+  border-block-end: 1px solid var(--line);
+}
+.sh-fixed-row {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 7px 14px;
+  border-block-start: 1px solid var(--line);
+  color: var(--ink);
+  text-decoration: none;
+}
+.sh-fixed-row:first-of-type {
+  border-block-start: 0;
+}
+.sh-fixed-row .icon {
+  color: var(--muted);
+}
+.sh-fixed-row b {
+  font-size: var(--text-secondary);
+  font-weight: 600;
+}
+.sh-fixed-row i {
+  display: block;
+  font-style: normal;
+  font-size: var(--text-micro);
+  color: var(--muted);
+}
+/* Amber, and only here: this column is a clock and a commitment, which is exactly and
+   only what ADR-0028 spends amber on. */
+.sh-fixed-when {
+  font: 700 var(--text-micro) var(--font-mono);
+  color: var(--amber-deep);
+  text-align: end;
+  align-self: start;
+  padding-block-start: 3px;
+}
+
+/* **Where you sleep frames the day** — teal, because it is a location and nothing else
+   (ADR-0028). */
+.sh-stay {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--teal);
+}
+.sh-stay .icon {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+
+/* **The legs of one journey, under the journey.** The frame above already states the
+   whole span, so these are the detail inside it. */
+.sh-legs {
+  margin: 0 0 6px;
+  padding-inline-start: 30px;
+  display: grid;
+  gap: 2px;
+}
+.sh-leg-row {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  min-height: 32px;
+  padding-block: 4px;
+}
+.sh-leg-row strong {
+  display: block;
+  font-size: var(--text-secondary);
+}
+.sh-leg-row .sh-kind {
+  display: block;
+  font: 500 var(--text-micro) var(--font-mono);
+  color: var(--muted);
+}
+/* The wait, between the legs it is between. */
+.sh-layover {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: var(--text-micro);
+  color: var(--muted);
+}
+.sh-layover .icon {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+
+/* **The operational material, folded under its row.** Closed by default: a reader wants
+   the schedule and an operator wants the code, and the fold is what serves both without a
+   second page. The print renderer inverts this — see `itinerary-pdf.template.ts`. */
+.sh-ops {
+  margin: 4px 0 0;
+}
+.sh-ops > summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  font: 600 var(--text-micro) var(--font-body);
+  color: var(--cta);
+  cursor: pointer;
+  /* **44px of target without 44px of line** — `ValueToken`'s technique (ADR-0177), not a
+     new one. The mockup measured this summary at 28px against ADR-0017's floor, and a
+     `min-height: 44px` would add 16px to EVERY row that carries a detail — eleven of them
+     on the owner's day 9. The overlay grows the hit box instead. */
+  position: relative;
+}
+.sh-ops > summary::-webkit-details-marker {
+  display: none;
+}
+.sh-ops > summary::after {
+  content: '';
+  position: absolute;
+  inset-inline: -8px;
+  inset-block: calc((44px - 100%) / -2);
+  min-height: 44px;
+}
+.sh-ops > summary .icon {
+  width: 13px;
+  height: 13px;
+}
+.sh-ops[open] > summary .icon {
+  transform: rotate(180deg);
+}
+.sh-ops-body {
+  display: grid;
+  gap: 4px;
+  padding: 6px 0 2px;
+}
+.sh-op {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  font-size: var(--text-micro);
+  color: var(--muted);
+}
+.sh-op .icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.sh-op code {
+  font: 700 var(--text-micro) var(--font-mono);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+.sh-op a {
+  color: var(--cta);
+  text-decoration: none;
+}
+
+/* **The day's photo** (ADR-0213's 2026-08-30 amendment, reversing §3's refusal of imagery).
+   A band above the day header, with its credit — 27 of the 32 Commons files ADR-0166 §12.2
+   surveyed require attribution, so the caption is structural rather than decoration. */
+.sh-shot {
+  margin: 0;
+  position: relative;
+  border-start-start-radius: var(--radius-16);
+  border-start-end-radius: var(--radius-16);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--teal) 10%, transparent);
+}
+.sh-shot img {
+  display: block;
+  width: 100%;
+  height: 116px;
+  object-fit: cover;
+}
+.sh-shot figcaption {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline: 0;
+  display: grid;
+  gap: 1px;
+  padding: 18px 12px 8px;
+  /* Legible over any photograph: a scrim rather than a solid, so the picture still reads. */
+  background: linear-gradient(to top, rgb(0 0 0 / 62%), transparent);
+  color: #fff;
+}
+.sh-shot figcaption strong {
+  font-size: var(--text-secondary);
+}
+.sh-shot figcaption span {
+  font-size: var(--text-micro);
+  opacity: 0.82;
+}

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import {
   NARRATIVE_SEPARATOR,
   SHARE_DAY_KIND,
+  SHARE_OP_KIND,
   SHARE_DAY_SUMMARY_KIND,
   SHARE_DETAIL_LEVEL,
   type SharedDay,
@@ -163,11 +164,27 @@ function dayTitleText(title: SharedDayTitle): string {
       return PDF_COPY.dayTitle.route(auto(title.from), auto(title.to));
     case SHARE_DAY_KIND.PLACE:
       return auto(title.at);
+    case SHARE_DAY_KIND.REGION:
+      return auto(title.at);
+    case SHARE_DAY_KIND.KIND:
+      return PDF_COPY.dayTitle.kind(auto(title.of));
     case SHARE_DAY_KIND.TEXT:
       return escapeHtml(title.text);
-    default:
+    case SHARE_DAY_KIND.NONE:
+      // No places and no events: the caller falls back to the date rather than inventing a
+      // title, which is the mandatory day title ADR-0213 §2 refused.
       return '';
+    default:
+      // **Exhaustive on purpose.** The `default: return ''` this replaces would have
+      // rendered the two kinds added on 2026-08-30 as nothing at all, on a green typecheck.
+      return assertNeverTitle(title);
   }
+}
+
+/** The compiler's proof that the union was handled; unreachable by construction. */
+function assertNeverTitle(value: never): string {
+  void value;
+  return '';
 }
 
 function daySummaryText(summary: SharedDaySummary): string {
@@ -206,9 +223,76 @@ const dayLabel = (date: string): { day: string; weekday: string } => {
  *  page's RTL flow into its own reverse. */
 function timeText(event: SharedEvent): string {
   if (!event.startLabel) return PDF_COPY.dayparts.flexible;
-  return event.endLabel && event.endLabel !== event.startLabel
-    ? ltr(`${event.startLabel}\u2013${event.endLabel}`)
-    : ltr(event.startLabel);
+  // **A range only where the end is a commitment** (owner, 2026-08-30: exact clocks for
+  // hard pins and bookings, a start for everything else). A flight's arrival is a fact you
+  // plan around; a viewpoint's 14:30 is when somebody typed they would leave, and printing
+  // it as a window tells the reader it means something it does not.
+  const range = event.hard && event.endLabel && event.endLabel !== event.startLabel;
+  return range ? ltr(`${event.startLabel}\u2013${event.endLabel}`) : ltr(event.startLabel);
+}
+
+/** The legs of one journey, and the wait between them, inside one frame. */
+function legRows(event: SharedEvent): string {
+  if (!event.legs?.length) return '';
+  const legTime = (leg: NonNullable<SharedEvent['legs']>[number]) =>
+    ltr(
+      leg.endLabel && leg.endLabel !== leg.startLabel
+        ? `${leg.startLabel ?? ''}\u2013${leg.endLabel}`
+        : (leg.startLabel ?? ''),
+    );
+  return (
+    `<div class="pdf-trek">` +
+    event.legs
+      .map(
+        (leg) =>
+          (leg.layoverMinutes
+            ? `<div class="pdf-layover">${PDF_COPY.layover(auto(leg.title), leg.layoverMinutes)}</div>`
+            : '') +
+          `<div class="pdf-event hard"><span class="pdf-event-time">${legTime(leg)}</span>` +
+          `<span class="pdf-event-copy"><strong>${auto(leg.title)}</strong>` +
+          (leg.code ? `<span class="pdf-leg-code">${ltr(leg.code)}</span>` : '') +
+          `</span></div>`,
+      )
+      .join('') +
+    `</div>`
+  );
+}
+
+/**
+ * **The operational material, PRINTED under its row rather than folded behind it.**
+ *
+ * This is the one decision that inverts between the two renderers. The reader page hides a
+ * booking code behind a disclosure because a reader wants the schedule and an operator
+ * wants the code, and they are the same person at different moments. Paper has no such
+ * setting: whoever is holding the printout is, by that act, the operator — it is why they
+ * printed it.
+ */
+function opsLines(ops: SharedEvent['ops']): string {
+  if (!ops?.length) return '';
+  const line = (label: string, body: string) =>
+    `<span class="pdf-ops-line"><b>${label}</b> ${body}</span>`;
+  return ops
+    .map((op) => {
+      // A `switch` over the discriminant rather than a ternary chain, so a sixth op kind is
+      // a compile error here rather than a row that silently prints nothing.
+      switch (op.kind) {
+        case SHARE_OP_KIND.CODE:
+          return line(
+            PDF_COPY.ops.code,
+            ltr(op.code) + (op.provider ? ` ${NARRATIVE_SEPARATOR} ${auto(op.provider)}` : ''),
+          );
+        case SHARE_OP_KIND.FILE:
+          return line(PDF_COPY.ops.file, auto(op.title));
+        case SHARE_OP_KIND.TASK:
+          return line(PDF_COPY.ops.task, auto(op.title));
+        case SHARE_OP_KIND.NOTE:
+          return line(
+            PDF_COPY.ops.note,
+            auto([op.title, op.body].filter(Boolean).join(NARRATIVE_SEPARATOR)),
+          );
+      }
+    })
+    .join('');
 }
 
 function eventRow(event: SharedEvent, summary: boolean): string {
@@ -243,11 +327,16 @@ function eventRow(event: SharedEvent, summary: boolean): string {
           .filter(Boolean)
           .join(NARRATIVE_SEPARATOR)}</span>`
       : '') +
-    `</span></div>`
+    // A stop's one-line description. Two lines on paper as on screen, though the measure is
+    // wider here so the same sentence usually fits in one.
+    (event.caption ? `<span class="pdf-cap">${auto(event.caption)}</span>` : '') +
+    opsLines(event.ops) +
+    `</span></div>` +
+    legRows(event)
   );
 }
 
-function dayCard(day: SharedDay, summary: boolean): string {
+function dayCard(day: SharedDay, summary: boolean, photoSrc?: string): string {
   const { day: dayNumber, weekday } = dayLabel(day.date);
   // Daypart headings appear only above events that belong to them — the projection has
   // already dropped the empty groups, so this loop cannot render one.
@@ -262,12 +351,26 @@ function dayCard(day: SharedDay, summary: boolean): string {
     )
     .join('');
   return (
-    `<article class="pdf-day"><header class="pdf-day-head">` +
+    `<article class="pdf-day"><header class="pdf-day-head${photoSrc ? '' : ' no-photo'}">` +
     `<span class="pdf-date"><strong>${ltr(dayNumber)}</strong><span>${weekday}</span></span>` +
+    // **A 34px SQUARE, not the reader page's 116px band.** A band is nothing on a page you
+    // scroll and about a page and a half across twelve days at this column density; the
+    // square fits inside the header's existing 47px minimum and costs no paper. Same photo,
+    // same gate. The credit rides the `alt`, since a printed page has no hover — and the
+    // licence line for the whole document is the appendix's job, not every square's.
+    (day.photo && photoSrc
+      ? `<img class="pdf-shot" src="${photoSrc}" alt="${escapeHtml(day.photo.of)}" />`
+      : '') +
     // Both are composed server-side with their values already isolated
     // (`itinerary-narrative.fallback.ts`), so neither may sniff its own direction.
     `<span class="pdf-day-copy"><strong>${dayTitleText(day.title) || auto(`${weekday} ${dayNumber}`)}</strong>` +
-    `<span>${daySummaryText(day.summary)}</span></span></header>` +
+    // **Where you sleep frames the day.** It used to be a row sorted into the afternoon by
+    // its check-in hour, which on the outbound day put it between the two legs of the
+    // flight and printed 15:00-11:00 — a range that reads backwards because a stay crosses
+    // midnight.
+    `<span class="${day.stay ? 'pdf-stay' : ''}">${
+      day.stay ? PDF_COPY.stay(auto(day.stay)) : daySummaryText(day.summary)
+    }</span></span></header>` +
     `<div class="pdf-parts">${sections}</div></article>`
   );
 }
@@ -283,10 +386,9 @@ function appendixBlock(projection: SharedItinerary): string {
       );
     }
   };
-  push(
-    PDF_COPY.appendix.bookingSecrets,
-    (appendix.bookingSecrets ?? []).map((entry) => [entry.title, ...entry.lines].join(' ')),
-  );
+  // No booking block any more: every booking has a host by construction (`Event.bookingId`
+  // is `@unique`), so a confirmation code prints under its own row. What is left here is
+  // what is attached to nothing.
   push(
     PDF_COPY.appendix.notesAndTasks,
     (appendix.notesAndTasks ?? []).map((entry) => [entry.title, ...entry.lines].join(' ')),
@@ -310,6 +412,10 @@ export interface PdfRenderInput {
   qrDataUrl: string;
   /** Rendered as the generated-at stamp; injected so the output is deterministic in a test. */
   generatedAtLabel: string;
+  /** Each day photo's root-relative URL to its bytes as a data URL. The renderer aborts every
+   *  request the page makes (`PdfBrowserService`), so an `<img src="/enrichment/images/...">`
+   *  would print an empty box; a URL missing from this map prints no image at all. */
+  photoDataUrls: Record<string, string>;
 }
 
 /**
@@ -332,7 +438,7 @@ export function itineraryPdfFooterHtml({
   projection,
   publicUrl,
   generatedAtLabel,
-}: Omit<PdfRenderInput, 'qrDataUrl'>): string {
+}: Omit<PdfRenderInput, 'qrDataUrl' | 'photoDataUrls'>): string {
   return (
     `<style>${fontFaces()}` +
     `.wp-foot{width:100%;box-sizing:border-box;padding:0 13mm;` +
@@ -354,14 +460,28 @@ export function itineraryPdfHtml({
   publicUrl,
   qrDataUrl,
   generatedAtLabel,
+  photoDataUrls,
 }: PdfRenderInput): string {
   const summary = projection.detailLevel === SHARE_DETAIL_LEVEL.SUMMARY;
   const appendix = appendixBlock(projection);
 
   const masthead =
     `<header class="pdf-mast"><div class="pdf-mast-copy">` +
-    `<div class="pdf-eyebrow">${PDF_COPY.eyebrow} · <span dir="auto">${escapeHtml(projection.trip.destination)}</span></div>` +
-    `<h1 class="pdf-title" dir="auto">${escapeHtml(projection.trip.name)}</h1>` +
+    `<div class="pdf-eyebrow">${PDF_COPY.eyebrow}</div>` +
+    `<h1 class="pdf-title">${auto(projection.trip.name)}</h1>` +
+    // **What the trip IS, in the trip's own words.** The line under the name used to be
+    // fallbackTripTitle's first-place-to-last-place over the whole schedule, and on any
+    // trip you fly to both ends are transit airports (owner, 2026-08-30: "Why נתב״ג to
+    // Frankfurt?? What does it have to do with anything?"). Both values were already here.
+    `<div class="pdf-what">${[
+      PDF_COPY.what(projection.trip.dayCount, auto(projection.trip.destination)),
+      PDF_COPY.tripShape[projection.trip.shape],
+      // The base count only earns its place where the shape implies several — on a star
+      // trip it would print `1 בסיס`, which is the same sentence twice.
+      projection.trip.baseCount > 1 ? PDF_COPY.bases(projection.trip.baseCount) : '',
+    ]
+      .filter(Boolean)
+      .join(NARRATIVE_SEPARATOR)}</div>` +
     // **Assistant, with only the numeric runs in mono** (design-language: "Hebrew text must
     // never sit inside a mono element"). This line was `font: … 'JetBrains Mono', monospace`
     // — and the `font` SHORTHAND replaces the family list, so Assistant was not behind it.
@@ -380,13 +500,23 @@ export function itineraryPdfHtml({
     // centimetre below — the same string twice, which is what made the block read as a
     // leak of something rather than as the route. The strip stays because it is the only
     // place the whole route is written; the title stays in the lede, once.
-    `</div><div class="pdf-route-mini"><b>${PDF_COPY.routeLabel}</b>` +
-    `<span>${projection.trip.routeLabels.map(auto).join(NARRATIVE_SEPARATOR)}</span></div>` +
+    // **AND THEN THE STRIP ITSELF WENT** (owner, 2026-08-30, the same day it came off the
+    // reader page: "What's the teal random places on top?"). routeLabels is a CAPPED
+    // sample — Dyrholaey, Stokksnes, Svartifoss and an airport, on a twelve-day ring road
+    // — so it is not the route and never was. It came off SharedItinerary.tsx first and
+    // printed here for a week longer, which is the whole argument for one ADR section
+    // covering both renderers rather than two fixes. The field stays on the contract:
+    // buildSummaryNarrativeInput consumes it.
+    `</div>` +
     // The QR is printed ONCE, beside the title, rather than on every page: it is how a
     // reader walks the paper back to the live link, and one legible code does that.
     `<div class="pdf-qr-block"><img class="pdf-qr" src="${qrDataUrl}" alt="" />` +
     `<span class="pdf-qr-cap">${ltr(publicUrl)}</span></div></header>`;
 
+  // **12 azorim counted pins**, which on a ring road is exactly the number of stops and
+  // tells a reader nothing. Nights and bookings are the two counts somebody planning
+  // against this page actually uses, and both derive from what is already here.
+  const nights = projection.days.filter((day) => day.stay).length;
   const lede =
     `<div class="pdf-lede"><div class="pdf-story"><strong>${escapeHtml(projection.narrative.title)}</strong>` +
     // Skipped rather than emptied: a generated summary is optional, and an empty paragraph
@@ -399,8 +529,8 @@ export function itineraryPdfHtml({
     `<div class="pdf-fact"><strong>${ltr(projection.trip.dayCount)}</strong><span>${PDF_COPY.days(projection.trip.dayCount).replace(/^\d+\s/, '')}</span></div>` +
     // The ROUTE's count, not the strip's: `routeLabels` is capped, so this read `8 אזורים`
     // on every trip long enough to be capped, whatever it actually visited.
-    `<div class="pdf-fact"><strong>${ltr(projection.trip.routeStopCount)}</strong><span>${PDF_COPY.stops(projection.trip.routeStopCount).replace(/^\d+\s/, '')}</span></div>` +
-    `<div class="pdf-fact"><strong>${ltr(projection.trip.eventCount)}</strong><span>${PDF_COPY.events(projection.trip.eventCount).replace(/^\d+\s/, '')}</span></div>` +
+    `<div class="pdf-fact"><strong>${ltr(nights)}</strong><span>${PDF_COPY.nights(nights).replace(/^\d+\s/, '')}</span></div>` +
+    `<div class="pdf-fact"><strong>${ltr(projection.commitments.length)}</strong><span>${PDF_COPY.bookings(projection.commitments.length).replace(/^\d+\s/, '')}</span></div>` +
     `</div></div>`;
 
   const sectionTitle =
@@ -443,10 +573,7 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
 .pdf-num{font-family:'JetBrains Mono',monospace;}
 /* Yields. It is a summary of a route whose ends the title already names, so it is the part of
    the masthead that can afford to be narrow. */
-.pdf-route-mini{min-width:0;max-width:34%;flex:0 1 auto;text-align:end;}
-.pdf-route-mini b,.pdf-route-mini span{display:block;}
-.pdf-route-mini b{font-size:9px;font-weight:700;color:var(--pdf-muted);}
-.pdf-route-mini span{margin-block-start:3px;color:var(--pdf-teal);font-size:9px;}
+
 .pdf-qr-block{flex:0 0 auto;text-align:center;}
 .pdf-qr{display:block;width:46px;height:46px;}
 /* Latin by construction (a host and a path), so mono over the whole element is correct. */
@@ -502,7 +629,41 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
 .pdf-op{break-inside:avoid;padding:8px 9px;border:1px solid var(--pdf-line);border-radius:9px;}
 .pdf-op strong{display:block;font-size:9px;}
 .pdf-op span{display:block;margin-block-start:2px;color:var(--pdf-muted);font-size:7.8px;line-height:1.4;}
+
+/* ══ ADR-0213's 2026-08-30 amendment. **LAST IN THE SHEET ON PURPOSE**: these override
+   shipped rules at EQUAL specificity, so placed above them they lose and do it silently —
+   the first render of this change measured a 38px time cell against 52.9px of ink and
+   printed the range over its own title. ══ */
+/* **What the trip IS, under its name.** Replaces .pdf-route-mini, the capped stop sample
+   that printed in teal beside the QR and named two airports plus three arbitrary stops. */
+.pdf-what{margin-block-start:3px;font:600 10px 'Assistant',sans-serif;color:var(--pdf-ink);}
+/* Where you sleep, teal because it is a location and nothing else (ADR-0028). */
+.pdf-stay{color:var(--pdf-teal);}
+/* **The time column holds a range, or it wraps** (owner, 2026-08-30: "the times wrap to
+   two lines which also looks bad"). Measured in the print mockup: the shipped column is
+   38px and a range is 53px of ink at this face, so every row carrying one broke across two
+   lines and a flight's arrival read as a stray second number under its departure. 56px
+   costs 18px of a 288px copy column and buys every title starting at the same x. */
+.pdf-event{grid-template-columns:56px minmax(0,1fr);}
+.pdf-event-time{white-space:nowrap;}
+/* One frame over N legs, with the waits named between them. break-inside:avoid so a flight
+   and its layover never land on two pages. */
+.pdf-trek{break-inside:avoid;margin:3px 0;border:1px solid var(--pdf-line);border-radius:7px;overflow:hidden;}
+.pdf-trek .pdf-event{padding-inline:6px;border-block-start:0;}
+.pdf-trek .pdf-event+.pdf-event{border-block-start:1px solid var(--pdf-line);}
+.pdf-leg-code{font:600 7.2px 'JetBrains Mono',monospace;color:var(--pdf-muted)!important;}
+.pdf-layover{padding:2px 6px 2px 50px;background:color-mix(in srgb,var(--pdf-ink) 3%,transparent);color:var(--pdf-muted);font-size:7px;}
+/* **Printed, not folded** — paper has no setting, and whoever holds the printout is the
+   operator. The one decision that inverts against the reader page. */
+.pdf-ops-line{display:block;margin-block-start:2px;color:var(--pdf-ink)!important;font:600 7.2px 'JetBrains Mono',monospace;white-space:normal!important;}
+.pdf-ops-line b{font-family:'Assistant',sans-serif;font-weight:700;color:var(--pdf-muted);}
+/* A stop's description, clamped — a caption is two lines and four is a paragraph. */
+.pdf-cap{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;white-space:normal!important;color:var(--pdf-muted)!important;}
+/* **The day's photo, as a square in the header.** See dayCard for why it is not a band. */
+.pdf-day-head{grid-template-columns:48px 34px minmax(0,1fr);}
+.pdf-day-head.no-photo{grid-template-columns:48px minmax(0,1fr);}
+.pdf-shot{align-self:center;justify-self:center;width:34px;height:34px;border-radius:5px;object-fit:cover;}
 </style></head><body>${masthead}${lede}${sectionTitle}<div class="pdf-days">${projection.days
-    .map((day) => dayCard(day, summary))
+    .map((day) => dayCard(day, summary, day.photo ? photoDataUrls[day.photo.url] : undefined))
     .join('')}</div>${appendix}</body></html>`;
 }

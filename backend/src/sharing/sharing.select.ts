@@ -57,6 +57,9 @@ export const SHARE_ZONE_BOOKING_SELECT = {
 
 /** The second booking query, run **only** when Everything enables booking secrets. */
 export const SHARE_SECRET_BOOKING_SELECT = {
+  /** The join key, not a published value — an op reaches its row through this and the
+   *  projection copies fields by name, so it never crosses into the payload. */
+  id: true,
   title: true,
   type: true,
   confirmationCode: true,
@@ -71,6 +74,18 @@ export const SHARE_PLACE_SELECT = {
   timezone: true,
   lat: true,
   lng: true,
+  /** **Not published — it is the key the enrichment store is read by** (ADR-0166 §5).
+   *  `derivedPlaceLabel` needs a place's enrichment to answer rung 2 (the city an airport
+   *  serves), and `EnrichmentService.readForPlaces` looks that up by Google id. It never
+   *  reaches the projection: `projectEvent` copies fields by name and this is not one. */
+  googlePlaceId: true,
+  /** The significance rank behind a day's photo — the COUNT, never `rating`, which is
+   *  4.5–4.8 for everything scenic and separates nothing. */
+  userRatingsTotal: true,
+  /** **A human mark on the place**, and the only rank term that is about THIS group rather
+   *  than about the world — so it breaks ties in the right direction. Not published: the
+   *  projection copies fields by name and this is not one. */
+  icon: true,
 } as const satisfies Prisma.PlaceSelect;
 
 export type ShareEventRow = Prisma.EventGetPayload<{ select: typeof SHARE_EVENT_SELECT }>;
