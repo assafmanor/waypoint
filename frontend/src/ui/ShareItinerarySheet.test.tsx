@@ -154,6 +154,32 @@ describe('ShareItinerarySheet', () => {
     expect(api.upsertTripShare).not.toHaveBeenCalled();
   });
 
+  // **WHERE IS THE LINK** (owner, 2026-08-30, three times). Asserted on the DOM rather than
+  // argued from the source: the send block must exist at Everything with a file list, and it
+  // must come BEFORE the sensitive rows, because a variable-length file list underneath it is
+  // what put the one thing the sheet exists to hand over below the fold.
+  it('puts the link and both send buttons above the refinements at Everything', async () => {
+    api.fetchTripShare.mockResolvedValue(config);
+    api.fetchSnapshot.mockResolvedValue({
+      documents: Array.from({ length: 10 }, (_, i) => ({ id: `d${i}`, title: `קובץ ${i}` })),
+    });
+    renderSheet();
+    await openRead();
+    fireEvent.click(screen.getByRole('radio', { name: t.share.owner.levels.everything }));
+    await screen.findByText('קובץ 9');
+
+    // `Sheet` renders through `Modal`'s portal, so the tree is on `document`, not on the
+    // render's own container — which is why `screen.*` is what every other spec here uses.
+    const send = document.querySelector('.share-send');
+    const priv = document.querySelector('.share-private');
+    expect(send).toBeTruthy();
+    expect(send!.querySelector('.share-link-row')).toBeTruthy();
+    expect(send!.querySelectorAll('.share-outcome')).toHaveLength(2);
+    expect(priv).toBeTruthy();
+    // DOM order: send precedes the refinements.
+    expect(send!.compareDocumentPosition(priv!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('defaults to Full with every sensitive family off', async () => {
     renderSheet();
     await openRead();
