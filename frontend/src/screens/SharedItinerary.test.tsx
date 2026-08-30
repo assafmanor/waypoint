@@ -6,6 +6,7 @@ import {
   BOOKING_TYPE,
   SHARE_DAY_KIND,
   SHARE_DAY_SUMMARY_KIND,
+  SHARE_OP_KIND,
   SHARE_DAYPART,
   SHARE_DETAIL_LEVEL,
   type SharedItinerary as Projection,
@@ -37,6 +38,9 @@ const summaryProjection: Projection = {
     routeStopCount: 2,
   },
   narrative: { source: 'deterministic', title: 'רייקיאוויק ← ויק', summary: '' },
+  // Empty: a trip with nothing booked is a real state, and the block is then absent from
+  // the page rather than present and blank.
+  commitments: [],
   days: [
     {
       ordinal: 1,
@@ -121,9 +125,40 @@ const fullProjection: Projection = {
 const everythingProjection: Projection = {
   ...fullProjection,
   detailLevel: SHARE_DETAIL_LEVEL.EVERYTHING,
+  // **The amendment's shape**: what has a host travels on it, and only what is attached to
+  // nothing is left for the block at the foot.
+  days: fullProjection.days.map((day, index) =>
+    index > 0
+      ? day
+      : {
+          ...day,
+          sections: day.sections.map((section, sectionIndex) =>
+            sectionIndex > 0
+              ? section
+              : {
+                  ...section,
+                  events: section.events.map((event, eventIndex) =>
+                    eventIndex > 0
+                      ? event
+                      : {
+                          ...event,
+                          ops: [
+                            { kind: SHARE_OP_KIND.CODE, code: 'KEF-4821', provider: 'Icelandair' },
+                            {
+                              kind: SHARE_OP_KIND.FILE,
+                              handle: 'doc-1',
+                              title: 'הזמנת הדירה.pdf',
+                              mimeType: 'application/pdf',
+                            },
+                          ],
+                        },
+                  ),
+                },
+          ),
+        },
+  ),
   appendix: {
-    bookingSecrets: [{ title: 'טיסה', lines: ['Icelandair', 'KEF-4821'] }],
-    documents: [{ handle: 'doc-1', title: 'הזמנת הדירה.pdf', mimeType: 'application/pdf' }],
+    notesAndTasks: [{ title: 'נעלי הליכה', lines: [] }],
   },
 };
 
@@ -168,9 +203,9 @@ describe('SharedItinerary', () => {
     serve(summaryProjection);
     renderShared();
 
-    expect(await screen.findByText('הפארק הלאומי ת׳ינגווליר')).toBeTruthy();
+    expect(await screen.findByText(plain('הפארק הלאומי ת׳ינגווליר'))).toBeTruthy();
     expect(screen.queryByText(plain('09:30'))).toBeNull();
-    expect(screen.queryByText('806 Selfoss')).toBeNull();
+    expect(screen.queryByText(plain('806 Selfoss'))).toBeNull();
     expect(screen.queryByRole('link', { name: new RegExp(t.share.public.map) })).toBeNull();
   });
 
@@ -196,7 +231,7 @@ describe('SharedItinerary', () => {
     renderShared();
 
     expect(await screen.findByText(plain('09:30'))).toBeTruthy();
-    expect(screen.getByText('806 Selfoss')).toBeTruthy();
+    expect(screen.getByText(plain('806 Selfoss'))).toBeTruthy();
     // The mode is the point of the line: two bare numbers made a 121-minute walk and a
     // 67-minute drive the same shape (owner, 2026-08-30). Read off the row rather than by
     // text, because the mode's ICON sits in it beside its word.
@@ -314,11 +349,18 @@ describe('SharedItinerary', () => {
     serve(everythingProjection);
     renderShared();
 
-    expect(await screen.findByText(t.share.public.appendix.title)).toBeTruthy();
-    expect(screen.getByText(/KEF-4821/)).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'הזמנת הדירה.pdf' }).getAttribute('href')).toContain(
-      `/shared-itineraries/${CODE}/documents/doc-1`,
-    );
+    // **Attached to its row, not listed at the foot** (ADR-0213's 2026-08-30 amendment).
+    // The fold is closed, so the material is in the DOM and not on screen — which is the
+    // design: a reader wants the schedule, an operator opens the fold.
+    expect(await screen.findByText(plain('KEF-4821'))).toBeTruthy();
+    expect(
+      screen.getByRole('link', { name: plain('הזמנת הדירה.pdf') }).getAttribute('href'),
+    ).toContain(`/shared-itineraries/${CODE}/documents/doc-1`);
+
+    // And what is attached to nothing keeps a block, under a heading that says what it is
+    // rather than `פרטים נוספים`.
+    expect(screen.getByText(t.share.public.appendix.title)).toBeTruthy();
+    expect(screen.getByText(plain('נעלי הליכה'))).toBeTruthy();
   });
 
   it('says the link is unavailable, without hinting whether the trip exists', async () => {
@@ -354,5 +396,77 @@ describe('SharedItinerary', () => {
       </MemoryRouter>,
     );
     await waitFor(() => expect(screen.queryByText('איסלנד עם המשפחה')).toBeTruthy());
+  });
+  /** What ADR-0213's 2026-08-30 amendment put on this page. */
+  describe('the stay, the journey and the fixed points', () => {
+    const withDay = (day: Record<string, unknown>) => ({
+      ...fullProjection,
+      days: [{ ...fullProjection.days[0], ...day }],
+    });
+
+    it('says where you sleep in the day header, not as a row in its afternoon', async () => {
+      serve(withDay({ stay: 'Reykjahlíð' }));
+      renderShared();
+      expect(await screen.findByText(plain(t.share.public.stay('Reykjahlíð')))).toBeTruthy();
+    });
+
+    it('names the wait between two legs of one journey', async () => {
+      const event = fullProjection.days[0].sections[0].events[0];
+      serve(
+        withDay({
+          sections: [
+            {
+              ...fullProjection.days[0].sections[0],
+              events: [
+                {
+                  ...event,
+                  legs: [
+                    { title: 'תל אביב', startLabel: '14:30', endLabel: '18:15' },
+                    { title: 'וינה', startLabel: '19:00', endLabel: '23:20', layoverMinutes: 45 },
+                  ],
+                },
+              ],
+            },
+          ],
+        }),
+      );
+      renderShared();
+      // The first leg has nothing before it, so it carries no wait — only the second does.
+      expect(await screen.findByText(plain(t.share.public.layover('וינה', 45)))).toBeTruthy();
+      expect(screen.queryByText(plain(t.share.public.layover('תל אביב', 45)))).toBeNull();
+    });
+
+    it('puts the fixed points above the days, each linking to its own', async () => {
+      serve({
+        ...fullProjection,
+        commitments: [
+          {
+            bookingType: 'flight',
+            title: 'תל אביב',
+            date: '2026-08-29',
+            dayOrdinal: 1,
+          },
+        ],
+      });
+      renderShared();
+      const block = await screen.findByText(t.share.public.commitments.title);
+      const days = document.querySelector('.sh-days');
+      // Above, not among — the day spine stays the spine.
+      expect(
+        block.closest('.sh-fixed')!.compareDocumentPosition(days!) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(screen.getByRole('link', { name: plain('תל אביב') }).getAttribute('href')).toBe(
+        '#day-1',
+      );
+    });
+
+    it('draws no fixed-points block for a trip with nothing booked', async () => {
+      serve(fullProjection);
+      renderShared();
+      await screen.findByText(plain('הפארק הלאומי ת׳ינגווליר'));
+      // Empty is a real state: no block, rather than a block with nothing in it.
+      expect(screen.queryByText(t.share.public.commitments.title)).toBeNull();
+    });
   });
 });

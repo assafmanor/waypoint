@@ -131,7 +131,7 @@ describe('itineraryPdfHtml', () => {
     const everything = render({
       ...NINE_DAY_REFERENCE_TRIP,
       detailLevel: SHARE_DETAIL_LEVEL.EVERYTHING,
-      appendix: { bookingSecrets: [{ title: 'טיסה', lines: ['KEF-4821'] }] },
+      appendix: { notesAndTasks: [{ title: 'רשימת ציוד', lines: ['נעלי הליכה'] }] },
     });
     expect(everything).toContain(PDF_COPY.appendix.title);
     expect(everything.match(/class="pdf-ops"/g)).toHaveLength(1);

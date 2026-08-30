@@ -184,6 +184,7 @@ export const NINE_DAY_REFERENCE_TRIP: SharedItinerary = {
     // and reading `routeLabels.length` is what made a capped strip report the trip's size.
     routeStopCount: 9,
   },
+  commitments: [],
   narrative: {
     source: 'deterministic',
     title: 'רייקיאוויק ← סנייפלסנס',
@@ -234,10 +235,6 @@ export const DENSE_REFERENCE_TRIP: SharedItinerary = {
     ),
   },
   appendix: {
-    bookingSecrets: [
-      { title: 'טיסה הלוך', lines: ['FI 562', 'אישור KEF-4821'] },
-      { title: 'רכב שכור', lines: ['Blue Car Rental', 'אישור BC-99120'] },
-    ],
     travelers: ['דנה', 'יואב', 'מיכל', 'רון', 'תמר'],
   },
   days: denseDays,

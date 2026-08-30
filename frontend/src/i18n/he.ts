@@ -3198,12 +3198,30 @@ export const t = {
       // leg and a forty-minute one were the same shape of line. The numbers are isolated by
       // the caller; the en dash is the app's own range mark (`formatTripDates`).
       timeRange: (from: string, to: string) => `${from}–${to}`,
+      // **Where you sleep, as the day's frame** (ADR-0213's 2026-08-30 amendment). The
+      // value arrives isolated, so this joins it rather than composing around a raw name.
+      stay: (place: string) => `לנים ב-${place}`,
+      // The wait between two legs of one journey. Named by the place you wait IN, because
+      // "45 דקות" alone says nothing about where you are standing.
+      layover: (place: string, minutes: number) => `המתנה ב${place} · ${minutes} דקות`,
+      ops: {
+        // A count, because the row is otherwise a bare disclosure with nothing to promise.
+        more: (count: number) => (count === 1 ? 'פרט אחד' : `${count} פרטים`),
+      },
+      commitments: {
+        // **Not `מה שקבוע`** (owner, 2026-08-30: _"makes no sense in Hebrew"_). Every row
+        // in this block is booking-backed — a flight, a car, a stay, a booked tour — so the
+        // plain word for what they are is both accurate and what a person would say.
+        title: 'ההזמנות',
+      },
       appendix: {
-        title: 'פרטים נוספים',
-        bookingSecrets: 'פרטי הזמנה שנבחרו',
-        notesAndTasks: 'פתקים ומשימות',
+        // **Not `פרטים נוספים`.** What is left here after the amendment is only what is
+        // attached to no moment in the trip — the packing list, the group's own reminders.
+        // That is a real category and deserves its own name rather than a catch-all.
+        title: 'לקראת הנסיעה',
+        notesAndTasks: 'רשימות',
         travelers: 'הנוסעים',
-        documents: 'קבצים שנבחרו',
+        documents: 'קבצים',
       },
       unavailableTitle: 'המסלול לא זמין',
       unavailableBody: 'יכול להיות שהלינק בוטל או שהטיול כבר לא קיים. בקשו לינק חדש ממי ששלח.',

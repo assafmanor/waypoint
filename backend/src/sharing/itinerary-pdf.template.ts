@@ -283,10 +283,9 @@ function appendixBlock(projection: SharedItinerary): string {
       );
     }
   };
-  push(
-    PDF_COPY.appendix.bookingSecrets,
-    (appendix.bookingSecrets ?? []).map((entry) => [entry.title, ...entry.lines].join(' ')),
-  );
+  // No booking block any more: every booking has a host by construction (`Event.bookingId`
+  // is `@unique`), so a confirmation code prints under its own row. What is left here is
+  // what is attached to nothing.
   push(
     PDF_COPY.appendix.notesAndTasks,
     (appendix.notesAndTasks ?? []).map((entry) => [entry.title, ...entry.lines].join(' ')),

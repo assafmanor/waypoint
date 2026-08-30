@@ -3,6 +3,8 @@ import {
   SHARE_DAY_KIND,
   SHARE_DAY_SUMMARY_KIND,
   SHARE_DAYPART,
+  SHARE_OP_KIND,
+  sharedLegSchema,
   SHARE_DETAIL_LEVEL,
   shareDaypart,
   sharePreviousNight,
@@ -177,6 +179,9 @@ describe('sharedItinerarySchema', () => {
       routeStopCount: 2,
     },
     narrative: { source: 'deterministic', title: 'רייקיאוויק ← ויק', summary: '9 ימים' },
+    // Empty is the honest value for a trip with nothing booked — the block is then absent
+    // from a renderer rather than present and blank.
+    commitments: [],
     days: [
       {
         ordinal: 1,
@@ -228,6 +233,65 @@ describe('sharedItinerarySchema', () => {
     (days[0].sections[0].events[0] as Record<string, unknown>).lat = 64.13;
     expect(() => sharedItinerarySchema.parse({ ...projection, days })).toThrow();
   });
+
+  describe('what the 2026-08-30 amendment added', () => {
+    const withDay = (day: Record<string, unknown>) =>
+      sharedItinerarySchema.parse({
+        ...projection,
+        days: [{ ...projection.days[0], ...day }],
+      });
+
+    it('takes a stay on the day and a photo that must carry its credit', () => {
+      expect(withDay({ stay: 'Reykjahlíð' }).days[0].stay).toBe('Reykjahlíð');
+      // Required, never optional: 27 of the 32 Commons files ADR-0166 §12.2 surveyed
+      // demand attribution, so a credit a renderer could forget is a licence breach.
+      expect(() =>
+        withDay({ photo: { url: 'https://example.org/a.jpg', of: 'גודאפוס' } }),
+      ).toThrow();
+    });
+
+    it('refuses a journey with fewer than two legs', () => {
+      const leg = { title: 'תל אביב', startLabel: '14:30' };
+      const withLegs = (legs: unknown[]) =>
+        withDay({
+          sections: [
+            {
+              daypart: SHARE_DAYPART.AFTERNOON,
+              events: [{ ...projection.days[0].sections[0].events[0], legs }],
+            },
+          ],
+        });
+      // One leg is not a journey — it is an event, and drawing a journey frame around it
+      // would say there is a connection to see.
+      expect(() => withLegs([leg])).toThrow();
+      expect(
+        withLegs([leg, { ...leg, layoverMinutes: 45 }]).days[0].sections[0].events[0].legs,
+      ).toHaveLength(2);
+    });
+
+    it('keeps every op kind closed, and a layover positive', () => {
+      const ops = (value: unknown) =>
+        withDay({
+          sections: [
+            {
+              daypart: SHARE_DAYPART.AFTERNOON,
+              events: [{ ...projection.days[0].sections[0].events[0], ops: [value] }],
+            },
+          ],
+        });
+      expect(ops({ kind: SHARE_OP_KIND.CODE, code: '8JHEI4' })).toBeTruthy();
+      expect(() => ops({ kind: 'secret', code: '8JHEI4' })).toThrow();
+      // A code with no value is not a code; the discriminant does not excuse the payload.
+      expect(() => ops({ kind: SHARE_OP_KIND.CODE })).toThrow();
+    });
+
+    it('will not take a zero-minute layover', () => {
+      // A wait we measured as nothing is a wait we could not measure — printing `0 דקות`
+      // between two legs claims a fact the clock never gave us.
+      expect(() => sharedLegSchema.parse({ title: 'וינה', layoverMinutes: 0 })).toThrow();
+      expect(sharedLegSchema.parse({ title: 'וינה', layoverMinutes: 45 }).layoverMinutes).toBe(45);
+    });
+  });
 });
 
 describe('tripShareConfigSchema', () => {
@@ -255,4 +319,6 @@ describe('tripShareConfigSchema', () => {
       }),
     ).toThrow();
   });
+  /** The shapes ADR-0213's 2026-08-30 amendment added, each asserted at its edge — a
+   *  `strictObject` is only a contract if something proves it refuses. */
 });

@@ -30,8 +30,17 @@ import {
   type LegTravelMode,
   type SharedDayTitle,
   type TravelMode,
+  derivedPlaceLabel,
+  shortPlaceLabel,
+  placeIataCode,
+  ROUTE_ARROW,
+  SHARE_OP_KIND,
+  type SharedCommitment,
+  type SharedOp,
+  type TripEnrichments,
 } from '@waypoint/shared';
 import { eventDisplayZone, type TripZoneContext } from '../common/event-zone.util';
+import { EnrichmentService } from '../enrichment/enrichment.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   applyNarrative,
@@ -79,10 +88,153 @@ const GOOGLE_MAPS_SEARCH = 'https://www.google.com/maps/search/?api=1&query=';
  *  reuse the first one's words. */
 const DEFAULT_LOCALE = 'he';
 
-/** A place's public label: the nickname a traveller chose, else the official name
- *  (ADR-0166 §18). Never the `googlePlaceId`, never the coordinates. */
-const placeLabel = (place: { name: string; nickname: string | null } | null): string | undefined =>
-  place ? (place.nickname?.trim() || place.name).trim() || undefined : undefined;
+/**
+ * **A place's public label — the app's own three-rung chain, not a second worse one**
+ * (owner, 2026-08-30: _"Why נתב״ג to Frankfurt?? What does it have to do with anything?"_).
+ *
+ * This used to be `nickname || name`: rung 1 and rung 3 without its stripping, and no rung
+ * 2 at all. `derivedPlaceLabel` has answered `תל אביב` for `נמל התעופה בן גוריון` since
+ * ADR-0166 §18 shipped in July — it just lived in `frontend/src/lib/` where the server
+ * could not call it, so the projection wrote its own and every shared surface printed
+ * `נמל התעופה של פרנקפורט (Frankfurter Flughafen – FRA)`. That name is also why the flight
+ * rows blew their width and the day title ellipsised mid-string under bidi.
+ *
+ * Never the `googlePlaceId`, never the coordinates — the enrichment map is keyed by place
+ * id here and the Google id is only how the store was read.
+ */
+type LabelledPlace = { id: string; name: string; nickname: string | null };
+type PlaceLabeller = (place: LabelledPlace | null) => string | undefined;
+
+const labelWith =
+  (enrichments: TripEnrichments): PlaceLabeller =>
+  (place) => {
+    if (!place) return undefined;
+    // Prisma answers `null` where the shared `Place` says `undefined`; normalised here
+    // rather than by widening the shared type for one caller.
+    const derived = derivedPlaceLabel(
+      { name: place.name, nickname: place.nickname ?? undefined },
+      enrichments[place.id],
+    );
+    return (derived?.trim() || shortPlaceLabel(place.name)).trim() || undefined;
+  };
+
+/**
+ * **The trip's fixed points, derived from the schedule** (ADR-0213's 2026-08-30 amendment).
+ *
+ * A row is here when its event is `hard` (ADR-0011) or a booking backs it — the two ways
+ * the app already says "this is a commitment". Nothing new is stored and nothing is
+ * authored: this is the same events the days hold, asked a different question.
+ *
+ * **Consecutive nights in the same place are one row.** Eleven `לינה` lines is the wall of
+ * text this block exists to replace, and "eleven nights, Reykjavík then Flúðir then seven
+ * more" is what a reader actually wants to know. The run is broken by a different place,
+ * never by a gap in the dates: a night unrecorded in the middle of a stay is a hole in the
+ * data, not a checkout.
+ */
+function collectCommitments(
+  byDay: { date: string; events: ShareEventRow[] }[],
+  placeLabel: PlaceLabeller,
+  labelById: ReadonlyMap<string, string | undefined>,
+  ops: OpsByHost,
+): SharedCommitment[] {
+  const out: SharedCommitment[] = [];
+  byDay.forEach(({ date, events }, index) => {
+    for (const event of events) {
+      const type = event.booking?.type as BookingType | undefined;
+      if (!type && event.kind !== EVENT_KIND.HARD) continue;
+      if (!type) continue; // a hard event with no booking has no type to name it by
+
+      const place = placeLabel(event.place);
+      const to = labelById.get(event.booking?.toPlaceId ?? '');
+      const from = labelById.get(event.booking?.fromPlaceId ?? '');
+      // **A stay has no row in the schedule any more**, so whatever hangs off it would
+      // have been lifted out and dropped. It rides here, where a reader looks for a hotel.
+      const rowOps = [
+        ...(ops.byEvent.get(event.id) ?? []),
+        ...(event.bookingId ? (ops.byBooking.get(event.bookingId) ?? []) : []),
+      ];
+
+      // A stay extends the run above it rather than opening a new row.
+      const previous = out.at(-1);
+      if (
+        type === BOOKING_TYPE.HOTEL &&
+        previous?.bookingType === BOOKING_TYPE.HOTEL &&
+        previous.detail === place
+      ) {
+        previous.endDate = date;
+        continue;
+      }
+
+      out.push(
+        stripUndefined({
+          bookingType: type,
+          title: from && to ? routeTitle(from, to) : event.title,
+          detail: type === BOOKING_TYPE.HOTEL ? place : (place ?? to),
+          date,
+          endDate: type === BOOKING_TYPE.HOTEL ? date : undefined,
+          dayOrdinal: index + 1,
+          ops: rowOps.length > 0 ? rowOps : undefined,
+        }) as SharedCommitment,
+      );
+    }
+  });
+  return out;
+}
+
+/** Where an op hangs: on the event, on the booking behind it, or on neither. The two maps
+ *  are separate because a note may be written against either host and, to a reader, they
+ *  are the same row — so the row asks both. */
+interface OpsByHost {
+  byEvent: Map<string, SharedOp[]>;
+  byBooking: Map<string, SharedOp[]>;
+  /** Attached to nothing, and published under its own heading rather than smuggled onto
+   *  whichever row happened to be first. This is the packing list. */
+  unattached: SharedOp[];
+}
+
+/** **Does this leg continue that one?** The whole journey derivation, and it needed no
+ *  column: a chain is a transport booking whose `fromPlaceId` is the previous booking's
+ *  `toPlaceId`. Both must be transport — a hotel between two flights shares no place id
+ *  with either and could never have chained, which is the case that was reported. */
+const continuesJourney = (previous: ShareEventRow, next: ShareEventRow): boolean => {
+  if (!isTransport(previous) || !isTransport(next)) return false;
+  const arrival = previous.booking?.toPlaceId;
+  const departure = next.booking?.fromPlaceId;
+  return Boolean(arrival && departure && arrival === departure);
+};
+
+/** The wait between two chained legs, in whole minutes. `null` on either end means we
+ *  cannot say, and a wait we cannot measure is not printed as zero. */
+const layoverMinutes = (previous: ShareEventRow, next: ShareEventRow): number | undefined => {
+  const from = previous.endsAt?.getTime();
+  const to = next.startsAt?.getTime();
+  if (from === undefined || to === undefined) return undefined;
+  const minutes = Math.round((to - from) / 60_000);
+  return minutes > 0 ? minutes : undefined;
+};
+
+/** `TLV → VIE`, for the one surface with room for it. ADR-0166 §18 keeps the IATA code off
+ *  row-shaped surfaces because it doubles their width; a leg inside a journey block has a
+ *  second line, and a code is what you check against a boarding pass. Absent unless BOTH
+ *  ends have one — half a pair says less than none. */
+const legCode = (
+  event: ShareEventRow,
+  codeById: ReadonlyMap<string, string | undefined>,
+): string | undefined => {
+  const from = codeById.get(event.booking?.fromPlaceId ?? '');
+  const to = codeById.get(event.booking?.toPlaceId ?? '');
+  return from && to ? `${from} → ${to}` : undefined;
+};
+
+/** The journey's own name. `ROUTE_ARROW` carries its isolates, so this composes in the
+ *  contract's vocabulary rather than each renderer inventing a separator. */
+const routeTitle = (from: string, to: string): string => `${from}${ROUTE_ARROW}${to}`;
+
+/** Drop the keys whose value is `undefined`, because every schema here is a `strictObject`
+ *  and an explicit `undefined` is not the same as an absent key to `exactOptionalPropertyTypes`
+ *  — "absent, not empty" is the contract's own rule (`sharedEventSchema`). */
+const stripUndefined = <T extends object>(value: T): T =>
+  Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as T;
 
 /** **Is this event a way of getting somewhere, rather than somewhere to be?** Asked of the
  *  booking first, because a booking states its type, and of the category only for an event
@@ -114,6 +266,7 @@ export class SharingProjectionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly narrative: ItineraryNarrativeService,
+    private readonly enrichment: EnrichmentService,
   ) {}
 
   /** Resolve a public code to its live projection. A missing, revoked or rotated code is
@@ -184,7 +337,21 @@ export class SharingProjectionService {
     // back to its date, and a driving day's route started at whichever sight happened to
     // have a pin. `journeyLookup` below already knew to look at the booking; this is the
     // same knowledge, in the derivation that names the day.
+    // **Read only, and the `stale` list is deliberately dropped.** `readForPlaces` also
+    // reports which places want a fresh pass, and every other caller acts on that. This one
+    // must not: `/s/<code>` is unauthenticated, so a reader who could make the server fetch
+    // would be a rate-limited outbound amplifier behind an 8-character credential. What is
+    // in the store is what the page shows.
+    const { enrichments } = await this.enrichment.readForPlaces(places);
+    const placeLabel = labelWith(enrichments);
+
     const labelById = new Map(places.map((place) => [place.id, placeLabel(place)]));
+    // The airport codes, for the one surface with room for them (`legCode`). Same read as
+    // the labels — `placeIataCode` is the other thing ADR-0166 §18 stored and the sharing
+    // renderers never asked for.
+    const codeById = new Map(
+      places.map((place) => [place.id, placeIataCode(enrichments[place.id])] as const),
+    );
     const eventStops = (event: ShareEventRow): (string | undefined)[] => {
       const from = event.booking?.fromPlaceId;
       const to = event.booking?.toPlaceId;
@@ -230,20 +397,49 @@ export class SharingProjectionService {
       returning: index === lastFlight && lastFlight === lastBusy && lastFlight !== firstFlight,
     });
 
+    // **Everything operational, keyed by the row it belongs to** — one set of queries for
+    // the whole trip rather than one per event, and empty when the level or the toggles say
+    // so. See `loadOps`; this is what dissolved the appendix.
+    const ops = await this.loadOps(share, detail);
+
     const days: SharedDay[] = byDay.map(({ date, events: dayEvents }, index) => {
-      const projected = dayEvents.map((event) =>
-        this.projectEvent(event, zones, detail, journeys?.get(event.id)),
+      // **The stay leaves the schedule before anything else looks at it.** A lodging event
+      // sorts by its check-in hour, which put it between the two legs of the outbound
+      // flight; and its `startsAt`/`endsAt` span midnight, so it printed `15:00–11:00`.
+      // Both stop being true once it is the day's frame rather than one of its rows.
+      const lodging = dayEvents.filter((event) => event.booking?.type === BOOKING_TYPE.HOTEL);
+      const scheduled = dayEvents.filter((event) => event.booking?.type !== BOOKING_TYPE.HOTEL);
+      const projected = this.withJourneys(
+        scheduled,
+        zones,
+        detail,
+        journeys,
+        placeLabel,
+        ops,
+        labelById,
+        codeById,
       );
       const facts = dayFacts(dayEvents, index);
       const title: SharedDayTitle = fallbackDayTitle(facts);
       return {
         ordinal: index + 1,
         date,
+        stay: lodging.map((event) => placeLabel(event.place) ?? event.title).find(Boolean),
         title,
         summary: fallbackDaySummary(facts, title),
         sections: this.groupByDaypart(projected),
       };
     });
+
+    // **The trip's fixed points, five lines above the seventy-nine** (owner, 2026-08-30:
+    // _"Maybe these sharings should have sections for important stuff, like flights,
+    // reservations etc."_). Derived here rather than queried, because "what is fixed" is a
+    // question about the SCHEDULE — a booking with no event is not a moment in the trip,
+    // and a hard event with no booking (ADR-0011 allows one) still is.
+    //
+    // Consecutive nights in the same place collapse to one row: eleven `לינה` lines is the
+    // wall of text this block exists to replace.
+    const commitments = collectCommitments(byDay, placeLabel, labelById, ops);
 
     // **The route is where the trip WAS, not the airports it passed through** (owner,
     // 2026-08-30, on the masthead strip: _"Seems very redundant"_). Every day contributes
@@ -299,15 +495,214 @@ export class SharingProjectionService {
         // twelve-day, ten-stop trip that it had eight.
         routeStopCount: wholeRoute.length,
       },
+
       narrative: {
         source: narrative.source,
         title: narrative.title,
         summary: narrative.summary,
       },
       days: applyNarrative(days, narrative),
+      commitments,
       appendix:
         detail === SHARE_DETAIL_LEVEL.EVERYTHING ? await this.buildAppendix(share) : undefined,
     });
+  }
+
+  /**
+   * **A journey is one row, not N rows a same-day event can wedge itself between** (owner,
+   * 2026-08-30: _"Bad event ordering when it comes to the flights and hotels … no layover
+   * detection and visualization"_).
+   *
+   * The reported case is a day reading TLV→VIE, an apartment check-in, then VIE→KEF —
+   * because the check-in's clock time sorts between the two legs, and because the two legs
+   * land in different dayparts (18:15 is afternoon, 19:00 is evening) so the daypart spine
+   * split them too. Neither is a sorting bug: the rows were in the right order for what the
+   * projection thought they were, which is three unrelated events.
+   *
+   * **Nothing is stored and nothing needed to be.** A leg continues the one before it
+   * exactly when the previous booking's `toPlaceId` is this booking's `fromPlaceId`, and
+   * the wait between them is the gap from `endsAt` to the next `startsAt`. A half-built
+   * `connectsToPrevious`/`layoverMinutes` pair of columns was written for this and reverted
+   * — the chain was derivable the whole time.
+   *
+   * The group takes the FIRST leg's daypart, so a journey that departs in the afternoon and
+   * lands at night is an afternoon journey rather than two half-journeys. It is drawn as
+   * one `SharedEvent` carrying `legs`, so a renderer that ignores `legs` still shows one
+   * correct row rather than a hole.
+   */
+  private withJourneys(
+    dayEvents: ShareEventRow[],
+    zones: TripZoneContext,
+    detail: ShareDetailLevel,
+    journeys: Map<string, SharedEvent['journey']> | undefined,
+    placeLabel: PlaceLabeller,
+    ops: OpsByHost,
+    labelById: ReadonlyMap<string, string | undefined>,
+    codeById: ReadonlyMap<string, string | undefined>,
+  ): SharedEvent[] {
+    const one = (event: ShareEventRow): SharedEvent =>
+      this.projectEvent(event, zones, detail, journeys?.get(event.id), placeLabel, ops);
+
+    const out: SharedEvent[] = [];
+    for (let i = 0; i < dayEvents.length; i += 1) {
+      const chain = [dayEvents[i]];
+      while (i + 1 < dayEvents.length && continuesJourney(chain.at(-1)!, dayEvents[i + 1])) {
+        chain.push(dayEvents[(i += 1)]);
+      }
+      if (chain.length < 2) {
+        out.push(one(chain[0]));
+        continue;
+      }
+
+      const first = chain[0];
+      const last = chain.at(-1)!;
+      const head = one(first);
+      const from = labelById.get(first.booking?.fromPlaceId ?? '');
+      const to = labelById.get(last.booking?.toPlaceId ?? '');
+      out.push({
+        ...head,
+        // The journey's own identity replaces the first leg's — a reader wants
+        // `תל אביב ← רייקיאוויק`, not `תל אביב ← וינה` with the rest hidden inside.
+        title: from && to ? routeTitle(from, to) : head.title,
+        endLabel: one(last).endLabel,
+        legs: chain.map((event, index) => {
+          const leg = one(event);
+          const previous = index > 0 ? chain[index - 1] : undefined;
+          // **A leg names its own endpoints.** The event's stored title is whatever was
+          // typed — `טיסה` on all three of the owner's legs — which inside a journey block
+          // is three identical rows. The endpoints are what tell them apart.
+          const legFrom = labelById.get(event.booking?.fromPlaceId ?? '');
+          const legTo = labelById.get(event.booking?.toPlaceId ?? '');
+          return stripUndefined({
+            title: legFrom && legTo ? routeTitle(legFrom, legTo) : leg.title,
+            code: legCode(event, codeById),
+            startLabel: leg.startLabel,
+            endLabel: leg.endLabel,
+            layoverMinutes: previous ? layoverMinutes(previous, event) : undefined,
+          });
+        }),
+      });
+    }
+    return out;
+  }
+
+  /**
+   * **Everything operational, keyed by the row it belongs to** (ADR-0213's 2026-08-30
+   * amendment, reversing §4).
+   *
+   * `buildAppendix` used to answer this with four `where: { tripId }` queries and no join,
+   * which is why the shipped page showed twenty-four confirmation codes attached to nothing
+   * — and why the notes toggle, which promises `רק תוכן שמחובר למסלול`, published every
+   * note in the trip. The links were there all along: `Note.eventId|bookingId` is a closed
+   * union from the first migration, `DocumentAttachment` binds a file to an event or a
+   * booking, and `Event.bookingId` is `@unique`.
+   *
+   * One set of queries for the whole trip, each gated on its own toggle exactly as the
+   * appendix's were, and each indexed by BOTH host keys — a note may hang off the event or
+   * off the booking behind it, and to a reader those are the same row.
+   */
+  private async loadOps(share: SharePolicy, detail: ShareDetailLevel): Promise<OpsByHost> {
+    const empty: OpsByHost = { byEvent: new Map(), byBooking: new Map(), unattached: [] };
+    if (detail !== SHARE_DETAIL_LEVEL.EVERYTHING) return empty;
+
+    const push = (map: Map<string, SharedOp[]>, key: string | null, op: SharedOp): void => {
+      if (!key) return;
+      const list = map.get(key);
+      if (list) list.push(op);
+      else map.set(key, [op]);
+    };
+    const out: OpsByHost = { byEvent: new Map(), byBooking: new Map(), unattached: [] };
+
+    if (share.includeBookingSecrets) {
+      const bookings = await this.prisma.booking.findMany({
+        where: { tripId: share.tripId },
+        select: SHARE_SECRET_BOOKING_SELECT,
+      });
+      for (const booking of bookings) {
+        const code = booking.confirmationCode?.trim();
+        if (!code) continue;
+        push(out.byBooking, booking.id, {
+          kind: SHARE_OP_KIND.CODE,
+          code,
+          ...(booking.provider?.trim() ? { provider: booking.provider.trim() } : {}),
+        });
+      }
+    }
+
+    if (share.includeNotesAndTasks) {
+      const [notes, tasks] = await Promise.all([
+        this.prisma.note.findMany({
+          where: { tripId: share.tripId },
+          select: { title: true, body: true, eventId: true, bookingId: true },
+        }),
+        this.prisma.task.findMany({
+          where: { tripId: share.tripId },
+          select: { title: true, eventId: true, bookingId: true },
+        }),
+      ]);
+      for (const note of notes) {
+        const title = note.title?.trim();
+        const body = note.body?.trim();
+        if (!title && !body) continue;
+        const op: SharedOp = stripUndefined({
+          kind: SHARE_OP_KIND.NOTE,
+          title: title || undefined,
+          body: body || undefined,
+        }) as SharedOp;
+        if (note.eventId) push(out.byEvent, note.eventId, op);
+        else if (note.bookingId) push(out.byBooking, note.bookingId, op);
+        // **Attached to nothing is a real answer, not a leftover.** A packing list belongs
+        // to the trip; it is published under its own heading rather than smuggled onto
+        // whichever row happened to be first.
+        else out.unattached.push(op);
+      }
+      for (const task of tasks) {
+        const title = task.title.trim();
+        if (!title) continue;
+        const op: SharedOp = { kind: SHARE_OP_KIND.TASK, title };
+        if (task.eventId) push(out.byEvent, task.eventId, op);
+        else if (task.bookingId) push(out.byBooking, task.bookingId, op);
+        else out.unattached.push(op);
+      }
+    }
+
+    const selected = await this.prisma.tripShareDocument.findMany({
+      where: { shareId: share.id },
+      select: { document: { select: { id: true, title: true, mimeType: true } } },
+    });
+    if (selected.length > 0) {
+      const attachments = await this.prisma.documentAttachment.findMany({
+        where: { tripId: share.tripId, documentId: { in: selected.map((row) => row.document.id) } },
+        select: { documentId: true, eventId: true, bookingId: true },
+      });
+      const hostsByDocument = new Map<
+        string,
+        { eventId: string | null; bookingId: string | null }[]
+      >();
+      for (const row of attachments) {
+        const list = hostsByDocument.get(row.documentId);
+        if (list) list.push(row);
+        else hostsByDocument.set(row.documentId, [row]);
+      }
+      for (const { document } of selected) {
+        const op: SharedOp = {
+          kind: SHARE_OP_KIND.FILE,
+          handle: document.id,
+          title: document.title,
+          mimeType: document.mimeType,
+        };
+        const hosts = hostsByDocument.get(document.id);
+        if (!hosts?.length) {
+          out.unattached.push(op);
+          continue;
+        }
+        for (const host of hosts) {
+          if (host.eventId) push(out.byEvent, host.eventId, op);
+          else if (host.bookingId) push(out.byBooking, host.bookingId, op);
+        }
+      }
+    }
+    return out;
   }
 
   /**
@@ -353,6 +748,8 @@ export class SharingProjectionService {
     zones: TripZoneContext,
     detail: ShareDetailLevel,
     journey: SharedEvent['journey'],
+    placeLabel: PlaceLabeller,
+    ops: OpsByHost,
   ): SharedEvent {
     const zone = eventDisplayZone(event, zones);
     const daypart = shareDaypart(event.startsAt, zone);
@@ -374,8 +771,17 @@ export class SharingProjectionService {
 
     const label = placeLabel(event.place);
     const address = event.place?.address?.trim() || undefined;
+    // **A row asks BOTH hosts.** A note may be written against the event or against the
+    // booking behind it (`Note`'s union allows either) and to a reader those are one row,
+    // so a row that only asked one would drop half the material for no reason a reader
+    // could see. `Event.bookingId` is `@unique`, so there is no double-counting to fear.
+    const rowOps = [
+      ...(ops.byEvent.get(event.id) ?? []),
+      ...(event.bookingId ? (ops.byBooking.get(event.bookingId) ?? []) : []),
+    ];
     return {
       ...base,
+      ...(rowOps.length > 0 ? { ops: rowOps } : {}),
       startLabel: event.startsAt ? shareTimeLabel(event.startsAt, zone) : undefined,
       endLabel: event.endsAt ? shareTimeLabel(event.endsAt, zone) : undefined,
       placeName: label,
@@ -528,21 +934,6 @@ export class SharingProjectionService {
    */
   private async buildAppendix(share: SharePolicy): Promise<SharedAppendix | undefined> {
     const appendix: SharedAppendix = {};
-
-    if (share.includeBookingSecrets) {
-      const bookings = await this.prisma.booking.findMany({
-        where: { tripId: share.tripId },
-        select: SHARE_SECRET_BOOKING_SELECT,
-      });
-      appendix.bookingSecrets = bookings
-        .map((booking) => ({
-          title: booking.title,
-          lines: [booking.provider, booking.confirmationCode].filter((line): line is string =>
-            Boolean(line?.trim()),
-          ),
-        }))
-        .filter((entry) => entry.lines.length > 0);
-    }
 
     if (share.includeNotesAndTasks) {
       const [notes, tasks] = await Promise.all([

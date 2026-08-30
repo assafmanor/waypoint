@@ -334,6 +334,73 @@ export type TripShareConfig = z.infer<typeof tripShareConfigSchema>;
 // ── The public projection ───────────────────────────────────────────────────────────
 
 /**
+ * **One operational fact, attached to the row it belongs to** (ADR-0213's 2026-08-30
+ * amendment, reversing §4's appendix).
+ *
+ * §4 grouped this material at the foot of the document "so a reader can see exactly what
+ * was published". The owner's verdict on the shipped result was that _"nothing is linked
+ * to the events"_ — and the grouping was never a privacy requirement, only a missing
+ * join: `Note.eventId|bookingId|placeId|documentId` is a closed union present since the
+ * first migration, `DocumentAttachment` binds a file to an event or a booking, and
+ * `Event.bookingId` is `@unique`. What §4 actually wanted — the owner being able to see
+ * what a level publishes — is answered by the share sheet, which is where the owner is.
+ *
+ * Still governed entirely by the sensitive-field toggles: an op only exists here when its
+ * family is switched on, which is the same gate the appendix had.
+ */
+export const SHARE_OP_KIND = { CODE: 'code', NOTE: 'note', TASK: 'task', FILE: 'file' } as const;
+export type ShareOpKind = (typeof SHARE_OP_KIND)[keyof typeof SHARE_OP_KIND];
+
+export const sharedOpSchema = z.discriminatedUnion('kind', [
+  /** A booking reference. `provider` and `code` stay separate values rather than one
+   *  composed string, for the reason the day title had to stop being one: a renderer
+   *  that wants to make the code copyable needs to know which half is the code. */
+  z.strictObject({
+    kind: z.literal(SHARE_OP_KIND.CODE),
+    code: z.string(),
+    provider: z.string().optional(),
+  }),
+  z.strictObject({
+    kind: z.literal(SHARE_OP_KIND.NOTE),
+    title: z.string().optional(),
+    body: z.string().optional(),
+  }),
+  z.strictObject({ kind: z.literal(SHARE_OP_KIND.TASK), title: z.string() }),
+  z.strictObject({
+    kind: z.literal(SHARE_OP_KIND.FILE),
+    /** The bearer download handle under the share's own code — §1's single exception,
+     *  unchanged by the move out of the appendix. */
+    handle: z.string(),
+    title: z.string(),
+    mimeType: z.string(),
+  }),
+]);
+export type SharedOp = z.infer<typeof sharedOpSchema>;
+
+/**
+ * **One leg of a journey that has several** (ADR-0213's 2026-08-30 amendment; owner:
+ * _"Layovers must be represented … Flights should be clumped together, not split by
+ * days"_).
+ *
+ * Nothing about this is stored. Legs chain exactly when the previous one's `toPlaceId` is
+ * this one's `fromPlaceId`, and the wait is the gap between the previous `endsAt` and this
+ * `startsAt` — both derivable today, which is why the half-built `connectsToPrevious`
+ * columns written for this were reverted rather than migrated.
+ */
+export const sharedLegSchema = z.strictObject({
+  title: z.string(),
+  /** `TLV → VIE`, where there is room for it. ADR-0166 §18 keeps the IATA code off
+   *  row-shaped surfaces because it doubles their width; inside a journey block there is a
+   *  second line for it, and a code is what you check against a boarding pass. */
+  code: z.string().optional(),
+  startLabel: z.string().optional(),
+  endLabel: z.string().optional(),
+  /** The wait **before** this leg. Absent on the first leg, which nothing precedes. */
+  layoverMinutes: z.number().int().positive().optional(),
+});
+export type SharedLeg = z.infer<typeof sharedLegSchema>;
+
+/**
  * One event as the public sees it.
  *
  * Everything optional is absent at Summary — absent, not empty-string or null, so a
@@ -364,6 +431,19 @@ export const sharedEventSchema = z.strictObject({
   placeName: z.string().optional(),
   address: z.string().optional(),
   mapUrl: z.string().url().optional(),
+  /** **What this place IS, in one line** (owner, 2026-08-30, choosing every level: a
+   *  stop's description is public knowledge about a public place and reveals nothing about
+   *  the trip). From the stored Wikipedia `summary` enrichment, `he` then `en` — so it is
+   *  absent for a car park and present for a waterfall, which is the right asymmetry. */
+  caption: z.string().optional(),
+  /** **The legs, when this row is a journey rather than a stop.** At least two, or it is
+   *  not a journey. A renderer that ignores this still draws one correct row: the title is
+   *  the whole journey and `startLabel`/`endLabel` are its first departure and last
+   *  arrival, so the degradation is a summary rather than a hole. */
+  legs: z.array(sharedLegSchema).min(2).optional(),
+  /** **The operational material that belongs to THIS row**, at Everything and only for the
+   *  families the owner switched on. Absent, not empty, when there is none. */
+  ops: z.array(sharedOpSchema).optional(),
   /** The journey INTO this event, when one is already stored (ADR-0205). Full and above. */
   journey: z
     .strictObject({
@@ -384,11 +464,43 @@ export const sharedDaypartSectionSchema = z.strictObject({
   events: z.array(sharedEventSchema).min(1), // an empty section is never projected
 });
 
+/** **A photo of the day's most significant stop, or nothing at all** (owner, 2026-08-30,
+ *  reversing ADR-0213 §3's refusal of imagery).
+ *
+ *  §3 refused "stock photography, generated imagery" and a cover upload, and none of those
+ *  describe this: a Commons photo resolved through Wikidata `P18` is already in the store,
+ *  already licensed, already credited, and already rendered elsewhere in the app. What §3
+ *  was protecting against was a new media dependency, and there is not one.
+ *
+ *  **The absence is part of the design.** A day whose stops clear no confidence gate gets
+ *  no photo — not a gradient, not a map tile, not the trip's own image repeated. Nine days
+ *  with photos and three without reads as honest; three days showing the wrong mountain
+ *  destroys trust in the other nine. */
+export const sharedPhotoSchema = z.strictObject({
+  url: z.string().url(),
+  /** The subject, for the alt text and the caption. Which stop this is a picture OF is a
+   *  fact the reader needs — an unlabelled photo of a waterfall on a day with four of them
+   *  says nothing. */
+  of: z.string(),
+  /** Required, never optional: 27 of the 32 Commons files ADR-0166 §12.2 surveyed demand
+   *  attribution, so a credit that a renderer could forget is a licensing breach waiting. */
+  credit: z.string(),
+});
+export type SharedPhoto = z.infer<typeof sharedPhotoSchema>;
+
 export const sharedDaySchema = z.strictObject({
   ordinal: z.number().int().positive(),
   date: dateOnlySchema,
   title: sharedDayTitleSchema,
   summary: sharedDaySummarySchema,
+  /** **Where you sleep, as the day's frame rather than a row in its afternoon** (owner,
+   *  2026-08-30: _"Bad event ordering when it comes to the flights and hotels"_). A lodging
+   *  event sorts by its check-in hour, so on the outbound day it landed between the two
+   *  flight legs — reading as if you leave the airport in Vienna to sleep, then fly on. It
+   *  is also what made a stay print `15:00–11:00`, a range that reads backwards because it
+   *  spans midnight. A stay is not an event at 15:00; it is the roof over the day. */
+  stay: z.string().optional(),
+  photo: sharedPhotoSchema.optional(),
   sections: z.array(sharedDaypartSectionSchema),
 });
 export type SharedDay = z.infer<typeof sharedDaySchema>;
@@ -398,13 +510,56 @@ export type SharedDay = z.infer<typeof sharedDaySchema>;
 export const NARRATIVE_SOURCE = { DETERMINISTIC: 'deterministic', GENERATED: 'generated' } as const;
 export type NarrativeSource = (typeof NARRATIVE_SOURCE)[keyof typeof NARRATIVE_SOURCE];
 
-/** The operational material Everything adds, kept OUT of the schedule.
- *  Beside each event it would wreck scanning and make the privacy state ambiguous;
- *  as its own block a reader can see exactly what was published (ADR-0213 §4). */
+/**
+ * **The trip's fixed points, five lines above the seventy-nine** (owner, 2026-08-30:
+ * _"Maybe these sharings should have sections for important stuff, like flights,
+ * reservations etc."_).
+ *
+ * Not a tab — ADR-0004 forbids one and the day spine stays the spine — and not a second
+ * schedule. It is the answer to what a reader looks for first and what they screenshot:
+ * the flights, the car, the nights, the booked tours. Derived, never authored: a row is
+ * here exactly when its event is hard (ADR-0011) or a booking backs it.
+ *
+ * **At every level, including Summary.** These are the facts a Summary reader most needs
+ * and they carry no address, no code and no exact clock — a date and what the thing is.
+ */
+export const sharedCommitmentSchema = z.strictObject({
+  bookingType: bookingTypeSchema,
+  title: z.string(),
+  /** The second line — a route's waypoint, a stay's town. Absent where there is nothing
+   *  true to add; a guess in this slot is worse than a gap. */
+  detail: z.string().optional(),
+  date: dateOnlySchema,
+  /** A stay spans nights, so it names both ends. Absent for a point in time. */
+  endDate: dateOnlySchema.optional(),
+  /** Which day to jump to. An ordinal rather than a date because the reader page's anchors
+   *  are ordinals, and a date would make the renderer look the day up to find out. */
+  dayOrdinal: z.number().int().positive(),
+  /** **The operational material of a commitment that has no row of its own** — which is
+   *  every stay, since a stay became the day's frame rather than an event in its afternoon.
+   *  Its confirmation code and the note about which gate to use would otherwise have been
+   *  lifted out of the schedule with it and dropped, and this block is where a reader looks
+   *  for a hotel anyway. Same toggles, same gate. */
+  ops: z.array(sharedOpSchema).optional(),
+});
+export type SharedCommitment = z.infer<typeof sharedCommitmentSchema>;
+
+/**
+ * **What is attached to nothing** — and, since ADR-0213's 2026-08-30 amendment, only that.
+ *
+ * This used to carry every booking, note, task and file in the trip as four flat lists at
+ * the foot of the document. Everything with a host now travels on its host (`SharedOp`),
+ * so what is left here is the material that genuinely belongs to the trip rather than to
+ * any one moment in it: the packing list, the group's own reminders, a document nobody
+ * attached. That is a real category and it deserves a real name in each renderer —
+ * `לקראת הנסיעה`, not `פרטים נוספים`.
+ *
+ * **`notesAndTasks` is also where a privacy defect lived.** The share sheet promises
+ * `רק תוכן שמחובר למסלול` and `buildAppendix` queried `where: { tripId }` with no linkage
+ * filter, so a trip's every note was published under a control that said it would not be.
+ * Splitting attached from unattached is what makes that promise true rather than a caption.
+ */
 export const sharedAppendixSchema = z.strictObject({
-  bookingSecrets: z
-    .array(z.strictObject({ title: z.string(), lines: z.array(z.string()) }))
-    .optional(),
   notesAndTasks: z
     .array(z.strictObject({ title: z.string(), lines: z.array(z.string()) }))
     .optional(),
@@ -451,6 +606,9 @@ export const sharedItinerarySchema = z.strictObject({
     summary: z.string(),
   }),
   days: z.array(sharedDaySchema),
+  /** Empty for a trip with nothing booked, which is a real state and not an error — a
+   *  renderer draws no block rather than an empty one. */
+  commitments: z.array(sharedCommitmentSchema),
   appendix: sharedAppendixSchema.optional(),
 });
 export type SharedItinerary = z.infer<typeof sharedItinerarySchema>;
