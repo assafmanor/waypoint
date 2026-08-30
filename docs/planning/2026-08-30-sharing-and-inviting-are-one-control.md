@@ -125,3 +125,32 @@ if a device pass finds the card still tight.
 The general lesson is the one the mockup skill exists for: **the reported symptom named the
 newest thing on the card, and the newest thing was not the biggest.** Measuring all three
 tenants took one render and changed what gets built.
+
+## The seventh, round two — and the owner overruled both halves
+
+v1's recommendation was "move the chip into the meta line, keep the share visible". The owner
+rejected it: _"I don't want all rows to have the share icon. I think that a long press … Also
+the trip state (in X days / finished) should be more prominent, no?"_ — plus the answer to the
+discoverability objection: _"the share icon is visible from inside the trip so it's not the
+worst thing"_.
+
+Reading the code before drawing v2 is what settled it, and it settled it in the owner's
+favour twice over. **`lib/useHoldToOpen.ts` already exists**, from ADR-0202's 2026-08-22
+amendment, and its docblock opens with the owner's own words from that session about a long
+press on a note. Its justification is the same trade being made here — a hold _"costs no
+pixels, which is the reason a fourth mark in the row's trailing slot was not the answer"_ —
+under the rule that a hold is _"a shortcut, never the only way"_, paid for by a visible twin.
+The twin here is the trip header's share, which is exactly the argument the owner made
+unprompted. So the proposal was not a new gesture needing a case; it was the app's third
+holdable thing.
+
+The one dissent v2 keeps is the slide-out drawer, and **the render is what made that case
+rather than the reasoning**: with the drawer open, the card is pushed far enough that the
+trip's flag leaves the screen — the card's fastest recognition cue, and the shared element the
+trip handoff flies. That cost was not visible from the description, and it is the kind of
+thing this format exists to find.
+
+The lesson worth keeping is about the shape of the disagreement. v1 was measured and its
+numbers were right; what it got wrong was treating "make the state quieter" as the obvious
+consequence of "the row is too tight", when the state is the fact the row is _for_. The
+measurement told us where the pixels were, not what to spend them on.

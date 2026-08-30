@@ -29,37 +29,43 @@ ADR-0024 made the trip switcher a **sheet** ("not a route") and, with ADR-0021, 
 
 **5. Not a dashboard, and no board.** The All-trips page is a navigation list, not a lobby of rich cards. Nothing is "live" on it (a live trip would have opened directly), so it carries **no departure board** — the board stays inside a trip, keeping the "board = the trip is speaking" scarcity (ADR-0028).
 
-## Amendment — a third control on the card, and what it costs (2026-08-30)
+## Amendment — a third control on the card, and the gesture that pays for it (2026-08-30)
 
 ADR-0213 put a share action on every All Trips card. The owner reported the consequence:
 _"The share icon is taking much space and is causing a line overflow. Perhaps we need a long
-click instead?"_ Drawn and measured in
-[`mockups/the-trip-card-has-room-for-one-more-control-v1.html`](../../mockups/the-trip-card-has-room-for-one-more-control-v1.html).
+click instead?"_ Measured in
+[`mockups/the-trip-card-has-room-for-one-more-control-v1.html`](../../mockups/the-trip-card-has-room-for-one-more-control-v1.html);
+decided in [v2](../../mockups/the-trip-card-has-room-for-one-more-control-v2.html).
 
-**§1 · The measurement, and it reorders the candidates.** Three fixed tenants precede any
-content on the card: the flag, the status chip, and the share's reserved column. At 360px the
-shipped card leaves `.main` at **108px**, with the meta on **three** lines. Deleting the share
-outright returns it to 150px. Moving the **chip** returns it to **196px** — more than deleting
-the share, and more than the card had before the share was ever added, because the chip's
-bordered box was always the larger tenant.
+**§1 · The share leaves the row for a hold.** Not a new gesture: `lib/useHoldToOpen.ts`
+already exists (ADR-0202's 2026-08-22 amendment) for the same trade in the same words — it
+_"costs no pixels, which is the reason a fourth mark in the row's trailing slot was not the
+answer"_ — under the same rule, that a hold is _"a shortcut, never the only way"_ and is paid
+for by a visible twin elsewhere. The twin here is the trip header's share control, which is
+what makes the gesture affordable on this surface. The hook already owns the two hard parts:
+the `selectstart` guard, and swallowing the click that lands on release.
 
-**§2 · The status becomes a fact in the line of facts.** `בעוד 12 ימים` is a countdown the
-dates beside it genuinely do not give at a glance, so it keeps its words — but not a bordered
-box in the row's widest slot. It joins the meta as another `·`-separated fact. The cost is
-real and stated: the status stops being scannable in one glance and reads at the weight of its
-neighbours.
+**§2 · The countdown becomes the card's loud element.** With the share gone the trailing slot
+is free, and `בעוד 12 ימים` is the one fact that varies _inside_ its section — the heading
+above already says the state, so what discriminates between two cards is how soon. It spends
+**amber**, which the colour budget files countdowns under, at the recipe `.hdr-anchor.is-back`
+already uses: a tinted ground with `--amber-deep` for edge and ink, because `--amber` as text
+on paper is 1.31:1 and is a fill, never ink. No glow and no pulse — the card stays a nav card
+and does not start reading as the rationed board.
 
-**§3 · The action stops overlaying the card and takes a column.** It floats in the same grid
-cell today, which is why the card reserves 56px so a title cannot run under it. In its own
-column the card simply ends before it, and the reserve drops to the ordinary 14px.
+**§3 · `הסתיים` is deleted, not promoted.** Under a `הסתיים` heading, over dates already in
+the past, it repeats its own heading and distinguishes no two cards. Deleting it returns the
+content column to 238px at 360px with the meta on **one** line and the card at 74px — the
+largest single win available, and it applies to most of the list.
 
-**Rejected: the long press.** It is the cheapest in space and the most expensive in discovery.
-This app has already spent that gesture on drag (`lib/useHoldToDrag.ts`); nothing on All Trips
-drags, so there is no collision today, but a second meaning for one gesture on a surface with
-no other long-press affordance and no hint that one exists is a control most people never
-find. §2 + §3 give back more width than it does, so it buys nothing it costs less than. It
-remains the right fallback if a device pass finds the card still tight — and would then need a
-first-run hint.
+**Rejected: the slide-out drawer.** The owner asked for the row to move and the share to be
+revealed beside it. Nothing in this app opens a row sideways, so it is a new mechanism for one
+button — needing its own dismissal, its own back-stack layer (ADR-0090), and an answer for a
+tap outside it. `useHoldToOpen` opens a surface directly, and the surface here is the share
+sheet, which is response enough that there is no silent moment to cover. Drawing it also
+surfaced a cost nobody had named: with the drawer open the card is pushed far enough that the
+**trip's flag leaves the screen** — the card's fastest recognition cue, and the shared element
+the trip handoff flies (ADR-0140 §7).
 
 Also rejected: shrinking the control (44px is ADR-0017's floor and the saving was 6px), and
 letting the meta ellipsise rather than wrap — the first thing cut is the member count, the one
