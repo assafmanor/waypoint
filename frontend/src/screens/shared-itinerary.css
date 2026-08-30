@@ -1,0 +1,540 @@
+/* The public itinerary reader (ADR-0213), ported from the proposal block of
+   mockups/a-shared-itinerary-is-organized-by-the-day-v3.html.
+
+   Only the layout delta lives here: every colour, radius, type ramp and spacing value is a
+   token from styles/tokens.css, which is what keeps this page in the same design system as
+   the app despite being the one screen a stranger sees. The mockup's review chrome
+   (`.mk-*`, the phone frame, the measurement table) is deliberately not ported.
+
+   The hero keeps its dark trip identity in BOTH themes — it is always-dark chrome, so its
+   ink is the theme-fixed `--on-dark-*` ramp (ADR-0158 §3), not a re-mapping fill. */
+
+.sh-page {
+  min-height: 100%;
+  background: var(--screen);
+  color: var(--ink);
+}
+
+.sh-boot {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: var(--screen);
+  color: var(--muted);
+}
+
+.sh-public-bar {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 16px;
+  border-block-end: 1px solid color-mix(in srgb, var(--on-dark) 10%, transparent);
+  background: var(--indigo);
+  color: var(--on-dark-dim);
+  font-size: var(--text-micro);
+}
+
+.sh-brand,
+.sh-freshness {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.sh-brand {
+  color: var(--on-dark-strong);
+  font-weight: 700;
+}
+
+.sh-brand-mark {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  font-family: var(--font-head);
+}
+
+.sh-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.sh-freshness.stale .sh-live-dot {
+  background: var(--muted);
+}
+
+.sh-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 21px 18px 22px;
+  background:
+    radial-gradient(circle at 8% 14%, rgba(44, 156, 144, 0.22), transparent 27%),
+    linear-gradient(158deg, var(--indigo), var(--board));
+  color: var(--on-dark);
+}
+
+.sh-kicker {
+  margin-block-end: 6px;
+  color: var(--on-dark-dim);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.sh-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--on-dark-strong);
+  font: 27px/1.12 var(--font-head);
+}
+
+.sh-title-mark {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 23px;
+}
+
+.sh-dates {
+  margin-block-start: 8px;
+  color: var(--on-dark-dim);
+  font: 500 12px/1.4 var(--font-mono);
+}
+
+.sh-route {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-block-start: 15px;
+  overflow: hidden;
+  color: var(--on-dark-dim);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.sh-route-stop {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 7px;
+}
+
+.sh-route-stop strong {
+  overflow: hidden;
+  color: var(--on-dark-strong);
+  text-overflow: ellipsis;
+}
+
+.sh-route-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border: 1px solid var(--teal);
+  border-radius: 50%;
+}
+
+.sh-route-line {
+  height: 1px;
+  min-width: 12px;
+  flex: 1;
+  background: color-mix(in srgb, var(--teal) 55%, transparent);
+}
+
+.sh-story {
+  margin: -1px 14px 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-block-start: 0;
+  border-radius: 0 0 15px 15px;
+  background: var(--card);
+}
+
+.sh-story strong {
+  display: block;
+  font: 17px/1.3 var(--font-head);
+}
+
+.sh-story p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: var(--text-caption);
+  line-height: 1.55;
+}
+
+.sh-stale {
+  margin: 10px 14px 0;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+
+.sh-days {
+  padding: 14px 14px 24px;
+}
+
+.sh-days-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 3px 10px;
+}
+
+.sh-days-head h2 {
+  margin: 0;
+  font: 19px var(--font-head);
+}
+
+.sh-days-head span {
+  color: var(--muted);
+  font-size: var(--text-micro);
+}
+
+.sh-day {
+  margin-block-end: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card);
+}
+
+.sh-day.open {
+  box-shadow: var(--elevation-raised);
+}
+
+.sh-day-head {
+  width: 100%;
+  min-height: 76px;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 44px;
+  align-items: stretch;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sh-day-head:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: -3px;
+}
+
+.sh-day-date {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  border-inline-end: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ink) 4%, var(--card));
+}
+
+/* Amber marks the open day because a day is a span of TIME — the one thing amber is for
+   (design-language.md, ADR-0028). It is not decoration and appears nowhere else here. */
+.sh-day.open .sh-day-date {
+  background: color-mix(in srgb, var(--amber) 11%, var(--card));
+}
+
+.sh-day-date strong {
+  font: 22px/1 var(--font-head);
+}
+
+.sh-day-date span {
+  margin-block-start: 4px;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.sh-day-copy {
+  min-width: 0;
+  align-self: center;
+  padding: 9px 11px;
+}
+
+.sh-day-copy strong,
+.sh-day-copy span {
+  display: block;
+}
+
+.sh-day-copy strong,
+.sh-day-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sh-day-copy span {
+  margin-block-start: 3px;
+  color: var(--muted);
+  font-size: var(--text-micro);
+}
+
+.sh-caret {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.sh-caret .icon {
+  transition: transform var(--t-quick) var(--ease-standard);
+}
+
+.sh-day.open .sh-caret .icon {
+  transform: rotate(180deg);
+}
+
+.sh-day-body {
+  padding: 7px 11px 4px;
+  border-block-start: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper) 34%, var(--card));
+}
+
+.sh-part {
+  margin-block-end: 8px;
+}
+
+.sh-part-head {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 1px 3px 5px;
+  color: var(--amber-deep);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.sh-part-head::after {
+  content: '';
+  height: 1px;
+  flex: 1;
+  background: color-mix(in srgb, var(--amber) 28%, var(--line));
+}
+
+.sh-part-mark {
+  min-width: 20px;
+  font-size: 16px;
+  text-align: center;
+}
+
+.sh-summary-row {
+  min-height: 38px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  margin-block-end: 4px;
+  padding: 5px 8px;
+  border-radius: 10px;
+  background: var(--card);
+}
+
+.sh-mark {
+  font-size: 17px;
+  text-align: center;
+}
+
+.sh-summary-row strong {
+  overflow: hidden;
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sh-event {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 7px;
+  margin-block-end: 7px;
+  padding: 7px 8px;
+  border-radius: 10px;
+  background: var(--card);
+}
+
+/* A hard event is a real commitment (ADR-0011). It reads firmer here for the same reason
+   it does in the app: the reader must be able to tell what cannot move. */
+.sh-event.hard {
+  border-inline-start: 3px solid var(--amber-deep);
+}
+
+.sh-event-glyph {
+  font-size: 17px;
+  text-align: center;
+}
+
+.sh-event-main {
+  min-width: 0;
+}
+
+.sh-event-main > strong {
+  display: block;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sh-place-line {
+  display: block;
+  margin-block-start: 3px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--text-micro);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sh-time {
+  color: var(--amber-deep);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+/* 44px, per ADR-0017's touch floor — the only interactive thing inside a day body. */
+.sh-map-link {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--teal);
+  font: 700 var(--text-caption) var(--font-body);
+  text-decoration: none;
+}
+
+.sh-journey {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 10px 7px 28px;
+  padding-inline-start: 14px;
+  border-inline-start: 1px dashed var(--teal);
+  color: var(--muted);
+  font-size: var(--text-micro);
+}
+
+.sh-appendix {
+  padding: 0 14px 20px;
+}
+
+.sh-appendix h2 {
+  margin: 0 3px 10px;
+  font: 17px var(--font-head);
+}
+
+.sh-private {
+  margin-block-end: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.sh-private > strong {
+  display: block;
+  margin-block-end: 4px;
+  font-size: var(--text-caption);
+}
+
+.sh-private p {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: var(--text-caption);
+  line-height: 1.5;
+}
+
+.sh-private p strong {
+  color: var(--ink);
+}
+
+.sh-private a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--teal);
+  text-decoration: none;
+}
+
+.sh-footer {
+  padding: 19px 16px 25px;
+  border-block-start: 1px solid var(--line);
+  text-align: center;
+}
+
+.sh-footer strong {
+  display: block;
+  font: 16px var(--font-head);
+}
+
+.sh-footer span {
+  display: block;
+  margin-block-start: 4px;
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+
+.sh-footer a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  margin-block-start: 8px;
+  color: var(--ink);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.sh-unavailable {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: var(--screen);
+  text-align: center;
+}
+
+.sh-unavailable-mark {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 14px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--card);
+  font-size: 24px;
+}
+
+.sh-unavailable h2 {
+  margin: 0 0 7px;
+  font: 21px var(--font-head);
+}
+
+.sh-unavailable p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}

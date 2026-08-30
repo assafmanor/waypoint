@@ -3050,6 +3050,106 @@ export const t = {
     windowCap: 'סוף החלון',
     windowFromCap: 'תחילת החלון',
   },
+  // **Itinerary sharing** (ADR-0213). Two readerships in one section: `owner` is written for
+  // the person deciding what to publish, `public` for a stranger holding a link who has no
+  // account and never will — which is why nothing under `public` mentions signing in until
+  // the invitation at the very bottom of the page.
+  share: {
+    // The control, in the trip header and on every All Trips card.
+    entry: 'שיתוף',
+    entryFor: (tripName: string) => `שיתוף ${tripName}`,
+    owner: {
+      title: 'שיתוף המסלול',
+      lead: 'כמה מהמסלול יופיע?',
+      levels: {
+        summary: 'תקציר',
+        full: 'לו״ז מלא',
+        everything: 'הכל',
+      },
+      // The consequence of the choice, said plainly. This is the only place a reader is
+      // told what stays private, so it names the exclusions rather than implying them.
+      scope: {
+        summary: {
+          title: 'התמונה הגדולה',
+          detail: 'חלקי יום ועיקרי המסלול, בלי שעות מדויקות וכתובות',
+        },
+        full: {
+          title: 'כל הלו״ז, בלי סודות',
+          detail: 'שעות, מקומות, כתובות ונסיעות, בלי קודים ופרטים אישיים',
+        },
+        everything: {
+          title: 'הלו״ז המלא, עם מה שתבחרו',
+          detail: 'כל האפשרויות הרגישות מתחילות כבויות',
+        },
+      },
+      privateRows: {
+        bookingSecrets: { title: 'סודות הזמנה', detail: 'קודי אישור, חדר ו-WiFi' },
+        notesAndTasks: { title: 'פתקים ומשימות', detail: 'רק תוכן שמחובר למסלול' },
+        travelerIdentity: { title: 'זהות הנוסעים', detail: 'שמות בלבד, אף פעם לא אימייל' },
+        documents: { title: 'כרטיסים והזמנות', detail: 'בחירה נפרדת של כל קובץ' },
+      },
+      noDocuments: 'אין עדיין קבצים בטיול',
+      liveNote: 'לינק חי שמתעדכן עם הטיול',
+      actions: { liveLink: 'שיתוף לינק חי', pdf: 'שיתוף PDF', download: 'הורדה' },
+      pdf: {
+        preparing: 'מכינים את ה-PDF',
+        preparingDetail: 'המסלול נשאר פתוח בזמן ההכנה',
+        ready: 'ה-PDF מוכן',
+        failed: 'לא הצלחנו להכין את הקובץ. נסו שוב.',
+      },
+      copied: 'הלינק הועתק',
+      manage: 'ניהול הלינק',
+      rotate: 'החלפת הלינק',
+      rotateTitle: 'להחליף את הלינק?',
+      rotateBody: 'הלינק הקודם יפסיק לעבוד מיד, גם אצל מי שכבר קיבל אותו.',
+      rotateConfirm: 'החלפה',
+      stop: 'הפסקת שיתוף',
+      stopTitle: 'להפסיק לשתף?',
+      stopBody: 'הלינק יפסיק לעבוד. תוכלו לשתף שוב מתי שתרצו, עם לינק חדש.',
+      stopConfirm: 'הפסקה',
+      // A peer may send an existing link but not change what it shows.
+      peerNote: 'רק מנהלי הטיול יכולים לשנות מה הלינק מראה.',
+      notShared: 'הטיול עדיין לא משותף.',
+      failed: 'משהו השתבש. נסו שוב.',
+    },
+    public: {
+      brand: 'Travelive',
+      kicker: 'מסלול חי',
+      live: 'עודכן עכשיו',
+      stale: 'לא הצלחנו לעדכן',
+      staleBody: 'מוצגת הגרסה האחרונה שנטענה. ננסה לעדכן שוב כשהחיבור יחזור.',
+      days: 'המסע יום אחר יום',
+      schedule: 'הלו״ז',
+      daysHint: 'כל יום לפי חלקיו',
+      map: 'פתיחה במפה',
+      // The counts sentence the deterministic narrative deliberately does NOT send from
+      // the server (it ships data, this ships the words around it).
+      counts: (days: number, events: number) =>
+        `${days} ${days === 1 ? 'יום' : 'ימים'} · ${events} ${events === 1 ? 'אירוע' : 'אירועים'} במסלול`,
+      journey: (minutes: number, km: number) => `${minutes} דק׳ · ${km} ק״מ`,
+      appendix: {
+        title: 'פרטים נוספים',
+        bookingSecrets: 'פרטי הזמנה שנבחרו',
+        notesAndTasks: 'פתקים ומשימות',
+        travelers: 'הנוסעים',
+        documents: 'קבצים שנבחרו',
+      },
+      unavailableTitle: 'המסלול לא זמין',
+      unavailableBody: 'יכול להיות שהלינק בוטל או שהטיול כבר לא קיים. בקשו לינק חדש ממי ששלח.',
+      loading: 'טוען את המסלול…',
+      inviteTitle: 'גם אתם מתכננים טיול?',
+      inviteBody: 'Travelive מחבר את הלו״ז, המקומות והמסמכים במקום אחד.',
+      inviteCta: 'תכננו טיול משלכם',
+    },
+    dayparts: {
+      morning: 'בוקר',
+      noon: 'צהריים',
+      afternoon: 'אחר הצהריים',
+      evening: 'ערב',
+      night: 'לילה',
+      flexible: 'גמיש',
+    },
+  },
   // Trip settings (ADR-0039): admin-governed. Mode-neutral chrome.
   settings: {
     title: 'הגדרות הטיול',

@@ -1572,7 +1572,19 @@ export const GLYPH = {
    *  for people the page is not allowed to show. */
   anonAvatar: '🙂',
   wave: '👋',
-} as const;
+  /** **The parts of a shared day** (ADR-0213). Content, not controls: each marks a section
+   *  of somebody's actual schedule and nothing here is tappable, which is the line ADR-0138
+   *  draws. Named here rather than typed into the reader's JSX so the guard needs no
+   *  exemption — and keyed by `ShareDaypart`, so a seventh part is one line. */
+  daypart: {
+    morning: '🌅',
+    noon: '☀️',
+    afternoon: '🌤️',
+    evening: '🌇',
+    night: '🌙',
+    flexible: '◌',
+  },
+} as const satisfies Record<string, unknown>;
 
 /** Control icons — every one of these is drawn by `<Icon name={…} />`. The value
  *  IS the `IconName`, so a call site cannot accidentally render it as text. */

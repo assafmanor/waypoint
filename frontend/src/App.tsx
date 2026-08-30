@@ -86,6 +86,9 @@ const CreateTrip = lazyRoute(() =>
 const JoinTrip = lazyRoute(() =>
   import('./screens/JoinTrip').then((m) => ({ default: m.JoinTrip })),
 );
+const SharedItinerary = lazyRoute(() =>
+  import('./screens/SharedItinerary').then((m) => ({ default: m.SharedItinerary })),
+);
 const TripSettings = lazyRoute(() =>
   import('./screens/TripSettings').then((m) => ({ default: m.TripSettings })),
 );
@@ -788,11 +791,19 @@ function RootSurface() {
 // its preview is a public endpoint and must render before any auth check —
 // the screen's own "Continue with Google" CTA is what saves the intent and
 // starts sign-in, not this eager gate.
+//
+// `/s/<code>` is exempt for a stronger reason (ADR-0213): its reader has no account and
+// never will. Sending them to /login would not defer the screen, it would replace it.
+/** **Paths that must render for somebody with no account.** One predicate rather than a
+ *  growing `startsWith` chain inside the gate: /join defers sign-in, /s never asks for it. */
+export const publicAppPath = (pathname: string): boolean =>
+  pathname === '/login' || pathname.startsWith('/join/') || pathname.startsWith('/s/');
+
 export function AuthGate() {
   const { status } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const isJoinRoute = location.pathname.startsWith('/join/');
+  const isPublicRoute = publicAppPath(location.pathname);
   // Whether a saved deep-link intent is still waiting to be resolved. Kept in
   // React state (not a bare hasIntent() read at render time) so that *consuming*
   // an intent always triggers a re-render that lifts this gate — even when the
@@ -805,7 +816,7 @@ export function AuthGate() {
   useEffect(() => {
     if (status === 'loading') return;
     if (status === 'anon') {
-      if (location.pathname !== '/login' && !isJoinRoute) {
+      if (location.pathname !== '/login' && !isPublicRoute) {
         saveIntent(location.pathname);
         setIntentPending(true);
         navigate('/login', { replace: true });
@@ -819,11 +830,11 @@ export function AuthGate() {
       navigate('/', { replace: true });
     }
     setIntentPending(false);
-  }, [status, location.pathname, navigate, isJoinRoute]);
+  }, [status, location.pathname, navigate, isPublicRoute]);
 
   if (status === 'loading') return <BootScreen />;
   if (status === 'anon') {
-    return location.pathname === '/login' || isJoinRoute ? <Outlet /> : <BootScreen />;
+    return location.pathname === '/login' || isPublicRoute ? <Outlet /> : <BootScreen />;
   }
   // A pending deep-link intent (e.g. mid-join after OAuth's redirect to "/")
   // must not let RootSurface mount even for one render — its fetchTrips()
@@ -856,6 +867,10 @@ function AppRoutes() {
             <Route path="trips" element={<AllTripsRoute />} />
             <Route path="new" element={<CreateTrip />} />
             <Route path="join/:token" element={<JoinTrip />} />
+            {/* The anonymous itinerary reader (ADR-0213). Inside the gate, which lets it
+              through unauthenticated, so a signed-in owner opening their own link sees the
+              same page a stranger does. */}
+            <Route path="s/:code" element={<SharedItinerary />} />
             <Route path="trip/:id/settings" element={<TripSettingsRoute />} />
             {/* Your own settings + its picture page (ADR-0133). User-scoped, so
               deliberately NOT nested under a trip — the thing they edit is you, and
