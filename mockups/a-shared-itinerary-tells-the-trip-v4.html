@@ -5029,6 +5029,11 @@ textarea {
       // column. FSI resolves direction for the RUN and leaves the block RTL, so
       // the alignment is inherited. Every renderer in this file uses it.
       const fsi = (s) => `⁨${s}⁩`;
+      // `ltrIsolate` is for a run Latin BY CONSTRUCTION; a duration is a number
+      // plus a HEBREW unit, so `measure` islands only the number (`lib/bidi.ts`).
+      // Wrapping the whole string reorders the unit — caught rendering the A4
+      // twin of this frame, where `14ש׳ 50דק׳` came out `שׂ50דק׳ 14`.
+      const bidiMeasure = (value, unit) => `${lri(value)} ${unit}`; // `measure` in lib/bidi.ts
       const ARROW = `⁦ ← ⁩`; // NARRATIVE arrow, isolated — `ROUTE_ARROW`
 
       /* ══ THE TRIP. Owner's איסלנד 26', 12 days, 79 events. Only the days the
@@ -5187,7 +5192,7 @@ textarea {
         journey: {
           from: 'תל אביב',
           to: 'רייקיאוויק',
-          total: '14 שעות 50 דק׳',
+          total: ['14', 'שעות 50 דק׳'],
           legs: [
             { t: `תל אביב${ARROW}וינה`, code: 'TLV → VIE', start: '14:30', end: '18:15' },
             { layover: 'המתנה בוינה · 45 דקות' },
@@ -5373,7 +5378,7 @@ textarea {
 
       const trek = (j) => `
         <div class="sh-trek">
-          <div class="sh-trek-head">${icon('flight')}<span dir="auto">${j.from}${ARROW}${j.to}</span><em>${lri(j.total)}</em></div>
+          <div class="sh-trek-head">${icon('flight')}<span dir="auto">${j.from}${ARROW}${j.to}</span><em>${bidiMeasure(j.total[0], j.total[1])}</em></div>
           ${j.legs
             .map((l) =>
               l.layover

@@ -198,6 +198,23 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
          that prints instead of folding.
          ══════════════════════════════════════════════════════════════════════ */
 
+      /* **THE TIME COLUMN HOLDS A RANGE, OR IT WRAPS** (owner, 2026-08-30: _"the
+         times wrap to two lines which also looks bad"_). The shipped column is
+         38px and `14:00–14:30` measures 53px of ink at `600 8px JetBrains Mono`
+         — so every hard row broke its range across two lines, which is why a
+         flight's arrival read as a stray second number under its departure.
+
+         56px, uniformly, and `nowrap` so it can never come back. It costs 18px
+         of a 288px copy column on rows that only need 24px for their start —
+         and buys every title on the card landing at the same x, which at this
+         density is the difference between a schedule and a list. */
+      .pdf-event {
+        grid-template-columns: 56px minmax(0, 1fr);
+      }
+      .pdf-event-time {
+        white-space: nowrap;
+      }
+
       /* §1 · the masthead says what the trip IS. `.pdf-route-mini` is deleted,
          not restyled: a capped sample of stop names is not a route, on either
          renderer. */
@@ -463,6 +480,23 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
         transform: scale(var(--paper-scale));
         transform-origin: top right;
       }
+      /* **THE `before` FRAMES RENDER THE SAME SHIPPED CLASSES**, so every rule in
+         the proposed block above was repainting them too — the measurement table
+         read `270 ← 270px` for a column the proposal widens by 18px, and the
+         day header was getting a three-column grid with two children in it. This
+         restores the SHIPPED values under a chrome class rather than narrowing
+         the proposal, so the block above stays exactly the diff that ships and
+         the frame below it stays exactly what production draws today. */
+      .mk-today .pdf-event {
+        grid-template-columns: 38px minmax(0, 1fr);
+      }
+      .mk-today .pdf-event-time {
+        white-space: normal;
+      }
+      .mk-today .pdf-day-head {
+        grid-template-columns: 48px minmax(0, 1fr);
+      }
+
       /* A cropped detail, at full size, for the sections whose argument is a
          row and not a page. */
       .crop {
@@ -654,6 +688,12 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
       // U+2068/2069 — `autoIsolate`. First-strong, so a Hebrew value still lays
       // out RTL; see §6 for why this replaces `dir="auto"` on a value block.
       const fsi = (s) => `⁨${s}⁩`;
+      // **`measure`, and NOT `lri` over the whole string.** `ltrIsolate` is for a
+      // run that is Latin BY CONSTRUCTION — a time, a code, a signed number. A
+      // duration is a number and a HEBREW unit, so forcing the whole thing LTR
+      // reorders the Hebrew: `14ש׳ 50דק׳` rendered `שׂ50דק׳ 14` in this file's
+      // first pass. The number is the island; the unit stays in the RTL flow.
+      const bidiMeasure = (value, unit) => `${lri(value)} ${unit}`; // `measure` in lib/bidi.ts
       const ARROW = `⁦ ← ⁩`;
       let LEVEL = 'full';
       let SHOT = 'on';
@@ -779,7 +819,7 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
         journey: {
           from: 'תל אביב',
           to: 'רייקיאוויק',
-          total: '14ש׳ 50דק׳',
+          total: ['14', 'ש׳ 50 דק׳'],
           legs: [
             { t: `תל אביב${ARROW}וינה`, code: 'TLV → VIE', s: '14:30', e: '18:15' },
             { wait: 'המתנה בוינה · 45 דקות' },
@@ -812,6 +852,14 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
           </span>
         </div>`;
 
+      /** **A range only where the end is a commitment** (owner, 2026-08-30: exact
+       *  clocks for hard pins and bookings, a start for everything else). A
+       *  flight's arrival is a fact you plan around; a viewpoint's 14:30 is when
+       *  you happened to type that you would leave, and printing it as a window
+       *  tells the reader it means something it does not. Summary carries no
+       *  clock at all — that is ADR-0213 §1, unchanged. */
+      const eventTime = (e, hard) => (LEVEL === 'summary' ? '' : hard ? `${e.s}–${e.e}` : e.s);
+
       const newEvent = (e) => {
         if (e.stay) return ''; // a stay is the day's frame now
         const hard = Boolean(e.kind);
@@ -819,7 +867,7 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
         return `
         ${e.travel ? `<div class="pdf-journey">${e.travel}</div>` : ''}
         <div class="pdf-event${hard ? ' hard' : ''}">
-          <span class="pdf-event-time">${lri(LEVEL === 'summary' ? '' : `${e.s}–${e.e}`)}</span>
+          <span class="pdf-event-time">${lri(eventTime(e, hard))}</span>
           <span class="pdf-event-copy">
             <strong>${fsi(e.t)}</strong>
             ${where}
@@ -831,7 +879,7 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
 
       const trek = (j) => `
         <div class="pdf-trek">
-          <div class="pdf-trek-head"><span>✈</span><span dir="auto">${j.from}${ARROW}${j.to}</span><em>${lri(j.total)}</em></div>
+          <div class="pdf-trek-head"><span>✈</span><span dir="auto">${j.from}${ARROW}${j.to}</span><em>${bidiMeasure(j.total[0], j.total[1])}</em></div>
           ${j.legs
             .map((l) =>
               l.wait
@@ -914,11 +962,11 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
       // so the first render of this table reported every pair as `x ← x` and
       // looked like a design that changed nothing.
       const crop = (tag, inner) =>
-        `<div data-frame="${tag[0]}"><div class="tag ${tag[0]}">${tag[1]}</div><div class="crop">${inner}</div></div>`;
+        `<div data-frame="${tag[0]}"><div class="tag ${tag[0]}">${tag[1]}</div><div class="crop${tag[0] === 'before' ? ' mk-today' : ''}">${inner}</div></div>`;
 
       const paint = () => {
         document.querySelector('#s1').innerHTML =
-          `<div data-frame="before"><div class="tag before">היום</div>${paper(oldMast())}</div>` +
+          `<div data-frame="before" class="mk-today"><div class="tag before">היום</div>${paper(oldMast())}</div>` +
           `<div data-frame="after"><div class="tag after">בהצעה</div>${paper(newMast())}</div>`;
 
         const facts = (rows) =>
@@ -1030,6 +1078,29 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
           ['תמונת היום', raw('#s3 [data-frame=after] .pdf-shot') + 'px', 'מול 116px של פס ברוחב מלא'],
           ['יום 9 · כל הכרטיס', `${raw('#s3 [data-frame=before] .pdf-day')} ← ${raw('#s3 [data-frame=after] .pdf-day')}px`, 'אותן עצירות, שתי צורות'],
           ['שורת אירוע', raw('#s3 [data-frame=after] .pdf-event') + 'px', 'קריאות בהדפסה'],
+          [
+            'תא השעה · גובה ורוחב',
+            (() => {
+              const cell = document.querySelector('#s3 [data-frame=after] .pdf-event.hard .pdf-event-time')
+                ?? document.querySelector('#s4 [data-frame=after] .pdf-event-time');
+              if (!cell) return '-';
+              const b = cell.getBoundingClientRect();
+              const line = parseFloat(getComputedStyle(cell).lineHeight) || b.height;
+              return `${Math.round(b.height)}px · ${Math.round(b.width)}px · ${Math.round(b.height / line)} שורות`;
+            })(),
+            'טווח = 53px דיו · שורה אחת, תמיד',
+          ],
+          [
+            'עמודת הטקסט · מה שילמה',
+            `${raw('#s3 [data-frame=before] .pdf-event-copy') === null ? '-' : ''}${(() => {
+              const w = (sel) => {
+                const el = document.querySelector(sel);
+                return el ? Math.round(el.getBoundingClientRect().width) : null;
+              };
+              return `${w('#s3 [data-frame=before] .pdf-event-copy')} ← ${w('#s3 [data-frame=after] .pdf-event-copy')}px`;
+            })()}`,
+            '18px, כדי שכל הכותרות יתחילו באותו x',
+          ],
           ['שורת ההמתנה', raw('#s4 .pdf-layover') + 'px', 'חדשה · לא הייתה בכלל'],
           ['המסע · היום מול ההצעה', `${raw('#s4 [data-frame=before] .pdf-day')} ← ${raw('#s4 [data-frame=after] .pdf-day')}px`, 'שני חלקי יום מול בלוק אחד'],
           [
