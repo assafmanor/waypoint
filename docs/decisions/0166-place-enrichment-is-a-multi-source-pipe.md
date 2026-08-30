@@ -497,6 +497,25 @@ Session 248 §2 said the only honest version of this rule "would have to read th
 
 **And the miss now leaves evidence.** Every route records the candidates it saw, each one's similarity, distance and confidence, and the guard that refused it; on a total miss the provider logs the lot at `debug`. Two sessions have been spent reconstructing that by hand from the live APIs. The next one reads a log line.
 
+### 23. Amendment (2026-08-30) — two fields the matcher was already resolving and throwing away
+
+A sharing session (ADR-0213's fourth pass) needed two things this pipe could answer and did not store: **what a place IS** and **where it is**. Both are claims on the item the identity pass has already matched, and one of them the matcher was literally computing and discarding.
+
+**`kind` (`P31`, "instance of") and `region` (`P131`, "located in the administrative territorial entity")** join `ENRICHMENT_FIELD`, `TEXT_VARIANT_FIELDS`, `FIELD_SOURCE_PRECEDENCE` (Wikidata alone — Google has a types array, but §2's cache rule means we may not keep it), and the stored payload. They pass §1's test as cleanly as the airport pair did: two trips cannot legitimately disagree that Skógafoss is a waterfall in Suðurland.
+
+- **`kind` is not new work, it is a value being thrown away.** `classNouns` resolves `P31` labels on every candidate so `descriptorCouldRescue`/`nameCanRefuse` can ask whether it is the right kind of thing, memoizes 256 of them, and keeps none. Storing it costs a key in a `Json` column that already exists.
+- **`region` is the answer to a backlog line that had been written off.** "The day's `לינה ב…` could name the town, and there is no town to name" assumed a locality column or an address parse. `P131` answers structurally, on an entity read already being made, and does not break in the next country the way an address-format guess does.
+- **Both are variants maps** (`TEXT_VARIANT_FIELDS`), for §18's reason: they are nouns a person reads, and this app is Hebrew-first.
+- **TTL 365 days, miss TTL 180.** §18's argument, unchanged: a waterfall does not become a museum, and a place with no `P31` label in either language will not grow one next month.
+
+**The class guard moved, and the ordering is the whole change.** `iata`/`servedCity` are refused for a non-airport **before spending a request**, on evidence the match already carried — `wikidata.provider.spec.ts` asserts `wbgetentities` is called **zero** times for London, and the first draft of this change read the entity before the guard and turned that spec red. `kind` and `region` are questions every place can answer, so they are gated on nothing; what the two families share is the entity read, which is why `airportEntity` is now `memoizedEntity` and one place costs one read of its item plus one of each claim target.
+
+**`claimLabel` is deliberately not `servedCity`.** They are the same three lines plus one: a city's label wants its shortest common alias (`תל אביב`, not `תל אביב-יפו`), and a class noun or a region does not — `Suðurland` is not improved by aliasing, and a waterfall's noun has no alias worth preferring. Collapsing them would have made `commonName` a flag, which is how a shared helper starts meaning two things.
+
+**What the images slice needed from §7, and what it cost.** ADR-0213 prints one photo a day, gated at `MATCH_METHOD_CONFIDENCE ≥ 0.9` with a non-empty credit — a stricter bar than any read surface, because a wrong photograph on a page you hand to somebody else is not recoverable the way a wrong thumbnail in your own app is. §7's decision to hold **our own bytes at our own URL** is what makes that possible offline and in print; the A4 renderer aborts every request the page makes, so `PdfBrowserService.dayPhotoDataUrls` reads each blob through `getObject` behind the **same `isEnrichmentBlobKey` prefix check the public route makes** (§7's key-prefix guard is the access control, and a second reader of that keyspace must not weaken it), types it from the bytes with `sniffImageMimeType`, and hands the template a data URL. Bytes that are gone, or that sniff to nothing, yield no entry and the day header falls back to its no-photo columns.
+
+**Consequences of this amendment:** two new `ENRICHMENT_FIELD` members with their TTLs and precedence rows; no migration (the payload is a `Json` column and the fields are additive); one renamed private method; and one new reader of the enrichment blob keyspace, holding to the same prefix check as the first.
+
 ## Consequences
 
 - **The global cross-trip cache ADR-0112 left open is now decided** — as a _sibling_ table rather than as a change to `Place`, which is why the `Place.icon` objection recorded in the backlog does not block it. ADR-0112's own "cache vs trip entity" split is the precedent, applied once more.
