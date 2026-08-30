@@ -29,6 +29,42 @@ ADR-0024 made the trip switcher a **sheet** ("not a route") and, with ADR-0021, 
 
 **5. Not a dashboard, and no board.** The All-trips page is a navigation list, not a lobby of rich cards. Nothing is "live" on it (a live trip would have opened directly), so it carries **no departure board** — the board stays inside a trip, keeping the "board = the trip is speaking" scarcity (ADR-0028).
 
+## Amendment — a third control on the card, and what it costs (2026-08-30)
+
+ADR-0213 put a share action on every All Trips card. The owner reported the consequence:
+_"The share icon is taking much space and is causing a line overflow. Perhaps we need a long
+click instead?"_ Drawn and measured in
+[`mockups/the-trip-card-has-room-for-one-more-control-v1.html`](../../mockups/the-trip-card-has-room-for-one-more-control-v1.html).
+
+**§1 · The measurement, and it reorders the candidates.** Three fixed tenants precede any
+content on the card: the flag, the status chip, and the share's reserved column. At 360px the
+shipped card leaves `.main` at **108px**, with the meta on **three** lines. Deleting the share
+outright returns it to 150px. Moving the **chip** returns it to **196px** — more than deleting
+the share, and more than the card had before the share was ever added, because the chip's
+bordered box was always the larger tenant.
+
+**§2 · The status becomes a fact in the line of facts.** `בעוד 12 ימים` is a countdown the
+dates beside it genuinely do not give at a glance, so it keeps its words — but not a bordered
+box in the row's widest slot. It joins the meta as another `·`-separated fact. The cost is
+real and stated: the status stops being scannable in one glance and reads at the weight of its
+neighbours.
+
+**§3 · The action stops overlaying the card and takes a column.** It floats in the same grid
+cell today, which is why the card reserves 56px so a title cannot run under it. In its own
+column the card simply ends before it, and the reserve drops to the ordinary 14px.
+
+**Rejected: the long press.** It is the cheapest in space and the most expensive in discovery.
+This app has already spent that gesture on drag (`lib/useHoldToDrag.ts`); nothing on All Trips
+drags, so there is no collision today, but a second meaning for one gesture on a surface with
+no other long-press affordance and no hint that one exists is a control most people never
+find. §2 + §3 give back more width than it does, so it buys nothing it costs less than. It
+remains the right fallback if a device pass finds the card still tight — and would then need a
+first-run hint.
+
+Also rejected: shrinking the control (44px is ADR-0017's floor and the saving was 6px), and
+letting the meta ellipsise rather than wrap — the first thing cut is the member count, the one
+fact in that row that appears nowhere else on the card.
+
 ## Consequences
 
 - Supersedes the "switcher is a sheet, not a route" line of ADR-0024 §5; that section now describes the All-trips page. Routing map gains `/trips` and the live-vs-not landing branch.

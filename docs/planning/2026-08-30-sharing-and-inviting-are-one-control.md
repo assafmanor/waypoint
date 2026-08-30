@@ -82,3 +82,46 @@ inlined, so an incomplete manifest is an argument from CSS the app does not have
   belongs to events (ADR-0011), and spending it on something that is not an event teaches that
   dashed means "read-only" rather than "movable" — the same devaluation the colour budget
   forbids.
+
+---
+
+# Addendum · six more reports on the shared page, and a seventh about the card
+
+**Date:** 2026-08-30, later the same day
+
+The share feature merged that morning drew seven reports. Six were fixed in
+[ADR-0213](../decisions/0213-a-shared-trip-changes-emphasis-and-print-is-its-own-rendering.md)'s
+second amendment; the seventh became
+[`mockups/the-trip-card-has-room-for-one-more-control-v1.html`](../../mockups/the-trip-card-has-room-for-one-more-control-v1.html)
+and [ADR-0033](../decisions/0033-all-trips-home.md)'s.
+
+## What the six had in common
+
+Four of them were one mistake in different costumes: **a line the server composed was treated
+as if it were a single value**. `dir="auto"` sniffs a direction from content, so a route line
+whose first stop was Latin laid out left-to-right, putting the origin on the left with the
+arrow pointing back at it — while the identical line with a Hebrew first stop read correctly.
+The same shape was wrong on day summaries, the appendix and the route strip.
+
+The remaining two were about **what a derivation could not see**: a leg's endpoints live on
+its `Booking`, so the day title could not name the day's first and last legs; and a mode was
+in the contract as a `z.string()` that neither renderer read, so a walk and a drive printed
+identically.
+
+And one was a font rule the design language already states: `.pdf-subtitle` set the whole row
+in JetBrains Mono, which ships no Hebrew, so `12 ימים · עודכן` printed as boxes in a container
+whose only monospace is Liberation Mono.
+
+## The seventh, and why the answer was not the one proposed
+
+_"The share icon is taking much space and is causing a line overflow. Perhaps we need a long
+click instead?"_ Measuring first inverted the answer. The share is expensive; the **status
+chip** is more expensive, and it is the only one of the card's three fixed tenants that
+repeats something already beside it. Moving the chip into the meta line gives back more width
+than deleting the share entirely does. The long press was drawn and measured rather than
+argued about, and rejected as the default on discovery grounds — it stays the right fallback
+if a device pass finds the card still tight.
+
+The general lesson is the one the mockup skill exists for: **the reported symptom named the
+newest thing on the card, and the newest thing was not the biggest.** Measuring all three
+tenants took one render and changed what gets built.
