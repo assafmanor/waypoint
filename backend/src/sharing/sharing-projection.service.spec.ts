@@ -30,6 +30,14 @@ const SECRET = {
   lng: -21.8954,
 } as const;
 
+/** U+2068 FIRST STRONG ISOLATE / U+2069 POP DIRECTIONAL ISOLATE — invisible in a rendered
+ *  string, which is exactly why they are asserted by codepoint here. */
+const FSI = '\u2068';
+const PDI = '\u2069';
+
+/** The words, with the bidi controls taken back off. */
+const plain = (value: string): string => value.replace(/[\u2066-\u2069]/g, '');
+
 describe('SharingProjectionService', () => {
   const prisma = new PrismaService();
   const service = new SharingProjectionService(
@@ -346,9 +354,30 @@ describe('SharingProjectionService', () => {
   it('derives a route and a day title from real places, with no authored title anywhere', async () => {
     const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
     expect(projection.trip.routeLabels).toEqual(['רייקיאוויק']);
-    expect(projection.days[0].title).toBe('רייקיאוויק');
-    expect(projection.days[0].summary).toBe('נחיתה בקפלוויק · כניסה לדירה');
+    // Read through the bidi controls: every projected value the server COMPOSED carries
+    // isolates now, and what this test is about is which words came out (see the
+    // `bidi isolation` block for the controls themselves).
+    expect(plain(projection.days[0].title)).toBe('רייקיאוויק');
+    expect(plain(projection.days[0].summary)).toBe('נחיתה בקפלוויק · כניסה לדירה');
     expect(projection.narrative.source).toBe('deterministic');
+  });
+
+  // **A line the server composed cannot be allowed to sniff its own direction** (ADR-0118;
+  // the owner's report that route arrows pointed the wrong way when the stops were Latin).
+  // The projection is where both renderers get these strings, so the isolates are asserted
+  // here rather than once per renderer.
+  describe('bidi isolation', () => {
+    it('isolates each value and leaves the punctuation between them alone', async () => {
+      const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
+
+      expect(projection.days[0].title).toBe(`${FSI}רייקיאוויק${PDI}`);
+      expect(projection.days[0].summary).toBe(
+        `${FSI}נחיתה בקפלוויק${PDI} · ${FSI}כניסה לדירה${PDI}`,
+      );
+      // The separator itself must NOT be isolated — it belongs to the RTL flow, which is
+      // what puts it between the values rather than at one end of them.
+      expect(projection.days[0].summary).not.toContain(`${PDI}${FSI}`);
+    });
   });
 
   it('makes a revoked code indistinguishable from one that never existed', async () => {

@@ -82,3 +82,101 @@ inlined, so an incomplete manifest is an argument from CSS the app does not have
   belongs to events (ADR-0011), and spending it on something that is not an event teaches that
   dashed means "read-only" rather than "movable" — the same devaluation the colour budget
   forbids.
+
+---
+
+# Addendum · six more reports on the shared page, and a seventh about the card
+
+**Date:** 2026-08-30, later the same day
+
+The share feature merged that morning drew seven reports. Six were fixed in
+[ADR-0213](../decisions/0213-a-shared-trip-changes-emphasis-and-print-is-its-own-rendering.md)'s
+second amendment; the seventh became
+[`mockups/the-trip-card-has-room-for-one-more-control-v1.html`](../../mockups/the-trip-card-has-room-for-one-more-control-v1.html)
+and [ADR-0033](../decisions/0033-all-trips-home.md)'s.
+
+## What the six had in common
+
+Four of them were one mistake in different costumes: **a line the server composed was treated
+as if it were a single value**. `dir="auto"` sniffs a direction from content, so a route line
+whose first stop was Latin laid out left-to-right, putting the origin on the left with the
+arrow pointing back at it — while the identical line with a Hebrew first stop read correctly.
+The same shape was wrong on day summaries, the appendix and the route strip.
+
+The remaining two were about **what a derivation could not see**: a leg's endpoints live on
+its `Booking`, so the day title could not name the day's first and last legs; and a mode was
+in the contract as a `z.string()` that neither renderer read, so a walk and a drive printed
+identically.
+
+And one was a font rule the design language already states: `.pdf-subtitle` set the whole row
+in JetBrains Mono, which ships no Hebrew, so `12 ימים · עודכן` printed as boxes in a container
+whose only monospace is Liberation Mono.
+
+## The seventh, and why the answer was not the one proposed
+
+_"The share icon is taking much space and is causing a line overflow. Perhaps we need a long
+click instead?"_ Measuring first inverted the answer. The share is expensive; the **status
+chip** is more expensive, and it is the only one of the card's three fixed tenants that
+repeats something already beside it. Moving the chip into the meta line gives back more width
+than deleting the share entirely does. The long press was drawn and measured rather than
+argued about, and rejected as the default on discovery grounds — it stays the right fallback
+if a device pass finds the card still tight.
+
+The general lesson is the one the mockup skill exists for: **the reported symptom named the
+newest thing on the card, and the newest thing was not the biggest.** Measuring all three
+tenants took one render and changed what gets built.
+
+## The seventh, round two — and the owner overruled both halves
+
+v1's recommendation was "move the chip into the meta line, keep the share visible". The owner
+rejected it: _"I don't want all rows to have the share icon. I think that a long press … Also
+the trip state (in X days / finished) should be more prominent, no?"_ — plus the answer to the
+discoverability objection: _"the share icon is visible from inside the trip so it's not the
+worst thing"_.
+
+Reading the code before drawing v2 is what settled it, and it settled it in the owner's
+favour twice over. **`lib/useHoldToOpen.ts` already exists**, from ADR-0202's 2026-08-22
+amendment, and its docblock opens with the owner's own words from that session about a long
+press on a note. Its justification is the same trade being made here — a hold _"costs no
+pixels, which is the reason a fourth mark in the row's trailing slot was not the answer"_ —
+under the rule that a hold is _"a shortcut, never the only way"_, paid for by a visible twin.
+The twin here is the trip header's share, which is exactly the argument the owner made
+unprompted. So the proposal was not a new gesture needing a case; it was the app's third
+holdable thing.
+
+The one dissent v2 keeps is the slide-out drawer, and **the render is what made that case
+rather than the reasoning**: with the drawer open, the card is pushed far enough that the
+trip's flag leaves the screen — the card's fastest recognition cue, and the shared element the
+trip handoff flies. That cost was not visible from the description, and it is the kind of
+thing this format exists to find.
+
+The lesson worth keeping is about the shape of the disagreement. v1 was measured and its
+numbers were right; what it got wrong was treating "make the state quieter" as the obvious
+consequence of "the row is too tight", when the state is the fact the row is _for_. The
+measurement told us where the pixels were, not what to spend them on.
+
+## Built, and the one call handed back
+
+_"Build"_ … _"Do what looks best in your opinion"_. The only thing v2 deliberately left open
+was the countdown's weight, so it ships at `נייר` — the `.hdr-anchor.is-back` recipe verbatim,
+12px on `5px 10px` padding. `מלא` (a solid amber fill) was the alternative and lost on the
+ground §2 of the amendment already states: an amber _fill_ on a nav card starts borrowing the
+board's grammar, and ADR-0033 keeps this list glowless on purpose. Picking the recipe the app
+already had also meant the diff introduces no new colour treatment at all.
+
+Everything else was deletion. `.trip-share-wrap`, `.trip-share-action`, `t.share.entryFor`,
+`.chip.past` and `chipPast` all existed for a control that no longer does; `.chip` had exactly
+one consumer left, so it collapsed into `.chip.soon`. The card's own `margin-bottom` came back
+from the wrapper, and `.trip-card + .sec` / `.trip-hero + .sec` returned to what they were
+before the wrapper existed. The whole build is ~40 lines net negative.
+
+**Where the two suites split, and it is the usual place.** jsdom implements no `PointerEvent`,
+which `useHoldToOpen` is written to survive — so the unit spec can hold a card and assert the
+sheet opens for the card the finger was on, and can assert a hold that becomes a scroll opens
+nothing. What it cannot see is the half that actually breaks: a hold fires with the finger
+still down, so the click that lands on **release** would open the trip behind the sheet unless
+`armClickSwallow` eats it. That is an e2e assertion, and it is the one this file would fail if
+the gesture were ever rewired.
+
+Measured on the way out, against the mockup's numbers for the shipped card: 104px and three
+meta lines before, **74px and one** after, on the e2e fixture at 360px.

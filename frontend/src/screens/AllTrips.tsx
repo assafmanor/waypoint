@@ -8,7 +8,7 @@
 // (chrome-base color only — no board glow/pulse/now-next, so board scarcity
 // still holds; ADR-0028/0033). A live trip present is also what drives the
 // header back button. Design reference: mockups/all-trips-v2.html.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Trip } from '@waypoint/shared';
 import { useAuth } from '../state/auth-state';
@@ -16,6 +16,7 @@ import { useActiveTripId } from '../state/active-trip-id';
 import { NAV_DIR, useBackLayer } from '../state/nav-state';
 import { beginTripHandoff } from '../lib/trip-handoff';
 import { useIsOffline } from '../lib/outbox';
+import { useHoldToOpen } from '../lib/useHoldToOpen';
 import { loadTripList } from '../lib/cache';
 import { tripChip, type TripChip } from '../lib/active-trip';
 import { daysUntilStart } from '../lib/mode';
@@ -72,8 +73,9 @@ export function AllTrips({
   onShare,
 }: {
   onOpenAccount: () => void;
-  /** Opens the one `ShareItinerarySheet` the shell owns — this screen renders the entry,
-   *  not a second copy of the sheet (the trip header renders the other entry). */
+  /** Opens the one `ShareItinerarySheet` the shell owns. This screen has no share control of
+   *  its own: the way in here is a hold on the card (ADR-0033's 2026-08-30 amendment), and the
+   *  visible twin that pays for the gesture is the trip header's share. */
   onShare: (trip: Trip) => void;
 }) {
   const navigate = useNavigate();
@@ -117,6 +119,30 @@ export function AllTrips({
     return { remainsActive: false };
   }, hasLiveTrip);
 
+  // **The way in to sharing is a HOLD, and the visible control is gone** (ADR-0033's
+  // 2026-08-30 amendment §1; owner: _"The share icon is taking much space and is causing a
+  // line overflow. Perhaps we need a long click instead?"_). Measured at 360px, the icon cost
+  // 42px of the content column and put the meta on three lines.
+  //
+  // Not a new gesture: `lib/useHoldToOpen.ts` is the app's third holdable thing and exists for
+  // exactly this trade (ADR-0202) — a hold "costs no pixels", and is "a shortcut, never the
+  // only way", paid for by a visible twin. The twin here is the trip header's own share, one
+  // tap inside the trip, which is also the keyboard-reachable one ADR-0157 §2 requires.
+  //
+  // One hook for the whole list plus a ref for which card the finger is on — `NoteSection`'s
+  // shape, because a hook cannot be called inside `.map()`.
+  const held = useRef<Trip | null>(null);
+  const hold = useHoldToOpen(() => {
+    if (held.current) onShare(held.current);
+  });
+  const holdProps = (trip: Trip) => ({
+    ...hold,
+    onPointerDown: (event: ReactPointerEvent) => {
+      held.current = trip;
+      hold.onPointerDown?.(event);
+    },
+  });
+
   if (trips === null) return null;
 
   const buckets: Record<TripChip, Trip[]> = { now: [], soon: [], past: [] };
@@ -136,56 +162,46 @@ export function AllTrips({
     navigate('/', flying ? { state: { navDir: NAV_DIR.HANDOFF } } : undefined);
   };
 
-  // **Share is a SIBLING of the card, never inside it** (ADR-0213, and the mockup rejected
-  // the alternative by name): a button nested in a button is invalid HTML and gives the
-  // thumb two competing targets on the same rect. The wrapper overlays both in one grid
-  // cell so the action lands on the card's inline edge without the card being restyled.
-  const shareAction = (trip: Trip) => (
+  const hero = (trip: Trip) => (
     <button
-      type="button"
-      className="trip-share-action"
-      aria-label={t.share.entryFor(trip.name)}
-      onClick={() => onShare(trip)}
+      key={trip.id}
+      className="trip-hero"
+      onClick={(e) => pick(trip, e.currentTarget)}
+      {...holdProps(trip)}
     >
-      <Icon name="share" />
+      <span className="flag">{trip.icon ?? DEFAULT_TRIP_ICON}</span>
+      <span className="main">
+        <span className="t">{trip.name}</span>
+        <TripMeta trip={trip} />
+      </span>
+      <span className="go">
+        <NavArrow variant="forward" />
+      </span>
     </button>
   );
 
-  const hero = (trip: Trip) => (
-    <div className="trip-share-wrap is-live" key={trip.id}>
-      <button className="trip-hero" onClick={(e) => pick(trip, e.currentTarget)}>
-        <span className="flag">{trip.icon ?? DEFAULT_TRIP_ICON}</span>
-        <span className="main">
-          <span className="t">{trip.name}</span>
-          <TripMeta trip={trip} />
-        </span>
-        <span className="go">
-          <NavArrow variant="forward" />
-        </span>
-      </button>
-      {shareAction(trip)}
-    </div>
-  );
-
+  // **`הסתיים` is deleted rather than promoted** (amendment §3): under a `הסתיים` heading,
+  // over dates already past, the chip repeats its own heading and tells no two cards apart.
+  // `.is-past` already dims the card, so nothing is lost — and the countdown, which is the
+  // one fact that varies INSIDE a section, gets the trailing slot to itself.
   const row = (trip: Trip, chip: 'soon' | 'past') => (
-    <div className="trip-share-wrap" key={trip.id}>
-      <button
-        className={'trip-card' + (chip === 'past' ? ' is-past' : '')}
-        onClick={(e) => pick(trip, e.currentTarget)}
-      >
-        <span className="flag">{trip.icon ?? DEFAULT_TRIP_ICON}</span>
-        <span className="main">
-          <span className="t">{trip.name}</span>
-          <TripMeta trip={trip} />
+    <button
+      key={trip.id}
+      className={'trip-card' + (chip === 'past' ? ' is-past' : '')}
+      onClick={(e) => pick(trip, e.currentTarget)}
+      {...holdProps(trip)}
+    >
+      <span className="flag">{trip.icon ?? DEFAULT_TRIP_ICON}</span>
+      <span className="main">
+        <span className="t">{trip.name}</span>
+        <TripMeta trip={trip} />
+      </span>
+      {chip === 'soon' && (
+        <span className="chip soon">
+          {t.shell.allTrips.chipSoon(daysUntilStart(trip, now) ?? 0)}
         </span>
-        <span className={'chip ' + chip}>
-          {chip === 'soon'
-            ? t.shell.allTrips.chipSoon(daysUntilStart(trip, now) ?? 0)
-            : t.shell.allTrips.chipPast}
-        </span>
-      </button>
-      {shareAction(trip)}
-    </div>
+      )}
+    </button>
   );
 
   // No trips at all → the ZERO STATE, which is the app's designed answer to exactly this

@@ -1,4 +1,4 @@
-import { SHARE_DAYPART, type ShareDaypart } from '@waypoint/shared';
+import { SHARE_DAYPART, type LegTravelMode, type ShareDaypart } from '@waypoint/shared';
 
 /**
  * **The PDF's Hebrew, and why it is here rather than in `frontend/src/i18n/he.ts`.**
@@ -51,6 +51,17 @@ export const PDF_COPY = {
     [SHARE_DAYPART.FLEXIBLE]: 'גמיש',
   } satisfies Record<ShareDaypart, string>,
   weekdays: ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'],
+  /** **The activity, never the vehicle** — the same rule and the same four words as
+   *  `he.ts`'s `travelMode`, which this file's header explains it must carry a copy of. A
+   *  leg printed as two bare numbers said nothing about whether it was a walk or a drive. */
+  travelMode: {
+    walking: 'הליכה',
+    cycling: 'רכיבה',
+    driving: 'נסיעה',
+    transit: 'תחב״צ',
+  } satisfies Record<LegTravelMode, string>,
+  minutes: 'דק׳',
+  km: 'ק״מ',
 } as const;
 
 /** The same marks the reader uses, for the same sections. */

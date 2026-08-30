@@ -29,6 +29,65 @@ ADR-0024 made the trip switcher a **sheet** ("not a route") and, with ADR-0021, 
 
 **5. Not a dashboard, and no board.** The All-trips page is a navigation list, not a lobby of rich cards. Nothing is "live" on it (a live trip would have opened directly), so it carries **no departure board** — the board stays inside a trip, keeping the "board = the trip is speaking" scarcity (ADR-0028).
 
+## Amendment — a third control on the card, and the gesture that pays for it (2026-08-30)
+
+ADR-0213 put a share action on every All Trips card. The owner reported the consequence:
+_"The share icon is taking much space and is causing a line overflow. Perhaps we need a long
+click instead?"_ Measured in
+[`mockups/the-trip-card-has-room-for-one-more-control-v1.html`](../../mockups/the-trip-card-has-room-for-one-more-control-v1.html);
+decided in [v2](../../mockups/the-trip-card-has-room-for-one-more-control-v2.html).
+
+**§1 · The share leaves the row for a hold.** Not a new gesture: `lib/useHoldToOpen.ts`
+already exists (ADR-0202's 2026-08-22 amendment) for the same trade in the same words — it
+_"costs no pixels, which is the reason a fourth mark in the row's trailing slot was not the
+answer"_ — under the same rule, that a hold is _"a shortcut, never the only way"_ and is paid
+for by a visible twin elsewhere. The twin here is the trip header's share control, which is
+what makes the gesture affordable on this surface. The hook already owns the two hard parts:
+the `selectstart` guard, and swallowing the click that lands on release.
+
+**§2 · The countdown becomes the card's loud element.** With the share gone the trailing slot
+is free, and `בעוד 12 ימים` is the one fact that varies _inside_ its section — the heading
+above already says the state, so what discriminates between two cards is how soon. It spends
+**amber**, which the colour budget files countdowns under, at the recipe `.hdr-anchor.is-back`
+already uses: a tinted ground with `--amber-deep` for edge and ink, because `--amber` as text
+on paper is 1.31:1 and is a fill, never ink. No glow and no pulse — the card stays a nav card
+and does not start reading as the rationed board.
+
+**§3 · `הסתיים` is deleted, not promoted.** Under a `הסתיים` heading, over dates already in
+the past, it repeats its own heading and distinguishes no two cards. Deleting it returns the
+content column to 238px at 360px with the meta on **one** line and the card at 74px — the
+largest single win available, and it applies to most of the list.
+
+**Rejected: the slide-out drawer.** The owner asked for the row to move and the share to be
+revealed beside it. Nothing in this app opens a row sideways, so it is a new mechanism for one
+button — needing its own dismissal, its own back-stack layer (ADR-0090), and an answer for a
+tap outside it. `useHoldToOpen` opens a surface directly, and the surface here is the share
+sheet, which is response enough that there is no silent moment to cover. Drawing it also
+surfaced a cost nobody had named: with the drawer open the card is pushed far enough that the
+**trip's flag leaves the screen** — the card's fastest recognition cue, and the shared element
+the trip handoff flies (ADR-0140 §7).
+
+Also rejected: shrinking the control (44px is ADR-0017's floor and the saving was 6px), and
+letting the meta ellipsise rather than wrap — the first thing cut is the member count, the one
+fact in that row that appears nowhere else on the card.
+
+**Built the same day, at the middle weight.** The mockup left the countdown's loudness
+(`שקט · נייר · מלא`) to a device pass; the owner handed the call back (_"Do what looks best in
+your opinion"_), so it ships as `נייר` — the `.hdr-anchor.is-back` recipe exactly, at 12px and
+`5px 10px`. The solid amber fill was the alternative and was declined on the same ground §2
+already states: an amber _fill_ on a nav card starts borrowing the rationed board's grammar,
+and this list is deliberately glowless. `.chip.past` and its `chipPast` string are gone,
+`.chip` collapsed into the one `.chip.soon` rule it has a consumer for, and `.trip-share-wrap`
+/ `.trip-share-action` / `t.share.entryFor` are deleted with the control they existed for.
+
+What the specs hold, and the split is the usual one: the unit suite (`AllTrips.test.tsx`) has
+the hold firing on the card the finger is on and _not_ firing when the finger moves, since
+jsdom implements no `PointerEvent` and the hook is written for exactly that shape of event.
+The browser (`e2e/trip-share-entry.spec.ts`) has the half jsdom cannot see — that the click
+landing on **release** is swallowed rather than opening the trip behind the sheet — plus the
+width, as the card's height: 74px on the e2e fixture against the 104px the mockup measured on
+the shipped one.
+
 ## Consequences
 
 - Supersedes the "switcher is a sheet, not a route" line of ADR-0024 §5; that section now describes the All-trips page. Routing map gains `/trips` and the live-vs-not landing branch.

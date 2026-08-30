@@ -6,6 +6,8 @@ This is not the record of the project. The **why** lives in [decisions/](decisio
 
 ## Sharing & exports
 
+- **A route anchored to regions rather than to whichever attraction had a pin.** The trip's route is derived from each day's first stop, so it names waterfalls and craters where a reader expects areas. There is no region concept in the data model to derive from; a trip's `destination` and its zone crossings (ADR-0107) are the nearest existing signals.
+
 - **One `.invite-box`, one plan-violet cleanup left** — `ui/TripLinkRow.tsx` now serves the share sheet and Trip Settings (ADR-0213's 2026-08-30 amendment), but the **born screen** (`screens/CreateTrip.tsx`) still renders `.invite-box`, which paints `--plan-tint` and a dashed violet border outside Plan mode. It is the one remaining copy and the one remaining colour-budget spend on that element; the born screen's arrival animation hangs off the box (`birth-arr`, `--i`), so swapping it is a motion question as well as a styling one.
 
 - **Multiple audience links, with permission management** — v1 has exactly one reconfigurable link per trip ([ADR-0213](decisions/0213-a-shared-trip-changes-emphasis-and-print-is-its-own-rendering.md) §5, built 2026-08-30). Serving two audiences at once — a fellow traveller who needs Everything and a stranger who should see Summary — needs several independently revocable links, which is an access-management feature rather than infrastructure to hide inside the one link's projection contract. The `TripShare` row is already keyed by `tripId @unique`; lifting that is the change.

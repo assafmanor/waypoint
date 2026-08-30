@@ -1848,9 +1848,10 @@
   letter-spacing: 0.04em;
   margin: 2px 4px 9px;
 }
-/* The cards are wrapped by `.trip-share-wrap` (the share entry is their sibling, not a
-   nested button), so the section label follows the WRAPPER, never the card itself. */
-.trip-share-wrap + .sec {
+/* The card IS the row again — the share entry that briefly wrapped both in a grid is gone
+   (ADR-0033's 2026-08-30 amendment §1), so the section label follows the card itself. */
+.trip-card + .sec,
+.trip-hero + .sec {
   margin-top: 16px;
 }
 
@@ -2049,26 +2050,31 @@
   font-size: 18px;
 }
 
-/* soon / past chips — date-derived, neutral family (shell chrome, ADR-0028) */
-.chip {
+/* **The countdown chip, and it is the card's loud element** (ADR-0033's 2026-08-30
+   amendment §2). With the share control gone the trailing slot is free, and `בעוד 12 ימים`
+   is the one fact that varies INSIDE a section — the heading above already says the state,
+   so what tells two cards apart is how soon.
+
+   It spends **amber**, which the colour budget files countdowns under (ADR-0028), at the
+   recipe `.hdr-anchor.is-back` already uses rather than a new one: a tinted ground with
+   `--amber-deep` for edge and ink, because `--amber` written as TEXT on paper is 1.31:1 and
+   is a fill, never ink. No glow and no pulse — the card stays a nav card and must not start
+   reading as the rationed board.
+
+   There is no `.chip.past`: under a `הסתיים` heading, over dates already past, it repeated
+   its own heading and told no two cards apart, so it is deleted rather than promoted (§3). */
+.chip.soon {
   flex: 0 0 auto;
   align-self: flex-start;
   margin-top: 2px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   border-radius: 8px;
-  padding: 4px 9px;
+  padding: 5px 10px;
   white-space: nowrap;
-}
-.chip.soon {
-  color: var(--ink);
-  background: var(--card);
-  border: 1px solid var(--soft-line);
-}
-.chip.past {
-  color: var(--muted);
-  background: transparent;
-  border: 1px solid var(--line);
+  color: var(--amber-deep);
+  background: color-mix(in srgb, var(--amber) 10%, var(--paper));
+  border: 1px solid color-mix(in srgb, var(--amber-deep) 45%, var(--paper));
 }
 .trips-body .spacer {
   flex: 1;

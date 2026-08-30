@@ -14,6 +14,7 @@ import {
   type SharedDay,
   type SharedEvent,
   type SharedItinerary,
+  type LegTravelMode,
   type TravelMode,
 } from '@waypoint/shared';
 import { eventDisplayZone, type TripZoneContext } from '../common/event-zone.util';
@@ -24,6 +25,7 @@ import {
   fallbackDayTitle,
   fallbackTripTitle,
   routeLabelsFrom,
+  routeStrip,
 } from './itinerary-narrative.fallback';
 import { ItineraryNarrativeService } from './itinerary-narrative.service';
 import {
@@ -138,6 +140,24 @@ export class SharingProjectionService {
       primaryZone: trip.timezone,
     };
 
+    // **What a day PASSES THROUGH, and a transport event passes through two places.**
+    // (owner, 2026-08-30: _"I don't understand the titles for each day. Why doesn't it
+    // include the first and last legs?"_) A flight, a drive or a transfer carries its
+    // endpoints on its BOOKING — `fromPlaceId`/`toPlaceId` — and nothing on `event.place`.
+    // The day title read only `event.place`, so the legs that define where a day went were
+    // the one kind of event it could not see: a flight day had no title at all and fell
+    // back to its date, and a driving day's route started at whichever sight happened to
+    // have a pin. `journeyLookup` below already knew to look at the booking; this is the
+    // same knowledge, in the derivation that names the day.
+    const labelById = new Map(places.map((place) => [place.id, placeLabel(place)]));
+    const eventStops = (event: ShareEventRow): (string | undefined)[] => {
+      const from = event.booking?.fromPlaceId;
+      const to = event.booking?.toPlaceId;
+      // Both ends, in travel order, so a leg contributes its origin AND its destination.
+      if (from || to) return [labelById.get(from ?? ''), labelById.get(to ?? '')];
+      return [placeLabel(event.place)];
+    };
+
     const byDay = this.groupByDay(events, trip.startDate, trip.endDate);
     const journeys = orienting ? await this.journeyLookup(share.tripId, byDay, places) : undefined;
 
@@ -148,23 +168,26 @@ export class SharingProjectionService {
       return {
         ordinal: index + 1,
         date,
-        title: fallbackDayTitle(dayEvents.map((event) => placeLabel(event.place))),
+        title: fallbackDayTitle(dayEvents.flatMap(eventStops)),
         summary: fallbackDaySummary(dayEvents.map((event) => event.title)),
         sections: this.groupByDaypart(projected),
       };
     });
 
-    const routeLabels = routeLabelsFrom(
-      byDay.map(({ events: dayEvents }) =>
-        placeLabel(dayEvents.find((e) => e.place)?.place ?? null),
-      ),
+    // **The whole route, then a slice of it to draw.** The title's endpoints are the trip's
+    // first and last stop; the strip shows at most `MAX_ROUTE_LABELS` of them. Capping
+    // before the title was taken is what produced `Kerið Crater ← אסבירג׳י` on a twelve-day
+    // trip — the far end was day EIGHT's first place, not where the trip finished.
+    const wholeRoute = routeLabelsFrom(
+      byDay.map(({ events: dayEvents }) => dayEvents.flatMap(eventStops).find(Boolean)),
     );
+    const routeLabels = routeStrip(wholeRoute);
 
     // Words last, and never in the reader's way: a stored generated narrative may replace
     // these strings, and anything else — no result, a stale hash, an invalid one, no
     // provider at all — returns the deterministic ones without waiting (ADR-0213 §2).
     const narrative = await this.narrative.resolve(share.id, days, routeLabels, locale, {
-      title: fallbackTripTitle(routeLabels, trip.name),
+      title: fallbackTripTitle(wholeRoute, trip.name),
       // Deliberately empty for a deterministic narrative: the counts beside it are
       // `trip.*` fields, and the sentence joining them is each renderer's own copy.
       summary: '',
@@ -337,7 +360,9 @@ export class SharingProjectionService {
           .find((candidate) => candidate?.mode === mode);
         if (!leg) continue;
         out.set(pair.eventId, {
-          mode: leg.mode,
+          // Prisma types the column as a string; the shared contract names the enum, and
+          // the loop above only ever matched a `LegTravelMode` to get here.
+          mode: leg.mode as LegTravelMode,
           minutes: Math.round(leg.durationSeconds / 60),
           km: Math.round(leg.distanceMeters / 100) / 10,
         });

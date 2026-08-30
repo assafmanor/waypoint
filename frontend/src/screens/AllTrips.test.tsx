@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
-import { fireEvent } from '@testing-library/dom';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import type { Trip } from '@waypoint/shared';
 import { t } from '../i18n/he';
+import { DRAG_HOLD_MS } from '../constants';
+import { daysUntilStart } from '../lib/mode';
+import { setSimulatedNow } from '../lib/useClock';
 import { wrapNav } from '../test/nav-harness';
 import { ActiveTripIdProvider } from '../state/active-trip-id';
 
@@ -32,7 +34,23 @@ const TRIPS: Trip[] = vi.hoisted(() => [
     updatedAt: '2024-01-01T00:00:00.000Z',
     updatedBy: 'u1',
   },
+  {
+    id: 't3',
+    name: 'ליסבון',
+    destination: 'Lisbon',
+    startDate: '2024-03-01',
+    endDate: '2024-03-08',
+    timezone: 'UTC',
+    createdBy: 'u1',
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
+    updatedBy: 'u1',
+  },
 ]) as Trip[];
+
+// Pinned, so `chipSoon`'s countdown means the same thing on every day this suite runs
+// (frontend/CLAUDE.md — a spec that reads the system clock passes for the wrong reason).
+const NOW = Date.parse('2026-08-30T09:00:00.000Z');
 
 vi.mock('../lib/cache', () => ({
   loadTripList: vi.fn().mockResolvedValue({ trips: TRIPS, fromCache: false }),
@@ -61,7 +79,16 @@ vi.mock('../lib/trip-handoff', () => ({ beginTripHandoff: () => false }));
 const { AllTrips } = await import('./AllTrips');
 
 describe('AllTrips sharing entry', () => {
-  afterEach(() => cleanup());
+  beforeEach(() => setSimulatedNow(NOW));
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  /** jsdom implements no `PointerEvent`, so the hook is written to accept an event carrying
+   *  neither `isPrimary` nor `button` — a `MouseEvent` is exactly that. */
+  const pointer = (el: Element, type: string, y: number) =>
+    el.dispatchEvent(new MouseEvent(type, { clientX: 10, clientY: y, bubbles: true }));
 
   const renderTrips = (onShare = vi.fn()) => {
     const view = render(
@@ -74,38 +101,63 @@ describe('AllTrips sharing entry', () => {
     return { ...view, onShare };
   };
 
-  it('offers sharing on every card', async () => {
-    renderTrips();
-    await screen.findByText('איסלנד עם המשפחה');
-
-    for (const trip of TRIPS) {
-      expect(screen.getByRole('button', { name: t.share.entryFor(trip.name) })).toBeTruthy();
-    }
-  });
-
-  it('shares the card it was pressed on', async () => {
+  // **The share control is gone from the row; the gesture is the way in** (ADR-0033's
+  // 2026-08-30 amendment §1). The icon cost 42px of the content column and wrapped the meta
+  // onto a third line — the owner's report. `useHoldToOpen` is the app's existing answer.
+  it('opens the share sheet on a hold, for the card the finger was on', async () => {
     const { onShare } = renderTrips();
     await screen.findByText('סוף שבוע ברומא');
 
-    fireEvent.click(screen.getByRole('button', { name: t.share.entryFor('סוף שבוע ברומא') }));
-    await waitFor(() =>
-      expect(onShare).toHaveBeenCalledWith(expect.objectContaining({ id: 't2' })),
-    );
+    vi.useFakeTimers();
+    try {
+      pointer(screen.getByText('סוף שבוע ברומא').closest('button')!, 'pointerdown', 10);
+      // Inside `act`: the hold fires through a state update in the host, and an advance
+      // outside it leaves React's queue unflushed.
+      act(() => vi.advanceTimersByTime(DRAG_HOLD_MS));
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(onShare).toHaveBeenCalledWith(expect.objectContaining({ id: 't2' }));
   });
 
-  // The mockup rejected nesting the action inside the card button by name: a button in a
-  // button is invalid HTML and gives the thumb two targets on the same rect.
-  //
-  // **This is the whole of what jsdom can say, and on its own it was not enough** — the
-  // action shipped on a line of its own and this test stayed green, because a sibling that
-  // has wrapped is still a sibling. Same-ROW is `e2e/trip-share-entry.spec.ts`'s, where
-  // there are rects.
-  it('keeps the share control a sibling of the card, never nested inside it', async () => {
+  // Time arbitrates, not direction: a finger that moved was scrolling the list, and a list
+  // that opened a sheet mid-scroll would be unusable.
+  it('does not share on a hold that turns into a scroll', async () => {
+    const { onShare } = renderTrips();
+    await screen.findByText('סוף שבוע ברומא');
+
+    vi.useFakeTimers();
+    try {
+      const card = screen.getByText('סוף שבוע ברומא').closest('button')!;
+      pointer(card, 'pointerdown', 10);
+      pointer(card, 'pointermove', 90);
+      act(() => vi.advanceTimersByTime(DRAG_HOLD_MS));
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(onShare).not.toHaveBeenCalled();
+  });
+
+  // The row costs nothing for the gesture: no button of its own, on any card.
+  it('renders no share control on the list', async () => {
     const { container } = renderTrips();
     await screen.findByText('איסלנד עם המשפחה');
 
-    for (const action of container.querySelectorAll('.trip-share-action')) {
-      expect(action.closest('button:not(.trip-share-action)')).toBeNull();
-    }
+    expect(container.querySelector('.trip-share-action')).toBeNull();
+    expect(screen.queryByRole('button', { name: t.share.entry })).toBeNull();
+  });
+
+  // §2/§3: the countdown is the one fact that varies inside a section and keeps the freed
+  // slot; `הסתיים` repeated its own section heading and is deleted.
+  it('shows a countdown on an upcoming trip and no chip on a finished one', async () => {
+    const { container } = renderTrips();
+    await screen.findByText('ליסבון');
+
+    const soon = screen.getByText('סוף שבוע ברומא').closest('button')!;
+    expect(soon.querySelector('.chip.soon')?.textContent).toBe(
+      t.shell.allTrips.chipSoon(daysUntilStart(TRIPS[1], new Date(NOW)) ?? 0),
+    );
+    expect(screen.getByText('ליסבון').closest('button')!.querySelector('.chip')).toBeNull();
+    expect(container.querySelector('.chip.past')).toBeNull();
   });
 });

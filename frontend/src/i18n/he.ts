@@ -1751,7 +1751,6 @@ export const t = {
       sectionSoon: 'בקרוב',
       sectionPast: 'הסתיים',
       chipSoon: (days: number) => countdownText(days),
-      chipPast: 'הסתיים',
       create: 'טיול חדש',
       offlineNote: 'מעבר בין טיולים שמורים עובד גם אופליין · יצירה צריכה חיבור',
     },
@@ -3055,9 +3054,9 @@ export const t = {
   // account and never will — which is why nothing under `public` mentions signing in until
   // the invitation at the very bottom of the page.
   share: {
-    // The control, in the trip header and on every All Trips card.
+    // The control, in the trip header. On All Trips there is no control: the way in is a
+    // hold on the card (ADR-0033's 2026-08-30 amendment), and this is its visible twin.
     entry: 'שיתוף',
-    entryFor: (tripName: string) => `שיתוף ${tripName}`,
     owner: {
       // **The trip, not the itinerary** — the sheet grants two different things now, and
       // one of them adds a person to the trip (ADR-0213's 2026-08-30 amendment).
@@ -3153,7 +3152,16 @@ export const t = {
       // the server (it ships data, this ships the words around it).
       counts: (days: number, events: number) =>
         `${days} ${days === 1 ? 'יום' : 'ימים'} · ${events} ${events === 1 ? 'אירוע' : 'אירועים'} במסלול`,
-      journey: (minutes: number, km: number) => `${minutes} דק׳ · ${km} ק״מ`,
+      // **The leg says WHAT it is before it says how long** (owner, 2026-08-30: _"the live
+      // map doesn't show driving/walking etc. properly"_). It shipped as two bare numbers,
+      // so a 121-minute walk and a 67-minute drive were the same shape of line and nothing
+      // on the page said which. The noun leads the duration exactly as `travelMode`'s own
+      // note requires, and it is `travelMode`'s word rather than a second copy of it.
+      // Takes the WORD, not the mode key — `travelMode` is the one place those words live
+      // and this file cannot reference `t` from inside its own literal. Same shape as
+      // `DayJoinRow`, which is already handed `t.travelMode.walking` by its host.
+      journey: (mode: string, minutes: number, km: number) =>
+        `${mode} · ${measure(minutes, 'דק׳')} · ${measure(km, 'ק״מ')}`,
       appendix: {
         title: 'פרטים נוספים',
         bookingSecrets: 'פרטי הזמנה שנבחרו',

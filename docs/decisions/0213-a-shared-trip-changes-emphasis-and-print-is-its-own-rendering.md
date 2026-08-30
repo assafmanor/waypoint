@@ -332,6 +332,52 @@ meaning almost perfectly (one is a commitment, one is provisional) and was refus
 that grammar belongs to events (ADR-0011), and spending it here would teach that dashed means
 "read-only" rather than "movable".
 
+## Amendment — six field reports on the shared page, and what they had in common (2026-08-30)
+
+All six are about **a line the server composed**, and four of them are the same mistake in
+different costumes: a composed line was treated as if it were a single value.
+
+**A composed line cannot sniff its own direction.** `dir="auto"` resolves from the first
+strong character, so `Haifoss ← Stutur crater` laid out LTR — putting the ORIGIN on the left
+with the arrow pointing back at it — while the identical string with a Hebrew first stop laid
+out RTL and read correctly. Two rows differing only in their data disagreed about which way
+the trip went. The repair is the one `lib/bidi.ts` already applies to a number and its unit,
+one level up: each **value** gets a first-strong isolate so it keeps its own script, the
+punctuation stays in the surrounding flow, and both renderers pin that flow to the page's RTL
+by **not** setting `dir="auto"` — which, being isolate-blind, would find no strong character
+at all and fall back to LTR. `fallbackDaySummary`, the appendix rows and the route strip are
+the same shape and got the same treatment. Verified by rendering all three script orders.
+
+**A leg's endpoints live on its booking, and the day title could not see them.** `from`/`to`
+are on `Booking`, not on `Event.place`, so a transport event contributed nothing to the day's
+route: a flight day had no title at all and fell back to its date, and a driving day's route
+began at whichever sight happened to have a pin (owner: _"Why doesn't it include the first and
+last legs?"_). `journeyLookup` already knew to read the booking; the day derivation now knows
+the same thing. A day whose ends match is named once rather than `X ← X`.
+
+**A cap applied before the endpoints were taken.** `routeLabelsFrom` sliced to eight and
+`fallbackTripTitle` then took the last element of the SLICE, so a twelve-day trip's title
+ended at day eight — which is how `Kerið Crater ← אסבירג׳י` came to name two arbitrary
+attractions. The route is now derived whole; the strip's cap is the projection's, applied only
+to what it draws, and it keeps the last stop so the strip and the title cannot disagree.
+
+**A mode is a discriminant, and it was a `z.string()` nobody read.** `journey.mode` was in the
+contract and neither renderer rendered it, so a 121-minute walk and a 67-minute drive were the
+same shape of line and nothing said which (owner: _"the live map doesn't show driving/walking
+etc. properly"_). It is `z.enum(LEG_TRAVEL_MODES)` now, and both renderers key the app's own
+activity word off it — the PDF's leg had been printing two bare numbers with no units at all.
+
+**Hebrew must never sit inside a mono element**, and the `font` shorthand is how it got there.
+`.pdf-subtitle` was `font: … 'JetBrains Mono', monospace`; the shorthand replaces the family
+list, so Assistant was not behind it, JetBrains ships no Hebrew, and the container's only
+monospace is Liberation Mono — `12 ימים · עודכן` printed as empty rectangles while the
+headings two lines above were perfect. Mono is now scoped to the numeric run (`.pdf-num`), and
+a spec asserts no `.pdf-num` ever receives a Hebrew codepoint.
+
+**What the smoke check could not see, and now can.** `hebrew-text` passed throughout: it asks
+whether SOME Hebrew is extractable, and the headings always were. A check that a subtitle's own
+Hebrew survives is a different question from a check that the document has any.
+
 ## Alternatives considered
 
 - **One page with fields progressively removed.** Rejected: less information is not automatically the right emphasis.
