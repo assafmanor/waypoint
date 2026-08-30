@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { SHARE_DAYPART, SHARE_DETAIL_LEVEL, type SharedItinerary } from '@waypoint/shared';
+import {
+  SHARE_DAYPART,
+  SHARE_OP_KIND,
+  SHARE_DETAIL_LEVEL,
+  type SharedItinerary,
+} from '@waypoint/shared';
 import {
   itineraryPdfFooterHtml,
   itineraryPdfHtml,
@@ -142,7 +147,7 @@ describe('itineraryPdfHtml', () => {
     const everything = render({
       ...NINE_DAY_REFERENCE_TRIP,
       detailLevel: SHARE_DETAIL_LEVEL.EVERYTHING,
-      appendix: { notesAndTasks: [{ title: 'רשימת ציוד', lines: ['נעלי הליכה'] }] },
+      appendix: { ops: [{ kind: SHARE_OP_KIND.NOTE, title: 'רשימת ציוד', body: 'נעלי הליכה' }] },
     });
     expect(everything).toContain(PDF_COPY.appendix.title);
     expect(everything.match(/class="pdf-ops"/g)).toHaveLength(1);

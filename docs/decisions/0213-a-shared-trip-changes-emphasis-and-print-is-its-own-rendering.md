@@ -563,6 +563,122 @@ A bookings block (`ההזמנות`) sits above the schedule on the reader page, 
 
 Two build hazards are written here because they cost real time and neither could fail a test. **The new print CSS was appended above the original block** and lost silently at equal specificity — a flight's range printed over its own title while the smoke verifier's overprint check passed throughout; the block now sits last in the sheet and a spec asserts that ordering. And **`ltrIsolate` around a duration reorders it**: `14ש׳ 50דק׳` became `שׂ50דק׳ 14`, because the isolate must island the **number**, not the number-and-unit — that is what `measure()` is for.
 
+## Amendment — the fourth pass, corrected in production (2026-08-30, fifth pass)
+
+The fourth pass shipped and the owner read it on their own trip. Seven reports, and one of
+them says that an amendment written above is **wrong about what it did**.
+
+### §1 · The privacy fix did not land, and this ADR said it had
+
+The fourth amendment's §1 claims the notes-linkage defect was "closed with it". It was not.
+`loadOps` was written to filter by linkage and does — but `buildAppendix` was left in place
+beside it, running its own `where: { tripId }` queries for notes, tasks and documents with no
+join at all. So the toggle promising `רק תוכן שמחובר למסלול` went on publishing **every note
+in the trip**, and every note that DID have a host printed **twice**: once on its row and once
+in the appendix. That second copy is what the owner saw as _"the לקראת הטיול section is a
+really badly formatted wall of text"_ — the block was not badly formatted so much as it was
+the whole trip's notes.
+
+**Two things are worth naming, because neither was bad luck.**
+
+The first is that this is [ADR-0096](0096-domain-claude-md-files.md)'s exact anti-pattern —
+two mechanisms answering one question — introduced by the change whose whole purpose was to
+remove one. The rows' ops and the appendix were built from different queries and only one of
+them knew about linkage.
+
+The second is the test. `sharing-projection.service.spec.ts` asserted that the **unattached**
+note appears in the appendix, and never that the **attached** one does not. A one-directional
+assertion passes identically whether the filter exists or not, so the suite was green
+throughout. The missing half is now written, and it is the half that had the value.
+
+The repair deletes `buildAppendix`'s queries entirely: the appendix is `loadOps`'s
+`unattached` — which was already being computed and thrown away — and `travelers`, which is
+not an op and hangs off no row. `sharedAppendixSchema` therefore drops its three per-family
+shapes for one `ops: SharedOp[]`, so a note in the appendix and a note on a row are the same
+shape rendered by the same component on both renderers.
+
+### §2 · English prose is not a value, and §8 over-corrected
+
+The fourth pass's §8 replaced `dir="auto"` with `autoIsolate` wherever a foreign-script value
+sat alone in its element. That is right for a **value** and wrong for a **paragraph**: an
+isolate inherits its container's direction, so an English description sat in an RTL column and
+came out right-aligned and ragged-left (owner: _"English lines are ltr and shouldn't be
+treated differently"_).
+
+The rule, stated properly this time:
+
+> **A value that shares a line with other content is isolated and keeps the line's
+> direction. A standalone block of prose carries `dir="auto"` and picks its own.**
+
+A title is the first kind — it has to line up with the caption beneath it, which is what §8
+measured at 229px of separation. A stop's description and a note's body are the second.
+Verified by rendering: the English caption resolves `direction: ltr`, the Hebrew one `rtl`,
+both at `text-align: start`.
+
+### §3 · A description is capped at the source, and its two-line clamp never existed
+
+_"Too long descriptions, if there's an option to shorten them or cap the length."_ Two
+separate faults. The projection shipped the enrichment summary whole — five lines of Wikipedia
+lede on an A4 column with twelve days to fit — and `.sh-cap`, which the code comment described
+as clamped to two lines, **was never written into the stylesheet**, so the caption inherited
+`.sh-place-line`'s `nowrap` and got exactly one.
+
+So: `capCaption` cuts at a sentence boundary within 150 characters (a word boundary and an
+ellipsis otherwise) in the projection, where both renderers get it — CSS cannot help paper,
+which has no scroll — and `.sh-cap` now exists and clamps to the two lines it always claimed.
+
+### §4 · A journey is chained over the trip, not inside a day
+
+_"Sometimes journeys with layovers aren't recognized properly, for example when it crosses a
+day."_ `withJourneys` walked one day's own event list, so a red-eye departing 22:40 and
+landing 01:15 was two unrelated rows on two days — the shape of flight most likely to have a
+layover was the one case the layover feature could not see. The chain condition never had
+anything to do with the calendar; only the loop did. `chainJourneys` now runs once over every
+scheduled event in trip order, and a journey belongs to the day it **departs** on, which is
+the day a reader is packing for.
+
+### §5 · The bookings block moves under the days and stops teleporting
+
+_"the הזמנות is at the start of the live sharing, and clicking on a booking teleports you down
+which is inconvenient. Does it have to be this way?"_ No. The fourth pass put it above the
+days on the reasoning that a reader looks for flights first — but every row was an
+`href="#day-N"`, so the one gesture the block invited threw the reader down a twelve-day
+document with no way back.
+
+It is a **reference**, not a lede: what is booked, and when. So it sits after the schedule it
+refers to, and each row **states** its day (`יום 4`) rather than scrolling to it. That answers
+the question the anchor was answering without moving anybody. Paper already worked this way
+and needed no change: a printout's reader has the whole document in hand.
+
+### §6 · The stay glyph had no gap, and `gap` was not the reason
+
+`.sh-stay` said `display: inline-flex; gap: 5px`, and `.sh-day-copy span` — one point more
+specific — says `display: block`. The element was never a flex container, so the gap did
+nothing: measured 0px. Winning the specificity fight would have cost the line its ellipsis,
+since `text-overflow` cannot clip an anonymous flex item, so the icon takes a margin instead.
+
+**This is the third defect in this ADR's history caused by an equal-or-higher-specificity
+rule landing on top of a new one**, after the print CSS block and the hover-vs-pressed rule
+in `frontend/CLAUDE.md`. The lesson is not "check specificity"; it is that a declaration
+which silently loses looks exactly like one that was never written, and only a computed-style
+read tells them apart.
+
+### What was verified
+
+Rendered at 390px in the dark theme and measured off the live DOM: the stay gap is 5px (was
+0), the English caption resolves `ltr` and the Hebrew `rtl`, the document link carries
+`download` and still meets ADR-0017's 44px floor, the bookings block follows the days and
+contains zero `#day-` anchors. The cross-day journey has a backend spec of its own.
+
+**And what was not.** The owner also reported _"the links don't work"_ on the documents
+section. The route itself is provably fine — fetched against production, a document id that
+does not exist returns a clean 404 JSON and the PDF (same controller, same
+`attachmentDisposition`) downloads through the apex→www redirect with a correct filename — and
+the rendered anchor now carries the right href, a `download` attribute and a 44px target. What
+could not be reproduced is the owner's actual symptom, because their share was back at `full`
+by the time it was investigated and `full` carries no documents. Recorded as open rather than
+claimed as fixed; the previous amendment's mistake was claiming exactly this kind of thing.
+
 ## Alternatives considered
 
 - **One page with fields progressively removed.** Rejected: less information is not automatically the right emphasis.

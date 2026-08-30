@@ -29,7 +29,6 @@ import {
   type EventCategory,
   type LegTravelMode,
   type SharedDayTitle,
-  type TravelMode,
   derivedPlaceLabel,
   shortPlaceLabel,
   placeIataCode,
@@ -37,7 +36,6 @@ import {
   ROUTE_ARROW,
   SHARE_OP_KIND,
   tripShapeOf,
-  SHARE_TRIP_SHAPE,
   type SharedCommitment,
   type SharedOp,
   resolveTextVariant,
@@ -196,6 +194,75 @@ function collectCommitments(
  * over the stops that HAVE an answer, not over every stop: a car park has no Wikidata item
  * and should not be able to veto a day, but it should not count towards one either.
  */
+/**
+ * **How much of a stop's description a share may spend** (owner, 2026-08-30: _"Too long
+ * descriptions, if there's an option to shorten them or cap the length"_).
+ *
+ * Capped at the SOURCE rather than clamped in CSS, because the two renderers fail
+ * differently and only one of them can scroll: `-webkit-line-clamp` hides the overflow on
+ * the phone, and on A4 a five-line Wikipedia lede simply takes five lines of a column that
+ * has twelve days to fit. One number, applied once, and both surfaces get a caption that
+ * fits the two lines they each reserve for it.
+ *
+ * A sentence boundary is preferred over a word boundary because a description that stops
+ * mid-clause reads as broken data rather than as a summary.
+ */
+const CAPTION_MAX_CHARS = 150;
+
+function capCaption(value: string | undefined): string | undefined {
+  const text = value?.trim();
+  if (!text || text.length <= CAPTION_MAX_CHARS) return text || undefined;
+  const window = text.slice(0, CAPTION_MAX_CHARS);
+  // A period only counts as a sentence end when a space follows it, or `Mt. Stapafell` and
+  // `road 862.5` would each end the sentence they are inside.
+  const sentence = Math.max(
+    window.lastIndexOf('. '),
+    window.lastIndexOf('? '),
+    window.lastIndexOf('! '),
+  );
+  if (sentence > CAPTION_MAX_CHARS / 3) return text.slice(0, sentence + 1);
+  const word = window.lastIndexOf(' ');
+  return `${(word > 0 ? window.slice(0, word) : window).trimEnd()}…`;
+}
+
+/**
+ * **A journey is chained over the whole trip, not inside one day** (owner, 2026-08-30:
+ * _"Sometimes journeys with layovers aren't recognized properly, for example when it crosses
+ * a day"_).
+ *
+ * The first build walked each day's own event list, so `TLV 22:40 → VIE` and
+ * `VIE 01:15 → KEF` — the common shape of a red-eye with a layover — were two unrelated
+ * rows on two different days, which is precisely the case a layover most needs naming. The
+ * chain condition never had anything to do with the calendar; only the loop did.
+ *
+ * So the pass runs once over every scheduled event in trip order and returns two things: the
+ * legs of each journey keyed by its FIRST leg, and the set of legs some earlier leg has
+ * absorbed. A day then renders a journey where it departs and skips what belongs to a
+ * journey that departed before it — a journey belongs to the day it leaves on, which is the
+ * day a reader is packing for.
+ */
+interface JourneyChains {
+  chainByLead: Map<string, ShareEventRow[]>;
+  absorbed: Set<string>;
+}
+
+function chainJourneys(scheduledInTripOrder: readonly ShareEventRow[]): JourneyChains {
+  const chainByLead = new Map<string, ShareEventRow[]>();
+  const absorbed = new Set<string>();
+  for (let i = 0; i < scheduledInTripOrder.length; i += 1) {
+    const chain = [scheduledInTripOrder[i]];
+    while (
+      i + 1 < scheduledInTripOrder.length &&
+      continuesJourney(chain.at(-1)!, scheduledInTripOrder[i + 1])
+    ) {
+      chain.push(scheduledInTripOrder[(i += 1)]);
+      absorbed.add(chain.at(-1)!.id);
+    }
+    if (chain.length > 1) chainByLead.set(chain[0].id, chain);
+  }
+  return { chainByLead, absorbed };
+}
+
 const MAJORITY = 0.6;
 const dominant = (values: readonly (string | undefined)[]): string | undefined => {
   const known = values.filter((value): value is string => Boolean(value?.trim()));
@@ -522,6 +589,14 @@ export class SharingProjectionService {
     );
     const shape = tripShapeOf(stays);
 
+    // **Chained once, over the whole trip.** A journey that departs at 22:40 and lands the
+    // next morning is one journey; a per-day pass could never see that (`chainJourneys`).
+    const chains = chainJourneys(
+      byDay.flatMap(({ events }) =>
+        events.filter((event) => event.booking?.type !== BOOKING_TYPE.HOTEL),
+      ),
+    );
+
     const days: SharedDay[] = byDay.map(({ date, events: dayEvents }, index) => {
       // **The stay leaves the schedule before anything else looks at it.** A lodging event
       // sorts by its check-in hour, which put it between the two legs of the outbound
@@ -537,7 +612,8 @@ export class SharingProjectionService {
         ops,
         labelById,
         codeById,
-        (placeId) => textOf(placeId, 'summary'),
+        (placeId) => capCaption(textOf(placeId, 'summary')),
+        chains,
       );
       const facts = {
         ...dayFacts(dayEvents, index),
@@ -648,7 +724,9 @@ export class SharingProjectionService {
       days: applyNarrative(days, narrative),
       commitments,
       appendix:
-        detail === SHARE_DETAIL_LEVEL.EVERYTHING ? await this.buildAppendix(share) : undefined,
+        detail === SHARE_DETAIL_LEVEL.EVERYTHING
+          ? await this.buildAppendix(share, ops.unattached)
+          : undefined,
     });
   }
 
@@ -684,18 +762,19 @@ export class SharingProjectionService {
     labelById: ReadonlyMap<string, string | undefined>,
     codeById: ReadonlyMap<string, string | undefined>,
     captionOf: (placeId: string | undefined) => string | undefined,
+    chains: JourneyChains,
   ): SharedEvent[] {
     const one = (event: ShareEventRow): SharedEvent =>
       this.projectEvent(event, zones, detail, journeys?.get(event.id), placeLabel, ops, captionOf);
 
     const out: SharedEvent[] = [];
-    for (let i = 0; i < dayEvents.length; i += 1) {
-      const chain = [dayEvents[i]];
-      while (i + 1 < dayEvents.length && continuesJourney(chain.at(-1)!, dayEvents[i + 1])) {
-        chain.push(dayEvents[(i += 1)]);
-      }
-      if (chain.length < 2) {
-        out.push(one(chain[0]));
+    for (const event of dayEvents) {
+      // A leg an earlier departure already absorbed has no row of its own — including when
+      // that departure was yesterday, which is the whole point of chaining trip-wide.
+      if (chains.absorbed.has(event.id)) continue;
+      const chain = chains.chainByLead.get(event.id);
+      if (!chain) {
+        out.push(one(event));
         continue;
       }
 
@@ -1077,34 +1156,24 @@ export class SharingProjectionService {
   }
 
   /**
-   * Everything's operational block — and only the families explicitly switched on.
+   * Everything's block for what is attached to nothing — and it no longer asks the database
+   * a single question of its own.
    *
-   * Each is its own query, run only when its flag is set, so a share with notes off never
-   * loads a note. Grouped here rather than inline beside each event on purpose (ADR-0213
-   * §4): beside the schedule it wrecks scanning and leaves the reader unable to tell which
-   * facts were deliberately published.
+   * It used to run its own note, task and document queries beside `loadOps`, and that second
+   * copy was the defect, not a redundancy: `loadOps` filters by linkage and this did not, so
+   * the toggle promising `רק תוכן שמחובר למסלול` published every note in the trip, and every
+   * note that DID have a host printed twice — once on its row and once here. The rows'
+   * queries already produce `unattached` as a by-product of deciding where each op goes, so
+   * that is the whole of the answer (ADR-0096: one mechanism, not two).
+   *
+   * Travelers stay a query, because a traveller is not an op and hangs off no row.
    */
-  private async buildAppendix(share: SharePolicy): Promise<SharedAppendix | undefined> {
+  private async buildAppendix(
+    share: SharePolicy,
+    unattached: readonly SharedOp[],
+  ): Promise<SharedAppendix | undefined> {
     const appendix: SharedAppendix = {};
-
-    if (share.includeNotesAndTasks) {
-      const [notes, tasks] = await Promise.all([
-        this.prisma.note.findMany({
-          where: { tripId: share.tripId },
-          select: { title: true, body: true },
-        }),
-        this.prisma.task.findMany({
-          where: { tripId: share.tripId },
-          select: { title: true, body: true },
-        }),
-      ]);
-      appendix.notesAndTasks = [...notes, ...tasks]
-        .map((row) => ({
-          title: (row.title ?? '').trim(),
-          lines: [row.body?.trim()].filter((line): line is string => Boolean(line)),
-        }))
-        .filter((entry) => entry.title || entry.lines.length > 0);
-    }
+    if (unattached.length > 0) appendix.ops = [...unattached];
 
     if (share.includeTravelerIdentity) {
       const members = await this.prisma.membership.findMany({
@@ -1115,20 +1184,6 @@ export class SharingProjectionService {
         orderBy: { joinedAt: 'asc' },
       });
       appendix.travelers = members.map((member) => member.user.displayName);
-    }
-
-    const documents = await this.prisma.tripShareDocument.findMany({
-      where: { shareId: share.id },
-      select: { document: { select: { id: true, title: true, mimeType: true } } },
-    });
-    if (documents.length > 0) {
-      appendix.documents = documents.map(({ document }) => ({
-        // The one identifier that crosses: a bearer handle, meaningful only inside a
-        // download URL under this share's own code (ADR-0213 §1's single exception).
-        handle: document.id,
-        title: document.title,
-        mimeType: document.mimeType,
-      }));
     }
 
     return Object.keys(appendix).length > 0 ? appendix : undefined;

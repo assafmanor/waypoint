@@ -642,21 +642,18 @@ export type SharedCommitment = z.infer<typeof sharedCommitmentSchema>;
  * Splitting attached from unattached is what makes that promise true rather than a caption.
  */
 export const sharedAppendixSchema = z.strictObject({
-  notesAndTasks: z
-    .array(z.strictObject({ title: z.string(), lines: z.array(z.string()) }))
-    .optional(),
+  /**
+   * **The ops with no host** — the same `SharedOp` union the rows carry, so a note here and
+   * a note on a row are one shape rendered by one component.
+   *
+   * It replaced three parallel per-family shapes, and their existence was the bug: the
+   * projection built the rows' ops from a linkage-aware pass and then built this block from
+   * a SECOND, unfiltered set of queries, so every note in the trip was published under a
+   * toggle promising otherwise and every attached note was printed twice. One source or the
+   * other had to go, and the one that knows about linkage is the one that stays (ADR-0096).
+   */
+  ops: z.array(sharedOpSchema).optional(),
   travelers: z.array(z.string()).optional(),
-  documents: z
-    .array(
-      z.strictObject({
-        /** The one identifier the projection carries, and only as a bearer download
-         *  handle under the share's own code — never a trip-scoped reference. */
-        handle: z.string(),
-        title: z.string(),
-        mimeType: z.string(),
-      }),
-    )
-    .optional(),
 });
 export type SharedAppendix = z.infer<typeof sharedAppendixSchema>;
 

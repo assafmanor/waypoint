@@ -267,6 +267,22 @@ function legRows(event: SharedEvent): string {
  * setting: whoever is holding the printout is, by that act, the operator — it is why they
  * printed it.
  */
+/**
+ * **A standalone block of text sets its own base direction; a value inside a line does not.**
+ *
+ * `auto()` (an FSI…PDI isolate) is right for a value sharing a line with other content: it
+ * keeps the line's own direction and stops the value reordering its neighbours. It is wrong
+ * for a paragraph, because an isolate inherits the CONTAINER's direction — so an English
+ * description sat inside an RTL column and was right-aligned and ragged-left, which is the
+ * owner's _"English lines are ltr and shouldn't be treated differently"_ (2026-08-30).
+ *
+ * `dir="auto"` resolves from the first strong character, so English prose left-aligns and
+ * Hebrew prose right-aligns. That is the SAME attribute ADR-0213's §8 removed from titles —
+ * and the distinction is the point: a title is a value that has to line up with the caption
+ * under it, a description is a paragraph that has to read.
+ */
+const prose = (value: string): string => `<span dir="auto">${escapeHtml(value)}</span>`;
+
 function opsLines(ops: SharedEvent['ops']): string {
   if (!ops?.length) return '';
   const line = (label: string, body: string) =>
@@ -288,7 +304,7 @@ function opsLines(ops: SharedEvent['ops']): string {
         case SHARE_OP_KIND.NOTE:
           return line(
             PDF_COPY.ops.note,
-            auto([op.title, op.body].filter(Boolean).join(NARRATIVE_SEPARATOR)),
+            prose([op.title, op.body].filter(Boolean).join(NARRATIVE_SEPARATOR)),
           );
       }
     })
@@ -329,7 +345,7 @@ function eventRow(event: SharedEvent, summary: boolean): string {
       : '') +
     // A stop's one-line description. Two lines on paper as on screen, though the measure is
     // wider here so the same sentence usually fits in one.
-    (event.caption ? `<span class="pdf-cap">${auto(event.caption)}</span>` : '') +
+    (event.caption ? `<span class="pdf-cap">${prose(event.caption)}</span>` : '') +
     opsLines(event.ops) +
     `</span></div>` +
     legRows(event)
@@ -379,25 +395,17 @@ function appendixBlock(projection: SharedItinerary): string {
   const appendix = projection.appendix;
   if (!appendix) return '';
   const blocks: string[] = [];
-  const push = (title: string, lines: string[]) => {
-    if (lines.length > 0) {
-      blocks.push(
-        `<div class="pdf-op"><strong>${title}</strong><span>${lines.map(auto).join(' · ')}</span></div>`,
-      );
-    }
-  };
-  // No booking block any more: every booking has a host by construction (`Event.bookingId`
-  // is `@unique`), so a confirmation code prints under its own row. What is left here is
-  // what is attached to nothing.
-  push(
-    PDF_COPY.appendix.notesAndTasks,
-    (appendix.notesAndTasks ?? []).map((entry) => [entry.title, ...entry.lines].join(' ')),
-  );
-  push(PDF_COPY.appendix.travelers, appendix.travelers ?? []);
-  push(
-    PDF_COPY.appendix.documents,
-    (appendix.documents ?? []).map((document) => document.title),
-  );
+  // **The same renderer the rows use.** These ARE row ops — they simply have no row — so a
+  // note here and a note under an event print identically, and a fifth op kind reaches both
+  // surfaces at once (ADR-0096).
+  const ops = opsLines(appendix.ops);
+  if (ops) blocks.push(`<div class="pdf-op">${ops}</div>`);
+  if (appendix.travelers?.length) {
+    blocks.push(
+      `<div class="pdf-op"><strong>${PDF_COPY.appendix.travelers}</strong>` +
+        `<span>${appendix.travelers.map(auto).join(NARRATIVE_SEPARATOR)}</span></div>`,
+    );
+  }
   return blocks.length > 0
     ? `<section class="pdf-ops"><h2 class="pdf-ops-title">${PDF_COPY.appendix.title}</h2>${blocks.join('')}</section>`
     : '';

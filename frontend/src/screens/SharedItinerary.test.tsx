@@ -160,7 +160,7 @@ const everythingProjection: Projection = {
         },
   ),
   appendix: {
-    notesAndTasks: [{ title: 'נעלי הליכה', lines: [] }],
+    ops: [{ kind: SHARE_OP_KIND.NOTE, title: 'נעלי הליכה' }],
   },
 };
 
@@ -438,7 +438,7 @@ describe('SharedItinerary', () => {
       expect(screen.queryByText(plain(t.share.public.layover('תל אביב', 45)))).toBeNull();
     });
 
-    it('puts the fixed points above the days, each linking to its own', async () => {
+    it('puts the bookings under the days, and states each day instead of jumping to it', async () => {
       serve({
         ...fullProjection,
         commitments: [
@@ -453,14 +453,17 @@ describe('SharedItinerary', () => {
       renderShared();
       const block = await screen.findByText(t.share.public.commitments.title);
       const days = document.querySelector('.sh-days');
-      // Above, not among — the day spine stays the spine.
+      // **Below now, not above** (owner, 2026-08-30). It is a reference — what is booked and
+      // when — and a reference belongs after the thing it refers to.
       expect(
         block.closest('.sh-fixed')!.compareDocumentPosition(days!) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
+          Node.DOCUMENT_POSITION_PRECEDING,
       ).toBeTruthy();
-      expect(screen.getByRole('link', { name: plain('תל אביב') }).getAttribute('href')).toBe(
-        '#day-1',
-      );
+      // **And no anchor.** Every row used to be `href="#day-N"`, so the one gesture the
+      // block invited threw the reader down the document (_"clicking on a booking teleports
+      // you down which is inconvenient"_). The day is written on the row instead.
+      expect(screen.queryByRole('link', { name: plain('תל אביב') })).toBeNull();
+      expect(screen.getByText(t.share.public.commitments.day(1))).toBeTruthy();
     });
 
     it('draws no fixed-points block for a trip with nothing booked', async () => {

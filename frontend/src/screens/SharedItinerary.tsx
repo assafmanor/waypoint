@@ -12,6 +12,7 @@ import {
   type SharedDaySummary,
   type SharedDayTitle,
   type SharedEvent,
+  type SharedOp,
   type SharedItinerary as SharedItineraryProjection,
 } from '@waypoint/shared';
 import { BOOKING_TYPE_MARK, GLYPH } from '../constants';
@@ -240,12 +241,6 @@ export function SharedItinerary() {
         </div>
       ) : null}
 
-      {/* **Above the days, not among them** — a reader looks for the flights first, and the
-          day spine stays the spine (ADR-0004: no second tab, and this is not one). */}
-      {projection.commitments.length > 0 ? (
-        <Commitments commitments={projection.commitments} code={code} />
-      ) : null}
-
       <main className="sh-days">
         <div className="sh-days-head">
           <h2>{summary ? t.share.public.days : t.share.public.schedule}</h2>
@@ -261,6 +256,16 @@ export function SharedItinerary() {
           />
         ))}
       </main>
+
+      {/* **Under the days, and it no longer jumps.** It opened the page and every row was an
+          anchor, so the one gesture the block invited threw the reader down the document
+          (owner, 2026-08-30: _"the הזמנות is at the start … clicking on a booking teleports
+          you down which is inconvenient"_). It is a reference — what is booked, and when —
+          and a reference belongs after the thing it refers to, stating its day rather than
+          scrolling to it. */}
+      {projection.commitments.length > 0 ? (
+        <Commitments commitments={projection.commitments} code={code} />
+      ) : null}
 
       {projection.appendix ? <Appendix appendix={projection.appendix} code={code} /> : null}
 
@@ -436,8 +441,18 @@ function EventRow({ event, code }: { event: SharedEvent; code: string }) {
           {/* **A stop's one-line description, at every level** (owner, 2026-08-30). Clamped
               to two lines: a caption is two lines, and four is a paragraph — the mockup
               measured day 9 growing 230px on captions alone before the clamp. */}
+          {/* **Prose sets its own base direction; a value inside a line does not.**
+              `autoIsolate` keeps the container's direction, which right-aligned an English
+              description inside this RTL column and made it ragged-left (owner, 2026-08-30:
+              _"English lines are ltr and shouldn't be treated differently"_). `dir="auto"`
+              resolves from the first strong character, so English reads left and Hebrew
+              reads right. This is the same attribute ADR-0213 §8 took OFF the titles, and
+              the difference is what each element is: a title is a value that must line up
+              with the caption under it, a description is a paragraph. */}
           {event.caption ? (
-            <span className="sh-place-line sh-cap">{autoIsolate(event.caption)}</span>
+            <span className="sh-place-line sh-cap" dir="auto">
+              {event.caption}
+            </span>
           ) : null}
           {event.mapUrl ? (
             <a
@@ -497,29 +512,15 @@ function Appendix({
   return (
     <section className="sh-appendix">
       <h2>{t.share.public.appendix.title}</h2>
-      {/* No booking block: every booking has a host by construction, so a confirmation
-          code now travels under its own row (`Ops`). */}
-      {appendix.notesAndTasks?.length ? (
-        <Block title={t.share.public.appendix.notesAndTasks}>
-          {appendix.notesAndTasks.map((entry, index) => (
-            <p key={`${entry.title}-${index}`}>
-              <strong>{autoIsolate(entry.title)}</strong> {entry.lines.map(autoIsolate).join(' · ')}
-            </p>
-          ))}
-        </Block>
-      ) : null}
+      {/* **The same rows the schedule uses, for the material that has no row.** This block
+          used to hold three per-family lists built by a second, unfiltered set of queries —
+          which published every note in the trip under a toggle promising otherwise, and
+          printed every attached note twice. The projection now hands over exactly the ops
+          with no host, and they render as ops (ADR-0096). */}
+      {appendix.ops?.length ? <OpList ops={appendix.ops} code={code} /> : null}
       {appendix.travelers?.length ? (
         <Block title={t.share.public.appendix.travelers}>
-          <p>{appendix.travelers.map(autoIsolate).join(' · ')}</p>
-        </Block>
-      ) : null}
-      {appendix.documents?.length ? (
-        <Block title={t.share.public.appendix.documents}>
-          {appendix.documents.map((document) => (
-            <p key={document.handle}>
-              <a href={sharedDocumentUrl(code, document.handle)}>{autoIsolate(document.title)}</a>
-            </p>
-          ))}
+          <p>{appendix.travelers.map(autoIsolate).join(NARRATIVE_SEPARATOR)}</p>
         </Block>
       ) : null}
     </section>
@@ -545,29 +546,41 @@ function Ops({ ops, code }: { ops: NonNullable<SharedEvent['ops']>; code: string
         <Icon name="caret" />
         {t.share.public.ops.more(ops.length)}
       </summary>
-      <span className="sh-ops-body">
-        {ops.map((op, index) => (
-          <span className="sh-op" key={`${op.kind}-${index}`}>
-            <Icon name={OP_ICON[op.kind]} />
-            {op.kind === SHARE_OP_KIND.CODE ? (
-              <>
-                <code>{ltrIsolate(op.code)}</code>
-                {op.provider ? <span>{autoIsolate(op.provider)}</span> : null}
-              </>
-            ) : null}
-            {op.kind === SHARE_OP_KIND.NOTE ? (
-              <span>
-                {autoIsolate([op.title, op.body].filter(Boolean).join(NARRATIVE_SEPARATOR))}
-              </span>
-            ) : null}
-            {op.kind === SHARE_OP_KIND.TASK ? <span>{autoIsolate(op.title)}</span> : null}
-            {op.kind === SHARE_OP_KIND.FILE ? (
-              <a href={sharedDocumentUrl(code, op.handle)}>{autoIsolate(op.title)}</a>
-            ) : null}
-          </span>
-        ))}
-      </span>
+      <OpList ops={ops} code={code} />
     </details>
+  );
+}
+
+/**
+ * **One op, one row** — and the reason this is its own component rather than a loop inside
+ * `Ops` is that the appendix renders the very same union without a fold: what is attached to
+ * nothing has nothing to fold under. Two call sites, one row shape (ADR-0096).
+ */
+function OpList({ ops, code }: { ops: readonly SharedOp[]; code: string }) {
+  return (
+    <span className="sh-ops-body">
+      {ops.map((op, index) => (
+        <span className="sh-op" key={`${op.kind}-${index}`}>
+          <Icon name={OP_ICON[op.kind]} />
+          {op.kind === SHARE_OP_KIND.CODE ? (
+            <>
+              <code>{ltrIsolate(op.code)}</code>
+              {op.provider ? <span>{autoIsolate(op.provider)}</span> : null}
+            </>
+          ) : null}
+          {/* A note is prose and picks its own direction; the values beside it do not. */}
+          {op.kind === SHARE_OP_KIND.NOTE ? (
+            <span dir="auto">{[op.title, op.body].filter(Boolean).join(NARRATIVE_SEPARATOR)}</span>
+          ) : null}
+          {op.kind === SHARE_OP_KIND.TASK ? <span dir="auto">{op.title}</span> : null}
+          {op.kind === SHARE_OP_KIND.FILE ? (
+            <a href={sharedDocumentUrl(code, op.handle)} download>
+              {autoIsolate(op.title)}
+            </a>
+          ) : null}
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -599,15 +612,18 @@ function Commitments({
     <section className="sh-fixed">
       <h2>{t.share.public.commitments.title}</h2>
       {commitments.map((row, index) => (
-        <a className="sh-fixed-row" href={`#day-${row.dayOrdinal}`} key={`${row.title}-${index}`}>
+        <div className="sh-fixed-row" key={`${row.title}-${index}`}>
           <Icon name={BOOKING_TYPE_MARK[row.bookingType]} />
           <span>
             <b>{autoIsolate(row.title)}</b>
             {row.detail ? <i>{autoIsolate(row.detail)}</i> : null}
             {row.ops?.length ? <Ops ops={row.ops} code={code} /> : null}
           </span>
-          <span className="sh-fixed-when">{ltrIsolate(commitmentWhen(row))}</span>
-        </a>
+          <span className="sh-fixed-when">
+            {ltrIsolate(commitmentWhen(row))}
+            <i>{t.share.public.commitments.day(row.dayOrdinal)}</i>
+          </span>
+        </div>
       ))}
     </section>
   );
