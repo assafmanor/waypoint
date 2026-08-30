@@ -5394,6 +5394,25 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   border-radius: var(--radius-16);
   background: var(--card);
   box-shadow: var(--elevation-raised);
+  /* **WITHOUT THIS THE WHOLE UNIT COLLAPSES TO ITS OWN TWO BORDERS** (owner, 2026-08-30,
+     four times: _"still no way to share the הכל … no link to be seen"_ — and rightly not
+     buying a stale-bundle explanation, because the deployed bundle was correct all along).
+
+     `.modal-form` is `display: flex; flex-direction: column; overflow-y: auto`, so its
+     children are flex items at `flex-shrink: 1`. A flex item's AUTOMATIC MINIMUM SIZE is
+     what normally stops one shrinking past its content — and an item whose `overflow` is
+     not `visible` does not get it (CSS Flexbox §4.5: the automatic minimum is 0 there).
+     This is the only child of the sheet that clips, so when the content exceeds 75dvh the
+     browser satisfied the overflow by squashing THIS box instead of scrolling: measured
+     2.0px at 360×640, 360×780 and 390×844, and 34.9px at 412×915, against the 92px its
+     link row and two buttons need. The link and both outcomes were rendered, in the right
+     order, and clipped away — which is why a DOM-order unit test passed throughout (jsdom
+     lays nothing out) and why only a real render caught it.
+
+     `flex: none` restores the size the item asks for and lets the sheet scroll, which is
+     what a scroll container is for. Any future child of `.modal-form` that clips inherits
+     the same trap. */
+  flex: none;
 }
 
 /* **Flush, with no inset of its own.** Padded, the unit's button sat 8px narrower than the

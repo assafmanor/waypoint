@@ -66,7 +66,7 @@ export class PublicSharingController {
     applyPublicShareHeaders(res);
     res.setHeader('Content-Type', mimeType);
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Content-Disposition', attachmentDisposition(title));
+    res.setHeader('Content-Disposition', attachmentDisposition(title, mimeType));
     res.send(buffer);
   }
 }
