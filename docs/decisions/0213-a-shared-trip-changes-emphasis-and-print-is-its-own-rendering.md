@@ -166,10 +166,12 @@ serialised output; the narrative boundary including provider failure, staleness 
 generator that never resolves; both API surfaces; the reader and the owner sheet; the PDF
 rendered by a real Chromium — page counts, extractable Hebrew, the written URL.
 
-**Not verified: the container PDF smoke.** The Docker leg and its host-side verifier are
-wired (`.github/workflows/ci.yml`, `scripts/verify-pdf-smoke.mjs`) but were never executed —
-the session that built this had no Docker. The first CI run on this branch is what proves
-the runtime image can render at all.
+**The container PDF smoke was not verified while building** — the session had no Docker, so
+the Docker leg and its host-side verifier (`.github/workflows/ci.yml`,
+`scripts/verify-pdf-smoke.mjs`) were written unexecuted. **CI closed it on the first run**
+(2026-08-30, PR #749): the production image built, rendered the nine-day reference itinerary
+through its system Chromium, and the host-side `pdfjs` verifier confirmed two pages,
+extractable Latin and Hebrew, and the written URL. The runtime image can render.
 
 ## Alternatives considered
 
