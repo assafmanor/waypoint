@@ -243,6 +243,50 @@ The shelf is read via the trip snapshot (`maybeItems`), not a standalone list. S
 | POST   | `/trips/:tripId/documents`             | Upload (multipart) → encrypted at rest (ADR-0015) |
 | GET    | `/trips/:tripId/documents/:id/content` | Decrypted stream to an authorized member          |
 
+## Itinerary sharing (ADR-0213)
+
+One reconfigurable public link per trip. **Two prefixes, one flow**: `/s/<code>` is a frontend
+SPA route (the service worker must keep answering it with the app shell), and
+`shared-itineraries` is the backend prefix the page then fetches from. Both are in
+`SERVER_ROUTE_PREFIXES` terms exactly once — only the second one is.
+
+| Method | Path                                          | Body → Response                                                                                                     |
+| ------ | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/trips/:tripId/share`                        | → `TripShareConfig` (any member; `404` when not shared — **a read never creates a share**)                          |
+| PUT    | `/trips/:tripId/share`                        | `upsertTripShareSchema` → `TripShareConfig` (**admin-only**, idempotent: same input, same code)                     |
+| POST   | `/trips/:tripId/share/rotate`                 | → `TripShareConfig` (**admin-only**; the previously shared code stops resolving at once)                            |
+| DELETE | `/trips/:tripId/share`                        | → `204` (**admin-only**; the row and its configuration survive, the code stops resolving)                           |
+| GET    | `/shared-itineraries/:code`                   | **public** → `SharedItinerary` (20/min per IP; `404` for missing, revoked and rotated alike)                        |
+| GET    | `/shared-itineraries/:code/pdf`               | **public** → `application/pdf`, attachment (5/min per IP; `503` + `Retry-After` when the render queue is saturated) |
+| GET    | `/shared-itineraries/:code/documents/:handle` | **public** → the file's bytes, attachment (only a document explicitly selected for THIS active share)               |
+
+**The code is the credential** — the same durable-row technique as the invite (ADR-0067), so
+the URL carries no trip id and nothing to verify, and rotating it is one write. The tight
+per-IP caps are what stand between an 8-character keyspace and enumeration.
+
+**Authority is asymmetric on purpose.** Every current member may read the configuration,
+share the link and request the PDF; only an admin may create, reconfigure, rotate or revoke.
+Sharing an itinerary is what the group does; changing what the world can see is not.
+
+**Every public response carries `Cache-Control: private, no-store`, `Referrer-Policy:
+no-referrer` and `X-Robots-Tag: noindex, nofollow, noarchive`** — including the app shell
+served for a `/s/<code>` navigation, because the code is in the URL being requested. Each
+closes a specific hole: a cache that outlives revocation, a `Referer` handing the credential
+to whatever map link the reader taps, and a crawler indexing a trip somebody passed to one
+person. Public reads are never written to Dexie or Cache Storage.
+
+**Detail is a server projection, never a client concern.** The level decides what is
+_queried_ (`backend/src/sharing/sharing.select.ts`), so a column added to `Event` next year
+is invisible until somebody names it, and the strict response schema turns naming it wrongly
+into a failed request rather than a disclosure. Summary carries no time, address, map link,
+travel leg or appendix at all; Full adds those; Everything adds only the sensitive families
+explicitly enabled, in a separate appendix rather than inline with the schedule.
+
+**The narrative port takes `SummaryNarrativeInput` and nothing else** — built from
+already-projected Summary days, independently of the share level, so no Everything toggle can
+widen it. No external model ships; the deterministic fallback is complete, and a public read
+never waits on generation.
+
 ## Snapshot & change feed (ADR-0019)
 
 | Method | Path                                  | Purpose                                                                                                      |

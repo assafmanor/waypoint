@@ -1,7 +1,7 @@
 # Itinerary sharing design session
 
 **Date:** 2026-08-29
-**Status:** final mockups ready for owner review; production build pending
+**Status:** built 2026-08-30 — see the amendment in [ADR-0213](../decisions/0213-a-shared-trip-changes-emphasis-and-print-is-its-own-rendering.md#amendment--what-shipping-it-changed-2026-08-30) for what the build changed
 **Decision record:** [ADR-0213](../decisions/0213-a-shared-trip-changes-emphasis-and-print-is-its-own-rendering.md)
 
 The owner wants two outputs from one itinerary projection:
@@ -77,11 +77,25 @@ The public route is proposed as `/s/<8-character-code>`, using the durable rando
 - First print exploration: [`a-shared-itinerary-is-printed-v1.html`](../../mockups/a-shared-itinerary-is-printed-v1.html)
 - Final print/PDF: [`a-shared-itinerary-is-printed-by-daypart-v2.html`](../../mockups/a-shared-itinerary-is-printed-by-daypart-v2.html)
 
-## Still open
+## Still open — resolved by the build, except two
 
-- Link lifecycle: rotation, revocation, expiry, owner departure, trip deletion, and offline behavior.
-- Multiple independently revocable audience links and permission management beyond the v1 bearer link.
-- Public indexing and cache headers; intended start remains bearer-link access with no discovery.
-- Exact projection, authorization, and safe-narrative schemas.
-- Provider policy for external versus local/self-hosted models.
-- Whether a PDF generated from a stale cached public projection is allowed and how it is labelled.
+Answered while building (details in the ADR amendment):
+
+- **Link lifecycle.** Rotation mints a new code and the old one stops resolving in the same
+  write; revocation keeps the row (and the owner's configuration) while making every public
+  read a 404; re-sharing after a revocation mints a **fresh** code rather than reviving one
+  somebody has already pasted somewhere. Trip deletion cascades. There is no expiry — an
+  itinerary link is revoked deliberately or not at all.
+- **Indexing and cache headers.** `private, no-store` + `no-referrer` + `noindex, nofollow,
+noarchive` on every public response, including the app shell served for a `/s/<code>`
+  navigation, because the code is in the URL being requested.
+- **Projection, authorization and narrative schemas.** All strict, in
+  `packages/shared/src/sharing.ts`. Members read and share; admins configure, rotate and
+  revoke.
+- **A stale PDF.** Not allowed, and the question dissolved: no PDF is stored. Each request
+  renders from the live projection, so there is nothing to label.
+
+Still genuinely open, and now backlog lines of their own:
+
+- Multiple independently revocable audience links, with permission management.
+- Provider policy for external versus local/self-hosted narrative models.

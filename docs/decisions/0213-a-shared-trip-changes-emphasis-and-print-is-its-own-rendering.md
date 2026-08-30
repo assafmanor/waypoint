@@ -1,8 +1,8 @@
 # 0213 - A shared trip changes emphasis, and print is its own rendering
 
-**Status:** Proposed - design approved for mockup; production build pending
+**Status:** Accepted - built (2026-08-30)
 **Date:** 2026-08-29
-**Relates:** [0017](0017-mobile-first-device-targets.md), [0018](0018-timeline-data-model-shape.md), [0028](0028-plan-violet-color-budget-dark-ready.md), [0067](0067-revocable-code-invites-and-removal-blocks.md), [0097](0097-mockup-catalog-out-of-root-claude-md.md), [0107](0107-per-place-timezones-and-multi-zone-time.md), [0118](0118-numbers-in-hebrew-bidi.md), [0166](0166-place-enrichment-is-a-multi-source-pipe.md)
+**Relates:** [0011](0011-hard-soft-event-model.md), [0017](0017-mobile-first-device-targets.md), [0018](0018-timeline-data-model-shape.md), [0028](0028-plan-violet-color-budget-dark-ready.md), [0067](0067-revocable-code-invites-and-removal-blocks.md), [0097](0097-mockup-catalog-out-of-root-claude-md.md), [0107](0107-per-place-timezones-and-multi-zone-time.md), [0118](0118-numbers-in-hebrew-bidi.md), [0166](0166-place-enrichment-is-a-multi-source-pipe.md)
 
 ## Context
 
@@ -107,6 +107,69 @@ The v1 build has one reconfigurable public link per trip. Updating its projectio
 - Generated narrative may change automatically on a live link, but only after schema validation and only for the exact current input hash.
 - Free-text sensitivity cannot be solved by field names alone; external generation is limited to Summary-public text and requires explicit provider policy.
 - PDF generation needs pagination tests and rendered-page inspection, not only unit tests.
+
+## Amendment — what shipping it changed (2026-08-30)
+
+Built as designed. Six things the build decided or corrected, recorded because a reader of
+the design alone would get them wrong.
+
+**The display zone has no place-zone rung.** The build plan resolved an event's display zone
+as _event override → place zone → trip zone_. That is not this app's rule: ADR-0107 §4 is
+_event override → the itinerary segment holding that instant → trip primary zone_, and a
+place's zone reaches it through the crossings transport builds, never as a step of its own.
+`eventZone` in `notifications/kinds/event-shape.ts` already implemented the real chain, so
+the derivation moved to `common/event-zone.util.ts` and sharing consumes it. A shared page
+or PDF printing an hour the app never showed is the bug ADR-0197 §5 calls the one that gets
+a feature turned off permanently; two implementations that agree today are how you get there.
+
+**`shared-itineraries` is a server route prefix.** Missing from the plan, and it breaks two
+things: `openapi-contract.spec.ts`'s route-ownership test rejects any documented path outside
+`SERVER_ROUTE_PREFIXES`, and in production the service worker's navigation denylist answers
+the public API call with the cached app shell. Note the feature needs **two** different
+prefixes for one flow — `/s/<code>` is an ordinary SPA route that must keep getting the
+shell, while the JSON and PDF it then fetches must reach the backend.
+
+**The deterministic narrative emits no prose.** §2 said the server builds a fallback of
+"route labels and counts", which would have put Hebrew sentences in a server that owns no UI
+copy (ADR-0009). What it actually emits is trip data joined by punctuation — `רייקיאוויק ←
+ויק`, `נחיתה בקפלוויק · כניסה לדירה` — with no word of any language in it, and `dayCount`
+/`eventCount` as fields. Each renderer composes the sentence around them in its own locale.
+An empty string is a legitimate answer: a day with no places has nothing true to say about
+itself, and the reader falls back to its date.
+
+**The PDF owns one Hebrew file, and it is the only Hebrew in the backend.** The print
+renderer runs server-side and cannot import the app's i18n, so `itinerary-pdf.copy.ts` is a
+deliberate second locale consumer. The obvious guard — a test importing
+`frontend/src/i18n/he.ts` — makes the backend's own `tsc` build reach across the workspace,
+which it refuses (TS2835) and should. What keeps it honest is that all of it is in that one
+file.
+
+**The `unicode-range` split is load-bearing in print too.** Inlining the app's fonts without
+it lets the Latin Assistant face win for every Hebrew codepoint, and every title silently
+falls back to a system font. The page still _looked_ right in a container with Hebrew
+coverage; the tell was a PDF whose Hebrew could not be extracted at all. This is why the
+smoke check opens the artifact with `pdfjs` and asserts extractable Hebrew rather than
+trusting the renderer's own report — a mocked browser can see none of it.
+
+**Everything's fourth family is per-file, not a switch.** Booking secrets, notes/tasks and
+traveller identity are switches; documents are chosen one at a time, because "share my
+documents" is a promise nobody can check later. Financial data has no member at all — the
+shape cannot express it, which is a stronger default than a switch left off. Traveller
+identity publishes display names and there is no toggle anywhere that reveals an email: the
+`select` cannot name one, rather than the mapper choosing not to read it.
+
+### What was verified, and what was not
+
+Verified: the full projection at all three levels against a leak fixture (an email, a
+confirmation code, coordinates, a `googlePlaceId`, two private bodies) asserted on the
+serialised output; the narrative boundary including provider failure, staleness and a
+generator that never resolves; both API surfaces; the reader and the owner sheet; the PDF
+rendered by a real Chromium — page counts, extractable Hebrew, the written URL.
+
+**Not verified: the container PDF smoke.** The Docker leg and its host-side verifier are
+wired (`.github/workflows/ci.yml`, `scripts/verify-pdf-smoke.mjs`) but were never executed —
+the session that built this had no Docker. The first CI run on this branch is what proves
+the runtime image can render at all.
 
 ## Alternatives considered
 

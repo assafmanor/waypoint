@@ -80,7 +80,6 @@ import {
   type UpdateTripInput,
   tripShareConfigSchema,
   tripWithMembersSchema,
-  MEMBERSHIP_ROLE,
   type TripWithMembers,
   type TripShareConfig,
   type UpsertTripShareInput,
