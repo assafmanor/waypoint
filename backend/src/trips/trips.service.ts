@@ -26,6 +26,7 @@ import { ENTITY_TYPE, ERROR_CODE } from '@waypoint/shared';
 import { EnrichmentScheduler } from '../enrichment/enrichment.scheduler';
 import { FxService } from '../fx/fx.service';
 import { EnrichmentService } from '../enrichment/enrichment.service';
+import { assertTripAdmin } from '../common/trip-scope.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService, type ChangeOp } from '../sync/change.service';
 import { generateInviteCode } from './invite.util';
@@ -368,15 +369,11 @@ export class TripsService {
     await this.prisma.tripBlock.deleteMany({ where: { tripId, userId: targetUserId } });
   }
 
-  /** Throws 403 unless the actor is an `admin` of the trip. Assumes membership
-   *  is already confirmed (MembershipGuard); a non-member reads as non-admin. */
-  private async assertAdmin(tripId: string, userId: string): Promise<void> {
-    const membership = await this.prisma.membership.findUnique({
-      where: { tripId_userId: { tripId, userId } },
-    });
-    if (!membership || membership.role !== 'admin') {
-      throw new ForbiddenException('Admin only');
-    }
+  /** Throws 403 unless the actor is an `admin` of the trip. The check itself now lives in
+   *  `common/trip-scope.util.ts`, shared with ADR-0213's sharing module; this stays as the
+   *  name seven call sites in this service already read. */
+  private assertAdmin(tripId: string, userId: string): Promise<void> {
+    return assertTripAdmin(this.prisma, tripId, userId);
   }
 
   /** A non-persisted `trip`/`delete` change for the ephemeral delete broadcast. */
