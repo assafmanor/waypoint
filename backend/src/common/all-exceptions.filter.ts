@@ -10,6 +10,7 @@ import {
 import { Prisma } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { ERROR_CODE } from '@waypoint/shared';
+import { isPublicSharePath, PUBLIC_SHARE_HEADERS } from '../sharing/public-response-headers';
 import { REVALIDATE } from './static-cache';
 
 // Where the production image puts the built PWA; never exists in dev (ADR-0020).
@@ -66,7 +67,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
     ) {
       // The shell is never cached past a revalidation (static-cache.ts): it names
       // the current build's hashed chunks, and a deploy deletes the previous ones.
-      res.sendFile(this.spaIndexPath, { headers: { 'Cache-Control': REVALIDATE } });
+      //
+      // A `/s/<code>` navigation is the exception, and not because the shell differs — it
+      // carries no itinerary either way. The CODE IS IN THE URL BEING REQUESTED, so this
+      // response must still refuse indexing and referrer leakage, or a crawler that follows
+      // one pasted link puts a private trip in a search index (ADR-0213 §5). Every other app
+      // route keeps its ordinary revalidation policy.
+      res.sendFile(this.spaIndexPath, {
+        headers: isPublicSharePath(req.path)
+          ? PUBLIC_SHARE_HEADERS
+          : { 'Cache-Control': REVALIDATE },
+      });
       return;
     }
 

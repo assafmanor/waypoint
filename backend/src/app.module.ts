@@ -21,6 +21,7 @@ import { TravelModesModule } from './travel-modes/travel-modes.module';
 import { PlacesModule } from './places/places.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RoutingModule } from './routing/routing.module';
+import { SharingModule } from './sharing/sharing.module';
 import { SyncModule } from './sync/sync.module';
 import { TripsModule } from './trips/trips.module';
 
@@ -49,6 +50,7 @@ import { TripsModule } from './trips/trips.module';
     DocumentsModule,
     MapModule,
     RoutingModule,
+    SharingModule,
     // Out-of-band and route-less in Phase 1 (ADR-0166 §6): registered so it is proven to
     // construct, called by nothing yet.
     EnrichmentModule,

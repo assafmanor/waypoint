@@ -8,5 +8,8 @@ import { DocumentsService } from './documents.service';
   imports: [SyncModule],
   controllers: [DocumentsController],
   providers: [DocumentsService, MembershipGuard],
+  // ADR-0213's public download route reuses `getContent` rather than owning a second copy
+  // of the at-rest decryption path.
+  exports: [DocumentsService],
 })
 export class DocumentsModule {}
