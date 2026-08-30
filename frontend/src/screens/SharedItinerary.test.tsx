@@ -160,7 +160,14 @@ describe('SharedItinerary', () => {
 
     expect(await screen.findByText(plain('09:30'))).toBeTruthy();
     expect(screen.getByText('806 Selfoss')).toBeTruthy();
-    expect(screen.getByText(t.share.public.journey(35, 28))).toBeTruthy();
+    // The mode is the point of the line: two bare numbers made a 121-minute walk and a
+    // 67-minute drive the same shape (owner, 2026-08-30). Read off the row rather than by
+    // text, because the mode's ICON sits in it beside its word.
+    const leg = document.querySelector('.sh-journey');
+    expect(withoutBidiControls(leg?.textContent ?? '')).toContain(
+      withoutBidiControls(t.share.public.journey(t.travelMode.driving, 35, 28)),
+    );
+    expect(leg?.querySelector('svg.icon')).toBeTruthy();
     expect(screen.getByRole('link', { name: new RegExp(t.share.public.map) })).toBeTruthy();
   });
 

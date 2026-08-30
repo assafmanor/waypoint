@@ -126,6 +126,16 @@ const escapeHtml = (value: string): string =>
  *  renderer cannot import the frontend. */
 const ltr = (value: string | number): string => `⁦${escapeHtml(String(value))}⁩`;
 
+/** **A value the app did not write, inside a line the app composed** — a place name, an
+ *  event title, a person. First-strong rather than forced-LTR, because it can be either
+ *  script; the same instrument `lib/bidi.ts`'s `autoIsolate` is on screen. A container of
+ *  these must NOT carry `dir="auto"`, which skips isolates when it sniffs. */
+const auto = (value: string): string => `\u2068${escapeHtml(value)}\u2069`;
+
+/** A date, a code or a stamp — mono, isolated, and **only ever the numeric run**. Its
+ *  element sets the row in Assistant so Hebrew beside it has a face with Hebrew glyphs. */
+const num = (value: string): string => `<span class="pdf-num">${ltr(value)}</span>`;
+
 const dayLabel = (date: string): { day: string; weekday: string } => {
   const [year, month, day] = date.split('-').map(Number);
   return {
@@ -136,18 +146,26 @@ const dayLabel = (date: string): { day: string; weekday: string } => {
 
 function eventRow(event: SharedEvent, summary: boolean): string {
   if (summary) {
-    return `<div class="pdf-summary-event"><span>${escapeHtml(event.icon ?? '•')}</span><strong>${escapeHtml(event.title)}</strong></div>`;
+    return `<div class="pdf-summary-event"><span>${escapeHtml(event.icon ?? '•')}</span><strong dir="auto">${escapeHtml(event.title)}</strong></div>`;
   }
+  // The mode leads the numbers, and the numbers carry their units — it printed as `37 · 30.5`,
+  // two bare figures with nothing saying what either measured (owner, 2026-08-30).
   const journey = event.journey
-    ? `<div class="pdf-journey">${ltr(event.journey.minutes)} · ${ltr(event.journey.km)}</div>`
+    ? `<div class="pdf-journey">${PDF_COPY.travelMode[event.journey.mode]} · ` +
+      `${ltr(event.journey.minutes)} ${PDF_COPY.minutes} · ${ltr(event.journey.km)} ${PDF_COPY.km}</div>`
     : '';
-  const place = [event.placeName, event.address].filter(Boolean).join(' · ');
+  // Each value isolated, the separator left in the RTL flow — a `dir="auto"` over the JOIN
+  // would let an English address decide which side the place name sits on.
+  const place = [event.placeName, event.address]
+    .filter((value): value is string => Boolean(value))
+    .map(auto)
+    .join(' · ');
   return (
     journey +
     `<div class="pdf-event${event.hard ? ' hard' : ''}">` +
     `<span class="pdf-event-time">${event.startLabel ? ltr(event.startLabel) : PDF_COPY.dayparts.flexible}</span>` +
-    `<span class="pdf-event-copy"><strong>${escapeHtml(event.title)}</strong>` +
-    (place ? `<span dir="auto">${escapeHtml(place)}</span>` : '') +
+    `<span class="pdf-event-copy"><strong>${auto(event.title)}</strong>` +
+    (place ? `<span>${place}</span>` : '') +
     `</span></div>`
   );
 }
@@ -169,8 +187,10 @@ function dayCard(day: SharedDay, summary: boolean): string {
   return (
     `<article class="pdf-day"><header class="pdf-day-head">` +
     `<span class="pdf-date"><strong>${ltr(dayNumber)}</strong><span>${weekday}</span></span>` +
-    `<span class="pdf-day-copy"><strong dir="auto">${escapeHtml(day.title || `${weekday} ${dayNumber}`)}</strong>` +
-    `<span dir="auto">${escapeHtml(day.summary)}</span></span></header>` +
+    // Both are composed server-side with their values already isolated
+    // (`itinerary-narrative.fallback.ts`), so neither may sniff its own direction.
+    `<span class="pdf-day-copy"><strong>${escapeHtml(day.title) || auto(`${weekday} ${dayNumber}`)}</strong>` +
+    `<span>${escapeHtml(day.summary)}</span></span></header>` +
     `<div class="pdf-parts">${sections}</div></article>`
   );
 }
@@ -182,7 +202,7 @@ function appendixBlock(projection: SharedItinerary): string {
   const push = (title: string, lines: string[]) => {
     if (lines.length > 0) {
       blocks.push(
-        `<div class="pdf-op"><strong>${title}</strong><span dir="auto">${lines.map(escapeHtml).join(' · ')}</span></div>`,
+        `<div class="pdf-op"><strong>${title}</strong><span>${lines.map(auto).join(' · ')}</span></div>`,
       );
     }
   };
@@ -265,16 +285,23 @@ export function itineraryPdfHtml({
     `<header class="pdf-mast"><div class="pdf-mast-copy">` +
     `<div class="pdf-eyebrow">${PDF_COPY.eyebrow} · <span dir="auto">${escapeHtml(projection.trip.destination)}</span></div>` +
     `<h1 class="pdf-title" dir="auto">${escapeHtml(projection.trip.name)}</h1>` +
-    `<div class="pdf-subtitle">${ltr(projection.trip.startDate)} - ${ltr(projection.trip.endDate)} · ${PDF_COPY.days(projection.trip.dayCount)} · ${PDF_COPY.updatedAt} ${ltr(generatedAtLabel)}</div>` +
-    `</div><div class="pdf-route-mini"><strong dir="auto">${escapeHtml(projection.narrative.title)}</strong>` +
-    `<span dir="auto">${projection.trip.routeLabels.map(escapeHtml).join(' · ')}</span></div>` +
+    // **Assistant, with only the numeric runs in mono** (design-language: "Hebrew text must
+    // never sit inside a mono element"). This line was `font: … 'JetBrains Mono', monospace`
+    // — and the `font` SHORTHAND replaces the family list, so Assistant was not behind it.
+    // JetBrains ships no Hebrew, the fallback was generic monospace, and the container's
+    // only monospace is Liberation Mono: `12 ימים · עודכן` printed as five empty rectangles
+    // while the headings two lines up were perfect (owner, 2026-08-30).
+    `<div class="pdf-subtitle">${num(`${projection.trip.startDate} - ${projection.trip.endDate}`)}` +
+    ` · ${PDF_COPY.days(projection.trip.dayCount)} · ${PDF_COPY.updatedAt} ${num(generatedAtLabel)}</div>` +
+    `</div><div class="pdf-route-mini"><strong>${escapeHtml(projection.narrative.title)}</strong>` +
+    `<span>${projection.trip.routeLabels.map(auto).join(' · ')}</span></div>` +
     // The QR is printed ONCE, beside the title, rather than on every page: it is how a
     // reader walks the paper back to the live link, and one legible code does that.
     `<div class="pdf-qr-block"><img class="pdf-qr" src="${qrDataUrl}" alt="" />` +
     `<span class="pdf-qr-cap">${ltr(publicUrl)}</span></div></header>`;
 
   const lede =
-    `<div class="pdf-lede"><div class="pdf-story"><strong dir="auto">${escapeHtml(projection.narrative.title)}</strong>` +
+    `<div class="pdf-lede"><div class="pdf-story"><strong>${escapeHtml(projection.narrative.title)}</strong>` +
     // Skipped rather than emptied: a generated summary is optional, and an empty paragraph
     // still takes its line-height and leaves a gap that reads as a missing sentence.
     (projection.narrative.summary
@@ -308,13 +335,17 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
 .pdf-mast-copy{min-width:0;flex:1;}
 .pdf-eyebrow{margin-block-end:4px;color:var(--pdf-muted);font-size:9px;font-weight:700;letter-spacing:.08em;}
 .pdf-title{margin:0;font:27px/1.1 'Secular One',sans-serif;}
-.pdf-subtitle{margin-block-start:6px;color:var(--pdf-muted);font:500 9px 'JetBrains Mono',monospace;}
+.pdf-subtitle{margin-block-start:6px;color:var(--pdf-muted);font:500 9px 'Assistant',sans-serif;}
+/* Mono is for the RUN, never the row: the font SHORTHAND drops the family list, and
+   JetBrains Mono has no Hebrew glyphs, so a Hebrew word in a mono row prints as boxes. */
+.pdf-num{font-family:'JetBrains Mono',monospace;}
 .pdf-route-mini{min-width:130px;text-align:end;}
 .pdf-route-mini strong,.pdf-route-mini span{display:block;}
 .pdf-route-mini strong{font-size:12px;}
 .pdf-route-mini span{margin-block-start:3px;color:var(--pdf-teal);font-size:9px;}
 .pdf-qr-block{flex:0 0 auto;text-align:center;}
 .pdf-qr{display:block;width:46px;height:46px;}
+/* Latin by construction (a host and a path), so mono over the whole element is correct. */
 .pdf-qr-cap{display:block;margin-block-start:3px;color:var(--pdf-muted);font:7px 'JetBrains Mono',monospace;}
 .pdf-lede{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(200px,1fr);gap:16px;margin-block-end:15px;border:1px solid var(--pdf-line);border-radius:11px;overflow:hidden;}
 .pdf-story{padding:11px 13px;}

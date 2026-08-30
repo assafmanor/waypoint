@@ -19,6 +19,7 @@
 // package holds no UI strings (see this package's CLAUDE.md).
 import { z } from 'zod';
 import { entityIdSchema, isoDateTimeSchema, dateOnlySchema } from './schemas';
+import { LEG_TRAVEL_MODES } from './constants';
 
 /** How much of the trip a link reveals. Three intents, not three amounts (ADR-0213 §1). */
 export const SHARE_DETAIL_LEVEL = {
@@ -235,7 +236,11 @@ export const sharedEventSchema = z.strictObject({
   /** The journey INTO this event, when one is already stored (ADR-0205). Full and above. */
   journey: z
     .strictObject({
-      mode: z.string(),
+      /** **The enum, not a free string** — a reader keys both a word and an icon off it,
+       *  which is the definition of a discriminant (`packages/shared/CLAUDE.md`). It was
+       *  `z.string()`, and both renderers answered by dropping the mode entirely: a 121-min
+       *  walk and a 67-min drive printed as the same shape of line (owner, 2026-08-30). */
+      mode: z.enum(LEG_TRAVEL_MODES),
       minutes: z.number().int().nonnegative(),
       km: z.number().nonnegative(),
     })

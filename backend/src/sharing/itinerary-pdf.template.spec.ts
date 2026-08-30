@@ -118,6 +118,45 @@ describe('itineraryPdfHtml', () => {
     expect(emojiFace).not.toContain('U+2000-206F');
   });
 
+  // **Hebrew must never be inside a mono element** (design-language: JetBrains Mono ships no
+  // Hebrew glyphs). `.pdf-subtitle` was `font: … 'JetBrains Mono', monospace`, and the `font`
+  // SHORTHAND replaces the family list — so Assistant was not behind it, the fallback was the
+  // container's Liberation Mono, and `12 ימים · עודכן` printed as empty rectangles while the
+  // headings two lines above were perfect. The check is structural rather than visual: no
+  // element that sets a mono face may receive a Hebrew codepoint.
+  it('keeps every Hebrew run out of a mono element', () => {
+    const HEBREW = /[\u0590-\u05FF]/;
+    for (const run of full.match(/<span class="pdf-num">[^<]*<\/span>/g) ?? []) {
+      expect(HEBREW.test(run)).toBe(false);
+    }
+    // The rows that DO mix scripts must be set in Assistant, with mono scoped to the run.
+    expect(full).toContain(
+      ".pdf-subtitle{margin-block-start:6px;color:var(--pdf-muted);font:500 9px 'Assistant'",
+    );
+    expect(full).toContain(".pdf-num{font-family:'JetBrains Mono',monospace;}");
+    // …and the subtitle really does carry both scripts, or the assertion above is vacuous.
+    const subtitle = /<div class="pdf-subtitle">.*?<\/div>/s.exec(full)?.[0] ?? '';
+    expect(HEBREW.test(subtitle)).toBe(true);
+    expect(subtitle).toContain('class="pdf-num"');
+  });
+
+  // A composed line cannot sniff its own direction — see `itinerary-narrative.fallback.ts`.
+  // The template's half of that is: isolate each value it joins, and never `dir="auto"` over
+  // the join.
+  it('isolates the values it joins, and lets none of those lines sniff', () => {
+    const composed = [
+      /<div class="pdf-route-mini">.*?<\/div>/s,
+      /<span class="pdf-day-copy">.*?<\/span><\/header>/s,
+    ];
+    for (const pattern of composed) {
+      const block = pattern.exec(full)?.[0] ?? '';
+      expect(block).not.toBe('');
+      expect(block).not.toContain('dir="auto"');
+    }
+    // The route strip's stops each arrive first-strong isolated.
+    expect(full).toContain('\u2068');
+  });
+
   // The bug this caught: with no `unicode-range`, the Latin Assistant face wins for every
   // Hebrew codepoint and every title falls back to a system font. It still LOOKS right in a
   // container that has Hebrew coverage — the tell was a PDF whose Hebrew could not be

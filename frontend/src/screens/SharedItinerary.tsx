@@ -9,7 +9,7 @@ import {
 import { GLYPH } from '../constants';
 import { Icon } from '../ui/Icon';
 import { t } from '../i18n/he';
-import { ltrIsolate } from '../lib/bidi';
+import { autoIsolate, ltrIsolate } from '../lib/bidi';
 import {
   fetchSharedItinerary,
   sharedDocumentUrl,
@@ -133,7 +133,12 @@ export function SharedItinerary() {
 
       {summary ? (
         <div className="sh-story">
-          <strong dir="auto">{projection.narrative.title}</strong>
+          {/* **No `dir="auto"` on a COMPOSED line** — the server already isolated every
+              value inside it (`itinerary-narrative.fallback.ts`), and `auto` ignores
+              isolated content when it sniffs, so it would find no strong character and fall
+              back to LTR. Inheriting the page's RTL is what makes the route arrow mean the
+              same thing whether the stops are Hebrew or Latin. */}
+          <strong>{projection.narrative.title}</strong>
           <p>
             {/* The generated line when there is one; otherwise the counts sentence, which
                 the server deliberately does not compose — it ships the numbers. */}
@@ -181,8 +186,10 @@ function DayCard({ day, open, onToggle }: { day: SharedDay; open: boolean; onTog
         <span className="sh-day-copy">
           {/* A day with no places has no true title, and the server sends none rather than
               inventing one — the date is then the name. */}
-          <strong dir="auto">{day.title || `${weekday} ${ltrIsolate(dayNumber)}`}</strong>
-          <span dir="auto">{day.summary}</span>
+          {/* Composed server-side with its values already isolated — see the story line
+              above for why this must not sniff. */}
+          <strong>{day.title || `${weekday} ${ltrIsolate(dayNumber)}`}</strong>
+          <span>{day.summary}</span>
         </span>
         <span className="sh-caret">
           <Icon name="caret" />
@@ -227,7 +234,15 @@ function EventRow({ event }: { event: SharedEvent }) {
     <>
       {event.journey ? (
         <div className="sh-journey">
-          {t.share.public.journey(event.journey.minutes, event.journey.km)}
+          {/* The mode is a control-shaped fact, so it gets the app's own icon beside its
+              own word — `Icon`'s names ARE the mode keys, which is how `DayJoinRow`
+              already draws it. */}
+          <Icon name={event.journey.mode} />
+          {t.share.public.journey(
+            t.travelMode[event.journey.mode],
+            event.journey.minutes,
+            event.journey.km,
+          )}
         </div>
       ) : null}
       <article className={`sh-event${event.hard ? ' hard' : ''}`}>
@@ -283,8 +298,12 @@ function Appendix({
       {appendix.bookingSecrets?.length ? (
         <Block title={t.share.public.appendix.bookingSecrets}>
           {appendix.bookingSecrets.map((entry, index) => (
-            <p key={`${entry.title}-${index}`} dir="auto">
-              <strong>{entry.title}</strong> {entry.lines.map(ltrIsolate).join(' · ')}
+            // The line joins values from different sources, so each is isolated on its
+            // own and the row keeps the page's direction — never `dir="auto"` over a
+            // composition (`lib/bidi.ts`). Codes are Latin by construction; the title is
+            // not.
+            <p key={`${entry.title}-${index}`}>
+              <strong dir="auto">{entry.title}</strong> {entry.lines.map(ltrIsolate).join(' · ')}
             </p>
           ))}
         </Block>
@@ -292,15 +311,15 @@ function Appendix({
       {appendix.notesAndTasks?.length ? (
         <Block title={t.share.public.appendix.notesAndTasks}>
           {appendix.notesAndTasks.map((entry, index) => (
-            <p key={`${entry.title}-${index}`} dir="auto">
-              <strong>{entry.title}</strong> {entry.lines.join(' · ')}
+            <p key={`${entry.title}-${index}`}>
+              <strong dir="auto">{entry.title}</strong> {entry.lines.map(autoIsolate).join(' · ')}
             </p>
           ))}
         </Block>
       ) : null}
       {appendix.travelers?.length ? (
         <Block title={t.share.public.appendix.travelers}>
-          <p dir="auto">{appendix.travelers.join(' · ')}</p>
+          <p>{appendix.travelers.map(autoIsolate).join(' · ')}</p>
         </Block>
       ) : null}
       {appendix.documents?.length ? (

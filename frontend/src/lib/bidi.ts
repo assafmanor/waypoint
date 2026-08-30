@@ -40,6 +40,32 @@ export function ltrIsolate(run: string | number): string {
   return `${LTR_ISOLATE}${run}${POP_DIRECTIONAL_ISOLATE}`;
 }
 
+// FIRST STRONG ISOLATE. Same containment as `ltrIsolate`, but the run decides its OWN
+// direction from its first strong character instead of being forced left-to-right.
+const FIRST_STRONG_ISOLATE = '\u2068';
+
+/**
+ * **A value the app did not write, placed inside a line the app composed.**
+ *
+ * The distinction from `ltrIsolate` is what the run IS, not where it sits: a time, a code or
+ * a signed number is Latin by construction and takes `ltrIsolate`; a place name, an event
+ * title or a person's name arrives in whatever script the world gave it, so forcing it LTR
+ * would lay a Hebrew one out backwards. First-strong asks the run itself.
+ *
+ * Reach for it whenever a line joins several such values with punctuation — `A · B`, or a
+ * route's `from ← to`. Without it the whole line's direction is decided by whichever value
+ * happens to come first, so two rows differing only in their data lay out differently and
+ * the separator between them lands on the wrong side (ADR-0118; the owner's report about
+ * route arrows pointing the wrong way on Latin place names).
+ *
+ * **A container of isolates must not carry `dir="auto"`**: `auto` skips isolated content
+ * when it sniffs, finds no strong character, and falls back to LTR. Let it inherit the
+ * page instead.
+ */
+export function autoIsolate(value: string): string {
+  return `${FIRST_STRONG_ISOLATE}${value}${POP_DIRECTIONAL_ISOLATE}`;
+}
+
 /**
  * A measurement token — the number as an LTR island, the Hebrew unit after it in
  * the RTL flow: `measure(9, 'ק״מ')` reads "9 ק״מ", `measure('−3', 'ש׳')` reads
