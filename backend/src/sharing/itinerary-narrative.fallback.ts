@@ -175,7 +175,22 @@ function titleValues(title: SharedDayTitle): string[] {
  * it sniffs. Takes `routeLabels` UNCAPPED: the endpoints are the trip's, not the strip's.
  */
 export function fallbackTripTitle(routeLabels: readonly string[], tripName: string): string {
-  if (routeLabels.length === 0) return isolate(tripName);
+  // **THE TRIP'S NAME IS THE TRIP'S TITLE** (ADR-0213's 2026-08-30 amendment; owner, on the
+  // masthead: _"Why נתב״ג to Frankfurt?? What does it have to do with anything?"_).
+  //
+  // This used to compose first-stop → last-stop, and on any trip you fly to both ends are
+  // transit airports — so the loudest line on the page named two places the trip is not
+  // about. It is the same defect on a non-flight trip too, one level quieter:
+  // `רייקיאוויק ← סנייפלסנס` describes a drive, not a holiday in Iceland.
+  //
+  // A person already named this trip, in `Trip.name`, and that name is what they call it
+  // when they talk about it. The route stays available — `routeLabels` still feeds the
+  // narrative generator's input — it just stops being the headline.
+  const name = tripName.trim();
+  if (name) return isolate(name);
+  // Nameless is possible (a trip created by an import), and only then is the route the best
+  // thing we have to call it.
+  if (routeLabels.length === 0) return '';
   if (routeLabels.length === 1) return isolate(routeLabels[0]);
   const from = routeLabels[0];
   const to = routeLabels[routeLabels.length - 1];

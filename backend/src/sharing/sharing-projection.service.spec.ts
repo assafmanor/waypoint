@@ -28,6 +28,10 @@ import { DisabledItineraryNarrativeGenerator } from './itinerary-narrative.gener
  */
 const OWNER = 'u-assaf';
 const PEER = 'u-noam';
+/** The trip's own name, which is now its title — so the assertion and the fixture cannot
+ *  drift apart the way a repeated literal would. */
+const TRIP_NAME = 'איסלנד עם המשפחה';
+
 const SECRET = {
   email: 'assaf@example.com',
   confirmationCode: 'KEF-4821',
@@ -72,7 +76,7 @@ describe('SharingProjectionService', () => {
   async function seedTrip(): Promise<string> {
     const trip = await prisma.trip.create({
       data: {
-        name: 'איסלנד עם המשפחה',
+        name: TRIP_NAME,
         destination: 'Iceland',
         icon: '🇮🇸',
         startDate: new Date('2026-08-29'),
@@ -466,11 +470,16 @@ describe('SharingProjectionService', () => {
     // narrative replaces it with prose and there is no kind to give that. Day titles moved
     // out: they are now a kind plus its values, and each renderer isolates them itself —
     // which is why those assertions are the renderers' and this one is not.
-    it('isolates each value in the composed trip title, and not the punctuation', async () => {
+    it('titles the trip by its NAME, isolated, and not by a route', async () => {
       const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
 
-      expect(projection.narrative.title).toBe(`${FSI}רייקיאוויק${PDI}`);
-      expect(plain(projection.narrative.title)).toBe('רייקיאוויק');
+      // **The trip's own name** (ADR-0213's 2026-08-30 amendment; owner: _"Why נתב״ג to
+      // Frankfurt?? What does it have to do with anything?"_). `fallbackTripTitle` composed
+      // first-stop → last-stop, and on any trip you fly to both ends are transit airports.
+      // A person already named this trip; that name is what they call it.
+      expect(projection.narrative.title).toBe(`${FSI}${TRIP_NAME}${PDI}`);
+      expect(plain(projection.narrative.title)).toBe(TRIP_NAME);
+      expect(projection.narrative.title).not.toContain('←');
     });
 
     // A day ships raw values now, so the guarantee the renderers depend on is that nothing

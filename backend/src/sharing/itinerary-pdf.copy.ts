@@ -46,9 +46,26 @@ export const PDF_COPY = {
   days: (count: number) => `${count} ${count === 1 ? 'יום' : 'ימים'}`,
   events: (count: number) => `${count} ${count === 1 ? 'אירוע' : 'אירועים'}`,
   stops: (count: number) => `${count} ${count === 1 ? 'אזור' : 'אזורים'}`,
+  /** **The two counts somebody planning against this page uses.** `אזורים` was
+   *  `routeStopCount` — pins, which on a ring road equals the number of stops. */
+  nights: (count: number) => `${count} ${count === 1 ? 'לילה' : 'לילות'}`,
+  bookings: (count: number) => `${count} ${count === 1 ? 'הזמנה' : 'הזמנות'}`,
+  /** What the trip IS, under its name — replacing the first-place → last-place line that
+   *  named two transit airports on any trip you fly to. */
+  // `ב-` and not a bare `ב`: the destination arrives isolated and may be Latin, where
+  // `ב Iceland` reads as a stray particle. The hyphen is the Hebrew convention for exactly
+  // this, and it is what the stay line already uses.
+  what: (days: number, destination: string) => `${days} ימים ב-${destination}`,
+  /** Where you sleep, as the day's frame rather than a row in its afternoon. */
+  stay: (place: string) => `לנים ב-${place}`,
+  /** The wait between two legs of one journey, named by the place you wait IN. */
+  layover: (place: string, minutes: number) => `המתנה ב${place} · ${minutes} דקות`,
+  /** Four words for the four op kinds, printed inline because paper has no fold. */
+  ops: { code: 'קוד', note: 'פתק', task: 'משימה', file: 'קובץ' },
   appendix: {
-    title: 'פרטים נוספים',
-    bookingSecrets: 'פרטי הזמנה',
+    // Only what is attached to nothing is left here, so it gets a name that says so.
+    title: 'לקראת הנסיעה',
+
     notesAndTasks: 'פתקים ומשימות',
     travelers: 'נוסעים',
     documents: 'מסמכים שנבחרו',
