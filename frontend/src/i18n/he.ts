@@ -3099,6 +3099,10 @@ export const t = {
         failed: 'לא הצלחנו להכין את הקובץ. נסו שוב.',
       },
       copied: 'הלינק הועתק',
+      // **Said out loud, because the link changed under whoever already holds it** (owner,
+      // 2026-08-30). The level is not a draft: moving the control moves what the live link
+      // shows, so the sheet confirms it by name rather than leaving the press silent.
+      levelSaved: (level: string) => `הלינק החי מעודכן · ${level}`,
       manage: 'ניהול הלינק',
       rotate: 'החלפת הלינק',
       rotateTitle: 'להחליף את הלינק?',

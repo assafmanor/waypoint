@@ -1,8 +1,18 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { BOOKING_TYPE, EVENT_CATEGORY, EVENT_KIND, TRAVEL_MODES } from '@waypoint/shared';
+import {
+  BOOKING_TYPE,
+  EVENT_CATEGORY,
+  EVENT_KIND,
+  TRAVEL_MODE,
+  TRAVEL_MODES,
+} from '@waypoint/shared';
 import {
   SHARE_DAYPART_ORDER,
   SHARE_DETAIL_LEVEL,
+  defaultLegTravelMode,
+  derivedTravelMode,
+  isRoutableMode,
+  legTravelMode,
   routeLegKey,
   shareDaypart,
   sharePreviousNight,
@@ -185,7 +195,9 @@ export class SharingProjectionService {
     const isFlight = (event: ShareEventRow): boolean => event.booking?.type === BOOKING_TYPE.FLIGHT;
 
     const byDay = this.groupByDay(events, trip.startDate, trip.endDate, zones);
-    const journeys = orienting ? await this.journeyLookup(share.tripId, byDay, places) : undefined;
+    const journeys = orienting
+      ? await this.journeyLookup(share.tripId, byDay, places, zoneBookings)
+      : undefined;
 
     // **Which day is the way out and which is the way home** — a whole-trip question, so it
     // is answered here and handed to the per-day derivation as two booleans. Both ends are
@@ -399,13 +411,21 @@ export class SharingProjectionService {
     tripId: string,
     byDay: { events: ShareEventRow[] }[],
     places: SharePlaceRow[],
+    bookings: { type: string }[],
   ): Promise<Map<string, SharedEvent['journey']>> {
     const coordOf = new Map(
       places
         .filter((place) => place.lat != null && place.lng != null)
         .map((place) => [place.id, { lat: place.lat as number, lng: place.lng as number }]),
     );
-    const pairs: { eventId: string; fromPlaceId: string; toPlaceId: string; keys: string[] }[] = [];
+    const pairs: {
+      eventId: string;
+      fromPlaceId: string;
+      toPlaceId: string;
+      from: { lat: number; lng: number };
+      to: { lat: number; lng: number };
+      keys: string[];
+    }[] = [];
     for (const { events } of byDay) {
       for (let i = 1; i < events.length; i++) {
         const from = events[i - 1].placeId ?? events[i - 1].booking?.toPlaceId;
@@ -417,6 +437,8 @@ export class SharingProjectionService {
           eventId: events[i].id,
           fromPlaceId: from,
           toPlaceId: to,
+          from: a,
+          to: b,
           keys: TRAVEL_MODES.map((mode) => routeLegKey(a, b, mode)),
         });
       }
@@ -430,36 +452,68 @@ export class SharingProjectionService {
       }),
       this.prisma.travelModeOverride.findMany({
         where: { tripId },
-        select: { fromPlaceId: true, toPlaceId: true, mode: true },
+        // `updatedAt` because `legTravelMode` resolves duplicate rows for one pair by taking
+        // the NEWEST, and a caller that omits it silently changes that tie-break.
+        select: { fromPlaceId: true, toPlaceId: true, mode: true, updatedAt: true },
       }),
     ]);
     const legByKey = new Map(legs.map((leg) => [leg.key, leg]));
-    const overrideFor = new Map(
-      overrides.map((row) => [`${row.fromPlaceId}>${row.toPlaceId}`, row.mode]),
-    );
+
+    /**
+     * **The trip's own fallback**, for a leg whose ends carry no coordinates at all — the same
+     * `derivedTravelMode` the app hands `legTravelMode`, so a trip with a car hire falls back to
+     * driving here exactly as it does on the board.
+     */
+    const tripMode = derivedTravelMode(bookings as { type: BookingType }[]);
+    const overrideRows = overrides.map((row) => ({
+      fromPlaceId: row.fromPlaceId,
+      toPlaceId: row.toPlaceId,
+      mode: row.mode as LegTravelMode,
+      updatedAt: row.updatedAt.toISOString(),
+    }));
 
     const out = new Map<string, SharedEvent['journey']>();
     for (const pair of pairs) {
-      // The traveller's own mode choice wins where they made one; otherwise the first mode
-      // that has an answer, in `TRAVEL_MODES` order.
-      const chosen = overrideFor.get(`${pair.fromPlaceId}>${pair.toPlaceId}`);
-      const ordered = chosen
-        ? [chosen as TravelMode, ...TRAVEL_MODES.filter((mode) => mode !== chosen)]
-        : [...TRAVEL_MODES];
-      for (const mode of ordered) {
-        const leg = pair.keys
-          .map((key) => legByKey.get(key))
-          .find((candidate) => candidate?.mode === mode);
-        if (!leg) continue;
-        out.set(pair.eventId, {
-          // Prisma types the column as a string; the shared contract names the enum, and
-          // the loop above only ever matched a `LegTravelMode` to get here.
-          mode: leg.mode as LegTravelMode,
-          minutes: Math.round(leg.durationSeconds / 60),
-          km: Math.round(leg.distanceMeters / 100) / 10,
-        });
-        break;
-      }
+      /**
+       * **The app's rule, not one of this file's own** (owner, 2026-08-30: _"There's something
+       * wrong with the walking vs driving derivation. It shows walking even though the real
+       * schedule shows driving"_).
+       *
+       * It used to take "the first mode that has an answer, in `TRAVEL_MODES` order" — and that
+       * order opens with `walking`, while `useDayTravel` caches EVERY mode for every leg
+       * precisely so a mode question costs no request. So a leg with a cached walk always
+       * answered walking, whatever the app was showing, and a ⁦38 km⁩ drive printed as a walk on
+       * both renderers. The rule was never this file's to invent: `legTravelMode` and
+       * `defaultLegTravelMode` are in `@waypoint/shared` exactly so the board, the Map and a
+       * server-side projection cannot disagree about a leg (root rule 8).
+       *
+       * That also repairs the override lookup, which built its own `from>to` key while overrides
+       * are stored **canonicalised** by `travelOverridePair` — so a pair declared in the other
+       * direction was silently missed. `legTravelMode` keys them the one way.
+       */
+      const walkKey = routeLegKey(pair.from, pair.to, TRAVEL_MODE.WALKING);
+      const resolved = legTravelMode(overrideRows, pair.fromPlaceId, pair.toPlaceId, () =>
+        defaultLegTravelMode(
+          pair.from,
+          pair.to,
+          tripMode,
+          legByKey.get(walkKey)?.durationSeconds ?? null,
+        ),
+      );
+      // **A declared תחב״צ leg is never routed** (ADR-0206 §AM5), so there is no duration to
+      // print and this projection has no shape for a distance without one. It gets no journey
+      // line rather than a line naming a mode it did not travel — which is the defect above,
+      // one step quieter.
+      if (!isRoutableMode(resolved)) continue;
+      const leg = legByKey.get(routeLegKey(pair.from, pair.to, resolved));
+      if (!leg) continue;
+      out.set(pair.eventId, {
+        // Prisma types the column as a string; the shared contract names the enum, and the
+        // key this was fetched by was built from a `TravelMode`.
+        mode: leg.mode as LegTravelMode,
+        minutes: Math.round(leg.durationSeconds / 60),
+        km: Math.round(leg.distanceMeters / 100) / 10,
+      });
     }
     return out;
   }

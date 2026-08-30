@@ -169,21 +169,21 @@ export function SharedItinerary() {
           {' · '}
           {t.share.public.counts(projection.trip.dayCount, projection.trip.eventCount)}
         </div>
-        {summary && projection.trip.routeLabels.length > 0 ? (
-          <div className="sh-route">
-            {projection.trip.routeLabels.map((label, index) => (
-              <span className="sh-route-stop" key={`${label}-${index}`}>
-                <strong dir="auto">{label}</strong>
-                {index < projection.trip.routeLabels.length - 1 ? (
-                  <>
-                    <span className="sh-route-line" aria-hidden="true" />
-                    <span className="sh-route-dot" aria-hidden="true" />
-                  </>
-                ) : null}
-              </span>
-            ))}
-          </div>
-        ) : null}
+        {/* **THE ROUTE STRIP IS GONE FROM THE PHONE** (owner, 2026-08-30: _"The amber line is
+            meaningless, no one can get any info from just the initials. I say drop it or
+            change it entirely."_).
+
+            It was `routeLabels` laid out as a connected strip, and the arithmetic was never
+            going to work: `MAX_ROUTE_LABELS` is 8, and eight labels plus their connectors
+            inside 390px leaves about 30px each — so every stop ellipsised to an initial and
+            the line read `נמל הת… — S. — S. — D. — G.`. A row of first letters is not a
+            summary of a route, it is a row of first letters.
+
+            **Deleted here and kept on paper**, which is not an inconsistency: the PDF lays
+            the same eight labels across an A4 column and prints them whole. The strip was
+            always a width bet, and only one of the two media can afford it (ADR-0213 §3).
+            What the phone keeps instead is the line that already said the same thing in
+            words — the trip's own route title, one element down. */}
       </header>
 
       {stale ? <div className="sh-stale">{t.share.public.staleBody}</div> : null}

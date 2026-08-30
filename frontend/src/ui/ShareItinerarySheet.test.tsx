@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NO_SENSITIVE_FIELDS, SHARE_DETAIL_LEVEL, type TripShareConfig } from '@waypoint/shared';
+import { SHARE_LEVEL_SAVE_MS } from '../constants';
 import { t } from '../i18n/he';
 import { wrapNav } from '../test/nav-harness';
 
@@ -73,7 +74,11 @@ describe('ShareItinerarySheet', () => {
     api.createInvite.mockResolvedValue({ inviteUrl: `/join/${INVITE}` });
     api.rotateInvite.mockResolvedValue({ inviteUrl: '/join/New8Code' });
     api.fetchTripShare.mockResolvedValue(undefined);
-    api.upsertTripShare.mockResolvedValue(config);
+    // **Echoes what it was sent**, so an assertion about what the sheet says after a save is
+    // about the save and not about a fixture that always answers the same level.
+    api.upsertTripShare.mockImplementation((_tripId: string, input: Record<string, unknown>) =>
+      Promise.resolve({ ...config, ...input }),
+    );
     api.rotateTripShare.mockResolvedValue({ ...config, code: 'New8Code', shareUrl: '/s/New8Code' });
     api.stopTripShare.mockResolvedValue(undefined);
     api.fetchSharedItineraryPdf.mockResolvedValue(new Blob(['%PDF-1.4']));
@@ -106,6 +111,47 @@ describe('ShareItinerarySheet', () => {
       }),
     );
     expect(systemShare.shareUrlOrCopy).toHaveBeenCalledTimes(1);
+  });
+
+  // **A LEVEL IS A SETTING ON A LIVE LINK, NOT A DRAFT** (owner, 2026-08-30: _"every time I
+  // open the sharing menu it's on תקציר"_). `upsertTripShare` used to be reachable only from
+  // the two send buttons, so changing the level and closing the sheet discarded it — and the
+  // next open re-seeded from the stored config and looked like the control had never moved.
+  it('writes a changed level to an already-live share, with no send press', async () => {
+    api.fetchTripShare.mockResolvedValue(config);
+    renderSheet();
+    await openRead();
+    await screen.findByRole('button', { name: new RegExp(t.share.owner.actions.liveLink) });
+
+    fireEvent.click(screen.getByRole('radio', { name: t.share.owner.levels.summary }));
+
+    await waitFor(() =>
+      expect(api.upsertTripShare).toHaveBeenCalledWith('t1', {
+        detailLevel: SHARE_DETAIL_LEVEL.SUMMARY,
+        sensitive: NO_SENSITIVE_FIELDS,
+        documentIds: [],
+      }),
+    );
+    // …and it says so, because the link changed under whoever already holds it.
+    expect(
+      await screen.findByText(
+        t.share.owner.levelSaved(t.share.owner.levels[SHARE_DETAIL_LEVEL.SUMMARY]),
+      ),
+    ).toBeTruthy();
+    expect(systemShare.shareUrlOrCopy).not.toHaveBeenCalled();
+  });
+
+  // The other half of the same rule: with nothing live yet there is nothing to change, and
+  // minting a link from a control the reader was only looking at is a grant nobody asked for.
+  it('mints nothing when there is no share yet and the level is only browsed', async () => {
+    renderSheet();
+    await openRead();
+    await screen.findByRole('button', { name: new RegExp(t.share.owner.actions.liveLink) });
+
+    fireEvent.click(screen.getByRole('radio', { name: t.share.owner.levels.summary }));
+
+    await new Promise((resolve) => setTimeout(resolve, SHARE_LEVEL_SAVE_MS + 60));
+    expect(api.upsertTripShare).not.toHaveBeenCalled();
   });
 
   it('defaults to Full with every sensitive family off', async () => {
