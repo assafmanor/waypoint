@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  SHARE_DAY_KIND,
+  SHARE_DAY_SUMMARY_KIND,
   SHARE_DAYPART,
   SHARE_DETAIL_LEVEL,
   shareDaypart,
+  sharePreviousNight,
   sharedItinerarySchema,
   summaryNarrativeInputSchema,
   itineraryNarrativeOutputSchema,
@@ -36,6 +39,47 @@ describe('shareDaypart', () => {
     expect(shareDaypart(instant, 'UTC')).toBe(SHARE_DAYPART.MORNING);
     expect(shareDaypart(instant, 'Asia/Tokyo')).toBe(SHARE_DAYPART.EVENING);
     expect(shareDaypart(instant, 'Pacific/Honolulu')).toBe(SHARE_DAYPART.NIGHT);
+  });
+});
+
+// **The share's day starts at dawn** (ADR-0213's 2026-08-30 amendment; owner: _"The night
+// part gets folded at the end of the wrong day"_). `shareDaypart` above already declares it —
+// `night` is the fallthrough below hour 5 — and this is the other half of that statement, the
+// one the grouping reads. Same boundary, same constant, deliberately no second number.
+describe('sharePreviousNight', () => {
+  it.each([
+    ['2026-09-01T00:30:00Z', 'UTC', true],
+    ['2026-09-01T04:59:00Z', 'UTC', true],
+    ['2026-09-01T05:00:00Z', 'UTC', false],
+    ['2026-09-01T22:00:00Z', 'UTC', false],
+    [null, 'UTC', false],
+  ])('reads %s in %s as the night before: %s', (startsAt, zone, expected) => {
+    expect(sharePreviousNight(startsAt, zone)).toBe(expected);
+  });
+
+  // The zone is the event's own display zone (ADR-0107 §4), so the same instant rolls back on
+  // one side of the world and not on the other — which is the whole reason it is not read off
+  // the trip's primary zone.
+  it('reads the displayed local hour, not UTC', () => {
+    // 09:00Z is mid-morning in Reykjavík and 04:00 in Chicago — the second is the night
+    // before. Honolulu is the near miss worth naming: 23:00 there is `night` by daypart and
+    // is NOT rolled back, because it is the evening of its own day and not the tail of the
+    // one before.
+    const instant = '2026-09-01T09:00:00Z';
+    expect(sharePreviousNight(instant, 'UTC')).toBe(false);
+    expect(sharePreviousNight(instant, 'America/Chicago')).toBe(true);
+    expect(sharePreviousNight(instant, 'Pacific/Honolulu')).toBe(false);
+  });
+
+  // The boundary this shares with `shareDaypart`: everything it calls the night before must
+  // also be filed under `night`, or a rolled-back event would land in a section that renders
+  // before the evening it belongs after.
+  it('agrees with the daypart it is rolling back into', () => {
+    for (const hour of ['00', '02', '04']) {
+      const instant = `2026-09-01T${hour}:30:00Z`;
+      expect(sharePreviousNight(instant, 'UTC')).toBe(true);
+      expect(shareDaypart(instant, 'UTC')).toBe(SHARE_DAYPART.NIGHT);
+    }
   });
 });
 
@@ -130,14 +174,15 @@ describe('sharedItinerarySchema', () => {
       dayCount: 9,
       eventCount: 21,
       routeLabels: ['רייקיאוויק', 'ויק'],
+      routeStopCount: 2,
     },
     narrative: { source: 'deterministic', title: 'רייקיאוויק ← ויק', summary: '9 ימים' },
     days: [
       {
         ordinal: 1,
         date: '2026-08-29',
-        title: 'קפלוויק ← רייקיאוויק',
-        summary: 'נחיתה',
+        title: { kind: SHARE_DAY_KIND.FLIGHT_OUT, to: 'איסלנד' },
+        summary: { kind: SHARE_DAY_SUMMARY_KIND.STAY, place: 'Laugavegur 22' },
         sections: [
           {
             daypart: SHARE_DAYPART.MORNING,
@@ -161,6 +206,21 @@ describe('sharedItinerarySchema', () => {
         trip: { ...projection.trip, tripId: 'trip-japan-26' },
       }),
     ).toThrow();
+  });
+
+  // **A day headline is a kind plus its values, never a sentence** (ADR-0213's 2026-08-30
+  // amendment) — so the union is what the contract owes, and a stray shape must not parse.
+  it('rejects a day headline that carries the wrong values for its kind', () => {
+    const days = structuredClone(projection.days);
+    // `flightHome` names no place: home is the absence of the trip.
+    (days[0] as Record<string, unknown>).title = { kind: SHARE_DAY_KIND.FLIGHT_HOME, to: 'נתב״ג' };
+    expect(() => sharedItinerarySchema.parse({ ...projection, days })).toThrow();
+  });
+
+  it('rejects the composed string a day headline used to be', () => {
+    const days = structuredClone(projection.days);
+    (days[0] as Record<string, unknown>).title = 'קפלוויק ← רייקיאוויק';
+    expect(() => sharedItinerarySchema.parse({ ...projection, days })).toThrow();
   });
 
   it('rejects an event carrying coordinates', () => {
