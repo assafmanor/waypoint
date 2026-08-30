@@ -36,6 +36,8 @@ const summaryProjection: Projection = {
     eventCount: 3,
     routeLabels: ['רייקיאוויק', 'ויק'],
     routeStopCount: 2,
+    shape: 'line',
+    baseCount: 2,
   },
   narrative: { source: 'deterministic', title: 'רייקיאוויק ← ויק', summary: '' },
   // Empty: a trip with nothing booked is a real state, and the block is then absent from

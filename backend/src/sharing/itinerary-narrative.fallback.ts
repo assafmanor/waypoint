@@ -4,10 +4,12 @@ import {
   ROUTE_ARROW,
   SHARE_DAY_KIND,
   SHARE_DAY_SUMMARY_KIND,
+  SHARE_TRIP_SHAPE,
   type BookingType,
   type SharedDay,
   type SharedDayTitle,
   type SharedDaySummary,
+  type ShareTripShape,
 } from '@waypoint/shared';
 
 /**
@@ -99,6 +101,11 @@ export interface DayFacts {
   /** …and the returning one: the last flight day, on the last day holding anything, and not
    *  the same day as the outbound — a single flight day is an departure, never a return. */
   returning?: boolean;
+  /** **The trip's shape** (owner, 2026-08-30). On a `base` trip every day leaves from and
+   *  returns to the same bed, so a `from ← to` title describes the commute rather than the
+   *  day — `רייקיאוויק ← גולפוס` on nine consecutive days says the same false thing nine
+   *  times. Absent is treated as "we do not know", which takes today's behaviour. */
+  tripShape?: ShareTripShape;
 }
 
 /**
@@ -120,6 +127,14 @@ export function fallbackDayTitle(facts: DayFacts): SharedDayTitle {
   }
   const stops = dedupeConsecutive(facts.stops);
   if (stops.length === 0) return { kind: SHARE_DAY_KIND.NONE };
+  // **On a star trip a day is a PLACE, never a route.** Every day of one starts and ends at
+  // the same base, so `base ← wherever` describes the commute — and it repeats, nearly
+  // identically, for every day of the trip. The furthest stop is what the day was about;
+  // the base is already in the header, on the stay line.
+  if (facts.tripShape === SHARE_TRIP_SHAPE.BASE) {
+    const away = stops.find((stop) => stop !== facts.lodgingPlace) ?? stops[0];
+    return { kind: SHARE_DAY_KIND.PLACE, at: away };
+  }
   // **A round trip is a place, not a route.** A leg contributes both its endpoints, so a day
   // that leaves Reykjavík and comes back has the same label at both ends, and
   // `רייקיאוויק ← רייקיאוויק` says less than the bare name does.

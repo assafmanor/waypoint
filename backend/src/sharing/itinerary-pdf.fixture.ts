@@ -4,6 +4,7 @@ import {
   SHARE_DAY_SUMMARY_KIND,
   SHARE_DAYPART,
   SHARE_DETAIL_LEVEL,
+  SHARE_TRIP_SHAPE,
   type BookingType,
   type SharedDay,
   type SharedDayTitle,
@@ -182,6 +183,10 @@ export const NINE_DAY_REFERENCE_TRIP: SharedItinerary = {
     name: 'איסלנד עם המשפחה',
     destination: 'Iceland',
     icon: '🇮🇸',
+    // A ring: it sleeps in Reykjavík at both ends, which is what makes it a loop rather
+    // than a traverse — and what `FIXTURE_STAYS` above produces.
+    shape: SHARE_TRIP_SHAPE.LOOP,
+    baseCount: 6,
     startDate: '2026-08-29',
     endDate: '2026-09-06',
     dayCount: 9,

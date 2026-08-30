@@ -153,8 +153,23 @@ export function SharedItinerary() {
       </div>
 
       <header className="sh-hero">
+        {/* **How the trip moves**, beside where it goes (owner, 2026-08-30). Two trips with
+            the same destination and length read completely differently depending on it, and
+            the page said nothing — worse, it printed a ROUTE for both, which on a star trip
+            describes the commute. The base count is only added where the shape implies
+            several; on a star trip `1 בסיס` is the same sentence twice. */}
         <div className="sh-kicker">
-          {t.share.public.kicker} · <span>{autoIsolate(projection.trip.destination)}</span>
+          {[
+            t.share.public.kicker,
+            t.share.public.tripShape[projection.trip.shape],
+            projection.trip.baseCount > 1
+              ? t.share.public.bases(projection.trip.baseCount)
+              : undefined,
+          ]
+            .filter(Boolean)
+            .join(NARRATIVE_SEPARATOR)}
+          {' · '}
+          <span>{autoIsolate(projection.trip.destination)}</span>
         </div>
         <h1 className="sh-title">
           {projection.trip.icon ? (

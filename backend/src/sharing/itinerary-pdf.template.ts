@@ -441,7 +441,15 @@ export function itineraryPdfHtml({
     // fallbackTripTitle's first-place-to-last-place over the whole schedule, and on any
     // trip you fly to both ends are transit airports (owner, 2026-08-30: "Why נתב״ג to
     // Frankfurt?? What does it have to do with anything?"). Both values were already here.
-    `<div class="pdf-what">${PDF_COPY.what(projection.trip.dayCount, auto(projection.trip.destination))}</div>` +
+    `<div class="pdf-what">${[
+      PDF_COPY.what(projection.trip.dayCount, auto(projection.trip.destination)),
+      PDF_COPY.tripShape[projection.trip.shape],
+      // The base count only earns its place where the shape implies several — on a star
+      // trip it would print `1 בסיס`, which is the same sentence twice.
+      projection.trip.baseCount > 1 ? PDF_COPY.bases(projection.trip.baseCount) : '',
+    ]
+      .filter(Boolean)
+      .join(NARRATIVE_SEPARATOR)}</div>` +
     // **Assistant, with only the numeric runs in mono** (design-language: "Hebrew text must
     // never sit inside a mono element"). This line was `font: … 'JetBrains Mono', monospace`
     // — and the `font` SHORTHAND replaces the family list, so Assistant was not behind it.

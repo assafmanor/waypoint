@@ -3198,6 +3198,18 @@ export const t = {
       // leg and a forty-minute one were the same shape of line. The numbers are isolated by
       // the caller; the en dash is the app's own range mark (`formatTripDates`).
       timeRange: (from: string, to: string) => `${from}–${to}`,
+      // **How the trip moves**, in the owner's own words (2026-08-30): a circumnavigation
+      // where the base changes every day or two is a different thing from a trip you take
+      // from one place. `הקפה` is mine — a rolling trip that closes its circle is common
+      // enough, and different enough in feel from a one-way traverse, to earn a word.
+      tripShape: {
+        base: 'טיול כוכב',
+        loop: 'הקפה',
+        line: 'טיול מתגלגל',
+        // No nights recorded: the shape is unknown, and the clause is simply absent.
+        unknown: '',
+      },
+      bases: (count: number) => `${count} ${count === 1 ? 'בסיס' : 'בסיסים'}`,
       // **Where you sleep, as the day's frame** (ADR-0213's 2026-08-30 amendment). The
       // value arrives isolated, so this joins it rather than composing around a raw name.
       stay: (place: string) => `לנים ב-${place}`,

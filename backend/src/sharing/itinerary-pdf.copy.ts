@@ -56,6 +56,24 @@ export const PDF_COPY = {
   // `ב Iceland` reads as a stray particle. The hyphen is the Hebrew convention for exactly
   // this, and it is what the stay line already uses.
   what: (days: number, destination: string) => `${days} ימים ב-${destination}`,
+  /**
+   * **How the trip moves**, in the owner's own words (2026-08-30). Two trips with the same
+   * destination and length read completely differently depending on this, and the page was
+   * saying nothing about it.
+   *
+   * `הקפה` is mine rather than theirs: they named מתגלגל and כוכב, and a rolling trip that
+   * closes its circle is common enough — and different enough in feel from a one-way
+   * traverse — to be worth its own word. Correct it if it is wrong.
+   */
+  tripShape: {
+    base: 'טיול כוכב',
+    loop: 'הקפה',
+    line: 'טיול מתגלגל',
+    // Nothing true to say: no nights are recorded, so the shape is unknown rather than any
+    // of the three. The renderer prints no clause at all.
+    unknown: '',
+  },
+  bases: (count: number) => `${count} ${count === 1 ? 'בסיס' : 'בסיסים'}`,
   /** Where you sleep, as the day's frame rather than a row in its afternoon. */
   stay: (place: string) => `לנים ב-${place}`,
   /** The wait between two legs of one journey, named by the place you wait IN. */

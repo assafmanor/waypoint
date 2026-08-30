@@ -35,6 +35,8 @@ import {
   placeIataCode,
   ROUTE_ARROW,
   SHARE_OP_KIND,
+  tripShapeOf,
+  SHARE_TRIP_SHAPE,
   type SharedCommitment,
   type SharedOp,
   type TripEnrichments,
@@ -402,12 +404,24 @@ export class SharingProjectionService {
     // so. See `loadOps`; this is what dissolved the appendix.
     const ops = await this.loadOps(share, detail);
 
+    // **The shape is derived from the nights, and the day titles depend on the shape** —
+    // so the stays are collected first rather than the days being built twice. Owner,
+    // 2026-08-30, reading `רייקיאוויק ← סנייפלסנס`: _"it is actually a circumnavigation
+    // (טיול מתגלגל maybe), where you switch locations every day … Then there's טיול כוכב
+    // where you stay at one place"_.
+    const stays = byDay.map(({ events: dayEvents }) =>
+      dayEvents
+        .filter((event) => event.booking?.type === BOOKING_TYPE.HOTEL)
+        .map((event) => placeLabel(event.place) ?? event.title)
+        .find(Boolean),
+    );
+    const shape = tripShapeOf(stays);
+
     const days: SharedDay[] = byDay.map(({ date, events: dayEvents }, index) => {
       // **The stay leaves the schedule before anything else looks at it.** A lodging event
       // sorts by its check-in hour, which put it between the two legs of the outbound
       // flight; and its `startsAt`/`endsAt` span midnight, so it printed `15:00–11:00`.
       // Both stop being true once it is the day's frame rather than one of its rows.
-      const lodging = dayEvents.filter((event) => event.booking?.type === BOOKING_TYPE.HOTEL);
       const scheduled = dayEvents.filter((event) => event.booking?.type !== BOOKING_TYPE.HOTEL);
       const projected = this.withJourneys(
         scheduled,
@@ -419,12 +433,12 @@ export class SharingProjectionService {
         labelById,
         codeById,
       );
-      const facts = dayFacts(dayEvents, index);
+      const facts = { ...dayFacts(dayEvents, index), tripShape: shape.shape };
       const title: SharedDayTitle = fallbackDayTitle(facts);
       return {
         ordinal: index + 1,
         date,
-        stay: lodging.map((event) => placeLabel(event.place) ?? event.title).find(Boolean),
+        stay: stays[index],
         title,
         summary: fallbackDaySummary(facts, title),
         sections: this.groupByDaypart(projected),
@@ -494,6 +508,8 @@ export class SharingProjectionService {
         // `MAX_ROUTE_LABELS`, and printing its length as the trip's stop count told a
         // twelve-day, ten-stop trip that it had eight.
         routeStopCount: wholeRoute.length,
+        shape: shape.shape,
+        baseCount: shape.baseCount,
       },
 
       narrative: {

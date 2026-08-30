@@ -4,6 +4,8 @@ import {
   SHARE_DAY_SUMMARY_KIND,
   SHARE_DAYPART,
   SHARE_OP_KIND,
+  SHARE_TRIP_SHAPE,
+  tripShapeOf,
   sharedLegSchema,
   SHARE_DETAIL_LEVEL,
   shareDaypart,
@@ -177,6 +179,8 @@ describe('sharedItinerarySchema', () => {
       eventCount: 21,
       routeLabels: ['רייקיאוויק', 'ויק'],
       routeStopCount: 2,
+      shape: SHARE_TRIP_SHAPE.LINE,
+      baseCount: 2,
     },
     narrative: { source: 'deterministic', title: 'רייקיאוויק ← ויק', summary: '9 ימים' },
     // Empty is the honest value for a trip with nothing booked — the block is then absent
@@ -321,4 +325,52 @@ describe('tripShareConfigSchema', () => {
   });
   /** The shapes ADR-0213's 2026-08-30 amendment added, each asserted at its edge — a
    *  `strictObject` is only a contract if something proves it refuses. */
+});
+describe('tripShapeOf', () => {
+  /** Owner, 2026-08-30: a circumnavigation where the base changes every day or two is a
+   *  different thing from a trip you take from one place, and the titles should say so. */
+  it('calls one base a star trip', () => {
+    expect(tripShapeOf(['Tokyo', 'Tokyo', 'Tokyo'])).toEqual({
+      shape: SHARE_TRIP_SHAPE.BASE,
+      baseCount: 1,
+    });
+  });
+
+  it('calls a ring a loop, and counts the bases DISTINCTLY', () => {
+    // Reykjavík at both ends is one base slept at twice, not two — counting runs would
+    // tell the reader the trip stayed somewhere it did not.
+    expect(tripShapeOf(['Reykjavík', 'Vík', 'Höfn', 'Reykjavík'])).toEqual({
+      shape: SHARE_TRIP_SHAPE.LOOP,
+      baseCount: 3,
+    });
+  });
+
+  it('calls a traverse a line', () => {
+    expect(tripShapeOf(['Lisboa', 'Porto', 'Braga'])).toEqual({
+      shape: SHARE_TRIP_SHAPE.LINE,
+      baseCount: 3,
+    });
+  });
+
+  it('collapses consecutive nights in one place into one base', () => {
+    // Three nights in Vík is one base, so a trip that sleeps Reykjavík-Vík-Vík-Vík is a
+    // two-base traverse rather than a four-base sprint.
+    expect(tripShapeOf(['Reykjavík', 'Vík', 'Vík', 'Vík'])).toEqual({
+      shape: SHARE_TRIP_SHAPE.LINE,
+      baseCount: 2,
+    });
+  });
+
+  it('says unknown rather than guessing when no nights are recorded', () => {
+    // A day trip, or a trip whose lodging was never entered. Both are real states, and
+    // neither is a star trip — which is what a `length === 0 -> BASE` default would claim.
+    expect(tripShapeOf([])).toEqual({ shape: SHARE_TRIP_SHAPE.UNKNOWN, baseCount: 0 });
+    expect(tripShapeOf([undefined, undefined])).toEqual({
+      shape: SHARE_TRIP_SHAPE.UNKNOWN,
+      baseCount: 0,
+    });
+    // A single recorded night among unrecorded ones is still one base — absent is absent,
+    // not a different place.
+    expect(tripShapeOf([undefined, 'Vík', undefined]).shape).toBe(SHARE_TRIP_SHAPE.BASE);
+  });
 });

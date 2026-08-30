@@ -334,6 +334,69 @@ export type TripShareConfig = z.infer<typeof tripShareConfigSchema>;
 // ── The public projection ───────────────────────────────────────────────────────────
 
 /**
+ * **How a trip MOVES, which is a different question from where it goes** (owner,
+ * 2026-08-30, reading the reference render's `רייקיאוויק ← סנייפלסנס`: _"it is actually a
+ * circumnavigation (טיול מתגלגל maybe), where you switch locations every day … Then
+ * there's טיול כוכב where you stay at one place"_).
+ *
+ * Two trips with identical destinations and day counts are read completely differently
+ * depending on this, and the page was saying nothing about it — worse, it was printing a
+ * ROUTE for both, which on a star trip is actively false: every day of one starts and ends
+ * at the same base, so `base ← somewhere` describes the commute rather than the day.
+ *
+ * **Derived from the run-length encoding of `day.stay`, and nothing else.** Consecutive
+ * nights in one place are one base; the number of bases and whether the last is the first
+ * are the whole classification. No new column, no heuristic over distances, and it is
+ * `unknown` for a trip that records no nights at all — which is a real state (a day trip,
+ * or a trip whose lodging was never entered) and not a failure.
+ */
+export const SHARE_TRIP_SHAPE = {
+  /** One base for the whole trip; you go out and come back to the same bed. */
+  BASE: 'base',
+  /** Several bases, ending where it started — a ring road, a circuit. */
+  LOOP: 'loop',
+  /** Several bases, ending somewhere else — a one-way traverse. */
+  LINE: 'line',
+  /** No nights recorded. Says so rather than guessing. */
+  UNKNOWN: 'unknown',
+} as const;
+export type ShareTripShape = (typeof SHARE_TRIP_SHAPE)[keyof typeof SHARE_TRIP_SHAPE];
+export const shareTripShapeSchema = z.enum([
+  SHARE_TRIP_SHAPE.BASE,
+  SHARE_TRIP_SHAPE.LOOP,
+  SHARE_TRIP_SHAPE.LINE,
+  SHARE_TRIP_SHAPE.UNKNOWN,
+]);
+
+/**
+ * The bases a trip sleeps at, in order, with consecutive repeats collapsed — and the shape
+ * that follows from them. One function so the projection, a renderer and a test cannot
+ * disagree about what a base is.
+ */
+export function tripShapeOf(stays: readonly (string | undefined)[]): {
+  shape: ShareTripShape;
+  baseCount: number;
+} {
+  const bases: string[] = [];
+  for (const stay of stays) {
+    const value = stay?.trim();
+    if (!value) continue;
+    if (bases[bases.length - 1] === value) continue;
+    bases.push(value);
+  }
+  if (bases.length === 0) return { shape: SHARE_TRIP_SHAPE.UNKNOWN, baseCount: 0 };
+  if (bases.length === 1) return { shape: SHARE_TRIP_SHAPE.BASE, baseCount: 1 };
+  // **The count is of DISTINCT bases, not of runs.** A trip that leaves Reykjavík, tours
+  // the ring and comes home sleeps there twice — calling that seven bases would say it
+  // stayed somewhere it did not.
+  const distinct = new Set(bases).size;
+  return {
+    shape: bases[0] === bases[bases.length - 1] ? SHARE_TRIP_SHAPE.LOOP : SHARE_TRIP_SHAPE.LINE,
+    baseCount: distinct,
+  };
+}
+
+/**
  * **One operational fact, attached to the row it belongs to** (ADR-0213's 2026-08-30
  * amendment, reversing §4's appendix).
  *
@@ -599,6 +662,11 @@ export const sharedItinerarySchema = z.strictObject({
      *  as the trip's `אזורים` count, and it is the capped strip: a twenty-stop trip
      *  reported eight (owner, 2026-08-30, reading the PDF masthead). */
     routeStopCount: z.number().int().nonnegative(),
+    /** **How the trip moves** — see `tripShapeOf`. A renderer keys a word off it, which is
+     *  what makes it an enum and not a boolean pair. */
+    shape: shareTripShapeSchema,
+    /** How many distinct places the trip sleeps at. `0` when no nights are recorded. */
+    baseCount: z.number().int().nonnegative(),
   }),
   narrative: z.strictObject({
     source: z.enum([NARRATIVE_SOURCE.DETERMINISTIC, NARRATIVE_SOURCE.GENERATED]),
