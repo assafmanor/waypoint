@@ -201,6 +201,16 @@ const dayLabel = (date: string): { day: string; weekday: string } => {
   };
 };
 
+/** The hour, or the range where there is one — a flight has to say when it lands (owner,
+ *  2026-08-30). One isolate around the whole run, so `09:20–14:05` cannot be reordered by the
+ *  page's RTL flow into its own reverse. */
+function timeText(event: SharedEvent): string {
+  if (!event.startLabel) return PDF_COPY.dayparts.flexible;
+  return event.endLabel && event.endLabel !== event.startLabel
+    ? ltr(`${event.startLabel}\u2013${event.endLabel}`)
+    : ltr(event.startLabel);
+}
+
 function eventRow(event: SharedEvent, summary: boolean): string {
   if (summary) {
     return `<div class="pdf-summary-event"><span>${escapeHtml(event.icon ?? '•')}</span><strong dir="auto">${escapeHtml(event.title)}</strong></div>`;
@@ -226,7 +236,7 @@ function eventRow(event: SharedEvent, summary: boolean): string {
   return (
     journey +
     `<div class="pdf-event${event.hard ? ' hard' : ''}">` +
-    `<span class="pdf-event-time">${event.startLabel ? ltr(event.startLabel) : PDF_COPY.dayparts.flexible}</span>` +
+    `<span class="pdf-event-time">${timeText(event)}</span>` +
     `<span class="pdf-event-copy"><strong>${auto(event.title)}</strong>` +
     (kind || place
       ? `<span>${[kind ? `<b class="pdf-kind">${kind}</b>` : '', place]
@@ -411,20 +421,29 @@ ${fontFaces()}
 *{box-sizing:border-box;}
 html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant','Noto Emoji',system-ui,sans-serif;}
 .pdf-mast{display:flex;align-items:end;justify-content:space-between;gap:18px;margin-block-end:15px;padding-block-end:11px;border-block-end:2px solid var(--pdf-ink);}
-.pdf-mast-copy{min-width:0;flex:1;}
+/* Takes what it needs before the strip does — it holds the title and the dates, which are the
+   two things a reader looks at first. */
+.pdf-mast-copy{min-width:0;flex:1 1 auto;}
 .pdf-eyebrow{margin-block-end:4px;color:var(--pdf-muted);font-size:9px;font-weight:700;letter-spacing:.08em;}
 .pdf-title{margin:0;font:27px/1.1 'Secular One',sans-serif;}
-.pdf-subtitle{margin-block-start:6px;color:var(--pdf-muted);font:500 9px 'Assistant',sans-serif;}
+/* **The trip's own facts may not wrap** (owner, 2026-08-30: _"why is the title area on the pdf
+   so compact … it doesn't need to be compacted to the right like that"_). The masthead is a flex
+   row and the copy block was the only shrinkable thing in it, so the strip and the QR took their
+   width first and the date-and-length line broke across three lines mid-phrase. It is short
+   and fixed; it says so, and the strip beside it yields instead. */
+.pdf-subtitle{margin-block-start:6px;color:var(--pdf-muted);font:500 9px 'Assistant',sans-serif;white-space:nowrap;}
 /* The provenance stamp: a line of its own and a step quieter, so it cannot push the trip's
    own dates into a wrap (owner report, 2026-08-30). */
-.pdf-stamp{margin-block-start:2px;color:var(--pdf-muted);font:500 8px 'Assistant',sans-serif;opacity:0.8;}
+.pdf-stamp{margin-block-start:2px;color:var(--pdf-muted);font:500 8px 'Assistant',sans-serif;opacity:0.8;white-space:nowrap;}
 /* The derived kind in front of an event's place line — the noun, so it reads as a label
    rather than as part of the address. */
 .pdf-kind{font-weight:700;color:var(--pdf-ink);}
 /* Mono is for the RUN, never the row: the font SHORTHAND drops the family list, and
    JetBrains Mono has no Hebrew glyphs, so a Hebrew word in a mono row prints as boxes. */
 .pdf-num{font-family:'JetBrains Mono',monospace;}
-.pdf-route-mini{min-width:130px;text-align:end;}
+/* Yields. It is a summary of a route whose ends the title already names, so it is the part of
+   the masthead that can afford to be narrow. */
+.pdf-route-mini{min-width:0;max-width:34%;flex:0 1 auto;text-align:end;}
 .pdf-route-mini b,.pdf-route-mini span{display:block;}
 .pdf-route-mini b{font-size:9px;font-weight:700;color:var(--pdf-muted);}
 .pdf-route-mini span{margin-block-start:3px;color:var(--pdf-teal);font-size:9px;}

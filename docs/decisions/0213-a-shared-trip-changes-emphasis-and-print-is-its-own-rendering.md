@@ -444,6 +444,54 @@ And the masthead block the owner asked about (_"Are they leaks of something?"_) 
 both lines are place labels that already appear in the schedule below. It read as a leak because
 it printed the same string twice with nothing naming either.
 
+## Amendment — a live link is a setting, and a strip of initials is not a route (2026-08-30, third pass)
+
+Field reports on the second pass. Three fixes and one deferral.
+
+**§1 · A LEVEL IS A SETTING ON A LIVE LINK, NOT A DRAFT.** Two reports, one cause: _"No
+indication that the live sharing detail level was changed when switching"_ and _"every time I
+open the sharing menu it's on תקציר"_. `upsertTripShare` was reachable only through
+`ensureShare`, and `ensureShare` only from the two send buttons — so moving the level control
+wrote nothing, closing the sheet discarded it, and the next open re-seeded from the stored
+config and looked like the control had never moved. A link that is already live is already
+showing something to whoever holds it, so moving the control now moves the link: it saves on
+change and the sheet confirms it by name. With **no** share yet it still mints nothing — the
+first send creates it, and minting a link from a control somebody was only looking at would
+be a grant nobody asked for.
+
+**§2 · The journey mode is the app's derivation, not this projection's.** `journeyLookup`
+took "the first mode that has an answer, in `TRAVEL_MODES` order", which opens with `walking`
+— while `useDayTravel` caches every mode for every leg precisely so a mode question costs no
+request. Every unoverridden leg therefore answered walking, and a 38km drive printed as a
+walk. `legTravelMode` + `defaultLegTravelMode` are in `@waypoint/shared` exactly so the
+board, the Map and a server-side projection cannot disagree (root rule 8); using them also
+repairs an override lookup that built its own `from>to` key where overrides are stored
+**canonicalised**, so a pair declared in the other direction was silently missed.
+
+**§3 · The route strip leaves the phone, and stays on paper.** §3 above put a compact route
+strip on both renderers. At 390px, `MAX_ROUTE_LABELS` of 8 plus connectors leaves ~30px a
+label, so every stop ellipsised to an initial and the line read `נמל הת… — S. — S. — D.` —
+the owner's _"no one can get any info from just the initials"_. It is deleted from the live
+page and kept in the PDF, which lays the same eight labels across an A4 column and prints
+them whole. The strip was always a width bet and only one of the two media can afford it.
+The phone keeps the line that said the same thing in words: the trip's own route title.
+
+**§4 · Both ends of a time, where there are two.** `startLabel` and `endLabel` were both in
+the contract and both renderers printed only the first, so an eleven-hour flight and a
+forty-minute drive were the same shape of line (_"flights must show when they start and when
+they finish"_). The masthead's own line stopped wrapping at the same time: it is short and
+fixed, so it says `nowrap` and the strip beside it yields instead.
+
+**Deferred, deliberately: the journey as a unit.** _"Layovers must be represented … Flights
+should be clumped together, not split by days"_, and _"maybe these sharings should have
+sections for important stuff"_. This changes the day's **structure** rather than its words —
+§1 made the daypart the spine, and a journey spanning two dayparts and a midnight has no home
+in it — so on the owner's call it goes to a mockup rather than into this pass. The derivation
+is already known and is written down in the backlog: `Event.bookingId` is `@unique`, so
+nothing stored says two legs are one journey, but a leg continues the one before it exactly
+when the previous leg's `toPlaceId` is its `fromPlaceId`. A half-built contract for it was
+written and reverted rather than shipped ahead of the drawing.
+
 ## Alternatives considered
 
 - **One page with fields progressively removed.** Rejected: less information is not automatically the right emphasis.

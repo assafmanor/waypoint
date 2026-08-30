@@ -321,8 +321,17 @@ function EventRow({ event }: { event: SharedEvent }) {
                 {' · '}
               </>
             ) : null}
+            {/* The range where there is one, so a flight says when it lands. Isolated as ONE
+                run rather than two: `09:20–14:05` reads left-to-right whole, and isolating
+                each end separately would let the RTL flow put the arrival first. */}
             {event.startLabel ? (
-              <span className="sh-time">{ltrIsolate(event.startLabel)}</span>
+              <span className="sh-time">
+                {ltrIsolate(
+                  event.endLabel && event.endLabel !== event.startLabel
+                    ? t.share.public.timeRange(event.startLabel, event.endLabel)
+                    : event.startLabel,
+                )}
+              </span>
             ) : null}
             {event.placeName ? (
               <>

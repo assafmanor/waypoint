@@ -257,6 +257,39 @@ describe('SharedItinerary', () => {
     expect(screen.getByText(t.index.bookingType.hotel)).toBeTruthy();
   });
 
+  // **A flight has to say when it lands** (owner, 2026-08-30). Both ends were in the
+  // projection all along and this renderer printed only the first.
+  it('prints a time range where the event carries both ends', async () => {
+    serve({
+      ...fullProjection,
+      days: [
+        {
+          ...fullProjection.days[0],
+          sections: [
+            {
+              daypart: SHARE_DAYPART.MORNING,
+              events: [
+                {
+                  title: 'טיסה לאיסלנד',
+                  icon: '✈️',
+                  daypart: SHARE_DAYPART.MORNING,
+                  startLabel: '09:20',
+                  endLabel: '14:05',
+                  placeName: 'KEF',
+                },
+              ],
+            },
+          ],
+        },
+        fullProjection.days[1],
+      ],
+    });
+    renderShared();
+
+    await screen.findByText('איסלנד עם המשפחה');
+    expect(screen.getByText(plain(t.share.public.timeRange('09:20', '14:05')))).toBeTruthy();
+  });
+
   it('captions nothing on a row no booking backs', async () => {
     serve(fullProjection);
     const { container } = renderShared();

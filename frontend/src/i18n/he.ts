@@ -3192,6 +3192,12 @@ export const t = {
       },
       /** Names the route strip, which is otherwise an unexplained list of place names. */
       route: 'המסלול',
+      // **A flight has to say when it lands** (owner, 2026-08-30: _"important time ranges, for
+      // example flights must show when they start and when they finish"_). Both ends were in
+      // the projection all along and both renderers printed only the first, so an eleven-hour
+      // leg and a forty-minute one were the same shape of line. The numbers are isolated by
+      // the caller; the en dash is the app's own range mark (`formatTripDates`).
+      timeRange: (from: string, to: string) => `${from}–${to}`,
       appendix: {
         title: 'פרטים נוספים',
         bookingSecrets: 'פרטי הזמנה שנבחרו',

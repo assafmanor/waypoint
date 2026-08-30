@@ -30,14 +30,15 @@ const DAYS: [
   string,
   SharedDayTitle,
   SharedDaySummary,
-  [string, string, string, keyof typeof SHARE_DAYPART_KEY, BookingType?][],
+  [string, string, string, keyof typeof SHARE_DAYPART_KEY, BookingType?, string?][],
 ][] = [
   [
     '2026-08-29',
     { kind: SHARE_DAY_KIND.FLIGHT_OUT, to: 'איסלנד' },
     { kind: SHARE_DAY_SUMMARY_KIND.STAY, place: 'Laugavegur 22' },
     [
-      ['09:20', 'נחיתה בקפלוויק', 'KEF', 'MORNING', BOOKING_TYPE.FLIGHT],
+      // Carries an END, so the range renders: a flight has to say when it lands.
+      ['09:20', 'נחיתה בקפלוויק', 'KEF', 'MORNING', BOOKING_TYPE.FLIGHT, '14:05'],
       ['15:00', 'כניסה לדירה', 'Laugavegur 22', 'AFTERNOON', BOOKING_TYPE.HOTEL],
       ['19:30', 'ארוחת ערב בעיר', 'רייקיאוויק', 'EVENING', BOOKING_TYPE.RESTAURANT],
       // 01:40 sits in NIGHT and is rolled back onto this card by `sharePreviousNight`,
@@ -133,12 +134,12 @@ const FIXTURE_ICONS = ['✈️', '🏨', '🍽️', '⛰️', '🚗', '♨️', 
 const days: SharedDay[] = DAYS.map(([date, title, summary, events], index) => {
   const byDaypart = new Map<
     string,
-    { time: string; title: string; place: string; bookingType?: BookingType }[]
+    { time: string; title: string; place: string; bookingType?: BookingType; endTime?: string }[]
   >();
-  for (const [time, eventTitle, place, key, bookingType] of events) {
+  for (const [time, eventTitle, place, key, bookingType, endTime] of events) {
     const daypart = SHARE_DAYPART_KEY[key];
     const bucket = byDaypart.get(daypart) ?? [];
-    bucket.push({ time, title: eventTitle, place, bookingType });
+    bucket.push({ time, title: eventTitle, place, bookingType, endTime });
     byDaypart.set(daypart, bucket);
   }
   return {
@@ -155,6 +156,7 @@ const days: SharedDay[] = DAYS.map(([date, title, summary, events], index) => {
         hard: event.title.includes('טיסה') || event.title.includes('נחיתה'),
         ...(event.time ? { startLabel: event.time } : {}),
         ...(event.bookingType ? { bookingType: event.bookingType } : {}),
+        ...(event.endTime ? { endLabel: event.endTime } : {}),
         placeName: event.place,
       })),
     })),
