@@ -632,6 +632,41 @@ describe('WikidataProvider', () => {
       expect(fetcher.countMatching('wbgetentities')).toBe(0);
     });
 
+    /**
+     * **What the matcher already resolves and throws away** (ADR-0166's 2026-08-30
+     * amendment). `classNouns` reads `P31` labels to decide whether a candidate is the
+     * right KIND of thing and keeps none of them; `P131` is a key in a payload the pass
+     * already parses. Neither is about airports, which is why they are not behind the
+     * class guard above.
+     */
+    it('reads the class noun and the region off an ordinary place', async () => {
+      const { provider: p, fetcher } = provider({
+        'ids=Q38519': GULLFOSS_HE.entity,
+        'ids=Q34038': FEATURE_CLASSES,
+        'ids=Q-blaskogabyggd': FEATURE_CLASSES,
+      });
+      const values = await p.fetch(matchOf(GULLFOSS_HE.qid, ['Q34038']), [
+        ENRICHMENT_FIELD.KIND,
+        ENRICHMENT_FIELD.REGION,
+      ]);
+
+      // Hebrew where Wikidata has it — the same `he` → `en` preference the summary and the
+      // served city carry, and for the same reason: this lands in a Hebrew RTL page.
+      expect(values[ENRICHMENT_FIELD.KIND]).toEqual({ value: 'מפל מים', lang: 'he' });
+      // …and English where it does not, which is most Icelandic municipalities.
+      expect(values[ENRICHMENT_FIELD.REGION]).toEqual({ value: 'Bláskógabyggð', lang: 'en' });
+      // The class and the region are one entity read each, off the item already read.
+      expect(fetcher.countMatching('wbgetentities')).toBe(3);
+    });
+
+    it('asks for no class or region when neither is wanted', async () => {
+      const { provider: p, fetcher } = provider({ 'ids=Q38519': GULLFOSS_HE.entity });
+      // A waterfall is not an airport, so the pair is refused on evidence and the place
+      // facts were not asked for — nothing to fetch at all.
+      expect(await p.fetch(matchOf(GULLFOSS_HE.qid, ['Q34038']), AIRPORT_FIELDS)).toEqual({});
+      expect(fetcher.countMatching('wbgetentities')).toBe(0);
+    });
+
     it("takes Wikidata's preferred rank when it separates the values (Keflavík)", async () => {
       const { provider: p } = provider({
         'ids=Q-airport-kef': KEFLAVIK.entity,

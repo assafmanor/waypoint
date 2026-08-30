@@ -33,12 +33,16 @@ import {
   derivedPlaceLabel,
   shortPlaceLabel,
   placeIataCode,
+  NARRATIVE_SEPARATOR,
   ROUTE_ARROW,
   SHARE_OP_KIND,
   tripShapeOf,
   SHARE_TRIP_SHAPE,
   type SharedCommitment,
   type SharedOp,
+  resolveTextVariant,
+  SUMMARY_LANG_PREFERENCE,
+  type SharedPhoto,
   type TripEnrichments,
 } from '@waypoint/shared';
 import { eventDisplayZone, type TripZoneContext } from '../common/event-zone.util';
@@ -181,6 +185,99 @@ function collectCommitments(
     }
   });
   return out;
+}
+
+/**
+ * **What a clear majority of a day's stops agree on**, or nothing at all.
+ *
+ * A day is only named for its region or its kind when the day really is about one — two
+ * waterfalls out of eleven stops is not a day of waterfalls, and naming it one would be the
+ * same confident-and-wrong move as `Stuðlagil Canyon ← Baugur Bjólfs`. The threshold is
+ * over the stops that HAVE an answer, not over every stop: a car park has no Wikidata item
+ * and should not be able to veto a day, but it should not count towards one either.
+ */
+const MAJORITY = 0.6;
+const dominant = (values: readonly (string | undefined)[]): string | undefined => {
+  const known = values.filter((value): value is string => Boolean(value?.trim()));
+  if (known.length < 2) return undefined;
+  const counts = new Map<string, number>();
+  for (const value of known) counts.set(value, (counts.get(value) ?? 0) + 1);
+  const [best, count] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+  return count / known.length >= MAJORITY ? best : undefined;
+};
+
+/**
+ * **A photo needs the name to have AGREED, not merely to have matched** (ADR-0213's
+ * 2026-08-30 amendment, reversing §3's refusal of imagery).
+ *
+ * Enrichment at all clears `MATCH_CONFIDENCE_THRESHOLD` (0.6). A photo asks for more,
+ * because a wrong photo is visibly wrong in a way a wrong opening-hours line is not — and
+ * `MATCH_METHOD_CONFIDENCE` already grades the routes: `wikidata_tag` and `settled_id` are
+ * 1.0, `name_proximity` is 0.9, `geosearch` 0.8, full-text below. 0.9 is exactly "the name
+ * agreed, or the id was settled", which is the bar a picture deserves. A second threshold
+ * on a number already stored per value, not a new mechanism.
+ */
+const PHOTO_CONFIDENCE_FLOOR = 0.9;
+
+/**
+ * **Which stop a day is a picture of** — a gate, then a rank.
+ *
+ * The gate is above. The rank, among survivors, in order:
+ *
+ *  1. **Dwell time.** The strongest signal and it is the traveller's own: four hours at
+ *     Landmannalaugar beats fifteen minutes at Öxarárfoss, and the day genuinely WAS
+ *     Landmannalaugar.
+ *  2. **Booked or hard** (ADR-0011). Something paid for and planned around.
+ *  3. **`userRatingsTotal`, log-scaled** — the COUNT, never `rating`, which is 4.5-4.8 for
+ *     everything scenic and separates nothing. Log-scaled or it swamps the other terms.
+ *  4. **A human mark** — a nickname or a chosen icon. The weakest term and the only one
+ *     about THIS group rather than about the world, so it breaks ties in the right way.
+ *
+ * Deliberately NOT ranked on: Wikidata sitelink count (the provider filters sitelinks to
+ * `hewiki|enwiki` because a big item has hundreds, so counting them would make every entity
+ * read heavier for a tiebreak `userRatingsTotal` gives free); `rating` alone; and position
+ * in the day, which is the rule that produced `Stuðlagil Canyon ← Baugur Bjólfs`.
+ *
+ * **Returns `undefined` freely, and that is the design.** A day whose stops clear no gate
+ * gets no photo — not a gradient, not a map tile, not the trip's own image repeated. Nine
+ * days with photos and three without reads as honest; three days showing the wrong mountain
+ * destroys trust in the other nine.
+ */
+function dayPhoto(
+  dayEvents: ShareEventRow[],
+  places: ReadonlyMap<string, SharePlaceRow>,
+  enrichments: TripEnrichments,
+  placeLabel: PlaceLabeller,
+): SharedPhoto | undefined {
+  let best: { score: number; photo: SharedPhoto } | undefined;
+  for (const event of dayEvents) {
+    const place = event.placeId ? places.get(event.placeId) : undefined;
+    if (!place) continue;
+    const image = enrichments[place.id]?.image;
+    if (!image || image.confidence < PHOTO_CONFIDENCE_FLOOR) continue;
+    // Required by 27 of the 32 Commons files ADR-0166 §12.2 surveyed, so a photo we cannot
+    // credit is a photo we do not publish — the licence is not ours to drop.
+    const credit = [image.attribution, image.license].filter(Boolean).join(NARRATIVE_SEPARATOR);
+    if (!credit) continue;
+
+    const minutes =
+      event.startsAt && event.endsAt
+        ? Math.max(0, (event.endsAt.getTime() - event.startsAt.getTime()) / 60_000)
+        : 0;
+    const score =
+      minutes +
+      (event.bookingId || event.kind === EVENT_KIND.HARD ? 90 : 0) +
+      Math.log10(1 + (place.userRatingsTotal ?? 0)) * 30 +
+      (place.nickname?.trim() || place.icon ? 15 : 0);
+
+    if (!best || score > best.score) {
+      best = {
+        score,
+        photo: { url: image.url, of: placeLabel(place) ?? event.title, credit },
+      };
+    }
+  }
+  return best?.photo;
 }
 
 /** Where an op hangs: on the event, on the booking behind it, or on neither. The two maps
@@ -351,9 +448,17 @@ export class SharingProjectionService {
     // The airport codes, for the one surface with room for them (`legCode`). Same read as
     // the labels — `placeIataCode` is the other thing ADR-0166 §18 stored and the sharing
     // renderers never asked for.
+    const placeById = new Map(places.map((place) => [place.id, place] as const));
     const codeById = new Map(
       places.map((place) => [place.id, placeIataCode(enrichments[place.id])] as const),
     );
+    // **The two claims the enrichment pass already reads** (ADR-0166's 2026-08-30
+    // amendment). `he` then `en`, the same preference the summary and the served city
+    // carry, because all three land in the same Hebrew page.
+    const textOf = (placeId: string | undefined, field: 'kind' | 'region' | 'summary') => {
+      const variants = placeId ? enrichments[placeId]?.[field] : undefined;
+      return variants ? resolveTextVariant(variants, SUMMARY_LANG_PREFERENCE)?.value : undefined;
+    };
     const eventStops = (event: ShareEventRow): (string | undefined)[] => {
       const from = event.booking?.fromPlaceId;
       const to = event.booking?.toPlaceId;
@@ -432,13 +537,36 @@ export class SharingProjectionService {
         ops,
         labelById,
         codeById,
+        (placeId) => textOf(placeId, 'summary'),
       );
-      const facts = { ...dayFacts(dayEvents, index), tripShape: shape.shape };
+      const facts = {
+        ...dayFacts(dayEvents, index),
+        tripShape: shape.shape,
+        // Only the settled stops vote: a transport leg's endpoints are airports, and an
+        // airport's region would name a travel day after the municipality of its runway.
+        region: dominant(
+          dayEvents
+            .filter((event) => !isTransport(event))
+            .map((event) => textOf(event.placeId ?? undefined, 'region')),
+        ),
+        kind: dominant(
+          dayEvents
+            .filter((event) => !isTransport(event))
+            .map((event) => textOf(event.placeId ?? undefined, 'kind')),
+        ),
+      };
       const title: SharedDayTitle = fallbackDayTitle(facts);
       return {
         ordinal: index + 1,
         date,
         stay: stays[index],
+        // **Absent freely**: a day whose stops clear no confidence gate gets no photo. Nine
+        // days with pictures and three without reads as honest; three days showing the
+        // wrong mountain destroys trust in the other nine.
+        ...(() => {
+          const photo = dayPhoto(dayEvents, placeById, enrichments, placeLabel);
+          return photo ? { photo } : {};
+        })(),
         title,
         summary: fallbackDaySummary(facts, title),
         sections: this.groupByDaypart(projected),
@@ -555,9 +683,10 @@ export class SharingProjectionService {
     ops: OpsByHost,
     labelById: ReadonlyMap<string, string | undefined>,
     codeById: ReadonlyMap<string, string | undefined>,
+    captionOf: (placeId: string | undefined) => string | undefined,
   ): SharedEvent[] {
     const one = (event: ShareEventRow): SharedEvent =>
-      this.projectEvent(event, zones, detail, journeys?.get(event.id), placeLabel, ops);
+      this.projectEvent(event, zones, detail, journeys?.get(event.id), placeLabel, ops, captionOf);
 
     const out: SharedEvent[] = [];
     for (let i = 0; i < dayEvents.length; i += 1) {
@@ -766,6 +895,7 @@ export class SharingProjectionService {
     journey: SharedEvent['journey'],
     placeLabel: PlaceLabeller,
     ops: OpsByHost,
+    captionOf: (placeId: string | undefined) => string | undefined,
   ): SharedEvent {
     const zone = eventDisplayZone(event, zones);
     const daypart = shareDaypart(event.startsAt, zone);
@@ -787,6 +917,11 @@ export class SharingProjectionService {
 
     const label = placeLabel(event.place);
     const address = event.place?.address?.trim() || undefined;
+    // **A stop's one-line description, at every level** (owner, 2026-08-30). Public
+    // knowledge about a public place: it reveals nothing about the trip, which is why it
+    // is not behind a sensitive toggle and why Summary — the level whose whole job is to
+    // inspire — is the one that gains most from it.
+    const caption = captionOf(event.placeId ?? undefined);
     // **A row asks BOTH hosts.** A note may be written against the event or against the
     // booking behind it (`Note`'s union allows either) and to a reader those are one row,
     // so a row that only asked one would drop half the material for no reason a reader
@@ -797,6 +932,7 @@ export class SharingProjectionService {
     ];
     return {
       ...base,
+      ...(caption ? { caption } : {}),
       ...(rowOps.length > 0 ? { ops: rowOps } : {}),
       startLabel: event.startsAt ? shareTimeLabel(event.startsAt, zone) : undefined,
       endLabel: event.endsAt ? shareTimeLabel(event.endsAt, zone) : undefined,

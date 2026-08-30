@@ -164,11 +164,27 @@ function dayTitleText(title: SharedDayTitle): string {
       return PDF_COPY.dayTitle.route(auto(title.from), auto(title.to));
     case SHARE_DAY_KIND.PLACE:
       return auto(title.at);
+    case SHARE_DAY_KIND.REGION:
+      return auto(title.at);
+    case SHARE_DAY_KIND.KIND:
+      return PDF_COPY.dayTitle.kind(auto(title.of));
     case SHARE_DAY_KIND.TEXT:
       return escapeHtml(title.text);
-    default:
+    case SHARE_DAY_KIND.NONE:
+      // No places and no events: the caller falls back to the date rather than inventing a
+      // title, which is the mandatory day title ADR-0213 §2 refused.
       return '';
+    default:
+      // **Exhaustive on purpose.** The `default: return ''` this replaces would have
+      // rendered the two kinds added on 2026-08-30 as nothing at all, on a green typecheck.
+      return assertNeverTitle(title);
   }
+}
+
+/** The compiler's proof that the union was handled; unreachable by construction. */
+function assertNeverTitle(value: never): string {
+  void value;
+  return '';
 }
 
 function daySummaryText(summary: SharedDaySummary): string {
@@ -311,13 +327,16 @@ function eventRow(event: SharedEvent, summary: boolean): string {
           .filter(Boolean)
           .join(NARRATIVE_SEPARATOR)}</span>`
       : '') +
+    // A stop's one-line description. Two lines on paper as on screen, though the measure is
+    // wider here so the same sentence usually fits in one.
+    (event.caption ? `<span class="pdf-cap">${auto(event.caption)}</span>` : '') +
     opsLines(event.ops) +
     `</span></div>` +
     legRows(event)
   );
 }
 
-function dayCard(day: SharedDay, summary: boolean): string {
+function dayCard(day: SharedDay, summary: boolean, photoSrc?: string): string {
   const { day: dayNumber, weekday } = dayLabel(day.date);
   // Daypart headings appear only above events that belong to them — the projection has
   // already dropped the empty groups, so this loop cannot render one.
@@ -332,8 +351,16 @@ function dayCard(day: SharedDay, summary: boolean): string {
     )
     .join('');
   return (
-    `<article class="pdf-day"><header class="pdf-day-head">` +
+    `<article class="pdf-day"><header class="pdf-day-head${photoSrc ? '' : ' no-photo'}">` +
     `<span class="pdf-date"><strong>${ltr(dayNumber)}</strong><span>${weekday}</span></span>` +
+    // **A 34px SQUARE, not the reader page's 116px band.** A band is nothing on a page you
+    // scroll and about a page and a half across twelve days at this column density; the
+    // square fits inside the header's existing 47px minimum and costs no paper. Same photo,
+    // same gate. The credit rides the `alt`, since a printed page has no hover — and the
+    // licence line for the whole document is the appendix's job, not every square's.
+    (day.photo && photoSrc
+      ? `<img class="pdf-shot" src="${photoSrc}" alt="${escapeHtml(day.photo.of)}" />`
+      : '') +
     // Both are composed server-side with their values already isolated
     // (`itinerary-narrative.fallback.ts`), so neither may sniff its own direction.
     `<span class="pdf-day-copy"><strong>${dayTitleText(day.title) || auto(`${weekday} ${dayNumber}`)}</strong>` +
@@ -385,6 +412,10 @@ export interface PdfRenderInput {
   qrDataUrl: string;
   /** Rendered as the generated-at stamp; injected so the output is deterministic in a test. */
   generatedAtLabel: string;
+  /** Each day photo's root-relative URL to its bytes as a data URL. The renderer aborts every
+   *  request the page makes (`PdfBrowserService`), so an `<img src="/enrichment/images/...">`
+   *  would print an empty box; a URL missing from this map prints no image at all. */
+  photoDataUrls: Record<string, string>;
 }
 
 /**
@@ -407,7 +438,7 @@ export function itineraryPdfFooterHtml({
   projection,
   publicUrl,
   generatedAtLabel,
-}: Omit<PdfRenderInput, 'qrDataUrl'>): string {
+}: Omit<PdfRenderInput, 'qrDataUrl' | 'photoDataUrls'>): string {
   return (
     `<style>${fontFaces()}` +
     `.wp-foot{width:100%;box-sizing:border-box;padding:0 13mm;` +
@@ -429,6 +460,7 @@ export function itineraryPdfHtml({
   publicUrl,
   qrDataUrl,
   generatedAtLabel,
+  photoDataUrls,
 }: PdfRenderInput): string {
   const summary = projection.detailLevel === SHARE_DETAIL_LEVEL.SUMMARY;
   const appendix = appendixBlock(projection);
@@ -625,7 +657,13 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
    operator. The one decision that inverts against the reader page. */
 .pdf-ops-line{display:block;margin-block-start:2px;color:var(--pdf-ink)!important;font:600 7.2px 'JetBrains Mono',monospace;white-space:normal!important;}
 .pdf-ops-line b{font-family:'Assistant',sans-serif;font-weight:700;color:var(--pdf-muted);}
+/* A stop's description, clamped — a caption is two lines and four is a paragraph. */
+.pdf-cap{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;white-space:normal!important;color:var(--pdf-muted)!important;}
+/* **The day's photo, as a square in the header.** See dayCard for why it is not a band. */
+.pdf-day-head{grid-template-columns:48px 34px minmax(0,1fr);}
+.pdf-day-head.no-photo{grid-template-columns:48px minmax(0,1fr);}
+.pdf-shot{align-self:center;justify-self:center;width:34px;height:34px;border-radius:5px;object-fit:cover;}
 </style></head><body>${masthead}${lede}${sectionTitle}<div class="pdf-days">${projection.days
-    .map((day) => dayCard(day, summary))
+    .map((day) => dayCard(day, summary, day.photo ? photoDataUrls[day.photo.url] : undefined))
     .join('')}</div>${appendix}</body></html>`;
 }

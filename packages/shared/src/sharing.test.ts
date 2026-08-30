@@ -249,9 +249,19 @@ describe('sharedItinerarySchema', () => {
       expect(withDay({ stay: 'Reykjahlíð' }).days[0].stay).toBe('Reykjahlíð');
       // Required, never optional: 27 of the 32 Commons files ADR-0166 §12.2 surveyed
       // demand attribution, so a credit a renderer could forget is a licence breach.
+      expect(() => withDay({ photo: { url: '/enrichment/images/abc', of: 'גודאפוס' } })).toThrow();
+      // **Root-relative, never absolute.** The server has no reliable view of its own
+      // public origin and never writes one — `deliveredImageValueSchema` says so, and a
+      // `.url()` here rejected every real value until a test fed it one.
       expect(() =>
-        withDay({ photo: { url: 'https://example.org/a.jpg', of: 'גודאפוס' } }),
+        withDay({
+          photo: { url: 'https://example.org/a.jpg', of: 'גודאפוס', credit: 'CC0' },
+        }),
       ).toThrow();
+      expect(
+        withDay({ photo: { url: '/enrichment/images/abc', of: 'גודאפוס', credit: 'CC0' } }).days[0]
+          .photo?.url,
+      ).toBe('/enrichment/images/abc');
     });
 
     it('refuses a journey with fewer than two legs', () => {

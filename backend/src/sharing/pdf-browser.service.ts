@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { chromium, type Browser } from 'playwright-core';
 import QRCode from 'qrcode';
-import type { SharedItinerary } from '@waypoint/shared';
+import { isEnrichmentBlobKey, type SharedItinerary } from '@waypoint/shared';
 import {
   DEFAULT_PDF_CHROMIUM_PATH,
   DEFAULT_PDF_RENDER_CONCURRENCY,
@@ -15,6 +15,8 @@ import {
   PDF_RENDER_CONCURRENCY,
   PDF_RENDER_TIMEOUT_MS,
 } from '../common/env';
+import { sniffImageMimeType } from '../common/image-sniff';
+import { getObject } from '../common/storage';
 import { itineraryPdfFooterHtml, itineraryPdfHtml } from './itinerary-pdf.template';
 
 /**
@@ -46,10 +48,10 @@ const numberEnv = (name: string, fallback: number): number => {
  *   `Retry-After`, which is an honest answer — better than a request that never returns;
  * - every page is closed in `finally`, so a render that throws mid-way does not leak a tab.
  *
- * **The page reaches nothing.** All requests are aborted before the content is set, so the
- * template's fonts (inlined as data URLs) and its QR (a data URL too) are the whole of what
- * it can load. A projection that somehow carried a remote URL could not fetch it, which
- * matters on a renderer that runs inside the production network.
+ * **The page reaches nothing.** All requests are aborted before the content is set, so what
+ * arrives as bytes IN the document — the fonts, the QR, the day photos (`dayPhotoDataUrls`) —
+ * is the whole of what it can load. A projection that somehow carried a remote URL could not
+ * fetch it, which matters on a renderer that runs inside the production network.
  */
 @Injectable()
 export class PdfBrowserService implements OnModuleDestroy {
@@ -79,6 +81,7 @@ export class PdfBrowserService implements OnModuleDestroy {
           publicUrl,
           qrDataUrl: await QRCode.toDataURL(`https://${publicUrl}`, { margin: 0, width: 176 }),
           generatedAtLabel: generatedAtLabel(projection.generatedAt),
+          photoDataUrls: await dayPhotoDataUrls(projection),
         };
         await page.setContent(itineraryPdfHtml(input), {
           waitUntil: 'load',
@@ -165,6 +168,44 @@ export class PdfBrowserService implements OnModuleDestroy {
       .then((instance) => instance.close())
       .catch((error: unknown) => this.logger.warn(`chromium close failed: ${String(error)}`));
   }
+}
+
+/**
+ * **The day photos, inlined — because this page reaches nothing.**
+ *
+ * The route abort above is not a policy the renderer can make an exception to: it is what
+ * makes a PDF of somebody's itinerary unable to phone anywhere. So a photo has to arrive
+ * the way the QR and the fonts already do, as bytes in the document — the sibling field of
+ * `qrDataUrl` in the render input.
+ *
+ * Keyed by the projection's own root-relative URL, so the template looks up exactly what it
+ * would otherwise have put in `src`. A blob that has gone (a refresh replaced it, an
+ * ephemeral disk lost it) simply yields no entry, and the template prints no image — the
+ * same degradation the public page gets from a 404.
+ */
+async function dayPhotoDataUrls(projection: SharedItinerary): Promise<Record<string, string>> {
+  const urls = [...new Set(projection.days.flatMap((day) => day.photo?.url ?? []))];
+  const out: Record<string, string> = {};
+  await Promise.all(
+    urls.map(async (url) => {
+      const key = url.split('/').at(-1);
+      // The same prefix check the public route makes: `storage.ts` is one flat keyspace
+      // shared with document ciphertext, and a path that is not an enrichment blob has no
+      // business being read here either.
+      if (!key || !isEnrichmentBlobKey(key)) return;
+      try {
+        const bytes = await getObject(key);
+        // Typed from the BYTES like the route does, and unsniffable bytes get no entry
+        // rather than a guessed `image/jpeg` — a data URL lying about its type prints a
+        // broken box, which is worse than the no-photo layout the template already has.
+        const mimeType = sniffImageMimeType(bytes);
+        if (mimeType) out[url] = `data:${mimeType};base64,${bytes.toString('base64')}`;
+      } catch {
+        // Gone, or never there. No entry, no image, no broken box.
+      }
+    }),
+  );
+  return out;
 }
 
 /** `DD.MM.YYYY HH:MM` in UTC. The stamp says when the paper was made, not when anything on

@@ -200,6 +200,12 @@ export const SHARE_DAY_KIND = {
   ROUTE: 'route',
   /** Spent somewhere. */
   PLACE: 'place',
+  /** **The region the day's stops share** (`P131`) — the best name a day can have, because
+   *  it is where you WERE rather than what you happened to stop at. */
+  REGION: 'region',
+  /** **What the day's stops ARE** (`P31`), when a clear majority agree. Four waterfalls is
+   *  a day of waterfalls. Below `region`: where beats what. */
+  KIND: 'kind',
   /** Prose from a generator, which has no kind to key off (ADR-0213 §2). */
   TEXT: 'text',
   /** Nothing true to say. The renderer falls back to the date — inventing a title here is
@@ -214,6 +220,14 @@ export const sharedDayTitleSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal(SHARE_DAY_KIND.FLIGHT), to: z.string() }),
   z.strictObject({ kind: z.literal(SHARE_DAY_KIND.ROUTE), from: z.string(), to: z.string() }),
   z.strictObject({ kind: z.literal(SHARE_DAY_KIND.PLACE), at: z.string() }),
+  /** **The region the day's stops share** — Wikidata `P131`, resolved for each place and
+   *  taken when a clear majority of the day agrees. A day whose eleven stops are all in
+   *  Skútustaðahreppur is `מיוואטן`, not two of its waterfalls' names. */
+  z.strictObject({ kind: z.literal(SHARE_DAY_KIND.REGION), at: z.string() }),
+  /** **What the day's stops ARE, when they agree** — Wikidata `P31`, resolved to a class
+   *  noun. Four waterfalls in one day is a day of waterfalls, and that is a better name
+   *  than any two of them. Below `region` because where you were beats what you saw. */
+  z.strictObject({ kind: z.literal(SHARE_DAY_KIND.KIND), of: z.string() }),
   z.strictObject({ kind: z.literal(SHARE_DAY_KIND.TEXT), text: z.string() }),
   z.strictObject({ kind: z.literal(SHARE_DAY_KIND.NONE) }),
 ]);
@@ -540,7 +554,12 @@ export const sharedDaypartSectionSchema = z.strictObject({
  *  with photos and three without reads as honest; three days showing the wrong mountain
  *  destroys trust in the other nine. */
 export const sharedPhotoSchema = z.strictObject({
-  url: z.string().url(),
+  /** **Root-relative, like every other path this contract carries** (`shareUrl`, a
+   *  document's download path). `deliveredImageValueSchema` says why: the server has no
+   *  reliable view of its own public origin, so it never writes one. A `z.string().url()`
+   *  here rejected every real value — caught by the first test that fed the projection a
+   *  real delivered image rather than a hand-written fixture. */
+  url: z.string().regex(/^\/[^\s]*$/, 'must be a root-relative path'),
   /** The subject, for the alt text and the caption. Which stop this is a picture OF is a
    *  fact the reader needs — an unlabelled photo of a waterfall on a day with four of them
    *  says nothing. */

@@ -63,11 +63,29 @@ function dayTitleText(title: SharedDayTitle): string {
       return `${autoIsolate(title.from)}${ROUTE_ARROW}${autoIsolate(title.to)}`;
     case SHARE_DAY_KIND.PLACE:
       return autoIsolate(title.at);
+    case SHARE_DAY_KIND.REGION:
+      return autoIsolate(title.at);
+    case SHARE_DAY_KIND.KIND:
+      return t.share.public.dayTitle.kind(autoIsolate(title.of));
     case SHARE_DAY_KIND.TEXT:
       return title.text;
-    default:
+    case SHARE_DAY_KIND.NONE:
+      // A day with no places has no true title, and the server sends none rather than
+      // inventing one — the caller falls back to the date.
       return '';
+    default:
+      // **Exhaustive, and it has to be.** A `default: return ''` swallowed a new kind
+      // silently — the two added on 2026-08-30 would have rendered as nothing at all, on a
+      // typecheck that passed. `never` makes the next one a compile error here.
+      return assertNever(title);
   }
+}
+
+/** The compiler's proof that a union was handled. Throwing is unreachable by construction;
+ *  it exists so the type error is the one that fires. */
+function assertNever(value: never): string {
+  void value;
+  return '';
 }
 
 function daySummaryText(summary: SharedDaySummary): string {
@@ -269,6 +287,20 @@ function DayCard({
   const { day: dayNumber, weekday } = dayParts(day.date);
   return (
     <section className={`sh-day${open ? ' open' : ''}`} id={`day-${day.ordinal}`}>
+      {/* **A real photo of a real stop, credited** (ADR-0213's 2026-08-30 amendment). Not
+          stock and not generated: a Commons file already in the store, already licensed,
+          already rendered elsewhere in the app — which is why §3's refusal of "a new media
+          dependency" does not reach it. `loading="lazy"` because twelve of these below the
+          fold is twelve requests nobody asked for. */}
+      {day.photo ? (
+        <figure className="sh-shot">
+          <img src={day.photo.url} alt={day.photo.of} loading="lazy" decoding="async" />
+          <figcaption>
+            <strong>{autoIsolate(day.photo.of)}</strong>
+            <span>{autoIsolate(day.photo.credit)}</span>
+          </figcaption>
+        </figure>
+      ) : null}
       <button className="sh-day-head" onClick={onToggle} aria-expanded={open} type="button">
         <span className="sh-day-date">
           <strong>{ltrIsolate(dayNumber)}</strong>
@@ -401,6 +433,12 @@ function EventRow({ event, code }: { event: SharedEvent; code: string }) {
               </>
             ) : null}
           </span>
+          {/* **A stop's one-line description, at every level** (owner, 2026-08-30). Clamped
+              to two lines: a caption is two lines, and four is a paragraph — the mockup
+              measured day 9 growing 230px on captions alone before the clamp. */}
+          {event.caption ? (
+            <span className="sh-place-line sh-cap">{autoIsolate(event.caption)}</span>
+          ) : null}
           {event.mapUrl ? (
             <a
               className="sh-map-link"

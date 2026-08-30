@@ -709,3 +709,39 @@
   color: var(--cta);
   text-decoration: none;
 }
+
+/* **The day's photo** (ADR-0213's 2026-08-30 amendment, reversing §3's refusal of imagery).
+   A band above the day header, with its credit — 27 of the 32 Commons files ADR-0166 §12.2
+   surveyed require attribution, so the caption is structural rather than decoration. */
+.sh-shot {
+  margin: 0;
+  position: relative;
+  border-start-start-radius: var(--radius-16);
+  border-start-end-radius: var(--radius-16);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--teal) 10%, transparent);
+}
+.sh-shot img {
+  display: block;
+  width: 100%;
+  height: 116px;
+  object-fit: cover;
+}
+.sh-shot figcaption {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline: 0;
+  display: grid;
+  gap: 1px;
+  padding: 18px 12px 8px;
+  /* Legible over any photograph: a scrim rather than a solid, so the picture still reads. */
+  background: linear-gradient(to top, rgb(0 0 0 / 62%), transparent);
+  color: #fff;
+}
+.sh-shot figcaption strong {
+  font-size: var(--text-secondary);
+}
+.sh-shot figcaption span {
+  font-size: var(--text-micro);
+  opacity: 0.82;
+}

@@ -10,11 +10,12 @@ import { NINE_DAY_REFERENCE_TRIP } from './itinerary-pdf.fixture';
 
 const QR = 'data:image/png;base64,iVBORw0KGgo=';
 
-const input = (projection: SharedItinerary) => ({
+const input = (projection: SharedItinerary, photoDataUrls: Record<string, string> = {}) => ({
   projection,
   publicUrl: 'travelive.app/s/7Kq2mB9x',
   qrDataUrl: QR,
   generatedAtLabel: '29.08.2026 08:10',
+  photoDataUrls,
 });
 
 const render = (projection: SharedItinerary) => itineraryPdfHtml(input(projection));
@@ -260,6 +261,37 @@ describe('itineraryPdfHtml', () => {
     expect(hebrewFaces).toHaveLength(2); // Assistant + Secular One
     // JetBrains Mono ships no Hebrew glyphs and must never be asked for any.
     expect(faces.filter((f) => f.includes('U+0590-05FF') && f.includes('JetBrains'))).toEqual([]);
+  });
+});
+
+// **The renderer aborts every request the page makes** (`PdfBrowserService`), so the day
+// photo cannot arrive by URL the way it does on the reader page — it arrives as bytes, and
+// the template's job is to use the bytes it was handed and to print nothing when it wasn't.
+describe('day photos on paper', () => {
+  const PHOTO_URL = '/enrichment/images/enr-abc123';
+  const withPhoto: SharedItinerary = {
+    ...NINE_DAY_REFERENCE_TRIP,
+    days: NINE_DAY_REFERENCE_TRIP.days.map((day, index) =>
+      index === 0
+        ? { ...day, photo: { url: PHOTO_URL, of: 'Skogafoss', credit: 'CC BY-SA 4.0' } }
+        : day,
+    ),
+  };
+  const PHOTO_DATA_URL = 'data:image/jpeg;base64,/9j/4AAQ';
+
+  it('prints the inlined bytes, never the URL the page could not fetch', () => {
+    const html = itineraryPdfHtml(input(withPhoto, { [PHOTO_URL]: PHOTO_DATA_URL }));
+    expect(html).toContain(`<img class="pdf-shot" src="${PHOTO_DATA_URL}"`);
+    expect(html).toContain('alt="Skogafoss"');
+    expect(html).not.toContain(PHOTO_URL);
+  });
+
+  // A blob that has gone yields no entry, and a header that reserved a column for an image
+  // it cannot draw leaves a 34px hole beside the date.
+  it('falls back to the no-photo header when the bytes are missing', () => {
+    const html = itineraryPdfHtml(input(withPhoto));
+    expect(html).not.toContain('class="pdf-shot"');
+    expect(html).toContain('class="pdf-day-head no-photo"');
   });
 });
 

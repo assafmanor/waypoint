@@ -229,7 +229,11 @@ describe('fieldWantsAttempt', () => {
       hours: { state: 'absent', attemptedAt: ago(1000), sources: [], reason: 'not_found' },
       iata: { state: 'absent', attemptedAt: ago(1000), sources: [], reason: 'not_found' },
       servedCity: { state: 'absent', attemptedAt: ago(1000), sources: [], reason: 'not_found' },
+      kind: { state: 'absent', attemptedAt: ago(1000), sources: [], reason: 'not_found' },
+      region: { state: 'absent', attemptedAt: ago(1000), sources: [], reason: 'not_found' },
     };
+    // Every member of the enum has to be held for this to be empty, which is the point:
+    // a field added to `ENRICHMENT_FIELD` and forgotten here fails right there.
     expect(fieldsWantingAttempt(fields, NOW)).toEqual([]);
   });
 });

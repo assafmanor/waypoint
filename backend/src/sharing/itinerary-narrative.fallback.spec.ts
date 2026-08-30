@@ -159,4 +159,47 @@ describe('fallbackDaySummary', () => {
       ).toEqual({ kind: SHARE_DAY_KIND.PLACE, at: 'Tokyo' });
     });
   });
+  /**
+   * **Where you were, then what you saw, then where you went** (ADR-0166's 2026-08-30
+   * amendment). Both new rungs come from claims the enrichment pass already reads, and both
+   * beat a route made of two arbitrary stop names — which is the rule they replace.
+   */
+  describe('a day named from its enrichment', () => {
+    const base: DayFacts = {
+      stops: ['Baugur Bjólfs', 'Hengifoss', 'Stuðlagil Canyon'],
+      bookingTypes: [],
+      eventTitles: [],
+    };
+
+    it('prefers the region to a route between two of its stops', () => {
+      expect(fallbackDayTitle({ ...base, region: 'מיוואטן' })).toEqual({
+        kind: SHARE_DAY_KIND.REGION,
+        at: 'מיוואטן',
+      });
+    });
+
+    it('falls to what the stops ARE when there is no region', () => {
+      expect(fallbackDayTitle({ ...base, kind: 'מפל מים' })).toEqual({
+        kind: SHARE_DAY_KIND.KIND,
+        of: 'מפל מים',
+      });
+    });
+
+    it('prefers the region to the kind — where beats what', () => {
+      expect(fallbackDayTitle({ ...base, region: 'מיוואטן', kind: 'מפל מים' }).kind).toBe(
+        SHARE_DAY_KIND.REGION,
+      );
+    });
+
+    it('still says a flight first, because a flight renames its whole day', () => {
+      expect(
+        fallbackDayTitle({
+          ...base,
+          region: 'מיוואטן',
+          bookingTypes: [BOOKING_TYPE.FLIGHT],
+          returning: true,
+        }),
+      ).toEqual({ kind: SHARE_DAY_KIND.FLIGHT_HOME });
+    });
+  });
 });

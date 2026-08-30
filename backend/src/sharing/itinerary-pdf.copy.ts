@@ -120,6 +120,10 @@ export const PDF_COPY = {
     [SHARE_DAY_KIND.FLIGHT_HOME]: 'טסים הביתה',
     [SHARE_DAY_KIND.FLIGHT]: (to: string) => `טיסה ל${to}`,
     [SHARE_DAY_KIND.ROUTE]: (from: string, to: string) => `${from}${ROUTE_ARROW}${to}`,
+    /** **A day named by what its stops ARE** (Wikidata `P31`). Four waterfalls in one day
+     *  is a day of waterfalls, and that is a better name than any two of their names.
+     *  `REGION` needs no entry: its value is a place name and prints as itself. */
+    [SHARE_DAY_KIND.KIND]: (noun: string) => `יום ${noun}`,
   },
   /** The owner's own phrasing for the day's second line: _"night at…, Sleeping at…"_. */
   daySummary: {

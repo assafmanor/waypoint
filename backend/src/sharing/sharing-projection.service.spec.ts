@@ -59,6 +59,32 @@ const plain = (value: string): string => value.replace(/[\u2066-\u2069]/g, '');
 const noEnrichment = () =>
   ({ readForPlaces: async () => ({ enrichments: {}, stale: [] }) }) as unknown as EnrichmentService;
 
+/** A store that answers with exactly what a test hands it, keyed by place id. `readForPlaces`
+ *  is the only method the projection calls, and it drops the `stale` half deliberately — a
+ *  public read must never trigger a fetch. */
+const enrichmentOf = (byPlaceId: Record<string, unknown>) =>
+  ({
+    readForPlaces: async () => ({ enrichments: byPlaceId, stale: [] }),
+  }) as unknown as EnrichmentService;
+
+/** The provenance a delivered value carries. `confidence` is the field under test; the rest
+ *  is the shape `deliveredImageValueSchema` requires. */
+const imageValue = (confidence: number, extra: Record<string, unknown> = {}) => ({
+  url: '/enrichment/images/abc',
+  mimeType: 'image/jpeg',
+  width: 1200,
+  height: 800,
+  sizeBytes: 90_000,
+  source: 'commons',
+  license: 'CC BY-SA 4.0',
+  attribution: 'A. Photographer',
+  fetchedAt: '2026-08-01T00:00:00.000Z',
+  method: 'name_proximity',
+  ref: 'Q38519',
+  confidence,
+  ...extra,
+});
+
 describe('SharingProjectionService', () => {
   const prisma = new PrismaService();
   const service = new SharingProjectionService(
@@ -717,6 +743,82 @@ describe('SharingProjectionService', () => {
       // travels on the day's commitment row instead of vanishing.
       expect(checkInEventId).not.toBe('');
       expect(JSON.stringify(projection)).toContain('HMXXJZ2FCT');
+    });
+  });
+  /**
+   * **The photo gate and the majority rule** (ADR-0213 / ADR-0166's 2026-08-30 amendments).
+   * Both are places where a confident wrong answer is expensive and a missing answer is
+   * cheap, so both are tested for what they REFUSE as much as for what they produce.
+   */
+  describe('what enrichment adds, and what it refuses to add', () => {
+    /** The projection, with a store that answers for the trip's places. Built per test
+     *  because the enrichment is the variable under test. */
+    const project = async (byPlaceId: Record<string, unknown>) => {
+      const withStore = new SharingProjectionService(
+        prisma,
+        new ItineraryNarrativeService(prisma, new DisabledItineraryNarrativeGenerator()),
+        enrichmentOf(byPlaceId),
+      );
+      return withStore.byCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
+    };
+
+    const placeIds = async () =>
+      (await prisma.place.findMany({ where: { tripId }, select: { id: true, name: true } })).reduce<
+        Record<string, string>
+      >((all, place) => ({ ...all, [place.name]: place.id }), {});
+
+    it('publishes no photo below the confidence floor, and one at it', async () => {
+      const ids = await placeIds();
+      const under = await project({ [ids['Reykjavík']]: { image: imageValue(0.8) } });
+      // 0.8 is `geosearch`: found by coordinates, corroborated by nothing readable. Enough
+      // for a summary, not enough for a picture — a wrong photo is visibly wrong.
+      expect(under.days.some((day) => day.photo)).toBe(false);
+
+      const at = await project({ [ids['Reykjavík']]: { image: imageValue(0.9) } });
+      // 0.9 is `name_proximity`: the name agreed.
+      expect(at.days.some((day) => day.photo)).toBe(true);
+    });
+
+    it('publishes no photo it cannot credit, however confident the match', async () => {
+      const ids = await placeIds();
+      // 27 of the 32 Commons files ADR-0166 §12.2 surveyed require attribution. A file we
+      // cannot credit is one we may not publish — the licence is not ours to drop.
+      const projection = await project({
+        [ids['Reykjavík']]: { image: imageValue(1, { attribution: undefined, license: '' }) },
+      });
+      expect(projection.days.some((day) => day.photo)).toBe(false);
+    });
+
+    it('carries the credit with the photo, never the photo alone', async () => {
+      const ids = await placeIds();
+      const projection = await project({ [ids['Reykjavík']]: { image: imageValue(1) } });
+      const photo = projection.days.find((day) => day.photo)?.photo;
+      expect(photo?.credit).toContain('A. Photographer');
+      expect(photo?.credit).toContain('CC BY-SA 4.0');
+      expect(photo?.url).toBe('/enrichment/images/abc');
+    });
+
+    it('names a stop by what it is, in the reader language', async () => {
+      const ids = await placeIds();
+      const projection = await project({
+        [ids['Reykjavík']]: {
+          summary: { he: { value: 'בירת איסלנד ועיר הנמל שלה', lang: 'he' } },
+        },
+      });
+      const captions = projection.days.flatMap((day) =>
+        day.sections.flatMap((section) => section.events.map((event) => event.caption)),
+      );
+      expect(captions).toContain('בירת איסלנד ועיר הנמל שלה');
+    });
+
+    it('refuses to name a day for a region only one of its stops agrees on', async () => {
+      const ids = await placeIds();
+      // One stop out of several is not a day about that region, and naming it one is the
+      // same confident-and-wrong move as `Stuðlagil Canyon ← Baugur Bjólfs`.
+      const projection = await project({
+        [ids['Reykjavík']]: { region: { he: { value: 'מיוואטן', lang: 'he' } } },
+      });
+      expect(projection.days.every((day) => day.title.kind !== 'region')).toBe(true);
     });
   });
 });

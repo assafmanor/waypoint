@@ -101,6 +101,14 @@ export interface DayFacts {
   /** …and the returning one: the last flight day, on the last day holding anything, and not
    *  the same day as the outbound — a single flight day is an departure, never a return. */
   returning?: boolean;
+  /** **The region the day's stops share** (Wikidata `P131`), when a clear majority agree.
+   *  The best name a day can have, because it is where you WERE rather than what you
+   *  happened to stop at — a day whose eleven stops are all in Skútustaðahreppur is
+   *  `מיוואטן`, not two of its waterfalls. */
+  region?: string;
+  /** **What the day's stops ARE** (Wikidata `P31`), when a clear majority agree. Below the
+   *  region, because where beats what. */
+  kind?: string;
   /** **The trip's shape** (owner, 2026-08-30). On a `base` trip every day leaves from and
    *  returns to the same bed, so a `from ← to` title describes the commute rather than the
    *  day — `רייקיאוויק ← גולפוס` on nine consecutive days says the same false thing nine
@@ -125,6 +133,11 @@ export function fallbackDayTitle(facts: DayFacts): SharedDayTitle {
     }
     if (facts.flightTo) return { kind: SHARE_DAY_KIND.FLIGHT, to: facts.flightTo };
   }
+  // **Where you were, then what you saw, then where you went** (ADR-0166's 2026-08-30
+  // amendment). Both come from claims the enrichment pass already reads, and both beat a
+  // route made of two arbitrary stop names — which is the rule these replace.
+  if (facts.region) return { kind: SHARE_DAY_KIND.REGION, at: facts.region };
+  if (facts.kind) return { kind: SHARE_DAY_KIND.KIND, of: facts.kind };
   const stops = dedupeConsecutive(facts.stops);
   if (stops.length === 0) return { kind: SHARE_DAY_KIND.NONE };
   // **On a star trip a day is a PLACE, never a route.** Every day of one starts and ends at

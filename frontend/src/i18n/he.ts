@@ -3185,6 +3185,10 @@ export const t = {
         // on every returning day.
         flightHome: 'טסים הביתה',
         flight: (to: string) => `טיסה ל${to}`,
+        // **A day named by what its stops ARE** (Wikidata `P31`). Four waterfalls in one
+        // day is a day of waterfalls — a better name than any two of their names. `region`
+        // needs no entry: its value is a place name and prints as itself.
+        kind: (noun: string) => `יום ${noun}`,
       },
       /** The owner's own phrasing for the day's second line: _"night at…, Sleeping at…"_. */
       daySummary: {

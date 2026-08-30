@@ -82,6 +82,10 @@ export const SHARE_PLACE_SELECT = {
   /** The significance rank behind a day's photo — the COUNT, never `rating`, which is
    *  4.5–4.8 for everything scenic and separates nothing. */
   userRatingsTotal: true,
+  /** **A human mark on the place**, and the only rank term that is about THIS group rather
+   *  than about the world — so it breaks ties in the right direction. Not published: the
+   *  projection copies fields by name and this is not one. */
+  icon: true,
 } as const satisfies Prisma.PlaceSelect;
 
 export type ShareEventRow = Prisma.EventGetPayload<{ select: typeof SHARE_EVENT_SELECT }>;
