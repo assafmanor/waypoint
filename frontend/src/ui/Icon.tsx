@@ -20,6 +20,7 @@ export type IconName =
   | 'frame'
   | 'pin'
   | 'external'
+  | 'eye'
   | 'camera'
   | 'check'
   | 'skip'
@@ -136,6 +137,11 @@ const PATHS: Record<IconName, string> = {
   // glyph: `pin` above already means "our map", and two map-shaped marks on one row would
   // compete. What this control says is where you END UP, which is the honest distinction.
   external: 'M14 4h6v6 M20 4 11 13 M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4',
+  // Look, but do not touch — the read-only half of the share sheet's audience fork
+  // (ADR-0213's 2026-08-30 amendment). Added rather than reaching for 👀: this is a
+  // control, and the rule is that a glyph with a sibling control drawing an icon is one
+  // (ADR-0138's 2026-08-01 amendment). Nothing in the set meant "look" before it.
+  eye: 'M2.6 12S6.6 5.4 12 5.4 21.4 12 21.4 12 17.4 18.6 12 18.6 2.6 12 2.6 12Z M14.6 12a2.6 2.6 0 1 1-5.2 0 2.6 2.6 0 0 1 5.2 0Z',
   // The badge on the avatar hero that changes your picture (ADR-0133 §6/§12): a body
   // with the raised shutter hump, plus the lens. The one affordance on a profile
   // surface that needs no label — and a real SVG, because `FilePicker` still draws 📷

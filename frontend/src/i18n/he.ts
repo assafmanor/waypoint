@@ -3059,7 +3059,9 @@ export const t = {
     entry: 'שיתוף',
     entryFor: (tripName: string) => `שיתוף ${tripName}`,
     owner: {
-      title: 'שיתוף המסלול',
+      // **The trip, not the itinerary** — the sheet grants two different things now, and
+      // one of them adds a person to the trip (ADR-0213's 2026-08-30 amendment).
+      title: 'שיתוף הטיול',
       lead: 'כמה מהמסלול יופיע?',
       levels: {
         summary: 'תקציר',
@@ -3111,6 +3113,31 @@ export const t = {
       peerNote: 'רק מנהלי הטיול יכולים לשנות מה הלינק מראה.',
       notShared: 'הטיול עדיין לא משותף.',
       failed: 'משהו השתבש. נסו שוב.',
+      copyLink: 'העתקת הלינק',
+      // **The sheet's first question, because the two links are two GRANTS** (ADR-0213's
+      // 2026-08-30 amendment). One adds a person to the trip, the other hands a stranger a
+      // projection — so the audience is asked before anything else, and never offered as a
+      // third button beside the two that are merely two formats of the same grant.
+      audience: {
+        lead: 'למי זה הולך?',
+        join: 'מצטרפים לטיול',
+        read: 'רק לצפייה',
+      },
+      join: {
+        scope: {
+          title: 'הלינק להצטרפות',
+          detail: 'מי שנכנס נוסף לרשימת הנוסעים · רואה הכל ויכול לערוך · פעיל עד סוף הטיול',
+        },
+        note: 'לינק אחד לטיול · אפשר לשלוח אותו לקבוצה',
+        action: 'שליחת הלינק',
+        // Distinct from the read-only link's `החלפת הלינק`: this one also says who keeps
+        // their place, which is the question anyone hesitates over before pressing it.
+        rotate: 'לינק הזמנה חדש',
+        rotateTitle: 'ליצור לינק הזמנה חדש?',
+        rotateBody: 'הלינק הקודם יפסיק לעבוד מיד. מי שכבר הצטרף נשאר בטיול.',
+        rotateConfirm: 'יצירה',
+        rotated: 'נוצר לינק חדש · הקודם בוטל',
+      },
     },
     public: {
       brand: 'Travelive',

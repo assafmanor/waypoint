@@ -53,9 +53,13 @@ for (const viewport of PHONES) {
       // …and it is at the card's inline END. The app is RTL, so that is the LEFT edge.
       expect(action.x).toBeLessThan(card.x + card.width / 2);
 
-      // ADR-0017's touch floor, measured rather than assumed.
-      expect(action.height).toBeGreaterThanOrEqual(44);
-      expect(action.width).toBeGreaterThanOrEqual(44);
+      // ADR-0017's touch floor, measured rather than assumed — and ROUNDED, because the
+      // control is a grid item in a fractional track and `boundingBox` hands back the
+      // device-pixel float: 43.99999809 against a floor of 44, on two of the four
+      // permutations and not the other two. A floor is a claim about a thumb, and a thumb
+      // does not resolve two microns; the same rounding `e2e/measure.ts`'s neighbours use.
+      expect(Math.round(action.height)).toBeGreaterThanOrEqual(44);
+      expect(Math.round(action.width)).toBeGreaterThanOrEqual(44);
     });
   }
 }

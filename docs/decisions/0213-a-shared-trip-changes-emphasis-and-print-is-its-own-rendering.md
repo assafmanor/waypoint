@@ -270,6 +270,68 @@ printed on, that no page is blank, and that no text run is printed over another 
 **two** documents, the reference trip and a deliberately dense one, because only the dense one
 fragments and the comfortable one stayed green through every defect above.
 
+## Amendment — the share control asks who the link is for (2026-08-30)
+
+Owner, the same day: _"The share button should be both for sharing the trip and inviting
+(let's mockup this)."_ Drawn and measured in
+[`mockups/sharing-and-inviting-are-one-control-v1.html`](../../mockups/sharing-and-inviting-are-one-control-v1.html).
+
+**§1 · The problem is that two grants live in two places.** This ADR gave the trip a reader's
+link — `/s/<code>`, no account, revocable, a projection — and put its control on the trip
+header and every All Trips card. [ADR-0067](0067-revocable-code-invites-and-removal-blocks.md)
+gave the trip a traveller's link — `/join/<code>`, a `Membership`, full live data, edit
+rights — and it sits at the foot of Trip Settings, past the roster and the removed-members
+list. "Send my sister the trip" and "add my sister to the trip" are one sentence in Hebrew
+and two screens in the app, and the control labelled `שיתוף` is the one people press.
+
+**§2 · One question above the sheet, and the body branches under it.** `למי זה הולך?` —
+`מצטרפים לטיול` or `רק לצפייה`. Deliberately **not** a third button beside `לינק חי` and
+`PDF`: those two are two **formats of one grant**, and a row of three teaches that all three
+are interchangeable. The cost of that lesson is not symmetric — someone who meant to send a
+peek instead adds a person to the trip, with edit rights, and nothing on screen said so.
+
+No new mechanism. The sheet already reads _pick a level → read what it costs → press an
+outcome_; the fork is the same sentence one clause earlier, so it is a second `ChoiceGrid`
+over the `.choice-card` the levels already use. The mockup's whole proposed stylesheet is 36
+lines, which is the argument.
+
+Join is the **default**: it is the common audience for a live trip, and it is the one that
+cannot be reached today without leaving the screen.
+
+**§3 · The invite link is one component with two hosts.** The sheet and Trip Settings render
+the same row rather than two copies of "the trip's link" — the duplication rule 8 exists to
+prevent. It is drawn in the neutral `.share-link` idiom at the 44px floor, and specifically
+**not** as today's `.invite-box`, which paints `--plan-tint` with a dashed violet border on a
+Trip-mode screen and so spends the hue [ADR-0028](0028-plan-violet-color-budget-dark-ready.md) reserves for
+Plan mode. Fixing that in place is what makes one component possible.
+
+**Authorization is unchanged**, and that is the point: `POST /trips/:tripId/invite` is
+already get-or-create for any member and `…/invite/rotate` is already admin-only (ADR-0067),
+which matches this sheet's existing split exactly — sharing is what the group does, changing
+what the world sees is the admin's. A peer sees the invite branch in full, with the rotate
+row absent, exactly as they see the read-only branch without the level cards.
+
+**§4 · What rendering it changed, since none of it was visible in the code.** The first draft
+marked the two audience cards with emoji, which the design language forbids on a control
+("emoji are content, icons are UI", and a glyph whose siblings draw icons is a control) — they
+are `Icon`s now, and `eye` joined the set because nothing in it meant "look". More
+consequentially, `.share-sheet` set a flat `gap: 12px`, so a question sat exactly as far from
+the control answering it as from the next subject; that is the same as having no grouping at
+all, and it is most of why the sheet read as a stack. It is now 16px between groups and 8px
+inside one, and the redesigned sheet is **shorter** than today's (428px against 490px) despite
+asking one more question. The mockup could not see any of that for three rounds, because
+`form-actions.css` — which owns `.modal-form`, the flex container the gap lives on — was
+missing from its `APP-CSS` manifest and every block rendered at a 0px gap. An incomplete
+manifest is an argument from CSS the app does not have.
+
+**Rejected.** _One link that lets the recipient choose_ — it hands the authorization decision
+to the party that does not hold it, and inverts ADR-0067's "the code **is** the grant".
+_Leaving the invite in settings behind a shortcut in the sheet_ — it keeps the long journey
+and adds a sign to it. _Borrowing the hard/soft grammar for the two audiences_ — it fits the
+meaning almost perfectly (one is a commitment, one is provisional) and was refused anyway:
+that grammar belongs to events (ADR-0011), and spending it here would teach that dashed means
+"read-only" rather than "movable".
+
 ## Alternatives considered
 
 - **One page with fields progressively removed.** Rejected: less information is not automatically the right emphasis.

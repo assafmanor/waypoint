@@ -5334,8 +5334,18 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   font-size: 18px;
 }
 
+/* **The sheet's rhythm is two numbers, not one** (ADR-0213's 2026-08-30 amendment).
+   It used to be a flat `gap: 12px`, so a question sat exactly as far from the control that
+   answers it as from the next subject — which is the same thing as having no grouping at
+   all, and most of why the sheet read as a stack rather than as a sequence. 16px between
+   GROUPS, 8px inside one. Both off the spacing ramp. */
 .share-sheet {
-  gap: 12px;
+  gap: var(--space-4);
+}
+
+.share-group {
+  display: grid;
+  gap: var(--space-2);
 }
 
 .share-lead {
@@ -5349,9 +5359,117 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   min-height: 58px;
 }
 
+/* **The audience fork** (ADR-0213's 2026-08-30 amendment) — the sheet's first question,
+   above everything it already asks. Two cards rather than the levels' three, and taller
+   because these carry a glyph: this is the one choice here whose wrong answer cannot be
+   taken back, since a peek link can be revoked and a person added to the trip is in it. */
+.share-sheet .share-audience .choice-card {
+  min-height: 66px;
+}
+
+/* **The live fact belongs INSIDE the explainer, not beside it.** It used to be a bordered
+   box followed by a floating hint line — two blocks saying things about the same link, and
+   most of why the sheet read as a stack of grey slabs rather than as a hierarchy. */
+.share-scope-note .share-scope-live {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-block-start: 9px;
+  padding-block-start: 9px;
+  border-block-start: 1px solid var(--line);
+}
+
+.share-scope-live .icon {
+  color: var(--cta);
+}
+
+/* **The link and what you do with it are ONE object** — the sheet's single prominent
+   element ("one loud element, everything else quiet"), on `--card` and `raised`, with the
+   quiet explainer above earning it. Radii straight off the ramp: 16 for the card, 12 for
+   the elements inside it. */
+.share-send {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-16);
+  background: var(--card);
+  box-shadow: var(--elevation-raised);
+}
+
+/* **Flush, with no inset of its own.** Padded, the unit's button sat 8px narrower than the
+   cards above it and the sheet's edge came out stepped — the whole body reads down one
+   16px column, and a nested box that indents again breaks it. So the rows sit edge to edge
+   inside one frame, separated by hairlines, and the frame is what groups them. */
+.share-send .share-link-row {
+  border-radius: 0;
+  border-block-end: 1px solid var(--line);
+  background: transparent;
+}
+
+.share-send .share-outcomes {
+  gap: 0;
+}
+
+.share-send .share-outcome {
+  border: 0;
+  border-radius: 0;
+}
+
+.share-send .share-outcome + .share-outcome {
+  border-inline-start: 1px solid var(--line);
+}
+
+/* **The trip's public link as a control** (`ui/TripLinkRow.tsx`). Neutral on purpose: the
+   `.invite-box` this replaces paints `--plan-tint` and a dashed violet border on screens
+   that are not Plan mode, which spends a hue ADR-0028 reserves. */
+.share-link-row {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--radius-12);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: var(--ink);
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--t-base) var(--ease-standard);
+}
+
+.share-link-row .share-link {
+  flex: 1;
+  min-width: 0;
+}
+
+.share-link-row .icon {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+/* The box you tapped says that you tapped it (ADR-0142 §3) — a status tint, which is
+   `--ok`'s own job and the one colour this row ever shows. Specific enough to beat the
+   `transparent` the send unit sets on it. */
+.share-link-row[data-copied],
+.share-send .share-link-row[data-copied] {
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+}
+
+.share-link-row[data-copied] .icon {
+  color: var(--ok);
+}
+
+/* Standing alone in Trip Settings it needs a frame of its own; inside the send unit the
+   card around it already is one. */
+.set-body .share-link-row {
+  border: 1px solid var(--line);
+  background: var(--card);
+}
+
 .share-scope-note {
   min-height: 52px;
-  padding: 10px 12px;
+  padding: var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-12);
   background: color-mix(in srgb, var(--ink) 3%, transparent);
@@ -5460,6 +5578,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+/* The invite branch has one outcome, not two: a `/join/` link has no second format. */
+.share-outcomes.is-single {
+  grid-template-columns: 1fr;
 }
 
 /* Both outcomes are 48px, over ADR-0017's 44px floor. The live link is the primary because
