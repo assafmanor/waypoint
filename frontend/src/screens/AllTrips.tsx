@@ -67,7 +67,15 @@ function TripMeta({ trip }: { trip: Trip }) {
   );
 }
 
-export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
+export function AllTrips({
+  onOpenAccount,
+  onShare,
+}: {
+  onOpenAccount: () => void;
+  /** Opens the one `ShareItinerarySheet` the shell owns — this screen renders the entry,
+   *  not a second copy of the sheet (the trip header renders the other entry). */
+  onShare: (trip: Trip) => void;
+}) {
   const navigate = useNavigate();
   const { me } = useAuth();
   const { setTripId } = useActiveTripId();
@@ -128,36 +136,56 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
     navigate('/', flying ? { state: { navDir: NAV_DIR.HANDOFF } } : undefined);
   };
 
-  const hero = (trip: Trip) => (
-    <button key={trip.id} className="trip-hero" onClick={(e) => pick(trip, e.currentTarget)}>
-      <span className="flag">{trip.icon ?? DEFAULT_TRIP_ICON}</span>
-      <span className="main">
-        <span className="t">{trip.name}</span>
-        <TripMeta trip={trip} />
-      </span>
-      <span className="go">
-        <NavArrow variant="forward" />
-      </span>
+  // **Share is a SIBLING of the card, never inside it** (ADR-0213, and the mockup rejected
+  // the alternative by name): a button nested in a button is invalid HTML and gives the
+  // thumb two competing targets on the same rect. The wrapper is positioned so the action
+  // can sit at the card's inline edge without the card itself being restyled.
+  const shareAction = (trip: Trip) => (
+    <button
+      type="button"
+      className="trip-share-action"
+      aria-label={t.share.entryFor(trip.name)}
+      onClick={() => onShare(trip)}
+    >
+      <Icon name="share" />
     </button>
   );
 
+  const hero = (trip: Trip) => (
+    <div className="trip-share-wrap" key={trip.id}>
+      <button className="trip-hero" onClick={(e) => pick(trip, e.currentTarget)}>
+        <span className="flag">{trip.icon ?? DEFAULT_TRIP_ICON}</span>
+        <span className="main">
+          <span className="t">{trip.name}</span>
+          <TripMeta trip={trip} />
+        </span>
+        <span className="go">
+          <NavArrow variant="forward" />
+        </span>
+      </button>
+      {shareAction(trip)}
+    </div>
+  );
+
   const row = (trip: Trip, chip: 'soon' | 'past') => (
-    <button
-      key={trip.id}
-      className={'trip-card' + (chip === 'past' ? ' is-past' : '')}
-      onClick={(e) => pick(trip, e.currentTarget)}
-    >
-      <span className="flag">{trip.icon ?? DEFAULT_TRIP_ICON}</span>
-      <span className="main">
-        <span className="t">{trip.name}</span>
-        <TripMeta trip={trip} />
-      </span>
-      <span className={'chip ' + chip}>
-        {chip === 'soon'
-          ? t.shell.allTrips.chipSoon(daysUntilStart(trip, now) ?? 0)
-          : t.shell.allTrips.chipPast}
-      </span>
-    </button>
+    <div className="trip-share-wrap" key={trip.id}>
+      <button
+        className={'trip-card' + (chip === 'past' ? ' is-past' : '')}
+        onClick={(e) => pick(trip, e.currentTarget)}
+      >
+        <span className="flag">{trip.icon ?? DEFAULT_TRIP_ICON}</span>
+        <span className="main">
+          <span className="t">{trip.name}</span>
+          <TripMeta trip={trip} />
+        </span>
+        <span className={'chip ' + chip}>
+          {chip === 'soon'
+            ? t.shell.allTrips.chipSoon(daysUntilStart(trip, now) ?? 0)
+            : t.shell.allTrips.chipPast}
+        </span>
+      </button>
+      {shareAction(trip)}
+    </div>
   );
 
   // No trips at all → the ZERO STATE, which is the app's designed answer to exactly this

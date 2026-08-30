@@ -34,12 +34,21 @@
 // take liberties; this one is the link, and takes exactly two.
 
 /**
- * The invite as one string, shown and copied — deliberately the same string, because a
- * label that differs from what the clipboard holds is a small lie the reader can't see.
+ * A public app link as one string, shown and copied — deliberately the same string, because
+ * a label that differs from what the clipboard holds is a small lie the reader can't see.
  *
- * @param path the `inviteUrl` the API returned — a root-relative `/join/<code>`.
+ * **Two links now take exactly these two liberties** (ADR-0213): `/join/<code>` and the
+ * shared itinerary's `/s/<code>`. Both are pasted into somebody else's chat rather than
+ * clicked from an `href` here, so both need the same rule about what may come off — which
+ * is why this generalized rather than the share sheet growing a near-copy that drops
+ * `www.` slightly differently.
+ *
+ * @param path the root-relative path the API returned (`/join/<code>`, `/s/<code>`).
  */
-export function inviteLink(path: string): string {
+export function publicAppLink(path: string): string {
   const url = new URL(path, window.location.origin);
   return url.host.replace(/^www\./i, '') + url.pathname + url.search;
 }
+
+/** The invite link, which is what its call sites read. */
+export const inviteLink = publicAppLink;

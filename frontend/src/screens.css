@@ -5320,3 +5320,213 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
     transform: scaleY(0.88) translateY(-4px);
   }
 }
+
+/* ═══ Itinerary sharing — the owner's sheet and its two entries (ADR-0213) ═══════════════
+   Ported from the proposal block of mockups/an-itinerary-is-shared-from-every-trip-v2.html.
+   Everything structural comes from the existing primitives (Modal/Sheet, ChoiceGrid, Switch,
+   ConfirmDialog); these rules are only the composition delta. */
+
+.share-header-btn {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  margin-inline: -6px;
+  font-size: 18px;
+}
+
+.share-sheet {
+  gap: 12px;
+}
+
+.share-lead {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.share-sheet .choice-card {
+  min-height: 58px;
+}
+
+.share-scope-note {
+  min-height: 52px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+
+.share-scope-note strong,
+.share-scope-note span,
+.share-private-copy strong,
+.share-private-copy span {
+  display: block;
+}
+
+.share-scope-note strong,
+.share-private-copy strong {
+  font-size: var(--text-secondary);
+}
+
+.share-scope-note span,
+.share-private-copy span {
+  margin-block-start: 2px;
+  color: var(--muted);
+  font-size: var(--text-micro);
+  line-height: 1.4;
+}
+
+.share-private {
+  padding-block-start: 6px;
+  border-block-start: 1px solid var(--line);
+}
+
+.share-private-row {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-block-start: 1px solid var(--line);
+}
+
+.share-private-row:first-child {
+  border-block-start: 0;
+}
+
+.share-private-copy {
+  min-width: 0;
+}
+
+.share-files {
+  margin-block: -4px 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--screen);
+}
+
+.share-file {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink);
+  font-size: var(--text-caption);
+}
+
+.share-file + .share-file {
+  border-block-start: 1px solid var(--line);
+}
+
+.share-file input {
+  accent-color: var(--cta);
+}
+
+.share-file-empty {
+  display: block;
+  padding: 10px 0;
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+
+.share-live-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: var(--text-micro);
+}
+
+.share-live-note .icon {
+  color: var(--cta);
+}
+
+.share-link {
+  overflow: hidden;
+  color: var(--ink);
+  font: 500 var(--text-caption) var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.share-error {
+  color: var(--miss);
+  font-size: var(--text-caption);
+}
+
+.share-outcomes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* Both outcomes are 48px, over ADR-0017's 44px floor. The live link is the primary because
+   it is what a shared trip IS; the PDF is its snapshot. */
+.share-outcome {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  background: var(--card);
+  color: var(--ink);
+  font: 700 var(--text-secondary) var(--font-body);
+  cursor: pointer;
+}
+
+.share-outcome.primary {
+  border-color: var(--cta);
+  background: var(--cta);
+  color: var(--cta-text);
+}
+
+.share-outcome:disabled {
+  opacity: 0.55;
+}
+
+.share-outcome .icon {
+  font-size: 18px;
+}
+
+.share-manage {
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: 700 var(--text-caption) var(--font-body);
+  cursor: pointer;
+}
+
+.share-manage-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+/* The All Trips card splits into sibling controls rather than nesting a button inside a
+   button — that is invalid HTML and produces two competing touch targets. */
+.trip-share-action {
+  position: relative;
+  min-width: 44px;
+  min-height: 44px;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  margin: 8px 4px 8px 8px;
+  border: 0;
+  border-inline-start: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-size: 19px;
+  cursor: pointer;
+}
+
+.trip-share-action:focus-visible,
+.share-header-btn:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: -2px;
+}
