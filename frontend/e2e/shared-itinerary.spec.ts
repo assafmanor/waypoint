@@ -14,6 +14,8 @@ import {
   SHARE_DAY_SUMMARY_KIND,
   SHARE_DAYPART,
   SHARE_DETAIL_LEVEL,
+  SHARE_OP_KIND,
+  SHARE_TRIP_SHAPE,
   type SharedItinerary,
 } from '@waypoint/shared';
 import { t } from '../src/i18n/he';
@@ -39,8 +41,13 @@ const SUMMARY: SharedItinerary = {
     eventCount: 3,
     routeLabels: ['רייקיאוויק', 'ויק'],
     routeStopCount: 2,
+    shape: SHARE_TRIP_SHAPE.LINE,
+    baseCount: 2,
   },
   narrative: { source: 'deterministic', title: 'רייקיאוויק ← ויק', summary: '' },
+  // Required, and empty here on purpose: Summary states no booking, so the bookings block
+  // has nothing to draw and must not draw a heading over nothing.
+  commitments: [],
   days: [
     {
       ordinal: 1,
@@ -102,10 +109,34 @@ const FULL: SharedItinerary = {
   ],
 };
 
+/**
+ * **The confirmation code rides its own event now** (ADR-0213's fourth 2026-08-30
+ * amendment). It used to be `appendix.bookingSecrets`, four flat lists at the foot of the
+ * document — the owner's _"nothing is linked to the events"_ — and the appendix has been
+ * narrowed to what is attached to nothing. So the fixture attaches it, and the test below
+ * opens the fold it now lives behind.
+ */
 const EVERYTHING: SharedItinerary = {
   ...FULL,
   detailLevel: SHARE_DETAIL_LEVEL.EVERYTHING,
-  appendix: { bookingSecrets: [{ title: 'טיסה', lines: ['Icelandair', 'KEF-4821'] }] },
+  days: [
+    {
+      ...FULL.days[0],
+      sections: [
+        {
+          ...FULL.days[0].sections[0],
+          events: [
+            {
+              ...FULL.days[0].sections[0].events[0],
+              ops: [{ kind: SHARE_OP_KIND.CODE, code: 'KEF-4821', provider: 'Icelandair' }],
+            },
+          ],
+        },
+      ],
+    },
+    FULL.days[1],
+    FULL.days[2],
+  ],
 };
 
 /**
@@ -178,10 +209,19 @@ test('Full adds the orientation facts, and a map link big enough to hit', async 
   expect((await mapLink.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
 });
 
-test('Everything shows exactly the one family that was enabled', async ({ page }) => {
+test('Everything puts the booking code on its own event, behind the row fold', async ({ page }) => {
   await open(page, EVERYTHING);
 
-  await expect(page.getByText('KEF-4821')).toBeVisible();
+  // Present but not shown: the fold is what keeps a schedule readable to someone who wants
+  // the schedule, while an operator is one press from the code.
+  const code = page.getByText('KEF-4821');
+  await expect(code).toBeAttached();
+  await expect(code).not.toBeVisible();
+
+  await page.locator('.sh-ops summary').first().click();
+  await expect(code).toBeVisible();
+
+  // The other two families were never enabled, and the appendix carries neither.
   await expect(page.getByText('פתקים ומשימות')).toHaveCount(0);
   await expect(page.getByText('הנוסעים')).toHaveCount(0);
 });
