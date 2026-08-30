@@ -401,7 +401,7 @@ describe('SharingProjectionService', () => {
     expect(ops).toContainEqual(
       expect.objectContaining({ kind: SHARE_OP_KIND.CODE, code: SECRET.confirmationCode }),
     );
-    expect(projection.appendix?.notesAndTasks).toBeUndefined();
+    expect(projection.appendix?.ops).toBeUndefined();
     expect(projection.appendix?.travelers).toBeUndefined();
     expect(JSON.stringify(projection)).not.toContain(SECRET.noteBody);
   });
@@ -418,8 +418,15 @@ describe('SharingProjectionService', () => {
     const projection = await service.byCode(
       await shareAt(SHARE_DETAIL_LEVEL.EVERYTHING, { withDocument: true }),
     );
-    expect(projection.appendix?.documents).toEqual([
-      { handle: documentId, title: 'הזמנת הדירה.pdf', mimeType: 'application/pdf' },
+    // Attached to no event, so it rides the appendix — as a `FILE` op, the same shape the
+    // rows carry, rather than a per-family list of its own.
+    expect(projection.appendix?.ops).toEqual([
+      {
+        kind: SHARE_OP_KIND.FILE,
+        handle: documentId,
+        title: 'הזמנת הדירה.pdf',
+        mimeType: 'application/pdf',
+      },
     ]);
     expect(JSON.stringify(projection)).not.toContain(otherDocumentId);
   });
@@ -678,6 +685,97 @@ describe('SharingProjectionService', () => {
       expect(journeys[0].endLabel).toBe('23:20');
     });
 
+    /**
+     * **The reported case: a red-eye whose second leg lands on the next calendar day**
+     * (owner, 2026-08-30: _"Sometimes journeys with layovers aren't recognized properly, for
+     * example when it crosses a day"_).
+     *
+     * The chain condition never had anything to do with the calendar — only the loop did:
+     * `withJourneys` walked one day's own events, so the two legs of exactly the flight most
+     * likely to HAVE a layover were two unrelated rows on two different days. The pass now
+     * runs over the whole trip, and the journey belongs to the day it departs on.
+     */
+    it('chains a journey whose second leg lands on the next day', async () => {
+      const trip = await prisma.trip.create({
+        data: {
+          name: 'לילה באוויר',
+          destination: 'Iceland',
+          startDate: new Date('2026-09-11'),
+          endDate: new Date('2026-09-12'),
+          timezone: 'UTC',
+          createdBy: OWNER,
+          updatedBy: OWNER,
+        },
+      });
+      await prisma.membership.create({ data: { tripId: trip.id, userId: OWNER, role: 'admin' } });
+      const place = (name: string) =>
+        prisma.place.create({ data: { tripId: trip.id, name, timezone: 'UTC', updatedBy: OWNER } });
+      const [tlv, vie, kef] = await Promise.all([place('TLV'), place('VIE'), place('KEF')]);
+
+      const leg = async (
+        from: string,
+        to: string,
+        date: string,
+        startsAt: string,
+        endsAt: string,
+      ) => {
+        const booking = await prisma.booking.create({
+          data: {
+            tripId: trip.id,
+            type: 'flight',
+            title: 'טיסה',
+            fromPlaceId: from,
+            toPlaceId: to,
+            updatedBy: OWNER,
+          },
+        });
+        await prisma.event.create({
+          data: {
+            tripId: trip.id,
+            date: new Date(date),
+            title: 'טיסה',
+            kind: 'hard',
+            startsAt: new Date(startsAt),
+            endsAt: new Date(endsAt),
+            bookingId: booking.id,
+            updatedBy: OWNER,
+          },
+        });
+      };
+      // Departs 22:40 on the 11th, lands 01:15 on the 12th — the two legs are on two days.
+      await leg(tlv.id, vie.id, '2026-09-11', '2026-09-11T22:40:00Z', '2026-09-12T01:15:00Z');
+      await leg(vie.id, kef.id, '2026-09-12', '2026-09-12T03:05:00Z', '2026-09-12T05:50:00Z');
+
+      const code = generatePublicCode();
+      await prisma.tripShare.create({
+        data: {
+          tripId: trip.id,
+          code,
+          createdBy: OWNER,
+          detailLevel: SHARE_DETAIL_LEVEL.FULL,
+        },
+      });
+      const projection = await service.byCode(code);
+      const rowsOf = (index: number) =>
+        projection.days[index].sections.flatMap((section) => section.events);
+
+      // One journey, on the day it DEPARTS — which is the day a reader is packing for.
+      const journeys = projection.days.flatMap((day) =>
+        day.sections.flatMap((section) => section.events.filter((event) => event.legs)),
+      );
+      expect(journeys).toHaveLength(1);
+      expect(journeys[0].legs).toHaveLength(2);
+      expect(rowsOf(0).filter((event) => event.legs)).toHaveLength(1);
+
+      // 01:15 to 03:05. The wait is what the whole chain exists to name.
+      expect(journeys[0].legs?.[1].layoverMinutes).toBe(110);
+
+      // And the absorbed leg has no row of its own on the day it happens to land on.
+      expect(rowsOf(1)).toHaveLength(0);
+
+      await prisma.trip.deleteMany({ where: { id: trip.id } });
+    });
+
     it('lifts the stay out of the schedule and onto the day', async () => {
       const day = (await project()).days[0];
       expect(day.stay).toBe('Gissurarbud 5');
@@ -716,8 +814,16 @@ describe('SharingProjectionService', () => {
       ];
       expect(attached).toContainEqual({ kind: SHARE_OP_KIND.NOTE, title: 'חניה בצד המערבי' });
       expect(attached).not.toContainEqual(expect.objectContaining({ title: 'נעלי הליכה' }));
-      expect(projection.appendix?.notesAndTasks).toContainEqual(
-        expect.objectContaining({ title: 'נעלי הליכה' }),
+      expect(projection.appendix?.ops).toContainEqual(
+        expect.objectContaining({ kind: SHARE_OP_KIND.NOTE, title: 'נעלי הליכה' }),
+      );
+      // **And the attached note is NOT here too.** The assertion this pair was missing, and
+      // its absence is why the defect shipped: `buildAppendix` ran its own unfiltered
+      // `where: { tripId }` queries beside `loadOps`, so EVERY note was published here —
+      // the one-directional check above passed either way. The appendix is what has no
+      // host, and a note with a host appears exactly once, on it.
+      expect(projection.appendix?.ops).not.toContainEqual(
+        expect.objectContaining({ title: 'חניה בצד המערבי' }),
       );
     });
 

@@ -3229,15 +3229,17 @@ export const t = {
         // in this block is booking-backed — a flight, a car, a stay, a booked tour — so the
         // plain word for what they are is both accurate and what a person would say.
         title: 'ההזמנות',
+        // **The day is stated, not jumped to** (owner, 2026-08-30: _"clicking on a booking
+        // teleports you down which is inconvenient"_). A row that says which day it is on
+        // answers the question the jump was answering, without moving the reader.
+        day: (ordinal: number) => `יום ${ordinal}`,
       },
       appendix: {
         // **Not `פרטים נוספים`.** What is left here after the amendment is only what is
         // attached to no moment in the trip — the packing list, the group's own reminders.
         // That is a real category and deserves its own name rather than a catch-all.
         title: 'לקראת הנסיעה',
-        notesAndTasks: 'רשימות',
         travelers: 'הנוסעים',
-        documents: 'קבצים',
       },
       unavailableTitle: 'המסלול לא זמין',
       unavailableBody: 'יכול להיות שהלינק בוטל או שהטיול כבר לא קיים. בקשו לינק חדש ממי ששלח.',

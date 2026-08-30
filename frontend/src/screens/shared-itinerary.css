@@ -387,6 +387,19 @@
   white-space: nowrap;
 }
 
+/* **A description is two lines, and this rule was missing entirely.** `.sh-place-line` is
+   built for a single value — `nowrap` plus an ellipsis — which is right for an address and
+   wrong for prose: the caption was cut at one line however short it was, so the server-side
+   cap had nowhere to land. Two lines is the budget the mockup measured (day 9 grew 230px on
+   captions alone before it), and `white-space: normal` is what lets the second one exist. */
+.sh-cap {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.45;
+  white-space: normal;
+}
+
 .sh-time {
   color: var(--amber-deep);
   font-family: var(--font-mono);
@@ -591,15 +604,21 @@
 /* **Where you sleep frames the day** — teal, because it is a location and nothing else
    (ADR-0028). */
 .sh-stay {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
   color: var(--teal);
 }
+/* **The glyph is spaced by a margin, not by `gap`, and that is a repair.** This rule used to
+   say `display: inline-flex; gap: 5px` — and `.sh-day-copy span` (0,1,1) sets `display:
+   block`, which beats `.sh-stay` (0,1,0), so the element was never a flex container and the
+   gap did nothing: measured 0px between the bed and the word (owner, 2026-08-30, _"no
+   spacing at all between the bed glyph and the לנים ב..."_). Winning the specificity fight
+   would also have cost the ellipsis, since `text-overflow` cannot clip an anonymous flex
+   item — so the icon stays inline and takes a margin instead, and the line keeps truncating
+   the way every other line in this header does. */
 .sh-stay .icon {
   width: 13px;
   height: 13px;
-  flex: none;
+  margin-inline-end: 5px;
+  vertical-align: -2px;
 }
 
 /* **The legs of one journey, under the journey.** The frame above already states the
@@ -687,15 +706,20 @@
 }
 .sh-op {
   display: flex;
-  align-items: center;
+  /* A note is prose and wraps; its glyph belongs beside the first line rather than halfway
+     down the paragraph. */
+  align-items: flex-start;
   gap: 8px;
   min-height: 32px;
+  padding-block: 5px;
   font-size: var(--text-micro);
+  line-height: 1.5;
   color: var(--muted);
 }
 .sh-op .icon {
   width: 14px;
   height: 14px;
+  margin-block-start: 2px;
   flex: none;
 }
 .sh-op code {
@@ -705,9 +729,17 @@
   border-radius: 5px;
   padding: 2px 6px;
 }
+/* **A file is a download, and it keeps ADR-0017's floor.** These links used to live in the
+   appendix's `.sh-private a`, which gave them the 44px; the block that replaced it renders
+   op rows, so the floor has to be stated where they actually are now. */
 .sh-op a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-block: -6px;
   color: var(--cta);
-  text-decoration: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 /* **The day's photo** (ADR-0213's 2026-08-30 amendment, reversing §3's refusal of imagery).
@@ -744,4 +776,24 @@
 .sh-shot figcaption span {
   font-size: var(--text-micro);
   opacity: 0.82;
+}
+
+/* **The appendix is op rows, unfolded.** Nothing here has a row to belong to, so there is
+   nothing to fold under — it gets the card the per-family blocks used to have. */
+.sh-appendix .sh-ops-body {
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+}
+
+/* The day a booking falls on, stated under its date — it replaced an anchor that threw the
+   reader down the page (owner, 2026-08-30). */
+.sh-fixed-when i {
+  display: block;
+  margin-block-start: 2px;
+  font: 400 var(--text-micro) var(--font-body);
+  font-style: normal;
+  color: var(--muted);
 }

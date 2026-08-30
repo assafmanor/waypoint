@@ -83,10 +83,7 @@ export const PDF_COPY = {
   appendix: {
     // Only what is attached to nothing is left here, so it gets a name that says so.
     title: 'לקראת הנסיעה',
-
-    notesAndTasks: 'פתקים ומשימות',
     travelers: 'נוסעים',
-    documents: 'מסמכים שנבחרו',
   },
   dayparts: {
     [SHARE_DAYPART.MORNING]: 'בוקר',
