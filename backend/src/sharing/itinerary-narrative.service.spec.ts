@@ -2,6 +2,8 @@ import 'reflect-metadata';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   NARRATIVE_SOURCE,
+  SHARE_DAY_KIND,
+  SHARE_DAY_SUMMARY_KIND,
   SHARE_DAYPART,
   type ItineraryNarrativeOutput,
   type SharedDay,
@@ -28,8 +30,8 @@ const OWNER = 'u-assaf';
 const PRIVATE_DAY: SharedDay = {
   ordinal: 1,
   date: '2026-08-29',
-  title: 'רייקיאוויק',
-  summary: 'נחיתה',
+  title: { kind: SHARE_DAY_KIND.PLACE, at: 'רייקיאוויק' },
+  summary: { kind: SHARE_DAY_SUMMARY_KIND.EVENTS, titles: ['נחיתה'] },
   sections: [
     {
       daypart: SHARE_DAYPART.MORNING,
@@ -37,7 +39,7 @@ const PRIVATE_DAY: SharedDay = {
         {
           title: 'נחיתה בקפלוויק',
           icon: '✈️',
-          category: 'transit',
+          category: 'transport',
           daypart: SHARE_DAYPART.MORNING,
           hard: true,
           startLabel: '09:30',

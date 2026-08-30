@@ -1,7 +1,13 @@
 import 'reflect-metadata';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
-import { SHARE_DAYPART, SHARE_DETAIL_LEVEL, type ShareDetailLevel } from '@waypoint/shared';
+import {
+  SHARE_DAY_KIND,
+  SHARE_DAY_SUMMARY_KIND,
+  SHARE_DAYPART,
+  SHARE_DETAIL_LEVEL,
+  type ShareDetailLevel,
+} from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { generatePublicCode } from '../common/public-code.util';
 import { SharingProjectionService } from './sharing-projection.service';
@@ -131,6 +137,18 @@ describe('SharingProjectionService', () => {
           title: 'כניסה לדירה',
           kind: 'soft',
           startsAt: new Date('2026-08-29T15:00:00Z'),
+          placeId: apartment.id,
+          updatedBy: OWNER,
+        },
+        {
+          // **01:10 on the 30th is the night of the 29th** (`sharePreviousNight`). Seeded
+          // here rather than in a spec of its own because the defect is in the GROUPING,
+          // and grouping only exists once there is a day spine to group into.
+          tripId: trip.id,
+          date: new Date('2026-08-30'),
+          title: 'אורות הצפון',
+          kind: 'soft',
+          startsAt: new Date('2026-08-30T01:10:00Z'),
           placeId: apartment.id,
           updatedBy: OWNER,
         },
@@ -295,9 +313,14 @@ describe('SharingProjectionService', () => {
     const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
     const firstDay = projection.days[0];
 
+    // `night` is here because the 01:10 event on the 30th belongs to this day's night —
+    // and it is LAST, which is the order that made the rollback necessary in the first
+    // place: rendered on its own date it would have sat under an evening that had not
+    // happened yet.
     expect(firstDay.sections.map((section) => section.daypart)).toEqual([
       SHARE_DAYPART.MORNING,
       SHARE_DAYPART.AFTERNOON,
+      SHARE_DAYPART.NIGHT,
     ]);
     for (const section of projection.days.flatMap((day) => day.sections)) {
       expect(section.events.length).toBeGreaterThan(0);
@@ -354,12 +377,64 @@ describe('SharingProjectionService', () => {
   it('derives a route and a day title from real places, with no authored title anywhere', async () => {
     const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
     expect(projection.trip.routeLabels).toEqual(['רייקיאוויק']);
-    // Read through the bidi controls: every projected value the server COMPOSED carries
-    // isolates now, and what this test is about is which words came out (see the
-    // `bidi isolation` block for the controls themselves).
-    expect(plain(projection.days[0].title)).toBe('רייקיאוויק');
-    expect(plain(projection.days[0].summary)).toBe('נחיתה בקפלוויק · כניסה לדירה');
+    // **The kind and its values, never a sentence** (ADR-0213's 2026-08-30 amendment). The
+    // words are each renderer's, so what the projection owes is the shape they key off.
+    // Day one holds the trip's only flight and is its first day with anything on it, so it
+    // is the way out — named by where the trip is GOING, not by the airport it lands at.
+    expect(projection.days[0].title).toEqual({
+      kind: SHARE_DAY_KIND.FLIGHT_OUT,
+      to: 'Iceland',
+    });
+    expect(projection.days[0].summary).toEqual({
+      kind: SHARE_DAY_SUMMARY_KIND.EVENTS,
+      titles: ['נחיתה בקפלוויק', 'כניסה לדירה'],
+    });
     expect(projection.narrative.source).toBe('deterministic');
+  });
+
+  // **The night before is not the morning after** (owner, 2026-08-30: _"The night part gets
+  // folded at the end of the wrong day"_). The share groups by daypart and renders `night`
+  // last, so a 01:10 event filed on its own calendar date printed below an evening that had
+  // happened nineteen hours earlier. `SHARE_DAYPART_START_HOUR.morning` already declared
+  // that the day begins at 05:00; the grouping now honours it.
+  it('files a pre-dawn event on the night before, not at the foot of its own day', async () => {
+    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
+
+    const titlesOn = (date: string) =>
+      projection.days
+        .find((day) => day.date === date)
+        ?.sections.flatMap((section) => section.events.map((event) => event.title)) ?? [];
+
+    expect(titlesOn('2026-08-29')).toContain('אורות הצפון');
+    expect(titlesOn('2026-08-30')).not.toContain('אורות הצפון');
+  });
+
+  // **The route is where the trip WAS, not the airports it passed through** (owner, on the
+  // PDF masthead: _"Seems very redundant"_). The flight's endpoints are on its booking, so
+  // before this a trip's strip opened and closed on two airport names.
+  it('builds the route from settled stops, skipping transport endpoints', async () => {
+    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
+    expect(projection.trip.routeLabels).toEqual(['רייקיאוויק']);
+    expect(projection.trip.routeLabels).not.toContain('קפלוויק');
+  });
+
+  // `routeLabels` is capped at `MAX_ROUTE_LABELS`; the masthead was printing its length as
+  // the trip's `אזורים` count, so a long trip reported eight however many it visited.
+  it('counts the whole route, not the capped strip', async () => {
+    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
+    expect(projection.trip.routeStopCount).toBe(1);
+  });
+
+  // A booking states its kind, and the kind is what a renderer captions a row from. Nothing
+  // operational travels with it — that stays behind Everything's appendix.
+  it('carries a booking type, and nothing else off the booking', async () => {
+    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
+    const arrival = projection.days
+      .flatMap((day) => day.sections.flatMap((section) => section.events))
+      .find((event) => event.title === 'נחיתה בקפלוויק');
+
+    expect(arrival?.bookingType).toBe('flight');
+    expect(JSON.stringify(projection)).not.toContain(SECRET.confirmationCode);
   });
 
   // **A line the server composed cannot be allowed to sniff its own direction** (ADR-0118;
@@ -367,16 +442,24 @@ describe('SharingProjectionService', () => {
   // The projection is where both renderers get these strings, so the isolates are asserted
   // here rather than once per renderer.
   describe('bidi isolation', () => {
-    it('isolates each value and leaves the punctuation between them alone', async () => {
+    // **The trip title is the one line the server still composes**, because a generated
+    // narrative replaces it with prose and there is no kind to give that. Day titles moved
+    // out: they are now a kind plus its values, and each renderer isolates them itself —
+    // which is why those assertions are the renderers' and this one is not.
+    it('isolates each value in the composed trip title, and not the punctuation', async () => {
       const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
 
-      expect(projection.days[0].title).toBe(`${FSI}רייקיאוויק${PDI}`);
-      expect(projection.days[0].summary).toBe(
-        `${FSI}נחיתה בקפלוויק${PDI} · ${FSI}כניסה לדירה${PDI}`,
-      );
-      // The separator itself must NOT be isolated — it belongs to the RTL flow, which is
-      // what puts it between the values rather than at one end of them.
-      expect(projection.days[0].summary).not.toContain(`${PDI}${FSI}`);
+      expect(projection.narrative.title).toBe(`${FSI}רייקיאוויק${PDI}`);
+      expect(plain(projection.narrative.title)).toBe('רייקיאוויק');
+    });
+
+    // A day ships raw values now, so the guarantee the renderers depend on is that nothing
+    // arrives pre-wrapped — an isolate applied twice is what puts a stray control character
+    // inside a value a renderer then isolates again.
+    it('ships day values raw, for the renderer to isolate', async () => {
+      const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
+      expect(JSON.stringify(projection.days)).not.toContain(FSI);
+      expect(JSON.stringify(projection.days)).not.toContain(PDI);
     });
   });
 

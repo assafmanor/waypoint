@@ -378,6 +378,72 @@ a spec asserts no `.pdf-num` ever receives a Hebrew codepoint.
 whether SOME Hebrew is extractable, and the headings always were. A check that a subtitle's own
 Hebrew survives is a different question from a check that the document has any.
 
+## Amendment — a shared page that says what it means (2026-08-30, second pass)
+
+Seven reports in one sitting, and mapping them was worth more than fixing each: **six of the
+seven are one root cause.** The projection shipped every derived line as a **composed string**
+— data joined by punctuation, with no word of any language in it — because that is what let
+one server derivation feed a Hebrew page and a Hebrew PDF (§2). The cost only became visible
+once real trips ran through it: a server holding no copy cannot say _"flying"_. It can only
+join. So every derived line on every day of every trip had the same shape, made of whatever
+the place rows happened to be called.
+
+The repair is the move `journey.mode` already made one field over: **ship the discriminant.**
+A day's headline is now `{ kind, …values }` and each renderer keys its own words off it. The
+locale boundary is exactly where it was — the projection still holds no UI copy — and the page
+can finally speak.
+
+### The map
+
+Every line a reader sees, what it said, and what it says now.
+
+| #   | Line                 | Was                                                                                              | Now                                                                                             |
+| --- | -------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| 1   | Masthead dates       | `2026-09-11 - 2026-09-22 · 12 ימים · עודכן …` on one wrapping line, in ISO the app shows nowhere | two lines: `11.09–22.09 · 12 ימים`, then a quieter stamp. The app's own `formatTripDates` shape |
+| 2   | Masthead route block | the trip's title, **printed again** one centimetre below in the lede                             | the strip only, labelled `המסלול`                                                               |
+| 3   | `אזורים` count       | `routeLabels.length` — the **capped** strip, so a long trip reported 8                           | `routeStopCount`, the whole route                                                               |
+| 4   | Route strip          | opened and closed on airport names, because a day's transport endpoints are stops                | a day offers its first **non-transport** stop, falling back only if it has nothing else         |
+| 5   | Day headline         | `נתב״ג ← נמל התעופה הבינלאומי קפלוויק`                                                           | `טסים לאיסלנד` · `טסים הביתה` · `טיסה ל<X>` · `<A> ← <B>` · `<A>` · the date                    |
+| 6   | Day second line      | the first two event titles — on a flight day, the same two airport names again                   | `לינה ב<place>` where there is a bed; otherwise the titles the headline did **not** already say |
+| 7   | Event row            | `15:00 · The Hill Hotel at Fludir`                                                               | `לינה · 15:00 · …` — the booking's own type, in the app's own eight words                       |
+| 8   | A pre-dawn event     | filed on its own date and rendered **last**, under an evening 19 hours later                     | filed on the night before                                                                       |
+| 9   | Public bar           | the letter `T`                                                                                   | the app's own mark                                                                              |
+| 10  | Share sheet          | link and both send buttons below the sensitive toggles **and** the file list                     | audience → scope → **send** → refine                                                            |
+
+### The three rules the map produced
+
+**§A · A kind, never a sentence.** `SHARE_DAY_KIND` and `SHARE_DAY_SUMMARY_KIND` are
+discriminated unions in `packages/shared`; `PDF_COPY.dayTitle` and `t.share.public.dayTitle`
+are the two word tables. A generated narrative lands as `text`, which has no kind and needs
+none. Values arrive **raw** and each renderer isolates them itself (ADR-0118) — asserted, so
+nothing can arrive pre-wrapped and get isolated twice.
+
+**§B · Name the trip, not the airport.** An outbound flight day says the trip's `destination`,
+because `נמל התעופה הבינלאומי קפלוויק` is where the plane lands and `איסלנד` is where you are
+going. A returning day carries **no place at all**: home is the absence of the trip. Both tests
+are deliberately narrow — the first flight day must also be the trip's first day with anything
+on it, and the last must be its last — so a domestic hop on day three cannot announce a country
+nobody left.
+
+**§C · The share's day starts at dawn, and the grouping owes the sections that.**
+`shareDaypart` already said so: `night` is the fallthrough below hour 5. Grouping by calendar
+date contradicted it, and because `night` renders last, a landing at 00:30 printed at the
+bottom of its own card. This is share-only and contradicts nothing: the app's own day surfaces
+sort by `startsAt`, so the same event already reads first there. It is grouping by **daypart**
+that turns a pre-dawn hour into a trailing one, so it is grouping by daypart that owes the fix.
+Nothing stored moves; `Event.date` stays what the traveller authored.
+
+### What this cost the privacy argument: nothing
+
+`SHARE_EVENT_SELECT` gains exactly one column, `booking.type` — the booking's **kind**, already
+selected for zone crossings, and the discriminant §A and the captions key off. Everything
+operational stays behind `SHARE_SECRET_BOOKING_SELECT` and the Everything appendix, and the
+projection spec asserts a confirmation code still never appears.
+
+And the masthead block the owner asked about (_"Are they leaks of something?"_) never was one:
+both lines are place labels that already appear in the schedule below. It read as a leak because
+it printed the same string twice with nothing naming either.
+
 ## Alternatives considered
 
 - **One page with fields progressively removed.** Rejected: less information is not automatically the right emphasis.

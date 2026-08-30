@@ -1,64 +1,36 @@
-import { NARRATIVE_SOURCE, type SharedDay } from '@waypoint/shared';
+import {
+  BOOKING_TYPE,
+  NARRATIVE_SOURCE,
+  ROUTE_ARROW,
+  SHARE_DAY_KIND,
+  SHARE_DAY_SUMMARY_KIND,
+  type BookingType,
+  type SharedDay,
+  type SharedDayTitle,
+  type SharedDaySummary,
+} from '@waypoint/shared';
 
 /**
  * **The narrative that never fails**, and the reason sharing works before any model exists.
  *
  * ADR-0213 §2 requires a complete public page with no `Day` entity, no authored titles and
  * no provider — so this derives everything it says from rows that are already there: the
- * places a day passes through, and the titles of its first events.
+ * places a day passes through, what its bookings are, and the titles of its first events.
  *
- * **It emits no prose.** A deterministic title is `רייקיאוויק ← ויק`; a deterministic
- * summary is `נחיתה בקפלוויק · כניסה לדירה`. Both are trip data joined by punctuation, with
- * no word of any language in them — which is what lets one server-side derivation feed a
- * Hebrew page and a Hebrew PDF without this package owning UI copy. The sentence a reader
- * sees around the counts ("9 ימים · 21 אירועים") is composed by each renderer from
- * `trip.dayCount`/`eventCount`, in its own locale.
+ * **It emits no word of any language, and it no longer emits sentences either.** The first
+ * version joined values with punctuation (`רייקיאוויק ← ויק`) so that one derivation could
+ * feed a Hebrew page and a Hebrew PDF. That held the locale line and cost the thing the
+ * owner then asked for: _"Some day titles could also be derived (flying to Iceland, flying
+ * back…)"_. A server holding no copy cannot say "flying" — it can only join.
  *
- * An empty string is a legitimate answer — a day with no places and no events has nothing
- * true to say about itself, and inventing something is exactly the mandatory-day-title the
- * owner rejected. Renderers fall back to the date.
+ * So a day now ships a **kind and its values** (`{ kind: 'flightOut', to }`), the shape
+ * `journey.mode` already uses one field over, and each renderer keys its own words off it.
+ * The locale boundary is unchanged and the page can finally speak.
+ *
+ * `SHARE_DAY_KIND.NONE` is a legitimate answer — a day with no places and no events has
+ * nothing true to say about itself, and inventing something is exactly the mandatory day
+ * title the owner rejected. Renderers fall back to the date.
  */
-
-/** The app's separator between peer facts, and never an em dash (root CLAUDE.md). */
-export const NARRATIVE_SEPARATOR = ' · ';
-
-/**
- * **Every value this module joins is isolated, and the join is not** (ADR-0118, and the
- * owner's report: _"the arrows are pointing the wrong way sometimes, when the names are
- * latin"_).
- *
- * A composed line here holds place names and event titles the app did not write, in
- * whatever script the world gave them — so its direction cannot be sniffed from its own
- * content. Under `dir="auto"`, `Haifoss ← Stutur crater` resolves LTR, which puts the
- * ORIGIN on the left and leaves the arrow pointing back at it; the identical string with a
- * Hebrew first stop resolves RTL and reads correctly. Two rows differing only in their data
- * disagreed about which way the trip goes.
- *
- * The repair is what `lib/bidi.ts` already does for a number and its unit, one level up:
- * each **value** becomes an isolate so it keeps its own internal direction, and the
- * punctuation between them stays in the surrounding flow, which both renderers pin to the
- * page's RTL. **A renderer of these strings must therefore NOT set `dir="auto"` on the
- * element** — `dir="auto"` ignores characters inside isolates when it sniffs, so a fully
- * isolated line has no strong character left and falls back to LTR.
- *
- * `FSI` rather than `LRI` for the values: a stop can be `Kerið Crater` or `אסבירג׳י`, and
- * first-strong is exactly the question "which of those is this one".
- */
-const FIRST_STRONG_ISOLATE = '\u2068';
-const LEFT_TO_RIGHT_ISOLATE = '\u2066';
-const POP_DIRECTIONAL_ISOLATE = '\u2069';
-
-/** A value the app did not write, kept whole and self-directed inside a composed line. */
-const isolate = (value: string): string =>
-  `${FIRST_STRONG_ISOLATE}${value}${POP_DIRECTIONAL_ISOLATE}`;
-
-/**
- * The route arrow, in an isolate of its own so its rendered direction is a constant.
- * Chromium leaves `←` unmirrored at either base direction, but mirroring an arrow inside an
- * RTL run is what the bidi algorithm permits, and this line's whole point is that the same
- * data renders the same way everywhere.
- */
-export const ROUTE_ARROW = `${LEFT_TO_RIGHT_ISOLATE} ← ${POP_DIRECTIONAL_ISOLATE}`;
 
 /** How many stops the route STRIP shows. The trip's endpoints come from the whole route,
  *  never from this slice — see `fallbackTripTitle`. */
@@ -99,37 +71,127 @@ export function routeStrip(wholeRoute: readonly string[]): string[] {
 }
 
 /**
- * A route line between two stops, each isolated, so the arrow means the same thing whatever
- * script the names are in.
- *
- * **A round trip is a place, not a route.** Now that a leg contributes both its endpoints,
- * a day that leaves Reykjavík and comes back has the same label at both ends, and
- * `רייקיאוויק ← רייקיאוויק` says less than the bare name does.
+ * What one day is made of, as far as naming it is concerned. Assembled by the projection,
+ * which is the only thing holding the rows; kept as a parameter object so this module stays
+ * a pure derivation with no Prisma shape in it.
  */
-const routeLine = (from: string, to: string): string =>
-  from === to ? isolate(from) : `${isolate(from)}${ROUTE_ARROW}${isolate(to)}`;
-
-/** A day's title: where it went, or where it was. */
-export function fallbackDayTitle(dayPlaceLabels: readonly (string | null | undefined)[]): string {
-  const stops = dedupeConsecutive(dayPlaceLabels);
-  if (stops.length === 0) return '';
-  if (stops.length === 1) return isolate(stops[0]);
-  return routeLine(stops[0], stops[stops.length - 1]);
+export interface DayFacts {
+  /** Every place the day touches, in order, legs contributing both their ends. */
+  stops: readonly (string | null | undefined)[];
+  /** The booking types the day holds, in order — the discriminant the phrasing keys off. */
+  bookingTypes: readonly (BookingType | null | undefined)[];
+  /** Where the day's lodging is, if it has one. */
+  lodgingPlace?: string;
+  /** Event titles in order, for the fallback second line. */
+  eventTitles: readonly string[];
+  /** Where a flight on this day lands — an airport's own name, so it is what a MID-trip
+   *  flight is titled by and never what the outbound one is. */
+  flightTo?: string;
+  /** The trip's `destination`, which is what an outbound flight is actually going to.
+   *  `נמל התעופה הבינלאומי קפלוויק` is where the plane lands; `איסלנד` is where you are
+   *  going, and it is the thing the owner asked the day to say. */
+  tripDestination?: string;
+  /** **The trip's outbound flight day**, and the test is deliberately narrow: the first day
+   *  holding a flight AND the trip's first day holding anything at all. Without the second
+   *  half, a domestic trip whose only flight is a hop on day three would announce itself as
+   *  flying to the country it never left. */
+  outbound?: boolean;
+  /** …and the returning one: the last flight day, on the last day holding anything, and not
+   *  the same day as the outbound — a single flight day is an departure, never a return. */
+  returning?: boolean;
 }
 
-/** A day's summary: what it actually holds, in order, truncated rather than paraphrased. */
-export function fallbackDaySummary(eventTitles: readonly string[]): string {
-  return eventTitles.slice(0, MAX_SUMMARY_EVENTS).map(isolate).join(NARRATIVE_SEPARATOR);
+/**
+ * **A day's headline.** Flights first, because a flight is the one event that renames its
+ * whole day — everything else on a travel day is what you did between airports.
+ *
+ * `flightHome` carries no value on purpose: "home" is not a place this derivation knows, it
+ * is the absence of the trip, and naming the destination airport instead is what produced
+ * `נתב״ג ← נמל התעופה הבינלאומי קפלוויק` on a returning day.
+ */
+export function fallbackDayTitle(facts: DayFacts): SharedDayTitle {
+  const flying = facts.bookingTypes.some((type) => type === BOOKING_TYPE.FLIGHT);
+  if (flying) {
+    if (facts.returning) return { kind: SHARE_DAY_KIND.FLIGHT_HOME };
+    if (facts.outbound && facts.tripDestination) {
+      return { kind: SHARE_DAY_KIND.FLIGHT_OUT, to: facts.tripDestination };
+    }
+    if (facts.flightTo) return { kind: SHARE_DAY_KIND.FLIGHT, to: facts.flightTo };
+  }
+  const stops = dedupeConsecutive(facts.stops);
+  if (stops.length === 0) return { kind: SHARE_DAY_KIND.NONE };
+  // **A round trip is a place, not a route.** A leg contributes both its endpoints, so a day
+  // that leaves Reykjavík and comes back has the same label at both ends, and
+  // `רייקיאוויק ← רייקיאוויק` says less than the bare name does.
+  const [from] = stops;
+  const to = stops[stops.length - 1];
+  if (from === to) return { kind: SHARE_DAY_KIND.PLACE, at: from };
+  return { kind: SHARE_DAY_KIND.ROUTE, from, to };
 }
 
-/** The trip's own line: its route, end to end. The counts beside it are fields, not
- *  sentences. Takes `routeLabels` UNCAPPED — the endpoints are the trip's, not the
- *  strip's. */
+/**
+ * **A day's second line, and it must not repeat the first.**
+ *
+ * Where you sleep beats what you did: it is the one fact a reader scans a day for that the
+ * headline never carries. Only a day with no bed to name falls back to its events — and
+ * then to the ones the headline did not already say, which on a flight day is what stopped
+ * two airport names printing under a headline made of the same two airport names.
+ */
+export function fallbackDaySummary(facts: DayFacts, title: SharedDayTitle): SharedDaySummary {
+  if (facts.lodgingPlace) {
+    return { kind: SHARE_DAY_SUMMARY_KIND.STAY, place: facts.lodgingPlace };
+  }
+  const said = new Set(titleValues(title));
+  const titles = facts.eventTitles
+    .filter((eventTitle) => !said.has(eventTitle.trim()))
+    .slice(0, MAX_SUMMARY_EVENTS);
+  return titles.length > 0
+    ? { kind: SHARE_DAY_SUMMARY_KIND.EVENTS, titles }
+    : { kind: SHARE_DAY_SUMMARY_KIND.NONE };
+}
+
+/** The values a headline already put on screen, so the line under it can avoid them. */
+function titleValues(title: SharedDayTitle): string[] {
+  switch (title.kind) {
+    case SHARE_DAY_KIND.ROUTE:
+      return [title.from, title.to];
+    case SHARE_DAY_KIND.PLACE:
+      return [title.at];
+    case SHARE_DAY_KIND.FLIGHT:
+    case SHARE_DAY_KIND.FLIGHT_OUT:
+      return [title.to];
+    default:
+      return [];
+  }
+}
+
+/**
+ * The trip's own line: its route, end to end, and the one string still composed here.
+ *
+ * It stays a composed string because a **generated** narrative replaces it with prose
+ * (ADR-0213 §2) — so its type is already "whatever the model would have written", and a
+ * kind would have to be invented for the deterministic half alone. Its values are isolated
+ * exactly as before; a renderer of it must not set `dir="auto"`, which skips isolates when
+ * it sniffs. Takes `routeLabels` UNCAPPED: the endpoints are the trip's, not the strip's.
+ */
 export function fallbackTripTitle(routeLabels: readonly string[], tripName: string): string {
   if (routeLabels.length === 0) return isolate(tripName);
   if (routeLabels.length === 1) return isolate(routeLabels[0]);
-  return routeLine(routeLabels[0], routeLabels[routeLabels.length - 1]);
+  const from = routeLabels[0];
+  const to = routeLabels[routeLabels.length - 1];
+  if (from === to) return isolate(from);
+  return `${isolate(from)}${ROUTE_ARROW}${isolate(to)}`;
 }
+
+/**
+ * A value the app did not write, kept whole and self-directed inside a composed line
+ * (ADR-0118). `FSI` rather than `LRI`: a stop can be `Kerið Crater` or `אסבירג׳י`, and
+ * first-strong is exactly the question "which of those is this one".
+ */
+const FIRST_STRONG_ISOLATE = '⁨';
+const POP_DIRECTIONAL_ISOLATE = '⁩';
+const isolate = (value: string): string =>
+  `${FIRST_STRONG_ISOLATE}${value}${POP_DIRECTIONAL_ISOLATE}`;
 
 export interface NarrativeStrings {
   source: typeof NARRATIVE_SOURCE.DETERMINISTIC | typeof NARRATIVE_SOURCE.GENERATED;
@@ -140,10 +202,20 @@ export interface NarrativeStrings {
 
 /** Apply resolved narrative strings onto already-projected days. Kept separate from the
  *  projection so a generated result and a fallback take the identical path — a model can
- *  change the words on a day and nothing else about it. */
+ *  change the words on a day and nothing else about it.
+ *
+ *  A generated day arrives as prose with no kind to key off, so it lands as `text`: the
+ *  renderers print it verbatim and reach for no word table. */
 export function applyNarrative(days: SharedDay[], narrative: NarrativeStrings): SharedDay[] {
   return days.map((day) => {
     const override = narrative.days.get(day.ordinal);
-    return override ? { ...day, title: override.title, summary: override.summary } : day;
+    if (!override) return day;
+    return {
+      ...day,
+      title: { kind: SHARE_DAY_KIND.TEXT, text: override.title },
+      summary: override.summary
+        ? { kind: SHARE_DAY_SUMMARY_KIND.TEXT, text: override.summary }
+        : { kind: SHARE_DAY_SUMMARY_KIND.NONE },
+    };
   });
 }

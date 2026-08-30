@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import {
+  BOOKING_TYPE,
+  SHARE_DAY_KIND,
+  SHARE_DAY_SUMMARY_KIND,
   SHARE_DAYPART,
   SHARE_DETAIL_LEVEL,
   type SharedItinerary as Projection,
@@ -31,14 +34,15 @@ const summaryProjection: Projection = {
     dayCount: 2,
     eventCount: 3,
     routeLabels: ['רייקיאוויק', 'ויק'],
+    routeStopCount: 2,
   },
   narrative: { source: 'deterministic', title: 'רייקיאוויק ← ויק', summary: '' },
   days: [
     {
       ordinal: 1,
       date: '2026-08-29',
-      title: 'קפלוויק ← רייקיאוויק',
-      summary: 'נחיתה בקפלוויק',
+      title: { kind: SHARE_DAY_KIND.FLIGHT_OUT, to: 'איסלנד' },
+      summary: { kind: SHARE_DAY_SUMMARY_KIND.STAY, place: 'Laugavegur 22' },
       sections: [
         {
           daypart: SHARE_DAYPART.MORNING,
@@ -48,7 +52,40 @@ const summaryProjection: Projection = {
         },
       ],
     },
-    { ordinal: 2, date: '2026-08-30', title: '', summary: '', sections: [] },
+    {
+      ordinal: 2,
+      date: '2026-08-30',
+      title: { kind: SHARE_DAY_KIND.NONE },
+      summary: { kind: SHARE_DAY_SUMMARY_KIND.NONE },
+      sections: [],
+    },
+  ],
+};
+
+/** Full, plus a booking on the first row — the caption's only input. */
+const bookedProjection: Projection = {
+  ...summaryProjection,
+  detailLevel: SHARE_DETAIL_LEVEL.FULL,
+  days: [
+    {
+      ...summaryProjection.days[0],
+      sections: [
+        {
+          daypart: SHARE_DAYPART.MORNING,
+          events: [
+            {
+              title: 'The Hill Hotel at Fludir',
+              icon: '🏨',
+              daypart: SHARE_DAYPART.MORNING,
+              bookingType: BOOKING_TYPE.HOTEL,
+              startLabel: '15:00',
+              placeName: 'Fludir',
+            },
+          ],
+        },
+      ],
+    },
+    summaryProjection.days[1],
   ],
 };
 
@@ -187,6 +224,45 @@ describe('SharedItinerary', () => {
 
     await screen.findByText('איסלנד עם המשפחה');
     expect(screen.getByText(plain('ראשון 30'))).toBeTruthy();
+  });
+
+  // **The words are this renderer's, from a kind the server shipped** (ADR-0213's
+  // 2026-08-30 amendment; owner: _"Some day titles could also be derived (flying to
+  // Iceland, flying back…)"_). The projection carries `{ kind: 'flightOut', to: 'איסלנד' }`
+  // and no sentence at all, so this asserts the join as well as the word.
+  it('says a derived day headline in words rather than joining two place names', async () => {
+    serve(summaryProjection);
+    renderShared();
+
+    await screen.findByText('איסלנד עם המשפחה');
+    expect(screen.getByText(plain(t.share.public.dayTitle.flightOut('איסלנד')))).toBeTruthy();
+  });
+
+  // The owner's own phrasing for the second line: _"night at…, Sleeping at…"_.
+  it('names where the night is instead of repeating the day', async () => {
+    serve(summaryProjection);
+    renderShared();
+
+    await screen.findByText('איסלנד עם המשפחה');
+    expect(screen.getByText(plain(t.share.public.daySummary.stay('Laugavegur 22')))).toBeTruthy();
+  });
+
+  // A booking states its type, so the row can say what it IS before it says where — and it
+  // says it in the app's own word, never a second copy invented for this page.
+  it('captions a booking-backed row with the booking type', async () => {
+    serve(bookedProjection);
+    renderShared();
+
+    await screen.findByText('איסלנד עם המשפחה');
+    expect(screen.getByText(t.index.bookingType.hotel)).toBeTruthy();
+  });
+
+  it('captions nothing on a row no booking backs', async () => {
+    serve(fullProjection);
+    const { container } = renderShared();
+
+    await screen.findByText('איסלנד עם המשפחה');
+    expect(container.querySelector('.sh-kind')).toBeNull();
   });
 
   it('opens one day at a time', async () => {

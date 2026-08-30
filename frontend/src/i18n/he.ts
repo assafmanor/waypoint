@@ -3162,6 +3162,32 @@ export const t = {
       // `DayJoinRow`, which is already handed `t.travelMode.walking` by its host.
       journey: (mode: string, minutes: number, km: number) =>
         `${mode} · ${measure(minutes, 'דק׳')} · ${measure(km, 'ק״מ')}`,
+      /**
+       * **The words a derived day headline is made of** (ADR-0213's 2026-08-30 amendment;
+       * owner: _"Some day titles could also be derived (flying to Iceland, flying back…)"_).
+       *
+       * The projection ships `{ kind, …values }` and never a sentence — that is what keeps
+       * one server derivation feeding a Hebrew page and a Hebrew PDF — so this is where a
+       * `flightOut` becomes words. Every value arrives already bidi-isolated by the caller;
+       * these add the Hebrew around it and nothing else.
+       *
+       * `PDF_COPY.dayTitle` in the backend is the print renderer's copy of exactly these
+       * words, for the reason its own header explains. Reword one, reword the other.
+       */
+      dayTitle: {
+        flightOut: (to: string) => `טסים ל${to}`,
+        // No place: home is the absence of the trip, not somewhere the derivation knows —
+        // and naming the arrival airport instead is what printed a full airport name twice
+        // on every returning day.
+        flightHome: 'טסים הביתה',
+        flight: (to: string) => `טיסה ל${to}`,
+      },
+      /** The owner's own phrasing for the day's second line: _"night at…, Sleeping at…"_. */
+      daySummary: {
+        stay: (place: string) => `לינה ב${place}`,
+      },
+      /** Names the route strip, which is otherwise an unexplained list of place names. */
+      route: 'המסלול',
       appendix: {
         title: 'פרטים נוספים',
         bookingSecrets: 'פרטי הזמנה שנבחרו',

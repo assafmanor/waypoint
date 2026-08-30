@@ -1,10 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { EVENT_KIND, TRAVEL_MODES } from '@waypoint/shared';
+import { BOOKING_TYPE, EVENT_CATEGORY, EVENT_KIND, TRAVEL_MODES } from '@waypoint/shared';
 import {
   SHARE_DAYPART_ORDER,
   SHARE_DETAIL_LEVEL,
   routeLegKey,
   shareDaypart,
+  sharePreviousNight,
   shareTimeLabel,
   sharedItinerarySchema,
   tripZoneCrossings,
@@ -14,7 +15,10 @@ import {
   type SharedDay,
   type SharedEvent,
   type SharedItinerary,
+  type BookingType,
+  type EventCategory,
   type LegTravelMode,
+  type SharedDayTitle,
   type TravelMode,
 } from '@waypoint/shared';
 import { eventDisplayZone, type TripZoneContext } from '../common/event-zone.util';
@@ -26,6 +30,7 @@ import {
   fallbackTripTitle,
   routeLabelsFrom,
   routeStrip,
+  type DayFacts,
 } from './itinerary-narrative.fallback';
 import { ItineraryNarrativeService } from './itinerary-narrative.service';
 import {
@@ -52,6 +57,11 @@ export interface SharePolicy {
  *  UTC midnight, so the UTC slice IS the stored day — no zone enters here. */
 const dayKey = (date: Date): string => date.toISOString().slice(0, 10);
 
+/** The calendar day before, for an event whose clock says it belongs to the night before.
+ *  Built by arithmetic on the UTC-midnight `@db.Date`, so no zone and no DST enters. */
+const previousDayKey = (date: Date): string =>
+  dayKey(new Date(date.getTime() - 24 * 60 * 60 * 1000));
+
 const GOOGLE_MAPS_SEARCH = 'https://www.google.com/maps/search/?api=1&query=';
 
 /** The app's only locale today (ADR-0009). A parameter rather than a constant at the call
@@ -63,6 +73,21 @@ const DEFAULT_LOCALE = 'he';
  *  (ADR-0166 §18). Never the `googlePlaceId`, never the coordinates. */
 const placeLabel = (place: { name: string; nickname: string | null } | null): string | undefined =>
   place ? (place.nickname?.trim() || place.name).trim() || undefined : undefined;
+
+/** **Is this event a way of getting somewhere, rather than somewhere to be?** Asked of the
+ *  booking first, because a booking states its type, and of the category only for an event
+ *  no booking backs. Both vocabularies already exist and `BOOKING_TYPE_TO_CATEGORY` maps
+ *  between them, so this names no third set. */
+const TRANSPORT_BOOKINGS: readonly BookingType[] = [
+  BOOKING_TYPE.FLIGHT,
+  BOOKING_TYPE.TRAIN,
+  BOOKING_TYPE.TRANSIT,
+  BOOKING_TYPE.CAR,
+];
+const isTransport = (event: ShareEventRow): boolean =>
+  event.booking?.type
+    ? TRANSPORT_BOOKINGS.includes(event.booking.type as BookingType)
+    : event.category === EVENT_CATEGORY.TRANSPORT;
 
 /**
  * **Everything an anonymous reader is ever handed**, built once and consumed unchanged by
@@ -157,29 +182,79 @@ export class SharingProjectionService {
       if (from || to) return [labelById.get(from ?? ''), labelById.get(to ?? '')];
       return [placeLabel(event.place)];
     };
+    const isFlight = (event: ShareEventRow): boolean => event.booking?.type === BOOKING_TYPE.FLIGHT;
 
-    const byDay = this.groupByDay(events, trip.startDate, trip.endDate);
+    const byDay = this.groupByDay(events, trip.startDate, trip.endDate, zones);
     const journeys = orienting ? await this.journeyLookup(share.tripId, byDay, places) : undefined;
+
+    // **Which day is the way out and which is the way home** — a whole-trip question, so it
+    // is answered here and handed to the per-day derivation as two booleans. Both ends are
+    // tested against the days that hold anything at all, not against the calendar: a trip
+    // padded with empty days on either side still departs on its first real one.
+    const holdsEvents = byDay.map(({ events: dayEvents }) => dayEvents.length > 0);
+    const flightDay = byDay.map(({ events: dayEvents }) => dayEvents.some(isFlight));
+    const firstFlight = flightDay.indexOf(true);
+    const lastFlight = flightDay.lastIndexOf(true);
+    const firstBusy = holdsEvents.indexOf(true);
+    const lastBusy = holdsEvents.lastIndexOf(true);
+
+    const dayFacts = (dayEvents: ShareEventRow[], index: number): DayFacts => ({
+      stops: dayEvents.flatMap(eventStops),
+      bookingTypes: dayEvents.map((event) => event.booking?.type as BookingType | undefined),
+      // The night, named by where it is rather than by what the booking is called: a
+      // lodging's own title is a brand, and the place is where you will be.
+      lodgingPlace: dayEvents
+        .filter((event) => event.booking?.type === BOOKING_TYPE.HOTEL)
+        .map((event) => placeLabel(event.place) ?? event.title)
+        .find(Boolean),
+      eventTitles: dayEvents.map((event) => event.title),
+      flightTo: dayEvents
+        .filter(isFlight)
+        .map((event) => labelById.get(event.booking?.toPlaceId ?? ''))
+        .filter(Boolean)
+        .at(-1),
+      tripDestination: trip.destination.trim() || undefined,
+      outbound: index === firstFlight && firstFlight === firstBusy,
+      returning: index === lastFlight && lastFlight === lastBusy && lastFlight !== firstFlight,
+    });
 
     const days: SharedDay[] = byDay.map(({ date, events: dayEvents }, index) => {
       const projected = dayEvents.map((event) =>
         this.projectEvent(event, zones, detail, journeys?.get(event.id)),
       );
+      const facts = dayFacts(dayEvents, index);
+      const title: SharedDayTitle = fallbackDayTitle(facts);
       return {
         ordinal: index + 1,
         date,
-        title: fallbackDayTitle(dayEvents.flatMap(eventStops)),
-        summary: fallbackDaySummary(dayEvents.map((event) => event.title)),
+        title,
+        summary: fallbackDaySummary(facts, title),
         sections: this.groupByDaypart(projected),
       };
     });
+
+    // **The route is where the trip WAS, not the airports it passed through** (owner,
+    // 2026-08-30, on the masthead strip: _"Seems very redundant"_). Every day contributes
+    // one stop, and a day's transport endpoints are its worst candidates — an airport's
+    // full name is long, says nothing about the day, and repeats on the two days that
+    // bracket every trip. So a day offers its first NON-transport stop and only falls back
+    // to a transport one when it has nothing else, which is what turned
+    // `נתב״ג · Stokksnes · … · נמל התעופה הבינלאומי קפלוויק` into the places themselves.
+    const principalStop = (dayEvents: ShareEventRow[]): string | undefined => {
+      const settled = dayEvents.filter(
+        (event) => !isTransport(event) && Boolean(placeLabel(event.place)),
+      );
+      return settled.length > 0
+        ? placeLabel(settled[0].place)
+        : dayEvents.flatMap(eventStops).find(Boolean);
+    };
 
     // **The whole route, then a slice of it to draw.** The title's endpoints are the trip's
     // first and last stop; the strip shows at most `MAX_ROUTE_LABELS` of them. Capping
     // before the title was taken is what produced `Kerið Crater ← אסבירג׳י` on a twelve-day
     // trip — the far end was day EIGHT's first place, not where the trip finished.
     const wholeRoute = routeLabelsFrom(
-      byDay.map(({ events: dayEvents }) => dayEvents.flatMap(eventStops).find(Boolean)),
+      byDay.map(({ events: dayEvents }) => principalStop(dayEvents)),
     );
     const routeLabels = routeStrip(wholeRoute);
 
@@ -207,6 +282,10 @@ export class SharingProjectionService {
         dayCount: days.length,
         eventCount: events.length,
         routeLabels,
+        // The count is the ROUTE's, never the strip's — `routeLabels` is capped at
+        // `MAX_ROUTE_LABELS`, and printing its length as the trip's stop count told a
+        // twelve-day, ten-stop trip that it had eight.
+        routeStopCount: wholeRoute.length,
       },
       narrative: {
         source: narrative.source,
@@ -228,12 +307,18 @@ export class SharingProjectionService {
     events: ShareEventRow[],
     startDate: Date,
     endDate: Date,
+    zones: TripZoneContext,
   ): { date: string; events: ShareEventRow[] }[] {
     const grouped = new Map<string, ShareEventRow[]>();
     // An ambient multi-day span is listed on the day it starts, once (ADR-0209): repeating a
     // four-night stay on four days reads as four stays.
     for (const event of events) {
-      const key = dayKey(event.date);
+      // **A pre-dawn hour is the night before** (`sharePreviousNight`). Read in the event's
+      // OWN display zone, ADR-0107's resolver, so a landing is filed by the clock the
+      // traveller reads it on and not by the trip's primary zone.
+      const key = sharePreviousNight(event.startsAt, eventDisplayZone(event, zones))
+        ? previousDayKey(event.date)
+        : dayKey(event.date);
       const bucket = grouped.get(key);
       if (bucket) bucket.push(event);
       else grouped.set(key, [event]);
@@ -262,7 +347,14 @@ export class SharingProjectionService {
     const base: SharedEvent = {
       title: event.title,
       icon: event.icon,
-      category: event.category,
+      // Prisma types both of these as plain strings — the enum lives in the schema, not in
+      // the generated client — so the cast is where the column's domain is re-asserted, the
+      // same shape `journeyLookup` uses for `leg.mode`.
+      category: event.category as EventCategory | null,
+      // **What this row IS, when a booking says so.** The type only: a `hotel` here lets a
+      // renderer print `לינה` beside the hotel's own name, and nothing operational travels
+      // with it (owner, 2026-08-30).
+      bookingType: (event.booking?.type as BookingType | undefined) ?? undefined,
       daypart,
       hard: event.kind === EVENT_KIND.HARD,
     };

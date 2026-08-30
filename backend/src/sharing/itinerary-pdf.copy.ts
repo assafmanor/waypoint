@@ -1,4 +1,12 @@
-import { SHARE_DAYPART, type LegTravelMode, type ShareDaypart } from '@waypoint/shared';
+import {
+  ROUTE_ARROW,
+  SHARE_DAY_KIND,
+  SHARE_DAY_SUMMARY_KIND,
+  SHARE_DAYPART,
+  type BookingType,
+  type LegTravelMode,
+  type ShareDaypart,
+} from '@waypoint/shared';
 
 /**
  * **The PDF's Hebrew, and why it is here rather than in `frontend/src/i18n/he.ts`.**
@@ -32,6 +40,9 @@ export const PDF_COPY = {
   pagePrefix: 'עמוד ',
   pageOf: 'מתוך ',
   updatedAt: 'עודכן',
+  /** Names the strip beside the QR, which used to carry a second copy of the trip's title
+   *  and so read as an unexplained list (owner, 2026-08-30). */
+  routeLabel: 'המסלול',
   days: (count: number) => `${count} ${count === 1 ? 'יום' : 'ימים'}`,
   events: (count: number) => `${count} ${count === 1 ? 'אירוע' : 'אירועים'}`,
   stops: (count: number) => `${count} ${count === 1 ? 'אזור' : 'אזורים'}`,
@@ -62,6 +73,37 @@ export const PDF_COPY = {
   } satisfies Record<LegTravelMode, string>,
   minutes: 'דק׳',
   km: 'ק״מ',
+  /**
+   * **The words a derived day headline is made of** (ADR-0213's 2026-08-30 amendment).
+   * The projection ships a kind and its values; this is where a `flightOut` becomes a
+   * sentence. Every value arrives already escaped and bidi-isolated by the caller — these
+   * functions add the Hebrew around it and nothing else.
+   */
+  dayTitle: {
+    [SHARE_DAY_KIND.FLIGHT_OUT]: (to: string) => `טסים ל${to}`,
+    // No place: home is the absence of the trip, not somewhere this derivation knows.
+    [SHARE_DAY_KIND.FLIGHT_HOME]: 'טסים הביתה',
+    [SHARE_DAY_KIND.FLIGHT]: (to: string) => `טיסה ל${to}`,
+    [SHARE_DAY_KIND.ROUTE]: (from: string, to: string) => `${from}${ROUTE_ARROW}${to}`,
+  },
+  /** The owner's own phrasing for the day's second line: _"night at…, Sleeping at…"_. */
+  daySummary: {
+    [SHARE_DAY_SUMMARY_KIND.STAY]: (place: string) => `לינה ב${place}`,
+  },
+  /** **The same eight words the app already uses** (`he.ts`'s `index.bookingType`), for
+   *  the same reason this file carries the daypart words: the print renderer cannot import
+   *  the React app's i18n. Reword one and reword the other — they are named in each
+   *  other's comments so the pair cannot be missed. */
+  bookingType: {
+    flight: 'טיסה',
+    hotel: 'לינה',
+    restaurant: 'מסעדה',
+    train: 'רכבת',
+    transit: 'נסיעה',
+    car: 'השכרת רכב',
+    activity: 'פעילות',
+    other: 'אחר',
+  } satisfies Record<BookingType, string>,
 } as const;
 
 /** The same marks the reader uses, for the same sections. */

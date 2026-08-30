@@ -35,7 +35,11 @@ export const SHARE_EVENT_SELECT = {
   placeId: true,
   bookingId: true,
   place: { select: { id: true, name: true, nickname: true, address: true, lat: true, lng: true } },
-  booking: { select: { id: true, placeId: true, fromPlaceId: true, toPlaceId: true } },
+  // `type` is the discriminant a renderer captions a row from and the day derivation reads
+  // to know a flight from a hotel — the booking's KIND, never its content. It is already
+  // selected for zone crossings below, and everything operational (`confirmationCode`,
+  // `provider`, `details`) stays behind `SHARE_SECRET_BOOKING_SELECT` and Everything.
+  booking: { select: { id: true, type: true, placeId: true, fromPlaceId: true, toPlaceId: true } },
 } as const satisfies Prisma.EventSelect;
 
 /** Only what ADR-0107's crossing derivation reads. Deliberately NOT `confirmationCode`,

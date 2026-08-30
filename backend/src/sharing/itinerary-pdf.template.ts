@@ -1,8 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  NARRATIVE_SEPARATOR,
+  SHARE_DAY_KIND,
+  SHARE_DAY_SUMMARY_KIND,
   SHARE_DETAIL_LEVEL,
   type SharedDay,
+  type SharedDaySummary,
+  type SharedDayTitle,
   type SharedEvent,
   type SharedItinerary,
 } from '@waypoint/shared';
@@ -136,6 +141,58 @@ const auto = (value: string): string => `\u2068${escapeHtml(value)}\u2069`;
  *  element sets the row in Assistant so Hebrew beside it has a face with Hebrew glyphs. */
 const num = (value: string): string => `<span class="pdf-num">${ltr(value)}</span>`;
 
+/**
+ * **The derived headline, said in words** (ADR-0213's 2026-08-30 amendment). The projection
+ * ships `{ kind, …values }` and this is where a `flightOut` becomes `טסים לאיסלנד`. Values
+ * are escaped and isolated here, one at a time, so the sentence around them stays in the
+ * page's RTL flow — the container must therefore not carry `dir="auto"`, which skips
+ * isolates when it sniffs.
+ *
+ * `NONE` returns empty and the caller falls back to the date: a day with nothing in it has
+ * no true title, and inventing one is the mandatory day title the owner rejected.
+ */
+function dayTitleText(title: SharedDayTitle): string {
+  switch (title.kind) {
+    case SHARE_DAY_KIND.FLIGHT_OUT:
+      return PDF_COPY.dayTitle.flightOut(auto(title.to));
+    case SHARE_DAY_KIND.FLIGHT_HOME:
+      return PDF_COPY.dayTitle.flightHome;
+    case SHARE_DAY_KIND.FLIGHT:
+      return PDF_COPY.dayTitle.flight(auto(title.to));
+    case SHARE_DAY_KIND.ROUTE:
+      return PDF_COPY.dayTitle.route(auto(title.from), auto(title.to));
+    case SHARE_DAY_KIND.PLACE:
+      return auto(title.at);
+    case SHARE_DAY_KIND.TEXT:
+      return escapeHtml(title.text);
+    default:
+      return '';
+  }
+}
+
+function daySummaryText(summary: SharedDaySummary): string {
+  switch (summary.kind) {
+    case SHARE_DAY_SUMMARY_KIND.STAY:
+      return PDF_COPY.daySummary.stay(auto(summary.place));
+    case SHARE_DAY_SUMMARY_KIND.EVENTS:
+      return summary.titles.map(auto).join(NARRATIVE_SEPARATOR);
+    case SHARE_DAY_SUMMARY_KIND.TEXT:
+      return escapeHtml(summary.text);
+    default:
+      return '';
+  }
+}
+
+/** `DD.MM–DD.MM`, the app's own trip-range shape (`lib/time.ts`'s `formatTripDates`), which
+ *  the masthead was printing as two raw ISO dates the app shows nowhere else. */
+const tripRange = (startDate: string, endDate: string): string => {
+  const dayMonth = (iso: string) => {
+    const [, month, day] = iso.split('-');
+    return `${day}.${month}`;
+  };
+  return `${dayMonth(startDate)}–${dayMonth(endDate)}`;
+};
+
 const dayLabel = (date: string): { day: string; weekday: string } => {
   const [year, month, day] = date.split('-').map(Number);
   return {
@@ -156,6 +213,12 @@ function eventRow(event: SharedEvent, summary: boolean): string {
     : '';
   // Each value isolated, the separator left in the RTL flow — a `dir="auto"` over the JOIN
   // would let an English address decide which side the place name sits on.
+  // **The row says what it IS before it says where** (owner, 2026-08-30: _"hotels and other
+  // derivable stuff texts should be enhanced … and that also includes bookings"_). A
+  // booking states its type, so `The Hill Hotel at Fludir` gets `לינה` in front of its hour
+  // and stops being a bare proper noun. An event no booking backs is captioned with
+  // nothing — a guess in this slot is worse than a gap.
+  const kind = event.bookingType ? PDF_COPY.bookingType[event.bookingType] : undefined;
   const place = [event.placeName, event.address]
     .filter((value): value is string => Boolean(value))
     .map(auto)
@@ -165,7 +228,11 @@ function eventRow(event: SharedEvent, summary: boolean): string {
     `<div class="pdf-event${event.hard ? ' hard' : ''}">` +
     `<span class="pdf-event-time">${event.startLabel ? ltr(event.startLabel) : PDF_COPY.dayparts.flexible}</span>` +
     `<span class="pdf-event-copy"><strong>${auto(event.title)}</strong>` +
-    (place ? `<span>${place}</span>` : '') +
+    (kind || place
+      ? `<span>${[kind ? `<b class="pdf-kind">${kind}</b>` : '', place]
+          .filter(Boolean)
+          .join(NARRATIVE_SEPARATOR)}</span>`
+      : '') +
     `</span></div>`
   );
 }
@@ -189,8 +256,8 @@ function dayCard(day: SharedDay, summary: boolean): string {
     `<span class="pdf-date"><strong>${ltr(dayNumber)}</strong><span>${weekday}</span></span>` +
     // Both are composed server-side with their values already isolated
     // (`itinerary-narrative.fallback.ts`), so neither may sniff its own direction.
-    `<span class="pdf-day-copy"><strong>${escapeHtml(day.title) || auto(`${weekday} ${dayNumber}`)}</strong>` +
-    `<span>${escapeHtml(day.summary)}</span></span></header>` +
+    `<span class="pdf-day-copy"><strong>${dayTitleText(day.title) || auto(`${weekday} ${dayNumber}`)}</strong>` +
+    `<span>${daySummaryText(day.summary)}</span></span></header>` +
     `<div class="pdf-parts">${sections}</div></article>`
   );
 }
@@ -291,10 +358,20 @@ export function itineraryPdfHtml({
     // JetBrains ships no Hebrew, the fallback was generic monospace, and the container's
     // only monospace is Liberation Mono: `12 ימים · עודכן` printed as five empty rectangles
     // while the headings two lines up were perfect (owner, 2026-08-30).
-    `<div class="pdf-subtitle">${num(`${projection.trip.startDate} - ${projection.trip.endDate}`)}` +
-    ` · ${PDF_COPY.days(projection.trip.dayCount)} · ${PDF_COPY.updatedAt} ${num(generatedAtLabel)}</div>` +
-    `</div><div class="pdf-route-mini"><strong>${escapeHtml(projection.narrative.title)}</strong>` +
-    `<span>${projection.trip.routeLabels.map(auto).join(' · ')}</span></div>` +
+    // **Two lines, by design rather than by wrapping** (owner, 2026-08-30: _"Dates and
+    // length too long split to two lines"_). The trip's own facts lead; the provenance
+    // stamp is a different KIND of fact and drops to a quieter line of its own rather than
+    // sharing a middot with them and pushing the whole run past the column.
+    `<div class="pdf-subtitle">${num(tripRange(projection.trip.startDate, projection.trip.endDate))}` +
+    ` · ${PDF_COPY.days(projection.trip.dayCount)}</div>` +
+    `<div class="pdf-stamp">${PDF_COPY.updatedAt} ${num(generatedAtLabel)}</div>` +
+    // **The route strip, and NOT the title above it** (owner: _"Why do they exist? … Seems
+    // very redundant"_). `narrative.title` was printed here and again in the lede one
+    // centimetre below — the same string twice, which is what made the block read as a
+    // leak of something rather than as the route. The strip stays because it is the only
+    // place the whole route is written; the title stays in the lede, once.
+    `</div><div class="pdf-route-mini"><b>${PDF_COPY.routeLabel}</b>` +
+    `<span>${projection.trip.routeLabels.map(auto).join(NARRATIVE_SEPARATOR)}</span></div>` +
     // The QR is printed ONCE, beside the title, rather than on every page: it is how a
     // reader walks the paper back to the live link, and one legible code does that.
     `<div class="pdf-qr-block"><img class="pdf-qr" src="${qrDataUrl}" alt="" />` +
@@ -310,7 +387,9 @@ export function itineraryPdfHtml({
     `</div>` +
     `<div class="pdf-facts">` +
     `<div class="pdf-fact"><strong>${ltr(projection.trip.dayCount)}</strong><span>${PDF_COPY.days(projection.trip.dayCount).replace(/^\d+\s/, '')}</span></div>` +
-    `<div class="pdf-fact"><strong>${ltr(projection.trip.routeLabels.length)}</strong><span>${PDF_COPY.stops(projection.trip.routeLabels.length).replace(/^\d+\s/, '')}</span></div>` +
+    // The ROUTE's count, not the strip's: `routeLabels` is capped, so this read `8 אזורים`
+    // on every trip long enough to be capped, whatever it actually visited.
+    `<div class="pdf-fact"><strong>${ltr(projection.trip.routeStopCount)}</strong><span>${PDF_COPY.stops(projection.trip.routeStopCount).replace(/^\d+\s/, '')}</span></div>` +
     `<div class="pdf-fact"><strong>${ltr(projection.trip.eventCount)}</strong><span>${PDF_COPY.events(projection.trip.eventCount).replace(/^\d+\s/, '')}</span></div>` +
     `</div></div>`;
 
@@ -336,12 +415,18 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
 .pdf-eyebrow{margin-block-end:4px;color:var(--pdf-muted);font-size:9px;font-weight:700;letter-spacing:.08em;}
 .pdf-title{margin:0;font:27px/1.1 'Secular One',sans-serif;}
 .pdf-subtitle{margin-block-start:6px;color:var(--pdf-muted);font:500 9px 'Assistant',sans-serif;}
+/* The provenance stamp: a line of its own and a step quieter, so it cannot push the trip's
+   own dates into a wrap (owner report, 2026-08-30). */
+.pdf-stamp{margin-block-start:2px;color:var(--pdf-muted);font:500 8px 'Assistant',sans-serif;opacity:0.8;}
+/* The derived kind in front of an event's place line — the noun, so it reads as a label
+   rather than as part of the address. */
+.pdf-kind{font-weight:700;color:var(--pdf-ink);}
 /* Mono is for the RUN, never the row: the font SHORTHAND drops the family list, and
    JetBrains Mono has no Hebrew glyphs, so a Hebrew word in a mono row prints as boxes. */
 .pdf-num{font-family:'JetBrains Mono',monospace;}
 .pdf-route-mini{min-width:130px;text-align:end;}
-.pdf-route-mini strong,.pdf-route-mini span{display:block;}
-.pdf-route-mini strong{font-size:12px;}
+.pdf-route-mini b,.pdf-route-mini span{display:block;}
+.pdf-route-mini b{font-size:9px;font-weight:700;color:var(--pdf-muted);}
 .pdf-route-mini span{margin-block-start:3px;color:var(--pdf-teal);font-size:9px;}
 .pdf-qr-block{flex:0 0 auto;text-align:center;}
 .pdf-qr{display:block;width:46px;height:46px;}

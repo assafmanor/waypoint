@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
+  NARRATIVE_SEPARATOR,
+  ROUTE_ARROW,
+  SHARE_DAY_KIND,
+  SHARE_DAY_SUMMARY_KIND,
   SHARE_DETAIL_LEVEL,
   type SharedDay,
+  type SharedDaySummary,
+  type SharedDayTitle,
   type SharedEvent,
   type SharedItinerary as SharedItineraryProjection,
 } from '@waypoint/shared';
@@ -10,6 +16,8 @@ import { GLYPH } from '../constants';
 import { Icon } from '../ui/Icon';
 import { t } from '../i18n/he';
 import { autoIsolate, ltrIsolate } from '../lib/bidi';
+import { formatTripDates } from '../lib/time';
+import brandMark from '/icon-mark-bright.svg';
 import {
   fetchSharedItinerary,
   sharedDocumentUrl,
@@ -27,6 +35,50 @@ function dayParts(date: string): { day: string; weekday: string } {
     day: String(day).padStart(2, '0'),
     weekday: WEEKDAY[new Date(Date.UTC(year, month - 1, day)).getUTCDay()],
   };
+}
+
+/**
+ * **The derived headline, said in words** (ADR-0213's 2026-08-30 amendment).
+ *
+ * The projection ships `{ kind, …values }` rather than a composed line, so the words are
+ * this renderer's and the PDF's own — one derivation, two locales' worth of copy. Values are
+ * isolated one at a time here (`autoIsolate`), which leaves the sentence around them in the
+ * page's RTL flow; the element must therefore NOT carry `dir="auto"`, which skips isolates
+ * when it sniffs and would fall back to LTR on a fully isolated line.
+ *
+ * Empty for `NONE`: a day with nothing in it has no true title, and the caller falls back to
+ * its date rather than inventing one.
+ */
+function dayTitleText(title: SharedDayTitle): string {
+  switch (title.kind) {
+    case SHARE_DAY_KIND.FLIGHT_OUT:
+      return t.share.public.dayTitle.flightOut(autoIsolate(title.to));
+    case SHARE_DAY_KIND.FLIGHT_HOME:
+      return t.share.public.dayTitle.flightHome;
+    case SHARE_DAY_KIND.FLIGHT:
+      return t.share.public.dayTitle.flight(autoIsolate(title.to));
+    case SHARE_DAY_KIND.ROUTE:
+      return `${autoIsolate(title.from)}${ROUTE_ARROW}${autoIsolate(title.to)}`;
+    case SHARE_DAY_KIND.PLACE:
+      return autoIsolate(title.at);
+    case SHARE_DAY_KIND.TEXT:
+      return title.text;
+    default:
+      return '';
+  }
+}
+
+function daySummaryText(summary: SharedDaySummary): string {
+  switch (summary.kind) {
+    case SHARE_DAY_SUMMARY_KIND.STAY:
+      return t.share.public.daySummary.stay(autoIsolate(summary.place));
+    case SHARE_DAY_SUMMARY_KIND.EVENTS:
+      return summary.titles.map(autoIsolate).join(NARRATIVE_SEPARATOR);
+    case SHARE_DAY_SUMMARY_KIND.TEXT:
+      return summary.text;
+    default:
+      return '';
+  }
 }
 
 type LoadState =
@@ -86,9 +138,10 @@ export function SharedItinerary() {
     <div className="sh-page">
       <div className="sh-public-bar">
         <span className="sh-brand">
-          <span className="sh-brand-mark" aria-hidden="true">
-            T
-          </span>
+          {/* The app's own mark, not its initial (owner, 2026-08-30). `public/` rather than
+              an inline SVG: the same file the favicon and the PWA icon are cut from, so the
+              page a stranger lands on cannot drift from the icon in their tab. */}
+          <img className="sh-brand-mark" src={brandMark} alt="" width={20} height={20} />
           {t.share.public.brand}
         </span>
         <span className={`sh-freshness${stale ? ' stale' : ''}`}>
@@ -109,8 +162,12 @@ export function SharedItinerary() {
           ) : null}
           <span>{projection.trip.name}</span>
         </h1>
+        {/* The app's own trip-range shape (`lib/time.ts`), not two raw ISO dates — the
+            All Trips card has read `27.08–02.09` since long before this page existed. */}
         <div className="sh-dates">
-          {ltrIsolate(`${projection.trip.startDate} - ${projection.trip.endDate}`)}
+          {ltrIsolate(formatTripDates(projection.trip.startDate, projection.trip.endDate))}
+          {' · '}
+          {t.share.public.counts(projection.trip.dayCount, projection.trip.eventCount)}
         </div>
         {summary && projection.trip.routeLabels.length > 0 ? (
           <div className="sh-route">
@@ -188,8 +245,8 @@ function DayCard({ day, open, onToggle }: { day: SharedDay; open: boolean; onTog
               inventing one — the date is then the name. */}
           {/* Composed server-side with its values already isolated — see the story line
               above for why this must not sniff. */}
-          <strong>{day.title || `${weekday} ${ltrIsolate(dayNumber)}`}</strong>
-          <span>{day.summary}</span>
+          <strong>{dayTitleText(day.title) || `${weekday} ${ltrIsolate(dayNumber)}`}</strong>
+          <span>{daySummaryText(day.summary)}</span>
         </span>
         <span className="sh-caret">
           <Icon name="caret" />
@@ -252,6 +309,18 @@ function EventRow({ event }: { event: SharedEvent }) {
         <span className="sh-event-main">
           <strong dir="auto">{event.title}</strong>
           <span className="sh-place-line">
+            {/* **The row says what it IS before it says where** (owner, 2026-08-30: _"hotels
+                and other derivable stuff texts should be enhanced … and that also includes
+                bookings"_). A booking states its type, so a hotel's own name gets `לינה` in
+                front of its hour. An event no booking backs is captioned with nothing — a
+                guess in this slot is worse than a gap. The words are the app's own
+                (`t.index.bookingType`), never a second set for this page. */}
+            {event.bookingType ? (
+              <>
+                <b className="sh-kind">{t.index.bookingType[event.bookingType]}</b>
+                {' · '}
+              </>
+            ) : null}
             {event.startLabel ? (
               <span className="sh-time">{ltrIsolate(event.startLabel)}</span>
             ) : null}

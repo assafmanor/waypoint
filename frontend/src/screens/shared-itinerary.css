@@ -70,15 +70,17 @@
   font-weight: 700;
 }
 
+/* The app's own mark rather than its initial (owner, 2026-08-30). Kept in the same box the
+   letter had, so the bar's rhythm is unchanged; the tile behind it stays because the mark is
+   cut for a bright ground and this bar is the page's one dark strip. */
 .sh-brand-mark {
   width: 24px;
   height: 24px;
-  display: grid;
-  place-items: center;
+  padding: 3px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.08);
-  font-family: var(--font-head);
+  object-fit: contain;
 }
 
 .sh-live-dot {
@@ -429,6 +431,14 @@
   color: var(--amber-deep);
   font-family: var(--font-mono);
   font-weight: 600;
+}
+
+/* The derived noun in front of an event's place line — what the row IS, from its booking's
+   type. Neutral and bold rather than coloured: it is a label, and the colour budget's two
+   spends on this line are already taken (amber for the hour, and nothing for the place). */
+.sh-kind {
+  color: var(--ink);
+  font-weight: 700;
 }
 
 /* 44px, per ADR-0017's touch floor — the only interactive thing inside a day body. */
