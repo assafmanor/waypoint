@@ -5359,6 +5359,43 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   min-height: 58px;
 }
 
+/* **A live link, marked on the level that holds it** (ADR-0213's tenth amendment §4). The
+   mark has to sit OUT of flow: `.choice-card` is a flex column and the grid stretches its
+   cards to the tallest, so a mark in the icon slot would raise all three and leave the two
+   unmarked labels floating — a ragged row saying "these are different kinds of option"
+   about three answers to one question. */
+.share-sheet .share-levels .choice-card {
+  position: relative;
+}
+
+/* `--ok`, not `--cta`. Rule 4 splits them by MEANING and not by taste: `--cta` is the
+   neutral action hue (and in light it resolves to `var(--ink)`, so a `--cta` dot is a navy
+   speck that reads as decoration and merges with the selected card's own ring), while
+   `--ok`/`--miss` are for statuses. "This link is live" is a status. */
+.share-level-live {
+  position: absolute;
+  inset-block-start: 7px;
+  inset-inline-end: 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-999);
+  background: var(--ok);
+}
+
+/* The one destructive action in the sheet, and the only place `--miss` appears here. It
+   renders only when two or more links are live — with one, `הפסקת השיתוף הזה` beside it
+   already stops everything, and two buttons that do the same thing is how somebody presses
+   the wrong one.
+
+   **Two classes, and that is not decoration.** As a bare `.share-stop-all` this loses a
+   plain specificity tie to `.share-manage`'s `color: var(--muted)` several hundred lines
+   below, so the danger tone never rendered — caught by running the app, not by reading it,
+   which is the same failure the sheet's own `gap` has had twice. Naming both classes makes
+   the rule independent of where either sits in the file. */
+.share-manage.share-stop-all {
+  color: var(--miss);
+}
+
 /* **The audience fork** (ADR-0213's 2026-08-30 amendment) — the sheet's first question,
    above everything it already asks. Two cards rather than the levels' three, and taller
    because these carry a glyph: this is the one choice here whose wrong answer cannot be

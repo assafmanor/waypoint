@@ -145,11 +145,33 @@ describe('narrative contracts', () => {
         days: [
           {
             ordinal: 1,
-            events: [{ title: 'נחיתה', daypart: SHARE_DAYPART.MORNING, placeName: 'KEF' }],
+            events: [{ title: 'נחיתה', daypart: SHARE_DAYPART.MORNING, icon: '✈️' }],
           },
         ],
       }).days[0].ordinal,
     ).toBe(1);
+  });
+
+  /**
+   * **`placeName` is refused, which is what makes the docblock's claim true** (ADR-0213's
+   * tenth amendment §6). It travelled until now, and it was the one copied field the
+   * projection sets only after its Summary early return — so the input was NOT independent
+   * of the selected level and one trip generated a different narrative per level. Strictness
+   * is what turns that from a promise into a parse failure.
+   */
+  it('refuses a per-event place name, so the input cannot depend on the level', () => {
+    expect(() =>
+      summaryNarrativeInputSchema.parse({
+        locale: 'he',
+        routeLabels: [],
+        days: [
+          {
+            ordinal: 1,
+            events: [{ title: 'נחיתה', daypart: SHARE_DAYPART.MORNING, placeName: 'KEF' }],
+          },
+        ],
+      }),
+    ).toThrow();
   });
 
   it('refuses narrative output carrying a URL', () => {

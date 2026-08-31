@@ -118,6 +118,12 @@ describe('SharingService', () => {
     await prisma.$disconnect();
   });
 
+  const SUMMARY: UpsertTripShareInput = {
+    detailLevel: SHARE_DETAIL_LEVEL.SUMMARY,
+    sensitive: NO_SENSITIVE_FIELDS,
+    documentIds: [],
+  };
+
   it('creates one stable Full share with every sensitive family off', async () => {
     const first = await service.upsert(tripId, ADMIN, FULL);
     const second = await service.upsert(tripId, ADMIN, FULL);
@@ -128,6 +134,7 @@ describe('SharingService', () => {
     expect(second.code).toBe(first.code);
     expect(second.sensitive).toEqual(NO_SENSITIVE_FIELDS);
     expect(second.shareUrl).toBe(`/s/${first.code}`);
+    expect(await service.list(tripId)).toHaveLength(1);
   });
 
   it('hands back a root-relative url, never an origin', async () => {
@@ -137,68 +144,149 @@ describe('SharingService', () => {
   });
 
   it('never creates a share on a read', async () => {
-    await expect(service.get(tripId)).rejects.toBeInstanceOf(NotFoundException);
+    expect(await service.list(tripId)).toEqual([]);
     expect(await prisma.tripShare.count({ where: { tripId } })).toBe(0);
   });
 
-  it('lets a peer read an existing config but not mutate it', async () => {
-    await service.upsert(tripId, ADMIN, FULL);
+  /**
+   * **The question the tenth amendment exists to answer** (owner: _"I want to be able to
+   * share with different privacy options … and not choose only one"_). Two audiences, two
+   * links, at once — and neither press disturbs the other's URL.
+   */
+  it('serves several levels at once, each with its own link', async () => {
+    const summary = await service.upsert(tripId, ADMIN, SUMMARY);
+    const full = await service.upsert(tripId, ADMIN, FULL);
+    const operational = await service.upsert(tripId, ADMIN, everything([documentId]));
 
-    await expect(service.get(tripId)).resolves.toEqual(
-      expect.objectContaining({ code: expect.any(String) }),
+    const codes = [summary.code, full.code, operational.code];
+    expect(new Set(codes).size).toBe(3);
+    await Promise.all(codes.map((code) => expect(projection.byCode(code)).resolves.toBeTruthy()));
+    // Listed in the sheet's order — by level, which is the enum's own order.
+    expect((await service.list(tripId)).map((config) => config.detailLevel)).toEqual([
+      SHARE_DETAIL_LEVEL.SUMMARY,
+      SHARE_DETAIL_LEVEL.FULL,
+      SHARE_DETAIL_LEVEL.EVERYTHING,
+    ]);
+  });
+
+  /**
+   * **`everything` is a family, not a projection** (owner, on the first drawing: _"The הכל
+   * category could have different levels of detail based on what you allow, so maybe for
+   * that there could be multiple different links"_). A sister who needs codes and a hotel
+   * that needs only names are both Everything and must not share a link.
+   */
+  it('gives two Everything policies two links', async () => {
+    const withFile = await service.upsert(tripId, ADMIN, everything([documentId]));
+    const withoutFile = await service.upsert(tripId, ADMIN, everything());
+    const withNotes = await service.upsert(tripId, ADMIN, {
+      ...everything(),
+      sensitive: { ...NO_SENSITIVE_FIELDS, bookingSecrets: true, notesAndTasks: true },
+    });
+
+    expect(new Set([withFile.code, withoutFile.code, withNotes.code]).size).toBe(3);
+    // The file travels with the policy that names it, and with no other.
+    await expect(service.publicDocument(withFile.code, documentId)).resolves.toBeTruthy();
+    await expect(service.publicDocument(withoutFile.code, documentId)).rejects.toBeInstanceOf(
+      NotFoundException,
     );
+  });
+
+  /** The order of the file list is not part of what a link reveals, so it must not mint a
+   *  second one that reveals exactly the same thing. */
+  it('treats a reordered file selection as the same policy', async () => {
+    const first = await service.upsert(tripId, ADMIN, everything([documentId, otherDocumentId]));
+    const again = await service.upsert(tripId, ADMIN, everything([otherDocumentId, documentId]));
+
+    expect(again.code).toBe(first.code);
+    expect(await service.list(tripId)).toHaveLength(1);
+  });
+
+  it('lets a peer read the list but not mutate anything', async () => {
+    const config = await service.upsert(tripId, ADMIN, FULL);
+
+    await expect(service.list(tripId)).resolves.toEqual([
+      expect.objectContaining({ code: config.code }),
+    ]);
     await expect(service.upsert(tripId, PEER, FULL)).rejects.toBeInstanceOf(ForbiddenException);
-    await expect(service.rotate(tripId, PEER)).rejects.toBeInstanceOf(ForbiddenException);
-    await expect(service.revoke(tripId, PEER)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.rotate(tripId, config.code, PEER)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    await expect(service.revoke(tripId, config.code, PEER)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    await expect(service.revokeAll(tripId, PEER)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('makes a rotated code stop resolving immediately', async () => {
     const before = await service.upsert(tripId, ADMIN, FULL);
-    const after = await service.rotate(tripId, ADMIN);
+    const after = await service.rotate(tripId, before.code, ADMIN);
 
     expect(after.code).not.toBe(before.code);
     await expect(projection.byCode(before.code)).rejects.toBeInstanceOf(NotFoundException);
     await expect(projection.byCode(after.code)).resolves.toBeTruthy();
   });
 
-  it('keeps the configuration but stops the link when sharing is stopped', async () => {
+  /** A code is a bearer credential, so holding one must not let an admin of a DIFFERENT
+   *  trip act on it — the cross-trip refusal `trip-scope.util.ts` exists for. */
+  it("refuses to rotate or revoke another trip's link", async () => {
     const config = await service.upsert(tripId, ADMIN, FULL);
-    await service.revoke(tripId, ADMIN);
 
-    await expect(projection.byCode(config.code)).rejects.toBeInstanceOf(NotFoundException);
-    await expect(service.get(tripId)).rejects.toBeInstanceOf(NotFoundException);
-    expect(await prisma.tripShare.count({ where: { tripId } })).toBe(1);
+    await expect(service.rotate(otherTripId, config.code, ADMIN)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    await expect(service.revoke(otherTripId, config.code, ADMIN)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    await expect(projection.byCode(config.code)).resolves.toBeTruthy();
   });
 
-  it('re-shares with a fresh code rather than reviving a withdrawn one', async () => {
+  it('stops one link without touching its siblings', async () => {
+    const summary = await service.upsert(tripId, ADMIN, SUMMARY);
+    const full = await service.upsert(tripId, ADMIN, FULL);
+
+    await service.revoke(tripId, summary.code, ADMIN);
+
+    await expect(projection.byCode(summary.code)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(projection.byCode(full.code)).resolves.toBeTruthy();
+    expect((await service.list(tripId)).map((config) => config.code)).toEqual([full.code]);
+    // The row survives, so the policy is still there to re-share.
+    expect(await prisma.tripShare.count({ where: { tripId } })).toBe(2);
+  });
+
+  /** The route that existed before the amendment, keeping the meaning it always had — and
+   *  the one honest answer to somebody who wants the sharing to stop now. */
+  it('stops every link at once', async () => {
+    const summary = await service.upsert(tripId, ADMIN, SUMMARY);
+    const operational = await service.upsert(tripId, ADMIN, everything([documentId]));
+
+    await service.revokeAll(tripId, ADMIN);
+
+    expect(await service.list(tripId)).toEqual([]);
+    await expect(projection.byCode(summary.code)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(projection.byCode(operational.code)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.publicDocument(operational.code, documentId)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('re-shares a withdrawn policy with a fresh code rather than reviving one', async () => {
     const first = await service.upsert(tripId, ADMIN, FULL);
-    await service.revoke(tripId, ADMIN);
+    await service.revoke(tripId, first.code, ADMIN);
     const again = await service.upsert(tripId, ADMIN, FULL);
 
     expect(again.code).not.toBe(first.code);
     await expect(projection.byCode(first.code)).rejects.toBeInstanceOf(NotFoundException);
+    // Reused row, not a second one — the uniqueness spans revoked rows.
+    expect(await prisma.tripShare.count({ where: { tripId } })).toBe(1);
   });
 
-  it('drops sensitive selections when the level moves back below Everything', async () => {
-    await service.upsert(tripId, ADMIN, everything([documentId]));
-    const narrowed = await service.upsert(tripId, ADMIN, FULL);
+  it('restores exactly the file selection a re-shared policy names', async () => {
+    const first = await service.upsert(tripId, ADMIN, everything([documentId, otherDocumentId]));
+    await service.revoke(tripId, first.code, ADMIN);
+    const again = await service.upsert(tripId, ADMIN, everything([documentId, otherDocumentId]));
 
-    expect(narrowed.sensitive).toEqual(NO_SENSITIVE_FIELDS);
-    expect(narrowed.documentIds).toEqual([]);
-    // The rows are gone, not merely unread: the download route's authorization is that row.
-    await expect(service.publicDocument(narrowed.code, documentId)).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
-  });
-
-  it('replaces the file selection rather than accumulating it', async () => {
-    await service.upsert(tripId, ADMIN, everything([documentId, otherDocumentId]));
-    const config = await service.upsert(tripId, ADMIN, everything([documentId]));
-
-    expect(config.documentIds).toEqual([documentId]);
-    await expect(service.publicDocument(config.code, otherDocumentId)).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    expect(again.documentIds.sort()).toEqual([documentId, otherDocumentId].sort());
+    await expect(service.publicDocument(again.code, otherDocumentId)).resolves.toBeTruthy();
   });
 
   it("refuses another trip's document", async () => {
@@ -220,7 +308,7 @@ describe('SharingService', () => {
 
   it('stops a selected document downloading once the share is revoked', async () => {
     const config = await service.upsert(tripId, ADMIN, everything([documentId]));
-    await service.revoke(tripId, ADMIN);
+    await service.revoke(tripId, config.code, ADMIN);
 
     await expect(service.publicDocument(config.code, documentId)).rejects.toBeInstanceOf(
       NotFoundException,

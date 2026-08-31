@@ -149,13 +149,6 @@ export const COUNTDOWN_MONTHS_THRESHOLD = 2;
 /** How far a "delay" verb pushes an event. */
 export const DELAY_STEP_MINUTES = 30;
 
-/** **How long the share sheet waits before writing a changed detail level** (ADR-0213's
- *  2026-08-30 amendment). The level, the sensitive switches and the per-file checkboxes are
- *  one draft, and a file list is tapped several times in a row — so this is what makes a
- *  handful of taps one request instead of one each. Short enough that closing the sheet
- *  straight after a change still lands the write. */
-export const SHARE_LEVEL_SAVE_MS = 400;
-
 /** Toast auto-dismiss. */
 export const TOAST_DURATION_MS = 3600;
 

@@ -3061,7 +3061,11 @@ export const t = {
       // **The trip, not the itinerary** — the sheet grants two different things now, and
       // one of them adds a person to the trip (ADR-0213's 2026-08-30 amendment).
       title: 'שיתוף הטיול',
-      lead: 'כמה מהמסלול יופיע?',
+      // **The question changed with the model** (ADR-0213's tenth amendment). It used to ask
+      // how much of the route would appear, because there was one link and the answer was a
+      // setting on it. Now each level holds its own link, so the choice is which link you
+      // are handing over — and nothing you touch here changes what somebody already holds.
+      lead: 'איזה לינק לשלוח?',
       levels: {
         summary: 'תקציר',
         full: 'לו״ז מלא',
@@ -3091,7 +3095,41 @@ export const t = {
       },
       noDocuments: 'אין עדיין קבצים בטיול',
       liveNote: 'לינק חי שמתעדכן עם הטיול',
-      actions: { liveLink: 'שיתוף לינק חי', pdf: 'שיתוף PDF', download: 'הורדה' },
+      // The scope note's last line reports what exists at the selected level, so the sheet
+      // says what is exposed before anything is pressed.
+      noLinkYet: 'אין עדיין לינק ברמה הזאת · יווצר בשליחה',
+      oneLive: 'לינק חי אחד · אפשר להחזיק כמה במקביל',
+      manyLive: (n: number) => `${n} לינקים חיים · כל אחד עם המדיניות שלו`,
+      /** A level card that already holds a live link. The dot is paint, so the card says so
+       *  in its accessible name instead (`ChoiceGrid`'s `ariaLabel`). */
+      levelLive: (level: string) => `${level} · לינק פעיל`,
+      actions: {
+        liveLink: 'שיתוף לינק חי',
+        pdf: 'שיתוף PDF',
+        download: 'הורדה',
+        // A policy with no link yet. The press is what creates it, exactly as before — the
+        // sheet must never publish a trip just because somebody looked at a control.
+        createAndShare: 'יצירה ושליחה',
+        another: 'לינק נוסף',
+      },
+      /**
+       * **A link is named by what it reveals, never by who it went to.**
+       *
+       * A derived title is checkable — the app can prove `קודים · פתקים · 2 קבצים` is what
+       * this policy publishes — where a name somebody typed says who received it, which
+       * nothing can verify and which goes stale in silence (the tenth amendment §7 rejects
+       * typed names on exactly that ground). Composed in the app's `·` grammar so a row
+       * reads like every other list row.
+       */
+      policy: {
+        secrets: 'קודים',
+        notes: 'פתקים',
+        travelers: 'שמות',
+        files: (n: number) => (n === 1 ? 'קובץ אחד' : `${n} קבצים`),
+        /** Everything switched off is still a policy, and saying so beats an empty title
+         *  that reads as a rendering fault. */
+        none: 'בלי תוספות',
+      },
       pdf: {
         preparing: 'מכינים את ה-PDF',
         preparingDetail: 'המסלול נשאר פתוח בזמן ההכנה',
@@ -3099,22 +3137,35 @@ export const t = {
         failed: 'לא הצלחנו להכין את הקובץ. נסו שוב.',
       },
       copied: 'הלינק הועתק',
-      // **Said out loud, because the link changed under whoever already holds it** (owner,
-      // 2026-08-30). The level is not a draft: moving the control moves what the live link
-      // shows, so the sheet confirms it by name rather than leaving the press silent.
-      levelSaved: (level: string) => `הלינק החי מעודכן · ${level}`,
+      // **`levelSaved` is gone, and its absence is the feature** (ADR-0213's tenth
+      // amendment §2). It announced that moving the level control had changed what a live
+      // link shows. With one link per policy nothing in this sheet changes a live link, so
+      // there is no longer anything to announce.
       manage: 'ניהול הלינק',
-      rotate: 'החלפת הלינק',
+      // Both verbs name their scope, because a "stop sharing" that stops one link out of
+      // three is the most dangerous word in the sheet.
+      rotate: 'החלפת הלינק הזה',
       rotateTitle: 'להחליף את הלינק?',
-      rotateBody: 'הלינק הקודם יפסיק לעבוד מיד, גם אצל מי שכבר קיבל אותו.',
+      rotateBody: 'הלינק הקודם יפסיק לעבוד מיד, גם אצל מי שכבר קיבל אותו. שאר הלינקים לא ישתנו.',
       rotateConfirm: 'החלפה',
-      stop: 'הפסקת שיתוף',
+      stop: 'הפסקת השיתוף הזה',
       stopTitle: 'להפסיק לשתף?',
-      stopBody: 'הלינק יפסיק לעבוד. תוכלו לשתף שוב מתי שתרצו, עם לינק חדש.',
+      stopBody:
+        'הלינק יפסיק לעבוד. שאר הלינקים של הטיול ימשיכו. תוכלו לשתף שוב מתי שתרצו, עם לינק חדש.',
       stopConfirm: 'הפסקה',
+      // The panic button, shown only at two or more live links: whoever wants the sharing
+      // to stop now should not have to visit three rows to do it.
+      stopAll: (n: number) => `הפסקת כל השיתופים · ${n}`,
+      stopAllTitle: 'להפסיק את כל השיתופים?',
+      stopAllBody: 'כל הלינקים הציבוריים של הטיול יפסיקו לעבוד מיד.',
+      stopAllConfirm: 'הפסקת הכל',
       // A peer may send an existing link but not change what it shows.
       peerNote: 'רק מנהלי הטיול יכולים לשנות מה הלינק מראה.',
       notShared: 'הטיול עדיין לא משותף.',
+      /** The list's own header at Everything, where several links live side by side. */
+      linksHere: 'הלינקים ברמה הזאת',
+      manageLink: 'ניהול הלינק הזה',
+      sendLink: 'שליחת הלינק',
       failed: 'משהו השתבש. נסו שוב.',
       copyLink: 'העתקת הלינק',
       // **The sheet's first question, because the two links are two GRANTS** (ADR-0213's

@@ -1291,6 +1291,247 @@ amber/teal`, and an undefined custom property makes the whole declaration inert 
   spans `2:50` / `3:05`, the wait `המתנה ב-Frankfurt · 5:20 שע׳`, and the same four spans the
   screen shows.
 
+## Amendment — a link is a policy, not a level (2026-08-31, tenth pass)
+
+Owner, 2026-08-31: _"I want to be able to share with different privacy options (summary, full
+schedule, everything), and not choose only one. Different links, maybe link generated per
+viewing option idk."_ Then, on the first drawing, the same day:
+
+> _"The הכל category could have different levels of detail based on what you allow, so maybe
+> for that there could be multiple different links. Have you taken that into consideration?"_
+
+It had not. [`a-level-is-a-link-not-a-setting-v1.html`](../../mockups/a-level-is-a-link-not-a-setting-v1.html)
+drew a link per **level** and is kept as the dated record of the design that was corrected;
+[`a-link-is-a-policy-not-a-level-v2.html`](../../mockups/a-link-is-a-policy-not-a-level-v2.html)
+replaces it and this amendment is written against v2. **Built 2026-08-31** — see "What
+building it changed" at the foot for the three things the drawing could not see.
+
+This reverses §5's _"one reconfigurable public link per trip"_ and promotes the backlog's
+**Multiple audience links** line, narrowed to policy-keyed rather than named links (§7).
+
+### §1 · A level is not a policy, and that is the whole correction
+
+v1 keyed links on `detailLevel`. But a level does not determine a projection — Summary and
+Full each have exactly one policy because there is nothing in them to tune, while
+**Everything is a family**: `2³` sensitive combinations times every subset of the trip's
+files. A sister who needs confirmation codes and a hotel that should see only names are both
+Everything, and must not share a link.
+
+So the rule is **one link per policy**, and the counts fall out of it instead of being three
+cases somebody wrote down:
+
+| Level      | Policies  | Why                                                  |
+| ---------- | --------- | ---------------------------------------------------- |
+| Summary    | 1         | nothing to tune; the level is the whole policy       |
+| Full       | 1         | nothing to tune; the level is the whole policy       |
+| Everything | `2³ × 2ⁿ` | three sensitive switches × every subset of `n` files |
+
+v1 is the special case where the level happens to be sufficient, not a rule this generalises.
+
+### §2 · The feature removes a mechanism, and under a policy key it removes all of it
+
+§5 made the level a **setting on one link**, and the third pass then had to make that setting
+write immediately — a debounced `upsertTripShare` plus `levelSaved` (`הלינק החי מעודכן ·
+תקציר`), whose only job is to announce that the link just changed under whoever already holds
+it. Both exist solely because one link carries a policy.
+
+v1 deleted half of that and kept the debounce for the Everything toggles, since those still
+mutated a live link. **Under a policy key nothing in the sheet mutates a live link at all**:
+moving a toggle selects the policy you are about to hand over, exactly as moving the level
+does. The write, the announcement and the whole notion of a draft go.
+
+And it inverts the sentence that put them there. The third pass reasoned: _"a link that is
+already live is already showing something to whoever holds it, so the honest model is that
+moving the control moves the link."_ True when a trip had one link. With one link per
+audience it reverses — **a live link is a promise made to a named audience, and a promise
+that changes silently is the defect, not the fix.**
+
+### §3 · One constraint, and it hashes the policy
+
+```prisma
+- tripId String @unique
++ policyHash String
++ @@unique([tripId, policyHash])
+```
+
+`policyHash` is a stable hash of `detailLevel`, the three sensitive booleans and the sorted
+`documentIds` — the technique `ItineraryNarrative.inputHash` already runs in this same module
+(rule 8). A hash rather than a column list because the files live in a join table and cannot
+enter a unique constraint themselves.
+
+It is also what keeps `PUT` idempotent, which the sheet's no-Save design depends on: the same
+policy twice is the same hash, the same row and the same code. Every existing row gets its
+hash computed in the migration and keeps its `code`, so **no shipped `/s/<code>` stops
+resolving**.
+
+The rest of the API barely moves, because `upsertTripShareSchema` already carries every field
+of the policy:
+
+- `PUT /trips/:tripId/share` — unchanged body; the upsert keys on `(tripId, policyHash)`.
+- `GET /trips/:tripId/share` — returns `TripShareConfig[]`. The frontend is its only consumer.
+- `POST /trips/:tripId/share/:code/rotate` — rotate keys on the code, since a policy no longer
+  identifies a link uniquely once its code has been replaced.
+- `DELETE /trips/:tripId/share/:code` stops one link. **`DELETE /trips/:tripId/share` keeps
+  its current meaning** — stop sharing this trip — so the route that exists today is exactly
+  the stop-all in §5.
+
+Authorization is untouched: send is any member's, create/reconfigure/rotate/revoke are the
+admin's. A non-admin sees the live links and may send them, since each is already public.
+
+### §4 · The sheet is asymmetric, and the asymmetry is the table in §1
+
+Summary and Full keep v1's design and today's exactly — one loud send unit, one link, two
+outcomes. Measured at **525.6px against today's 525.6px**: that branch does not move.
+
+Everything renders `ListRow`/`RowManageSheet`, the app's managed-list primitive already
+serving bookings, documents and members (`frontend/CLAUDE.md`). Once one level holds N links
+you must be able to find and revoke the second of three, which is precisely what v1's
+"no list" rejection could not do — that rejection was right for three fixed levels and wrong
+here. Each row's title is the policy **derived** in the app's `·` grammar
+(`קודים · פתקים · 2 קבצים`) and its meta is the address.
+
+**The container already exists.** `.share-send` is a raised, bordered, `overflow: hidden`
+unit and `.wp-listrow` draws its own bottom hairline, so the list costs no CSS. The proposed
+stylesheet is still the 13 lines v1 asked for — the live mark and the stop-all — and the
+primitive needs one field, `Choice.ariaLabel`, so a marked level card is named
+`תקציר · לינק פעיל` (the mark is `aria-hidden`, and `ChoiceGrid` already emits a conditional
+`aria-label` for compact pills).
+
+The level card's dot means "at least one live link here". The exact count is in the list,
+which is where you are already looking.
+
+### §5 · Revocation, per link and total
+
+The `⋯` sheet carries send, copy, PDF, rotate, and — partitioned below the primitive's own
+hairline rather than tinted red in the stack — stop. It names its subject (ADR-0138 §3): the
+policy as its title, the address as the quiet line beneath, so the wrong link cannot be
+revoked unseen.
+
+Above them, a `--miss` **stop-all** that appears only when two or more links are live. With
+one, the row's own stop already ends everything, and two buttons doing the same thing is how
+the wrong one gets pressed.
+
+Minting stays on the send, unchanged: a policy with no link has no address to copy and its
+primary reads `יצירה ושליחה`. Opening the sheet publishes nothing; moving a toggle publishes
+nothing.
+
+**Editing a live link's policy is deliberately not offered.** Under a policy key it is
+incoherent — changing the policy changes the hash, so it is a different link. "Let my sister
+also see notes" is a new link plus stopping the old one, two presses. That cost is the price
+of the §2 inversion, and it is named here rather than hidden.
+
+### §6 · The narrative cache, and a defect found while costing this
+
+`ItineraryNarrative` is keyed by `shareId`, so N links mean up to N generations for one trip.
+Chasing that found something already true with one link: the input is built from **this**
+projection's days (`sharing-projection.service.ts`), and `placeName` is set only _after_ the
+Summary early return — so the same trip already produces a **different generated narrative
+depending on which level opens it**, today.
+
+Two changes, the first required before this ships or the model bill multiplies:
+
+1. Key the cache on `(tripId, locale, inputHash, skillVersion)` instead of `shareId`. The hash
+   already separates genuinely different inputs, so this only deduplicates where they
+   coincide — and it survives rotation and re-share, which per-share keying does not.
+2. Include `placeName` at every level, making the input level-invariant. Place names are
+   already Summary-public and already reach the model at Summary through `routeLabels`, and
+   §2's boundary is about _sensitive_ fields, which a public place's name is not.
+
+### §7 · What stays deferred
+
+**User-typed link names** — "for grandma", "for the hotel". Rejected more firmly than in v1,
+because the policy is now the title: `קודים · פתקים · 2 קבצים` states what the link
+_reveals_, which the app can verify, where a typed name states who it went to, which it
+cannot and which goes stale silently. A name remains a backlog item as an _addition_ to the
+derived title, not a replacement.
+
+**Two links at one policy** — independently revocable per recipient. Still the access-
+management feature the backlog describes, and still not what was asked.
+
+**A known cost, not solved here.** Asking for a PDF at a policy with no link mints that
+link — today's behaviour (`ensureShare` precedes the render), sharper now that every toggle
+combination is a possible address.
+
+### What building it changed
+
+**§1 · `placeName` LEAVES the generator's input; it does not become universal.** §6 above
+said "include `placeName` at every level, making the input level-invariant". Building it
+showed both ways of doing that are wrong: adding it to the Summary _projection_ changes what
+a Summary link publishes, which is a product change and not a cache fix; and projecting a
+second time purely to feed the generator doubles the work on every public read. Removing the
+field is level-invariant by construction, and it is strictly _less_ crossing the model
+boundary, which is the direction this ADR argues in everywhere else.
+
+What settled it is that `summaryNarrativeInputSchema`'s own docblock already claimed
+_"INDEPENDENTLY of the selected share level, so no Everything toggle can widen it"_ — and
+`placeName` was the one copied field that broke it. The schema is strict, so deleting the
+field turns the claim from a promise into a parse failure, which
+`sharing.test.ts` now pins. The trip's principal stops still reach the generator through
+`routeLabels`. Every stored narrative's hash is invalidated by the change; that is what the
+deterministic fallback is for, and no sweeper is needed (the eligibility rule is the key).
+
+**§2 · The primitive needed two fields, not one.** §4 promised `Choice.ariaLabel` alone. A
+mark that renders out of flow cannot be conjured by a name — it needs a slot — so
+`ChoiceGrid.Choice` gained `mark?: ReactNode` beside it. They are genuinely two things: the
+mark is `aria-hidden` paint that the host positions against the card, and the accessible
+name is what a screen reader gets instead of three identically-named cards.
+
+**§3 · A specificity tie hid the danger tone, and this is the third time in this sheet.**
+`.share-stop-all { color: var(--miss) }` lost to `.share-manage { color: var(--muted) }`
+several hundred lines below it — same one-class weight, later rule wins — so the stop-all
+rendered grey in the running app while every test passed. It is `.share-manage.share-stop-all`
+now, which is order-independent. The sheet's `gap` was the same shape of bug twice (see the
+manifest-order note below), so the pattern is worth naming: **a rule that describes a variant
+of an existing class must name both, or it is betting on file order.** Guarded in
+`trip-share-entry.spec.ts` on the _computed_ colour, because only a real engine resolves a
+cascade.
+
+**§4 · A failed read used to say "not shared".** `fetchTripShare`'s rejection was swallowed
+into `undefined`, which was nearly harmless when absent and failed looked the same. With a
+list they are opposite claims, and the dangerous direction is the one that was there: an
+owner told nothing is published while three links are live. The read now reports a failure,
+and the not-shared line is drawn only when a read actually succeeded. Found by a fixture
+whose `documentIds: ['d1']` failed `entityIdSchema`'s 8-character floor — one bad element
+had been dropping every sibling with it, silently.
+
+### What was verified
+
+- `pnpm typecheck`, `pnpm lint`, `pnpm build` clean; `pnpm test` 506 shared / 1232 backend /
+  4994 frontend; sharing e2e 14/14.
+- **Against a real database and a running backend**, on the seeded demo trip: four links on
+  one trip, two of them Everything with different policies; repeating a policy returned the
+  same code (idempotent); the four public reads differ exactly as their levels require
+  (Summary carries no `startLabel`, only Everything carries `ops`); rotate 404s the old code
+  and 200s the new; a per-link revoke 404s that link while its sibling still resolves;
+  re-sharing a revoked policy mints a fresh code and reuses the row (4 rows, not 5); and
+  `DELETE …/share` empties the list.
+- **The migration's agreement with the service is proven, not asserted.** A row inserted with
+  the backfill's own SQL expression (`sha256` over the canonical policy) resolves publicly,
+  and a `PUT` of that same policy returns **that row's code** with one row on the trip — so a
+  link minted before this amendment is found rather than duplicated. `share-policy.spec.ts`
+  additionally pins two literal digests taken from Postgres.
+- **In the running app at 390px:** the Everything branch lists two rows titled by their
+  derived policies (`קודים · פתקים`, `שמות`), two level cards carry the live mark, the scope
+  note reads `2 לינקים חיים · כל אחד עם המדיניות שלו`, the stop-all reads
+  `הפסקת כל השיתופים · 3` and computes to `rgb(194, 88, 78)` (`--miss`), and the `⋯` sheet
+  carries send / copy / PDF / rotate with stop partitioned below the hairline.
+- The mockup renders both themes at 360px and 390px with fonts loaded and **no console
+  errors**. Measured off its live DOM: today's sheet **525.6px**; the proposal at Summary
+  **525.6px** (that branch does not move); at Everything with three links **664.6px**; the
+  create sheet **679.1px**; the `⋯` sheet **384.1px**. List row **61px**, kebab **44px**,
+  level card **58px** and identical across all three (the mark is out of flow), link row
+  **44px**, outcome **48px**, switch row **52px** — all at or above ADR-0017's floor.
+- **A manifest-order defect in the previous sharing mockup, found by rendering v1.**
+  `.modal-form` sets `gap: var(--space-3)` and `.share-sheet` sets `gap: var(--space-4)`, both
+  one class — so the sheet's group rhythm is decided purely by which stylesheet is emitted
+  last. `sharing-and-inviting-are-one-control-v1.html` lists `screens.css` _before_ the
+  primitives, the opposite of the app (`App.tsx` reaches `form-actions.css` through
+  `screens/Home` → `HostTasks` → `TaskSheet` → `FormActions` at :64, long before its own
+  `import './screens.css'` at :113). That file reported 16px only because its proposed block
+  re-declared the rule on top of the inlined cascade.
+- **Not verified:** no device pass. The mark's diameter (7px against 9px) is still a control
+  in the mockup and 7px is what shipped.
+
 ## Alternatives considered
 
 - **One page with fields progressively removed.** Rejected: less information is not automatically the right emphasis.

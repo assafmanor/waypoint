@@ -24,6 +24,12 @@ import { redactedOrUndefined } from './narrative-redaction';
  * copies four fields off each event by name. There is no path by which an Everything toggle
  * reaches it, because the shape it reads from does not have those fields to offer.
  *
+ * **`placeName` was the exception, and it is gone** (ADR-0213's tenth amendment §6). It is
+ * the one copied field the projection sets only AFTER its Summary early return, so the
+ * "independently of the selected level" claim was false for it: one trip generated a
+ * different narrative depending on which level happened to open it. The trip's principal
+ * stops still travel, in `routeLabels`.
+ *
  * Every string that survives goes through redaction first: an allowlist governs which
  * *fields* travel, and free text inside an allowed field is a different question (see
  * `narrative-redaction.ts` for why that is defence in depth rather than the defence).
@@ -48,7 +54,6 @@ export function buildSummaryNarrativeInput(
               daypart: event.daypart,
               icon: event.icon ?? undefined,
               category: event.category ?? undefined,
-              placeName: redactedOrUndefined(event.placeName),
             },
           ];
         }),
@@ -81,7 +86,7 @@ const errorMessage = (error: unknown): string =>
 @Injectable()
 export class ItineraryNarrativeService {
   private readonly logger = new Logger(ItineraryNarrativeService.name);
-  /** In-flight generations, so a burst of reads on one link starts one job, not fifty. */
+  /** In-flight generations, so a burst of reads on one trip starts one job, not fifty. */
   private readonly running = new Set<string>();
 
   constructor(
@@ -90,8 +95,14 @@ export class ItineraryNarrativeService {
     private readonly generator: ItineraryNarrativeGenerator,
   ) {}
 
+  /**
+   * @param tripId the cache key's subject — the TRIP, not the share (ADR-0213's tenth
+   *   amendment §6). The input below is level-invariant by construction, so several links
+   *   on one trip describe the same trip and must not each pay for a generation; keying on
+   *   the trip also survives a rotation or a re-share, where per-share keying started cold.
+   */
   async resolve(
-    shareId: string,
+    tripId: string,
     days: SharedDay[],
     routeLabels: string[],
     locale: string,
@@ -117,8 +128,8 @@ export class ItineraryNarrativeService {
 
     const stored = await this.prisma.itineraryNarrative.findUnique({
       where: {
-        shareId_locale_inputHash_skillVersion: {
-          shareId,
+        tripId_locale_inputHash_skillVersion: {
+          tripId,
           locale,
           inputHash,
           skillVersion: this.generator.skillVersion,
@@ -132,30 +143,30 @@ export class ItineraryNarrativeService {
       if (parsed.success) return toStrings(parsed.data);
       // Stored JSON that no longer satisfies the schema is treated as absent rather than
       // repaired: the schema is the contract, and text that fails it was never publishable.
-      this.logger.warn(`stored itinerary narrative failed validation for share ${shareId}`);
+      this.logger.warn(`stored itinerary narrative failed validation for trip ${tripId}`);
     }
 
-    this.scheduleGeneration(shareId, locale, inputHash, input);
+    this.scheduleGeneration(tripId, locale, inputHash, input);
     return deterministic;
   }
 
   /** Fire-and-forget. Nothing awaits this, and nothing about the response depends on it. */
   private scheduleGeneration(
-    shareId: string,
+    tripId: string,
     locale: string,
     inputHash: string,
     input: SummaryNarrativeInput,
   ): void {
-    const key = `${shareId}:${locale}:${inputHash}:${this.generator.skillVersion}`;
+    const key = `${tripId}:${locale}:${inputHash}:${this.generator.skillVersion}`;
     if (this.running.has(key)) return;
     this.running.add(key);
-    void this.generateAndStore(shareId, locale, inputHash, input)
+    void this.generateAndStore(tripId, locale, inputHash, input)
       .catch((error) => this.logger.warn(`narrative generation failed: ${errorMessage(error)}`))
       .finally(() => this.running.delete(key));
   }
 
   private async generateAndStore(
-    shareId: string,
+    tripId: string,
     locale: string,
     inputHash: string,
     input: SummaryNarrativeInput,
@@ -165,20 +176,20 @@ export class ItineraryNarrativeService {
 
     const parsed = itineraryNarrativeOutputSchema.safeParse(raw);
     if (!parsed.success) {
-      this.logger.warn(`generator returned unpublishable narrative for share ${shareId}`);
+      this.logger.warn(`generator returned unpublishable narrative for trip ${tripId}`);
       return;
     }
     await this.prisma.itineraryNarrative.upsert({
       where: {
-        shareId_locale_inputHash_skillVersion: {
-          shareId,
+        tripId_locale_inputHash_skillVersion: {
+          tripId,
           locale,
           inputHash,
           skillVersion: this.generator.skillVersion,
         },
       },
       create: {
-        shareId,
+        tripId,
         locale,
         inputHash,
         skillVersion: this.generator.skillVersion,

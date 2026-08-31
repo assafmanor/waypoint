@@ -36,6 +36,27 @@ export interface Choice<T extends string> {
    *  needed no second card shape. */
   lead?: ReactNode;
   label: string;
+  /** An out-of-flow STATE marker painted on the card, `grid` layout only.
+   *
+   *  Deliberately not the icon slot: `.choice-card` is a flex column that the grid
+   *  stretches to its tallest sibling, so a mark in the slot raises every card in the row
+   *  and leaves the unmarked labels floating (ADR-0213's tenth amendment §4). The host
+   *  positions it absolutely against the card, which is why this is a slot rather than a
+   *  boolean — the meaning and the hue are the host's, and rule 4 governs them there.
+   *
+   *  Decorative: it is `aria-hidden`, so an option that carries one owes `ariaLabel`. */
+  mark?: ReactNode;
+  /** The option's accessible name, when the card carries a MARK the label does not say.
+   *
+   *  The share sheet's level cards are the first: a live link shows as a dot, the dot is
+   *  `aria-hidden` paint, and without this a screen reader hears three identically-named
+   *  cards and cannot tell which levels are already published (ADR-0213's tenth amendment
+   *  §4). Deliberately one field on this primitive rather than a second grid — the
+   *  conditional `aria-label` below already existed for compact pills, and this is the
+   *  same line reached by a second condition.
+   *
+   *  Omit it whenever the label alone is the whole name, which is every other host. */
+  ariaLabel?: string;
   /** Trailing count badge, `pills` layout only (the Index category filter,
    *  ADR-0100 §2 — each chip carries label+icon+count). Decorative/aria-hidden
    *  like the icon, so it never changes the option's accessible name.
@@ -113,7 +134,7 @@ export function ChoiceGrid<T extends string>({
             type="button"
             role="radio"
             aria-checked={o.value === value}
-            aria-label={glyphOnly ? o.label : undefined}
+            aria-label={o.ariaLabel ?? (glyphOnly ? o.label : undefined)}
             className={(pills ? 'choice-pill' : 'choice-card') + (o.value === value ? ' on' : '')}
             onClick={() => onChange(o.value)}
             disabled={disabled}
@@ -137,6 +158,7 @@ export function ChoiceGrid<T extends string>({
                   </span>
                 )}
                 <span className="choice-card-lbl">{o.label}</span>
+                {o.mark}
               </>
             )}
           </button>
