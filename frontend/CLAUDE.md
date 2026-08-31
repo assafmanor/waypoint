@@ -568,6 +568,14 @@ leak, session 260):
     failure count, read the **file** count beside it — 3564 passing looked
     healthy while 23 tests were not running at all.
 
+**A shared primitive's classes stop identifying a surface the moment it has two hosts.** The night
+board's strip and the Home glance rail are both `styles/day-track.css` (ADR-0214 §5 / ADR-0215 §2),
+so an unscoped `document.querySelectorAll('.wp-track-blk')` counts **two cards on one screen** — and
+a spec about tomorrow silently starts measuring today. Cost one red test the day the second consumer
+landed. Scope every query to the host class (`.wp-board-tmr` / `.glance-track`), which is the one
+thing only that surface carries. Same shape as the day-surface trap below (a descendant selector
+reaching the peek panes), and it will recur on the third consumer.
+
 **Two traps in measuring a box in an e2e spec**, both of which cost a red CI on `main`
 (day-swipe, 2026-08-22) and neither of which fails loudly:
 

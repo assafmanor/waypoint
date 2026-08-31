@@ -77,9 +77,13 @@ export interface GlancePointAnchor {
   timeMs: number;
   /** The event's own icon (or its category default) — the shared badge glyph. */
   icon: string;
-  /** Stacking row (0 = nearest the bar). Anchors whose pills would overlap are
-   *  pushed to a higher lane so labels never collide (ADR-0077). */
-  lane: number;
+  /** **The event draws no block on the rail**, so a surface that wants the moment visible has
+   *  to draw it itself (ADR-0215 §2). True exactly for an ambient span's own edge (a stay's
+   *  check-in / check-out, a car's pick-up / return, ADR-0054): those are excluded from the
+   *  counted rail while ADR-0164 still counts them in `remaining` — so dropping the pill
+   *  without drawing the instant would have made a check-out vanish from a card whose number
+   *  is still counting it. Resolved here because this is where both halves are known. */
+  standalone: boolean;
   /** This edge's display zone (ADR-0107) — a departure reads its origin zone, an
    *  arrival its destination. Absent when the caller passed no zone context; the
    *  render then falls back to the card's base zone, exactly as before. */
@@ -107,7 +111,10 @@ export interface GlanceSpanAnchor {
    *  so an eastbound overnight flight isn't marked "+1" when it lands the same
    *  local day (ADR-0107). */
   nextDay: boolean;
-  lane: number;
+  /** See {@link GlancePointAnchor.standalone}. A same-day bracket is on the rail, so this is
+   *  false for every span the derivation can produce today; carried on both shapes so a
+   *  consumer never has to ask which kind it is holding. */
+  standalone: boolean;
   /** Both ends' display zones + the shift between them (ADR-0107): a same-day
    *  zone-crossing flight renders its departure in the origin's clock and its
    *  arrival in the destination's, with the delta as a pill. Absent when the
@@ -121,15 +128,12 @@ export interface DayGlance {
   windowStartMs: number;
   windowEndMs: number;
   segs: GlanceSeg[];
-  /** Amber time-anchors above the block bar (ADR-0077) — spans + points. */
+  /** **A bracketed booking's transitions on this day** — the model ADR-0077 built to place amber
+   *  pills above the rail, kept whole; what ADR-0215 withdrew is the PLACEMENT, not the facts.
+   *  The Home rail now draws `standalone` anchors as ticks (`lib/glance-track.ts`) and the words,
+   *  the times and each edge's own zone (ADR-0107) read on the day's rows, one tap away, where
+   *  there is room for them. */
   anchors: GlanceAnchor[];
-  /** How many stacked lanes the anchors occupy (0 when there are none) — the
-   *  render sizes the anchor band from this. */
-  anchorLaneCount: number;
-  /** The anchor band would exceed `MAX_ANCHOR_LANES` (a crowded first/last trip
-   *  day): the render collapses the positioned anchors to a flow "legs line"
-   *  below the rail instead, where overlap is impossible (ADR-0077 §D). */
-  anchorsCollapsed: boolean;
   /** Now's position in the window (0..1), or null when now is outside it
    *  (i.e. a past/future day being browsed). */
   nowFrac: number | null;
@@ -145,41 +149,10 @@ export interface DayGlance {
  *  layered cue) so two short, close-by composites can't overlap chips. */
 const MIN_COUNT_FRAC = 0.14;
 
-/** Two anchor pills whose centres are closer than this fraction of the rail
- *  would overlap, so the later one is pushed up a lane (stacked, not smeared) —
- *  and past `MAX_ANCHOR_LANES` the whole band collapses to the legs line. This
- *  is what makes "would cover another" the real collapse trigger, so it has to
- *  match a real pill's width, not undershoot it. Sized to the phone (mobile-
- *  first, ADR-0017): a heavy pill (icon + Hebrew word + mono time, or icon +
- *  two times + arrow) is ~116px, and the glance rail is ~320px inside the card
- *  at a 360px viewport → ~0.36. The old 0.28 undershot this, so two pills that
- *  actually overlapped still shared a lane and smeared (ADR-0077). */
-const MARKER_MIN_GAP_FRAC = 0.36;
-
-/** Past this many anchor lanes the band is too tall for a glance, so the render
- *  collapses to the flow legs line instead (ADR-0077 §D). */
-const MAX_ANCHOR_LANES = 2;
-
 /** An anchor's centre on the rail (0..1): a point is its instant; a span is the
  *  midpoint of its bar, where its pill sits. */
 const anchorCenter = (a: GlanceAnchor): number =>
   a.kind === 'span' ? (a.startFrac + a.endFrac) / 2 : a.frac;
-
-/** Stack anchors (pre-sorted by centre) into lanes: each goes in the lowest lane
- *  whose last pill centre is at least a pill-width away, else a new lane. Mutates
- *  `lane` and returns the lane count. Pure and width-independent — the render only
- *  needs the lane index and total to size the band. */
-function assignAnchorLanes(anchors: GlanceAnchor[]): number {
-  const laneLastCenter: number[] = [];
-  for (const a of anchors) {
-    const c = anchorCenter(a);
-    let lane = 0;
-    while (lane < laneLastCenter.length && c - laneLastCenter[lane] < MARKER_MIN_GAP_FRAC) lane++;
-    laneLastCenter[lane] = c;
-    a.lane = lane;
-  }
-  return laneLastCenter.length;
-}
 
 const startMsOf = (e: TripEvent) => Date.parse(e.startsAt!);
 const endMsOf = (e: TripEvent) => (e.endsAt ? Date.parse(e.endsAt) : Date.parse(e.startsAt!));
@@ -415,8 +388,6 @@ export function buildDayGlance(
       windowEndMs: day23Ms,
       segs: [],
       anchors: [],
-      anchorLaneCount: 0,
-      anchorsCollapsed: false,
       nowFrac: null,
       remaining: 0,
     };
@@ -566,7 +537,7 @@ export function buildDayGlance(
           (zones
             ? crossesMidnightZoned(e.startsAt, e.endsAt, zones.startZone, zones.endZone)
             : crossesMidnight(e.startsAt, e.endsAt, timeZone)),
-        lane: 0,
+        standalone: isAmbient(e),
         zones,
       });
     } else {
@@ -579,15 +550,13 @@ export function buildDayGlance(
         labelKey: tr.labelKey,
         timeMs: tr.atMs,
         icon: iconOf(e),
-        lane: 0,
+        standalone: isAmbient(e),
         zone: edge?.zone,
         deltaMinutes: edge?.deltaMinutes,
       });
     }
   }
   anchors.sort((a, b) => anchorCenter(a) - anchorCenter(b));
-  const anchorLaneCount = assignAnchorLanes(anchors);
-  const anchorsCollapsed = anchorLaneCount > MAX_ANCHOR_LANES;
 
   const nowFrac = nowMs >= windowStartMs && nowMs <= windowEndMs ? frac(nowMs) : null;
 
@@ -597,8 +566,6 @@ export function buildDayGlance(
     windowEndMs,
     segs,
     anchors,
-    anchorLaneCount,
-    anchorsCollapsed,
     nowFrac,
     remaining,
   };

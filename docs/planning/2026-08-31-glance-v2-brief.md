@@ -1,7 +1,13 @@
 # Glance v2 — the brief, and the plan for getting there
 
 **Date:** 2026-08-31
-**Status:** **drawn, not built.** Step 3 of the plan below shipped the same day as the brief —
+**Status:** **built** — [ADR-0215](../decisions/0215-the-glance-card-says-what-only-it-can-say.md), the
+same day, on the owner's _"let's build everything on the same pr"_ (PR #765). Every fork shipped at
+the mockup's own recommended default and the placement moved with them; what the running app added
+afterwards is in the ADR's build log. The history below is left as written — it is the record of how
+the answers were reached, and the numbers in it are what the decisions stood on.
+
+**Originally:** **drawn, not built.** Step 3 of the plan below shipped the same day as the brief —
 [`mockups/glance-v2.html`](../../mockups/glance-v2.html) — and the findings are amended into this
 note in place rather than into a second one (root `CLAUDE.md`: amend the doc that already covers
 it). **Three forks are with the owner**; the ADR is deliberately unwritten until they are answered,
@@ -195,7 +201,7 @@ rail made two marks touch — because `DAY_TRACK.MARK_MIN_PX = 16` **is the glyp
 (measured: ⁦16.2px⁩ at ⁦13px⁩, ⁦18.7px⁩ at ⁦15px⁩), so the size and the floor are one decision living in
 two files.
 
-### The three forks, with the recommendation each
+### The three forks, with the recommendation each — **all three answered «as recommended»**
 
 The mockup's **defaults are the recommendation**, and every alternative is drawn beside it.
 

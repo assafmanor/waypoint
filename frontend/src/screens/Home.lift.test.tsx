@@ -189,6 +189,14 @@ const show = () => render(wrapNav(<Home />));
 /** The board is the tap target now, so "is it liftable" is "is it a button". */
 const board = () => document.querySelector('.wp-board');
 
+/** **Scoped to the BOARD's strip, and it has to be** (ADR-0215 §2): the Home glance card now
+ *  renders the same shared track (`.wp-track-*`), so an unscoped query counts two surfaces and a
+ *  spec about tomorrow silently starts measuring today. `.wp-board-tmr` is the board's own host
+ *  class — the one thing only the strip carries. This is `frontend/CLAUDE.md`'s day-surface trap
+ *  (a descendant selector reaching the peek panes) in its second clothing. */
+const TMR_BLK = '.wp-board-tmr .wp-track-blk';
+const TMR_MARK = '.wp-board-tmr .wp-track-mark';
+
 describe('Home — the lift wiring', () => {
   beforeEach(() => {
     setSimulatedNow(Date.parse(NOW));
@@ -260,7 +268,7 @@ describe('Home — the lift wiring', () => {
       expect(document.querySelector('.wp-board-next-meta')?.textContent).not.toContain('מחר');
       // And the rail's slot carries tomorrow's shape instead of a knob at ~⁦98%⁩.
       expect(document.querySelector('.wp-board-progress.wp-track')).toBeTruthy();
-      expect(document.querySelectorAll('.wp-track-blk').length).toBeGreaterThan(0);
+      expect(document.querySelectorAll(TMR_BLK).length).toBeGreaterThan(0);
     });
 
     // ── THE TOMORROW STRIP'S OWN SEAM (ADR-0214) ─────────────────────────────
@@ -272,13 +280,13 @@ describe('Home — the lift wiring', () => {
       setSimulatedNow(Date.parse(EVENING));
       tripEvents = [dinner(), tomorrowFlight()];
       show();
-      const marks = [...document.querySelectorAll('.wp-track-mark')].map((m) => m.textContent);
+      const marks = [...document.querySelectorAll(TMR_MARK)].map((m) => m.textContent);
       // `tomorrowFlight` carries no icon of its own, so the mark is its category's default —
       // the same answer the glance rail gives, through the same resolver.
       expect(marks).toHaveLength(1);
       expect(marks[0]).toBeTruthy();
       // One block: tomorrow holds exactly the one event, and today's dinner is not on it.
-      expect(document.querySelectorAll('.wp-track-blk')).toHaveLength(1);
+      expect(document.querySelectorAll(TMR_BLK)).toHaveLength(1);
     });
 
     // **The day strip must not change what the live board says**, which is ADR-0211's own rule
@@ -288,7 +296,7 @@ describe('Home — the lift wiring', () => {
       tripActiveDate = '2026-08-06';
       tripEvents = [dinner(), tomorrowFlight()];
       show();
-      expect(document.querySelectorAll('.wp-track-blk')).toHaveLength(1);
+      expect(document.querySelectorAll(TMR_BLK)).toHaveLength(1);
       expect(document.querySelector('.wp-board-next-label')?.textContent).toBe('מחר');
     });
 
@@ -939,5 +947,76 @@ describe('Home — the lift wiring', () => {
     const foot = document.querySelector('.hero-foot')!;
     expect(foot.querySelector('.wp-board-progress')).toBeTruthy();
     expect(foot.querySelector('.wp-board-transit-prog')).toBeNull();
+  });
+});
+
+// ── THE DAY AT A GLANCE, ON HOME (ADR-0215) ──────────────────────────────────
+// **Here rather than in a file of its own** because the seam needs this file's whole-Home
+// harness — the trip-state mock above is ~⁦60⁩ lines of fixtures — and extracting a shared Home
+// harness is a refactor to ask about, not to smuggle into a card change (root rule 8).
+describe('Home — the day at a glance', () => {
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    tripEvents = [];
+    tripNotes = [];
+    tripBookings = [];
+    tripPlaces = [];
+    tripActiveDate = DAY;
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  const titles = () => [...document.querySelectorAll('.sec-title')].map((el) => el.textContent);
+
+  // ADR-0215 §1. Asserted rather than trusted for the same reason `EventForm.test.tsx` asserts
+  // its five bands: the card's old slot was inherited from a deleted fixture row precisely
+  // because nothing was watching where it sat.
+  it('the day shape comes BEFORE the shortcuts, not after them', () => {
+    tripEvents = [ev('a'), ev('b', { startsAt: `${DAY}T19:00:00Z`, endsAt: `${DAY}T21:00:00Z` })];
+    show();
+    const order = titles();
+    expect(order).toContain(t.glance.title);
+    expect(order).toContain(t.quick.title);
+    expect(order.indexOf(t.glance.title)).toBeLessThan(order.indexOf(t.quick.title));
+  });
+
+  it('the card draws the day as the shared track, and the board keeps its own', () => {
+    tripEvents = [ev('a'), ev('b', { startsAt: `${DAY}T19:00:00Z`, endsAt: `${DAY}T21:00:00Z` })];
+    show();
+    expect(document.querySelectorAll('.glance-track .wp-track-blk')).toHaveLength(2);
+    // The two surfaces are not one query: the board's rail is its own host class.
+    expect(document.querySelector('.glance-day .wp-board-tmr')).toBeNull();
+    expect(document.querySelector('.glance-day .nowmark')).toBeTruthy();
+  });
+
+  // ADR-0215 §2 end to end: an ambient stay has an anchor and no segment, and ADR-0164 counts
+  // its edge — so the rail has to draw the instant or the card contradicts its own number.
+  it('a stay check-out today is a hard tick on the card', () => {
+    tripEvents = [
+      ev('a'),
+      ev('stay', {
+        category: 'lodging',
+        date: '2026-08-01',
+        endDate: DAY,
+        startsAt: '2026-08-01T15:00:00Z',
+        endsAt: `${DAY}T10:00:00Z`,
+      }),
+    ];
+    show();
+    expect(document.querySelectorAll('.glance-track .wp-track-blk.point.hard')).toHaveLength(1);
+    // And no pill band came with it (ADR-0077 withdrawn from this rail).
+    expect(document.querySelector('.glance-marks')).toBeNull();
+    expect(document.querySelector('.glance-day .achip')).toBeNull();
+  });
+
+  // ADR-0215 §4: the board's gap slot carries this within an inch of the card, and the card's
+  // copy is the one that goes. An absence assertion, so it reads the KEY rather than a literal.
+  it('nothing on Home says `פנוי עד` twice', () => {
+    tripEvents = [ev('b', { startsAt: `${DAY}T19:00:00Z`, endsAt: `${DAY}T21:00:00Z` })];
+    show();
+    expect(document.body.textContent).not.toContain(t.board.freeLabel + ' ' + t.board.until);
+    expect(document.querySelector('.glance-day .lead')).toBeNull();
   });
 });

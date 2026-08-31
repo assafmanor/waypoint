@@ -22,8 +22,9 @@
 // Pure and injected, like `gap-character.ts`: fractions in, a view model out. No formatting, no
 // zone resolution, no `Date.now()`, and nothing that measures the DOM — a consumer must be able
 // to compute this during render rather than after it.
+import { EVENT_KIND, type TripEvent } from '@waypoint/shared';
 import { DAY_TRACK } from '../constants';
-import type { GlanceSeg } from './glance';
+import { eventDisplayIcon, type GlanceSeg } from './glance';
 
 /** One occupied stretch of the day, in window fractions (0..1) — `DayGlance`'s own scale. */
 export interface TrackBlock {
@@ -39,6 +40,15 @@ export interface TrackBlock {
   /** Several events collapsed into one box (a cluster or an envelope, ADR-0041). Carried
    *  because a consumer with room may want to say so — the strip deliberately does not. */
   composite: boolean;
+  /** **Behind the clock** — `done` or `passed` (ADR-0215 §3). Derived from the segment's own
+   *  phase rather than asked of the caller, because the phase is already on it; the night
+   *  board's ribbon is a future day, where every segment comes back `upcoming`, so this is
+   *  `false` throughout there and the strip is unchanged by its existence. */
+  spent: boolean;
+  /** Let go, not missed: the soft grammar's own answer (ADR-0011), drawn hatched rather than
+   *  filled. `tomorrowRibbon` drops these before they reach here — a stop nobody has lived
+   *  cannot have been skipped — so this too is `false` on the board. */
+  skipped: boolean;
   /** The block whichever header names, so it can be marked without a caption. At most one. */
   cue: boolean;
 }
@@ -64,6 +74,31 @@ export interface TrackBlocksOptions {
   isCue?: (seg: GlanceSeg, index: number) => boolean;
   /** Whether a segment is drawn at all. Defaults to "everything the glance returned". */
   include?: (seg: GlanceSeg) => boolean;
+}
+
+/**
+ * **The icon and the commitment, resolved from the day's events** — the two facts a `GlanceSeg`
+ * does not carry, looked up rather than re-derived: a segment's key is its root event's id, so
+ * this is a `Map` read and never a second opinion about which glyph an event has.
+ *
+ * Here rather than at each screen because both consumers want the identical answer, and the
+ * night board's version of it was already written at the screen once (ADR-0214). A second copy is
+ * how the strip and the rail would start disagreeing about one event.
+ */
+export function trackMetaFor(events: readonly TripEvent[], segs: GlanceSeg[]): TrackMeta {
+  const byId = new Map(events.map((event) => [event.id, event]));
+  return Object.fromEntries(
+    segs.map((seg) => {
+      const event = byId.get(seg.key);
+      return [
+        seg.key,
+        {
+          ...(event ? { icon: eventDisplayIcon(event) } : {}),
+          hard: event?.kind === EVENT_KIND.HARD,
+        },
+      ];
+    }),
+  );
 }
 
 /** The spacing two marks need in FRACTION space, computed for the NARROWEST track — which is
@@ -98,6 +133,8 @@ export function trackBlocks(
     point: seg.point || seg.endFrac - seg.startFrac < 1e-9,
     nextDay: seg.nextDay,
     composite: seg.composite,
+    spent: seg.phase === 'done' || seg.phase === 'passed',
+    skipped: seg.phase === 'skipped',
     cue: isCue ? isCue(seg, i) : false,
   }));
 }
@@ -180,10 +217,19 @@ export const trackBlockStyle = (block: TrackBlock): Record<string, string> => ({
 });
 
 /** The class list for a block, from its own flags — one string builder, so the board and the
- *  glance cannot end up spelling `next-day` two ways. */
+ *  glance cannot end up spelling `next-day` two ways.
+ *
+ *  Every flag gets a class, including the ones a given host has no rule for: `multi` is styled
+ *  by the glance (a layered top edge, no number) and deliberately unstyled on the board, where
+ *  ADR-0214 §8 refused composite marking because a ⁦3px⁩ inset on a ⁦3px⁩ track is the whole block.
+ *  A class with no rule costs nothing; a builder that decides per host is how two spellings
+ *  start. */
 export const trackBlockClass = (block: TrackBlock): string =>
   'wp-track-blk' +
   (block.hard ? ' hard' : '') +
   (block.point ? ' point' : '') +
   (block.nextDay ? ' next-day' : '') +
+  (block.composite ? ' multi' : '') +
+  (block.spent ? ' spent' : '') +
+  (block.skipped ? ' skip' : '') +
   (block.cue ? ' cue' : '');

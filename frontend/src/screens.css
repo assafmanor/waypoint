@@ -475,25 +475,32 @@ body.wp-dragging
 
    Amber survives on the GLYPH alone, which is rule 4 spent where it is true — a travel time is
    time (§D1) — at the one strength a summary can carry. */
-.day-ambient .day-total {
+/* **UNSCOPED FROM `.day-ambient` BY ADR-0215 §6**, because the component moved and the rules had
+   not: `DayTravelTotal` now also renders in the Home glance card's foot, and a second copy of
+   three declarations under a second host is the duplication root rule 8 exists to stop. What
+   stayed at the host is the one thing that IS the host's — the inline padding that lines this line
+   up with the day cards beside it. */
+.day-total {
   display: flex;
   align-items: center;
   gap: 9px;
+}
+.day-ambient .day-total {
   padding: 0 12px;
 }
-.day-ambient .day-total-ic {
+.day-total-ic {
   display: flex;
   flex: 0 0 auto;
   color: var(--amber-deep);
 }
-.day-ambient .day-total-ic .icon {
+.day-total-ic .icon {
   width: 14px;
   height: 14px;
 }
 /* `.an`'s truncation, for `.an`'s reason: at 360 the line measures well inside the box (§AP), but
    a text scale is a box this app does not control, and a total that wraps pushes the day's first
    row down. The distance leads, so what an ellipsis takes is the hedged half. */
-.day-ambient .day-total-n {
+.day-total-n {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -507,7 +514,7 @@ body.wp-dragging
    read as one line rather than as a fact and a footnote. It cannot shrink: the ground half owns
    the ellipsis above (the hedged half is what an overflow should take), and a carried distance
    is four digits of pure number with nothing in it to truncate gracefully. */
-.day-ambient .day-total-air {
+.day-total-air {
   display: flex;
   align-items: center;
   gap: 9px;

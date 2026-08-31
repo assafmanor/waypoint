@@ -2336,15 +2336,22 @@ export const t = {
   // "נותרו" and overlaps never inflate the day.
   glance: {
     title: 'היום במבט',
-    remaining: 'נותרו היום',
-    hardAnchor: 'עוגן קשיח',
-    freeUntil: 'פנוי עד',
+    // **WHAT IS LEFT OF THE DAY, AS A SENTENCE** (ADR-0215 §4), replacing the ⁦32px⁩ mono numeral
+    // beside `נותרו היום`: in the evening the common reading was a huge `0`, which is the
+    // opposite of inviting, and the night board now speaks for that moment anyway.
+    //
+    // **The verb is the one the card already used** — a reader does not have to relearn the
+    // number — and the noun is deliberately `דברים`, which is this app's word for a mixed bag
+    // (`דברים קטנים שכדאי לזכור`, `דברים שצריך לסגור`). Not `עצירות`: ADR-0159 spent `עצירה`
+    // on a layover, and this count is not events either — it counts the containment forest's
+    // ROOTS (ADR-0041/0045), so three things at once are one of them. `דברים` is the only
+    // word here that is true of a block.
+    //
+    // At zero it says the day is done rather than counting to nothing, and the card renders
+    // that arm quiet — the sentence steps back instead of announcing an absence.
+    leftToday: (n: number) =>
+      n === 0 ? 'זה הכל להיום' : n === 1 ? 'נותר דבר אחד היום' : `נותרו ${n} דברים היום`,
     dayEnds: 'מסתיים',
-    // Collapsed composite blocks on the rail: a cluster of parallel peers ("×N")
-    // or an envelope with nested children ("כולל N"); overnight end marker.
-    concurrent: (n: number) => `×${n}`,
-    contains: (n: number) => `כולל ${n}`,
-    nextDay: '+1',
     emptyTitle: 'היום עוד פתוח',
     emptySub: 'אין אירועים מתוכננים · יום חופשי',
     emptyAdd: 'הוסיפו אירוע',

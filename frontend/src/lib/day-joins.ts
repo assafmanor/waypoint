@@ -806,6 +806,13 @@ export interface DayTravelTotal {
  * total says it is a floor. Required rather than optional for `useDayTravelReads`' own reason: a
  * surface that forgets to pass it silently claims completeness it has not got.
  */
+/** **Whether a total has anything to say** — the condition `DayTravelTotal` renders on, named so a
+ *  host that puts something BESIDE it (the glance card's foot, ADR-0215 §6) asks the same question
+ *  rather than keeping a second copy of it. `partial` alone is not content: a day whose only
+ *  measurable legs were unplaced has a floor over nothing. */
+export const hasTravelTotal = (total: DayTravelTotal | null | undefined): boolean =>
+  !!total && (total.distanceMeters !== null || total.airMeters !== null);
+
 export function dayTravelTotal(
   journeys: readonly (DayJourney | null)[],
   unplacedLegs: number,

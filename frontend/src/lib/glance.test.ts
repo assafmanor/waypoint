@@ -447,11 +447,17 @@ describe('buildDayGlance', () => {
     const g = buildDayGlance(events, DATE, ms('12:00'), day07, day23, TZ);
     expect(g.anchors).toHaveLength(1);
     expect(g.anchors[0].kind).toBe('span');
-    expect(g.anchorLaneCount).toBe(1);
-    expect(g.anchorsCollapsed).toBe(false);
+    // A same-day flight IS on the counted rail, so the rail needs no tick of its own for it.
+    expect(g.anchors[0].standalone).toBe(false);
   });
 
-  it('keeps well-separated anchors on a single lane', () => {
+  // ── WHICH ANCHORS THE RAIL HAS TO DRAW ITSELF (ADR-0215 §2) ────────────────
+  // `standalone` replaced the lane/collapse machinery when the pill band was withdrawn: what a
+  // renderer needs is not where a pill would fit but whether the MOMENT is on the rail at all.
+  // An ambient span is excluded from the counted rail (ADR-0054) while ADR-0164 still counts its
+  // edge in `remaining` — so these are exactly the anchors that must become ticks, or a card
+  // would say `2` and show one thing.
+  it('an ambient edge is standalone; a same-day bracket is not', () => {
     const events = [
       // an ambient hotel check-in (a point) far from a morning flight (a span)
       ev({
@@ -471,16 +477,14 @@ describe('buildDayGlance', () => {
     ];
     const g = buildDayGlance(events, DATE, ms('12:00'), day07, day23, TZ);
     expect(g.anchors).toHaveLength(2);
-    expect(g.anchorLaneCount).toBe(1);
-    expect(g.anchorsCollapsed).toBe(false);
-    expect(g.anchors.every((a) => a.lane === 0)).toBe(true);
+    const byKind = Object.fromEntries(g.anchors.map((a) => [a.kind, a.standalone]));
+    expect(byKind).toEqual({ point: true, span: false });
   });
 
-  it('pushes two pill-width-apart anchors onto separate lanes (no smear)', () => {
-    // A checkout (point) and a check-in (point) ~0.30 of the rail apart: wide
-    // enough that the old gap (0.28) kept them on one lane, where two heavy
-    // pills still visually cover each other. The gap now matches a real phone
-    // pill (~0.36), so they split to two lanes instead of smearing (ADR-0077).
+  it('both edges of a bed that moves are standalone', () => {
+    // The transfer day: a check-out and a check-in, neither with a block on the rail. Under
+    // ADR-0077 this pair was the lane machinery's hardest case (two heavy pills ~0.30 apart);
+    // as ticks it is two instants and there is nothing to stack.
     const events = [
       ev({
         id: 'hotelOut',
@@ -501,14 +505,13 @@ describe('buildDayGlance', () => {
     const g = buildDayGlance(events, DATE, ms('12:00'), day07, day23, TZ);
     expect(g.anchors).toHaveLength(2);
     expect(g.anchors.every((a) => a.kind === 'point')).toBe(true);
-    expect(g.anchorLaneCount).toBe(2);
-    expect(g.anchorsCollapsed).toBe(false); // two lanes is still readable above
-    expect(g.anchors[0].lane).not.toBe(g.anchors[1].lane);
+    expect(g.anchors.every((a) => a.standalone)).toBe(true);
   });
 
-  it('collapses a crowded anchor band to the legs line (ADR-0077 §D)', () => {
-    // Three transition anchors clustered around midday → they would need >2
-    // lanes, so the band collapses.
+  it('the arrival day: two edges the rail must draw, and one it already has', () => {
+    // The day ADR-0215 §2 was written about. Under ADR-0077 these three anchors needed more than
+    // two lanes, so `anchorsCollapsed` fired and the POSITIONED band was never drawn at all —
+    // three behaviours for one question, with the fallback on the day the card matters most.
     const events = [
       ev({
         id: 'hotelOut',
@@ -535,8 +538,9 @@ describe('buildDayGlance', () => {
     ];
     const g = buildDayGlance(events, DATE, ms('12:00'), day07, day23, TZ);
     expect(g.anchors).toHaveLength(3);
-    expect(g.anchorLaneCount).toBeGreaterThan(2);
-    expect(g.anchorsCollapsed).toBe(true);
+    expect(g.anchors.filter((a) => a.standalone)).toHaveLength(2);
+    // And the ferry is one of the day's two counted blocks, so it needs no tick.
+    expect(g.anchors.find((a) => a.kind === 'span')?.standalone).toBe(false);
   });
 
   it('stretches the window to a late transition so its marker stays on the rail', () => {

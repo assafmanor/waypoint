@@ -63,7 +63,6 @@ import {
   countdownParts,
   dayProgress,
   deriveNow,
-  eventPhase,
   formatCountdown,
   formatDayMonth,
   formatTime,
@@ -80,7 +79,6 @@ import {
   ambientEventsOnDate,
   ambientSpanPosition,
   buildDayGlance,
-  eventDisplayIcon,
   countsNights,
   dayBookendStays,
 } from '../lib/glance';
@@ -91,11 +89,15 @@ import { tomorrowRibbon } from '../lib/tomorrow';
 import { TRAVEL_STANCE, remainingTravelSeconds, travelStance } from '../lib/travel-position';
 import { useGeolocation } from '../lib/useGeolocation';
 import {
+  dayAirMeters,
   endpointPlaceId,
   legDepartAfterMs,
   useDayTravelReads,
   type DayLeg,
 } from '../lib/day-travel';
+import { dayTravelTotal } from '../lib/day-joins';
+import { trackMetaFor } from '../lib/day-track';
+import { glanceTrack } from '../lib/glance-track';
 import { clearOnWay, useOnWay } from '../lib/on-way';
 import { canLift, heroHorizon, type HeroPoint } from '../lib/hero-horizon';
 import { BEAT, playBeat } from '../lib/one-shot';
@@ -886,6 +888,17 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // which would nag on every anchor of a day you're merely browsing.
   const glanceCtx = dayZoneContext(activeDate, zoneEvidence);
   const glance = buildDayGlance(events, activeDate, nowMs, day07, day23, tz, glanceCtx);
+  // **Today's rail, as the shared track** (ADR-0215 §2) — the same geometry the night board's
+  // strip draws, with this surface's own inks and one thing the lookahead has no use for: a
+  // bracketed booking's edge that the rail never had a block for (an ambient stay's check-out)
+  // arrives as an instant, so withdrawing ADR-0077's pills cannot delete a moment `remaining` is
+  // still counting.
+  //
+  // **Not memoized, and that is deliberate rather than an omission:** `glance` itself is rebuilt
+  // every render (this screen ticks on the clock), so a `useMemo` keyed on it would miss on every
+  // pass and read as a claim that it does not. Tomorrow's strip below memoizes for the opposite
+  // reason — its inputs really are stable.
+  const glanceTrackModel = glanceTrack({ glance, meta: trackMetaFor(events, glance.segs) });
   // Ambient-span stays active today (a hotel spanning several nights, ADR-0054).
   // No persistent band on Home (ADR-0064 §A): the hero surfaces the transition
   // moments and the glance draws the check-in/out markers. This only feeds the
@@ -924,15 +937,12 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     localStorage.setItem(STAY_STRIP_DISMISS_STORAGE_KEY, stayStripKey);
     setDismissedStrip(stayStripKey);
   };
-  // Hard anchors matter individually, so this counts leaves, not blocks — the one
-  // deliberate roots/leaves exception (ADR-0045).
-  const hardAhead = sameDayEvents
-    .filter((e) => e.kind === EVENT_KIND.HARD && e.startsAt)
-    .filter((e) => {
-      const p = eventPhase(e, now);
-      return p === 'now' || p === 'upcoming';
-    })
-    .sort((a, b) => Date.parse(a.startsAt!) - Date.parse(b.startsAt!))[0];
+  // **The hard-anchor readout is gone from the card** (ADR-0215 §4) and its derivation with it:
+  // when the next thing is hard, that time is what the board prints with a countdown beside it —
+  // measured ⁦214px⁩ away on one screen — and on an arrival day the card printed the same clock
+  // three times. ADR-0045's "hard anchors matter individually, so this counts leaves rather than
+  // blocks" was the right rule for a readout this surface no longer owns; the leaf-level answer
+  // now lives on the board, which reads its own next.
   // "Free until" only reads honestly when there's no current event; otherwise the
   // board already says what's on. Day-end is the latest instant of the day.
   const freeUntil = !nowEvent && nextEvent?.startsAt ? formatTime(nextEvent.startsAt, tz) : null;
@@ -941,6 +951,17 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     return end > max ? end : max;
   }, 0);
   const dayEnd = dayEndMs > 0 ? formatTime(new Date(dayEndMs), tz) : null;
+  /** **How far the day flies, and deliberately not how far it drives** (ADR-0215 §6).
+   *
+   *  `dayAirMeters` is a great-circle sum over stored coordinates: pure, synchronous, offline-safe
+   *  (rule 5) and free. The GROUND half is not, and that is why it is absent rather than
+   *  forgotten — it is a roll-up of `useDayTravelReads` over every hole in the day, and this
+   *  screen asks that hook about **one** leg on purpose: _"an empty `legs` asks for nothing at
+   *  all … a route nobody may be shown is a call against §D8's budget for nothing"_. Putting the
+   *  day's every gap behind a provider call on the app's most-loaded screen is a cost decision,
+   *  not a card layout, and offline it would leave the foot flickering between two shapes. The
+   *  real `dayTravelTotal` composes the value, with no journeys and nothing unplaced to claim. */
+  const glanceTravel = dayTravelTotal([], 0, dayAirMeters(sameDayEvents, bookings, places));
 
   const copyWifi = async () => {
     if (wifi && navigator.clipboard) {
@@ -1021,24 +1042,15 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       ),
     [events, tomorrowDate, nowMs, tomorrowWindow.startMs, tomorrowWindow.endMs, tz, zoneEvidence],
   );
-  // **The two facts a glance segment cannot carry**, resolved here because only the screen holds
-  // the events: the icon (content the group chose) and the commitment (ADR-0011). A segment's key
-  // is its root event's id, so this is a lookup rather than a second derivation.
-  const tomorrowMeta = useMemo(() => {
-    const byId = new Map(events.map((e) => [e.id, e]));
-    return Object.fromEntries(
-      tomorrowGlance.segs.map((seg) => {
-        const event = byId.get(seg.key);
-        return [
-          seg.key,
-          {
-            ...(event ? { icon: eventDisplayIcon(event) } : {}),
-            hard: event?.kind === EVENT_KIND.HARD,
-          },
-        ];
-      }),
-    );
-  }, [events, tomorrowGlance]);
+  // **The two facts a glance segment cannot carry** — the icon (content the group chose) and the
+  // commitment (ADR-0011) — resolved by `trackMetaFor`, which is the same lookup today's rail
+  // makes above. It moved into `lib/day-track.ts` when the second consumer arrived (ADR-0215 §2):
+  // two screens-worth of the same `Map` read is how a strip and a rail start disagreeing about
+  // which glyph one event has.
+  const tomorrowMeta = useMemo(
+    () => trackMetaFor(events, tomorrowGlance.segs),
+    [events, tomorrowGlance],
+  );
   const tomorrowRibbonModel = useMemo(
     () => tomorrowRibbon({ glance: tomorrowGlance, meta: tomorrowMeta }),
     [tomorrowGlance, tomorrowMeta],
@@ -1324,6 +1336,23 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         onSeeAll={openTasks}
       />
 
+      {/* **THE DAY'S SHAPE, ABOVE THE SHORTCUTS** (ADR-0215 §1). The slot this card had was never
+          chosen: ADR-0045 removed the fixture `מבט מהיר` row and put the derived card "in its
+          place". This is ADR-0188 §6's own rule applied to the next surface — the board and this
+          card are both derived TIME surfaces, where `גישה מהירה`'s tiles are deep links into
+          stored data (ADR-0050), so a WiFi code was sitting between the two halves of one
+          subject. On an ordinary day (nothing due, no peer edits) both bands above are absent and
+          this lands directly under the hero, which is where it belongs and why nothing in
+          ADR-0188 §6 had to be re-argued. */}
+      <div className="sec-title">{t.glance.title}</div>
+      <GlanceCard
+        glance={glance}
+        track={glanceTrackModel}
+        dayEnd={dayEnd}
+        travel={glanceTravel}
+        onAdd={() => onNavigate?.('days')}
+      />
+
       <div className="sec-title">{t.quick.title}</div>
       {/* ADR-0050: derived tiles (next code, WiFi) deep-link into the Index and
           vanish when there's no source; the managed documents tile is always
@@ -1390,16 +1419,6 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           <span className="sub">{t.quick.docsInvite}</span>
         </button>
       </div>
-
-      <div className="sec-title">{t.glance.title}</div>
-      <GlanceCard
-        glance={glance}
-        tz={tz}
-        hardAnchorTime={hardAhead ? formatTime(hardAhead.startsAt!, tz) : undefined}
-        freeUntil={freeUntil}
-        dayEnd={dayEnd}
-        onAdd={() => onNavigate?.('days')}
-      />
 
       {/* `מבט מהיר`, restored on the condition ADR-0045 set (ADR-0180 §3). It was
           removed for being FIXTURES, and §4 of that ADR wrote this outcome down in
