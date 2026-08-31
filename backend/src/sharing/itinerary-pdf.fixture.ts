@@ -189,6 +189,9 @@ export const NINE_DAY_REFERENCE_TRIP: SharedItinerary = {
     baseCount: 6,
     startDate: '2026-08-29',
     endDate: '2026-09-06',
+    // Carried because the projection is strict, and ignored by the renderer this fixture
+    // feeds: paper prints dates, never `עכשיו` (eleventh amendment §6).
+    timezone: 'Atlantic/Reykjavik',
     dayCount: 9,
     eventCount: days.reduce(
       (total, day) => total + day.sections.reduce((n, s) => n + s.events.length, 0),

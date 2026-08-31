@@ -3195,8 +3195,21 @@ export const t = {
     },
     public: {
       brand: 'Travelive',
-      kicker: 'מסלול חי',
-      live: 'עודכן עכשיו',
+      /**
+       * **Where the trip IS, in the line that used to assert it was live** (ADR-0213's
+       * eleventh amendment §4). `kicker` was the constant `מסלול חי`, printed identically on
+       * a trip that ended six months ago; these three say something a reader can act on. The
+       * numbers are isolated at the call site, not here.
+       */
+      phase: {
+        soon: (days: number) => (days === 1 ? 'מתחילים מחר' : `עוד ${days} ימים`),
+        live: (day: number, total: number) => `יום ${day} מתוך ${total}`,
+        ended: 'הטיול הסתיים',
+      },
+      /** `עודכן לפני 4 ד׳` / `עודכן עכשיו`, over `duration.ts`'s `agoLabel` — the app's one
+       *  elapsed ladder (ADR-0114) rather than a second time vocabulary for this page. It
+       *  replaced a fixed `עודכן עכשיו` that was stamped at load and never revisited. */
+      updated: (ago: string) => `עודכן ${ago}`,
       stale: 'לא הצלחנו לעדכן',
       staleBody: 'מוצגת הגרסה האחרונה שנטענה. ננסה לעדכן שוב כשהחיבור יחזור.',
       days: 'המסע יום אחר יום',

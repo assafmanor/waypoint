@@ -71,6 +71,8 @@ import { useClock } from '../lib/useClock';
 import {
   buildTimeTree,
   clockRange,
+  DAY_PHASE,
+  dayPhase,
   eventPhase,
   formatTime,
   isoToTimeInput,
@@ -205,8 +207,6 @@ function transitionZoneProps(
 ): { zone: string; deltaMinutes?: number } {
   return eventEdgeZone(entry.event, entry.edge, zoneCtx);
 }
-
-type DayScope = 'past' | 'today' | 'future';
 
 const groupKey = (g: TimeGroup) =>
   g.kind === 'cluster' ? `cl-${g.items[0].event.id}` : g.item.event.id;
@@ -448,7 +448,7 @@ export function DayView() {
   // ON SCREEN so an idea's "מחר" is the day after the one being built (ADR-0151); by trip-day
   // number off it, where "עוד 15 ימים" is only the day number plus a constant.
   const dayNaming = { trip, today, anchor: activeDate };
-  const dayScope: DayScope = activeDate < today ? 'past' : activeDate > today ? 'future' : 'today';
+  const dayScope = dayPhase(activeDate, today);
   // A past day is a read-only archive within a live trip (ADR-0029) — but "past"
   // for EDITING is not the live zone's answer, nor even this day's ambient: a day
   // is over only once it is over in EVERY zone it touched (ADR-0029 session-103
@@ -724,7 +724,7 @@ export function DayView() {
   // record (behind you) or a plan (ahead of the row you are in). Scoped to today, because a day
   // you swiped to has no "now" in it at all.
   const liveLeg = useMemo(() => {
-    if (dayScope !== 'today') return null;
+    if (dayScope !== DAY_PHASE.TODAY) return null;
     let soonest: DayLeg | null = null;
     let soonestAt = Infinity;
     for (const leg of dayLegs) {
@@ -1002,7 +1002,7 @@ export function DayView() {
   // `lib/now-line.ts` — one derivation shared with Plan's static now-reference, and
   // the seam for the generalization that will let it sit INSIDE a running event
   // rather than always above it.
-  const showNowLine = dayScope === 'today';
+  const showNowLine = dayScope === DAY_PHASE.TODAY;
   const nowLineIndex = nowLinePlacement(merged, now.getTime()).index;
 
   // Land on now: scroll the now-line into view once per day-open (today only), a
@@ -1010,7 +1010,7 @@ export function DayView() {
   // the clock tick — so it doesn't fight a manual scroll. Instant under
   // reduced-motion.
   const nowLineRef = useRef<HTMLDivElement>(null);
-  const isToday = dayScope === 'today';
+  const isToday = dayScope === DAY_PHASE.TODAY;
   useEffect(() => {
     // A preview must not scroll: its pane is not a scroller, so `scrollIntoView` would walk
     // out and move the REAL day's body under the finger (ADR-0200 §7).

@@ -1543,7 +1543,8 @@ Owner, 2026-08-31:
 
 Drawn in
 [`a-shared-itinerary-knows-what-day-it-is-v1.html`](../../mockups/a-shared-itinerary-knows-what-day-it-is-v1.html).
-**Not built** — the mockup and this amendment are the design; the backlog carries the build.
+**Built 2026-08-31** — what running the real page changed is recorded under _What building it
+changed_ at the foot, and two of the three findings are things no fixture had covered.
 
 **The answer to "why" is that nobody decided it.** `SharedItinerary.tsx` holds
 `useState(0)`, and the three reader mockups the page was built from all shipped `open: 1` —
@@ -1588,6 +1589,8 @@ day left peeking above, and instant under `prefersReducedMotion()`. The peek shi
 
 **And the target is the now-line, not the card** (owner, 2026-08-31: _"if we decide to use
 it then it should scroll there, like the day view does"_), which §5 is what makes possible.
+Built as `landAtTop` over today's card, which is that target: see _What building it changed_
+for why the two are one call and not two.
 `DayView`'s call does not translate literally, though: `block: 'center'` there centres
 inside the inner `.body` scroller — **below** the day's header, which is fixed chrome and
 cannot be scrolled away. This page has no chrome; today's card header, carrying the date and
@@ -1733,6 +1736,67 @@ helper takes the end date and why comparing ordinals is not enough.
   "no today" after the trip, and rendered a finished trip as an unstarted one: every one of
   its twelve days read `future`. Comparing dates answers all three trip phases with no
   special case.
+
+### What building it changed
+
+The shapes above all survived. Three things the drawing could not see, and two of them were
+found by opening the real page rather than by reading anything:
+
+1. **The share's "today" has to be dawn-anchored, and `todayInTz` is not.** Opened at 01:48
+   Tokyo time, the page marked _tomorrow_ as `עכשיו` and drew its now-line at the bottom of a
+   day nothing had happened in yet. Both halves of that are one bug: this projection files a
+   pre-dawn hour on the night of the day BEFORE (`sharePreviousNight`, fourth amendment), so
+   at 01:48 the calendar had rolled over while the share's day had not, and a pre-dawn label
+   sorts last. `packages/shared` grows **`shareToday(at, zone)`** — the calendar day, minus
+   one before 05:00 — beside `sharePreviousNight`, so the grouping and the question share one
+   boundary. Every fixture in the suite had pinned a mid-afternoon clock; none had covered
+   the small hours.
+
+2. **The boundary is what has BEGUN, not what has finished.** §5 said the placement rule was
+   `nowLinePlacement`'s (_above the first entry not fully behind now_) reimplemented over
+   labels, and it was — until the real seeded Tokyo day showed what that means here: its
+   first row is a 10:00–16:00 guided tour, still running at 14:30, so the boundary was
+   dragged to the **top of the day**, above a 10:00 row, telling a reader following along
+   that nothing had happened yet. An all-day container as a day's first row is routine on
+   this page. So `shareNowLine` compares each row's **start**: above the line has begun,
+   below it has not. It agrees with the app on every case that does not contain `now` and
+   picks the other side of the one that does — which is exactly the case `now-line.ts`
+   documents as the approximation it exists to replace, so unify them when it grows `inside`.
+
+3. **The landing is `landAtTop`, and it is one call rather than a scroll of its own.**
+   `lib/land-at-top.ts` already encodes every decision §1 quotes from `DayView` — `block:
+'start'` with the row's own `scroll-margin-block-start` as the peek, instant under
+   `prefersReducedMotion`, ends on the first touch — plus one this page needs more than the
+   Map did: it keeps re-aiming while the surface settles. This page settles late twice over
+   (the card does not exist until the fetch resolves, and every day photo is `loading="lazy"`
+   with no intrinsic size, so the extent above the target grows as images arrive), and a
+   one-shot `scrollIntoView` would land short of wherever it had got to. The 26px peek is a
+   `scroll-margin-block-start` on `.sh-day`, so no caller passes a number.
+
+Two smaller things the build settled:
+
+- **`noteWhen` is now a caller of `agoLabel`, not its owner.** The freshness line needed the
+  same sentence, and the two lines that make it are ADR-0114's ladder plus the prefix —
+  neither of which is a note's business. Lifted into `lib/duration.ts` beside
+  `formatDuration`; `noteWhen` is a one-line wrapper.
+- **`openDay` is a nullable ordinal, and `undefined` is a third state.** `undefined` defers
+  to the clock, `null` is a card the reader closed (and where the page starts outside the
+  trip), a number is their explicit pick. An index could express none of the three.
+
+### What was verified
+
+- `pnpm typecheck`, `pnpm build`, `pnpm lint` green. **6761 tests pass** (frontend 5018,
+  backend 1233, shared 510), including 21 new ones: `shareToday`'s dawn boundary and zone,
+  `dayPhase`'s three answers plus the two-day span, `shareNowLine`'s placement and its three
+  refusals, and the reader's own behaviour across all three trip phases.
+- **The real page, at 390×844 in both themes**, against the seeded Tokyo trip with a share
+  minted through the API. Before the trip: `scrollY` 0, nothing open, no mark, kicker
+  `עוד ⁦5⁩ ימים`. During (clock pinned to 14:30 Tokyo on day 3): lands with today's card header
+  at **27px** — the 26px peek — the amber column and `עכשיו` under the weekday, and the
+  now-line at **489px of 844** between the 14:30 row that has begun and the 16:30 row that
+  has not. After: `scrollY` 0, nothing open, all ten cards cooled, kicker `הטיול הסתיים`.
+- **Not verified:** no device pass. The peek is 26px in the stylesheet and the mockup's
+  control still offers 0/26/76.
 
 ## Alternatives considered
 

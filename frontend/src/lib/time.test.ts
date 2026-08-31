@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { EVENT_CATEGORY, EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
 import {
+  DAY_PHASE,
+  dayPhase,
   addDays,
   buildTimeTree,
   clampDate,
@@ -539,6 +541,31 @@ describe('dayLabel (ADR-0085 amendment: off the ground, a day has a number)', ()
     const naming = { ...trip, today: '2026-11-29' };
     expect(dayLabel('2026-12-01', naming)).toBe('מחרתיים');
     expect(dayLabel('2026-12-23', naming)).toBe('עוד 24 ימים');
+  });
+});
+
+describe('dayPhase (ADR-0213 eleventh amendment §7)', () => {
+  it('answers the one comparison three surfaces were making in two spellings', () => {
+    expect(dayPhase('2026-09-14', '2026-09-15')).toBe(DAY_PHASE.PAST);
+    expect(dayPhase('2026-09-15', '2026-09-15')).toBe(DAY_PHASE.TODAY);
+    expect(dayPhase('2026-09-16', '2026-09-15')).toBe(DAY_PHASE.FUTURE);
+  });
+
+  it('treats a row that spans two days as today while EITHER of them is', () => {
+    // The shared reader's card for a journey that leaves at 02:00 and lands the next
+    // afternoon (`SharedDay.endDate`). Comparing only the start date would retire it a day
+    // early, which is why the span is a parameter rather than something a caller guesses.
+    expect(dayPhase('2026-09-21', '2026-09-21', '2026-09-22')).toBe(DAY_PHASE.TODAY);
+    expect(dayPhase('2026-09-21', '2026-09-22', '2026-09-22')).toBe(DAY_PHASE.TODAY);
+    expect(dayPhase('2026-09-21', '2026-09-23', '2026-09-22')).toBe(DAY_PHASE.PAST);
+    expect(dayPhase('2026-09-21', '2026-09-20', '2026-09-22')).toBe(DAY_PHASE.FUTURE);
+  });
+
+  it('crosses a month and a year on string order alone', () => {
+    // Both sides are trip-local `YYYY-MM-DD`, so there is no zone to re-read the day and no
+    // arithmetic to drift across DST.
+    expect(dayPhase('2026-12-31', '2027-01-01')).toBe(DAY_PHASE.PAST);
+    expect(dayPhase('2027-01-01', '2026-12-31')).toBe(DAY_PHASE.FUTURE);
   });
 });
 

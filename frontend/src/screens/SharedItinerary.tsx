@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useParams } from 'react-router-dom';
 import {
   NARRATIVE_SEPARATOR,
   ROUTE_ARROW,
@@ -7,6 +7,8 @@ import {
   SHARE_DAY_SUMMARY_KIND,
   SHARE_DETAIL_LEVEL,
   SHARE_OP_KIND,
+  shareTimeLabel,
+  shareToday,
   type ShareOpKind,
   type SharedDay,
   type SharedDaySummary,
@@ -22,9 +24,12 @@ import { Spinner } from '../ui/Spinner';
 import { ZoneShiftPill } from '../ui/ZoneShiftPill';
 import { t } from '../i18n/he';
 import { autoIsolate, ltrIsolate } from '../lib/bidi';
-import { hoursPhrase } from '../lib/duration';
+import { agoLabel, hoursPhrase } from '../lib/duration';
+import { landAtTop } from '../lib/land-at-top';
+import { shareNowLine } from '../lib/share-now-line';
+import { useClock } from '../lib/useClock';
 import { usePublicReaderChrome } from '../lib/public-reader-chrome';
-import { formatTripDates } from '../lib/time';
+import { DAY_PHASE, dayPhase, formatTripDates, tripDayNumber, type DayPhase } from '../lib/time';
 import brandMark from '/icon-mark-bright.svg';
 import {
   fetchSharedItinerary,
@@ -109,6 +114,26 @@ function daySummaryText(summary: SharedDaySummary): string {
   }
 }
 
+/**
+ * **Where the trip is, as the masthead's opening words** (ADR-0213's eleventh amendment §4).
+ *
+ * Three phases off one comparison — `dayPhase` over the trip's own window, so this and the
+ * mark on the day cards can never disagree. The number is isolated (ADR-0118): a digit inside
+ * a Hebrew phrase reads backwards without it.
+ *
+ * `tripDayNumber` rather than an ordinal off the days array: a trip whose first day carries
+ * nothing still has a day one, and the phrase counts calendar days of the trip, not cards.
+ */
+function tripPhaseText(trip: SharedItineraryProjection['trip'], today: string): string {
+  const phase = dayPhase(trip.startDate, today, trip.endDate);
+  if (phase === DAY_PHASE.PAST) return t.share.public.phase.ended;
+  if (phase === DAY_PHASE.FUTURE) {
+    const days = tripDayNumber(trip.startDate, today) - 1;
+    return t.share.public.phase.soon(days);
+  }
+  return t.share.public.phase.live(tripDayNumber(today, trip.startDate), trip.dayCount);
+}
+
 type LoadState =
   | { kind: 'loading' }
   | { kind: 'ready'; projection: SharedItineraryProjection; stale: boolean }
@@ -131,8 +156,23 @@ type LoadState =
  */
 export function SharedItinerary() {
   const { code = '' } = useParams();
+  const { hash } = useLocation();
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
-  const [openDay, setOpenDay] = useState(0);
+  /**
+   * **Which card the reader has opened, as an ORDINAL — and `undefined` means they have not
+   * touched it yet** (ADR-0213's eleventh amendment §1).
+   *
+   * Three states, and an index could express none of them. `undefined` defers to the clock;
+   * `null` is a card the reader closed, which outside the trip is also where the page starts,
+   * since **no day is a default** — falling back to the first card is the same arbitrary
+   * index-pick this replaced, with a rationale bolted on. And an ordinal rather than a
+   * position means a refetch that adds or drops a day leaves the reader's own card open
+   * instead of silently opening its neighbour.
+   */
+  const [openDay, setOpenDay] = useState<number | null | undefined>(undefined);
+  /** The clock, so the day mark, the now-line and the freshness line stay true while the tab
+   *  is open — this page is read for hours by somebody following along. */
+  const now = useClock();
   // A document in a browser tab, not the app: it zooms and it pulls to refresh.
   usePublicReaderChrome();
 
@@ -158,11 +198,91 @@ export function SharedItinerary() {
     void load();
   }, [load]);
 
+  /**
+   * **`עודכן עכשיו` was true for about a minute** (eleventh amendment §4). The projection was
+   * fetched once and the label was stamped at load, so a relative who leaves the tab open
+   * saw a three-hour-old itinerary asserting it was current — the exact opposite of what a
+   * live link is for. Refetching when the tab comes back is the cheap half of the fix (the
+   * label going elapsed is the other): it costs one request per return to a page whose public
+   * route allows twenty a minute, and it is the moment a reader is about to read again.
+   *
+   * Deliberately not a poll. A tab in the background is not being read, and a tab in the
+   * foreground has `pull-to-refresh` (ninth amendment §6) for a reader who wants it now.
+   */
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'visible') void load();
+    };
+    document.addEventListener('visibilitychange', refresh);
+    return () => document.removeEventListener('visibilitychange', refresh);
+  }, [load]);
+
+  const ready = state.kind === 'ready' ? state.projection : undefined;
+  /**
+   * **Today, in the trip's own zone** — never the reader's (§6). A relative in Tel Aviv
+   * following a group in Iceland wants the day the group is having, which is the same rule
+   * that makes every time on this page the travellers' wall clock rather than the viewer's.
+   *
+   * `shareToday` rather than `todayInTz`, and opening the real page at 01:48 Tokyo time is
+   * what found the difference: this projection files a pre-dawn hour on the night of the day
+   * BEFORE (`sharePreviousNight`), so at 01:48 the calendar had rolled over while the share's
+   * day had not — the page marked tomorrow as "now" and drew its now-line at the bottom of a
+   * day nothing had happened in yet. One boundary for the grouping and for the question.
+   */
+  const today = ready ? shareToday(now, ready.trip.timezone) : '';
+  /** The card the clock is on, or `null` before the trip and after it. */
+  const todayOrdinal = ready
+    ? (ready.days.find((day) => dayPhase(day.date, today, day.endDate) === DAY_PHASE.TODAY)
+        ?.ordinal ?? null)
+    : null;
+  /**
+   * **A `#day-N` in the URL wins.** The anchors have been rendered on every card since the
+   * page was built and nothing has linked to them since the seventh amendment stopped the
+   * bookings block teleporting — but somebody handed `/s/<code>#day-9` asked for day nine,
+   * and the browser's own hash scroll cannot serve them: the card does not exist until the
+   * fetch lands. The open card is deliberately NOT written back into the URL; it is a
+   * disclosure state, not navigation, and it would pollute a document's back history.
+   */
+  const hashOrdinal = Number(/^#day-(\d+)$/.exec(hash)?.[1]) || null;
+  const landOn = hashOrdinal ?? todayOrdinal;
+  /**
+   * **Land on now** — `DayView`'s contract, at day altitude (§1):
+   *
+   * > _"scroll the now-line into view once per day-open (today only), a passed event or two
+   * > left peeking above. Keyed on the viewed day — never on the clock tick — so it doesn't
+   * > fight a manual scroll. Instant under reduced-motion."_
+   *
+   * `landAtTop` is that, and it is the reason this is four lines rather than a scroll of its
+   * own: it aims `block: 'start'` with the row's own `scroll-margin-block-start` as the peek,
+   * goes instant under `prefersReducedMotion`, ends the moment a finger touches the page, and
+   * — the part that matters most here — keeps re-aiming while the surface settles. This page
+   * settles late twice over: the card does not exist until the fetch resolves, and every day
+   * photo is `loading="lazy"` with no intrinsic size, so the extent above the target grows as
+   * images arrive. A one-shot `scrollIntoView` would land short of wherever it had got to.
+   *
+   * Keyed on the CODE, not on `landOn`: the day mark re-derives every tick and rolls over at
+   * midnight, and re-landing under a reader who has scrolled away is what "never on the clock
+   * tick" forbids.
+   */
+  const landedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (landOn === null || landedFor.current === code) return;
+    landedFor.current = code;
+    return landAtTop(() => document.getElementById(`day-${landOn}`));
+  }, [code, landOn]);
+
   if (state.kind === 'loading') return <div className="sh-boot">{t.share.public.loading}</div>;
   if (state.kind === 'unavailable') return <Unavailable />;
 
   const { projection, stale } = state;
   const summary = projection.detailLevel === SHARE_DETAIL_LEVEL.SUMMARY;
+  /** The clock the now-line prints, through the same formatter that built every label on the
+   *  page (`shareTimeLabel`, §5) — so the comparison in `shareNowLine` is inside the one
+   *  derivation the projection's pre-formatting exists to protect, not beside it. */
+  const nowLabel = shareTimeLabel(now, projection.trip.timezone);
+  /** Summary carries no times at all, so there is nothing for a clock to sit between. */
+  const wantsNowLine = !summary;
+  const open = openDay === undefined ? landOn : openDay;
   // The trip's own name, so a reader who saves three itineraries can tell them apart in a
   // downloads folder. Both hosts of `TakePdf` pass the same one.
   const pdfName = `${projection.trip.name}.pdf`;
@@ -180,7 +300,13 @@ export function SharedItinerary() {
         <span className="sh-bar-end">
           <span className={`sh-freshness${stale ? ' stale' : ''}`}>
             <span className="sh-live-dot" aria-hidden="true" />
-            {stale ? t.share.public.stale : t.share.public.live}
+            {/* **Elapsed, not a claim.** `עודכן עכשיו` was stamped at load and never
+                revisited (§4); it is now the app's one elapsed ladder (ADR-0114, through
+                `agoLabel`) over the projection's own `generatedAt`, re-read on every clock
+                tick — so a tab left open says how old what it shows really is. */}
+            {stale
+              ? t.share.public.stale
+              : t.share.public.updated(agoLabel(projection.generatedAt, now.getTime()))}
           </span>
           {/* **The reader's own copy, where it is always reachable** (ninth amendment §6).
               The masthead is theme-fixed `--indigo`, so this control takes the `--on-dark-*`
@@ -198,8 +324,13 @@ export function SharedItinerary() {
             describes the commute. The base count is only added where the shape implies
             several; on a star trip `1 בסיס` is the same sentence twice. */}
         <div className="sh-kicker">
+          {/* **Where the trip is, in the line that used to assert it was live** (§4).
+              `מסלול חי` was a constant, printed identically on a trip that ended six months
+              ago; it is the one fact on this line that changes, so it is the one part of it
+              that is not dim. */}
+          <strong>{tripPhaseText(projection.trip, today)}</strong>
+          {NARRATIVE_SEPARATOR}
           {[
-            t.share.public.kicker,
             t.share.public.tripShape[projection.trip.shape],
             projection.trip.baseCount > 1
               ? t.share.public.bases(projection.trip.baseCount)
@@ -280,15 +411,23 @@ export function SharedItinerary() {
           <h2>{summary ? t.share.public.days : t.share.public.schedule}</h2>
           <span>{t.share.public.daysHint}</span>
         </div>
-        {projection.days.map((day, index) => (
-          <DayCard
-            key={day.date}
-            day={day}
-            open={openDay === index}
-            onToggle={() => setOpenDay(openDay === index ? -1 : index)}
-            code={code}
-          />
-        ))}
+        {projection.days.map((day) => {
+          const phase = dayPhase(day.date, today, day.endDate);
+          const isNow = phase === DAY_PHASE.TODAY;
+          return (
+            <DayCard
+              key={day.date}
+              day={day}
+              phase={phase}
+              open={open === day.ordinal}
+              onToggle={() => setOpenDay(open === day.ordinal ? null : day.ordinal)}
+              code={code}
+              // The marker only exists where there is a "now" to mark and times for it to sit
+              // between — today's card, at Full and above (§5).
+              nowLabel={isNow && wantsNowLine ? nowLabel : undefined}
+            />
+          );
+        })}
       </main>
 
       {/* **Under the days, and it no longer jumps.** It opened the page and every row was an
@@ -321,16 +460,47 @@ export function SharedItinerary() {
   );
 }
 
+/**
+ * **The app's own now-line, in a day of the document** (ADR-0043, ADR-0213's eleventh
+ * amendment §5).
+ *
+ * `DayView`'s `NowLine` is not imported because it is that screen's local component and takes
+ * a `Date` plus a zone to format; this takes the label the projection's own formatter already
+ * produced. What matters is that the MARKUP and the classes are the same — the quiet
+ * soft-amber hairline, the mono time, no chip fill, no glow, no pulse — so the app has one
+ * live mark and this is it, not a second one that happens to look similar.
+ */
+function NowLine({ label }: { label: string }) {
+  return (
+    <div className="nowline" aria-label={t.day.nowLineAria(label)}>
+      <span className="nowline-chip">
+        <span className="nowline-dot" aria-hidden="true" />
+        {/* `dir="auto"` and nothing else, exactly as `DayView`'s own now-line does it: `auto`
+            resolves LTR for a numeral, so an isolate around it would be a second mechanism
+            doing the same job (design-language.md, on mixed lines). */}
+        <span dir="auto">{label}</span> <span className="nowline-lbl">{t.common.now}</span>
+      </span>
+      <span className="nowline-rule" />
+    </div>
+  );
+}
+
 function DayCard({
   day,
+  phase,
   open,
   onToggle,
   code,
+  nowLabel,
 }: {
   day: SharedDay;
+  phase: DayPhase;
   open: boolean;
   onToggle: () => void;
   code: string;
+  /** The trip's wall clock, present only on the card the trip is on and only where the level
+   *  carries times. Absent is the answer for every other card. */
+  nowLabel?: string;
 }) {
   const { day: dayNumber, weekday: firstWeekday } = dayParts(day.date);
   // A card that swallowed the day a journey flew through says so, rather than showing one
@@ -340,8 +510,17 @@ function DayCard({
   const endParts = day.endDate ? dayParts(day.endDate) : undefined;
   const dayNumbers = endParts ? `${dayNumber}–${endParts.day}` : dayNumber;
   const weekday = endParts ? `${firstWeekday}–${endParts.weekday}` : firstWeekday;
+  const isNow = phase === DAY_PHASE.TODAY;
+  // Where the marker sits, or nothing — `shareNowLine` refuses a day that crosses a zone and
+  // a day with no timed row, and those refusals are its answer rather than a gap (§5).
+  const marker = nowLabel ? shareNowLine(day, nowLabel) : null;
   return (
-    <section className={`sh-day${open ? ' open' : ''}`} id={`day-${day.ordinal}`}>
+    <section
+      className={`sh-day${open ? ' open' : ''}${isNow ? ' is-now' : ''}${
+        phase === DAY_PHASE.PAST ? ' is-past' : ''
+      }`}
+      id={`day-${day.ordinal}`}
+    >
       {/* **A real photo of a real stop, credited** (ADR-0213's 2026-08-30 amendment). Not
           stock and not generated: a Commons file already in the store, already licensed,
           already rendered elsewhere in the app — which is why §3's refusal of "a new media
@@ -360,6 +539,12 @@ function DayCard({
         <span className="sh-day-date">
           <strong>{ltrIsolate(dayNumbers)}</strong>
           <span>{weekday}</span>
+          {/* **The mark on the exception, in the column the hue is already in** (§2/§3).
+              Nothing marks a past day (it is treated, not badged) and nothing marks a future
+              one — the future is the page's default, and a chip every card carries repeats
+              the date beside it. This is also what makes the landing legible: a reader who
+              lands mid-document never sees the masthead. */}
+          {isNow ? <i className="sh-now-mark">{t.common.now}</i> : null}
         </span>
         <span className="sh-day-copy">
           {/* A day with no places has no true title, and the server sends none rather than
@@ -394,8 +579,20 @@ function DayCard({
                 </span>
                 <span>{t.share.dayparts[section.daypart]}</span>
               </header>
+              {/* **UNDER the heading, among the rows** — which a render decided (§5's
+                  finding). Above the section it landed above `אחר הצהריים` at 14:05, putting
+                  a daypart that had already begun on the future side of now. A heading names
+                  a span of the day; the marker belongs between the rows it is between. */}
+              {marker?.daypart === section.daypart && marker.index === 0 && nowLabel ? (
+                <NowLine label={nowLabel} />
+              ) : null}
               {section.events.map((event, index) => (
-                <EventRow key={`${event.title}-${index}`} event={event} code={code} />
+                <Fragment key={`${event.title}-${index}`}>
+                  <EventRow event={event} code={code} />
+                  {marker?.daypart === section.daypart && marker.index === index + 1 && nowLabel ? (
+                    <NowLine label={nowLabel} />
+                  ) : null}
+                </Fragment>
               ))}
             </section>
           ))}

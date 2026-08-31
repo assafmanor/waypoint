@@ -414,6 +414,28 @@ describe('SharingProjectionService', () => {
     expect(projection.trip.dayCount).toBe(3);
   });
 
+  /**
+   * **The zone travels; "today" does not** (ADR-0213's eleventh amendment §6). Every other
+   * time on this contract is pre-formatted so two renderers cannot format one instant two
+   * ways — but a stamped calendar day would be stale a minute after it was sent, on a page
+   * that holds its projection in memory for as long as the tab is open. So the reader's own
+   * device resolves the day, from the trip's primary zone, at every level: it is implied by
+   * the destination the masthead already prints and reveals nothing the link did not.
+   */
+  it('ships the trip zone at every level, and never a stamped today', async () => {
+    for (const level of [
+      SHARE_DETAIL_LEVEL.SUMMARY,
+      SHARE_DETAIL_LEVEL.FULL,
+      SHARE_DETAIL_LEVEL.EVERYTHING,
+    ]) {
+      const projection = await service.byCode(await shareAt(level));
+      expect(projection.trip.timezone).toBe('Atlantic/Reykjavik');
+      // Strict schemas make this an assertion about the CONTRACT and not just this response:
+      // an added `today` would have to be declared, and declaring it is what this refuses.
+      expect(Object.keys(projection.trip)).not.toContain('today');
+    }
+  });
+
   it('includes only the Everything families that are switched on', async () => {
     const projection = await service.byCode(
       await shareAt(SHARE_DETAIL_LEVEL.EVERYTHING, { includeBookingSecrets: true }),
