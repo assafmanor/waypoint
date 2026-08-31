@@ -478,6 +478,14 @@ export const sharedLegSchema = z.strictObject({
   endLabel: z.string().optional(),
   /** The wait **before** this leg. Absent on the first leg, which nothing precedes. */
   layoverMinutes: z.number().int().positive().optional(),
+  /** **How long this leg is in the air**, in whole minutes. A number, not a phrase: the
+   *  projection ships values and each renderer owns its words (ADR-0213 §2's model). */
+  durationMinutes: z.number().int().positive().optional(),
+  /** **What the clock does across it**, in signed minutes — the arrival zone's offset at
+   *  landing minus the departure zone's at take-off. The app has shown this on every event
+   *  row since ADR-0107; a shared flight was the one surface that did not (owner,
+   *  2026-08-31). Absent for a leg that crosses no zone, so a renderer draws nothing. */
+  zoneShiftMinutes: z.number().int().optional(),
   /** **Where that wait happens**, which is one place and not a route. The renderers composed
    *  this line from `title` and so printed `המתנה בוינה ← קפלאוויק` — the leg you are about
    *  to fly, not the airport you are sitting in (owner, 2026-08-30). It is the previous
@@ -514,6 +522,13 @@ export const sharedEventSchema = z.strictObject({
   /** Full and above. `HH:MM` in the event's own display zone. */
   startLabel: z.string().optional(),
   endLabel: z.string().optional(),
+  /** **How long it takes, and what the clock does** — the same two facts the app puts on
+   *  every event row (ADR-0107's zone pill, `lib/duration.ts`'s ladder), which a shared
+   *  flight was missing (owner, 2026-08-31: _"Flights and stuff like that should also show
+   *  duration and timezone changes, like in the app"_). Numbers, not phrases: the projection
+   *  ships values and each renderer owns its words. */
+  durationMinutes: z.number().int().positive().optional(),
+  zoneShiftMinutes: z.number().int().optional(),
   placeName: z.string().optional(),
   address: z.string().optional(),
   mapUrl: z.string().url().optional(),
@@ -582,6 +597,21 @@ export type SharedPhoto = z.infer<typeof sharedPhotoSchema>;
 export const sharedDaySchema = z.strictObject({
   ordinal: z.number().int().positive(),
   date: dateOnlySchema,
+  /**
+   * **The last calendar day this card covers**, when a journey swallowed the days after it
+   * (owner, 2026-08-31: _"the return flight still folded to the day before the last entirely,
+   * then last day appears totally empty … maybe for long journeys like these the days should
+   * be combined to one"_).
+   *
+   * A journey renders on the day its first leg DEPARTS, and a 02:00 departure belongs to the
+   * night before — so a return that leaves Iceland at 02:00 and lands in Tel Aviv at 15:25
+   * the next afternoon put every row on one card and left the following one blank. Capping
+   * the layover only moved the seam; the honest answer is that the card covers both days,
+   * because the journey does.
+   *
+   * Absent for an ordinary day, which is every day that does not end mid-air.
+   */
+  endDate: dateOnlySchema.optional(),
   title: sharedDayTitleSchema,
   summary: sharedDaySummarySchema,
   /** **Where you sleep, as the day's frame rather than a row in its afternoon** (owner,

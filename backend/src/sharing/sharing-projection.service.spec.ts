@@ -772,8 +772,11 @@ describe('SharingProjectionService', () => {
       // 01:15 to 03:05. The wait is what the whole chain exists to name.
       expect(journeys[0].legs?.[1].layoverMinutes).toBe(110);
 
-      // And the absorbed leg has no row of its own on the day it happens to land on.
-      expect(rowsOf(1)).toHaveLength(0);
+      // **And the day it flew through is folded into the card, not left blank** (owner,
+      // 2026-08-31). It has no rows of its own — the journey took them — so it stops being a
+      // card and becomes this one's `endDate`, which is what the header prints as `11–12`.
+      expect(projection.days).toHaveLength(1);
+      expect(projection.days[0].endDate).toBe('2026-09-12');
 
       await prisma.trip.deleteMany({ where: { id: trip.id } });
     });

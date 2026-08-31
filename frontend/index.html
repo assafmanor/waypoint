@@ -7,15 +7,25 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <script>
-      // ADR-0062: zoom disabled app-wide, except inside the image preview (.doc-viewer).
-      // CSS touch-action:manipulation kills double-tap; the viewport meta above is ignored
-      // by iOS Safari, so pinch is suppressed here — iOS fires gesture* events, other
-      // browsers a multi-touch touchmove. The viewer subtree is excluded so its
-      // hand-rolled pinch/pan is untouched.
+      // ADR-0062: zoom disabled app-wide, except inside the image preview (.doc-viewer)
+      // and on the public shared itinerary. CSS touch-action:manipulation kills double-tap;
+      // the viewport meta above is ignored by iOS Safari, so pinch is suppressed here — iOS
+      // fires gesture* events, other browsers a multi-touch touchmove. The viewer subtree is
+      // excluded so its hand-rolled pinch/pan is untouched.
+      //
+      // **The shared reader is excluded too, and it is a different KIND of exclusion**
+      // (owner, 2026-08-31: _"the live share should not inherit some of the app's quirks: it
+      // should be able to refresh, zoom in/out"_). ADR-0062 turned zoom off to make the app
+      // feel native; `/s/<code>` is not the app, it is a document a stranger opens in a
+      // browser tab, and a document you cannot enlarge is a document some people cannot
+      // read. The screen sets `data-public-reader` on <html> while it is mounted
+      // (`lib/public-reader-chrome.ts`), which this reads and `tokens.css` keys off.
       (function () {
-        var inViewer = function (target) {
+        var exempt = function (target) {
+          if (document.documentElement.hasAttribute('data-public-reader')) return true;
           return target && target.closest && target.closest('.doc-viewer');
         };
+        var inViewer = exempt;
         var blockGesture = function (e) {
           if (!inViewer(e.target)) e.preventDefault();
         };

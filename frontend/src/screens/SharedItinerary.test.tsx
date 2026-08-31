@@ -14,6 +14,7 @@ import {
 import { SharedItinerary } from './SharedItinerary';
 import { t } from '../i18n/he';
 import { withoutBidiControls } from '../lib/bidi';
+import { hoursPhrase } from '../lib/duration';
 
 /** `ltrIsolate` wraps every Latin/numeric run in invisible bidi controls (ADR-0118), so a
  *  plain string match would never hit. */
@@ -443,10 +444,16 @@ describe('SharedItinerary', () => {
       );
       renderShared();
       // The first leg has nothing before it, so it carries no wait — only the second does.
-      expect(await screen.findByText(plain(t.share.public.layover('וינה', 45)))).toBeTruthy();
+      expect(
+        await screen.findByText(plain(t.share.public.layover('וינה', hoursPhrase(45)))),
+      ).toBeTruthy();
       // …and never the leg it precedes, which is what it used to say.
-      expect(screen.queryByText(plain(t.share.public.layover('וינה ← קפלאוויק', 45)))).toBeNull();
-      expect(screen.queryByText(plain(t.share.public.layover('תל אביב', 45)))).toBeNull();
+      expect(
+        screen.queryByText(plain(t.share.public.layover('וינה ← קפלאוויק', hoursPhrase(45)))),
+      ).toBeNull();
+      expect(
+        screen.queryByText(plain(t.share.public.layover('תל אביב', hoursPhrase(45)))),
+      ).toBeNull();
     });
 
     it('puts the bookings under the days, and states each day instead of jumping to it', async () => {

@@ -342,10 +342,51 @@ describe('the appendix on paper', () => {
     }
   });
 
-  it('keeps the author line breaks in a note rather than collapsing them', () => {
-    const html = render(withOps({ ops: [{ kind: SHARE_OP_KIND.NOTE, body: 'שורה\nשנייה' }] }));
-    expect(html).toMatch(/\.pdf-prose\{[^}]*white-space:pre-line/);
-    expect(html).toContain('class="pdf-prose"');
+  // **Paper renders the markup, it does not print the markers** (owner, 2026-08-31: _"In the
+  // pdf, markdown not formatted"_). The parser moved to `@waypoint/shared` so both surfaces
+  // read one AST; this asserts paper actually walks it.
+  it('renders a note as markup rather than as its own markers', () => {
+    const html = render(
+      withOps({
+        ops: [
+          {
+            kind: SHARE_OP_KIND.NOTE,
+            body: '## כותרת\n\n- פריט ראשון\n- פריט שני\n\nטקסט **מודגש** וקישור https://road.is',
+          },
+        ],
+      }),
+    );
+    expect(html).toContain('class="pdf-note-h1"');
+    expect(html).toContain('class="pdf-note-list"');
+    expect(html).toContain('<b>מודגש</b>');
+    // A bare url prints as its readable form, once — see the link test below.
+    expect(html).toContain('road.is');
+    // The markers themselves are gone — that is the whole report.
+    expect(html).not.toContain('## כותרת');
+    expect(html).not.toContain('**מודגש**');
+  });
+
+  // A bare url is already its own label, so printing the href beside it says the address
+  // twice — which is what the first render of this feature did.
+  it('prints a bare url once, and a worded link with its destination', () => {
+    const bare = render(
+      withOps({ ops: [{ kind: SHARE_OP_KIND.NOTE, body: 'ראו https://road.is/' }] }),
+    );
+    expect(bare.match(/road\.is/g)?.length).toBe(1);
+
+    const worded = render(
+      withOps({ ops: [{ kind: SHARE_OP_KIND.NOTE, body: 'ראו [מצב הכבישים](https://road.is/)' }] }),
+    );
+    expect(worded).toContain('מצב הכבישים');
+    expect(worded).toContain('https://road.is/');
+  });
+
+  // The emoji face must survive the font shorthand, which has eaten a family in this file
+  // seven times: a note written with an emoji printed an empty rectangle.
+  it('keeps the emoji face in the ops line stack', () => {
+    const rule = render(NINE_DAY_REFERENCE_TRIP).match(/\.pdf-ops-line\{[^}]*\}/)?.[0] ?? '';
+    expect(rule).toContain("'Noto Emoji'");
+    expect(rule).not.toContain('font:');
   });
 });
 

@@ -1735,3 +1735,7 @@ export const PLAN_TASK_CAP = 5;
  * (`RoutingService.once`), so the cost of the extra rounds is a request, not provider work.
  */
 export const DAY_TRAVEL_WARM_ATTEMPTS = 6;
+
+/** How long a shared file's `ירד` / `לא הצליח` stays on the row before it goes back to being
+ *  a plain link. Long enough to be read after the eye returns from the download shelf. */
+export const DOWNLOAD_SETTLE_MS = 4000;

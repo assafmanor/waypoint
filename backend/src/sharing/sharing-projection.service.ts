@@ -19,6 +19,7 @@ import {
   shareTimeLabel,
   sharedItinerarySchema,
   tripZoneCrossings,
+  zoneOffsetAt,
   type ShareDaypart,
   type ShareDetailLevel,
   type SharedAppendix,
@@ -282,6 +283,84 @@ function chainJourneys(scheduledInTripOrder: readonly ShareEventRow[]): JourneyC
     for (const leg of chain) chainOf.set(leg.id, chain);
   }
   return { chainByLead, absorbed, chainOf };
+}
+
+/**
+ * **How long it took, and what the clock did** (owner, 2026-08-31: _"Flights and stuff like
+ * that should also show duration and timezone changes, like in the app"_).
+ *
+ * The app has both on every event row already — `lib/duration.ts`'s ladder and ADR-0107's
+ * zone pill — and a shared flight was the one surface without them. Both are computed here
+ * as NUMBERS: the projection ships values and each renderer owns its words, which is the same
+ * rule that keeps the day titles renderer-agnostic.
+ *
+ * The shift is measured at each end's own instant, so a leg that crosses a DST boundary is
+ * honest about it: the arrival zone's offset AT LANDING minus the departure zone's AT
+ * TAKE-OFF. Zero is absent, not zero — a renderer draws a pill only where there is a jump.
+ */
+function travelFacts(
+  event: ShareEventRow,
+  placeById: ReadonlyMap<string, { timezone: string | null }>,
+): { durationMinutes?: number; zoneShiftMinutes?: number } {
+  const from = event.startsAt;
+  const to = event.endsAt;
+  const durationMinutes =
+    from && to ? Math.round((to.getTime() - from.getTime()) / 60_000) : undefined;
+
+  const fromZone = placeById.get(event.booking?.fromPlaceId ?? '')?.timezone;
+  const toZone = placeById.get(event.booking?.toPlaceId ?? '')?.timezone;
+  const shift =
+    from && to && fromZone && toZone
+      ? zoneOffsetMinutesAt(to, toZone) - zoneOffsetMinutesAt(from, fromZone)
+      : 0;
+
+  return stripUndefined({
+    durationMinutes: durationMinutes && durationMinutes > 0 ? durationMinutes : undefined,
+    zoneShiftMinutes: shift === 0 ? undefined : shift,
+  });
+}
+
+/** Signed minutes from `zoneOffsetAt`'s `+09:00` form — the shared, DST-correct probe rather
+ *  than a second table (root rule 8; `frontend/src/lib/time.ts` parses the same string). */
+function zoneOffsetMinutesAt(at: Date, timeZone: string): number {
+  const text = zoneOffsetAt(at, timeZone);
+  const sign = text.startsWith('-') ? -1 : 1;
+  const [hours, minutes] = text.slice(1).split(':').map(Number);
+  return sign * (hours * 60 + minutes);
+}
+
+/**
+ * **A day that a journey flew through, folded into the day the journey left on.**
+ *
+ * The reported shape: a return departs Iceland at 02:00 and lands in Tel Aviv at 15:25 the
+ * following afternoon. `sharePreviousNight` puts the 02:00 departure on the night before, the
+ * journey renders where its first leg departs, and the calendar day in between is left with
+ * nothing in it at all — a blank card at the end of the trip.
+ *
+ * Absorbing is deliberately narrow. A following day is folded in only when it is EMPTY of
+ * scheduled rows, so a day that has its own morning keeps its own card and the journey simply
+ * appears on the day it left. Nothing is dropped: the absorbed date becomes the card's
+ * `endDate`, so the header can say `21–22` and a reader can see where the time went.
+ */
+function absorbSpannedDays(
+  days: readonly SharedDay[],
+  byDay: readonly { date: string; events: ShareEventRow[] }[],
+): SharedDay[] {
+  const isEmpty = (index: number): boolean =>
+    (days[index]?.sections.length ?? 0) === 0 && !days[index]?.stay;
+
+  const out: SharedDay[] = [];
+  for (let i = 0; i < days.length; i += 1) {
+    const day = days[i];
+    // Only a day that ENDS in the air can swallow the next one: the journey is what spans
+    // the midnight, and a day with no journey has nothing to span with.
+    const spans = day.sections.some((section) => section.events.some((event) => event.legs));
+    let last = i;
+    if (spans) while (last + 1 < days.length && isEmpty(last + 1)) last += 1;
+    out.push(last > i ? { ...day, endDate: byDay[last].date } : day);
+    i = last;
+  }
+  return out;
 }
 
 const MAJORITY = 0.6;
@@ -662,6 +741,7 @@ export class SharingProjectionService {
         codeById,
         (placeId) => capCaption(textOf(placeId, 'summary')),
         chains,
+        placeById,
       );
       const facts = {
         ...dayFacts(dayEvents, index),
@@ -696,6 +776,12 @@ export class SharingProjectionService {
         sections: this.groupByDaypart(projected),
       };
     });
+
+    // **A day a journey passed through is not a day of its own** (owner, 2026-08-31: _"the
+    // last day appears totally empty … maybe the days should be combined to one"_). See
+    // `SharedDay.endDate`: capping the layover only moved the seam, because the return
+    // genuinely occupies both dates. The card says so instead.
+    const combined = absorbSpannedDays(days, byDay);
 
     // **The trip's fixed points, five lines above the seventy-nine** (owner, 2026-08-30:
     // _"Maybe these sharings should have sections for important stuff, like flights,
@@ -780,7 +866,7 @@ export class SharingProjectionService {
         title: narrative.title,
         summary: narrative.summary,
       },
-      days: applyNarrative(days, narrative),
+      days: applyNarrative(combined, narrative),
       commitments,
       appendix:
         detail === SHARE_DETAIL_LEVEL.EVERYTHING ? this.buildAppendix(ops.unattached) : undefined,
@@ -820,9 +906,19 @@ export class SharingProjectionService {
     codeById: ReadonlyMap<string, string | undefined>,
     captionOf: (placeId: string | undefined) => string | undefined,
     chains: JourneyChains,
+    placeById: ReadonlyMap<string, { timezone: string | null }>,
   ): SharedEvent[] {
     const one = (event: ShareEventRow): SharedEvent =>
-      this.projectEvent(event, zones, detail, journeys?.get(event.id), placeLabel, ops, captionOf);
+      this.projectEvent(
+        event,
+        zones,
+        detail,
+        journeys?.get(event.id),
+        placeLabel,
+        ops,
+        captionOf,
+        placeById,
+      );
 
     const out: SharedEvent[] = [];
     for (const event of dayEvents) {
@@ -846,6 +942,18 @@ export class SharingProjectionService {
         // `תל אביב ← רייקיאוויק`, not `תל אביב ← וינה` with the rest hidden inside.
         title: from && to ? routeTitle(from, to) : head.title,
         endLabel: one(last).endLabel,
+        // …and so do its FACTS. Spreading `head` gave the row leg one's duration and leg
+        // one's zone shift, which on a two-leg journey is most of a day understated. The
+        // span is the first departure to the last arrival, and the shift is origin to final
+        // destination — the two ends a reader is comparing.
+        ...travelFacts(
+          {
+            ...first,
+            endsAt: last.endsAt,
+            booking: { ...first.booking, toPlaceId: last.booking?.toPlaceId },
+          } as ShareEventRow,
+          placeById,
+        ),
         legs: chain.map((event, index) => {
           const leg = one(event);
           const previous = index > 0 ? chain[index - 1] : undefined;
@@ -864,6 +972,7 @@ export class SharingProjectionService {
             // departure. Composing the line from `title` printed the route you are about to
             // fly instead (`המתנה בוינה ← קפלאוויק`).
             layoverPlace: previous ? legFrom : undefined,
+            ...travelFacts(event, placeById),
           });
         }),
       });
@@ -1025,6 +1134,7 @@ export class SharingProjectionService {
     placeLabel: PlaceLabeller,
     ops: OpsByHost,
     captionOf: (placeId: string | undefined) => string | undefined,
+    placeById: ReadonlyMap<string, { timezone: string | null }>,
   ): SharedEvent {
     const zone = eventDisplayZone(event, zones);
     const daypart = shareDaypart(event.startsAt, zone);
@@ -1065,6 +1175,7 @@ export class SharingProjectionService {
       ...(rowOps.length > 0 ? { ops: rowOps } : {}),
       startLabel: event.startsAt ? shareTimeLabel(event.startsAt, zone) : undefined,
       endLabel: event.endsAt ? shareTimeLabel(event.endsAt, zone) : undefined,
+      ...(isTransport(event) ? travelFacts(event, placeById) : {}),
       placeName: label,
       address,
       // Built from the public display text, so opening a map never requires the projection

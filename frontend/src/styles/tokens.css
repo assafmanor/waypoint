@@ -562,6 +562,17 @@ body,
   touch-action: manipulation;
 }
 
+/* **The public reader opts out of all three** (see `lib/public-reader-chrome.ts`). A shared
+   itinerary is a document in a browser tab, not the app: it may be pinched to a size its
+   reader can actually read, and a pull at the top is the browser's refresh rather than a
+   gesture this page swallows. A variant block AFTER `:root`, never inside it — putting a
+   selector on that block is how the whole token set was once lost to `[dir='ltr']`. */
+:root[data-public-reader],
+:root[data-public-reader] body {
+  overscroll-behavior-y: auto;
+  touch-action: auto;
+}
+
 /* **The document itself never scrolls**, which is what closes the empty band above:
    every scroll in this app is `.body`'s, a sheet's own list, or a strip's. On the
    root this propagates to the viewport, so it is the enforcement of the sentence in

@@ -34,7 +34,7 @@ import {
 } from '@waypoint/shared';
 import { countdownText } from '../lib/time';
 import { type OutboxVerb } from '../lib/outbox';
-import { measure } from '../lib/bidi';
+import { bindPrefix, measure } from '../lib/bidi';
 
 /** The two legs of a journey, in one place. Said by the authoring form's leg headings
  *  (ADR-0154 §4) AND by the detail's derived-pair fact and the delete prompt (§5) — a
@@ -3216,10 +3216,14 @@ export const t = {
       bases: (count: number) => `${count} ${count === 1 ? 'בסיס' : 'בסיסים'}`,
       // **Where you sleep, as the day's frame** (ADR-0213's 2026-08-30 amendment). The
       // value arrives isolated, so this joins it rather than composing around a raw name.
-      stay: (place: string) => `לנים ב-${place}`,
+      stay: (place: string) => `לנים ${bindPrefix('ב', place)}`,
       // The wait between two legs of one journey. Named by the place you wait IN, because
       // "45 דקות" alone says nothing about where you are standing.
-      layover: (place: string, minutes: number) => `המתנה ב${place} · ${minutes} דקות`,
+      layover: (place: string, span: string) => `המתנה ${bindPrefix('ב', place)} · ${span}`,
+      /** **A download that reports itself** (owner, 2026-08-31: _"it simply downloads in the
+       *  background, giving no indication"_). Three states, because those are the three a
+       *  fetch can honestly know. */
+      file: { working: 'מוריד…', done: 'ירד', failed: 'לא הצליח' },
       ops: {
         // A count, because the row is otherwise a bare disclosure with nothing to promise.
         more: (count: number) => (count === 1 ? 'פרט אחד' : `${count} פרטים`),

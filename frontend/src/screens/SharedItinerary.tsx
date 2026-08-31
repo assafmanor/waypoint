@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   NARRATIVE_SEPARATOR,
@@ -15,11 +15,14 @@ import {
   type SharedOp,
   type SharedItinerary as SharedItineraryProjection,
 } from '@waypoint/shared';
-import { BOOKING_TYPE_MARK, GLYPH } from '../constants';
+import { BOOKING_TYPE_MARK, DOWNLOAD_SETTLE_MS, GLYPH } from '../constants';
 import { Icon, type IconName } from '../ui/Icon';
 import { NoteProse } from '../ui/NoteProse';
+import { ZoneShiftPill } from '../ui/ZoneShiftPill';
 import { t } from '../i18n/he';
 import { autoIsolate, ltrIsolate } from '../lib/bidi';
+import { hoursPhrase } from '../lib/duration';
+import { usePublicReaderChrome } from '../lib/public-reader-chrome';
 import { formatTripDates } from '../lib/time';
 import brandMark from '/icon-mark-bright.svg';
 import {
@@ -127,6 +130,8 @@ export function SharedItinerary() {
   const { code = '' } = useParams();
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [openDay, setOpenDay] = useState(0);
+  // A document in a browser tab, not the app: it zooms and it pulls to refresh.
+  usePublicReaderChrome();
 
   const load = useCallback(async () => {
     try {
@@ -241,7 +246,12 @@ export function SharedItinerary() {
               isolated content when it sniffs, so it would find no strong character and fall
               back to LTR. Inheriting the page's RTL is what makes the route arrow mean the
               same thing whether the stops are Hebrew or Latin. */}
-          <strong>{projection.narrative.title}</strong>
+          {/* Skipped when it is the trip's own name, which the masthead already carries —
+              `fallbackTripTitle` returns `Trip.name` now, so the deterministic case would
+              print the headline twice (owner, 2026-08-31). */}
+          {projection.narrative.title === projection.trip.name ? null : (
+            <strong>{projection.narrative.title}</strong>
+          )}
           <p>
             {/* The generated line when there is one; otherwise the counts sentence, which
                 the server deliberately does not compose — it ships the numbers. */}
@@ -300,6 +310,9 @@ function DayCard({
   code: string;
 }) {
   const { day: dayNumber, weekday } = dayParts(day.date);
+  // A card that swallowed the day a journey flew through says so, rather than showing one
+  // date for two (`SharedDay.endDate`).
+  const dayNumbers = day.endDate ? `${dayNumber}–${dayParts(day.endDate).day}` : dayNumber;
   return (
     <section className={`sh-day${open ? ' open' : ''}`} id={`day-${day.ordinal}`}>
       {/* **A real photo of a real stop, credited** (ADR-0213's 2026-08-30 amendment). Not
@@ -318,7 +331,7 @@ function DayCard({
       ) : null}
       <button className="sh-day-head" onClick={onToggle} aria-expanded={open} type="button">
         <span className="sh-day-date">
-          <strong>{ltrIsolate(dayNumber)}</strong>
+          <strong>{ltrIsolate(dayNumbers)}</strong>
           <span>{weekday}</span>
         </span>
         <span className="sh-day-copy">
@@ -326,7 +339,7 @@ function DayCard({
               inventing one — the date is then the name. */}
           {/* Composed server-side with its values already isolated — see the story line
               above for why this must not sniff. */}
-          <strong>{dayTitleText(day.title) || `${weekday} ${ltrIsolate(dayNumber)}`}</strong>
+          <strong>{dayTitleText(day.title) || `${weekday} ${ltrIsolate(dayNumbers)}`}</strong>
           {/* **Where you sleep frames the day** (ADR-0213's 2026-08-30 amendment). It used
               to be a row in the afternoon, sorted there by its check-in hour — which on the
               outbound day put it between the two legs of the flight, and printed
@@ -435,6 +448,7 @@ function EventRow({ event, code }: { event: SharedEvent; code: string }) {
                 )}
               </span>
             ) : null}
+            <TravelFacts event={event} />
             {event.placeName ? (
               <>
                 {event.startLabel ? ' · ' : null}
@@ -490,7 +504,7 @@ function EventRow({ event, code }: { event: SharedEvent; code: string }) {
               {leg.layoverMinutes && leg.layoverPlace ? (
                 <span className="sh-layover">
                   <Icon name="clock" />
-                  {t.share.public.layover(leg.layoverPlace, leg.layoverMinutes)}
+                  {t.share.public.layover(leg.layoverPlace, hoursPhrase(leg.layoverMinutes))}
                 </span>
               ) : null}
               <span className="sh-leg-row">
@@ -504,6 +518,7 @@ function EventRow({ event, code }: { event: SharedEvent; code: string }) {
                 <span>
                   <strong>{autoIsolate(leg.title)}</strong>
                   {leg.code ? <span className="sh-kind">{ltrIsolate(leg.code)}</span> : null}
+                  <TravelFacts event={leg} />
                 </span>
               </span>
             </div>
@@ -544,6 +559,95 @@ function Appendix({
  * at different moments. The print renderer inverts this — paper has no setting, and whoever
  * is holding the printout is by that act the operator.
  */
+/**
+ * **A download that says it is downloading, and then that it finished** (owner, 2026-08-31).
+ *
+ * This is the answer to a report that survived three rounds as _"the document links don't
+ * work"_ and never reproduced: they DID work. A bare `<a download>` hands the file to the
+ * browser and the page says nothing at all, so on a phone — where the download shelf is a
+ * notification you may not see — a tap looks exactly like a tap that did nothing. The
+ * measured route was fine every time; the missing thing was feedback.
+ *
+ * So the row fetches the bytes itself and reports the three states it can honestly know:
+ * working, done, or failed. That costs holding one file in memory, which is affordable
+ * because a shared document is a boarding pass or a voucher; and it buys the only thing that
+ * makes the control legible. `rel="noopener"` and the same href remain, so a long-press
+ * "save link" still works and a browser with JS disabled still downloads.
+ */
+type DownloadState = 'idle' | 'working' | 'done' | 'failed';
+
+function FileOp({ href, title }: { href: string; title: string }) {
+  const [state, setState] = useState<DownloadState>('idle');
+  const settle = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(settle.current), []);
+
+  const run = async (event: React.MouseEvent) => {
+    // Let the browser do it natively where we cannot improve on it (a modifier click is a
+    // deliberate "open in a new tab"), and never start a second fetch over a live one.
+    if (event.metaKey || event.ctrlKey || event.shiftKey || state === 'working') return;
+    event.preventDefault();
+    setState('working');
+    try {
+      const response = await fetch(href);
+      if (!response.ok) throw new Error(String(response.status));
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = title;
+      link.click();
+      // Revoked on the next frame rather than immediately: the click is asynchronous, and
+      // a URL revoked in the same tick is a download that never starts.
+      requestAnimationFrame(() => URL.revokeObjectURL(url));
+      setState('done');
+    } catch {
+      setState('failed');
+    }
+    settle.current = setTimeout(() => setState('idle'), DOWNLOAD_SETTLE_MS);
+  };
+
+  return (
+    <a
+      href={href}
+      download={title}
+      rel="noopener"
+      onClick={run}
+      data-state={state}
+      aria-busy={state === 'working'}
+    >
+      {autoIsolate(title)}
+      <span className="sh-dl-state">
+        {state === 'working' ? t.share.public.file.working : null}
+        {state === 'done' ? t.share.public.file.done : null}
+        {state === 'failed' ? t.share.public.file.failed : null}
+      </span>
+    </a>
+  );
+}
+
+/**
+ * **How long it took and what the clock did** (owner, 2026-08-31: _"Flights and stuff like
+ * that should also show duration and timezone changes, like in the app"_).
+ *
+ * Both facts already exist in the app: `hoursPhrase` is the one duration ladder (ADR-0114)
+ * and `ZoneShiftPill` is the one zone pill (ADR-0107 session-90). This reaches for them
+ * rather than wording either again — the projection ships minutes and this spends the app's
+ * own vocabulary on them, so a shared flight and an app flight cannot read differently.
+ */
+function TravelFacts({
+  event,
+}: {
+  event: Pick<SharedEvent, 'durationMinutes' | 'zoneShiftMinutes'>;
+}) {
+  if (!event.durationMinutes && !event.zoneShiftMinutes) return null;
+  return (
+    <span className="sh-travel-facts">
+      {event.durationMinutes ? <span>{ltrIsolate(hoursPhrase(event.durationMinutes))}</span> : null}
+      {event.zoneShiftMinutes ? <ZoneShiftPill minutes={event.zoneShiftMinutes} /> : null}
+    </span>
+  );
+}
+
 function Ops({ ops, code }: { ops: NonNullable<SharedEvent['ops']>; code: string }) {
   return (
     <details className="sh-ops">
@@ -592,9 +696,7 @@ function OpList({ ops, code }: { ops: readonly SharedOp[]; code: string }) {
             </span>
           ) : null}
           {op.kind === SHARE_OP_KIND.FILE ? (
-            <a href={sharedDocumentUrl(code, op.handle)} download>
-              {autoIsolate(op.title)}
-            </a>
+            <FileOp href={sharedDocumentUrl(code, op.handle)} title={op.title} />
           ) : null}
         </span>
       ))}
