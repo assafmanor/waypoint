@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
 import {
+  NO_SENSITIVE_FIELDS,
   SHARE_DAY_KIND,
   SHARE_DAY_SUMMARY_KIND,
   SHARE_DAYPART,
@@ -12,6 +13,7 @@ import {
 import { EnrichmentService } from '../enrichment/enrichment.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { generatePublicCode } from '../common/public-code.util';
+import { sharePolicyHash } from './share-policy';
 import { SharingProjectionService } from './sharing-projection.service';
 import { ItineraryNarrativeService } from './itinerary-narrative.service';
 import { DisabledItineraryNarrativeGenerator } from './itinerary-narrative.generator';
@@ -269,6 +271,15 @@ describe('SharingProjectionService', () => {
       data: {
         tripId,
         code,
+        policyHash: sharePolicyHash({
+          detailLevel,
+          sensitive: {
+            bookingSecrets: sensitive.includeBookingSecrets ?? false,
+            notesAndTasks: sensitive.includeNotesAndTasks ?? false,
+            travelerIdentity: sensitive.includeTravelerIdentity ?? false,
+          },
+          documentIds: sensitive.withDocument ? [documentId] : [],
+        }),
         detailLevel,
         includeBookingSecrets: sensitive.includeBookingSecrets ?? false,
         includeNotesAndTasks: sensitive.includeNotesAndTasks ?? false,
@@ -672,6 +683,15 @@ describe('SharingProjectionService', () => {
         data: {
           tripId: journeyTripId,
           code,
+          policyHash: sharePolicyHash({
+            detailLevel: SHARE_DETAIL_LEVEL.EVERYTHING,
+            sensitive: {
+              bookingSecrets: sensitive.includeBookingSecrets ?? false,
+              notesAndTasks: sensitive.includeNotesAndTasks ?? false,
+              travelerIdentity: false,
+            },
+            documentIds: [],
+          }),
           detailLevel: SHARE_DETAIL_LEVEL.EVERYTHING,
           includeBookingSecrets: sensitive.includeBookingSecrets ?? false,
           includeNotesAndTasks: sensitive.includeNotesAndTasks ?? false,
@@ -770,6 +790,11 @@ describe('SharingProjectionService', () => {
           code,
           createdBy: OWNER,
           detailLevel: SHARE_DETAIL_LEVEL.FULL,
+          policyHash: sharePolicyHash({
+            detailLevel: SHARE_DETAIL_LEVEL.FULL,
+            sensitive: NO_SENSITIVE_FIELDS,
+            documentIds: [],
+          }),
         },
       });
       const projection = await service.byCode(code);
@@ -871,7 +896,17 @@ describe('SharingProjectionService', () => {
 
       const code = generatePublicCode();
       await prisma.tripShare.create({
-        data: { tripId: trip.id, code, createdBy: OWNER, detailLevel: SHARE_DETAIL_LEVEL.FULL },
+        data: {
+          tripId: trip.id,
+          code,
+          createdBy: OWNER,
+          detailLevel: SHARE_DETAIL_LEVEL.FULL,
+          policyHash: sharePolicyHash({
+            detailLevel: SHARE_DETAIL_LEVEL.FULL,
+            sensitive: NO_SENSITIVE_FIELDS,
+            documentIds: [],
+          }),
+        },
       });
       const projection = await service.byCode(code);
       const rowsOf = (index: number) =>

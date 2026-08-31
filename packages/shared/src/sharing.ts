@@ -774,6 +774,14 @@ const noUrl = (value: string) => !NO_URL.test(value);
  *
  * Strict at every level, which is what makes that claim checkable rather than a promise:
  * a builder that starts passing `travelerNames` fails the parse before the dispatch.
+ *
+ * **`placeName` was here and is gone** (ADR-0213's tenth amendment §6). The docblock above
+ * has always claimed level-independence and this field quietly broke it: the builder reads
+ * already-projected days, and the projection sets a place label only AFTER its Summary
+ * early return — so one trip generated a different narrative depending on which level
+ * happened to open it. Removing the field is what makes the claim true, and it removes
+ * rather than adds something crossing the boundary, which is the direction this ADR
+ * argues in everywhere else. The trip's principal stops still travel, in `routeLabels`.
  */
 export const summaryNarrativeInputSchema = z.strictObject({
   locale: z.string().max(8),
@@ -787,7 +795,6 @@ export const summaryNarrativeInputSchema = z.strictObject({
           daypart: shareDaypartSchema,
           icon: z.string().optional(),
           category: eventCategorySchema.optional(),
-          placeName: z.string().optional(),
         }),
       ),
     }),

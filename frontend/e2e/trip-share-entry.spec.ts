@@ -135,15 +135,15 @@ test('the meta no longer wraps the card open at 360px', async ({ page }) => {
 // This file, and not the unit spec beside the component, is the whole point: the unit test
 // asserting DOM order and both buttons' presence PASSED throughout, because jsdom lays
 // nothing out. Only a real engine can be asked how tall a box came out.
-test('the link and both send buttons survive the sheet at Everything', async ({ page }) => {
+test('the send unit survives the sheet, with a link and with a list', async ({ page }) => {
   await page.setViewportSize(PHONE);
   await bootIntoAllTrips(page);
 
-  // A share that already exists, which is the worse case: it adds the 44px link row on top
-  // of the two 48px outcomes, and it is the state every owner is in after their first send.
-  // The level cards are the admin's, and the sheet resolves that from
-  // `GET /trips/:id` — unstubbed, `isAdmin` stays false and there is no
-  // Everything to select. The boot fixture's own membership is the admin one.
+  // Shares that already exist, which is the worse case: they add rows on top of the 48px
+  // outcomes, and it is the state every owner is in after their first send. The level cards
+  // are the admin's, and the sheet resolves that from `GET /trips/:id` — unstubbed,
+  // `isAdmin` stays false and there is no Everything to select. The boot fixture's own
+  // membership is the admin one.
   await page.route(
     (u) => /^\/trips\/[^/]+$/.test(u.pathname),
     (r) =>
@@ -151,26 +151,37 @@ test('the link and both send buttons survive the sheet at Everything', async ({ 
         ? r.continue()
         : r.fulfill({ json: TRIP_WITH_MEMBERS }),
   );
+  const share = (code: string, detailLevel: string, documentIds: string[] = []) => ({
+    code,
+    shareUrl: `/s/${code}`,
+    detailLevel,
+    sensitive: {
+      bookingSecrets: detailLevel === 'everything',
+      notesAndTasks: false,
+      travelerIdentity: false,
+    },
+    documentIds,
+    updatedAt: new Date().toISOString(),
+  });
+  // A LIST since ADR-0213's tenth amendment: one link per policy, so Everything holds two.
   await page.route(
     (u) => /^\/trips\/[^/]+\/share$/.test(u.pathname),
     (r) =>
       r.fulfill({
-        json: {
-          code: '3JARS9gq',
-          shareUrl: '/s/3JARS9gq',
-          detailLevel: 'everything',
-          sensitive: { bookingSecrets: false, notesAndTasks: false, travelerIdentity: false },
-          documentIds: [],
-          updatedAt: new Date().toISOString(),
-        },
+        json: [
+          share('3JARS9gq', 'full'),
+          share('2Wd6hL8m', 'everything', ['doc-tickets-01']),
+          share('6Yb1xN4c', 'everything'),
+        ],
       }),
   );
   await settled(page);
 
   await hold(page, '.trip-hero');
   await page.getByRole('radio', { name: t.share.owner.audience.read }).click();
-  await page.getByRole('radio', { name: t.share.owner.levels.everything }).click();
 
+  // ── Full: one policy, so the shape the original defect collapsed — link row + outcomes.
+  await page.getByRole('radio', { name: new RegExp(`^${t.share.owner.levels.full}`) }).click();
   const send = page.locator('.share-send');
   await expect(send).toBeVisible();
 
@@ -184,4 +195,37 @@ test('the link and both send buttons survive the sheet at Everything', async ({ 
   const outcomes = await stableBox(page.locator('.share-send .share-outcomes'));
   expect(link.y + link.height).toBeLessThanOrEqual(box.y + box.height + 1);
   expect(outcomes.y + outcomes.height).toBeLessThanOrEqual(box.y + box.height + 1);
+
+  // ── Everything: a family, so the same clipping flex child now holds a managed list. It is
+  // the same `overflow: hidden` box and therefore the same failure mode, measured the same
+  // way — two 44px-floor rows plus the outcome cannot be under 88px either.
+  await page
+    .getByRole('radio', { name: new RegExp(`^${t.share.owner.levels.everything}`) })
+    .click();
+  const listBox = await stableBox(page.locator('.share-send'));
+  await expect(page.locator('.share-send .wp-listrow')).toHaveCount(2);
+  expect(Math.round(listBox.height)).toBeGreaterThanOrEqual(88);
+
+  const lastRow = await stableBox(page.locator('.share-send .wp-listrow').last());
+  expect(lastRow.y + lastRow.height).toBeLessThanOrEqual(listBox.y + listBox.height + 1);
+
+  // **The stop-all is the sheet's one destructive control, so it has to LOOK it.** Asserted
+  // on the computed colour rather than on the class, because the defect this guards was a
+  // plain specificity tie: as a bare `.share-stop-all` the rule lost to `.share-manage`'s
+  // `--muted` several hundred lines below it, and the button rendered grey. Only a real
+  // engine resolves a cascade, which is why this lives here and not beside the component.
+  const stopAll = page.locator('.share-stop-all');
+  await expect(stopAll).toBeVisible();
+  const token = (name: string) =>
+    page.evaluate((varName) => {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${varName})`;
+      document.body.append(probe);
+      const resolved = getComputedStyle(probe).color;
+      probe.remove();
+      return resolved;
+    }, name);
+  const danger = await stopAll.evaluate((n) => getComputedStyle(n).color);
+  expect(danger).toBe(await token('--miss'));
+  expect(danger).not.toBe(await token('--muted'));
 });

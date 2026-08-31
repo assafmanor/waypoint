@@ -855,7 +855,7 @@ export class SharingProjectionService {
     // Words last, and never in the reader's way: a stored generated narrative may replace
     // these strings, and anything else — no result, a stale hash, an invalid one, no
     // provider at all — returns the deterministic ones without waiting (ADR-0213 §2).
-    const narrative = await this.narrative.resolve(share.id, days, routeLabels, locale, {
+    const narrative = await this.narrative.resolve(share.tripId, days, routeLabels, locale, {
       title: fallbackTripTitle(wholeRoute, trip.name),
       // Deliberately empty for a deterministic narrative: the counts beside it are
       // `trip.*` fields, and the sentence joining them is each renderer's own copy.

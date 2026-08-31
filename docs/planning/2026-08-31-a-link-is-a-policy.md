@@ -7,7 +7,7 @@
 
 > _"I want to change the trip sharing infra and sharing design. I want to be able to share with different privacy options (summary, full schedule, everything), and not choose only one. Different links, maybe link generated per viewing option idk. We need to mockup this and think how to do this."_
 
-Drawn first in [`a-level-is-a-link-not-a-setting-v1.html`](../../mockups/a-level-is-a-link-not-a-setting-v1.html), corrected in [`a-link-is-a-policy-not-a-level-v2.html`](../../mockups/a-link-is-a-policy-not-a-level-v2.html). The decision is [ADR-0213](../decisions/0213-a-shared-trip-changes-emphasis-and-print-is-its-own-rendering.md)'s tenth amendment, §1–§7, written against v2. **Proposed, not built.**
+Drawn first in [`a-level-is-a-link-not-a-setting-v1.html`](../../mockups/a-level-is-a-link-not-a-setting-v1.html), corrected in [`a-link-is-a-policy-not-a-level-v2.html`](../../mockups/a-link-is-a-policy-not-a-level-v2.html). The decision is [ADR-0213](../decisions/0213-a-shared-trip-changes-emphasis-and-print-is-its-own-rendering.md)'s tenth amendment, §1–§7, written against v2, and it was **built the same day**.
 
 ## The correction, and it took the owner one sentence
 
@@ -59,9 +59,45 @@ The measurement table first reported the sheet's group gap as **12px**. The app'
 
 The previous file never saw this because its own proposed block re-declared `.share-sheet { gap: var(--space-4) }` on top of the inlined cascade — it was measuring its proposal, which happened to be the right number, for a reason that had nothing to do with the manifest. **An inlining mockup's manifest is not a list of sheets it needs; it is a claim about the app's cascade**, and a specificity tie is where a wrong claim shows up.
 
+## Building it corrected the drawing three times
+
+**The spec's own §6 was wrong, and the schema said so.** The amendment promised to include
+`placeName` at every level to make the generator's input level-invariant. Both ways of doing
+that are worse than the alternative: adding it to the Summary projection changes what a
+Summary link _publishes_, and projecting a second time to feed the generator doubles the work
+on every public read. Deleting the field is level-invariant by construction and is _less_
+crossing the model boundary. What settled it was reading `summaryNarrativeInputSchema`'s
+docblock, which has claimed level-independence all along — `placeName` was the one field
+breaking its own stated contract.
+
+> A cache key that will not deduplicate is usually telling you the input is wrong, not that
+> the key is. The fix was upstream of the thing I set out to fix.
+
+**A specificity tie hid the danger tone, for the third time in this sheet.**
+`.share-stop-all { color: var(--miss) }` lost to `.share-manage { color: var(--muted) }`
+several hundred lines below — same one-class weight, later rule wins — so the stop-all
+rendered grey in the running app while every unit test passed. The sheet's `gap` is the same
+shape of bug twice already. The rule worth carrying: **a rule describing a variant of an
+existing class must name both classes, or it is betting on file order.** It is guarded now on
+the computed colour in a real engine, because nothing in jsdom resolves a cascade.
+
+**A failed read used to read as "not shared".** Swallowing the error was nearly harmless when
+absent and failed looked the same; with a list they are opposite claims, and the wrong one is
+the dangerous direction — an owner told nothing is published while three links are live. Found
+by an e2e fixture whose `documentIds: ['d1']` failed `entityIdSchema`'s 8-character floor, so
+one bad element silently dropped every sibling with it.
+
+## What was proven rather than asserted
+
+The riskiest claim was "no shipped link stops resolving". It is now checked end to end: a row
+inserted with the migration backfill's own SQL expression resolves publicly, and a `PUT` of
+that same policy returns **that row's code**, with one row on the trip. The SQL and the
+TypeScript compose the same canonical string, and `share-policy.spec.ts` pins two literal
+digests taken from Postgres so the duplication cannot drift in silence.
+
 ## Forks put to the owner, and the answers
 
-None yet — this is the drawing. Three are named in the mockup's notes panel and the amendment's §6, with a recommendation each:
+The design forks were settled before the build; three are named in the mockup's notes panel and the amendment's §7, with a recommendation each:
 
 1. **Level-keyed links (recommended) against arbitrary named links.** Named links are the backlog's real access-management item and need a label field, a list screen and a divergence policy; the question asked is answered in full without them, and the schema path stays open.
 2. **The live mark's hue** — `--ok` recommended, from rule 4 rather than taste: a live link is a status, and `--cta` resolves to `var(--ink)` in light where it merges with the selected card's own ring. Both are a control in the file.

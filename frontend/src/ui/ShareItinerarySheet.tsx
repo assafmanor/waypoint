@@ -13,19 +13,21 @@ import {
   createInvite,
   fetchSharedItineraryPdf,
   fetchSnapshot,
-  fetchTripShare,
+  fetchTripShares,
   fetchTripWithMembers,
   rotateInvite,
   rotateTripShare,
+  stopAllTripShares,
   stopTripShare,
   upsertTripShare,
 } from '../lib/api';
 import { inviteLink, publicAppLink } from '../lib/invite-link';
 import { shareFileOrDownload, shareUrlOrCopy } from '../lib/system-share';
-import { CONTROL_ICON, SHARE_LEVEL_SAVE_MS } from '../constants';
+import { CONTROL_ICON } from '../constants';
 import { useToast } from './Toast';
 import { Icon } from './Icon';
 import { TripLinkRow } from './TripLinkRow';
+import { ListRow, RowManageSheet, type RowAction } from './domain/ListRow';
 import { ChoiceGrid } from './primitives/ChoiceGrid';
 import { ConfirmDialog } from './primitives/ConfirmDialog';
 import { Switch } from './primitives/Switch';
@@ -40,6 +42,27 @@ const LEVELS: ShareDetailLevel[] = [
 ];
 
 const SENSITIVE_KEYS: SensitiveKey[] = ['bookingSecrets', 'notesAndTasks', 'travelerIdentity'];
+
+const isEverything = (level: ShareDetailLevel) => level === SHARE_DETAIL_LEVEL.EVERYTHING;
+
+/**
+ * **What a link reveals, in the app's `·` grammar** (ADR-0213's tenth amendment §4).
+ *
+ * Derived, never typed. A title the app composes from the policy is checkable — it is
+ * exactly what this link publishes — where a name somebody entered says who received it,
+ * which nothing can verify and which goes stale in silence. Below Everything the level is
+ * the whole policy, so the level's own word is the title.
+ */
+function policyLabel(config: TripShareConfig): string {
+  if (!isEverything(config.detailLevel)) return t.share.owner.levels[config.detailLevel];
+  const parts: string[] = [];
+  if (config.sensitive.bookingSecrets) parts.push(t.share.owner.policy.secrets);
+  if (config.sensitive.notesAndTasks) parts.push(t.share.owner.policy.notes);
+  if (config.sensitive.travelerIdentity) parts.push(t.share.owner.policy.travelers);
+  if (config.documentIds.length > 0)
+    parts.push(t.share.owner.policy.files(config.documentIds.length));
+  return parts.length > 0 ? parts.join(' · ') : t.share.owner.policy.none;
+}
 
 /**
  * **The two grants a trip link can carry, and the sheet's first question** (ADR-0213's
@@ -62,16 +85,25 @@ interface DocumentChoice {
 }
 
 /**
- * **One sheet, two entry points, two peer outcomes** (ADR-0213).
+ * **One sheet, two entry points, and one link per POLICY** (ADR-0213's tenth amendment).
  *
- * The short path is the whole design: pick how much to reveal, then press Live Link or PDF.
- * There is no Save — the first outcome press performs the idempotent `PUT` itself, which is
- * why the API had to be idempotent. Link management is a quiet disclosure underneath, not a
- * screen somebody has to visit before they can send a trip to their sister.
+ * The short path is unchanged: pick a level, then press Live Link or PDF. There is no Save —
+ * the first outcome press performs the idempotent `PUT` itself, which is why the API had to
+ * be idempotent, and why the same policy twice returns the same code.
  *
- * A peer sees the link and both outcomes but no configuration: sharing is what the group
- * does, while changing what the world sees is the admin's. That split lives in the service;
- * this only refuses to draw controls that would 403.
+ * **Nothing here mutates a live link.** That is the amendment's whole point, and it is why
+ * the debounced `upsertTripShare` effect and its `הלינק החי מעודכן` announcement are gone:
+ * moving the level control, or a sensitive switch, selects the policy you are about to hand
+ * over. A URL already in somebody's hands never changes what it shows.
+ *
+ * The body is asymmetric because the policy space is. Summary and Full have exactly one
+ * policy each, so they keep the single loud send unit. Everything is a family — `2^3`
+ * switch combinations times every subset of the files — so it renders `ListRow`/
+ * `RowManageSheet`, the app's managed-list primitive, once a link exists.
+ *
+ * A peer sees the live links and both outcomes but no configuration: sharing is what the
+ * group does, while changing what the world sees is the admin's. That split lives in the
+ * service; this only refuses to draw controls that would 403.
  *
  * The document list is fetched **lazily, and only at Everything** — the authenticated trip
  * snapshot is a large read, and somebody sending a Summary link should never pay for it.
@@ -93,7 +125,7 @@ export function ShareItinerarySheet({
   // could not be reached at all without leaving this screen for Trip Settings.
   const [audience, setAudience] = useState<Audience>(AUDIENCE.JOIN);
   const [invite, setInvite] = useState<string | undefined>();
-  const [config, setConfig] = useState<TripShareConfig | undefined>();
+  const [shares, setShares] = useState<TripShareConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [level, setLevel] = useState<ShareDetailLevel>(SHARE_DETAIL_LEVEL.FULL);
   const [sensitive, setSensitive] = useState<ShareSensitiveFields>(NO_SENSITIVE_FIELDS);
@@ -102,8 +134,18 @@ export function ShareItinerarySheet({
   const [busy, setBusy] = useState<'link' | 'pdf' | undefined>();
   const [note, setNote] = useState<string | undefined>();
   const [error, setError] = useState<string | undefined>();
-  const [manage, setManage] = useState(false);
-  const [confirming, setConfirming] = useState<'rotate' | 'stop' | 'invite-rotate' | undefined>();
+  // The Everything create form. Open by default only when there is nothing to list yet —
+  // otherwise a second link is an explicit act, not the screen you land on.
+  const [composing, setComposing] = useState(false);
+  const [managing, setManaging] = useState<TripShareConfig | undefined>();
+  // The quiet disclosure under a single-policy level, exactly as it shipped: link
+  // management is not a screen somebody has to visit before they can send a trip.
+  const [manageOpen, setManageOpen] = useState(false);
+  const [confirming, setConfirming] = useState<
+    | { kind: 'rotate' | 'stop'; config: TripShareConfig }
+    | { kind: 'stop-all' | 'invite-rotate' }
+    | undefined
+  >();
 
   const myUserId = useAuth().me?.user.id;
   const toast = useToast();
@@ -121,17 +163,13 @@ export function ShareItinerarySheet({
           ),
       )
       .catch(() => undefined);
-    void fetchTripShare(tripId)
-      .then((existing) => {
-        if (!live) return;
-        setConfig(existing);
-        if (existing) {
-          setLevel(existing.detailLevel);
-          setSensitive(existing.sensitive);
-          setDocumentIds(existing.documentIds);
-        }
-      })
-      .catch(() => undefined)
+    // **A failed read says so, rather than reading as "not shared".** Under one link a
+    // swallowed error and an absent share looked the same and mostly were; with a list they
+    // are opposite claims, and the wrong one is the dangerous direction — an owner told
+    // nothing is published while three links are live.
+    void fetchTripShares(tripId)
+      .then((existing) => live && setShares(existing))
+      .catch(() => live && setError(t.share.owner.failed))
       .finally(() => live && setLoading(false));
     return () => {
       live = false;
@@ -156,7 +194,7 @@ export function ShareItinerarySheet({
 
   // Only Everything needs the file list, and only once.
   useEffect(() => {
-    if (level !== SHARE_DETAIL_LEVEL.EVERYTHING || documents || !isAdmin) return;
+    if (!isEverything(level) || documents || !isAdmin) return;
     void fetchSnapshot(tripId)
       .then((snapshot) =>
         setDocuments(
@@ -166,104 +204,94 @@ export function ShareItinerarySheet({
       .catch(() => setDocuments([]));
   }, [level, documents, isAdmin, tripId]);
 
-  const link = config ? publicAppLink(config.shareUrl) : undefined;
+  const atLevel = useMemo(
+    () => shares.filter((config) => config.detailLevel === level),
+    [shares, level],
+  );
+  /** Summary and Full hold at most one, so "the link at this level" is a fact about them. */
+  const single = isEverything(level) ? undefined : atLevel[0];
 
-  /**
-   * **A LEVEL IS A SETTING ON A LIVE LINK, NOT A DRAFT** (owner, 2026-08-30: _"No indication
-   * that the live sharing detail level was changed when switching"_ and _"I actually don't
-   * understand how the detail level for the live link changes, every time I open the sharing
-   * menu it's on תקציר"_).
-   *
-   * Both reports are one defect. `upsertTripShare` was reachable only through `ensureShare`,
-   * and `ensureShare` only from the two send buttons — so changing the level, closing the
-   * sheet and reopening it showed the STORED level again, because nothing had been stored.
-   * The change had silently never happened, and the sheet said nothing either way.
-   *
-   * A link that is already live is already showing something to whoever holds it, so the
-   * honest model is that moving the control moves the link. It saves on change, and says so.
-   * Debounced because the file checkboxes are the same draft and a per-tick write would be
-   * one request per tap.
-   *
-   * **Only for a share that already exists.** With no link yet there is nothing live to
-   * change, and minting one from a control the reader was only looking at would be a grant
-   * nobody asked for — the first send still creates it (`ensureShare`).
-   */
-  const draft = useMemo(() => {
-    const everything = level === SHARE_DETAIL_LEVEL.EVERYTHING;
-    return {
+  /** The policy the controls currently describe — what a send would hand over. */
+  const draft = useMemo(
+    () => ({
       detailLevel: level,
-      sensitive: everything ? sensitive : NO_SENSITIVE_FIELDS,
-      documentIds: everything ? [...documentIds].sort() : [],
-    };
-  }, [documentIds, level, sensitive]);
-
-  useEffect(() => {
-    if (!isAdmin || !config || loading) return;
-    const stored = {
-      detailLevel: config.detailLevel,
-      sensitive: config.sensitive,
-      documentIds: [...config.documentIds].sort(),
-    };
-    if (JSON.stringify(stored) === JSON.stringify(draft)) return;
-    let live = true;
-    const timer = setTimeout(() => {
-      void upsertTripShare(tripId, draft)
-        .then((next) => {
-          if (!live) return;
-          setConfig(next);
-          setNote(t.share.owner.levelSaved(t.share.owner.levels[next.detailLevel]));
-        })
-        .catch(() => live && setError(t.share.owner.failed));
-    }, SHARE_LEVEL_SAVE_MS);
-    return () => {
-      live = false;
-      clearTimeout(timer);
-    };
-  }, [config, draft, isAdmin, loading, tripId]);
-
-  /** Persist the current draft and hand back the live config. A peer never reaches this —
-   *  they have no controls to change, so their outcome presses use what already exists. */
-  const ensureShare = useCallback(async (): Promise<TripShareConfig> => {
-    if (!isAdmin) {
-      if (!config) throw new Error('not shared');
-      return config;
-    }
-    const next = await upsertTripShare(tripId, draft);
-    setConfig(next);
-    return next;
-  }, [config, draft, isAdmin, tripId]);
-
-  const run = useCallback(
-    async (kind: 'link' | 'pdf', action: (config: TripShareConfig) => Promise<void>) => {
-      setBusy(kind);
-      setError(undefined);
-      setNote(undefined);
-      try {
-        await action(await ensureShare());
-      } catch {
-        setError(t.share.owner.failed);
-      } finally {
-        setBusy(undefined);
-      }
-    },
-    [ensureShare],
+      sensitive: isEverything(level) ? sensitive : NO_SENSITIVE_FIELDS,
+      documentIds: isEverything(level) ? [...documentIds].sort() : [],
+    }),
+    [documentIds, level, sensitive],
   );
 
-  const shareLink = () =>
-    run('link', async (live) => {
+  const remember = useCallback((next: TripShareConfig) => {
+    setShares((prev) => [...prev.filter((config) => config.code !== next.code), next]);
+    return next;
+  }, []);
+
+  /** Persist the drafted policy and hand back its link. Idempotent: an existing policy
+   *  returns its own code rather than minting a second URL. */
+  const ensureShare = useCallback(async (): Promise<TripShareConfig> => {
+    if (!isAdmin) {
+      const existing = single ?? atLevel[0];
+      if (!existing) throw new Error('not shared');
+      return existing;
+    }
+    return remember(await upsertTripShare(tripId, draft));
+  }, [atLevel, draft, isAdmin, remember, single, tripId]);
+
+  const run = useCallback(async (kind: 'link' | 'pdf', action: () => Promise<void>) => {
+    setBusy(kind);
+    setError(undefined);
+    setNote(undefined);
+    try {
+      await action();
+    } catch {
+      setError(t.share.owner.failed);
+    } finally {
+      setBusy(undefined);
+    }
+  }, []);
+
+  const sendLink = (config: TripShareConfig) =>
+    run('link', async () => {
       const outcome = await shareUrlOrCopy({
         title: tripName,
         text: tripName,
-        url: `https://${publicAppLink(live.shareUrl)}`,
+        url: `https://${publicAppLink(config.shareUrl)}`,
       });
       if (outcome === 'copied') setNote(t.share.owner.copied);
     });
 
-  const sharePdf = () =>
-    run('pdf', async (live) => {
-      const blob = await fetchSharedItineraryPdf(live.code);
+  const sendPdf = (config: TripShareConfig) =>
+    run('pdf', async () => {
+      const blob = await fetchSharedItineraryPdf(config.code);
       await shareFileOrDownload(new File([blob], `${tripName}.pdf`, { type: 'application/pdf' }));
     });
+
+  /** Create-or-find the drafted policy, then hand it over. The press is what publishes —
+   *  opening the sheet, or moving a control somebody was only looking at, never does. */
+  const createAndSend = () =>
+    run('link', async () => {
+      const config = await ensureShare();
+      setComposing(false);
+      const outcome = await shareUrlOrCopy({
+        title: tripName,
+        text: tripName,
+        url: `https://${publicAppLink(config.shareUrl)}`,
+      });
+      if (outcome === 'copied') setNote(t.share.owner.copied);
+    });
+
+  const createAndPdf = () =>
+    run('pdf', async () => {
+      const config = await ensureShare();
+      setComposing(false);
+      const blob = await fetchSharedItineraryPdf(config.code);
+      await shareFileOrDownload(new File([blob], `${tripName}.pdf`, { type: 'application/pdf' }));
+    });
+
+  const copyToClipboard = (config: TripShareConfig) => {
+    void navigator.clipboard?.writeText(publicAppLink(config.shareUrl));
+    toast(CONTROL_ICON.clipboard, t.share.owner.copied);
+  };
 
   const shareInvite = () =>
     void shareUrlOrCopy({ title: tripName, text: tripName, url: `https://${invite}` }).then(
@@ -276,9 +304,29 @@ export function ShareItinerarySheet({
   };
 
   const scope = t.share.owner.scope[level];
+  /**
+   * The level row, each card marked when it already holds a live link — which is how "what
+   * is exposed right now" is answered at a glance, with no list and no second screen. The
+   * mark is `aria-hidden` paint, so the card carries the fact in its accessible name
+   * instead (`ChoiceGrid`'s `ariaLabel`).
+   */
   const levelOptions = useMemo(
-    () => LEVELS.map((value) => ({ value, icon: '', label: t.share.owner.levels[value] })),
-    [],
+    () =>
+      LEVELS.map((value) => {
+        const live = shares.some((config) => config.detailLevel === value);
+        return {
+          value,
+          icon: '',
+          label: t.share.owner.levels[value],
+          ...(live
+            ? {
+                mark: <span className="share-level-live" aria-hidden="true" />,
+                ariaLabel: t.share.owner.levelLive(t.share.owner.levels[value]),
+              }
+            : {}),
+        };
+      }),
+    [shares],
   );
   // **Marked, where the level cards are not** — this is the one choice in the sheet whose
   // wrong answer cannot be taken back, so it gets a second channel besides its words. They
@@ -301,6 +349,16 @@ export function ShareItinerarySheet({
     ],
     [],
   );
+
+  const liveNote = isEverything(level)
+    ? atLevel.length === 0
+      ? t.share.owner.noLinkYet
+      : atLevel.length === 1
+        ? t.share.owner.oneLive
+        : t.share.owner.manyLive(atLevel.length)
+    : single
+      ? t.share.owner.liveNote
+      : t.share.owner.noLinkYet;
 
   const joinBranch = (
     <>
@@ -339,14 +397,14 @@ export function ShareItinerarySheet({
       {note ? <div className="share-live-note">{note}</div> : null}
       {error ? <div className="share-error">{error}</div> : null}
 
-      {/* Rotating the invite is the admin's, exactly as rotating the read-only link is —
+      {/* Rotating the invite is the admin's, exactly as rotating a read-only link is —
           and for the same reason: sending an existing link is what the group does. */}
       {isAdmin && invite ? (
         <div className="share-manage-actions">
           <button
             type="button"
             className="share-manage"
-            onClick={() => setConfirming('invite-rotate')}
+            onClick={() => setConfirming({ kind: 'invite-rotate' })}
           >
             {t.share.owner.join.rotate}
           </button>
@@ -354,6 +412,160 @@ export function ShareItinerarySheet({
       ) : null}
     </>
   );
+
+  /** The switches and per-file checkboxes: a POLICY being described, not a live link being
+   *  edited. Nothing here writes until a send. */
+  const policyForm = (
+    <div className="share-private">
+      {SENSITIVE_KEYS.map((key) => (
+        <div className="share-private-row" key={key}>
+          <span className="share-private-copy">
+            <strong>{t.share.owner.privateRows[key].title}</strong>
+            <span>{t.share.owner.privateRows[key].detail}</span>
+          </span>
+          <Switch
+            checked={sensitive[key]}
+            onChange={(next) => setSensitive((prev) => ({ ...prev, [key]: next }))}
+            ariaLabel={t.share.owner.privateRows[key].title}
+          />
+        </div>
+      ))}
+      <div className="share-private-row">
+        <span className="share-private-copy">
+          <strong>{t.share.owner.privateRows.documents.title}</strong>
+          <span>{t.share.owner.privateRows.documents.detail}</span>
+        </span>
+      </div>
+      {/* Each file is chosen by name. "Share my documents" is a promise nobody can check
+          later, which is why there is no switch for the family as a whole. */}
+      <div className="share-files">
+        {documents === undefined ? null : documents.length === 0 ? (
+          <span className="share-file-empty">{t.share.owner.noDocuments}</span>
+        ) : (
+          documents.map((document) => (
+            <label className="share-file" key={document.id}>
+              <input
+                type="checkbox"
+                checked={documentIds.includes(document.id)}
+                onChange={(event) =>
+                  setDocumentIds((prev) =>
+                    event.target.checked
+                      ? [...prev, document.id]
+                      : prev.filter((id) => id !== document.id),
+                  )
+                }
+              />
+              <span dir="auto">{document.title}</span>
+            </label>
+          ))
+        )}
+      </div>
+    </div>
+  );
+
+  const outcomes = (onLink: () => void, onPdf: () => void, linkLabel: string) => (
+    <div className="share-outcomes">
+      <button
+        type="button"
+        className="share-outcome primary"
+        onClick={onLink}
+        disabled={busy !== undefined || loading}
+      >
+        <Icon name="share" />
+        {linkLabel}
+      </button>
+      <button
+        type="button"
+        className="share-outcome"
+        onClick={onPdf}
+        disabled={busy !== undefined || loading}
+      >
+        <Icon name="download" />
+        {busy === 'pdf' ? t.share.owner.pdf.preparing : t.share.owner.actions.pdf}
+      </button>
+    </div>
+  );
+
+  /** One policy, one link: the sheet's one loud element, unchanged from what ships. */
+  const singleBranch = single ? (
+    <div className="share-send">
+      <TripLinkRow url={publicAppLink(single.shareUrl)} onCopy={() => copyToClipboard(single)} />
+      {outcomes(
+        () => sendLink(single),
+        () => sendPdf(single),
+        t.share.owner.actions.liveLink,
+      )}
+    </div>
+  ) : (
+    <div className="share-send">
+      {outcomes(createAndSend, createAndPdf, t.share.owner.actions.createAndShare)}
+    </div>
+  );
+
+  /**
+   * Everything is a family, so once a link exists the branch is a managed list — you must
+   * be able to find and revoke the second of three. The rows sit inside `.share-send`,
+   * which is already a raised `overflow: hidden` container, and `.wp-listrow` already draws
+   * its own hairline: the list costs no stylesheet.
+   */
+  const manyBranch =
+    composing || atLevel.length === 0 ? (
+      <>
+        {isAdmin ? policyForm : null}
+        <div className="share-send">
+          {outcomes(createAndSend, createAndPdf, t.share.owner.actions.createAndShare)}
+        </div>
+      </>
+    ) : (
+      <div className="share-send">
+        {atLevel.map((config) => (
+          <ListRow
+            key={config.code}
+            title={policyLabel(config)}
+            meta={
+              <span dir="auto" className="share-link">
+                {publicAppLink(config.shareUrl)}
+              </span>
+            }
+            onOpen={() => sendLink(config)}
+            openLabel={t.share.owner.sendLink}
+            {...(isAdmin
+              ? { onManage: () => setManaging(config), manageLabel: t.share.owner.manageLink }
+              : {})}
+          />
+        ))}
+        {isAdmin ? (
+          <div className="share-outcomes is-single">
+            <button
+              type="button"
+              className="share-outcome"
+              onClick={() => setComposing(true)}
+              disabled={busy !== undefined}
+            >
+              <Icon name="share" />
+              {t.share.owner.actions.another}
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+
+  const manageActions = (config: TripShareConfig): RowAction[] => [
+    { label: t.share.owner.actions.liveLink, icon: 'share', onSelect: () => void sendLink(config) },
+    { label: t.share.owner.copyLink, icon: 'clipboard', onSelect: () => copyToClipboard(config) },
+    { label: t.share.owner.actions.pdf, icon: 'download', onSelect: () => void sendPdf(config) },
+    {
+      label: t.share.owner.rotate,
+      icon: 'link',
+      onSelect: () => setConfirming({ kind: 'rotate', config }),
+    },
+    {
+      label: t.share.owner.stop,
+      icon: 'lock',
+      danger: true,
+      onSelect: () => setConfirming({ kind: 'stop', config }),
+    },
+  ];
 
   return (
     <Sheet title={t.share.owner.title} onClose={onClose}>
@@ -384,10 +596,14 @@ export function ShareItinerarySheet({
                   <ChoiceGrid
                     options={levelOptions}
                     value={level}
-                    onChange={setLevel}
+                    onChange={(next) => {
+                      setLevel(next);
+                      setComposing(false);
+                    }}
                     columns={3}
                     ariaLabel={t.share.owner.lead}
                     disabled={busy !== undefined}
+                    className="share-levels"
                   />
                 </>
               ) : null}
@@ -397,137 +613,75 @@ export function ShareItinerarySheet({
                 <span>{scope.detail}</span>
                 <span className="share-scope-live">
                   <Icon name="link" />
-                  {t.share.owner.liveNote}
+                  {liveNote}
                 </span>
               </div>
             </div>
 
-            {/* The same send unit as the invite branch — one block, two outcomes instead of
-            one, because a read-only link has a second format and a membership has none.
-
-            **It sits above the refinements, not under them** (owner, 2026-08-30, looking at
-            this sheet: _"Where's the sharing link here?"_). It used to follow the sensitive
-            toggles AND the per-file document list, which is variable-length — so on
-            Everything with a few files, the one thing the sheet exists to hand over was
-            below the fold. The order is now audience → scope → send → refine, which also
-            matches how often each is touched: the configuration is stored on the share and
-            sticky, so every send after the first needs none of it. */}
-            <div className="share-send">
-              {link ? (
-                <TripLinkRow
-                  url={link}
-                  onCopy={() => {
-                    void navigator.clipboard?.writeText(link);
-                    toast(CONTROL_ICON.clipboard, t.share.owner.copied);
-                  }}
-                />
-              ) : null}
-              <div className="share-outcomes">
-                <button
-                  type="button"
-                  className="share-outcome primary"
-                  onClick={shareLink}
-                  disabled={busy !== undefined || loading || (!isAdmin && !config)}
-                >
-                  <Icon name="share" />
-                  {t.share.owner.actions.liveLink}
-                </button>
-                <button
-                  type="button"
-                  className="share-outcome"
-                  onClick={sharePdf}
-                  disabled={busy !== undefined || loading || (!isAdmin && !config)}
-                >
-                  <Icon name="download" />
-                  {busy === 'pdf' ? t.share.owner.pdf.preparing : t.share.owner.actions.pdf}
-                </button>
-              </div>
-            </div>
-
-            {isAdmin && level === SHARE_DETAIL_LEVEL.EVERYTHING ? (
-              <div className="share-private">
-                {SENSITIVE_KEYS.map((key) => (
-                  <div className="share-private-row" key={key}>
-                    <span className="share-private-copy">
-                      <strong>{t.share.owner.privateRows[key].title}</strong>
-                      <span>{t.share.owner.privateRows[key].detail}</span>
-                    </span>
-                    <Switch
-                      checked={sensitive[key]}
-                      onChange={(next) => setSensitive((prev) => ({ ...prev, [key]: next }))}
-                      ariaLabel={t.share.owner.privateRows[key].title}
-                    />
-                  </div>
-                ))}
-                <div className="share-private-row">
-                  <span className="share-private-copy">
-                    <strong>{t.share.owner.privateRows.documents.title}</strong>
-                    <span>{t.share.owner.privateRows.documents.detail}</span>
-                  </span>
-                </div>
-                {/* Each file is chosen by name. "Share my documents" is a promise nobody can
-                check later, which is why there is no switch for the family as a whole. */}
-                <div className="share-files">
-                  {documents === undefined ? null : documents.length === 0 ? (
-                    <span className="share-file-empty">{t.share.owner.noDocuments}</span>
-                  ) : (
-                    documents.map((document) => (
-                      <label className="share-file" key={document.id}>
-                        <input
-                          type="checkbox"
-                          checked={documentIds.includes(document.id)}
-                          onChange={(event) =>
-                            setDocumentIds((prev) =>
-                              event.target.checked
-                                ? [...prev, document.id]
-                                : prev.filter((id) => id !== document.id),
-                            )
-                          }
-                        />
-                        <span dir="auto">{document.title}</span>
-                      </label>
-                    ))
-                  )}
-                </div>
-              </div>
-            ) : null}
+            {isEverything(level) ? manyBranch : singleBranch}
 
             {note ? <div className="share-live-note">{note}</div> : null}
             {error ? <div className="share-error">{error}</div> : null}
             {!isAdmin ? <p className="share-lead">{t.share.owner.peerNote}</p> : null}
-            {!isAdmin && !config && !loading ? (
+            {!isAdmin && shares.length === 0 && !loading && !error ? (
               <p className="share-lead">{t.share.owner.notShared}</p>
             ) : null}
 
-            {isAdmin && config ? (
-              manage ? (
+            {/* Per-link management for the single-policy levels; Everything's rows carry
+                their own `⋯`. */}
+            {isAdmin && single ? (
+              manageOpen ? (
                 <div className="share-manage-actions">
                   <button
                     type="button"
                     className="share-manage"
-                    onClick={() => setConfirming('rotate')}
+                    onClick={() => setConfirming({ kind: 'rotate', config: single })}
                   >
                     {t.share.owner.rotate}
                   </button>
                   <button
                     type="button"
                     className="share-manage"
-                    onClick={() => setConfirming('stop')}
+                    onClick={() => setConfirming({ kind: 'stop', config: single })}
                   >
                     {t.share.owner.stop}
                   </button>
                 </div>
               ) : (
-                <button type="button" className="share-manage" onClick={() => setManage(true)}>
+                <button type="button" className="share-manage" onClick={() => setManageOpen(true)}>
                   {t.share.owner.manage}
                 </button>
               )
+            ) : null}
+
+            {/* Only at two or more: with one live link the button beside it already stops
+                everything, and two controls doing the same thing is how the wrong one is
+                pressed. */}
+            {isAdmin && shares.length > 1 ? (
+              <div className="share-manage-actions">
+                <button
+                  type="button"
+                  className="share-manage share-stop-all"
+                  onClick={() => setConfirming({ kind: 'stop-all' })}
+                >
+                  {t.share.owner.stopAll(shares.length)}
+                </button>
+              </div>
             ) : null}
           </>
         )}
       </div>
 
-      {confirming === 'rotate' ? (
+      {managing ? (
+        <RowManageSheet
+          title={policyLabel(managing)}
+          subject={publicAppLink(managing.shareUrl)}
+          actions={manageActions(managing)}
+          onClose={() => setManaging(undefined)}
+        />
+      ) : null}
+
+      {confirming?.kind === 'rotate' ? (
         <ConfirmDialog
           tone="neutral"
           title={t.share.owner.rotateTitle}
@@ -536,14 +690,59 @@ export function ShareItinerarySheet({
           cancelLabel={t.common.cancel}
           onCancel={() => setConfirming(undefined)}
           onConfirm={() => {
+            const stale = confirming.config;
             setConfirming(undefined);
-            void rotateTripShare(tripId)
-              .then(setConfig)
+            setManaging(undefined);
+            void rotateTripShare(tripId, stale.code)
+              .then((next) =>
+                setShares((prev) => [...prev.filter((config) => config.code !== stale.code), next]),
+              )
               .catch(() => setError(t.share.owner.failed));
           }}
         />
       ) : null}
-      {confirming === 'invite-rotate' ? (
+      {confirming?.kind === 'stop' ? (
+        <ConfirmDialog
+          tone="danger"
+          title={t.share.owner.stopTitle}
+          body={t.share.owner.stopBody}
+          confirmLabel={t.share.owner.stopConfirm}
+          cancelLabel={t.common.cancel}
+          onCancel={() => setConfirming(undefined)}
+          onConfirm={() => {
+            const stale = confirming.config;
+            setConfirming(undefined);
+            setManaging(undefined);
+            void stopTripShare(tripId, stale.code)
+              .then(() => {
+                setShares((prev) => prev.filter((config) => config.code !== stale.code));
+                setManageOpen(false);
+              })
+              .catch(() => setError(t.share.owner.failed));
+          }}
+        />
+      ) : null}
+      {confirming?.kind === 'stop-all' ? (
+        <ConfirmDialog
+          tone="danger"
+          title={t.share.owner.stopAllTitle}
+          body={t.share.owner.stopAllBody}
+          confirmLabel={t.share.owner.stopAllConfirm}
+          cancelLabel={t.common.cancel}
+          onCancel={() => setConfirming(undefined)}
+          onConfirm={() => {
+            setConfirming(undefined);
+            void stopAllTripShares(tripId)
+              .then(() => {
+                setShares([]);
+                setComposing(false);
+                setManageOpen(false);
+              })
+              .catch(() => setError(t.share.owner.failed));
+          }}
+        />
+      ) : null}
+      {confirming?.kind === 'invite-rotate' ? (
         <ConfirmDialog
           tone="neutral"
           title={t.share.owner.join.rotateTitle}
@@ -557,25 +756,6 @@ export function ShareItinerarySheet({
               .then((res) => {
                 setInvite(inviteLink(res.inviteUrl));
                 toast(CONTROL_ICON.done, t.share.owner.join.rotated);
-              })
-              .catch(() => setError(t.share.owner.failed));
-          }}
-        />
-      ) : null}
-      {confirming === 'stop' ? (
-        <ConfirmDialog
-          tone="danger"
-          title={t.share.owner.stopTitle}
-          body={t.share.owner.stopBody}
-          confirmLabel={t.share.owner.stopConfirm}
-          cancelLabel={t.common.cancel}
-          onCancel={() => setConfirming(undefined)}
-          onConfirm={() => {
-            setConfirming(undefined);
-            void stopTripShare(tripId)
-              .then(() => {
-                setConfig(undefined);
-                setManage(false);
               })
               .catch(() => setError(t.share.owner.failed));
           }}

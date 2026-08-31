@@ -219,7 +219,7 @@ model Trip {
   updatedAt                DateTime @updatedAt
   updatedBy                String
 
-  creator     User         @relation(fields: [createdBy], references: [id])
+  creator     User                 @relation(fields: [createdBy], references: [id])
   memberships Membership[]
   events      Event[]
   bookings    Booking[]
@@ -228,7 +228,8 @@ model Trip {
   places      Place[]
   changes     Change[]
   invite      Invite?
-  share       TripShare?
+  shares      TripShare[]
+  narratives  ItineraryNarrative[]
   blocks      TripBlock[]
   notes       Note[]
   tasks       Task[]
@@ -943,38 +944,52 @@ model RouteLeg {
   @@index([tilesetAt])
 }
 
-
 /// **One reconfigurable public link per trip** (ADR-0213 §5).
 ///
 /// Deliberately the same durable-row technique as `Invite` rather than a signed payload:
 /// the URL carries no trip id and nothing to verify, so rotating `code` invalidates the old
-/// link in one write and the projection policy can change without minting a new URL. One
-/// row per trip (`tripId @unique`) is the v1 decision — several independently revocable
-/// audience links is an access-management feature, not infrastructure hidden inside v1.
+/// link in one write.
+///
+/// **One row per POLICY, not per trip and not per level** (ADR-0213's tenth amendment). A
+/// level does not determine a projection: Summary and Full have one policy each because
+/// there is nothing in them to tune, while `everything` is a family of `2^3` switch
+/// combinations times every subset of the trip's files. So the key is `policyHash` — and
+/// the counts 1 / 1 / many fall out of it rather than being three cases written down.
 ///
 /// **No itinerary is stored here.** Every public read projects the live trip rows; this row
 /// is policy only, which is why revoking it is sufficient to stop disclosure.
 model TripShare {
-  id                      String              @id @default(cuid())
-  tripId                  String              @unique
-  code                    String              @unique
-  detailLevel             ShareDetailLevel    @default(full)
+  id                      String           @id @default(cuid())
+  tripId                  String
+  code                    String           @unique
+  /// SHA-256 over the canonical policy — level, the three switches, and the sorted
+  /// document ids (`share-policy.ts`). A hash rather than a column list because the files
+  /// live in a join table and cannot enter a unique constraint themselves.
+  ///
+  /// It is also what keeps `PUT /trips/:id/share` idempotent, which the share sheet's
+  /// no-Save design depends on: the same policy twice is the same hash, the same row and
+  /// the same code. Same technique as `ItineraryNarrative.inputHash` below.
+  policyHash              String
+  detailLevel             ShareDetailLevel @default(full)
   /// Each sensitive family, independently chosen and off by default. Only meaningful at
   /// `everything`; the shared zod schema refuses a true value below it at both edges.
-  includeBookingSecrets   Boolean             @default(false)
-  includeNotesAndTasks    Boolean             @default(false)
-  includeTravelerIdentity Boolean             @default(false)
+  includeBookingSecrets   Boolean          @default(false)
+  includeNotesAndTasks    Boolean          @default(false)
+  includeTravelerIdentity Boolean          @default(false)
   createdBy               String
-  createdAt               DateTime            @default(now())
-  updatedAt               DateTime            @updatedAt
-  /// Stopping a share keeps the row (and so the owner's last configuration) while making
-  /// every public read a 404. A later re-share mints a fresh code rather than reviving one
-  /// that has already been pasted somewhere.
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+  /// Stopping a share keeps the row (and so the policy that produced it) while making every
+  /// public read a 404. Re-sharing the same policy REUSES this row with a fresh code rather
+  /// than reviving the old one — the uniqueness above spans revoked rows too, and a revived
+  /// code would silently reopen a URL somebody has already pasted somewhere.
   revokedAt               DateTime?
 
-  trip       Trip                 @relation(fields: [tripId], references: [id], onDelete: Cascade)
-  documents  TripShareDocument[]
-  narratives ItineraryNarrative[]
+  trip      Trip                @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  documents TripShareDocument[]
+
+  @@unique([tripId, policyHash])
+  @@index([tripId])
 }
 
 /// A single file the owner chose to publish. Explicit rows rather than a "share my
@@ -993,13 +1008,18 @@ model TripShareDocument {
 /// A validated generated narrative, keyed by exactly what produced it (ADR-0213 §2).
 ///
 /// The compound unique is the eligibility rule made structural: a result is usable only for
-/// the same share, locale, input hash and skill version. Change any of them — an event was
+/// the same trip, locale, input hash and skill version. Change any of them — an event was
 /// renamed, the locale differs, the skill was revised — and there is simply no row to find,
 /// so the deterministic fallback serves while regeneration runs in the background. That is
 /// why staleness needs no expiry column and no sweeper.
+///
+/// **Keyed by the TRIP, not the share** (ADR-0213's tenth amendment §6). The input is built
+/// from Summary-public text only and is level-invariant by construction, so two links on one
+/// trip describe the same trip and must not pay for two generations — and this survives a
+/// rotation or a re-share, where per-share keying started cold every time.
 model ItineraryNarrative {
   id           String   @id @default(cuid())
-  shareId      String
+  tripId       String
   locale       String
   inputHash    String
   skillVersion String
@@ -1009,7 +1029,7 @@ model ItineraryNarrative {
   output       Json
   generatedAt  DateTime @default(now())
 
-  share TripShare @relation(fields: [shareId], references: [id], onDelete: Cascade)
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
 
-  @@unique([shareId, locale, inputHash, skillVersion])
+  @@unique([tripId, locale, inputHash, skillVersion])
 }

@@ -1105,21 +1105,28 @@ export async function refreshFxRates(tripId: string): Promise<FxRates | null> {
 
 // ── Itinerary sharing (ADR-0213) ────────────────────────────────────────────────────────
 //
-// The owner side of the one public link. All four are online-only and go straight to the
-// server rather than through the outbox: a share is a capability the world can see, and a
-// queued "stop sharing" that lands ten minutes later is a promise the app did not keep.
+// The owner side of a trip's public links. All of these are online-only and go straight to
+// the server rather than through the outbox: a share is a capability the world can see, and
+// a queued "stop sharing" that lands ten minutes later is a promise the app did not keep.
+//
+// **A trip has one link per POLICY** (the tenth amendment), so this reads a list and the
+// per-link verbs address a `code`.
 
-/** The trip's current share, or `undefined` when it is not shared — a 404 here is the
- *  ordinary answer, not a failure, because reading must never publish anything. */
-export async function fetchTripShare(tripId: string): Promise<TripShareConfig | undefined> {
+/** The trip's live links, newest policy last. Empty when it is not shared — reading must
+ *  never publish anything, so there is nothing to create here. */
+export async function fetchTripShares(tripId: string): Promise<TripShareConfig[]> {
   const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/share`);
-  if (res.status === 404) return undefined;
   if (!res.ok) return throwApiError(res);
-  return tripShareConfigSchema.parse(await readJson(res));
+  const body = await readJson(res);
+  // Element-wise rather than through an array schema: `zod` is the shared package's
+  // dependency, not this one's, so the frontend consumes the exported schemas and never
+  // composes new ones (`packages/shared/CLAUDE.md` — one source of truth for shapes).
+  if (!Array.isArray(body)) throw new Error('expected a list of shares');
+  return body.map((item) => tripShareConfigSchema.parse(item));
 }
 
-/** Create or reconfigure the link. Idempotent, which is what lets the sheet's first
- *  outcome press do this with no separate Save step. Admin-only server-side. */
+/** Get-or-create the link for exactly this policy. Idempotent, which is what lets the
+ *  sheet's first outcome press do this with no separate Save step. Admin-only server-side. */
 export async function upsertTripShare(
   tripId: string,
   input: UpsertTripShareInput,
@@ -1134,15 +1141,24 @@ export async function upsertTripShare(
 }
 
 /** New code, same policy — the previously shared URL stops resolving at once. */
-export async function rotateTripShare(tripId: string): Promise<TripShareConfig> {
-  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/share/rotate`, {
+export async function rotateTripShare(tripId: string, code: string): Promise<TripShareConfig> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/share/${code}/rotate`, {
     method: HTTP_METHOD.POST,
   });
   if (!res.ok) return throwApiError(res);
   return tripShareConfigSchema.parse(await readJson(res));
 }
 
-export async function stopTripShare(tripId: string): Promise<void> {
+/** Stop one link. Its siblings keep working. */
+export async function stopTripShare(tripId: string, code: string): Promise<void> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/share/${code}`, {
+    method: HTTP_METHOD.DELETE,
+  });
+  if (!res.ok) return throwApiError(res);
+}
+
+/** Stop every link on the trip — the collection route, keeping the meaning it always had. */
+export async function stopAllTripShares(tripId: string): Promise<void> {
   const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/share`, {
     method: HTTP_METHOD.DELETE,
   });

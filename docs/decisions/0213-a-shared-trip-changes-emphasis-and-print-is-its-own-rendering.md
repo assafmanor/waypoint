@@ -1303,7 +1303,8 @@ viewing option idk."_ Then, on the first drawing, the same day:
 It had not. [`a-level-is-a-link-not-a-setting-v1.html`](../../mockups/a-level-is-a-link-not-a-setting-v1.html)
 drew a link per **level** and is kept as the dated record of the design that was corrected;
 [`a-link-is-a-policy-not-a-level-v2.html`](../../mockups/a-link-is-a-policy-not-a-level-v2.html)
-replaces it and this amendment is written against v2. **Proposed, not built.**
+replaces it and this amendment is written against v2. **Built 2026-08-31** — see "What
+building it changed" at the foot for the three things the drawing could not see.
 
 This reverses §5's _"one reconfigurable public link per trip"_ and promotes the backlog's
 **Multiple audience links** line, narrowed to policy-keyed rather than named links (§7).
@@ -1451,20 +1452,75 @@ management feature the backlog describes, and still not what was asked.
 link — today's behaviour (`ensureShare` precedes the render), sharper now that every toggle
 combination is a possible address.
 
+### What building it changed
+
+**§1 · `placeName` LEAVES the generator's input; it does not become universal.** §6 above
+said "include `placeName` at every level, making the input level-invariant". Building it
+showed both ways of doing that are wrong: adding it to the Summary _projection_ changes what
+a Summary link publishes, which is a product change and not a cache fix; and projecting a
+second time purely to feed the generator doubles the work on every public read. Removing the
+field is level-invariant by construction, and it is strictly _less_ crossing the model
+boundary, which is the direction this ADR argues in everywhere else.
+
+What settled it is that `summaryNarrativeInputSchema`'s own docblock already claimed
+_"INDEPENDENTLY of the selected share level, so no Everything toggle can widen it"_ — and
+`placeName` was the one copied field that broke it. The schema is strict, so deleting the
+field turns the claim from a promise into a parse failure, which
+`sharing.test.ts` now pins. The trip's principal stops still reach the generator through
+`routeLabels`. Every stored narrative's hash is invalidated by the change; that is what the
+deterministic fallback is for, and no sweeper is needed (the eligibility rule is the key).
+
+**§2 · The primitive needed two fields, not one.** §4 promised `Choice.ariaLabel` alone. A
+mark that renders out of flow cannot be conjured by a name — it needs a slot — so
+`ChoiceGrid.Choice` gained `mark?: ReactNode` beside it. They are genuinely two things: the
+mark is `aria-hidden` paint that the host positions against the card, and the accessible
+name is what a screen reader gets instead of three identically-named cards.
+
+**§3 · A specificity tie hid the danger tone, and this is the third time in this sheet.**
+`.share-stop-all { color: var(--miss) }` lost to `.share-manage { color: var(--muted) }`
+several hundred lines below it — same one-class weight, later rule wins — so the stop-all
+rendered grey in the running app while every test passed. It is `.share-manage.share-stop-all`
+now, which is order-independent. The sheet's `gap` was the same shape of bug twice (see the
+manifest-order note below), so the pattern is worth naming: **a rule that describes a variant
+of an existing class must name both, or it is betting on file order.** Guarded in
+`trip-share-entry.spec.ts` on the _computed_ colour, because only a real engine resolves a
+cascade.
+
+**§4 · A failed read used to say "not shared".** `fetchTripShare`'s rejection was swallowed
+into `undefined`, which was nearly harmless when absent and failed looked the same. With a
+list they are opposite claims, and the dangerous direction is the one that was there: an
+owner told nothing is published while three links are live. The read now reports a failure,
+and the not-shared line is drawn only when a read actually succeeded. Found by a fixture
+whose `documentIds: ['d1']` failed `entityIdSchema`'s 8-character floor — one bad element
+had been dropping every sibling with it, silently.
+
 ### What was verified
 
+- `pnpm typecheck`, `pnpm lint`, `pnpm build` clean; `pnpm test` 506 shared / 1232 backend /
+  4994 frontend; sharing e2e 14/14.
+- **Against a real database and a running backend**, on the seeded demo trip: four links on
+  one trip, two of them Everything with different policies; repeating a policy returned the
+  same code (idempotent); the four public reads differ exactly as their levels require
+  (Summary carries no `startLabel`, only Everything carries `ops`); rotate 404s the old code
+  and 200s the new; a per-link revoke 404s that link while its sibling still resolves;
+  re-sharing a revoked policy mints a fresh code and reuses the row (4 rows, not 5); and
+  `DELETE …/share` empties the list.
+- **The migration's agreement with the service is proven, not asserted.** A row inserted with
+  the backfill's own SQL expression (`sha256` over the canonical policy) resolves publicly,
+  and a `PUT` of that same policy returns **that row's code** with one row on the trip — so a
+  link minted before this amendment is found rather than duplicated. `share-policy.spec.ts`
+  additionally pins two literal digests taken from Postgres.
+- **In the running app at 390px:** the Everything branch lists two rows titled by their
+  derived policies (`קודים · פתקים`, `שמות`), two level cards carry the live mark, the scope
+  note reads `2 לינקים חיים · כל אחד עם המדיניות שלו`, the stop-all reads
+  `הפסקת כל השיתופים · 3` and computes to `rgb(194, 88, 78)` (`--miss`), and the `⋯` sheet
+  carries send / copy / PDF / rotate with stop partitioned below the hairline.
 - The mockup renders both themes at 360px and 390px with fonts loaded and **no console
-  errors**.
-- Measured off the live DOM: today's sheet **525.6px**; the proposal at Summary **525.6px**
-  (that branch does not move); at Everything with three links **664.6px**; the create sheet
-  **679.1px**; the `⋯` sheet **384.1px**. List row **61px**, kebab **44px**, level card
-  **58px** and identical across all three (the mark is out of flow), link row **44px**,
-  outcome **48px**, switch row **52px** — all at or above ADR-0017's floor. The mark measures
-  7px, `rgb(60, 154, 107)` light and `rgb(76, 191, 133)` dark.
-- **The `⋯` sheet was first drawn with invented class names** (`.wp-row-act`) and measured
-  136.9px for five actions, which is what exposed it; against the real
-  `.wp-row-actions`/`.wp-row-action` tree it is 384.1px with the danger partition the
-  primitive draws on its own.
+  errors**. Measured off its live DOM: today's sheet **525.6px**; the proposal at Summary
+  **525.6px** (that branch does not move); at Everything with three links **664.6px**; the
+  create sheet **679.1px**; the `⋯` sheet **384.1px**. List row **61px**, kebab **44px**,
+  level card **58px** and identical across all three (the mark is out of flow), link row
+  **44px**, outcome **48px**, switch row **52px** — all at or above ADR-0017's floor.
 - **A manifest-order defect in the previous sharing mockup, found by rendering v1.**
   `.modal-form` sets `gap: var(--space-3)` and `.share-sheet` sets `gap: var(--space-4)`, both
   one class — so the sheet's group rhythm is decided purely by which stylesheet is emitted
@@ -1472,11 +1528,9 @@ combination is a possible address.
   primitives, the opposite of the app (`App.tsx` reaches `form-actions.css` through
   `screens/Home` → `HostTasks` → `TaskSheet` → `FormActions` at :64, long before its own
   `import './screens.css'` at :113). That file reported 16px only because its proposed block
-  re-declared the rule on top of the inlined cascade; with the manifest as listed and no
-  re-declaration the page renders **12px**, a spacing the app does not have.
-- **Not verified:** nothing is built. The migration and `policyHash`, the API reshape, the
-  narrative re-key and the `Choice.ariaLabel` extension are specified here and unwritten. The
-  mark's diameter (7px against 9px) is left to a device pass and is a control in the mockup.
+  re-declared the rule on top of the inlined cascade.
+- **Not verified:** no device pass. The mark's diameter (7px against 9px) is still a control
+  in the mockup and 7px is what shipped.
 
 ## Alternatives considered
 

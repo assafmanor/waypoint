@@ -1,16 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import {
-  NO_SENSITIVE_FIELDS,
-  SHARE_DETAIL_LEVEL,
-  type TripShareConfig,
-  type UpsertTripShareInput,
-} from '@waypoint/shared';
+import { type TripShareConfig, type UpsertTripShareInput } from '@waypoint/shared';
 import { FRONTEND_URL } from '../common/env';
 import { generatePublicCode } from '../common/public-code.util';
 import { assertTripAdmin } from '../common/trip-scope.util';
 import { DocumentsService } from '../documents/documents.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PdfBrowserService } from './pdf-browser.service';
+import { normalizeSharePolicy, sharePolicyHash } from './share-policy';
 import { SharingProjectionService } from './sharing-projection.service';
 
 const SHARE_CONFIG_SELECT = {
@@ -50,13 +46,18 @@ const toConfig = (row: ShareConfigRow): TripShareConfig => ({
 });
 
 /**
- * **Who may do what to the one link**, and the asymmetry is deliberate (ADR-0213).
+ * **Who may do what to a trip's links**, and the asymmetry is deliberate (ADR-0213).
  *
- * Every current member may READ the configuration, share the link, and ask for the PDF:
+ * Every current member may READ the configuration, share a link, and ask for the PDF:
  * sharing an itinerary is what the group does, and routing that through one person is how a
- * feature gets used once. Only an admin may CREATE, RECONFIGURE, ROTATE or REVOKE it,
- * because each of those changes what the world can see — and rotation in particular
- * silently breaks a URL other people already hold.
+ * feature gets used once. Only an admin may CREATE, ROTATE or REVOKE, because each of those
+ * changes what the world can see — and rotation in particular silently breaks a URL other
+ * people already hold.
+ *
+ * **A trip has one link per POLICY** (the tenth amendment). Summary and Full therefore have
+ * at most one each — there is nothing in them to tune — while Everything has as many as the
+ * owner has configured. Nothing here edits a live link's policy: changing a policy changes
+ * its hash, which is by definition a different link.
  */
 @Injectable()
 export class SharingService {
@@ -67,23 +68,33 @@ export class SharingService {
     private readonly pdfBrowser: PdfBrowserService,
   ) {}
 
-  /** The trip's current share, or 404. A read never creates one: opening the sheet to look
-   *  must not publish a trip. */
-  async get(tripId: string): Promise<TripShareConfig> {
-    const row = await this.prisma.tripShare.findFirst({
+  /**
+   * The trip's live links, in the sheet's own order: by level, then oldest first.
+   *
+   * An empty array rather than a 404 — "this trip is not shared" is now the ordinary
+   * zero-length case of a list, not an exceptional state, and a reader opening the sheet
+   * must not have to distinguish them.
+   */
+  async list(tripId: string): Promise<TripShareConfig[]> {
+    const rows = await this.prisma.tripShare.findMany({
       where: { tripId, revokedAt: null },
+      orderBy: [{ detailLevel: 'asc' }, { createdAt: 'asc' }],
       select: SHARE_CONFIG_SELECT,
     });
-    if (!row) throw new NotFoundException('This trip is not shared');
-    return toConfig(row);
+    return rows.map(toConfig);
   }
 
   /**
-   * Create or reconfigure the one link, idempotently.
+   * Get-or-create the link for exactly this policy.
    *
    * The same input twice returns the same code — which is what lets the sheet's first Live
-   * Link / PDF press perform this without a separate Save step, and what stops a
-   * double-tap from minting a second URL. Only an explicit rotate changes the code.
+   * Link / PDF press perform this without a separate Save step, and what stops a double-tap
+   * from minting a second URL. Only an explicit rotate changes a code.
+   *
+   * **A revoked policy is re-shared by reusing its row with a FRESH code.** The row is
+   * reused because `@@unique([tripId, policyHash])` spans revoked rows too; the code is
+   * fresh because reviving the old one would silently reopen a URL somebody has already
+   * pasted somewhere, which is the opposite of what "stop sharing" said.
    */
   async upsert(
     tripId: string,
@@ -93,46 +104,46 @@ export class SharingService {
     await assertTripAdmin(this.prisma, tripId, actorUserId);
     await this.assertDocumentsInTrip(tripId, input.documentIds);
 
-    const sensitive =
-      input.detailLevel === SHARE_DETAIL_LEVEL.EVERYTHING ? input.sensitive : NO_SENSITIVE_FIELDS;
-    const documentIds =
-      input.detailLevel === SHARE_DETAIL_LEVEL.EVERYTHING ? input.documentIds : [];
-    const existing = await this.prisma.tripShare.findUnique({
-      where: { tripId },
-      select: { id: true, revokedAt: true },
-    });
-    // A revoked share is re-shared with a FRESH code. Reviving the old one would silently
-    // reopen a URL somebody has already pasted somewhere, which is the opposite of what
-    // "stop sharing" said.
-    const code = !existing || existing.revokedAt ? generatePublicCode() : undefined;
+    const policy = normalizeSharePolicy(input);
+    const policyHash = sharePolicyHash(input);
 
     const row = await this.prisma.$transaction(async (tx) => {
-      const share = await tx.tripShare.upsert({
-        where: { tripId },
-        create: {
-          tripId,
-          code: code ?? generatePublicCode(),
-          createdBy: actorUserId,
-          detailLevel: input.detailLevel,
-          includeBookingSecrets: sensitive.bookingSecrets,
-          includeNotesAndTasks: sensitive.notesAndTasks,
-          includeTravelerIdentity: sensitive.travelerIdentity,
-        },
-        update: {
-          ...(code ? { code, revokedAt: null } : {}),
-          detailLevel: input.detailLevel,
-          includeBookingSecrets: sensitive.bookingSecrets,
-          includeNotesAndTasks: sensitive.notesAndTasks,
-          includeTravelerIdentity: sensitive.travelerIdentity,
-        },
-        select: { id: true },
+      const existing = await tx.tripShare.findUnique({
+        where: { tripId_policyHash: { tripId, policyHash } },
+        select: { id: true, revokedAt: true },
       });
-      // Replace rather than merge: the switches the owner just saw ARE the selection, and a
-      // file that left the list must stop being downloadable in the same write.
+
+      if (existing && !existing.revokedAt) {
+        return tx.tripShare.findUniqueOrThrow({
+          where: { id: existing.id },
+          select: SHARE_CONFIG_SELECT,
+        });
+      }
+
+      const data = {
+        detailLevel: policy.detailLevel,
+        includeBookingSecrets: policy.sensitive.bookingSecrets,
+        includeNotesAndTasks: policy.sensitive.notesAndTasks,
+        includeTravelerIdentity: policy.sensitive.travelerIdentity,
+        code: generatePublicCode(),
+      };
+      const share = existing
+        ? await tx.tripShare.update({
+            where: { id: existing.id },
+            data: { ...data, revokedAt: null },
+            select: { id: true },
+          })
+        : await tx.tripShare.create({
+            data: { ...data, tripId, policyHash, createdBy: actorUserId },
+            select: { id: true },
+          });
+
+      // Replace rather than merge: the files are part of the policy that keyed this row, so
+      // a re-share of a revoked policy must land on exactly the selection it names.
       await tx.tripShareDocument.deleteMany({ where: { shareId: share.id } });
-      if (documentIds.length > 0) {
+      if (policy.documentIds.length > 0) {
         await tx.tripShareDocument.createMany({
-          data: documentIds.map((documentId) => ({ shareId: share.id, documentId })),
+          data: policy.documentIds.map((documentId) => ({ shareId: share.id, documentId })),
         });
       }
       return tx.tripShare.findUniqueOrThrow({
@@ -144,13 +155,11 @@ export class SharingService {
   }
 
   /** New code, same policy. The old URL stops resolving immediately. */
-  async rotate(tripId: string, actorUserId: string): Promise<TripShareConfig> {
+  async rotate(tripId: string, code: string, actorUserId: string): Promise<TripShareConfig> {
     await assertTripAdmin(this.prisma, tripId, actorUserId);
-    const existing = await this.prisma.tripShare.findFirst({
-      where: { tripId, revokedAt: null },
-      select: { id: true },
-    });
-    if (!existing) throw new NotFoundException('This trip is not shared');
+    // Scoped by `tripId` as well as `code`, so an admin of one trip cannot rotate another
+    // trip's link by pasting its code (`trip-scope.util.ts`'s rule, applied to a credential).
+    const existing = await this.requireLink(tripId, code);
     const row = await this.prisma.tripShare.update({
       where: { id: existing.id },
       data: { code: generatePublicCode() },
@@ -159,9 +168,25 @@ export class SharingService {
     return toConfig(row);
   }
 
-  /** Stop sharing. The row survives, so the owner's configuration is still there when they
-   *  come back; only its code stops resolving. */
-  async revoke(tripId: string, actorUserId: string): Promise<void> {
+  /** Stop one link. Its row survives, so the policy is still there to re-share. */
+  async revoke(tripId: string, code: string, actorUserId: string): Promise<void> {
+    await assertTripAdmin(this.prisma, tripId, actorUserId);
+    const existing = await this.requireLink(tripId, code);
+    await this.prisma.tripShare.update({
+      where: { id: existing.id },
+      data: { revokedAt: new Date() },
+    });
+  }
+
+  /**
+   * Stop every link on the trip, in one write.
+   *
+   * This is the route that existed before the tenth amendment, keeping exactly the meaning
+   * it always had — "stop sharing this trip". With several links live it is also the only
+   * honest answer to someone who wants the sharing to stop *now*, which is why the sheet
+   * surfaces it separately rather than asking them to visit three rows.
+   */
+  async revokeAll(tripId: string, actorUserId: string): Promise<void> {
     await assertTripAdmin(this.prisma, tripId, actorUserId);
     await this.prisma.tripShare.updateMany({
       where: { tripId, revokedAt: null },
@@ -209,6 +234,15 @@ export class SharingService {
       buffer: await this.pdfBrowser.render(projection, publicShareUrl(projection.shareUrl)),
       filename: `${projection.trip.name}.pdf`,
     };
+  }
+
+  private async requireLink(tripId: string, code: string): Promise<{ id: string }> {
+    const existing = await this.prisma.tripShare.findFirst({
+      where: { tripId, code, revokedAt: null },
+      select: { id: true },
+    });
+    if (!existing) throw new NotFoundException('This link is not shared');
+    return existing;
   }
 
   private async assertDocumentsInTrip(tripId: string, documentIds: string[]): Promise<void> {

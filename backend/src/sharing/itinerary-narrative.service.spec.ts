@@ -2,14 +2,17 @@ import 'reflect-metadata';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   NARRATIVE_SOURCE,
+  NO_SENSITIVE_FIELDS,
   SHARE_DAY_KIND,
   SHARE_DAY_SUMMARY_KIND,
   SHARE_DAYPART,
+  SHARE_DETAIL_LEVEL,
   type ItineraryNarrativeOutput,
   type SharedDay,
 } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { generatePublicCode } from '../common/public-code.util';
+import { sharePolicyHash } from './share-policy';
 import {
   buildSummaryNarrativeInput,
   ItineraryNarrativeService,
@@ -73,9 +76,33 @@ describe('buildSummaryNarrativeInput', () => {
       'category',
       'daypart',
       'icon',
-      'placeName',
       'title',
     ]);
+  });
+
+  /**
+   * **The claim the schema has always made, now true** (ADR-0213's tenth amendment §6).
+   * `placeName` was the one copied field the projection sets only after its Summary early
+   * return, so the same trip generated a different narrative depending on which level
+   * opened it — and with a link per policy that became a generation per link. The input is
+   * now identical whatever the projection carried, which is what lets the cache be keyed
+   * by the TRIP.
+   */
+  it('builds the same input whether or not the projection carried place names', () => {
+    const stripped: SharedDay = {
+      ...PRIVATE_DAY,
+      sections: PRIVATE_DAY.sections.map((section) => ({
+        ...section,
+        events: section.events.map(({ placeName: _dropped, ...event }) => event),
+      })),
+    };
+
+    expect(buildSummaryNarrativeInput([stripped], ['רייקיאוויק'], 'he')).toEqual(
+      buildSummaryNarrativeInput([PRIVATE_DAY], ['רייקיאוויק'], 'he'),
+    );
+    expect(narrativeInputHash(buildSummaryNarrativeInput([stripped], [], 'he'))).toBe(
+      narrativeInputHash(buildSummaryNarrativeInput([PRIVATE_DAY], [], 'he')),
+    );
   });
 
   it('carries no exact time, address, map link, journey or hard flag', () => {
@@ -87,6 +114,7 @@ describe('buildSummaryNarrativeInput', () => {
     expect(json).not.toContain('google.com');
     expect(json).not.toContain('journey');
     expect(json).not.toContain('hard');
+    expect(json).not.toContain('Keflavík');
   });
 
   it('redacts identifier-shaped text inside an allowed field', () => {
@@ -124,9 +152,10 @@ describe('buildSummaryNarrativeInput', () => {
 describe('ItineraryNarrativeService', () => {
   const prisma = new PrismaService();
   let tripId: string;
-  let shareId: string;
 
-  async function newShare(): Promise<string> {
+  /** A trip with one live link on it. The narrative is keyed by the TRIP (ADR-0213's tenth
+   *  amendment §6), so that is what these specs hold and assert on. */
+  async function newSharedTrip(): Promise<string> {
     const trip = await prisma.trip.create({
       data: {
         name: 'narrative test trip',
@@ -137,11 +166,19 @@ describe('ItineraryNarrativeService', () => {
         updatedBy: OWNER,
       },
     });
-    tripId = trip.id;
-    const share = await prisma.tripShare.create({
-      data: { tripId: trip.id, code: generatePublicCode(), createdBy: OWNER },
+    await prisma.tripShare.create({
+      data: {
+        tripId: trip.id,
+        code: generatePublicCode(),
+        createdBy: OWNER,
+        policyHash: sharePolicyHash({
+          detailLevel: SHARE_DETAIL_LEVEL.FULL,
+          sensitive: NO_SENSITIVE_FIELDS,
+          documentIds: [],
+        }),
+      },
     });
-    return share.id;
+    return trip.id;
   }
 
   function serviceWith(generator: ItineraryNarrativeGenerator): ItineraryNarrativeService {
@@ -159,13 +196,13 @@ describe('ItineraryNarrativeService', () => {
   });
 
   const resolve = (service: ItineraryNarrativeService) =>
-    service.resolve(shareId, [PRIVATE_DAY], ['רייקיאוויק'], 'he', {
+    service.resolve(tripId, [PRIVATE_DAY], ['רייקיאוויק'], 'he', {
       title: 'רייקיאוויק ← ויק',
       summary: '',
     });
 
   beforeEach(async () => {
-    shareId = await newShare();
+    tripId = await newSharedTrip();
   });
 
   afterAll(async () => {
@@ -205,7 +242,7 @@ describe('ItineraryNarrativeService', () => {
     const service = serviceWith(stub());
     await resolve(service); // first read stores it behind the response
     await vi.waitFor(async () =>
-      expect(await prisma.itineraryNarrative.count({ where: { shareId } })).toBe(1),
+      expect(await prisma.itineraryNarrative.count({ where: { tripId } })).toBe(1),
     );
 
     const resolved = await resolve(service);
@@ -227,7 +264,7 @@ describe('ItineraryNarrativeService', () => {
     // A model that names its own provider is one that can lie about it — and the strict
     // schema refuses the extra keys outright, so nothing is stored at all.
     await new Promise((done) => setTimeout(done, 50));
-    expect(await prisma.itineraryNarrative.count({ where: { shareId } })).toBe(0);
+    expect(await prisma.itineraryNarrative.count({ where: { tripId } })).toBe(0);
   });
 
   it.each([
@@ -247,18 +284,18 @@ describe('ItineraryNarrativeService', () => {
 
     expect(resolved.source).toBe(NARRATIVE_SOURCE.DETERMINISTIC);
     await new Promise((done) => setTimeout(done, 50));
-    expect(await prisma.itineraryNarrative.count({ where: { shareId } })).toBe(0);
+    expect(await prisma.itineraryNarrative.count({ where: { tripId } })).toBe(0);
   });
 
   it('makes a stored result ineligible the moment the input changes', async () => {
     const service = serviceWith(stub());
     await resolve(service);
     await vi.waitFor(async () =>
-      expect(await prisma.itineraryNarrative.count({ where: { shareId } })).toBe(1),
+      expect(await prisma.itineraryNarrative.count({ where: { tripId } })).toBe(1),
     );
 
     const renamedDay: SharedDay = { ...PRIVATE_DAY, sections: [] };
-    const resolved = await service.resolve(shareId, [renamedDay], [], 'he', {
+    const resolved = await service.resolve(tripId, [renamedDay], [], 'he', {
       title: 'fallback',
       summary: '',
     });
@@ -269,7 +306,7 @@ describe('ItineraryNarrativeService', () => {
   it('makes a stored result ineligible when the skill version moves on', async () => {
     await resolve(serviceWith(stub()));
     await vi.waitFor(async () =>
-      expect(await prisma.itineraryNarrative.count({ where: { shareId } })).toBe(1),
+      expect(await prisma.itineraryNarrative.count({ where: { tripId } })).toBe(1),
     );
 
     const resolved = await resolve(serviceWith(stub({ skillVersion: 'v2' })));
@@ -281,7 +318,7 @@ describe('ItineraryNarrativeService', () => {
     const input = buildSummaryNarrativeInput([PRIVATE_DAY], ['רייקיאוויק'], 'he');
     await prisma.itineraryNarrative.create({
       data: {
-        shareId,
+        tripId,
         locale: 'he',
         inputHash: narrativeInputHash(input),
         skillVersion: 'v1',
@@ -302,6 +339,5 @@ describe('ItineraryNarrativeService', () => {
     const [passed] = (generator.generate as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(JSON.stringify(passed)).not.toContain('09:30');
     expect(JSON.stringify(passed)).not.toContain(tripId);
-    expect(JSON.stringify(passed)).not.toContain(shareId);
   });
 });

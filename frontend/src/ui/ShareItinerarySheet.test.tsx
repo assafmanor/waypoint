@@ -2,7 +2,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NO_SENSITIVE_FIELDS, SHARE_DETAIL_LEVEL, type TripShareConfig } from '@waypoint/shared';
-import { SHARE_LEVEL_SAVE_MS } from '../constants';
 import { t } from '../i18n/he';
 import { wrapNav } from '../test/nav-harness';
 
@@ -20,14 +19,32 @@ const config: TripShareConfig = {
   updatedAt: '2026-08-29T08:10:00.000Z',
 };
 
+/** An Everything policy, which is a FAMILY — these two reveal different things and are
+ *  therefore two links on one level (ADR-0213's tenth amendment §1). */
+const operational: TripShareConfig = {
+  ...config,
+  code: '2Wd6hL8m',
+  shareUrl: '/s/2Wd6hL8m',
+  detailLevel: SHARE_DETAIL_LEVEL.EVERYTHING,
+  sensitive: { ...NO_SENSITIVE_FIELDS, bookingSecrets: true },
+  documentIds: ['d1'],
+};
+const bare: TripShareConfig = {
+  ...config,
+  code: '6Yb1xN4c',
+  shareUrl: '/s/6Yb1xN4c',
+  detailLevel: SHARE_DETAIL_LEVEL.EVERYTHING,
+};
+
 const api = vi.hoisted(() => ({
   createInvite: vi.fn(),
   rotateInvite: vi.fn(),
-  fetchTripShare: vi.fn(),
+  fetchTripShares: vi.fn(),
   fetchTripWithMembers: vi.fn(),
   upsertTripShare: vi.fn(),
   rotateTripShare: vi.fn(),
   stopTripShare: vi.fn(),
+  stopAllTripShares: vi.fn(),
   fetchSharedItineraryPdf: vi.fn(),
   fetchSnapshot: vi.fn(),
 }));
@@ -67,13 +84,18 @@ const openRead = async () => {
   fireEvent.click(await screen.findByRole('radio', { name: t.share.owner.audience.read }));
 };
 
+/** The card for a level, marked or not: a level that already holds a live link is named
+ *  `<level> · לינק פעיל`, so an anchored prefix matches either state. */
+const levelRadio = (level: keyof typeof t.share.owner.levels) =>
+  screen.getByRole('radio', { name: new RegExp(`^${t.share.owner.levels[level]}`) });
+
 describe('ShareItinerarySheet', () => {
   beforeEach(() => {
     auth.userId = ADMIN;
     api.fetchTripWithMembers.mockResolvedValue(members('admin'));
     api.createInvite.mockResolvedValue({ inviteUrl: `/join/${INVITE}` });
     api.rotateInvite.mockResolvedValue({ inviteUrl: '/join/New8Code' });
-    api.fetchTripShare.mockResolvedValue(undefined);
+    api.fetchTripShares.mockResolvedValue([]);
     // **Echoes what it was sent**, so an assertion about what the sheet says after a save is
     // about the save and not about a fixture that always answers the same level.
     api.upsertTripShare.mockImplementation((_tripId: string, input: Record<string, unknown>) =>
@@ -81,6 +103,7 @@ describe('ShareItinerarySheet', () => {
     );
     api.rotateTripShare.mockResolvedValue({ ...config, code: 'New8Code', shareUrl: '/s/New8Code' });
     api.stopTripShare.mockResolvedValue(undefined);
+    api.stopAllTripShares.mockResolvedValue(undefined);
     api.fetchSharedItineraryPdf.mockResolvedValue(new Blob(['%PDF-1.4']));
     api.fetchSnapshot.mockResolvedValue({ documents: [{ id: 'd1', title: 'כרטיסים.pdf' }] });
     systemShare.shareUrlOrCopy.mockResolvedValue('shared');
@@ -96,11 +119,13 @@ describe('ShareItinerarySheet', () => {
   it('keeps the ordinary path to preset then system share', async () => {
     renderSheet();
     await openRead();
-    await screen.findByRole('button', { name: new RegExp(t.share.owner.actions.liveLink) });
+    await screen.findByRole('button', {
+      name: new RegExp(t.share.owner.actions.createAndShare),
+    });
 
-    fireEvent.click(screen.getByRole('radio', { name: t.share.owner.levels.full }));
+    fireEvent.click(levelRadio('full'));
     fireEvent.click(
-      screen.getByRole('button', { name: new RegExp(t.share.owner.actions.liveLink) }),
+      screen.getByRole('button', { name: new RegExp(t.share.owner.actions.createAndShare) }),
     );
 
     await waitFor(() =>
@@ -113,18 +138,41 @@ describe('ShareItinerarySheet', () => {
     expect(systemShare.shareUrlOrCopy).toHaveBeenCalledTimes(1);
   });
 
-  // **A LEVEL IS A SETTING ON A LIVE LINK, NOT A DRAFT** (owner, 2026-08-30: _"every time I
-  // open the sharing menu it's on תקציר"_). `upsertTripShare` used to be reachable only from
-  // the two send buttons, so changing the level and closing the sheet discarded it — and the
-  // next open re-seeded from the stored config and looked like the control had never moved.
-  it('writes a changed level to an already-live share, with no send press', async () => {
-    api.fetchTripShare.mockResolvedValue(config);
+  /**
+   * **THE INVERSION** (ADR-0213's tenth amendment §2). Until now, moving the level control
+   * wrote to the live share immediately and the sheet announced it — the honest repair to a
+   * model where one link carried the level. With one link per policy that repair is not
+   * merely unnecessary, it is wrong: the control selects which link you are handing over,
+   * and a URL already in somebody's hands must never change what it shows.
+   */
+  it('never writes to a live link when a control moves', async () => {
+    api.fetchTripShares.mockResolvedValue([config]);
     renderSheet();
     await openRead();
     await screen.findByRole('button', { name: new RegExp(t.share.owner.actions.liveLink) });
 
     fireEvent.click(screen.getByRole('radio', { name: t.share.owner.levels.summary }));
+    fireEvent.click(screen.getByRole('radio', { name: t.share.owner.levels.everything }));
 
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(api.upsertTripShare).not.toHaveBeenCalled();
+    expect(systemShare.shareUrlOrCopy).not.toHaveBeenCalled();
+  });
+
+  /** Selecting a level with no link yet offers to CREATE one, and still mints nothing until
+   *  the press — a grant must never come from a control somebody was only looking at. */
+  it('offers to create at a level with no link, and mints nothing before the press', async () => {
+    api.fetchTripShares.mockResolvedValue([config]);
+    renderSheet();
+    await openRead();
+    fireEvent.click(await screen.findByRole('radio', { name: t.share.owner.levels.summary }));
+
+    const create = await screen.findByRole('button', {
+      name: new RegExp(t.share.owner.actions.createAndShare),
+    });
+    expect(api.upsertTripShare).not.toHaveBeenCalled();
+
+    fireEvent.click(create);
     await waitFor(() =>
       expect(api.upsertTripShare).toHaveBeenCalledWith('t1', {
         detailLevel: SHARE_DETAIL_LEVEL.SUMMARY,
@@ -132,52 +180,101 @@ describe('ShareItinerarySheet', () => {
         documentIds: [],
       }),
     );
-    // …and it says so, because the link changed under whoever already holds it.
-    expect(
-      await screen.findByText(
-        t.share.owner.levelSaved(t.share.owner.levels[SHARE_DETAIL_LEVEL.SUMMARY]),
-      ),
-    ).toBeTruthy();
-    expect(systemShare.shareUrlOrCopy).not.toHaveBeenCalled();
   });
 
-  // The other half of the same rule: with nothing live yet there is nothing to change, and
-  // minting a link from a control the reader was only looking at is a grant nobody asked for.
-  it('mints nothing when there is no share yet and the level is only browsed', async () => {
+  /**
+   * **The question the amendment exists to answer** (owner: _"The הכל category could have
+   * different levels of detail based on what you allow, so maybe for that there could be
+   * multiple different links"_). Two Everything policies are two rows, each titled by what
+   * it reveals rather than by a name somebody typed.
+   */
+  it('lists several Everything links, each titled by its own policy', async () => {
+    api.fetchTripShares.mockResolvedValue([config, operational, bare]);
     renderSheet();
     await openRead();
-    await screen.findByRole('button', { name: new RegExp(t.share.owner.actions.liveLink) });
+    await screen.findByRole('radio', { name: t.share.owner.audience.read });
+    fireEvent.click(levelRadio('everything'));
 
-    fireEvent.click(screen.getByRole('radio', { name: t.share.owner.levels.summary }));
-
-    await new Promise((resolve) => setTimeout(resolve, SHARE_LEVEL_SAVE_MS + 60));
-    expect(api.upsertTripShare).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText(`${t.share.owner.policy.secrets} · ${t.share.owner.policy.files(1)}`),
+    ).toBeTruthy();
+    expect(screen.getByText(t.share.owner.policy.none)).toBeTruthy();
+    expect(document.querySelectorAll('.wp-listrow')).toHaveLength(2);
+    // The switches are not on screen: this is a list of links, not a form.
+    expect(
+      screen.queryByRole('switch', { name: t.share.owner.privateRows.bookingSecrets.title }),
+    ).toBeNull();
   });
 
-  // **WHERE IS THE LINK** (owner, 2026-08-30, three times). Asserted on the DOM rather than
-  // argued from the source: the send block must exist at Everything with a file list, and it
-  // must come BEFORE the sensitive rows, because a variable-length file list underneath it is
-  // what put the one thing the sheet exists to hand over below the fold.
-  it('puts the link and both send buttons above the refinements at Everything', async () => {
-    api.fetchTripShare.mockResolvedValue(config);
+  /** The dot says "at least one live link here" without a list and without a second screen.
+   *  It is `aria-hidden` paint, so the card carries the fact in its accessible name. */
+  it('marks the levels that already hold a live link', async () => {
+    api.fetchTripShares.mockResolvedValue([config, operational]);
+    renderSheet();
+    await openRead();
+
+    expect(
+      await screen.findByRole('radio', {
+        name: t.share.owner.levelLive(t.share.owner.levels.full),
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('radio', { name: t.share.owner.levelLive(t.share.owner.levels.everything) }),
+    ).toBeTruthy();
+    // Summary holds none, so it is named by its label alone.
+    expect(screen.getByRole('radio', { name: t.share.owner.levels.summary })).toBeTruthy();
+    expect(document.querySelectorAll('.share-level-live')).toHaveLength(2);
+  });
+
+  /**
+   * **WHERE IS THE LINK** (owner, 2026-08-30, three times). Still asserted on the DOM rather
+   * than argued from the source. At a level that already holds links the send unit IS the
+   * list, and no form is on screen at all — which is the strongest possible answer to the
+   * original report, since there is no variable-length file list left to push the link below
+   * the fold.
+   */
+  it('puts the links themselves in the send unit at Everything, with no form in the way', async () => {
+    api.fetchTripShares.mockResolvedValue([operational, bare]);
     api.fetchSnapshot.mockResolvedValue({
       documents: Array.from({ length: 10 }, (_, i) => ({ id: `d${i}`, title: `קובץ ${i}` })),
     });
     renderSheet();
     await openRead();
-    fireEvent.click(screen.getByRole('radio', { name: t.share.owner.levels.everything }));
-    await screen.findByText('קובץ 9');
+    fireEvent.click(levelRadio('everything'));
 
     // `Sheet` renders through `Modal`'s portal, so the tree is on `document`, not on the
     // render's own container — which is why `screen.*` is what every other spec here uses.
-    const send = document.querySelector('.share-send');
-    const priv = document.querySelector('.share-private');
-    expect(send).toBeTruthy();
-    expect(send!.querySelector('.share-link-row')).toBeTruthy();
-    expect(send!.querySelectorAll('.share-outcome')).toHaveLength(2);
-    expect(priv).toBeTruthy();
-    // DOM order: send precedes the refinements.
-    expect(send!.compareDocumentPosition(priv!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const send = await waitFor(() => {
+      const found = document.querySelector('.share-send');
+      expect(found).toBeTruthy();
+      return found!;
+    });
+    expect(send.querySelectorAll('.wp-listrow')).toHaveLength(2);
+    expect(document.querySelector('.share-private')).toBeNull();
+  });
+
+  /** Composing another one puts the form ABOVE the send, because the form is what the press
+   *  will create — the order is describe, then hand over. */
+  it('opens the policy form above the send when composing another link', async () => {
+    api.fetchTripShares.mockResolvedValue([operational]);
+    renderSheet();
+    await openRead();
+    fireEvent.click(levelRadio('everything'));
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: new RegExp(t.share.owner.actions.another) }),
+    );
+
+    const priv = await waitFor(() => {
+      const found = document.querySelector('.share-private');
+      expect(found).toBeTruthy();
+      return found!;
+    });
+    const send = document.querySelector('.share-send')!;
+    expect(priv.compareDocumentPosition(send) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: new RegExp(t.share.owner.actions.createAndShare) }),
+    ).toBeTruthy();
   });
 
   it('defaults to Full with every sensitive family off', async () => {
@@ -192,6 +289,7 @@ describe('ShareItinerarySheet', () => {
     renderSheet();
     await openRead();
     await screen.findByRole('radio', { name: t.share.owner.levels.everything });
+    // No Everything link yet, so the level opens on its create form.
     fireEvent.click(screen.getByRole('radio', { name: t.share.owner.levels.everything }));
 
     for (const key of ['bookingSecrets', 'notesAndTasks', 'travelerIdentity'] as const) {
@@ -225,7 +323,7 @@ describe('ShareItinerarySheet', () => {
 
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(
-      screen.getByRole('button', { name: new RegExp(t.share.owner.actions.liveLink) }),
+      screen.getByRole('button', { name: new RegExp(t.share.owner.actions.createAndShare) }),
     );
 
     await waitFor(() =>
@@ -237,7 +335,7 @@ describe('ShareItinerarySheet', () => {
   });
 
   it('produces a PDF and hands it to the system, not a bare download link', async () => {
-    api.fetchTripShare.mockResolvedValue(config);
+    api.fetchTripShares.mockResolvedValue([config]);
     renderSheet();
     await openRead();
     await screen.findByRole('button', { name: new RegExp(t.share.owner.actions.pdf) });
@@ -250,6 +348,7 @@ describe('ShareItinerarySheet', () => {
 
   it('says the link was copied when there is no native sheet, and nothing when it was shared', async () => {
     systemShare.shareUrlOrCopy.mockResolvedValue('copied');
+    api.fetchTripShares.mockResolvedValue([config]);
     renderSheet();
     await openRead();
     await screen.findByRole('button', { name: new RegExp(t.share.owner.actions.liveLink) });
@@ -263,6 +362,7 @@ describe('ShareItinerarySheet', () => {
   // Cancelling a native sheet is not an error, so it must not paint one.
   it('says nothing at all when the person dismissed the system sheet', async () => {
     systemShare.shareUrlOrCopy.mockResolvedValue('cancelled');
+    api.fetchTripShares.mockResolvedValue([config]);
     renderSheet();
     await openRead();
     await screen.findByRole('button', { name: new RegExp(t.share.owner.actions.liveLink) });
@@ -276,7 +376,7 @@ describe('ShareItinerarySheet', () => {
   });
 
   it('confirms rotation and replaces the shown link', async () => {
-    api.fetchTripShare.mockResolvedValue(config);
+    api.fetchTripShares.mockResolvedValue([config]);
     renderSheet();
     await openRead();
 
@@ -288,12 +388,12 @@ describe('ShareItinerarySheet', () => {
       fireEvent.click(screen.getByRole('button', { name: t.share.owner.rotateConfirm }));
     });
 
-    expect(api.rotateTripShare).toHaveBeenCalledWith('t1');
+    expect(api.rotateTripShare).toHaveBeenCalledWith('t1', CODE);
     expect(await screen.findByText('localhost:3000/s/New8Code')).toBeTruthy();
   });
 
   it('confirms before it stops sharing, and returns to the not-shared state', async () => {
-    api.fetchTripShare.mockResolvedValue(config);
+    api.fetchTripShares.mockResolvedValue([config]);
     renderSheet();
     await openRead();
 
@@ -303,7 +403,7 @@ describe('ShareItinerarySheet', () => {
       fireEvent.click(screen.getByRole('button', { name: t.share.owner.stopConfirm }));
     });
 
-    expect(api.stopTripShare).toHaveBeenCalledWith('t1');
+    expect(api.stopTripShare).toHaveBeenCalledWith('t1', CODE);
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: t.share.owner.manage })).toBeNull(),
     );
@@ -389,7 +489,7 @@ describe('ShareItinerarySheet', () => {
     beforeEach(() => {
       auth.userId = PEER;
       api.fetchTripWithMembers.mockResolvedValue(members('peer'));
-      api.fetchTripShare.mockResolvedValue(config);
+      api.fetchTripShares.mockResolvedValue([config]);
     });
 
     // Not a new authorization rule: `POST …/invite` is already get-or-create for any
