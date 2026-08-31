@@ -1,7 +1,22 @@
 // Hermetic boot for the nav e2e: route-mock the handful of endpoints the app
-// hits on start so it lands in a live trip's Home with no backend/DB. The trip's
-// date range is deliberately huge so `resolveLanding` treats it as "now"
-// whatever the box clock reads (lib/active-trip.ts).
+// hits on start so it lands in a live trip's Home with no backend/DB.
+//
+// **The trip's window is DERIVED from the clock the spec is using, and it is short.** What
+// `resolveLanding` needs is `today` inside `[startDate, endDate]` (`lib/active-trip.ts`), and
+// this file used to buy that with a sixteen-year range — 2020-01-01 to 2035-12-31 — so it
+// held whatever the box clock read. It worked, and it cost more than anyone had measured: the
+// day strip renders one pill per trip day, so the default fixture drew **5,844 pills** and a
+// **1.45 MB** document where a live trip needs seven pills and 632 KB. Every Playwright action
+// that scrolls or queries pays for that DOM, and on the Vite dev server the bill intermittently
+// crossed the 30 s test timeout — which is why `e2e (preview)`, on a production bundle fast
+// enough to squeak in, stayed green on the same commit. `subtask-ring.spec.ts:407` was the
+// first to fail on it, dying inside `scrolling into view if needed` on a `{ force: true }`
+// click, where actionability is skipped and the scroll is all that is left.
+//
+// So the range is `shortLiveTripDates(now)` by default and `dates` is the opt-in. Note what
+// that fixes beyond the timeout: the workaround had been spreading spec by spec — 30 of the
+// 34 specs already passed a short range, and the four that had not were the four that failed.
+// A default nobody wants is a trap that arms itself for spec thirty-five.
 import type { Page } from '@playwright/test';
 import { tripSnapshotSchema } from '@waypoint/shared';
 
@@ -28,6 +43,11 @@ const TRIP = {
   id: 't1',
   name: 'טוקיו',
   destination: 'Tokyo',
+  // **Placeholders. `bootIntoTrip` replaces both, every time.** They exist because
+  // `tripSnapshotSchema` validates `SNAPSHOT` at module load (below) and the fields are
+  // required — nothing reads these values. Do NOT widen them back to a multi-year range to
+  // make a trip "live whatever the clock reads": that is what this file did until 2026-08-31,
+  // and the header explains what it cost. The window is derived at boot instead.
   startDate: '2020-01-01',
   endDate: '2035-12-31',
   timezone: 'UTC',
@@ -191,11 +211,18 @@ export async function bootIntoTrip(
      * debug hook surviving into a build.
      */
     now?: number;
-    /** Override the trip's date range (see `shortLiveTripDates`). */
+    /** Override the trip's date range. The default is already `shortLiveTripDates` around
+     *  this spec's own clock, so this is for a spec that needs a SPECIFIC window — a single
+     *  day (`{ startDate: DAY, endDate: DAY }`), or a range whose day numbers it asserts. */
     dates?: { startDate: string; endDate: string };
   } = {},
 ): Promise<void> {
-  const trip = { ...TRIP, ...opts.dates };
+  // **The window and `now` come out of the same number**, which is `shortLiveTripDates`'s own
+  // warning and the reason this lives here rather than in the constant: only `bootIntoTrip`
+  // knows which clock the spec pinned. A fixed short range plus a real clock is how
+  // `hero-in-transit` shipped green and went red four days later with every assertion still
+  // correct — the trip had simply stopped being live.
+  const trip = { ...TRIP, ...shortLiveTripDates(opts.now ?? Date.now()), ...opts.dates };
   const snapshot = {
     ...SNAPSHOT,
     trip,
