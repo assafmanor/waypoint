@@ -1532,6 +1532,161 @@ had been dropping every sibling with it, silently.
 - **Not verified:** no device pass. The mark's diameter (7px against 9px) is still a control
   in the mockup and 7px is what shipped.
 
+## Amendment — the page knows what day it is (2026-08-31, eleventh pass, drawn not built)
+
+Owner, 2026-08-31:
+
+> _"I noticed that the live sharing page opens with the first day expanded. First of all -
+> why? Second, i think that during the trip, i.e. while it's happening, the live sharing page
+> should scroll to and expand the current day. Maybe we should also add an indication to
+> whether it's in the future, is happening right now, or has already happened."_
+
+Drawn in
+[`a-shared-itinerary-knows-what-day-it-is-v1.html`](../../mockups/a-shared-itinerary-knows-what-day-it-is-v1.html).
+**Not built** — the mockup and this amendment are the design; the backlog carries the build.
+
+**The answer to "why" is that nobody decided it.** `SharedItinerary.tsx` holds
+`useState(0)`, and the three reader mockups the page was built from all shipped `open: 1` —
+a demo state, chosen so a screenshot would show one card's insides. What §1 of this ADR
+decided is the accordion itself (one card open at a time over a stable day spine); which
+card is the open one was never a decision, and that is why this amendment reads as filling
+a hole rather than reversing a choice.
+
+Everything below is one rule with four consequences: **the page opens on the day the reader
+is in, and says which day that is.**
+
+### §1 · Which card opens, and where the page lands
+
+The card that opens is the one whose date is the trip's today; before the trip and after it
+there is no such day, so it is the first card. One rule, three phases, no special case for
+any of them.
+
+The scroll is **not a new rule** — `DayView` already made every decision it needs:
+
+> _"Land on now: scroll the now-line into view once per day-open (today only), a passed
+> event or two left peeking above. Keyed on the viewed day — never on the clock tick — so it
+> doesn't fight a manual scroll. Instant under reduced-motion."_
+
+Applied to a page whose rows are days instead of events, that is: only when a card is
+today, once per link (keyed on `code`, never on a refetch or a clock tick), the previous
+day left peeking above, and instant under `prefersReducedMotion()`. The peek shipped as
+26px in the drawing and stays a device call.
+
+`scrollIntoView` is safe here and is not in the app's sheets: the reason it is refused there
+is that it scrolls every scrollable ancestor, and the reader page has exactly one scroller —
+the document — since the ninth amendment §6 made `[data-public-reader]` opt out of the app's
+`overflow: clip`.
+
+**A hash in the URL wins.** A `day-<ordinal>` anchor is already rendered on every card
+and nothing links to it since the seventh amendment stopped the bookings block teleporting;
+a reader handed `/s/<code>#day-9` asked for day nine. The open card is **not** written into
+the URL — it is a disclosure state, not navigation, and it would pollute a document's back
+history.
+
+**`openDay` becomes an ordinal, not an index.** It is index-based today, so a refetch that
+adds or removes a day silently leaves a different card open than the one the reader opened.
+
+### §2 · The page has one amber, and it belongs to the day the trip is on
+
+`shared-itinerary.css` already spends the page's rationed hue on the open card, and already
+writes down why it may: _"Amber marks the open day because a day is a span of TIME — the one
+thing amber is for."_ The reasoning is right and the target is wrong. `.open` is a
+**disclosure** state, and three signals already carry it: the caret rotates,
+`--elevation-raised` lifts the card, and the body is open. So `.sh-day.open .sh-day-date` is
+**deleted** and `.sh-day.is-now .sh-day-date` takes the tint. Deleted, not overridden — a
+page with two ambers saying two things is what rule 4 / ADR-0028 exists to prevent.
+
+This is also what makes §1's scroll legible: landing on today's card means the reader never
+sees the masthead, so the mark on the card is load-bearing rather than decorative.
+
+### §3 · A mark on the exception, a treatment on what is behind, nothing on the future
+
+A badge per card (`היה` / `עכשיו` / `בעוד N ימים`) is what the request invites, and this app
+already tried it and deleted it, with the reason recorded in `App.css`: _"There is no
+`.chip.past`: under a `הסתיים` heading, over dates already past, it repeated its own heading
+and told no two cards apart."_ A chronologically sorted spine of twelve dated cards **is**
+that heading. Measured, the badged variant costs 13px per card — 143px of extra spine for no
+fact the card did not already carry.
+
+So:
+
+- **Today** — the amber date column plus the word `עכשיו` under the weekday, inside that
+  column. Not in the copy column: both its lines ellipsise, so a chip there eats the day's
+  title at 360px. The mark adds **no height** (the header's 76px floor absorbs it).
+- **Past** — `filter: saturate(0.82)` and the title dropped to `--muted`: the same two moves
+  `.trip-card.is-past` makes on the All Trips list and `.day-list.archive` makes on a past
+  day. Measured, the title steps from 15.65:1 to 5.57:1 against the card — a visible notch
+  that still clears AA. No layout cost.
+- **Future** — the page's default. Nothing.
+
+### §4 · The trip's phase is said once, in the masthead — and `live` stops being a claim
+
+`t.share.public.kicker` is the constant string `מסלול חי`, printed identically on a trip that
+ended six months ago. That same line carries the phase instead: `עוד N ימים` /
+`יום N מתוך M` / `הסתיים`, beside the shape and destination it already names.
+
+**And `עודכן עכשיו` is true for about a minute.** It is stamped at load, and the page never
+refetches — one `useEffect`, no visibility hook, no poll. A relative who leaves the tab open
+sees a three-hour-old itinerary asserting it is current, which is the exact opposite of what
+this page is for. Two changes: the label becomes elapsed, through **the app's one elapsed
+ladder** (ADR-0114's `formatDuration` + `t.changeFeed.relTime.agoPrefix`, generalised out of
+`noteWhen` rather than written a third time), and the projection is refetched when the tab
+becomes visible again. The public route's own `@Throttle` allows 20 requests a minute, which
+is far above what that costs.
+
+### §5 · Where "now" is inside today's card — deferred, with its cost named
+
+The living-visibility case for this page is a relative following along, and a day-level mark
+does not answer _where are they now_. The marker itself costs nothing new: the app's
+`.nowline` (ADR-0043) renders class for class inside `.sh-day-body`, needing one margin rule.
+
+What it costs is a **derivation**. `nowLinePlacement` reads instants (`atMs`, `endsAt`), and
+the projection deliberately ships `HH:MM` labels so two renderers cannot format one instant
+two ways. Two ways out: ship instants (and lose that guarantee), or compare wall clocks in
+the trip's primary zone — in which case a day carrying `zoneShiftMinutes` is the one day the
+comparison cannot be trusted. **Recommendation:** wall clock, suppressed on a day with a
+zone shift, which is also the day the line adds least. Full and Everything only — Summary
+carries no times at all. Deferred to its own pass; the backlog carries it.
+
+### §6 · Where "today" comes from, and why not from the server
+
+The projection ships pre-formatted times so the zone derivation lives in one place, which
+argues for a server-stamped `today`. It is the wrong call here: a stamped answer goes stale
+in the reader's hand on a page that never refetches. So the projection ships the **input** —
+`trip.timezone`, an IANA name on `sharedItinerarySchema.trip` — and the client runs
+`@waypoint/shared`'s own `todayInTz`, the same function every day surface in the app runs.
+One derivation, re-runnable. The zone is not a secret: it is implied by the destination the
+masthead already prints.
+
+**The PDF renders none of it.** A printed page that says `עכשיו` is lying by tomorrow, and
+unlike the live page it cannot correct itself. Paper keeps printing dates.
+
+### §7 · The derivation is lifted, not written a third time
+
+`type DayScope = 'past' | 'today' | 'future'` already exists — local to `DayView`, computed
+inline there, and computed again in a second spelling inside `DayStrip`'s `pillClass`. That
+is the half-built-twice case rule 8 is about, so the comparison moves to `lib/time.ts`
+beside `relativeDayLabel` as a named `DAY_PHASE` const plus `dayPhase(date, today, endDate?)`,
+and all three surfaces read it. A card that swallowed two days (`SharedDay.endDate`) is today
+while **either** of them is today, and past only once both are behind — which is why the
+helper takes the end date and why comparing ordinals is not enough.
+
+### What the renders found, beyond the proposals
+
+- **The mark carries no ground of its own, and the render decided that.** Drawn first as
+  `.chip.soon`'s recipe — a tint plus `--amber-deep` ink — the tint-inside-a-tint measured
+  **4.53:1** against AA's 4.5 floor for small bold text, passing by 0.03. The column is
+  already the amber ground. Word only: **5.09:1**, beside the shipped `.sh-part-head`'s
+  5.24:1 on the card — so the mark is no worse than the amber the page already prints.
+- **The now-line goes under a daypart heading, not above the section.** Placed above the
+  section — `nowLinePlacement`'s rule taken one altitude up — it landed above `אחר הצהריים`
+  at 14:05, putting a daypart that had already begun on the future side of now. The heading
+  names a span; the marker belongs among the rows it is between.
+- **Phase must compare dates, not day ordinals.** The drawing used ordinals first, with
+  "no today" after the trip, and rendered a finished trip as an unstarted one: every one of
+  its twelve days read `future`. Comparing dates answers all three trip phases with no
+  special case.
+
 ## Alternatives considered
 
 - **One page with fields progressively removed.** Rejected: less information is not automatically the right emphasis.
@@ -1550,3 +1705,4 @@ had been dropping every sibling with it, silently.
 - [`a-shared-itinerary-is-organized-by-the-day-v3.html`](../../mockups/a-shared-itinerary-is-organized-by-the-day-v3.html) renders both themes at 360/390px with fonts loaded and no console errors. Its non-empty daypart heading is 30px, Summary event row 38px, and day header 76px.
 - [`a-shared-itinerary-is-printed-by-daypart-v2.html`](../../mockups/a-shared-itinerary-is-printed-by-daypart-v2.html) renders both review themes at 360/390px with no console errors. In the unscaled print DOM, the day header is 47px, daypart header 18px, and event row 31px.
 - The generated Full PDF was rendered back to two page images and inspected with no clipping or overlap.
+- [`a-shared-itinerary-knows-what-day-it-is-v1.html`](../../mockups/a-shared-itinerary-knows-what-day-it-is-v1.html) renders both themes at 360/390px with fonts loaded and no console errors. The day header holds 76px with the `עכשיו` mark and without it; the mark's own box is 14px; `--amber-deep` on the amber date column is 5.09:1 light / 8.22:1 dark against the shipped `.sh-part-head`'s 5.24:1 / 5.84:1; a past day's title steps 15.65:1 → 5.57:1 with no layout change; the rejected per-card badge costs 13px × 11 cards; today's card lands 26px below the scroller's top with 3 of the 4 earlier days above the fold; the app's `.nowline` inside a day body is 19px.
