@@ -524,3 +524,69 @@
   flex: 0 0 auto;
   white-space: nowrap;
 }
+
+/* ── TOMORROW, IN THE DAY RAIL'S SLOT (ADR-0214) ──────────────────────────────
+   The geometry is `styles/day-track.css` (shared with the Home glance rail, which is the
+   second consumer already asked for). What lives here is the part that is the BOARD's: the
+   `--track-*` inks for an always-dark surface, and the one line the strip can say that no
+   other slot can.
+
+   Amber for every one of them, because a day's shape is a fact about the clock and the clock
+   is amber's (root rule 4). The fill is the same low-alpha tint the rail's own track uses
+   under `--amber`, the ground is the board's gradient bottom (which is what a 1px hairline
+   between two adjacent blocks has to match), and the cue's ink is the tint again rather than a
+   fourth value — it reads as thickness, not as a second colour. */
+.wp-board-tmr {
+  --track-fill: rgba(233, 166, 60, 0.42);
+  --track-strong: var(--amber);
+  --track-ground: var(--board);
+  --track-point: rgba(233, 166, 60, 0.65);
+  /* **BRIGHTER than the fill, and the running app is what said so.** The mockup drew the cue
+     on a HARD block — solid `--amber` — where a dim halo reads as a thickening; the first day
+     the built strip met was all-soft, and a ⁦0.3⁩ halo around a ⁦0.42⁩ fill is a tenth of an alpha
+     apart, i.e. invisible. It has to out-value what it rings. The alternative — drawing the
+     cued block solid — is refused: solid means HARD (ADR-0011), and a soft stop wearing it
+     would be a lie about commitment to save a shade. */
+  --track-cue: rgba(233, 166, 60, 0.62);
+  --track-dash: rgba(147, 162, 196, 0.4);
+}
+/* **Where tomorrow ends up**, and the only words on the strip. `--on-dark-faint` because it is
+   a footnote to the shape above it, not a second statement — the same rung the rail's own ends
+   read at. `לינה`, never `ישנים`: ADR-0211 §3 refused that word as a claim about a person with
+   no sensor behind it, and a lookahead is not where the app starts making one. */
+.wp-board-tmr-sleep {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--on-dark-faint);
+}
+.wp-board-tmr-sleep .icon {
+  width: 11px;
+  height: 11px;
+  flex: none;
+}
+
+/* ── THE RANK SWAP (ADR-0214 §2) ──────────────────────────────────────────────
+   No new values: `[data-rank='1']` is what `.wp-board-now-label` / `.wp-board-now-title`
+   already are, handed to whichever slot holds tomorrow. The board separates its two slots on
+   three channels at once (amber vs faint label, `--text-h2` vs `--text-h3`, `--on-dark-strong`
+   vs `--on-dark`) — that ranking is good and at night it was simply aimed at the slot holding
+   `סוף היום`, a statement about what is not happening.
+
+   An attribute rather than a class, and rather than reordering the DOM: reordering would put
+   the countdown in a different flex row to express a change of emphasis, and `.lead`/`.back`
+   are the record of what an unprefixed modifier class costs on this surface (ADR-0160 §C). */
+.wp-board-next-label[data-rank='1'] {
+  color: var(--amber);
+  /* The board's own top rhythm, not a new number: `.wp-board-now-label` carries this because
+     it is the first slot under the live row, and at rank 1 this label IS that slot. Measured at
+     ⁦0px⁩ without it, which reads as the label falling out of the top row. */
+  margin-top: 14px;
+}
+.wp-board-next-title[data-rank='1'] {
+  font-size: var(--text-h2);
+  color: var(--on-dark-strong);
+}

@@ -516,4 +516,144 @@ describe('Board — the countdown swaps what it counts to (ADR-0206 §Z1)', () =
     const live = board({ value: '10', unit: t.board.leaveIn });
     expect(live.container.querySelectorAll('.wp-board-countdown .u')).toHaveLength(1);
   });
+
+  // ── TOMORROW IS THE NIGHT BOARD'S SUBJECT (ADR-0214) ───────────────────────
+  // Three states, and the rule that generates them is one line: rank 1 is whichever slot holds
+  // tomorrow. So the shapes differ because the DATA differs, not because the board has three
+  // branches about the clock.
+  const RIBBON = {
+    blocks: [
+      {
+        key: 'a',
+        startFrac: 0.01,
+        endFrac: 0.17,
+        hard: true,
+        point: false,
+        nextDay: false,
+        composite: false,
+        cue: true,
+      },
+      {
+        key: 'b',
+        startFrac: 0.25,
+        endFrac: 0.41,
+        hard: false,
+        point: false,
+        nextDay: false,
+        composite: false,
+        cue: false,
+      },
+    ],
+    marks: [{ key: 'a', frac: 0.01, icon: '🚄' }],
+    count: 2,
+  };
+  const tomorrowProps: Partial<BoardProps> = {
+    variant: 'free',
+    clock: '22:40',
+    gap: { read: { kind: GAP_CHARACTER.DAY_DONE } },
+    next: { title: <span>רכבת לקיוטו</span>, time: '07:12', day: 'מחר', hard: true, code: 'HIK1' },
+    countdown: { value: '8:32', unit: 'שעות' },
+  };
+
+  it('a planned tomorrow takes rank 1, and the day-done words are not drawn at all', () => {
+    const { container } = render(
+      <Board {...(tomorrowProps as BoardProps)} tomorrow={{ label: 'מחר', ribbon: RIBBON }} />,
+    );
+    // The next slot IS the first slot: it wears rank 1 and there is no now-slot above it.
+    expect(container.querySelector('.wp-board-next-label')?.getAttribute('data-rank')).toBe('1');
+    expect(container.querySelector('.wp-board-next-label')?.textContent).toBe('מחר');
+    expect(container.querySelector('.wp-board-next-title')?.getAttribute('data-rank')).toBe('1');
+    expect(container.querySelector('.wp-board-now-title')).toBeNull();
+    expect(container.textContent).not.toContain(t.board.endOfDay);
+    // Nothing above it to divide from.
+    expect(container.querySelector('.wp-board-divider')).toBeNull();
+    // The rail's slot carries the shape instead of a bar with nothing left to measure.
+    expect(container.querySelector('.wp-board-progress.wp-track')).toBeTruthy();
+    expect(container.querySelectorAll('.wp-track-blk')).toHaveLength(2);
+    expect(container.querySelector('.wp-track-blk.hard.cue')).toBeTruthy();
+    expect(container.querySelectorAll('.wp-board-progress .knob')).toHaveLength(0);
+  });
+
+  // The three subtractions, and the day token is the one that DEPENDS on the rank swap: the
+  // label above now says `מחר`, so keeping it prints one word twice.
+  it('at rank 1 the code, the lock and the day token come off the meta row', () => {
+    const { container } = render(
+      <Board {...(tomorrowProps as BoardProps)} tomorrow={{ label: 'מחר', ribbon: RIBBON }} />,
+    );
+    const meta = container.querySelector('.wp-board-next-meta');
+    expect(meta?.textContent).toContain('07:12');
+    expect(meta?.querySelector('.code')).toBeNull();
+    expect(meta?.querySelector('.lockmini')).toBeNull();
+    expect(meta?.textContent?.match(/מחר/g) ?? []).toHaveLength(0);
+    // …and the label is where that word now lives, exactly once on the card.
+    expect(container.textContent?.match(/מחר/g)).toHaveLength(1);
+  });
+
+  it('the same board WITHOUT a tomorrow keeps every one of them', () => {
+    const { container } = render(<Board {...(tomorrowProps as BoardProps)} />);
+    const meta = container.querySelector('.wp-board-next-meta');
+    expect(meta?.querySelector('.code')?.textContent).toBe('HIK1');
+    expect(meta?.querySelector('.lockmini')).toBeTruthy();
+    expect(meta?.textContent).toContain('מחר');
+    expect(container.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.endOfDay);
+    expect(container.querySelector('.wp-board-next-label')?.getAttribute('data-rank')).toBeNull();
+  });
+
+  it('an unplanned tomorrow keeps its words in the now-slot, and the far point keeps rank 2', () => {
+    const { container } = render(
+      <Board
+        {...(tomorrowProps as BoardProps)}
+        next={{ title: <span>טיסה לאוסקה</span>, time: '09:00', day: 'מחרתיים' }}
+        tomorrow={{ label: 'מחר', ribbon: { blocks: [], marks: [], count: 0 } }}
+      />,
+    );
+    expect(container.querySelector('.wp-board-now-label')?.textContent).toBe('מחר');
+    expect(container.querySelector('.wp-board-now-title')?.textContent).toBe(
+      t.board.gap.emptyDay.title,
+    );
+    // No swap: the point is a day or more out, so it stays `הבא בתור` — and it keeps the day
+    // token, because the label above it does not say it.
+    expect(container.querySelector('.wp-board-next-label')?.getAttribute('data-rank')).toBeNull();
+    expect(container.querySelector('.wp-board-next-meta')?.textContent).toContain('מחרתיים');
+    // A dashed strip, and no blocks to draw.
+    expect(container.querySelector('.wp-track-empty')).toBeTruthy();
+    expect(container.querySelectorAll('.wp-track-blk')).toHaveLength(0);
+    expect(container.querySelector('.wp-board-divider')).toBeTruthy();
+    // And no day rail under it: two bands for two things with nothing left to measure is
+    // what the running app showed, so the spent rail goes here as well.
+    expect(container.querySelector('.wp-board-progress:not(.wp-track)')).toBeNull();
+  });
+
+  it('the bed is named only when the screen passes it', () => {
+    const { container: without } = render(
+      <Board {...(tomorrowProps as BoardProps)} tomorrow={{ label: 'מחר', ribbon: RIBBON }} />,
+    );
+    expect(without.querySelector('.wp-board-tmr-sleep')).toBeNull();
+    cleanup();
+    const { container: withBed } = render(
+      <Board
+        {...(tomorrowProps as BoardProps)}
+        tomorrow={{ label: 'מחר', ribbon: RIBBON, sleeps: 'Hotel Kanra' }}
+      />,
+    );
+    expect(withBed.querySelector('.wp-board-tmr-sleep')?.textContent).toContain('Hotel Kanra');
+  });
+
+  // The strip is a READOUT: the board is a `<button>`, and ADR-0160 §4 is the record of what a
+  // nested one does to it (Chrome closes the board at the inner button and reparents the rest).
+  it('the strip contains no control, so a tappable board keeps its children', () => {
+    const { container } = render(
+      <Board
+        {...(tomorrowProps as BoardProps)}
+        tomorrow={{ label: 'מחר', ribbon: RIBBON, sleeps: 'Hotel Kanra' }}
+        onLift={() => {}}
+      />,
+    );
+    const board = container.querySelector('button.wp-board');
+    expect(board).toBeTruthy();
+    expect(board?.querySelectorAll('button')).toHaveLength(0);
+    // Everything after the strip is still inside the board.
+    expect(board?.querySelector('.wp-track')).toBeTruthy();
+    expect(board?.querySelector('.wp-board-tmr-sleep')).toBeTruthy();
+  });
 });

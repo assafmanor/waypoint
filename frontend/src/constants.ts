@@ -389,6 +389,40 @@ export const DAY_WINDOW = { START_HOUR: 7, END_HOUR: 23 } as const;
  */
 export const NIGHT_ENDS_HOUR = 5;
 
+/**
+ * **THE DAY TRACK'S FOUR NUMBERS** (ADR-0214), and they answer three different questions —
+ * which is why they are one object with this comment rather than four literals at a render
+ * site. Named for the TRACK rather than for tomorrow: the night board's strip is the first
+ * consumer and the Home glance rail is the second one already asked for, and both are the same
+ * geometry (`lib/day-track.ts`).
+ *
+ * `BLOCK_MIN_PX` is a **visibility** floor and it is not a new value: it is
+ * `glance-card.css`'s own `.seg.point` width. A ⁦15⁩-minute event is ⁦4.5px⁩ of a ⁦290px⁩ track,
+ * so without a floor the short things on a busy day are exactly the ones that vanish — and it
+ * is also what draws a zero-LENGTH event at all, which the shipped rail does not
+ * (`buildDayGlance` returns `endsAt === startsAt` as a zero-width segment with
+ * `point: false`; see `docs/backlog.md`).
+ *
+ * `MARK_MIN_PX` is a **collision** fact: a ⁦13px⁩ emoji's box plus breathing room. Two marks
+ * closer than this overlap, which is the defect the ribbon's whole thinning rule exists to
+ * prevent (`mockups/tomorrow-lookahead-v3.html` §3 asserts it against rendered boxes).
+ *
+ * `NARROWEST_TRACK_PX` is the ⁦360px⁩ phone's measured track, and dividing by it is the
+ * decision, not the arithmetic: the spacing threshold is therefore computed for the SMALLEST
+ * screen, so a wider phone keeps the same marks rather than finding room for more. One day
+ * reads one way on every device.
+ *
+ * `MARK_CAP` is not a collision fact at all — it is the "stay minimalistic" half of the
+ * owner's correction, and the only one of the four that is a matter of taste. It wants a
+ * device pass.
+ */
+export const DAY_TRACK = {
+  BLOCK_MIN_PX: 4,
+  MARK_MIN_PX: 16,
+  NARROWEST_TRACK_PX: 290,
+  MARK_CAP: 5,
+} as const;
+
 /** How many ranked ideas the pool strip keeps (ADR-0116 session-202 §5). This is
  *  what makes the strip's width independent of N: the mockup measured swipes-to-last
  *  going 2 · 10 · 24 at 5 · 18 · 40 ideas, against a constant 3 once capped. The tail

@@ -505,3 +505,14 @@
   width: 12px;
   height: 12px;
 }
+
+/* **A chip STANDING ALONE owes ADR-0017's floor** (ADR-0214 §6), and `.hero-act`'s own comment
+   is why its ⁦34px⁩ is not enough here: that value is licensed for "a row of two or three inside
+   a bounded card", where the row's padding carries the rest of the reach. In the foot this is
+   one control on its own line with nothing beside it, so it takes the floor. Measured, because
+   the render reported ⁦34px⁩ and the floor does not bend for a surface that happens to be dark. */
+.hero-foot .hero-day-act {
+  min-height: 44px;
+  padding-inline: 14px;
+  margin-top: 11px;
+}

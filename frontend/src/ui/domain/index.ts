@@ -6,7 +6,7 @@
 // trip-state, no screen imports (dependency direction §12). Co-located CSS loads
 // with each component.
 
-export { Board, DayRail, TransitProgress } from './Board';
+export { Board, DayRail, TomorrowStrip, TransitProgress } from './Board';
 export type {
   BoardProps,
   BoardVariant,
@@ -15,6 +15,7 @@ export type {
   BoardNext,
   BoardCountdown,
   BoardGap,
+  BoardTomorrow,
 } from './Board';
 
 export { EventCard } from './EventCard';

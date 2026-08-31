@@ -24,7 +24,13 @@ import { Avatar, type AvatarPerson } from '../primitives/Avatar';
 import { Icon } from '../Icon';
 import { ZoneShiftPill } from '../ZoneShiftPill';
 import { SettleControl, type SettleOutcome } from './SettleControl';
-import { BoardGapSlot, type BoardCountdown, type BoardGap } from './Board';
+import {
+  BoardGapSlot,
+  TomorrowStrip,
+  type BoardCountdown,
+  type BoardGap,
+  type BoardTomorrow,
+} from './Board';
 import { t } from '../../i18n/he';
 import './hero-lift.css';
 
@@ -189,6 +195,16 @@ export interface HeroLiftTravel {
   duration?: string;
   /** The leave-by sentence, already in the point's own zone. */
   leave: string;
+  /** **Which day that leave-by falls on, when it is not today** (ADR-0214 §7) — `מחר`, from the
+   *  same `relativeDayLabel` two other slots on this card already read.
+   *
+   *  This line hangs off `horizon.next`, which carries no date filter, so on a finished day it
+   *  is already a leave-by for TOMORROW: `צאו ב־06:40`, a bare clock ⁦40px⁩ under a meta row
+   *  that says `07:12 · מחר`. One card, two clocks, one of them qualified. ADR-0160 §M named
+   *  that ambiguity for the in-transit landing and ADR-0211 §6 fixed it for `הבא בתור`; this is
+   *  the third slot of the same shape, and it was found by DRAWING the card rather than by
+   *  reading it. Absent on every same-day leg, which is nearly all of them. */
+  leaveDay?: string;
   /** `time` is amber (§D1). `miss` is the leave-by gone by, in `--miss` (§D7) — **ink and word
    *  only**, no fill on the row, no glow and no pulse, because the app has one live mark and
    *  `.nowline` is it (§D6). `on-way` is teal, because somebody said they are moving and that
@@ -249,6 +265,17 @@ export interface HeroLiftProps {
    *  same COMPONENT the board renders rather than a copy of its markup. Phase 3 called this
    *  `rail` and claimed exactly that, while `Home` hand-wrote a duplicate beside it. */
   foot?: ReactNode;
+  /** **Tomorrow's shape, one elevation up** (ADR-0214 §6). The same strip the collapsed board
+   *  pins in the same slot — its foot — because this is one object at two elevations
+   *  (ADR-0160 §1) and the component is imported rather than redrawn, which is the drift that
+   *  amendment had to repair once already for the day rail.
+   *
+   *  What the lift adds is the one thing the board cannot carry: a way through to the day
+   *  itself. The board is a `<button>` and a nested one destroys it (ADR-0160 §4); the lifted
+   *  hero is not, so the hand-off lives here. */
+  tomorrow?: BoardTomorrow | null;
+  /** Opens tomorrow in the Day tab. Absent → the strip renders with no hand-off. */
+  onTomorrowDay?: () => void;
   /** The collapsed board this was lifted out of — the box the flight starts from and
    *  descends back to (ADR-0160 §5). Absent → no flight, and the hero is simply there,
    *  which is the correct static state under reduced motion anyway. */
@@ -577,7 +604,7 @@ function TravelBetween({ travel }: { travel: HeroLiftTravel }) {
       <div className={`hero-trv ${travel.tone}`}>
         <Icon name={glyph} />
         <span className="hero-trv-txt">
-          {[travel.mode, travel.duration, travel.leave]
+          {[travel.mode, travel.duration, travel.leave, travel.leaveDay]
             .filter((run): run is string => !!run)
             .map((run, i) => (
               // `·` is the app's separator and it is a NODE rather than part of a string, so a
@@ -630,6 +657,7 @@ export function HeroLift(props: HeroLiftProps) {
     travel,
     then,
     foot,
+    tomorrow,
   } = props;
 
   return (
@@ -672,7 +700,15 @@ export function HeroLift(props: HeroLiftProps) {
                 `זמן חופשי` the board was showing a frame earlier vanished on the way
                 up. Reported from a device. Same words one elevation up, which is what
                 every other state on this card already does. */}
-            {now.length === 0 && gap && (
+            {/* **And it goes when tomorrow is the subject** (ADR-0214 §6). Seen in the running
+                app rather than in the drawing: with the board re-ranked around tomorrow, pressing
+                it opened a card whose first and largest line was still `סוף היום · עד 09:00` — the
+                non-fact the collapsed board had just stopped saying, plus a bare clock that is
+                actually tomorrow's. One object at two elevations (ADR-0160 §1) means the subject
+                is the same at both, so the lift leads with the point too. Note the day token is
+                CORRECT here and stays: this label reads `הבא בתור`, and the rule is that the
+                token comes off only where the label itself says the day. */}
+            {now.length === 0 && gap && !tomorrow?.ribbon.blocks.length && (
               <div className="hero-part">
                 <BoardGapSlot gap={gap} />
               </div>
@@ -753,7 +789,28 @@ export function HeroLift(props: HeroLiftProps) {
             )}
           </div>
 
-          {foot && <div className="hero-foot">{foot}</div>}
+          {/* **The foot is the strip when there is a tomorrow**, and the day rail otherwise —
+              the same either/or the collapsed board makes, in the same slot, so the two
+              elevations cannot disagree about what the bottom of this card is for. */}
+          {tomorrow ? (
+            <div className="hero-foot">
+              <TomorrowStrip tomorrow={tomorrow} />
+              {props.onTomorrowDay && (
+                <div className="hero-acts">
+                  <button
+                    type="button"
+                    className="hero-act hero-day-act"
+                    onClick={props.onTomorrowDay}
+                  >
+                    <Icon name="calendar" />
+                    {t.board.tomorrowDay}
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            foot && <div className="hero-foot">{foot}</div>
+          )}
         </Lifted>
       )}
     </Modal>

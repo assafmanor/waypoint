@@ -1911,6 +1911,18 @@ export const t = {
     // withdraw it (ADR-0207 §2, ADR-0208 §2).
     lateBy: (unit: string) => `${unit} באיחור`,
     endOfDay: 'סוף היום',
+    /** **Where tomorrow ends up** (ADR-0214) — the only words the tomorrow strip carries, and
+     *  only when the bed actually moves (ADR-0209: a stay is named once, and the same bed is
+     *  already on the stay strip one surface up).
+     *
+     *  `לינה` is a noun about the PLAN. `ישנים` was refused by ADR-0211 §3 as a claim about a
+     *  person the app has no sensor for, and nothing about pointing at tomorrow changes that —
+     *  if anything it is weaker, since the claim would be about a night that has not happened. */
+    tomorrowSleeps: (stay: string) => `לינה · ${stay}`,
+    /** The way through from the LIFTED hero to the day itself (ADR-0214 §6). It exists there
+     *  and not on the collapsed board for a mechanical reason rather than a hierarchy one: the
+     *  board is a `<button>` and ADR-0160 §4 is the record of what a nested one does to it. */
+    tomorrowDay: 'ליום של מחר',
     /** **WHAT THE NOW-SLOT SAYS WHEN NOTHING IS RUNNING** (ADR-0211), keyed by
      *  `GapCharacter`. A `Record<…>`, so the compiler flags a missing case when that union
      *  grows (`frontend/CLAUDE.md`'s per-enum-lookup rule) — a sixth character has to say

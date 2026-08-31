@@ -1,0 +1,125 @@
+/* A DAY AS A PROPORTIONAL TRACK — the shared geometry (ADR-0214 §5).
+
+   The night board's tomorrow-strip is the first consumer; the Home glance rail is the second
+   one already asked for. Everything here is SHAPE — a floor, a separation, a tick, a fade, a
+   cue — and every ink comes from a `--track-*` custom property the host sets, so the board's
+   dark ground and the glance's paper are the same rules with different values. That is the
+   whole reason this is not in `board.css`.
+
+   The precedent is `styles/edge-fade.css` (+ `lib/edge-fade.ts`), which `frontend/CLAUDE.md`
+   names for this exact failure: three strips each wrote the fade out, and the CONDITION they
+   all lacked then had to be added three times. The numbers below are the condition here, and
+   they are measured rather than chosen — see `constants.ts`'s `DAY_TRACK` and
+   `mockups/tomorrow-lookahead-v3.html` §3, whose assertion compares every pair of rendered
+   boxes and answers 0.
+
+   A host sets, at minimum:
+     --track-fill    the tinted block (soft)
+     --track-strong  the solid block (hard)
+     --track-ground  the surface BEHIND the track, for the hairline between adjacent blocks
+   and may set:
+     --track-h       track height (3px)
+     --track-cue     the halo's ink
+     --track-point   the zero-length tick's ink
+*/
+
+.wp-track {
+  --track-h: 3px;
+  position: relative;
+}
+
+/* THE FLOOR AND THE HAIRLINE, and they answer two different failures.
+
+   The floor is `glance-card.css`'s own `.seg.point` width, not a new value: a 15-minute event
+   is 4.5px of a 290px track, so without it the short things on a busy day are exactly the ones
+   that vanish — and it is also what draws a zero-LENGTH event at all, which the shipped rail
+   does not (`buildDayGlance` returns `endsAt === startsAt` as a zero-width segment with
+   `point: false`).
+
+   The hairline is the one rule the 14px rail never needed and this does: `buildDayGlance`
+   returns back-to-back events as segments that SHARE a boundary (measured twice on a
+   twelve-item day), and with nothing between them a busy day draws as one long bar. It is a
+   `box-shadow` in the host's own ground and never a `margin`, because a margin would move a
+   block off the time it represents and the position is the datum. */
+.wp-track-blk {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: var(--s);
+  width: var(--w);
+  min-width: 4px;
+  border-radius: 3px;
+  background: var(--track-fill);
+  box-shadow:
+    1px 0 0 var(--track-ground),
+    -1px 0 0 var(--track-ground);
+}
+/* Solid = hard, which is the hard/soft grammar rather than a second hue (ADR-0011). At this
+   height a lock glyph has nowhere to go, so weight carries it. */
+.wp-track-blk.hard {
+  background: var(--track-strong);
+}
+.wp-track-blk.point {
+  width: 4px;
+  background: var(--track-point, var(--track-strong));
+}
+/* A tail across midnight (ADR-0037). The 14px rail answers this with a `+1` chip and has the
+   room; here a chip is chrome, and a block that merely reaches the edge is ambiguous with one
+   that ends at the window's own end. So the trailing 10px fades: shape rather than text, and
+   0px of height. */
+.wp-track-blk.next-day {
+  mask-image: linear-gradient(to left, transparent 0, #000 10px);
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+/* THE CUE IS VERTICAL, AND THAT IS THE DECISION.
+
+   It marks the block whichever header names, so the track needs no caption. Drawn first as a
+   circle borrowed from `.wp-board-progress .knob`, it was wrong twice: that disc means NOW
+   everywhere else in the app (a future day has none — `buildDayGlance` returns
+   `nowFrac: null`), and it is opaque, so on a busy day it covered a neighbouring block whole.
+   Drawn second as a 3px halo in every direction, the mockup's own collision assertion measured
+   it REACHING a neighbour on two of six stress days.
+
+   A shadow offset on the block axis with no spread copies the box up and down and never
+   sideways, so the cue cannot touch anything by construction rather than by measurement — and
+   the block the header names reads as the thicker one, which is a rank rather than an
+   ornament. */
+.wp-track-blk.cue {
+  box-shadow:
+    1px 0 0 var(--track-ground),
+    -1px 0 0 var(--track-ground),
+    0 -2px 0 var(--track-cue, var(--track-fill)),
+    0 2px 0 var(--track-cue, var(--track-fill));
+}
+
+/* THE MARKS — the events' own icons over the track (emoji are content, icons are UI:
+   design-language). They are positioned but never laned: `thinMarks` drops a mark that cannot
+   have its own space, so this row's height is the same on a 2-item day and a 12-item one. */
+.wp-track-marks {
+  position: relative;
+  height: 17px;
+  margin-bottom: 3px;
+}
+.wp-track-mark {
+  position: absolute;
+  /* `--s` is the block's MIDPOINT (`trackMarks`), so the glyph sits over the thing it labels
+     rather than over its leading edge — and it is CLAMPED so a mark near either end cannot
+     overhang the track. Half a glyph box (~⁦8px⁩ at ⁦13px⁩) is the inset, in px because the box is
+     in px while the position is a percentage; the alternative was the glance rail's
+     `MARKER_EDGE_FRAC` anchoring, which needs two extra classes to say the same thing about a
+     mark that carries no label beside it. */
+  inset-inline-start: clamp(8px, var(--s), calc(100% - 8px));
+  /* +50% of its own width, because `inset-inline-start` in RTL anchors the trailing edge —
+     the same transform `.wp-board-progress .knob` uses, for the same reason. */
+  transform: translateX(50%);
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* A day nobody has filled in yet: the SOFT grammar's own answer. Dashed reads as provisional,
+   where an empty track reads as a rail that failed to load. */
+.wp-track-empty {
+  height: var(--track-h);
+  border-top: 1px dashed var(--track-dash, currentColor);
+  opacity: 0.55;
+}

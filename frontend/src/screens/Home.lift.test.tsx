@@ -240,15 +240,93 @@ describe('Home — the lift wiring', () => {
     /** ⁦22:40⁩ Rome, still `DAY`. */
     const EVENING = `${DAY}T20:40:00Z`;
 
-    it('an evening with nothing left says so, and the next slot says it is tomorrow', () => {
+    // **REWRITTEN BY ADR-0214, and the two assertions it replaces are the change.** This spec
+    // used to read `סוף היום` in the now-title and `מחר` in the next slot's meta row. Both are
+    // gone on purpose: with the day's plan finished the board has ONE subject and it is
+    // tomorrow, so the slot holding tomorrow takes rank 1 and the day's-closure words are not
+    // drawn at all — and the day token comes off the meta row precisely BECAUSE the rank-1
+    // label now says `מחר`, which is the one removal that depends on the swap.
+    it('an evening with nothing left is a board about tomorrow', () => {
       setSimulatedNow(Date.parse(EVENING));
       tripEvents = [dinner(), tomorrowFlight()];
       show();
-      // Not `זמן חופשי`: the day is over, and that is a different thing from a gap in it.
-      expect(document.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.endOfDay);
-      // The lookahead was always here (`deriveNow` has no date filter) and never said which
-      // day it meant — ⁦07:00⁩ at ⁦22:40⁩ reads as this morning.
-      expect(document.querySelector('.wp-board-next-meta')?.textContent).toContain('מחר');
+      const label = document.querySelector('.wp-board-next-label');
+      expect(label?.getAttribute('data-rank')).toBe('1');
+      expect(label?.textContent).toBe('מחר');
+      // No now-slot above it, and the words that used to be there are nowhere on the card.
+      expect(document.querySelector('.wp-board-now-title')).toBeNull();
+      expect(document.body.textContent).not.toContain(t.board.endOfDay);
+      // `מחר` exactly once — the label — rather than twice ⁦20px⁩ apart.
+      expect(document.querySelector('.wp-board-next-meta')?.textContent).not.toContain('מחר');
+      // And the rail's slot carries tomorrow's shape instead of a knob at ~⁦98%⁩.
+      expect(document.querySelector('.wp-board-progress.wp-track')).toBeTruthy();
+      expect(document.querySelectorAll('.wp-track-blk').length).toBeGreaterThan(0);
+    });
+
+    // ── THE TOMORROW STRIP'S OWN SEAM (ADR-0214) ─────────────────────────────
+    // `lib/tomorrow.ts` and `lib/day-track.ts` are tested pure and `Board` is tested with
+    // hand-built props, so this is the only place that asserts Home connects them: that it
+    // builds tomorrow's glance from the CLOCK's day rather than the day strip's, that the marks
+    // are the events' own glyphs, and that the bed is named only when it moves.
+    it('the strip is built from tomorrow, and its marks are the events own glyphs', () => {
+      setSimulatedNow(Date.parse(EVENING));
+      tripEvents = [dinner(), tomorrowFlight()];
+      show();
+      const marks = [...document.querySelectorAll('.wp-track-mark')].map((m) => m.textContent);
+      // `tomorrowFlight` carries no icon of its own, so the mark is its category's default —
+      // the same answer the glance rail gives, through the same resolver.
+      expect(marks).toHaveLength(1);
+      expect(marks[0]).toBeTruthy();
+      // One block: tomorrow holds exactly the one event, and today's dinner is not on it.
+      expect(document.querySelectorAll('.wp-track-blk')).toHaveLength(1);
+    });
+
+    // **The day strip must not change what the live board says**, which is ADR-0211's own rule
+    // for the gap read and the reason this counts from `today` and never from `activeDate`.
+    it('parking the day strip on another day does not move the strip off tomorrow', () => {
+      setSimulatedNow(Date.parse(EVENING));
+      tripActiveDate = '2026-08-06';
+      tripEvents = [dinner(), tomorrowFlight()];
+      show();
+      expect(document.querySelectorAll('.wp-track-blk')).toHaveLength(1);
+      expect(document.querySelector('.wp-board-next-label')?.textContent).toBe('מחר');
+    });
+
+    // ADR-0209's rule, at this seam: the same bed is on the stay strip at the top of this very
+    // screen, so naming it again here would be the third printing of one hotel on one screen.
+    it('the bed is named when tomorrow moves it, and silent when it does not', () => {
+      setSimulatedNow(Date.parse(EVENING));
+      // One stay across both nights: tomorrow ends where today does, so there is nothing to say.
+      tripEvents = [dinner(), tomorrowFlight(), stay()];
+      show();
+      expect(document.querySelector('.wp-board-tmr-sleep')).toBeNull();
+      cleanup();
+      // A transfer: tonight's stay checks out tomorrow morning and another takes over tomorrow
+      // night, so `dayBookendStays` answers a different bed for each day and the strip says so.
+      const checkingOut = () =>
+        ev('stay', {
+          title: 'Rooms Hotel Tbilisi',
+          category: 'lodging',
+          date: DAY,
+          endDate: NIGHT_DAY,
+          startsAt: `${DAY}T13:00:00Z`,
+          endsAt: `${NIGHT_DAY}T08:00:00Z`,
+        });
+      tripEvents = [
+        dinner(),
+        tomorrowFlight(),
+        checkingOut(),
+        ev('stay2', {
+          title: 'Hotel Kanra',
+          category: 'lodging',
+          date: NIGHT_DAY,
+          endDate: '2026-08-07',
+          startsAt: `${NIGHT_DAY}T13:00:00Z`,
+          endsAt: '2026-08-07T08:00:00Z',
+        }),
+      ];
+      show();
+      expect(document.querySelector('.wp-board-tmr-sleep')?.textContent).toContain('Hotel Kanra');
     });
 
     it('the small hours name the BED and drop the rail that was pinning a lie', () => {
@@ -278,14 +356,45 @@ describe('Home — the lift wiring', () => {
 
     // ADR-0160 §1: one object at two elevations. The lifted card must not word the minute
     // differently from the board it grew out of.
-    it('the lifted hero carries the same character, not the free words', () => {
+    // **ADR-0160 §S's invariant, restated by ADR-0214 rather than dropped.** The rule is that
+    // the two elevations say the SAME thing about one minute — §S had to repair this once, when
+    // `free` was an `else` on one surface and an empty array on the other. What changed is what
+    // they agree on: with tomorrow as the subject, the board draws no day's-closure words, so
+    // the lift must not either. Both halves are asserted, because "neither says it" is only
+    // meaningful beside "the board does not either".
+    it('the lifted hero agrees with the board about the subject', () => {
       setSimulatedNow(Date.parse(EVENING));
       tripEvents = [dinner(), tomorrowFlight()];
       tripPlaces = [place];
       show();
+      expect(document.querySelector('.wp-board-now-title')).toBeNull();
       fireEvent.click(board()!);
       const hero = document.querySelector('.hero-lifted');
-      expect(hero?.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.endOfDay);
+      // Neither the `else` words nor the day's-closure ones, at either elevation.
+      expect(hero?.querySelector('.wp-board-now-title')).toBeNull();
+      expect(hero?.textContent).not.toContain(t.board.freeTitle);
+      expect(hero?.textContent).not.toContain(t.board.endOfDay);
+      // It leads with the point instead, and its own label DOES carry the day token — the
+      // token comes off only where the label itself says the day, which here it does not.
+      expect(hero?.querySelector('.wp-board-next-label')?.textContent).toBe(t.board.nextLabel);
+      expect(hero?.querySelector('.wp-board-next-meta')?.textContent).toContain('מחר');
+      // And the foot is the same strip the board pins, imported rather than redrawn.
+      expect(hero?.querySelector('.hero-foot .wp-track')).toBeTruthy();
+    });
+
+    // The other half of §S: where the gap slot still IS the subject, both elevations print it.
+    it('at the stay, both elevations still name the bed', () => {
+      setSimulatedNow(Date.parse(`${NIGHT_DAY}T00:40:00Z`)); // 02:40 Rome
+      tripActiveDate = NIGHT_DAY;
+      tripEvents = [stay(), tomorrowFlight()];
+      tripPlaces = [place];
+      show();
+      expect(document.querySelector('.wp-board-now-title')?.textContent).toBe(
+        'Rooms Hotel Tbilisi',
+      );
+      fireEvent.click(board()!);
+      const hero = document.querySelector('.hero-lifted');
+      expect(hero?.querySelector('.wp-board-now-title')?.textContent).toBe('Rooms Hotel Tbilisi');
       expect(hero?.textContent).not.toContain(t.board.freeTitle);
     });
   });

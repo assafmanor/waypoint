@@ -249,6 +249,14 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
 
 ## Anti-patterns already found and fixed once (don't reintroduce)
 
+- **A `//` comment leading a bare `null` ternary branch in JSX.** Prettier hoists those lines
+  onto the `?` line and **reorders them on every run**, so `format` and `format:check` disagree
+  and CI goes red on a file the pre-commit hook has just written — the hook writes the mangled
+  form, `--check` then rejects it, and re-running `format` produces a _different_ mangling. It
+  read as a formatting nit and was a comment-destroying one: the lines came back concatenated in
+  reverse. Cost one red `ci` on ADR-0214's build. Put the reasoning where Prettier is stable —
+  a `{/* … */}` JSX comment above the whole conditional, or a named `const` for the empty branch
+  with its docblock (`Board.tsx`'s `nothing` is the worked example) — and never inside the branch.
 - A hand-rolled floating overlay (`createPortal`/`position:fixed`) instead of
   `Modal` + `useOverlay` — silently breaks system-back/Escape for that one
   surface (ADR-0090); lint-blocked for a reason.
