@@ -5,7 +5,10 @@
 [`v2`](../../mockups/tomorrow-lookahead-v2.html) (the hierarchy, on the owner's first correction) and
 [`v3`](../../mockups/tomorrow-lookahead-v3.html) (**the edge cases, and the live drawing of the
 ribbon**). Read the rounds at the foot in order; each answers a correction on the one before it.
-**Status:** drawn, rendered and measured; **nothing decided and nothing built.** Round one answered
+**Status:** **BUILT 2026-08-31** — [ADR-0214](../decisions/0214-the-night-board-has-one-subject-and-it-is-tomorrow.md),
+on the owner's _"Looks great. Let's build this!"_ after round three. The ADR's **build log** records
+the four things the running app changed about the drawings; two of them are visible, so v3 and the
+shipped strip differ on purpose and the mockup is not retrofitted. Round one answered
 the ask with one recommendation and four rejections. Round two is the owner's correction on that
 drawing — _"some parts are packed with too much info and everything is represented on the same level
 of importance"_ — and it **changes the recommendation**: the board now carries less than it does
@@ -350,3 +353,37 @@ Both are backlog lines now, because neither belongs to this design:
 The marks cap (⁦4⁩ · ⁦5⁩ · ⁦6⁩ · off, shipped at ⁦5⁩) and `MARK_MIN_PX` are device reads, not screenshot
 reads — both look right here and both are the kind of number a real phone settles better. Everything
 else from the earlier rounds stands.
+
+## Built (same day)
+
+Shipped as [ADR-0214](../decisions/0214-the-night-board-has-one-subject-and-it-is-tomorrow.md). What
+landed, and where:
+
+|                           |                                                                                           |
+| ------------------------- | ----------------------------------------------------------------------------------------- |
+| `lib/day-track.ts`        | the SHARED geometry — `trackBlocks`, `trackMarks`, `thinMarks`, the class/style builders  |
+| `lib/tomorrow.ts`         | the thin adapter: which block the title names, and that tomorrow cannot have been skipped |
+| `styles/day-track.css`    | the shape, with every ink read from `--track-*` the host sets                             |
+| `constants.ts`            | `DAY_TRACK` — the four numbers, and the three questions they answer                       |
+| `Board.tsx` / `board.css` | `BoardTomorrow`, `TomorrowStrip`, the `[data-rank]` swap, the board's inks                |
+| `HeroLift.tsx`            | the strip in the foot, `ליום של מחר`, and `leaveDay`                                      |
+| `Home.tsx`                | one derivation off `buildDayGlance` for `today + 1`, and the `?day=` hand-off             |
+| `glance.ts`               | `eventDisplayIcon` lifted out of `buildDayGlance`'s body for the second consumer          |
+
+**The reuse is the part to know about.** The owner's steer mid-build — _"make sure that you're
+building with a reusability and generic enough mindset so that we could later easily adapt the useful
+stuff to the glance v2"_ — is why there are two lib files and a stylesheet in `styles/` rather than
+one file and a block in `board.css`. What a glance v2 can take unchanged: the three derivations
+(`thinMarks` is generic over any positioned mark), the class/style builders, and the whole of
+`day-track.css` by setting three custom properties. What it must decide for itself: its own cue, its
+phases, and whether it keeps ADR-0077's lanes. The plan for it is
+[`2026-08-31-glance-v2-brief.md`](2026-08-31-glance-v2-brief.md).
+
+**Four things the running app changed** — all in the ADR's build log, all invisible in a drawing: the
+cue's alpha (it was drawn on a hard block, and vanished on a soft one), the lift still leading with
+`סוף היום` after the board had stopped, the unplanned arm drawing two spent bands, and the marks'
+anchor moving from each block's start instant to its middle.
+
+**⁦31⁩ new specs**, and the ones worth knowing about are the six overlap cases: they pin §1's
+inheritance, so if `buildDayGlance` ever stops collapsing an overlap into one segment, the strip's
+specs go red rather than the strip quietly drawing two blocks on top of each other.

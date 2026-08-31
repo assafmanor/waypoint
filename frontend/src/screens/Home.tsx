@@ -35,6 +35,7 @@ import {
   TransitProgress,
   type BoardCountdown,
   type BoardGap,
+  type BoardTomorrow,
   type BoardNext,
   type BoardRow,
   type BoardTransit,
@@ -57,7 +58,7 @@ import { placeLabelOf, shortRoute } from '../lib/place-label';
 import { usePlaceLabels } from '../state/place-labels';
 import { eventMidSpanWords, transitionLabel } from '../lib/transitions';
 import { approxTravelTime, clockShiftSentence, formatDuration } from '../lib/duration';
-import { TAB_PARAM, FOCUS_PARAM, INDEX_FOCUS, INDEX_TAB } from '../state/nav-state';
+import { TAB_PARAM, FOCUS_PARAM, DAY_PARAM, INDEX_FOCUS, INDEX_TAB } from '../state/nav-state';
 import {
   countdownParts,
   dayProgress,
@@ -69,6 +70,7 @@ import {
   hardConflicts,
   minutesUntil,
   dayLabel,
+  addDays,
   todayInTz,
   tzParts,
   dayWindowMs,
@@ -78,12 +80,14 @@ import {
   ambientEventsOnDate,
   ambientSpanPosition,
   buildDayGlance,
+  eventDisplayIcon,
   countsNights,
   dayBookendStays,
 } from '../lib/glance';
 import { deriveHeroBooking } from '../lib/hero-booking';
 import { LEAVE_PHASE, heroLeaveBy, travelOrigin, type HeroLeaveBy } from '../lib/hero-travel';
-import { gapCharacter, gapDrawsDayRail } from '../lib/gap-character';
+import { GAP_CHARACTER, gapCharacter, gapDrawsDayRail } from '../lib/gap-character';
+import { tomorrowRibbon } from '../lib/tomorrow';
 import { TRAVEL_STANCE, remainingTravelSeconds, travelStance } from '../lib/travel-position';
 import { useGeolocation } from '../lib/useGeolocation';
 import {
@@ -771,6 +775,12 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
    *  (`זמן היציאה עבר ב־18:37`), never `אתם באיחור`: the app has no sensor, a settle mark is not
    *  one, and own-device position wants its own ADR before this surface reads it (§Z5 §M4). */
   const leaveClock = leave ? ltrIsolate(formatTime(new Date(leave.leaveByMs), tz)) : '';
+  /** The leave-by's own calendar day in the live zone, when it is not today (ADR-0214 §7). */
+  const leaveDayLabel = (() => {
+    if (!leave) return undefined;
+    const day = todayInTz(tz, new Date(leave.leaveByMs));
+    return day === today ? undefined : dayLabel(day, { trip, today });
+  })();
   // **§6 — what is LEFT, once the fix says you are on the way.** Scaled by the remaining crow
   // fraction rather than re-routed (§1), and `~` is what says it is an approximation. The
   // alternative was the untouched total, which read as "44 minutes still to walk" two minutes
@@ -804,6 +814,16 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
             : leave.phase === LEAVE_PHASE.PASSED
               ? t.travel.leavePassed(leaveClock)
               : t.travel.leaveAt(leaveClock),
+          // **WHICH DAY THAT LEAVE-BY IS ON** (ADR-0214 §7), and it is the third slot of a shape
+          // this app has now fixed twice: this line hangs off `horizon.next`, which carries no
+          // date filter, so on a finished evening it is already a leave-by for TOMORROW —
+          // `צאו ב־06:40`, a bare clock ⁦40px⁩ under a meta row reading `07:12 · מחר`. ADR-0160 §M
+          // named the ambiguity for the landing and ADR-0211 §6 fixed it for `הבא בתור`; the same
+          // `dayLabel`, the same words, the slot nobody had asked. Absent when the leave-by is
+          // today, which is nearly always — and read off the leave-by's own instant rather than
+          // the event's date, because those differ exactly when it matters (a ⁦00:20⁩ departure is
+          // left for the evening before).
+          ...(leaveDayLabel ? { leaveDay: leaveDayLabel } : {}),
           tone: enRoute ? 'on-way' : leave.phase === LEAVE_PHASE.PASSED ? 'miss' : 'time',
           // **`עדיין כאן` — the app saying it CHECKED**, and the only claim a position licenses
           // that the clock could not (§2). Only where the fix actually puts them at the origin.
@@ -974,6 +994,84 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     ...(travelPrev.event && travelPrev.event.id === wokeIn?.id ? { wokeIn: travelPrev.event } : {}),
     onWay: onWayToNext,
   });
+  // ── TOMORROW, WHEN TODAY'S PLAN IS FINISHED (ADR-0214) ─────────────────────
+  // **The clock's day plus one, never `activeDate` plus one.** Swiping the day strip must not
+  // change what the live surface says about the minute you are in — the same rule ADR-0211
+  // wrote for the gap's own read, and the reason `today` is what this counts from.
+  const tomorrowDate = addDays(today, 1);
+  // `dayLabel` rather than a literal `מחר`, so the word is the app's one answer to "which day
+  // is that" (ADR-0085 / ADR-0176's amendment) and a board that ever points further out says
+  // `מחרתיים` instead of lying by a day.
+  const tomorrowLabel = dayLabel(tomorrowDate, { trip, today });
+  const tomorrowWindow = dayWindowMs(tomorrowDate, tz);
+  // Tomorrow's own glance, from the SAME derivation today's rail is built from: `buildDayGlance`
+  // already answers for a future date and already knows it has no now (`nowFrac: null`). The
+  // zone context is the day's own, not the live one — a shift on tomorrow's anchor is measured
+  // against tomorrow's ambient zone, exactly as the glance card does for the day on screen.
+  const tomorrowGlance = useMemo(
+    () =>
+      buildDayGlance(
+        events,
+        tomorrowDate,
+        nowMs,
+        tomorrowWindow.startMs,
+        tomorrowWindow.endMs,
+        tz,
+        dayZoneContext(tomorrowDate, zoneEvidence),
+      ),
+    [events, tomorrowDate, nowMs, tomorrowWindow.startMs, tomorrowWindow.endMs, tz, zoneEvidence],
+  );
+  // **The two facts a glance segment cannot carry**, resolved here because only the screen holds
+  // the events: the icon (content the group chose) and the commitment (ADR-0011). A segment's key
+  // is its root event's id, so this is a lookup rather than a second derivation.
+  const tomorrowMeta = useMemo(() => {
+    const byId = new Map(events.map((e) => [e.id, e]));
+    return Object.fromEntries(
+      tomorrowGlance.segs.map((seg) => {
+        const event = byId.get(seg.key);
+        return [
+          seg.key,
+          {
+            ...(event ? { icon: eventDisplayIcon(event) } : {}),
+            hard: event?.kind === EVENT_KIND.HARD,
+          },
+        ];
+      }),
+    );
+  }, [events, tomorrowGlance]);
+  const tomorrowRibbonModel = useMemo(
+    () => tomorrowRibbon({ glance: tomorrowGlance, meta: tomorrowMeta }),
+    [tomorrowGlance, tomorrowMeta],
+  );
+  // **Where tomorrow ends up, and only when it moves** (ADR-0209: a stay is named once). The
+  // same bed is on the stay strip at the top of this screen, so repeating it here would be the
+  // third printing of one hotel on one screen — measured in the mockup, and the duplication that
+  // ADR removed by subtraction.
+  const tomorrowSleeps = dayBookendStays(events, tomorrowDate).sleeps;
+  const tonightSleeps = dayBookendStays(events, today).sleeps;
+  /** **Whether tomorrow is the board's subject at all**, and the gate is the gap's CHARACTER
+   *  rather than the clock: `day-done` is the state ADR-0211 already derives for "today had a
+   *  plan and it is finished". `empty-day` deliberately does not qualify — a board with nothing
+   *  to say about today is not thereby a board about tomorrow — and anything running now, in
+   *  transit or split keeps the board it has.
+   *
+   *  **The second half of the gate is the trip's own window, and only the EMPTY arm needs it.**
+   *  Tomorrow having blocks is itself proof that tomorrow belongs to the trip; saying
+   *  `מחר · יום פנוי` does not, so on the last night that arm would be inventing a day after
+   *  the trip ends. Which is why this is two conditions rather than one, and why a trip whose
+   *  `endDate` is stale still gets the strip whenever there is anything real to draw. */
+  const dayDone = !nowEvent && !inTransit && !groupSplit && gapRead.kind === GAP_CHARACTER.DAY_DONE;
+  const tomorrowInTrip = !trip.endDate || tomorrowDate <= trip.endDate;
+  const boardTomorrow: BoardTomorrow | null =
+    dayDone && (tomorrowRibbonModel.count > 0 || tomorrowInTrip)
+      ? {
+          label: tomorrowLabel,
+          ribbon: tomorrowRibbonModel,
+          ...(tomorrowSleeps && tomorrowSleeps.id !== tonightSleeps?.id
+            ? { sleeps: tomorrowSleeps.title }
+            : {}),
+        }
+      : null;
   const boardGap: BoardGap | null =
     nowEvent || inTransit || groupSplit
       ? null
@@ -1131,6 +1229,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         next={boardNext}
         countdown={countdown}
         gap={boardGap}
+        tomorrow={boardTomorrow}
         progress={progress}
         windowStartHour={hourLabel(DAY_WINDOW.START_HOUR)}
         windowEndHour={hourLabel(DAY_WINDOW.END_HOUR)}
@@ -1153,6 +1252,14 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           {...(boardNext?.day ? { nextDay: boardNext.day } : {})}
           nextCode={nextCode}
           gap={boardGap}
+          tomorrow={boardTomorrow}
+          // The Day tab at tomorrow's date, through the same `date` deep link every other
+          // hand-off on this screen uses (ADR-0050) — so back resolves from there exactly as it
+          // does from a quick tile, and the hero closes behind it.
+          onTomorrowDay={() => {
+            setLifted(false);
+            navigate(`/?${TAB_PARAM}=days&${DAY_PARAM}=${tomorrowDate}`);
+          }}
           countdown={countdown}
           travel={heroTravel}
           then={

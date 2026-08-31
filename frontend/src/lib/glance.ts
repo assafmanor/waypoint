@@ -207,6 +207,15 @@ export const countsNights = (event: Pick<TripEvent, 'category' | 'icon'>): boole
 
 /** **The stays that bracket a day** — the one you woke in and the one you sleep in
  *  (ADR-0054's 2026-08-25 amendment; ADR-0206 §AD). */
+/** **An event's display glyph** — what the group chose, else its category's default, else the
+ *  generic one. Lifted out of `buildDayGlance`'s own body when the tomorrow strip needed the
+ *  same answer (ADR-0214): it was already the rule for a mark on a day surface, and a second
+ *  copy at the new call site is how two surfaces start disagreeing about which glyph an event
+ *  has. A placeholder pick counts as no pick, which is `chosenIcon`'s own rule. */
+export const eventDisplayIcon = (e: TripEvent): string =>
+  chosenIcon(e.icon) ??
+  (e.category != null ? CATEGORY_DEFAULT_ICON[e.category] : DEFAULT_EVENT_ICON);
+
 export interface DayBookendStays {
   /** The stay whose span began BEFORE this day, so you woke there. */
   woke?: TripEvent;
@@ -527,9 +536,7 @@ export function buildDayGlance(
   // single edge today → a point (a multi-day hotel's check-in / check-out).
   // Marking a transition is not counting a block; an ambient stay stays off the
   // counted rail.
-  const iconOf = (e: TripEvent) =>
-    chosenIcon(e.icon) ??
-    (e.category != null ? CATEGORY_DEFAULT_ICON[e.category] : DEFAULT_EVENT_ICON);
+  const iconOf = eventDisplayIcon;
   const byEvent = new Map<string, BookingTransition[]>();
   for (const tr of transitions) {
     const list = byEvent.get(tr.event.id);

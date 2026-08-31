@@ -467,6 +467,58 @@ const atFraction = (fraction: number, over: Partial<{ accuracyMeters: number }> 
   ...over,
 });
 
+// **WHICH DAY THE LEAVE-BY IS ON** (ADR-0214 §7). The third slot of a shape this app has fixed
+// twice: the hero's journey line hangs off `horizon.next`, which carries no date filter, so on a
+// finished evening the leave-by it prints is already TOMORROW's — a bare clock ⁦40px⁩ under a meta
+// row that says which day it means. ADR-0160 §M named it for the landing, ADR-0211 §6 fixed it
+// for `הבא בתור`, and nobody had asked this one.
+describe('Home — the journey line says which day it leaves on (ADR-0214 §7)', () => {
+  /** ⁦22:40⁩ Rome on `DAY` — the night board's own moment. */
+  const EVENING = `${DAY}T20:40:00Z`;
+  /** ⁦07:12⁩ Rome on the NEXT calendar day, with a place so the leg has two ends. */
+  const tomorrowTrain = ev('train', {
+    title: 'רכבת לקיוטו',
+    placeId: 'p-dinner',
+    date: '2026-08-04',
+    startsAt: '2026-08-04T05:12:00Z',
+    endsAt: '2026-08-04T07:40:00Z',
+  });
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(EVENING));
+    resetOnWayForTests();
+    tripEvents = [];
+    tripBookings = [];
+    travelSeconds = null;
+    geoFix = null;
+  });
+  afterEach(() => {
+    cleanup();
+    resetOnWayForTests();
+    setSimulatedNow(null);
+  });
+
+  const line = () => document.querySelector('.hero-trv-txt')?.textContent ?? '';
+
+  it('a leave-by that falls tomorrow carries the day, beside the clock', () => {
+    tripEvents = [museum, tomorrowTrain];
+    travelSeconds = 18 * 60;
+    show();
+    fireEvent.click(document.querySelector('.wp-board')!);
+    expect(line()).toContain('צאו');
+    expect(line()).toContain('מחר');
+  });
+
+  it('a leave-by TODAY carries no day token at all', () => {
+    setSimulatedNow(Date.parse(NOW));
+    tripEvents = [museum, dinner(120)];
+    travelSeconds = 20 * 60;
+    show();
+    fireEvent.click(document.querySelector('.wp-board')!);
+    expect(line()).toContain('צאו');
+    expect(line()).not.toContain('מחר');
+  });
+});
+
 describe('Home — a position may withdraw a claim the clock made (ADR-0207)', () => {
   beforeEach(() => {
     setSimulatedNow(Date.parse(NOW));
