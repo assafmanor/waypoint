@@ -1104,6 +1104,193 @@ declaration mean something for both children; centres now agree within 1px.
   last of these being the proof that the app's own locked posture is untouched by the token
   change.
 
+## Amendment — drawn before built, and two rules the app had already written (2026-08-31, ninth pass)
+
+Three owner reports, all put to a mockup first because two of them are design questions and
+the third is a correction of the eighth pass. Two files:
+[`a-journey-is-a-flight-plan-v1.html`](../../mockups/a-journey-is-a-flight-plan-v1.html) and
+[`the-reader-hands-you-a-file-v1.html`](../../mockups/the-reader-hands-you-a-file-v1.html).
+
+**Built 2026-08-31**, the same day it was drawn, after the owner approved both files. What
+the build changed, added or corrected is recorded per section below and collected under
+_What the build changed_ at the end — the drawings were right about the shapes and wrong or
+silent about four things.
+
+### §1 · A journey is a container, and the eighth amendment fixed the wrong axis
+
+> _"The flights with connecting flights still show both the full journey and the separate
+> flights in a confusing way, also doesn't show journey leg durations (flights)."_
+
+The eighth amendment read "confusing" as **duplicated numbers** and removed the legs'
+`durationMinutes` and `zoneShiftMinutes`. The numbers were never the complaint. Two facts from
+the code say what is:
+
+- the journey renders through `article.sh-event` — the **same element, class and type scale**
+  as a museum visit — and `.sh-legs` then indents by `padding-inline-start: 30px`. So the whole
+  claim "these two are inside that one" rests on 30px of white space in a 360px column;
+- the frame's title is `routeTitle(first.booking.fromPlaceId, last.booking.toPlaceId)` — the
+  legs' own endpoints concatenated. `נתב"ג ← קפלאוויק` over `נתב"ג ← וינה` and
+  `וינה ← קפלאוויק` is the same two airports three times. **The repetition a reader trips over
+  is the places, not the durations** — which is exactly why counting durations missed it.
+
+So: `.sh-trek`, a real container (teal rail plus a 7% tint, the grammar `.sh-day` already uses
+one level up; teal because a journey is about getting between places, rule 4), and a header
+that drops the glyph column and `--sh-secondary` so it cannot be read as one of the flights
+beneath it. Measured: the journey goes **209.9 → 221px, +11.1px** — clarity, not compaction,
+and the same trade v4 made when its journey block came in 7px taller.
+
+The frame's row survives rather than becoming a bare heading, because `ops`, `caption` and the
+map link all hang off the parent event: deleting it deletes the flight's booking code.
+
+### §2 · A leg says how long it flies; the zone shift stays on the journey
+
+`durationMinutes` comes **back** to `sharedLegSchema`, per leg, at `--sh-micro`.
+`zoneShiftMinutes` does not: the owner asked for flight durations, and three signed numbers
+(`+2`, `+1`, `+3`) describe one clock change, while the shift a traveller acts on is
+origin-to-destination. Duration phrases on the card therefore go **2 → 4**, and that increase
+**is** the request — worth stating plainly, since the eighth amendment's whole argument was
+that four was too many.
+
+### §3 · Paper says the same thing, waits included
+
+The owner's screenshot was of the PDF, where `.pdf-trek` **already** draws a bordered box
+around the legs — and it still read wrong. That is the proof the container alone is not the
+fix: the header above it is what has to stop looking like a complete flight. The mockup's own
+§3 first shipped without the layover line and the owner caught it in review (_"The pdf should
+also show the wait durations"_); both paper columns now run through one leg renderer, so they
+cannot disagree about which facts a leg carries. The wait matters most on paper: a reader
+holding a printout cannot tap anything to find out.
+
+### §4 · The download shows motion, because the app banned the static word in April
+
+> _"The download indication still bad … still the same bad looking מוריד etc instead of a
+> spinner or something."_
+
+`ui/Spinner.tsx`'s docblock: _"The one shared spinner (ADR-0052 §4). Used by the document
+viewer, the list load, and the upload busy state — so every async surface has a motion cue,
+**not a static word**."_ And ADR-0052 §4 names the composition: a busy control shows its label
+**plus** a spinner, with a determinate bar "where the transport allows it".
+
+The shipped row has the bar and the word and no spinner. It implements two thirds of a rule
+written four months before it, and the missing third is the one the owner noticed. So the
+spinner takes the file **glyph's** slot — `FormActions` puts it where the label was; a file row
+has no label to give up, and using the glyph's slot means the row's geometry never moves.
+`--ok`/`--miss` for the two finished states, `--cta` for working, because a file arriving is an
+action and not a status.
+
+Two corrections to what shipped, both from the same rule: reduced motion **slows** the
+indeterminate sweep to 2.6s rather than stopping it (`.spinner` itself slows to 1.6s, and a
+stopped indeterminate bar is indistinguishable from a stalled download), and the row declares
+44px — **measured live at 42px, under ADR-0017's floor**, which the whole download argument had
+been happening on top of without anyone noticing.
+
+### §5 · `shareFileOrDownload` is the mechanism, and the reader used only its silent half
+
+> _"it still doesn't pop up the Google chrome saving, though maybe that'll be fine as long as
+> we have a good looking animation"_
+
+`lib/system-share.ts`'s `shareFileOrDownload` tries `navigator.share({ files })` first and
+falls back to an anchor click. `FileOp` contains **those fallback six lines verbatim** —
+createObjectURL, anchor, download, click, revoke — and never tries the share branch. On Android
+that branch opens the system share sheet, which is a visible, cancellable confirmation a page
+cannot otherwise summon. Measured in the eighth pass: both paths engage Chrome's download
+manager identically, so the missing UI was never suppression — **we asked for the quiet one.**
+
+And the shared helper carries the bug the one-off already fixed: it revokes the object URL in a
+`finally` on the same tick as `click()`, which `FileOp`'s docblock explains can be "a download
+that never starts". Two implementations, each holding half the answer. The repair folds the
+`requestAnimationFrame` into the shared helper and gives the row its share branch — not a third
+copy. The copy follows the mechanism: `ShareOutcome` returns three values, and `נשלח` and
+`ירד` are not the same event.
+
+### §6 · The reader's PDF button is the owner sheet's control, one more host
+
+`.share-outcome` is already the owner's "get the PDF" button — 48px, download icon, the same
+words. The public page gains it rather than a third button. Placement is the one open question
+and is deliberately left to a device pass: the masthead is always reachable and costs 36px of a
+42px bar (with `ValueToken`'s `::after` reaching 44px, ADR-0177, the technique `.sh-ops`
+already uses here), while the foot reads as "take this with you" and costs a twelve-day scroll.
+
+And it carries §4's spinner, because the owner's existing PDF button swaps a word with no
+spinner while `FormActions` two files over does it correctly — so the app currently holds both
+the right pattern and the wrong one for one question.
+
+### What the renders found, beyond the proposals
+
+- **`.icon` is sized per context in this app**, and a new context inherits no size. Unsized,
+  the journey header's flight glyph drew at its own 24px box and the header measured **131px**
+  instead of 34.
+- **`.sh-page` now carries `min-height: 100dvh`** (shipped this morning so the reader's document
+  scrolls and pull-to-refresh can fire), so any mockup wearing that class for its type scale
+  gets a screenful of empty ground under every frame.
+- **A control in `.sh-public-bar` must take the `--on-dark-*` ramp** (ADR-0158 §3). Drawn with
+  `--ink`/`--line`, the PDF button rendered navy on navy: invisible on the page, entirely
+  reasonable in the CSS.
+- **The live file row is 42px**, under ADR-0017's 44px floor.
+
+Both files render in all four theme × width combinations with fonts loaded and no console
+errors.
+
+### What the build changed
+
+The two mockups were right about every shape. Four things they did not settle, and one they
+got wrong:
+
+- **`SharedEvent.journeyTo` is a new contract field, and the mockup did not say so.** The
+  header names the destination, and the destination was not in the projection: `title` is
+  `routeTitle(from, to)` and parsing it back apart is not an option, since it carries bidi
+  isolates. It is derived from the same place-label chain the day titles already use.
+- **The frame's row does not survive — its ATTACHMENTS do.** The amendment above said the row
+  survives "because `ops`, `caption` and the map link hang off it", and the mockup drew the
+  container replacing it entirely. Both are half right: the row goes, and the attachments are
+  hoisted into a fragment that either shape can host, so a journey renders as a container
+  **with the flight's booking code inside it**. Building it revealed the mockup's `after()`
+  had quietly dropped the ops fold; there is now a spec asserting `.sh-trek details.sh-ops`.
+- **`FileOp` and the PDF button became one hook, not two ladders.** The mockup drew them as
+  two controls, which is what they are on screen — but they ask one question (fetch a URL,
+  report progress, hand the file over), so `useFileHandover` serves both. Writing the second
+  as its own `useState` ladder is how they would have drifted on the states, the settle delay
+  or which outcome says `נשלח`.
+- **The PDF button ships in BOTH places, not one.** The mockup left placement as an open feel
+  call with the masthead as its default. Measured live, the masthead pill is 30px on a 43px
+  bar and the foot's `.share-outcome` is 48px — they cost different things and answer
+  different readers, so both ship: the bar for the reader who came to fetch it, the foot for
+  the one who read to the end. This is the same two-entry-point shape ADR-0213 already uses
+  for the owner's share control, so it is not a new pattern.
+- **`signedHours` was extracted** in the print renderer: the journey header became the second
+  caller of the signed-clock formatting that was inline in `travelFactsLine`, and one spelling
+  is what stops a flight's header and a single-leg row reporting the same crossing
+  differently.
+
+Two traps the build hit, both already written down in this repo and both hit anyway:
+
+- **A backtick inside a CSS comment inside a template literal** terminates the literal. Ninth
+  occurrence this session. The template now carries an assertion-by-inspection note; the real
+  guard is that the comment says "micro scale" instead of naming the token in backticks.
+- **`--pdf-sub` does not exist.** The print sheet's tokens are `--pdf-ink/muted/line/soft/
+amber/teal`, and an undefined custom property makes the whole declaration inert — so the
+  header would have printed with no background and looked _almost_ right. Caught by measuring
+  `backgroundColor` on the rendered A4 (`rgb(243, 245, 248)`), which is the only way this
+  class of miss ever surfaces. The catalog records the same shape for a mockup that styled
+  against `--text-meta`.
+
+### What was verified
+
+- `pnpm typecheck`, `pnpm lint`, `pnpm build` clean; `pnpm test` 505 shared / 1222 backend /
+  4991 frontend; sharing e2e 14/14.
+- **Live at 360px dark:** the container exists with no `.sh-event` inside it; the header reads
+  `טיסה לנתב"ג · שתי טיסות · 23:40–11:55 · 11:15 שע׳ +3 ש׳` at 56.7px against an event row's
+  76px; the whole journey is 215.7px (the mockup predicted 221px); four spans on the card —
+  `11:15`, `2:50`, `5:20`, `3:05` — and exactly **one** zone pill; the masthead button is 30px
+  on a 43px bar and the foot's is 48px.
+- **The download row measured against the shipped stylesheet:** 45.5px with `min-height: 44px`
+  (it was 42px, under ADR-0017's floor), the app's own 15px spinner animating at its own 0.7s,
+  a 3px bar, and the indeterminate sweep at 1.1s — slowing rather than stopping under reduced
+  motion.
+- **A4:** the container prints with its header background resolved, no peer row above it, leg
+  spans `2:50` / `3:05`, the wait `המתנה ב-Frankfurt · 5:20 שע׳`, and the same four spans the
+  screen shows.
+
 ## Alternatives considered
 
 - **One page with fields progressively removed.** Rejected: less information is not automatically the right emphasis.

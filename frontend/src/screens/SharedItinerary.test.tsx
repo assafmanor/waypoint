@@ -471,12 +471,15 @@ describe('SharedItinerary', () => {
     });
 
     /**
-     * **The frame's totals, once** (owner, 2026-08-31: _"a row for the entire journey but
-     * also rows for each flight … confusing"_). The projection no longer sends a leg its own
-     * duration or zone shift, and this is the renderer's half: the phrase for the journey's
-     * own span appears exactly once on the card, beside the wait, and not per leg.
+     * **The journey is a container; the header totals, each leg its own flight time**
+     * (ADR-0213 ninth amendment §1-§2).
+     *
+     * This test previously asserted exactly ONE duration on the card, pinning the eighth
+     * amendment's reading that "confusing" meant too many numbers. The owner rejected that
+     * the same day — _"doesn't show journey leg durations (flights)"_ — so the assertion is
+     * inverted on purpose: the total AND each leg, with the wait between them.
      */
-    it('states a journey duration once, on the frame, and not again per leg', async () => {
+    it('renders a chained journey as a container, with a span on the header and on each leg', async () => {
       const event = fullProjection.days[0].sections[0].events[0];
       serve(
         withDay({
@@ -488,14 +491,21 @@ describe('SharedItinerary', () => {
                   ...event,
                   durationMinutes: 675,
                   zoneShiftMinutes: 180,
+                  journeyTo: 'קפלאוויק',
                   legs: [
-                    { title: 'תל אביב ← וינה', startLabel: '14:30', endLabel: '18:15' },
+                    {
+                      title: 'תל אביב ← וינה',
+                      startLabel: '14:30',
+                      endLabel: '18:15',
+                      durationMinutes: 225,
+                    },
                     {
                       title: 'וינה ← קפלאוויק',
                       startLabel: '19:00',
                       endLabel: '23:20',
-                      layoverMinutes: 320,
+                      layoverMinutes: 165,
                       layoverPlace: 'וינה',
+                      durationMinutes: 260,
                     },
                   ],
                 },
@@ -504,15 +514,58 @@ describe('SharedItinerary', () => {
           ],
         }),
       );
-      renderShared();
-      expect(await screen.findByText(plain(hoursPhrase(675)))).toBeTruthy();
-      // Every duration phrase on the card, counted: the journey's and the wait's. A leg
-      // adding its own is what put four of these on one flight.
-      const spans = screen
-        .getAllByText(/שע׳|דק׳|שעתיים|שעה/)
-        .map((el) => withoutBidiControls(el.textContent ?? ''));
-      const durations = spans.filter((text) => /^\s*\d+:\d+ שע׳/.test(text));
-      expect(durations).toHaveLength(1);
+      const { container } = renderShared();
+
+      // The container exists, and the row it replaces does not: a journey is not an event row.
+      await waitFor(() => expect(container.querySelector('.sh-trek')).toBeTruthy());
+      expect(container.querySelector('.sh-trek .sh-event')).toBeNull();
+
+      // The header names the DESTINATION, not the route — the legs spell the route out.
+      expect(screen.getByText(plain(t.share.public.journeyTo('קפלאוויק')))).toBeTruthy();
+      expect(screen.getByText(plain(t.share.public.journeyLegs(2)), { exact: false })).toBeTruthy();
+
+      // Every span the card carries: the total, both legs, and the wait.
+      for (const minutes of [675, 225, 260]) {
+        expect(screen.getByText(plain(hoursPhrase(minutes)), { exact: false })).toBeTruthy();
+      }
+      expect(
+        screen.getByText(plain(t.share.public.layover('וינה', hoursPhrase(165)))),
+      ).toBeTruthy();
+
+      // The zone shift stays on the journey and is NOT repeated per leg (§2).
+      expect(container.querySelectorAll('.wp-tzshift')).toHaveLength(1);
+    });
+
+    /** The flight's own booking code has to survive the container, which is the reason the
+     *  frame's attachments ride inside it rather than being dropped with its row. */
+    it("keeps a journey row's ops fold inside the container", async () => {
+      const event = everythingProjection.days[0].sections[0].events[0];
+      serve({
+        ...everythingProjection,
+        days: [
+          {
+            ...everythingProjection.days[0],
+            sections: [
+              {
+                ...everythingProjection.days[0].sections[0],
+                events: [
+                  {
+                    ...event,
+                    journeyTo: 'קפלאוויק',
+                    legs: [
+                      { title: 'תל אביב ← וינה', startLabel: '14:30', endLabel: '18:15' },
+                      { title: 'וינה ← קפלאוויק', startLabel: '19:00', endLabel: '23:20' },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      const { container } = renderShared();
+      await waitFor(() => expect(container.querySelector('.sh-trek')).toBeTruthy());
+      expect(container.querySelector('.sh-trek details.sh-ops')).toBeTruthy();
     });
 
     /**

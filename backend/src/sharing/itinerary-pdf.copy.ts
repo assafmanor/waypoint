@@ -47,6 +47,16 @@ export function pdfSpan(minutes: number): string {
 }
 
 export const PDF_COPY = {
+  /** **A journey's header names where it ENDS** (ADR-0213 ninth amendment §1) — the legs
+   *  beneath it already spell the route out, and repeating it above them put the same two
+   *  airports on the card three times.
+   *
+   *  `bindPrefix` from `@waypoint/shared`, the same call the screen makes: `לקפלאוויק` binds
+   *  and `ל-Keflavík` takes the maqaf, and it looks past the bidi controls the caller has
+   *  already wrapped the value in. One decision, not one per renderer. */
+  journeyTo: (place: string) => `טיסה ${bindPrefix('ל', place)}`,
+  /** How many flights the block holds, so the header says what it contains. */
+  journeyLegs: (count: number) => (count === 2 ? 'שתי טיסות' : `${count} טיסות`),
   brand: 'Travelive',
   eyebrow: 'מסלול משותף',
   scheduleTitle: 'הלו״ז',

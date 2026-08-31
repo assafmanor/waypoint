@@ -965,6 +965,10 @@ export class SharingProjectionService {
         // The journey's own identity replaces the first leg's — a reader wants
         // `תל אביב ← רייקיאוויק`, not `תל אביב ← וינה` with the rest hidden inside.
         title: from && to ? routeTitle(from, to) : head.title,
+        // **And the header names only where it ENDS** (ninth amendment §1). The route is
+        // already spelled out by the legs beneath it, so repeating it above them is what
+        // put the same two airports on the card three times.
+        journeyTo: to,
         endLabel: one(last).endLabel,
         // …and so do its FACTS. Spreading `head` gave the row leg one's duration and leg
         // one's zone shift, which on a two-leg journey is most of a day understated. The
@@ -996,9 +1000,11 @@ export class SharingProjectionService {
             // departure. Composing the line from `title` printed the route you are about to
             // fly instead (`המתנה בוינה ← קפלאוויק`).
             layoverPlace: previous ? legFrom : undefined,
-            // **No `travelFacts` here.** The frame above already carries the span and the
-            // shift across the WHOLE journey, and repeating them per leg is what made one
-            // flight print four durations (see `sharedLegSchema`).
+            // **Its own flight time, and only that** (ninth amendment §2). `travelFacts`
+            // answers duration AND zone shift; a leg takes the first and leaves the second
+            // to the journey, because the shift a traveller acts on is origin-to-destination
+            // and three signed numbers on one journey describe one clock change.
+            durationMinutes: travelFacts(event, placeById).durationMinutes,
           });
         }),
       });

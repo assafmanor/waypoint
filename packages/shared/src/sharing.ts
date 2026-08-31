@@ -478,13 +478,17 @@ export const sharedLegSchema = z.strictObject({
   endLabel: z.string().optional(),
   /** The wait **before** this leg. Absent on the first leg, which nothing precedes. */
   layoverMinutes: z.number().int().positive().optional(),
-  /** **A leg carries no duration and no zone shift, and that is the point.** Both were here
-   *  for one round (2026-08-31) and made a two-leg flight say four durations and three zone
-   *  shifts — the frame's totals, then each leg's own, then the wait between them (owner:
-   *  _"a row for the entire journey but also rows for each flight … confusing"_). The
-   *  journey's totals belong to the journey, which is the only place a reader is comparing
-   *  the two ends; a leg answers when it leaves, when it lands, and which flight it is. The
-   *  wait between legs keeps its minutes, because that is the one span neither end states. */
+  /** **How long this leg is in the air**, in whole minutes ([ADR-0213](../../../docs/decisions/0213-a-shared-trip-changes-emphasis-and-print-is-its-own-rendering.md)'s
+   *  ninth amendment §2). Removed for one round that morning and asked for back the same day
+   *  — the owner's _"doesn't show journey leg durations (flights)"_. Removing it was the
+   *  wrong axis: what made a connecting flight confusing is that its frame was the same
+   *  ELEMENT as an ordinary event row, so three route strings read as three peers. The
+   *  container fixes that; the number was never the problem.
+   *
+   *  **`zoneShiftMinutes` deliberately did NOT come back.** The shift a traveller acts on is
+   *  origin-to-destination, and three signed numbers on one journey describe one clock
+   *  change — so the journey keeps the shift and a leg keeps its own flight time. */
+  durationMinutes: z.number().int().positive().optional(),
   /** **Where that wait happens**, which is one place and not a route. The renderers composed
    *  this line from `title` and so printed `המתנה בוינה ← קפלאוויק` — the leg you are about
    *  to fly, not the airport you are sitting in (owner, 2026-08-30). It is the previous
@@ -556,6 +560,16 @@ export const sharedEventSchema = z.strictObject({
       km: z.number().nonnegative(),
     })
     .optional(),
+  /** **Where a chained journey ENDS**, for the container's header (ADR-0213's ninth
+   *  amendment §1). `title` stays the whole route, which is what a single-leg row needs and
+   *  what paper's index reads; the header of a `legs` block names the DESTINATION instead,
+   *  because the route is already spelled out by the legs underneath it — `נתב"ג ← קפלאוויק`
+   *  over `נתב"ג ← וינה` and `וינה ← קפלאוויק` is the same two airports three times, and
+   *  that repetition is what read as three peer flights.
+   *
+   *  Sent only alongside `legs`, and derived from the same place label chain the day titles
+   *  use — not parsed back out of `title`, which carries bidi isolates. */
+  journeyTo: z.string().optional(),
 });
 export type SharedEvent = z.infer<typeof sharedEventSchema>;
 

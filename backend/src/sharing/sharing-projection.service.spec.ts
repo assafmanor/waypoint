@@ -334,7 +334,22 @@ describe('SharingProjectionService', () => {
       expect(event.mapUrl).toBeUndefined();
       expect(event.journey).toBeUndefined();
     }
-    expect(JSON.stringify(projection)).not.toContain('09:20');
+    // **Searched over the DAYS, not the whole projection** (2026-08-31). Stringifying the
+    // whole thing includes `generatedAt`, a real server stamp — so this assertion failed on
+    // CI the moment a run happened to land in the second `10:09:20`, and the received blob in
+    // that log reads `"generatedAt":"2026-08-31T10:09:20.560Z"`. A latent time bomb rather
+    // than a defect: `09:20` matches any stamp carrying that substring, which is several
+    // minutes of every day. The exact facts this test is about live in `days`, and the server
+    // metadata around them was never its subject.
+    expect(JSON.stringify(projection.days)).not.toContain('09:20');
+  });
+
+  /** **And the assertion above is not vacuous**, which is the failure mode an absence test
+   *  has: the SAME literal in the SAME place is present at Full, so Summary's silence is a
+   *  real difference rather than an empty search. */
+  it('proves that absence by finding the same time at Full', async () => {
+    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
+    expect(JSON.stringify(projection.days)).toContain('09:20');
   });
 
   it('adds times, addresses and map links at Full', async () => {
@@ -778,16 +793,23 @@ describe('SharingProjectionService', () => {
       expect(projection.days).toHaveLength(1);
       expect(projection.days[0].endDate).toBe('2026-09-12');
 
-      // **A leg states its clock and its flight, and NOTHING that the frame already says**
-      // (owner, 2026-08-31: _"a row for the entire journey but also rows for each flight …
-      // confusing"_). Both facts on both levels made this card carry four durations and
-      // three zone shifts; the totals belong to the journey, whose two ends are what a
-      // reader is comparing. The wait keeps its minutes, being the one span neither end has.
+      // **The journey totals; a leg states its own flight time and not the clock change**
+      // (ADR-0213 ninth amendment §2).
+      //
+      // This assertion is INVERTED from the one it replaces, on purpose. The eighth
+      // amendment read the owner's "confusing" as too many numbers and removed both leg
+      // fields; the owner asked the duration back the same day, and the container — not the
+      // arithmetic — is what stopped a connecting flight reading as three peers.
       expect(journeys[0].durationMinutes).toBeGreaterThan(0);
-      // Asserted over the KEYS, because `SharedLeg` no longer declares either field — typed
-      // access would not compile, which is the stronger half of the same guarantee.
+      // No assertion on the journey's zone shift here: this fixture's trip is single-zone
+      // (`UTC`), so an absent shift is the correct answer and asserting one would be
+      // asserting the fixture rather than the rule.
+      // Where it ENDS, for the container's header: the legs already spell the route out.
+      expect(journeys[0].journeyTo).toBeTruthy();
       for (const leg of journeys[0].legs ?? []) {
-        expect(Object.keys(leg)).not.toContain('durationMinutes');
+        expect(leg.durationMinutes).toBeGreaterThan(0);
+        // The shift a traveller acts on is origin-to-destination, so it stays on the
+        // journey — and `SharedLeg` does not declare it, so this reads the keys.
         expect(Object.keys(leg)).not.toContain('zoneShiftMinutes');
       }
 

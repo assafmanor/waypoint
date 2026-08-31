@@ -1,0 +1,2513 @@
+<!doctype html>
+<!-- מסע אחד, לא שורה ועוד שורות — WHY A CONNECTING FLIGHT STILL READS AS THREE FLIGHTS — v1 (2026-08-31)
+
+     WHAT THIS IS. Owner, twice, after two attempts at the same report:
+     2026-08-31 (a): "Flights have a row for the entire journey (נתב"ג אל
+     קפלאוויק) but also rows for each fight. Both pdf and live. This is confusing
+     and should be changed."
+     2026-08-31 (b), after the fix shipped: "The flights with connecting flights
+     still show both the full journey and the separate flights in a confusing
+     way, also doesn't show journey leg durations (flights)."
+
+     The second report is the one that matters, because it says the first fix was
+     on the wrong axis. ADR-0213's eighth amendment §2 read "confusing" as
+     DUPLICATED NUMBERS and removed the legs' own duration and zone shift. The
+     numbers were never the complaint: the STRUCTURE is, and taking a fact away
+     made the block say less while still reading as three peer flights.
+
+     ─────────────────────────────────────────────────────────────────────────
+     WHAT READING THE CODE CHANGED.
+
+     · The frame reads as a peer because it IS a peer. `EventRow` renders the
+       journey through `<article class="sh-event">` — the same element, the same
+       class, the same type scale as a museum visit. `.sh-legs` then indents its
+       children by `padding-inline-start: 30px` and nothing else. So the whole
+       claim "these two are inside that one" rests on 30px of white space, in a
+       column 360px wide. Nesting drawn as indentation only is the defect.
+
+     · The frame's title is literally the legs' endpoints concatenated. The
+       projection sets `title: routeTitle(first.booking.fromPlaceId,
+       last.booking.toPlaceId)` — `נתב"ג ← קפלאוויק` — while leg 1 is
+       `נתב"ג ← וינה` and leg 2 is `וינה ← קפלאוויק`. Three route strings, five
+       place mentions, three of them the same two airports. That is why counting
+       durations missed it: the repetition a reader trips over is the PLACES.
+
+     · The app already knows what a container looks like, and it is not an
+       indent. `.sh-day` gives a day a surface with a header; `.sh-ops` folds
+       detail under a row with a disclosure; the PDF's `.pdf-trek` already draws
+       the legs inside a real bordered box — which is why the owner's screenshot
+       of PAPER still reads wrong: the box is there and the frame above it is
+       still a complete-looking flight row.
+
+     · `sharedLegSchema` lost `durationMinutes` and `zoneShiftMinutes` eight
+       hours ago (eighth amendment §2). This file asks for the duration BACK, per
+       leg, and deliberately not the zone shift: the shift a traveller acts on is
+       origin-to-destination, and a per-leg shift on a two-leg journey is three
+       signed numbers describing one clock change.
+
+     ─────────────────────────────────────────────────────────────────────────
+     WHAT RENDERING FOUND, both invisible in the markup:
+
+     · `.icon` is sized PER CONTEXT in this app, and a new context inherits no
+       size. Left alone, the header's flight glyph drew at its own 24px box and
+       the header measured 131px instead of 34. `.sh-layover .icon` two levels
+       down already declares 13px; this one declares 14px for the same reason.
+
+     · `.sh-page` now carries `min-height: 100dvh` — shipped this morning so the
+       reader's DOCUMENT scrolls and pull-to-refresh can fire. Any mockup that
+       wears that class for its type scale therefore gets a screenful of empty
+       ground under every frame. Overridden in this file's chrome, and written
+       here because the next such mockup will hit it too.
+
+     ─────────────────────────────────────────────────────────────────────────
+     THIS FILE'S SECTIONS AGAINST THE ADR'S:
+
+       §1 the block is a container    → ADR-0213 ninth amendment §1
+       §2 a leg says how long it flies → §2
+       §3 paper says the same thing,
+          waits included               → §3
+
+     ─────────────────────────────────────────────────────────────────────────
+     Interactive: theme (light · dark), screen (360×640 · 390×844), leg count
+     (2 · 3 — a three-leg journey is where an indent stops being arguable), and
+     the two feel calls this file does NOT settle: whether the header carries the
+     flight count (`2 טיסות`) and whether the legs sit on a rail or on a tint.
+     Measurements at the foot are read from THIS page's rendered DOM. -->
+<html lang="he" dir="rtl" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>מסע אחד, לא שורה ועוד שורות · מוקאפ v1</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- APP-CSS: styles/tokens.css, ui/zone-shift-pill.css, screens/shared-itinerary.css -->
+    <style data-app-css>
+/* GENERATED by mockups/tools/inline-app-css.mjs from the manifest above.
+   Do not edit below this line — change the app css, then re-run the tool. */
+/* ═══ styles/tokens.css — generated, do not edit here ═══ */
+/* Waypoint design tokens — ported from mockups/trip-dashboard-v2.html.
+   See docs/design/design-language.md (rules) + ADR-0028 (why).
+   Amber = time & commitment only; Teal = location only; Plan violet = plan mode only. */
+:root {
+  --ink: #16233d;
+  --indigo: #1b2a4a;
+  --board: #0e1729;
+  --board-2: #152137;
+  --screen: #e7eaef;
+  --card: #ffffff;
+  --paper: #f3efe6;
+  --amber: #e9a63c;
+  /* Amber's PAPER variant — 10-12.5px bold times and labels across zone chips,
+     leg badges, the glance rail and the tz-shift pill. Deepened from #c9822a by
+     ADR-0158 §6: that measured 3.13:1 on --card, under AA for text this size.
+     A SCALAR darkening along the same RGB ray, so hue and saturation are
+     mathematically identical — the same amber, deep enough to read. --amber
+     itself is untouched: it lives on the board at 8.51:1, and it is the
+     product's signature colour. */
+  --amber-deep: #915e1e;
+  --amber-ink: #7a5a1e; /* dark-amber text on a light amber TINT (e.g. the ripple bar);
+                           the tint darkens on dark, so this lightens (see dark block) */
+  --teal: #2c9c90;
+  /* Likewise deepened (was #6c7488): 3.88:1 on --screen, under AA for the
+     secondary text it carries everywhere. Same scalar darkening. */
+  --muted: #61687a;
+  /* TRANSIENT text only, since ADR-0158 §6/§7 — a placeholder or ghost value
+     the user's own input replaces, a disabled control, or a bare glyph at the
+     3:1 graphic floor. It used to mean "one step past --muted" and carry
+     persistent hints too, which is what put real content at 2.18:1 on --screen.
+     Those 21 sites moved to --muted; this stayed a distinct rung and was
+     deepened just enough to clear 3.0 (3.65 on --card, 3.03 on --screen).
+     Deliberately NOT taken to 4.5: at that floor it lands 0.6 L* from --muted
+     and the third step stops existing. Narrowing the meaning is what makes a
+     lighter value honest. */
+  --faint: #808694;
+  --line: rgba(22, 35, 61, 0.1);
+  --soft-line: rgba(22, 35, 61, 0.28);
+  --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+
+  /* Mode & action tokens (design-language: mode identity + color budget) */
+  --plan: #6e59d6; /* plan-mode accent — plan/builder actions only */
+  --plan-deep: #5747b4;
+  --plan-tint: rgba(110, 89, 214, 0.1);
+  --indigo-tint: rgba(27, 42, 74, 0.1); /* chrome-accent wash — active nav pill in Trip mode */
+  --cta: var(--ink); /* neutral primary button; amber/teal/plan are semantic, never CTAs */
+  --cta-text: var(--on-fill); /* the CTA is just one more fill — see --on-fill below */
+
+  /* ── On-fill ink (ADR-0158 §2) ─────────────────────────────────────────────
+     The ink painted ON a semantic fill. Both stylesheets used to record this as
+     "the fill re-maps, the on-fill ink must not" — true for a fill that keeps
+     its POLARITY, false for every mid-tone one, because those brighten on dark
+     and white ink stops working there (ten shipped controls went illegible, the
+     worst at 1.20:1). So the ink is a token that flips WITH its fill, which is
+     what --cta/--cta-text already did alone; this generalizes that pair rather
+     than adding a second of them (rule 8).
+
+       --on-fill   for a fill that re-maps ACROSS the midpoint (--cta, --plan,
+                   --plan-deep, --ok, --miss, --teal, --muted): white in light,
+                   dark ink in dark.
+       --on-amber  for a fill that is LIGHT IN BOTH themes (--amber only
+                   brightens), so its ink stays dark in both.
+
+     What joins NEITHER: --indigo and the board / land / join grounds. Those are
+     always-dark CHROME, so they keep LIGHT ink in both themes — dark ink on dark
+     indigo measures 1.01:1. That is a different rule, and writing the two down
+     as one is how this shipped; ADR-0158 §3's --on-dark-* ramp is its half. */
+  --on-fill: #ffffff;
+  --on-amber: #3a2405;
+
+  /* ── Ink on an always-dark SURFACE (ADR-0158 §3) ───────────────────────────
+     The other half of the same idea, and the bigger one. The board, /login,
+     /join, the boarding-pass ticket, the trip hero and the dormant board are
+     dark in BOTH themes, so their ink is light in both — theme-FIXED, which is
+     why these four are not restated in the dark block below.
+
+     They exist because those surfaces carried 14 distinct hex values doing four
+     jobs, drifted the way the type ramp drifted before ADR-0082 put it in the
+     CSS. Same fix: name the ramp, and a new surface picks a rung instead of
+     inventing a value.
+
+     NOT for: ink on a re-mapping fill (that is --on-fill above), and not for
+     the amber/teal inks on the board — those are hue-bearing semantic accents
+     at small sizes, and folding them into a blue-grey would spend the budget
+     the wrong way. The chrome's own children are --chrome-* (§5). */
+  --on-dark-strong: #ffffff; /* titles, the loud numeral */
+  --on-dark: #eaf0ff; /* body ink on a dark surface */
+  --on-dark-dim: #93a2c4; /* secondary, labels, meta */
+  --on-dark-faint: #7688ac; /* tertiary — rail ends, footnotes */
+
+  /* ── The ink on PLAN's violet, which that surface always had (ADR-0193 §5) ──
+     Not a new family — a NAME for one. `.prep` has inked itself in white-alpha
+     since it was drawn, as six literals scattered through `screens.css`; §3
+     above says the ink a surface carries is a token, and this is the one
+     surface that never got it. Same four rungs as --on-dark-* so a component
+     moving between the two grounds swaps a prefix, not a vocabulary.
+
+     WHY WHITE-ALPHA AND NOT --on-dark-*, which is the question this answers:
+     the lifted plan hero is a GRADUAL ramp from --plan-surface down to
+     --plan-surface-3, so its top is bright violet — where --on-dark-faint is
+     1.45:1 and --on-dark-dim 2.02:1. A cool blue-grey cannot survive the upper
+     half of that ramp however deep its bottom gets. White-alpha can, because
+     it composites TOWARD the ground rather than against it, which is why this
+     surface was written that way in the first place.
+
+     Theme-independent, like --on-dark-* and for the same reason: both grounds
+     this ramp paints on are dark violet. The alphas are set from measured
+     ratios at the BRIGHTEST point any row sits on, not from taste — --faint is
+     0.80 because 0.76 measured exactly 4.5:1 there, and a rung on the floor is
+     one that fails the next time a stop moves. */
+  --on-plan-strong: #ffffff; /* the countdown numeral */
+  --on-plan: rgba(255, 255, 255, 0.94); /* titles, body */
+  --on-plan-dim: rgba(255, 255, 255, 0.84); /* deadlines, dates, secondary */
+  --on-plan-faint: rgba(255, 255, 255, 0.8); /* band labels, kickers */
+  --on-plan-track: rgba(255, 255, 255, 0.18); /* the readiness track's groove */
+
+  /* ── The chrome's contract (ADR-0158 §5) ───────────────────────────────────
+     53 colour declarations on the trip chrome assume it is DARK, and only four
+     said so. None is wrong — each is correct *given a dark chrome* — but the
+     dependency was recorded nowhere, so the first person to try a light one
+     rediscovers it a rule at a time. Plan mode already did exactly that: when
+     its chrome went light it re-specified the whole set by hand, which is why
+     `.app[data-mode='plan'] .av { border-color: var(--card) }` exists.
+
+     These names make the dependency a value instead of an assumption. A mode
+     sets them once; the chrome's children read them and never learn which mode
+     they are in. The values below are trip-dark's CURRENT ones verbatim, so
+     this is a no-op refactor — and it is what makes a light trip chrome (§9,
+     deferred to Hero 2.0) seven lines instead of nineteen rules.
+
+     Note --chrome-wash: it is not one value but a BASE. Each element mixes its
+     own alpha off it (`color-mix(… var(--chrome-ink) 9%, transparent)`), which
+     preserves every existing alpha exactly AND makes the wash flip with the
+     ink — a white wash on dark chrome becomes an ink wash on a light one, with
+     no per-element rule to rewrite.
+
+     LIGHT MODE'S CHROME IS LIGHT, since phase 6 (§9 shipped): a band per mode,
+     so identity rides HUE rather than luminance now that neither is dark. Both
+     grounds live here, under each theme block, because they are theme values —
+     App.css only picks WHICH mode is speaking (`--chrome-bg: var(--chrome-bg-plan)`).
+     Everything downstream reads --chrome-* and never learns either answer.
+
+     The INK ramp is shared by both modes: plan's band is the lighter of the
+     two, so a rung that clears on trip's clears on plan's, and one ladder is
+     one thing to keep true. Four rungs in 21 L*, which is tight — a light
+     chrome's floor is higher than a dark one's, because its washes DARKEN the
+     ground under the very ink they sit behind. Each value below is the
+     lightest that clears 4.5 on the heaviest wash it is actually painted on:
+     16% for --mid (the +N bubble), 8% for --dim (the offline badge), 5% for
+     --num (the day pill). Do not lighten one without re-checking its wash. */
+  /* A LITERAL, and not a `color-mix` off --indigo, which is what phase 6 shipped
+     and the owner called dull. The reason is measurable: --indigo #1B2A4A is a
+     near-neutral navy (chroma 22.4) chosen to be a DARK SURFACE, so no
+     proportion of it yields a light band with any hue left — 12% gives chroma
+     4.4 and 22% only 6.2, by which point the band is heavy and still grey.
+     Meanwhile --plan is chroma 73.6, so 12% of IT is visibly violet. That
+     asymmetry is the whole complaint: trip read as grey next to a violet plan.
+
+     §1 one more time — --indigo's value was chosen for one of its two roles.
+
+     The non-obvious part, and the reason this is not a trade: making trip more
+     colourful also makes it MORE distinct from plan, not less. Indigo and violet
+     sit ~20° apart, so chroma-matching trip to plan at indigo's own angle
+     collapses the pair to ΔE00 1.2 — the shipped grey was separated by being
+     neutral, at 5.6. Pushing trip's hue AWAY from violet buys both: this pair is
+     ΔE00 **8.4**, bluer and further apart than what it replaces. */
+  --chrome-bg: #c8d2ec;
+  /* Plan's band, beside trip's rather than in App.css, because it is a THEME
+     value and App.css only knows about modes. Violet needs no help — --plan is
+     chroma 73.6 — so this one stays a mix and simply matches trip's weight. */
+  --chrome-bg-plan: #dcd5f2;
+  --chrome-ink: #16233d; /* titles, active glyphs — also the wash base */
+  --chrome-ink-mid: #2c3a56; /* control glyphs: the back chevron, the +N count */
+  --chrome-ink-num: #3c4763; /* numerals — the day number, the anchor's value */
+  --chrome-ink-dim: #465166; /* labels and captions */
+  --chrome-ring: var(--chrome-bg); /* the ring separating overlapping avatars */
+
+  /* Plan's LOUD SURFACE, the counterpart of --board/--board-2 (ADR-0158 §4).
+     The prep hero used to paint itself out of the ACCENT tokens (--plan-deep →
+     --plan), which is fine in light and wrong in dark: an accent BRIGHTENS on
+     dark, a surface must not. Left alone the hero rendered at L* 68 — the
+     brightest surface in the whole dark app, in the mode the design language
+     calls calm, with its own ink at 2.16:1, INVERTING the mode identity
+     ADR-0028 makes non-negotiable. These light values are byte-identical to the
+     gradient they replace, so light mode does not move. */
+  --plan-surface: #6e59d6;
+  --plan-surface-2: #5747b4;
+  /* **The FAR end of the lifted plan hero's ramp** (ADR-0193 §5, amended 2026-08-17 on the
+     owner's report that the lifted card reads too heavy in light theme).
+     
+     It used to be "the deep end" in both themes, and that was the defect: `.prep` itself
+     already ramps WITH the theme — light goes #5747b4 → #6e59d6, i.e. *lighter* downward,
+     while dark goes #332866 → #2a2158, darker — and the lifted card was the one surface
+     darkening in both. So this token follows the theme too: a touch lighter than
+     --plan-surface-2 in light, deeper in dark.
+     
+     ADR-0158 §4's rule still holds and is worth checking rather than assuming: the dark
+     value is DARKER than the light one, so the surface does not brighten on dark.
+     
+     **The light value is a ceiling, not a taste.** The lifted card's ink is the white-alpha
+     --on-plan-* ramp, and white at 0.80 clears 4.5:1 only on a ground below L 0.112. This is
+     #5f4dbf (L 0.107). --plan-surface itself (L 0.153) is already past it — which is why the
+     card cannot simply ramp to the collapsed hero's own brightest violet. */
+  --plan-surface-3: #5f4dbf;
+  /* Status mini-palette (distinct from the semantic trio) */
+  --ok: #3c9a6b;
+  --miss: #c2584e;
+  /* --miss AS INK, the same split --amber/--amber-deep already runs (ADR-0158
+     §1: one token, two jobs). --miss is a FILL — dots, dashed borders, the
+     settle mark — and at L* 50.7 it is right for that and 4.38:1 as text on
+     white, i.e. under AA everywhere it is written rather than painted. Scalar
+     along the same RGB ray, so hue and saturation are untouched.
+
+     ONE call site today, deliberately: the 36 others are a conversion this
+     phase did not do, and the backlog carries them. Naming it is what stops
+     the 37th from being another literal. */
+  --miss-deep: #96443c;
+
+  /* Category pin palette (ADR-0038 §2 / ADR-0028 decorative palette) — 5 pastel
+     hues, "never amber or teal": colour = category on the Map list badge + pin
+     (the 9 EventCategory values fold onto these 5, see CATEGORY_PIN_HUE). Values
+     ported verbatim from mockups/map-tab-v1.html. Commitment (hard/soft) is the
+     shape grammar, not the fill. */
+  /* Avatar identity ramp (ADR-0133 §5) — the decorative palette's other half,
+     beside the pin hues below. Outside the semantic trio, and deliberately LOWER
+     CHROMA than `--cat-*`: an avatar in the chrome and a category pin on the Map
+     canvas are on screen together, and chroma is the channel that keeps them
+     apart even where hue angles are close. All pastel so ONE dark ink clears
+     contrast on every hue in both themes — that is what keeps the Avatar
+     primitive from needing a per-hue ink table. */
+  --id-plum: #b98ac9;
+  --id-rose: #d98ca8;
+  --id-moss: #9db585;
+  --id-denim: #8496b5;
+  --id-cocoa: #b99483;
+
+  --cat-food: #e8998a;
+  --cat-lodging: #9c8ce8;
+  --cat-transit: #8cb6e8;
+  --cat-leisure: #9cc9a0;
+  --cat-services: #d9c08a;
+
+  /* "You are here" on the rendered map (ADR-0121 §7 / ADR-0109 §3): the OS-map
+     convention blue, deliberately OUTSIDE the amber/teal/violet budget — it is a
+     platform idiom nobody reads as one of our accents, which is exactly why it
+     may be a sixth colour. One consumer only: the map's `me` dot. */
+  --me: #2e6be6;
+
+  /* Motion — duration ramp + easings (design-language "Motion & designed
+     transitions"). New motion picks from this ramp, the same discipline the
+     type ramp and color budget enforce. Budget rule: exactly one --t-cinematic
+     moment exists — the Plan→Trip switch. Everything under prefers-reduced-motion
+     collapses to instant (App.css). */
+  --t-quick: 140ms; /* nav settle, toggles, hovers, focus */
+  --t-base: 240ms; /* tab cross-fade, toast, ripple bar, sheets */
+  --t-deliberate: 400ms; /* return-gesture slide; Trip→Plan stand-down */
+  --t-cinematic: 600ms; /* Plan→Trip going-live — the only cinematic moment */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1); /* default / entrances / hue melts */
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1); /* exits — toast out, glow extinguishing */
+  --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1); /* the glow ignite */
+  /* The only OVERSHOOTING easing (ADR-0140). The three above are monotone, so an
+     object that should *settle* — an arriving sheet, a punched notch, a stamp —
+     had nothing to settle with and stopped dead instead. Deliberately mild: 1.16
+     is a nudge past the mark, not a bounce. Entrances of real objects only; never
+     an exit (leaving does not overshoot) and never a colour or opacity ramp. */
+  --ease-arrive: cubic-bezier(0.22, 1.16, 0.36, 1);
+  /* One step for a staggered entrance (ADR-0140). Staggers existed in three
+     places with three hand-picked values; this is the unit they now multiply.
+     Cap the multiplier at the call site (~5) so a long list never drags — the
+     ADR-0120 reveal's own rule. */
+  --stagger-step: 40ms;
+  /* The sign of the inline axis, in PHYSICAL terms (ADR-0140). `translateX` has no
+     logical form, so a surface that should arrive from the inline-END edge cannot
+     express that in a transform — and in RTL inline-end is the LEFT edge, so the
+     travel is negative. One sign here, read as
+     `translateX(calc(var(--dir) * 100%))`, is what lets the route transition and
+     the `full` overlay share ONE set of keyframes instead of a mirrored copy each.
+     The `[dir='ltr']` override sits after this whole block; nothing else may
+     hard-code a direction. */
+  --dir: -1;
+
+  --font-head: 'Secular One', sans-serif;
+  --font-body: 'Assistant', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* ── Non-color foundation tokens (U-08, ADR-0082) ──────────────────────────
+     design-language.md documents the spacing/type/radius/elevation ramps in
+     prose; before this they lived nowhere in CSS, so 6.5k lines hard-coded them
+     and drifted. These make the ramps enforceable: pick from the token, never
+     invent a value. Theme-independent (a 16px gap is 16px on dark too), so the
+     dark block below re-maps only what actually changes with theme (elevation).
+     Migration is opportunistic — primitives are born on these; screens convert
+     as they're touched. */
+
+  /* Spacing — 4px base grid; component padding from {8,12,16,20,24}. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* **The height a sheet form's sticky action bar occupies**, so the scroll container it pins
+     to can keep `scrollIntoView` from parking anything underneath it (ADR-0196 §13,
+     `form-actions.css`). A pair that must stay true: the bar measures ~55px and this covers it
+     with slack, and if the bar ever grows past this the clearance stops working silently —
+     which is why both numbers are asserted together in `form-actions.contract.test.ts`. */
+  --form-actions-h: 68px;
+
+  /* Type ramp (design-language "Type ramp"). Assistant unless the call site
+     sets --font-head (Secular One for display/h1/h2/h3). Values are the
+     documented steps; off-ramp sizes in legacy CSS converge onto these. */
+  --text-display: 34px; /* landing hero */
+  --text-h1: 26px; /* screen titles */
+  --text-h2: 21px; /* board now-title */
+  --text-h3: 17px; /* card titles (17–18) */
+  /* **A step ABOVE body, for the one surface that is a document** (ADR-0202's 2026-08-22
+     amendment; owner: the note's full screen is "too small"). `--text-body` is sized for app
+     chrome — a row, a fact, a meta line — where the job is to fit several facts on a phone
+     line. A note read on its own screen has the opposite job: one long text, nothing beside
+     it, and a reader who is reading rather than scanning. It is a ramp step and not a local
+     number so the next reading surface takes the same size instead of picking its own. */
+  --text-reading: 16px; /* prose on a surface that holds nothing else */
+  --text-body: 14.5px; /* default text */
+  --text-secondary: 13px; /* meta, descriptions (12–13) */
+  --text-caption: 11px; /* labels, hints */
+  --text-micro: 10.5px; /* tags, badges */
+
+  /* Line-height ramp (unitless). Headings ride tight; body reads at normal. */
+  --leading-tight: 1.1; /* display/board titles */
+  --leading-snug: 1.25; /* h1–h3 */
+  --leading-normal: 1.45; /* body */
+  --leading-relaxed: 1.6; /* long descriptions */
+
+  /* Radius ramp: 8 chips/tags · 12 inner (badges/inputs) · 16 cards ·
+     22 hero surfaces · 999 pills. */
+  --radius-8: 8px;
+  --radius-12: 12px;
+  --radius-16: 16px;
+  --radius-22: 22px;
+  --radius-999: 999px;
+
+  /* Elevation — three levels only. flat = border, no shadow; raised = soft
+     (interactive cards); floating = strong (board, toasts, sheets = --shadow). */
+  --elevation-flat: none;
+  --elevation-raised: 0 8px 20px -14px rgba(14, 23, 41, 0.35);
+  --elevation-floating: var(--shadow);
+
+  /* Breakpoints (design-language "Responsive"). CSS @media cannot read custom
+     properties, so these document the values for JS/container-query use and
+     keep one source of truth; media queries mirror them as literals. */
+  --bp-tablet: 768px;
+  --bp-desktop: 1024px;
+
+  /* Safe-area insets (phone PWA). The app-shell + sticky primitives pad by
+     these so content clears the notch / home indicator. Zero on non-notched. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
+  /* Sync/status mapping (U-04 SyncBadge, U-10 StatusBanner). Reuses the status
+     mini-palette + a neutral for "pending", so failed/synced inherit the dark
+     remap of --ok/--miss for free. */
+  --sync-synced: var(--ok);
+  --sync-pending: var(--muted);
+  --sync-failed: var(--miss);
+
+  /* Press feedback (ADR-0140). Two steps, and the RATIO is what should read as
+     constant — not the transform. A 44px icon button at 0.985 is invisible; a
+     full-width card at 0.97 reads as collapsing rather than as pressed.
+     Scale rather than colour on purpose: the app presses on a dark glowing board,
+     paper cards, amber tints and violet chrome, so a colour press-state would need
+     a per-surface table AND would spend from the semantic budget (amber = time,
+     teal = location, violet = plan) on chrome. Scale composes with every surface. */
+  --press-scale: 0.97; /* controls: buttons, chips, icon buttons, nav items */
+  --press-scale-lg: 0.985; /* surfaces: cards, tiles, full-width rows and CTAs */
+
+  /* How opaque the thing you are dragging is (ADR-0161 §8). Low enough that a seam, a
+     gap chip's label and a lit day pill read through the clone that is covering them;
+     high enough that the clone still reads as the row you picked up rather than as a
+     hole in the list. The pair with `DRAG_GHOST_LIFT_PX` (constants.ts) is a feel call
+     and owes a device pass — the mockup carries both as toggles for exactly that. */
+  --drag-ghost-opacity: 0.78;
+
+  /* How far an arriving shell screen travels (ADR-0140). Small on purpose — see the
+     route-transition block in App.css for why this is an offset rather than the
+     full-width push the design brief drew. */
+  --route-offset: 28px;
+}
+
+/* The one place a direction is named. Must stay OUTSIDE the `:root` block above:
+   splitting `:root` to hold this is what put the spacing, type and press tokens
+   behind an `[dir='ltr']` selector during the build of ADR-0140 — in an RTL app
+   that silently unset half the token layer, and a `scale(var(--press-scale))`
+   resolving to nothing is how it was caught. */
+[dir='ltr'] {
+  --dir: 1;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  /* Kill the mobile browser's blue tap-flash app-wide (inherited). Every
+     tappable surface has its own :active / hover / focus-visible feedback,
+     so this only removes the crude default overlay, not the affordance. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* …and here is the rule that makes the line above true (ADR-0140). It claimed
+   "every tappable surface has its own :active", which was the intent and not the
+   state: there were 16 `:active` rules in the whole frontend, spread across SEVEN
+   different values, so most controls acknowledged a tap with nothing at all.
+   Phone-primary (ADR-0017) makes that a correctness point rather than polish —
+   there is no hover state to fall back on, so for the frame before the target
+   appears the app had told the user nothing.
+
+   One element-level rule instead of a utility class, so reach is automatic and a
+   new button cannot forget to opt in; a large surface overrides `--press-scale`
+   rather than writing its own transform.
+
+   Deliberately NO `transition` here. A global `transition` declaration is a
+   shorthand and would clobber the per-component ones (`.trip-name-btn`'s
+   background melt, and others), so the press is instant in both directions —
+   which is also what the native highlight it replaced did, and what makes a tap
+   feel answered rather than eased into. */
+button:not(:disabled):not([aria-disabled='true']):active,
+[role='button']:not([aria-disabled='true']):active,
+summary:active {
+  transform: scale(var(--press-scale));
+}
+
+/* An armed drag (lib/useHoldToDrag.ts) turns selection off page-wide: the finger
+   travels over rows, headers and gaps, and any of them would otherwise start
+   selecting text under it mid-drag. `!important` because it has to beat whatever
+   the elements under the finger set for themselves, and it lasts only until the
+   drop. The card's own `user-select: none` handles the press itself. */
+body.wp-dragging,
+body.wp-dragging * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+/* …and the other half of the same subject, which the comment above used to point at while
+   the rule itself was copied per component (ADR-0199 §4). **A day or shelf row is a
+   control, not a document**: a press on one is a gesture in every mode — a drag on a soft
+   row, an answered refusal on a hard one (`BEAT.PINNED`), a tap everywhere else — and a
+   long press that starts selecting text or opens the iOS callout is the platform answering
+   in the app's place.
+
+   It was keyed on `.draggable` in `screens.css` and `maybe-card.css`, and the key is what
+   made it a bug rather than a gap: the two rows that never drag — a hard `.bld`, and every
+   `.wp-event`, which has no drag in any mode — were the two that selected. Owner report,
+   2026-08-21.
+
+   One selector list rather than three declarations, so they cannot drift the way ADR-0139's
+   four axes did; a fourth row type joins by being added here. Note this handles the press
+   only: cancelling `selectstart` mid-gesture is `useHoldToDrag`'s `selection.suppress()`,
+   because `user-select: none` does not stop a long press ASKING to select. */
+.bld,
+.wp-event,
+.wp-maybecard {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+/* Ownership of the finger is enforced in JS, not here (lib/useHoldToDrag.ts's
+   mount-time non-passive `touchmove` guard). Two CSS routes were tried first and
+   both are dead ends, so they are documented rather than reintroduced:
+     • `touch-action: none` on a live drag — `touch-action` is read when the touch
+       STARTS, so setting it mid-gesture changes nothing;
+     • `overflow-y: hidden` on `.body` for the drag's duration — it does stop native
+       scrolling, but it also makes the container stop reporting as a scroller, and
+       `nearestScroller` (lib/edge-autoscroll.ts) then finds nothing to scroll: the
+       edge auto-scroll dies with it. Proven by e2e/shelf-drag.spec.ts. */
+/* The held card stops answering hit-tests, so the drop target is always what is
+   UNDER the finger rather than the thing being dragged. */
+body.wp-dragging .wp-maybecard.dragging {
+  pointer-events: none;
+}
+
+/* The floating clone that follows the finger (lib/useDragGhost.ts). Lives here rather
+   than beside either draggable's styles, because ONE of these serves both of the
+   builder's drags — a shelf card and a builder row — by cloning whichever DOM the
+   finger picked up.
+
+   `position: fixed` is what escapes `.shelf`'s horizontal overflow (no ancestor
+   establishes a containing block for it). It is deliberately not an ADR-0090 overlay:
+   not a back target, never in the back stack, so no `Modal`/`useOverlay`. Above the
+   day list and the nav, and it needn't beat the Modal layer — no overlay can be open
+   during a drag. */
+.wp-dragghost {
+  position: fixed;
+  top: 0;
+  /* Physical `left`, deliberately NOT the logical `inset-inline-start` this codebase
+     otherwise prefers: the app is RTL, where the logical property resolves to
+     `right: 0` and anchors the box to the viewport's RIGHT edge — while the transform
+     is computed from `clientX`, which is physical. Mixing the two put the clone a
+     viewport-width away from the finger. */
+  left: 0;
+  z-index: 15;
+  /* Transparent to hit-testing: the drop target is whatever is UNDER the finger, and
+     `elementFromPoint` would otherwise only ever find the clone. */
+  pointer-events: none;
+  /* Size and position are written from JS (the source's box, then the finger), so
+     nothing here may declare a width, height or transform of its own. */
+  will-change: transform;
+  /* **TRANSLUCENT, so the target under it can be read** (ADR-0161 §8). A builder row is
+     the full width of the list and so is every drop target it covers, so an opaque clone
+     hides the seam, the gap chip's label and the lit day pill — the things the drop is
+     aimed at. On the WRAPPER rather than the clone, so the ring and shadow below fade
+     with it instead of floating over a faded card. */
+  opacity: var(--drag-ghost-opacity);
+}
+/* The clone reads as picked up. A spread `box-shadow` follows whatever radius the
+   cloned element already has — a card's 15px, a row's own — which is why the ring
+   isn't drawn on the wrapper (session 113: an outline at the wrong radius is exactly
+   what read as a "choppy" stroke).
+   
+   **No `transform: scale()`** (ADR-0161 §8). It was 1.04, which made the clone LARGER
+   than the row it vacated — so it covered more than the space it freed, including the
+   seams above and below it, which are 18px each. "Picked up" is already said by the ring
+   and the shadow, which is how the platform says it; the enlargement was covering the
+   neighbours to repeat something already stated. */
+.wp-dragghost > * {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--plan) 55%, transparent),
+    0 14px 28px -10px rgba(14, 23, 41, 0.45);
+}
+
+html,
+body,
+#root {
+  /* **`100%` here is the LARGE viewport, and that mismatch is the empty band**
+     (field report: space below the tab bar on Home, reachable by swiping down
+     from it). A percentage height on the root resolves against the initial
+     containing block, which a mobile browser sizes to the viewport with its
+     toolbars HIDDEN — while `.app` is `100dvh`, the viewport as it is right now.
+     With the toolbars showing the two disagree by their height, so the document
+     is ~125px taller than the frame inside it, and the band of `--screen` under
+     the tab bar is the document's own overflow.
+
+     **It is fixed by the `overflow` below, and deliberately NOT by sizing
+     this in `dvh`.** `dvh` can never EXCEED the containing block (`dvh <= lvh`,
+     and the ICB is `lvh`), so the frame can never overflow this box and the
+     surplus is always below the fold — make the root unscrollable and the band
+     is unreachable and never painted, which is the whole of the report. Sizing
+     the document in `dvh` buys nothing on top of that and is not free: `dvh` is
+     re-resolved whenever the dynamic viewport is, and here that is a relayout of
+     the WHOLE document at an unpredictable moment during load — which lands on
+     `lib/land-at-top.ts`, a `requestAnimationFrame` watch whose entire subject is
+     a surface that has not settled yet. A length that does not need to be dynamic
+     should not be. */
+  height: 100%;
+  /* App-shell scrolls inside .body, not the document. Stop overscroll from
+     chaining to the page so the browser's native pull-to-refresh never fires
+     (PWA feel). Scrolling inside .body is unaffected. */
+  overscroll-behavior-y: contain;
+  /* ADR-0062: suppress double-tap zoom app-wide (pinch is handled in index.html;
+     the image preview opts back in via its own touch-action). manipulation still
+     allows panning + the day-strip pan-x scroll. */
+  touch-action: manipulation;
+}
+
+/* **The public reader opts out of all three** (see `lib/public-reader-chrome.ts`). A shared
+   itinerary is a document in a browser tab, not the app: it may be pinched to a size its
+   reader can actually read, and a pull at the top is the browser's refresh rather than a
+   gesture this page swallows. A variant block AFTER `:root`, never inside it — putting a
+   selector on that block is how the whole token set was once lost to `[dir='ltr']`. */
+:root[data-public-reader],
+:root[data-public-reader] body {
+  overscroll-behavior-y: auto;
+  touch-action: auto;
+  /* **And the document scrolls, which is the half that was missing** (owner, 2026-08-31:
+     refresh still did not work after the two lines above shipped). `overscroll-behavior` only
+     decides what happens when a scroll container runs out of content; `overflow: clip` below
+     means the viewport is not a scroll container at all, so there was never an overscroll for
+     the browser's refresh gesture to read. The reader's own page therefore stops being a
+     100dvh inner scroller too (`shared-itinerary.css`) — the two changes are one fix and
+     neither works alone. Higher specificity than the `html, body` rule below, so source order
+     does not decide this. */
+  overflow: visible;
+}
+
+/* **The document itself never scrolls**, which is what closes the empty band above:
+   every scroll in this app is `.body`'s, a sheet's own list, or a strip's. On the
+   root this propagates to the viewport, so it is the enforcement of the sentence in
+   the block above rather than a second opinion about it. Safe for every overlay:
+   `Modal`, `MediaViewer` and the toast are all `position: fixed` with their own
+   inner scroller.
+
+   **`clip`, not `hidden`.** `hidden` makes an element a scroll CONTAINER that merely
+   refuses the user: it still has a scrollport, and `scrollIntoView` walks every scroll
+   container between an element and the viewport. So `hidden` here would put a second,
+   empty scroll target in front of `.body` on the one path in this app that aims a smooth
+   scroll at a surface still settling (`lib/land-at-top.ts`). `clip` is not a scroll
+   container at all — nothing to scroll, nothing to walk, identical propagation to the
+   viewport — so it says only what is meant. Chosen on that reasoning and not on a
+   measurement: `hidden` was tried and no run separated the two (see ADR-0200 §1, which
+   also records the wrong turn taken while looking). Same distinction `map.css` draws for
+   its own track. */
+html,
+body {
+  overflow: clip;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--screen);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* A form control does not inherit `color` — the UA gives it `buttontext`, which
+   is near-black and therefore INDISTINGUISHABLE FROM `--ink` while the app is
+   light-only. Fourteen rules across the app write `font: inherit` on a button
+   and stop there, because `font` looks like it should have covered this and the
+   render agreed. On a dark card those labels inherit the user agent's black.
+   The roster's member names are how this surfaced (ADR-0158 §12's follow-up).
+
+   One base rule rather than fourteen patches: element specificity, so every
+   existing `color:` on a control still wins, and a control that meant to say
+   something about its ink keeps saying it. */
+button,
+input,
+select,
+textarea {
+  color: inherit;
+}
+
+/* Dark mode remap — INERT until <html data-theme="dark"> is set.
+   Same token names, re-mapped; component CSS stays untouched.
+   See design-language "Dark mode readiness" for principles + remaining work. */
+:root[data-theme='dark'] {
+  /* A brightened fill takes DARK ink — the inverse of light, and the whole
+     reason --on-fill exists (ADR-0158 §2). --on-amber is deliberately NOT
+     restated: --amber is light in both themes, so its ink is dark in both.
+     Said out loud, because an absent line in this block otherwise reads as an
+     oversight rather than a decision. */
+  --on-fill: #12203a;
+
+  /* Plan's hero goes DEEP, not bright — the plan-mode counterpart of the night
+     board. Ink clears 12.7:1 on it, and at L* 17-21 against the L* 7.7 ground it
+     is unmistakably the loud thing on a plan screen while staying calm. This is
+     also what keeps the two modes as distinguishable in dark as they are in
+     light: trip is near-black with amber inside it, plan is a lifted violet slab
+     with white on it. */
+  --plan-surface: #2a2158;
+  --plan-surface-2: #332866;
+  --plan-surface-3: #1a1442;
+
+  /* The chrome, restated — and it has to be, now that light's is light. §5 read
+     the chrome as theme-fixed and phase 6 refuted that: once light mode got its
+     own band, the values in :root stopped being "the chrome" and became "the
+     LIGHT chrome". These are phase 3's always-dark values, unchanged, with one
+     exception:
+
+     --chrome-bg is no longer bare --indigo. In dark, --indigo is #131f38 and
+     --screen is #0f1726 — 4.3 L* apart, contrast 1.09 — so the band that
+     carries mode identity was very nearly the page it sits on, while the card
+     above it (L* 15.7) floated HIGHER than the chrome. Same shape as the light
+     side and the same 12% answer, mixed the other way: the accent over --card,
+     which lifts the band clear of the screen and restores the plane order. */
+  --chrome-bg: color-mix(in srgb, var(--indigo) 12%, var(--card));
+  --chrome-bg-plan: color-mix(in srgb, var(--plan) 12%, var(--card));
+  --chrome-ink: #ffffff;
+  --chrome-ink-mid: #dce3f2;
+  --chrome-ink-num: #b9c4de;
+  /* Lifted again, to #a1aecf. Phase 3 folded four drifted values onto #93a2c4,
+     the one that cleared on the TRIP band's 5% wash; phase 6's follow-up gave
+     plan its own dark band, which is the brighter of the two, and #93a2c4 lands
+     at 4.27 on it. This rung is now derived from the worse of the two grounds
+     rather than the only one that existed when it was picked. */
+  --chrome-ink-dim: #a1aecf;
+  --chrome-ring: var(--chrome-bg);
+
+  --ink: #e7eaf2;
+  --indigo: #131f38;
+  --board: #0a1120; /* darkest surface — the board stays the loudest */
+  --board-2: #101b30;
+  --screen: #0f1726;
+  --card: #1a2740;
+  --paper: #2e2a20; /* keeps its warmth, dark */
+  --amber: #f0b254;
+  --amber-deep: #d89440;
+  --amber-ink: #f0b254; /* amber text now: the tint sits on a dark screen, so ink→light amber */
+  --teal: #3fb3a5;
+  --muted: #93a0b8;
+  --faint: #8592ab; /* dim light — quieter than --muted, still clears AA on --card */
+  --line: rgba(231, 234, 242, 0.1);
+  --soft-line: rgba(231, 234, 242, 0.3);
+  --shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.6);
+  --plan: #8b79e8;
+  --plan-deep: #a99af2; /* used as text — lighter on dark */
+  --plan-tint: rgba(139, 121, 232, 0.14);
+  --indigo-tint: rgba(141, 168, 232, 0.16); /* brightened for the dark nav bar */
+  --cta: #e7eaf2;
+  --cta-text: var(--on-fill); /* tracks the family; the CTA is one more fill */
+  --ok: #4cbf85;
+  --miss: #e07a6e;
+  /* Deep means FURTHER FROM THE GROUND, not darker — on dark that is lighter,
+     the same inversion --amber-deep and --plan-deep already make. */
+  --miss-deep: #e3877d;
+  /* Category pins, nudged brighter so the pastels clear the dark board (dark is
+     readiness-only today, ADR-0028/0105 — inert until data-theme=dark is set). */
+  /* Identity ramp, lifted like the pin hues so a pastel ground still carries the
+     same dark ink on a deep surface (ADR-0133 §5). Owes a real dark-mode look
+     before the theme toggle ships — see the backlog line. */
+  --id-plum: #c79cd4;
+  --id-rose: #e39db6;
+  --id-moss: #adc396;
+  --id-denim: #96a6c4;
+  --id-cocoa: #c7a695;
+
+  --cat-food: #f0a99a;
+  --cat-lodging: #ab9cf0;
+  --cat-transit: #9cc2f0;
+  --cat-leisure: #a9d4ad;
+  --cat-services: #e4cd9a;
+  /* The "me" dot, lifted to clear the night map style (same readiness caveat). */
+  --me: #5b8ef0;
+
+  /* Non-color tokens (spacing/type/radius/leading/breakpoints/safe-area) are
+     theme-independent and inherit unchanged. Only elevation re-maps: shadows
+     read deeper on dark surfaces. --elevation-floating tracks --shadow (above);
+     --raised needs its own darker value. Sync tokens track --ok/--miss/--muted,
+     all already re-mapped, so they need no restatement here. */
+  --elevation-raised: 0 8px 20px -14px rgba(0, 0, 0, 0.5);
+}
+
+/* ═══ ui/zone-shift-pill.css — generated, do not edit here ═══ */
+/* ZoneShiftPill (ADR-0107) — the one amber time-shift pill. The three
+   copy-pasted surface classes it replaced (`.wp-event-tzdelta`, `.tr-tzdelta`,
+   `.bld-tzdelta`) were identical but for a 0.5px of font-size and their
+   margins, so those tweaks stay at the surface and the pill itself is one rule. */
+.wp-tzshift {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  background: rgba(233, 166, 60, 0.14);
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
+/* On the dark board the deep amber-on-wash reads as a smudge — the same pill
+   inverts to a light amber on a stronger wash so it stays legible against the
+   one dark surface (design-language: the board is the only dark surface). */
+.wp-tzshift.on-dark {
+  color: #f0c785;
+  background: rgba(233, 166, 60, 0.2);
+}
+
+/* ═══ screens/shared-itinerary.css — generated, do not edit here ═══ */
+/* The public itinerary reader (ADR-0213), ported from the proposal block of
+   mockups/a-shared-itinerary-is-organized-by-the-day-v3.html.
+
+   Only the layout delta lives here: every colour, radius, type ramp and spacing value is a
+   token from styles/tokens.css, which is what keeps this page in the same design system as
+   the app despite being the one screen a stranger sees. The mockup's review chrome
+   (`.mk-*`, the phone frame, the measurement table) is deliberately not ported.
+
+   The hero keeps its dark trip identity in BOTH themes — it is always-dark chrome, so its
+   ink is the theme-fixed `--on-dark-*` ramp (ADR-0158 §3), not a re-mapping fill. */
+
+/* **This page is scrolled BY THE DOCUMENT, which is the second answer to the same report**
+   (owner, 2026-08-30: the shared link could not be scrolled at all; 2026-08-31: it still
+   could not be refreshed).
+
+   The first answer gave the page its own `100dvh` scroller, because `html, body` are
+   `overflow: clip` app-wide (tokens.css) — every scroll in the app is `.body`'s, a sheet's or
+   a strip's — and the public reader renders OUTSIDE `AppShell`, so it inherited the refusal
+   and none of the scroller. That fixed scrolling and quietly made refresh impossible: a pull
+   at the top of an INNER scroller is not a viewport overscroll, so the browser's refresh
+   gesture has nothing to read no matter what `overscroll-behavior` says.
+
+   So the document scrolls instead — `:root[data-public-reader]` restores `overflow: visible`
+   — and this is `min-height`, not `height`, so the page is as tall as its content. `dvh`
+   rather than `%` for the same reason as before: a percentage resolves against the LARGE
+   viewport, so a short itinerary would reserve ~125px behind the phone's browser toolbar. */
+/* **This page has its own type scale, one step up from the app's** (owner, 2026-08-30:
+   _"Fonts are too small in the details and very hard to read, also the notes, and overall
+   too small texts"_).
+ 
+   The app's steps are sized for a dense operational UI held by someone who already knows
+   what every row means — `--text-micro` is 10.5px and earns it on a badge. This is a
+   DOCUMENT, read once by a stranger who is often standing up, and the same 10.5px on a
+   place line is simply hard to read. Local variables rather than a change to
+   `tokens.css`: the app's density is not this page's problem to re-decide. */
+.sh-page,
+.sh-boot,
+.sh-unavailable {
+  --sh-micro: 12.5px;
+  --sh-caption: 13.5px;
+  --sh-secondary: 15px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--screen);
+}
+
+/* A stranger's device is a phone (ADR-0017), but the link also lands in a desktop browser —
+   bound to the same column the app frames itself in rather than stretching a phone layout
+   across 1600px. */
+.sh-page {
+  max-width: 560px;
+  margin-inline: auto;
+  color: var(--ink);
+}
+
+.sh-boot {
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  color: var(--muted);
+}
+
+.sh-public-bar {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 16px;
+  border-block-end: 1px solid color-mix(in srgb, var(--on-dark) 10%, transparent);
+  background: var(--indigo);
+  color: var(--on-dark-dim);
+  font-size: var(--sh-micro);
+}
+
+.sh-brand,
+.sh-freshness {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.sh-brand {
+  color: var(--on-dark-strong);
+  font-weight: 700;
+}
+
+/* The app's own mark rather than its initial (owner, 2026-08-30). Kept in the same box the
+   letter had, so the bar's rhythm is unchanged; the tile behind it stays because the mark is
+   cut for a bright ground and this bar is the page's one dark strip. */
+.sh-brand-mark {
+  width: 24px;
+  height: 24px;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  object-fit: contain;
+}
+
+.sh-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.sh-freshness.stale .sh-live-dot {
+  background: var(--muted);
+}
+
+.sh-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 21px 18px 22px;
+  background:
+    radial-gradient(circle at 8% 14%, rgba(44, 156, 144, 0.22), transparent 27%),
+    linear-gradient(158deg, var(--indigo), var(--board));
+  color: var(--on-dark);
+}
+
+.sh-kicker {
+  margin-block-end: 6px;
+  color: var(--on-dark-dim);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.sh-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--on-dark-strong);
+  font: 27px/1.12 var(--font-head);
+}
+
+.sh-title-mark {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 23px;
+}
+
+.sh-dates {
+  margin-block-start: 8px;
+  color: var(--on-dark-dim);
+  font: 500 12px/1.4 var(--font-mono);
+}
+
+.sh-story {
+  margin: -1px 14px 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-block-start: 0;
+  border-radius: 0 0 15px 15px;
+  background: var(--card);
+}
+
+.sh-story strong {
+  display: block;
+  font: 17px/1.3 var(--font-head);
+}
+
+.sh-story p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: var(--sh-caption);
+  line-height: 1.55;
+}
+
+.sh-stale {
+  margin: 10px 14px 0;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--muted);
+  font-size: var(--sh-caption);
+}
+
+.sh-days {
+  padding: 14px 14px 24px;
+}
+
+.sh-days-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 3px 10px;
+}
+
+.sh-days-head h2 {
+  margin: 0;
+  font: 19px var(--font-head);
+}
+
+.sh-days-head span {
+  color: var(--muted);
+  font-size: var(--sh-micro);
+}
+
+.sh-day {
+  margin-block-end: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card);
+}
+
+.sh-day.open {
+  box-shadow: var(--elevation-raised);
+}
+
+.sh-day-head {
+  width: 100%;
+  min-height: 76px;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 44px;
+  align-items: stretch;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sh-day-head:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: -3px;
+}
+
+.sh-day-date {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  border-inline-end: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ink) 4%, var(--card));
+}
+
+/* Amber marks the open day because a day is a span of TIME — the one thing amber is for
+   (design-language.md, ADR-0028). It is not decoration and appears nowhere else here. */
+.sh-day.open .sh-day-date {
+  background: color-mix(in srgb, var(--amber) 11%, var(--card));
+}
+
+.sh-day-date strong {
+  font: 22px/1 var(--font-head);
+}
+
+.sh-day-date span {
+  margin-block-start: 4px;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.sh-day-copy {
+  min-width: 0;
+  align-self: center;
+  padding: 9px 11px;
+}
+
+.sh-day-copy strong,
+.sh-day-copy span {
+  display: block;
+}
+
+.sh-day-copy strong,
+.sh-day-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sh-day-copy span {
+  margin-block-start: 3px;
+  color: var(--muted);
+  font-size: var(--sh-micro);
+}
+
+.sh-caret {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.sh-caret .icon {
+  transition: transform var(--t-quick) var(--ease-standard);
+}
+
+.sh-day.open .sh-caret .icon {
+  transform: rotate(180deg);
+}
+
+.sh-day-body {
+  padding: 7px 11px 4px;
+  border-block-start: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper) 34%, var(--card));
+}
+
+.sh-part {
+  margin-block-end: 8px;
+}
+
+.sh-part-head {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 1px 3px 5px;
+  color: var(--amber-deep);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.sh-part-head::after {
+  content: '';
+  height: 1px;
+  flex: 1;
+  background: color-mix(in srgb, var(--amber) 28%, var(--line));
+}
+
+.sh-part-mark {
+  min-width: 20px;
+  font-size: 16px;
+  text-align: center;
+}
+
+.sh-summary-row {
+  min-height: 38px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  margin-block-end: 4px;
+  padding: 5px 8px;
+  border-radius: 10px;
+  background: var(--card);
+}
+
+.sh-mark {
+  font-size: 17px;
+  text-align: center;
+}
+
+.sh-summary-row strong {
+  overflow: hidden;
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sh-event {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 7px;
+  margin-block-end: 7px;
+  padding: 7px 8px;
+  border-radius: 10px;
+  background: var(--card);
+}
+
+/* A hard event is a real commitment (ADR-0011). It reads firmer here for the same reason
+   it does in the app: the reader must be able to tell what cannot move. */
+.sh-event.hard {
+  border-inline-start: 3px solid var(--amber-deep);
+}
+
+.sh-event-glyph {
+  font-size: 17px;
+  text-align: center;
+}
+
+.sh-event-main {
+  min-width: 0;
+}
+
+.sh-event-main > strong {
+  display: block;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sh-place-line {
+  display: block;
+  margin-block-start: 3px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--sh-micro);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* **A description is two lines, and this rule was missing entirely.** `.sh-place-line` is
+   built for a single value — `nowrap` plus an ellipsis — which is right for an address and
+   wrong for prose: the caption was cut at one line however short it was, so the server-side
+   cap had nowhere to land. Two lines is the budget the mockup measured (day 9 grew 230px on
+   captions alone before it), and `white-space: normal` is what lets the second one exist. */
+.sh-cap {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.sh-time {
+  color: var(--amber-deep);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The derived noun in front of an event's place line — what the row IS, from its booking's
+   type. Neutral and bold rather than coloured: it is a label, and the colour budget's two
+   spends on this line are already taken (amber for the hour, and nothing for the place). */
+.sh-kind {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* 44px, per ADR-0017's touch floor — the only interactive thing inside a day body. */
+.sh-map-link {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--teal);
+  font: 700 var(--sh-caption) var(--font-body);
+  text-decoration: none;
+}
+
+.sh-journey {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 10px 7px 28px;
+  padding-inline-start: 14px;
+  border-inline-start: 1px dashed var(--teal);
+  color: var(--muted);
+  font-size: var(--sh-micro);
+}
+
+.sh-appendix {
+  padding: 0 14px 20px;
+}
+
+.sh-appendix h2 {
+  margin: 0 3px 10px;
+  font: 17px var(--font-head);
+}
+
+.sh-private {
+  margin-block-end: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.sh-private > strong {
+  display: block;
+  margin-block-end: 4px;
+  font-size: var(--sh-caption);
+}
+
+.sh-private p {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: var(--sh-caption);
+  line-height: 1.5;
+}
+
+.sh-private p strong {
+  color: var(--ink);
+}
+
+.sh-private a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--teal);
+  text-decoration: none;
+}
+
+.sh-footer {
+  /* The tail clears the phone's home indicator — this page has no tab bar to do it. */
+  padding: 19px 16px calc(25px + var(--safe-bottom));
+  border-block-start: 1px solid var(--line);
+  text-align: center;
+}
+
+.sh-footer strong {
+  display: block;
+  font: 16px var(--font-head);
+}
+
+.sh-footer span {
+  display: block;
+  margin-block-start: 4px;
+  color: var(--muted);
+  font-size: var(--sh-caption);
+}
+
+.sh-footer a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  margin-block-start: 8px;
+  color: var(--ink);
+  font-size: var(--sh-caption);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.sh-unavailable {
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  text-align: center;
+}
+
+.sh-unavailable-mark {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 14px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--card);
+  font-size: 24px;
+}
+
+.sh-unavailable h2 {
+  margin: 0 0 7px;
+  font: 21px var(--font-head);
+}
+
+.sh-unavailable p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   ADR-0213's 2026-08-30 amendment — drawn in
+   `mockups/a-shared-itinerary-tells-the-trip-v4.html`, whose measurement table is
+   the source of every number below.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* **The trip's fixed points, above the schedule.** A LIST, not cards: the day card's
+   shape at this size would out-shout the spine it sits above. */
+.sh-fixed {
+  margin: 0 0 var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-16);
+  background: var(--card);
+  overflow: hidden;
+}
+.sh-fixed > h2 {
+  margin: 0;
+  padding: 11px 14px;
+  font: 700 var(--sh-secondary) var(--font-body);
+  color: var(--ink);
+  border-block-end: 1px solid var(--line);
+}
+.sh-fixed-row {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 7px 14px;
+  border-block-start: 1px solid var(--line);
+  color: var(--ink);
+  text-decoration: none;
+}
+.sh-fixed-row:first-of-type {
+  border-block-start: 0;
+}
+.sh-fixed-row .icon {
+  color: var(--muted);
+}
+.sh-fixed-row b {
+  font-size: var(--sh-secondary);
+  font-weight: 600;
+}
+.sh-fixed-row i {
+  display: block;
+  font-style: normal;
+  font-size: var(--sh-micro);
+  color: var(--muted);
+}
+/* Amber, and only here: this column is a clock and a commitment, which is exactly and
+   only what ADR-0028 spends amber on. */
+.sh-fixed-when {
+  font: 700 var(--sh-micro) var(--font-mono);
+  color: var(--amber-deep);
+  text-align: end;
+  align-self: start;
+  padding-block-start: 3px;
+}
+
+/* **Where you sleep frames the day** — teal, because it is a location and nothing else
+   (ADR-0028). */
+.sh-stay {
+  color: var(--teal);
+}
+/* **The glyph is spaced by a margin, not by `gap`, and that is a repair.** This rule used to
+   say `display: inline-flex; gap: 5px` — and `.sh-day-copy span` (0,1,1) sets `display:
+   block`, which beats `.sh-stay` (0,1,0), so the element was never a flex container and the
+   gap did nothing: measured 0px between the bed and the word (owner, 2026-08-30, _"no
+   spacing at all between the bed glyph and the לנים ב..."_). Winning the specificity fight
+   would also have cost the ellipsis, since `text-overflow` cannot clip an anonymous flex
+   item — so the icon stays inline and takes a margin instead, and the line keeps truncating
+   the way every other line in this header does. */
+.sh-stay .icon {
+  width: 13px;
+  height: 13px;
+  margin-inline-end: 5px;
+  vertical-align: -2px;
+}
+
+/* **The legs of one journey, under the journey.** The frame above already states the
+   whole span, so these are the detail inside it. */
+.sh-legs {
+  margin: 0 0 6px;
+  padding-inline-start: 30px;
+  display: grid;
+  gap: 2px;
+}
+.sh-leg-row {
+  display: grid;
+  /* **`max-content`, not 78px.** A fixed column sized for `14:30` wrapped a `14:30–18:15`
+     range onto two lines (owner, 2026-08-30, with a screenshot) — and a type scale that grew
+     would have broken it again next time. The column now takes exactly what the widest time
+     needs, and `.sh-time` refuses to wrap so it cannot be squeezed instead. */
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  min-height: 32px;
+  padding-block: 4px;
+}
+.sh-leg-row strong {
+  display: block;
+  font-size: var(--sh-secondary);
+}
+.sh-leg-row .sh-kind {
+  display: block;
+  font: 500 var(--sh-micro) var(--font-mono);
+  color: var(--muted);
+}
+/* The wait, between the legs it is between. */
+.sh-layover {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: var(--sh-micro);
+  color: var(--muted);
+}
+.sh-layover .icon {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+
+/* **The operational material, folded under its row.** Closed by default: a reader wants
+   the schedule and an operator wants the code, and the fold is what serves both without a
+   second page. The print renderer inverts this — see `itinerary-pdf.template.ts`. */
+.sh-ops {
+  margin: 4px 0 0;
+}
+.sh-ops > summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  font: 600 var(--sh-micro) var(--font-body);
+  color: var(--cta);
+  cursor: pointer;
+  /* **44px of target without 44px of line** — `ValueToken`'s technique (ADR-0177), not a
+     new one. The mockup measured this summary at 28px against ADR-0017's floor, and a
+     `min-height: 44px` would add 16px to EVERY row that carries a detail — eleven of them
+     on the owner's day 9. The overlay grows the hit box instead. */
+  position: relative;
+}
+.sh-ops > summary::-webkit-details-marker {
+  display: none;
+}
+.sh-ops > summary::after {
+  content: '';
+  position: absolute;
+  inset-inline: -8px;
+  inset-block: calc((44px - 100%) / -2);
+  min-height: 44px;
+}
+.sh-ops > summary .icon {
+  width: 13px;
+  height: 13px;
+}
+.sh-ops[open] > summary .icon {
+  transform: rotate(180deg);
+}
+.sh-ops-body {
+  display: grid;
+  gap: 4px;
+  padding: 6px 0 2px;
+}
+.sh-op {
+  display: flex;
+  /* A note is prose and wraps; its glyph belongs beside the first line rather than halfway
+     down the paragraph. */
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 32px;
+  padding-block: 5px;
+  font-size: var(--sh-micro);
+  line-height: 1.5;
+  color: var(--muted);
+}
+.sh-op .icon {
+  width: 14px;
+  height: 14px;
+  margin-block-start: 2px;
+  flex: none;
+}
+.sh-op code {
+  font: 700 var(--sh-micro) var(--font-mono);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+/* **A file is a download, and it keeps ADR-0017's floor.** These links used to live in the
+   appendix's `.sh-private a`, which gave them the 44px; the block that replaced it renders
+   op rows, so the floor has to be stated where they actually are now. */
+.sh-op a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-block: -6px;
+  color: var(--cta);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* **The day's photo** (ADR-0213's 2026-08-30 amendment, reversing §3's refusal of imagery).
+   A band above the day header, with its credit — 27 of the 32 Commons files ADR-0166 §12.2
+   surveyed require attribution, so the caption is structural rather than decoration. */
+.sh-shot {
+  margin: 0;
+  position: relative;
+  border-start-start-radius: var(--radius-16);
+  border-start-end-radius: var(--radius-16);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--teal) 10%, transparent);
+}
+.sh-shot img {
+  display: block;
+  width: 100%;
+  height: 116px;
+  object-fit: cover;
+}
+.sh-shot figcaption {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline: 0;
+  display: grid;
+  gap: 1px;
+  padding: 18px 12px 8px;
+  /* Legible over any photograph: a scrim rather than a solid, so the picture still reads. */
+  background: linear-gradient(to top, rgb(0 0 0 / 62%), transparent);
+  color: #fff;
+}
+.sh-shot figcaption strong {
+  font-size: var(--sh-secondary);
+}
+.sh-shot figcaption span {
+  font-size: var(--sh-micro);
+  opacity: 0.82;
+}
+
+/* **The appendix is op rows, unfolded.** Nothing here has a row to belong to, so there is
+   nothing to fold under — it gets the card the per-family blocks used to have. */
+.sh-appendix .sh-ops-body {
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+}
+
+/* The day a booking falls on, stated under its date — it replaced an anchor that threw the
+   reader down the page (owner, 2026-08-30). */
+.sh-fixed-when i {
+  display: block;
+  margin-block-start: 2px;
+  font: 400 var(--sh-micro) var(--font-body);
+  font-style: normal;
+  color: var(--muted);
+}
+
+/* Who is going, under the trip's own line in the masthead. */
+.sh-travelers {
+  margin-block-start: 6px;
+  color: var(--muted);
+  font-size: var(--sh-caption);
+}
+
+/* A note's own words, rendered by the app's note renderer. The title is the note's, the
+   prose below it is `NoteProse` at its dense step. */
+.sh-op-note {
+  display: block;
+  min-width: 0;
+}
+/* **The direct child only.** Unscoped, this caught every inline `**bold**` run inside
+   `NoteProse` and broke each onto its own line — found by rendering, not by reading. */
+.sh-op-note > strong {
+  display: block;
+  color: var(--ink);
+  font-size: var(--sh-micro);
+}
+/* **A note is read, not glanced at** (owner, 2026-08-31, twice). `--sh-micro` is this page's
+   smallest step and right for a label beside a value; a paragraph somebody wrote for the
+   group to act on is body text, and it gets the body step. */
+.sh-op-note .note-prose {
+  font-size: var(--sh-secondary);
+  line-height: 1.55;
+}
+.sh-op-note > strong {
+  font-size: var(--sh-caption);
+}
+
+/* How long it took, and what the clock did. */
+.sh-travel-facts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-block-start: 3px;
+  color: var(--muted);
+  font-size: var(--sh-micro);
+}
+
+/* **A download reports itself** — the state sits beside the name rather than replacing it,
+   so the row does not reflow under the finger that just pressed it. */
+.sh-dl-state {
+  margin-inline-start: 6px;
+  font-size: var(--sh-micro);
+  color: var(--muted);
+}
+.sh-op a[data-state='working'] {
+  opacity: 0.7;
+}
+.sh-op a[data-state='done'] .sh-dl-state {
+  color: var(--ok);
+}
+.sh-op a[data-state='failed'] .sh-dl-state {
+  color: var(--miss);
+}
+
+/* **The progress bar the row was missing** (owner, 2026-08-31: _"it should have another
+   animation for downloading"_). Neutral `--cta`, not amber: amber is time and commitment
+   only (ADR-0028 / rule 4), and a download is neither.
+
+   Two modes, because only one of them is honest at a time. With a `Content-Length` the fill
+   is the real fraction of bytes read. Without one it sweeps, and the sweep is a DIFFERENT
+   shape on purpose — a short block travelling the track rather than a fill growing from the
+   start edge — so "I don't know how long" never looks like "I am 30% done".
+
+   `inset-inline-start` and a positive translate: the track is inside an RTL row, so the
+   sweep has to start at the right and travel left like everything else on the page. */
+.sh-dl-bar {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  margin-block-start: 5px;
+  block-size: 3px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--cta) 18%, transparent);
+}
+.sh-dl-bar > span {
+  display: block;
+  block-size: 100%;
+  border-radius: inherit;
+  background: var(--cta);
+  transition: inline-size 140ms linear;
+}
+.sh-dl-bar[data-indeterminate] > span {
+  position: absolute;
+  inset-inline-start: 0;
+  inline-size: 38%;
+  animation: sh-dl-sweep 1.1s ease-in-out infinite;
+}
+@keyframes sh-dl-sweep {
+  from {
+    transform: translateX(160%);
+  }
+  to {
+    transform: translateX(-260%);
+  }
+}
+/* ADR-0028's motion rule: the bar still SAYS it is working, it just stops moving. A
+   determinate fill is information rather than motion, so it keeps its width either way. */
+@media (prefers-reduced-motion: reduce) {
+  .sh-dl-bar > span {
+    transition: none;
+  }
+  .sh-dl-bar[data-indeterminate] > span {
+    animation: none;
+    inline-size: 100%;
+    opacity: 0.55;
+  }
+}
+</style>
+
+    <style>
+      /* ══════════════════════════════════════════════════════════════════════
+         PROPOSED — moves into `screens/shared-itinerary.css` when ADR-0213's
+         ninth amendment is built. 41 lines, and that number is the argument: the
+         fix is a container and a duration, not a new component.
+         ══════════════════════════════════════════════════════════════════════ */
+
+      /* **The journey is a surface, so the legs are visibly ON it.** Today the
+         only thing saying "inside" is `.sh-legs`'s 30px indent, and at 360px an
+         indent reads as a slightly narrower peer. A tint plus one rail says
+         containment in a way white space cannot — and it is the SAME grammar
+         `.sh-day` already uses for the day that holds these rows, one level up,
+         rather than a new idiom. Teal on the rail because a journey is about
+         getting between two places, which is exactly what teal is for
+         (ADR-0028 / rule 4); no amber here, the times inside already own it. */
+      .sh-trek {
+        margin: 0 0 8px;
+        border-radius: 12px;
+        background: color-mix(in oklab, var(--teal) 7%, transparent);
+        border-inline-start: 2px solid var(--teal);
+        overflow: hidden;
+      }
+      /* **The header is a header, not an event row.** It drops `.sh-event`'s
+         glyph column and its `--sh-secondary` title so it cannot be mistaken for
+         one of the flights beneath it: the destination and the totals, at caption
+         scale, over a hairline. */
+      .sh-trek-head {
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 4px 8px;
+        padding: 8px 10px;
+        min-height: 34px;
+        border-block-end: 1px solid color-mix(in oklab, var(--teal) 22%, transparent);
+        font-size: var(--sh-caption);
+      }
+      .sh-trek-head strong {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: var(--sh-caption);
+        font-weight: 700;
+      }
+      /* **A sized icon, because `.icon` is sized per context in this app.** Left
+         unsized the flight glyph rendered at its own 24px box and the header
+         measured 131px — found by rendering, invisible in the markup. Same 13px
+         `.sh-layover .icon` already uses one level down. */
+      .sh-trek-head .icon {
+        width: 14px;
+        height: 14px;
+        flex: none;
+        color: var(--teal);
+      }
+      .sh-trek-head .sh-trek-sum {
+        color: var(--muted);
+        font-size: var(--sh-micro);
+      }
+      /* The legs lose the indent that was carrying the whole claim. */
+      .sh-trek .sh-legs {
+        margin: 0;
+        padding: 4px 10px 6px;
+      }
+      /* A leg's own flight time, beside its code — the fact the eighth amendment
+         removed. `--sh-micro`, so it reads as an annotation of the row it is on
+         and never competes with the header's total. */
+      .sh-leg-span {
+        display: block;
+        font-size: var(--sh-micro);
+        color: var(--muted);
+      }
+
+      /* ══════════════════════════════════════════════════════════════════════
+         mk-* — this file's own chrome. Nothing below ships.
+         ══════════════════════════════════════════════════════════════════════ */
+      :root {
+        --mk-page: #eef1f6;
+        --mk-surface: #ffffff;
+        --mk-sub: #f7f8fa;
+        --mk-ink: #16233d;
+        --mk-prose: #45506b;
+        --mk-faint: #8b94a8;
+        --mk-line: #d8dde6;
+        --mk-cta: #3d5a99;
+        --fw: 360px;
+      }
+      :root[data-theme='dark'] {
+        --mk-page: #0a0f1a;
+        --mk-surface: #141d2e;
+        --mk-sub: #101827;
+        --mk-ink: #e8edf7;
+        --mk-prose: #b9c4de;
+        --mk-faint: #7d89a3;
+        --mk-line: #263248;
+        --mk-cta: #8fa9e6;
+      }
+      body {
+        margin: 0;
+        background: var(--mk-page);
+        font-family: 'Assistant', system-ui, sans-serif;
+        color: var(--mk-ink);
+      }
+      .wrap {
+        max-width: 1320px;
+        margin: 0 auto;
+        padding: 26px 18px 70px;
+      }
+      .doc-h h1 {
+        font-family: 'Secular One', sans-serif;
+        font-size: 25px;
+        margin: 0 0 8px;
+      }
+      .doc-h p {
+        margin: 0 0 8px;
+        font-size: 13px;
+        line-height: 1.8;
+        color: var(--mk-prose);
+        max-width: 92ch;
+      }
+      code {
+        font:
+          600 11.5px 'JetBrains Mono',
+          monospace;
+        background: color-mix(in srgb, var(--mk-ink) 7%, transparent);
+        padding: 1px 4px;
+        border-radius: 4px;
+        direction: ltr;
+        display: inline-block;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        background: var(--mk-surface);
+        border: 1px solid var(--mk-line);
+        border-radius: 14px;
+        padding: 10px 14px;
+        margin-bottom: 20px;
+        position: sticky;
+        top: 8px;
+        z-index: 5;
+      }
+      .controls .lbl {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--mk-faint);
+      }
+      .controls .sep {
+        width: 1px;
+        height: 18px;
+        background: var(--mk-line);
+        margin-inline: 6px;
+      }
+      .controls button {
+        font: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 6px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--mk-line);
+        background: var(--mk-surface);
+        color: var(--mk-prose);
+        cursor: pointer;
+      }
+      .controls button[aria-pressed='true'] {
+        border-color: var(--mk-cta);
+        color: var(--mk-cta);
+        background: color-mix(in srgb, var(--mk-cta) 12%, transparent);
+      }
+      section.case,
+      .panel {
+        background: var(--mk-surface);
+        border: 1px solid var(--mk-line);
+        border-radius: 18px;
+        overflow: hidden;
+        margin-bottom: 24px;
+      }
+      section.case > h2,
+      .panel > h2 {
+        margin: 0;
+        padding: 12px 16px;
+        font-size: 14.5px;
+        font-weight: 700;
+        border-block-end: 1px solid var(--mk-line);
+        background: var(--mk-sub);
+      }
+      section.case > .note,
+      .panel > p,
+      .panel > ul {
+        margin: 0;
+        padding: 11px 16px;
+        font-size: 12.5px;
+        line-height: 1.75;
+        color: var(--mk-prose);
+      }
+      section.case > .note b {
+        color: var(--mk-ink);
+      }
+      .panel > ul {
+        padding-inline-start: 32px;
+      }
+      .panel > ul li {
+        margin-bottom: 7px;
+      }
+      .pair {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 22px;
+        padding: 18px 16px;
+        align-items: flex-start;
+        justify-content: center;
+      }
+      .col {
+        flex: 0 0 auto;
+      }
+      .tag {
+        display: block;
+        width: fit-content;
+        margin: 0 auto 8px;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 999px;
+      }
+      .tag.before {
+        background: rgba(198, 40, 40, 0.1);
+        color: #e06767;
+      }
+      .tag.after {
+        background: rgba(60, 154, 107, 0.12);
+        color: #4fb488;
+      }
+      .phone {
+        width: var(--fw);
+        border: 1px solid var(--mk-line);
+        border-radius: 22px;
+        overflow: hidden;
+        background: var(--mk-sub);
+      }
+      /* The frames host real `.sh-*` rows, so they need the page's own ground and
+         its local type scale — which `.sh-page` declares. Same class, so the
+         variables are the app's, not this file's guess at them. */
+      .fbody {
+        background: var(--screen);
+      }
+      /* `.sh-page` is what declares this page's own type scale (`--sh-micro` and
+         friends), so the frames wear it — but it also carries `min-height: 100dvh`
+         since 2026-08-31, which inside a preview frame is a screenful of empty
+         ground under every card. Chrome, not the proposal. */
+      .phone .sh-page {
+        min-height: 0;
+      }
+      table.m {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12.5px;
+      }
+      table.m th,
+      table.m td {
+        text-align: start;
+        padding: 8px 16px;
+        border-block-start: 1px solid var(--mk-line);
+      }
+      table.m th {
+        color: var(--mk-faint);
+        font-size: 11px;
+      }
+      table.m td:first-child {
+        color: var(--mk-ink);
+      }
+
+      /* THIS PAGE HAS TO SCROLL, AND THE INLINED APP CSS SAYS IT MUST NOT.
+         `styles/tokens.css` carries `html, body { overflow: clip }`. Keep last. */
+      html,
+      body {
+        overflow: visible;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="wrap">
+      <div class="doc-h">
+        <h1>מסע אחד, לא שורה ועוד שורות</h1>
+        <p>
+          טיסה עם קונקשן נקראת כמו שלוש טיסות כי המסגרת שלה היא בדיוק אותו רכיב כמו שורת אירוע
+          רגילה, והטענה ש"אלה בתוך זו" נשענת על 30px של הזחה. הפתרון הוא מכל אמיתי וכותרת שאינה
+          שורה, ולא הורדת עוד עובדה מהשורות.
+        </p>
+        <p>
+          כל מספר בטבלת המדידה בתחתית נקרא מה-DOM המרונדר בעמוד הזה, במסך ובערכת הצבעים שנבחרו ·
+          לא מהקוד ולא מהערכה.
+        </p>
+      </div>
+
+      <div class="controls">
+        <span class="lbl">ערכת צבעים</span>
+        <button type="button" data-theme="light" aria-pressed="true">בהיר</button>
+        <button type="button" data-theme="dark">כהה</button>
+        <span class="sep"></span>
+        <span class="lbl">מסך</span>
+        <button type="button" data-w="360" aria-pressed="true">⁦360×640⁩</button>
+        <button type="button" data-w="390">⁦390×844⁩</button>
+        <span class="sep"></span>
+        <span class="lbl">רגליים</span>
+        <button type="button" data-legs="2" aria-pressed="true">⁦2⁩</button>
+        <button type="button" data-legs="3">⁦3⁩</button>
+        <span class="sep"></span>
+        <span class="lbl">ספירת טיסות בכותרת</span>
+        <button type="button" data-count="on" aria-pressed="true">כן</button>
+        <button type="button" data-count="off">לא</button>
+        <span class="sep"></span>
+        <span class="lbl">הרגליים על</span>
+        <button type="button" data-skin="tint" aria-pressed="true">גוון + פס</button>
+        <button type="button" data-skin="rail">פס בלבד</button>
+      </div>
+
+      <!-- ══════════════════════════ §1 ══════════════════════════ -->
+      <section class="case">
+        <h2>§1 · המסגרת נקראת כמו שורה אחרת כי היא אותו רכיב</h2>
+        <p class="note">
+          <b>היום:</b> המסע מרונדר ב-<code>article.sh-event</code> — אותו אלמנט, אותו
+          <code>--sh-secondary</code>, אותה עמודת אייקון כמו ביקור במוזיאון. מתחתיו
+          <code>.sh-legs</code> מזיח 30px. בעמודה של 360px, הזחה נקראת כמו שורה צרה יותר, לא
+          כמו "בתוך". וגם: כותרת המסגרת היא בדיוק שרשור נקודות הקצה של הרגליים, כך שאותם שני שדות
+          תעופה מופיעים שלוש פעמים. <b>בהצעה:</b> הרגליים יושבות על משטח עם פס טורקיז, והכותרת
+          יורדת ל-<code>--sh-caption</code> ומאבדת את הגליף — היא מסכמת, היא לא טיסה.
+        </p>
+        <div class="pair" id="s1"></div>
+      </section>
+
+      <!-- ══════════════════════════ §2 ══════════════════════════ -->
+      <section class="case">
+        <h2>§2 · רגל אומרת כמה זמן היא באוויר</h2>
+        <p class="note">
+          <b>מה שקרה:</b> התיקון של הבוקר קרא ל"מבלבל" כ"יותר מדי מספרים" והוריד
+          <code>durationMinutes</code> ו-<code>zoneShiftMinutes</code> מהרגל. הבעלים חזר: _"doesn't
+          show journey leg durations"_. <b>בהצעה:</b> משך הטיסה חוזר לכל רגל, ליד קוד הטיסה,
+          ב-<code>--sh-micro</code> — והפרש השעות לא חוזר. הפרש שעות שמעניין נוסע הוא מהמקור ליעד,
+          ושלושה מספרים חתומים על מסע אחד מתארים שינוי שעון אחד. זה בדיוק הדפוס שכל אפליקציית
+          תעופה מציגה: סך בכותרת, מקטע-מקטע מתחת, המתנה ביניהם.
+        </p>
+        <div class="pair" id="s2"></div>
+      </section>
+
+      <!-- ══════════════════════════ §3 ══════════════════════════ -->
+      <section class="case">
+        <h2>§3 · הנייר אומר את אותו הדבר</h2>
+        <p class="note">
+          הצילום של הבעלים הוא של ה-PDF, ושם <code>.pdf-trek</code> <b>כבר</b> מצייר מסגרת
+          מלבנית סביב הרגליים — וזה עדיין נקרא לא נכון, כי השורה שמעליה נראית כמו טיסה שלמה
+          בפני עצמה. זו ההוכחה שהמכל לבדו לא מספיק: הכותרת היא מה שצריך להשתנות. הסעיף הזה מצייר
+          את אותה החלטה בדיוק בגריד הצפוף של הנייר, כדי שלא ייווצר פער בין שני הרנדררים — הפער
+          שכבר עלה סבב אחד ב-<code>.pdf-route-mini</code>.
+        </p>
+        <div class="pair" id="s3"></div>
+      </section>
+
+      <div class="panel">
+        <h2>מדידה · נקראת מה-DOM החי</h2>
+        <p>
+          כל שורה כאן נמדדת מהתיבה המרונדרת למעלה, במסך ובערכה שנבחרו · רוחב המסך ומספר הרגליים
+          משנים חלק מהמספרים, אז החליפו וקראו שוב.
+        </p>
+        <table class="m" id="meas">
+          <thead>
+            <tr>
+              <th>מה נמדד</th>
+              <th>גובה / רוחב</th>
+              <th>מול מה</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>הערות · מה נבחר, ומה נדחה ולמה</h2>
+        <ul>
+          <li>
+            <b>נדחה: להוריד את שורת המסגרת לגמרי ולהשאיר רק את הרגליים.</b> זו ההצעה המפתה, והיא
+            שוברת דברים: ה-<code>ops</code> (קודי הזמנה, מסמכים, פתקים), ה-<code>caption</code>
+            וקישור המפה תלויים כולם באירוע-האב. מחיקת השורה מוחקת את קוד ההזמנה של הטיסה. הכותרת
+            נשארת — היא רק מפסיקה להתחפש לשורת אירוע.
+          </li>
+          <li>
+            <b>נדחה: להשאיר הזחה ולהגדיל אותה.</b> נמדד: ההזחה של היום היא 30px מתוך 360px. הכפלה
+            שלה קונה סנטימטר של לבן ועדיין לא אומרת "בתוך" — ובמסך 360 היא גם דוחסת את שם המסלול
+            הלטיני, שהוא הדבר הארוך ביותר בשורה.
+          </li>
+          <li>
+            <b>נדחה: להחזיר גם את הפרש השעות לכל רגל.</b> הבעלים ביקש משכי טיסה, לא הפרשי שעון.
+            שלושה מספרים חתומים (<code>+2</code>, <code>+1</code>, <code>+3</code>) על מסע אחד הם
+            בדיוק סוג הבלבול שהדיווח הראשון תיאר, וההפרש שנוסע פועל לפיו הוא מקור→יעד.
+          </li>
+          <li>
+            <b>נדחה: אקורדיון על המסע.</b> <code>.sh-ops</code> כבר מקפל את החומר התפעולי מתחת
+            לשורה, והיום כבר צריך פתיחה אחת (היום) כדי להגיע לטיסה. קיפול שני על אותה טיסה הופך
+            "מתי אני ממריא" לשתי הקשות — ובמסמך שנקרא פעם אחת בעמידה זה מחיר גבוה מהמקום שנחסך.
+          </li>
+          <li>
+            <b>שתי קריאות תחושה שהקובץ הזה לא מכריע</b> (ולכן הן פקדים): אם הכותרת נושאת
+            <code>2 טיסות</code> — היא מוסיפה עובדה שאפשר לספור מהשורות עצמן — ואם הרגליים יושבות
+            על גוון + פס או על פס בלבד. הברירות שנשלחות הן ההמלצה; מסך אמיתי מכריע.
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <script>
+      /* ══════════════════════════════════════════════════════════════════════
+         Every frame is BUILT from one renderer per shape, so a "before" and an
+         "after" cannot disagree about the data they are drawing.
+         ══════════════════════════════════════════════════════════════════════ */
+
+      // COPIED from `ui/Icon.tsx`. Never re-drawn, never a unicode arrow —
+      // `→`/`←` are Bidi_Mirrored and flip inside dir="rtl".
+      const ICON = {
+        clock: 'M12 6.4V12l3.6 2.2 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0',
+        flight:
+          'M2.6 12c0-1.1.9-2 2-2h5.2l4.4-6.4h2.9l-2.6 6.4h4.6l1.8-2.4h1.6l-1.2 4.4 1.2 4.4h-1.6l-1.8-2.4h-4.6l2.6 6.4h-2.9L9.8 14H4.6c-1.1 0-2-.9-2-2Z',
+        caret: 'M5 9l7 7 7-7z',
+      };
+      const icon = (name, cls = '') =>
+        `<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true" fill="${
+          name === 'flight' || name === 'caret' ? 'currentColor' : 'none'
+        }" stroke="${name === 'flight' || name === 'caret' ? 'none' : 'currentColor'}"
+          stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
+        ><path d="${ICON[name]}"/></svg>`;
+
+      // U+2066 / U+2069 — the isolate `lib/bidi.ts` writes for a Latin/numeric
+      // run. U+2068 (FSI) for a value whose script we do not control.
+      const ltr = (s) => `⁦${s}⁩`;
+      const auto = (s) => `⁨${s}⁩`;
+      // `routeTitle`'s shape: the arrow is an SVG in the app; here the same
+      // isolate discipline, with the glyph the app uses for a route.
+      const route = (from, to) => `${auto(from)} ${ltr('←')} ${auto(to)}`;
+
+      /* The owner's own return, from the reproduction measured this morning:
+         KEF 23:40 → FRA 02:30, wait 5:20, FRA 08:50 → TLV 11:55. Totals are the
+         projection's own — 675 minutes and +180. The third leg exists only to
+         show what an indent does when a journey has more than two. */
+      const JOURNEY = {
+        to: 'קפלאוויק',
+        span: ltr('14:30–23:20'),
+        total: `${ltr('10:50')} שע׳`,
+        shift: 3,
+        legs: [
+          {
+            from: 'נתב"ג',
+            to: 'וינה',
+            span: ltr('14:30–18:15'),
+            code: ltr('TLV → VIE'),
+            dur: `${ltr('3:45')} שע׳`,
+          },
+          {
+            from: 'וינה',
+            to: 'קפלאוויק',
+            span: ltr('19:00–23:20'),
+            code: ltr('VIE → KEF'),
+            dur: `${ltr('4:20')} שע׳`,
+            wait: `${ltr('2:45')} שע׳`,
+            waitAt: 'וינה',
+          },
+        ],
+        thirdLeg: {
+          from: 'קפלאוויק',
+          to: 'אקוריירי',
+          span: ltr('23:55–00:50'),
+          code: ltr('KEF → AEY'),
+          dur: `${ltr('0:55')} שע׳`,
+          wait: `${ltr('0:35')} שע׳`,
+          waitAt: 'קפלאוויק',
+        },
+      };
+
+      const state = { legs: 2, count: true, skin: 'tint' };
+      const legsOf = () =>
+        state.legs === 3 ? [...JOURNEY.legs, JOURNEY.thirdLeg] : JOURNEY.legs;
+
+      /** The zone pill, the app's own — `ui/ZoneShiftPill.tsx` + its stylesheet. */
+      const pill = (minutes) =>
+        `<span class="wp-tzshift">${icon('clock')} ${ltr(
+          (minutes < 0 ? '−' : '+') + Math.abs(minutes),
+        )} ש׳</span>`;
+
+      /** A leg row — the app's real `.sh-leg` tree. `withSpan` is §2's delta. */
+      const legRow = (leg, withSpan) =>
+        `<div class="sh-leg">` +
+        (leg.wait
+          ? `<span class="sh-layover">${icon('clock')}המתנה ב${auto(leg.waitAt)} · ${leg.wait}</span>`
+          : '') +
+        `<span class="sh-leg-row">` +
+        `<span class="sh-time">${leg.span}</span>` +
+        `<span><strong>${route(leg.from, leg.to)}</strong>` +
+        `<span class="sh-kind">${leg.code}</span>` +
+        (withSpan ? `<span class="sh-leg-span">${leg.dur}</span>` : '') +
+        `</span></span></div>`;
+
+      /** TODAY: the frame is an `.sh-event`, the legs are an indent. Verbatim
+       *  from `SharedItinerary.tsx`'s `EventRow`. */
+      const before = () =>
+        `<article class="sh-event hard">` +
+        `<span class="sh-event-glyph" aria-hidden="true">✈️</span>` +
+        `<span class="sh-event-main">` +
+        `<strong>${route('נתב"ג', 'קפלאוויק')}</strong>` +
+        `<span class="sh-place-line">` +
+        `<b class="sh-kind">טיסה</b> · <span class="sh-time">${JOURNEY.span}</span>` +
+        `<span class="sh-travel-facts"><span>${JOURNEY.total}</span>${pill(JOURNEY.shift)}</span>` +
+        `</span></span></article>` +
+        `<div class="sh-legs">${legsOf()
+          .map((l) => legRow(l, false))
+          .join('')}</div>`;
+
+      /** PROPOSED: one container, a header that is not a row, a span per leg. */
+      const after = () =>
+        `<div class="sh-trek" data-skin="${state.skin}">` +
+        `<div class="sh-trek-head">` +
+        `<strong>${icon('flight')} טיסה ל${auto(JOURNEY.to)}</strong>` +
+        `<span class="sh-trek-sum">` +
+        (state.count ? `${ltr(legsOf().length)} טיסות · ` : '') +
+        `${JOURNEY.span} · ${JOURNEY.total}</span>` +
+        pill(JOURNEY.shift) +
+        `</div>` +
+        `<div class="sh-legs">${legsOf()
+          .map((l) => legRow(l, true))
+          .join('')}</div>` +
+        `</div>`;
+
+      /* Paper: the same decision at the print renderer's density. The classes are
+         `pdf-*` so the shape is legible as the diff for
+         `itinerary-pdf.template.ts`; the ink is this page's, since the A4 sheet
+         is a fixed light palette and is not what this section is judging. */
+      /** One paper leg renderer for both columns, so they cannot disagree about which
+       *  facts a leg carries. `withSpan` is the only delta, exactly as on screen.
+       *
+       *  **The wait prints too**, and the first render of this section dropped it —
+       *  owner, reviewing this file: _"The pdf should also show the wait durations"_.
+       *  It is the one span neither leg's own clock can state, so paper needs it most:
+       *  a reader holding a printout cannot tap anything to find out. */
+      const paperLeg = (l, withSpan) =>
+        (l.wait
+          ? `<div class="mkp-wait">המתנה ב${auto(l.waitAt)} · ${l.wait}</div>`
+          : '') +
+        `<div class="mkp-leg"><b>${route(l.from, l.to)}</b>` +
+        `<span>${l.span}${withSpan ? ` · ${l.dur}` : ''}</span></div>`;
+
+      const paperBefore = () =>
+        `<div class="mkp"><div class="mkp-row"><b>${route('נתב"ג', 'קפלאוויק')}</b>` +
+        `<span>${JOURNEY.span} · ${JOURNEY.total}</span></div>` +
+        `<div class="mkp-trek">${legsOf()
+          .map((l) => paperLeg(l, false))
+          .join('')}</div></div>`;
+      const paperAfter = () =>
+        `<div class="mkp"><div class="mkp-head"><b>טיסה ל${auto(JOURNEY.to)}</b>` +
+        `<span>${state.count ? ltr(legsOf().length) + ' טיסות · ' : ''}${JOURNEY.span} · ${
+          JOURNEY.total
+        }</span></div>` +
+        `<div class="mkp-trek">${legsOf()
+          .map((l) => paperLeg(l, true))
+          .join('')}</div></div>`;
+
+      const phone = (inner) => `<div class="phone"><div class="fbody sh-page">${inner}</div></div>`;
+      const col = (tag, inner) => `<div class="col">${tag}${phone(inner)}</div>`;
+
+      const paint = () => {
+        document.querySelector('#s1').innerHTML = [
+          col('<span class="tag before">היום</span>', before()),
+          col('<span class="tag after">בהצעה</span>', after()),
+        ].join('');
+        // §2 shows only the AFTER, twice, with and without the per-leg span — the
+        // question there is the field, not the container.
+        document.querySelector('#s2').innerHTML = [
+          col(
+            '<span class="tag before">בלי משך לרגל</span>',
+            `<div class="sh-trek"><div class="sh-trek-head"><strong>${icon(
+              'flight',
+            )} טיסה ל${auto(JOURNEY.to)}</strong><span class="sh-trek-sum">${JOURNEY.span} · ${
+              JOURNEY.total
+            }</span></div><div class="sh-legs">${legsOf()
+              .map((l) => legRow(l, false))
+              .join('')}</div></div>`,
+          ),
+          col('<span class="tag after">עם משך לרגל</span>', after()),
+        ].join('');
+        document.querySelector('#s3').innerHTML = [
+          col('<span class="tag before">היום</span>', paperBefore()),
+          col('<span class="tag after">בהצעה</span>', paperAfter()),
+        ].join('');
+        measure();
+      };
+
+      /* ══ Controls */
+      const press = (btns, on) =>
+        btns.forEach((b) => b.setAttribute('aria-pressed', String(b === on)));
+      const group = (attr, apply) => {
+        const btns = [...document.querySelectorAll(`.controls button[${attr}]`)];
+        btns.forEach((b) =>
+          b.addEventListener('click', () => {
+            apply(b.getAttribute(attr));
+            press(btns, b);
+            paint();
+          }),
+        );
+      };
+      group('data-theme', (v) => document.documentElement.setAttribute('data-theme', v));
+      group('data-w', (v) => document.documentElement.style.setProperty('--fw', v + 'px'));
+      group('data-legs', (v) => (state.legs = Number(v)));
+      group('data-count', (v) => (state.count = v === 'on'));
+      group('data-skin', (v) => (state.skin = v));
+
+      /* ══ Measurement — every number off this page's own boxes. */
+      function measure() {
+        const box = (sel) => {
+          const el = document.querySelector(sel);
+          if (!el) return null;
+          const r = el.getBoundingClientRect();
+          return { h: Math.round(r.height * 10) / 10, w: Math.round(r.width * 10) / 10 };
+        };
+        const beforeCol = '#s1 .col:first-child';
+        const afterCol = '#s1 .col:last-child';
+        const b = box(`${beforeCol} .sh-event`);
+        const bLegs = box(`${beforeCol} .sh-legs`);
+        const a = box(`${afterCol} .sh-trek`);
+        const head = box(`${afterCol} .sh-trek-head`);
+        const legRowBox = box(`${afterCol} .sh-leg-row`);
+        const indent = (() => {
+          const el = document.querySelector(`${beforeCol} .sh-legs`);
+          return el ? parseFloat(getComputedStyle(el).paddingInlineStart) : null;
+        })();
+        const total = (b?.h ?? 0) + (bLegs?.h ?? 0);
+        const spans = (sel) => {
+          const text = (document.querySelector(sel)?.textContent ?? '').replace(
+            /[\u2066-\u2069]/g,
+            '',
+          );
+          return (text.match(/\d+:\d+ שע׳/g) || []).length;
+        };
+        const rows = [
+          [
+            'המסע כולו · היום (שורה + רגליים)',
+            `${Math.round(total * 10) / 10}px`,
+            'הבסיס להשוואה',
+          ],
+          [
+            'המסע כולו · בהצעה (מכל אחד)',
+            a ? `${a.h}px` : '-',
+            total ? `${a && a.h > total ? '+' : ''}${Math.round((a.h - total) * 10) / 10}px` : '-',
+          ],
+          [
+            'כותרת המסע · בהצעה',
+            head ? `${head.h}px` : '-',
+            'לא פקד, אין רצפת 44px · שורת אירוע היא 76px',
+          ],
+          [
+            'שורת רגל (עם משך)',
+            legRowBox ? `${legRowBox.h}px` : '-',
+            'min-height בגלריה: 32px',
+          ],
+          [
+            'ההזחה שנושאת היום את כל הטענה',
+            indent != null ? `${indent}px` : '-',
+            `מתוך ${box(beforeCol + ' .phone')?.w ?? '-'}px רוחב מסך`,
+          ],
+          // The rendered text is `⁦10:50⁩ שע׳` — the isolates the app writes sit
+          // BETWEEN the digits and the unit, so a naive `\d:\d שע׳` matches
+          // nothing and reported 0 for both columns on the first render.
+          ['מספרי משך על הכרטיס · היום', `${spans(beforeCol)}`, 'סך + המתנה'],
+          [
+            'מספרי משך על הכרטיס · בהצעה',
+            `${spans(afterCol)}`,
+            'סך + המתנה + משך לכל טיסה',
+          ],
+        ];
+        document.querySelector('#meas tbody').innerHTML = rows
+          .map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`)
+          .join('');
+      }
+
+      paint();
+    </script>
+
+    <style>
+      /* Paper preview chrome for §3 — this file's own, `mkp-*`, and it ships
+         nothing. The A4 renderer's real CSS is extracted by
+         `mockups/tools/extract-pdf-css.mjs`; this section is about the SHAPE of
+         the decision on paper, at paper's density, not about its palette. */
+      .mkp {
+        padding: 8px 10px;
+        font-size: 11px;
+        color: #16233d;
+        background: #fff;
+      }
+      .mkp-row,
+      .mkp-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        padding-block: 3px;
+      }
+      .mkp-head {
+        border-block-end: 1px solid #cfd8e3;
+        margin-block-end: 3px;
+      }
+      .mkp-row span,
+      .mkp-head span,
+      .mkp-leg span {
+        color: #626b7e;
+        font-size: 10px;
+        white-space: nowrap;
+      }
+      .mkp-trek {
+        border: 1px solid #cfd8e3;
+        border-radius: 6px;
+        padding: 4px 7px;
+        margin-block-start: 4px;
+      }
+      .mkp-leg {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        padding-block: 2px;
+      }
+      /* The wait sits BETWEEN two legs, so it is indented off both and quieter than
+         either — the same relationship `.sh-layover` draws on screen. */
+      .mkp-wait {
+        padding: 2px 10px;
+        font-size: 9.5px;
+        color: #626b7e;
+      }
+    </style>
+  </body>
+</html>

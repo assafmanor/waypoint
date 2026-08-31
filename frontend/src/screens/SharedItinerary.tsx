@@ -18,6 +18,7 @@ import {
 import { BOOKING_TYPE_MARK, DOWNLOAD_SETTLE_MS, GLYPH } from '../constants';
 import { Icon, type IconName } from '../ui/Icon';
 import { NoteProse } from '../ui/NoteProse';
+import { Spinner } from '../ui/Spinner';
 import { ZoneShiftPill } from '../ui/ZoneShiftPill';
 import { t } from '../i18n/he';
 import { autoIsolate, ltrIsolate } from '../lib/bidi';
@@ -28,8 +29,10 @@ import brandMark from '/icon-mark-bright.svg';
 import {
   fetchSharedItinerary,
   sharedDocumentUrl,
+  sharedItineraryPdfUrl,
   SharedItineraryUnavailable,
 } from '../lib/share-itinerary';
+import { shareFileOrDownload } from '../lib/system-share';
 import './shared-itinerary.css';
 
 const WEEKDAY = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'] as const;
@@ -160,6 +163,9 @@ export function SharedItinerary() {
 
   const { projection, stale } = state;
   const summary = projection.detailLevel === SHARE_DETAIL_LEVEL.SUMMARY;
+  // The trip's own name, so a reader who saves three itineraries can tell them apart in a
+  // downloads folder. Both hosts of `TakePdf` pass the same one.
+  const pdfName = `${projection.trip.name}.pdf`;
 
   return (
     <div className="sh-page">
@@ -171,9 +177,17 @@ export function SharedItinerary() {
           <img className="sh-brand-mark" src={brandMark} alt="" width={20} height={20} />
           {t.share.public.brand}
         </span>
-        <span className={`sh-freshness${stale ? ' stale' : ''}`}>
-          <span className="sh-live-dot" aria-hidden="true" />
-          {stale ? t.share.public.stale : t.share.public.live}
+        <span className="sh-bar-end">
+          <span className={`sh-freshness${stale ? ' stale' : ''}`}>
+            <span className="sh-live-dot" aria-hidden="true" />
+            {stale ? t.share.public.stale : t.share.public.live}
+          </span>
+          {/* **The reader's own copy, where it is always reachable** (ninth amendment §6).
+              The masthead is theme-fixed `--indigo`, so this control takes the `--on-dark-*`
+              ramp (ADR-0158 §3) — drawn with `--ink` in the mockup it rendered navy on navy.
+              Short label here and the full sentence at the foot: the bar has 42px and a
+              status line to share it with. */}
+          <TakePdf code={code} className="sh-bar-take" short filename={pdfName} />
         </span>
       </div>
 
@@ -289,6 +303,15 @@ export function SharedItinerary() {
 
       {projection.appendix ? <Appendix appendix={projection.appendix} code={code} /> : null}
 
+      {/* **And once in full, where a reader who finished has just finished** (§6). Two hosts
+          for one action, the same shape ADR-0213 already uses for the owner's share entry:
+          the bar is for the reader who came to fetch it, this is for the reader who read to
+          the end and now wants to keep it. `.share-outcome` is the owner sheet's own control,
+          so this is a second host and not a third button. */}
+      <div className="sh-take">
+        <TakePdf code={code} className="share-outcome" filename={pdfName} />
+      </div>
+
       <footer className="sh-footer">
         <strong>{t.share.public.inviteTitle}</strong>
         <span>{t.share.public.inviteBody}</span>
@@ -396,6 +419,36 @@ function EventRow({ event, code }: { event: SharedEvent; code: string }) {
       </div>
     );
   }
+  // **The row's own attachments, hoisted so both shapes can host them.** A journey renders
+  // as a container (`Trek`) rather than as an event row, and these have to travel with it:
+  // the ops fold is where a flight's booking code lives, and leaving it behind the article
+  // would have made the container cost the reader their confirmation number.
+  const attachments = (
+    <>
+      {/* **A stop's one-line description, at every level** (owner, 2026-08-30). Clamped to
+          two lines: a caption is two lines, and four is a paragraph.
+          **Prose sets its own base direction; a value inside a line does not.** `dir="auto"`
+          resolves from the first strong character, so English reads left and Hebrew right —
+          the same attribute ADR-0213 §8 took OFF the titles, and the difference is what each
+          element is: a title lines up with its caption, a description is a paragraph. */}
+      {event.caption ? (
+        <span className="sh-place-line sh-cap" dir="auto">
+          {event.caption}
+        </span>
+      ) : null}
+      {event.mapUrl ? (
+        <a className="sh-map-link" href={event.mapUrl} target="_blank" rel="noreferrer noopener">
+          <Icon name="map" />
+          {t.share.public.map}
+        </a>
+      ) : null}
+      {event.ops?.length ? <Ops ops={event.ops} code={code} /> : null}
+    </>
+  );
+
+  // A chained journey is a container, not a row (ninth amendment §1).
+  if (event.legs?.length) return <Trek event={event}>{attachments}</Trek>;
+
   return (
     <>
       {event.journey ? (
@@ -466,69 +519,93 @@ function EventRow({ event, code }: { event: SharedEvent; code: string }) {
               </>
             ) : null}
           </span>
-          {/* **A stop's one-line description, at every level** (owner, 2026-08-30). Clamped
-              to two lines: a caption is two lines, and four is a paragraph — the mockup
-              measured day 9 growing 230px on captions alone before the clamp. */}
-          {/* **Prose sets its own base direction; a value inside a line does not.**
-              `autoIsolate` keeps the container's direction, which right-aligned an English
-              description inside this RTL column and made it ragged-left (owner, 2026-08-30:
-              _"English lines are ltr and shouldn't be treated differently"_). `dir="auto"`
-              resolves from the first strong character, so English reads left and Hebrew
-              reads right. This is the same attribute ADR-0213 §8 took OFF the titles, and
-              the difference is what each element is: a title is a value that must line up
-              with the caption under it, a description is a paragraph. */}
-          {event.caption ? (
-            <span className="sh-place-line sh-cap" dir="auto">
-              {event.caption}
-            </span>
-          ) : null}
-          {event.mapUrl ? (
-            <a
-              className="sh-map-link"
-              href={event.mapUrl}
-              target="_blank"
-              rel="noreferrer noopener"
-            >
-              <Icon name="map" />
-              {t.share.public.map}
-            </a>
-          ) : null}
-          {event.ops?.length ? <Ops ops={event.ops} code={code} /> : null}
+          {attachments}
         </span>
       </article>
-      {/* **The legs, under the journey they belong to** — with the wait named between them.
-          The frame above already says the whole span, so this is the detail inside it and
-          not a second copy of the row. */}
-      {event.legs?.length ? (
-        <div className="sh-legs">
-          {event.legs.map((leg, index) => (
-            <div className="sh-leg" key={`${leg.title}-${index}`}>
-              {/* The airport you SIT IN, not the leg you are about to fly. This read
-                  `המתנה בוינה ← קפלאוויק` because it composed the line from `leg.title`. */}
-              {leg.layoverMinutes && leg.layoverPlace ? (
-                <span className="sh-layover">
-                  <Icon name="clock" />
-                  {t.share.public.layover(leg.layoverPlace, hoursPhrase(leg.layoverMinutes))}
-                </span>
-              ) : null}
-              <span className="sh-leg-row">
-                <span className="sh-time">
-                  {ltrIsolate(
-                    leg.endLabel && leg.endLabel !== leg.startLabel
-                      ? t.share.public.timeRange(leg.startLabel ?? '', leg.endLabel)
-                      : (leg.startLabel ?? ''),
-                  )}
-                </span>
-                <span>
-                  <strong>{autoIsolate(leg.title)}</strong>
-                  {leg.code ? <span className="sh-kind">{ltrIsolate(leg.code)}</span> : null}
-                </span>
-              </span>
-            </div>
-          ))}
-        </div>
-      ) : null}
     </>
+  );
+}
+
+/**
+ * **A journey is a container, and the legs are visibly on it** (ADR-0213 ninth amendment §1,
+ * drawn in `mockups/a-journey-is-a-flight-plan-v1.html`).
+ *
+ * The reported defect, twice: a connecting flight read as three flights. The cause was not
+ * duplicated numbers — the eighth amendment tried that and removed the legs' own duration,
+ * which the owner immediately asked back. It was that the frame was an `article.sh-event`,
+ * the SAME element and type scale as a museum visit, with `.sh-legs` claiming containment
+ * through 30px of indent in a 360px column. Two facts made it worse: the frame's title is
+ * `routeTitle(first.from, last.to)`, so the legs' own endpoints appeared a third time.
+ *
+ * So the header names only the DESTINATION (`journeyTo`) with the totals beside it, at
+ * caption scale and without the glyph column, and the legs sit on a real surface. The frame's
+ * own material — the caption, the map link, the ops fold — rides INSIDE the container, which
+ * is why this wraps `children` rather than replacing the row: dropping the row would drop
+ * the flight's booking code with it.
+ */
+function Trek({ event, children }: { event: SharedEvent; children: React.ReactNode }) {
+  const legs = event.legs ?? [];
+  return (
+    <div className="sh-trek">
+      <div className="sh-trek-head">
+        <strong>
+          <Icon name="flight" />
+          {event.journeyTo ? t.share.public.journeyTo(event.journeyTo) : autoIsolate(event.title)}
+        </strong>
+        <span className="sh-trek-sum">
+          {t.share.public.journeyLegs(legs.length)}
+          {' · '}
+          {event.startLabel ? (
+            <span className="sh-time">
+              {ltrIsolate(
+                event.endLabel && event.endLabel !== event.startLabel
+                  ? t.share.public.timeRange(event.startLabel, event.endLabel)
+                  : event.startLabel,
+              )}
+            </span>
+          ) : null}
+          {event.durationMinutes ? ` · ${hoursPhrase(event.durationMinutes)}` : ''}
+        </span>
+        {/* The shift stays on the JOURNEY: origin to final destination is the pair a
+            traveller acts on, and a signed number per leg describes one clock change three
+            times (§2). */}
+        {event.zoneShiftMinutes ? <ZoneShiftPill minutes={event.zoneShiftMinutes} /> : null}
+      </div>
+      <div className="sh-legs">
+        {legs.map((leg, index) => (
+          <div className="sh-leg" key={`${leg.title}-${index}`}>
+            {/* The airport you SIT IN, not the leg you are about to fly. This read
+                `המתנה בוינה ← קפלאוויק` because it composed the line from `leg.title`. */}
+            {leg.layoverMinutes && leg.layoverPlace ? (
+              <span className="sh-layover">
+                <Icon name="clock" />
+                {t.share.public.layover(leg.layoverPlace, hoursPhrase(leg.layoverMinutes))}
+              </span>
+            ) : null}
+            <span className="sh-leg-row">
+              <span className="sh-time">
+                {ltrIsolate(
+                  leg.endLabel && leg.endLabel !== leg.startLabel
+                    ? t.share.public.timeRange(leg.startLabel ?? '', leg.endLabel)
+                    : (leg.startLabel ?? ''),
+                )}
+              </span>
+              <span>
+                <strong>{autoIsolate(leg.title)}</strong>
+                {leg.code ? <span className="sh-kind">{ltrIsolate(leg.code)}</span> : null}
+                {/* **Its own flight time** (§2, and the fact the eighth amendment removed).
+                    Micro scale, so it annotates the row it is on rather than competing with
+                    the header's total. */}
+                {leg.durationMinutes ? (
+                  <span className="sh-leg-span">{hoursPhrase(leg.durationMinutes)}</span>
+                ) : null}
+              </span>
+            </span>
+          </div>
+        ))}
+      </div>
+      {children}
+    </div>
   );
 }
 
@@ -583,8 +660,22 @@ function Appendix({
  * no length the bar runs indeterminate — an animation that claims a fraction it cannot know
  * is worse than one that admits it doesn't. `rel="noopener"` and the same href remain, so a
  * long-press "save link" still works and a browser with JS disabled still downloads.
+ *
+ * **Round three (ninth amendment §4–§5), and both halves were already in the repo.**
+ *
+ *   1. `ui/Spinner.tsx`'s own docblock: _"the ONE shared spinner (ADR-0052 §4) … so every
+ *      async surface has a motion cue, NOT A STATIC WORD"_ — and §4 names the composition,
+ *      label PLUS spinner, with a bar where the transport allows one. This row had the bar
+ *      and the word and no spinner: two thirds of a rule written four months earlier. The
+ *      spinner takes the GLYPH's slot, so the row's geometry never moves.
+ *   2. `lib/system-share.ts`'s `shareFileOrDownload` tries `navigator.share({ files })`
+ *      first and falls back to an anchor click. This row contained those fallback six lines
+ *      VERBATIM and never tried the share branch — the branch that, on Android, opens the
+ *      system sheet and so is the visible confirmation the owner asked for twice. It calls
+ *      the helper now, and the helper gained this row's `requestAnimationFrame` revoke,
+ *      which it was missing. Two copies, half an answer each (rule 8).
  */
-type DownloadState = 'idle' | 'working' | 'done' | 'failed';
+type DownloadState = 'idle' | 'working' | 'done' | 'shared' | 'failed';
 
 /**
  * **The response body as a blob, reporting progress on the way** — `Content-Length` over
@@ -614,72 +705,176 @@ async function readWithProgress(
   return new Blob(chunks, { type: response.headers.get('content-type') ?? undefined });
 }
 
-function FileOp({ href, title }: { href: string; title: string }) {
+/**
+ * **One hand-over, two hosts** — a document row and the reader's own PDF button ask the same
+ * question (fetch a URL, say how far it has got, give the file to the platform), so they are
+ * one hook rather than two copies of a `useState` ladder (rule 8 / ADR-0096). The PDF button
+ * arrived second and is exactly why this is a hook: writing it as a second ladder is how the
+ * two would have drifted on the states, the settle delay, or which outcome says `נשלח`.
+ */
+function useFileHandover(): {
+  state: DownloadState;
+  ratio: number | undefined;
+  run: (href: string, filename: string) => Promise<void>;
+} {
   const [state, setState] = useState<DownloadState>('idle');
   /** `undefined` while a length is unknown, which the bar renders as indeterminate. */
   const [ratio, setRatio] = useState<number | undefined>(undefined);
   const settle = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => () => clearTimeout(settle.current), []);
+  const live = useRef(true);
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+      clearTimeout(settle.current);
+    };
+  }, []);
 
-  const run = async (event: React.MouseEvent) => {
-    // Let the browser do it natively where we cannot improve on it (a modifier click is a
-    // deliberate "open in a new tab"), and never start a second fetch over a live one.
-    if (event.metaKey || event.ctrlKey || event.shiftKey || state === 'working') return;
-    event.preventDefault();
+  const run = useCallback(async (href: string, filename: string) => {
     setState('working');
     setRatio(undefined);
+    let next: DownloadState = 'failed';
     try {
       const response = await fetch(href);
       if (!response.ok) throw new Error(String(response.status));
-      const blob = await readWithProgress(response, setRatio);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = title;
-      link.click();
-      // Revoked on the next frame rather than immediately: the click is asynchronous, and
-      // a URL revoked in the same tick is a download that never starts.
-      requestAnimationFrame(() => URL.revokeObjectURL(url));
-      setState('done');
+      const blob = await readWithProgress(response, (value) => {
+        if (live.current) setRatio(value);
+      });
+      // **The app's own hand-over, not a second copy of its fallback.** This is what puts
+      // Android's system sheet back in front of the reader; the anchor path is still there,
+      // inside the helper, for every platform that cannot share a file.
+      const outcome = await shareFileOrDownload(new File([blob], filename, { type: blob.type }));
+      // A dismissed share sheet is a deliberate act, so the row says nothing about it and
+      // goes quiet — a page that comments on a cancel is nagging.
+      next = outcome === 'cancelled' ? 'idle' : outcome === 'shared' ? 'shared' : 'done';
     } catch {
-      setState('failed');
+      next = 'failed';
     }
-    settle.current = setTimeout(() => setState('idle'), DOWNLOAD_SETTLE_MS);
-  };
+    if (!live.current) return;
+    setState(next);
+    settle.current = setTimeout(() => live.current && setState('idle'), DOWNLOAD_SETTLE_MS);
+  }, []);
 
+  return { state, ratio, run };
+}
+
+/** The word for a settled hand-over, or none while it is idle. */
+const handoverWord = (state: DownloadState): string | undefined =>
+  state === 'working'
+    ? t.share.public.file.working
+    : state === 'done'
+      ? t.share.public.file.done
+      : state === 'shared'
+        ? t.share.public.file.shared
+        : state === 'failed'
+          ? t.share.public.file.failed
+          : undefined;
+
+/** The determinate/indeterminate bar. Only ever rendered while bytes are moving, so a row
+ *  that is downloading is the same height as a row that is not. */
+function HandoverBar({ ratio }: { ratio: number | undefined }) {
+  return (
+    <span
+      className="sh-dl-bar"
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      // No `aria-valuenow` at all is how ARIA spells indeterminate, so a screen reader
+      // hears the same thing the eye sees.
+      aria-valuenow={ratio === undefined ? undefined : Math.round(ratio * 100)}
+      data-indeterminate={ratio === undefined ? '' : undefined}
+    >
+      <span style={ratio === undefined ? undefined : { inlineSize: `${ratio * 100}%` }} />
+    </span>
+  );
+}
+
+function FileOp({ href, title }: { href: string; title: string }) {
+  const { state, ratio, run } = useFileHandover();
   const working = state === 'working';
+  const word = handoverWord(state);
+
   return (
     <a
+      className="sh-op-file"
       href={href}
       download={title}
       rel="noopener"
-      onClick={run}
+      onClick={(event) => {
+        // Let the browser do it natively where we cannot improve on it (a modifier click is
+        // a deliberate "open in a new tab"), and never start a second fetch over a live one.
+        if (event.metaKey || event.ctrlKey || event.shiftKey || working) return;
+        event.preventDefault();
+        void run(href, title);
+      }}
       data-state={state}
       aria-busy={working}
     >
-      {autoIsolate(title)}
-      <span className="sh-dl-state">
-        {working ? t.share.public.file.working : null}
-        {state === 'done' ? t.share.public.file.done : null}
-        {state === 'failed' ? t.share.public.file.failed : null}
+      {/* **The motion cue lives in the glyph's slot** (ADR-0052 §4). One box either way. */}
+      <span className="sh-op-mark">
+        {working ? (
+          <Spinner className="ink" label={t.share.public.file.working} />
+        ) : (
+          <Icon name={state === 'failed' ? 'close' : state === 'idle' ? 'download' : 'check'} />
+        )}
       </span>
-      {/* The bar is the animation the row was missing, and it is only ever drawn while the
-          bytes are actually moving. `role="progressbar"` with the real numbers where we
-          have them, so a screen reader hears the same thing the eye sees; no `aria-valuenow`
-          at all when the length is unknown, which is how ARIA spells indeterminate. */}
-      {working ? (
-        <span
-          className="sh-dl-bar"
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={ratio === undefined ? undefined : Math.round(ratio * 100)}
-          data-indeterminate={ratio === undefined ? '' : undefined}
-        >
-          <span style={ratio === undefined ? undefined : { inlineSize: `${ratio * 100}%` }} />
-        </span>
-      ) : null}
+      <span className="sh-op-file-copy">
+        <span className="sh-op-file-name">{autoIsolate(title)}</span>
+        {word ? <span className="sh-dl-state">{word}</span> : null}
+        {working ? <HandoverBar ratio={ratio} /> : null}
+      </span>
     </a>
+  );
+}
+
+/**
+ * **The reader's own copy** (owner, 2026-08-31: _"the live sharing page should have a button
+ * to export to pdf"_; ADR-0213 ninth amendment §6).
+ *
+ * `.share-outcome` is the OWNER sheet's PDF control, so this is that control at a second
+ * host rather than a third button — and it carries §4's spinner, which the owner's own copy
+ * still does not (it swaps a word, while `FormActions` two files over renders
+ * `busy ? <Spinner /> : label`). The masthead placement is the mockup's recommendation and
+ * the one thing here a device pass may overturn; the foot alternative is one class away.
+ */
+function TakePdf({
+  code,
+  className,
+  short = false,
+  filename,
+}: {
+  code: string;
+  className?: string;
+  /** The masthead's 42px cannot hold the sentence, so it takes the two-letter label. */
+  short?: boolean;
+  filename: string;
+}) {
+  const { state, ratio, run } = useFileHandover();
+  const working = state === 'working';
+  const label = short
+    ? t.share.public.takePdfShort
+    : state === 'failed'
+      ? t.share.public.takePdfFailed
+      : working
+        ? t.share.public.takePdfWorking
+        : t.share.public.takePdf;
+  return (
+    <button
+      type="button"
+      className={className}
+      onClick={() => void run(sharedItineraryPdfUrl(code), filename)}
+      disabled={working}
+      aria-busy={working}
+      title={short ? t.share.public.takePdf : undefined}
+    >
+      {working ? (
+        <Spinner className="ink" label={t.share.public.takePdfWorking} />
+      ) : (
+        <Icon name={state === 'failed' ? 'close' : 'download'} />
+      )}
+      {label}
+      {working && !short ? <HandoverBar ratio={ratio} /> : null}
+    </button>
   );
 }
 
