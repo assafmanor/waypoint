@@ -25,9 +25,8 @@
           if (document.documentElement.hasAttribute('data-public-reader')) return true;
           return target && target.closest && target.closest('.doc-viewer');
         };
-        var inViewer = exempt;
         var blockGesture = function (e) {
-          if (!inViewer(e.target)) e.preventDefault();
+          if (!exempt(e.target)) e.preventDefault();
         };
         document.addEventListener('gesturestart', blockGesture, { passive: false });
         document.addEventListener('gesturechange', blockGesture, { passive: false });
@@ -35,7 +34,7 @@
         document.addEventListener(
           'touchmove',
           function (e) {
-            if (e.touches.length > 1 && !inViewer(e.target)) e.preventDefault();
+            if (e.touches.length > 1 && !exempt(e.target)) e.preventDefault();
           },
           { passive: false },
         );
