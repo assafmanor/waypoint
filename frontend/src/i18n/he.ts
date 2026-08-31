@@ -3221,9 +3221,25 @@ export const t = {
       // "45 דקות" alone says nothing about where you are standing.
       layover: (place: string, span: string) => `המתנה ${bindPrefix('ב', place)} · ${span}`,
       /** **A download that reports itself** (owner, 2026-08-31: _"it simply downloads in the
-       *  background, giving no indication"_). Three states, because those are the three a
-       *  fetch can honestly know. */
-      file: { working: 'מוריד…', done: 'ירד', failed: 'לא הצליח' },
+       *  background, giving no indication"_). Four states now, because
+       *  `shareFileOrDownload` returns three outcomes and `נשלח` is not `ירד`: on Android the
+       *  file goes to the system share sheet, and telling a reader it "downloaded" when they
+       *  sent it to WhatsApp is a small lie the mechanism does not require us to tell
+       *  (ADR-0213 ninth amendment §5). `cancelled` says nothing at all — the reader
+       *  dismissed the sheet on purpose, and a page that comments on that is nagging. */
+      file: { working: 'מוריד…', done: 'ירד', shared: 'נשלח', failed: 'לא הצליח' },
+      /** **A journey's header names where it ENDS** (ninth amendment §1) — the legs beneath
+       *  it already spell the route out. `bindPrefix` because `לקפלאוויק` binds and
+       *  `ל-Keflavík` takes the maqaf. */
+      journeyTo: (place: string) => `טיסה ${bindPrefix('ל', place)}`,
+      /** How many flights the journey is, so the header says what the container holds. */
+      journeyLegs: (count: number) => (count === 2 ? 'שתי טיסות' : `${count} טיסות`),
+      /** The reader's own copy of the itinerary. Not `שיתוף PDF` — that is the OWNER's verb
+       *  in `share.owner.actions`; a stranger is taking it, not sharing it. */
+      takePdf: 'הורדת המסלול כ-PDF',
+      takePdfShort: 'PDF',
+      takePdfWorking: 'מכינים…',
+      takePdfFailed: 'לא הצלחנו להכין את הקובץ',
       ops: {
         // A count, because the row is otherwise a bare disclosure with nothing to promise.
         more: (count: number) => (count === 1 ? 'פרט אחד' : `${count} פרטים`),

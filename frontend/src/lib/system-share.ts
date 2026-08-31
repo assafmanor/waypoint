@@ -58,13 +58,21 @@ export async function shareFileOrDownload(file: File): Promise<ShareOutcome> {
     }
   }
   const url = URL.createObjectURL(file);
-  try {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = file.name;
-    link.click();
-    return 'downloaded';
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = file.name;
+  link.click();
+  // **Revoked on the next frame, never in this `finally`** (ADR-0213 ninth amendment §5).
+  // `click()` starts the download ASYNCHRONOUSLY, so releasing the blob in the same tick can
+  // be a download that never begins. The public reader's own file row had already found this
+  // and fixed it locally with `requestAnimationFrame`; folding the fix in here is what stops
+  // the two copies drifting again — the row now calls this helper instead of repeating its
+  // six lines, which is how it came to hold the better version of them.
+  //
+  // `requestAnimationFrame` where it exists (jsdom in the unit suite does not always define
+  // it), a macrotask otherwise: either way the release is off this tick.
+  const release = () => URL.revokeObjectURL(url);
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(release);
+  else setTimeout(release, 0);
+  return 'downloaded';
 }

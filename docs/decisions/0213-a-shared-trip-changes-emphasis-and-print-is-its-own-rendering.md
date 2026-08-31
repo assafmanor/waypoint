@@ -1111,8 +1111,10 @@ the third is a correction of the eighth pass. Two files:
 [`a-journey-is-a-flight-plan-v1.html`](../../mockups/a-journey-is-a-flight-plan-v1.html) and
 [`the-reader-hands-you-a-file-v1.html`](../../mockups/the-reader-hands-you-a-file-v1.html).
 
-**Nothing here is built yet.** This amendment records the decisions the two files promote and
-the measurements behind them.
+**Built 2026-08-31**, the same day it was drawn, after the owner approved both files. What
+the build changed, added or corrected is recorded per section below and collected under
+_What the build changed_ at the end — the drawings were right about the shapes and wrong or
+silent about four things.
 
 ### §1 · A journey is a container, and the eighth amendment fixed the wrong axis
 
@@ -1228,6 +1230,66 @@ the right pattern and the wrong one for one question.
 
 Both files render in all four theme × width combinations with fonts loaded and no console
 errors.
+
+### What the build changed
+
+The two mockups were right about every shape. Four things they did not settle, and one they
+got wrong:
+
+- **`SharedEvent.journeyTo` is a new contract field, and the mockup did not say so.** The
+  header names the destination, and the destination was not in the projection: `title` is
+  `routeTitle(from, to)` and parsing it back apart is not an option, since it carries bidi
+  isolates. It is derived from the same place-label chain the day titles already use.
+- **The frame's row does not survive — its ATTACHMENTS do.** The amendment above said the row
+  survives "because `ops`, `caption` and the map link hang off it", and the mockup drew the
+  container replacing it entirely. Both are half right: the row goes, and the attachments are
+  hoisted into a fragment that either shape can host, so a journey renders as a container
+  **with the flight's booking code inside it**. Building it revealed the mockup's `after()`
+  had quietly dropped the ops fold; there is now a spec asserting `.sh-trek details.sh-ops`.
+- **`FileOp` and the PDF button became one hook, not two ladders.** The mockup drew them as
+  two controls, which is what they are on screen — but they ask one question (fetch a URL,
+  report progress, hand the file over), so `useFileHandover` serves both. Writing the second
+  as its own `useState` ladder is how they would have drifted on the states, the settle delay
+  or which outcome says `נשלח`.
+- **The PDF button ships in BOTH places, not one.** The mockup left placement as an open feel
+  call with the masthead as its default. Measured live, the masthead pill is 30px on a 43px
+  bar and the foot's `.share-outcome` is 48px — they cost different things and answer
+  different readers, so both ship: the bar for the reader who came to fetch it, the foot for
+  the one who read to the end. This is the same two-entry-point shape ADR-0213 already uses
+  for the owner's share control, so it is not a new pattern.
+- **`signedHours` was extracted** in the print renderer: the journey header became the second
+  caller of the signed-clock formatting that was inline in `travelFactsLine`, and one spelling
+  is what stops a flight's header and a single-leg row reporting the same crossing
+  differently.
+
+Two traps the build hit, both already written down in this repo and both hit anyway:
+
+- **A backtick inside a CSS comment inside a template literal** terminates the literal. Ninth
+  occurrence this session. The template now carries an assertion-by-inspection note; the real
+  guard is that the comment says "micro scale" instead of naming the token in backticks.
+- **`--pdf-sub` does not exist.** The print sheet's tokens are `--pdf-ink/muted/line/soft/
+amber/teal`, and an undefined custom property makes the whole declaration inert — so the
+  header would have printed with no background and looked _almost_ right. Caught by measuring
+  `backgroundColor` on the rendered A4 (`rgb(243, 245, 248)`), which is the only way this
+  class of miss ever surfaces. The catalog records the same shape for a mockup that styled
+  against `--text-meta`.
+
+### What was verified
+
+- `pnpm typecheck`, `pnpm lint`, `pnpm build` clean; `pnpm test` 505 shared / 1222 backend /
+  4991 frontend; sharing e2e 14/14.
+- **Live at 360px dark:** the container exists with no `.sh-event` inside it; the header reads
+  `טיסה לנתב"ג · שתי טיסות · 23:40–11:55 · 11:15 שע׳ +3 ש׳` at 56.7px against an event row's
+  76px; the whole journey is 215.7px (the mockup predicted 221px); four spans on the card —
+  `11:15`, `2:50`, `5:20`, `3:05` — and exactly **one** zone pill; the masthead button is 30px
+  on a 43px bar and the foot's is 48px.
+- **The download row measured against the shipped stylesheet:** 45.5px with `min-height: 44px`
+  (it was 42px, under ADR-0017's floor), the app's own 15px spinner animating at its own 0.7s,
+  a 3px bar, and the indeterminate sweep at 1.1s — slowing rather than stopping under reduced
+  motion.
+- **A4:** the container prints with its header background resolved, no peer row above it, leg
+  spans `2:50` / `3:05`, the wait `המתנה ב-Frankfurt · 5:20 שע׳`, and the same four spans the
+  screen shows.
 
 ## Alternatives considered
 

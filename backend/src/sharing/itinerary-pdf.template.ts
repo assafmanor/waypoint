@@ -233,7 +233,20 @@ function timeText(event: SharedEvent): string {
   return range ? ltr(`${event.startLabel}\u2013${event.endLabel}`) : ltr(event.startLabel);
 }
 
-/** The legs of one journey, and the wait between them, inside one frame. */
+/**
+ * **One journey block: a header that is not a row, then the flights** (ADR-0213 ninth
+ * amendment §1-§3).
+ *
+ * The owner's report arrived against PAPER, where `.pdf-trek` was **already** a bordered box
+ * around the legs — and it still read as three flights. That is the proof the container alone
+ * was never the fix: the row above it looked like a complete flight, so the box just nested
+ * one flight inside two others. So the header replaces that row here exactly as it does on
+ * screen, naming the destination with the totals beside it.
+ *
+ * A leg prints its own flight time, and the WAIT prints between them — the owner caught that
+ * missing from the mockup's paper column (_"The pdf should also show the wait durations"_),
+ * and it matters most here: whoever is holding a printout cannot tap anything to find out.
+ */
 function legRows(event: SharedEvent): string {
   if (!event.legs?.length) return '';
   const legTime = (leg: NonNullable<SharedEvent['legs']>[number]) =>
@@ -242,8 +255,19 @@ function legRows(event: SharedEvent): string {
         ? `${leg.startLabel ?? ''}\u2013${leg.endLabel}`
         : (leg.startLabel ?? ''),
     );
+  const summary = [
+    PDF_COPY.journeyLegs(event.legs.length),
+    timeText(event),
+    event.durationMinutes ? pdfSpan(event.durationMinutes) : '',
+    event.zoneShiftMinutes ? PDF_COPY.zoneShift(ltr(signedHours(event.zoneShiftMinutes))) : '',
+  ]
+    .filter(Boolean)
+    .join(NARRATIVE_SEPARATOR);
   return (
     `<div class="pdf-trek">` +
+    `<div class="pdf-trek-head"><strong>${
+      event.journeyTo ? PDF_COPY.journeyTo(auto(event.journeyTo)) : auto(event.title)
+    }</strong><span>${summary}</span></div>` +
     event.legs
       .map(
         (leg) =>
@@ -253,6 +277,9 @@ function legRows(event: SharedEvent): string {
           `<div class="pdf-event hard"><span class="pdf-event-time">${legTime(leg)}</span>` +
           `<span class="pdf-event-copy"><strong>${auto(leg.title)}</strong>` +
           (leg.code ? `<span class="pdf-leg-code">${ltr(leg.code)}</span>` : '') +
+          (leg.durationMinutes
+            ? `<span class="pdf-leg-span">${pdfSpan(leg.durationMinutes)}</span>`
+            : '') +
           `</span></div>`,
       )
       .join('') +
@@ -404,17 +431,21 @@ function opsLines(ops: SharedEvent['ops']): string {
 /** How long it took and what the clock did — the projection's two numbers, in this file's
  *  own words (see `pdfSpan`; the screen spends `hoursPhrase` and `ZoneShiftPill` on the same
  *  pair). A whole-hour jump reads as hours, a half-hour zone as H:MM. */
+/** The signed clock jump, as `+3` or `−2:30`. Extracted from `travelFactsLine` when the
+ *  journey header became its second caller — one spelling, so a flight's header and a
+ *  single-leg row cannot report the same crossing differently. */
+function signedHours(minutes: number): string {
+  const sign = minutes < 0 ? '−' : '+';
+  const hours = Math.floor(Math.abs(minutes) / 60);
+  const rest = Math.abs(minutes) % 60;
+  return rest === 0 ? `${sign}${hours}` : `${sign}${hours}:${String(rest).padStart(2, '0')}`;
+}
+
 function travelFactsLine(event: Pick<SharedEvent, 'durationMinutes' | 'zoneShiftMinutes'>): string {
   const parts: string[] = [];
   if (event.durationMinutes) parts.push(pdfSpan(event.durationMinutes));
   if (event.zoneShiftMinutes) {
-    const minutes = event.zoneShiftMinutes;
-    const sign = minutes < 0 ? '−' : '+';
-    const hours = Math.floor(Math.abs(minutes) / 60);
-    const rest = Math.abs(minutes) % 60;
-    const signed =
-      rest === 0 ? `${sign}${hours}` : `${sign}${hours}:${String(rest).padStart(2, '0')}`;
-    parts.push(PDF_COPY.zoneShift(ltr(signed)));
+    parts.push(PDF_COPY.zoneShift(ltr(signedHours(event.zoneShiftMinutes))));
   }
   return parts.length > 0
     ? `<span class="pdf-travel-facts">${parts.join(NARRATIVE_SEPARATOR)}</span>`
@@ -448,6 +479,10 @@ function eventRow(event: SharedEvent, summary: boolean): string {
     .filter((value): value is string => Boolean(value))
     .map(auto)
     .join(' · ');
+  // **A chained journey prints as its container and nothing above it** (§1). The header
+  // carries what the row used to say, and the attachments — caption, ops — ride inside, the
+  // same reason the screen wraps them rather than dropping the row.
+  if (event.legs?.length) return journey + legRows(event);
   return (
     journey +
     `<div class="pdf-event${event.hard ? ' hard' : ''}">` +
@@ -804,7 +839,18 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
 .pdf-event-time{white-space:nowrap;}
 /* One frame over N legs, with the waits named between them. break-inside:avoid so a flight
    and its layover never land on two pages. */
+/* The journey block now carries its own header, so the box holds the whole thing rather than
+   nesting one flight inside two others (ninth amendment §1-§3). No tint: this sheet is a
+   fixed light palette that has to stay legible in grayscale, so the border does the
+   containing work the screen gives to a teal wash. */
 .pdf-trek{break-inside:avoid;margin:3px 0;border:1px solid var(--pdf-line);border-radius:7px;overflow:hidden;}
+.pdf-trek-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+  padding:3px 6px;border-block-end:1px solid var(--pdf-line);background:var(--pdf-soft);}
+.pdf-trek-head strong{font-size:8.4px;font-weight:700;color:var(--pdf-ink);}
+.pdf-trek-head span{font-size:7.4px;color:var(--pdf-muted);white-space:nowrap;}
+/* A leg's own flight time, under its code. Same relationship the screen draws at its own
+   micro scale: an annotation of this row, never a rival to the header's total. */
+.pdf-leg-span{display:block;font-size:7px;color:var(--pdf-muted);}
 .pdf-trek .pdf-event{padding-inline:6px;border-block-start:0;}
 .pdf-trek .pdf-event+.pdf-event{border-block-start:1px solid var(--pdf-line);}
 .pdf-leg-code{font:600 7.2px 'JetBrains Mono',monospace;color:var(--pdf-muted)!important;}

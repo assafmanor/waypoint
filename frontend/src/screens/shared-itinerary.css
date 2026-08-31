@@ -73,6 +73,75 @@
   font-size: var(--sh-micro);
 }
 
+/* **The bar's end holds two things now**, so the status line and the take-a-copy control
+   share one flex child rather than fighting `space-between` for the same edge. */
+.sh-bar-end {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* **A control in the masthead takes the on-dark ramp** (ADR-0158 §3): `.sh-public-bar` is
+   theme-fixed `--indigo` with `--on-dark-dim` ink, so `--ink` here renders navy on navy. The
+   mockup was drawn that way first and the button was invisible on the page while looking
+   perfectly reasonable in the CSS. */
+.sh-bar-take {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding-inline: 9px;
+  border: 1px solid color-mix(in srgb, var(--on-dark) 28%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--on-dark) 10%, transparent);
+  color: var(--on-dark);
+  font: 700 var(--sh-micro) var(--font-body);
+  cursor: pointer;
+  position: relative;
+  flex: none;
+}
+.sh-bar-take .icon {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+/* 44px of target without 44px of bar — `ValueToken`'s technique (ADR-0177), the same one
+   `.sh-ops > summary` already uses on this page. The masthead is 42px and cannot grow to
+   meet the floor without pushing the whole document down. */
+.sh-bar-take::after {
+  content: '';
+  position: absolute;
+  inset-inline: -6px;
+  inset-block: calc((44px - 100%) / -2);
+  min-height: 44px;
+}
+.sh-bar-take[disabled] {
+  opacity: 0.75;
+  cursor: default;
+}
+/* Its spinner is drawn on the dark bar, so it takes the white default rather than `.ink`
+   — which is exactly the case `.spinner`'s base rule was written for. */
+.sh-bar-take .spinner.ink {
+  border-color: color-mix(in srgb, var(--on-dark) 35%, transparent);
+  border-top-color: var(--on-dark-strong);
+}
+
+/* The foot's copy of the same action, in the owner sheet's own `.share-outcome` — a second
+   host, not a third button. Relative so the progress bar can sit inside it. */
+.sh-take {
+  padding: 12px 14px 0;
+}
+.sh-take .share-outcome {
+  width: 100%;
+  position: relative;
+  flex-wrap: wrap;
+}
+.sh-take .share-outcome .sh-dl-bar {
+  flex: 1 0 100%;
+  margin-block-start: 0;
+}
+
 .sh-brand,
 .sh-freshness {
   display: flex;
@@ -639,11 +708,75 @@
 
 /* **The legs of one journey, under the journey.** The frame above already states the
    whole span, so these are the detail inside it. */
+/* **A journey is a surface, so its legs are visibly ON it** (ADR-0213 ninth amendment §1,
+   drawn and measured in `mockups/a-journey-is-a-flight-plan-v1.html`).
+   
+   What this replaces is `.sh-legs`'s 30px indent carrying the whole claim "these two are
+   inside that one" — measured at 30px of a 360px column, which reads as a slightly narrower
+   PEER, not as containment. A tint plus one rail says it in a way white space cannot, and it
+   is the same grammar `.sh-day` uses for the day that holds these rows one level up rather
+   than a new idiom. Teal because a journey is about getting between two places, which is what
+   teal is for (rule 4 / ADR-0028); the times inside already own the amber. */
+.sh-trek {
+  margin: 0 0 8px;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--teal) 7%, transparent);
+  border-inline-start: 2px solid var(--teal);
+  overflow: hidden;
+}
+/* **The header is a header, not an event row.** It drops `.sh-event`'s glyph column and its
+   `--sh-secondary` title, so it cannot be mistaken for one of the flights beneath it — which
+   is exactly what it was being mistaken for. */
+.sh-trek-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 8px 10px;
+  min-height: 34px;
+  border-block-end: 1px solid color-mix(in oklab, var(--teal) 22%, transparent);
+  font-size: var(--sh-caption);
+}
+.sh-trek-head strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--sh-caption);
+  font-weight: 700;
+}
+/* **A sized icon, because `.icon` is sized per context in this app.** Left unsized the flight
+   glyph draws at its own 24px box and the header measured 131px instead of 34 — found by
+   rendering the mockup, invisible in the markup. */
+.sh-trek-head .icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--teal);
+}
+.sh-trek-sum {
+  color: var(--muted);
+  font-size: var(--sh-micro);
+}
+
 .sh-legs {
   margin: 0 0 6px;
   padding-inline-start: 30px;
   display: grid;
   gap: 2px;
+}
+/* Inside the container the indent has nothing left to prove, so it goes back to padding the
+   surface rather than faking nesting. */
+.sh-trek .sh-legs {
+  margin: 0;
+  padding: 4px 10px 6px;
+}
+/* A leg's own flight time, under its code (§2 — the fact the eighth amendment removed and the
+   owner asked back the same day). Micro, so it annotates its row instead of competing with
+   the header's total. */
+.sh-leg-span {
+  display: block;
+  font-size: var(--sh-micro);
+  color: var(--muted);
 }
 .sh-leg-row {
   display: grid;
@@ -861,18 +994,64 @@
 
 /* **A download reports itself** — the state sits beside the name rather than replacing it,
    so the row does not reflow under the finger that just pressed it. */
+/* **The file row is a control, and it was 42px** (ADR-0213 ninth amendment §4). Measured off
+   the shipped page while drawing `the-reader-hands-you-a-file-v1.html`: the row every
+   download report has been about was also under ADR-0017's 44px floor, which nothing in the
+   suites asked about. */
+.sh-op-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  flex: 1 1 auto;
+  min-width: 0;
+  color: inherit;
+}
+/* **The glyph slot IS the motion slot.** `FormActions` puts the spinner where the label was;
+   a file row has no label to give up, so the spinner takes the glyph's box — one 15px square
+   either way, so a row that is downloading is exactly as tall as one that is not. This is
+   ADR-0052 §4's rule, which the first two attempts at this row implemented two thirds of. */
+.sh-op-mark {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--cta);
+}
+.sh-op-mark .icon {
+  width: 15px;
+  height: 15px;
+}
+.sh-op-file-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.sh-op-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
 .sh-dl-state {
   margin-inline-start: 6px;
   font-size: var(--sh-micro);
   color: var(--muted);
 }
-.sh-op a[data-state='working'] {
-  opacity: 0.7;
-}
-.sh-op a[data-state='done'] .sh-dl-state {
+/* `--ok` / `--miss` for the two states that have FINISHED, and `--cta` above for the one in
+   flight: a file arriving is an action, not a status (rule 4). */
+.sh-op-file[data-state='done'] .sh-op-mark,
+.sh-op-file[data-state='shared'] .sh-op-mark {
   color: var(--ok);
 }
-.sh-op a[data-state='failed'] .sh-dl-state {
+.sh-op-file[data-state='failed'] .sh-op-mark {
+  color: var(--miss);
+}
+.sh-op-file[data-state='done'] .sh-dl-state,
+.sh-op-file[data-state='shared'] .sh-dl-state {
+  color: var(--ok);
+}
+.sh-op-file[data-state='failed'] .sh-dl-state {
   color: var(--miss);
 }
 
@@ -917,15 +1096,16 @@
     transform: translateX(-260%);
   }
 }
-/* ADR-0028's motion rule: the bar still SAYS it is working, it just stops moving. A
-   determinate fill is information rather than motion, so it keeps its width either way. */
+/* **Reduced motion SLOWS the sweep; it does not stop it** — which is what the app's own
+   `.spinner` does (1.6s instead of 0.7s, `screens.css`) and what the first version of this
+   rule got wrong by setting `animation: none`. A stopped indeterminate bar is
+   indistinguishable from a stalled download, so stopping it destroys the one thing it says.
+   A determinate fill is information rather than motion and only loses its transition. */
 @media (prefers-reduced-motion: reduce) {
   .sh-dl-bar > span {
     transition: none;
   }
   .sh-dl-bar[data-indeterminate] > span {
-    animation: none;
-    inline-size: 100%;
-    opacity: 0.55;
+    animation-duration: 2.6s;
   }
 }

@@ -77,7 +77,18 @@ describe('shareFileOrDownload', () => {
       revoked.push(url);
     });
   });
-  afterEach(() => vi.restoreAllMocks());
+  /**
+   * **Flush the deferred release before restoring the spies.** The download path now revokes
+   * on the next frame (ADR-0213 ninth amendment §5), so a test that returns without letting
+   * that frame run leaves a callback queued — and it fires during the NEXT test, calling that
+   * test's fresh `revokeObjectURL` spy. Three `blob:0` entries in a one-download assertion is
+   * what that looks like, and it is the test isolation that is wrong rather than the
+   * assertion. Nothing here waits on a real clock: one frame, then the spies go.
+   */
+  afterEach(async () => {
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+    vi.restoreAllMocks();
+  });
 
   it('shares the file itself where the browser can', async () => {
     const share = vi.fn().mockResolvedValue(undefined);
@@ -114,12 +125,26 @@ describe('shareFileOrDownload', () => {
     expect(created).toHaveLength(0);
   });
 
-  // A blob url left un-revoked pins the whole PDF in memory for the life of the document.
-  it('always revokes the object url it created', async () => {
+  /**
+   * A blob url left un-revoked pins the whole PDF in memory for the life of the document —
+   * so it is still always released. What changed (ADR-0213 ninth amendment §5) is WHEN:
+   * `click()` starts the download asynchronously, and releasing in the same tick can be a
+   * download that never begins. The public reader's file row had found that and fixed it
+   * locally; the fix moved in here when the row started calling this helper instead of
+   * repeating its six lines.
+   *
+   * Both halves are asserted, because the second is the whole point: not yet on the tick
+   * that returns, and released once a frame has passed.
+   */
+  it('revokes the object url it created, on the next frame rather than this tick', async () => {
     setShare(undefined);
     setCanShare(undefined);
 
     await shareFileOrDownload(file);
+    expect(created).toHaveLength(1);
+    expect(revoked).toEqual([]);
+
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
     expect(revoked).toEqual(created);
   });
 });

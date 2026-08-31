@@ -778,16 +778,23 @@ describe('SharingProjectionService', () => {
       expect(projection.days).toHaveLength(1);
       expect(projection.days[0].endDate).toBe('2026-09-12');
 
-      // **A leg states its clock and its flight, and NOTHING that the frame already says**
-      // (owner, 2026-08-31: _"a row for the entire journey but also rows for each flight …
-      // confusing"_). Both facts on both levels made this card carry four durations and
-      // three zone shifts; the totals belong to the journey, whose two ends are what a
-      // reader is comparing. The wait keeps its minutes, being the one span neither end has.
+      // **The journey totals; a leg states its own flight time and not the clock change**
+      // (ADR-0213 ninth amendment §2).
+      //
+      // This assertion is INVERTED from the one it replaces, on purpose. The eighth
+      // amendment read the owner's "confusing" as too many numbers and removed both leg
+      // fields; the owner asked the duration back the same day, and the container — not the
+      // arithmetic — is what stopped a connecting flight reading as three peers.
       expect(journeys[0].durationMinutes).toBeGreaterThan(0);
-      // Asserted over the KEYS, because `SharedLeg` no longer declares either field — typed
-      // access would not compile, which is the stronger half of the same guarantee.
+      // No assertion on the journey's zone shift here: this fixture's trip is single-zone
+      // (`UTC`), so an absent shift is the correct answer and asserting one would be
+      // asserting the fixture rather than the rule.
+      // Where it ENDS, for the container's header: the legs already spell the route out.
+      expect(journeys[0].journeyTo).toBeTruthy();
       for (const leg of journeys[0].legs ?? []) {
-        expect(Object.keys(leg)).not.toContain('durationMinutes');
+        expect(leg.durationMinutes).toBeGreaterThan(0);
+        // The shift a traveller acts on is origin-to-destination, so it stays on the
+        // journey — and `SharedLeg` does not declare it, so this reads the keys.
         expect(Object.keys(leg)).not.toContain('zoneShiftMinutes');
       }
 
