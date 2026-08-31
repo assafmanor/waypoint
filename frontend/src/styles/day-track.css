@@ -18,7 +18,9 @@
      --track-strong  the solid block (hard)
      --track-ground  the surface BEHIND the track, for the hairline between adjacent blocks
    and may set:
-     --track-h       track height (3px)
+     --track-h       track height (3px), applied to the inner `.track` by this sheet
+     --track-spent   a block behind the clock  ·  --track-spent-hard  the same, committed
+     --track-skip    the hatch on a skipped block
      --track-cue     the halo's ink
      --track-point   the zero-length tick's ink
 */
@@ -26,6 +28,16 @@
 .wp-track {
   --track-h: 3px;
   position: relative;
+}
+/* **THE HEIGHT BELONGS TO THE SHEET THAT DECLARES IT** (ADR-0215 §5). `--track-h` was declared
+   above from the first day and the ⁦3px⁩ actually came from `.wp-board-progress .track` in
+   `board.css`, so the second consumer got a track with no height at all — found by drawing one
+   (`mockups/glance-v2.html`) rather than by reading. The ground and the corner stay with the host:
+   the board's is a dark card and the glance's is paper, and «free time is the empty track» is the
+   glance's statement, not this sheet's. */
+.wp-track > .track {
+  position: relative;
+  height: var(--track-h);
 }
 
 /* THE FLOOR AND THE HAIRLINE, and they answer two different failures.
@@ -61,6 +73,33 @@
 .wp-track-blk.point {
   width: 4px;
   background: var(--track-point, var(--track-strong));
+}
+/* **AND A TICK MAY STILL BE A COMMITMENT** (ADR-0215 §5). The rule above lands after `.hard` and
+   so swallowed it — invisible on the board, where every ink is amber anyway, and wrong the moment
+   one day carries both a check-in and an event with no `endsAt`: `--track-point` would have to be
+   amber for the first and neutral for the second. Two classes, so the block says which it is. */
+.wp-track-blk.point.hard {
+  background: var(--track-strong);
+}
+/* **BEHIND THE CLOCK** — the axis the glance adds and the board has no use for (nothing about
+   tomorrow is spent), which is exactly why it is a property with a fallback rather than a rule:
+   a host that never marks a block spent, and never sets the ink, is unaffected by both lines.
+   The fallback is the ordinary fill, so a spent block can never come out invisible. */
+.wp-track-blk.spent {
+  background: var(--track-spent, var(--track-fill));
+}
+.wp-track-blk.spent.hard {
+  background: var(--track-spent-hard, var(--track-strong));
+}
+/* Let go (ADR-0011's soft grammar): the hatch is `glance-card.css`'s own `.seg.skipped`, moved
+   here with its ink handed to the host. A skip is texture, never a status colour — ADR-0077
+   refused `--miss` for this and nothing since has changed that. */
+.wp-track-blk.skip {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--track-skip, var(--track-fill)) 0 3px,
+    transparent 3px 6px
+  );
 }
 /* A tail across midnight (ADR-0037). The 14px rail answers this with a `+1` chip and has the
    room; here a chip is chrome, and a block that merely reaches the edge is ambiguous with one

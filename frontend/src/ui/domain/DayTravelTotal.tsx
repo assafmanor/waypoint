@@ -10,7 +10,7 @@
 // `dayTravelTotal` (`lib/day-joins.ts`), the roll-up of the journeys the rows themselves drew.
 import { formatDistance } from '../../lib/distance';
 import { approxTravelTime } from '../../lib/duration';
-import { type DayTravelTotal as DayTravelTotalValue } from '../../lib/day-joins';
+import { hasTravelTotal, type DayTravelTotal as DayTravelTotalValue } from '../../lib/day-joins';
 import { t } from '../../i18n/he';
 import { Icon } from '../Icon';
 
@@ -40,7 +40,11 @@ export function DayTravelTotal({ total }: { total: DayTravelTotalValue }) {
   // ADR-0212 no distance meant no travel, and now a day whose whole movement is a flight has a
   // real number and an empty ground half. Absent stays absent — a day with neither reads exactly
   // as it always did (§D4).
-  if (!distance && !air) return null;
+  //
+  // The condition itself moved to `hasTravelTotal` (ADR-0215 §6) so a host that puts something
+  // BESIDE this line — the glance card's foot, and its `·` — asks the same question rather than
+  // keeping a second copy that could answer differently and leave an orphan separator.
+  if (!hasTravelTotal(total)) return null;
   const duration = total.travelSeconds !== null ? approxTravelTime(total.travelSeconds) : null;
   const ground = distance && duration ? t.travel.dayTotal(distance, duration) : distance;
   return (

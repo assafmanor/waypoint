@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
 import { buildDayGlance } from './glance';
-import { MARK_MIN_FRAC, thinMarks, trackBlocks, trackMarks, type TrackMark } from './day-track';
+import {
+  MARK_MIN_FRAC,
+  thinMarks,
+  trackBlockClass,
+  trackBlocks,
+  trackMarks,
+  trackMetaFor,
+  type TrackMark,
+} from './day-track';
 import { DAY_TRACK } from '../constants';
 
 const DATE = '2026-09-15';
@@ -26,6 +34,10 @@ const ev = (from: string, to: string | null, over: Partial<TripEvent> = {}): Tri
   }) as TripEvent;
 
 const segsOf = (events: TripEvent[]) => buildDayGlance(events, DATE, NOW, W0, W1, 'UTC').segs;
+/** The same segments read from INSIDE the day — `NOW` above is the night board's moment, where a
+ *  future day has no phase but `upcoming`. The spent axis only exists on a day you are in. */
+const segsToday = (events: TripEvent[]) =>
+  buildDayGlance(events, DATE, Date.parse(`${DATE}T13:40:00Z`), W0, W1, 'UTC').segs;
 
 describe('trackBlocks', () => {
   // **The half a track inherits** (ADR-0214 §1). `DayGlance.segs` are the containment forest's
@@ -158,5 +170,83 @@ describe('thinMarks', () => {
 
   it('a set already inside the cap is returned untouched', () => {
     expect(thinMarks(at(0, 0.4, 0.8), DAY_TRACK.MARK_CAP)).toHaveLength(3);
+  });
+});
+
+// ── THE SPENT / SKIPPED AXIS (ADR-0215 §3) ───────────────────────────────────
+// Derived from the segment's own phase rather than asked of the caller, which is what keeps the
+// night board unchanged by its existence: tomorrow is a day nobody has lived, so every segment
+// there comes back `upcoming` and both flags are false throughout.
+describe('the spent axis', () => {
+  it('is false for everything on a FUTURE day, which is the board invariant', () => {
+    const blocks = trackBlocks(segsOf([ev('09:00', '10:00'), ev('19:00', '20:00')]), {});
+    expect(blocks.every((b) => !b.spent && !b.skipped)).toBe(true);
+  });
+
+  it('marks passed and done behind the clock, and leaves now/upcoming alone', () => {
+    const blocks = trackBlocks(
+      segsToday([
+        ev('09:00', '10:00'),
+        ev('13:00', '14:30'),
+        ev('19:00', '20:00'),
+        ev('20:30', '21:00', { status: EVENT_STATUS.DONE }),
+      ]),
+      {},
+    );
+    expect(blocks.map((b) => b.spent)).toEqual([true, false, false, true]);
+  });
+
+  it('a skip is its own flag, never a spent block', () => {
+    const blocks = trackBlocks(
+      segsToday([ev('09:00', '10:00', { status: EVENT_STATUS.SKIPPED })]),
+      {},
+    );
+    expect(blocks[0].skipped).toBe(true);
+    expect(blocks[0].spent).toBe(false);
+  });
+
+  it('every flag reaches the class list, so two hosts cannot spell one block two ways', () => {
+    // Four events, three blocks: the pair at ⁦11:00⁩/⁦12:00⁩ overlaps and comes back as one
+    // composite (ADR-0041), which is also why this is the fixture that proves `multi`.
+    const events = [
+      ev('09:00', '10:00', { kind: EVENT_KIND.HARD }),
+      ev('11:00', '13:00'),
+      ev('12:00', '14:00'),
+      ev('19:00', '19:00'),
+    ];
+    const segs = segsToday(events);
+    const blocks = trackBlocks(segs, trackMetaFor(events, segs));
+    expect(blocks).toHaveLength(3);
+    expect(trackBlockClass(blocks[0])).toBe('wp-track-blk hard spent');
+    expect(trackBlockClass(blocks[1])).toContain('multi');
+    expect(trackBlockClass(blocks[2])).toContain('point');
+  });
+});
+
+describe('trackMetaFor', () => {
+  it('resolves each segment icon and commitment from the day own events', () => {
+    const events = [
+      ev('09:00', '10:00', { icon: '🍜' }),
+      ev('19:00', '20:00', { icon: '⛩️', kind: EVENT_KIND.HARD }),
+    ];
+    const segs = segsToday(events);
+    const meta = trackMetaFor(events, segs);
+    expect(segs.map((seg) => meta[seg.key])).toEqual([
+      { icon: '🍜', hard: false },
+      { icon: '⛩️', hard: true },
+    ]);
+  });
+
+  it('a segment whose event is not in the list carries no icon rather than a wrong one', () => {
+    const events = [ev('09:00', '10:00', { icon: '🍜' })];
+    const meta = trackMetaFor([], segsToday(events));
+    expect(Object.values(meta)).toEqual([{ hard: false }]);
+  });
+
+  it('a composite is keyed on its first member, and takes that event glyph', () => {
+    const events = [ev('11:00', '13:00', { icon: '🎏' }), ev('12:00', '14:00', { icon: '🏯' })];
+    const segs = segsToday(events);
+    expect(segs).toHaveLength(1);
+    expect(trackMetaFor(events, segs)[segs[0].key].icon).toBe('🎏');
   });
 });

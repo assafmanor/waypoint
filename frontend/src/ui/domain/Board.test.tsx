@@ -531,6 +531,10 @@ describe('Board — the countdown swaps what it counts to (ADR-0206 §Z1)', () =
         point: false,
         nextDay: false,
         composite: false,
+        // Tomorrow is a day nobody has lived: `spent` cannot be true and `skipped` is filtered
+        // out before the ribbon (ADR-0215 §2's own invariant, asserted in `tomorrow.test.ts`).
+        spent: false,
+        skipped: false,
         cue: true,
       },
       {
@@ -541,6 +545,8 @@ describe('Board — the countdown swaps what it counts to (ADR-0206 §Z1)', () =
         point: false,
         nextDay: false,
         composite: false,
+        spent: false,
+        skipped: false,
         cue: false,
       },
     ],

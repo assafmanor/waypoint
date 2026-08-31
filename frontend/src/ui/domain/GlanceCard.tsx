@@ -1,90 +1,53 @@
-// GlanceCard (design-language: GlanceCard) — the derived day-at-a-glance rail
-// on the Trip-mode Home (extracted from screens/Home.tsx, U-03). A proportional
-// time rail (block width = duration, gaps = free time), an amber now-marker, the
-// unified amber time-anchor grammar above the bar (spans/points, ADR-0077), a
-// lead "נותרו" count, the next hard anchor, and a free-until / end-of-day foot.
-// A crowded day collapses the anchor band to a flow legs line (ADR-0077 §D).
-// Empty day = a calm teach state (never a hidden card or a 0/0 rail).
+// GlanceCard (design-language: GlanceCard) — the derived day-at-a-glance card on the Trip-mode
+// Home (ADR-0045, reworked by ADR-0215).
 //
-// The rail model (`DayGlance`) is computed by the pure lib/glance and passed in;
-// the card only renders it. Domain UI may use the shared copy/label helpers (not
-// state) — it does, for the transition labels + time formatting.
+// **What this card is for, after the board grew.** ADR-0214 gave the board what is now, what is
+// next, how long until it, where we are, and the shape of tomorrow — so the only work left here is
+// the one thing no other surface can do: **the whole day at once, and what is left of it.** Every
+// run it prints is measured against that, which is why the anchor pills, the count chips, the
+// window's own ends, `פנוי עד` and the hard-anchor readout are all gone (ADR-0215 §3/§4): each was
+// either chrome describing the drawing or a fact the board carries within an inch of it.
+//
+// **The rail is the shared track** (`styles/day-track.css` + `lib/day-track.ts`, ADR-0214 §5) at
+// this host's own height and inks, so the floor, the ⁦1px⁩ ground hairline between adjacent blocks,
+// the zero-length tick, the midnight fade and the mark row all arrive by using it — including the
+// two shipped defects that adoption fixes (a busy day drew back-to-back events as one bar; a
+// zero-length event drew nothing at all). The view model is `lib/glance-track.ts`.
+//
+// Presentational and prop-fed, like everything in `ui/domain/`: `DayGlance` and its track are
+// computed by the pure lib and passed in; the card only renders them.
 import { type CSSProperties } from 'react';
-import { type DayGlance, type GlanceAnchor } from '../../lib/glance';
-import { formatTime } from '../../lib/time';
-import { transitionLabel } from '../../lib/transitions';
-import { NavArrow } from '../NavArrow';
-import { ZoneShiftPill } from '../ZoneShiftPill';
+import { type DayGlance } from '../../lib/glance';
+import { trackBlockClass, trackBlockStyle } from '../../lib/day-track';
+import { type GlanceTrack } from '../../lib/glance-track';
+import { hasTravelTotal, type DayTravelTotal as DayTravelTotalValue } from '../../lib/day-joins';
 import { t } from '../../i18n/he';
 import './glance-card.css';
+import '../../styles/day-track.css';
+import { DayTravelTotal } from './DayTravelTotal';
 import { Icon } from '../Icon';
-
-/** An anchor pill within this fraction of a rail edge anchors inward (to the
- *  edge) instead of centering on its point, so it can't clip off the rail
- *  (faithful to Home's MARKER_EDGE_FRAC, ADR-0077). */
-const MARKER_EDGE_FRAC = 0.12;
-const markerAnchor = (frac: number): string =>
-  frac <= MARKER_EDGE_FRAC ? 'at-start' : frac >= 1 - MARKER_EDGE_FRAC ? 'at-end' : '';
-
-/** The inside of an anchor pill — shared by the positioned band and the collapsed
- *  legs line so the two renderings of the same anchor can never diverge. Each end
- *  reads in its **own** display zone when the anchor carries one (ADR-0107), with
- *  the shift as the amber pill; without zones everything reads in `tz`, as before. */
-function AnchorPill({ anchor: a, tz }: { anchor: GlanceAnchor; tz: string }) {
-  if (a.kind === 'span') {
-    return (
-      <span className="achip amber">
-        <span className="mi">{a.icon}</span>{' '}
-        <span className="mono" dir="auto">
-          {formatTime(new Date(a.startMs), a.zones?.startZone ?? tz)}
-        </span>
-        <NavArrow variant="forward" className="arr" />
-        <span className="mono" dir="auto">
-          {formatTime(new Date(a.endMs), a.zones?.endZone ?? tz)}
-        </span>
-        {a.nextDay && (
-          <span className="plus1" dir="auto">
-            {t.glance.nextDay}
-          </span>
-        )}
-        {a.zones?.deltaMinutes != null && (
-          <ZoneShiftPill minutes={a.zones.deltaMinutes} className="gl-tzdelta" />
-        )}
-      </span>
-    );
-  }
-  return (
-    <span className="achip amber">
-      <span className="mi">{a.icon}</span> {transitionLabel(a.labelKey)}{' '}
-      <span className="mono" dir="auto">
-        {formatTime(new Date(a.timeMs), a.zone ?? tz)}
-      </span>
-      {a.deltaMinutes != null && <ZoneShiftPill minutes={a.deltaMinutes} className="gl-tzdelta" />}
-    </span>
-  );
-}
 
 export interface GlanceCardProps {
   glance: DayGlance;
-  tz: string;
-  /** The next hard anchor's time (pre-formatted), if any — the amber anchor. */
-  hardAnchorTime?: string;
-  /** "free until" time (pre-formatted), shown only when nothing is on now. */
-  freeUntil?: string | null;
+  /** The day's blocks + marks (`glanceTrack`) — derived at the screen, which is the only layer
+   *  that holds the events an icon and a commitment come from. */
+  track: GlanceTrack;
   /** End-of-day time (pre-formatted). */
   dayEnd?: string | null;
+  /** **How far the day goes**, when the app can say so for free (ADR-0215 §6) — `DayTravelTotal`
+   *  renders it, so the words and the order are decided once, on the surface that had it first.
+   *  Absent is the ordinary answer and costs no line. */
+  travel?: DayTravelTotalValue | null;
   /** Empty-state CTA — jump to the day builder. */
   onAdd?: () => void;
 }
 
-export function GlanceCard({
-  glance,
-  tz,
-  hardAnchorTime,
-  freeUntil,
-  dayEnd,
-  onAdd,
-}: GlanceCardProps) {
+export function GlanceCard({ glance, track, dayEnd, travel, onAdd }: GlanceCardProps) {
+  // `DayTravelTotal` renders nothing when it has neither half, so the separator has to ask the
+  // same question it does — through the one predicate rather than a second copy of the condition
+  // (root rule 8; the shape `hasTravelTotal` exists for).
+  const showTravel = hasTravelTotal(travel);
+
   if (glance.empty) {
     return (
       <div className="glance-day empty">
@@ -105,129 +68,61 @@ export function GlanceCard({
 
   return (
     <div className="glance-day">
-      {/* Amber time-anchors in a dedicated band above the block bar so segments
-          can't swallow their labels (ADR-0077). A span (both edges today) is a
-          bar + feet under one centered pill; a point (one edge today) is a stem +
-          pill carrying the transition word. Anchors stack into lanes when they'd
-          overlap and anchor inward near an edge; a crowded day collapses to the
-          legs line below instead. */}
-      {glance.anchors.length > 0 && !glance.anchorsCollapsed && (
-        <div
-          className="glance-marks"
-          aria-hidden="true"
-          style={{ '--lanes': glance.anchorLaneCount } as CSSProperties}
-        >
-          {glance.anchors.map((a) =>
-            a.kind === 'span' ? (
-              <div
-                className={`span-anchor ${markerAnchor((a.startFrac + a.endFrac) / 2)}`}
-                key={a.key}
-                style={
-                  {
-                    insetInlineStart: `${a.startFrac * 100}%`,
-                    width: `${Math.max(0, a.endFrac - a.startFrac) * 100}%`,
-                    '--lane': a.lane,
-                  } as CSSProperties
-                }
+      {/* `.wp-track` is the geometry and `.glance-track` is everything this host supplies: the
+          height, the inks, and the ground — where "free time is the empty track" (ADR-0045) is
+          the glance's own statement and not the shared sheet's. */}
+      <div className="wp-track glance-track">
+        {track.marks.length > 0 && (
+          <div className="wp-track-marks" aria-hidden="true">
+            {track.marks.map((mark) => (
+              <span
+                key={mark.key}
+                className="wp-track-mark"
+                style={{ '--s': `${mark.frac * 100}%` } as CSSProperties}
               >
-                <span className="cap">
-                  <AnchorPill anchor={a} tz={tz} />
-                </span>
-                <span className="bar" />
-              </div>
-            ) : (
-              <div
-                className={`tmark ${markerAnchor(a.frac)}`}
-                key={a.key}
-                style={{ insetInlineStart: `${a.frac * 100}%`, '--lane': a.lane } as CSSProperties}
-              >
-                <AnchorPill anchor={a} tz={tz} />
-                <span className="stem" />
-              </div>
-            ),
-          )}
-        </div>
-      )}
-      <div className="rail" aria-hidden="true">
-        {glance.segs.map((s) => (
-          <div
-            key={s.key}
-            className={`seg ${s.phase}${s.composite ? ' multi' : ''}${s.point ? ' point' : ''}${s.spanned ? ' trans' : ''}`}
-            style={{
-              insetInlineStart: `${s.startFrac * 100}%`,
-              ...(s.point ? {} : { width: `${Math.max(0, s.endFrac - s.startFrac) * 100}%` }),
-            }}
-          >
-            {s.showCount && (
-              <span className="n">
-                {s.clusterLike ? t.glance.concurrent(s.count) : t.glance.contains(s.count)}
+                {mark.icon}
               </span>
-            )}
-            {/* a spanned block's "+1" is carried by its span pill above, not here */}
-            {s.nextDay && !s.spanned && (
-              <span className="plus1" dir="auto">
-                {t.glance.nextDay}
-              </span>
-            )}
+            ))}
           </div>
-        ))}
-        {glance.nowFrac !== null && (
-          <div className="nowmark" style={{ insetInlineStart: `${glance.nowFrac * 100}%` }} />
         )}
-      </div>
-      <div className="rail-ends">
-        <span dir="auto">{formatTime(new Date(glance.windowStartMs), tz)}</span>
-        <span dir="auto">{formatTime(new Date(glance.windowEndMs), tz)}</span>
-      </div>
-      {/* Crowded day (ADR-0077 §D): the anchors couldn't fit in the band, so they
-          collapse here to a flow legs line — same amber pill, no overlap. */}
-      {glance.anchorsCollapsed && (
-        <div className="glance-legs">
-          {glance.anchors.map((a) => (
-            <AnchorPill anchor={a} tz={tz} key={a.key} />
+        <div className="track" aria-hidden="true">
+          {track.blocks.map((block) => (
+            <div
+              key={block.key}
+              className={trackBlockClass(block)}
+              style={trackBlockStyle(block) as CSSProperties}
+            />
           ))}
+          {/* The clock, kept from the old rail unchanged — a vertical amber line where every
+              block is horizontal, which is how two legitimately amber things stay apart. */}
+          {glance.nowFrac !== null && (
+            <div className="nowmark" style={{ insetInlineStart: `${glance.nowFrac * 100}%` }} />
+          )}
         </div>
-      )}
-      <div className="lead">
-        <div className="big">
-          <span className="v" dir="auto">
-            {glance.remaining}
-          </span>
-          <span className="k">{t.glance.remaining}</span>
-        </div>
-        {hardAnchorTime && (
-          <div className="anchor">
-            <Icon name="lock" /> {t.glance.hardAnchor}
-            <br />
-            <span className="tm" dir="auto">
-              {hardAnchorTime}
-            </span>
-          </div>
-        )}
       </div>
-      {(freeUntil || dayEnd) && (
+      {/* **A sentence, not a numeral** (ADR-0215 §4). `0 · נותרו היום` in ⁦32px⁩ mono was the
+          common reading all evening, and a huge number saying nothing is the opposite of
+          inviting; at zero this line goes quiet instead and leaves the moment to the night
+          board, which now speaks for it. */}
+      <div className={glance.remaining === 0 ? 'glance-lead done' : 'glance-lead'}>
+        {t.glance.leftToday(glance.remaining)}
+      </div>
+      {(dayEnd || showTravel) && (
         <div className="glance-foot">
-          {freeUntil && (
+          {dayEnd && (
             <span>
-              <Icon name="clock" /> {t.glance.freeUntil}{' '}
+              {t.glance.dayEnds}{' '}
               <span className="mono" dir="auto">
-                {freeUntil}
+                ~{dayEnd}
               </span>
             </span>
           )}
-          {freeUntil && dayEnd && (
+          {dayEnd && showTravel && (
             <span className="dot" aria-hidden="true">
               ·
             </span>
           )}
-          {dayEnd && (
-            <span>
-              {t.glance.dayEnds}{' '}
-              <b className="mono" dir="auto">
-                ~{dayEnd}
-              </b>
-            </span>
-          )}
+          {showTravel && <DayTravelTotal total={travel!} />}
         </div>
       )}
     </div>
