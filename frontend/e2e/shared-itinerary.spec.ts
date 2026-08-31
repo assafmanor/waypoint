@@ -37,6 +37,9 @@ const SUMMARY: SharedItinerary = {
     icon: '🇮🇸',
     startDate: '2026-08-29',
     endDate: '2026-08-31',
+    // UTC+0 year-round, so `PINNED` below is the trip's wall clock as well as the box's and
+    // a now-line assertion needs no offset arithmetic (ADR-0213's eleventh amendment §6).
+    timezone: 'Atlantic/Reykjavik',
     dayCount: 3,
     eventCount: 3,
     routeLabels: ['רייקיאוויק', 'ויק'],
@@ -147,6 +150,18 @@ const EVERYTHING: SharedItinerary = {
  */
 const ANONYMOUS_AUTH_PROBE = /auth\/refresh/;
 
+/**
+ * **09:00 on the trip's first day** (ADR-0213's eleventh amendment). The page now derives
+ * what opens, what is marked and how old it is from the clock, so a spec whose fixture
+ * carries fixed dates must set its own `now` — `frontend/CLAUDE.md`'s rule, and without it
+ * every assertion below would open nothing the moment the box clock drifted past the
+ * fixture's three days.
+ *
+ * Also 09:00 rather than 09:31: the fixture's one timed event is at 09:30, so the now-line
+ * lands above it and the day still reads as ahead of the reader.
+ */
+const PINNED = Date.parse('2026-08-29T09:00:00.000Z');
+
 async function open(page: Page, projection: SharedItinerary, viewport = PHONES[0]) {
   const errors: string[] = [];
   const record = (text: string) => {
@@ -161,6 +176,15 @@ async function open(page: Page, projection: SharedItinerary, viewport = PHONES[0
   );
   page.on('pageerror', (error) => record(error.message));
   await page.setViewportSize(viewport);
+  // **Pinned twice, exactly as `boot.ts` explains it.** `waypoint:dev-now` is read at module
+  // load behind `import.meta.env.DEV`, so under `E2E_PREVIEW=1` — a production bundle — that
+  // branch is compiled out and the fixture would silently read the wall clock on one leg
+  // only. `setFixedTime` pins the platform's clock, so both legs agree.
+  await page.addInitScript(
+    (now) => localStorage.setItem('waypoint:dev-now', now as string),
+    String(PINNED),
+  );
+  await page.clock.setFixedTime(PINNED);
   await page.route(
     (url) => url.pathname === `/shared-itineraries/${CODE}`,
     (route) => route.fulfill({ json: projection }),
@@ -226,14 +250,18 @@ test('Everything puts the booking code on its own event, behind the row fold', a
   await expect(page.getByText('הנוסעים')).toHaveCount(0);
 });
 
-test('days open one at a time', async ({ page }) => {
+test('days open one at a time, starting on the day the trip is on', async ({ page }) => {
   await open(page, FULL);
 
   const heads = page.locator('.sh-day-head');
+  // Day one is today at `PINNED` — the clock opened it, not an index (eleventh amendment §1).
   await expect(heads.first()).toHaveAttribute('aria-expanded', 'true');
   await heads.nth(1).click();
   await expect(heads.first()).toHaveAttribute('aria-expanded', 'false');
   await expect(heads.nth(1)).toHaveAttribute('aria-expanded', 'true');
+  // And closing the open one leaves nothing open, which is a real state here.
+  await heads.nth(1).click();
+  await expect(page.locator('.sh-day.open')).toHaveCount(0);
 });
 
 test('a revoked link says so without disclosing whether the trip exists', async ({ page }) => {
@@ -302,4 +330,89 @@ test('the reader scrolls the document to its last day and its footer', async ({ 
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
   await expect(page.getByText(t.share.public.inviteTitle)).toBeInViewport();
+});
+
+/**
+ * **THE LANDING, WHICH IS THE ONE CLAIM ONLY A BROWSER CAN MAKE** (ADR-0213's eleventh
+ * amendment §1). jsdom reports every rect as zero, so the unit suite can prove that today's
+ * card is the open one and nothing about where the page ends up — and "where it ends up" is
+ * the whole feature. Fourteen days, so there is somewhere to land from.
+ */
+test('the reader lands on the day the trip is on, with the day before peeking above', async ({
+  page,
+}) => {
+  // Day 4 is today at `PINNED + 3 days`, so there is real history above the target rather
+  // than a card that happens to be first.
+  const later = Date.parse('2026-09-01T09:00:00.000Z');
+  await page.addInitScript(
+    (now) => localStorage.setItem('waypoint:dev-now', now as string),
+    String(later),
+  );
+  await page.clock.setFixedTime(later);
+  await page.setViewportSize(PHONES[1]);
+  await page.route(
+    (url) => url.pathname === `/shared-itineraries/${CODE}`,
+    (route) => route.fulfill({ json: LONG }),
+  );
+  await page.goto(`/s/${CODE}`);
+
+  const today = page.locator('.sh-day.is-now');
+  await expect(today).toHaveCount(1);
+  await expect(today.locator('.sh-now-mark')).toHaveText(t.common.now);
+  /**
+   * **The whole block retries, which is `expectLanded`'s shape in
+   * `event-arrival-scroll.spec.ts`** — the suite's own idiom for this exact question, and it
+   * is the right one for two reasons an earlier draft of this test learned the hard way.
+   * The scroll is eased, so a `scrollY > 0` poll goes true the moment it STARTS travelling
+   * and any box read after it lands mid-flight; and `landAtTop` keeps re-aiming while the
+   * surface settles, so the landing is a state to converge on rather than a value to read.
+   * Polling one number and then reading another outside the retry went red once in three
+   * runs on a loaded box.
+   *
+   * **The whole header on screen** is the claim: it carries the date and the `עכשיו` mark,
+   * and a reader who lands mid-document has no masthead to tell them which day this is. The
+   * gap above it is the row's own `scroll-margin-block-start`, so the bound measures the
+   * stylesheet rather than restating its number.
+   */
+  await expect(async () => {
+    const box = await today.locator('.sh-day-head').boundingBox();
+    expect(box!.y).toBeGreaterThan(0);
+    expect(box!.y).toBeLessThan(60);
+    // It really did have to move: a page that happened to open there proves nothing.
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    // And the day before is still a visible sliver, which is what the peek is for — a reader
+    // must be able to see there is history above them without reading it.
+    const previous = await page.locator('.sh-day').nth(2).boundingBox();
+    expect(previous!.y + previous!.height).toBeGreaterThan(0);
+  }).toPass();
+
+  // Nothing was marked past-or-future by accident: three days behind, ten ahead.
+  await expect(page.locator('.sh-day.is-past')).toHaveCount(3);
+});
+
+test('nothing is open before the trip starts, and everything is cooled after it', async ({
+  page,
+}) => {
+  const before = Date.parse('2026-08-20T09:00:00.000Z');
+  await page.addInitScript(
+    (now) => localStorage.setItem('waypoint:dev-now', now as string),
+    String(before),
+  );
+  await page.clock.setFixedTime(before);
+  await page.setViewportSize(PHONES[0]);
+  await page.route(
+    (url) => url.pathname === `/shared-itineraries/${CODE}`,
+    (route) => route.fulfill({ json: LONG }),
+  );
+  await page.goto(`/s/${CODE}`);
+
+  await expect(page.getByRole('heading', { name: 'איסלנד עם המשפחה' })).toBeVisible();
+  // No day is a default: falling back to the first card is the same arbitrary index-pick the
+  // amendment replaced. And the page stays where it opened.
+  await expect(page.locator('.sh-day.open')).toHaveCount(0);
+  await expect(page.locator('.sh-day.is-now')).toHaveCount(0);
+  await expect(page.locator('.sh-day.is-past')).toHaveCount(0);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  // The masthead says where the trip is rather than asserting it is live.
+  await expect(page.locator('.sh-kicker')).toContainText(t.share.public.phase.soon(9));
 });
