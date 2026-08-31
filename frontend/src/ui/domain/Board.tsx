@@ -504,6 +504,21 @@ export function Board(props: BoardProps) {
     lifted,
   } = props;
   const inTransit = variant === 'in-transit';
+  /** **A branch that draws nothing, named** — and the name is not decoration.
+   *
+   *  Two slots go silent once tomorrow is the subject: the day's-closure words, and the day
+   *  rail. One reason serves both, ADR-0211 §4's "absence beats a pinned lie" — a board whose
+   *  whole subject is tomorrow has said the day is over by not talking about it, and a progress
+   *  bar for a day that is over measures nothing. `סוף היום` in the largest type and brightest
+   *  ink on the app's loudest surface is a statement about what is NOT happening, and rank 1 is
+   *  needed by the one thing on the card anybody can act on.
+   *
+   *  It is a named `const` rather than a `null` with a comment above it because **Prettier
+   *  mangles a `//` comment that leads a bare `null` ternary branch, and does it
+   *  non-idempotently**: it hoists the lines onto the `?` line and reorders them on every run,
+   *  so `format` and `format:check` disagree and CI goes red on a file the pre-commit hook has
+   *  just written. Cost one red `ci` on this PR; recorded in `frontend/CLAUDE.md`. */
+  const nothing = null;
   /** **Whether tomorrow is the board's subject** (ADR-0214 §2): it is, when the screen handed
    *  over a tomorrow that actually has blocks. Then the slot holding tomorrow takes rank 1, the
    *  day's-closure words are not drawn, and the foot carries the shape. A tomorrow with NO
@@ -626,10 +641,9 @@ export function Board(props: BoardProps) {
             </div>
           )}
         </>
-      ) : tomorrowRanked ? // a slot instead of a rail. `סוף היום` in the largest type and brightest ink on the // by not talking about it — ADR-0211 §4's own "absence beats a pinned lie", applied to // **Nothing at all.** A board whose whole subject is tomorrow has said the day is over
-      // app's loudest surface is a statement about what is NOT happening, and rank 1 is
-      // needed by the one thing here anybody can act on.
-      null : tomorrow ? (
+      ) : tomorrowRanked ? (
+        nothing
+      ) : tomorrow ? (
         // Tomorrow exists and nobody has filled it in. Then tomorrow IS the now-slot's
         // subject — no swap needed, since the point at rank 2 is a day or more out — and the
         // words are `emptyDay`'s own, with the day word coming from the screen.
@@ -723,14 +737,19 @@ export function Board(props: BoardProps) {
               rail draws a knob at ~⁦98%⁩ under the word `עכשיו` — a band with nothing left to
               measure — and the strip is the same ⁦3px⁩ track in the same place saying what the
               morning looks like instead. Measured: ⁦23px⁩ against the rail's ⁦23px⁩ on a day the
-              bed does not move. */}
+              bed does not move.
+
+              **An unplanned tomorrow drops the rail as well**, and the running app is what
+              asked: its dashed strip sits above the divider, so keeping the rail below drew
+              BOTH a tomorrow with nothing on it and a progress bar pinned at ~⁦98%⁩ — two bands
+              for two things neither of which has anything left to measure. The board's
+              `:last-child` padding rule, added by ADR-0211 §4 for exactly this shape, is what
+              keeps the card's bottom edge right without one. */}
           {tomorrowRanked ? (
             <TomorrowStrip tomorrow={tomorrow!} />
-          ) : tomorrow ? // tomorrow with nothing on it and a day-progress bar pinned at ~⁦98%⁩ — two bands // its dashed strip sits above the divider, so keeping the rail below drew BOTH a // **An unplanned tomorrow drops the rail too**, and the running app is what asked:
-          // for two things neither of which has anything left to measure. ADR-0211 §4's own
-          // "absence beats a pinned lie", and the board's `:last-child` padding rule (added
-          // by that same §4) is what keeps the card's bottom edge right without one.
-          null : (
+          ) : tomorrow ? (
+            nothing
+          ) : (
             showRail && (
               <DayRail progress={progress} startHour={windowStartHour} endHour={windowEndHour} />
             )
