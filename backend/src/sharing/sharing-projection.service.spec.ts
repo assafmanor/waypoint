@@ -334,7 +334,22 @@ describe('SharingProjectionService', () => {
       expect(event.mapUrl).toBeUndefined();
       expect(event.journey).toBeUndefined();
     }
-    expect(JSON.stringify(projection)).not.toContain('09:20');
+    // **Searched over the DAYS, not the whole projection** (2026-08-31). Stringifying the
+    // whole thing includes `generatedAt`, a real server stamp — so this assertion failed on
+    // CI the moment a run happened to land in the second `10:09:20`, and the received blob in
+    // that log reads `"generatedAt":"2026-08-31T10:09:20.560Z"`. A latent time bomb rather
+    // than a defect: `09:20` matches any stamp carrying that substring, which is several
+    // minutes of every day. The exact facts this test is about live in `days`, and the server
+    // metadata around them was never its subject.
+    expect(JSON.stringify(projection.days)).not.toContain('09:20');
+  });
+
+  /** **And the assertion above is not vacuous**, which is the failure mode an absence test
+   *  has: the SAME literal in the SAME place is present at Full, so Summary's silence is a
+   *  real difference rather than an empty search. */
+  it('proves that absence by finding the same time at Full', async () => {
+    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
+    expect(JSON.stringify(projection.days)).toContain('09:20');
   });
 
   it('adds times, addresses and map links at Full', async () => {
