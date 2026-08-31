@@ -3380,3 +3380,107 @@ Thirteen specs failed first, and the interesting ones inverted rather than broke
   V2's transit routing before it can mean anything, and guessing `walking` harder is not it.
 - **⁦10 minutes⁩ is a feel call and stays on the backlog** with `TRAVEL_BUFFER_SECONDS` and
   `ARRIVAL_RADIUS_MAX_M`. The owner's own _"probably"_ is the reason it is a named constant.
+
+## AW. A ⁦50 m⁩ drive is a journey the ladder cannot name, and the row went with the number (2026-08-31)
+
+> _"Bug found in the transit row (walking, driving, cycling…). The journey from Katla Ice Cave to
+> the supermarket was set to walking (1 minute, 50 meters) and I changed it to driving. Then the row
+> vanished and could not be returned. That happened before on different causes."_
+
+The owner's last sentence is the finding. **This is the third time the same row has disappeared and
+the third distinct cause** — §AM6 (a declaration), §AM10 (a mode past its ceiling), §AU1 (a number
+still being computed) — and each was fixed as its own case. So the fix here is not a fourth case.
+
+**The arithmetic.** ⁦50 m⁩ is over `ROUTE_MIN_CROW_M`, so the pair is routed and every mode answers.
+On foot that is ~⁦37⁩ seconds, which ADR-0114's minutes rung rounds to ⁦1 דק׳⁩ and the row states. By
+car it is ~⁦12⁩ seconds, which rounds to **nought minutes** — and the 2026-08-26 floor ("a journey
+the ladder cannot state is not a journey") answers `null` there, so the hole rendered nothing.
+The mode control lives on the journey block. Deleting the block deleted the only way back to the
+walk, on the surface the drive had just been picked on.
+
+### AW1. The floor is a NOISE rule, and noise is only noise when nobody asked
+
+The floor is right about what it was aimed at. A ⁦20 m⁩ hop the app called a walk **by itself** has
+nothing to say: `~0 דק׳` over a block of its own is a row about nothing, and ADR-0114 has no rung
+for it. That case is untouched.
+
+What it never distinguished is **who decided**. §AM10 drew this exact line for the ceiling —
+_"§D4's 'absent is absent' is right for a mode the app picked and wrong for one a person picked"_ —
+and the floor is the same sentence one cause over: a leg somebody **chose** carries a control, and a
+control that deletes itself is not a control.
+
+So `dayJourney` gains a fourth arm, `UNTIMED`, and it is keyed on **the choice, not the cause**:
+
+| the leg                             | with no override | with one          |
+| ----------------------------------- | ---------------- | ----------------- |
+| under the ladder's floor (⁦12⁩ s)   | no block         | `UNTIMED`         |
+| no estimate at all, and none coming | no block         | `UNTIMED`         |
+| past the mode's ceiling             | `TOO_FAR`        | `TOO_FAR` (§AM10) |
+| asked for, not answered yet         | `WARMING`        | `WARMING` (§AU1)  |
+
+**The second row of that table is the reason the rule is stated this way rather than as a
+sub-minute exemption.** A chosen mode can also end up with no estimate whatsoever: the SERVER's
+gate refuses it for a reason the client cannot reproduce — `sameClusterOnly` against a point missing
+from the cluster set, whose own docblock admits _"a point in no cluster at all answers `false`"_ —
+or the provider simply answers nothing for that one mode. `refusedFor` sees only the ceiling, and
+`warmingFor` goes false the moment the day stops asking, so that leg fell through the same floor and
+vanished the same way. It is §AM10's original field report (_"I changed a drive to a walk and the
+route simply disappeared"_) with the half nobody had reached. One rule closes both, and the next
+member of the class arrives already fixed.
+
+**Ranked last of the four**, below `DECLARED`, `TOO_FAR` and `WARMING`, each of which is a more
+specific statement about the same silence. It claims nothing else: no leave-by (a departure counted
+back from ⁦12⁩ seconds is the late mark firing over the time it takes to cross a car park — the very
+noise the floor exists to stop), and no correction to the hole, so the free-time strip below reads
+the whole hole exactly as it did before the pick. The half-minute at stake is invisible once that
+strip rounds to minutes.
+
+### AW2. The words are the arm's one branch, and they are chosen from what the app HAS
+
+`UNTIMED` is the only arm whose sentence is not fixed, because two states reach it and they know
+different things:
+
+- **Under the floor** → **`פחות מדקה`**. The app measured this leg; what it cannot do is round the
+  answer to a rung. Borrowing `noEstimate` would claim we never measured it, and `~0 דק׳` is the
+  value the floor was written to refuse. No `~` — §D5's hedge belongs on a number, and `פחות` is
+  already the hedge.
+- **No estimate at all** → **`בלי הערכת זמן`**, the declaration's own sentence, which is true here
+  for a different reason and needs no second wording.
+
+Neutral tone and no `warn` glyph in both: there is nothing wrong with this leg. §AK's mark stays
+claimed for "this journey does not fit".
+
+### AW3. `legModeOverride`, because "what mode is it" cannot answer "who said so"
+
+`legTravelMode` puts the derivation behind the override, which is what makes a leg's mode one
+answer — and makes a derived drive and a declared drive **identical** at every call site. The new
+read needs the other question, so the override lookup is extracted rather than copied:
+`legModeOverride` is the loop (newest row wins, canonicalised pair) and `legTravelMode` is now three
+lines over it. `DayTravelReads.chosenFor` asks it, and both day surfaces pass the answer through as
+`chosen`.
+
+**It is the presence of the ROW, deliberately, and not `modeFor !== defaultModeFor`.** Since §AU2
+the default moves with the distance, so an override can come to agree with it — and it is still a
+row somebody wrote, still held against a later change, and still only clearable through the control
+the block carries.
+
+### AW4. What guards it
+
+- `lib/day-joins.test.ts` — the floor still deletes a hop nobody chose; the same hop renders
+  `UNTIMED` once somebody did; the distance survives and the duration does not; the arm yields to
+  all three flags above it; the day's header counts its kilometres and none of its minutes.
+- `ui/domain/DayJoinRow.test.tsx` — the row says `פחות מדקה`, keeps the distance, offers all four
+  chips, and borrows neither of the other two sentences.
+- `screens/DayView.travel.test.tsx` and `screens/PlanDay.travel.test.tsx` — **both** surfaces, which
+  is `frontend/CLAUDE.md`'s rule and §AM9's own lesson: the block stands with its disclosure once
+  the mode is picked, draws nothing where the app picked it, and advises no departure either way.
+- `packages/shared/src/routing.test.ts` — `legModeOverride` answers the same row `legTravelMode`
+  answers from, and answers `true` for an override that agrees with the default.
+
+### AW5. Still open
+
+- **The distance on a leg that never got an estimate.** `distanceFor` falls back to the crow only
+  for a declared or refused leg (§AA4/§AM10), so an `UNTIMED` leg reached by the no-estimate road
+  prints its mode and its sentence with no kilometres. Extending the fallback would put crow numbers
+  into the day's total for legs that never route, which is a decision about the header and not about
+  this row. Backlogged.

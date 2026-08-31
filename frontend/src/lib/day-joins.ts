@@ -296,6 +296,24 @@ export const DAY_JOURNEY_ARM = {
    *  about the PLAN in the same family as `OVERRUNS` — so it says the ceiling in words and takes
    *  the miss tone. It outranks the clock arms for the same reason `OVERRUNS` does. */
   TOO_FAR: 'too-far',
+  /** **A mode somebody CHOSE, with no length to print for it** (ADR-0206 §AW) — the fourth and
+   *  last of the arms that exist because the block is the only thing carrying the mode control.
+   *
+   *  Two states reach it and neither is an error: the journey is **shorter than the ladder can
+   *  name** (a ⁦50 m⁩ drive answers ⁦12⁩ seconds, and ADR-0114's minutes rung rounds that to
+   *  nothing), or **no estimate arrived at all** and none is coming — the server's own gate refused
+   *  the mode for a reason `refusedFor` cannot reproduce (`sameClusterOnly` against a point missing
+   *  from the cluster set), or the provider simply answered nothing for it.
+   *
+   *  **It is keyed on the CHOICE, not on the cause**, and that is the whole of the fix: the report
+   *  was a ⁦1⁩-minute walk switched to a drive, whose row then disappeared with the control that had
+   *  set it (field report, 2026-08-31). §AM10 had already answered the ceiling case and §AU1 the
+   *  pending one; stating the rule over "somebody picked this" closes the rest of the class instead
+   *  of waiting for its next member. A leg nobody chose keeps the 2026-08-26 floor exactly: a ⁦20m⁩
+   *  hop the app called a walk on its own has nothing to say and says nothing.
+   *
+   *  Neutral tone, like `DECLARED`: there is nothing wrong with the leg. */
+  UNTIMED: 'untimed',
 } as const;
 export type DayJourneyArm = (typeof DAY_JOURNEY_ARM)[keyof typeof DAY_JOURNEY_ARM];
 
@@ -423,6 +441,13 @@ export function dayJourney(input: {
    *  only one of them that is temporary: a declared leg is never asked and a refused one is never
    *  coming, so either of those being true makes this one irrelevant rather than merely lower. */
   warming?: boolean;
+  /** **Somebody PICKED this leg's mode** (ADR-0206 §AW) — `DayTravelReads.chosenFor`, which is the
+   *  presence of an override row and not a guess from the mode word.
+   *
+   *  It does not select an arm on its own. What it does is disarm the sub-minute floor below, which
+   *  deletes the whole hole — and with it the only control that can undo the pick. Read the
+   *  `UNTIMED` arm for why the rule is stated over the choice rather than over each cause. */
+  chosen?: boolean;
 }): DayJourney | null {
   const { departAfterMs, arriveByMs, travelSeconds, nowMs, onWay, claimDenied } = input;
   // **A declared leg is a journey with no duration, not an absent journey** (ADR-0206 §AA4). It
@@ -493,8 +518,35 @@ export function dayJourney(input: {
   // `אין זמן לדרך` — a warning about the time it takes to walk out of a door. The floor is the
   // display's own: below half a minute ADR-0114's minutes rung rounds to nothing, and a block
   // whose head cannot name a length has nothing to say.
-  if (travelSeconds === null || !Number.isFinite(travelSeconds)) return null;
-  if (Math.round(travelSeconds / SECONDS_PER_MINUTE) < 1) return null;
+  //
+  // **Unless somebody chose this mode, in which case the block is the last thing that may vanish**
+  // (§AW). The floor is a NOISE rule and noise is only noise when nobody asked: the same ⁦50 m⁩ hop
+  // reads ⁦1 דק׳⁩ as a walk and answers ⁦12⁩ seconds as a drive, so picking the drive deleted the row
+  // and the control that had picked it. Same position and the same argument as the three flags
+  // above — the difference is that this one bails on a number it HAS.
+  const stated = travelSeconds !== null && Number.isFinite(travelSeconds) ? travelSeconds : null;
+  if (stated === null || Math.round(stated / SECONDS_PER_MINUTE) < 1) {
+    if (!input.chosen) return null;
+    return {
+      arm: DAY_JOURNEY_ARM.UNTIMED,
+      // **Null even where there is a number**, which is the arm's own definition rather than a
+      // loss: the row cannot name it, and the day's total reads these journeys (`dayTravelTotal`),
+      // so counting seconds no row accounts for is how a header stops agreeing with its list
+      // (§AP2). The seconds in question round to nought minutes anyway.
+      travelSeconds: null,
+      distanceMeters: input.distanceMeters ?? null,
+      leaveByMs: null,
+      // A departure counted back from ⁦12⁩ seconds is the `PASSED` mark firing over the time it
+      // takes to cross a car park — the very noise the floor was added to stop. And no correction
+      // to the hole: §V1.1's rule, and the half-minute at stake is invisible once the free-time
+      // strip rounds to minutes.
+      free: null,
+      overrunSeconds: null,
+      arriveAtMs: null,
+      arrivesAfterClose: false,
+      remainingSeconds: null,
+    };
+  }
   if (!Number.isFinite(arriveByMs)) return null;
   const measurableFrom = departAfterMs !== undefined && Number.isFinite(departAfterMs);
   // **The clamp is `heroLeaveBy`'s now** (ADR-0206 §AJ3): it was implemented here and nowhere
@@ -502,7 +554,7 @@ export function dayJourney(input: {
   // for a departure this surface was correctly printing as the origin's own end.
   const leave = heroLeaveBy({
     arriveByMs,
-    travelSeconds,
+    travelSeconds: stated,
     nowMs,
     ...(measurableFrom ? { departAfterMs: departAfterMs! } : {}),
   });
@@ -527,7 +579,7 @@ export function dayJourney(input: {
   // same structural absence the day's first leg out of a bed reports (§AF3), for the same reason.
   const free =
     measurableFrom && deadlineMs !== undefined
-      ? freeAfterTravel(departAfterMs!, deadlineMs, travelSeconds)
+      ? freeAfterTravel(departAfterMs!, deadlineMs, stated)
       : null;
   /**
    * **WHETHER THE APP WILL ADVISE A DEPARTURE AT ALL** — an EXACT start is the only deadline it
@@ -577,13 +629,13 @@ export function dayJourney(input: {
    * The one arm that must still withhold it is `claimDenied`, below.
    */
   const goesAtMs = leaveByMs ?? (measurableFrom ? departAfterMs! : null);
-  const arriveAt = goesAtMs === null ? null : goesAtMs + travelSeconds * MS_PER_SECOND;
+  const arriveAt = goesAtMs === null ? null : goesAtMs + stated * MS_PER_SECOND;
   // The same rounding `heroLeaveBy` phases on, asked of the clamped instant — which is what
   // `leave.phase` is keyed to since §AJ3 moved the clamp there. Kept local only because this must
   // also be false wherever the app states no departure at all (`statesLeaveBy`).
   const departurePassed = leaveByMs !== null && Math.round((leaveByMs - nowMs) / MS_PER_MINUTE) < 0;
   const measurement = {
-    travelSeconds,
+    travelSeconds: stated,
     distanceMeters: input.distanceMeters ?? null,
     free,
     remainingSeconds: null,

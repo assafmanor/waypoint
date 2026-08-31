@@ -455,7 +455,13 @@ export function JourneyRow({
    *  `TOO_FAR` were the only two arms carrying one, and would now label a leg the server is still
    *  computing as one nobody is estimating. */
   const warming = journey.arm === DAY_JOURNEY_ARM.WARMING;
-  const declared = !tooFar && !warming && (!isRoutableMode(travelMode) || seconds === null);
+  /** **And the FOURTH is that the app has a number the ladder cannot name** (ADR-0206 §AW) — or no
+   *  number at all for a mode somebody picked anyway. Read off the arm for `tooFar`'s exact reason,
+   *  and before `declared` below for `warming`'s: that line infers a declaration from the absent
+   *  duration, and would label a ⁦50 m⁩ drive somebody chose as a leg nobody is estimating. */
+  const untimed = journey.arm === DAY_JOURNEY_ARM.UNTIMED;
+  const declared =
+    !tooFar && !warming && !untimed && (!isRoutableMode(travelMode) || seconds === null);
   return (
     <JourneyBlock
       mode={t.travelMode[travelMode]}
@@ -485,9 +491,19 @@ export function JourneyRow({
           ? t.travel.tooFarFor(t.travelMode[travelMode])
           : warming
             ? t.travel.computing
-            : declared
-              ? t.travel.noEstimate
-              : journeyMetaLine(journey, zones)
+            : // **The one arm whose words are chosen from the DISTANCE, not from the arm** (§AW).
+              // Under the ladder's floor the app knows the length and simply cannot round it to a
+              // rung, which `underMinute` says; with no estimate at all it is the declaration's own
+              // absence, reached by a different road, and `noEstimate` is already the sentence for
+              // it. Two states, one arm, because what the row must do — stand, and carry the
+              // control — is the same for both.
+              untimed
+              ? journey.distanceMeters === null
+                ? t.travel.noEstimate
+                : t.travel.underMinute
+              : declared
+                ? t.travel.noEstimate
+                : journeyMetaLine(journey, zones)
       }
       tone={
         // An overrun is a negative status about the plan, so it takes §D7's own paint — the same

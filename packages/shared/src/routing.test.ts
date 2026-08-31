@@ -35,6 +35,7 @@ import {
   admittedTravelModes,
   decodePolyline,
   decodeShape,
+  legModeOverride,
   legTravelMode,
   travelOverrideKey,
   travelOverridePair,
@@ -527,6 +528,34 @@ describe('the per-leg travel mode', () => {
     expect(legTravelMode([...both].reverse(), 'p-a', 'p-b', TRAVEL_MODE.WALKING)).toBe(
       TRANSIT_LEG_MODE,
     );
+  });
+
+  // **WHO decided, which `legTravelMode` cannot answer** (ADR-0206 §AW): its fallback makes a
+  // derived mode and a declared one identical, and a mode a PERSON picked has to stay reversible
+  // on the surface they picked it on. Same lookup, so the two answers cannot disagree about which
+  // row wins.
+  it('says whether a person picked the mode, not merely what it is', () => {
+    const declared = [row(TRAVEL_MODE.DRIVING)];
+    expect(legModeOverride(declared, 'p-a', 'p-b')?.mode).toBe(TRAVEL_MODE.DRIVING);
+    expect(legModeOverride(declared, 'p-b', 'p-a')?.mode).toBe(TRAVEL_MODE.DRIVING);
+    expect(legModeOverride([], 'p-a', 'p-b')).toBeUndefined();
+    expect(legModeOverride(declared, 'p-a', 'p-c')).toBeUndefined();
+    expect(legModeOverride(declared, undefined, 'p-b')).toBeUndefined();
+    // A row that says what the derivation says is still a row somebody wrote, and clearing it
+    // needs the control the block carries.
+    expect(
+      legTravelMode(declared, 'p-a', 'p-b', TRAVEL_MODE.DRIVING) === TRAVEL_MODE.DRIVING &&
+        legModeOverride(declared, 'p-a', 'p-b') !== undefined,
+    ).toBe(true);
+  });
+
+  it('resolves to the same row `legTravelMode` answers from', () => {
+    const both = [
+      row(TRAVEL_MODE.CYCLING, { id: 'old', updatedAt: '2026-08-01T00:00:00.000Z' }),
+      row(TRANSIT_LEG_MODE, { id: 'new', updatedAt: '2026-08-02T00:00:00.000Z' }),
+    ];
+    expect(legModeOverride(both, 'p-a', 'p-b')?.id).toBe('new');
+    expect(legModeOverride([...both].reverse(), 'p-a', 'p-b')?.id).toBe('new');
   });
 });
 

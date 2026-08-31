@@ -697,6 +697,25 @@ trip whose legs are routinely near them — the Iceland day that produced two of
 legs long enough that framing a leg is refused more often than it fires, which is a device-pass
 question and not a code one.
 
+## The transit row vanished for the third time, on its third cause (owner report, 2026-08-31)
+
+- **Fixed, and the fix is the class rather than the case** — [ADR-0206](decisions/0206-a-travel-time-belongs-between-two-points.md)
+  §AW. A ⁦50 m⁩ leg reading `הליכה · ~1 דק׳` was switched to `נסיעה`, which answers ⁦12⁩ seconds over
+  the same distance; the 2026-08-26 sub-minute floor rounded that to nought minutes and deleted the
+  journey, and the mode control lives on the journey. The owner named the class themselves
+  (_"that happened before on different causes"_): this is the **third** disappearance of one row on
+  its third cause, after §AM6's declaration and §AM10's ceiling. So the new `UNTIMED` arm is keyed
+  on **somebody having picked the mode**, not on the sub-minute number — which also closes the
+  member nobody had reached, a chosen mode the SERVER's gate refused (`sameClusterOnly` against a
+  point missing from the cluster set) and that therefore had no estimate and no ceiling to blame.
+  **The class:** a floor that suppresses noise must ask who made the noise; the app's own guess and
+  a person's choice are not the same input, and the surface that took the choice owes the way back.
+- **What is left is the distance on a leg that never routed** (§AW5). `distanceFor` gives the crow
+  only to a declared or refused leg, so an `UNTIMED` leg reached by the no-estimate road prints its
+  mode and its sentence with no kilometres. Widening that fallback puts crow numbers into the day's
+  header for legs that never route, which is a decision about the total (§AP2's "the header counts
+  what the list shows") and not about this row.
+
 ## Agent tooling
 
 - **Nothing enforces the skill pins** ([ADR-0201](decisions/0201-vendored-skills-are-advice-and-they-are-pinned.md), 2026-08-21) — `node .claude/vendor/sync-skills.mjs --check` exists and exits 1 when `.claude/skills` has drifted from `skills.json`, and nothing runs it. The failure it guards is quiet: someone edits a vendored skill in place to fix one sentence, the next `--bump` reverts it, and the reason the edit existed is gone. `.claude/**` is outside `pnpm format`/`lint` (`.prettierignore`), so this needs its own CI step rather than a hook onto an existing one. Cheap, and worth waiting until the pins have actually been bumped once — the check is only as useful as the update habit it protects.

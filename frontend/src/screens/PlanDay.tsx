@@ -576,6 +576,10 @@ export function PlanDay() {
       // because the block is what tells the reader a route is coming and what carries the control
       // that would pick a different mode for it. Ranked last of the three by `dayJourney` itself.
       warming: planTravel.warmingFor(from, to),
+      // …and the fourth is a mode somebody PICKED, whose block must stand even where the ladder
+      // cannot name the length (ADR-0206 §AW) — here for the reason it is in Trip mode, and here
+      // rather than only there for the reason every line above says twice.
+      chosen: planTravel.chosenFor(from, to),
       nowMs: now.getTime(),
     });
   };
