@@ -19,6 +19,7 @@ import {
   type SharedItinerary,
 } from '@waypoint/shared';
 import { t } from '../src/i18n/he';
+import { stableBox } from './measure';
 
 const CODE = '7Kq2mB9x';
 const PHONES = [
@@ -373,17 +374,26 @@ test('the reader lands on the day the trip is on, with the day before peeking ab
    * and a reader who lands mid-document has no masthead to tell them which day this is. The
    * gap above it is the row's own `scroll-margin-block-start`, so the bound measures the
    * stylesheet rather than restating its number.
+   *
+   * **And `stableBox` inside the retry, because the two answer different questions.**
+   * `stableBox` absorbs a `boundingBox()` that returns `null` for a node a render detached
+   * mid-call — `frontend/CLAUDE.md`'s trap, and this surface re-renders on the clock as well
+   * as on every re-aim, so it is exactly the case that helper exists for. It also bounds each
+   * attempt, which matters because a bare `boundingBox()` inherits `actionTimeout: 0` and a
+   * locator that never resolves hangs to the test timeout naming no element. What it cannot
+   * do is wait for an EASED SCROLL to arrive where it is going; that is the outer `toPass`.
+   * Nested deliberately: node-replacement is not scroll-settling.
    */
   await expect(async () => {
-    const box = await today.locator('.sh-day-head').boundingBox();
-    expect(box!.y).toBeGreaterThan(0);
-    expect(box!.y).toBeLessThan(60);
+    const box = await stableBox(today.locator('.sh-day-head'));
+    expect(box.y).toBeGreaterThan(0);
+    expect(box.y).toBeLessThan(60);
     // It really did have to move: a page that happened to open there proves nothing.
     expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
     // And the day before is still a visible sliver, which is what the peek is for — a reader
     // must be able to see there is history above them without reading it.
-    const previous = await page.locator('.sh-day').nth(2).boundingBox();
-    expect(previous!.y + previous!.height).toBeGreaterThan(0);
+    const previous = await stableBox(page.locator('.sh-day').nth(2));
+    expect(previous.y + previous.height).toBeGreaterThan(0);
   }).toPass();
 
   // Nothing was marked past-or-future by accident: three days behind, ten ahead.
