@@ -1,10 +1,10 @@
 # What Home says about tomorrow when today is done — five options and a recommendation
 
 **Date:** 2026-08-31
-**Mockups:** [`tomorrow-lookahead-v1.html`](../../mockups/tomorrow-lookahead-v1.html) (the five
-options) and [`tomorrow-lookahead-v2.html`](../../mockups/tomorrow-lookahead-v2.html) (**the live
-answer** — v1's recommendation reworked on the owner's correction; read "Round two" at the foot
-first).
+**Mockups:** [`v1`](../../mockups/tomorrow-lookahead-v1.html) (the five options),
+[`v2`](../../mockups/tomorrow-lookahead-v2.html) (the hierarchy, on the owner's first correction) and
+[`v3`](../../mockups/tomorrow-lookahead-v3.html) (**the edge cases, and the live drawing of the
+ribbon**). Read the rounds at the foot in order; each answers a correction on the one before it.
 **Status:** drawn, rendered and measured; **nothing decided and nothing built.** Round one answered
 the ask with one recommendation and four rejections. Round two is the owner's correction on that
 drawing — _"some parts are packed with too much info and everything is represented on the same level
@@ -257,3 +257,96 @@ The forks list above stands with two changes: **the `מוקדם` tag is withdraw
 and `עצירות` as the count's noun (fork 4) now only appears inside the lift's `ליום של מחר` button,
 where it has room. Everything else — the recommendation as a whole, the ribbon's marks, `סוף הטיול`
 for the last night, and the travel line's missing day token — is still the owner's to answer.
+
+## Round three — the edge cases, and the one thing v2 drew wrong
+
+> We also have to make sure that we're not falling into the traps of edge cases like overlapping
+> events etc. They shouldn't run over each other (visually and logically), shouldn't overpack the
+> area again. And that applies to busy days as well, or short events that are close in time. This has
+> to stay minimalistic and not too busy.
+
+Drawn in [`mockups/tomorrow-lookahead-v3.html`](../../mockups/tomorrow-lookahead-v3.html).
+
+### Half of it is already free, and a probe said so rather than a reading
+
+Six hard days through the real `buildDayGlance`. Its segments are the containment forest's **roots**
+(ADR-0041), not raw events, so:
+
+| case                                            | what comes back                                                         |
+| ----------------------------------------------- | ----------------------------------------------------------------------- |
+| ⁦10:00–12:00⁩ + ⁦11:00–13:00⁩ (partial overlap) | **one** seg · composite · `clusterLike` · `count: 2`                    |
+| ⁦10:00–14:00⁩ containing ⁦11:00–12:00⁩          | **one** seg · envelope · `count: 1`                                     |
+| three events starting on the same minute        | **one** seg · `count: 2` · **`showCount: false`**                       |
+| a twelve-item day                               | ⁦12⁩ segs · **⁦0⁩ overlaps** · **two pairs sharing a boundary exactly** |
+| a zero-length event + a start-only one          | a zero-**width** seg (`point: false`) and a `point: true` one           |
+| a tail across midnight                          | `endFrac` clamps to ⁦1⁩ · `nextDay: true`                               |
+
+So "logically they must not run over each other" is inherited: the ribbon draws segments, and two
+events cannot be two segments if they overlap. What is **not** inherited is the drawing at ⁦3px⁩ of
+track — adjacency below a pixel, marks that collide, and that zero-width block.
+
+### Five rules, each with the case that forced it
+
+1. **A block has a floor of ⁦4px⁩** — `.seg.point`'s own value, not a new number. A ⁦15⁩-minute event is
+   ⁦4.5px⁩ of a ⁦290px⁩ track; the floor is what stops the short things being the ones that vanish, and
+   it is also what draws the zero-width block at all.
+2. **Adjacent blocks keep a ⁦1px⁩ hairline of the board's own ground** — a `box-shadow`, not a
+   `margin`, because a margin moves a block off the time it represents and the position is the datum.
+   Probe D is why: two pairs share a boundary exactly, and **the shipped ⁦14px⁩ rail has no separator
+   at all**, so it draws them today as one continuous bar. That defect is the app's, not the
+   drawing's; it is now a backlog line rather than a change here.
+3. **The cue is a halo on the block, and v2's circle is withdrawn.** Two reasons, and the first is
+   semantic: `.wp-board-progress .knob` is the rail's **now** marker — you are here — and a future
+   day has no now, which is exactly why `buildDayGlance` returns `nowFrac: null` for one. The second
+   is that §3's assertion caught the halo's first draft (a ⁦3px⁩ spread in every direction) **reaching
+   a neighbouring block on two of the six days**. So the halo is now vertical: a shadow offset on the
+   block axis with no spread copies the box up and down and never sideways, so it cannot touch
+   anything by construction. It reads better too — the block the title names is the thicker one,
+   which is a rank rather than an ornament.
+4. **Marks thin, they never stack.** ADR-0077's answer to colliding pills is a lane band, and a lane
+   costs height on every busy day — the thing the correction forbids. The precedent that fits is one
+   layer down and already shipped: `GlanceSeg.showCount` **drops the number** on a too-narrow
+   composite rather than finding it room. Same move, two passes — and merging them into one is a
+   mistake this file made and §3 caught: a cap of ⁦5⁩ became a ⁦1/5⁩ spacing across the whole window, so
+   a day whose five stops sit inside three hours kept **one** mark. A cap limits a count; it says
+   nothing about spacing. So pass 1 is the collision rule (`MARK_MIN_PX = 16` over the **narrowest**
+   track, ⁦290px⁩ ≈ ⁦55⁩ minutes) and pass 2 samples that set evenly to the cap, always keeping the
+   first (the block the title names) and the last (the evening, which "keep the first N" drops).
+5. **A midnight tail fades at the trailing edge** instead of carrying the rail's `+1` chip: shape
+   rather than text, ⁦0px⁩ of height, on a surface nine runs were just removed from.
+
+### Measured, and the assertion is the point
+
+§3 compares **every pair of rendered boxes** — `getBoundingClientRect`, not reasoning — for all six
+days, and reports blocks-touching, marks-touching and halo-reaching-a-foreign-block. Across all four
+theme × width combinations: **⁦0⁩ · ⁦0⁩ · ⁦0⁩**. The thinning is identical in all four too
+(⁦3→3⁩ · ⁦4→4⁩ · ⁦12→5⁩ · ⁦5→3⁩ · ⁦3→3⁩ · ⁦2→2⁩), which is the measured form of the rule that the mark set
+is computed for the narrowest track: one day reads the same on both phones.
+
+And the height answer is better than v2 could claim:
+
+|                                                              |                     |
+| ------------------------------------------------------------ | ------------------- |
+| the ribbon, on a day the bed does not move                   | **⁦23px⁩**          |
+| **the day rail it replaces**, measured live in the same file | **⁦23px⁩**          |
+| the ribbon when the bed moves (the `לינה` line)              | ⁦45px⁩              |
+| a ⁦2⁩-item day and a ⁦12⁩-item day                           | **the same height** |
+| narrowest block on any of the six days                       | ⁦4px⁩ (the floor)   |
+
+So on the common day the shape costs **nothing at all** — it is the rail's own ⁦23px⁩, to the pixel —
+and the ⁦22px⁩ the bed line adds is the one case where tomorrow ends somewhere new.
+
+### Two defects in the app, found by probing and deliberately not fixed here
+
+Both are backlog lines now, because neither belongs to this design:
+
+- **The glance rail draws back-to-back events as one bar.** `.seg` carries `min-width: 6px` and no
+  separator, and `buildDayGlance` returns adjacent events as segments sharing a boundary.
+- **A zero-length event is invisible on the rail.** `endsAt === startsAt` reports `point: false` with
+  zero width, so `.seg.point`'s ⁦4px⁩ tick never applies to it.
+
+### What round three leaves open
+
+The marks cap (⁦4⁩ · ⁦5⁩ · ⁦6⁩ · off, shipped at ⁦5⁩) and `MARK_MIN_PX` are device reads, not screenshot
+reads — both look right here and both are the kind of number a real phone settles better. Everything
+else from the earlier rounds stands.
