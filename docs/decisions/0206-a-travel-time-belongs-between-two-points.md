@@ -3484,3 +3484,79 @@ the block carries.
   prints its mode and its sentence with no kilometres. Extending the fallback would put crow numbers
   into the day's total for legs that never route, which is a decision about the header and not about
   this row. Backlogged.
+
+## AJ4. Amendment (2026-08-31) — the hole reads in order, and its clock is a ceiling
+
+Two reports from the owner about the same two lines, and one idea taken twice.
+
+> _"On the plan day and day view, there could be a gap between two events with transit between
+> them (driving, walking, etc.). As it is today, it first shows the transit row, then the gap +
+> שבץ button. This is the wrong order: the transit row shows 'take off at X to get on time', so
+> it only makes sense that slotting should be before it, before the takeoff time."_
+
+> _"When there's a gap before a journey, it could show `יציאה עד X` instead of the exact leaving
+> time."_
+
+Drawn and measured in [`free-time-comes-before-the-leave-by-v1.html`](../../mockups/free-time-comes-before-the-leave-by-v1.html)
+before either was coded. The file's proposed-CSS block is **empty**, which is the honest size of
+both changes.
+
+### AJ4.1. The free time comes first, because it ends where the journey begins
+
+§AH3 separated the strip from the journey block — the block is about the **leg**, the strip about
+the **hole** — and never asked which goes on top. The arithmetic already answers:
+`narrowGapForTravel` (Trip) and `travelFreeMinutes` (Plan) shrink the offer **by** the journey, so
+the window the strip states **ends at** the leave-by the block advises. Drawn in that order the
+hole reads as one sentence; drawn the other way the day offers a slot for time it has just said
+you must spend travelling.
+
+**Both surfaces**, because ADR-0159 §1 permits a difference in posture and forbids one about a
+fact. In Plan the order is also a claim about **where a drop lands**: `.gap`/`.bld-seam` carry
+`data-gap-key` and are what `gapAt` resolves a drag to, so above the block the seam means "here,
+then travel" and below it "travel, then here" — a position the day does not have.
+
+Measured at **0px**: no rule in `day-join.css` or `screens.css` keys on the two being siblings in
+either order, so this is a reorder of two JSX children. What the render also found is that Plan's
+seam is `display: none` at rest and `height: 0` during a drag (with a 22px `::after` target), so
+on that arm the change is a claim about DOM order and `elementFromPoint` rather than about pixels.
+
+### AJ4.2. `יציאה עד`, and the gate is the finding
+
+`leaveByMs` is `arriveByMs - travel - TRAVEL_BUFFER_SECONDS` — a ceiling by construction, and the
+third of [ADR-0171](0171-a-time-can-be-a-floor-or-a-ceiling.md)'s meanings, which this app already
+prints as `עד` everywhere else (`t.day.untilTime`). The row wrote it as a bare number, and a bare
+number on a schedule reads as an appointment.
+
+**It is gated, and not on free minutes.** §AJ2's clamp pulls the instant **forward** to
+`departAfterMs` when the buffer lands it behind the row it leaves from — so on that arm the number
+is the **earliest** departure that exists (§AJ2's own `יציאה 14:00 · הגעה ~14:58` on a hard 15:00
+start) and `עד` would be **false** rather than merely redundant. That settles "always or only with
+a gap" on correctness rather than taste.
+
+The predicate is therefore **"was it clamped?"**, never `free.freeSeconds > 0`:
+
+- the day's first leg out of an ambient stay has no `departAfterMs` at all (§AD/§AF3), so its
+  `free` is `null` rather than zero — a free-minutes test would strip the word from the leg read
+  first every morning, while its instant is a pure ceiling;
+- the clamp fires when the slack is under `TRAVEL_BUFFER_SECONDS`, not when it is zero, so the two
+  predicates do not even agree with each other;
+- and `heroLeaveBy` already computed the comparison and threw it away.
+
+So it returns `clamped`, `DayJourney` carries it as `leaveByIsFloor`, and `journeyMetaLine` picks
+`leaveByDay`/`leaveByThenArrive` over `leaveAtDay`/`leaveThenArrive`. One boolean along a chain
+that already exists, and both surfaces keep reading one function — which is what §AJ3 was for.
+
+**Untouched:** the hero's imperative `צאו ב־` (§D10's noun-vs-instruction split), `leavePassed`
+(which already says the time **went by**, so it has no ceiling to declare), and the `OVERRUNS`,
+`PAST` and `ON_WAY` arms, none of which prints a leave-by at all.
+
+**Measured:** the word costs ⁦15px⁩ of ink (⁦70px⁩ against ⁦55px⁩) in a ⁦165px⁩ box at 360 — well inside
+the ⁦153.03px⁩ these lines were shortened to in §AH4.
+
+### AJ4.3. What was rejected
+
+- **`עד` on every arm.** Consistent on its face, and false on the clamped one. The counter-argument
+  ("two adjacent holes reading differently for an invisible reason") dissolves under the right
+  predicate: they genuinely are two facts, one naming the latest moment and one the earliest.
+- **A shortened form** (`≤15:12`, an arrow). A glyph the reader decodes is not a saving, and it
+  would not have stayed consistent with the same word arriving on the shared renderers this session.

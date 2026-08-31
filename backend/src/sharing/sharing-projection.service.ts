@@ -16,7 +16,10 @@ import {
   routeLegKey,
   shareDaypart,
   sharePreviousNight,
+  edgeMeaning,
   shareTimeLabel,
+  TIME_MEANING,
+  type SharedTime,
   sharedItinerarySchema,
   tripZoneCrossings,
   zoneOffsetAt,
@@ -526,6 +529,116 @@ const routeTitle = (from: string, to: string): string => `${from}${ROUTE_ARROW}$
 const stripUndefined = <T extends object>(value: T): T =>
   Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as T;
 
+/**
+ * **WHAT A ROW'S CLOCK MEANS** (ADR-0213's 2026-08-31 amendment §1) — `edgeMeaning`'s answer,
+ * turned into the labels a renderer prints.
+ *
+ * The rule this replaces was `event.hard`, which is ADR-0011's COMMITMENT axis answering a
+ * question about MEANING. Two consequences it had, both fixed here rather than exposed: a
+ * soft two-hour hike lost its end on paper while keeping it on the phone, and a multi-day
+ * car hire — hard, because a booking backs it — printed `10:00–18:00` for a week, the same
+ * reversed range that got stays pulled out of the schedule.
+ *
+ * `edgeMeaning` is asked of the START edge, because the row is placed on the day its start
+ * falls in (`groupByDay`) and it is that edge the reader is looking at. A `held` span's far
+ * end is a different day's fact, so it is deliberately NOT printed as the other half of a
+ * range — which is exactly the defect above.
+ */
+function sharedTimeOf(event: ShareEventRow, zone: string): SharedTime | undefined {
+  if (!event.startsAt) return undefined;
+  const label = shareTimeLabel(event.startsAt, zone);
+  const meaning = edgeMeaning(
+    {
+      // Prisma's columns are nullable and `TripEvent`'s fields are optional, which is the
+      // same absence spelled two ways — `?? undefined` is the seam every other reader here
+      // crosses too.
+      category: (event.category as EventCategory | null) ?? undefined,
+      icon: event.icon ?? undefined,
+      startWindowEnd: event.startWindowEnd?.toISOString(),
+      endWindowStart: event.endWindowStart?.toISOString(),
+    },
+    'start',
+  );
+  if (meaning === TIME_MEANING.WINDOW) {
+    // Both bounds authored, so both print — and this is the ONE case where the second label
+    // is the window's own ceiling rather than the event's `endsAt`.
+    const ceiling = event.startWindowEnd ? shareTimeLabel(event.startWindowEnd, zone) : undefined;
+    return ceiling && ceiling !== label
+      ? { label, endLabel: ceiling, meaning }
+      : { label, meaning };
+  }
+  if (meaning === TIME_MEANING.NOT_BEFORE) return { label, meaning };
+  // `exact`: the end prints when there is one and it differs — a flight's arrival, a hike's
+  // finish. No `hard` gate, which is the change.
+  const endLabel = event.endsAt ? shareTimeLabel(event.endsAt, zone) : undefined;
+  return endLabel && endLabel !== label
+    ? { label, endLabel, meaning: TIME_MEANING.EXACT }
+    : { label, meaning: TIME_MEANING.EXACT };
+}
+
+/**
+ * **THE TWO MOMENTS A DAY'S STAY HAS** (ADR-0213's 2026-08-31 amendment §2).
+ *
+ * A check-in window is the commonest flexible time this app holds, and sharing showed it
+ * nowhere: the fourth amendment moved the stay out of the schedule and into `day.stay`, a
+ * name with no clock — for the good reason that as a ROW it sorted into the afternoon by its
+ * check-in hour and printed `15:00–11:00` across midnight. So the two moments come back to
+ * the day's FRAME rather than to the schedule, which is the one place a stay still exists.
+ *
+ * `checkIn` belongs to the day the run BEGINS: a middle night has no arrival. `checkOut`
+ * belongs to the day after the run ends and names the place being left, which on a transfer
+ * day is not the place the frame names — hence its own `place`.
+ *
+ * Both are read through `sharedTimeOf`, so a hotel with an authored window prints
+ * `17:00–21:00` and one with only a floor prints `מ-15:00`, exactly as a row would.
+ */
+function stayMoments(
+  stayRows: readonly (ShareEventRow | undefined)[],
+  stays: readonly (string | undefined)[],
+  index: number,
+  detail: ShareDetailLevel,
+  zones: TripZoneContext,
+): { checkIn?: SharedTime; checkOut?: { place: string; time: SharedTime } } {
+  // Summary carries no clock at all — the same line `projectEvent` draws.
+  if (detail === SHARE_DETAIL_LEVEL.SUMMARY) return {};
+  const out: { checkIn?: SharedTime; checkOut?: { place: string; time: SharedTime } } = {};
+
+  const here = stayRows[index];
+  const previous = stays[index - 1];
+  // The run begins here: either nothing preceded it, or you slept somewhere else last night.
+  if (here && stays[index] !== previous) {
+    const time = sharedTimeOf(here, eventDisplayZone(here, zones));
+    if (time) out.checkIn = time;
+  }
+
+  // …and the night before ended, so this morning you left it. Read off THAT row's own end,
+  // which is the check-out instant — never off today's stay, whose end is days away.
+  const left = stayRows[index - 1];
+  if (previous && previous !== stays[index] && left?.endsAt) {
+    const zone = eventDisplayZone(left, zones);
+    const meaning = edgeMeaning(
+      {
+        category: (left.category as EventCategory | null) ?? undefined,
+        icon: left.icon ?? undefined,
+        startWindowEnd: left.startWindowEnd?.toISOString(),
+        endWindowStart: left.endWindowStart?.toISOString(),
+      },
+      'end',
+    );
+    const label = shareTimeLabel(left.endsAt, zone);
+    out.checkOut = {
+      place: previous,
+      time:
+        meaning === TIME_MEANING.WINDOW && left.endWindowStart
+          ? // A closed window on the OUT edge opens at `endWindowStart` and shuts at the
+            // check-out itself — the earliest you may leave and the latest, in that order.
+            { label: shareTimeLabel(left.endWindowStart, zone), endLabel: label, meaning }
+          : { label, meaning },
+    };
+  }
+  return out;
+}
+
 /** **Is this event a way of getting somewhere, rather than somewhere to be?** Asked of the
  *  booking first, because a booking states its type, and of the category only for an event
  *  no booking backs. Both vocabularies already exist and `BOOKING_TYPE_TO_CATEGORY` maps
@@ -719,11 +832,18 @@ export class SharingProjectionService {
     // 2026-08-30, reading `רייקיאוויק ← סנייפלסנס`: _"it is actually a circumnavigation
     // (טיול מתגלגל maybe), where you switch locations every day … Then there's טיול כוכב
     // where you stay at one place"_.
-    const stays = byDay.map(({ events: dayEvents }) =>
-      dayEvents
-        .filter((event) => event.booking?.type === BOOKING_TYPE.HOTEL)
-        .map((event) => placeLabel(event.place) ?? event.title)
-        .find(Boolean),
+    /** The lodging row a day is framed by, kept whole — the label for the frame, and the
+     *  event itself so the day can also state the two moments it has (2026-08-31 amendment
+     *  §2). It used to map straight to a string, which is why a check-in window could not be
+     *  projected: the row it lives on had already been thrown away. */
+    const stayRows = byDay.map(({ events: dayEvents }) =>
+      dayEvents.find(
+        (event) =>
+          event.booking?.type === BOOKING_TYPE.HOTEL && (placeLabel(event.place) || event.title),
+      ),
+    );
+    const stays = stayRows.map((event) =>
+      event ? (placeLabel(event.place) ?? event.title) : undefined,
     );
     const shape = tripShapeOf(stays);
 
@@ -788,6 +908,7 @@ export class SharingProjectionService {
         ordinal: index + 1,
         date,
         stay: stays[index],
+        ...stayMoments(stayRows, stays, index, detail, zones),
         // **Absent freely**: a day whose stops clear no confidence gate gets no photo. Nine
         // days with pictures and three without reads as honest; three days showing the
         // wrong mountain destroys trust in the other nine.
@@ -1210,6 +1331,7 @@ export class SharingProjectionService {
       ...(rowOps.length > 0 ? { ops: rowOps } : {}),
       startLabel: event.startsAt ? shareTimeLabel(event.startsAt, zone) : undefined,
       endLabel: event.endsAt ? shareTimeLabel(event.endsAt, zone) : undefined,
+      ...(sharedTimeOf(event, zone) ? { time: sharedTimeOf(event, zone)! } : {}),
       ...(isTransport(event) ? travelFacts(event, placeById) : {}),
       placeName: label,
       address,

@@ -546,8 +546,12 @@ describe('JourneyRow — a departure, an arrival, or both (ADR-0206 §AI)', () =
         nowMs: AT('12:10'),
       }),
     );
+    // **`עד`, since 2026-08-31** (owner: _"when there's a gap before a journey, it could show
+    // `יציאה עד X`"_). Nothing clamped this instant, so it is `arriveByMs - travel - buffer`:
+    // the LAST moment you may go, which is ADR-0171's `not-after` and the word the app already
+    // prints for it.
     expect(withoutBidiControls(line)).toBe(
-      withoutBidiControls(t.travel.leaveThenArrive('13:55', '~14:35')),
+      withoutBidiControls(t.travel.leaveByThenArrive('13:55', '~14:35')),
     );
   });
 
@@ -566,6 +570,34 @@ describe('JourneyRow — a departure, an arrival, or both (ADR-0206 §AI)', () =
     expect(line).toContain('הגעה');
     // The clamp is the origin's end, not the buffered ⁦13:56⁩ §AI2 refused to print.
     expect(line).toContain('14:00');
+    // **AND IT KEEPS THE BARE NOUN** (2026-08-31). This is the arm the `עד` gate exists for:
+    // the instant IS `departAfterMs`, the EARLIEST departure that exists, so `יציאה עד 14:00`
+    // would say the opposite of what is true. Asserted as an absence, because the positive
+    // (`יציאה 14:00`) is a substring of the wrong sentence and would pass either way.
+    expect(withoutBidiControls(line)).not.toContain('עד');
+    expect(withoutBidiControls(line)).toBe(
+      withoutBidiControls(t.travel.leaveThenArrive('14:00', '~14:59')),
+    );
+  });
+
+  /**
+   * **The arm a `freeSeconds > 0` gate would get wrong** (2026-08-31), and the reason
+   * `leaveByIsFloor` reads `heroLeaveBy`'s clamp rather than the free window.
+   *
+   * The day's first leg out of the bed you woke in has no `departAfterMs` at all (ADR-0206
+   * §AD/§AF3), so `free` is `null` — not zero. Nothing can clamp it, so its leave-by is a pure
+   * ceiling and `עד` is exactly right; a free-minutes test would have stripped the word from
+   * the leg a reader sees first every morning.
+   */
+  it('says עד on the day’s first leg, which has no floor to be clamped to', () => {
+    const journey = dayJourney({
+      arriveByMs: AT('10:00'),
+      travelSeconds: 30 * 60,
+      nowMs: AT('07:00'),
+    });
+    expect(journey?.free).toBeNull();
+    expect(journey?.leaveByIsFloor).toBe(false);
+    expect(withoutBidiControls(meta(journey))).toContain('עד');
   });
 
   it('says the arrival alone where there is no deadline at all', () => {

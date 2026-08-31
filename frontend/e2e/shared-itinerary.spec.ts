@@ -16,6 +16,7 @@ import {
   SHARE_DETAIL_LEVEL,
   SHARE_OP_KIND,
   SHARE_TRIP_SHAPE,
+  TIME_MEANING,
   type SharedItinerary,
 } from '@waypoint/shared';
 import { t } from '../src/i18n/he';
@@ -100,6 +101,13 @@ const FULL: SharedItinerary = {
               daypart: SHARE_DAYPART.MORNING,
               hard: true,
               startLabel: '09:30',
+              // **What the ROW prints** (ADR-0213's 2026-08-31 amendment §1). `startLabel`
+              // is still projected — the journey header and its legs read it — but a row's
+              // clock now comes from `time`, so a stub carrying only the raw pair renders no
+              // hour at all. Reproduced by deleting this line: the `09:30` assertion below
+              // fails. It lives here rather than coming from the projection because this
+              // spec stubs the response.
+              time: { label: '09:30', meaning: TIME_MEANING.EXACT },
               placeName: 'Keflavík',
               address: 'Keflavíkurflugvöllur',
               mapUrl: 'https://www.google.com/maps/search/?api=1&query=Keflav%C3%ADk',

@@ -600,6 +600,25 @@ function journeyMetaLine(journey: DayJourney, zones: JourneyZones): string | und
   }
   const clock = ltrIsolate(formatTime(new Date(journey.leaveByMs), zones.depart));
   if (journey.arm === DAY_JOURNEY_ARM.PASSED) return t.travel.leavePassed(clock);
+  /**
+   * **A DEADLINE SAYS SO** (owner, 2026-08-31: _"when there's a gap before a journey, it
+   * could show `יציאה עד X` instead of the exact leaving time"_).
+   *
+   * `leaveByMs` is `arriveByMs - travel - buffer` — a ceiling by construction, and the third
+   * of ADR-0171's time meanings, which the app already prints as `עד` everywhere else
+   * (`t.day.untilTime`). The row wrote it as a bare number, and a bare number on a schedule
+   * reads as an appointment.
+   *
+   * **Except where the clamp made it a floor**, which is why this is gated at all and not
+   * simply reworded. §AJ2 pulls the instant FORWARD to the origin's own end when the buffer
+   * lands it behind the row you leave from, and there `14:00` is the EARLIEST departure that
+   * exists: `עד` would be false rather than redundant. `leaveByIsFloor` is `heroLeaveBy`'s
+   * own comparison, surfaced — **never `free.freeSeconds > 0`**, which reads backwards on the
+   * day's first leg out of an ambient stay: no floor to clamp to, so `free` is `null` rather
+   * than zero and the word would be stripped from the leg seen first every morning.
+   */
+  const until = !journey.leaveByIsFloor;
   // Both: the departure is the origin's own end and the arrival is why that matters.
-  return at === null ? t.travel.leaveAtDay(clock) : t.travel.leaveThenArrive(clock, at);
+  if (at === null) return until ? t.travel.leaveByDay(clock) : t.travel.leaveAtDay(clock);
+  return until ? t.travel.leaveByThenArrive(clock, at) : t.travel.leaveThenArrive(clock, at);
 }

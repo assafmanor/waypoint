@@ -9,12 +9,14 @@ import {
   SHARE_OP_KIND,
   shareTimeLabel,
   shareToday,
+  TIME_MEANING,
   type ShareOpKind,
   type SharedDay,
   type SharedDaySummary,
   type SharedDayTitle,
   type SharedEvent,
   type SharedOp,
+  type SharedTime,
   type SharedItinerary as SharedItineraryProjection,
 } from '@waypoint/shared';
 import { BOOKING_TYPE_MARK, DOWNLOAD_SETTLE_MS, GLYPH } from '../constants';
@@ -564,6 +566,7 @@ function DayCard({
           ) : (
             <span>{daySummaryText(day.summary)}</span>
           )}
+          <StayWhen day={day} />
         </span>
         <span className="sh-caret">
           <Icon name="caret" />
@@ -600,6 +603,79 @@ function DayCard({
       ) : null}
     </section>
   );
+}
+
+/**
+ * **A CLOCK THAT SAYS WHAT IT IS** (ADR-0213's 2026-08-31 amendment §1; owner: _"whenever
+ * there's a time range, we should display it. That also includes flexible times like
+ * starting from.. Or until..."_).
+ *
+ * The four arms are `edgeMeaning`'s (ADR-0184), resolved server-side so this page and the A4
+ * renderer cannot answer differently — which they already did: paper gated the second end on
+ * `event.hard` and this page never did, so a soft two-hour hike printed `10:00–12:00` here
+ * and `10:00` there.
+ *
+ * `מ-` and `עד` are the app's own words for a floor and a deadline (`t.day.fromTime` /
+ * `untilTime`); `share.public` keeps its own copy because a stranger never sees the app's
+ * dictionary, and the wording is identical because two words for one meaning is how two
+ * surfaces begin to disagree.
+ *
+ * One isolate around the whole run on a range — `09:20–14:05` reads left-to-right whole, and
+ * isolating each end would let the RTL flow put the arrival first — and around the CLOCK
+ * only where a Hebrew word leads, so the isolate islands the number rather than the phrase.
+ */
+/**
+ * **THE STAY'S TWO MOMENTS, AND WHY THEY GET THEIR OWN LINE** (ADR-0213's 2026-08-31
+ * amendment §2).
+ *
+ * A check-in window is the commonest flexible time this app holds and sharing showed it
+ * nowhere: the fourth amendment moved the stay out of the schedule into `day.stay`, a name
+ * with no clock, so there was no row for a rule about rows to reach.
+ *
+ * **Not appended to the stay's own line, and that is a measurement rather than a taste.**
+ * `.sh-day-copy span` is `nowrap` with an ellipsis, and in RTL the cut falls at the logical
+ * end — exactly where a trailing clock sits. A real hotel name measures ⁦275px⁩ of ink in a
+ * ⁦206px⁩ box at 360, so the check-in vanished with nothing on screen saying it had been
+ * there, which is the worst shape a failure can take. Its own line also holds BOTH moments,
+ * which one line cannot: on a transfer day you leave one place and sleep at another.
+ *
+ * The line is the only one in this header allowed to wrap (`.sh-stay-when`): a name is
+ * unbounded and must be cut, a pair of clocks is bounded and cutting it only costs the fact.
+ * Measured: ⁦17px⁩ for one moment, ⁦34px⁩ for two, and the header goes ⁦76px⁩ → ⁦95px⁩ either way —
+ * the second moment is free, absorbed by the height the date column already takes.
+ */
+function StayWhen({ day }: { day: SharedDay }) {
+  if (!day.checkIn && !day.checkOut) return null;
+  return (
+    <span className="sh-stay-when">
+      {day.checkOut ? (
+        <>
+          {t.share.public.checkOut(autoIsolate(day.checkOut.place))}{' '}
+          <SharedTimeText time={day.checkOut.time} />
+        </>
+      ) : null}
+      {day.checkOut && day.checkIn ? ' · ' : null}
+      {day.checkIn ? (
+        <>
+          {t.share.public.checkIn} <SharedTimeText time={day.checkIn} />
+        </>
+      ) : null}
+    </span>
+  );
+}
+
+function SharedTimeText({ time }: { time: SharedTime }) {
+  const text =
+    time.meaning === TIME_MEANING.NOT_BEFORE
+      ? t.share.public.timeFrom(ltrIsolate(time.label))
+      : time.meaning === TIME_MEANING.NOT_AFTER
+        ? t.share.public.timeUntil(ltrIsolate(time.label))
+        : ltrIsolate(
+            time.endLabel && time.endLabel !== time.label
+              ? t.share.public.timeRange(time.label, time.endLabel)
+              : time.label,
+          );
+  return <span className="sh-time">{text}</span>;
 }
 
 function EventRow({ event, code }: { event: SharedEvent; code: string }) {
@@ -690,18 +766,12 @@ function EventRow({ event, code }: { event: SharedEvent; code: string }) {
                 {' · '}
               </>
             ) : null}
-            {/* The range where there is one, so a flight says when it lands. Isolated as ONE
-                run rather than two: `09:20–14:05` reads left-to-right whole, and isolating
-                each end separately would let the RTL flow put the arrival first. */}
-            {event.startLabel ? (
-              <span className="sh-time">
-                {ltrIsolate(
-                  event.endLabel && event.endLabel !== event.startLabel
-                    ? t.share.public.timeRange(event.startLabel, event.endLabel)
-                    : event.startLabel,
-                )}
-              </span>
-            ) : null}
+            {/* **The clock, and what it MEANS** (ADR-0213's 2026-08-31 amendment §1). It
+                used to print a range whenever there were two ends, which is right for a
+                flight and wrong for a floor: a car hire's `endsAt` is five days later, so
+                `10:00–18:00` described a week as an afternoon. `event.time` carries the
+                answer `edgeMeaning` gives, and this only spells it. */}
+            {event.time ? <SharedTimeText time={event.time} /> : null}
             <TravelFacts event={event} />
             {event.placeName ? (
               <>

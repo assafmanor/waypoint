@@ -204,6 +204,38 @@ export function ShareItinerarySheet({
       .catch(() => setDocuments([]));
   }, [level, documents, isAdmin, tripId]);
 
+  /**
+   * **THE LEVELS A PEER MAY CHOOSE BETWEEN** (owner, 2026-08-31: _"non admins should be able
+   * to [decide what's being shared] too, just not add more links … maybe everything is made
+   * available by the admins, after they've created links for them"_).
+   *
+   * The server has always allowed this — `SharingService` gates only CREATE, ROTATE and
+   * REVOKE on `assertTripAdmin`, and `GET /trips/:id/share` has no admin check at all. What
+   * the sheet did was hide the level control from a peer AND leave `level` pinned at its
+   * `FULL` default, so a trip published only at `תקציר` told its own travellers it was not
+   * shared while the list this component had already fetched held a live link.
+   *
+   * An admin still sees all three: their grid composes a policy that may not exist yet. A
+   * peer sees the ones that hold a link, because that is the whole of what they can send —
+   * and an unpublished card would be a dead control ADR-0150 §8 forbids, in a sheet where
+   * they have no way to enliven it.
+   */
+  const peerLevels = useMemo(
+    () => LEVELS.filter((value) => shares.some((config) => config.detailLevel === value)),
+    [shares],
+  );
+
+  /**
+   * **A peer lands on a level that exists, rather than on the default.** Runs once the list
+   * has loaded and only while the current selection holds nothing — so it corrects the pin
+   * and never fights a choice the reader has made. Admins are untouched: their `FULL` default
+   * is a policy they may create.
+   */
+  useEffect(() => {
+    if (isAdmin || loading || peerLevels.length === 0) return;
+    setLevel((current) => (peerLevels.includes(current) ? current : peerLevels[0]!));
+  }, [isAdmin, loading, peerLevels]);
+
   const atLevel = useMemo(
     () => shares.filter((config) => config.detailLevel === level),
     [shares, level],
@@ -312,7 +344,7 @@ export function ShareItinerarySheet({
    */
   const levelOptions = useMemo(
     () =>
-      LEVELS.map((value) => {
+      (isAdmin ? LEVELS : peerLevels).map((value) => {
         const live = shares.some((config) => config.detailLevel === value);
         return {
           value,
@@ -326,7 +358,7 @@ export function ShareItinerarySheet({
             : {}),
         };
       }),
-    [shares],
+    [isAdmin, peerLevels, shares],
   );
   // **Marked, where the level cards are not** — this is the one choice in the sheet whose
   // wrong answer cannot be taken back, so it gets a second channel besides its words. They
@@ -496,11 +528,16 @@ export function ShareItinerarySheet({
         t.share.owner.actions.liveLink,
       )}
     </div>
-  ) : (
+  ) : isAdmin ? (
     <div className="share-send">
       {outcomes(createAndSend, createAndPdf, t.share.owner.actions.createAndShare)}
     </div>
-  );
+  ) : // **A peer gets no create-and-send unit.** `ensureShare` throws `not shared` for them
+  // before any request leaves, so this was a primary that could not succeed — exactly what
+  // ADR-0150 §8 forbids, and unreachable now that `peerLevels` lands them on a level that
+  // holds a link. It survives only for the empty trip, where the tail below says so in
+  // words rather than offering a button nobody here can make work.
+  null;
 
   /**
    * Everything is a family, so once a link exists the branch is a managed list — you must
@@ -590,7 +627,12 @@ export function ShareItinerarySheet({
             {/* The explainer belongs to the choice that produced it: it states what THIS
                 level shows, so it is the level group's last line, not a block of its own. */}
             <div className="share-group">
-              {isAdmin ? (
+              {/* **A peer chooses too, between the links that exist** (owner, 2026-08-31).
+                  The grid is the admin's own, filtered by `levelOptions`. It comes off
+                  entirely at ONE published level, because a radiogroup with a single option
+                  is not a choice — the scope note below then says what that link shows,
+                  which is the fact the grid would have carried. */}
+              {isAdmin || levelOptions.length > 1 ? (
                 <>
                   <p className="share-lead">{t.share.owner.lead}</p>
                   <ChoiceGrid
@@ -600,7 +642,7 @@ export function ShareItinerarySheet({
                       setLevel(next);
                       setComposing(false);
                     }}
-                    columns={3}
+                    columns={isAdmin ? 3 : levelOptions.length}
                     ariaLabel={t.share.owner.lead}
                     disabled={busy !== undefined}
                     className="share-levels"
@@ -622,9 +664,15 @@ export function ShareItinerarySheet({
 
             {note ? <div className="share-live-note">{note}</div> : null}
             {error ? <div className="share-error">{error}</div> : null}
-            {!isAdmin ? <p className="share-lead">{t.share.owner.peerNote}</p> : null}
-            {!isAdmin && shares.length === 0 && !loading && !error ? (
-              <p className="share-lead">{t.share.owner.notShared}</p>
+            {/* **What a peer may do, said as a positive** (owner, 2026-08-31). The old line
+                was a refusal — it was written when a peer had nothing to choose — and with a
+                chooser on screen the first thing it has to state is what IS theirs. The two
+                lines are alternatives, never both: with nothing published there is no link to
+                say anything about, and the empty note names who can fix it. */}
+            {!isAdmin && !loading && !error ? (
+              <p className="share-lead">
+                {shares.length === 0 ? t.share.owner.notShared : t.share.owner.peerNote}
+              </p>
             ) : null}
 
             {/* Per-link management for the single-policy levels; Everything's rows carry

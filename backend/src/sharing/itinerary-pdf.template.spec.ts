@@ -203,14 +203,81 @@ describe('itineraryPdfHtml', () => {
     expect(override).toBeGreaterThan(original);
   });
 
-  it('prints a range only for a commitment, and a start for everything else', () => {
-    // A flight has to say when it lands; a viewpoint's end is when somebody typed they
-    // would leave, and a window there claims a precision the plan does not have.
-    const times = [...full.matchAll(/class="pdf-event-time">([^<]*)</g)].map((m) =>
-      m[1].replace(/[\u2066-\u2069]/g, ''),
-    );
-    expect(times.some((value) => value.includes('\u2013'))).toBe(true);
-    expect(times.filter((value) => value.includes('\u2013')).length).toBeLessThan(times.length);
+  /**
+   * **AMENDED 2026-08-31.** This asserted the rule ADR-0213 §6 set — a range only where the
+   * end is a commitment — and the owner reversed it: _"whenever there's a time range, we
+   * should display it. That also includes flexible times like starting from.. Or until..."_.
+   * Paper now spells what `edgeMeaning` says, exactly as the reader page does.
+   *
+   * The old assertion was ALSO too loose to have caught the change: "some rows carry a dash
+   * and not all of them" is true under either rule, so it would have stayed green while the
+   * behaviour inverted. The four arms are named individually here for that reason.
+   */
+  it('spells each of the four time meanings, and gates none of them on `hard`', () => {
+    const timesOf = (html: string) =>
+      [...html.matchAll(/class="pdf-event-time">([^<]*)</g)].map((m) =>
+        m[1].replace(/[\u2066-\u2069]/g, ''),
+      );
+
+    const day = NINE_DAY_REFERENCE_TRIP.days[0]!;
+    const arms = render({
+      ...NINE_DAY_REFERENCE_TRIP,
+      days: [
+        {
+          ...day,
+          sections: [
+            {
+              daypart: SHARE_DAYPART.MORNING,
+              events: [
+                // A SOFT span, which is the row §6's rule silently truncated.
+                {
+                  title: 'מסלול רייקיאדלור',
+                  daypart: SHARE_DAYPART.MORNING,
+                  time: { label: '10:00', endLabel: '12:00', meaning: 'exact' },
+                },
+                {
+                  title: 'מוזיאון',
+                  daypart: SHARE_DAYPART.MORNING,
+                  time: { label: '13:00', meaning: 'exact' },
+                },
+                {
+                  title: 'השכרת רכב',
+                  daypart: SHARE_DAYPART.MORNING,
+                  hard: true,
+                  time: { label: '10:00', meaning: 'not-before' },
+                },
+                {
+                  title: 'עזיבת הגסטהאוס',
+                  daypart: SHARE_DAYPART.MORNING,
+                  hard: true,
+                  time: { label: '11:00', meaning: 'not-after' },
+                },
+                {
+                  title: 'The Hill Hotel',
+                  daypart: SHARE_DAYPART.MORNING,
+                  hard: true,
+                  time: { label: '17:00', endLabel: '21:00', meaning: 'window' },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const times = timesOf(arms);
+    // A soft span keeps BOTH ends — the change itself, and the row the two renderers
+    // disagreed about (the reader page has always printed it).
+    expect(times).toContain('10:00\u201312:00');
+    expect(times).toContain('13:00');
+    // A floor and a deadline say which they are, rather than printing a bare clock that
+    // reads as an appointment.
+    expect(times).toContain(PDF_COPY.timeFrom('10:00'));
+    expect(times).toContain(PDF_COPY.timeUntil('11:00'));
+    // A closed window prints both bounds (ADR-0184 §1).
+    expect(times).toContain('17:00\u201321:00');
+    // …and none of it came from `hard`: the two rows carrying a range here are the SOFT
+    // hike and the hotel window, while the hard car hire deliberately carries none.
+    expect(times).not.toContain('10:00\u201318:00');
   });
 
   // **Hebrew must never be inside a mono element** (design-language: JetBrains Mono ships no

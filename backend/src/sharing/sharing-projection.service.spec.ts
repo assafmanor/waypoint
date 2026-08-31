@@ -179,8 +179,18 @@ describe('SharingProjectionService', () => {
           tripId: trip.id,
           date: new Date('2026-08-29'),
           title: 'כניסה לדירה',
+          // **`lodging` is what makes this a HELD edge** (ADR-0063 / ADR-0184). The profile
+          // resolves from the CATEGORY, with the glyph only refining it — so a check-in with
+          // no category is an ordinary point, and one with `lodging` has `midSpan.kind:
+          // 'held'`, which is what makes `edgeMeaning` answer `not-before` for its start: a
+          // room you may take FROM 15:00, never an appointment at 15:00.
+          category: 'lodging',
+          icon: '🏨',
           kind: 'soft',
           startsAt: new Date('2026-08-29T15:00:00Z'),
+          // Three days later: the far end of a held span, and the reason a "print both ends"
+          // rule reads `15:00–11:00` on a row like this.
+          endsAt: new Date('2026-09-01T11:00:00Z'),
           placeId: apartment.id,
           updatedBy: OWNER,
         },
@@ -193,6 +203,10 @@ describe('SharingProjectionService', () => {
           title: 'אורות הצפון',
           kind: 'soft',
           startsAt: new Date('2026-08-30T01:10:00Z'),
+          // **A SOFT span with two ends** (2026-08-31). The row ADR-0213 §6's `hard` gate
+          // truncated on paper while the reader page printed it whole — the disagreement
+          // that report is about, seeded so a spec can name it.
+          endsAt: new Date('2026-08-30T02:40:00Z'),
           placeId: apartment.id,
           updatedBy: OWNER,
         },
@@ -341,6 +355,9 @@ describe('SharingProjectionService', () => {
     );
     for (const event of events) {
       expect(event.startLabel).toBeUndefined();
+      // …including the meaning-bearing one, which is the same rule and a second field to
+      // forget (ADR-0213's 2026-08-31 amendment §1).
+      expect(event.time).toBeUndefined();
       expect(event.address).toBeUndefined();
       expect(event.mapUrl).toBeUndefined();
       expect(event.journey).toBeUndefined();
@@ -375,6 +392,41 @@ describe('SharingProjectionService', () => {
     expect(checkin?.mapUrl).toContain('google.com/maps');
     // The map link is built from the public label, so it carries no coordinate.
     expect(checkin?.mapUrl).not.toContain(String(SECRET.lat));
+  });
+
+  /**
+   * **WHAT A ROW'S CLOCK MEANS** (ADR-0213's 2026-08-31 amendment §1; owner: _"whenever
+   * there's a time range, we should display it. That also includes flexible times like
+   * starting from.. Or until..."_).
+   *
+   * The rule this replaced was `event.hard`, ADR-0011's COMMITMENT axis answering a question
+   * about MEANING — which is why paper withheld a soft span's end while the reader page
+   * printed it, and why a booking-backed `held` span printed its far end as though the two
+   * were one afternoon.
+   */
+  it('says what each clock means, off `edgeMeaning` rather than off `hard`', async () => {
+    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
+    const events = projection.days.flatMap((day) => day.sections).flatMap((s) => s.events);
+
+    // An ordinary point: one clock, and nothing invented beside it.
+    const arrival = events.find((event) => event.title === 'נחיתה בקפלוויק');
+    expect(arrival?.time).toEqual({ label: '09:20', meaning: 'exact' });
+
+    // **A SOFT span keeps both ends** — the row the two renderers disagreed about, since
+    // §6's `hard` gate withheld it on paper and never on the phone.
+    const lights = events.find((event) => event.title === 'אורות הצפון');
+    expect(lights?.hard).toBeFalsy();
+    expect(lights?.time).toEqual({ label: '01:10', endLabel: '02:40', meaning: 'exact' });
+
+    // **A held resource's start is a FLOOR, never half a range.** Its `endsAt` is three days
+    // later, so a rule that printed "both ends whenever there are two" would read
+    // `15:00–11:00` here — the exact reversed range the fourth amendment pulled stays out of
+    // the schedule over, and which survived in every other `held` row until this change.
+    const checkin = events.find((event) => event.title === 'כניסה לדירה');
+    expect(checkin?.time).toEqual({ label: '15:00', meaning: 'not-before' });
+    // The raw pair is still projected — the journey header and its legs read it — and this
+    // row deliberately does not print it.
+    expect(checkin?.endLabel).toBe('11:00');
   });
 
   it('groups by daypart, in order, and renders no empty section', async () => {

@@ -5,6 +5,7 @@ import {
   SHARE_DAYPART,
   SHARE_DETAIL_LEVEL,
   SHARE_TRIP_SHAPE,
+  TIME_MEANING,
   type BookingType,
   type SharedDay,
   type SharedDayTitle,
@@ -168,6 +169,19 @@ const days: SharedDay[] = DAYS.map(([date, title, summary, events], index) => {
         ...(event.time ? { startLabel: event.time } : {}),
         ...(event.bookingType ? { bookingType: event.bookingType } : {}),
         ...(event.endTime ? { endLabel: event.endTime } : {}),
+        // **What the row's clock MEANS** (ADR-0213's 2026-08-31 amendment §1) — the field
+        // the renderer actually prints from. The fixture's events are ordinary points and
+        // spans, so they are all `exact`; the flexible arms are exercised by
+        // `itinerary-pdf.template.spec.ts`, which builds them directly.
+        ...(event.time
+          ? {
+              time: {
+                label: event.time,
+                ...(event.endTime ? { endLabel: event.endTime } : {}),
+                meaning: TIME_MEANING.EXACT,
+              },
+            }
+          : {}),
         placeName: event.place,
       })),
     })),

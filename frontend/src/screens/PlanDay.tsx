@@ -2303,10 +2303,30 @@ function BuilderGroups({
         return (
           <Fragment key={key}>
             {nowRef}
-            {/* **The journey, then what is left of the hole** — the drawing's own order, and the
-              reason Plan needs both: the chip is a CONTROL and says what it offers, while the
-              block is the fact it is offering it around. An infeasible leg has no chip at all
-              (below), so the block is the only thing that can say so. */}
+            {/* **WHAT IS LEFT OF THE HOLE, THEN THE JOURNEY** (owner, 2026-08-31; ADR-0206
+              §AH3's amendment). Plan needs both — the chip is a CONTROL and says what it
+              offers, the block is the fact it is offering it around, and an infeasible leg
+              has no chip at all, so the block is the only thing that can say so — but the
+              order was the drawing's rather than the day's. `travelFreeMinutes` already
+              shrinks the offer BY the leg, so the slot ENDS at the leave-by below it.
+
+              **Here the order is also a claim about where a drop lands.** `.gap`/`.bld-seam`
+              carry `data-gap-key` and are what `gapAt` resolves a drag to, so above the block
+              the seam means "here, then travel" and below it "travel, then here" — a position
+              the day does not have. */}
+            {free && prevEnd && (
+              <FreeSlot
+                free={free}
+                freeMinutes={ctx.travelFreeMinutes(prevEnd, groupStartEvent(g), free.minutes)}
+                label={t.planDay.gap(
+                  gapLabel(ctx.travelFreeMinutes(prevEnd, groupStartEvent(g), free.minutes)),
+                )}
+                note={ctx.slotNote(prevEnd, groupStartEvent(g), free.minutes)}
+                seamLabel={t.planDay.seamAfter(prevEnd.title)}
+                over={ctx.overGap(free.fill)}
+                onFill={ctx.onGapFill}
+              />
+            )}
             {prevEnd &&
               depth === 0 &&
               (() => {
@@ -2321,19 +2341,6 @@ function BuilderGroups({
                   />
                 ) : null;
               })()}
-            {free && prevEnd && (
-              <FreeSlot
-                free={free}
-                freeMinutes={ctx.travelFreeMinutes(prevEnd, groupStartEvent(g), free.minutes)}
-                label={t.planDay.gap(
-                  gapLabel(ctx.travelFreeMinutes(prevEnd, groupStartEvent(g), free.minutes)),
-                )}
-                note={ctx.slotNote(prevEnd, groupStartEvent(g), free.minutes)}
-                seamLabel={t.planDay.seamAfter(prevEnd.title)}
-                over={ctx.overGap(free.fill)}
-                onFill={ctx.onGapFill}
-              />
-            )}
             {g.kind === 'cluster' ? (
               <div className="bld-cluster">
                 <div className="bld-cluster-head">

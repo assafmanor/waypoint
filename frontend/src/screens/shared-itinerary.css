@@ -764,6 +764,29 @@
   vertical-align: -2px;
 }
 
+/* **The stay's two moments, and the ONE line in this header allowed to wrap** (ADR-0213's
+   2026-08-31 amendment §2).
+
+   `.sh-day-copy span` above is (0,1,1) and sets `nowrap` with `text-overflow: ellipsis`,
+   which is right for every other line here: a trip title and a hotel name are unbounded, so
+   they must be cut. A pair of clocks is not — `צ׳ק-אאוט מויק עד 11:00 · צ׳ק-אין מ-15:00` is
+   the longest this line can ever be — so cutting it buys nothing and costs the reader the
+   fact. Measured at ⁦246px⁩ of ink in a ⁦206px⁩ box at 360, i.e. `nowrap` ate the check-in on
+   every transfer day of the trip; wrapped it is ⁦34px⁩ against ⁦17px⁩ for one moment, and the
+   header measures ⁦95px⁩ either way because the second line lands in height the date column
+   already takes.
+
+   **This is also why the clock is not appended to `.sh-stay` itself.** It would be the same
+   ellipsis, and in RTL the cut falls at the logical end — exactly where the clock sits — so a
+   long hotel name would delete it silently. The specificity fight is the one this sheet
+   already lost once above (`.sh-day-copy span` beating `.sh-stay`'s `display`), so this is
+   (0,2,0) on purpose. */
+.sh-day-copy .sh-stay-when {
+  margin-block-start: 2px;
+  color: var(--amber-deep);
+  white-space: normal;
+}
+
 /* **The legs of one journey, under the journey.** The frame above already states the
    whole span, so these are the detail inside it. */
 /* **A journey is a surface, so its legs are visibly ON it** (ADR-0213 ninth amendment §1,

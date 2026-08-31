@@ -14,6 +14,7 @@ import {
   isJourney,
   isMultiDay,
   EVENT_KIND,
+  TIME_MEANING,
   type TripEvent,
 } from '@waypoint/shared';
 import { bookingTransitionsOnDate, type BookingTransition } from './glance';
@@ -261,7 +262,7 @@ export function placeDayEntries(
     // An `exact` edge IS its instant and is never moved; a floor or a ceiling is placed
     // where `edgeAt` can defend it. The strip now holds only what has no clock at all.
     const atMs =
-      edgeMeaning(entry.event, entry.edge) === 'exact'
+      edgeMeaning(entry.event, entry.edge) === TIME_MEANING.EXACT
         ? entry.atMs
         : edgeAt(entry.atMs, entry.edge, groups);
     // **A stay named by its own row is not also a row at its bound** (ADR-0209 §1). The moment

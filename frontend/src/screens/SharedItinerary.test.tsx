@@ -9,6 +9,7 @@ import {
   SHARE_OP_KIND,
   SHARE_DAYPART,
   SHARE_DETAIL_LEVEL,
+  TIME_MEANING,
   type SharedItinerary as Projection,
 } from '@waypoint/shared';
 // The reader lands on today's card (eleventh amendment §1), and jsdom has no
@@ -102,6 +103,7 @@ const bookedProjection: Projection = {
               daypart: SHARE_DAYPART.MORNING,
               bookingType: BOOKING_TYPE.HOTEL,
               startLabel: '15:00',
+              time: { label: '15:00', meaning: TIME_MEANING.EXACT },
               placeName: 'Fludir',
             },
           ],
@@ -128,6 +130,7 @@ const fullProjection: Projection = {
               daypart: SHARE_DAYPART.MORNING,
               hard: false,
               startLabel: '09:30',
+              time: { label: '09:30', meaning: TIME_MEANING.EXACT },
               placeName: 'Þingvellir',
               address: '806 Selfoss',
               mapUrl: 'https://www.google.com/maps/search/?api=1&query=%C3%9Eingvellir',
@@ -333,6 +336,7 @@ describe('SharedItinerary', () => {
                   daypart: SHARE_DAYPART.MORNING,
                   startLabel: '09:20',
                   endLabel: '14:05',
+                  time: { label: '09:20', endLabel: '14:05', meaning: TIME_MEANING.EXACT },
                   placeName: 'KEF',
                 },
               ],
@@ -346,6 +350,103 @@ describe('SharedItinerary', () => {
 
     await screen.findByText('איסלנד עם המשפחה');
     expect(screen.getByText(plain(t.share.public.timeRange('09:20', '14:05')))).toBeTruthy();
+  });
+
+  /**
+   * **THE FLEXIBLE HALF** (ADR-0213's 2026-08-31 amendment §1; owner: _"that also includes
+   * flexible times like starting from.. Or until..."_).
+   *
+   * A floor and a deadline are not halves of a range — a `held` resource's far end is a
+   * different day's fact — so they say which they are instead of printing a bare clock that
+   * reads as an appointment. The words are the app's own (`t.day.fromTime`/`untilTime`),
+   * repeated in `share.public` because a stranger never sees the app's dictionary.
+   */
+  it('says מ- for a floor and עד for a deadline, never a range', async () => {
+    serve({
+      ...fullProjection,
+      days: [
+        {
+          ...fullProjection.days[0],
+          sections: [
+            {
+              daypart: SHARE_DAYPART.MORNING,
+              events: [
+                {
+                  title: 'השכרת רכב',
+                  daypart: SHARE_DAYPART.MORNING,
+                  // The raw pair is still projected — a journey header reads it — and the
+                  // ROW deliberately does not print it: the return is five days away.
+                  startLabel: '10:00',
+                  endLabel: '18:00',
+                  time: { label: '10:00', meaning: TIME_MEANING.NOT_BEFORE },
+                },
+                {
+                  title: 'עזיבת הגסטהאוס',
+                  daypart: SHARE_DAYPART.MORNING,
+                  startLabel: '11:00',
+                  time: { label: '11:00', meaning: TIME_MEANING.NOT_AFTER },
+                },
+                {
+                  title: 'The Hill Hotel',
+                  daypart: SHARE_DAYPART.MORNING,
+                  startLabel: '17:00',
+                  time: { label: '17:00', endLabel: '21:00', meaning: TIME_MEANING.WINDOW },
+                },
+              ],
+            },
+          ],
+        },
+        fullProjection.days[1],
+      ],
+    });
+    renderShared();
+
+    await screen.findByText('איסלנד עם המשפחה');
+    expect(screen.getByText(plain(t.share.public.timeFrom('10:00')))).toBeTruthy();
+    expect(screen.getByText(plain(t.share.public.timeUntil('11:00')))).toBeTruthy();
+    // A closed window prints both bounds (ADR-0184 §1) — the one flexible arm that does.
+    expect(screen.getByText(plain(t.share.public.timeRange('17:00', '21:00')))).toBeTruthy();
+    // …and the hire's far end never reaches the page as the other half of a range, which is
+    // the `10:00–18:00`-for-a-week defect the `hard` gate was masking.
+    expect(screen.queryByText(plain(t.share.public.timeRange('10:00', '18:00')))).toBeNull();
+  });
+
+  /**
+   * **THE STAY'S TWO MOMENTS** (§2). A check-in window is the commonest flexible time the
+   * app holds and sharing showed it nowhere, because the fourth amendment moved the stay out
+   * of the schedule into `day.stay` — a name with no clock, so there was no row for a rule
+   * about rows to reach. They come back to the day's FRAME, on their own line.
+   */
+  it('states the stay’s check-in and check-out on the day frame', async () => {
+    serve({
+      ...fullProjection,
+      days: [
+        {
+          ...fullProjection.days[0],
+          stay: 'פלוּדיר',
+          checkIn: { label: '15:00', endLabel: '21:00', meaning: TIME_MEANING.WINDOW },
+          checkOut: {
+            place: 'ויק',
+            time: { label: '11:00', meaning: TIME_MEANING.NOT_AFTER },
+          },
+        },
+        fullProjection.days[1],
+      ],
+    });
+    const { container } = renderShared();
+
+    await screen.findByText('איסלנד עם המשפחה');
+    const when = container.querySelector('.sh-stay-when');
+    expect(when).toBeTruthy();
+    // `plain` is a MATCHER factory for `getByText`, not a string transform — the whole
+    // point here is to read one element's composed text, so the control strip is direct.
+    const text = withoutBidiControls(when!.textContent ?? '');
+    expect(text).toContain(t.share.public.checkIn);
+    expect(text).toContain(withoutBidiControls(t.share.public.timeRange('15:00', '21:00')));
+    // The check-out names the place being LEFT, which on a transfer day is not the place the
+    // stay line above it names.
+    expect(text).toContain(withoutBidiControls(t.share.public.checkOut('ויק')));
+    expect(text).toContain(withoutBidiControls(t.share.public.timeUntil('11:00')));
   });
 
   it('captions nothing on a row no booking backs', async () => {

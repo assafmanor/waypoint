@@ -1817,3 +1817,157 @@ Two smaller things the build settled:
 - [`a-shared-itinerary-is-printed-by-daypart-v2.html`](../../mockups/a-shared-itinerary-is-printed-by-daypart-v2.html) renders both review themes at 360/390px with no console errors. In the unscaled print DOM, the day header is 47px, daypart header 18px, and event row 31px.
 - The generated Full PDF was rendered back to two page images and inspected with no clipping or overlap.
 - [`a-shared-itinerary-knows-what-day-it-is-v1.html`](../../mockups/a-shared-itinerary-knows-what-day-it-is-v1.html) renders both themes at 360/390px with fonts loaded and no console errors. The day header holds 76px with the `עכשיו` mark and without it; the mark's own box is 14px; `--amber-deep` on the amber date column is 5.09:1 light / 8.22:1 dark against the shipped `.sh-part-head`'s 5.24:1 / 5.84:1; a past day's title steps 15.65:1 → 5.57:1 with no layout change; the rejected per-card badge costs 13px × 11 cards; today's card lands 26px below the scroller's top with 3 of the 4 earlier days above the fold; the app's `.nowline` inside a day body is 19px.
+
+## Amendment — a shared time says what it means, and a peer may send it (2026-08-31, twelfth pass)
+
+Two reports, one about what a link shows and one about who may send it.
+
+> _"The pdf and live sharing currently only shows start times (except bookings and hard events),
+> I'm not sure why we chose to do it this way but I think that whenever there's a time range, we
+> should display it. That also includes flexible times like starting from.. Or until…"_
+
+> _"Today only admins are able to decide what's being shared - I think that non admins should be
+> able to do that too, just not add more links, but they should be able to share a summary, full
+> schedule. Maybe everything is made available by the admins, after they've created links for
+> them."_
+
+Drawn in three files before anything was coded:
+[`a-shared-time-says-what-it-means-v1.html`](../../mockups/a-shared-time-says-what-it-means-v1.html) (reader),
+[`a-shared-time-is-printed-as-a-range-v1.html`](../../mockups/a-shared-time-is-printed-as-a-range-v1.html) (A4),
+[`a-peer-sends-what-the-admins-published-v1.html`](../../mockups/a-peer-sends-what-the-admins-published-v1.html) (the sheet).
+Two files for one rule, deliberately: §7 above is the record of what happens otherwise.
+
+### §1 · Sharing asks `edgeMeaning`, not `event.hard`
+
+**This reverses §6's times rule on the owner's call.** That rule — _the start only, except for
+hard pins and bookings_ — was ADR-0011's **commitment** axis answering a question about
+**meaning**, and [ADR-0184](0184-an-edge-can-be-a-window.md)'s `edgeMeaning` is the derivation
+that actually answers it. Sharing now asks the same question the app's own rows have asked since
+it was written:
+
+| meaning           | prints        | e.g.                                       |
+| ----------------- | ------------- | ------------------------------------------ |
+| `exact`, one end  | `13:00`       | a museum                                   |
+| `exact`, two ends | `09:20–14:05` | a flight, **and a soft two-hour hike**     |
+| `not-before`      | `מ-15:00`     | a room from 15:00, a hire counter at 10:00 |
+| `not-after`       | `עד 11:00`    | out by 11:00, the car back by 18:00        |
+| `window`          | `17:00–21:00` | both bounds authored (ADR-0184 §1)         |
+
+`מ-` and `עד` are `t.day.fromTime`/`untilTime`, the words this app already prints for those two
+meanings. The wording is repeated verbatim in `share.public` and `PDF_COPY` rather than shared,
+because those namespaces are each renderer's own — and identical on purpose, since two words for
+one meaning is how two surfaces begin to disagree. **The same `עד` arrives on the journey block in
+the same session** (ADR-0206 §AJ4.2), which is why the vocabulary is one decision across three
+renderers rather than three.
+
+**Four things reading the code changed, and three of them changed the ask.**
+
+1. **The two renderers already disagreed, and the live page was the lenient one.**
+   `itinerary-pdf.template.ts` implemented §6; `SharedItinerary.tsx` never did — it printed a
+   range whenever `endLabel` differed, with no `hard` test at all. So a soft two-hour hike has
+   read `10:00–12:00` on the phone and `10:00` on paper since §6 shipped. The report is exactly
+   right about paper and half-right about the page, and the **disagreement itself** is the defect
+   ADR-0159 §1 forbids.
+2. **`endLabel` was already projected for every event**, unconditionally at Full and above. The
+   exact half of this ask needed no contract at all; one renderer was handed both ends and threw
+   one away.
+3. **The flexible half could not be drawn at all.** `sharing.select.ts` selected neither
+   `startWindowEnd` nor `endWindowStart`, so ADR-0184's two stored columns had never reached the
+   projection and sharing had no equivalent of `edgeMeaning`.
+4. **The `hard` gate was MASKING a reversed range rather than preventing one.** A multi-day span
+   is listed once, on the day it starts; a car hire is a booking, so it is `hard`, so paper
+   printed its range — and its `endsAt` is days later, so the row read `10:00–18:00` for a
+   week-long hire. That is the same `15:00–11:00` defect the fourth amendment pulled stays out of
+   the schedule over, surviving in a second booking type. The new rule **fixes** it: a `held`
+   resource's start is a floor, so it reads `מ-10:00`.
+
+**The contract is one field, not four.** `SharedEvent.time` is `{ label, endLabel?, meaning }`.
+A renderer needs one string per row, so four flat fields would make each renderer re-derive the
+same choice — and finding 1 is the record of what happens then. `startLabel`/`endLabel` survive
+beside it for the journey header and its legs, whose ends are two moments rather than one edge
+with a meaning.
+
+### §2 · The stay's two moments return to the day's frame
+
+The commonest flexible time this app holds is a hotel check-in window, and sharing showed it
+nowhere — because the fourth amendment moved the stay **out** of the schedule and into `day.stay`,
+a name with no clock. So the fix for "show me the ranges" could not be a rule about rows: the row
+does not exist. `SharedDay` gains `checkIn` (the day the run begins) and `checkOut`
+(`{ place, time }` — the place you are **leaving**, which on a transfer day is not the one the
+frame names, so a day can hold both).
+
+**They get their own line, and that is a measurement.** Appended to the stay's own line they cost
+0px, which is what makes it tempting — and `.sh-day-copy span` is `nowrap` with
+`text-overflow: ellipsis`, where in RTL the cut falls at the **logical end**, exactly where a
+trailing clock sits. A real hotel name measures ⁦275px⁩ of ink in a ⁦206px⁩ box at 360, so the
+check-in vanished with nothing on screen saying it had been there. One line also holds one moment,
+and a transfer day has two.
+
+`.sh-stay-when` is therefore **the only line in that header allowed to wrap**: a trip title and a
+hotel name are unbounded and must be cut, a pair of clocks is bounded and cutting it only costs
+the fact. Measured: ⁦17px⁩ for one moment, ⁦34px⁩ for two, header ⁦76px⁩ → ⁦95px⁩ **either way** — the
+second moment is free, absorbed by the height the date column already takes. Paper's measure is
+half an A4 column, so both moments fit one line there (⁦106px⁩ of ink in ⁦295.5px⁩) at ⁦0px⁩ of paper,
+the header keeping its existing ⁦47px⁩ minimum.
+
+Colour stays on ADR-0028's budget by splitting the two lines: the place keeps teal
+(`.sh-stay`/`.pdf-stay`), the clock takes amber (`.sh-time`/`--pdf-amber`).
+
+**Rejected: the two moments as rows inside the day.** It does not truncate, and that is exactly
+why it is worth saying why not — it puts the stay back in the schedule two amendments removed it
+from, and [ADR-0209](0209-a-stay-is-named-once-in-the-day-it-belongs-to.md) §1 already refused to
+position a stay's bound as a row **in the app**, because _"positioning it read as coming back to
+the hotel after driving away."_
+
+### §3 · The A4 column does not move, and the file expected it to
+
+`.pdf-event` is `grid-template-columns: 56px …` with `nowrap`, and §1's build log records that 56
+came from one measurement of `09:20–14:05` (⁦52.9px⁩ of ink against a ⁦38px⁩ column that broke). The
+print mockup was written to widen it, on the assumption that Hebrew-plus-digits is wider than
+digits. **It is not:** `מ-10:00` measures ⁦34.75px⁩ and `עד 11:00` ⁦38.38px⁩, against `09:20–14:05`
+at ⁦55px⁩. The widest shape is still the one the column was sized for, so paper's whole change is
+one deleted condition in `timeText` and **no CSS**. Recorded because the estimate was wrong and
+only the render said so.
+
+### §4 · A peer sends what the admins published
+
+**Not a permission change — the server already allowed it.** `SharingService`'s own docblock
+states the asymmetry, `GET /trips/:id/share` carries no admin check, `assertTripAdmin` guards only
+create/rotate/revoke, and the PDF is on the **public** route keyed by the code. What the sheet did
+was hide the level `ChoiceGrid` behind `isAdmin` **and** leave `level` pinned at its `FULL`
+default. Together those lie: on a trip published only at `תקציר`, a peer's sheet renders
+`הטיול עדיין לא משותף` — while the list the component had already fetched holds a live Summary
+link — above a primary whose `ensureShare` throws `not shared` before any request leaves, which is
+the dead control [ADR-0150](0150-a-form-refuses-at-the-field.md) §8 forbids. Same class as §9's
+invisible link: the sheet holding a fact and not drawing it.
+
+A peer now gets the admin's own grid **filtered to the levels that hold a link** — same
+`ChoiceGrid`, same `.share-level-live` dot and `Choice.ariaLabel` the tenth amendment §4 added, no
+change to the primitive. The grid comes off entirely at one published level, because a radiogroup
+with a single option is not a choice and the scope note beneath already says what that link shows.
+With nothing published the sheet says so in words and offers no button at all.
+
+**A peer may send an Everything link.** That is the owner's own reading — creating one, with its
+switches set, **is** the decision that the policy may be sent — and it is what the service already
+does, so refusing here would be the sheet lying about the API beneath it. The `⋯`, `לינק נוסף`,
+the policy form, `ניהול הלינק` and stop-all stay the admin's.
+
+**Rejected: showing all three levels with the unpublished ones disabled.** It advertises a level
+the peer cannot open and adds a dead control — both of what §8 forbids — and `ChoiceGrid` disables
+the whole grid rather than one option, so it would have meant extending a primitive for a worse
+answer. Copy follows: `peerNote` states the capability before the boundary, and `notShared` names
+who can fix it.
+
+### What was verified
+
+- `a-shared-time-says-what-it-means-v1.html`, `a-shared-time-is-printed-as-a-range-v1.html` and
+  `a-peer-sends-what-the-admins-published-v1.html` all render every theme × width with fonts
+  loaded and no console errors; every number quoted above is read off those pages' own DOM.
+- The A4 ink figures are measured with a `Range` over the cell's contents rather than
+  `scrollWidth`: the time cell is a **grid item** and stretches to its column, so `scrollWidth`
+  reports the column for every shape and an overflow can never be detected. The file's first
+  render duly called all six ⁦62px⁩ and the widest ⁦6262px⁩.
+- Backend: 1234 specs, including a projection spec that pins `not-before` on a `held` check-in
+  whose `endsAt` is three days later, and a PDF spec that names all four arms individually — the
+  one it replaced ("some rows carry a dash and not all of them") was true under either rule and
+  would have stayed green while the behaviour inverted.

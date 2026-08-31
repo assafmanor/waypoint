@@ -2130,6 +2130,26 @@ export const t = {
     // Measured before it was written: ⁦140.06px⁩ of ink in the meta line's ⁦206.95px⁩ box at 360, so it
     // does not clip — and the widest sentence already shipping in that slot is ⁦171px⁩.
     leaveThenArrive: (leave: string, arrive: string) => `יציאה ${leave} · הגעה ${arrive}`,
+    /**
+     * **THE SAME TWO SENTENCES, FOR THE INSTANT THAT IS A CEILING** (owner, 2026-08-31:
+     * _"when there's a gap before a journey, it could show `יציאה עד X`"_).
+     *
+     * `leaveByMs` is `arriveByMs - travel - buffer`, i.e. ADR-0171's `not-after` — and `עד`
+     * is the word this app already prints for that meaning (`t.day.untilTime` two blocks up).
+     * The pair above stays, because §AJ2's clamp turns the same field into a FLOOR whenever
+     * the buffer lands behind the row you leave from, and there the earlier form is the true
+     * one. `DayJourney.leaveByIsFloor` picks between them.
+     *
+     * Measured in `free-time-comes-before-the-leave-by-v1.html` §5: the word costs ⁦15px⁩ of
+     * ink (⁦70px⁩ against ⁦55px⁩) in a ⁦165px⁩ box at 360 — well inside the ⁦153.03px⁩ ADR-0206
+     * §AH4 had to shorten these lines to.
+     *
+     * The hero keeps `leaveAt` and gains nothing: it speaks in the imperative to somebody
+     * standing in the hole (`צאו ב־18:37`), and `צאו עד` is a different sentence with a
+     * different posture — §D10's noun-vs-instruction split, unchanged.
+     */
+    leaveByDay: (clock: string) => `יציאה עד ${clock}`,
+    leaveByThenArrive: (leave: string, arrive: string) => `יציאה עד ${leave} · הגעה ${arrive}`,
     // …and the one warning nobody can currently be given at plan time: `hero-booking.ts` computes
     // `missed` off the CLOCK, once it is already too late. This is the same fact predicted, on the
     // surface that holds the plan, readable at breakfast.
@@ -3189,9 +3209,19 @@ export const t = {
       stopAllTitle: 'להפסיק את כל השיתופים?',
       stopAllBody: 'כל הלינקים הציבוריים של הטיול יפסיקו לעבוד מיד.',
       stopAllConfirm: 'הפסקת הכל',
-      // A peer may send an existing link but not change what it shows.
-      peerNote: 'רק מנהלי הטיול יכולים לשנות מה הלינק מראה.',
-      notShared: 'הטיול עדיין לא משותף.',
+      /**
+       * **What a peer MAY do, before what they may not** (owner, 2026-08-31: _"non admins
+       * should be able to [decide what's being shared] too, just not add more links"_).
+       *
+       * The line used to be a bare refusal — `רק מנהלי הטיול יכולים לשנות מה הלינק מראה` —
+       * and it was correct for a sheet where a peer had nothing to choose. With a level
+       * chooser on screen it is the caption under a control, so it states the capability
+       * first and the boundary second.
+       */
+      peerNote: 'אפשר לשלוח כל לינק שכבר נוצר · יצירה ושינוי הם של מנהלי הטיול.',
+      /** Names who can fix it. A peer reading this cannot, and a sentence that stops at the
+       *  fact leaves them with nowhere to go. */
+      notShared: 'הטיול עדיין לא משותף · מנהל טיול יכול ליצור לינק.',
       /** The list's own header at Everything, where several links live side by side. */
       linksHere: 'הלינקים ברמה הזאת',
       manageLink: 'ניהול הלינק הזה',
@@ -3296,6 +3326,24 @@ export const t = {
       // leg and a forty-minute one were the same shape of line. The numbers are isolated by
       // the caller; the en dash is the app's own range mark (`formatTripDates`).
       timeRange: (from: string, to: string) => `${from}–${to}`,
+      /**
+       * **A floor and a deadline, in the app's own two words** (ADR-0213's 2026-08-31
+       * amendment §1). `מ-` and `עד` are exactly `t.day.fromTime` / `t.day.untilTime`, which
+       * the app has printed for ADR-0171's two flexible meanings since they were written.
+       *
+       * `share.public` keeps its own copy of every word for the reason this block's header
+       * gives — a stranger never sees the app's dictionary — and the WORDING is deliberately
+       * identical: two words for one meaning is how two surfaces start disagreeing about a
+       * fact, which §7 already recorded once for this feature.
+       */
+      timeFrom: (clock: string) => `מ-${clock}`,
+      timeUntil: (clock: string) => `עד ${clock}`,
+      /** The stay's two moments on the day's frame (§2). The nouns are the app's own
+       *  (`t.transition.checkIn`/`checkOut`), so the shared page and the day view name the
+       *  same thing the same way. `checkOut` names the place, because on a transfer day it is
+       *  not the place the line above it names. */
+      checkIn: 'צ׳ק-אין',
+      checkOut: (place: string) => `צ׳ק-אאוט ${bindPrefix('מ', place)}`,
       // **How the trip moves**, in the owner's own words (2026-08-30): a circumnavigation
       // where the base changes every day or two is a different thing from a trip you take
       // from one place. `הקפה` is mine — a rolling trip that closes its circle is common

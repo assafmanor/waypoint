@@ -15,6 +15,7 @@ import {
   edgeMeaning,
   freeAfterTravel,
   isTightConnection,
+  TIME_MEANING,
   TRAVEL_FIT,
   windowBoundOf,
   type Booking,
@@ -165,7 +166,7 @@ export function dayBlocks(entries: readonly DayEntry[], ctx: JoinContext): DayBl
     // run: an exact transition IS a moment, and a cluster is two things at once, so "the
     // gap after it" is not a single fact.
     if (entry.kind === 'event') prevEnd = groupEndEvent(entry.group);
-    else if (edgeMeaning(entry.event, entry.edge) === 'exact') prevEnd = null;
+    else if (edgeMeaning(entry.event, entry.edge) === TIME_MEANING.EXACT) prevEnd = null;
   });
 
   return blocks;
@@ -332,6 +333,21 @@ export interface DayJourney {
   distanceMeters: number | null;
   /** The instant behind `יציאה 17:15`, or `null` on the `PAST` arm — see {@link dayJourney}. */
   leaveByMs: number | null;
+  /**
+   * **WHETHER THAT INSTANT IS A CEILING OR A FLOOR** (ADR-0206 §AJ2, surfaced 2026-08-31).
+   *
+   * `false`, the ordinary case: it is `arriveByMs - travel - buffer`, the LAST moment you may
+   * go, which is what lets a row say `יציאה עד 15:12`. `true`: the buffer put that behind the
+   * row you leave from, so `heroLeaveBy` clamped it to the origin's own end — the EARLIEST
+   * departure that exists (§AJ2's `יציאה 14:00 · הגעה ~14:58` on a hard 15:00 start), where
+   * `עד` would be false rather than merely redundant.
+   *
+   * **Not the same question as "is there free time".** A leg out of an ambient stay has no
+   * `departAfterMs` at all (§AD/§AF3), so nothing clamps it and its instant is a pure ceiling
+   * — while its `free` is `null` rather than zero. Gating the word on free minutes would strip
+   * it from the leg read first every morning.
+   */
+  leaveByIsFloor: boolean;
   /** What is free once the journey is counted (§V1.1). `null` where the hole has no measurable
    *  window at all, which is the day's first leg out of an ambient stay. */
   free: TravelWindow | null;
@@ -467,6 +483,8 @@ export function dayJourney(input: {
       arriveAtMs: null,
       arrivesAfterClose: false,
       remainingSeconds: null,
+      // No departure is stated on this arm, so there is no ceiling to declare.
+      leaveByIsFloor: false,
     };
   // **A REFUSED MODE IS AN ANSWER, NOT AN ABSENCE** (ADR-0206 §AM10). Same position and the same
   // argument as the declaration above — it has to come BEFORE the floor, because the floor bails
@@ -485,6 +503,8 @@ export function dayJourney(input: {
       arriveAtMs: null,
       arrivesAfterClose: false,
       remainingSeconds: null,
+      // No departure is stated on this arm, so there is no ceiling to declare.
+      leaveByIsFloor: false,
     };
   // **A NUMBER ON ITS WAY IS NOT AN ABSENT NUMBER** (ADR-0206 §AU1). Third of the three flags that
   // stand in for a missing estimate, and last for the reason its docblock gives — but still BEFORE
@@ -512,6 +532,8 @@ export function dayJourney(input: {
       arriveAtMs: null,
       arrivesAfterClose: false,
       remainingSeconds: null,
+      // No departure is stated on this arm, so there is no ceiling to declare.
+      leaveByIsFloor: false,
     };
   // **A journey the ladder cannot state is not a journey** (2026-08-26). `ROUTE_MIN_CROW_M` is
   // ⁦10m⁩, so a ⁦20m⁩ hop is routed, answers ⁦24⁩ seconds, and drew a whole block reading `~0 דק׳` over
@@ -545,6 +567,8 @@ export function dayJourney(input: {
       arriveAtMs: null,
       arrivesAfterClose: false,
       remainingSeconds: null,
+      // No departure is stated on this arm, so there is no ceiling to declare.
+      leaveByIsFloor: false,
     };
   }
   if (!Number.isFinite(arriveByMs)) return null;
@@ -605,6 +629,11 @@ export function dayJourney(input: {
    * you as being late"_) was about a **flexible** destination, which still states no departure.
    */
   const leaveByMs = statesLeaveBy ? leave.leaveByMs : null;
+  /** **Which of the two facts `leaveByMs` holds** (ADR-0206 §AJ2, surfaced 2026-08-31 so the
+   *  row can say `יציאה עד` only where that is true). Read off `heroLeaveBy`'s own comparison,
+   *  never re-derived from `free`: a leg out of an ambient stay has no floor to clamp to, so
+   *  `free` is `null` there rather than zero and a free-time test would answer backwards. */
+  const leaveByIsFloor = leave.clamped;
   /**
    * **THE ARRIVAL THE STATED DEPARTURE IMPLIES** (ADR-0206 §AR1) — leave when the row says to, and
    * this is when you are there. Never counted back from a bound the app invented.
@@ -643,6 +672,7 @@ export function dayJourney(input: {
     arriveAtMs: arriveAt,
     arrivesAfterClose:
       arriveAt !== null && input.windowClosesMs !== undefined && arriveAt > input.windowClosesMs,
+    leaveByIsFloor,
   };
   // The row below has started: whatever the leave-by says, the departure is not the question any
   // more. Checked FIRST, so a finished day is quiet however late its legs ran.

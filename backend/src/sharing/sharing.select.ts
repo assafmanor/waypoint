@@ -30,6 +30,12 @@ export const SHARE_EVENT_SELECT = {
   date: true,
   startsAt: true,
   endsAt: true,
+  /** **The other bound of a flexible edge** (ADR-0184 §3). Two instants and nothing else, so
+   *  `edgeMeaning` can answer here the same question it answers in the app — without them the
+   *  projection sees a check-in's floor and cannot tell it from an appointment, which is what
+   *  made sharing print a bare `15:00` for a window somebody typed both ends of. */
+  startWindowEnd: true,
+  endWindowStart: true,
   displayTimezone: true,
   sortOrder: true,
   placeId: true,
