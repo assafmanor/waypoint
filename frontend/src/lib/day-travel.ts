@@ -22,6 +22,7 @@ import {
   haversineMeters,
   exceedsTravelCeiling,
   isRoutableMode,
+  legModeOverride,
   legTravelMode,
   TRAVEL_MODE,
   type Booking,
@@ -179,6 +180,19 @@ export interface DayTravelReads {
    * override saying what the derivation already says, and then hold it against a later change.
    */
   defaultModeFor(from: TripEvent, to: TripEvent): TravelMode;
+  /**
+   * **Did a PERSON pick this leg's mode?** (ADR-0206 §AW) — the presence of an override row, asked
+   * through `legModeOverride` so it is the same lookup `modeFor` makes rather than a second loop.
+   *
+   * `modeFor` cannot answer it: the derivation stands behind the override, so a leg the app called
+   * a drive and a leg somebody declared a drive come back identically. And comparing against
+   * `defaultModeFor` is not the same question — an override that agrees with a default the distance
+   * has since moved is still a row somebody wrote, and still has to be reachable to be cleared.
+   *
+   * The one reader is the day's journey: a mode a person picked keeps its block even where the app
+   * has no length to print, because the block is the only thing carrying the control that picked it.
+   */
+  chosenFor(from: TripEvent, to: TripEvent): boolean;
 }
 
 const NOTHING: DayTravelReads['estimateFor'] = () => null;
@@ -396,6 +410,10 @@ export function useDayTravelReads(opts: {
         return leg ? { fromPlaceId: leg.fromPlaceId, toPlaceId: leg.toPlaceId } : undefined;
       },
       defaultModeFor: (from: TripEvent, to: TripEvent) => defaultFor(legFor(from, to)),
+      chosenFor: (from: TripEvent, to: TripEvent) => {
+        const leg = legFor(from, to);
+        return legModeOverride(overrides, leg?.fromPlaceId, leg?.toPlaceId) !== undefined;
+      },
       warmingFor: (from: TripEvent, to: TripEvent) => {
         const leg = legFor(from, to);
         if (!leg) return false;

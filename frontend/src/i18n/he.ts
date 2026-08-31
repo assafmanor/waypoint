@@ -2062,6 +2062,13 @@ export const t = {
     // route is being worked out, which is what the app is actually doing and the word people use
     // for it. And no `~`: §D5's hedge belongs on a NUMBER, and there is no number here yet.
     computing: 'מחשב מסלול…',
+    // **WHAT A JOURNEY UNDER THE LADDER'S FLOOR SAYS** (ADR-0206 §AW). The fourth of these
+    // sentences and the only one that is not about an absence: the app has the number, and
+    // ADR-0114's minutes rung has no rung for ⁦12⁩ seconds. So it says the length in the one form
+    // that is available — a bound — rather than borrowing `noEstimate`, which would claim we never
+    // measured it, or printing `~0 דק׳`, which is the value this whole floor exists to refuse.
+    // No `~`: §D5's hedge belongs on a number, and `פחות` is already the hedge.
+    underMinute: 'פחות מדקה',
     // What is LEFT of the journey, once the fix says you are on it (ADR-0207 §6). An
     // approximation of an approximation, and `~` is what says so; the alternative was the
     // untouched total, which read as "44 minutes still to walk" two minutes from the door.

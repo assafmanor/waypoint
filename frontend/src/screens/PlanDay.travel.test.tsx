@@ -379,6 +379,37 @@ describe('PlanDay — the leg mode is declarable here too (ADR-0206 §AM9)', () 
     expect(block.textContent).not.toContain(String(WALK_MINUTES));
     expect(document.querySelector('button.day-trv-face')).toBeTruthy();
   });
+
+  // **AND A HOP THE LADDER CANNOT NAME KEEPS IT TOO** (ADR-0206 §AW) — the third case in this
+  // family, and here for §AM9's reason rather than as a copy: Plan mode is where a mode is most
+  // likely to be picked at all, so a pick that deletes its own control is worst here. The floor is
+  // untouched where nobody picked anything.
+  it('keeps the block for a hop under the ladder’s floor, and says the bound', () => {
+    travelSeconds = 12;
+    tripOverrides = [
+      {
+        id: 'tmo-1',
+        tripId: 't1',
+        ...PAIR,
+        mode: TRAVEL_MODE.DRIVING,
+        createdBy: 'u1',
+        createdAt: `${DAY}T00:00:00Z`,
+        updatedAt: `${DAY}T00:00:00Z`,
+      } as TravelModeOverride,
+    ];
+    show();
+    const block = document.querySelector('.day-trv');
+    expect(block).toBeTruthy();
+    expect(block!.textContent).toContain(t.travel.underMinute);
+    expect(screen.getByText(t.travelMode[TRAVEL_MODE.DRIVING])).toBeTruthy();
+    expect(document.querySelector('button.day-trv-face')).toBeTruthy();
+  });
+
+  it('draws nothing for the same hop where the app picked the mode itself', () => {
+    travelSeconds = 12;
+    show();
+    expect(document.querySelector('.day-trv')).toBeNull();
+  });
 });
 
 // ── THE SAME FACT ON PLAN'S SURFACE (ADR-0206 §AI1) ───────────────────────────────────────

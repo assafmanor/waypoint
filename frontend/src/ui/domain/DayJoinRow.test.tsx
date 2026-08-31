@@ -441,6 +441,7 @@ describe('JourneyRow — a hole behind you that the journey never fitted', () =>
 describe('dayJourney — a hop too short to be a journey', () => {
   const START = Date.parse('2026-07-12T05:00:00Z');
   const MIN = 60_000;
+  afterEach(() => cleanup());
 
   // **A twenty-metre hop is not a journey at all** (owner, 2026-08-26). The tolerance in
   // `freeAfterTravel` stops it being called impossible; this stops it being drawn. `~0 דק׳` over
@@ -455,6 +456,62 @@ describe('dayJourney — a hop too short to be a journey', () => {
         nowMs: START - 10 * MIN,
       }),
     ).toBeNull();
+  });
+
+  // **…until somebody picks the mode, and then the row is the only way back** (ADR-0206 §AW). The
+  // report is the switch itself: `הליכה · ~1 דק׳` became `נסיעה`, the drive answers ⁦12⁩ seconds
+  // over the same ⁦50 m⁩, and the hole rendered nothing at all — including the disclosure that had
+  // just set it.
+  it('says the length is under the ladder’s floor, and still offers the four modes', () => {
+    const journey = dayJourney({
+      departAfterMs: START,
+      arriveByMs: START + 120 * MIN,
+      travelSeconds: 12,
+      distanceMeters: 50,
+      nowMs: START,
+      chosen: true,
+    })!;
+    expect(journey).not.toBeNull();
+    render(
+      <JourneyRow
+        journey={journey}
+        travelMode={TRAVEL_MODE.DRIVING}
+        zones={zonesIn('UTC')}
+        modes={{
+          current: TRAVEL_MODE.DRIVING,
+          onPick: vi.fn(),
+          open: true,
+          onToggle: vi.fn(),
+        }}
+      />,
+    );
+    expect(screen.getByText(t.travelMode[TRAVEL_MODE.DRIVING])).toBeTruthy();
+    expect(screen.getByText(t.travel.underMinute)).toBeTruthy();
+    // The distance is the fact it does have, and the chips are the way out of the choice.
+    expect(screen.getByText(formatDistance(50))).toBeTruthy();
+    for (const mode of LEG_TRAVEL_MODES) {
+      expect(screen.getByRole('button', { name: t.travelMode[mode] })).toBeTruthy();
+    }
+    // It borrows neither of the sentences that mean something else: we did measure this leg, and
+    // there is nothing wrong with it.
+    expect(screen.queryByText(t.travel.noEstimate)).toBeNull();
+    expect(screen.queryByText(t.travel.computing)).toBeNull();
+  });
+
+  // The other road into the arm: a chosen mode the app never got a number for at all. There the
+  // declaration's own sentence is the true one, reached by a different route.
+  it('falls back to the absence sentence where no estimate ever arrived', () => {
+    const journey = dayJourney({
+      departAfterMs: START,
+      arriveByMs: START + 120 * MIN,
+      travelSeconds: null,
+      nowMs: START,
+      chosen: true,
+    })!;
+    render(
+      <JourneyRow journey={journey} travelMode={TRAVEL_MODE.WALKING} zones={zonesIn('UTC')} />,
+    );
+    expect(screen.getByText(t.travel.noEstimate)).toBeTruthy();
   });
 });
 

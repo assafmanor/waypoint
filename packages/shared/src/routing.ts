@@ -524,12 +524,7 @@ export function travelOverrideKey(a: string, b: string): string {
  * unresolved end has no pair to look up (§AM4: inert, not broken).
  */
 export function legTravelMode(
-  overrides: readonly {
-    fromPlaceId: string;
-    toPlaceId: string;
-    mode: LegTravelMode;
-    updatedAt?: string;
-  }[],
+  overrides: readonly LegModeOverrideRow[],
   fromPlaceId: string | undefined,
   toPlaceId: string | undefined,
   /** **A value or a thunk**, and the thunk is what makes the default LAZY (ADR-0206 §AV1). Since
@@ -539,21 +534,52 @@ export function legTravelMode(
    *  board's own spec asserts the estimate is never looked up at all. */
   fallback: TravelMode | (() => TravelMode),
 ): LegTravelMode {
-  const derived = () => (typeof fallback === 'function' ? fallback() : fallback);
-  if (!fromPlaceId || !toPlaceId) return derived();
+  const hit = legModeOverride(overrides, fromPlaceId, toPlaceId);
+  if (hit) return hit.mode;
+  return typeof fallback === 'function' ? fallback() : fallback;
+}
+
+/** The minimum an override row has to carry to be looked up. Storage's `TravelModeOverride`
+ *  satisfies it; so does the bare literal a test or a server surface builds. */
+export interface LegModeOverrideRow {
+  fromPlaceId: string;
+  toPlaceId: string;
+  mode: LegTravelMode;
+  updatedAt?: string;
+}
+
+/**
+ * **THE OVERRIDE ON THIS LEG, OR `undefined`** — the one lookup, so nobody writes a second loop
+ * over the same rows (root rule 8).
+ *
+ * `legTravelMode` above answers WHAT the mode is and cannot answer WHO decided it: its own
+ * fallback makes a derived mode and a declared one indistinguishable. That second question is a
+ * real one — a mode a **person** picked has to stay reversible on the surface they picked it on
+ * (ADR-0206 §AM10, §AW) — so it is asked of the same function rather than of a copy of it.
+ *
+ * A leg with an unresolved end has no pair to look up and so has no override (§AM4: inert, not
+ * broken).
+ *
+ * **The NEWEST match, not the first**, and that is a robustness choice rather than a style one.
+ * The unique constraint means storage holds one row per pair — but a client can briefly hold two:
+ * its own optimistic row for a pair a peer created while it was offline, until the next snapshot
+ * replaces the cache wholesale. `find` would then answer nondeterministically and the mode would
+ * flicker; taking the latest `updatedAt` makes the transient state resolve the same way every
+ * render. Absent timestamps sort as oldest, so a caller passing the minimal shape still works.
+ */
+export function legModeOverride<T extends LegModeOverrideRow>(
+  overrides: readonly T[],
+  fromPlaceId: string | undefined,
+  toPlaceId: string | undefined,
+): T | undefined {
+  if (!fromPlaceId || !toPlaceId) return undefined;
   const key = travelOverrideKey(fromPlaceId, toPlaceId);
-  // **The NEWEST match, not the first**, and that is a robustness choice rather than a style one.
-  // The unique constraint means storage holds one row per pair — but a client can briefly hold two:
-  // its own optimistic row for a pair a peer created while it was offline, until the next snapshot
-  // replaces the cache wholesale. `find` would then answer nondeterministically and the mode would
-  // flicker; taking the latest `updatedAt` makes the transient state resolve the same way every
-  // render. Absent timestamps sort as oldest, so a caller passing the minimal shape still works.
-  let hit: (typeof overrides)[number] | undefined;
+  let hit: T | undefined;
   for (const o of overrides) {
     if (travelOverrideKey(o.fromPlaceId, o.toPlaceId) !== key) continue;
     if (!hit || (o.updatedAt ?? '') >= (hit.updatedAt ?? '')) hit = o;
   }
-  return hit?.mode ?? derived();
+  return hit;
 }
 
 /* ── THE BATCH (ADR-0205 §6, §Y2) ────────────────────────────────────────────────────────── */

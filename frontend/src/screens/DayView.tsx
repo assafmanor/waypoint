@@ -847,6 +847,11 @@ export function DayView() {
         // because the block is what tells the reader a route is coming and what carries the control
         // that would pick a different mode for it. Ranked last of the three by `dayJourney` itself.
         warming: travelReads.warmingFor(leg.from, leg.to),
+        // …and a mode somebody PICKED holds its block even where the app has no length to print
+        // for it (ADR-0206 §AW): the ⁦1⁩-minute walk switched to a ⁦12⁩-second drive rounded to
+        // nought minutes, the hole rendered nothing, and the control that had set the drive went
+        // with it. The choice is what earns the row; the reason there is no number is not asked.
+        chosen: travelReads.chosenFor(leg.from, leg.to),
         nowMs,
         // `arrived` needs no separate arm here: a fix at the next stop means you got there, and
         // the day list is a record either way — what it must not do is keep offering a departure.

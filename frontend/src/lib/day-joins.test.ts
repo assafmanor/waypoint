@@ -578,6 +578,93 @@ describe('dayJourney — the number is still being computed (§AU1)', () => {
   });
 });
 
+/**
+ * **A MODE SOMEBODY PICKED HOLDS ITS ROW, WHATEVER THE APP HAS TO PRINT IN IT** (ADR-0206 §AW).
+ *
+ * The report: the leg from the ice cave to the supermarket read `הליכה · ~1 דק׳ · ⁦50 מ׳⁩`, was
+ * switched to `נסיעה`, and the whole hole vanished — _"the row disappeared and could not be
+ * returned"_. The same ⁦50 m⁩ answers ⁦12⁩ seconds by car, the 2026-08-26 floor rounds that to nought
+ * minutes and deletes the journey, and the mode control lives on the journey. §AM10 answered this
+ * for the ceiling and §AU1 for the pending number; the rule is stated over the CHOICE here, so the
+ * rest of the class goes with it.
+ */
+describe('dayJourney — a mode somebody chose, with no length to print (§AW)', () => {
+  const START = Date.parse('2026-07-12T05:00:00Z');
+  const brief = (over: Partial<Parameters<typeof dayJourney>[0]> = {}) =>
+    dayJourney({
+      departAfterMs: START,
+      arriveByMs: START + 120 * MIN,
+      // The reported leg, by car: routed, answered, and under the rung the ladder starts at.
+      travelSeconds: 12,
+      distanceMeters: 50,
+      nowMs: START,
+      chosen: true,
+      ...over,
+    });
+
+  // The 2026-08-26 floor, unchanged where it was aimed: a ⁦20 m⁩ hop the app called a walk on its
+  // own has nothing to say, and nothing was chosen there that a vanished row could strand.
+  it('still deletes a sub-minute hop nobody chose', () => {
+    expect(brief({ chosen: false })).toBeNull();
+    expect(brief({ chosen: undefined })).toBeNull();
+  });
+
+  it('renders a journey once somebody picked the mode, so the control survives the pick', () => {
+    expect(brief()).not.toBeNull();
+    expect(brief()?.arm).toBe(DAY_JOURNEY_ARM.UNTIMED);
+  });
+
+  it('keeps the distance and states no duration — the row cannot name ⁦12⁩ seconds', () => {
+    expect(brief()?.distanceMeters).toBe(50);
+    expect(brief()?.travelSeconds).toBeNull();
+  });
+
+  // A departure counted back from twelve seconds is the late mark firing over the time it takes
+  // to cross a car park, and §V1.1 forbids correcting a hole by a number no row shows.
+  it('gives no leave-by and corrects no free time', () => {
+    expect(brief()?.leaveByMs).toBeNull();
+    expect(brief()?.free).toBeNull();
+  });
+
+  // The other road to the same place: the server's own gate refused the mode (`sameClusterOnly`
+  // against a point missing from the cluster set), or the provider answered nothing for it. The
+  // client cannot tell that from the ceiling, and the traveller must still be able to pick again.
+  it('holds the row for a chosen mode that never got an estimate at all', () => {
+    const nothing = brief({ travelSeconds: null, distanceMeters: null });
+    expect(nothing?.arm).toBe(DAY_JOURNEY_ARM.UNTIMED);
+    expect(nothing?.travelSeconds).toBeNull();
+    expect(brief({ travelSeconds: null, distanceMeters: null, chosen: false })).toBeNull();
+  });
+
+  /** Ranked below all three flags above it, each of which is a more specific statement about the
+   *  same silence: a declaration, a refusal, and a number on its way. */
+  it('yields to the declaration, the refusal and the computation', () => {
+    expect(brief({ declared: true })?.arm).toBe(DAY_JOURNEY_ARM.DECLARED);
+    expect(brief({ tooFarForMode: true })?.arm).toBe(DAY_JOURNEY_ARM.TOO_FAR);
+    expect(brief({ warming: true })?.arm).toBe(DAY_JOURNEY_ARM.WARMING);
+  });
+
+  /** The day's header counts what its list shows (§AP2): the kilometres, because the row prints
+   *  them, and no minutes, because no row accounts for them. */
+  it('counts in the day’s distance and not in its duration', () => {
+    const journeys = [brief()];
+    expect(dayTravelTotal(journeys, 0)).toEqual({
+      distanceMeters: 50,
+      travelSeconds: null,
+      partial: false,
+      airMeters: null,
+    });
+    expect(dayFeasibility(journeys).fit).toBe(TRAVEL_FIT.UNKNOWN);
+  });
+
+  /** The switch itself, both ways round, which is the report in one assertion: the walk states its
+   *  journey and the drive keeps a row rather than becoming an absence. */
+  it('is the same hole either way — a walk that states a minute, a drive that states none', () => {
+    expect(brief({ travelSeconds: 37, chosen: false })?.arm).toBe(DAY_JOURNEY_ARM.AHEAD);
+    expect(brief()?.arm).toBe(DAY_JOURNEY_ARM.UNTIMED);
+  });
+});
+
 describe('dayJourney — the journey does not fit (§AG)', () => {
   const START = Date.parse('2026-07-12T05:00:00Z');
   const overrunning = (holeMinutes: number, walkMinutes: number) =>

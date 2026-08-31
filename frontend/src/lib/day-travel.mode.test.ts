@@ -301,6 +301,33 @@ describe('the per-leg override (ADR-0206 §AM)', () => {
       toPlaceId: 'p-tokyo',
     });
   });
+
+  /**
+   * **WHETHER A PERSON PICKED IT, which is a different question from what it is** (ADR-0206 §AW).
+   * The journey block reads this to know it must stand even with no length to print — a mode
+   * somebody chose that renders nothing takes the control that chose it with it.
+   *
+   * It is the presence of the ROW, deliberately, and not `modeFor !== defaultModeFor`: an override
+   * that agrees with a default the distance has since moved is still a row, and clearing it still
+   * needs the control the block carries.
+   */
+  it('says whether a person picked this leg’s mode', () => {
+    expect(read().result.current.chosenFor(FROM, TO)).toBe(false);
+    expect(read([override(TRAVEL_MODE.WALKING)]).result.current.chosenFor(FROM, TO)).toBe(true);
+    const agreeing = read([override(TRAVEL_MODE.DRIVING)]);
+    expect(agreeing.result.current.modeFor(FROM, TO)).toBe(
+      agreeing.result.current.defaultModeFor(FROM, TO),
+    );
+    expect(agreeing.result.current.chosenFor(FROM, TO)).toBe(true);
+  });
+
+  /** A row about another pair is not this leg's choice — the same narrowing `modeFor` makes. */
+  it('is false for a declaration about a different pair', () => {
+    const elsewhere = read([
+      override(TRAVEL_MODE.WALKING, { fromPlaceId: 'p-kaminarimon', toPlaceId: 'p-tokyo' }),
+    ]);
+    expect(elsewhere.result.current.chosenFor(FROM, TO)).toBe(false);
+  });
 });
 
 describe('a declared leg suppresses the estimate (ADR-0206 §AA4)', () => {

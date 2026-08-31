@@ -389,6 +389,44 @@ describe('DayView — the leg mode is declarable (ADR-0206 §AM)', () => {
     expect(travelModeVerbs.clearLegMode).toHaveBeenCalledWith(PAIR.fromPlaceId, PAIR.toPlaceId);
     expect(travelModeVerbs.setLegMode).not.toHaveBeenCalled();
   });
+
+  // **THE PICK MUST BE UNDOABLE ON THE SURFACE THAT MADE IT** (ADR-0206 §AW, field report
+  // 2026-08-31: a ⁦50 m⁩ walk switched to a drive, _"the row vanished and could not be returned"_).
+  //
+  // Only observable here: the derivation returns a journey and the block renders one, so the leg
+  // that a person declared keeps the disclosure that declared it. The floor itself stays exactly
+  // where it was aimed — the same hole with nothing declared draws nothing at all.
+  describe('a hop under the ladder’s floor (§AW)', () => {
+    beforeEach(() => {
+      travelSeconds = 12;
+    });
+
+    it('draws no block where the app picked the mode itself', () => {
+      show();
+      expect(document.querySelector('.day-trv')).toBeNull();
+    });
+
+    it('keeps the block, the mode and the way back once somebody picked it', () => {
+      tripOverrides = [declared(TRAVEL_MODE.DRIVING)];
+      show();
+      const block = document.querySelector('.day-trv');
+      expect(block).not.toBeNull();
+      expect(screen.getByText(t.travelMode[TRAVEL_MODE.DRIVING])).toBeTruthy();
+      expect(block!.textContent).toContain(t.travel.underMinute);
+      fireEvent.click(document.querySelector('button.day-trv-face')!);
+      fireEvent.click(screen.getByRole('button', { name: t.travelMode[derivedMode()] }));
+      expect(travelModeVerbs.clearLegMode).toHaveBeenCalledWith(PAIR.fromPlaceId, PAIR.toPlaceId);
+    });
+
+    // A leg with no length to state also has no departure to advise and no correction to make, so
+    // the strip below reports the whole hole exactly as it did before the pick.
+    it('states the whole hole as free, and advises no departure', () => {
+      tripOverrides = [declared(TRAVEL_MODE.DRIVING)];
+      show();
+      expect(document.querySelector('.day-trv')!.textContent).not.toContain('יציאה');
+      expect(screen.getByText(freeTimePhrase(GAP_MINUTES)!)).toBeTruthy();
+    });
+  });
 });
 
 describe('DayView — a hole states what is free AFTER the journey (ADR-0206 §V1.1)', () => {
