@@ -1,8 +1,12 @@
 # Glance v2 — the brief, and the plan for getting there
 
 **Date:** 2026-08-31
-**Status:** brief only. **Nothing drawn and nothing built** — this is the task plan the owner asked
-for alongside the tomorrow-lookahead build, to be picked up as its own session.
+**Status:** **drawn, not built.** Step 3 of the plan below shipped the same day as the brief —
+[`mockups/glance-v2.html`](../../mockups/glance-v2.html) — and the findings are amended into this
+note in place rather than into a second one (root `CLAUDE.md`: amend the doc that already covers
+it). **Three forks are with the owner**; the ADR is deliberately unwritten until they are answered,
+because writing it now would be deciding them. Everything measured is in the
+**מה הציור מצא** section below.
 **Asked for:** _"a followup task plan for the glance line, also in the home screen. I want to design
 and build a glance section v2 that looks upgraded, less condensed, more visually pleasing, possibly
 giving more information or losing information for a better look. It very well may draw inspiration
@@ -117,6 +121,107 @@ tail across midnight. The glance rail today fails two of them and the fixes are 
 Both are open backlog lines. **Fix them as part of v2 rather than before it**, so the change lands
 with a drawing that shows what it looks like.
 
+## מה הציור מצא (2026-08-31)
+
+`mockups/glance-v2.html` follows the plan below: probe first, census before redesign, one section per
+candidate move with its "without" column rendered from the same model, the six stress days at one
+height, and the collision assertion copied from the night strip's v3. Both themes, ⁦360⁩/⁦390⁩, no
+console errors. **The numbers here are read off the rendered DOM at light/⁦360⁩** — the file
+re-measures itself when a control changes, so a later reader gets its own numbers rather than these.
+
+### What the probe said before anything was drawn
+
+`buildDayGlance` was probed directly for the six days (a throwaway spec, deleted; its output is the
+file's fixture data). Three answers changed the design:
+
+- **A real arrival day never reaches the lane band.** Check-out ⁦10:00⁩ · taxi ⁦11:30→12:10⁩ · flight
+  ⁦14:00→17:00⁩ · check-in ⁦20:00⁩ returns **⁦4⁩ anchors in ⁦3⁩ lanes**, so `anchorsCollapsed` fires and
+  ADR-0077's positioned band is replaced by the legs line. The day the card matters most gets the
+  fallback, which is the strongest argument against keeping three behaviours for one question.
+- **An ambient edge has no segment.** So if the pills simply come off, a check-out disappears from
+  the card while ADR-0164 still counts it in `נותרו`. That is why the answer is a **tick**, not a
+  deletion.
+- **Both shipped defects reproduce exactly as the backlog line describes them**: on the twelve-item
+  day **two pairs share a boundary to the millisecond**, and the zero-length event comes back
+  `point: false` with zero width. Measured on the rendered page: ⁦0px⁩ wide today, ⁦4px⁩ with the
+  shared track's floor.
+
+### The census, and the subtraction it justified
+
+|                           | shipped | proposed                                                   |
+| ------------------------- | ------- | ---------------------------------------------------------- |
+| card height (plain day)   | ⁦184px⁩ | **⁦131px⁩**                                                |
+| card height (arrival day) | ⁦242px⁩ | **⁦131px⁩** — a busy day is the same height as a quiet one |
+| text runs                 | ⁦8⁩     | **⁦5⁩**                                                    |
+| distinct type levels      | ⁦7⁩     | **⁦4⁩**                                                    |
+| monospace runs            | ⁦5⁩     | **⁦2⁩**                                                    |
+
+And the duplication, measured the way ADR-0214 §3 measured the code it removed (⁦240px⁩ from its
+copy):
+
+- **`19:00` is printed ⁦4⁩ times on one screen** (board `עד`, board next, card hard-anchor, card
+  foot) and **⁦2⁩ times after the subtraction**. The two copies sit **⁦311px⁩** and **⁦214px⁩** apart.
+- On the arrival day the card alone prints **`14:00` three times** — the span pill, the hard-anchor
+  readout and `פנוי עד` — and **zero** times after.
+- `BoardGapSlot`'s own docblock is the witness: its `עד HH:MM` exists because _"the board left a slot
+  empty for a fact `GlanceCard` was carrying two inches lower"_. ADR-0214 §5 wrote the double down
+  and left the card's copy standing; this is where it comes off.
+
+### The ink, which is the one thing reading the CSS only half-answered
+
+Ink mass = the rendered box's area × its background alpha, so a filled ⁦30%⁩ grey and a hollow ring
+are compared on one scale. Same day, same width:
+
+|          | behind the line | the block we are in | ahead of the line              |
+| -------- | --------------- | ------------------- | ------------------------------ |
+| shipped  | ⁦383⁩           | ⁦383⁩               | **⁦0⁩** (hollow ring, no fill) |
+| proposed | ⁦89⁩            | ⁦168⁩               | **⁦657⁩**                      |
+
+So the shipped rail draws the half you can do nothing about at full strength (`--ok` is alpha ⁦1⁩)
+and the half that is left as an outline — on the card whose lead number is _what is left_. The
+proposal is `spent` × `ahead` on one channel and `hard` × `soft` on the other, which also puts
+ADR-0011's own primitive on the rail for the first time. **Cost, stated plainly: `--ok` green
+leaves the card** — at the ⁦4.6–27px⁩ block widths measured here nobody was reading green against
+grey, and the settle state lives where its control is.
+
+### The assertion
+
+Every pair of rendered boxes on all six days, in all four theme×width runs: **⁦0⁩ blocks touching,
+⁦0⁩ marks touching**. `סטייה ממרכז הבלוק` is ⁦0px⁩ except on the two days with ticks, where it is
+⁦2px⁩ — half a ⁦4px⁩ floor, i.e. structural. Two more findings came out of running it rather than
+reading it, and both are in the file's header: the dark theme killed a ⁦9%⁩ spent block over a ⁦5%⁩
+ground (the neutral steps are now ⁦7⁩ · ⁦18⁩ · ⁦34⁩), and enlarging the mark to ⁦15px⁩ for the taller
+rail made two marks touch — because `DAY_TRACK.MARK_MIN_PX = 16` **is the glyph's own rendered box**
+(measured: ⁦16.2px⁩ at ⁦13px⁩, ⁦18.7px⁩ at ⁦15px⁩), so the size and the floor are one decision living in
+two files.
+
+### The three forks, with the recommendation each
+
+The mockup's **defaults are the recommendation**, and every alternative is drawn beside it.
+
+1. **The inks.** `spent × hard/soft` (recommended) or the five phases. Keeping five means the
+   commitment axis stays invisible, because the fill is one channel and the phase has taken it.
+2. **The anchor words.** A tick on the track and the word/time one tap away in the day view
+   (recommended), or `.glance-legs` under the rail as the only rendering — ADR-0077 §D's collapse
+   promoted from fallback, which costs ⁦56px⁩ measured and keeps the times.
+3. **The lead.** `עוד ⁦2⁩ עצירות היום` (recommended, and quiet at zero) or the ⁦32px⁩ mono numeral.
+
+Two smaller calls are controls rather than decisions, for a device pass: the track's height
+(⁦14⁩ · **⁦18⁩** · ⁦22⁩) and whether the rail's ends show at all (**off**, and when on they say the
+day's own first and last instant, never the window's ⁦07:00⁩/⁦23:00⁩).
+
+### What the build owes beyond the card
+
+Three one-line changes to shared code, all found by drawing rather than by reading:
+
+- `day-track.css` should own the height it already declares (`.wp-track .track { height: var(--track-h) }`).
+- `.wp-track-blk.point` lands after `.hard` and swallows it, so a tick can never be a commitment;
+  `.point.hard { background: var(--track-strong) }` fixes it and the board cannot notice.
+- `thinMarks` should take the spacing floor as an argument, since it is the glyph's box.
+
+Plus `DayTravelTotal`'s three `.day-total` rules, which are scoped to `.day-ambient` in
+`screens.css` — the build unscopes them rather than adding a second copy (rule 8).
+
 ## Plan, as steps
 
 1. **Backlog check + read** — this brief's "Read first", plus `frontend/CLAUDE.md` as a design
@@ -124,12 +229,12 @@ with a drawing that shows what it looks like.
 2. **Probe before drawing.** A throwaway `vitest` over `buildDayGlance` for the six days at the
    glance's own window, and a census of the shipped card. Delete the probe; keep the numbers in the
    mockup. This is what stops v2 being a taste argument.
-3. **Draw `mockups/glance-v2.html`** — the census in §1, then one section per candidate move above
+3. **Draw `mockups/glance-v2.html`** — **done, 2026-08-31** (see § מה הציור מצא above) — the census in §1, then one section per candidate move above
    with its "without" column rendered from the file's own block, then the six stress days at one
    height, then the collision assertion. Both themes, ⁦360⁩/⁦390⁩, and a control for every number that
    is a feel call. Reuse the app's real CSS through the `APP-CSS` manifest (add
    `styles/day-track.css` to it).
-4. **Put the forks to the owner** — the phase-palette question (move 1's inks), pills vs marks
+4. **Put the forks to the owner** — **open** — the phase-palette question (move 1's inks), pills vs marks
    (move 2), and what the lead becomes (move 4). These three change what the card _is_; the rest are
    measurements.
 5. **Build behind the answers**, in this order: adopt `day-track` for the rail (which fixes the two
