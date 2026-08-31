@@ -61,7 +61,14 @@ export interface GapRead {
   /** `at-the-stay` only — the stay the plan says you are at. The caller resolves its display
    *  name through the usual authority rule; this hands back the event so it can. */
   stay?: TripEvent;
-  /** `at-the-stay` only. */
+  /** **Which side of the night the clock is on, and PRESENT EXACTLY WHEN it is outside
+   *  `DAY_WINDOW`** — a fact about the hour, so it is carried by every arm rather than by the
+   *  one that happened to need it first (the 2026-09-01 amendment to ADR-0211 §3/§4).
+   *
+   *  Two things read it. `gapWords` gives the label to `at-the-stay` and to `open`, which are
+   *  the two arms whose words are wrong at ⁦01:12⁩ without it; and {@link gapDrawsDayRail} asks
+   *  only whether it is there at all, because "outside the rail's own window" is the whole
+   *  question that function was written to answer. */
   band?: NightBand;
 }
 
@@ -93,6 +100,21 @@ function insideWakingWindow(hour: number): boolean {
 }
 
 /**
+ * **Which band an hour outside the window is in, or nothing when it is inside one.**
+ *
+ * **The band is not one comparison, and the test is what said so.** `hour < NIGHT_ENDS_HOUR`
+ * reads ⁦23:30⁩ as morning, because the night wraps midnight and a single `<` cannot express a
+ * range that does. Morning is the narrow slice — `NIGHT_ENDS_HOUR` up to the window opening —
+ * and everything else outside the window, the late evening and the small hours alike, is night.
+ */
+function nightBandOf(hour: number): NightBand | undefined {
+  if (insideWakingWindow(hour)) return undefined;
+  return hour >= NIGHT_ENDS_HOUR && hour < DAY_WINDOW.START_HOUR
+    ? NIGHT_BAND.MORNING
+    : NIGHT_BAND.NIGHT;
+}
+
+/**
  * **The gap's character.**
  *
  * Every arm stands on something already in the app — a device mark, a position the leave-by
@@ -101,36 +123,27 @@ function insideWakingWindow(hour: number): boolean {
  */
 export function gapCharacter(input: GapCharacterInput): GapRead {
   const { hour, next, today, dayHasEvents, wokeIn, onWay } = input;
+  // Resolved once, before any arm, because it is true of the MINUTE rather than of the arm —
+  // which is the correction the 2026-09-01 amendment makes: keyed on the arm, the night was
+  // only noticed when a bed happened to be there to name.
+  const band = nightBandOf(hour);
+  const at = <T extends GapRead>(read: T): T => (band ? { ...read, band } : read);
 
   // A person said they are moving. Nothing the plan knows outranks that — including the bed,
   // which is why this is first: somebody up and out at ⁦06:20⁩ is on their way, not at a hotel.
-  if (onWay && next) return { kind: GAP_CHARACTER.ON_THE_WAY };
+  if (onWay && next) return at({ kind: GAP_CHARACTER.ON_THE_WAY });
 
   // The plan's own position, but only while it is still fresh. `wokeIn` is `travelOrigin`'s
   // fallback and it survives all day — at ⁦11:00⁩ on an empty day the bed is still the last
   // position the plan has, and by then you are out. `DAY_WINDOW` is the bound: inside the
   // waking window the bed is a stale claim, so the gap falls through to what it really is.
-  if (wokeIn && !insideWakingWindow(hour)) {
-    return {
-      kind: GAP_CHARACTER.AT_THE_STAY,
-      stay: wokeIn,
-      // **The band is not one comparison, and the test is what said so.** `hour <
-      // NIGHT_ENDS_HOUR` reads ⁦23:30⁩ as morning, because the night wraps midnight and a
-      // single `<` cannot express a range that does. Morning is the narrow slice:
-      // `NIGHT_ENDS_HOUR` up to the window opening. Everything else outside the window —
-      // the late evening and the small hours alike — is the night.
-      band:
-        hour >= NIGHT_ENDS_HOUR && hour < DAY_WINDOW.START_HOUR
-          ? NIGHT_BAND.MORNING
-          : NIGHT_BAND.NIGHT,
-    };
-  }
+  if (wokeIn && band) return at({ kind: GAP_CHARACTER.AT_THE_STAY, stay: wokeIn });
 
   // `next` crossing midnight is the ordinary case, not the exception — so "is there anything
   // left" is a question about the DATE, never about whether `next` exists.
-  if (next?.date === today) return { kind: GAP_CHARACTER.OPEN };
+  if (next?.date === today) return at({ kind: GAP_CHARACTER.OPEN });
 
-  return { kind: dayHasEvents ? GAP_CHARACTER.DAY_DONE : GAP_CHARACTER.EMPTY_DAY };
+  return at({ kind: dayHasEvents ? GAP_CHARACTER.DAY_DONE : GAP_CHARACTER.EMPTY_DAY });
 }
 
 /** **Whether the day rail still describes the frame you are in.**
@@ -138,9 +151,20 @@ export function gapCharacter(input: GapCharacterInput): GapRead {
  *  `in-transit` already drops the rail on exactly this reasoning (ADR-0059 §2 — the flight IS
  *  the day's current activity), and the night is the same case from the other end: at ⁦02:40⁩
  *  `dayProgress` clamps to 0 and the board draws a knob at the start of a day you are not in
- *  yet, labelled `עכשיו`. Absence beats a pinned lie. */
-export function gapDrawsDayRail(kind: GapCharacter): boolean {
-  return kind !== GAP_CHARACTER.AT_THE_STAY && kind !== GAP_CHARACTER.EMPTY_DAY;
+ *  yet, labelled `עכשיו`. Absence beats a pinned lie.
+ *
+ *  **It asks the HOUR, and the first version asked the arm** (the 2026-09-01 amendment).
+ *  ADR-0211 §4 said "the rail comes off in the same states" and the states it named were
+ *  `at-the-stay`'s — so the pinned lie survived wherever the plan had no bed to name: reported
+ *  from a phone at ⁦01:12⁩ on a night whose next event was a ⁦07:00⁩ check-in, where the read is
+ *  `open` and the knob sat at ⁦0%⁩ under `עכשיו`. `dayProgress` clamps at BOTH ends, so this also
+ *  takes the rail off at ⁦23:40⁩, where it was drawing a knob at ~⁦98%⁩ for a day already over.
+ *
+ *  `band` is present exactly when the clock is outside `DAY_WINDOW` — the rail's own window —
+ *  so its presence IS this question, and `empty-day` is the one arm that fails it from inside:
+ *  a rail across a day with nothing on it describes a frame that has no content, at any hour. */
+export function gapDrawsDayRail(read: GapRead): boolean {
+  return read.band === undefined && read.kind !== GAP_CHARACTER.EMPTY_DAY;
 }
 
 /**
@@ -163,14 +187,20 @@ export function gapWords(read: GapRead, stayName?: string): { label: string; tit
       return t.board.gap.onTheWay;
     case GAP_CHARACTER.AT_THE_STAY:
       return stayName
-        ? { label: t.board.gap.atTheStay[read.band ?? NIGHT_BAND.NIGHT], title: stayName }
+        ? { label: t.board.gap.band[read.band ?? NIGHT_BAND.NIGHT], title: stayName }
         : open;
     case GAP_CHARACTER.DAY_DONE:
       return { label: t.board.gap.dayDone.label, title: t.board.endOfDay };
     case GAP_CHARACTER.EMPTY_DAY:
       return t.board.gap.emptyDay;
+    // **`פנוי` is a claim about the DAY, and at ⁦01:12⁩ there is no day yet to be free in.**
+    // This file's own header lists `זמן חופשי` at ⁦02:40⁩ and ⁦06:40⁩ among the readings it was
+    // written to end, and ADR-0211 ended them only where a bed was there to name. The title
+    // stays — nothing IS scheduled, which is true — and the label says which hours those are.
+    // A claim about the clock, never about the person (ADR-0208), and the same two words
+    // `at-the-stay` uses, from the same key.
     case GAP_CHARACTER.OPEN:
-      return open;
+      return read.band ? { label: t.board.gap.band[read.band], title: open.title } : open;
   }
 }
 

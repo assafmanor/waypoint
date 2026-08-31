@@ -343,7 +343,7 @@ describe('Home — the lift wiring', () => {
       tripEvents = [stay(), tomorrowFlight()];
       show();
       expect(document.querySelector('.wp-board-now-label')?.textContent).toBe(
-        t.board.gap.atTheStay.night,
+        t.board.gap.band.night,
       );
       expect(document.querySelector('.wp-board-now-title')?.textContent).toBe(
         'Rooms Hotel Tbilisi',
@@ -352,13 +352,43 @@ describe('Home — the lift wiring', () => {
       expect(document.querySelector('.wp-board-progress')).toBeNull();
     });
 
+    // **The reported case** (owner, from a phone at ⁦01:12⁩): the same small hours with NO bed in
+    // the plan — the night's next event is a ⁦07:00⁩ check-in, so `wokeIn` is absent and the read
+    // is `open`. Before the 2026-09-01 amendment this printed `פנוי · זמן חופשי` over a rail
+    // whose knob sat at ⁦0%⁩ under `עכשיו`: the night unnoticed because it was keyed on the arm
+    // that had a bed to name.
+    it('the small hours with no bed still read as the night, and still drop the rail', () => {
+      setSimulatedNow(Date.parse(`${NIGHT_DAY}T00:40:00Z`)); // 02:40 Rome
+      tripActiveDate = NIGHT_DAY;
+      tripEvents = [
+        ev('checkin', {
+          title: 'אבישי 10',
+          category: 'lodging',
+          date: NIGHT_DAY,
+          endDate: '2026-08-07',
+          startsAt: `${NIGHT_DAY}T05:00:00Z`, // 07:00 Rome
+          endsAt: '2026-08-07T08:00:00Z',
+        }),
+      ];
+      show();
+      expect(document.querySelector('.wp-board-now-label')?.textContent).toBe(
+        t.board.gap.band.night,
+      );
+      // The title stays the honest one: nothing IS scheduled between now and ⁦07:00⁩.
+      expect(document.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.freeTitle);
+      expect(document.querySelector('.wp-board-progress')).toBeNull();
+      // And the day's own shape is still on the screen — one section down, where ADR-0215 put
+      // it — so nothing was lost by taking the rail off the board.
+      expect(document.querySelectorAll('.glance-track .wp-track-blk').length).toBeGreaterThan(0);
+    });
+
     it('and the same hour before the day opens is the other band', () => {
       setSimulatedNow(Date.parse(`${NIGHT_DAY}T04:40:00Z`)); // 06:40 Rome
       tripActiveDate = NIGHT_DAY;
       tripEvents = [stay(), tomorrowFlight()];
       show();
       expect(document.querySelector('.wp-board-now-label')?.textContent).toBe(
-        t.board.gap.atTheStay.morning,
+        t.board.gap.band.morning,
       );
     });
 

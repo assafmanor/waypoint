@@ -1245,7 +1245,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         progress={progress}
         windowStartHour={hourLabel(DAY_WINDOW.START_HOUR)}
         windowEndHour={hourLabel(DAY_WINDOW.END_HOUR)}
-        showRail={!boardGap || gapDrawsDayRail(boardGap.read.kind)}
+        showRail={!boardGap || gapDrawsDayRail(boardGap.read)}
       />
 
       {/* The board, promoted (ADR-0160). Mounted only while lifted, so it registers
@@ -1288,8 +1288,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
             // **The same question the collapsed board asks** (ADR-0211 §4). The transit gate was
             // already here for ADR-0059 §2's reason; the night is that reason from the other
             // end, so it is one condition rather than a second one beside it.
-            (inTransit && transit) ||
-            (boardGap && !gapDrawsDayRail(boardGap.read.kind)) ? undefined : (
+            (inTransit && transit) || (boardGap && !gapDrawsDayRail(boardGap.read)) ? undefined : (
               <DayRail
                 progress={progress}
                 startHour={hourLabel(DAY_WINDOW.START_HOUR)}

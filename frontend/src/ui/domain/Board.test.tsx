@@ -79,9 +79,7 @@ describe('Board', () => {
         read: { kind: GAP_CHARACTER.AT_THE_STAY, band: NIGHT_BAND.NIGHT },
         stayName: 'Rooms Hotel Tbilisi',
       });
-      expect(night.querySelector('.wp-board-now-label')?.textContent).toBe(
-        t.board.gap.atTheStay.night,
-      );
+      expect(night.querySelector('.wp-board-now-label')?.textContent).toBe(t.board.gap.band.night);
       expect(night.querySelector('.wp-board-now-title')?.textContent).toBe('Rooms Hotel Tbilisi');
       // `לילה` is a claim about the CLOCK, and the clock is amber's (root rule 4).
       expect(night.querySelector('.wp-board-now-label')?.className).not.toContain('loc');
@@ -92,7 +90,7 @@ describe('Board', () => {
         stayName: 'Rooms Hotel Tbilisi',
       });
       expect(morning.querySelector('.wp-board-now-label')?.textContent).toBe(
-        t.board.gap.atTheStay.morning,
+        t.board.gap.band.morning,
       );
     });
 

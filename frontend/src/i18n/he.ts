@@ -1940,7 +1940,11 @@ export const t = {
      *  app has no sensor for that. */
     gap: {
       onTheWay: { label: 'כרגע', title: 'בדרך' },
-      atTheStay: { night: 'לילה', morning: 'בוקר' },
+      // **The two band words, and they belong to the HOUR rather than to the stay** — which is
+      // why the key is `band` since the 2026-09-01 amendment to ADR-0211 and no longer
+      // `atTheStay`. `open` spends them too: at ⁦01:12⁩ on a night the plan gave no bed, the
+      // label read `פנוי` over `זמן חופשי`, which is a claim about a day that has not started.
+      band: { night: 'לילה', morning: 'בוקר' },
       dayDone: { label: 'היום' },
       emptyDay: { label: 'היום', title: 'יום פנוי' },
     },

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
+import { t } from '../i18n/he';
 import {
   GAP_CHARACTER,
   NIGHT_BAND,
   gapCharacter,
   gapDrawsDayRail,
+  gapWords,
   type GapCharacterInput,
 } from './gap-character';
 
@@ -118,16 +120,83 @@ describe('gapCharacter', () => {
     });
   });
 
+  // ── THE HOUR IS CARRIED BY EVERY ARM (the 2026-09-01 amendment) ─────────────
+  // Reported from a phone at ⁦01:12⁩: a night whose next event was a ⁦07:00⁩ check-in, so the plan
+  // had no bed to name, the read was `open`, and the board said `פנוי · זמן חופשי` over a rail
+  // whose knob sat at ⁦0%⁩ under `עכשיו`. Both were the night going unnoticed because the night
+  // was keyed on the arm that happened to need it first.
+  describe('the band is a fact about the hour, not about the arm', () => {
+    it('an open gap in the small hours carries the night band', () => {
+      const read = gapCharacter({ ...base, hour: 1, next: laterToday });
+      expect(read.kind).toBe(GAP_CHARACTER.OPEN);
+      expect(read.band).toBe(NIGHT_BAND.NIGHT);
+    });
+
+    it('and before the day opens it carries the morning one', () => {
+      expect(gapCharacter({ ...base, hour: 6, next: laterToday }).band).toBe(NIGHT_BAND.MORNING);
+    });
+
+    it('inside the window there is no band at all', () => {
+      expect(gapCharacter({ ...base, hour: 13 }).band).toBeUndefined();
+      expect(gapCharacter({ ...base, hour: 7 }).band).toBeUndefined();
+      expect(gapCharacter({ ...base, hour: 22 }).band).toBeUndefined();
+    });
+
+    it('every arm carries it, including the two that do not spend it on words', () => {
+      expect(gapCharacter({ ...base, hour: 2, next: laterToday, onWay: true }).band).toBe(
+        NIGHT_BAND.NIGHT,
+      );
+      expect(gapCharacter({ ...base, hour: 23, next: tomorrowFlight }).band).toBe(NIGHT_BAND.NIGHT);
+      expect(
+        gapCharacter({ ...base, hour: 2, next: tomorrowFlight, dayHasEvents: false }).band,
+      ).toBe(NIGHT_BAND.NIGHT);
+    });
+  });
+
+  describe('the words an open gap uses at that hour', () => {
+    it('say which hours are free rather than claiming a day that has not started', () => {
+      const read = gapCharacter({ ...base, hour: 1, next: laterToday });
+      expect(gapWords(read)).toEqual({
+        label: t.board.gap.band.night,
+        title: t.board.freeTitle,
+      });
+    });
+
+    it('and are the ordinary two inside the window', () => {
+      const read = gapCharacter({ ...base, hour: 13 });
+      expect(gapWords(read)).toEqual({ label: t.board.freeLabel, title: t.board.freeTitle });
+    });
+
+    // The stay keeps its own title — the band was never the whole of that arm's words.
+    it('the stay still names the place, in the same two band words', () => {
+      const read = gapCharacter({ ...base, hour: 2, wokeIn: hotel, next: tomorrowFlight });
+      expect(gapWords(read, 'Rooms Hotel')).toEqual({
+        label: t.board.gap.band.night,
+        title: 'Rooms Hotel',
+      });
+    });
+  });
+
   describe('gapDrawsDayRail', () => {
-    it('drops the rail exactly where it would draw a day you are not in', () => {
-      expect(gapDrawsDayRail(GAP_CHARACTER.AT_THE_STAY)).toBe(false);
-      expect(gapDrawsDayRail(GAP_CHARACTER.EMPTY_DAY)).toBe(false);
+    const read = (over: Partial<GapCharacterInput>) => gapCharacter({ ...base, ...over });
+
+    // `dayProgress` clamps at both ends, so a rail outside the window is pinned at ⁦0%⁩ or ⁦100%⁩
+    // under the word `עכשיו` — a day you are not in, in both directions.
+    it('drops the rail everywhere the clock is outside the window, in EVERY arm', () => {
+      expect(gapDrawsDayRail(read({ hour: 1, next: laterToday }))).toBe(false);
+      expect(gapDrawsDayRail(read({ hour: 2, wokeIn: hotel, next: tomorrowFlight }))).toBe(false);
+      expect(gapDrawsDayRail(read({ hour: 23, next: tomorrowFlight }))).toBe(false);
+      expect(gapDrawsDayRail(read({ hour: 6, next: laterToday, onWay: true }))).toBe(false);
+    });
+
+    it('and where the day has nothing on it at any hour', () => {
+      expect(gapDrawsDayRail(read({ hour: 11, next: undefined, dayHasEvents: false }))).toBe(false);
     });
 
     it('and keeps it everywhere the day is the frame you are inside', () => {
-      expect(gapDrawsDayRail(GAP_CHARACTER.OPEN)).toBe(true);
-      expect(gapDrawsDayRail(GAP_CHARACTER.ON_THE_WAY)).toBe(true);
-      expect(gapDrawsDayRail(GAP_CHARACTER.DAY_DONE)).toBe(true);
+      expect(gapDrawsDayRail(read({ hour: 13 }))).toBe(true);
+      expect(gapDrawsDayRail(read({ hour: 13, onWay: true }))).toBe(true);
+      expect(gapDrawsDayRail(read({ hour: 22, next: tomorrowFlight }))).toBe(true);
     });
   });
 });
