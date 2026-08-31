@@ -210,6 +210,51 @@ Two smaller calls are controls rather than decisions, for a device pass: the tra
 (⁦14⁩ · **⁦18⁩** · ⁦22⁩) and whether the rail's ends show at all (**off**, and when on they say the
 day's own first and last instant, never the window's ⁦07:00⁩/⁦23:00⁩).
 
+### The placement, which the owner asked about after the drawing (§4)
+
+_"the placement of the glance in the home screen — is the current placement the best or is there
+another more fitting one?"_ **No, and the reason is that it was never chosen.** ADR-0045 removed the
+fixture `מבט מהיר` row (weather / FX / budget) and put the derived card **"in its place"** — the
+slot came with the row it replaced. The one time anybody _did_ ask, ADR-0188 §6 drew the line exactly
+where this card wants to be, in its own words: the tasks band goes _"above quick-access on purpose:
+this answers 'what do I owe today', which belongs with the board's what-now/what-next rather than
+beside a WiFi code."_ The day's shape is the same class of fact, and more so.
+
+Home's order today is: stay strip · **board** · `ChangeFeed` · tasks band · `גישה מהירה` (4 tiles) ·
+**`היום במבט`** · `מבט מהיר`.
+
+**Recommendation: one slot up — above `גישה מהירה`, below the tasks band.** Measured on the rendered
+column at ⁦360⁩: **⁦464px⁩ → ⁦301px⁩ from the top of the scroll column**, i.e. ⁦163px⁩ less scrolling
+before the day's shape is on screen. Four arguments, in the order they carry weight:
+
+1. **Kind.** The board and this card are both derived time surfaces (ADR-0018/0045); the tiles are
+   deep links into stored data (ADR-0050). A shortcut to a WiFi code currently sits between the two
+   halves of one subject.
+2. **On the ordinary day it _is_ "directly under the board".** `ChangeFeed` auto-collapses when no
+   peer has edited anything and the tasks band is absent when nothing is due, so "under the board"
+   and "above `גישה מהירה`" are the same position most of the time — which is why the recommendation
+   is the second one and needs no argument against ADR-0188 §6. It keeps that ADR intact: what is
+   live and owed first, then the day's shape, then the shortcuts.
+3. **The axis is printed twice, one section apart, and adjacency is what exposes it.** The board's
+   rail draws `dayProgress` under `hourLabel(DAY_WINDOW.START_HOUR)` / `END_HOUR` and the card prints
+   its window's `07:00` / `23:00` — **⁦4⁩ hour labels in one column, ⁦2⁩ after**. The mockup already
+   turns the card's ends off by default; the placement gives that decision its second reason.
+4. **Nothing above the hero is at stake.** At ⁦360×640⁩ the board's own rail is already ⁦228px⁩ below
+   the fold (measured in ADR-0180 §3), so every section under the hero is scroll-only. What is being
+   decided is what you meet **first** on the way down, which is what the ⁦163px⁩ measures.
+
+**What the adjacency opens and this drawing does not close:** in the proposed order the board's knob
+and the card's now-line mark the same instant on the same window, at the same x — so the ⁦3px⁩
+progress rail becomes a poorer copy of the ⁦18px⁩ track ⁦30px⁩ below it. That slot already knows how to
+change tenant (ADR-0214 gave it to tomorrow at night). Whether it goes empty by day is an ADR
+decision, not a drawing one, and it is deliberately left open here.
+
+**Rejected: the card above the board.** The card is the one thing on Home that answers to the
+header's day strip — except that it does not: `dayCarriedFrom` drops `?day=` on Home and Home is
+today-anchored (ADR-0035 §4), so `activeDate` there is always today. Gluing the card to a control
+that cannot move it would buy confusion instead of a relationship, and the hero has to lead the
+screen (ADR-0018).
+
 ### What the build owes beyond the card
 
 Three one-line changes to shared code, all found by drawing rather than by reading:

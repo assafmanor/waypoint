@@ -65,6 +65,7 @@
        §2c מה הלוח כבר אומר (the subtraction, measured)        → ADR §4
        §2d המוביל (numeral → sentence) + התוספת (travel)      → ADR §5
        §3  ששת הימים + טענת ההתנגשות                          → ADR §6
+       §4  המיקום במסך הבית (המשבצת עברה בירושה)              → ADR §7
 
      ─────────────────────────────────────────────────────────────────────────
      Interactive: theme (בהיר · כהה), screen (⁦360×640⁩ · ⁦390×844⁩), the six probed days, and one
@@ -11330,6 +11331,22 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         </table>
       </section>
 
+      <!-- ══════════════════════════ §4 ══════════════════════════ -->
+      <section class="case">
+        <h2>§4 · המיקום · האם המשבצת הזאת נבחרה בכלל</h2>
+        <p class="note">
+          <b>לא.</b> ADR-0045 הסיר את השורה של מזג אוויר/מטבע/תקציב ושם את הכרטיס הנגזר
+          <b>«במקומה»</b> · המשבצת עברה בירושה משורת פיקסצ׳ר מתה, ואף אחד לא שאל איפה «כל היום
+          בבת אחת» צריך לשבת. מי שכן שאל היה ADR-0188 §6, על להקת המשימות, והנימוק שלו במילים
+          שלו: «מעל גישה מהירה <b>בכוונה</b> · זה עונה על ‹מה אני חייב היום›, וזה שייך ליד
+          ה-מה-עכשיו/מה-הבא של הלוח ולא ליד קוד WiFi». צורת היום היא בדיוק אותו סוג עובדה, ורק
+          יותר · והאריחים הם קישורים לנתון שמור (ADR-0050), לא משטח זמן. למטה: אותו יום, אותו
+          רוחב, שני סדרים · <b>ושני הפסים שמדפיסים את אותם שני מספרים</b> (⁦07:00⁩ ו-⁦23:00⁩,
+          הלוח מ-<code>DAY_WINDOW</code> והכרטיס מהחלון) מסומנים בשניהם.
+        </p>
+        <div class="pair" id="s4"></div>
+      </section>
+
       <div class="panel">
         <h2>מדידה · נקראת מה-DOM החי</h2>
         <p>
@@ -11393,6 +11410,12 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         navigate: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M15.6 8.4l-2.2 5.2-5.2 2.2 2.2-5.2Z',
         hotel:
           'M2.8 19.6v-7.2a1.8 1.8 0 0 1 1.8-1.8h14.8a1.8 1.8 0 0 1 1.8 1.8v7.2 M4.6 10.6V6.8a1.8 1.8 0 0 1 1.8-1.8h11.2a1.8 1.8 0 0 1 1.8 1.8v3.8 M2.8 16h18.4',
+        plus: 'M12 4.8v14.4 M4.8 12h14.4',
+        ticket:
+          'M3.4 8.6V6.8a1.6 1.6 0 0 1 1.6-1.6h14a1.6 1.6 0 0 1 1.6 1.6v1.8a2.2 2.2 0 0 0 0 4.4v1.8a1.6 1.6 0 0 1-1.6 1.6H5a1.6 1.6 0 0 1-1.6-1.6v-1.8a2.2 2.2 0 0 0 0-4.4Z M14.4 5.2v1.9 M14.4 10.2v1.9 M14.4 15.1v1.9',
+        wifi: 'M12 19.6h.02 M8.6 16.2a4.8 4.8 0 0 1 6.8 0 M5.2 12.8a9.6 9.6 0 0 1 13.6 0 M2 9.4a14.4 14.4 0 0 1 20 0',
+        documents:
+          'M5.4 2.8h13.2a1.6 1.6 0 0 1 1.6 1.6v15.2a1.6 1.6 0 0 1-1.6 1.6H5.4a1.6 1.6 0 0 1-1.6-1.6V4.4a1.6 1.6 0 0 1 1.6-1.6Z M10.6 9.4a1.9 1.9 0 1 1-3.8 0 1.9 1.9 0 0 1 3.8 0 M6.8 15.4c0-1.5 1-2.4 1.9-2.4s1.9.9 1.9 2.4 M13.6 9.2h3.6 M13.6 12.6h3.6 M13.6 16h3.6',
       };
       const icon = (name, cls = '') =>
         `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -11827,6 +11850,70 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           </button>`;
       };
 
+      /* ── THE HOME COLUMN, for §4 ──────────────────────────────────────────────
+         Only the sections that are on screen on an ORDINARY day: `ChangeFeed`
+         auto-collapses when no peer has edited anything and `TripHomeTaskBand` is
+         absent when nothing is due (both by design, ADR-0045), so on the common
+         day «under the board» and «above גישה מהירה» are the SAME position — which
+         is why the proposal is the second one and needs no argument against
+         ADR-0188 §6. The quick grid is the app's own `.quick`/`.qa` tree.
+
+         The board here is the DAY board with something on now, because that is the
+         state in which its rail draws `dayProgress` under the same two hour labels
+         the card prints — the duplication §4 is about. */
+      const tile = (ic, label, extra = '', cls = '') =>
+        `<button class="qa ${cls}"><span class="ic">${icon(ic)}</span>
+           <span class="lb">${label}</span>${extra}</button>`;
+      const quickSection = () =>
+        `${secTitle('גישה מהירה')}
+         <div class="quick" style="grid-template-columns:repeat(4,1fr)">
+           ${tile('ticket', 'הכרטיס הבא', '<span class="code" dir="auto">#NH2049</span>')}
+           ${tile('wifi', 'קוד WiFi', '<span class="sub" dir="auto">Sakura-5G</span>')}
+           ${tile('navigate', 'ניווט ליעד הבא', '<span class="sub name">שינג׳וקו</span>')}
+           ${tile('documents', `<span class="plus">${icon('plus')}</span> מסמכים`, '<span class="sub">הוסיפו מסמך</span>', 'empty')}
+         </div>`;
+      const boardNow = (d) => {
+        const now = d.stops.find((x) => phaseOf(d, x) === 'now');
+        const next = d.stops.find((x) => mins(x.from) > mins(d.now));
+        const left = mins(next.from) - mins(d.now);
+        const prog = ((mins(d.now) - mins(d.w0)) / (mins(d.w1) - mins(d.w0))) * 100;
+        return `<button type="button" class="wp-board is-tappable">
+            <div class="wp-board-top">
+              <div class="wp-board-live"><span class="blip"></span>עכשיו</div>
+              <div class="wp-board-clock" dir="auto">${d.now}</div>
+            </div>
+            <div class="wp-board-now-label">עכשיו</div>
+            <div class="wp-board-now-title"><span class="wp-board-ic">${now.e}</span>${now.title}</div>
+            <div class="wp-board-now-meta"><span dir="auto">${clock(now.from)}–${clock(now.to)}</span></div>
+            <div class="wp-board-next-row">
+              <div>
+                <div class="wp-board-next-label">הבא בתור</div>
+                <div class="wp-board-next-title"><span class="wp-board-ic">${next.e}</span>${next.title}</div>
+                <div class="wp-board-next-meta"><span dir="auto">${clock(next.from)}</span>
+                  ${next.hard ? `<span class="lockmini">${icon('lock')} קשיח</span>` : ''}</div>
+              </div>
+              <div class="wp-board-countdown">
+                <div class="t" dir="auto">${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}</div>
+                <div class="u">שעות</div>
+              </div>
+            </div>
+            <div class="wp-board-progress">
+              <div class="track"><div class="fill" style="width:${prog.toFixed(1)}%"></div>
+                <div class="knob" style="inset-inline-start:${prog.toFixed(1)}%"></div></div>
+              <div class="ends" data-axis><span dir="auto">${clock(d.w0)}</span><span dir="auto">${clock(d.w1)}</span></div>
+            </div>
+          </button>`;
+      };
+      /** `where` = 'below' (today) or 'above' (the proposal): the same two blocks,
+       *  swapped, so the only thing being judged is the order. */
+      const homeColumn = (d, where, id, cardOf) =>
+        holder(
+          where === 'above'
+            ? boardNow(d) + secTitle('היום במבט') + cardOf() + quickSection()
+            : boardNow(d) + quickSection() + secTitle('היום במבט') + cardOf(),
+          id,
+        );
+
       /* ── FRAMES ──────────────────────────────────────────────────────────────
          A card is judged inside the app's own body padding at the app's own
          background, never on the mockup's page — `--card` on `--mk-surface` is a
@@ -12120,6 +12207,21 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           ),
         ].join('');
 
+        document.querySelector('#s4').innerHTML = [
+          col(
+            'הסדר של היום',
+            'no',
+            homeColumn(p, 'below', 'b4-below', () => cardShipped(p, { id: 'c4-below' })),
+            'הלוח, ואז ארבעה אריחים שמקשרים למסמך ולקוד, ואז צורת היום · שתי הכותרות ⁦07:00⁩/⁦23:00⁩ מודפסות פעמיים בעמודה אחת.',
+          ),
+          col(
+            'מעל «גישה מהירה» ★',
+            'rec',
+            homeColumn(p, 'above', 'b4-above', () => cardV2(p, { id: 'c4-above' })),
+            'משטחי הזמן ראשונים, הקישורים אחריהם · וכשהכרטיס נהיה שכן של הלוח, הכפילות בציר נהיית גלויה, ולכן קצות החלון יורדים ממנו (זו הסיבה השנייה לאותה החלטה). <b>ושימו לב לכפתור והידית:</b> הכנופיה של הלוח ב-⁦13:40⁩ וקו העכשיו של הכרטיס יושבים באותו X, כי זה אותו חלון · מה שאומר שפס ההתקדמות של הלוח נהיה, בסמיכות הזאת, גרסה דלה יותר של הפס שמתחתיו.',
+          ),
+        ].join('');
+
         document.querySelector('#s3').innerHTML = Object.entries(DAYS)
           .map(([k, dd]) =>
             col(dd.name, '', holder(cardV2(dd, { id: `c3-${k}` }), `b3-${k}`), dd.note),
@@ -12141,6 +12243,8 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         `<b>שתי שורות שהאימוץ הזה מתקן בדרך</b> (שתיהן שורות פתוחות ב-<code>docs/backlog.md</code>): הפס של היום מצייר שני אירועים צמודים כפס אחד רצוף כי ל-<code>.seg</code> אין מפריד, ואירוע באורך אפס לא מצויר בכלל · ל-<code>day-track.css</code> יש קו שערה של ⁦1px⁩ ורצפה של ⁦4px⁩ מהיום הראשון. הטבלה למטה מודדת את שניהם ביום «עומס» וביום «קצרים».`,
         `<b>שלושה שינויים בגיאומטריה המשותפת, וכולם שורה אחת.</b> (א) <code>--track-h</code> מוצהר ב-<code>day-track.css</code> אבל ה-⁦3px⁩ מגיע מ-<code>.wp-board-progress .track</code> ב-<code>board.css</code> · לצרכן שני יוצא פס בגובה אפס, ולכן <code>.wp-track .track { height: var(--track-h) }</code> שייך לשם. (ב) <code>.wp-track-blk.point</code> יושב אחרי <code>.hard</code> ובולע אותו, כך שתקתוק לא יכול להיות קשיח · <code>.point.hard</code> עם <code>--track-strong</code> מתקן, והלוח לא מרגיש כי כל הדיו שלו ענבר. (ג) <code>thinMarks</code> צריך לקבל את רצפת המרווח כפרמטר, כי היא <b>תיבת הסימן</b> ולא מספר · מי שמגדיל את הסימן חייב להגדיל אותה, וזו הטעות שהטענה בסעיף §3 תפסה.`,
         `<b>ורכיב אחד שצריך שחרור מהאירוח.</b> <code>DayTravelTotal</code> הוא הרכיב, אבל שלושת הכללים של <code>.day-total</code> תחומים תחת <code>.day-ambient</code> ב-<code>screens.css</code> · הבנייה משחררת את התיחום במקום להוסיף העתק שני (כלל 8).`,
+        `<b>המיקום · ומה שהוא פותח (§4).</b> ההמלצה היא להעלות את הכרטיס משבצת אחת, מעל «גישה מהירה» · ⁦163px⁩ פחות גלילה עד שצורת היום על המסך, ותוויות השעה נשארות רק במקום אחד. <b>מה שהסמיכות פותחת ולא נסגר כאן:</b> בסדר הזה הכנופיה של הלוח וקו העכשיו של הכרטיס מסמנים את אותו רגע על אותו חלון, ולכן פס ההתקדמות של ⁦3px⁩ הוא גרסה דלה של הפס שמתחתיו · והמשבצת ההיא כבר יודעת להתחלף (ADR-0214 נתן אותה למחר בלילה). אם היום היא תישאר ריקה, זה החלטה של ה-ADR ולא של הציור.`,
+        `<b>נדחה · הכרטיס מעל הלוח.</b> הכרטיס הוא זה שנשלט מרצועת הימים בכותרת · אלא שב-Home <code>?day=</code> נזרק (<code>dayCarriedFrom</code>) ו-Home «עוגן להיום» (ADR-0035 §4), כך שהצמדה לפקד שלמעשה לא מזיז אותו הייתה קונה בלבול במקום קשר. והגיבור חייב להוביל את המסך (ADR-0018).`,
         `<b>אין מזג אוויר, ואין אריח חמישי.</b> ADR-0045 שומר על Home «נתונים אמיתיים בלבד» ו-ADR-0180 §4 כבר אמר שמזג אוויר חוזר ככרטיס של עצמו · והאריחים של ADR-0050 הם קישורים לנתון, ויום הוא לא נתון.`,
       ];
 
@@ -12154,6 +12258,21 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           const el = q(s);
           return el ? Math.round(el.getBoundingClientRect().width * 10) / 10 : null;
         };
+
+        /** How far down the scroll column a block sits — the only honest form of
+         *  the fold question here, because at ⁦360×640⁩ the board's OWN rail is
+         *  already ⁦228px⁩ below the fold (measured in ADR-0180 §3), so everything
+         *  under the hero is scroll-only and what is being decided is what you
+         *  meet FIRST on the way down. Inventing header and nav heights to draw a
+         *  fold line would be a number this page did not measure. */
+        const off = (col, el) => {
+          const a = q(col);
+          const b = q(el);
+          if (!a || !b) return 0;
+          return Math.round(b.getBoundingClientRect().top - a.getBoundingClientRect().top);
+        };
+        const times = (sel, str) =>
+          (q(sel)?.textContent.match(new RegExp(str, 'g')) ?? []).length;
 
         q('#cen-ship').innerHTML = censusTable(census('#c1-ship'));
         q('#cen-v2').innerHTML = censusTable(census('#c1-v2'));
@@ -12176,8 +12295,6 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         };
         const dUntil = dist('#b2c-ship .wp-board-now-meta', '#c2c-ship .glance-foot');
         const dHard = dist('#b2c-ship .wp-board-next-meta', '#c2c-ship .lead .anchor');
-        const times = (sel, str) =>
-          (q(sel)?.textContent.match(new RegExp(str.replace(':', ':'), 'g')) ?? []).length;
         q('#dup').innerHTML =
           `<table class="m mini" style="margin-top:8px">
              <tr><td>כמה פעמים <code>19:00</code> מודפס על המסך הזה</td><td>⁦${times('#b2c-ship', '19:00')}⁩ · בהצעה ⁦${times('#b2c-v2', '19:00')}⁩</td></tr>
@@ -12219,6 +12336,16 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             'סימנים שנמשכו מול עצירות',
             `⁦${drawnMarks}⁩ מתוך ⁦${d.stops.filter((s) => !s.skipped).length}⁩`,
             `תקרה ⁦${MARK_CAP}⁩ · מרווח מינימלי ⁦${((MARK_MIN_PX[markPx] / 290) * 100).toFixed(1)}%⁩`,
+          ],
+          [
+            'כמה גלילה עד שצורת היום על המסך',
+            `הסדר של היום · ⁦${off('#b4-below', '#c4-below')}px⁩ מראש העמודה`,
+            `בהצעה · ⁦${off('#b4-above', '#c4-above')}px⁩ · הפרש ⁦${off('#b4-below', '#c4-below') - off('#b4-above', '#c4-above')}px⁩`,
+          ],
+          [
+            'הציר שמודפס פעמיים בעמודה אחת',
+            `⁦${times('#b4-below', '07:00') + times('#b4-below', '23:00')}⁩ תוויות שעה`,
+            `בהצעה · ⁦${times('#b4-above', '07:00') + times('#b4-above', '23:00')}⁩ · הלוח לבדו`,
           ],
           [
             'תיבת הסימן המרונדרת',
