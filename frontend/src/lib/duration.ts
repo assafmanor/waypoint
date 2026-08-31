@@ -15,11 +15,32 @@ import {
   DAYS_PER_YEAR,
   MINUTES_PER_DAY,
   MINUTES_PER_HOUR,
+  MS_PER_MINUTE,
   SECONDS_PER_MINUTE,
 } from '../constants';
 import { ltrIsolate } from './bidi';
 import { dayPhrase, monthPhrase, weekPhrase, yearPhrase } from './hebrew';
 import { t } from '../i18n/he';
+
+/**
+ * **"How long ago", for anything with a timestamp** — `לפני 4 ד׳`, `לפני 3 ימים`,
+ * `לפני שבועיים`, and `עכשיו` under a minute.
+ *
+ * Lifted out of `notes.ts`'s `noteWhen` when the public shared reader needed the same
+ * sentence for its freshness line (ADR-0213's eleventh amendment §4): the two lines that
+ * make it are the ladder plus the prefix, and neither is a note's business. `noteWhen` is
+ * now its first caller rather than its owner.
+ *
+ * Under a minute is `עכשיו`, and so is a timestamp that will not parse — through
+ * {@link formatDuration}'s own non-finite guard. For a note that is a row this device has
+ * just written and not yet had stamped, so "now" is the truth rather than a fallback; for a
+ * projection it is a body that failed the schema long before reaching here.
+ */
+export function agoLabel(iso: string, nowMs: number): string {
+  const minutes = Math.floor((nowMs - Date.parse(iso)) / MS_PER_MINUTE);
+  const elapsed = formatDuration(minutes);
+  return elapsed ? t.changeFeed.relTime.agoPrefix(elapsed) : t.changeFeed.relTime.now;
+}
 
 /** Hours+minutes as a phrase ("5:45 שע׳" / "שעתיים" / "45 דק׳"), reusing the
  *  event picker's duration wording so it never drifts between surfaces. Reads in

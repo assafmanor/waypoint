@@ -16,10 +16,9 @@ import {
 import { DEFAULT_EVENT_ICON, NOTE_INLINE_MAX_LINES, NOTE_ROW_CHARS_PER_LINE } from '../constants';
 import { inContext, type HostContext } from './host-context';
 import { revealRows, type Revealed } from './filter-reveal';
-import { formatDuration } from './duration';
+import { agoLabel } from './duration';
 import { prettyUrl } from './external-url';
 import { flattenNoteMarkdown } from './note-markdown';
-import { t } from '../i18n/he';
 
 /** Every `EventCategory`, in the enum's own order — the chip row's order, so nothing here
  *  chooses one (`other` is last because the enum puts it last). */
@@ -278,21 +277,18 @@ export function noteTitleText(note: Note): string {
 
 /** "When", for a note's meta line — `לפני 4 ד׳`, `לפני 3 ימים`, `לפני שבועיים`.
  *
- *  Built on `formatDuration`, the app's ONE elapsed ladder (ADR-0114: minutes → hours →
- *  days → weeks → months → years, largest rung, rounded to nearest), rather than a second
- *  relative-time helper. `ChangeFeed`'s private `relTime` deliberately stops at hours
- *  because a 20-entry ring only ever holds recent things; a notes list holds the whole
- *  trip, so a note from last week must not read as `לפני 216 ש׳`.
+ *  The sentence itself is `duration.ts`'s `agoLabel`, built on `formatDuration`, the app's
+ *  ONE elapsed ladder (ADR-0114: minutes → hours → days → weeks → months → years, largest
+ *  rung, rounded to nearest) — never a second relative-time helper. `ChangeFeed`'s private
+ *  `relTime` deliberately stops at hours because a 20-entry ring only ever holds recent
+ *  things; a notes list holds the whole trip, so a note from last week must not read as
+ *  `לפני 216 ש׳`.
  *
- *  Under a minute is "now" — the same floor the change feed uses, and the case that
- *  matters most, since it is what you see the instant you write one. **A timestamp that
- *  will not parse reads "now" as well**, through `formatDuration`'s own non-finite guard:
- *  the only row that can be in that state is one this device has just written and not yet
- *  had stamped, so "now" is the truth rather than a fallback. */
+ *  This wrapper is what remains once the public shared reader wanted the same sentence for
+ *  its freshness line (ADR-0213's eleventh amendment §4): a note's "when" is `agoLabel` of
+ *  its `createdAt`, and that is the whole of it. */
 export function noteWhen(createdAt: string, nowMs: number): string {
-  const minutes = Math.floor((nowMs - Date.parse(createdAt)) / 60_000);
-  const elapsed = formatDuration(minutes);
-  return elapsed ? t.changeFeed.relTime.agoPrefix(elapsed) : t.changeFeed.relTime.now;
+  return agoLabel(createdAt, nowMs);
 }
 
 /** This host's notes, newest first — the list every host surface reads (ADR-0152 §6). Here

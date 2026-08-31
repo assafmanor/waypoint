@@ -21,6 +21,7 @@
 // category rows needed the same thing (root rule 8) — it is the shared one now.
 import { Fragment } from 'react';
 import { useCenterSelected } from '../../lib/useCenterSelected';
+import { DAY_PHASE, dayPhase } from '../../lib/time';
 import './day-strip.css';
 
 export interface DayStripDay {
@@ -94,9 +95,16 @@ function pillClass(
   // markers (Plan) stay.
   const isSelected = date === selected && !unscoped;
   if (mode === 'trip') {
-    if (isSelected) c.push(date === today ? 'on' : date < today ? 'sel-history' : 'sel-future');
-    else if (date === today) c.push('today-anchor');
-    else c.push(date < today ? 'past' : 'future');
+    // One comparison, one place (`lib/time.ts`'s `dayPhase`, ADR-0213's eleventh amendment
+    // §7). This read `date === today ? … : date < today ? …` inline, which is the same
+    // question `DayView` was also answering inline and the public reader now asks too.
+    const phase = dayPhase(date, today);
+    if (isSelected)
+      c.push(
+        phase === DAY_PHASE.TODAY ? 'on' : phase === DAY_PHASE.PAST ? 'sel-history' : 'sel-future',
+      );
+    else if (phase === DAY_PHASE.TODAY) c.push('today-anchor');
+    else c.push(phase === DAY_PHASE.PAST ? 'past' : 'future');
   } else {
     if (isSelected) c.push('on');
     else if (date < selected) c.push('past');

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  shareToday,
   SHARE_DAY_KIND,
   SHARE_DAY_SUMMARY_KIND,
   SHARE_DAYPART,
@@ -50,6 +51,41 @@ describe('shareDaypart', () => {
 // part gets folded at the end of the wrong day"_). `shareDaypart` above already declares it —
 // `night` is the fallthrough below hour 5 — and this is the other half of that statement, the
 // one the grouping reads. Same boundary, same constant, deliberately no second number.
+describe('shareToday (ADR-0213 eleventh amendment §6)', () => {
+  it('is the calendar day once the share\u2019s day has begun', () => {
+    expect(shareToday(new Date('2026-09-01T05:00:00Z'), 'UTC')).toBe('2026-09-01');
+    expect(shareToday(new Date('2026-09-01T14:05:00Z'), 'UTC')).toBe('2026-09-01');
+    expect(shareToday(new Date('2026-09-01T23:59:00Z'), 'UTC')).toBe('2026-09-01');
+  });
+
+  it('is still YESTERDAY before dawn, agreeing with the grouping', () => {
+    // The defect this exists for, found by opening the real page at 01:48 Tokyo time: the
+    // calendar had rolled over while the share's day had not, so the page marked tomorrow as
+    // "now" and — because a pre-dawn hour sorts last — drew its now-line at the bottom of a
+    // day nothing had happened in yet. `sharePreviousNight` files a 01:00 landing on the
+    // night before; this is the same boundary answering "what day is it".
+    expect(shareToday(new Date('2026-09-01T00:30:00Z'), 'UTC')).toBe('2026-08-31');
+    expect(shareToday(new Date('2026-09-01T04:59:00Z'), 'UTC')).toBe('2026-08-31');
+  });
+
+  it('reads the zone it is given, not UTC', () => {
+    // 16:48Z is 01:48 the next day in Tokyo — before dawn there, so the share's day is still
+    // the 31st, while in Reykjavík it is simply the afternoon of the 31st.
+    const instant = new Date('2026-08-31T16:48:00Z');
+    expect(shareToday(instant, 'Asia/Tokyo')).toBe('2026-08-31');
+    expect(shareToday(instant, 'Atlantic/Reykjavik')).toBe('2026-08-31');
+    // And once Tokyo is past dawn the two disagree, which is the point of taking the zone.
+    const morning = new Date('2026-08-31T22:00:00Z');
+    expect(shareToday(morning, 'Asia/Tokyo')).toBe('2026-09-01');
+    expect(shareToday(morning, 'Atlantic/Reykjavik')).toBe('2026-08-31');
+  });
+
+  it('rolls a month back correctly', () => {
+    expect(shareToday(new Date('2026-09-01T02:00:00Z'), 'UTC')).toBe('2026-08-31');
+    expect(shareToday(new Date('2027-01-01T02:00:00Z'), 'UTC')).toBe('2026-12-31');
+  });
+});
+
 describe('sharePreviousNight', () => {
   it.each([
     ['2026-09-01T00:30:00Z', 'UTC', true],
@@ -197,6 +233,7 @@ describe('sharedItinerarySchema', () => {
       icon: '🇮🇸',
       startDate: '2026-08-29',
       endDate: '2026-09-06',
+      timezone: 'Atlantic/Reykjavik',
       dayCount: 9,
       eventCount: 21,
       routeLabels: ['רייקיאוויק', 'ויק'],

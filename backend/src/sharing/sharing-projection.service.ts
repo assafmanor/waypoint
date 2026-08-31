@@ -873,6 +873,9 @@ export class SharingProjectionService {
         icon: trip.icon,
         startDate: dayKey(trip.startDate),
         endDate: dayKey(trip.endDate),
+        // The zone, not a stamped `today` — the reader's device resolves the calendar day
+        // itself (eleventh amendment §6). Already selected above for `zones.primaryZone`.
+        timezone: trip.timezone,
         dayCount: days.length,
         eventCount: events.length,
         routeLabels,

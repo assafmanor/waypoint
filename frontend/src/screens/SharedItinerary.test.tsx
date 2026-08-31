@@ -11,16 +11,29 @@ import {
   SHARE_DETAIL_LEVEL,
   type SharedItinerary as Projection,
 } from '@waypoint/shared';
+// The reader lands on today's card (eleventh amendment §1), and jsdom has no
+// `scrollIntoView` at all — the same platform gap the day view's own tests state.
+import '../test/scroll-into-view';
 import { SharedItinerary } from './SharedItinerary';
 import { t } from '../i18n/he';
 import { withoutBidiControls } from '../lib/bidi';
-import { hoursPhrase } from '../lib/duration';
+import { agoLabel, hoursPhrase } from '../lib/duration';
+import { setSimulatedNow } from '../lib/useClock';
 
 /** `ltrIsolate` wraps every Latin/numeric run in invisible bidi controls (ADR-0118), so a
  *  plain string match would never hit. */
 const plain = (needle: string) => (text: string) => withoutBidiControls(text).includes(needle);
 
 const CODE = '7Kq2mB9x';
+
+/**
+ * **Inside the trip, on its first day.** The page derives what to open, what to mark and how
+ * old it is from the clock (ADR-0213's eleventh amendment), so every test here would otherwise
+ * change behaviour as the real date drifted past the fixture's dates — a suite that passes in
+ * August and opens nothing in September. `setSimulatedNow` is `useClock`'s own dev override,
+ * the same one `Header` and `EventForm` pin their clocks with.
+ */
+const NOW = Date.parse('2026-08-29T09:00:00.000Z');
 
 const summaryProjection: Projection = {
   status: 'live',
@@ -33,6 +46,9 @@ const summaryProjection: Projection = {
     icon: '🇮🇸',
     startDate: '2026-08-29',
     endDate: '2026-08-30',
+    // UTC+0 year-round, so the trip's wall clock and `NOW` below are the same reading and a
+    // now-line assertion needs no offset arithmetic to be checkable.
+    timezone: 'Atlantic/Reykjavik',
     dayCount: 2,
     eventCount: 3,
     routeLabels: ['רייקיאוויק', 'ויק'],
@@ -185,10 +201,14 @@ const renderShared = () =>
   );
 
 describe('SharedItinerary', () => {
-  beforeEach(() => vi.unstubAllGlobals());
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    setSimulatedNow(NOW);
+  });
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    setSimulatedNow(null);
   });
 
   it('reads the public route without a bearer token', async () => {
@@ -704,6 +724,206 @@ describe('SharedItinerary', () => {
       await screen.findByText(plain('הפארק הלאומי ת׳ינגווליר'));
       // Empty is a real state: no block, rather than a block with nothing in it.
       expect(screen.queryByText(t.share.public.commitments.title)).toBeNull();
+    });
+  });
+  /**
+   * **ADR-0213's eleventh amendment** — which day the page opens on, and how the spine says
+   * where the trip is. The fixture trip runs 29–30.08 and `NOW` is the 29th, so day 1 is
+   * today unless a test moves the clock.
+   */
+  describe('the day the reader is in (eleventh amendment)', () => {
+    /** A day whose events cross a zone, which is the one day the now-line refuses. */
+    const zoneCrossingProjection: Projection = {
+      ...fullProjection,
+      days: [
+        {
+          ...fullProjection.days[0],
+          sections: [
+            {
+              daypart: SHARE_DAYPART.MORNING,
+              events: [
+                {
+                  title: 'תל אביב ← קפלאוויק',
+                  daypart: SHARE_DAYPART.MORNING,
+                  startLabel: '08:00',
+                  endLabel: '14:25',
+                  zoneShiftMinutes: -180,
+                },
+              ],
+            },
+          ],
+        },
+        fullProjection.days[1],
+      ],
+    };
+
+    it('opens the day the trip is on, and marks only that one', async () => {
+      serve(fullProjection);
+      const { container } = renderShared();
+      await screen.findByText('איסלנד עם המשפחה');
+
+      const [first, second] = [...container.querySelectorAll('.sh-day')];
+      expect(first.classList.contains('open')).toBe(true);
+      expect(first.classList.contains('is-now')).toBe(true);
+      expect(first.querySelector('.sh-now-mark')?.textContent).toBe(t.common.now);
+      // The future is the page's default and carries no mark of any kind: a chip every card
+      // in a dated, chronological run wears repeats the date beside it (`.chip.past`'s
+      // deletion, `App.css`).
+      expect(second.classList.contains('is-now')).toBe(false);
+      expect(second.classList.contains('is-past')).toBe(false);
+      expect(second.querySelector('.sh-now-mark')).toBeNull();
+    });
+
+    it('opens NOTHING before the trip has started — no day is a default', async () => {
+      setSimulatedNow(Date.parse('2026-08-20T09:00:00.000Z'));
+      serve(fullProjection);
+      const { container } = renderShared();
+      await screen.findByText('איסלנד עם המשפחה');
+
+      // Falling back to the first card would be the same arbitrary index-pick `useState(0)`
+      // made, with a rationale bolted on. The clock is the only thing that opens a card.
+      expect(container.querySelectorAll('.sh-day.open')).toHaveLength(0);
+      expect(container.querySelectorAll('.sh-day-body')).toHaveLength(0);
+      expect(container.querySelectorAll('.sh-day.is-now')).toHaveLength(0);
+      expect(container.querySelectorAll('.sh-day.is-past')).toHaveLength(0);
+    });
+
+    it('opens nothing after the trip, and cools every day behind', async () => {
+      setSimulatedNow(Date.parse('2026-09-10T09:00:00.000Z'));
+      serve(fullProjection);
+      const { container } = renderShared();
+      await screen.findByText('איסלנד עם המשפחה');
+
+      expect(container.querySelectorAll('.sh-day.open')).toHaveLength(0);
+      // A treatment, not a badge — the class is what carries the desaturation and the muted
+      // title, and nothing is added to the card's copy.
+      expect(container.querySelectorAll('.sh-day.is-past')).toHaveLength(2);
+      expect(container.querySelector('.sh-now-mark')).toBeNull();
+    });
+
+    it('lets the reader close today and open another day, keyed by ordinal', async () => {
+      serve(fullProjection);
+      const { container } = renderShared();
+      await screen.findByText('איסלנד עם המשפחה');
+
+      const [first, second] = [...container.querySelectorAll('.sh-day-head')];
+      act(() => fireEvent.click(second));
+      expect(first.getAttribute('aria-expanded')).toBe('false');
+      expect(second.getAttribute('aria-expanded')).toBe('true');
+      // Today keeps its mark while a different card is open: the mark is the trip's state,
+      // not the reader's (§2 — amber moved off `.open` for exactly this).
+      expect(container.querySelector('.sh-day.is-now')).toBe(
+        container.querySelectorAll('.sh-day')[0],
+      );
+      // Closing the open one leaves nothing open, which is a state an index could not hold.
+      act(() => fireEvent.click(second));
+      expect(container.querySelectorAll('.sh-day.open')).toHaveLength(0);
+    });
+
+    it('lets a #day-N in the URL win over today', async () => {
+      serve(fullProjection);
+      const { container } = render(
+        <MemoryRouter initialEntries={[`/s/${CODE}#day-2`]}>
+          <Routes>
+            <Route path="s/:code" element={<SharedItinerary />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await screen.findByText('איסלנד עם המשפחה');
+
+      const [first, second] = [...container.querySelectorAll('.sh-day')];
+      // Somebody handed a link to day two asked for day two — and day one is still the day
+      // the trip is on, so it keeps its mark without being open.
+      expect(second.classList.contains('open')).toBe(true);
+      expect(first.classList.contains('open')).toBe(false);
+      expect(first.classList.contains('is-now')).toBe(true);
+    });
+
+    it('says where the trip is instead of asserting it is live', async () => {
+      serve(fullProjection);
+      const { container } = renderShared();
+      await screen.findByText('איסלנד עם המשפחה');
+      expect(withoutBidiControls(container.querySelector('.sh-kicker')!.textContent!)).toContain(
+        t.share.public.phase.live(1, 2),
+      );
+
+      cleanup();
+      setSimulatedNow(Date.parse('2026-08-20T09:00:00.000Z'));
+      serve(fullProjection);
+      const soon = renderShared();
+      await screen.findByText('איסלנד עם המשפחה');
+      expect(
+        withoutBidiControls(soon.container.querySelector('.sh-kicker')!.textContent!),
+      ).toContain(t.share.public.phase.soon(9));
+
+      cleanup();
+      setSimulatedNow(Date.parse('2026-09-10T09:00:00.000Z'));
+      serve(fullProjection);
+      const ended = renderShared();
+      await screen.findByText('איסלנד עם המשפחה');
+      expect(
+        withoutBidiControls(ended.container.querySelector('.sh-kicker')!.textContent!),
+      ).toContain(t.share.public.phase.ended);
+    });
+
+    it('says how old what it shows is, not that it is current', async () => {
+      serve(fullProjection);
+      const { container } = renderShared();
+      await screen.findByText('איסלנד עם המשפחה');
+      // `generatedAt` is 08:10 and the clock is 09:00 — a fixed "עודכן עכשיו" was the defect.
+      expect(container.querySelector('.sh-freshness')!.textContent).toContain(
+        t.share.public.updated(agoLabel('2026-08-29T08:10:00.000Z', NOW)),
+      );
+    });
+
+    it('refetches when the tab comes back, so the label can be true', async () => {
+      const fetchMock = serve(fullProjection);
+      renderShared();
+      await screen.findByText('איסלנד עם המשפחה');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      // jsdom reports `visible` by default, which is the case that matters: a reader coming
+      // back to a tab they left open is exactly when the projection is stalest.
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('draws the app’s own now-line inside today’s card, and only where there are times', async () => {
+      serve(fullProjection);
+      const { container } = renderShared();
+      await screen.findByText(plain('הפארק הלאומי ת׳ינגווליר'));
+
+      // The app has ONE live mark and `.nowline` is it (ADR-0043) — reused class for class
+      // rather than a second thing that looks like it.
+      const line = container.querySelector('.sh-day-body .nowline');
+      expect(line).toBeTruthy();
+      expect(withoutBidiControls(line!.textContent!)).toContain('09:00');
+      expect(line!.getAttribute('aria-label')).toBe(t.day.nowLineAria('09:00'));
+      // 09:00 is before the day's only event, so the marker sits above it — and under the
+      // daypart heading rather than above the section, which a render decided.
+      expect(
+        line!.compareDocumentPosition(container.querySelector('.sh-part-head')!) &
+          Node.DOCUMENT_POSITION_PRECEDING,
+      ).toBeTruthy();
+    });
+
+    it('draws no now-line at Summary, which carries no times at all', async () => {
+      serve(summaryProjection);
+      const { container } = renderShared();
+      await screen.findByText(plain('הפארק הלאומי ת׳ינגווליר'));
+      expect(container.querySelector('.nowline')).toBeNull();
+    });
+
+    it('draws no now-line on a day that crosses a time zone', async () => {
+      serve(zoneCrossingProjection);
+      const { container } = renderShared();
+      await screen.findByText(plain('תל אביב ← קפלאוויק'));
+      // The label is the primary zone's wall clock and the row's is its own (ADR-0107), so
+      // the comparison would be wrong by the shift. The card is still today's.
+      expect(container.querySelector('.sh-day.is-now')).toBeTruthy();
+      expect(container.querySelector('.nowline')).toBeNull();
     });
   });
 });

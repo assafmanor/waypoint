@@ -18,9 +18,11 @@
 // names, daypart words) are NOT here — those stay each renderer's own copy, since this
 // package holds no UI strings (see this package's CLAUDE.md).
 import { z } from 'zod';
-import { entityIdSchema, isoDateTimeSchema, dateOnlySchema } from './schemas';
+import { entityIdSchema, isoDateTimeSchema, dateOnlySchema, timezoneSchema } from './schemas';
 import { bookingTypeSchema, eventCategorySchema } from './entities';
 import { LEG_TRAVEL_MODES } from './constants';
+import { addDays } from './trip-dates';
+import { todayInTz } from './zones';
 
 /** How much of the trip a link reveals. Three intents, not three amounts (ADR-0213 §1). */
 export const SHARE_DETAIL_LEVEL = {
@@ -142,6 +144,29 @@ export function sharePreviousNight(
   if (!startsAt) return false;
   const hour = localHour(startsAt instanceof Date ? startsAt : new Date(startsAt), displayTimezone);
   return Number.isFinite(hour) && hour < SHARE_DAYPART_START_HOUR.morning;
+}
+
+/**
+ * **Which day the share is ON, by the share's own day boundary** — and the other half of
+ * {@link sharePreviousNight}.
+ *
+ * `todayInTz` answers the CALENDAR day, which is right for every app surface and wrong here
+ * for the same reason `sharePreviousNight` exists: this projection files a 01:00 landing on
+ * the night of the day BEFORE, so at 01:48 the calendar has rolled over while the share's day
+ * has not. Reading the two differently is not a rounding error, it is a page that marks
+ * tomorrow as "now" and then, because a pre-dawn hour sorts last, draws the marker for it at
+ * the bottom of a day nothing has happened in yet. Found by opening the real page at 01:48
+ * Tokyo time, which no fixture had covered.
+ *
+ * So: the calendar day, minus one before 05:00. One boundary, used by the grouping and by
+ * whoever asks what day it is.
+ *
+ * Pure in its arguments (see this package's `CLAUDE.md` on `Intl` with an explicit zone) —
+ * the caller owns the clock, exactly as `todayInTz` requires.
+ */
+export function shareToday(at: Date, timeZone: string): string {
+  const calendarDay = todayInTz(timeZone, at);
+  return sharePreviousNight(at, timeZone) ? addDays(calendarDay, -1) : calendarDay;
 }
 
 /** `HH:MM` in a named zone — the only time formatting the projection does. */
@@ -719,6 +744,25 @@ export const sharedItinerarySchema = z.strictObject({
     icon: z.string().nullish(),
     startDate: dateOnlySchema,
     endDate: dateOnlySchema,
+    /**
+     * **The trip's primary zone, and the one field on this contract that is an INPUT rather
+     * than an answer** (ADR-0213's eleventh amendment §6).
+     *
+     * Everything else about time here is pre-formatted, for the reason the header states: two
+     * renderers formatting one instant is how a PDF prints an hour the app never showed. But
+     * "which calendar day is it" cannot be pre-formatted — a stamped `today` is stale the
+     * minute after it is sent, on a page that holds a projection in React memory for as long
+     * as the tab is open. So the zone travels and the reader's own device runs `todayInTz`,
+     * the same function every day surface in the app runs.
+     *
+     * The reader's zone is deliberately NOT used: a relative in Tel Aviv following a group in
+     * Iceland wants the day the group is having. It is not a secret either — it is implied by
+     * the destination the masthead already prints.
+     *
+     * The PDF ignores it. A printed page that says `עכשיו` is lying by tomorrow, and unlike
+     * the live page it cannot correct itself.
+     */
+    timezone: timezoneSchema,
     dayCount: z.number().int().positive(),
     eventCount: z.number().int().nonnegative(),
     /** Ordered destination labels — the compact route strip, built from real stops

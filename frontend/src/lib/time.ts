@@ -419,6 +419,39 @@ export function relativeDayLabel(date: string, today: string): string {
   return relativeDay(delta);
 }
 
+/**
+ * **Where a calendar day sits relative to today**, and the one comparison three surfaces were
+ * making in two spellings (ADR-0213's eleventh amendment §7).
+ *
+ * `DayView` declared this union privately and computed it inline; `DayStrip`'s `pillClass`
+ * computed the same thing again with `date === today ? … : date < today ? …`; the public
+ * shared reader is the third host. Two half-built copies of one comparison is exactly what
+ * root rule 8 / ADR-0096 is about, so it lives here beside {@link relativeDayLabel} — which
+ * asks the same question and answers it in words.
+ */
+export const DAY_PHASE = {
+  PAST: 'past',
+  TODAY: 'today',
+  FUTURE: 'future',
+} as const;
+export type DayPhase = (typeof DAY_PHASE)[keyof typeof DAY_PHASE];
+
+/**
+ * {@link DAY_PHASE} for a date against today. Both are trip-local `YYYY-MM-DD`, so this is a
+ * string comparison and no zone re-reads the day — the caller owns which zone `today` came
+ * from (`todayInTz`), which is the whole reason this takes it rather than reading a clock.
+ *
+ * `endDate` is for a row that covers MORE THAN ONE calendar day — the shared reader's card for
+ * a journey that leaves at 02:00 and lands the next afternoon (`SharedDay.endDate`). Such a
+ * card is **today while either of its days is today**, and past only once both are behind,
+ * which is why the span is a parameter and not something a caller can approximate by
+ * comparing ordinals.
+ */
+export function dayPhase(date: string, today: string, endDate?: string): DayPhase {
+  if ((endDate ?? date) < today) return DAY_PHASE.PAST;
+  return date <= today ? DAY_PHASE.TODAY : DAY_PHASE.FUTURE;
+}
+
 /** **Which day of the trip a date is** (1-based, `startDate` = day 1). Trip-local
  *  calendar arithmetic on UTC midnights, so no timezone re-reads the day. Five
  *  surfaces had hand-rolled this same line (the header anchor, Plan Home, the two

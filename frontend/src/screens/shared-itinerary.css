@@ -196,6 +196,13 @@
   letter-spacing: 0.06em;
 }
 
+/* Where the trip IS, which is the only fact on this line that changes — so it is the only
+   part of it that is not dim (eleventh amendment §4). The line used to read a constant
+   `מסלול חי`, printed identically on a trip that ended six months ago. */
+.sh-kicker strong {
+  color: var(--on-dark-strong);
+}
+
 .sh-title {
   display: flex;
   align-items: center;
@@ -281,6 +288,25 @@
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--card);
+  /* **The gap the landing leaves above itself** (ADR-0213's eleventh amendment §1).
+     `landAtTop` passes no numbers on purpose — the offset belongs to the row being aimed at,
+     so the previous day stays a visible sliver and the reader can tell there is history above
+     them without reading it. Drawn and measured at 26px; a device pass owns the final value. */
+  scroll-margin-block-start: 26px;
+}
+
+/* **A DAY THAT IS OVER READS ONE NOTCH QUIETER** (eleventh amendment §3), and it is a
+   treatment rather than a badge: a chip that every card in a chronological run carries
+   repeats the date already printed beside it and tells no two cards apart — which is exactly
+   why `.chip.past` was deleted from the All Trips list rather than promoted (`App.css`).
+   These are that list's own two moves, `.trip-card.is-past`'s desaturation and muted title,
+   at this page's scale. They cost no layout. */
+.sh-day.is-past {
+  filter: saturate(0.82);
+}
+
+.sh-day.is-past .sh-day-copy strong {
+  color: var(--muted);
 }
 
 .sh-day.open {
@@ -315,9 +341,16 @@
   background: color-mix(in srgb, var(--ink) 4%, var(--card));
 }
 
-/* Amber marks the open day because a day is a span of TIME — the one thing amber is for
-   (design-language.md, ADR-0028). It is not decoration and appears nowhere else here. */
-.sh-day.open .sh-day-date {
+/* **Amber marks the day the trip is ON, not the card the reader tapped** (ADR-0213's
+   eleventh amendment §2). A day is a span of TIME, which is the one thing amber is for
+   (design-language.md, ADR-0028) — that reasoning was right and it used to point at
+   `.open`, which is a DISCLOSURE state already carried three ways: the caret rotates, the
+   card lifts on `--elevation-raised`, and the body is open. Spending the page's one rationed
+   hue on which card was tapped left nothing to say where the trip actually is.
+
+   The old rule is deleted rather than kept beside this one: two ambers meaning two things is
+   what the colour budget exists to prevent. */
+.sh-day.is-now .sh-day-date {
   background: color-mix(in srgb, var(--amber) 11%, var(--card));
 }
 
@@ -330,6 +363,23 @@
   color: var(--muted);
   font-size: 10.5px;
   font-weight: 700;
+}
+
+/* **The word, in the column the hue is already in.** Not in the copy column: both its lines
+   ellipsise, so a chip there eats the day's own title at 360px. `--amber-deep` for ink,
+   never `--amber`, which as TEXT on paper is 1.31:1 and is a fill.
+
+   **And it carries no ground of its own**, which a render decided rather than taste: drawn
+   first with `.chip.soon`'s tint-plus-ink recipe, the tint-inside-a-tint measured 4.53:1
+   against AA's 4.5 floor for small bold text — passing by 0.03. The column IS the amber
+   ground. Word only: 5.09:1, beside the shipped `.sh-part-head`'s 5.24:1 on the card. */
+.sh-now-mark {
+  margin-block-start: 4px;
+  color: var(--amber-deep);
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .sh-day-copy {
@@ -378,6 +428,14 @@
 
 .sh-part {
   margin-block-end: 8px;
+}
+
+/* **The app's own now-line, inside a day of the document** (ADR-0043, eleventh amendment §5).
+   The component is reused class for class — no second live mark, no chip fill, no pulse —
+   and this is the only thing it needs from this sheet: the day body's rhythm is tighter than
+   the day list's it was built for. */
+.sh-day-body .nowline {
+  margin: 3px 3px 9px;
 }
 
 .sh-part-head {
