@@ -509,6 +509,8 @@ describe('ShareItinerarySheet', () => {
       await openRead();
       await screen.findByText(t.share.owner.peerNote);
 
+      // One published level, so no chooser at all — a radiogroup with a single option is
+      // not a choice. `הכל` is absent because nothing was published there.
       expect(screen.queryByRole('radio', { name: t.share.owner.levels.everything })).toBeNull();
       expect(screen.queryByRole('button', { name: t.share.owner.manage })).toBeNull();
 
@@ -518,6 +520,99 @@ describe('ShareItinerarySheet', () => {
       await waitFor(() => expect(systemShare.shareUrlOrCopy).toHaveBeenCalledTimes(1));
       // Nothing was reconfigured on their behalf — the 403 never has to happen.
       expect(api.upsertTripShare).not.toHaveBeenCalled();
+    });
+
+    /**
+     * **THE REPORTED DEFECT** (owner, 2026-08-31). The sheet hid the level control from a
+     * peer AND left `level` pinned at its `FULL` default, so a trip published only at
+     * `תקציר` told its own travellers it was not shared — while the list this component had
+     * already fetched held a live Summary link, and the primary above that line called
+     * `ensureShare`, which throws for a peer before any request leaves.
+     */
+    it('lands on the level that holds a link, not on the pinned default', async () => {
+      const summary = { ...config, code: 'SmRy1234', shareUrl: '/s/SmRy1234' };
+      summary.detailLevel = SHARE_DETAIL_LEVEL.SUMMARY;
+      api.fetchTripShares.mockResolvedValue([summary]);
+      renderSheet();
+      await openRead();
+
+      expect(await screen.findByText(`localhost:3000/s/SmRy1234`)).toBeTruthy();
+      // The two claims that contradicted each other on one screen.
+      expect(screen.queryByText(t.share.owner.notShared)).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: new RegExp(t.share.owner.actions.createAndShare) }),
+      ).toBeNull();
+      // …and the scope note states what THAT link shows, rather than Full's.
+      expect(screen.getByText(t.share.owner.scope.summary.detail)).toBeTruthy();
+    });
+
+    it('chooses between the published levels, and only those', async () => {
+      const summary = { ...config, code: 'SmRy1234', shareUrl: '/s/SmRy1234' };
+      summary.detailLevel = SHARE_DETAIL_LEVEL.SUMMARY;
+      api.fetchTripShares.mockResolvedValue([summary, config]);
+      renderSheet();
+      await openRead();
+
+      // Every card a peer sees holds a link, so every one carries the live dot — and the dot
+      // is `aria-hidden` paint, so the accessible name is `ChoiceGrid`'s `ariaLabel`
+      // (ADR-0213's tenth amendment §4). Querying the bare word finds nothing, which is the
+      // primitive working rather than a broken test.
+      const live = (level: string) => t.share.owner.levelLive(level);
+      const pick = await screen.findByRole('radio', { name: live(t.share.owner.levels.summary) });
+      expect(screen.getByRole('radio', { name: live(t.share.owner.levels.full) })).toBeTruthy();
+      // Never a card with no link behind it: a peer has no way to enliven one, so it would
+      // be the dead control ADR-0150 §8 forbids. Asserted on the COUNT as well, because an
+      // absence keyed to one name says nothing about a third card under another.
+      // Scoped to the LEVEL grid: the audience fork above is a radiogroup too, so an
+      // unscoped count answers 4 and means nothing.
+      expect(document.querySelectorAll('.share-levels [role="radio"]')).toHaveLength(2);
+      expect(
+        screen.queryByRole('radio', { name: live(t.share.owner.levels.everything) }),
+      ).toBeNull();
+
+      fireEvent.click(pick);
+      expect(await screen.findByText(`localhost:3000/s/SmRy1234`)).toBeTruthy();
+
+      fireEvent.click(
+        screen.getByRole('button', { name: new RegExp(t.share.owner.actions.liveLink) }),
+      );
+      await waitFor(() => expect(systemShare.shareUrlOrCopy).toHaveBeenCalledTimes(1));
+      expect(api.upsertTripShare).not.toHaveBeenCalled();
+    });
+
+    it('offers nothing to press on a trip with no links, and says who can make one', async () => {
+      api.fetchTripShares.mockResolvedValue([]);
+      renderSheet();
+      await openRead();
+
+      await screen.findByText(t.share.owner.notShared);
+      // Not both lines: with nothing published there is no link for `peerNote` to describe.
+      expect(screen.queryByText(t.share.owner.peerNote)).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: new RegExp(t.share.owner.actions.createAndShare) }),
+      ).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: new RegExp(t.share.owner.actions.liveLink) }),
+      ).toBeNull();
+    });
+
+    /** The owner's own reading of "maybe everything is made available by the admins, after
+     *  they've created links for them": creating an Everything link WITH its switches on is
+     *  the decision that the policy may be sent. The service already agrees — only create,
+     *  rotate and revoke are `assertTripAdmin`'s — so refusing here would be the sheet lying
+     *  about the API under it. */
+    it('may send an Everything link, without the ⋯ that manages it', async () => {
+      api.fetchTripShares.mockResolvedValue([operational, bare]);
+      renderSheet();
+      await openRead();
+
+      await screen.findByText(`${t.share.owner.policy.secrets} · ${t.share.owner.policy.files(1)}`);
+      expect(screen.getByText(t.share.owner.policy.none)).toBeTruthy();
+      expect(screen.getAllByRole('button', { name: t.share.owner.sendLink })).toHaveLength(2);
+      expect(screen.queryByRole('button', { name: t.share.owner.manageLink })).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: new RegExp(t.share.owner.actions.another) }),
+      ).toBeNull();
     });
   });
 });

@@ -279,10 +279,24 @@ function JoinRow({
         <GapStrip minutes={slot.minutes} onFill={onFillGap && (() => onFillGap(slot))} />
       ) : null;
     if (!journey) return strip;
+    /**
+     * **THE FREE TIME COMES FIRST, BECAUSE IT ENDS WHERE THE JOURNEY BEGINS** (owner,
+     * 2026-08-31: _"the transit row shows 'take off at X to get on time', so it only makes
+     * sense that slotting should be before it, before the takeoff time"_).
+     *
+     * §AH3 separated these two lines — the block is about the LEG, the strip about the HOLE —
+     * and never asked which goes on top. The arithmetic already answers: `narrowGapForTravel`
+     * shrinks the slot BY the journey, so the window the strip states ENDS at the leave-by the
+     * block advises. Drawn in that order they read as one sentence; drawn the other way the
+     * day offers you a slot for time it has just said you must spend travelling.
+     *
+     * Measured at ⁦0px⁩ (`free-time-comes-before-the-leave-by-v1.html` §5): no rule in
+     * `day-join.css` or `screens.css` keys on the two being siblings in either order.
+     */
     return (
       <>
-        <JourneyRow journey={journey} {...journeyRest} />
         {strip}
+        <JourneyRow journey={journey} {...journeyRest} />
       </>
     );
   }

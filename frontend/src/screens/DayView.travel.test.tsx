@@ -469,9 +469,11 @@ describe('DayView — a hole states what is free AFTER the journey (ADR-0206 §V
     expect(strip).toBeTruthy();
     expect(block.textContent).not.toContain(freeTimePhrase(freeAfterWalk)!);
     expect(strip.textContent).toContain(freeTimePhrase(freeAfterWalk)!);
-    // …and the strip comes AFTER the block: you leave at the end of the hole, so the journey is
-    // the last thing in it and the free time is what precedes it.
-    expect(block.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // **…and the strip comes BEFORE the block** (owner, 2026-08-31; ADR-0206 §AH3's
+    // amendment). `narrowGapForTravel` ends the free window AT the leave-by, so the two lines
+    // are already chronological and were simply drawn in reverse. This assertion is the whole
+    // of that change, and it was the opposite one until that report.
+    expect(strip.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   // §V1.3 — the day reads `place · journey · place`, which is what makes §V1.1 legible.
@@ -564,9 +566,13 @@ describe('DayView — the four arms of a journey (ADR-0206 §V1.3/§V1.4)', () =
     show();
     const clock = ltrIsolate(formatTime(new Date(leaveByMs), ZONE));
     const at = ltrIsolate(`~${formatTime(new Date(leaveByMs + WALK_MINUTES * 60_000), ZONE)}`);
-    expect(screen.getByText(t.travel.leaveThenArrive(clock, at))).toBeTruthy();
+    // **`עד`, because this leave-by is a ceiling** (owner, 2026-08-31). The buffered instant
+    // fits inside the hole here, so nothing clamped it and `leaveByIsFloor` is false — see the
+    // sibling case below, which is the arm that keeps the bare noun.
+    expect(screen.getByText(t.travel.leaveByThenArrive(clock, at))).toBeTruthy();
     // …and never the hero's imperative, which speaks to the one journey you are on.
     expect(screen.queryByText(t.travel.leaveAt(clock))).toBeNull();
+    expect(screen.queryByText(t.travel.leaveByDay(clock))).toBeNull();
   });
 
   // §V1.4 / §D7 — the single most actionable thing this data can say.
@@ -1105,8 +1111,9 @@ describe('DayView — a journey states its hours where the traveller is (ADR-020
   it('states the departure in the stops’ zone, and never in the trip’s', () => {
     setSimulatedNow(Date.parse(NOW));
     show();
+    // `leaveByThenArrive` since 2026-08-31: the buffered instant fits, so it is a ceiling.
     const inZone = (zone: string) =>
-      t.travel.leaveThenArrive(
+      t.travel.leaveByThenArrive(
         ltrIsolate(formatTime(new Date(leaveByMs), zone)),
         ltrIsolate(`~${formatTime(new Date(leaveByMs + WALK_MINUTES * 60_000), zone)}`),
       );

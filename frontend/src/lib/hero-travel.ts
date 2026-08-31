@@ -54,6 +54,23 @@ export interface HeroLeaveBy {
    *  collision rule below compares — a passed leave-by is nearer than any shutting window. */
   minutesToLeave: number;
   phase: LeavePhase;
+  /**
+   * **Whether `leaveByMs` is the buffered CEILING or the origin's own FLOOR** (ADR-0206
+   * §AJ2's clamp, exposed rather than recomputed).
+   *
+   * `false` is the ordinary case: the instant is `arriveByMs - travel - buffer`, the last
+   * moment you may go. `true` means the buffer put that behind the row you leave from, so
+   * the clamp above replaced it with `departAfterMs` — the EARLIEST departure that exists,
+   * which is a different fact wearing the same number.
+   *
+   * It exists because a surface that says `יציאה עד 15:12` must not say it on the clamped
+   * arm, where the truth is the opposite (§AJ2's own example: `יציאה 14:00 · הגעה ~14:58`
+   * on a hard 15:00 start). Read off the comparison the function already makes, never
+   * re-derived from free time: a leg out of an ambient stay has **no floor at all**, so it
+   * is never clamped and its instant is a pure ceiling, where `free.freeSeconds > 0` would
+   * have answered `null` and stripped the word.
+   */
+  clamped: boolean;
 }
 
 /**
@@ -114,10 +131,9 @@ export function heroLeaveBy(input: {
   const buffered = leaveBy(arriveByMs, travelSeconds);
   /** Pulled forward to the floor where the buffer puts it behind one (§AJ2). What makes the late
    *  mark it licenses defensible is that the instant is a departure you could actually make. */
-  const leaveByMs =
-    departAfterMs !== undefined && Number.isFinite(departAfterMs) && buffered < departAfterMs
-      ? departAfterMs
-      : buffered;
+  const clamped =
+    departAfterMs !== undefined && Number.isFinite(departAfterMs) && buffered < departAfterMs;
+  const leaveByMs = clamped ? departAfterMs! : buffered;
   const minutesToLeave = Math.round((leaveByMs - nowMs) / MS_PER_MIN);
   const phase =
     minutesToLeave < 0
@@ -125,7 +141,7 @@ export function heroLeaveBy(input: {
       : minutesToLeave <= swapMinutes
         ? LEAVE_PHASE.LIVE
         : LEAVE_PHASE.AHEAD;
-  return { travelSeconds, leaveByMs, minutesToLeave, phase };
+  return { travelSeconds, leaveByMs, minutesToLeave, phase, clamped };
 }
 
 /** What the plan says about where you are, and whether that claim still stands. */
