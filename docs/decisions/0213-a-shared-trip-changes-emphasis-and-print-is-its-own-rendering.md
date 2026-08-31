@@ -1586,6 +1586,22 @@ today, once per link (keyed on `code`, never on a refetch or a clock tick), the 
 day left peeking above, and instant under `prefersReducedMotion()`. The peek shipped as
 26px in the drawing and stays a device call.
 
+**And the target is the now-line, not the card** (owner, 2026-08-31: _"if we decide to use
+it then it should scroll there, like the day view does"_), which §5 is what makes possible.
+`DayView`'s call does not translate literally, though: `block: 'center'` there centres
+inside the inner `.body` scroller — **below** the day's header, which is fixed chrome and
+cannot be scrolled away. This page has no chrome; today's card header, carrying the date and
+the `עכשיו` mark, is an ordinary box in the same document. Centre the line and that header
+leaves the screen, so a reader who followed a link lands on event rows with no date on them.
+
+So the faithful translation of "centre it below the chrome" is **pin today's header at the
+top and let the line sit in the space that remains** — and measured, the two targets are the
+**same scroll** on an ordinary day: the line lands at 381px of a 638px viewport with the
+header whole at 27px. Only where a day is long enough to push the line past the fold does
+the choice bite, and there the header stays and the line is one flick down. Targeting the
+line at any cost buys 62px and clips the date row above the fold (header at −35px), which is
+the one variant this amendment rejects by measurement rather than by argument.
+
 `scrollIntoView` is safe here and is not in the app's sheets: the reason it is refused there
 is that it scrolls every scrollable ancestor, and the reader page has exactly one scroller —
 the document — since the ninth amendment §6 made `[data-public-reader]` opt out of the app's
@@ -1649,19 +1665,35 @@ ladder** (ADR-0114's `formatDuration` + `t.changeFeed.relTime.agoPrefix`, genera
 becomes visible again. The public route's own `@Throttle` allows 20 requests a minute, which
 is far above what that costs.
 
-### §5 · Where "now" is inside today's card — deferred, with its cost named
+### §5 · Where "now" is inside today's card — in, and cheaper than first drawn
 
 The living-visibility case for this page is a relative following along, and a day-level mark
-does not answer _where are they now_. The marker itself costs nothing new: the app's
-`.nowline` (ADR-0043) renders class for class inside `.sh-day-body`, needing one margin rule.
+does not answer _where are they now_. **Yes, use it**, in the same pass as §1 — it is what
+gives §1's scroll something to aim at.
 
-What it costs is a **derivation**. `nowLinePlacement` reads instants (`atMs`, `endsAt`), and
-the projection deliberately ships `HH:MM` labels so two renderers cannot format one instant
-two ways. Two ways out: ship instants (and lose that guarantee), or compare wall clocks in
-the trip's primary zone — in which case a day carrying `zoneShiftMinutes` is the one day the
-comparison cannot be trusted. **Recommendation:** wall clock, suppressed on a day with a
-zone shift, which is also the day the line adds least. Full and Everything only — Summary
-carries no times at all. Deferred to its own pass; the backlog carries it.
+The marker costs nothing new: the app's `.nowline` (ADR-0043) renders class for class inside
+`.sh-day-body`, needing one margin rule.
+
+**And the derivation costs nothing new either**, which the first draft of this section got
+wrong by reaching for `nowLinePlacement` — that reads instants (`atMs`, `endsAt`), which the
+projection deliberately does not ship. It does not need to. `shareTimeLabel` in
+`@waypoint/shared` is the function that **built** every `startLabel` in the projection
+(`sharing-projection.service.ts` calls it for both ends of every event), so the client calls
+the same function on `Date.now()` in the same zone. Two zero-padded `HH:MM` strings order
+lexicographically exactly as they order chronologically, so placement is a string
+comparison — through the one derivation the pre-formatting rule exists to protect, not
+around it.
+
+- The only field needed is `trip.timezone`, which §6 adds anyway.
+- `zoneShiftMinutes` is already on `sharedEventSchema` (it is the LEG that lost it, ninth
+  amendment §2), so "does this day cross a zone" is derivable client-side with **no new
+  field** — and that day, the one day the primary-zone wall clock cannot be trusted, is where
+  the line is suppressed. It is also the day it adds least.
+- Full and Everything only: Summary carries no times at all, so there is nothing for a clock
+  to sit between.
+
+The placement rule itself: **under the daypart heading, among the rows** — see _What the
+renders found_.
 
 ### §6 · Where "today" comes from, and why not from the server
 

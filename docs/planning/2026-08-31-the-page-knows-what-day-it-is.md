@@ -63,9 +63,24 @@ less, and eleven cards carrying a title and where they sleep read as its table o
    in the reader's hand on a page that never refetches.
 2. **The peek above the landed card** — 0 / 26 / 76px, a control in the mockup. 26px shipped
    as the drawing's default; it is a device call.
-3. **`.nowline` inside today's card.** Recommended but its own pass: the marker is free (the
-   app's own component, one margin rule), the derivation is not — `nowLinePlacement` reads
-   instants and the projection ships labels by design.
+3. **`.nowline` inside today's card.** Asked, and answered **yes, in the same pass** —
+   because the owner's follow-on collapsed the fork: _"If we decide to use it then it should
+   scroll there, like the day view does."_ Once the line is the scroll's target it is not an
+   optional extra, it is what §1 aims at.
+
+   The cost I had named was also wrong, and re-reading beat estimating: I reached for
+   `nowLinePlacement` (which reads instants the projection does not ship) when
+   `shareTimeLabel` — the function that **built** every `startLabel` — is exported from
+   `@waypoint/shared` and can be called on the clock. Zero-padded `HH:MM` strings order
+   lexicographically as they order chronologically, so placement is a string comparison
+   through the same one derivation the pre-formatting rule protects. No new field:
+   `trip.timezone` was already coming for §1, and `zoneShiftMinutes` is already on the event.
+
+   What the render then settled is the _target_: `DayView`'s `block: 'center'` centres below
+   its **fixed** day header, and this page has none. Measured, pinning today's header and
+   letting the line fall where it may is the same scroll as targeting the line (line at
+   381px of 638px, header whole at 27px); targeting the line at any cost buys 62px and clips
+   the date row (header at −35px). Rejected on the number, not the argument.
 
 ## What the renders found that reading could not
 

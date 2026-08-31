@@ -70,11 +70,13 @@
        §2 ענבר אחד, ולמי הוא שייך        → §2  (the hue moves)
        §3 סימון על החריג                 → §3  (today marked, past treated)
        §4 מצב הטיול נאמר פעם אחת         → §4  (masthead copy + freshness)
-       §5 קו העכשיו בתוך היום            → §5  (milestone 2, and its cost)
+       §5 קו העכשיו בתוך היום            → §5  (the marker, and the scroll's target)
 
      ─────────────────────────────────────────────────────────────────────────
      Interactive: theme (בהיר · כהה), screen (⁦360×640⁩ · ⁦390×844⁩), trip phase
-     (לפני · במהלך · אחרי), detail level (תקציר · לו״ז מלא), and the PEEK — how
+     (לפני · במהלך · אחרי), detail level (תקציר · לו״ז מלא), the SCROLL TARGET
+     (כרטיס היום · קו העכשיו · קו העכשיו בכל מחיר — the first two measure as the
+     same scroll on an ordinary day, which is the finding), and the PEEK — how
      much of the previous day is left visible above the day the page lands on,
      which is a feel call and therefore a control rather than a number this file
      pretends to have settled. Measurements at the foot are read from THIS
@@ -10993,6 +10995,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         <button type="button" data-level="summary">תקציר</button>
         <button type="button" data-level="full" aria-pressed="true">לו״ז מלא</button>
         <span class="sep"></span>
+        <span class="lbl">יעד הגלילה</span>
+        <button type="button" data-target="card">כרטיס היום</button>
+        <button type="button" data-target="now" aria-pressed="true">קו העכשיו</button>
+        <button type="button" data-target="nowHard">קו העכשיו, בכל מחיר</button>
+        <span class="sep"></span>
         <span class="lbl">הצצה מעל</span>
         <button type="button" data-peek="0">⁦0⁩</button>
         <button type="button" data-peek="26" aria-pressed="true">⁦26px⁩</button>
@@ -11080,19 +11087,30 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
 
       <!-- ══════════════════════════ §5 ══════════════════════════ -->
       <section class="case">
-        <h2>§5 · קו העכשיו בתוך היום של היום — מיילסטון ⁦2⁩, ומה הוא עולה</h2>
+        <h2>§5 · קו העכשיו בתוך היום של היום — וגם יעד הגלילה</h2>
         <p class="note">
           זה ה<i>שכבת נראוּת חיה</i> שהמוצר קיים בשבילה: מי שעוקב מהבית רוצה לדעת איפה החבורה
           עכשיו, לא רק באיזה יום. הסימון הוא של האפליקציה, מחלקה במחלקה
           (<code>.nowline</code>, ADR-0043) · אין כאן CSS חדש חוץ משורת מרווח אחת.
           <br />
-          <b>העלות אמיתית ולכן זה מיילסטון נפרד:</b> <code>nowLinePlacement</code> קורא
-          <code>atMs</code>/<code>endsAt</code> — רגעים — והפרויקציה שולחת רק תוויות
-          <code>HH:MM</code>, בכוונה. או שהפרויקציה תשלח רגעים (ושוברת את הכלל שנכתב כדי שלא
-          יהיו שני מעצבי־זמן), או שההשוואה תהיה על שעון־קיר באזור הראשי של הטיול — ואז יום
-          שנושא <code>zoneShiftMinutes</code> (יום טיסה) הוא היום שבו אי אפשר לסמוך עליה.
-          <b>ההמלצה:</b> שעון־קיר, ודיכוי הקו ביום עם מעבר אזור · זה היום שהקו הכי פחות מוסיף בו.
-          מוצג כאן ברמת <code>לו״ז מלא</code> ומעלה בלבד, כי בתקציר אין שעות בכלל.
+          <b>והעלות קטנה ממה שהטיוטה הראשונה כאן טענה.</b> אין צורך לשלוח רגעים ואין צורך
+          במעצב־זמן שני: <code>shareTimeLabel</code> ב-<code>@waypoint/shared</code> הוא
+          הפונקציה ש<i>בנתה</i> כל <code>startLabel</code> בפרויקציה, והלקוח יכול לקרוא לה על
+          <code>Date.now()</code> באותו אזור. שתי מחרוזות <code>HH:MM</code> מרופדות באפסים
+          מסתדרות לקסיקוגרפית = כרונולוגית, אז המיקום הוא השוואת מחרוזות · דרך אותה נגזרת אחת
+          שהכלל בא להגן עליה. השדה היחיד שצריך הוא <code>trip.timezone</code>, ש-§6 מוסיף בכל
+          מקרה, ו<code>zoneShiftMinutes</code> כבר נשלח על האירוע — כך שדיכוי הקו ביום עם מעבר
+          אזור נגזר בלקוח בלי אף שדה חדש. מוצג ברמת <code>לו״ז מלא</code> ומעלה בלבד, כי בתקציר
+          אין שעות בכלל.
+          <br />
+          <b>ואם יש קו, הוא היעד של הגלילה — כמו ב-<code>DayView</code>.</b> הקריאה שם לא
+          מיתרגמת מילה במילה: <code>block: 'center'</code> ממרכז בתוך הסקרולר הפנימי,
+          <i>מתחת</i> לכותרת היום שהיא כרום קבוע ולא יכולה להיגלל. לעמוד הקורא אין כרום · כותרת
+          הכרטיס של היום, שנושאת את התאריך ואת הסימון <code>עכשיו</code>, היא תיבה רגילה באותו
+          מסמך. הפקד <code>יעד הגלילה</code> למעלה מודד את שלוש האפשרויות, והמסקנה היא ש
+          <b>שתיים מהן זהות</b>: ביום רגיל הקו נופל בתוך המסך גם כשהכותרת נעוצה, אז "כרטיס
+          היום" ו"קו העכשיו" הן אותה גלילה בדיוק. רק <code>בכל מחיר</code> שונה — הוא מרוויח
+          ⁦62px⁩ וחותך את שורת התאריך מעל הקיפול.
         </p>
         <div class="pair" id="s5"></div>
       </section>
@@ -11466,7 +11484,10 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             ...opts,
             open: day.o === open,
             phase: dayPhase(day, today),
-            nowLine: opts.nowLine && dayPhase(day, today) === 'today',
+            // Full and Everything only: Summary carries no times at all, so
+            // there is nothing for a clock to sit between.
+            nowLine:
+              opts.nowLine && opts.level !== 'summary' && dayPhase(day, today) === 'today',
           }),
         ).join('')}</main>`;
       };
@@ -11503,7 +11524,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
 
       /* ══ State. `phase` and `level` are the app's own axes; `peek` is the one
             number this file refuses to decide alone. */
-      const state = { phase: 'now', level: 'full', peek: 26 };
+      const state = { phase: 'now', level: 'full', peek: 26, target: 'now' };
 
       const paint = () => {
         const { phase, level, peek } = state;
@@ -11522,7 +11543,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             `<span class="tag after">בהצעה · ${
               phase === 'now' ? 'נוחת על היום של היום' : 'הכול סגור, בראש העמוד'
             }</span>`,
-            page({ phase, level, marks: 'proposed' }),
+            page({ phase, level, marks: 'proposed', nowLine: true }),
             's1-after',
             true,
           ),
@@ -11578,7 +11599,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             's5-before',
           ),
           col(
-            '<span class="tag after">מיילסטון ⁦2⁩ · <code>.nowline</code> של האפליקציה</span>',
+            '<span class="tag after">בהצעה · <code>.nowline</code> של האפליקציה, ויעד הגלילה</span>',
             spine({ phase: 'now', level: 'full', marks: 'proposed', open: 5, nowLine: true }),
             's5-after',
           ),
@@ -11591,7 +11612,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         // rules out `scrollIntoView` inside the app's sheets does not apply
         // here. Written as an explicit `scrollTop` in this file because a
         // `scrollIntoView` inside a mockup frame would drag THIS document too.
-        const land = (id, ordinal) => {
+        const land = (id, ordinal, mode = 'card') => {
           const scroller = document.querySelector('#' + id);
           if (!scroller) return;
           const card = scroller.querySelector('#day-' + ordinal);
@@ -11602,17 +11623,41 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           // landed hundreds of pixels off — which is visible immediately in a
           // render and invisible in the code. Rect-to-rect is the only form
           // that does not depend on which ancestor happens to be positioned.
-          const top =
-            card.getBoundingClientRect().top -
-            scroller.getBoundingClientRect().top +
-            scroller.scrollTop;
-          scroller.scrollTop = Math.max(0, top - peek);
+          const frame = scroller.getBoundingClientRect();
+          const offsetIn = (el) => el.getBoundingClientRect().top - frame.top + scroller.scrollTop;
+          const cardTop = offsetIn(card);
+          const atCard = Math.max(0, cardTop - peek);
+
+          // **THE TARGET IS THE NOW-LINE, AND `DayView`'s OWN CALL DOES NOT
+          // TRANSLATE LITERALLY.** There, `block: 'center'` centres inside the
+          // inner `.body` scroller — BELOW the day's header, which is fixed
+          // chrome and can never be scrolled away. The reader page has no
+          // chrome: today's card header, which carries the date and the `עכשיו`
+          // mark, is an ordinary box in the same document. Centre the line and
+          // that header leaves the screen, so a reader who followed a link
+          // lands on event rows with no date anywhere on them.
+          //
+          // So the faithful translation of "centre it below the chrome" is:
+          // pin today's header at the top and let the line sit where it falls
+          // in the space that remains — which on an ordinary day IS on screen.
+          // Only where it is not does the choice bite, and `nowHard` is that
+          // case drawn rather than argued about.
+          const line = card.querySelector('.nowline');
+          const vh = scroller.clientHeight;
+          if (mode !== 'card' && line) {
+            const lineTop = offsetIn(line);
+            const fitsUnderHeader = lineTop - atCard <= vh - 48;
+            scroller.scrollTop =
+              mode === 'nowHard' || !fitsUnderHeader ? Math.max(0, lineTop - vh / 2) : atCard;
+            return;
+          }
+          scroller.scrollTop = atCard;
         };
         // §1 lands by the rule itself. The other sections are scrolled to put
         // the day in question on screen — an editorial framing of a static
         // frame, not a claim about where the app scrolls.
         const landing = opensAt(phase);
-        if (landing !== null) land('s1-after', landing);
+        if (landing !== null) land('s1-after', landing, state.target);
         land('s2-after', 4);
         land('s2-before', 4);
         land('s3-after', 4);
@@ -11650,6 +11695,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
       });
       group('data-phase', (v) => (state.phase = v));
       group('data-level', (v) => (state.level = v));
+      group('data-target', (v) => (state.target = v));
       group('data-peek', (v) => {
         state.peek = Number(v);
         document.documentElement.style.setProperty('--peek', v + 'px');
@@ -11808,6 +11854,30 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             'איפה נחת היום של היום',
             landed + 'px',
             'מראש אזור הגלילה · ההצצה שנבחרה היא ' + state.peek + 'px',
+          ],
+          [
+            'קו העכשיו, מראש אזור הגלילה',
+            (() => {
+              const sc = document.querySelector('#s1-after');
+              const ln = sc?.querySelector('.nowline');
+              if (!sc || !ln) return '-';
+              const top = Math.round(ln.getBoundingClientRect().top - sc.getBoundingClientRect().top);
+              return top + 'px / ' + sc.clientHeight + 'px';
+            })(),
+            'יעד הגלילה שנבחר: ' + state.target + ' · מספר שלילי = מעל הקיפול',
+          ],
+          [
+            'כותרת הכרטיס של היום · אחרי הגלילה',
+            (() => {
+              const sc = document.querySelector('#s1-after');
+              const hd = sc?.querySelector('.sh-day.is-now .sh-day-head');
+              if (!sc || !hd) return '-';
+              const top = Math.round(
+                hd.getBoundingClientRect().top - sc.getBoundingClientRect().top,
+              );
+              return top + 'px' + (top < 0 ? ' · חתוכה' : ' · שלמה');
+            })(),
+            'התאריך והסימון עכשיו יושבים בה · מספר שלילי = השורה עם התאריך מעל הקיפול',
           ],
           [
             'ימים שנשארו מעל הקיפול',
