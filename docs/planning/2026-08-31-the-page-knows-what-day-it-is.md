@@ -41,6 +41,21 @@ Four of these moved a decision, and three of them made the change smaller:
   `DayView`, computed inline there and again in a second spelling in `DayStrip`. The share
   page is the third host; the derivation is lifted into `lib/time.ts` rather than copied.
 
+## The one correction the owner made, and it was the right one
+
+The first draft of §1 fell back to **day 1** when there is no today. Owner: _"Except during
+the trip (where current day is scrolled to and expanded), all days are closed, not expanded,
+when opening, right?"_ — which it was not, and should have been. Falling back to the first
+card is the same index-pick §1 opens by criticising, with a rationale bolted on afterwards:
+`useState(0)` chose an index because one was needed; "the first card, since there is no
+today" chooses the same index for the same non-reason.
+
+**The clock is the only thing that opens a card; every other open card is the reader's.**
+That also protects §2's mark — a day that opens itself for no reason makes "open" stop being
+a statement. And the closed spine turned out to be the better page on its own numbers: 1043px
+against 1510px with one card open, so before the trip a reader sees more of the trip, not
+less, and eleven cards carrying a title and where they sleep read as its table of contents.
+
 ## Forks put to the owner
 
 1. **`today` from the server or from the client?** Recommended and drawn: the projection

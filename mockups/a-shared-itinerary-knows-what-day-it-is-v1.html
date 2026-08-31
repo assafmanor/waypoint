@@ -11008,6 +11008,12 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           פתוח אחד. מה שכן הוחלט הוא האקורדיון עצמו (כרטיס אחד פתוח בכל רגע, ADR-0213 §1), והוא
           נשאר.
           <br />
+          <b>ולכן אף יום הוא לא ברירת מחדל.</b> בטיול שטרם התחיל ובטיול שנגמר <i>הכול סגור</i> ·
+          לפול חזרה ליום ⁦1⁩ זו אותה בחירת אינדקס עם נימוק שהודבק אחר כך (בעלים, 2026-08-31).
+          שדרה סגורה היא לא עמוד ריק: כל כרטיס נושא את שם היום ואיפה ישנים בו, ואחת־עשרה שורות
+          כאלה הן תוכן העניינים של הטיול — מה שזר שפתח לינק בעצם מחפש, ומה שהשורה
+          <code>כל יום לפי חלקיו</code> מתחת לכותרת מבטיחה מלכתחילה.
+          <br />
           <b>והגלילה לא מציעה כלל חדש.</b> <code>DayView</code> כבר מגלגל את קו העכשיו למסך
           בפתיחת יום — רק בהיום, פעם אחת לפתיחה, מקובע ליום ולא לתקתוק השעון, עם אירוע-שניים
           שנשארים מציצים מלמעלה, ומיידי תחת <code>prefers-reduced-motion</code>. אותו כלל בדיוק,
@@ -11133,6 +11139,16 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             הכלל הוא: <b>hash בכתובת גובר על "נחת על היום"</b> · מי שקיבל לינק ליום ⁦9⁩ ביקש את יום
             ⁦9⁩. מה שלא נעשה כאן הוא לכתוב את היום הפתוח <i>לתוך</i> הכתובת — זה מצב חשיפה, לא
             ניווט, והוא היה מזהם היסטוריית דפדפן של מסמך.
+          </li>
+          <li>
+            <b>נדחה: ליפול חזרה ליום ⁦1⁩ כשאין "היום".</b> זה מה שהקובץ הזה שלח בטיוטה הראשונה,
+            והבעלים תפס את זה (2026-08-31): זו אותה בחירת אינדקס ש-§1 מבקר, עם נימוק שהודבק
+            אחר כך. בטיול שטרם התחיל ובטיול שנגמר <b>אין כרטיס פתוח</b> · השעון הוא הדבר היחיד
+            שפותח כרטיס, וכל פתיחה אחרת היא של הקורא. זה גם מה שמשמר את המשמעות של הסימון
+            הענברי: אם יום נפתח מעצמו בלי סיבה, "פתוח" מפסיק להיות אמירה.
+            <br />
+            שדרה סגורה מודדת ⁦1043px⁩ מול ⁦1510px⁩ עם כרטיס פתוח אחד — כלומר לפני הטיול הקורא
+            רואה יותר מהטיול, לא פחות ממנו.
           </li>
           <li>
             <b>נדחה: לפתוח כמה ימים במקביל, או את כולם.</b> זה מייתר את השאלה "איזה יום נפתח",
@@ -11326,12 +11342,22 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
          real dates and not three captions. */
       const TODAY = { soon: '2026-09-07', now: '2026-09-15', past: '2027-01-10' };
 
-      /** Which card opens: the one the reader is in, else the first. A trip that
-       *  has not started and one that is over both have no "today" — which is
-       *  why §1's answer for both is the same card, and why that is one rule
-       *  rather than three. */
+      /** **Which card opens: the one the reader is in, and ONLY that one.**
+       *
+       *  `null` before the trip and after it, and that is the whole rule — no
+       *  day is a default. This file's first draft fell back to day 1, which is
+       *  §1's own criticism with a rationale bolted on afterwards: `useState(0)`
+       *  picked an index because one was needed, and "the first card, since
+       *  there is no today" picks the same index for the same non-reason
+       *  (owner, 2026-08-31).
+       *
+       *  A closed spine is not an empty page. Every card already carries the
+       *  day's title and where it sleeps, so eleven of them read as the trip's
+       *  table of contents — which is what a stranger opening a link is
+       *  actually looking for, and what `כל יום לפי חלקיו` under the heading has
+       *  been promising all along. */
       const opensAt = (phase) =>
-        DAYS.find((day) => dayPhase(day, TODAY[phase]) === 'today')?.o ?? 1;
+        DAYS.find((day) => dayPhase(day, TODAY[phase]) === 'today')?.o ?? null;
 
       /* ══ One day card. `marks` is the only thing §2 and §3 disagree about, so
             it is a parameter and not a second renderer. */
@@ -11493,7 +11519,9 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             true,
           ),
           col(
-            '<span class="tag after">בהצעה · נוחת על היום של היום</span>',
+            `<span class="tag after">בהצעה · ${
+              phase === 'now' ? 'נוחת על היום של היום' : 'הכול סגור, בראש העמוד'
+            }</span>`,
             page({ phase, level, marks: 'proposed' }),
             's1-after',
             true,
@@ -11583,7 +11611,8 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         // §1 lands by the rule itself. The other sections are scrolled to put
         // the day in question on screen — an editorial framing of a static
         // frame, not a claim about where the app scrolls.
-        if (phase === 'now') land('s1-after', opensAt('now'));
+        const landing = opensAt(phase);
+        if (landing !== null) land('s1-after', landing);
         land('s2-after', 4);
         land('s2-before', 4);
         land('s3-after', 4);
@@ -11791,7 +11820,20 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             'הרכיב של האפליקציה · אין CSS חדש חוץ ממרווח',
           ],
           [
-            'גובה השדרה כולה · ⁦11⁩ כרטיסים',
+            'שדרה סגורה לגמרי · ⁦11⁩ כרטיסים',
+            h('#s4-soon .sh-days') + 'px',
+            'מה שרואים לפני הטיול ואחריו · ' +
+              (document.querySelector('#s4-soon')
+                ? [...document.querySelectorAll('#s4-soon .sh-day')].filter((el) => {
+                    const box = el.getBoundingClientRect();
+                    const frame = document.querySelector('#s4-soon').getBoundingClientRect();
+                    return box.top >= frame.top && box.bottom <= frame.bottom;
+                  }).length
+                : '-') +
+              ' ימים שלמים מעל הקיפול',
+          ],
+          [
+            'גובה השדרה עם כרטיס פתוח · ⁦11⁩ כרטיסים',
             h('#s3-after .sh-days') + 'px',
             'למה "לפתוח את כולם" לא נשקל · v4 תוקן בדיוק מזה',
           ],

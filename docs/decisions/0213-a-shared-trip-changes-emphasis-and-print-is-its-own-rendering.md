@@ -1557,9 +1557,23 @@ is in, and says which day that is.**
 
 ### §1 · Which card opens, and where the page lands
 
-The card that opens is the one whose date is the trip's today; before the trip and after it
-there is no such day, so it is the first card. One rule, three phases, no special case for
-any of them.
+The card that opens is the one whose date is the trip's today, **and only that one**. Before
+the trip and after it there is no such day, so **nothing is open**: the spine of eleven
+closed cards is what the page opens on.
+
+Falling back to the first card is what this amendment's first draft proposed, and the owner
+caught it: it is the same index-pick this section opens by criticising, with a rationale
+bolted on afterwards. `useState(0)` chose an index because one was needed; "the first card,
+since there is no today" chooses the same index for the same non-reason. **The clock is the
+only thing that opens a card. Every other open card is the reader's.** That is also what
+keeps §2's amber mark meaning something — a day that opens itself for no reason makes "open"
+stop being a statement.
+
+A closed spine is not an empty page: every card already carries the day's title and where it
+sleeps, so eleven of them read as the trip's table of contents, which is what a stranger
+opening a link is looking for and what `כל יום לפי חלקיו` under the heading has been
+promising since v3. Measured, the fully closed spine is **1043px** against **1510px** with
+one card open — before the trip the reader sees _more_ of the trip, not less.
 
 The scroll is **not a new rule** — `DayView` already made every decision it needs:
 
@@ -1583,8 +1597,9 @@ a reader handed `/s/<code>#day-9` asked for day nine. The open card is **not** w
 the URL — it is a disclosure state, not navigation, and it would pollute a document's back
 history.
 
-**`openDay` becomes an ordinal, not an index.** It is index-based today, so a refetch that
-adds or removes a day silently leaves a different card open than the one the reader opened.
+**`openDay` becomes a nullable ordinal, not an index.** It is index-based today, so a
+refetch that adds or removes a day silently leaves a different card open than the one the
+reader opened — and "nothing is open" needs a state that `0` cannot express.
 
 ### §2 · The page has one amber, and it belongs to the day the trip is on
 
