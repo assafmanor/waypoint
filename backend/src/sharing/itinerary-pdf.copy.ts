@@ -109,6 +109,23 @@ export const PDF_COPY = {
   stay: (place: string) => `לנים ${bindPrefix('ב', place)}`,
   /** The wait between two legs of one journey, named by the place you wait IN. */
   layover: (place: string, span: string) => `המתנה ${bindPrefix('ב', place)} · ${span}`,
+  /**
+   * **A floor and a ceiling, in the app's own two words** (ADR-0213's 2026-08-31 amendment
+   * §1). `מ-` and `עד` are `t.day.fromTime`/`untilTime`, which the app has printed for
+   * ADR-0171's two flexible meanings since they were written. This file keeps its own copy
+   * for the reason the header gives — paper is a separate renderer — and the WORDING is
+   * identical on purpose: two words for one meaning is how two surfaces start disagreeing.
+   *
+   * Measured at the print face (`a-shared-time-is-printed-as-a-range-v1.html` §2): `מ-10:00`
+   * is ⁦34.75px⁩ of ink and `עד 11:00` is ⁦38.38px⁩, against `09:20–14:05`'s ⁦55px⁩ — so both fit
+   * the shipped ⁦56px⁩ column and it does not move.
+   */
+  timeFrom: (clock: string) => `מ-${clock}`,
+  timeUntil: (clock: string) => `עד ${clock}`,
+  /** The stay's two moments on the day header (§2). The nouns are the app's
+   *  (`t.transition.checkIn`/`checkOut`), so paper and screen name them the same. */
+  checkIn: (when: string) => `צ׳ק-אין ${when}`,
+  checkOut: (place: string, when: string) => `צ׳ק-אאוט ${bindPrefix('מ', place)} ${when}`,
   /** Four words for the four op kinds, printed inline because paper has no fold. */
   ops: { code: 'קוד', note: 'פתק', task: 'משימה', file: 'קובץ' },
   appendix: {

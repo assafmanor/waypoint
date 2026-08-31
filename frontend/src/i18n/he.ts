@@ -3326,6 +3326,24 @@ export const t = {
       // leg and a forty-minute one were the same shape of line. The numbers are isolated by
       // the caller; the en dash is the app's own range mark (`formatTripDates`).
       timeRange: (from: string, to: string) => `${from}–${to}`,
+      /**
+       * **A floor and a deadline, in the app's own two words** (ADR-0213's 2026-08-31
+       * amendment §1). `מ-` and `עד` are exactly `t.day.fromTime` / `t.day.untilTime`, which
+       * the app has printed for ADR-0171's two flexible meanings since they were written.
+       *
+       * `share.public` keeps its own copy of every word for the reason this block's header
+       * gives — a stranger never sees the app's dictionary — and the WORDING is deliberately
+       * identical: two words for one meaning is how two surfaces start disagreeing about a
+       * fact, which §7 already recorded once for this feature.
+       */
+      timeFrom: (clock: string) => `מ-${clock}`,
+      timeUntil: (clock: string) => `עד ${clock}`,
+      /** The stay's two moments on the day's frame (§2). The nouns are the app's own
+       *  (`t.transition.checkIn`/`checkOut`), so the shared page and the day view name the
+       *  same thing the same way. `checkOut` names the place, because on a transfer day it is
+       *  not the place the line above it names. */
+      checkIn: 'צ׳ק-אין',
+      checkOut: (place: string) => `צ׳ק-אאוט ${bindPrefix('מ', place)}`,
       // **How the trip moves**, in the owner's own words (2026-08-30): a circumnavigation
       // where the base changes every day or two is a different thing from a trip you take
       // from one place. `הקפה` is mine — a rolling trip that closes its circle is common

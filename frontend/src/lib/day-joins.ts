@@ -15,6 +15,7 @@ import {
   edgeMeaning,
   freeAfterTravel,
   isTightConnection,
+  TIME_MEANING,
   TRAVEL_FIT,
   windowBoundOf,
   type Booking,
@@ -165,7 +166,7 @@ export function dayBlocks(entries: readonly DayEntry[], ctx: JoinContext): DayBl
     // run: an exact transition IS a moment, and a cluster is two things at once, so "the
     // gap after it" is not a single fact.
     if (entry.kind === 'event') prevEnd = groupEndEvent(entry.group);
-    else if (edgeMeaning(entry.event, entry.edge) === 'exact') prevEnd = null;
+    else if (edgeMeaning(entry.event, entry.edge) === TIME_MEANING.EXACT) prevEnd = null;
   });
 
   return blocks;

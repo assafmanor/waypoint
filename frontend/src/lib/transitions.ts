@@ -9,6 +9,7 @@ import {
   eventTransitionKeys,
   isBracketed,
   windowBoundOf,
+  TIME_MEANING,
   type BookingType,
   type EventCategory,
   type TripEvent,
@@ -105,8 +106,8 @@ export function edgeTimePhrase(
   // of it invents the other.
   const clock = ltrIsolate(formatTime(new Date(atMs), zone));
   const meaning = edgeMeaning(event, edge);
-  if (meaning === 'not-after') return t.day.untilTime(clock);
-  if (meaning === 'not-before') return t.day.fromTime(clock);
+  if (meaning === TIME_MEANING.NOT_AFTER) return t.day.untilTime(clock);
+  if (meaning === TIME_MEANING.NOT_BEFORE) return t.day.fromTime(clock);
   return clock;
 }
 

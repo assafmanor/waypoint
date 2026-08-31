@@ -21,6 +21,7 @@ import { z } from 'zod';
 import { entityIdSchema, isoDateTimeSchema, dateOnlySchema, timezoneSchema } from './schemas';
 import { bookingTypeSchema, eventCategorySchema } from './entities';
 import { LEG_TRAVEL_MODES } from './constants';
+import { TIME_MEANINGS } from './icons';
 import { addDays } from './trip-dates';
 import { todayInTz } from './zones';
 
@@ -523,6 +524,41 @@ export const sharedLegSchema = z.strictObject({
 export type SharedLeg = z.infer<typeof sharedLegSchema>;
 
 /**
+ * **A CLOCK, AND WHAT IT MEANS** (owner, 2026-08-31: _"whenever there's a time range, we
+ * should display it. That also includes flexible times like starting from.. Or until..."_).
+ *
+ * Sharing printed a start and withheld the rest, gated on `event.hard` — a rule that was
+ * about COMMITMENT (ADR-0011) answering a question about MEANING. ADR-0184's `edgeMeaning`
+ * is the derivation that actually answers it, and the app's own rows have asked it since it
+ * was written; this is sharing asking the same one.
+ *
+ * - `exact` — the instant IS the commitment. `13:00`, or `09:20–14:05` with an `endLabel`.
+ * - `not-before` — a floor. A room from 15:00, a hire counter at 10:00 → `מ-10:00`.
+ * - `not-after` — a deadline. Out by 11:00, the car back by 18:00 → `עד 11:00`.
+ * - `window` — both bounds authored (ADR-0184 §1). `17:00–21:00`.
+ *
+ * **One object rather than four flat fields.** A renderer needs ONE string per row, so four
+ * fields would make every renderer re-derive the same choice — and §1 of the amendment is
+ * the record of what happens then: the two of them already disagreed, with the live page
+ * printing a soft event's range and paper withholding it. The values are here and the words
+ * stay each renderer's own, which is this file's standing rule.
+ *
+ * `startLabel`/`endLabel` on the event survive alongside it: a journey's header and its legs
+ * are `exact` by nature (a flight departs and lands), and they read those.
+ */
+export const sharedTimeSchema = z.strictObject({
+  /** The clock the row leads with — the floor on `not-before`, the deadline on `not-after`,
+   *  the start on the other two. `HH:MM` in the event's own display zone (ADR-0107). */
+  label: z.string(),
+  /** The other end, where printing one is right: an exact span's arrival, or a window's
+   *  ceiling. Absent on a floor and on a deadline, whose other bound is open by definition —
+   *  and absent on a `held` span, whose far end belongs to a different day. */
+  endLabel: z.string().optional(),
+  meaning: z.enum(TIME_MEANINGS),
+});
+export type SharedTime = z.infer<typeof sharedTimeSchema>;
+
+/**
  * One event as the public sees it.
  *
  * Everything optional is absent at Summary — absent, not empty-string or null, so a
@@ -547,9 +583,16 @@ export const sharedEventSchema = z.strictObject({
   daypart: shareDaypartSchema,
   /** True for a real commitment (ADR-0011) — a flight, a reservation. Renders firmer. */
   hard: z.boolean().optional(),
-  /** Full and above. `HH:MM` in the event's own display zone. */
+  /** Full and above. `HH:MM` in the event's own display zone.
+   *
+   *  **Read by the journey header and its legs, not by an ordinary row** — see `time` below,
+   *  which is what a row prints. These two remain the raw pair because a journey's ends are
+   *  two moments (a departure and an arrival) rather than one edge with a meaning. */
   startLabel: z.string().optional(),
   endLabel: z.string().optional(),
+  /** **What this row's clock IS** — see {@link sharedTimeSchema}. Full and above, and absent
+   *  on an event with no clock at all, which is what the `flexible` daypart is for. */
+  time: sharedTimeSchema.optional(),
   /** **How long it takes, and what the clock does** — the same two facts the app puts on
    *  every event row (ADR-0107's zone pill, `lib/duration.ts`'s ladder), which a shared
    *  flight was missing (owner, 2026-08-31: _"Flights and stuff like that should also show
@@ -659,6 +702,23 @@ export const sharedDaySchema = z.strictObject({
    *  is also what made a stay print `15:00–11:00`, a range that reads backwards because it
    *  spans midnight. A stay is not an event at 15:00; it is the roof over the day. */
   stay: z.string().optional(),
+  /**
+   * **THE TWO MOMENTS THE STAY HAS, ON THE DAY THEY HAPPEN** (owner, 2026-08-31, the
+   * flexible half of the same report).
+   *
+   * A check-in window is the commonest flexible time this app holds, and until now sharing
+   * showed it nowhere: the fourth amendment moved the stay OUT of the schedule and into
+   * `stay` above, which is a name with no clock. So the fix for "show me the ranges" cannot
+   * be a rule about rows — the row does not exist.
+   *
+   * `checkIn` belongs to `stay`: the day the run begins. `checkOut` names the place you are
+   * LEAVING, which on a transfer day is not the place named above — so it carries its own,
+   * and a day can hold both. A middle night has neither, which is the ordinary case.
+   *
+   * Absent below Full, with every other clock.
+   */
+  checkIn: sharedTimeSchema.optional(),
+  checkOut: z.strictObject({ place: z.string(), time: sharedTimeSchema }).optional(),
   photo: sharedPhotoSchema.optional(),
   sections: z.array(sharedDaypartSectionSchema),
 });

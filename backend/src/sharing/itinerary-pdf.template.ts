@@ -8,6 +8,7 @@ import {
   SHARE_OP_KIND,
   SHARE_DAY_SUMMARY_KIND,
   SHARE_DETAIL_LEVEL,
+  TIME_MEANING,
   type SharedDay,
   type SharedDaySummary,
   type SharedDayTitle,
@@ -224,13 +225,51 @@ const dayLabel = (date: string): { day: string; weekday: string } => {
  *  2026-08-30). One isolate around the whole run, so `09:20–14:05` cannot be reordered by the
  *  page's RTL flow into its own reverse. */
 function timeText(event: SharedEvent): string {
-  if (!event.startLabel) return PDF_COPY.dayparts.flexible;
-  // **A range only where the end is a commitment** (owner, 2026-08-30: exact clocks for
-  // hard pins and bookings, a start for everything else). A flight's arrival is a fact you
-  // plan around; a viewpoint's 14:30 is when somebody typed they would leave, and printing
-  // it as a window tells the reader it means something it does not.
-  const range = event.hard && event.endLabel && event.endLabel !== event.startLabel;
-  return range ? ltr(`${event.startLabel}\u2013${event.endLabel}`) : ltr(event.startLabel);
+  if (!event.time) return PDF_COPY.dayparts.flexible;
+  return sharedTimeText(event.time);
+}
+
+/**
+ * **A CLOCK, IN THE WORDS PAPER USES FOR IT** (ADR-0213's 2026-08-31 amendment \u00a71).
+ *
+ * The rule this replaces was `event.hard && event.endLabel && \u2026` \u2014 ADR-0011's commitment
+ * axis answering a question about meaning, which cost a soft two-hour hike its end here
+ * while the reader page kept it, and printed `10:00\u201318:00` for a week-long car hire. The
+ * projection now says what the clock IS and this only spells it.
+ *
+ * One isolate around the whole run, so `09:20\u201314:05` cannot be reordered by the page's RTL
+ * flow into its own reverse \u2014 and around the CLOCK only on the two arms carrying a Hebrew
+ * word, since isolating the word with it would island the wrong thing.
+ */
+function sharedTimeText(time: NonNullable<SharedEvent['time']>): string {
+  if (time.meaning === TIME_MEANING.NOT_BEFORE) return PDF_COPY.timeFrom(ltr(time.label));
+  if (time.meaning === TIME_MEANING.NOT_AFTER) return PDF_COPY.timeUntil(ltr(time.label));
+  return time.endLabel && time.endLabel !== time.label
+    ? ltr(`${time.label}\u2013${time.endLabel}`)
+    : ltr(time.label);
+}
+
+/**
+ * **THE STAY'S TWO MOMENTS, ON THE DAY HEADER** (ADR-0213's 2026-08-31 amendment §2).
+ *
+ * Its own line under the stay's name, never appended to it — that line is `nowrap` with an
+ * ellipsis, and the clock sits at its logical end, so a long hotel name would eat the fact
+ * with no sign it had been there (measured on the reader page at ⁦275px⁩ of ink in a ⁦206px⁩
+ * box). On paper the measure is half an A4 column rather than a phone's, so both moments fit
+ * one line here where the screen needs a wrap — the same decision, cheaper.
+ *
+ * Absent on a middle night, which is most nights: nothing arrives and nothing leaves.
+ */
+function stayWhen(day: SharedDay): string {
+  const parts = [
+    day.checkOut
+      ? PDF_COPY.checkOut(auto(day.checkOut.place), sharedTimeText(day.checkOut.time))
+      : '',
+    day.checkIn ? PDF_COPY.checkIn(sharedTimeText(day.checkIn)) : '',
+  ].filter(Boolean);
+  return parts.length > 0
+    ? `<span class="pdf-stay-when">${parts.join(NARRATIVE_SEPARATOR)}</span>`
+    : '';
 }
 
 /**
@@ -543,7 +582,9 @@ function dayCard(day: SharedDay, summary: boolean, photoSrc?: string): string {
     // midnight.
     `<span class="${day.stay ? 'pdf-stay' : ''}">${
       day.stay ? PDF_COPY.stay(auto(day.stay)) : daySummaryText(day.summary)
-    }</span></span></header>` +
+    }</span>` +
+    stayWhen(day) +
+    `</span></header>` +
     `<div class="pdf-parts">${sections}</div></article>`
   );
 }
@@ -830,6 +871,14 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
 .pdf-what{margin-block-start:3px;font:600 10px 'Assistant',sans-serif;color:var(--pdf-ink);}
 /* Where you sleep, teal because it is a location and nothing else (ADR-0028). */
 .pdf-stay{color:var(--pdf-teal);}
+/* **The stay's two moments, on their own line** (2026-08-31 amendment §2). Amber, because a
+   clock is time and commitment — so the line above keeps teal for the place and this one
+   spends the other half of ADR-0028's pair, rather than one line carrying two meanings in
+   one hue. .pdf-day-copy span is (0,1,1) and sets nowrap with an ellipsis, which is
+   right for the names above and wrong here: a pair of clocks is bounded, so cutting it only
+   costs the fact. (0,2,0) wins it. Measured at ⁦106px⁩ of ink in a ⁦295.5px⁩ box — one line
+   on paper, where the screen needs a wrap. */
+.pdf-day-copy .pdf-stay-when{margin-block-start:1px;color:var(--pdf-amber);font-size:7.6px;white-space:normal;}
 /* **The time column holds a range, or it wraps** (owner, 2026-08-30: "the times wrap to
    two lines which also looks bad"). Measured in the print mockup: the shipped column is
    38px and a range is 53px of ink at this face, so every row carrying one broke across two

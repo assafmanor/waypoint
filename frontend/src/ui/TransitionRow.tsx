@@ -10,7 +10,13 @@
 // but only when a caller supplies `onNavigate` (Trip mode, live day, and the
 // booking has a mappable location). Plan mode has no live "now", so it passes
 // none; a read-only past day, or a location-less booking, passes none too.
-import { CATEGORY_DEFAULT_ICON, edgeMeaning, EVENT_STATUS, type Booking } from '@waypoint/shared';
+import {
+  CATEGORY_DEFAULT_ICON,
+  edgeMeaning,
+  EVENT_STATUS,
+  TIME_MEANING,
+  type Booking,
+} from '@waypoint/shared';
 import { SettleControl, type SettleOutcome } from './domain/SettleControl';
 import { chosenIcon, DEFAULT_EVENT_ICON } from '../constants';
 import { ZoneShiftPill } from './ZoneShiftPill';
@@ -157,7 +163,7 @@ export function TransitionRow({
           (ADR-0139's Consequences: four settle affordances drifted before one collected
           them). Gated on the MEANING, not on the props alone: only a floor is cleared by
           being settled. */}
-      {meaning === 'not-before' && onDone && onSkip && (
+      {meaning === TIME_MEANING.NOT_BEFORE && onDone && onSkip && (
         <SettleControl
           variant="compact"
           outcome={

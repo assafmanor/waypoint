@@ -424,7 +424,21 @@ export const isJourney = (event: Pick<TripEvent, 'category' | 'icon'>): boolean 
  *  - `window` — BOTH bounds are known and neither is the moment. Check-in 17:00–21:00.
  *    Added by ADR-0184, and it is the closed form of the two flexible values above
  *    rather than a fourth kind of thing. */
-export type TimeMeaning = 'exact' | 'not-before' | 'not-after' | 'window';
+export const TIME_MEANING = {
+  EXACT: 'exact',
+  NOT_BEFORE: 'not-before',
+  NOT_AFTER: 'not-after',
+  WINDOW: 'window',
+} as const;
+/** The four, in the order above — for a `z.enum` that cannot drift from the object beside it
+ *  (the sharing contract needs one, ADR-0213's 2026-08-31 amendment). */
+export const TIME_MEANINGS = [
+  TIME_MEANING.EXACT,
+  TIME_MEANING.NOT_BEFORE,
+  TIME_MEANING.NOT_AFTER,
+  TIME_MEANING.WINDOW,
+] as const;
+export type TimeMeaning = (typeof TIME_MEANING)[keyof typeof TIME_MEANING];
 
 /** **What one END of this event's time means**, resolved from the profile that already
  *  answers it under another name: `midSpan.kind` (ADR-0171 §2).
@@ -449,9 +463,9 @@ export const edgeMeaning = (
   event: Pick<TripEvent, 'category' | 'icon' | 'startWindowEnd' | 'endWindowStart'>,
   edge: 'start' | 'end',
 ): TimeMeaning => {
-  if (windowBoundOf(event, edge) != null) return 'window';
-  if (timeProfileFor(event).midSpan?.kind !== 'held') return 'exact';
-  return edge === 'start' ? 'not-before' : 'not-after';
+  if (windowBoundOf(event, edge) != null) return TIME_MEANING.WINDOW;
+  if (timeProfileFor(event).midSpan?.kind !== 'held') return TIME_MEANING.EXACT;
+  return edge === 'start' ? TIME_MEANING.NOT_BEFORE : TIME_MEANING.NOT_AFTER;
 };
 
 /** The authored other-bound of this edge's window, if there is one. One accessor rather
@@ -473,7 +487,7 @@ export const windowBoundOf = (
 export const isExactEdge = (
   event: Pick<TripEvent, 'category' | 'icon' | 'startWindowEnd' | 'endWindowStart'>,
   edge: 'start' | 'end',
-): boolean => edgeMeaning(event, edge) === 'exact';
+): boolean => edgeMeaning(event, edge) === TIME_MEANING.EXACT;
 
 /* `edgeHoldsPosition` lived here and is GONE (2026-08-13, amending ADR-0171 §10a and
    ADR-0184 §4). Every span edge holds a position now — a floor is placed at the instant the
