@@ -1,10 +1,15 @@
 # What Home says about tomorrow when today is done — five options and a recommendation
 
 **Date:** 2026-08-31
-**Mockup:** [`mockups/tomorrow-lookahead-v1.html`](../../mockups/tomorrow-lookahead-v1.html)
-**Status:** drawn, rendered and measured; **nothing decided and nothing built** — this note exists so
-the owner can pick. It answers the ask with one recommendation (א׳ + ב׳ on the board, ו׳ in the lift)
-and four rejections, each with a reason a future reader could not recover from the diff.
+**Mockups:** [`tomorrow-lookahead-v1.html`](../../mockups/tomorrow-lookahead-v1.html) (the five
+options) and [`tomorrow-lookahead-v2.html`](../../mockups/tomorrow-lookahead-v2.html) (**the live
+answer** — v1's recommendation reworked on the owner's correction; read "Round two" at the foot
+first).
+**Status:** drawn, rendered and measured; **nothing decided and nothing built.** Round one answered
+the ask with one recommendation and four rejections. Round two is the owner's correction on that
+drawing — _"some parts are packed with too much info and everything is represented on the same level
+of importance"_ — and it **changes the recommendation**: the board now carries less than it does
+today, not more.
 **Reads:** [ADR-0160](../decisions/0160-the-hero-lifts-and-shows-a-horizon.md) (the lift, §4/§5/§8/§12/§M/§C),
 [ADR-0211](../decisions/0211-a-gap-has-a-character.md) (the gap's five characters, §3/§4/§6),
 [ADR-0064](../decisions/0064-day-transition-entries-and-home-band-trim.md) (the Home band trim),
@@ -161,3 +166,94 @@ Both are in the mockup's notes panel, and both were invisible until something wa
   above.
 - **Plan mode.** The parallel question there is "is the trip ready", which is `PlanHome`'s readiness
   hero (ADR-0193). Nothing here touches it.
+
+## Round two — the owner's correction, and what it changed
+
+> Looks very good overall. I think that some parts are packed with too much info and everything is
+> represented on the same level of importance visually. Maybe we need to think how to make the more
+> important stuff stand out better, lose some of the less important stuff, or maybe move to the
+> lifted hero only.
+
+Drawn in [`mockups/tomorrow-lookahead-v2.html`](../../mockups/tomorrow-lookahead-v2.html). Round one
+answered _"what is missing"_ and added; round two answers _"what matters"_ and subtracts. **Two of
+its three moves are removals**, and the proposed CSS block is shorter than v1's.
+
+### The census, because "everything at the same level" should be a number
+
+v2 §1 counts what the eye has to rank, off the rendered board rather than off the source — every
+element carrying its own text run, bucketed by the four properties that make two runs read as one
+level (size · weight · colour · family). A glyph is not a run, so the emoji marks and the `·`
+separators are excluded from all three columns. At ⁦360px⁩, the transfer state:
+
+|                     | shipped | v1      | **v2**      |
+| ------------------- | ------- | ------- | ----------- |
+| board height        | ⁦273px⁩ | ⁦341px⁩ | **⁦195px⁩** |
+| information runs    | ⁦16⁩    | ⁦21⁩    | **⁦9⁩**     |
+| biggest type bucket | ⁦2⁩     | ⁦3⁩     | **⁦1⁩**     |
+| head-font titles    | ⁦2⁩     | ⁦2⁩     | **⁦1⁩**     |
+| monospace runs      | ⁦5⁩     | ⁦5⁩     | **⁦2⁩**     |
+| filled chips/tiles  | ⁦3⁩     | ⁦4⁩     | **⁦2⁩**     |
+
+The correction is confirmed by the middle column and answered by the right one: **v2's board is
+⁦78px⁩ shorter than what ships today** while being the only one of the three that says anything about
+tomorrow's shape, and no two of its runs share a type level.
+
+### The fix needed no new token, because the hierarchy was already there
+
+Reading `board.css` is what found it. The board separates its two slots on **three channels at
+once**:
+
+|        | label                                      | title                                               |
+| ------ | ------------------------------------------ | --------------------------------------------------- |
+| rank 1 | `.wp-board-now-label` · `--amber`          | `.wp-board-now-title` · ⁦21px⁩ · `--on-dark-strong` |
+| rank 2 | `.wp-board-next-label` · `--on-dark-faint` | `.wp-board-next-title` · ⁦17px⁩ · `--on-dark`       |
+
+That is a good ranking, and at night it is **aimed at the wrong slot**: rank 1 holds `סוף היום` — a
+statement about what is _not_ happening — in the largest type and brightest ink on the app's loudest
+surface, while rank 2 holds the only thing anybody can act on. So the answer is not more emphasis:
+
+> **At night the board has one subject, and it is tomorrow.**
+
+Three moves:
+
+1. **The ranks swap.** `[data-rank]` trades the two existing treatments; the countdown stays in the
+   next-row's flex where it already is. Zero new tokens, zero new type steps, zero pixels. The rule
+   is "rank 1 is whichever slot holds tomorrow", so an **empty** tomorrow puts it in the now-slot
+   (`מחר · יום פנוי`, `emptyDay`'s own words) with no swap at all, and **no tomorrow** leaves the
+   board exactly as it ships.
+2. **Four things come off.** The confirmation code — a duplication, measured at **⁦240px⁩ from its
+   copy in the `הכרטיס הבא` quick tile**, which is the surface ADR-0050 built for it; the `קשיח`
+   lock, which decides nothing tonight; v1's own `מוקדם` tag, **withdrawn**; and the day token on
+   the meta row, because the rank-1 label now says `מחר` and keeping both prints one word twice
+   ⁦20px⁩ apart — ADR-0211's build-log rule (it refused `לילה` in the badge _and_ the label) paying
+   out in reverse. Note the dependency: that removal is only legal _because_ of move 1. Where the
+   label still says `הבא בתור` — the empty-tomorrow board — the token stays, exactly as §6 built it.
+3. **`סוף היום` goes, and the ribbon loses its header.** A board whose whole subject is tomorrow has
+   said the day is over by not talking about it — ADR-0211 §4's own "absence beats a pinned lie",
+   applied to a slot instead of a rail. And with `מחר` at rank 1 the ribbon needs no caption, no day
+   number and no count: it is the shape of the thing named above it, tied to it by the ring.
+   ⁦73px⁩ → ⁦45px⁩.
+
+### The third option, decided rather than offered
+
+**"Move to the lifted hero only" is drawn in v2 §4 and rejected**, on the ask's own words —
+_"opened the app and instantly got the idea at a glance"_. A lift-only answer costs a tap before the
+glance exists. The measured price of keeping the shape is ⁦57px⁩ (⁦195px⁩ against ⁦138px⁩) out of ⁦497px⁩
+of body room, on a board that is still shorter than today's. What _does_ move to the lift only is
+every detail move 2 removed: the code, the lock, the day number, the count, each block's own time,
+`איפה`, the leave-by — v2 §3 is that card, and it is v1's card unchanged.
+
+### Two smaller things round two settled
+
+- **`ישנים`/`לינה` and the bed's line** are unchanged from v1, but the bed line is now the ribbon's
+  _only_ words — so ADR-0209's "named only when it changes" is what makes the ordinary-tomorrow
+  board the shortest of the four states (⁦173px⁩).
+- **The rank-1 label takes `margin-top: 14px`** — the shipped `.wp-board-now-label` value, not a new
+  one. The render is what asked: probed at ⁦0px⁩ of gap, the label read as falling out of the live row.
+
+### What round two leaves open
+
+The forks list above stands with two changes: **the `מוקדם` tag is withdrawn** (fork 3 is closed),
+and `עצירות` as the count's noun (fork 4) now only appears inside the lift's `ליום של מחר` button,
+where it has room. Everything else — the recommendation as a whole, the ribbon's marks, `סוף הטיול`
+for the last night, and the travel line's missing day token — is still the owner's to answer.
