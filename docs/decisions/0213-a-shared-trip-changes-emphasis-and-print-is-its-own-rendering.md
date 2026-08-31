@@ -1104,6 +1104,131 @@ declaration mean something for both children; centres now agree within 1px.
   last of these being the proof that the app's own locked posture is untouched by the token
   change.
 
+## Amendment — drawn before built, and two rules the app had already written (2026-08-31, ninth pass)
+
+Three owner reports, all put to a mockup first because two of them are design questions and
+the third is a correction of the eighth pass. Two files:
+[`a-journey-is-a-flight-plan-v1.html`](../../mockups/a-journey-is-a-flight-plan-v1.html) and
+[`the-reader-hands-you-a-file-v1.html`](../../mockups/the-reader-hands-you-a-file-v1.html).
+
+**Nothing here is built yet.** This amendment records the decisions the two files promote and
+the measurements behind them.
+
+### §1 · A journey is a container, and the eighth amendment fixed the wrong axis
+
+> _"The flights with connecting flights still show both the full journey and the separate
+> flights in a confusing way, also doesn't show journey leg durations (flights)."_
+
+The eighth amendment read "confusing" as **duplicated numbers** and removed the legs'
+`durationMinutes` and `zoneShiftMinutes`. The numbers were never the complaint. Two facts from
+the code say what is:
+
+- the journey renders through `article.sh-event` — the **same element, class and type scale**
+  as a museum visit — and `.sh-legs` then indents by `padding-inline-start: 30px`. So the whole
+  claim "these two are inside that one" rests on 30px of white space in a 360px column;
+- the frame's title is `routeTitle(first.booking.fromPlaceId, last.booking.toPlaceId)` — the
+  legs' own endpoints concatenated. `נתב"ג ← קפלאוויק` over `נתב"ג ← וינה` and
+  `וינה ← קפלאוויק` is the same two airports three times. **The repetition a reader trips over
+  is the places, not the durations** — which is exactly why counting durations missed it.
+
+So: `.sh-trek`, a real container (teal rail plus a 7% tint, the grammar `.sh-day` already uses
+one level up; teal because a journey is about getting between places, rule 4), and a header
+that drops the glyph column and `--sh-secondary` so it cannot be read as one of the flights
+beneath it. Measured: the journey goes **209.9 → 221px, +11.1px** — clarity, not compaction,
+and the same trade v4 made when its journey block came in 7px taller.
+
+The frame's row survives rather than becoming a bare heading, because `ops`, `caption` and the
+map link all hang off the parent event: deleting it deletes the flight's booking code.
+
+### §2 · A leg says how long it flies; the zone shift stays on the journey
+
+`durationMinutes` comes **back** to `sharedLegSchema`, per leg, at `--sh-micro`.
+`zoneShiftMinutes` does not: the owner asked for flight durations, and three signed numbers
+(`+2`, `+1`, `+3`) describe one clock change, while the shift a traveller acts on is
+origin-to-destination. Duration phrases on the card therefore go **2 → 4**, and that increase
+**is** the request — worth stating plainly, since the eighth amendment's whole argument was
+that four was too many.
+
+### §3 · Paper says the same thing, waits included
+
+The owner's screenshot was of the PDF, where `.pdf-trek` **already** draws a bordered box
+around the legs — and it still read wrong. That is the proof the container alone is not the
+fix: the header above it is what has to stop looking like a complete flight. The mockup's own
+§3 first shipped without the layover line and the owner caught it in review (_"The pdf should
+also show the wait durations"_); both paper columns now run through one leg renderer, so they
+cannot disagree about which facts a leg carries. The wait matters most on paper: a reader
+holding a printout cannot tap anything to find out.
+
+### §4 · The download shows motion, because the app banned the static word in April
+
+> _"The download indication still bad … still the same bad looking מוריד etc instead of a
+> spinner or something."_
+
+`ui/Spinner.tsx`'s docblock: _"The one shared spinner (ADR-0052 §4). Used by the document
+viewer, the list load, and the upload busy state — so every async surface has a motion cue,
+**not a static word**."_ And ADR-0052 §4 names the composition: a busy control shows its label
+**plus** a spinner, with a determinate bar "where the transport allows it".
+
+The shipped row has the bar and the word and no spinner. It implements two thirds of a rule
+written four months before it, and the missing third is the one the owner noticed. So the
+spinner takes the file **glyph's** slot — `FormActions` puts it where the label was; a file row
+has no label to give up, and using the glyph's slot means the row's geometry never moves.
+`--ok`/`--miss` for the two finished states, `--cta` for working, because a file arriving is an
+action and not a status.
+
+Two corrections to what shipped, both from the same rule: reduced motion **slows** the
+indeterminate sweep to 2.6s rather than stopping it (`.spinner` itself slows to 1.6s, and a
+stopped indeterminate bar is indistinguishable from a stalled download), and the row declares
+44px — **measured live at 42px, under ADR-0017's floor**, which the whole download argument had
+been happening on top of without anyone noticing.
+
+### §5 · `shareFileOrDownload` is the mechanism, and the reader used only its silent half
+
+> _"it still doesn't pop up the Google chrome saving, though maybe that'll be fine as long as
+> we have a good looking animation"_
+
+`lib/system-share.ts`'s `shareFileOrDownload` tries `navigator.share({ files })` first and
+falls back to an anchor click. `FileOp` contains **those fallback six lines verbatim** —
+createObjectURL, anchor, download, click, revoke — and never tries the share branch. On Android
+that branch opens the system share sheet, which is a visible, cancellable confirmation a page
+cannot otherwise summon. Measured in the eighth pass: both paths engage Chrome's download
+manager identically, so the missing UI was never suppression — **we asked for the quiet one.**
+
+And the shared helper carries the bug the one-off already fixed: it revokes the object URL in a
+`finally` on the same tick as `click()`, which `FileOp`'s docblock explains can be "a download
+that never starts". Two implementations, each holding half the answer. The repair folds the
+`requestAnimationFrame` into the shared helper and gives the row its share branch — not a third
+copy. The copy follows the mechanism: `ShareOutcome` returns three values, and `נשלח` and
+`ירד` are not the same event.
+
+### §6 · The reader's PDF button is the owner sheet's control, one more host
+
+`.share-outcome` is already the owner's "get the PDF" button — 48px, download icon, the same
+words. The public page gains it rather than a third button. Placement is the one open question
+and is deliberately left to a device pass: the masthead is always reachable and costs 36px of a
+42px bar (with `ValueToken`'s `::after` reaching 44px, ADR-0177, the technique `.sh-ops`
+already uses here), while the foot reads as "take this with you" and costs a twelve-day scroll.
+
+And it carries §4's spinner, because the owner's existing PDF button swaps a word with no
+spinner while `FormActions` two files over does it correctly — so the app currently holds both
+the right pattern and the wrong one for one question.
+
+### What the renders found, beyond the proposals
+
+- **`.icon` is sized per context in this app**, and a new context inherits no size. Unsized,
+  the journey header's flight glyph drew at its own 24px box and the header measured **131px**
+  instead of 34.
+- **`.sh-page` now carries `min-height: 100dvh`** (shipped this morning so the reader's document
+  scrolls and pull-to-refresh can fire), so any mockup wearing that class for its type scale
+  gets a screenful of empty ground under every frame.
+- **A control in `.sh-public-bar` must take the `--on-dark-*` ramp** (ADR-0158 §3). Drawn with
+  `--ink`/`--line`, the PDF button rendered navy on navy: invisible on the page, entirely
+  reasonable in the CSS.
+- **The live file row is 42px**, under ADR-0017's 44px floor.
+
+Both files render in all four theme × width combinations with fonts loaded and no console
+errors.
+
 ## Alternatives considered
 
 - **One page with fields progressively removed.** Rejected: less information is not automatically the right emphasis.
