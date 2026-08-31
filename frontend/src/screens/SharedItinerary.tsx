@@ -309,10 +309,14 @@ function DayCard({
   onToggle: () => void;
   code: string;
 }) {
-  const { day: dayNumber, weekday } = dayParts(day.date);
+  const { day: dayNumber, weekday: firstWeekday } = dayParts(day.date);
   // A card that swallowed the day a journey flew through says so, rather than showing one
-  // date for two (`SharedDay.endDate`).
-  const dayNumbers = day.endDate ? `${dayNumber}–${dayParts(day.endDate).day}` : dayNumber;
+  // date for two (`SharedDay.endDate`) — and that goes for the WEEKDAY as well as the
+  // number. `21–22 שני` names a Monday for a card that is also Tuesday (owner,
+  // 2026-08-31). Two Hebrew names need no isolate; the digits beside them still do.
+  const endParts = day.endDate ? dayParts(day.endDate) : undefined;
+  const dayNumbers = endParts ? `${dayNumber}–${endParts.day}` : dayNumber;
+  const weekday = endParts ? `${firstWeekday}–${endParts.weekday}` : firstWeekday;
   return (
     <section className={`sh-day${open ? ' open' : ''}`} id={`day-${day.ordinal}`}>
       {/* **A real photo of a real stop, credited** (ADR-0213's 2026-08-30 amendment). Not
@@ -518,7 +522,6 @@ function EventRow({ event, code }: { event: SharedEvent; code: string }) {
                 <span>
                   <strong>{autoIsolate(leg.title)}</strong>
                   {leg.code ? <span className="sh-kind">{ltrIsolate(leg.code)}</span> : null}
-                  <TravelFacts event={leg} />
                 </span>
               </span>
             </div>
@@ -560,24 +563,61 @@ function Appendix({
  * is holding the printout is by that act the operator.
  */
 /**
- * **A download that says it is downloading, and then that it finished** (owner, 2026-08-31).
+ * **A download that shows how far it has got** (owner, 2026-08-31, twice).
  *
- * This is the answer to a report that survived three rounds as _"the document links don't
- * work"_ and never reproduced: they DID work. A bare `<a download>` hands the file to the
- * browser and the page says nothing at all, so on a phone — where the download shelf is a
- * notification you may not see — a tap looks exactly like a tap that did nothing. The
- * measured route was fine every time; the missing thing was feedback.
+ * Round one was the answer to a report that survived three rounds as _"the document links
+ * don't work"_ and never reproduced: they DID work. A bare `<a download>` hands the file to
+ * the browser and the page says nothing at all, so on a phone a tap looks exactly like a tap
+ * that did nothing. The measured route was fine every time; the missing thing was feedback.
  *
- * So the row fetches the bytes itself and reports the three states it can honestly know:
- * working, done, or failed. That costs holding one file in memory, which is affordable
- * because a shared document is a boarding pass or a voucher; and it buys the only thing that
- * makes the control legible. `rel="noopener"` and the same href remain, so a long-press
- * "save link" still works and a browser with JS disabled still downloads.
+ * Round two: a word was not enough, and the owner asked why Chrome shows no download overlay
+ * of its own. **Measured, and the page is not the reason** — driving both a navigation anchor
+ * and this fetch-then-blob path in Chromium, each engages the browser's download manager
+ * identically (`download` fires with the right filename for both). What Chrome then DRAWS —
+ * a bubble on desktop, a notification on Android that competes with everything else in the
+ * shade — is the browser's call and not something a page can summon. So the honest move is to
+ * make the row itself carry the progress rather than to keep chasing the browser's chrome.
+ *
+ * And because we already hold the response, the progress can be REAL: the body is read
+ * through a stream and the bar tracks bytes against `Content-Length`. Where the server sends
+ * no length the bar runs indeterminate — an animation that claims a fraction it cannot know
+ * is worse than one that admits it doesn't. `rel="noopener"` and the same href remain, so a
+ * long-press "save link" still works and a browser with JS disabled still downloads.
  */
 type DownloadState = 'idle' | 'working' | 'done' | 'failed';
 
+/**
+ * **The response body as a blob, reporting progress on the way** — `Content-Length` over
+ * bytes read. Falls back to `response.blob()` where the platform gives us no reader (and
+ * therefore no progress), which keeps the download working rather than trading it for a bar.
+ */
+async function readWithProgress(
+  response: Response,
+  onRatio: (ratio: number | undefined) => void,
+): Promise<Blob> {
+  const declared = Number(response.headers.get('content-length'));
+  const total = Number.isFinite(declared) && declared > 0 ? declared : undefined;
+  const reader = response.body?.getReader();
+  if (!reader) return response.blob();
+
+  const chunks: BlobPart[] = [];
+  let loaded = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value as BlobPart);
+    loaded += value.byteLength;
+    // A ratio only where a length was declared; a chunked response reports none and the bar
+    // stays indeterminate rather than inventing a denominator.
+    if (total) onRatio(Math.min(1, loaded / total));
+  }
+  return new Blob(chunks, { type: response.headers.get('content-type') ?? undefined });
+}
+
 function FileOp({ href, title }: { href: string; title: string }) {
   const [state, setState] = useState<DownloadState>('idle');
+  /** `undefined` while a length is unknown, which the bar renders as indeterminate. */
+  const [ratio, setRatio] = useState<number | undefined>(undefined);
   const settle = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(settle.current), []);
 
@@ -587,10 +627,11 @@ function FileOp({ href, title }: { href: string; title: string }) {
     if (event.metaKey || event.ctrlKey || event.shiftKey || state === 'working') return;
     event.preventDefault();
     setState('working');
+    setRatio(undefined);
     try {
       const response = await fetch(href);
       if (!response.ok) throw new Error(String(response.status));
-      const blob = await response.blob();
+      const blob = await readWithProgress(response, setRatio);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -606,6 +647,7 @@ function FileOp({ href, title }: { href: string; title: string }) {
     settle.current = setTimeout(() => setState('idle'), DOWNLOAD_SETTLE_MS);
   };
 
+  const working = state === 'working';
   return (
     <a
       href={href}
@@ -613,14 +655,30 @@ function FileOp({ href, title }: { href: string; title: string }) {
       rel="noopener"
       onClick={run}
       data-state={state}
-      aria-busy={state === 'working'}
+      aria-busy={working}
     >
       {autoIsolate(title)}
       <span className="sh-dl-state">
-        {state === 'working' ? t.share.public.file.working : null}
+        {working ? t.share.public.file.working : null}
         {state === 'done' ? t.share.public.file.done : null}
         {state === 'failed' ? t.share.public.file.failed : null}
       </span>
+      {/* The bar is the animation the row was missing, and it is only ever drawn while the
+          bytes are actually moving. `role="progressbar"` with the real numbers where we
+          have them, so a screen reader hears the same thing the eye sees; no `aria-valuenow`
+          at all when the length is unknown, which is how ARIA spells indeterminate. */}
+      {working ? (
+        <span
+          className="sh-dl-bar"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={ratio === undefined ? undefined : Math.round(ratio * 100)}
+          data-indeterminate={ratio === undefined ? '' : undefined}
+        >
+          <span style={ratio === undefined ? undefined : { inlineSize: `${ratio * 100}%` }} />
+        </span>
+      ) : null}
     </a>
   );
 }
@@ -642,7 +700,7 @@ function TravelFacts({
   if (!event.durationMinutes && !event.zoneShiftMinutes) return null;
   return (
     <span className="sh-travel-facts">
-      {event.durationMinutes ? <span>{ltrIsolate(hoursPhrase(event.durationMinutes))}</span> : null}
+      {event.durationMinutes ? <span>{hoursPhrase(event.durationMinutes)}</span> : null}
       {event.zoneShiftMinutes ? <ZoneShiftPill minutes={event.zoneShiftMinutes} /> : null}
     </span>
   );

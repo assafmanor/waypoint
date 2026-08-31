@@ -277,14 +277,29 @@ const LONG: SharedItinerary = {
  * of the scroller. A day past the fold was simply unreachable. Only a real browser can say
  * so: in jsdom every element is 0px tall and therefore never overflows.
  */
-test('the reader scrolls to its last day and its footer', async ({ page }) => {
+/**
+ * **The DOCUMENT scrolls, and that is the assertion** — not merely "something scrolled".
+ *
+ * This test used to drive `.sh-page`'s own `scrollTo`, which passed against an inner
+ * `100dvh` scroller and so said nothing about the browser's pull-to-refresh: a pull at the
+ * top of an inner scroller is not a viewport overscroll, and the reader shipped unable to
+ * refresh for a round because nothing here asked WHO scrolls (owner, 2026-08-31).
+ */
+test('the reader scrolls the document to its last day and its footer', async ({ page }) => {
   await open(page, LONG);
-  const reader = page.locator('.sh-page');
 
-  const overflow = await reader.evaluate((el) => el.scrollHeight - el.clientHeight);
+  // The page is content, not a viewport: no scrollport of its own to trap the gesture in.
+  const pageIsAScroller = await page
+    .locator('.sh-page')
+    .evaluate((el) => el.scrollHeight - el.clientHeight > 0);
+  expect(pageIsAScroller).toBe(false);
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollHeight - document.documentElement.clientHeight,
+  );
   expect(overflow).toBeGreaterThan(0);
 
-  await reader.evaluate((el) => el.scrollTo(0, el.scrollHeight));
-  await expect(reader).not.toHaveJSProperty('scrollTop', 0);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
   await expect(page.getByText(t.share.public.inviteTitle)).toBeInViewport();
 });

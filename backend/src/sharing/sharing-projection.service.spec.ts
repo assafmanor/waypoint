@@ -778,6 +778,19 @@ describe('SharingProjectionService', () => {
       expect(projection.days).toHaveLength(1);
       expect(projection.days[0].endDate).toBe('2026-09-12');
 
+      // **A leg states its clock and its flight, and NOTHING that the frame already says**
+      // (owner, 2026-08-31: _"a row for the entire journey but also rows for each flight …
+      // confusing"_). Both facts on both levels made this card carry four durations and
+      // three zone shifts; the totals belong to the journey, whose two ends are what a
+      // reader is comparing. The wait keeps its minutes, being the one span neither end has.
+      expect(journeys[0].durationMinutes).toBeGreaterThan(0);
+      // Asserted over the KEYS, because `SharedLeg` no longer declares either field — typed
+      // access would not compile, which is the stronger half of the same guarantee.
+      for (const leg of journeys[0].legs ?? []) {
+        expect(Object.keys(leg)).not.toContain('durationMinutes');
+        expect(Object.keys(leg)).not.toContain('zoneShiftMinutes');
+      }
+
       await prisma.trip.deleteMany({ where: { id: trip.id } });
     });
 

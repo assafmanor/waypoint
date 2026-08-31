@@ -20,7 +20,7 @@
 // It also cannot nest an `<a>` inside a `<button>`, so `anchors={false}` is a correctness
 // requirement and not only a design one.
 import { type ReactNode } from 'react';
-import { baseDirection, ltrIsolate } from '../lib/bidi';
+import { autoIsolate, baseDirection } from '../lib/bidi';
 import { parseNoteMarkdown, type NoteBlock, type NoteInline } from '../lib/note-markdown';
 import './notes.css';
 
@@ -137,9 +137,10 @@ function Runs({ runs, anchors }: { runs: NoteInline[]; anchors: boolean }): Reac
           // **Not an element at all.** Where the tap cannot happen, the url is words: an
           // `<a>` inside the row's `<button>` is invalid nesting, and a `<span>` styled to
           // look inert is a control that isn't one. With no element there is nothing to hang
-          // a `dir` on, so the run is isolated the way the flattened row's is — `ltrIsolate`,
-          // the app's one answer to this (ADR-0118).
-          ltrIsolate(run.label)
+          // a `dir` on, so the run is isolated the way the flattened row's is — and it is
+          // `autoIsolate`, the string form of the `dir="auto"` the anchor branch above
+          // carries, because a label the author wrote can be Hebrew (ADR-0118).
+          autoIsolate(run.label)
         );
     }
   });

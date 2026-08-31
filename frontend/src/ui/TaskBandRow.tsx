@@ -99,7 +99,7 @@ export function TaskBandRow({
                 <Icon name="clock" /> {due.late ? t.tasks.due.late : t.tasks.due.by}{' '}
                 {/* The numeric run is its own LTR island — `ltrIsolate`, never `dir="ltr"` on
                     a non-input (ADR-0118). */}
-                {due.time ? ltrIsolate(`${due.day} ${due.time}`) : due.day}
+                {due.time ? `${due.day} ${ltrIsolate(due.time)}` : due.day}
               </span>
             )}
             {progress && progress.total > 0 && (

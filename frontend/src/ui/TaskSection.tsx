@@ -154,7 +154,7 @@ export function TaskSection({
                         <span className={due.late ? 'tsk-due late' : 'tsk-due'}>
                           <Icon name="clock" /> {due.late ? t.tasks.due.late : t.tasks.due.by}{' '}
                           {/* The numeric run is its own LTR island (ADR-0118). */}
-                          {due.time ? ltrIsolate(`${due.day} ${due.time}`) : due.day}
+                          {due.time ? `${due.day} ${ltrIsolate(due.time)}` : due.day}
                         </span>
                       )}
                       {progress.total > 0 && (

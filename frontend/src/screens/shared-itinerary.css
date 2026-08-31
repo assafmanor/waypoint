@@ -9,16 +9,21 @@
    The hero keeps its dark trip identity in BOTH themes — it is always-dark chrome, so its
    ink is the theme-fixed `--on-dark-*` ramp (ADR-0158 §3), not a re-mapping fill. */
 
-/* **This page owns its own scroll, because nothing above it will do it for you** (owner
-   report, 2026-08-30: the shared link could not be scrolled at all). `html, body` are
-   `overflow: clip` app-wide (tokens.css) — every scroll in this app is `.body`'s, a sheet's
-   or a strip's — and the public reader renders OUTSIDE `AppShell`, so it inherited the
-   refusal and none of the scroller. Sized in `dvh` like `.app` and not in `%`: a percentage
-   resolves against the LARGE viewport, so the last ~125px would sit behind the phone's
-   browser toolbar with the document itself unable to scroll to them.
+/* **This page is scrolled BY THE DOCUMENT, which is the second answer to the same report**
+   (owner, 2026-08-30: the shared link could not be scrolled at all; 2026-08-31: it still
+   could not be refreshed).
 
-   Its own scroll container also means `overscroll-behavior` can stop the pull-to-refresh
-   here exactly as it does in the app. */
+   The first answer gave the page its own `100dvh` scroller, because `html, body` are
+   `overflow: clip` app-wide (tokens.css) — every scroll in the app is `.body`'s, a sheet's or
+   a strip's — and the public reader renders OUTSIDE `AppShell`, so it inherited the refusal
+   and none of the scroller. That fixed scrolling and quietly made refresh impossible: a pull
+   at the top of an INNER scroller is not a viewport overscroll, so the browser's refresh
+   gesture has nothing to read no matter what `overscroll-behavior` says.
+
+   So the document scrolls instead — `:root[data-public-reader]` restores `overflow: visible`
+   — and this is `min-height`, not `height`, so the page is as tall as its content. `dvh`
+   rather than `%` for the same reason as before: a percentage resolves against the LARGE
+   viewport, so a short itinerary would reserve ~125px behind the phone's browser toolbar. */
 /* **This page has its own type scale, one step up from the app's** (owner, 2026-08-30:
    _"Fonts are too small in the details and very hard to read, also the notes, and overall
    too small texts"_).
@@ -34,12 +39,8 @@
   --sh-micro: 12.5px;
   --sh-caption: 13.5px;
   --sh-secondary: 15px;
-  height: 100vh;
-  height: 100dvh;
-  overflow-y: auto;
-  /* **Not `contain`.** That is the app's PWA posture, which swallows the browser's own
-     pull-to-refresh; this page is a document and a pull at its top should reload it. */
-  overscroll-behavior-y: auto;
+  min-height: 100vh;
+  min-height: 100dvh;
   background: var(--screen);
 }
 
@@ -873,4 +874,58 @@
 }
 .sh-op a[data-state='failed'] .sh-dl-state {
   color: var(--miss);
+}
+
+/* **The progress bar the row was missing** (owner, 2026-08-31: _"it should have another
+   animation for downloading"_). Neutral `--cta`, not amber: amber is time and commitment
+   only (ADR-0028 / rule 4), and a download is neither.
+
+   Two modes, because only one of them is honest at a time. With a `Content-Length` the fill
+   is the real fraction of bytes read. Without one it sweeps, and the sweep is a DIFFERENT
+   shape on purpose — a short block travelling the track rather than a fill growing from the
+   start edge — so "I don't know how long" never looks like "I am 30% done".
+
+   `inset-inline-start` and a positive translate: the track is inside an RTL row, so the
+   sweep has to start at the right and travel left like everything else on the page. */
+.sh-dl-bar {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  margin-block-start: 5px;
+  block-size: 3px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--cta) 18%, transparent);
+}
+.sh-dl-bar > span {
+  display: block;
+  block-size: 100%;
+  border-radius: inherit;
+  background: var(--cta);
+  transition: inline-size 140ms linear;
+}
+.sh-dl-bar[data-indeterminate] > span {
+  position: absolute;
+  inset-inline-start: 0;
+  inline-size: 38%;
+  animation: sh-dl-sweep 1.1s ease-in-out infinite;
+}
+@keyframes sh-dl-sweep {
+  from {
+    transform: translateX(160%);
+  }
+  to {
+    transform: translateX(-260%);
+  }
+}
+/* ADR-0028's motion rule: the bar still SAYS it is working, it just stops moving. A
+   determinate fill is information rather than motion, so it keeps its width either way. */
+@media (prefers-reduced-motion: reduce) {
+  .sh-dl-bar > span {
+    transition: none;
+  }
+  .sh-dl-bar[data-indeterminate] > span {
+    animation: none;
+    inline-size: 100%;
+    opacity: 0.55;
+  }
 }

@@ -210,7 +210,7 @@ describe('flattenNoteMarkdown — the clamped surfaces (ADR-0202 §6)', () => {
     expect(flattenNoteMarkdown(source)).toBe(
       [
         'מסעדות',
-        'Tabelog · ⁦tabelog.com/tokyo/A1303⁩',
+        'Tabelog · ⁨tabelog.com/tokyo/A1303⁩',
         'הכניסה מהחניון',
         'להגיע לפני 11:00',
         'סיסמה Sakura2026!',
@@ -231,8 +231,12 @@ describe('flattenNoteMarkdown — the clamped surfaces (ADR-0202 §6)', () => {
 
   // The isolate is not decoration: this lands in a text node with no element to carry a
   // `dir`, and a Latin run inside Hebrew prose comes apart without one (ADR-0118).
-  it('isolates a url label, since there is no element here to carry a dir', () => {
-    expect(flattenNoteMarkdown('באתר example.com/a')).toBe('באתר ⁦example.com/a⁩');
+  // **First-strong, not forced-LTR** (owner, 2026-08-31). The label is whatever the author
+  // typed: a Latin url resolves left-to-right either way, and a Hebrew one — `[לחץ כאן](…)`
+  // — was being laid out from the wrong end by `ltrIsolate`. `autoIsolate` asks the run.
+  it('isolates a url label by its own direction, since no element here carries a dir', () => {
+    expect(flattenNoteMarkdown('באתר example.com/a')).toBe('באתר \u2068example.com/a\u2069');
+    expect(flattenNoteMarkdown('[לחץ כאן](https://example.com/a)')).toBe('\u2068לחץ כאן\u2069');
   });
 
   it('answers empty for an empty body rather than throwing', () => {

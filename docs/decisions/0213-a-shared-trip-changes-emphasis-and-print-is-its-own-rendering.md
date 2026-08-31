@@ -959,6 +959,151 @@ url appears exactly once. And a unit spec asserts the chrome switch both ways: m
 attribute is set and the meta carries neither `user-scalable=no` nor `maximum-scale`;
 unmounted, the app's original string is back verbatim.
 
+## Amendment — a rule the repo had already written down (2026-08-31, eighth pass)
+
+Six owner reports. Five are small; the second is a design correction, and the fourth is the
+one worth reading — a defect class this repo had **documented, guarded and then shipped
+anyway**, in ten places.
+
+### §1 · A card covering two days names both weekdays
+
+`21–22 שני` says the card is Monday when it is also Tuesday. Both renderers derived the
+weekday from the first date only, having been taught the range for the NUMBER in the seventh
+pass and not for the name beside it. Both ends now, one en dash, in both renderers. Two
+Hebrew names need no isolate — which is the whole subject of §4.
+
+### §2 · A journey is a frame with legs, not a peer row plus its legs
+
+> _"Flights have a row for the entire journey (נתב״ג אל קפלאוויק) but also rows for each
+> flight. Both pdf and live. This is confusing and should be changed."_
+
+**The seventh pass caused this.** Giving a leg its own `durationMinutes` and
+`zoneShiftMinutes` — right in isolation, since the app shows both on every event row — put
+**four durations and three zone shifts on one flight**, measured on the reproduction:
+
+|       | route                  | clock       | duration | zone |
+| ----- | ---------------------- | ----------- | -------- | ---- |
+| frame | `Keflavík ← נתב"ג`     | 23:40–11:55 | 11:15    | +3   |
+| leg 1 | `Keflavík ← Frankfurt` | 23:40–02:30 | 2:50     | +2   |
+| wait  | Frankfurt              |             | 5:20     |      |
+| leg 2 | `Frankfurt ← נתב"ג`    | 08:50–11:55 | 3:05     | +1   |
+
+So the totals belong to the **journey**, whose two ends are the pair a reader is actually
+comparing, and a leg answers only when it leaves, when it lands, and which flight it is. The
+wait keeps its minutes, being the one span neither end states. Measured after: two durations,
+one zone shift. Both fields are **gone from `sharedLegSchema`**, not merely unrendered — the
+contract should not carry a value no renderer may use, and typed access now fails to compile,
+which is a stronger guarantee than a spec.
+
+The frame's row survives rather than being replaced by a heading, because the ops, the
+caption and the map link hang off it; dropping it would have cost the booking codes.
+
+### §3 · The absorbed day stops at the day the journey lands on
+
+Found while reproducing §1, not reported. The seventh pass's `absorbSpannedDays` swallowed
+**every** consecutive empty day, so a journey landing on the 8th followed by an unplanned 9th
+printed `07–09`: a three-day card for a two-day flight, telling the reader they are in the air
+for a day nobody has planned yet. Bounded by the journey's own last arrival.
+
+### §4 · `ltrIsolate` around a Hebrew phrase — ten sites, and the rule was already written
+
+> _"The numbers and the Hebrew are reversed sometimes, it shows שע' 3:30 instead of 3:30 שע'.
+> Please do a sweep and find and fix all of these."_
+
+The screenshot's own card carried the answer: the layover line beside it read correctly. Both
+lines hold `number + Hebrew unit`; only one of them was wrapped in `ltrIsolate`, which forces
+its whole run left-to-right so the reader meets the unit first.
+
+**What makes this the interesting one is that nothing here was unknown.** `bidi.ts`'s header
+comment states the rule and names this exact output — _"forcing `dir="ltr"` over the whole
+token lays it out left-to-right, so a Hebrew reader meets the unit before the number (`ק״מ 9`
+for what should read `9 ק״מ`)"_ — the file exports `measure()` to do it correctly, ADR-0118
+swept 75 sites for the attribute form, an ESLint guard blocks that form, and
+`place-summary.ts`'s docblock had already recorded that the guard **cannot see the helper
+form**. Every piece of knowledge was in the repo; ten call sites violated it anyway.
+
+Seven forced Hebrew left-to-right:
+
+- the reader's travel facts (`ltrIsolate(hoursPhrase(…))`) — the screenshot;
+- the PDF's facts line **and** its layover (`ltr(pdfSpan(…))`), so paper had it twice;
+- four task due-labels (`ltrIsolate(\`${due.day} ${due.time}\`)`) — and `dayLabel` returns
+Hebrew in **every** branch (`היום`, `מחר`, `יום 5`), so every task with a due time was
+  reversed, on four surfaces, in the app itself rather than in sharing.
+
+Three used the wrong isolate for text the app did not write, where the rule is to **ask** the
+run rather than force it: a markdown link label in `note-markdown.ts` and `NoteProse.tsx`
+(`[לחץ כאן](…)` laid out from the wrong end — and `NoteProse` was already spending
+`dir="auto"` on its anchor branch and `ltrIsolate` on its inert one, so one string rendered
+two directions), and a Commons attribution in `place-summary.ts`, which is a person's name.
+
+**The guard was extended rather than joined.** Two selectors — a Hebrew letter inside an
+isolated template, and a call to any duration ladder (`hoursPhrase`, `pdfSpan`,
+`approxDuration`, `approxTravelTime`) inside one — now sit beside the `dir="ltr"` selector
+they belong with, composed into one `ISOLATE_SELECTORS` so the frontend and the other two
+packages cannot drift. Scope widened to `backend/src` and `packages/shared/src`: `bidi.ts` and
+the note parser moved into shared in the seventh pass and the print renderer spells its own
+`ltr()`, which is precisely how `ltr(pdfSpan(…))` reached paper unseen. Verified by
+reintroducing all three shipped shapes and watching each get flagged.
+
+### §5 · The download shows how far it has got, and Chrome's overlay is not ours to summon
+
+> _"The download indication is not enough. Why doesnt Google chrome pop up a download overlay
+> like other places? And anyway it should have another animation for downloading."_
+
+The suspicion was mine before it was measured: that intercepting the click and fetching the
+bytes had displaced the browser's own download UI. **Measured, and false.** Driving a plain
+navigation anchor and the fetch-then-blob path side by side in Chromium, each engages the
+download manager identically — `download` fires with the right filename for both. What Chrome
+then _draws_ is its own call, and a page cannot ask for the bubble.
+
+So the row carries the progress instead, and because we already hold the response it can be
+**real**: the body is read through a stream and the bar tracks bytes against `Content-Length`.
+Where the server declares none it runs indeterminate, and deliberately in a different shape —
+a block travelling the track, not a fill growing from the start edge — so "I don't know how
+long" never reads as "I am 30% done". Neutral `--cta`, because amber is time and commitment
+only (rule 4).
+
+### §6 · The reader's own scroller was why refresh stayed broken
+
+The seventh pass opted the public reader out of `overscroll-behavior` and `touch-action` and
+called refresh fixed. It was not, and the reason is that `overscroll-behavior` only decides
+what happens when a **scroll container** runs out of content: `.sh-page` is a `100dvh` inner
+scroller and `html, body` are `overflow: clip`, so the viewport was never a scroll container
+and there was no overscroll for the gesture to read.
+
+The document scrolls now — `:root[data-public-reader]` restores `overflow: visible`, and the
+page is `min-height` rather than a viewport of its own. The two halves are one fix and neither
+works alone, which is also why the earlier round looked done. **The e2e test is the part that
+should have caught it**: it drove `.sh-page`'s own `scrollTo` and passed, asserting that
+something scrolled without ever asking _who_. It now asserts the document scrolls and that
+`.sh-page` is not a scroll container at all.
+
+### §7 · A definite-width block ignores its parent's `text-align`
+
+> _"I feel like the qr and link aren't aligned correctly together."_
+
+Measured in the real A4 rather than adjusted by eye: `.pdf-qr-block` is `text-align: center`,
+but `.pdf-qr` is `display: block` with `width: 46px` — and a block-level box with a definite
+width does not respond to `text-align` at all. So the code sat flush at the inline-start edge
+(`55..101`) while the caption under it was a full-width block of centred text (`0..101`): two
+alignments in one unit, centres 27px apart. `margin-inline: auto` makes the block's own
+declaration mean something for both children; centres now agree within 1px.
+
+### What was verified
+
+- `pnpm typecheck`, `pnpm lint`, `pnpm build` clean; `pnpm test` 505 shared / 1222 backend /
+  4990 frontend.
+- Live DOM at 390px dark: `07–09 שני–רביעי`; one facts line on the frame and two legs with
+  none; two durations on the whole flight card; `11:15 שע׳` with its first character right of
+  its last, so the run reads number-first; `data-public-reader` set, root `overflow-y: visible`
+  / `overscroll-behavior-y: auto` / `touch-action: auto`, document scrolls, `.sh-page` not a
+  scroller.
+- A4: QR centre 50 against caption centre 51; both weekdays; no facts line inside a journey
+  block; `5:20 שע׳` reading number-first off character boxes.
+- e2e 17/17 across `shared-itinerary`, `trip-share-entry` and `shell-does-not-scroll` — the
+  last of these being the proof that the app's own locked posture is untouched by the token
+  change.
+
 ## Alternatives considered
 
 - **One page with fields progressively removed.** Rejected: less information is not automatically the right emphasis.
