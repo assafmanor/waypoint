@@ -425,7 +425,12 @@ export function tripShapeOf(stays: readonly (string | undefined)[]): {
  * Still governed entirely by the sensitive-field toggles: an op only exists here when its
  * family is switched on, which is the same gate the appendix had.
  */
-export const SHARE_OP_KIND = { CODE: 'code', NOTE: 'note', TASK: 'task', FILE: 'file' } as const;
+/** **No `TASK`, on purpose** (owner, 2026-08-30: _"tasks should be taken out, they're
+ *  irrelevant for viewers"_). A task is the group's own chore list — who is buying the
+ *  adapter — and a person reading a shared itinerary is not the person doing it. The
+ *  `includeNotesAndTasks` toggle keeps its column name (it is a migration to rename) but now
+ *  governs notes alone; the sheet's own copy says so. */
+export const SHARE_OP_KIND = { CODE: 'code', NOTE: 'note', FILE: 'file' } as const;
 export type ShareOpKind = (typeof SHARE_OP_KIND)[keyof typeof SHARE_OP_KIND];
 
 export const sharedOpSchema = z.discriminatedUnion('kind', [
@@ -442,7 +447,6 @@ export const sharedOpSchema = z.discriminatedUnion('kind', [
     title: z.string().optional(),
     body: z.string().optional(),
   }),
-  z.strictObject({ kind: z.literal(SHARE_OP_KIND.TASK), title: z.string() }),
   z.strictObject({
     kind: z.literal(SHARE_OP_KIND.FILE),
     /** The bearer download handle under the share's own code — §1's single exception,
@@ -474,6 +478,11 @@ export const sharedLegSchema = z.strictObject({
   endLabel: z.string().optional(),
   /** The wait **before** this leg. Absent on the first leg, which nothing precedes. */
   layoverMinutes: z.number().int().positive().optional(),
+  /** **Where that wait happens**, which is one place and not a route. The renderers composed
+   *  this line from `title` and so printed `המתנה בוינה ← קפלאוויק` — the leg you are about
+   *  to fly, not the airport you are sitting in (owner, 2026-08-30). It is the previous
+   *  leg's arrival, which is this leg's departure; absent when neither resolves a label. */
+  layoverPlace: z.string().optional(),
 });
 export type SharedLeg = z.infer<typeof sharedLegSchema>;
 
@@ -653,7 +662,6 @@ export const sharedAppendixSchema = z.strictObject({
    * other had to go, and the one that knows about linkage is the one that stays (ADR-0096).
    */
   ops: z.array(sharedOpSchema).optional(),
-  travelers: z.array(z.string()).optional(),
 });
 export type SharedAppendix = z.infer<typeof sharedAppendixSchema>;
 
@@ -681,6 +689,11 @@ export const sharedItinerarySchema = z.strictObject({
     /** **How the trip moves** — see `tripShapeOf`. A renderer keys a word off it, which is
      *  what makes it an enum and not a boolean pair. */
     shape: shareTripShapeSchema,
+    /** **Who is going**, when the travellers toggle is on — beside the trip's own identity
+     *  rather than in a block at the foot (owner, 2026-08-30: _"the travelers shouldn't have
+     *  a section, they should just appear on top if they're on the permission list"_). Names
+     *  only; no toggle anywhere reveals an email. */
+    travelers: z.array(z.string()).optional(),
     /** How many distinct places the trip sleeps at. `0` when no nights are recorded. */
     baseCount: z.number().int().nonnegative(),
   }),

@@ -402,7 +402,7 @@ describe('SharingProjectionService', () => {
       expect.objectContaining({ kind: SHARE_OP_KIND.CODE, code: SECRET.confirmationCode }),
     );
     expect(projection.appendix?.ops).toBeUndefined();
-    expect(projection.appendix?.travelers).toBeUndefined();
+    expect(projection.trip.travelers).toBeUndefined();
     expect(JSON.stringify(projection)).not.toContain(SECRET.noteBody);
   });
 
@@ -410,7 +410,9 @@ describe('SharingProjectionService', () => {
     const projection = await service.byCode(
       await shareAt(SHARE_DETAIL_LEVEL.EVERYTHING, { includeTravelerIdentity: true }),
     );
-    expect(projection.appendix?.travelers).toEqual(expect.arrayContaining(['אסף']));
+    // On the trip, not in a block at the foot: who is going is part of the trip's identity.
+    expect(projection.trip.travelers).toEqual(expect.arrayContaining(['אסף']));
+    expect(projection.appendix?.ops).toBeUndefined();
     expect(JSON.stringify(projection)).not.toContain(SECRET.email);
   });
 
@@ -772,6 +774,78 @@ describe('SharingProjectionService', () => {
 
       // And the absorbed leg has no row of its own on the day it happens to land on.
       expect(rowsOf(1)).toHaveLength(0);
+
+      await prisma.trip.deleteMany({ where: { id: trip.id } });
+    });
+
+    /**
+     * **A nine-hour wait is not a layover, and treating it as one emptied a day** (owner,
+     * 2026-08-30: _"the next flight is only at 11am to 3pm, so well after the previous day,
+     * yet it shows on the prev day. The last day is then rendered empty"_).
+     *
+     * A journey renders on the day its first leg departs, and a 02:00 departure belongs to
+     * the night before (`sharePreviousNight`) — so chaining a 02:00 arrival to an 11:00
+     * departure moved the whole return two days back and left the trip's last day blank.
+     */
+    it('refuses to chain two legs separated by more than a layover', async () => {
+      const trip = await prisma.trip.create({
+        data: {
+          name: 'יום שלם בשדה',
+          destination: 'Iceland',
+          startDate: new Date('2026-09-11'),
+          endDate: new Date('2026-09-12'),
+          timezone: 'UTC',
+          createdBy: OWNER,
+          updatedBy: OWNER,
+        },
+      });
+      await prisma.membership.create({ data: { tripId: trip.id, userId: OWNER, role: 'admin' } });
+      const place = (name: string) =>
+        prisma.place.create({ data: { tripId: trip.id, name, timezone: 'UTC', updatedBy: OWNER } });
+      const [kef, fra, tlv] = await Promise.all([place('KEF'), place('FRA'), place('TLV')]);
+      const leg = async (from: string, to: string, date: string, a: string, b: string) => {
+        const booking = await prisma.booking.create({
+          data: {
+            tripId: trip.id,
+            type: 'flight',
+            title: 'טיסה',
+            fromPlaceId: from,
+            toPlaceId: to,
+            updatedBy: OWNER,
+          },
+        });
+        await prisma.event.create({
+          data: {
+            tripId: trip.id,
+            date: new Date(date),
+            title: 'טיסה',
+            kind: 'hard',
+            startsAt: new Date(a),
+            endsAt: new Date(b),
+            bookingId: booking.id,
+            updatedBy: OWNER,
+          },
+        });
+      };
+      // Lands 02:00, next departs 11:00 — nine hours, which is a day, not a connection.
+      await leg(kef.id, fra.id, '2026-09-12', '2026-09-11T22:00:00Z', '2026-09-12T02:00:00Z');
+      await leg(fra.id, tlv.id, '2026-09-12', '2026-09-12T11:00:00Z', '2026-09-12T15:00:00Z');
+
+      const code = generatePublicCode();
+      await prisma.tripShare.create({
+        data: { tripId: trip.id, code, createdBy: OWNER, detailLevel: SHARE_DETAIL_LEVEL.FULL },
+      });
+      const projection = await service.byCode(code);
+      const rowsOf = (index: number) =>
+        projection.days[index].sections.flatMap((section) => section.events);
+
+      // Two separate rows, not one journey — and crucially the LAST day still has content.
+      expect(
+        projection.days
+          .flatMap((d) => d.sections.flatMap((x) => x.events))
+          .filter((event) => event.legs),
+      ).toHaveLength(0);
+      expect(rowsOf(projection.days.length - 1).length).toBeGreaterThan(0);
 
       await prisma.trip.deleteMany({ where: { id: trip.id } });
     });
