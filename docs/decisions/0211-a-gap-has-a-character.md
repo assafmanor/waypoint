@@ -19,6 +19,56 @@ the other side) and §M (whose day token this extends to the sibling meta row);
 **Constrained by** [0160](0160-the-hero-lifts-and-shows-a-horizon.md) §12 — no third slot — and
 [0028](0028-plan-violet-color-budget-dark-ready.md) rule 4.
 
+## Amendment (2026-09-01) — the night was keyed on the arm, and it is a fact about the hour
+
+**Reported from a phone at ⁦01:12⁩, with a screenshot:** _"at night after midnight the day switches
+and then we don't see the night stuff, the after all events, i.e the tomorrow lookahead."_
+
+The screen behind that: a night whose next event is a ⁦07:00⁩ check-in, so the plan has **no bed to
+name** — `wokeIn` is absent, the read falls through to `open`, and the board printed
+`פנוי · זמן חופשי · עד 07:00` over a day rail whose knob sat at ⁦0%⁩ under the word `עכשיו`.
+
+**Both halves of that are this ADR's own reasoning, applied to the wrong key.** §4 says _"the rail
+comes off in the same states"_ and the states it named were `at-the-stay`'s; this file's header
+lists `זמן חופשי` _"in bed at ⁦02:40⁩, up at ⁦06:40⁩ before the day starts"_ among the readings it was
+written to end, and it ended them only where a stay happened to be there. **The night is a fact
+about the hour, and the hour belongs to every arm.** So:
+
+1. **`GapRead.band` is set whenever the clock is outside `DAY_WINDOW`**, in all five arms, resolved
+   once before any of them. It was `at-the-stay`'s field; it is now the read's.
+2. **`gapDrawsDayRail` asks the band, not the kind** — `read.band === undefined && kind !== empty-day`.
+   `dayProgress` clamps at **both** ends, so this also takes the rail off at ⁦23:40⁩, where it drew a
+   knob at ~⁦98%⁩ for a day already over. `at-the-stay` needs no special case any more: it is outside
+   the window by construction, so the hour rule already covers it.
+3. **`open` spends the band on its label** — `לילה · זמן חופשי · עד 07:00`. The title stays, because
+   nothing IS scheduled and that is true; what changes is `פנוי`, which is a claim about a day that
+   has not started. Same two words `at-the-stay` uses, from the same key — which is why the key
+   moved from `t.board.gap.atTheStay` to `t.board.gap.band`: it was always about the clock, and the
+   original comment beside it said so.
+
+**Why exactly two arms spend it.** `on-the-way` is a person's own assertion and the hour does not
+qualify it. `day-done` and `empty-day` already use the label to say **which day** (`היום`), which
+is what they are about; the band would displace real information. `open`'s label was `פנוי` beside
+a title reading `זמן חופשי` — a repetition, so the slot was free to carry the hour.
+
+**What this does not do, and the report's own words are the reason:** the lookahead does **not**
+follow you past midnight. At ⁦01:12⁩ "tomorrow" is the day after the one you are about to live, and
+the day you want is today — whose shape is on `GlanceCard` one section down (ADR-0215 §1 moved it
+there). Re-drawing it on the board would be the duplication that ADR removed. The board at that
+hour says what the hour is, what is next, and how long until it; the card says the shape.
+
+**Verified in the browser** on the seeded trip at three pinned clocks: ⁦01:12⁩ with a bed
+(`לילה · Shinjuku Granbell`, no rail — unchanged), ⁦06:40⁩ with none
+(`בוקר · זמן חופשי · עד 12:20`, no rail — the fix), and ⁦13:40⁩ (`פנוי · זמן חופשי`, rail drawn —
+unchanged).
+
+**One thing found while verifying and deliberately not fixed here** (backlog): `dayHasEvents` is
+`clockDayEvents.length > 0`, which excludes ambient events — so a day whose only commitment is a
+stay's check-in reads as `empty-day`, `יום פנוי`, "a day nobody planned". ADR-0164 says that edge is
+something you can still miss, and the two answers disagree. On a trip whose zone differs from where
+the traveller currently is, the arrival night compounds it. That is a question about what counts as
+a day having content, and it belongs to ADR-0164/0054's boundary rather than to this amendment.
+
 ## Context
 
 The board's now-slot printed `זמן חופשי` in a gap. It was not a claim anybody decided to make: it
@@ -66,13 +116,13 @@ take. A second copy of these two lines is exactly how §S's defect comes back.
 Each stands on something already in the code. Nothing here is a guess about a person, and nothing
 needs a field the app does not store.
 
-| character     | stands on                                                      | label · title                     |
-| ------------- | -------------------------------------------------------------- | --------------------------------- |
-| `on-the-way`  | the `בדרך` device mark (`lib/on-way.ts`)                       | `כרגע` · `בדרך`                   |
-| `at-the-stay` | `travelOrigin → wokeIn` **and** the clock outside `DAY_WINDOW` | `לילה` / `בוקר` · the stay's name |
-| `day-done`    | no `next` **on today's date**, on a day that had events        | `היום` · `סוף היום`               |
-| `empty-day`   | the clock's day holds no timed event at all                    | `היום` · `יום פנוי`               |
-| `open`        | `next` is today — the honest gap                               | `פנוי` · `זמן חופשי` · `עד HH:MM` |
+| character     | stands on                                                      | label · title                                                                                                      |
+| ------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `on-the-way`  | the `בדרך` device mark (`lib/on-way.ts`)                       | `כרגע` · `בדרך`                                                                                                    |
+| `at-the-stay` | `travelOrigin → wokeIn` **and** the clock outside `DAY_WINDOW` | `לילה` / `בוקר` · the stay's name                                                                                  |
+| `day-done`    | no `next` **on today's date**, on a day that had events        | `היום` · `סוף היום`                                                                                                |
+| `empty-day`   | the clock's day holds no timed event at all                    | `היום` · `יום פנוי`                                                                                                |
+| `open`        | `next` is today — the honest gap                               | `פנוי` · `זמן חופשי` · `עד HH:MM` (the label is `לילה`/`בוקר` outside `DAY_WINDOW` — see the 2026-09-01 amendment) |
 
 **The order is the decision.** A person's own assertion outranks the plan's position, which is why
 `on-the-way` is first: somebody up and out at ⁦06:20⁩ is moving, not at a hotel.
