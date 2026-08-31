@@ -22,3 +22,11 @@ export * from './travel-time';
 export * from './trip-dates';
 export * from './zones';
 export * from './sharing';
+// **Pure text utilities the A4 renderer needs as much as the app does** (moved 2026-08-31).
+// Bidi isolation, url normalisation, and the note-markdown parser: no DOM, no clock, and no
+// Hebrew COPY — `note-markdown.ts`'s only Hebrew is a script range in a regex, which is a
+// language fact rather than a word. The words stay where they belong, in
+// `frontend/src/i18n` and `backend/src/sharing/itinerary-pdf.copy.ts`.
+export * from './bidi';
+export * from './external-url';
+export * from './note-markdown';

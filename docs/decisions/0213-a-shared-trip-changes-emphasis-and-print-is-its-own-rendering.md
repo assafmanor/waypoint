@@ -814,6 +814,151 @@ Two things the render caught that reading had not: the inline-bold rule above, a
 of mine scoped as `.sh-op-note strong`, which was styling every `**bold**` run inside
 `NoteProse` and breaking each onto its own line.
 
+## Amendment — the report that took four rounds to reproduce (2026-08-31, seventh pass)
+
+Eight reports on the sixth pass. One of them closes something that had been open since the
+first.
+
+### §1 · The document links always worked, and said nothing
+
+_"When clicking on a document to download it, it simply downloads in the background, giving
+no indication that it's downloading or that it was downloaded successfully."_
+
+Three passes carried a backlog line reading "the owner's document-link symptom is unexplained,
+and the route is not the cause". Every measurement said the route was fine — a clean 404 for an
+unknown id, a correct filename through the apex redirect, a 44px target, a `download`
+attribute — and every one of those measurements was right. **The bug was the absence of
+feedback.** A bare `<a download>` hands the file to the browser and the page says nothing at
+all; on a phone the download shelf is a notification you may not even see, so a tap that works
+is indistinguishable from a tap that does nothing.
+
+The lesson is worth more than the fix. Four rounds were spent proving a mechanism correct
+while the report was about the _experience_ of using it, and the two never met because "does
+not work" was read as a claim about the mechanism. **A report about what a control feels like
+is not answered by proving the control functions** — the same shape as ADR-0195 §4's stuck
+hover, where a complaint about appearance was twice closed by asserting state.
+
+The row now fetches the bytes itself and reports the three states it can honestly know:
+`מוריד…`, `ירד`, `לא הצליח`. That costs holding one file in memory — affordable for a
+boarding pass — and it is the only way to say "finished", because a native download tells the
+page nothing. The href and `download` attribute stay, so a long-press "save link" and a
+no-JavaScript reader both still work.
+
+### §2 · A journey that spans midnight makes one card, not one card and a blank one
+
+The sixth pass capped a chain at six hours to stop a return swallowing the trip's last day.
+The owner's actual layover is 05:50 → 11:10 — **five hours twenty**, under the cap — so it
+folded anyway, and the last day still rendered empty.
+
+Shaving the threshold again would only move the seam, because the return genuinely occupies
+both dates: it leaves Iceland at 02:00 and lands in Tel Aviv at 15:25 the next afternoon.
+`SharedDay.endDate` says so, and `absorbSpannedDays` folds a following day into the card **only
+when that day is otherwise empty** — a day with its own morning keeps its own card. The header
+then reads `21–22`, which is where the time actually went. The owner proposed this
+(_"maybe for long journeys like these the days should be combined to one somehow"_) and it is
+a better model than any threshold.
+
+### §3 · Durations are words, and the app already had them
+
+`260 דקות` for a layover. The app has had one duration ladder since ADR-0114
+(`lib/duration.ts`'s `hoursPhrase`) and one zone pill since ADR-0107 (`ZoneShiftPill`); the
+shared page was wording neither. It now spends both, and the projection ships
+`durationMinutes` / `zoneShiftMinutes` as **numbers** so each renderer owns its words — the
+same rule that keeps the day titles renderer-agnostic. Paper gets `pdfSpan` in
+`itinerary-pdf.copy.ts`, which is the file that exists to hold the backend's only Hebrew.
+
+A journey's facts are the JOURNEY's: spreading the head leg gave the row leg one's duration
+and leg one's shift, which on a two-leg return understates most of a day.
+
+### §4 · The note parser moves to `packages/shared`
+
+_"In the pdf, markdown not formatted."_ The sixth pass backlogged this as needing `bidi.ts`
+and its ~40 consumers to move; that turned out to be the right move and a cheap one.
+`bidi.ts`, `external-url.ts` and `note-markdown.ts` are all pure — no DOM, no clock, and
+`note-markdown`'s only Hebrew is a script RANGE in a regex rather than a word — so they belong
+in shared, and re-export shims at the old paths left every existing import untouched. `NoteProse`
+stays in the frontend, because painting is the frontend's half.
+
+One thing had to be declared rather than imported: `packages/shared/tsconfig.json` sets
+`lib: ["ES2022"]` and no `types`, which is what makes `document` and `process` fail to compile
+inside a package whose whole contract is that it talks to neither. Reaching `URL` by adding
+`DOM` or `@types/node` would buy one constructor and open that door for everything else, so
+`platform-url.d.ts` declares exactly the members used and nothing more.
+
+Paper renders the AST rather than the markers, with one divergence from the screen that is a
+property of the medium: **a printed link cannot be tapped**, so it prints its destination —
+except where the label already IS the address, which is what `prettyUrl` produces for a bare
+url and which printed `flydrone.is https://flydrone.is/`, the same thing twice.
+
+### §5 · The title printed twice, and the fourth pass caused it
+
+`fallbackTripTitle` was changed to return `Trip.name` — which fixed a masthead naming two
+transit airports and, unnoticed, made the deterministic narrative title identical to the `<h1>`
+a centimetre above it. Both renderers now skip the lede line when it is the trip's own name; a
+GENERATED narrative still has something of its own to say, so the line stays for that case.
+
+### §6 · The font shorthand, a seventh time
+
+`.pdf-ops-line` set `font: 400 8.6px 'Assistant', sans-serif` — and the body's `'Noto Emoji'`
+went with it, so a note written with 🚁 printed an empty rectangle. This is the same shorthand
+that ate the Hebrew face on `.pdf-subtitle` and again on this very rule one pass ago.
+
+**The rule this file now follows: prefer `font-size` and `font-family` as separate properties.**
+A shorthand that silently drops a family the reader needs is not worth the character count, and
+a spec asserts both that `'Noto Emoji'` is in this stack and that the rule does not use the
+shorthand at all.
+
+### §7 · A Hebrew prefix binds to a Hebrew word
+
+`12 ימים ב-איסלנד` should be `באיסלנד`. The comment that used to sit on that line argued for an
+unconditional MAQAF and was half right: `ב-Iceland` IS the convention before a Latin word, and
+`ב-איסלנד` is simply wrong before a Hebrew one. `bindPrefix` asks `baseDirection` and decides
+per value; it lives in shared beside it, so the screen's copy and the printer's copy cannot
+disagree about a grammar rule.
+
+### §8 · A note is read, not glanced at
+
+Reported twice. `--sh-micro` is this page's smallest step and right for a label beside a value;
+a paragraph somebody wrote for the group to act on is body text and now gets the body step.
+
+### §9 · The reader is a document, and stops inheriting the app's posture
+
+_"The live share should not inherit some of the app's quirks: it should be able to refresh,
+zoom in/out etc."_
+
+ADR-0062 turned zoom off app-wide and `tokens.css` contains overscroll so the browser's
+pull-to-refresh never fires — both to make the app feel native, and both right for the app.
+`/s/<code>` is not the app: it is a page a stranger opens in a browser tab, often standing up,
+sometimes without the reading glasses they need. **A document you cannot enlarge is a document
+some people cannot read**, and a page that swallows a pull looks stuck when the network drops.
+
+Three mechanisms had to agree, which is why this is one switch rather than three edits: the
+viewport meta's `user-scalable=no` (Android honours it), `index.html`'s gesture blocker (iOS
+ignores the meta, so pinch is suppressed in script), and `tokens.css`'s `overscroll-behavior`
+and `touch-action`. `usePublicReaderChrome` sets `data-public-reader` on `<html>` while the
+screen is mounted and swaps the meta; the script and the stylesheet key off that attribute.
+
+Two details are load-bearing. The meta is **swapped and restored**, not removed — this screen
+is a route inside the same SPA, so leaving it has to give the app back the exact string it
+booted with, and an app left zoomable is the same bug in the other direction. And the CSS opt-out
+is a variant block **after** `:root`, never a selector on it: putting one there is how this
+repo once lost its whole token set to `[dir='ltr']` (`frontend/CLAUDE.md`).
+
+The precedent already existed — `.doc-viewer` opts back into pinch for the image preview — so
+this extends an escape hatch rather than inventing one.
+
+### What was verified
+
+Measured off the live DOM at 390px dark: **one** occurrence of the trip title (was two), a day
+header reading `21–22`, `המתנה בפרנקפורט · 5:20 שע׳` (worded, and the prefix bound without a
+hyphen), travel facts reading `13:05 שע׳ · +3 ש׳` on the journey and on each leg, note prose at
+15px, and a download that goes `working` → `done` with `ירד` on the row. On the A4 render:
+`.pdf-ops-line` computes `Assistant, "Noto Emoji", sans-serif` at 9.4px, the note prints as a
+heading, a numbered list, a bold run, a rule and a quote rather than as its markers, and a bare
+url appears exactly once. And a unit spec asserts the chrome switch both ways: mounted, the
+attribute is set and the meta carries neither `user-scalable=no` nor `maximum-scale`;
+unmounted, the app's original string is back verbatim.
+
 ## Alternatives considered
 
 - **One page with fields progressively removed.** Rejected: less information is not automatically the right emphasis.

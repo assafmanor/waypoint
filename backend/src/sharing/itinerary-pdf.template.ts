@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   NARRATIVE_SEPARATOR,
+  parseNoteMarkdown,
+  type NoteInline,
   SHARE_DAY_KIND,
   SHARE_OP_KIND,
   SHARE_DAY_SUMMARY_KIND,
@@ -12,7 +14,7 @@ import {
   type SharedEvent,
   type SharedItinerary,
 } from '@waypoint/shared';
-import { PDF_COPY, PDF_DAYPART_MARK } from './itinerary-pdf.copy';
+import { PDF_COPY, PDF_DAYPART_MARK, pdfSpan } from './itinerary-pdf.copy';
 
 /**
  * **The paper, and it is not a screenshot of the page** (ADR-0213 §4).
@@ -246,11 +248,12 @@ function legRows(event: SharedEvent): string {
       .map(
         (leg) =>
           (leg.layoverMinutes && leg.layoverPlace
-            ? `<div class="pdf-layover">${PDF_COPY.layover(auto(leg.layoverPlace), leg.layoverMinutes)}</div>`
+            ? `<div class="pdf-layover">${PDF_COPY.layover(auto(leg.layoverPlace), ltr(pdfSpan(leg.layoverMinutes)))}</div>`
             : '') +
           `<div class="pdf-event hard"><span class="pdf-event-time">${legTime(leg)}</span>` +
           `<span class="pdf-event-copy"><strong>${auto(leg.title)}</strong>` +
           (leg.code ? `<span class="pdf-leg-code">${ltr(leg.code)}</span>` : '') +
+          travelFactsLine(leg) +
           `</span></div>`,
       )
       .join('') +
@@ -284,6 +287,87 @@ function legRows(event: SharedEvent): string {
 const prose = (value: string): string =>
   `<span class="pdf-prose" dir="auto">${escapeHtml(value)}</span>`;
 
+/**
+ * **A note's markup, on paper** (owner, 2026-08-31: _"In the pdf, markdown not formatted"_).
+ *
+ * The screen has rendered headings, lists, emphasis and links since ADR-0202; paper printed
+ * the markers themselves — `## 4. מה אפשר` and `**Operator Registration Number**` — because
+ * the parser lived in a React app's lib the backend cannot import. It now lives in
+ * `@waypoint/shared`, so both surfaces read one AST and cannot disagree about what a marker
+ * means (ADR-0096).
+ *
+ * This is the paint half only, and it is deliberately small: paper has no taps, so a link
+ * prints as its label plus its destination rather than as an anchor, and a task box is a
+ * character rather than a control.
+ */
+/** True when a link's label IS its address in a shorter form — the case `prettyUrl` produces
+ *  for a bare url, where printing the href beside it says the same thing twice. */
+function namesItsOwnHref(label: string, href: string): boolean {
+  const bare = (value: string) =>
+    value
+      .replace(/^[a-z]+:\/\//i, '')
+      .replace(/^www\./i, '')
+      .replace(/\/+$/, '')
+      .toLowerCase();
+  return bare(label) === bare(href);
+}
+
+function noteMarkup(body: string): string {
+  const inline = (runs: readonly NoteInline[]): string =>
+    runs
+      .map((run) => {
+        switch (run.kind) {
+          case 'text':
+            return escapeHtml(run.text);
+          case 'strong':
+            return `<b>${inline(run.children)}</b>`;
+          case 'em':
+            return `<i>${inline(run.children)}</i>`;
+          // `mono: false` where the run holds Hebrew — JetBrains ships none of it, which is
+          // the same trap this file has now hit seven times.
+          case 'code':
+            return run.mono
+              ? `<span class="pdf-mono">${escapeHtml(run.text)}</span>`
+              : `<b>${escapeHtml(run.text)}</b>`;
+          // **No anchor, and no address twice.** A printed page cannot be tapped, so the
+          // destination has to be readable — but a bare url is already its own label
+          // (`prettyUrl` gives `flydrone.is` for `https://flydrone.is/`), and printing both
+          // read as a stutter. The address is added only where the label is words.
+          case 'link':
+            return namesItsOwnHref(run.label, run.href)
+              ? `<span class="pdf-url">${escapeHtml(run.label)}</span>`
+              : `${escapeHtml(run.label)} <span class="pdf-url">${escapeHtml(run.href)}</span>`;
+        }
+      })
+      .join('');
+
+  return parseNoteMarkdown(body)
+    .map((block) => {
+      switch (block.kind) {
+        case 'heading':
+          return `<div class="pdf-note-h${block.level}">${inline(block.children)}</div>`;
+        case 'list': {
+          const rows = block.items
+            .map(
+              (item, index) =>
+                `<li><span class="pdf-note-mark">${
+                  block.ordered ? `${block.start + index}.` : '•'
+                }</span><span>${inline(item)}</span></li>`,
+            )
+            .join('');
+          return `<ul class="pdf-note-list">${rows}</ul>`;
+        }
+        case 'quote':
+          return `<div class="pdf-note-quote">${inline(block.children)}</div>`;
+        case 'rule':
+          return '<div class="pdf-note-rule"></div>';
+        case 'paragraph':
+          return `<p class="pdf-note-p">${block.lines.map(inline).join('<br />')}</p>`;
+      }
+    })
+    .join('');
+}
+
 function opsLines(ops: SharedEvent['ops']): string {
   if (!ops?.length) return '';
   const line = (label: string, body: string) =>
@@ -308,10 +392,34 @@ function opsLines(ops: SharedEvent['ops']): string {
         case SHARE_OP_KIND.FILE:
           return '';
         case SHARE_OP_KIND.NOTE:
-          return line(PDF_COPY.ops.note, prose([op.title, op.body].filter(Boolean).join('\n')));
+          return line(
+            PDF_COPY.ops.note,
+            (op.title ? `<b class="pdf-note-title">${auto(op.title)}</b>` : '') +
+              (op.body ? `<span class="pdf-note" dir="auto">${noteMarkup(op.body)}</span>` : ''),
+          );
       }
     })
     .join('');
+}
+
+/** How long it took and what the clock did — the projection's two numbers, in this file's
+ *  own words (see `pdfSpan`; the screen spends `hoursPhrase` and `ZoneShiftPill` on the same
+ *  pair). A whole-hour jump reads as hours, a half-hour zone as H:MM. */
+function travelFactsLine(event: Pick<SharedEvent, 'durationMinutes' | 'zoneShiftMinutes'>): string {
+  const parts: string[] = [];
+  if (event.durationMinutes) parts.push(ltr(pdfSpan(event.durationMinutes)));
+  if (event.zoneShiftMinutes) {
+    const minutes = event.zoneShiftMinutes;
+    const sign = minutes < 0 ? '−' : '+';
+    const hours = Math.floor(Math.abs(minutes) / 60);
+    const rest = Math.abs(minutes) % 60;
+    const signed =
+      rest === 0 ? `${sign}${hours}` : `${sign}${hours}:${String(rest).padStart(2, '0')}`;
+    parts.push(PDF_COPY.zoneShift(ltr(signed)));
+  }
+  return parts.length > 0
+    ? `<span class="pdf-travel-facts">${parts.join(NARRATIVE_SEPARATOR)}</span>`
+    : '';
 }
 
 function eventRow(event: SharedEvent, summary: boolean): string {
@@ -353,6 +461,7 @@ function eventRow(event: SharedEvent, summary: boolean): string {
       : '') +
     // A stop's one-line description. Two lines on paper as on screen, though the measure is
     // wider here so the same sentence usually fits in one.
+    travelFactsLine(event) +
     (event.caption ? `<span class="pdf-cap">${prose(event.caption)}</span>` : '') +
     opsLines(event.ops) +
     `</span></div>` +
@@ -362,6 +471,8 @@ function eventRow(event: SharedEvent, summary: boolean): string {
 
 function dayCard(day: SharedDay, summary: boolean, photoSrc?: string): string {
   const { day: dayNumber, weekday } = dayLabel(day.date);
+  // A card covering the day a journey flew through prints both dates (`SharedDay.endDate`).
+  const dayNumbers = day.endDate ? `${dayNumber}–${dayLabel(day.endDate).day}` : dayNumber;
   // Daypart headings appear only above events that belong to them — the projection has
   // already dropped the empty groups, so this loop cannot render one.
   const sections = day.sections
@@ -376,7 +487,7 @@ function dayCard(day: SharedDay, summary: boolean, photoSrc?: string): string {
     .join('');
   return (
     `<article class="pdf-day"><header class="pdf-day-head${photoSrc ? '' : ' no-photo'}">` +
-    `<span class="pdf-date"><strong>${ltr(dayNumber)}</strong><span>${weekday}</span></span>` +
+    `<span class="pdf-date"><strong>${ltr(dayNumbers)}</strong><span>${weekday}</span></span>` +
     // **A 34px SQUARE, not the reader page's 116px band.** A band is nothing on a page you
     // scroll and about a page and a half across twelve days at this column density; the
     // square fits inside the header's existing 47px minimum and costs no paper. Same photo,
@@ -387,7 +498,7 @@ function dayCard(day: SharedDay, summary: boolean, photoSrc?: string): string {
       : '') +
     // Both are composed server-side with their values already isolated
     // (`itinerary-narrative.fallback.ts`), so neither may sniff its own direction.
-    `<span class="pdf-day-copy"><strong>${dayTitleText(day.title) || auto(`${weekday} ${dayNumber}`)}</strong>` +
+    `<span class="pdf-day-copy"><strong>${dayTitleText(day.title) || auto(`${weekday} ${dayNumbers}`)}</strong>` +
     // **Where you sleep frames the day.** It used to be a row sorted into the afternoon by
     // its check-in hour, which on the outbound day put it between the two legs of the
     // flight and printed 15:00-11:00 — a range that reads backwards because a stay crosses
@@ -530,8 +641,16 @@ export function itineraryPdfHtml({
   // tells a reader nothing. Nights and bookings are the two counts somebody planning
   // against this page actually uses, and both derive from what is already here.
   const nights = projection.days.filter((day) => day.stay).length;
+  const ledeTitle = projection.narrative.title;
   const lede =
-    `<div class="pdf-lede"><div class="pdf-story"><strong>${escapeHtml(projection.narrative.title)}</strong>` +
+    // **Not when it IS the trip's name** (owner, 2026-08-31, with a screenshot of the same
+    // words twice). `fallbackTripTitle` was changed to return `Trip.name` — which fixed the
+    // masthead naming two transit airports and, unnoticed, made the deterministic narrative
+    // title identical to the `<h1>` a centimetre above it. A generated narrative still has
+    // something of its own to say, so the line stays for that case.
+    `<div class="pdf-lede"><div class="pdf-story">${
+      ledeTitle === projection.trip.name ? '' : `<strong>${escapeHtml(ledeTitle)}</strong>`
+    }` +
     // Skipped rather than emptied: a generated summary is optional, and an empty paragraph
     // still takes its line-height and leaves a gap that reads as a missing sentence.
     (projection.narrative.summary
@@ -689,9 +808,28 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
    is the same defect ADR-0213 already recorded once for .pdf-subtitle, in a second element:
    the font SHORTHAND replaces the family list, so the fallback never applies. 7.2px was also
    simply too small to read. */
-.pdf-ops-line{display:block;margin-block-start:4px;color:var(--pdf-ink)!important;font:400 8.6px 'Assistant',sans-serif;line-height:1.5;white-space:normal!important;}
+/* **'Noto Emoji' stays in the stack, and its absence was the tofu.** The font SHORTHAND
+   replaces the whole family list, so naming only Assistant here dropped the emoji face the
+   body sets — and a note written with 🚁 printed an empty rectangle (owner, 2026-08-31).
+   That is the SEVENTH time this shorthand has eaten a family in this file. Anything using the
+   font shorthand here must repeat the whole stack; a bare font-size property cannot make the
+   mistake at all, which is why the rules below prefer one. */
+.pdf-ops-line{display:block;margin-block-start:4px;color:var(--pdf-ink)!important;font-family:'Assistant','Noto Emoji',sans-serif;font-size:9.4px;font-weight:400;line-height:1.55;white-space:normal!important;}
 .pdf-ops-line b{font-weight:700;color:var(--pdf-muted);}
 .pdf-mono{font-family:'JetBrains Mono',monospace;font-weight:600;}
+.pdf-travel-facts{display:block;margin-block-start:1px;color:var(--pdf-muted);font-size:7.6px;}
+.pdf-note{display:block;}
+.pdf-note-title{display:block;margin-block-end:2px;}
+.pdf-note-p{margin:0 0 4px;}
+.pdf-note-h1{margin:6px 0 3px;font-size:10.4px;font-weight:700;}
+.pdf-note-h2{margin:5px 0 2px;font-weight:700;}
+.pdf-note-list{margin:0 0 4px;padding:0;list-style:none;}
+.pdf-note-list li{display:flex;gap:5px;align-items:baseline;margin-block-end:1px;}
+.pdf-note-mark{flex:none;color:var(--pdf-muted);font-variant-numeric:tabular-nums;}
+.pdf-note-quote{margin:0 0 4px;padding-inline-start:7px;border-inline-start:2px solid var(--pdf-line);color:var(--pdf-muted);}
+.pdf-note-rule{height:1px;margin:6px 0;background:var(--pdf-line);}
+/* A printed link states its destination, because it cannot be tapped. */
+.pdf-url{font-family:'JetBrains Mono',monospace;font-size:0.9em;color:var(--pdf-teal);word-break:break-all;}
 /* A note is prose the author wrote with line breaks in it; a paragraph that collapses them
    is the wall of text this block keeps being reported as. */
 .pdf-prose{white-space:pre-line;}

@@ -37,7 +37,9 @@
   height: 100vh;
   height: 100dvh;
   overflow-y: auto;
-  overscroll-behavior-y: contain;
+  /* **Not `contain`.** That is the app's PWA posture, which swallows the browser's own
+     pull-to-refresh; this page is a document and a pull at its top should reload it. */
+  overscroll-behavior-y: auto;
   background: var(--screen);
 }
 
@@ -798,7 +800,7 @@
 /* **The appendix is op rows, unfolded.** Nothing here has a row to belong to, so there is
    nothing to fold under — it gets the card the per-family blocks used to have. */
 .sh-appendix .sh-ops-body {
-  gap: 2px;
+  gap: 10px;
   padding: 8px 12px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -835,6 +837,40 @@
   color: var(--ink);
   font-size: var(--sh-micro);
 }
+/* **A note is read, not glanced at** (owner, 2026-08-31, twice). `--sh-micro` is this page's
+   smallest step and right for a label beside a value; a paragraph somebody wrote for the
+   group to act on is body text, and it gets the body step. */
 .sh-op-note .note-prose {
+  font-size: var(--sh-secondary);
+  line-height: 1.55;
+}
+.sh-op-note > strong {
+  font-size: var(--sh-caption);
+}
+
+/* How long it took, and what the clock did. */
+.sh-travel-facts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-block-start: 3px;
+  color: var(--muted);
   font-size: var(--sh-micro);
+}
+
+/* **A download reports itself** — the state sits beside the name rather than replacing it,
+   so the row does not reflow under the finger that just pressed it. */
+.sh-dl-state {
+  margin-inline-start: 6px;
+  font-size: var(--sh-micro);
+  color: var(--muted);
+}
+.sh-op a[data-state='working'] {
+  opacity: 0.7;
+}
+.sh-op a[data-state='done'] .sh-dl-state {
+  color: var(--ok);
+}
+.sh-op a[data-state='failed'] .sh-dl-state {
+  color: var(--miss);
 }

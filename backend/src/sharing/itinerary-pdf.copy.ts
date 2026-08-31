@@ -1,5 +1,6 @@
 import {
   ROUTE_ARROW,
+  bindPrefix,
   SHARE_DAY_KIND,
   SHARE_DAY_SUMMARY_KIND,
   SHARE_DAYPART,
@@ -27,6 +28,24 @@ import {
  * Everything that is *data* — day titles, event titles, place names, counts — arrives in the
  * projection and is not repeated here.
  */
+/**
+ * **An elapsed span, in the app's own words** (owner, 2026-08-31: _"Time spans always read as
+ * minutes, even when long. For example the layover is 260 minutes instead of 4 hours 20"_).
+ *
+ * The same ladder and the same five strings as `t.eventForm.dur*`, which `lib/duration.ts`
+ * reads on the screen: minutes below an hour, `H:MM שע׳` above it, with words for the exact
+ * one- and two-hour rungs. It is a second copy for the reason this whole file is one — the
+ * backend cannot import a React app's i18n — and it is named in that file's comment so the
+ * pair cannot be reworded apart.
+ */
+export function pdfSpan(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h && m) return `${h}:${String(m).padStart(2, '0')} שע׳`;
+  if (h) return h === 1 ? 'שעה' : h === 2 ? 'שעתיים' : `${h} שעות`;
+  return `${m} דק׳`;
+}
+
 export const PDF_COPY = {
   brand: 'Travelive',
   eyebrow: 'מסלול משותף',
@@ -52,10 +71,12 @@ export const PDF_COPY = {
   bookings: (count: number) => `${count} ${count === 1 ? 'הזמנה' : 'הזמנות'}`,
   /** What the trip IS, under its name — replacing the first-place → last-place line that
    *  named two transit airports on any trip you fly to. */
-  // `ב-` and not a bare `ב`: the destination arrives isolated and may be Latin, where
-  // `ב Iceland` reads as a stray particle. The hyphen is the Hebrew convention for exactly
-  // this, and it is what the stay line already uses.
-  what: (days: number, destination: string) => `${days} ימים ב-${destination}`,
+  // **The prefix binds to a Hebrew word and takes a hyphen only before a foreign one**
+  // (owner, 2026-08-31: _"No need to connect ב to Iceland with a dash. It could be
+  // באיסלנד"_). The comment that used to sit here argued for an unconditional hyphen and was
+  // half right: `ב-Iceland` IS the convention before Latin, and `ב-איסלנד` is simply wrong
+  // before Hebrew. `bindPrefix` decides per value.
+  what: (days: number, destination: string) => `${days} ימים ${bindPrefix('ב', destination)}`,
   /**
    * **How the trip moves**, in the owner's own words (2026-08-30). Two trips with the same
    * destination and length read completely differently depending on this, and the page was
@@ -75,9 +96,9 @@ export const PDF_COPY = {
   },
   bases: (count: number) => `${count} ${count === 1 ? 'בסיס' : 'בסיסים'}`,
   /** Where you sleep, as the day's frame rather than a row in its afternoon. */
-  stay: (place: string) => `לנים ב-${place}`,
+  stay: (place: string) => `לנים ${bindPrefix('ב', place)}`,
   /** The wait between two legs of one journey, named by the place you wait IN. */
-  layover: (place: string, minutes: number) => `המתנה ב${place} · ${minutes} דקות`,
+  layover: (place: string, span: string) => `המתנה ${bindPrefix('ב', place)} · ${span}`,
   /** Four words for the four op kinds, printed inline because paper has no fold. */
   ops: { code: 'קוד', note: 'פתק', task: 'משימה', file: 'קובץ' },
   appendix: {
@@ -104,6 +125,8 @@ export const PDF_COPY = {
     transit: 'תחב״צ',
   } satisfies Record<LegTravelMode, string>,
   minutes: 'דק׳',
+  /** The signed clock jump across a leg — the same fact the app's zone pill carries. */
+  zoneShift: (signed: string) => `שעון ${signed}`,
   km: 'ק״מ',
   /**
    * **The words a derived day headline is made of** (ADR-0213's 2026-08-30 amendment).
