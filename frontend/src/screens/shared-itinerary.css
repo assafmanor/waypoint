@@ -19,9 +19,21 @@
 
    Its own scroll container also means `overscroll-behavior` can stop the pull-to-refresh
    here exactly as it does in the app. */
+/* **This page has its own type scale, one step up from the app's** (owner, 2026-08-30:
+   _"Fonts are too small in the details and very hard to read, also the notes, and overall
+   too small texts"_).
+ 
+   The app's steps are sized for a dense operational UI held by someone who already knows
+   what every row means — `--text-micro` is 10.5px and earns it on a badge. This is a
+   DOCUMENT, read once by a stranger who is often standing up, and the same 10.5px on a
+   place line is simply hard to read. Local variables rather than a change to
+   `tokens.css`: the app's density is not this page's problem to re-decide. */
 .sh-page,
 .sh-boot,
 .sh-unavailable {
+  --sh-micro: 12.5px;
+  --sh-caption: 13.5px;
+  --sh-secondary: 15px;
   height: 100vh;
   height: 100dvh;
   overflow-y: auto;
@@ -55,7 +67,7 @@
   border-block-end: 1px solid color-mix(in srgb, var(--on-dark) 10%, transparent);
   background: var(--indigo);
   color: var(--on-dark-dim);
-  font-size: var(--text-micro);
+  font-size: var(--sh-micro);
 }
 
 .sh-brand,
@@ -156,7 +168,7 @@
 .sh-story p {
   margin: 4px 0 0;
   color: var(--muted);
-  font-size: var(--text-caption);
+  font-size: var(--sh-caption);
   line-height: 1.55;
 }
 
@@ -167,7 +179,7 @@
   border-radius: 10px;
   background: var(--card);
   color: var(--muted);
-  font-size: var(--text-caption);
+  font-size: var(--sh-caption);
 }
 
 .sh-days {
@@ -188,7 +200,7 @@
 
 .sh-days-head span {
   color: var(--muted);
-  font-size: var(--text-micro);
+  font-size: var(--sh-micro);
 }
 
 .sh-day {
@@ -269,7 +281,7 @@
 .sh-day-copy span {
   margin-block-start: 3px;
   color: var(--muted);
-  font-size: var(--text-micro);
+  font-size: var(--sh-micro);
 }
 
 .sh-caret {
@@ -382,7 +394,7 @@
   margin-block-start: 3px;
   overflow: hidden;
   color: var(--muted);
-  font-size: var(--text-micro);
+  font-size: var(--sh-micro);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -404,6 +416,7 @@
   color: var(--amber-deep);
   font-family: var(--font-mono);
   font-weight: 600;
+  white-space: nowrap;
 }
 
 /* The derived noun in front of an event's place line — what the row IS, from its booking's
@@ -423,7 +436,7 @@
   border: 0;
   background: transparent;
   color: var(--teal);
-  font: 700 var(--text-caption) var(--font-body);
+  font: 700 var(--sh-caption) var(--font-body);
   text-decoration: none;
 }
 
@@ -436,7 +449,7 @@
   padding-inline-start: 14px;
   border-inline-start: 1px dashed var(--teal);
   color: var(--muted);
-  font-size: var(--text-micro);
+  font-size: var(--sh-micro);
 }
 
 .sh-appendix {
@@ -459,13 +472,13 @@
 .sh-private > strong {
   display: block;
   margin-block-end: 4px;
-  font-size: var(--text-caption);
+  font-size: var(--sh-caption);
 }
 
 .sh-private p {
   margin: 0 0 4px;
   color: var(--muted);
-  font-size: var(--text-caption);
+  font-size: var(--sh-caption);
   line-height: 1.5;
 }
 
@@ -497,7 +510,7 @@
   display: block;
   margin-block-start: 4px;
   color: var(--muted);
-  font-size: var(--text-caption);
+  font-size: var(--sh-caption);
 }
 
 .sh-footer a {
@@ -506,7 +519,7 @@
   align-items: center;
   margin-block-start: 8px;
   color: var(--ink);
-  font-size: var(--text-caption);
+  font-size: var(--sh-caption);
   font-weight: 700;
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -560,7 +573,7 @@
 .sh-fixed > h2 {
   margin: 0;
   padding: 11px 14px;
-  font: 700 var(--text-secondary) var(--font-body);
+  font: 700 var(--sh-secondary) var(--font-body);
   color: var(--ink);
   border-block-end: 1px solid var(--line);
 }
@@ -582,19 +595,19 @@
   color: var(--muted);
 }
 .sh-fixed-row b {
-  font-size: var(--text-secondary);
+  font-size: var(--sh-secondary);
   font-weight: 600;
 }
 .sh-fixed-row i {
   display: block;
   font-style: normal;
-  font-size: var(--text-micro);
+  font-size: var(--sh-micro);
   color: var(--muted);
 }
 /* Amber, and only here: this column is a clock and a commitment, which is exactly and
    only what ADR-0028 spends amber on. */
 .sh-fixed-when {
-  font: 700 var(--text-micro) var(--font-mono);
+  font: 700 var(--sh-micro) var(--font-mono);
   color: var(--amber-deep);
   text-align: end;
   align-self: start;
@@ -631,7 +644,11 @@
 }
 .sh-leg-row {
   display: grid;
-  grid-template-columns: 78px minmax(0, 1fr);
+  /* **`max-content`, not 78px.** A fixed column sized for `14:30` wrapped a `14:30–18:15`
+     range onto two lines (owner, 2026-08-30, with a screenshot) — and a type scale that grew
+     would have broken it again next time. The column now takes exactly what the widest time
+     needs, and `.sh-time` refuses to wrap so it cannot be squeezed instead. */
+  grid-template-columns: max-content minmax(0, 1fr);
   gap: 8px;
   align-items: baseline;
   min-height: 32px;
@@ -639,11 +656,11 @@
 }
 .sh-leg-row strong {
   display: block;
-  font-size: var(--text-secondary);
+  font-size: var(--sh-secondary);
 }
 .sh-leg-row .sh-kind {
   display: block;
-  font: 500 var(--text-micro) var(--font-mono);
+  font: 500 var(--sh-micro) var(--font-mono);
   color: var(--muted);
 }
 /* The wait, between the legs it is between. */
@@ -652,7 +669,7 @@
   align-items: center;
   gap: 6px;
   padding: 4px 0;
-  font-size: var(--text-micro);
+  font-size: var(--sh-micro);
   color: var(--muted);
 }
 .sh-layover .icon {
@@ -673,7 +690,7 @@
   align-items: center;
   gap: 5px;
   min-height: 28px;
-  font: 600 var(--text-micro) var(--font-body);
+  font: 600 var(--sh-micro) var(--font-body);
   color: var(--cta);
   cursor: pointer;
   /* **44px of target without 44px of line** — `ValueToken`'s technique (ADR-0177), not a
@@ -712,7 +729,7 @@
   gap: 8px;
   min-height: 32px;
   padding-block: 5px;
-  font-size: var(--text-micro);
+  font-size: var(--sh-micro);
   line-height: 1.5;
   color: var(--muted);
 }
@@ -723,7 +740,7 @@
   flex: none;
 }
 .sh-op code {
-  font: 700 var(--text-micro) var(--font-mono);
+  font: 700 var(--sh-micro) var(--font-mono);
   color: var(--ink);
   background: color-mix(in srgb, var(--ink) 6%, transparent);
   border-radius: 5px;
@@ -771,10 +788,10 @@
   color: #fff;
 }
 .sh-shot figcaption strong {
-  font-size: var(--text-secondary);
+  font-size: var(--sh-secondary);
 }
 .sh-shot figcaption span {
-  font-size: var(--text-micro);
+  font-size: var(--sh-micro);
   opacity: 0.82;
 }
 
@@ -793,7 +810,31 @@
 .sh-fixed-when i {
   display: block;
   margin-block-start: 2px;
-  font: 400 var(--text-micro) var(--font-body);
+  font: 400 var(--sh-micro) var(--font-body);
   font-style: normal;
   color: var(--muted);
+}
+
+/* Who is going, under the trip's own line in the masthead. */
+.sh-travelers {
+  margin-block-start: 6px;
+  color: var(--muted);
+  font-size: var(--sh-caption);
+}
+
+/* A note's own words, rendered by the app's note renderer. The title is the note's, the
+   prose below it is `NoteProse` at its dense step. */
+.sh-op-note {
+  display: block;
+  min-width: 0;
+}
+/* **The direct child only.** Unscoped, this caught every inline `**bold**` run inside
+   `NoteProse` and broke each onto its own line — found by rendering, not by reading. */
+.sh-op-note > strong {
+  display: block;
+  color: var(--ink);
+  font-size: var(--sh-micro);
+}
+.sh-op-note .note-prose {
+  font-size: var(--sh-micro);
 }

@@ -300,6 +300,84 @@ describe('day photos on paper', () => {
   });
 });
 
+// **What paper can and cannot carry**, and the font that decides whether it carries Hebrew
+// at all (owner, 2026-08-30).
+describe('the appendix on paper', () => {
+  const withOps = (ops: SharedItinerary['appendix']) => ({
+    ...NINE_DAY_REFERENCE_TRIP,
+    detailLevel: SHARE_DETAIL_LEVEL.EVERYTHING,
+    appendix: ops,
+  });
+
+  it('sets the ops line in Assistant, because JetBrains Mono ships no Hebrew', () => {
+    const css = render(NINE_DAY_REFERENCE_TRIP);
+    const rule = css.match(/\.pdf-ops-line\{[^}]*\}/)?.[0] ?? '';
+    expect(rule).toContain("'Assistant'");
+    expect(rule).not.toContain('JetBrains');
+    // The one value that may be mono is a confirmation code, which is ASCII by construction.
+    expect(css).toMatch(/\.pdf-mono\{[^}]*JetBrains/);
+  });
+
+  it('never prints a file, because paper cannot be tapped', () => {
+    const html = render(
+      withOps({
+        ops: [
+          {
+            kind: SHARE_OP_KIND.FILE,
+            handle: 'd1',
+            title: 'כרטיס טיסה',
+            mimeType: 'application/pdf',
+          },
+        ],
+      }),
+    );
+    expect(html).not.toContain('כרטיס טיסה');
+  });
+
+  it('keeps a heading with the block it names, so it cannot end a page alone', () => {
+    const css = render(NINE_DAY_REFERENCE_TRIP);
+    for (const selector of ['.pdf-ops-title', '.pdf-section-title', '.pdf-part-head']) {
+      const rule = css.match(new RegExp(selector.replace('.', '\\.') + '\\{[^}]*\\}'))?.[0] ?? '';
+      expect(rule).toContain('break-after:avoid');
+    }
+  });
+
+  it('keeps the author line breaks in a note rather than collapsing them', () => {
+    const html = render(withOps({ ops: [{ kind: SHARE_OP_KIND.NOTE, body: 'שורה\nשנייה' }] }));
+    expect(html).toMatch(/\.pdf-prose\{[^}]*white-space:pre-line/);
+    expect(html).toContain('class="pdf-prose"');
+  });
+});
+
+// **A title beside its icon is a value.** `dir="auto"` sets the element's base direction, so
+// an English title left-aligned out of an RTL column while its own icon stayed at the start
+// edge — ADR-0213 §8's defect, on the one path that fix did not reach.
+describe('the summary row', () => {
+  it('isolates its title instead of setting a base direction', () => {
+    const html = itineraryPdfHtml(
+      input({ ...NINE_DAY_REFERENCE_TRIP, detailLevel: SHARE_DETAIL_LEVEL.SUMMARY }),
+    );
+    expect(html).toContain('class="pdf-summary-event"');
+    expect(html).not.toMatch(/<strong dir="auto">/);
+  });
+});
+
+// A Summary inspires; a ledger of dates is what Full and Everything are for.
+describe('summary carries no booking ledger', () => {
+  it('counts the events it shows rather than bookings it does not', () => {
+    const html = itineraryPdfHtml(
+      input({
+        ...NINE_DAY_REFERENCE_TRIP,
+        detailLevel: SHARE_DETAIL_LEVEL.SUMMARY,
+        commitments: [],
+      }),
+    );
+    expect(html).toContain(
+      PDF_COPY.events(NINE_DAY_REFERENCE_TRIP.trip.eventCount).replace(/^\d+\s/, ''),
+    );
+  });
+});
+
 // The footer is a SEPARATE document Chromium renders into the page margin. It shares no
 // stylesheet and no font with the page, and the container has no Hebrew coverage — so a
 // footer that did not carry its own faces would print the word `עמוד` as boxes.

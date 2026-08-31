@@ -17,6 +17,7 @@ import {
 } from '@waypoint/shared';
 import { BOOKING_TYPE_MARK, GLYPH } from '../constants';
 import { Icon, type IconName } from '../ui/Icon';
+import { NoteProse } from '../ui/NoteProse';
 import { t } from '../i18n/he';
 import { autoIsolate, ltrIsolate } from '../lib/bidi';
 import { formatTripDates } from '../lib/time';
@@ -205,6 +206,15 @@ export function SharedItinerary() {
           {' · '}
           {t.share.public.counts(projection.trip.dayCount, projection.trip.eventCount)}
         </div>
+        {/* **Who is going, in the first lines you read** (owner, 2026-08-30: _"the travelers
+            shouldn't have a section, they should just appear on top if they're on the
+            permission list"_). It was a block at the foot, which is where a fact nobody asked
+            for goes; whose trip this is belongs with what the trip is. */}
+        {projection.trip.travelers?.length ? (
+          <div className="sh-travelers">
+            {projection.trip.travelers.map(autoIsolate).join(NARRATIVE_SEPARATOR)}
+          </div>
+        ) : null}
         {/* **THE ROUTE STRIP IS GONE FROM THE PHONE** (owner, 2026-08-30: _"The amber line is
             meaningless, no one can get any info from just the initials. I say drop it or
             change it entirely."_).
@@ -475,10 +485,12 @@ function EventRow({ event, code }: { event: SharedEvent; code: string }) {
         <div className="sh-legs">
           {event.legs.map((leg, index) => (
             <div className="sh-leg" key={`${leg.title}-${index}`}>
-              {leg.layoverMinutes ? (
+              {/* The airport you SIT IN, not the leg you are about to fly. This read
+                  `המתנה בוינה ← קפלאוויק` because it composed the line from `leg.title`. */}
+              {leg.layoverMinutes && leg.layoverPlace ? (
                 <span className="sh-layover">
                   <Icon name="clock" />
-                  {t.share.public.layover(leg.title, leg.layoverMinutes)}
+                  {t.share.public.layover(leg.layoverPlace, leg.layoverMinutes)}
                 </span>
               ) : null}
               <span className="sh-leg-row">
@@ -517,12 +529,8 @@ function Appendix({
           which published every note in the trip under a toggle promising otherwise, and
           printed every attached note twice. The projection now hands over exactly the ops
           with no host, and they render as ops (ADR-0096). */}
+      {/* Travelers left this block for the masthead: who is going is the trip's identity. */}
       {appendix.ops?.length ? <OpList ops={appendix.ops} code={code} /> : null}
-      {appendix.travelers?.length ? (
-        <Block title={t.share.public.appendix.travelers}>
-          <p>{appendix.travelers.map(autoIsolate).join(NARRATIVE_SEPARATOR)}</p>
-        </Block>
-      ) : null}
     </section>
   );
 }
@@ -568,11 +576,21 @@ function OpList({ ops, code }: { ops: readonly SharedOp[]; code: string }) {
               {op.provider ? <span>{autoIsolate(op.provider)}</span> : null}
             </>
           ) : null}
-          {/* A note is prose and picks its own direction; the values beside it do not. */}
+          {/* **The app's own note renderer** (owner, 2026-08-30: _"Markup should be formatted
+              the same way as in the notes sheet, urls should be added as well similarly"_).
+              `NoteProse` is the paint half of `lib/note-markdown.ts` — headings, lists,
+              quotes, emphasis and linkified urls — and it already solves the direction
+              question better than `dir="auto"` did: `baseDirection` reads the whole body, so
+              a Hebrew note opening with `TL;DR` is not laid out left-to-right by its first
+              three Latin characters (ADR-0202 §4/§6). `dense` because this is a row's
+              detail, not the note's own screen. Reusing it is also the only way the shared
+              page and the app cannot drift about what a marker means (ADR-0096). */}
           {op.kind === SHARE_OP_KIND.NOTE ? (
-            <span dir="auto">{[op.title, op.body].filter(Boolean).join(NARRATIVE_SEPARATOR)}</span>
+            <span className="sh-op-note">
+              {op.title ? <strong dir="auto">{op.title}</strong> : null}
+              {op.body ? <NoteProse body={op.body} dense /> : null}
+            </span>
           ) : null}
-          {op.kind === SHARE_OP_KIND.TASK ? <span dir="auto">{op.title}</span> : null}
           {op.kind === SHARE_OP_KIND.FILE ? (
             <a href={sharedDocumentUrl(code, op.handle)} download>
               {autoIsolate(op.title)}
@@ -590,7 +608,6 @@ function OpList({ ops, code }: { ops: readonly SharedOp[]; code: string }) {
 const OP_ICON = {
   [SHARE_OP_KIND.CODE]: 'clipboard',
   [SHARE_OP_KIND.NOTE]: 'edit',
-  [SHARE_OP_KIND.TASK]: 'check',
   [SHARE_OP_KIND.FILE]: 'documents',
 } as const satisfies Record<ShareOpKind, IconName>;
 
@@ -636,13 +653,6 @@ function commitmentWhen(row: SharedItineraryProjection['commitments'][number]): 
   if (!row.endDate || row.endDate === row.date) return short(row.date);
   return `${row.date.slice(8, 10)}–${short(row.endDate)}`;
 }
-
-const Block = ({ title, children }: { title: string; children: React.ReactNode }) => (
-  <div className="sh-private">
-    <strong>{title}</strong>
-    {children}
-  </div>
-);
 
 const Unavailable = () => (
   <div className="sh-unavailable">

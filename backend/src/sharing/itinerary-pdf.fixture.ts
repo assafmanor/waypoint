@@ -280,9 +280,8 @@ export const DENSE_REFERENCE_TRIP: SharedItinerary = {
       (total, day) => total + day.sections.reduce((n, s) => n + s.events.length, 0),
       0,
     ),
-  },
-  appendix: {
     travelers: ['דנה', 'יואב', 'מיכל', 'רון', 'תמר'],
   },
+
   days: denseDays,
 };

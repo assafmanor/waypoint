@@ -679,6 +679,141 @@ could not be reproduced is the owner's actual symptom, because their share was b
 by the time it was investigated and `full` carries no documents. Recorded as open rather than
 claimed as fixed; the previous amendment's mistake was claiming exactly this kind of thing.
 
+## Amendment — twelve reports, and the same failure three times (2026-08-30, sixth pass)
+
+Twelve from the owner reading the fifth pass on their own trip and its PDF. Several are one
+sentence each; three of them are the same defect in three materials, and that is the entry
+worth reading.
+
+### §1 · A note is prose the app already knows how to render
+
+_"Markup should be formatted the same way as in the notes sheet, urls should be added as well
+similarly."_ The shared page printed a note's body as a flat string, so `- item` stayed a
+hyphen and a url stayed unclickable — while `NoteProse` + `lib/note-markdown.ts` had rendered
+headings, lists, quotes, emphasis and linkified urls since ADR-0202. Reusing it costs nothing
+and is the only way the two surfaces cannot drift about what a marker means (ADR-0096). It
+also answers the direction question better than the fifth pass did: `baseDirection` reads the
+whole body, so a Hebrew note opening with `TL;DR` is not laid out left-to-right by its first
+three Latin characters.
+
+Paper keeps the flat body, with its line breaks preserved (`white-space: pre-line`) and the
+font fixed — the parser lives in `frontend/src/lib` and the backend cannot import it. Moving
+it means moving `bidi.ts` too, which has ~40 consumers; that is a refactor to ask about, not
+one to take silently (root rule 8), and it is a backlog line.
+
+### §2 · Tasks are not a viewer's business
+
+_"tasks should be taken out, they're irrelevant for viewers."_ A task is the group's own chore
+list — who is buying the adapter — and a person reading a shared itinerary is not the person
+doing it. `TASK` leaves `SHARE_OP_KIND` entirely rather than being filtered at a renderer: a
+union member that can never occur is a case every switch still has to carry. The task query is
+deleted too, which is the difference between not showing them and not loading them. The
+`includeNotesAndTasks` column keeps its name (renaming it is a migration) and now governs
+notes alone.
+
+### §3 · A layover names the airport you are sitting in
+
+The line read `המתנה בוינה ← קפלאוויק` — the leg you are about to fly, not the place you are
+waiting. Both renderers composed it from `leg.title`, which is a route. `layoverPlace` joins
+the leg (the previous leg's arrival, which is this leg's departure) and the copy takes that.
+The unit fixture hid this by giving legs bare city names as titles, where composing from the
+title happens to read correctly; the fixture now uses real route titles.
+
+### §4 · A nine-hour wait is not a layover, and treating it as one emptied a day
+
+_"the next flight is only at 11am to 3pm, so well after the previous day, yet it shows on the
+prev day. The last day is then rendered empty."_
+
+The fifth pass chained journeys trip-wide, which was right, and gave the chain no maximum,
+which was not. A journey renders on the day its first leg departs; a 02:00 departure belongs
+to the night before (`sharePreviousNight`). So a leg landing at 02:00 chained to one departing
+at 11:00 dragged the entire return two days back and left the trip's last day blank.
+`MAX_LAYOVER_MINUTES` is six hours: long enough to keep the 110-minute connection the cross-day
+fix was built for, short enough that a wait you could spend in a city stays two rows on the two
+days it occupies.
+
+### §5 · A day is named for where its journey ENDS
+
+_"the title is טיסה לפרנקפורט even though Frankfurt is the connecting flight."_ `flightTo` took
+the day's last flight's arrival, which on a connection is the airport you change planes at —
+a place nobody chose to visit. The chain already knows its own final leg, so the title asks it.
+`returning` moved with it: a return that straddles midnight makes **both** days the way home,
+where an index comparison made only one.
+
+### §6 · Summary carries no booking ledger (owner's question)
+
+_"Should summary mode show bookings? It seems excessive for a summary, no?"_ Correct, and it
+contradicted §1's own levels: inspire / orient / operate. A ledger of dates and providers is
+the middle two. It is not projected at Summary rather than not drawn — this file's rule is that
+the level decides what is **sent**, which is what the spec named _"Summary shows no exact fact
+the projection did not send"_ is for. It had been slipping past that spec because a date is a
+fact nobody thought to check. The PDF's third tile counts events at Summary rather than leaving
+a hole in a three-column grid.
+
+### §7 · Travelers are the trip's identity, not a block at the foot
+
+_"they should just appear on top if they're on the permission list - both live and pdf."_
+`travelers` moves from `appendix` to `trip`, and both renderers print it under the trip's own
+line. A block at the foot is where a fact nobody asked for goes.
+
+### §8 · The type scale, and why this page gets its own
+
+_"Fonts are too small in the details and very hard to read, also the notes, and overall too
+small texts."_ The page was built out of `--text-micro` (10.5px) in fourteen rules. Those steps
+are sized for a dense operational UI held by someone who already knows what every row means;
+this is a **document**, read once by a stranger who is often standing up. Local `--sh-*`
+variables one step up rather than a change to `tokens.css`: the app's density is not this
+page's to re-decide.
+
+### §9 · The same failure, three times, in three materials
+
+This is the entry that matters.
+
+- **A leg's time range wrapped to two lines** because `.sh-leg-row` sized its first column at a
+  fixed `78px`, which fitted `14:30` and not `14:30–18:15`. Now `max-content` with `nowrap`, so
+  a type scale that grows cannot break it again.
+- **The PDF's note body printed as empty rectangles.** `.pdf-ops-line` set the `font` shorthand
+  to JetBrains Mono, which ships **no Hebrew** — while the bold label beside it, which
+  overrides back to Assistant, printed perfectly. That is ADR-0213's own recorded defect
+  (`.pdf-subtitle`, the `font` shorthand replacing the family list) in a second element.
+- **And the size fix silently did nothing**, because `.pdf-op span` — a leftover from the
+  per-family appendix markup deleted in the fifth pass — is (0,1,1) and beat `.pdf-ops-line`
+  at (0,1,0). It held the line at 7.8px however large this file said to set it.
+
+Three surfaces, one shape: **a declaration that loses looks exactly like one that was never
+written.** The fifth pass recorded this after the stay's `gap`, the caption's clamp and the
+appendix's filter; it recurred within one pass. Reading the source that "has" the rule proves
+nothing. Only a computed-style read does, which is how all three of these were found.
+
+### §10 · A heading may not be the last thing on a page
+
+A section title landed alone at the foot of page 4 with its content on page 5.
+`break-after: avoid` on `.pdf-ops-title`, `.pdf-section-title` and `.pdf-part-head`.
+
+### §11 · Paper prints no file
+
+_"why are there documents there? They're unreachable on the pdf."_ A filename on paper is a
+promise the medium cannot keep. The live page keeps them, where they download.
+
+### §12 · The row §8 missed
+
+_"the ltr English rows issue still exists."_ The **Summary** event row still wrote
+`<strong dir="auto">`, so an English title left-aligned out of the column while its own icon
+stayed at the RTL start edge. §8 repaired the detail rows and never touched this path. A title
+beside an icon is a value: it is isolated and keeps the column's direction.
+
+### What was verified
+
+Measured off the live DOM at 390px dark: leg times on **one** line at 21px, the layover reading
+`המתנה בוינה · 165 דקות`, travelers in the masthead, body text at 12.5px (was 10.5), and the
+appendix note rendering 2 list items, 1 linkified url and 1 inline bold run. On the A4 render:
+`.pdf-ops-line` computes `Assistant` at **8.6px** (was JetBrains at 7.8px), `pre-line` holds,
+`break-after: avoid` applies to all three headings, and a `FILE` op prints nothing at all.
+
+Two things the render caught that reading had not: the inline-bold rule above, and a CSS rule
+of mine scoped as `.sh-op-note strong`, which was styling every `**bold**` run inside
+`NoteProse` and breaking each onto its own line.
+
 ## Alternatives considered
 
 - **One page with fields progressively removed.** Rejected: less information is not automatically the right emphasis.

@@ -245,8 +245,8 @@ function legRows(event: SharedEvent): string {
     event.legs
       .map(
         (leg) =>
-          (leg.layoverMinutes
-            ? `<div class="pdf-layover">${PDF_COPY.layover(auto(leg.title), leg.layoverMinutes)}</div>`
+          (leg.layoverMinutes && leg.layoverPlace
+            ? `<div class="pdf-layover">${PDF_COPY.layover(auto(leg.layoverPlace), leg.layoverMinutes)}</div>`
             : '') +
           `<div class="pdf-event hard"><span class="pdf-event-time">${legTime(leg)}</span>` +
           `<span class="pdf-event-copy"><strong>${auto(leg.title)}</strong>` +
@@ -281,7 +281,8 @@ function legRows(event: SharedEvent): string {
  * and the distinction is the point: a title is a value that has to line up with the caption
  * under it, a description is a paragraph that has to read.
  */
-const prose = (value: string): string => `<span dir="auto">${escapeHtml(value)}</span>`;
+const prose = (value: string): string =>
+  `<span class="pdf-prose" dir="auto">${escapeHtml(value)}</span>`;
 
 function opsLines(ops: SharedEvent['ops']): string {
   if (!ops?.length) return '';
@@ -289,23 +290,25 @@ function opsLines(ops: SharedEvent['ops']): string {
     `<span class="pdf-ops-line"><b>${label}</b> ${body}</span>`;
   return ops
     .map((op) => {
-      // A `switch` over the discriminant rather than a ternary chain, so a sixth op kind is
-      // a compile error here rather than a row that silently prints nothing.
+      // A `switch` over the discriminant rather than a ternary chain, so a new op kind is a
+      // compile error here rather than a row that silently prints nothing.
       switch (op.kind) {
         case SHARE_OP_KIND.CODE:
+          // **The one value that is mono, and the only one that may be.** A confirmation code
+          // is ASCII by construction and wants the figure alignment; everything else on this
+          // line is Hebrew, and JetBrains Mono ships none of it.
           return line(
             PDF_COPY.ops.code,
-            ltr(op.code) + (op.provider ? ` ${NARRATIVE_SEPARATOR} ${auto(op.provider)}` : ''),
+            `<span class="pdf-mono">${ltr(op.code)}</span>` +
+              (op.provider ? ` ${NARRATIVE_SEPARATOR} ${auto(op.provider)}` : ''),
           );
+        // **A file does not print.** Paper cannot be tapped, so a filename on it is a promise
+        // the medium cannot keep (owner, 2026-08-30: _"why are there documents there? They're
+        // unreachable on the pdf"_). The live page still carries them, where they download.
         case SHARE_OP_KIND.FILE:
-          return line(PDF_COPY.ops.file, auto(op.title));
-        case SHARE_OP_KIND.TASK:
-          return line(PDF_COPY.ops.task, auto(op.title));
+          return '';
         case SHARE_OP_KIND.NOTE:
-          return line(
-            PDF_COPY.ops.note,
-            prose([op.title, op.body].filter(Boolean).join(NARRATIVE_SEPARATOR)),
-          );
+          return line(PDF_COPY.ops.note, prose([op.title, op.body].filter(Boolean).join('\n')));
       }
     })
     .join('');
@@ -313,7 +316,12 @@ function opsLines(ops: SharedEvent['ops']): string {
 
 function eventRow(event: SharedEvent, summary: boolean): string {
   if (summary) {
-    return `<div class="pdf-summary-event"><span>${escapeHtml(event.icon ?? '•')}</span><strong dir="auto">${escapeHtml(event.title)}</strong></div>`;
+    // **The row §8 missed** (owner, 2026-08-30: _"the ltr English rows issue still exists"_).
+    // `dir="auto"` sets this element's base direction, so an English title left-aligned right
+    // out of the column while its own icon stayed at the RTL start edge — the exact defect
+    // ADR-0213 §8 measured and repaired on the detail rows, on the one path it did not touch.
+    // A title beside an icon is a VALUE: it is isolated and keeps the column's direction.
+    return `<div class="pdf-summary-event"><span>${escapeHtml(event.icon ?? '•')}</span><strong>${auto(event.title)}</strong></div>`;
   }
   // The mode leads the numbers, and the numbers carry their units — it printed as `37 · 30.5`,
   // two bare figures with nothing saying what either measured (owner, 2026-08-30).
@@ -392,22 +400,13 @@ function dayCard(day: SharedDay, summary: boolean, photoSrc?: string): string {
 }
 
 function appendixBlock(projection: SharedItinerary): string {
-  const appendix = projection.appendix;
-  if (!appendix) return '';
-  const blocks: string[] = [];
   // **The same renderer the rows use.** These ARE row ops — they simply have no row — so a
-  // note here and a note under an event print identically, and a fifth op kind reaches both
-  // surfaces at once (ADR-0096).
-  const ops = opsLines(appendix.ops);
-  if (ops) blocks.push(`<div class="pdf-op">${ops}</div>`);
-  if (appendix.travelers?.length) {
-    blocks.push(
-      `<div class="pdf-op"><strong>${PDF_COPY.appendix.travelers}</strong>` +
-        `<span>${appendix.travelers.map(auto).join(NARRATIVE_SEPARATOR)}</span></div>`,
-    );
-  }
-  return blocks.length > 0
-    ? `<section class="pdf-ops"><h2 class="pdf-ops-title">${PDF_COPY.appendix.title}</h2>${blocks.join('')}</section>`
+  // note here and a note under an event print identically (ADR-0096). Travelers left this
+  // block entirely: they are who the trip IS, and they print in the masthead.
+  const ops = opsLines(projection.appendix?.ops);
+  return ops
+    ? `<section class="pdf-ops"><h2 class="pdf-ops-title">${PDF_COPY.appendix.title}</h2>` +
+        `<div class="pdf-op">${ops}</div></section>`
     : '';
 }
 
@@ -490,6 +489,12 @@ export function itineraryPdfHtml({
     ]
       .filter(Boolean)
       .join(NARRATIVE_SEPARATOR)}</div>` +
+    // **Who is going, beside who the trip is for** (owner, 2026-08-30). It was a block at the
+    // foot, which is where you put a fact nobody asked for; a reader opening a shared trip
+    // wants to know whose it is in the first line they read.
+    (projection.trip.travelers?.length
+      ? `<div class="pdf-travelers">${projection.trip.travelers.map(auto).join(NARRATIVE_SEPARATOR)}</div>`
+      : '') +
     // **Assistant, with only the numeric runs in mono** (design-language: "Hebrew text must
     // never sit inside a mono element"). This line was `font: … 'JetBrains Mono', monospace`
     // — and the `font` SHORTHAND replaces the family list, so Assistant was not behind it.
@@ -538,7 +543,13 @@ export function itineraryPdfHtml({
     // The ROUTE's count, not the strip's: `routeLabels` is capped, so this read `8 אזורים`
     // on every trip long enough to be capped, whatever it actually visited.
     `<div class="pdf-fact"><strong>${ltr(nights)}</strong><span>${PDF_COPY.nights(nights).replace(/^\d+\s/, '')}</span></div>` +
-    `<div class="pdf-fact"><strong>${ltr(projection.commitments.length)}</strong><span>${PDF_COPY.bookings(projection.commitments.length).replace(/^\d+\s/, '')}</span></div>` +
+    // **Bookings, unless this is a Summary** — which projects none, because a ledger of dates
+    // is the exact-fact leak that level refuses (owner, 2026-08-30). The tile is not dropped:
+    // the grid is three columns and a hole reads as a rendering fault, so Summary counts the
+    // events it DOES show instead. Both are aggregates, which is what this row is for.
+    (summary
+      ? `<div class="pdf-fact"><strong>${ltr(projection.trip.eventCount)}</strong><span>${PDF_COPY.events(projection.trip.eventCount).replace(/^\d+\s/, '')}</span></div>`
+      : `<div class="pdf-fact"><strong>${ltr(projection.commitments.length)}</strong><span>${PDF_COPY.bookings(projection.commitments.length).replace(/^\d+\s/, '')}</span></div>`) +
     `</div></div>`;
 
   const sectionTitle =
@@ -596,7 +607,7 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
 .pdf-fact strong,.pdf-fact span{display:block;}
 .pdf-fact strong{font:17px/1 'Secular One',sans-serif;}
 .pdf-fact span{margin-block-start:3px;color:var(--pdf-muted);font-size:8px;}
-.pdf-section-title{display:flex;align-items:baseline;justify-content:space-between;margin:0 0 9px;}
+.pdf-section-title{display:flex;align-items:baseline;justify-content:space-between;margin:0 0 9px;break-after:avoid;page-break-after:avoid;}
 .pdf-section-title h2{margin:0;font:17px 'Secular One',sans-serif;}
 .pdf-section-title span{color:var(--pdf-muted);font-size:9px;}
 /* **Two columns as a MULTICOL, not a grid.** Chromium fragments a multi-column block across
@@ -617,7 +628,7 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
 .pdf-day-copy span{margin-block-start:2px;color:var(--pdf-muted);font-size:8px;}
 .pdf-parts{padding:4px 8px 6px;}
 .pdf-part{break-inside:avoid;}
-.pdf-part-head{min-height:18px;display:flex;align-items:center;gap:4px;color:var(--pdf-amber);font-size:7.5px;font-weight:700;}
+.pdf-part-head{min-height:18px;display:flex;align-items:center;gap:4px;color:var(--pdf-amber);font-size:8px;font-weight:700;break-after:avoid;page-break-after:avoid;}
 .pdf-part-head::after{content:'';height:1px;flex:1;background:color-mix(in srgb,var(--pdf-amber) 24%,var(--pdf-line));}
 .pdf-part-mark{width:15px;font-size:10px;text-align:center;}
 .pdf-event{break-inside:avoid;display:grid;grid-template-columns:38px minmax(0,1fr);gap:6px;padding:4px 0;border-block-start:1px solid var(--pdf-line);}
@@ -632,11 +643,19 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
 .pdf-summary-event span:first-child{text-align:center;}
 .pdf-summary-event strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .pdf-journey{padding:2px 0;color:var(--pdf-muted);font-size:7px;}
-.pdf-ops{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin-block-start:12px;}
-.pdf-ops-title{grid-column:1/-1;margin:0;font:13px 'Secular One',sans-serif;}
-.pdf-op{break-inside:avoid;padding:8px 9px;border:1px solid var(--pdf-line);border-radius:9px;}
-.pdf-op strong{display:block;font-size:9px;}
-.pdf-op span{display:block;margin-block-start:2px;color:var(--pdf-muted);font-size:7.8px;line-height:1.4;}
+/* One column, not two: a note is prose and a 2-column measure at this size is unreadable —
+   which is most of what "the section is too dense" meant (owner, 2026-08-30). */
+.pdf-ops{display:block;margin-block-start:12px;}
+/* **A heading may not be the last thing on a page.** break-after:avoid keeps it with the
+   block it names; without it the title landed alone at the foot of page 4 with its content on
+   page 5, which reads as a rendering fault (owner, 2026-08-30, with a screenshot). */
+.pdf-ops-title{margin:0 0 6px;font:13px 'Secular One',sans-serif;break-after:avoid;page-break-after:avoid;}
+.pdf-op{break-inside:avoid;padding:9px 11px;border:1px solid var(--pdf-line);border-radius:9px;}
+/* Two rules lived here for the per-family appendix markup (a title element and a
+   joined-lines element) that no longer exists. They were not merely dead: the descendant
+   selector .pdf-op span is (0,1,1) and beat .pdf-ops-line (0,1,0), so it silently held the
+   ops line at 7.8px however large this file said to set it — the third time in this feature
+   a declaration lost to a descendant selector and looked exactly like one never written. */
 
 /* ══ ADR-0213's 2026-08-30 amendment. **LAST IN THE SHEET ON PURPOSE**: these override
    shipped rules at EQUAL specificity, so placed above them they lose and do it silently —
@@ -663,8 +682,20 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
 .pdf-layover{padding:2px 6px 2px 50px;background:color-mix(in srgb,var(--pdf-ink) 3%,transparent);color:var(--pdf-muted);font-size:7px;}
 /* **Printed, not folded** — paper has no setting, and whoever holds the printout is the
    operator. The one decision that inverts against the reader page. */
-.pdf-ops-line{display:block;margin-block-start:2px;color:var(--pdf-ink)!important;font:600 7.2px 'JetBrains Mono',monospace;white-space:normal!important;}
-.pdf-ops-line b{font-family:'Assistant',sans-serif;font-weight:700;color:var(--pdf-muted);}
+/* **Assistant, and JetBrains only where the value is a code.** This rule set the font
+   shorthand to 600 7.2px JetBrains Mono — and JetBrains ships NO Hebrew, so every note body
+   printed as empty rectangles while the bold label beside it, which overrides back to
+   Assistant, printed perfectly (owner, 2026-08-30: "Notes also gibberish on the pdf"). That
+   is the same defect ADR-0213 already recorded once for .pdf-subtitle, in a second element:
+   the font SHORTHAND replaces the family list, so the fallback never applies. 7.2px was also
+   simply too small to read. */
+.pdf-ops-line{display:block;margin-block-start:4px;color:var(--pdf-ink)!important;font:400 8.6px 'Assistant',sans-serif;line-height:1.5;white-space:normal!important;}
+.pdf-ops-line b{font-weight:700;color:var(--pdf-muted);}
+.pdf-mono{font-family:'JetBrains Mono',monospace;font-weight:600;}
+/* A note is prose the author wrote with line breaks in it; a paragraph that collapses them
+   is the wall of text this block keeps being reported as. */
+.pdf-prose{white-space:pre-line;}
+.pdf-travelers{margin-block-start:3px;color:var(--pdf-muted);font-size:8.4px;}
 /* A stop's description, clamped — a caption is two lines and four is a paragraph. */
 .pdf-cap{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;white-space:normal!important;color:var(--pdf-muted)!important;}
 /* **The day's photo, as a square in the header.** See dayCard for why it is not a band. */

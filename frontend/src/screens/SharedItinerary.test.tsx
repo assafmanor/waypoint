@@ -422,9 +422,18 @@ describe('SharedItinerary', () => {
               events: [
                 {
                   ...event,
+                  // Real leg titles are ROUTES, which is what made the defect invisible here:
+                  // a bare city as a title happens to read correctly when the layover line is
+                  // composed from it. The wait names one airport, never the next hop.
                   legs: [
-                    { title: 'תל אביב', startLabel: '14:30', endLabel: '18:15' },
-                    { title: 'וינה', startLabel: '19:00', endLabel: '23:20', layoverMinutes: 45 },
+                    { title: 'תל אביב ← וינה', startLabel: '14:30', endLabel: '18:15' },
+                    {
+                      title: 'וינה ← קפלאוויק',
+                      startLabel: '19:00',
+                      endLabel: '23:20',
+                      layoverMinutes: 45,
+                      layoverPlace: 'וינה',
+                    },
                   ],
                 },
               ],
@@ -435,6 +444,8 @@ describe('SharedItinerary', () => {
       renderShared();
       // The first leg has nothing before it, so it carries no wait — only the second does.
       expect(await screen.findByText(plain(t.share.public.layover('וינה', 45)))).toBeTruthy();
+      // …and never the leg it precedes, which is what it used to say.
+      expect(screen.queryByText(plain(t.share.public.layover('וינה ← קפלאוויק', 45)))).toBeNull();
       expect(screen.queryByText(plain(t.share.public.layover('תל אביב', 45)))).toBeNull();
     });
 

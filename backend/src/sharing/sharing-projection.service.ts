@@ -244,23 +244,44 @@ function capCaption(value: string | undefined): string | undefined {
 interface JourneyChains {
   chainByLead: Map<string, ShareEventRow[]>;
   absorbed: Set<string>;
+  /** Every leg → the journey it belongs to, single-leg journeys included. A day asks this
+   *  where its flight ENDS, which is not where its last leg lands when that leg connects. */
+  chainOf: Map<string, ShareEventRow[]>;
 }
+
+/**
+ * **How long a wait can be and still be one journey** (owner, 2026-08-30).
+ *
+ * The reported case: a leg lands 02:00 and the next departs 11:00 the same day. Chaining them
+ * made one journey, and a journey renders on the day its FIRST leg departs — which for a
+ * 02:00 departure is the night before by `sharePreviousNight`. So both legs and the whole
+ * return moved two days back and **the last day of the trip rendered empty**.
+ *
+ * Nine hours is not a layover, it is a day with a flight at each end: you clear immigration,
+ * you leave the airport, you eat somewhere. Six is the line — long enough to keep the 110
+ * minutes the cross-day fix was built for, short enough that a wait you could spend in a city
+ * stays two rows on the two days it actually occupies.
+ */
+const MAX_LAYOVER_MINUTES = 6 * 60;
 
 function chainJourneys(scheduledInTripOrder: readonly ShareEventRow[]): JourneyChains {
   const chainByLead = new Map<string, ShareEventRow[]>();
   const absorbed = new Set<string>();
+  const chainOf = new Map<string, ShareEventRow[]>();
   for (let i = 0; i < scheduledInTripOrder.length; i += 1) {
     const chain = [scheduledInTripOrder[i]];
     while (
       i + 1 < scheduledInTripOrder.length &&
-      continuesJourney(chain.at(-1)!, scheduledInTripOrder[i + 1])
+      continuesJourney(chain.at(-1)!, scheduledInTripOrder[i + 1]) &&
+      (layoverMinutes(chain.at(-1)!, scheduledInTripOrder[i + 1]) ?? 0) <= MAX_LAYOVER_MINUTES
     ) {
       chain.push(scheduledInTripOrder[(i += 1)]);
       absorbed.add(chain.at(-1)!.id);
     }
     if (chain.length > 1) chainByLead.set(chain[0].id, chain);
+    for (const leg of chain) chainOf.set(leg.id, chain);
   }
-  return { chainByLead, absorbed };
+  return { chainByLead, absorbed, chainOf };
 }
 
 const MAJORITY = 0.6;
@@ -561,20 +582,34 @@ export class SharingProjectionService {
         .map((event) => placeLabel(event.place) ?? event.title)
         .find(Boolean),
       eventTitles: dayEvents.map((event) => event.title),
+      // **Where the journey ENDS, not where its last leg of this day lands** (owner,
+      // 2026-08-30: _"the title is טיסה לפרנקפורט even though Frankfurt is the connecting
+      // flight"_). Frankfurt is where you change planes; naming a day after it describes an
+      // airport nobody chose to visit. The chain already knows its own final leg.
       flightTo: dayEvents
         .filter(isFlight)
-        .map((event) => labelById.get(event.booking?.toPlaceId ?? ''))
+        .map((event) => {
+          const journey = chains.chainOf.get(event.id);
+          const final = journey?.at(-1) ?? event;
+          return labelById.get(final.booking?.toPlaceId ?? '');
+        })
         .filter(Boolean)
         .at(-1),
       tripDestination: trip.destination.trim() || undefined,
       outbound: index === firstFlight && firstFlight === firstBusy,
-      returning: index === lastFlight && lastFlight === lastBusy && lastFlight !== firstFlight,
+      // A return journey can straddle midnight, so the day that DEPARTS on it is returning
+      // too — otherwise the last night out gets titled by the airport it connects through.
+      returning:
+        index !== firstFlight &&
+        lastFlight === lastBusy &&
+        dayEvents.some((event) => isFlight(event) && homewardLegIds.has(event.id)),
     });
 
     // **Everything operational, keyed by the row it belongs to** — one set of queries for
     // the whole trip rather than one per event, and empty when the level or the toggles say
     // so. See `loadOps`; this is what dissolved the appendix.
     const ops = await this.loadOps(share, detail);
+    const travelers = await this.travelers(share);
 
     // **The shape is derived from the nights, and the day titles depend on the shape** —
     // so the stays are collected first rather than the days being built twice. Owner,
@@ -595,6 +630,19 @@ export class SharingProjectionService {
       byDay.flatMap(({ events }) =>
         events.filter((event) => event.booking?.type !== BOOKING_TYPE.HOTEL),
       ),
+    );
+
+    // **The legs of the journey home**, which is what makes a day "returning" — not its
+    // index. A return that departs 23:40 and lands the next morning occupies two days, and
+    // both of them are the way home.
+    const everyFlight = byDay.flatMap(({ events }) => events.filter(isFlight));
+    const homewardLegIds = new Set(
+      (everyFlight.length > 0
+        ? (chains.chainOf.get(everyFlight[everyFlight.length - 1].id) ?? [
+            everyFlight[everyFlight.length - 1],
+          ])
+        : []
+      ).map((leg) => leg.id),
     );
 
     const days: SharedDay[] = byDay.map(({ date, events: dayEvents }, index) => {
@@ -657,7 +705,17 @@ export class SharingProjectionService {
     //
     // Consecutive nights in the same place collapse to one row: eleven `לינה` lines is the
     // wall of text this block exists to replace.
-    const commitments = collectCommitments(byDay, placeLabel, labelById, ops);
+    // **Not at Summary** (owner, 2026-08-30: _"Should summary mode show bookings? It seems
+    // excessive for a summary"_). §1's levels are inspire / orient / operate, and a ledger of
+    // dates and providers is the middle two — a Summary that lists `06.09 · נתב״ג ← קפלאוויק`
+    // is exactly the exact-fact leak the level exists to refuse. Not projected rather than
+    // not drawn: this file's rule is that the level decides what is SENT, which is what the
+    // spec named "Summary shows no exact fact the projection did not send" is about — and
+    // this block had been slipping past it because a date is a fact nobody thought to check.
+    const commitments =
+      detail === SHARE_DETAIL_LEVEL.SUMMARY
+        ? []
+        : collectCommitments(byDay, placeLabel, labelById, ops);
 
     // **The route is where the trip WAS, not the airports it passed through** (owner,
     // 2026-08-30, on the masthead strip: _"Seems very redundant"_). Every day contributes
@@ -714,6 +772,7 @@ export class SharingProjectionService {
         routeStopCount: wholeRoute.length,
         shape: shape.shape,
         baseCount: shape.baseCount,
+        ...(travelers ? { travelers } : {}),
       },
 
       narrative: {
@@ -724,9 +783,7 @@ export class SharingProjectionService {
       days: applyNarrative(days, narrative),
       commitments,
       appendix:
-        detail === SHARE_DETAIL_LEVEL.EVERYTHING
-          ? await this.buildAppendix(share, ops.unattached)
-          : undefined,
+        detail === SHARE_DETAIL_LEVEL.EVERYTHING ? this.buildAppendix(ops.unattached) : undefined,
     });
   }
 
@@ -803,6 +860,10 @@ export class SharingProjectionService {
             startLabel: leg.startLabel,
             endLabel: leg.endLabel,
             layoverMinutes: previous ? layoverMinutes(previous, event) : undefined,
+            // The place you WAIT in — the previous leg's arrival, which is this leg's
+            // departure. Composing the line from `title` printed the route you are about to
+            // fly instead (`המתנה בוינה ← קפלאוויק`).
+            layoverPlace: previous ? legFrom : undefined,
           });
         }),
       });
@@ -854,16 +915,13 @@ export class SharingProjectionService {
     }
 
     if (share.includeNotesAndTasks) {
-      const [notes, tasks] = await Promise.all([
-        this.prisma.note.findMany({
-          where: { tripId: share.tripId },
-          select: { title: true, body: true, eventId: true, bookingId: true },
-        }),
-        this.prisma.task.findMany({
-          where: { tripId: share.tripId },
-          select: { title: true, eventId: true, bookingId: true },
-        }),
-      ]);
+      // **Notes only.** A task is the group's own chore list and a viewer is not the person
+      // doing it (owner, 2026-08-30) — so the task query is gone rather than filtered, which
+      // is the difference between not showing them and not loading them.
+      const notes = await this.prisma.note.findMany({
+        where: { tripId: share.tripId },
+        select: { title: true, body: true, eventId: true, bookingId: true },
+      });
       for (const note of notes) {
         const title = note.title?.trim();
         const body = note.body?.trim();
@@ -878,14 +936,6 @@ export class SharingProjectionService {
         // **Attached to nothing is a real answer, not a leftover.** A packing list belongs
         // to the trip; it is published under its own heading rather than smuggled onto
         // whichever row happened to be first.
-        else out.unattached.push(op);
-      }
-      for (const task of tasks) {
-        const title = task.title.trim();
-        if (!title) continue;
-        const op: SharedOp = { kind: SHARE_OP_KIND.TASK, title };
-        if (task.eventId) push(out.byEvent, task.eventId, op);
-        else if (task.bookingId) push(out.byBooking, task.bookingId, op);
         else out.unattached.push(op);
       }
     }
@@ -1168,24 +1218,24 @@ export class SharingProjectionService {
    *
    * Travelers stay a query, because a traveller is not an op and hangs off no row.
    */
-  private async buildAppendix(
-    share: SharePolicy,
-    unattached: readonly SharedOp[],
-  ): Promise<SharedAppendix | undefined> {
-    const appendix: SharedAppendix = {};
-    if (unattached.length > 0) appendix.ops = [...unattached];
+  private buildAppendix(unattached: readonly SharedOp[]): SharedAppendix | undefined {
+    return unattached.length > 0 ? { ops: [...unattached] } : undefined;
+  }
 
-    if (share.includeTravelerIdentity) {
-      const members = await this.prisma.membership.findMany({
-        where: { tripId: share.tripId },
-        // Names only. There is no toggle anywhere that reveals an email, which is why the
-        // `select` cannot name one rather than the mapper choosing not to read it.
-        select: { user: { select: { displayName: true } } },
-        orderBy: { joinedAt: 'asc' },
-      });
-      appendix.travelers = members.map((member) => member.user.displayName);
-    }
-
-    return Object.keys(appendix).length > 0 ? appendix : undefined;
+  /**
+   * **Who is going** — the trip's own identity, not a block at the foot (owner, 2026-08-30).
+   *
+   * Names only. There is no toggle anywhere that reveals an email, which is why the `select`
+   * cannot name one rather than the mapper choosing not to read it.
+   */
+  private async travelers(share: SharePolicy): Promise<string[] | undefined> {
+    if (!share.includeTravelerIdentity) return undefined;
+    const members = await this.prisma.membership.findMany({
+      where: { tripId: share.tripId },
+      select: { user: { select: { displayName: true } } },
+      orderBy: { joinedAt: 'asc' },
+    });
+    const names = members.map((member) => member.user.displayName).filter(Boolean);
+    return names.length > 0 ? names : undefined;
   }
 }

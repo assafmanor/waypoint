@@ -3239,7 +3239,6 @@ export const t = {
         // attached to no moment in the trip — the packing list, the group's own reminders.
         // That is a real category and deserves its own name rather than a catch-all.
         title: 'לקראת הנסיעה',
-        travelers: 'הנוסעים',
       },
       unavailableTitle: 'המסלול לא זמין',
       unavailableBody: 'יכול להיות שהלינק בוטל או שהטיול כבר לא קיים. בקשו לינק חדש ממי ששלח.',
