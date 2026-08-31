@@ -29,7 +29,7 @@
 // before the closing marker" and it is unsupported below iOS Safari 16.4 — on a phone-first
 // installed PWA (ADR-0017) that is a parser that throws at import time on a real device. Every
 // rule below is expressed with `\S`-anchored groups and re-emitted leading characters instead.
-import { ltrIsolate } from './bidi';
+import { autoIsolate } from './bidi';
 import { externalHref, prettyUrl } from './external-url';
 
 /** One run inside a line. `link` is already resolved — `href` has been through
@@ -311,11 +311,14 @@ function flattenInline(runs: NoteInline[]): string {
         case 'strong':
         case 'em':
           return flattenInline(run.children);
-        // Through `ltrIsolate`, not by writing U+2066/U+2069 out: it is a pure string
+        // Through the helper, not by writing U+2068/U+2069 out: it is a pure string
         // helper, so a hand-rolled pair here would be the second copy of the app's one
         // answer to bidi (rule 8, and ADR-0118 is the rule it implements).
+        //
+        // **First-strong, not forced-LTR.** A label is whatever the note's author typed,
+        // and `[לחץ כאן](…)` under `ltrIsolate` lays its Hebrew out from the wrong end.
         case 'link':
-          return ltrIsolate(run.label);
+          return autoIsolate(run.label);
       }
     })
     .join('');

@@ -407,6 +407,20 @@ describe('SharedItinerary', () => {
       days: [{ ...fullProjection.days[0], ...day }],
     });
 
+    /** The ops fold is closed by default — a reader wants the schedule, an operator wants
+     *  the code — so the file row has to be disclosed before it can be pressed. */
+    const openOpsAndFindFile = async (): Promise<HTMLElement> => {
+      const fold = await waitFor(() => {
+        const found = document.querySelector('details.sh-ops');
+        expect(found).toBeTruthy();
+        return found as HTMLDetailsElement;
+      });
+      await act(async () => {
+        fold.open = true;
+      });
+      return screen.getByText(plain('הזמנת הדירה.pdf'));
+    };
+
     it('says where you sleep in the day header, not as a row in its afternoon', async () => {
       serve(withDay({ stay: 'Reykjahlíð' }));
       renderShared();
@@ -454,6 +468,153 @@ describe('SharedItinerary', () => {
       expect(
         screen.queryByText(plain(t.share.public.layover('תל אביב', hoursPhrase(45)))),
       ).toBeNull();
+    });
+
+    /**
+     * **The frame's totals, once** (owner, 2026-08-31: _"a row for the entire journey but
+     * also rows for each flight … confusing"_). The projection no longer sends a leg its own
+     * duration or zone shift, and this is the renderer's half: the phrase for the journey's
+     * own span appears exactly once on the card, beside the wait, and not per leg.
+     */
+    it('states a journey duration once, on the frame, and not again per leg', async () => {
+      const event = fullProjection.days[0].sections[0].events[0];
+      serve(
+        withDay({
+          sections: [
+            {
+              ...fullProjection.days[0].sections[0],
+              events: [
+                {
+                  ...event,
+                  durationMinutes: 675,
+                  zoneShiftMinutes: 180,
+                  legs: [
+                    { title: 'תל אביב ← וינה', startLabel: '14:30', endLabel: '18:15' },
+                    {
+                      title: 'וינה ← קפלאוויק',
+                      startLabel: '19:00',
+                      endLabel: '23:20',
+                      layoverMinutes: 320,
+                      layoverPlace: 'וינה',
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        }),
+      );
+      renderShared();
+      expect(await screen.findByText(plain(hoursPhrase(675)))).toBeTruthy();
+      // Every duration phrase on the card, counted: the journey's and the wait's. A leg
+      // adding its own is what put four of these on one flight.
+      const spans = screen
+        .getAllByText(/שע׳|דק׳|שעתיים|שעה/)
+        .map((el) => withoutBidiControls(el.textContent ?? ''));
+      const durations = spans.filter((text) => /^\s*\d+:\d+ שע׳/.test(text));
+      expect(durations).toHaveLength(1);
+    });
+
+    /**
+     * **A number keeps its unit behind it** (owner, 2026-08-31: _"it shows שע׳ 3:30 instead
+     * of 3:30 שע׳"_). `hoursPhrase` already reads correctly as bare text in the RTL flow;
+     * the defect was an `ltrIsolate` around the whole phrase, which forces it left-to-right
+     * so the reader meets the unit first. jsdom lays out nothing, so the assertion is the
+     * absence of the isolate character in front of the phrase — which is where it was.
+     */
+    it('leaves a duration phrase out of an LTR isolate', async () => {
+      const event = fullProjection.days[0].sections[0].events[0];
+      serve(
+        withDay({
+          sections: [
+            {
+              ...fullProjection.days[0].sections[0],
+              events: [{ ...event, durationMinutes: 210 }],
+            },
+          ],
+        }),
+      );
+      renderShared();
+      const node = await screen.findByText(plain(hoursPhrase(210)));
+      expect(node.textContent).toContain(hoursPhrase(210));
+      expect(node.textContent).not.toContain('\u2066');
+    });
+
+    /**
+     * **A download that shows how far it has got** (owner, 2026-08-31, second pass: _"the
+     * download indication is not enough … it should have another animation"_).
+     *
+     * The bytes are read through a stream, so the bar can report the real fraction against
+     * `Content-Length` instead of spinning. Two states are asserted because only one of them
+     * is honest at a time: with a length the bar is a `progressbar` carrying `aria-valuenow`,
+     * and the second half of the test is the case where the server declares none — there the
+     * control must claim no fraction at all rather than inventing one.
+     */
+    it('reports real progress while a document downloads', async () => {
+      const chunks = [new Uint8Array(40), new Uint8Array(60)];
+      const bodyWith = (headers: Record<string, string>) =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              for (const chunk of chunks) controller.enqueue(chunk);
+              controller.close();
+            },
+          }),
+          { headers },
+        );
+
+      serve(everythingProjection);
+      renderShared();
+      const link = await openOpsAndFindFile();
+
+      const fetchMock = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(bodyWith({ 'content-length': '100' }));
+      const url = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:x');
+      vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+
+      await act(async () => {
+        fireEvent.click(link);
+      });
+      await waitFor(() => expect(url).toHaveBeenCalled());
+      expect(fetchMock).toHaveBeenCalled();
+
+      // The whole file arrived, so the bar reached the end rather than a guess at it.
+      await waitFor(() => expect(screen.queryByText(plain(t.share.public.file.done))).toBeTruthy());
+    });
+
+    it('claims no fraction for a response that declares no length', async () => {
+      serve(everythingProjection);
+      renderShared();
+      const link = await openOpsAndFindFile();
+
+      // A body that never closes: the control stays in `working`, which is the only state
+      // where the bar exists — and with no `Content-Length` it must be indeterminate.
+      let release: (() => void) | undefined;
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              release = () => controller.close();
+            },
+          }),
+        ),
+      );
+
+      await act(async () => {
+        fireEvent.click(link);
+      });
+      const bar = await waitFor(() => {
+        const found = document.querySelector('.sh-dl-bar');
+        expect(found).toBeTruthy();
+        return found!;
+      });
+      expect(bar.getAttribute('role')).toBe('progressbar');
+      expect(bar.hasAttribute('data-indeterminate')).toBe(true);
+      expect(bar.hasAttribute('aria-valuenow')).toBe(false);
+      await act(async () => {
+        release?.();
+      });
     });
 
     it('puts the bookings under the days, and states each day instead of jumping to it', async () => {

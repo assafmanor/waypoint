@@ -342,6 +342,20 @@ function zoneOffsetMinutesAt(at: Date, timeZone: string): number {
  * appears on the day it left. Nothing is dropped: the absorbed date becomes the card's
  * `endDate`, so the header can say `21–22` and a reader can see where the time went.
  */
+/** The calendar date a day's journeys stop moving on — the latest arrival among the transport
+ *  rows placed on it, as a plain `YYYY-MM-DD` so it compares with `byDay`'s own keys. Empty
+ *  string when nothing here arrives anywhere, which makes the caller's `<=` refuse every
+ *  candidate rather than absorbing on a missing value. */
+function journeyLandingDate(events: readonly ShareEventRow[]): string {
+  let latest = '';
+  for (const event of events) {
+    if (!isTransport(event) || !event.endsAt) continue;
+    const date = event.endsAt.toISOString().slice(0, 10);
+    if (date > latest) latest = date;
+  }
+  return latest;
+}
+
 function absorbSpannedDays(
   days: readonly SharedDay[],
   byDay: readonly { date: string; events: ShareEventRow[] }[],
@@ -355,8 +369,18 @@ function absorbSpannedDays(
     // Only a day that ENDS in the air can swallow the next one: the journey is what spans
     // the midnight, and a day with no journey has nothing to span with.
     const spans = day.sections.some((section) => section.events.some((event) => event.legs));
+    // **And it swallows only as far as it FLIES.** Absorbing every empty day that followed
+    // made a card say `07–09` for a journey that lands on the 08th — a trailing empty day
+    // of the trip is not part of the flight, it is a day nobody planned yet, and merging it
+    // in tells the reader they are in the air for it. The landing date is the journey's own
+    // last arrival, so the reach is one day per midnight actually crossed.
     let last = i;
-    if (spans) while (last + 1 < days.length && isEmpty(last + 1)) last += 1;
+    if (spans) {
+      const landing = journeyLandingDate(byDay[i]?.events ?? []);
+      while (last + 1 < days.length && isEmpty(last + 1) && byDay[last + 1].date <= landing) {
+        last += 1;
+      }
+    }
     out.push(last > i ? { ...day, endDate: byDay[last].date } : day);
     i = last;
   }
@@ -972,7 +996,9 @@ export class SharingProjectionService {
             // departure. Composing the line from `title` printed the route you are about to
             // fly instead (`המתנה בוינה ← קפלאוויק`).
             layoverPlace: previous ? legFrom : undefined,
-            ...travelFacts(event, placeById),
+            // **No `travelFacts` here.** The frame above already carries the span and the
+            // shift across the WHOLE journey, and repeating them per leg is what made one
+            // flight print four durations (see `sharedLegSchema`).
           });
         }),
       });

@@ -22,7 +22,7 @@ import {
 } from '@waypoint/shared';
 import { t } from '../i18n/he';
 import { DOT_SEPARATOR } from '../constants';
-import { ltrIsolate } from './bidi';
+import { autoIsolate, ltrIsolate } from './bidi';
 
 /** The prose to render, plus the one word that names its language when it is not ours. */
 export interface PlaceSummary {
@@ -74,6 +74,6 @@ export function placeSummary(fields?: DeliveredEnrichmentFields): PlaceSummary |
 export function placeCredit(image: DeliveredImageValue): string {
   const license = ltrIsolate(image.license);
   return image.attribution
-    ? `${ltrIsolate(image.attribution)} ${DOT_SEPARATOR} ${license}`
+    ? `${autoIsolate(image.attribution)} ${DOT_SEPARATOR} ${license}`
     : license;
 }

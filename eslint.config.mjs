@@ -124,6 +124,36 @@ const CONTROL_EMOJI_SELECTORS = [
 // value: the original rule keyed on `value.value` and so read past a computed one, which
 // is how `BookingDetail`'s `dir={mono ? 'ltr' : undefined}` survived the ADR-0118 sweep of
 // 75 sites and kept forcing a base direction onto stored content.
+// The OTHER half of the same rule, and the half this guard could not see until 2026-08-31
+// (owner: _"it shows שע׳ 3:30 instead of 3:30 שע׳"_). `ltrIsolate` forces its run
+// left-to-right, which is right for a time, a code or a signed number and wrong for anything
+// carrying a Hebrew word — the isolate then lays the unit before the number, the exact defect
+// the block above describes, reached by a helper instead of an attribute. `place-summary.ts`
+// had already written down that the guard was blind here.
+//
+// Two shapes are statically decidable and both shipped: a Hebrew letter sitting literally
+// inside the isolated template, and a call to one of the duration ladders, whose every branch
+// returns a Hebrew unit (`hoursPhrase` → `3:30 שע׳` / `שעתיים`, and `pdfSpan`, its print
+// twin). A phrase like that needs no isolate at all — bare, it reads correctly in the RTL
+// flow — or `measure()` where only the number should be an island.
+const HEBREW_IN_ISOLATE =
+  'CallExpression[callee.name="ltrIsolate"] > TemplateLiteral TemplateElement[value.raw=/[\\u0590-\\u05FF]/]';
+const PHRASE_IN_ISOLATE =
+  'CallExpression[callee.name=/^(ltrIsolate|ltr)$/] > CallExpression[callee.name=/^(hoursPhrase|pdfSpan|approxDuration|approxTravelTime)$/]';
+
+const ISOLATE_SELECTORS = [
+  {
+    selector: HEBREW_IN_ISOLATE,
+    message:
+      'ltrIsolate forces the whole run left-to-right, so Hebrew inside it reads from the wrong end ("3:30 שע׳" → "שע׳ 3:30"). Isolate only the Latin/numeric part — measure(value, unit) in lib/bidi.ts — or leave the phrase bare (ADR-0118).',
+  },
+  {
+    selector: PHRASE_IN_ISOLATE,
+    message:
+      'This returns a phrase with a Hebrew unit, so isolating it reverses the two ("3:30 שע׳" → "שע׳ 3:30"). Pass it through bare — it already reads correctly in the RTL flow (ADR-0118).',
+  },
+];
+
 const BIDI_SELECTORS = [
   {
     selector:
@@ -131,6 +161,7 @@ const BIDI_SELECTORS = [
     message:
       'Use dir="auto" (or no dir) — a hardcoded dir="ltr" flips a number+unit token in Hebrew ("9 ק״מ" → "ק״מ 9") and reverses stored content that is not Latin. Isolate the numeric run instead: ltrIsolate/measure in lib/bidi.ts (ADR-0118).',
   },
+  ...ISOLATE_SELECTORS,
 ];
 
 // ADR-0090 + ADR-0103: back is COMPUTED from nav state and executed as an explicit
@@ -225,6 +256,17 @@ export default tseslint.config(
           message: 'Write Change rows only via ChangeService.mutate() (ADR-0019).',
         },
       ],
+    },
+  },
+  {
+    // **The bidi rule is not the frontend's alone any more.** `packages/shared` now owns
+    // `bidi.ts` and the note parser, and the print renderer composes the same Hebrew
+    // number-and-unit tokens with a local `ltr()` — which is where `ltr(pdfSpan(...))`
+    // shipped the reversed span onto paper. The `dir="ltr"` selector is JSX-only and simply
+    // never matches here, so the two isolate selectors are the whole content of this block.
+    files: ['backend/src/**/*.ts', 'packages/shared/src/**/*.ts'],
+    rules: {
+      'no-restricted-syntax': ['error', ...ISOLATE_SELECTORS],
     },
   },
   {

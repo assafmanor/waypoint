@@ -11,7 +11,7 @@ import {
   resetPdfFontCache,
 } from './itinerary-pdf.template';
 import { PDF_COPY } from './itinerary-pdf.copy';
-import { NINE_DAY_REFERENCE_TRIP } from './itinerary-pdf.fixture';
+import { DENSE_REFERENCE_TRIP, NINE_DAY_REFERENCE_TRIP } from './itinerary-pdf.fixture';
 
 const QR = 'data:image/png;base64,iVBORw0KGgo=';
 
@@ -233,6 +233,54 @@ describe('itineraryPdfHtml', () => {
     const subtitle = /<div class="pdf-subtitle">.*?<\/div>/s.exec(full)?.[0] ?? '';
     expect(HEBREW.test(subtitle)).toBe(true);
     expect(subtitle).toContain('class="pdf-num"');
+  });
+
+  /**
+   * **A number-and-unit span reads number-first, and the isolate is what breaks that**
+   * (owner, 2026-08-31: _"it shows שע׳ 3:30 instead of 3:30 שע׳"_).
+   *
+   * `pdfSpan` composes `3:30 שע׳`, which is correct as bare text in the RTL flow — the flow
+   * puts the first logical run at the right. Wrapping it in `ltr()` forces the whole run
+   * left-to-right, so the reader meets the unit first. Two call sites shipped it (the facts
+   * line and the layover), and the assertion is the absence of U+2066 in front of the phrase
+   * rather than a rendered position, because the string is where the defect is.
+   */
+  it('prints a duration span without forcing it left-to-right', () => {
+    const spans = full.match(/\u2066[^\u2069]*(?:שע׳|דק׳|שעתיים|שעה)[^\u2069]*\u2069/g) ?? [];
+    expect(spans).toEqual([]);
+    // …and the phrases really are on the page, so the assertion above is not vacuous.
+    expect(full).toMatch(/\d+:\d+ שע׳|\d+ דק׳|שעתיים|שעה/);
+  });
+
+  /**
+   * **A card covering two days names both of them, weekday included.** `21–22 שני` says the
+   * card is Monday when it is also Tuesday (owner, 2026-08-31). No shared fixture carries a
+   * spanned day, so the case is built here — one day given the next one's date as its
+   * `endDate`, which is exactly what `absorbSpannedDays` produces.
+   */
+  it('prints both weekdays on a day that swallowed the one a journey flew through', () => {
+    const [first, second] = NINE_DAY_REFERENCE_TRIP.days;
+    const spanned: SharedItinerary = {
+      ...NINE_DAY_REFERENCE_TRIP,
+      days: [{ ...first, endDate: second.date }, ...NINE_DAY_REFERENCE_TRIP.days.slice(2)],
+    };
+    const block = /<span class="pdf-date">.*?<\/span><\/span>/s.exec(
+      itineraryPdfHtml(input(spanned)),
+    )?.[0];
+    expect(block).toBeDefined();
+    // Both halves of the header are ranges: the number, and the weekday under it.
+    expect(/<strong>[^<]*\u2013[^<]*<\/strong>/.test(block ?? '')).toBe(true);
+    const weekday = /<span>([^<]*)<\/span><\/span>$/.exec(block ?? '')?.[1] ?? '';
+    expect(weekday).toContain('\u2013');
+  });
+
+  /** A leg prints its clock and its flight code; the totals are the frame's (owner,
+   *  2026-08-31). Four durations on one flight is what this removes. */
+  it('prints no facts line inside a journey block', () => {
+    const html = itineraryPdfHtml(input(DENSE_REFERENCE_TRIP));
+    for (const trek of html.match(/<div class="pdf-trek">.*?<\/div><\/div>/gs) ?? []) {
+      expect(trek).not.toContain('pdf-facts-line');
+    }
   });
 
   // A composed line cannot sniff its own direction — see `itinerary-narrative.fallback.ts`.

@@ -35,7 +35,7 @@ export function toHeroTask(
       // The numeric run is its own LTR island; the Hebrew around it must not be dragged
       // with it (ADR-0118) — `TaskSection`'s own split, reused rather than rebuilt.
       text: `${due.late ? t.tasks.due.late : t.tasks.due.by} ${
-        due.time ? ltrIsolate(`${due.day} ${due.time}`) : due.day
+        due.time ? `${due.day} ${ltrIsolate(due.time)}` : due.day
       }`,
       late: due.late,
     },

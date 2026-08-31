@@ -522,7 +522,7 @@ function TaskLi({
               `dir="ltr"` on a non-input (ADR-0118). The Hebrew word beside it is exactly
               what makes the isolate necessary: `dir="auto"` would resolve the whole element
               from that strong character and flip the clock. */}
-          {due.time ? ltrIsolate(`${due.day} ${due.time}`) : due.day}
+          {due.time ? `${due.day} ${ltrIsolate(due.time)}` : due.day}
         </span>
       )}
       {progress.total > 0 && (

@@ -478,14 +478,13 @@ export const sharedLegSchema = z.strictObject({
   endLabel: z.string().optional(),
   /** The wait **before** this leg. Absent on the first leg, which nothing precedes. */
   layoverMinutes: z.number().int().positive().optional(),
-  /** **How long this leg is in the air**, in whole minutes. A number, not a phrase: the
-   *  projection ships values and each renderer owns its words (ADR-0213 §2's model). */
-  durationMinutes: z.number().int().positive().optional(),
-  /** **What the clock does across it**, in signed minutes — the arrival zone's offset at
-   *  landing minus the departure zone's at take-off. The app has shown this on every event
-   *  row since ADR-0107; a shared flight was the one surface that did not (owner,
-   *  2026-08-31). Absent for a leg that crosses no zone, so a renderer draws nothing. */
-  zoneShiftMinutes: z.number().int().optional(),
+  /** **A leg carries no duration and no zone shift, and that is the point.** Both were here
+   *  for one round (2026-08-31) and made a two-leg flight say four durations and three zone
+   *  shifts — the frame's totals, then each leg's own, then the wait between them (owner:
+   *  _"a row for the entire journey but also rows for each flight … confusing"_). The
+   *  journey's totals belong to the journey, which is the only place a reader is comparing
+   *  the two ends; a leg answers when it leaves, when it lands, and which flight it is. The
+   *  wait between legs keeps its minutes, because that is the one span neither end states. */
   /** **Where that wait happens**, which is one place and not a route. The renderers composed
    *  this line from `title` and so printed `המתנה בוינה ← קפלאוויק` — the leg you are about
    *  to fly, not the airport you are sitting in (owner, 2026-08-30). It is the previous

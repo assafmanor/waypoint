@@ -248,12 +248,11 @@ function legRows(event: SharedEvent): string {
       .map(
         (leg) =>
           (leg.layoverMinutes && leg.layoverPlace
-            ? `<div class="pdf-layover">${PDF_COPY.layover(auto(leg.layoverPlace), ltr(pdfSpan(leg.layoverMinutes)))}</div>`
+            ? `<div class="pdf-layover">${PDF_COPY.layover(auto(leg.layoverPlace), pdfSpan(leg.layoverMinutes))}</div>`
             : '') +
           `<div class="pdf-event hard"><span class="pdf-event-time">${legTime(leg)}</span>` +
           `<span class="pdf-event-copy"><strong>${auto(leg.title)}</strong>` +
           (leg.code ? `<span class="pdf-leg-code">${ltr(leg.code)}</span>` : '') +
-          travelFactsLine(leg) +
           `</span></div>`,
       )
       .join('') +
@@ -407,7 +406,7 @@ function opsLines(ops: SharedEvent['ops']): string {
  *  pair). A whole-hour jump reads as hours, a half-hour zone as H:MM. */
 function travelFactsLine(event: Pick<SharedEvent, 'durationMinutes' | 'zoneShiftMinutes'>): string {
   const parts: string[] = [];
-  if (event.durationMinutes) parts.push(ltr(pdfSpan(event.durationMinutes)));
+  if (event.durationMinutes) parts.push(pdfSpan(event.durationMinutes));
   if (event.zoneShiftMinutes) {
     const minutes = event.zoneShiftMinutes;
     const sign = minutes < 0 ? '−' : '+';
@@ -470,9 +469,13 @@ function eventRow(event: SharedEvent, summary: boolean): string {
 }
 
 function dayCard(day: SharedDay, summary: boolean, photoSrc?: string): string {
-  const { day: dayNumber, weekday } = dayLabel(day.date);
-  // A card covering the day a journey flew through prints both dates (`SharedDay.endDate`).
-  const dayNumbers = day.endDate ? `${dayNumber}–${dayLabel(day.endDate).day}` : dayNumber;
+  const { day: dayNumber, weekday: firstWeekday } = dayLabel(day.date);
+  // A card covering the day a journey flew through prints both dates (`SharedDay.endDate`)
+  // and both WEEKDAYS: one name against a two-day number says the card is only the first of
+  // them (owner, 2026-08-31).
+  const endLabel = day.endDate ? dayLabel(day.endDate) : undefined;
+  const dayNumbers = endLabel ? `${dayNumber}–${endLabel.day}` : dayNumber;
+  const weekday = endLabel ? `${firstWeekday}–${endLabel.weekday}` : firstWeekday;
   // Daypart headings appear only above events that belong to them — the projection has
   // already dropped the empty groups, so this loop cannot render one.
   const sections = day.sections
@@ -713,7 +716,14 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
    the masthead that can afford to be narrow. */
 
 .pdf-qr-block{flex:0 0 auto;text-align:center;}
-.pdf-qr{display:block;width:46px;height:46px;}
+/* **margin-inline:auto is what makes the block's own text-align mean anything here**
+   (owner, 2026-08-31: the QR and its link do not read as aligned). A block-level box with a
+   definite width ignores its parent's text-align entirely, so the 46px code sat flush
+   against the inline-start edge while the caption below it — a full-width block of centred
+   text — was centred: two alignments, one unit. Measured before and after in the real A4,
+   because the whole defect is one nobody can see in the markup: the image was at 55..101
+   inside a 0..101 block, and is now centred at 27..73 under a caption that spans it. */
+.pdf-qr{display:block;width:46px;height:46px;margin-inline:auto;}
 /* Latin by construction (a host and a path), so mono over the whole element is correct. */
 .pdf-qr-cap{display:block;margin-block-start:3px;color:var(--pdf-muted);font:7px 'JetBrains Mono',monospace;}
 .pdf-lede{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(200px,1fr);gap:16px;margin-block-end:15px;border:1px solid var(--pdf-line);border-radius:11px;overflow:hidden;}

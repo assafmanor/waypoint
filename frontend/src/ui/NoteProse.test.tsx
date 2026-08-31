@@ -54,8 +54,17 @@ describe('NoteProse', () => {
       <NoteProse body="באתר www.tabelog.com/tokyo/A1303" anchors={false} />,
     );
     expect(container.querySelectorAll('a')).toHaveLength(0);
-    // The words survive, isolated, because there is no element here to carry a `dir`.
-    expect(container.textContent).toContain('⁦tabelog.com/tokyo/A1303⁩');
+    // The words survive, isolated, because there is no element here to carry a `dir` — and
+    // the isolate is FIRST-STRONG, matching the `dir="auto"` the tappable branch carries.
+    // Under `ltrIsolate` a Hebrew label read from the wrong end (owner, 2026-08-31).
+    expect(container.textContent).toContain('\u2068tabelog.com/tokyo/A1303\u2069');
+  });
+
+  it('lets a Hebrew link label keep its own direction when it cannot be tapped', () => {
+    const { container } = render(
+      <NoteProse body="[לחץ כאן](https://example.com/a)" anchors={false} />,
+    );
+    expect(container.textContent).toContain('\u2068לחץ כאן\u2069');
   });
 
   // design-language.md reserves JetBrains Mono for Latin/numeric runs — the face has no

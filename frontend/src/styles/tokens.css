@@ -571,6 +571,15 @@ body,
 :root[data-public-reader] body {
   overscroll-behavior-y: auto;
   touch-action: auto;
+  /* **And the document scrolls, which is the half that was missing** (owner, 2026-08-31:
+     refresh still did not work after the two lines above shipped). `overscroll-behavior` only
+     decides what happens when a scroll container runs out of content; `overflow: clip` below
+     means the viewport is not a scroll container at all, so there was never an overscroll for
+     the browser's refresh gesture to read. The reader's own page therefore stops being a
+     100dvh inner scroller too (`shared-itinerary.css`) — the two changes are one fix and
+     neither works alone. Higher specificity than the `html, body` rule below, so source order
+     does not decide this. */
+  overflow: visible;
 }
 
 /* **The document itself never scrolls**, which is what closes the empty band above:
