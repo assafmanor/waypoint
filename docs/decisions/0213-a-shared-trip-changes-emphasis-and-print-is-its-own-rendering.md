@@ -2167,3 +2167,111 @@ equal { mode, minutes, km }`), which is what makes it load-bearing rather than d
   `tasks-avatar-size.test.ts` established, because jsdom does no layout and this defect lived
   entirely in the cascade.
 - All four theme × width renders of the mockup: fonts loaded, no console errors.
+
+## Amendment — the journey's clock was leg one's, and paper dropped its confirmation number (2026-09-01, fifteenth pass)
+
+Owner, with a screenshot of each renderer side by side:
+
+> _"The pdf shows on the title row the flight times wrong, it only shows the first flight and not
+> the overall journey. The live sharing page shows this correctly"_
+
+The reader page printed `02:20–15:25`; paper printed `02:20–05:50` for the same journey.
+
+### §1 · The defect is in the projection, and the renderer that was right was right by accident
+
+A chained journey is assembled in `journeyLookup`'s sibling, `chainJourneys`: the row is the first
+leg's projection (`...head`) with the journey's own identity, its `journeyTo`, its recomputed
+`travelFacts`, and **`endLabel` overridden to the last leg's arrival**. `time` was not overridden.
+
+`time` is the field the twelfth amendment §1 made the **single authority** on what a row's clock
+says — introduced precisely so neither renderer would derive a range for itself. So paper, which
+obeys that contract, spelled leg one's window; and the reader page, which was still composing
+`startLabel`–`endLabel` in `Trek`, was correct for a reason that had nothing to do with the
+contract.
+
+**That inversion is the finding.** ADR-0159 §1 forbids two surfaces disagreeing about a fact, and
+the usual next question is which surface is wrong. Here the surface that was wrong was the
+_compliant_ one — which is the tell that the defect is upstream of both templates and that the
+compliant renderer is doing its job by failing visibly.
+
+Two changes, both small: the projection sets the journey's `time` beside the `endLabel` it already
+sets (`journeyClock`, kept next to `sharedTimeOf` because it answers the same question for the one
+row shape that function cannot see — a journey is several events collapsed after the fact). And
+`Trek` stops composing its own span, reading `event.time` through `SharedTimeText` like every other
+clock on the page. No template change on paper at all: `timeText(event)` was already right.
+
+### §2 · Nothing in the repo had a chained journey, and one guard was vacuous because of it
+
+The reason this shipped is the reason it could not be seen: **no fixture in the repo contained a
+journey with `legs`**. `legRows` — the whole `.pdf-trek` block, its head, its layover lines, its
+per-leg times — was rendered by no spec and by no container smoke run. And
+`itinerary-pdf.template.spec.ts`'s _"prints no facts line inside a journey block"_ iterated over
+`html.match(/pdf-trek/)`, which matched **nothing**, so it had been reporting green over zero
+blocks since the ninth amendment.
+
+That is the same vacuous-guard shape the thirteenth amendment §2 found on the mono guard, one
+release later and in the same file. The repair is the same: give the reference trip the thing the
+guard is about. Its return is now the owner's real one — KEF → FRA → TLV, a 4:20 wait in Frankfurt,
++3 on the clock — applied as a post-pass rather than through `DAYS`, whose tuple grammar is one row
+= one event and therefore cannot express a journey by construction.
+
+`pdf-container-smoke` now draws a trek too, which is the first time the block has been rendered by
+anything but a person looking at a PDF.
+
+### §3 · The audit the report asked for, and the worse thing it found
+
+The report ended _"possibly leading to more"_, so the row shape was audited rather than just
+patched: for every field a journey inherits from `...head`, is leg one's value right for the
+journey? Most are (`startLabel` **is** the first departure; the `journey` travel line **is** the
+drive to the first airport; `placeName`/`address`/`mapUrl` are read by neither renderer for this row
+shape, so they are dead rather than wrong). `title`, `journeyTo`, `endLabel`, `travelFacts` and now
+`time` are all overridden.
+
+**The attachments are not, and paper dropped them entirely.** `eventRow` did
+`if (event.legs?.length) return journey + legRows(event)` and stopped — so `event.caption` and
+`opsLines(event.ops)`, which the non-chained branch renders eight lines below, were never reached.
+A printed connecting flight carried **no confirmation number**, which is close to the only thing a
+printout is for; the same journey on screen keeps them, because `Trek` renders them as its children.
+
+The comment immediately above that early return already said the attachments _"ride inside"_.
+Nothing implemented it, review did not catch the gap between the comment and the code, and no
+fixture had a chain to draw it. So `legRows` now takes them and renders them inside the container
+(`.pdf-trek-more`), which is where the comment always said they were — and the reader page's own
+guard, _"keeps a journey row's ops fold inside the container"_, finally has a paper twin.
+
+Worth naming as a pattern rather than a second bug: **a comment describing intent is not a
+guarantee, and a prose claim beside an early return is the easiest place in a file for the two to
+part company.** Both defects in this amendment lived in the same four lines, and the one that
+mattered more is the one the comment said was handled.
+
+### §4 · The mockup had the right answer for a week
+
+`mockups/a-journey-is-a-flight-plan-v1.html` draws `14:30–23:20` — the whole span — on **both** its
+reader and paper columns (`JOURNEY.span`, one constant feeding both, which is why they could not
+disagree). The drawing was correct and the build drifted from it on one surface, and nothing
+compared them because there was no fixture to compare with.
+
+Worth stating plainly, because the mockups are usually defended as the thing that catches defects
+before the build: here one **had** the answer and it still shipped wrong, since a mockup is a
+drawing and not an assertion. What closes that gap is a fixture, not another drawing — so this
+amendment adds no mockup.
+
+### What was verified
+
+- `sharing-projection.service.spec.ts` asserts the journey's `time` beside its `startLabel` and
+  `endLabel`, so the three cannot drift apart again. Suppressing `journeyClock` turns it red.
+- `itinerary-pdf.template.spec.ts` asserts the block head carries `02:20–15:25` and **not**
+  `02:20–05:50`, with the legs still carrying their own clocks. Pointing the fixture's `time` back
+  at leg one fails with `expected 'טיסה לנתב״גשתי טיסות · 02:20–05:50 · …' to contain '02:20–15:25'`
+  — the owner's screenshot, as a test name.
+- The same spec's journey-block list is now asserted non-empty before it is iterated, so the
+  vacuous guard cannot come back.
+- `SharedItinerary.test.tsx` asserts the reader's `.sh-trek-head` shows the whole span and not leg
+  one's, now that it reads the same field.
+- The same spec asserts the block keeps its caption and its ops fold **inside** the container —
+  scoped to the block, since the appendix prints codes too and an unscoped search would pass on a
+  dropped fold. Restoring the early return fails with `expected '…' to contain 'KEF-4821'`.
+- The reference trip's chained return carries a code, a note and a caption, so all three paths are
+  drawn by CI and by the container smoke rather than by a person opening a PDF.
+- `strip` (markup + bidi isolates off a cell) is hoisted to one helper rather than copied a third
+  time.

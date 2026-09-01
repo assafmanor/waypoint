@@ -853,15 +853,13 @@ function Trek({ event, children }: { event: SharedEvent; children: React.ReactNo
         <span className="sh-trek-sum">
           {t.share.public.journeyLegs(legs.length)}
           {' · '}
-          {event.startLabel ? (
-            <span className="sh-time">
-              {ltrIsolate(
-                event.endLabel && event.endLabel !== event.startLabel
-                  ? t.share.public.timeRange(event.startLabel, event.endLabel)
-                  : event.startLabel,
-              )}
-            </span>
-          ) : null}
+          {/* **The projection's clock, not a span this line works out for itself**
+              (2026-09-01). It used to compose `startLabel`–`endLabel` here, which was right —
+              and right by a route that bypassed the contract, so when the projection's `time`
+              went stale on journey rows only paper showed it. `event.time` is the single
+              authority on what a row's clock says (ADR-0213's twelfth amendment §1) and this
+              reads it through the one component that spells it. */}
+          {event.time ? <SharedTimeText time={event.time} /> : null}
           {event.durationMinutes ? ` · ${hoursPhrase(event.durationMinutes)}` : ''}
         </span>
         {/* The shift stays on the JOURNEY: origin to final destination is the pair a

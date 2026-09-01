@@ -630,6 +630,11 @@ describe('SharedItinerary', () => {
                   durationMinutes: 675,
                   zoneShiftMinutes: 180,
                   journeyTo: 'קפלאוויק',
+                  // The JOURNEY's clock, which the projection overrides for a chain: leg
+                  // one's departure to the LAST leg's arrival (2026-09-01).
+                  startLabel: '14:30',
+                  endLabel: '23:20',
+                  time: { label: '14:30', endLabel: '23:20', meaning: TIME_MEANING.EXACT },
                   legs: [
                     {
                       title: 'תל אביב ← וינה',
@@ -669,6 +674,18 @@ describe('SharedItinerary', () => {
       expect(
         screen.getByText(plain(t.share.public.layover('וינה', hoursPhrase(165)))),
       ).toBeTruthy();
+
+      // **The head states the WHOLE journey, and reads it from `time`** (2026-09-01). It used
+      // to compose the span from `startLabel`/`endLabel` here — right, and by a route that
+      // bypassed the contract, so when the projection left `time` describing leg one only
+      // paper showed it. Both renderers spell one field now.
+      const head = container.querySelector('.sh-trek-head')!;
+      expect(withoutBidiControls(head.textContent ?? '')).toContain(
+        withoutBidiControls(t.share.public.timeRange('14:30', '23:20')),
+      );
+      expect(withoutBidiControls(head.textContent ?? '')).not.toContain(
+        withoutBidiControls(t.share.public.timeRange('14:30', '18:15')),
+      );
 
       // The zone shift stays on the journey and is NOT repeated per leg (§2).
       expect(container.querySelectorAll('.wp-tzshift')).toHaveLength(1);

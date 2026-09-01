@@ -4,6 +4,7 @@ import {
   SHARE_DAY_SUMMARY_KIND,
   SHARE_DAYPART,
   SHARE_DETAIL_LEVEL,
+  SHARE_OP_KIND,
   SHARE_TRIP_SHAPE,
   TIME_MEANING,
   type BookingType,
@@ -197,6 +198,76 @@ const days: SharedDay[] = DAYS.map(([date, title, summary, events], index) => {
   };
 });
 
+/**
+ * **THE RETURN IS A CHAINED JOURNEY, because nothing in CI had one** (2026-09-01).
+ *
+ * `legRows` — the whole `.pdf-trek` block, its head, its layover lines and its per-leg times
+ * — was rendered by no fixture in the repo, so no spec and no container smoke ever drew one.
+ * That is how the head printed leg one's clock where the journey runs four hours longer, and
+ * it is also why `itinerary-pdf.template.spec.ts`'s "no facts line inside a journey block"
+ * had been green while iterating over **zero** journey blocks (the same vacuous-guard shape
+ * ADR-0213's thirteenth amendment §2 found on the mono guard).
+ *
+ * Applied as a post-pass rather than through `DAYS`, whose tuple grammar is one row = one
+ * event: a journey is several events collapsed into one row, which is precisely the shape
+ * that grammar cannot express. The numbers are the owner's real return — KEF → FRA → TLV,
+ * a 4:20 wait in Frankfurt and a +3 clock change — so what CI draws is what was reported.
+ */
+const withChainedReturn = (source: SharedDay[]): SharedDay[] =>
+  source.map((day, index) =>
+    index < source.length - 1
+      ? day
+      : {
+          ...day,
+          sections: day.sections.map((section) => ({
+            ...section,
+            events: section.events.map((event) =>
+              event.title === 'טיסה הביתה'
+                ? {
+                    ...event,
+                    title: 'קפלאוויק ← נתב״ג',
+                    journeyTo: 'נתב״ג',
+                    startLabel: '02:20',
+                    endLabel: '15:25',
+                    // The JOURNEY's clock, not leg one's — the projection overrides this for
+                    // a chain and the fixture has to state the same thing, or the spec that
+                    // reads it proves nothing.
+                    time: { label: '02:20', endLabel: '15:25', meaning: TIME_MEANING.EXACT },
+                    durationMinutes: 725,
+                    zoneShiftMinutes: 180,
+                    // **The container's own attachments**, so the fold inside a chained
+                    // journey is drawn by something (2026-09-01). Paper dropped both for a
+                    // chain and nothing noticed, because nothing had a chain.
+                    caption: 'שדה התעופה קפלאוויק משרת את רייקיאוויק ואת כל דרום־מערב האי.',
+                    ops: [
+                      { kind: SHARE_OP_KIND.CODE, code: 'KEF-4821', provider: 'Icelandair' },
+                      { kind: SHARE_OP_KIND.NOTE, title: 'צ׳ק-אין מקוון נפתח 24 שעות לפני' },
+                    ],
+                    legs: [
+                      {
+                        title: 'קפלאוויק ← פרנקפורט',
+                        code: 'FI 562',
+                        startLabel: '02:20',
+                        endLabel: '05:50',
+                        durationMinutes: 210,
+                      },
+                      {
+                        title: 'פרנקפורט ← נתב״ג',
+                        code: 'LY 356',
+                        startLabel: '11:10',
+                        endLabel: '15:25',
+                        durationMinutes: 255,
+                        layoverMinutes: 260,
+                        layoverPlace: 'פרנקפורט',
+                      },
+                    ],
+                  }
+                : event,
+            ),
+          })),
+        },
+  );
+
 export const NINE_DAY_REFERENCE_TRIP: SharedItinerary = {
   status: 'live',
   detailLevel: SHARE_DETAIL_LEVEL.FULL,
@@ -263,7 +334,7 @@ export const NINE_DAY_REFERENCE_TRIP: SharedItinerary = {
     title: 'רייקיאוויק ← סנייפלסנס',
     summary: 'תשעה ימים סביב האי, מהמעגל הזהוב ועד הפיורדים המזרחיים וחזרה דרך סנייפלסנס.',
   },
-  days,
+  days: withChainedReturn(days),
 };
 
 /**

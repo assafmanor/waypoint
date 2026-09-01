@@ -317,7 +317,7 @@ function stayWhen(day: SharedDay): string {
  * missing from the mockup's paper column (_"The pdf should also show the wait durations"_),
  * and it matters most here: whoever is holding a printout cannot tap anything to find out.
  */
-function legRows(event: SharedEvent): string {
+function legRows(event: SharedEvent, attachments = ''): string {
   if (!event.legs?.length) return '';
   const legTime = (leg: NonNullable<SharedEvent['legs']>[number]) =>
     ltr(
@@ -353,6 +353,13 @@ function legRows(event: SharedEvent): string {
           `</span></div>`,
       )
       .join('') +
+    // **The container's own attachments, INSIDE it** (owner, 2026-09-01, on the same report
+    // as the head's clock). The caller used to `return journey + legRows(event)` and stop —
+    // dropping the caption and the ops fold, so a chained flight printed no confirmation
+    // number at all while the same journey on screen kept it (`Trek` renders them as its
+    // children). The comment at that early return already claimed they rode inside; nothing
+    // implemented it, and no fixture had a chain to notice.
+    (attachments ? `<div class="pdf-trek-more">${attachments}</div>` : '') +
     `</div>`
   );
 }
@@ -552,7 +559,10 @@ function eventRow(event: SharedEvent, summary: boolean): string {
   // **A chained journey prints as its container and nothing above it** (§1). The header
   // carries what the row used to say, and the attachments — caption, ops — ride inside, the
   // same reason the screen wraps them rather than dropping the row.
-  if (event.legs?.length) return journey + legRows(event);
+  const attachments =
+    (event.caption ? `<span class="pdf-cap">${prose(event.caption)}</span>` : '') +
+    opsLines(event.ops);
+  if (event.legs?.length) return journey + legRows(event, attachments);
   return (
     journey +
     `<div class="pdf-event${event.hard ? ' hard' : ''}">` +
@@ -566,8 +576,7 @@ function eventRow(event: SharedEvent, summary: boolean): string {
     // A stop's one-line description. Two lines on paper as on screen, though the measure is
     // wider here so the same sentence usually fits in one.
     travelFactsLine(event) +
-    (event.caption ? `<span class="pdf-cap">${prose(event.caption)}</span>` : '') +
-    opsLines(event.ops) +
+    attachments +
     `</span></div>` +
     legRows(event)
   );
@@ -951,6 +960,8 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
    micro scale: an annotation of this row, never a rival to the header's total. */
 .pdf-leg-span{display:block;font-size:7px;color:var(--pdf-muted);}
 .pdf-trek .pdf-event{padding-inline:6px;border-block-start:0;}
+/* The container's caption and ops fold, inset to the legs' own measure (2026-09-01). */
+.pdf-trek-more{padding:0 6px 4px;}
 .pdf-trek .pdf-event+.pdf-event{border-block-start:1px solid var(--pdf-line);}
 .pdf-leg-code{font:600 7.2px 'JetBrains Mono',monospace;color:var(--pdf-muted)!important;}
 .pdf-layover{padding:2px 6px 2px 50px;background:color-mix(in srgb,var(--pdf-ink) 3%,transparent);color:var(--pdf-muted);font-size:7px;}

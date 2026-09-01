@@ -577,6 +577,28 @@ function sharedTimeOf(event: ShareEventRow, zone: string): SharedTime | undefine
 }
 
 /**
+ * **A chained journey's clock: the whole span, as one range.**
+ *
+ * Kept beside `sharedTimeOf` because it answers the same question for the one row shape that
+ * function cannot see — a journey is assembled from several events after the fact, so its
+ * clock is not any single event's edge. Returns a spread rather than a value so the caller
+ * overrides `time` exactly the way it already overrides `endLabel`, and a journey with no
+ * departure label leaves the field alone rather than writing an explicit `undefined`.
+ */
+function journeyClock(
+  startLabel: string | undefined,
+  endLabel: string | undefined,
+): { time?: SharedTime } {
+  if (!startLabel) return {};
+  return {
+    time:
+      endLabel && endLabel !== startLabel
+        ? { label: startLabel, endLabel, meaning: TIME_MEANING.EXACT }
+        : { label: startLabel, meaning: TIME_MEANING.EXACT },
+  };
+}
+
+/**
  * **THE TWO MOMENTS A DAY'S STAY HAS** (ADR-0213's 2026-08-31 amendment §2).
  *
  * A check-in window is the commonest flexible time this app holds, and sharing showed it
@@ -1095,6 +1117,24 @@ export class SharingProjectionService {
         // put the same two airports on the card three times.
         journeyTo: to,
         endLabel: one(last).endLabel,
+        // **The journey's own clock, not leg one's** (owner, 2026-09-01, with a screenshot of
+        // each renderer: _"The pdf shows on the title row the flight times wrong, it only
+        // shows the first flight and not the overall journey. The live sharing page shows this
+        // correctly"_).
+        //
+        // `endLabel` on the line above was overridden here and `time` was not — and `time` is
+        // the field the twelfth amendment §1 made the single authority on what a row's clock
+        // says. So paper spelled the field and printed leg one's `02:20–05:50` where the
+        // journey runs to `15:25`, while the reader page derived its own span from
+        // `startLabel`/`endLabel` and was right for a reason that had nothing to do with the
+        // contract. **Two surfaces disagreeing about a fact** (ADR-0159 §1), and the renderer
+        // that obeyed the contract was the wrong one — which is the tell that the defect is
+        // here, not in either template.
+        //
+        // A journey's clock is one plain range, first departure to last arrival: there is no
+        // flexible edge to preserve, because a chain exists only where every leg is a booked
+        // flight with both ends authored.
+        ...journeyClock(head.startLabel, one(last).endLabel),
         // …and so do its FACTS. Spreading `head` gave the row leg one's duration and leg
         // one's zone shift, which on a two-leg journey is most of a day understated. The
         // span is the first departure to the last arrival, and the shift is origin to final

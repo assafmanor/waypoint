@@ -12,13 +12,22 @@ import {
   resetPdfFontCache,
 } from './itinerary-pdf.template';
 import { PDF_COPY } from './itinerary-pdf.copy';
-import { DENSE_REFERENCE_TRIP, NINE_DAY_REFERENCE_TRIP } from './itinerary-pdf.fixture';
+// `DENSE_REFERENCE_TRIP` is no longer imported here: the only test that rendered it was the
+// journey-block guard, which matched zero blocks in it (2026-09-01). The dense trip's real
+// guard is `pdf-container-smoke`'s page count, which still renders it.
+import { NINE_DAY_REFERENCE_TRIP } from './itinerary-pdf.fixture';
 
 const QR = 'data:image/png;base64,iVBORw0KGgo=';
 
 /** One event row's time cell and its contents. `.pdf-event-copy` always follows it, which is
  *  what lets a lazy match reach the cell's OWN close tag rather than a nested one. */
 const TIME_CELL = /<span class="pdf-event-time">([\s\S]*?)<\/span><span class="pdf-event-copy">/g;
+
+/** The WORDS a cell prints, with its markup and its bidi isolates taken back off. The cell
+ *  holds markup since 2026-08-31 (a flexible word is set in Assistant while its clock stays
+ *  mono), so no assertion about what paper says can read the raw HTML. */
+const strip = (html: string): string =>
+  html.replace(/<[^>]*>/g, '').replace(/[\u2066-\u2069]/g, '');
 
 const input = (projection: SharedItinerary, photoDataUrls: Record<string, string> = {}) => ({
   projection,
@@ -222,10 +231,7 @@ describe('itineraryPdfHtml', () => {
     // **The cell holds MARKUP now**, since the flexible words are set in Assistant while
     // their clock stays mono (2026-08-31). It is always followed by `.pdf-event-copy`, which
     // is what makes the lazy match exact rather than stopping at a nested close tag.
-    const timesOf = (html: string) =>
-      [...html.matchAll(TIME_CELL)].map((m) =>
-        m[1].replace(/<[^>]*>/g, '').replace(/[\u2066-\u2069]/g, ''),
-      );
+    const timesOf = (html: string) => [...html.matchAll(TIME_CELL)].map((m) => strip(m[1]));
 
     const day = NINE_DAY_REFERENCE_TRIP.days[0]!;
     const arms = render({
@@ -387,13 +393,71 @@ describe('itineraryPdfHtml', () => {
     expect(weekday).toContain('\u2013');
   });
 
+  /** Every journey block the reference trip draws. Named because it is what makes the two
+   *  assertions below MEAN anything: until 2026-09-01 no fixture in the repo had a chained
+   *  journey, so a `for` over this list ran zero times and reported green forever. */
+  const treks = (html: string) => html.match(/<div class="pdf-trek">[\s\S]*?<\/div><\/div>/g) ?? [];
+
+  /** The first journey block, refusing outright if the fixture has none — the assertion that
+   *  turns every check below from "vacuously true" into a claim about paper. */
+  const firstTrek = (html: string): string => {
+    const [trek] = treks(html);
+    expect(trek, 'no journey block in the reference trip').toBeTruthy();
+    return trek!;
+  };
+
   /** A leg prints its clock and its flight code; the totals are the frame's (owner,
    *  2026-08-31). Four durations on one flight is what this removes. */
   it('prints no facts line inside a journey block', () => {
-    const html = itineraryPdfHtml(input(DENSE_REFERENCE_TRIP));
-    for (const trek of html.match(/<div class="pdf-trek">.*?<\/div><\/div>/gs) ?? []) {
-      expect(trek).not.toContain('pdf-facts-line');
-    }
+    const blocks = treks(full);
+    expect(blocks.length, 'no journey block in the reference trip').toBeGreaterThan(0);
+    for (const trek of blocks) expect(trek).not.toContain('pdf-facts-line');
+  });
+
+  /**
+   * **A CHAINED JOURNEY KEEPS ITS ATTACHMENTS, ON PAPER TOO** (found 2026-09-01 while
+   * auditing the same row shape the head's clock came from — owner: _"possibly leading to
+   * more"_, and it did).
+   *
+   * `eventRow` did `if (event.legs?.length) return journey + legRows(event)` and stopped, so
+   * the caption and the ops fold were dropped for a chain — a printout of a connecting flight
+   * carried no confirmation number, which is the one thing a printout is FOR. The comment
+   * directly above that early return already claimed the attachments "ride inside"; nothing
+   * implemented it, and the reader page's own guard (_"keeps a journey row's ops fold inside
+   * the container"_) had no paper twin.
+   */
+  it('keeps a chained journey’s caption and ops fold inside the container', () => {
+    const trek = firstTrek(full);
+    // The confirmation number is inside the block, not merely somewhere on the page — the
+    // appendix also prints codes, so an unscoped search would pass on a dropped fold.
+    expect(strip(trek)).toContain('KEF-4821');
+    expect(strip(trek)).toContain('צ׳ק-אין מקוון נפתח 24 שעות לפני');
+    expect(strip(trek)).toContain('שדה התעופה קפלאוויק');
+  });
+
+  /**
+   * **THE HEAD STATES THE WHOLE JOURNEY, NOT LEG ONE** (owner, 2026-09-01, with a screenshot
+   * of each renderer side by side: _"The pdf shows on the title row the flight times wrong,
+   * it only shows the first flight and not the overall journey. The live sharing page shows
+   * this correctly"_).
+   *
+   * The defect was in the projection — `endLabel` was overridden for a chain and `time` was
+   * not — but only paper could show it, because the reader page composed its own span from
+   * `startLabel`/`endLabel` instead of reading the contract. So the assertion lives here, on
+   * the renderer that obeys the field.
+   */
+  it('states the journey’s whole span on the block head, not the first leg’s', () => {
+    const trek = firstTrek(full);
+    const head = /<div class="pdf-trek-head">[\s\S]*?<\/div>/.exec(trek)?.[0] ?? '';
+    const legTimes = [...trek.matchAll(TIME_CELL)].map(([, cell]) => strip(cell));
+
+    // 02:20 to 15:25 — the first leg's departure and the LAST leg's arrival.
+    expect(strip(head)).toContain('02:20\u201315:25');
+    // And not leg one's own range, which is what it printed.
+    expect(strip(head)).not.toContain('02:20\u201305:50');
+    // The legs still carry their own clocks, so the fix did not move the span down a level.
+    expect(legTimes).toContain('02:20\u201305:50');
+    expect(legTimes).toContain('11:10\u201315:25');
   });
 
   /**
