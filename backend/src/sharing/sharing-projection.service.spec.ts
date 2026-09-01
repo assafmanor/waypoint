@@ -8,6 +8,8 @@ import {
   SHARE_DAYPART,
   SHARE_DETAIL_LEVEL,
   SHARE_OP_KIND,
+  TRAVEL_MODE,
+  routeLegKey,
   type ShareDetailLevel,
 } from '@waypoint/shared';
 import { EnrichmentService } from '../enrichment/enrichment.service';
@@ -1146,6 +1148,144 @@ describe('SharingProjectionService', () => {
         [ids['Reykjavík']]: { region: { he: { value: 'מיוואטן', lang: 'he' } } },
       });
       expect(projection.days.every((day) => day.title.kind !== 'region')).toBe(true);
+    });
+  });
+
+  /**
+   * **A row with no place must not delete the journeys around it** (owner, 2026-08-31:
+   * _"between day parts, the transit line gets omitted"_).
+   *
+   * Reported against the dayparts and it is not a daypart bug — the sections are cut from
+   * the same rows the pairing walks. `journeyLookup` used to pair `events[i - 1]` with
+   * `events[i]`, so an ice cave with no address broke the chain on BOTH sides and a day with
+   * three drives printed one. The fixture is that exact shape: placed → placeless → placed,
+   * with a stored leg for the two ENDS and none for either adjacent pair, so the assertion
+   * can only pass if the pairing skipped the middle row.
+   */
+  describe('the journey between two placed rows, across a row with no place', () => {
+    let gapTripId = '';
+    let farEventId = '';
+
+    const A = { lat: 64.1466, lng: -21.9426 };
+    const B = { lat: 63.9861, lng: -22.5654 };
+
+    beforeAll(async () => {
+      const trip = await prisma.trip.create({
+        data: {
+          name: 'איסלנד · מערות',
+          destination: 'איסלנד',
+          startDate: new Date('2026-09-11'),
+          endDate: new Date('2026-09-11'),
+          timezone: 'Atlantic/Reykjavik',
+          createdBy: OWNER,
+          updatedBy: OWNER,
+          memberships: { create: [{ userId: OWNER, role: 'admin' }] },
+        },
+      });
+      gapTripId = trip.id;
+
+      const [near, far] = await Promise.all([
+        prisma.place.create({
+          data: {
+            tripId: trip.id,
+            name: 'רייקיאוויק',
+            lat: A.lat,
+            lng: A.lng,
+            timezone: 'Atlantic/Reykjavik',
+            updatedBy: OWNER,
+          },
+        }),
+        prisma.place.create({
+          data: {
+            tripId: trip.id,
+            name: 'הבלו לגון',
+            lat: B.lat,
+            lng: B.lng,
+            timezone: 'Atlantic/Reykjavik',
+            updatedBy: OWNER,
+          },
+        }),
+      ]);
+
+      const event = (title: string, at: string, placeId?: string) =>
+        prisma.event.create({
+          data: {
+            tripId: trip.id,
+            date: new Date('2026-09-11'),
+            title,
+            kind: 'soft',
+            startsAt: new Date(at),
+            placeId,
+            updatedBy: OWNER,
+          },
+        });
+      await event('ארוחת בוקר', '2026-09-11T08:00:00Z', near.id);
+      // No place at all: the row the owner's screenshot showed, and the one that used to
+      // swallow the drive on either side of it.
+      await event('צפייה בזוהר הצפוני', '2026-09-11T12:00:00Z');
+      const arrival = await event('הבלו לגון', '2026-09-11T16:00:00Z', far.id);
+      farEventId = arrival.id;
+
+      // The trip has no booking, so `derivedTravelMode` cannot infer a car; the seeded walk
+      // is what `defaultLegTravelMode` reads to pick a mode, and the driving row is what the
+      // projection then prints. Both are needed — one alone answers a different question.
+      await prisma.routeLeg.createMany({
+        data: [TRAVEL_MODE.WALKING, TRAVEL_MODE.DRIVING].map((mode) => ({
+          key: routeLegKey(A, B, mode),
+          mode,
+          fromLat: A.lat,
+          fromLng: A.lng,
+          toLat: B.lat,
+          toLng: B.lng,
+          durationSeconds: mode === TRAVEL_MODE.WALKING ? 32_400 : 2_700,
+          distanceMeters: 48_000,
+          provider: 'test',
+        })),
+      });
+    });
+
+    afterAll(async () => {
+      await prisma.routeLeg.deleteMany({
+        where: {
+          key: { in: [TRAVEL_MODE.WALKING, TRAVEL_MODE.DRIVING].map((m) => routeLegKey(A, B, m)) },
+        },
+      });
+      if (gapTripId) await prisma.trip.deleteMany({ where: { id: gapTripId } });
+    });
+
+    it('prints the drive on the row it leads into, not nowhere', async () => {
+      const code = generatePublicCode();
+      await prisma.tripShare.create({
+        data: {
+          tripId: gapTripId,
+          code,
+          policyHash: sharePolicyHash({
+            detailLevel: SHARE_DETAIL_LEVEL.FULL,
+            sensitive: { bookingSecrets: false, notesAndTasks: false, travelerIdentity: false },
+            documentIds: [],
+          }),
+          detailLevel: SHARE_DETAIL_LEVEL.FULL,
+          includeBookingSecrets: false,
+          includeNotesAndTasks: false,
+          includeTravelerIdentity: false,
+          createdBy: OWNER,
+        },
+      });
+      const projection = await service.byCode(code);
+      const rows = projection.days.flatMap((day) =>
+        day.sections.flatMap((section) => section.events),
+      );
+
+      // The far row carries it, which is what puts the line in that row's own daypart —
+      // "the most fitting part of the day" in the report's words.
+      const arrival = rows.find((event) => event.title.includes('הבלו לגון'));
+      expect(arrival?.journey).toEqual({ mode: TRAVEL_MODE.DRIVING, minutes: 45, km: 48 });
+      expect(farEventId).toBeTruthy();
+
+      // **And exactly one row carries a journey.** A pairing that also emitted one for the
+      // placeless row would satisfy the assertion above and still be wrong: there is no
+      // second known point for it to be a journey TO.
+      expect(rows.filter((event) => event.journey)).toHaveLength(1);
     });
   });
 });

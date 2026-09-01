@@ -598,10 +598,10 @@ function stayMoments(
   index: number,
   detail: ShareDetailLevel,
   zones: TripZoneContext,
-): { checkIn?: SharedTime; checkOut?: { place: string; time: SharedTime } } {
+): { checkIn?: SharedTime; checkOut?: SharedTime } {
   // Summary carries no clock at all — the same line `projectEvent` draws.
   if (detail === SHARE_DETAIL_LEVEL.SUMMARY) return {};
-  const out: { checkIn?: SharedTime; checkOut?: { place: string; time: SharedTime } } = {};
+  const out: { checkIn?: SharedTime; checkOut?: SharedTime } = {};
 
   const here = stayRows[index];
   const previous = stays[index - 1];
@@ -626,15 +626,16 @@ function stayMoments(
       'end',
     );
     const label = shareTimeLabel(left.endsAt, zone);
-    out.checkOut = {
-      place: previous,
-      time:
-        meaning === TIME_MEANING.WINDOW && left.endWindowStart
-          ? // A closed window on the OUT edge opens at `endWindowStart` and shuts at the
-            // check-out itself — the earliest you may leave and the latest, in that order.
-            { label: shareTimeLabel(left.endWindowStart, zone), endLabel: label, meaning }
-          : { label, meaning },
-    };
+    // **The place it belongs to is NOT published** (2026-08-31). It is the card directly
+    // above — whose header the reader page never collapses — and naming it here made the day
+    // read future → past → future while spending amber on a place. `previous` is still read,
+    // as the test for whether last night was somewhere ELSE; it just no longer travels.
+    out.checkOut =
+      meaning === TIME_MEANING.WINDOW && left.endWindowStart
+        ? // A closed window on the OUT edge opens at `endWindowStart` and shuts at the
+          // check-out itself — the earliest you may leave and the latest, in that order.
+          { label: shareTimeLabel(left.endWindowStart, zone), endLabel: label, meaning }
+        : { label, meaning };
   }
   return out;
 }
@@ -1381,21 +1382,48 @@ export class SharingProjectionService {
       to: { lat: number; lng: number };
       keys: string[];
     }[] = [];
+    /**
+     * **The chain is between PLACED rows, not between adjacent ones** (owner, 2026-08-31:
+     * _"between day parts the transit line gets omitted"_ — reported as a daypart bug and it
+     * is not one; the sections are rendered from the same rows either way).
+     *
+     * Pairing `events[i - 1]` with `events[i]` means a row with no place breaks the chain on
+     * BOTH sides: an ice cave with no address between two hotels deleted the drive into it
+     * and the drive out of it, so a day showed one journey where it has three. Carrying the
+     * last placed row forward instead leaves the placeless row where it is and joins the two
+     * points that actually exist.
+     *
+     * **What that costs, stated rather than hidden:** the printed leg is then the DIRECT
+     * route between two known points and does not count a stop the reader can see between
+     * them. That is the honest shape here — the alternative is printing nothing at all — but
+     * it is a real understatement on a day with an unplaced detour, and the app's own
+     * `planLegs` has the identical gap (backlogged, not fixed from a read-only projection).
+     */
     for (const { events } of byDay) {
-      for (let i = 1; i < events.length; i++) {
-        const from = events[i - 1].placeId ?? events[i - 1].booking?.toPlaceId;
-        const to = events[i].placeId ?? events[i].booking?.fromPlaceId;
-        if (!from || !to || from === to) continue;
-        const [a, b] = [coordOf.get(from), coordOf.get(to)];
-        if (!a || !b) continue;
-        pairs.push({
-          eventId: events[i].id,
-          fromPlaceId: from,
-          toPlaceId: to,
-          from: a,
-          to: b,
-          keys: TRAVEL_MODES.map((mode) => routeLegKey(a, b, mode)),
-        });
+      let prevId: string | undefined;
+      let prev: { lat: number; lng: number } | undefined;
+      for (const event of events) {
+        const to = event.placeId ?? event.booking?.fromPlaceId;
+        const b = to ? coordOf.get(to) : undefined;
+        const fromId = prevId;
+        const a0 = prev;
+        if (fromId && a0 && to && b && fromId !== to) {
+          pairs.push({
+            eventId: event.id,
+            fromPlaceId: fromId,
+            toPlaceId: to,
+            from: a0,
+            to: b,
+            keys: TRAVEL_MODES.map((mode) => routeLegKey(a0, b, mode)),
+          });
+        }
+        // Where the row LEAVES you, which is the far end of a booking rather than its start.
+        const from = event.placeId ?? event.booking?.toPlaceId;
+        const a = from ? coordOf.get(from) : undefined;
+        if (from && a) {
+          prevId = from;
+          prev = a;
+        }
       }
     }
     if (pairs.length === 0) return new Map();

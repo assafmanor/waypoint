@@ -711,14 +711,23 @@ export const sharedDaySchema = z.strictObject({
    * `stay` above, which is a name with no clock. So the fix for "show me the ranges" cannot
    * be a rule about rows — the row does not exist.
    *
-   * `checkIn` belongs to `stay`: the day the run begins. `checkOut` names the place you are
-   * LEAVING, which on a transfer day is not the place named above — so it carries its own,
-   * and a day can hold both. A middle night has neither, which is the ordinary case.
+   * `checkIn` belongs to `stay`: the day the run begins. `checkOut` is the morning you leave
+   * the night before's, which on a transfer day is a different place — so a day can hold both.
+   * A middle night has neither, which is the ordinary case.
+   *
+   * **`checkOut` carried that place's NAME and no longer does** (owner, 2026-08-31, with a
+   * screenshot: _"the day titles has gotten a little messy: too many line breaks, questionable
+   * ordering of the details"_). Naming it made the card read future → past → future — tonight's
+   * hotel, then yesterday's, then tonight's hour — and it put a PLACE inside the amber clock
+   * run, which is ADR-0028's budget spent on the wrong axis. The place is the card immediately
+   * above, whose header the reader page never collapses, so nothing is lost by leaving it
+   * there. A field the projection does not publish cannot be revealed by a renderer, which is
+   * this file's own argument for dropping it rather than merely not printing it.
    *
    * Absent below Full, with every other clock.
    */
   checkIn: sharedTimeSchema.optional(),
-  checkOut: z.strictObject({ place: z.string(), time: sharedTimeSchema }).optional(),
+  checkOut: sharedTimeSchema.optional(),
   photo: sharedPhotoSchema.optional(),
   sections: z.array(sharedDaypartSectionSchema),
 });

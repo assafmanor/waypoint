@@ -75,8 +75,20 @@ describe.skipIf(!chromiumPath)('PdfBrowserService against a real Chromium', () =
   });
 
   it('keeps Summary to a single page', async () => {
+    // **A Summary projection carries no stay moments**, so flipping only the level would
+    // measure a page the server cannot produce: `stayMoments` returns `{}` below Full, and
+    // the reference fixture is a Full one. The template prints what it is given and gates
+    // nothing itself — the projection is the single gate (ADR-0096) — so the shaping belongs
+    // here. It stopped being academic the day the fixture grew both moments (2026-09-01) and
+    // this assertion went red on two lines per day card that no Summary reader ever sees.
     const summary = await service.render(
-      { ...NINE_DAY_REFERENCE_TRIP, detailLevel: SHARE_DETAIL_LEVEL.SUMMARY },
+      {
+        ...NINE_DAY_REFERENCE_TRIP,
+        detailLevel: SHARE_DETAIL_LEVEL.SUMMARY,
+        days: NINE_DAY_REFERENCE_TRIP.days.map(
+          ({ checkIn: _checkIn, checkOut: _checkOut, ...day }) => day,
+        ),
+      },
       URL_UNDER_TEST,
     );
     expect(countPages(summary)).toBe(1);

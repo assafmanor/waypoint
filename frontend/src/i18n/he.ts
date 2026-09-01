@@ -3340,10 +3340,12 @@ export const t = {
       timeUntil: (clock: string) => `עד ${clock}`,
       /** The stay's two moments on the day's frame (§2). The nouns are the app's own
        *  (`t.transition.checkIn`/`checkOut`), so the shared page and the day view name the
-       *  same thing the same way. `checkOut` names the place, because on a transfer day it is
-       *  not the place the line above it names. */
+       *  same thing the same way. Neither names a place: see `checkOut` below. */
       checkIn: 'צ׳ק-אין',
-      checkOut: (place: string) => `צ׳ק-אאוט ${bindPrefix('מ', place)}`,
+      /** **No place** (2026-08-31). It took one, and naming the hotel you are LEAVING put a
+       *  past place under tonight's and inside the amber clock run. The card above already
+       *  says where you slept, and its header is never collapsed. */
+      checkOut: 'צ׳ק-אאוט',
       // **How the trip moves**, in the owner's own words (2026-08-30): a circumnavigation
       // where the base changes every day or two is a different thing from a trip you take
       // from one place. `הקפה` is mine — a rolling trip that closes its circle is common

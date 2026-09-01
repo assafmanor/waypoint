@@ -632,33 +632,47 @@ function DayCard({
  * nowhere: the fourth amendment moved the stay out of the schedule into `day.stay`, a name
  * with no clock, so there was no row for a rule about rows to reach.
  *
+ * **The check-out names no place** (owner, 2026-08-31: _"the day titles has gotten a little
+ * messy: too many line breaks, questionable ordering of the details"_). It used to, and the
+ * card then read future → past → future — tonight's hotel, then the one you left this
+ * morning, then tonight's hour — with the past one painted amber, which is a PLACE inside the
+ * clock's colour (ADR-0028 rule 4). The place is the card immediately above, and the reader
+ * page's accordion collapses day BODIES and never headers, so it is always on screen.
+ *
  * **Not appended to the stay's own line, and that is a measurement rather than a taste.**
- * `.sh-day-copy span` is `nowrap` with an ellipsis, and in RTL the cut falls at the logical
+ * `.sh-day-copy > span` is `nowrap` with an ellipsis, and in RTL the cut falls at the logical
  * end — exactly where a trailing clock sits. A real hotel name measures ⁦275px⁩ of ink in a
  * ⁦206px⁩ box at 360, so the check-in vanished with nothing on screen saying it had been
  * there, which is the worst shape a failure can take. Its own line also holds BOTH moments,
  * which one line cannot: on a transfer day you leave one place and sleep at another.
  *
- * The line is the only one in this header allowed to wrap (`.sh-stay-when`): a name is
- * unbounded and must be cut, a pair of clocks is bounded and cutting it only costs the fact.
- * Measured: ⁦17px⁩ for one moment, ⁦34px⁩ for two, and the header goes ⁦76px⁩ → ⁦95px⁩ either way —
- * the second moment is free, absorbed by the height the date column already takes.
+ * **A MOMENT PER LINE, and the separator is gone** (owner, 2026-09-01, with a photograph:
+ * _"it currently reads `Check out <time> · check out` / `<time>` … I think that it should read
+ * `Check out <time>` / `Check in <time>`"_). Joined by a `·` the pair is one run that wraps
+ * wherever it runs out of box, and at 360 that fell between `צ׳ק-אין` and its own clock — a
+ * noun on one line and the time it belongs to on the next, which is worse than either moment
+ * being cut. Two blocks wrap at the one place a reader can predict, and the height is
+ * identical: this line was already two lines on a transfer day.
+ *
+ * Each moment is bounded (a noun plus at most a range), so the blocks keep the header's
+ * `nowrap`; only the CONTAINER stopped needing permission to wrap, because nothing wraps
+ * inside it any more. Measured: ⁦17px⁩ for one moment, ⁦34px⁩ for two, and the header goes
+ * ⁦76px⁩ → ⁦95px⁩ either way — the second moment is free, absorbed by the height the date
+ * column already takes.
  */
 function StayWhen({ day }: { day: SharedDay }) {
   if (!day.checkIn && !day.checkOut) return null;
   return (
     <span className="sh-stay-when">
       {day.checkOut ? (
-        <>
-          {t.share.public.checkOut(autoIsolate(day.checkOut.place))}{' '}
-          <SharedTimeText time={day.checkOut.time} />
-        </>
+        <span className="sh-moment">
+          {t.share.public.checkOut} <SharedTimeText time={day.checkOut} />
+        </span>
       ) : null}
-      {day.checkOut && day.checkIn ? ' · ' : null}
       {day.checkIn ? (
-        <>
+        <span className="sh-moment">
           {t.share.public.checkIn} <SharedTimeText time={day.checkIn} />
-        </>
+        </span>
       ) : null}
     </span>
   );

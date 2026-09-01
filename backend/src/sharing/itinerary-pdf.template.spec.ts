@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  NARRATIVE_SEPARATOR,
   SHARE_DAYPART,
   SHARE_OP_KIND,
   SHARE_DETAIL_LEVEL,
@@ -393,6 +394,38 @@ describe('itineraryPdfHtml', () => {
     for (const trek of html.match(/<div class="pdf-trek">.*?<\/div><\/div>/gs) ?? []) {
       expect(trek).not.toContain('pdf-facts-line');
     }
+  });
+
+  /**
+   * **THE STAY'S TWO MOMENTS ARE TWO LINES, ON PAPER AS ON THE READER** (owner, 2026-09-01:
+   * _"I wanted a line break between the check out and check in times"_).
+   *
+   * They were joined by the narrative separator here, on the reasoning that half an A4 column
+   * is wide enough that the run never wraps — which is true and answers the wrong question:
+   * the break is how the two moments read, not a wrap being repaired, and the two renderers
+   * must not teach different shapes for one line (ADR-0159 §1).
+   */
+  it('breaks the stay’s two moments onto their own lines, with no separator between them', () => {
+    // The FIRST day leaves nothing behind it, so it carries one moment; the transfer days
+    // carry both, and both is the shape the break is about.
+    const headers = full.match(/<span class="pdf-day-copy">[\s\S]*?<\/header>/g) ?? [];
+    const lines = headers
+      .filter((block) => block.includes('pdf-stay-when'))
+      .map((block) => block.slice(block.indexOf('<span class="pdf-stay-when">')));
+    expect(lines.length, 'no stay-when line in the reference trip').toBeGreaterThan(0);
+
+    const both = lines.filter(
+      (line) => line.includes(PDF_COPY.checkOut('')) && line.includes(PDF_COPY.checkIn('')),
+    );
+    expect(both.length, 'no day carries both moments').toBeGreaterThan(0);
+    for (const line of both) {
+      expect((line.match(/class="pdf-moment"/g) ?? []).length).toBe(2);
+      // The `·` is what put a noun on one line and its own clock on the next.
+      expect(line).not.toContain(NARRATIVE_SEPARATOR);
+    }
+    // Every moment is a block, on a one-moment day too — so a day with one never quietly
+    // becomes the inline shape the pair was joined in.
+    for (const line of lines) expect(line).toContain('class="pdf-moment"');
   });
 
   // A composed line cannot sniff its own direction — see `itinerary-narrative.fallback.ts`.

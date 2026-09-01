@@ -305,7 +305,7 @@
   filter: saturate(0.82);
 }
 
-.sh-day.is-past .sh-day-copy strong {
+.sh-day.is-past .sh-day-copy > strong {
   color: var(--muted);
 }
 
@@ -388,19 +388,28 @@
   padding: 9px 11px;
 }
 
-.sh-day-copy strong,
-.sh-day-copy span {
+/* **Direct children only, and the combinator is the whole fix** (ADR-0213's 2026-08-31
+   amendment §3; owner: _"the day titles has gotten a little messy: too many line breaks"_).
+   These three rules describe the header's LINES, and as descendant selectors they also
+   described every span nested inside one: `.sh-stay-when`'s `.sh-said` and `.sh-time`
+   became `display: block` at `--sh-micro` in `--muted`, so `צ׳ק-אאוט עד 11:00` printed as
+   three stacked grey lines and the amber the clock is owed was overwritten. That is the
+   third thing this descendant selector has caught that it never meant to — the other two
+   are documented at `.sh-stay .icon` and `.sh-stay-when` below, and both were repaired by
+   working AROUND the specificity instead of narrowing it. Narrow it. */
+.sh-day-copy > strong,
+.sh-day-copy > span {
   display: block;
 }
 
-.sh-day-copy strong,
-.sh-day-copy span {
+.sh-day-copy > strong,
+.sh-day-copy > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.sh-day-copy span {
+.sh-day-copy > span {
   margin-block-start: 3px;
   color: var(--muted);
   font-size: var(--sh-micro);
@@ -761,7 +770,7 @@
   color: var(--teal);
 }
 /* **The glyph is spaced by a margin, not by `gap`, and that is a repair.** This rule used to
-   say `display: inline-flex; gap: 5px` — and `.sh-day-copy span` (0,1,1) sets `display:
+   say `display: inline-flex; gap: 5px` — and `.sh-day-copy > span` (0,1,1) sets `display:
    block`, which beats `.sh-stay` (0,1,0), so the element was never a flex container and the
    gap did nothing: measured 0px between the bed and the word (owner, 2026-08-30, _"no
    spacing at all between the bed glyph and the לנים ב..."_). Winning the specificity fight
@@ -775,27 +784,42 @@
   vertical-align: -2px;
 }
 
-/* **The stay's two moments, and the ONE line in this header allowed to wrap** (ADR-0213's
-   2026-08-31 amendment §2).
+/* **The stay's two moments, and the ONE place in this header a break is allowed**
+   (ADR-0213's 2026-08-31 amendment §2, amended 2026-09-01).
 
-   `.sh-day-copy span` above is (0,1,1) and sets `nowrap` with `text-overflow: ellipsis`,
+   `.sh-day-copy > span` above is (0,1,1) and sets `nowrap` with `text-overflow: ellipsis`,
    which is right for every other line here: a trip title and a hotel name are unbounded, so
-   they must be cut. A pair of clocks is not — `צ׳ק-אאוט מויק עד 11:00 · צ׳ק-אין מ-15:00` is
-   the longest this line can ever be — so cutting it buys nothing and costs the reader the
-   fact. Measured at ⁦246px⁩ of ink in a ⁦206px⁩ box at 360, i.e. `nowrap` ate the check-in on
-   every transfer day of the trip; wrapped it is ⁦34px⁩ against ⁦17px⁩ for one moment, and the
-   header measures ⁦95px⁩ either way because the second line lands in height the date column
+   they must be cut. A pair of clocks is not — `צ׳ק-אאוט עד 11:00` + `צ׳ק-אין מ-15:00` is the
+   longest this can ever be — so cutting it buys nothing and costs the reader the fact.
+   Measured at ⁦246px⁩ of ink in a ⁦206px⁩ box at 360, i.e. `nowrap` ate the check-in on every
+   transfer day of the trip; broken it is ⁦34px⁩ against ⁦17px⁩ for one moment, and the header
+   measures ⁦95px⁩ either way because the second line lands in height the date column
    already takes.
+
+   **The break is between the two moments, never inside one** — see `.sh-moment` below.
+   Free wrapping put it between `צ׳ק-אין` and its own clock.
 
    **This is also why the clock is not appended to `.sh-stay` itself.** It would be the same
    ellipsis, and in RTL the cut falls at the logical end — exactly where the clock sits — so a
    long hotel name would delete it silently. The specificity fight is the one this sheet
-   already lost once above (`.sh-day-copy span` beating `.sh-stay`'s `display`), so this is
+   already lost once above (`.sh-day-copy > span` beating `.sh-stay`'s `display`), so this is
    (0,2,0) on purpose. */
-.sh-day-copy .sh-stay-when {
+.sh-day-copy > .sh-stay-when {
   margin-block-start: 2px;
   color: var(--amber-deep);
   white-space: normal;
+}
+
+/* **One moment per line** (owner, 2026-09-01: _"it should read `Check out <time>` /
+   `Check in <time>`"_). As one `·`-joined run the pair wrapped wherever it ran out of box,
+   and at 360 that fell between `צ׳ק-אין` and its own clock — a noun stranded from the time
+   it names. Each moment is bounded, so these keep the header's `nowrap`; the container's
+   `white-space: normal` above now only permits the break BETWEEN them. */
+.sh-stay-when .sh-moment {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* **The legs of one journey, under the journey.** The frame above already states the
