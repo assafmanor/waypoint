@@ -83,8 +83,18 @@ const leg = (estimates: RoutedLeg['estimates']): RoutedLeg => ({
   refusedModes: [],
   pendingModes: [],
 });
+/** **The day's SECOND hole** — `STOPS` is three stops, so it has two, and since ADR-0206 §AZ4 a
+ *  day is recorded as answered only once every hole has an answer. A fixture that covers one of
+ *  two describes a half-answered day, which is precisely the state that must stay re-askable. */
+const nextLeg = (estimates: RoutedLeg['estimates']): RoutedLeg => ({
+  fromIndex: 1,
+  toIndex: 2,
+  estimates,
+  refusedModes: [],
+  pendingModes: [],
+});
 
-const answered: RouteBatch = { legs: [leg([walk, drive])] };
+const answered: RouteBatch = { legs: [leg([walk, drive]), nextLeg([walk, drive])] };
 const warming: RouteBatch = { legs: [leg([walk])], retryAfterSeconds: 2 };
 
 function setOnline(online: boolean): void {
@@ -133,11 +143,14 @@ describe('useDayTravel', () => {
   it('answers null on a cold read, and does not throw when the ask fails', async () => {
     routes.fetchRoutes.mockRejectedValue(new Error('offline blip'));
 
-    const { result } = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+    const { result, unmount } = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
 
     expect(result.current.estimateFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toBeNull();
     await waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(1));
     expect(result.current.estimateFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toBeNull();
+    // **Unmounted, because a failed ask now schedules a retry** (§AZ4) and this file has no
+    // auto-cleanup: a mount left standing would keep asking through every later spec's counts.
+    unmount();
   });
 
   it('asks once for the day, carrying every mode', async () => {
@@ -412,6 +425,107 @@ describe('useDayTravel', () => {
     const { result } = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
     await waitFor(() => expect(result.current.settled).toBe(true));
     expect(result.current.warmingFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toBe(false);
+  });
+
+  /**
+   * **A FAILED REQUEST IS RETRIED, NOT ACCEPTED** (ADR-0206 §AZ4).
+   *
+   * Every failure path used to end the ask: a 500, a dropped connection, a captive portal, a cold
+   * container. The effect only re-runs on a change of trip, fingerprint or online flag, so the day
+   * then held nothing for the rest of the session — the fourth arrival of _"it stays that way
+   * until I restart the app"_, by the one door the three earlier fixes did not close.
+   */
+  it('retries a failed ask, and lands the answer when one arrives', async () => {
+    vi.useFakeTimers();
+    routes.fetchRoutes.mockRejectedValueOnce(new Error('cell died')).mockResolvedValue(answered);
+
+    const { result, unmount } = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+    await vi.waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(1));
+    // Nothing yet, and nothing claiming to be coming that is not.
+    expect(result.current.estimateFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toBeNull();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    await vi.waitFor(() =>
+      expect(result.current.estimateFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toEqual(walk),
+    );
+    unmount();
+  });
+
+  /** Bounded by the warm's own attempt count, so a dead provider terminates into §D4's silence
+   *  rather than polling a phone for the length of a trip. */
+  it('gives up after the same bound the warm uses', async () => {
+    vi.useFakeTimers();
+    routes.fetchRoutes.mockRejectedValue(new Error('provider down'));
+
+    const { unmount } = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+    await vi.waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      // Past the whole doubling ladder, with the per-wait cap applied.
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+    });
+    expect(routes.fetchRoutes).toHaveBeenCalledTimes(DAY_TRAVEL_WARM_ATTEMPTS);
+    unmount();
+  });
+
+  /**
+   * **"SOMETHING ARRIVED" IS NOT "NOTHING IS MISSING"** (ADR-0206 §AZ4) — the 2026-08-28 defect
+   * reached one door along. A batch that answers one hole of two and offers no `Retry-After` was
+   * recorded as the day being answered in full, so the hole with nothing in it could not be asked
+   * about again for the rest of the session.
+   */
+  it('does not record a day whose other hole was never answered', async () => {
+    routes.fetchRoutes.mockResolvedValue({ legs: [leg([walk, drive])] } satisfies RouteBatch);
+
+    const first = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+    await waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(1));
+    first.unmount();
+
+    const second = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+    await waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(2));
+    second.unmount();
+  });
+
+  /** …and a hole the gate REFUSED is an answer, so a day of one estimate and one refusal is
+   *  settled and must not re-ask on every visit. */
+  it('counts a refusal as an answer for that hole', async () => {
+    routes.fetchRoutes.mockResolvedValue({
+      legs: [
+        leg([walk, drive]),
+        { ...nextLeg([]), refusedModes: [TRAVEL_MODE.WALKING], pendingModes: [] },
+      ],
+    } satisfies RouteBatch);
+
+    const first = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+    await waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(1));
+    first.unmount();
+
+    const second = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+    await waitFor(() =>
+      expect(second.result.current.estimateFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toEqual(
+        walk,
+      ),
+    );
+    expect(routes.fetchRoutes).toHaveBeenCalledTimes(1);
+    second.unmount();
+  });
+
+  /**
+   * **A DAY THAT HAS PAINTED STAYS PAINTED** (ADR-0206 §AZ6). §AT holds the first paint on this
+   * device's cache read; keyed on the fingerprint, that hold fired again every time a peer moved a
+   * stop over the wire — and `.day-page[data-measuring]` hides the WHOLE day, not the rows.
+   */
+  it('spends the first-paint hold once, so a stop arriving over the wire never un-settles it', async () => {
+    const { result, rerender } = renderHook(
+      ({ stops }: { stops: readonly LatLng[] }) => useDayTravel({ tripId: TRIP_ID, stops }),
+      { initialProps: { stops: STOPS } },
+    );
+    await waitFor(() => expect(result.current.settled).toBe(true));
+
+    // A peer's edit: the day's stops change under a surface somebody is reading.
+    rerender({ stops: RESHUFFLED });
+    expect(result.current.settled).toBe(true);
   });
 
   it('does not re-ask a day it already answered in full', async () => {

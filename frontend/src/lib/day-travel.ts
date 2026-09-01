@@ -14,7 +14,7 @@
 //
 // Pure plumbing otherwise: it decides nothing about what a journey says. That is `dayJourney`'s
 // (`lib/day-joins.ts`) and `JourneyBlock`'s.
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   carriedLegMeters,
   defaultLegTravelMode,
@@ -22,7 +22,6 @@ import {
   haversineMeters,
   exceedsTravelCeiling,
   isRoutableMode,
-  legModeOverride,
   legTravelMode,
   TRAVEL_MODE,
   type Booking,
@@ -180,19 +179,6 @@ export interface DayTravelReads {
    * override saying what the derivation already says, and then hold it against a later change.
    */
   defaultModeFor(from: TripEvent, to: TripEvent): TravelMode;
-  /**
-   * **Did a PERSON pick this leg's mode?** (ADR-0206 §AW) — the presence of an override row, asked
-   * through `legModeOverride` so it is the same lookup `modeFor` makes rather than a second loop.
-   *
-   * `modeFor` cannot answer it: the derivation stands behind the override, so a leg the app called
-   * a drive and a leg somebody declared a drive come back identically. And comparing against
-   * `defaultModeFor` is not the same question — an override that agrees with a default the distance
-   * has since moved is still a row somebody wrote, and still has to be reachable to be cleared.
-   *
-   * The one reader is the day's journey: a mode a person picked keeps its block even where the app
-   * has no length to print, because the block is the only thing carrying the control that picked it.
-   */
-  chosenFor(from: TripEvent, to: TripEvent): boolean;
 }
 
 const NOTHING: DayTravelReads['estimateFor'] = () => null;
@@ -312,6 +298,31 @@ export function useDayTravelReads(opts: {
   const { tripId, legs, bookings, places, overrides } = opts;
   const mode = useMemo(() => derivedTravelMode(bookings), [bookings]);
 
+  /**
+   * **KEYED ON THE LEGS' CONTENT, NEVER ON THE ARRAY'S IDENTITY** (ADR-0206 §AZ7).
+   *
+   * The memo below has always been documented as load-bearing — _"both day surfaces re-render on
+   * the clock … an unmemoized build would hand `useDayTravel` a fresh array every second"_ — and
+   * it was keyed on `legs`, which BOTH surfaces rebuild every render: `DayView` derives its blocks
+   * outside any memo, and a memo over a fresh array is a memo over nothing. So the whole chain
+   * downstream of it — the resolution, the reads object, and each surface's map of journeys — ran
+   * once a second on a screen that had not changed.
+   *
+   * `useDayTravel` next door already solved this for its own input and this is the same shape,
+   * one layer up: a string over every field the resolution reads, with the values themselves taken
+   * through a ref. Nothing here is a micro-optimisation — it is the difference between a day
+   * surface that re-derives on a tick and one that does not, which is what
+   * `frontend/CLAUDE.md` names as having turned the preview suite red.
+   */
+  const legsKey = legs
+    .map(
+      (leg) =>
+        `${leg.from.id}>${leg.to.id}|${leg.fromEdge ?? ''}|${leg.fromIsStay ? 1 : 0}|${leg.departAfterMs ?? ''}`,
+    )
+    .join(';');
+  const legsRef = useRef(legs);
+  legsRef.current = legs;
+
   /** Every leg's two coordinates AND its two place ids, keyed by the pair of row ids the caller
    *  will ask with. The place ids ride along because the override is keyed on them (§AM1) and this
    *  is the one function that resolves them — re-deriving `endpointPlaceId` at a screen is how the
@@ -325,7 +336,7 @@ export function useDayTravelReads(opts: {
     // Holes this app can never measure, kept apart from the ones it simply has no answer for yet
     // (see `DayTravelReads.unplacedLegs`).
     let unplacedLegs = 0;
-    for (const leg of legs) {
+    for (const leg of legsRef.current) {
       // A leg off a span's START edge leaves from that span's ORIGIN — the counter you collected
       // the car at, not the one you will return it to. See `DayLeg.fromEdge`.
       const fromId = endpointPlaceId(
@@ -354,7 +365,8 @@ export function useDayTravelReads(opts: {
       stops.push(to);
     }
     return { byRows, stops, unplacedLegs };
-  }, [legs, bookings, places]);
+    // `legsKey` carries every field the loop above reads; the legs themselves ride the ref.
+  }, [legsKey, bookings, places]);
 
   const travel = useDayTravel({ tripId, stops: resolved.stops });
 
@@ -383,6 +395,18 @@ export function useDayTravelReads(opts: {
       // walking estimate it would discard (§AV1) — which the board asserts by name for תחב״צ.
       return legTravelMode(overrides, leg?.fromPlaceId, leg?.toPlaceId, () => defaultFor(leg));
     };
+    /** **Is an answer for this leg still on its way?** Hoisted out of the object below because
+     *  `distanceFor` asks it too since §AZ2: a pending leg is the one absence that must NOT be
+     *  covered by the crow, and both reads have to agree about which legs those are. */
+    const warmingOf = (from: TripEvent, to: TripEvent): boolean => {
+      const leg = legFor(from, to);
+      if (!leg) return false;
+      const legMode = modeOf(from, to);
+      // Same two narrowings every other read here makes: a declared leg is never asked about
+      // (§AA4) and a refused one is never coming (§AM10), so neither is ever "computing".
+      if (!isRoutableMode(legMode) || exceedsTravelCeiling(legMode, leg.from, leg.to)) return false;
+      return travel.warmingFor(leg.from, leg.to, legMode);
+    };
     return {
       mode,
       settled: travel.settled,
@@ -395,35 +419,26 @@ export function useDayTravelReads(opts: {
         if (!isRoutableMode(legMode)) return Math.round(haversineMeters(leg.from, leg.to));
         const routed = travel.estimateFor(leg.from, leg.to, legMode)?.distanceMeters;
         if (routed !== undefined) return routed;
-        // **A REFUSED MODE FALLS BACK TO THE CROW, exactly as a declared leg does** (ADR-0206
-        // §AM10). Not for a PENDING one, which is the distinction that keeps §D4 intact: there we
-        // genuinely do not know yet, and a crow-flies number that later becomes a routed one is a
-        // figure that changes under the reader. Here no routed number is ever coming, and the
-        // distance is the very fact that explains the refusal — `רחוק מדי להליכה` over a blank
-        // says the leg is too far without saying how far.
-        return exceedsTravelCeiling(legMode, leg.from, leg.to)
-          ? Math.round(haversineMeters(leg.from, leg.to))
-          : null;
+        // **EVERY LEG WITH NO ROUTED NUMBER FALLS BACK TO THE CROW** (ADR-0206 §AZ2, closing the
+        // hole §AW5 left open). §AM10 drew this for a refused mode and §AA4 for a declared one,
+        // and the reasoning was never about those two cases: a crow-flies distance is arithmetic
+        // over two coordinates this device already holds, so it is available offline, on a failed
+        // request and on a provider that answered nothing — which is precisely what §D4 has
+        // called the floor since it was written. Without it those legs printed a mode and a
+        // sentence with no kilometres, and before §AZ1 they printed nothing at all.
+        //
+        // **Except while an answer is still on its way** (§AU1), which is the one distinction
+        // that keeps §D4 intact: there we genuinely do not know yet, and a crow number that later
+        // becomes a routed one is a figure that changes under the reader — and the day's total
+        // reads these journeys, so the header would climb leg by leg as the matrix lands.
+        return warmingOf(from, to) ? null : Math.round(haversineMeters(leg.from, leg.to));
       },
       pairFor: (from, to) => {
         const leg = legFor(from, to);
         return leg ? { fromPlaceId: leg.fromPlaceId, toPlaceId: leg.toPlaceId } : undefined;
       },
       defaultModeFor: (from: TripEvent, to: TripEvent) => defaultFor(legFor(from, to)),
-      chosenFor: (from: TripEvent, to: TripEvent) => {
-        const leg = legFor(from, to);
-        return legModeOverride(overrides, leg?.fromPlaceId, leg?.toPlaceId) !== undefined;
-      },
-      warmingFor: (from: TripEvent, to: TripEvent) => {
-        const leg = legFor(from, to);
-        if (!leg) return false;
-        const legMode = modeOf(from, to);
-        // Same two narrowings every other read here makes: a declared leg is never asked about
-        // (§AA4) and a refused one is never coming (§AM10), so neither is ever "computing".
-        if (!isRoutableMode(legMode) || exceedsTravelCeiling(legMode, leg.from, leg.to))
-          return false;
-        return travel.warmingFor(leg.from, leg.to, legMode);
-      },
+      warmingFor: warmingOf,
       refusedFor: (from: TripEvent, to: TripEvent) => {
         const leg = legFor(from, to);
         if (!leg) return false;

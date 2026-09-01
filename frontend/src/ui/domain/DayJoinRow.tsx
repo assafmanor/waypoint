@@ -455,13 +455,23 @@ export function JourneyRow({
    *  `TOO_FAR` were the only two arms carrying one, and would now label a leg the server is still
    *  computing as one nobody is estimating. */
   const warming = journey.arm === DAY_JOURNEY_ARM.WARMING;
-  /** **And the FOURTH is that the app has a number the ladder cannot name** (ADR-0206 §AW) — or no
-   *  number at all for a mode somebody picked anyway. Read off the arm for `tooFar`'s exact reason,
-   *  and before `declared` below for `warming`'s: that line infers a declaration from the absent
-   *  duration, and would label a ⁦50 m⁩ drive somebody chose as a leg nobody is estimating. */
+  /** **And the FOURTH is that the app has a number the ladder cannot name** (ADR-0206 §AW) — a
+   *  ⁦50 m⁩ drive answering ⁦12⁩ seconds. Read off the arm for `tooFar`'s exact reason, and before
+   *  `declared` below for `warming`'s: that line infers a declaration from the absent duration,
+   *  and would label a measured ⁦50 m⁩ drive as a leg nobody is estimating. */
   const untimed = journey.arm === DAY_JOURNEY_ARM.UNTIMED;
+  /** **And the FIFTH is that no estimate arrived and none is coming** (ADR-0206 §AZ1) — offline,
+   *  a failed request, a provider that answered nothing. It says the declaration's own sentence,
+   *  because it is the same fact reached by a different road: we are not timing this leg. Its own
+   *  arm rather than `untimed`'s second half, because since §AZ2 both carry a distance and the two
+   *  sentences say opposite things — `פחות מדקה` is a claim about the journey. */
+  const unmeasured = journey.arm === DAY_JOURNEY_ARM.UNMEASURED;
   const declared =
-    !tooFar && !warming && !untimed && (!isRoutableMode(travelMode) || seconds === null);
+    !tooFar &&
+    !warming &&
+    !untimed &&
+    !unmeasured &&
+    (!isRoutableMode(travelMode) || seconds === null);
   return (
     <JourneyBlock
       mode={t.travelMode[travelMode]}
@@ -491,17 +501,14 @@ export function JourneyRow({
           ? t.travel.tooFarFor(t.travelMode[travelMode])
           : warming
             ? t.travel.computing
-            : // **The one arm whose words are chosen from the DISTANCE, not from the arm** (§AW).
-              // Under the ladder's floor the app knows the length and simply cannot round it to a
-              // rung, which `underMinute` says; with no estimate at all it is the declaration's own
-              // absence, reached by a different road, and `noEstimate` is already the sentence for
-              // it. Two states, one arm, because what the row must do — stand, and carry the
-              // control — is the same for both.
+            : // Under the ladder's floor the app knows the length and simply cannot round it to a
+              // rung (§AW), which `underMinute` says. `unmeasured` and `declared` are the same
+              // absence reached by two roads — nobody is timing this leg — so they share
+              // `noEstimate`, and the arm split above is what keeps either of them from borrowing
+              // the claim `underMinute` makes about the journey itself (§AZ1).
               untimed
-              ? journey.distanceMeters === null
-                ? t.travel.noEstimate
-                : t.travel.underMinute
-              : declared
+              ? t.travel.underMinute
+              : unmeasured || declared
                 ? t.travel.noEstimate
                 : journeyMetaLine(journey, zones)
       }

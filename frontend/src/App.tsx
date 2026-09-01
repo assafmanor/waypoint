@@ -93,7 +93,8 @@ const TripSettings = lazyRoute(() =>
   import('./screens/TripSettings').then((m) => ({ default: m.TripSettings })),
 );
 import { DevTimeTravel } from './dev/DevTimeTravel';
-import { useClock } from './lib/useClock';
+import { getNow, useClock } from './lib/useClock';
+import { useTripRoutePack } from './lib/route-pack';
 import { lazyRoute } from './lib/lazy-chunk';
 import { observeVisibility } from './lib/visibility';
 import { useShrinkToFit } from './lib/useShrinkToFit';
@@ -758,6 +759,28 @@ function InstallAsk() {
   return <InstallAskBanner trip={trip} />;
 }
 
+/**
+ * **THE TRIP'S TRAVEL TIMES, FETCHED ONCE AND PUT WHERE THE DAY READS THEM** (ADR-0206 §AZ5).
+ *
+ * Renders nothing; it is here for the same reason `InstallAsk` is a component — the work needs
+ * the trip and `useTrip` is a hook. **At the shell and not on a day surface**, because a pack
+ * covers every day of the trip and the point of it is the day you have NOT opened: hanging it off
+ * `DayView` would fetch it on the one day that least needs it.
+ */
+function TripRoutePack() {
+  const { trip } = useTrip();
+  const offline = useIsOffline();
+  // The clock is read rather than subscribed to: whether a trip has finished is a fact that
+  // changes once, and this component renders nothing that a tick would move.
+  useTripRoutePack({
+    tripId: trip?.id,
+    offline,
+    ended: !!trip?.endDate && Date.parse(`${trip.endDate}T23:59:59.999Z`) < getNow(),
+    archiveVintage: useAuth().me?.map?.archiveVintage ?? null,
+  });
+  return null;
+}
+
 function RootSurface() {
   const [trips, setTrips] = useState<Trip[] | null>(null);
   const { tripId: storedTripId, pickedThisSession } = useActiveTripId();
@@ -796,6 +819,7 @@ function RootSurface() {
           it starts in three days. It still paints on `.app-update`, which is a mount and
           not a second banner. */}
       <InstallAsk />
+      <TripRoutePack />
       <ModeProvider>
         <MapScopeProvider>
           <DragProvider>

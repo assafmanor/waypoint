@@ -298,24 +298,36 @@ export const DAY_JOURNEY_ARM = {
    *  about the PLAN in the same family as `OVERRUNS` — so it says the ceiling in words and takes
    *  the miss tone. It outranks the clock arms for the same reason `OVERRUNS` does. */
   TOO_FAR: 'too-far',
-  /** **A mode somebody CHOSE, with no length to print for it** (ADR-0206 §AW) — the fourth and
-   *  last of the arms that exist because the block is the only thing carrying the mode control.
+  /** **The journey is shorter than the ladder can name** (ADR-0206 §AW) — a ⁦50 m⁩ drive answers
+   *  ⁦12⁩ seconds, and ADR-0114's minutes rung rounds that to nothing. The app measured this leg;
+   *  what it has no rung for is how short the answer is, which is what `פחות מדקה` says.
    *
-   *  Two states reach it and neither is an error: the journey is **shorter than the ladder can
-   *  name** (a ⁦50 m⁩ drive answers ⁦12⁩ seconds, and ADR-0114's minutes rung rounds that to
-   *  nothing), or **no estimate arrived at all** and none is coming — the server's own gate refused
-   *  the mode for a reason `refusedFor` cannot reproduce (`sameClusterOnly` against a point missing
-   *  from the cluster set), or the provider simply answered nothing for it.
-   *
-   *  **It is keyed on the CHOICE, not on the cause**, and that is the whole of the fix: the report
-   *  was a ⁦1⁩-minute walk switched to a drive, whose row then disappeared with the control that had
-   *  set it (field report, 2026-08-31). §AM10 had already answered the ceiling case and §AU1 the
-   *  pending one; stating the rule over "somebody picked this" closes the rest of the class instead
-   *  of waiting for its next member. A leg nobody chose keeps the 2026-08-26 floor exactly: a ⁦20m⁩
-   *  hop the app called a walk on its own has nothing to say and says nothing.
+   *  **It used to be keyed on somebody having CHOSEN the mode** and §AZ1 drops that gate: a row
+   *  that vanishes because the number is small is the same defect whoever picked the mode, and the
+   *  control that would pick another one lives on the row. What §AW got right and this keeps is
+   *  that the rule belongs over the class rather than over each cause.
    *
    *  Neutral tone, like `DECLARED`: there is nothing wrong with the leg. */
   UNTIMED: 'untimed',
+  /** **No estimate arrived, and none is on its way** (ADR-0206 §AZ1) — offline, the request
+   *  failed, the provider answered nothing, or the server's own gate refused the mode for a reason
+   *  `refusedFor` cannot reproduce (`sameClusterOnly` against a point missing from the cluster
+   *  set).
+   *
+   *  **This is §D4's ordinary absence, and it is an arm rather than a `null` now.** The row says
+   *  the mode, the crow-flies distance (§AZ2) and `בלי הערכת זמן`, and carries the mode control —
+   *  which is the whole difference between "we cannot time this leg" and a hole in the day where a
+   *  journey should be. It is the state a plane, a dead cell and a provider outage all land on, so
+   *  it is the one the app spends most of a real trip in.
+   *
+   *  **Kept apart from `UNTIMED` above because they say opposite things.** `פחות מדקה` is a claim
+   *  about the journey; `בלי הערכת זמן` is a statement about us. Before §AZ2 the two could be told
+   *  apart by whether a distance came with them — a distinction the crow-flies floor erases, which
+   *  is exactly how a ⁦40 km⁩ leg on a plane would have started reading `פחות מדקה`.
+   *
+   *  Ranked last of the no-duration arms: every one of them is a more specific account of the same
+   *  silence, so this is what is left when none of them applies. */
+  UNMEASURED: 'unmeasured',
 } as const;
 export type DayJourneyArm = (typeof DAY_JOURNEY_ARM)[keyof typeof DAY_JOURNEY_ARM];
 
@@ -328,10 +340,17 @@ export interface DayJourney {
    *  and why the third says so out loud. Every other arm has one: a leg with no estimate is no
    *  journey at all (§D4), which is what makes these three the only nulls. */
   travelSeconds: number | null;
-  /** What the leg covers, in metres — the ROUTED distance, per mode, never crow-flies: a
-   *  ⁦1.9km⁩ crow-flies leg is a ⁦2.4km⁩ walk, and this is the number you act on. `null` where the
-   *  estimate carries none. */
+  /** What the leg covers, in metres — the ROUTED distance where one was answered, and the
+   *  crow-flies floor where none was and none is coming (ADR-0206 §D4 / §AZ2). `null` only where
+   *  the leg has neither, which since §AZ2 means an end nobody placed. */
   distanceMeters: number | null;
+  /** **Whether that distance is a FLOOR rather than the road** (ADR-0206 §AZ3) — true on every arm
+   *  with no duration, which is exactly where `distanceFor` fell back to the crow. A ⁦1.9 km⁩
+   *  crow-flies leg is a ⁦2.4 km⁩ walk, so a total containing one is a floor and `dayTravelTotal`
+   *  says `לפחות` over it. Derived from the arms rather than threaded from the reads: a stated
+   *  duration means an estimate answered, and an estimate is where the routed distance comes
+   *  from. */
+  distanceIsFloor: boolean;
   /** The instant behind `יציאה 17:15`, or `null` on the `PAST` arm — see {@link dayJourney}. */
   leaveByMs: number | null;
   /**
@@ -385,13 +404,22 @@ export interface DayJourney {
 /**
  * **What a hole says once there is a journey in it.**
  *
- * `null` when there is no estimate, and that is the ordinary answer (§D4): offline, refused by the
- * gate, over the ceiling, still warming, provider down, or two stops that are one place. **A leg
- * somebody declared תחב״צ is NOT one of them** — it has no estimate either, but it is a statement
- * rather than a gap, so it takes the `DECLARED` arm above and renders (§AA4). Every one of them leaves ADR-0159's free-time strip standing
- * exactly as it reads today — never a pessimistic guess, because the reader must not be able to
- * tell "not computed" from "not computable" and inventing a walk we did not measure fails that in
- * the direction that costs somebody their afternoon.
+ * **IT ANSWERS FOR EVERY LEG BETWEEN TWO PLACED ROWS, AND `null` FOR NOTHING ELSE** (ADR-0206
+ * §AZ1). A hole is drawn because the PLAN puts a journey in it, never because the app happened to
+ * work out how long that journey takes — so no estimate, a refused mode, a declared תחב״צ leg, an
+ * answer still on its way, a duration under the ladder's floor and a destination with no clock all
+ * RENDER, each saying what it knows and no more. The one `null` left is a leg with nothing at all
+ * to say: no duration and no distance, which since §AZ2 means an end nobody placed
+ * (`DayTravelReads.unplacedLegs` counts it and the day's total declares itself a floor over it).
+ *
+ * **That inversion is the fix for a class rather than a case.** The bail used to be the default
+ * and each new way of not knowing deleted the row again — §AM6's declaration, §AM10's ceiling,
+ * §AU1's pending answer, §AW's sub-minute number: four fixes to one bug, and a fifth cause waiting.
+ * What never changes is the DURATION rule: absent stays absent, never a pessimistic guess, because
+ * the reader must not be able to tell "not computed" from "not computable" and inventing a walk we
+ * did not measure fails that in the direction that costs somebody their afternoon (§D4/§D5). A
+ * distance is different in kind — the crow-flies floor is arithmetic over two coordinates this
+ * device already holds, which is what §D4 has called the fallback since it was written.
  *
  * **The leave-by is `heroLeaveBy`'s, not a second copy** (§AE7's argument applied one level up):
  * the board, the lifted hero and this row all describe one journey, so the buffer, the rounding
@@ -458,13 +486,6 @@ export function dayJourney(input: {
    *  only one of them that is temporary: a declared leg is never asked and a refused one is never
    *  coming, so either of those being true makes this one irrelevant rather than merely lower. */
   warming?: boolean;
-  /** **Somebody PICKED this leg's mode** (ADR-0206 §AW) — `DayTravelReads.chosenFor`, which is the
-   *  presence of an override row and not a guess from the mode word.
-   *
-   *  It does not select an arm on its own. What it does is disarm the sub-minute floor below, which
-   *  deletes the whole hole — and with it the only control that can undo the pick. Read the
-   *  `UNTIMED` arm for why the rule is stated over the choice rather than over each cause. */
-  chosen?: boolean;
 }): DayJourney | null {
   const { departAfterMs, arriveByMs, travelSeconds, nowMs, onWay, claimDenied } = input;
   // **A declared leg is a journey with no duration, not an absent journey** (ADR-0206 §AA4). It
@@ -486,6 +507,8 @@ export function dayJourney(input: {
       remainingSeconds: null,
       // No departure is stated on this arm, so there is no ceiling to declare.
       leaveByIsFloor: false,
+      // No duration means no routed answer, so whatever distance rode in is the crow (§AZ3).
+      distanceIsFloor: true,
     };
   // **A REFUSED MODE IS AN ANSWER, NOT AN ABSENCE** (ADR-0206 §AM10). Same position and the same
   // argument as the declaration above — it has to come BEFORE the floor, because the floor bails
@@ -506,6 +529,8 @@ export function dayJourney(input: {
       remainingSeconds: null,
       // No departure is stated on this arm, so there is no ceiling to declare.
       leaveByIsFloor: false,
+      // No duration means no routed answer, so whatever distance rode in is the crow (§AZ3).
+      distanceIsFloor: true,
     };
   // **A NUMBER ON ITS WAY IS NOT AN ABSENT NUMBER** (ADR-0206 §AU1). Third of the three flags that
   // stand in for a missing estimate, and last for the reason its docblock gives — but still BEFORE
@@ -535,23 +560,38 @@ export function dayJourney(input: {
       remainingSeconds: null,
       // No departure is stated on this arm, so there is no ceiling to declare.
       leaveByIsFloor: false,
+      // No duration means no routed answer, so whatever distance rode in is the crow (§AZ3).
+      distanceIsFloor: true,
     };
-  // **A journey the ladder cannot state is not a journey** (2026-08-26). `ROUTE_MIN_CROW_M` is
-  // ⁦10m⁩, so a ⁦20m⁩ hop is routed, answers ⁦24⁩ seconds, and drew a whole block reading `~0 דק׳` over
-  // `אין זמן לדרך` — a warning about the time it takes to walk out of a door. The floor is the
-  // display's own: below half a minute ADR-0114's minutes rung rounds to nothing, and a block
-  // whose head cannot name a length has nothing to say.
-  //
-  // **Unless somebody chose this mode, in which case the block is the last thing that may vanish**
-  // (§AW). The floor is a NOISE rule and noise is only noise when nobody asked: the same ⁦50 m⁩ hop
-  // reads ⁦1 דק׳⁩ as a walk and answers ⁦12⁩ seconds as a drive, so picking the drive deleted the row
-  // and the control that had picked it. Same position and the same argument as the three flags
-  // above — the difference is that this one bails on a number it HAS.
+  /**
+   * **NO DURATION TO NAME, AND THE ROW STANDS ANYWAY** (ADR-0206 §AZ1).
+   *
+   * Two states reach here and neither is an error: a duration under the ladder's own floor (a
+   * ⁦50 m⁩ drive answers ⁦12⁩ seconds, and ADR-0114's minutes rung rounds that to nothing), or **no
+   * estimate at all and none on its way** — offline, the ask failed, the provider answered
+   * nothing, the server's gate refused the mode for a reason `refusedFor` cannot reproduce.
+   *
+   * **This used to be the bail, and the bail is the defect §AZ names as a class.** It returned
+   * `null` — no row, no distance, no mode control — unless somebody had picked the mode (§AW).
+   * That made the row's EXISTENCE depend on what we happened to know about it, so every new way
+   * of not knowing deleted the row again: §AM6's declaration, §AM10's ceiling, §AU1's pending
+   * answer and §AW's sub-minute number were four fixes to one bug, each naming one cause. A leg
+   * between two placed rows is a fact about the PLAN; what we know about it is a fact about US,
+   * and only the first may decide whether the reader sees a row.
+   *
+   * So the gate is gone, and what is left is the one honest silence: **nothing to say at all** —
+   * no duration and no distance, which since §AZ2 means a leg whose ends did not both resolve to
+   * a placed point. That is the hole `DayTravelReads.unplacedLegs` counts and the day's total
+   * already declares itself a floor over.
+   */
   const stated = travelSeconds !== null && Number.isFinite(travelSeconds) ? travelSeconds : null;
   if (stated === null || Math.round(stated / SECONDS_PER_MINUTE) < 1) {
-    if (!input.chosen) return null;
+    if (stated === null && input.distanceMeters == null) return null;
     return {
-      arm: DAY_JOURNEY_ARM.UNTIMED,
+      // **Which of the two silences this is** — see the arms. A number we cannot round is not the
+      // same fact as no number, and since §AZ2 gave both of them a distance the row cannot tell
+      // them apart from the outside any more.
+      arm: stated === null ? DAY_JOURNEY_ARM.UNMEASURED : DAY_JOURNEY_ARM.UNTIMED,
       // **Null even where there is a number**, which is the arm's own definition rather than a
       // loss: the row cannot name it, and the day's total reads these journeys (`dayTravelTotal`),
       // so counting seconds no row accounts for is how a header stops agreeing with its list
@@ -570,9 +610,37 @@ export function dayJourney(input: {
       remainingSeconds: null,
       // No departure is stated on this arm, so there is no ceiling to declare.
       leaveByIsFloor: false,
+      // No duration means no routed answer, so whatever distance rode in is the crow (§AZ3).
+      distanceIsFloor: true,
     };
   }
-  if (!Number.isFinite(arriveByMs)) return null;
+  /**
+   * **THE MEASUREMENT WITH NO ADVICE ATTACHED** (ADR-0206 §AZ1) — what a leg says when the app
+   * knows how far and how long it is and has no schedule to hang that on.
+   *
+   * The two lines below used to `return null` here, which is the same class the bail above was:
+   * the row vanished because of what the app could not work out about the HOUR, taking a duration
+   * and a distance it had in hand with it. `AHEAD` with no departure is the shape that already
+   * renders exactly this — `journeyMetaLine` says nothing where there is neither a leave-by nor an
+   * arrival — so it is the arm rather than a tenth one.
+   */
+  const measurementOnly = (): DayJourney => ({
+    arm: DAY_JOURNEY_ARM.AHEAD,
+    travelSeconds: stated,
+    distanceMeters: input.distanceMeters ?? null,
+    leaveByMs: null,
+    leaveByIsFloor: false,
+    // A stated duration comes from an estimate, and the routed distance comes with it (§AZ3).
+    distanceIsFloor: false,
+    free: null,
+    overrunSeconds: null,
+    arriveAtMs: null,
+    arrivesAfterClose: false,
+    remainingSeconds: null,
+  });
+  // A destination with no instant at all — an untimed row. There is no deadline to count back
+  // from and nothing to be late for; the journey between the two points is unchanged by that.
+  if (!Number.isFinite(arriveByMs)) return measurementOnly();
   const measurableFrom = departAfterMs !== undefined && Number.isFinite(departAfterMs);
   // **The clamp is `heroLeaveBy`'s now** (ADR-0206 §AJ3): it was implemented here and nowhere
   // else, so the board — reading the same function's unclamped answer — marked a traveller late
@@ -583,7 +651,10 @@ export function dayJourney(input: {
     nowMs,
     ...(measurableFrom ? { departAfterMs: departAfterMs! } : {}),
   });
-  if (!leave) return null;
+  // Unreachable on today's inputs — `heroLeaveBy` answers `null` only for the two absences both
+  // guarded above — and kept as the measurement rather than as a bail so that stays true if its
+  // rule ever grows a third one.
+  if (!leave) return measurementOnly();
   /**
    * **THE DEADLINE THIS LEG ACTUALLY HAS, and `undefined` where it has none** (ADR-0206 §AI1/§AJ1).
    *
@@ -674,6 +745,8 @@ export function dayJourney(input: {
     arrivesAfterClose:
       arriveAt !== null && input.windowClosesMs !== undefined && arriveAt > input.windowClosesMs,
     leaveByIsFloor,
+    // Every arm below this line has a stated duration, so its distance is the road (§AZ3).
+    distanceIsFloor: false,
   };
   // The row below has started: whatever the leave-by says, the departure is not the question any
   // more. Checked FIRST, so a finished day is quiet however late its legs ran.
@@ -788,9 +861,15 @@ export interface DayTravelTotal {
   /** Only the legs that could be TIMED, added up. `null` where none could — a day of declared
    *  legs travels a real distance for no duration this app may state. */
   travelSeconds: number | null;
-  /** **The day travels further than this and we cannot say how much further** (ADR-0206 §AT2) —
-   *  at least one hole has an end nobody placed, so it is missing from both halves above. The
-   *  total is then a FLOOR, and the line says so rather than reading as the day's whole travel. */
+  /** **The day travels at least this far, and we cannot say how much further** (ADR-0206 §AT2,
+   *  widened by §AZ3) — the total is a FLOOR and the line says `לפחות` rather than reading as the
+   *  day's whole travel. Two things put it here and they are the same claim: a hole with an end
+   *  nobody placed, which is missing from both halves above, and a leg whose distance is the
+   *  crow-flies floor rather than the road it takes.
+   *
+   *  **A leg still WARMING does not set it**, and that is §AT2's own rule kept intact: it
+   *  contributes no distance at all (§AU1), so nothing it later answers can make a claim change
+   *  under the reader. Only a number that is already on the screen and already a floor does. */
   partial: boolean;
   /** **How far the day goes in the AIR, kept apart from how far it goes on the ground**
    *  (ADR-0212 §3), or `null` on a day that flies nowhere.
@@ -853,17 +932,21 @@ export function dayTravelTotal(
 ): DayTravelTotal {
   let distanceMeters: number | null = null;
   let travelSeconds: number | null = null;
+  /** Whether any leg contributed a crow-flies floor instead of a routed road (§AZ3). */
+  let floored = false;
   for (const journey of journeys) {
     if (!journey) continue;
     if (journey.distanceMeters !== null && Number.isFinite(journey.distanceMeters))
       distanceMeters = (distanceMeters ?? 0) + journey.distanceMeters;
     if (journey.travelSeconds !== null && Number.isFinite(journey.travelSeconds))
       travelSeconds = (travelSeconds ?? 0) + journey.travelSeconds;
+    if (journey.distanceIsFloor && journey.distanceMeters !== null) floored = true;
   }
   return {
     distanceMeters,
     travelSeconds,
-    partial: unplacedLegs > 0,
+    // A crow-flies leg makes the sum a floor exactly as an unmeasurable hole does (§AZ3).
+    partial: unplacedLegs > 0 || floored,
     airMeters: airMeters !== null && Number.isFinite(airMeters) ? airMeters : null,
   };
 }

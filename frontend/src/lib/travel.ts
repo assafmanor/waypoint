@@ -52,6 +52,13 @@ export interface CachedRouteLeg {
 /** A `Retry-After` we do not control must not be able to park a timer for an hour. */
 const WARM_RETRY_MAX_MS = 60_000;
 
+/** **The first back-off after a FAILED request** (ADR-0206 §AZ4), doubling from here under the
+ *  same attempt bound the warm uses. A failure carries no `Retry-After` to pace it, and the two
+ *  costs to balance are a day that stays blank and a phone that retries a dead endpoint in a
+ *  tight loop: ⁦2s⁩ → ⁦4s⁩ → ⁦8s⁩ → ⁦16s⁩ → ⁦32s⁩ covers a cold container and a lift's worth of no
+ *  signal inside the six rounds, and stops well short of a poll. */
+const FAILED_RETRY_BASE_MS = 2_000;
+
 const LEG_KEY_SEPARATOR = '|';
 
 /** **Days answered in full during this session**, so swiping back and forth costs no requests.
@@ -185,8 +192,27 @@ export async function fillCachedRouteLegs(
     await db.routeLegs.bulkPut(
       missing.map((entry) => ({ key: entry.key, estimate: entry.estimate, cachedAt: now })),
     );
+    // **A DAY THAT HAS ALREADY READ ITS CACHE MUST BE ABLE TO READ IT AGAIN** (ADR-0206 §AZ5).
+    // `readDays` is what stops a mount re-reading Dexie for legs it already asked about, and it
+    // is module state, so it outlives every day surface — which means a pack landing after a day
+    // was opened could not reach that day until a reload. The table it just filled is the one
+    // those days read, so filling it is exactly the event that retires the mark.
+    forgetLocalReads();
   }
   return missing.length;
+}
+
+/**
+ * **Retire what this session has read from Dexie**, so the next mount reads it again.
+ *
+ * The one caller is `fillCachedRouteLegs` above, and the rule is stated as a function rather than
+ * a line inside it so the next writer that puts legs in the table from outside this hook cannot
+ * miss it: `readDays` is an optimisation over a read, and any write to what it read invalidates
+ * it. `sessionKnown` is deliberately NOT cleared — it holds answers, and an answer does not stop
+ * being true because a new one arrived beside it.
+ */
+export function forgetLocalReads(): void {
+  readDays.clear();
 }
 
 /** What this device already holds for the given keys. Missing keys are simply absent. */
@@ -285,6 +311,34 @@ function merge(
   const merged = new Map(prev);
   for (const [key, estimate] of next) merged.set(key, estimate);
   return merged;
+}
+
+/**
+ * **Has every hole in this day been answered at all?** (ADR-0206 §AZ4.)
+ *
+ * The question `askedDays` needs, and the one it was not asking: a batch that answers three legs
+ * of five and offers no `Retry-After` used to record the whole day, so the two the provider had
+ * quietly dropped could not be asked about again for the rest of the session. `found.size ||
+ * refused.size` is "something arrived", which is a different claim from "nothing is missing".
+ *
+ * **Per LEG and deliberately not per (leg, mode).** A pair with nothing at all is the hole this
+ * exists to keep re-askable — it is what renders as a journey with no time. A pair answered in two
+ * modes of three is a different and much smaller question, already covered by the mode control and
+ * `warmingFor`, and demanding all three would make a day re-ask its whole matrix on every mount
+ * for one mode the provider happens not to serve.
+ *
+ * Read off the session stores rather than the mount's own state: that is where the answer lives,
+ * and `retain` has already run by the time this is called.
+ */
+function answeredInFull(stops: readonly LatLng[], modes: readonly TravelMode[]): boolean {
+  for (let i = 0; i + 1 < stops.length; i++) {
+    const answered = modes.some((mode) => {
+      const key = routeLegKey(stops[i]!, stops[i + 1]!, mode);
+      return sessionKnown.has(key) || sessionRefused.has(key);
+    });
+    if (!answered) return false;
+  }
+  return true;
 }
 
 /** What this session already holds for the keys a day asks about — the synchronous half of the
@@ -388,7 +442,25 @@ export function useDayTravel(opts: {
   // so `setKnown` would change no state at all and the hold below would never lift. The SET is
   // where the answer actually lives (it outlives this mount); this is only what re-renders.
   const [, markRead] = useState(0);
-  const settled = !fingerprint || preview || readDays.has(fingerprint);
+  /**
+   * **THE HOLD IS A FIRST-PAINT HOLD, AND ONLY THAT** (ADR-0206 §AZ6).
+   *
+   * §AT holds the day's first paint on this device's own cache read, because the journey rows and
+   * the total APPEAR when an estimate lands and a day that paints twice has told the reader
+   * something twice. The hold was keyed on the FINGERPRINT, which is a different claim: a
+   * fingerprint changes whenever the day's stops do, so a peer adding or moving a stop over the
+   * wire flipped `settled` back to false and `.day-page[data-measuring]` hid **the whole day** —
+   * not the journey rows, the day — for an IndexedDB round trip, on a surface somebody was
+   * reading. A remote edit must never blank the screen it lands on.
+   *
+   * So the hold is spent once per mount. A day that has painted stays painted and lets the new
+   * leg's row arrive the way every other change does; a day that has not is still held, which is
+   * the whole of what §AT bought.
+   */
+  const held = useRef(false);
+  const settledNow = !fingerprint || preview || readDays.has(fingerprint);
+  if (settledNow) held.current = true;
+  const settled = settledNow || held.current;
 
   // **What the device already knows — first, and regardless of everything else.** This is the
   // whole of "an estimate survives a reload offline", and it runs inside a peek too: reading
@@ -502,8 +574,16 @@ export function useDayTravel(opts: {
           // Refusals count as learning: they are an answer that is never coming again, which is
           // the whole reason `refusedOf` exists — so a day of nothing but refusals is settled and
           // must not re-ask on every visit.
+          //
+          // **And only if it taught us EVERYTHING** (ADR-0206 §AZ4). `found.size || refused.size`
+          // is "something arrived", which is not the same claim: a batch that answers three legs
+          // of five and offers no `Retry-After` marked the whole day answered in full, so the two
+          // legs the provider had quietly dropped could not be asked about again for the rest of
+          // the session. That is the 2026-08-28 defect reached one door along — and the honest
+          // test is the one this set's name already makes, which is whether every key the day
+          // asks about is now either known or refused.
           if (batch.retryAfterSeconds === undefined) {
-            if (found.size || refused.size) askedDays.add(fingerprint);
+            if (answeredInFull(at, want)) askedDays.add(fingerprint);
             done();
             return;
           }
@@ -516,11 +596,30 @@ export function useDayTravel(opts: {
           retry = setTimeout(() => ask(attempt + 1), warmRetryMs(batch.retryAfterSeconds));
         })
         .catch(() => {
-          // **Nothing to report.** Offline, a refused request, a failed one, an aborted one —
-          // all of them leave the day exactly as it looks before any answer arrives, and that
-          // is a complete state (ADR-0206 §D4). Not recorded either, so opening the day again
-          // asks again.
-          done();
+          // **A FAILURE IS RETRIED, NOT ACCEPTED** (ADR-0206 §AZ4). Every path here used to end
+          // the ask: a 500, a dropped connection, a captive portal, a cold Railway container —
+          // and the day then held nothing for the rest of the session, because the effect only
+          // re-runs when the fingerprint, the trip or the online flag changes. On a phone moving
+          // between cells that is the ordinary case rather than an edge, and it is the shape of
+          // the report this whole layer keeps getting: _"it stays that way until I restart"_.
+          //
+          // The ladder is the warm's own, deliberately: same bound (`DAY_TRAVEL_WARM_ATTEMPTS`),
+          // so a dead provider still terminates into §D4's silence rather than polling forever,
+          // and the same cap (`WARM_RETRY_MAX_MS`), so nothing parks a timer for an hour. What
+          // differs is that a failure carries no `Retry-After` to pace it, so it backs off on its
+          // own — doubling from `FAILED_RETRY_BASE_MS`, which spends four requests over ~⁦30s⁩
+          // rather than six over the length of one warm.
+          //
+          // Never recorded in `askedDays`, on any attempt: nothing was learned.
+          if (!live || controller.signal.aborted) return;
+          if (attempt >= DAY_TRAVEL_WARM_ATTEMPTS) {
+            done();
+            return;
+          }
+          retry = setTimeout(
+            () => ask(attempt + 1),
+            Math.min(FAILED_RETRY_BASE_MS * 2 ** (attempt - 1), WARM_RETRY_MAX_MS),
+          );
         });
     };
     ask(1);
