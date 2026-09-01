@@ -103,6 +103,28 @@ export const toEventDto = (e: Event): TripEvent => ({
   updatedBy: e.updatedBy,
 });
 
+/**
+ * **AN EVENT AS A `Change.after` PAYLOAD** — the persisted row, with every absent field stated as
+ * an explicit `null`.
+ *
+ * `sync-and-offline.md` §3 already required the row rather than the request ("build `after` from
+ * what `apply` returned"), and `events.service.ts` was the module that never did: it published
+ * `after: input`, so a field the service DERIVED was invisible to every other device. The reported
+ * cost (owner, 2026-09-01) was a peer's drag — `move` shifts `endsAt` itself to preserve the
+ * duration, the input has no `endsAt`, so peers took the new start, kept the old end and silently
+ * held an event of a different length. `endsAt` is the instant a hole is measured from, so that
+ * day's journeys, free time and total were all then derived from a time the server had replaced.
+ *
+ * **The `null`s are what make it a ROW rather than a patch, and they are the half `toEventDto`
+ * cannot express.** A receiving client merges `after` over what it holds, and `undefined` does not
+ * survive JSON — so a field the server CLEARED (an event's own place, once it is linked to a
+ * booking: ADR-0048's authority invariant) would simply be missing from the payload and the peer
+ * would keep the stale value. `null` is the wire's "unset me", already understood on the far side
+ * by `coerceClearedFields`.
+ */
+export const toEventChangePayload = (e: Event): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(toEventDto(e)).map(([key, value]) => [key, value ?? null]));
+
 export const toBookingDto = (b: Booking): SharedBooking => ({
   id: b.id,
   tripId: b.tripId,

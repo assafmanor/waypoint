@@ -1958,6 +1958,31 @@ the finished shape goes green on a day that paints it twice.
 
 ---
 
+### The peer-edit field report — a day that lost its numbers and could not get them back (2026-09-01)
+
+**Decided:** [ADR-0206 §AX](../decisions/0206-a-travel-time-belongs-between-two-points.md) (+ §AX1,
+§AX2) and [`sync-and-offline.md`](../architecture/sync-and-offline.md) §3.
+
+Owner: _"the plan day / day view doesn't update correctly when other users make changes … the changes
+are applied and received with WS, but the calculated fields disappear."_ Three defects behind one
+symptom, all confirmed with runnable repros before anything was changed:
+
+1. **§AU1's rule, recorded in the wrong place.** `askedDays`/`readDays` were marked outside the state
+   update that retained what was learned — so an unmount mid-answer, or two peer changes in quick
+   succession, left a fingerprint recorded as handled with nothing kept. Read skipped, ask skipped,
+   no estimates, until a reload. The retention is now module-level and unconditional (`retain`).
+2. **A refusal did not outlive its mount** (§AX1), so every later ask re-spun a leg the gate had
+   already closed. `sessionRefused`.
+3. **`move` never broadcast the `endsAt` it shifted** (§AX2) — a peer's drag changed an event's
+   DURATION on every other device, and the day's travel numbers followed it. `events.service.ts`
+   now publishes the row, which `sync-and-offline.md` §3 had required all along.
+
+Seven specs, each verified red against the unfixed code first. The one thing deliberately left open
+is which arm a **server-gate** refusal should render (§AX1's closing note) — today it is §D4's
+ordinary absence, because the existing `רחוק מדי להליכה` sentence would be false for it.
+
+---
+
 ## M13 — Leave-by notification
 
 **Kind:** implementation. **Branch:** `routes/m13-leaveby` · **Conflict surface:** the notification

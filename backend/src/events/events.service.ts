@@ -15,7 +15,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
 import { assertBookingInTrip, assertPlacesInTrip } from '../common/trip-scope.util';
-import { toBookingDto, toEventDto } from '../trips/trips.mapper';
+import { toBookingDto, toEventChangePayload, toEventDto } from '../trips/trips.mapper';
 
 export interface RippleSuggestion {
   movedTitle: string;
@@ -74,7 +74,10 @@ export class EventsService {
         entityType: ENTITY_TYPE.EVENT,
         entityId: id,
         action: 'create',
-        after: input,
+        // The ROW, not the request (`sync-and-offline.md` §3) — this module was the one that never
+        // followed that rule. See `toEventChangePayload`: the values a create DERIVES (the place
+        // an authority invariant nulls, `sortOrder`'s default) were invisible to every peer.
+        after: toEventChangePayload,
         apply: (tx) =>
           tx.event.create({
             data: {
@@ -145,7 +148,9 @@ export class EventsService {
       entityId: eventId,
       action: 'update',
       before: toEventDto(before),
-      after: input,
+      // The ROW — linking an event to a booking NULLS its own place server-side (ADR-0048), and
+      // `input` never said so, so a peer went on resolving a place the event no longer has.
+      after: toEventChangePayload,
       apply: (tx) =>
         tx.event.update({
           where: { id: eventId },
@@ -192,7 +197,7 @@ export class EventsService {
       entityType: ENTITY_TYPE.EVENT,
       entityId: eventId,
       action: 'status',
-      after: { status },
+      after: toEventChangePayload,
       apply: (tx) =>
         tx.event.update({ where: { id: eventId }, data: { status, updatedBy: actorUserId } }),
     });
@@ -227,7 +232,11 @@ export class EventsService {
       entityId: eventId,
       action: 'move',
       before: toEventDto(before),
-      after: input,
+      // **The ROW, and this is the site the defect was reported from** — the shift below is the
+      // service's own, `moveEventSchema` has no `endsAt`, so `after: input` described a write that
+      // had not happened and every peer held an event of a different length. See
+      // `toEventChangePayload`.
+      after: toEventChangePayload,
       apply: (tx) =>
         tx.event.update({
           where: { id: eventId },

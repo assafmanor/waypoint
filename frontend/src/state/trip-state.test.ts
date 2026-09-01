@@ -152,6 +152,20 @@ describe('REMOTE_EVENT_CHANGE (WS)', () => {
     expect(find(s1, 'ev-goldengai').status).toBe(EVENT_STATUS.DONE);
   });
 
+  /** **A field the server CLEARED crosses the wire as `null`** — an event's own place, once a peer
+   *  links it to a booking (ADR-0048's authority invariant, broadcast since 2026-09-01). A raw
+   *  spread put that `null` into state where `TripEvent` says `undefined`, so every reader that
+   *  asks "does this row have a place" got `null` — truthy checks aside, it is the value the
+   *  entity type does not allow, and the Dexie mirror had always coerced it. One answer now. */
+  it('reads a cleared field as absent rather than storing the wire null', () => {
+    const s1 = reducer(initialState(), {
+      type: TRIP_ACTION.REMOTE_EVENT_CHANGE,
+      change: { ...baseChange, action: 'update', after: { bookingId: 'bk-1', placeId: null } },
+    });
+    expect(find(s1, 'ev-goldengai').placeId).toBeUndefined();
+    expect(find(s1, 'ev-goldengai').bookingId).toBe('bk-1');
+  });
+
   it('removes the event on a remote delete', () => {
     const s1 = reducer(initialState(), {
       type: TRIP_ACTION.REMOTE_EVENT_CHANGE,
@@ -301,6 +315,14 @@ describe('applyControlChangeToList (bookings/places WS merge, ADR-0047/0048)', (
     );
     expect(next.map((r) => r.id)).toEqual(['bk-1', 'bk-2']);
     expect(next[1].name).toBe('Flight');
+  });
+
+  /** The list half of the coercion the event applier above states. */
+  it('reads a cleared field as absent rather than storing the wire null', () => {
+    const start: Row[] = [{ id: 'bk-1', name: 'Hotel', code: 'ABC' }];
+    const next = applyControlChangeToList(start, change({ after: { code: null } }));
+    expect(next[0].code).toBeUndefined();
+    expect(next[0].name).toBe('Hotel');
   });
 
   it('drops a row on a remote delete', () => {

@@ -107,7 +107,20 @@ export function describeChange(
   const actor = users.find((u) => u.id === change.actorUserId);
   const actorName = actor?.displayName ?? cf.someone;
   const subject = subjectOf(change, users);
-  const startsAt = str((change.after ?? {}).startsAt);
+  /** **The time to say "moved to", or nothing** — and the two actions ask it differently.
+   *
+   *  A `move` IS a move: the action says so, and its `startsAt` is the answer. An `update` is not,
+   *  and since `after` became the ROW (`sync-and-offline.md` §3, events on 2026-09-01) every event
+   *  update carries a `startsAt` whether or not anybody touched it — so keying the line on its mere
+   *  presence would narrate `הזיז את X ל־07:15` at a peer who renamed the event. Compared against
+   *  `before` there, which is also stricter than the old test was for the sparse payloads: a form
+   *  save that re-sent an unchanged time narrated a move nobody made. */
+  const movedTo = (() => {
+    const to = str((change.after ?? {}).startsAt);
+    if (!to) return undefined;
+    if (change.action === 'move') return to;
+    return to !== str((change.before ?? {}).startsAt) && change.before ? to : undefined;
+  })();
 
   let lead: string;
   let time: string | undefined;
@@ -117,9 +130,9 @@ export function describeChange(
     lead = cf.removed(subject);
   } else if (change.action === 'create') {
     lead = cf.added(subject);
-  } else if ((change.action === 'move' || change.action === 'update') && startsAt) {
+  } else if ((change.action === 'move' || change.action === 'update') && movedTo) {
     lead = cf.movedTo(subject); // "moved X to …" — the PRD 4.2 case
-    time = formatTime(startsAt, tz);
+    time = formatTime(movedTo, tz);
   } else if (change.action === 'move') {
     lead = cf.moved(subject);
   } else {
