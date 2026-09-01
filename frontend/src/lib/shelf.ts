@@ -8,7 +8,9 @@
 import {
   EVENT_KIND,
   EVENT_STATUS,
+  haversineMeters,
   iconForCategory,
+  reachableWithin,
   SUGGESTION_PLACEMENT,
   SUGGESTION_REASON,
   SUGGESTION_REF,
@@ -25,8 +27,8 @@ import {
 import { eventPlaceId } from './places';
 import { formatDistance } from './distance';
 import { dayLabel, zonedIso, type DayNaming } from './time';
-import type { GapDefaults } from './gaps';
-import { chosenIcon, DEFAULT_MAYBE_ICON } from '../constants';
+import { FREE_TIME_MIN_MINUTES, type GapDefaults } from './gaps';
+import { chosenIcon, DEFAULT_MAYBE_ICON, SECONDS_PER_MINUTE } from '../constants';
 import { t } from '../i18n/he';
 
 export interface ShelfGroups {
@@ -331,23 +333,67 @@ export function shelfForSlot(
   slot: GapDefaults,
   tz: string,
   context: { events: TripEvent[]; bookings: Booking[]; places: Place[] },
-): RankedIdea[] {
+  /** **What is free in this slot, in minutes** — `Gap.minutes` for a fill (already corrected for
+   *  the journey in the hole, ADR-0206 §AY) or the replaced row's own length for `החלף`. Absent
+   *  measures nothing and drops nothing, which is what every caller did before ADR-0216. */
+  freeMinutes?: number,
+): SlotIdeas {
   const { events, bookings, places } = context;
   const ideas = [...shelf.forDay, ...shelf.pool];
-  if (!slot.start) return rankIdeas(ideas, places, slot.date, []);
-  return rankIdeas(
-    ideas,
-    places,
-    slot.date,
-    // Ranked against THIS slot's own neighbours, not the whole day — the sheet's only
-    // question is which idea fits here (ADR-0151 §3).
-    slotStops(events, bookings, places, slot.date, {
-      fromMs: Date.parse(zonedIso(slot.date, slot.start, tz)),
-      // A slot with no end (a late tail, ADR-0036) is an instant, and its "after" neighbour
-      // is then everything following it — which is the honest reading.
-      toMs: Date.parse(zonedIso(slot.date, slot.end || slot.start, tz)),
-    }),
-  );
+  if (!slot.start) return { ideas: rankIdeas(ideas, places, slot.date, []), dropped: 0 };
+  // Ranked against THIS slot's own neighbours, not the whole day — the sheet's only
+  // question is which idea fits here (ADR-0151 §3).
+  const stops = slotStops(events, bookings, places, slot.date, {
+    fromMs: Date.parse(zonedIso(slot.date, slot.start, tz)),
+    // A slot with no end (a late tail, ADR-0036) is an instant, and its "after" neighbour
+    // is then everything following it — which is the honest reading.
+    toMs: Date.parse(zonedIso(slot.date, slot.end || slot.start, tz)),
+  });
+  const reachable = reachableIdeas(ideas, places, stops, freeMinutes);
+  return {
+    ideas: rankIdeas(reachable, places, slot.date, stops),
+    dropped: ideas.length - reachable.length,
+  };
+}
+
+/** What the slot sheet needs: the rows to offer, and how many were refused as out of reach
+ *  (ADR-0216 §6 — the count is a STATEMENT, so it travels as a number and never as a row). */
+export interface SlotIdeas {
+  ideas: RankedIdea[];
+  dropped: number;
+}
+
+/**
+ * **The ideas a slot could actually hold** (ADR-0216 §2) — the detour out and back, floored by
+ * `MAX_GROUND_SPEED_KMH`, against what is free once there is time to be there.
+ *
+ * Filtered BEFORE `rankIdeas` rather than after, so the ranking never orders a candidate it would
+ * have had to explain: `reachableWithin` may drop and may do nothing else (§3), and a score is
+ * exactly the "something else" that would leak an unmeasured travel time into a reason.
+ *
+ * **Everything unmeasurable survives**, which is §D4 read from the other end — nothing may be
+ * dropped on an absence: no window to measure against, no located neighbour to leave from, no
+ * coordinates on the idea's own place (a Place-lite, ADR-0048).
+ */
+function reachableIdeas(
+  ideas: MaybeItem[],
+  places: Place[],
+  stops: SuggestionStop[],
+  freeMinutes: number | undefined,
+): MaybeItem[] {
+  if (freeMinutes === undefined || stops.length === 0) return ideas;
+  const placeById = new Map(places.map((p) => [p.id, p]));
+  const freeSeconds = freeMinutes * SECONDS_PER_MINUTE;
+  const staySeconds = FREE_TIME_MIN_MINUTES * SECONDS_PER_MINUTE;
+  // One neighbour serves as both ends at a day edge: leave from here, come back to here.
+  const [out, back] = [stops[0]!, stops[stops.length - 1]!];
+  return ideas.filter((item) => {
+    const place = placeById.get(item.placeId ?? '');
+    if (place?.lat == null || place.lng == null) return true;
+    const at = { lat: place.lat, lng: place.lng };
+    const detourMeters = haversineMeters(out.at, at) + haversineMeters(at, back.at);
+    return reachableWithin({ freeSeconds, detourMeters, staySeconds });
+  });
 }
 
 /** The reason as a full sentence, for the slot sheet's full-width row. The contract

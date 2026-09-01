@@ -100,6 +100,15 @@
   text-align: center;
   padding: 14px 8px;
 }
+/* **What the slot refused** (ADR-0216 §6). `.slotfill-sub`'s own size and hue — it is the same
+   density of remark, one end of the list instead of the other — and no hue of its own: nothing is
+   wrong here, the day is simply large. */
+.slotfill-dropped {
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: center;
+  padding: 8px 8px 0;
+}
 /* The way past the cap (ADR-0116 session-202 §4). Neutral `--cta` in BOTH modes: it
    reveals the rest of a list, so it is not a plan action and does not spend plan
    violet (ADR-0028, root rule 4) even where the accent above does. */

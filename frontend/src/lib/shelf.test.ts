@@ -275,8 +275,10 @@ describe('shelfForSlot', () => {
   const slot = { date: DAY, start: '12:00', end: '14:00' };
 
   it('joins both shelf groups and ranks them against the slot’s own neighbours', () => {
-    const ranked = shelfForSlot(shelf, slot, 'UTC', ctx);
-    expect(ranked.map((r) => r.item.id).sort()).toEqual(['m-day', 'm-pool']);
+    const { ideas, dropped } = shelfForSlot(shelf, slot, 'UTC', ctx);
+    expect(ideas.map((r) => r.item.id).sort()).toEqual(['m-day', 'm-pool']);
+    // Nothing measured, so nothing refused — every caller before ADR-0216 (§D4).
+    expect(dropped).toBe(0);
   });
 
   // **The blank screen** (reported 2026-08-04): `החלף` was offered on an untimed row, so this
@@ -288,7 +290,7 @@ describe('shelfForSlot', () => {
     expect(() => shelfForSlot(shelf, clockless, 'UTC', ctx)).not.toThrow();
     expect(
       shelfForSlot(shelf, clockless, 'UTC', ctx)
-        .map((r) => r.item.id)
+        .ideas.map((r) => r.item.id)
         .sort(),
     ).toEqual(['m-day', 'm-pool']);
   });
@@ -297,6 +299,105 @@ describe('shelfForSlot', () => {
     expect(() =>
       shelfForSlot(shelf, { date: DAY, start: '12:00', end: '' }, 'UTC', ctx),
     ).not.toThrow();
+  });
+});
+
+// ── AN IDEA YOU CANNOT REACH IS NOT OFFERED (ADR-0216) ────────────────────────────────────
+//
+// Owner, off the shipped sheet: _"Maybe unfeasible suggestions should be dropped entirely (too
+// far, not enough time)."_ The screenshot offered a glacier lagoon ⁦182 ק״מ⁩ away for a one-hour
+// hole, because proximity past `FAR_M` scores zero for everything and the order fell back to
+// recency — nothing was wrong with the ranking, and nothing had ever asked whether you could go.
+describe('shelfForSlot — the slot refuses what it cannot hold', () => {
+  /** Both of the slot's neighbours at the SAME point, so a detour is a clean there-and-back and
+   *  the round trip is exactly twice the one leg. That is what makes §2's argument testable. */
+  const places = [
+    located('p-stop', 'העצירה', 0),
+    located('p-near', 'קרוב', 20_000),
+    located('p-far', 'רחוק', 60_000),
+    located('p-both-legs', 'שני הצדדים', 56_000),
+    place('p-lite', 'מקום בלי נקודה'),
+  ];
+  const events = [
+    at('before', '09:00', 'p-stop', { endsAt: `${DAY}T10:00:00.000Z` }),
+    at('after', '15:00', 'p-stop'),
+  ];
+  const ctx = { events, bookings: [], places };
+  const slot = { date: DAY, start: '12:00', end: '13:00' };
+  const shelfOf = (...ids: string[]) => ({
+    forDay: [],
+    pool: ids.map((id) => withPlaceAt(id, id.replace('m-', 'p-'))),
+  });
+  // `createdAt` is not decoration: past `FAR_M` every idea scores zero, so the ranking's tiebreak
+  // is the only thing ordering these — which is the report's own root cause, asserted here by the
+  // fixture needing it at all.
+  const withPlaceAt = (id: string, placeId: string): MaybeItem =>
+    ({
+      id,
+      tripId: 't',
+      title: id,
+      consumed: false,
+      placeId,
+      createdAt: '2026-07-01',
+    }) as MaybeItem;
+  /** ⁦65⁩ free minutes, the reported hole once §AY corrects it: ⁦15⁩ owed to being there and ⁦50⁩ to
+   *  driving, which at ⁦130 km/h⁩ is ⁦108 ק״מ⁩ of crow round trip. */
+  const FREE = 65;
+
+  it('offers what fits and drops what does not', () => {
+    const { ideas, dropped } = shelfForSlot(shelfOf('m-near', 'm-far'), slot, 'UTC', ctx, FREE);
+    expect(ideas.map((r) => r.item.id)).toEqual(['m-near']);
+    expect(dropped).toBe(1);
+  });
+
+  // **The round trip, not the distance** (§2) — and this is the case the ADR names: the ⁦56 ק״מ⁩
+  // idea is comfortable one way (⁦26⁩ minutes of the ⁦50⁩ available) and impossible there and back.
+  // Measuring the one leg the reason line already prints would keep it.
+  it('counts both legs, which is how a comfortable errand becomes an impossible one', () => {
+    const { ideas, dropped } = shelfForSlot(shelfOf('m-both-legs'), slot, 'UTC', ctx, FREE);
+    expect(ideas).toEqual([]);
+    expect(dropped).toBe(1);
+  });
+
+  // **And there has to be time to BE there** (§2, `FREE_TIME_MIN_MINUTES`). ⁦5 ק״מ⁩ each way is
+  // under five minutes of driving inside a ⁦19⁩-minute window — reachable, and not a visit.
+  it('drops an idea it could reach and not stay at', () => {
+    const closer = [...places, located('p-close', 'ממש קרוב', 5_000)];
+    const { ideas, dropped } = shelfForSlot(
+      shelfOf('m-close'),
+      slot,
+      'UTC',
+      { ...ctx, places: closer },
+      19,
+    );
+    expect(ideas).toEqual([]);
+    expect(dropped).toBe(1);
+  });
+
+  // §D4 read from the other end: **nothing is dropped on an absence.** Three ways to have none.
+  it('keeps an idea whose place has no coordinates', () => {
+    const { ideas, dropped } = shelfForSlot(shelfOf('m-lite'), slot, 'UTC', ctx, FREE);
+    expect(ideas.map((r) => r.item.id)).toEqual(['m-lite']);
+    expect(dropped).toBe(0);
+  });
+
+  it('keeps everything when the slot has no located neighbour to leave from', () => {
+    const unlocated = { ...ctx, events: [at('before', '09:00'), at('after', '15:00')] };
+    const { ideas, dropped } = shelfForSlot(
+      shelfOf('m-near', 'm-far'),
+      slot,
+      'UTC',
+      unlocated,
+      FREE,
+    );
+    expect(ideas.map((r) => r.item.id).sort()).toEqual(['m-far', 'm-near']);
+    expect(dropped).toBe(0);
+  });
+
+  it('keeps everything when nothing said what is free', () => {
+    const { ideas, dropped } = shelfForSlot(shelfOf('m-near', 'm-far'), slot, 'UTC', ctx);
+    expect(ideas.map((r) => r.item.id).sort()).toEqual(['m-far', 'm-near']);
+    expect(dropped).toBe(0);
   });
 });
 

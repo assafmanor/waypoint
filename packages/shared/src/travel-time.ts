@@ -215,3 +215,62 @@ export function daySequenceFits(
   const overrunSeconds = legs.reduce((total, leg) => total + leg.overrunSeconds, 0);
   return { legs, fits: !legs.some((leg) => leg.fit === TRAVEL_FIT.OVERRUNS), overrunSeconds };
 }
+
+// ── WHETHER A DETOUR COULD HAPPEN AT ALL (ADR-0216) ───────────────────────────────────────
+//
+// Here rather than in the frontend for this file's own stated reason: the two day surfaces must
+// not be able to disagree about whether something fits, and a slot's list is exactly that
+// question asked of a place that is not on the day yet.
+
+/**
+ * **The speed past which a claim stops being about roads** (ADR-0216 §4).
+ *
+ * Above the highest motorway limit anywhere this app is used, applied to a crow line no road
+ * follows — so it is not an estimate of how fast anybody drives. It is the ceiling that makes
+ * {@link reachableWithin}'s refusals refusals about **physics**: no ground journey of that length
+ * fits that window, whatever route exists.
+ *
+ * **Deliberately absurd, because the safe direction is generous.** The cases this exists to catch
+ * are absurd by orders of magnitude — the reported ⁦182 ק״מ⁩ lagoon needs ⁦2:35⁩ of round trip against
+ * ⁦65⁩ free minutes even at this speed — so a ceiling nobody can argue with drops all of them and
+ * drops nothing else.
+ */
+export const MAX_GROUND_SPEED_KMH = 130;
+
+const M_PER_KM = 1_000;
+const SECONDS_PER_HOUR = 3_600;
+
+/** The fastest a crow distance could conceivably be covered on the ground, in seconds. A LOWER
+ *  BOUND on the journey and never an estimate of it — see {@link reachableWithin}. */
+export const floorTravelSeconds = (meters: number): number =>
+  (meters / (MAX_GROUND_SPEED_KMH * M_PER_KM)) * SECONDS_PER_HOUR;
+
+/**
+ * **Could you go there and be back in time, at all?** (ADR-0216.)
+ *
+ * `true` wherever the answer is yes **or unknown**, which is the whole contract: the bound behind
+ * this is `crow / ceiling`, and crow-flies distance is a **lower bound** on road distance. A lower
+ * bound can prove that something is impossible; it can never prove that something is possible. So
+ * this may be used to DROP a candidate and for nothing else — never to rank one, never to print a
+ * duration, never as a reason. That asymmetry is what keeps ADR-0206 §D4 intact: nothing the reader
+ * sees claims a travel time nobody measured.
+ *
+ * `detourMeters` is the whole round trip — out to the place and back to the stop the slot has to
+ * end at — because one leg is how a ⁦60 ק״מ⁩ errand looks like ⁦36⁩ minutes and costs ⁦72⁩.
+ *
+ * `staySeconds` is the time that has to be left once you are there. Zero is a legitimate caller
+ * choice; the sheet passes `FREE_TIME_MIN_MINUTES`, on the argument that if ⁦15⁩ minutes is not
+ * worth calling free time then arriving with less than ⁦15⁩ is not a visit.
+ *
+ * Unmeasurable is `true`, and that is §D4 read from the other end: **nothing may be dropped on an
+ * absence.** A non-finite distance or window is a missing coordinate, not a long journey.
+ */
+export function reachableWithin(input: {
+  freeSeconds: number;
+  detourMeters: number;
+  staySeconds?: number;
+}): boolean {
+  const { freeSeconds, detourMeters, staySeconds = 0 } = input;
+  if (!Number.isFinite(freeSeconds) || !Number.isFinite(detourMeters)) return true;
+  return floorTravelSeconds(detourMeters) + staySeconds <= freeSeconds;
+}
