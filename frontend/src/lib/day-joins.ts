@@ -16,6 +16,7 @@ import {
   freeAfterTravel,
   isTightConnection,
   TIME_MEANING,
+  TRAVEL_BUFFER_SECONDS,
   TRAVEL_FIT,
   windowBoundOf,
   type Booking,
@@ -26,9 +27,9 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { MS_PER_MINUTE, MS_PER_SECOND, SECONDS_PER_MINUTE } from '../constants';
-import { gapBetween, type Gap } from './gaps';
+import { flooredSlotEnd, gapBetween, type Gap } from './gaps';
 import { heroLeaveBy } from './hero-travel';
-import { isoToTimeInput, zonedIso } from './time';
+import { isoToTimeInput, toMin, zonedIso } from './time';
 import { routeEndpointDay } from './place-usage';
 import type { DayEntry } from './day-entries';
 import { groupEndEvent, groupStartEvent } from './day-entries';
@@ -883,33 +884,106 @@ export function windowClosesMs(event: TripEvent): number | undefined {
 }
 
 /**
+ * **What a hole loses to the journey in it** — the leg, PLUS the buffer the leave-by keeps.
+ *
+ * The buffer is not slack the day gets to spend twice. `heroLeaveBy` states
+ * `arriveBy - travel - buffer` and the reader acts on that minute, so free time that runs past it
+ * is time the same surface has already told you to be moving in. Subtracting the leg alone is what
+ * put `פנוי · 2:10 שע׳` above `יציאה עד 08:05` on a hole that ends at 08:30 — five minutes of
+ * disagreement between two lines describing one hole, which is the smaller half of the report that
+ * prompted this and the half no screenshot would ever have caught.
+ *
+ * One rule and one reader, which is §AY's other half: Plan used to answer this with a number of its
+ * own (`travelFreeMinutes`) for its chip's label while the slot beside it kept the raw hole.
+ */
+export const goingCostMinutes = (travelSeconds: number): number =>
+  Math.round((travelSeconds + TRAVEL_BUFFER_SECONDS) / SECONDS_PER_MINUTE);
+
+/**
  * **The slot a fill lands on, narrowed by the journey in it** (§V1.1 applied to the CONTROL rather
  * than to the statement).
  *
  * `Gap.fill` prefills a block at the hole's start, capped at the room — and the room it was capped
  * against is the whole hole. The journey sits at the **end** of it (you leave in time to arrive),
  * so the offer only overstates once what is free is shorter than the default block; there it hands
- * out a slot that eats the walk. One helper, both surfaces: Trip's tap on the journey block and
- * Plan's `שבץ` chip land on the same slot, which is ADR-0161 §9's whole point.
+ * out a slot that eats the walk. One helper, every surface: Trip's tap on the journey block, Plan's
+ * `שבץ` chip, the day's two edge slots and the slot PICKER all land on the same window, which is
+ * ADR-0161 §9's whole point.
+ *
+ * **The window ends at the DEPARTURE, and that is the correction** (owner, 2026-09-01: _"transit
+ * row says take off by 08:05, but filling the gap suggests 07:30–08:30"_). It used to end at
+ * `fill.start + freeSeconds`, which is wrong twice over:
+ *
+ *  - it needs `journey.free`, and the day's first leg out of an ambient stay has none (§AD/§AF3) —
+ *    so the head slot, the one the owner photographed, was returned whole. The number the app does
+ *    have there is `leaveByMs`, and it is a pure ceiling precisely because nothing clamped it.
+ *  - it is a LENGTH added to the slot's own start, and `fill.start` is not always the hole's start:
+ *    `freeBeforeFirst` hugs the first event (`max(floor, first - 60)`), so on the reported day the
+ *    cap landed at 08:40 — past the leave-by AND past the event itself, i.e. no cap at all. An
+ *    instant cannot be recovered from a duration measured somewhere else; the leave-by IS the
+ *    instant, so it is what the offer is compared against.
+ *
+ * Rounded down onto {@link SLOT_STEP_MINUTES}, so `יציאה עד 14:47` offers a slot ending 14:45.
  *
  * Returns the gap unchanged where there is nothing to narrow, so a caller may apply it blindly.
  */
 export function narrowGapForTravel(free: Gap, journey: DayJourney | null, tz: string): Gap {
-  const freeSeconds = journey?.free?.freeSeconds;
-  if (freeSeconds === undefined) return free;
+  if (!journey) return free;
+  /** The advised departure, and **only where it is a CEILING**: on the clamped arm the same number
+   *  is the earliest departure that exists (§AJ2), so it says nothing about what is free. Guarded
+   *  for finiteness on the way in, this file's own rule — `NaN` is not a bound, and a slot capped
+   *  at one throws inside `toISOString` rather than merely reading wrong. */
+  const goMs =
+    journey.leaveByIsFloor || !Number.isFinite(journey.leaveByMs) ? null : journey.leaveByMs;
+  const cost = Number.isFinite(journey.travelSeconds)
+    ? goingCostMinutes(journey.travelSeconds!)
+    : null;
+  /** What is LEFT of the hole: the hole, minus what going costs — **asked of the cost and not of
+   *  the arm**, so one hole answers one number whatever the clock is doing. Keyed on `leaveByMs`
+   *  instead, it would have reported 115 minutes free all afternoon and then 120 the moment the row
+   *  below started (the `PAST` arm states no departure), which is a measurement that moves without
+   *  the day changing.
+   *
+   *  The fallback is for a shape the arms do not currently produce — a window with no duration to
+   *  subtract — and keeps that case reading exactly as it did before. */
+  const freeMinutes =
+    cost !== null
+      ? free.minutes - cost
+      : journey.free
+        ? Math.round(journey.free.freeSeconds / SECONDS_PER_MINUTE)
+        : undefined;
+  if (freeMinutes === undefined) return free;
   // **`minutes` is corrected whether or not the FILL needs capping**, and the two used to
   // disagree: the first draft spread `...free` and rewrote only `fill.end`, so a narrowed slot
   // still reported the whole hole's length — an object contradicting itself, which is what
   // handed the free-time strip a 2:40 hole to describe as free after a 40-minute walk. A caller
   // asks a Gap how long it is; it must not have to know which field was corrected.
-  const narrowed = { ...free, minutes: Math.max(0, Math.round(freeSeconds / SECONDS_PER_MINUTE)) };
+  const narrowed = { ...free, minutes: Math.max(0, freeMinutes) };
+  if (goMs === null) return narrowed;
   const startMs = Date.parse(zonedIso(free.fill.date, free.fill.start, tz));
+  if (!Number.isFinite(startMs)) return narrowed;
+  const cappedMs = flooredSlotEnd(goMs);
+  /** The ceiling, in the slot's own wall clock. **Carried even where the fill needs no capping**,
+   *  and that is not belt-and-braces: the block a CREATE gets is `blockFor`'s, whose length is
+   *  capped against the free MINUTES — measured over the hole, from an instant the block does not
+   *  necessarily start at. Without it a 60-minute idea in the reported head slot took 07:30–08:30
+   *  out of a window that ends at 08:05. */
+  const until = isoToTimeInput(new Date(cappedMs).toISOString(), tz);
+  // **Nothing left to offer keeps the position's DEFAULT block** — the same answer `freeBetween`
+  // gives a seam, and the reason this is not `Math.max(startMs, cappedMs)`: a zero-length slot is
+  // no droppable position at all, so a drop overlaps instead, which is ADR-0161 §3's accepted
+  // outcome rather than something to prevent by arithmetic. The old cap could produce exactly that
+  // degenerate slot on a journey that ate the whole hole.
+  //
+  // The test is on the two WALL CLOCKS and not on the instants, because a slot is a wall clock and
+  // a ceiling is only a ceiling while it is one: a departure past midnight reads `00:30`, which is
+  // before every hour of the day it belongs to.
+  if (toMin(until) <= toMin(free.fill.start)) return narrowed;
   const endMs = Date.parse(zonedIso(free.fill.date, free.fill.end, tz));
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return narrowed;
-  const cappedMs = startMs + Math.max(0, freeSeconds) * 1000;
-  if (endMs <= cappedMs) return narrowed;
+  const capsTheFill = Number.isFinite(endMs) && endMs > cappedMs;
   return {
     ...narrowed,
-    fill: { ...free.fill, end: isoToTimeInput(new Date(cappedMs).toISOString(), tz) },
+    until,
+    ...(capsTheFill ? { fill: { ...free.fill, end: until } } : {}),
   };
 }

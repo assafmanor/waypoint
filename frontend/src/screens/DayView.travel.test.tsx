@@ -271,8 +271,13 @@ const show = () =>
   );
 
 /** The corrected free time, derived here the way the code derives it rather than written out —
- *  §D5's buffer is a constant and not a number this file also believes. */
-const freeAfterWalk = GAP_MINUTES - WALK_MINUTES;
+ *  §D5's buffer is a constant and not a number this file also believes.
+ *
+ *  **And the buffer is part of the correction since 2026-09-01** (`goingCostMinutes`): the app tells
+ *  you to leave at `arriveBy - walk - buffer`, so the five minutes after that instant are not free
+ *  time, they are the start of the walk. The strip and the slot both end where the block says to
+ *  go, which is the report this number moved for. */
+const freeAfterWalk = GAP_MINUTES - WALK_MINUTES - TRAVEL_BUFFER_SECONDS / 60;
 
 // One reset for the whole file rather than one per describe: a declaration leaking from a spec
 // into the next would change what every following read says, and the leak would look like a bug in
@@ -516,7 +521,9 @@ describe('DayView — a hole states what is free AFTER the journey (ADR-0206 §V
   });
 
   it('states it again once what is left is a slice somebody could spend', () => {
-    travelSeconds = (GAP_MINUTES - 15) * 60;
+    // Exactly at the floor, which is now measured after the buffer as well as the walk — the
+    // fixture states the intent (fifteen minutes left) rather than a literal duration.
+    travelSeconds = (GAP_MINUTES - 15) * 60 - TRAVEL_BUFFER_SECONDS;
     show();
     expect(screen.getByText(freeTimePhrase(15)!)).toBeTruthy();
   });

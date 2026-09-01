@@ -32,6 +32,7 @@ import {
 import { approxTravelTime, hoursPhrase } from '../lib/duration';
 import { setSimulatedNow } from '../lib/useClock';
 import { formatDistance, haversineMeters } from '../lib/distance';
+import { clockRange } from '../lib/time';
 import { t } from '../i18n/he';
 import { wrapNav } from '../test/nav-harness';
 import { MapScopeProvider } from '../state/map-scope-state';
@@ -974,6 +975,96 @@ describe('PlanDay — the slot picker states what is free, not the hole (ADR-020
     // With the theatre gone the hole after lunch runs to dinner — ⁦15:20⁩→⁦21:00⁩, and those two
     // rows are not adjacent on the day as it stands, so there is no leg and no correction.
     expect(freeAt(AFTER_LUNCH)).toBe(t.planDay.slotFree(t.planDay.gapHours(6)));
+  });
+});
+
+// ── THE OFFER ENDS WHERE THE ROAD STARTS (owner, 2026-09-01) ─────────────────────────────
+//
+// _"I feel like filling the gap time suggestion might be wrong. Example: transit row says take off
+// by 08:05, but filling the gap suggests 07:30–08:30."_
+//
+// The chip's LABEL had been corrected since M6a and the slot behind it had not, so tapping it
+// opened a sheet whose header offered the hole whole — including the drive the row directly below
+// it was advising. The day's HEAD is where it showed, and not by chance: `narrowGapForTravel`
+// needed `journey.free`, which the leg out of an ambient stay has none of (§AD/§AF3), so the one
+// slot with a bed above it was the one slot nothing narrowed.
+describe('PlanDay — the slot a tap opens ends at the departure (ADR-0206 §V1.1)', () => {
+  const hotelPlace: Place = {
+    id: 'p-hotel',
+    tripId: 't1',
+    name: 'מלון',
+    lat: 40.86,
+    lng: 14.24,
+    createdAt: `${DAY}T00:00:00Z`,
+    updatedAt: `${DAY}T00:00:00Z`,
+    updatedBy: 'u1',
+  };
+  /** The bed the day starts in — an ambient span, so the leg out of it has no departure floor. */
+  const woke = ev('woke', {
+    title: 'Gissurarbúð 5',
+    category: 'lodging',
+    placeId: 'p-hotel',
+    date: '2026-08-02',
+    endDate: DAY,
+    startsAt: '2026-08-02T13:00:00Z',
+    endsAt: `${DAY}T09:00:00Z`,
+  });
+  /** The day's first row: ⁦15:00⁩ in `Europe/Rome`. The head hole is the day window's ⁦07:00⁩ to
+   *  there — eight hours — and its fill HUGS this row, ⁦14:00⁩–⁦15:00⁩. */
+  const zip = ev('zip', {
+    title: 'Zip line',
+    placeId: 'p-theatre',
+    startsAt: `${DAY}T13:00:00Z`,
+    endsAt: `${DAY}T14:00:00Z`,
+  });
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(`${DAY}T06:00:00Z`));
+    tripEvents = [woke, zip];
+    tripPlaces = [...places, hotelPlace];
+    // 31 minutes of driving costs the hole 36 (§D5's buffer included), so the departure is ⁦14:24⁩.
+    travelSeconds = 31 * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  const openHeadSlot = () => {
+    show();
+    // The head chip is the day's first offer — above the leg out of the bed (§AJ5).
+    const chips = document.querySelectorAll('.gap .gap-add');
+    expect(chips.length).toBeGreaterThan(0);
+    fireEvent.click(chips[0]);
+  };
+
+  // **RED before this fix**: the header read ⁦14:00–15:00⁩ — a slot ending at the row the drive has
+  // to arrive at — while the leg beneath it said to leave at ⁦14:24⁩.
+  it('offers a window that stops before the drive rather than at the next row', () => {
+    openHeadSlot();
+    expect(screen.getByText(t.slotFill.gapTitle(clockRange('14:00', '14:20')))).toBeTruthy();
+    expect(screen.queryByText(t.slotFill.gapTitle(clockRange('14:00', '15:00')))).toBeNull();
+  });
+
+  // **And the end is on the five-minute grid, rounded DOWN** (owner: _"round the suggestions so
+  // that it shows 14:45 instead of 14:47 · down so that it doesn't cross to the unavailable
+  // time"_). The departure is ⁦14:24⁩; the offer says ⁦14:20⁩ and never ⁦14:25⁩.
+  it('states the end on the slot grid, below the departure', () => {
+    show();
+    // The leg still advises the exact minute — the grid is the OFFER's, not the advice's.
+    expect(document.querySelector('.day-trv')!.textContent).toContain('14:24');
+    fireEvent.click(document.querySelectorAll('.gap .gap-add')[0]);
+    expect(screen.getByText(t.slotFill.gapTitle(clockRange('14:00', '14:20')))).toBeTruthy();
+    // Never rounded UP onto the grid, which would spend a minute of the drive.
+    expect(screen.queryByText(t.slotFill.gapTitle(clockRange('14:00', '14:25')))).toBeNull();
+  });
+
+  // §D4 — with no estimate there is no departure to end anything at, so the slot reads exactly as
+  // it read before any of this existed.
+  it('offers the hole whole when there is no estimate', () => {
+    travelSeconds = null;
+    openHeadSlot();
+    expect(screen.getByText(t.slotFill.gapTitle(clockRange('14:00', '15:00')))).toBeTruthy();
   });
 });
 

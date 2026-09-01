@@ -392,7 +392,17 @@ export function DayView() {
   const scheduleDefaults = (item: MaybeItem) => {
     const zone = authoringZone({ placeId: item.placeId }, { date: activeDate }, zoneEvidence);
     const minutes = typicalMinutesFor(ideaCategory(item, places));
-    const position = firstPositionFitting(dayPositions(dayEvents, activeDate, zone), minutes);
+    // **Every position corrected for the journey into it BEFORE one is chosen** (ADR-0206 §V1.1,
+    // 2026-09-01). `firstPositionFitting` asks each hole whether it has room, and the room it was
+    // asking about was the whole hole — so a one-tap schedule picked a 70-minute gap for a
+    // 60-minute idea when 60 of those minutes were the drive, and `blockFor` then wrote the block
+    // across it. The same correction the chip and the strip apply, so the day cannot offer a slot
+    // on one surface that it refuses on another.
+    const positions = dayPositions(dayEvents, activeDate, zone).map((p) => {
+      const journey = p.beforeEvent ? journeyFor(p.afterEvent, p.beforeEvent) : null;
+      return journey ? { ...p, free: narrowGapForTravel(p.free, journey, zone) } : p;
+    });
+    const position = firstPositionFitting(positions, minutes);
     return position ? blockFor(position.free, minutes) : nextSlot(dayEvents, activeDate, zone);
   };
   /** The event `החלף` was pressed on — the one being displaced (ADR-0161 §6). */

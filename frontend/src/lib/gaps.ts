@@ -8,7 +8,7 @@
 // without a threshold and the `gap*` wrappers apply it, so a gap and a seam cannot
 // disagree about what free time IS or about what a drop into it lands on.
 import { typicalMinutesFor, type EventCategory, type TripEvent } from '@waypoint/shared';
-import { DAY_WINDOW } from '../constants';
+import { DAY_WINDOW, MS_PER_MINUTE } from '../constants';
 import { isoToTimeInput, toHHMM, toMin, zonedIso } from './time';
 
 const LAST_MINUTE_OF_DAY = 23 * 60 + 59; // 23:59 — the prefill slot stays same-day
@@ -34,12 +34,56 @@ export const GAP_MIN_MINUTES = 60;
  *  extend it. Capped at the gap itself so a small gap fills exactly. */
 export const GAP_FILL_MINUTES = 60;
 
+/**
+ * **The grain a suggested slot's end is stated on, and it is always rounded DOWN** (owner,
+ * 2026-09-01: _"round the suggestions so that it shows 14:45 instead of 14:47 · down so that it
+ * doesn't cross to the unavailable time"_).
+ *
+ * The end of an offer is a departure counted backwards (`arriveBy - travel - buffer`), so it lands
+ * on whatever minute the router happened to answer. `14:47` is arithmetically exact and reads as
+ * false precision on a control you are about to plan lunch inside — nobody picks a time that way.
+ *
+ * **Down, never to the nearest.** Rounding up would spend two minutes of the journey, which is the
+ * one thing the narrowing exists to prevent: the whole point is that the slot stops before the
+ * road starts. The couple of minutes given away instead are the cheapest possible reading of
+ * `TRAVEL_BUFFER_SECONDS`' own argument about what an estimate may claim.
+ */
+export const SLOT_STEP_MINUTES = 5;
+
+/** An instant floored onto {@link SLOT_STEP_MINUTES}. No zone is threaded because none is needed:
+ *  every real UTC offset is a whole number of five minutes (⁦+05:45⁩ included), so the grid lands on
+ *  the same wall clock in every one of them. */
+export const flooredSlotEnd = (ms: number): number => {
+  const step = SLOT_STEP_MINUTES * MS_PER_MINUTE;
+  return Math.floor(ms / step) * step;
+};
+
 /** Prefill for a new/scheduled event dropped into the gap: the gap's own slot. */
 export type GapDefaults = { date: string; start: string; end: string };
 
 /** Free time, and the slot a drop into it lands on. `minutes` can be **zero**: back-to-back
  *  rows still have a position between them, which is what a seam is (ADR-0161 §2). */
-export type Gap = { minutes: number; fill: GapDefaults };
+export type Gap = {
+  minutes: number;
+  fill: GapDefaults;
+  /**
+   * **THE LAST MOMENT ANYTHING PUT HERE MAY RUN TO**, as a wall clock in `fill`'s own zone —
+   * the departure the day advises (`narrowGapForTravel`), and absent on a slot with no journey
+   * after it, which is most of them.
+   *
+   * It exists because `minutes` and `fill.start` do not always measure from the same instant, so
+   * neither of them can express this. `freeBeforeFirst`'s block HUGS the first event
+   * (`max(floor, first - 60)`), so on the reported day the hole's free time ran 07:00–08:05 while
+   * the block sat at 07:30 — and `blockFor`, capping a length against `minutes`, gave a 60-minute
+   * idea 07:30–08:30 and drove it straight through the 08:05 departure. Capping against the
+   * `fill` window instead would fix that one case and break the ordinary one, where `fill.end` is
+   * the DEFAULT block rather than a ceiling and a three-hour hike is entitled to the whole hole.
+   *
+   * Two fields because they are two facts: `fill` is where a drop lands, this is what it may not
+   * cross.
+   */
+  until?: string;
+};
 
 /** **The one place the chip threshold is applied.** Above it the free time is worth a
  *  `שבץ` chip; below it — including zero — the same slot is a drag-only seam.
@@ -206,7 +250,11 @@ export function gapAfterLast(dayEvents: TripEvent[], date: string, tz: string): 
 export function blockFor(free: Gap, minutes: number): GapDefaults {
   const startMin = toMin(free.fill.start);
   const wanted = free.minutes > 0 ? Math.min(minutes, free.minutes) : minutes;
-  const endMin = Math.min(startMin + wanted, LAST_MINUTE_OF_DAY);
+  // …and never past the moment the day says to leave (`Gap.until`), which is a CEILING and not a
+  // length: the free minutes are measured over the hole, and the block starts wherever the
+  // position put it.
+  const ceiling = free.until ? toMin(free.until) : LAST_MINUTE_OF_DAY;
+  const endMin = Math.min(startMin + wanted, ceiling, LAST_MINUTE_OF_DAY);
   return { ...free.fill, end: endMin > startMin ? toHHMM(endMin) : '' };
 }
 

@@ -335,6 +335,33 @@ describe('blockFor', () => {
     expect(blockFor(at('23:30', 180), 120).end).toBe('23:59');
   });
 
+  /**
+   * **AND NEVER PAST THE MOMENT THE DAY SAYS TO LEAVE** (`Gap.until`, 2026-09-01).
+   *
+   * The free MINUTES are measured over the hole and the block starts wherever the position put
+   * it, and on the day's head those are two different instants: `freeBeforeFirst` hugs the first
+   * row, so a hole running 07:00–08:05 offers its block at 07:30 with 65 minutes free — and a
+   * 60-minute idea capped against the 65 ran to 08:30, straight through the 08:05 departure. This
+   * is the reported case reduced to arithmetic.
+   */
+  it('never runs a block past the slot’s own ceiling', () => {
+    const head = {
+      minutes: 65,
+      fill: { date: DATE, start: '07:30', end: '08:05' },
+      until: '08:05',
+    };
+    expect(blockFor(head, 60).end).toBe('08:05');
+  });
+
+  it('leaves a length the ceiling does not reach alone', () => {
+    const head = {
+      minutes: 65,
+      fill: { date: DATE, start: '07:30', end: '08:05' },
+      until: '08:05',
+    };
+    expect(blockFor(head, 20).end).toBe('07:50');
+  });
+
   it('drops the end entirely when the start leaves no room at all', () => {
     expect(blockFor(at('23:59', 180), 60).end).toBe('');
   });
