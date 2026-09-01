@@ -274,6 +274,17 @@ export async function bootIntoTrip(
     (u) => u.pathname === '/trips/t1/changes',
     (r) => r.fulfill({ json: [] }),
   );
+  // **The trip's route pack** (ADR-0206 §AZ5). Fetched once per trip from the shell now rather
+  // than behind the Map's archive prompt, so EVERY boot asks for it — and an unmocked asset
+  // request is not hermetic: the dev server answers `index.html` for an unknown path, which this
+  // harness would then store as a pack, and `boot-cross-tabs` asserts a clean console.
+  //
+  // Empty rather than absent, so the real path runs (stored, hydrated, nothing written) instead
+  // of the error branch. A spec that wants legs in it can `page.route` over this one.
+  await page.route(
+    (u) => u.pathname === '/trips/t1/routes/pack',
+    (r) => r.fulfill({ json: { signature: 'e2e-empty', legs: [] } }),
+  );
   // Event edits are answered, not just reads. Without this the optimistic update
   // lands, the real PATCH 404s against the dev server, and the app correctly rolls
   // itself back — so any test asserting what a write PRODUCED would be testing the

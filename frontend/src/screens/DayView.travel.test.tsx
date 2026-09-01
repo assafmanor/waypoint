@@ -399,16 +399,19 @@ describe('DayView — the leg mode is declarable (ADR-0206 §AM)', () => {
   // 2026-08-31: a ⁦50 m⁩ walk switched to a drive, _"the row vanished and could not be returned"_).
   //
   // Only observable here: the derivation returns a journey and the block renders one, so the leg
-  // that a person declared keeps the disclosure that declared it. The floor itself stays exactly
-  // where it was aimed — the same hole with nothing declared draws nothing at all.
-  describe('a hop under the ladder’s floor (§AW)', () => {
+  // that a person declared keeps the disclosure that declared it. **§AZ1 drops the "unless
+  // somebody picked it" half** — the row's existence stopped depending on what we know about the
+  // leg, so the same hole with nothing declared draws the same block.
+  describe('a hop under the ladder’s floor (§AW/§AZ1)', () => {
     beforeEach(() => {
       travelSeconds = 12;
     });
 
-    it('draws no block where the app picked the mode itself', () => {
+    it('draws the block even where the app picked the mode itself', () => {
       show();
-      expect(document.querySelector('.day-trv')).toBeNull();
+      const block = document.querySelector('.day-trv');
+      expect(block).not.toBeNull();
+      expect(block!.textContent).toContain(t.travel.underMinute);
     });
 
     it('keeps the block, the mode and the way back once somebody picked it', () => {
@@ -497,14 +500,27 @@ describe('DayView — a hole states what is free AFTER the journey (ADR-0206 §V
     expect(block!.textContent).toContain(String(leaveBy.getUTCHours() + 2));
   });
 
-  // **§D4 — with no estimate the slot reads exactly as it read before this milestone.** Never a
-  // pessimistic guess: the reader must not be able to tell "not computed" from "not computable",
-  // and inventing a walk we did not measure fails that in the direction that costs an afternoon.
-  it('falls back to the plain free-time strip when there is no estimate', () => {
+  // **§D4 — with no estimate the FREE TIME reads exactly as it read before this milestone.**
+  // Never a pessimistic guess: the reader must not be able to tell "not computed" from "not
+  // computable", and inventing a walk we did not measure fails that in the direction that costs
+  // an afternoon. **What §AZ1 changed is the ROW, not the correction**: the block stands, says
+  // the mode, the crow-flies distance and `בלי הערכת זמן`, and carries the mode control — which
+  // is the difference between "we cannot time this leg" and a hole where a journey should be.
+  it('states the whole hole as free when there is no estimate, and still draws the row', () => {
     travelSeconds = null;
     show();
     expect(screen.getByText(freeTimePhrase(GAP_MINUTES)!)).toBeTruthy();
-    expect(document.querySelector('.day-trv')).toBeNull();
+    const block = document.querySelector('.day-trv');
+    expect(block).not.toBeNull();
+    expect(block!.textContent).toContain(t.travel.noEstimate);
+    // **And the crow-flies floor, which is the number this device can always work out** (§AZ2):
+    // two coordinates and arithmetic, so it survives a plane, a failed request and a dead
+    // provider — where before it was given only to a declared or a refused leg.
+    expect(block!.textContent).toContain(
+      formatDistance(Math.round(haversineMeters(coordOf('p-lunch'), coordOf('p-theatre')))),
+    );
+    // No departure advised off a duration nobody measured, and no `~0 דק׳` invented for it.
+    expect(block!.textContent).not.toContain(t.travel.computing);
   });
 
   // **THE FLOOR THE OWNER SET** (2026-08-26: _"a gap below say 15 minutes is not really free
@@ -1028,8 +1044,11 @@ describe('DayView — the day says how far it goes (ADR-0206 §V1.9)', () => {
     tripOverrides = [declaredLeg('p-lunch', 'p-theatre')];
     show();
     const crow = Math.round(haversineMeters(coordOf('p-lunch'), coordOf('p-theatre')));
+    // **`לפחות`, because a declared leg's kilometres are the crow rather than the road** (§AZ3).
     expect(line().textContent).toBe(
-      t.travel.dayTotal(formatDistance(ROUTED_M + crow), approxTravelTime(WALK_MINUTES * 60)!),
+      t.travel.dayTotalFloor(
+        t.travel.dayTotal(formatDistance(ROUTED_M + crow), approxTravelTime(WALK_MINUTES * 60)!),
+      ),
     );
     // Asserted as an absence too, because the failure this guards is a plausible-looking line:
     // the declared leg's minutes must not have been invented from its walking estimate.
@@ -1043,15 +1062,20 @@ describe('DayView — the day says how far it goes (ADR-0206 §V1.9)', () => {
     const crow =
       Math.round(haversineMeters(coordOf('p-morning'), coordOf('p-lunch'))) +
       Math.round(haversineMeters(coordOf('p-lunch'), coordOf('p-theatre')));
-    expect(line().textContent).toBe(formatDistance(crow));
+    expect(line().textContent).toBe(t.travel.dayTotalFloor(formatDistance(crow)));
   });
 
-  // Hidden rather than zero (§D4 / the card's own exit criterion) — the provider answering
-  // nothing and a day with nothing in it read the same, which is the rule, not an omission.
-  it('renders no line at all when nothing on the day is routable', () => {
+  // **A day nothing routed still travels, and now says so as a FLOOR** (§AZ2/§AZ3). The rows
+  // carry crow-flies kilometres rather than nothing, so the header counts what the list shows
+  // (§AP2) — with `לפחות` over it, because every one of those numbers is a floor, and with no
+  // minutes at all, because no duration was measured and none may be invented (§D4/§D5).
+  it('states the crow-flies floor when nothing on the day is routable', () => {
     travelSeconds = null;
     show();
-    expect(document.querySelector('.day-total')).toBeNull();
+    const total = document.querySelector('.day-total');
+    expect(total).not.toBeNull();
+    expect(total!.textContent).toContain('לפחות');
+    expect(total!.textContent).not.toContain('~');
   });
 
   // **The other exit criterion, asserted rather than eyeballed.** The total is a roll-up of the

@@ -14,7 +14,7 @@ import { BOOKING_TYPE, LEG_TRAVEL_MODES, TRANSIT_LEG_MODE, TRAVEL_MODE } from '@
 import { ConnectionBand, GapStrip, JourneyBlock, JourneyRow } from './DayJoinRow';
 import { Icon } from '../Icon';
 import { approxTravelTime, freeTimePhrase, hoursPhrase, shortfallPhrase } from '../../lib/duration';
-import { dayJourney } from '../../lib/day-joins';
+import { DAY_JOURNEY_ARM, dayJourney } from '../../lib/day-joins';
 import { formatDistance } from '../../lib/distance';
 import { withoutBidiControls } from '../../lib/bidi';
 import { formatTime } from '../../lib/time';
@@ -443,19 +443,21 @@ describe('dayJourney — a hop too short to be a journey', () => {
   const MIN = 60_000;
   afterEach(() => cleanup());
 
-  // **A twenty-metre hop is not a journey at all** (owner, 2026-08-26). The tolerance in
-  // `freeAfterTravel` stops it being called impossible; this stops it being drawn. `~0 דק׳` over
-  // a block of its own is a row about nothing, and the ladder cannot even state the length.
-  it('is no journey at all below what the ladder can say', () => {
-    expect(
-      dayJourney({
-        departAfterMs: START,
-        arriveByMs: START,
-        travelSeconds: 24,
-        distanceMeters: 20,
-        nowMs: START - 10 * MIN,
-      }),
-    ).toBeNull();
+  // **A twenty-metre hop has no duration the ladder can name** (owner, 2026-08-26) — `~0 דק׳`
+  // over a block of its own is a row about nothing. What it is NOT is an absent journey (§AZ1):
+  // the 2026-08-26 rule deleted the row, and four disappearances later the row stands and says
+  // the one thing it knows, which is how far it goes.
+  it('names no duration below what the ladder can say, and still draws', () => {
+    const hop = dayJourney({
+      departAfterMs: START,
+      arriveByMs: START,
+      travelSeconds: 24,
+      distanceMeters: 20,
+      nowMs: START - 10 * MIN,
+    });
+    expect(hop?.arm).toBe(DAY_JOURNEY_ARM.UNTIMED);
+    expect(hop?.travelSeconds).toBeNull();
+    expect(hop?.leaveByMs).toBeNull();
   });
 
   // **…until somebody picks the mode, and then the row is the only way back** (ADR-0206 §AW). The
@@ -469,7 +471,6 @@ describe('dayJourney — a hop too short to be a journey', () => {
       travelSeconds: 12,
       distanceMeters: 50,
       nowMs: START,
-      chosen: true,
     })!;
     expect(journey).not.toBeNull();
     render(
@@ -498,20 +499,26 @@ describe('dayJourney — a hop too short to be a journey', () => {
     expect(screen.queryByText(t.travel.computing)).toBeNull();
   });
 
-  // The other road into the arm: a chosen mode the app never got a number for at all. There the
-  // declaration's own sentence is the true one, reached by a different route.
-  it('falls back to the absence sentence where no estimate ever arrived', () => {
+  // **The other silence, and it is a different sentence now** (ADR-0206 §AZ1): no estimate ever
+  // arrived and none is coming — a plane, a failed request, a provider that answered nothing. It
+  // takes the declaration's words, because it is the same fact reached by a different road, and
+  // it keeps the crow-flies distance §AZ2 gives it. Before the split it borrowed `underMinute`
+  // the moment that distance existed, which would have called a ⁦40 km⁩ leg a sub-minute hop.
+  it('says the absence sentence, with its distance, where no estimate ever arrived', () => {
     const journey = dayJourney({
       departAfterMs: START,
       arriveByMs: START + 120 * MIN,
       travelSeconds: null,
+      distanceMeters: 40_000,
       nowMs: START,
-      chosen: true,
     })!;
+    expect(journey.arm).toBe(DAY_JOURNEY_ARM.UNMEASURED);
     render(
       <JourneyRow journey={journey} travelMode={TRAVEL_MODE.WALKING} zones={zonesIn('UTC')} />,
     );
     expect(screen.getByText(t.travel.noEstimate)).toBeTruthy();
+    expect(screen.getByText(formatDistance(40_000))).toBeTruthy();
+    expect(screen.queryByText(t.travel.underMinute)).toBeNull();
   });
 });
 

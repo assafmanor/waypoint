@@ -406,10 +406,14 @@ describe('PlanDay — the leg mode is declarable here too (ADR-0206 §AM9)', () 
     expect(document.querySelector('button.day-trv-face')).toBeTruthy();
   });
 
-  it('draws nothing for the same hop where the app picked the mode itself', () => {
+  // **§AZ1 drops §AW's "unless somebody picked it" gate**, on both surfaces at once: the row's
+  // existence is a fact about the plan and never about what we worked out (ADR-0159 §1).
+  it('draws the same hop where the app picked the mode itself', () => {
     travelSeconds = 12;
     show();
-    expect(document.querySelector('.day-trv')).toBeNull();
+    const block = document.querySelector('.day-trv');
+    expect(block).not.toBeNull();
+    expect(block!.textContent).toContain(t.travel.underMinute);
   });
 });
 
@@ -1189,15 +1193,23 @@ describe('PlanDay — the day says how far it goes (ADR-0206 §V1.9)', () => {
     tripOverrides = [declaredLeg('p-lunch', 'p-theatre')];
     show();
     const crow = Math.round(haversineMeters(coordOf('p-lunch'), coordOf('p-theatre')));
+    // **`לפחות`, because a declared leg's kilometres are the crow rather than the road** (§AZ3).
     expect(line().textContent).toBe(
-      t.travel.dayTotal(formatDistance(ROUTED_M + crow), approxTravelTime(WALK_MINUTES * 60)!),
+      t.travel.dayTotalFloor(
+        t.travel.dayTotal(formatDistance(ROUTED_M + crow), approxTravelTime(WALK_MINUTES * 60)!),
+      ),
     );
   });
 
-  it('renders no line at all when nothing on the day is routable', () => {
+  // **A day nothing routed still travels, and now says so as a FLOOR** (§AZ2/§AZ3) — Trip mode's
+  // own assertion, here because the two surfaces may not differ about a fact (ADR-0159 §1).
+  it('states the crow-flies floor when nothing on the day is routable', () => {
     travelSeconds = null;
     show();
-    expect(document.querySelector('.day-total')).toBeNull();
+    const total = document.querySelector('.day-total');
+    expect(total).not.toBeNull();
+    expect(total!.textContent).toContain('לפחות');
+    expect(total!.textContent).not.toContain('~');
   });
 
   it('adds no request of its own', () => {

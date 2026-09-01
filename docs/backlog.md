@@ -737,11 +737,44 @@ question and not a code one.
   point missing from the cluster set) and that therefore had no estimate and no ceiling to blame.
   **The class:** a floor that suppresses noise must ask who made the noise; the app's own guess and
   a person's choice are not the same input, and the surface that took the choice owes the way back.
-- **What is left is the distance on a leg that never routed** (§AW5). `distanceFor` gives the crow
-  only to a declared or refused leg, so an `UNTIMED` leg reached by the no-estimate road prints its
-  mode and its sentence with no kilometres. Widening that fallback puts crow numbers into the day's
-  header for legs that never route, which is a decision about the total (§AP2's "the header counts
-  what the list shows") and not about this row.
+- ~~**What is left is the distance on a leg that never routed** (§AW5)~~ — **done 2026-09-01**
+  ([ADR-0206 §AZ2/§AZ3](decisions/0206-a-travel-time-belongs-between-two-points.md)). Every leg
+  with no routed number takes the crow, and the total it lands in says `לפחות` over it, which is
+  the decision this line was holding open: a crow leg is a floor, §AT2's word already means exactly
+  that, and a header that counts what the list shows (§AP2) has to carry it either way.
+
+## The transit row vanished for the FOURTH time, and the bail was the bug (owner report, 2026-09-01)
+
+- **Fixed as a shape rather than a cause** — [ADR-0206 §AZ](decisions/0206-a-travel-time-belongs-between-two-points.md).
+  _"They should always be available and displayed whether you're offline … and also be ready for the
+  other days so that day switches happen flawlessly. I assume that there's several issues."_ There
+  were six, and §AM6/§AM10/§AU1/§AW were four earlier fixes to one of them: `dayJourney` returned
+  `null` by default and rendered by exception, so **every new way of not knowing a duration deleted
+  the row** — and the row is what carries the distance, the mode and the control that would change
+  the mode. The rule is inverted (§AZ1): a leg between two placed rows always draws, and `null` is
+  left for a leg with nothing at all to say. With it: the crow-flies floor on every unrouted leg
+  (§AZ2), a retry on a failed ask and a per-hole test before a day is recorded as answered (§AZ4),
+  the offline pack fetched per trip instead of behind the Map's 42 MB prompt and able to reach a day
+  that has already read its cache (§AZ5), a first-paint hold that a peer's edit no longer re-fires
+  over the whole day (§AZ6), and the resolution memo keyed on content rather than on an array both
+  surfaces rebuild every render (§AZ7).
+
+- **The two day surfaces still derive their own leg lists** (2026-09-01, [ADR-0206 §AZ8](decisions/0206-a-travel-time-belongs-between-two-points.md),
+  deliberately out of that fix's scope). `DayView` reads its legs off `dayBlocks`, which owns the
+  adjacency rules — ADR-0171 §5's transparent edge, connections, clusters; `PlanDay` walks
+  consecutive `planGroups`, untimed ones included. So the two ask about different stop sets, warm
+  two matrices, and can disagree about which holes exist at all, which is the divergence ADR-0159 §1
+  forbids and `frontend/CLAUDE.md` records as having cost a release twice. The fix is one
+  `dayTravelLegs()` in `lib/day-travel.ts` that both call — and its cost is that it **removes** Plan
+  rows (a journey drawn between two overlapping events, one across a connection), which is not a
+  change to land inside a fix about rows not appearing. §AZ5's pack now covers both sets, so what
+  the divergence costs today is a second warm rather than a silent hole.
+
+- **`DayView`'s day derivation runs on every clock tick** (2026-09-01, found measuring §AZ7).
+  `dayEvents`, `groups`, `placement` and `blocks` are all built in the render body of a screen that
+  re-renders once a second; §AZ7 stopped that reaching the travel layer by content-keying its memo,
+  which is the seam that mattered, and left the chain above it as it was. Memoizing it is a
+  ~1,200-line screen's worth of care for work nobody has measured as slow.
 
 ## Agent tooling
 

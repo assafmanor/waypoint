@@ -3791,3 +3791,177 @@ the default block and a three-hour hike is entitled to the whole hole.
 - **A MOVE still keeps its own length** (ADR-0161 §1), so a 90-minute row dropped into a 35-minute
   window still overlaps. That is §1's rule and not this amendment's to overturn.
 - **The leave-by is not rounded**, per §AY3.
+
+## AZ. The transit row vanished for the fourth time, and the bail is the bug (2026-09-01)
+
+> _"The transit rows in the day view and plan day don't render at all in certain scenarios. These
+> are calculated estimations based on the event linked places. They should always be available and
+> displayed whether you're offline, changed and updated dynamically by WS events, and also be ready
+> for the other days so that day switches happen flawlessly. I assume that there's several issues
+> and not just one."_
+
+The owner is right that it is several, and right for a fifth time that the row is missing. §AM6
+(a declared leg), §AM10 (a mode over its ceiling), §AU1 (an answer still coming) and §AW (a number
+under the ladder's floor) were four fixes to one bug, each naming one cause and leaving the shape
+that produced it in place. This section removes the shape.
+
+### AZ1. The row's existence is a fact about the PLAN, never about what we worked out
+
+`dayJourney` answered `null` by default and rendered by exception. Every arm added since M6a is an
+escape from that bail, which means **every new way of not knowing a duration deletes the row again**
+— and the row is what carries the distance, the mode, and the control that would change the mode. A
+hole that renders nothing renders no way out of itself.
+
+So the rule inverts. **A leg between two placed rows always draws**, and `null` is left for the one
+case with nothing at all to say: no duration _and_ no distance, which since §AZ2 means a leg whose
+ends did not both resolve to a placed point — the hole `unplacedLegs` already counts and the day's
+total already declares itself a floor over.
+
+Three bails went with it:
+
+- **the sub-minute floor's `if (!chosen) return null`** (§AW). The floor was a noise rule keyed on
+  who made the noise; keying the ROW on that made a person's pick load-bearing for whether a row
+  exists. It is not a floor on the row any more, only on the duration: the block stands and says
+  `פחות מדקה`.
+- **`!Number.isFinite(arriveByMs)`** — a destination with no clock. The app cannot advise a
+  departure it has no deadline for; that has never been a reason to withhold how far and how long
+  the journey is. It now answers the measurement with no advice attached.
+- **`!leave`** — unreachable on today's inputs, and kept as the measurement rather than as a bail so
+  it stays unreachable if `heroLeaveBy`'s rule grows a third absence.
+
+**§AW's `chosen` flag is deleted rather than kept**, with `DayTravelReads.chosenFor` behind it: it
+existed only to gate this bail, and a read nothing reads is the second copy rule 8 is about.
+
+**What does NOT change is the duration rule.** §D4 and §D5 stand exactly: absent stays absent, never
+a pessimistic guess, because the reader must not be able to tell "not computed" from "not
+computable" and inventing a walk we did not measure fails that in the direction that costs somebody
+their afternoon. The free-time correction is untouched, the leave-by is untouched, and no arm
+invents a minute.
+
+**And one arm became two**, because §AZ2 erased what used to tell them apart. `UNTIMED` inferred
+"nobody is estimating this" from an absent DISTANCE, which worked only while an unrouted leg had
+none. With the crow-flies floor on every leg, that inference would have printed `פחות מדקה` over a
+⁦40 km⁩ leg on a plane. So:
+
+| arm          | what it means                                    | what it says    |
+| ------------ | ------------------------------------------------ | --------------- |
+| `UNTIMED`    | measured, and shorter than ADR-0114's first rung | `פחות מדקה`     |
+| `UNMEASURED` | no estimate, and none coming                     | `בלי הערכת זמן` |
+
+`UNMEASURED` is where offline, a failed request, a silent provider and the server's own
+`sameClusterOnly` false negative all land — which makes it the state the app spends most of a real
+trip in, and the one that used to render nothing at all.
+
+### AZ2. Crow-flies is the floor, and it was reaching two arms out of six
+
+§D4 has said since it was written that no route "leaves `formatDistance`'s existing chip standing".
+`distanceFor` gave the crow only to a **declared** leg (§AA4) and a **refused** one (§AM10) — the
+backlog line §AW5 left open names exactly the hole: _"an `UNTIMED` leg reached by the no-estimate
+road prints its mode and its sentence with no kilometres."_ Neither of those two cases was ever the
+reason. A crow-flies distance is arithmetic over two coordinates this device already holds: no
+network, no cache, no provider, instant on a mode switch and correct on a plane.
+
+So every leg with no routed number falls back to it — **except while an answer is on its way**,
+which is §AU1's rule kept intact and the one distinction that matters: there we genuinely do not
+know yet, and a number that later becomes a routed one is a figure changing under the reader.
+
+### AZ3. A total containing a floor says so
+
+§AP2 says the header counts what the list shows, so crow kilometres in the rows are crow kilometres
+in the total — and a crow-flies leg is a **floor**, not a measurement (a ⁦1.9 km⁩ crow leg is a
+⁦2.4 km⁩ walk). §AT2's `לפחות` already exists for a total that understates; this is the same claim
+about the same line, so it takes the same word rather than a second one.
+
+`DayJourney.distanceIsFloor` carries it, derived from the arm rather than threaded from the reads: a
+stated duration means an estimate answered, and the routed distance comes with the estimate. A
+warming leg contributes no distance at all, so nothing it later answers can make the word flicker.
+
+**This makes a declared-תחב״צ day read `לפחות` where it read a bare total before.** That is a
+correction, not a side effect: those kilometres were always the crow (§AA4 says so in as many
+words), and the line was claiming a precision it did not have.
+
+### AZ4. An ask that gives up, and a day recorded as answered when it was not
+
+Two faults in `useDayTravel`, both of the family this layer keeps producing — a permanent conclusion
+drawn from a transient failure, written into module state that only a reload clears.
+
+- **A failed request ended the ask.** Every path through `.catch` called `done()`: a 500, a dropped
+  connection, a captive portal, a cold Railway container. The effect re-runs only on a change of
+  trip, fingerprint or online flag, so the day then held nothing for the rest of the session. On a
+  phone moving between cells that is the ordinary case. It now backs off from ⁦2s⁩, doubling, under
+  the **same** `DAY_TRAVEL_WARM_ATTEMPTS` bound the warm uses and the same `WARM_RETRY_MAX_MS` cap,
+  so a dead provider still terminates into §D4's silence rather than polling.
+- **`askedDays` recorded "something arrived", not "nothing is missing".** The 2026-08-28 fix
+  replaced `always` with `found.size || refused.size`, which is a different claim from the one the
+  set's name makes: a batch answering one hole of two and offering no `Retry-After` marked the whole
+  day answered in full, and the empty hole could not be asked about again. The test is now per hole:
+  every consecutive pair has an estimate in some mode, or a refusal. **Per leg and deliberately not
+  per (leg, mode)** — a pair with nothing at all is what renders as a journey with no time; a pair
+  answered in two modes of three is the mode control's question, and demanding all three would
+  re-ask a whole matrix every mount for one mode a provider happens not to serve.
+
+### AZ5. The offline pack was reaching almost nobody, and could not reach a day twice
+
+§V1.8 built the artefact that answers this whole report — every ordered pair of every day of the
+trip, precomputed, a few hundred KB — and then hung both its download and its hydration off the
+Map's archive flow. That flow is ADR-0186 §5's **42 MB prompt**, on a screen a group may never open.
+So the pack existed for the trips that had accepted a world layer, and the days it made warm were
+the ones somebody had already visited on the Map.
+
+- **It is fetched per trip now, once, from the shell** (`TripRoutePack` in `App.tsx`), quietly, with
+  no status and no prompt. A pack is not in the class of download §5's prompt exists for, and it is
+  the one thing that makes a day you have not opened warm when you open it, a swipe instant (the
+  peek never fetches, ADR-0200 §7), and a plane readable on every day rather than the visited ones.
+  The Map's own call stays; it is the redundant one now rather than the only one.
+- **`fillCachedRouteLegs` retires `readDays`.** That set stops a mount re-reading Dexie for legs it
+  has already read — so a pack landing after a day was opened filled the table under a day that
+  would never look again, and the numbers sat on the device unreachable until a reload. The write is
+  the event that invalidates the read; `forgetLocalReads` states it as a rule so the next writer
+  into that table cannot miss it. `sessionKnown` is deliberately not cleared: an answer does not
+  stop being true because a new one arrived beside it.
+- **`hydrateRoutePack` marks what it READ, not what it attempted.** It recorded the url before
+  looking, so the hydrate that follows a download no-opped against a set that only remembered the
+  miss.
+
+### AZ6. A peer's edit blanked the whole day
+
+§AT holds the day's first paint on this device's cache read, because the journey rows and the total
+_appear_ when an estimate lands. The hold was keyed on the **fingerprint**, which is a different
+claim: a fingerprint changes whenever the day's stops do, so a peer adding or moving a stop over the
+wire flipped `settled` back to false — and `.day-page[data-measuring]` hides **the whole day**, not
+the journey rows, for an IndexedDB round trip bounded at `DAY_TRAVEL_SETTLE_MAX_MS`.
+
+A remote edit must never blank the screen it lands on. The hold is spent once per mount: a day that
+has painted stays painted and lets the new leg's row arrive the way every other change does; a day
+that has not is still held, which is all §AT bought.
+
+### AZ7. The memo that was documented as load-bearing and keyed on nothing
+
+`useDayTravelReads`' resolution memo carries a note saying it is not a micro-optimisation — _"both
+day surfaces re-render on the clock … an unmemoized build would hand `useDayTravel` a fresh array
+every second"_ — and was keyed on the `legs` **array**, which both surfaces rebuild every render
+(`DayView` derives its blocks outside any memo). A memo over a fresh array is a memo over nothing,
+so the whole chain below it — the resolution, the reads object, each surface's map of journeys —
+ran once a second on a screen that had not changed. It is content-keyed now, the shape
+`useDayTravel` next door already uses for its own input.
+
+### AZ8. What is deliberately not changed
+
+- **The two day surfaces still derive their own leg lists.** `DayView` reads them off `dayBlocks`
+  (which owns the adjacency rules — ADR-0171 §5's transparent edge, connections, clusters);
+  `PlanDay` walks consecutive groups. They therefore ask about slightly different stop sets and
+  warm two matrices. Converging them is right by ADR-0159 §1 and by rule 8, and it **removes** Plan
+  rows (a journey between two overlapping events, a leg across a connection) — which is not a change
+  to make inside a fix about rows not appearing. Backlogged with that cost stated. §AZ5's pack
+  covers both sets, so the cost of the divergence is now a warm rather than a silence.
+- **No duration is invented, anywhere.** The owner's _"always be available"_ is answered by making
+  the number genuinely available — the pack, the retry, the re-read — and by making the row honest
+  where it is not, never by deriving minutes from a crow-flies line. §D5 is what makes ADR-0205's
+  "we can now be wrong in a way that costs someone a booking" survivable.
+- **`DAY_TRAVEL_WARM_ATTEMPTS` is not raised.** The failed-ask ladder borrows it rather than adding
+  a second bound; whether six is right for both is a measurement nobody has taken.
+- **Nothing is drawn that was not already drawn.** `UNMEASURED` renders in `DECLARED`'s exact
+  clothes — the mode mark, the distance chip, `בלי הערכת זמן`, the mode control — which is
+  [`mockups/a-route-is-on-its-way-v1.html`](../../mockups/a-route-is-on-its-way-v1.html)'s answered
+  state minus its duration. There is no new visual grammar here, only states that used to render
+  nothing rendering the block the design already has for them, so no mockup is owed.
