@@ -1971,3 +1971,89 @@ who can fix it.
   whose `endsAt` is three days later, and a PDF spec that names all four arms individually — the
   one it replaced ("some rows carry a dash and not all of them") was true under either rule and
   would have stayed green while the behaviour inverted.
+
+## Amendment — the eighth family the font shorthand ate, and this one reached a reader (2026-08-31, thirteenth pass)
+
+Owner, hours after the twelfth amendment shipped, with a photograph of the PDF printing
+`00:00-□`:
+
+> _"The pdf has some printing format issues, see the tofu"_
+
+`.pdf-event-time` is `font:600 8px 'JetBrains Mono',monospace`. The **shorthand replaces the whole
+family list**, and this file's own header records that JetBrains is declared Latin-only _on
+purpose_ — _"it carries times, codes and money, never prose, so it ships no Hebrew glyphs and must
+not be asked for any"_. Until §1 of the twelfth amendment the cell only ever held digits, so
+nothing noticed. `מ-` and `עד` put prose in it, the container had no face to draw them with, and
+Chromium drew `.notdef` boxes.
+
+This is the **eighth** time the `font` shorthand has eaten a family in this template and the first
+one to reach a reader; the seven before it were caught in review or in a render.
+
+### §1 · The word takes Assistant, the clock stays mono
+
+Wrapping the whole cell in Assistant would fix the boxes and cost the column its grammar: the
+clock would change face on exactly the two rows carrying a flexible edge, beside neighbours still
+in mono. So `sharedTimeText` emits `<span class="pdf-word">` around the word and re-sets
+`.pdf-mono` on the clock inside it — the same shape `.pdf-ops-line` already uses one block down,
+in the opposite direction. Clock-only cells are byte-identical, so §3's measurement of the 56px
+column stands untouched.
+
+**The reader page had the same defect and could never show it.** `.sh-time` is
+`font-family: var(--font-mono)`, the same Latin-only family — but a browser falls back per glyph to
+whatever Hebrew face the device has, so the word merely rendered in an unpredictable face instead
+of vanishing. One defect, one of two media able to reveal it; both are fixed, `.sh-said` carrying
+the hue and the body face with `.sh-time` kept for the number.
+
+### §2 · Widening the guard found an older one
+
+`itinerary-pdf.template.spec.ts` already had _"keeps every Hebrew run out of a mono element"_ — and
+it iterated `.pdf-num` alone, so it was true and useless: `.pdf-event-time` is a second element
+naming a mono face and the loop never looked at it. It now covers every such element, and a
+mixed-script cell must scope the mono to an inner run.
+
+Widening it immediately failed on something that predates the twelfth amendment entirely: an
+**untimed** event's time cell prints `PDF_COPY.dayparts.flexible` — `גמיש`, pure Hebrew — straight
+into the same mono box. That has been printing as a box since §1 of the original ADR. Nobody saw
+it because the nine-day reference trip has no untimed row, so no render, no mockup and no smoke
+check ever produced one. It is wrapped now and pinned by its own spec, separate from the guard, so
+it cannot go quiet again the day the fixture stops rendering one.
+
+### §3 · Why `pdf-smoke` was green through all of it
+
+`verify-pdf-smoke.mjs` asserts the document's Hebrew is **extractable** — `check('hebrew-text',
+HEBREW.test(text), …)`. A missing glyph does not remove the codepoint from the text layer: the PDF
+still says `מ`, it simply has nothing to draw. So the check is structurally blind to tofu in any
+one element, and passing it says only that _some_ Hebrew somewhere had a face. The guard spec is
+where this class of defect is caught, which is why the fix is a widened assertion rather than a
+new smoke rule.
+
+### §4 · Verified by asking Chromium which FACE drew each glyph
+
+Docker is not available in every session, so the container smoke is not always runnable — and it
+would not have answered this anyway (§3). What does answer it is `CSS.getPlatformFontsForNode`
+over the rendered template, which reports the face Chromium actually resolved per run rather than
+the family list that was asked for. Measured on this change:
+
+| element                        | text        | faces that drew it                         |
+| ------------------------------ | ----------- | ------------------------------------------ |
+| `.pdf-word`                    | `מ-⁦10:00⁩` | **Assistant ×2**, JetBrains Mono ×7        |
+| `.pdf-word .pdf-mono`          | `⁦10:00⁩`   | JetBrains Mono ×7                          |
+| the same cell, wrapper removed | `מ-⁦10:00⁩` | **Liberation Serif ×1**, JetBrains Mono ×8 |
+
+The third row is the defect, and it names the production image: `Liberation Serif` is a _system_
+face, the runtime is `node:22-slim` plus `fonts-liberation`, and Liberation ships no Hebrew — so
+what a developer machine rescues with a system font, the container draws as a box. The first two
+rows are the fix: the Hebrew resolves to **Assistant**, which is inlined as a data-URL `@font-face`
+and is therefore present wherever the document is, and the clock beside it still resolves to
+JetBrains so the time column keeps one face for its numbers.
+
+**This probe is the instrument this class of defect actually needs**, and is worth reaching for
+before assuming a font question is settled: the guard spec asserts _markup_, and markup is one
+inference away from what gets drawn.
+
+**And no mockup could have caught it either.** The print mockups inline the renderer's real CSS
+and render in a Chromium that has system Hebrew — so the cell fell back to a sans face and looked
+correct, and `a-shared-time-is-printed-as-a-range-v1.html` duly measured `מ-10:00` at ⁦34.75px⁩ in
+a face the container does not have. This is the same shape the original ADR recorded for emoji:
+_"It looked correct on every developer machine, because a desktop has an emoji font."_ The lesson
+did not transfer because it was written about emoji; it is about **any** face the container lacks.

@@ -3560,3 +3560,72 @@ the ⁦153.03px⁩ these lines were shortened to in §AH4.
   predicate: they genuinely are two facts, one naming the latest moment and one the earliest.
 - **A shortened form** (`≤15:12`, an arrow). A glyph the reader decodes is not a saving, and it
   would not have stayed consistent with the same word arriving on the shared renderers this session.
+
+## AJ5. Amendment (2026-08-31) — §AJ4 reached the holes between rows and not the day's two edges
+
+Owner, the same evening §AJ4 shipped, with a screenshot of their own Iceland day:
+
+> _"I think that there are some edge cases with the gap-transit ordering at the start and end of
+> days … it shows the gap after getting off the hotel and the driving time row. I guess that end
+> day similarly."_
+
+Correct on both counts, and the reason is structural rather than an oversight of taste.
+
+### AJ5.1. Why the reorder could not reach them
+
+§AJ4 changed two places: `JoinRow` in `DayView` and the between-groups slot in `BuilderGroups`.
+Both draw a hole that **`dayBlocks` owns** — the pair arrives as one `DayBlockEntry` with its
+`join` and its `from`, so ordering them is one edit.
+
+The day's two edges have no such owner. `PlanDay` assembles each by hand: the leg lives _inside_
+the `bookends.woke` / `bookends.sleeps` fragment and the slot renders _outside_ it, so the two
+were never adjacent in one expression and the reorder had nothing to reorder. `headJourney` and
+`tailJourney` are now derived beside `edgeFree`, which is what makes the pair addressable at all.
+
+**Trip mode is not affected** — it has no edge slot. Its only `GapStrip` is inside `JoinRow`,
+already fixed. So this is Plan's alone, which is a difference in what the two surfaces _offer_
+(ADR-0161 §2) rather than a disagreement about a fact, and ADR-0159 §1 permits it.
+
+### AJ5.2. The head, and the tail which was worse
+
+**Head** was `bed → leg → free`; it is now `bed → free → leg`. The slot stays below the row the
+day starts at, which is what ADR-0209 put there and what §AJ4 did not disturb.
+
+**Tail** was `leg → bed → free`: the evening's free time drawn _after_ you had gone to sleep. It
+is now `free → leg → bed`. That second error was never argued anywhere — the only note on that
+slot's position explains its relationship to the **unplaced** line below it, which is preserved.
+
+**The two edges are not mirror images, and the derivations say why.** `freeBeforeFirst` builds a
+block that ENDS at the first event's start, so the head's window and its leg compete for one
+interval, exactly as between two rows. `freeAfterLast` builds one that STARTS at the last event's
+end and runs to the day's close, so the tail's window _contains_ its leg — and the leg into a stay
+has no deadline to count back from (a stay's start is `not-before`, §AI1), so there is no leave-by
+there to end anything at. The tail is therefore ordered by where its window **begins**: hard
+against the row it is named for, which is above the drive home.
+
+### AJ5.3. The number is narrowed by the leg, and declines to be where it cannot
+
+Both slots now pass through `narrowGapForTravel` — Trip mode's own function, not a second
+correction (root rule 8) — so the statement and the offer cannot disagree about one hole (§V1.1).
+
+**It is deliberately a no-op on the arm the report was about.** A leg out of an ambient stay has
+no `departAfterMs` (§AD/§AF3: a middle night has no check-out instant, and reaching for the day
+window's dawn would claim you could have left at 07:00), so its `journey.free` is `null` and the
+hole is returned untouched. That is the app declining to state a number it cannot stand behind,
+and it means the head slot can still read longer than the leg beside it allows — visible in the
+owner's screenshot as `3 שעות` above `יציאה עד 09:39`. Closing that needs the window's END moved
+to `journey.leaveByMs`, which is a number the app _does_ have; it is backlogged rather than taken
+here, because it is a change to what a slot MEASURES and this amendment is about what order things
+are drawn in.
+
+`FreeSlot`'s own docblock — _"Defaults to the hole, so the edge slots (which have no leg yet) read
+as before"_ — was true when it was written and is not now: ADR-0209 gave both edges a leg. The
+parenthetical is stale; the conclusion it reaches is still right, for the different reason above.
+
+### AJ5.4. Pinned, and red first
+
+`PlanDay.travel.test.tsx` gains one describe asserting both edges from one DOM read, and both
+specs were confirmed failing against the code before this change (`expected 1 to be greater than
+2` for the head, `expected 3 to be greater than 5` for the tail) rather than merely passing after
+it. One describe rather than two, because the two edges are one rule and a spec each would let the
+second regress while the first stayed green.

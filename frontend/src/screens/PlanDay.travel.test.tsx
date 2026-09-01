@@ -705,6 +705,103 @@ describe('PlanDay — the drive from the pickup into the bed', () => {
   });
 });
 
+// **THE DAY'S TWO EDGES READ IN ORDER** (ADR-0206 §AJ5; owner, 2026-08-31, with a screenshot:
+// _"there are some edge cases with the gap-transit ordering at the start and end of days … it
+// shows the gap after getting off the hotel and the driving time row"_).
+//
+// §AJ4 put the free time above the journey for every hole BETWEEN two rows, and the two day
+// edges kept the old order — because `dayBlocks` owns the holes between rows and the edges are
+// assembled by hand in the bookend fragments, so the reorder structurally could not reach them.
+// The tail was worse than the head: its slot sat under the journey AND under the bed, drawing
+// the evening's free time after you had gone to sleep.
+describe('PlanDay — the free time at the day’s edges comes before the leg', () => {
+  const hotelPlace: Place = {
+    id: 'p-hotel',
+    tripId: 't1',
+    name: 'מלון',
+    lat: 40.86,
+    lng: 14.24,
+    createdAt: `${DAY}T00:00:00Z`,
+    updatedAt: `${DAY}T00:00:00Z`,
+    updatedBy: 'u1',
+  };
+  /** Woke here and out this morning — the day's `woke` bookend. */
+  const woke = ev('woke', {
+    title: 'Gissurarbúð 5',
+    category: 'lodging',
+    placeId: 'p-hotel',
+    date: '2026-08-02',
+    endDate: DAY,
+    startsAt: '2026-08-02T13:00:00Z',
+    endsAt: `${DAY}T09:00:00Z`,
+  });
+  /** …and sleeps here tonight, which is the `sleeps` bookend. */
+  const sleeps = ev('sleeps', {
+    title: 'The Hill Hotel',
+    category: 'lodging',
+    placeId: 'p-hotel',
+    date: DAY,
+    endDate: '2026-08-05',
+    startsAt: `${DAY}T15:00:00Z`,
+    endsAt: '2026-08-05T11:00:00Z',
+  });
+  /** One timed row in the middle of the day, so BOTH edges have real room around it. */
+  const zip = ev('zip', {
+    title: 'Zip line',
+    placeId: 'p-theatre',
+    startsAt: `${DAY}T13:00:00Z`,
+    endsAt: `${DAY}T14:00:00Z`,
+  });
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(`${DAY}T06:00:00Z`));
+    tripEvents = [woke, sleeps, zip];
+    tripPlaces = [...places, hotelPlace];
+    travelSeconds = 31 * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  /** Both edges in one read, because the two are one rule and a spec per edge would let the
+   *  second regress while the first stayed green. `.gap` and `.bld-seam` are the two arms
+   *  `FreeSlot` renders, so the query takes either. */
+  const order = () =>
+    [...document.querySelectorAll('.gap, .bld-seam, .day-trv, .stay-bookend')].map((el) =>
+      el.classList.contains('day-trv')
+        ? 'leg'
+        : el.classList.contains('stay-bookend')
+          ? 'bed'
+          : 'free',
+    );
+
+  it('draws the head as bed, then the free time, then the leg out of it', () => {
+    show();
+    const rows = order();
+    const bed = rows.indexOf('bed');
+    const free = rows.indexOf('free');
+    const leg = rows.indexOf('leg');
+    expect(bed).toBeGreaterThanOrEqual(0);
+    expect(free).toBeGreaterThan(bed);
+    // RED before §AJ5: the leg was drawn inside the bookend fragment, so it preceded the slot.
+    expect(leg).toBeGreaterThan(free);
+  });
+
+  it('draws the tail as the free time, then the leg back, then the bed', () => {
+    show();
+    const rows = order();
+    // The LAST of each, which is the tail's own trio.
+    const free = rows.lastIndexOf('free');
+    const leg = rows.lastIndexOf('leg');
+    const bed = rows.lastIndexOf('bed');
+    expect(free).toBeGreaterThanOrEqual(0);
+    // RED before §AJ5 on both counts: the tail slot sat under the leg AND under the bed.
+    expect(leg).toBeGreaterThan(free);
+    expect(bed).toBeGreaterThan(leg);
+  });
+});
+
 // ── M9 · THE DAY'S OWN VERDICT (ADR-0206 §V1.7 / §AN) ────────────────────────────────────
 //
 // Plan mode learns to say "this day does not fit". Three things are under test and only the first
