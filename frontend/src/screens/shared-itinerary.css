@@ -705,6 +705,27 @@
   line-height: 1.55;
 }
 
+/* The retry on `LoadFailed` (ADR-0213's seventeenth amendment). The neutral `--cta`, because
+   this is a generic action and neither amber nor teal is spendable on one (ADR-0028); at
+   card size it takes the gentler press step, the same rule `.zero-act` states. */
+.sh-retry {
+  --press-scale: var(--press-scale-lg);
+  margin-block-start: 18px;
+  min-height: 44px;
+  padding: 0 20px;
+  border: 1px solid var(--cta);
+  border-radius: var(--radius-16);
+  background: var(--cta);
+  color: var(--cta-text);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.sh-retry:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+
 /* ══════════════════════════════════════════════════════════════════════════════
    ADR-0213's 2026-08-30 amendment — drawn in
    `mockups/a-shared-itinerary-tells-the-trip-v4.html`, whose measurement table is

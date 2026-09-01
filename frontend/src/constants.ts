@@ -229,6 +229,24 @@ export const INSTALL_DEPARTURE_WINDOW_DAYS = 3;
  *  later still gets its own cure. */
 export const CHUNK_RELOAD_COOLDOWN_MS = 60 * 1000;
 
+/** **The shared reader's first load, re-asked** (ADR-0213's seventeenth amendment).
+ *
+ *  A public link is read once, by somebody who cannot reload the app or ask what went
+ *  wrong, so its first read is the one request in the app with no second chance — and
+ *  every deploy takes the API away for a few seconds while the container swaps. The ladder
+ *  is what turns that into a wait instead of `יכול להיות שהלינק בוטל`.
+ *
+ *  Doubling from a second to sixteen: about half a minute of asking, five extra requests
+ *  against a route that allows twenty a minute per IP, and no burst — a rollout that ends
+ *  at any point inside it is invisible to the reader. Past that the page says so and offers
+ *  the tap, because a spinner that never resolves is the worse failure. */
+export const SHARE_LOAD_RETRY_MS = [1_000, 2_000, 4_000, 8_000, 16_000] as const;
+
+/** How long a stale reader document suppresses its next reload — the chunk cooldown's
+ *  reasoning applied to a projection this build cannot parse (`lib/guarded-reload.ts`).
+ *  One fresh document cures it; a second cannot, and the page must not spin trying. */
+export const SHARE_RELOAD_COOLDOWN_MS = 60 * 1000;
+
 /** Realtime socket liveness (F-04, sync-and-offline.md "Realtime channel"). The
  *  client pings on `WS_HEARTBEAT_INTERVAL_MS`; a watchdog forces a reconnect if
  *  no frame (a `pong` or any message) lands within `WS_WATCHDOG_TIMEOUT_MS`, so a

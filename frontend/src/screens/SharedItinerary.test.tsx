@@ -19,7 +19,8 @@ import { SharedItinerary } from './SharedItinerary';
 import { t } from '../i18n/he';
 import { withoutBidiControls } from '../lib/bidi';
 import { agoLabel, hoursPhrase } from '../lib/duration';
-import { setSimulatedNow } from '../lib/useClock';
+import { getNow, setSimulatedNow } from '../lib/useClock';
+import { SHARE_LOAD_RETRY_MS } from '../constants';
 
 /** `ltrIsolate` wraps every Latin/numeric run in invisible bidi controls (ADR-0118), so a
  *  plain string match would never hit. */
@@ -512,11 +513,112 @@ describe('SharedItinerary', () => {
     expect(screen.getByText(t.share.public.unavailableBody)).toBeTruthy();
   });
 
-  it('treats a projection this build cannot parse as unavailable', async () => {
-    serve({ status: 'live', detailLevel: 'quantum' });
-    renderShared();
+  /**
+   * **ADR-0213's seventeenth amendment** — the owner's report was that a deploy took his
+   * live links away, and every assertion here is one of the three ways it did.
+   *
+   * The suite used to pin the opposite of the first two: _"treats a projection this build
+   * cannot parse as unavailable"_ and nothing at all for a 500, so the page's only verdict
+   * was `יכול להיות שהלינק בוטל` — a sentence about the LINK, drawn for two failures that
+   * are about the document and the connection.
+   */
+  describe('a failed read says which failure it was', () => {
+    const RELOAD_STAMP_KEY = 'waypoint:share-reload';
+    /** Valid enough to reach the parse, and unreadable to this build — which is exactly the
+     *  shape of a projection from a server one deploy ahead (`sharedItinerarySchema` is
+     *  strict, so an added field is a parse failure and not an ignored key). */
+    const fromANewerServer = { ...summaryProjection, tomorrowsField: 'v' };
 
-    expect(await screen.findByText(t.share.public.unavailableTitle)).toBeTruthy();
+    let reload: ReturnType<typeof vi.fn>;
+    beforeEach(() => {
+      reload = vi.fn();
+      vi.stubGlobal('location', { ...window.location, reload });
+      window.sessionStorage.clear();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+      window.sessionStorage.clear();
+    });
+
+    it('takes a fresh document for a projection this build cannot read, and says nothing about the link', async () => {
+      serve(fromANewerServer);
+      renderShared();
+
+      // The cure is a newer document, so the page reloads rather than accusing the link.
+      // `takeParkedBuild` found no service worker here (jsdom has none), which is the
+      // second half of the same recovery and the reason this falls through to `reloadOnce`.
+      await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+      expect(screen.queryByText(t.share.public.unavailableTitle)).toBeNull();
+    });
+
+    it('does not spin: a second unreadable read inside the cooldown says so instead of reloading again', async () => {
+      window.sessionStorage.setItem(RELOAD_STAMP_KEY, String(getNow()));
+      serve(fromANewerServer);
+      renderShared();
+
+      expect(await screen.findByText(t.share.public.failedTitle)).toBeTruthy();
+      expect(reload).not.toHaveBeenCalled();
+      expect(screen.queryByText(t.share.public.unavailableTitle)).toBeNull();
+    });
+
+    /**
+     * The ladder is half a minute of real seconds, so these two drive it on fake timers and
+     * query synchronously — `waitFor` cannot help here: @testing-library/dom only recognises
+     * *jest*'s fake clock, so under vitest's it would poll a timer that never advances.
+     */
+    const settle = async (ms = 0) => {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+    };
+    const runTheLadder = async () => {
+      await settle();
+      for (const ms of SHARE_LOAD_RETRY_MS) await settle(ms);
+    };
+
+    it('re-asks a failure that is not the link, and renders when the answer arrives', async () => {
+      vi.useFakeTimers();
+      // Two failures a deploy actually produces — a proxy 502 while the container swaps,
+      // then a socket that went nowhere — followed by the deploy finishing.
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: false, status: 502, json: async () => ({}) })
+        .mockRejectedValueOnce(new Error('network error'))
+        .mockResolvedValue({ ok: true, status: 200, json: async () => summaryProjection });
+      vi.stubGlobal('fetch', fetchMock);
+      renderShared();
+
+      await settle();
+      // It never draws the revoked card on the way there: nothing said the link was gone.
+      expect(screen.queryByText(t.share.public.unavailableTitle)).toBeNull();
+      await settle(SHARE_LOAD_RETRY_MS[0]);
+      await settle(SHARE_LOAD_RETRY_MS[1]);
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(screen.getByText('איסלנד עם המשפחה')).toBeTruthy();
+      // Stopped asking the moment it had an answer.
+      await settle(SHARE_LOAD_RETRY_MS[2]);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
+    it('gives up saying the link was NOT revoked, and the tap asks again', async () => {
+      vi.useFakeTimers();
+      const fetchMock = vi.fn().mockRejectedValue(new Error('network error'));
+      vi.stubGlobal('fetch', fetchMock);
+      renderShared();
+      await runTheLadder();
+
+      expect(screen.getByText(t.share.public.failedTitle)).toBeTruthy();
+      expect(screen.getByText(t.share.public.failedBody)).toBeTruthy();
+      expect(screen.queryByText(t.share.public.unavailableTitle)).toBeNull();
+      // The whole ladder ran, and stopped: one attempt plus a retry per rung.
+      expect(fetchMock).toHaveBeenCalledTimes(SHARE_LOAD_RETRY_MS.length + 1);
+
+      fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => summaryProjection });
+      fireEvent.click(screen.getByText(t.share.public.failedAction));
+      await settle();
+      expect(screen.getByText('איסלנד עם המשפחה')).toBeTruthy();
+    });
   });
 
   it('keeps the last loaded page and labels it stale when a refresh fails', async () => {

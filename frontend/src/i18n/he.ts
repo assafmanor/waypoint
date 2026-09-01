@@ -3406,6 +3406,16 @@ export const t = {
       },
       unavailableTitle: 'המסלול לא זמין',
       unavailableBody: 'יכול להיות שהלינק בוטל או שהטיול כבר לא קיים. בקשו לינק חדש ממי ששלח.',
+      /**
+       * **The card for a failure that is not the link's** (ADR-0213's seventeenth
+       * amendment). The two sentences above were drawn for every failed read, so a deploy
+       * swapping containers, a tunnel and a busy minute all told a reader their link had
+       * been revoked. This one is allowed to say the opposite, because it is only reached
+       * after the ladder ran and the server never once answered `404`.
+       */
+      failedTitle: 'לא הצלחנו לטעון את המסלול',
+      failedBody: 'הלינק לא בוטל, פשוט לא קיבלנו תשובה. בדקו את החיבור ונסו שוב.',
+      failedAction: 'נסו שוב',
       loading: 'טוען את המסלול…',
       inviteTitle: 'גם אתם מתכננים טיול?',
       inviteBody: 'Travelive מחבר את הלו״ז, המקומות והמסמכים במקום אחד.',

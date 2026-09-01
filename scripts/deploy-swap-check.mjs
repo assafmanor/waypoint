@@ -32,6 +32,10 @@
 //   2. can the live page still fetch a chunk only the old build had? (`no-store`
 //      on the assets, so the service worker is the only thing that could serve it)
 //   3. released from the hold, does the app take the new build with no user action?
+//   4. is a fresh `/s/<code>` navigation answered by the DEPLOYED build, or by the
+//      precache? (ADR-0213's seventeenth amendment — the one page that cannot be one
+//      build behind the server, since it parses that server's projection with a strict
+//      schema. It uses a rollback as its second deploy, so no third build is needed.)
 //
 // A focused <input> is injected before the deploy on purpose: it trips
 // `canReloadQuietly()`, so the automatic swap is HELD and the parked state is
@@ -217,6 +221,36 @@ if (after.waiting) {
       : '>>> VERDICT: the automatic swap did NOT happen.',
   );
 }
+
+// ── 4 · the public reader must run the DEPLOYED build (ADR-0213 §17) ─────────
+//
+// The tab is now on build B and its worker holds B's precache, so serving A again makes the
+// skew fresh without a third build — a rollback is a deploy. Then open `/s/<code>` the way a
+// reader does, in its own tab, and look at the FIRST document request: answered from the
+// precache it runs B's entry chunk against A's server (the version skew that reads to a
+// reader as "this link is unavailable"); answered from the network it runs A's.
+//
+// Measured on the first request on purpose — this page also heals itself, so waiting would
+// only ever see the happy ending.
+const hashOf = (url) => /index-[^./]*\.js/.exec(url ?? '')?.[0];
+serving = dirA;
+console.log('\n[deploy] dist rolled back to build A');
+const reader = await page.context().newPage();
+const readerAssets = [];
+reader.on('request', (r) => {
+  if (/\/assets\/index-/.test(r.url())) readerAssets.push(r.url());
+});
+await reader.goto('http://localhost:4321/s/7Kq2mB9x', { waitUntil: 'domcontentloaded' });
+const servedNow = hashOf(entryA);
+const readerRan = hashOf(readerAssets[0]);
+console.log(`>>> the reader's first entry chunk:   ${readerRan}`);
+console.log(`>>> the deployed build's entry chunk: ${servedNow}`);
+console.log(
+  readerRan === servedNow
+    ? '>>> VERDICT: /s/<code> ran the deployed build — no skew is possible on this page.'
+    : '>>> VERDICT: /s/<code> ran the PRECACHED build — a projection from the deployed server will not parse.',
+);
+await reader.close();
 
 await browser.close();
 server.close();

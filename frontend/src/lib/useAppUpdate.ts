@@ -237,3 +237,40 @@ export function useAppUpdate(): AppUpdate {
     dismiss: useCallback(() => setDismissed(true), []),
   };
 }
+
+/** The message the worker answers (`sw.ts`'s one `message` listener, pinned by
+ *  `sw.contract.test.ts`). The plugin posts its own copy from inside
+ *  `updateServiceWorker()`, so this is the second reader of one protocol, not a second
+ *  protocol. */
+const SKIP_WAITING = 'SKIP_WAITING';
+
+/**
+ * **Take the parked build NOW** — for a caller that has just proven this document is stale
+ * rather than merely old.
+ *
+ * The hook above swaps at a quiet moment, which is right for a running app and too slow for
+ * a page that cannot render anything until it swaps: the shared reader is exactly that when
+ * the projection it fetched is newer than the build parsing it
+ * (`share-itinerary.ts`'s `SharedItineraryUnreadable`). Posting SKIP_WAITING is the whole of
+ * it — `onSwapped`'s `controllerchange` listener owns the reload, so this adds no second
+ * reload path and inherits its idempotence.
+ *
+ * Returns whether a parked build was actually asked to take over, so a caller that gets
+ * `false` knows no reload is coming and can fall back to its own recovery.
+ */
+export async function takeParkedBuild(): Promise<boolean> {
+  const container = navigator.serviceWorker;
+  if (!container) return false;
+  const registration = await container.getRegistration();
+  if (!registration) return false;
+  // A document open since before the deploy has not necessarily looked yet, and the hook's
+  // own poll may be up to `SW_UPDATE_CHECK_MS` away.
+  try {
+    await registration.update();
+  } catch {
+    /* offline, or the worker is gone: there is nothing parked to take */
+  }
+  if (!registration.waiting) return false;
+  registration.waiting.postMessage({ type: SKIP_WAITING });
+  return true;
+}
