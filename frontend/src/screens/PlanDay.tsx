@@ -30,7 +30,6 @@ import {
   EVENT_STATUS,
   isExactEdge,
   isRoutableMode,
-  freeAfterTravel,
   isAmbient,
   TRAVEL_FIT,
   type Booking,
@@ -491,29 +490,6 @@ export function PlanDay() {
     places,
     overrides: travelModeOverrides,
   });
-  /** The hole's free minutes once its journey is counted, or the hole itself where there is no
-   *  estimate (§D4 — never a pessimistic guess, and the chip reads exactly as it read before).
-   *
-   *  **Three readers now, which is why it is a function and not a line inside the chip**
-   *  (2026-08-27): the `שבץ` chip, its `מתוך` note, and the slot PICKER's `פנוי` line, which was
-   *  the last surface still stating the raw hole. Its docblock used to say the chip-versus-seam
-   *  threshold "belongs to M9"; §AG5 settled that it did not — `earnsChipAt` asks the corrected
-   *  number, and both callers ask it, so the sheet cannot offer a slot the day refuses to draw.
-   *
-   *  **The POSITION is still the raw hole's**, and that part of the old note stands: a drop target
-   *  is about where a row may land (ADR-0161 §2), not about how much of the slot is free. */
-  const travelFreeMinutes = (from: TripEvent, to: TripEvent, hole: number): number => {
-    const estimate = planTravel.estimateFor(from, to);
-    if (!estimate) return hole;
-    const free = freeAfterTravel(
-      Date.parse(from.endsAt ?? from.startsAt ?? ''),
-      Date.parse(to.startsAt ?? ''),
-      estimate.durationSeconds,
-    );
-    return free.fit === TRAVEL_FIT.UNKNOWN
-      ? hole
-      : Math.round(free.freeSeconds / SECONDS_PER_MINUTE);
-  };
   /** **The line saying WHY the offer shrank** — `where-a-route-shows-up-v1.html` §2 drew it as
    *  `מתוך 160 דק׳ · 40 דק׳ מהם דרך` beneath the chip, and shipping the number without it is what
    *  made the smaller offer read as an unexplained one. Absent where there is no estimate, so a
@@ -599,6 +575,32 @@ export function PlanDay() {
   );
   const journeyFor = (from: TripEvent, to: TripEvent): DayJourney | null =>
     journeyByRows.get(`${from.id}>${to.id}`) ?? null;
+  /**
+   * **A HOLE, CORRECTED FOR THE JOURNEY IN IT — ONE FUNCTION, EVERY SURFACE ON THIS SCREEN**
+   * (ADR-0206 §V1.1, finished; owner, 2026-09-01: _"transit row says take off by 08:05, but
+   * filling the gap suggests 07:30–08:30"_).
+   *
+   * It replaces `travelFreeMinutes`, which corrected a NUMBER and left the slot beside it raw — so
+   * the chip's label shrank by the walk while the sheet it opened, the block a pick wrote and the
+   * drop key all still described the whole hole. A label is not the offer: the reported
+   * contradiction is what the sheet's own header says, and no amount of correcting the chip's copy
+   * reaches it.
+   *
+   * `narrowGapForTravel` corrects both halves of one object, so a caller cannot pick up the wrong
+   * one, and it is the same function Trip mode and the day's two edge slots apply — which is
+   * ADR-0159 §1's rule about a fact, and `frontend/CLAUDE.md`'s note that a day-surface derivation
+   * living in `DayView` alone has cost a release twice.
+   *
+   * **Absent where there is no pair to ask about, and that is honest rather than a gap** (§D4): the
+   * day's edges have a row on one side only and a position joined around the row being MOVED has
+   * two rows that are not adjacent, so both keep the raw hole — exactly as they read before any of
+   * this existed.
+   */
+  const narrowedFree = (
+    from: TripEvent | null | undefined,
+    to: TripEvent | null | undefined,
+    free: Gap,
+  ): Gap => (from && to ? narrowGapForTravel(free, journeyFor(from, to), tz) : free);
   /** **The zones the block's two clocks read in** (ADR-0206 §AQ) — the leg is looked up in
    *  `planLegs` rather than rebuilt from the two rows, because `fromEdge` is the one thing that
    *  decides WHICH end of a span this leg leaves from and `planLegs` is where that is known.
@@ -1215,10 +1217,7 @@ export function PlanDay() {
    * did not measure, so a position it cannot correct reads precisely as it read before any of
    * this existed.
    */
-  const positionFreeMinutes = (p: DayPosition): number =>
-    p.afterEvent && p.beforeEvent
-      ? travelFreeMinutes(p.afterEvent, p.beforeEvent, p.free.minutes)
-      : p.free.minutes;
+  const positionSlot = (p: DayPosition): Gap => narrowedFree(p.afterEvent, p.beforeEvent, p.free);
   /** A position, said in the same words the drag's seams use — deliberately, so the two
    *  ways to reach a position do not name it differently. */
   const positionOption = (p: DayPosition): DaySlotOption => ({
@@ -1255,11 +1254,16 @@ export function PlanDay() {
     // hole a 40-minute walk eats is not an offer, and the sheet must not list one the day
     // itself refuses to draw. That is the same threshold asked the same question, so a
     // position offered here and a chip drawn there cannot disagree.
+    //
+    // **And the FILL is the same corrected slot, which is the 2026-09-01 half.** This row stated
+    // the free minutes and then handed the raw hole to the write — so a position could say
+    // `פנוי · 10 דק׳` and put an hour-long event across the drive it had just subtracted. One
+    // sheet contradicting itself in two taps; one object now, so it cannot.
     free: (() => {
-      const minutes = positionFreeMinutes(p);
+      const minutes = positionSlot(p).minutes;
       return earnsChipAt(minutes) ? t.planDay.slotFree(gapLabel(minutes)) : undefined;
     })(),
-    fill: p.free.fill,
+    fill: positionSlot(p).fill,
   });
   /** The day's positions with one event taken out, as picker options — the row's time button
    *  and the overlap resolve both ask for exactly this. */
@@ -1352,7 +1356,7 @@ export function PlanDay() {
     softEvents,
     softIndex,
     drag,
-    travelFreeMinutes,
+    narrowedFree,
     slotNote,
     journeyFor,
     legOnMap,
@@ -1842,7 +1846,9 @@ export function PlanDay() {
                 );
                 openSchedule(
                   item,
-                  position ? ideaBlock(ideaCategory(item, places), position.free) : option.fill,
+                  position
+                    ? ideaBlock(ideaCategory(item, places), positionSlot(position))
+                    : option.fill,
                 );
               }}
               // The form with the day's next opening, which is what this path offered before —
@@ -2120,13 +2126,21 @@ interface BuilderCtx {
   softEvents: TripEvent[];
   softIndex: Map<string, number>;
   drag: { id: string; overId: string | null } | null;
-  /** **What a hole's own journey costs** (ADR-0206 §V1.1) — the correction, applied to the
+  /** **A hole corrected for its own journey** (ADR-0206 §V1.1) — the correction, applied to the
    *  CONTROL rather than to the statement. Plan mode does not display a hole, it OFFERS it, so
    *  the overstatement Trip mode was making reaches a person here as a slot: a 45-minute chip
    *  over a hole a 40-minute walk eats. The read is `useDayTravelReads`, the same hook the day
    *  list uses, so the two surfaces cannot differ about one hole (`frontend/CLAUDE.md`:
-   *  ADR-0159 §1 allows a difference in posture and forbids one about a fact). */
-  travelFreeMinutes: (from: TripEvent, to: TripEvent, hole: number) => number;
+   *  ADR-0159 §1 allows a difference in posture and forbids one about a fact).
+   *
+   *  **The whole `Gap`, not its minute count** (2026-09-01): the label and the slot are two halves
+   *  of one offer, and correcting only the first is what let the sheet's own header contradict the
+   *  leave-by printed beside it. */
+  narrowedFree: (
+    from: TripEvent | null | undefined,
+    to: TripEvent | null | undefined,
+    free: Gap,
+  ) => Gap;
   /** The chip's own explanation of why it shrank (§2's drawn `bld-slot-note`). */
   slotNote: (from: TripEvent, to: TripEvent, hole: number) => string | undefined;
   /** The journey across a hole, for the block Plan draws above its chip (§2's own drawing).
@@ -2202,21 +2216,19 @@ function overlapSeam(items: TimeItem[], idx: number): string | undefined {
  *  to every caller downstream. */
 function FreeSlot({
   free,
-  freeMinutes,
   label,
   note,
   seamLabel,
   over,
   onFill,
 }: {
+  /** **Already corrected for the journey in it** (`narrowGapForTravel`) — its `minutes` is what is
+   *  free rather than how long the hole is, and its `fill` is the window that leaves the road
+   *  alone. This used to take the corrected number as a SECOND prop beside the raw gap, which is
+   *  how the chip's label and the slot it opened came to describe different holes (2026-09-01).
+   *  One object: `where-a-route-shows-up-v1.html` §2's `if (left >= 60)` reads off it, and so does
+   *  every drop key and every fill. */
   free: Gap;
-  /** **What is actually free here**, which since ADR-0206 §V1.1 is not always the hole's own
-   *  length — and it is what decides chip-versus-seam. `where-a-route-shows-up-v1.html` §2 drew
-   *  `if (left >= 60)` and said what happens below it: _"there is simply no chip — exactly as
-   *  today. The seam is NOT given a second job."_ Without this a 60-minute hole a 78-minute walk
-   *  eats still earned a chip, and the chip then advertised `פער של 0 דק׳` — an offer nobody can
-   *  take. Defaults to the hole, so the edge slots (which have no leg yet) read as before. */
-  freeMinutes?: number;
   /** The chip's copy, when there is enough free time to earn one. */
   label: string;
   /** Why the offer is smaller than the hole (§2's drawn note line). Absent with no estimate. */
@@ -2229,8 +2241,8 @@ function FreeSlot({
 }) {
   // Asked of `lib/gaps.ts`, never re-derived here: the threshold that decides chip-vs-seam is the
   // same one `gapBetween` applies, and two copies of it would drift. What it is asked ABOUT is the
-  // free minutes rather than the hole, since §V1.1 — see `freeMinutes`.
-  const isChip = earnsChipAt(freeMinutes ?? free.minutes);
+  // free minutes rather than the hole, since §V1.1 — which the Gap itself now answers.
+  const isChip = earnsChipAt(free.minutes);
   return (
     <div
       // Two classes, one shared geometry block in `screens.css`. Deliberately NOT
@@ -2330,11 +2342,16 @@ function BuilderGroups({
           depth === 0 && prevEnd && !ctx.readOnly
             ? freeBetween(prevEnd, groupStartEvent(g), ctx.tz)
             : null;
+        // **Corrected for the journey in it before anything else asks it a question** — its
+        // length, its chip-versus-seam threshold, its drop key and the slot a fill lands on are
+        // all read off this one object, so none of them can describe a different hole from the
+        // leave-by drawn beside it (ADR-0206 §V1.1).
+        const slot = between ? ctx.narrowedFree(prevEnd, groupStartEvent(g), between) : null;
         // A SEAM touching the held row is suppressed; a CHIP is not. The distinction is the
         // whole of it: a chip means "into that free afternoon", which is a real move however
         // adjacent it is, while a seam beside the held row means "start where you already
         // end" — a nudge by its own length, or nothing at all.
-        const free = between && touchesHeld && !earnsChip(between) ? null : between;
+        const free = slot && touchesHeld && !earnsChip(slot) ? null : slot;
         prevEventGroup = g;
         const key = g.kind === 'cluster' ? `cl-${g.items[0].event.id}` : g.item.event.id;
         return (
@@ -2344,21 +2361,20 @@ function BuilderGroups({
               §AH3's amendment). Plan needs both — the chip is a CONTROL and says what it
               offers, the block is the fact it is offering it around, and an infeasible leg
               has no chip at all, so the block is the only thing that can say so — but the
-              order was the drawing's rather than the day's. `travelFreeMinutes` already
-              shrinks the offer BY the leg, so the slot ENDS at the leave-by below it.
+              order was the drawing's rather than the day's. `narrowGapForTravel` ends the
+              slot AT the leave-by below it (§AY), so the two read as one sentence — and
+              until that fix only the chip's LABEL shrank, which is what made the order
+              look settled while the offer it opened still crossed the road.
 
               **Here the order is also a claim about where a drop lands.** `.gap`/`.bld-seam`
               carry `data-gap-key` and are what `gapAt` resolves a drag to, so above the block
               the seam means "here, then travel" and below it "travel, then here" — a position
               the day does not have. */}
-            {free && prevEnd && (
+            {free && prevEnd && between && (
               <FreeSlot
                 free={free}
-                freeMinutes={ctx.travelFreeMinutes(prevEnd, groupStartEvent(g), free.minutes)}
-                label={t.planDay.gap(
-                  gapLabel(ctx.travelFreeMinutes(prevEnd, groupStartEvent(g), free.minutes)),
-                )}
-                note={ctx.slotNote(prevEnd, groupStartEvent(g), free.minutes)}
+                label={t.planDay.gap(gapLabel(free.minutes))}
+                note={ctx.slotNote(prevEnd, groupStartEvent(g), between.minutes)}
                 seamLabel={t.planDay.seamAfter(prevEnd.title)}
                 over={ctx.overGap(free.fill)}
                 onFill={ctx.onGapFill}

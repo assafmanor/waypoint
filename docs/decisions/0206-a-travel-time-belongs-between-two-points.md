@@ -3506,7 +3506,9 @@ both changes.
 §AH3 separated the strip from the journey block — the block is about the **leg**, the strip about
 the **hole** — and never asked which goes on top. The arithmetic already answers:
 `narrowGapForTravel` (Trip) and `travelFreeMinutes` (Plan) shrink the offer **by** the journey, so
-the window the strip states **ends at** the leave-by the block advises. Drawn in that order the
+the window the strip states **ends at** the leave-by the block advises. **(§AY: that second half was
+true of the statement and not of the offer, and `travelFreeMinutes` is gone — one function ends both
+at the departure now.)** Drawn in that order the
 hole reads as one sentence; drawn the other way the day offers a slot for time it has just said
 you must spend travelling.
 
@@ -3697,3 +3699,95 @@ module that had never followed it. It publishes `toEventChangePayload` now. The 
 say, and now does, is that a row has to state its **absent** fields as explicit `null`: `undefined`
 does not survive JSON, so a field the server CLEARED would otherwise be missing from the payload and
 the peer would keep the stale value.
+
+## AY. The offer ran through the departure, and correcting the label had never reached it (2026-09-01)
+
+Owner, off the shipped day, with the two screenshots side by side:
+
+> _"I feel like filling the gap time suggestion might be wrong. Example: transit row says take off
+> by 08:05, but filling the gap suggests 07:30–08:30."_
+
+Both numbers were the app's own and both were computed from the same estimate. The head hole ran
+07:00–08:30, the drive out of the hotel was 20 minutes, and the day printed `יציאה עד 08:05` on the
+leg while the slot above it offered a window ending 08:30 — a slot for time the same screen had
+just said to spend driving.
+
+### AY1. §V1.1 had corrected the STATEMENT and the CONTROL was never fully reached
+
+Three separate reasons, and only the first was written down (`docs/backlog.md`, §AJ5.3):
+
+- **`narrowGapForTravel` needed `journey.free`, and the day's first leg has none.** A leg out of an
+  ambient stay has no `departAfterMs` (§AD/§AF3), so there is no window to measure and `free` is
+  `null` — which made the correction a deliberate no-op on the one slot with a bed above it, i.e.
+  every morning. The backlog line named the fix: end the window at `leaveByMs`, which exists there
+  and is a pure ceiling precisely because nothing clamped it.
+- **The cap was a LENGTH added to `fill.start`, and that start is not always the hole's.**
+  `freeBeforeFirst` hugs the first row (`max(floor, first - 60)`), so on the reported day the cap
+  landed at 08:40 — past the leave-by _and_ past the event — and read as no cap at all. This half
+  was not in the backlog and would have survived the fix it proposed. An instant cannot be
+  recovered from a duration measured somewhere else, so the comparison is against the instant.
+- **Plan's between-row chip corrected only its own copy.** `travelFreeMinutes` answered a NUMBER
+  for the label while `FreeSlot` received the raw `Gap` and handed it to `onFill` — so the sheet's
+  header, the block a pick wrote, and the drop key all still described the whole hole. Trip mode
+  narrowed the same hole and Plan did not: a disagreement about a fact, which ADR-0159 §1 forbids,
+  and the third time `frontend/CLAUDE.md`'s note about a derivation living on one day surface has
+  been paid for.
+
+**One rule replaces all three: a hole's free window ends at the departure the day advises.** It is
+`narrowGapForTravel`'s single bound now, `travelFreeMinutes` is deleted rather than fixed, and every
+surface — Trip's strip and tap, Plan's chip, both edge slots, the slot picker, and Trip's one-tap
+quick-schedule — reads that one object. A label is not an offer, and correcting a label was never
+going to reach a header.
+
+### AY2. The buffer is part of what going costs
+
+`freeAfterTravel` subtracts the leg; `heroLeaveBy` subtracts the leg **and** §D5's buffer. So every
+corrected hole was overstated by five minutes, and the strip could read `פנוי · 2:10 שע׳` above
+`יציאה עד 08:05` on a hole ending 08:30. That is the same defect as the reported one, five minutes
+wide instead of twenty-five, and no screenshot would ever have caught it.
+
+`goingCostMinutes` is the one derivation: `travel + TRAVEL_BUFFER_SECONDS`. Free time that runs past
+the stated departure is time the same surface has already told you to be moving in — the buffer is
+not slack the day gets to spend twice.
+
+**Asked of the cost and never of the arm.** Keyed on `leaveByMs` the number would have reported 115
+minutes free all afternoon and 120 the moment the row below started (`PAST` states no departure) — a
+measurement that moves without the day changing.
+
+### AY3. The offer is stated on a five-minute grid, rounded DOWN
+
+Owner, in the same breath:
+
+> _"make sure to round the suggestions so that it shows 14:45 instead of 14:47 (down so that it
+> doesn't cross to the unavailable time)"_
+
+A departure counted backwards lands on whatever minute the router answered, and `14:47` is exact
+and unreadable on a control you are about to plan lunch inside. `SLOT_STEP_MINUTES` is five and
+`flooredSlotEnd` floors; **up is never an option**, because up spends two minutes of the journey and
+stopping before the road starts is the whole point. The advice itself is untouched — the leg still
+says `יציאה עד 14:24`, because that is a measurement and the grid belongs to the offer.
+
+### AY4. `Gap.until` — a slot's ceiling is not its length
+
+The cap alone was not enough, and the reason is the start-offset again. `blockFor` caps a category's
+typical length against the free MINUTES, which are measured over the hole; the block starts wherever
+the position put it. On the reported head slot — 65 minutes free, block at 07:30, window ending
+08:05 — a 60-minute idea took 07:30–08:30 and drove through the departure a second time.
+
+So a `Gap` carries `until`: the last moment anything put here may run to. Two fields because they are
+two facts — `fill` is where a drop lands, `until` is what it may not cross — and capping against
+`fill.end` instead would have fixed this one case and broken the ordinary one, where `fill.end` is
+the default block and a three-hour hike is entitled to the whole hole.
+
+### AY5. What is deliberately not changed
+
+- **The head slot's block still hugs the first row rather than the departure.** It offers 07:30–08:05
+  where 07:00–08:05 is free, so the offer is conservative by the difference. Moving the START is a
+  change to where a drop LANDS (ADR-0161 §2) and to the drop key with it; it is backlogged, not
+  taken here.
+- **`slotNote` still says the LEG.** `מתוך 160 דק׳ · 40 דק׳ מהם דרך` explains a shrink that is now 45
+  minutes wide, and naming 45 would be a false statement about the road. Whether the buffer deserves
+  words of its own is a copy decision and is left open.
+- **A MOVE still keeps its own length** (ADR-0161 §1), so a 90-minute row dropped into a 35-minute
+  window still overlaps. That is §1's rule and not this amendment's to overturn.
+- **The leave-by is not rounded**, per §AY3.

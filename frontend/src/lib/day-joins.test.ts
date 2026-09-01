@@ -21,7 +21,7 @@ import {
 import { bookingWhen } from './booking-journey';
 import { mergeDayEntries } from './day-entries';
 import { buildTimeTree } from './time';
-import { gapBetween } from './gaps';
+import { gapBetween, type Gap } from './gaps';
 
 const TZ = 'Asia/Tokyo';
 const MIN = 60_000;
@@ -430,39 +430,107 @@ describe('dayJourney', () => {
 });
 
 describe('narrowGapForTravel', () => {
-  const gapAt = (startHHMM: string, endHHMM: string) => ({
-    minutes: 0,
+  // 14:00 → 16:40 in Tokyo, the zone every test in this file reads. A 40-minute leg out of it
+  // leaves at 15:55: `arriveBy - travel - buffer`, which is the instant the row beside the slot
+  // prints as `יציאה עד`.
+  const HOLE_START = Date.parse('2026-07-12T05:00:00Z');
+  const HOLE_END = HOLE_START + 160 * MIN;
+  const WALK = 40 * 60;
+  const LEAVE_BY = '15:55';
+
+  const gapAt = (startHHMM: string, endHHMM: string, minutes = 160): Gap => ({
+    minutes,
     fill: { date: '2026-07-12', start: startHHMM, end: endHHMM },
   });
-
-  const journeyFreeing = (freeSeconds: number) =>
-    ({ free: { freeSeconds } }) as unknown as Parameters<typeof narrowGapForTravel>[1];
+  /** A real `DayJourney`, never a fake: what the offer is capped at is this function's own
+   *  `leaveByMs`, so a stub would only assert that the test and the code agree about a literal. */
+  const leg = (over: Partial<Parameters<typeof dayJourney>[0]> = {}) =>
+    dayJourney({
+      departAfterMs: HOLE_START,
+      arriveByMs: HOLE_END,
+      travelSeconds: WALK,
+      nowMs: HOLE_START,
+      ...over,
+    });
 
   // The common case, and why the offer was only wrong at the margin: the journey sits at the END
   // of a hole, so a 60-minute block at its start is untouched by a 40-minute walk two hours later.
   it('leaves a slot alone when the journey does not reach it', () => {
     const gap = gapAt('14:00', '15:00');
-    expect(narrowGapForTravel(gap, journeyFreeing(120 * 60), TZ).fill).toEqual(gap.fill);
+    expect(narrowGapForTravel(gap, leg(), TZ).fill).toEqual(gap.fill);
   });
 
   // **AND IT CORRECTS `minutes` EVEN THEN.** The first draft rewrote only `fill.end`, so a Gap
   // whose block needed no capping still reported the whole hole — and the free-time strip, which
   // asks a Gap how long it is, then stated a length a walk had already eaten (ADR-0206 §AH3).
+  //
+  // **115, not 120**, and the five minutes are the 2026-09-01 correction: the buffer is part of
+  // what going costs you, so free time that runs past the stated departure is time the same
+  // surface has already told you to spend moving (`goingCostMinutes`).
   it('reports what is free, not how long the hole is', () => {
-    expect(narrowGapForTravel(gapAt('14:00', '15:00'), journeyFreeing(120 * 60), TZ).minutes).toBe(
-      120,
-    );
-    expect(narrowGapForTravel(gapAt('14:00', '15:00'), journeyFreeing(30 * 60), TZ).minutes).toBe(
-      30,
-    );
+    expect(narrowGapForTravel(gapAt('14:00', '15:00'), leg(), TZ).minutes).toBe(115);
   });
 
-  // …and the margin, which is where the control was handing out a slot the walk eats.
-  it('caps the slot at what is actually free', () => {
-    const narrowed = narrowGapForTravel(gapAt('14:00', '15:00'), journeyFreeing(30 * 60), TZ);
-    expect(narrowed.fill.end).toBe('14:30');
-    expect(narrowed.minutes).toBe(30);
+  // …and the margin, which is where the control was handing out a slot the walk eats. The window
+  // ends at the DEPARTURE the row above it advises — not at the arrival minus the leg.
+  it('caps the slot at the departure it advises', () => {
+    const narrowed = narrowGapForTravel(gapAt('14:00', '16:40'), leg(), TZ);
+    expect(narrowed.fill.end).toBe(LEAVE_BY);
     expect(narrowed.fill.start).toBe('14:00');
+    expect(narrowed.minutes).toBe(115);
+  });
+
+  // **THE REPORTED CASE** (owner, 2026-09-01: _"transit row says take off by 08:05, but filling
+  // the gap suggests 07:30–08:30"_). The day's first leg comes out of the bed you woke in, which
+  // has no `departAfterMs` (§AD/§AF3) and therefore no `free` window at all — so the old cap,
+  // which needed `free.freeSeconds`, returned the head slot whole. The leave-by is right there,
+  // and it is a pure ceiling precisely because nothing clamped it.
+  //
+  // The gap is `freeBeforeFirst`-shaped: its fill HUGS the first event (07:30–08:30 on the
+  // reported day) rather than starting where the hole does, which is the second half of the bug —
+  // a length added to `fill.start` capped 30 minutes past the leave-by and read as no cap at all.
+  it('narrows the day head, whose leg out of a bed has no window to measure', () => {
+    const head = gapAt('15:40', '16:40');
+    const bookend = dayJourney({ arriveByMs: HOLE_END, travelSeconds: WALK, nowMs: HOLE_START });
+    expect(bookend?.free).toBeNull();
+    const narrowed = narrowGapForTravel(head, bookend, TZ);
+    expect(narrowed.fill.end).toBe(LEAVE_BY);
+    expect(narrowed.minutes).toBe(115);
+  });
+
+  // **The offer is stated on a five-minute grid, and always DOWN** (owner, 2026-09-01: _"round the
+  // suggestions so that it shows 14:45 instead of 14:47 · down so that it doesn't cross to the
+  // unavailable time"_). A 38-minute leg leaves at 15:57; the slot ends 15:55 and never 16:00,
+  // because up is two minutes of the journey.
+  it('rounds the offer down onto the slot step', () => {
+    const narrowed = narrowGapForTravel(
+      gapAt('14:00', '16:40'),
+      leg({ travelSeconds: 38 * 60 }),
+      TZ,
+    );
+    expect(narrowed.fill.end).toBe('15:55');
+    // The MEASUREMENT is not rounded — a statement is a measurement (ADR-0159 §1), and 117 is what
+    // is free. Only the offer lands on the grid.
+    expect(narrowed.minutes).toBe(117);
+  });
+
+  // A journey that eats the whole hole leaves the position its DEFAULT block, exactly as a seam
+  // gets one (ADR-0161 §3): a zero-length slot is no droppable position at all, and the old cap
+  // produced precisely that.
+  it('keeps the default block where nothing is left to offer', () => {
+    const gap = gapAt('14:00', '15:00');
+    const narrowed = narrowGapForTravel(gap, leg({ travelSeconds: 200 * 60 }), TZ);
+    expect(narrowed.minutes).toBe(0);
+    expect(narrowed.fill).toEqual(gap.fill);
+  });
+
+  // **The clamped arm caps nothing**, and reading it as a ceiling is how a slot would end before
+  // it began: there the instant is the EARLIEST departure that exists (§AJ2), not the last.
+  it('treats a clamped departure as the floor it is', () => {
+    const clamped = leg({ departAfterMs: HOLE_END - 30 * MIN, travelSeconds: 28 * 60 });
+    expect(clamped?.leaveByIsFloor).toBe(true);
+    const gap = gapAt('16:10', '16:40', 30);
+    expect(narrowGapForTravel(gap, clamped, TZ).fill).toEqual(gap.fill);
   });
 
   it('leaves the slot alone when there is nothing to narrow against (§D4)', () => {
