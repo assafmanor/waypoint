@@ -759,6 +759,24 @@ question and not a code one.
   over the whole day (§AZ6), and the resolution memo keyed on content rather than on an array both
   surfaces rebuild every render (§AZ7).
 
+## The day switch lost its numbers, and §AZ4's own rule was one of the causes (owner report, 2026-09-02)
+
+- **Fixed** — [ADR-0206 §BA](decisions/0206-a-travel-time-belongs-between-two-points.md). §AZ's rows
+  render, and the durations were not arriving: _"after switching to a new day, the transit rows show
+  no time or distance estimates at all"_. Three faults. **§BA1**, and it is the one that had been
+  there all along: `useDayTravel` COPIED the session store into mount state at mount and merged into
+  the copy afterwards — while the only thing that merges, the local Dexie read, early-returns on
+  `readDays`. Every swipe fills that set for the day you are swiping toward (`DayPeek` mounts the
+  neighbours), and the day surface is one component instance taking its date from context, so the
+  copy carried the old day's legs into the new one and the total and the feasibility verdict, both
+  roll-ups of the journeys, agreed with it. The store is subscribable now and the hook derives from
+  it, so _in the store but absent from a screen_ is unrepresentable. **§BA2** is mine from the day
+  before: §AZ4's per-leg `askedDays` test counted a refusal in ANY mode as the leg being answered,
+  and on a driving trip the gate refuses walking on every leg past ⁦15 km⁩ — so one response marked
+  the whole day answered with no driving estimate in it. Strict per (leg, mode) now. **§BA3**: a
+  pack answering `202` was never re-asked, which is what the first device to open a cold trip always
+  gets.
+
 - **The two day surfaces still derive their own leg lists** (2026-09-01, [ADR-0206 §AZ8](decisions/0206-a-travel-time-belongs-between-two-points.md),
   deliberately out of that fix's scope). `DayView` reads its legs off `dayBlocks`, which owns the
   adjacency rules — ADR-0171 §5's transparent edge, connections, clusters; `PlanDay` walks

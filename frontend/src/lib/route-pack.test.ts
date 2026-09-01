@@ -4,7 +4,7 @@
 // downloaded trip shows a travel time for every day-adjacent leg. The pack is the only thing this
 // device has ever been told about those legs — no request is made, and none could succeed.
 import 'fake-indexeddb/auto';
-import { cleanup, renderHook, waitFor } from '@testing-library/react';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TRAVEL_MODE, routeLegKey, type RoutePack } from '@waypoint/shared';
 
@@ -250,8 +250,42 @@ describe('useTripRoutePack', () => {
     expect(stored.download).not.toHaveBeenCalled();
   });
 
-  /** `202` — still precomputing. Nothing is stored and nothing is remembered, so the next mount
-   *  asks again rather than the trip going without a pack for the session. */
+  /**
+   * **A `202` IS WAITED FOR ONCE** (ADR-0206 §BA3, owner 2026-09-02: _"sometimes they're not
+   * preloaded at all"_). A cold trip's pack is precomputed on the first ask, so `202` is not the
+   * exception — it is what the first device to open the trip always gets, and returning there left
+   * every day it would have warmed without one for the whole session.
+   */
+  it('waits out a pack that is still precomputing, once', async () => {
+    vi.useFakeTimers();
+    stored.read.mockResolvedValue(null);
+    stored.download
+      .mockResolvedValueOnce({ status: 'preparing', retryAfterSeconds: 2 })
+      .mockResolvedValue({ status: 'stored', sizeBytes: 1 });
+
+    const view = renderHook(() => useTripRoutePack({ tripId: 't1', offline: false, ended: false }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(stored.download).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    expect(stored.download).toHaveBeenCalledTimes(2);
+
+    // And only once: a pack that is never ready must not become a poll.
+    stored.download.mockResolvedValue({ status: 'preparing', retryAfterSeconds: 2 });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(stored.download).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+    view.unmount();
+  });
+
+  /** `202` — still precomputing. Nothing is recorded as fetched, so a later mount asks again
+   *  rather than the trip going without a pack for the session. */
   it('re-asks after a pack that was not ready', async () => {
     stored.read.mockResolvedValue(null);
     stored.download.mockResolvedValue({ status: 'preparing', retryAfterSeconds: 5 });

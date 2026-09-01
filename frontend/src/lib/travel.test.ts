@@ -7,6 +7,7 @@ import {
   POLYLINE_PRECISION,
   routeLegKey,
   TRAVEL_MODE,
+  TRAVEL_MODES,
   type LatLng,
   type RouteBatch,
   type RoutedLeg,
@@ -28,6 +29,7 @@ import { DAY_TRAVEL_SETTLE_MAX_MS, DAY_TRAVEL_WARM_ATTEMPTS } from '../constants
 import { db } from '../db';
 import {
   cacheTravelEstimates,
+  fillCachedRouteLegs,
   readCachedTravelEstimates,
   resetAskedDaysForTests,
   useDayShapes,
@@ -94,7 +96,22 @@ const nextLeg = (estimates: RoutedLeg['estimates']): RoutedLeg => ({
   pendingModes: [],
 });
 
-const answered: RouteBatch = { legs: [leg([walk, drive]), nextLeg([walk, drive])] };
+/** **A COMPLETE answer, which means every mode is accounted for** — two estimated and one
+ *  refused. Since ADR-0206 §BA2 a day is recorded as asked only when every (leg, mode) it asked
+ *  about is known or refused, and a batch that silently omits a mode is not that: the server
+ *  always puts each one in `estimates`, `pendingModes` or `refusedModes`. The fixture said
+ *  nothing about cycling and so described a day that is still owed an answer. */
+const complete = (estimates: RoutedLeg['estimates']) => ({
+  estimates,
+  refusedModes: [TRAVEL_MODE.CYCLING],
+  pendingModes: [],
+});
+const answered: RouteBatch = {
+  legs: [
+    { ...leg([]), ...complete([walk, drive]) },
+    { ...nextLeg([]), ...complete([walk, drive]) },
+  ],
+};
 const warming: RouteBatch = { legs: [leg([walk])], retryAfterSeconds: 2 };
 
 function setOnline(online: boolean): void {
@@ -295,17 +312,23 @@ describe('useDayTravel', () => {
     stops = STOPS;
     view.rerender();
 
-    // The superseded read is merged all the same — this is the assertion that was red. `SHIBUYA`
-    // is reachable from no other stop set, so only that discarded read can have supplied it.
+    // **The superseded read was RETAINED, and it is there for the stop set it belongs to** — the
+    // peer reverts, or a swipe returns to that day. `SHIBUYA` is reachable from no other stop set,
+    // so only that discarded read can have supplied it, and the fingerprint it belongs to is in
+    // `readDays`, so nothing will ever read it from Dexie again.
+    //
+    // Asked on `RESHUFFLED` and not on `STOPS`, which is §BA1's own correction: a day answers for
+    // the legs it HAS, derived from the store rather than accumulated in a map that grew to hold
+    // every leg any stop set had ever mentioned.
+    stops = RESHUFFLED;
+    view.rerender();
     await waitFor(() =>
       expect(view.result.current.estimateFor(TSUKIJI, SHIBUYA, TRAVEL_MODE.WALKING)).toEqual(walk),
     );
-
-    // And it is still there for the stop set it belongs to, which is where it is read: the peer
-    // reverts, or a swipe returns to that day.
-    stops = RESHUFFLED;
+    // …and the day it is NOT on does not claim it.
+    stops = STOPS;
     view.rerender();
-    expect(view.result.current.estimateFor(TSUKIJI, SHIBUYA, TRAVEL_MODE.WALKING)).toEqual(walk);
+    expect(view.result.current.estimateFor(TSUKIJI, SHIBUYA, TRAVEL_MODE.WALKING)).toBeNull();
   });
 
   /**
@@ -489,12 +512,15 @@ describe('useDayTravel', () => {
   });
 
   /** …and a hole the gate REFUSED is an answer, so a day of one estimate and one refusal is
-   *  settled and must not re-ask on every visit. */
-  it('counts a refusal as an answer for that hole', async () => {
+  /** …and a hole the gate refused in EVERY mode is answered too — never coming, whatever anyone
+   *  waits for (ADR-0205 §3) — so a day of one estimate and one wholly-refused leg is settled and
+   *  must not re-ask on every visit. */
+  it('counts a wholly refused hole as answered', async () => {
+    const allRefused = { estimates: [], refusedModes: [...TRAVEL_MODES], pendingModes: [] };
     routes.fetchRoutes.mockResolvedValue({
       legs: [
-        leg([walk, drive]),
-        { ...nextLeg([]), refusedModes: [TRAVEL_MODE.WALKING], pendingModes: [] },
+        { ...leg([]), ...complete([walk, drive]) },
+        { ...nextLeg([]), ...allRefused },
       ],
     } satisfies RouteBatch);
 
@@ -509,7 +535,97 @@ describe('useDayTravel', () => {
       ),
     );
     expect(routes.fetchRoutes).toHaveBeenCalledTimes(1);
-    second.unmount();
+  });
+
+  /**
+   * **A REFUSAL IN ONE MODE IS NOT AN ANSWER FOR THE LEG** (ADR-0206 §BA2, field report
+   * 2026-09-02: an Iceland driving day, every transit row reading `בלי הערכת זמן`).
+   *
+   * §AZ4's per-leg rule asked whether ANY mode had answered for a pair — and the gate refuses
+   * walking on every leg past ⁦15 km⁩, so on a driving trip a refusal nobody was waiting for marked
+   * the leg answered while the only mode the day draws was still pending. One response, the whole
+   * day into `askedDays`, and no driving duration for the rest of the session.
+   */
+  it('does not record a day whose drawn mode is still pending behind a refusal', async () => {
+    // The shape of a long leg on a driving trip: walking refused, driving not answered yet.
+    const pendingDrive = {
+      estimates: [],
+      refusedModes: [TRAVEL_MODE.WALKING, TRAVEL_MODE.CYCLING],
+      pendingModes: [TRAVEL_MODE.DRIVING],
+    };
+    routes.fetchRoutes.mockResolvedValue({
+      legs: [
+        { ...leg([]), ...pendingDrive },
+        { ...nextLeg([]), ...pendingDrive },
+      ],
+    } satisfies RouteBatch);
+
+    const first = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+    await waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(1));
+    first.unmount();
+
+    // The driving answer is still owed, so the next visit asks for it rather than going silent.
+    renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+    await waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(2));
+  });
+
+  /**
+   * **THE DAY SWITCH THAT LOST ITS NUMBERS** (ADR-0206 §BA1, field report 2026-09-02: _"after
+   * switching to a new day, the transit rows show no time or distance estimates at all"_).
+   *
+   * `known` was a COPY of the session store taken once at mount, merged into afterwards — and the
+   * merge lives in the local-read effect, which **early-returns on `readDays`**. So the moment a
+   * day switched to a fingerprint this session had already read, nothing put that day's answers
+   * into the mount's map. Every swipe guarantees it: `DayPeek` mounts the neighbours as real
+   * surfaces and they read Dexie. And the day surface is ONE component instance taking its date
+   * from context, not a keyed remount, so the copy carried the old day's legs into the new one.
+   *
+   * Reproduced exactly: a neighbour reads first (the peek), then the same hook is asked about that
+   * day. Offline throughout, so only the store can be the source.
+   */
+  it('answers for a day whose cache another surface read first', async () => {
+    // **`RESHUFFLED` and not a subset of `STOPS`, and that is the whole fixture**: its second leg
+    // runs to `SHIBUYA`, which no other stop set mentions — so a mount that seeded itself from
+    // today's keys cannot have it, and only reading the store for the NEW day can supply it.
+    await cacheTravelEstimates(RESHUFFLED, [
+      leg([walk]),
+      { ...leg([walk]), fromIndex: 1, toIndex: 2 },
+    ]);
+    setOnline(false);
+
+    // The peek: a different mount, reading the neighbour's legs and settling them into the store.
+    const peek = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: RESHUFFLED }));
+    await waitFor(() =>
+      expect(peek.result.current.estimateFor(TSUKIJI, SHIBUYA, TRAVEL_MODE.WALKING)).toEqual(walk),
+    );
+    peek.unmount();
+
+    // The host, mounted on today and then swiped onto that day — the same hook, a new fingerprint,
+    // and a local read that will not run because the peek already recorded it.
+    let stops: readonly LatLng[] = STOPS;
+    const host = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops }));
+    await waitFor(() => expect(host.result.current.settled).toBe(true));
+    stops = RESHUFFLED;
+    host.rerender();
+
+    expect(host.result.current.estimateFor(TSUKIJI, SHIBUYA, TRAVEL_MODE.WALKING)).toEqual(walk);
+  });
+
+  /** The same fact from the other side: an answer landing for a day ALREADY on screen reaches it,
+   *  which is what lets a route pack hydrate under an open day (§AZ5) and what a peer's edit
+   *  needs. A store nobody subscribes to is a store that arrives on the next mount. */
+  it('picks up an answer that lands in the store while the day is mounted', async () => {
+    setOnline(false);
+    const view = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+    await waitFor(() => expect(view.result.current.settled).toBe(true));
+    expect(view.result.current.estimateFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toBeNull();
+
+    // What a pack hydration does: fills the table the day reads, and says so.
+    await act(async () => {
+      await fillCachedRouteLegs([{ key: WALK_KEY, estimate: walk }]);
+    });
+
+    expect(view.result.current.estimateFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toEqual(walk);
   });
 
   /**
