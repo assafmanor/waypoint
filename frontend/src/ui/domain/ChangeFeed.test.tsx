@@ -51,6 +51,45 @@ function change(over: Partial<Change>): Change {
   };
 }
 
+/**
+ * **`after` is the ROW now** (`sync-and-offline.md` §3, applied to events on 2026-09-01), so every
+ * event change carries a `startsAt` whether or not anybody moved it. The `movedTo` line therefore
+ * reads it against `before` rather than merely noticing it is there — otherwise a peer renaming an
+ * event narrates `הזיז את X ל־…` about a time nobody touched.
+ */
+describe('describeChange — a move is a time that CHANGED', () => {
+  const at = '2026-07-19T11:00:00.000Z';
+
+  it('narrates the move when the start actually moved', () => {
+    const entry = describeChange(
+      change({
+        before: { title: 'ראמן', startsAt: '2026-07-19T09:00:00.000Z' },
+        after: { title: 'ראמן', startsAt: at },
+      }),
+      USERS,
+      ME.id,
+      'Asia/Tokyo',
+    );
+    expect(entry!.lead).toBe(t.changeFeed.movedTo('ראמן'));
+    expect(entry!.time).toBeTruthy();
+  });
+
+  it('does not narrate a move for an edit that left the time alone', () => {
+    const entry = describeChange(
+      change({
+        action: 'update',
+        before: { title: 'ראמן', startsAt: at },
+        after: { title: 'ראמן מבורך', startsAt: at },
+      }),
+      USERS,
+      ME.id,
+      'Asia/Tokyo',
+    );
+    expect(entry!.lead).toBe(t.changeFeed.updated('ראמן מבורך'));
+    expect(entry!.time).toBeUndefined();
+  });
+});
+
 // Notes narrate on create and delete, and deliberately NOT on edit (owner, session 206):
 // the buffer is a bounded ring and a note is the one entity a group re-words.
 describe('describeChange — notes', () => {

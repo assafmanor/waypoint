@@ -428,10 +428,15 @@ export function reducer(state: State, action: Action): State {
   }
 }
 
-/** `change.after` is the wire input the actor sent (partial), not the full
- *  persisted entity — the backend Change log doesn't carry server-computed
- *  fields (e.g. a ripple-shifted `endsAt`). Good enough at this trip's scale;
- *  a richer Change payload is a backend change, out of T-014's scope. */
+/** `change.after` is the persisted ROW (`sync-and-offline.md` §3), merged over what we hold.
+ *
+ *  **It used to be the wire input the actor sent, and this docblock used to call that good enough**
+ *  — naming a ripple-shifted `endsAt` as the known cost. It was not a cost, it was the defect
+ *  (owner, 2026-09-01): a peer's drag persists a shifted `endsAt` server-side and broadcast only
+ *  the new `startsAt`, so every other device silently changed the event's DURATION — and `endsAt`
+ *  is the instant a hole is measured from, so that day's journeys, free time and total were all
+ *  derived from a time the server had already replaced. `events.service.ts` now publishes
+ *  `toEventChangePayload`, which is what §3 asked for all along. */
 function applyRemoteEventChange(events: TripEvent[], change: Change): TripEvent[] {
   // Event-only by construction: this is the `event` channel's applier, and the shelf's
   // is `REMOTE_MAYBE_CHANGE` beside it. It used to say maybe-items had no consuming UI
@@ -439,7 +444,12 @@ function applyRemoteEventChange(events: TripEvent[], change: Change): TripEvent[
   // applier is not a note the registry can act on.
   if (change.entityType !== ENTITY_TYPE.EVENT) return events;
   if (change.action === 'delete') return events.filter((e) => e.id !== change.entityId);
-  const partial = change.after as Partial<TripEvent> | undefined;
+  // Through `coerceClearedFields` for the reason its own docblock gives — a field the server
+  // CLEARED crosses the wire as `null` (an event's place, once it is linked to a booking), and a
+  // raw spread would put that `null` in state where the entity type says `undefined`. The Dexie
+  // mirror has always coerced it (`cache.ts`'s `applyToRow`); this is the memory half, which had
+  // been left to disagree with it.
+  const partial = coerceClearedFields<TripEvent>(change.after);
   if (!partial) return events;
   const existing = events.find((e) => e.id === change.entityId);
   if (existing) {
@@ -483,7 +493,9 @@ export function applyControlChangeToMembers(members: Membership[], change: Chang
  *  next resync — the Index reads only type/title/code/place, so it renders fine. */
 export function applyControlChangeToList<T extends { id: string }>(list: T[], change: Change): T[] {
   if (change.action === 'delete') return list.filter((x) => x.id !== change.entityId);
-  const partial = change.after as Partial<T> | undefined;
+  // Coerced like the event applier above and the cache mirror: one answer to "what does a `null`
+  // in a patch mean", not three.
+  const partial = coerceClearedFields<T>(change.after);
   if (!partial) return list;
   const existing = list.find((x) => x.id === change.entityId);
   const next = { ...(existing as T), ...partial, id: change.entityId } as T;

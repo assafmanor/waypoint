@@ -7,6 +7,7 @@ import {
   POLYLINE_PRECISION,
   routeLegKey,
   TRAVEL_MODE,
+  type LatLng,
   type RouteBatch,
   type RoutedLeg,
   type TravelMode,
@@ -36,7 +37,13 @@ import {
 const ASAKUSA = { lat: 35.7148, lng: 139.7967 };
 const TSUKIJI = { lat: 35.6654, lng: 139.7707 };
 const SENSOJI = { lat: 35.7147, lng: 139.7966 };
+/** Deliberately outside `STOPS` and its two neighbours: a leg only ONE stop set holds, which is
+ *  what makes "the read that was thrown away" assertable — every pair of `STOPS`/`TOMORROW`
+ *  overlaps, so a spec built from those alone passes without the fix. */
+const SHIBUYA = { lat: 35.6595, lng: 139.7005 };
 const STOPS = [ASAKUSA, TSUKIJI, SENSOJI];
+/** `STOPS` with its last stop replaced — same first leg, a second leg nothing else asks about. */
+const RESHUFFLED = [ASAKUSA, TSUKIJI, SHIBUYA];
 /** The two days a swipe mounts beside the visible one (ADR-0200 §7). */
 const YESTERDAY = [SENSOJI, ASAKUSA];
 const TOMORROW = [TSUKIJI, SENSOJI];
@@ -193,6 +200,131 @@ describe('useDayTravel', () => {
 
     renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
     await waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(1));
+  });
+
+  /**
+   * **THE FIELD REPORT THIS TRIO EXISTS FOR** (owner, 2026-09-01, with two screenshots two minutes
+   * apart): a peer edits the trip, _"the changes are applied and received with WS, but the
+   * calculated fields disappear · the transit rows, time calculations, total duration"_ — and the
+   * second screenshot, after a restart, is complete.
+   *
+   * It is the 2026-08-28 report's defect reached by two further doors, and the same tell: only a
+   * reload clears `askedDays`/`readDays`. Both sets said a fingerprint was handled while what
+   * would have made that true was thrown away — retention ran inside the `setKnown` UPDATER (never
+   * run for a component that has gone) and inside an `if (live)` (skipped when the day's stops
+   * moved on), while the `add` calls beside them ran either way. Dexie held every row throughout,
+   * which is exactly why restarting fixed it. See `retain`.
+   */
+  it('keeps what an answer taught it even when the day has already gone', async () => {
+    // Held until we release it: a response landing in the window between the day unmounting —
+    // a tab switch, a navigation — and its state settling.
+    let release!: (batch: RouteBatch) => void;
+    routes.fetchRoutes.mockReturnValue(
+      new Promise<RouteBatch>((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    const first = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+    await waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(1));
+    // **Not flushed before the unmount, and that is load-bearing.** React evaluates a `useState`
+    // updater eagerly when the fiber has no pending work, which would run the old retention as a
+    // side effect and hide the defect. The day still has its local read's re-render queued here,
+    // which is the ordinary case and the one the report came from.
+    first.unmount();
+    release(answered);
+    // The row reaches Dexie either way: that write was never inside the state update, which is the
+    // asymmetry the whole fix is about.
+    await waitFor(async () => expect(await db.routeLegs.get(WALK_KEY)).toBeTruthy());
+
+    // Re-opening the day must have its numbers. Before the fix this was `null` for the rest of the
+    // session: the read was skipped (`readDays`) and the ask was skipped (`askedDays`), so neither
+    // path could reach the row Dexie was holding.
+    const second = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+    await waitFor(() =>
+      expect(second.result.current.estimateFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toEqual(
+        walk,
+      ),
+    );
+    expect(routes.fetchRoutes).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * **The second door, and the one that needs no unmount at all** — which is what makes it the
+   * shape the report describes. Two peer changes in quick succession move the day's stops twice;
+   * the first change's local read resolves after the second has superseded it, so `live` is false,
+   * the merge was skipped — and `done()` recorded the fingerprint in `readDays` anyway. The legs
+   * that stop set holds were then unreachable: never read again, and already answered.
+   *
+   * `live` says the effect RUN was superseded, never that the data is unwanted: an estimate is
+   * keyed per leg, so what the read found is as valid for the new stop set as for the old.
+   */
+  it('keeps what a superseded read found, for whichever stop set asks next', async () => {
+    // Both days are already on the device, from an earlier visit.
+    await cacheTravelEstimates(STOPS, [leg([walk])]);
+    await cacheTravelEstimates(RESHUFFLED, [
+      leg([walk]),
+      { ...leg([walk]), fromIndex: 1, toIndex: 2 },
+    ]);
+    // Offline, so nothing can paper over a skipped local read with a network answer.
+    setOnline(false);
+
+    let stops: readonly LatLng[] = STOPS;
+    const view = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops }));
+    await waitFor(() =>
+      expect(view.result.current.estimateFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toEqual(walk),
+    );
+
+    // Peer change #1 → a new stop set, whose read starts; peer change #2 lands before it resolves.
+    stops = RESHUFFLED;
+    view.rerender();
+    stops = STOPS;
+    view.rerender();
+
+    // The superseded read is merged all the same — this is the assertion that was red. `SHIBUYA`
+    // is reachable from no other stop set, so only that discarded read can have supplied it.
+    await waitFor(() =>
+      expect(view.result.current.estimateFor(TSUKIJI, SHIBUYA, TRAVEL_MODE.WALKING)).toEqual(walk),
+    );
+
+    // And it is still there for the stop set it belongs to, which is where it is read: the peer
+    // reverts, or a swipe returns to that day.
+    stops = RESHUFFLED;
+    view.rerender();
+    expect(view.result.current.estimateFor(TSUKIJI, SHIBUYA, TRAVEL_MODE.WALKING)).toEqual(walk);
+  });
+
+  /**
+   * **A refusal is an answer, so it outlives the mount that learned it** (ADR-0206 §AU1).
+   *
+   * `askedDays` is module state and the refusal set was the mount's, so every ask after the first
+   * put an already-refused leg back into `מחשב…` for the length of the request and then blanked
+   * it — a spinner over an answer the gate had already given, which is the state §AU1 exists to
+   * prevent. `sessionRefused` is the missing half.
+   */
+  it('does not re-spin a leg the server has already refused', async () => {
+    routes.fetchRoutes.mockResolvedValue({
+      legs: [{ ...leg([]), refusedModes: [TRAVEL_MODE.WALKING] }],
+    } satisfies RouteBatch);
+
+    const first = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+    await waitFor(() =>
+      expect(first.result.current.warmingFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toBe(false),
+    );
+    first.unmount();
+
+    // A later day whose stops CONTAIN that leg asks again (a new fingerprint, so `askedDays` does
+    // not block it) — and the refused leg must not read as computing while it is in flight.
+    let release!: (batch: RouteBatch) => void;
+    routes.fetchRoutes.mockReturnValue(
+      new Promise<RouteBatch>((resolve) => {
+        release = resolve;
+      }),
+    );
+    const second = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: [ASAKUSA, TSUKIJI] }));
+    await waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(2));
+    expect(second.result.current.warmingFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toBe(false);
+    release({ legs: [] });
   });
 
   it('reads a stored estimate offline, without asking', async () => {

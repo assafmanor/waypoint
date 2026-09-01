@@ -79,12 +79,21 @@ const readDays = new Set<string>();
  *  already read its own legs — and the committed mount is then complete on its first paint. */
 const sessionKnown = new Map<string, TravelEstimate>();
 
+/** **And what the server has said it will never answer** (ADR-0206 §AU1's own rule, applied to the
+ *  half that was not retained). A refusal is an ANSWER — "never coming" — so it belongs in module
+ *  state for exactly `sessionKnown`'s reason: `askedDays` remembers that the day was asked, and a
+ *  day whose refusals lived only in the mount re-entered `מחשב…` on every later ask for a leg the
+ *  gate had already closed. The set the spinner is narrowed by has to outlive the mount that
+ *  learned it, or the narrowing is only ever true once. */
+const sessionRefused = new Set<string>();
+
 /** Test seam. The state above is module state by design (it outlives every day surface), so a spec
  *  that mounts the same day twice needs to be able to clear it. */
 export function resetAskedDaysForTests(): void {
   askedDays.clear();
   readDays.clear();
   sessionKnown.clear();
+  sessionRefused.clear();
 }
 
 /** Every (consecutive pair × mode) key a day would ask about. Consecutive only: a day is a
@@ -239,12 +248,40 @@ const NOT_WARMING: { asking: boolean; refused: ReadonlySet<string> } = {
   refused: new Set(),
 };
 
+/**
+ * **KEEP WHAT ARRIVED, AT THE MOMENT IT ARRIVES** — before anything can decide not to render it.
+ *
+ * **This used to live inside `merge`, and that is the whole of the defect it was reported as**
+ * (owner, 2026-09-01: a peer's change and _"the calculated fields disappear · the transit rows,
+ * time calculations, total duration"_). Retention ran inside the `setKnown` UPDATER, and React
+ * never runs an updater for a component that has gone — while `askedDays.add` / `readDays.add`,
+ * one and four lines below their own merges, ran regardless. So an answer landing in the window
+ * between a day unmounting and its state settling recorded the day as **answered in full** and
+ * kept nothing: the next mount read `sessionKnown` and found nothing, the local read was skipped
+ * because the fingerprint was in `readDays`, and the ask was skipped because it was in
+ * `askedDays`. Dexie held every row the whole time. Only a reload cleared the two sets, which is
+ * the previous field report's _"stays that way until I restart the app"_ reached by a second door.
+ *
+ * The invariant the split buys, and the one to keep: **whatever marks a fingerprint handled must
+ * run in the same breath as the retention that makes the mark true.** Retaining first, outside
+ * any React work, is what makes every `add` below honest — a mount is not a condition for having
+ * learned something.
+ */
+function retain(next: ReadonlyMap<string, TravelEstimate>): void {
+  for (const [key, estimate] of next) sessionKnown.set(key, estimate);
+}
+
+/** **And the refusals**, for the reason `sessionRefused` gives. */
+function retainRefusals(next: ReadonlySet<string>): void {
+  for (const key of next) sessionRefused.add(key);
+}
+
+/** Pure since the retention moved out: the day's own map, merged for the render. */
 function merge(
   prev: ReadonlyMap<string, TravelEstimate>,
   next: ReadonlyMap<string, TravelEstimate>,
 ): ReadonlyMap<string, TravelEstimate> {
   if (!next.size) return prev;
-  for (const [key, estimate] of next) sessionKnown.set(key, estimate);
   const merged = new Map(prev);
   for (const [key, estimate] of next) merged.set(key, estimate);
   return merged;
@@ -259,6 +296,20 @@ function knownHere(legKeys: readonly string[]): ReadonlyMap<string, TravelEstima
     if (estimate) found.set(key, estimate);
   }
   return found.size ? found : NOTHING_KNOWN;
+}
+
+/** The refusals this session already holds for the keys a day asks about — `knownHere`'s peer, and
+ *  narrowed to the day's own legs for the same reason: the resting identity below is shared, so a
+ *  day with nothing refused keeps one object and the reads memo does not rebuild every render. */
+function refusedHere(legKeys: readonly string[]): {
+  asking: boolean;
+  refused: ReadonlySet<string>;
+} {
+  const found = new Set<string>();
+  for (const key of legKeys) {
+    if (sessionRefused.has(key)) found.add(key);
+  }
+  return found.size ? { asking: false, refused: found } : NOT_WARMING;
 }
 
 const warmRetryMs = (seconds: number) => Math.min(Math.max(seconds, 0) * 1000, WARM_RETRY_MAX_MS);
@@ -322,8 +373,17 @@ export function useDayTravel(opts: {
   /** **What this day is still waiting on** (ADR-0206 §AU1) — `asking` is true from the moment the
    *  request effect starts until it has nothing left to wait for, and `refused` narrows it with
    *  the modes the server has said it will never answer. A day whose fingerprint changes remounts
-   *  the effect below, which resets both: a new stop starts a new wait, not a continued one. */
-  const [warm, setWarm] = useState<{ asking: boolean; refused: ReadonlySet<string> }>(NOT_WARMING);
+   *  the effect below, which resets the WAIT: a new stop starts a new wait, not a continued one.
+   *
+   *  **The refusals are not part of that reset, and that is the fix rather than a nicety.** A
+   *  refusal is permanent (ADR-0205 §3: never coming, whatever anyone waits for), so it is seeded
+   *  from `sessionRefused` here and re-seeded rather than emptied below. Emptied, every ask after
+   *  the first put every already-refused leg back into `מחשב…` for the length of the request and
+   *  then blanked it again — a spinner over an answer the server had already given, which is the
+   *  exact state §AU1 exists to prevent. */
+  const [warm, setWarm] = useState<{ asking: boolean; refused: ReadonlySet<string> }>(() =>
+    refusedHere(legKeys),
+  );
   // Bumped when a local read lands, and that is its whole job: an empty cache read merges nothing,
   // so `setKnown` would change no state at all and the hold below would never lift. The SET is
   // where the answer actually lives (it outlives this mount); this is only what re-renders.
@@ -350,7 +410,15 @@ export function useDayTravel(opts: {
     const deadline = setTimeout(done, DAY_TRAVEL_SETTLE_MAX_MS);
     void readCachedTravelEstimates(day.current.legKeys)
       .then((cached) => {
-        if (live) setKnown((prev) => merge(prev, cached));
+        // **Retained before `live` is consulted, and merged whether or not it is still true.**
+        // `live` says this EFFECT RUN was superseded — the day's stops changed under it — which is
+        // not the same as the data being unwanted: an estimate is keyed per leg, so what this read
+        // found is as valid for the new stop set as for the old, and every leg the two share is a
+        // number already in hand. Throwing it away here is what made two peer changes in quick
+        // succession blank the legs BETWEEN them: the fingerprint was recorded in `readDays` by
+        // `done()` one line down, so it was never read again, while what it had read was dropped.
+        retain(cached);
+        setKnown((prev) => merge(prev, cached));
         done();
       })
       .catch(done);
@@ -375,7 +443,10 @@ export function useDayTravel(opts: {
   // so the extra rounds cost requests, never provider work.
   useEffect(() => {
     if (preview || offline || !fingerprint || askedDays.has(fingerprint)) {
-      setWarm(NOT_WARMING);
+      // Not asking — but still refused whatever the server has already refused, which outlives
+      // this mount (`sessionRefused`). This is the branch a day recorded in `askedDays` takes on
+      // every later visit, so emptying the set here is what lost the refusal for good.
+      setWarm(refusedHere(day.current.legKeys));
       return;
     }
 
@@ -385,7 +456,7 @@ export function useDayTravel(opts: {
     // **The wait opens with the request, not with the first answer.** The second a stop is added
     // the day holds nothing and has been told nothing, and that is the second the reader is
     // looking at it — see `DayTravel.warmingFor`.
-    setWarm({ asking: true, refused: new Set() });
+    setWarm({ asking: true, refused: refusedHere(day.current.legKeys).refused });
     // Whatever happens, the day stops claiming to be computing: answered, out of attempts, or
     // failed. `asking` outliving its request is the one way this signal could lie.
     const done = () => {
@@ -397,10 +468,14 @@ export function useDayTravel(opts: {
       void fetchRoutes(tripId, { stops: [...at], modes: [...want] }, controller.signal)
         .then((batch) => {
           const found = estimatesOf(at, batch.legs);
+          // First, and outside every React path: see `retain`. `askedDays.add` below is only
+          // honest because this line has already run by the time it does.
+          retain(found);
           setKnown((prev) => merge(prev, found));
           // A refused mode is never coming, so it must stop reading as "computing" the moment the
           // server says so — otherwise the ⁦127 km⁩ walk would spin for six rounds and then blank.
           const refused = refusedOf(at, batch.legs);
+          retainRefusals(refused);
           if (live && refused.size) {
             setWarm((prev) => ({
               asking: prev.asking,
@@ -553,6 +628,9 @@ export function useDayShapes(opts: {
       )
         .then((batch) => {
           const found = estimatesOf(at, batch.legs);
+          // `merge` is pure now, so the shared session store is fed here — the map's answers have
+          // always seeded the day list's first paint and must keep doing so.
+          retain(found);
           if (live) setKnown((prev) => merge(prev, found));
           void cacheTravelEstimates(at, batch.legs).catch(() => {
             // Storing is next visit's optimisation; the lines are already drawn.
@@ -570,6 +648,7 @@ export function useDayShapes(opts: {
 
     void readCachedTravelEstimates(day.current.legKeys)
       .then((cached) => {
+        retain(cached);
         if (!live) return;
         setKnown((prev) => merge(prev, cached));
         // Ask only when some leg is still missing a LINE — a day already drawn in full costs

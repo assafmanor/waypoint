@@ -3629,3 +3629,71 @@ specs were confirmed failing against the code before this change (`expected 1 to
 2` for the head, `expected 3 to be greater than 5` for the tail) rather than merely passing after
 it. One describe rather than two, because the two edges are one rule and a spec each would let the
 second regress while the first stayed green.
+
+## AX. §AU1's rule was right and its bookkeeping was in the wrong place (2026-09-01)
+
+> _"I noticed a bug where the plan day / day view doesn't update correctly when other users make
+> changes: when they make the changes, the changes are applied and received with WS, but the
+> calculated fields disappear. The transit (driving, walking…) rows, time calculations, total
+> duration etc."_ — two screenshots two minutes apart, the second one complete.
+
+**§AU1 is the same defect and this is its second and third door.** That amendment fixed _when_ a day
+is recorded as answered; it did not touch _where_ the recording happens relative to the retention
+that makes it true. Both `askedDays` and `readDays` were written **outside** the state update that
+kept what had been learned:
+
+- `retain`'s work used to live inside `merge`, which ran inside the `setKnown` **updater** — and
+  React never runs an updater for a component that has gone. An answer landing in the window between
+  a day unmounting (a tab switch, a navigation, a swipe) and its state settling therefore recorded
+  the fingerprint in `askedDays` and kept **nothing**.
+- The local Dexie read merged under `if (live)` while `done()` recorded `readDays` either way. `live`
+  means _this effect run was superseded_ — the day's stops moved on — which is not the same as the
+  data being unwanted. Two peer changes in quick succession thus marked the stop set between them
+  "read" and threw away what it had read.
+
+Either door reaches the same terminal state: the read is skipped because the fingerprint is in
+`readDays`, the ask is skipped because it is in `askedDays`, and `sessionKnown` holds nothing — so
+the day has no estimates and no way to get any. Every derived field is silence without one
+(§D4), which is why the whole family goes at once — journey rows, leave-by and arrival clocks, the
+corrected free time, the day's total — while the event rows stay and the holes fall back to raw gap
+chips. Dexie held every row throughout, which is exactly why restarting fixed it, and why the
+reporter's second screenshot is complete. The visibility hold (§AT) is **not** involved: a poisoned
+`readDays` answers `settled` immediately, so the day paints normally with the numbers missing.
+
+**The invariant, stated because two doors were not enough to make it obvious:** whatever marks a
+fingerprint handled must run in the same breath as the retention that makes the mark true.
+`retain`/`retainRefusals` therefore write the session stores at the moment an answer arrives, before
+any React work, and the component's own map is a render mirror of that. A mount is not a condition
+for having learned something.
+
+### §AX1 — a refusal outlives the mount that learned it
+
+The same asymmetry, in the half §AU1 created. `askedDays` is module state and the refusal set was the
+mount's, so a day recorded as answered came back with its refusals gone: every later ask put an
+already-refused leg back into `מחשב…` for the length of the request and then blanked it — a spinner
+over an answer the gate had already given, which is the state §AU1 exists to prevent. Refusals are
+permanent (ADR-0205 §3), so they belong beside the estimates in module state: `sessionRefused`, and
+the wait is re-seeded from it rather than emptied.
+
+**What this does not change:** which arm a refused leg renders. `refusedFor` still asks the shared
+client-side ceiling (§AM10), not the server's `refusedModes`, so a leg the gate closed for some other
+reason renders §D4's ordinary absence rather than `רחוק מדי להליכה` — which would be a false
+sentence, not a better one. Whether such a refusal deserves an arm of its own is a design question
+and is deliberately left open here.
+
+### §AX2 — and the peer's edit that was never fully broadcast
+
+Found in the same investigation and a separate defect: `move` shifts `endsAt` server-side to preserve
+an event's duration, and published `after: input`, which `moveEventSchema` gives no `endsAt`. So a
+peer's drag reached every other device as "the start moved" and the partial merge kept the **old**
+end — the event's duration silently changed everywhere but the actor's screen, and `endsAt` is the
+instant a hole is measured from (`legDepartAfterMs`), so that day's journeys, free time and total
+were all derived from a time the server had already replaced. The Dexie mirror merges the same
+payload, so a reload did not clear it either.
+
+This needed no new decision: [`sync-and-offline.md`](../architecture/sync-and-offline.md) §3 already
+required `after` to be the persisted ROW rather than the request, and `events.service.ts` was the
+module that had never followed it. It publishes `toEventChangePayload` now. The one thing §3 did not
+say, and now does, is that a row has to state its **absent** fields as explicit `null`: `undefined`
+does not survive JSON, so a field the server CLEARED would otherwise be missing from the payload and
+the peer would keep the stale value.
