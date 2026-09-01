@@ -28,7 +28,7 @@ import {
 } from '../notification-kind';
 import { spanEdgePayload, spanEdgeWord } from '../notify-copy';
 import { asShared } from './event-soon.kind';
-import { eventDayKey, EVENT_SELECT, eventZone, type EventRow } from './event-shape';
+import { eventDayKey, EVENT_SELECT, eventZones, type EventRow } from './event-shape';
 import { tripAudience } from './trip-audience';
 
 /** One hour before the edge. A fixed lead rather than a per-category one: an edge is a
@@ -92,7 +92,9 @@ export const spanEdgeKind: NotificationKind = {
         if (edge.atMs < nowMs) continue;
 
         const zones = await zonesFor(event.tripId);
-        const zone = eventZone(event, zones, edge.atMs);
+        // The edge already knows which end it is, so it picks its own zone: a check-out is
+        // stated where the hotel is, an arrival where it lands.
+        const zone = eventZones(event, zones)[edge.which];
         const payload = spanEdgePayload({
           tripId: event.tripId,
           dateKey: eventDayKey(event, zone),

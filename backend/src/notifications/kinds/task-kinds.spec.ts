@@ -118,7 +118,7 @@ function fakePrisma(options: {
 const zonesFor =
   (zone = 'Asia/Jerusalem') =>
   (): Promise<TripZones> =>
-    Promise.resolve({ crossings: [], primaryZone: zone });
+    Promise.resolve({ crossings: [], primaryZone: zone, bookings: [], places: [] });
 
 const input = (prisma: PrismaService, nowMs: number, zone?: string): DueInput => ({
   prisma,

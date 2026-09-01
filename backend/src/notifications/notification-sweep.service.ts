@@ -351,6 +351,10 @@ export class NotificationSweepService {
       // structurally compatible for all of them.
       crossings: tripZoneCrossings(events as never, bookings as never, places as never),
       primaryZone: trip.timezone,
+      // **Kept, not re-queried** — the two arrays the crossings were just built from are the
+      // place rung `eventZones` needs to answer per end (2026-09-01).
+      bookings,
+      places,
     };
   }
 

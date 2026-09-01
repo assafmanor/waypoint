@@ -124,6 +124,72 @@ export function currentZone(nowMs: number, crossings: ZoneCrossing[], primaryZon
 }
 
 /**
+ * **THE ZONE AN EVENT'S CLOCK MEANS, PER END** — the composer over everything above, and the
+ * one this file was missing.
+ *
+ * ADR-0197 §5's sweep moved the zone *primitives* here (`placeTimezone`, `bookingEndZones`,
+ * `tripZoneCrossings`, `segmentZoneAt`, `currentZone`) so a notification and a row could not
+ * disagree, and left the function that composes them in `frontend/src/lib/places.ts`. The
+ * server then answered the same question with `currentZone` alone — which is a different
+ * question — and ADR-0213's shared page duly printed every flight departure in the
+ * DESTINATION's zone and an Iceland hotel's check-in in Vienna (owner, 2026-09-01:
+ * _"The timezone derivation is simply wrong"_). Moving the primitives without the composer is
+ * what left that gap open, so the composer lives here now.
+ *
+ * **`currentZone` is not a substitute for this, and the difference is the whole bug.**
+ * `currentZone` answers _where are you now_: a crossing is stamped at the flight's DEPARTURE
+ * and `segmentZoneAt` returns its destination from that instant on, deliberately, so a
+ * mid-flight clock reads where you are going (ADR-0107 §8). Ask it what a departure's own
+ * clock says and it answers with the far end; ask it about anything standing in a place the
+ * itinerary says you have not reached yet — a hotel whose door opens at 15:00 local, hours
+ * before you land — and it answers with the segment instead of the place. It has no place
+ * rung at all, by design.
+ *
+ * Priority (ADR-0107 §3/§6, ADR-0110 §94-99):
+ *   1. The event's `displayTimezone` manual override — both ends.
+ *   2. The **booking's** per-end override — one per end, which is what a crossing pair needs.
+ *   3. Attached place — transport renders start in `fromPlace`, end in `toPlace`; any other
+ *      place (a hotel's own `placeId`) drives both ends.
+ *   4. Placeless (or a coordless place) — the itinerary segment's zone.
+ *   5. Nothing anchors it — the trip primary zone.
+ *
+ * Steps 2-3 are per-end, so a flight can take its origin from a pinned zone and its
+ * destination from a real place, or vice versa.
+ */
+export function eventDisplayZones(
+  event: TripEvent,
+  opts: { bookings: Booking[]; places: Place[]; crossings: ZoneCrossing[]; primaryZone: string },
+): { start: string; end: string } {
+  const { bookings, places, crossings, primaryZone } = opts;
+  if (event.displayTimezone) {
+    return { start: event.displayTimezone, end: event.displayTimezone };
+  }
+
+  const zoneForInstant = (iso: string | undefined): string =>
+    (iso ? segmentZoneAt(Date.parse(iso), crossings) : undefined) ?? primaryZone;
+
+  const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
+  if (booking && isTransport(booking)) {
+    const known = bookingEndZones(booking, places);
+    return {
+      start: known.from ?? zoneForInstant(event.startsAt),
+      end: known.to ?? zoneForInstant(event.endsAt ?? event.startsAt),
+    };
+  }
+
+  // `bookingEndZones` already resolves a single-place booking through its own `placeId`, so
+  // the event's own place is consulted only when nothing is booked — which is exactly what
+  // the frontend's `eventPlaceId(event, undefined)` returned, one indirection ago.
+  const single = booking
+    ? bookingEndZones(booking, places).from
+    : placeTimezone(places, event.placeId);
+  if (single) return { start: single, end: single };
+
+  const zone = zoneForInstant(event.startsAt);
+  return { start: zone, end: zone };
+}
+
+/**
  * The calendar day an instant falls on, in a named zone, as `YYYY-MM-DD`.
  *
  * `en-CA` because its short date format *is* ISO order — the one locale that gives a
