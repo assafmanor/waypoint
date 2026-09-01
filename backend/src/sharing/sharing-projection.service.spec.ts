@@ -8,6 +8,7 @@ import {
   SHARE_DAYPART,
   SHARE_DETAIL_LEVEL,
   SHARE_OP_KIND,
+  TIME_MEANING,
   TRAVEL_MODE,
   routeLegKey,
   type ShareDetailLevel,
@@ -796,6 +797,16 @@ describe('SharingProjectionService', () => {
       // arrival, so a renderer ignoring `legs` still shows one true row.
       expect(journeys[0].startLabel).toBe('14:30');
       expect(journeys[0].endLabel).toBe('23:20');
+      // **And so does `time`, which is the field a renderer actually spells** (2026-09-01).
+      // `endLabel` was overridden for the journey and `time` was not, so it still described
+      // leg one — invisible on the reader page, which derived its own span, and printed on
+      // paper, which obeys the contract. Asserting the pair together is what stops one of
+      // them going stale again.
+      expect(journeys[0].time).toEqual({
+        label: '14:30',
+        endLabel: '23:20',
+        meaning: TIME_MEANING.EXACT,
+      });
     });
 
     /**
