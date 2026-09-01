@@ -2297,3 +2297,88 @@ value upstream reached paper and screen alike with no disagreement between them 
 That is the intended shape — two renderers that cannot differ about a fact (ADR-0159 §1) — and
 its cost is that agreement is no longer evidence of correctness. The evidence has to be a
 fixture that crosses a zone, which the sharing specs did not have and now do.
+
+## Amendment — a deploy took the live links away, and not one of them was revoked (2026-09-01, seventeenth pass)
+
+> _"I noticed that each time after I deployed changes and fixes to the live sharing page,
+> existing links became unavailable. I had to reopen the sharing sheet again and then the link
+> became available. I'm not sure what's the cause and if my steps were related even."_
+
+**The links were live the whole time.** `revokedAt` is written in exactly three places
+(`revoke`, `revokeAll`, and the re-share that reuses a revoked row), all behind
+`assertTripAdmin` and all reached only by a deliberate press; a deploy runs
+`prisma migrate deploy` and touches none of them. Nothing on the server had gone wrong, which
+is why the owner's own steps looked unrelated to it: reopening the sheet is a `PUT` that
+returns the **same** code for the same policy (tenth amendment §3), so it cannot have revived
+anything. What changed between the two attempts was the READER, and the page could not say so
+because it had one sentence for every way a read can fail.
+
+### §1 · Three failures wearing one card
+
+`SharedItinerary` mapped every thrown error to `{ kind: 'unavailable' }`, which draws
+`המסלול לא זמין · יכול להיות שהלינק בוטל או שהטיול כבר לא קיים`. That sentence is true of one
+of the three things that actually happen:
+
+| what happened                                               | what it needs     | what it said      |
+| ----------------------------------------------------------- | ----------------- | ----------------- |
+| the server answered `404`                                   | the terminal card | the terminal card |
+| nobody answered (a rollout's 502, a tunnel, the 20/min cap) | ask again         | the terminal card |
+| the answer did not parse in THIS build                      | a newer document  | the terminal card |
+
+The second row is a deploy. Railway swaps containers behind a healthcheck, so for a few
+seconds `GET /shared-itineraries/:code` does not answer — and the page's first read had no
+second attempt and no way back except a manual reload, which is not a thing you ask of
+somebody's aunt. `shareLoadFailure` now names the three, only the server's own `404` is
+terminal, a transient failure is re-asked up `SHARE_LOAD_RETRY_MS` (1s→16s, five rungs, about
+half a minute, comfortably inside the per-IP cap), and what is left after that is a card that
+says `הלינק לא בוטל, פשוט לא קיבלנו תשובה` with the tap that cures it. **The page may not
+accuse the link of something it has no evidence for.**
+
+### §2 · The precached shell is right for the app and wrong for this page
+
+The third row is this feature's own, and it is the one that made the report periodic rather
+than occasional. `server-routes.ts` said, in as many words, that `/s/<code>` _"must keep
+getting the cached shell"_. It is an ordinary SPA route, so ADR-0185's deliberate wait applies
+to it: a device that already has the worker — the owner, and every reader who has opened a
+link before — is served the **previous** build's `index.html` until the parked build is taken
+at a quiet moment. The app survives that because it is whole while it waits. This page is not:
+it fetches a projection from the server that was just deployed and parses it with
+`sharedItinerarySchema`, which is **strict in both directions** (this file's header), so a
+build that predates one added field cannot read the answer at all. The twelfth amendment added
+`time`, the fourteenth added `checkIn`/`checkOut` — three consecutive sharing deploys each made
+every already-installed reader unable to parse the page they were sent.
+
+So `/s/<code>` now prefers the network for its document, with the precached shell kept as the
+fallback on a throw or a non-2xx — which is what stops a rollout's 502 from putting a proxy's
+error page where the cached document would have rendered and then retried under §1. And an
+unreadable projection is treated as what it is, a stale document: the parked build is taken at
+once (`takeParkedBuild`, through `useAppUpdate`'s own `controllerchange` reload rather than a
+second reload path), else one reload on `guarded-reload.ts`'s existing cooldown, and never a
+retry — the same answer parses the same way every time.
+
+### What this reverses
+
+- `server-routes.ts`'s _"an ordinary SPA route that must keep getting the cached shell"_. It
+  keeps the shell as a fallback only, for the one reason ADR-0185 never had to weigh: this
+  document's correctness depends on the server it is talking to.
+- The suite's `treats a projection this build cannot parse as unavailable`. The intent behind
+  it stands — this page still refuses to render half a projection — but "unavailable" was the
+  wrong verdict to reach for, since the projection's arrival is proof the link is live.
+
+### What was verified
+
+- `scripts/deploy-swap-check.mjs` gained a fourth step, which is the only place this defect was
+  ever observable: two real builds, a rollback as the second deploy, and a fresh `/s/<code>`
+  navigation in its own tab. Run against the fix it reports `/s/<code>` running the **deployed**
+  build; run with the new route removed it reports the **precached** one — the skew, measured.
+- The strictness half was measured directly before anything was written: today's
+  `sharedEventSchema` refuses `{ title, daypart, tomorrowsField }`, which is the exact shape of
+  a projection from a server one deploy ahead. `lib/share-itinerary.test.ts` pins that, and the
+  404-vs-502 boundary under it.
+- `sw.contract.test.ts` covers all three lines that make the new route work (it reads the
+  shared pattern, it matches navigations, it is registered BEFORE the fallback, it falls back to
+  the shell) and each was broken on purpose to see the suite fail: removing the route and
+  registering it after the fallback both turn it red.
+- What is still unmeasured: the retry ladder against a **real** Railway rollout. The suite
+  proves the page re-asks and recovers; it cannot prove half a minute is the right amount of
+  asking for a container swap nobody has timed.

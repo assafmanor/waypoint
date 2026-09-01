@@ -28,13 +28,16 @@ import {
   precacheAndRoute,
 } from 'workbox-precaching';
 import { NavigationRoute, registerRoute } from 'workbox-routing';
-import { CacheFirst } from 'workbox-strategies';
+import { CacheFirst, NetworkOnly } from 'workbox-strategies';
 // A relative source import, for the same two reasons `vite.config.ts` states for
 // the same module: the alias does not apply here, and `@waypoint/shared`'s built
 // dist is CommonJS. It is also deliberately the FILE and not the package barrel —
 // the barrel would inline zod and every entity schema into the worker, and this
 // module imports nothing itself.
-import { SERVER_ROUTE_PATTERN } from '../../packages/shared/src/server-routes';
+import {
+  PUBLIC_READER_PATTERN,
+  SERVER_ROUTE_PATTERN,
+} from '../../packages/shared/src/server-routes';
 // The same rule as the line above, and the reason `push.ts` is zod-free: this bundle is
 // built with `inlineDynamicImports`, so importing the package barrel would inline zod and
 // every entity schema into the worker.
@@ -74,6 +77,40 @@ precacheAndRoute(self.__WB_MANIFEST);
 // precache from every previous build stays on the device forever.
 cleanupOutdatedCaches();
 
+// The app shell, precached and bound once — the fallback below and the public
+// reader's own route both answer with THIS handler, so there is one shell in the
+// worker rather than two.
+const appShell = createHandlerBoundToURL('index.html');
+
+// **The public reader prefers the network, and this route must be registered
+// BEFORE the fallback** (ADR-0213's seventeenth amendment; workbox matches routes
+// in registration order, so the NavigationRoute below would otherwise claim it).
+//
+// `/s/<code>` is the one navigation whose document cannot be one build behind the
+// server: it fetches a projection from whatever was just deployed and parses it
+// with a STRICT schema, so a shell served from the previous precache fails on a
+// field that build has never heard of — and the reader, who has no app to reopen,
+// reads that as a revoked link. Everywhere else ADR-0185's deliberate wait is
+// right, because the app is whole while it waits; here the page is not.
+//
+// The shell stays the FALLBACK, on a throw (offline) and on any non-2xx: a
+// rollout's few seconds of 502 must not put a proxy's error page in front of a
+// reader when the cached document would have rendered and retried
+// (`SharedItinerary`'s ladder).
+const network = new NetworkOnly();
+registerRoute(
+  ({ request, url }) => request.mode === 'navigate' && PUBLIC_READER_PATTERN.test(url.pathname),
+  async (options) => {
+    try {
+      const response = await network.handle(options);
+      if (response.ok) return response;
+    } catch {
+      /* offline, or nobody answered: the cached shell is the better answer */
+    }
+    return appShell(options);
+  },
+);
+
 // Backend-owned navigations (the OAuth redirect, `/health`, and the byte routes
 // that are fetched by a plain `<img src>` or a range request) must hit the
 // network — the fallback otherwise answers EVERY path with the cached app shell,
@@ -81,7 +118,7 @@ cleanupOutdatedCaches();
 // be. `SERVER_ROUTE_PREFIXES` is one list enforced on both ends, and the backend
 // contract spec fails any controller route outside it.
 registerRoute(
-  new NavigationRoute(createHandlerBoundToURL('index.html'), {
+  new NavigationRoute(appShell, {
     denylist: [SERVER_ROUTE_PATTERN],
   }),
 );

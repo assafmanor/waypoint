@@ -19,7 +19,13 @@ import {
   type SharedTime,
   type SharedItinerary as SharedItineraryProjection,
 } from '@waypoint/shared';
-import { BOOKING_TYPE_MARK, DOWNLOAD_SETTLE_MS, GLYPH } from '../constants';
+import {
+  BOOKING_TYPE_MARK,
+  DOWNLOAD_SETTLE_MS,
+  GLYPH,
+  SHARE_LOAD_RETRY_MS,
+  SHARE_RELOAD_COOLDOWN_MS,
+} from '../constants';
 import { Icon, type IconName } from '../ui/Icon';
 import { NoteProse } from '../ui/NoteProse';
 import { Spinner } from '../ui/Spinner';
@@ -33,11 +39,15 @@ import { useClock } from '../lib/useClock';
 import { usePublicReaderChrome } from '../lib/public-reader-chrome';
 import { DAY_PHASE, dayPhase, formatTripDates, tripDayNumber, type DayPhase } from '../lib/time';
 import brandMark from '/icon-mark-bright.svg';
+import { RELOAD_GUARD_KEY, reloadOnce } from '../lib/guarded-reload';
+import { takeParkedBuild } from '../lib/useAppUpdate';
 import {
   fetchSharedItinerary,
+  SHARE_LOAD_FAILURE,
+  shareLoadFailure,
   sharedDocumentUrl,
   sharedItineraryPdfUrl,
-  SharedItineraryUnavailable,
+  type ShareLoadFailure,
 } from '../lib/share-itinerary';
 import { shareFileOrDownload } from '../lib/system-share';
 import './shared-itinerary.css';
@@ -136,10 +146,17 @@ function tripPhaseText(trip: SharedItineraryProjection['trip'], today: string): 
   return t.share.public.phase.live(tripDayNumber(today, trip.startDate), trip.dayCount);
 }
 
+/**
+ * **Three outcomes, because a failed read has three meanings** (ADR-0213's seventeenth
+ * amendment). `unavailable` is the terminal one and it is now reserved for the server's own
+ * 404: `failed` is "nobody answered, and we have stopped asking", which is what a deploy, a
+ * tunnel or the per-IP cap actually produces — and it offers the tap that cures it.
+ */
 type LoadState =
   | { kind: 'loading' }
   | { kind: 'ready'; projection: SharedItineraryProjection; stale: boolean }
-  | { kind: 'unavailable' };
+  | { kind: 'unavailable' }
+  | { kind: 'failed' };
 
 /**
  * **The page a stranger sees**, and the only screen in the app written for somebody with no
@@ -178,27 +195,84 @@ export function SharedItinerary() {
   // A document in a browser tab, not the app: it zooms and it pulls to refresh.
   usePublicReaderChrome();
 
-  const load = useCallback(async () => {
+  /**
+   * One attempt, which REPORTS what went wrong rather than deciding what to draw. A failed
+   * refresh is settled here and nowhere else; a failed FIRST load belongs to the ladder
+   * below, because what to do about it depends on which of three things happened.
+   */
+  const load = useCallback(async (): Promise<ShareLoadFailure | null> => {
     try {
       const projection = await fetchSharedItinerary(code);
       setState({ kind: 'ready', projection, stale: false });
+      return null;
     } catch (error) {
+      const failure = shareLoadFailure(error);
       setState((previous) =>
-        // A failed REFRESH keeps what is on screen and says so; only a failed first load is
-        // "unavailable". A page that blanks itself because a tunnel ate one request is
-        // worse than one that admits it is a minute old.
+        // A failed REFRESH keeps what is on screen and says so. A page that blanks itself
+        // because a tunnel ate one request is worse than one that admits it is a minute old.
         previous.kind === 'ready'
           ? { ...previous, stale: true }
-          : error instanceof SharedItineraryUnavailable || error instanceof Error
+          : failure === SHARE_LOAD_FAILURE.GONE
             ? { kind: 'unavailable' }
-            : { kind: 'unavailable' },
+            : previous,
       );
+      return failure;
     }
   }, [code]);
 
+  /** A reader's tap on `נסו שוב`, and the only thing that restarts the ladder. */
+  const [asked, setAsked] = useState(0);
+  const askAgain = useCallback(() => {
+    setState({ kind: 'loading' });
+    setAsked((count) => count + 1);
+  }, []);
+
+  /**
+   * **THE FIRST READ IS RE-ASKED** (ADR-0213's seventeenth amendment).
+   *
+   * This is the one request in the app whose failure nobody can work around: the reader has
+   * no account, no app to reopen and no idea what a rollout is. So the page used to answer
+   * every failure with `יכול להיות שהלינק בוטל` — including the eight seconds a deploy takes
+   * to swap containers, which is how a live link came to look revoked.
+   *
+   * Three failures, three cures, and only the first is terminal:
+   *
+   * - `GONE` — the server's own 404, already drawn by `load`. Asking again is a spin.
+   * - `UNREADABLE` — the link is live and this DOCUMENT is older than the projection it
+   *   fetched (`share-itinerary.ts`). The same answer parses the same way every time, so the
+   *   cure is a newer document: the build already parked by the service worker if there is
+   *   one (`takeParkedBuild` reloads through `useAppUpdate`'s own `controllerchange` path),
+   *   else one reload, once, on `guarded-reload.ts`'s cooldown.
+   * - `TRANSIENT` — nobody answered, or not yet. Re-asked up the ladder, then said plainly.
+   */
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const giveUp = () =>
+      setState((previous) => (previous.kind === 'ready' ? previous : { kind: 'failed' }));
+
+    const ask = async (round: number) => {
+      const failure = await load();
+      if (cancelled || failure === null || failure === SHARE_LOAD_FAILURE.GONE) return;
+      if (failure === SHARE_LOAD_FAILURE.UNREADABLE) {
+        if (await takeParkedBuild()) return;
+        if (cancelled) return;
+        if (!reloadOnce(RELOAD_GUARD_KEY.share, SHARE_RELOAD_COOLDOWN_MS)) giveUp();
+        return;
+      }
+      if (round >= SHARE_LOAD_RETRY_MS.length) {
+        giveUp();
+        return;
+      }
+      timer = setTimeout(() => void ask(round + 1), SHARE_LOAD_RETRY_MS[round]);
+    };
+
+    void ask(0);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [load, asked]);
 
   /**
    * **`עודכן עכשיו` was true for about a minute** (eleventh amendment §4). The projection was
@@ -275,6 +349,7 @@ export function SharedItinerary() {
 
   if (state.kind === 'loading') return <div className="sh-boot">{t.share.public.loading}</div>;
   if (state.kind === 'unavailable') return <Unavailable />;
+  if (state.kind === 'failed') return <LoadFailed onRetry={askAgain} />;
 
   const { projection, stale } = state;
   const summary = projection.detailLevel === SHARE_DETAIL_LEVEL.SUMMARY;
@@ -1305,6 +1380,8 @@ function commitmentWhen(row: SharedItineraryProjection['commitments'][number]): 
   return `${row.date.slice(8, 10)}–${short(row.endDate)}`;
 }
 
+/** The one terminal card, and it is now reserved for the one failure it describes: the
+ *  server said this code is not live. */
 const Unavailable = () => (
   <div className="sh-unavailable">
     <div>
@@ -1313,6 +1390,26 @@ const Unavailable = () => (
       </div>
       <h2>{t.share.public.unavailableTitle}</h2>
       <p>{t.share.public.unavailableBody}</p>
+    </div>
+  </div>
+);
+
+/** **Nobody answered, and we stopped asking.** The same card shape, and the two differences
+ *  are the whole point of it: it does not say the link was revoked (nothing here knows that,
+ *  and a 404 would have drawn the card above), and it carries the tap that cures it. */
+const LoadFailed = ({ onRetry }: { onRetry: () => void }) => (
+  <div className="sh-unavailable">
+    <div>
+      <div className="sh-unavailable-mark" aria-hidden="true">
+        {/* The circular arrow, which is this page's only use of it: `reset` is the app's
+            retry mark (`Icon.tsx`), not a second glyph minted for one card. */}
+        <Icon name="reset" />
+      </div>
+      <h2>{t.share.public.failedTitle}</h2>
+      <p>{t.share.public.failedBody}</p>
+      <button type="button" className="sh-retry" onClick={onRetry}>
+        {t.share.public.failedAction}
+      </button>
     </div>
   </div>
 );

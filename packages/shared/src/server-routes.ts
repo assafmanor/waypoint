@@ -26,10 +26,11 @@ export const SERVER_ROUTE_PREFIXES = [
   // reached about every trip that person is in.
   'notifications',
   // The unauthenticated itinerary share reads (ADR-0213 §5). Here for BOTH halves, and
-  // the service-worker one is the trap: the public page's own path is `/s/<code>`, an
-  // ordinary SPA route that must keep getting the cached shell, while the JSON and PDF it
-  // then fetches must reach the backend. Two different prefixes for one feature, on
-  // purpose — miss this one and production answers the API call with `index.html`.
+  // the service-worker one is the trap: the public page's own path is `/s/<code>` and is
+  // NOT in this list, while the JSON and PDF it then fetches must reach the backend. Two
+  // different prefixes for one feature, on purpose — miss this one and production answers
+  // the API call with `index.html`. (`/s/<code>` has a rule of its own now; see
+  // `PUBLIC_READER_PATTERN` below.)
   'shared-itineraries',
   'trips',
   // Uploaded avatar bytes (ADR-0133 §12). It has to be here for the SERVICE WORKER
@@ -40,3 +41,22 @@ export const SERVER_ROUTE_PREFIXES = [
 ] as const;
 
 export const SERVER_ROUTE_PATTERN = new RegExp(`^/(${SERVER_ROUTE_PREFIXES.join('|')})(/|$)`);
+
+/**
+ * **The public reader's own path** — `/s/<code>`, the page a stranger lands on
+ * (ADR-0213's seventeenth amendment).
+ *
+ * Not a backend prefix: the SPA owns this route, and `sharing.service.ts` composes the
+ * same `/s/<code>` when it hands a link out. It is here because it is the second answer to
+ * the one question this file exists to answer — **which navigations may the cached app
+ * shell NOT be the whole answer to** — and the reason is different from every prefix above.
+ *
+ * The shell is precached, so a device that already has the worker keeps being served the
+ * PREVIOUS build's `index.html` here until the parked build is taken (ADR-0185 makes that
+ * wait deliberate, and right, for the app). The app survives it because it is whole; this
+ * page does not, because the payload it then fetches comes from the deploy that just
+ * happened, and `sharedItinerarySchema` is strict in both directions. So this one
+ * navigation prefers the network and keeps the shell as its offline fallback
+ * (`frontend/src/sw.ts`).
+ */
+export const PUBLIC_READER_PATTERN = /^\/s(\/|$)/;

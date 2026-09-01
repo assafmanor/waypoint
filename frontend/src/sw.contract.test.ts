@@ -80,7 +80,39 @@ describe('the service worker is ours, and these lines have no other alarm', () =
   it('denylists the backend-owned routes from the navigation fallback, from the shared list', () => {
     expect(SW).toMatch(/NavigationRoute\(/);
     expect(SW).toMatch(/denylist:\s*\[\s*SERVER_ROUTE_PATTERN\s*\]/);
-    expect(SW).toMatch(/import\s*\{\s*SERVER_ROUTE_PATTERN\s*\}\s*from\s*['"]\S*server-routes['"]/);
+    expect(SW).toMatch(
+      /import\s*\{[\s\S]*?SERVER_ROUTE_PATTERN[\s\S]*?\}\s*from\s*['"]\S*server-routes['"]/,
+    );
+  });
+
+  // ADR-0213's seventeenth amendment, and the one rule here whose absence is invisible
+  // until the deploy AFTER the one that ships it: a `/s/<code>` answered from the precache
+  // is a reader parsing a newer server's projection with an older build's strict schema,
+  // which the page can only report as "this link is unavailable".
+  //
+  // Three assertions because three separate lines make it true, and losing any of them is
+  // silent — a route that never matches, a route that matches too late, or a network-only
+  // route with no fallback (which would put the browser's offline page in front of a reader
+  // whose cached shell would have rendered and retried).
+  it('lets the public reader prefer the network, before the shell fallback claims it', () => {
+    // It must READ the shared pattern rather than restate `/s/` here: the path is composed
+    // by `sharing.service.ts` when a link is handed out, and two copies of a route prefix
+    // is how one of them goes stale.
+    expect(SW).toMatch(
+      /import\s*\{[\s\S]*?PUBLIC_READER_PATTERN[\s\S]*?\}\s*from\s*['"]\S*server-routes['"]/,
+    );
+    expect(SW).toMatch(/request\.mode === 'navigate'[\s\S]{0,80}PUBLIC_READER_PATTERN\.test/);
+    expect(SW).toContain('new NetworkOnly()');
+    // Registration ORDER is the whole mechanism (workbox serves the first matching route),
+    // so the reader's rule must appear before the `NavigationRoute` that answers everything.
+    expect(SW.indexOf('PUBLIC_READER_PATTERN.test')).toBeLessThan(SW.indexOf('NavigationRoute('));
+    // …and it must fall back to the precached shell, not fail, when the network cannot.
+    const reader = SW.slice(
+      SW.indexOf('PUBLIC_READER_PATTERN.test'),
+      SW.indexOf('NavigationRoute('),
+    );
+    expect(reader).toMatch(/return appShell\(options\)/);
+    expect(reader).toMatch(/catch\s*\{/);
   });
 
   // ADR-0186 §3/§5: cached on demand, deliberately not in the install manifest.
