@@ -4,7 +4,7 @@
 // downloaded trip shows a travel time for every day-adjacent leg. The pack is the only thing this
 // device has ever been told about those legs — no request is made, and none could succeed.
 import 'fake-indexeddb/auto';
-import { renderHook, waitFor } from '@testing-library/react';
+import { cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TRAVEL_MODE, routeLegKey, type RoutePack } from '@waypoint/shared';
 
@@ -69,7 +69,20 @@ beforeEach(async () => {
   await db.routeLegs.clear();
 });
 
-afterEach(() => vi.unstubAllGlobals());
+/**
+ * **EVERY MOUNT IS UNMOUNTED, WHATEVER THE SPEC DID WITH IT.**
+ *
+ * This file has no automatic cleanup, and both hooks it renders start async work from an effect —
+ * the pack's pass, and `useDayTravel`'s ask with its retry ladder. A mount left standing carries
+ * that work into the next spec, where it calls a mock that has just been reset: which is what put
+ * a `download` inside the offline spec on CI and nowhere else, a leak whose visible symptom is
+ * decided by which machine is slower. Both hooks test their own liveness before they spend
+ * anything, so unmounting is what actually ends them.
+ */
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe('hydrateRoutePack', () => {
   it('puts a stored pack where the day reads it, and answers how many were new', async () => {
@@ -183,26 +196,39 @@ describe('aeroplane mode on a downloaded trip', () => {
  * only the groups who accepted a world layer, and reaching them only once they opened the Map.
  */
 describe('useTripRoutePack', () => {
+  /**
+   * **Every mount is unmounted, and every pass is awaited to a POSITIVE signal.**
+   *
+   * **AN ABSENCE IS ASSERTED ONLY AFTER THE SAME PASS HAS DONE SOMETHING.**
+   *
+   * `expect(download).not.toHaveBeenCalled()` on its own passes before the pass has even begun, so
+   * every spec below waits on a positive signal first — the legs reaching Dexie, which `pass`
+   * does before it reaches any of the guards these specs are about. The file's own `afterEach`
+   * handles the other half: a mount left standing carries its work into the next spec.
+   */
   const run = (over: Partial<Parameters<typeof useTripRoutePack>[0]> = {}) =>
     renderHook(() => useTripRoutePack({ tripId: 't1', offline: false, ended: false, ...over }));
+  const hydratedLeg = () =>
+    waitFor(async () =>
+      expect(
+        await db.routeLegs.get(routeLegKey(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)),
+      ).toBeTruthy(),
+    );
 
   it('fetches the trip’s pack and puts its legs where the day reads them', async () => {
     stored.read.mockResolvedValue(asBlob(pack([leg(ASAKUSA, TSUKIJI, 5208)])));
     run();
     await waitFor(() => expect(stored.download).toHaveBeenCalledTimes(1));
     expect(stored.download.mock.calls[0]![0]).toMatchObject({ url: PACK_URL, kind: 'routes' });
-    await waitFor(async () =>
-      expect(
-        await db.routeLegs.get(routeLegKey(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)),
-      ).toBeTruthy(),
-    );
+    await hydratedLeg();
   });
 
   it('spends no bytes on a pack this device already holds', async () => {
     stored.list.mockResolvedValue([{ key: PACK_URL, sizeBytes: 1, lastUsedAt: 0 }]);
     stored.read.mockResolvedValue(asBlob(pack([leg(ASAKUSA, TSUKIJI, 5208)])));
     run();
-    await waitFor(() => expect(stored.read).toHaveBeenCalled());
+    // The pass ran to its end — the legs are in Dexie — and it bought nothing to get them there.
+    await hydratedLeg();
     expect(stored.download).not.toHaveBeenCalled();
   });
 
@@ -211,15 +237,16 @@ describe('useTripRoutePack', () => {
   it('still hydrates what is on the device when offline, and asks for nothing', async () => {
     stored.read.mockResolvedValue(asBlob(pack([leg(ASAKUSA, TSUKIJI, 5208)])));
     run({ offline: true });
-    await waitFor(() => expect(stored.read).toHaveBeenCalled());
+    await hydratedLeg();
     expect(stored.download).not.toHaveBeenCalled();
   });
 
-  /** A finished trip is swept rather than stocked (ADR-0186 §6). */
+  /** A finished trip is swept rather than stocked (ADR-0186 §6) — and still hydrated, which is
+   *  what makes the absence below assertable at all: the pass is past its own guard by then. */
   it('does not stock a trip that has ended', async () => {
-    stored.read.mockResolvedValue(null);
+    stored.read.mockResolvedValue(asBlob(pack([leg(ASAKUSA, TSUKIJI, 5208)])));
     run({ ended: true });
-    await waitFor(() => expect(stored.read).toHaveBeenCalled());
+    await hydratedLeg();
     expect(stored.download).not.toHaveBeenCalled();
   });
 

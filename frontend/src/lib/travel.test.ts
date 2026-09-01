@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import 'fake-indexeddb/auto';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   decodeShape,
@@ -109,7 +109,11 @@ beforeEach(async () => {
   await db.routeLegs.clear();
 });
 
+/** **Every mount is unmounted.** This file has no automatic cleanup and `useDayTravel` asks from
+ *  an effect — with a retry ladder behind it since §AZ4 — so a mount left standing keeps asking
+ *  through the next spec's call counts. The hook's cleanup aborts and clears; nothing else can. */
 afterEach(() => {
+  cleanup();
   vi.useRealTimers();
 });
 
@@ -143,14 +147,11 @@ describe('useDayTravel', () => {
   it('answers null on a cold read, and does not throw when the ask fails', async () => {
     routes.fetchRoutes.mockRejectedValue(new Error('offline blip'));
 
-    const { result, unmount } = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
+    const { result } = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
 
     expect(result.current.estimateFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toBeNull();
     await waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(1));
     expect(result.current.estimateFor(ASAKUSA, TSUKIJI, TRAVEL_MODE.WALKING)).toBeNull();
-    // **Unmounted, because a failed ask now schedules a retry** (§AZ4) and this file has no
-    // auto-cleanup: a mount left standing would keep asking through every later spec's counts.
-    unmount();
   });
 
   it('asks once for the day, carrying every mode', async () => {
