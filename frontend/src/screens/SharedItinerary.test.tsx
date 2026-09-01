@@ -431,10 +431,7 @@ describe('SharedItinerary', () => {
           ...fullProjection.days[0],
           stay: 'פלוּדיר',
           checkIn: { label: '15:00', endLabel: '21:00', meaning: TIME_MEANING.WINDOW },
-          checkOut: {
-            place: 'ויק',
-            time: { label: '11:00', meaning: TIME_MEANING.NOT_AFTER },
-          },
+          checkOut: { label: '11:00', meaning: TIME_MEANING.NOT_AFTER },
         },
         fullProjection.days[1],
       ],
@@ -449,10 +446,24 @@ describe('SharedItinerary', () => {
     const text = withoutBidiControls(when!.textContent ?? '');
     expect(text).toContain(t.share.public.checkIn);
     expect(text).toContain(withoutBidiControls(t.share.public.timeRange('15:00', '21:00')));
-    // The check-out names the place being LEFT, which on a transfer day is not the place the
-    // stay line above it names.
-    expect(text).toContain(withoutBidiControls(t.share.public.checkOut('ויק')));
+    // The check-out names no place: the place being left is the card immediately above, and
+    // naming it made this line read future → past → future (§3).
+    expect(text).toContain(t.share.public.checkOut);
+    expect(text).not.toContain('ויק');
     expect(text).toContain(withoutBidiControls(t.share.public.timeUntil('11:00')));
+    // **And the header is FOUR lines, not seven** (§3, the reported mess). `.sh-day-copy`'s
+    // rules used to be descendant selectors, so the spans `.sh-stay-when` composes its line
+    // out of each became a muted grey block of their own. Only its direct children stack.
+    const copy = container.querySelector('.sh-day-copy')!;
+    const blocks = [...copy.querySelectorAll('span, strong')].filter(
+      (el) => el.parentElement === copy,
+    );
+    expect(blocks).toHaveLength(3);
+    // **And the two moments are two blocks, not one `·`-joined run** (§4). Joined, the pair
+    // wrapped wherever it ran out of box — which at 360 fell between `צ׳ק-אין` and its own
+    // clock, stranding a noun from the time it names.
+    expect(when!.querySelectorAll('.sh-moment')).toHaveLength(2);
+    expect(text).not.toContain('·');
   });
 
   it('captions nothing on a row no booking backs', async () => {

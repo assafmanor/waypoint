@@ -159,6 +159,15 @@ const days: SharedDay[] = DAYS.map(([date, title, summary, events], index) => {
     // home does not, which is also the shape that proves the tile counts rather than
     // assuming `dayCount - 1`.
     ...(index < DAYS.length - 1 ? { stay: FIXTURE_STAYS[index % FIXTURE_STAYS.length] } : {}),
+    // **The stay's two moments, so the renderer's own header is exercised** (ADR-0213's
+    // 2026-09-01 amendment §4). They were absent, which is why the tofu guard never saw
+    // `צ׳ק-אאוט עד` — a Hebrew word beside a mono clock, the exact shape the thirteenth
+    // amendment found printing as boxes. A check-in wherever there is a night; a check-out on
+    // every day but the first, since nothing is being left on the day you arrive.
+    ...(index < DAYS.length - 1
+      ? { checkIn: { label: '15:00', endLabel: '21:00', meaning: TIME_MEANING.WINDOW } }
+      : {}),
+    ...(index > 0 ? { checkOut: { label: '11:00', meaning: TIME_MEANING.NOT_AFTER } } : {}),
     sections: [...byDaypart.entries()].map(([daypart, bucket]) => ({
       daypart: daypart as SharedDay['sections'][number]['daypart'],
       events: bucket.map((event, position) => ({

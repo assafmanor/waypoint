@@ -2057,3 +2057,113 @@ correct, and `a-shared-time-is-printed-as-a-range-v1.html` duly measured `מ-10:
 a face the container does not have. This is the same shape the original ADR recorded for emoji:
 _"It looked correct on every developer machine, because a desktop has an emoji font."_ The lesson
 did not transfer because it was written about emoji; it is about **any** face the container lacks.
+
+## Amendment — a day's frame says three things, and the drive across a placeless row (2026-08-31, fourteenth pass)
+
+Two reports, one day apart, both against the shared reader (and §1/§2 against the PDF as well):
+
+> _"the day titles has gotten a little messy: too many line breaks, questionable ordering of the
+> details. This applies to both the live sharing page and the pdf"_
+
+> _"between day parts (morning, noon, afternoon, evening, night), the transit line (driving,
+> walking...) gets omitted. It should be there (on the most fitting part of the day)"_
+
+Drawn and measured in
+[`mockups/the-day-frame-says-three-things-v1.html`](../../mockups/the-day-frame-says-three-things-v1.html).
+Neither report turned out to be about the thing it named.
+
+### §1 · The mess is one missing combinator, not a layout
+
+`.sh-day-copy span` is (0,1,1) and sets `display: block; color: var(--muted); font-size:
+var(--sh-micro)` — exactly right for the header's three **lines**, and as a _descendant_ selector it
+also described every span nested inside one. The twelfth amendment's §2 gave the header a
+`.sh-stay-when` line, and the thirteenth gave `SharedTimeText` a `.sh-said`/`.sh-time` pair to keep
+Hebrew out of the mono face — so `צ׳ק-אאוט עד 11:00 · צ׳ק-אין 15:00–21:00` became **six stacked grey
+blocks**, and the amber a clock is owed (ADR-0028 rule 4) was overwritten by `--muted` on the way.
+Measured on the same fixture: the header is **⁦180px⁩** with the descendant rules and **⁦107px⁩** with
+the child combinator, from **6** stacked boxes down to **4** (three lines, the last of which is
+allowed to wrap). The colour reads `rgb(97, 104, 122)` before and `rgb(145, 94, 30)` after.
+
+The fix is `>` in three rules plus `.sh-day-copy > .sh-stay-when`, and the same four in
+`itinerary-pdf.template.ts`. **Zero new CSS**, which is why the mockup's proposed block is empty.
+
+**This is the third thing that one descendant selector has caught that it never meant to**, and the
+first two are in the sheet already: `.sh-stay .icon` gave up `gap` for a `margin` because
+`.sh-day-copy span`'s `display: block` stopped it being a flex container, and `.sh-stay-when` was
+written (0,2,0) _on purpose_ to outrank it. Both repairs worked **around** the specificity and left
+the wide selector in place to catch the next thing. Narrowing it is the repair the first two should
+have been.
+
+### §2 · The check-out names no place
+
+The one genuine ordering fault, and it is a deletion. `SharedDay.checkOut` carried
+`{ place, time }`, so the frame read tonight's stay → **this morning's** hotel → tonight's hour:
+future → past → future, with a PLACE painted `--amber-deep` inside the clock's run. The place being
+left is the card immediately above, and the reader's accordion collapses day **bodies** and never
+headers, so it is always on screen. `checkOut` is now a bare `SharedTime`; the projection still
+reads `previous` to decide _whether_ there is a check-out, it just no longer ships where. Ink on
+the line: **⁦212px⁩** with the place, **⁦182px⁩** without, in a ⁦248px⁩ box at 360.
+
+### §3 · The journey chain is between PLACED rows, not adjacent ones
+
+Reported against the dayparts and it is not a daypart bug: the sections are cut from the same rows
+`journeyLookup` walks, so a section boundary cannot lose a line. The pairing was
+`events[i - 1] → events[i]`, and a row with **no place at all** (an ice cave with no address, an
+aurora watch) has no coordinate on either side — so it deleted the drive _into_ it and the drive
+_out of_ it. The one leg that survived in the owner's screenshot is the one whose two ends both
+happen to be placed. Carrying the last _placed_ row forward instead restores both, and the line
+renders above the row it leads into, i.e. in that row's own daypart section — "the most fitting part
+of the day" in the report's own words. Measured on the mockup's placed → placeless → placed day:
+**0** journey lines before, **1** after.
+
+**The cost, stated rather than hidden:** the printed leg is then the direct route between two
+_known_ points and does not count a stop the reader can see between them. That is the honest shape
+for a page that may not compute routes (only print stored ones); the alternative is printing
+nothing. The app's own `planLegs` has the identical gap — backlogged, not dragged in here.
+
+### §4 · One moment per line, and the separator is gone (2026-09-01)
+
+A second look at the same header, with a photograph:
+
+> _"The check in text and check in time are separated by a line. It currently reads
+> `Check out <time> · check in` / `<time>` … I guess because of line wrapping. I think that it
+> should read `Check out <time>` / `Check in <time>`"_
+
+Correct, and the diagnosis in it is correct too. §2 gave the pair permission to wrap
+(`white-space: normal`) because cutting a bounded pair of clocks costs the reader a fact — but a
+`·`-joined run wraps wherever it runs out of box, and at 360 that falls between `צ׳ק-אין` and its
+own clock. A noun stranded from the time it names is worse than either failure the wrap was
+introduced to avoid.
+
+Each moment is now its own block (`.sh-moment`), so the break lands at the one place a reader can
+predict and each moment keeps the header's `nowrap` — bounded by construction: a noun plus at most a
+range. The container's `white-space: normal` now permits only the break BETWEEN them. **The height
+is unchanged** — ⁦42px⁩ both ways on the mockup's transfer day, because this line was already two
+lines there.
+
+**Paper changes too, and the first pass at this section said it should not.** That pass reasoned
+from §2's measurement — the longest possible pair is ⁦106px⁩ of ink in a ⁦295.5px⁩ box on A4, so the
+joined run provably never wraps there — concluded there was no defect to repair, and left the `·`.
+The owner's answer (_"I wanted a line break between the check out and check in times"_) is the
+correction, and it is right for a reason the measurement could not reach: **the break is not a wrap
+being repaired, it is how the two moments are meant to read**, so measuring whether paper suffers
+the wrap answers the wrong question. Two surfaces must not teach different shapes for one line
+(ADR-0159 §1); posture may differ, and this is not posture. It costs one line-height on the day
+cards that carry both moments, which is a transfer day, not most days.
+
+The lesson is the one the root `CLAUDE.md` already names: measuring the trade is right, and
+measuring it to avoid making the change is not.
+
+### What was verified
+
+- `sharing-projection.service.spec.ts` gains a placed → placeless → placed day with a stored leg for
+  the two **ends** and none for either adjacent pair, so the assertion can only pass if the pairing
+  skipped the middle row. Sabotaging the carry-forward turns it red (`expected undefined to deeply
+equal { mode, minutes, km }`), which is what makes it load-bearing rather than decorative.
+- `SharedItinerary.test.tsx` counts the header's **direct** children (3), asserts the check-out
+  names no place, and asserts the two moments are two blocks rather than one `·`-joined run.
+- `shared-day-header.contract.test.ts` parses the real stylesheet and refuses any
+  `.sh-day-copy` rule that reaches its children as descendants — the same instrument
+  `tasks-avatar-size.test.ts` established, because jsdom does no layout and this defect lived
+  entirely in the cascade.
+- All four theme × width renders of the mockup: fonts loaded, no console errors.

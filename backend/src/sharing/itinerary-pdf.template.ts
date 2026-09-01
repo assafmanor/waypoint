@@ -277,20 +277,29 @@ function sharedTimeText(time: NonNullable<SharedEvent['time']>): string {
  * Its own line under the stay's name, never appended to it — that line is `nowrap` with an
  * ellipsis, and the clock sits at its logical end, so a long hotel name would eat the fact
  * with no sign it had been there (measured on the reader page at ⁦275px⁩ of ink in a ⁦206px⁩
- * box). On paper the measure is half an A4 column rather than a phone's, so both moments fit
- * one line here where the screen needs a wrap — the same decision, cheaper.
+ * box).
+ *
+ * **A MOMENT PER LINE, on paper too** (owner, 2026-09-01: _"I wanted a line break between the
+ * check out and check in times"_). This joined the pair with the narrative separator and fitted
+ * it on one line, because half an A4 column is wide enough that it never wraps — and that
+ * measurement answered the wrong question. The break is not a wrap being repaired; it is how
+ * the two moments are meant to read, and the two renderers must not teach different shapes for
+ * one line (ADR-0159 §1). Costs one line-height on the day cards that have both moments, which
+ * is a transfer day and not most days.
  *
  * Absent on a middle night, which is most nights: nothing arrives and nothing leaves.
  */
 function stayWhen(day: SharedDay): string {
+  // **No place on the check-out** (2026-08-31) — it is the day card directly above, and
+  // naming it made the header read future → past → future with a PLACE in the clock's amber.
   const parts = [
-    day.checkOut
-      ? PDF_COPY.checkOut(auto(day.checkOut.place), sharedTimeText(day.checkOut.time))
-      : '',
+    day.checkOut ? PDF_COPY.checkOut(sharedTimeText(day.checkOut)) : '',
     day.checkIn ? PDF_COPY.checkIn(sharedTimeText(day.checkIn)) : '',
   ].filter(Boolean);
   return parts.length > 0
-    ? `<span class="pdf-stay-when">${parts.join(NARRATIVE_SEPARATOR)}</span>`
+    ? `<span class="pdf-stay-when">${parts
+        .map((part) => `<span class="pdf-moment">${part}</span>`)
+        .join('')}</span>`
     : '';
 }
 
@@ -850,9 +859,15 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
 .pdf-date strong{font:17px/1 'Secular One',sans-serif;}
 .pdf-date span{margin-block-start:3px;color:var(--pdf-muted);font-size:8px;}
 .pdf-day-copy{min-width:0;align-self:center;padding:6px 8px;}
-.pdf-day-copy strong,.pdf-day-copy span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.pdf-day-copy strong{font-size:11px;}
-.pdf-day-copy span{margin-block-start:2px;color:var(--pdf-muted);font-size:8px;}
+/* **DIRECT children only** (2026-08-31). This says "each line of the day header is a line"
+   and said it as a DESCENDANT selector, so every nested span became its own block with its
+   own margin — which turned the stay's two moments into six lines, one per word and clock.
+   Third time this selector has caught something it never meant to: it also beat .sh-stay's
+   own display on the reader (owner, 2026-08-30) and .pdf-day-copy>span's nowrap fights the
+   moments line below. The title and the two lines are children; nothing else should obey. */
+.pdf-day-copy>strong,.pdf-day-copy>span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pdf-day-copy>strong{font-size:11px;}
+.pdf-day-copy>span{margin-block-start:2px;color:var(--pdf-muted);font-size:8px;}
 .pdf-parts{padding:4px 8px 6px;}
 .pdf-part{break-inside:avoid;}
 .pdf-part-head{min-height:18px;display:flex;align-items:center;gap:4px;color:var(--pdf-amber);font-size:8px;font-weight:700;break-after:avoid;page-break-after:avoid;}
@@ -896,11 +911,16 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
 /* **The stay's two moments, on their own line** (2026-08-31 amendment §2). Amber, because a
    clock is time and commitment — so the line above keeps teal for the place and this one
    spends the other half of ADR-0028's pair, rather than one line carrying two meanings in
-   one hue. .pdf-day-copy span is (0,1,1) and sets nowrap with an ellipsis, which is
+   one hue. .pdf-day-copy>span is (0,1,1) and sets nowrap with an ellipsis, which is
    right for the names above and wrong here: a pair of clocks is bounded, so cutting it only
    costs the fact. (0,2,0) wins it. Measured at ⁦106px⁩ of ink in a ⁦295.5px⁩ box — one line
    on paper, where the screen needs a wrap. */
-.pdf-day-copy .pdf-stay-when{margin-block-start:1px;color:var(--pdf-amber);font-size:7.6px;white-space:normal;}
+.pdf-day-copy>.pdf-stay-when{margin-block-start:1px;color:var(--pdf-amber);font-size:7.6px;white-space:normal;}
+/* **One moment per line** (2026-09-01), matching the reader page rather than fitting both on
+   the A4 column because they happen to fit. Each moment is bounded (a noun plus at most a
+   range), so the blocks keep nowrap and the container's normal only permits the break BETWEEN
+   them. */
+.pdf-stay-when>.pdf-moment{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 /* **The time column holds a range, or it wraps** (owner, 2026-08-30: "the times wrap to
    two lines which also looks bad"). Measured in the print mockup: the shipped column is
    38px and a range is 53px of ink at this face, so every row carrying one broke across two

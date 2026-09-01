@@ -125,7 +125,9 @@ export const PDF_COPY = {
   /** The stay's two moments on the day header (§2). The nouns are the app's
    *  (`t.transition.checkIn`/`checkOut`), so paper and screen name them the same. */
   checkIn: (when: string) => `צ׳ק-אין ${when}`,
-  checkOut: (place: string, when: string) => `צ׳ק-אאוט ${bindPrefix('מ', place)} ${when}`,
+  /** **No place** (2026-08-31) — the day card above names it, and naming it twice put a past
+   *  place under tonight's and inside the amber clock run. */
+  checkOut: (when: string) => `צ׳ק-אאוט ${when}`,
   /** Four words for the four op kinds, printed inline because paper has no fold. */
   ops: { code: 'קוד', note: 'פתק', task: 'משימה', file: 'קובץ' },
   appendix: {
