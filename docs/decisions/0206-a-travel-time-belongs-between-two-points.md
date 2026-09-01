@@ -3965,3 +3965,90 @@ ran once a second on a screen that had not changed. It is content-keyed now, the
   [`mockups/a-route-is-on-its-way-v1.html`](../../mockups/a-route-is-on-its-way-v1.html)'s answered
   state minus its duration. There is no new visual grammar here, only states that used to render
   nothing rendering the block the design already has for them, so no mockup is owed.
+
+## BA. The day switch lost its numbers, and a refusal was counted as an answer (2026-09-02)
+
+> _"Transit lines are now rendered correctly when switching days as far as I can see, but the total
+> transit distance and time row doesn't … Also the day's routes that do not fit row. I think that
+> sometimes they're not preloaded at all and sometimes are preloaded with stale data … Worse than
+> that — after switching to a new day, the transit rows themselves change and show no time or
+> distance estimates at all."_
+
+Screenshots: an Iceland driving day where **every** journey row reads `נסיעה · בלי הערכת זמן` over
+a crow-flies distance, and the header reads `לפחות ⁦130⁩ ק״מ` with no minutes. §AZ is working — the
+rows are there, honest about knowing no duration — and the durations are not arriving. Three faults,
+one of them §AZ's own.
+
+### BA1. What the session knows is a STORE, and a mount was taking a copy of it
+
+`useDayTravel` seeded `known` with `useState(() => knownHere(legKeys))` — the session store,
+narrowed to this day, **copied once at mount** — and merged answers into that copy afterwards. Its
+own docblock said a later fingerprint was _"covered by the effect below, which merges into whatever
+is there"_. That effect is the local Dexie read, and its first line is `if (readDays.has(fingerprint))
+return`.
+
+So the moment a day switched to a fingerprint this session had already **read**, nothing put that
+day's answers into the mount's map. Three facts make that the ordinary case rather than an edge:
+
+- **`DayPeek` mounts the neighbours as real surfaces** (ADR-0200 §7) and they read Dexie, so every
+  swipe records the day you are swiping toward in `readDays` before you arrive on it.
+- **The day surface is one component instance**, taking its date from context — `<DayView />` with
+  no key — so the copy carries the old day's legs into the new one.
+- **`askedDays` can close the other door**: a day answered earlier in the session never asks again,
+  so the network cannot backfill what the read skipped.
+
+The rows then draw §AZ1's honest absence, and everything above them agrees: the day's total is a
+roll-up of the journeys, and so is its feasibility verdict — which is exactly the _"total row
+doesn't [render]"_ and _"the routes that do not fit row … changing as I swipe"_ halves of the report.
+
+**The fix is to stop keeping a copy.** `sessionKnown` / `sessionRefused` gain a version and a
+subscriber set; `retain` and `retainRefusals` announce; the hook derives `known` and `refused` from
+the store on every bump, per fingerprint, through `useSyncExternalStore`. There is one store, every
+mounted day reads it, and _in the store but absent from a screen_ stops being representable.
+
+Three things fall out rather than being added:
+
+- **An answer reaches a day that is ALREADY open**, which is what §AZ5's pack hydration needed and
+  only half had: clearing `readDays` retires the mark for the _next_ mount and says nothing to the
+  current one. `fillCachedRouteLegs` now retains into the store too.
+- **The mount-local `markRead` counter and the `merge`/`setKnown` dance go**, and with them the
+  `live` guard whose docblock had to explain that a superseded read must be kept anyway.
+- **A day answers for the legs it HAS.** The old map accumulated every leg any stop set had ever
+  mentioned; the derived one is narrowed to this day's keys, which is what a day surface means.
+
+`useDayShapes` keeps its own map, and the asymmetry is the geometry: a shape rides on a
+`TravelEstimate`, and the day list's all-modes matrix answers without one — so retaining its answers
+into a store the map read from would blank the map's lines the moment a day surface asked. That is
+the same trade `cacheTravelEstimates` already records for Dexie.
+
+### BA2. A refusal in one mode is not an answer for the leg
+
+§AZ4 replaced `askedDays`' _"something arrived"_ test with a per-**leg** one: a pair counts as
+answered when any mode is known or refused. On a driving trip that is always true on the first
+response — the gate refuses **walking** on every leg past ⁦15 km⁩ (`TRAVEL_GATE`) — so a refusal
+nobody was waiting for marked the leg answered while the only mode the day draws was still pending.
+One response, the whole day into `askedDays`, and no driving duration for the rest of the session.
+
+It is the rule's own failure mode reproduced one turn later, and the honest test is the strict one:
+**every (leg, mode) the day asked about is known or refused.** Its cost — a re-ask on a day the
+provider never fully answers — is one request the server serves from its own cache, and the
+alternative is the silence this layer keeps being reported for. Once a warm completes, every mode is
+estimated or refused, so a finished day settles and stops asking.
+
+### BA3. A pack that answers `202` is waited for once
+
+§AZ5 returned on a `202` and left the trip without a pack for the session, reasoning that _"a timer
+for an optimisation is a poll"_. A cold trip's pack is precomputed **on the first ask**, so `202` is
+not the exception there — it is what the first device to open the trip always gets, and every day it
+would have warmed goes without. One wait, paced by the answer's own `Retry-After` and capped at
+`PACK_RETRY_MAX_S`, which is ADR-0187's flow rather than a poll; past it the next mount asks again.
+
+### BA4. What this does not change
+
+- **§AZ1 and §D4/§D5 stand.** No duration is invented, and the rows the screenshots show are the
+  correct rendering of a day whose durations had not arrived. What was broken is that they never
+  arrived; nothing here makes an absent number less absent.
+- **The peek still never fetches** (ADR-0200 §7). It reads, and now what it reads reaches the day
+  you land on — which is the half that was missing.
+- **`DayView`'s day derivation still runs on every clock tick**, above the seam §AZ7 fixed. Still
+  backlogged, still unmeasured.

@@ -70,6 +70,11 @@ export async function hydrateRoutePack(url: string): Promise<number> {
  *  has one; re-deciding on every mount is what a `useEffect` with an object dep would do. */
 const fetched = new Set<string>();
 
+/** **The longest this waits on a `Retry-After` it does not control** (ADR-0206 §BA3) — the same
+ *  reasoning as `WARM_RETRY_MAX_MS` next door, at a pack's own scale: a precompute is slower than
+ *  a matrix call, and a minute is already past the point where the next mount will ask anyway. */
+const PACK_RETRY_MAX_S = 60;
+
 export function resetRoutePackFetchForTests(): void {
   fetched.clear();
 }
@@ -102,41 +107,64 @@ export function useTripRoutePack(opts: {
   const { tripId, offline, ended, archiveVintage } = opts;
   useEffect(() => {
     if (!tripId) return;
-    const url = routePackUrl(tripId);
+    // Captured, because `pass` is hoisted and TypeScript cannot carry the narrowing across it.
+    const id = tripId;
+    const url = routePackUrl(id);
     let live = true;
-    void (async () => {
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    /** Spent on the one `202` wait below, so a pack that is never ready cannot loop. */
+    let waited = false;
+    void pass();
+    async function pass(): Promise<void> {
       // First, and whatever the network is doing: what is already here.
       await hydrateRoutePack(url);
-      if (!live || offline || ended || fetched.has(tripId)) return;
+      if (!live || offline || ended || fetched.has(id)) return;
       const held = (await listMapArchives().catch(() => [])).find((entry) => entry.key === url);
       // **Stale is decided the way every other archive decides it** — `useMapArchives`' own
       // `wanted`, not reproduced here: a pack this device holds at the vintage the server is
       // cutting is the pack, and re-downloading it every session would spend bytes to learn that.
       if (held && !isPackStale(held.vintage, archiveVintage)) return;
-      fetched.add(tripId);
+      fetched.add(id);
       try {
         const result = await downloadMapArchive({
           url,
           kind: 'routes',
-          tripId,
-          currentTripId: tripId,
+          tripId: id,
+          currentTripId: id,
           vintage: archiveVintage,
         });
-        // `202` — the server is still precomputing. Not recorded as fetched, so the next mount
-        // asks again; nothing is scheduled here, because a pack is an optimisation and a timer
-        // for one is a poll (ADR-0187's flow belongs to the surface that shows a status).
+        // **`202` — the server is still precomputing, and it is WAITED FOR ONCE** (ADR-0206 §BA3).
+        //
+        // This returned and left the trip without a pack for the session, on the reasoning that "a
+        // timer for an optimisation is a poll". A cold trip's pack is precomputed on the first ask,
+        // so `202` is not the exception there — it is what the FIRST device to open the trip always
+        // gets, and every day it would have warmed then goes without. That is the owner's _"sometimes
+        // they're not preloaded at all"_.
+        //
+        // One wait, paced by the answer's own `Retry-After` and capped, which is ADR-0187's flow
+        // rather than a poll; past it the next mount asks again, since nothing is recorded.
         if (result.status !== 'stored') {
-          fetched.delete(tripId);
+          fetched.delete(id);
+          if (live && result.status === 'preparing' && !waited) {
+            retry = setTimeout(
+              () => {
+                waited = true;
+                void pass();
+              },
+              Math.min(Math.max(result.retryAfterSeconds ?? 0, 1), PACK_RETRY_MAX_S) * 1000,
+            );
+          }
           return;
         }
         await hydrateRoutePack(url);
       } catch {
         // Offline, refused, failed. The day falls back to reading remotely or to §D4's chip.
-        fetched.delete(tripId);
+        fetched.delete(id);
       }
-    })();
+    }
     return () => {
       live = false;
+      clearTimeout(retry);
     };
   }, [archiveVintage, ended, offline, tripId]);
 }
