@@ -4,8 +4,10 @@ import {
   TRAVEL_FIT,
   TRAVEL_FIT_TOLERANCE_SECONDS,
   daySequenceFits,
+  floorTravelSeconds,
   freeAfterTravel,
   leaveBy,
+  reachableWithin,
 } from './travel-time';
 
 const AT = (hhmm: string) => Date.parse(`2026-08-25T${hhmm}:00Z`);
@@ -176,5 +178,47 @@ describe('freeAfterTravel — the tolerance a very short leg gets', () => {
     const window = freeAfterTravel(AT('18:30'), AT('18:30'), 24);
     expect(window.freeSeconds).toBe(0);
     expect(window.availableSeconds).toBe(0);
+  });
+});
+
+// ── WHETHER A DETOUR COULD HAPPEN AT ALL (ADR-0216) ───────────────────────────────────────
+describe('reachableWithin', () => {
+  /** ⁦65⁩ free minutes with ⁦15⁩ owed to being there: ⁦50⁩ minutes of driving, which at ⁦130 km/h⁩ is
+   *  ⁦108.3 ק״מ⁩ of crow round trip. The reported hole, once ADR-0206 §AY corrects it. */
+  const slot = { freeSeconds: 65 * MINUTES, staySeconds: 15 * MINUTES };
+
+  it('offers a detour the window could cover', () => {
+    expect(reachableWithin({ ...slot, detourMeters: 52_000 })).toBe(true);
+  });
+
+  it('refuses one it could not', () => {
+    expect(reachableWithin({ ...slot, detourMeters: 364_000 })).toBe(false);
+  });
+
+  // The bound is `crow / ceiling` and the ceiling is deliberately absurd (§4): what it refuses is
+  // refused on physics, so the boundary is worth pinning rather than approximating.
+  it('puts the boundary where the arithmetic does', () => {
+    expect(reachableWithin({ ...slot, detourMeters: 108_000 })).toBe(true);
+    expect(reachableWithin({ ...slot, detourMeters: 109_000 })).toBe(false);
+  });
+
+  // **The stay is part of it** — reachable and not a visit is not reachable (§2).
+  it('counts the time you have to be there', () => {
+    const there = { freeSeconds: 19 * MINUTES, detourMeters: 10_000 };
+    expect(reachableWithin(there)).toBe(true);
+    expect(reachableWithin({ ...there, staySeconds: 15 * MINUTES })).toBe(false);
+  });
+
+  // §D4 read from the other end: **nothing may be dropped on an absence.** A missing coordinate
+  // is not a long journey, and `NaN` is not a verdict.
+  it('answers yes to anything it cannot measure', () => {
+    expect(reachableWithin({ freeSeconds: 60, detourMeters: NaN })).toBe(true);
+    expect(reachableWithin({ freeSeconds: NaN, detourMeters: 1_000_000 })).toBe(true);
+  });
+
+  it('is a lower bound on the journey, never an estimate of it', () => {
+    // ⁦130 km⁩ at ⁦130 km/h⁩ is an hour — the fastest it could conceivably go, which is the only
+    // claim the crow line supports.
+    expect(floorTravelSeconds(130_000)).toBeCloseTo(3600, 5);
   });
 });

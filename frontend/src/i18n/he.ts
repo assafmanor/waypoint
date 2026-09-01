@@ -2730,6 +2730,19 @@ export const t = {
     /** Under a replacement header: the slot the replacement inherits, whole. */
     replaceSub: (range: string) => `אותה שעה, אותו אורך · ${range}`,
     empty: 'אין רעיונות במדף · אפשר להוסיף אירוע חדש',
+    /**
+     * **When the shelf has ideas and none of them fits this slot** (ADR-0216 §6). A different
+     * sentence from `empty` because it is a different fact: `אין רעיונות במדף` would be a lie
+     * under a shelf of fourteen, and the reader would go looking for the bug.
+     */
+    noneFit: 'אין רעיון שנכנס בפער הזה · אפשר להוסיף אירוע חדש',
+    /**
+     * **The count the filter refused**, as a quiet statement under the list — never a row and
+     * never a name (§1: an offer nobody can take is not offered at all). It exists so a short
+     * list reads as an answer rather than as a fault.
+     */
+    dropped: (count: number) => `${count} רעיונות רחוקים מדי לפער הזה`,
+    droppedOne: 'רעיון אחד רחוק מדי לפער הזה',
     // The sheet is capped at the best few; these are the way past the cap and the
     // search that only appears once the pool is big enough to need one.
     search: 'חיפוש ברעיונות',

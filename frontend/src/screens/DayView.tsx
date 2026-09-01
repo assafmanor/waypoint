@@ -154,7 +154,7 @@ import {
   JourneyRow,
   type JourneyRowProps,
 } from '../ui/domain/DayJoinRow';
-import { CODE_PREFIX, DEFAULT_STAY_ICON, SHELF_POOL_CAP } from '../constants';
+import { CODE_PREFIX, DEFAULT_STAY_ICON, MS_PER_MINUTE, SHELF_POOL_CAP } from '../constants';
 import { ambientSpanLabel, dayBookendStays } from '../lib/glance';
 import { edgeSentence } from '../lib/transitions';
 import { t } from '../i18n/he';
@@ -413,6 +413,16 @@ export function DayView() {
   const [gapTarget, setGapTarget] = useState<Gap | null>(null);
   /** An event's own slot as a wall clock, read in the zone the day shows it in (ADR-0107) —
    *  what the replacement inherits, and what the shelf is ranked against. */
+  /** **How long a row occupies**, in minutes — what an idea replacing it has to fit inside
+   *  (ADR-0216 §2). Off the instants rather than the wall clocks beside it, so a zone-crossing
+   *  row measures its own elapsed length; `0` where there is nothing to measure, which drops
+   *  nothing (§D4). */
+  const eventMinutes = (e: TripEvent): number | undefined => {
+    const startMs = Date.parse(e.startsAt ?? '');
+    const endMs = Date.parse(e.endsAt ?? '');
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return undefined;
+    return Math.max(0, Math.round((endMs - startMs) / MS_PER_MINUTE));
+  };
   const slotOf = (e: TripEvent): GapDefaults => {
     const zones = eventDisplayZones(e, zoneCtx);
     return {
@@ -1579,11 +1589,16 @@ export function DayView() {
             )}
             mode="trip"
             naming={{ ...dayNaming, anchor: replaceTarget.date }}
-            ideas={shelfForSlot(shelf, slotOf(replaceTarget), trip.timezone, {
-              events,
-              bookings,
-              places,
-            })}
+            {...shelfForSlot(
+              shelf,
+              slotOf(replaceTarget),
+              trip.timezone,
+              { events, bookings, places },
+              // **A replacement's window is the row's own length** (ADR-0216 §2): `החלף` keeps the
+              // hour and the length, so what an idea has to fit here is exactly what the row being
+              // displaced occupied — not a hole's free time, which this slot never had.
+              eventMinutes(replaceTarget),
+            )}
             glyph={(m) => ideaGlyph(m, places)}
             onPickIdea={(m) => {
               verbs.replace(replaceTarget, m);
@@ -1615,7 +1630,13 @@ export function DayView() {
             title={t.slotFill.gapTitle(clockRange(gapTarget.fill.start, gapTarget.fill.end))}
             mode="trip"
             naming={{ ...dayNaming, anchor: gapTarget.fill.date }}
-            ideas={shelfForSlot(shelf, gapTarget.fill, trip.timezone, { events, bookings, places })}
+            {...shelfForSlot(
+              shelf,
+              gapTarget.fill,
+              trip.timezone,
+              { events, bookings, places },
+              gapTarget.minutes,
+            )}
             glyph={(m) => ideaGlyph(m, places)}
             onPickIdea={(m) => {
               const block = ideaBlock(ideaCategory(m, places), gapTarget);

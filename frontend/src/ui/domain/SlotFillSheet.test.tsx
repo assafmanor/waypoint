@@ -42,7 +42,12 @@ const ranked = (title: string, i: number): RankedIdea => ({
 /** `n` ideas, already ranked — the sheet never sorts, it only shows. */
 const pool = (n: number) => Array.from({ length: n }, (_, i) => ranked(`רעיון ${i}`, i));
 
-const openSheet = (ideas: RankedIdea[], onPickIdea = vi.fn(), mode: Mode = 'plan') => {
+const openSheet = (
+  ideas: RankedIdea[],
+  onPickIdea = vi.fn(),
+  mode: Mode = 'plan',
+  dropped?: number,
+) => {
   render(
     wrapNav(
       <SlotFillSheet
@@ -50,6 +55,7 @@ const openSheet = (ideas: RankedIdea[], onPickIdea = vi.fn(), mode: Mode = 'plan
         mode={mode}
         naming={naming(GAP.date)}
         ideas={ideas}
+        dropped={dropped}
         glyph={(m) => m.icon ?? ''}
         onPickIdea={onPickIdea}
         onNewEvent={() => {}}
@@ -175,5 +181,56 @@ describe('SlotFillSheet', () => {
       openSheet(pool(1));
       expect(document.querySelector('.slotfill-sub')).toBeNull();
     });
+  });
+});
+
+// ── WHAT THE SLOT REFUSED (ADR-0216 §6) ───────────────────────────────────────────────────
+//
+// The filter itself is `lib/shelf.ts`'s and is tested there. What is only true here is the
+// SENTENCE: a short list has to read as an answer, and an empty one must not claim the shelf is
+// empty when fourteen ideas are sitting on it.
+describe('SlotFillSheet — the count it could not offer', () => {
+  afterEach(() => cleanup());
+
+  it('says how many did not fit, under the ones that did', () => {
+    openSheet(pool(2), vi.fn(), 'plan', 3);
+    expect(screen.getByText(t.slotFill.dropped(3))).toBeTruthy();
+  });
+
+  it('agrees with itself about one', () => {
+    openSheet(pool(2), vi.fn(), 'plan', 1);
+    expect(screen.getByText(t.slotFill.droppedOne)).toBeTruthy();
+  });
+
+  // **The two empty states are two facts.** `אין רעיונות במדף` under a full shelf is the sentence
+  // that would send the reader looking for a bug.
+  it('says the slot held none of them, rather than that the shelf is empty', () => {
+    openSheet([], vi.fn(), 'plan', 4);
+    expect(screen.getByText(t.slotFill.noneFit)).toBeTruthy();
+    expect(screen.queryByText(t.slotFill.empty)).toBeNull();
+  });
+
+  it('still says the shelf is empty when it is', () => {
+    openSheet([], vi.fn(), 'plan', 0);
+    expect(screen.getByText(t.slotFill.empty)).toBeTruthy();
+    expect(screen.queryByText(t.slotFill.noneFit)).toBeNull();
+  });
+
+  it('says nothing where nothing was refused', () => {
+    openSheet(pool(2));
+    expect(document.querySelector('.slotfill-dropped')).toBeNull();
+  });
+
+  // A short list under a SEARCH is the query's doing, not the slot's — so the count stands down
+  // rather than blaming the day for what the typing did.
+  it('stands down while searching', () => {
+    openSheet(pool(SLOT_FILL_SEARCH_AT + 1), vi.fn(), 'plan', 2);
+    // Present first, or the absence below proves nothing (`frontend/CLAUDE.md`: an absence
+    // assertion against a state that never existed reports green for ever).
+    expect(document.querySelector('.slotfill-dropped')).toBeTruthy();
+    fireEvent.change(document.querySelector('.slotfill-search input')!, {
+      target: { value: 'רעיון 0' },
+    });
+    expect(document.querySelector('.slotfill-dropped')).toBeNull();
   });
 });

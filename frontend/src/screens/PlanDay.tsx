@@ -1783,7 +1783,13 @@ export function PlanDay() {
             title={t.slotFill.gapTitle(clockRange(gapChoice.fill.start, gapChoice.fill.end))}
             mode="plan"
             naming={{ trip, today, anchor: gapChoice.fill.date }}
-            ideas={shelfForSlot(shelf, gapChoice.fill, tz, { events, bookings, places })}
+            {...shelfForSlot(
+              shelf,
+              gapChoice.fill,
+              tz,
+              { events, bookings, places },
+              gapChoice.minutes,
+            )}
             glyph={(m) => ideaGlyph(m, places)}
             onPickIdea={(m) => {
               // The idea's own category decides how long it gets, capped by this position's room

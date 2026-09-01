@@ -36,6 +36,7 @@ export function SlotFillSheet({
   mode,
   naming,
   ideas,
+  dropped,
   glyph,
   onPickIdea,
   onNewEvent,
@@ -57,6 +58,10 @@ export function SlotFillSheet({
   naming: DayNaming;
   /** Already ranked against this slot's own neighbours, each with its reason. */
   ideas: RankedIdea[];
+  /** **How many ideas the slot could not hold** (ADR-0216 §6) — out of reach and back inside the
+   *  free time, so they are not rows here at all. Stated as a count under the list because an
+   *  empty sheet over a full shelf reads as a fault; never as a row, which is §1's whole point. */
+  dropped?: number;
   /** **The glyph a row shows**, resolved by the host (`ideaGlyph`) rather than read off the
    *  idea here: an idea's own icon is only the first rung of the chain — its place's pick and
    *  its category are the next two — and this layer takes all data via props, so it cannot
@@ -115,7 +120,21 @@ export function SlotFillSheet({
             </button>
           )}
         />
-        {countVisible(rows) === 0 && <div className="slotfill-empty">{t.slotFill.empty}</div>}
+        {/* **Two empty states, because they are two facts** (ADR-0216 §6): a shelf with nothing on
+            it, and a shelf whose every idea is out of reach of this slot. `אין רעיונות במדף`
+            under fourteen ideas is a sentence the reader would go looking for the bug behind. */}
+        {countVisible(rows) === 0 && (
+          <div className="slotfill-empty">
+            {dropped && !searching ? t.slotFill.noneFit : t.slotFill.empty}
+          </div>
+        )}
+        {/* …and the count itself, wherever the filter took some but not all. Suppressed while
+            SEARCHING, where a short list is the query's doing and not the slot's. */}
+        {!!dropped && countVisible(rows) > 0 && !searching && (
+          <div className="slotfill-dropped">
+            {dropped === 1 ? t.slotFill.droppedOne : t.slotFill.dropped(dropped)}
+          </div>
+        )}
         {hidden > 0 && (
           <button className="slotfill-more" onClick={() => setExpanded(true)}>
             {t.slotFill.all(ideas.length)}
