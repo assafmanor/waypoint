@@ -665,16 +665,33 @@ function StayWhen({ day }: { day: SharedDay }) {
 }
 
 function SharedTimeText({ time }: { time: SharedTime }) {
-  const text =
-    time.meaning === TIME_MEANING.NOT_BEFORE
-      ? t.share.public.timeFrom(ltrIsolate(time.label))
-      : time.meaning === TIME_MEANING.NOT_AFTER
-        ? t.share.public.timeUntil(ltrIsolate(time.label))
-        : ltrIsolate(
-            time.endLabel && time.endLabel !== time.label
-              ? t.share.public.timeRange(time.label, time.endLabel)
-              : time.label,
-          );
+  // **THE WORD IS NOT MONO, AND THE CLOCK IS** (owner, 2026-08-31, with a photograph of the
+  // PDF printing `00:00-\u25a1`). `.sh-time` is `font-family: var(--font-mono)` — JetBrains,
+  // which ships no Hebrew by design, since it carries times, codes and money and never prose.
+  // A browser papers over that with a per-glyph fallback to whatever Hebrew face the device
+  // has; the A4 renderer, whose container holds exactly the faces it inlines, had nothing to
+  // fall back to and drew `.notdef` boxes. One defect, and only one of the two media could
+  // ever show it — so it is fixed on both rather than only where it was seen.
+  //
+  // The word is asked for by calling the copy with an EMPTY clock, which is the whole of it:
+  // these two entries are a prefix plus a value, and `מ-` binds to its number while `עד`
+  // takes a space. Composing here rather than splitting a formatted string keeps that
+  // language knowledge in `i18n` where it belongs.
+  if (time.meaning === TIME_MEANING.NOT_BEFORE || time.meaning === TIME_MEANING.NOT_AFTER) {
+    const say =
+      time.meaning === TIME_MEANING.NOT_BEFORE ? t.share.public.timeFrom : t.share.public.timeUntil;
+    return (
+      <span className="sh-said">
+        {say('')}
+        <span className="sh-time">{ltrIsolate(time.label)}</span>
+      </span>
+    );
+  }
+  const text = ltrIsolate(
+    time.endLabel && time.endLabel !== time.label
+      ? t.share.public.timeRange(time.label, time.endLabel)
+      : time.label,
+  );
   return <span className="sh-time">{text}</span>;
 }
 

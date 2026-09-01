@@ -115,6 +115,7 @@ import {
   dayFeasibility,
   dayJourney,
   dayTravelTotal,
+  narrowGapForTravel,
   windowClosesMs,
   type DayJourney,
 } from '../lib/day-joins';
@@ -1147,6 +1148,43 @@ export function PlanDay() {
    *  time), a seam beside the row being dragged is not. */
   const heldAtEdge = (free: Gap | null, edge: TripEvent | undefined) =>
     free != null && drag != null && edge?.id === drag.id && !earnsChip(free);
+  /**
+   * **THE DAY'S TWO EDGE LEGS, DERIVED ONCE** (ADR-0206 §AJ5) — the leg out of the bed you
+   * woke in and the leg back into the one you sleep in.
+   *
+   * They were assembled inline, inside the bookend fragments, which is why §AJ4's reorder
+   * reached the holes BETWEEN rows and not these two: `dayBlocks` owns the former and there
+   * was nothing owning the latter. Naming them here is what lets the slot and the leg be
+   * ordered against each other at all, since the slot renders outside the fragment.
+   */
+  const headJourney = (() => {
+    if (!bookends.woke || planGroups.length === 0) return { journey: null, to: undefined };
+    const to = groupStartEvent(planGroups[0]);
+    return { journey: journeyFor(bookends.woke, to), to };
+  })();
+  const tailJourney = (() => {
+    if (!bookends.sleeps || planGroups.length === 0) return { journey: null, from: undefined };
+    const from = groupEndEvent(planGroups[planGroups.length - 1]);
+    return { journey: journeyFor(from, bookends.sleeps), from };
+  })();
+  /**
+   * **And the slot each of them narrows** — `narrowGapForTravel`, the same function Trip mode
+   * applies between two rows, rather than a second correction of its own (root rule 8).
+   *
+   * **It is a deliberate no-op on the arm that matters most.** A leg out of an ambient stay
+   * has no `departAfterMs` (ADR-0206 §AD/§AF3: a middle night has no check-out instant, and
+   * reaching for the day window's dawn would claim you could have left at 07:00), so its
+   * `journey.free` is `null` and this returns the hole untouched. That is the app declining
+   * to state a number it cannot stand behind, not a gap in the correction — and it is why the
+   * head slot can still read longer than the leg beside it allows. The residue is backlogged
+   * rather than papered over with an invented instant.
+   */
+  const headSlot = edgeFree.before
+    ? narrowGapForTravel(edgeFree.before, headJourney.journey, tz)
+    : null;
+  const tailSlot = edgeFree.after
+    ? narrowGapForTravel(edgeFree.after, tailJourney.journey, tz)
+    : null;
   /** **The day itself, when nothing timed can hold a position** — an empty day, a day of
    *  untimed rows, or one whose only entries are booking transition points. All three
    *  render a list (or an empty state) and all three used to accept a drop nowhere, because
@@ -1540,49 +1578,47 @@ export function PlanDay() {
                     />
                   ) : null;
                 })()}
-              {/* **WHERE THE DAY STARTS** (ADR-0209 §1), with the leg out of it below — the same
-                two rows Trip mode draws, off the same `dayBookendStays`. **Without the settle
-                pair**, which is ADR-0171 §10e's posture difference: Plan settles through a row
-                menu, not inline. */}
+              {/* **WHERE THE DAY STARTS** (ADR-0209 §1) — the same two rows Trip mode draws,
+                off the same `dayBookendStays`. **Without the settle pair**, which is ADR-0171
+                §10e's posture difference: Plan settles through a row menu, not inline. */}
               {bookends.woke && (
-                <>
-                  <StayRow
-                    stay={bookends.woke}
-                    edge="wake"
-                    bound={planStayBound(bookends.woke)}
-                    bookings={bookings}
-                    onOpen={setDetailTarget}
-                  />
-                  {planGroups.length > 0 &&
-                    (() => {
-                      const to = groupStartEvent(planGroups[0]);
-                      const j = journeyFor(bookends.woke!, to);
-                      return j ? (
-                        <JourneyRow
-                          journey={j}
-                          travelMode={planTravel.modeFor(bookends.woke!, to)}
-                          {...modeControl(bookends.woke!, to)}
-                          onShowOnMap={legShowOnMap(
-                            planTravel.pairFor(bookends.woke!, to),
-                            showPlaceOnMap,
-                          )}
-                          zones={legZones(bookends.woke!, to)}
-                        />
-                      ) : null;
-                    })()}
-                </>
+                <StayRow
+                  stay={bookends.woke}
+                  edge="wake"
+                  bound={planStayBound(bookends.woke)}
+                  bookings={bookings}
+                  onOpen={setDetailTarget}
+                />
               )}
               {/* The day's head: free time before the first event, which `freeBetween` cannot
                 see because it has an event on one side only (session-123). **Below the row the
                 day starts at** since ADR-0209 put one there — a drop target for the morning was
-                reading above the bed it belongs after. */}
-              {edgeFree.before && !heldAtEdge(edgeFree.before, timed[0]) && (
+                reading above the bed it belongs after.
+
+                **…and ABOVE the leg out of that bed** (ADR-0206 §AJ5, owner 2026-08-31: _"there
+                are some edge cases with the gap-transit ordering at the start and end of days"_).
+                §AJ4 put the free time above the journey between two ROWS and left the day's two
+                edges alone, where the pair is assembled by hand rather than by `dayBlocks` — so
+                the head still read leg-then-hole, which is the order the report was about. */}
+              {edgeFree.before && headSlot && !heldAtEdge(edgeFree.before, timed[0]) && (
                 <FreeSlot
-                  free={edgeFree.before}
-                  label={t.planDay.gapBefore(gapLabel(edgeFree.before.minutes))}
+                  free={headSlot}
+                  label={t.planDay.gapBefore(gapLabel(headSlot.minutes))}
                   seamLabel={t.planDay.seamDayStart}
-                  over={overGap(edgeFree.before.fill)}
+                  over={overGap(headSlot.fill)}
                   onFill={setGapChoice}
+                />
+              )}
+              {headJourney.journey && headJourney.to && bookends.woke && (
+                <JourneyRow
+                  journey={headJourney.journey}
+                  travelMode={planTravel.modeFor(bookends.woke, headJourney.to)}
+                  {...modeControl(bookends.woke, headJourney.to)}
+                  onShowOnMap={legShowOnMap(
+                    planTravel.pairFor(bookends.woke, headJourney.to),
+                    showPlaceOnMap,
+                  )}
+                  zones={legZones(bookends.woke, headJourney.to)}
                 />
               )}
               <BuilderGroups
@@ -1591,45 +1627,46 @@ export function PlanDay() {
                 ctx={builderCtx}
                 entries={placement.positioned}
               />
-              {/* …and where it ends, with the leg back into it above. */}
-              {bookends.sleeps && (
-                <>
-                  {planGroups.length > 0 &&
-                    (() => {
-                      const from = groupEndEvent(planGroups[planGroups.length - 1]);
-                      const j = journeyFor(from, bookends.sleeps!);
-                      return j ? (
-                        <JourneyRow
-                          journey={j}
-                          travelMode={planTravel.modeFor(from, bookends.sleeps!)}
-                          {...modeControl(from, bookends.sleeps!)}
-                          onShowOnMap={legShowOnMap(
-                            planTravel.pairFor(from, bookends.sleeps!),
-                            showPlaceOnMap,
-                          )}
-                          zones={legZones(from, bookends.sleeps!)}
-                        />
-                      ) : null;
-                    })()}
-                  <StayRow
-                    stay={bookends.sleeps}
-                    edge="sleep"
-                    bound={planStayBound(bookends.sleeps)}
-                    bookings={bookings}
-                    onOpen={setDetailTarget}
-                  />
-                </>
-              )}
               {/* The day's tail: free time after the last event. It stays ABOVE the line
                 below, because a drop slot IS a position — everything that has one sits
-                above everything that does not. */}
-              {edgeFree.after && !heldAtEdge(edgeFree.after, timed[timed.length - 1]) && (
-                <FreeSlot
-                  free={edgeFree.after}
-                  label={t.planDay.gapAfter(gapLabel(edgeFree.after.minutes))}
-                  seamLabel={t.planDay.seamDayEnd}
-                  over={overGap(edgeFree.after.fill)}
-                  onFill={setGapChoice}
+                above everything that does not.
+
+                **…and above the leg back into the bed, and above the bed** (ADR-0206 §AJ5).
+                It used to sit under BOTH, which drew the evening's free time after you had
+                already gone to sleep. Its window starts at the last event's end
+                (`freeAfterLast`), so that is where it hangs — and the drive home is the last
+                thing inside it, not something that happens before it starts. */}
+              {edgeFree.after &&
+                tailSlot &&
+                !heldAtEdge(edgeFree.after, timed[timed.length - 1]) && (
+                  <FreeSlot
+                    free={tailSlot}
+                    label={t.planDay.gapAfter(gapLabel(tailSlot.minutes))}
+                    seamLabel={t.planDay.seamDayEnd}
+                    over={overGap(tailSlot.fill)}
+                    onFill={setGapChoice}
+                  />
+                )}
+              {/* …and where the day ends, with the leg back into it above. */}
+              {tailJourney.journey && tailJourney.from && bookends.sleeps && (
+                <JourneyRow
+                  journey={tailJourney.journey}
+                  travelMode={planTravel.modeFor(tailJourney.from, bookends.sleeps)}
+                  {...modeControl(tailJourney.from, bookends.sleeps)}
+                  onShowOnMap={legShowOnMap(
+                    planTravel.pairFor(tailJourney.from, bookends.sleeps),
+                    showPlaceOnMap,
+                  )}
+                  zones={legZones(tailJourney.from, bookends.sleeps)}
+                />
+              )}
+              {bookends.sleeps && (
+                <StayRow
+                  stay={bookends.sleeps}
+                  edge="sleep"
+                  bound={planStayBound(bookends.sleeps)}
+                  bookings={bookings}
+                  onOpen={setDetailTarget}
                 />
               )}
               {/* …then what holds no position at all (ADR-0171 §10a): the same line Trip

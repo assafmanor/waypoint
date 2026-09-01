@@ -225,7 +225,11 @@ const dayLabel = (date: string): { day: string; weekday: string } => {
  *  2026-08-30). One isolate around the whole run, so `09:20–14:05` cannot be reordered by the
  *  page's RTL flow into its own reverse. */
 function timeText(event: SharedEvent): string {
-  if (!event.time) return PDF_COPY.dayparts.flexible;
+  // **`גמיש` is prose too, and it has been printing as boxes since §1** — found 2026-08-31
+  // by widening the mono guard for the flexible edges, not by looking at it. An untimed
+  // event's cell has always carried a Hebrew word in a face with no Hebrew glyphs; the
+  // reference trip has no untimed row, so no render ever showed it.
+  if (!event.time) return `<span class="pdf-word">${PDF_COPY.dayparts.flexible}</span>`;
   return sharedTimeText(event.time);
 }
 
@@ -242,8 +246,26 @@ function timeText(event: SharedEvent): string {
  * word, since isolating the word with it would island the wrong thing.
  */
 function sharedTimeText(time: NonNullable<SharedEvent['time']>): string {
-  if (time.meaning === TIME_MEANING.NOT_BEFORE) return PDF_COPY.timeFrom(ltr(time.label));
-  if (time.meaning === TIME_MEANING.NOT_AFTER) return PDF_COPY.timeUntil(ltr(time.label));
+  // **THE WORD IS SET IN ASSISTANT AND THE CLOCK STAYS MONO** — the EIGHTH time the `font`
+  // shorthand has eaten a family in this file, and the first one to reach a reader: shipped
+  // 2026-08-31, reported the same day with a photograph of `00:00-□`.
+  //
+  // `.pdf-event-time` is `font:600 8px 'JetBrains Mono',monospace`, and the shorthand
+  // replaces the whole family list — so the cell asks for a face that ships NO Hebrew, by
+  // design (`FONT_FACES` declares JetBrains Latin-only on purpose: it carries times, codes
+  // and money, never prose). Until this change the cell only ever held digits, so nothing
+  // noticed; `מ-` and `עד` put prose in it and the container had nothing to draw them with.
+  //
+  // Wrapping the WHOLE cell in Assistant would fix the tofu and cost the column its
+  // grammar: the clock would change face on exactly the two rows carrying a flexible edge,
+  // beside neighbours still in mono. So the word takes Assistant and the clock is re-set in
+  // `.pdf-mono`, which is the same shape `.pdf-ops-line` already uses one block down.
+  const word = (text: string) => `<span class="pdf-word">${text}</span>`;
+  const clock = (text: string) => `<span class="pdf-mono">${text}</span>`;
+  if (time.meaning === TIME_MEANING.NOT_BEFORE)
+    return word(PDF_COPY.timeFrom(clock(ltr(time.label))));
+  if (time.meaning === TIME_MEANING.NOT_AFTER)
+    return word(PDF_COPY.timeUntil(clock(ltr(time.label))));
   return time.endLabel && time.endLabel !== time.label
     ? ltr(`${time.label}\u2013${time.endLabel}`)
     : ltr(time.label);
@@ -886,6 +908,14 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
    costs 18px of a 288px copy column and buys every title starting at the same x. */
 .pdf-event{grid-template-columns:56px minmax(0,1fr);}
 .pdf-event-time{white-space:nowrap;}
+/* **Prose inside the time cell, which is set in a face with no Hebrew.** The cell's own
+   font SHORTHAND names JetBrains Mono and nothing else, and JetBrains ships no Hebrew on
+   purpose — so the two flexible words printed .notdef boxes until this rule (owner,
+   2026-08-31, with a photograph). Assistant for the word; the clock beside it re-sets
+   .pdf-mono, so the time column keeps ONE face for its numbers whatever the edge means.
+   The EIGHTH family this shorthand has eaten in this file, and the first to reach a
+   reader — a bare font-size cannot make the mistake at all. */
+.pdf-word{font-family:'Assistant',sans-serif;}
 /* One frame over N legs, with the waits named between them. break-inside:avoid so a flight
    and its layover never land on two pages. */
 /* The journey block now carries its own header, so the box holds the whole thing rather than

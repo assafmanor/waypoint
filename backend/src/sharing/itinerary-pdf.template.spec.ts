@@ -15,6 +15,10 @@ import { DENSE_REFERENCE_TRIP, NINE_DAY_REFERENCE_TRIP } from './itinerary-pdf.f
 
 const QR = 'data:image/png;base64,iVBORw0KGgo=';
 
+/** One event row's time cell and its contents. `.pdf-event-copy` always follows it, which is
+ *  what lets a lazy match reach the cell's OWN close tag rather than a nested one. */
+const TIME_CELL = /<span class="pdf-event-time">([\s\S]*?)<\/span><span class="pdf-event-copy">/g;
+
 const input = (projection: SharedItinerary, photoDataUrls: Record<string, string> = {}) => ({
   projection,
   publicUrl: 'travelive.app/s/7Kq2mB9x',
@@ -214,9 +218,12 @@ describe('itineraryPdfHtml', () => {
    * behaviour inverted. The four arms are named individually here for that reason.
    */
   it('spells each of the four time meanings, and gates none of them on `hard`', () => {
+    // **The cell holds MARKUP now**, since the flexible words are set in Assistant while
+    // their clock stays mono (2026-08-31). It is always followed by `.pdf-event-copy`, which
+    // is what makes the lazy match exact rather than stopping at a nested close tag.
     const timesOf = (html: string) =>
-      [...html.matchAll(/class="pdf-event-time">([^<]*)</g)].map((m) =>
-        m[1].replace(/[\u2066-\u2069]/g, ''),
+      [...html.matchAll(TIME_CELL)].map((m) =>
+        m[1].replace(/<[^>]*>/g, '').replace(/[\u2066-\u2069]/g, ''),
       );
 
     const day = NINE_DAY_REFERENCE_TRIP.days[0]!;
@@ -286,16 +293,54 @@ describe('itineraryPdfHtml', () => {
   // container's Liberation Mono, and `12 ימים · עודכן` printed as empty rectangles while the
   // headings two lines above were perfect. The check is structural rather than visual: no
   // element that sets a mono face may receive a Hebrew codepoint.
+  /** **The untimed cell, which is prose in a mono box** — the older half of the same defect,
+   *  found by widening the guard below rather than by looking. Pinned separately because the
+   *  reference trip has no untimed row, so the guard alone would go quiet the moment one
+   *  stopped being rendered. */
+  it('wraps the flexible word so it is not asked of a Latin-only face', () => {
+    const withUntimed = render({
+      ...NINE_DAY_REFERENCE_TRIP,
+      days: [
+        {
+          ...NINE_DAY_REFERENCE_TRIP.days[0]!,
+          sections: [
+            {
+              daypart: SHARE_DAYPART.FLEXIBLE,
+              events: [{ title: 'שוק הפשפשים', daypart: SHARE_DAYPART.FLEXIBLE }],
+            },
+          ],
+        },
+      ],
+    });
+    expect(withUntimed).toContain(`<span class="pdf-word">${PDF_COPY.dayparts.flexible}</span>`);
+  });
+
   it('keeps every Hebrew run out of a mono element', () => {
     const HEBREW = /[\u0590-\u05FF]/;
     for (const run of full.match(/<span class="pdf-num">[^<]*<\/span>/g) ?? []) {
       expect(HEBREW.test(run)).toBe(false);
+    }
+    // **`.pdf-num` was the whole of this check, and that is how the tofu shipped**
+    // (2026-08-31). `.pdf-event-time` is a SECOND element setting a mono `font` shorthand,
+    // and it only ever held digits until the flexible edges put `מ-`/`עד` in it — so the
+    // loop above was true and useless. Every element that names a mono face is listed here
+    // now, and a mixed-script one must scope the mono to an inner run.
+    for (const run of full.match(/<span class="pdf-mono">[^<]*<\/span>/g) ?? []) {
+      expect(HEBREW.test(run)).toBe(false);
+    }
+    for (const [, cell] of full.matchAll(TIME_CELL)) {
+      // Hebrew may appear in the cell, but ONLY inside `.pdf-word`, which re-sets Assistant.
+      // Everything else there inherits the cell's mono shorthand and would print boxes.
+      expect(HEBREW.test(cell.replace(/<span class="pdf-word">[\s\S]*<\/span>/g, ''))).toBe(false);
     }
     // The rows that DO mix scripts must be set in Assistant, with mono scoped to the run.
     expect(full).toContain(
       ".pdf-subtitle{margin-block-start:6px;color:var(--pdf-muted);font:500 9px 'Assistant'",
     );
     expect(full).toContain(".pdf-num{font-family:'JetBrains Mono',monospace;}");
+    // …and the time cell's escape hatch really is declared, or the carve-out above lets a
+    // Hebrew run through on the word of a class nothing defines.
+    expect(full).toContain(".pdf-word{font-family:'Assistant',sans-serif;}");
     // …and the subtitle really does carry both scripts, or the assertion above is vacuous.
     const subtitle = /<div class="pdf-subtitle">.*?<\/div>/s.exec(full)?.[0] ?? '';
     expect(HEBREW.test(subtitle)).toBe(true);

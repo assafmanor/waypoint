@@ -399,11 +399,17 @@ describe('SharedItinerary', () => {
         fullProjection.days[1],
       ],
     });
-    renderShared();
+    const { container } = renderShared();
 
     await screen.findByText('איסלנד עם המשפחה');
-    expect(screen.getByText(plain(t.share.public.timeFrom('10:00')))).toBeTruthy();
-    expect(screen.getByText(plain(t.share.public.timeUntil('11:00')))).toBeTruthy();
+    // **The word and the clock are two elements**, because the word is prose and `.sh-time`
+    // is a mono face with no Hebrew (2026-08-31). So the assertion reads the composed line
+    // rather than looking for one node holding both.
+    const said = [...container.querySelectorAll('.sh-said')].map((el) =>
+      withoutBidiControls(el.textContent ?? ''),
+    );
+    expect(said).toContain(withoutBidiControls(t.share.public.timeFrom('10:00')));
+    expect(said).toContain(withoutBidiControls(t.share.public.timeUntil('11:00')));
     // A closed window prints both bounds (ADR-0184 §1) — the one flexible arm that does.
     expect(screen.getByText(plain(t.share.public.timeRange('17:00', '21:00')))).toBeTruthy();
     // …and the hire's far end never reaches the page as the other half of a range, which is

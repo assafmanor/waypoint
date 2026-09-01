@@ -549,6 +549,17 @@
   white-space: nowrap;
 }
 
+/* **A clock with a word in front of it** (`מ-15:00`, `עד 11:00`). The word is prose and
+   must NOT be set in `--font-mono`: JetBrains ships no Hebrew on purpose, so on paper it
+   printed `.notdef` boxes and on screen it borrows whatever Hebrew mono the device has.
+   The wrapper carries the hue and the body face; `.sh-time` inside it keeps the number in
+   mono, so the time column reads with ONE face for its digits whatever the edge means. */
+.sh-said {
+  color: var(--amber-deep);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* The derived noun in front of an event's place line — what the row IS, from its booking's
    type. Neutral and bold rather than coloured: it is a label, and the colour budget's two
    spends on this line are already taken (amber for the hour, and nothing for the place). */
