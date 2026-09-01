@@ -130,7 +130,7 @@ const READY_TRIP: Fixture = {
 };
 
 const zonesFor = (): Promise<TripZones> =>
-  Promise.resolve({ crossings: [], primaryZone: 'Asia/Jerusalem' });
+  Promise.resolve({ crossings: [], primaryZone: 'Asia/Jerusalem', bookings: [], places: [] });
 
 const input = (prisma: PrismaService, nowMs: number): DueInput => ({ prisma, nowMs, zonesFor });
 

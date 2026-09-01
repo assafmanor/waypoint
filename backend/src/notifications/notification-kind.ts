@@ -35,10 +35,22 @@ import type {
 } from '@waypoint/shared';
 import type { PrismaService } from '../prisma/prisma.service';
 
-/** A trip's zone facts, as a kind needs them to say what a wall clock means. */
+/**
+ * A trip's zone facts, as a kind needs them to say what a wall clock means.
+ *
+ * **The bookings and the places are the place rung** (2026-09-01), and they cost nothing:
+ * `loadZones` already reads both in full to derive the crossings, and simply did not keep
+ * them. Without them a kind can only ask which segment an instant falls in — which is where
+ * you ARE, not what a clock SAYS — so a flight's departure resolved to its destination and a
+ * hotel standing in a zone the itinerary says you have not reached resolved to the segment.
+ * Untyped here for the reason the crossing derivation is: these are Prisma rows, structurally
+ * compatible with `@waypoint/shared`'s entity shapes for the fields the resolvers read.
+ */
 export interface TripZones {
   crossings: ZoneCrossing[];
   primaryZone: string;
+  bookings: unknown[];
+  places: unknown[];
 }
 
 /** What a kind is given. Deliberately narrow: a database, a clock, and a way to ask what

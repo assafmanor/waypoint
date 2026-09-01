@@ -25,6 +25,9 @@ interface EventLike {
   startWindowEnd: Date | null;
   endWindowStart: Date | null;
   displayTimezone: string | null;
+  /** The place rung `eventZones` resolves a per-end zone through (2026-09-01). */
+  placeId: string | null;
+  bookingId: string | null;
 }
 
 /** A hard, timed, single-day `food` event — the shape that fires `event.hard.soon` at a 30
@@ -45,6 +48,8 @@ function ev(over: Partial<EventLike> = {}): EventLike {
     startWindowEnd: null,
     endWindowStart: null,
     displayTimezone: null,
+    placeId: null,
+    bookingId: null,
     ...over,
   };
 }
@@ -151,7 +156,7 @@ function fakePrisma(options: {
 const zonesFor =
   (zone = 'Asia/Jerusalem') =>
   (): Promise<TripZones> =>
-    Promise.resolve({ crossings: [], primaryZone: zone });
+    Promise.resolve({ crossings: [], primaryZone: zone, bookings: [], places: [] });
 const input = (prisma: PrismaService, nowMs: number, zone?: string): DueInput => ({
   prisma,
   nowMs,
@@ -254,6 +259,56 @@ describe('event.hard.soon', () => {
     const sends = await eventSoonKind.due(input(prisma, now));
     // 15:30 UTC is 18:30 in Tel Aviv and 00:30 in Tokyo.
     expect(sends[0].payload.body).toContain('00:30');
+  });
+
+  /**
+   * **A DEPARTURE IS STATED WHERE YOU BOARD** (2026-09-01, the notification half of the
+   * defect ADR-0213's sixteenth amendment fixed on the shared page).
+   *
+   * `eventZone` resolved ONE zone through `currentZone`, and a crossing is stamped at the
+   * flight's departure — so the instant of take-off already sits on the destination's side and
+   * a "your flight leaves soon" ping stated the hour in the city you had not reached. Here
+   * that is not a cosmetic hour: ADR-0197 §5 calls a reminder at the wrong local time the one
+   * bug that gets the feature turned off.
+   *
+   * The stub carries what the real sweep already loads — the flight's booking and its two
+   * endpoint places — because with empty arrays every zone question falls through to the
+   * primary and the defect is invisible, which is exactly why the existing tests here could
+   * not see it.
+   */
+  it('states a flight’s departure in its ORIGIN’s zone, not its destination’s', async () => {
+    const flight = ev({
+      id: 'ev-flight',
+      title: 'טיסה לוינה',
+      category: 'transport',
+      bookingId: 'bk-1',
+      // 15:30 UTC = 18:30 Tel Aviv = 17:30 Vienna.
+      startsAt: new Date(utc('2026-08-21T15:30:00Z')),
+      endsAt: new Date(utc('2026-08-21T19:15:00Z')),
+    });
+    const { prisma } = fakePrisma({ events: [flight] });
+    const crossingZones = (): Promise<TripZones> =>
+      Promise.resolve({
+        primaryZone: 'Europe/Vienna',
+        crossings: [
+          {
+            at: utc('2026-08-21T15:30:00Z'),
+            fromZone: 'Asia/Jerusalem',
+            toZone: 'Europe/Vienna',
+          },
+        ],
+        bookings: [{ id: 'bk-1', type: 'flight', fromPlaceId: 'p-tlv', toPlaceId: 'p-vie' }],
+        places: [
+          { id: 'p-tlv', timezone: 'Asia/Jerusalem' },
+          { id: 'p-vie', timezone: 'Europe/Vienna' },
+        ],
+      });
+    const sends = await eventSoonKind.due({ prisma, nowMs: now, zonesFor: crossingZones });
+
+    // 18:30 Tel Aviv — the hour on the boarding pass. Not 17:30, which is when it is in the
+    // city it is flying to, and which is what the segment lookup answered.
+    expect(sends[0].payload.body).toContain('18:30');
+    expect(sends[0].payload.body).not.toContain('17:30');
   });
 
   it('says nothing about a trip that has ended', async () => {

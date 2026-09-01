@@ -1299,4 +1299,199 @@ describe('SharingProjectionService', () => {
       expect(rows.filter((event) => event.journey)).toHaveLength(1);
     });
   });
+
+  /**
+   * **A CLOCK MEANS THE ZONE ITS END IS IN** (owner, 2026-09-01, with the app, the reader
+   * page and the PDF side by side: _"The timezone derivation is simply wrong - see how plan
+   * day doesn't agree with the times. And how the durations don't add up"_).
+   *
+   * The fixture is the owner's own outbound, to the minute, because every number in the
+   * report is reproducible from it:
+   *
+   * | row                | app (correct) | sharing shipped |
+   * | ------------------ | ------------- | --------------- |
+   * | TLV → VIE          | `15:30–18:15` | `14:30–18:15`   |
+   * | VIE → KEF          | `21:00–23:20` | `19:00–23:20`   |
+   * | check-in, Iceland  | `15:00`       | `17:00`         |
+   *
+   * Departures are wrong by exactly that leg's own zone shift and arrivals are right, which
+   * is the signature of rendering BOTH ends of a leg in the destination's zone.
+   */
+  describe('the zone a shared clock is printed in', () => {
+    let zoneTripId = '';
+
+    beforeAll(async () => {
+      const trip = await prisma.trip.create({
+        data: {
+          name: 'איסלנד ׳26',
+          destination: 'איסלנד',
+          startDate: new Date('2026-09-11'),
+          endDate: new Date('2026-09-12'),
+          // The trip's primary zone is the DESTINATION's, which is what makes the outbound
+          // day the interesting one: none of its rows are in it.
+          timezone: 'Atlantic/Reykjavik',
+          createdBy: OWNER,
+          updatedBy: OWNER,
+          memberships: { create: [{ userId: OWNER, role: 'admin' }] },
+        },
+      });
+      zoneTripId = trip.id;
+
+      const place = (name: string, timezone: string) =>
+        prisma.place.create({ data: { tripId: trip.id, name, timezone, updatedBy: OWNER } });
+      const [tlv, vie, kef, hotel] = await Promise.all([
+        place('נתב״ג', 'Asia/Jerusalem'),
+        place('וינה', 'Europe/Vienna'),
+        place('קפלאוויק', 'Atlantic/Reykjavik'),
+        place('Gissurarbúð 5', 'Atlantic/Reykjavik'),
+      ]);
+
+      const leg = async (from: string, to: string, startsAt: string, endsAt: string) => {
+        const booking = await prisma.booking.create({
+          data: {
+            tripId: trip.id,
+            type: 'flight',
+            title: 'טיסה',
+            fromPlaceId: from,
+            toPlaceId: to,
+            updatedBy: OWNER,
+          },
+        });
+        return prisma.event.create({
+          data: {
+            tripId: trip.id,
+            date: new Date('2026-09-11'),
+            title: 'טיסה',
+            kind: 'hard',
+            startsAt: new Date(startsAt),
+            endsAt: new Date(endsAt),
+            bookingId: booking.id,
+            updatedBy: OWNER,
+          },
+        });
+      };
+      // 15:30 Jerusalem → 18:15 Vienna, then 21:00 Vienna → 23:20 Reykjavík.
+      await leg(tlv.id, vie.id, '2026-09-11T12:30:00Z', '2026-09-11T16:15:00Z');
+      await leg(vie.id, kef.id, '2026-09-11T19:00:00Z', '2026-09-11T23:20:00Z');
+
+      // **The check-in floor is the HOTEL's fact, not the traveller's**: 15:00 Iceland local,
+      // hours before the guests actually land at 23:20. That is what makes it the sharpest
+      // case for the missing place rung — the crossings say you are still in Vienna.
+      const stayBooking = await prisma.booking.create({
+        data: {
+          tripId: trip.id,
+          type: 'hotel',
+          title: 'Gissurarbúð 5',
+          placeId: hotel.id,
+          updatedBy: OWNER,
+        },
+      });
+      await prisma.event.create({
+        data: {
+          tripId: trip.id,
+          date: new Date('2026-09-11'),
+          title: 'Gissurarbúð 5',
+          kind: 'hard',
+          startsAt: new Date('2026-09-11T15:00:00Z'),
+          endsAt: new Date('2026-09-12T11:00:00Z'),
+          placeId: hotel.id,
+          bookingId: stayBooking.id,
+          updatedBy: OWNER,
+        },
+      });
+    });
+
+    afterAll(async () => {
+      if (zoneTripId) await prisma.trip.deleteMany({ where: { id: zoneTripId } });
+    });
+
+    const project = async () => {
+      const code = generatePublicCode();
+      // One row per (tripId, policyHash) — ADR-0213's tenth amendment — so a second read at
+      // the same policy rotates the link rather than adding one.
+      await prisma.tripShare.deleteMany({ where: { tripId: zoneTripId } });
+      await prisma.tripShare.create({
+        data: {
+          tripId: zoneTripId,
+          code,
+          policyHash: sharePolicyHash({
+            detailLevel: SHARE_DETAIL_LEVEL.FULL,
+            sensitive: { bookingSecrets: false, notesAndTasks: false, travelerIdentity: false },
+            documentIds: [],
+          }),
+          detailLevel: SHARE_DETAIL_LEVEL.FULL,
+          includeBookingSecrets: false,
+          includeNotesAndTasks: false,
+          includeTravelerIdentity: false,
+          createdBy: OWNER,
+        },
+      });
+      return service.byCode(code);
+    };
+
+    it('prints each leg’s departure in its ORIGIN’s zone and its arrival in its destination’s', async () => {
+      const projection = await project();
+      const rows = projection.days.flatMap((day) =>
+        day.sections.flatMap((section) => section.events),
+      );
+      const journey = rows.find((event) => event.legs);
+      expect(journey?.legs, 'the two flights should chain into one journey').toHaveLength(2);
+
+      // 15:30 Jerusalem, NOT 14:30 Vienna — the hour a traveller boards.
+      expect(journey?.legs?.[0].startLabel).toBe('15:30');
+      expect(journey?.legs?.[0].endLabel).toBe('18:15');
+      // 21:00 Vienna, NOT 19:00 Reykjavík.
+      expect(journey?.legs?.[1].startLabel).toBe('21:00');
+      expect(journey?.legs?.[1].endLabel).toBe('23:20');
+
+      // And the journey's own span is the first departure to the last arrival, each in its
+      // own end's zone — so the header reads `15:30–23:20`.
+      expect(journey?.time).toEqual({
+        label: '15:30',
+        endLabel: '23:20',
+        meaning: TIME_MEANING.EXACT,
+      });
+    });
+
+    /**
+     * **THE SECOND HALF OF THE REPORT** — _"And how the durations don't add up correctly"_.
+     *
+     * They could not: the printed span, the total beside it and the zone-shift pill are three
+     * views of one journey, and the span was being printed in the wrong zone. So this asserts
+     * the identity that makes the card self-consistent rather than three specific numbers —
+     *
+     *     (printed arrival − printed departure) − zone shift = duration
+     *
+     * ⁦470⁩ wall-clock minutes from 15:30 to 23:20, a −180 shift going west, and ⁦650⁩ minutes in
+     * the air and the terminal: ⁦470⁩ − (−⁦180⁩) = ⁦650⁩. Before the fix the departure printed
+     * 14:30, making it ⁦530⁩ + ⁦180⁩ = ⁦710⁩ against a stated ⁦650⁩ — an hour of a reader's trust,
+     * and the arithmetic the owner did by eye.
+     */
+    it('prints a span that reconciles with the duration and the zone shift beside it', async () => {
+      const projection = await project();
+      const journey = projection.days
+        .flatMap((day) => day.sections.flatMap((section) => section.events))
+        .find((event) => event.legs);
+
+      const minutes = (label: string) => {
+        const [h, m] = label.split(':').map(Number);
+        return h * 60 + m;
+      };
+      expect(journey?.startLabel).toBeTruthy();
+      expect(journey?.endLabel).toBeTruthy();
+      expect(journey?.durationMinutes).toBeTruthy();
+      expect(journey?.zoneShiftMinutes).toBeTruthy();
+
+      const wall = minutes(journey!.endLabel!) - minutes(journey!.startLabel!);
+      expect(wall - journey!.zoneShiftMinutes!).toBe(journey!.durationMinutes);
+    });
+
+    it('prints the stay’s check-in in the hotel’s own zone, not the segment you are still in', async () => {
+      const projection = await project();
+      const day = projection.days.find((d) => d.checkIn);
+      // 15:00 Iceland. The crossings put you in Vienna at that instant, which is true and is
+      // not the question: the hotel's door opens at 15:00 where the hotel is.
+      expect(day?.checkIn?.label).toBe('15:00');
+    });
+  });
 });

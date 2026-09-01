@@ -19,7 +19,7 @@ import {
   type TripZones,
 } from '../notification-kind';
 import { tripTomorrowPayload } from '../notify-copy';
-import { EVENT_SELECT, eventZone, type EventRow } from './event-shape';
+import { EVENT_SELECT, eventZones, type EventRow } from './event-shape';
 import { tripAudience } from './trip-audience';
 
 /** The local hour. Evening, so there is still time to pack — and a fixed hour for the same
@@ -123,6 +123,6 @@ async function firstTimedThing(
   return {
     title: first.title,
     atMs: first.startsAt.getTime(),
-    zone: eventZone(first, zones, first.startsAt.getTime()),
+    zone: eventZones(first, zones).start,
   };
 }

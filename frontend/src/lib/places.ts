@@ -20,6 +20,7 @@ import {
   bookingEndZones,
   bookingZoneOverrides,
   currentZone,
+  eventDisplayZones,
   placeTimezone,
   segmentZoneAt,
   tripZoneCrossings,
@@ -30,6 +31,7 @@ export {
   bookingEndZones,
   bookingZoneOverrides,
   currentZone,
+  eventDisplayZones,
   placeTimezone,
   segmentZoneAt,
   tripZoneCrossings,
@@ -251,6 +253,12 @@ export function bookingRoute(
 // to come from the same code — a send time and a printed time that disagree is the 03:00
 // notification.
 //
+// **And `eventDisplayZones` followed them on 2026-09-01, which the first sweep should have
+// done.** Moving the primitives and leaving the composer here meant the server had the parts
+// and not the answer, so it used `currentZone` — a different question — and the shared page
+// printed every departure in the destination's zone. A promotion that stops at the primitives
+// leaves the door it was closing open.
+//
 // **Re-exported here, and this file is not a second definition.** Every consumer keeps
 // importing from `lib/places`, which is where they have always looked; `zones.ts` is the
 // one implementation. When you need to change the behaviour, change it there.
@@ -388,48 +396,22 @@ export function liveZone(nowMs: number, evidence: ZoneEvidence): string {
   return dayAmbientZone(todayInTz(segment, new Date(nowMs)), evidence);
 }
 
-/** The resolved display zones for an event's start and end (they differ only for
- *  zone-crossing transport). Priority (ADR-0107 §3/§6, ADR-0110 §94-99):
- *    1. The event's `displayTimezone` manual override — both ends. (The chip on a
- *       standalone event; a booking-linked event is pinned per-end instead, below.)
- *    2. The **booking's** per-end override — the chip in the booking form, which is
- *       what a zone-crossing pair needs: one override per end, not one for both.
- *    3. Attached place — transport renders start in `fromPlace`, end in `toPlace`;
- *       any other place drives both ends.
- *    4. Placeless (or a coordless place) — the itinerary segment's zone.
- *    5. Nothing anchors it — the trip primary zone.
+/**
+ * **Re-exported from `@waypoint/shared`, where it now lives** (2026-09-01).
  *
- *  Steps 2-3 are per-end, so a flight can take its origin from a pinned zone and
- *  its destination from a real place, or vice versa. */
-export function eventDisplayZones(
-  event: TripEvent,
-  opts: { bookings: Booking[]; places: Place[]; crossings: ZoneCrossing[]; primaryZone: string },
-): { start: string; end: string } {
-  const { bookings, places, crossings, primaryZone } = opts;
-  if (event.displayTimezone) {
-    return { start: event.displayTimezone, end: event.displayTimezone };
-  }
-
-  const zoneForInstant = (iso: string | undefined): string =>
-    (iso ? segmentZoneAt(Date.parse(iso), crossings) : undefined) ?? primaryZone;
-
-  const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
-  if (booking && isTransport(booking)) {
-    const known = bookingEndZones(booking, places);
-    return {
-      start: known.from ?? zoneForInstant(event.startsAt),
-      end: known.to ?? zoneForInstant(event.endsAt ?? event.startsAt),
-    };
-  }
-
-  const single = booking
-    ? bookingEndZones(booking, places).from
-    : placeTimezone(places, eventPlaceId(event, booking));
-  if (single) return { start: single, end: single };
-
-  const zone = zoneForInstant(event.startsAt);
-  return { start: zone, end: zone };
-}
+ * It was defined here, and the server answered the same question with `currentZone` alone —
+ * so the shared page and the PDF printed every flight departure in the destination's zone and
+ * an Iceland hotel's check-in in Vienna. ADR-0197 §5's sweep had already moved the zone
+ * primitives into `shared/zones.ts` for exactly this reason and left this composer behind;
+ * `zones.ts` now carries both, and its docblock is the one to read.
+ *
+ * Kept as a named re-export rather than asking ~10 call sites to change their import: this
+ * module is the frontend's zone door, and the point of the move is that there is one
+ * implementation, not that everyone learns a new path.
+ */
+/* Re-exported in the block at the top of this file, beside the primitives it composes —
+   this module is the frontend's zone door, and the point of the move is that there is one
+   implementation, not that ~10 call sites learn a new import path. */
 
 /** The zone a **form** interprets a typed wall-clock in (ADR-0107 §2) — the same
  *  answer `eventDisplayZones` will give the day view once the draft is saved, so a

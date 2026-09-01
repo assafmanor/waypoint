@@ -30,7 +30,7 @@ import {
 } from '../notification-kind';
 import { eventSoonPayload } from '../notify-copy';
 import { tripAudience } from './trip-audience';
-import { eventDayKey, EVENT_SELECT, eventZone, type EventRow } from './event-shape';
+import { eventDayKey, EVENT_SELECT, eventZones, type EventRow } from './event-shape';
 
 /** One hour. A commitment you were told about ninety minutes late is a commitment you have
  *  already missed or already made; either way the send is noise (ADR-0197 §3). */
@@ -84,7 +84,8 @@ export const eventSoonKind: NotificationKind = {
       if (aimedAtMs > nowMs) continue;
 
       const zones = await zonesFor(event.tripId);
-      const zone = eventZone(event, zones);
+      // An event's own start: "starts soon" is about boarding, so the origin's clock.
+      const zone = eventZones(event, zones).start;
       const payload = eventSoonPayload({
         tripId: event.tripId,
         dateKey: eventDayKey(event, zone),

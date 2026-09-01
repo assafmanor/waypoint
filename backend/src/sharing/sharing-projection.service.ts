@@ -21,7 +21,9 @@ import {
   TIME_MEANING,
   type SharedTime,
   sharedItinerarySchema,
+  eventDisplayZones,
   tripZoneCrossings,
+  type ZoneCrossing,
   zoneOffsetAt,
   type ShareDaypart,
   type ShareDetailLevel,
@@ -47,7 +49,7 @@ import {
   type SharedPhoto,
   type TripEnrichments,
 } from '@waypoint/shared';
-import { eventDisplayZone, type TripZoneContext } from '../common/event-zone.util';
+
 import { EnrichmentService } from '../enrichment/enrichment.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -544,9 +546,52 @@ const stripUndefined = <T extends object>(value: T): T =>
  * end is a different day's fact, so it is deliberately NOT printed as the other half of a
  * range — which is exactly the defect above.
  */
-function sharedTimeOf(event: ShareEventRow, zone: string): SharedTime | undefined {
+/**
+ * **The zone context a shared clock is resolved against**, and the seam between Prisma rows
+ * and `@waypoint/shared`'s resolvers.
+ *
+ * This replaces `common/event-zone.util.ts`, which is **deleted** (2026-09-01): it held one
+ * `eventDisplayZone` returning a single zone from `currentZone`, with no place rung — the
+ * answer to _where are you now_, standing in for _what does this clock say_. Both of its
+ * readers now ask the per-end resolver in `@waypoint/shared`, so the file's remaining value
+ * was a two-field interface and its remaining risk was that the next person looking for a
+ * zone would find the wrong function first. The four arrays here are all already loaded for
+ * the crossing derivation, so the richer answer costs no query.
+ */
+interface ShareZoneContext {
+  crossings: ZoneCrossing[];
+  primaryZone: string;
+  bookings: unknown[];
+  places: unknown[];
+}
+
+/**
+ * **Which zone each END of a row is printed in** (owner, 2026-09-01: _"The timezone
+ * derivation is simply wrong"_).
+ *
+ * One cast site rather than four: the shared resolvers are typed against `@waypoint/shared`'s
+ * entity shapes and Prisma hands us row types that are structurally compatible for the fields
+ * they read — the same seam `tripZoneCrossings` is already called across, one screen up.
+ * Naming it once means the next caller cannot pick a different seam.
+ */
+function displayZones(
+  event: ShareEventRow,
+  zones: ShareZoneContext,
+): { start: string; end: string } {
+  return eventDisplayZones(event as never, {
+    bookings: zones.bookings as never,
+    places: zones.places as never,
+    crossings: zones.crossings,
+    primaryZone: zones.primaryZone,
+  });
+}
+
+function sharedTimeOf(
+  event: ShareEventRow,
+  zones: { start: string; end: string },
+): SharedTime | undefined {
   if (!event.startsAt) return undefined;
-  const label = shareTimeLabel(event.startsAt, zone);
+  const label = shareTimeLabel(event.startsAt, zones.start);
   const meaning = edgeMeaning(
     {
       // Prisma's columns are nullable and `TripEvent`'s fields are optional, which is the
@@ -562,7 +607,10 @@ function sharedTimeOf(event: ShareEventRow, zone: string): SharedTime | undefine
   if (meaning === TIME_MEANING.WINDOW) {
     // Both bounds authored, so both print — and this is the ONE case where the second label
     // is the window's own ceiling rather than the event's `endsAt`.
-    const ceiling = event.startWindowEnd ? shareTimeLabel(event.startWindowEnd, zone) : undefined;
+    // The window's ceiling is the same edge as its floor, so it takes the START zone.
+    const ceiling = event.startWindowEnd
+      ? shareTimeLabel(event.startWindowEnd, zones.start)
+      : undefined;
     return ceiling && ceiling !== label
       ? { label, endLabel: ceiling, meaning }
       : { label, meaning };
@@ -570,7 +618,8 @@ function sharedTimeOf(event: ShareEventRow, zone: string): SharedTime | undefine
   if (meaning === TIME_MEANING.NOT_BEFORE) return { label, meaning };
   // `exact`: the end prints when there is one and it differs — a flight's arrival, a hike's
   // finish. No `hard` gate, which is the change.
-  const endLabel = event.endsAt ? shareTimeLabel(event.endsAt, zone) : undefined;
+  // **The far end in ITS OWN zone** — a flight's arrival is a fact about where it lands.
+  const endLabel = event.endsAt ? shareTimeLabel(event.endsAt, zones.end) : undefined;
   return endLabel && endLabel !== label
     ? { label, endLabel, meaning: TIME_MEANING.EXACT }
     : { label, meaning: TIME_MEANING.EXACT };
@@ -619,7 +668,7 @@ function stayMoments(
   stays: readonly (string | undefined)[],
   index: number,
   detail: ShareDetailLevel,
-  zones: TripZoneContext,
+  zones: ShareZoneContext,
 ): { checkIn?: SharedTime; checkOut?: SharedTime } {
   // Summary carries no clock at all — the same line `projectEvent` draws.
   if (detail === SHARE_DETAIL_LEVEL.SUMMARY) return {};
@@ -629,7 +678,7 @@ function stayMoments(
   const previous = stays[index - 1];
   // The run begins here: either nothing preceded it, or you slept somewhere else last night.
   if (here && stays[index] !== previous) {
-    const time = sharedTimeOf(here, eventDisplayZone(here, zones));
+    const time = sharedTimeOf(here, displayZones(here, zones));
     if (time) out.checkIn = time;
   }
 
@@ -637,7 +686,8 @@ function stayMoments(
   // which is the check-out instant — never off today's stay, whose end is days away.
   const left = stayRows[index - 1];
   if (previous && previous !== stays[index] && left?.endsAt) {
-    const zone = eventDisplayZone(left, zones);
+    // A check-out is the stay's FAR end, so it is printed in the stay's end zone.
+    const zone = displayZones(left, zones).end;
     const meaning = edgeMeaning(
       {
         category: (left.category as EventCategory | null) ?? undefined,
@@ -747,11 +797,16 @@ export class SharingProjectionService {
       }),
     ]);
 
-    const zones: TripZoneContext = {
+    const zones: ShareZoneContext = {
       // The shared derivation reads four fields off these rows; Prisma's shapes are
       // structurally compatible for all of them, exactly as the notification sweep does it.
       crossings: tripZoneCrossings(events as never, zoneBookings as never, places as never),
       primaryZone: trip.timezone,
+      // **The same two arrays the crossings were built from**, carried so a printed clock can
+      // ask what each END means rather than which segment the instant falls in — the place
+      // rung `currentZone` deliberately does not have. No extra query: both are already here.
+      bookings: zoneBookings,
+      places,
     };
 
     // **What a day PASSES THROUGH, and a transport event passes through two places.**
@@ -1068,7 +1123,7 @@ export class SharingProjectionService {
    */
   private withJourneys(
     dayEvents: ShareEventRow[],
-    zones: TripZoneContext,
+    zones: ShareZoneContext,
     detail: ShareDetailLevel,
     journeys: Map<string, SharedEvent['journey']> | undefined,
     placeLabel: PlaceLabeller,
@@ -1294,7 +1349,7 @@ export class SharingProjectionService {
     events: ShareEventRow[],
     startDate: Date,
     endDate: Date,
-    zones: TripZoneContext,
+    zones: ShareZoneContext,
   ): { date: string; events: ShareEventRow[] }[] {
     const grouped = new Map<string, ShareEventRow[]>();
     // An ambient multi-day span is listed on the day it starts, once (ADR-0209): repeating a
@@ -1303,7 +1358,7 @@ export class SharingProjectionService {
       // **A pre-dawn hour is the night before** (`sharePreviousNight`). Read in the event's
       // OWN display zone, ADR-0107's resolver, so a landing is filed by the clock the
       // traveller reads it on and not by the trip's primary zone.
-      const key = sharePreviousNight(event.startsAt, eventDisplayZone(event, zones))
+      const key = sharePreviousNight(event.startsAt, displayZones(event, zones).start)
         ? previousDayKey(event.date)
         : dayKey(event.date);
       const bucket = grouped.get(key);
@@ -1325,7 +1380,7 @@ export class SharingProjectionService {
 
   private projectEvent(
     event: ShareEventRow,
-    zones: TripZoneContext,
+    zones: ShareZoneContext,
     detail: ShareDetailLevel,
     journey: SharedEvent['journey'],
     placeLabel: PlaceLabeller,
@@ -1333,8 +1388,10 @@ export class SharingProjectionService {
     captionOf: (placeId: string | undefined) => string | undefined,
     placeById: ReadonlyMap<string, { timezone: string | null }>,
   ): SharedEvent {
-    const zone = eventDisplayZone(event, zones);
-    const daypart = shareDaypart(event.startsAt, zone);
+    const zone = displayZones(event, zones);
+    // **Which part of the day a row sits in is a question about where it STARTS** — a flight
+    // leaving Tel Aviv in the afternoon is an afternoon row, whatever hour it lands at.
+    const daypart = shareDaypart(event.startsAt, zone.start);
     const base: SharedEvent = {
       title: event.title,
       icon: event.icon,
@@ -1370,8 +1427,12 @@ export class SharingProjectionService {
       ...base,
       ...(caption ? { caption } : {}),
       ...(rowOps.length > 0 ? { ops: rowOps } : {}),
-      startLabel: event.startsAt ? shareTimeLabel(event.startsAt, zone) : undefined,
-      endLabel: event.endsAt ? shareTimeLabel(event.endsAt, zone) : undefined,
+      // **Each end in its own zone** (2026-09-01): a departure is a fact about where you
+      // board and an arrival about where you land, so a zone-crossing leg prints two clocks
+      // that are not in the same zone — and its wall-clock difference is then correctly NOT
+      // its duration.
+      startLabel: event.startsAt ? shareTimeLabel(event.startsAt, zone.start) : undefined,
+      endLabel: event.endsAt ? shareTimeLabel(event.endsAt, zone.end) : undefined,
       ...(sharedTimeOf(event, zone) ? { time: sharedTimeOf(event, zone)! } : {}),
       ...(isTransport(event) ? travelFacts(event, placeById) : {}),
       placeName: label,

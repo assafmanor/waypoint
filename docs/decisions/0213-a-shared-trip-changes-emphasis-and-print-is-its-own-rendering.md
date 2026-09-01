@@ -2275,3 +2275,25 @@ amendment adds no mockup.
   drawn by CI and by the container smoke rather than by a person opening a PDF.
 - `strip` (markup + bidi isolates off a cell) is hoisted to one helper rather than copied a third
   time.
+
+## Amendment — the clock was right and the zone was not (2026-09-01, sixteenth pass)
+
+> _"The timezone derivation is simply wrong - see how plan day doesn't agree with the times.
+> And how the durations don't add up correctly"_
+
+**The finding is not this feature's, so the record lives in
+[ADR-0107](0107-per-place-timezones-and-multi-zone-time.md)'s 2026-09-01 amendment** — read that
+one. In short: the server resolved an event's clock through `currentZone`, which answers _where
+are you now_ and has no place rung, so every flight departure printed in the DESTINATION's zone
+and an Iceland hotel's check-in printed in Vienna. ADR-0107's own per-end resolver
+(`eventDisplayZones`) was left in the frontend when ADR-0197 §5 promoted the zone primitives to
+`packages/shared`; it is shared now, and the notification sweep — which had the same defect on a
+surface where an hour is worse — moved with it.
+
+What belongs here is only what it says about **this** feature: the shared page and the PDF were
+both wrong, identically, and neither renderer was at fault. Both spell `startLabel`/`endLabel`/
+`time` off the projection, which is what the twelfth amendment §1 asked them to do, so a wrong
+value upstream reached paper and screen alike with no disagreement between them to notice it.
+That is the intended shape — two renderers that cannot differ about a fact (ADR-0159 §1) — and
+its cost is that agreement is no longer evidence of correctness. The evidence has to be a
+fixture that crosses a zone, which the sharing specs did not have and now do.

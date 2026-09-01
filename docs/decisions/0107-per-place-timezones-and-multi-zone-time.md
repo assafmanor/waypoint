@@ -217,3 +217,104 @@ Three facts about that table are the point:
 **What day it is stays on the primary zone here.** `today` and `isEventPast` inside `scheduleParts` answer "is this behind me", not "what does the clock say", and moving them is the day-rollover rule (§4), not this one. Left as it was, on purpose.
 
 The anti-pattern is now written down as the read-side twin of session 128's authoring rule: **rendering a stored instant with `trip.timezone` instead of the event's resolved display zone.** Both halves of that pair have now cost a field report.
+
+## Amendment (2026-09-01) — the server had the parts and not the answer
+
+Owner, with the app, the reader page and the PDF side by side:
+
+> _"The timezone derivation is simply wrong - see how plan day doesn't agree with the times. And
+> how the durations don't add up correctly"_
+
+Reproduced to the minute from the owner's own outbound. The app was right on every row; both
+sharing renderers were wrong on three:
+
+| row                     | app (correct) | server shipped |
+| ----------------------- | ------------- | -------------- |
+| נתב״ג → וינה            | `15:30–18:15` | `14:30–18:15`  |
+| וינה → קפלאוויק         | `21:00–23:20` | `19:00–23:20`  |
+| check-in, Gissurarbúð 5 | `15:00`       | `17:00`        |
+
+**Departures wrong by exactly that leg's own zone shift, arrivals right** — the signature of
+rendering both ends of a leg in the destination's zone.
+
+### §1 · `currentZone` was standing in for a question it does not answer
+
+The server resolved an event's clock through `common/event-zone.util.ts`'s `eventDisplayZone`:
+one zone, from `currentZone`, **with no place rung at all** — a deliberate choice, and the
+docblock said so. Two things follow from it that the choice did not anticipate:
+
+- `tripZoneCrossings` stamps a crossing at the flight's **departure** (`at: startsAt`), and
+  `segmentZoneAt` returns `toZone` from that instant on. That is correct and intended for a
+  live clock — §8's mid-flight instant reads where you are going — and it means asking it about
+  a **departure's own clock** returns the far end.
+- With no place rung, anything standing in a place the itinerary says you have not reached
+  resolves to the segment instead. A hotel's door opens at 15:00 where the hotel is, hours
+  before its guests land; the crossings put that instant in Vienna.
+
+`eventDisplayZones` — this ADR's actual per-end resolver, §3/§6's priority ladder — answers
+both correctly and lived in `frontend/src/lib/places.ts`.
+
+### §2 · ADR-0197 §5's sweep moved the primitives and left the composer
+
+That sweep promoted `placeTimezone`, `bookingZoneOverrides`, `bookingEndZones`,
+`tripZoneCrossings`, `segmentZoneAt` and `currentZone` into `packages/shared/src/zones.ts`,
+for exactly this reason — its own file header says _"two implementations that agree today are
+how you get there"_. It left `eventDisplayZones` behind.
+
+So the server had every part of the answer and not the answer, and reached for the nearest
+thing that type-checked. **A promotion that stops at the primitives leaves open the door it was
+closing**, and that is the transferable lesson here: the composer is the thing consumers
+actually call.
+
+`eventDisplayZones` now lives in `zones.ts` beside the five functions it composes;
+`lib/places.ts` re-exports it, so no call site moved. The lift needed **zero** new
+dependencies — `bookingEndZones` already resolves a single-place booking through its own
+`placeId`, and `eventPlaceId(event, undefined)` was only ever `event.placeId`.
+
+### §3 · The notification sweep had the same bug, and it is the worse one
+
+Counted rather than assumed, per root `CLAUDE.md`. `eventDisplayZone` had two readers, and the
+second was `notifications/kinds/event-shape.ts`. `event-soon` called it with **no** `atMs`, so
+it resolved at the event's own start — meaning _"your flight leaves soon"_ stated the departure
+in the city you had not reached. By ADR-0197 §5's own standard that is the single bug that gets
+the feature turned off, so it is fixed here rather than filed:
+
+- `TripZones` carries the bookings and places `loadZones` **already read in full** to build the
+  crossings and simply did not keep. No extra query.
+- The notification `EVENT_SELECT` gains `placeId` and `bookingId` — the place rung.
+- `eventZone` becomes `eventZones` and returns the **pair**, so every caller states which end it
+  means: `event-soon` and `trip-tomorrow` take `.start`; `span-edge` takes `[edge.which]`, which
+  it can, because its edge was already tagged `'start' | 'end'`.
+
+### §4 · `event-zone.util.ts` is deleted, and the invariant that replaces it
+
+With both readers moved, `eventDisplayZone` had zero callers. It is deleted rather than left:
+its remaining value was a two-field interface and its remaining risk was that the next person
+asking what zone an event's time means would find the wrong function first.
+
+**The invariant, and it is greppable:** `currentZone` is now called only with a `nowMs` — the
+reader's own zone, the quiet-hours window, a digest's day. Nothing passes it an event's instant.
+If a future call does, it is asking where you are about a clock that belongs somewhere.
+
+### What was verified
+
+- A projection spec built from the owner's outbound — Jerusalem → Vienna → Reykjavík plus an
+  Iceland hotel — asserts all three rows. Restoring the single-zone answer fails with
+  `expected '14:30' to be '15:30'` and `expected '17:00' to be '15:00'`: the screenshots, as
+  test names.
+- The second half of the report (_"the durations don't add up"_) is pinned as the identity that
+  makes the card self-consistent rather than as three numbers:
+  `(printed arrival − printed departure) − zone shift = duration`. ⁦470⁩ − (−⁦180⁩) = ⁦650⁩ now;
+  it was ⁦530⁩ + ⁦180⁩ = ⁦710⁩ against a stated ⁦650⁩, which is the arithmetic the owner did by eye.
+  Sabotaged: `expected 710 to be 650`.
+- A notification spec asserts a flight ping states `18:30` (Tel Aviv) and not `17:30` (Vienna),
+  with a stub carrying the booking and both endpoint places — because with the empty arrays the
+  existing tests use, every zone question falls through to the primary and the defect is
+  invisible. That is precisely why the suite could not see it. Sabotaged:
+  `expected '17:30' to contain '18:30'`.
+- `frontend/src/lib/places.test.ts`'s existing ~500 lines of `eventDisplayZones` coverage now
+  runs against the shared implementation through the re-export, unchanged — the evidence that
+  the lift is behaviour-preserving.
+
+**No mockup.** Nothing about the layout changes: the same rows in the same places, with correct
+numbers in them. What was needed was a fixture that crosses a zone, which no spec had.
