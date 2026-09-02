@@ -946,6 +946,52 @@ export function PlanDay() {
   // (`data-gap-key`) and the drop action differ. Dropping schedules the idea into
   // that gap's slot: exactly the write the gap-fill sheet already performs.
   const [ideaDrag, setIdeaDrag] = useState<IdeaDrag>(null);
+
+  // **A DAY TURN TAKES THE TARGET WITH IT.** Every drop target but one — a row, a seam, a gap
+  // chip, a shelf group, the empty day — lives on the day SURFACE, and the surface is what the
+  // edge dwell turns (ADR-0116 §2d). So rest at the edge over a gap chip, let the day arrive
+  // and release without moving: the commit landed in a gap on the day you had just left, while
+  // you were looking at another one — measured, the sheet opened on `יום ד׳, 2 בספט׳` with day 5
+  // on screen. The day PILL is deliberately kept: the header strip is not what turned, and
+  // `overDate` is also what `useSpringLoadedDay` is aiming at, so clearing it would cancel the
+  // pill's own drop the instant its dwell landed.
+  //
+  // This is the hit-test's own rule — "content moving under a stationary finger changes the
+  // answer just as much as the finger moving does" — applied to the one thing that moves ALL of
+  // it. Discarded rather than re-resolved, because a turn is animated: the surface is still in
+  // flight when the day arrives, so anything `elementFromPoint` answered here would be a target
+  // read mid-motion and then never read again. The next move resolves one on the day now under
+  // the finger; a release before that comes to nothing, which is what `restoreDay` is for.
+  //
+  // **In render, beside `live.current.activeDate`'s own assignment, and neither `useEffect` nor
+  // `useLayoutEffect` will do.** Both were tried and both fire too late: the release beat the
+  // effect to the drop with the new day already in `live` and the old day's slot still in the
+  // target (logged in that order). A ref written during render belongs to the render that wrote
+  // it whether or not that render ever commits — which is exactly the pairing wanted here, since
+  // the day this invalidates against is one of those refs.
+  const dayOfTargets = useRef(activeDate);
+  if (dayOfTargets.current !== activeDate) {
+    dayOfTargets.current = activeDate;
+    const row = live.current.drag;
+    if (row) {
+      const next = {
+        ...row,
+        overId: null,
+        overShelf: null,
+        overGap: null,
+        fill: undefined,
+        overDay: false,
+      };
+      live.current.drag = next;
+      setDrag(next);
+    }
+    const idea = live.current.idea;
+    if (idea) {
+      const next = { ...idea, overShelf: null, overGap: null, fill: undefined, overDay: false };
+      live.current.idea = next;
+      setIdeaDrag(next);
+    }
+  }
   // What the pointer is over right now. Called on every move — and on every frame
   // the edge auto-scroll actually scrolls, because content moving under a
   // stationary finger changes the answer just as much as the finger moving does.

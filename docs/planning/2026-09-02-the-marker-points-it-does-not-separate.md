@@ -164,3 +164,28 @@ past a clipping box is a mark with no arrow.
 proportional gaps. It is the "longer events look longer" half, orthogonal to the marker, and it
 changes the height of every day from two components the mark never touches — with a feel number the
 owner has seen only on a desktop render.
+
+## And what CI found that no amount of reading would have
+
+One red, in `e2e/shelf-drag.spec.ts` — the day page-turn under a live drag, a file this change
+never touched. It reproduced locally and passed on `main`, so it was this branch's whatever the
+diff said.
+
+It was not a selector break, which was the guess. Plan's now-reference stopped being a **row**;
+every gap chip below it moved ~30px up; and one spec's release point stopped landing on nothing and
+started landing on a chip. Then the drop committed into a slot on the day the page turn had just
+left — the schedule sheet opened on `2 בספט׳` with day 5 on screen. A real defect in `PlanDay`,
+older than this branch, which pixel luck had been hiding.
+
+Three things worth carrying forward:
+
+- **A list's heights are an input to every gesture hit-tested against it.** Deleting a row is a
+  geometry change to specs that name no class of yours.
+- **The spec's comment said why the release accepted nothing, and its reason had not been true for
+  a month** (the edge stopped being written into `overDate` in ADR-0116 §2b). An inherited premise
+  is worse than none: it reads as verified. The replacement case aims at a chip on purpose and
+  asserts the chip is lit before letting go.
+- **`useEffect` and `useLayoutEffect` both lost a race to a finger.** `PlanDay` keeps what a drop
+  reads in a ref assigned during render, and the release beat both effects to the drop — the new
+  day already in the ref, the old day's slot still in the target. Anything that has to stay in step
+  with a render-phase ref belongs in render too.

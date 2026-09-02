@@ -698,3 +698,44 @@ screen's own `useState` can promise.
 ordinary tile with its own ranking reason (`recently-added` takes no line, ADR-0151), so
 it leads the strip with nothing marking it as pinned. Whether that wants a mark is a
 drawing question, and it is on the backlog rather than guessed at here.
+
+## Amendment (2026-09-02) — a day turn takes the drag's target with it
+
+**The defect.** Every drop target but one lives on the day **surface** — a row, a seam, a gap chip,
+a shelf group, the empty day's zone — and §2b/§2d made that surface turn under a live drag. The
+hit-test never re-asked. So: rest at the edge with a gap chip under the finger, let the day arrive,
+let go without moving, and the drop committed into a slot on the day you had just left. Measured on
+`e2e/shelf-drag.spec.ts`: the schedule sheet opened on `יום ד׳, 2 בספט׳`'s 20:00–21:00 with **day 5**
+on screen, and the day switch stayed behind because a committed drop keeps it.
+
+**Why the band and the chip overlap at all, and why that is not the thing to fix.** §2b decided the
+edge feeds navigation and is deliberately **not** written into `overDate`, precisely because a gap
+chip spans the surface and its last `DRAG_DAY_EDGE_PX` therefore lie inside a band: fencing the band
+off from the surface's targets would turn a drop meant for that slot into "aim at another day". The
+chip winning under the finger is correct. What was missing is that the chip stops being under the
+finger when the surface it is on turns away.
+
+**The rule.** A day change discards whatever the drag had resolved on the surface. The day **pill**
+is the one target kept — the header strip is not what turned, and `overDate` is also what
+`useSpringLoadedDay` is aiming at, so clearing it would cancel the pill's own drop the instant its
+dwell landed. Discarded rather than re-resolved: the turn is animated, so a target read at the
+moment the day arrives is a target read mid-motion and then never read again. The next move resolves
+one on the day now under the finger, and a release before that comes to nothing — which is exactly
+what §2b's day-restore is for.
+
+**Where it has to happen, and it is not an effect.** `PlanDay` keeps everything a drop reads in a
+ref assigned **during render** (a drag outlives the render it began in). Both `useEffect` and
+`useLayoutEffect` were tried and both fire too late: the release beat the effect to the drop, with
+the new day already in `live.current` and the old day's slot still in the target — logged in that
+order. The invalidation is therefore a render-phase check against a ref, beside the assignment it
+has to stay in step with; a ref written during render belongs to the render that wrote it whether or
+not that render ever commits, which is the pairing wanted here.
+
+**How this surfaced, which is the part worth keeping.** Nothing about the drag changed. ADR-0217
+took Plan's now-reference **row** out of the day list, every gap chip moved ~30px up, and the
+release point of a spec that had asserted "released over the edge, which accepts nothing" landed on
+a chip. The spec's own comment gave a reason that had not been true since §2b — the premise was
+inherited, not asserted. So the case that reproduces this now **aims at a chip on purpose** and
+asserts the chip is lit before releasing (`a target resolved before the turn is not committed after
+it`), and the old case says plainly that its height merely happens to have nothing on it. A
+geometric premise that is not asserted is a test that stops testing what it is named for, silently.

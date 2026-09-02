@@ -370,3 +370,20 @@ it changes the height of every day, and it lands in two different components (`J
 gap control) rather than in the mark. The owner has approved it on a desktop render and not on a
 device, and `--gpm` is explicitly a feel number. It has a backlog line; the marker did not need to
 wait behind it.
+
+### 7 · Taking a row out of the list moved every gap chip, and one drag was resting on one
+
+The only red this build produced was in `e2e/shelf-drag.spec.ts` — the day page-turn under a live
+drag — and nothing about the drag changed. Plan's now-reference stopped being a **row**, so every
+chip below it moved ~30px up, and one spec's release point stopped landing on nothing and started
+landing on a gap chip. The commit that followed wrote into a slot on the day the turn had just left.
+
+The defect is `PlanDay`'s and predates this ADR: a drop target lives on the day surface, and the
+surface turns. It is fixed and written up where the mechanism lives —
+[ADR-0116](0116-day-aware-shelf-and-idea-target-day.md)'s 2026-09-02 amendment — with the case
+re-aimed at a chip deliberately and its premise asserted, since the old spec's premise was
+inherited from a reason that had not been true for a month.
+
+**The lesson for the next row this repo deletes:** a list's heights are an input to every gesture
+hit-tested against it, and the specs that encode a height do not say so. Grep the e2e suite for the
+surface, not just the class.
