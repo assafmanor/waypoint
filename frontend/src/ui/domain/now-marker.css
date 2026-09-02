@@ -23,9 +23,49 @@
 /* **A BOUNDARY MARK HAS NO ROW TO BE A FRACTION OF**, so it is a zero-height box between two
    of them and the mark sits on its own top edge. Every instant no row holds arrives here:
    before the day's first row, after its last, and inside a hole `dayBlocks` draws no row for.
-   One mechanism, not two. */
+   One mechanism, not two.
+
+   **AND IT RESERVES ITS OWN ROOM, WHICH THE NAILED FORM NEVER NEEDS** (ADR-0217's 2026-09-02
+   amendment). Reported from a phone at ⁦00:17⁩ on a day whose first event was at ⁦02:00⁩ — the
+   mark "hugging the event card with no space at all". The day list separates its rows with
+   BOTTOM margins only (`.wp-event` ⁦10px⁩, `.day-gap` ⁦9px⁩) and nothing in it carries a
+   `margin-top`, so a zero-height box between two rows lands ⁦10px⁩ below the row above and
+   ⁦0px⁩ above the row below — everywhere, not at the edges. Measured: head ⁦11 · 0⁩, between two
+   ordinary cards ⁦10 · 0⁩ (a hole under `GAP_MIN_MINUTES` draws no row at all), tail ⁦10 · 12⁩.
+   The tail was already fine and is untouched.
+
+   ⁦9px⁩ is not a chosen number: `.day-unplaced` — the day's OTHER line between rows, ADR-0171
+   §10a — already takes `margin: 9px 0`, and two lines of one shape spending two different
+   amounts of one rhythm is a line that did not read its neighbour. `margin-block` and not
+   `padding`, so it collapses against the ⁦10px⁩ a card above already spends: the day grows by
+   the room once, and only on a day whose mark is at a boundary. */
 .now-here.edge {
   --thru: 0%;
+  --now-room: 9px;
+  margin-block: var(--now-room);
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* **AND AT A BOUNDARY THE MARK CARRIES THE CLOCK.** §1 dropped the caption for a stated
+   reason — "the running row's own `עכשיו` chip says the word" — and at a boundary there IS no
+   running row, so nothing on the screen says it and the only signal left is an unlabelled
+   rule. This is `.nowline-chip` from `screens.css`, the chip the public reader still renders,
+   so the day surface and the shared page say `now` in one voice and this sheet mints nothing.
+
+   At the TRAILING edge: in RTL the leading edge is the ⁦40px⁩ badge's own column and the
+   arrow's margin, and the design's first pass put a chip there and drew it on the glyph.
+
+   **Opaque, and that is the whole repair the drawing found.** `.nowline-chip`'s fill is
+   `rgba(233,166,60,0.12)` — it was built to sit BESIDE a hairline, never on one — so
+   `.now-here > *`'s z-index lifted it above the rule without making it hide anything and the
+   rule ran straight through the digits. The answer is the halo this sheet already defines for
+   the two boxless row families: `--now-ground`, so a host that re-grounds the mark re-grounds
+   the chip with it. */
+.now-here.edge .nowline-chip {
+  transform: translateY(-50%);
+  background: var(--now-ground);
+  box-shadow: 0 0 0 3.5px var(--now-ground);
 }
 
 /* THE RULE. `2px` and solid, where `.nowline` was a 1px gradient: ADR-0043 asked for a
@@ -143,4 +183,13 @@
 }
 .now-here[data-posture='plan']::after {
   border-inline-start-color: color-mix(in srgb, var(--plan) 34%, var(--card));
+}
+/* The clock is ink too, and it has to be: `.nowline-chip` is amber by construction, and a
+   live-coloured clock on a drafting table is exactly the thing ADR-0043 §5 forbids. Colour
+   only — the silhouette, the placement and the halo are the same object. */
+.now-here[data-posture='plan'] .nowline-chip {
+  color: var(--plan);
+}
+.now-here[data-posture='plan'] .nowline-dot {
+  background: var(--plan);
 }

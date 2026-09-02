@@ -66,6 +66,35 @@ describe('now-marker · the wrapper is transparent to the day’s child combinat
     expect(journeyRule).toMatch(/overflow:\s*hidden/);
   });
 
+  // **THE BOUNDARY FORM'S ROOM AND ITS OPAQUE CHIP ARE BOTH CSS-ONLY**, so jsdom can see
+  // neither — and both are repairs to a defect that shipped. The room answers "hugging the
+  // event card with no space at all"; the ground answers the rule running through the digits,
+  // which is what happens when `.nowline-chip`'s ⁦12%⁩ fill is put ON a hairline instead of
+  // beside one. A future edit that drops either is a phone report, not a red test.
+  it('gives the boundary form room of its own', () => {
+    expect(markerCss).toMatch(/\.now-here\.edge \{[^}]*margin-block:\s*var\(--now-room\)/);
+    // The number is `.day-unplaced`'s (ADR-0171 §10a), not a chosen one.
+    expect(markerCss).toMatch(/\.now-here\.edge \{[^}]*--now-room:\s*9px/);
+  });
+
+  it('grounds the boundary form’s clock so the rule cannot run through it', () => {
+    const chip = markerCss.match(/\.now-here\.edge \.nowline-chip \{([^}]*)\}/)?.[1] ?? '';
+    expect(chip).toMatch(/background:\s*var\(--now-ground\)/);
+    expect(chip).toMatch(/box-shadow:[^;]*var\(--now-ground\)/);
+  });
+
+  // ADR-0043 §5: Plan may never read as live, and `.nowline-chip` is amber by construction —
+  // so the one thing borrowed from the shared reader needs re-inking where the other three
+  // properties already are.
+  it('re-inks that clock in Plan’s posture', () => {
+    expect(markerCss).toMatch(
+      /\.now-here\[data-posture='plan'\] \.nowline-chip \{[^}]*color:\s*var\(--plan\)/,
+    );
+    expect(markerCss).toMatch(
+      /\.now-here\[data-posture='plan'\] \.nowline-dot \{[^}]*background:\s*var\(--plan\)/,
+    );
+  });
+
   // Both day surfaces render the same rows off the same derivation (ADR-0159 §1), so a bleed
   // named for only one of their braces is the split ADR-0171 §10e exists to repair.
   it('gives every nesting brace on both surfaces its own bleed', () => {

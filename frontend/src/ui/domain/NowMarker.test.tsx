@@ -21,23 +21,54 @@ describe('NowMarker', () => {
     expect(mark.classList.contains('edge')).toBe(false);
   });
 
-  it('is a zero-height boundary mark when it is given no row', () => {
+  it('is the boundary form when it is given no row', () => {
     const { container } = render(<NowMarker label="07:30" />);
     const mark = container.querySelector('.now-here')!;
     expect(mark.classList.contains('edge')).toBe(true);
-    expect(mark.children).toHaveLength(0);
-    // `.edge` supplies `--thru` in CSS, so nothing is written inline.
+    // `.edge` supplies `--thru` and its own room in CSS, so nothing is written inline.
     expect(mark.getAttribute('style')).toBeNull();
   });
 
-  // The mark is a SHAPE, not a caption (ADR-0217 §1) — the running row's own `עכשיו` chip
-  // says the word. What it must not lose is the accessible name `.nowline` and `.nowref`
-  // both carried, so a screen reader hears no change from a mark that moved into a row.
-  it('carries the clock as its accessible name and renders no text', () => {
+  // **THE TWO FORMS DIFFER ABOUT THE CAPTION ON PURPOSE** (ADR-0217 §1, amended
+  // 2026-09-02). Nailed to a row it renders nothing: that row's own chip says the word, and a
+  // second caption would be one fact drawn twice. At a BOUNDARY no row carries it — which is
+  // the stated premise for §1's silence, absent — so the mark says the time itself, through
+  // `screens.css`'s `.nowline-chip`, the chip the public reader still ships.
+  it('renders no text when it is nailed to a row', () => {
+    const { container } = render(
+      <NowMarker label="12:30" thruFrac={0.5}>
+        <div>row</div>
+      </NowMarker>,
+    );
+    const mark = container.querySelector('.now-here')!;
+    expect(mark.textContent).toBe('row');
+    expect(mark.querySelector('.nowline-chip')).toBeNull();
+  });
+
+  it('says the time itself at a boundary, in the chip the shared reader uses', () => {
     const { container } = render(<NowMarker label="12:30" />);
     const mark = container.querySelector('.now-here')!;
-    expect(mark.getAttribute('aria-label')).toBe(t.day.nowLineAria('12:30'));
-    expect(mark.textContent).toBe('');
+    expect(mark.querySelector('.nowline-chip')).toBeTruthy();
+    expect(mark.textContent).toBe('12:30');
+    // The dot is decoration beside a clock that is already read out.
+    expect(mark.querySelector('.nowline-dot')!.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  // Whatever it renders, the accessible name is the one `.nowline` and `.nowref` both carried,
+  // so a screen reader hears no change from a mark that moved into a row.
+  it('carries the clock as its accessible name in both forms', () => {
+    const { container: edge } = render(<NowMarker label="12:30" />);
+    expect(edge.querySelector('.now-here')!.getAttribute('aria-label')).toBe(
+      t.day.nowLineAria('12:30'),
+    );
+    const { container: held } = render(
+      <NowMarker label="12:30" thruFrac={0.5}>
+        <div />
+      </NowMarker>,
+    );
+    expect(held.querySelector('.now-here')!.getAttribute('aria-label')).toBe(
+      t.day.nowLineAria('12:30'),
+    );
   });
 
   it('is live by default and takes Plan’s posture on request', () => {

@@ -21,9 +21,15 @@
 //  - **nailed to a row** — pass `children` and `thruFrac`; it wraps the row and puts the arrow
 //    at that fraction of its height. This is the form the report was about: the moment is
 //    INSIDE something and the mark says so instead of floating above it.
-//  - **at a boundary** — pass neither; it is a zero-height mark between two rows. Every instant
-//    no row holds: before the day's first row, after its last, and inside a hole `dayBlocks`
-//    draws no row for (a join needs `prevEnd && start`).
+//  - **at a boundary** — pass neither; it is a mark between two rows, with room of its own
+//    and the clock on it. Every instant no row holds: before the day's first row, after its
+//    last, and inside a hole `dayBlocks` draws no row for (a join needs `prevEnd && start`).
+//
+// **The two forms differ about the caption, and that is not an inconsistency.** §1 made the
+// mark a shape rather than a words-and-a-clock row for a stated reason: the row it is inside
+// already carries the word. A boundary mark has no such row, so there the premise is absent
+// and the mark says the time itself (the 2026-09-02 amendment, drawn in
+// `where-the-marker-stands-when-nothing-holds-it-v1.html`).
 //
 // What it deliberately does NOT answer is *which* rows hold the moment. There can be several —
 // ADR-0041's forest puts `now` inside a festival and the concert inside it — and the app
@@ -55,8 +61,8 @@ export function NowMarker({
    *  than a row of its own. */
   ref?: React.Ref<HTMLDivElement>;
   /** The clock, already formatted by whoever owns the zone (`formatTime` / `shareTimeLabel`).
-   *  It is the accessible name — the mark itself is a shape, not a caption, so nothing here
-   *  renders it as text (ADR-0217 §1: the running row's own `עכשיו` chip says the word). */
+   *  It is the accessible name in both forms, and the visible text in the boundary one —
+   *  where no row carries the word, so nothing else on the screen says it. */
   label: string;
   posture?: NowPosture;
   /** How much of the wrapped row is behind us, `0..1`. Required with `children`; ignored
@@ -86,7 +92,19 @@ export function NowMarker({
           : undefined
       }
     >
-      {children}
+      {/* `.nowline-chip` and `.nowline-dot` are `screens.css`'s, still shipped for the public
+          reader — the same chip, so two surfaces cannot say `now` two ways (rule 8). `dir="auto"`
+          is what keeps a digits-only run from being laid out by the page's RTL base direction
+          (ADR-0118); it needs no isolate, because a string with no strong character resolves to
+          `ltr` on its own. */}
+      {inside ? (
+        children
+      ) : (
+        <span className="nowline-chip">
+          <span className="nowline-dot" aria-hidden="true" />
+          <span dir="auto">{label}</span>
+        </span>
+      )}
     </div>
   );
 }

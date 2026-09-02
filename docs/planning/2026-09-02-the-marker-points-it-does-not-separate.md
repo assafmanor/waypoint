@@ -189,3 +189,39 @@ Three things worth carrying forward:
   reads in a ref assigned during render, and the release beat both effects to the drop — the new
   day already in the ref, the old day's slot still in the target. Anything that has to stay in step
   with a render-phase ref belongs in render too.
+
+## And then it shipped, and the phone had the third fork
+
+Owner, from a device at ⁦00:17⁩ on a day whose first event is ⁦02:00⁩ — the boundary form, hours
+before anything starts: _"I'm not sure about the day start and end boundaries. It looks kind of
+awkward sitting there hugging the event card with no space at all. Do you think that we should
+mockup suggestion for the edges, empty days, etc.?"_
+
+Drawn in
+[`where-the-marker-stands-when-nothing-holds-it-v1.html`](../../mockups/where-the-marker-stands-when-nothing-holds-it-v1.html),
+promoting [ADR-0217](../decisions/0217-the-now-marker-points-it-does-not-separate.md)'s same-day
+amendment.
+
+**The measurement widened the report before it answered it.** The day list separates rows with
+bottom margins only and nothing in it carries a `margin-top`, so a zero-height mark lands ⁦0px⁩
+above the row below it everywhere — not at the edges. Head ⁦11 · 0⁩, **between two ordinary cards
+⁦10 · 0⁩**, tail ⁦10 · 12⁩. The middle one was never reported and is the one that matters: a rule on
+a card's top border reads as the card's own edge, so it does not look like a defect, and a fix
+aimed at "the edges" would have shipped with it still there. The tail needs nothing at all.
+
+**And the number was already decided.** `.day-unplaced` is the day's other line-between-rows and it
+takes `margin: 9px 0`. Two lines of the same shape spending two different amounts of one rhythm is
+not a design question, it is a line that did not read the neighbour.
+
+Three things to carry forward:
+
+- **A boundary is a statement about both of its sides.** The first mockup could not have found this:
+  every frame in it starts at the day's first row, and `.sec-title` appears in its inlined CSS and
+  never in its rendered tree. Cropping a list frame to the rows makes the day's head undrawable.
+- **A before/after file has to be able to draw the before.** The proposed rule went in unscoped, the
+  "as shipped" columns wore the fix, and the measurement table reported the defect and the repair as
+  the same ⁦10 · 9⁩ — cheerfully, in four theme×width passes.
+- **Reuse carries the defaults with it, and one of them was a strike-through.** `.nowline-chip` is a
+  ⁦12%⁩ translucent fill built to sit beside a hairline; on one, the rule shows through the digits.
+  Same shape as ADR-0148's "reusing a component onto a surface unlike the ones it grew up on" —
+  the reuse was right, the default was answering a different question.
