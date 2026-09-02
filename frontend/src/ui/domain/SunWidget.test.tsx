@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { dayLight, type LatLng } from '@waypoint/shared';
-import { skyStops, sunArc } from '../../lib/daylight-view';
+import { nextGoldenHour, skyStops, sunArc } from '../../lib/daylight-view';
 import { t } from '../../i18n/he';
 import { SunWidget } from './SunWidget';
 
@@ -19,12 +19,21 @@ const localMidnight = (iso: string, offsetHours: number) =>
 
 afterEach(cleanup);
 
-/** Renders the widget the way `Home` does: one place, one day, one clock. */
+/**
+ * Renders the widget **the way `Home` does** — including the golden-hour choice.
+ *
+ * That last part is the point of routing this through `nextGoldenHour` rather
+ * than reaching for `goldenEvening*`: the first build's defect was in the
+ * WIRING, not the component, and a harness that hardcodes the evening pair
+ * cannot see it. A test double that skips the host's derivation tests a
+ * different program.
+ */
 function widget(at: LatLng, date: string, offset: number, nowMs: number | null = null) {
   const dayStartMs = localMidnight(date, offset);
   const light = dayLight(at, dayStartMs);
   const hhmm = (ms: number | null) =>
     ms === null ? null : new Date(ms + offset * 3_600_000).toISOString().slice(11, 16);
+  const gold = nextGoldenHour(light, nowMs);
   return {
     light,
     container: render(
@@ -35,8 +44,8 @@ function widget(at: LatLng, date: string, offset: number, nowMs: number | null =
         times={{
           sunrise: hhmm(light.sunriseMs),
           sunset: hhmm(light.sunsetMs),
-          goldenStart: hhmm(light.goldenEveningStartMs),
-          goldenEnd: hhmm(light.goldenEveningEndMs),
+          goldenStart: hhmm(gold?.startMs ?? null),
+          goldenEnd: hhmm(gold?.endMs ?? null),
         }}
       />,
     ).container,
@@ -45,6 +54,7 @@ function widget(at: LatLng, date: string, offset: number, nowMs: number | null =
 
 describe('SunWidget — an ordinary day', () => {
   it('prints sunrise and sunset, and the golden hour between them', () => {
+    // No clock: a day being browsed names the evening's band.
     widget(TEL_AVIV, '2026-09-02', 3);
     // Matched by regex, not by an exact string: every numeric run here is
     // wrapped in U+2066/U+2069 by `ltrIsolate` (ADR-0118), so the text node is
@@ -71,6 +81,33 @@ describe('SunWidget — an ordinary day', () => {
     // A day being browsed is not today: drawing a disc would put the sun at a
     // position the clock is nowhere near.
     expect(widget(TEL_AVIV, '2026-09-02', 3, null).container.querySelector('.sun-disc')).toBeNull();
+  });
+});
+
+describe('SunWidget — the golden hour it names is the one still ahead', () => {
+  /**
+   * **The reported defect, end to end.** At 01:18 the deployed widget printed
+   * the evening band ⁦17⁩ hours away. This asserts through the same derivation
+   * `Home` uses, so it guards the WIRING and not only `nextGoldenHour`.
+   */
+  it('at 01:18 names the morning band, not the evening', () => {
+    const dayStart = localMidnight('2026-09-02', 3);
+    const light = dayLight(TEL_AVIV, dayStart);
+    const { container } = widget(TEL_AVIV, '2026-09-02', 3, dayStart + 78 * 60_000);
+    const chip = container.querySelector('.sf-gold')!.textContent!;
+    const hhmm = (ms: number) => new Date(ms + 3 * 3_600_000).toISOString().slice(11, 16);
+    expect(chip).toContain(hhmm(light.goldenMorningStartMs!));
+    expect(chip).not.toContain(hhmm(light.goldenEveningStartMs!));
+  });
+
+  it('at midday names the evening band', () => {
+    const dayStart = localMidnight('2026-09-02', 3);
+    const light = dayLight(TEL_AVIV, dayStart);
+    const { container } = widget(TEL_AVIV, '2026-09-02', 3, dayStart + 12 * 3_600_000);
+    const hhmm = (ms: number) => new Date(ms + 3 * 3_600_000).toISOString().slice(11, 16);
+    expect(container.querySelector('.sf-gold')!.textContent).toContain(
+      hhmm(light.goldenEveningStartMs!),
+    );
   });
 });
 

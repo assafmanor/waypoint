@@ -148,6 +148,11 @@ export function SunWidget({ light, arc, sky, times }: SunWidgetProps) {
 /**
  * Golden hour, as the foot's middle fact.
  *
+ * **Which of the day's two bands this is, is the host's decision**
+ * (`nextGoldenHour`): the one still ahead, so at 01:00 it is the morning's and
+ * at noon the evening's. The times disambiguate themselves, so the chip carries
+ * no extra word for it — ⁦05:50⁩ is obviously not an evening.
+ *
  * **A half-open interval reads as open, not as a dash.** Above the polar circles
  * the sun can enter gold and never leave it, so `end` is legitimately absent
  * while `start` is real — and `A–undefined` is what a naive range prints. Absent

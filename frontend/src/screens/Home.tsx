@@ -22,7 +22,7 @@ import {
   zonedIso,
 } from '@waypoint/shared';
 import { ltrIsolate } from '../lib/bidi';
-import { sunArc, skyStops } from '../lib/daylight-view';
+import { sunArc, skyStops, nextGoldenHour } from '../lib/daylight-view';
 import { SunWidget } from '../ui/domain/SunWidget';
 import { useTrip } from '../state/trip-state';
 import { useAuth } from '../state/auth-state';
@@ -933,15 +933,23 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   );
   // Formatted HERE because the host owns the zone (ADR-0107) and the widget owns
   // no clock — the same contract `RateCard`'s `asOf` states.
+  //
+  // **The golden hour is the one still AHEAD, not always the evening's.** The
+  // first build passed `goldenEvening*` unconditionally and a report off the
+  // deployed app at 01:18 caught it: the widget named a band ⁦17⁩ hours away while
+  // the morning's was ⁦4½⁩ hours off. `nextGoldenHour` owns the choice, and it
+  // takes the same clock the arc's sun disc does — so the chip and the picture
+  // cannot disagree about which day is being lived.
   const sunTimes = useMemo(() => {
     const at = (ms: number | null) => (ms === null ? null : formatTime(new Date(ms), sunZone));
+    const gold = sunLight ? nextGoldenHour(sunLight, activeDate === today ? nowMs : null) : null;
     return {
       sunrise: at(sunLight?.sunriseMs ?? null),
       sunset: at(sunLight?.sunsetMs ?? null),
-      goldenStart: at(sunLight?.goldenEveningStartMs ?? null),
-      goldenEnd: at(sunLight?.goldenEveningEndMs ?? null),
+      goldenStart: at(gold?.startMs ?? null),
+      goldenEnd: at(gold?.endMs ?? null),
     };
-  }, [sunLight, sunZone]);
+  }, [sunLight, sunZone, activeDate, today, nowMs]);
 
   // ── Day at a glance (derived) — a proportional time rail (lib/glance) ──
   // One derivation, because the Map's route now reads the SAME dawn instant to tell a night
@@ -1501,35 +1509,39 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           space ADR-0045 removed the row for — so the gate is "either tenant", not
           the rate card alone. */}
       {(sunLight || rateCardVisible) && <div className="sec-title">{t.fx.sectionTitle}</div>}
-      {sunLight && sunArcModel && sunSky && (
-        <SunWidget light={sunLight} arc={sunArcModel} sky={sunSky} times={sunTimes} />
-      )}
-      {rateCardVisible && (
-        <>
-          <RateCard
-            fx={fxRates}
-            from={trip.currency}
-            to={homeCurrency}
-            asOf={formatDayMonth(fxRates!.publishedAt)}
-            onOpen={() => setConverting(true)}
-          />
-          {/* §9: the attribution the source's terms make MANDATORY and visible,
+      {/* The section owns the gap between its tenants (`.glance-cards`), because
+          neither card carries a margin and the set grows — see `screens.css`. */}
+      <div className="glance-cards">
+        {sunLight && sunArcModel && sunSky && (
+          <SunWidget light={sunLight} arc={sunArcModel} sky={sunSky} times={sunTimes} />
+        )}
+        {rateCardVisible && (
+          <div>
+            <RateCard
+              fx={fxRates}
+              from={trip.currency}
+              to={homeCurrency}
+              asOf={formatDayMonth(fxRates!.publishedAt)}
+              onOpen={() => setConverting(true)}
+            />
+            {/* §9: the attribution the source's terms make MANDATORY and visible,
               per card rather than per section — the section's next tenant will
               have a different source, and one shared line would credit it wrong.
               Outside the card because the card is a `<button>`. */}
-          <p className="fx-attr">
-            <a
-              className="fx-attr-link"
-              href={fxRates!.providerUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              dir="auto"
-            >
-              {fxRates!.provider}
-            </a>
-          </p>
-        </>
-      )}
+            <p className="fx-attr">
+              <a
+                className="fx-attr-link"
+                href={fxRates!.providerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                dir="auto"
+              >
+                {fxRates!.provider}
+              </a>
+            </p>
+          </div>
+        )}
+      </div>
 
       {converting && trip.currency && homeCurrency && (
         <ConverterSheet
