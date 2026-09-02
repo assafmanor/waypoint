@@ -123,3 +123,33 @@ once the band was refused, and worth writing down as the reason not to reach for
 
 `docs/backlog.md` lines 44 and 431 are the two halves of this item (the split between the two hosts,
 and `inside` itself). Both now point at the ADR and the mockup rather than describing the work again.
+
+## Building it, the same day — and the reuse finding the design could not see
+
+The owner: _"Exactly. Now build it on the same pr… my next task to you would be to (design first
+of course) and then build the corresponding now line for the live sharing screen. So make sure that
+you take that into consideration when designing the reusable components."_ Which turned the build
+into a rule-8 job, and the code had the answer waiting.
+
+**There were three now-marks, not one.** `DayView`'s `.nowline` (a `Date` + a `tz`), `PlanDay`'s
+`.nowref` (epoch ms + a `tz`), and `SharedItinerary`'s own copy of `.nowline` — whose comment said
+exactly why it was a copy: _"`DayView`'s `NowLine` is not imported because it is that screen's
+local component and takes …"_. **What kept them apart was the shape of the input, not the look.**
+The shared reader has no instants at all, by design (ADR-0213 §11), so any component taking a
+`Date` locks it out by construction. `NowMarker` takes a formatted **label**, which all three hosts
+already hold. That one prop is the whole difference between "three copies" and "one mark".
+
+The same logic split the placement rule out twice over: `lib/now-inside.ts` is pure and
+**unit-agnostic** (ms for the day surfaces, `dawnOrder` minutes for the shared reader), so the two
+derivations share the rule while keeping their own walks — which is what `share-now-line.ts`'s own
+comment had asked for by name.
+
+**And a coverage hole made itself obvious.** The first build ran 5211 tests green having deleted
+both markers and rewritten their placement, because neither day surface asserted anything about the
+mark in either scope. Ten specs now do. Worth noticing how that hole was found: not by reading, but
+by the suite being _too_ green for the size of the change.
+
+**One part was deliberately left out** and said so rather than being quietly folded in: §6's
+proportional gaps. It is the "longer events look longer" half, orthogonal to the marker, and it
+changes the height of every day from two components the mark never touches — with a feel number the
+owner has seen only on a desktop render.

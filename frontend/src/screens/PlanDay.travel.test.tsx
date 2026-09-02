@@ -1269,3 +1269,63 @@ describe('PlanDay — a journey states its hours where the traveller is (ADR-020
     expect(meta).not.toContain('17:15');
   });
 });
+
+// ── WHERE THE MOMENT IS, IN PLAN'S POSTURE (ADR-0217 §5) ──────────────────────────────────
+//
+// Here for the reason the Trip-side block is in `DayView.travel.test.tsx`: the harness is
+// here, and a second copy of ~110 lines of `vi.mock` is the duplication root rule 8 forbids
+// (`docs/backlog.md` carries the line to extract it when a third spec wants it).
+//
+// **And it is here at all because `frontend/CLAUDE.md` names the anti-pattern by name:**
+// changing a day-surface derivation in `DayView` only has cost a release twice. Both screens
+// read `nowLinePlacement` and render the same mark; ADR-0159 §1 permits a difference in
+// POSTURE and forbids one about a fact, so these specs assert both halves of that sentence.
+describe('PlanDay · where the moment is', () => {
+  /** Inside `lunch` (⁦11:00–13:20⁩ UTC): ⁦12:00⁩ is ⁦60⁩ of its ⁦140⁩ minutes in. */
+  const INSIDE_LUNCH = `${DAY}T12:00:00Z`;
+
+  beforeEach(() => {
+    tripEvents = [lunch, theatre];
+    tripPlaces = places;
+    travelSeconds = null;
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  // THE FACT: the same row, at the same fraction, from the same derivation.
+  it('nails the reference to the row the moment is inside', () => {
+    setSimulatedNow(Date.parse(INSIDE_LUNCH));
+    const { container } = show();
+    const marks = container.querySelectorAll('.now-here');
+    expect(marks).toHaveLength(1);
+    expect(marks[0].textContent).toContain(lunch.title);
+    expect(marks[0].getAttribute('style')).toContain(`--thru: ${(60 / 140) * 100}%`);
+  });
+
+  // THE POSTURE: violet and static, never live (ADR-0043 §5) — and no countdown, because a
+  // countdown on a drafting table is a live signal.
+  it('wears Plan’s posture and states no countdown', () => {
+    setSimulatedNow(Date.parse(INSIDE_LUNCH));
+    const { container } = show();
+    expect(container.querySelector('.now-here')!.getAttribute('data-posture')).toBe('plan');
+    expect(container.querySelector('.wp-event-left')).toBeNull();
+  });
+
+  it('falls back to a boundary reference where no row holds the moment', () => {
+    setSimulatedNow(Date.parse(`${DAY}T14:00:00Z`));
+    const { container } = show();
+    const marks = container.querySelectorAll('.now-here');
+    expect(marks).toHaveLength(1);
+    expect(marks[0].classList.contains('edge')).toBe(true);
+    expect(marks[0].children).toHaveLength(0);
+  });
+
+  // ADR-0043 §5: the reference shows only when the day on screen IS today.
+  it('draws no reference on a day that is not today', () => {
+    setSimulatedNow(Date.parse(`2026-08-05T12:00:00Z`));
+    const { container } = show();
+    expect(container.querySelector('.now-here')).toBeNull();
+  });
+});

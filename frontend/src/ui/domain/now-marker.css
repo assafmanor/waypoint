@@ -1,0 +1,146 @@
+/* THE APP'S ONE "YOU ARE HERE" MARK (ADR-0217). Replaces `.nowline` (Trip) and `.nowref`
+   (Plan) in `screens.css`, and is what the shared reader takes next — see `NowMarker.tsx` for
+   why three implementations existed and what kept them apart.
+
+   Every number a host might need to move is a custom property with the day list's value as its
+   default, so a denser surface is a one-line addition rather than a second sheet:
+
+     --now-bleed   how far the mark reaches past the row, i.e. the host's own inline padding
+                   (`App.css`'s `.body { padding: 16px … }`). The rule reaches the screen
+                   edges with it and the arrow stands in the margin.
+     --now-tab     the arrow's size.
+     --now-ground  what the halo paints, for the two row families that have no box of their
+                   own. The LIST's ground, never `--card` — `.day-trv-ic .icon` says why.
+*/
+
+.now-here {
+  position: relative;
+  --now-bleed: 16px;
+  --now-tab: 18px;
+  --now-ground: var(--screen);
+}
+
+/* **A BOUNDARY MARK HAS NO ROW TO BE A FRACTION OF**, so it is a zero-height box between two
+   of them and the mark sits on its own top edge. Every instant no row holds arrives here:
+   before the day's first row, after its last, and inside a hole `dayBlocks` draws no row for.
+   One mechanism, not two. */
+.now-here.edge {
+  --thru: 0%;
+}
+
+/* THE RULE. `2px` and solid, where `.nowline` was a 1px gradient: ADR-0043 asked for a
+   whisper and the owner asked for the opposite — _"prominent enough so that people immediately
+   and intuitively understand"_.
+
+   It runs BEHIND the row, and the occlusion is the sentence: a rule you can see runs BETWEEN
+   things, a rule that disappears behind a row runs THROUGH it, and the arrow says at what
+   height. Nothing is captioned. */
+.now-here::before {
+  content: '';
+  position: absolute;
+  top: var(--thru);
+  inset-inline: calc(-1 * var(--now-bleed)) calc(-1 * var(--now-bleed));
+  height: 2px;
+  transform: translateY(-1px);
+  background: var(--amber);
+  pointer-events: none;
+}
+
+/* THE ARROW — a triangle from a single logical border, so it points INTO the list in both
+   directions with no sign written anywhere. That is `ui/Icon.tsx`'s `MIRRORED` discipline for
+   a glyph with a facing, and the reason this is not a `‹` character: those are
+   `Bidi_Mirrored` and flip silently inside `dir="rtl"` (ADR-0118).
+
+   It stands in the day's MARGIN and never over the row, because in RTL a card's leading edge
+   is the ⁦40px⁩ badge's own column — the design's first pass put a time chip there and drew it
+   on top of the glyph. Measured ⁦12×18px⁩ in ⁦16px⁩ of padding. `pointer-events: none` and no
+   target of its own, so ADR-0017's ⁦44px⁩ floor does not apply and nothing new competes for a
+   tap. */
+.now-here::after {
+  content: '';
+  position: absolute;
+  top: var(--thru);
+  inset-inline-start: calc(-1 * var(--now-bleed));
+  width: 0;
+  height: 0;
+  border-block: calc(var(--now-tab) / 2) solid transparent;
+  border-inline-start: calc(var(--now-tab) * 0.72) solid var(--amber);
+  transform: translateY(-50%);
+  z-index: 4;
+  pointer-events: none;
+}
+
+/* The row paints over the rule — which is the whole mechanism, and it is `.day-thread`'s own
+   arrangement (ADR-0212 §1: a positioned wrapper whose child paints over it), reused rather
+   than invented. */
+.now-here > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* **THE ARROW KEEPS THE DAY'S ONE LEADING EDGE, AT ANY DEPTH.** `--now-bleed` is measured from
+   the row, and a nested row is already indented — `.nest-kids` by ⁦19+11+2px⁩ and
+   `.cluster-kids` by ⁦6+10+2px⁩ — so without these the arrow for a concert inside a festival
+   stood ⁦32px⁩ further in than the arrow for the festival: a mark that moves sideways depending
+   on how deeply the day happens to be nested. `.day-trv-ic`'s own rule ("the day has ONE
+   leading edge for icons") is the same statement one column over. Found by drawing the
+   envelope; invisible in a flat list. */
+.nest-kids .now-here {
+  --now-bleed: calc(16px + 32px);
+}
+.cluster-kids .now-here {
+  --now-bleed: calc(16px + 18px);
+}
+/* Plan's own brace, for the same reason and its own numbers (⁦17+10+2px⁩). Both screens
+   render the same rows off the same derivation (ADR-0159 §1), so a bleed named for only one
+   of them is the split ADR-0171 §10e exists to repair. */
+.bld-nest-kids .now-here {
+  --now-bleed: calc(16px + 29px);
+}
+
+/* **AND THE TWO BOXLESS FAMILIES OCCLUDE THE RULE WITH THEIR TEXT, NOT WITH A BOX.**
+   ADR-0210 §3/§4 took the card away from a leg and a bracket on purpose, so there is nothing
+   there to hide the rule — it ran straight through a gap's `1:15 שע׳ פנויות`, which is the
+   defect the owner reported against the drawing.
+
+   The answer was already shipped one selector over, in this very row family:
+   `.day-trv-ic .icon` carries `background: var(--screen)` and a ⁦4.5px⁩ halo because "the glyph
+   rides ON the track, so the rule stops behind it instead of running through it. The halo is
+   the LIST's ground and not `--card`." Same problem, same answer — the glyph was already
+   stopping the rule for free and only the words were left out.
+
+   **The INNER runs, never the block wrappers.** `.day-trv-hd` and `.day-trv-meta` are
+   column-width blocks, so a halo on those masks the rule across the whole row; on the inline
+   runs the box is tight to the text and the rule stays visible in the slack between them,
+   which is what reads as passing behind the words. Scoped under `.now-here`, so it costs
+   nothing on any row the moment is not in.
+
+   It inherits the halo's one known mismatch: a leg inside a `.journey` block sits on `--card`
+   while `--now-ground` is the list's `--screen`. The shipped glyph already does this, so a
+   host that needs it different sets `--now-ground` rather than this sheet guessing. */
+.now-here .day-gap-lbl,
+.now-here .day-gap-add,
+.now-here .day-trv-hd > span,
+.now-here .day-trv-leave,
+.now-here .day-trv-dist {
+  position: relative;
+  background: var(--now-ground);
+  box-shadow: 0 0 0 3.5px var(--now-ground);
+  border-radius: 3px;
+}
+
+/* PLAN'S POSTURE (ADR-0043 §5): the same derivation, never a live signal — violet, and a
+   dashed rule instead of a solid one. Two properties, because that is the whole difference;
+   ADR-0159 §1 permits a difference in posture and forbids one about a fact.
+
+   §5 there says "hollow marker", and a border-triangle cannot be hollow — so this is a
+   low-contrast fill with the identical silhouette, and the ADR says so rather than claiming an
+   outline it does not draw. */
+.now-here[data-posture='plan']::before {
+  background: none;
+  border-top: 2px dashed var(--plan);
+  height: 0;
+}
+.now-here[data-posture='plan']::after {
+  border-inline-start-color: color-mix(in srgb, var(--plan) 34%, var(--card));
+}

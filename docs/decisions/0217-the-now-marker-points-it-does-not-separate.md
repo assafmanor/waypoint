@@ -1,6 +1,8 @@
 # 0217 — The now-marker points; it does not separate
 
-**Status:** Proposed
+**Status:** Accepted 2026-09-02, on the owner's approval of the mockup. **Built** the same day —
+see the build log at the foot, which records what building it changed and the one part deliberately
+left for a follow-up.
 **Date:** 2026-09-02
 **Reported:** the owner, against the Day view and Plan day — _"The day view / plan day shows an
 indicator or where we currently are in the day 'עכשיו' … The problem with it is what happens when
@@ -267,3 +269,78 @@ All four are drawn in the mockup's §7 and stay there, because for three of them
 - **`נותרו 1:10 שע׳` or `1:10 שע׳`.** §3 recommends the bare rung on two measurements; the word is
   ⁦19px⁩ on one row per day if the owner wants it said out loud.
 - **A genuinely hollow arrow for Plan**, per §5's literal reading of ADR-0043 §5.
+
+## Build log (2026-09-02)
+
+Built as decided, with **one reuse finding that changed the shape of the change**, one deliberate
+deferral, and a coverage hole the build had to close before it could be trusted.
+
+### 1 · There were THREE now-marks, and that is what made this a rule-8 job
+
+The ADR was written about a placement. The build found the app had **three implementations of one
+fact**, none shared:
+
+| host              | mark             | took                          |
+| ----------------- | ---------------- | ----------------------------- |
+| `DayView`         | `.nowline`       | a `Date` + a `tz`             |
+| `PlanDay`         | `.nowref`        | epoch ms + a `tz`             |
+| `SharedItinerary` | `.nowline` again | a pre-formatted `HH:MM` label |
+
+And the third one's own comment said why: _"`DayView`'s `NowLine` is not imported because it is
+that screen's local component and takes …"_. **What kept them apart was not the look, it was the
+shape of the input.** The shared reader has no instants at all — the public projection
+deliberately ships formatted labels so two renderers cannot format one instant two ways (ADR-0213
+§11) — so any component taking a `Date` locks it out by construction.
+
+So the mark is now one component, `ui/domain/NowMarker.tsx`, and it **takes a formatted `label`**,
+which all three hosts already have (`formatTime` / `shareTimeLabel`). Formatting stays where the
+zone knowledge is. `.nowline` and `.nowref` are replaced; `.nowref` is deleted outright.
+
+Two forms, one component, one prop apart: pass `children` + `thruFrac` and it wraps the row the
+moment is inside; pass neither and it is the zero-height boundary mark. Every number a denser host
+would need to move is a custom property with the day list's value as its default —
+`--now-bleed`, `--now-tab`, `--now-ground`.
+
+### 2 · The placement rule is split from both derivations, for the same reason
+
+`lib/now-inside.ts` is new, pure and **unit-agnostic**: spans in, the innermost holder and a
+fraction out. The day surfaces pass epoch milliseconds; the shared reader will pass `dawnOrder`'s
+minutes-from-the-share's-own-dawn, which is a different unit and identical arithmetic. That split
+is what lets `lib/share-now-line.ts` keep its own walk — it compares labels, not instants — while
+sharing the RULE, which is exactly what its own comment asks for: _"unify it with the app's when
+`nowLinePlacement` grows its `inside` shape."_
+
+`nowLinePlacement` keeps `index` unchanged (a boundary still needs it) and grows `inside`.
+
+**What the shared reader's task is now**, stated so the next session does not re-derive it: build
+`NowSpan[]` from each section's events under `dawnOrder`, call `nowInside`, and replace that
+screen's local `NowLine` with `<NowMarker label={nowLabel} …>`. Its `.sh-day-body .nowline` margin
+rule becomes a `--now-bleed` (the day body's rhythm is tighter than the day list's). No new
+mechanism, and `shareNowLine`'s deliberate end-based boundary — which exists because a shared
+day's first row is routinely an all-day container — becomes moot for the case it was a compromise
+about, because the marker lands inside that container instead of above it.
+
+### 3 · A hole holds the moment, and it needed no second rule
+
+ADR §4's gap case is derived at the render site rather than in `nowLinePlacement`, because a hole
+is not an entry — `dayBlocks` measures it between two of them, after the placement exists. It
+needs no second rule all the same: **a hole is precisely where no row holds the moment**, so
+`inside === null` at that index already identifies it, and the two answers cannot disagree.
+
+### 4 · The coverage hole that let the whole mark be replaced with a green suite
+
+The first build ran 5211 tests green having deleted both markers and rewritten their placement,
+because **neither day surface asserted anything about the mark, in either scope**. That is the
+`frontend/CLAUDE.md` anti-pattern with no test to catch it. Closed: six specs on Trip and four on
+Plan, asserting the fact (same row, same fraction, one derivation) and the posture separately, plus
+the both-day-scopes rule and the settled-row case. They live in the two `*.travel.test.tsx` files
+because the ~110-line `vi.mock` harness does, and a second copy of that is the duplication rule 8
+forbids — `docs/backlog.md` carries the line to extract it when a third spec wants it.
+
+### 5 · Deferred on purpose: §6, the proportional gaps
+
+**§6 is not built.** It is the "longer events look longer" half, it is orthogonal to the marker,
+it changes the height of every day, and it lands in two different components (`JoinRow` and Plan's
+gap control) rather than in the mark. The owner has approved it on a desktop render and not on a
+device, and `--gpm` is explicitly a feel number. It has a backlog line; the marker did not need to
+wait behind it.

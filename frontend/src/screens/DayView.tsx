@@ -8,6 +8,7 @@
 // ("we did this / skip"); the ±30 nudge only offers moves that are possible; and
 // a past day reads as a read-only archive (ADR-0029), editing gated to Plan.
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import {
   EVENT_KIND,
   EVENT_STATUS,
@@ -143,11 +144,12 @@ import { travelOrigin } from '../lib/hero-travel';
 import { useGeolocation } from '../lib/useGeolocation';
 import { clearOnWay, useOnWay } from '../lib/on-way';
 import { nowLinePlacement } from '../lib/now-line';
+import { NowMarker } from '../ui/domain/NowMarker';
 import { StayRow } from '../ui/domain/StayRow';
 import { type SettleOutcome } from '../ui/domain/SettleControl';
 import { UnplacedCommitment } from '../ui/domain/UnplacedCommitment';
 import { bookingWhen } from '../lib/booking-journey';
-import { hoursPhrase } from '../lib/duration';
+import { hoursPhrase, remainingPhrase } from '../lib/duration';
 import {
   ConnectionBand,
   GapStrip,
@@ -577,6 +579,8 @@ export function DayView() {
 
   const dayCtx: DayCtx = {
     tz: trip.timezone,
+    // Filled in below, once `merged` exists to derive the placement from.
+    nowMark: null,
     zoneCtx,
     now,
     readOnly,
@@ -1032,19 +1036,45 @@ export function DayView() {
     };
   };
 
-  // The now-line: only on today (a past/future day has no "now"). Where it lands is
-  // `lib/now-line.ts` — one derivation shared with Plan's static now-reference, and
-  // the seam for the generalization that will let it sit INSIDE a running event
-  // rather than always above it.
-  const showNowLine = dayScope === DAY_PHASE.TODAY;
-  const nowLineIndex = nowLinePlacement(merged, now.getTime()).index;
-
   // Land on now: scroll the now-line into view once per day-open (today only), a
   // passed event or two left peeking above. Keyed on the viewed day — never on
   // the clock tick — so it doesn't fight a manual scroll. Instant under
   // reduced-motion.
   const nowLineRef = useRef<HTMLDivElement>(null);
   const isToday = dayScope === DAY_PHASE.TODAY;
+
+  // **Where the moment is** — only on today, because a past or future day has no "now"
+  // (ADR-0043 §1/§4). `lib/now-line.ts` answers both halves (ADR-0217 §1/§2): `inside` names
+  // the row the moment is IN and how far through it we are, and `index` is the boundary the
+  // mark falls back to when no row holds it — before the day's first row, after its last, and
+  // in a hole `dayBlocks` draws no row for. One derivation, shared with Plan's own reference.
+  const showNowLine = isToday;
+  const nowPlaced = nowLinePlacement(merged, now.getTime());
+  const nowLineIndex = nowPlaced.index;
+  const nowInsideRow = showNowLine ? nowPlaced.inside : null;
+  const nowLabel = formatTime(now, nowZone);
+  // **AND THE SPACE BETWEEN TWO ROWS HOLDS THE MOMENT TOO** (ADR-0217 §4) — a hole is an
+  // interval like any other, and "you are in the gap, with 40 minutes of it left" is the
+  // useful half of "what next". It is derived HERE rather than in `nowLinePlacement` because a
+  // hole is not an entry: `dayBlocks` measures it between two of them, after the placement
+  // exists. Which is also why it needs no second rule — a hole is precisely where no row holds
+  // the moment, so `inside === null` at this index already identifies it, and the two answers
+  // cannot disagree.
+  const nowInJoin = (from?: TripEvent, to?: TripEvent): number | null => {
+    if (!showNowLine || nowInsideRow || !from?.endsAt || !to?.startsAt) return null;
+    const opens = Date.parse(from.endsAt);
+    const closes = Date.parse(to.startsAt);
+    const at = now.getTime();
+    return closes > opens && at >= opens && at < closes ? (at - opens) / (closes - opens) : null;
+  };
+  // The ctx the ROWS render from. `dayCtx` itself carries no mark, which is what the tail of
+  // untimed rows below wants: ADR-0171 §10a says they hold no position in the day, and
+  // `eventSpans` agrees by skipping an event with no `startsAt` — so they can never be the
+  // moment's row and must not be handed a key that might match one.
+  const rowCtx: DayCtx = {
+    ...dayCtx,
+    nowMark: nowInsideRow ? { ...nowInsideRow, label: nowLabel, ref: nowLineRef } : null,
+  };
   useEffect(() => {
     // A preview must not scroll: its pane is not a scroller, so `scrollIntoView` would walk
     // out and move the REAL day's body under the finger (ADR-0200 §7).
@@ -1249,95 +1279,116 @@ export function DayView() {
             That predicate already separates the two for ADR-0061's bed-shaped gap, so a
             fourth carried mode joins by being one. */}
           {blocks.map((block) => {
-            const rows = block.entries.map(({ entry, index, join, from }) => (
-              <Fragment
-                key={
-                  entry.kind === 'event' ? groupKey(entry.group) : `${entry.event.id}-${entry.edge}`
-                }
-              >
-                {/* The join reads BEFORE the now-line: it is a fact about the plan, and
+            const rows = block.entries.map(({ entry, index, join, from }) => {
+              const joinTo = entry.kind === 'event' ? groupStartEvent(entry.group) : undefined;
+              const joinJourney = joinTo ? journeyFor(from, joinTo) : null;
+              // A hole with no row drawn for it has nothing to nail the mark to, so the
+              // boundary form keeps that case (§5's day-head hole).
+              const joinThru = join || joinJourney ? nowInJoin(from, joinTo) : null;
+              return (
+                <Fragment
+                  key={
+                    entry.kind === 'event'
+                      ? groupKey(entry.group)
+                      : `${entry.event.id}-${entry.edge}`
+                  }
+                >
+                  {/* The join reads BEFORE the now-line: it is a fact about the plan, and
                   the now-line is the clock arriving inside it. */}
-                {(() => {
-                  const to = entry.kind === 'event' ? groupStartEvent(entry.group) : undefined;
-                  const journey = to ? journeyFor(from, to) : null;
-                  // **A join OR a journey**: the two are independent facts about one hole, and a
-                  // hole too short for a join can still hold a leg (§AG6, and Plan has always
-                  // drawn it).
-                  if (!join && !journey) return null;
-                  return (
-                    <JoinRow
-                      join={join ?? null}
-                      {...(journey && from && to
-                        ? journeyProps(journey, to === liveLeg?.to && from === liveLeg?.from, {
-                            from,
-                            to,
-                          })
-                        : {
-                            journey: null,
-                            travelMode: travelReads.mode,
-                            // No block renders on this branch — the row is a gap — but the zones
-                            // are required so a journey can never reach it without them (§AQ),
-                            // and they are the same two this hole would state if one appeared.
-                            zones:
-                              from && to
-                                ? legDisplayZones({ from, to }, zoneCtx)
-                                : { depart: zoneCtx.ambientZone, arrive: zoneCtx.ambientZone },
-                          })}
-                      tz={trip.timezone}
-                      places={places}
-                      placeLabels={placeLabels}
-                      onFillGap={readOnly ? undefined : setGapTarget}
-                    />
-                  );
-                })()}
-                {showNowLine && index === nowLineIndex && (
-                  <NowLine ref={nowLineRef} now={now} tz={nowZone} />
-                )}
-                {entry.kind === 'event' ? (
-                  // **A CARRIED LEG SITS ON THE DAY'S THREAD** (ADR-0212 §1). The card is
-                  // untouched — ADR-0210 §1 reserved the box for commitments and a flight is the
-                  // strongest one a day holds — and the wrapper adds only the line it sits on.
-                  // Skipped when the block is a journey run: the thread then belongs to the whole
-                  // run (below), and a wrapper per leg would draw one line per card.
-                  !block.journey && carriedRow(entry) ? (
-                    <div className="day-thread">
-                      <GroupNode group={entry.group} depth={0} ctx={dayCtx} />
-                    </div>
+                  {(() => {
+                    const to = joinTo;
+                    const journey = joinJourney;
+                    // **A join OR a journey**: the two are independent facts about one hole, and a
+                    // hole too short for a join can still hold a leg (§AG6, and Plan has always
+                    // drawn it).
+                    if (!join && !journey) return null;
+                    const row = (
+                      <JoinRow
+                        join={join ?? null}
+                        {...(journey && from && to
+                          ? journeyProps(journey, to === liveLeg?.to && from === liveLeg?.from, {
+                              from,
+                              to,
+                            })
+                          : {
+                              journey: null,
+                              travelMode: travelReads.mode,
+                              // No block renders on this branch — the row is a gap — but the zones
+                              // are required so a journey can never reach it without them (§AQ),
+                              // and they are the same two this hole would state if one appeared.
+                              zones:
+                                from && to
+                                  ? legDisplayZones({ from, to }, zoneCtx)
+                                  : { depart: zoneCtx.ambientZone, arrive: zoneCtx.ambientZone },
+                            })}
+                        tz={trip.timezone}
+                        places={places}
+                        placeLabels={placeLabels}
+                        onFillGap={readOnly ? undefined : setGapTarget}
+                      />
+                    );
+                    // The hole is a row like any other once the moment is in it.
+                    return joinThru === null ? (
+                      row
+                    ) : (
+                      <NowMarker ref={nowLineRef} label={nowLabel} thruFrac={joinThru}>
+                        {row}
+                      </NowMarker>
+                    );
+                  })()}
+                  {/* The BOUNDARY form, and only when no row holds the moment: with an
+                    `inside` the mark is nailed to that row instead (`ItemNode`). */}
+                  {showNowLine && !nowInsideRow && joinThru === null && index === nowLineIndex && (
+                    <NowMarker ref={nowLineRef} label={nowLabel} />
+                  )}
+                  {entry.kind === 'event' ? (
+                    // **A CARRIED LEG SITS ON THE DAY'S THREAD** (ADR-0212 §1). The card is
+                    // untouched — ADR-0210 §1 reserved the box for commitments and a flight is the
+                    // strongest one a day holds — and the wrapper adds only the line it sits on.
+                    // Skipped when the block is a journey run: the thread then belongs to the whole
+                    // run (below), and a wrapper per leg would draw one line per card.
+                    !block.journey && carriedRow(entry) ? (
+                      <div className="day-thread">
+                        <GroupNode group={entry.group} depth={0} ctx={rowCtx} />
+                      </div>
+                    ) : (
+                      <GroupNode group={entry.group} depth={0} ctx={rowCtx} />
+                    )
                   ) : (
-                    <GroupNode group={entry.group} depth={0} ctx={dayCtx} />
-                  )
-                ) : (
-                  <TransitionRow
-                    entry={entry}
-                    tz={dayCtx.tz}
-                    {...transitionZoneProps(entry, dayCtx.zoneCtx)}
-                    bookings={dayCtx.bookings}
-                    onOpen={dayCtx.onOpenDetail}
-                    onNavigate={dayCtx.readOnly ? undefined : navigateHandler(entry.event, dayCtx)}
-                    // Not gated on `readOnly`: a past day is a browsable archive
-                    // (ADR-0029), and looking at where you were changes nothing.
-                    // THIS EDGE's end, so a `נחיתה` row goes to where you landed rather than to
-                    // the airport you took off from (2026-08-06). The row already knows which end
-                    // it is; it simply was not saying so.
-                    onShowOnMap={eventShowOnMap(
-                      entry.event,
-                      dayCtx.bookings,
-                      dayCtx.places,
-                      dayCtx.showPlaceOnMap,
-                      entry.edge,
-                    )}
-                    // The settle pair the strip used to carry, moved with the floors that
-                    // moved into this list (2026-08-13). `TransitionRow` renders it on a
-                    // FLOOR only; passing it unconditionally here keeps that one rule in
-                    // one place. Trip mode's alone — Plan settles off a row menu (ADR-0171
-                    // §10e) — and gated on `readOnly` like every other write on a past day.
-                    onDone={dayCtx.readOnly ? undefined : () => verbs.done(entry.event)}
-                    onSkip={dayCtx.readOnly ? undefined : () => verbs.skip(entry.event)}
-                    onUndo={dayCtx.readOnly ? undefined : () => verbs.restore(entry.event)}
-                  />
-                )}
-              </Fragment>
-            ));
+                    <TransitionRow
+                      entry={entry}
+                      tz={dayCtx.tz}
+                      {...transitionZoneProps(entry, dayCtx.zoneCtx)}
+                      bookings={dayCtx.bookings}
+                      onOpen={dayCtx.onOpenDetail}
+                      onNavigate={
+                        dayCtx.readOnly ? undefined : navigateHandler(entry.event, dayCtx)
+                      }
+                      // Not gated on `readOnly`: a past day is a browsable archive
+                      // (ADR-0029), and looking at where you were changes nothing.
+                      // THIS EDGE's end, so a `נחיתה` row goes to where you landed rather than to
+                      // the airport you took off from (2026-08-06). The row already knows which end
+                      // it is; it simply was not saying so.
+                      onShowOnMap={eventShowOnMap(
+                        entry.event,
+                        dayCtx.bookings,
+                        dayCtx.places,
+                        dayCtx.showPlaceOnMap,
+                        entry.edge,
+                      )}
+                      // The settle pair the strip used to carry, moved with the floors that
+                      // moved into this list (2026-08-13). `TransitionRow` renders it on a
+                      // FLOOR only; passing it unconditionally here keeps that one rule in
+                      // one place. Trip mode's alone — Plan settles off a row menu (ADR-0171
+                      // §10e) — and gated on `readOnly` like every other write on a past day.
+                      onDone={dayCtx.readOnly ? undefined : () => verbs.done(entry.event)}
+                      onSkip={dayCtx.readOnly ? undefined : () => verbs.skip(entry.event)}
+                      onUndo={dayCtx.readOnly ? undefined : () => verbs.restore(entry.event)}
+                    />
+                  )}
+                </Fragment>
+              );
+            });
             // A journey's legs live INSIDE one block, so the band between them belongs to
             // an object rather than floating between two cards (ADR-0159 §3) — and the thread
             // wraps the whole RUN rather than each leg (ADR-0212 §1/§5), which is also the
@@ -1367,8 +1418,8 @@ export function DayView() {
               {...staySettle(bookends.sleeps)}
             />
           )}
-          {showNowLine && nowLineIndex === merged.length && (
-            <NowLine ref={nowLineRef} now={now} tz={nowZone} />
+          {showNowLine && !nowInsideRow && nowLineIndex === merged.length && (
+            <NowMarker ref={nowLineRef} label={nowLabel} />
           )}
           {/* **The tail, and the line that finally names it** (ADR-0171 §10a). These rows
             have always rendered here; what they never had was anything saying they hold
@@ -1659,27 +1710,16 @@ export function DayView() {
   );
 }
 
-// The now-line (ADR-0043): a quiet soft-amber hairline with a flat mono time
-// label, marking the current moment. It sits below the live event in the
-// hierarchy — a time reference, not a second loud element (no chip fill, glow,
-// or pulse). Takes a ref so the day view can scroll it into view on open.
-function NowLine({ ref, now, tz }: { ref: React.Ref<HTMLDivElement>; now: Date; tz: string }) {
-  return (
-    <div className="nowline" ref={ref} aria-label={t.day.nowLineAria(formatTime(now, tz))}>
-      <span className="nowline-chip">
-        <span className="nowline-dot" aria-hidden="true" />
-        <span dir="auto">{formatTime(now, tz)}</span>{' '}
-        <span className="nowline-lbl">{t.common.now}</span>
-      </span>
-      <span className="nowline-rule" />
-    </div>
-  );
-}
-
 // Shared wiring threaded through the recursive concurrency render (ADR-0041), so
 // a nested/clustered EventCard keeps every quick-verb it has at the top level.
 interface DayCtx {
   tz: string;
+  /** **The moment's row and where in it**, threaded down the recursive concurrency render so
+   *  the mark can be nailed to a NESTED row (ADR-0217 §2) — an envelope's child and a
+   *  cluster's peer are both rendered by `ItemNode` at depth ≥ 1, and only `ItemNode` knows
+   *  which event it is drawing. `null` on a past or future day, and whenever the moment is in
+   *  a hole no row holds. */
+  nowMark: { key: string; thruFrac: number; label: string; ref: React.Ref<HTMLDivElement> } | null;
   /** The trip's zone crossings + the day's ambient zone, so each event resolves
    *  its display zone(s) and the non-trivial-suppression rule (ADR-0107). */
   zoneCtx: ZoneContext;
@@ -1833,6 +1873,12 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       tz={ctx.tz}
       zones={zones}
       duration={eventDurationLabel(e, booking, zones)}
+      // What is LEFT replaces the total on the ONE row the moment is inside (ADR-0217 §3).
+      remaining={
+        ctx.nowMark?.key === e.id && e.endsAt
+          ? remainingPhrase(Date.parse(e.endsAt) - ctx.now.getTime())
+          : undefined
+      }
       distance={eventDistanceLabel(booking, ctx.places)}
       conflict={
         conflicts.length > 0
@@ -1854,10 +1900,25 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       onRemove={() => ctx.verbs.remove(e)}
     />
   );
-  if (!hasKids) return card;
+  // **THE MARK IS NAILED HERE, at whatever depth this row is** (ADR-0217 §1). `ItemNode` is
+  // the only place that knows which event it is drawing, which is what makes an envelope's
+  // child and a cluster's peer work with no case of their own — `nowInside` already chose the
+  // innermost holder, and this just recognises itself in the answer.
+  //
+  // It wraps the CARD and not the nest: the mark belongs to the row that holds the moment, and
+  // a nest is that row plus everything under it.
+  const marked = (row: ReactNode) =>
+    ctx.nowMark && ctx.nowMark.key === e.id ? (
+      <NowMarker ref={ctx.nowMark.ref} label={ctx.nowMark.label} thruFrac={ctx.nowMark.thruFrac}>
+        {row}
+      </NowMarker>
+    ) : (
+      row
+    );
+  if (!hasKids) return marked(card);
   return (
     <div className="nest">
-      {card}
+      {marked(card)}
       <div className={'nest-kids' + (depth >= 1 ? ' deep' : '')}>
         <DayTree groups={item.children} depth={depth + 1} ctx={ctx} />
       </div>

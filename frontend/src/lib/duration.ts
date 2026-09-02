@@ -60,6 +60,27 @@ export function hoursPhrase(minutes: number): string {
 }
 
 /**
+ * **What is LEFT of something that is running** (ADR-0217 §3) — the read-out on the one row
+ * the moment is inside, in `hoursPhrase`'s own ladder because this app has ONE duration ladder
+ * (ADR-0114) and a second wording for the same fact is how they drift.
+ *
+ * **No `נותרו` prefix, and both reasons are measurements** taken off the drawing: the word is
+ * ⁦14.5px⁩ wider than the total it replaces, which wraps `.wp-event-time`'s grid cell and costs
+ * the card ⁦19px⁩ at ⁦360px⁩; and it prints a whole Hebrew word inside `--font-mono`, which
+ * `board.css` forbids ("mono is for their numeric run, never for Hebrew beside it"). The bare
+ * rung is `.when-dur`'s exact width, so the row is unchanged and the amber says what the word
+ * would have. `t.travel.remaining` is still the phrase where there IS room for it.
+ *
+ * Floored at one minute rather than rounded to zero: a row with ⁦20⁩ seconds left is still
+ * running, and `0 דק׳` on a row you are inside is the one thing it cannot say. `null` once
+ * nothing is left, which is the same absence `formatDuration` answers with.
+ */
+export function remainingPhrase(msLeft: number): string | null {
+  if (!Number.isFinite(msLeft) || msLeft <= 0) return null;
+  return hoursPhrase(Math.max(1, Math.round(msLeft / MS_PER_MINUTE)));
+}
+
+/**
  * **A travel time, hedged** (ADR-0206 §D5 over §D3) — `~23 דק׳`, `~1:13 שע׳`, `כשעה`.
  *
  * The ladder is `hoursPhrase`'s, untouched: an estimate is a duration and this app has one

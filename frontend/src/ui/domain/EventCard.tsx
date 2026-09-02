@@ -78,6 +78,12 @@ export interface EventCardProps {
    *  passes it for transport + zone-shifted rows, where the raw start–end can
    *  misread the real span; absent otherwise. */
   duration?: string;
+  /** **What is LEFT of this row, when the moment is inside it** (ADR-0217 §3) — it REPLACES
+   *  `duration` rather than joining it. The range above already says how long; inside the
+   *  thing you want what remains, and the two together wrap `.wp-event-time`'s grid cell for
+   *  ⁦19px⁩ of card height at ⁦360px⁩ (`remainingPhrase`, `lib/duration.ts`, carries the
+   *  measurement). Only the day's ONE running row ever gets it. */
+  remaining?: string | null;
   /** **How far a carried leg goes** (ADR-0212), already formatted — `carriedLegMeters` through
    *  `formatDistance`. Present only on a booking whose span is spent in motion, so a hire and
    *  every non-transport row pass nothing and are untouched.
@@ -186,6 +192,7 @@ export function EventCard(props: EventCardProps) {
     tz,
     zones,
     duration,
+    remaining,
     distance,
     conflict,
     nestedCount,
@@ -320,9 +327,15 @@ export function EventCard(props: EventCardProps) {
           </sup>
         )}
       </span>
-      {(duration || distance || zones?.deltaMinutes != null) && (
+      {(remaining || duration || distance || zones?.deltaMinutes != null) && (
         <span className="wp-event-timemeta">
-          {duration && <span className="when-dur wp-event-dur">{duration}</span>}
+          {/* `remaining` REPLACES the total (ADR-0217 §3) — same class, same width, amber
+              instead of `--muted`, so the row is unchanged and the hue says which it is. */}
+          {remaining ? (
+            <span className="when-dur wp-event-dur wp-event-left">{remaining}</span>
+          ) : (
+            duration && <span className="when-dur wp-event-dur">{duration}</span>
+          )}
           {/* The distance follows the duration and never leads it: this row is a WHEN slot, and
               a carried leg's length is context on it — the same order and the same `--muted`
               standing `.day-trv-dist` gives it one row family over (ADR-0212). */}

@@ -169,6 +169,7 @@ import {
   staysOnDate,
 } from '../lib/day-entries';
 import { nowLinePlacement } from '../lib/now-line';
+import { NOW_POSTURE, NowMarker } from '../ui/domain/NowMarker';
 import { ambientSpanLabel, dayBookendStays } from '../lib/glance';
 import { edgeSentence } from '../lib/transitions';
 import { t } from '../i18n/he';
@@ -1334,6 +1335,8 @@ export function PlanDay() {
   });
 
   const builderCtx: BuilderCtx = {
+    // Filled in by `BuilderEntries`, which is where the placed entries exist to derive it.
+    nowMark: null,
     tz,
     zoneCtx,
     readOnly,
@@ -2100,6 +2103,10 @@ export function ResolveSheet({
 // nested inside an envelope, or a member of an overlap cluster.
 interface BuilderCtx {
   tz: string;
+  /** **The moment's row and where in it** — the same field `DayCtx` carries, threaded for the
+   *  same reason: only `BuilderNode` knows which event it is drawing, so a NESTED row can take
+   *  the mark with no case of its own (ADR-0217 §2). `null` unless the builder is on today. */
+  nowMark: { key: string; thruFrac: number; label: string } | null;
   /** Per-event zone resolution + the day's ambient zone (ADR-0107 multi-zone). */
   zoneCtx: ZoneContext;
   readOnly: boolean;
@@ -2306,7 +2313,20 @@ function BuilderGroups({
   // The same placement the Trip-mode now-line uses (`lib/now-line.ts`) — this screen's
   // marker is static rather than live, which is a difference in the INSTANT it is given
   // and nothing else.
-  const nowRefIndex = nowRefMs === null ? -1 : nowLinePlacement(entries, nowRefMs).index;
+  // The same derivation Trip's marker reads (`lib/now-line.ts`), which is the point:
+  // ADR-0159 §1 permits a difference in POSTURE and forbids one about a fact. This screen's
+  // marker is static rather than live — a difference in the instant it is given — and now also
+  // in what it says: it marks the row and does NOT count down inside it, because a countdown
+  // on a drafting table is a live signal and ADR-0043 §5 refuses one here.
+  const nowPlaced = nowRefMs === null ? null : nowLinePlacement(entries, nowRefMs);
+  const nowRefIndex = nowPlaced?.index ?? -1;
+  const nowInsideRow = nowPlaced?.inside ?? null;
+  const nowRefLabel = nowRefMs === null ? '' : formatTime(new Date(nowRefMs), ctx.nowZone);
+  // The ctx the rows render from, carrying the mark down to whatever depth holds the moment.
+  const rowCtx: BuilderCtx = {
+    ...ctx,
+    nowMark: nowInsideRow ? { ...nowInsideRow, label: nowRefLabel } : null,
+  };
   // Positions are measured between consecutive EVENT groups only — a transition point
   // interleaved between two groups doesn't break their adjacency.
   let prevEventGroup: TimeGroup | null = null;
@@ -2314,7 +2334,9 @@ function BuilderGroups({
     <>
       {entries.map((entry, i) => {
         const nowRef =
-          i === nowRefIndex && nowRefMs !== null ? <NowRef ms={nowRefMs} tz={ctx.nowZone} /> : null;
+          i === nowRefIndex && nowRefMs !== null && !nowInsideRow ? (
+            <NowMarker label={nowRefLabel} posture={NOW_POSTURE.PLAN} />
+          ) : null;
         if (entry.kind === 'transition') {
           return (
             <Fragment key={`${entry.event.id}-${entry.edge}`}>
@@ -2417,40 +2439,21 @@ function BuilderGroups({
                     key={item.event.id}
                     item={item}
                     depth={depth + 1}
-                    ctx={ctx}
+                    ctx={rowCtx}
                     overlapNote={overlapSeam(g.items, idx)}
                   />
                 ))}
               </div>
             ) : (
-              <BuilderNode item={g.item} depth={depth} ctx={ctx} />
+              <BuilderNode item={g.item} depth={depth} ctx={rowCtx} />
             )}
           </Fragment>
         );
       })}
-      {nowRefMs !== null && nowRefIndex === entries.length && (
-        <NowRef ms={nowRefMs} tz={ctx.nowZone} />
+      {nowRefMs !== null && !nowInsideRow && nowRefIndex === entries.length && (
+        <NowMarker label={nowRefLabel} posture={NOW_POSTURE.PLAN} />
       )}
     </>
-  );
-}
-
-// The Plan builder's static now-reference (ADR-0043): a drafting guide for where
-// "now" falls while building today — deliberately NOT the Trip now-line. Plan's
-// violet, a dashed rule, a hollow marker, no pulse or glow, so it can never read
-// as a live signal ("nothing in Plan mode is live", design-language).
-function NowRef({ ms, tz }: { ms: number; tz: string }) {
-  return (
-    <div className="nowref" aria-label={t.day.nowLineAria(formatTime(new Date(ms), tz))}>
-      <span className="nowref-tag">
-        <span className="nowref-ring" aria-hidden="true" />
-        {t.common.now}{' '}
-        <span className="nowref-tm" dir="auto">
-          {formatTime(new Date(ms), tz)}
-        </span>
-      </span>
-      <span className="nowref-rule" />
-    </div>
   );
 }
 
@@ -2475,60 +2478,77 @@ function BuilderNode({
   const zones = eventZones(e, ctx.zoneCtx);
   // Same route treatment as the Trip-mode day row (ADR-0059 §3 amendment).
   const route = routeDisplay(eventRoute(e, ctx.bookings, ctx.places, ctx.placeLabels));
+  // **THE MARK IS NAILED HERE**, at whatever depth this row is — the same three lines
+  // `DayView`'s `ItemNode` carries, off the same ctx field and the same derivation
+  // (ADR-0217 §2). Plan's posture makes it violet and dashed and nothing else.
+  const marked = (row: ReactNode) =>
+    ctx.nowMark && ctx.nowMark.key === e.id ? (
+      <NowMarker
+        label={ctx.nowMark.label}
+        posture={NOW_POSTURE.PLAN}
+        thruFrac={ctx.nowMark.thruFrac}
+      >
+        {row}
+      </NowMarker>
+    ) : (
+      row
+    );
   return (
     <>
-      <BuilderRow
-        event={e}
-        tz={ctx.tz}
-        title={route.title}
-        zones={zones}
-        duration={eventDurationLabel(e, booking, zones)}
-        distance={eventDistanceLabel(booking, ctx.places)}
-        readOnly={ctx.readOnly}
-        notes={hostCountForContext(
-          ctx.noteCounts,
-          resolveHostContext(ctx.hostContexts, { kind: 'event', id: e.id }),
-        )}
-        documents={attachmentCountForContext(
-          ctx.docCounts,
-          resolveHostContext(ctx.hostContexts, { kind: 'event', id: e.id }),
-        )}
-        tasks={hostCountForContext(
-          ctx.taskCounts,
-          resolveHostContext(ctx.hostContexts, { kind: 'event', id: e.id }),
-        )}
-        onOpen={() => ctx.onOpen(e)}
-        onEdit={() => ctx.onEdit(e)}
-        onDelete={() => ctx.verbs.remove(e)}
-        onShowOnMap={eventShowOnMap(e, ctx.bookings, ctx.places, ctx.showPlaceOnMap)}
-        onPark={soft ? () => ctx.verbs.park(e) : undefined}
-        dragProps={soft && !ctx.readOnly ? ctx.rowDragProps(e.id) : undefined}
-        // A hard row refuses the same hold instead of arming it. Gated on `readOnly` for
-        // the same reason the drag is: on a finished-trip archive nothing moves, so a beat
-        // singling this row out as the anchored one would be saying something false.
-        refuseProps={!soft && !ctx.readOnly ? ctx.rowRefuseProps : undefined}
-        dragging={ctx.drag?.id === e.id}
-        over={ctx.drag?.overId === e.id}
-        // The row's own time opens the day-position picker (ADR-0161 §7). Offered on any
-        // editable row, hard included: a hard event's time is a commitment, so the write
-        // goes through `applyGuardedUpdate` and asks — the same gate every other hard edit
-        // passes. What it never does is MOVE one without being asked (ADR-0011).
-        onPickTime={ctx.readOnly ? undefined : () => ctx.onPickTime(e)}
-        nestedCount={hasKids ? countDescendants(item) : undefined}
-        overlapNote={overlapNote}
-        // Finished-trip archive: soft rows settle in place (ADR-0044). Hard
-        // events aren't settled this way (ADR-0043), so they get no control.
-        settle={
-          ctx.readOnly && e.kind === EVENT_KIND.SOFT
-            ? {
-                status: e.status,
-                onDone: () => ctx.verbs.done(e),
-                onSkip: () => ctx.verbs.skip(e),
-                onRestore: () => ctx.verbs.restore(e),
-              }
-            : undefined
-        }
-      />
+      {marked(
+        <BuilderRow
+          event={e}
+          tz={ctx.tz}
+          title={route.title}
+          zones={zones}
+          duration={eventDurationLabel(e, booking, zones)}
+          distance={eventDistanceLabel(booking, ctx.places)}
+          readOnly={ctx.readOnly}
+          notes={hostCountForContext(
+            ctx.noteCounts,
+            resolveHostContext(ctx.hostContexts, { kind: 'event', id: e.id }),
+          )}
+          documents={attachmentCountForContext(
+            ctx.docCounts,
+            resolveHostContext(ctx.hostContexts, { kind: 'event', id: e.id }),
+          )}
+          tasks={hostCountForContext(
+            ctx.taskCounts,
+            resolveHostContext(ctx.hostContexts, { kind: 'event', id: e.id }),
+          )}
+          onOpen={() => ctx.onOpen(e)}
+          onEdit={() => ctx.onEdit(e)}
+          onDelete={() => ctx.verbs.remove(e)}
+          onShowOnMap={eventShowOnMap(e, ctx.bookings, ctx.places, ctx.showPlaceOnMap)}
+          onPark={soft ? () => ctx.verbs.park(e) : undefined}
+          dragProps={soft && !ctx.readOnly ? ctx.rowDragProps(e.id) : undefined}
+          // A hard row refuses the same hold instead of arming it. Gated on `readOnly` for
+          // the same reason the drag is: on a finished-trip archive nothing moves, so a beat
+          // singling this row out as the anchored one would be saying something false.
+          refuseProps={!soft && !ctx.readOnly ? ctx.rowRefuseProps : undefined}
+          dragging={ctx.drag?.id === e.id}
+          over={ctx.drag?.overId === e.id}
+          // The row's own time opens the day-position picker (ADR-0161 §7). Offered on any
+          // editable row, hard included: a hard event's time is a commitment, so the write
+          // goes through `applyGuardedUpdate` and asks — the same gate every other hard edit
+          // passes. What it never does is MOVE one without being asked (ADR-0011).
+          onPickTime={ctx.readOnly ? undefined : () => ctx.onPickTime(e)}
+          nestedCount={hasKids ? countDescendants(item) : undefined}
+          overlapNote={overlapNote}
+          // Finished-trip archive: soft rows settle in place (ADR-0044). Hard
+          // events aren't settled this way (ADR-0043), so they get no control.
+          settle={
+            ctx.readOnly && e.kind === EVENT_KIND.SOFT
+              ? {
+                  status: e.status,
+                  onDone: () => ctx.verbs.done(e),
+                  onSkip: () => ctx.verbs.skip(e),
+                  onRestore: () => ctx.verbs.restore(e),
+                }
+              : undefined
+          }
+        />,
+      )}
       {hasKids && (
         <div className={'bld-nest-kids' + (depth >= 1 ? ' deep' : '')}>
           <BuilderGroups groups={item.children} depth={depth + 1} ctx={ctx} />

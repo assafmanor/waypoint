@@ -36,7 +36,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { setSimulatedNow } from '../lib/useClock';
-import { approxTravelTime, freeTimePhrase } from '../lib/duration';
+import { approxTravelTime, freeTimePhrase, hoursPhrase, remainingPhrase } from '../lib/duration';
 import { markOnWay, resetOnWayForTests } from '../lib/on-way';
 import { ltrIsolate, withoutBidiControls } from '../lib/bidi';
 import { formatTime } from '../lib/time';
@@ -1333,5 +1333,106 @@ describe('DayView — a carried leg rides the day thread (ADR-0212)', () => {
       withoutBidiControls(formatDistance(legMetres + 2400)),
     );
     travelSeconds = null;
+  });
+});
+
+// ── WHERE THE MOMENT IS, ON THE REAL SCREEN (ADR-0217 §1/§2/§3/§4) ────────────────────────
+//
+// **These live in this file because the harness does, and that is the whole reason.** The
+// placement is pure and tested exhaustively without a renderer (`lib/now-inside.test.ts`,
+// `lib/now-line.test.ts`); the mark's own two forms are tested with hand-built props
+// (`ui/domain/NowMarker.test.tsx`). What is only observable HERE is that the screen connects
+// one to the other over the day's real rows — and the day surface needs ~110 lines of
+// `vi.mock` to render at all, so a second copy of that would be exactly the duplication root
+// rule 8 forbids. `docs/backlog.md` carries the line to extract it when a third spec wants it.
+//
+// This is also the coverage gap that let the whole marker be replaced with a green suite: the
+// day surfaces asserted nothing about it, in either scope.
+describe('DayView · where the moment is', () => {
+  /** Inside `lunch` (⁦11:00–13:20⁩ UTC): ⁦12:00⁩ is ⁦60⁩ of its ⁦140⁩ minutes in. */
+  const INSIDE_LUNCH = `${DAY}T12:00:00Z`;
+
+  beforeEach(() => {
+    resetOnWayForTests();
+    tripEvents = [morning, lunch, theatre];
+    tripPlaces = places;
+    travelSeconds = null;
+  });
+  afterEach(() => {
+    cleanup();
+    resetOnWayForTests();
+    setSimulatedNow(null);
+  });
+
+  it('nails the mark to the row the moment is inside, not above it', () => {
+    setSimulatedNow(Date.parse(INSIDE_LUNCH));
+    const { container } = show();
+    // `> .day-page` and not a descendant selector: a peek pane holds a whole day surface, so
+    // `.now-here` exists three times over while one is mounted (`frontend/CLAUDE.md`).
+    const marks = container.querySelectorAll('.day-swipe > .day-page .now-here');
+    expect(marks).toHaveLength(1);
+    const mark = marks[0];
+    // The row is INSIDE the mark — which is the entire report — and it is the running one.
+    expect(mark.querySelector('.wp-event')).toBeTruthy();
+    expect(mark.textContent).toContain(lunch.title);
+    expect(mark.classList.contains('edge')).toBe(false);
+    // 60/140 of the way through, read off the derivation rather than restated here.
+    expect(mark.getAttribute('style')).toContain(`--thru: ${(60 / 140) * 100}%`);
+  });
+
+  it('says what is LEFT of the running row instead of how long it is', () => {
+    setSimulatedNow(Date.parse(INSIDE_LUNCH));
+    const { container } = show();
+    const left = container.querySelector('.day-swipe > .day-page .wp-event-left')!;
+    expect(left).toBeTruthy();
+    // 80 minutes remain of 140; the total must not also be printed on that row.
+    expect(withoutBidiControls(left.textContent ?? '')).toBe(
+      withoutBidiControls(remainingPhrase(80 * 60_000)!),
+    );
+    const runningRow = container.querySelector('.day-swipe > .day-page .now-here .wp-event')!;
+    expect(withoutBidiControls(runningRow.textContent ?? '')).not.toContain(
+      withoutBidiControls(hoursPhrase(140)),
+    );
+  });
+
+  it('falls back to a boundary mark in a hole no row holds', () => {
+    // ⁦14:00⁩ is in the ⁦13:20–16:00⁩ hole, which draws a join — so the mark is nailed to it.
+    setSimulatedNow(Date.parse(`${DAY}T14:00:00Z`));
+    const { container } = show();
+    const mark = container.querySelector('.day-swipe > .day-page .now-here')!;
+    expect(mark).toBeTruthy();
+    expect(mark.querySelector('.wp-event')).toBeNull();
+    expect(container.querySelector('.day-swipe > .day-page .wp-event-left')).toBeNull();
+  });
+
+  it('is a zero-height boundary mark before the day has started', () => {
+    setSimulatedNow(Date.parse(`${DAY}T05:00:00Z`));
+    const { container } = show();
+    const marks = container.querySelectorAll('.day-swipe > .day-page .now-here');
+    expect(marks).toHaveLength(1);
+    expect(marks[0].classList.contains('edge')).toBe(true);
+    expect(marks[0].children).toHaveLength(0);
+  });
+
+  // `frontend/CLAUDE.md`: assert across BOTH day scopes on a day-scoped surface. A past or
+  // future day has no "now" at all (ADR-0043 §1/§4), and the mark must be absent rather than
+  // clamped to an edge.
+  it('draws no mark at all on a day that is not today', () => {
+    setSimulatedNow(Date.parse(`2026-08-05T12:00:00Z`));
+    const { container } = show();
+    expect(container.querySelector('.day-swipe > .day-page .now-here')).toBeNull();
+    expect(container.querySelector('.day-swipe > .day-page .wp-event-left')).toBeNull();
+  });
+
+  // ADR-0217 §4: once you have answered "we were there", "how far through" is not a question.
+  it('lets a settled row keep its place and drops the mark out of it', () => {
+    setSimulatedNow(Date.parse(INSIDE_LUNCH));
+    tripEvents = [morning, { ...lunch, status: EVENT_STATUS.DONE }, theatre];
+    const { container } = show();
+    const marks = container.querySelectorAll('.day-swipe > .day-page .now-here');
+    expect(marks).toHaveLength(1);
+    // Nailed to nothing: the boundary form, and no countdown on a row we have answered for.
+    expect(marks[0].querySelector('.wp-event')).toBeNull();
+    expect(container.querySelector('.day-swipe > .day-page .wp-event-left')).toBeNull();
   });
 });

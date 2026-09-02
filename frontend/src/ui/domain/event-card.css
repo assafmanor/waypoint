@@ -304,6 +304,14 @@
 .wp-event-dur {
   font-size: 10.5px;
 }
+/* **WHAT IS LEFT, ON THE ONE ROW THE MOMENT IS INSIDE** (ADR-0217 §3). `.wp-event-dur`'s own
+   box — same family, same weight, same width — re-inked from `--muted` to `--amber-deep`,
+   because what changed is which fact it states and not how loud it is. The hue is the clock's
+   (ADR-0028 rule 4), which is what it is: time. `remainingPhrase` (`lib/duration.ts`) carries
+   the measurements that refused the `נותרו` prefix here. */
+.wp-event-left {
+  color: var(--amber-deep);
+}
 /* **HOW FAR A CARRIED LEG GOES** (ADR-0212). `.day-trv-dist`'s standing, at this card's density:
    `--muted` because a distance is context rather than a commitment, and the amber on this row is
    already spent on the clock. It never wraps — a grouped four-digit number broken across two
