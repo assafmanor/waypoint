@@ -286,19 +286,29 @@ new surface. Recorded here because it is the kind of mistake that gets made agai
    altitude curve** for that place and date, which is what makes the polar states pictures rather
    than apologies (§3.4).
 
-2. **A pressable mark on the glance card's foot.** One class, `.sun-mark`, two features on one
-   host — never two mechanisms that look alike, which is the parallel-copy failure
-   ADR-0078/0079/0094/0095 exist to undo. It says **what is next**
-   (`🌇 שקיעה 19:04`, `⛅ 26°`) and links to the widget. Measured cost on the glance card: **+1px**
-   for both marks, and the 44px floor is met through `ValueToken`'s `::after` overlay (ADR-0177)
-   rather than by growing the line.
+2. **Nothing else on Home changes, and nothing at all on the day view.** An intermediate version
+   added a pressable `.sun-mark` chip to the glance card's foot and a row to the day view's
+   `.day-ambient` strip. The owner removed both, and each removal stands on its own reason:
 
-3. **The mark says the next event and never a position on the rail, and that is a correctness
-   decision.** The obvious design is a sunrise tick on the glance rail. It lies: `lib/glance.ts`
-   runs that window `07:00→23:00` stretched only to the earliest/latest event, sunrise is regularly
-   earlier, and a clamped tick points at the rail's edge while its label states the true instant —
-   **43 minutes off on a plain Tel Aviv September day**, 154 on Tokyo in June. Both mockups render
-   the rejected version beside the chosen one.
+   - **The day view's strip** already stacks a row per stay (a hotel-change day is two), the day's
+     distance total (`DayTravelTotal`) and Plan's fit verdict (`.day-fit`) — daylight would be a
+     fifth row for a fact no truer of that day than of any other.
+   - **The glance card's mark** printed the same fact the widget prints one scroll away. That is
+     the duplication ADR-0214 measured (a confirmation code twice, 240px apart) and ADR-0215
+     measured again (`19:00` four times on one screen), each time removing it.
+   - **And the sky behind the glance rail went with it**, which is the consequence worth not
+     leaving dangling: it was justified _only_ by making the mark's word and the rail's picture
+     agree. With no mark it is pass 1's rejected idea returning unargued, so it is gone.
+
+   Both surfaces are therefore byte-for-byte what ships today, asserted at **113px → 113px** on the
+   glance card and **41px → 41px** on the day view. What is lost is the ask's own _"also on the day
+   view"_, recorded rather than smoothed over; if it returns it does not return to the strip, since
+   the day's `.sec-title` is the only slot there that costs no row and it already carries the add
+   button.
+
+3. **The whole feature is two widgets in one section.** That is the shape ADR-0180 §3 already built
+   `מבט מהיר` for, and ADR-0045 §4 reserved it for. No new host, no new mechanism, no second
+   grammar anywhere else on the screen.
 
 4. **Tomorrow's forecast on the night board, at ≤1 run.** ADR-0214 already made tomorrow that
    board's rank-1 subject, so the host exists; it got there by removing four things, and its census

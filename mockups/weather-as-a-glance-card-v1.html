@@ -11208,6 +11208,172 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
          nothing), so this borrows that contract instead of restating it.
          ══════════════════════════════════════════════════════════════════════ */
 
+      /* ══ THE DAYLIGHT WIDGET'S CSS, ported verbatim from
+            `daylight-on-the-day-v1.html` alongside its renderer. Ported and not
+            re-typed: the first attempt brought the JS across and left the CSS
+            behind, and the widget rendered ⁦62.4px⁩ instead of ⁦105px⁩ — caught by
+            the cross-file assertion in the measurement table, which exists for
+            exactly this and stays. The sibling is the authority; if the two ever
+            disagree, that number goes red. */
+      /* THE SKY RAMP. Desaturated on purpose and deliberately NOT from the
+         semantic set — this is illustration, so it takes its own muted values the
+         way the avatar and pin ramps do, and §6 measures it against
+         `--amber`/`--teal`/`--plan`.
+
+         `--sun-strength` scales every stop's alpha at once, so the feel call is
+         one number rather than eight. */
+      .sun-widget {
+        --sun-night: rgba(30, 44, 92, calc(0.58 * var(--sun-strength, 1)));
+        --sun-twilight: rgba(116, 96, 150, calc(0.46 * var(--sun-strength, 1)));
+        --sun-dawn: rgba(226, 148, 92, calc(0.5 * var(--sun-strength, 1)));
+        --sun-day: rgba(140, 190, 232, calc(0.38 * var(--sun-strength, 1)));
+        --sun-disc: #e8a33d;
+        --sun-h: 64px;
+
+        display: block;
+        width: 100%;
+        padding: 0;
+        text-align: inherit;
+        font: inherit;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        overflow: hidden;
+        cursor: pointer;
+      }
+      /* The sky is a picture of a sky, so it does not INVERT in dark — what changes
+         is how much of it survives on a dark card. Night deepens, day cools. */
+      :root[data-theme='dark'] .sun-widget {
+        --sun-night: rgba(10, 17, 32, calc(0.66 * var(--sun-strength, 1)));
+        --sun-twilight: rgba(112, 92, 146, calc(0.42 * var(--sun-strength, 1)));
+        --sun-dawn: rgba(206, 138, 88, calc(0.4 * var(--sun-strength, 1)));
+        --sun-day: rgba(96, 140, 186, calc(0.34 * var(--sun-strength, 1)));
+      }
+
+      /* THE SKY BAND. Time runs RIGHT→LEFT — the same direction the glance rail
+         runs (`.wp-track-blk` anchors on `inset-inline-start`) — so the two
+         surfaces agree about which end of a day is which. `to right` would run the
+         day backwards and only a sunrise drawn at dusk would ever reveal it. */
+      .sun-sky {
+        position: relative;
+        height: var(--sun-h);
+        background: linear-gradient(
+          to left,
+          var(--sun-night) 0%,
+          var(--sun-night) var(--dawn-0),
+          var(--sun-twilight) var(--dawn-1),
+          var(--sun-dawn) var(--dawn-2),
+          var(--sun-day) var(--dawn-3),
+          var(--sun-day) var(--dusk-0),
+          var(--sun-dawn) var(--dusk-1),
+          var(--sun-twilight) var(--dusk-2),
+          var(--sun-night) var(--dusk-3),
+          var(--sun-night) 100%
+        );
+      }
+      .sun-sky > svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      /* The horizon: a hairline, because it is a reference and not a fact.
+         Everything above it is the day. */
+      .sun-horizon {
+        stroke: var(--ink);
+        stroke-opacity: 0.24;
+        stroke-width: 1;
+        stroke-dasharray: 3 3;
+      }
+      .sun-arc {
+        fill: none;
+        stroke: var(--ink);
+        stroke-opacity: 0.3;
+        stroke-width: 1.25;
+        stroke-linecap: round;
+      }
+      /* The lit run, drawn over the whole arc and clipped to above the horizon —
+         so the crossing needs no path surgery. The ONE warm line, and it is the
+         sun's own colour. */
+      .sun-arc-lit {
+        fill: none;
+        stroke: var(--sun-disc);
+        stroke-opacity: 0.9;
+        stroke-width: 2;
+        stroke-linecap: round;
+      }
+      .sun-disc {
+        fill: var(--sun-disc);
+      }
+      .sun-disc-ring {
+        fill: none;
+        stroke: var(--sun-disc);
+        stroke-opacity: 0.3;
+        stroke-width: 5;
+      }
+      /* Golden hour is the one thing here that is a RANGE and not an instant, so it
+         is a band and never two more times on the face.
+
+         **Its own warm ink rather than `--sun-disc`, and this came off the render:**
+         over the DAY-blue sky the disc colour desaturated to a dead grey, most
+         visibly on the day the band matters most — Tromsø in June, where the sun
+         sits below ⁦6°⁩ for hours and the band is the widest thing on the widget. */
+      .sun-gold-band {
+        fill: #f2a24e;
+        fill-opacity: 0.2;
+      }
+
+      /* THE FOOT — one line, three facts, at a size you read rather than inspect.
+         ⁦15px⁩ mono: half of pass 2's ⁦19px⁩ card treatment and still well clear of
+         the ⁦11.5px⁩ caption pass 1 used. Mono because they are times. */
+      .sun-foot {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 12px 10px;
+      }
+      .sun-foot .sf-t {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-family: var(--font-mono);
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--ink);
+      }
+      .sun-foot .sf-ic {
+        font-size: 13px;
+        line-height: 1;
+      }
+      /* The golden-hour chip. It is the third fact and the softest, so it sits in
+         the middle and goes quiet entirely when there is none to state. */
+      .sun-foot .sf-gold {
+        margin-inline: auto;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        background: color-mix(in srgb, #f2a24e 16%, transparent);
+        border-radius: 999px;
+        padding: 3px 9px;
+        white-space: nowrap;
+      }
+      .sun-foot .sf-gold .mono {
+        font-family: var(--font-mono);
+        color: var(--ink);
+      }
+      /* Polar days say it in the foot, because the curve above has already shown
+         it — a caption under a picture, not the message itself. */
+      .sun-foot .sf-polar {
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--ink);
+      }
+
+
       .wx-widget {
         display: block;
         width: 100%;
@@ -11344,42 +11510,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         border: 1px solid color-mix(in srgb, var(--miss) 30%, transparent);
       }
 
-      /* THE MARK — REUSED from `daylight-on-the-day-v1.html`, not redrawn. Same
-         class, same `::after` 44px overlay (`ValueToken`'s trick, ADR-0177), same
-         two hosts. That is the design decision this file most wants read: the
-         glance card's foot gains ONE grammar for "a fact about the world today,
-         tap for the widget", carrying at most two marks — never two mechanisms. */
-      .sun-mark {
-        position: relative;
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        font-size: 11.5px;
-        font-weight: 700;
-        color: var(--muted);
-        background: none;
-        border: 0;
-        padding: 0;
-        font-family: inherit;
-        cursor: pointer;
-      }
-      .sun-mark .sm-ic {
-        font-size: 12px;
-        line-height: 1;
-      }
-      .sun-mark .mono {
-        font-family: var(--font-mono);
-        font-weight: 700;
-        color: var(--ink);
-        border-bottom: 1px solid color-mix(in srgb, var(--ink) 28%, transparent);
-      }
-      .sun-mark::after {
-        content: '';
-        position: absolute;
-        inset-block: -14px;
-        inset-inline: -8px;
-        min-height: 44px;
-      }
+      /* **NOTHING IS PROPOSED FOR THE GLANCE CARD.** A `.sun-mark` chip stood
+         here and was removed with its daylight twin: once both widgets sit in
+         `מבט מהיר` on the same screen, the chip printed the same fact one scroll
+         away, which is the duplication ADR-0214 and ADR-0215 each measured and
+         removed. Recorded in prose rather than kept as commented-out code. */
 
       /* §5's rejected density, drawn so the refusal is rendered rather than
          asserted. Nothing here ships. */
@@ -11676,10 +11811,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         <h2>§1 · הווידג׳ט, והסימן · אותו דקדוק של אור היום</h2>
         <p class="note">
           מימין מה שיש היום, ומשמאל ההצעה: סעיף <code>מבט מהיר</code> נושא <b>שני</b> ווידג׳טים
-          קטנים זה לצד זה · אור היום ומזג האוויר · וכרטיס המבט מקבל <b>שני סימנים</b> באותה שורת
-          רגל, ב<b>אותו</b> <code>.sun-mark</code>. זו ההחלטה שהקובץ הזה הכי רוצה שייקראו: השורה
-          הזאת מקבלת <b>דקדוק אחד</b> ל«עובדה על העולם היום, לחצו לווידג׳ט» · לא שני מנגנונים
-          שנראים דומה.
+          קטנים · תחזית ואור יום (§8 קובע את הסדר) · ו<b>שום דבר אחר במסך לא משתנה</b>. גרסה
+          קודמת הוסיפה גם סימנים לחיצים בשורת הרגל של כרטיס המבט, והבעלים הסיר אותם: ברגע ששני
+          הווידג׳טים באותו מסך, הסימן מדפיס את אותה עובדה במרחק גלילה אחת · הכפילות ש-ADR-0214
+          ו-ADR-0215 כבר מדדו והורידו. כרטיס המבט כאן הוא <b>בדיוק</b> מה שנשלח היום, והטבלה
+          מוודאת ⁦0px⁩.
         </p>
         <div class="pair" id="s1"></div>
       </section>
@@ -11881,7 +12017,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
          Every frame is built from data — one widget renderer, one mark renderer,
          one strip renderer — so an "after" cannot drift from a "before".
          ══════════════════════════════════════════════════════════════════════ */
-      let state = { age: 1, alert: 0 };
+      let state = { age: 1, alert: 0, h: 64, s: 100 };
 
       /** The trip's next days, each with WHERE the group will be — which is the
        *  whole of §2. `beyond` = past the provider's horizon (§4). */
@@ -11941,15 +12077,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           </button>`;
       }
 
-      /** The daylight widget's mark, REUSED — see the CSS note. */
-      const mark = (ic, word, val) =>
-        `<button type="button" class="sun-mark"><span class="sm-ic">${ic}</span><span>${word}</span> <span class="mono" dir="auto">⁦${val}⁩</span></button>`;
-      const sunMark = () => mark('🌇', 'שקיעה', '19:04');
-      const wxMark = () => (isStale() ? '' : mark('⛅', '', '26°'));
-
       /** The glance card, with the app's real track tree. `marks` = the foot's
        *  two indications. */
-      function glanceCard({ marks = false } = {}) {
+      /** The glance card **exactly as it ships** — neither feature touches it
+       *  (see `daylight-on-the-day-v1.html` §2 for the removal and its reason). */
+      function glanceCard() {
         const blocks = [
           [0.12, 0.28, ''],
           [0.37, 0.44, ''],
@@ -11966,11 +12098,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
               `<span class="wp-track-mark" style="--s:${[20, 40, 85][i]}%">${g}</span>`,
           )
           .join('');
-        const foot = marks
-          ? `<div class="glance-foot"><span>מסתיים <span class="mono" dir="auto">~⁦21:00⁩</span></span><span class="dot" aria-hidden="true">·</span>${sunMark()}${
-              wxMark() ? `<span class="dot" aria-hidden="true">·</span>${wxMark()}` : ''
-            }</div>`
-          : `<div class="glance-foot"><span>מסתיים <span class="mono" dir="auto">~⁦21:00⁩</span></span></div>`;
+        const foot = `<div class="glance-foot"><span>מסתיים <span class="mono" dir="auto">~⁦21:00⁩</span></span></div>`;
         return `<div class="glance-day">
             <div class="wp-track glance-track">
               <div class="wp-track-marks" aria-hidden="true">${glyphs}</div>
@@ -11981,18 +12109,268 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           </div>`;
       }
 
-      /** The daylight widget, drawn thin here purely so §1 and §4 can show the
-       *  two sitting together. Its own file is the record of its design. */
-      const sunWidgetStub = () => `
-        <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden">
-          <div style="height:64px;background:linear-gradient(to left,rgba(30,44,92,.58) 0%,rgba(30,44,92,.58) 18%,rgba(116,96,150,.46) 21%,rgba(226,148,92,.5) 26%,rgba(140,190,232,.38) 30%,rgba(140,190,232,.38) 72%,rgba(226,148,92,.5) 77%,rgba(116,96,150,.46) 80%,rgba(30,44,92,.58) 83%,rgba(30,44,92,.58) 100%)"></div>
-          <div style="display:flex;align-items:center;gap:8px;padding:9px 12px 10px">
-            <span style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:var(--ink)">🌅 <span dir="auto">⁦06:17⁩</span></span>
-            <span style="margin-inline:auto;font-size:11px;font-weight:700;color:var(--muted);background:color-mix(in srgb,#f2a24e 16%,transparent);border-radius:999px;padding:3px 9px">✨ זהב <span style="font-family:var(--font-mono);color:var(--ink)" dir="auto">⁦18:32–19:19⁩</span></span>
-            <span style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:var(--ink)">🌇 <span dir="auto">⁦19:04⁩</span></span>
-          </div>
-        </div>`;
+      /* ══════════════════════════════════════════════════════════════════════
+         THE DAYLIGHT WIDGET — the REAL one, ported verbatim from
+         `daylight-on-the-day-v1.html` (its solar math, its arc, its foot).
 
+         **An earlier draft of this file drew a hand-written STUB instead** — a
+         flat sky band with the two times and no arc and no sun — and the owner,
+         seeing the two files side by side, read it as a second DESIGN: "you drew
+         two versions. I want the daylight on the day v1 version (the parabola
+         with the current time indicator)." There is only one design; the stub was
+         a shortcut in this file, and it is exactly the failure the skill warns
+         about — a hand-copy that drifts from the thing it stands in for.
+
+         So it is ported rather than approximated. The duplication across two
+         standalone mockups is accepted on purpose: each file has to render on its
+         own from a share sheet, and the sibling remains the authority on the
+         design. If the two ever disagree, the sibling wins.
+         ══════════════════════════════════════════════════════════════════════ */
+      const RAD = Math.PI / 180,
+        DEG = 180 / Math.PI;
+
+      /** Solar altitudes, in degrees. The feature IS this table. */
+      const SUN_ALT = {
+        /** refraction + the sun's own radius — the standard sunrise/sunset angle */
+        horizon: -0.833,
+        goldenStart: 6,
+        goldenEnd: -4,
+        civil: -6,
+      };
+
+      const jdFromYmd = (y, m, d) => {
+        if (m <= 2) {
+          y -= 1;
+          m += 12;
+        }
+        const A = Math.floor(y / 100),
+          B = 2 - A + Math.floor(A / 4);
+        return Math.floor(365.25 * (y + 4716)) + Math.floor(30.6001 * (m + 1)) + d + B - 1524.5;
+      };
+
+      function solarParams(jd) {
+        const T = (jd - 2451545) / 36525;
+        const L0 = (280.46646 + T * (36000.76983 + T * 0.0003032)) % 360;
+        const M = 357.52911 + T * (35999.05029 - 0.0001537 * T);
+        const e = 0.016708634 - T * (0.000042037 + 0.0000001267 * T);
+        const C =
+          Math.sin(M * RAD) * (1.914602 - T * (0.004817 + 0.000014 * T)) +
+          Math.sin(2 * M * RAD) * (0.019993 - 0.000101 * T) +
+          Math.sin(3 * M * RAD) * 0.000289;
+        const appLong = L0 + C - 0.00569 - 0.00478 * Math.sin((125.04 - 1934.136 * T) * RAD);
+        const eps0 = 23 + (26 + (21.448 - T * (46.815 + T * (0.00059 - T * 0.001813))) / 60) / 60;
+        const eps = eps0 + 0.00256 * Math.cos((125.04 - 1934.136 * T) * RAD);
+        const decl = Math.asin(Math.sin(eps * RAD) * Math.sin(appLong * RAD)) * DEG;
+        const y = Math.tan((eps / 2) * RAD) ** 2;
+        const eqTime =
+          4 *
+          DEG *
+          (y * Math.sin(2 * L0 * RAD) -
+            2 * e * Math.sin(M * RAD) +
+            4 * e * y * Math.sin(M * RAD) * Math.cos(2 * L0 * RAD) -
+            0.5 * y * y * Math.sin(4 * L0 * RAD) -
+            1.25 * e * e * Math.sin(2 * M * RAD));
+        return { decl, eqTime };
+      }
+
+      /** Minutes-from-midnight UTC at which the sun reaches `alt`, morning or
+       *  evening side. `null` when it never does — a state, not an error. */
+      function solarEventUtcMin(y, m, d, lat, lng, alt, rise) {
+        let jd = jdFromYmd(y, m, d) + 0.5;
+        let out = null;
+        for (let i = 0; i < 2; i++) {
+          const { decl, eqTime } = solarParams(jd);
+          const cosH =
+            (Math.sin(alt * RAD) - Math.sin(lat * RAD) * Math.sin(decl * RAD)) /
+            (Math.cos(lat * RAD) * Math.cos(decl * RAD));
+          if (cosH > 1 || cosH < -1) return null;
+          const H = Math.acos(cosH) * DEG;
+          const noon = 720 - 4 * lng - eqTime;
+          out = rise ? noon - 4 * H : noon + 4 * H;
+          jd = jdFromYmd(y, m, d) + out / 1440;
+        }
+        return out;
+      }
+
+      /** **The sun's altitude at a local minute** — what the arc is drawn from, and
+       *  the reason §4 is a picture rather than a sentence. */
+      function altitudeAt(sun, localMin) {
+        const utcMin = localMin - sun.offsetH * 60;
+        const { decl, eqTime } = solarParams(jdFromYmd(sun.y, sun.m, sun.d) + utcMin / 1440);
+        const H = (utcMin + eqTime + 4 * sun.lng) / 4 - 180;
+        return (
+          Math.asin(
+            Math.sin(sun.lat * RAD) * Math.sin(decl * RAD) +
+              Math.cos(sun.lat * RAD) * Math.cos(decl * RAD) * Math.cos(H * RAD),
+          ) * DEG
+        );
+      }
+
+      /** The day's daylight, in LOCAL minutes-from-midnight. Every field is
+       *  independently optional — the shape §4's finding forces. */
+      function dayLight(sun) {
+        const at = (alt, rise) => {
+          const u = solarEventUtcMin(sun.y, sun.m, sun.d, sun.lat, sun.lng, alt, rise);
+          return u === null ? null : u + sun.offsetH * 60;
+        };
+        const sunrise = at(SUN_ALT.horizon, true);
+        const sunset = at(SUN_ALT.horizon, false);
+        const samples = [];
+        for (let t = 0; t <= 1440; t += 10) samples.push([t, altitudeAt(sun, t)]);
+        const alts = samples.map((s) => s[1]);
+        const maxAlt = Math.max(...alts),
+          minAlt = Math.min(...alts);
+        return {
+          sunrise,
+          sunset,
+          goldenMornStart: at(SUN_ALT.goldenEnd, true),
+          goldenMornEnd: at(SUN_ALT.goldenStart, true),
+          goldenEveStart: at(SUN_ALT.goldenStart, false),
+          goldenEveEnd: at(SUN_ALT.goldenEnd, false),
+          civilDawn: at(SUN_ALT.civil, true),
+          civilDusk: at(SUN_ALT.civil, false),
+          lengthMin: sunrise !== null && sunset !== null ? sunset - sunrise : null,
+          samples,
+          maxAlt,
+          minAlt,
+          /** Two different days, and they read differently. */
+          polar: sunrise === null && sunset === null ? (maxAlt > 0 ? 'day' : 'night') : null,
+        };
+      }
+
+      const fmtMin = (min) => {
+        if (min === null || min === undefined) return '—';
+        const t = ((Math.round(min) % 1440) + 1440) % 1440;
+        return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+      };
+      const fmtDur = (min) =>
+        min === null
+          ? '—'
+          : `${Math.floor(min / 60)}:${String(Math.round(min % 60)).padStart(2, '0')}`;
+      const pct = (f) => `${(f * 100).toFixed(3)}%`;
+      const clamp01 = (f) => Math.min(1, Math.max(0, f));
+
+      /** The eight sky stops, as fractions of the 24h day. The gradient runs
+       *  `to left`, so a fraction maps straight through. */
+      function skyStops(l) {
+        const f = (min) => pct(clamp01(min / 1440));
+        if (l.polar === 'day')
+          return {
+            d0: '0%', d1: '0%', d2: '0%', d3: '0%',
+            k0: '100%', k1: '100%', k2: '100%', k3: '100%',
+          };
+        if (l.polar === 'night')
+          return {
+            d0: '50%', d1: '50%', d2: '50%', d3: '50%',
+            k0: '50%', k1: '50%', k2: '50%', k3: '50%',
+          };
+        return {
+          d0: f((l.civilDawn ?? l.sunrise) - 30),
+          d1: f(l.civilDawn ?? l.sunrise),
+          d2: f(l.sunrise),
+          d3: f(l.goldenMornEnd ?? l.sunrise),
+          k0: f(l.goldenEveStart ?? l.sunset),
+          k1: f(l.sunset),
+          k2: f(l.civilDusk ?? l.sunset),
+          k3: f((l.civilDusk ?? l.sunset) + 30),
+        };
+      }
+
+      /**
+       * The arc, built from the real altitude samples.
+       *
+       * Two coordinate facts that are easy to get wrong and cost a whole redraw:
+       *  - the sky runs RIGHT→LEFT (RTL, and the glance rail's own direction), so
+       *    x = W·(1 − t/1440), never W·(t/1440);
+       *  - the altitude scale is FIXED at ±90° rather than fitted to the day. A
+       *    fitted scale would stretch a polar-night curve to look like an ordinary
+       *    one and §4 would say nothing. The horizon therefore always sits at the
+       *    same height, which is what makes two days comparable.
+       */
+      function arcSvg(l, w, h, uid) {
+        const H_FRAC = 0.62;
+        const yOf = (alt) => h * H_FRAC - (alt / 90) * (h * H_FRAC * 0.92);
+        const xOf = (min) => w * (1 - min / 1440);
+        const d = l.samples
+          .map(([t, a], i) => `${i ? 'L' : 'M'}${xOf(t).toFixed(1)},${yOf(a).toFixed(1)}`)
+          .join('');
+        const horizonY = yOf(0);
+        const clip = `<clipPath id="lit-${uid}"><rect x="0" y="0" width="${w}" height="${Math.max(horizonY, 0).toFixed(1)}"/></clipPath>`;
+
+        // Golden bands. A HALF-OPEN interval (§4's finding) runs from its start to
+        // the edge of the day rather than being dropped.
+        const band = (a, b) => {
+          if (a === null && b === null) return '';
+          const x1 = xOf(b ?? 1440),
+            x2 = xOf(a ?? 0);
+          const x = Math.min(x1, x2),
+            wd = Math.abs(x2 - x1);
+          return wd > 0.5
+            ? `<rect class="sun-gold-band" x="${x.toFixed(1)}" y="0" width="${wd.toFixed(1)}" height="${h}"/>`
+            : '';
+        };
+        const bands =
+          l.polar === 'night'
+            ? ''
+            : band(l.goldenMornStart, l.goldenMornEnd) + band(l.goldenEveStart, l.goldenEveEnd);
+
+        const disc =
+          l.nowMin === null
+            ? ''
+            : `<circle class="sun-disc-ring" cx="${xOf(l.nowMin).toFixed(1)}" cy="${yOf(l.nowAlt).toFixed(1)}" r="6"/><circle class="sun-disc" cx="${xOf(l.nowMin).toFixed(1)}" cy="${yOf(l.nowAlt).toFixed(1)}" r="4"/>`;
+
+        return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+            <defs>${clip}</defs>
+            ${bands}
+            <line class="sun-horizon" x1="0" y1="${horizonY.toFixed(1)}" x2="${w}" y2="${horizonY.toFixed(1)}"/>
+            <path class="sun-arc" d="${d}"/>
+            <path class="sun-arc-lit" d="${d}" clip-path="url(#lit-${uid})"/>
+            ${disc}
+          </svg>`;
+      }
+
+      let uidSeq = 0;
+
+      /** The widget: sky + arc, then ONE foot line carrying all three facts. */
+      function sunWidget(day, { skyH = null } = {}) {
+        const H = skyH ?? state.h;
+        const l = dayLight(day.sun);
+        l.nowMin = day.nowMin;
+        l.nowAlt = altitudeAt(day.sun, day.nowMin);
+        const st = skyStops(l);
+        const style = `--sun-h:${H}px;--sun-strength:${state.s / 100};--dawn-0:${st.d0};--dawn-1:${st.d1};--dawn-2:${st.d2};--dawn-3:${st.d3};--dusk-0:${st.k0};--dusk-1:${st.k1};--dusk-2:${st.k2};--dusk-3:${st.k3}`;
+
+        let foot;
+        if (l.polar !== null) {
+          foot = `<div class="sun-foot"><span class="sf-polar">${l.polar === 'day' ? '☀️ השמש לא שוקעת היום' : '🌑 השמש לא זורחת היום'}</span><span class="sf-gold">גובה מרבי <span class="mono" dir="auto">⁦${l.maxAlt.toFixed(0)}°⁩</span></span></div>`;
+        } else {
+          const gold =
+            l.goldenEveStart === null
+              ? ''
+              : l.goldenEveEnd === null
+                ? // §4's half-open interval, said as an open range rather than `A–B`.
+                  `<span class="sf-gold">✨ זהב מ-<span class="mono" dir="auto">⁦${fmtMin(l.goldenEveStart)}⁩</span></span>`
+                : `<span class="sf-gold">✨ זהב <span class="mono" dir="auto">⁦${fmtMin(l.goldenEveStart)}–${fmtMin(l.goldenEveEnd)}⁩</span></span>`;
+          foot = `<div class="sun-foot">
+              <span class="sf-t"><span class="sf-ic">🌅</span><span dir="auto">⁦${fmtMin(l.sunrise)}⁩</span></span>
+              ${gold}
+              <span class="sf-t"><span class="sf-ic">🌇</span><span dir="auto">⁦${fmtMin(l.sunset)}⁩</span></span>
+            </div>`;
+        }
+        return `<button type="button" class="sun-widget" style="${style}">
+            <div class="sun-sky">${arcSvg(l, 360, H, ++uidSeq)}</div>
+            ${foot}
+          </button>`;
+      }
+
+
+      /** The stress day this file draws the sun for: Tokyo, the trip's today. */
+      const SUN_DAY = {
+        sun: { y: 2026, m: 9, d: 2, lat: 35.6762, lng: 139.6503, offsetH: 9 },
+        nowMin: 14 * 60 + 20,
+      };
+      let stateSky = { h: 64, s: 100 };
+      const sunWidgetReal = () => sunWidget(SUN_DAY);
 
       /* ══════════════════════════════════════════════════════════════════════
          §7 — A FULL TRIP. Everything above is drawn on a clean day; this is the
@@ -12112,9 +12490,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
               <div class="track" aria-hidden="true">${blocks}<div class="nowmark" style="inset-inline-start:${(fr(BUSY_NOW) * 100).toFixed(2)}%"></div></div>
             </div>
             <div class="glance-lead">נותרו היום · ⁦${remaining}⁩</div>
-            <div class="glance-foot"><span>מסתיים <span class="mono" dir="auto">~⁦22:45⁩</span></span><span class="dot" aria-hidden="true">·</span>${sunMark()}${
-              wxMark() ? `<span class="dot" aria-hidden="true">·</span>${wxMark()}` : ''
-            }</div>
+            <div class="glance-foot"><span>מסתיים <span class="mono" dir="auto">~⁦22:45⁩</span></span></div>
           </div>`;
       }
 
@@ -12191,7 +12567,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         // most. When the forecast is absent — offline-uncached, stale, or past
         // the horizon — daylight simply leads, and nothing reflows but the order.
         (wxWidget() ? wxWidget() + '<div style="height:8px"></div>' : '') +
-        sunWidgetStub() +
+        sunWidgetReal() +
         '<div style="height:8px"></div>' +
         rateCard();
 
@@ -12229,11 +12605,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           col(
             T.after(),
             sec('היום במבט') +
-              glanceCard({ marks: true }) +
+              glanceCard() +
               sec('מבט מהיר') +
               wxWidget() +
               '<div style="height:8px"></div>' +
-              sunWidgetStub(),
+              sunWidgetReal(),
           ),
         ].join('');
 
@@ -12247,29 +12623,29 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             T.neutral(`גיל: ${state.age === 1 ? 'שעה' : state.age === 8 ? '⁦8⁩ שעות' : '⁦3⁩ ימים'}`),
             sec('מבט מהיר') +
               (wxWidget() ? wxWidget() + '<div style="height:8px"></div>' : '') +
-              sunWidgetStub(),
+              sunWidgetReal(),
           ),
-          col(T.neutral('כרטיס המבט באותו רגע'), sec('היום במבט') + glanceCard({ marks: true })),
+          col(T.neutral('כרטיס המבט באותו רגע'), sec('היום במבט') + glanceCard()),
         ].join('');
 
         document.querySelector('#s4').innerHTML = [
           col(
             T.neutral('יום ⁦12⁩ · מעבר לאופק'),
             sec('מבט מהיר') +
-              sunWidgetStub() +
+              sunWidgetReal() +
               `<div style="height:8px"></div><div class="wx-days" style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px 13px">${dayTile(TRIP_DAYS[5])}<span style="align-self:center;font-size:11.5px;font-weight:600;color:var(--muted);padding-inline-start:8px">אין עדיין תחזית ליום הזה</span></div>`,
           ),
-          col(T.neutral('אור היום באותו יום · נוכח'), sec('מבט מהיר') + sunWidgetStub()),
+          col(T.neutral('אור היום באותו יום · נוכח'), sec('מבט מהיר') + sunWidgetReal()),
         ].join('');
 
         document.querySelector('#s8').innerHTML = [
           col(
             T.after('תחזית ראשונה · הסדר שנבחר'),
-            sec('מבט מהיר') + wxWidget() + '<div style="height:8px"></div>' + sunWidgetStub() + '<div style="height:8px"></div>' + rateCard(),
+            sec('מבט מהיר') + wxWidget() + '<div style="height:8px"></div>' + sunWidgetReal() + '<div style="height:8px"></div>' + rateCard(),
           ),
           col(
             T.neutral('אותו סעיף כשהתחזית נעדרת'),
-            sec('מבט מהיר') + sunWidgetStub() + '<div style="height:8px"></div>' + rateCard(),
+            sec('מבט מהיר') + sunWidgetReal() + '<div style="height:8px"></div>' + rateCard(),
           ),
         ].join('');
 
@@ -12337,17 +12713,6 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
               !/^[\p{Extended_Pictographic}\s]*$/u.test(el.textContent || ''),
           ).length;
         };
-        const markEl = document.querySelector('#s1 .col:nth-child(2) .glance-foot .sun-mark');
-        const markBox = markEl ? markEl.getBoundingClientRect() : null;
-        const markTarget = markEl
-          ? Math.round(
-              (markBox.height +
-                Math.abs(parseFloat(getComputedStyle(markEl, '::after').insetBlockStart) || 0) * 2) *
-                10,
-            ) / 10
-          : null;
-        const nMarks = document.querySelectorAll('#s1 .col:nth-child(2) .glance-foot .sun-mark')
-          .length;
         const glanceBefore = h('#s1 .col:nth-child(1) .glance-day');
         const glanceAfter = h('#s1 .col:nth-child(2) .glance-day');
         const wx = h('#s1 .col:nth-child(2) .wx-widget');
@@ -12373,14 +12738,6 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           }
           return n;
         };
-        const footEl = document.querySelector('#s7 .glance-foot');
-        const footH = footEl ? Math.round(footEl.getBoundingClientRect().height * 10) / 10 : null;
-        // One line's height, measured off the same element's first child rather
-        // than assumed — a wrapped foot is ~2x this.
-        const footLine = footEl?.firstElementChild
-          ? Math.round(footEl.firstElementChild.getBoundingClientRect().height * 10) / 10
-          : null;
-        const footWrapped = footH !== null && footLine !== null && footH > footLine * 1.6;
         const blocksTouch = touching('#s7 .wp-track-blk');
         const marksTouch = touching('#s7 .wp-track-mark');
         const nMarksBusy = document.querySelectorAll('#s7 .wp-track-marks .wp-track-mark').length;
@@ -12399,13 +12756,6 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         const homeH = homeBody ? Math.round(homeBody.getBoundingClientRect().height) : null;
 
         const rows = [
-          [
-            '<b>§7 · שורת הרגל עם שני סימנים</b>',
-            `⁦${footH}⁩px · שורה אחת ⁦${footLine}⁩px`,
-            footWrapped
-              ? '<span class="bad">גולשת לשתי שורות ביום עמוס</span>'
-              : '<span class="ok">שורה אחת · לא גולשת ב-⁦360px⁩</span>',
-          ],
           [
             '<b>§7 · הפס העמוס · התנגשויות</b>',
             `בלוקים ⁦${blocksTouch}⁩ · סימנים ⁦${marksTouch}⁩`,
@@ -12426,21 +12776,16 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
               : 'מול ⁦105px⁩ של ווידג׳ט אור היום · אחים',
           ],
           [
-            '<b>סימנים בשורת הרגל</b>',
-            `⁦${nMarks}⁩`,
-            nMarks <= 2 ? '<span class="ok">מנגנון אחד, שני סימנים</span>' : '<span class="bad">יותר מדי</span>',
-          ],
-          [
-            '<b>הסימן · רצפת מגע</b>',
-            `⁦${markBox ? Math.round(markBox.height * 10) / 10 : '—'}⁩px גלוי · ⁦${markTarget ?? '—'}⁩px יעד`,
-            markTarget >= 44
-              ? '<span class="ok">עומד ברצפת ⁦44px⁩ בלי להגדיל את השורה</span>'
-              : '<span class="bad">מתחת ל-⁦44px⁩</span>',
-          ],
-          [
-            'כרטיס המבט · לפני → אחרי',
+            '<b>כרטיס המבט · לפני → אחרי</b>',
             `⁦${glanceBefore}⁩ → ⁦${glanceAfter}⁩px`,
-            `שני הסימנים עולים ⁦${Math.round(((glanceAfter ?? 0) - (glanceBefore ?? 0)) * 10) / 10}⁩px`,
+            glanceAfter === glanceBefore
+              ? '<span class="ok">⁦0⁩px · לא משתנה כלל · שני הפיצ׳רים יושבים רק ב<code>מבט מהיר</code></span>'
+              : '<span class="bad">הכרטיס גדל</span>',
+          ],
+          [
+            '<b>גובה ווידג׳ט אור היום</b> · הועתק מהאח',
+            `⁦${h('#s1 .col:nth-child(2) .sun-widget')}⁩px`,
+            'חייב להיות ⁦105px⁩ · אם לא, שני הקבצים מציירים עיצובים שונים',
           ],
           [
             '<b>§5 · שורות טקסט</b> · הצעה מול נדחה',

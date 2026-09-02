@@ -75,9 +75,9 @@
      ─────────────────────────────────────────────────────────────────────────
      THIS FILE'S SECTIONS:
 
-       §1 the widget            §4 the edges, drawn not written
-       §2 the mark on the rail  §5 the anchor moves
-       §3 the mark on the day   §6 the colour budget, measured
+       §1 the widget                    §4 the edges, drawn not written
+       §2 the glance card — REMOVED     §5 the anchor moves
+       §3 the day view — REMOVED        §6 the colour budget, measured
 
      Interactive: theme (בהיר · כהה), screen (⁦360×640⁩ · ⁦390×844⁩), the five stress
      days, and the two feel calls left — the widget's sky height (⁦48⁩ · ⁦64⁩ · ⁦80px⁩,
@@ -10754,79 +10754,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         color: var(--ink);
       }
 
-      /* ══ THE MARK — the pressable indication, on the glance card AND in the day
-            view's strip. ONE class, two hosts, because it is one thing: "this is
-            where the sun catches today, tap to see it."
-
-            It says the NEXT sun event rather than pointing at a position on the
-            rail, and that is a correctness decision, not a layout one (see header
-            note 1): a positional tick clamps and lies by up to 154 minutes.
-            It meets the ⁦44px⁩ floor through an `::after` overlay rather than by
-            growing the line — `ValueToken`'s own trick (ADR-0177), reused here so
-            a mark inside a ⁦17px⁩ foot is still a real target. */
-      .sun-mark {
-        position: relative;
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        font-size: 11.5px;
-        font-weight: 700;
-        color: var(--muted);
-        background: none;
-        border: 0;
-        padding: 0;
-        font-family: inherit;
-        cursor: pointer;
-      }
-      .sun-mark .sm-ic {
-        font-size: 12px;
-        line-height: 1;
-      }
-      .sun-mark .mono {
-        font-family: var(--font-mono);
-        font-weight: 700;
-        color: var(--ink);
-        border-bottom: 1px solid color-mix(in srgb, var(--ink) 28%, transparent);
-      }
-      .sun-mark::after {
-        content: '';
-        position: absolute;
-        inset-block: -14px;
-        inset-inline: -8px;
-        min-height: 44px;
-      }
-
-      /* THE SKY, ONCE MORE, BEHIND THE GLANCE RAIL. Not a second statement of the
-         widget: the rail already draws the day as a proportional strip, and giving
-         it the same sky is what makes the mark's word and the rail's picture agree.
-         HERE ⁦0px⁩ is the right answer, because the surface already exists — which is
-         exactly what was not true of pass 1, where ⁦0px⁩ was the whole feature. */
-      .glance-track.has-sky > .track {
-        background:
-          linear-gradient(
-            to left,
-            var(--rail-night) 0%,
-            var(--rail-night) var(--dawn-1),
-            transparent var(--dawn-3),
-            transparent var(--dusk-0),
-            var(--rail-night) var(--dusk-2),
-            var(--rail-night) 100%
-          ),
-          color-mix(in srgb, var(--ink) 7%, transparent);
-      }
-      /* A wash of `--board`, the one token dark in BOTH themes (⁦#0e1729⁩ / ⁦#0a1120⁩,
-         darker than `--card` in each). Pass 1 mixed `--ink`, which REMAPS — so on a
-         dark card "more ink" painted night BRIGHTER than day and the rail rendered
-         identical to the one beside it. The step remaps too, and has to: light runs
-         `--card` ⁦#ffffff⁩ → `--board`, an enormous range, while dark runs ⁦#1a2740⁩ →
-         ⁦#0a1120⁩ and the same ⁦13%⁩ of it is invisible. */
-      .glance-track.has-sky {
-        --rail-step: 13%;
-        --rail-night: color-mix(in srgb, var(--board) var(--rail-step), transparent);
-      }
-      :root[data-theme='dark'] .glance-track.has-sky {
-        --rail-step: 38%;
-      }
+      /* **NOTHING IS PROPOSED FOR THE GLANCE CARD OR THE DAY VIEW.** Two blocks
+         stood here — a `.sun-mark` chip and a `.glance-track.has-sky` backdrop —
+         and both were removed (§2, §3). They are not kept as commented-out code:
+         a mockup records a rejection in prose, where the reason survives, rather
+         than in a block someone later un-comments without it. */
 
       /* ══════════════════════════════════════════════════════════════════════
          mk-* — this file's own chrome. Nothing below ships.
@@ -11058,10 +10990,12 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           ובדצמבר לא מגיעה אליו (מקסימום ⁦−3.1°⁩). הכיווץ לא עלה בזה כלום.
         </p>
         <p>
-          הקובץ הזה הוא <b>המעבר השלישי</b>. הראשון היה רקע כהה מאחורי הפס במחיר ⁦0px⁩ · בלתי
-          נראה. השני היה כרטיס של ⁦244.8px⁩ · «גדול מדי». השלישי לוקח את שתי ההערות כהוראה אחת:
-          <b>ווידג׳ט</b> של ⁦105px⁩, ו<b>סימן לחיץ</b> בכרטיס המבט ובמסך היום שאומר איפה השמש
-          תופסת את היום הזה ומוביל אליו.
+          הקובץ הזה עבר <b>ארבעה מעברים</b>. הראשון היה רקע כהה מאחורי הפס במחיר ⁦0px⁩ · בלתי
+          נראה. השני היה כרטיס של ⁦244.8px⁩ · «גדול מדי». השלישי היה ווידג׳ט של ⁦105px⁩ ועוד
+          <b>סימן לחיץ</b> בכרטיס המבט ובמסך היום. ברביעי הבעלים הסיר את שני הסימנים, ומכך נובע
+          שגם השמיים על הפס יורדים · הם הוצדקו רק בכך שהמילה של הסימן והתמונה של הפס יסכימו.
+          <b>מה שנשאר הוא משטח אחד:</b> ווידג׳ט ב<code>מבט מהיר</code>. כרטיס המבט ומסך היום הם
+          בדיוק מה שנשלח היום, ושתי הטענות למטה מוודאות ⁦0px⁩ בשניהם.
         </p>
         <p>
           כל מספר בטבלת המדידה בתחתית נקרא מה-DOM המרונדר בעמוד הזה, במסך ובערכת הצבעים שנבחרו ·
@@ -11112,14 +11046,21 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
 
       <!-- ══════════════════════════ §2 ══════════════════════════ -->
       <section class="case">
-        <h2>§2 · הסימן על כרטיס המבט</h2>
+        <h2>§2 · כרטיס המבט · הוסר גם הוא, ולמה זה מייתר גם את השמיים על הפס</h2>
         <p class="note">
-          הסימן אומר <b>מה הבא</b> (<code>🌇 19:04</code>), לא <b>איפה זה על הפס</b> · וזו החלטת
-          נכונות, לא פריסה. טיק זריחה על הפס הזה נצמד לקצה החלון ומדפיס שעה שאיננה במקום שאליו הוא
-          מצביע: ⁦43⁩ דקות ביום תל אביבי רגיל, ⁦154⁩ בטוקיו ביוני. הסימן לחיץ ומוביל לווידג׳ט, ורצפת
-          המגע ⁦44px⁩ מושגת ב-<code>::after</code> · הטריק של <code>ValueToken</code> (ADR-0177),
-          כדי שהיא לא תגדיל את השורה. מאחורי הבלוקים יושבים <b>אותם שמיים</b> של הווידג׳ט, ⁦0px⁩,
-          כדי שהמילה של הסימן והתמונה של הפס יסכימו.
+          <b>אין כאן הצעה.</b> גרסה קודמת שמה סימן לחיץ בשורת הרגל של כרטיס המבט
+          (<code>🌇 שקיעה 19:04</code>), והבעלים הסיר אותו יחד עם התחזית. <b>וזה עומד בפני עצמו
+          כשיקול עיצובי:</b> ברגע ששני הווידג׳טים יושבים ב<code>מבט מהיר</code> באותו מסך, הסימן
+          מדפיס את <b>אותה עובדה פעמיים במרחק גלילה אחת</b> · וזו בדיוק הכפילות ש-ADR-0214 הוריד
+          כשמדד קוד הזמנה מודפס פעמיים במרחק ⁦240px⁩, ו-ADR-0215 כשמדד את <code>19:00</code> מודפס
+          ⁦4⁩ פעמים במסך אחד.
+        </p>
+        <p class="note">
+          <b>ומההסרה נובעת שנייה, וזה החלק שאסור להשאיר תלוי:</b> השמיים מאחורי בלוקי הפס הוצדקו
+          <u>אך ורק</u> בכך ש«המילה של הסימן והתמונה של הפס יסכימו». בלי הסימן אין למי להסכים, והם
+          חוזרים להיות <b>מעבר 1</b> · הרעיון שנדחה על היותו בלתי נראה · שמתגנב פנימה בלי הצדקה.
+          אז הם ירדו גם. <b>כרטיס המבט חוזר להיות בדיוק מה שנשלח היום</b>, ושתי העמודות למטה הן
+          אותו כרטיס.
         </p>
         <div class="pair" id="s2"></div>
       </section>
@@ -11242,7 +11183,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             <b>נדחה (מעבר 1) · רקע לילה מאחורי הפס כ<u>כל</u> הפיצ׳ר.</b> כל מספר בטבלת המדידה
             שלו היה אפס, ובערכה הכהה הוא היה בלתי נראה מילולית. הטיעון היה ADR-0214/0215, אבל
             <b>הם מחסירים עובדות כפולות וקישוט שמתאר את הציור</b> · לא מידע חדש שביקשו בשם.
-            השמיים על הפס נשארו (§2) כרקע לסימן, לא כפיצ׳ר.
+            השמיים על הפס <b>לא שרדו</b>: הם הוצדקו רק כרקע לסימן, והסימן הוסר (§2).
           </li>
           <li>
             <b>נדחה (מעבר 2) · כרטיס של ⁦244.8px⁩.</b> «גדול מדי». הוא עלה ⁦292.8px⁩ ממסך הבית
@@ -11598,27 +11539,6 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           </button>`;
       }
 
-      /**
-       * THE MARK — the next sun event, pressable, on both hosts.
-       *
-       * Deliberately the NEXT event and never a position: a positional tick on the
-       * glance rail clamps to the window and lies (header note 1). "What is next"
-       * is true at every latitude, and is the thing a person actually wants at a
-       * glance.
-       */
-      function sunMark(day) {
-        const l = dayLight(day.sun);
-        if (l.polar === 'day') return `<button type="button" class="sun-mark"><span class="sm-ic">☀️</span><span>שמש כל הלילה</span></button>`;
-        if (l.polar === 'night') return `<button type="button" class="sun-mark"><span class="sm-ic">🌑</span><span>אין זריחה היום</span></button>`;
-        const next =
-          day.nowMin < l.sunrise
-            ? ['🌅', 'זריחה', l.sunrise]
-            : day.nowMin < l.sunset
-              ? ['🌇', 'שקיעה', l.sunset]
-              : ['🌅', 'זריחה מחר', l.sunrise];
-        return `<button type="button" class="sun-mark"><span class="sm-ic">${next[0]}</span><span>${next[1]}</span> <span class="mono" dir="auto">⁦${fmtMin(next[2])}⁩</span></button>`;
-      }
-
       /* ══ The glance rail — the app's real tree. ══ */
       const WINDOW_BASE_START = MIN(7, 0),
         WINDOW_BASE_END = MIN(23, 0);
@@ -11628,7 +11548,10 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
       });
       const fracOf = (min, w) => (min - w.start) / (w.end - w.start);
 
-      function glanceCard(day, { sky = false, mark = false, sunTicks = false } = {}) {
+      /** The glance card exactly as it ships — this feature proposes no change to
+       *  it (§2). `sunTicks` draws only the REJECTED positional tick, for §2's
+       *  companion argument that a tick would have lied anyway. */
+      function glanceCard(day, { sunTicks = false } = {}) {
         const w = windowOf(day);
         const l = dayLight(day.sun);
         const blocks = day.events
@@ -11661,13 +11584,8 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
               )
               .join('')
           : '';
-        const f = (min) => pct(clamp01(fracOf(min, w)));
-        const skyVars =
-          sky && l.polar === null
-            ? `--dawn-1:${f(l.civilDawn ?? l.sunrise)};--dawn-3:${f(l.goldenMornEnd ?? l.sunrise)};--dusk-0:${f(l.goldenEveStart ?? l.sunset)};--dusk-2:${f(l.civilDusk ?? l.sunset)}`
-            : '';
         return `<div class="glance-day">
-            <div class="wp-track glance-track ${sky ? 'has-sky' : ''}" style="${skyVars}">
+            <div class="wp-track glance-track">
               <div class="wp-track-marks" aria-hidden="true">${marks}${ticks}</div>
               <div class="track" aria-hidden="true">
                 ${blocks}
@@ -11675,10 +11593,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
               </div>
             </div>
             <div class="glance-lead">נותרו היום · ${day.events.filter((e) => e.e > day.nowMin).length}</div>
-            <div class="glance-foot">
-              <span>מסתיים <span class="mono" dir="auto">~⁦21:00⁩</span></span>
-              ${mark ? `<span class="dot" aria-hidden="true">·</span>${sunMark(day)}` : ''}
-            </div>
+            <div class="glance-foot"><span>מסתיים <span class="mono" dir="auto">~⁦21:00⁩</span></span></div>
           </div>`;
       }
 
@@ -11715,13 +11630,17 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         // ⁦191px⁩ rather than the ⁦244.8px⁩ it actually measured. A rejected design is
         // recorded in prose and in the notes panel; mockups are not retrofitted.
         document.querySelector('#s1').innerHTML = [
-          col(T.rejected('מעבר 1 · ⁦0px⁩ · בלתי נראה'), glanceCard(day, { sky: true })),
+          col(T.rejected('מעבר 1 · ⁦0px⁩ · בלתי נראה'), glanceCard(day)),
           col(T.after('הווידג׳ט'), sunWidget(day)),
         ].join('');
 
+        // Both columns are the SAME card — §2's whole point. The rejected
+        // positional tick is drawn as a third column so the argument that it
+        // would have lied is rendered rather than merely stated.
         document.querySelector('#s2').innerHTML = [
-          col(T.before, sec('היום במבט') + glanceCard(day)),
-          col(T.after(), sec('היום במבט') + glanceCard(day, { sky: true, mark: true })),
+          col(T.neutral('היום'), sec('היום במבט') + glanceCard(day)),
+          col(T.neutral('אחרי ההצעה · זהה'), sec('היום במבט') + glanceCard(day)),
+          col(T.rejected('נדחה מזמן · טיק על הפס'), sec('היום במבט') + glanceCard(day, { sunTicks: true })),
         ].join('');
 
         // Both columns are the SAME strip: the point of §3 is that the day view
@@ -11892,36 +11811,13 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         })();
 
         const cs = getComputedStyle(document.documentElement);
-        const railHost = document.querySelector('#s2 .glance-track.has-sky');
-        const step =
-          parseFloat(
-            railHost ? getComputedStyle(railHost).getPropertyValue('--rail-step') : '13',
-          ) || 13;
-        const dayBand = over(
-          parseColor(cs.getPropertyValue('--ink')),
-          0.07,
-          parseColor(cs.getPropertyValue('--card')),
-        );
-        const nightBand = over(parseColor(cs.getPropertyValue('--board')), step / 100, dayBand);
-        const ratio =
-          (Math.max(lum(dayBand), lum(nightBand)) + 0.05) /
-          (Math.min(lum(dayBand), lum(nightBand)) + 0.05);
+
 
         /** Pass 2's card, as MEASURED off that pass before it was rejected. A
          *  constant rather than a live box, because the design it named no longer
          *  exists in this file — see the note in `paint()`. */
         const PASS2_MEASURED_PX = 244.8;
         const widget = h('#s1 .col:nth-child(2) .sun-widget');
-        // The mark's real target, including the `::after` overlay — the number the
-        // 44px floor is actually judged on.
-        const markEl = document.querySelector('#s2 .col:nth-child(2) .sun-mark');
-        const markBox = markEl ? markEl.getBoundingClientRect() : null;
-        const markAfter = markEl
-          ? (() => {
-              const cs2 = getComputedStyle(markEl, '::after');
-              return Math.round((markBox.height + Math.abs(parseFloat(cs2.insetBlockStart) || 0) * 2) * 10) / 10;
-            })()
-          : null;
         const glanceBefore = h('#s2 .col:nth-child(1) .glance-day');
         const glanceAfter = h('#s2 .col:nth-child(2) .glance-day');
         const stripBefore = h('#s3 .col:nth-child(1) .day-ambient');
@@ -11934,16 +11830,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             `מול ⁦${PASS2_MEASURED_PX}⁩px שנמדדו במעבר 2 · <b>${Math.round((widget / PASS2_MEASURED_PX) * 100)}%</b> ממנו`,
           ],
           [
-            '<b>הסימן · רצפת מגע</b>',
-            `⁦${markBox ? Math.round(markBox.height * 10) / 10 : '—'}⁩px גלוי · ⁦${markAfter ?? '—'}⁩px יעד`,
-            markAfter >= 44
-              ? '<span class="ok">עומד ברצפת ⁦44px⁩ בלי להגדיל את השורה</span>'
-              : '<span class="bad">מתחת ל-⁦44px⁩</span>',
-          ],
-          [
-            'כרטיס המבט · לפני → אחרי',
+            '<b>כרטיס המבט · לפני → אחרי</b>',
             `⁦${glanceBefore}⁩ → ⁦${glanceAfter}⁩px`,
-            `הסימן עולה ⁦${Math.round((glanceAfter - glanceBefore) * 10) / 10}⁩px`,
+            glanceAfter === glanceBefore
+              ? '<span class="ok">⁦0⁩px · כרטיס המבט לא משתנה כלל (§2)</span>'
+              : '<span class="bad">הכרטיס גדל · §2 אומר שלא</span>',
           ],
           [
             '<b>רצועת מסך היום · לפני → אחרי</b>',
@@ -11958,13 +11849,6 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             lieMin
               ? `<span class="bad">מצביע על ⁦${fmtMin(fracOf(l.sunrise, w) < 0 ? w.start : w.end)}⁩ ואומר ⁦${fmtMin(l.sunrise)}⁩</span>`
               : 'בתוך החלון ביום הזה · נסו «יום ארוך»',
-          ],
-          [
-            `שמיים על הפס · ⁦${step}%⁩ מ-<code>--board</code>`,
-            `יחס ⁦${ratio.toFixed(2)}⁩:⁦1⁩`,
-            lum(dayBand) > lum(nightBand)
-              ? '<span class="ok">הלילה כהה יותר · בשתי הערכות</span>'
-              : '<span class="bad">הלילה בהיר מהיום · הפוך</span>',
           ],
           [
             '<b>גובה השמש · מקס׳ / מינ׳</b> · היום הנבחר',
