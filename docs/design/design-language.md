@@ -215,6 +215,16 @@ In mockups emoji do both jobs; in the build they split:
 
 **And once more, dropping a carve-out (2026-08-02 amendment).** The line above used to end "…and empty-state _illustrations_". `Map.tsx` disproved that in the same commit: four `EmptyState`s in one ternary, two drawing `<Icon name="search" />` and two drawing 🗺️/🗓️ — the sibling test again, one file over. **An empty state is chrome the app draws, not content it holds**, so its mark is an icon. What stays emoji is per-entity badges, trip identity, and the warmth in copy. An empty state that owns a whole region passes `size="pane"` to `EmptyState`, which grows the icon (and only the icon) to fill it.
 
+**A third move, and the first one that is about COLOUR (2026-09-02 amendment).** The daylight widget shipped with 🌅 🌇 ✨ ☀️ 🌑 on its foot, filed as content. The owner reversed that — _"the app forbids using emojis as ui, they're content"_ — and the test above already decided it: **a mark the app COMPUTES is chrome.** Nothing stands behind a sunrise glyph; the app derived it from a latitude and a date, the same way it derives an empty state. The 2026-08-01 corollary applied too, and is worth restating because it is the half people forget: _a mark baked into a copy string can only ever be an emoji_, so `polarDay`/`polarNight` gave theirs up and the call site draws them.
+
+What is new is the second half of the request — _"I also like the colourfulness"_ — which forced the rule to say what it had always meant:
+
+- **The rule is not "an icon is monochrome".** It is that **a control** inherits text colour, so it looks like the text around it. `ui/Icon.tsx` is one `<path>`, `fill: none`, `currentColor`, and that is the right shape for everything a finger aims at.
+- **An illustration's marks are not controls**, so they may carry colour — but only **their own surface's** colour. `ui/domain/SunGlyph.tsx` is the first of these: five circular tiles painted from `sun-widget.css`'s four sky rungs over its `--card` ground, so each mark is literally a slice of the gradient above it. It lives beside its surface in `ui/domain/`, never in `Icon`, whose contract it would have to break.
+- **The bound is chroma, and it is measured, not asserted.** The first version was drawn in literal saturated hex and rendered beautifully; composited over `--card` it measured **58.7-62.3** against `--amber`'s **63.6**, where the decorative palettes sit at **18.3-24.9** and that card's own sky at **10.4-21.5**. A mark cannot be licensed as illustration at a chroma that reads as a semantic hue — that is the "chroma, not hue angle" rule above, applied to a glyph. Repainting from the surface's ramp puts it inside the budget **by construction**, which is why "draw from the surface, not from a new palette" is the rule rather than "keep it under N".
+
+The cost is real and was accepted rather than hidden: muting a pair costs separation, so `SunGlyph`'s two crossings lean on different ramp rungs and on the sun's height against the horizon to buy it back.
+
 ## Voice and register (Hebrew UI copy)
 
 **Three voices, each with a job, and no gendered singular.** Adopted 2026-08-17, and it

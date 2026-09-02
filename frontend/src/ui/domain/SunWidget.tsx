@@ -29,6 +29,7 @@ import { type DayLight } from '@waypoint/shared';
 import { type SunArc, type SkyStops } from '../../lib/daylight-view';
 import { SUN_ARC } from '../../constants';
 import { ltrIsolate } from '../../lib/bidi';
+import { SunGlyph } from './SunGlyph';
 import { t } from '../../i18n/he';
 import './sun-widget.css';
 
@@ -121,21 +122,18 @@ export function SunWidget({ light, arc, sky, times }: SunWidgetProps) {
       <div className="sun-foot">
         {light.polar ? (
           <span className="sf-polar">
+            <SunGlyph name={light.polar === 'day' ? 'polar-day' : 'polar-night'} />
             {light.polar === 'day' ? t.sun.polarDay : t.sun.polarNight}
           </span>
         ) : (
           <>
             <span className="sf-t">
-              <span className="sf-ic" aria-hidden="true">
-                {t.sun.sunriseGlyph}
-              </span>
+              <SunGlyph name="sunrise" />
               <span dir="auto">{ltrIsolate(times.sunrise ?? '')}</span>
             </span>
             <GoldenChip start={times.goldenStart} end={times.goldenEnd} />
             <span className="sf-t">
-              <span className="sf-ic" aria-hidden="true">
-                {t.sun.sunsetGlyph}
-              </span>
+              <SunGlyph name="sunset" />
               <span dir="auto">{ltrIsolate(times.sunset ?? '')}</span>
             </span>
           </>
@@ -163,7 +161,7 @@ function GoldenChip({ start, end }: { start: string | null; end: string | null }
   if (!start) return null;
   return (
     <span className="sf-gold">
-      <span aria-hidden="true">{t.sun.goldenGlyph}</span>{' '}
+      <SunGlyph name="golden" />
       {end ? (
         <>
           {t.sun.golden}{' '}
