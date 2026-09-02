@@ -29,6 +29,7 @@ import { type DayLight } from '@waypoint/shared';
 import { type SunArc, type SkyStops } from '../../lib/daylight-view';
 import { SUN_ARC } from '../../constants';
 import { ltrIsolate } from '../../lib/bidi';
+import { SunGlyph } from './SunGlyph';
 import { t } from '../../i18n/he';
 import './sun-widget.css';
 
@@ -121,21 +122,18 @@ export function SunWidget({ light, arc, sky, times }: SunWidgetProps) {
       <div className="sun-foot">
         {light.polar ? (
           <span className="sf-polar">
+            <SunGlyph name={light.polar === 'day' ? 'polar-day' : 'polar-night'} />
             {light.polar === 'day' ? t.sun.polarDay : t.sun.polarNight}
           </span>
         ) : (
           <>
             <span className="sf-t">
-              <span className="sf-ic" aria-hidden="true">
-                {t.sun.sunriseGlyph}
-              </span>
+              <SunGlyph name="sunrise" />
               <span dir="auto">{ltrIsolate(times.sunrise ?? '')}</span>
             </span>
             <GoldenChip start={times.goldenStart} end={times.goldenEnd} />
             <span className="sf-t">
-              <span className="sf-ic" aria-hidden="true">
-                {t.sun.sunsetGlyph}
-              </span>
+              <SunGlyph name="sunset" />
               <span dir="auto">{ltrIsolate(times.sunset ?? '')}</span>
             </span>
           </>
@@ -148,6 +146,11 @@ export function SunWidget({ light, arc, sky, times }: SunWidgetProps) {
 /**
  * Golden hour, as the foot's middle fact.
  *
+ * **Which of the day's two bands this is, is the host's decision**
+ * (`nextGoldenHour`): the one still ahead, so at 01:00 it is the morning's and
+ * at noon the evening's. The times disambiguate themselves, so the chip carries
+ * no extra word for it — ⁦05:50⁩ is obviously not an evening.
+ *
  * **A half-open interval reads as open, not as a dash.** Above the polar circles
  * the sun can enter gold and never leave it, so `end` is legitimately absent
  * while `start` is real — and `A–undefined` is what a naive range prints. Absent
@@ -158,7 +161,7 @@ function GoldenChip({ start, end }: { start: string | null; end: string | null }
   if (!start) return null;
   return (
     <span className="sf-gold">
-      <span aria-hidden="true">{t.sun.goldenGlyph}</span>{' '}
+      <SunGlyph name="golden" />
       {end ? (
         <>
           {t.sun.golden}{' '}

@@ -2299,18 +2299,20 @@ export const t = {
   // uses an en dash INSIDE an isolated LTR run, which is a numeric range rather
   // than UI punctuation, and the separator between peer facts is the app's `·`.
   sun: {
-    // The glyphs are content, not UI icons — the same call the glance rail's
-    // marks and a stay's badge already make (design-language).
-    sunriseGlyph: '🌅',
-    sunsetGlyph: '🌇',
-    goldenGlyph: '✨',
+    // NO GLYPHS HERE, and their absence is the decision (owner, 2026-09-02).
+    // The first build kept 🌅 🌇 ✨ ☀️ 🌑 in this block, filed as content. They
+    // are chrome the app DRAWS — nothing behind them is an entity — so they are
+    // icons, and `ui/domain/SunGlyph.tsx` draws them. The two strings below used
+    // to open with one apiece, which ADR-0138 names as the shape to avoid: a
+    // mark baked into a copy string can only ever BE an emoji, so the string
+    // gives it up and the call site renders the icon.
     golden: 'זהב',
     // The half-open arm: above the polar circles the sun can enter golden hour
     // and never leave it, so this says the range is open rather than printing a
     // second time that does not exist.
     goldenFrom: 'זהב מ־',
-    polarDay: '☀️ השמש לא שוקעת היום',
-    polarNight: '🌑 השמש לא זורחת היום',
+    polarDay: 'השמש לא שוקעת היום',
+    polarNight: 'השמש לא זורחת היום',
   },
   fx: {
     sectionTitle: 'מבט מהיר',

@@ -18,8 +18,13 @@
    chroma. Recorded because the number is the kind a future reader would
    otherwise re-derive.) */
 
-.sun-widget {
-  /* The ramp. Desaturated on purpose and NOT from the semantic set. */
+/* THE RAMP. Desaturated on purpose and NOT from the semantic set. Declared on
+   BOTH the card and the marks, because `SunGlyph` paints its tiles from these
+   same four rungs over the same `--card` ground — a mark is a slice of the sky
+   above it, not a second palette. Listing the glyph here rather than letting it
+   inherit is what keeps a tile rendered outside the widget from painting black. */
+.sun-widget,
+.sun-glyph {
   --sun-night: rgba(30, 44, 92, 0.58);
   --sun-twilight: rgba(116, 96, 150, 0.46);
   --sun-dawn: rgba(226, 148, 92, 0.5);
@@ -27,6 +32,9 @@
   /* The sun's own colour — the one warm line on the card. */
   --sun-disc: #e8a33d;
   --sun-gold-band: #f2a24e;
+}
+
+.sun-widget {
   --sun-h: 64px;
 
   background: var(--card);
@@ -36,8 +44,10 @@
 }
 
 /* The sky is a PICTURE of a sky, so it does not invert in dark — what changes is
-   how much of it survives on a dark card. Night deepens, day cools. */
-:root[data-theme='dark'] .sun-widget {
+   how much of it survives on a dark card. Night deepens, day cools. The marks
+   ride the same override, which is why they need no dark palette of their own. */
+:root[data-theme='dark'] .sun-widget,
+:root[data-theme='dark'] .sun-glyph {
   --sun-night: rgba(10, 17, 32, 0.66);
   --sun-twilight: rgba(112, 92, 146, 0.42);
   --sun-dawn: rgba(206, 138, 88, 0.4);
@@ -136,9 +146,67 @@
   font-weight: 700;
   color: var(--ink);
 }
-.sun-foot .sf-ic {
-  font-size: 13px;
-  line-height: 1;
+/* THE FOOT'S MARKS (`SunGlyph`). Sized off the parent's font-size — `Icon`'s
+   convention — so each rides the text it belongs to: the crossings the foot's
+   15px, the golden chip's mark the chip's 11px, the polar caption's its 12.5px.
+   Nothing here has a size of its own to keep in step.
+
+   There is no `.sf-ic` wrapper any more. It existed to hold an emoji DOWN to
+   13px, and a drawn mark does not need holding down: rendered at 13 / 15 / 17,
+   the tiles were pebbles at 13 and taller than the digits at 17.
+
+   Each part below is the treatment the ARC above already uses, at a tile's
+   scale — the horizon is `.sun-horizon`'s ink and opacity, the halo is
+   `.sun-disc-ring`'s, the sun is `.sun-disc`. That is what makes a mark read as
+   a detail of the picture rather than an icon parked next to it. */
+.sun-glyph {
+  width: 1em;
+  height: 1em;
+  display: block;
+  flex: none;
+}
+.sun-glyph .sg-card {
+  fill: var(--card);
+}
+.sun-glyph .sg-night {
+  stop-color: var(--sun-night);
+}
+.sun-glyph .sg-twilight {
+  stop-color: var(--sun-twilight);
+}
+.sun-glyph .sg-dawn {
+  stop-color: var(--sun-dawn);
+}
+.sun-glyph .sg-day {
+  stop-color: var(--sun-day);
+}
+.sun-glyph .sg-horizon {
+  stroke: var(--ink);
+  stroke-opacity: 0.24;
+  stroke-width: 1.1;
+}
+.sun-glyph .sg-sun {
+  fill: var(--sun-disc);
+}
+.sun-glyph .sg-halo {
+  fill: var(--sun-disc);
+  fill-opacity: 0.26;
+}
+.sun-glyph .sg-ray {
+  stroke: var(--sun-disc);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+/* The one colour here that is not on the ramp. A star is a light source, so it
+   cannot be a wash of the sky it sits in — and it appears on exactly one tile. */
+.sun-glyph .sg-star {
+  fill: #dbe3f5;
+}
+.sun-glyph .sg-edge {
+  fill: none;
+  stroke: var(--ink);
+  stroke-opacity: 0.16;
+  stroke-width: 1;
 }
 /* The middle fact, and the softest — so it sits between the two clocks and goes
    quiet entirely when there is no golden hour to state. */
@@ -160,8 +228,13 @@
   color: var(--ink);
 }
 /* A polar day says it in words, because the curve above has already shown it —
-   a caption under a picture, not the message itself. */
+   a caption under a picture, not the message itself. The mark sits beside the
+   words at the same 5px the crossings use, so the foot reads as one line
+   whichever of its two shapes it is in. */
 .sun-foot .sf-polar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-size: 12.5px;
   font-weight: 700;
   color: var(--ink);
