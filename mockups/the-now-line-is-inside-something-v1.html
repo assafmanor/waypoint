@@ -11314,6 +11314,9 @@ button.day-trv-face:focus-visible {
          it, and the arrow says at what height. */
       .now-here {
         position: relative;
+        /* How faint the line goes where it crosses the row, and how far it takes to
+           get there. Both are feel calls and both are controls. */
+
         /* The list's own inline padding (`App.css`'s `.body { padding: 16px … }`),
            read back so the rule reaches the screen edges and the arrow has the
            margin to stand in. A build should read it from the shell rather than
@@ -11321,10 +11324,19 @@ button.day-trv-face:focus-visible {
         --now-bleed: 16px;
         --now-tab: 18px;
       }
-      /* THE RULE. `2px` and solid, not `.nowline`'s 1px gradient: ADR-0043 asked for
-         a whisper and the owner has asked for the opposite, and a hairline that
-         fades out cannot be the prominent thing on the screen. It stops at the
-         arrow rather than running under it. */
+      /* THE RULE. `2px` and solid, not `.nowline`'s 1px gradient: ADR-0043 asked for a
+         whisper and the owner has asked for the opposite, and a hairline that fades out
+         cannot be the prominent thing on the screen.
+
+         **IT RUNS BEHIND THE ROWS, AND THAT WAS RIGHT** (owner, after a band was tried
+         instead: _"I actually preferred much better when it didn't go over the event
+         rows, like you originally did. The problem was exactly on what I sent: when the
+         line goes over the text and hides it and makes it hard to read. Other cases
+         looked great as is"_). So the occlusion IS the sentence — a rule you can see
+         runs BETWEEN things, a rule that disappears behind a row runs THROUGH it, and
+         the arrow says at what height — and the defect was never the idea. It was that
+         the occlusion had exactly one mechanism, a card's opaque background, and two
+         row families have no background at all. */
       .now-here::before {
         content: '';
         position: absolute;
@@ -11334,6 +11346,33 @@ button.day-trv-face:focus-visible {
         transform: translateY(-1px);
         background: var(--amber);
         pointer-events: none;
+      }
+      /* **AND THE TWO BOXLESS FAMILIES OCCLUDE IT WITH THEIR TEXT, NOT WITH A BOX.**
+         ADR-0210 §3/§4 took the card away from a leg and a bracket on purpose, so there
+         is nothing there to hide the rule and it ran straight through
+         `1:15 שע׳ פנויות` — which is the screenshot the owner sent.
+
+         The fix is already shipped one selector over, in this very row family:
+         `.day-trv-ic .icon` carries `background: var(--screen)` plus a `4.5px` halo
+         because _"the glyph rides ON the track, so the rule stops behind it instead of
+         running through it. The halo is the LIST's ground and not `--card`."_ Same
+         problem, same answer, one row down — the glyph already stops the rule for free
+         and only the words were left out.
+
+         **The INNER runs, never the block wrappers.** `.day-trv-hd` and `.day-trv-meta`
+         are column-width blocks, so a ground on them masks the rule across the whole
+         row; on the inline runs the box is tight to the text and the rule stays visible
+         in the slack between them, which is what reads as passing behind the words.
+         Scoped under `.now-here`, so it costs nothing on any row the moment is not in. */
+      .now-here .day-gap-lbl,
+      .now-here .day-gap-add,
+      .now-here .day-trv-hd > span,
+      .now-here .day-trv-leave,
+      .now-here .day-trv-dist {
+        position: relative;
+        background: var(--screen);
+        box-shadow: 0 0 0 3.5px var(--screen);
+        border-radius: 3px;
       }
       /* THE ARROW. A triangle from a single logical border, so it points INTO the
          list in both directions with no sign written anywhere — the same discipline
@@ -11356,17 +11395,27 @@ button.day-trv-face:focus-visible {
         z-index: 4;
         pointer-events: none;
       }
-      /* **BEHIND, OR OVER.** Behind is the default and the honest one: the card
-         occludes the rule, so "we are inside this" is drawn rather than captioned.
-         Over is Google Calendar's own answer, which the owner named — one control,
-         because a desktop render cannot settle which reads better on a phone, and
-         because over-the-card strikes the title or the clock once per event. */
+      /* **BEHIND, OVER, OR NOTHING.** Behind is the default and the one the owner
+         chose: the row occludes the rule, so "we are inside this" is drawn rather than
+         captioned. `over` is Google Calendar's own answer, which the owner named — and
+         it is the one arm that crosses text, so it drops the ground with the z-index
+         and exists here to show what that costs on a card that is a title, a clock and
+         a badge rather than a mostly-empty block. `none` leaves the arrow alone, which
+         is the honest floor. */
       .now-here[data-rule='behind'] > * {
         position: relative;
         z-index: 2;
       }
       .now-here[data-rule='over']::before {
         z-index: 3;
+      }
+      .now-here[data-rule='over'] .day-gap-lbl,
+      .now-here[data-rule='over'] .day-gap-add,
+      .now-here[data-rule='over'] .day-trv-hd > span,
+      .now-here[data-rule='over'] .day-trv-leave,
+      .now-here[data-rule='over'] .day-trv-dist {
+        background: none;
+        box-shadow: none;
       }
       .now-here[data-rule='none']::before {
         display: none;
@@ -11586,6 +11635,7 @@ button.day-trv-face:focus-visible {
          outlined arrow needs a second inner triangle (a `clip-path` plus one more
          pseudo-element, and `.now-here` has spent both of its own), which is a rule
          the ADR can buy if the owner wants the literal reading of §5. */
+      /* ADR-0043 §5's "dashed line", said in this shape. */
       .now-plan .now-here::before {
         background: none;
         border-top: 2px dashed var(--plan);
@@ -11909,8 +11959,9 @@ button.day-trv-face:focus-visible {
           המסמן של היום הוא היום <b>שורה ברשימה</b>, ולכן הוא תמיד בין שני דברים · שורה שרצה
           מקבלת אותו מעליה ונקראת כמו משהו שלא התחיל. <b>הוא מפסיק להיות שורה.</b> במקומו יש
           <b>מחוון</b>: חץ אמבר מלא, נעוץ בשוליים של היום בגובה המדויק של «עכשיו», שמצביע
-          פנימה · ומאחוריו קו שרץ לרוחב המסך כולו. אין לו גובה בזרימה, הוא לא מפריד בין שני
-          כרטיסים, והוא כן יכול ליפול <b>בתוך</b> אחד.
+          פנימה · ומאחוריו קו אמבר מלא שרץ לרוחב המסך כולו ו<b>נעלם מאחורי השורה שמחזיקה
+          את הרגע</b>. אין לו גובה בזרימה, הוא לא מפריד בין שני כרטיסים, והוא כן יכול
+          ליפול <b>בתוך</b> אחד.
         </p>
         <p>
           מי מחזיק את הרגע נשאר תשובה של האפליקציה כפי שהיא: טבעת ה-<code>.wp-event.now</code>
@@ -11952,9 +12003,9 @@ button.day-trv-face:focus-visible {
         <!-- Every number and choice below is a FEEL call: the defaults are the
              recommendation and a device pass owns the answer. -->
         <span class="lbl">הקו</span>
-        <button type="button" data-rule="behind" aria-pressed="true">מאחורי הכרטיס</button>
-        <button type="button" data-rule="over">מעל הכרטיס</button>
-        <button type="button" data-rule="none">בלי קו</button>
+        <button type="button" data-rule="behind" aria-pressed="true">מאחורי השורה</button>
+        <button type="button" data-rule="over">מעל השורה</button>
+        <button type="button" data-rule="none">חץ בלבד</button>
         <span class="sep"></span>
         <span class="lbl">גודל החץ</span>
         <button type="button" data-tab="14">⁦14px⁩</button>
@@ -12019,8 +12070,25 @@ button.day-trv-face:focus-visible {
           (<code>border-inline-start</code>), ולכן הוא מצביע פנימה בשני הכיוונים בלי שאף סימן
           נכתב · אותה משמעת של <code>MIRRORED</code> ב-<code>ui/Icon.tsx</code>, וזו הסיבה
           שהוא לא תו <code>‹</code> (הוא Bidi_Mirrored, ADR-0118). והקו רץ <b>מאחורי</b>
-          הכרטיסים · ההסתרה היא המשפט עצמו: קו שרואים עובר <b>בין</b> דברים, קו שנעלם מאחורי
-          כרטיס עובר <b>בתוכו</b>, והחץ אומר באיזה גובה.
+          השורות · <b>ההסתרה היא המשפט עצמו</b>: קו שרואים עובר <b>בין</b> דברים, קו
+          שנעלם מאחורי שורה עובר <b>בתוכה</b>, והחץ אומר באיזה גובה.
+        </p>
+        <p class="note">
+          <b>ומה שהדיווח על הקובץ הבנוי מצא הוא לא הרעיון אלא המנגנון.</b> בעל הבית:
+          <i>"just make sure to you fix the issue where the playhead is going over the
+          text… Other cases looked great as is"</i> — והצילום היה של <b>פער</b>. להסתרה
+          היה מנגנון אחד בדיוק, הרקע האטום של <b>כרטיס</b>, ולשתי משפחות אין רקע בכלל:
+          ADR-0210 §3/§4 לקח את התיבה מהרגל ומהסוגריים בכוונה. אז הקו עבר דרך
+          <code>1:15 שע׳ פנויות</code> ודרך שתי השורות של הרגל.
+          <b>והתשובה כבר נשלחה, בורר אחד משם:</b> <code>.day-trv-ic .icon</code> נושא
+          <code>background: var(--screen)</code> והילה של ⁦4.5px⁩ כי <i>"the glyph rides ON
+          the track, so the rule stops behind it instead of running through it"</i> —
+          אותה בעיה, אותה תשובה, שורה אחת מטה. הגליף כבר עצר את הקו בחינם; רק המילים
+          נשארו בחוץ. עכשיו התווית של הפער והריצות ה<b>פנימיות</b> של הרגל נושאות את
+          אותה הילה · פנימיות ולא העוטפים, כי
+          <code>.day-trv-hd</code>/<code>.day-trv-meta</code> הם בלוקים ברוחב העמודה
+          וההילה עליהם הייתה חוסמת את הקו לכל רוחב השורה. הכול תחת
+          <code>.now-here</code>, כלומר אפס עלות בכל שורה שהרגע לא נמצא בה.
         </p>
         <p class="note">
           <b>וזה משנה תנוחה ש-ADR-0043 §1 קבע, ולכן אומרים את זה בקול:</b> שם המסמן היה
@@ -12155,6 +12223,32 @@ button.day-trv-face:focus-visible {
             רוצה את המילה, זה ⁦19px⁩ על שורה אחת ביום.
           </li>
           <li>
+            <b>נבחר: הקו רץ מאחורי השורה, וההסתרה היא המשפט.</b> בעל הבית העדיף את זה
+            במפורש אחרי שנוסה פס שקוף מעל הכול — <i>"I actually preferred much better
+            when it didn't go over the event rows, like you originally did"</i> — ומה
+            שהיה שבור זה לא הרעיון אלא שלהסתרה היה מנגנון אחד, רקע אטום של כרטיס, ושתי
+            משפחות בלי רקע.
+          </li>
+          <li>
+            <b>נבחר: ההילה של <code>.day-trv-ic .icon</code>, על המילים.</b> תקדים
+            שנשלח באותה משפחת שורות ובדיוק לצורך הזה. על ה<b>ריצות הפנימיות</b> ולא על
+            העוטפים: <code>.day-trv-hd</code>/<code>.day-trv-meta</code> הם בלוקים
+            ברוחב העמודה, והילה עליהם חוסמת את הקו לכל רוחב השורה — כלומר מחזירה גדמים.
+            הילה בצבע ה<b>רשימה</b> ולא <code>--card</code>, כמו במקור · ולכן רגל בתוך
+            בלוק <code>.journey</code> נושאת את אותו אי-התאמה שהגליף שלה נושא היום,
+            והיא נרשמת ולא נפתרת כאן.
+          </li>
+          <li>
+            <b>נדחה: פס אור שקוף מעל הכול</b> (רחצה של ⁦12%⁩ בגובה ⁦18px⁩ עם ליבה של
+            ⁦2px⁩). נבנה, צויר ונדחה: הוא באמת לא נחתך ולא מוחק, והוא גם עובר מעל שורות
+            האירוע — וזה מה שבעל הבית לא רצה. נשמר כאן כנימוק ולא כאפשרות.
+          </li>
+          <li>
+            <b>נדחה: לחתוך את הקו בשוליים</b> (<code>mask</code> אטום/שקוף). זה מה שבעל
+            הבית ראה וקרא לו «totally cutoff» · על רגל בגובה ⁦40px⁩ עם שתי שורות טקסט זה
+            משאיר שני גדמים של ⁦16px⁩ ולא קו.
+          </li>
+          <li>
             <b>נבחר: פער בולע את המחוון ואין קו נוסף.</b> פער הוא כבר קו, והחץ נעוץ בו
             בגובה הנכון · התווית שלו אומרת מה נשאר מהחור, שזה החצי השימושי של «מה הבא».
           </li>
@@ -12215,7 +12309,13 @@ button.day-trv-face:focus-visible {
 
       /** Which of the two wordings §3 draws, the rule's stacking, the arrow's size,
        *  the clock and the mode. Declared first because the helpers below read it. */
-      const state = { now: 750, mode: 'trip', words: 'bare', rule: 'behind', tab: 18 };
+      const state = {
+        now: 750,
+        mode: 'trip',
+        words: 'bare',
+        rule: 'behind',
+        tab: 18,
+      };
 
       // ── time, and the bidi rules that go with printing it (ADR-0118) ────────
       const M = (h, m = 0) => h * 60 + m;
@@ -12410,7 +12510,9 @@ button.day-trv-face:focus-visible {
        * pass BEHIND the card and be occluded by it.
        */
       const playhead = (inner, thru, c, extra = '') =>
-        `<div class="now-here${extra}" style="--thru:${pct(thru)};--now-tab:${c.tab ?? state.tab}px" data-rule="${
+        `<div class="now-here${extra}" style="--thru:${pct(thru)};--now-tab:${
+          c.tab ?? state.tab
+        }px" data-rule="${
           c.rule ?? state.rule
         }" aria-label="עכשיו · ${hhmm(c.now)}">${inner}</div>`;
 
@@ -12537,8 +12639,13 @@ button.day-trv-face:focus-visible {
         const held = holds(l, c.now);
         const mins = l.e - l.s;
         const thru = held ? thruOf(l, c.now) : 0;
-        const tone = held ? 'on-way' : c.now >= l.e ? 'done' : 'ahead';
-        const row = `<div class="day-trv ${tone}" style="--thru:${pct(
+        // **`time`, ALWAYS — and `ahead`/`done` were classes this file invented.** The
+        // block takes `tone: 'time' | 'miss' | 'on-way'` (`DayJoinRow.tsx`), and neither
+        // arm is clock-derived: `on-way` is a state the traveller switches on by hand and
+        // `miss` is about a leave-by having gone. Deriving either from "the clock is
+        // inside this leg" would draw the playhead as if it flipped the traveller's own
+        // switch, and would spend the teal ADR-0210 §3 says that arm exists to keep.
+        const row = `<div class="day-trv time" style="--thru:${pct(
           thru,
         )};--mins:${mins}"><div class="day-trv-face"><span class="day-trv-ic" aria-hidden="true">${svg(
           'driving',
@@ -12802,13 +12909,13 @@ button.day-trv-face:focus-visible {
             's3gap',
             '<span class="tag after">בתוך פער · ⁦14:30⁩</span>',
             at(S_MID, M(14, 30)),
-            'הקו נראה במלואו · זה מה שאומר «בין»',
+            'הקו נעצר מאחורי התווית וממשיך · אף מילה לא מכוסה',
           ),
           colId(
             's3leg',
             '<span class="tag after">בנסיעה · ⁦10:20⁩</span>',
             at(DAY.slice(3, 6), M(10, 20)),
-            'הרגל היא כבר קו · החץ לא נוגע בצורה שלה',
+            'הגליף של הרגל כבר עצר אותו · .day-trv-ic בחינם',
           ),
         ].join('');
 
@@ -13093,9 +13200,30 @@ button.day-trv-face:focus-visible {
             arrow ? arrow.w > 16 : false,
           ],
           [
+            // **READ OFF `::before`, NOT TYPED IN.** This row printed a hard-coded `2`
+            // for a while, because `querySelector` cannot return a pseudo-element and
+            // the `?? 2` fallback quietly supplied the number the prose wanted — a
+            // measurement table's worst failure mode, and it was in this file.
             'הקו · עובי, מול ‏.nowline-rule‏ הנשלח',
-            `${px(h('#s3gap .now-here::before') ?? 2)} / ⁦1px⁩`,
+            (() => {
+              const n = el('#s3gap .now-here');
+              if (!n) return '—';
+              const cs = getComputedStyle(n, '::before');
+              return `${px(Math.round(parseFloat(cs.height) * 10) / 10)} / ⁦1px⁩`;
+            })(),
             'סולידי מול מדורג · ADR-0043 ביקש לחישה, ההוראה החדשה לא',
+          ],
+          [
+            'ההילה שעוצרת את הקו · תווית הפער, מול הגליף של הרגל שכבר נושא אותה',
+            (() => {
+              const a = el('#s3gap .now-here .day-gap-lbl');
+              const b = el('#s3leg .day-trv-ic .icon');
+              if (!a || !b) return '—';
+              const ha = getComputedStyle(a).boxShadow.includes('none') ? '—' : '⁦3.5px⁩';
+              const hb = getComputedStyle(b).boxShadow.includes('none') ? '—' : '⁦4.5px⁩';
+              return `${ha} / ${hb}`;
+            })(),
+            '‏.day-trv-ic .icon‏ הוא התקדים · אותה בעיה, שורה אחת מטה',
           ],
           [
             'הכרטיס שרץ · עם המחוון מול בלי',

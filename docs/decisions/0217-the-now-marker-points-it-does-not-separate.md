@@ -11,7 +11,10 @@ and things to think about: overlapping events, driving times, day start and end,
 against this ADR's first draft: _"I don't think that this indication is good. Let's think outside
 the box. We don't **have** to keep a row saying what's now. We can do an arrow or idk, as long as
 it's clear that it indicates to when we are in the day and is prominent enough so that people
-immediately and intuitively understand"_
+immediately and intuitively understand"_ — and twice more against the built drawing:
+_"just make sure to you fix the issue where the playhead is going over the text… Other cases looked
+great as is"_, and, after a translucent band was tried in its place, _"I actually preferred much
+better when it didn't go over the event rows, like you originally did"_
 **Drawn in:** [`mockups/the-now-line-is-inside-something-v1.html`](../../mockups/the-now-line-is-inside-something-v1.html)
 **Session note:** [2026-09-02](../planning/2026-09-02-the-marker-points-it-does-not-separate.md)
 **Refines:** [0043](0043-day-view-now-line-phases-and-archive-chrome.md) §1/§5 (the now-line and
@@ -66,15 +69,35 @@ would also undo ADR-0210 §3's ⁦58px⁩ → ⁦40px⁩ — the inverted hierar
 ### §1 · The marker is a playhead, and it replaces `.nowline` rather than joining it
 
 A **solid amber arrow** pinned in the day's own margin at the exact height of `now`, pointing into
-the list, with a **⁦2px⁩ solid amber rule** running out of it across the full width of the screen.
-It has no height in the flow, it never separates two cards, and it can land **inside** one.
+the list, with a **⁦2px⁩ solid amber rule** running out of it across the full width of the screen and
+disappearing behind the row that holds the moment. It has no height in the flow, it never separates
+two cards, and it can land **inside** one.
 
 - **`.now-here` wraps whichever row holds the moment** and carries `--thru`, the fraction of that
   row behind us. The wrapper is `.day-thread`'s arrangement exactly (ADR-0212 §1) — a positioned
   sibling whose child paints over it — reused rather than invented, and it is also what lets the
-  rule pass **behind** the card.
+  rule pass behind the row.
 - **The occlusion is the sentence.** A rule you can see runs _between_ things; a rule that
-  disappears behind a card runs _through_ it; the arrow says at what height. Nothing is captioned.
+  disappears behind a row runs _through_ it; the arrow says at what height. Nothing is captioned.
+- **The two boxless families occlude it with their TEXT, not with a box**, and this is the one
+  correction the built drawing needed. Owner: _"just make sure to you fix the issue where the
+  playhead is going over the text … Other cases looked great as is"_, against a screenshot of a
+  **gap**. Occlusion had exactly one mechanism — a card's opaque background — and ADR-0210 §3/§4
+  took the box away from a leg and a bracket on purpose, so the rule ran straight through
+  `1:15 שע׳ פנויות` and the leg's own two lines.
+
+  **The answer is already shipped one selector over, in that very row family.**
+  `.day-trv-ic .icon` carries `background: var(--screen)` and a ⁦4.5px⁩ halo because _"the glyph
+  rides ON the track, so the rule stops behind it instead of running through it. The halo is the
+  LIST's ground and not `--card`."_ Same problem, same answer, one row down: the glyph already
+  stopped the rule for free and only the words were left out. The gap's label and glyph, and the
+  leg's **inner** text runs, now carry the same halo — inner and not the wrappers, because
+  `.day-trv-hd`/`.day-trv-meta` are column-width blocks and a halo on those masks the rule across
+  the whole row. All of it scoped under `.now-here`, so it costs nothing on a row the moment is not
+  in. It inherits the halo's one known mismatch: a leg inside a `.journey` block sits on `--card`
+  while the halo is the list's `--screen` — which the shipped glyph already does, so this records it
+  rather than solving it.
+
 - **The arrow stands in the margin, never on the card.** In RTL a card's leading edge is the 40px
   badge's own column — this file's first pass put a time chip there and drew it on top of the
   glyph. Measured: the arrow is ⁦12×18px⁩ in ⁦16px⁩ of `.body` padding.
@@ -142,8 +165,12 @@ control; if the owner wants the word, it is ⁦19px⁩ on one row per day.
 ### §5 · Plan gets the same derivation and a different ink
 
 ADR-0043 §5 stands: in Plan this is a **static reference**, never a live signal. Three properties
-change — the arrow's fill becomes violet, the rule becomes dashed violet, and the remaining time
-becomes `--plan`. **ADR-0043 §5 says "hollow marker" and a border-triangle cannot be hollow**, so
+change — the arrow's fill becomes violet, the band's core becomes a dashed violet, and the remaining
+time becomes `--plan`.
+
+Plan's rule is occluded by the row exactly as Trip's is, and carries the same halo on the two
+boxless families — the difference is ink, not mechanism, which is what ADR-0159 §1 means by a
+difference in posture. **ADR-0043 §5 says "hollow marker" and a border-triangle cannot be hollow**, so
 what ships is a low-contrast violet fill with the identical silhouette; a genuinely outlined arrow
 costs a `clip-path` plus one more pseudo-element and is the owner's call.
 
@@ -183,6 +210,18 @@ All four are drawn in the mockup's §7 and stay there, because for three of them
   erase ADR-0212 §1's distinction (the thread is for what **carries** you,
   `spendsSpanInMotion`). On a leg it is right, and there the playhead already lands on the leg's
   own line.
+- **Cutting the rule at the row's edge** (an opaque/transparent mask). Built, drawn, refused: this
+  is what the owner saw and called _"totally cutoff"_ — on a ⁦40px⁩ leg carrying two lines of text it
+  leaves two ⁦16px⁩ stubs and no line at all.
+- **A translucent band over everything** — an ⁦18px⁩ amber wash at ⁦12%⁩ with a ⁦2px⁩ core, solid in the
+  margins and ⁦22%⁩ across a row. Also built and drawn, and it does solve both complaints at once:
+  continuous, and light rather than ink. Refused because it crosses the event rows, which is the
+  thing the owner did not want — _"I actually preferred much better when it didn't go over the event
+  rows, like you originally did"_. Recorded because it is the obvious next idea and this is the
+  answer to it.
+- **A halo on the leg's block wrappers** rather than its inner text runs. `.day-trv-hd` and
+  `.day-trv-meta` are column-width, so the halo masks the rule across the whole row — the stubs
+  again, by a different route.
 - **A vertical proportional rail beside the list** (a day mini-map). The closest thing to Google
   Calendar here, and a second surface: its blocks cannot align with non-proportional cards, and
   what it adds — "how full is this day" — is what `DayGlance` / `lib/day-track.ts` already answer
@@ -219,9 +258,9 @@ All four are drawn in the mockup's §7 and stay there, because for three of them
 
 ## Open, and the owner's call
 
-- **Does the rule pass behind the cards or over them?** Behind is the default and the honest one
-  (the occlusion is the sentence); over is Google Calendar's own answer, which the owner named, and
-  it pays a strike-through on text once per event. A control in the mockup, and a phone decides.
+- **`מעל השורה`, the third arm**, drops both the z-index and the halo so the rule crosses
+  everything: Google Calendar's own answer, which the owner named. It is drawn so the strike-through
+  it pays for is visible rather than argued about; it is not the default.
 - **The arrow's size.** ⁦18px⁩ is the recommendation; ⁦14⁩ and ⁦22⁩ are drawn. It sits flush against
   the screen's inline edge, which a device with a safe-area inset may want inset by a pixel or two.
 - **`--gpm` for §6.** ⁦0.3px⁩ a minute is the recommendation.

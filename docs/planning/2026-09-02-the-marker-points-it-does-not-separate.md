@@ -30,6 +30,34 @@ nothing at all.
 recommendation is §4ג, the proportion moved into the **gaps**, which are the one part of the day with
 no content to protect. Not yet answered by the owner.
 
+**Fork 3 — what the rule does where it crosses a row.** Three shapes, and the owner refused two of
+them against a render before the third stood.
+
+_"just make sure to you fix the issue where the playhead is going over the text… Other cases looked
+great as is"_ — against a screenshot of a **gap**. The idea was never the problem: occlusion had
+exactly one mechanism, a card's opaque background, and ADR-0210 §3/§4 took the box away from a leg
+and a bracket on purpose. So a gap's `1:15 שע׳ פנויות` and a leg's two lines were struck through.
+
+The first fix masked the rule to the two ⁦16px⁩ margins. _"It looks kind of weird when it's totally
+cutoff like that. Maybe transparency or something, get creative."_ Right — on a ⁦40px⁩ leg carrying
+two lines of text that is two stubs and no line.
+
+The second was a translucent **band**: an ⁦18px⁩ amber wash at ⁦12%⁩ over everything with a ⁦2px⁩ core,
+solid in the margins and ⁦22%⁩ across a row. It genuinely solves both complaints — continuous, and
+light rather than ink. _"I actually preferred much better when it didn't go over the event rows,
+like you originally did."_ So it is recorded in the ADR's Alternatives as the obvious next idea and
+the answer to it, and the rule went back behind the rows.
+
+**What was actually missing was one selector, and it was already shipped in the same row family.**
+`.day-trv-ic .icon` carries `background: var(--screen)` and a ⁦4.5px⁩ halo because _"the glyph rides
+ON the track, so the rule stops behind it instead of running through it."_ The leg's glyph had been
+stopping the rule for free the whole time; only the words were left out. The gap's label and `+`,
+and the leg's **inner** text runs, carry the same halo now — inner and not the block wrappers,
+because `.day-trv-hd`/`.day-trv-meta` are column-width and a halo on those masks the rule across
+the whole row, i.e. the stubs again by another route. The lesson is the one this repo keeps
+re-learning: the fix for a boxless row was one row down in the same stylesheet, and three drawings
+went by before anyone looked there.
+
 ## What reading the code changed
 
 **The app had written this bug down, in the file that causes it.** `lib/now-line.ts`'s header says
@@ -80,6 +108,16 @@ probe reported the wording as free. It renders inside a real `.phone`/`.fbody` n
 got its arrow ⁦32px⁩ further in than the festival's: a marker whose column depends on how deeply the
 day happens to be nested. `--now-bleed` is overridden per brace, which is `.day-trv-ic`'s "the day
 has ONE leading edge" one column over.
+
+**Three more, from the passes above.** A measurement row printed a hard-coded `2` for the rule's
+thickness, hidden behind a `?? 2` fallback, because `querySelector` cannot return a pseudo-element —
+a measurement table quietly supplying the number the prose wanted, which is the worst failure mode
+that panel has, and it was in this file. The journey block was drawn with `ahead`/`done` tone
+classes that do not exist (`DayJoinRow` takes `time | miss | on-way`), and worse, `on-way` was being
+derived from the clock — which would have drawn the playhead as flipping the traveller's own switch
+and spent the teal ADR-0210 §3 keeps for it. And a Plan-arm rewrite for the band put full-strength dashes
+across the row, because a `repeating-linear-gradient` cannot carry a second axis of alpha — moot
+once the band was refused, and worth writing down as the reason not to reach for that shape again.
 
 ## Backlog
 
