@@ -228,7 +228,7 @@ export interface BoardProps {
    *  is wrong, and drawing both would state a contradiction the reader has to resolve.
    *
    *  `missed` paints the tile in the board's own `--miss` recipe (§D7) for a leave-by that has
-   *  gone by. **It is a swap, not a second live mark** (§D6): `.nowline` is still the app's
+   *  gone by. **It is a swap, not a second live mark** (§D6): `.now-here` is still the app's
    *  only one, and re-pointing a countdown is not another. */
   countdown?: BoardCountdown | null;
   /** **What the now-slot says when nothing is running** (ADR-0211). Absent on every

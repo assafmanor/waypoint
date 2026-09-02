@@ -207,7 +207,7 @@ export interface HeroLiftTravel {
   leaveDay?: string;
   /** `time` is amber (§D1). `miss` is the leave-by gone by, in `--miss` (§D7) — **ink and word
    *  only**, no fill on the row, no glow and no pulse, because the app has one live mark and
-   *  `.nowline` is it (§D6). `on-way` is teal, because somebody said they are moving and that
+   *  `.now-here` is it (§D6; `.nowline` until ADR-0217). `on-way` is teal, because somebody said they are moving and that
    *  is a location claim (rule 4, ADR-0141's journey grammar). */
   tone: 'time' | 'miss' | 'on-way';
   /** **What a device position adds, when there is one** (ADR-0207 §2) — `עדיין כאן` beside a

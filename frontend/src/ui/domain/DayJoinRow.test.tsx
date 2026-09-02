@@ -136,7 +136,8 @@ describe('JourneyBlock', () => {
   });
 
   // §D7 — a passed leave-by is a negative STATUS, and it is ink and word only: no fill, no glow,
-  // no pulse, because the app has one live mark and `.nowline` is it (§D6).
+  // no pulse, because the app has one live mark and `.now-here` is it (§D6; it was `.nowline`
+  // until ADR-0217 made the mark one component).
   it('marks a passed leave-by with the status class and no second live mark', () => {
     const { container } = render(
       <JourneyBlock {...props} leave={t.travel.leavePassed('17:15')} tone="miss" />,

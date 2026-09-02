@@ -570,7 +570,7 @@ describe('HeroLift — the journey between two points (ADR-0206 §V1.2 / §D2)',
     expect(onOnWay).toHaveBeenCalled();
   });
 
-  // §D6: the app has one live mark and `.nowline` is it. A swap re-points a countdown; it does
+  // §D6: the app has one live mark and `.now-here` is it (`.nowline` until ADR-0217). A swap re-points a countdown; it does
   // not mint a second pulse, glow or countdown, and the risk mark is text (§D7).
   it('spends no second live mark and no second countdown', () => {
     const container = withTravel({

@@ -337,7 +337,33 @@ the both-day-scopes rule and the settled-row case. They live in the two `*.trave
 because the ~110-line `vi.mock` harness does, and a second copy of that is the duplication rule 8
 forbids — `docs/backlog.md` carries the line to extract it when a third spec wants it.
 
-### 5 · Deferred on purpose: §6, the proportional gaps
+### 5 · A transparent wrapper breaks every child combinator it lands inside
+
+The mark wraps the row the moment is inside, and **four shipped rules reach a row through a child
+combinator** — so the wrapper silently stopped them matching. Found by grepping the stylesheets
+for `> .wp-event` / `> .day-trv` / `> .journey` over the families the mark can wrap, which is root
+`CLAUDE.md`'s "count the call sites before claiming what a derivation does" applied to CSS:
+
+- `.journey > .wp-event` (and `.soft`) strips a leg's border, radius and ⁦10px⁩ margin so it reads
+  as a **row of** the block (ADR-0159 §3). A wrapper in between hands all three back, inside the
+  block.
+- `.day-thread > .wp-event` lifts a carried card above the thread's own rule so the line paints
+  **behind** it (ADR-0212 §1). Without the wrapper in that list the thread paints over the card.
+
+**ADR-0212 §6's build log records the identical defect one rule away, from the identical cause** —
+_"The rule named `.wp-event` alone, which is true while a run is one card and false the moment two
+legs group inside `.journey`"_ — which is what makes this a counting failure rather than a
+knowledge one. Both lists now name `.now-here`, and a fifth family added later fails
+`styles/now-marker.contract.test.ts` instead of failing on a phone. jsdom loads no CSS, so nothing
+else in the suite can see this class of bug at all; the contract test was verified to go red when
+the repair is reverted.
+
+The same grep found the clipping: `.journey` carries `overflow: hidden` for its own radius, so a
+mark reaching past its box is a mark with **no arrow**. Inside a journey block the mark takes
+`--now-bleed: 0` and the arrow lands in the card's own face padding. That rule replaces the dead
+`.journey .nowline` margin, which said the same thing about a rule laid between two legs.
+
+### 6 · Deferred on purpose: §6, the proportional gaps
 
 **§6 is not built.** It is the "longer events look longer" half, it is orthogonal to the marker,
 it changes the height of every day, and it lands in two different components (`JoinRow` and Plan's

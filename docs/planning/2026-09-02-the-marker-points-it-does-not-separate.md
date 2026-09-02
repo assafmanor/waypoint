@@ -149,6 +149,17 @@ both markers and rewritten their placement, because neither day surface asserted
 mark in either scope. Ten specs now do. Worth noticing how that hole was found: not by reading, but
 by the suite being _too_ green for the size of the change.
 
+**And the wrapper broke four shipped selectors, which a grep found and no test could.** The mark
+wraps a row, so `.journey > .wp-event` and `.day-thread > .wp-event` stopped matching — a leg
+would have got its border and margin back inside a journey block, and the day's thread would have
+painted over a carried flight. ADR-0212 §6's build log records the identical defect one rule away
+from the identical cause, which is what makes this a **counting** failure and not a knowledge one:
+the answer was to grep the stylesheets for child combinators over the families the mark can wrap,
+before believing the wrap was free. jsdom loads no CSS, so the suite is blind to the whole class;
+`styles/now-marker.contract.test.ts` closes it, and was checked red against the un-repaired rules
+before being trusted. `.journey`'s `overflow: hidden` came out of the same grep — a mark reaching
+past a clipping box is a mark with no arrow.
+
 **One part was deliberately left out** and said so rather than being quietly folded in: §6's
 proportional gaps. It is the "longer events look longer" half, orthogonal to the marker, and it
 changes the height of every day from two components the mark never touches — with a feel number the
