@@ -166,7 +166,15 @@ export class RoutingService {
     // **The kill switch stops the outbound call, not the endpoint** (`ROUTING_DISABLED`). Every
     // stored leg above is still served; what is missing reads as §D4's absence, and no
     // `retryAfterSeconds` is offered because nothing is coming.
-    if (this.isDisabled()) return { legs };
+    //
+    // **An open breaker is read the same way, and that is the point of reading it here at all**
+    // (ADR-0205 §Y3). The limiter would refuse these calls anyway, so this changes nothing about
+    // what leaves the process — it changes what we PROMISE. Offering a `Retry-After` during an
+    // outage sends the client through all six `DAY_TRAVEL_WARM_ATTEMPTS` rounds and shows
+    // `מחשב…` over each one before blanking it, which is the state ADR-0206 §AU1 exists to
+    // prevent: a spinner over an answer that is not coming. Withholding it settles the day
+    // straight into §D4's crow-flies chip, which is the honest reading of "we do not know".
+    if (this.isDisabled() || this.limiter.isOpen) return { legs };
 
     const plannedCalls = this.warm(stops, clusters, pending);
     return { legs, retryAfterSeconds: retryAfterFor(plannedCalls) };

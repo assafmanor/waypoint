@@ -807,3 +807,53 @@ declining to spend a request learning that, and taking the rest of the day's mat
 Until one of those, a leg past the ceiling reads as ADR-0206 §D4's ordinary absence — which for a
 650 km road day is arguably the true answer anyway: that is not a leg, it is a travel day, and
 ADR-0011 says a real commitment inside it is a hard event with its own time.
+
+## Y3. Amendment (2026-09-02) — a breaker, because an outage is not a slow answer
+
+**Reported:** _"navigation paths don't compute at all"_ — every journey row reading
+`נסיעה · בלי הערכת זמן` over a crow-flies chip, and every map leg drawn as the straight segment.
+
+**Cause: not ours.** `valhalla1.openstreetmap.de` was resetting connections at TLS —
+`TypeError: fetch failed` in `PolitenessLimiter`, ~11 s to a reset, every attempt. §4's cache is
+what made it look like a code regression: `RouteLeg` has **no TTL** (`computedAt` is provenance),
+so every pair computed before the outage kept answering while every **new** pair went silent. The
+report's _"it worked yesterday"_ is exactly that boundary, not a change in the code — the three
+travel commits that landed the same night (#776–#778) are about **delivering** answers, and no
+answer was being produced.
+
+**What was actually wrong on our side is the volume.** With no breaker, a single day view spent
+**~54 outbound calls that could not succeed**: 3 admitted modes × `DAY_TRAVEL_WARM_ATTEMPTS` (6)
+client rounds × the day plus the two neighbours `DayPeek` mounts. Each held §2's single seat for
+its full timeout, so a leg that _could_ have been served queued behind calls already known to
+fail — and we aimed all of it at volunteers' infrastructure that was already in trouble, which is
+the posture §Y1 and `ROUTING_DISABLED` both exist to take seriously.
+
+**Decided.** A circuit breaker in `PolitenessLimiter`, because that is already the one choke point
+every outbound routing call passes through (root `CLAUDE.md` rule 8 — extend the mechanism, don't
+add a second one beside it).
+
+- `ROUTING_BREAKER_THRESHOLD = 3` **consecutive** failures opens it. Three and not two: a cold
+  container or one dropped connection produces two on its own, and a closed breaker costs nothing
+  while an open one delays recovery. A success anywhere resets the count.
+- `ROUTING_BREAKER_COOLDOWN_MS = 60_000`, then **one** probe — not the whole queue, which would be
+  the burst §2 exists to prevent, aimed at a server already failing. A failed probe re-stamps the
+  cooldown, so it cannot decay into one call per minute forever.
+- A provider **refusal** (`RouteOutOfRangeError`) is _not_ a failure here. It is swallowed inside
+  the task before the limiter sees it (§Z9's terminal case), so a 326 km leg cannot open a breaker.
+- `RoutingUnavailableError` distinguishes _suppressed_ from _failed_: the warm path logs the
+  transition **once** rather than each of the calls it then declines to make.
+
+**And `RoutingService.batch` reads `limiter.isOpen` exactly as it reads `ROUTING_DISABLED`.** This
+changes nothing about what leaves the process — the limiter would refuse those calls anyway — it
+changes what we **promise**. Offering a `retryAfterSeconds` during an outage sends the client
+through all six rounds showing `מחשב…` over each one before blanking it, which is precisely the
+state ADR-0206 §AU1 exists to prevent: a spinner over an answer that is not coming. Withholding it
+settles the day straight into §D4's crow-flies chip, which is the honest reading of "we do not
+know".
+
+**Recovery needs no restart, and that was already true.** Nothing negative-caches: only successes
+call `store()`, and the client records a day in `askedDays` only when it is answered in full. The
+breaker keeps that property — one probe a minute finds the provider the moment it returns.
+
+**What this does NOT decide.** The single point of failure is untouched: one community server, one
+allowlisted host, no fallback. That is §Y1's territory and a live backlog line, not a rider here.
