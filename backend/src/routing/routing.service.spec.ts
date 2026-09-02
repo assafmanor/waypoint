@@ -295,6 +295,39 @@ describe('RoutingService', () => {
     expect(matrix.mock.calls.length).toBe(before);
   });
 
+  it('stops calling out once the breaker opens, and promises nothing while it is', async () => {
+    // The 2026-09-02 outage: FOSSGIS reset every connection, `TypeError: fetch failed`. Without a
+    // breaker every mounted day kept spending the single seat on calls that could not succeed
+    // (ADR-0205 §Y3).
+    const { prisma } = fakePrisma();
+    const failing = vi.fn(() => Promise.reject(new Error('fetch failed')));
+    const { provider } = fakeProvider({
+      matrix: failing as unknown as RouteProvider['matrix'],
+    });
+    const service = build(TOKYO_TRIP, provider, prisma);
+
+    // Three cold legs against a dead provider is the default threshold.
+    for (const stops of [
+      [ASAKUSA, TSUKIJI],
+      [SENSO, SHINJUKU],
+      [TSUKIJI, SHINJUKU],
+    ]) {
+      await service.batch('trip', { stops, modes: ['walking'] });
+      await service.settled();
+    }
+    expect(failing.mock.calls.length).toBe(3);
+
+    // The fourth sends nothing — and, the half that is about the READER, offers no
+    // `retryAfterSeconds`: a client told to wait spins `מחשב…` through all six
+    // `DAY_TRAVEL_WARM_ATTEMPTS` rounds over an answer that is not coming (ADR-0206 §AU1). The
+    // day settles straight into §D4's crow-flies chip instead.
+    const cold = await service.batch('trip', { stops: [ASAKUSA, SHINJUKU], modes: ['walking'] });
+    await service.settled();
+    expect(cold.retryAfterSeconds).toBeUndefined();
+    expect(cold.legs[0]!.estimates).toEqual([]);
+    expect(failing.mock.calls.length).toBe(3);
+  });
+
   it('dedupes concurrent warms — two members opening the same day cost one call', async () => {
     const { prisma } = fakePrisma();
     const { provider, matrix } = fakeProvider();

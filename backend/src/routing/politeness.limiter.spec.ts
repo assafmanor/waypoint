@@ -12,7 +12,7 @@
 // widened enough to cover that, only enough to hide it. On a fake clock the gaps are exact, so
 // these read `toEqual` rather than `toBeGreaterThanOrEqual` — do not put a tolerance back.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PolitenessLimiter } from './politeness.limiter';
+import { PolitenessLimiter, RoutingUnavailableError } from './politeness.limiter';
 
 /** The RATE is configuration (`ROUTING_MIN_CALL_GAP_MS` is the shipped 1 call/s); the QUEUEING is
  *  the behaviour under test. Any value works now that no real time passes. */
@@ -93,5 +93,127 @@ describe('PolitenessLimiter', () => {
     await expect(
       limiter.runQuietly('matrix walking', () => Promise.reject(new Error('boom'))),
     ).resolves.toBeUndefined();
+  });
+  // ── THE BREAKER (ADR-0205 §Y3) ────────────────────────────────────────────────────────────
+  //
+  // Written against the 2026-09-02 outage: FOSSGIS reset every connection, and with no breaker a
+  // single day view sent ~54 calls that could not succeed — 3 modes × 6 client rounds × the day
+  // plus both peeked neighbours — each holding the one seat above for its full timeout.
+  //
+  // **The gap is 0 in these, deliberately.** The pacing is asserted by the cases above; what is
+  // under test here is admission, so the clock only has to move for the COOLDOWN.
+  describe('the breaker', () => {
+    const THRESHOLD = 3;
+    const COOLDOWN_MS = 60_000;
+    const open = () => new PolitenessLimiter(0, THRESHOLD, COOLDOWN_MS);
+    const fail = () => Promise.reject(new Error('fetch failed'));
+
+    it('opens after the threshold of consecutive failures and stops calling out', async () => {
+      const limiter = open();
+      for (let i = 0; i < THRESHOLD; i++) {
+        await limiter.runQuietly(`matrix ${i}`, fail);
+      }
+      expect(limiter.isOpen).toBe(true);
+
+      // The task is never invoked, which is the whole saving — not a fast failure, no call.
+      let invoked = 0;
+      await limiter.runQuietly('matrix suppressed', () => {
+        invoked++;
+        return Promise.resolve();
+      });
+      expect(invoked).toBe(0);
+    });
+
+    it('rejects a suppressed call with RoutingUnavailableError, so a warm can tell it apart', async () => {
+      const limiter = open();
+      for (let i = 0; i < THRESHOLD; i++) await limiter.runQuietly(`matrix ${i}`, fail);
+      await expect(limiter.run(() => Promise.resolve('never'))).rejects.toBeInstanceOf(
+        RoutingUnavailableError,
+      );
+    });
+
+    it('counts CONSECUTIVE failures — a success in between resets it', async () => {
+      // Two failures, a success, two more. Five failures total, never three in a row.
+      const limiter = open();
+      await limiter.runQuietly('a', fail);
+      await limiter.runQuietly('b', fail);
+      await limiter.run(() => Promise.resolve());
+      await limiter.runQuietly('c', fail);
+      await limiter.runQuietly('d', fail);
+      expect(limiter.isOpen).toBe(false);
+    });
+
+    it('admits exactly ONE probe once the cooldown has elapsed, not the whole queue', async () => {
+      vi.useFakeTimers();
+      const limiter = open();
+      for (let i = 0; i < THRESHOLD; i++) await limiter.runQuietly(`matrix ${i}`, fail);
+
+      // Still shut a millisecond short of the cooldown: a pause, not a slower poll.
+      await vi.advanceTimersByTimeAsync(COOLDOWN_MS - 1);
+      let invoked = 0;
+      const count = () => {
+        invoked++;
+        return Promise.reject(new Error('still down'));
+      };
+      await limiter.runQuietly('early', count);
+      expect(invoked).toBe(0);
+
+      await vi.advanceTimersByTimeAsync(1);
+      // Three warms arrive together, as a day's three modes do. One leaves.
+      await Promise.all([
+        limiter.runQuietly('p1', count),
+        limiter.runQuietly('p2', count),
+        limiter.runQuietly('p3', count),
+      ]);
+      expect(invoked).toBe(1);
+    });
+
+    it('re-arms the full cooldown when the probe also fails', async () => {
+      vi.useFakeTimers();
+      const limiter = open();
+      for (let i = 0; i < THRESHOLD; i++) await limiter.runQuietly(`matrix ${i}`, fail);
+
+      await vi.advanceTimersByTimeAsync(COOLDOWN_MS);
+      await limiter.runQuietly('probe', fail);
+
+      // Without the re-stamp this would let one call per cooldown through forever.
+      let invoked = 0;
+      await vi.advanceTimersByTimeAsync(COOLDOWN_MS - 1);
+      await limiter.runQuietly('too early', () => {
+        invoked++;
+        return Promise.resolve();
+      });
+      expect(invoked).toBe(0);
+      expect(limiter.isOpen).toBe(true);
+    });
+
+    it('closes on a successful probe, so recovery needs no restart', async () => {
+      vi.useFakeTimers();
+      const limiter = open();
+      for (let i = 0; i < THRESHOLD; i++) await limiter.runQuietly(`matrix ${i}`, fail);
+
+      await vi.advanceTimersByTimeAsync(COOLDOWN_MS);
+      await expect(limiter.run(() => Promise.resolve('back'))).resolves.toBe('back');
+      expect(limiter.isOpen).toBe(false);
+
+      // And the seat is fully open again — no lingering half-open state.
+      let invoked = 0;
+      await Promise.all(
+        [0, 1, 2].map(() =>
+          limiter.run(() => {
+            invoked++;
+            return Promise.resolve();
+          }),
+        ),
+      );
+      expect(invoked).toBe(3);
+    });
+
+    it('does not leak queue depth on a suppressed call', async () => {
+      const limiter = open();
+      for (let i = 0; i < THRESHOLD; i++) await limiter.runQuietly(`matrix ${i}`, fail);
+      await limiter.runQuietly('suppressed', () => Promise.resolve());
+      expect(limiter.depth).toBe(0);
+    });
   });
 });
