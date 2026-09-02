@@ -1,7 +1,18 @@
 # Weather & daylight — the tech review, the product shape, and what is being asked
 
 **Date:** 2026-09-02
-**Status:** **reviewed and drawn, not built.** Two mockups carry the design
+**Status:** **daylight BUILT (2026-09-02); weather reviewed and drawn, not built.** The daylight
+half needed no fork answered, so it shipped as §1 recommends — `packages/shared/src/daylight.ts`
+(the solar math + its table), `lib/places.ts`'s `dayAnchorCoord`, `lib/daylight-view.ts`, and
+`ui/domain/SunWidget` in `מבט מהיר`. **Weather is still blocked on forks B and C** (§6), which are
+the provider-with-its-terms-review and the staleness bound; neither is answerable without the owner.
+Two things the build changed from the drawing, both recorded in §2.4 and §2.6:
+sun instants are **rounded to the whole minute** at the source (`Intl` truncates, so a 06:16:52
+sunrise would print `06:16` where every published table says `06:17`), and the sky needs **eight**
+gradient stops rather than four — two a side renders as hard vertical stripes, because a gradient
+needs a position to interpolate toward.
+
+**Originally:** **reviewed and drawn, not built.** Two mockups carry the design
 ([`mockups/daylight-on-the-day-v1.html`](../../mockups/daylight-on-the-day-v1.html),
 [`mockups/weather-as-a-glance-card-v1.html`](../../mockups/weather-as-a-glance-card-v1.html)).
 **No ADR yet, deliberately** — six forks are with the owner (§6), and three of them decide the

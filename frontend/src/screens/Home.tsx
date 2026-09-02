@@ -18,8 +18,12 @@ import {
   type DocumentSummary,
   type Task,
   type TripEvent,
+  dayLight,
+  zonedIso,
 } from '@waypoint/shared';
 import { ltrIsolate } from '../lib/bidi';
+import { sunArc, skyStops } from '../lib/daylight-view';
+import { SunWidget } from '../ui/domain/SunWidget';
 import { useTrip } from '../state/trip-state';
 import { useAuth } from '../state/auth-state';
 import { useVerbs } from '../state/verbs';
@@ -53,6 +57,8 @@ import {
   eventZones,
   mapsDirectionsUrl,
   nextDestination,
+  dayAnchorCoord,
+  dayAmbientZone,
 } from '../lib/places';
 import { placeLabelOf, shortRoute } from '../lib/place-label';
 import { usePlaceLabels } from '../state/place-labels';
@@ -122,6 +128,7 @@ import {
   QUICK_TILE_MAX_COLS,
   STAY_STRIP_DISMISS_STORAGE_KEY,
   type TabId,
+  DAY_MIDNIGHT,
 } from '../constants';
 import { t } from '../i18n/he';
 import { Icon } from '../ui/Icon';
@@ -878,6 +885,64 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const openTasks = () =>
     navigate(`/?${TAB_PARAM}=${INDEX_TAB}&${FOCUS_PARAM}=${INDEX_FOCUS.TASKS}`);
 
+  // ── Daylight (derived, no provider) — design brief 2026-09-02 ───────────
+  // **One evidence, one date, both reads.** The instant comes from the day's
+  // COORDINATE anchor and the wall clock from its ZONE, and they are two
+  // derivations feeding one printed time — resolving them from different days
+  // is how an app prints a sunrise at 21:40 and nobody notices for a month. So
+  // `dayAnchorCoord` and the `tz` below both read `zoneEvidence` on `activeDate`.
+  const sunAnchor = useMemo(
+    () =>
+      dayAnchorCoord(
+        activeDate,
+        zoneEvidence,
+        trip.destinationLat != null && trip.destinationLng != null
+          ? { lat: trip.destinationLat, lng: trip.destinationLng }
+          : undefined,
+      ),
+    [activeDate, zoneEvidence, trip.destinationLat, trip.destinationLng],
+  );
+  // Local midnight, in the zone the DAY is lived in — `dayLight` takes an
+  // instant rather than a zone precisely so `@waypoint/shared` never has to ask
+  // the environment where it is.
+  const sunZone = useMemo(
+    () => dayAmbientZone(activeDate, zoneEvidence),
+    [activeDate, zoneEvidence],
+  );
+  const sunDayStartMs = useMemo(
+    () => Date.parse(zonedIso(activeDate, DAY_MIDNIGHT, sunZone)),
+    [activeDate, sunZone],
+  );
+  const sunLight = useMemo(
+    () => (sunAnchor ? dayLight(sunAnchor, sunDayStartMs) : null),
+    [sunAnchor, sunDayStartMs],
+  );
+  // The sun disc marks NOW, and only on a day that has one: browsing a future
+  // day must not draw a position the clock is nowhere near — the same call
+  // `buildDayGlance` makes when it returns a null `nowFrac`.
+  const sunArcModel = useMemo(
+    () =>
+      sunAnchor && sunLight
+        ? sunArc(sunAnchor, sunDayStartMs, sunLight, activeDate === today ? nowMs : null)
+        : null,
+    [sunAnchor, sunLight, sunDayStartMs, activeDate, today, nowMs],
+  );
+  const sunSky = useMemo(
+    () => (sunLight ? skyStops(sunDayStartMs, sunLight) : null),
+    [sunLight, sunDayStartMs],
+  );
+  // Formatted HERE because the host owns the zone (ADR-0107) and the widget owns
+  // no clock — the same contract `RateCard`'s `asOf` states.
+  const sunTimes = useMemo(() => {
+    const at = (ms: number | null) => (ms === null ? null : formatTime(new Date(ms), sunZone));
+    return {
+      sunrise: at(sunLight?.sunriseMs ?? null),
+      sunset: at(sunLight?.sunsetMs ?? null),
+      goldenStart: at(sunLight?.goldenEveningStartMs ?? null),
+      goldenEnd: at(sunLight?.goldenEveningEndMs ?? null),
+    };
+  }, [sunLight, sunZone]);
+
   // ── Day at a glance (derived) — a proportional time rail (lib/glance) ──
   // One derivation, because the Map's route now reads the SAME dawn instant to tell a night
   // arrival from an early start (root rule 8) — a copy that drifted would put a stop on one
@@ -1422,14 +1487,25 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       {/* `מבט מהיר`, restored on the condition ADR-0045 set (ADR-0180 §3). It was
           removed for being FIXTURES, and §4 of that ADR wrote this outcome down in
           advance: "Weather / FX return as themselves, later … as their own glance
-          cards." Weather is the next tenant of the same section.
+          cards." Daylight is the second tenant; the forecast is the third, and it
+          leads once it exists.
+
+          **The order is most-volatile-first** (design brief 2026-09-02 §3.2a): a
+          forecast moves hourly and decides what you carry in the next half hour,
+          daylight is fixed for the whole day, and a published rate moves once a day
+          at most (ADR-0180 §4). A tenant that is absent simply does not take its
+          turn — the app already handles that everywhere (ADR-0050's derived tiles,
+          `RateCard` returning null on a pair it cannot price).
 
           The SECTION goes when it has no cards — a heading over nothing is the dead
-          space ADR-0045 removed the row for — which is why the whole block is gated
-          on the card rendering rather than on the section existing. */}
+          space ADR-0045 removed the row for — so the gate is "either tenant", not
+          the rate card alone. */}
+      {(sunLight || rateCardVisible) && <div className="sec-title">{t.fx.sectionTitle}</div>}
+      {sunLight && sunArcModel && sunSky && (
+        <SunWidget light={sunLight} arc={sunArcModel} sky={sunSky} times={sunTimes} />
+      )}
       {rateCardVisible && (
         <>
-          <div className="sec-title">{t.fx.sectionTitle}</div>
           <RateCard
             fx={fxRates}
             from={trip.currency}
