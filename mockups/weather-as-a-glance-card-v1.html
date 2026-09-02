@@ -69,6 +69,7 @@
        §1 the widget + the mark   §4 the horizon
        §2 the days follow the trip §5 what it must not become
        §3 staleness, inverted       §7 a FULL trip, both screens, nothing withheld
+                                    §8 the order inside מבט מהיר
 
      Interactive: theme (בהיר · כהה), screen (⁦360×640⁩ · ⁦390×844⁩), the forecast's
      age (⁦1⁩ שעה · ⁦8⁩ שעות · ⁦3⁩ ימים), and the alert (fork F, default off).
@@ -11753,6 +11754,27 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         <div class="pair" id="s7"></div>
       </section>
 
+      <!-- ══════════════════════════ §8 ══════════════════════════ -->
+      <section class="case">
+        <h2>§8 · הסדר בתוך «מבט מהיר» · תחזית, אור יום, שער</h2>
+        <p class="note">
+          הבעלים שאל אם הסדר נכון · ווידג׳ט הזריחה לפני התחזית. <b>הוא לא היה נכון, והוא שונה.</b>
+          הכלל: <b>הכי תנודתי והכי מחייב פעולה, ראשון</b>. תחזית משתנה בשעות ומכריעה מה לוקחים
+          בחצי השעה הקרובה · אור היום <b>קבוע ליום כולו</b> ומכריע מתי לצאת לצילום או מתי מחשיך ·
+          שער ייחוס זז פעם ביום לכל היותר (ADR-0180 §4). זה מייצר סדר יחיד: <b>תחזית · אור יום ·
+          שער</b>, וזה גם הסדר שהבקשה המקורית עצמה כתבה («מזג אוויר ושעות זריחה»).
+        </p>
+        <p class="note">
+          <b>הטיעון הנגדי, ולמה הוא מפסיד:</b> אור היום הוא היחיד ש<b>תמיד</b> נוכח · אין לו מצב
+          קר, אין אופק, והוא לא פג (§3, §4). אז להוביל איתו נותן ראש-סעיף יציב, בעוד תחזית חסרה
+          מזיזה את הסעיף. זה מפסיד כי הוא ממטב ל<b>פריסה</b> ולא ל<b>קורא</b>: האפליקציה כבר
+          מטפלת בדיירים שנעלמים בכל מקום (ADR-0050 · אריח נגזר נעלם כשאין לו מקור,
+          <code>RateCard</code> מחזיר <code>null</code>), וכשהתחזית נעדרת אור היום פשוט עולה
+          לראש · שום דבר לא נשבר, רק הסדר מתקצר. שתי העמודות למטה מראות בדיוק את זה.
+        </p>
+        <div class="pair" id="s8"></div>
+      </section>
+
       <div class="panel">
         <h2>מדידה · נקראת מה-DOM החי</h2>
         <p>
@@ -11800,6 +11822,16 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             <b>נבחר · הסימן הוא <code>.sun-mark</code> של קובץ אור היום.</b> שני סימנים באותה
             שורת רגל, מנגנון אחד. אילו כל פיצ׳ר היה כותב סימן משלו, זה היה בדיוק הזוג המקבילי
             ש-ADR-0078/0079/0094/0095 קיימים כדי לבטל.
+          </li>
+          <li>
+            <b>הוסר · שורת אור-יום ברצועת מסך היום.</b> הבעלים: «השורות האלה יכולות להיות צפופות
+            מאוד · אני מעדיף שזה בכלל לא יהיה אם זה הרעיון הכי טוב שלך». נספר ואושר: הרצועה כבר
+            נושאת שורה לכל לינה, את סך המרחק ואת פסק הישימות של Plan · ⁦4⁩ לפני שהשמש מוסיפה
+            חמישית. <b>מסך היום לא משתנה כלל</b> בשני הפיצ׳רים. הרישום המלא ב-
+            <code>daylight-on-the-day-v1.html</code> §3.
+          </li>
+          <li>
+            <b>שונה · הסדר בסעיף.</b> §8. הכי תנודתי ראשון · תחזית, אור יום, שער.
           </li>
           <li>
             <b>פתוח · חדש, ורק §7 יכול היה למצוא אותו · הווידג׳טים מתחת לקיפול.</b> ביום עמוס
@@ -12153,19 +12185,27 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         sec('גישה מהירה') +
         fullQuick() +
         sec('מבט מהיר') +
+        // **ORDER: most volatile and most actionable first** (§8). The forecast
+        // changes hourly and decides what you carry in the next 30 minutes;
+        // daylight is fixed for the day; a published rate moves once a day at
+        // most. When the forecast is absent — offline-uncached, stale, or past
+        // the horizon — daylight simply leads, and nothing reflows but the order.
+        (wxWidget() ? wxWidget() + '<div style="height:8px"></div>' : '') +
         sunWidgetStub() +
         '<div style="height:8px"></div>' +
-        (wxWidget() || '') +
-        (wxWidget() ? '<div style="height:8px"></div>' : '') +
         rateCard();
 
       /** The full Day column: the strip carries the hotel AND the daylight mark,
        *  then ten rows. */
       const fullDay = () =>
         sec('היום · ד׳') +
+        // **NO DAYLIGHT ROW** (owner, and `daylight-on-the-day-v1.html` §3 is the
+        // record): this strip already carries a row per stay, the day's distance
+        // total and Plan's fit verdict, so the sun would be a fifth. The day view
+        // is unchanged by either feature.
         `<div class="day-ambient">
            <div class="ambient"><span class="ai" aria-hidden="true">🏨</span><span class="an">מלון שינג׳וקו גרנד</span><span class="as">לילה ⁦2⁩ מתוך ⁦4⁩</span></div>
-           <div class="ambient" style="background:none;border-color:var(--line)"><span class="ai" aria-hidden="true">🌤️</span><span class="an">אור היום</span><span class="as">${sunMark()}</span></div>
+           <div class="ambient"><span class="ai" aria-hidden="true">🧭</span><span class="an">מרחק היום</span><span class="as" dir="auto">⁦8.4 ק״מ · ~52 דק׳⁩</span></div>
          </div>` +
         BUSY.slice(0, 10)
           .map((ev, i) =>
@@ -12191,9 +12231,9 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             sec('היום במבט') +
               glanceCard({ marks: true }) +
               sec('מבט מהיר') +
-              sunWidgetStub() +
+              wxWidget() +
               '<div style="height:8px"></div>' +
-              wxWidget(),
+              sunWidgetStub(),
           ),
         ].join('');
 
@@ -12206,8 +12246,8 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           col(
             T.neutral(`גיל: ${state.age === 1 ? 'שעה' : state.age === 8 ? '⁦8⁩ שעות' : '⁦3⁩ ימים'}`),
             sec('מבט מהיר') +
-              sunWidgetStub() +
-              (wxWidget() ? '<div style="height:8px"></div>' + wxWidget() : ''),
+              (wxWidget() ? wxWidget() + '<div style="height:8px"></div>' : '') +
+              sunWidgetStub(),
           ),
           col(T.neutral('כרטיס המבט באותו רגע'), sec('היום במבט') + glanceCard({ marks: true })),
         ].join('');
@@ -12220,6 +12260,17 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
               `<div style="height:8px"></div><div class="wx-days" style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px 13px">${dayTile(TRIP_DAYS[5])}<span style="align-self:center;font-size:11.5px;font-weight:600;color:var(--muted);padding-inline-start:8px">אין עדיין תחזית ליום הזה</span></div>`,
           ),
           col(T.neutral('אור היום באותו יום · נוכח'), sec('מבט מהיר') + sunWidgetStub()),
+        ].join('');
+
+        document.querySelector('#s8').innerHTML = [
+          col(
+            T.after('תחזית ראשונה · הסדר שנבחר'),
+            sec('מבט מהיר') + wxWidget() + '<div style="height:8px"></div>' + sunWidgetStub() + '<div style="height:8px"></div>' + rateCard(),
+          ),
+          col(
+            T.neutral('אותו סעיף כשהתחזית נעדרת'),
+            sec('מבט מהיר') + sunWidgetStub() + '<div style="height:8px"></div>' + rateCard(),
+          ),
         ].join('');
 
         document.querySelector('#s7').innerHTML = [
@@ -12336,10 +12387,14 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         // How far down the scroll column the widgets start — the number
         // `glance-v2.html` §4 used to argue about placement.
         const homeBody = document.querySelector('#s7 .col:nth-child(1) .fbody');
-        const sunTop = document.querySelector('#s7 .col:nth-child(1) .fbody > div[style*="border-radius:16px"]');
+        // The FIRST widget in `מבט מהיר`, whichever it is — the forecast leads
+        // (§8) but steps aside when absent, so this must not name one of them.
+        const firstWidget = [
+          ...document.querySelectorAll('#s7 .col:nth-child(1) .wx-widget, #s7 .col:nth-child(1) .fbody > div[style*="border-radius:16px"]'),
+        ].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0];
         const depth =
-          homeBody && sunTop
-            ? Math.round(sunTop.getBoundingClientRect().top - homeBody.getBoundingClientRect().top)
+          homeBody && firstWidget
+            ? Math.round(firstWidget.getBoundingClientRect().top - homeBody.getBoundingClientRect().top)
             : null;
         const homeH = homeBody ? Math.round(homeBody.getBoundingClientRect().height) : null;
 

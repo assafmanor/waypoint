@@ -11126,12 +11126,23 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
 
       <!-- ══════════════════════════ §3 ══════════════════════════ -->
       <section class="case">
-        <h2>§3 · הסימן במסך היום</h2>
+        <h2>§3 · מסך היום · הוסר, וזה הרישום של ההסרה</h2>
         <p class="note">
-          <b>אותו רכיב, מארח שני.</b> <code>.day-ambient</code> כבר אוסף עובדות של יום שלם ונעלם
-          כשאין לו כלום, ו-<code>.day-fit</code> כבר הרחיב אותו לצפיפות שנייה · «לא אזור חדש»,
-          בלשון <code>screens.css</code> עצמו. מעבר 2 ניסה לשים <b>כרטיס שלם</b> כאן והיה מכווץ;
-          <b>סימן שמוביל</b> לכרטיס הוא בדיוק מה שהשורה הזאת נועדה לו.
+          <b>אין כאן הצעה.</b> הגרסה הקודמת שמה סימן אור-יום ברצועת <code>.day-ambient</code>,
+          והבעלים פסל: «השורות האלה יכולות להיות צפופות מאוד · אני מעדיף שזה בכלל לא יהיה אם זה
+          הרעיון הכי טוב שלך». הוא צודק ואפשר לספור את זה: הרצועה כבר נושאת <b>שורה לכל לינה</b>
+          (יום מעבר בין שני מלונות = שתיים), את <b>סך המרחק</b> של היום
+          (<code>DayTravelTotal</code>), ואת <b>פסק הישימות</b> של Plan
+          (<code>.day-fit</code>) · כלומר ⁦4⁩ שורות לפני שהשמש מוסיפה חמישית, ליום שהיא נכונה
+          לגביו בדיוק כמו כל יום אחר.
+        </p>
+        <p class="note">
+          <b>מה מפצה על ההסרה, וזה למה היא זולה:</b> אור היום לא נעלם מהאפליקציה · הוא יושב
+          בווידג׳ט במסך הבית, והסימן בשורת הרגל של כרטיס המבט (§2) נושא את החלק שצריך להיות
+          מיידי. מה שכן אבד הוא החצי השני של «גם במסך היום» מהבקשה המקורית, וזה נרשם כאן במפורש
+          ולא מוחלק. <b>אם הוא יוחזר בעתיד, הוא לא יחזור לרצועה</b> · הכותרת של היום
+          (<code>.sec-title</code> עם <code>.sec-title-end</code>) היא המקום היחיד שם שאינו
+          משלם בשורה, והיא כבר נושאת את כפתור ההוספה, אז זו החלטה בפני עצמה.
         </p>
         <div class="pair" id="s3"></div>
       </section>
@@ -11680,15 +11691,6 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             <span class="an">מלון ${day.place}</span>
             <span class="as">לילה ⁦2⁩ מתוך ⁦4⁩</span>
           </div>
-          ${
-            mark
-              ? `<div class="ambient" style="background:none;border-color:var(--line)">
-                   <span class="ai" aria-hidden="true">🌤️</span>
-                   <span class="an">אור היום</span>
-                   <span class="as">${sunMark(day)}</span>
-                 </div>`
-              : ''
-          }
         </div>`;
 
       const phone = (inner) => `<div class="phone"><div class="fbody">${inner}</div></div>`;
@@ -11722,15 +11724,18 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           col(T.after(), sec('היום במבט') + glanceCard(day, { sky: true, mark: true })),
         ].join('');
 
+        // Both columns are the SAME strip: the point of §3 is that the day view
+        // does not change. Drawn rather than merely stated, so the section is a
+        // record of a decision instead of an empty heading.
         document.querySelector('#s3').innerHTML = [
-          col(T.before, sec('היום · ד׳') + dayStrip(day)),
-          col(T.after(), sec('היום · ד׳') + dayStrip(day, { mark: true })),
+          col(T.neutral('היום'), sec('היום · ד׳') + dayStrip(day)),
+          col(T.neutral('אחרי ההצעה · זהה'), sec('היום · ד׳') + dayStrip(day)),
         ].join('');
 
         document.querySelector('#s4').innerHTML = [
-          col(T.neutral('שמש חצות · טרומסה ביוני'), sunWidget(DAYS[2]) + dayStrip(DAYS[2], { mark: true })),
-          col(T.neutral('ליל קוטב · טרומסה בדצמבר'), sunWidget(DAYS[3]) + dayStrip(DAYS[3], { mark: true })),
-          col(T.neutral('לשם השוואה · תל אביב'), sunWidget(DAYS[0]) + dayStrip(DAYS[0], { mark: true })),
+          col(T.neutral('שמש חצות · טרומסה ביוני'), sunWidget(DAYS[2]) + dayStrip(DAYS[2])),
+          col(T.neutral('ליל קוטב · טרומסה בדצמבר'), sunWidget(DAYS[3]) + dayStrip(DAYS[3])),
+          col(T.neutral('לשם השוואה · תל אביב'), sunWidget(DAYS[0]) + dayStrip(DAYS[0])),
         ].join('');
 
         document.querySelector('#s5').innerHTML = [
@@ -11941,9 +11946,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             `הסימן עולה ⁦${Math.round((glanceAfter - glanceBefore) * 10) / 10}⁩px`,
           ],
           [
-            'רצועת מסך היום · לפני → אחרי',
+            '<b>רצועת מסך היום · לפני → אחרי</b>',
             `⁦${stripBefore}⁩ → ⁦${stripAfter}⁩px`,
-            `הסימן עולה ⁦${Math.round((stripAfter - stripBefore) * 10) / 10}⁩px`,
+            stripAfter === stripBefore
+              ? '<span class="ok">⁦0⁩px · מסך היום לא משתנה כלל (§3)</span>'
+              : '<span class="bad">הרצועה גדלה · §3 אומר שלא</span>',
           ],
           [
             '<b>השקר של הטיק שנדחה</b> · היום הנבחר',

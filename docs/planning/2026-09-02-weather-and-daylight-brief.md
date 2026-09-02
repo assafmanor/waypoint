@@ -286,9 +286,9 @@ new surface. Recorded here because it is the kind of mistake that gets made agai
    altitude curve** for that place and date, which is what makes the polar states pictures rather
    than apologies (§3.4).
 
-2. **A pressable mark on the glance card's foot, and in the day view's `.day-ambient` strip.** One
-   class, `.sun-mark`, two features and two hosts — never two mechanisms that look alike, which is
-   the parallel-copy failure ADR-0078/0079/0094/0095 exist to undo. It says **what is next**
+2. **A pressable mark on the glance card's foot.** One class, `.sun-mark`, two features on one
+   host — never two mechanisms that look alike, which is the parallel-copy failure
+   ADR-0078/0079/0094/0095 exist to undo. It says **what is next**
    (`🌇 שקיעה 19:04`, `⛅ 26°`) and links to the widget. Measured cost on the glance card: **+1px**
    for both marks, and the 44px floor is met through `ValueToken`'s `::after` overlay (ADR-0177)
    rather than by growing the line.
@@ -304,6 +304,23 @@ new surface. Recorded here because it is the kind of mistake that gets made agai
    board's rank-1 subject, so the host exists; it got there by removing four things, and its census
    counts text runs. Tomorrow's weather is therefore one glyph and one number on the line that
    already says `מחר`.
+
+### 3.2a The order inside `מבט מהיר`: forecast, daylight, rate
+
+Asked directly — _"are we fine with the ordering? Sunrise sunset widget before the forecast?"_ — and
+no, it was wrong, so it changed. **The rule is most volatile and most actionable first.** A forecast
+moves hourly and decides what you carry in the next thirty minutes; daylight is **fixed for the
+whole day**; a published reference rate moves once a day at most (ADR-0180 §4). That yields one
+order — **forecast · daylight · rate** — and it is also the order the ask itself wrote ("weather
+forecast and sunrise hours").
+
+**The counter-argument, and why it loses.** Daylight is the only one of the three that is _always_
+present: no cold state, no horizon, never expires. Leading with it gives the section a stable head,
+where a missing forecast shifts everything. That loses because it optimises for the **layout**
+rather than for the **reader** — and the app already handles vanishing tenants everywhere (ADR-0050's
+derived tiles, `RateCard` returning `null` on a pair it cannot price). When the forecast is absent,
+daylight simply moves up; nothing breaks, the section just gets shorter. The weather mockup's §8
+draws both states side by side.
 
 ### 3.2b The one thing this app can do that a weather app cannot
 
