@@ -486,3 +486,29 @@ Whether the tail mark should sit **after** the sleep bookend, as it does today, 
 bookend carries no clock at all (ADR-0210 §4), so neither position is derived from a fact — after
 it reads as "everything the day listed is behind us", before it as "the night is still ahead". Left
 as a question rather than decided quietly.
+
+### Built the same evening, and the one thing the drawing left to the build
+
+_"Alright let's go"_ — so ⁦9px⁩ of room plus the clock, as drawn.
+
+`.now-here.edge` takes `--now-room` (⁦9px⁩, `margin-block`), `display: flex` and
+`justify-content: flex-end`; `NowMarker`'s boundary form renders one child, `screens.css`'s
+`.nowline-chip`, grounded with `--now-ground` and its ⁦3.5px⁩ halo. The nailed form is byte-for-byte
+what §1 shipped.
+
+**Plan's chip was the open one, because `.nowline-chip` is amber by construction.** §5 drew Trip
+and Plan with the same chip and said so rather than pretending otherwise; a build has to choose,
+and an amber clock on a drafting table is precisely what ADR-0043 §5 forbids. It ships re-inked —
+`color: var(--plan)` on the chip, `background: var(--plan)` on its dot — which is colour only,
+alongside the three properties that already differ. The difference between the two surfaces stays
+ink and never a fact (ADR-0159 §1), so both boundary marks carry the clock and both screen specs
+assert it.
+
+**What the specs can and cannot see.** The chip and the label are DOM, so
+`NowMarker.test.tsx` asserts the split directly — nailed to a row it renders no text, at a boundary
+it renders the clock — and each day surface asserts its own boundary mark carries a clock
+**formatted in the trip's zone** (`ZONE` is UTC+2 there, so a UTC ⁦14:00⁩ reads ⁦16:00⁩; that shift is
+the assertion, not an inconvenience — it is what proves the mark takes a formatted label rather
+than an instant, which is ADR-0213 §11's whole reason). The room and the halo are CSS and jsdom
+loads none, so they are in `styles/now-marker.contract.test.ts` with the rest of this sheet's
+invisible contract — three specs, verified red against the un-amended sheet before being trusted.

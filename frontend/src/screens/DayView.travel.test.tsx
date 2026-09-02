@@ -1405,13 +1405,21 @@ describe('DayView · where the moment is', () => {
     expect(container.querySelector('.day-swipe > .day-page .wp-event-left')).toBeNull();
   });
 
-  it('is a zero-height boundary mark before the day has started', () => {
+  // The boundary form, and it says the time — which the NAILED form deliberately does not
+  // (ADR-0217 §1, amended 2026-09-02: at a boundary no row carries the word, so the mark
+  // carries it). The label comes from this screen's own `formatTime`, so the assertion is
+  // that the day surface hands the mark a formatted clock rather than an instant.
+  it('is a boundary mark carrying the clock before the day has started', () => {
     setSimulatedNow(Date.parse(`${DAY}T05:00:00Z`));
     const { container } = show();
     const marks = container.querySelectorAll('.day-swipe > .day-page .now-here');
     expect(marks).toHaveLength(1);
     expect(marks[0].classList.contains('edge')).toBe(true);
-    expect(marks[0].children).toHaveLength(0);
+    expect(marks[0].querySelector('.wp-event')).toBeNull();
+    // `ZONE` is UTC+2, so a UTC ⁦05:00⁩ reads ⁦07:00⁩ — which is the point rather than
+    // an inconvenience: the mark takes a FORMATTED label (ADR-0213 §11's reason), so what is
+    // asserted here is that the surface formats it in the trip's zone and not in UTC.
+    expect(marks[0].querySelector('.nowline-chip')!.textContent).toBe('07:00');
   });
 
   // `frontend/CLAUDE.md`: assert across BOTH day scopes on a day-scoped surface. A past or
