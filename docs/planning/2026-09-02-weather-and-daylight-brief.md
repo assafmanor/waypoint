@@ -5,7 +5,9 @@
 half needed no fork answered, so it shipped as §1 recommends — `packages/shared/src/daylight.ts`
 (the solar math + its table), `lib/places.ts`'s `dayAnchorCoord`, `lib/daylight-view.ts`, and
 `ui/domain/SunWidget` in `מבט מהיר`. **Weather is still blocked on forks B and C** (§6), which are
-the provider-with-its-terms-review and the staleness bound; neither is answerable without the owner.
+the provider-with-its-terms-review and the staleness bound. **Fork B's measurement has since been
+run (amendment, 2026-09-02) and it changed the recommendation to MET Norway**; what is left of B is
+one question for the owner, and C is untouched.
 Two things the build changed from the drawing, both recorded in §2.4 and §2.6:
 sun instants are **rounded to the whole minute** at the source (`Intl` truncates, so a 06:16:52
 sunrise would print `06:16` where every published table says `06:17`), and the sky needs **eight**
@@ -411,11 +413,12 @@ Everything above is a recommendation; these six are decisions.
 
 - **A · Ship daylight first, on its own?** _Recommended: yes._ It has no provider decision in it and
   no failure mode, so it can be built and shipped while B is still open.
-- **B · The provider.** Open-Meteo is the standing recommendation — no key, no attribution
-  requirement to place, and it serves daily and hourly from one call. **But ADR-0180 chose its rate
-  source on a _measured_ coverage comparison (151 codes against 30), and that measurement has not
-  been made here.** The honest statement is that the recommendation is unmeasured, and the terms
-  review is owed before a line is added to the allowlist.
+- **B · The provider.** ~~Open-Meteo is the standing recommendation.~~ **Measured 2026-09-02 — see
+  the amendment at the foot of this document, which unseated it.** Coverage is a tie (both keyless
+  globals serve all 57 destinations); the terms are not (Open-Meteo's free tier is non-commercial by
+  its own wording). **The recommendation is now MET Norway**, and what remains for the owner is the
+  one question it turns on: _is Travelive commercial?_ Both readings are answered there, with the
+  cost of each. A line in `ALLOWED_HOSTS` follows the answer, not the other way round.
 - **C · The staleness bound.** §2.5 says a forecast must expire. **How long?** The proposal is
   **6 hours for today, 24 for tomorrow and beyond** — but this is a feel call about how wrong the
   app is willing to be offline, and it is the owner's.
@@ -442,6 +445,139 @@ Everything above is a recommendation; these six are decisions.
 (`outbound-fetch.ts:44`), the kill-switch convention (`env.ts:147`), and
 `packages/shared/package.json`'s dependency block (one entry, which is what §2.4 turns on).
 
-**Not checked, and owed before the ADR:** the provider comparison and its terms (fork B) — this
-review names criteria and a candidate, not a measurement; and a real-device pass on both mockups
-(ADR-0017), which is where C, D and E should actually be settled.
+**Not checked, and owed before the ADR:** ~~the provider comparison and its terms (fork B)~~ — **run
+2026-09-02, see the amendment**; and a real-device pass on both mockups (ADR-0017), which is where C,
+D and E should actually be settled, and which remains the largest unblocked piece of work here.
+
+---
+
+## Amendment (2026-09-02) — the provider comparison ran, and it unseated the standing recommendation
+
+§6's fork B named Open-Meteo as "the standing recommendation" and said in the same breath that the
+recommendation was **unmeasured**. It has now been measured. **The measurement moved it**, and not
+on the column anyone expected: coverage is effectively a tie, and the terms are not.
+
+This environment's egress reaches every candidate host, so unlike
+[ADR-0180](../decisions/0180-currency-is-derived-and-a-rate-is-a-glance-card.md)'s design session —
+which had to defer its coverage check to the build — the sweep ran here.
+
+### The sweep
+
+One representative coordinate per row of `DESTINATIONS` (the iconic city in that row's `aliases`,
+else the capital), one request per coordinate, live 2026-09-02.
+
+| candidate                       | serves our 57 | horizon    | daily aggregate       | precip probability | key  | commercial use      |
+| ------------------------------- | ------------- | ---------- | --------------------- | ------------------ | ---- | ------------------- |
+| Open-Meteo                      | 57 †          | 14–16 days | yes, in local zone    | **yes**            | none | **no** (§ below)    |
+| **MET Norway** locationforecast | **57**        | ~10 days   | **no** — we aggregate | no (amount only)   | none | yes                 |
+| NWS `api.weather.gov`           | **1**         | 8 days ‡   | day/night periods     | **yes**            | none | yes (public domain) |
+
+† **The four that failed are operational, not geographic, and saying so took a second pass.** The
+first sweep returned 53/57 for Open-Meteo. Re-tested individually: `GB` and `JP` succeeded (transient
+`503`), `US` returned an explicit `429 Daily API request limit exceeded`, and `TH` returned `500
+Something went wrong` repeatedly — including at a neighbouring coordinate, and only on the 16-day
+`daily=` request, while `current=` at the same point returned `200`. **Reported as 57 because none of
+the four is a coverage gap**, which is the number that matters for a provider decision; the `TH`
+result is a reliability note, not a hole in the map. A first-pass "53/57" would have been a fabricated
+gap in a table whose whole job is to be trusted.
+
+‡ Measured at New York rather than assumed: the gridpoint forecast returns 14 named day/night
+periods spanning 8 calendar days, each carrying `probabilityOfPrecipitation`. Every number in this
+table is a response this session read, which is the whole point of running the sweep instead of
+citing a vendor page.
+
+**NWS is this comparison's ECB** — authoritative, free of every licensing question, and useless as a
+primary at **1 of 57**. It keeps the same standing ADR-0180 gave the ECB: a good _second_ provider
+later, for the one destination it is best in the world at, behind the same token-bound interface.
+
+### Coverage is a tie, so the terms decide — and they go the other way
+
+This is the same shape as ADR-0180 (which chose "on more than the coverage column"), with the sign
+reversed. Quoted from the terms, not recalled:
+
+- **Open-Meteo: _"You may only use the free API services for non-commercial purposes."_** Commercial
+  use is a paid plan. Data is CC-BY 4.0; caching is not addressed either way. Free tier is
+  600/min · 5,000/hr · **10,000/day**, weighted — their own worked example is _"2 weeks of data with
+  15 weather variables … 1.5 API calls"_.
+- **MET Norway: no commercial restriction.** NLOD 2.0 / CC BY 4.0, credit as _"Data from MET
+  Norway"_. It asks for three concrete things in return, and **all three are things this design
+  already does**: an identifying `User-Agent`, ≤20 req/s, and honouring `Expires` /
+  `If-Modified-Since`. Measured on a live response: `expires` sits ~22 min out and `last-modified` is
+  present, so serve-stale-never-block (§2.1's inherited policy) _is_ their caching contract rather
+  than something bolted beside it.
+
+**The `429` does not prove the quota is too small for this app, and I am not going to imply it
+does.** It came from a shared egress IP whose weighted allowance was already partly spent — ~57
+requests at ~1.5 weight each is ~85 calls against 10,000. What it proves is that the free tier is
+**per-IP quota'd**, which is a fact about the backend's fetch volume worth sizing once: one fetch per
+coordinate cell per refresh, ~10 cells a trip, refreshed 4× a day, is ~40 calls/trip/day — about 250
+concurrent trips inside the free allowance. That is a grow-later number, not a v1 one.
+
+### Recommendation: MET Norway for v1
+
+It is the only candidate that is correct under **both** answers to the one question fork B actually
+turns on — _is Travelive commercial?_ — and that question is the owner's, not this document's. Root
+`CLAUDE.md` says invite-only and not production-scaled, with a **grow-later** mindset; ADR-0180 has
+already spent a paragraph preferring a source whose terms do not foreclose. Choosing the source that
+needs no answer is the cheaper move than choosing the one that needs the answer to stay "no".
+
+**Three real costs, stated rather than smoothed:**
+
+1. **~10 days of horizon instead of ~15.** This makes §2.7's horizon state _more_ load-bearing, not
+   less — the dashed placeholder is reached sooner and by more trips. It does not change any
+   mechanism.
+2. **No daily aggregate — the app rolls hourly into a day itself.** The honest read is that this is
+   partly a _feature_: aggregating means picking the day's high, low and dominant condition **in the
+   day's own zone**, which the app already derives per day (ADR-0107, and `dayAnchorCoord` beside
+   it), where `timezone=auto` would hand back a zone the app then has to reconcile with its own.
+   It is still code that Open-Meteo would have given for free.
+3. **No precipitation probability globally — amount only.** W4 ("the one thing that changes a plan")
+   survives on amount, and §5 already argues a forecast claiming _"rain, afternoon"_ is right more
+   often than one claiming `24.3°`. But "40% chance" is not available and W4's copy must not imply it.
+
+**If the answer is "non-commercial, and I will pay if it grows", Open-Meteo is the better data and
+the swap is one file** — which is exactly what §5's token-bound provider interface was argued for.
+Nothing here is a one-way door.
+
+### Three things this hands the ADR for free
+
+- **The attribution slot is already paid for.** ADR-0180's amendment put the mark on a line under the
+  card _specifically_ because "a section heading attributes the _section_ — which ADR-0045 §4 has
+  already promised to a second tenant, weather, from a different source." That second tenant is this
+  one. `Data from MET Norway` takes the pattern already built; the 21px was spent in advance.
+- **The coordinate-cell key (§2.2) is confirmed by the providers themselves.** Open-Meteo snapped
+  requested coordinates to its own grid — Tel Aviv `32.0853,34.7818` came back as `32.0625,34.8125`,
+  Athens as a flat `38,23.75`. **At some sites the provider's own grid is coarser than the proposed
+  `0.1°` cell**, so the cell throws away nothing the source preserved. §2.2's key was argued from
+  trip-scoping; it is also right about resolution.
+- **§7.5's condition-glyph question gets an input, not an answer.** MET's `symbol_code` carries
+  **day/night variants natively** (`clearsky_day` / `clearsky_night` — 24 distinct codes observed
+  across the 57 sites, against 16 WMO codes from Open-Meteo in the same snapshot). A glyph that
+  already knows whether the sun is up sits very close to the drawn marks `SunGlyph` now renders. The
+  handoff's instruction stands: **decide it in the ADR, deliberately, not in whichever file is
+  written first.**
+
+### What §6 got wrong, in the sentence that recommended the loser
+
+Fork B sold Open-Meteo partly on _"no key, **no attribution requirement to place**"_. **That is
+false.** Open-Meteo's data is CC-BY 4.0, which requires attribution exactly as MET Norway's NLOD /
+CC BY 4.0 does — so attribution was never a column that separated the candidates, and the one
+sentence claiming it did was pointing at the wrong winner. Recalled rather than checked, in the
+paragraph whose entire purpose was to admit it had not been measured. The same failure mode
+ADR-0180's amendment caught in itself over ISK, one document later.
+
+Practically it costs nothing — the previous section shows the slot was already paid for by ADR-0180
+— but it removes a reason that was doing real work in the recommendation.
+
+### What was not measured, and why
+
+**The keyed class** — OpenWeatherMap, WeatherAPI, Tomorrow.io, Pirate Weather — was not measured.
+Each needs a signup and a secret before it returns a single byte, and no key was created for this
+review. That is a stated gap, but a small one: a key is itself a cost this app has so far avoided
+(the enrichment pipe's existing sources are keyless), and none of them offers coverage the two
+keyless globals lack. **If fork B is answered "pay for it", the paid tier to price first is
+Open-Meteo's own** — same shape, same fields, no integration change.
+
+**Fork C is untouched by all of this.** The staleness bound is still a feel call, and it is still
+the owner's. The measurement narrows nothing there: both candidates publish an issue time, so
+either can support any bound chosen.
