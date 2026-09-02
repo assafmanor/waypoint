@@ -387,3 +387,102 @@ inherited from a reason that had not been true for a month.
 **The lesson for the next row this repo deletes:** a list's heights are an input to every gesture
 hit-tested against it, and the specs that encode a height do not say so. Grep the e2e suite for the
 surface, not just the class.
+
+## Amendment (2026-09-02, the same evening) — the boundary form reserves its own room, and carries the clock
+
+Owner, from a phone at ⁦00:17⁩ on a day whose first event is at ⁦02:00⁩ — so the moment is before
+everything and the mark is in the boundary form §4 describes:
+
+> I'm not sure about the day start and end boundaries. It looks kind of awkward sitting there
+> hugging the event card with no space at all.
+
+Drawn and measured in
+[`mockups/where-the-marker-stands-when-nothing-holds-it-v1.html`](../../mockups/where-the-marker-stands-when-nothing-holds-it-v1.html).
+
+**It is not the edges, it is every boundary — and the measurement is the argument.** The day list
+separates its rows with **bottom** margins only (`.wp-event` ⁦10px⁩, `.day-gap` ⁦9px⁩,
+`.transition-row` the same) and nothing in it carries a `margin-top`. A zero-height mark inserted
+between two rows therefore lands ⁦10px⁩ below the row above and **⁦0px⁩** above the row below, always.
+Measured on the reported day:
+
+| where the mark is                                  | above · below, as shipped |
+| -------------------------------------------------- | ------------------------- |
+| the day's head (the report)                        | ⁦11 · 0⁩                  |
+| **between two ordinary cards**                     | ⁦10 · 0⁩                  |
+| the day's tail, after the sleep bookend            | ⁦10 · 12⁩                 |
+| `.day-unplaced`, the day's OTHER line between rows | ⁦10 · 9⁩                  |
+
+Three things fall out of that table. The head is not special — it is where nothing softens the
+defect, because the only thing above it is `.sec-title`'s ⁦11px⁩. **The between-two-cards case is the
+same defect and was never reported**, because a rule on a card's top border reads as the card's own
+edge rather than as something wrong; a fix aimed at "the edges" would have missed it. It is reached
+whenever a hole is under `GAP_MIN_MINUTES` (⁦60⁩) — `gapBetween` is floored, so a ⁦20⁩-minute hole
+draws no row at all. And **the tail is already fine**, so nothing is done to it.
+
+### The room is not ours to choose
+
+`.day-unplaced` — ADR-0171 §10a's _"the other thing a line between rows can say"_ — takes
+`margin: 9px 0`, symmetric, at the day list's own rhythm. The boundary mark is the same shape and
+did not take the same number. So it takes it now, as `margin-block` on `.now-here.edge` and nothing
+else. `margin-block` and not `padding`, because adjacent margins collapse: above a card already
+spending ⁦10px⁩ the mark costs nothing, and the day grows by ⁦9px⁩ — once, and only on a day whose
+mark is at a boundary. The nailed form is untouched and still takes zero height; it is inside a row
+and the row owns the space.
+
+### And at a boundary the mark carries the clock
+
+§1 dropped the caption for a stated reason: _"the running row's own `עכשיו` chip says the word"_. At
+a boundary **there is no running row**, so that premise is simply absent and the only now-signal
+left on the screen is an unlabelled amber rule — against the owner's own criterion from the round
+that produced the arrow (_"as long as it's clear that it indicates to when we are in the day"_). The
+boundary form therefore renders one child: `.nowline-chip`, **the chip `screens.css` still ships for
+the public reader**, so the day surface and the shared page say `now` in one voice and
+`now-marker.css` mints nothing (rule 8). At the **trailing** edge, because in RTL the leading edge is
+the ⁦40px⁩ badge's column and the arrow's own margin — the first pass of the previous mockup put a
+chip there and drew it on the glyph.
+
+Measured: the mark goes ⁦0px⁩ → ⁦19px⁩ and the day ⁦392px⁩ → ⁦401px⁩ with the room alone, ⁦420px⁩ with the
+chip.
+
+### Rejected, and each is a thing that could reasonably be proposed again
+
+- **The head hole as a real gap row**, so §4's "a gap absorbs the marker" would apply and the head's
+  boundary case would disappear. **Refused on a fact, not on taste.** A gap row must state a length,
+  and the head hole is the one hole in the day with no start: `dayBlocks` computes a join only when
+  `prevEnd && start`, and before the first row there is no `prevEnd` — not because anyone forgot,
+  but because nobody knows when the day began. The mockup draws it with the honest `? שעות פנויות`
+  and an arrow whose height is computed from midnight, a start nobody told the app about. What is
+  kept from it: the observation that the head boundary is really a hole, which is what the clock
+  answers there ("how early am I").
+- **No mark at all before the first row.** Cheapest, and it deletes the only signal on a day whose
+  events are all still ahead — at ⁦00:17⁩ no row is running, no card carries `עכשיו`, and the screen
+  would say nothing about where we are. Drawn anyway, because it is the honest floor if the chip
+  fails a device pass.
+- **A bigger number than ⁦9px⁩.** ⁦6⁩/⁦12⁩/⁦14⁩ are controls in the mockup. ⁦9⁩ ships because it is the
+  one the app already uses for this exact shape; a different number here would mean two lines
+  between rows spending two different amounts of the same rhythm.
+
+### What rendering it found, and one of them is about mockups rather than about this app
+
+- **`.nowline-chip` is a ⁦12%⁩ translucent fill, so the rule struck through the clock.** It was
+  designed to sit BESIDE a hairline, never on one — and `.now-here > *`'s z-index lifts a child
+  above the rule without making it opaque. The fix was already in the same sheet: `--now-ground`
+  and the ⁦3.5px⁩ halo the gap's label and the leg's inner runs carry. Invisible in the CSS,
+  obvious in one screenshot.
+- **The first draft of this file put the room on the "as shipped" columns too**, because the
+  proposed rule was written unscoped — and the measurement table dutifully reported the defect and
+  the fix as the same ⁦10 · 9⁩. A before/after file has to be able to draw the before; the frame
+  carries the proposal now, not the page.
+- **And why the FIRST mockup could not have found any of this.** Every frame in
+  `the-now-line-is-inside-something-v1.html` starts at the day's first row: `.sec-title` appears in
+  that file's inlined CSS and never once in its rendered tree, and neither does `.day-unplaced` or
+  the shelf heading. **A boundary is a statement about both of its sides**, so a frame cropped to
+  the rows can draw the day's head and show nothing wrong with it. That is a rule for the next
+  mockup of a list, not a note about this one.
+
+### Open, and the owner's call
+
+Whether the tail mark should sit **after** the sleep bookend, as it does today, or before it. The
+bookend carries no clock at all (ADR-0210 §4), so neither position is derived from a fact — after
+it reads as "everything the day listed is behind us", before it as "the night is still ahead". Left
+as a question rather than decided quietly.
