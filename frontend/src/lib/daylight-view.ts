@@ -89,6 +89,54 @@ export function sunArc(
   };
 }
 
+/** One of the day's two golden hours, with which end of the day it belongs to.
+ *  Either instant may be `null`: a band can be half-open above the polar
+ *  circles, where the sun enters gold and never leaves it. */
+export interface GoldenHour {
+  which: 'morning' | 'evening';
+  startMs: number | null;
+  endMs: number | null;
+}
+
+/**
+ * **The golden hour the widget names: the one still ahead on this day.**
+ *
+ * This is the missing specification behind a defect reported off the deployed
+ * app at 01:18 local — the widget printed the EVENING band, ⁦17⁩ hours away,
+ * while the morning's was ⁦4½⁩ hours off. The first build passed the evening
+ * pair unconditionally because the mockup only ever drew that one; the brief's
+ * own feature list had always said "both ends of the day".
+ *
+ * Three rules, and the second is the one that is easy to get wrong:
+ *
+ *  - **A band counts as ahead until it ENDS, not until sunrise.** Sunrise sits
+ *    inside the morning band, so switching at sunrise would drop the half of
+ *    the golden hour people are actually out in.
+ *  - **A band with no end is always ahead**, because "has it finished" has no
+ *    answer for an interval that does not close.
+ *  - **Once both are spent — or the day is being browsed rather than lived —
+ *    the evening's is named.** The widget is a DAY surface whose arc draws this
+ *    day only, so reaching into tomorrow morning would print a time the picture
+ *    above it does not contain. The evening is also the one a person plans a
+ *    future day around.
+ */
+export function nextGoldenHour(light: DayLight, nowMs: number | null): GoldenHour | null {
+  const band = (
+    which: 'morning' | 'evening',
+    startMs: number | null,
+    endMs: number | null,
+  ): GoldenHour | null => (startMs === null && endMs === null ? null : { which, startMs, endMs });
+
+  const morning = band('morning', light.goldenMorningStartMs, light.goldenMorningEndMs);
+  const evening = band('evening', light.goldenEveningStartMs, light.goldenEveningEndMs);
+
+  if (nowMs === null) return evening ?? morning;
+  const ahead = (b: GoldenHour | null) => b !== null && (b.endMs === null || nowMs < b.endMs);
+  if (ahead(morning)) return morning;
+  if (ahead(evening)) return evening;
+  return evening ?? morning;
+}
+
 /**
  * **The sky's eight gradient stops**, as fractions of the local day.
  *
