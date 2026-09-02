@@ -258,6 +258,23 @@ body.wp-dragging
 /* quick-access grid — the four real shortcuts (ADR-0045; navigate-to-next joined
    them with the maps work, ADR-0106 §6). The column count is set inline from the
    visible-tile count, so a derived tile with no source just reflows the row. */
+/* **`מבט מהיר`'s tenants, and the rhythm between them** (design brief 2026-09-02).
+   The SECTION owns the gap, not the cards: `.fx-card` carries no margin of its
+   own and `.sun-widget` carries none either, so when daylight joined the rate
+   card the two rendered flush against each other — reported off the deployed
+   app, and a real regression against the mockup, which spaced them.
+
+   A gap on the container rather than a margin on a tenant, for the reason the
+   section exists at all: it holds an ORDERED set that grows (forecast · daylight
+   · rate, brief §3.2a). A margin would have to be added to each new tenant and
+   suppressed on whichever renders last; a gap is correct for one tenant, two, or
+   three, and adds nothing below the final one. Same call `.quick` below makes. */
+.glance-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 .quick {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
