@@ -115,6 +115,35 @@ const bookedProjection: Projection = {
   ],
 };
 
+/** `fullProjection`'s day, with its one row given BOTH ends so it holds the pinned ⁦09:00⁩.
+ *  The shipped fixture's row is `09:30` with no end — a point, which by design cannot hold a
+ *  moment — so the nailed form needs a day of its own rather than a widened assertion. */
+const runningRowProjection = (): Projection => ({
+  ...fullProjection,
+  days: [
+    {
+      ...fullProjection.days[0],
+      sections: [
+        {
+          daypart: SHARE_DAYPART.MORNING,
+          events: [
+            {
+              title: 'טבילה בלגונה הכחולה',
+              icon: '♨️',
+              daypart: SHARE_DAYPART.MORNING,
+              hard: true,
+              startLabel: '08:30',
+              endLabel: '10:00',
+              time: { label: '08:30–10:00', meaning: TIME_MEANING.WINDOW },
+            },
+          ],
+        },
+      ],
+    },
+    ...fullProjection.days.slice(1),
+  ],
+});
+
 const fullProjection: Projection = {
   ...summaryProjection,
   detailLevel: SHARE_DETAIL_LEVEL.FULL,
@@ -1127,30 +1156,55 @@ describe('SharedItinerary', () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
-    it('draws the app’s own now-line inside today’s card, and only where there are times', async () => {
+    it('draws the app’s own mark inside today’s card, and only where there are times', async () => {
       serve(fullProjection);
       const { container } = renderShared();
       await screen.findByText(plain('הפארק הלאומי ת׳ינגווליר'));
 
-      // The app has ONE live mark and `.nowline` is it (ADR-0043) — reused class for class
-      // rather than a second thing that looks like it.
-      const line = container.querySelector('.sh-day-body .nowline');
+      // The app has ONE "you are here" mark and `ui/domain/NowMarker` is it (ADR-0217) —
+      // the same component the two day surfaces render, not a third thing that resembles it.
+      const line = container.querySelector('.sh-day-body .now-here');
       expect(line).toBeTruthy();
+      // The day's only row starts at 09:30 and carries NO end label, so it is a point and
+      // cannot hold 09:00 (ADR-0217 §4). The boundary form is what is left.
+      expect(line!.classList.contains('edge')).toBe(true);
       expect(withoutBidiControls(line!.textContent!)).toContain('09:00');
       expect(line!.getAttribute('aria-label')).toBe(t.day.nowLineAria('09:00'));
-      // 09:00 is before the day's only event, so the marker sits above it — and under the
-      // daypart heading rather than above the section, which a render decided.
+      // …and under the daypart heading rather than above the section, which a render decided.
       expect(
         line!.compareDocumentPosition(container.querySelector('.sh-part-head')!) &
           Node.DOCUMENT_POSITION_PRECEDING,
       ).toBeTruthy();
     });
 
+    // **THE CASE THIS PAGE COULD NEVER DRAW BEFORE** (ADR-0217, amended for the reader
+    // 2026-09-02). `share-now-line.ts` used to have to choose between a line above a running
+    // row and one below it, and its own comment asked for this. The mark now goes IN the row.
+    it('nails the mark to the row that holds the moment, and that row says so', async () => {
+      serve(runningRowProjection());
+      const { container } = renderShared();
+      await screen.findByText(plain('טבילה בלגונה הכחולה'));
+
+      const mark = container.querySelector('.sh-day-body .now-here')!;
+      expect(mark).toBeTruthy();
+      expect(mark.classList.contains('edge')).toBe(false);
+      // 09:00 through 08:30–10:00 is a third of the way in.
+      expect(mark.getAttribute('style')).toContain(`--thru: ${(30 / 90) * 100}%`);
+      // The row is INSIDE the mark rather than beside it…
+      expect(mark.querySelector('.sh-event')).toBeTruthy();
+      // …and the mark itself says nothing, because the row says the word (ADR-0217 §1's
+      // premise, made true on this surface by `.sh-event-now`).
+      expect(mark.querySelector('.nowline-chip')).toBeNull();
+      expect(container.querySelector('.sh-event-now')!.textContent).toBe(t.common.now);
+      // One mark, not two: a nailed mark and a boundary mark would be one fact drawn twice.
+      expect(container.querySelectorAll('.sh-day-body .now-here')).toHaveLength(1);
+    });
+
     it('draws no now-line at Summary, which carries no times at all', async () => {
       serve(summaryProjection);
       const { container } = renderShared();
       await screen.findByText(plain('הפארק הלאומי ת׳ינגווליר'));
-      expect(container.querySelector('.nowline')).toBeNull();
+      expect(container.querySelector('.now-here')).toBeNull();
     });
 
     it('draws no now-line on a day that crosses a time zone', async () => {
@@ -1160,7 +1214,7 @@ describe('SharedItinerary', () => {
       // The label is the primary zone's wall clock and the row's is its own (ADR-0107), so
       // the comparison would be wrong by the shift. The card is still today's.
       expect(container.querySelector('.sh-day.is-now')).toBeTruthy();
-      expect(container.querySelector('.nowline')).toBeNull();
+      expect(container.querySelector('.now-here')).toBeNull();
     });
   });
 });

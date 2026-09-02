@@ -1003,17 +1003,15 @@ body.wp-dragging
    A quiet soft-amber hairline marking the current moment; the amber ring on the
    live event stays the accent, so this whispers (no chip fill, glow, or pulse).
    Its movement down the list as time passes is the liveness. */
-.nowline {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 2px 2px 11px;
-}
-.nowline-rule {
-  flex: 1;
-  height: 1px;
-  background: linear-gradient(90deg, rgba(233, 166, 60, 0.5) 0%, rgba(233, 166, 60, 0.1) 100%);
-}
+/* **WHAT IS LEFT OF `.nowline`, AND IT IS THE CHIP** (ADR-0217, amended 2026-09-02).
+   The row this belonged to is gone from all three hosts — `.nowline`, `.nowline-rule` and
+   `.nowline-lbl` with it — and `ui/domain/NowMarker.tsx` renders these two: the boundary
+   form always, and every host whose row cannot say `עכשיו` for itself.
+
+   Kept under the old name deliberately. It is the same object doing the same job, and
+   renaming it would be a diff across three surfaces that changes nothing a reader sees —
+   the kind of "finish the rename" this repo's root `CLAUDE.md` warns off. `now-marker.css`
+   grounds and places it; everything about how it LOOKS is still here. */
 .nowline-chip {
   flex: 0 0 auto;
   display: inline-flex;
@@ -1032,12 +1030,6 @@ body.wp-dragging
   height: 5px;
   border-radius: 999px;
   background: var(--amber);
-}
-.nowline-lbl {
-  font-family: var(--font-body);
-  font-size: 10px;
-  font-weight: 600;
-  opacity: 0.8;
 }
 
 /* Past-day archive (ADR-0029/0040): a calm read-only banner + a slightly cooled,

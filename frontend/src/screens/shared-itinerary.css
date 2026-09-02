@@ -439,12 +439,60 @@
   margin-block-end: 8px;
 }
 
-/* **The app's own now-line, inside a day of the document** (ADR-0043, eleventh amendment §5).
-   The component is reused class for class — no second live mark, no chip fill, no pulse —
-   and this is the only thing it needs from this sheet: the day body's rhythm is tighter than
-   the day list's it was built for. */
-.sh-day-body .nowline {
-  margin: 3px 3px 9px;
+/* **THE APP'S OWN PLAYHEAD, INSIDE A DAY OF THE DOCUMENT** (ADR-0217, amended for this page
+   2026-09-02; drawn in `mockups/the-shared-reader-gets-the-playhead-v1.html`).
+
+   `ui/domain/NowMarker.tsx` is the app's one "you are here" mark and this page is its third
+   host. It needs three numbers from here and nothing else — which is what `now-marker.css`
+   was parameterised for, and it said so: "a host that needs it different sets `--now-ground`
+   rather than this sheet guessing".
+
+   `--now-bleed`  ⁦11px⁩ = this body's own inline padding, so the rule reaches the day card's
+                  inner edges and the arrow stands in the gutter. It is a CEILING and not a
+                  preference: `.sh-day` carries `overflow: hidden` for its ⁦16px⁩ radius, so a
+                  bleed past the padding is a mark with no arrow — the same trap `.journey`
+                  sets on the day surfaces.
+   `--now-tab`    ⁦15px⁩, smaller than the day list's ⁦18px⁩, because ⁦18⁩ draws a ⁦13px⁩ triangle
+                  into an ⁦11px⁩ gutter and reaches over the row's own edge. Measured on the
+                  drawing; ⁦15⁩ is ⁦10.8px⁩ and fits.
+   `--now-ground` the day BODY's ground and never `--screen`: the halo paints what the mark
+                  actually stands on, and here that is a tint inside a card.
+   `--now-room`   the boundary form's space. The day list spends ⁦9px⁩ (`.day-unplaced`'s
+                  number); this sheet's own rhythm is tighter — ⁦7px⁩ between rows — so ⁦6px⁩ is
+                  this host's equivalent rather than a second opinion about the same gap. */
+.sh-day-body .now-here {
+  --now-bleed: 11px;
+  --now-tab: 15px;
+  --now-ground: color-mix(in srgb, var(--paper) 34%, var(--card));
+  --now-room: 6px;
+}
+
+/* **AND THE ROW SAYS THE WORD, WHICH IS WHAT KEEPS THE MARK A SHAPE.**
+
+   ADR-0217 §1 gave the mark no caption for a stated reason: "the running row's own `עכשיו`
+   chip says the word". True of `EventCard` — and this page marked a running row not at all,
+   so the nailed arrow was the only thing on screen saying anything, and an arrow says no
+   time. The same premise had already failed once, one surface over, for the boundary form.
+
+   **Two ways to close it, and the render chose.** Putting the clock on the MARK at the
+   arrow's height is refused: the gutter is ⁦11px⁩, so a chip there lands ON this row's own
+   title and clock — the defect the owner rejected twice while ADR-0217 was drawn (_"fix the
+   issue where the playhead is going over the text"_). So the row says it, exactly as
+   `EventCard` does, and §1's premise becomes true on every surface instead of gaining an
+   exception.
+
+   `t.common.now`, which this page already rendered inside the now-line it is replacing — no
+   new vocabulary, which is the axis ADR-0139 found drifts first when a small widget is
+   copied. */
+.sh-event-now {
+  margin-inline-start: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--amber) 16%, transparent);
+  color: var(--amber-deep);
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: 1px;
 }
 
 .sh-part-head {

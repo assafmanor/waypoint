@@ -25,6 +25,7 @@ const read = (rel: string) =>
 
 const dayJoinCss = read('../ui/domain/day-join.css');
 const markerCss = read('../ui/domain/now-marker.css');
+const shareCss = read('../screens/shared-itinerary.css');
 
 /** Every selector list in a sheet, normalised to single spaces. */
 const selectorLists = (css: string) =>
@@ -93,6 +94,27 @@ describe('now-marker · the wrapper is transparent to the day’s child combinat
     expect(markerCss).toMatch(
       /\.now-here\[data-posture='plan'\] \.nowline-dot \{[^}]*background:\s*var\(--plan\)/,
     );
+  });
+
+  // **THE SHARED READER IS THE MARK'S THIRD HOST**, and everything it changes is a variable
+  // in a single block — which is what `now-marker.css` was parameterised for. All four are
+  // invisible to jsdom, and three of them are wrong-by-default rather than merely absent: the
+  // ground would paint the day surfaces' `--screen` inside a card that is not that colour,
+  // the bleed would reach past `.sh-day`'s `overflow: hidden` and lose the arrow entirely,
+  // and the ⁦18px⁩ arrow draws ⁦13px⁩ into an ⁦11px⁩ gutter.
+  it('gives the shared reader its own bleed, arrow, ground and room', () => {
+    const host = shareCss.match(/\.sh-day-body \.now-here \{([^}]*)\}/)?.[1] ?? '';
+    expect(host).toMatch(/--now-bleed:\s*11px/);
+    expect(host).toMatch(/--now-tab:\s*15px/);
+    expect(host).toMatch(/--now-ground:\s*color-mix/);
+    expect(host).toMatch(/--now-room:\s*6px/);
+  });
+
+  // ADR-0217 §1 gives the mark no caption because the row it is in says the word. That is a
+  // premise, not a decoration: a host whose rows cannot say it leaves the mark mute, which is
+  // how the boundary form came to carry a clock. This is the reader's half of it.
+  it('lets the shared reader’s running row say the word', () => {
+    expect(shareCss).toMatch(/\.sh-event-now \{/);
   });
 
   // Both day surfaces render the same rows off the same derivation (ADR-0159 §1), so a bleed
