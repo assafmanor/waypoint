@@ -1319,7 +1319,14 @@ describe('PlanDay · where the moment is', () => {
     const marks = container.querySelectorAll('.now-here');
     expect(marks).toHaveLength(1);
     expect(marks[0].classList.contains('edge')).toBe(true);
-    expect(marks[0].children).toHaveLength(0);
+    expect(marks[0].querySelector('.wp-event')).toBeNull();
+    // Plan's boundary reference carries the clock exactly as Trip's does — the difference
+    // between the two surfaces is ink, never a fact (ADR-0159 §1), and `now-marker.css`
+    // re-inks the chip under `[data-posture='plan']`.
+    // `ZONE` is UTC+2, so a UTC ⁦14:00⁩ reads ⁦16:00⁩ — which is the point rather than
+    // an inconvenience: the mark takes a FORMATTED label (ADR-0213 §11's reason), so what is
+    // asserted here is that the surface formats it in the trip's zone and not in UTC.
+    expect(marks[0].querySelector('.nowline-chip')!.textContent).toBe('16:00');
   });
 
   // ADR-0043 §5: the reference shows only when the day on screen IS today.
