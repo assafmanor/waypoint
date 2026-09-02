@@ -1,0 +1,168 @@
+/* THE DAYLIGHT WIDGET (design brief 2026-09-02, mockup `daylight-on-the-day-v1.html`).
+
+   Deliberately short. The widget is a sky, an arc and one foot line; if this
+   sheet starts growing, the surface has stopped being a widget — which is the
+   correction the whole design came out of.
+
+   THE SKY IS ILLUSTRATION, NOT AN ACCENT, and that is the colour decision this
+   file rests on. Rule 4 / ADR-0028 rations amber (time & commitment), teal
+   (place) and `--plan` (Plan mode); a sky gradient claims none of them, the way
+   the avatar and map-pin ramps are muted variety rather than a second meaning
+   system. It was measured rather than asserted: composited over the card, the
+   most colourful stop here is ⁦1.7×⁩ paler in chroma than the palest semantic
+   hue, so the amber on the board and the rail stays the loudest thing on screen.
+
+   (The first measurement of that claim used HSL saturation and came out at
+   ⁦57%⁩ against teal's ⁦56%⁩ — a near-tie, and a bad metric rather than a bad
+   design: HSL inflates pale tints, which is why the design language reasons in
+   chroma. Recorded because the number is the kind a future reader would
+   otherwise re-derive.) */
+
+.sun-widget {
+  /* The ramp. Desaturated on purpose and NOT from the semantic set. */
+  --sun-night: rgba(30, 44, 92, 0.58);
+  --sun-twilight: rgba(116, 96, 150, 0.46);
+  --sun-dawn: rgba(226, 148, 92, 0.5);
+  --sun-day: rgba(140, 190, 232, 0.38);
+  /* The sun's own colour — the one warm line on the card. */
+  --sun-disc: #e8a33d;
+  --sun-gold-band: #f2a24e;
+  --sun-h: 64px;
+
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-16, 16px);
+  overflow: hidden;
+}
+
+/* The sky is a PICTURE of a sky, so it does not invert in dark — what changes is
+   how much of it survives on a dark card. Night deepens, day cools. */
+:root[data-theme='dark'] .sun-widget {
+  --sun-night: rgba(10, 17, 32, 0.66);
+  --sun-twilight: rgba(112, 92, 146, 0.42);
+  --sun-dawn: rgba(206, 138, 88, 0.4);
+  --sun-day: rgba(96, 140, 186, 0.34);
+}
+
+/* THE SKY BAND. `to left` because time runs RIGHT→LEFT here, the same direction
+   the glance rail runs (`.wp-track-blk` anchors on `inset-inline-start`) — so the
+   two surfaces agree about which end of a day is which. A `to right` gradient
+   would run the day backwards, and only a sunrise drawn at dusk would ever
+   reveal it in a screenshot. */
+.sun-sky {
+  position: relative;
+  height: var(--sun-h);
+  background: linear-gradient(
+    to left,
+    var(--sun-night) 0%,
+    var(--sun-night) var(--sky-dawn-night),
+    var(--sun-twilight) var(--sky-dawn-twilight),
+    var(--sun-dawn) var(--sky-dawn-warm),
+    var(--sun-day) var(--sky-dawn-day),
+    var(--sun-day) var(--sky-dusk-day),
+    var(--sun-dawn) var(--sky-dusk-warm),
+    var(--sun-twilight) var(--sky-dusk-twilight),
+    var(--sun-night) var(--sky-dusk-night),
+    var(--sun-night) 100%
+  );
+}
+.sun-sky > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* The horizon: a hairline, because it is a reference and not a fact. Everything
+   above it is the day. */
+.sun-horizon {
+  stroke: var(--ink);
+  stroke-opacity: 0.24;
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.sun-arc {
+  fill: none;
+  stroke: var(--ink);
+  stroke-opacity: 0.3;
+  stroke-width: 1.25;
+  stroke-linecap: round;
+}
+.sun-arc-lit {
+  fill: none;
+  stroke: var(--sun-disc);
+  stroke-opacity: 0.9;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.sun-disc {
+  fill: var(--sun-disc);
+}
+.sun-disc-ring {
+  fill: none;
+  stroke: var(--sun-disc);
+  stroke-opacity: 0.3;
+  stroke-width: 5;
+}
+/* Golden hour is the one thing here that is a RANGE and not an instant, so it is
+   drawn as a band and never as two more times on the face.
+
+   ITS OWN WARM INK RATHER THAN `--sun-disc`, and this came off the render: over
+   the day-blue sky the disc colour desaturated to a dead grey, most visibly on
+   the day the band matters most — an Arctic summer, where the sun sits below ⁦6°⁩
+   for hours and the band is the widest thing on the widget. */
+.sun-gold-band {
+  fill: var(--sun-gold-band);
+  fill-opacity: 0.2;
+}
+
+/* THE FOOT — one line, three facts, at a size you read rather than inspect.
+   ⁦15px⁩ mono: the rejected ⁦244.8px⁩ card used ⁦19px⁩ and the rejected
+   `.day-ambient` row used ⁦11.5px⁩; this is the size that survived both
+   corrections. Mono because they are times (design-language). */
+.sun-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px 10px;
+}
+.sun-foot .sf-t {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.sun-foot .sf-ic {
+  font-size: 13px;
+  line-height: 1;
+}
+/* The middle fact, and the softest — so it sits between the two clocks and goes
+   quiet entirely when there is no golden hour to state. */
+.sun-foot .sf-gold {
+  margin-inline: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--sun-gold-band) 16%, transparent);
+  border-radius: 999px;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+.sun-foot .sf-gold .mono {
+  font-family: var(--font-mono);
+  color: var(--ink);
+}
+/* A polar day says it in words, because the curve above has already shown it —
+   a caption under a picture, not the message itself. */
+.sun-foot .sf-polar {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink);
+}

@@ -2,6 +2,7 @@ export * from './entities';
 export * from './constants';
 export * from './booking-event';
 export * from './currency';
+export * from './daylight';
 export * from './destinations';
 export * from './enrichment';
 export * from './place-label';

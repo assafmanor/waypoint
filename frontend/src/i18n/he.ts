@@ -2295,6 +2295,23 @@ export const t = {
   // Money (ADR-0180). `מבט מהיר` is the SECTION ADR-0045 removed for holding
   // fixtures and promised back "as their own glance cards" — this is that return,
   // so the title is the original words and not a new heading.
+  // **Daylight** (design brief 2026-09-02). No em dashes: the golden-hour range
+  // uses an en dash INSIDE an isolated LTR run, which is a numeric range rather
+  // than UI punctuation, and the separator between peer facts is the app's `·`.
+  sun: {
+    // The glyphs are content, not UI icons — the same call the glance rail's
+    // marks and a stay's badge already make (design-language).
+    sunriseGlyph: '🌅',
+    sunsetGlyph: '🌇',
+    goldenGlyph: '✨',
+    golden: 'זהב',
+    // The half-open arm: above the polar circles the sun can enter golden hour
+    // and never leave it, so this says the range is open rather than printing a
+    // second time that does not exist.
+    goldenFrom: 'זהב מ־',
+    polarDay: '☀️ השמש לא שוקעת היום',
+    polarNight: '🌑 השמש לא זורחת היום',
+  },
   fx: {
     sectionTitle: 'מבט מהיר',
     // The date is interpolated as an already-isolated LTR island (ADR-0118), never

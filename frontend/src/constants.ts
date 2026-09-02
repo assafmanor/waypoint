@@ -434,6 +434,34 @@ export const NIGHT_ENDS_HOUR = 5;
  * owner's correction, and the only one of the four that is a matter of taste. It wants a
  * device pass.
  */
+/**
+ * **How far apart two places can be and still be "the same place" for the day's
+ * sun** (`dayAnchorCoord`). ⁦11km⁩ is one tenth of a degree of latitude — finer
+ * than any public weather model's own grid, and far finer than daylight needs: a
+ * sunrise moves by well under a minute across it. Two stops in one city must not
+ * read as a mixed day, and two cities must.
+ */
+export const DAY_ANCHOR_AGREE_M = 11_000;
+
+/**
+ * **The daylight widget's arc** (`lib/daylight-view.ts`).
+ *
+ * `SAMPLES` is how many points the sun's altitude is read at across the day.
+ * ⁦144⁩ is one every ⁦10⁩ minutes: below about ⁦96⁩ the curve visibly facets at the
+ * horizon crossing, where it is steepest and where the eye is looking, and above
+ * ⁦144⁩ nothing changes but the path length. `HORIZON_FRAC` is where the horizon
+ * line sits in the box, and the scale is fixed at ⁦±90°⁩ — deliberately NOT
+ * fitted to the day, because a fitted scale would stretch a polar-night curve to
+ * look like an ordinary one and delete the whole point of drawing it.
+ */
+export const SUN_ARC = {
+  SAMPLES: 144,
+  HORIZON_FRAC: 0.62,
+  /** How much of the half-box the ⁦90°⁩ extreme uses, leaving the curve clear of
+   *  the edge at the solstice. */
+  SCALE: 0.92,
+} as const;
+
 export const DAY_TRACK = {
   BLOCK_MIN_PX: 4,
   MARK_MIN_PX: 16,
@@ -528,6 +556,11 @@ export const LIVE_ZONE_WINDOW_MS = 12 * 60 * 60 * 1000;
  *  crossing near either boundary can't decide which zone frames the whole day)
  *  and the day's weekday label. Mid-day is far from every DST/midnight edge. */
 export const DAY_NOON = '12:00';
+/** Local midnight, as the wall time a day's own instants are measured from —
+ *  what `dayLight` needs to know where the day starts. Named beside `DAY_NOON`
+ *  rather than inlined for the same reason that one is: a bare `'00:00'` at a
+ *  call site says when, not why. */
+export const DAY_MIDNIGHT = '00:00';
 
 /** Overnight events (ADR-0037): a regular event may end in the small hours of
  *  the next day, but stays filed under its start night. An end at/before the

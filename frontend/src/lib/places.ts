@@ -12,6 +12,8 @@ import {
   type Place,
   type PlacePrediction,
   type TripEvent,
+  haversineMeters,
+  type LatLng,
 } from '@waypoint/shared';
 
 // Imported for this file's own use AND re-exported below: a bare `export … from` would not
@@ -50,7 +52,8 @@ import {
 import { DAY_NOON, LIVE_ZONE_WINDOW_MS } from '../constants';
 import { formatDuration } from './duration';
 import { formatDistance } from './distance';
-import { carriedBookingMeters } from './day-travel';
+import { carriedBookingMeters, coordOf } from './day-travel';
+import { DAY_ANCHOR_AGREE_M } from '../constants';
 
 /** Whether a booking carries a route rather than a single place — one call into the
  *  shared profile (ADR-0154 §2), which is where that question now lives for both
@@ -338,6 +341,78 @@ export function dayAmbientZone(date: string, evidence: ZoneEvidence): string {
   }
 
   return segmentZoneAt(noonMs, crossings) ?? primaryZone;
+}
+
+/**
+ * **WHERE THIS DAY IS LIVED, IN COORDINATES** — the sibling of
+ * {@link dayAmbientZone}, and the one derivation the daylight feature adds.
+ *
+ * A sun time is a function of latitude and longitude, so "when does the sun
+ * catch us" needs the same question `dayAmbientZone` already answers, asked in
+ * degrees instead of zone ids. It therefore reads the SAME `ZoneEvidence`
+ * bundle, on the same date, and inherits the rule that makes that bundle
+ * evidence rather than a circular vote:
+ *
+ *   1. **The day's own placed events, when they agree.** `eventsOnDate`
+ *      includes a multi-day stay on its middle nights, so the hotel votes on
+ *      every day it covers — which is why an arrival day resolves to the bed
+ *      without needing a separate rule for it: the flight abstains (below) and
+ *      the destination hotel is the only voter left.
+ *   2. **The trip's destination**, which ADR-0113 already stores from the
+ *      creation pick.
+ *
+ * **A zone-crossing booking does not vote**, exactly as in `eventKnownZone`, and
+ * for the identical reason: it is the thing that moves you between two places,
+ * so it cannot testify about where the day sits. Here that means a booking whose
+ * two ends are different places abstains entirely.
+ *
+ * `undefined` is a first-class answer — a trip with no destination coordinates
+ * and no placed events gets no daylight at all rather than a wrong sunrise,
+ * which is the same "a miss degrades, never a wrong answer" contract
+ * `crossRate` and `COUNTRY_CURRENCY` carry.
+ *
+ * **The zone and the coordinate must be resolved from one evidence on one
+ * date.** They are two derivations feeding one printed time — the instant comes
+ * from here, the wall clock from `dayZoneContext` — so resolving them from
+ * different days is how an app prints a sunrise at 21:40 and nobody notices.
+ */
+export function dayAnchorCoord(
+  date: string,
+  evidence: ZoneEvidence,
+  destination?: LatLng,
+): LatLng | undefined {
+  const { events, bookings, places } = evidence;
+  const voters = eventsOnDate(events, date)
+    .map((event) => eventKnownCoord(event, bookings, places))
+    .filter((at): at is LatLng => at != null);
+
+  if (voters.length > 0) {
+    // Same cell = same weather model grid square and the same sun to well under
+    // a minute, so "agree" is a distance rather than an equality — two stops in
+    // one city must not read as a mixed day.
+    const first = voters[0];
+    if (voters.every((at) => haversineMeters(first, at) <= DAY_ANCHOR_AGREE_M)) return first;
+  }
+
+  return destination;
+}
+
+/** An event's coordinate **only when something actually says so** — the mirror
+ *  of `eventKnownZone`, including its abstention: a booking whose two ends are
+ *  different places is transport between them and testifies about neither. */
+function eventKnownCoord(
+  event: TripEvent,
+  bookings: Booking[],
+  places: Place[],
+): LatLng | undefined {
+  const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
+  if (booking) {
+    const from = coordOf(places, booking.fromPlaceId ?? undefined);
+    const to = coordOf(places, booking.toPlaceId ?? undefined);
+    if (from && to && haversineMeters(from, to) > DAY_ANCHOR_AGREE_M) return undefined;
+    return coordOf(places, bookingPlaceId(booking)) ?? from ?? to;
+  }
+  return coordOf(places, event.placeId ?? undefined);
 }
 
 /** The zone the live "now" is in, for Trip mode's clock / now-line / "today"
