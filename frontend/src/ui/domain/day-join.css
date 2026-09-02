@@ -79,7 +79,15 @@ button.day-gap:hover .day-gap-lbl {
   margin-bottom: 10px;
   background: var(--card);
 }
-.journey > .wp-event {
+/* **AND `.now-here` IS TRANSPARENT TO THIS SELECTOR** (ADR-0217). `NowMarker` wraps the row the
+   moment is inside, so a leg inside a journey RUN that holds it becomes
+   `.journey > .now-here > .wp-event` — and a child combinator stops matching, which hands the
+   leg its border, its radius and its ⁦10px⁩ margin back INSIDE the block. Exactly the defect
+   ADR-0212 §6's build log records one rule down ("the rule named `.wp-event` alone, which is
+   true while a run is one card and false the moment two legs group inside `.journey`"), so it is
+   named here rather than found again. `styles/now-marker.contract.test.ts` asserts it. */
+.journey > .wp-event,
+.journey > .now-here > .wp-event {
   border: 0;
   border-radius: 0;
   margin: 0;
@@ -87,7 +95,8 @@ button.day-gap:hover .day-gap-lbl {
 }
 /* A soft leg keeps its hatch (it is the card's background, not its border) but
    loses the dashed edge the container now draws. */
-.journey > .wp-event.soft {
+.journey > .wp-event.soft,
+.journey > .now-here > .wp-event.soft {
   border: 0;
 }
 .journey-stop {
@@ -112,10 +121,15 @@ button.day-gap:hover .day-gap-lbl {
 .journey-stop.tight {
   background: color-mix(in srgb, var(--amber) 17%, transparent);
 }
-/* The now-line inside a journey keeps the block's inset, so it reads as a row OF
-   the block rather than a rule laid across it. */
-.journey .nowline {
-  margin: 9px 12px;
+/* **THE MARK INSIDE A JOURNEY BLOCK KEEPS THE BLOCK'S INSIDE** — which replaces the
+   `.journey .nowline` margin that said the same thing about a rule laid between two legs
+   (ADR-0217; the mark is no longer a row, so there is nothing to inset).
+   `.journey` clips (`overflow: hidden`, for its own radius), so a mark reaching past its box is
+   a mark with no arrow at all: `--now-bleed: 0` puts the arrow in the card's own face padding
+   instead of in the day's margin. Lives here rather than in `now-marker.css` because the
+   clipping is this block's, and so is the reason. */
+.journey .now-here {
+  --now-bleed: 0px;
 }
 
 /* ── THE JOURNEY BLOCK (ADR-0206 §V1.1/§V1.3/§V1.4, drawn in
@@ -224,8 +238,13 @@ button.day-gap:hover .day-gap-lbl {
    rule named `.wp-event` alone, which is true while a run is one card and false the moment two
    legs group inside `.journey` — the selector stops matching, and the track paints OVER the
    cards instead of behind them. Same class as the specificity tie in ADR-0210's build log. */
+/* `.now-here` joins this list for the same reason it joins `.journey`'s above: the mark wraps
+   the row, so a carried leg holding the moment is `.day-thread > .now-here > .wp-event` and the
+   thread would paint OVER it. The wrapper is the positioned box here — it already carries
+   `position: relative`, and `.now-here > *` lifts its child above the rule. */
 .day-thread > .wp-event,
-.day-thread > .journey {
+.day-thread > .journey,
+.day-thread > .now-here {
   position: relative;
   z-index: 1;
 }
@@ -491,7 +510,7 @@ button.day-trv-face:focus-visible {
   border-radius: var(--radius-8, 8px);
 }
 /* THE LEAVE-BY HAS GONE BY (§V1.4). Ink and word, never a fill on the block, no glow and no
-   pulse — the app has one live mark and `.nowline` is it (§D6). `--miss-deep` is the ink
+   pulse — the app has one live mark and `.now-here` is it (§D6; `.nowline` until ADR-0217). `--miss-deep` is the ink
    because `--miss` itself fails AA as text (§D7, design-language). */
 /* **A missed leg is still a leg** (owner, 2026-08-28, reversing ADR-0210's build log).
    It keeps the line and takes `--miss` on the track, the glyph and the words — and it

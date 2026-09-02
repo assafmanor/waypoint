@@ -1824,12 +1824,63 @@ test.describe('carrying a card to another day from the surface edge', () => {
     await touch(cdp, 'touchMove', edge.x, edge.y);
     await stepsTo(page, TOMORROW);
 
-    // Released over the edge, which accepts nothing: the edge NAVIGATES and is deliberately
-    // not a drop target (a gap chip's own last 36px lie inside the band, and `overDate` is
-    // read before the chip — see `PlanDay`).
+    // Released at a height with nothing on it: the edge NAVIGATES and offers no slot of its
+    // own, so this drag resolved no target at all. Note what it is NOT — the band is not
+    // fenced off from the surface's targets, which is the case below.
     await touch(cdp, 'touchEnd');
     await expect.poll(() => dayParam(page)).toBeNull();
     await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+
+  // **AND A TARGET RESOLVED BEFORE THE TURN IS NOT COMMITTED AFTER IT.** The band and the day's
+  // gap chips overlap by design: a chip spans the surface, so its last `DRAG_DAY_EDGE_PX` lie
+  // inside one, and `PlanDay` prefers the chip on purpose — a drop meant for that slot must not
+  // silently become "aim at another day". Which means a finger can rest at the edge with a chip
+  // under it, and by the time it lets go the chip belongs to the day the turn has just left. It
+  // scheduled into it: the sheet opened on `2 בספט׳`'s slot with day 5 on screen.
+  //
+  // **Aimed at a chip on purpose, and the premise asserted before the release.** The case above
+  // passes because its height happens to have nothing on it — and it happened to have a chip for
+  // one commit, when ADR-0217 took a row out of the list and moved every chip 30px up. A
+  // regression test for this cannot be left to depend on that.
+  test('a target resolved before the turn is not committed after it', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+
+    // A chip at a height clear of BOTH vertical bands, so nothing scrolls under the finger
+    // while it rests there — one gesture, one thing being asserted. Measured after the arm:
+    // arming reveals the seams, and this needs the geometry the finger will actually meet.
+    const bands = await bodyBands(page);
+    const host = await boxOf(page, '.day-swipe:not([data-preview])');
+    const chips = await page
+      .locator('.day-swipe:not([data-preview]) > .day-page .gap')
+      .evaluateAll((els) =>
+        els.map((el) => {
+          const r = el.getBoundingClientRect();
+          return r.y + r.height / 2;
+        }),
+      );
+    const y = chips.find((cy) => cy > bands.middleTo && cy < bands.middleFrom);
+    expect(y, 'a gap chip clear of both vertical bands').toBeDefined();
+    const point = { x: host.x + Math.round(DRAG_DAY_EDGE_PX / 4), y: Math.round(y!) };
+
+    await touch(cdp, 'touchMove', point.x, point.y);
+    // The premise: the finger is on a chip AND the chip knows it. Without this the test can
+    // quietly become the one above.
+    await expect(
+      page.locator('.day-swipe:not([data-preview]) > .day-page .gap.drop-over'),
+    ).toHaveCount(1);
+    await stepsTo(page, TOMORROW);
+
+    // Let go without moving: the slot under the finger was on the day we left, so the drag
+    // comes to nothing and takes the day switch back with it.
+    await touch(cdp, 'touchEnd');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect.poll(() => dayParam(page)).toBeNull();
+    // …and the card is still an idea on the shelf, on neither day.
+    await expect(page.locator(`[data-shelf-drop="pool"] .wp-maybecard`)).toHaveCount(IDEAS.length);
   });
 
   // The latch, in the engine: a card whose own box reaches into a band must not set the days

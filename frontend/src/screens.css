@@ -1077,43 +1077,6 @@ body.wp-dragging
   font-weight: 500;
 }
 
-/* Plan builder's static now-reference (ADR-0043): Plan's violet, dashed, hollow
-   marker — the deliberate opposite of the Trip now-line, never a live signal. */
-.nowref {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 1px 2px 10px;
-}
-.nowref-rule {
-  flex: 1;
-  height: 0;
-  border-top: 1px dashed rgba(110, 89, 214, 0.55);
-}
-.nowref-tag {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--plan-deep);
-  background: var(--plan-tint);
-  border: 1px solid rgba(110, 89, 214, 0.28);
-  font-size: 11px;
-  font-weight: 700;
-  padding: 2px 9px;
-  border-radius: 999px;
-}
-.nowref-ring {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  border: 1.5px solid var(--plan);
-  background: transparent;
-}
-.nowref-tm {
-  font-family: var(--font-mono);
-}
-
 /* maybe shelf */
 .shelf {
   display: flex;
