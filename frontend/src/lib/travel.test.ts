@@ -820,6 +820,63 @@ describe('useDayShapes', () => {
     unmount();
   });
 
+  // **The lines must arrive in the same window the numbers do** (ADR-0206 §BB).
+  //
+  // Reported 2026-09-03: _"the driving distance and time estimations are now displaying normally,
+  // but the routes themselves don't… it took time though and came a few minutes after the
+  // estimations."_ Exactly right, and the asymmetry was ours: `useDayTravel` re-asks a warming day
+  // up to `DAY_TRAVEL_WARM_ATTEMPTS` rounds — §AU1/§AZ4 put that ladder in precisely so a number
+  // would not wait for a remount — while this hook asked once, retried ONCE, and then sat until
+  // something re-mounted it. Geometry is the SLOWER half by construction (one `/route` call per
+  // leg, paced at ⁦1 call/s⁩ server-side), so it is the half that needed the ladder most.
+  it('keeps asking a warming day for its lines, past the single retry it used to stop at', async () => {
+    vi.useFakeTimers();
+    // `warming` carries `retryAfterSeconds: 2` and no shape — the ordinary "still drawing" answer.
+    routes.fetchRoutes.mockResolvedValue(warming);
+
+    const { unmount } = render();
+    await vi.waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(1));
+
+    // Round 3 is the claim: round 2 was the last ask this hook ever made.
+    for (const round of [2, 3, 4]) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+      await vi.waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(round));
+    }
+    unmount();
+  });
+
+  /** Bounded by the same attempt count the numbers use, so a day the provider never draws
+   *  terminates into §D4's straight segments rather than polling a phone for the whole trip. */
+  it('gives up at the same bound rather than polling forever', async () => {
+    vi.useFakeTimers();
+    routes.fetchRoutes.mockResolvedValue(warming);
+
+    const { unmount } = render();
+    await vi.waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+    });
+    expect(routes.fetchRoutes).toHaveBeenCalledTimes(DAY_TRAVEL_WARM_ATTEMPTS);
+    unmount();
+  });
+
+  /** `retryAfterSeconds === undefined` means nothing more is coming. A day drawn in full must not
+   *  spend a single further request learning that. */
+  it('stops the moment the answer stops warming', async () => {
+    vi.useFakeTimers();
+    routes.fetchRoutes.mockResolvedValue(shaped);
+
+    const { unmount } = render();
+    await vi.waitFor(() => expect(routes.fetchRoutes).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+    });
+    expect(routes.fetchRoutes).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
   // The day LIST reads `useDayTravel`, which draws nothing — so it must never buy geometry.
   it('leaves the day’s own numbers geometry-free', async () => {
     const { unmount } = renderHook(() => useDayTravel({ tripId: TRIP_ID, stops: STOPS }));
@@ -963,7 +1020,17 @@ describe('useDayShapes', () => {
 
   // Shapes arrive in passes (`SHAPE_CALLS_PER_PASS`), so a warming answer is the ORDINARY case
   // for a long day. One wait, then the next natural read finishes it.
-  it('re-asks a warming day once, then lets the next read finish it', async () => {
+  /**
+   * **Paced by the `Retry-After` the answer carried, never sooner** — which is what keeps the
+   * ladder above a flow rather than a poll (ADR-0187's shape, and `RoutingService.retryAfterFor`
+   * derives the number from the calls it actually planned).
+   *
+   * **This spec used to assert "…and then STOPS after one retry", and that half was the §BB
+   * defect** — it encoded the one-retry ceiling as though it were the rule, so the ladder's
+   * absence had a passing test guarding it. The bound and the stop condition are asserted above,
+   * against `DAY_TRAVEL_WARM_ATTEMPTS`; what is left here is the interval, which nothing else pins.
+   */
+  it('paces the re-ask by the Retry-After the answer carried', async () => {
     vi.useFakeTimers();
     routes.fetchRoutes.mockResolvedValue({ legs: [leg([walk])], retryAfterSeconds: 2 });
 
@@ -974,13 +1041,14 @@ describe('useDayShapes', () => {
     });
     expect(routes.fetchRoutes).toHaveBeenCalledTimes(1);
 
+    // A millisecond short of the interval: still one ask, so the wait is the answer's own.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(2000);
+      await vi.advanceTimersByTimeAsync(1_999);
     });
-    expect(routes.fetchRoutes).toHaveBeenCalledTimes(2);
+    expect(routes.fetchRoutes).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(120_000);
+      await vi.advanceTimersByTimeAsync(1);
     });
     expect(routes.fetchRoutes).toHaveBeenCalledTimes(2);
     unmount();

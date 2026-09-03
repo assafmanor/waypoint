@@ -4052,3 +4052,54 @@ would have warmed goes without. One wait, paced by the answer's own `Retry-After
   you land on — which is the half that was missing.
 - **`DayView`'s day derivation still runs on every clock tick**, above the seam §AZ7 fixed. Still
   backlogged, still unmeasured.
+
+## BB. The numbers arrived and the lines did not, because only one of the two hooks got §AU1's ladder (2026-09-03)
+
+**Reported, once ADR-0205 §Y5's fallback was live:** _"the driving distance and time estimations
+are now displaying normally, but the routes themselves don't"_ — and then, minutes later, _"it now
+has routes. It took time though and came a few minutes after the estimations. I thought that they
+would arrive together."_
+
+**Not the provider, and not the fallback: an asymmetry of our own.** `useDayTravel` re-asks a
+warming day up to `DAY_TRAVEL_WARM_ATTEMPTS` (⁦6⁩) rounds, paced by each answer's own
+`retryAfterSeconds` — §AU1 and §AZ4 built that ladder for exactly this failure, whose report was
+_"it stays that way until I restart the app"_. `useDayShapes` asked once, retried **once**, and
+then returned:
+
+```ts
+if (batch.retryAfterSeconds === undefined || isRetry) return;
+```
+
+Its comment said the single wait was fine because the next natural read would finish it, _"exactly
+as the day's own numbers do"_ — a clause that stopped being true the moment §AU1 gave the numbers
+six rounds. Nothing re-asked afterwards, so the lines waited for a **remount**: a day switch, a
+tab change, reopening the map. "A few minutes" is how long it took the owner to do one of those.
+
+**And the asymmetry pointed the wrong way**, which is why this was worth an amendment rather than
+a one-line change. Geometry is the slower half by construction: a duration is **one** matrix call
+for the whole day, while a line is **one `/route` call per leg**, paced at ⁦1 call/s⁩ by the
+politeness limiter and capped per pass at `SHAPE_CALLS_PER_PASS` (⁦8⁩). The half that needs the most
+rounds had the fewest. Under ADR-0205 §Y5's failover it is slower still, since each call now tries
+the primary before the fallback.
+
+**Decided.** The same ladder, the same bound, the same pacing — `useDayShapes` re-asks while the
+answer keeps warming, to `DAY_TRAVEL_WARM_ATTEMPTS` rounds, and stops on the first answer that
+carries no `retryAfterSeconds`. A day the provider never draws still terminates into §D4's
+straight segments rather than polling a phone for the length of a trip.
+
+**A passing test was guarding the defect.** `re-asks a warming day once, then lets the next read
+finish it` asserted the one-retry ceiling as though it were the rule — 1 ask, 2 asks, then _still
+2_ after two minutes. It is now narrowed to the claim that survives and that nothing else pins,
+which is that the wait is the **answer's own interval** (a millisecond short of `Retry-After`:
+still one ask). The bound and the stop condition are asserted directly against
+`DAY_TRAVEL_WARM_ATTEMPTS`. Worth recording because the test read as coverage and was the reason
+nobody looked: the ladder's absence was written down as intended behaviour.
+
+**What this does NOT change, and is the remaining reason a cold leg is two round trips.**
+`RoutingService.batch` cannot even _request_ geometry for a leg it holds no row for — it queues
+the matrix and `continue`s, so the shape needs a later pass. One `/route` answers duration,
+distance **and** geometry in a single call (measured on the fallback host: ⁦462.7 s⁩ / ⁦4567.2 m⁩ /
+⁦185 points⁩), so a cold leg the map wants a line for could be one call instead of two sequential
+ones. It is a real saving and a separate decision: it trades the matrix's whole-day durations —
+and §Z4's free caching of every cross pair — for per-leg latency, which is right for a short day
+and wrong for a ten-stop one. Backlogged, not taken here.
