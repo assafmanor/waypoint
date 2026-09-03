@@ -793,3 +793,14 @@ describe('deriveNow — concurrent now/next sets', () => {
     expect(nextAll.map((e) => e.id)).toEqual(['q', 'p']);
   });
 });
+
+describe('weekdayLetter — the geresh is ICU’s, not ours', () => {
+  // A copy wrapper appended a second one and the day strip rendered `ש׳׳` (owner report,
+  // 2026-09-03). Pinned here rather than at a call site, because the fact belongs to the
+  // formatter: any surface printing a narrow Hebrew weekday must not add punctuation to it.
+  it('already includes the geresh, so a caller must add none', () => {
+    expect(weekdayLetter('2026-09-05')).toBe('ש׳');
+    expect(weekdayLetter('2026-09-06')).toBe('א׳');
+    expect(weekdayLetter('2026-09-03')).toBe('ה׳');
+  });
+});

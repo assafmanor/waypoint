@@ -9,8 +9,7 @@
 //    that a control which reliably does nothing is worse than no control: `ErrorState`'s retry
 //    renders only when the caller can recover, `SyncBadge` is silent when synced, ADR-0180 §4
 //    refuses a standing refresh button. So the card is a plain region until it has a
-//    destination, and the attribution link below it stays reachable rather than being nested
-//    inside a button, which would be invalid markup.
+//    destination — which is also what lets its source line live INSIDE it (amendment §A).
 //  - **The mark is an emoji, looked up from `symbol_code`** (§7). The app does not compute a
 //    condition — MET Norway does, and the app holds it — so it is a fact received and belongs
 //    with the per-entity badges rather than with the marks the app draws. `SunGlyph` next door
@@ -22,14 +21,24 @@
 //    hands over a null view for that, and there is **no error state on this surface**.
 //  - **Precipitation is an amount, never a chance.** MET publishes no probability, so the copy
 //    may not imply one.
+//  - **The head names the place it speaks for, and the strip starts at TOMORROW** (amendment
+//    §B/§C). The head follows `liveAnchorCoord` — where the plan says you are now, or where you
+//    are heading — so on a travel day it is a different place from where the day began; without
+//    the name, that reads as a contradiction against the strip. And a `היום` tile would repeat
+//    the head's own number ⁦60px⁩ away, which is the duplication ADR-0214 and ADR-0215 each
+//    measured and removed.
 import { ltrIsolate } from '../../lib/bidi';
 import { forecastCondition } from '@waypoint/shared';
 import { t } from '../../i18n/he';
 import type { WeatherTile, WeatherView } from '../../lib/weather-view';
+import { CardSource } from './CardSource';
 import './weather-card.css';
 
 export interface WeatherCardProps {
   view: WeatherView | null;
+  /** The credit the provider's terms require, carried on the data rather than hardcoded here
+   *  (ADR-0180 §7's call, unchanged) — a second provider needs no change to this component. */
+  source: { label: string; href: string } | null;
   /** Each tile's day label, formatted by the host — it owns the day's zone (ADR-0107) and the
    *  app's date grammar, and this component owns no clock. The same contract `RateCard`'s
    *  `asOf` and `SunWidget`'s `times` state. */
@@ -41,10 +50,16 @@ export interface WeatherCardProps {
  *  every other numeric run in this app uses. */
 const degrees = (value: number): string => ltrIsolate(`${Math.round(value)}°`);
 
-export function WeatherCard({ view, dayLabels }: WeatherCardProps) {
+export function WeatherCard({ view, source, dayLabels }: WeatherCardProps) {
   if (!view) return null;
   const { head, days } = view;
   const condition = t.weather.condition[forecastCondition(head.symbolCode)];
+  // `place · condition`, and the amount only when there is one — three runs in an ellipsising
+  // slot at 360px is one too many, and the amount is the fact that changes a plan (W4).
+  const detail =
+    head.precipMm > 0
+      ? t.weather.condPrecip(condition, ltrIsolate(String(head.precipMm)))
+      : condition;
 
   return (
     <section className="wx-widget" aria-label={condition}>
@@ -57,10 +72,20 @@ export function WeatherCard({ view, dayLabels }: WeatherCardProps) {
         <span className="wx-temp" dir="auto">
           {degrees(head.tempMax)}
         </span>
+        {/* **The PLACE is the run that shrinks, not the weather.** Measured at 360px, a long
+            name plus an amount overflowed 149px into 127px, and with one ellipsising run the
+            thing cut was the amount — the last in the string and the most actionable fact on
+            the card (W4). Three flex items instead, and only the place may give ground. */}
         <span className="wx-cond">
-          {head.precipMm > 0
-            ? t.weather.condPrecip(condition, ltrIsolate(String(head.precipMm)))
-            : condition}
+          {head.place && (
+            <>
+              <span className="wx-where">{head.place}</span>
+              <span className="wx-sep" aria-hidden="true">
+                ·
+              </span>
+            </>
+          )}
+          <span className="wx-detail">{detail}</span>
         </span>
         <span className="wx-low" dir="auto">
           {t.weather.low(degrees(head.tempMin))}
@@ -71,6 +96,7 @@ export function WeatherCard({ view, dayLabels }: WeatherCardProps) {
           <DayTile key={day.date} tile={day} label={dayLabels[day.date] ?? ''} />
         ))}
       </div>
+      {source && <CardSource label={source.label} href={source.href} />}
     </section>
   );
 }

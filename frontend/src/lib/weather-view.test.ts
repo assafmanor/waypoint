@@ -102,15 +102,19 @@ describe('weatherView — the head', () => {
 });
 
 describe('weatherView — the strip', () => {
-  it('draws one tile per date, in order, including the head', () => {
+  it('draws the strip from TOMORROW — the head is today and no tile repeats it', () => {
+    // ADR-0218's amendment §C: the head and a `היום` tile were the same day at the same place,
+    // printing one number twice ⁦60px⁩ apart.
     const view = weatherView(input());
-    expect(view?.days.map((d) => d.date)).toEqual(['2026-09-03', '2026-09-04', '2026-09-05']);
+    expect(view?.head.date).toBe('2026-09-03');
+    expect(view?.days.map((d) => d.date)).toEqual(['2026-09-04', '2026-09-05']);
   });
 
   it('names every tile with its own place, which is the whole point of the strip', () => {
     const view = weatherView(input());
     // Shibuya and the trip's destination round to the same cell, so the day is named by the
     // group's own place rather than by the trip's display string.
+    expect(view?.head.place).toBe(TOKYO.name);
     expect(view?.days.every((d) => d.place === TOKYO.name)).toBe(true);
   });
 
@@ -191,5 +195,92 @@ describe('weatherView — the strip', () => {
     const tomorrow = view?.days.find((d) => d.date === '2026-09-04');
     expect(tomorrow?.beyond).toBe(false);
     if (tomorrow?.beyond === false) expect(tomorrow.precipMm).toBe(3.2);
+  });
+});
+
+describe('weatherView — the head follows the clock, not the start of the day', () => {
+  // ADR-0218's amendment §B (owner, 2026-09-03: "today's weather should update based on where
+  // we are right now or where we're headed, not the start of the day").
+  const KAZBEGI = place({ id: 'p-kaz', name: 'קזבגי', lat: 42.6572, lng: 44.6417 });
+  const KAZ_CELL = { cell: '42.7,44.6', zone: 'Asia/Tbilisi', issuedAt: ISSUED };
+
+  /** A drive that is IN PROGRESS at `NOW` — Tbilisi to Kazbegi. */
+  const driveNow = () =>
+    ({
+      id: 'e-drive',
+      tripId: 't1',
+      date: TODAY,
+      placeId: undefined,
+      bookingId: 'b-drive',
+      startsAt: new Date(NOW - 3_600_000).toISOString(),
+      endsAt: new Date(NOW + 3_600_000).toISOString(),
+      title: 'נסיעה',
+    }) as TripEvent;
+  const drive = { id: 'b-drive', tripId: 't1', fromPlaceId: TOKYO.id, toPlaceId: KAZBEGI.id };
+
+  const twoCells = (): Forecast => ({
+    provider: 'Data from MET Norway',
+    providerUrl: 'https://www.met.no/en',
+    cells: [
+      forecast().cells[0],
+      {
+        ...KAZ_CELL,
+        days: [{ date: TODAY, symbolCode: 'lightrain', tempMax: 22, tempMin: 12, precipMm: 4.1 }],
+      },
+    ],
+  });
+
+  it('reads the DESTINATION mid-transit, where the day anchor abstains', () => {
+    // The one inverted rule: `dayAnchorCoord`'s `eventKnownCoord` declines on a crossing, because
+    // a thing that moves you cannot say where the DAY sits. Live, mid-transit is the destination
+    // (ADR-0107 §8) — which is the owner's "or where we're headed".
+    const view = weatherView(
+      input({
+        places: [TOKYO, KAZBEGI],
+        evidence: {
+          ...evidence([TOKYO, KAZBEGI]),
+          events: [driveNow()],
+          bookings: [drive] as never,
+        },
+        forecast: twoCells(),
+      }),
+    );
+    expect(view?.head.place).toBe(KAZBEGI.name);
+    expect(view?.head.tempMax).toBe(22);
+  });
+
+  it('leaves the rest of the strip on the day’s own consensus', () => {
+    // A Saturday three days out has no "now" to follow.
+    const view = weatherView(
+      input({
+        places: [TOKYO, KAZBEGI],
+        evidence: {
+          ...evidence([TOKYO, KAZBEGI]),
+          events: [driveNow()],
+          bookings: [drive] as never,
+        },
+        forecast: twoCells(),
+      }),
+    );
+    expect(view?.days.find((d) => d.date === '2026-09-04')?.place).toBe(TOKYO.name);
+  });
+
+  it('does NOT follow the clock on a day being browsed rather than lived', () => {
+    // `today` is what makes the head live. Browsing tomorrow, "where you are now" is not an
+    // answer about that day at all, so the day's own consensus is the honest one.
+    const view = weatherView(
+      input({
+        dates: ['2026-09-04', '2026-09-05'],
+        places: [TOKYO, KAZBEGI],
+        evidence: {
+          ...evidence([TOKYO, KAZBEGI]),
+          events: [driveNow()],
+          bookings: [drive] as never,
+        },
+        forecast: twoCells(),
+      }),
+    );
+    expect(view?.head.date).toBe('2026-09-04');
+    expect(view?.head.place).toBe(TOKYO.name);
   });
 });

@@ -967,8 +967,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // day is lived. And the shelf life (§4) is applied HERE rather than on the server, because
   // this snapshot is mirrored into Dexie: a bound enforced only server-side would stop applying
   // at exactly the moment it matters.
+  // The head's day plus the strip's. `WEATHER_STRIP_DAYS` counts the STRIP, and the head is not
+  // one of its tiles (ADR-0218's amendment §C) — the head and a `היום` tile printed the same
+  // number twice, which is the duplication ADR-0214 and ADR-0215 each removed.
   const weatherDates = useMemo(
-    () => Array.from({ length: WEATHER_STRIP_DAYS }, (_, i) => addDays(activeDate, i)),
+    () => Array.from({ length: WEATHER_STRIP_DAYS + 1 }, (_, i) => addDays(activeDate, i)),
     [activeDate],
   );
   const weather = useMemo(
@@ -1000,15 +1003,17 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   );
   // Formatted here because the host owns the day's zone and the app's date grammar, and the
   // widget owns no clock — the same contract `RateCard`'s `asOf` and `SunWidget`'s `times` state.
+  //
+  // **The weekday is `weekdayLetter` bare, and the geresh is not ours to add** (owner report,
+  // 2026-09-03): ICU's `weekday: 'narrow'` already returns `ש׳` for Hebrew, so the wrapper that
+  // appended one rendered `ש׳׳`. `App.tsx`'s day pills have always called it bare — which is what
+  // makes this strip agree with them rather than merely being un-doubled.
+  //
+  // `היום` is gone from this map and not merely unused: the head IS today, so no tile is.
   const weatherDayLabels = useMemo(() => {
     const labels: Record<string, string> = {};
     for (const date of weatherDates) {
-      labels[date] =
-        date === today
-          ? t.weather.today
-          : date === addDays(today, 1)
-            ? t.weather.tomorrow
-            : t.weather.weekday(weekdayLetter(date));
+      labels[date] = date === addDays(today, 1) ? t.weather.tomorrow : weekdayLetter(date);
     }
     return labels;
   }, [weatherDates, today]);
@@ -1576,57 +1581,29 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       {/* The section owns the gap between its tenants (`.glance-cards`), because
           neither card carries a margin and the set grows — see `screens.css`. */}
       <div className="glance-cards">
+        {/* Each card now carries its own source INSIDE it (ADR-0218's amendment §A). ADR-0180
+            §9's reasoning is kept and its conclusion is not: a section heading cannot honestly
+            attribute two tenants from two sources, so the line stays per-card — it has simply
+            moved in from under the card, which only became legal once neither card was itself
+            a `<button>`. */}
         {weather && (
-          <div>
-            <WeatherCard view={weather} dayLabels={weatherDayLabels} />
-            {/* MET's terms require visible credit, and ADR-0180 §9's amendment already bought
-                this slot: it put FX's mark on a line UNDER the card rather than in the free
-                section-heading slot, saying exactly why — "a section heading attributes the
-                section, which ADR-0045 §4 has already promised to a second tenant, weather, from
-                a different source. One slot cannot carry two sources honestly." **This is that
-                second tenant**, and the 21px was spent in advance. Same classes as `RateCard`'s,
-                because it is the same line doing the same job. */}
-            <p className="fx-attr">
-              <a
-                className="fx-attr-link"
-                href={forecast!.providerUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                dir="auto"
-              >
-                {forecast!.provider}
-              </a>
-            </p>
-          </div>
+          <WeatherCard
+            view={weather}
+            source={forecast ? { label: forecast.provider, href: forecast.providerUrl } : null}
+            dayLabels={weatherDayLabels}
+          />
         )}
         {sunLight && sunArcModel && sunSky && (
           <SunWidget light={sunLight} arc={sunArcModel} sky={sunSky} times={sunTimes} />
         )}
         {rateCardVisible && (
-          <div>
-            <RateCard
-              fx={fxRates}
-              from={trip.currency}
-              to={homeCurrency}
-              asOf={formatDayMonth(fxRates!.publishedAt)}
-              onOpen={() => setConverting(true)}
-            />
-            {/* §9: the attribution the source's terms make MANDATORY and visible,
-              per card rather than per section — the section's next tenant will
-              have a different source, and one shared line would credit it wrong.
-              Outside the card because the card is a `<button>`. */}
-            <p className="fx-attr">
-              <a
-                className="fx-attr-link"
-                href={fxRates!.providerUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                dir="auto"
-              >
-                {fxRates!.provider}
-              </a>
-            </p>
-          </div>
+          <RateCard
+            fx={fxRates}
+            from={trip.currency}
+            to={homeCurrency}
+            asOf={formatDayMonth(fxRates!.publishedAt)}
+            onOpen={() => setConverting(true)}
+          />
         )}
       </div>
 

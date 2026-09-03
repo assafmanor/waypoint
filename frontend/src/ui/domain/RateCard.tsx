@@ -5,10 +5,13 @@
 //
 // Three shape decisions the ADR fixed and this component is not free to re-open:
 //
-//  - **The whole card is one `<button>`** that opens the converter. No link
-//    inside it, no `⋯` — which is also why §9's attribution sits OUTSIDE the
-//    card (an `<a>` inside a `<button>` is invalid markup before it is a second
-//    44px target). The host renders that line; see `Home.tsx`.
+//  - **The card is a box holding one `<button>`**, and it used to BE the button.
+//    ADR-0218's 2026-09-03 amendment §A split it: the skin is `.fx-card`, the
+//    press is `.fx-face`, and the source line is the button's SIBLING rather than
+//    its child. ADR-0180 §3's decision survives in substance — one target for the
+//    whole card, still opening the converter — and what the split buys is the one
+//    thing §9 could not have: a mandatory, linked attribution *inside* the card,
+//    which is where the owner asked for it. Still no `⋯`, still no second target.
 //  - **Absence is keyed on existence, not age** (§4). A cached set of any age
 //    gets a card; only "we have never held one", or a pair this source cannot
 //    price, returns nothing. Offline-with-a-cache is indistinguishable from
@@ -23,6 +26,7 @@ import { t } from '../../i18n/he';
 import { formatMoney, rateBase, toMinor } from '../../lib/money';
 import { ltrIsolate } from '../../lib/bidi';
 import { Icon } from '../Icon';
+import { CardSource } from './CardSource';
 import './rate-card.css';
 
 type Props = {
@@ -57,17 +61,23 @@ export function RateCard({ fx, from, to, asOf, onOpen }: Props) {
   if (line === null) return null;
 
   return (
-    <button type="button" className="fx-card" onClick={onOpen}>
-      <span className="ic" aria-hidden="true">
-        <Icon name="currency" />
-      </span>
-      {/* `dir="auto"` and NOT `dir="ltr"` (ADR-0118, lint-blocked): the run opens
-          with a symbol or a digit either way, and forcing the base direction of
-          the element would lay a Hebrew currency name out unit-first. */}
-      <span className="v" dir="auto">
-        {line}
-      </span>
-      <span className="asof">{t.fx.asOf(ltrIsolate(asOf))}</span>
-    </button>
+    <div className="fx-card">
+      <button type="button" className="fx-face" onClick={onOpen}>
+        <span className="ic" aria-hidden="true">
+          <Icon name="currency" />
+        </span>
+        {/* `dir="auto"` and NOT `dir="ltr"` (ADR-0118, lint-blocked): the run opens
+            with a symbol or a digit either way, and forcing the base direction of
+            the element would lay a Hebrew currency name out unit-first. */}
+        <span className="v" dir="auto">
+          {line}
+        </span>
+        <span className="asof">{t.fx.asOf(ltrIsolate(asOf))}</span>
+      </button>
+      {/* The credit the source's terms make MANDATORY and visible, in the source's
+          OWN wording — carried on the data (ADR-0180 §7) so a second provider needs
+          no copy change to be credited correctly. */}
+      <CardSource label={fx.provider} href={fx.providerUrl} />
+    </div>
   );
 }
