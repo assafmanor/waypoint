@@ -37,16 +37,20 @@ describe('shareNowLine (ADR-0213 eleventh amendment §5)', () => {
     expect(shareNowLine(FULL_DAY, '14:05')).toEqual({
       daypart: SHARE_DAYPART.AFTERNOON,
       index: 0,
+      inside: null,
     });
   });
 
-  it('puts the line BELOW a row that is running: the boundary is what has begun', () => {
-    // 15:00 is inside 14:30–18:00, so that row is above the line. This is the one case where
-    // it deviates from `nowLinePlacement` (which compares an entry's END and would put the
-    // line above a running row) — and the reason is the day below.
+  it('nails the marker INSIDE a row that is running, and still names the boundary', () => {
+    // 15:00 is inside 14:30–18:00. Until ADR-0217 this was the file's one deviation from
+    // `nowLinePlacement` and the choice was between two wrong answers — a line above a
+    // running row, or one below it. `inside` is the third: the row holds the moment and the
+    // mark goes in it. `daypart`/`index` still name where a boundary WOULD go, which is what
+    // the screen falls back to when nothing holds.
     expect(shareNowLine(FULL_DAY, '15:00')).toEqual({
       daypart: SHARE_DAYPART.AFTERNOON,
       index: 1,
+      inside: { daypart: SHARE_DAYPART.AFTERNOON, index: 0, thruFrac: 30 / 210 },
     });
   });
 
@@ -67,9 +71,13 @@ describe('shareNowLine (ADR-0213 eleventh amendment §5)', () => {
         events: [event('מקדש סנסו-ג׳י', '14:30', '16:00'), event('שינג׳וקו', '16:30', '19:30')],
       },
     ]);
+    // …and now the INNERMOST of the two rows holding 14:30 takes the mark: the tour started
+    // at 10:00 and the temple at 14:30, so the temple is the one we have just walked into.
+    // Same rule, same comparison, same file as the day surfaces (`lib/now-inside.ts`).
     expect(shareNowLine(withTour, '14:30')).toEqual({
       daypart: SHARE_DAYPART.AFTERNOON,
       index: 1,
+      inside: { daypart: SHARE_DAYPART.AFTERNOON, index: 0, thruFrac: 0 },
     });
   });
 
@@ -77,6 +85,7 @@ describe('shareNowLine (ADR-0213 eleventh amendment §5)', () => {
     expect(shareNowLine(FULL_DAY, '22:10')).toEqual({
       daypart: SHARE_DAYPART.AFTERNOON,
       index: 1,
+      inside: null,
     });
   });
 
@@ -84,6 +93,7 @@ describe('shareNowLine (ADR-0213 eleventh amendment §5)', () => {
     expect(shareNowLine(FULL_DAY, '06:00')).toEqual({
       daypart: SHARE_DAYPART.MORNING,
       index: 0,
+      inside: null,
     });
   });
 
@@ -98,10 +108,20 @@ describe('shareNowLine (ADR-0213 eleventh amendment §5)', () => {
     expect(shareNowLine(withLanding, '14:05')).toEqual({
       daypart: SHARE_DAYPART.AFTERNOON,
       index: 0,
+      inside: null,
     });
     expect(shareNowLine(withLanding, '23:00')).toEqual({
       daypart: SHARE_DAYPART.NIGHT,
       index: 0,
+      inside: null,
+    });
+    // …and the same landing HOLDS the moment at 00:50, which needs no special case: both of
+    // its labels are pre-dawn, so `dawnOrder` adds a day to each and the span is 40 minutes
+    // long rather than 1400 minutes backwards.
+    expect(shareNowLine(withLanding, '00:50')?.inside).toEqual({
+      daypart: SHARE_DAYPART.NIGHT,
+      index: 0,
+      thruFrac: 20 / 40,
     });
   });
 
@@ -148,13 +168,18 @@ describe('shareNowLine (ADR-0213 eleventh amendment §5)', () => {
       { daypart: SHARE_DAYPART.MORNING, events: [event('סיור', '09:00')] },
       { daypart: SHARE_DAYPART.EVENING, events: [event('ארוחה', '19:30', '21:00')] },
     ]);
+    // **A point cannot hold a moment** (ADR-0217 §4) — and here that falls out of the data
+    // rather than out of a rule: no end label, no span. 09:30 is "inside" a 09:00 row only if
+    // an end is invented for it, which the projection never sent.
     expect(shareNowLine(openEnded, '09:30')).toEqual({
       daypart: SHARE_DAYPART.EVENING,
       index: 0,
+      inside: null,
     });
     expect(shareNowLine(openEnded, '08:30')).toEqual({
       daypart: SHARE_DAYPART.MORNING,
       index: 0,
+      inside: null,
     });
   });
 });

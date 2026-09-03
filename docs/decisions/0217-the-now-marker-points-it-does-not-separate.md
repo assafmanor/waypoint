@@ -512,3 +512,76 @@ the assertion, not an inconvenience — it is what proves the mark takes a forma
 than an instant, which is ADR-0213 §11's whole reason). The room and the halo are CSS and jsdom
 loads none, so they are in `styles/now-marker.contract.test.ts` with the rest of this sheet's
 invisible contract — three specs, verified red against the un-amended sheet before being trusted.
+
+## Amendment (2026-09-02, the same evening) — the shared reader is the mark's third host
+
+The owner named this follow-up when the marker was first built: _"my next task to you would be
+to (design first of course) and then build the corresponding now line for the live sharing
+screen"_. Drawn and measured in
+[`mockups/the-shared-reader-gets-the-playhead-v1.html`](../../mockups/the-shared-reader-gets-the-playhead-v1.html).
+
+**`lib/share-now-line.ts` asked for this by name.** It deviated from `nowLinePlacement` on
+purpose — comparing an event's START where the app compared its END — and closed the argument
+with _"unify it with the app's when `nowLinePlacement` grows its `inside` shape"_. It has, so
+this is that sentence being cashed.
+
+**And the start-based rule had its own half of the same defect, which nothing had written
+down.** The end-based rule dragged the boundary to the top of any day whose first row is an
+all-day container; the start-based one puts the marker BELOW every row that has begun — so on
+a day with a ⁦10:00–16:00⁩ tour and a ⁦14:00–15:00⁩ shrine, at ⁦14:30⁩ the page tells a reader
+following along that two things happening right now are behind them. That is the original
+report (_"giving the wrong impression that the event isn't taking place yet"_) with the sign
+flipped. Neither side was right, because both were answers to a question that had no third
+option until §1 gave it one.
+
+### What the page contributes, and it is four variables
+
+`ui/domain/NowMarker` renders unchanged. `lib/now-inside.ts` runs unchanged — it was written
+unit-agnostic for exactly this, and here it takes `dawnOrder`'s **minutes** where the day
+surfaces hand it epoch milliseconds. The spans come from events carrying **both** labels: a
+`startLabel` alone is a point, and ADR-0217 §4 already says a point cannot hold a moment, so
+here that falls out of the data rather than out of a rule. Midnight needs no case either —
+`dawnOrder` adds a day at both ends alike, so a ⁦22:00–01:30⁩ event measures ⁦210⁩ minutes.
+
+`shared-itinerary.css` sets four numbers and nothing else:
+
+|                |                                                 |                                                                                                                                                                                    |
+| -------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--now-bleed`  | ⁦11px⁩                                          | `.sh-day-body`'s own inline padding, and a **ceiling**: `.sh-day` carries `overflow: hidden` for its radius, so more is a mark with no arrow — `.journey`'s trap, one surface over |
+| `--now-tab`    | ⁦15px⁩                                          | ⁦18⁩ draws a ⁦13px⁩ triangle into an ⁦11px⁩ gutter and reaches over the row's edge; ⁦15⁩ is ⁦10.8px⁩ and fits                                                                      |
+| `--now-ground` | the body's own `color-mix(--paper 34%, --card)` | never `--screen`; the halo paints what the mark stands on, and `now-marker.css` said so in advance                                                                                 |
+| `--now-room`   | ⁦6px⁩                                           | this sheet's rhythm is tighter than the day list's (⁦7px⁩ between rows), so it is this host's equivalent of ⁦9px⁩ rather than a second opinion about one gap                       |
+
+The three refusals are untouched and each is still an answer rather than a gap: a day crossing
+a zone (its labels resolve per event, so the comparison is against two clocks), a day with no
+timed row, and a day that is not today. `inside` cures none of them, because none was about
+having no shape to draw.
+
+### And the row says the word, which is what keeps the mark a shape
+
+**§1's "no caption" has a premise, not a preference:** _"the running row's own `עכשיו` chip
+says the word"_. True of `EventCard`. **Not true here** — this page marked a running row not at
+all — so the nailed arrow was the only thing on screen saying anything, and an arrow says no
+time. The same premise had already failed once, one surface over, for the boundary form.
+
+Two ways to close it, and the render chose. Putting the clock on the **mark**, at the arrow's
+height, is refused by measurement: the gutter is ⁦11px⁩, so a chip there lands ON the row's own
+title and clock — the defect the owner rejected twice while this ADR was being drawn (_"fix the
+issue where the playhead is going over the text"_). Drawn as §6ג so the refusal is a picture.
+So the **row** says it, exactly as `EventCard` does, through `.sh-event-now` and `t.common.now`
+— the word this page already rendered inside the now-line it is replacing, so no new
+vocabulary, which is the axis ADR-0139 found drifts first when a small widget is copied.
+
+**The rule generalises rather than gaining an exception:** the mark is a shape wherever the row
+it is in says the word, and says the time itself only where no row is involved at all.
+
+### Consequences
+
+`.nowline`, `.nowline-rule` and `.nowline-lbl` are deleted from `screens.css` — the row they
+belonged to is now gone from all three hosts. `.nowline-chip` and `.nowline-dot` stay, under
+their old names deliberately: they are the same object doing the same job, and renaming them
+would be a diff across three surfaces that changes nothing a reader sees.
+
+`shareNowLine`'s return grew `inside` and keeps `daypart`/`index`, which still name where a
+boundary WOULD go — the screen falls back to it whenever nothing holds the moment, and one of
+the derivation's own tests reads it.

@@ -23,12 +23,26 @@
 // `shareDaypart` already makes by treating `night` as its fallthrough.
 import { SHARE_DAYPART, SHARE_DAYPART_START_HOUR, type SharedDay } from '@waypoint/shared';
 import { MINUTES_PER_DAY, MINUTES_PER_HOUR } from '../constants';
+import { nowInside, type NowSpan } from './now-inside';
+
+/** One event of the day, named the way this page can find it again. */
+export interface ShareNowEventRef {
+  daypart: SharedDay['sections'][number]['daypart'];
+  index: number;
+}
 
 /** Where the marker sits: which daypart section, and before which of its events. */
 export interface ShareNowLinePlacement {
   daypart: SharedDay['sections'][number]['daypart'];
   /** Index within that section's events. `events.length` means after all of them. */
   index: number;
+  /**
+   * **The row the moment is INSIDE, when one holds it** (ADR-0217), and how far through it
+   * is. When this is set the marker is nailed to that row and `daypart`/`index` are not
+   * drawn — they stay populated because a boundary is still where the marker would go if
+   * nothing held the moment, and one of this file's own tests reads it.
+   */
+  inside: (ShareNowEventRef & { thruFrac: number }) | null;
 }
 
 /**
@@ -61,6 +75,44 @@ function dawnOrder(label: string): number {
  * `flexible` is skipped throughout: it is the day's unplaced remainder, deliberately rendered
  * last, so it is not part of the day's chronology and a marker inside it would claim it was.
  */
+/**
+ * **WHICH ROW HOLDS THE MOMENT, THROUGH THE APP'S OWN RULE** (ADR-0217 §2).
+ *
+ * `lib/now-inside.ts` is deliberately unit-agnostic — the day surfaces hand it epoch
+ * milliseconds and this hands it `dawnOrder`'s minutes — so "innermost" is one rule for
+ * three surfaces rather than a second copy that can drift. What this file supplies is the
+ * SPANS, and the only interesting thing about them is which events have one:
+ *
+ * **An event needs BOTH ends.** `startLabel` alone is a point (a landing, a check-in, a
+ * call), and ADR-0217 §4 already says a point cannot hold a moment — it is ahead of us or
+ * behind us, never around us. Here that falls out of the data instead of being a rule: no
+ * end, no span. And midnight needs no special case, because `dawnOrder` adds a day to a
+ * pre-dawn label at both ends alike, so a 22:00–01:30 event measures 210 minutes long.
+ */
+function heldBy(
+  timed: SharedDay['sections'],
+  nowOrder: number,
+): (ShareNowEventRef & { thruFrac: number }) | null {
+  const spans: NowSpan[] = [];
+  for (const [section, index] of timed.flatMap((s) => s.events.map((_, i) => [s, i] as const))) {
+    const event = section.events[index];
+    if (!event.startLabel || !event.endLabel) continue;
+    spans.push({
+      key: `${section.daypart}#${index}`,
+      start: dawnOrder(event.startLabel),
+      end: dawnOrder(event.endLabel),
+    });
+  }
+  const held = nowInside(spans, nowOrder);
+  if (!held) return null;
+  const [daypart, index] = held.key.split('#');
+  return {
+    daypart: daypart as ShareNowEventRef['daypart'],
+    index: Number(index),
+    thruFrac: held.thruFrac,
+  };
+}
+
 export function shareNowLine(day: SharedDay, nowLabel: string): ShareNowLinePlacement | null {
   const timed = day.sections.filter((section) => section.daypart !== SHARE_DAYPART.FLEXIBLE);
   if (timed.length === 0) return null;
@@ -73,6 +125,7 @@ export function shareNowLine(day: SharedDay, nowLabel: string): ShareNowLinePlac
   }
 
   const nowOrder = dawnOrder(nowLabel);
+  const inside = heldBy(timed, nowOrder);
   let sawATime = false;
   for (const section of timed) {
     for (const [index, event] of section.events.entries()) {
@@ -80,27 +133,23 @@ export function shareNowLine(day: SharedDay, nowLabel: string): ShareNowLinePlac
       if (!label) continue;
       sawATime = true;
       // **The boundary is what has BEGUN**, so the marker goes above the first row that has
-      // not started yet.
+      // not started yet — and since ADR-0217 that is a statement about BOUNDARIES only.
       //
-      // This is where it deviates from `nowLinePlacement`, which compares an entry's END and
-      // therefore puts the line ABOVE a row that is currently running. The two agree on
-      // everything that does not contain `now`; they differ only inside a row, which is
-      // exactly the case `now-line.ts` says an honest marker would render *inside* rather
-      // than beside. Since neither can, each picks a side — and on THIS page the end-based
-      // side is unusable: a shared day's first row is routinely an all-day container (a
-      // guided tour, a pass, a booked activity), which is running for the whole afternoon and
-      // drags the boundary to the top of the day, where a line at 14:30 sits above a 10:00
-      // row and tells a reader following along that nothing has happened yet. Found by
-      // opening the real page against the seeded Tokyo day, whose first row is 10:00–16:00.
-      //
-      // "Above the line has begun, below it has not" is a sentence that stays true either
-      // way; unify it with the app's when `nowLinePlacement` grows its `inside` shape.
-      if (dawnOrder(label) > nowOrder) return { daypart: section.daypart, index };
+      // This used to be a deviation from `nowLinePlacement`, which compared an entry's END
+      // and therefore put the line above a row that was currently running, and the comment
+      // here closed with "unify it with the app's when `nowLinePlacement` grows its `inside`
+      // shape". It has. Neither side of that choice was right: start-based put a line BELOW
+      // two rows that were still running (a 10:00–16:00 tour and a 14:00–15:00 shrine at
+      // 14:30, drawn in `the-shared-reader-gets-the-playhead-v1.html` §1), and end-based
+      // dragged the boundary to the top of any day whose first row is an all-day container.
+      // A row that holds the moment is now answered by `inside` below, so this walk only has
+      // to answer where the marker goes when NOTHING holds it — where both rules agree.
+      if (dawnOrder(label) > nowOrder) return { daypart: section.daypart, index, inside };
     }
   }
   if (!sawATime) return null;
 
   // Every timed row is behind us — the marker goes after the last of them.
   const last = timed[timed.length - 1];
-  return { daypart: last.daypart, index: last.events.length };
+  return { daypart: last.daypart, index: last.events.length, inside };
 }

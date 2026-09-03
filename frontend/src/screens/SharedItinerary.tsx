@@ -35,6 +35,7 @@ import { autoIsolate, ltrIsolate } from '../lib/bidi';
 import { agoLabel, hoursPhrase } from '../lib/duration';
 import { landAtTop } from '../lib/land-at-top';
 import { shareNowLine } from '../lib/share-now-line';
+import { NowMarker } from '../ui/domain/NowMarker';
 import { useClock } from '../lib/useClock';
 import { usePublicReaderChrome } from '../lib/public-reader-chrome';
 import { DAY_PHASE, dayPhase, formatTripDates, tripDayNumber, type DayPhase } from '../lib/time';
@@ -537,31 +538,6 @@ export function SharedItinerary() {
   );
 }
 
-/**
- * **The app's own now-line, in a day of the document** (ADR-0043, ADR-0213's eleventh
- * amendment §5).
- *
- * `DayView`'s `NowLine` is not imported because it is that screen's local component and takes
- * a `Date` plus a zone to format; this takes the label the projection's own formatter already
- * produced. What matters is that the MARKUP and the classes are the same — the quiet
- * soft-amber hairline, the mono time, no chip fill, no glow, no pulse — so the app has one
- * live mark and this is it, not a second one that happens to look similar.
- */
-function NowLine({ label }: { label: string }) {
-  return (
-    <div className="nowline" aria-label={t.day.nowLineAria(label)}>
-      <span className="nowline-chip">
-        <span className="nowline-dot" aria-hidden="true" />
-        {/* `dir="auto"` and nothing else, exactly as `DayView`'s own now-line does it: `auto`
-            resolves LTR for a numeral, so an isolate around it would be a second mechanism
-            doing the same job (design-language.md, on mixed lines). */}
-        <span dir="auto">{label}</span> <span className="nowline-lbl">{t.common.now}</span>
-      </span>
-      <span className="nowline-rule" />
-    </div>
-  );
-}
-
 function DayCard({
   day,
   phase,
@@ -591,6 +567,9 @@ function DayCard({
   // Where the marker sits, or nothing — `shareNowLine` refuses a day that crosses a zone and
   // a day with no timed row, and those refusals are its answer rather than a gap (§5).
   const marker = nowLabel ? shareNowLine(day, nowLabel) : null;
+  // **The boundary form is what is left when no row holds the moment** (ADR-0217 §4). With an
+  // `inside` the mark is nailed to that row instead, and drawing both would be one fact twice.
+  const boundary = marker?.inside ? null : marker;
   return (
     <section
       className={`sh-day${open ? ' open' : ''}${isNow ? ' is-now' : ''}${
@@ -661,17 +640,35 @@ function DayCard({
                   finding). Above the section it landed above `אחר הצהריים` at 14:05, putting
                   a daypart that had already begun on the future side of now. A heading names
                   a span of the day; the marker belongs between the rows it is between. */}
-              {marker?.daypart === section.daypart && marker.index === 0 && nowLabel ? (
-                <NowLine label={nowLabel} />
+              {boundary?.daypart === section.daypart && boundary.index === 0 && nowLabel ? (
+                <NowMarker label={nowLabel} />
               ) : null}
-              {section.events.map((event, index) => (
-                <Fragment key={`${event.title}-${index}`}>
-                  <EventRow event={event} code={code} />
-                  {marker?.daypart === section.daypart && marker.index === index + 1 && nowLabel ? (
-                    <NowLine label={nowLabel} />
-                  ) : null}
-                </Fragment>
-              ))}
+              {section.events.map((event, index) => {
+                // **NAILED TO THE ROW THAT HOLDS THE MOMENT** (ADR-0217 §1). The wrapper is
+                // safe on this sheet and that was checked rather than assumed: ADR-0217's
+                // build log §5 is a transparent wrapper breaking four child combinators it
+                // landed inside, and `shared-itinerary.css` has exactly one over anything the
+                // mark can wrap — `.sh-event-main > strong` — which is INSIDE the article.
+                const held =
+                  marker?.inside?.daypart === section.daypart && marker.inside.index === index;
+                const row = <EventRow event={event} code={code} now={held} />;
+                return (
+                  <Fragment key={`${event.title}-${index}`}>
+                    {held && nowLabel ? (
+                      <NowMarker label={nowLabel} thruFrac={marker.inside!.thruFrac}>
+                        {row}
+                      </NowMarker>
+                    ) : (
+                      row
+                    )}
+                    {boundary?.daypart === section.daypart &&
+                    boundary.index === index + 1 &&
+                    nowLabel ? (
+                      <NowMarker label={nowLabel} />
+                    ) : null}
+                  </Fragment>
+                );
+              })}
             </section>
           ))}
         </div>
@@ -784,7 +781,17 @@ function SharedTimeText({ time }: { time: SharedTime }) {
   return <span className="sh-time">{text}</span>;
 }
 
-function EventRow({ event, code }: { event: SharedEvent; code: string }) {
+function EventRow({
+  event,
+  code,
+  now,
+}: {
+  event: SharedEvent;
+  code: string;
+  /** This row holds the moment, so it says so (ADR-0217 §1's premise, made true on this
+   *  surface — see `shared-itinerary.css` at `.sh-event-now`). */
+  now?: boolean;
+}) {
   // Summary carries no time, place, address, map link or journey at all, so the compact row
   // is not a different rendering of the same data — it is all the data there is.
   const detailed = event.startLabel !== undefined || event.placeName !== undefined;
@@ -858,7 +865,10 @@ function EventRow({ event, code }: { event: SharedEvent; code: string }) {
               alignment is inherited. `lib/bidi.ts`'s docblock covers a composed line
               joining several values, which is why one value alone in a block slipped
               ADR-0118's sweep. */}
-          <strong>{autoIsolate(event.title)}</strong>
+          <strong>
+            {autoIsolate(event.title)}
+            {now ? <span className="sh-event-now">{t.common.now}</span> : null}
+          </strong>
           <span className="sh-place-line">
             {/* **The row says what it IS before it says where** (owner, 2026-08-30: _"hotels
                 and other derivable stuff texts should be enhanced … and that also includes
