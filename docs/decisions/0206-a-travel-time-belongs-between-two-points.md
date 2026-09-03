@@ -4103,3 +4103,46 @@ distance **and** geometry in a single call (measured on the fallback host: ⁦46
 ones. It is a real saving and a separate decision: it trades the matrix's whole-day durations —
 and §Z4's free caching of every cross pair — for per-leg latency, which is right for a short day
 and wrong for a ten-stop one. Backlogged, not taken here.
+
+## BC. A cold leg the map wants a line for is one call, not two round trips (2026-09-03)
+
+**§BB's closing note, taken.** §BB gave `useDayShapes` the retry ladder `useDayTravel` already had,
+which shortened the wait between the numbers and the lines. It did not remove it, and the owner's
+sentence was about removing it: _"I thought that they would arrive together."_
+
+**Why they could not.** `RoutingService.batch` classified a pending `(leg, mode)` with a boolean,
+`shapeOnly` — "duration cached, geometry missing". That has no state for the case that matters: a
+leg with **nothing** cached on a request that wants a line. It fell into the duration bucket, so
+the day spent a matrix call, and the geometry could not even be _requested_ until the row existed
+— a later pass, one `retryAfterSeconds` away at best. Two sequential round trips, structurally,
+for every cold leg the map drew.
+
+**One `/route` answers all three.** Duration, distance and geometry come back in a single
+response — measured against ADR-0205 §Y5's fallback host while verifying that provider:
+⁦462.7 s⁩, ⁦4567.2 m⁩ and ⁦185 points⁩ for one leg, in one call. `runShape` already stores a complete
+row from it (that is not new; nothing about the write changed). So the second round trip was never
+buying anything except the classification's inability to describe the need.
+
+**Decided.** `PendingNeed` replaces the boolean with three states — `duration`, `geometry`,
+`both` — and `warm()` routes them:
+
+- **`both` → one `/route`**, skipping the matrix for that leg entirely.
+- **…but only while every line the pass owes fits `SHAPE_CALLS_PER_PASS` (⁦8⁩).** Past that the
+  divert is a downgrade, not a saving: the matrix answers a **whole day's** durations in one call,
+  so on a long day it is the thing that gets numbers on screen at all, and a per-leg queue would
+  delay every leg past the eighth. The budget draws the line, and the day that benefits — two or
+  three legs, the ordinary one — is exactly the day that fits inside it.
+- **`duration` is untouched.** The day list asks without shapes and keeps its one-call-per-day
+  answer; this changes nothing for the surface that draws no lines.
+
+**What the divert costs even when it fits, recorded because it is invisible.** §Z4's matrix caches
+**every** ordered pair among the points it is sent, not just the consecutive ones, so a later
+reorder is free. A `/route` pays for one pair. Right for latency on a short day, wrong at scale —
+which is the same line the budget already draws, so the two reinforce rather than fight.
+
+**Tested at the boundary, not just the happy path.** The cold-leg case is red-first (`expected 0
+to be 1`: no `/route` was made before this). The two either-way specs beside it are deliberate
+regression guards rather than proofs — that a no-shapes request still costs exactly one matrix
+call and no `/route`, and that a ten-stop day still takes its durations from the matrix. Those are
+the two ways this change could quietly make things worse, so they are asserted even though they
+pass against both versions.

@@ -84,13 +84,29 @@ interface RouteLegWrite {
   tilesetAt: Date | null;
 }
 
-/** One `(leg, mode)` we still owe an answer for. */
+/**
+ * **What a pending (leg, mode) still owes**, and why it is three states rather than a boolean
+ * (ADR-0206 §BC).
+ *
+ * The boolean it replaces could only say "duration cached, geometry missing". It had no way to
+ * express the case that turned out to matter: **a leg with NOTHING cached, on a request that wants
+ * a line.** That fell into the duration bucket, so the day spent a matrix call and then a `/route`
+ * call on a later pass — two sequential round trips for an answer one `/route` carries whole
+ * (duration, distance AND geometry).
+ */
+type PendingNeed =
+  /** Nothing cached, no line wanted — the matrix, which answers a whole day at once. */
+  | 'duration'
+  /** Duration cached, geometry missing. One `/route`. */
+  | 'geometry'
+  /** Nothing cached and a line is wanted: answerable by ONE `/route`, budget permitting. */
+  | 'both';
+
 interface PendingItem {
   fromIndex: number;
   toIndex: number;
   mode: TravelMode;
-  /** True when the duration is already cached and only the geometry is missing. */
-  shapeOnly: boolean;
+  need: PendingNeed;
 }
 
 @Injectable()
@@ -138,7 +154,16 @@ export class RoutingService {
         const row = cached.get(routeLegKey(from, to, mode));
         if (!row) {
           pendingModes.push(mode);
-          pending.push({ fromIndex: leg.fromIndex, toIndex: leg.toIndex, mode, shapeOnly: false });
+          // **A cold leg on a `withShapes` request owes BOTH, and that is one call** (§BC). It
+          // used to be recorded as owing only a duration, so the matrix answered it and the line
+          // waited for a later pass — two round trips for what one `/route` returns whole.
+          // `warm()` decides whether the budget allows it; the shape of the need is stated here.
+          pending.push({
+            fromIndex: leg.fromIndex,
+            toIndex: leg.toIndex,
+            mode,
+            need: request.withShapes ? 'both' : 'duration',
+          });
           continue;
         }
         estimates.push(toEstimate(row, mode));
@@ -146,7 +171,7 @@ export class RoutingService {
         // this request asked for one (ADR-0205 §6 amendment).
         if (request.withShapes && !row.shapeEncoded) {
           pendingModes.push(mode);
-          pending.push({ fromIndex: leg.fromIndex, toIndex: leg.toIndex, mode, shapeOnly: true });
+          pending.push({ fromIndex: leg.fromIndex, toIndex: leg.toIndex, mode, need: 'geometry' });
         }
       }
 
@@ -237,10 +262,31 @@ export class RoutingService {
   ): number {
     let calls = 0;
 
+    // **Who gets a `/route` this pass, and who waits for the matrix** (ADR-0206 §BC).
+    //
+    // A `both` leg CAN be answered by one `/route` instead of a matrix now plus a `/route` later —
+    // but only while every line this pass owes still fits `SHAPE_CALLS_PER_PASS`. Past that the
+    // divert is a downgrade rather than a saving: the matrix answers a whole day's durations in
+    // ONE call, so on a long day it is what gets numbers onto the screen at all, and trading it
+    // for a per-leg queue would delay every leg past the eighth. The budget draws that line, and
+    // the day that benefits — a two- or three-leg day, which is the ordinary one — is exactly the
+    // day that fits inside it.
+    //
+    // **What the divert costs even when it fits**, recorded because it is invisible: §Z4's matrix
+    // caches every ordered pair among the points it is sent, not just the consecutive ones, so a
+    // reorder later is free. A `/route` pays for one pair. Right for latency on a short day, wrong
+    // at scale — the same line the budget draws.
+    const wantsLine = pending.filter((item) => item.need !== 'duration');
+    const divert = wantsLine.length <= SHAPE_CALLS_PER_PASS;
+    const shapeItems = divert ? wantsLine : pending.filter((item) => item.need === 'geometry');
+
     // One matrix request per §Z9-safe run of pending legs, per mode.
     const legsByMode = new Map<TravelMode, number[]>();
     for (const item of pending) {
-      if (item.shapeOnly) continue;
+      if (item.need === 'geometry') continue;
+      // A `both` leg the divert claimed is answered by its `/route` below; asking the matrix too
+      // would spend the very call this exists to save.
+      if (item.need === 'both' && divert) continue;
       const legs = legsByMode.get(item.mode) ?? [];
       legs.push(item.fromIndex);
       legsByMode.set(item.mode, legs);
@@ -256,7 +302,7 @@ export class RoutingService {
     }
 
     // One `/route` call per leg that still owes geometry, up to this pass's pace.
-    for (const item of pending.filter((p) => p.shapeOnly).slice(0, SHAPE_CALLS_PER_PASS)) {
+    for (const item of shapeItems.slice(0, SHAPE_CALLS_PER_PASS)) {
       const from = stops[item.fromIndex]!;
       const to = stops[item.toIndex]!;
       calls++;
