@@ -4,7 +4,16 @@
 // concrete: self-hosting Valhalla or moving to Geoapify behind the same interface is a change in
 // this file and nowhere else, and §Y1 records that as a decision deliberately left open.
 import { Module } from '@nestjs/common';
+import {
+  DEFAULT_ROUTING_BASE_URL,
+  DEFAULT_ROUTING_FALLBACK_BASE_URL,
+  ROUTING_BASE_URL,
+  ROUTING_FALLBACK_BASE_URL,
+  ROUTING_FALLBACK_DISABLED,
+} from '../common/env';
 import { EnrichmentFetcher } from '../enrichment/outbound-fetch';
+import { FailoverRouteProvider } from './failover.provider';
+import { OsrmRouteProvider } from './osrm.provider';
 import { MapModule } from '../map/map.module';
 import { MembershipGuard } from '../trips/membership.guard';
 import { PolitenessLimiter } from './politeness.limiter';
@@ -32,9 +41,29 @@ import { ValhallaRouteProvider } from './valhalla.provider';
     // defaulted constructor argument, which Nest's reflection would otherwise try to inject.
     { provide: PolitenessLimiter, useFactory: () => new PolitenessLimiter() },
     {
+      // **Two providers, primary first** (ADR-0205 §Y5). §Y1 listed "FOSSGIS degrades" as a
+      // trigger for leaving the community server and the trigger fired: `valhalla1` served `503`
+      // for the better part of a day, and with one host in the allowlist that meant no travel
+      // times at all, mid-trip. A switch a human has to notice, decide and redeploy is a runbook,
+      // not a switch — so the fallback is wired, not documented.
+      //
+      // Valhalla stays PRIMARY because its numbers are the tuned ones (§Z7's walking speed,
+      // ferry avoidance, a stated tileset vintage); OSRM answers only when Valhalla cannot answer
+      // at all. `ROUTING_FALLBACK_DISABLED` returns the single-provider behaviour for anyone who
+      // would rather have no estimate than a less-tuned one.
       provide: ROUTE_PROVIDER,
       inject: [EnrichmentFetcher],
-      useFactory: (fetcher: EnrichmentFetcher): RouteProvider => new ValhallaRouteProvider(fetcher),
+      useFactory: (fetcher: EnrichmentFetcher): RouteProvider => {
+        const primary = new ValhallaRouteProvider(fetcher);
+        if (process.env[ROUTING_FALLBACK_DISABLED]) return primary;
+        const fallbackUrl =
+          process.env[ROUTING_FALLBACK_BASE_URL] || DEFAULT_ROUTING_FALLBACK_BASE_URL;
+        // A fallback pointed at the primary's own host is not a fallback; it would double every
+        // failed call against the host that is already failing.
+        const primaryUrl = process.env[ROUTING_BASE_URL] || DEFAULT_ROUTING_BASE_URL;
+        if (hostOf(fallbackUrl) === hostOf(primaryUrl)) return primary;
+        return new FailoverRouteProvider(primary, new OsrmRouteProvider(fetcher, fallbackUrl));
+      },
     },
     RoutingService,
     // The offline pack (ADR-0206 §V1.8). Here rather than in `MapModule` because it needs
@@ -45,3 +74,14 @@ import { ValhallaRouteProvider } from './valhalla.provider';
   exports: [RoutingService, RoutePackService],
 })
 export class RoutingModule {}
+
+/** Host of a configured origin, or the string itself when it will not parse — a value that
+ *  cannot be parsed has already failed `validateConfig` at boot, so this only has to avoid
+ *  throwing during module construction. */
+function hostOf(value: string): string {
+  try {
+    return new URL(value).host.toLowerCase();
+  } catch {
+    return value.toLowerCase();
+  }
+}

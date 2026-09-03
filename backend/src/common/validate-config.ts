@@ -7,6 +7,7 @@ import {
   GOOGLE_OAUTH_REDIRECT_URI,
   JWT_SECRET,
   ROUTING_BASE_URL,
+  ROUTING_FALLBACK_BASE_URL,
   TOKEN_ENCRYPTION_KEY,
   VAPID_PRIVATE_KEY,
   VAPID_PUBLIC_KEY,
@@ -111,13 +112,18 @@ export function validateConfig(env: NodeJS.ProcessEnv = process.env): void {
   }
 
   validateVapid(env, problems, isProd);
-  validateRoutingBaseUrl(env, problems);
+  validateRoutingBaseUrl(env, problems, ROUTING_BASE_URL);
+  validateRoutingBaseUrl(env, problems, ROUTING_FALLBACK_BASE_URL);
 
   if (problems.length > 0) throw new ConfigValidationError(problems);
 }
 
 /**
- * `ROUTING_BASE_URL`, when set (ADR-0205 §Z4).
+ * `ROUTING_BASE_URL` and `ROUTING_FALLBACK_BASE_URL`, when set (ADR-0205 §Z4, §Y5).
+ *
+ * Parameterised over the var name rather than copied per var: the fallback (§Y5) has to clear
+ * exactly these three hurdles for exactly these reasons, and two copies would be two places for
+ * the demo-web-app trap below to be re-learned.
  *
  * It is checked at boot rather than at the first call because of **how** this one goes wrong.
  * ADR-0205 §2 links `https://valhalla.openstreetmap.de/`, which is the demo **web application**:
@@ -131,24 +137,24 @@ export function validateConfig(env: NodeJS.ProcessEnv = process.env): void {
  * allowlist already knows — which is what makes ADR-0166 §7's "the allowlist is code" true rather
  * than a comment, since a host set only here would never be fetched anyway.
  */
-function validateRoutingBaseUrl(env: NodeJS.ProcessEnv, problems: string[]): void {
-  const value = env[ROUTING_BASE_URL];
+function validateRoutingBaseUrl(env: NodeJS.ProcessEnv, problems: string[], varName: string): void {
+  const value = env[varName];
   if (!value) return;
   const url = parseUrl(value);
   if (!url || url.protocol !== 'https:') {
-    problems.push(`${ROUTING_BASE_URL} must be an https URL`);
+    problems.push(`${varName} must be an https URL`);
     return;
   }
   if (url.pathname !== '/' || url.search || url.hash) {
     problems.push(
-      `${ROUTING_BASE_URL} must be a bare origin with no path ` +
+      `${varName} must be a bare origin with no path ` +
         `(https://valhalla1.openstreetmap.de, not a link to the demo web app)`,
     );
     return;
   }
   if (!isAllowedEnrichmentUrl(url.toString())) {
     problems.push(
-      `${ROUTING_BASE_URL} names a host the outbound allowlist does not carry ` +
+      `${varName} names a host the outbound allowlist does not carry ` +
         `(add it in enrichment/outbound-fetch.ts — the allowlist is code on purpose)`,
     );
   }
