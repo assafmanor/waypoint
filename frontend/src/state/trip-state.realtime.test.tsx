@@ -117,6 +117,7 @@ const SNAPSHOT: TripSnapshot = {
   documentAttachments: [],
   enrichments: {},
   fxRates: null,
+  forecast: null,
   latestSeq: '100',
 };
 

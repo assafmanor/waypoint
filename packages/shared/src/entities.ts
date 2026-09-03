@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { tripEnrichmentsSchema } from './enrichment';
 import { currencyCodeSchema } from './currency';
 import { fxRatesSchema } from './fx';
+import { forecastSchema } from './weather';
 import { avatarChoiceSchema, identityHueSchema } from './identity';
 
 export const idSchema = z.string();
@@ -698,6 +699,16 @@ export const tripSnapshotSchema = z.object({
    *  a missing key must read as the cold state it already has a rendering for
    *  rather than failing the whole snapshot parse and blanking the trip. */
   fxRates: fxRatesSchema.nullable().default(null),
+  /** **The world's weather over the trip's coordinate cells** (ADR-0218 §1/§6), on
+   *  exactly the terms `fxRates` above states: global, server-owned, no `Change`,
+   *  never client-written, and defaulted rather than required so a client that
+   *  meets an older server mid-deploy reads the cold state instead of failing the
+   *  whole snapshot parse.
+   *
+   *  **This is the only way a forecast reaches a client** — there is no route and
+   *  no controller (§6). `FxController` exists because a human taps refresh;
+   *  nobody taps a forecast, so the snapshot read both serves it and triggers it. */
+  forecast: forecastSchema.nullable().default(null),
   latestSeq: z.string(), // BigInt serialized as string, see Change.seq
 });
 export type TripSnapshot = z.infer<typeof tripSnapshotSchema>;

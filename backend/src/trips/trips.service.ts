@@ -25,6 +25,7 @@ import { resolveAvatarHue } from '@waypoint/shared';
 import { ENTITY_TYPE, ERROR_CODE } from '@waypoint/shared';
 import { EnrichmentScheduler } from '../enrichment/enrichment.scheduler';
 import { FxService } from '../fx/fx.service';
+import { forecastCells, WeatherService } from '../weather/weather.service';
 import { EnrichmentService } from '../enrichment/enrichment.service';
 import { assertTripAdmin } from '../common/trip-scope.util';
 import { PrismaService } from '../prisma/prisma.service';
@@ -75,6 +76,7 @@ export class TripsService {
     private readonly enrichment: EnrichmentService,
     private readonly scheduler: EnrichmentScheduler,
     private readonly fx: FxService,
+    private readonly weather: WeatherService,
   ) {}
 
   async createTrip(userId: string, input: CreateTripInput): Promise<Trip> {
@@ -524,6 +526,11 @@ export class TripsService {
     // (ADR-0157 §6, ADR-0166 §14). `readAndRefresh` never throws and never waits
     // on the network: it returns the stored set at whatever age it is.
     const fxRates = await this.fx.readAndRefresh();
+    // The forecast rides the same seat as the rates, on the same terms and for the same two
+    // reasons (ADR-0218 §6): it is a global read model with no `seq` to be coherent with, and
+    // this read is its ONLY trigger — there is no controller, because `FxController` exists only
+    // because a human taps refresh and nobody taps a forecast.
+    const forecast = await this.weather.readAndRefresh(forecastCells(trip, places));
     // **The read is also the trigger** (§14). The join just told us which of this trip's places
     // nobody has looked up or whose values have lapsed, for no extra query — so this is where
     // backfill, TTL refresh and recovery-after-a-redeploy all happen. Synchronous and `void`:
@@ -545,6 +552,7 @@ export class TripsService {
       travelModeOverrides: travelModeOverrides.map(toTravelModeOverrideDto),
       enrichments,
       fxRates,
+      forecast,
       latestSeq: latestChange ? latestChange.seq.toString() : '0',
     };
   }

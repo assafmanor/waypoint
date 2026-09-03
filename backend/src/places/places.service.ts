@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, type Place as PrismaPlace } from '@prisma/client';
-import { find as findTimezone } from 'geo-tz';
 import {
   CHANGE_ACTION,
   ENTITY_TYPE,
@@ -16,6 +15,7 @@ import {
   type UpdatePlaceInput,
 } from '@waypoint/shared';
 import { EnrichmentScheduler } from '../enrichment/enrichment.scheduler';
+import { zoneAt } from '../common/geo-zone';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
 import { toPlaceDto } from '../trips/trips.mapper';
@@ -144,11 +144,11 @@ export class PlacesService {
     const id = input.id ?? randomUUID();
     // THE ZONE IS RESOLVED FOR ANY CALLER THAT SUPPLIES COORDINATES, not only the enriched
     // path (ADR-0147 §3). Until the canvas could drop a pin, the only place with coordinates
-    // came from Google, so `resolveTimezone` was called only in `resolvePlace` — and a place
+    // came from Google, so `zoneAt` was called only in `resolvePlace` — and a place
     // created straight from coordinates landed with `timezone: null`, which silently falls
     // back to the trip's zone (ADR-0107). That is wrong for exactly the traveller who marks
     // a spot across a border. Same helper, so there is one place that knows how.
-    const timezone = this.resolveTimezone(input.lat, input.lng);
+    const timezone = zoneAt(input.lat, input.lng);
     try {
       const { entity } = await this.changes.mutate({
         tripId,
@@ -211,7 +211,7 @@ export class PlacesService {
     // that names the place says nothing about where it is, and recomputing from one axis
     // would be recomputing from nothing.
     const moved = input.lat !== undefined && input.lng !== undefined;
-    const timezone = moved ? this.resolveTimezone(input.lat, input.lng) : undefined;
+    const timezone = moved ? zoneAt(input.lat, input.lng) : undefined;
     const { entity } = await this.changes.mutate({
       tripId,
       actorUserId,
@@ -347,7 +347,7 @@ export class PlacesService {
     const details = input.details
       ? { googlePlaceId: input.googlePlaceId, ...input.details }
       : await this.google.placeDetails(input.googlePlaceId, input.sessionToken);
-    const timezone = this.resolveTimezone(details.lat, details.lng);
+    const timezone = zoneAt(details.lat, details.lng);
 
     const place = target
       ? await this.enrichExisting(tripId, actorUserId, target, details, timezone)
@@ -385,13 +385,6 @@ export class PlacesService {
     } catch {
       // ponytail: the snapshot read's own trigger picks this place up regardless.
     }
-  }
-
-  /** Resolve the IANA zone once from coords (ADR-0107/0108). `geo-tz` returns [] for
-   *  open ocean and the like; a Place-lite (no coords) has no zone by definition. */
-  private resolveTimezone(lat?: number, lng?: number): string | undefined {
-    if (lat === undefined || lng === undefined) return undefined;
-    return findTimezone(lat, lng)[0];
   }
 
   private async createEnriched(

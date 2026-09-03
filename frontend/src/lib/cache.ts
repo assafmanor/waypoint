@@ -18,6 +18,7 @@ import {
   type Place,
   type Task,
   type Trip,
+  type Forecast,
   type FxRates,
   type TripEnrichments,
   type TripSnapshot,
@@ -75,6 +76,19 @@ export interface SnapshotMeta {
    *  the last published rate with its own date on it, rather than nothing. `null` is the
    *  cold state — never fetched — and every surface treats it as a state to render. */
   fxRates: FxRates | null;
+  /** **The world's weather over the trip's cells** (ADR-0218 §6), riding `snapshotMeta` beside
+   *  `fxRates` above and for the same reason — one small object, and a Dexie table of its own
+   *  would cost a schema version bump for it.
+   *
+   *  **What it does NOT make true is offline forever, and that is the decision** (§4). Root rule
+   *  5 protects the index, the documents and the day, and every one of those still reads
+   *  offline. A forecast is the one thing whose value is its age: mirroring it here is what lets
+   *  the card survive a tunnel and a foreign SIM, and `isForecastFresh` is what removes it once
+   *  the model behind it is ⁦6⁩ hours old. The card going is the honest failure; a five-day-old
+   *  forecast on the surface a person checks instead of a window is not.
+   *
+   *  `null` is the cold state — never fetched, or the fetcher is switched off. */
+  forecast: Forecast | null;
   latestSeq: string;
 }
 
@@ -103,6 +117,7 @@ export async function cacheSnapshot(tripId: string, snapshot: TripSnapshot): Pro
       travelModeOverrides: snapshot.travelModeOverrides,
       enrichments: snapshot.enrichments,
       fxRates: snapshot.fxRates,
+      forecast: snapshot.forecast,
       latestSeq: snapshot.latestSeq,
     });
   });
@@ -181,6 +196,7 @@ async function reconstructSnapshot(tripId: string): Promise<TripSnapshot | null>
     // Same fallback, same reason: a trip cached before rates shipped has no set, and
     // `null` is already this field's designed cold state rather than a special case.
     fxRates: meta.fxRates ?? null,
+    forecast: meta.forecast ?? null,
     latestSeq: meta.latestSeq,
   };
 }
