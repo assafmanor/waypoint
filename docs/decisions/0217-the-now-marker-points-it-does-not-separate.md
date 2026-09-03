@@ -585,3 +585,61 @@ would be a diff across three surfaces that changes nothing a reader sees.
 `shareNowLine`'s return grew `inside` and keeps `daypart`/`index`, which still name where a
 boundary WOULD go — the screen falls back to it whenever nothing holds the moment, and one of
 the derivation's own tests reads it.
+
+## Amendment (2026-09-03) — the mark is a fraction of the EVENT, not of the drive into it
+
+Owner, with the shared page and the day view side by side, on a real trip at ⁦12:12⁩:
+
+> _"Looks like the line isn't on the currently happening event on the live sharing page. See
+> the difference between the sharing page and the day view"_
+
+Both screens agreed about everything except where the arrow was. The day view nailed it inside
+the ⁦12:00–13:00⁩ coffee; the shared page drew it on the ⁦14⁩-minute drive above the card — and
+the card underneath still wore its own `עכשיו` chip, so the page said "now" and "not yet" in
+the same breath. That contradiction is the one §1 set out to end, arriving through a door §1
+did not think to close.
+
+### The defect is the SCOPE of the wrapper, not the fraction
+
+`--thru` is a percentage of the marked box's height, and the previous amendment's host wrapped
+what it called "the row". On this page a row is not always one box: `EventRow` returns a
+FRAGMENT, and an event carrying a stored journey (ADR-0205) renders the drive into it as a
+sibling `.sh-journey` line **before** its `article.sh-event`. So the wrapper spanned the pair
+and the fraction was measured over both. Measured in a browser on the shipped code: ⁦30⁩ minutes
+into a ⁦90⁩-minute event the arrow landed at ⁦y=178.1⁩ against a card starting at ⁦y=189.8⁩ —
+⁦11.7px⁩ above the box it was supposed to be inside, which is exactly a drive-line's height.
+
+**`DayView` never had this**, and the reason is the fix: a join there is its own row with its
+own mark when the moment is in the gap (`joinThru`), so no wrapper ever spans a travel line and
+a card. The repair is to match that scope, not to adjust a number.
+
+So the nailing moved **into `EventRow`**, which is the thing that already knows which of its
+three shapes is the row's own box — the summary row, the `Trek` container (a chained journey IS
+the event, so it takes the mark whole), or the article with its drive line left outside. The
+host now hands down a `nowMark` and stops deciding what a box is.
+
+### Why every test passed, and where the new one lives
+
+This is a geometry defect, and **in jsdom every box is ⁦0px⁩ tall** — so no fraction of anything
+is distinguishable from any other, and the unit suite could not have seen it at any level of
+diligence. The suite that could is the one the repo already keeps for exactly this class
+(`playwright.config.ts`: _"an asset path, a chunk boundary and a worker URL are all build-time
+facts, and a dev-server suite asserts none of them"_ — a rendered fraction belongs in the same
+family).
+
+Two tests, at the two altitudes that can each say something:
+
+- **`e2e/shared-itinerary.spec.ts`** reads `--thru` off the mark, computes the arrow's own `y`,
+  and asserts it lies inside the card's rect **and** below the drive's — the second clause
+  stated separately because a card grown tall enough to swallow the drive would satisfy the
+  first without the defect being fixed. It fails on the old scope with the numbers above.
+- **`SharedItinerary.test.tsx`** asserts the invariant underneath the geometry, which jsdom
+  _can_ see: the journey line is outside `.now-here` and the card is inside it. It fails on the
+  old scope with `expected <div class="sh-journey"> to be null`.
+
+### What this does not change
+
+The placement derivation is untouched: `shareNowLine`, `nowInside` and `dawnOrder` all return
+what they returned, and `thruFrac` was right the whole time. Nothing about the boundary form
+moves, and `NowMarker` itself is unchanged for the third time running — which remains the point
+of it being one component.
