@@ -344,7 +344,7 @@ describe('RoutingService', () => {
     vi.useFakeTimers();
     const { prisma } = fakePrisma();
     let down = true;
-    const flaky = vi.fn((points: readonly LatLng[], mode: string) =>
+    const flaky = vi.fn((points: readonly LatLng[], _mode: string) =>
       down
         ? Promise.reject(new Error('fetch failed'))
         : Promise.resolve(

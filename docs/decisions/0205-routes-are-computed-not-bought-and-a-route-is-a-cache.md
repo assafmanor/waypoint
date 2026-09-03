@@ -921,3 +921,62 @@ the breaker counts.
 call with each refusal, so the count reset every time and it passed against the defect. A breaker
 test has to make its failures **consecutive**, which means the day's durations must already be
 cached and the pass must be asking for nothing but lines.
+
+## Y5. Amendment (2026-09-03) — §Y1's switch trigger fired, so the switch is wired rather than written down
+
+**Reported, on the third round of the same defect:** _"Paths are still not computing… It can't be
+that almost a day that paths aren't working."_ Right, and the two amendments before this one had
+both answered a question nobody asked. §Y3 stopped us hammering a dead host; §Y4 undid the outage
+§Y3 caused. Neither gave anybody a travel time.
+
+**First, a correction to §Y3's evidence.** §Y3 recorded that `valhalla1.openstreetmap.de` "was
+resetting connections at TLS", measured from a sandbox whose egress runs through a tunnelling
+proxy — and that proxy's own documentation says a tunnel it aborts reaches the tool as a bare
+reset, with the explicit instruction to check its failure log _before concluding the remote
+service refused the operation_. It was not checked. Measured over a normal path the host answers
+**`503 Service Unavailable`** — a real answer from a live reverse proxy with a dead service behind
+it. Same conclusion, worthless evidence, and the reasoning was wrong twice before anyone looked.
+
+**Second, the thing that actually mattered and went unexamined for a day: there was somewhere else
+to go.** `routing.openstreetmap.de` — FOSSGIS's OSRM host, the one openstreetmap.org itself routes
+with — was answering normally throughout, on separate infrastructure, keyless. Verified live
+against the reported trip's own leg before a line was written: `routed-car` returned ⁦462.7 s⁩ /
+⁦4567.2 m⁩ for Arlozorov→Knesset, `routed-car/table` a full 3×3 matrix with distances,
+`routed-foot` geometry, `routed-bike` both. OSRM's `table` and `route` services map one-to-one
+onto §2's two port methods, and `POLYLINE_PRECISION.GOOGLE`'s docblock already named OSRM — so §2's
+claim that a provider change is "a file rather than a rewrite" held exactly.
+
+**Decided.** `OsrmRouteProvider` behind the existing port, composed by `FailoverRouteProvider`:
+Valhalla primary, OSRM only when the primary **cannot answer at all**.
+
+- **Wired, not documented.** §Y1 listed "FOSSGIS degrades" as a switch trigger, and a switch that
+  needs a human to notice, diagnose, edit an env var and redeploy is a runbook. This one needs
+  nothing: the fallback is live the moment it deploys, and it stands down by itself when the
+  primary recovers.
+- **Only a THROW fails over**, which is §Y4's rule pointed the other way. An empty matrix, a
+  `null` shape, a `RouteOutOfRangeError` are all _answers_; treating them as "the provider is
+  down" would spend a second outbound seat on every unconnectable pair, forever, through a limiter
+  that paces one call a second. `RouteOutOfRangeError` propagates untouched.
+- **Both failing re-throws**, so the breaker still counts one failure. Swallowing both would tell
+  the breaker every call succeeds and we would hammer two dead hosts instead of one.
+- **The vintage is the primary's or nothing.** A vintage invalidates the rows it stamped (§Z5);
+  borrowing the secondary's is worse than the `null` the port allows. OSRM states none, so its
+  rows carry no eviction handle — which §Z5 already calls a correct row rather than a missing one.
+- **`RouteLeg.provider` records `failover(<primary>,<secondary>)`.** Returning the primary's id
+  would stamp failed-over rows as Valhalla-authored, and §4's column exists precisely so a mixed
+  table is legible. Tracking "who answered last" in a field would be more precise and would depend
+  on the limiter serialising task bodies — an invariant in another file, which is the shape of the
+  §Y4 defect and not worth repeating for one column's precision.
+
+**What it costs, stated plainly so nobody has to rediscover it.** OSRM is not the tuned provider:
+no ferry avoidance (§Z4 configures `use_ferry: 0` on Valhalla), no group walking speed (§Z7 exists
+because the provider's default walking answer was _wrong_, and OSRM's `foot` profile is its own
+default at roughly ⁦4.5 km/h⁩), and no tileset vintage. Its numbers will differ from Valhalla's on
+the same pair. That is acceptable **only** against the alternative it replaces, which is no number
+at all — and `ROUTING_FALLBACK_DISABLED` exists for the position that a less-tuned estimate is
+worse than an honest absence. It is a per-mode instance layout (`routed-car`/`routed-foot`/
+`routed-bike`) with `driving` as the service segment on all three; that segment is OSRM's URL
+grammar, not a mode, and "fixing" it is a 400.
+
+**Still not decided:** self-hosting. §Y1's endgame and the transit epic's prerequisite, untouched
+here. What this removes is the single point of failure, not the dependency.

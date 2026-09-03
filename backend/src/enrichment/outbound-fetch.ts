@@ -65,6 +65,12 @@ const ALLOWED_HOSTS = [
   // A self-hosted Valhalla (ADR-0205 §Y1) is a line HERE plus the env var — deliberately not one
   // or the other, because this file's whole posture is that the allowlist is code.
   'valhalla1.openstreetmap.de',
+  // **The fallback router** (ADR-0205 §Y5) — FOSSGIS's OSRM host, which is what the
+  // openstreetmap.org website routes with. Here for the same reason as the line above and under
+  // the same rule: a host named only in an env var would never be fetched, because the allowlist
+  // is code. Separate infrastructure from `valhalla1`, which is what makes it a fallback rather
+  // than a second name for the same outage.
+  'routing.openstreetmap.de',
 ];
 
 /** Suffix rules, for the one source that is genuinely per-language. Matched as a real

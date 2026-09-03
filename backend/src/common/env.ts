@@ -122,6 +122,20 @@ export const ROUTING_BASE_URL = 'ROUTING_BASE_URL';
 /** The FOSSGIS planet server, which ADR-0205 §Y1 keeps as the standing default. */
 export const DEFAULT_ROUTING_BASE_URL = 'https://valhalla1.openstreetmap.de';
 
+/** **The fallback router's origin** (ADR-0205 §Y5). FOSSGIS's OSRM host — the one the
+ *  openstreetmap.org website itself routes with, keyless like the primary, and separate
+ *  infrastructure, which is the whole point: on 2026-09-02 `valhalla1` served `503` for the
+ *  better part of a day while this host answered normally. */
+export const ROUTING_FALLBACK_BASE_URL = 'ROUTING_FALLBACK_BASE_URL';
+export const DEFAULT_ROUTING_FALLBACK_BASE_URL = 'https://routing.openstreetmap.de';
+
+/** **Turns the fallback off, leaving the primary alone** (ADR-0205 §Y5). Its own switch rather
+ *  than a share of `ROUTING_DISABLED`, because the two answer different questions: that one stops
+ *  us calling anybody, this one says "only the tuned provider's numbers are acceptable" — which
+ *  is a judgement about answer QUALITY (§Y5 records what OSRM costs) and someone may reasonably
+ *  prefer no estimate to a less-tuned one. */
+export const ROUTING_FALLBACK_DISABLED = 'ROUTING_FALLBACK_DISABLED';
+
 /** Per-request timeout for a matrix or a shape. Longer than FX's and enrichment's because this
  *  is the one outbound call a person can be waiting on: measured **~560 ms median, ~1 s tail**
  *  for a 6x6 day matrix (ADR-0205 §Z4), and a cold 24-stop matrix or a long drive is slower
