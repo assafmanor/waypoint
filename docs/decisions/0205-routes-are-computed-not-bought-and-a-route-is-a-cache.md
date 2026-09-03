@@ -857,3 +857,67 @@ breaker keeps that property — one probe a minute finds the provider the moment
 
 **What this does NOT decide.** The single point of failure is untouched: one community server, one
 allowlisted host, no fallback. That is §Y1's territory and a live backlog line, not a rider here.
+
+## Y4. Amendment (2026-09-02) — §Y3's breaker latched open, and a breaker that cannot close is an outage we caused
+
+**Reported, hours after §Y3 merged:** _"paths aren't getting calculated at all now. Even added a
+new event to the schedule and it didn't even try."_ Correct on every word, and it was §Y3's fault.
+
+**The latch.** §Y3 gave `PolitenessLimiter` a public `isOpen` (`failures >= threshold`, with no
+knowledge of the cooldown) and had `RoutingService.batch` return early on it — **before**
+`this.warm(...)`. But `warm()` is the only caller of `limiter.runQuietly`, so it was the only path
+that ever reached `run()`. Therefore:
+
+1. Three failures trip the breaker.
+2. `batch` now returns early on every later request, never calling `warm()`.
+3. Nothing calls `run()`, so nothing calls `record()`.
+4. `failures` never resets, and the half-open probe inside `admit()` is **unreachable**.
+
+Routing was dead for the life of the process, recoverable only by restarting the backend. §Y3's
+own claim that _"recovery needs no restart"_ was false the moment it was written, and the two
+things that let it through are worth naming:
+
+- **The limiter spec tested `runQuietly` directly**, bypassing `batch` — so the probe logic was
+  exercised on a path production never takes once the breaker is open.
+- **The service spec asserted only that calls STOP.** Nothing asserted they ever resume. "It
+  stops calling" and "it can start again" are two claims, and only the first was tested.
+
+**Decided.** `batch` no longer reads the breaker at all, and the getter is now a private
+`tripped`. The seat is protected exactly one level down, where it always was: `warm()` runs, and
+the limiter refuses each suppressed call without spending the seat or its timeout. That is the
+whole saving — §Y3's early return added no protection and cost recovery.
+
+**So the endpoint promises a retry again**, and §Y3's argument for withholding it is withdrawn.
+It reasoned that a `retryAfterSeconds` during an outage spins `מחשב…` for six rounds over an
+answer that is not coming. True, and the wrong trade twice over: asking again is what **carries
+the probe** that reopens the seat, and to the person holding the phone a day that never even
+tries is worse than one that tries and fails. The owner said so in those words. A spinner that
+resolves into §D4's chip is the honest picture of "we are trying and do not know yet".
+
+**The rule this leaves.** A breaker's "is it open" is not a fact a CALLER may act on — only
+`admit()` knows about the cooldown, so only `admit()` can answer whether a call may go. Anything
+that reads a trip flag to decide _not to call_ can starve the very path that closes the breaker.
+Hence `tripped` is private, and the regression test is at the SERVICE level (`RECOVERS through
+the endpoint once the provider answers again`): provider down, breaker open, provider back,
+cooldown elapsed, and a brand-new pair must still get a real attempt and a served estimate.
+
+**And the same mistake was sitting in a second place, found by auditing rather than by a report.**
+`runMatrix` handled `RouteOutOfRangeError` inline (§Z9) and `runShape` handled it **not at all** —
+a cosmetic asymmetry until §Y3 put a breaker behind the limiter, at which point it became a live
+fault. The gate admits on **crow** distance and the provider refuses on **path** distance (§Z9:
+road/crow is 1.23–1.34 for `auto`), so an admitted leg can legitimately answer out-of-range; via
+`runShape` each one counted as a breaker FAILURE. Three of them — one ring-road day asking for its
+map lines, with its durations already cached so nothing succeeded in between — would have tripped
+the breaker and suppressed routing for every trip on the server. A self-inflicted outage out of
+entirely ordinary data.
+
+The rule now lives in **one** place, `askProvider`, which both callers go through (root
+`CLAUDE.md` rule 8: generalise the existing one-off rather than adding a second copy beside it):
+a provider stating a limit means the provider is **alive** and that pair is answered, so it is
+logged once and those legs stay absent (§D4). Only a call that got no answer at all is a failure
+the breaker counts.
+
+**Worth recording how the first version of that test lied.** It interleaved a successful matrix
+call with each refusal, so the count reset every time and it passed against the defect. A breaker
+test has to make its failures **consecutive**, which means the day's durations must already be
+cached and the pass must be asking for nothing but lines.

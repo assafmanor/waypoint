@@ -108,12 +108,24 @@ describe('PolitenessLimiter', () => {
     const open = () => new PolitenessLimiter(0, THRESHOLD, COOLDOWN_MS);
     const fail = () => Promise.reject(new Error('fetch failed'));
 
+    /** **Did a call actually leave?** — asserted on behaviour rather than on a flag, which is
+     *  §Y4's lesson: these tests read that flag directly, and the defect was that `RoutingService`
+     *  trusted that same flag to mean "do not bother calling". Only what reaches the task is the
+     *  truth about whether the seat is open. */
+    async function callWentOut(limiter: PolitenessLimiter): Promise<boolean> {
+      let invoked = false;
+      await limiter.runQuietly('probe', () => {
+        invoked = true;
+        return Promise.resolve();
+      });
+      return invoked;
+    }
+
     it('opens after the threshold of consecutive failures and stops calling out', async () => {
       const limiter = open();
       for (let i = 0; i < THRESHOLD; i++) {
         await limiter.runQuietly(`matrix ${i}`, fail);
       }
-      expect(limiter.isOpen).toBe(true);
 
       // The task is never invoked, which is the whole saving — not a fast failure, no call.
       let invoked = 0;
@@ -140,7 +152,7 @@ describe('PolitenessLimiter', () => {
       await limiter.run(() => Promise.resolve());
       await limiter.runQuietly('c', fail);
       await limiter.runQuietly('d', fail);
-      expect(limiter.isOpen).toBe(false);
+      expect(await callWentOut(limiter)).toBe(true);
     });
 
     it('admits exactly ONE probe once the cooldown has elapsed, not the whole queue', async () => {
@@ -184,7 +196,6 @@ describe('PolitenessLimiter', () => {
         return Promise.resolve();
       });
       expect(invoked).toBe(0);
-      expect(limiter.isOpen).toBe(true);
     });
 
     it('closes on a successful probe, so recovery needs no restart', async () => {
@@ -194,7 +205,6 @@ describe('PolitenessLimiter', () => {
 
       await vi.advanceTimersByTimeAsync(COOLDOWN_MS);
       await expect(limiter.run(() => Promise.resolve('back'))).resolves.toBe('back');
-      expect(limiter.isOpen).toBe(false);
 
       // And the seat is fully open again — no lingering half-open state.
       let invoked = 0;
