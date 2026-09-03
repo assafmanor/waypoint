@@ -2,6 +2,12 @@
 // live "now"), on a board disc so it reads on the dark chrome. Mirrors
 // `public/icon-mark-bright.svg`.
 //
+// **No outer stroke** (ADR-0087 amendment): the teal edge this used to carry was the app
+// icon's rounded outline in circular form — drawn artwork that only agreed with a launcher
+// that rounds, and a ring rather than an edge at 20px. Separation from the dark chrome is
+// the host's 1px hairline (`.land-icon` / `.join-icon`), which is a border, not a brand mark;
+// `.inst-mark` sits on a light sheet and needs none.
+//
 // **Inlined, never `<img src="*.svg">`** — Chrome rasterizes a small `<img>`-sourced SVG and
 // it comes out aliased. That was already the reason on both of the call sites this replaces.
 //
@@ -38,15 +44,6 @@ export function AppMark({ className }: { className?: string }) {
         </linearGradient>
       </defs>
       <circle cx="256" cy="256" r="256" fill={`url(#${board})`} />
-      <circle
-        cx="256"
-        cy="256"
-        r="246"
-        fill="none"
-        stroke="#3FB3A3"
-        strokeWidth="18"
-        opacity={0.9}
-      />
       <g transform="translate(256 268) scale(0.66) translate(-256 -260)">
         <path
           d="M256 44 C150 44 66 126 66 230 C66 348 206 436 256 476 C306 436 446 348 446 230 C446 126 362 44 256 44 Z"
