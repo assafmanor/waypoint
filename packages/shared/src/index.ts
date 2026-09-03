@@ -18,6 +18,7 @@ export * from './search-terms';
 export * from './suggestions';
 export * from './readiness';
 export * from './routing';
+export * from './subtasks';
 export * from './task-time';
 export * from './travel-time';
 export * from './trip-dates';

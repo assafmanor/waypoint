@@ -27,13 +27,15 @@ import { dropHostedForHostChange, isHostedBy, type HostChange, type NoteHostKind
 import {
   currentZone,
   dueZone,
+  isSettled,
+  resolveParentStatus,
   TASK_BAND,
   taskBand,
   type TaskBand,
   type TaskClock,
 } from '@waypoint/shared';
 
-export { dueZone, TASK_BAND, taskBand, type TaskBand, type TaskClock };
+export { dueZone, isSettled, TASK_BAND, taskBand, type TaskBand, type TaskClock };
 import { addDays, dayLabel, formatTime, todayInTz, type DayNaming } from './time';
 
 /** The facet axis (brief §13). ONE axis, because `ChoiceGrid` is single-select — ownership
@@ -50,27 +52,14 @@ export type TaskFacet = (typeof TASK_FACET)[keyof typeof TASK_FACET];
 //
 // `TASK_BAND`, `TaskBand`, `TaskClock`, `dueZone` and `taskBand` are now
 // `shared/src/task-time.ts`, so the sweep that fires a task reminder reads a deadline the
-// same way the row printing it does. Everything else in this file — the facets, the sort,
-// the sub-task tree, the counts — stayed, because no server surface asks those questions.
+// same way the row printing it does. `isSettled` and a parent's derived status followed them
+// into `shared/src/subtasks.ts` (2026-09-03), for the same reason and after the same class of
+// defect: the sweep asks whether a checklist is finished, and the parent's stored `status` is
+// not where that answer lives. The facets, the sort, the tree's SHAPE and the counts stayed,
+// because no server surface asks those questions.
 //
-// **Re-exported here** (`TaskClock` alone is threaded through 17 files), so consumers keep
-// their import. One definition, over there.
-
-/** **Settled is stated, not inferred from "not open"** (owner, 2026-08-19: a peer's fresh
- *  sub-task arrived ticked).
- *
- *  The two forms are identical for a well-formed row — there are three statuses — and they
- *  part company on a row that carries none, which is exactly what a peer's create used to
- *  deliver: `applyControlChangeToList` merges `Change.after` over what it already holds, and
- *  on a create it holds nothing. `!== OPEN` then answered **true** for every one of this
- *  file's twenty-two call sites at once: the step drew struck through with a green ✓, counted
- *  as done in its parent's fraction, and dropped out of `שלי`.
- *
- *  The server now sends the whole row (`tasks.service`'s create), which is the real fix. This
- *  is the direction the client should fail in anyway: a row it cannot read is work still to
- *  do, never work quietly marked finished. */
-export const isSettled = (task: Task): boolean =>
-  task.status === TASK_STATUS.DONE || task.status === TASK_STATUS.DISMISSED;
+// **Re-exported here** (`TaskClock` alone is threaded through 17 files, `isSettled` through
+// twenty-two call sites), so consumers keep their import. One definition, over there.
 
 // ── SUB-TASKS (ADR-0196) ────────────────────────────────────────────────────────────────
 // **The whole feature is one split, paid once.** Everything below this comment exists so
@@ -94,32 +83,27 @@ export interface TaskTree {
   byParent: Map<string, Task[]>;
 }
 
-/** **A parent's status is DERIVED, and the predicate is one the app already ships.** Brief
- *  §4's sentence for a readiness check transfers verbatim: *the derivation answers unless the
- *  row says `dismissed`*.
+/** **A parent's status is DERIVED** — `resolveParentStatus` in `@waypoint/shared`, which is
+ *  the same function the notification sweep asks, because a checklist the screen draws as
+ *  finished must not still be an obligation on the server (ADR-0196 §2's 2026-09-03
+ *  amendment).
  *
- *  - `dismissed` is a human decision no derivation can produce ("this whole thing is off"),
- *    so it is stored and it wins.
- *  - Otherwise a parent is `done` exactly when every step is settled, and `open` otherwise.
- *    Nothing is written, so nothing can go stale — which is the reason the backlog line chose
- *    derived over stored in the first place.
- *  - A stored `done` on a row that later gains a step is therefore **ignored rather than
- *    repaired**: no migration, no write, no window where the two disagree.
- *
- *  `settledAt`/`settledBy` come from the last step settled, so "who finished this" still
- *  answers on a parent. */
+ *  What is left here is the part only a screen wants: `settledAt`/`settledBy` come from the
+ *  last step settled, so "who finished this" still answers on a parent. */
 function resolveParent(parent: Task, steps: Task[]): Task {
   if (steps.length === 0) return parent;
-  if (parent.status === TASK_STATUS.DISMISSED) return parent;
-  const done = steps.every(isSettled);
-  const last = done
-    ? steps.reduce((a, b) => ((a.settledAt ?? '') >= (b.settledAt ?? '') ? a : b))
-    : undefined;
+  const status = resolveParentStatus(parent, steps);
+  // A dismissal is stored and it wins, so the row already carries its own settled-by.
+  if (status === TASK_STATUS.DISMISSED) return parent;
+  const last =
+    status === TASK_STATUS.DONE
+      ? steps.reduce((a, b) => ((a.settledAt ?? '') >= (b.settledAt ?? '') ? a : b))
+      : undefined;
   return {
     ...parent,
-    status: done ? TASK_STATUS.DONE : TASK_STATUS.OPEN,
-    settledAt: done ? last?.settledAt : undefined,
-    settledBy: done ? last?.settledBy : undefined,
+    status,
+    settledAt: last?.settledAt,
+    settledBy: last?.settledBy,
   };
 }
 

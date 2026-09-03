@@ -28,8 +28,7 @@ import {
   type NotificationKind,
 } from '../notification-kind';
 import { taskDigestPayload } from '../notify-copy';
-import { notifiableTaskWhere, tripAudience, type TaskRow } from './trip-audience';
-import { TASK_SELECT } from './task-due.kind';
+import { notifiableTasks, tripAudience, type TaskRow } from './trip-audience';
 
 /** The local hour the digest is aimed at. A fixed hour rather than a preference, for the same
  *  reason quiet hours are constants (ADR-0198 §6). */
@@ -54,10 +53,7 @@ export const taskDigestKind: NotificationKind = {
     // and never settled is still the thing you can still miss (ADR-0164), and `status = open`
     // is what keeps the scan small — a settled task leaves the range for good.
     const horizon = new Date(nowMs + 2 * 24 * 60 * 60 * 1000);
-    const tasks = (await prisma.task.findMany({
-      where: { ...notifiableTaskWhere, dueAt: { not: null, lte: horizon } },
-      select: TASK_SELECT,
-    })) as TaskRow[];
+    const tasks = await notifiableTasks(prisma, { dueAt: { not: null, lte: horizon } });
     if (tasks.length === 0) return [];
 
     const audience = await tripAudience(prisma, tasks, nowMs);

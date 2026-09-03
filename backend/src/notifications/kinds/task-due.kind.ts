@@ -13,7 +13,7 @@ import {
   type TripZones,
 } from '../notification-kind';
 import { taskDuePayload } from '../notify-copy';
-import { notifiableTaskWhere, tripAudience, type TaskRow } from './trip-audience';
+import { notifiableTasks, tripAudience, type TaskRow } from './trip-audience';
 
 /** Three hours. A deadline is worth telling you about for the rest of the afternoon; a tick
  *  lost to a redeploy should not deliver it tomorrow morning (ADR-0197 §3). */
@@ -32,14 +32,10 @@ export const taskDueKind: NotificationKind = {
     // ONE indexed range scan across every trip — `(status, dueAt)`. The window is bounded at
     // both ends: `staleAfterMs` back so a missed tick still delivers, and `now` forward so a
     // deadline waits for its own minute rather than firing early.
-    const tasks = (await prisma.task.findMany({
-      where: {
-        ...notifiableTaskWhere,
-        dueHasTime: true,
-        dueAt: { gte: new Date(nowMs - STALE_AFTER_MS), lte: new Date(nowMs) },
-      },
-      select: TASK_SELECT,
-    })) as TaskRow[];
+    const tasks = await notifiableTasks(prisma, {
+      dueHasTime: true,
+      dueAt: { gte: new Date(nowMs - STALE_AFTER_MS), lte: new Date(nowMs) },
+    });
     if (tasks.length === 0) return [];
 
     const audience = await tripAudience(prisma, tasks, nowMs);
@@ -75,20 +71,6 @@ export const taskDueKind: NotificationKind = {
     return sends;
   },
 };
-
-/** Exactly the columns `TaskRow` declares — so a field a kind starts reading has to be added
- *  here, where it is visible, rather than arriving free with a `select`-less query. */
-export const TASK_SELECT = {
-  id: true,
-  tripId: true,
-  title: true,
-  dueAt: true,
-  dueHasTime: true,
-  displayTimezone: true,
-  assigneeUserId: true,
-  assignedAt: true,
-  updatedBy: true,
-} as const;
 
 /** **The zone the deadline means** — `dueZone` from `@waypoint/shared` (ADR-0194): the pinned
  *  zone when there is one, else ADR-0107's resolver at the instant it falls due. The same

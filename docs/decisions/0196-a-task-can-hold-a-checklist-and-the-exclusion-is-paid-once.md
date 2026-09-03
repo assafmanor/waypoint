@@ -59,6 +59,16 @@ The raw array stays where it already lives — inside `trip-state`'s own `useSta
 - A stored `done` on a row that later gains a child is therefore **ignored rather than repaired** — the derivation answers whenever children exist, so no migration and no write.
 - `settledAt`/`settledBy` derive as the last child's.
 
+> **AMENDED 2026-09-03 — "at the state boundary" was one boundary short, and the server was the other one.**
+>
+> Everything above holds. What it did not say is that `trip-state` is not the only reader of a parent's status, and by the time it was written it was already about to stop being: [ADR-0197](0197-a-notification-is-a-derived-obligation-and-the-sweep-is-its-clock.md)'s sweep reads tasks straight out of Postgres, and Postgres holds the half of this decision that is deliberately never written.
+>
+> So the sweep saw `status = open` on a checklist whose every step had been ticked months ago, and said so: `task.due` at the deadline, and then `task.digest` — whose overdue range is unbounded on purpose ([ADR-0198 §2](0198-we-notify-what-you-can-still-miss.md)) — **every single morning after that, forever**. Reported from the phone: _"sends notifications about tasks that were already completed, like taking things from Dana for the trip"_. The one thing a notification channel cannot survive is being wrong about what you have already done, and this was wrong about it daily.
+>
+> **The fix is not to write the parent's status.** That would trade a bug that is visible for one that is silent — a stored `done` going stale is precisely what this section chose derivation to avoid, and §3's bulk tick would then have to keep it in step across LWW, the outbox and an offline replay. What travels instead is the **derivation**: `resolveParentStatus` moved to `@waypoint/shared/subtasks.ts` beside `task-time.ts`, and the sweep asks the same function the screens ask, through `notifiableTasks` (`backend/src/notifications/kinds/trip-audience.ts`). That is [ADR-0197 §5](0197-a-notification-is-a-derived-obligation-and-the-sweep-is-its-clock.md)'s rule — a send and a print are one derivation, not two that agree today — applied to a status rather than to a clock.
+>
+> **The general shape, which is the part worth carrying forward.** A derived field is a contract with its readers, and the boundary that resolves it is only as wide as the layer it sits in. This app now has two families of derived task status — a checklist's, and a readiness check's (§9, brief §4) — and every future server-side reader of `Task.status` owes both. The one place that is still stored-only is `task.assigned`, and deliberately: it fires once per assignee ever, inside a six-hour window, about something that genuinely happened. Being told you were given a task is true whether or not the underlying check has since been satisfied; being reminded every morning of a chore you finished is not.
+
 **`orderTaskRows`, `RevealList` and the beat are all untouched.** A parent row collapses out of the open facets the moment its last child is ticked, through ADR-0120's reveal, over the same `--t-base` — and the child's tick is `TaskTick` at `density="section"`, so ADR-0195's hold and its flush-on-unmount arrive for free.
 
 ### 3. A parent's leading element is the same tick, and it TICKS THE WHOLE CHECKLIST
