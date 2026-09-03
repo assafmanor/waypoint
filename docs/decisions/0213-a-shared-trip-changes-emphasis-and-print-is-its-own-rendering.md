@@ -2488,5 +2488,13 @@ two surfaces for this exact reason, and it is also what makes a card that swallo
   Both fail against `trip.timezone`.
 - **`shareNowZone`'s own unit tests** cover the claim, the overlap, the gap, the two ends of the
   trip, an empty spine, and a card that swallowed two days.
+- **The e2e stub needed the field too, and finding out how is the third near-miss.**
+  `e2e/shared-itinerary.spec.ts` mocks a whole projection through `page.route`, and
+  `frontend/tsconfig.json` includes only `src` — so a newly required contract field left that
+  stub short of it with `tsc` green, and the only signal was a zod parse failure in a real
+  browser: eleven tests red at once, none of them pointing at the fixture. Fixed here and
+  re-run locally (11/11, and 1 failing with the field removed again); the tooling hole is a
+  `docs/backlog.md` line under **Testing**, since closing it needs `@types/node` and a dozen
+  unrelated fixes rather than one `include`.
 - **No mockup.** Nothing about the layout changes: the same mark in the same shape, on the right
   clock and in the right place. What was missing was never a drawing.

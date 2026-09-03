@@ -74,9 +74,9 @@ It walks with `dayPhase` rather than a fourth spelling of the comparison — §7
 out of two surfaces for exactly this reason, and it is also what keeps a card that swallowed two
 days (`SharedDay.endDate`) today while either of them is.
 
-## Two near-misses, both of the same kind
+## Three near-misses, all of the same kind
 
-Neither is a type error, and both would have left the defect in place with all the machinery
+None is a type error, and each would have shipped something broken with all the machinery
 built:
 
 1. **`Event.endDate` was not in `SHARE_EVENT_SELECT`.** `eventsOnDate` reads it so a multi-night
@@ -88,6 +88,21 @@ built:
    `ShareZoneContext` crosses the shared-resolver seam with `as never` because the runtime shapes
    already agree; the event rows now go through a named adapter, `zoneEventEvidence`, whose
    docblock is entirely about why it is a translation and not a cast.
+3. **`frontend/e2e/` is not type-checked at all**, and `e2e/shared-itinerary.spec.ts` stubs a
+   whole `SharedItinerary` through `page.route` — annotated with the real type. Adding a
+   required field left the stub short of it, `tsc` stayed green, and the signal was a zod
+   parse failure in a real browser: eleven tests red at once, none pointing at the fixture.
+   Caught here by reading the e2e specs before CI reported rather than by CI, then verified
+   both ways locally. `frontend/tsconfig.json` is `include: ["src", "vite.config.ts"]`; a probe
+   program over `e2e/` reports ~20 errors (no `@types/node`, `window.navigation`,
+   `Animation.animationName`, some genuine `null` fixes), so closing it is its own change and
+   is a backlog line under **Testing** rather than this PR.
+
+**What the three have in common** is worth naming: every one is a place where a type says a
+shape is right and the runtime disagrees — a Prisma column not selected, a `Date` where a
+string was meant, a program the checker never sees. Adding a required field to a shared
+contract is exactly the change that finds them all at once, and none of them fails at the
+boundary you edited.
 
 ## What was verified
 
