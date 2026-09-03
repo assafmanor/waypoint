@@ -2321,7 +2321,10 @@ export const t = {
   // not a mark baked into a sentence. ADR-0218 §7 settles both, and §7's tripwire is the only
   // thing that reopens it: if the card ever grows an illustration, the mark joins it.
   weather: {
-    today: 'היום',
+    // NO `today` here, and its absence is the decision (ADR-0218's amendment §C): the head IS
+    // today, so no tile is, and a `היום` tile would have repeated the head's own number ⁦60px⁩
+    // away. Also no `attribution` string, for the reason `fx` states below — the credit is the
+    // source's own wording, carried on the data and rendered verbatim.
     tomorrow: 'מחר',
     // The day's low, beside the high. Labelled because two bare numbers in one line say nothing
     // about which is which, and the high is already the big run above it.

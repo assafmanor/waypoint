@@ -5,7 +5,7 @@
 // flight must abstain, a day with nothing placed, and a trip with nothing at all.
 import { describe, expect, it } from 'vitest';
 import type { Booking, Place, TripEvent } from '@waypoint/shared';
-import { dayAnchorCoord, type ZoneEvidence } from './places';
+import { dayAnchorCoord, liveAnchorCoord, type ZoneEvidence } from './places';
 
 const TOKYO = { lat: 35.6762, lng: 139.6503 };
 const TEL_AVIV = { lat: 32.0853, lng: 34.7818 };
@@ -113,5 +113,85 @@ describe('dayAnchorCoord', () => {
       TOKYO,
     );
     expect(at).toEqual(TEL_AVIV);
+  });
+});
+
+// `liveAnchorCoord` — where you are RIGHT NOW, in coordinates (ADR-0218's 2026-09-03 amendment
+// §B). The coordinate twin of `liveZone`, so the cases are the ones that function already had
+// to answer, plus the one rule that is deliberately inverted against `dayAnchorCoord` above.
+describe('liveAnchorCoord', () => {
+  const NOW = Date.parse('2026-09-04T12:00:00Z');
+  const at = (offsetH: number) => new Date(NOW + offsetH * 3_600_000).toISOString();
+
+  const timed = (over: Partial<TripEvent>): TripEvent =>
+    ({ id: 'e', date: '2026-09-04', ...over }) as TripEvent;
+
+  it('takes an event in progress over everything else', () => {
+    expect(
+      liveAnchorCoord(
+        NOW,
+        evidence({
+          places: [place('tokyo', TOKYO), place('tlv', TEL_AVIV)],
+          events: [
+            timed({ id: 'now', placeId: 'tlv', startsAt: at(-1), endsAt: at(1) }),
+            timed({ id: 'later', placeId: 'tokyo', startsAt: at(5), endsAt: at(6) }),
+          ],
+        }),
+      ),
+    ).toEqual(TEL_AVIV);
+  });
+
+  it('**reads a crossing’s DESTINATION mid-transit, where the day anchor abstains**', () => {
+    // The inversion, and the whole of the owner's "or where we're headed". `dayAnchorCoord`
+    // declines here on purpose — a thing that moves you cannot say where the DAY sits — and
+    // ADR-0107 §8's rule for the live question is the opposite.
+    const flight = timed({
+      id: 'fly',
+      bookingId: 'b',
+      startsAt: at(-1),
+      endsAt: at(2),
+    });
+    const ev = evidence({
+      places: [place('tokyo', TOKYO), place('tlv', TEL_AVIV)],
+      events: [flight],
+      bookings: [{ id: 'b', fromPlaceId: 'tlv', toPlaceId: 'tokyo' } as Booking],
+    });
+    expect(liveAnchorCoord(NOW, ev)).toEqual(TOKYO);
+    // …and the day sibling still abstains, so the two have not been collapsed into one answer.
+    expect(dayAnchorCoord('2026-09-04', ev)).toBeUndefined();
+  });
+
+  it('takes the NEAREST placed event within the window, ahead or behind', () => {
+    // "Where we're headed": an hour before the drive, the next place is already the answer.
+    expect(
+      liveAnchorCoord(
+        NOW,
+        evidence({
+          places: [place('tokyo', TOKYO), place('tlv', TEL_AVIV)],
+          events: [
+            timed({ id: 'soon', placeId: 'tokyo', startsAt: at(1) }),
+            timed({ id: 'ages', placeId: 'tlv', startsAt: at(-6) }),
+          ],
+        }),
+      ),
+    ).toEqual(TOKYO);
+  });
+
+  it('ignores an event beyond the window and falls back to the day’s own anchor', () => {
+    // Twelve hours is `LIVE_ZONE_WINDOW_MS`; a stop five days out says nothing about now.
+    expect(
+      liveAnchorCoord(
+        NOW,
+        evidence({
+          places: [place('tokyo', TOKYO)],
+          events: [timed({ id: 'far', date: '2026-09-20', placeId: 'tokyo', startsAt: at(400) })],
+        }),
+        TEL_AVIV,
+      ),
+    ).toEqual(TEL_AVIV);
+  });
+
+  it('degrades to undefined with nothing placed and no destination', () => {
+    expect(liveAnchorCoord(NOW, evidence({}))).toBeUndefined();
   });
 });

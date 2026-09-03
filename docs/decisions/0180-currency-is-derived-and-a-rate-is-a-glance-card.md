@@ -305,3 +305,25 @@ own research caught it. The argument that survives is the counted one, and it is
 stronger: the ECB covers **30 of our 152 codes** and cannot price **17 of the
 app's own 57 destinations**. Coverage, not a single currency, is why the broad
 feed ships. Corrected in place everywhere it appeared.
+
+## Amendment (2026-09-03) — §9's placement is superseded, and §3's "one `<button>`" is narrowed
+
+§9 chose a line **under** the card and recorded the constraint that made the alternative
+impossible: _"the card is a `<button>`, and an `<a>` inside one is invalid markup — so any
+placement inside the card is not a placement, it is a decision to drop the link."_ That reasoning
+was right and its conclusion has expired, because the constraint was about the card's **structure**
+rather than about attribution.
+
+[ADR-0218](0218-a-forecast-expires-and-the-widget-goes-rather-than-lies.md)'s amendment §A splits
+`RateCard` into a `.fx-card` box holding a `.fx-face` button, so the link is the button's sibling.
+The owner asked for the line inside the card; measured, it costs **+1px a card**.
+
+**§3's "the whole card is one `<button>`" is narrowed, not overturned.** What that clause was
+protecting — one target for the whole card, no second 44px control on the row, no `⋯` — is intact
+and asserted in `RateCard.test.tsx`. What changed is that the skin and the press are no longer the
+same element.
+
+**§9's other half is unchanged and was re-confirmed:** the credit stays **per card** rather than in
+the section heading, for the reason §9 gave — _"one slot cannot carry two sources honestly"_ — now
+that the second tenant is real. Both cards render one shared `CardSource`, so the section cannot
+grow two grammars for one job.

@@ -36,14 +36,34 @@
   font-weight: 700;
   line-height: 1;
 }
+/* **The place the head speaks for** (ADR-0218's amendment §B). Inside `.wx-cond`'s existing run
+   as `place · condition` rather than a fifth element in the head: measured ⁦46px⁩ → ⁦46px⁩, so the
+   name is free, and a fifth element breaks the row at ⁦360px⁩. */
+/* **The place the head speaks for** (ADR-0218's amendment §B), and the run that gives ground
+   when the line is tight. Measured at 360px, `place · condition · amount` overflows — and with
+   one ellipsising run the amount is what disappears, being last in the string and the single
+   most actionable fact on the card (W4). So the head is three flex items and only this one may
+   shrink: the place is context for the number, the number is the answer. */
 .wx-cond {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
   font-size: 0.78rem;
   font-weight: 700;
   color: var(--muted);
+  white-space: nowrap;
+}
+.wx-where {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 700;
+  color: var(--ink);
+}
+.wx-sep,
+.wx-detail {
+  flex: 0 0 auto;
 }
 /* The low, pushed to the far edge — the same `margin-inline-start: auto` read-out trade
    `.day-ambient .as` and `.fx-card .asof` already make. */
@@ -64,6 +84,11 @@
   gap: 6px;
   padding: 0 13px 12px;
   overflow-x: auto;
+}
+/* The strip already ends in ⁦12px⁩ of padding; with the source foot below it, that space is the
+   gap ABOVE the hairline and the card must not pay for it twice (ADR-0218's amendment §A). */
+.wx-widget:has(> .card-src) .wx-days {
+  padding-block-end: 7px;
 }
 .wx-day {
   flex: 0 0 auto;

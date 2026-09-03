@@ -1,0 +1,46 @@
+/* **A glance card's own source line** (ADR-0218's 2026-09-03 amendment §A; amends ADR-0180 §9).
+   Shared by `RateCard` and `WeatherCard`, which is why it is its own file rather than a second
+   copy in each — the section holds two tenants from two different sources, and one line doing
+   one job must not be two classes drifting apart.
+
+   NOT `.fx-*`, which is currency's, and NOT `.glance-*`, which belongs to `GlanceCard`, the
+   day-at-a-glance time rail (the collision ADR-0180 §3 recorded once already).
+
+   **It replaces `.fx-attr`, the floating line under the card**, and the reason that line existed
+   is worth keeping: ADR-0180 §9 could not put an `<a>` inside `RateCard` because the whole card
+   was one `<button>` and an anchor inside a button is invalid markup — so "inside" was never a
+   placement, it was a decision to drop a link the source's terms require. ADR-0218 shipped
+   `WeatherCard` as a plain region, which retired half of that; `.fx-face` below retires the
+   other half by making the box and the press two elements instead of one. */
+
+.card-src {
+  margin: 0;
+  /* **Spends the card's own trailing padding rather than adding to it.** Measured: a foot that
+     brought its own padding cost ⁦+9px⁩ a card; paying for it out of space the card was already
+     holding is ⁦+1px⁩ (mockup `a-card-carries-its-own-source-v1.html`). The rules that give that
+     space back live with the cards, beside the padding they reduce. */
+  padding: 5px 13px 8px;
+  font-size: 0.68rem;
+  line-height: 1.4;
+  color: var(--muted);
+  /* A hairline, so the line reads as the card's foot rather than as one more fact in it.
+     `border-block-start` and not the `box-shadow` ADR-0180 §4 used: that one is painted because
+     it appears and disappears with a state and must not reflow the line it sits on. This one is
+     always there, so there is nothing to stabilise. */
+  border-block-start: 1px solid var(--line);
+}
+
+.card-src-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  /* 44px without growing a 10px line — `ValueToken`'s overlay trick (ADR-0177), and the same one
+     the line this replaces already used. Measured at 47.2px against a 15.2px visible line. */
+  position: relative;
+  display: inline-block;
+}
+.card-src-link::after {
+  content: '';
+  position: absolute;
+  inset: -16px -8px;
+}

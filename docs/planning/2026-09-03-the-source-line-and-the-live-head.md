@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03 · the day [ADR-0218](../decisions/0218-a-forecast-expires-and-the-widget-goes-rather-than-lies.md) shipped (PR #791)
 **Mockup:** [`mockups/a-card-carries-its-own-source-v1.html`](../../mockups/a-card-carries-its-own-source-v1.html)
-**Status:** drawn and measured; **three forks are with the owner** and none is built.
+**Status:** drawn, measured, and **built the same day** — the owner took all three forks (_"let's build everything discussed here (the mockup, according to your recommendations), and the weather follows you"_). Recorded as ADR-0218's 2026-09-03 amendment §A/§B/§C, which also amends ADR-0180 §9.
 
 ## What came back
 
@@ -119,3 +119,21 @@ source and therefore no attribution line, so it is not part of this question —
 file already paid for the alternative: an earlier version of
 `weather-as-a-glance-card-v1.html` hand-wrote that widget and the owner read the stub as a
 second _design_.
+
+## What the build found that the drawing had not
+
+**One, and it changed the shape of the head.** §4 drew `place · condition` and measured it free
+(46px → 46px). It never drew `place · condition · **amount**`, which is the real worst case on a
+rainy day — and at 360px that overflows, 149px into 127px. With `.wx-cond` as a single
+ellipsising run, the run that disappears is the **amount**: last in the string, and the one fact
+W4 exists for (_"the single most actionable fact; the reason 'do I need an umbrella' beats 'what
+is the weather'"_).
+
+So the head ships as three flex items — place, separator, detail — and **only the place may
+shrink**. Context gives ground; the answer does not. Added to the mockup as §6, which now reports
+`תקין · השם מקצר, הכמות שלמה` at 360 and `שום דבר לא מקוצץ` at 390.
+
+The general lesson is the one `frontend/CLAUDE.md` already states under "when a value gets WIDER":
+the row shape is a decision, not an inheritance. What is new is that it applies to a run **inside**
+a slot as much as to a slot inside a row — and that the ellipsis picks its victim by source order,
+which is not where the importance is.

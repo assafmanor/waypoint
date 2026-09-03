@@ -9732,9 +9732,25 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
       /* §4 · the head names the place it speaks for. One run, in the slot the head
          already has — `.wx-cond` becomes `place · condition` rather than gaining a
          fourth element. */
+      .wx-cond {
+        display: flex;
+        align-items: baseline;
+        gap: 4px;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: visible;
+        text-overflow: clip;
+      }
       .wx-where {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
         font-weight: 700;
         color: var(--ink);
+      }
+      .wx-sep,
+      .wx-detail {
+        flex: 0 0 auto;
       }
 
       /* ══════════════════════════════════════════════════════════════════════
@@ -10073,6 +10089,18 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         <div class="pair" id="s5"></div>
       </section>
 
+      <!-- ══════════════════════════ §6 ══════════════════════════ -->
+      <section class="case">
+        <h2>§6 · המקרה הגרוע של הראש · שם ארוך, מצב, וכמות משקעים</h2>
+        <p class="note">
+          <b>הצירוף הזה לא צויר ב-§4 והוא מה שנבנה בפועל.</b> <code>.wx-cond</code> מקצץ בשלוש
+          נקודות, אז ריצה רביעית בשורה היא בדיוק המקום שבו העובדה הכי מעשית (הכמות · W4) נעלמת
+          ראשונה. הפריים הימני הוא המקרה הרגיל, השמאלי הוא שם מקום ארוך עם משקעים · אם השמאלי
+          מקצץ, הכמות יורדת מהראש והרצועה נשארת המקום היחיד שנושא אותה.
+        </p>
+        <div class="pair" id="s6"></div>
+      </section>
+
       <div class="panel">
         <h2>מדידה · נקראת מה-DOM החי</h2>
         <p>
@@ -10148,9 +10176,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
        */
       function weatherCard({ src = false, where = null, days = DAYS_STILL, head } = {}) {
         const h = head ?? { g: '☀️', t: 31, cond: 'בהיר', lo: 26 };
+        // `place · condition · amount` — the shipped composition, and the worst case §6 measures.
+        const detail = h.mm ? `${h.cond} · ⁦${h.mm}⁩ מ״מ` : h.cond;
         const cond = where
-          ? `<span class="wx-where">${where}</span> · ${h.cond}`
-          : h.cond;
+          ? `<span class="wx-where">${where}</span><span class="wx-sep">·</span><span class="wx-detail">${detail}</span>`
+          : `<span class="wx-detail">${detail}</span>`;
         return `<section class="wx-widget">
             <div class="wx-head">
               <span class="wx-glyph" aria-hidden="true">${h.g}</span>
@@ -10235,6 +10265,17 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         const liveHead = moving
           ? { g: '🌦️', t: 22, cond: 'ממטרים', lo: 12 }
           : { g: '☀️', t: 31, cond: 'בהיר', lo: 26 };
+        document.querySelector('#s6').innerHTML = [
+          col(
+            '<span class="tag alt">רגיל · שם קצר, בלי משקעים</span>',
+            `<div class="glance-cards"><div id="s6-plain">${weatherCard({ src: true, where: 'קזבגי', head: { g: '⛅', t: 25, cond: 'מעונן חלקית', lo: 17 } })}</div></div>`,
+          ),
+          col(
+            '<span class="tag before">הגרוע · שם ארוך + כמות</span>',
+            `<div class="glance-cards"><div id="s6-worst">${weatherCard({ src: true, where: 'סטפנצמינדה', head: { g: '🌧️', t: 22, cond: 'גשום', lo: 12, mm: 4.1 } })}</div></div>`,
+          ),
+        ].join('');
+
         document.querySelector('#s5').innerHTML = [
           col(
             '<span class="tag before">היום · הראש והאריח הראשון</span>',
@@ -10365,6 +10406,28 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             'הרצועה · §5 מתחילה במחר',
             px(h('#s5-trim .wx-days')),
             delta(h('#s5-dup .wx-days'), h('#s5-trim .wx-days')) + ' · הפרש המסגרת המקווקוות של אריח מעבר לאופק',
+          ],
+          [
+            'ריצת המצב · §6 רגיל',
+            px(h('#s6-plain .wx-cond')),
+            'רוחב ' + (box('#s6-plain .wx-cond') ? Math.round(box('#s6-plain .wx-cond').width) : '—') + 'px',
+          ],
+          [
+            'ריצת המצב · §6 הגרוע (שם ארוך + כמות)',
+            px(h('#s6-worst .wx-cond')),
+            (() => {
+              const cond = document.querySelector('#s6-worst .wx-cond');
+              const detail = document.querySelector('#s6-worst .wx-detail');
+              const where = document.querySelector('#s6-worst .wx-where');
+              if (!cond || !detail || !where) return '—';
+              const detailCut = detail.scrollWidth > detail.clientWidth + 1;
+              const whereCut = where.scrollWidth > where.clientWidth + 1;
+              return detailCut
+                ? '⚠ הכמות מקוצצת'
+                : whereCut
+                  ? 'תקין · השם מקצר, הכמות שלמה'
+                  : 'תקין · שום דבר לא מקוצץ';
+            })(),
           ],
           [
             'ראש הכרטיס · §4 בלי שם מקום',

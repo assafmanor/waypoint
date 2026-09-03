@@ -354,6 +354,91 @@ function eventKnownCoord(
   return coordOf(places, event.placeId ?? undefined);
 }
 
+/**
+ * **WHERE YOU ARE RIGHT NOW, IN COORDINATES** — the coordinate twin of
+ * {@link liveZone}, exactly as {@link dayAnchorCoord} is the twin of
+ * `dayAmbientZone` (ADR-0218's 2026-09-03 amendment; owner: _"today's weather
+ * should update based on where we are right now or where we're headed, not the
+ * start of the day"_).
+ *
+ * **Why `dayAnchorCoord` could not answer this, since it looks like it should.**
+ * That function is a WHOLE-DAY consensus by construction — it was built for
+ * daylight, where one sunrise serves the day and asking "which half of the day"
+ * is meaningless. A forecast is the opposite: its whole value is the next few
+ * hours (the brief's §3.1). So this is a second question, not a bug in the first,
+ * and both stay.
+ *
+ * It mirrors `liveZone`'s three rules, on the same evidence and the same window:
+ *
+ *   1. An event **in progress** — you are there.
+ *   2. The **nearest** placed event within `LIVE_ZONE_WINDOW_MS` either side. This
+ *      is the half the owner called _"or where we're headed"_: an hour before the
+ *      drive, the next place is already the answer.
+ *   3. The day's own anchor, which is `dayAnchorCoord`'s consensus, else the
+ *      destination.
+ *
+ * **One rule is INVERTED against `dayAnchorCoord`, and it is the easy thing to
+ * miss.** `eventKnownCoord` abstains on a zone-crossing booking, because a thing
+ * that moves you between two places cannot testify about where the DAY sits. Live,
+ * the opposite is right: mid-transit belongs to the **destination**, which is
+ * ADR-0107 §8's standing rule and what `liveZone` already does with zones. So a
+ * crossing in progress resolves to its `to` end rather than abstaining.
+ *
+ * `undefined` is a first-class answer, inherited unchanged: no placed events and
+ * no destination means no forecast at all rather than a wrong one.
+ */
+export function liveAnchorCoord(
+  nowMs: number,
+  evidence: ZoneEvidence,
+  destination?: LatLng,
+): LatLng | undefined {
+  const { events, bookings, places } = evidence;
+  const timed = events.filter((e) => e.startsAt);
+
+  const inProgress = timed.find((e) => {
+    const start = Date.parse(e.startsAt!);
+    const end = e.endsAt ? Date.parse(e.endsAt) : start;
+    return start <= nowMs && nowMs < end;
+  });
+  if (inProgress) {
+    const at = liveEventCoord(inProgress, bookings, places);
+    if (at) return at;
+  }
+
+  let nearest: { at: LatLng; distance: number } | undefined;
+  for (const e of timed) {
+    const at = liveEventCoord(e, bookings, places);
+    if (!at) continue;
+    const start = Date.parse(e.startsAt!);
+    const end = e.endsAt ? Date.parse(e.endsAt) : start;
+    const distance = nowMs < start ? start - nowMs : nowMs > end ? nowMs - end : 0;
+    if (distance > LIVE_ZONE_WINDOW_MS) continue;
+    if (!nearest || distance < nearest.distance) nearest = { at, distance };
+  }
+  if (nearest) return nearest.at;
+
+  return dayAnchorCoord(liveToday(nowMs, evidence), evidence, destination) ?? destination;
+}
+
+/** An event's coordinate for the LIVE question — `eventKnownCoord` with its one
+ *  abstention inverted: a crossing booking reads its destination instead of
+ *  declining, because mid-transit belongs to where you are heading (ADR-0107 §8).
+ *  Everything else is the same answer, so the two cannot disagree about a stay. */
+function liveEventCoord(
+  event: TripEvent,
+  bookings: Booking[],
+  places: Place[],
+): LatLng | undefined {
+  const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
+  if (booking) {
+    const from = coordOf(places, booking.fromPlaceId ?? undefined);
+    const to = coordOf(places, booking.toPlaceId ?? undefined);
+    if (from && to && haversineMeters(from, to) > DAY_ANCHOR_AGREE_M) return to;
+    return coordOf(places, bookingPlaceId(booking)) ?? from ?? to;
+  }
+  return coordOf(places, event.placeId ?? undefined);
+}
+
 /** The zone the live "now" is in, for Trip mode's clock / now-line / "today"
  *  (ADR-0107 §4 + the session-100 amendment): **where the plan says you are right
  *  now**, evidenced by the events around this moment rather than by the last

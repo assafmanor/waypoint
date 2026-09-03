@@ -256,3 +256,94 @@ _after_ `toFixed`, not before. And `geo-tz` **throws** on an out-of-range latitu
 answering empty, which mattered because generalising the two inline `geo-tz` copies into
 `common/geo-zone.ts` (root rule 8 — the forecast roll-up would have been the third) put that
 throw in front of a write path reading a nullable `Float` somebody else wrote.
+
+## Amendment (2026-09-03) — three reports off the shipped build, and the constraint that expired
+
+The owner opened the merged build on a phone. One report was a defect (the day strip printed
+`ש׳׳` — a copy wrapper appended a geresh ICU already supplies); the other two are here. Drawn and
+measured first in [`mockups/a-card-carries-its-own-source-v1.html`](../../mockups/a-card-carries-its-own-source-v1.html),
+session note [`planning/2026-09-03-the-source-line-and-the-live-head.md`](../planning/2026-09-03-the-source-line-and-the-live-head.md).
+**All three sections below are built.**
+
+### §A. The source line moves inside the card, for both tenants — and this amends ADR-0180 §9
+
+_"The 'data from MET Norway', 'rates by exchange rate api' are fine, but I think that they should
+be inside the card itself, otherwise it looks a little bit out of place."_
+
+**ADR-0180 §9 had already drawn this and rejected it, on a structural ground rather than a visual
+one**: `RateCard` was one `<button>`, an `<a>` inside a `<button>` is invalid markup, so "inside"
+was never a placement — it was a decision to drop a link the source's terms require. §8 above
+retired half of that by shipping `WeatherCard` as a plain region. The other half is retired here:
+**`RateCard` splits into a `.fx-card` box and an inner `.fx-face` button**, so the link is the
+button's sibling rather than its child. ADR-0180 §3's decision survives in substance — one target
+for the whole card, still opening the converter — and what the split buys is the placement.
+
+**The asymmetric option is the trap, not the cheap one.** Moving weather's line inside and leaving
+the rate's outside costs nothing and gives one section two grammars for one job, side by side,
+with no rule a reader could state. That is the split ADR-0078/0079/0094/0095 exist to undo, and it
+is obvious on the render in a way it is not in prose. So one shared `CardSource` component and one
+`card-source.css` from the start.
+
+**Measured, and the first measurement changed the design.** A foot that brought its own padding
+cost **+9px a card**. Paying for it out of padding the card was _already holding_ — the strip's
+trailing `12px`, the rate row's `--space-3` — brings it to **+1px a card, +2px the section**
+against a 361.4px baseline. The 44px floor is met by the same `::after` overlay the retired
+`.fx-attr-link` used: 47.2px on a 15.2px visible line.
+
+What does **not** change: the credit is still per-card and still the source's own wording carried
+on the data. ADR-0180 §9's reasoning for that is untouched — a section heading cannot honestly
+attribute two tenants from two sources.
+
+### §B. Today's head follows the clock, not the start of the day
+
+_"Today's weather should update based on where we are right now or where we're headed. Not the
+start of the day."_
+
+**This is not a defect in `dayAnchorCoord`**, and saying so is the point of recording it. That
+function is a whole-day consensus _by construction_ — the coordinate sibling of `dayAmbientZone`,
+built for daylight, where one sunrise serves the day and "which half of the day" is not a
+question. A forecast is the opposite: its value is the next few hours. Two questions, so two
+derivations, and both stay.
+
+The new one is **`liveAnchorCoord`**, the coordinate twin of `liveZone`: same `ZoneEvidence`, same
+12-hour window, same three rules — **with one inversion**. `dayAnchorCoord`'s `eventKnownCoord`
+abstains on a zone-crossing booking, because a thing that moves you between two places cannot
+testify about where the _day_ sits. Live, the opposite is right: mid-transit belongs to the
+**destination** (ADR-0107 §8), which is also the report's _"or where we're headed"_. The window
+covers the rest — an hour before the drive, the next place is already the answer.
+
+**Only the live day moves.** A Saturday three days out has no "now", so the strip keeps
+`dayAnchorCoord`. And a day being _browsed_ rather than lived keeps it too: "where you are now" is
+not an answer about next Tuesday.
+
+**The head must name its place, and the drawing is what established that.** Anchored live and
+unnamed, a travel day shows `22°` over a strip tile reading `31°` — two true facts that read as a
+contradiction with nothing on screen to explain it. The name goes into the head's existing
+condition run rather than adding a fifth element: measured **46px → 46px**.
+
+**And the head is three runs, not one, because of what the build then measured.** `place ·
+condition · amount` overflows at 360px (149px into 127px), and with a single ellipsising run the
+thing cut is the **amount** — last in the string and the most actionable fact on the card (W4). So
+the place, the separator and the detail are separate flex items and **only the place may shrink**:
+context gives ground, the answer does not.
+
+This promotes the brief's **W6**, which the feature list had as a `Could`. The owner's version is
+sharper than the one recorded there: not "the next day's anchor" but the live one.
+
+### §C. The strip starts at tomorrow
+
+Found by rendering §B, in neither report, and **present in the shipped card**: the head and the
+first strip tile were the same day at the same place, so they printed the same number twice, 60px
+apart. That is the duplication ADR-0214 measured (a confirmation code twice) and ADR-0215 measured
+again (`19:00` four times), each time removing it.
+
+The head is today; the strip is the days after it. Cost **+2px** (a dashed beyond-tile's border
+enters the scroll) and one further day reaches the screen without scrolling. `t.weather.today` is
+deleted rather than left unused — no tile is today any more.
+
+### What this amendment does not reopen
+
+§7's condition mark is still an emoji and its tripwire is unchanged — the card still has no
+illustration to draw from. §9's refusals stand: no alert, no hourly strip, no humidity/wind/
+pressure/feels-like, no weather-driven suggestions, no location permission. The 6h/24h shelf life,
+the cell key and the store are untouched.
