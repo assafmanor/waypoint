@@ -590,3 +590,85 @@ Open-Meteo's own** — same shape, same fields, no integration change.
 **Fork C is untouched by all of this.** The staleness bound is still a feel call, and it is still
 the owner's. The measurement narrows nothing there: both candidates publish an issue time, so
 either can support any bound chosen.
+
+---
+
+## The provider's contract, as measured (2026-09-03)
+
+[ADR-0218](../decisions/0218-a-forecast-expires-and-the-widget-goes-rather-than-lies.md) records the
+**decision**; this section records the **shape**, so the build does not re-derive it by probing the
+API again. Measured at Tokyo (`35.6762,139.6503`), 2026-09-03, against
+`api.met.no/weatherapi/locationforecast/2.0`.
+
+### The endpoint is `complete`, and the reason is a field rather than a preference
+
+`compact` is the obvious pick — smaller, and the app wants none of the pressure/humidity/UV that
+`complete` adds. **It is the wrong pick**, and the measurement says so flatly:
+
+| endpoint   | rows | rows carrying `next_6_hours.air_temperature_max` | payload |
+| ---------- | ---- | ------------------------------------------------ | ------- |
+| `compact`  | 87   | **0**                                            | ~37 KB  |
+| `complete` | 87   | **81**                                           | ~58 KB  |
+
+Same reach, same row count. `compact` publishes `precipitation_amount` in its `next_6_hours` block
+and **no temperatures at all** — so a `compact` build would have to derive the day's high and low
+from `instant` samples, which is exactly what the next subsection shows it cannot do well. **21 KB
+buys the daily extremes.**
+
+### The series changes resolution partway, and this is the trap
+
+`timeseries` is **not** a uniform grid:
+
+- **87 rows**, `2026-09-03T07:00Z` → `2026-09-12T12:00Z` — about **9.2 days**, which is where §5's
+  ~10-day horizon number comes from.
+- **59 rows at a 1-hour step, then 27 rows at a 6-hour step.** The last hourly row sits ~2.4 days
+  out.
+- Forward-looking blocks are present unevenly: `next_1_hours` on 59 rows, `next_6_hours` on **81**,
+  `next_12_hours` on 75.
+- **The final row carries no forward block at all** — it is the one row of 87 with no `symbol_code`,
+  because nothing follows it to summarise.
+
+**So the daily roll-up reads `next_6_hours`, not `instant`.** It is the only block that spans both
+resolutions (81 of 87 rows), and it hands over `air_temperature_max` / `air_temperature_min`
+directly rather than making the app infer extremes from samples that thin out by 6× on day 3. An
+`instant`-based roll-up would silently compute days 1-2 from 24 samples and day 6 from 4, and would
+look correct in a test written against tomorrow.
+
+Two guards follow from the same measurement, and both are cheap only if known in advance:
+
+1. **The last row has no forward block.** Skip it, or the final day aggregates to `undefined`.
+2. **The trailing day is partial** (the series ends at `12:00Z`, mid-day). A partial day's max/min is
+   not a daily extreme, so it is **beyond the horizon** (§5's placeholder), not a day with a
+   suspiciously mild high. Same shape as Open-Meteo's trailing `null` rows, and the same answer.
+
+### Fields, and where they actually live
+
+- `symbol_code` is in each block's **`summary`**, not its `details` —
+  `next_1_hours|next_6_hours|next_12_hours → summary.symbol_code` — and carries **day/night variants
+  natively** (`clearsky_day`, `fair_night`). ADR-0218 §7 keeps the mark itself an emoji through a
+  lookup; the variant is what lets that lookup be right at night without the app computing anything.
+- `next_6_hours.details` is exactly `air_temperature_max`, `air_temperature_min`,
+  `precipitation_amount`. **There is no `probability_of_precipitation`** at this location — W4 is an
+  amount, and the copy must not imply a chance the source does not publish.
+- **Every timestamp is UTC (`Z`).** The day's boundaries are the _local_ day's, per ADR-0107 and
+  `dayAnchorCoord` — so the roll-up buckets UTC instants into the day's own zone. That is the work
+  ADR-0218's consequences call a partial gain, and it is where it is actually spent.
+- `properties.meta.updated_at` is the **issue time** — the input to §4's staleness bound, and what
+  the card's "as of" reads. It is not the fetch time, and the difference is the whole point of the
+  rule.
+- Units come back in `properties.meta.units` (`air_temperature: "celsius"`). Read them rather than
+  assuming; the app has no Fahrenheit surface today, and an assumption here is invisible until it is
+  not.
+
+### The politeness contract, restated as code obligations
+
+MET's TOS asks three things, all measured live and all cheap:
+
+- **An identifying `User-Agent`** with an application name and a contact — their own example shape is
+  `AcmeWeatherApp/0.9 github.com/acmeweatherapp`. **A repo URL, never a person's email.**
+- **`Expires` and `Last-Modified` are honoured.** Measured: `expires` ~22 minutes out,
+  `last-modified` present, both on every response. Re-fetch with `If-Modified-Since` set to the
+  previous `Last-Modified` **verbatim** — their docs call out that it must be the previous value and
+  not an arbitrary timestamp. A `304` is a successful refresh, not a miss.
+- **≤ 20 req/s across the whole application.** Not a per-user limit. The once-per-cell-per-refresh
+  design is orders of magnitude under it; the number matters only if a backfill is ever written.
