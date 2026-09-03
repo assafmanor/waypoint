@@ -167,14 +167,18 @@ export class RoutingService {
     // stored leg above is still served; what is missing reads as §D4's absence, and no
     // `retryAfterSeconds` is offered because nothing is coming.
     //
-    // **An open breaker is read the same way, and that is the point of reading it here at all**
-    // (ADR-0205 §Y3). The limiter would refuse these calls anyway, so this changes nothing about
-    // what leaves the process — it changes what we PROMISE. Offering a `Retry-After` during an
-    // outage sends the client through all six `DAY_TRAVEL_WARM_ATTEMPTS` rounds and shows
-    // `מחשב…` over each one before blanking it, which is the state ADR-0206 §AU1 exists to
-    // prevent: a spinner over an answer that is not coming. Withholding it settles the day
-    // straight into §D4's crow-flies chip, which is the honest reading of "we do not know".
-    if (this.isDisabled() || this.limiter.isOpen) return { legs };
+    // **The BREAKER is deliberately not read here, and §Y3 read it here as a latch** (§Y4). It
+    // returned early on `limiter.isOpen` before `warm()` below — and `warm()` is the only caller
+    // of `limiter.runQuietly`, so it was the only path that ever reached `run()`. Three failures
+    // therefore stopped `warm()` for good: nothing called `run()`, so nothing called `record()`,
+    // so the count never reset and the half-open probe was unreachable. The breaker latched open
+    // for the life of the process, which is the owner's _"added a new event and it didn't even
+    // try"_ — an outage of our own on top of the provider's.
+    //
+    // The seat is protected one level down, where it always was: `warm()` runs, and the limiter
+    // refuses each suppressed call without spending the seat or its timeout. That is the whole
+    // saving; withholding the promise was never part of it.
+    if (this.isDisabled()) return { legs };
 
     const plannedCalls = this.warm(stops, clusters, pending);
     return { legs, retryAfterSeconds: retryAfterFor(plannedCalls) };
@@ -275,26 +279,42 @@ export class RoutingService {
     });
   }
 
+  /**
+   * **ONE OUTBOUND CALL, AND A PROVIDER REFUSAL IS NOT AN OUTAGE** (§Z9, generalised in §Y4).
+   *
+   * `runMatrix` carried this rule inline and `runShape` did not carry it at all — which stopped
+   * being a cosmetic asymmetry the moment §Y3 put a breaker behind the limiter. The gate admits
+   * on **crow** distance and the provider refuses on **path** distance (§Z9, road/crow 1.23–1.34
+   * for `auto`), so an admitted leg can still come back `RouteOutOfRangeError` — and through
+   * `runShape` that counted as a FAILURE. Three such legs, which is one Iceland ring-road day
+   * asking for its map lines, would have tripped the breaker and suppressed routing for every
+   * trip on the server. A self-inflicted outage out of entirely ordinary data.
+   *
+   * So the rule is stated once, for both callers: the provider stating a limit means the provider
+   * is ALIVE and this pair is answered — never coming, logged once, those legs absent (§D4). Only
+   * a call that did not get an answer at all is a failure the breaker should count.
+   */
+  private async askProvider(label: string, work: () => Promise<void>): Promise<void> {
+    await this.limiter.runQuietly(label, async () => {
+      try {
+        await work();
+      } catch (error) {
+        if (error instanceof RouteOutOfRangeError) {
+          this.logger.log(`provider refused ${label} as out of range: ${error.detail}`);
+          return;
+        }
+        throw error;
+      }
+    });
+  }
+
   private async runMatrix(
     points: readonly LatLng[],
     clusters: readonly (readonly LatLng[])[],
     mode: TravelMode,
   ): Promise<void> {
-    await this.limiter.runQuietly(`matrix ${mode} x${points.length}`, async () => {
-      let cells;
-      try {
-        cells = await this.provider.matrix(points, mode);
-      } catch (error) {
-        // The provider stating a limit is terminal, not an outage — the same request fails
-        // identically forever, so it is logged once and those legs stay absent (§D4). §Z9's
-        // batching is what makes this cost the pairs in ONE request rather than the whole day.
-        if (error instanceof RouteOutOfRangeError) {
-          this.logger.log(`provider refused a ${mode} batch as out of range: ${error.detail}`);
-          return;
-        }
-        throw error;
-      }
-
+    await this.askProvider(`matrix ${mode} x${points.length}`, async () => {
+      const cells = await this.provider.matrix(points, mode);
       const tilesetAt = await this.provider.dataVersion();
       const rows: RouteLegWrite[] = [];
       for (const cell of cells) {
@@ -326,7 +346,7 @@ export class RoutingService {
   }
 
   private async runShape(from: LatLng, to: LatLng, mode: TravelMode): Promise<void> {
-    await this.limiter.runQuietly(`shape ${mode}`, async () => {
+    await this.askProvider(`shape ${mode}`, async () => {
       const answer = await this.provider.shape(from, to, mode);
       if (!answer) return;
       await this.store([

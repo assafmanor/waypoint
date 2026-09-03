@@ -12,7 +12,7 @@ import { clusterLatLngs, haversineMeters, routeLegKey, type LatLng } from '@wayp
 import { ROUTING_DISABLED } from '../common/env';
 import type { MapService } from '../map/map.service';
 import type { PrismaService } from '../prisma/prisma.service';
-import { PolitenessLimiter } from './politeness.limiter';
+import { PolitenessLimiter, ROUTING_BREAKER_COOLDOWN_MS } from './politeness.limiter';
 import { RouteOutOfRangeError, type RouteProvider } from './route-provider';
 import { RoutingService } from './routing.service';
 
@@ -317,15 +317,124 @@ describe('RoutingService', () => {
     }
     expect(failing.mock.calls.length).toBe(3);
 
-    // The fourth sends nothing — and, the half that is about the READER, offers no
-    // `retryAfterSeconds`: a client told to wait spins `מחשב…` through all six
-    // `DAY_TRAVEL_WARM_ATTEMPTS` rounds over an answer that is not coming (ADR-0206 §AU1). The
-    // day settles straight into §D4's crow-flies chip instead.
+    // The fourth spends no call: the seat and its 15 s timeout are the saving, and they are made
+    // one level down, inside the limiter.
     const cold = await service.batch('trip', { stops: [ASAKUSA, SHINJUKU], modes: ['walking'] });
     await service.settled();
-    expect(cold.retryAfterSeconds).toBeUndefined();
     expect(cold.legs[0]!.estimates).toEqual([]);
     expect(failing.mock.calls.length).toBe(3);
+
+    // **And it still PROMISES a retry, which §Y3 got wrong** (§Y4). Withholding it was meant to
+    // spare the reader a spinner; what it actually did was skip `warm()` — the only path that
+    // ever reaches `limiter.run()` — so the breaker could never close and routing stayed dead
+    // until the process restarted. The endpoint keeps saying "ask again", because asking again
+    // is what carries the probe that reopens the seat.
+    expect(cold.retryAfterSeconds).toBeDefined();
+  });
+
+  it('RECOVERS through the endpoint once the provider answers again', async () => {
+    // **The §Y3 latch (2026-09-02, owner: _"added a new event and it didn't even try"_).**
+    //
+    // `batch` returned early on `limiter.isOpen` BEFORE calling `warm()` — and `warm()` is the
+    // only caller of `limiter.runQuietly`, so it was the only path that ever reached `run()`.
+    // Three failures therefore made `batch` stop calling `warm()` for good: nothing called
+    // `run()`, so nothing called `record()`, so `failures` never reset and the half-open probe in
+    // `admit()` was unreachable. The breaker latched open for the life of the process and only a
+    // restart cleared it. A breaker that cannot close is not a breaker, it is an outage we caused.
+    vi.useFakeTimers();
+    const { prisma } = fakePrisma();
+    let down = true;
+    const flaky = vi.fn((points: readonly LatLng[], mode: string) =>
+      down
+        ? Promise.reject(new Error('fetch failed'))
+        : Promise.resolve(
+            points.flatMap((_, from) =>
+              points.flatMap((__, to) =>
+                from === to
+                  ? []
+                  : [
+                      {
+                        fromIndex: from,
+                        toIndex: to,
+                        durationSeconds: haversineMeters(points[from]!, points[to]!),
+                        distanceMeters: haversineMeters(points[from]!, points[to]!),
+                      },
+                    ],
+              ),
+            ),
+          ),
+    );
+    const { provider } = fakeProvider({
+      matrix: flaky as unknown as RouteProvider['matrix'],
+    });
+    const service = build(TOKYO_TRIP, provider, prisma);
+
+    // Open it: three cold legs against a dead provider.
+    for (const stops of [
+      [ASAKUSA, TSUKIJI],
+      [SENSO, SHINJUKU],
+      [TSUKIJI, SHINJUKU],
+    ]) {
+      await service.batch('trip', { stops, modes: ['walking'] });
+      await service.settled();
+    }
+    const spentWhileDown = flaky.mock.calls.length;
+
+    // The provider comes back, and the cooldown elapses. Nobody restarts anything.
+    down = false;
+    await vi.advanceTimersByTimeAsync(ROUTING_BREAKER_COOLDOWN_MS);
+
+    // A brand-new pair — the owner's "added a new event" — must get a real attempt.
+    await service.batch('trip', { stops: [ASAKUSA, SHINJUKU], modes: ['walking'] });
+    await service.settled();
+    expect(flaky.mock.calls.length).toBeGreaterThan(spentWhileDown);
+
+    // …and the estimate is then actually served, which is the whole point.
+    const warm = await service.batch('trip', { stops: [ASAKUSA, SHINJUKU], modes: ['walking'] });
+    expect(warm.legs[0]!.estimates[0]!.mode).toBe('walking');
+  });
+
+  it('a SHAPE refused as out of range does not count toward the breaker', async () => {
+    // §Y4's second half. The gate admits on crow distance, the provider refuses on PATH distance
+    // (§Z9), so an admitted leg can legitimately answer `RouteOutOfRangeError` — and `runShape`
+    // was the one caller with no handling for it, so each one counted as a failure. Three, which
+    // is a single ring-road day asking for its map lines, would have tripped the breaker and
+    // suppressed routing for every trip on the server.
+    const { prisma } = fakePrisma();
+    const refusing = vi.fn(() => Promise.reject(new RouteOutOfRangeError('Path distance exceeds')));
+    const { provider, matrix } = fakeProvider({
+      shape: refusing as unknown as RouteProvider['shape'],
+    });
+    const service = build(ICELAND_TRIP, provider, prisma);
+    const legs: [LatLng, LatLng][] = [
+      [REYKJAVIK, VIK],
+      [VIK, HOFN],
+      [REYKJAVIK, BLUE_LAGOON],
+    ];
+
+    // **Durations first**, so the refusals below land CONSECUTIVELY. A successful matrix call
+    // between them resets the count, which is exactly how the first draft of this test passed
+    // against the defect: the run has to look like a day whose numbers are already cached and
+    // is now asking only for its lines.
+    for (const [from, to] of legs) {
+      await service.batch('trip', { stops: [from, to], modes: ['driving'] });
+      await service.settled();
+    }
+
+    // Now only shapes are owed, and every one is refused — three in a row, nothing in between.
+    for (const [from, to] of legs) {
+      await service.batch('trip', { stops: [from, to], modes: ['driving'], withShapes: true });
+      await service.settled();
+    }
+    expect(refusing.mock.calls.length).toBe(3);
+
+    // The breaker must still be closed: a fresh pair gets a real matrix call and an estimate.
+    const spent = matrix.mock.calls.length;
+    await service.batch('trip', { stops: [BLUE_LAGOON, VIK], modes: ['driving'] });
+    await service.settled();
+    expect(matrix.mock.calls.length).toBeGreaterThan(spent);
+    const warm = await service.batch('trip', { stops: [BLUE_LAGOON, VIK], modes: ['driving'] });
+    expect(warm.legs[0]!.estimates[0]!.mode).toBe('driving');
   });
 
   it('dedupes concurrent warms — two members opening the same day cost one call', async () => {

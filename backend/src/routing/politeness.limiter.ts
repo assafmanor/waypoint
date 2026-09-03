@@ -86,19 +86,19 @@ export class PolitenessLimiter {
     private readonly cooldownMs: number = ROUTING_BREAKER_COOLDOWN_MS,
   ) {}
 
-  /** **Whether the provider is currently believed to be down**, for a caller that has to decide
-   *  what to promise rather than what to send. `RoutingService.batch` reads it exactly as it
-   *  reads `ROUTING_DISABLED`: every stored leg is still served, and no `retryAfterSeconds` is
-   *  offered, because nothing is coming and a client spinning `מחשב…` for six rounds over an
-   *  outage is the one state ADR-0206 §AU1 forbids. */
-  get isOpen(): boolean {
+  /** **Tripped, counting failures alone** — which is NOT the same question as "may this call go".
+   *  Private, and it is §Y4's correction that it must stay private: a public getter spelled like
+   *  this reads as "the provider is down, do not bother", and `RoutingService.batch` used it to
+   *  skip the very call path that lets the breaker close again. Whether a call may leave is
+   *  `admit()`'s answer, because only `admit()` knows about the cooldown. */
+  private get tripped(): boolean {
     return this.failures >= this.breakerThreshold;
   }
 
   /** May this call leave the process at all? Closed: always. Open: only the one probe the
    *  cooldown has earned, and only if no probe is already out. */
   private admit(): boolean {
-    if (!this.isOpen) return true;
+    if (!this.tripped) return true;
     if (this.probing) return false;
     if (Date.now() - this.openedAt < this.cooldownMs) return false;
     this.probing = true;
@@ -108,7 +108,7 @@ export class PolitenessLimiter {
   /** A call came back. Success closes the breaker; failure counts, and re-stamps the cooldown
    *  whenever the count is at or past the threshold so a failed probe buys another full wait. */
   private record(ok: boolean): void {
-    const wasOpen = this.isOpen;
+    const wasOpen = this.tripped;
     this.probing = false;
     if (ok) {
       this.failures = 0;
@@ -116,7 +116,7 @@ export class PolitenessLimiter {
       return;
     }
     this.failures++;
-    if (this.isOpen) {
+    if (this.tripped) {
       this.openedAt = Date.now();
       if (!wasOpen) {
         this.logger.warn(
