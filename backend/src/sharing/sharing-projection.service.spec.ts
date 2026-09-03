@@ -1325,8 +1325,13 @@ describe('SharingProjectionService', () => {
         data: {
           name: 'איסלנד ׳26',
           destination: 'איסלנד',
-          startDate: new Date('2026-09-11'),
-          endDate: new Date('2026-09-12'),
+          // **Starts the day BEFORE the flight**, which is the day the eighteenth amendment is
+          // about: a day of the trip spent entirely at home, whose only zone-bearing event is
+          // in Tel Aviv, on a trip whose primary zone is Iceland's.
+          startDate: new Date('2026-09-10'),
+          // Through the 13th, so the ambient-span case below has a middle night with a card of
+          // its own and nothing else on it.
+          endDate: new Date('2026-09-13'),
           // The trip's primary zone is the DESTINATION's, which is what makes the outbound
           // day the interesting one: none of its rows are in it.
           timezone: 'Atlantic/Reykjavik',
@@ -1339,12 +1344,29 @@ describe('SharingProjectionService', () => {
 
       const place = (name: string, timezone: string) =>
         prisma.place.create({ data: { tripId: trip.id, name, timezone, updatedBy: OWNER } });
-      const [tlv, vie, kef, hotel] = await Promise.all([
+      const [tlv, vie, kef, hotel, home] = await Promise.all([
         place('נתב״ג', 'Asia/Jerusalem'),
         place('וינה', 'Europe/Vienna'),
         place('קפלאוויק', 'Atlantic/Reykjavik'),
         place('Gissurarbúð 5', 'Atlantic/Reykjavik'),
+        place('הכרם', 'Asia/Jerusalem'),
       ]);
+
+      // **The last dinner before you go** — a placed, non-crossing row on a day of the trip
+      // that is lived in the origin's zone. It is the only voter on 2026-09-10, so that card's
+      // zone is Jerusalem while the trip's primary stays Iceland's.
+      await prisma.event.create({
+        data: {
+          tripId: trip.id,
+          date: new Date('2026-09-10'),
+          title: 'ארוחה אחרונה בכרם',
+          kind: 'soft',
+          startsAt: new Date('2026-09-10T17:00:00Z'), // 20:00 Jerusalem
+          endsAt: new Date('2026-09-10T19:00:00Z'),
+          placeId: home.id,
+          updatedBy: OWNER,
+        },
+      });
 
       const leg = async (from: string, to: string, startsAt: string, endsAt: string) => {
         const booking = await prisma.booking.create({
@@ -1492,6 +1514,65 @@ describe('SharingProjectionService', () => {
       // 15:00 Iceland. The crossings put you in Vienna at that instant, which is true and is
       // not the question: the hotel's door opens at 15:00 where the hotel is.
       expect(day?.checkIn?.label).toBe('15:00');
+    });
+
+    /**
+     * **WHICH ZONE EACH CARD IS LIVED IN** (ADR-0213's eighteenth amendment).
+     *
+     * `trip.timezone` was the only zone the page had for anything about _now_, so the day
+     * spent at home was marked and clocked in Iceland's. Each day now carries
+     * `dayAmbientZone`, the answer every day surface in the app frames a day with, and the
+     * three days here are its three rungs in order: the day's own events, the itinerary
+     * segment where they abstain, and the trip primary behind both.
+     */
+    it('gives each day the zone it is LIVED in, not the trip’s primary', async () => {
+      const projection = await project();
+      const zoneOf = (date: string) => projection.days.find((day) => day.date === date)?.timezone;
+
+      // Rung 1 — the day's own events agree: one placed dinner in Tel Aviv, and the day is
+      // Tel Aviv's, whatever the trip's destination is.
+      expect(zoneOf('2026-09-10')).toBe('Asia/Jerusalem');
+      // Rung 1 again, on the travel day: both legs are crossings and abstain, so the hotel is
+      // the only voter left and the day resolves to the bed rather than to the runway.
+      expect(zoneOf('2026-09-11')).toBe('Atlantic/Reykjavik');
+      // Rung 2 — nothing sits on the 12th, so the itinerary segment answers: after the last
+      // crossing, that is Iceland.
+      expect(zoneOf('2026-09-12')).toBe('Atlantic/Reykjavik');
+    });
+
+    it('counts a multi-night stay as evidence on the nights it covers', async () => {
+      // `Event.endDate` is what `eventsOnDate` reads for an ambient span, and it was not in
+      // `SHARE_EVENT_SELECT` — a column absent from a select is not a type error, it is a day
+      // with no voter quietly falling through to the trip primary. So this asserts through a
+      // stay on a night that has nothing else on it at all: the 13th holds no event of its
+      // own, and only the span reaches it.
+      const vienna = await prisma.place.findFirstOrThrow({
+        where: { tripId: zoneTripId, timezone: 'Europe/Vienna' },
+      });
+      const span = await prisma.event.create({
+        data: {
+          tripId: zoneTripId,
+          date: new Date('2026-09-12'),
+          endDate: new Date('2026-09-13'),
+          title: 'עצירה בוינה',
+          kind: 'hard',
+          placeId: vienna.id,
+          updatedBy: OWNER,
+        },
+      });
+      try {
+        const projection = await project();
+        const zoneOf = (date: string) => projection.days.find((day) => day.date === date)?.timezone;
+        expect(zoneOf('2026-09-13')).toBe('Europe/Vienna');
+        // And without it the same night is the segment's, which is what the assertion above
+        // is worth something against.
+        await prisma.event.delete({ where: { id: span.id } });
+        expect((await project()).days.find((day) => day.date === '2026-09-13')?.timezone).toBe(
+          'Atlantic/Reykjavik',
+        );
+      } finally {
+        await prisma.event.deleteMany({ where: { id: span.id } });
+      }
     });
   });
 });

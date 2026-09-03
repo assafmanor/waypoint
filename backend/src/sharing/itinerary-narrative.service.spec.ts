@@ -33,6 +33,7 @@ const OWNER = 'u-assaf';
 const PRIVATE_DAY: SharedDay = {
   ordinal: 1,
   date: '2026-08-29',
+  timezone: 'Atlantic/Reykjavik',
   title: { kind: SHARE_DAY_KIND.PLACE, at: 'רייקיאוויק' },
   summary: { kind: SHARE_DAY_SUMMARY_KIND.EVENTS, titles: ['נחיתה'] },
   sections: [

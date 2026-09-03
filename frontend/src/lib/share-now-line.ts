@@ -1,7 +1,11 @@
-// **WHERE "NOW" LANDS INSIDE A SHARED DAY** (ADR-0213's eleventh amendment §5).
+// **WHOSE CLOCK "NOW" IS ON, AND WHERE IT LANDS INSIDE A SHARED DAY** (ADR-0213's eleventh
+// amendment §5, and its eighteenth for the first half). Two questions, one file, because the
+// second is only as good as the zone the first one picks: for as long as the marker existed it
+// compared the DESTINATION's clock against labels resolved per event. `shareNowZone` answers
+// the first, immediately below the imports; the placement walk is the rest of the file.
 //
-// The app's own answer to this is `lib/now-line.ts`'s `nowLinePlacement`, and it cannot be
-// reused: it reads instants (`atMs`, `endsAt`) off `DayEntry`, and the public projection
+// The app's own answer to the placement is `lib/now-line.ts`'s `nowLinePlacement`, and it
+// cannot be reused: it reads instants (`atMs`, `endsAt`) off `DayEntry`, and the public projection
 // deliberately ships pre-formatted `HH:MM` labels so two renderers cannot format one instant
 // two ways. What this keeps from it is the SHAPE — a marker between rows, and after them all
 // once every one is behind. What it changes is which end of a row decides the boundary; the
@@ -21,9 +25,59 @@
 // Ordering those labels as raw clock times would put the marker above an event that happens
 // nineteen hours later. `dawnOrder` adds a day to anything before 05:00 — the same statement
 // `shareDaypart` already makes by treating `night` as its fallthrough.
-import { SHARE_DAYPART, SHARE_DAYPART_START_HOUR, type SharedDay } from '@waypoint/shared';
+import {
+  SHARE_DAYPART,
+  SHARE_DAYPART_START_HOUR,
+  shareToday,
+  type SharedDay,
+} from '@waypoint/shared';
 import { MINUTES_PER_DAY, MINUTES_PER_HOUR } from '../constants';
 import { nowInside, type NowSpan } from './now-inside';
+import { DAY_PHASE, dayPhase } from './time';
+
+/**
+ * **WHOSE CLOCK THE PAGE'S "NOW" IS ON** (ADR-0213's eighteenth amendment).
+ *
+ * The page used to ask `trip.timezone` — the trip's PRIMARY zone, which is the destination's.
+ * The eleventh amendment §6 defended that as "the same function every day surface in the app
+ * runs", and `todayInTz` was indeed the same function; the ZONE handed to it was not. Every
+ * day surface in the app resolves that zone from the itinerary (`liveZone`/`dayAmbientZone`,
+ * ADR-0107 §4), so this page was the only surface asking what day it is on a clock nobody on
+ * the trip may be reading — the trip's first morning at home, or any day spent away from the
+ * primary zone.
+ *
+ * The projection now ships each day's own zone (`SharedDay.timezone`, `dayAmbientZone`), so
+ * the question a card answers is asked of the card: **which day holds this moment, on its own
+ * clock.** Three answers, in this order:
+ *
+ *  1. **A day that claims the moment** — the first one, so an overlap at a zone seam resolves
+ *     to the earlier day. That is the generous reading `isDayOver` already argues for: flying
+ *     east, the evening you leave belongs to the day you are still standing in, not to the
+ *     destination's calendar which has already turned over.
+ *  2. **The last day behind us**, for the gap the opposite seam opens: flying west, a day in
+ *     Tokyo ends six hours before the following day in Israel begins, and no card claims
+ *     those hours. The clock that fits them is the one you just left.
+ *  3. **The trip's primary zone**, before the trip and after it — where nothing is marked
+ *     `עכשיו` anyway, so this only decides what a phase line reads against.
+ *
+ * `dayPhase` rather than a fourth spelling of the comparison: the eleventh amendment §7 lifted
+ * it out of two surfaces for exactly this reason, and a card that swallowed two days is today
+ * while either of them is.
+ */
+export function shareNowZone(
+  days: readonly Pick<SharedDay, 'date' | 'endDate' | 'timezone'>[],
+  primaryZone: string,
+  at: Date,
+): string {
+  let behind: string | undefined;
+  for (const day of days) {
+    // Each day read on its OWN clock — one `today` for all of them is the thing being fixed.
+    const phase = dayPhase(day.date, shareToday(at, day.timezone), day.endDate);
+    if (phase === DAY_PHASE.TODAY) return day.timezone;
+    if (phase === DAY_PHASE.PAST) behind = day.timezone;
+  }
+  return behind ?? primaryZone;
+}
 
 /** One event of the day, named the way this page can find it again. */
 export interface ShareNowEventRef {
@@ -62,12 +116,14 @@ function dawnOrder(label: string): number {
  *
  * `null` in three cases, and each is a refusal rather than a gap:
  *
- *  - **The day crosses a time zone.** `nowLabel` is the wall clock in the trip's PRIMARY
- *    zone, but a travel day's labels are resolved per event in their own display zone
- *    (ADR-0107), so the comparison is against two different clocks and would be wrong by the
- *    shift. A day carrying `zoneShiftMinutes` is exactly that day — and it is also the day a
- *    now-line adds least, since what a reader wants there is the flight, which the journey
- *    block already frames.
+ *  - **The day crosses a time zone.** `nowLabel` is one clock — the day's own ambient
+ *    (`shareNowZone`) — but a travel day's labels are resolved per event in their own display
+ *    zone (ADR-0107), so on that day alone the comparison is against two clocks and would be
+ *    wrong by the shift. A day carrying `zoneShiftMinutes` is exactly that day, which is also
+ *    why this refusal is what makes the zone question answerable per DAY at all (eighteenth
+ *    amendment §2): every day this does NOT refuse is a day whose every label resolved in the
+ *    zone `nowLabel` is on. And it is the day a now-line adds least, since what a reader wants
+ *    there is the flight, which the journey block already frames.
  *  - **Nothing on the day is timed.** At Summary no event carries a label at all, and a day
  *    of only `flexible` entries has no order for a marker to sit in.
  *  - **No section is left to hold it**, which is the same case stated from the other end.

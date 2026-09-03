@@ -21,10 +21,11 @@ import {
   TIME_MEANING,
   type SharedTime,
   sharedItinerarySchema,
+  dayAmbientZone,
   eventDisplayZones,
   tripZoneCrossings,
   type ZoneCrossing,
-  zoneOffsetAt,
+  zoneOffsetMinutes,
   type ShareDaypart,
   type ShareDetailLevel,
   type SharedAppendix,
@@ -316,22 +317,13 @@ function travelFacts(
   const toZone = placeById.get(event.booking?.toPlaceId ?? '')?.timezone;
   const shift =
     from && to && fromZone && toZone
-      ? zoneOffsetMinutesAt(to, toZone) - zoneOffsetMinutesAt(from, fromZone)
+      ? zoneOffsetMinutes(to, toZone) - zoneOffsetMinutes(from, fromZone)
       : 0;
 
   return stripUndefined({
     durationMinutes: durationMinutes && durationMinutes > 0 ? durationMinutes : undefined,
     zoneShiftMinutes: shift === 0 ? undefined : shift,
   });
-}
-
-/** Signed minutes from `zoneOffsetAt`'s `+09:00` form — the shared, DST-correct probe rather
- *  than a second table (root rule 8; `frontend/src/lib/time.ts` parses the same string). */
-function zoneOffsetMinutesAt(at: Date, timeZone: string): number {
-  const text = zoneOffsetAt(at, timeZone);
-  const sign = text.startsWith('-') ? -1 : 1;
-  const [hours, minutes] = text.slice(1).split(':').map(Number);
-  return sign * (hours * 60 + minutes);
 }
 
 /**
@@ -563,6 +555,44 @@ interface ShareZoneContext {
   primaryZone: string;
   bookings: unknown[];
   places: unknown[];
+  /** **Prisma's event rows with their DATE columns spelled the way `@waypoint/shared` types
+   *  them** — see `zoneEventEvidence`. The other three arrays cross the seam raw because the
+   *  resolvers read only fields whose runtime shapes already match; these do not. */
+  events: unknown[];
+}
+
+/**
+ * **The one place Prisma's `Date` columns are translated rather than cast** (2026-09-03).
+ *
+ * Every other array in `ShareZoneContext` goes through `as never` because the shared
+ * resolvers read fields whose runtime shapes already agree. `eventsOnDate` does not: it
+ * compares day keys as STRINGS, so a `Date` sitting in `date`/`endDate` matches nothing and
+ * answers "no event is on this day" — a silently empty vote, not a type error, which would
+ * have put every card back on the trip's primary zone with all the machinery in place.
+ * Instants are normalised alongside them so the next reader may hand this to anything in
+ * `zones.ts`, not only to the two functions that ignore them.
+ */
+function zoneEventEvidence(events: ShareEventRow[]): unknown[] {
+  return events.map((event) => ({
+    ...event,
+    date: dayKey(event.date),
+    endDate: event.endDate ? dayKey(event.endDate) : undefined,
+    startsAt: event.startsAt?.toISOString(),
+    endsAt: event.endsAt?.toISOString(),
+  }));
+}
+
+/** **Which zone a DAY is lived in** — `dayAmbientZone`, the same answer the app's day
+ *  surfaces frame a day with, at the one cast site `displayZones` established below. This is
+ *  what a shared card says "now" in (`SharedDay.timezone`). */
+function dayZone(date: string, zones: ShareZoneContext): string {
+  return dayAmbientZone(date, {
+    events: zones.events as never,
+    bookings: zones.bookings as never,
+    places: zones.places as never,
+    crossings: zones.crossings,
+    primaryZone: zones.primaryZone,
+  });
 }
 
 /**
@@ -807,6 +837,10 @@ export class SharingProjectionService {
       // rung `currentZone` deliberately does not have. No extra query: both are already here.
       bookings: zoneBookings,
       places,
+      // **And the events, so a DAY can be asked too.** The day consensus (ADR-0107
+      // session-100) reads the day's own events; without them the projection could say what
+      // an event's clock means and still not say which zone the day it sits in is lived in.
+      events: zoneEventEvidence(events),
     };
 
     // **What a day PASSES THROUGH, and a transport event passes through two places.**
@@ -985,6 +1019,9 @@ export class SharingProjectionService {
       return {
         ordinal: index + 1,
         date,
+        // **The zone this card's clock means** (`SharedDay.timezone`) — the day's own events
+        // when they agree, else the segment, never the destination by default.
+        timezone: dayZone(date, zones),
         stay: stays[index],
         ...stayMoments(stayRows, stays, index, detail, zones),
         // **Absent freely**: a day whose stops clear no confidence gate gets no photo. Nine

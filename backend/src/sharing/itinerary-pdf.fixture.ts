@@ -152,6 +152,12 @@ const days: SharedDay[] = DAYS.map(([date, title, summary, events], index) => {
   return {
     ordinal: index + 1,
     date,
+    // **The zone the day is lived in** (`SharedDay.timezone`) — Iceland every day but the
+    // last, which is the day the trip flies home and lands on its own clock. Paper prints no
+    // `עכשיו` and so reads none of this; it is here because the field is required and a
+    // fixture that spelled one zone for all twelve days would be modelling the defect
+    // `SharedDay.timezone` exists to fix.
+    timezone: index === DAYS.length - 1 ? 'Asia/Jerusalem' : 'Atlantic/Reykjavik',
     title,
     summary,
     // **The reference trip has to exercise what the renderer draws.** Without a stay on any

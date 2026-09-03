@@ -6,7 +6,7 @@ import {
   type SharedDay,
   type SharedEvent,
 } from '@waypoint/shared';
-import { shareNowLine } from './share-now-line';
+import { shareNowLine, shareNowZone } from './share-now-line';
 
 const event = (title: string, startLabel?: string, endLabel?: string): SharedEvent => ({
   title,
@@ -18,6 +18,7 @@ const event = (title: string, startLabel?: string, endLabel?: string): SharedEve
 const day = (sections: SharedDay['sections']): SharedDay => ({
   ordinal: 5,
   date: '2026-09-15',
+  timezone: 'Atlantic/Reykjavik',
   title: { kind: SHARE_DAY_KIND.NONE },
   summary: { kind: SHARE_DAY_SUMMARY_KIND.NONE },
   sections,
@@ -181,5 +182,65 @@ describe('shareNowLine (ADR-0213 eleventh amendment §5)', () => {
       index: 0,
       inside: null,
     });
+  });
+});
+
+describe('shareNowZone (ADR-0213 eighteenth amendment)', () => {
+  const JLM = 'Asia/Jerusalem'; // +03:00 in September
+  const KEF = 'Atlantic/Reykjavik'; // GMT year-round
+  const TYO = 'Asia/Tokyo'; // +09:00
+
+  /** The shape the derivation reads, and only that. */
+  const spine = (...zones: [string, string][]) =>
+    zones.map(([date, timezone]) => ({ date, timezone }));
+
+  it('answers the day that holds the moment, on that day’s own clock', () => {
+    const days = spine(['2026-09-14', JLM], ['2026-09-15', KEF], ['2026-09-16', KEF]);
+    // 10:00 UTC on the 15th: 13:00 in Jerusalem, 10:00 in Reykjavik. Both call it the 15th,
+    // and the card for the 15th is an Iceland card.
+    expect(shareNowZone(days, JLM, new Date('2026-09-15T10:00:00Z'))).toBe(KEF);
+  });
+
+  it('is the departure day’s clock on the trip’s first morning, not the destination’s', () => {
+    // The defect, at its plainest: day one is spent at home and the page used to print the
+    // destination's clock on it. 06:00 in Tel Aviv is 03:00 in Iceland — a different day by
+    // `shareToday`'s dawn rule, so the wrong zone did not merely shift the marker, it marked
+    // the wrong card.
+    const days = spine(['2026-09-14', JLM], ['2026-09-15', KEF]);
+    const firstMorning = new Date('2026-09-14T03:00:00Z'); // 06:00 Jerusalem, 03:00 Reykjavik
+    expect(shareNowZone(days, KEF, firstMorning)).toBe(JLM);
+  });
+
+  it('resolves an overlap at a seam to the day you are still standing in', () => {
+    // Flying east, Jerusalem → Tokyo: the 15th (Jerusalem) runs until 05:00 on the 16th
+    // Jerusalem time, and the 16th (Tokyo) began six hours before that. 22:00 Jerusalem on
+    // the 15th is already the 16th in Tokyo; the evening is still the 15th's.
+    const days = spine(['2026-09-15', JLM], ['2026-09-16', TYO]);
+    expect(shareNowZone(days, TYO, new Date('2026-09-15T19:00:00Z'))).toBe(JLM);
+  });
+
+  it('fills the gap at the opposite seam with the day just left', () => {
+    // Flying west, Tokyo → Jerusalem: the 15th (Tokyo) ends at 05:00 JST on the 16th
+    // (20:00 UTC on the 15th) and the 16th (Jerusalem) does not begin until 02:00 UTC on the
+    // 16th. Nothing claims those six hours; the clock that fits them is the one just left.
+    const days = spine(['2026-09-15', TYO], ['2026-09-16', JLM]);
+    const inTheGap = new Date('2026-09-15T22:00:00Z'); // 07:00 JST 16th, 01:00 IDT 16th
+    expect(shareNowZone(days, JLM, inTheGap)).toBe(TYO);
+  });
+
+  it('falls back to the trip primary before the trip and to its last day after it', () => {
+    const days = spine(['2026-09-15', KEF], ['2026-09-16', KEF]);
+    expect(shareNowZone(days, JLM, new Date('2026-09-01T12:00:00Z'))).toBe(JLM);
+    expect(shareNowZone(days, JLM, new Date('2026-10-01T12:00:00Z'))).toBe(KEF);
+    expect(shareNowZone([], JLM, new Date('2026-09-15T12:00:00Z'))).toBe(JLM);
+  });
+
+  it('reads a card that swallowed two days as today while either of them is', () => {
+    // `SharedDay.endDate` — the return that leaves at 02:00 and lands the next afternoon.
+    const days = [
+      { date: '2026-09-15', endDate: '2026-09-16', timezone: KEF },
+      { date: '2026-09-17', timezone: JLM },
+    ];
+    expect(shareNowZone(days, JLM, new Date('2026-09-16T12:00:00Z'))).toBe(KEF);
   });
 });

@@ -41,6 +41,9 @@ const SUMMARY: SharedItinerary = {
     endDate: '2026-08-31',
     // UTC+0 year-round, so `PINNED` below is the trip's wall clock as well as the box's and
     // a now-line assertion needs no offset arithmetic (ADR-0213's eleventh amendment §6).
+    // Every day below repeats it as its own `timezone`, which is what the page actually reads
+    // for `now` since the eighteenth amendment — a trip whose days are all lived in the
+    // destination is the case where the two agree, and that keeps the arithmetic-free clock.
     timezone: 'Atlantic/Reykjavik',
     dayCount: 3,
     eventCount: 3,
@@ -57,6 +60,7 @@ const SUMMARY: SharedItinerary = {
     {
       ordinal: 1,
       date: '2026-08-29',
+      timezone: 'Atlantic/Reykjavik',
       // The derived shapes, not sentences — the words are the renderer's (ADR-0213's
       // 2026-08-30 amendment), so this fixture is also the check that it has them.
       title: { kind: SHARE_DAY_KIND.FLIGHT_OUT, to: 'איסלנד' },
@@ -71,6 +75,7 @@ const SUMMARY: SharedItinerary = {
     {
       ordinal: 2,
       date: '2026-08-30',
+      timezone: 'Atlantic/Reykjavik',
       title: { kind: SHARE_DAY_KIND.NONE },
       summary: { kind: SHARE_DAY_SUMMARY_KIND.NONE },
       sections: [],
@@ -78,6 +83,7 @@ const SUMMARY: SharedItinerary = {
     {
       ordinal: 3,
       date: '2026-08-31',
+      timezone: 'Atlantic/Reykjavik',
       title: { kind: SHARE_DAY_KIND.NONE },
       summary: { kind: SHARE_DAY_SUMMARY_KIND.NONE },
       sections: [],

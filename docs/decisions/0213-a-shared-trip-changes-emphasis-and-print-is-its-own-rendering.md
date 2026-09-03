@@ -2382,3 +2382,119 @@ retry — the same answer parses the same way every time.
 - What is still unmeasured: the retry ladder against a **real** Railway rollout. The suite
   proves the page re-asks and recovers; it cannot prove half a minute is the right amount of
   asking for a container swap nobody has timed.
+
+## Amendment — the page's clock was the destination's, not the trip's (2026-09-03, eighteenth pass)
+
+> _"the live sharing page uses the current time in the destination as 'now', instead of deriving
+> the time dynamically by the events, the same way that the app does everywhere else"_
+
+**The zone model half of this is not this feature's, so that record lives in
+[ADR-0107](0107-per-place-timezones-and-multi-zone-time.md)'s 2026-09-03 amendment** — the same
+promotion as the sixteenth pass, stopping one rung short. What belongs here is the sentence in
+this ADR that was wrong, and what the contract does about it.
+
+### §1 · The eleventh amendment §6 got the function right and the zone wrong
+
+§6 shipped `trip.timezone` on the projection and defended it like this:
+
+> _"So the projection ships the **input** — `trip.timezone`, an IANA name on
+> `sharedItinerarySchema.trip` — and the client runs `@waypoint/shared`'s own `todayInTz`, the
+> same function every day surface in the app runs. One derivation, re-runnable."_
+
+Every clause is true except the one that matters. `todayInTz` **is** the same function; it takes
+a zone, and the zone every day surface in the app hands it comes from the itinerary
+(`liveToday` = `todayInTz(liveZone(…))`, ADR-0107 §4 + its session-102 amendment). `trip.timezone`
+is the trip's **primary** zone, which is the destination's. So this page was the one surface in
+the app asking what day it is on a clock nobody on the trip need be reading — and it asked twice,
+for both halves of _now_:
+
+- **which card is `עכשיו`** (`shareToday(now, trip.timezone)`), and
+- **what the marker's clock says** (`shareTimeLabel(now, trip.timezone)`), compared inside
+  `shareNowLine` against labels that were resolved **per event** in their own display zones.
+
+On a trip's first morning — a real day of a real trip, spent at home — the page marked a card and
+drew a marker three hours off every label beside it. That the two renderers agreed about it is
+the cost the sixteenth amendment already named: agreement is not evidence of correctness when
+both sides read one field.
+
+Nothing here is a defence of a stamped `today`, which §6 was right about and which stays refused:
+a stamped answer goes stale in the reader's hand on a page that holds a projection in React
+memory for as long as the tab is open. The correction is to which **input** travels.
+
+### §2 · A day says which zone it is lived in
+
+`SharedDay.timezone` — `dayAmbientZone`, required, at every level. The day's own placed events
+where they agree on an offset, else the itinerary segment at that day's noon, else the trip
+primary; a zone-crossing booking abstains, because the thing that moves you between two places
+cannot testify about either.
+
+**Per day, and not per moment, is the resolution this page needs and the one it can state.** A
+card _is_ a day, so a per-day zone is the zone that card's own labels were resolved in — and on
+every day the marker is drawn, exactly: `shareNowLine` refuses a day carrying `zoneShiftMinutes`,
+so the day it accepts is a day whose every label resolved in that day's ambient. A per-moment
+timeline (`liveZone`'s rungs 1-2, which say where you are standing this second) would buy the
+page nothing it draws and would ship the instants at which a zone changes — which is a flight's
+departure hour, at a level whose whole rule is that it carries no exact times. A day's zone leaks
+nothing the route strip does not already imply.
+
+`trip.timezone` stays on the contract, no longer as the answer to anything about _now_: it is
+what the primary zone means, and the fallback for a moment no day of the trip covers.
+
+### §3 · Which card claims the moment, and the two seams either side
+
+`shareNowZone(days, primaryZone, at)` (`lib/share-now-line.ts`, beside the placement walk it
+feeds) asks the question of the cards rather than of the trip: **which day holds this moment on
+its own clock.** Consecutive days in different zones do not tile, so the two seams are answered
+rather than left to fall out of an array order:
+
+- **An overlap** — flying east, the day you are standing in and the destination's next day both
+  claim the same hours. The **first** card wins, which is the generous reading `isDayOver`
+  already argues for (ADR-0029's session-96/103 amendments): the evening you leave belongs to the
+  day you are still in, not to a calendar six hours ahead of you.
+- **A gap** — flying west, a day in Tokyo ends six hours before the following day in Israel
+  begins, and no card claims those hours. They take the clock of the **last day behind us**,
+  which is the one you just left and are still flying out of.
+- Before the trip and after it, the trip's primary zone — where nothing is marked `עכשיו`
+  anyway, so this only decides what the masthead's phase line reads against.
+
+It walks with `dayPhase`, not a fourth spelling of the comparison: §7 lifted that helper out of
+two surfaces for this exact reason, and it is also what makes a card that swallowed two days
+(`SharedDay.endDate`) today while **either** of them is.
+
+**The PDF reads none of it**, with everything else about now. Paper keeps printing dates.
+
+### What was verified
+
+- **The projection spec's zone fixture gained the day the report is about.** The owner's outbound
+  trip now starts the day _before_ the flight, with one placed dinner in Tel Aviv on it, on a trip
+  whose primary zone stays Iceland's. That day's `timezone` is `Asia/Jerusalem`; the travel day's
+  is `Atlantic/Reykjavik` (both legs are crossings and abstain, so the hotel is the only voter);
+  the day after, which holds nothing, is the segment's. Three assertions, one per rung.
+- **`Event.endDate` had to join `SHARE_EVENT_SELECT`**, and that is the near-miss worth recording:
+  a column absent from a `select` is not a type error, it is a multi-night stay that votes on no
+  night at all and a day that quietly falls back to the trip primary — the defect surviving with
+  all the machinery in place. Pinned by a spec that reads a night nothing else sits on, with the
+  span removed and re-asserted in the same test so the assertion is worth something.
+- **The same near-miss one layer down**: Prisma spells `date`/`endDate` as `Date` and
+  `eventsOnDate` compares day keys as **strings**, which matches nothing and reads as "no event
+  is on this day". Every other array crosses that seam with an `as never` because the shapes
+  already agree; the event rows now go through a named adapter (`zoneEventEvidence`) that says
+  why in its docblock.
+- **Two screen tests that change only `SharedDay.timezone`**, against a fixture whose primary
+  zone stays Iceland's: the marker reads `12:00` (Tel Aviv) rather than `09:00` and falls on the
+  other side of a `09:30` row — a wrong zone here moves the mark, it does not merely misprint it
+  — and at 02:30Z the card marked `עכשיו` is the 30th rather than the 29th, because Reykjavík's
+  pre-dawn hour is filed on the night before while Tel Aviv's 05:30 is past the share's dawn.
+  Both fail against `trip.timezone`.
+- **`shareNowZone`'s own unit tests** cover the claim, the overlap, the gap, the two ends of the
+  trip, an empty spine, and a card that swallowed two days.
+- **The e2e stub needed the field too, and finding out how is the third near-miss.**
+  `e2e/shared-itinerary.spec.ts` mocks a whole projection through `page.route`, and
+  `frontend/tsconfig.json` includes only `src` — so a newly required contract field left that
+  stub short of it with `tsc` green, and the only signal was a zod parse failure in a real
+  browser: eleven tests red at once, none of them pointing at the fixture. Fixed here and
+  re-run locally (11/11, and 1 failing with the field removed again); the tooling hole is a
+  `docs/backlog.md` line under **Testing**, since closing it needs `@types/node` and a dozen
+  unrelated fixes rather than one `include`.
+- **No mockup.** Nothing about the layout changes: the same mark in the same shape, on the right
+  clock and in the right place. What was missing was never a drawing.

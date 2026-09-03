@@ -46,13 +46,19 @@ export const toHHMM = (min: number) => `${pad(Math.floor(min / 60))}:${pad(min %
 // two implementations of "which calendar day is this, over there" is precisely how a
 // notification comes to fire on a different day than the row it is about.
 // Imported for this file's own use (three call sites below) as well as re-exported.
-import { addDays, todayInTz, tripDates, zoneOffsetAt, zonedIso } from '@waypoint/shared';
+import { addDays, todayInTz, tripDates, zoneOffsetMinutes, zonedIso } from '@waypoint/shared';
 
 // `addDays`, `tripDates` and `zonedIso` moved to `@waypoint/shared`'s `trip-dates.ts` with
 // `computeReadiness` (ADR-0198 phase C) — the server derives the same readiness the card
 // shows, and it needs all three. Re-exported for the same reason `todayInTz` is: 22 files
 // import them from here.
-export { addDays, todayInTz, tripDates, zonedIso };
+//
+// **`zoneOffsetMinutes` joined them on 2026-09-03**, and unlike the others nothing in this
+// file reads it — it is here for the four files that import it from `lib/time`. It was
+// defined here over `zoneOffsetAt`, whose own docblock had been naming that arrangement; the
+// server had meanwhile grown a private second copy, and the day-consensus derivation promoted
+// the same day needs a third. One probe, three readers.
+export { addDays, todayInTz, tripDates, zoneOffsetMinutes, zonedIso };
 
 /** Clamp a YYYY-MM-DD date string into [min, max] — lexical compare is valid
  *  since ISO date strings sort chronologically. */
@@ -545,18 +551,6 @@ export function dayProgress(
 /** Shift an ISO instant by whole minutes, preserving the instant semantics. */
 export function shiftIso(iso: string, minutes: number): string {
   return new Date(new Date(iso).getTime() + minutes * 60000).toISOString();
-}
-
-/** UTC offset (e.g. "+09:00") for a timezone at a specific instant — the IANA
- *  tzdata behind `Intl` is the authoritative source, not a hand-maintained table. */
-
-/** A timezone's UTC offset in signed minutes at a specific instant (DST-correct),
- *  e.g. Asia/Tokyo → 540, America/New_York in July → -240. */
-export function zoneOffsetMinutes(at: Date, timeZone: string): number {
-  const s = zoneOffsetAt(at, timeZone); // "+09:00" | "-04:00" | "+05:30" | "+00:00"
-  const sign = s.startsWith('-') ? -1 : 1;
-  const [h, m] = s.slice(1).split(':').map(Number);
-  return sign * (h * 60 + m);
 }
 
 /** A signed inter-zone shift for display (ADR-0107): how far one zone's clock is

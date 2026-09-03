@@ -249,6 +249,7 @@ describe('sharedItinerarySchema', () => {
       {
         ordinal: 1,
         date: '2026-08-29',
+        timezone: 'Atlantic/Reykjavik',
         title: { kind: SHARE_DAY_KIND.FLIGHT_OUT, to: 'איסלנד' },
         summary: { kind: SHARE_DAY_SUMMARY_KIND.STAY, place: 'Laugavegur 22' },
         sections: [

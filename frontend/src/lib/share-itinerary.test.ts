@@ -40,6 +40,7 @@ const projection = {
     {
       ordinal: 1,
       date: '2026-08-29',
+      timezone: 'Atlantic/Reykjavik',
       title: { kind: 'none' },
       summary: { kind: 'none' },
       sections: [],
