@@ -437,6 +437,78 @@ describe('RoutingService', () => {
     expect(warm.legs[0]!.estimates[0]!.mode).toBe('driving');
   });
 
+  // ── §BC: a cold leg the map wants a line for is ONE call ────────────────────────────────────
+  //
+  // Owner, after §BB shortened the wait: _"I thought that they would arrive together."_ §BB gave
+  // the client the same retry ladder for lines that it had for numbers, which made the gap
+  // shorter; this is what removes it for the ordinary day. A `/route` answers duration, distance
+  // AND geometry in one response (measured live: ⁦462.7 s⁩ / ⁦4567.2 m⁩ / ⁦185 points⁩), so a leg with
+  // nothing cached no longer needs a matrix now and a `/route` later.
+  it('answers a cold leg the caller wants a line for in ONE call, not a matrix then a route', async () => {
+    const { prisma } = fakePrisma();
+    const { provider, matrix, shape } = fakeProvider();
+    const service = build(TOKYO_TRIP, provider, prisma);
+    const stops = [ASAKUSA, TSUKIJI];
+
+    const cold = await service.batch('trip', { stops, modes: ['walking'], withShapes: true });
+    await service.settled();
+
+    // The saving: no matrix at all for this leg.
+    expect(shape.mock.calls.length).toBe(1);
+    expect(matrix.mock.calls.length).toBe(0);
+    // Nothing is promised as answered before it is — the first pass is still a warm.
+    expect(cold.legs[0]!.estimates).toEqual([]);
+
+    // And the next read carries BOTH halves, from that single call.
+    const warm = await service.batch('trip', { stops, modes: ['walking'], withShapes: true });
+    const estimate = warm.legs[0]!.estimates[0]!;
+    expect(estimate.mode).toBe('walking');
+    expect(estimate.durationSeconds).toBeGreaterThan(0);
+    expect(estimate.shape).toBeDefined();
+    expect(matrix.mock.calls.length).toBe(0);
+  });
+
+  it('still takes durations from the matrix when no line was asked for', async () => {
+    // The day LIST asks without shapes and must keep its one-call-per-day answer.
+    const { prisma } = fakePrisma();
+    const { provider, matrix, shape } = fakeProvider();
+    const service = build(TOKYO_TRIP, provider, prisma);
+
+    await service.batch('trip', { stops: [ASAKUSA, TSUKIJI], modes: ['walking'] });
+    await service.settled();
+
+    expect(matrix.mock.calls.length).toBe(1);
+    expect(shape.mock.calls.length).toBe(0);
+  });
+
+  it('keeps the matrix for a day with more cold legs than one pass can draw', async () => {
+    // **The bound is what makes the divert safe.** Past `SHAPE_CALLS_PER_PASS` the matrix is the
+    // only thing that gets numbers onto the screen at all — one call for the whole day — so
+    // trading it for a per-leg queue would delay every leg past the eighth.
+    const { prisma } = fakePrisma();
+    const { provider, matrix, shape } = fakeProvider();
+    const many = [
+      ASAKUSA,
+      TSUKIJI,
+      SENSO,
+      SHINJUKU,
+      GOLDEN_GAI,
+      ASAKUSA,
+      TSUKIJI,
+      SENSO,
+      SHINJUKU,
+      GOLDEN_GAI,
+    ];
+    const service = build(TOKYO_TRIP, provider, prisma);
+
+    await service.batch('trip', { stops: many, modes: ['walking'], withShapes: true });
+    await service.settled();
+
+    // Durations come from the matrix, as before; the lines follow on later passes.
+    expect(matrix.mock.calls.length).toBeGreaterThan(0);
+    expect(shape.mock.calls.length).toBe(0);
+  });
+
   it('dedupes concurrent warms — two members opening the same day cost one call', async () => {
     const { prisma } = fakePrisma();
     const { provider, matrix } = fakeProvider();

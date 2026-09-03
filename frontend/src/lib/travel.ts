@@ -749,7 +749,7 @@ export function useDayShapes(opts: {
     const controller = new AbortController();
     let retry: ReturnType<typeof setTimeout> | undefined;
 
-    const ask = (isRetry: boolean): void => {
+    const ask = (attempt: number): void => {
       const { stops: at, modes: want } = day.current;
       void fetchRoutes(
         tripId,
@@ -765,11 +765,27 @@ export function useDayShapes(opts: {
           void cacheTravelEstimates(at, batch.legs).catch(() => {
             // Storing is next visit's optimisation; the lines are already drawn.
           });
-          // Shapes arrive in passes, so a warming answer here is the ORDINARY case for a long
-          // day rather than a cold-start edge — one wait, then let the next natural read finish
-          // it, exactly as the day's own numbers do.
-          if (batch.retryAfterSeconds === undefined || isRetry) return;
-          retry = setTimeout(() => ask(true), warmRetryMs(batch.retryAfterSeconds));
+          // **THE LINES GET THE SAME LADDER THE NUMBERS DO** (ADR-0206 §BB).
+          //
+          // This retried exactly ONCE — "one wait, then let the next natural read finish it,
+          // exactly as the day's own numbers do" — and that last clause stopped being true when
+          // §AU1/§AZ4 gave `useDayTravel` a `DAY_TRAVEL_WARM_ATTEMPTS`-round ladder for precisely
+          // this reason. The numbers kept asking; the lines asked twice and then sat until
+          // something re-mounted the hook.
+          //
+          // Geometry is the SLOWER half by construction, which is why the asymmetry pointed the
+          // wrong way: a duration is one matrix call for the whole day, a line is one `/route`
+          // call PER LEG, paced at ⁦1 call/s⁩ server-side and capped per pass (`SHAPE_CALLS_PER_PASS`).
+          // So the half that needed more rounds had fewer — reported as _"it took time though and
+          // came a few minutes after the estimations"_ (owner, 2026-09-03).
+          //
+          // Same bound and same pacing as the warm next door: a day the provider never draws
+          // still terminates into §D4's straight segments rather than polling for the trip's
+          // length, and a day that stops warming (`retryAfterSeconds === undefined`) stops asking
+          // on the very next answer.
+          if (batch.retryAfterSeconds === undefined) return;
+          if (attempt >= DAY_TRAVEL_WARM_ATTEMPTS) return;
+          retry = setTimeout(() => ask(attempt + 1), warmRetryMs(batch.retryAfterSeconds));
         })
         .catch(() => {
           // Nothing to report (§D4): every leg falls back to its straight segment.
@@ -791,10 +807,10 @@ export function useDayShapes(opts: {
         // overwrites these rows (see `cacheTravelEstimates`), and a day remembered as asked would
         // lose its lines for the rest of the session with no way to get them back.
         const complete = day.current.legKeys.every((key) => cached.get(key)?.shape);
-        if (!complete && !preview && !offline) ask(false);
+        if (!complete && !preview && !offline) ask(1);
       })
       .catch(() => {
-        if (live && !preview && !offline) ask(false);
+        if (live && !preview && !offline) ask(1);
       });
 
     return () => {
