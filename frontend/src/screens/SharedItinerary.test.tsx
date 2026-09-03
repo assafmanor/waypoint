@@ -66,6 +66,7 @@ const summaryProjection: Projection = {
     {
       ordinal: 1,
       date: '2026-08-29',
+      timezone: 'Atlantic/Reykjavik',
       title: { kind: SHARE_DAY_KIND.FLIGHT_OUT, to: 'איסלנד' },
       summary: { kind: SHARE_DAY_SUMMARY_KIND.STAY, place: 'Laugavegur 22' },
       sections: [
@@ -80,6 +81,7 @@ const summaryProjection: Projection = {
     {
       ordinal: 2,
       date: '2026-08-30',
+      timezone: 'Atlantic/Reykjavik',
       title: { kind: SHARE_DAY_KIND.NONE },
       summary: { kind: SHARE_DAY_SUMMARY_KIND.NONE },
       sections: [],
@@ -1211,10 +1213,66 @@ describe('SharedItinerary', () => {
       serve(zoneCrossingProjection);
       const { container } = renderShared();
       await screen.findByText(plain('תל אביב ← קפלאוויק'));
-      // The label is the primary zone's wall clock and the row's is its own (ADR-0107), so
-      // the comparison would be wrong by the shift. The card is still today's.
+      // The label is the day's own wall clock and the rows' are per event (ADR-0107), so the
+      // comparison would be wrong by the shift. The card is still today's.
       expect(container.querySelector('.sh-day.is-now')).toBeTruthy();
       expect(container.querySelector('.now-here')).toBeNull();
+    });
+  });
+
+  /**
+   * **WHOSE CLOCK "NOW" IS ON** (ADR-0213's eighteenth amendment).
+   *
+   * The page asked `trip.timezone` — the destination's — for both halves of the question, so
+   * the opening days of a trip, which are lived at home, were marked and clocked in a zone
+   * nobody on the trip was reading yet. Each day now carries its own (`SharedDay.timezone`,
+   * `dayAmbientZone`), which is how every day surface in the app has framed a day since
+   * ADR-0107's session-100 amendment.
+   *
+   * Both tests here change **only** `SharedDay.timezone` against a fixture whose primary zone
+   * stays `Atlantic/Reykjavik`, so what they measure is that field and nothing else.
+   */
+  describe('the clock the page is on (eighteenth amendment)', () => {
+    /** The fixture's days, lived in the travellers' own zone — the shape of a trip's first
+     *  days, before the flight. +03:00 in August against the destination's GMT. */
+    const atHome = (projection: Projection): Projection => ({
+      ...projection,
+      days: projection.days.map((day) => ({ ...day, timezone: 'Asia/Jerusalem' })),
+    });
+
+    it('prints the marker on the day’s own clock, not the destination’s', async () => {
+      // `NOW` is 09:00Z: 09:00 in Reykjavík and 12:00 in Tel Aviv. The row's own label is a
+      // pre-formatted 09:30 either way, so the zone decides BOTH the hour on the chip and
+      // which side of the row the mark falls on — a wrong zone here is not a rounding error.
+      serve(atHome(fullProjection));
+      const { container } = renderShared();
+      await screen.findByText(plain('הפארק הלאומי ת׳ינגווליר'));
+
+      const mark = container.querySelector('.sh-day-body .now-here')!;
+      expect(mark.querySelector('.nowline-chip')!.textContent).toBe('12:00');
+      // 12:00 is past a 09:30 row, so the mark goes after it. In the destination's zone the
+      // same page reads 09:00 and puts the mark above it — the assertion the sibling test
+      // below `opens the day the trip is on` already pins.
+      expect(
+        mark.compareDocumentPosition(container.querySelector('.sh-event')!) &
+          Node.DOCUMENT_POSITION_PRECEDING,
+      ).toBeTruthy();
+    });
+
+    it('marks the card whose own zone holds the moment', async () => {
+      // 02:30Z on the 30th. In Reykjavík that is 02:30 — a pre-dawn hour, which this
+      // projection files on the night of the 29th (`sharePreviousNight`), so the old
+      // derivation marked day 1. In Tel Aviv it is 05:30, past the share's dawn, so the day
+      // the travellers are actually having is the 30th.
+      setSimulatedNow(Date.parse('2026-08-30T02:30:00.000Z'));
+      serve(atHome(fullProjection));
+      const { container } = renderShared();
+      await screen.findByText('איסלנד עם המשפחה');
+
+      const [first, second] = [...container.querySelectorAll('.sh-day')];
+      expect(first.classList.contains('is-past')).toBe(true);
+      expect(second.classList.contains('is-now')).toBe(true);
+      expect(second.querySelector('.sh-now-mark')?.textContent).toBe(t.common.now);
     });
   });
 });

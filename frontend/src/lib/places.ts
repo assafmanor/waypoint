@@ -22,22 +22,30 @@ import {
   bookingEndZones,
   bookingZoneOverrides,
   currentZone,
+  dayAmbientZone,
   eventDisplayZones,
+  eventKnownZone,
+  eventsOnDate,
   placeTimezone,
   segmentZoneAt,
   tripZoneCrossings,
   type ZoneCrossing,
+  type ZoneEvidence,
 } from '@waypoint/shared';
 
 export {
   bookingEndZones,
   bookingZoneOverrides,
   currentZone,
+  dayAmbientZone,
   eventDisplayZones,
+  eventKnownZone,
+  eventsOnDate,
   placeTimezone,
   segmentZoneAt,
   tripZoneCrossings,
   type ZoneCrossing,
+  type ZoneEvidence,
 };
 import { ltrIsolate } from './bidi';
 import type { PlaceLabels } from './place-label';
@@ -262,86 +270,17 @@ export function bookingRoute(
 // printed every departure in the destination's zone. A promotion that stops at the primitives
 // leaves the door it was closing open.
 //
+// **And `ZoneEvidence`, `eventKnownZone`, `eventsOnDate` and `dayAmbientZone` followed on
+// 2026-09-03, closing the same door one rung higher.** With the composer shared, the server
+// could say what an event's clock means and still not say which zone a DAY is lived in — so
+// the shared itinerary marked "now" on the card the destination's clock was on, and printed
+// its marker in that zone, on a page whose every other time is resolved per event. What is
+// left here is only what no server asks: `liveZone` (where you are standing this second) and
+// `authoringZone` (what a form's typed time means).
+//
 // **Re-exported here, and this file is not a second definition.** Every consumer keeps
 // importing from `lib/places`, which is where they have always looked; `zones.ts` is the
 // one implementation. When you need to change the behaviour, change it there.
-
-/** Everything the zone questions resolve against. Bundled because "which zone is
- *  this day in" now reads the day's own events, not only the transport crossings
- *  (ADR-0107 session-100 amendment) — five arguments at four call sites otherwise. */
-export interface ZoneEvidence {
-  events: TripEvent[];
-  bookings: Booking[];
-  places: Place[];
-  crossings: ZoneCrossing[];
-  primaryZone: string;
-}
-
-/** An event's zone **only when something actually says so** — a manual pin or a
- *  place with coordinates — and `undefined` when it would fall back to the
- *  itinerary segment or the trip primary. This is what makes the day-consensus
- *  below evidence rather than a circular vote: a placeless event's zone *is* the
- *  segment zone, so letting it vote would only ever confirm the segment.
- *  Zone-crossing transport is excluded too: it is the thing that moves you between
- *  zones, so it can't testify about where a day sits. */
-function eventKnownZone(
-  event: TripEvent,
-  bookings: Booking[],
-  places: Place[],
-): string | undefined {
-  if (event.displayTimezone) return event.displayTimezone;
-  const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
-  if (booking) {
-    const { from, to } = bookingEndZones(booking, places);
-    if (from && to && from !== to) return undefined; // a crossing doesn't vote
-    return from ?? to;
-  }
-  return placeTimezone(places, event.placeId);
-}
-
-/** Events that sit on `date` — including a multi-day stay on its middle nights,
- *  which is strong evidence about where you are (ADR-0054's ambient span). */
-function eventsOnDate(events: TripEvent[], date: string): TripEvent[] {
-  return events.filter(
-    (e) => e.date === date || (e.endDate != null && e.date <= date && date <= e.endDate),
-  );
-}
-
-/** The **day's** ambient zone: the zone that day is lived in. This is what a day
- *  surface measures an event's shift against (a pill shows only when an event
- *  differs from its day), and what decides whether a day is over for editing
- *  (ADR-0029 amendment) — as opposed to `currentZone`, the segment primitive.
- *
- *  Resolution (ADR-0107 session-100 amendment):
- *    1. **The day's own events**, when the ones with a *known* zone agree on a UTC
- *       offset — a day whose bookings are all in Cyprus is a Cyprus day, whatever
- *       the last flight was. Sessions 89-90 keyed this to the crossing-derived
- *       segment alone, which framed every day after an outbound flight in the
- *       destination's zone forever: two same-offset events then each drew a shift
- *       pill against a zone neither of them was in.
- *    2. The **itinerary segment** at the day's noon — the honest answer for a real
- *       travel day, whose events genuinely span two zones (so step 1 abstains).
- *    3. The **trip primary** zone.
- *
- *  Noon is sampled in `primaryZone`: only which calendar day it lands in matters,
- *  and every zone agrees about noon-ish. */
-export function dayAmbientZone(date: string, evidence: ZoneEvidence): string {
-  const { events, bookings, places, crossings, primaryZone } = evidence;
-  const noonMs = Date.parse(zonedIso(date, DAY_NOON, primaryZone));
-  const noon = new Date(noonMs);
-
-  const known = eventsOnDate(events, date)
-    .map((e) => eventKnownZone(e, bookings, places))
-    .filter((zone): zone is string => zone != null);
-  if (known.length > 0) {
-    const offset = zoneOffsetMinutes(noon, known[0]);
-    // Offsets, not zone ids: Nicosia and Jerusalem are different zones that agree
-    // about what time it is, and a day split between them is not a mixed day.
-    if (known.every((zone) => zoneOffsetMinutes(noon, zone) === offset)) return known[0];
-  }
-
-  return segmentZoneAt(noonMs, crossings) ?? primaryZone;
-}
 
 /**
  * **WHERE THIS DAY IS LIVED, IN COORDINATES** — the sibling of

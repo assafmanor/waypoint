@@ -318,3 +318,53 @@ If a future call does, it is asking where you are about a clock that belongs som
 
 **No mockup.** Nothing about the layout changes: the same rows in the same places, with correct
 numbers in them. What was needed was a fixture that crosses a zone, which no spec had.
+
+## Amendment (2026-09-03) — the same promotion, one rung short
+
+Owner, against the public reader page:
+
+> _"the live sharing page uses the current time in the destination as 'now', instead of deriving
+> the time dynamically by the events, the same way that the app does everywhere else"_
+
+Correct, and it is the 2026-09-01 amendment's own §2 happening a second time. That one promoted
+`eventDisplayZones` because the server had every **primitive** and not the **composer**, so it
+reached for `currentZone`. The lift stopped at the per-event composer. The **day**-level answer —
+`dayAmbientZone`, the session-100 amendment's three rungs — stayed in `frontend/src/lib/places.ts`,
+so the server could say what an event's clock means and still not say which zone a day is lived
+in. Sharing had no other zone to reach for than `Trip.timezone`, and used it for both halves of
+_now_: which card is today, and what the marker's clock reads.
+
+**The transferable lesson is the same sentence one altitude up.** "A promotion that stops at the
+primitives leaves open the door it was closing" is really about **rungs**: this model answers
+_where are you now_ (`liveZone`), _where is this day lived_ (`dayAmbientZone`), _what does this
+clock mean_ (`eventDisplayZones`) and _what does a typed time mean_ (`authoringZone`), and a
+consumer that cannot reach the rung it needs does not go without an answer — it takes the
+nearest one that type-checks. So the test for a promotion is not "did the parts move" but
+"can every consumer reach the rung its question is on".
+
+### What moved
+
+Into `packages/shared/src/zones.ts`: `dayAmbientZone` with the `ZoneEvidence` bundle and the two
+helpers behind it (`eventKnownZone`, `eventsOnDate`). Into `trip-dates.ts` beside the `zonedIso`
+they are arguments to: `zoneOffsetMinutes` — whose duplication `zoneOffsetAt`'s docblock had been
+naming for months, and which the server had meanwhile grown a private copy of
+(`sharing-projection.service.ts`'s `zoneOffsetMinutesAt`, deleted) — plus `DAY_NOON`/`DAY_MIDNIGHT`.
+`lib/places.ts`, `lib/time.ts` and `frontend/src/constants.ts` re-export all of them, so no call
+site moved.
+
+**What deliberately stays in the frontend** is the pair no server asks: `liveZone` (where you are
+standing this second) and `authoringZone` (what a form's typed time means). Nothing on the server
+authors, and nothing on the server stands anywhere.
+
+### The rung a shared page is on is the DAY
+
+Worth stating because the obvious lift would have been `liveZone`, and it is the wrong one. The
+public page is a stack of day cards and ships pre-formatted labels, so the zone it needs is the
+zone those labels were resolved in — which is the day's, and per day is also a resolution it can
+publish without publishing instants. On every day the reader's marker is drawn, the two agree by
+construction: `shareNowLine` refuses a day that crosses a zone, so the day it accepts is a day
+whose every label resolved in that day's own ambient.
+
+The surface record — the contract field, how a card claims the moment, and the seams either side
+of it — is [ADR-0213](0213-a-shared-trip-changes-emphasis-and-print-is-its-own-rendering.md)'s
+2026-09-03 amendment.

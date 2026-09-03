@@ -28,6 +28,22 @@ export function tripDates(startDate: string, endDate: string): string[] {
   return Array.from({ length: Math.max(0, total) }, (_, i) => addDays(startDate, i));
 }
 
+/** Noon — the safe wall-clock instant to sample a date at when only the calendar day matters
+ *  and never the time: the day's **ambient zone** (ADR-0107, so a crossing near either
+ *  boundary can't decide which zone frames the whole day) and the day's weekday label.
+ *  Mid-day is far from every DST/midnight edge. */
+export const DAY_NOON = '12:00';
+
+/** Local midnight, as the wall time a day's own instants are measured from — what `dayLight`
+ *  needs to know where the day starts. Named beside {@link DAY_NOON} rather than inlined for
+ *  the same reason that one is: a bare `'00:00'` at a call site says when, not why.
+ *
+ *  Both were `frontend/src/constants.ts`'s until 2026-09-03, and moved together because
+ *  `zones.ts`'s day consensus needs the noon one server-side — they are arguments to
+ *  {@link zonedIso}, which is here, so this is where the pair belongs. `frontend/constants.ts`
+ *  re-exports them. */
+export const DAY_MIDNIGHT = '00:00';
+
 /** A zone's UTC offset at an instant, as `+09:00` / `-04:00` / `+05:45`. Exported because
  *  `frontend/src/lib/time.ts`'s `zoneOffsetMinutes` parses the same string, and two copies
  *  of a DST-correct offset probe is the duplication root rule 8 exists to stop. */
@@ -36,6 +52,21 @@ export function zoneOffsetAt(at: Date, timeZone: string): string {
     .formatToParts(at)
     .find((p) => p.type === 'timeZoneName')?.value;
   return !name || name === 'GMT' ? '+00:00' : name.replace('GMT', '');
+}
+
+/** A zone's UTC offset in signed **minutes** at an instant (DST-correct), e.g. `Asia/Tokyo`
+ *  → 540, `America/New_York` in July → -240, `Asia/Kolkata` → 330.
+ *
+ *  Here rather than in `frontend/src/lib/time.ts`, where it lived, for the reason
+ *  {@link zoneOffsetAt}'s docblock has always given: two copies of a DST-correct offset probe
+ *  is what rule 8 exists to stop. The server had grown the second one
+ *  (`sharing-projection.service.ts`'s `zoneOffsetMinutesAt`, now deleted) and `zones.ts`'s
+ *  day-consensus needs the third. `lib/time.ts` re-exports it, so its call sites did not churn. */
+export function zoneOffsetMinutes(at: Date, timeZone: string): number {
+  const offset = zoneOffsetAt(at, timeZone); // "+09:00" | "-04:00" | "+05:30" | "+00:00"
+  const sign = offset.startsWith('-') ? -1 : 1;
+  const [hours, minutes] = offset.slice(1).split(':').map(Number);
+  return sign * (hours * 60 + minutes);
 }
 
 /** Combine a `date` (YYYY-MM-DD) + `time` (HH:MM), read as wall-clock in `timeZone`, into a

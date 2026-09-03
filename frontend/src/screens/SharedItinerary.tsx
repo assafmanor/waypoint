@@ -34,7 +34,7 @@ import { t } from '../i18n/he';
 import { autoIsolate, ltrIsolate } from '../lib/bidi';
 import { agoLabel, hoursPhrase } from '../lib/duration';
 import { landAtTop } from '../lib/land-at-top';
-import { shareNowLine } from '../lib/share-now-line';
+import { shareNowLine, shareNowZone } from '../lib/share-now-line';
 import { NowMarker } from '../ui/domain/NowMarker';
 import { useClock } from '../lib/useClock';
 import { usePublicReaderChrome } from '../lib/public-reader-chrome';
@@ -296,9 +296,17 @@ export function SharedItinerary() {
 
   const ready = state.kind === 'ready' ? state.projection : undefined;
   /**
-   * **Today, in the trip's own zone** — never the reader's (§6). A relative in Tel Aviv
-   * following a group in Iceland wants the day the group is having, which is the same rule
-   * that makes every time on this page the travellers' wall clock rather than the viewer's.
+   * **The clock the page's "now" is on** — never the reader's (§6), and since the eighteenth
+   * amendment never the destination's either. A relative in Tel Aviv following a group in
+   * Iceland wants the day the group is having, which is the same rule that makes every time
+   * on this page the travellers' wall clock rather than the viewer's; `shareNowZone` is what
+   * makes "the travellers'" mean the itinerary rather than the trip's primary zone. It reads
+   * each day's own `timezone`, so this page derives its clock from the events exactly as
+   * every day surface in the app does.
+   */
+  const nowZone = ready ? shareNowZone(ready.days, ready.trip.timezone, now) : '';
+  /**
+   * **Today, on that clock.**
    *
    * `shareToday` rather than `todayInTz`, and opening the real page at 01:48 Tokyo time is
    * what found the difference: this projection files a pre-dawn hour on the night of the day
@@ -306,7 +314,7 @@ export function SharedItinerary() {
    * day had not — the page marked tomorrow as "now" and drew its now-line at the bottom of a
    * day nothing had happened in yet. One boundary for the grouping and for the question.
    */
-  const today = ready ? shareToday(now, ready.trip.timezone) : '';
+  const today = ready ? shareToday(now, nowZone) : '';
   /** The card the clock is on, or `null` before the trip and after it. */
   const todayOrdinal = ready
     ? (ready.days.find((day) => dayPhase(day.date, today, day.endDate) === DAY_PHASE.TODAY)
@@ -356,8 +364,12 @@ export function SharedItinerary() {
   const summary = projection.detailLevel === SHARE_DETAIL_LEVEL.SUMMARY;
   /** The clock the now-line prints, through the same formatter that built every label on the
    *  page (`shareTimeLabel`, §5) — so the comparison in `shareNowLine` is inside the one
-   *  derivation the projection's pre-formatting exists to protect, not beside it. */
-  const nowLabel = shareTimeLabel(now, projection.trip.timezone);
+   *  derivation the projection's pre-formatting exists to protect, not beside it.
+   *
+   *  **And in the same ZONE as those labels** (eighteenth amendment §2). On every
+   *  day the marker is drawn, `nowZone` is that card's own zone: `shareNowLine` refuses a day
+   *  that crosses one, so the day it accepts is a day whose labels all resolved here. */
+  const nowLabel = shareTimeLabel(now, nowZone);
   /** Summary carries no times at all, so there is nothing for a clock to sit between. */
   const wantsNowLine = !summary;
   const open = openDay === undefined ? landOn : openDay;

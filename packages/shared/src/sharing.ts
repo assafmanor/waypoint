@@ -679,6 +679,27 @@ export const sharedDaySchema = z.strictObject({
   ordinal: z.number().int().positive(),
   date: dateOnlySchema,
   /**
+   * **THE ZONE THIS DAY IS LIVED IN** — `dayAmbientZone`, the app's own per-day answer
+   * (ADR-0107 session-100), and the second input on this contract rather than a formatted
+   * answer (see `trip.timezone`, which it now supersedes for every question about _now_).
+   *
+   * The eleventh amendment §6 shipped `trip.timezone` and said the reader "runs `todayInTz`,
+   * the same function every day surface in the app runs". `todayInTz` was the same function;
+   * the ZONE handed to it was not. Every day surface in the app runs it over the zone the
+   * itinerary puts you in, so the shared page was the one surface asking what day it is in
+   * the destination's clock — which on a trip's first morning is a clock nobody on the trip
+   * is reading, and on any day away from the primary zone marks the wrong card `עכשיו` and
+   * prints the marker hours off the labels beside it.
+   *
+   * Per DAY rather than per moment, because that is the resolution the page needs and the
+   * one it can state: a card is a day, and on every day the marker is drawn this zone is the
+   * zone the card's own labels were resolved in (`shareNowLine` refuses a day that crosses
+   * one). It leaks nothing the route strip does not already imply.
+   *
+   * The PDF ignores it, with everything else about now — paper keeps printing dates.
+   */
+  timezone: timezoneSchema,
+  /**
    * **The last calendar day this card covers**, when a journey swallowed the days after it
    * (owner, 2026-08-31: _"the return flight still folded to the day before the last entirely,
    * then last day appears totally empty … maybe for long journeys like these the days should
@@ -814,19 +835,20 @@ export const sharedItinerarySchema = z.strictObject({
     startDate: dateOnlySchema,
     endDate: dateOnlySchema,
     /**
-     * **The trip's primary zone, and the one field on this contract that is an INPUT rather
-     * than an answer** (ADR-0213's eleventh amendment §6).
+     * **The trip's primary zone** (ADR-0213's eleventh amendment §6) — an INPUT rather than
+     * an answer, and since 2026-09-03 no longer the input any question about _now_ reads:
+     * that is `SharedDay.timezone`, per day, from the day's own events. This stays as the
+     * fallback for a moment no day of the trip covers, and as what the primary zone means.
      *
      * Everything else about time here is pre-formatted, for the reason the header states: two
      * renderers formatting one instant is how a PDF prints an hour the app never showed. But
      * "which calendar day is it" cannot be pre-formatted — a stamped `today` is stale the
      * minute after it is sent, on a page that holds a projection in React memory for as long
-     * as the tab is open. So the zone travels and the reader's own device runs `todayInTz`,
-     * the same function every day surface in the app runs.
+     * as the tab is open. So a zone travels and the reader's own device runs `todayInTz`.
      *
      * The reader's zone is deliberately NOT used: a relative in Tel Aviv following a group in
-     * Iceland wants the day the group is having. It is not a secret either — it is implied by
-     * the destination the masthead already prints.
+     * Iceland wants the day the group is having. Neither of these zones is a secret — both
+     * are implied by the destinations the masthead and the route strip already print.
      *
      * The PDF ignores it. A printed page that says `עכשיו` is lying by tomorrow, and unlike
      * the live page it cannot correct itself.

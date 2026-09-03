@@ -551,16 +551,12 @@ export const MAX_JOURNEY_DAY_SPAN = 2;
  *  flight's destination. */
 export const LIVE_ZONE_WINDOW_MS = 12 * 60 * 60 * 1000;
 
-/** Noon — the safe wall-clock instant to sample a date at when only the calendar
- *  day matters and never the time: the day's **ambient zone** (ADR-0107, so a
- *  crossing near either boundary can't decide which zone frames the whole day)
- *  and the day's weekday label. Mid-day is far from every DST/midnight edge. */
-export const DAY_NOON = '12:00';
-/** Local midnight, as the wall time a day's own instants are measured from —
- *  what `dayLight` needs to know where the day starts. Named beside `DAY_NOON`
- *  rather than inlined for the same reason that one is: a bare `'00:00'` at a
- *  call site says when, not why. */
-export const DAY_MIDNIGHT = '00:00';
+/** **Both live in `@waypoint/shared`'s `trip-dates.ts` now** (2026-09-03), beside the
+ *  `zonedIso` they are arguments to: the shared day-consensus derivation
+ *  (`dayAmbientZone`, promoted so the sharing projection can answer which zone a day is
+ *  lived in) samples a date at noon, and the server had no name for it. Re-exported here
+ *  because this is where the app's call sites look. */
+export { DAY_NOON, DAY_MIDNIGHT } from '@waypoint/shared';
 
 /** Overnight events (ADR-0037): a regular event may end in the small hours of
  *  the next day, but stays filed under its start night. An end at/before the

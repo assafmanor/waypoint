@@ -19,8 +19,8 @@ import { Prisma } from '@prisma/client';
  * through.
  */
 
-/** The event columns every level reads. Zone resolution needs `displayTimezone` and
- *  `date`; ADR-0011's hard/soft distinction needs `kind`. */
+/** The event columns every level reads. Zone resolution needs `displayTimezone`, `date` and
+ *  `endDate`; ADR-0011's hard/soft distinction needs `kind`. */
 export const SHARE_EVENT_SELECT = {
   id: true,
   title: true,
@@ -28,6 +28,12 @@ export const SHARE_EVENT_SELECT = {
   category: true,
   kind: true,
   date: true,
+  /** **A multi-day stay's far end** — nothing published reads it, and the day-zone consensus
+   *  does: `eventsOnDate` counts a four-night hotel as evidence on every night it covers, so
+   *  without this column a middle night has no voter and falls through to the trip primary
+   *  zone. A calendar date, which this contract already publishes at day altitude
+   *  (`SharedDay.endDate`). */
+  endDate: true,
   startsAt: true,
   endsAt: true,
   /** **The other bound of a flexible edge** (ADR-0184 §3). Two instants and nothing else, so
