@@ -1,6 +1,6 @@
 # 0218 — A forecast expires, and the widget goes rather than lies
 
-**Status:** Accepted
+**Status:** Accepted — **built 2026-09-03**; the build log at the foot records the two things the design left open and the one place the mockup was drawing another card's silhouette.
 **Date:** 2026-09-03
 
 **Refines:** [0180](0180-currency-is-derived-and-a-rate-is-a-glance-card.md) (the pipe-plus-card precedent this copies, and whose §4 freshness rule this **inverts** for the one reason §4 does not cover; also the second tenant its attribution decision was made for), [0045](0045-trip-home-real-data-only.md) §4 (the promise that reserved this slot), [0166](0166-place-enrichment-is-a-multi-source-pipe.md) §5/§6.4/§14 (the store shape, serve-stale, and the no-scheduler trigger), [0107](0107-per-place-timezones-and-multi-zone-time.md) (the per-day anchor this reads, and its "itinerary, never GPS" rule), [0004](0004-integrations-are-pipes.md) (why this never gets a tab), [0050](0050-home-quick-access-deep-links-and-empty-states.md) (the derived-tile rule the horizon state obeys)
@@ -208,3 +208,51 @@ different source. One slot cannot carry two sources honestly."_ **This is that s
 - **The keyed providers** (OpenWeatherMap, WeatherAPI, Tomorrow.io, Pirate Weather). Not measured —
   each needs a signup and a secret before returning a byte, and the enrichment pipe's existing
   sources are all keyless. Recorded as a stated gap rather than a comparison.
+
+## Build log (2026-09-03)
+
+Three findings, each recorded because a future reader could not recover it from the code alone.
+
+**1. The hourly half of the series overlaps itself, and §2's measurement did not say so.** The
+brief established that the series runs hourly for ~2.4 days and then 6-hourly, and that the roll-up
+must read `next_6_hours` rather than `instant`. What it did not say is that in the hourly half
+`next_6_hours` sits on **every** row — twenty-four overlapping six-hour windows a day. Summing
+those quadruples a day's precipitation, and it does so **only inside the hourly window**, which
+makes it the same class of trap as the `instant` roll-up: correct-looking in any test written
+against tomorrow, wrong from day three on.
+
+So the roll-up takes a **greedy disjoint cover** — take a block, skip to the first one starting at
+or after its end, repeat. The obvious alternative, filtering to rows at 00/06/12/18 UTC, is worse
+in a way worth writing down: the measured series starts at `07:00Z`, so an aligned filter silently
+drops the first five hours of **today**, which is the day the card exists for. The greedy cover
+pays for that with one bounded artifact — where the 6-hourly grid is out of phase with the cover,
+up to five hours at one night boundary go uncounted, once per forecast. Losing five hours of a
+day-3 night is the right side of that trade.
+
+**2. The card is not a `<button>`, and the mockup drew one.** `.wx-widget` was drawn with
+`cursor: pointer` because it was drawn as `RateCard`'s sibling — and `RateCard` is a button
+because it **opens the converter**. v1 has nothing to open: §9 refuses the hourly strip, the dense
+row and the alert, and there is no forecast sheet. This repo's own rule then settles it, in three
+places that already agree: `ErrorState`'s retry renders only when the caller can recover,
+`SyncBadge` is silent when synced, and ADR-0180 §4 refuses a standing refresh button because "a
+control that reliably does nothing is the thing ADR-0133 §7 named." So the card is a plain region.
+It costs nothing to reverse — and it buys one thing back immediately: §8's attribution link is
+reachable rather than nested inside a button, which is invalid markup and was the constraint that
+pushed FX's mark out of its card in the first place.
+
+**3. The head prints the day's HIGH, because there is no "now" to print.** The mockup's head
+carries three numbers — `26°` now, `29°/21°` the range — and the first of them does not exist in
+this store. The `instant` block would supply it, but the store is keyed `(cell, date)` and §4's
+shelf life is six hours, so a "now" temperature here is a number up to six hours old wearing the
+one label it must not wear. Printing the high in the big run and the low beside it is two facts we
+actually hold, and it avoids the duplication ADR-0214 and ADR-0215 each removed — the high at 26px
+and again at 12px, 100px apart, is exactly that shape. **W4 rides the condition's own run**
+(`גשום · ⁦3.2⁩ מ״מ`) rather than taking a line, and the amount-not-a-chance rule is asserted in the
+component's spec.
+
+**Two defects the tests found before the surface did.** `forecastCell` keyed `-0.02` as `"-0.0"`,
+which is a second cell on the equator and the prime meridian — the rounding has to be normalised
+_after_ `toFixed`, not before. And `geo-tz` **throws** on an out-of-range latitude rather than
+answering empty, which mattered because generalising the two inline `geo-tz` copies into
+`common/geo-zone.ts` (root rule 8 — the forecast roll-up would have been the third) put that
+throw in front of a write path reading a nullable `Float` somebody else wrote.

@@ -31,6 +31,7 @@ import {
   type CreatePlaceInput,
   type CreateTaskInput,
   type DocumentSummary,
+  type Forecast,
   type FxRates,
   type MaybeItem,
   type Membership,
@@ -706,6 +707,14 @@ interface TripContextValue {
    *  Global and server-owned like `enrichments`, and read the same way: age is not a
    *  state — a set of any age renders, and only absence removes the surfaces. */
   fxRates: FxRates | null;
+  /** **The forecast over the trip's coordinate cells, or `null`** (ADR-0218 §6). Global and
+   *  server-owned like `fxRates` above, arriving on the same snapshot and refreshed by the same
+   *  resync — there is no route to ask for it, because nobody taps a forecast.
+   *
+   *  Unlike `fxRates`, **age IS a state here** (§4): the surfaces read `isForecastFresh` and go
+   *  absent past it, rather than rendering whatever they hold. That inversion is deliberate and
+   *  is the one ADR-0180 §4 does not cover. */
+  forecast: Forecast | null;
   /** The `as of` control's action (§4): awaits a fetch and adopts what it answers.
    *  Rejects only on a refused request; a source that is down resolves with the
    *  set unchanged, which is what leaves the date where it was. */
@@ -925,6 +934,8 @@ function TripReady({
   // no optimistic path. The one client-initiated write is `refreshFx`, which is a request
   // for a NEW set rather than an edit to this one.
   const [fxRates, setFxRates] = useState<FxRates | null>(snapshot.fxRates);
+  // Same shape, and simpler: the forecast has no client-initiated write at all (§6, no route).
+  const [forecast, setForecast] = useState<Forecast | null>(snapshot.forecast);
   const refreshFx = useCallback(async () => {
     setFxRates(await refreshFxRatesRequest(tripId));
   }, [tripId]);
@@ -1186,6 +1197,7 @@ function TripReady({
           setTravelModeOverrides(s.travelModeOverrides);
           setEnrichments(s.enrichments);
           setFxRates(s.fxRates);
+          setForecast(s.forecast);
           onReconnected();
         },
         () => {}, // ponytail: transient refetch failure — next change/hello retries the resync.
@@ -2016,6 +2028,7 @@ function TripReady({
       travelModeOverrides,
       enrichments,
       fxRates,
+      forecast,
       refreshFx,
       activeDate,
       setActiveDate,
@@ -2054,6 +2067,7 @@ function TripReady({
       travelModeOverrides,
       enrichments,
       fxRates,
+      forecast,
       refreshFx,
       settings,
       indexVerbs,

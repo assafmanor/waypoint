@@ -10,6 +10,7 @@ import { DocumentsModule } from './documents/documents.module';
 import { MapModule } from './map/map.module';
 import { EnrichmentModule } from './enrichment/enrichment.module';
 import { FxModule } from './fx/fx.module';
+import { WeatherModule } from './weather/weather.module';
 import { EventsModule } from './events/events.module';
 import { HealthController } from './health/health.controller';
 import { MaybeItemsModule } from './maybe-items/maybe-items.module';
@@ -55,6 +56,7 @@ import { TripsModule } from './trips/trips.module';
     // construct, called by nothing yet.
     EnrichmentModule,
     FxModule,
+    WeatherModule,
     NotificationsModule,
   ],
   controllers: [HealthController],

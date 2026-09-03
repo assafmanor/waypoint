@@ -165,6 +165,19 @@ export const FX_DISABLED = 'FX_DISABLED';
  *  user-facing waits on it either way. */
 export const FX_FETCH_TIMEOUT_MS = 5000;
 
+/** **The forecast feed's kill switch** (ADR-0218 §1), and the FIFTH variable of its kind after
+ *  `ENRICHMENT_DISABLED`, `FX_DISABLED`, `PUSH_DISABLED` and `ROUTING_DISABLED`. The reason is
+ *  the one each of them states: this is a thing the app does on its own initiative against
+ *  somebody else's server. Reads are unaffected — flipping this freezes the forecast at whatever
+ *  is stored, and ADR-0218 §4's shelf life then removes the card on its own, which is the
+ *  designed failure rather than a second one. */
+export const WEATHER_DISABLED = 'WEATHER_DISABLED';
+
+/** Per-request timeout for a forecast fetch. Longer than FX's because the `complete` document is
+ *  ~58 KB against one small object (the brief's measured contract), and still short: nothing
+ *  user-facing waits on it, the snapshot read only schedules the pass. */
+export const WEATHER_FETCH_TIMEOUT_MS = 8000;
+
 /** Per-request timeout for an enrichment fetch. Generous enough for a cold Wikidata
  *  entity read, short enough that a slow source degrades one field rather than holding up
  *  a pass (§5.4) — nothing user-facing is waiting on it either way (§6). */

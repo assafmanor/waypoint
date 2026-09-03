@@ -2314,6 +2314,48 @@ export const t = {
     polarDay: 'השמש לא שוקעת היום',
     polarNight: 'השמש לא זורחת היום',
   },
+  // The forecast (ADR-0218). **No glyphs here, and their absence is NOT the same call the `sun`
+  // block above makes.** The sun's marks are chrome the app draws, so they left the copy and
+  // became `SunGlyph`. A condition is a fact MET Norway computed and this app merely holds, so it
+  // stays an emoji — but it is looked up from `symbol_code` in `@waypoint/shared`, which is data,
+  // not a mark baked into a sentence. ADR-0218 §7 settles both, and §7's tripwire is the only
+  // thing that reopens it: if the card ever grows an illustration, the mark joins it.
+  weather: {
+    today: 'היום',
+    tomorrow: 'מחר',
+    // The day strip's short weekday. The letter comes from `weekdayLetter`; the geresh is the
+    // app's own grammar for an abbreviated Hebrew day, so it lives here rather than at the
+    // call site.
+    weekday: (letter: string) => `${letter}׳`,
+    // The day's low, beside the high. Labelled because two bare numbers in one line say nothing
+    // about which is which, and the high is already the big run above it.
+    low: (temp: string) => `מינ׳ ${temp}`,
+    // **W4 · the one fact that changes a plan, and it is an AMOUNT.** MET publishes no
+    // probability of precipitation, so this must never read as a chance — `40% גשם` is a number
+    // nobody can act on and, here, one the source never said. Composed here rather than at the
+    // call site, so the separator between the two peer facts is the app's middle dot and not
+    // whatever a component reached for.
+    precip: (mm: string) => `${mm} מ״מ`,
+    condPrecip: (condition: string, mm: string) => `${condition} · ${mm} מ״מ`,
+    // The nine conditions `forecastCondition` resolves a `symbol_code` to. Keys, not glyphs —
+    // the shared package supplies the stable key and the frontend supplies the word (ADR-0009).
+    condition: {
+      clear: 'בהיר',
+      fair: 'בהיר בעיקרו',
+      partlycloudy: 'מעונן חלקית',
+      cloudy: 'מעונן',
+      fog: 'ערפילי',
+      rainshowers: 'ממטרים',
+      rain: 'גשום',
+      sleet: 'שלג מעורב',
+      snow: 'שלג',
+      thunder: 'סופת רעמים',
+    },
+    // A day past the provider's horizon, for the screen reader. The tile itself is a dashed
+    // placeholder and says this without a word (§5); this is the word for someone who cannot
+    // see the dashes.
+    beyond: 'אין עדיין תחזית ליום הזה',
+  },
   fx: {
     sectionTitle: 'מבט מהיר',
     // The date is interpolated as an already-isolated LTR island (ADR-0118), never

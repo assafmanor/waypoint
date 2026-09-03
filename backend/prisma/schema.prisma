@@ -809,6 +809,74 @@ model FxRateSet {
   providerUrl String
 }
 
+/// One day's forecast at one coordinate cell (ADR-0218 §1/§3).
+///
+/// **`PlaceEnrichment`'s store with `FxService`'s policy**, and this table is the store
+/// half. `FxRateSet` above needs no bound because there is exactly one document; a
+/// forecast is keyed by place AND day, so it is a bounded, expiring, many-row table.
+///
+/// **Global, and outside the change log** — the same three reasons `PlaceEnrichment` is
+/// (ADR-0166 §6): no `tripId`, no client writes it, and it is ordered against nothing, so
+/// it carries no `Change` and never appears in the change feed. Keying on a rounded cell
+/// rather than a `placeId` is what makes that true: `Place` is trip-scoped by decision, so
+/// a `placeId` key would fetch the same hotel once per trip.
+///
+/// **The per-fetch columns repeat on every day of a cell**, which is deliberate and not an
+/// oversight: one MET response yields ~10 rows, and the alternative is a parent table whose
+/// only job is to hold four columns for a store nothing joins on. The composite key the
+/// design fixes is `(cell, date)`, and this keeps it the whole key.
+model WeatherForecast {
+  /// `forecastCell(lat, lng)` from @waypoint/shared — `"35.7,139.7"`, the 0.1° grid.
+  /// A string because it is a key column, a Map key and a JSON object key on three sides
+  /// of the wire, and every one of those wants one scalar.
+  cell String
+
+  /// `YYYY-MM-DD` **in `zone`**, not in UTC. Every instant MET publishes is `Z`, so
+  /// bucketing them into the day's own zone is the roll-up's whole job (ADR-0107).
+  date String
+
+  /// The IANA zone the day above is measured in, resolved from the cell's own coordinate
+  /// via `geo-tz` — the same source `Place.timezone` comes from, so the two cannot drift.
+  zone String
+
+  /// MET's own `symbol_code` for the day's dominant block, stored verbatim: it is the
+  /// provenance, it carries the day/night variant, and a change to the glyph table must not
+  /// require a re-fetch.
+  symbolCode String
+
+  /// Celsius. The response's `meta.units` is checked rather than assumed — the app has no
+  /// Fahrenheit surface, and an assumption there is invisible until it is not.
+  tempMax Float
+  tempMin Float
+
+  /// **Millimetres, and there is no probability.** MET publishes an amount only, so no copy
+  /// on any surface may imply a chance (ADR-0218's consequences).
+  precipMm Float
+
+  /// **The model's issue time (`meta.updated_at`) — the clock §4's shelf life runs from.**
+  /// Not the fetch time, and the difference is the whole point of the rule: a `304` refresh
+  /// moves `fetchedAt` and `expiresAt` and leaves this alone, because nothing was published.
+  issuedAt DateTime
+
+  /// Ours, for diagnostics and for bounding retries. Never rendered.
+  fetchedAt DateTime
+
+  /// The response's own `Expires`, which is MET's caching contract rather than a TTL we
+  /// invented — measured ~22 minutes out on a live response. This is what makes a refresh
+  /// due; the 6h/24h shelf life above is a separate, longer question about what may be SHOWN.
+  expiresAt DateTime
+
+  /// The response's `Last-Modified`, **verbatim**, to send back as `If-Modified-Since`.
+  /// MET's docs ask for the previous value rather than an arbitrary timestamp, and a `304`
+  /// is a successful refresh rather than a miss.
+  lastModified String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([cell, date])
+}
+
 /// A device this user can be reached on (ADR-0197 §2). Control plane, not data plane:
 /// no `tripId`, no `Change` row, no broadcast, never client-mutated beyond its own
 /// create/delete — the same three reasons `PlaceEnrichment` sits outside `ChangeService`

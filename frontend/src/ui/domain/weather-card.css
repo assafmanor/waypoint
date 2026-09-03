@@ -1,0 +1,115 @@
+/* `WeatherCard` — `מבט מהיר`'s first tenant (ADR-0218), drawn in
+   `mockups/weather-as-a-glance-card-v1.html` §1/§2. Namespaced `.wx-*`, checked as unused before
+   it was taken and deliberately not `.gl-*` / `.glance-*`, which belong to `GlanceCard`, the
+   day-at-a-glance time rail (the collision ADR-0180 §3 recorded for `RateCard`).
+
+   **No spacing of its own.** `.glance-cards` owns the rhythm between tenants — a gap on the
+   container rather than a margin on a tenant, because the set grows (screens.css). */
+
+.wx-widget {
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-16);
+  overflow: hidden;
+  color: var(--ink);
+}
+
+/* THE HEAD — the active day, in one row. The glyph is content (an emoji the world chose, §7),
+   the number is a mono run; between them they spend nothing from the colour budget. Amber stays
+   the clock's and teal the place's (rule 4). */
+.wx-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 11px 13px 9px;
+}
+.wx-glyph {
+  flex: 0 0 auto;
+  font-size: 24px;
+  line-height: 1;
+}
+.wx-temp {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+}
+.wx-cond {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The low, pushed to the far edge — the same `margin-inline-start: auto` read-out trade
+   `.day-ambient .as` and `.fx-card .asof` already make. */
+.wx-low {
+  margin-inline-start: auto;
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* THE DAYS — the itinerary's own days, each naming the place it happens in, which is the whole
+   point of the strip (brief §3.2b). A strip and never a grid: it scrolls. */
+.wx-days {
+  display: flex;
+  gap: 6px;
+  padding: 0 13px 12px;
+  overflow-x: auto;
+}
+.wx-day {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 62px;
+  padding: 7px 8px;
+  border-radius: var(--radius-12, 12px);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.wx-day .wd-d {
+  font-size: 0.69rem;
+  font-weight: 700;
+}
+/* **The place, and it is why the strip exists.** Muted and small, because it is context for the
+   number above it — but never absent, since a forecast with no place is a weather app's answer
+   rather than this app's. */
+.wx-day .wd-p {
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: var(--muted);
+  max-width: 62px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wx-day .wd-g {
+  font-size: 15px;
+  line-height: 1.2;
+}
+.wx-day .wd-t {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+/* A day the provider's horizon does not reach — and a day we simply hold nothing for, which
+   reads identically from here. NOT an error and not a dash: a dashed placeholder is the SOFT
+   grammar's own answer for "nobody has filled this in yet" (`.wp-track-empty` says the same
+   thing one surface over). */
+.wx-day.beyond {
+  background: none;
+  border: 1px dashed var(--line);
+}
+.wx-day.beyond .wd-g,
+.wx-day.beyond .wd-t {
+  opacity: 0.4;
+}

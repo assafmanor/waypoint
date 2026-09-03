@@ -23,6 +23,7 @@ import {
 } from '@waypoint/shared';
 import { ltrIsolate } from '../lib/bidi';
 import { sunArc, skyStops, nextGoldenHour } from '../lib/daylight-view';
+import { weatherView } from '../lib/weather-view';
 import { SunWidget } from '../ui/domain/SunWidget';
 import { useTrip } from '../state/trip-state';
 import { useAuth } from '../state/auth-state';
@@ -36,6 +37,7 @@ import {
   DayRail,
   GlanceCard,
   RateCard,
+  WeatherCard,
   TransitProgress,
   type BoardCountdown,
   type BoardGap,
@@ -77,6 +79,7 @@ import {
   dayLabel,
   addDays,
   todayInTz,
+  weekdayLetter,
   tzParts,
   dayWindowMs,
   hourLabel,
@@ -129,6 +132,7 @@ import {
   STAY_STRIP_DISMISS_STORAGE_KEY,
   type TabId,
   DAY_MIDNIGHT,
+  WEATHER_STRIP_DAYS,
 } from '../constants';
 import { t } from '../i18n/he';
 import { Icon } from '../ui/Icon';
@@ -178,6 +182,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     dismissChange,
     clearChangeFeed,
     fxRates,
+    forecast,
     refreshFx,
     tasks,
     subtasks,
@@ -951,6 +956,63 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     };
   }, [sunLight, sunZone, activeDate, today, nowMs]);
 
+  // ── Weather (the pipe) — ADR-0218, `מבט מהיר`'s FIRST tenant ─────────────
+  // **The strip is the itinerary's own days, each named by the place it happens in** (brief
+  // §3.2b). That is the one thing a weather app cannot do, and it is why this stays a pipe
+  // rather than a tab (ADR-0004): the group is in Tokyo tonight and Hakone tomorrow, and the
+  // card says so.
+  //
+  // The anchor is `dayAnchorCoord` on the SAME `zoneEvidence` the daylight block above reads,
+  // per day — so the forecast, the sunrise and the day's clock cannot disagree about where the
+  // day is lived. And the shelf life (§4) is applied HERE rather than on the server, because
+  // this snapshot is mirrored into Dexie: a bound enforced only server-side would stop applying
+  // at exactly the moment it matters.
+  const weatherDates = useMemo(
+    () => Array.from({ length: WEATHER_STRIP_DAYS }, (_, i) => addDays(activeDate, i)),
+    [activeDate],
+  );
+  const weather = useMemo(
+    () =>
+      weatherView({
+        dates: weatherDates,
+        evidence: zoneEvidence,
+        places,
+        destination:
+          trip.destinationLat != null && trip.destinationLng != null
+            ? { lat: trip.destinationLat, lng: trip.destinationLng }
+            : undefined,
+        destinationName: trip.destination,
+        forecast,
+        nowMs,
+        today,
+      }),
+    [
+      weatherDates,
+      zoneEvidence,
+      places,
+      trip.destinationLat,
+      trip.destinationLng,
+      trip.destination,
+      forecast,
+      nowMs,
+      today,
+    ],
+  );
+  // Formatted here because the host owns the day's zone and the app's date grammar, and the
+  // widget owns no clock — the same contract `RateCard`'s `asOf` and `SunWidget`'s `times` state.
+  const weatherDayLabels = useMemo(() => {
+    const labels: Record<string, string> = {};
+    for (const date of weatherDates) {
+      labels[date] =
+        date === today
+          ? t.weather.today
+          : date === addDays(today, 1)
+            ? t.weather.tomorrow
+            : t.weather.weekday(weekdayLetter(date));
+    }
+    return labels;
+  }, [weatherDates, today]);
+
   // ── Day at a glance (derived) — a proportional time rail (lib/glance) ──
   // One derivation, because the Map's route now reads the SAME dawn instant to tell a night
   // arrival from an early start (root rule 8) — a copy that drifted would put a stop on one
@@ -1508,10 +1570,35 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           The SECTION goes when it has no cards — a heading over nothing is the dead
           space ADR-0045 removed the row for — so the gate is "either tenant", not
           the rate card alone. */}
-      {(sunLight || rateCardVisible) && <div className="sec-title">{t.fx.sectionTitle}</div>}
+      {(weather || sunLight || rateCardVisible) && (
+        <div className="sec-title">{t.fx.sectionTitle}</div>
+      )}
       {/* The section owns the gap between its tenants (`.glance-cards`), because
           neither card carries a margin and the set grows — see `screens.css`. */}
       <div className="glance-cards">
+        {weather && (
+          <div>
+            <WeatherCard view={weather} dayLabels={weatherDayLabels} />
+            {/* MET's terms require visible credit, and ADR-0180 §9's amendment already bought
+                this slot: it put FX's mark on a line UNDER the card rather than in the free
+                section-heading slot, saying exactly why — "a section heading attributes the
+                section, which ADR-0045 §4 has already promised to a second tenant, weather, from
+                a different source. One slot cannot carry two sources honestly." **This is that
+                second tenant**, and the 21px was spent in advance. Same classes as `RateCard`'s,
+                because it is the same line doing the same job. */}
+            <p className="fx-attr">
+              <a
+                className="fx-attr-link"
+                href={forecast!.providerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                dir="auto"
+              >
+                {forecast!.provider}
+              </a>
+            </p>
+          </div>
+        )}
         {sunLight && sunArcModel && sunSky && (
           <SunWidget light={sunLight} arc={sunArcModel} sky={sunSky} times={sunTimes} />
         )}

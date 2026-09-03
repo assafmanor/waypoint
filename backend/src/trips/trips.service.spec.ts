@@ -6,9 +6,10 @@ import {
   GoneException,
   NotFoundException,
 } from '@nestjs/common';
-import { ENRICHMENT_DISABLED } from '../common/env';
+import { ENRICHMENT_DISABLED, WEATHER_DISABLED } from '../common/env';
 import { EnrichmentRegistry } from '../enrichment/enrichment.registry';
 import { FxService } from '../fx/fx.service';
+import { WeatherService } from '../weather/weather.service';
 import { EnrichmentScheduler } from '../enrichment/enrichment.scheduler';
 import { EnrichmentService } from '../enrichment/enrichment.service';
 import { EnrichmentImagePipeline } from '../enrichment/image-pipeline';
@@ -67,12 +68,22 @@ describe('TripsService', () => {
     attributionUrl: 'https://example.invalid',
     fetch: () => Promise.reject(new Error('no network in tests')),
   });
+  // And the forecast (ADR-0218 §1), on the same terms: a real service over a provider that
+  // refuses, so the snapshot's read path runs and nothing reaches the network. `WEATHER_DISABLED`
+  // is set below alongside `ENRICHMENT_DISABLED`, for the same reason.
+  const weather = new WeatherService(prisma, {
+    id: 'test',
+    attribution: 'test',
+    attributionUrl: 'https://example.invalid',
+    fetch: () => Promise.reject(new Error('no network in tests')),
+  });
   const service = new TripsService(
     prisma,
     changes,
     enrichment,
     new EnrichmentScheduler(enrichment),
     fx,
+    weather,
   );
   const createdTripIds: string[] = [];
   // **The kill switch is ON for this whole file, and that is not incidental.** These specs are
@@ -81,7 +92,12 @@ describe('TripsService', () => {
   // Prisma, write `PlaceEnrichment` rows nothing here cleans up, and reach the network on a box
   // that can. `schedule()` is still CALLED either way — the switch is checked inside it — so the
   // wiring these files assert is unaffected. The pass itself has its own spec.
-  beforeAll(() => vi.stubEnv(ENRICHMENT_DISABLED, '1'));
+  beforeAll(() => {
+    vi.stubEnv(ENRICHMENT_DISABLED, '1');
+    // Same argument for the forecast pass (ADR-0218 §1): fire-and-forget, so it would outlive
+    // the test that triggered it. `readAndRefresh` is still called; the switch is checked inside.
+    vi.stubEnv(WEATHER_DISABLED, '1');
+  });
   afterAll(() => vi.unstubAllEnvs());
 
   // One trip per case; Invite/TripBlock/Membership rows cascade-delete with it.

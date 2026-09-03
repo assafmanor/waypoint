@@ -21,6 +21,7 @@ export * from './routing';
 export * from './task-time';
 export * from './travel-time';
 export * from './trip-dates';
+export * from './weather';
 export * from './zones';
 export * from './sharing';
 // **Pure text utilities the A4 renderer needs as much as the app does** (moved 2026-08-31).

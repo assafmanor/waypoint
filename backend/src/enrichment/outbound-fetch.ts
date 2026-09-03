@@ -71,6 +71,18 @@ const ALLOWED_HOSTS = [
   // is code. Separate infrastructure from `valhalla1`, which is what makes it a fallback rather
   // than a second name for the same outage.
   'routing.openstreetmap.de',
+  // **The weather provider** (ADR-0218 §2/§6) — MET Norway's `locationforecast`, here for the
+  // reason the three entries above are: this file is the process's one outbound seat, and a
+  // second fetcher would be a second place to get SSRF wrong. Chosen after coverage tied with
+  // Open-Meteo at 57/57 of the app's destinations, on TERMS: NLOD 2.0 grants "any purpose …
+  // free, perpetual and worldwide", where Open-Meteo's free tier is non-commercial only and so
+  // stops being available at exactly the moment the app would need to keep using it.
+  //
+  // MET asks three things of a client and all three are held rather than promised: an
+  // identifying `User-Agent` with a repo URL (`weather.provider.ts` sends its own, since the
+  // default below names enrichment), <= 20 req/s across the whole application, and honouring
+  // `Expires` / `If-Modified-Since` — which is what `headers` on the response below exists for.
+  'api.met.no',
 ];
 
 /** Suffix rules, for the one source that is genuinely per-language. Matched as a real
@@ -172,6 +184,11 @@ export interface EnrichmentResponse {
   status: number;
   contentType: string | null;
   body: Buffer;
+  /** **The response's own headers**, added for ADR-0218 §2: MET Norway's terms ask a client to
+   *  honour `Expires` and to echo `Last-Modified` back as `If-Modified-Since`, so a caller that
+   *  cannot read them cannot hold the contract. Exposed as the whole `Headers` rather than the
+   *  two names, because naming them here would make the next such source a change to this file. */
+  headers: Headers;
 }
 
 /**
@@ -244,6 +261,7 @@ export class EnrichmentFetcher {
         url: target,
         status: res.status,
         contentType: res.headers.get('content-type'),
+        headers: res.headers,
         body: await readCapped(res, maxBytes),
       };
     }
