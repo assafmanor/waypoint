@@ -88,6 +88,15 @@
   --on-dark-dim: #93a2c4; /* secondary, labels, meta */
   --on-dark-faint: #7688ac; /* tertiary — rail ends, footnotes */
 
+  /* ── The app mark's edge on the dark chrome (ADR-0087 amendment) ──
+     The mark stopped drawing its own outer stroke, so its three inline hosts
+     (.land-icon, .join-icon, .sh-brand-mark) separate the dark disc from the dark
+     bar with a hairline instead. A border, not a brand mark: white-alpha rather
+     than teal, so it reads as the container's edge and cannot be mistaken for
+     part of the logo the way the teal ring was. Two hosts already carried this
+     literal; this is the name for it. */
+  --mark-edge: rgba(255, 255, 255, 0.15);
+
   /* ── The ink on PLAN's violet, which that surface always had (ADR-0193 §5) ──
      Not a new family — a NAME for one. `.prep` has inked itself in white-alpha
      since it was drawn, as six literals scattered through `screens.css`; §3

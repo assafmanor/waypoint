@@ -161,7 +161,7 @@
   width: 24px;
   height: 24px;
   padding: 3px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid var(--mark-edge);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.08);
   object-fit: contain;
