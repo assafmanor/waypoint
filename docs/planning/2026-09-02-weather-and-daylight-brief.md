@@ -5,9 +5,11 @@
 half needed no fork answered, so it shipped as §1 recommends — `packages/shared/src/daylight.ts`
 (the solar math + its table), `lib/places.ts`'s `dayAnchorCoord`, `lib/daylight-view.ts`, and
 `ui/domain/SunWidget` in `מבט מהיר`. **Weather is still blocked on forks B and C** (§6), which are
-the provider-with-its-terms-review and the staleness bound. **Fork B's measurement has since been
-run (amendment, 2026-09-02) and it changed the recommendation to MET Norway**; what is left of B is
-one question for the owner, and C is untouched.
+the provider-with-its-terms-review and the staleness bound. **Both forks are now answered (owner, 2026-09-03) and the decision is recorded in
+[ADR-0218](../decisions/0218-a-forecast-expires-and-the-widget-goes-rather-than-lies.md)**: the provider is MET Norway (fork B's
+measurement ran as the 2026-09-02 amendment, and the owner's _"prefer not to pay"_ confirmed it rather
+than flipping it), and a forecast expires at 6h for today, 24h beyond (fork C). What remains is the build
+and the real-device pass.
 Two things the build changed from the drawing, both recorded in §2.4 and §2.6:
 sun instants are **rounded to the whole minute** at the source (`Intl` truncates, so a 06:16:52
 sunrise would print `06:16` where every published table says `06:17`), and the sky needs **eight**
@@ -34,7 +36,7 @@ shape that actually fits, as opposed to the one that looks like it does),
 [ADR-0214](../decisions/0214-the-night-board-has-one-subject-and-it-is-tomorrow.md) and
 [ADR-0215](../decisions/0215-the-glance-card-says-what-only-it-can-say.md) (two rounds of the owner
 correcting this app for putting too much on exactly the two surfaces this feature wants),
-[ADR-0107](../decisions/0107-timezones-itinerary-derived.md) (the day-anchor derivation this
+[ADR-0107](../decisions/0107-per-place-timezones-and-multi-zone-time.md) (the day-anchor derivation this
 extends), and [ADR-0004](../decisions/0004-integrations-are-pipes.md) (why neither of these ever
 gets a tab).
 
@@ -416,12 +418,19 @@ Everything above is a recommendation; these six are decisions.
 - **B · The provider.** ~~Open-Meteo is the standing recommendation.~~ **Measured 2026-09-02 — see
   the amendment at the foot of this document, which unseated it.** Coverage is a tie (both keyless
   globals serve all 57 destinations); the terms are not (Open-Meteo's free tier is non-commercial by
-  its own wording). **The recommendation is now MET Norway**, and what remains for the owner is the
-  one question it turns on: _is Travelive commercial?_ Both readings are answered there, with the
-  cost of each. A line in `ALLOWED_HOSTS` follows the answer, not the other way round.
-- **C · The staleness bound.** §2.5 says a forecast must expire. **How long?** The proposal is
-  **6 hours for today, 24 for tomorrow and beyond** — but this is a feel call about how wrong the
-  app is willing to be offline, and it is the owner's.
+  its own wording). **The recommendation is now MET Norway**, and the owner **answered
+  (2026-09-03)**: _"It isn't commercial yet, and if it becomes, I would still prefer to not pay if
+  possible — weather is not a major part of the app."_ That **confirms** MET Norway rather than
+  flipping to Open-Meteo, and sharpens why: Open-Meteo's free tier stops being available at exactly
+  the moment the app turns commercial, so the binding constraint is **free permanently, not free
+  today**. NLOD 2.0 §2 was then read directly and grants _"any purpose … free, perpetual and
+  worldwide"_ — an explicit permission rather than an absent prohibition, which is the bar ADR-0180
+  set. **Settled in [ADR-0218](../decisions/0218-a-forecast-expires-and-the-widget-goes-rather-than-lies.md) §2.**
+- **C · The staleness bound.** ~~How long?~~ **Answered (owner, 2026-09-03): 6 hours for today,
+  24 for tomorrow and beyond** — the proposal, taken as proposed. The accepted cost is stated in the
+  ADR rather than smoothed: on a patchy connection abroad the card disappears after ~6 hours offline,
+  which is the honest failure and a visible one. **Settled in
+  [ADR-0218](../decisions/0218-a-forecast-expires-and-the-widget-goes-rather-than-lies.md) §4.**
 - **D · ~~Ground on the ribbon as well as the rail?~~ Settled by the corrections.** The ground is no
   longer the feature — it survives only as a quiet backdrop on the glance rail, behind the mark that
   actually carries the message. Two feel calls remain in its place, both device reads (ADR-0017) and
