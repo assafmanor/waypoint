@@ -444,6 +444,17 @@ export const NIGHT_ENDS_HOUR = 5;
 export const DAY_ANCHOR_AGREE_M = 11_000;
 
 /**
+ * **How many days the forecast strip draws** (ADR-0218, mockup §2).
+ *
+ * Five, and it is a width answer rather than a horizon one: at 62px a tile plus the 6px gap,
+ * five tiles is 334px, which fits inside a 360px card and leaves the sixth visibly cut so the
+ * strip reads as scrollable rather than as finished. The provider reaches ~10 days, so the rest
+ * are there to scroll to — and a day past the horizon draws the dashed placeholder (§5), which
+ * MET's shorter reach makes an ordinary sight rather than an exotic one.
+ */
+export const WEATHER_STRIP_DAYS = 5;
+
+/**
  * **The daylight widget's arc** (`lib/daylight-view.ts`).
  *
  * `SAMPLES` is how many points the sun's altitude is read at across the day.
