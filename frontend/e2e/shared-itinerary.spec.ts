@@ -227,6 +227,91 @@ for (const viewport of PHONES) {
   });
 }
 
+/**
+ * **A DAY WHOSE CURRENT EVENT HOLDS `PINNED` AND CARRIES A DRIVE INTO IT.**
+ *
+ * `FULL`'s first row is a ⁦09:30⁩ point, which by design cannot hold a moment, so the nailed
+ * form needs its own day: ⁦08:30–10:00⁩ around the pinned ⁦09:00⁩, plus a stored journey — the
+ * combination the owner's screenshot caught.
+ */
+const RUNNING_WITH_DRIVE: SharedItinerary = {
+  ...FULL,
+  days: [
+    {
+      ...FULL.days[0],
+      sections: [
+        {
+          daypart: SHARE_DAYPART.MORNING,
+          events: [
+            {
+              title: 'טבילה בלגונה הכחולה',
+              icon: '♨️',
+              daypart: SHARE_DAYPART.MORNING,
+              hard: true,
+              startLabel: '08:30',
+              endLabel: '10:00',
+              time: { label: '08:30', endLabel: '10:00', meaning: TIME_MEANING.EXACT },
+              journey: { mode: 'driving', minutes: 14, km: 10.8 },
+            },
+          ],
+        },
+      ],
+    },
+    FULL.days[1],
+    FULL.days[2],
+  ],
+};
+
+/**
+ * **THE ARROW LANDS INSIDE THE EVENT, AND ONLY A BROWSER CAN SAY SO** (ADR-0217's 2026-09-03
+ * amendment; owner, with the share page and the day view side by side: _"the line isn't on
+ * the currently happening event on the live sharing page"_).
+ *
+ * `--thru` is a percentage of the MARKED BOX's height. The mark used to wrap the whole row,
+ * and a row with a stored journey is two boxes — the drive's line and the card — so the
+ * fraction was measured over both and ⁦30⁩ minutes into a ⁦90⁩-minute event the arrow sat on the
+ * drive above the card. Every unit test passed: in jsdom every box is ⁦0px⁩, so no fraction of
+ * anything is distinguishable from any other. This is the assertion that fails on the old
+ * scope, and the reason it lives here.
+ */
+test('the now-arrow lands inside the running event, not on the drive into it', async ({ page }) => {
+  await open(page, RUNNING_WITH_DRIVE);
+  await expect(page.getByText('טבילה בלגונה הכחולה').first()).toBeVisible();
+
+  const geometry = await page.evaluate(() => {
+    const mark = document.querySelector('.sh-day-body .now-here');
+    const card = document.querySelector('.sh-day-body .sh-event');
+    const drive = document.querySelector('.sh-day-body .sh-journey');
+    if (!mark || !card || !drive) return null;
+    const box = mark.getBoundingClientRect();
+    // The rule and the arrow are both `top: var(--thru)` on the mark, so this IS where they
+    // are drawn — read from the element rather than assumed from the input fraction.
+    const thru = getComputedStyle(mark).getPropertyValue('--thru').trim();
+    const fraction = thru.endsWith('%') ? Number(thru.slice(0, -1)) / 100 : Number.NaN;
+    const cardBox = card.getBoundingClientRect();
+    const driveBox = drive.getBoundingClientRect();
+    return {
+      arrowY: box.top + fraction * box.height,
+      card: { top: cardBox.top, bottom: cardBox.bottom, height: cardBox.height },
+      drive: { top: driveBox.top, bottom: driveBox.bottom },
+      fraction,
+    };
+  });
+
+  expect(geometry, 'the mark, the card and the drive should all be rendered').not.toBeNull();
+  const { arrowY, card, drive, fraction } = geometry!;
+  // 09:00 through 08:30–10:00 is a third of the way in — the derivation, restated here so a
+  // wrong fraction is not hidden by a card tall enough to contain any of them.
+  expect(fraction).toBeCloseTo(30 / 90, 2);
+  expect(card.height).toBeGreaterThan(0);
+  // **The arrow is inside the card**, which is the whole report.
+  expect(arrowY).toBeGreaterThanOrEqual(card.top);
+  expect(arrowY).toBeLessThanOrEqual(card.bottom);
+  // And not on the drive, which is where it went. Stated separately: a card that grew to
+  // swallow the drive would satisfy the pair above without the defect being fixed.
+  expect(arrowY).toBeGreaterThan(drive.bottom);
+});
+
 test('Summary shows no exact fact the projection did not send', async ({ page }) => {
   await open(page, SUMMARY);
 

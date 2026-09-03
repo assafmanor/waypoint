@@ -1202,6 +1202,63 @@ describe('SharedItinerary', () => {
       expect(container.querySelectorAll('.sh-day-body .now-here')).toHaveLength(1);
     });
 
+    /**
+     * **THE MARK IS A FRACTION OF THE EVENT, NOT OF THE DRIVE INTO IT** (owner, 2026-09-03,
+     * with the shared page and the day view side by side: _"the line isn't on the currently
+     * happening event on the live sharing page"_).
+     *
+     * `--thru` is a percentage of the marked box's height, and a row here is not always one
+     * box: an event carrying a stored journey renders `.sh-journey` as a SIBLING line before
+     * its card. Wrapping the pair measured the fraction over both, so ⁦12⁩ minutes into a
+     * ⁦12:00–13:00⁩ coffee the arrow landed on the drive above the card — the row said `עכשיו`
+     * and the mark said "not yet". `DayView` never had it: a join is its own row there.
+     *
+     * Geometry is not assertable in jsdom (every box is ⁦0px⁩), so the invariant under it is:
+     * the journey line is OUTSIDE the mark and the card is INSIDE it.
+     */
+    it('nails the mark to the event’s own box, not to the journey into it', async () => {
+      const withJourney = (): Projection => {
+        const base = runningRowProjection();
+        const day = base.days[0];
+        return {
+          ...base,
+          days: [
+            {
+              ...day,
+              sections: [
+                {
+                  ...day.sections[0],
+                  events: [
+                    {
+                      ...day.sections[0].events[0],
+                      journey: { mode: 'driving', minutes: 14, km: 10.8 },
+                    },
+                  ],
+                },
+              ],
+            },
+            ...base.days.slice(1),
+          ],
+        };
+      };
+      serve(withJourney());
+      const { container } = renderShared();
+      await screen.findByText(plain('טבילה בלגונה הכחולה'));
+
+      const mark = container.querySelector('.sh-day-body .now-here')!;
+      expect(mark).toBeTruthy();
+      // The card is the marked box…
+      expect(mark.querySelector('.sh-event')).toBeTruthy();
+      // …and the drive into it is not in the box at all, so it cannot lengthen the fraction.
+      expect(mark.querySelector('.sh-journey')).toBeNull();
+      // It is still rendered, and still before the mark — a line into the event, above it.
+      const journey = container.querySelector('.sh-journey')!;
+      expect(journey).toBeTruthy();
+      expect(journey.compareDocumentPosition(mark) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      // The row still says the word, which is what makes the mark caption-free (ADR-0217 §1).
+      expect(container.querySelector('.sh-event-now')!.textContent).toBe(t.common.now);
+    });
+
     it('draws no now-line at Summary, which carries no times at all', async () => {
       serve(summaryProjection);
       const { container } = renderShared();

@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import {
   NARRATIVE_SEPARATOR,
@@ -661,18 +661,26 @@ function DayCard({
                 // build log §5 is a transparent wrapper breaking four child combinators it
                 // landed inside, and `shared-itinerary.css` has exactly one over anything the
                 // mark can wrap — `.sh-event-main > strong` — which is INSIDE the article.
+                //
+                // **`EventRow` does the wrapping, not this host** (ADR-0217's 2026-09-03
+                // amendment). A row here is not one box: an event with a stored journey renders
+                // the drive INTO it as a sibling `.sh-journey` line, and a wrapper around both
+                // measured `--thru` over the pair — so a moment ⁦12⁩ minutes into a ⁦12:00–13:00⁩
+                // coffee put the arrow on the drive above it, reading as "not started". The row
+                // is the thing that knows which of its three shapes is its own box.
                 const held =
                   marker?.inside?.daypart === section.daypart && marker.inside.index === index;
-                const row = <EventRow event={event} code={code} now={held} />;
                 return (
                   <Fragment key={`${event.title}-${index}`}>
-                    {held && nowLabel ? (
-                      <NowMarker label={nowLabel} thruFrac={marker.inside!.thruFrac}>
-                        {row}
-                      </NowMarker>
-                    ) : (
-                      row
-                    )}
+                    <EventRow
+                      event={event}
+                      code={code}
+                      nowMark={
+                        held && nowLabel
+                          ? { label: nowLabel, thruFrac: marker.inside!.thruFrac }
+                          : undefined
+                      }
+                    />
                     {boundary?.daypart === section.daypart &&
                     boundary.index === index + 1 &&
                     nowLabel ? (
@@ -796,25 +804,49 @@ function SharedTimeText({ time }: { time: SharedTime }) {
 function EventRow({
   event,
   code,
-  now,
+  nowMark,
 }: {
   event: SharedEvent;
   code: string;
-  /** This row holds the moment, so it says so (ADR-0217 §1's premise, made true on this
-   *  surface — see `shared-itinerary.css` at `.sh-event-now`). */
-  now?: boolean;
+  /**
+   * **Present when this row holds the moment** (ADR-0217 §1) — so the row both says the word
+   * (`.sh-event-now`) and carries the mark.
+   *
+   * **The mark is applied HERE rather than by the host** (ADR-0217's 2026-09-03 amendment).
+   * `--thru` is a percentage of the marked box, and a row on this page is not always one box:
+   * an event with a stored journey renders the drive into it as a SIBLING line before its
+   * card, so a wrapper around the pair measured the fraction over both and put the arrow on
+   * the drive. `DayView` never had the defect because a join is its own row there, with its
+   * own mark when the moment is in the gap — so the fix is to match that scope, not to adjust
+   * a number. Which of the three shapes below is the row's own box is this function's
+   * knowledge, so the wrapping belongs with it.
+   */
+  nowMark?: { label: string; thruFrac: number };
 }) {
+  const now = nowMark !== undefined;
+  /** The row's own box, nailed. The journey line deliberately stays outside it. */
+  const nail = (box: ReactNode) =>
+    nowMark ? (
+      <NowMarker label={nowMark.label} thruFrac={nowMark.thruFrac}>
+        {box}
+      </NowMarker>
+    ) : (
+      box
+    );
   // Summary carries no time, place, address, map link or journey at all, so the compact row
   // is not a different rendering of the same data — it is all the data there is.
   const detailed = event.startLabel !== undefined || event.placeName !== undefined;
   if (!detailed) {
-    return (
+    // Unreachable with a mark today — Summary carries no times, so `wantsNowLine` is false
+    // there — and nailed anyway, so the one shape that cannot hold a moment is not also the
+    // one shape that silently drops the mark if that ever changes.
+    return nail(
       <div className="sh-summary-row">
         <span className="sh-mark" aria-hidden="true">
           {event.icon ?? '•'}
         </span>
         <strong>{autoIsolate(event.title)}</strong>
-      </div>
+      </div>,
     );
   }
   // **The row's own attachments, hoisted so both shapes can host them.** A journey renders
@@ -844,11 +876,14 @@ function EventRow({
     </>
   );
 
-  // A chained journey is a container, not a row (ninth amendment §1).
-  if (event.legs?.length) return <Trek event={event}>{attachments}</Trek>;
+  // A chained journey is a container, not a row (ninth amendment §1) — and the container IS
+  // the row's own box, so it takes the mark whole.
+  if (event.legs?.length) return nail(<Trek event={event}>{attachments}</Trek>);
 
   return (
     <>
+      {/* **OUTSIDE the mark, and that is the fix** (2026-09-03): this is the drive INTO the
+          event, not part of it, so a moment inside the event is not a fraction of it. */}
       {event.journey ? (
         <div className="sh-journey">
           {/* The mode is a control-shaped fact, so it gets the app's own icon beside its
@@ -862,61 +897,63 @@ function EventRow({
           )}
         </div>
       ) : null}
-      <article className={`sh-event${event.hard ? ' hard' : ''}`}>
-        <span className="sh-event-glyph" aria-hidden="true">
-          {event.icon ?? '•'}
-        </span>
-        <span className="sh-event-main">
-          {/* **`autoIsolate`, NEVER `dir="auto"` on a value block** (found by rendering
-              `a-shared-itinerary-is-printed-as-a-story-v3.html` §6). `auto` sets the
-              element's BASE DIRECTION, and base direction drives `text-align: start` as
-              well as bidi resolution — so a Latin place name lands against the opposite
-              edge of the column from its own caption. Measured 212px of separation here
-              and 229px on paper, in a 288px column, and on an Iceland trip most stops are
-              Latin. FSI resolves direction for the RUN and leaves the block RTL, so the
-              alignment is inherited. `lib/bidi.ts`'s docblock covers a composed line
-              joining several values, which is why one value alone in a block slipped
-              ADR-0118's sweep. */}
-          <strong>
-            {autoIsolate(event.title)}
-            {now ? <span className="sh-event-now">{t.common.now}</span> : null}
-          </strong>
-          <span className="sh-place-line">
-            {/* **The row says what it IS before it says where** (owner, 2026-08-30: _"hotels
-                and other derivable stuff texts should be enhanced … and that also includes
-                bookings"_). A booking states its type, so a hotel's own name gets `לינה` in
-                front of its hour. An event no booking backs is captioned with nothing — a
-                guess in this slot is worse than a gap. The words are the app's own
-                (`t.index.bookingType`), never a second set for this page. */}
-            {event.bookingType ? (
-              <>
-                <b className="sh-kind">{t.index.bookingType[event.bookingType]}</b>
-                {' · '}
-              </>
-            ) : null}
-            {/* **The clock, and what it MEANS** (ADR-0213's 2026-08-31 amendment §1). It
-                used to print a range whenever there were two ends, which is right for a
-                flight and wrong for a floor: a car hire's `endsAt` is five days later, so
-                `10:00–18:00` described a week as an afternoon. `event.time` carries the
-                answer `edgeMeaning` gives, and this only spells it. */}
-            {event.time ? <SharedTimeText time={event.time} /> : null}
-            <TravelFacts event={event} />
-            {event.placeName ? (
-              <>
-                {event.startLabel ? ' · ' : null}
-                <span>{autoIsolate(event.placeName)}</span>
-              </>
-            ) : null}
-            {event.address ? (
-              <>
-                {' · '}
-                <span>{autoIsolate(event.address)}</span>
-              </>
-            ) : null}
+      {nail(
+        <article className={`sh-event${event.hard ? ' hard' : ''}`}>
+          <span className="sh-event-glyph" aria-hidden="true">
+            {event.icon ?? '•'}
           </span>
-          {attachments}
-        </span>
-      </article>
+          <span className="sh-event-main">
+            {/* **`autoIsolate`, NEVER `dir="auto"` on a value block** (found by rendering
+                `a-shared-itinerary-is-printed-as-a-story-v3.html` §6). `auto` sets the
+                element's BASE DIRECTION, and base direction drives `text-align: start` as
+                well as bidi resolution — so a Latin place name lands against the opposite
+                edge of the column from its own caption. Measured 212px of separation here
+                and 229px on paper, in a 288px column, and on an Iceland trip most stops are
+                Latin. FSI resolves direction for the RUN and leaves the block RTL, so the
+                alignment is inherited. `lib/bidi.ts`'s docblock covers a composed line
+                joining several values, which is why one value alone in a block slipped
+                ADR-0118's sweep. */}
+            <strong>
+              {autoIsolate(event.title)}
+              {now ? <span className="sh-event-now">{t.common.now}</span> : null}
+            </strong>
+            <span className="sh-place-line">
+              {/* **The row says what it IS before it says where** (owner, 2026-08-30: _"hotels
+                  and other derivable stuff texts should be enhanced … and that also includes
+                  bookings"_). A booking states its type, so a hotel's own name gets `לינה` in
+                  front of its hour. An event no booking backs is captioned with nothing — a
+                  guess in this slot is worse than a gap. The words are the app's own
+                  (`t.index.bookingType`), never a second set for this page. */}
+              {event.bookingType ? (
+                <>
+                  <b className="sh-kind">{t.index.bookingType[event.bookingType]}</b>
+                  {' · '}
+                </>
+              ) : null}
+              {/* **The clock, and what it MEANS** (ADR-0213's 2026-08-31 amendment §1). It
+                  used to print a range whenever there were two ends, which is right for a
+                  flight and wrong for a floor: a car hire's `endsAt` is five days later, so
+                  `10:00–18:00` described a week as an afternoon. `event.time` carries the
+                  answer `edgeMeaning` gives, and this only spells it. */}
+              {event.time ? <SharedTimeText time={event.time} /> : null}
+              <TravelFacts event={event} />
+              {event.placeName ? (
+                <>
+                  {event.startLabel ? ' · ' : null}
+                  <span>{autoIsolate(event.placeName)}</span>
+                </>
+              ) : null}
+              {event.address ? (
+                <>
+                  {' · '}
+                  <span>{autoIsolate(event.address)}</span>
+                </>
+              ) : null}
+            </span>
+            {attachments}
+          </span>
+        </article>,
+      )}
     </>
   );
 }
