@@ -22,9 +22,16 @@ function row(over: Partial<TaskLike> = {}): TaskLike {
     displayTimezone: null,
     assigneeUserId: null,
     assignedAt: null,
+    parentTaskId: null,
     updatedBy: 'u-dana',
     ...over,
   };
+}
+
+/** A step of `parent`. Carries no deadline, which is what the schema refuses it (ADR-0196 §8)
+ *  and therefore what keeps a step out of the deadline kinds' own windows. */
+function step(id: string, parentTaskId: string, status: string): TaskLike {
+  return row({ id, parentTaskId, status, dueAt: null, dueHasTime: false, title: `שלב ${id}` });
 }
 
 interface TaskLike {
@@ -37,6 +44,7 @@ interface TaskLike {
   displayTimezone: string | null;
   assigneeUserId: string | null;
   assignedAt: Date | null;
+  parentTaskId: string | null;
   updatedBy: string;
 }
 
@@ -87,6 +95,10 @@ function fakePrisma(options: {
             if (!inRange(task.dueAt, where.dueAt as never)) return false;
             if (!inRange(task.assignedAt, where.assignedAt as never)) return false;
             if (where.assigneeUserId !== undefined && task.assigneeUserId === null) return false;
+            if (where.parentTaskId !== undefined) {
+              const ids = (where.parentTaskId as { in: string[] }).in;
+              if (task.parentTaskId === null || !ids.includes(task.parentTaskId)) return false;
+            }
             return true;
           }),
         );
@@ -390,6 +402,76 @@ describe('task.assigned', () => {
     });
     const [withoutTime] = await taskAssignedKind.due(input(undated.prisma, now));
     expect(withoutTime.payload.body).not.toContain('עד');
+  });
+});
+
+/**
+ * **A CHECKLIST IS FINISHED WHEN ITS STEPS ARE, AND THE PARENT'S ROW NEVER SAYS SO.**
+ *
+ * The bug this suite exists for, reported from the phone on 2026-09-03: *"sends notifications
+ * about tasks that were already completed"*. Ticking a checklist writes the STEPS
+ * (`trip-state`'s `tickTask`); the parent's own `status` stays `open` forever, on purpose
+ * (ADR-0196 §2 — nothing stored means nothing stale). Every screen resolves it on read, and
+ * the sweep did not — so a checklist ticked off in June was still named by the 08:00 digest in
+ * September, whose overdue range is deliberately unbounded.
+ *
+ * The `status: open` case above is what everyone tests and it was never the failure. These are.
+ */
+describe('a checklist whose steps are all ticked', () => {
+  const now = utc('2026-08-21T15:00:00Z');
+  const morning = utc('2026-08-21T05:00:00Z'); // 08:00 in Tel Aviv.
+  const parent = () => row({ id: 'p-1', title: 'לקחת דברים מדנה לטיול' });
+
+  it.each([
+    ['both done', ['done', 'done']],
+    ['done and dismissed — settled is settled', ['done', 'dismissed']],
+  ])('is silent at its deadline (%s)', async (_label, statuses) => {
+    const { prisma } = fakePrisma({
+      tasks: [parent(), ...statuses.map((st, i) => step(`s-${i}`, 'p-1', st))],
+    });
+    expect(await taskDueKind.due(input(prisma, now))).toEqual([]);
+  });
+
+  it('is gone from the morning digest, which is where it nagged every day', async () => {
+    const { prisma } = fakePrisma({
+      tasks: [parent(), step('s-1', 'p-1', 'done'), step('s-2', 'p-1', 'done')],
+    });
+    // Nothing today and nothing overdue means no digest at all, so the send list is empty
+    // rather than a digest with one fewer line.
+    expect(await taskDigestKind.due(input(prisma, morning))).toEqual([]);
+  });
+
+  it('still fires while ONE step is open — this is a filter, not a mute', async () => {
+    const { prisma } = fakePrisma({
+      tasks: [parent(), step('s-1', 'p-1', 'done'), step('s-2', 'p-1', 'open')],
+    });
+    const sends = await taskDueKind.due(input(prisma, now));
+    expect(sends.map((send) => send.subjectId)).toEqual(['p-1', 'p-1']);
+  });
+
+  it('leaves a plain task alone: no steps means the row\u2019s own status answers', async () => {
+    const { prisma } = fakePrisma({ tasks: [row()] });
+    expect((await taskDueKind.due(input(prisma, now))).length).toBe(2);
+  });
+
+  it('does not let one trip\u2019s finished checklist silence another task', async () => {
+    const { prisma } = fakePrisma({
+      tasks: [parent(), step('s-1', 'p-1', 'done'), row({ id: 'plain-1' })],
+    });
+    const sends = await taskDueKind.due(input(prisma, now));
+    expect([...new Set(sends.map((send) => send.subjectId))]).toEqual(['plain-1']);
+  });
+
+  // A step is a task row too, and its own assignment is worth announcing (ADR-0196 §8 gives a
+  // step an assignee). It has no children, so the derivation hands back its own status —
+  // which is the case a filter written as "drop anything with a parent" would have broken.
+  it('does not swallow a STEP\u2019s own assignment', async () => {
+    const assignedAt = new Date(utc('2026-08-21T14:00:00Z'));
+    const { prisma } = fakePrisma({
+      tasks: [parent(), { ...step('s-1', 'p-1', 'open'), assigneeUserId: 'u-noam', assignedAt }],
+    });
+    const sends = await taskAssignedKind.due(input(prisma, now));
+    expect(sends.map((send) => send.subjectId)).toEqual(['s-1']);
   });
 });
 

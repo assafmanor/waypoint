@@ -28,8 +28,7 @@ import {
   type NotificationKind,
 } from '../notification-kind';
 import { clockLabel, taskAssignedPayload } from '../notify-copy';
-import { notifiableTaskWhere, tripAudience, type TaskRow } from './trip-audience';
-import { TASK_SELECT } from './task-due.kind';
+import { notifiableTasks, tripAudience, type TaskRow } from './trip-audience';
 
 /** Six hours. Longer than the deadline kinds because there is no moment being missed — being
  *  told in the evening that you were given something this morning is still useful. */
@@ -46,14 +45,10 @@ export const taskAssignedKind: NotificationKind = {
     // One indexed range scan on `(status, assignedAt)`. `assignedAt` is null for almost
     // every row that has ever existed — every task written before the column, and every
     // self-assignment — which is what makes this cheap.
-    const tasks = (await prisma.task.findMany({
-      where: {
-        ...notifiableTaskWhere,
-        assignedAt: { gte: new Date(nowMs - STALE_AFTER_MS), lte: new Date(nowMs) },
-        assigneeUserId: { not: null },
-      },
-      select: TASK_SELECT,
-    })) as TaskRow[];
+    const tasks = await notifiableTasks(prisma, {
+      assignedAt: { gte: new Date(nowMs - STALE_AFTER_MS), lte: new Date(nowMs) },
+      assigneeUserId: { not: null },
+    });
     if (tasks.length === 0) return [];
 
     const audience = await tripAudience(prisma, tasks, nowMs);

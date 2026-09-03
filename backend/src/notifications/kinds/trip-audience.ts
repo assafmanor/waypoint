@@ -12,7 +12,8 @@
 // beside it that could disagree about what "live" means. The only task-shaped thing left is
 // `recipients`, and it is task-shaped only in that it takes an optional assignee — an event
 // passes `null` and gets the whole group, which is what an event's audience always is.
-import { TASK_STATUS } from '@waypoint/shared';
+import type { Prisma } from '@prisma/client';
+import { resolveParentStatus, TASK_STATUS, type TaskStatus } from '@waypoint/shared';
 import type { PrismaService } from '../../prisma/prisma.service';
 
 /** The columns phase A's kinds read off a task. Narrower than Prisma's row on purpose: a kind
@@ -21,6 +22,9 @@ export interface TaskRow {
   id: string;
   tripId: string;
   title: string;
+  /** The row's OWN status, which for a checklist is not the status the app shows — see
+   *  `notifiableTasks`. */
+  status: TaskStatus;
   dueAt: Date | null;
   dueHasTime: boolean;
   displayTimezone: string | null;
@@ -38,8 +42,79 @@ export interface TaskRow {
  * **Open only.** A settled task is not an obligation, and `status` leads the sweep's index
  * precisely because most rows are settled — so this clause is what makes the range scan
  * cheap rather than merely correct.
+ *
+ * It is not the whole rule — see `notifiableTasks`, which is what a kind actually calls.
  */
 export const notifiableTaskWhere = { status: TASK_STATUS.OPEN } as const;
+
+/** Exactly the columns `TaskRow` declares — so a field a kind starts reading has to be added
+ *  here, where it is visible, rather than arriving free with a `select`-less query. */
+export const TASK_SELECT = {
+  id: true,
+  tripId: true,
+  title: true,
+  status: true,
+  dueAt: true,
+  dueHasTime: true,
+  displayTimezone: true,
+  assigneeUserId: true,
+  assignedAt: true,
+  updatedBy: true,
+} as const;
+
+/**
+ * **Every task a kind should consider, and none it should not.**
+ *
+ * The query, the open-only clause and the checklist rule in one place, because two of the
+ * three kinds got this by spreading a `where` and importing a `select` from a third — and a
+ * kind that expressed either slightly differently would be wrong in a way only a phone
+ * notices.
+ *
+ * ── THE CHECKLIST RULE, AND THE BUG IT IS ────────────────────────────────────────────────
+ *
+ * **A parent's status is derived from its steps and is never written** (ADR-0196 §2). Ticking
+ * a checklist writes the STEPS; the parent's own row still says `open`, forever, by design —
+ * nothing stored means nothing stale. Every screen resolves it on read.
+ *
+ * The sweep did not. `status = open` matched a checklist whose every step was ticked, so
+ * `task.due` fired at its deadline and `task.digest` — whose overdue range is deliberately
+ * unbounded — named it again every single morning after that. Reported from the phone as
+ * *"sends notifications about tasks that were already completed"*, which is exactly what it
+ * was doing.
+ *
+ * So the sweep resolves it too, through the same `resolveParentStatus` the screens call. One
+ * extra indexed query per kind per tick, over ids the kind's own bounded window already
+ * returned — and it runs at all only when that window returned something.
+ */
+export async function notifiableTasks(
+  prisma: PrismaService,
+  where: Prisma.TaskWhereInput,
+): Promise<TaskRow[]> {
+  const tasks = (await prisma.task.findMany({
+    where: { ...notifiableTaskWhere, ...where },
+    select: TASK_SELECT,
+  })) as TaskRow[];
+  if (tasks.length === 0) return tasks;
+
+  const steps = await prisma.task.findMany({
+    where: { parentTaskId: { in: tasks.map((task) => task.id) } },
+    select: { parentTaskId: true, status: true },
+  });
+  if (steps.length === 0) return tasks;
+
+  const byParent = new Map<string, { status: TaskStatus }[]>();
+  for (const step of steps) {
+    const list = byParent.get(step.parentTaskId!);
+    if (list) list.push(step);
+    else byParent.set(step.parentTaskId!, [step]);
+  }
+  // A row with no steps keeps its own status, which is every task in the app that is not a
+  // checklist — including a STEP, whose own assignment is still worth announcing (ADR-0196
+  // §8 gives a step an assignee).
+  return tasks.filter(
+    (task) => resolveParentStatus(task, byParent.get(task.id) ?? []) === TASK_STATUS.OPEN,
+  );
+}
 
 /** What a kind can ask after its query has run. */
 export interface TripAudience {

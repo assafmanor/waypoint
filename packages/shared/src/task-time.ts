@@ -2,8 +2,11 @@
 //
 // Moved out of `frontend/src/lib/tasks.ts` for the reason `zones.ts` next door states: the
 // sweep that decides when to fire a task reminder must read a deadline the same way the row
-// printing it does. Everything else in `lib/tasks.ts` — the facets, the sort, the sub-task
-// tree, the counts — stays on the frontend, because no server surface asks those questions.
+// printing it does. Everything else in `lib/tasks.ts` — the facets, the sort, the counts —
+// stays on the frontend, because no server surface asks those questions. **The sub-task tree
+// was on that list and came off it**: a parent's derived status is `subtasks.ts` next door,
+// because the sweep asks whether a checklist is finished and the row's stored status cannot
+// tell it.
 //
 // Clock-injected, like everything in `zones.ts`: the caller supplies `nowMs`.
 import type { Task } from './entities';

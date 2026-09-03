@@ -6,7 +6,9 @@
 // urgency — which is what makes nineteen of the twenty-three task derivations correct about
 // children *vacuously* rather than by remembering.
 import { describe, it, expect } from 'vitest';
+import type { TaskStatus } from './entities';
 import { createTaskSchema, subtaskPatchRefuses, updateTaskSchema } from './schemas';
+import { isSettled, resolveParentStatus } from './subtasks';
 
 // **Ids are 8–64 chars** (`entityIdSchema`), and the first draft of this file used `'p'` and
 // `'u1'` — so every case was refused for the wrong reason and the refusal assertions passed
@@ -87,5 +89,56 @@ describe('patching a task', () => {
   // refusal cannot pass because the fixture was malformed.
   it('accepts what it should, with ids the schema recognises', () => {
     expect(createTaskSchema.safeParse({ ...step, assigneeUserId: MEMBER }).success).toBe(true);
+  });
+});
+
+/**
+ * **The parent's derived status** (§2), which lives here rather than on the frontend because
+ * the notification sweep asks it too — and got it wrong for as long as it did not.
+ *
+ * Ticking a checklist writes the STEPS; the parent's own row keeps saying `open` forever,
+ * which is the design (nothing stored means nothing stale) and was also the bug: the sweep
+ * read that stored value and kept reminding about checklists people had finished.
+ */
+describe("a parent's status is its steps'", () => {
+  const parent = (status: TaskStatus = 'open') => ({ status });
+  const steps = (...statuses: TaskStatus[]) => statuses.map((status) => ({ status }));
+
+  it('is done exactly when every step is settled', () => {
+    expect(resolveParentStatus(parent(), steps('done', 'done'))).toBe('done');
+    expect(resolveParentStatus(parent(), steps('done', 'dismissed'))).toBe('done');
+    expect(resolveParentStatus(parent(), steps('done', 'open'))).toBe('open');
+    expect(resolveParentStatus(parent(), steps('open'))).toBe('open');
+  });
+
+  // No steps means no derivation: the row's own status answers, which is every task in the
+  // app that is not a checklist. Getting this branch wrong would silence or resurrect them all.
+  it('leaves a task with no steps entirely alone', () => {
+    expect(resolveParentStatus(parent('open'), [])).toBe('open');
+    expect(resolveParentStatus(parent('done'), [])).toBe('done');
+    expect(resolveParentStatus(parent('dismissed'), [])).toBe('dismissed');
+  });
+
+  // A dismissal is the one answer no derivation produces ("this whole thing is off"), so it
+  // is stored and it wins — even over steps that are still open.
+  it('lets a stored dismissal win over the derivation', () => {
+    expect(resolveParentStatus(parent('dismissed'), steps('open', 'open'))).toBe('dismissed');
+  });
+
+  // A stored `done` on a row that later gains a step is IGNORED rather than repaired: no
+  // migration, no write, no window where the two disagree.
+  it('ignores a stale stored done once a step exists', () => {
+    expect(resolveParentStatus(parent('done'), steps('open'))).toBe('open');
+  });
+});
+
+describe('isSettled', () => {
+  it('states what settled IS, so an unreadable row is work still to do', () => {
+    expect(isSettled({ status: 'done' })).toBe(true);
+    expect(isSettled({ status: 'dismissed' })).toBe(true);
+    expect(isSettled({ status: 'open' })).toBe(false);
+    // The 2026-08-19 defect: a peer's create arrived without `status`, and `!== \'open\'`
+    // answered "settled" at twenty-two call sites at once.
+    expect(isSettled({ status: undefined as unknown as TaskStatus })).toBe(false);
   });
 });
