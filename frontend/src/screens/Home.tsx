@@ -1000,6 +1000,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   );
   // Formatted here because the host owns the day's zone and the app's date grammar, and the
   // widget owns no clock — the same contract `RateCard`'s `asOf` and `SunWidget`'s `times` state.
+  //
+  // **The weekday is `weekdayLetter` bare, and the geresh is not ours to add** (owner report,
+  // 2026-09-03): ICU's `weekday: 'narrow'` already returns `ש׳` for Hebrew, so the wrapper that
+  // appended one rendered `ש׳׳`. `App.tsx`'s day pills have always called it bare — which is what
+  // makes this strip agree with them rather than merely being un-doubled.
   const weatherDayLabels = useMemo(() => {
     const labels: Record<string, string> = {};
     for (const date of weatherDates) {
@@ -1008,7 +1013,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           ? t.weather.today
           : date === addDays(today, 1)
             ? t.weather.tomorrow
-            : t.weather.weekday(weekdayLetter(date));
+            : weekdayLetter(date);
     }
     return labels;
   }, [weatherDates, today]);

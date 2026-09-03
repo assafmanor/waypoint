@@ -13,12 +13,17 @@ import { FORECAST_GLYPH } from '@waypoint/shared';
 import { WeatherCard } from './WeatherCard';
 import { t } from '../../i18n/he';
 import { ltrIsolate } from '../../lib/bidi';
+import { weekdayLetter } from '../../lib/time';
 import type { WeatherView } from '../../lib/weather-view';
 
+// The weekday comes from `weekdayLetter`, exactly as the host supplies it — NOT from a copy
+// key. Both halves of this file used to read one wrapper that appended a geresh, so the spec
+// agreed with the component about a fact neither had checked and `ש׳׳` shipped (owner report,
+// 2026-09-03). Querying by `t.*` is right for a literal and cannot protect a DERIVED string.
 const LABELS = {
   '2026-09-03': t.weather.today,
   '2026-09-04': t.weather.tomorrow,
-  '2026-09-05': t.weather.weekday('ש'),
+  '2026-09-05': weekdayLetter('2026-09-05'),
 };
 
 const view = (over: Partial<WeatherView> = {}): WeatherView => ({
@@ -121,6 +126,6 @@ describe('WeatherCard', () => {
     render(<WeatherCard view={view()} dayLabels={LABELS} />);
     expect(screen.getByText(t.weather.today)).toBeTruthy();
     expect(screen.getByText(t.weather.tomorrow)).toBeTruthy();
-    expect(screen.getByText(t.weather.weekday('ש'))).toBeTruthy();
+    expect(screen.getByText(weekdayLetter('2026-09-05'))).toBeTruthy();
   });
 });

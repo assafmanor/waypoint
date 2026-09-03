@@ -2323,10 +2323,6 @@ export const t = {
   weather: {
     today: 'היום',
     tomorrow: 'מחר',
-    // The day strip's short weekday. The letter comes from `weekdayLetter`; the geresh is the
-    // app's own grammar for an abbreviated Hebrew day, so it lives here rather than at the
-    // call site.
-    weekday: (letter: string) => `${letter}׳`,
     // The day's low, beside the high. Labelled because two bare numbers in one line say nothing
     // about which is which, and the high is already the big run above it.
     low: (temp: string) => `מינ׳ ${temp}`,
