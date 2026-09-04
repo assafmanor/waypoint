@@ -643,3 +643,88 @@ The placement derivation is untouched: `shareNowLine`, `nowInside` and `dawnOrde
 what they returned, and `thruFrac` was right the whole time. Nothing about the boundary form
 moves, and `NowMarker` itself is unchanged for the third time running — which remains the point
 of it being one component.
+
+## Amendment (2026-09-04) — a hole is two rows, and so are the day's two ends
+
+Owner, with a screenshot of the reported day at ⁦13:01⁩ — an ⁦07:00–08:00⁩ event, an ⁦08:00–17:00⁩
+hole holding a ⁦9⁩-minute drive, and the arrow lying across the drive:
+
+> _"we're not yet in the driving time (leave before 16:46), so the line should be before it —
+> unless someone marked it as 'on the way' (which I don't see)"_
+
+The block under the arrow said `יציאה עד 16:46 · הגעה ~16:55` while the arrow said we were in it,
+three and three-quarter hours early. Same contradiction as the previous amendment's, same cause,
+one host over.
+
+### The previous amendment named this defect and cleared the wrong host of it
+
+Yesterday's write-up says, in as many words: _"`DayView` never had this, and the reason is the
+fix: a join there is its own row with its own mark when the moment is in the gap (`joinThru`), so
+no wrapper ever spans a travel line and a card."_ That is true of the card and false of the join.
+Since ADR-0206 §AH3 a hole draws **two** rows — the free time first, then the journey out of it
+(`free-time-comes-before-the-leave-by-v1.html`) — and `JoinRow` returns them as a **fragment**,
+which is exactly the shape the shared reader was corrected for.
+
+So `--thru` was measured over strip-plus-block, and where the arrow landed was decided by how
+those two divide the pixels rather than by the clock: ⁦56%⁩ of a ⁦20px⁩ strip above a ⁦58px⁩ block is
+inside the block, whatever the hour. This is the "count the call sites" rule in root `CLAUDE.md`
+applied to a claim rather than to a derivation — one `grep` for what `JoinRow` returns would have
+found the second box.
+
+### The repair is intervals, because the two boxes ARE two intervals
+
+`lib/now-line.ts` grows `nowInJoin`, and it is the same `nowInside` over spans everything else
+uses: the free time runs from the hole's start to the **departure**, the journey runs from the
+departure to the row below. The mark is nailed to the one that holds the moment and the other is
+left alone — which also stops the halo (`.now-here .day-trv-leave` and friends) painting behind
+a row the rule does not cross.
+
+- **The departure is `leaveByMs` and nothing else.** The arms that state none (§AA4/§AM10/§AU1/
+  §AZ1) leave the hole undivided and the free time keeps it: the block prints no departure there
+  either, and the app must not claim a drive has begun on a number it does not have. Same for a
+  flexible destination, whose "leave now to arrive then" is the hole's own start (ADR-0206 §AJ1)
+  and would hand the journey the whole afternoon.
+- **`ON_WAY` is the owner's own exception** and needs no second rule: a claim that somebody is
+  moving ends the free time wherever the clock stands (ADR-0207 §2), so the departure becomes the
+  hole's start and the journey takes all of it. Detecting the same thing without a claim stays
+  out of scope, as the report says.
+- **The buffer belongs to the journey.** From the leave-by to the row below is the walk plus
+  §D5's five minutes; you are not in the room until it starts.
+- **A connection band is one box** over a stop you are inside for the whole of it, and it never
+  draws a journey beside it. Unchanged.
+- **The split is `JoinRow`'s to make, not the screen's** — the same move `EventRow` took
+  yesterday. `DayView` says only that the hole holds the moment; the row that knows how many
+  boxes it is drawing says which one.
+
+### And the same defect was at both ends of the day, where there is no join at all
+
+`wakeJourney`, `arriveJourney` and `homeJourney` render **outside** the block loop, because §AD
+and ADR-0209 §1 give them no join to hang off — so the boundary mark had exactly one position
+against all three: below. At ⁦05:00⁩ that says an ⁦07:47⁩ drive out of the hotel is already behind
+us, and after the day's last row it says a drive you have not started is done.
+
+`nowInJourney` and `journeyIsAhead` answer it off the leg's own interval, recovered from the two
+fields the row already ships (`arriveAtMs - travelSeconds`, which is `dayJourney`'s `goesAtMs`) so
+the marker and the words under it cannot disagree. The mark stands **above** a leg still ahead, is
+**nailed inside** one under way, and keeps its shipped place **below** one that is behind us. A
+leg that predicts no arrival — the no-estimate arms, and `claimDenied` (ADR-0208 §2) — moves
+nothing: with no interval there is no claim to make.
+
+**§4's open question is untouched.** Where the tail mark sits relative to the sleep bookend is
+still undecided (`docs/backlog.md`), and it still ships after it; what moves is only the case
+where the home leg is a fact about the clock rather than a matter of taste.
+
+### The tests that can see it, and the one that cannot
+
+jsdom reports every box as ⁦0px⁩ tall, so the fraction is invisible here as it was yesterday — but
+**which element the wrapper contains is not**, and that is the whole defect. Five specs in
+`DayView.travel.test.tsx`, red on the shipped code:
+
+- the strip is inside `.now-here` and the block is **not**, at ⁦14:00⁩ in a ⁦2:40⁩ hole with a
+  ⁦40⁩-minute walk — two clauses, because a mark wrapping both satisfies the first
+- the block is inside it and the strip is not, past the leave-by
+- and the block takes it early once somebody is on the way
+- the head leg's mark is **before** it in document order at ⁦05:00⁩, and inside it at ⁦07:51⁩
+
+The rule itself is exhaustive and pure in `lib/now-line.test.ts`, including that every instant of
+a hole belongs to exactly one of its boxes.

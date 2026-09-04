@@ -1432,6 +1432,124 @@ describe('DayView · where the moment is', () => {
     expect(container.querySelector('.day-swipe > .day-page .wp-event-left')).toBeNull();
   });
 
+  // ── A HOLE IS TWO ROWS (the 2026-09-04 amendment) ──────────────────────────────────────
+  //
+  // **The reported defect, and it is only visible at this altitude.** `--thru` is a fraction of
+  // the marked box's height, and a hole with a journey in it draws TWO — the free time, then the
+  // drive out of it. Wrapping the pair put the arrow ⁦56%⁩ down the sum of them and struck the
+  // drive three and three-quarter hours before its own `יציאה עד`. The placement is asserted
+  // pure in `lib/now-line.test.ts`; what only this file can say is WHICH BOX the screen wrapped,
+  // and jsdom can see that even though it can see no geometry at all.
+  describe('in a hole with a journey in it', () => {
+    /** The ⁦2:40⁩ hole between `lunch` and `theatre`, with the file's own ⁦40⁩-minute walk in it:
+     *  ⁦1:55⁩ free, then a departure at ⁦15:15⁩ UTC and a ⁦16:00⁩ arrival. */
+    const LEAVE_BY = `${DAY}T15:15:00Z`;
+    beforeEach(() => {
+      travelSeconds = WALK_MINUTES * 60;
+    });
+    afterEach(() => {
+      travelSeconds = null;
+    });
+
+    const marks = (container: HTMLElement) =>
+      container.querySelectorAll('.day-swipe > .day-page .now-here');
+
+    it('nails the mark to the FREE TIME while the departure is still ahead', () => {
+      setSimulatedNow(Date.parse(`${DAY}T14:00:00Z`));
+      const { container } = show();
+      expect(marks(container)).toHaveLength(1);
+      const mark = marks(container)[0];
+      // The strip is inside the mark and the block is NOT — stated as two clauses, because a
+      // mark wrapping both satisfies the first on its own, which is exactly what shipped.
+      expect(mark.querySelector('.day-gap')).toBeTruthy();
+      expect(mark.querySelector('.day-trv')).toBeNull();
+      // 40 of the 115 free minutes, measured over the FREE TIME and not over the hole.
+      expect(mark.getAttribute('style')).toContain(`--thru: ${(40 / freeAfterWalk) * 100}%`);
+    });
+
+    it('hands the mark to the journey at the leave-by', () => {
+      setSimulatedNow(Date.parse(LEAVE_BY) + 15 * 60_000);
+      const { container } = show();
+      expect(marks(container)).toHaveLength(1);
+      const mark = marks(container)[0];
+      expect(mark.querySelector('.day-trv')).toBeTruthy();
+      expect(mark.querySelector('.day-gap')).toBeNull();
+      // 15 of the 45 minutes between the departure and the row below it — the walk plus §D5's
+      // buffer, which is the whole of what the journey box is about.
+      expect(mark.getAttribute('style')).toContain(
+        `--thru: ${(15 / (WALK_MINUTES + TRAVEL_BUFFER_SECONDS / 60)) * 100}%`,
+      );
+    });
+
+    // The owner's own exception (ADR-0207 §2): _"unless someone marked it as 'on the way'"_.
+    it('hands it to the journey early once somebody says they are on the way', () => {
+      setSimulatedNow(Date.parse(`${DAY}T14:00:00Z`));
+      markOnWay('t1', theatre.id);
+      const { container } = show();
+      const mark = marks(container)[0];
+      expect(mark.querySelector('.day-trv')).toBeTruthy();
+      expect(mark.querySelector('.day-gap')).toBeNull();
+    });
+  });
+
+  // ── AND SO ARE THE DAY'S TWO ENDS ──────────────────────────────────────────────────────
+  //
+  // The leg out of the bed you woke in has no join above it (ADR-0206 §AD), so it renders
+  // outside the block loop and the boundary mark had one place against it: below. At ⁦05:00⁩
+  // that says an ⁦07:47⁩ departure is behind us.
+  describe('against the day’s first leg, which has no join above it', () => {
+    const hotel = ev('hotel', {
+      title: 'מלון',
+      category: 'lodging',
+      placeId: 'p-theatre',
+      date: '2026-08-02',
+      endDate: '2026-08-04',
+    });
+    beforeEach(() => {
+      tripEvents = [hotel, morning, lunch, theatre];
+      travelSeconds = 8 * 60;
+    });
+    afterEach(() => {
+      travelSeconds = null;
+    });
+
+    /** The wake leg's own block: the FIRST `.day-trv` in the list, above every entry. */
+    const wakeLeg = (container: HTMLElement) =>
+      container.querySelector('.day-swipe > .day-page .day-list .day-trv')!;
+    const mark = (container: HTMLElement) =>
+      container.querySelector('.day-swipe > .day-page .now-here')!;
+
+    it('stands ABOVE the leg while its departure is still ahead', () => {
+      setSimulatedNow(Date.parse(`${DAY}T05:00:00Z`));
+      const { container } = show();
+      expect(mark(container).classList.contains('edge')).toBe(true);
+      // Document order is the whole claim: below the leg, the same mark says the drive is done.
+      expect(
+        mark(container).compareDocumentPosition(wakeLeg(container)) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it('is nailed inside the leg once it is under way', () => {
+      // Leave by ⁦07:47⁩ (⁦08:00⁩ less the ⁦8⁩-minute walk and §D5's buffer), landing ⁦07:55⁩.
+      setSimulatedNow(Date.parse(`${DAY}T07:51:00Z`));
+      const { container } = show();
+      expect(mark(container).classList.contains('edge')).toBe(false);
+      expect(mark(container).querySelector('.day-trv')).toBeTruthy();
+      expect(mark(container).getAttribute('style')).toContain(`--thru: ${(4 / 8) * 100}%`);
+    });
+
+    it('keeps its shipped place below the leg once that leg is behind us', () => {
+      setSimulatedNow(Date.parse(`${DAY}T07:57:00Z`));
+      const { container } = show();
+      expect(mark(container).classList.contains('edge')).toBe(true);
+      expect(
+        mark(container).compareDocumentPosition(wakeLeg(container)) &
+          Node.DOCUMENT_POSITION_PRECEDING,
+      ).toBeTruthy();
+    });
+  });
+
   // ADR-0217 §4: once you have answered "we were there", "how far through" is not a question.
   it('lets a settled row keep its place and drops the mark out of it', () => {
     setSimulatedNow(Date.parse(INSIDE_LUNCH));
