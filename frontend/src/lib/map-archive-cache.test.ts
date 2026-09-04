@@ -97,6 +97,40 @@ describe('downloadMapArchive', () => {
     ).resolves.toEqual({ status: 'preparing', retryAfterSeconds: 9 });
   });
 
+  // ── A LENGTH THE ORIGIN DOES NOT OWN (2026-09-04) ────────────────────────────────────────
+  //
+  // The size was DEMANDED of the response, so a body that declared none threw — and the throw
+  // read as "the map download failed" on a phone whose settings listed every archive as saved.
+  // Anything re-encoded between the origin and the device arrives chunked and declares nothing,
+  // which at the edge is every compressible response: the JSON route pack, never the archives.
+
+  it('weighs a response that declares no length instead of refusing it', async () => {
+    apiFetch.mockResolvedValue(new Response('{"signature":"s","legs":[]}', { status: 200 }));
+    const { downloadMapArchive, readLocalMapArchive } = await import('./map-archive-cache');
+
+    await expect(
+      downloadMapArchive({
+        url: 'https://app.example/trips/t1/routes/pack',
+        kind: 'routes',
+        tripId: 't1',
+        currentTripId: 't1',
+        now: 10,
+      }),
+    ).resolves.toEqual({ status: 'stored', sizeBytes: 27 });
+    await expect(
+      readLocalMapArchive('https://app.example/trips/t1/routes/pack', 20),
+    ).resolves.toMatchObject({ meta: { sizeBytes: 27 } });
+  });
+
+  it('still refuses an empty body — nothing is not a download', async () => {
+    apiFetch.mockResolvedValue(new Response('', { status: 200 }));
+    const { downloadMapArchive } = await import('./map-archive-cache');
+
+    await expect(
+      downloadMapArchive({ url: 'https://app.example/map/world.pmtiles', kind: 'world' }),
+    ).rejects.toThrow(/empty/);
+  });
+
   it('checks storage headroom before writing the response body', async () => {
     vi.stubGlobal('navigator', {
       storage: {

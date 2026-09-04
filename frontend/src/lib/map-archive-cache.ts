@@ -39,12 +39,29 @@ function retryAfterSeconds(response: Response): number {
   return 5;
 }
 
-function responseSize(response: Response): number {
-  const size = Number(response.headers.get('Content-Length'));
-  if (!Number.isSafeInteger(size) || size <= 0) {
-    throw new Error('Map archive response has no usable Content-Length');
-  }
-  return size;
+/**
+ * **How many bytes these are — declared where the server declares them, MEASURED where it does
+ * not** (2026-09-04, from a field report: _"saving offline maps is failing, always"_, on a device
+ * whose settings listed every archive as saved).
+ *
+ * `Content-Length` is a hint the origin does not own: anything re-encoded between it and the
+ * phone arrives chunked and declares nothing, and at the edge that is every compressible response
+ * — which the route pack, alone among these artefacts, is (JSON; the `.pmtiles` archives are an
+ * unknown media type nothing compresses). Refusing that response threw, and the throw painted
+ * "the map download failed" over a map already on the device.
+ *
+ * So the header is a fast path, not a requirement. The fallback materialises the body to weigh
+ * it, which is why it is a fallback: the archives are tens of MB and do declare their length, so
+ * only the few-hundred-KB pack is ever buffered. An EMPTY body is still a failure — nothing is
+ * what we did not download.
+ */
+async function weigh(response: Response): Promise<{ body: Response; sizeBytes: number }> {
+  const declared = Number(response.headers.get('Content-Length'));
+  if (Number.isSafeInteger(declared) && declared > 0)
+    return { body: response, sizeBytes: declared };
+  const blob = await response.blob();
+  if (blob.size <= 0) throw new Error('Map archive response is empty');
+  return { body: new Response(blob, { headers: response.headers }), sizeBytes: blob.size };
 }
 
 function isPinned(entry: MapArchiveMeta, currentTripId?: string): boolean {
@@ -94,7 +111,7 @@ export async function downloadMapArchive(opts: {
   }
   if (!response.ok) throw new Error(`Map archive download failed (${response.status})`);
 
-  const sizeBytes = responseSize(response);
+  const { body, sizeBytes } = await weigh(response);
   if (!(await hasStorageHeadroom(sizeBytes))) return { status: 'no-space', sizeBytes };
   const room = await cache.makeRoom({
     budgetBytes: opts.budgetBytes ?? MAP_ARCHIVE_BUDGET_BYTES,
@@ -105,7 +122,7 @@ export async function downloadMapArchive(opts: {
   if (!room) return { status: 'no-space', sizeBytes };
 
   const now = opts.now ?? getNow();
-  await cache.put(opts.url, response, {
+  await cache.put(opts.url, body, {
     key: opts.url,
     sizeBytes,
     lastUsedAt: now,
