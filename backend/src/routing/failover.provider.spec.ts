@@ -15,12 +15,20 @@ const B: LatLng = { lat: 32.0723, lng: 34.8121 };
 
 const CELL = { fromIndex: 0, toIndex: 1, durationSeconds: 462.7, distanceMeters: 4567.2 };
 
+/** Each stub answers with **its own** attribution, which is what the real providers do (§Y6) —
+ *  the point of every assertion below is that the composition passes that through untouched
+ *  rather than substituting one of its own. */
+const attributionOf = (id: string, tilesetAt: Date | null = null) => ({
+  providerId: id,
+  tilesetAt,
+});
+
 function provider(id: string, over: Partial<RouteProvider> = {}) {
   const base: RouteProvider = {
     id,
-    matrix: vi.fn(() => Promise.resolve([CELL])),
+    degradedProviderIds: [],
+    matrix: vi.fn(() => Promise.resolve({ cells: [CELL], attribution: attributionOf(id) })),
     shape: vi.fn(() => Promise.resolve(null)),
-    dataVersion: vi.fn(() => Promise.resolve(null)),
   };
   return { ...base, ...over };
 }
@@ -34,8 +42,9 @@ describe('FailoverRouteProvider', () => {
   it('uses the primary and never touches the secondary while the primary answers', async () => {
     const primary = provider('valhalla/fossgis');
     const secondary = provider('osrm/fossgis');
-    const cells = await new FailoverRouteProvider(primary, secondary).matrix([A, B], 'driving');
-    expect(cells).toEqual([CELL]);
+    const answer = await new FailoverRouteProvider(primary, secondary).matrix([A, B], 'driving');
+    expect(answer.cells).toEqual([CELL]);
+    expect(answer.attribution.providerId).toBe('valhalla/fossgis');
     expect(secondary.matrix).not.toHaveBeenCalled();
   });
 
@@ -43,19 +52,25 @@ describe('FailoverRouteProvider', () => {
     // The 2026-09-02 outage: `valhalla1` served 503 for the better part of a day.
     const primary = provider('valhalla/fossgis', dead());
     const secondary = provider('osrm/fossgis');
-    const cells = await new FailoverRouteProvider(primary, secondary).matrix([A, B], 'driving');
-    expect(cells).toEqual([CELL]);
+    const answer = await new FailoverRouteProvider(primary, secondary).matrix([A, B], 'driving');
+    expect(answer.cells).toEqual([CELL]);
+    // **The row will say OSRM wrote it**, which §Y5's composite id could not say and is the
+    // whole of §Y6: a permanent cache row that cannot name its author cannot be re-asked.
+    expect(answer.attribution.providerId).toBe('osrm/fossgis');
     expect(secondary.matrix).toHaveBeenCalledOnce();
   });
 
   it('does NOT fail over on an empty matrix — that is an answer', async () => {
     // Otherwise every gate-admitted pair the provider cannot connect costs two outbound seats
     // instead of one, forever, and the politeness limiter paces one call a second.
-    const primary = provider('valhalla/fossgis', { matrix: vi.fn(() => Promise.resolve([])) });
+    const primary = provider('valhalla/fossgis', {
+      matrix: vi.fn(() =>
+        Promise.resolve({ cells: [], attribution: attributionOf('valhalla/fossgis') }),
+      ),
+    });
     const secondary = provider('osrm/fossgis');
-    await expect(
-      new FailoverRouteProvider(primary, secondary).matrix([A, B], 'driving'),
-    ).resolves.toEqual([]);
+    const answer = await new FailoverRouteProvider(primary, secondary).matrix([A, B], 'driving');
+    expect(answer.cells).toEqual([]);
     expect(secondary.matrix).not.toHaveBeenCalled();
   });
 
@@ -94,32 +109,68 @@ describe('FailoverRouteProvider', () => {
     ).rejects.toThrow('also down');
   });
 
-  it('names both candidates in its id, so a failed-over row is not attributed to the primary', async () => {
-    // `RouteLeg.provider` exists so a mixed table is legible (§4). Claiming the primary wrote a
-    // row the secondary answered is exactly the silence that column was added to prevent.
+  it('keeps naming both candidates in its id, because rows already carry that string', async () => {
+    // It is no longer what a row records (§Y6) and it must not drift: rows written while it WAS
+    // the stamp are in the table, and `degradedProviderIds` names this exact string to find them.
     const composite = new FailoverRouteProvider(
       provider('valhalla/fossgis'),
       provider('osrm/fossgis'),
     );
-    expect(composite.id).toContain('valhalla/fossgis');
-    expect(composite.id).toContain('osrm/fossgis');
-    expect(composite.id).not.toBe('valhalla/fossgis');
+    expect(composite.id).toBe('failover(valhalla/fossgis,osrm/fossgis)');
   });
 
-  it('takes its vintage from the primary only, and survives the primary refusing to say', async () => {
+  it('carries the ANSWERING provider vintage, never the primary — the §Y5 clause the code broke', async () => {
+    // §Y5 said an OSRM row carries no eviction handle. The composed `dataVersion()` returned the
+    // primary's date whoever answered, so a fallback row was stamped with Valhalla's tileset
+    // vintage and M12's sweep would read it as fresh. There is now no vintage to ask for apart
+    // from the answer.
     const stamped = new Date('2026-08-24T00:00:00Z');
-    const withVintage = new FailoverRouteProvider(
-      provider('valhalla/fossgis', { dataVersion: vi.fn(() => Promise.resolve(stamped)) }),
+    const composite = new FailoverRouteProvider(
+      provider('valhalla/fossgis', {
+        ...dead(),
+        matrix: vi.fn(() => Promise.reject(new Error('503 Service Unavailable'))),
+      }),
       provider('osrm/fossgis'),
     );
-    await expect(withVintage.dataVersion()).resolves.toEqual(stamped);
+    const answer = await composite.matrix([A, B], 'driving');
+    expect(answer.attribution).toEqual({ providerId: 'osrm/fossgis', tilesetAt: null });
 
-    // A vintage stamps the rows it authored (§Z5); borrowing the secondary's would be worse than
-    // the `null` the port explicitly allows.
-    const noVintage = new FailoverRouteProvider(
-      provider('valhalla/fossgis', { dataVersion: vi.fn(() => Promise.reject(new Error('503'))) }),
-      provider('osrm/fossgis', { dataVersion: vi.fn(() => Promise.resolve(new Date())) }),
+    // And the healthy primary's own vintage reaches the row unchanged.
+    const healthy = new FailoverRouteProvider(
+      provider('valhalla/fossgis', {
+        matrix: vi.fn(() =>
+          Promise.resolve({
+            cells: [CELL],
+            attribution: attributionOf('valhalla/fossgis', stamped),
+          }),
+        ),
+      }),
+      provider('osrm/fossgis'),
     );
-    await expect(noVintage.dataVersion()).resolves.toBeNull();
+    expect((await healthy.matrix([A, B], 'driving')).attribution.tilesetAt).toEqual(stamped);
+  });
+
+  it('names the secondary AND its own composite id as degraded, and nothing else', async () => {
+    // The secondary because §Y5 took its numbers only against "no number at all" (measured on the
+    // deploy: OSRM answers Tokyo Station→Shibuya in 7.7 min against Valhalla's 15.6 over the
+    // identical 7.67 km). The composite because a row stamped with it cannot say which host
+    // replied, so it has to be treated as though the worse one did.
+    //
+    // **And the primary is deliberately absent.** A set of "anything that is not me" would read
+    // the whole table as stale on the provider swap §Y1 leaves open, and re-fetch every leg of
+    // every trip.
+    const composite = new FailoverRouteProvider(
+      provider('valhalla/fossgis'),
+      provider('osrm/fossgis'),
+    );
+    expect(composite.degradedProviderIds).toEqual([
+      'osrm/fossgis',
+      'failover(valhalla/fossgis,osrm/fossgis)',
+    ]);
+    expect(composite.degradedProviderIds).not.toContain('valhalla/fossgis');
+  });
+
+  it('is empty for a lone provider, so asking one directly never marks its own rows stale', () => {
+    expect(provider('valhalla/fossgis').degradedProviderIds).toEqual([]);
   });
 });

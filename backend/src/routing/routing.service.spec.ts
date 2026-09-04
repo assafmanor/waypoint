@@ -41,6 +41,8 @@ interface StoredRow {
   distanceMeters: number;
   shapeEncoded: string | null;
   shapePrecision: number | null;
+  /** Who authored it (§Y6) — the column the refresh path reads. */
+  provider: string;
 }
 
 /** An in-memory stand-in for the one table this service touches. Small enough to be obviously
@@ -66,6 +68,10 @@ function fakePrisma() {
   return { prisma, rows };
 }
 
+/** What every stub answer is stamped with (§Y6). `fake` is deliberately NOT in any stub's
+ *  `degradedProviderIds`, so the refresh path stays off unless a spec turns it on. */
+const FAKE_ATTRIBUTION = { providerId: 'fake', tilesetAt: new Date('2026-08-24T00:00:00Z') };
+
 /** A provider that answers a fixed pace, and counts every call — which is how "no outbound
  *  request" becomes an assertion instead of an observation. */
 function fakeProvider(overrides: Partial<RouteProvider> = {}) {
@@ -83,20 +89,21 @@ function fakeProvider(overrides: Partial<RouteProvider> = {}) {
         });
       }
     }
-    return Promise.resolve(cells);
+    return Promise.resolve({ cells, attribution: FAKE_ATTRIBUTION });
   });
   const shape = vi.fn(() =>
     Promise.resolve({
       durationSeconds: 100,
       distanceMeters: 200,
       shape: { encoded: 'abc', precision: 6 },
+      attribution: FAKE_ATTRIBUTION,
     }),
   );
   const provider = {
     id: 'fake',
+    degradedProviderIds: [],
     matrix,
     shape,
-    dataVersion: () => Promise.resolve(new Date('2026-08-24T00:00:00Z')),
     ...overrides,
   } as unknown as RouteProvider;
   return { provider, matrix, shape };
@@ -347,8 +354,8 @@ describe('RoutingService', () => {
     const flaky = vi.fn((points: readonly LatLng[], _mode: string) =>
       down
         ? Promise.reject(new Error('fetch failed'))
-        : Promise.resolve(
-            points.flatMap((_, from) =>
+        : Promise.resolve({
+            cells: points.flatMap((_, from) =>
               points.flatMap((__, to) =>
                 from === to
                   ? []
@@ -362,7 +369,8 @@ describe('RoutingService', () => {
                     ],
               ),
             ),
-          ),
+            attribution: FAKE_ATTRIBUTION,
+          }),
     );
     const { provider } = fakeProvider({
       matrix: flaky as unknown as RouteProvider['matrix'],
@@ -557,5 +565,149 @@ describe('RoutingService', () => {
     });
     expect(batch.legs[0]!.refusedModes).toEqual(['walking']);
     expect(batch.legs[0]!.pendingModes).toEqual(['driving']);
+  });
+  // ── A DEGRADED ROW IS SERVED AND RE-ASKED (ADR-0205 §Y6) ─────────────────────────────────
+  //
+  // §Y5 wired the OSRM fallback and took its numbers against "no number at all" — a trade about
+  // one REQUEST, while `RouteLeg` never expires (§4). So the 2026-09-02 outage left permanent
+  // rows that nothing would ever re-ask: measured on the deploy, OSRM answers Tokyo
+  // Station→Shibuya in 7.7 minutes against Valhalla's 15.6 over the identical 7.67 km.
+
+  /** A row already in the table, as some provider wrote it. */
+  function seed(
+    rows: Map<string, StoredRow>,
+    from: LatLng,
+    to: LatLng,
+    provider: string,
+    shapeEncoded: string | null = null,
+  ) {
+    const key = routeLegKey(from, to, 'walking');
+    rows.set(key, {
+      key,
+      durationSeconds: 462,
+      distanceMeters: 4567,
+      shapeEncoded,
+      shapePrecision: shapeEncoded ? 5 : null,
+      provider,
+    });
+    return key;
+  }
+
+  it('serves a degraded row AND re-asks it, so the number is never withheld', async () => {
+    const { prisma, rows } = fakePrisma();
+    const { provider, matrix } = fakeProvider({ degradedProviderIds: ['osrm/fossgis'] });
+    const key = seed(rows, ASAKUSA, TSUKIJI, 'osrm/fossgis');
+    const service = build(TOKYO_TRIP, provider, prisma);
+
+    const batch = await service.batch('trip', { stops: [ASAKUSA, TSUKIJI], modes: ['walking'] });
+    // **Served.** Withholding it would re-open the outage §Y5 closed.
+    expect(batch.legs[0]!.estimates).toHaveLength(1);
+    expect(batch.legs[0]!.estimates[0]!.durationSeconds).toBe(462);
+    // **And invisible**: the leg is answered, so nothing about it may read as loading and no
+    // client is told to come back for it.
+    expect(batch.legs[0]!.pendingModes).toEqual([]);
+    expect(batch.retryAfterSeconds).toBeUndefined();
+
+    // **But it was re-asked.** The row is rewritten by the provider that could answer, and its
+    // new author is what takes it out of the degraded set for good.
+    await service.settled();
+    expect(matrix).toHaveBeenCalledOnce();
+    expect(rows.get(key)!.provider).toBe('fake');
+    expect(rows.get(key)!.durationSeconds).not.toBe(462);
+  });
+
+  it('leaves a row from the preferred provider completely alone', async () => {
+    // The guard on the whole mechanism: `degradedProviderIds` names the fallback, never
+    // "anything that is not me". A set of the latter would re-fetch every leg of every trip the
+    // first time the provider question of §Y1 is answered differently.
+    const { prisma, rows } = fakePrisma();
+    const { provider, matrix } = fakeProvider({ degradedProviderIds: ['osrm/fossgis'] });
+    seed(rows, ASAKUSA, TSUKIJI, 'valhalla/fossgis');
+    const service = build(TOKYO_TRIP, provider, prisma);
+
+    const batch = await service.batch('trip', { stops: [ASAKUSA, TSUKIJI], modes: ['walking'] });
+    expect(batch.legs[0]!.estimates).toHaveLength(1);
+    await service.settled();
+    expect(matrix).not.toHaveBeenCalled();
+  });
+
+  it('re-asks a row still stamped with the composite id, which cannot name its author', async () => {
+    // §Y5 stamped `failover(<primary>,<secondary>)` whoever answered, so every row written
+    // between that deploy and this one is un-attributable and has to be treated as though the
+    // worse host wrote it. No migration and no blank period: the read that finds one fixes it.
+    const { prisma, rows } = fakePrisma();
+    const composite = 'failover(valhalla/fossgis,osrm/fossgis)';
+    const { provider, matrix } = fakeProvider({ degradedProviderIds: ['osrm/fossgis', composite] });
+    const key = seed(rows, ASAKUSA, TSUKIJI, composite);
+    const service = build(TOKYO_TRIP, provider, prisma);
+
+    await service.batch('trip', { stops: [ASAKUSA, TSUKIJI], modes: ['walking'] });
+    await service.settled();
+    expect(matrix).toHaveBeenCalledOnce();
+    expect(rows.get(key)!.provider).toBe('fake');
+  });
+
+  it('refreshes a degraded row that HOLDS a line through /route, never the matrix', async () => {
+    // The invariant that made `replace` its own need: `runMatrix` writes `shapeEncoded: null` and
+    // `store` replaces the row, so refreshing through the matrix would DELETE the drawn line to
+    // improve the duration. One `/route` replaces both together.
+    const { prisma, rows } = fakePrisma();
+    const { provider, matrix, shape } = fakeProvider({ degradedProviderIds: ['osrm/fossgis'] });
+    const key = seed(rows, ASAKUSA, TSUKIJI, 'osrm/fossgis', 'osrm-line');
+    const service = build(TOKYO_TRIP, provider, prisma);
+
+    await service.batch('trip', { stops: [ASAKUSA, TSUKIJI], modes: ['walking'] });
+    await service.settled();
+
+    expect(shape).toHaveBeenCalledOnce();
+    expect(matrix).not.toHaveBeenCalled();
+    const row = rows.get(key)!;
+    expect(row.provider).toBe('fake');
+    expect(row.shapeEncoded).toBe('abc');
+    expect(row.shapePrecision).toBe(6);
+  });
+
+  it('does not let refreshes change how a cold leg is answered', async () => {
+    // `divert` counts only what the CLIENT is missing, so a degraded cache must not move the
+    // budget line that decides whether a cold leg gets one `/route` or waits for the matrix.
+    const { prisma, rows } = fakePrisma();
+    const { provider, shape } = fakeProvider({ degradedProviderIds: ['osrm/fossgis'] });
+    // One cold leg wanting a line, and one degraded leg holding one.
+    seed(rows, TSUKIJI, SENSO, 'osrm/fossgis', 'osrm-line');
+    const service = build(TOKYO_TRIP, provider, prisma);
+
+    const batch = await service.batch('trip', {
+      stops: [ASAKUSA, TSUKIJI, SENSO],
+      modes: ['walking'],
+      withShapes: true,
+    });
+    // The cold leg is still diverted to its own `/route` — one call for duration AND geometry.
+    expect(batch.legs[0]!.pendingModes).toEqual(['walking']);
+    // And it is still promised a wait, which the refresh beside it neither earns nor suppresses.
+    expect(batch.retryAfterSeconds).toBeGreaterThan(0);
+    await service.settled();
+    // Two `/route` calls: the cold leg's, and the degraded leg's replacement.
+    expect(shape).toHaveBeenCalledTimes(2);
+  });
+
+  it('needs nothing extra for a degraded row that already owes a line', async () => {
+    // `store` is delete-then-create, so the geometry call the client is already owed rewrites the
+    // row whole — duration, line and author. A second refresh entry beside it would spend a
+    // second upstream call on the answer the first one brings back.
+    const { prisma, rows } = fakePrisma();
+    const { provider, matrix, shape } = fakeProvider({ degradedProviderIds: ['osrm/fossgis'] });
+    const key = seed(rows, ASAKUSA, TSUKIJI, 'osrm/fossgis');
+    const service = build(TOKYO_TRIP, provider, prisma);
+
+    const batch = await service.batch('trip', {
+      stops: [ASAKUSA, TSUKIJI],
+      modes: ['walking'],
+      withShapes: true,
+    });
+    expect(batch.legs[0]!.pendingModes).toEqual(['walking']);
+    await service.settled();
+    expect(shape).toHaveBeenCalledOnce();
+    expect(matrix).not.toHaveBeenCalled();
+    expect(rows.get(key)!.provider).toBe('fake');
   });
 });

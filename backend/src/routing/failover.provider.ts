@@ -14,7 +14,7 @@ import { Logger } from '@nestjs/common';
 import type { LatLng, TravelMode } from '@waypoint/shared';
 import {
   RouteOutOfRangeError,
-  type RouteMatrixCell,
+  type RouteMatrixResult,
   type RouteProvider,
   type RouteShapeAnswer,
 } from './route-provider';
@@ -35,20 +35,38 @@ export class FailoverRouteProvider implements RouteProvider {
   private readonly logger = new Logger(FailoverRouteProvider.name);
 
   /**
-   * **A composite, because the alternatives are a lie or a shared mutable field.**
+   * **The composition's own name, and no longer what a row records** (§Y6).
    *
-   * `RouteLeg.provider` exists so a mixed table is legible rather than silently mixed (§4), and
-   * `RoutingService` reads this getter when it stores. Returning `primary.id` would stamp
-   * failed-over rows as Valhalla-authored, which is exactly the silence that column was added to
-   * prevent. Tracking "who answered last" in a field would be precise and would rely on the
-   * limiter serialising task bodies — an invariant in another file, which is the shape of the
-   * §Y4 defect and not a mistake worth making twice for one column's precision.
+   * §Y5 chose this composite for `RouteLeg.provider` because the two alternatives were a lie
+   * (stamping the primary's id on a failed-over row) or a shared mutable "who answered last"
+   * field, whose correctness would depend on the limiter serialising task bodies — the shape of
+   * the §Y4 defect. Both alternatives are gone: an answer now carries its own author
+   * (`RouteAttribution`), so nothing has to be tracked and nothing is stamped by guess.
    *
-   * So the row says it was written under failover and names both candidates. Less precise than
-   * "which one", never wrong, and it needs nothing to stay true.
+   * **It is kept, and it stays exactly this string**, because rows written while it WAS the stamp
+   * are still in the table and `degradedProviderIds` names it to find them.
    */
   get id(): string {
     return `failover(${this.primary.id},${this.secondary.id})`;
+  }
+
+  /**
+   * **The two provider ids whose rows are a stand-in for a better answer** (§Y6).
+   *
+   * The secondary, because §Y5 accepted its numbers only against "no number at all" — and that
+   * bargain was made about a REQUEST, while `RouteLeg` never expires (§4), so without this the
+   * one-day outage of 2026-09-02 left permanent rows. Measured on the deploy: OSRM's `routed-car`
+   * answers Tokyo Station→Shibuya in ⁦7.7⁩ minutes against Valhalla's ⁦15.6⁩ over the identical
+   * ⁦7.67 ק״מ⁩ — a ⁦2×⁩ disagreement, not a tuning difference, because its car profile carries
+   * almost no intersection cost.
+   *
+   * And **this composition's own id**, because a row stamped with it cannot say which host
+   * answered, so it has to be treated as though the worse one did. That set shrinks by itself:
+   * every refresh rewrites the row with one concrete author, and only the fallback's id can make
+   * it a candidate again.
+   */
+  get degradedProviderIds(): readonly string[] {
+    return [this.secondary.id, this.id];
   }
 
   constructor(
@@ -56,19 +74,12 @@ export class FailoverRouteProvider implements RouteProvider {
     private readonly secondary: RouteProvider,
   ) {}
 
-  matrix(points: readonly LatLng[], mode: TravelMode): Promise<RouteMatrixCell[]> {
+  matrix(points: readonly LatLng[], mode: TravelMode): Promise<RouteMatrixResult> {
     return this.attempt(`matrix ${mode}`, (provider) => provider.matrix(points, mode));
   }
 
   shape(from: LatLng, to: LatLng, mode: TravelMode): Promise<RouteShapeAnswer | null> {
     return this.attempt(`shape ${mode}`, (provider) => provider.shape(from, to, mode));
-  }
-
-  /** **The primary's vintage, and never the secondary's.** A vintage is the invalidation signal
-   *  for the rows it stamps (§Z5); falling back here would stamp primary-authored rows with
-   *  whatever the secondary happens to say, which is worse than the `null` the port allows. */
-  dataVersion(): Promise<Date | null> {
-    return this.primary.dataVersion().catch(() => null);
   }
 
   /**

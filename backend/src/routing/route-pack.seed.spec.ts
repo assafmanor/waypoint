@@ -39,10 +39,12 @@ const provider = {
         });
       }
     }
-    return Promise.resolve(cells);
+    return Promise.resolve({
+      cells,
+      attribution: { providerId: 'seed-spec', tilesetAt: new Date('2026-08-24T00:00:00Z') },
+    });
   }),
   shape: vi.fn(() => Promise.resolve(null)),
-  dataVersion: () => Promise.resolve(new Date('2026-08-24T00:00:00Z')),
 } as unknown as RouteProvider;
 
 const prisma = new PrismaService();

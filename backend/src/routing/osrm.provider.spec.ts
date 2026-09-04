@@ -65,7 +65,7 @@ describe('OsrmRouteProvider', () => {
         [3733.6, 0],
       ],
     });
-    const cells = await new OsrmRouteProvider(fetcher, BASE).matrix(
+    const { cells } = await new OsrmRouteProvider(fetcher, BASE).matrix(
       [ARLOZOROV, KNESSET],
       'driving',
     );
@@ -87,7 +87,7 @@ describe('OsrmRouteProvider', () => {
         [3733.6, 0],
       ],
     });
-    const cells = await new OsrmRouteProvider(fetcher, BASE).matrix(
+    const { cells } = await new OsrmRouteProvider(fetcher, BASE).matrix(
       [ARLOZOROV, KNESSET],
       'driving',
     );
@@ -102,7 +102,7 @@ describe('OsrmRouteProvider', () => {
     const { fetcher } = fakeFetcher({ code: 'NoSegment' });
     await expect(
       new OsrmRouteProvider(fetcher, BASE).matrix([ARLOZOROV, KNESSET], 'driving'),
-    ).resolves.toEqual([]);
+    ).resolves.toMatchObject({ cells: [] });
   });
 
   it('carries precision 5 on a shape, because OSRM is not Valhalla', async () => {
@@ -113,7 +113,7 @@ describe('OsrmRouteProvider', () => {
       routes: [{ duration: 2981, distance: 3712.3, geometry: 'ktybEiihsEBQ@GFe@b@qD' }],
     });
     const answer = await new OsrmRouteProvider(fetcher, BASE).shape(ARLOZOROV, KNESSET, 'walking');
-    expect(answer).toEqual({
+    expect(answer).toMatchObject({
       durationSeconds: 2981,
       distanceMeters: 3712.3,
       shape: { encoded: 'ktybEiihsEBQ@GFe@b@qD', precision: POLYLINE_PRECISION.GOOGLE },
@@ -129,11 +129,19 @@ describe('OsrmRouteProvider', () => {
     ).resolves.toBeNull();
   });
 
-  it('states no vintage rather than inventing one', async () => {
+  it('states no vintage rather than inventing one, and says so on the answer itself', async () => {
     // `RouteLeg.tilesetAt` is what M12's eviction sweep runs on (§Z5). A guessed date would make
     // these rows look invalidatable on a tileset roll they were never part of.
-    const { fetcher } = fakeFetcher({});
-    await expect(new OsrmRouteProvider(fetcher, BASE).dataVersion()).resolves.toBeNull();
+    //
+    // **It now rides on the answer** (§Y6). While the vintage was a port method the composition
+    // answered it for both providers, so this `null` never reached the rows it was written for:
+    // an OSRM estimate went into the table stamped with Valhalla's tileset date.
+    const { fetcher } = fakeFetcher({ code: 'Ok', durations: [], distances: [] });
+    const { attribution } = await new OsrmRouteProvider(fetcher, BASE).matrix(
+      [ARLOZOROV, KNESSET],
+      'driving',
+    );
+    expect(attribution).toEqual({ providerId: 'osrm/fossgis', tilesetAt: null });
   });
 
   it('does not double a slash when the configured origin carries a trailing one', async () => {

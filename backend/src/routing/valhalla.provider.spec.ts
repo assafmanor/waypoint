@@ -87,7 +87,7 @@ describe('ValhallaRouteProvider', () => {
 
   it('converts the provider’s kilometres to the metres every shape in this app uses', async () => {
     const { fetcher } = stubFetcher({ sources_to_targets: [[cell(0, 1, 4976, 6.72)]] });
-    const cells = await new ValhallaRouteProvider(fetcher).matrix([TOKYO, SHINJUKU], 'walking');
+    const { cells } = await new ValhallaRouteProvider(fetcher).matrix([TOKYO, SHINJUKU], 'walking');
     expect(cells).toEqual([
       { fromIndex: 0, toIndex: 1, durationSeconds: 4976, distanceMeters: 6720 },
     ]);
@@ -103,11 +103,26 @@ describe('ValhallaRouteProvider', () => {
         [cell(1, 0, null, null), cell(1, 1, 0, 0)],
       ],
     });
-    const cells = await new ValhallaRouteProvider(fetcher).matrix([TOKYO, SHINJUKU], 'driving');
+    const { cells } = await new ValhallaRouteProvider(fetcher).matrix([TOKYO, SHINJUKU], 'driving');
     expect(cells.map((c) => [c.fromIndex, c.toIndex])).toEqual([
       [0, 0],
       [1, 1],
     ]);
+  });
+
+  it('attributes its own answers to itself, with its own vintage (§Y6)', async () => {
+    // The stamp travels with the numbers so nothing downstream can pair one provider answer with
+    // another provider vintage — `/status` here answers the tileset date the row will carry.
+    const { fetcher } = stubFetcher({
+      sources_to_targets: [[cell(0, 1, 60, 1)]],
+      tileset_last_modified: 1_756_000_000,
+    });
+    const { attribution } = await new ValhallaRouteProvider(fetcher).matrix(
+      [TOKYO, SHINJUKU],
+      'driving',
+    );
+    expect(attribution.providerId).toBe('valhalla/fossgis');
+    expect(attribution.tilesetAt).toEqual(new Date(1_756_000_000 * 1000));
   });
 
   it('turns error_code 154 into a terminal refusal, and everything else into an outage', async () => {
@@ -147,7 +162,7 @@ describe('ValhallaRouteProvider', () => {
       trip: { summary: { time: 8054.4, length: 10.606 }, legs: [{ shape: 'ikzbcAa_osiG' }] },
     });
     const answer = await new ValhallaRouteProvider(fetcher).shape(TOKYO, SHINJUKU, 'walking');
-    expect(answer).toEqual({
+    expect(answer).toMatchObject({
       durationSeconds: 8054.4,
       distanceMeters: 10606,
       shape: { encoded: 'ikzbcAa_osiG', precision: POLYLINE_PRECISION.VALHALLA },
