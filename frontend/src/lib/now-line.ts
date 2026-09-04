@@ -30,7 +30,7 @@
 // (ADR-0213 §11), and its own comment asks to be unified "when `nowLinePlacement` grows its
 // `inside` shape". What this file owns is the translation from `DayEntry` to that rule's spans.
 import { groupEndEvent, groupMembers, type DayEntry } from './day-entries';
-import { DAY_JOURNEY_ARM, type DayJourney } from './day-joins';
+import { DAY_JOURNEY_ARM, holeDepartsMs, type DayJourney } from './day-joins';
 import { nowInside, type NowInside, type NowSpan } from './now-inside';
 import { EVENT_STATUS } from '@waypoint/shared';
 import { MS_PER_SECOND } from '../constants';
@@ -113,24 +113,6 @@ export const JOIN_BOX = {
 export type JoinBox = (typeof JOIN_BOX)[keyof typeof JOIN_BOX];
 
 /**
- * **The departure that CUTS the hole in two**, or `null` where the hole is one interval.
- *
- * A claim that somebody is moving ends the free time wherever the clock stands (ADR-0207 §2) —
- * that is the one arm where the split is not the leave-by. Everywhere else it is `leaveByMs`,
- * clamped into the hole because a floored one (`leaveByIsFloor`, ADR-0206 §AJ2) is the origin's
- * own end and leaves no free time at all. **Where the journey states no departure** — the arms
- * with no estimate to count back from — there is nothing to cut on, and the app must not claim
- * the travel has begun.
- */
-function departureIn(journey: DayJourney | null, opensMs: number, closesMs: number): number | null {
-  if (!journey) return null;
-  if (journey.arm === DAY_JOURNEY_ARM.ON_WAY) return opensMs;
-  const leave = journey.leaveByMs;
-  if (leave === null || !Number.isFinite(leave)) return null;
-  return Math.min(Math.max(leave, opensMs), closesMs);
-}
-
-/**
  * **WHICH BOX OF A HOLE HOLDS THE MOMENT** (ADR-0217's 2026-09-04 amendment).
  *
  * A hole is not one row. `JoinRow` draws up to two — the free time, then the journey out of it —
@@ -139,10 +121,18 @@ function departureIn(journey: DayJourney | null, opensMs: number, closesMs: numb
  * reported day an ⁦08:00–17:00⁩ hole put ⁦13:01⁩ ⁦56%⁩ down a strip-plus-block and the arrow struck
  * the drive — three and three-quarter hours before its own `יציאה עד 16:46`.
  *
- * The two boxes are two intervals: the free time runs to the departure and the journey runs from
+ * The two boxes are two intervals: the free time runs to `holeDepartsMs` and the journey runs from
  * it, so the marker asks the same `nowInside` which one it is in and is nailed to that one alone.
  * It is the identical repair the shared reader took on 2026-09-03 (the wrapper's SCOPE, not the
  * fraction), arriving at the host that amendment said did not have it.
+ *
+ * **It answers which box, never whether that box is DRAWN** (the 2026-09-05 amendment, which took
+ * a `statesHole` argument out of here). A hole too short to state free time in, and one whose free
+ * time the clock has spent, both draw the journey alone — and telling this rule so made the
+ * journey's span the whole hole, so the arrow entered the block two-thirds down it and jumped the
+ * moment the strip retired. A journey's box means the journey at every hour; where the hole's own
+ * part holds the moment and nothing is drawn for it, the caller stands the mark ABOVE the block,
+ * which is the answer the day's edge legs already take.
  */
 export function nowInJoin(
   hole: {
@@ -151,23 +141,14 @@ export function nowInJoin(
     closesMs: number;
     /** The journey drawn across it, or `null` where the hole draws only itself. */
     journey: DayJourney | null;
-    /** Whether the hole draws a row of its OWN above that journey. With none the journey is the
-     *  only box and takes the whole hole, which is why this is asked rather than assumed. */
-    statesHole: boolean;
   },
   nowMs: number,
 ): NowInside | null {
-  const { opensMs, closesMs, journey, statesHole } = hole;
-  const departsMs = statesHole && journey ? departureIn(journey, opensMs, closesMs) : null;
+  const { opensMs, closesMs, journey } = hole;
+  const departsMs = holeDepartsMs(journey, opensMs, closesMs);
   const spans: NowSpan[] =
     departsMs === null
-      ? [
-          {
-            key: journey && !statesHole ? JOIN_BOX.JOURNEY : JOIN_BOX.HOLE,
-            start: opensMs,
-            end: closesMs,
-          },
-        ]
+      ? [{ key: JOIN_BOX.HOLE, start: opensMs, end: closesMs }]
       : [
           { key: JOIN_BOX.HOLE, start: opensMs, end: departsMs },
           { key: JOIN_BOX.JOURNEY, start: departsMs, end: closesMs },

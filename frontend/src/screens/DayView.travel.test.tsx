@@ -39,7 +39,7 @@ import { setSimulatedNow } from '../lib/useClock';
 import { approxTravelTime, freeTimePhrase, hoursPhrase, remainingPhrase } from '../lib/duration';
 import { markOnWay, resetOnWayForTests } from '../lib/on-way';
 import { ltrIsolate, withoutBidiControls } from '../lib/bidi';
-import { formatTime } from '../lib/time';
+import { clockRange, formatTime } from '../lib/time';
 import { formatDistance, haversineMeters } from '../lib/distance';
 import { t } from '../i18n/he';
 import { wrapNav } from '../test/nav-harness';
@@ -1479,6 +1479,72 @@ describe('DayView · where the moment is', () => {
       expect(mark.getAttribute('style')).toContain(
         `--thru: ${(15 / (WALK_MINUTES + TRAVEL_BUFFER_SECONDS / 60)) * 100}%`,
       );
+    });
+
+    // ── AND THE HOLE COUNTS DOWN WHILE YOU STAND IN IT (the 2026-09-05 amendment) ────────
+    //
+    // Reported with a screenshot at ⁦16:10⁩ of an ⁦08:00–16:46⁩ window: the strip still said
+    // `8:46 שע׳ פנויות` — the length the hole had when nobody was in it — and the `＋` beside
+    // it opened a sheet headed `08:00 – 09:00`, offering eight hours that had already gone.
+    describe('and what is left of it', () => {
+      /** ⁦14:00⁩ UTC — ⁦75⁩ minutes before the ⁦15:15⁩ departure, in a window that opened at ⁦13:20⁩. */
+      const MID = `${DAY}T14:00:00Z`;
+      const leftAtMid = Math.round(
+        (Date.parse(theatre.startsAt!) -
+          (WALK_MINUTES * 60 + TRAVEL_BUFFER_SECONDS) * 1000 -
+          Date.parse(MID)) /
+          60_000,
+      );
+      /** The hole this morning, which the clock is past — its own length, less the same walk. */
+      const morningHole =
+        Math.round((Date.parse(lunch.startsAt!) - Date.parse(morning.endsAt!)) / 60_000) -
+        WALK_MINUTES -
+        TRAVEL_BUFFER_SECONDS / 60;
+
+      it('states what is LEFT, and leaves the hole behind us reading its own length', () => {
+        setSimulatedNow(Date.parse(MID));
+        const { container } = show();
+        const labels = [...container.querySelectorAll('.day-swipe > .day-page .day-gap-lbl')];
+        expect(labels).toHaveLength(2);
+        expect(labels[1].textContent).toBe(freeTimePhrase(leftAtMid)!);
+        // Not the window's planned length, which is what it said at every hour before this.
+        expect(labels[1].textContent).not.toBe(freeTimePhrase(freeAfterWalk)!);
+        // **And a hole behind you is untouched**: it is where you record the lunch you had at
+        // ⁦12:00⁩, so clamping it would take backfilling away to fix a slot nobody is in.
+        expect(labels[0].textContent).toBe(freeTimePhrase(morningHole)!);
+      });
+
+      // The half a corrected LABEL could never reach (§V1.1's own finding, at the other end):
+      // the sheet's header, the block a pick writes and a new event's prefill all read the slot.
+      it('opens the fill on the window that is left, not the one that has passed', () => {
+        setSimulatedNow(Date.parse(MID));
+        const { container } = show();
+        const strips = container.querySelectorAll('.day-swipe > .day-page button.day-gap');
+        fireEvent.click(strips[1]);
+        // ⁦16:00⁩ local is ⁦14:00⁩ UTC in Rome — now, to the grid — never the ⁦15:20⁩ it opened at.
+        expect(screen.getByText(t.slotFill.gapTitle(clockRange('16:00', '17:00')))).toBeTruthy();
+        expect(screen.queryByText(t.slotFill.gapTitle(clockRange('15:20', '16:20')))).toBeNull();
+      });
+
+      // ADR-0217 §1's boundary form, in the one place a hole can leave the marker homeless: the
+      // hole draws no row of its own, and the departure has not come. Same answer as the day's
+      // edge legs — above the block, never inside it.
+      it('stands the mark above the journey where the hole states no free time at all', () => {
+        // A ⁦141⁩-minute walk leaves ⁦14⁩ free of the ⁦2:40⁩ hole — under the floor, so no strip —
+        // and puts the departure at ⁦13:34⁩.
+        travelSeconds = 141 * 60;
+        setSimulatedNow(Date.parse(`${DAY}T13:25:00Z`));
+        const { container } = show();
+        expect(container.querySelector('.day-swipe > .day-page .day-gap')).toBeNull();
+        const marks = container.querySelectorAll('.day-swipe > .day-page .now-here');
+        expect(marks).toHaveLength(1);
+        expect(marks[0].classList.contains('edge')).toBe(true);
+        const blocks = [...container.querySelectorAll('.day-swipe > .day-page .day-trv')];
+        expect(
+          marks[0].compareDocumentPosition(blocks[blocks.length - 1]) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      });
     });
 
     // The owner's own exception (ADR-0207 §2): _"unless someone marked it as 'on the way'"_.

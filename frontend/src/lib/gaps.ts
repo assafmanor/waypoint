@@ -58,6 +58,14 @@ export const flooredSlotEnd = (ms: number): number => {
   return Math.floor(ms / step) * step;
 };
 
+/** **The start of the next slot on or after an instant** — `flooredSlotEnd`'s mirror, and a pair
+ *  for its reason: a window narrowed at BOTH ends has to round inward at both, or the slot it
+ *  offers begins on a minute its own bound has already ruled out. */
+export const ceiledSlotStart = (ms: number): number => {
+  const step = SLOT_STEP_MINUTES * MS_PER_MINUTE;
+  return Math.ceil(ms / step) * step;
+};
+
 /** Prefill for a new/scheduled event dropped into the gap: the gap's own slot. */
 export type GapDefaults = { date: string; start: string; end: string };
 
@@ -231,6 +239,59 @@ export function gapBeforeFirst(dayEvents: TripEvent[], date: string, tz: string)
 
 export function gapAfterLast(dayEvents: TripEvent[], date: string, tz: string): Gap | null {
   return floored(freeAfterLast(dayEvents, date, tz));
+}
+
+/**
+ * **WHAT A HOLE STILL OFFERS, AT THE MOMENT IT IS READ** (ADR-0217's 2026-09-05 amendment) —
+ * `narrowGapForTravel`'s mirror at the other end, and the second correction one hole can need.
+ *
+ * That one caps the window at the departure the day advises; this one moves its START to the
+ * clock, because the two halves of a hole you are standing in were both stale. Reported with a
+ * screenshot at ⁦16:10⁩ of an ⁦08:00–16:46⁩ window: the strip still said `8:46 שע׳ פנויות` — the
+ * length the hole had when nobody was in it — and the `＋` beside it opened a sheet headed
+ * `08:00 – 09:00`, offering eight hours that had already happened.
+ *
+ * **One narrowed object rather than a corrected label**, for the reason §V1.1 records about the
+ * other end: `minutes` is what the strip states AND what caps a block, `fill` is where a drop
+ * lands, and correcting the words while the offer stayed whole is exactly the contradiction that
+ * fix was written about. So the sheet's header, the feasibility floor a pick is measured against
+ * (`shelfForSlot`), the block a pick writes (`ideaBlock`) and a fresh event's prefill all follow
+ * from this one value.
+ *
+ * **`null` once nothing is left**, which is the caller's signal to draw no strip at all: a hole
+ * whose free time is spent is not a hole with `0 דק׳ פנויות` in it. `endsMs` is the window's own
+ * end — `holeDepartsMs` where a journey takes the hole over, else the row below — and it is the
+ * caller's to pass precisely so the strip and the now-marker cannot disagree about when that is.
+ *
+ * **Unchanged wherever the moment is not INSIDE the window**, which is what keeps it a no-op on
+ * every other day and on today's earlier holes. That is deliberate rather than incidental: a hole
+ * behind you is still where you record the lunch you had at ⁦12:00⁩, and clamping it would take
+ * backfilling away to fix a slot nobody was standing in.
+ */
+export function narrowGapToNow(free: Gap, nowMs: number, endsMs: number, tz: string): Gap | null {
+  if (!Number.isFinite(nowMs) || !Number.isFinite(endsMs)) return free;
+  const opensMs = Date.parse(zonedIso(free.fill.date, free.fill.start, tz));
+  if (!Number.isFinite(opensMs) || nowMs <= opensMs) return free;
+  // Rounded, so the statement and the strip's own `freeTimePhrase` count the same minutes.
+  const minutes = Math.round((endsMs - nowMs) / MS_PER_MINUTE);
+  if (minutes <= 0) return null;
+  /** The last moment anything dropped here may run to: the ceiling this hole already carried
+   *  (the advised departure), or this window's own end on the same grid every slot bound uses. */
+  const capped = free.until ? Date.parse(zonedIso(free.fill.date, free.until, tz)) : NaN;
+  const ceilingMs = Number.isFinite(capped) ? capped : flooredSlotEnd(endsMs);
+  const until = isoToTimeInput(new Date(ceilingMs).toISOString(), tz);
+  const start = isoToTimeInput(
+    new Date(Math.min(ceiledSlotStart(nowMs), ceilingMs)).toISOString(),
+    tz,
+  );
+  // The position's default block, from here — capped by the ceiling like `blockFor`'s, and
+  // start-only where there is no longer a block's worth of room (`freeBetween`'s own shape).
+  const endMin = Math.min(toMin(start) + GAP_FILL_MINUTES, toMin(until));
+  return {
+    minutes,
+    until,
+    fill: { ...free.fill, start, end: endMin > toMin(start) ? toHHMM(endMin) : '' },
+  };
 }
 
 /**
