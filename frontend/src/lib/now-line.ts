@@ -18,14 +18,22 @@
 //    the honest marker would say so."_ The return type was an object with one field precisely
 //    so this could arrive without touching a caller.
 //
+// **And a HOLE is two rows, not one** (the 2026-09-04 amendment): `nowInJoin` below answers which
+// box of a hole holds the moment — the free time, or the journey out of it — because a fraction
+// measured over the pair puts the arrow wherever those two happen to divide the pixels. It is
+// derived here rather than in `nowLinePlacement` for the reason ADR-0217's build log §3 gives: a
+// hole is not an entry, `dayBlocks` measures it between two of them.
+//
 // **The rule itself lives in `lib/now-inside.ts`**, unit-agnostic, because the shared reader
 // (`lib/share-now-line.ts`) needs the same rule over a different unit — it compares
 // pre-formatted `HH:MM` labels, since the public projection deliberately ships no instants
 // (ADR-0213 §11), and its own comment asks to be unified "when `nowLinePlacement` grows its
 // `inside` shape". What this file owns is the translation from `DayEntry` to that rule's spans.
 import { groupEndEvent, groupMembers, type DayEntry } from './day-entries';
+import { DAY_JOURNEY_ARM, type DayJourney } from './day-joins';
 import { nowInside, type NowInside, type NowSpan } from './now-inside';
 import { EVENT_STATUS } from '@waypoint/shared';
+import { MS_PER_SECOND } from '../constants';
 import type { TimeGroup, TimeItem } from './time';
 
 export interface NowLinePlacement {
@@ -93,4 +101,129 @@ export function nowLinePlacement(entries: readonly DayEntry[], nowMs: number): N
     index: index === -1 ? entries.length : index,
     inside: nowInside(eventSpans(entries), nowMs),
   };
+}
+
+/** The two boxes a hole can draw, and which of them the marker is nailed to. */
+export const JOIN_BOX = {
+  /** The hole's own row: the free-time strip, or a connection band. */
+  HOLE: 'hole',
+  /** The journey across the hole. */
+  JOURNEY: 'journey',
+} as const;
+export type JoinBox = (typeof JOIN_BOX)[keyof typeof JOIN_BOX];
+
+/**
+ * **The departure that CUTS the hole in two**, or `null` where the hole is one interval.
+ *
+ * A claim that somebody is moving ends the free time wherever the clock stands (ADR-0207 §2) —
+ * that is the one arm where the split is not the leave-by. Everywhere else it is `leaveByMs`,
+ * clamped into the hole because a floored one (`leaveByIsFloor`, ADR-0206 §AJ2) is the origin's
+ * own end and leaves no free time at all. **Where the journey states no departure** — the arms
+ * with no estimate to count back from — there is nothing to cut on, and the app must not claim
+ * the travel has begun.
+ */
+function departureIn(journey: DayJourney | null, opensMs: number, closesMs: number): number | null {
+  if (!journey) return null;
+  if (journey.arm === DAY_JOURNEY_ARM.ON_WAY) return opensMs;
+  const leave = journey.leaveByMs;
+  if (leave === null || !Number.isFinite(leave)) return null;
+  return Math.min(Math.max(leave, opensMs), closesMs);
+}
+
+/**
+ * **WHICH BOX OF A HOLE HOLDS THE MOMENT** (ADR-0217's 2026-09-04 amendment).
+ *
+ * A hole is not one row. `JoinRow` draws up to two — the free time, then the journey out of it —
+ * and `--thru` is a fraction of the marked BOX's height, so a fraction measured over the pair
+ * lands wherever the two happen to divide the pixels rather than where the clock is. On the
+ * reported day an ⁦08:00–17:00⁩ hole put ⁦13:01⁩ ⁦56%⁩ down a strip-plus-block and the arrow struck
+ * the drive — three and three-quarter hours before its own `יציאה עד 16:46`.
+ *
+ * The two boxes are two intervals: the free time runs to the departure and the journey runs from
+ * it, so the marker asks the same `nowInside` which one it is in and is nailed to that one alone.
+ * It is the identical repair the shared reader took on 2026-09-03 (the wrapper's SCOPE, not the
+ * fraction), arriving at the host that amendment said did not have it.
+ */
+export function nowInJoin(
+  hole: {
+    /** The row above's end and the row below's start — the hole's own extent. */
+    opensMs: number;
+    closesMs: number;
+    /** The journey drawn across it, or `null` where the hole draws only itself. */
+    journey: DayJourney | null;
+    /** Whether the hole draws a row of its OWN above that journey. With none the journey is the
+     *  only box and takes the whole hole, which is why this is asked rather than assumed. */
+    statesHole: boolean;
+  },
+  nowMs: number,
+): NowInside | null {
+  const { opensMs, closesMs, journey, statesHole } = hole;
+  const departsMs = statesHole && journey ? departureIn(journey, opensMs, closesMs) : null;
+  const spans: NowSpan[] =
+    departsMs === null
+      ? [
+          {
+            key: journey && !statesHole ? JOIN_BOX.JOURNEY : JOIN_BOX.HOLE,
+            start: opensMs,
+            end: closesMs,
+          },
+        ]
+      : [
+          { key: JOIN_BOX.HOLE, start: opensMs, end: departsMs },
+          { key: JOIN_BOX.JOURNEY, start: departsMs, end: closesMs },
+        ];
+  return nowInside(spans, nowMs);
+}
+
+/**
+ * **A LEG'S OWN SPAN: WHEN YOU GO, AND WHEN YOU GET THERE.**
+ *
+ * Recovered from the two fields the row already ships rather than re-derived, so the marker and
+ * the words under it cannot disagree: `dayJourney` builds `arriveAtMs` as `goesAtMs + travel`, so
+ * subtracting the leg gives back the departure it counted forward from — the advised leave-by
+ * where the row states one, and the earliest departure that exists where it states none (a
+ * flexible destination has no deadline to count back from, ADR-0206 §AJ1/§AR1).
+ *
+ * `null` on every arm that predicts no arrival: the four with no estimate (§AA4/§AM10/§AU1/§AZ1)
+ * and the denied claim (ADR-0208 §2). A row that will not say when it lands must not be told where
+ * the clock is inside it either.
+ */
+function legSpan(journey: DayJourney): NowSpan | null {
+  const lands = journey.arriveAtMs;
+  if (lands === null || !Number.isFinite(lands) || journey.travelSeconds === null) return null;
+  const departs = lands - journey.travelSeconds * MS_PER_SECOND;
+  return lands > departs ? { key: JOIN_BOX.JOURNEY, start: departs, end: lands } : null;
+}
+
+/**
+ * **WHERE THE MOMENT STANDS AGAINST A LEG THAT HAS NO JOIN ABOVE IT** — the day's first drive out
+ * of the bed you woke in (ADR-0206 §AD), the one that brought you to it, and the one back into
+ * tonight's (ADR-0209 §1). All three render outside the block loop, so the placement the loop
+ * performs for every other hole has to be performed for them here.
+ *
+ * Without it the boundary mark keeps the one position it has always had — **below** all three —
+ * at every hour of the day: at ⁦05:00⁩ it says an ⁦08:40⁩ departure out of the hotel is behind us,
+ * and after the day's last row it says a drive still ahead of you is done. That is the reported
+ * defect one row up, at the two ends of the day.
+ *
+ * A leg is an interval, so this is `nowInside` over one span like everything else.
+ */
+export function nowInJourney(journey: DayJourney | null, nowMs: number): NowInside | null {
+  if (!journey) return null;
+  const span = legSpan(journey);
+  if (!span) return null;
+  // **A claim that somebody is moving holds from the moment it is made** (ADR-0207 §2), whatever
+  // the leave-by says — which is the owner's own "unless someone marked it as on the way".
+  const start = journey.arm === DAY_JOURNEY_ARM.ON_WAY ? Math.min(span.start, nowMs) : span.start;
+  return nowInside([{ ...span, start }], nowMs);
+}
+
+/** **Whether such a leg is still AHEAD of the moment** — the mark stands above it while it is, and
+ *  keeps its shipped place below it once it is not. A leg somebody is on is never ahead, and
+ *  neither is one that predicts no arrival: with nothing to compare against, the day may not claim
+ *  the drive has not started either. */
+export function journeyIsAhead(journey: DayJourney | null, nowMs: number): boolean {
+  if (!journey || journey.arm === DAY_JOURNEY_ARM.ON_WAY) return false;
+  const span = legSpan(journey);
+  return span !== null && nowMs < span.start;
 }

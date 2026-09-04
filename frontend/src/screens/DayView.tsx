@@ -143,7 +143,15 @@ import { travelStance, remainingTravelSeconds, TRAVEL_STANCE } from '../lib/trav
 import { travelOrigin } from '../lib/hero-travel';
 import { useGeolocation } from '../lib/useGeolocation';
 import { clearOnWay, useOnWay } from '../lib/on-way';
-import { nowLinePlacement } from '../lib/now-line';
+import type { NowInside } from '../lib/now-inside';
+import {
+  JOIN_BOX,
+  journeyIsAhead,
+  nowInJoin,
+  nowInJourney,
+  nowLinePlacement,
+  type JoinBox,
+} from '../lib/now-line';
 import { NowMarker } from '../ui/domain/NowMarker';
 import { StayRow } from '../ui/domain/StayRow';
 import { type SettleOutcome } from '../ui/domain/SettleControl';
@@ -223,6 +231,18 @@ const blockKey = (block: DayBlock) => {
 const shortPlaceName = (places: Place[], labels: PlaceLabels, id: string | undefined) =>
   placeLabelOf(labels, id, placeName(places, id));
 
+/** **What the day hands a hole about the moment**: the instants, not a placement. The host knows
+ *  the hole holds `now`; `JoinRow` knows how many boxes it is drawing, so it is what resolves the
+ *  two into one nailed row (ADR-0217's 2026-09-04 amendment). */
+interface JoinNowMark {
+  nowMs: number;
+  /** The hole's own extent — the row above's end and the row below's start. */
+  opensMs: number;
+  closesMs: number;
+  label: string;
+  ref: React.Ref<HTMLDivElement>;
+}
+
 /** The one row that draws whatever sits above an entry (ADR-0159). A gap states free time; a
  *  connection names the stop and how long you are in it, and only ever renders inside a
  *  `.journey` block, because that is what makes it part of an object instead of a mark between
@@ -239,6 +259,7 @@ function JoinRow({
   places,
   placeLabels,
   onFillGap,
+  nowMark,
   ...journeyRest
 }: {
   /** **Nullable, and that is ADR-0206 §AG6 finished.** `gapBetween` is floored at
@@ -264,23 +285,52 @@ function JoinRow({
    *  never takes one: you are inside a commitment for the whole of it, so there is nothing
    *  free there to fill. */
   onFillGap?: (free: Gap) => void;
+  /** **The moment, and where in the hole it stands — unresolved** (ADR-0217's 2026-09-04
+   *  amendment). The host says the hole holds it; WHICH BOX holds it is answered here, because
+   *  this is the only thing that knows how many boxes it is drawing. The same move the shared
+   *  reader made into `EventRow` on 2026-09-03, for the same defect. */
+  nowMark?: JoinNowMark;
 } & Omit<JourneyRowProps, 'journey' | 'tz'>) {
-  if (join === null || join.kind === 'gap') {
-    // **The slot is narrowed by the journey** — the statement and the control must not disagree
-    // about one hole, which is what §V1.1 is about one elevation down.
-    const slot = join ? (journey ? narrowGapForTravel(join.free, journey, tz) : join.free) : null;
-    // **And it is stated below the block rather than inside it** (owner, 2026-08-26: _"do we
-    // really want to state on this row that we have free time, or should it be written in a quiet
-    // way and not in the row?"_). M6a absorbed the strip into the block to keep ADR-0159's one
-    // object per hole, and the absorption put two subjects on one ⁦180px⁩ line: the block is about
-    // the LEG (mode, distance, when to go) and free time is about the HOLE. The measurement that
-    // shipped M6a is the argument against it — ⁦219.70px⁩ of ink in that box, "fixed" by hiding the
-    // free time on half the arms, which is what a line holding two subjects looks like.
-    const strip =
-      slot && statesFreeTime(slot.minutes) ? (
-        <GapStrip minutes={slot.minutes} onFill={onFillGap && (() => onFillGap(slot))} />
-      ) : null;
-    if (!journey) return strip;
+  const connection = join !== null && join.kind === 'connection';
+  // **The slot is narrowed by the journey** — the statement and the control must not disagree
+  // about one hole, which is what §V1.1 is about one elevation down.
+  const slot =
+    join && !connection ? (journey ? narrowGapForTravel(join.free, journey, tz) : join.free) : null;
+  // **And it is stated below the block rather than inside it** (owner, 2026-08-26: _"do we
+  // really want to state on this row that we have free time, or should it be written in a quiet
+  // way and not in the row?"_). M6a absorbed the strip into the block to keep ADR-0159's one
+  // object per hole, and the absorption put two subjects on one ⁦180px⁩ line: the block is about
+  // the LEG (mode, distance, when to go) and free time is about the HOLE. The measurement that
+  // shipped M6a is the argument against it — ⁦219.70px⁩ of ink in that box, "fixed" by hiding the
+  // free time on half the arms, which is what a line holding two subjects looks like.
+  const strip =
+    slot && statesFreeTime(slot.minutes) ? (
+      <GapStrip minutes={slot.minutes} onFill={onFillGap && (() => onFillGap(slot))} />
+    ) : null;
+  /** **Which of this hole's boxes the mark belongs to** — the free time or the journey out of it.
+   *  A connection draws neither: it is one band over a stop you are inside for the whole of it,
+   *  and the journey prop it never renders must not be offered a share of it either. */
+  const placed = nowMark
+    ? nowInJoin(
+        {
+          opensMs: nowMark.opensMs,
+          closesMs: nowMark.closesMs,
+          journey: connection ? null : journey,
+          statesHole: connection || strip !== null,
+        },
+        nowMark.nowMs,
+      )
+    : null;
+  const nail = (box: JoinBox, row: ReactNode) =>
+    nowMark && placed?.key === box ? (
+      <NowMarker ref={nowMark.ref} label={nowMark.label} thruFrac={placed.thruFrac}>
+        {row}
+      </NowMarker>
+    ) : (
+      row
+    );
+  if (!connection) {
+    if (!journey) return nail(JOIN_BOX.HOLE, strip);
     /**
      * **THE FREE TIME COMES FIRST, BECAUSE IT ENDS WHERE THE JOURNEY BEGINS** (owner,
      * 2026-08-31: _"the transit row shows 'take off at X to get on time', so it only makes
@@ -297,12 +347,13 @@ function JoinRow({
      */
     return (
       <>
-        {strip}
-        <JourneyRow journey={journey} {...journeyRest} />
+        {nail(JOIN_BOX.HOLE, strip)}
+        {nail(JOIN_BOX.JOURNEY, <JourneyRow journey={journey} {...journeyRest} />)}
       </>
     );
   }
-  return (
+  return nail(
+    JOIN_BOX.HOLE,
     <ConnectionBand
       word={t.day.join.word[join.type] ?? t.day.join.word.flight}
       length={hoursPhrase(join.minutes)}
@@ -311,7 +362,7 @@ function JoinRow({
       // row, and the two cards around it already name the place in full.
       placeName={shortPlaceName(places, placeLabels, join.stopPlaceId)}
       tight={join.tight}
-    />
+    />,
   );
 }
 
@@ -1060,13 +1111,52 @@ export function DayView() {
   // exists. Which is also why it needs no second rule — a hole is precisely where no row holds
   // the moment, so `inside === null` at this index already identifies it, and the two answers
   // cannot disagree.
-  const nowInJoin = (from?: TripEvent, to?: TripEvent): number | null => {
+  //
+  // **What this hands down is the hole, not a fraction** (the 2026-09-04 amendment): a hole
+  // draws up to two rows and only `JoinRow` knows which, so the screen says WHETHER the moment
+  // is in it and that row says which box of it holds the moment.
+  const nowInHole = (from?: TripEvent, to?: TripEvent): JoinNowMark | null => {
     if (!showNowLine || nowInsideRow || !from?.endsAt || !to?.startsAt) return null;
-    const opens = Date.parse(from.endsAt);
-    const closes = Date.parse(to.startsAt);
-    const at = now.getTime();
-    return closes > opens && at >= opens && at < closes ? (at - opens) / (closes - opens) : null;
+    const opensMs = Date.parse(from.endsAt);
+    const closesMs = Date.parse(to.startsAt);
+    const nowMs = now.getTime();
+    return closesMs > opensMs && nowMs >= opensMs && nowMs < closesMs
+      ? { nowMs, opensMs, closesMs, label: nowLabel, ref: nowLineRef }
+      : null;
   };
+  // **AND THE DAY'S EDGE LEGS HOLD IT TOO** (the 2026-09-04 amendment) — `arriveJourney`,
+  // `wakeJourney` and `homeJourney` render OUTSIDE the block loop because they have no join to
+  // hang off (ADR-0206 §AD, ADR-0209 §1), so the boundary mark had exactly one position against
+  // all three: below them. At ⁦05:00⁩ that said an ⁦08:40⁩ drive out of the hotel was behind us —
+  // the reported defect, one row up and at the other end of the day.
+  //
+  // Three rows in a fixed order, so the mark takes the FIRST place that is true of it and the
+  // ones after it stand down: nailed inside a leg under way, else above the first leg still
+  // ahead, else its shipped place. `merged.length > 0` keeps a day with no entries on the tail
+  // alone, which is the only mark it draws.
+  const atHead = showNowLine && !nowInsideRow && nowLineIndex === 0 && merged.length > 0;
+  const atTail = showNowLine && !nowInsideRow && nowLineIndex === merged.length;
+  const inArriveLeg = atHead ? nowInJourney(arriveJourney, now.getTime()) : null;
+  const inWakeLeg = atHead && !inArriveLeg ? nowInJourney(wakeJourney, now.getTime()) : null;
+  const inHomeLeg = atTail ? nowInJourney(homeJourney, now.getTime()) : null;
+  const overEdgeLeg = Boolean(inArriveLeg || inWakeLeg);
+  const aboveArriveLeg = atHead && !overEdgeLeg && journeyIsAhead(arriveJourney, now.getTime());
+  const aboveWakeLeg =
+    atHead && !overEdgeLeg && !aboveArriveLeg && journeyIsAhead(wakeJourney, now.getTime());
+  const aboveHomeLeg = atTail && !inHomeLeg && journeyIsAhead(homeJourney, now.getTime());
+  /** An edge leg wrapped in the mark, or handed back plain. */
+  const nailEdge = (inside: NowInside | null, row: ReactNode) =>
+    inside ? (
+      <NowMarker ref={nowLineRef} label={nowLabel} thruFrac={inside.thruFrac}>
+        {row}
+      </NowMarker>
+    ) : (
+      row
+    );
+  /** **And the loop's own boundary stands down where an edge leg has taken the mark** — it is the
+   *  same mark, and all three of these can only fire at `nowLineIndex === 0`, which is the one
+   *  index that boundary draws at. Without this the day draws two. */
+  const headTaken = overEdgeLeg || aboveArriveLeg || aboveWakeLeg;
   // The ctx the ROWS render from. `dayCtx` itself carries no mark, which is what the tail of
   // untimed rows below wants: ADR-0171 §10a says they hold no position in the day, and
   // `eventSpans` agrees by skipping an event with no `startsAt` — so they can never be the
@@ -1250,11 +1340,15 @@ export function DayView() {
               onUndo={dayCtx.readOnly ? undefined : () => verbs.restore(entry.event)}
             />
           ))}
-          {arriveJourney && day.arrive && (
-            <JourneyRow
-              {...journeyProps(arriveJourney, day.arrive.to === liveLeg?.to, day.arrive)}
-            />
-          )}
+          {aboveArriveLeg && <NowMarker ref={nowLineRef} label={nowLabel} />}
+          {arriveJourney &&
+            day.arrive &&
+            nailEdge(
+              inArriveLeg,
+              <JourneyRow
+                {...journeyProps(arriveJourney, day.arrive.to === liveLeg?.to, day.arrive)}
+              />,
+            )}
           {bookends.woke && (
             <StayRow
               stay={bookends.woke}
@@ -1266,9 +1360,13 @@ export function DayView() {
               {...staySettle(bookends.woke)}
             />
           )}
-          {wakeJourney && day.wake && (
-            <JourneyRow {...journeyProps(wakeJourney, day.wake.to === liveLeg?.to, day.wake)} />
-          )}
+          {aboveWakeLeg && <NowMarker ref={nowLineRef} label={nowLabel} />}
+          {wakeJourney &&
+            day.wake &&
+            nailEdge(
+              inWakeLeg,
+              <JourneyRow {...journeyProps(wakeJourney, day.wake.to === liveLeg?.to, day.wake)} />,
+            )}
           {/* Overlapping events render as the concurrency forest (ADR-0041): nests
             for containment, quiet clusters for partial overlap. The now-line is
             interleaved at the top level; untimed events have no span to place, so
@@ -1284,7 +1382,7 @@ export function DayView() {
               const joinJourney = joinTo ? journeyFor(from, joinTo) : null;
               // A hole with no row drawn for it has nothing to nail the mark to, so the
               // boundary form keeps that case (§5's day-head hole).
-              const joinThru = join || joinJourney ? nowInJoin(from, joinTo) : null;
+              const joinNow = join || joinJourney ? nowInHole(from, joinTo) : null;
               return (
                 <Fragment
                   key={
@@ -1302,9 +1400,10 @@ export function DayView() {
                     // hole too short for a join can still hold a leg (§AG6, and Plan has always
                     // drawn it).
                     if (!join && !journey) return null;
-                    const row = (
+                    return (
                       <JoinRow
                         join={join ?? null}
+                        nowMark={joinNow ?? undefined}
                         {...(journey && from && to
                           ? journeyProps(journey, to === liveLeg?.to && from === liveLeg?.from, {
                               from,
@@ -1327,20 +1426,14 @@ export function DayView() {
                         onFillGap={readOnly ? undefined : setGapTarget}
                       />
                     );
-                    // The hole is a row like any other once the moment is in it.
-                    return joinThru === null ? (
-                      row
-                    ) : (
-                      <NowMarker ref={nowLineRef} label={nowLabel} thruFrac={joinThru}>
-                        {row}
-                      </NowMarker>
-                    );
                   })()}
                   {/* The BOUNDARY form, and only when no row holds the moment: with an
                     `inside` the mark is nailed to that row instead (`ItemNode`). */}
-                  {showNowLine && !nowInsideRow && joinThru === null && index === nowLineIndex && (
-                    <NowMarker ref={nowLineRef} label={nowLabel} />
-                  )}
+                  {showNowLine &&
+                    !nowInsideRow &&
+                    !headTaken &&
+                    joinNow === null &&
+                    index === nowLineIndex && <NowMarker ref={nowLineRef} label={nowLabel} />}
                   {entry.kind === 'event' ? (
                     // **A CARRIED LEG SITS ON THE DAY'S THREAD** (ADR-0212 §1). The card is
                     // untouched — ADR-0210 §1 reserved the box for commitments and a flight is the
@@ -1404,9 +1497,13 @@ export function DayView() {
           {/* **AND WHERE THE DAY ENDS** (ADR-0209 §1) — the other half of §AD, which only ever
             built the leg OUT of a stay. The journey back is as certain as the one out, and it
             reads above the row it arrives at, exactly like every other leg in the day. */}
-          {homeJourney && day.home && (
-            <JourneyRow {...journeyProps(homeJourney, day.home.to === liveLeg?.to, day.home)} />
-          )}
+          {aboveHomeLeg && <NowMarker ref={nowLineRef} label={nowLabel} />}
+          {homeJourney &&
+            day.home &&
+            nailEdge(
+              inHomeLeg,
+              <JourneyRow {...journeyProps(homeJourney, day.home.to === liveLeg?.to, day.home)} />,
+            )}
           {bookends.sleeps && (
             <StayRow
               stay={bookends.sleeps}
@@ -1418,9 +1515,7 @@ export function DayView() {
               {...staySettle(bookends.sleeps)}
             />
           )}
-          {showNowLine && !nowInsideRow && nowLineIndex === merged.length && (
-            <NowMarker ref={nowLineRef} label={nowLabel} />
-          )}
+          {atTail && !inHomeLeg && !aboveHomeLeg && <NowMarker ref={nowLineRef} label={nowLabel} />}
           {/* **The tail, and the line that finally names it** (ADR-0171 §10a). These rows
             have always rendered here; what they never had was anything saying they hold
             no position, so one of them read as "the last thing today". The line is the
