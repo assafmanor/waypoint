@@ -66,6 +66,8 @@ interface RouteLegRow {
   distanceMeters: number;
   shapeEncoded: string | null;
   shapePrecision: number | null;
+  /** Who authored it, which is what makes a row re-askable rather than merely present (§Y6). */
+  provider: string;
 }
 
 /** A row on its way in. Mirrors the Prisma model's writable columns. */
@@ -100,7 +102,17 @@ type PendingNeed =
   /** Duration cached, geometry missing. One `/route`. */
   | 'geometry'
   /** Nothing cached and a line is wanted: answerable by ONE `/route`, budget permitting. */
-  | 'both';
+  | 'both'
+  /**
+   * **A complete row from a degraded provider, to be re-asked whole** (§Y6) — the one need that
+   * is not about something missing.
+   *
+   * It must be a `/route` and never the matrix, which is the whole reason it is its own member:
+   * `runMatrix` writes `shapeEncoded: null` and `store` replaces the row, so refreshing a row
+   * that HOLDS a line through the matrix would delete the line to improve the duration. One
+   * `/route` replaces both together.
+   */
+  | 'replace';
 
 interface PendingItem {
   fromIndex: number;
@@ -143,6 +155,19 @@ export class RoutingService {
 
     const cached = await this.readCached(stops, gated);
     const pending: PendingItem[] = [];
+    /**
+     * **Legs we can already answer and would rather answer better** (§Y6), kept apart from
+     * `pending` because the difference is what the CLIENT is owed.
+     *
+     * A degraded row has an estimate, so nothing about it is missing and nothing about it may
+     * read as loading: it is not in `pendingModes` and it does not earn a `retryAfterSeconds`.
+     * §Y5 took the fallback's number against "no number at all" and that trade was struck about
+     * one request, while `RouteLeg` never expires (§4) — so the row outlived the outage that
+     * justified it, and the read that finds it is the only trigger this repo will add (no
+     * scheduler: ADR-0157 §6, and ADR-0166 §14's read-trigger is the precedent).
+     */
+    const refresh: PendingItem[] = [];
+    const degraded = new Set(this.provider.degradedProviderIds);
 
     const legs: RoutedLeg[] = gated.map((leg) => {
       const estimates: TravelEstimate[] = [];
@@ -172,6 +197,16 @@ export class RoutingService {
         if (request.withShapes && !row.shapeEncoded) {
           pendingModes.push(mode);
           pending.push({ fromIndex: leg.fromIndex, toIndex: leg.toIndex, mode, need: 'geometry' });
+          // **A degraded row that owes a line needs nothing extra**, and that is `store`'s
+          // delete-then-create rather than a coincidence: `runShape` rewrites the row whole, so
+          // the geometry call above already replaces the duration and its author.
+        } else if (degraded.has(row.provider)) {
+          refresh.push({
+            fromIndex: leg.fromIndex,
+            toIndex: leg.toIndex,
+            mode,
+            need: row.shapeEncoded ? 'replace' : 'duration',
+          });
         }
       }
 
@@ -186,7 +221,7 @@ export class RoutingService {
       };
     });
 
-    if (pending.length === 0) return { legs };
+    if (pending.length === 0 && refresh.length === 0) return { legs };
 
     // **The kill switch stops the outbound call, not the endpoint** (`ROUTING_DISABLED`). Every
     // stored leg above is still served; what is missing reads as §D4's absence, and no
@@ -205,8 +240,12 @@ export class RoutingService {
     // saving; withholding the promise was never part of it.
     if (this.isDisabled()) return { legs };
 
-    const plannedCalls = this.warm(stops, clusters, pending);
-    return { legs, retryAfterSeconds: retryAfterFor(plannedCalls) };
+    const plannedCalls = this.warm(stops, clusters, [...pending, ...refresh]);
+    // **A refresh still counts toward the wait it does not itself offer.** The limiter paces one
+    // call a second across all of them, so a client told to come back in `n` has to be told the
+    // truth about the queue in front of it — while a batch whose only work is a refresh promises
+    // nothing, because everything it can answer it already answered.
+    return pending.length > 0 ? { legs, retryAfterSeconds: retryAfterFor(plannedCalls) } : { legs };
   }
 
   /**
@@ -243,6 +282,7 @@ export class RoutingService {
         distanceMeters: true,
         shapeEncoded: true,
         shapePrecision: true,
+        provider: true,
       },
     });
     return new Map(rows.map((row) => [row.key, row]));
@@ -276,14 +316,25 @@ export class RoutingService {
     // caches every ordered pair among the points it is sent, not just the consecutive ones, so a
     // reorder later is free. A `/route` pays for one pair. Right for latency on a short day, wrong
     // at scale — the same line the budget draws.
-    const wantsLine = pending.filter((item) => item.need !== 'duration');
+    //
+    // **A `replace` is deliberately outside that budget decision and queued after it** (§Y6).
+    // `wantsLine` counts only what the CLIENT is missing, so `divert` is the number it was before
+    // refreshes existed — a degraded cache must not change how a cold leg is answered. Refreshes
+    // then take whatever of the pass is left, and one that does not fit simply stays degraded
+    // until the next read finds it again.
+    const wantsLine = pending.filter((item) => item.need === 'both' || item.need === 'geometry');
     const divert = wantsLine.length <= SHAPE_CALLS_PER_PASS;
-    const shapeItems = divert ? wantsLine : pending.filter((item) => item.need === 'geometry');
+    const shapeItems = [
+      ...(divert ? wantsLine : pending.filter((item) => item.need === 'geometry')),
+      ...pending.filter((item) => item.need === 'replace'),
+    ];
 
     // One matrix request per §Z9-safe run of pending legs, per mode.
     const legsByMode = new Map<TravelMode, number[]>();
     for (const item of pending) {
-      if (item.need === 'geometry') continue;
+      // A `replace` is never allowed here: the matrix would drop the line this row already holds
+      // (see `PendingNeed`).
+      if (item.need === 'geometry' || item.need === 'replace') continue;
       // A `both` leg the divert claimed is answered by its `/route` below; asking the matrix too
       // would spend the very call this exists to save.
       if (item.need === 'both' && divert) continue;
@@ -360,8 +411,7 @@ export class RoutingService {
     mode: TravelMode,
   ): Promise<void> {
     await this.askProvider(`matrix ${mode} x${points.length}`, async () => {
-      const cells = await this.provider.matrix(points, mode);
-      const tilesetAt = await this.provider.dataVersion();
+      const { cells, attribution } = await this.provider.matrix(points, mode);
       const rows: RouteLegWrite[] = [];
       for (const cell of cells) {
         const from = points[cell.fromIndex];
@@ -383,8 +433,11 @@ export class RoutingService {
           distanceMeters: cell.distanceMeters,
           shapeEncoded: null,
           shapePrecision: null,
-          provider: this.provider.id,
-          tilesetAt,
+          // **Both stamps come off the ANSWER, never off `this.provider`** (§Y6): under failover
+          // the composed id names two candidates and its vintage was the primary's whoever
+          // replied, so a row could claim Valhalla's tileset date for an OSRM estimate.
+          provider: attribution.providerId,
+          tilesetAt: attribution.tilesetAt,
         });
       }
       await this.store(rows);
@@ -407,8 +460,8 @@ export class RoutingService {
           distanceMeters: answer.distanceMeters,
           shapeEncoded: answer.shape.encoded,
           shapePrecision: answer.shape.precision,
-          provider: this.provider.id,
-          tilesetAt: await this.provider.dataVersion(),
+          provider: answer.attribution.providerId,
+          tilesetAt: answer.attribution.tilesetAt,
         },
       ]);
     });

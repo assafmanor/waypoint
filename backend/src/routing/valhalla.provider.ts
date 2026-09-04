@@ -22,7 +22,9 @@ import {
 import { EnrichmentFetcher, OutboundHttpError } from '../enrichment/outbound-fetch';
 import {
   RouteOutOfRangeError,
+  type RouteAttribution,
   type RouteMatrixCell,
+  type RouteMatrixResult,
   type RouteProvider,
   type RouteShapeAnswer,
 } from './route-provider';
@@ -129,12 +131,16 @@ const DATA_VERSION_TTL_MS = 60 * 60 * 1000;
 export class ValhallaRouteProvider implements RouteProvider {
   readonly id = 'valhalla/fossgis';
 
+  /** **Nothing.** This is the tuned provider (§Z6/§Z7), so a row it wrote is the answer we want
+   *  and not a stand-in for one. */
+  readonly degradedProviderIds: readonly string[] = [];
+
   private dataVersionAt = 0;
   private dataVersionValue: Date | null = null;
 
   constructor(private readonly fetcher: EnrichmentFetcher) {}
 
-  async matrix(points: readonly LatLng[], mode: TravelMode): Promise<RouteMatrixCell[]> {
+  async matrix(points: readonly LatLng[], mode: TravelMode): Promise<RouteMatrixResult> {
     const locations = points.map(toLocation);
     const parsed = matrixResponseSchema.parse(
       await this.ask('/sources_to_targets', {
@@ -157,7 +163,7 @@ export class ValhallaRouteProvider implements RouteProvider {
         });
       }
     }
-    return cells;
+    return { cells, attribution: await this.attribution() };
   }
 
   async shape(from: LatLng, to: LatLng, mode: TravelMode): Promise<RouteShapeAnswer | null> {
@@ -186,9 +192,19 @@ export class ValhallaRouteProvider implements RouteProvider {
       durationSeconds: parsed.trip.summary.time,
       distanceMeters: parsed.trip.summary.length * KM_TO_M,
       shape: encoded,
+      attribution: await this.attribution(),
     };
   }
 
+  /** This provider's stamp for a row it just authored (§Y6). Cheap on the hot path: the vintage
+   *  behind it is the TTL-held `/status` read below, not a request per answer. */
+  private async attribution(): Promise<RouteAttribution> {
+    return { providerId: this.id, tilesetAt: await this.dataVersion() };
+  }
+
+  /** **The provider's data vintage** — ADR-0205 §Z5's invalidation signal, which §4 said a route
+   *  has and a clock does not. No longer on the port (§Y6): it reaches a row only through
+   *  `attribution()`, so it cannot be asked for apart from the answer it stamps. */
   async dataVersion(): Promise<Date | null> {
     if (Date.now() - this.dataVersionAt < DATA_VERSION_TTL_MS) return this.dataVersionValue;
     this.dataVersionAt = Date.now();

@@ -31,7 +31,9 @@ import { DEFAULT_ROUTING_FETCH_TIMEOUT_MS, ROUTING_FETCH_TIMEOUT_MS, envInt } fr
 import { EnrichmentFetcher } from '../enrichment/outbound-fetch';
 import {
   RouteOutOfRangeError,
+  type RouteAttribution,
   type RouteMatrixCell,
+  type RouteMatrixResult,
   type RouteProvider,
   type RouteShapeAnswer,
 } from './route-provider';
@@ -89,18 +91,24 @@ const toCoordinates = (points: readonly LatLng[]): string =>
 export class OsrmRouteProvider implements RouteProvider {
   readonly id = 'osrm/fossgis';
 
+  /** **Nothing**, and it is not this class's place to say otherwise. Asked directly, OSRM is
+   *  simply the provider; it is degraded only *relative to a primary*, which is a fact the
+   *  composition knows and a lone provider does not (see `FailoverRouteProvider`). */
+  readonly degradedProviderIds: readonly string[] = [];
+
   constructor(
     private readonly fetcher: EnrichmentFetcher,
     private readonly baseUrl: string,
   ) {}
 
-  async matrix(points: readonly LatLng[], mode: TravelMode): Promise<RouteMatrixCell[]> {
+  async matrix(points: readonly LatLng[], mode: TravelMode): Promise<RouteMatrixResult> {
     // `annotations` is not optional for us: OSRM returns durations ONLY by default, and a leg
     // with no distance would render as `0 ק״מ` — "you are already there" (see `RouteProvider`).
     const parsed = tableResponseSchema.parse(
       await this.ask(mode, 'table', toCoordinates(points), 'annotations=duration,distance'),
     );
-    if (parsed.code !== OSRM_OK || !parsed.durations || !parsed.distances) return [];
+    if (parsed.code !== OSRM_OK || !parsed.durations || !parsed.distances)
+      return { cells: [], attribution: this.attribution() };
 
     const cells: RouteMatrixCell[] = [];
     for (const [fromIndex, durations] of parsed.durations.entries()) {
@@ -113,7 +121,7 @@ export class OsrmRouteProvider implements RouteProvider {
         cells.push({ fromIndex, toIndex, durationSeconds: duration, distanceMeters: distance });
       }
     }
-    return cells;
+    return { cells, attribution: this.attribution() };
   }
 
   async shape(from: LatLng, to: LatLng, mode: TravelMode): Promise<RouteShapeAnswer | null> {
@@ -148,19 +156,24 @@ export class OsrmRouteProvider implements RouteProvider {
       durationSeconds: route.duration,
       distanceMeters: route.distance,
       shape: encoded,
+      attribution: this.attribution(),
     };
   }
 
   /**
-   * **OSRM states no vintage, so this is `null` — a row with no eviction handle** (ADR-0205 §Z5,
-   * and the port's own note that `null` is legitimate here).
+   * **OSRM states no vintage, so `tilesetAt` is `null` — a row with no eviction handle**
+   * (ADR-0205 §Z5, and `RouteAttribution`'s own note that `null` is legitimate here).
    *
    * Deliberately not guessed from the process clock: `RouteLeg.tilesetAt` is what M12's sweep
    * evicts on, and a made-up date would make these rows look invalidatable on a roll they were
    * never part of. Missing is honest; the estimate in the row is still correct.
+   *
+   * **And it is now reached only through an answer** (§Y6). While the vintage was a port method
+   * the composition answered it for both providers, so an OSRM-authored row was stamped with
+   * Valhalla's date and this `null` never reached the table it was written for.
    */
-  dataVersion(): Promise<Date | null> {
-    return Promise.resolve(null);
+  private attribution(): RouteAttribution {
+    return { providerId: this.id, tilesetAt: null };
   }
 
   /** One request, through the process's single allowlisted, timeboxed, size-capped outbound seat

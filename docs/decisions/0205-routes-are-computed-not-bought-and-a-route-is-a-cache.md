@@ -8,7 +8,9 @@ account of the out-of-range failure, and (§Z6/§Z7) answers the orphaned leave-
 buffer and records that **the provider's default pedestrian answer boards scheduled ferries and
 varies with batch size** — `use_ferry: 0` is not optional. **§Z8 then raises the walking ceiling to
 15 km on the owner's call and §Z9 records why the driving one cannot be raised at all — read both
-before touching `TRAVEL_GATE`.** **Built so far: the shared half (M2/M2b) and the backend (M4),
+before touching `TRAVEL_GATE`.** **§Y6 corrects §Y5's own account of what a fallback row costs and
+supersedes its `RouteLeg.provider`/vintage clauses — read it before touching the port, and before
+answering anyone about time of day, which it measures as unavailable rather than merely unsent.** **Built so far: the shared half (M2/M2b) and the backend (M4),
 both 2026-08-25** — §1's decoder, §3's gate and §4's key and shapes, plus §2's port with its
 Valhalla implementation, §4's `RouteLeg` table, §6's batch endpoint and its warm-in-background
 flow. **The provider is now actually called**, `use_ferry: 0` and all. Nothing renders yet: the
@@ -980,3 +982,85 @@ grammar, not a mode, and "fixing" it is a 400.
 
 **Still not decided:** self-hosting. §Y1's endgame and the transit epic's prerequisite, untouched
 here. What this removes is the single point of failure, not the dependency.
+
+## Y6. Amendment (2026-09-04) — an answer carries its author, and a degraded row is re-asked
+
+**Reported as a product complaint, not a bug:** _"estimated travel time is totally different from
+what Google maps or Waze tell me when I search the exact same route."_ Most of that gap is
+[ADR-0206](0206-a-travel-time-belongs-between-two-points.md)'s territory and is working as
+designed — no transit (§V2's largest gap), a deliberate ⁦4.5 km/h⁩ group pace (§Z6), ferry
+avoidance on foot (§Z7), and driving with no traffic term at all. **What was not working as
+designed is §Y5's fallback**, and it took measuring to see it.
+
+**Measured live 2026-09-04, both FOSSGIS hosts, same coordinates.** On identical geometry —
+⁦7.67 ק״מ⁩, Tokyo Station→Shibuya — Valhalla answers **⁦15.6⁩ minutes** and OSRM **⁦7.7⁩ minutes**.
+That is not the "less tuned" §Y5 describes; it is a **⁦2×⁩ disagreement**, because OSRM's `car`
+profile carries almost no intersection cost (its implied ⁦59.8 km/h⁩ average through central Tokyo
+is not achievable). Two smaller findings from the same probe, recorded so nobody re-measures them:
+
+- **Valhalla accepts `date_time` and ignores it.** ⁦28.9⁩ minutes at Monday 18:00, ⁦28.9⁩ at 04:00,
+  ⁦28.9⁩ with no parameter. The FOSSGIS planet build carries no predictive speed tiles, so **time of
+  day, day of week and holidays are not partially considered — they are unavailable**, and adding
+  `date_time` would cost this ADR's cache key and buy nothing. §V2's "live traffic" line stands as
+  the only honest route to it.
+- `use_tolls: 1` changes nothing on the legs measured, so Valhalla's longer road choices are not
+  toll avoidance.
+
+**The defect §Y5 could not see, because it reasoned about a request.** §Y5 accepted the fallback's
+numbers "**only** against the alternative it replaces, which is no number at all" — a fair trade
+about one call. But §4 says a `RouteLeg` **never expires**, so the trade was silently made about
+the rest of time: the ~one day `valhalla1` was down wrote rows that nothing would ever re-ask, and
+a cache hit is what stops anyone asking. §Y5's own cost paragraph is therefore right about the
+numbers and wrong about their lifetime.
+
+**And they could not be found.** §Y5 stamped `RouteLeg.provider` with
+`failover(<primary>,<secondary>)` **whoever answered**, on the argument that "who answered last"
+would need a field whose correctness depends on the limiter serialising task bodies — the shape of
+the §Y4 defect. The argument is right about a field. It is also how the column added in §4 so that
+"a mixed table is legible rather than silently mixed" ended up unable to answer the one question
+that matters. The same construction broke §Y5's vintage clause: `dataVersion()` returned the
+**primary's** tileset date regardless of who replied, so a fallback row was stamped as though
+Valhalla's data produced it and M12's sweep would read it as fresh.
+
+### Decided
+
+1. **An answer carries its own author** — `RouteAttribution { providerId, tilesetAt }` on both
+   port methods, and **`dataVersion()` leaves the port**. This is §1's carried-precision move
+   applied to provenance, for §1's reason: a stamp fetched separately from the numbers it
+   describes can disagree with them, and neither half looks wrong. Nothing is tracked, so §Y5's
+   objection does not apply — a value returned beside a result depends on nothing. A row now names
+   **one** provider and carries **that** provider's vintage, which is what §Y5 said it should.
+2. **`RouteProvider.degradedProviderIds`** — ids whose stored rows are a stand-in for a better
+   answer. `FailoverRouteProvider` names its **secondary** and **its own composite id** (a row
+   stamped with that string cannot say who wrote it, so it is treated as though the worse host
+   did). It is deliberately **not** "anything that is not me": the provider swap §Y1 leaves open
+   must not read the whole table as stale and re-fetch every leg of every trip.
+3. **The trigger is a read, and there is no scheduler.** A `batch` that finds a degraded row
+   **serves it and re-asks it**: serving is non-negotiable, because withholding re-opens the
+   outage §Y5 closed, and the refresh is invisible — not in `pendingModes`, no
+   `retryAfterSeconds`, so the client contract is unchanged and the frontend is untouched. This is
+   [ADR-0166](0166-place-enrichment-is-a-multi-source-pipe.md) §14's read-trigger, second
+   consumer, and [ADR-0157](0157-a-place-can-be-removed.md) §6's refusal of a scheduler still
+   holds. **It is explicit eviction, not a TTL** (§4): the thing that invalidates the row is its
+   author, which the row states.
+4. **A refresh that holds a line goes through `/route`, never the matrix.** `runMatrix` writes
+   `shapeEncoded: null` and `store` is delete-then-create, so refreshing a row with geometry
+   through the matrix would **delete the drawn line to improve the duration**. That is why
+   `PendingNeed` gains `replace` rather than reusing `duration`. Its mirror image is free: a
+   degraded row that already **owes** a line needs no refresh entry at all, because the geometry
+   call the client is owed rewrites the row whole.
+5. **Refreshes take leftover budget only.** `SHAPE_CALLS_PER_PASS`'s `divert` decision counts
+   only what the client is missing, so a degraded cache cannot change how a cold leg is answered.
+   A refresh that does not fit this pass stays degraded until the next read finds it — which costs
+   nothing, because the row is being served throughout.
+
+**No migration and no schema change.** The composite id is in `degradedProviderIds`, so rows
+written between §Y5's deploy and this one self-heal on the next read of the day that holds them —
+where a `DELETE` would blank every one of those estimates until something re-warmed it. The
+degraded set also shrinks by itself: every refresh rewrites the row with one concrete author, and
+only the fallback's id can make it a candidate again.
+
+**What this does NOT do**, so the reported complaint is not mistaken for closed: it removes a
+⁦2×⁩-optimistic driving row wherever the primary can now answer. Against Waze the remaining gap is
+free-flow versus traffic, and that is §V2's paid-vendor line, explicitly **not** taken here
+(owner, 2026-09-04: _"No paid providers for now."_).
