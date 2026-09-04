@@ -83,6 +83,19 @@ hand (no generator yet) — change both in the same commit. Run
 relying on a change from a consuming package; both `backend` and `frontend`
 import the compiled output, not the source directly.
 
+**A Prisma row is not one of these shapes, and the difference is silent.** They
+mirror each other field-for-field and disagree about _types_: a `DateTime`
+column arrives as a `Date` where this package says `string`, and an absent one
+as `null` where it says `undefined`. Several derivations here compare **day
+keys** (`YYYY-MM-DD`) with `===`, `<=` and `Set.has`, so a `Date` sitting in
+`date`/`endDate` matches nothing at all — it reads as _no event on this day_,
+never as a type error. A backend caller therefore goes through
+`backend/src/trips/trips.mapper.ts` (`toEventDto` and its siblings), which is
+the one Prisma-row → wire-shape conversion, and **never** through `as never`.
+That cast has hidden this exact defect twice: the shared itinerary framed every
+card in the wrong zone (2026-09-03) and the readiness nudge told a whole trip
+its lodging and route were missing when both were complete (2026-09-04).
+
 ## Anti-patterns seen and fixed here before (don't reintroduce)
 
 - A second, hand-synced copy of a wire-contract vocabulary (error codes,
