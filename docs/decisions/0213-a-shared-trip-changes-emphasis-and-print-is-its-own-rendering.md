@@ -2498,3 +2498,78 @@ two surfaces for this exact reason, and it is also what makes a card that swallo
   unrelated fixes rather than one `include`.
 - **No mockup.** Nothing about the layout changes: the same mark in the same shape, on the right
   clock and in the right place. What was missing was never a drawing.
+
+## Amendment — two render phases had no bound, and the spec's cap was a budget (2026-09-04, nineteenth pass)
+
+CI went red on `ci` → `@waypoint/backend#test` → `pdf-browser.service.spec.ts`, on a PR whose diff
+was four frontend files and two docs: `Error: Hook timed out in 60000ms`, `1336 passed | 5 skipped`,
+no assertion anywhere near it. Chasing it found one number sized wrong and, underneath it, a
+production defect the number had been hiding.
+
+### §1 · `page.evaluate` and `page.pdf` take no timeout, and `release()` sits below them
+
+`render` bounds `setContent` with `PDF_RENDER_TIMEOUT_MS` and then makes two awaits Playwright
+gives no timeout at all. `page.pdf()`'s options carry no `timeout` field — checked in
+`playwright-core`'s `types.d.ts`, not assumed — and `page.evaluate` has none either. A Chromium
+that stops answering in either one hangs the await for the life of the process.
+
+Which matters far more here than a hung request usually does. `release()` is in the `finally`
+**below** those awaits, so the hung render never gives its slot back: after
+`PDF_RENDER_CONCURRENCY` of them (default two) every later caller queues behind slots nobody will
+return, takes its `ServiceUnavailableException`, and the unauthenticated PDF route is down until
+the process is replaced. The class docblock says the bound exists so a caller gets an honest 503
+rather than a request that never returns; two unbounded phases turned that into a permanent 503
+for everyone.
+
+`withPhaseDeadline` bounds both with the deadline the service already owns, and **names the phase
+it spent** — so the next occurrence reports `PDF render phase 'pdf' did not settle within 15000ms`
+in a second instead of an anonymous hook timeout a minute later. The abandoned call is left to
+reject into the settled `Promise.race`, which is where `frontend/src/lib/deadline.ts` already
+explains why that is handled rather than unhandled; `page.close()` in the caller's `finally` is
+what actually settles it.
+
+### §2 · The cap was measured against a laptop and the runner is not one
+
+Measured on the runner that ships this suite, off a green run and the red one:
+
+|                                     | warm Playwright Chromium       | CI's `ci` job   |
+| ----------------------------------- | ------------------------------ | --------------- |
+| whole spec file                     | ~⁦0.8 s⁩                       | **⁦17,996 ms⁩** |
+| launch / `setContent` / `page.pdf`  | ⁦133 ms⁩ / ⁦190 ms⁩ / ⁦249 ms⁩ | —               |
+| `beforeAll` (launch + first render) | —                              | ~⁦14.5 s⁩       |
+| each later render                   | —                              | ~⁦1.5 s⁩        |
+
+⁦17,996 ms⁩ is the slowest backend spec by **seventeen times** — the next is ⁦1,032 ms⁩. The `ci` job
+installs no browser (the container smoke is the check that owns a provisioned one), so this falls
+through to the system `/usr/bin/chromium` and runs while the frontend suite renders 293 files in
+parallel on the same box.
+
+All three timeouts in the file were the same ⁦60 s⁩. Against the two renders' ⁦1.7 s⁩ that is 35× and
+fine. Against the hook's ⁦14.5 s⁩ it is **4×** — a budget, not a hang-catcher, on the one step in
+the suite that is a process launch rather than JavaScript and therefore degrades hardest exactly
+when the runner is busy. Only the hook moves, to ⁦120 s⁩.
+
+And the number is **derived rather than guessed**, which is the part worth keeping: with §1 in
+place a render can spend at most `PDF_RENDER_TIMEOUT_MS` in each of three phases and a launch at
+most Playwright's own ⁦30 s⁩, so a hook cap above that sum can only ever fire on something no phase
+covers. Everything a phase does cover now fails by name. Re-tightening these to the wall time is
+the repair that brings the outage back.
+
+### What is deliberately not changed
+
+- **The `ci` job still installs no browser.** Two checks drive a real Chromium on purpose and the
+  workflow says which is which: this one on a runner that happens to have one, `pdf-smoke` inside
+  the shipped image. Giving `ci` a provisioned browser would make the fast check slower and the
+  slow check redundant.
+- **`PDF_RENDER_TIMEOUT_MS` stays one number for all three phases.** It already bounded
+  `setContent`; a second knob for the other two would be a number nobody tunes and a second thing
+  to get wrong.
+
+### What was verified
+
+- **The new spec is red on the unfixed code**, checked by removing `withPhaseDeadline` from the
+  `pdf` phase alone: `Test timed out in 5000ms`, the hang itself rather than a wrong value.
+- It asserts **both halves**, because the first without the second is still the bug: the rejection
+  names `phase 'pdf'`, **and** the next caller is admitted and reaches the same wedge — not met
+  with the `ServiceUnavailableException` a slot nobody returned would have produced.
+- Backend 1341 → 1342, whole suite green; typecheck, lint, build and `format:check` clean.

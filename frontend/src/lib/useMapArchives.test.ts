@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const archives = vi.hoisted(() => ({
   list: vi.fn(),
   download: vi.fn(),
-  hydrate: vi.fn(),
 }));
 
 // The hook asks for the METADATA listing, never for the archives themselves: opening one
@@ -14,10 +13,6 @@ vi.mock('./map-archive-cache', () => ({
   listMapArchives: archives.list,
   downloadMapArchive: archives.download,
 }));
-
-// The route pack's own reading is `route-pack.test.ts`'s; here it is the third artefact a trip
-// downloads, and what matters is that it rides the SAME decisions (ADR-0206 §V1.8).
-vi.mock('./route-pack', () => ({ hydrateRoutePack: archives.hydrate }));
 
 import { useMapArchives } from './useMapArchives';
 import { setSimulatedNow } from './useClock';
@@ -28,14 +23,15 @@ const urls = {
   extract: 'https://app.example/trips/t1/map/extract.pmtiles',
 };
 
-/** What `routePackUrl('t1')` answers with `VITE_API_BASE_URL` pinned empty under test. */
+/** What `routePackUrl('t1')` answers with `VITE_API_BASE_URL` pinned empty under test. The pack
+ *  is `useTripRoutePack`'s alone now (2026-09-04); it is named here only to assert that this hook
+ *  neither asks for it nor lets it speak for the map. */
 const PACK = '/trips/t1/routes/pack';
 
 beforeEach(() => {
   localStorage.clear();
   archives.list.mockReset().mockResolvedValue([]);
   archives.download.mockReset().mockResolvedValue({ status: 'stored', sizeBytes: 4 });
-  archives.hydrate.mockReset().mockResolvedValue(0);
 });
 
 afterEach(() => {
@@ -68,11 +64,10 @@ const stored = (url: string, vintage: string | undefined, ageDays: number) => ({
   ...(vintage ? { vintage } : {}),
 });
 
-/** A downloaded trip holds three artefacts now, not two. */
+/** The offline map a downloaded trip holds: the shared world floor and its own extract. */
 const allStored = (vintage: string | undefined, ageDays: number) => [
   stored(urls.world, vintage, ageDays),
   stored(urls.extract, vintage, ageDays),
-  stored(PACK, vintage, ageDays),
 ];
 
 describe('useMapArchives', () => {
@@ -99,8 +94,9 @@ describe('useMapArchives', () => {
     );
 
     await waitFor(() => expect(view.result.current.status).toBe('ready'));
-    // World, extract and the route pack — §V1.8 rides this download rather than adding one.
-    expect(archives.download).toHaveBeenCalledTimes(3);
+    // The world floor and the trip's extract. The route pack is not a third one: `TripRoutePack`
+    // at the shell fetches it for every trip, download prompt or not (ADR-0206 §AZ5).
+    expect(archives.download).toHaveBeenCalledTimes(2);
     expect(view.result.current.visible).toBe(false);
   });
 
@@ -145,7 +141,6 @@ describe('useMapArchives', () => {
         worldStored = true;
         return { status: 'stored', sizeBytes: 4 };
       }
-      if (url === PACK) return { status: 'stored', sizeBytes: 4 };
       extractAttempts += 1;
       return extractAttempts === 1
         ? { status: 'preparing', retryAfterSeconds: 0.01 }
@@ -156,7 +151,7 @@ describe('useMapArchives', () => {
     );
 
     await waitFor(() => expect(view.result.current.status).toBe('ready'));
-    expect(archives.download).toHaveBeenCalledTimes(4);
+    expect(archives.download).toHaveBeenCalledTimes(3);
     expect(view.result.current.visible).toBe(false);
   });
 
@@ -194,7 +189,7 @@ describe('useMapArchives', () => {
       }),
     );
 
-    await waitFor(() => expect(archives.download).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(archives.download).toHaveBeenCalledTimes(2));
     // Labelled with what the server said it is cutting, so the next window can tell the
     // difference — and no banner: nothing is missing, so there is nothing to announce.
     expect(archives.download).toHaveBeenCalledWith(expect.objectContaining({ vintage: 'v7' }));
@@ -290,78 +285,36 @@ describe('useMapArchives', () => {
     expect(archives.download).not.toHaveBeenCalled();
   });
 
-  // ── THE OFFLINE ROUTE PACK (ADR-0206 §V1.8) ────────────────────────────────────────────
+  // ── THE ROUTE PACK IS NOT THE OFFLINE MAP (2026-09-04) ─────────────────────────────────
   //
-  // Its whole claim is that it costs nothing new: the same download pass, the same wanted-ness,
-  // the same retry, the same prompt. These assert that rather than the pack's own contents.
+  // From a field report — _"saving offline maps is failing, always"_ — sent with a screenshot of
+  // the settings screen listing every archive as saved. Both were true: the map was on the device
+  // and the banner said the download had failed, because the pack rode this pass as a status-
+  // bearing target (ADR-0206 §V1.8) long after §AZ5 gave it a fetcher of its own. A pack whose
+  // absence is explicitly not an error cannot be allowed to fail the artefact it rides.
 
-  it('downloads the route pack in the same pass as the archive, tagged to the trip', async () => {
+  it('does not ask for the route pack — the shell fetches it for every trip', async () => {
     vi.stubGlobal('navigator', { connection: { type: 'wifi', saveData: false } });
     const view = renderHook(() =>
       useMapArchives({ tripId: 't1', offline: false, ended: false, hasMappedPlaces: true, urls }),
     );
 
     await waitFor(() => expect(view.result.current.status).toBe('ready'));
-    expect(archives.download).toHaveBeenCalledWith(
-      // `tripId` is what makes the existing size readout count it and the existing delete
-      // remove it — both group by trip.
-      expect.objectContaining({ url: PACK, kind: 'routes', tripId: 't1' }),
-    );
+    expect(archives.download).not.toHaveBeenCalledWith(expect.objectContaining({ url: PACK }));
   });
 
-  it('hydrates a pack it downloaded, and one that was already on the device', async () => {
-    vi.stubGlobal('navigator', { connection: { type: 'wifi', saveData: false } });
-    const fresh = renderHook(() =>
-      useMapArchives({ tripId: 't1', offline: false, ended: false, hasMappedPlaces: true, urls }),
-    );
-    await waitFor(() => expect(fresh.result.current.status).toBe('ready'));
-    expect(archives.hydrate).toHaveBeenCalledWith(PACK);
-    fresh.unmount();
-
-    // The plane case: nothing is downloaded, and the legs still have to reach the day.
-    archives.hydrate.mockClear();
-    archives.download.mockClear();
+  it('is ready, and silent, on a device holding the map but no pack', async () => {
+    // Exactly the reported device: world layer and extract stored, no pack — because the routing
+    // provider is out, or the server is still precomputing, or a proxy dropped the length off a
+    // JSON body. None of that is news about the map.
+    vi.stubGlobal('navigator', {});
     archives.list.mockResolvedValue(allStored(undefined, 0));
-    const offline = renderHook(() =>
-      useMapArchives({ tripId: 't1', offline: true, ended: false, hasMappedPlaces: true, urls }),
-    );
-    await waitFor(() => expect(archives.hydrate).toHaveBeenCalledWith(PACK));
-    expect(archives.download).not.toHaveBeenCalled();
-    offline.unmount();
-  });
-
-  it('treats a still-warming pack as preparing, and stores nothing until it is complete', async () => {
-    vi.stubGlobal('navigator', { connection: { type: 'wifi', saveData: false } });
-    archives.download.mockImplementation(async ({ url }: { url: string }) =>
-      url === PACK
-        ? { status: 'preparing', retryAfterSeconds: 4 }
-        : { status: 'stored', sizeBytes: 4 },
-    );
     const view = renderHook(() =>
       useMapArchives({ tripId: 't1', offline: false, ended: false, hasMappedPlaces: true, urls }),
     );
 
-    await waitFor(() => expect(view.result.current.status).toBe('preparing'));
-    expect(view.result.current.retryAfterSeconds).toBe(4);
-    expect(archives.hydrate).not.toHaveBeenCalled();
-  });
-
-  it('asks for nothing when the archive and the pack are both current', async () => {
-    setSimulatedNow(NOW);
-    vi.stubGlobal('navigator', { connection: { type: 'wifi', saveData: false } });
-    archives.list.mockResolvedValue(allStored('v7', 90));
-    const view = renderHook(() =>
-      useMapArchives({
-        tripId: 't1',
-        offline: false,
-        ended: false,
-        hasMappedPlaces: true,
-        urls,
-        archiveVintage: 'v7',
-      }),
-    );
-
     await waitFor(() => expect(view.result.current.status).toBe('ready'));
+    expect(view.result.current.visible).toBe(false);
     expect(archives.download).not.toHaveBeenCalled();
   });
 });

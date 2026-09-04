@@ -41,7 +41,7 @@ import {
 } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
 import { EVENT_PARAM, EVENT_ROW_ATTR, eventRowSelector, useArrivalParam } from '../state/nav-state';
-import { landAtTop } from '../lib/land-at-top';
+import { useLandOnArrival } from '../lib/land-at-top';
 import { edgeFadeRef } from '../lib/edge-fade';
 import { useDragState } from '../state/drag-state';
 import { useSpringLoadedDay } from '../lib/useSpringLoadedDay';
@@ -373,10 +373,7 @@ export function PlanDay() {
   // opens a detail SHEET over the day, and a modal raised by a navigation would hide the very
   // day you were sent to. So Plan lands the row and leaves the tap to the person.
   const arrivingEvent = useArrivalParam(EVENT_PARAM, { active: !preview });
-  useEffect(() => {
-    if (!arrivingEvent) return;
-    return landAtTop(() => document.querySelector(eventRowSelector(arrivingEvent)));
-  }, [arrivingEvent]);
+  useLandOnArrival(arrivingEvent, (id) => document.querySelector(eventRowSelector(id)));
 
   // Built once per note-list change rather than filtered per tile (ADR-0152 §6c).
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);

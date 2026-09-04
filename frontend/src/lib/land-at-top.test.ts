@@ -11,7 +11,8 @@
 // the machine's inputs are three numbers and a rect, and scripting them covers states a real
 // browser only reaches on a slow device.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { landAtTop } from './land-at-top';
+import { renderHook } from '@testing-library/react';
+import { landAtTop, useLandOnArrival } from './land-at-top';
 
 /** One frame at a time, so the assertions read as "after the next frame …". */
 let frames: (() => void)[] = [];
@@ -246,5 +247,53 @@ describe('landAtTop', () => {
     el.dataset.top = '900';
     pump(20);
     expect(aims(el)).toBe(1);
+  });
+});
+
+// ── AN ARRIVAL OUTLIVES THE PARAM THAT ANNOUNCED IT (2026-09-04) ─────────────────────────
+//
+// The watch above is budgeted to wait `LANDING_WAIT_MS` for a lazy surface to arrive, and both
+// day surfaces made that budget unreachable by depending on the arrival id directly:
+// `useArrivalParam` spends the id a render later, the dependency changes, and React runs the
+// canceller. Red `e2e (dev)` on `main`, and invisible on any machine fast enough to get the
+// first aim away before the spend's re-render lands.
+
+describe('useLandOnArrival', () => {
+  it('keeps watching after the arrival param is spent', () => {
+    const box = scroller();
+    const el = row(box, 900);
+    const find = () => el;
+    const { rerender } = renderHook(({ id }: { id: string | null }) => useLandOnArrival(id, find), {
+      initialProps: { id: 'ev-8' as string | null },
+    });
+    pump();
+    expect(aims(el)).toBe(1);
+
+    // The spend: one render later the id is gone. The watch must not go with it.
+    rerender({ id: null });
+    pump(3);
+    expect(aims(el)).toBeGreaterThan(1);
+  });
+
+  it('does not start until an id arrives, and restarts for a second arrival', () => {
+    const box = scroller();
+    const el = row(box, 900);
+    const find = () => el;
+    const { rerender } = renderHook(({ id }: { id: string | null }) => useLandOnArrival(id, find), {
+      initialProps: { id: null as string | null },
+    });
+    pump(3);
+    expect(aims(el)).toBe(0);
+
+    // A note's way-in to another event on the day you are already on: the id goes null between
+    // the two, which is exactly the transition the latch must not swallow.
+    rerender({ id: 'ev-1' });
+    pump();
+    const afterFirst = aims(el);
+    expect(afterFirst).toBeGreaterThan(0);
+    rerender({ id: null });
+    rerender({ id: 'ev-2' });
+    pump();
+    expect(aims(el)).toBeGreaterThan(afterFirst);
   });
 });

@@ -29,6 +29,34 @@ import { itineraryPdfFooterHtml, itineraryPdfHtml } from './itinerary-pdf.templa
  */
 const PDF_PAGE_MARGIN = { top: '16mm', right: '17mm', bottom: '18mm', left: '17mm' } as const;
 
+/**
+ * **A phase that cannot answer must not hold a slot forever** (2026-09-04).
+ *
+ * `render` spends its deadline on `setContent` and then makes two awaits Playwright gives no
+ * timeout at all: `page.evaluate`, and `page.pdf()` — whose options carry no `timeout` field,
+ * checked in `types.d.ts` rather than assumed. A Chromium that wedges in either one hangs the
+ * render, and a hang costs more here than anywhere else in this file: `release()` sits in a
+ * `finally` that is never reached, so the wedged render keeps one of `PDF_RENDER_CONCURRENCY`
+ * for the life of the process. Two of them and every later caller queues behind a slot nobody
+ * will give back, takes the 503, and the public PDF route is down until a deploy — the exact
+ * outcome the class docblock above says the bound exists to prevent.
+ *
+ * The loser is left to reject later: `Promise.race` subscribes to both, so the abandoned call
+ * settling after the deadline is already handled and never surfaces as an unhandled rejection
+ * (the reasoning `frontend/src/lib/deadline.ts` states for the same shape). `page.close()` in
+ * the caller's `finally` is what actually settles it.
+ */
+function withPhaseDeadline<T>(phase: string, ms: number, work: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`PDF render phase '${phase}' did not settle within ${ms}ms`)),
+      ms,
+    );
+  });
+  return Promise.race([work, expiry]).finally(() => clearTimeout(timer));
+}
+
 const numberEnv = (name: string, fallback: number): number => {
   const parsed = Number(process.env[name]);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -91,23 +119,31 @@ export class PdfBrowserService implements OnModuleDestroy {
         // — but `load` fires before the last of them is applied, and a page printed a frame
         // early lays its Hebrew out in fallback metrics. Passed as a string because this
         // package compiles without the DOM lib: the expression runs in the page, not here.
-        await page.evaluate('document.fonts.ready.then(() => undefined)');
+        await withPhaseDeadline(
+          'fonts',
+          this.timeoutMs,
+          page.evaluate('document.fonts.ready.then(() => undefined)'),
+        );
         // **The page count is the paginator's, never ours** (see `itineraryPdfFooterHtml`).
         // `displayHeaderFooter` puts the running footer in the page MARGIN, which is why the
         // margins are declared here and the template's `@page` carries only the size: the
         // footer and the content cannot then be asked to share the same band.
         return Buffer.from(
-          await page.pdf({
-            format: 'A4',
-            printBackground: true,
-            preferCSSPageSize: true,
-            displayHeaderFooter: true,
-            // Chromium's default header is a date and a title in a font this container does
-            // not have; an empty element is how you say "no header" and keep the footer.
-            headerTemplate: '<span></span>',
-            footerTemplate: itineraryPdfFooterHtml(input),
-            margin: PDF_PAGE_MARGIN,
-          }),
+          await withPhaseDeadline(
+            'pdf',
+            this.timeoutMs,
+            page.pdf({
+              format: 'A4',
+              printBackground: true,
+              preferCSSPageSize: true,
+              displayHeaderFooter: true,
+              // Chromium's default header is a date and a title in a font this container does
+              // not have; an empty element is how you say "no header" and keep the footer.
+              headerTemplate: '<span></span>',
+              footerTemplate: itineraryPdfFooterHtml(input),
+              margin: PDF_PAGE_MARGIN,
+            }),
+          ),
         );
       } finally {
         await page.close().catch(() => undefined);

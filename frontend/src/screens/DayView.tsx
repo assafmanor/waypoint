@@ -30,7 +30,7 @@ import {
   useShowPlaceOnMap,
 } from '../state/map-scope-state';
 import { prefersReducedMotion } from '../lib/motion';
-import { landAtTop } from '../lib/land-at-top';
+import { useLandOnArrival } from '../lib/land-at-top';
 import { useDaySurface } from '../lib/useDaySurface';
 import { DayPeeks } from '../ui/domain/DayPeek';
 import { DayTravelTotal } from '../ui/domain/DayTravelTotal';
@@ -541,10 +541,7 @@ export function DayView() {
   // the arrival expanded something off screen. The same watched landing the Map's own row
   // gets (`lib/land-at-top.ts`) — and it has to be watched here too, because expanding the
   // card grows it by its documents, tasks and notes sections after the first aim.
-  useEffect(() => {
-    if (!arrivingEvent) return;
-    return landAtTop(() => document.querySelector(eventRowSelector(arrivingEvent)));
-  }, [arrivingEvent]);
+  useLandOnArrival(arrivingEvent, (id) => document.querySelector(eventRowSelector(id)));
   /** **Did THIS day-open name a card?** — read by "land on now" below, which must not walk over
    *  an arrival's landing with an answer to a question nobody asked this time. A ref written
    *  from an effect declared HERE rather than a dependency down there, and both halves are

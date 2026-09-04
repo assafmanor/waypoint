@@ -4213,3 +4213,70 @@ all.
 the zone its midnight is read in. And `scheduleDefaults`' `authoringZone({ placeId }, …)` stays —
 there the block is shown in a `WhenField` that names its zone on a chip (§AQ/ADR-0107 §6), so the
 idea's own zone is the honest one and the reader is told which it is.
+
+## BE. The offline map reported the route pack's absence as its own failure (2026-09-04)
+
+A field report of three words — _"saving offline maps is failing, always"_ — with the Map's banner
+reading **הורדת המפה לא הצליחה** over a rendered map, and, a minute later, the settings screen
+listing ⁦112.7 MB⁩ of saved archives: the world layer, this trip's extract, and the previous trip's.
+Both screenshots were telling the truth. The map was on the device and the download had failed,
+because the two sentences were about different artefacts.
+
+### BE1. §V1.8's ride became a veto once §AZ5 gave the pack its own way onto the device
+
+§V1.8 hung the pack off `useMapArchives`' download pass, which was then the only way it could get
+onto a phone, and made it the **third target of one sequential all-or-nothing loop** whose result is
+the Map's banner. §AZ5 then gave the pack `TripRoutePack` at the shell — every trip, no prompt, its
+own `202` wait (§BA3), its own silence — and left the Map's call standing, described in that section
+as _"the redundant one now rather than the only one"_.
+
+Redundant was the wrong word for it, and this is the whole finding: **it was still status-bearing.**
+Everything the pack is allowed to do became the hook's verdict on the map. A `202` while the server
+precomputes parked the whole download in `preparing`. A `5xx` from a routing provider mid-outage —
+and ADR-0205 §Y3–§Y6 spent three fixes on exactly that class of week — threw, and the throw is the
+only path to `failed`. So a phone holding a complete world layer and a complete extract was told its
+download had failed and offered a retry that re-ran the same doomed request, on a loop.
+
+The same confusion ran through the "is the map on this device" test: a missing pack counted as a
+**missing map**, so the trip was re-prompted to download ⁦42 MB⁩ it already had, every session.
+
+The pack's own policy had already settled this and was being contradicted one file over. §D4 and
+ADR-0186 §6 rule 5: a missing pack is never an error, because every leg it carries is readable
+remotely and the day falls back to the crow-flies chip. `useTripRoutePack` implements that exactly —
+`catch { }`, no status, no banner. **An artefact allowed to be absent cannot be allowed to fail the
+artefact it rides.**
+
+So the pack leaves `useMapArchives` entirely rather than being softened inside it. Softening would
+have left two fetchers of one artefact differing only in how loudly they fail, which is rule 8's
+parallel copy with a bug in one of them. The offline map is the world layer and the extract; the
+pack is the shell's, hydrated and downloaded there for every trip whether or not anyone opens the
+Map. Nothing about the pack's own reach changes — §AZ5 is what made this deletion possible.
+
+### BE2. `Content-Length` was demanded of a response the origin does not own
+
+The throw itself was in `map-archive-cache.ts`, which read the size off the header and threw
+`'Map archive response has no usable Content-Length'` when there was none. A length is a hint any
+hop is free to drop: anything re-encoded between the origin and the phone arrives chunked and
+declares nothing, and at the edge that is **every compressible response**. Of the three artefacts
+exactly one is compressible — the pack is JSON; `application/vnd.pmtiles` is a media type nothing
+recognises, which is why the ⁦42.7 MB⁩ world layer kept arriving with its length intact and kept
+being stored. The repo had already met this once and answered it correctly: `SharedItinerary`'s
+progress bar runs indeterminate rather than refusing a body, _"a chunked response reports none"_.
+
+The header is a fast path now, not a requirement: absent or unusable, the body is materialised and
+weighed. The fallback is bounded by what reaches it — the archives declare their length, so only
+the few-hundred-KB pack is ever buffered. An **empty** body is still a failure; nothing is not a
+download.
+
+### BE3. What is deliberately not changed
+
+- **A `preparing` extract still shows its banner and still asks.** That one is the map: a `503`
+  means the cut has not landed and there is nothing to store, which is worth a retry and worth
+  saying. Only the pack's version of "not yet" was speaking out of turn.
+- **The Map still holds `visible` after a manual `preparing`, so no timer re-asks behind the
+  banner.** A banner offering a retry button and a retry running underneath it are two answers to
+  one question; the button is the honest one while someone is looking at it.
+- **Whether the pack's own download now succeeds is not settled by this.** The chunked-length fix
+  removes the failure this report proves was happening; a `202` from a cold precompute or a `5xx`
+  from a provider outage would leave the pack absent still — silently, which is §D4's whole point,
+  and visible in the settings readout as a trip with an extract and no pack.
