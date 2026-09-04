@@ -104,6 +104,14 @@ What this retires: `revealsRunning`, the two frame budgets (`ROW_SCROLL_WAIT_FRA
 
 Measured in `e2e/place-arrival-scroll.spec.ts` and `e2e/event-arrival-scroll.spec.ts`, with the state machine itself in `lib/land-at-top.test.ts`: jsdom has no layout and no scrolling, so a unit test can only assert that a scroll was ASKED for — which it always was.
 
+**Amended 2026-09-04 — the watch lived for one React commit, so none of the above was reachable on the day surfaces.** `e2e (dev)` red on `main`: `event-arrival-scroll.spec.ts` with the row at ⁦1281px⁩ in an ⁦844px⁩ viewport, `scrollTop` at ⁦0⁩, unmoved through thirty seconds of retries.
+
+The line above — _"the Day surfaces landing an event's card is one line each"_ — is where it went. Both wrote it as `useEffect(… , [arrivingEvent])`, and **the dependency is the bug**: `useArrivalParam` _spends_ the id, deleting the param in its own effect so a back or a reload cannot re-open what you have since closed, so one render later `arrivingEvent` is `null`, the dependency changes, and React runs the cleanup — which is the canceller. The ⁦10s⁩ `LANDING_WAIT_MS` budget added for _"a lazy surface that mounts ~5s in"_ could never be spent, because the watch was gone long before.
+
+It hid for the same reason everything else in this section hid: `scrollIntoView` is not cancelled by the watch stopping, so any machine that mounts the row and gets the first aim away before the spend's re-render lands looks perfect. Instrumented under four parallel Playwright workers, the losing run reads `start … stop` ⁦238ms⁩ apart with **no `found` between them** — torn down before Plan's lazy day chunk had a row to aim at, and nothing restarted it. Reproduce with parallel workers, not with CPU throttling: 3 failures in 8 at `--workers=4`, 0 in 6 at `--workers=1`.
+
+`useLandOnArrival` (in `lib/land-at-top.ts`, one call site on each day surface) latches the arrival: a non-null id mints a fresh object and only that object is the effect's dependency, so the spend that follows is ignored and the watch keeps its own budget. An object per arrival rather than a first-id-wins ref, so a note's way-in to another event **on the day you are already on** still lands. Pinned in `land-at-top.test.ts`, red on the old shape.
+
 ### 4. A second tap closes what the first opened — and "the same thing again" has to mean it
 
 Two reports, one rule. A tap on a row's body now has three readings, and **the order is the rule: the innermost state closes first.**

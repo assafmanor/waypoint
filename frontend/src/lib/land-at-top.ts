@@ -44,6 +44,7 @@
 // to reason about than two observers firing at different times. What the window costs is
 // bounded; what it buys is every cause of a short landing at once, including the ones nobody
 // has hit yet.
+import { useEffect, useRef, useState } from 'react';
 import { prefersReducedMotion } from './motion';
 import { scrollerFor } from './scrollable';
 import { LANDING_WAIT_MS, LANDING_WATCH_MS } from '../constants';
@@ -150,4 +151,56 @@ export function landAtTop(
   };
   frame = requestAnimationFrame(step);
   return stop;
+}
+
+/**
+ * **AN ARRIVAL OUTLIVES THE PARAM THAT ANNOUNCED IT** (2026-09-04, from a red `e2e (dev)` on
+ * `main` — `event-arrival-scroll.spec.ts`, the row sitting at ⁦1281px⁩ in an ⁦844px⁩ viewport with
+ * `scrollTop` at ⁦0⁩ and staying there for the thirty seconds the assertion retried).
+ *
+ * Both day surfaces wrote the landing as three lines:
+ *
+ *     const arrivingEvent = useArrivalParam(EVENT_PARAM, …);
+ *     useEffect(() => {
+ *       if (!arrivingEvent) return;
+ *       return landAtTop(() => document.querySelector(eventRowSelector(arrivingEvent)));
+ *     }, [arrivingEvent]);
+ *
+ * and the dependency is the bug. `useArrivalParam` **spends** the id — it deletes the param in
+ * its own effect so a back or a reload cannot re-open what you have since closed — so one
+ * render later `arrivingEvent` is `null`, the dependency changes, and React runs the cleanup:
+ * the canceller. **The watch built to survive ⁦10s⁩ of a lazy surface arriving actually lived
+ * for one React commit**, and the whole two-budget design above it was unreachable.
+ *
+ * It passed everywhere fast, which is what kept it: `scrollIntoView` is not cancelled by the
+ * watch stopping, so a machine that gets the row mounted and the first aim away before the
+ * spend's re-render lands looks perfect. Instrumented under four parallel workers, the losing
+ * run reads `start … stop` ⁦238ms⁩ apart with **no `found` between them** — the watch was torn
+ * down before Plan's lazy day chunk had mounted a row to aim at, and nothing restarted it.
+ *
+ * So the arrival is latched here instead. A non-null id mints a fresh object, and only that
+ * object is the effect's dependency: the spend that follows sets the id to `null`, which this
+ * ignores, and the watch keeps its own budget. A LATER arrival — a note's way-in to another
+ * event on the day you are already on — mints another object and replaces the watch, which is
+ * why the latch is an object per arrival and not a "first id wins" ref.
+ *
+ * `find` is read through a ref so a caller can pass the inline arrow it wants to pass; the
+ * hook's own dependency is the arrival, never the closure.
+ */
+export function useLandOnArrival(
+  id: string | null | undefined,
+  find: (id: string) => Element | null | undefined,
+  windowMs?: number,
+): void {
+  const latest = useRef(find);
+  latest.current = find;
+  const [arrival, setArrival] = useState<{ id: string } | null>(null);
+  useEffect(() => {
+    if (id) setArrival({ id });
+  }, [id]);
+  useEffect(() => {
+    if (!arrival) return;
+    const { id: target } = arrival;
+    return landAtTop(() => latest.current(target), windowMs);
+  }, [arrival, windowMs]);
 }
