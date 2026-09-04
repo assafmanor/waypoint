@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   PUSH_BLOCKER,
   pushBlocker,
+  reconcileThisDevice,
   subscribeThisDevice,
   thisDeviceSubscriptionId,
   unsubscribeThisDevice,
@@ -26,6 +27,10 @@ vi.mock('./api', () => ({
 
 const VAPID =
   'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkTPqLuXBLQxqSCXfQ0nnBIIiFuVBpEyIrxJEMHWQwWrGRKgTGCXOo0';
+
+/** A second keypair's public half — what a rotated server key looks like from the device. */
+const OTHER_VAPID =
+  'BKagOny0KF_2pCJQ3m-qBrPGWTNfXCkR6QGVvj9OTvJ3aQ2z1oFcQ5CkkoTLcVn0hGVDrfSJ7hLZm4RlNb0Xk1M';
 
 /** The browser surface `push.ts` reads, assembled per test — a jsdom `navigator` has no
  *  `serviceWorker` and no `PushManager`, which is itself one of the cases under test. */
@@ -76,14 +81,27 @@ function install(options: {
   return registration;
 }
 
-/** A `PushSubscription` as far as this module reads one. `getKey` hands back raw bytes. */
-function fakeSubscription(endpoint = 'https://push.example/abc') {
+/** A `PushSubscription` as far as this module reads one. `getKey` hands back raw bytes.
+ *
+ *  `options` is absent by default, which is one of the cases under test: a browser that will
+ *  not say which server key a subscription was made with must not have it dropped. Pass
+ *  `serverKey` to get the `options.applicationServerKey` a real Chrome carries. */
+function fakeSubscription(endpoint = 'https://push.example/abc', serverKey?: string) {
   return {
     endpoint,
     getKey: (name: string) =>
       name === 'p256dh' ? new Uint8Array([1, 2, 3]).buffer : new Uint8Array([4, 5]).buffer,
     unsubscribe: vi.fn().mockResolvedValue(true),
+    ...(serverKey === undefined ? {} : { options: { applicationServerKey: decodeKey(serverKey) } }),
   };
+}
+
+/** base64url → the raw bytes a `PushSubscription.options` holds. */
+function decodeKey(base64Url: string): ArrayBuffer {
+  const binary = atob(base64Url.replace(/-/g, '+').replace(/_/g, '/'));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
 }
 
 afterEach(() => {
@@ -234,5 +252,113 @@ describe('unsubscribeThisDevice', () => {
   it('does not throw where there is no service worker at all', async () => {
     install({});
     await expect(unsubscribeThisDevice()).resolves.toBeUndefined();
+  });
+});
+
+/**
+ * **The repair for the failure nobody on the phone can see** (owner, 2026-09-04: one phone
+ * silent while a second phone on the same trip received every send).
+ *
+ * The switch reads the BROWSER's subscription; whether the server still holds a row for it is
+ * a second fact, and it goes missing on its own — pruned when a push service reports the
+ * endpoint gone (ADR-0197 §10), revoked from another device's list, rotated.
+ */
+describe('reconcileThisDevice', () => {
+  it('re-posts this device, so a row the server no longer holds comes back', async () => {
+    const subscription = fakeSubscription('https://push.example/live');
+    install({ serviceWorker: true, pushManager: true, subscription, permission: 'granted' });
+
+    await reconcileThisDevice(VAPID);
+
+    expect(registerPushSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({ endpoint: 'https://push.example/live' }),
+    );
+    // And the row id comes back with it, so the settings list can mark this device again.
+    expect(thisDeviceSubscriptionId()).toBe('sub-1');
+    // The working subscription is NOT touched: it is the one thing here that cannot be
+    // remade without a gesture.
+    expect(subscription.unsubscribe).not.toHaveBeenCalled();
+  });
+
+  it('drops a subscription made against a different server key, and re-makes it', async () => {
+    // The silent rejection: the endpoint is alive, our sends are signed with a key the push
+    // service will not accept for it, and the switch reads on through every failure.
+    const stale = fakeSubscription('https://push.example/stale', OTHER_VAPID);
+    const fresh = fakeSubscription('https://push.example/fresh', VAPID);
+    install({
+      serviceWorker: true,
+      pushManager: true,
+      subscription: stale,
+      subscribe: () => fresh,
+      permission: 'granted',
+    });
+
+    await reconcileThisDevice(VAPID);
+
+    expect(stale.unsubscribe).toHaveBeenCalled();
+    expect(registerPushSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({ endpoint: 'https://push.example/fresh' }),
+    );
+  });
+
+  // **The positive control, and it is the one that matters most here.** A key comparison
+  // that answered "different" for the key actually in use would drop every subscribed
+  // device on its next start — a repair that breaks what it was meant to fix.
+  it('keeps a subscription made against the key in use', async () => {
+    const subscription = fakeSubscription('https://push.example/ok', VAPID);
+    install({ serviceWorker: true, pushManager: true, subscription, permission: 'granted' });
+
+    await reconcileThisDevice(VAPID);
+
+    expect(subscription.unsubscribe).not.toHaveBeenCalled();
+    expect(registerPushSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({ endpoint: 'https://push.example/ok' }),
+    );
+  });
+
+  it('does not re-make it where a gesture would be needed', async () => {
+    // Permission not granted: `subscribe()` would prompt, and a boot path must never put a
+    // permission prompt in front of somebody. The switch then reads off, which is true.
+    const stale = fakeSubscription('https://push.example/stale', OTHER_VAPID);
+    install({ serviceWorker: true, pushManager: true, subscription: stale, permission: 'default' });
+
+    await reconcileThisDevice(VAPID);
+
+    expect(stale.unsubscribe).toHaveBeenCalled();
+    expect(registerPushSubscription).not.toHaveBeenCalled();
+  });
+
+  it('leaves a subscription alone when the browser will not say which key made it', async () => {
+    // `options.applicationServerKey` is absent on some engines. Dropping a probably-working
+    // subscription over an unreadable field is a worse bug than the one being detected.
+    const subscription = fakeSubscription();
+    install({ serviceWorker: true, pushManager: true, subscription, permission: 'granted' });
+
+    await reconcileThisDevice(VAPID);
+
+    expect(subscription.unsubscribe).not.toHaveBeenCalled();
+    expect(registerPushSubscription).toHaveBeenCalledOnce();
+  });
+
+  it('does nothing where there is nothing to reconcile', async () => {
+    install({ serviceWorker: true, pushManager: true });
+    await reconcileThisDevice(VAPID);
+    // No server keypair is a property of the deployment, not of this device.
+    install({ serviceWorker: true, pushManager: true, subscription: fakeSubscription() });
+    await reconcileThisDevice(null);
+
+    expect(registerPushSubscription).not.toHaveBeenCalled();
+  });
+
+  it('never throws — it runs at boot, and the next start tries again', async () => {
+    install({
+      serviceWorker: true,
+      pushManager: true,
+      subscription: fakeSubscription(),
+      permission: 'granted',
+    });
+    vi.mocked(registerPushSubscription).mockRejectedValueOnce(new Error('500'));
+
+    await expect(reconcileThisDevice(VAPID)).resolves.toBeUndefined();
   });
 });

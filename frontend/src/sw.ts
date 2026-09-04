@@ -174,6 +174,38 @@ self.addEventListener('push', (event) => {
   );
 });
 
+/**
+ * **The push service can retire this device's subscription on its own**, and this is the only
+ * place it says so.
+ *
+ * Chrome/FCM does it on a key rotation, a re-granted permission, a cleared app storage. Miss
+ * the event and the device is unreachable for good, with the settings switch still reading
+ * on and nothing on the screen to press — the state one phone was in for weeks while a second
+ * phone on the same trip got every send (owner, 2026-09-04). ADR-0197 §10 is the SERVER
+ * learning a row is dead; this is the DEVICE learning it, and neither implies the other.
+ *
+ * **Half a repair, deliberately.** Re-subscribing needs no session, but telling our server
+ * about the new endpoint needs the access token, which lives in the app and never in a
+ * worker. So the worker restores the local half and `lib/push.ts`'s `reconcileThisDevice`
+ * posts it on the next start; the two are one repair and neither works alone.
+ */
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil(
+    (async () => {
+      // The browser re-subscribed for us — nothing to make, and the new endpoint reaches our
+      // server through the reconcile like any other.
+      if (event.newSubscription) return;
+      const applicationServerKey = event.oldSubscription?.options.applicationServerKey;
+      // Without the key the old subscription was made with there is nothing to re-subscribe
+      // with: the worker never sees `/me`. The switch then reads off, which is true.
+      if (!applicationServerKey) return;
+      await self.registration.pushManager
+        .subscribe({ userVisibleOnly: true, applicationServerKey })
+        .catch(() => {});
+    })(),
+  );
+});
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const raw = (event.notification.data as { url?: unknown } | null)?.url;

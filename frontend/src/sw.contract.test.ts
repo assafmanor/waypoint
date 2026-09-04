@@ -157,6 +157,20 @@ describe('the service worker is ours, and these lines have no other alarm', () =
     expect(click.indexOf('.focus()')).toBeLessThan(click.indexOf('openWindow'));
   });
 
+  // A subscription the push service retires is the one way this device goes silent with
+  // nothing on the screen to press, and the event that says so fires exactly once — so a
+  // deleted handler is invisible until somebody compares two phones (owner, 2026-09-04).
+  it('re-subscribes when the push service retires this device', () => {
+    expect(SW).toMatch(/addEventListener\(\s*['"]pushsubscriptionchange['"]/);
+    const changed = SW.slice(SW.indexOf("'pushsubscriptionchange'"));
+    // It must actually re-subscribe, with the key the OLD subscription carried: the worker
+    // never sees `/me`, so that key is the only one it can reach.
+    expect(changed).toMatch(/oldSubscription\?\.options\.applicationServerKey/);
+    expect(changed).toMatch(/pushManager\s*\n?\s*\.subscribe\(/);
+    // And the event must hold the worker alive for it.
+    expect(changed).toMatch(/event\.waitUntil\(/);
+  });
+
   // The tap target comes from the payload, so it is the one field an attacker-shaped
   // payload could aim. `parsePushPayload` refuses anything but an absolute same-origin
   // path; the handler must not then widen it back.
