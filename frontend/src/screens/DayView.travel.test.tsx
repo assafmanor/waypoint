@@ -152,6 +152,9 @@ const travelModeVerbs = {
 let tripEvents: TripEvent[] = [];
 const tripBookings: Booking[] = [];
 let tripPlaces: Place[] = places;
+/** **The zone the trip is FILED under**, which is not always the one its day is read in — the
+ *  case ADR-0206 §AQ names and the one the slot's own clocks were still ignoring. */
+let tripTimezone = ZONE;
 
 vi.mock('../state/trip-state', () => ({
   byStart: (a: TripEvent, b: TripEvent) =>
@@ -164,7 +167,13 @@ vi.mock('../state/trip-state', () => ({
     travelModeOverrides: tripOverrides,
     travelModeVerbs,
     hostContexts: buildHostContextIndex(tripEvents, tripBookings),
-    trip: { id: 't1', timezone: ZONE, startDate: DAY, endDate: '2026-08-05', updatedBy: 'u1' },
+    trip: {
+      id: 't1',
+      timezone: tripTimezone,
+      startDate: DAY,
+      endDate: '2026-08-05',
+      updatedBy: 'u1',
+    },
     bookings: tripBookings,
     places: tripPlaces,
     events: tripEvents,
@@ -178,7 +187,7 @@ vi.mock('../state/trip-state', () => ({
       bookings: tripBookings,
       places: tripPlaces,
       crossings: [],
-      primaryZone: ZONE,
+      primaryZone: tripTimezone,
     },
     activeDate: DAY,
     ripple: null,
@@ -1348,6 +1357,55 @@ describe('DayView — a carried leg rides the day thread (ADR-0212)', () => {
 //
 // This is also the coverage gap that let the whole marker be replaced with a green suite: the
 // day surfaces asserted nothing about it, in either scope.
+// ── AND THE SLOT READS IN THE CLOCK THE DAY IS READ IN (2026-09-05) ─────────────────────────
+//
+// Reported with a screenshot: the strip counted `44 דק׳ פנויות` to a `יציאה עד 17:46`, and the
+// sheet its `＋` opened was headed `18:05 – 18:45` — an hour on, straight through the ⁦18:00⁩ row
+// below. **Not the countdown**: every wall clock a slot carries is built in `trip.timezone`,
+// which ADR-0206 §AQ already had to take away from the journey block for this exact reason —
+// _"the zone the trip is FILED under and not the one anybody on it is reading a watch in"_. Same
+// defect, one row down, and it was there before the slot ever moved with the clock.
+describe('DayView · a slot on a trip filed an hour off its stops', () => {
+  /** The places resolve to Rome, so the day is READ in Rome; the trip is filed in Kyiv, an hour
+   *  on. Every clock in the screenshot came from one of these two. */
+  const FILED = 'Europe/Kyiv';
+  beforeEach(() => {
+    tripEvents = [lunch, theatre];
+    tripPlaces = places.map((p) => ({ ...p, timezone: ZONE }));
+    tripTimezone = FILED;
+    travelSeconds = WALK_MINUTES * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    tripPlaces = places;
+    tripTimezone = ZONE;
+    travelSeconds = null;
+    setSimulatedNow(null);
+  });
+
+  it('offers the fill in the same clock the rows are printed in', () => {
+    setSimulatedNow(Date.parse(`${DAY}T14:00:00Z`));
+    const { container } = show();
+    fireEvent.click(container.querySelector('.day-swipe > .day-page button.day-gap')!);
+    // ⁦14:00⁩ UTC is ⁦16:00⁩ in Rome and ⁦17:00⁩ in Kyiv. The day prints Rome on every other row.
+    expect(screen.getByText(t.slotFill.gapTitle(clockRange('16:00', '17:00')))).toBeTruthy();
+    // The filed clock, which is what it printed: `17:00 – 18:00`, through the row below.
+    expect(screen.queryByText(t.slotFill.gapTitle(clockRange('17:00', '18:00')))).toBeNull();
+  });
+
+  // The half that reaches the data: a pick writes `zonedIso(block.date, block.start, …)`, so a
+  // slot built in one zone and written in another lands an hour from where it was offered.
+  it('states the free time and the window against the same two clocks', () => {
+    setSimulatedNow(Date.parse(`${DAY}T14:00:00Z`));
+    const { container } = show();
+    // ⁦75⁩ minutes to the ⁦15:15⁩ UTC departure — a count of instants, so it was never the bug,
+    // and it has to keep agreeing with the window the strip's own `＋` opens.
+    expect(container.querySelector('.day-swipe > .day-page .day-gap-lbl')!.textContent).toBe(
+      freeTimePhrase(75)!,
+    );
+  });
+});
+
 describe('DayView · where the moment is', () => {
   /** Inside `lunch` (⁦11:00–13:20⁩ UTC): ⁦12:00⁩ is ⁦60⁩ of its ⁦140⁩ minutes in. */
   const INSIDE_LUNCH = `${DAY}T12:00:00Z`;

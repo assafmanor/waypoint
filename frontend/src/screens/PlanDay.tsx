@@ -317,7 +317,18 @@ export function PlanDay() {
   // opens the edit form, which carries no location view of its own.
   const showPlaceOnMap = useShowPlaceOnMap();
   const showMaybesOnMap = useShowMaybesOnMap();
-  const tz = trip.timezone;
+  // Multi-zone display (ADR-0107): literally the same context the Trip-mode day view builds,
+  // from the same evidence — this screen used to derive its own crossings and its own ambient,
+  // which is how the two day surfaces drifted apart (session 100). One builder, one input, no
+  // room to diverge.
+  const zoneCtx = dayZoneContext(activeDate, zoneEvidence);
+  /** **THE CLOCK THIS DAY IS READ IN** — `DayView`'s `dayZone`, and the same repair (ADR-0206
+   *  §AQ, finished 2026-09-05). Every wall clock this screen builds or reads is one of the day's
+   *  own, and `trip.timezone` is the zone the trip is FILED under: on a trip whose primary sits
+   *  an hour off its stops, every slot the builder offered was an hour off the rows above it.
+   *  Shared with Trip mode because where a drop lands is a FACT, and ADR-0159 §1 forbids the two
+   *  surfaces answering it twice. */
+  const tz = zoneCtx.ambientZone;
   // A finished trip is a read-only archive (ADR-0040): the builder becomes a
   // frozen, browsable history — no create/edit/delete/move, no shelf.
   const readOnly = tripPhase(trip, now) === 'past';
@@ -1348,12 +1359,6 @@ export function PlanDay() {
   const dayNumber = tripDayNumber(activeDate, trip.startDate);
   const weekday = weekdayName(activeDate, trip.timezone);
 
-  // Multi-zone display (ADR-0107): literally the same context the Trip-mode day
-  // view builds, from the same evidence — this screen used to derive its own
-  // crossings and its own ambient, which is how the two day surfaces drifted apart
-  // (session 100). One builder, one input, no room to diverge.
-  const zoneCtx = dayZoneContext(activeDate, zoneEvidence);
-
   // RE-OPENING AFTER A PLACE ERRAND (ADR-0134 §2) — the same shape as `DayView`'s, through
   // the same shared hook: the form went to the Map tab to have a location picked, which
   // unmounted it, so it returns from its own draft with the chosen place already in place.
@@ -1539,7 +1544,7 @@ export function PlanDay() {
                 <UnplacedCommitment
                   key={`${row.event.id}-${row.edge ?? 'untimed'}`}
                   row={row}
-                  tz={trip.timezone}
+                  tz={tz}
                   bookings={bookings}
                   onOpen={setDetailTarget}
                 />
