@@ -27,6 +27,42 @@ interface Fixture {
 }
 
 /**
+ * **Every column Prisma reads as a `Date`**, on the three row shapes this kind loads. The
+ * dates below are `@db.Date` (midnight UTC of the day) and the instants are `DateTime`.
+ */
+const DATE_COLUMNS = ['date', 'endDate', 'startsAt', 'endsAt', 'startWindowEnd', 'endWindowStart'];
+
+/**
+ * **A fixture, handed over as the DATABASE would hand it over** — and the gap between those
+ * two shapes is the defect this fake exists to reproduce.
+ *
+ * Prisma reads a `DateTime` column as a `Date`, and `computeReadiness` compares day keys as
+ * STRINGS — `eventsOnDate`'s own note says a `Date` there "silently matches nothing, which
+ * reads as a day with no evidence rather than as a type error". A fake that answered ISO
+ * strings tested a derivation nobody runs in production: it read every check correctly here
+ * while the deployed kind read `lodging` and `itinerary` as permanently open, and sent
+ * `חסרים: לינה, מסלול` about a trip whose tasks screen showed both done (owner, 2026-09-04).
+ *
+ * So the fixtures stay legible as ISO strings and this is the one place that converts.
+ */
+function asRow<T extends Record<string, unknown>>(row: T): Record<string, unknown> {
+  // Every row Prisma returns carries these three, and the mappers read them — so a fixture
+  // that omits them is not a row the database could have produced.
+  const out: Record<string, unknown> = {
+    createdAt: new Date(`${START}T00:00:00.000Z`),
+    updatedAt: new Date(`${START}T00:00:00.000Z`),
+    updatedBy: 'u-assaf',
+    ...row,
+  };
+  for (const column of DATE_COLUMNS) {
+    const value = out[column];
+    if (typeof value !== 'string') continue;
+    out[column] = new Date(value.length === 10 ? `${value}T00:00:00.000Z` : value);
+  }
+  return out;
+}
+
+/**
  * A Prisma stand-in for the one query shape this kind sends plus the four per-trip loads.
  *
  * It honours the `startDate` range, because that range is what keeps the loop inverted: a
@@ -71,12 +107,21 @@ function fakePrisma(fx: Fixture = {}) {
     event: {
       findMany: () => {
         calls.push('events');
-        return Promise.resolve(fx.events ?? []);
+        return Promise.resolve((fx.events ?? []).map((e) => asRow(e as Record<string, unknown>)));
       },
     },
-    booking: { findMany: () => Promise.resolve(fx.bookings ?? []) },
-    place: { findMany: () => Promise.resolve(fx.places ?? []) },
-    document: { findMany: () => Promise.resolve(fx.documents ?? []) },
+    booking: {
+      findMany: () =>
+        Promise.resolve((fx.bookings ?? []).map((b) => asRow(b as Record<string, unknown>))),
+    },
+    place: {
+      findMany: () =>
+        Promise.resolve((fx.places ?? []).map((p) => asRow(p as Record<string, unknown>))),
+    },
+    document: {
+      findMany: () =>
+        Promise.resolve((fx.documents ?? []).map((d) => asRow(d as Record<string, unknown>))),
+    },
   } as unknown as PrismaService;
 
   return { prisma, calls };
@@ -222,6 +267,19 @@ describe('readiness.nudge', () => {
     // passport per traveller.
     const { prisma } = fakePrisma(READY_TRIP);
     expect(await readinessNudgeKind.due(input(prisma, AT10))).toEqual([]);
+  });
+
+  it('never names a check the tasks screen shows as done', async () => {
+    // **The field report this test is written from** (owner, 2026-09-04): a T-7 nudge saying
+    // `חסרים: לינה, מסלול` about a trip whose lodging and itinerary checks were both complete
+    // on the screen. One derivation, two readers — so the two readers have to be handed the
+    // same shapes, and the kind was handing it raw database rows whose `date` is a `Date`.
+    // Both false positives are day-key comparisons, which is why exactly those two broke.
+    const { prisma } = fakePrisma({ ...READY_TRIP, documents: [{ id: 'd1', type: 'passport' }] });
+    const sends = await readinessNudgeKind.due(input(prisma, AT10));
+
+    // One passport for two travellers, so `documents` is the one thing genuinely open.
+    expect(sends[0].payload.body).toBe('חסרים: מסמכים');
   });
 
   it('goes to the tasks surface, not to a second inbox (ADR-0004)', async () => {

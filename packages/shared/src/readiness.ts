@@ -249,6 +249,17 @@ function nightNeedsABed(date: string, legs: TransitLeg[], timezone: string | und
   return longest >= SLEEPABLE_NIGHT_MIN_MINUTES * MS_PER_MINUTE;
 }
 
+/**
+ * The five checks, from the trip snapshot.
+ *
+ * **Day keys are compared as STRINGS here** — `datesWithEvents`, the covered-night set, the
+ * empty-day filter — so a caller holding database rows must spell `startDate`, `endDate` and
+ * every event's `date`/`endDate` as `YYYY-MM-DD` before it gets here. A `Date` object matches
+ * nothing and reads as *no event on that day* rather than as a type error: on the server that
+ * is `itinerary` and `lodging` false-open forever, which is what a notification then says out
+ * loud (owner report, 2026-09-04). `eventsOnDate` in `zones.ts` carries the same warning for
+ * the same reason; the backend's conversion is `trips.mapper.ts`.
+ */
 export function computeReadiness(input: {
   startDate: string;
   endDate: string;

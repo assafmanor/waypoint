@@ -14,7 +14,7 @@ import {
 } from '../lib/api';
 import { isNetworkError, isOffline } from '../lib/outbox';
 import { wipeLocalData } from '../lib/cache';
-import { unsubscribeThisDevice } from '../lib/push';
+import { reconcileThisDevice, unsubscribeThisDevice } from '../lib/push';
 import { withDeadline } from '../lib/deadline';
 import { API_PHASE, API_TIMEOUT_MS, ME_STORAGE_KEY } from '../constants';
 
@@ -110,6 +110,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setMe(who);
         setStatus('authed');
         cacheMe(who);
+        // **The mirror of the sign-out above** (ADR-0197 §2.3 leaves; this arrives). A live
+        // session is the moment the server can be told this device is still reachable — and
+        // it has to be told, because the row it holds dies without the phone hearing about
+        // it: pruned when a push service reports the endpoint gone (§10), revoked from
+        // another device's list, rotated. The switch keeps reading on either way, so nothing
+        // else would ever notice. Fire-and-forget: it never throws and never prompts, and a
+        // boot must not wait on it (see `reconcileThisDevice`).
+        void reconcileThisDevice(who.push?.vapidPublicKey);
       } catch (err) {
         if (cancelled) return;
         // Offline cold-load (sync-and-offline.md "Read"): the refresh + /me both

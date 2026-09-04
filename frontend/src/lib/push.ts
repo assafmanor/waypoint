@@ -172,8 +172,18 @@ function base64Url(buffer: ArrayBuffer): string {
  */
 export async function subscribeThisDevice(vapidPublicKey: string): Promise<void> {
   const registration = await navigator.serviceWorker.ready;
+  const existing = await registration.pushManager.getSubscription();
+  // **A subscription made against a DIFFERENT server key is not reusable**, and reusing it
+  // fails silently: the push service still answers, our sends are signed with a key it will
+  // not accept for that endpoint, and every one of them is rejected with the switch reading
+  // on. So a mismatch is dropped and re-made here rather than carried forward.
+  const reusable = existing && keyMatches(existing, vapidPublicKey) !== false ? existing : null;
+  if (existing && !reusable) {
+    await existing.unsubscribe().catch(() => {});
+    rememberSubscriptionId(null);
+  }
   const subscription =
-    (await registration.pushManager.getSubscription()) ??
+    reusable ??
     (await registration.pushManager.subscribe({
       // Required, and required to be true: a subscription that could send a silent push is
       // one Chrome refuses to create. It is also what the worker's always-show rule honours.
@@ -188,18 +198,99 @@ export async function subscribeThisDevice(vapidPublicKey: string): Promise<void>
   }
 
   try {
-    const { id } = await registerPushSubscription({
-      endpoint: subscription.endpoint,
-      ...keys,
-      userAgent: navigator.userAgent,
-    });
-    rememberSubscriptionId(id);
+    await register(subscription, keys);
   } catch (error) {
     // **The rollback is the point.** A device subscribed at the push service but unknown to
     // the server is a permission spent for nothing, and the next attempt would find an
     // existing subscription and skip straight past `subscribe()` — so it would stay broken.
     await subscription.unsubscribe().catch(() => {});
     throw error;
+  }
+}
+
+/** Tell the server about this device, and keep the row id it answers with. Its own function
+ *  because the reconcile below needs exactly this half and none of the gesture around it. */
+async function register(
+  subscription: PushSubscription,
+  keys: { p256dh: string; auth: string },
+): Promise<void> {
+  const { id } = await registerPushSubscription({
+    endpoint: subscription.endpoint,
+    ...keys,
+    userAgent: navigator.userAgent,
+  });
+  rememberSubscriptionId(id);
+}
+
+/**
+ * base64url as the server spells it, so two keys can be compared as strings. A VAPID public
+ * key travels unpadded, but a caller pasting one from elsewhere may pad it.
+ */
+const normaliseKey = (key: string): string =>
+  key.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+/**
+ * Was this subscription created against the key the server signs with **today**?
+ *
+ * `null` where the browser will not say — `options.applicationServerKey` is absent on some
+ * older engines — and every caller reads that as *leave it alone*. Dropping a subscription
+ * that is probably working because we could not read its key is a worse failure than the one
+ * this detects.
+ */
+function keyMatches(subscription: PushSubscription | null, vapidPublicKey: string): boolean | null {
+  const key = subscription?.options?.applicationServerKey;
+  if (!key) return null;
+  return base64Url(key) === normaliseKey(vapidPublicKey);
+}
+
+/**
+ * **Make the server's picture of this device match the device**, once per signed-in start.
+ *
+ * ── THE FAILURE IT EXISTS FOR ─────────────────────────────────────────────────────────────
+ *
+ * The settings switch reads one thing only: does this browser hold a subscription. The
+ * SERVER's row is a second fact, and the two drift apart in ways nobody can see from the
+ * phone — the push service reports an endpoint gone and the server prunes the row (ADR-0197
+ * §10, a subscription's *normal* death), another device revokes this one from the device
+ * list, the endpoint rotates. In every case the switch still reads on, no notification ever
+ * arrives again, and the app offers nothing to press. That is the state one phone was in
+ * while a second phone on the same trip received every send (owner, 2026-09-04).
+ *
+ * ── AND WHY IT RE-POSTS RATHER THAN CHECKING FIRST ────────────────────────────────────────
+ *
+ * There is deliberately no route that answers "do you know this endpoint" — an endpoint is a
+ * bearer capability and never appears in a list response (ADR-0197 §2), and the device list
+ * carries ids, which say nothing about an endpoint that has since rotated. `POST` is already
+ * an idempotent upsert keyed on the endpoint, so the cheapest honest reconcile is to send it:
+ * one small request per app start, and it repairs every one of the cases above (including a
+ * phone handed to a different signed-in user, which is the update half's own reason).
+ *
+ * **Never throws and never asks for anything.** It runs at boot, so a failure is worth
+ * exactly one retry on the next start, and it must not put a permission prompt anywhere
+ * near a screen the person did not open.
+ */
+export async function reconcileThisDevice(
+  vapidPublicKey: string | null | undefined,
+): Promise<void> {
+  if (!vapidPublicKey) return;
+  try {
+    const subscription = await currentSubscription();
+    // Nothing registered here. The switch says so honestly, and asking would need a gesture.
+    if (!subscription) return;
+
+    if (keyMatches(subscription, vapidPublicKey) === false) {
+      await subscription.unsubscribe().catch(() => {});
+      rememberSubscriptionId(null);
+      // Permission already granted needs no gesture, so the repair is invisible. Without it
+      // the switch now reads OFF — which is at least true, and one tap from working.
+      if (Notification.permission === 'granted') await subscribeThisDevice(vapidPublicKey);
+      return;
+    }
+
+    const keys = encodedKeys(subscription);
+    if (keys) await register(subscription, keys);
+  } catch {
+    /* Next start tries again. A boot path owes the app nothing here. */
   }
 }
 

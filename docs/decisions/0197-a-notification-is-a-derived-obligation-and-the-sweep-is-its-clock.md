@@ -362,6 +362,28 @@ Three boundaries, each of which is a branch rather than a comment:
 
 **And the same failure corrected a documented decision about the OTHER keypair.** `MAX_PUSH_KEY_LENGTH`'s note said the caps "exist to bound the column, not to validate the crypto — the push service is the authority on whether the keys work, at send time". The first half stands; the second was wrong about _where_ a bad key is caught. `web-push` validates both lengths itself and throws **before** any request, so a wrong-length `p256dh`/`auth` never reaches a push service and there is no verdict to defer to — it appears as a subscribe that succeeded and a send that failed with no status, hours later and on another day's log. RFC 8291 fixes both lengths (65 bytes and 16), so `createPushSubscriptionSchema` now checks them at the subscribe, which is the one moment somebody is still holding the device. That is exactly the argument `validateVapid` already makes for the server's own keypair — "a swap is caught at boot instead of at the first send" — applied to the half it had been left out of. The client already rolls its local subscription back when registration fails, so a refusal costs a retry rather than a spent permission.
 
+**AMENDED IN BUILD (2026-09-04, a field report): the DEVICE has to learn a subscription died too, and the switch reading "on" is not evidence that it is.**
+
+Reported: one phone had received nothing for weeks while a second phone on the same trip got every send, with the settings switch on and notifications permitted on both. Everything above is about the SERVER learning a row is dead. Nothing was about the other direction, and the two do not imply each other:
+
+- The rule at the top of this section — a `404`/`410` **deletes the row** — is right, and it leaves the device holding a subscription nobody will ever send to. The phone is told nothing, so the switch keeps reading on.
+- A push service retires a subscription on its own (a key rotation, a re-granted permission, cleared storage) and announces it **once**, as `pushsubscriptionchange` in the worker. The worker had no such listener, so that announcement was dropped.
+- Another device revoking this one from the device list (§2's `removeDevice`) has exactly the same shape from here.
+- And a subscription made against a **superseded VAPID keypair** is worse than gone: it is alive, so every send is signed with a key the push service will not accept for it. `subscribeThisDevice` reused whatever `getSubscription()` returned without ever asking which key made it, so a rotation left a device permanently silent with nothing failing visibly on either end.
+
+**The switch is the honest reading of the wrong fact.** It renders from `pushManager.getSubscription()` — does this BROWSER hold a subscription — which stays true in all four cases above.
+
+The repair is two halves, and neither works alone:
+
+- **In the worker:** `pushsubscriptionchange` re-subscribes with the key the old subscription carried. It cannot register the new endpoint with us — that call needs the session's access token, which lives in the app and never in a worker — so it restores the local half only.
+- **In the app, once per signed-in start:** `reconcileThisDevice` re-posts this device's subscription, and drops-and-remakes it first if its `applicationServerKey` is not the one `/me` reports. `POST /notifications/subscription` is already an idempotent upsert keyed on the endpoint (§2), so this is one small request that repairs a pruned row, a revoked row, a rotated endpoint and the handed-over-phone case at once — with no new route and no endpoint in any response.
+
+Deliberately **not** a "does this endpoint exist" route: an endpoint is a bearer capability and §2 keeps it out of every response, and the device list carries ids, which say nothing about an endpoint that has since rotated. Sending the upsert is cheaper than a route that could answer the question.
+
+It is a boot path, so it never throws and never prompts: where the repair would need a permission gesture the device is simply left unsubscribed, which at least makes the switch's answer true. And where the browser will not say which key made a subscription (`options.applicationServerKey` absent), nothing is dropped — a repair that discards working subscriptions over an unreadable field is worse than the fault it looks for.
+
+**The honest limit above still stands and is the FIRST thing to check on a phone that gets nothing:** whether a closed PWA is woken at all is the platform's call, and Android battery optimisation, a force-stopped browser, or notifications switched off for the browser/WebAPK at the OS level all stop a delivery that everything here did correctly. What this amendment fixes is the class of failure that looks identical from the phone and is ours.
+
 ## Consequences
 
 - **Schema:** two new tables (`PushSubscription`, `NotificationSend`), both control-plane, neither in the sync protocol or the trip snapshot. One migration, no change to any existing model.

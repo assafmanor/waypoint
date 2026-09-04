@@ -30,6 +30,12 @@ import {
   type CheckId,
   type DestinationRef,
 } from '@waypoint/shared';
+import {
+  toBookingDto,
+  toDocumentSummaryDto,
+  toEventDto,
+  toPlaceDto,
+} from '../../trips/trips.mapper';
 import { hourInZone, hourStartInZone } from '../send-policy';
 import {
   DEDUP,
@@ -142,7 +148,23 @@ function milestoneFor(startDate: Date, zone: string, nowMs: number): number | nu
   return null;
 }
 
-/** The trip's still-open checks, through the shared derivation the tasks screen reads. */
+/**
+ * The trip's still-open checks, through the shared derivation the tasks screen reads.
+ *
+ * **The rows go through the DTO mappers, and that is not tidiness** (owner report,
+ * 2026-09-04: a T-7 nudge said `חסרים: לינה, מסלול` about a trip whose two checks were both
+ * complete on the screen). `computeReadiness` compares DAY KEYS as strings — `eventsOnDate`
+ * says it outright: a `Date` there "silently matches nothing, which reads as a day with no
+ * evidence rather than as a type error" — and Prisma reads `Event.date`/`endDate` as `Date`.
+ * So handing it raw rows left every day empty and every night uncovered: `itinerary` and
+ * `lodging` false-open forever, on exactly the two checks that key on a day. The old comment
+ * here claimed the shapes were "structurally compatible"; four `as never` casts are what kept
+ * the compiler from disagreeing.
+ *
+ * `toEventDto` and its three siblings are the app's one Prisma-row → wire-shape conversion
+ * (rule 8), which is the shape the tasks screen actually reads. Two readers, one derivation,
+ * now genuinely one input.
+ */
 async function openChecks(
   prisma: DueInput['prisma'],
   trip: {
@@ -160,7 +182,9 @@ async function openChecks(
     prisma.event.findMany({ where: { tripId: trip.id } }),
     prisma.booking.findMany({ where: { tripId: trip.id } }),
     prisma.place.findMany({ where: { tripId: trip.id } }),
-    prisma.document.findMany({ where: { tripId: trip.id }, select: { id: true, type: true } }),
+    // The whole row, so `toDocumentSummaryDto` can map it. Nothing large lives on a
+    // `Document` — the bytes are a blob behind `fileRef` (ADR-0015).
+    prisma.document.findMany({ where: { tripId: trip.id } }),
   ]);
 
   const destination: DestinationRef = {
@@ -170,16 +194,14 @@ async function openChecks(
     countryCode: trip.destinationCountryCode ?? undefined,
   };
 
-  // The shared function reads a handful of fields off each row and Prisma's shapes are
-  // structurally compatible for all of them — the same conversion `loadZones` makes.
   const readiness = computeReadiness({
     startDate: trip.startDate.toISOString().slice(0, 10),
     endDate: trip.endDate.toISOString().slice(0, 10),
     destination,
-    events: events as never,
-    bookings: bookings as never,
-    places: places as never,
-    documents: documents as never,
+    events: events.map(toEventDto),
+    bookings: bookings.map(toBookingDto),
+    places: places.map(toPlaceDto),
+    documents: documents.map(toDocumentSummaryDto),
     travelerIds: [...memberIds],
   });
   return readiness.checks.filter((check) => !check.done).map((check) => check.id);
