@@ -640,6 +640,28 @@ export function DayView() {
   // Per-event display zones (ADR-0107): one builder over the one evidence, shared
   // with the Plan-mode builder so the two day surfaces cannot diverge.
   const zoneCtx = dayZoneContext(activeDate, zoneEvidence);
+  /**
+   * **THE CLOCK THIS DAY IS READ IN** — ADR-0206 §AQ, finished (owner, 2026-09-05).
+   *
+   * Every wall clock the day PRINTS resolves through `zoneCtx`, whose floor is the day's own
+   * ambient zone. **A slot is a wall clock too**: `Gap.fill`, `Gap.until`, the fill sheet's
+   * header, a new event's prefill and the instants a pick writes are all built and read as
+   * `HH:MM` strings, and they were built in `trip.timezone` — the zone §AQ already had to take
+   * away from the journey block, being _"the zone the trip is FILED under and not the one
+   * anybody on it is reading a watch in"_.
+   *
+   * Internally consistent, so nothing was written to the wrong instant; and an hour off every
+   * row beside it on any trip whose primary sits off its stops. Reported as a `44 דק׳ פנויות`
+   * strip whose `＋` opened on `18:05–18:45` — straight through the ⁦18:00⁩ row below.
+   *
+   * **And not `authoringZone`, which answers the neighbouring question** (`frontend/CLAUDE.md`'s
+   * own anti-pattern): that resolves the zone a DRAFT's typed time means, from the draft's own
+   * place, and a hole has no place and no draft. Asked with neither it falls to the segment zone
+   * and then to the primary — which is the zone this is here to stop reaching for. What the hole
+   * belongs to is the DAY, and `ambientZone` is the day's answer: the zone its own events resolve
+   * to, which is the fallback every row on this screen already prints through.
+   */
+  const dayZone = zoneCtx.ambientZone;
   /** **When this day's window opens** (ADR-0045/0037's 07:00) — the boundary that decides what
    *  belongs to the night before it. Memoized for the reason the Map's copy is: `zonedIso` builds
    *  an `Intl.DateTimeFormat`, and this screen re-renders every second on the clock. */
@@ -660,7 +682,7 @@ export function DayView() {
   );
 
   const dayCtx: DayCtx = {
-    tz: trip.timezone,
+    tz: dayZone,
     // Filled in below, once `merged` exists to derive the placement from.
     nowMark: null,
     zoneCtx,
@@ -724,7 +746,7 @@ export function DayView() {
   // is not free time at all and takes both legs into one block. The join derivation is
   // shared with nothing else on this screen and the same `gapBetween` Plan mode fills
   // from, so the two modes cannot disagree about where a hole is.
-  const blocks = dayBlocks(merged, { bookings, when: bookingWhen(events), tz: trip.timezone });
+  const blocks = dayBlocks(merged, { bookings, when: bookingWhen(events), tz: dayZone });
 
   // ══ THE JOURNEY IN A HOLE (ADR-0206 §V1.1 / §V1.3 / §V1.4) ═══════════════════════════════
   //
@@ -1325,7 +1347,7 @@ export function DayView() {
               <UnplacedCommitment
                 key={`${row.event.id}-${row.edge ?? 'untimed'}`}
                 row={row}
-                tz={trip.timezone}
+                tz={dayZone}
                 bookings={bookings}
                 onDone={() => verbs.done(row.event)}
                 onSkip={() => verbs.skip(row.event)}
@@ -1451,7 +1473,7 @@ export function DayView() {
                                   ? legDisplayZones({ from, to }, zoneCtx)
                                   : { depart: zoneCtx.ambientZone, arrive: zoneCtx.ambientZone },
                             })}
-                        tz={trip.timezone}
+                        tz={dayZone}
                         places={places}
                         placeLabels={placeLabels}
                         onFillGap={readOnly ? undefined : setGapTarget}
@@ -1574,7 +1596,7 @@ export function DayView() {
             event={formTarget === 'new' ? null : formTarget}
             defaults={
               formTarget === 'new'
-                ? (formSlot ?? nextSlot(dayEvents, activeDate, trip.timezone))
+                ? (formSlot ?? nextSlot(dayEvents, activeDate, dayZone))
                 : undefined
             }
             draft={formDraft}
@@ -1764,7 +1786,7 @@ export function DayView() {
             {...shelfForSlot(
               shelf,
               slotOf(replaceTarget),
-              trip.timezone,
+              dayZone,
               { events, bookings, places },
               // **A replacement's window is the row's own length** (ADR-0216 §2): `החלף` keeps the
               // hour and the length, so what an idea has to fit here is exactly what the row being
@@ -1805,7 +1827,7 @@ export function DayView() {
             {...shelfForSlot(
               shelf,
               gapTarget.fill,
-              trip.timezone,
+              dayZone,
               { events, bookings, places },
               gapTarget.minutes,
             )}
@@ -1816,8 +1838,8 @@ export function DayView() {
                 date: block.date,
                 title: m.title,
                 kind: EVENT_KIND.SOFT,
-                startsAt: zonedIso(block.date, block.start, trip.timezone),
-                endsAt: block.end ? zonedIso(block.date, block.end, trip.timezone) : undefined,
+                startsAt: zonedIso(block.date, block.start, dayZone),
+                endsAt: block.end ? zonedIso(block.date, block.end, dayZone) : undefined,
               });
               setGapTarget(null);
             }}

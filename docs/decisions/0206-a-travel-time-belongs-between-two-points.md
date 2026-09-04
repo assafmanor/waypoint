@@ -4146,3 +4146,70 @@ regression guards rather than proofs — that a no-shapes request still costs ex
 call and no `/route`, and that a ten-stop day still takes its durations from the matrix. Those are
 the two ways this change could quietly make things worse, so they are asserted even though they
 pass against both versions.
+
+## BD. §AQ1 took the trip's zone off the leg's clocks and left it on the slot's (2026-09-05)
+
+Owner, with a screenshot of a live day at ⁦17:02⁩:
+
+> _"There's a bug in the timing calculation - maybe the wrong timezone is used or idk. But see,
+> the suggested time is on the next event"_
+
+The strip counted `44 דק׳ פנויות` to a leg saying `יציאה עד 17:46 · הגעה ~17:55`, above a row at
+⁦18:00–19:00⁩. The sheet its `＋` opened was headed **`18:05 – 18:45`** — an hour on, straight
+through that row.
+
+### BD1. Every clock in that screenshot but one came from the day; the odd one came from the file
+
+§AQ1 is this defect, one row up, and its own words are the diagnosis: `tz={trip.timezone}` is
+_"the zone the trip is FILED under and not the one anybody on it is reading a watch in"_. That
+amendment moved the **journey block** onto per-leg display zones and stopped there. Every wall
+clock a **slot** carries stayed behind:
+
+- `Gap.fill` and `Gap.until`, built by `gapBetween`/`freeBetween`/`narrowGapForTravel` off
+  `dayBlocks`' `ctx.tz`
+- the fill sheet's own header, which is `clockRange(fill.start, fill.end)`
+- a new event's prefill (`nextSlot`), and the instants a pick writes (`zonedIso(block.date, …)`)
+
+They are **internally consistent** — built and read in one zone, so nothing was ever written to
+the wrong instant, and the round trip hid this for as long as nobody put the string beside a row.
+The countdown is instant arithmetic and was never involved; what made the defect visible was that
+the ⁦2026-09-05⁩ amendment to ADR-0217 finally put a slot's own clock on screen next to the day's.
+
+**Reproduced before it was fixed**, since the whole thing turns on two zones disagreeing: a trip
+filed `Europe/Kyiv` whose places resolve to `Europe/Rome` printed `17:00 – 18:00` for a hole every
+other row on the screen calls ⁦16:00⁩.
+
+### BD2. The day's ambient zone, because a hole belongs to the day and to nothing else
+
+One named value per day surface (`dayZone` in `DayView`, `tz` in `PlanDay`), and it is
+`zoneCtx.ambientZone` — the zone the day's own events resolve to, which is the floor every row on
+either screen already prints through. So the strip, the sheet's header, the block a pick writes
+and the prefill a `＋` opens all read the same clock as the rows around them.
+
+**And deliberately not `authoringZone`**, which `frontend/CLAUDE.md` names as the answer for
+turning a typed wall clock into an instant. It answers a neighbouring question: the zone a
+**draft's** typed time means, resolved from the draft's own place. A hole has no place and no
+draft, and asked with neither it falls through to the segment zone and then to the primary — which
+is the zone this is here to stop reaching for. The two rules do not conflict; they are about
+different subjects, and this ADR now says which is which.
+
+### BD3. Both surfaces, because where a drop lands is a fact
+
+ADR-0159 §1 forbids the two day surfaces differing about a fact, and `frontend/CLAUDE.md` records
+"changing a day-surface derivation in `DayView` only" as having cost a release twice — §AQ1 itself
+being one of them. Plan mode had the identical wiring (`const tz = trip.timezone`, forty-odd
+readers), so it takes the identical repair, and its duplicate `dayZoneContext` call goes with it.
+In Plan the value also becomes the fallback behind `zones?.startZone ?? tz`, which is where
+`eventDisplayZones` would have landed anyway.
+
+Two specs, one per surface, each red on the shipped code and each on a trip filed an hour or two
+off the zone its places resolve to. Where the two zones agree — which is every existing fixture
+and most real trips — the change is a no-op by construction, which is why 5354 tests moved not at
+all.
+
+### BD4. What is deliberately not changed
+
+`weekdayName(activeDate, trip.timezone)` on both surfaces: a date's own weekday does not move with
+the zone its midnight is read in. And `scheduleDefaults`' `authoringZone({ placeId }, …)` stays —
+there the block is shown in a `WhenField` that names its zone on a chip (§AQ/ADR-0107 §6), so the
+idea's own zone is the honest one and the reader is told which it is.

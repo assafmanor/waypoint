@@ -1270,6 +1270,38 @@ describe('PlanDay — a journey states its hours where the traveller is (ADR-020
   });
 });
 
+// **AND SO DOES THE SLOT IT OFFERS** (§AQ, finished 2026-09-05).
+//
+// §AQ1 above took `trip.timezone` away from the journey block's clocks and left it on every wall
+// clock a SLOT carries — `Gap.fill`, `Gap.until`, the fill sheet's header and the instants a pick
+// writes. Reported against Trip mode: a strip counting `44 דק׳ פנויות` whose `＋` opened
+// `18:05 – 18:45`, an hour on, straight through the row below. It is asserted on BOTH surfaces
+// for §AQ1's own reason — the fix landing on one is how the pair drifts.
+describe('PlanDay — the slot reads in the stops’ zone too (ADR-0206 §AQ)', () => {
+  /** Two hours behind the trip's filed primary, like §AQ1's. */
+  const STOPS_ARE_IN = 'Atlantic/Reykjavik';
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    tripEvents = [lunch, theatre];
+    tripPlaces = places.map((p) => ({ ...p, timezone: STOPS_ARE_IN }));
+    travelSeconds = WALK_MINUTES * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  it('opens the fill on the clock the rows are printed in', () => {
+    show();
+    // `lunch` ends 13:20Z — ⁦13:20⁩ where the stops are, ⁦15:20⁩ where the trip is filed.
+    // Three chips: the head, the hole between the two rows, and the tail.
+    fireEvent.click(document.querySelectorAll('.gap .gap-add')[1]);
+    expect(screen.getByText(t.slotFill.gapTitle(clockRange('13:20', '14:20')))).toBeTruthy();
+    expect(screen.queryByText(t.slotFill.gapTitle(clockRange('15:20', '16:20')))).toBeNull();
+  });
+});
+
 // ── WHERE THE MOMENT IS, IN PLAN'S POSTURE (ADR-0217 §5) ──────────────────────────────────
 //
 // Here for the reason the Trip-side block is in `DayView.travel.test.tsx`: the harness is
