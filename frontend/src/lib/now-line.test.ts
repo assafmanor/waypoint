@@ -131,7 +131,6 @@ describe('nowInJoin', () => {
     opensMs: OPENS,
     closesMs: CLOSES,
     journey: drive(),
-    statesHole: true,
     ...over,
   });
 
@@ -165,12 +164,22 @@ describe('nowInJoin', () => {
   });
 
   // A leave-by clamped to the origin's own end (§AJ2) is the EARLIEST departure that exists, so
-  // there is no free time before it — and `narrowGapForTravel` draws no strip either.
+  // the free time before it is empty and the journey takes the hole from its first instant.
   it('gives the journey the whole hole when nothing is free before it', () => {
-    const tight = hole({ statesHole: false });
+    const tight = hole({ journey: drive({ leaveByMs: OPENS }) });
     const placed = nowInJoin(tight, Date.parse(at('13:01')));
     expect(placed?.key).toBe(JOIN_BOX.JOURNEY);
     expect(placed?.thruFrac).toBeCloseTo(301 / 540, 6);
+  });
+
+  // **The journey's box means the JOURNEY, whether or not the hole draws one of its own** (the
+  // 2026-09-05 amendment). Told which rows were drawn, this made the block's span the whole hole
+  // — so the arrow entered a ⁦45⁩-minute drive two-thirds of the way down it.
+  it('measures the journey over the journey, not over the hole around it', () => {
+    const placed = nowInJoin(hole(), Date.parse(at('16:50')));
+    expect(placed?.key).toBe(JOIN_BOX.JOURNEY);
+    // 4 of the 14 minutes from the leave-by to the row below, never 8:50 of the hole's 9:00.
+    expect(placed?.thruFrac).toBeCloseTo(4 / 14, 6);
   });
 
   it('gives the hole its whole self when no journey crosses it', () => {

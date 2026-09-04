@@ -728,3 +728,88 @@ jsdom reports every box as ⁦0px⁩ tall, so the fraction is invisible here as 
 
 The rule itself is exhaustive and pure in `lib/now-line.test.ts`, including that every instant of
 a hole belongs to exactly one of its boxes.
+
+## Amendment (2026-09-05) — the hole counts down, and the offer starts from now
+
+Owner, against the same day at ⁦16:10⁩ with the previous amendment shipped:
+
+> _"I want to improve the free time between events: while during the free time, you should be
+> able to see the updated free time according to the time elapsed. Also when choosing to fill the
+> gap, it should fill from now and so on, not to suggest on time that has already passed"_
+
+The marker was in the right box by then. The box itself was still describing a hole nobody was
+standing in: `8:46 שע׳ פנויות` is what that window held at ⁦08:00⁩, and the `＋` beside it opened
+a sheet headed `08:00 – 09:00`.
+
+### §4 said this and the build did not do it
+
+_"A gap holds the moment like anything else and the arrow lands in it. Its label states what is
+left of the hole (`freeTimePhrase`), which is the useful half of 'what next'."_ What shipped
+passes `freeTimePhrase` the hole's own length, so the sentence was true of the function and false
+of the number. This is that line, built.
+
+### One narrowed object, not a corrected label — for §V1.1's own reason
+
+ADR-0206 §V1.1 already made this mistake once at the other end of the same window and recorded
+the fix: `travelFreeMinutes` corrected a NUMBER and left the slot beside it raw, so _"the chip's
+label shrank by the walk while the sheet it opened, the block a pick wrote and the drop key all
+still described the whole hole"_. A label is not the offer.
+
+So `narrowGapToNow` (`lib/gaps.ts`) is `narrowGapForTravel`'s mirror: it moves the window's START
+to the clock and returns one `Gap`, whose `minutes` the strip states and whose `fill` the sheet
+header, the feasibility floor (`shelfForSlot`), the block a pick writes (`ideaBlock`) and a fresh
+event's prefill all read. Both halves of the report are the same edit.
+
+- **It rounds INWARD**, like the bound at the other end — ⁦13:02⁩ offers ⁦13:05⁩, never ⁦13:00⁩ — and
+  states the minutes from the CLOCK, so the countdown does not tick in fives.
+- **The window's end becomes the block's ceiling** (`Gap.until`), which the hole did not always
+  carry: without it the ⁦≤4⁩ minutes the start just rounded away could be spent past the row below.
+- **It is a no-op unless the moment is INSIDE the window.** That is what keeps it off every other
+  day and off today's earlier holes — a hole behind you is where you record the lunch you had at
+  ⁦12:00⁩, and clamping it would take backfilling away to fix a slot nobody is standing in.
+- **`null` once nothing is left**, which is the strip's cue to draw nothing: a hole whose free
+  time is spent is not a hole with `0 דק׳ פנויות` in it.
+
+### Two thresholds would have been one too many
+
+`FREE_TIME_MIN_MINUTES` (⁦15⁩) is a judgement about whether a hole counts as free time **at all**
+— the owner's own _"a gap below say 15 minutes is not really free time"_ — and it is asked of the
+PLAN. Re-asking it of the remainder retires the strip a quarter of an hour early, which is not
+only wrong copy: `statesHole` was the strip, so the marker's own box went with it and the arrow
+jumped onto a drive fifteen minutes before its leave-by. Worth stating is the plan's question;
+what is left is the clock's.
+
+### The instant is shared, so the strip and the marker cannot disagree
+
+`holeDepartsMs` (`lib/day-joins.ts`) is the previous amendment's private split rule, exported and
+read by both: the free time the strip counts down to ends exactly where `nowInJoin` hands the hole
+to the journey. Derived twice, the two would have drifted by the ⁦≤4⁩ minutes `Gap.until` is floored
+by, and the arrow would have wanted a strip that had already gone.
+
+### And `nowInJoin` stopped being told what was drawn
+
+Taking a `statesHole` argument, it made the journey's span the **whole hole** whenever the hole
+drew no row of its own — so the arrow entered a ⁦45⁩-minute drive two-thirds of the way down it,
+and jumped there the moment the strip retired. A journey's box means the journey at every hour.
+The rule now answers which box, never whether that box exists, and the caller handles the one case
+that leaves: the hole's own part holds the moment and nothing is drawn for it — a hole too short
+to state free time in (§AG6's ⁦45⁩-minute hole holding a ⁦40⁩-minute walk), or one the clock has
+spent. There the mark takes its **boundary form above the block**, which is the answer the
+previous amendment already gave the day's edge legs. One less argument, one more case covered.
+
+### Plan mode is untouched, and that is the posture rule doing its job
+
+ADR-0159 §1 forbids the two day surfaces differing about a **fact**, and the hole's planned length
+is one — which is why `narrowGapForTravel` is shared. "How much of it is left right now" is not a
+fact about the plan, and Plan's chip is a live **drop target** whose `gapKey` identity would move
+under a resting drag every minute (ADR-0116's 2026-09-02 amendment is the last time a slot moved
+under a gesture). Trip mode answers "what now"; Plan drafts. If the `שבץ` chip should clamp on
+today, that is its own call.
+
+### Tests
+
+Three screen specs in `DayView.travel.test.tsx`, red on the shipped code: the strip states what is
+left while the hole behind it keeps its own length; the `＋` opens on the window that is left; and
+the mark stands above the block where the hole states no free time at all. Eight unit specs on
+`narrowGapToNow` in `lib/gaps.test.ts` carry the arithmetic, the inward rounding, the ceiling, the
+`null`, and — the half a label could never reach — that `blockFor` moves with it.

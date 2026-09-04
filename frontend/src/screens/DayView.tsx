@@ -105,6 +105,7 @@ import {
 import {
   blockFor,
   ideaBlock,
+  narrowGapToNow,
   nextSlot,
   statesFreeTime,
   type Gap,
@@ -126,6 +127,7 @@ import {
   dayBlocks,
   dayJourney,
   dayTravelTotal,
+  holeDepartsMs,
   narrowGapForTravel,
   windowClosesMs,
   type DayBlock,
@@ -294,8 +296,25 @@ function JoinRow({
   const connection = join !== null && join.kind === 'connection';
   // **The slot is narrowed by the journey** — the statement and the control must not disagree
   // about one hole, which is what §V1.1 is about one elevation down.
-  const slot =
+  const planned =
     join && !connection ? (journey ? narrowGapForTravel(join.free, journey, tz) : join.free) : null;
+  // **AND BY THE CLOCK, IN THE HOLE YOU ARE STANDING IN** (ADR-0217's 2026-09-05 amendment) — the
+  // other end of the same window, and it was as stale as this one was: at ⁦16:10⁩ the strip still
+  // stated the whole ⁦8:46⁩ and its `＋` opened on ⁦08:00⁩. `nowMark` IS the condition, not merely
+  // the source of the instant: the screen hands it down exactly when the moment is inside this
+  // hole on today, so no other day and no hole behind you is touched.
+  //
+  // The window's end is `holeDepartsMs`' — the same instant `nowInJoin` hands the hole to the
+  // journey — so `statesHole` below can never be true with no strip under it.
+  const slot =
+    planned && nowMark
+      ? narrowGapToNow(
+          planned,
+          nowMark.nowMs,
+          holeDepartsMs(journey, nowMark.opensMs, nowMark.closesMs) ?? nowMark.closesMs,
+          tz,
+        )
+      : planned;
   // **And it is stated below the block rather than inside it** (owner, 2026-08-26: _"do we
   // really want to state on this row that we have free time, or should it be written in a quiet
   // way and not in the row?"_). M6a absorbed the strip into the block to keep ADR-0159's one
@@ -303,8 +322,12 @@ function JoinRow({
   // the LEG (mode, distance, when to go) and free time is about the HOLE. The measurement that
   // shipped M6a is the argument against it — ⁦219.70px⁩ of ink in that box, "fixed" by hiding the
   // free time on half the arms, which is what a line holding two subjects looks like.
+  // **Worth STATING is asked of the plan; what is LEFT is asked of the clock.** Two thresholds
+  // would be one too many: `FREE_TIME_MIN_MINUTES` is a judgement about whether a hole counts as
+  // free time at all (`lib/gaps.ts`), and re-asking it of the remainder would retire the strip
+  // ⁦15⁩ minutes early — taking the marker's own box with it, since `statesHole` is this row.
   const strip =
-    slot && statesFreeTime(slot.minutes) ? (
+    planned && slot && statesFreeTime(planned.minutes) ? (
       <GapStrip minutes={slot.minutes} onFill={onFillGap && (() => onFillGap(slot))} />
     ) : null;
   /** **Which of this hole's boxes the mark belongs to** — the free time or the journey out of it.
@@ -316,19 +339,26 @@ function JoinRow({
           opensMs: nowMark.opensMs,
           closesMs: nowMark.closesMs,
           journey: connection ? null : journey,
-          statesHole: connection || strip !== null,
         },
         nowMark.nowMs,
       )
     : null;
   const nail = (box: JoinBox, row: ReactNode) =>
-    nowMark && placed?.key === box ? (
+    nowMark && row && placed?.key === box ? (
       <NowMarker ref={nowMark.ref} label={nowMark.label} thruFrac={placed.thruFrac}>
         {row}
       </NowMarker>
     ) : (
       row
     );
+  /** **And where the hole's own part holds the moment with nothing drawn for it, the mark stands
+   *  ABOVE the journey** — the same answer the day's edge legs take (the 2026-09-04 amendment).
+   *  Two holes reach here: one too short to state free time in at all (§AG6's ⁦45⁩-minute hole
+   *  holding a ⁦40⁩-minute walk), and one whose free time the clock has now spent. */
+  const holeMark =
+    nowMark && placed?.key === JOIN_BOX.HOLE && !strip ? (
+      <NowMarker ref={nowMark.ref} label={nowMark.label} />
+    ) : null;
   if (!connection) {
     if (!journey) return nail(JOIN_BOX.HOLE, strip);
     /**
@@ -348,6 +378,7 @@ function JoinRow({
     return (
       <>
         {nail(JOIN_BOX.HOLE, strip)}
+        {holeMark}
         {nail(JOIN_BOX.JOURNEY, <JourneyRow journey={journey} {...journeyRest} />)}
       </>
     );

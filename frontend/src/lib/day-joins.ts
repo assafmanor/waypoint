@@ -1010,6 +1010,36 @@ export const goingCostMinutes = (travelSeconds: number): number =>
  *
  * Returns the gap unchanged where there is nothing to narrow, so a caller may apply it blindly.
  */
+/**
+ * **WHEN A HOLE STOPS BEING FREE** — the instant the journey across it takes over, or `null` where
+ * the hole is one interval all the way down.
+ *
+ * **Two readers, one instant, and that is the whole reason it is a function** (ADR-0217's
+ * 2026-09-05 amendment). `nowInJoin` (`lib/now-line.ts`) splits the hole here to decide which box
+ * the marker is nailed to, and the free-time strip counts down to here — so if these were derived
+ * twice the arrow could land on a strip that had already stopped stating any free time, which is
+ * the null-shaped row the marker rule is written to make impossible.
+ *
+ * A claim that somebody is moving ends the free time wherever the clock stands (ADR-0207 §2) —
+ * that is the one arm where the answer is not the leave-by. Everywhere else it is `leaveByMs`,
+ * clamped into the hole because a floored one (`leaveByIsFloor`, §AJ2) is the origin's own end and
+ * leaves no free time at all. **Where the journey states no departure** — the arms with no
+ * estimate to count back from (§AA4/§AM10/§AU1/§AZ1), and a flexible destination, whose "leave now
+ * to arrive then" is the hole's own start (§AJ1) — there is nothing to hand over at, and the app
+ * must not claim either that the travel has begun or that the free time is spent.
+ */
+export function holeDepartsMs(
+  journey: DayJourney | null,
+  opensMs: number,
+  closesMs: number,
+): number | null {
+  if (!journey) return null;
+  if (journey.arm === DAY_JOURNEY_ARM.ON_WAY) return opensMs;
+  const leave = journey.leaveByMs;
+  if (leave === null || !Number.isFinite(leave)) return null;
+  return Math.min(Math.max(leave, opensMs), closesMs);
+}
+
 export function narrowGapForTravel(free: Gap, journey: DayJourney | null, tz: string): Gap {
   if (!journey) return free;
   /** The advised departure, and **only where it is a CEILING**: on the clamped arm the same number

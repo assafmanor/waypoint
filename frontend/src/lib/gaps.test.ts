@@ -12,6 +12,7 @@ import {
   gapAfterLast,
   gapBeforeFirst,
   gapBetween,
+  narrowGapToNow,
   nextSlot,
 } from './gaps';
 
@@ -390,5 +391,74 @@ describe('ideaBlock', () => {
 
   it('falls back to the default block for an idea with no category', () => {
     expect(ideaBlock(undefined, at('12:00', 300)).end).toBe('13:00');
+  });
+});
+
+// ── AND WHAT IS LEFT OF IT ONCE YOU ARE STANDING IN IT (ADR-0217's 2026-09-05 amendment) ────
+//
+// `narrowGapForTravel`'s mirror at the other end. Reported at ⁦16:10⁩ of an ⁦08:00–16:46⁩ window:
+// the strip still stated `8:46 שע׳ פנויות` and its `＋` opened a sheet headed `08:00 – 09:00`.
+describe('narrowGapToNow', () => {
+  const DAY = '2026-07-07';
+  const at = (hhmm: string) => Date.parse(`${DAY}T${hhmm}:00+09:00`);
+  /** The hole `freeBetween` builds for ⁦08:00–17:00⁩, un-narrowed. */
+  const hole = () => freeBetween(ev('a', '07:00', '08:00'), ev('b', '17:00'), TZ)!;
+
+  it('leaves a hole alone until the moment is inside it', () => {
+    expect(narrowGapToNow(hole(), at('07:30'), at('17:00'), TZ)).toEqual(hole());
+    // …which is also what makes it a no-op on every other day: `nowMs` is nowhere near.
+    expect(narrowGapToNow(hole(), at('08:00'), at('17:00'), TZ)).toEqual(hole());
+  });
+
+  it('states what is left and offers the slot from here', () => {
+    const live = narrowGapToNow(hole(), at('13:01'), at('17:00'), TZ)!;
+    expect(live.minutes).toBe(239);
+    expect(live.fill.start).toBe('13:05');
+    expect(live.fill.end).toBe('14:05');
+    // The window's own end becomes the ceiling a block may run to, so a drop can no longer
+    // spill past the row below on the rounding the slot's start just took.
+    expect(live.until).toBe('17:00');
+  });
+
+  it('rounds the offer INWARD, like the bound at the other end', () => {
+    // ⁦13:02⁩ offers ⁦13:05⁩ — never ⁦13:00⁩, which has already gone.
+    expect(narrowGapToNow(hole(), at('13:02'), at('17:00'), TZ)!.fill.start).toBe('13:05');
+    // …and the statement is still counted from the clock, not from the grid.
+    expect(narrowGapToNow(hole(), at('13:02'), at('17:00'), TZ)!.minutes).toBe(238);
+  });
+
+  it('keeps the ceiling the journey already put on the hole', () => {
+    const capped = { ...hole(), until: '16:45' };
+    const live = narrowGapToNow(capped, at('16:10'), at('16:46'), TZ)!;
+    // The reported number: ⁦36⁩ minutes to the departure, not the ⁦8:46⁩ the hole was born with.
+    expect(live.minutes).toBe(36);
+    expect(live.fill.start).toBe('16:10');
+    expect(live.fill.end).toBe('16:45');
+    expect(live.until).toBe('16:45');
+  });
+
+  it('is null once nothing is left, which is the caller’s cue to draw no strip', () => {
+    expect(narrowGapToNow(hole(), at('17:00'), at('17:00'), TZ)).toBeNull();
+    expect(narrowGapToNow(hole(), at('17:30'), at('17:00'), TZ)).toBeNull();
+  });
+
+  // Under a slot step from the end there is no block's worth of room, and a zero-length slot is
+  // no droppable position at all — so the offer degrades to a start, which is the shape
+  // `freeBetween` and `nextSlot` already use for the same situation (ADR-0161 §3).
+  it('offers a start alone when the room is gone but the minute is not', () => {
+    const live = narrowGapToNow(hole(), at('16:58'), at('17:00'), TZ)!;
+    expect(live.minutes).toBe(2);
+    expect(live.fill.end).toBe('');
+  });
+
+  // A block a pick writes reads the narrowed object, so it cannot land in the passed half —
+  // which is the half of the report that a corrected LABEL would never have reached.
+  it('moves the block a pick writes, not only the words above it', () => {
+    const live = narrowGapToNow(hole(), at('13:01'), at('17:00'), TZ)!;
+    expect(blockFor(live, 90)).toEqual({ date: DAY, start: '13:05', end: '14:35' });
+    // …and it stays inside the window even where the length asked for would overrun it.
+    expect(
+      blockFor(narrowGapToNow({ ...hole(), until: '16:45' }, at('16:10'), at('16:46'), TZ)!, 90),
+    ).toEqual({ date: DAY, start: '16:10', end: '16:45' });
   });
 });
