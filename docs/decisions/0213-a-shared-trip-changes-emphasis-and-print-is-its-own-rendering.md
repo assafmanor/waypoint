@@ -2584,6 +2584,12 @@ The change is `SharedPhoto.credit`. This ADR's §5 composed it as `[attribution,
 
 The Prisma-row trap this repo has now paid for twice (`packages/shared/CLAUDE.md`) is what the move surfaced, and the compiler caught it rather than a reader: `ShareEventRow.startsAt` is a `Date` where `DayPhotoEvent.startsAt` is an ISO string, and a `Date` handed to `Date.parse` scores every stop at **zero dwell** — the picture would have been chosen by ratings alone, silently. The projection maps its rows (`photoEventOf`, `stopEventOf`, `photoPlaceById`) instead of casting.
 
+**Phase 3 built 2026-09-05, and "the reader looks the same" was measured rather than asserted.** `ui/domain/DayHead` + `day-head.css` hold the head and the shot; the reader renders `<DayHead as="button" lines={[…]} trailing={<Icon name="caret"/>} />` and the sheet keeps only what belongs to the day's CARD — `.sh-day`'s frame, its `is-past` and `open` treatments, the caret's rotation, and the stay lines it passes in. The card's rendered box is **332×403 at 360px** before and after, and the screenshot of the whole day card is **byte-identical** in both themes (a real Chromium at 360×640, with a photo, a stay and an open body).
+
+Two things about the head are the component's now rather than the page's. Its type scale is stated on `.wp-dayhead` (`--dayhead-line: 12.5px`, `--dayhead-caption: 15px`) instead of borrowed from `.sh-page`'s `--sh-micro`/`--sh-secondary`, because the app's head renders outside that page where those resolve to nothing — same numbers today, and a page's decision about its own prose no longer reaches this component. And the shot's caption is an overlay the tap passes through: a `<figcaption>` inside a `<button>` is invalid HTML, so the button holds the image and the caption sits over it with `pointer-events: none`.
+
+The fourteenth amendment's child-combinator guard moved with the rules (`ui/domain/day-head.contract.test.ts`) and now reads **both** sheets, since the combinator is the component's and the stay line it protects is still the reader's.
+
 ## Amendment (2026-09-05) — the headers follow the credential, not the feature
 
 [ADR-0220](0220-a-pasted-link-is-the-app-before-the-app-is.md) renames §5's `isPublicSharePath` to

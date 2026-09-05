@@ -353,7 +353,7 @@ test('Everything puts the booking code on its own event, behind the row fold', a
 test('days open one at a time, starting on the day the trip is on', async ({ page }) => {
   await open(page, FULL);
 
-  const heads = page.locator('.sh-day-head');
+  const heads = page.locator('.wp-dayhead-head');
   // Day one is today at `PINNED` — the clock opened it, not an index (eleventh amendment §1).
   await expect(heads.first()).toHaveAttribute('aria-expanded', 'true');
   await heads.nth(1).click();
@@ -458,7 +458,7 @@ test('the reader lands on the day the trip is on, with the day before peeking ab
 
   const today = page.locator('.sh-day.is-now');
   await expect(today).toHaveCount(1);
-  await expect(today.locator('.sh-now-mark')).toHaveText(t.common.now);
+  await expect(today.locator('.wp-dayhead-now')).toHaveText(t.common.now);
   /**
    * **The whole block retries, which is `expectLanded`'s shape in
    * `event-arrival-scroll.spec.ts`** — the suite's own idiom for this exact question, and it
@@ -484,7 +484,7 @@ test('the reader lands on the day the trip is on, with the day before peeking ab
    * Nested deliberately: node-replacement is not scroll-settling.
    */
   await expect(async () => {
-    const box = await stableBox(today.locator('.sh-day-head'));
+    const box = await stableBox(today.locator('.wp-dayhead-head'));
     expect(box.y).toBeGreaterThan(0);
     expect(box.y).toBeLessThan(60);
     // It really did have to move: a page that happened to open there proves nothing.

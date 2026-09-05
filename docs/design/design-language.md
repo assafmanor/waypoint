@@ -192,7 +192,9 @@ Plan mode reuses the same tokens/grammar as Trip mode, adding builder/entry comp
 
 Canonical names, for docs / code / tickets — one vocabulary end to end:
 
-`Board` (Now/Next hero) · `CountdownChip` · `VerbRow` (tap-to-expand actions) · `RippleBar` · `MaybeShelf` · `GapChip` · `ReadinessBar` · `BoardingPass` (link-invite card) · `PermRow` (permission toggle row) · `ModePill` · `DayStrip` · `GlanceCard` · `RateCard` · `Toast`.
+`Board` (Now/Next hero) · `CountdownChip` · `VerbRow` (tap-to-expand actions) · `RippleBar` · `MaybeShelf` · `GapChip` · `ReadinessBar` · `BoardingPass` (link-invite card) · `PermRow` (permission toggle row) · `ModePill` · `DayStrip` · `DayHead` · `GlanceCard` · `RateCard` · `Toast`.
+
+**`DayHead`** ([ADR-0219](../decisions/0219-a-day-is-a-place-you-can-see.md) §2/§3) is the head of a day on all three surfaces that have one — both day surfaces and the public reader's day card. Three bands in one frame: the day's photograph when a stop clears `dayPhoto`'s gate, then a grid of the date tile (day of month, weekday, amber `עכשיו` on today) beside the day's name, then a footer band carrying the day's facts and its one action. Lifted out of the reader's own sheet rather than twinned; a host supplies the copy-column lines (the reader's stay) or the footer facts (the app's total and verdict), never both.
 
 **Two of those names are a trap for each other.** `GlanceCard` was repurposed by [ADR-0045](../decisions/0045-trip-home-real-data-only.md) to mean the derived **day-at-a-glance time rail** and nothing else — so the FX card that ADR-0045 §4 promised would "return as its own glance card" cannot be called one. It is **`RateCard`** ([ADR-0180](../decisions/0180-currency-is-derived-and-a-rate-is-a-glance-card.md) §3): the first real tenant of the restored `מבט מהיר` section, neutral chrome, one `<button>` that opens the converter sheet. Weather is the second tenant of the same row, and it will want its own name too.
 
