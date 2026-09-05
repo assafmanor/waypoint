@@ -30,7 +30,10 @@ export function applyPublicShareHeaders(res: Response): void {
  * **True for a URL whose own path contains a bearer credential**, which is the property the
  * headers above are protecting — not "is this the sharing feature".
  *
- * Two such paths: `/s/<code>` (ADR-0213's reader) and `/join/<code>` (ADR-0067's invite).
+ * Four such paths: `/s/<code>` (ADR-0213's reader), `/join/<code>` (ADR-0067's invite), and
+ * the per-trip link-preview cover each of them points `og:image` at — `/og/s/<code>.png` and
+ * `/og/join/<code>.png` (ADR-0220's 2026-09-06 amendment), which carry the same credential in
+ * the same position and now draw the trip's name into a picture.
  * The invite joined it in ADR-0220 and the reason is that its response CHANGED: until the
  * link preview it was a content-free app shell at a secret URL, and it is now the trip's
  * name and dates at one. `no-referrer` mattered even before that — a tap from the join
@@ -42,5 +45,5 @@ export function applyPublicShareHeaders(res: Response): void {
  * not a judgement call.
  */
 export function isBearerLinkPath(url: string): boolean {
-  return /^\/(s|join)\/[^/?#]+/.test(url);
+  return /^\/(?:og\/)?(s|join)\/[^/?#]+/.test(url);
 }

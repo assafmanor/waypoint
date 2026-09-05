@@ -233,3 +233,11 @@ export const PDF_RENDER_CONCURRENCY = 'PDF_RENDER_CONCURRENCY';
 export const DEFAULT_PDF_CHROMIUM_PATH = '/usr/bin/chromium';
 export const DEFAULT_PDF_RENDER_TIMEOUT_MS = 15_000;
 export const DEFAULT_PDF_RENDER_CONCURRENCY = 2;
+
+// The link-preview covers (ADR-0220's 2026-09-06 amendment) share that browser and that
+// bound — one budget, one process. What is theirs alone is the cache: a cover is a pure
+// function of the four trip facts drawn on it, so entries are keyed by a hash of those and
+// can never be stale, only evicted. 32 MB is ~150 covers at the ~200 KB a 1200x630 PNG of
+// this artwork weighs, which is far more trips than any one deploy has links out for.
+export const OG_COVER_CACHE_MAX_BYTES = 'OG_COVER_CACHE_MAX_BYTES';
+export const DEFAULT_OG_COVER_CACHE_MAX_BYTES = 32 * 1024 * 1024;

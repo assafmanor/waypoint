@@ -1,7 +1,15 @@
-<!-- THE INVITATION COVER — `/join/<code>` (ADR-0220 §3).
+<!-- THE INVITATION COVER — `/join/<code>` (ADR-0220 §3, per-trip since its 2026-09-06
+     amendment).
      The join screen's OWN boarding pass: every class below is `App.css`'s shipped
      `.join-ticket` tree, rendered by the shipped rules rather than transcribed into
      coordinates. Rule 8 — the ticket already MEANS "an invitation" in this app.
+
+     **The `{{…}}` slots are what makes it the reader's own trip.** The same file is filled
+     twice: `scripts/gen-app-icons.mjs` fills it with the generic defaults and cuts
+     `og-invite.png`, the fallback for a code that does not resolve; `backend/src/spa/
+     og-cover.template.ts` fills it with a real trip's icon, name, destination and dates and
+     screenshots it per request. One template, so the fallback cannot drift from the thing it
+     falls back from.
 
      **Rendered at 390px, which is why it is finally legible.** The first cut used the 300px
      base and 1.85x and the owner reported the result as "too small". Measured, the ticket is
@@ -15,7 +23,10 @@
      leaves, with 63px above and below. (It was 2.3x against a 496px budget while the band
      took 134px, and 2.45x before that visibly touched both edges.)
 
-     No trip name: one PNG serves every crawler. The words are about the act. -->
+     **No countdown, and that is the one thing the shipped ticket has that this cannot.**
+     `בעוד 6 ימים` is true for a day. A cover is cached — by us, and then by every chat app
+     that has ever fetched it — so a number counting down is the one element guaranteed to be
+     served wrong. The dates say the same thing and stay true. -->
 <div class="og-cover">
   <div class="og-art">
     <div class="og-scale" style="--og-w: 390px; --og-s: 2.55">
@@ -24,22 +35,22 @@
           <div class="ticket-top">
             <div class="ticket-head">
               <span class="ticket-badge">✈️ הזמנה לטיול</span>
-              <span class="ticket-countdown">בעוד <span class="num" dir="auto">6</span> ימים</span>
             </div>
-            <div class="ticket-name"><span class="ticket-emoji">🗺️</span> יוצאים לדרך</div>
-            <div class="ticket-meta">כל הטיול נפתח בלינק אחד</div>
+            <div class="ticket-name"><span class="ticket-emoji">{{icon}}</span> {{name}}</div>
+            <div class="ticket-meta">{{meta}}</div>
           </div>
           <div class="ticket-perf">
             <span class="notch start"></span><span class="notch end"></span>
           </div>
           <div class="ticket-bottom">
-            <div class="ticket-avatars" aria-hidden="true">
-              <span class="ticket-av" style="background: #3f6ea8">🙂</span>
-              <span class="ticket-av" style="background: #3f8f7d">😎</span>
-              <span class="ticket-av" style="background: #a8763f">🤓</span>
-            </div>
+            <!-- The avatars slot is the one RAW one on either cover: it is repeated markup, not
+                 text, and its length is the trip's member count capped at `INVITE_AVATARS.MAX`.
+                 The screen builds the same row from the same constant — a count and a row of
+                 faces are one fact, and drawing three faces beside `נוסע אחד כבר בפנים` is
+                 what happens when they are authored twice (owner, on a render, 2026-09-06). -->
+            <div class="ticket-avatars" aria-hidden="true">{{{avatars}}}</div>
             <div class="ticket-people">
-              <div class="ticket-members">החבורה כבר בפנים</div>
+              <div class="ticket-members">{{members}} 👋</div>
               <div class="ticket-sub">מחכים רק לך</div>
             </div>
           </div>

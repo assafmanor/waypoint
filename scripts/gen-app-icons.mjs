@@ -44,6 +44,19 @@ const COVERS = join(ROOT, 'scripts', 'og-covers');
 const COVER_SHEETS = ['styles/tokens.css', 'App.css', 'screens/shared-itinerary.css'];
 const BUNDLED_CHROME = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 
+/** **The generic filling of the covers' `{{slots}}`** (ADR-0220's 2026-09-06 amendment).
+ *  The same two templates are filled with a real trip's facts at request time by
+ *  `backend/src/spa/og-cover.template.ts`; what this script cuts is the FALLBACK PNG served
+ *  when a code does not resolve, so the defaults live in `defaults.json` beside them rather
+ *  than in either filler. */
+const COVER_DEFAULTS = JSON.parse(await readFile(join(COVERS, 'defaults.json'), 'utf8'));
+
+/** The avatar row's own spec, from `@waypoint/shared` rather than retyped here — the app, the
+ *  backend renderer and this cutter draw the same row. */
+const { INVITE_AVATARS } = createRequire(
+  new URL('../packages/shared/package.json', import.meta.url),
+)('@waypoint/shared');
+
 /** Every raster icon, and the size it is asked for.
  *
  * All four are now FULL BLEED and identical but for their pixel size, which is the point of
@@ -126,13 +139,60 @@ async function coverCss() {
 
 const COVER_CSS = await coverCss();
 
+/** The reader page's own mark, as bytes rather than a path. The runtime renderer aborts every
+ *  request before setting content, so `src="/icon-mark-bright.svg"` draws a broken box there;
+ *  the cover carries a data URL instead and both fillers read the same file the page loads. */
+const BRAND_MARK_DATA_URL =
+  'data:image/svg+xml;base64,' +
+  (await readFile(join(PUBLIC, 'icon-mark-bright.svg'))).toString('base64');
+
+/** **`{{slot}}` -> value, and an unfilled slot is an error rather than visible braces.**
+ *  Two programs fill these templates — this script and the backend — so a slot added to the
+ *  HTML for one of them would otherwise ship as literal `{{name}}` in the other's output.
+ *  The backend's copy of this function throws for the same reason (`og-cover.template.ts`);
+ *  it is eight lines, and sharing it would mean the runtime image carrying this script. */
+function fillCoverSlots(template, values) {
+  return template.replace(/\{\{\{(\w+)\}\}\}|\{\{(\w+)\}\}/g, (_, raw, text) => {
+    const key = raw ?? text;
+    if (!(key in values)) throw new Error(`no value for cover slot ${key}`);
+    // A TRIPLE brace is markup we build ourselves (the avatar row); a double is text, and
+    // text is escaped because on the runtime side it is a trip name somebody typed.
+    return raw ? String(values[key]) : escapeHtml(String(values[key]));
+  });
+}
+
+/** The invite ticket's face row, as many as the member count and no more than the app draws
+ *  (`INVITE_AVATARS`). The fallback PNG stands in for a trip nobody could resolve, so it
+ *  shows the full row — there is no count for it to contradict. */
+function avatarRow(count) {
+  return Array.from(
+    { length: Math.min(count, INVITE_AVATARS.MAX) },
+    (_, i) =>
+      `<span class="ticket-av" style="background: ${INVITE_AVATARS.COLORS[i % INVITE_AVATARS.COLORS.length]}">` +
+      `${INVITE_AVATARS.GLYPH}</span>`,
+  ).join('');
+}
+
+function escapeHtml(value) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 /**
  * An HTML cover. **`dir="rtl"` and no `data-theme`**, both deliberate: the app is RTL and
  * half of what these draw is Hebrew, and a PNG has no theme — leaving the attribute off is
  * what pins the artwork to `tokens.css`'s `:root` (light) block, which is the whole of §1.
  */
 async function shotHtml(source) {
-  const body = await readFile(join(COVERS, source), 'utf8');
+  const body = fillCoverSlots(await readFile(join(COVERS, source), 'utf8'), {
+    ...(COVER_DEFAULTS[source] ?? {}),
+    brandMark: BRAND_MARK_DATA_URL,
+    avatars: avatarRow(INVITE_AVATARS.MAX),
+  });
   await page.setContent(
     `<!doctype html><html lang="he" dir="rtl"><head><meta charset="UTF-8">` +
       `<style>${FACES}${COVER_CSS}</style></head><body>${body}</body></html>`,

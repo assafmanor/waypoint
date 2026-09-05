@@ -1,23 +1,10 @@
-import {
-  Injectable,
-  Logger,
-  ServiceUnavailableException,
-  type OnModuleDestroy,
-} from '@nestjs/common';
-import { chromium, type Browser } from 'playwright-core';
+import { Injectable } from '@nestjs/common';
 import QRCode from 'qrcode';
 import { isEnrichmentBlobKey, type SharedItinerary } from '@waypoint/shared';
-import {
-  DEFAULT_PDF_CHROMIUM_PATH,
-  DEFAULT_PDF_RENDER_CONCURRENCY,
-  DEFAULT_PDF_RENDER_TIMEOUT_MS,
-  PDF_CHROMIUM_PATH,
-  PDF_RENDER_CONCURRENCY,
-  PDF_RENDER_TIMEOUT_MS,
-} from '../common/env';
 import { sniffImageMimeType } from '../common/image-sniff';
 import { getObject } from '../common/storage';
 import { itineraryPdfFooterHtml, itineraryPdfHtml } from './itinerary-pdf.template';
+import { RenderBrowserService, withPhaseDeadline } from './render-browser.service';
 
 /**
  * **The paper's margins, and they belong here rather than in the template's `@page`.**
@@ -30,179 +17,60 @@ import { itineraryPdfFooterHtml, itineraryPdfHtml } from './itinerary-pdf.templa
 const PDF_PAGE_MARGIN = { top: '16mm', right: '17mm', bottom: '18mm', left: '17mm' } as const;
 
 /**
- * **A phase that cannot answer must not hold a slot forever** (2026-09-04).
+ * **The itinerary PDF's own render**, on the shared browser pool.
  *
- * `render` spends its deadline on `setContent` and then makes two awaits Playwright gives no
- * timeout at all: `page.evaluate`, and `page.pdf()` — whose options carry no `timeout` field,
- * checked in `types.d.ts` rather than assumed. A Chromium that wedges in either one hangs the
- * render, and a hang costs more here than anywhere else in this file: `release()` sits in a
- * `finally` that is never reached, so the wedged render keeps one of `PDF_RENDER_CONCURRENCY`
- * for the life of the process. Two of them and every later caller queues behind a slot nobody
- * will give back, takes the 503, and the public PDF route is down until a deploy — the exact
- * outcome the class docblock above says the bound exists to prevent.
- *
- * The loser is left to reject later: `Promise.race` subscribes to both, so the abandoned call
- * settling after the deadline is already handled and never surfaces as an unhandled rejection
- * (the reasoning `frontend/src/lib/deadline.ts` states for the same shape). `page.close()` in
- * the caller's `finally` is what actually settles it.
- */
-function withPhaseDeadline<T>(phase: string, ms: number, work: Promise<T>): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const expiry = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () => reject(new Error(`PDF render phase '${phase}' did not settle within ${ms}ms`)),
-      ms,
-    );
-  });
-  return Promise.race([work, expiry]).finally(() => clearTimeout(timer));
-}
-
-const numberEnv = (name: string, fallback: number): number => {
-  const parsed = Number(process.env[name]);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-};
-
-/**
- * **One Chromium, a hard cap on concurrent pages, and a deadline** — because this renders
- * on an unauthenticated route.
- *
- * Each render is a real browser tab holding tens of megabytes. A public endpoint with no
- * bound on how many may exist at once is a memory-exhaustion lever anyone holding a link
- * can pull, and the per-IP throttle in front of it does not help against many IPs. So:
- *
- * - the browser is **lazily launched once** and reused (a launch is ~300 ms and a process);
- * - at most `PDF_RENDER_CONCURRENCY` pages exist at any moment;
- * - work queued behind that cap is rejected after `PDF_RENDER_TIMEOUT_MS` with a 503 and a
- *   `Retry-After`, which is an honest answer — better than a request that never returns;
- * - every page is closed in `finally`, so a render that throws mid-way does not leak a tab.
- *
- * **The page reaches nothing.** All requests are aborted before the content is set, so what
- * arrives as bytes IN the document — the fonts, the QR, the day photos (`dayPhotoDataUrls`) —
- * is the whole of what it can load. A projection that somehow carried a remote URL could not
- * fetch it, which matters on a renderer that runs inside the production network.
+ * The pool — one lazily-launched Chromium, `PDF_RENDER_CONCURRENCY` pages at most, a
+ * deadline, a page that reaches nothing — is `RenderBrowserService`, which this class held
+ * inline until the link-preview covers needed the identical bound (ADR-0220's 2026-09-06
+ * amendment). What is left here is the part that is about a PDF: the paper's margins, the
+ * running footer, the fonts wait, and the photos that have to arrive as bytes.
  */
 @Injectable()
-export class PdfBrowserService implements OnModuleDestroy {
-  private readonly logger = new Logger(PdfBrowserService.name);
-  private browser: Promise<Browser> | undefined;
-  private active = 0;
-  private readonly waiting: (() => void)[] = [];
-
-  private get concurrency(): number {
-    return numberEnv(PDF_RENDER_CONCURRENCY, DEFAULT_PDF_RENDER_CONCURRENCY);
-  }
-
-  private get timeoutMs(): number {
-    return numberEnv(PDF_RENDER_TIMEOUT_MS, DEFAULT_PDF_RENDER_TIMEOUT_MS);
-  }
+export class PdfBrowserService {
+  constructor(private readonly browser: RenderBrowserService) {}
 
   async render(projection: SharedItinerary, publicUrl: string): Promise<Buffer> {
-    await this.acquire();
-    try {
-      const browser = await this.launch();
-      const page = await browser.newPage();
-      try {
-        // Before `setContent`, so the document cannot make a single outbound request.
-        await page.route('**/*', (route) => route.abort());
-        const input = {
-          projection,
-          publicUrl,
-          qrDataUrl: await QRCode.toDataURL(`https://${publicUrl}`, { margin: 0, width: 176 }),
-          generatedAtLabel: generatedAtLabel(projection.generatedAt),
-          photoDataUrls: await dayPhotoDataUrls(projection),
-        };
-        await page.setContent(itineraryPdfHtml(input), {
-          waitUntil: 'load',
-          timeout: this.timeoutMs,
-        });
-        // The faces are `font-display: block` data URLs, so they resolve without the network
-        // — but `load` fires before the last of them is applied, and a page printed a frame
-        // early lays its Hebrew out in fallback metrics. Passed as a string because this
-        // package compiles without the DOM lib: the expression runs in the page, not here.
-        await withPhaseDeadline(
-          'fonts',
-          this.timeoutMs,
-          page.evaluate('document.fonts.ready.then(() => undefined)'),
-        );
-        // **The page count is the paginator's, never ours** (see `itineraryPdfFooterHtml`).
-        // `displayHeaderFooter` puts the running footer in the page MARGIN, which is why the
-        // margins are declared here and the template's `@page` carries only the size: the
-        // footer and the content cannot then be asked to share the same band.
-        return Buffer.from(
-          await withPhaseDeadline(
-            'pdf',
-            this.timeoutMs,
-            page.pdf({
-              format: 'A4',
-              printBackground: true,
-              preferCSSPageSize: true,
-              displayHeaderFooter: true,
-              // Chromium's default header is a date and a title in a font this container does
-              // not have; an empty element is how you say "no header" and keep the footer.
-              headerTemplate: '<span></span>',
-              footerTemplate: itineraryPdfFooterHtml(input),
-              margin: PDF_PAGE_MARGIN,
-            }),
-          ),
-        );
-      } finally {
-        await page.close().catch(() => undefined);
-      }
-    } finally {
-      this.release();
-    }
-  }
-
-  private launch(): Promise<Browser> {
-    this.browser ??= chromium
-      .launch({
-        executablePath: process.env[PDF_CHROMIUM_PATH] || DEFAULT_PDF_CHROMIUM_PATH,
-        // The container runs as a single-tenant process rendering only our own HTML with
-        // networking disabled, and it has no user namespaces to build a sandbox with.
-        args: ['--no-sandbox', '--disable-dev-shm-usage'],
-        headless: true,
-      })
-      .catch((error: unknown) => {
-        // Do not cache a failed launch — a transient one would otherwise disable PDFs for
-        // the life of the process.
-        this.browser = undefined;
-        throw error;
-      });
-    return this.browser;
-  }
-
-  private acquire(): Promise<void> {
-    if (this.active < this.concurrency) {
-      this.active++;
-      return Promise.resolve();
-    }
-    return new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        const index = this.waiting.indexOf(admit);
-        if (index >= 0) this.waiting.splice(index, 1);
-        reject(new ServiceUnavailableException('PDF renderer is busy'));
-      }, this.timeoutMs);
-      const admit = () => {
-        clearTimeout(timer);
-        this.active++;
-        resolve();
+    const timeoutMs = this.browser.timeoutMs;
+    return this.browser.withPage(async (page) => {
+      const input = {
+        projection,
+        publicUrl,
+        qrDataUrl: await QRCode.toDataURL(`https://${publicUrl}`, { margin: 0, width: 176 }),
+        generatedAtLabel: generatedAtLabel(projection.generatedAt),
+        photoDataUrls: await dayPhotoDataUrls(projection),
       };
-      this.waiting.push(admit);
+      await page.setContent(itineraryPdfHtml(input), { waitUntil: 'load', timeout: timeoutMs });
+      // The faces are `font-display: block` data URLs, so they resolve without the network
+      // — but `load` fires before the last of them is applied, and a page printed a frame
+      // early lays its Hebrew out in fallback metrics. Passed as a string because this
+      // package compiles without the DOM lib: the expression runs in the page, not here.
+      await withPhaseDeadline(
+        'fonts',
+        timeoutMs,
+        page.evaluate('document.fonts.ready.then(() => undefined)'),
+      );
+      // **The page count is the paginator's, never ours** (see `itineraryPdfFooterHtml`).
+      // `displayHeaderFooter` puts the running footer in the page MARGIN, which is why the
+      // margins are declared here and the template's `@page` carries only the size: the
+      // footer and the content cannot then be asked to share the same band.
+      return Buffer.from(
+        await withPhaseDeadline(
+          'pdf',
+          timeoutMs,
+          page.pdf({
+            format: 'A4',
+            printBackground: true,
+            preferCSSPageSize: true,
+            displayHeaderFooter: true,
+            // Chromium's default header is a date and a title in a font this container does
+            // not have; an empty element is how you say "no header" and keep the footer.
+            headerTemplate: '<span></span>',
+            footerTemplate: itineraryPdfFooterHtml(input),
+            margin: PDF_PAGE_MARGIN,
+          }),
+        ),
+      );
     });
-  }
-
-  private release(): void {
-    this.active--;
-    this.waiting.shift()?.();
-  }
-
-  async onModuleDestroy(): Promise<void> {
-    const browser = this.browser;
-    this.browser = undefined;
-    if (!browser) return;
-    await browser
-      .then((instance) => instance.close())
-      .catch((error: unknown) => this.logger.warn(`chromium close failed: ${String(error)}`));
   }
 }
 

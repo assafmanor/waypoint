@@ -1,6 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { DENSE_REFERENCE_TRIP, NINE_DAY_REFERENCE_TRIP } from './itinerary-pdf.fixture';
 import { PdfBrowserService } from './pdf-browser.service';
+import { RenderBrowserService } from './render-browser.service';
 
 /**
  * **Render one real PDF, in the real image, through the real service.**
@@ -28,7 +29,8 @@ async function main(): Promise<void> {
     throw new Error('usage: pdf-container-smoke <reference.pdf> <dense.pdf>');
   }
 
-  const service = new PdfBrowserService();
+  const pool = new RenderBrowserService();
+  const service = new PdfBrowserService(pool);
   try {
     for (const [index, projection] of [NINE_DAY_REFERENCE_TRIP, DENSE_REFERENCE_TRIP].entries()) {
       const pdf = await service.render(projection, 'travelive.app/s/7Kq2mB9x');
@@ -36,7 +38,7 @@ async function main(): Promise<void> {
       console.log(`wrote=${outputs[index]} bytes=${pdf.byteLength}`);
     }
   } finally {
-    await service.onModuleDestroy();
+    await pool.onModuleDestroy();
   }
 }
 

@@ -1558,8 +1558,10 @@ export const TRIP_BIRTH = {
 } as const;
 
 /** Placeholder row icon on the all-trips list (ADR-0033) — `destination` is
- *  free text, no structured country to derive a real flag from. */
-export const DEFAULT_TRIP_ICON = '🧳';
+ *  free text, no structured country to derive a real flag from. Re-exported rather than
+ *  moved-with-its-call-sites: the backend draws the same glyph on the invitation cover, so
+ *  `@waypoint/shared` owns it now and the eight readers here did not have to churn. */
+export { DEFAULT_TRIP_ICON } from '@waypoint/shared';
 
 /** Prefix shown before confirmation codes (e.g. #4471). */
 export const CODE_PREFIX = '#';
@@ -1701,7 +1703,6 @@ export const GLYPH = {
   boardingPass: '✈️',
   /** The preview API returns a member COUNT and no names, so the avatars stand in
    *  for people the page is not allowed to show. */
-  anonAvatar: '🙂',
   wave: '👋',
   /** **The parts of a shared day** (ADR-0213). Content, not controls: each marks a section
    *  of somebody's actual schedule and nothing here is tappable, which is the line ADR-0138

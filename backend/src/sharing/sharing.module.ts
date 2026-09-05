@@ -9,6 +9,7 @@ import {
 } from './itinerary-narrative.generator';
 import { PdfBrowserService } from './pdf-browser.service';
 import { PublicSharingController } from './public-sharing.controller';
+import { RenderBrowserService } from './render-browser.service';
 import { SharingProjectionService } from './sharing-projection.service';
 import { SharingService } from './sharing.service';
 import { TripSharingController } from './trip-sharing.controller';
@@ -27,13 +28,15 @@ import { TripSharingController } from './trip-sharing.controller';
     SharingProjectionService,
     ItineraryNarrativeService,
     PdfBrowserService,
+    RenderBrowserService,
     // The port ADR-0213 §2 specified, bound to the implementation that ships: no external
     // model, no network call, deterministic narrative everywhere. Swapping this one line is
     // the entire integration surface a future provider needs.
     { provide: ITINERARY_NARRATIVE_GENERATOR, useClass: DisabledItineraryNarrativeGenerator },
     MembershipGuard,
   ],
-  // `SpaModule` needs `previewByCode` for `/s/<code>`'s meta tags (ADR-0220).
-  exports: [SharingService],
+  // `SpaModule` needs `previewByCode` for `/s/<code>`'s meta tags, and `RenderBrowserService`
+  // to draw that link's per-trip cover on the same Chromium the PDF uses (ADR-0220).
+  exports: [SharingService, RenderBrowserService],
 })
 export class SharingModule {}

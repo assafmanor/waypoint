@@ -3,7 +3,7 @@
 // with an amber anticipation glow and a boarding-pass "ticket" preview card
 // (perforation, countdown-to-departure, playful anonymous avatars). The
 // public preview API returns only { tripName, destination, dates, memberCount }
-// (no member names), so the avatars are generic `GLYPH.anonAvatar` placeholders, not real
+// (no member names), so the avatars are generic `INVITE_AVATARS` placeholders, not real
 // people — matching the mockup's intent.
 //
 // One tap to join, no settings step (Assaf, 2026-07-14): calendarSyncEnabled
@@ -30,7 +30,7 @@
 // instead of showing the "you're invited" ticket to an existing member.
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import type { InvitePreview } from '@waypoint/shared';
+import { INVITE_AVATARS, type InvitePreview } from '@waypoint/shared';
 import { useAuth } from '../state/auth-state';
 import { useActiveTripId } from '../state/active-trip-id';
 import { useIsOffline } from '../lib/outbox';
@@ -68,8 +68,6 @@ type LoadState =
 
 // Playful placeholder avatar colors (mockup #s-linkjoin) — the public preview
 // has no real members, so these are anonymous stand-ins.
-const AVATAR_COLORS = ['#5ec5b6', '#e88c8c', '#9c8ce8', '#8cb6e8'];
-const MAX_AVATARS = 4;
 
 export function JoinTrip() {
   const { token = '' } = useParams();
@@ -244,7 +242,7 @@ function Ready({ preview, outcome }: { preview: InvitePreview; outcome: string |
   );
   const tripDays =
     Math.round((Date.parse(preview.endDate) - Date.parse(preview.startDate)) / MS_PER_DAY) + 1;
-  const avatarCount = Math.min(preview.memberCount, MAX_AVATARS);
+  const avatarCount = Math.min(preview.memberCount, INVITE_AVATARS.MAX);
   // The countdown counts UP to its value (ADR-0143): the number of days until you fly
   // is the most emotive fact on this screen, and it arrived as static text.
   // `countdownParts` may return a rounded month count far out, so the count-up runs on
@@ -329,14 +327,14 @@ function Ready({ preview, outcome }: { preview: InvitePreview; outcome: string |
                   className="ticket-av"
                   style={
                     {
-                      background: AVATAR_COLORS[i % AVATAR_COLORS.length],
+                      background: INVITE_AVATARS.COLORS[i % INVITE_AVATARS.COLORS.length],
                       // Per-avatar stagger index — they land one after another, so the
                       // row reads as people arriving (ADR-0143).
                       '--i': i,
                     } as React.CSSProperties
                   }
                 >
-                  {GLYPH.anonAvatar}
+                  {INVITE_AVATARS.GLYPH}
                 </span>
               ))}
             </div>
