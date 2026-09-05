@@ -34,6 +34,43 @@
   background: var(--card);
 }
 
+/* **THE PHOTOGRAPH BLEEDS; THE HEAD DOES NOT** (owner, off the render: _"when there's a picture
+   it looks very good"_, of a head drawn flush to the day strip).
+
+   A picture is edge content and a panel of text is inset UI, so the rule is about the SHOT
+   rather than about the head: a day with one loses the gap above it and its top corners, and the
+   photograph hangs straight off the day strip. A day WITHOUT one keeps the card exactly as it
+   is, which is the case that decides this — most days have no shot (every day before enrichment
+   lands, and every city day after), and drawn flush they are a white panel welded to the strip
+   with square top corners, round bottom ones and nothing to justify either.
+
+   **The side gutters stay, on a picture day too**, and that is the half of "full bleed" this
+   deliberately does not take. Every row under the head sits at the body's own inline padding; a
+   head that reached the viewport edges would be the one object on the day that does not line up,
+   and today's amber tile — the only hue above the list — would run off the screen rather than
+   sit inside a frame. Measured against that, the bleed buys ⁦34px⁩ of picture width, where the
+   shot's own height is the lever ADR-0219 §3 already owns.
+
+   Three conditions, and each is load-bearing. `.is-card` is the app (the reader's head is inside
+   `.sh-day` and bleeds nothing). `:has()` is the picture. **`:first-child` is the one that is
+   easy to miss**: Trip's ripple bar and its archive banner both render above the head, and a
+   head pulled up under either would sit on top of it. */
+.wp-dayhead.is-card:first-child:has(.wp-dayhead-shot) {
+  /* `.body`'s own inline padding, negated — the value is named there so the two cannot drift.
+     The fallback is what that rule sets, for a host outside the app shell. */
+  margin-block-start: calc(-1 * var(--body-pad, 16px));
+  border-block-start: 0;
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
+/* The picture's own corners go with the card's. The card clips (`overflow: hidden`), so leaving
+   these rounded would show the card's ground through two notches at the top of the photograph. */
+.wp-dayhead.is-card:first-child:has(.wp-dayhead-shot) .wp-dayhead-shot {
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
 .wp-dayhead-head {
   width: 100%;
   /* **The reader's floor**, sized for a name plus two lines in the copy column. */

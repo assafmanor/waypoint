@@ -287,6 +287,22 @@ describe('the head’s footer band (ADR-0219 §2/§4)', () => {
     );
   });
 
+  // **The banner is ABOVE the head, and that ordering is load-bearing** (ADR-0219 §3's
+  // 2026-09-05 amendment). A day with a picture bleeds its head up to the day strip, and the
+  // CSS gates that on `:first-child` precisely so an archive day — which renders the banner
+  // first — cannot pull the head on top of it. jsdom loads no CSS and cannot see the bleed;
+  // what it CAN see is the DOM fact the selector keys on, which is the half that could regress
+  // by someone reordering this JSX.
+  it('renders the archive banner before the head, which is what stops the bleed', () => {
+    activeDate = '2026-07-20';
+    show();
+    const page = document.querySelector('.day-swipe > .day-page')!;
+    const kids = [...page.children];
+    const banner = page.querySelector('.archive-banner')!;
+    expect(kids.indexOf(banner)).toBeLessThan(kids.indexOf(head()));
+    expect(kids[0]).toBe(banner);
+  });
+
   // A read-only past day: create is gated (ADR-0029), so there is nothing in the band and the
   // band itself is absent rather than empty.
   it('is absent entirely on an archive day, and the banner keeps only its tag', () => {

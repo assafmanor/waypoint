@@ -55,6 +55,15 @@ Above the head's grid, inside the same card: `.sh-shot` — a **116px** `object-
 
 - **Tapping the shot opens the full picture** in `MediaViewer`, the way `PlaceKnowledge`'s hero does on the Map (ADR-0167 §10), with the credit as its caption. The reader's shot stays inert — it has no app to open into.
 - **Eager, not lazy**: the shot is the first thing on the page.
+- **The photograph bleeds; the head does not** (amended 2026-09-05, off the build's own render — owner: _"when there's a picture it looks very good"_, of a head drawn flush to the day strip, then _"how do you want to gain the best of both worlds?"_). **A day with a shot loses the gap above it and its top corners**, so the picture hangs straight off the day strip; a day without one keeps the inset card exactly as §2 describes it. One rule about the PICTURE rather than two treatments of the head: a photograph is edge content and a panel of text is inset UI.
+
+  **The majority case is what makes it conditional.** Most days have no shot — every day before enrichment lands and every city day after — and drawn flush they are a white panel welded to the strip with square top corners, round bottom ones and nothing to justify either. Drawn and refused.
+
+  **The side gutters stay, and that is the half of "full bleed" this deliberately does not take.** Drawn at 360 and measured: bleeding to the viewport edges buys ⁦34px⁩ of picture width (326 → 360) and costs two things that hold whether or not there is a picture — every row under the head sits at the body's own inline padding, so a 360-wide head is the one object on the day that does not line up; and today's amber tile, the only hue above the list, runs off the screen instead of sitting inside a frame. Against ⁦34px⁩, the shot's own height is the lever this section already owns.
+
+  Three conditions in the selector and each is load-bearing: `.is-card` (the reader's head is inside `.sh-day` and bleeds nothing), `:has(.wp-dayhead-shot)` (there is a picture), and **`:first-child`** — Trip's ripple bar and its archive banner both render above the head, and a head pulled up under either would sit on top of it. The negative margin is `.body`'s own inline padding, named there (`--body-pad`) so the two cannot drift.
+
+  **The cost, stated:** swiping from a picture day to a city day now changes the head's top edge as well as its height (240 vs 124), so two things move on one seam. Owned by the device pass — it is a motion question and a still cannot answer it.
 
 ### §4 · The ambient strip is retired; a commitment without a clock is a row
 

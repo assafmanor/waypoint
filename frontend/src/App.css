@@ -91,7 +91,11 @@
      in flow (a flex child of `.app`), so it takes its own room and needs none here —
      but `.toast` is `position: fixed; bottom: 78px`, i.e. it floats over the body's
      last ~56px. Trim this and a confirmation covers the row that produced it. */
-  padding: 16px 16px 92px;
+  /* **Named because something reaches for it**: the day head bleeds its photograph out of this
+     padding to hang off the day strip (ADR-0219 §3), which is a negative margin of exactly this
+     value. A literal in two files is how the two drift. */
+  --body-pad: 16px;
+  padding: var(--body-pad) var(--body-pad) 92px;
   animation: fade 0.32s ease;
 }
 /* A surface that owns its own layout instead of scrolling inside the body

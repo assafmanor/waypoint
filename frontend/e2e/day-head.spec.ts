@@ -146,6 +146,49 @@ for (const theme of ['light', 'dark'] as const) {
         expect(box.height).toBeLessThan(252);
       });
 
+      // **THE PHOTOGRAPH BLEEDS; THE HEAD DOES NOT** (ADR-0219 §3's 2026-09-05 amendment). A
+      // picture is edge content, so a day with one loses the gap above it and hangs off the day
+      // strip; a day without one keeps the card, which is the majority case. The gutters stay in
+      // both — every row under the head sits at the body's own inline padding, and a head at the
+      // viewport edges would be the one object on the day that does not line up.
+      test('hangs the picture off the day strip, and keeps the card without one', async ({
+        page,
+      }) => {
+        /** **The gap above the head, read at the top of the scroller.** Trip mode lands on the
+         *  now-marker, so a viewport-relative read is whatever the landing left — the question
+         *  here is a LAYOUT one, and the scroller has to be at its origin for the two to be the
+         *  same number. */
+        const gapAbove = async () => {
+          await page.evaluate(() => document.querySelector('.body')!.scrollTo(0, 0));
+          await page.waitForTimeout(120);
+          return page.evaluate(() => {
+            const h = document.querySelector('.wp-dayhead')!.getBoundingClientRect();
+            const b = document.querySelector('.body')!.getBoundingClientRect();
+            return { gap: Math.round(h.y - b.y), x: Math.round(h.x), w: Math.round(h.width) };
+          });
+        };
+
+        await boot(page, true);
+        await openDays(page, mode);
+        const withShot = await gapAbove();
+        expect(withShot.gap).toBe(0);
+        // The rows under it: `.wp-event` in Trip, `.bld` in Plan — the same inset either way.
+        const row = await stableBox(page.locator(`${PAGE} .wp-event, ${PAGE} .bld`).first());
+        expect(Math.round(row.x)).toBe(withShot.x);
+
+        await boot(page, false);
+        await openDays(page, mode);
+        const noShot = await gapAbove();
+        console.log(
+          `[bleed · ${mode} · ${theme}] shot gap ${withShot.gap}px, no shot ${noShot.gap}px`,
+        );
+        expect(noShot.gap).toBeGreaterThan(20);
+        // The gutters are the half of "full bleed" this deliberately does not take, in BOTH
+        // cases — so the head and the rows under it share one inset.
+        expect(noShot.x).toBe(withShot.x);
+        expect(noShot.w).toBe(withShot.w);
+      });
+
       // **A head's width belongs to its title** (ADR-0219 §2). This is the assertion round 2
       // failed: the labelled button in the trailing cell took it, and the day's own name came
       // back as `…ur crater ← Háifoss`. Reading `scrollWidth` is right HERE, where the question
