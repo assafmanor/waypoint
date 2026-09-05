@@ -7,7 +7,13 @@
 // that is the point rather than a limitation: the stubs ARE the scenarios, and each one is a
 // state the callers genuinely have to tell apart.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { scrollerFor, scrollerWithin, scrollsOn } from './scrollable';
+import {
+  isScrollContainer,
+  scrollContainerFor,
+  scrollerFor,
+  scrollerWithin,
+  scrollsOn,
+} from './scrollable';
 
 /** Build `outer > middle > inner`, and say which of them overflow on which axis. */
 function tree(overflowing: { el: 'outer' | 'middle' | 'inner'; axis: 'x' | 'y' }[]) {
@@ -133,5 +139,45 @@ describe('scrollerWithin', () => {
     document.body.append(stray);
     withOverflow();
     expect(scrollerWithin(stray, outer, 'block')).toBe(false);
+  });
+});
+
+// **The other question, and the reason it is a separate one.** `DayPeek` measures the region a
+// day surface scrolls within so it can paint a fixed window over it, and asked `scrollerFor`
+// — so on a day whose content FITS, no ancestor matched, no geometry was written, and the
+// window collapsed to `0px` with `overflow: clip`. The neighbouring day mounted, rendered and
+// painted nothing. A layout question answered by an overflow test fails only on the short days,
+// which are exactly the days with room to show a peek.
+describe('the scrolling REGION, whether or not it is scrolling', () => {
+  it('calls an `overflow: auto` box a container even with nothing to scroll', () => {
+    const { inner } = tree([]);
+    withOverflow();
+    expect(scrollsOn(inner, 'block')).toBe(false);
+    expect(isScrollContainer(inner, 'block')).toBe(true);
+  });
+
+  it('still refuses a box that clips', () => {
+    const { inner } = tree([{ el: 'inner', axis: 'y' }]);
+    withOverflow([inner]);
+    expect(isScrollContainer(inner, 'block')).toBe(false);
+  });
+
+  it('finds the region an unscrolled surface lives in, where `scrollerFor` finds nothing', () => {
+    const { middle, inner } = tree([]);
+    withOverflow([inner]);
+    expect(scrollerFor(inner, 'block')).toBeNull();
+    expect(scrollContainerFor(inner, 'block')).toBe(middle);
+  });
+
+  it('answers per axis, like every other question here', () => {
+    const { outer, middle, inner } = tree([]);
+    vi.spyOn(window, 'getComputedStyle').mockImplementation(
+      (el) =>
+        (el === middle
+          ? { overflowX: 'auto', overflowY: 'hidden' }
+          : { overflowX: 'hidden', overflowY: 'auto' }) as CSSStyleDeclaration,
+    );
+    expect(scrollContainerFor(inner, 'inline')).toBe(middle);
+    expect(scrollContainerFor(inner, 'block')).toBe(outer);
   });
 });

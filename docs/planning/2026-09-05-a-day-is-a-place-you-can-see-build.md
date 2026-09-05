@@ -116,6 +116,31 @@ touch, every other measurement still before it.
   rewrite of every positioning rule for no behaviour at all. What the names describe is where the
   rules were born, not where they belong.
 
+## The follow-up round, same day: six reports
+
+Shipped and looked at. What is worth carrying forward is not the six fixes — those are in
+[ADR-0219](../decisions/0219-a-day-is-a-place-you-can-see.md)'s sections and its follow-up build log —
+but the two habits they caught.
+
+**Count the call sites before believing a field.** `event.placeId` is empty on every booking-backed row
+(ADR-0048 clears it) and five derivations read it: the day's stops, its region, its kind, its photograph,
+the reader's masthead route, and the row badge. It arrived as two unrelated-looking reports and was one
+mistake. The root `CLAUDE.md` line about counting call sites before claiming what a derivation does is
+the same rule read forwards: one `grep` for `event.placeId` beside `booking` would have found all five at
+once, and the phase that introduced two of them did not run it.
+
+**"Nothing measures wrong" is a symptom, not a reassurance.** Three of the six were a rule that was
+correct where it was written and absent one surface over — the head's bleed clipped by the peek pane's
+own origin, the peek window collapsed to 0px under `overflow: clip`, the place lookup stopping at a
+column that is always null. In all three every rect a probe could read was healthy. `frontend/CLAUDE.md`
+already carries "reading a rect and calling it visibility" for the first of these; the general form is
+that a box with the right numbers and no paint is the hardest kind of defect to see from inside a test.
+
+**And the fixture is part of the assertion.** The projection spec could not see the booking bug because
+its lodging row carried a `placeId` and no `bookingId` — a shape the app cannot store. The day-swipe spec
+could not see the peek bug because its fixture is deliberately _"a tall-enough day"_. Both suites were
+green about surfaces that did not work, and in both cases the fixture, not the assertion, was the reason.
+
 ## Left open
 
 - **The 44px touch floor on `.new-event-btn`** (26px). That is its shipped size and it was 26px in
@@ -126,4 +151,6 @@ touch, every other measurement still before it.
   its height (240 vs 124), so two things move on one swipe. A still cannot answer it.
 - **Whether a real photograph is legible at 40px** (ADR-0167 §18), and the `.wp-maybecard-ic` ring
   observation — both inherited from the ADR's own "After phase 5" list.
-- **A Google exit in the read**, per the correction above.
+- ~~**A Google exit in the read**~~ — **closed, and not with a Google exit** (ADR-0219 §6, amended the
+  same day). The hole was the clamp, not the absence of Google: `deciding` now opens its extract where it
+  stands, and only when the text does not fit.

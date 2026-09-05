@@ -16,6 +16,7 @@ import {
   ROUTE_ARROW,
   SHARE_DAY_KIND,
   buildDayStopSequence,
+  eventStopPlaceId,
   dominantValue,
   fallbackDayTitle,
   isTransportEvent,
@@ -120,6 +121,22 @@ export function buildDayFacts({
   // region would name a travel day after the municipality of its runway.
   const settled = dayEvents.filter((event) => !isTransportEvent(event, bookingOf(event)));
 
+  /** **Where a row IS**, which is not `event.placeId`: ADR-0048 clears that column on every
+   *  booking-backed row, so reading it alone puts the day's hotels, restaurants and tickets at
+   *  nowhere — the day named by the two unbooked stops between them, and voting on its region
+   *  with a fraction of its stops. */
+  const stopOf = (event: TripEvent) => {
+    const booking = bookingOf(event);
+    return {
+      placeId: eventStopPlaceId(event, booking),
+      fromPlaceId: booking?.fromPlaceId,
+      toPlaceId: booking?.toPlaceId,
+    };
+  };
+
+  /** The stop's own name, for a row whose label is where it IS rather than what it is called. */
+  const stayLabel = (event: TripEvent) => label(stopOf(event).placeId ?? '');
+
   const isFlight = (event: TripEvent) => bookingOf(event)?.type === BOOKING_TYPE.FLIGHT;
   /** Which days hold anything, and which hold a flight — both whole-trip questions, and both
    *  tested against the days that hold anything at all rather than against the calendar: a
@@ -136,23 +153,17 @@ export function buildDayFacts({
   // describes the commute rather than the day.
   const nights = busyDates.map((day) => {
     const stay = ambientEventsOnDate(events, day).find((event) => event.placeId || event.title);
-    return stay ? (label(stay.placeId ?? '') ?? stay.title) : undefined;
+    return stay ? (stayLabel(stay) ?? stay.title) : undefined;
   });
-  // Where the night IS, not what the booking is called: a lodging's own title is a brand.
+  // Where the night IS, not what the booking is called: a lodging's own title is a brand — which
+  // is a claim `event.placeId` cannot honour, since a booked hotel has none (`eventStopPlaceId`).
   const bookends = dayBookendStays(events, date);
   const sleeps = bookends.sleeps ?? bookends.woke;
 
   return {
-    stops: buildDayStopSequence(
-      dayEvents.map((event) => ({
-        placeId: event.placeId,
-        fromPlaceId: bookingOf(event)?.fromPlaceId,
-        toPlaceId: bookingOf(event)?.toPlaceId,
-      })),
-      label,
-    ),
+    stops: buildDayStopSequence(dayEvents.map(stopOf), label),
     bookingTypes: dayEvents.map((event) => bookingOf(event)?.type as BookingType | undefined),
-    lodgingPlace: sleeps ? (label(sleeps.placeId ?? '') ?? sleeps.title) : undefined,
+    lodgingPlace: sleeps ? (stayLabel(sleeps) ?? sleeps.title) : undefined,
     eventTitles: dayEvents.map((event) => event.title),
     // Where a flight on this day lands — an airport's own name, so it is what a MID-trip
     // flight is titled by and never what the outbound one is.
@@ -165,8 +176,8 @@ export function buildDayFacts({
     outbound: date === firstFlight && firstFlight === busyDates[0],
     returning:
       date !== firstFlight && date === lastFlight && lastFlight === busyDates[busyDates.length - 1],
-    region: dominantValue(settled.map((event) => textOf(event.placeId, 'region'))),
-    kind: dominantValue(settled.map((event) => textOf(event.placeId, 'kind'))),
+    region: dominantValue(settled.map((event) => textOf(stopOf(event).placeId, 'region'))),
+    kind: dominantValue(settled.map((event) => textOf(stopOf(event).placeId, 'kind'))),
     tripShape: tripShapeOf(nights).shape,
   };
 }

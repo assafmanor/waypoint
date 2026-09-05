@@ -23,10 +23,17 @@
 //    the least valuable block on a capped card (§9.4).
 //  - **`expanded`** — the same place, looked at as a subject: hero, credit, and the whole summary.
 //  - **`deciding`** — a place nobody has added: hero, credit, and the summary at the mockup's own
-//    three lines. No `עוד ›` and no expansion, because there is nothing to swap off — the deciding
+//    three lines. No mode to change into, because there is nothing to swap off — the deciding
 //    card has no notes, no references and no schedule action, which is the whole of §9.1's
 //    inversion ("the fields that matter most when you are choosing are the ones that matter least
-//    once you have chosen").
+//    once you have chosen"). **It opens the extract WHERE IT STANDS instead** (ADR-0219 §6's
+//    2026-09-05 amendment). Shipping it with no way out of the clamp left the third line a dead
+//    end — the owner's _"the place's details are truncated, there should be an option to expand
+//    to read all the text"_ — and the exit the build assumed would cover it (`עוד בגוגל`) turned
+//    out to be `Map.tsx`'s own row, which the event read does not have. The control appears only
+//    when the text is ACTUALLY clamped, which is what keeps it subtle: most extracts are shorter
+//    than three lines and show nothing at all.
+import { useLayoutEffect, useRef, useState } from 'react';
 import { placeCredit, type DeliveredImageValue } from '@waypoint/shared';
 import { t } from '../../i18n/he';
 import { apiAssetUrl } from '../../lib/api-asset';
@@ -41,7 +48,8 @@ export const KNOWLEDGE_DENSITY = {
   COLLAPSED: 'collapsed',
   /** The research card: the whole summary, with the picture above it. */
   EXPANDED: 'expanded',
-  /** A place you have not added: the picture and three lines, with nothing to expand into. */
+  /** A place you have not added: the picture and three lines, which open where they stand when
+   *  the extract does not fit them. */
   DECIDING: 'deciding',
 } as const;
 
@@ -68,6 +76,19 @@ export function PlaceKnowledge({
   onFullPicture?: () => void;
 }) {
   const wantsHero = density !== KNOWLEDGE_DENSITY.COLLAPSED && !!image;
+  const [openInPlace, setOpenInPlace] = useState(false);
+  const prose = useRef<HTMLSpanElement>(null);
+  /** **Is there more text than the clamp is showing?** Measured rather than guessed: a
+   *  character count cannot know the width it is laid out at, and a control offering to reveal
+   *  nothing is worse than no control. `useLayoutEffect` so the answer is in place before the
+   *  first paint; jsdom reports both metrics as 0, so it answers `false` there — which is the
+   *  honest result for a surface with no layout, and why `e2e/place-decide.spec.ts` is where
+   *  this is proven. */
+  const [clamped, setClamped] = useState(false);
+  useLayoutEffect(() => {
+    const el = prose.current;
+    setClamped(!!el && el.scrollHeight > el.clientHeight + 1);
+  }, [summary?.text, openInPlace]);
   // Through the shared failable-image hook, so a blob a refresh replaced degrades to no picture
   // rather than to a broken one — the same answer the badge gets.
   const { src: heroUrl, onError: heroFailed } = useFailableImage(
@@ -82,9 +103,10 @@ export function PlaceKnowledge({
   // The block holds the prose, and on the collapsed row it also holds the way in — which is what
   // keeps a picture reachable on a place we have an image for and no words about.
   const showsSummaryBlock = !!summary || (density === KNOWLEDGE_DENSITY.COLLAPSED && !!onExpand);
-  // Only the collapsed state has somewhere to go: the expanded card is already there, and the
-  // deciding card has nothing to expand into.
+  // Only the collapsed state has somewhere to GO: the expanded card is already there, and the
+  // deciding card changes no mode — it grows in place instead.
   const opensOnTap = density === KNOWLEDGE_DENSITY.COLLAPSED && !!onExpand;
+  const growsInPlace = density === KNOWLEDGE_DENSITY.DECIDING && (clamped || openInPlace);
 
   return (
     <>
@@ -117,12 +139,17 @@ export function PlaceKnowledge({
         // `stopPropagation` for the reason every other control on this row does it: the row's own
         // tap re-selects the place, which re-frames the camera and scrolls the list under you.
         <span
-          className={SUMMARY_CLASS[density]}
+          className={`${SUMMARY_CLASS[density]}${growsInPlace && openInPlace ? ' is-open' : ''}`}
           onClick={
-            opensOnTap
+            // The block itself opens — never closes. Tapping the prose is how you ask for the
+            // rest of it (owner, 2026-08-05, about the collapsed row); the same tap taking it
+            // away again mid-read would be the opposite of the request, so the way back is the
+            // named control alone.
+            opensOnTap || (growsInPlace && !openInPlace)
               ? (e) => {
                   e.stopPropagation();
-                  onExpand?.();
+                  if (opensOnTap) onExpand?.();
+                  else setOpenInPlace(true);
                 }
               : undefined
           }
@@ -133,7 +160,7 @@ export function PlaceKnowledge({
               since `-webkit-box` lays ELEMENT children out as boxes. */}
           {summary?.marker && <span className="map-tag map-sum-lang">{summary.marker}</span>}
           {summary && (
-            <span className="map-sum-t" dir="auto" lang={summary.lang}>
+            <span className="map-sum-t" dir="auto" lang={summary.lang} ref={prose}>
               {summary.text}
             </span>
           )}
@@ -152,6 +179,23 @@ export function PlaceKnowledge({
             >
               {t.map.know.more}
               <Icon name="caret" dir="left" />
+            </button>
+          )}
+          {/* **The same control, for a move that goes nowhere.** `dir="left"` means "through to
+              another card"; this one grows the block it is in, so the caret points at what it
+              does — down to open, up to put back. */}
+          {growsInPlace && (
+            <button
+              type="button"
+              className="map-know-more"
+              aria-expanded={openInPlace}
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenInPlace((was) => !was);
+              }}
+            >
+              {openInPlace ? t.map.know.less : t.map.know.more}
+              <Icon name="caret" dir={openInPlace ? 'up' : 'down'} />
             </button>
           )}
         </span>

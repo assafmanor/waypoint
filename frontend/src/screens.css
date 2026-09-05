@@ -144,6 +144,11 @@
   position: absolute;
   inset: 0;
   background: var(--screen);
+  /* The window spans the body's block-start PADDING (`DayPeek.tsx`), so the pane puts it back:
+     its content then begins exactly where the host's does, and the head's photograph has the
+     same 16px above it to bleed into (ADR-0219 §3). Clip the padding away instead and the
+     peeked day's picture hangs a gap below the strip while the host's sits flush against it. */
+  padding-block-start: var(--peek-pad, 0px);
   transform: translateX(
     calc(
       var(--swipe-dx, 0px) + var(--dir) * var(--peek-side) *

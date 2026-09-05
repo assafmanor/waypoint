@@ -128,6 +128,16 @@
 .map-sum.is-decide .map-sum-t {
   -webkit-line-clamp: 3;
 }
+/* **…and the way out of it** (ADR-0219 §6's 2026-09-05 amendment). The card still has nothing to
+   swap to, so `עוד` grows the extract where it stands instead of changing a mode. FOUR classes
+   deep on purpose: `.map-sum.is-open .map-sum-t` above is (0,3,0) and so is the clamp declared
+   immediately above this, which is later and therefore wins — a plain `.is-open` here would be
+   the exact silent tie ADR-0167 §9's closing note is a warning about. */
+.map-sum.is-decide.is-open .map-sum-t {
+  display: block;
+  -webkit-line-clamp: none;
+  overflow: visible;
+}
 /* `עוד ›` and `‹ חזרה לפרטי המקום` are one control in two directions - a teal text link, the
    mockup's `.more`. Not a pill: the footer's `שיבוץ ליום` is this card's one primary, and a
    second pill beside it reads as a second primary (the reasoning `.map-del` already follows). */

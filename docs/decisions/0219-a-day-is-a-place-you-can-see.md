@@ -27,6 +27,8 @@ Four facts from the code frame every decision below:
 
 This amends ADR-0167 §1 in place (its §19) and needs nothing else.
 
+**A booking-backed row had no photograph at all** (amended 2026-09-05, owner: _"places don't have their image as the icon (like on the map)"_, against a booked zip line). `rowPhoto` resolved the place from `event.placeId`, which ADR-0048 CLEARS on every linked row — so every hotel, restaurant and ticket on the trip wore its category glyph while the same place on the Map wore its picture. The rule the first cut was reaching for survives intact and is now stated once, in `@waypoint/shared`'s `eventStopPlaceId`: a **leg** answers with neither end, so a flight's badge is still a flight's and never its origin airport's photograph.
+
 ### §2 · The day's head is a frame, and it is the reader's frame
 
 `ui/domain/DayHead` replaces `.sec-title`'s heading on both day surfaces **and** the reader's day-card head. Its CSS is `.sh-day-head` / `.sh-day-date` / `.sh-day-copy` / `.sh-shot` **moved** out of `shared-itinerary.css` into `day-head.css` under `wp-dayhead-*` names — the reader consumes the component, so its rules leave its sheet. Root rule 8: the reader's head is the one-off that nearly does the job, so it is generalised rather than twinned. The mockup draws the app's head with the reader's classes verbatim, and the geometry it measures is therefore the reader's own.
@@ -65,6 +67,8 @@ Above the head's grid, inside the same card: `.sh-shot` — a **116px** `object-
 
   **The cost, stated:** swiping from a picture day to a city day now changes the head's top edge as well as its height (240 vs 124), so two things move on one seam. Owned by the device pass — it is a motion question and a still cannot answer it.
 
+  **And the bleed has to reach the PEEK panes** (amended 2026-09-05, owner: _"when swiping between pages it doesn't place the image all the way up"_). `DayPeek`'s window was bounded to the body's CONTENT — `box.top + paddingTop` — which is exactly the ⁦16px⁩ this rule draws into, so the day you were swiping toward had its picture clipped at the top and sat a gap below the strip while the day you were leaving sat flush. The window now spans the body's padding too and each pane reproduces it, so a pane's content origin is the host's and the same negative margin means the same thing in both. The pane's own `overflow: clip` is what made this invisible in every rect: nothing measured wrong, 16px of picture simply did not paint.
+
 ### §4 · The ambient strip is retired; a commitment without a clock is a row
 
 `.day-ambient`, `.ambient`, `.ambient.unplaced`, `.as-open`, `.day-fit` and their rules are **deleted**. What they carried goes to two places:
@@ -80,7 +84,13 @@ Teal leaves the day's top entirely. The one hue left there is amber, on today's 
 
 ### §6 · The read gets the place's knowledge, and the credit rule gets its second half
 
-`EventDetail` renders `PlaceKnowledge` at `KNOWLEDGE_DENSITY.DECIDING` (the picture, three clamped lines, nothing to expand into) **directly under `.bk-head`**, before the hard note and the facts. **`עוד בגוגל` is not part of it** — corrected on the build: that control is `Map.tsx`'s own `.map-refs` row and this section described the deciding card as it reads on the Map, where the exit is a sibling of the block. Whether the read should have one of its own is left open in ADR-0174's amendment; the summary is clamped with nothing to expand into, so it is a real question and not a nit. A place with an image but no summary shows the picture and the link; with neither, nothing renders — `PlaceKnowledge` already answers both. `EventDetail` owns the `MediaViewer` for the full picture, exactly as `Map.tsx` does (`fullPicture` state, `placeCredit` caption). The build cost is one extraction: `.map-hero`, `.map-credit`, `.map-sum*` and `.map-know-more`'s base rules move from `map.css` to `place-knowledge.css`; the `.map-placecard:has(.map-hero)` grid rules stay where they are, since they lay out the Map's card and nothing else.
+`EventDetail` renders `PlaceKnowledge` at `KNOWLEDGE_DENSITY.DECIDING` (the picture and three clamped lines) **directly under `.bk-head`**, before the hard note and the facts. **`עוד בגוגל` is not part of it** — corrected on the build: that control is `Map.tsx`'s own `.map-refs` row and this section described the deciding card as it reads on the Map, where the exit is a sibling of the block.
+
+**The clamp gets a way out, and it is not a Google exit** (amended 2026-09-05, owner: _"the place's details are truncated, there should be an option to expand to read all the text (it should look subtle)"_). The build left this open as a question about the component's API and the answer turned out to be smaller than the question: `deciding` has no mode to change into, so it opens the extract **where it stands** — `עוד` / `פחות` off `.map-know-more`, the control the block already owns, with the caret pointing down and up rather than through. Both hosts get it, and the Map's deciding row wanted it too: its `עוד בגוגל` was never a way to read the rest of a paragraph, it was a way to leave.
+
+**Subtle is what makes it conditional:** the control renders only when the prose does not fit the box it is given (`scrollHeight > clientHeight`), measured rather than counted from the text's length, since a character count cannot know the width it is laid out at. Most extracts are shorter than three lines and show nothing at all. jsdom reports both metrics as zero, so this is proven in `e2e/place-decide.spec.ts` and nowhere else.
+
+**And the sheet it sits in had to be bounded first.** `.modal-overlay` is a flex box with `align-items: flex-end`, and the sheet's card had no `max-block-size` — so a read long enough overflowed past the START edge, where there is no scrollbar and no gesture: measured at 360×640, the card sat at **y = −99** and its head, its title and its `עריכה` were off the screen (owner: _"when there's too much content the top is cut off"_). Nothing had reported it because every sheet in the app was a FORM, and `.modal-form` caps its own body at 75dvh; the read surfaces have no such body, and this section put a photograph and a summary at the top of one. The cap belongs to the CARD rather than to a body class each new sheet must remember to wear. A place with an image but no summary shows the picture and the link; with neither, nothing renders — `PlaceKnowledge` already answers both. `EventDetail` owns the `MediaViewer` for the full picture, exactly as `Map.tsx` does (`fullPicture` state, `placeCredit` caption). The build cost is one extraction: `.map-hero`, `.map-credit`, `.map-sum*` and `.map-know-more`'s base rules move from `map.css` to `place-knowledge.css`; the `.map-placecard:has(.map-hero)` grid rules stay where they are, since they lay out the Map's card and nothing else.
 
 **The credit line's rule, completed (amends ADR-0167 §4):**
 
@@ -152,3 +162,37 @@ Teal leaves the day's top entirely. The one hue left there is amber, on today's 
 **The correction: `עוד בגוגל` was never part of `PlaceKnowledge`** (see §6 above and ADR-0174's amendment). It is `Map.tsx`'s references row. The read therefore ships without a Google exit, which leaves a real hole — the summary is clamped to three lines with nothing to expand into — and closing it is a decision about the component's API rather than a build detail, so it is left open rather than taken here.
 
 **What the tests hold, given jsdom sees no CSS.** `passed-photo.contract.test.ts` asserts the grayscale selector exactly (`passed` and not `done`; the photo's `img` and not the badge, which also hosts the white ring). `place-knowledge.contract.test.ts` asserts the split in both directions — every base rule in the component's sheet, none left stray in the Map's, and the Map card's `:has()` grid still in the Map's. `EventDetail.test.tsx` covers what only the screen can say: the right place resolved, the coordless case, the majority case that renders nothing, and the viewer opening as a second dialog over the sheet.
+
+### Follow-up round (2026-09-05) — six reports, and one of them was underneath three others
+
+Shipped, looked at, and six things came back. Four are amended into the sections above (§1's badge photo,
+§3's peek panes, §6's clamp and the sheet that holds it); this is what the round is worth remembering for.
+
+**`event.placeId` is empty on every booking-backed row, and five derivations were reading it.** ADR-0048
+says a linked event's place is its BOOKING's and clears the column on save — `bookingEventFields` has said so
+in a comment since it was written — and the day derivations read the cleared column anyway. It surfaced as
+two separate-looking reports (a day titled `מפלי גולפוס ← Kerið Crater` whose first stop was a booked zip
+line; a booked place wearing a glyph where the Map shows its photograph) and it was one line of reasoning
+repeated in five places: the day's stop sequence, its region and kind votes, its photograph, the reader's
+masthead route, and the row badge. `eventStopPlaceId` in `packages/shared/src/booking-event.ts` is now the
+one answer, beside the function whose docblock already stated the rule.
+
+**Why no test could see it, in either layer.** The projection spec's own fixture had no booking-backed
+single-place row: its lodging check-in carried `placeId` and no `bookingId`, which the app cannot store. So
+the app and the reader agreed — on the wrong answer — and every assertion about day titles and route labels
+passed. The fixture now seeds one the way ADR-0048 actually persists it, and three existing assertions
+changed with it, which is the honest consequence of a fixture that finally has two places in it.
+
+**A peek pane that paints nothing measures perfectly.** `DayPeek` asked `scrollerFor` — "does this box
+overflow RIGHT NOW" — and meant "which box is the scrolling region this surface lives in". On a day whose
+content fits, no ancestor matched, the effect returned early, every custom property fell back, and the
+window was `0px` tall under `overflow: clip`: both neighbours mounted, rendered a whole day surface each,
+and drew nothing (owner: _"the next day doesn't always appear"_). It hid on exactly the days that have room
+to show a peek, and every case in `e2e/day-swipe.spec.ts` boots a fixture whose header comment says it is
+_"a tall-enough day, so the vertical case below has something to scroll"_. `scrollable.ts` answers both
+questions now, and the two are documented as different questions rather than as one function's edge case.
+
+**Three of the six were the same shape**: a rule that was correct where it was written and silently wrong
+one surface over — the bleed that stopped at the pane's edge, the region test that stopped at "is it
+scrolling", the place lookup that stopped at the event's own column. The tell each time was that nothing
+was measured wrong; something simply was not there.

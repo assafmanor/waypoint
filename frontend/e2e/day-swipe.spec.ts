@@ -87,6 +87,49 @@ const IDEAS = Array.from({ length: 10 }, (_, i) => ({
   ...stamps,
 }));
 
+/** **A day that FITS.** Every fixture above is deliberately tall, because the rest of this
+ *  file needs something to scroll — which is precisely why nothing here could see a peek that
+ *  only fails when the body does NOT scroll. One stop a day, each at a pictured place, so the
+ *  same fixture answers the head's bleed question below. */
+const SHORT_PLACES = [
+  { id: 'p-today', tripId: 't1', name: 'Alpha', lat: 64.1, lng: -20.1, ...stamps },
+  { id: 'p-tomorrow', tripId: 't1', name: 'Beta', lat: 64.2, lng: -20.2, ...stamps },
+];
+
+/** Clears `dayPhoto`'s gate (`confidence ≥ 0.9`, a printable credit), served from the app's own
+ *  `public/` so the run stays hermetic — `e2e/day-head.spec.ts`'s image. */
+const IMAGE = {
+  url: '/pwa-512.png',
+  mimeType: 'image/png',
+  width: 512,
+  height: 512,
+  sizeBytes: 40_000,
+  source: 'commons',
+  license: 'CC BY-SA 4.0',
+  attribution: 'A. Photographer',
+  fetchedAt: '2026-08-01T00:00:00.000Z',
+  method: 'name_proximity',
+  ref: 'Q38519',
+  confidence: 1,
+};
+
+const shortEvent = (id: string, date: string, placeId: string, title: string) => ({
+  id,
+  tripId: 't1',
+  date,
+  title,
+  icon: '📌',
+  category: 'sightseeing',
+  placeId,
+  kind: 'soft',
+  status: 'planned',
+  startsAt: `${date}T09:00:00.000Z`,
+  endsAt: `${date}T12:00:00.000Z`,
+  sortOrder: 0,
+  source: 'manual',
+  ...stamps,
+});
+
 const touch = (
   cdp: CDPSession,
   type: 'touchStart' | 'touchMove' | 'touchEnd',
@@ -209,6 +252,24 @@ async function boot(page: Page, mode: 'trip' | 'plan') {
     await page.getByRole('button', { name: t.mode.plan, exact: true }).click();
     await expect(page.locator('.app')).toHaveAttribute('data-mode', 'plan');
   }
+  await page.locator('nav.nav button', { hasText: t.tabs.days }).click();
+  await expect(page.locator(PAGE)).toBeVisible({ timeout: 20_000 });
+}
+
+/** The short trip: one pictured stop today, one tomorrow, nothing else. */
+async function bootShort(page: Page) {
+  await bootIntoTrip(page, {
+    events: [
+      shortEvent('ev-today', TODAY, 'p-today', 'היום בלבד'),
+      shortEvent('ev-tomorrow', TOMORROW, 'p-tomorrow', TOMORROW_ONLY),
+    ],
+    places: SHORT_PLACES,
+    enrichments: { 'p-today': { image: IMAGE }, 'p-tomorrow': { image: IMAGE } },
+    now: NOW,
+    dates: RANGE,
+  });
+  await page.goto('/');
+  await expect(page.locator('nav.nav')).toBeVisible();
   await page.locator('nav.nav button', { hasText: t.tabs.days }).click();
   await expect(page.locator(PAGE)).toBeVisible({ timeout: 20_000 });
 }
@@ -406,6 +467,76 @@ test.describe('a day surface steps day to day with a swipe', () => {
     expect(b.win!.left).toBeGreaterThanOrEqual(b.body!.left);
     expect(b.win!.right).toBeLessThanOrEqual(b.body!.right);
     await touch(cdp, 'touchEnd');
+  });
+
+  // **The window is measured from the region the day SCROLLS WITHIN, not from a region that
+  // happens to be scrolling.** `DayPeek` asked `scrollerFor` — "does this box overflow right
+  // now" — and a day whose content fits answers no, so no ancestor matched, the effect returned
+  // early, and every custom property fell back: a `0px`-tall window with `overflow: clip`,
+  // inside which both neighbours mounted, rendered a whole day surface each, and painted
+  // nothing (owner: _"the next day doesn't always appear"_). Every other case in this file
+  // boots the deliberately tall fixture, which is the entire reason the suite stayed green.
+  test('a day whose content fits the screen still shows its neighbour', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    await bootShort(page);
+    // The precondition, STATED rather than assumed — if this fixture ever grows past the fold
+    // the test below still passes and stops testing anything.
+    const fits = await page.evaluate(() => {
+      const body = document.querySelector('main.body')!;
+      return body.scrollHeight <= body.clientHeight;
+    });
+    expect(fits).toBe(true);
+
+    await swipeDay(page, cdp, 120, { holdAtEnd: true });
+    const b = await boxes(page);
+    // The block axis IS the body's visible strip — padding included, which is what the head's
+    // photograph bleeds into. The inline axis is the day's own column, narrower than the body
+    // by its side padding, so it is stated against the page rather than against the body.
+    expect({ top: b.win!.top, bottom: b.win!.bottom }).toEqual({
+      top: b.body!.top,
+      bottom: b.body!.bottom,
+    });
+    expect(b.win!.width).toBe(b.page!.width);
+    expect(b.next!.bottom - b.next!.top).toBe(b.win!.bottom - b.win!.top);
+    // Painting, not merely mounted: a slice of the arriving day is inside the window. Its
+    // width is how far the page has left level, less the gutter between pages — derived from
+    // the page's own displacement rather than from the finger's travel, which the recogniser
+    // does not begin counting until it has claimed the axis.
+    const slice = Math.min(b.next!.right, b.win!.right) - Math.max(b.next!.left, b.win!.left);
+    expect(slice).toBe(b.page!.left - b.win!.left - b.gap);
+    expect(slice).toBeGreaterThan(0);
+    expect(b.nextText).toContain(TOMORROW_ONLY);
+    await touch(cdp, 'touchEnd');
+  });
+
+  // **A photograph bleeds out of the body's padding to hang off the day strip** (ADR-0219 §3),
+  // so a window bounded to the body's CONTENT clips exactly that bleed: the arriving day's
+  // picture sits a `--body-pad` gap below the strip while the one it is replacing sits flush,
+  // and the gap closes the instant the turn commits (owner: _"when swiping between pages it
+  // doesn't place the image all the way up"_). The window therefore spans the padding and each
+  // pane puts it back — which is only observable against the HOST's own picture.
+  test('the arriving day’s photograph hangs off the strip exactly as the host’s does', async ({
+    page,
+  }) => {
+    const cdp = await page.context().newCDPSession(page);
+    await bootShort(page);
+    await swipeDay(page, cdp, 120, { holdAtEnd: true });
+    const shots = await page.evaluate((pageSel) => {
+      const top = (sel: string) => {
+        const el = document.querySelector(sel);
+        return el ? Math.round(el.getBoundingClientRect().top) : null;
+      };
+      return {
+        host: top(`${pageSel} > .day-page .wp-dayhead-shot img`),
+        peek: top('.day-peek[data-day="next"] .wp-dayhead-shot img'),
+        win: top('.day-peeks'),
+      };
+    }, PAGE);
+    await touch(cdp, 'touchEnd');
+    expect(shots.host).not.toBeNull();
+    expect(shots.peek).toBe(shots.host);
+    // And flush means flush: the body's top edge, where the day strip ends.
+    expect(shots.peek).toBe(shots.win);
   });
 
   test('the Plan builder previews its neighbours too — one hook, two surfaces', async ({

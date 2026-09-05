@@ -11,6 +11,8 @@
 // as honest; three days showing the wrong mountain destroys trust in the other nine.
 import {
   dayPhoto,
+  eventStopPlaceId,
+  type Booking,
   type DeliveredImageValue,
   type DayPhotoPlace,
   type Place,
@@ -33,6 +35,7 @@ export interface DayShot {
 
 export function dayShot(
   dayEvents: TripEvent[],
+  bookings: Booking[],
   places: Place[],
   placeLabels: PlaceLabels,
   enrichments: TripEnrichments,
@@ -51,7 +54,13 @@ export function dayShot(
   );
   const photo = dayPhoto(
     dayEvents.map((event) => ({
-      placeId: event.placeId,
+      // **Not `event.placeId`** — ADR-0048 clears it on every booking-backed row, so a day
+      // spent at a booked hotel, a booked restaurant and a booked activity offered the rank no
+      // place at all and got no picture (`eventStopPlaceId`).
+      placeId: eventStopPlaceId(
+        event,
+        event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined,
+      ),
       startsAt: event.startsAt,
       endsAt: event.endsAt,
       // A booking behind the row is the "somebody committed to this" half of the rank; the
