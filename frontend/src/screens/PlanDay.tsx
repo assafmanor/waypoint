@@ -2565,7 +2565,7 @@ function BuilderNode({
   const route = routeDisplay(eventRoute(e, ctx.bookings, ctx.places, ctx.placeLabels));
   // And the same badge photo, off the same `rowPhoto` (ADR-0219 §1) — a difference here would
   // be a difference about a FACT, which ADR-0159 §1 forbids between these two screens.
-  const photo = rowPhoto(e, ctx.bookings, ctx.places, ctx.enrichments);
+  const photo = rowPhoto(e, booking, ctx.places, ctx.enrichments);
   // **THE MARK IS NAILED HERE**, at whatever depth this row is — the same three lines
   // `DayView`'s `ItemNode` carries, off the same ctx field and the same derivation
   // (ADR-0217 §2). Plan's posture makes it violet and dashed and nothing else.
