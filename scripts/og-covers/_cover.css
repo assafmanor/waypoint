@@ -46,15 +46,6 @@ body {
   background: radial-gradient(62% 74% at 84% 6%, rgba(233, 166, 60, 0.17), transparent 62%);
 }
 
-/* The live cover's ground instead — the reader's OWN wash (`.sh-hero`'s
-   `radial-gradient(circle at 8% 14%, rgba(44,156,144,0.22) …)`), which is teal rather than
-   amber and is the single strongest thing telling the three covers apart. Teal is location
-   (ADR-0028) and a live itinerary is about where the group is, so this is the shipped
-   screen's own spend, not a decorative one. */
-.og-art[data-wash='reader']::before {
-  background: radial-gradient(46% 62% at 10% 12%, rgba(44, 156, 144, 0.26), transparent 60%);
-}
-
 /* **THE PAPER BAND IS GONE, and the number that justified it was measured against the wrong
    surface** (owner, 2026-09-05: _"do you think that the dark mode + white paper footer go
    together well?"_).
@@ -113,7 +104,14 @@ body {
 /* THE LIVE COVER draws no ground of its own: `.sh-hero` brings the reader's indigo→board
    gradient AND its teal radial, so the art region gets out of the way and lets it bleed
    edge to edge. Without this the amber wash above would sit on top of the teal one and the
-   cover would read as neither page. */
+   cover would read as neither page.
+
+   **That teal radial is the single strongest thing telling the three covers apart**, and it
+   is the shipped screen's own spend rather than a decorative one: teal is location
+   (ADR-0028) and a live itinerary is about where the group is. It is worth being precise
+   about where it comes from — `.sh-hero`, not this file. An earlier `[data-wash='reader']`
+   rule here restated the gradient and no cover ever carried the attribute, so it drew
+   nothing while claiming to be the difference; deleting it changed not one pixel. */
 .og-art--bleed {
   background: none;
 }
