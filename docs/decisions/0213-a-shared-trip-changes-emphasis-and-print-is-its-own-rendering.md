@@ -2573,3 +2573,7 @@ the repair that brings the outage back.
   names `phase 'pdf'`, **and** the next caller is admitted and reaches the same wedge — not met
   with the `ServiceUnavailableException` a slot nobody returned would have produced.
 - Backend 1341 → 1342, whole suite green; typecheck, lint, build and `format:check` clean.
+
+## Amendment (2026-09-05) — the day card's head and shot become the app's `DayHead`, and three derivations move to shared ([ADR-0219](0219-a-day-is-a-place-you-can-see.md))
+
+The reader's day card — `.sh-shot` (§5's photograph) and `.sh-day-head` (the date column, the name, the second line) — is the design the owner pointed at for the app's own day surfaces. ADR-0219 §2 lifts both into `ui/domain/DayHead` (`day-head.css`, `wp-dayhead-*` names) and the reader consumes the component; nothing the reader renders changes, and the fourteenth amendment's child-combinator rule moves with it (its contract test too). Three pure functions the reader owned move to `packages/shared` so the app and the reader name and picture a day identically: `dayPhoto` with its gate (§5), `fallbackDayTitle` with `DayFacts` and the facts builder's pure parts, and the credit's composition (which this ADR's §5 joined server-side and `PlaceKnowledge` composed client-side, in two visual orders). Same move as the fourth pass's `derivedPlaceLabel`, for the same reason.
