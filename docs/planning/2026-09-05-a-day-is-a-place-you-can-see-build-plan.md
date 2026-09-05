@@ -143,6 +143,13 @@ Five phases, in order, each its own PR and each reviewable alone. A phase never 
 
 ## After phase 5
 
+**All five phases shipped 2026-09-05.** What the build measured differently, and the three things
+in the ADR the code disagreed with, are in the build note:
+[`2026-09-05-a-day-is-a-place-you-can-see-build.md`](2026-09-05-a-day-is-a-place-you-can-see-build.md).
+Read it before trusting a number in this file — the head's frame is 124px and not 78, the whole
+head with a shot 240px and not 194, and a day WITH a picture hangs its head off the day strip,
+which this plan does not describe at all.
+
 - Device pass: is a real photograph legible at 40px (ADR-0167 §18)? If not, the answer is to change what fills the badge for small-subject photos (e.g. prefer the glyph below some `width/height` or subject-class heuristic), never to grow the badge.
 - The `.wp-maybecard-ic` ring observation (ADR-0219 "What rendering it found") — look, then fix or close.
 - Prune the backlog line; move the mockup's catalog status to built; write the session note for the build.
