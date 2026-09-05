@@ -9,8 +9,15 @@
 // migration touches. UI copy (group labels) lives in the frontend i18n, keyed
 // by `IconGroup.id` — never here (this package is shapes + data, ADR-0009).
 
-import { BOOKING_TYPE_TO_CATEGORY, PLACE_SEARCH_KIND } from './constants';
-import type { BookingType, EventCategory, EventKind, PlaceSearchKind, TripEvent } from './entities';
+import { BOOKING_TYPE_TO_CATEGORY, EVENT_CATEGORY, PLACE_SEARCH_KIND } from './constants';
+import type {
+  Booking,
+  BookingType,
+  EventCategory,
+  EventKind,
+  PlaceSearchKind,
+  TripEvent,
+} from './entities';
 import { matchesAnyTerm } from './search-terms';
 
 /** A browse-group in the picker. `category` is the canonical semantic value
@@ -521,6 +528,26 @@ export const isMultiDay = (event: Pick<TripEvent, 'date' | 'endDate'>): boolean 
  *  ambient-when-multi-day AND it is currently multi-day (ADR-0054, rebased). */
 export const isAmbient = (event: TimedEvent): boolean =>
   profileFor(event.category).ambientWhenMultiDay && isMultiDay(event);
+
+/**
+ * **Is this event a way of GETTING somewhere, rather than somewhere to be?**
+ *
+ * Asked of the booking first, because a booking states its type, and of the category only for
+ * an event no booking backs. Both vocabularies already exist and `BOOKING_TYPE_TO_CATEGORY`
+ * maps between them, so this names no third set — which is the correction it carries: the
+ * sharing projection wrote the same rule out as a literal list of four types, beside a comment
+ * saying it should not. Now both layers ask it here (ADR-0219 §7's move, extended).
+ *
+ * Its one caller-facing rule: a day's REGION and KIND are voted on by the settled stops only,
+ * since an airport's region would name a travel day after the municipality of its runway.
+ */
+export const isTransportEvent = (
+  event: Pick<TripEvent, 'category'>,
+  booking?: Pick<Booking, 'type'>,
+): boolean =>
+  booking
+    ? BOOKING_TYPE_TO_CATEGORY[booking.type] === EVENT_CATEGORY.TRANSPORT
+    : event.category === EVENT_CATEGORY.TRANSPORT;
 
 /** The closing edge of an event: the boundary past which it is behind you, for
  *  every now-relative "is this over?" question (the Index past/upcoming split,

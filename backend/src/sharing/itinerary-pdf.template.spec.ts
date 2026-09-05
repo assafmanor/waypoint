@@ -48,7 +48,7 @@ describe('itineraryPdfHtml', () => {
     // Not a screenshot of the reader: no accordion, no theme, no touch chrome.
     expect(full).not.toContain('accordion');
     expect(full).not.toContain('data-theme');
-    expect(full).not.toContain('sh-day-head');
+    expect(full).not.toContain('wp-dayhead');
     // No touch floor on paper — ADR-0017's 44px is a rule about thumbs, and a printed
     // page that reserves room for one wastes a third of its density.
     expect(full).not.toContain('min-height:44px');

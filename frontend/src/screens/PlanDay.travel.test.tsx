@@ -127,9 +127,21 @@ vi.mock('../state/trip-state', () => ({
     travelModeOverrides: tripOverrides,
     travelModeVerbs,
     hostContexts: buildHostContextIndex(tripEvents, tripBookings),
-    trip: { id: 't1', timezone: ZONE, startDate: DAY, endDate: '2026-08-05', updatedBy: 'u1' },
+    trip: {
+      id: 't1',
+      timezone: ZONE,
+      // Required on the real entity, and the day head names an empty day by it (ADR-0219 §2).
+      destination: 'איסלנד',
+      startDate: DAY,
+      endDate: '2026-08-05',
+      updatedBy: 'u1',
+    },
     bookings: tripBookings,
     places: tripPlaces,
+    // Nothing is known about any of these places, which is the majority state (ADR-0166 §11.3)
+    // and what the badges here assume — stated rather than omitted, because the real state
+    // always carries the map and a surface reading it must not be handed `undefined`.
+    enrichments: {},
     events: tripEvents,
     maybeItems: [],
     justAddedIdea: null,
@@ -481,7 +493,7 @@ describe('PlanDay — the day says where it starts and ends', () => {
       el.textContent?.includes('מלון'),
     );
     expect(named).toHaveLength(2);
-    expect(document.querySelector('.day-ambient .an')).toBeNull();
+    expect(document.querySelector('.wp-dayhead-facts')?.textContent ?? '').not.toContain('Hertz');
   });
 
   // Plan's posture: no inline settle pair on the row (ADR-0171 §10e).
@@ -821,9 +833,10 @@ describe('PlanDay — the free time at the day’s edges comes before the leg', 
 // ADR-0011 is untouched throughout: this is a read, nothing moves, and no event — hard or soft —
 // is named by the verdict.
 describe('PlanDay — the day says it does not fit (ADR-0206 §V1.7)', () => {
-  /** The verdict's own row, or `null`. Read by class rather than by copy, so a test for
-   *  "silent" cannot pass because the wording changed underneath it. */
-  const verdict = () => document.querySelector('.day-fit');
+  /** The verdict's own line in the day head's footer band (ADR-0219 §2), or `null`. Read by
+   *  class rather than by copy, so a test for "silent" cannot pass because the wording changed
+   *  underneath it. */
+  const verdict = () => document.querySelector('.wp-dayhead-fit');
 
   beforeEach(() => {
     setSimulatedNow(Date.parse(NOW));
@@ -862,6 +875,20 @@ describe('PlanDay — the day says it does not fit (ADR-0206 §V1.7)', () => {
     travelSeconds = null;
     show();
     expect(verdict()).toBeNull();
+  });
+
+  // **A read-only past day gives the verdict up for the note that says so** (ADR-0219 §2). The
+  // day is not yours to fix, so an opinion about its fit has nothing to act on — and the note
+  // that used to be the `.sec-title`'s trailing `hint` is what the band carries instead.
+  it('gives way to the past-day note once the trip is over', () => {
+    travelSeconds = 200 * 60;
+    // A finished trip is a read-only archive (ADR-0040), which is what Plan's `readOnly` means.
+    setSimulatedNow(Date.parse('2026-09-01T09:00:00Z'));
+    show();
+    expect(verdict()).toBeNull();
+    expect(document.querySelector('.wp-dayhead-facts')!.textContent).toContain(t.planDay.pastNote);
+    // …and with no way to add to a past day, the band carries no action either.
+    expect(document.querySelector('.wp-dayhead-foot > .new-event-btn')).toBeNull();
   });
 
   // The count is the half no single leg's row can state, so it has to inflect rather than print a

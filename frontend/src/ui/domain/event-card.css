@@ -36,6 +36,17 @@
 .wp-event.passed {
   opacity: 0.66;
 }
+/* **AND ITS PHOTOGRAPH RECEDES WITH IT** (ADR-0219 §5). The card is already at 0.66, and a
+   full-colour thumbnail inside it is the one thing on the row still saying "upcoming" — a
+   photograph carries its own contrast, so opacity alone does not take it back.
+
+   **Trip mode only, and `done` keeps its colour.** Plan has no phases (ADR-0043 §5), so nothing
+   there matches; and a record is not a fade — `.wp-event.done` is a positive state (ADR-0044),
+   which is why this keys on `passed` rather than on "settled". The settle variant IS `passed`
+   and greys with the rest. */
+.wp-event.passed .wp-placebadge-photo img {
+  filter: grayscale(1);
+}
 .wp-event.passed.soft {
   background: color-mix(in srgb, var(--muted) 5%, var(--card));
   border-style: solid;

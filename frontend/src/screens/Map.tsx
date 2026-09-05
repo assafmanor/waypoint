@@ -40,6 +40,7 @@ import {
   legTravelMode,
   EVENT_STATUS,
   matchesAnyTerm,
+  placeCredit,
   type Booking,
   type DeliveredImageValue,
   type EventCategory,
@@ -89,7 +90,7 @@ import {
   soleIdeaFor,
 } from '../lib/place-refs';
 import { badgePhoto } from '../lib/place-photo';
-import { placeCredit, placeSummary, type PlaceSummary } from '../lib/place-summary';
+import { placeSummary, type PlaceSummary } from '../lib/place-summary';
 import { MediaViewer } from '../ui/MediaViewer';
 import { apiAssetUrl } from '../lib/api-asset';
 import { useCandidateEnrichment } from '../lib/useCandidateEnrichment';

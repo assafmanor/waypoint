@@ -36,9 +36,17 @@ import { agoLabel, hoursPhrase } from '../lib/duration';
 import { landAtTop } from '../lib/land-at-top';
 import { shareNowLine, shareNowZone } from '../lib/share-now-line';
 import { NowMarker } from '../ui/domain/NowMarker';
+import { DayHead } from '../ui/domain/DayHead';
 import { useClock } from '../lib/useClock';
 import { usePublicReaderChrome } from '../lib/public-reader-chrome';
-import { DAY_PHASE, dayPhase, formatTripDates, tripDayNumber, type DayPhase } from '../lib/time';
+import {
+  DAY_PHASE,
+  dayOfMonth,
+  dayPhase,
+  formatTripDates,
+  tripDayNumber,
+  type DayPhase,
+} from '../lib/time';
 import brandMark from '/icon-mark-bright.svg';
 import { RELOAD_GUARD_KEY, reloadOnce } from '../lib/guarded-reload';
 import { takeParkedBuild } from '../lib/useAppUpdate';
@@ -60,7 +68,8 @@ const WEEKDAY = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי
 function dayParts(date: string): { day: string; weekday: string } {
   const [year, month, day] = date.split('-').map(Number);
   return {
-    day: String(day).padStart(2, '0'),
+    // `lib/time`'s, so the app's head and this one stamp the same two characters (ADR-0219 §2).
+    day: dayOfMonth(date),
     weekday: WEEKDAY[new Date(Date.UTC(year, month - 1, day)).getUTCDay()],
   };
 }
@@ -589,55 +598,47 @@ function DayCard({
       }`}
       id={`day-${day.ordinal}`}
     >
-      {/* **A real photo of a real stop, credited** (ADR-0213's 2026-08-30 amendment). Not
-          stock and not generated: a Commons file already in the store, already licensed,
-          already rendered elsewhere in the app — which is why §3's refusal of "a new media
-          dependency" does not reach it. `loading="lazy"` because twelve of these below the
-          fold is twelve requests nobody asked for. */}
-      {day.photo ? (
-        <figure className="sh-shot">
-          <img src={day.photo.url} alt={day.photo.of} loading="lazy" decoding="async" />
-          <figcaption>
-            <strong>{autoIsolate(day.photo.of)}</strong>
-            <span>{autoIsolate(day.photo.credit)}</span>
-          </figcaption>
-        </figure>
-      ) : null}
-      <button className="sh-day-head" onClick={onToggle} aria-expanded={open} type="button">
-        <span className="sh-day-date">
-          <strong>{ltrIsolate(dayNumbers)}</strong>
-          <span>{weekday}</span>
-          {/* **The mark on the exception, in the column the hue is already in** (§2/§3).
-              Nothing marks a past day (it is treated, not badged) and nothing marks a future
-              one — the future is the page's default, and a chip every card carries repeats
-              the date beside it. This is also what makes the landing legible: a reader who
-              lands mid-document never sees the masthead. */}
-          {isNow ? <i className="sh-now-mark">{t.common.now}</i> : null}
-        </span>
-        <span className="sh-day-copy">
-          {/* A day with no places has no true title, and the server sends none rather than
-              inventing one — the date is then the name. */}
-          {/* Composed server-side with its values already isolated — see the story line
-              above for why this must not sniff. */}
-          <strong>{dayTitleText(day.title) || `${weekday} ${ltrIsolate(dayNumbers)}`}</strong>
-          {/* **Where you sleep frames the day** (ADR-0213's 2026-08-30 amendment). It used
-              to be a row in the afternoon, sorted there by its check-in hour — which on the
-              outbound day put it between the two legs of the flight, and printed
-              `15:00–11:00` because a stay's span crosses midnight. */}
-          {day.stay ? (
+      {/* **The head is `ui/domain/DayHead` now** (ADR-0219 §2) — these classes were one-offs on
+          this sheet and the owner pointed at them for the app's own day surfaces, so they were
+          generalised rather than twinned. Nothing here renders differently: the shot is the
+          same band with the same credit (`loading="lazy"`, because twelve of these below the
+          fold is twelve requests nobody asked for), the date column is the same column, and the
+          copy column's lines are passed in as `lines` because they are the READER's — a stay,
+          and its two moments (ADR-0209 names a stay once, so the app's head has neither). */}
+      <DayHead
+        as="button"
+        expanded={open}
+        onToggle={onToggle}
+        dayNumbers={dayNumbers}
+        weekday={weekday}
+        /* **The mark on the exception, in the column the hue is already in** (§2/§3).
+           Nothing marks a past day (it is treated, not badged) and nothing marks a future one
+           — the future is the page's default, and a chip every card carries repeats the date
+           beside it. This is also what makes the landing legible: a reader who lands
+           mid-document never sees the masthead. */
+        isNow={isNow}
+        /* A day with no places has no true title, and the server sends none rather than
+           inventing one — the date is then the name. Composed server-side with its values
+           already isolated, which is why the head must not sniff. */
+        title={dayTitleText(day.title) || `${weekday} ${ltrIsolate(dayNumbers)}`}
+        lines={[
+          /* **Where you sleep frames the day** (ADR-0213's 2026-08-30 amendment). It used to
+             be a row in the afternoon, sorted there by its check-in hour — which on the
+             outbound day put it between the two legs of the flight, and printed `15:00–11:00`
+             because a stay's span crosses midnight. */
+          day.stay ? (
             <span className="sh-stay">
               <Icon name="hotel" />
               {t.share.public.stay(autoIsolate(day.stay))}
             </span>
           ) : (
             <span>{daySummaryText(day.summary)}</span>
-          )}
-          <StayWhen day={day} />
-        </span>
-        <span className="sh-caret">
-          <Icon name="caret" />
-        </span>
-      </button>
+          ),
+          <StayWhen day={day} />,
+        ]}
+        shot={day.photo}
+        trailing={<Icon name="caret" />}
+      />
       {open ? (
         <div className="sh-day-body">
           {day.sections.map((section) => (
@@ -732,7 +733,7 @@ function DayCard({
  * page's accordion collapses day BODIES and never headers, so it is always on screen.
  *
  * **Not appended to the stay's own line, and that is a measurement rather than a taste.**
- * `.sh-day-copy > span` is `nowrap` with an ellipsis, and in RTL the cut falls at the logical
+ * `.wp-dayhead-copy > span` is `nowrap` with an ellipsis, and in RTL the cut falls at the logical
  * end — exactly where a trailing clock sits. A real hotel name measures ⁦275px⁩ of ink in a
  * ⁦206px⁩ box at 360, so the check-in vanished with nothing on screen saying it had been
  * there, which is the worst shape a failure can take. Its own line also holds BOTH moments,

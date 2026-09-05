@@ -11,6 +11,7 @@ import { wrapNav } from '../test/nav-harness';
 import { setSimulatedNow } from '../lib/useClock';
 
 let tripPlaces: Place[] = [];
+let tripEnrichments: Record<string, unknown> = {};
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
@@ -36,7 +37,7 @@ vi.mock('../state/trip-state', () => ({
     documentAttachments: [],
     users: [],
     noteVerbs: { createNote: vi.fn(), updateNote: vi.fn() },
-    enrichments: {},
+    enrichments: tripEnrichments,
   }),
 }));
 // The chip carries the app's ONE per-entity sync grammar (ADR-0092), so the outbox mock
@@ -74,6 +75,7 @@ describe('EventDetail', () => {
   beforeEach(() => {
     setSimulatedNow(new Date('2026-04-14T08:00:00Z').getTime());
     tripPlaces = [];
+    tripEnrichments = {};
   });
   afterEach(() => {
     cleanup();
@@ -145,5 +147,126 @@ describe('EventDetail', () => {
   it('carries NO way to edit when the trip is a read-only archive', () => {
     show(event());
     expect(screen.queryByRole('button', { name: new RegExp(t.index.detail.edit) })).toBeNull();
+  });
+});
+
+/**
+ * **THE READ GETS THE PLACE'S KNOWLEDGE** (ADR-0219 §6) — the picture, three clamped lines and
+ * `עוד בגוגל`, one tap from the day's row. It is `PlaceKnowledge` at `DECIDING`, which is the
+ * density with no way to expand, because this sheet has nothing to expand into.
+ *
+ * The component's own rules are tested where it lives; what is only observable here is that this
+ * screen connects it to the right place and owns the viewer it opens.
+ */
+describe('EventDetail · what the world knows about the place', () => {
+  const PLACE: Place = {
+    id: 'p1',
+    tripId: 't1',
+    name: 'Háifoss',
+    address: 'Fossárdalur',
+    lat: 64.2,
+    lng: -19.6,
+  } as Place;
+
+  const IMAGE = {
+    url: '/enrichment/images/haifoss',
+    mimeType: 'image/jpeg',
+    width: 1200,
+    height: 800,
+    sizeBytes: 90_000,
+    source: 'commons',
+    license: 'CC BY-SA 4.0',
+    attribution: 'A. Photographer',
+    fetchedAt: '2026-08-01T00:00:00.000Z',
+    method: 'name_proximity',
+    ref: 'Q38519',
+    confidence: 1,
+  };
+
+  const SUMMARY = {
+    en: {
+      value: 'A waterfall in the south of Iceland.',
+      lang: 'en',
+      source: 'wikipedia',
+      license: 'CC BY-SA 4.0',
+      fetchedAt: '2026-08-01T00:00:00.000Z',
+      confidence: 1,
+      method: 'settled_id',
+      ref: 'Q1585881',
+    },
+  };
+
+  beforeEach(() => {
+    setSimulatedNow(new Date('2026-04-14T08:00:00Z').getTime());
+    tripPlaces = [PLACE];
+    tripEnrichments = {};
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  /** The sheet renders through `Modal`, which portals — so RTL's `container` is not where it
+   *  lands. Every query below goes through the document, as the specs above do via `screen`. */
+  it('shows the picture and its credit', () => {
+    tripEnrichments = { p1: { image: IMAGE } };
+    show(event({ placeId: 'p1' }));
+    expect(document.querySelector('.map-hero img')).toBeTruthy();
+    expect(document.querySelector('.map-credit')?.textContent).toContain('A. Photographer');
+  });
+
+  it('clamps the summary to the deciding density’s three lines', () => {
+    tripEnrichments = { p1: { image: IMAGE, summary: SUMMARY } };
+    show(event({ placeId: 'p1' }));
+    // The clamp is CSS, so what is asserted is the class that carries it — jsdom computes no
+    // `-webkit-line-clamp`, and `place-knowledge.contract.test.ts` holds the rule itself.
+    expect(document.querySelector('.map-sum.is-decide')).toBeTruthy();
+    expect(document.querySelector('.map-sum-t')?.textContent).toContain('waterfall');
+    // …and the English extract is marked as English, which is the majority case in a Hebrew app.
+    expect(document.querySelector('.map-sum-lang')?.textContent).toBe(t.map.know.langMarker.en);
+  });
+
+  // **The majority case** (ADR-0166 §11.3: 0 of 7 Tokyo restaurants had an image). Nothing
+  // known renders nothing at all — not an empty block, not a placeholder.
+  it('renders no knowledge block at all when nothing is known', () => {
+    show(event({ placeId: 'p1' }));
+    expect(document.querySelector('.map-hero')).toBeNull();
+    expect(document.querySelector('.map-sum')).toBeNull();
+    expect(document.querySelector('.map-credit')).toBeNull();
+  });
+
+  // An image with no summary still counts: the picture is exactly what there is to show.
+  //
+  // **And `עוד בגוגל` is NOT here**, which the build found rather than assumed: that control is
+  // `Map.tsx`'s own `.map-refs` row, beside the schedule and delete verbs, and it has never been
+  // part of this component. ADR-0219 §6's acceptance describes the deciding card as it reads on
+  // the Map, where the exit is a sibling of the block rather than inside it. Asserted as an
+  // absence so the next reader of that sentence finds the answer here.
+  it('shows a picture with no words about it, and no exit of the Map’s own', () => {
+    tripEnrichments = { p1: { image: IMAGE } };
+    show(event({ placeId: 'p1' }));
+    expect(document.querySelector('.map-hero img')).toBeTruthy();
+    expect(document.querySelector('.map-sum')).toBeNull();
+    expect(screen.queryByRole('link', { name: t.map.know.moreOnGoogle })).toBeNull();
+  });
+
+  it('opens the full picture from the hero, into the app’s own viewer', () => {
+    tripEnrichments = { p1: { image: IMAGE } };
+    show(event({ placeId: 'p1' }));
+    fireEvent.click(screen.getByRole('button', { name: t.map.know.fullPicture }));
+    // The viewer is a `Modal`, so it arrives as a second dialog over the sheet — the same
+    // layering `Map.tsx` uses for the same hero.
+    const dialogs = screen.getAllByRole('dialog');
+    expect(dialogs.length).toBeGreaterThan(1);
+  });
+
+  // **The coordinate gate is the MAP's, not the knowledge's** (ADR-0147's Place-lite). A place
+  // with nothing to centre on is still a place we may know a great deal about.
+  it('shows what is known about a place with no coordinates', () => {
+    tripPlaces = [{ id: 'p1', tripId: 't1', name: 'Háifoss' } as Place];
+    tripEnrichments = { p1: { image: IMAGE, summary: SUMMARY } };
+    show(event({ placeId: 'p1' }));
+    expect(document.querySelector('.map-hero img')).toBeTruthy();
+    expect(document.querySelector('.map-sum-t')?.textContent).toContain('waterfall');
   });
 });

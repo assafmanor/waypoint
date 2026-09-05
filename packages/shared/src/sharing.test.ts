@@ -17,7 +17,14 @@ import {
   tripShareConfigSchema,
   upsertTripShareSchema,
   NO_SENSITIVE_FIELDS,
+  dayPhoto,
+  placeCredit,
+  NARRATIVE_SEPARATOR,
+  PHOTO_CONFIDENCE_FLOOR,
+  type DayPhotoEvent,
+  type DayPhotoPlace,
 } from './sharing';
+import type { DeliveredImageValue } from './enrichment';
 
 describe('shareDaypart', () => {
   it.each([
@@ -442,5 +449,129 @@ describe('tripShapeOf', () => {
     // A single recorded night among unrecorded ones is still one base — absent is absent,
     // not a different place.
     expect(tripShapeOf([undefined, 'Vík', undefined]).shape).toBe(SHARE_TRIP_SHAPE.BASE);
+  });
+});
+
+/**
+ * **The photo gate and the rank** (ADR-0213's 2026-08-30 amendment), tested here rather than
+ * through the projection since ADR-0219 §7 — both the reader and the app's day head picture a
+ * day through this function, and a gate proved only against a Prisma fixture is a gate the app
+ * has no evidence for. One integration assertion stays in the projection spec, for the wiring.
+ */
+describe('dayPhoto', () => {
+  const image = (over: Partial<DeliveredImageValue> = {}): DeliveredImageValue => ({
+    url: '/enrichment/images/abc',
+    mimeType: 'image/jpeg',
+    width: 1200,
+    height: 800,
+    sizeBytes: 90_000,
+    source: 'commons',
+    license: 'CC BY-SA 4.0',
+    attribution: 'A. Photographer',
+    fetchedAt: '2026-08-01T00:00:00.000Z',
+    method: 'name_proximity',
+    ref: 'Q38519',
+    confidence: 1,
+    ...over,
+  });
+  const place = (id: string, over: Partial<DayPhotoPlace> = {}): DayPhotoPlace => ({ id, ...over });
+  const places = (...rows: DayPhotoPlace[]): ReadonlyMap<string, DayPhotoPlace> =>
+    new Map(rows.map((row) => [row.id, row]));
+  const at = (placeId: string, over: Partial<DayPhotoEvent> = {}): DayPhotoEvent => ({
+    placeId,
+    title: placeId,
+    ...over,
+  });
+  const label = (row: DayPhotoPlace) => row.nickname ?? `שם ${row.id}`;
+
+  it('publishes nothing below the confidence floor, and something at it', () => {
+    // 0.8 is `geosearch`: found by coordinates, corroborated by nothing readable. Enough for
+    // a summary, not enough for a picture — a wrong photo is visibly wrong in a way a wrong
+    // opening-hours line is not.
+    const under = { p1: { image: image({ confidence: 0.8 }) } };
+    expect(dayPhoto([at('p1')], places(place('p1')), under, label)).toBeUndefined();
+
+    const floor = { p1: { image: image({ confidence: PHOTO_CONFIDENCE_FLOOR }) } };
+    expect(dayPhoto([at('p1')], places(place('p1')), floor, label)?.url).toBe(
+      '/enrichment/images/abc',
+    );
+  });
+
+  it('publishes nothing it cannot credit, however confident the match', () => {
+    // 27 of the 32 Commons files ADR-0166 §12.2 surveyed require attribution. A file we
+    // cannot credit is one we may not publish — the licence is not ours to drop.
+    const uncreditable = { p1: { image: image({ attribution: undefined, license: '' }) } };
+    expect(dayPhoto([at('p1')], places(place('p1')), uncreditable, label)).toBeUndefined();
+  });
+
+  it('carries the credit and the subject with the picture, never the picture alone', () => {
+    const photo = dayPhoto(
+      [at('p1')],
+      places(place('p1', { nickname: 'הבירה' })),
+      { p1: { image: image() } },
+      label,
+    );
+    expect(photo?.of).toBe('הבירה');
+    expect(photo?.credit).toBe(placeCredit(image()));
+  });
+
+  // **Dwell is the strongest term and it is the traveller's own** — four hours at
+  // Landmannalaugar beats fifteen minutes at Öxarárfoss, whatever the world thinks of either.
+  it('ranks the stop the day was actually spent at', () => {
+    const enrichments = { p1: { image: image() }, p2: { image: image({ url: '/img/long' }) } };
+    const photo = dayPhoto(
+      [
+        at('p1', { startsAt: '2026-08-01T09:00:00.000Z', endsAt: '2026-08-01T09:15:00.000Z' }),
+        at('p2', { startsAt: '2026-08-01T10:00:00.000Z', endsAt: '2026-08-01T14:00:00.000Z' }),
+      ],
+      places(place('p1'), place('p2')),
+      enrichments,
+      label,
+    );
+    expect(photo?.url).toBe('/img/long');
+  });
+
+  // The rank reads ISO strings. A `Date` in `startsAt` would stringify to something
+  // `Date.parse` cannot read, so every stop would score zero dwell and the day would be
+  // pictured by its ratings alone — silently (`packages/shared/CLAUDE.md`).
+  it('scores no dwell for an untimed stop, and lets the other terms decide', () => {
+    const enrichments = { p1: { image: image() }, p2: { image: image({ url: '/img/known' }) } };
+    const photo = dayPhoto(
+      [at('p1'), at('p2')],
+      places(place('p1'), place('p2', { userRatingsTotal: 40_000 })),
+      enrichments,
+      label,
+    );
+    expect(photo?.url).toBe('/img/known');
+  });
+
+  it('has no picture for a day whose stops are not in reach, or carry no image', () => {
+    expect(dayPhoto([at('gone')], places(place('p1')), { p1: { image: image() } }, label)).toBe(
+      undefined,
+    );
+    expect(dayPhoto([at('p1')], places(place('p1')), {}, label)).toBeUndefined();
+  });
+});
+
+/**
+ * **One credit line, composed once** (ADR-0219 §6). It had two implementations that disagreed
+ * about ORDER — the app isolated each run so the photographer led at the start edge; the
+ * projection joined the raw strings, so the reader printed the same credit the other way round.
+ */
+describe('placeCredit', () => {
+  it('leads with the photographer and isolates each run', () => {
+    const credit = placeCredit({ attribution: 'A. Photographer', license: 'CC BY-SA 4.0' });
+    // The photographer first, in source order — which is what puts it at the start edge of an
+    // RTL line once each run carries its own isolate.
+    expect(credit.indexOf('A. Photographer')).toBeLessThan(credit.indexOf('CC BY-SA 4.0'));
+    expect(credit).toContain(NARRATIVE_SEPARATOR);
+    // First-strong for the name (it may be Hebrew or Latin), forced LTR for the licence code.
+    expect(credit.startsWith('⁨')).toBe(true);
+    expect(credit).toContain('⁦CC BY-SA 4.0⁩');
+  });
+
+  it('is the licence alone when nobody is owed a credit', () => {
+    // 5 of the 32 files surveyed owe no attribution at all, and the licence is then the line.
+    expect(placeCredit({ attribution: undefined, license: 'CC0' })).toBe('⁦CC0⁩');
   });
 });

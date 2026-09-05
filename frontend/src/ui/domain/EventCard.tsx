@@ -35,6 +35,14 @@ export type EventPhaseName = 'upcoming' | 'now' | 'passed' | 'done';
 export interface EventCardProps {
   /** Event icon (emoji content). */
   icon: ReactNode;
+  /** **A fetched photograph to fill the badge's interior** (ADR-0219 §1), or absent for the
+   *  glyph — which is most rows and looks exactly as it always did (0px either way, since
+   *  `PlaceBadge` clips it in flow inside the square it already occupies).
+   *
+   *  Resolved by the screen through `lib/place-photo`'s `rowPhoto`, because only it knows
+   *  whether the glyph beside it was PICKED — on the event or on the place — and a picked
+   *  icon beats a photo (ADR-0167 §2). This card is presentational and takes the URL. */
+  photoUrl?: string;
   /** Title node — screen passes <EventTitle/> or a string. */
   title: ReactNode;
   /** The plain stored title, for the Tier-2 menu header — rendered there through
@@ -176,6 +184,7 @@ export interface EventCardProps {
 export function EventCard(props: EventCardProps) {
   const {
     icon,
+    photoUrl,
     title,
     titleText,
     code,
@@ -351,7 +360,7 @@ export function EventCard(props: EventCardProps) {
     return (
       <div className={cls} {...anchor}>
         <div className="wp-event-face static">
-          <PlaceBadge className="wp-event-badge" onShowOnMap={onShowOnMap}>
+          <PlaceBadge className="wp-event-badge" onShowOnMap={onShowOnMap} photoUrl={photoUrl}>
             {icon}
           </PlaceBadge>
           {titleBlock}
@@ -423,7 +432,7 @@ export function EventCard(props: EventCardProps) {
   return (
     <div className={cls} {...anchor}>
       <button type="button" className="wp-event-face" onClick={onToggle} aria-expanded={isOpen}>
-        <PlaceBadge className="wp-event-badge" onShowOnMap={onShowOnMap}>
+        <PlaceBadge className="wp-event-badge" onShowOnMap={onShowOnMap} photoUrl={photoUrl}>
           {icon}
         </PlaceBadge>
         {titleBlock}

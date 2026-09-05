@@ -33,6 +33,7 @@ export function DetailSheet({
   title,
   subtitle,
   hard,
+  knowledge,
   facts,
   host,
   onEdit,
@@ -50,6 +51,15 @@ export function DetailSheet({
   /** **The hard-commitment guard** (ADR-0011), which is what ADR-0053 made this whole
    *  surface for: a read stands between you and the edit of a real commitment. */
   hard?: boolean;
+  /** **What the world knows about this place** (ADR-0219 §6) — `PlaceKnowledge` at
+   *  `DECIDING`, rendered directly under the head and before everything the trip itself
+   *  wrote. A node rather than the component, because this file is presentational and only the
+   *  host knows which place it is about; absent → nothing renders, which is the majority case.
+   *
+   *  **Above the hard note and the facts on purpose.** The picture and the summary are what the
+   *  place IS; the note and the facts are what the trip decided about it, and a read is easier
+   *  to place when it opens with the subject. `BookingDetail` may pass the same later. */
+  knowledge?: ReactNode;
   facts: ReactNode;
   /** Whose documents and notes read here. One host, both sections, both through
    *  `lib/host-context.ts` — so a linked pair reads as one context on either surface. */
@@ -77,6 +87,8 @@ export function DetailSheet({
             {subtitle && <div className="bk-type">{subtitle}</div>}
           </div>
         </div>
+
+        {knowledge}
 
         {hard && (
           <div className="bs-hard-note">

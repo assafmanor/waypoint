@@ -1,23 +1,29 @@
-// **A commitment that holds no position in the day** (ADR-0171 §10a-i), rendered in
-// the strip above the list rather than in it.
+// **A commitment that holds no position in the day** (ADR-0171 §10a-i), rendered at the top of
+// the list rather than in a strip above it.
 //
-// WHY IT IS NOT A `TransitionRow`. That row's whole grammar is a moment on a timeline:
-// it interleaves by instant and its amber says "time + commitment". This one is the
-// opposite claim — the app does not know when this happens, only that it is yours to
-// do today. A check-in "from 15:00" is a floor, open on the side you act, so no reading
-// of the clock places it; an untimed booking is the same fact with a wider window.
+// **It IS a transition row now** (ADR-0219 §4), and the earlier reasoning here — "that row's
+// whole grammar is a moment on a timeline" — was answering the wrong question. ADR-0210 §1 made
+// the amber box and the 32px circle badge **the committed point's**, and an untimed commitment
+// is a commitment without a moment: the same object, missing one fact. What said so was the
+// strip it used to live in, which held three unrelated kinds of thing in one teal box — a day's
+// distance total, Plan's fit verdict, a car hire's day count, and this. Splitting them by what
+// they ARE (a fact about the day → a line in the head; a claim on your day → a row) is what
+// makes the top of the day read, and it leaves this the third host of `.transition-row` rather
+// than a fourth row grammar.
 //
-// WHY IT IS NOT AN IDEA EITHER, which is the correction that produced this file: "holds
-// no position" is one DERIVATION, not one category on screen. Inside it `hard` and
-// `soft` stay as different as ADR-0011 says — so a commitment reads at the top and an
-// idea in the tail, and burying the first under the second is the demotion that rule
-// exists to prevent.
+// WHY IT IS NOT AN IDEA EITHER, which is the correction that produced this file: "holds no
+// position" is one DERIVATION, not one category on screen. Inside it `hard` and `soft` stay as
+// different as ADR-0011 says — so a commitment reads at the top and an idea in the tail, and
+// burying the first under the second is the demotion that rule exists to prevent. It stays
+// ABOVE the first row and below the head, so §10a-i's "a claim on your day reads at the top"
+// holds with no strip to hold it.
 //
-// It settles, and that is not decoration: ADR-0164 counts a check-in in `נותרו היום`
-// until it is settled, so a host with no way to say `היינו` leaves that number stuck
-// all evening. `SettleControl`'s existing `compact` density is the one this wants —
-// icon-only beside a label that needs the width — so no new density is minted.
-import { CATEGORY_DEFAULT_ICON, EVENT_STATUS, type Booking } from '@waypoint/shared';
+// It settles, and that is not decoration: ADR-0164 counts a check-in in `נותרו היום` until it
+// is settled, so a host with no way to say `היינו` leaves that number stuck all evening.
+// `SettleControl`'s `compact` density is the one this wants — and it is the density
+// `TransitionRow` picked for this exact row shape, which is one more thing the two now share.
+import { CATEGORY_DEFAULT_ICON, EVENT_STATUS, TIME_MEANING, type Booking } from '@waypoint/shared';
+import { PlaceBadge } from './PlaceBadge';
 import { SettleControl, type SettleOutcome } from './SettleControl';
 import { transitionLabel } from '../../lib/transitions';
 import { isoToTimeInput } from '../../lib/time';
@@ -66,19 +72,32 @@ export function UnplacedCommitment({
       : undefined;
   const label = row.labelKey ? transitionLabel(row.labelKey) : undefined;
   return (
-    <div className="ambient unplaced">
-      <span className="ai" aria-hidden="true">
-        {icon}
-      </span>
+    <div className="transition-row">
       <button
         type="button"
-        className="an as-open"
+        className="tr-face"
         disabled={!booking || !onOpen}
         onClick={() => booking && onOpen?.(booking)}
       >
-        {event.title}
+        <PlaceBadge className="tr-badge">{icon}</PlaceBadge>
+        <span className="tr-main">
+          {label ? <span className="tr-label">{label}</span> : null}
+          <span className="tr-title">{event.title}</span>
+          <span className="tr-time">
+            {/* **The box is open on the side time runs free** (ADR-0210 §2), and that is why
+                the bound is derived rather than fixed at `exact`: a check-in "from 15:00" is a
+                floor and gets the floor's open-ended box, the same shape it would wear one row
+                down. `ללא שעה` is not a clock at all, so it takes `exact` — no box, because
+                there is no bound to draw. */}
+            <span
+              className="tr-clock"
+              data-bound={row.atMs == null ? TIME_MEANING.EXACT : TIME_MEANING.NOT_BEFORE}
+            >
+              {whenLabel(row, tz)}
+            </span>
+          </span>
+        </span>
       </button>
-      <span className="as">{label ? `${label} · ${whenLabel(row, tz)}` : whenLabel(row, tz)}</span>
       {onDone && onSkip && (
         <SettleControl
           variant="compact"

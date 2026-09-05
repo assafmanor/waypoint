@@ -557,4 +557,48 @@ describe('EventCard — the meta line and the note mark (ADR-0152 §6c)', () => 
       expect(screen.getByText(/MN-4471/)).toBeTruthy();
     });
   });
+
+  // **THE BADGE IS THE THUMBNAIL'S FRAME** (ADR-0167 §1, extended to the day rows by
+  // ADR-0219 §1). The card takes a URL and nothing else: whether the glyph beside it was
+  // PICKED is the screen's question (`lib/place-photo`'s `rowPhoto`), not this layer's.
+  describe('the badge photo (ADR-0219 §1)', () => {
+    const photoImg = (c: HTMLElement) =>
+      c.querySelector('.wp-event-badge .wp-placebadge-photo img') as HTMLImageElement | null;
+
+    it('fills the badge with the photo it is given, on the expandable card', () => {
+      const { container } = render(
+        wrapNav(<EventCard {...base} photoUrl="/enrichment/images/enr_1" />),
+      );
+      expect(photoImg(container)?.getAttribute('src')).toBe('/enrichment/images/enr_1');
+      expect(container.querySelector('.wp-event-badge')!.hasAttribute('data-photo')).toBe(true);
+      // The glyph and the photo are alternatives, never stacked.
+      expect(container.querySelector('.wp-event-badge')!.textContent).not.toContain('🍜');
+    });
+
+    // The settle variant returns before the expandable tree exists, which is exactly how it
+    // came to be the one host with no way to the map (see `PlaceBadge`'s docblock). Both
+    // call sites take the photo, so neither can drift again.
+    it('fills it on the settle variant too', () => {
+      const { container } = render(
+        wrapNav(
+          <EventCard
+            {...base}
+            phase="passed"
+            onDone={() => {}}
+            onSkip={() => {}}
+            photoUrl="/enrichment/images/enr_2"
+          />,
+        ),
+      );
+      expect(container.querySelector('.wp-event-face.static')).toBeTruthy();
+      expect(photoImg(container)?.getAttribute('src')).toBe('/enrichment/images/enr_2');
+    });
+
+    it('renders the glyph and no image at all without one — most rows, unchanged', () => {
+      const { container } = render(wrapNav(<EventCard {...base} />));
+      expect(photoImg(container)).toBeNull();
+      expect(container.querySelector('.wp-event-badge')!.hasAttribute('data-photo')).toBe(false);
+      expect(container.querySelector('.wp-event-badge')!.textContent).toContain('🍜');
+    });
+  });
 });

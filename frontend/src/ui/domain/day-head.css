@@ -1,0 +1,342 @@
+/* **The day's head** (ADR-0219 §2/§3) — `ui/domain/DayHead`.
+
+   MOVED here from `screens/shared-itinerary.css`, where `.sh-day-head`, `.sh-day-date`,
+   `.sh-now-mark`, `.sh-day-copy`, `.sh-caret` and `.sh-shot` were one-offs serving the public
+   reader alone. The owner pointed at that design for the app's own day surfaces, so root rule 8
+   says generalise the one that nearly does the job. Every rule below is the reader's, renamed
+   `wp-dayhead-*`; what is genuinely new is the footer band and the facts block, and those are
+   the mockup's proposed block copied rather than redrawn
+   (`mockups/a-day-is-a-place-you-can-see-v1.html`).
+
+   What stayed in the reader's sheet is what belongs to the reader's CARD rather than to this
+   head: `.sh-day`'s frame, its past/open treatments, and the stay lines it passes in. */
+
+/* **The head's own two sizes**, and the reason they are named here rather than borrowed. The
+   reader's page declares `--sh-micro`/`--sh-secondary` on `.sh-page` — a scale one step up from
+   the app's, for a document read once by a stranger who is often standing up — and the app's
+   head renders outside that page, where they resolve to nothing. ADR-0219 §2 chose the reader's
+   numbers for the head on all three surfaces ("two text sizes and one display face"), so the
+   head states them once and both hosts read the same value. Same numbers as `.sh-page`'s today;
+   what a page decides about its own prose is no longer what this component's lines read at. */
+.wp-dayhead {
+  --dayhead-line: 12.5px;
+  --dayhead-caption: 15px;
+  min-width: 0;
+}
+
+/* **The app's head IS the card**; the reader's is a band inside `.sh-day`, which already has
+   the frame. So the chrome is opt-in and nothing about the reader changes. */
+.wp-dayhead.is-card {
+  margin: 12px 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-16);
+  background: var(--card);
+}
+
+/* **THE PHOTOGRAPH BLEEDS; THE HEAD DOES NOT** (owner, off the render: _"when there's a picture
+   it looks very good"_, of a head drawn flush to the day strip).
+
+   A picture is edge content and a panel of text is inset UI, so the rule is about the SHOT
+   rather than about the head: a day with one loses the gap above it and its top corners, and the
+   photograph hangs straight off the day strip. A day WITHOUT one keeps the card exactly as it
+   is, which is the case that decides this — most days have no shot (every day before enrichment
+   lands, and every city day after), and drawn flush they are a white panel welded to the strip
+   with square top corners, round bottom ones and nothing to justify either.
+
+   **The side gutters stay, on a picture day too**, and that is the half of "full bleed" this
+   deliberately does not take. Every row under the head sits at the body's own inline padding; a
+   head that reached the viewport edges would be the one object on the day that does not line up,
+   and today's amber tile — the only hue above the list — would run off the screen rather than
+   sit inside a frame. Measured against that, the bleed buys ⁦34px⁩ of picture width, where the
+   shot's own height is the lever ADR-0219 §3 already owns.
+
+   Three conditions, and each is load-bearing. `.is-card` is the app (the reader's head is inside
+   `.sh-day` and bleeds nothing). `:has()` is the picture. **`:first-child` is the one that is
+   easy to miss**: Trip's ripple bar and its archive banner both render above the head, and a
+   head pulled up under either would sit on top of it. */
+.wp-dayhead.is-card:first-child:has(.wp-dayhead-shot) {
+  /* `.body`'s own inline padding, negated — the value is named there so the two cannot drift.
+     The fallback is what that rule sets, for a host outside the app shell. */
+  margin-block-start: calc(-1 * var(--body-pad, 16px));
+  border-block-start: 0;
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
+/* The picture's own corners go with the card's. The card clips (`overflow: hidden`), so leaving
+   these rounded would show the card's ground through two notches at the top of the photograph. */
+.wp-dayhead.is-card:first-child:has(.wp-dayhead-shot) .wp-dayhead-shot {
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
+.wp-dayhead-head {
+  width: 100%;
+  /* **The reader's floor**, sized for a name plus two lines in the copy column. */
+  min-height: 76px;
+  display: grid;
+  /* The trailing track is CONTENT-SIZED: the reader's caret sets its own 44px, and a head with
+     no trailing cell pays 0px for an empty column. */
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  align-items: stretch;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* A region, not a toggle. **And it keeps the reader's floor**, which the mockup drew at 64 and
+   the build measured wrong: the reasoning was right — the app's row holds the name alone, since
+   its facts live in the footer band, so the floor is the DATE TILE's own — and the tile has
+   THREE lines on today (⁦22px⁩ numeral + ⁦14px⁩ weekday + ⁦14px⁩ `עכשיו` = ⁦58px⁩ of stack). At 64 that
+   left ⁦3px⁩ of air above and below on the one day anybody looks at, against ⁦12px⁩ on every other
+   day. 76 is the tile's own floor, not the copy column's, and it is the reader's number — so all
+   three surfaces stamp a date the same way (ADR-0219 §2, amended with the built measurement). */
+.wp-dayhead.is-card .wp-dayhead-head {
+  cursor: default;
+}
+
+.wp-dayhead-head:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: -3px;
+}
+
+.wp-dayhead-date {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  border-inline-end: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ink) 4%, var(--card));
+}
+
+/* **Amber marks the day the trip is ON, not the card the reader tapped** (ADR-0213's eleventh
+   amendment §2). A day is a span of TIME, which is the one thing amber is for
+   (design-language.md, ADR-0028) — that reasoning was right and it used to point at `.open`,
+   which is a DISCLOSURE state already carried three ways: the caret rotates, the card lifts on
+   `--elevation-raised`, and the body is open. Spending the page's one rationed hue on which
+   card was tapped left nothing to say where the trip actually is.
+
+   In BOTH of the app's modes (ADR-0219 §2): Plan's ban is on the now PULSE, not on marking
+   today, and the day strip already paints today amber there. */
+.wp-dayhead.is-now .wp-dayhead-date {
+  background: color-mix(in srgb, var(--amber) 11%, var(--card));
+}
+
+.wp-dayhead-date strong {
+  font: 22px/1 var(--font-head);
+}
+
+.wp-dayhead-date span {
+  margin-block-start: 4px;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+/* **The word, in the column the hue is already in** (ADR-0213's eleventh amendment §2). Not in
+   the copy column: its lines ellipsise, so a chip there eats the day's own title at 360px.
+   `--amber-deep` for ink, never `--amber`, which as TEXT on paper is 1.31:1 and is a fill.
+
+   **And it carries no ground of its own**, which a render decided rather than taste: drawn
+   first with `.chip.soon`'s tint-plus-ink recipe, the tint-inside-a-tint measured 4.53:1
+   against AA's 4.5 floor for small bold text — passing by 0.03. The column IS the amber
+   ground. Word only: 5.09:1. */
+.wp-dayhead-now {
+  margin-block-start: 4px;
+  color: var(--amber-deep);
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.wp-dayhead-copy {
+  min-width: 0;
+  align-self: center;
+  padding: 9px 11px;
+}
+
+/* **Direct children only, and the combinator is the whole fix** (ADR-0213's 2026-08-31
+   amendment §3; owner: _"the day titles has gotten a little messy: too many line breaks"_).
+   These rules describe the header's LINES, and as descendant selectors they also described
+   every span nested inside one: `.sh-stay-when`'s `.sh-said` and `.sh-time` became
+   `display: block` at the micro size in `--muted`, so `צ׳ק-אאוט עד 11:00` printed as three
+   stacked grey lines and the amber the clock is owed was overwritten. That is the third thing
+   that descendant selector caught that it never meant to. `ui/domain/day-head.contract.test.ts`
+   holds the combinator here, as it held it in the reader's sheet. */
+.wp-dayhead-copy > strong,
+.wp-dayhead-copy > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wp-dayhead-copy > span {
+  margin-block-start: 3px;
+  color: var(--muted);
+  font-size: var(--dayhead-line);
+}
+
+/* **TWO TEXT SIZES IN THE HEAD, AND ONE DISPLAY FACE** (owner, round 3: _"several different
+   fonts and sizes, which looks weird"_ — the first draft had five sizes, two faces, mono and an
+   emoji in one card). The numeral keeps `--font-head`, because it is the day's stamp and the
+   reader's; everything else is `--font-body`. The app's name is 15px/700 against the reader's
+   inherited size: its copy column holds the name alone. */
+.wp-dayhead.is-card .wp-dayhead-copy > strong {
+  font: 700 15px/1.3 var(--font-body);
+}
+
+.wp-dayhead-caret {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  color: var(--muted);
+}
+
+.wp-dayhead-caret .icon {
+  transition: transform var(--t-quick) var(--ease-standard);
+}
+
+/* **THE DAY'S ACTION IS A FOOTER ROW, not a cell** (ADR-0219 §2). Round 1 drew an icon-only `+`
+   in the trailing cell and got the owner's _"what is it?"_ — an unlabelled control on a head
+   carrying three kinds of text is not self-explanatory, where the reader's caret is the
+   universal disclosure mark and has no such problem. Round 2 drew the shipped labelled
+   `.new-event-btn` in that same cell and the render ellipsised the day's own name at 360
+   (`…ur crater ← Háifoss`): a control took the width the head exists to spend on the title. So
+   the button keeps its look and moves under the grid, at the end edge where `.sec-title` has
+   always put it, on a hairline. A row of its own outside the card cost 39px more and read as a
+   fourth band. Absent on a read-only day. */
+.wp-dayhead-foot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px 10px;
+  border-block-start: 1px solid var(--line);
+}
+
+/* The button alone (an empty day) keeps to the end edge. */
+.wp-dayhead-foot > .new-event-btn {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+
+/* **THE FACTS ARE A BLOCK UNDER THE GRID, FULL WIDTH** — not lines in the copy column. Round 2
+   drew them as `.wp-dayhead-copy > span` lines and the render clipped two of them at 360
+   (Plan's verdict at 247px and the past-day note at 269px, in a 238px column): the copy column
+   is sized for one name and one stay, and a day's facts are longer than that. Below the grid
+   they get the card's whole width (~326px at 360) and may WRAP, so nothing is ellipsised.
+   `--dayhead-line` (12.5px) and `--muted`, the reader's own facts ink. */
+.wp-dayhead-facts {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  font-size: var(--dayhead-line);
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.wp-dayhead-facts > span {
+  display: block;
+  min-width: 0;
+}
+
+.wp-dayhead-facts .icon {
+  width: 12px;
+  height: 12px;
+  vertical-align: -1.5px;
+  margin-inline-end: 5px;
+}
+
+/* The total's own 11px/600 readout is a glance-card density; here it takes the facts' size, so
+   digits and words sit on one line at one size. */
+.wp-dayhead-facts .day-total {
+  gap: 6px;
+  font-size: inherit;
+  color: inherit;
+}
+
+.wp-dayhead-facts .day-total-n {
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+}
+
+.wp-dayhead-facts .day-total .day-total-ic .icon {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+}
+
+/* Plan's verdict (ADR-0206 §AN): what is missing is TIME, so amber — and `--amber-deep` because
+   plain amber is 2.1:1 as text on `--card` in light. Weight carries the "act on it" the card
+   used to. */
+.wp-dayhead-facts > .wp-dayhead-fit {
+  color: var(--amber-deep);
+  font-weight: 600;
+}
+
+/* **The day's photo** (ADR-0213's 2026-08-30 amendment, reversing §3's refusal of imagery; the
+   app's own band is ADR-0219 §3). A band above the head, with its credit — 27 of the 32 Commons
+   files ADR-0166 §12.2 surveyed require attribution, so the caption is structural rather than
+   decoration. */
+.wp-dayhead-shot {
+  margin: 0;
+  position: relative;
+  border-start-start-radius: var(--radius-16);
+  border-start-end-radius: var(--radius-16);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--teal) 10%, transparent);
+}
+
+/* The picture is the control in the app (it opens the full picture, ADR-0167 §10's viewer) and
+   a bare image in the reader, which has no app to open into. Same geometry either way. */
+.wp-dayhead-shot > button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.wp-dayhead-shot img {
+  display: block;
+  width: 100%;
+  /* **One number across the three surfaces** (ADR-0219 §3). The mockup's height control exists
+     so 88 and 140 can be SEEN on a 640px screen, not so a second density can be picked. */
+  height: 116px;
+  object-fit: cover;
+}
+
+.wp-dayhead-shot figcaption {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline: 0;
+  display: grid;
+  gap: 1px;
+  padding: 18px 12px 8px;
+  /* Legible over any photograph: a scrim rather than a solid, so the picture still reads. */
+  background: linear-gradient(to top, rgb(0 0 0 / 62%), transparent);
+  color: #fff;
+  /* The caption overlays the tap target and is not one itself, so the tap passes through to the
+     picture under it — see `DayHead`'s `Shot` for why the button holds only the image. */
+  pointer-events: none;
+}
+
+.wp-dayhead-shot figcaption strong {
+  font-size: var(--dayhead-caption);
+}
+
+.wp-dayhead-shot figcaption span {
+  font-size: var(--dayhead-line);
+  opacity: 0.82;
+}

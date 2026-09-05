@@ -305,7 +305,7 @@
   filter: saturate(0.82);
 }
 
-.sh-day.is-past .sh-day-copy > strong {
+.sh-day.is-past .wp-dayhead-copy > strong {
   color: var(--muted);
 }
 
@@ -313,119 +313,9 @@
   box-shadow: var(--elevation-raised);
 }
 
-.sh-day-head {
-  width: 100%;
-  min-height: 76px;
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) 44px;
-  align-items: stretch;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  text-align: start;
-  font: inherit;
-  cursor: pointer;
-}
-
-.sh-day-head:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: -3px;
-}
-
-.sh-day-date {
-  display: grid;
-  align-content: center;
-  justify-items: center;
-  border-inline-end: 1px solid var(--line);
-  background: color-mix(in srgb, var(--ink) 4%, var(--card));
-}
-
-/* **Amber marks the day the trip is ON, not the card the reader tapped** (ADR-0213's
-   eleventh amendment §2). A day is a span of TIME, which is the one thing amber is for
-   (design-language.md, ADR-0028) — that reasoning was right and it used to point at
-   `.open`, which is a DISCLOSURE state already carried three ways: the caret rotates, the
-   card lifts on `--elevation-raised`, and the body is open. Spending the page's one rationed
-   hue on which card was tapped left nothing to say where the trip actually is.
-
-   The old rule is deleted rather than kept beside this one: two ambers meaning two things is
-   what the colour budget exists to prevent. */
-.sh-day.is-now .sh-day-date {
-  background: color-mix(in srgb, var(--amber) 11%, var(--card));
-}
-
-.sh-day-date strong {
-  font: 22px/1 var(--font-head);
-}
-
-.sh-day-date span {
-  margin-block-start: 4px;
-  color: var(--muted);
-  font-size: 10.5px;
-  font-weight: 700;
-}
-
-/* **The word, in the column the hue is already in.** Not in the copy column: both its lines
-   ellipsise, so a chip there eats the day's own title at 360px. `--amber-deep` for ink,
-   never `--amber`, which as TEXT on paper is 1.31:1 and is a fill.
-
-   **And it carries no ground of its own**, which a render decided rather than taste: drawn
-   first with `.chip.soon`'s tint-plus-ink recipe, the tint-inside-a-tint measured 4.53:1
-   against AA's 4.5 floor for small bold text — passing by 0.03. The column IS the amber
-   ground. Word only: 5.09:1, beside the shipped `.sh-part-head`'s 5.24:1 on the card. */
-.sh-now-mark {
-  margin-block-start: 4px;
-  color: var(--amber-deep);
-  font-size: 10.5px;
-  font-style: normal;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-.sh-day-copy {
-  min-width: 0;
-  align-self: center;
-  padding: 9px 11px;
-}
-
-/* **Direct children only, and the combinator is the whole fix** (ADR-0213's 2026-08-31
-   amendment §3; owner: _"the day titles has gotten a little messy: too many line breaks"_).
-   These three rules describe the header's LINES, and as descendant selectors they also
-   described every span nested inside one: `.sh-stay-when`'s `.sh-said` and `.sh-time`
-   became `display: block` at `--sh-micro` in `--muted`, so `צ׳ק-אאוט עד 11:00` printed as
-   three stacked grey lines and the amber the clock is owed was overwritten. That is the
-   third thing this descendant selector has caught that it never meant to — the other two
-   are documented at `.sh-stay .icon` and `.sh-stay-when` below, and both were repaired by
-   working AROUND the specificity instead of narrowing it. Narrow it. */
-.sh-day-copy > strong,
-.sh-day-copy > span {
-  display: block;
-}
-
-.sh-day-copy > strong,
-.sh-day-copy > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sh-day-copy > span {
-  margin-block-start: 3px;
-  color: var(--muted);
-  font-size: var(--sh-micro);
-}
-
-.sh-caret {
-  display: grid;
-  place-items: center;
-  color: var(--muted);
-}
-
-.sh-caret .icon {
-  transition: transform var(--t-quick) var(--ease-standard);
-}
-
-.sh-day.open .sh-caret .icon {
+/* The caret's rotation is the reader's DISCLOSURE state, so it stays with the card that opens
+   rather than moving into `day-head.css` with the caret cell — the app's head does not toggle. */
+.sh-day.open .wp-dayhead-caret .icon {
   transform: rotate(180deg);
 }
 
@@ -839,7 +729,7 @@
   color: var(--teal);
 }
 /* **The glyph is spaced by a margin, not by `gap`, and that is a repair.** This rule used to
-   say `display: inline-flex; gap: 5px` — and `.sh-day-copy > span` (0,1,1) sets `display:
+   say `display: inline-flex; gap: 5px` — and `.wp-dayhead-copy > span` (0,1,1) sets `display:
    block`, which beats `.sh-stay` (0,1,0), so the element was never a flex container and the
    gap did nothing: measured 0px between the bed and the word (owner, 2026-08-30, _"no
    spacing at all between the bed glyph and the לנים ב..."_). Winning the specificity fight
@@ -856,7 +746,7 @@
 /* **The stay's two moments, and the ONE place in this header a break is allowed**
    (ADR-0213's 2026-08-31 amendment §2, amended 2026-09-01).
 
-   `.sh-day-copy > span` above is (0,1,1) and sets `nowrap` with `text-overflow: ellipsis`,
+   `.wp-dayhead-copy > span` (`day-head.css`) is (0,1,1) and sets `nowrap` with `text-overflow: ellipsis`,
    which is right for every other line here: a trip title and a hotel name are unbounded, so
    they must be cut. A pair of clocks is not — `צ׳ק-אאוט עד 11:00` + `צ׳ק-אין מ-15:00` is the
    longest this can ever be — so cutting it buys nothing and costs the reader the fact.
@@ -871,9 +761,9 @@
    **This is also why the clock is not appended to `.sh-stay` itself.** It would be the same
    ellipsis, and in RTL the cut falls at the logical end — exactly where the clock sits — so a
    long hotel name would delete it silently. The specificity fight is the one this sheet
-   already lost once above (`.sh-day-copy > span` beating `.sh-stay`'s `display`), so this is
+   already lost once above (`.wp-dayhead-copy > span` beating `.sh-stay`'s `display`), so this is
    (0,2,0) on purpose. */
-.sh-day-copy > .sh-stay-when {
+.wp-dayhead-copy > .sh-stay-when {
   margin-block-start: 2px;
   color: var(--amber-deep);
   white-space: normal;
@@ -1078,42 +968,6 @@
   color: var(--cta);
   text-decoration: underline;
   text-underline-offset: 3px;
-}
-
-/* **The day's photo** (ADR-0213's 2026-08-30 amendment, reversing §3's refusal of imagery).
-   A band above the day header, with its credit — 27 of the 32 Commons files ADR-0166 §12.2
-   surveyed require attribution, so the caption is structural rather than decoration. */
-.sh-shot {
-  margin: 0;
-  position: relative;
-  border-start-start-radius: var(--radius-16);
-  border-start-end-radius: var(--radius-16);
-  overflow: hidden;
-  background: color-mix(in srgb, var(--teal) 10%, transparent);
-}
-.sh-shot img {
-  display: block;
-  width: 100%;
-  height: 116px;
-  object-fit: cover;
-}
-.sh-shot figcaption {
-  position: absolute;
-  inset-block-end: 0;
-  inset-inline: 0;
-  display: grid;
-  gap: 1px;
-  padding: 18px 12px 8px;
-  /* Legible over any photograph: a scrim rather than a solid, so the picture still reads. */
-  background: linear-gradient(to top, rgb(0 0 0 / 62%), transparent);
-  color: #fff;
-}
-.sh-shot figcaption strong {
-  font-size: var(--sh-secondary);
-}
-.sh-shot figcaption span {
-  font-size: var(--sh-micro);
-  opacity: 0.82;
 }
 
 /* **The appendix is op rows, unfolded.** Nothing here has a row to belong to, so there is

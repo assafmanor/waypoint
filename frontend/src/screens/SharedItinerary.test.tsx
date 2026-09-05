@@ -483,10 +483,10 @@ describe('SharedItinerary', () => {
     expect(text).toContain(t.share.public.checkOut);
     expect(text).not.toContain('ויק');
     expect(text).toContain(withoutBidiControls(t.share.public.timeUntil('11:00')));
-    // **And the header is FOUR lines, not seven** (§3, the reported mess). `.sh-day-copy`'s
+    // **And the header is FOUR lines, not seven** (§3, the reported mess). `.wp-dayhead-copy`'s
     // rules used to be descendant selectors, so the spans `.sh-stay-when` composes its line
     // out of each became a muted grey block of their own. Only its direct children stack.
-    const copy = container.querySelector('.sh-day-copy')!;
+    const copy = container.querySelector('.wp-dayhead-copy')!;
     const blocks = [...copy.querySelectorAll('span, strong')].filter(
       (el) => el.parentElement === copy,
     );
@@ -511,7 +511,7 @@ describe('SharedItinerary', () => {
     const { container } = renderShared();
 
     await screen.findByText('איסלנד עם המשפחה');
-    const [first, second] = [...container.querySelectorAll('.sh-day-head')];
+    const [first, second] = [...container.querySelectorAll('.wp-dayhead-head')];
     expect(first.getAttribute('aria-expanded')).toBe('true');
     act(() => fireEvent.click(second));
     expect(first.getAttribute('aria-expanded')).toBe('false');
@@ -1033,13 +1033,13 @@ describe('SharedItinerary', () => {
       const [first, second] = [...container.querySelectorAll('.sh-day')];
       expect(first.classList.contains('open')).toBe(true);
       expect(first.classList.contains('is-now')).toBe(true);
-      expect(first.querySelector('.sh-now-mark')?.textContent).toBe(t.common.now);
+      expect(first.querySelector('.wp-dayhead-now')?.textContent).toBe(t.common.now);
       // The future is the page's default and carries no mark of any kind: a chip every card
       // in a dated, chronological run wears repeats the date beside it (`.chip.past`'s
       // deletion, `App.css`).
       expect(second.classList.contains('is-now')).toBe(false);
       expect(second.classList.contains('is-past')).toBe(false);
-      expect(second.querySelector('.sh-now-mark')).toBeNull();
+      expect(second.querySelector('.wp-dayhead-now')).toBeNull();
     });
 
     it('opens NOTHING before the trip has started — no day is a default', async () => {
@@ -1066,7 +1066,7 @@ describe('SharedItinerary', () => {
       // A treatment, not a badge — the class is what carries the desaturation and the muted
       // title, and nothing is added to the card's copy.
       expect(container.querySelectorAll('.sh-day.is-past')).toHaveLength(2);
-      expect(container.querySelector('.sh-now-mark')).toBeNull();
+      expect(container.querySelector('.wp-dayhead-now')).toBeNull();
     });
 
     it('lets the reader close today and open another day, keyed by ordinal', async () => {
@@ -1074,7 +1074,7 @@ describe('SharedItinerary', () => {
       const { container } = renderShared();
       await screen.findByText('איסלנד עם המשפחה');
 
-      const [first, second] = [...container.querySelectorAll('.sh-day-head')];
+      const [first, second] = [...container.querySelectorAll('.wp-dayhead-head')];
       act(() => fireEvent.click(second));
       expect(first.getAttribute('aria-expanded')).toBe('false');
       expect(second.getAttribute('aria-expanded')).toBe('true');
@@ -1329,7 +1329,7 @@ describe('SharedItinerary', () => {
       const [first, second] = [...container.querySelectorAll('.sh-day')];
       expect(first.classList.contains('is-past')).toBe(true);
       expect(second.classList.contains('is-now')).toBe(true);
-      expect(second.querySelector('.sh-now-mark')?.textContent).toBe(t.common.now);
+      expect(second.querySelector('.wp-dayhead-now')?.textContent).toBe(t.common.now);
     });
   });
 });

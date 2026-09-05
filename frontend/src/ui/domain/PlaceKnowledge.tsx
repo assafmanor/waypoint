@@ -27,12 +27,13 @@
 //    card has no notes, no references and no schedule action, which is the whole of §9.1's
 //    inversion ("the fields that matter most when you are choosing are the ones that matter least
 //    once you have chosen").
-import type { DeliveredImageValue } from '@waypoint/shared';
+import { placeCredit, type DeliveredImageValue } from '@waypoint/shared';
 import { t } from '../../i18n/he';
 import { apiAssetUrl } from '../../lib/api-asset';
-import { placeCredit, type PlaceSummary } from '../../lib/place-summary';
+import { type PlaceSummary } from '../../lib/place-summary';
 import { useFailableImage } from '../../lib/useFailableImage';
 import { Icon } from '../Icon';
+import './place-knowledge.css';
 
 /** How much room this place's enrichment gets — the host's state, not this block's choice. */
 export const KNOWLEDGE_DENSITY = {

@@ -2,6 +2,9 @@
 // The tests are about what the row CLAIMS, because that is the whole reason it exists:
 // a check-in used to state a position it could not defend, and this row's job is to say
 // the same fact without the claim.
+//
+// It is a `.transition-row` since ADR-0219 §4 — the committed point's grammar, missing one
+// fact — so the selectors here are that row's. Nothing it says changed.
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -50,18 +53,32 @@ const renderRow = (props: Partial<Parameters<typeof UnplacedCommitment>[0]> = {}
 describe('UnplacedCommitment', () => {
   it('says the floor as a floor — "from", never a bare clock', () => {
     const { container } = renderRow();
-    const meta = container.querySelector('.as')!.textContent!;
-    expect(meta).toContain(t.day.fromTime('15:00'));
+    expect(container.querySelector('.tr-clock')!.textContent).toContain(t.day.fromTime('15:00'));
     // The word for the edge is still there; what is gone is the claim that 15:00 is when
     // this happens.
-    expect(meta).toContain(t.glance.transition.checkIn);
+    expect(container.querySelector('.tr-label')!.textContent).toContain(
+      t.glance.transition.checkIn,
+    );
+    // A floor wears the floor's open-ended box, the same shape it would one row down — the
+    // grammar this row joined is the point of joining it (ADR-0210 §2).
+    expect(container.querySelector('.tr-clock')!.getAttribute('data-bound')).toBe('not-before');
   });
 
   it('says so plainly when there is no clock at all', () => {
     const { container } = renderRow({
       row: { event: ev({ id: 'e2', title: 'איסוף כרטיסים' }) },
     });
-    expect(container.querySelector('.as')!.textContent).toBe(t.day.noTime);
+    const clock = container.querySelector('.tr-clock')!;
+    expect(clock.textContent).toBe(t.day.noTime);
+    // No bound to draw, so no box: `ללא שעה` is not a clock at all.
+    expect(clock.getAttribute('data-bound')).toBe('exact');
+  });
+
+  it('is the committed point’s row, at the top of the day’s list', () => {
+    const { container } = renderRow();
+    expect(container.querySelector('.transition-row')).toBeTruthy();
+    expect(container.querySelector('.tr-badge')).toBeTruthy();
+    expect(container.querySelector('.tr-title')!.textContent).toBe('מלון ניס');
   });
 
   it('carries the settle pair, so the remaining count can clear', () => {
@@ -101,17 +118,17 @@ describe('UnplacedCommitment', () => {
     const { container } = renderRow({ onDone: undefined, onSkip: undefined, onUndo: undefined });
     expect(container.querySelector('.wp-settle')).toBeNull();
     // …and it still says the same thing, which is the half that must not differ.
-    expect(container.querySelector('.as')!.textContent).toContain(t.day.fromTime('15:00'));
+    expect(container.querySelector('.tr-clock')!.textContent).toContain(t.day.fromTime('15:00'));
   });
 
   it('opens the booking behind it, and refuses when there is none', () => {
     const onOpen = vi.fn();
     const { container } = renderRow({ onOpen });
-    fireEvent.click(container.querySelector('.as-open')!);
+    fireEvent.click(container.querySelector('.tr-face')!);
     expect(onOpen).toHaveBeenCalledWith({ id: 'b1' });
 
     cleanup();
     const bare = renderRow({ row: { event: ev({ id: 'e3', bookingId: undefined }) }, onOpen });
-    expect(bare.container.querySelector('.as-open')).toHaveProperty('disabled', true);
+    expect(bare.container.querySelector('.tr-face')).toHaveProperty('disabled', true);
   });
 });
