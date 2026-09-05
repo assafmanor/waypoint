@@ -46,7 +46,14 @@ export const toHHMM = (min: number) => `${pad(Math.floor(min / 60))}:${pad(min %
 // two implementations of "which calendar day is this, over there" is precisely how a
 // notification comes to fire on a different day than the row it is about.
 // Imported for this file's own use (three call sites below) as well as re-exported.
-import { addDays, todayInTz, tripDates, zoneOffsetMinutes, zonedIso } from '@waypoint/shared';
+import {
+  addDays,
+  todayInTz,
+  tripDates,
+  tripRangeShape,
+  zoneOffsetMinutes,
+  zonedIso,
+} from '@waypoint/shared';
 
 // `addDays`, `tripDates` and `zonedIso` moved to `@waypoint/shared`'s `trip-dates.ts` with
 // `computeReadiness` (ADR-0198 phase C) — the server derives the same readiness the card
@@ -137,19 +144,28 @@ const EN_DASH = '–';
  *    different month, 1 year → "27 בספטמבר – 3 באוקטובר 2026"
  *    different years        → "27 בדצמבר 2026 – 3 בינואר 2027"
  *  Without `withYear`, the same shape drops every year (hero surfaces). */
-function proseTripRange(start: Date, end: Date, withYear: boolean): string {
+function proseTripRange(startDate: string, endDate: string, withYear: boolean): string {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
   const dayMonthEnd = withYear ? tripDateDayMonthYear : tripDateDayMonth;
-  const sameYear = start.getUTCFullYear() === end.getUTCFullYear();
-  const sameMonth = sameYear && start.getUTCMonth() === end.getUTCMonth();
-  const sameDay = sameMonth && start.getUTCDate() === end.getUTCDate();
 
-  if (sameDay) return dayMonthEnd.format(start);
-  if (sameMonth) return `${tripDateDay.format(start)}${EN_DASH}${dayMonthEnd.format(end)}`;
-  if (sameYear) return `${tripDateDayMonth.format(start)} ${EN_DASH} ${dayMonthEnd.format(end)}`;
-  // Crossing a year: name the year on both ends so neither is ambiguous — but
-  // only when years are shown at all; the no-year hero mode stays year-free.
-  const startFmt = withYear ? tripDateDayMonthYear : tripDateDayMonth;
-  return `${startFmt.format(start)} ${EN_DASH} ${dayMonthEnd.format(end)}`;
+  // The four cases are `tripRangeShape`'s now, not this function's (ADR-0220 §4): the link
+  // preview composes the same range in Nest, where a crawler that runs no JS is the reader,
+  // and two copies of this branching is how the invite ticket and the preview that
+  // advertised it come to disagree about one trip. The WORDS stay here — product formatting
+  // and the ambient locale are the consumer's, per `packages/shared/CLAUDE.md`.
+  switch (tripRangeShape(startDate, endDate)) {
+    case 'same-day':
+      return dayMonthEnd.format(start);
+    case 'same-month':
+      return `${tripDateDay.format(start)}${EN_DASH}${dayMonthEnd.format(end)}`;
+    case 'same-year':
+      return `${tripDateDayMonth.format(start)} ${EN_DASH} ${dayMonthEnd.format(end)}`;
+    case 'cross-year':
+      // Name the year on both ends so neither is ambiguous — but only when years are shown
+      // at all; the no-year hero mode stays year-free.
+      return `${(withYear ? tripDateDayMonthYear : tripDateDayMonth).format(start)} ${EN_DASH} ${dayMonthEnd.format(end)}`;
+  }
 }
 
 /** Formats a trip's calendar date range for display. `numeric` is the compact
@@ -163,9 +179,9 @@ export function formatTripDates(
   endDate: string,
   { style = 'numeric', withYear = false }: { style?: TripDateStyle; withYear?: boolean } = {},
 ): string {
+  if (style === 'prose') return proseTripRange(startDate, endDate, withYear);
   const start = new Date(`${startDate}T00:00:00Z`);
   const end = new Date(`${endDate}T00:00:00Z`);
-  if (style === 'prose') return proseTripRange(start, end, withYear);
   const range = `${tripDateNumeric.format(start)}${EN_DASH}${tripDateNumeric.format(end)}`;
   return withYear ? `${range} ${DOT_SEPARATOR} ${end.getUTCFullYear()}` : range;
 }

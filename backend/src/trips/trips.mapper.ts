@@ -31,7 +31,10 @@ import type {
 } from '@waypoint/shared';
 import { avatarContentPath, resolveAvatarHue } from '@waypoint/shared';
 
-const toDateOnly = (d: Date): string => d.toISOString().slice(0, 10);
+/** A `@db.Date` column as `YYYY-MM-DD`. Exported since ADR-0220: `SharingService`'s
+ *  `previewByCode` needs the same conversion, and a second one-liner beside this one is how
+ *  a preview comes to print a different day than the ticket it advertises. */
+export const toDateOnly = (d: Date): string => d.toISOString().slice(0, 10);
 
 /** The one place a `User` row becomes a wire DTO. It RESOLVES the identity hue
  *  (stored pick, else derived from the id), so a nullable column can never reach a

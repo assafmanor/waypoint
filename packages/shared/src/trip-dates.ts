@@ -99,3 +99,37 @@ export function zonedIso(date: string, time: string, timeZone: string): string {
   }
   return candidate.toISOString();
 }
+
+// ── The shape of a trip's date range ────────────────────────────────────────────────────
+
+/** **Which parts a trip's date range has to print**, and nothing about the words.
+ *
+ * `same-month` prints the start's day alone (`11–22 בספטמבר`), `same-year` names both months
+ * (`27 בספטמבר – 3 באוקטובר`), `cross-year` names both years too. */
+export type TripRangeShape = 'same-day' | 'same-month' | 'same-year' | 'cross-year';
+
+/**
+ * **The range's shape, derived once and rendered twice** (ADR-0220 §4).
+ *
+ * `frontend/src/lib/time.ts`'s `proseTripRange` owned this branching and was the only thing
+ * that knew it, which was fine until a link preview needed the same range **server-side**:
+ * the crawler runs no JS, so the description is composed in Nest, and a second copy of these
+ * four cases is how the invite ticket and the preview that advertised it come to disagree
+ * about one trip.
+ *
+ * It returns a discriminant rather than a string on purpose, and that is not a compromise —
+ * it is what `packages/shared/CLAUDE.md` asks for. Product formatting and the ambient locale
+ * are the consumer's ("This package supplies stable _keys_ a consumer looks its own copy up
+ * by"), so the **decision** is shared and the **month names** stay with whoever is rendering:
+ * `Intl` on the screen, `Intl` again in `backend/src/sharing/hebrew.copy.ts` for the paper
+ * and the preview. Same shape for `eventEndBoundary`, and the same reason.
+ *
+ * Calendar dates, so read in UTC — a trip's span is not an instant.
+ */
+export function tripRangeShape(startDate: string, endDate: string): TripRangeShape {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+  if (start.getUTCFullYear() !== end.getUTCFullYear()) return 'cross-year';
+  if (start.getUTCMonth() !== end.getUTCMonth()) return 'same-year';
+  return start.getUTCDate() === end.getUTCDate() ? 'same-day' : 'same-month';
+}

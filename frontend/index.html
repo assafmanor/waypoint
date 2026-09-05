@@ -74,6 +74,21 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>%APP_TITLE%</title>
+    <!-- **The link preview's meta tags go here, and the server writes them** (ADR-0220).
+         `backend/src/spa/spa-shell.service.ts` replaces this exact marker per request, so a
+         pasted link carries `og:title`/`og:description`/`og:image` for the URL it actually
+         is: the homepage, an invitation (`/join/<code>`) or a live itinerary (`/s/<code>`).
+
+         **It cannot be done from the app.** A preview crawler fetches the document, reads
+         `<head>`, and leaves without running a line of JavaScript — so tags written after
+         mount are written for nobody, and there is no React version of this.
+
+         Left as a bare comment on purpose: a build served by anything other than our own
+         Node process (or `pnpm dev`) is then merely preview-less, never broken. Do not
+         rename it without changing `MARKER` in that service — it logs an error at boot if
+         the marker is missing, which is the only thing standing between a rename here and
+         every preview in production disappearing silently. -->
+    <!--%SOCIAL_META%-->
     <!-- Fonts are self-hosted (F-11): src/styles/fonts.css, imported by main.tsx.
          There is deliberately no Google Fonts <link> here — an external origin the
          service worker cannot precache is a fallback font on an offline first paint,

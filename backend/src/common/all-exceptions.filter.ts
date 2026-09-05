@@ -1,4 +1,3 @@
-import { join } from 'node:path';
 import {
   type ArgumentsHost,
   Catch,
@@ -10,13 +9,35 @@ import {
 import { Prisma } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { ERROR_CODE } from '@waypoint/shared';
-import { isPublicSharePath, PUBLIC_SHARE_HEADERS } from '../sharing/public-response-headers';
+import { isBearerLinkPath, PUBLIC_SHARE_HEADERS } from '../sharing/public-response-headers';
+import { homeMeta } from '../spa/share-meta';
+// Re-exported for the callers that imported them from here before ADR-0220 moved them to a
+// module that does not pull in Prisma. `spa/spa-paths.ts` is the owner.
+export { SPA_INDEX, STATIC_ROOT } from '../spa/spa-paths';
+import type { SpaShellService } from '../spa/spa-shell.service';
 import { REVALIDATE } from './static-cache';
 
-// Where the production image puts the built PWA; never exists in dev (ADR-0020).
-export const STATIC_ROOT = join(__dirname, '..', '..', 'public');
-export const SPA_INDEX = join(STATIC_ROOT, 'index.html');
 const HTML_MIME = 'text/html';
+
+/**
+ * **The statuses a document navigation gets the app shell for instead of JSON.**
+ *
+ * 404 and 401 are the original pair: an unknown path is an app route, and a guard's 401 on a
+ * navigation means "sign in", which is a screen.
+ *
+ * **429 joined them from a live run of ADR-0220, and it is a regression that change
+ * introduced.** `/join/<code>` now carries a 20/min per-IP cap (it reaches the database to
+ * name a trip), and before it had none — so a group of friends behind one NAT opening the
+ * same invite could be served the raw error envelope where they used to get the join screen.
+ * Answering with the shell costs one string replace and no query: the guard has already
+ * rejected the request, so the work the cap protects is not done either way, and the app can
+ * show its own "could not load the link" state instead of the browser showing our JSON.
+ */
+const SHELL_STATUSES = new Set<number>([
+  HttpStatus.NOT_FOUND,
+  HttpStatus.UNAUTHORIZED,
+  HttpStatus.TOO_MANY_REQUESTS,
+]);
 
 /** The documented error contract (api-contract.md §14). */
 export interface ErrorEnvelope {
@@ -51,7 +72,11 @@ const STATUS_CODES: Record<number, string> = {
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
 
-  constructor(private readonly spaIndexPath?: string) {}
+  /** `shell` is absent in dev and test, where there is no built PWA (ADR-0020) and every
+   *  route answers JSON. When present, every HTML fallback renders through it — one place
+   *  knows how the shell is built, so `/trips` and `/day/…` carry the app's own preview tags
+   *  rather than a tag-less document (ADR-0220). */
+  constructor(private readonly shell?: SpaShellService) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const http = host.switchToHttp();
@@ -60,25 +85,30 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const { status, body } = toEnvelope(exception);
 
     const isHtmlNav = req.method === 'GET' && (req.headers.accept?.includes(HTML_MIME) ?? false);
-    if (
-      this.spaIndexPath &&
-      isHtmlNav &&
-      (status === HttpStatus.NOT_FOUND || status === HttpStatus.UNAUTHORIZED)
-    ) {
+    if (this.shell && isHtmlNav && SHELL_STATUSES.has(status)) {
       // The shell is never cached past a revalidation (static-cache.ts): it names
       // the current build's hashed chunks, and a deploy deletes the previous ones.
       //
-      // A `/s/<code>` navigation is the exception, and not because the shell differs — it
-      // carries no itinerary either way. The CODE IS IN THE URL BEING REQUESTED, so this
-      // response must still refuse indexing and referrer leakage, or a crawler that follows
-      // one pasted link puts a private trip in a search index (ADR-0213 §5). Every other app
-      // route keeps its ordinary revalidation policy.
-      res.sendFile(this.spaIndexPath, {
-        headers: isPublicSharePath(req.path)
-          ? PUBLIC_SHARE_HEADERS
-          : { 'Cache-Control': REVALIDATE },
-      });
-      return;
+      // A bearer-link navigation is the exception. The CODE IS IN THE URL BEING REQUESTED,
+      // so this response must refuse indexing and referrer leakage, or a crawler that
+      // follows one pasted link puts a private trip in a search index (ADR-0213 §5). Every
+      // other app route keeps its ordinary revalidation policy.
+      //
+      // **This path no longer answers `/s/<code>` or `/join/<code>` in practice** —
+      // `SpaShellController` owns those three URLs since ADR-0220 and gives them their own
+      // preview. The bearer-link branch stays because the routes it protects are matched
+      // here by PATH, not by controller: a code with a trailing segment, a HEAD, or any
+      // future path shaped like one still lands in the fallback, and losing the headers on
+      // the way would be silent.
+      const html = this.shell.render(homeMeta(), this.shell.origin(req.headers));
+      if (html) {
+        res.status(HttpStatus.OK).type(HTML_MIME);
+        res.set(
+          isBearerLinkPath(req.path) ? PUBLIC_SHARE_HEADERS : { 'Cache-Control': REVALIDATE },
+        );
+        res.send(html);
+        return;
+      }
     }
 
     // Log server-side faults (never their body — an envelope message is generic,

@@ -402,3 +402,22 @@ It is a boot path, so it never throws and never prompts: where the repair would 
 - **Notify from the `Change` stream** (a socket message becomes a push). Rejected: the stream is peer edits, not obligations. Most obligations are **not** changes — nobody edits anything on the morning a flight leaves — and the reverse was already decided against as a toast (ADR-0081). 0198 §5 admits a narrow, batched exception.
 - **A separate worker service on Railway.** Rejected for now: a second service, a second deploy, a second set of secrets, to run a 60-second timer that costs nothing beside the API. Revisit if the sweep ever competes with request latency, which is measurable before it is guessed at.
 - **A native app wrapper for reliable iOS delivery.** Out of scope by ADR-0007, and it trades one coverage hole for an app-store release process.
+
+## Amendment (2026-09-05) — the small icon is not the large one
+
+§8's worker passed `badge: '/pwa-192.png'` alongside `icon:`, and the docblock beside it said a
+notification therefore "needs no asset of its own". That was true of the **large** icon and false of
+the **small** one, and the owner's screenshot showed the difference: a solid white rectangle in the
+Android status bar.
+
+Chrome hands `badge` to Android as the small icon, and Android draws the small icon from the asset's
+**alpha channel**, painted in the status-bar colour — it has ignored its actual colour since API 21.
+The alpha of a full-bleed tile is the tile. So the badge is now `notification-badge.png`
+([ADR-0220](0220-a-pasted-link-is-the-app-before-the-app-is.md) §7), a monochrome-on-transparent pin
+with the mark's amber core punched out as a hole. `icon` is unchanged.
+
+It is listed in `vite.config.ts`'s `includeAssets`, and that line is load-bearing where the app
+icons' is not: those are precached because they are **manifest** icons and the plugin's
+`includeManifestIcons` default catches them. The badge is not one, so without the entry a push
+received offline would render with Chrome's face on it — the failure this fix exists to end, one
+step along.

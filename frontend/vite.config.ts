@@ -112,7 +112,18 @@ export default defineConfig(() => {
         srcDir: 'src',
         filename: 'sw.ts',
         // Static assets outside the Vite graph that the SW should precache.
-        includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+        //
+        // `notification-badge.png` HAS to be here (ADR-0220 §6) and the reason is easy to
+        // miss: the other icons are precached because they are MANIFEST icons and the
+        // plugin's `includeManifestIcons` default picks those up. The badge is not one — it
+        // is Android's small notification icon, referenced only from `src/sw.ts` — so
+        // without this line a push received offline would render with Chrome's face instead
+        // of ours, which is the failure the badge exists to fix, one step along.
+        //
+        // The two `og-*.png` covers are deliberately NOT here: they are fetched by link
+        // preview crawlers, never by the app, and precaching 2 × 1200×630 on every device
+        // buys nothing.
+        includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'notification-badge.png'],
         // Under `injectManifest` this block is manifest GENERATION only — which files
         // are precached. How the worker behaves is `src/sw.ts`.
         injectManifest: {

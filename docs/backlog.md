@@ -817,6 +817,10 @@ question and not a code one.
   which is the seam that mattered, and left the chain above it as it was. Memoizing it is a
   ~1,200-line screen's worth of care for work nobody has measured as slow.
 
+## Link previews (ADR-0220 shipped 2026-09-05)
+
+- **A cover generated per trip** — the trip's name, destination, dates and route drawn into the `og:image` instead of the one static cover per case. Rejected for the shipping round and kept here because it is the obvious next ask: it is a Chromium render per crawler hit, on a page whose `no-store` posture (ADR-0213) forbids caching the result, and crawlers give up fast. The card's TEXT already carries the specifics, which is what `mockups/the-app-is-seen-before-it-is-opened-v1.html` §4 measures. If it is ever built, the PDF's render queue (`pdf-browser.service.ts`) is the mechanism to extend, not a second one.
+
 ## Agent tooling
 
 - **Nothing enforces the skill pins** ([ADR-0201](decisions/0201-vendored-skills-are-advice-and-they-are-pinned.md), 2026-08-21) — `node .claude/vendor/sync-skills.mjs --check` exists and exits 1 when `.claude/skills` has drifted from `skills.json`, and nothing runs it. The failure it guards is quiet: someone edits a vendored skill in place to fix one sentence, the next `--bump` reverts it, and the reason the edit existed is gone. `.claude/**` is outside `pnpm format`/`lint` (`.prettierignore`), so this needs its own CI step rather than a hook onto an existing one. Cheap, and worth waiting until the pins have actually been bumped once — the check is only as useful as the update habit it protects.
