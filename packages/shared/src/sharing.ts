@@ -19,8 +19,10 @@
 // package holds no UI strings (see this package's CLAUDE.md).
 import { z } from 'zod';
 import { entityIdSchema, isoDateTimeSchema, dateOnlySchema, timezoneSchema } from './schemas';
-import { bookingTypeSchema, eventCategorySchema } from './entities';
-import { LEG_TRAVEL_MODES } from './constants';
+import { bookingTypeSchema, eventCategorySchema, type EventKind } from './entities';
+import { EVENT_KIND, LEG_TRAVEL_MODES } from './constants';
+import { autoIsolate, ltrIsolate } from './bidi';
+import type { DeliveredImageValue, TripEnrichments } from './enrichment';
 import { TIME_MEANINGS } from './icons';
 import { addDays } from './trip-dates';
 import { todayInTz } from './zones';
@@ -674,6 +676,141 @@ export const sharedPhotoSchema = z.strictObject({
   credit: z.string(),
 });
 export type SharedPhoto = z.infer<typeof sharedPhotoSchema>;
+
+/**
+ * **Photographer · license, as one RTL-safe line** (ADR-0167 §4, completed by ADR-0219 §6).
+ *
+ * Two rules, both of which have already cost something:
+ *
+ *  - **The license string is rendered verbatim.** Nine distinct strings appeared across the 32
+ *    Commons files ADR-0166 §12.2 surveyed (`CC BY-SA 3.0 de`, `CC BY-SA 2.5`, CC0, PD…), which
+ *    is why §4 stores the string rather than an enum and why nothing here maps it to a label.
+ *  - **Each run is isolated and the element stays RTL** (ADR-0167 §8.2). `dir="auto"` on a Latin
+ *    credit turns the WHOLE element left-to-right: correct internal order, then aligned to the
+ *    opposite edge from every other line beside it, visually detached from the image it credits.
+ *    That is the mirror image of the bug ADR-0118 was written for, and its lint guard cannot see
+ *    it — the guard reads `dir` attributes, and here the defect is a missing isolate.
+ *
+ * Absent attribution is normal, not an error: 5 of those 32 files owe no credit at all, and the
+ * license alone is then the whole line.
+ *
+ * **Composed once, and that is the point of it being here.** There were two compositions and
+ * they disagreed about ORDER: the app isolated each run, so the photographer led at the start
+ * edge; this projection joined the two raw strings, so the same credit displayed the other way
+ * round on the reader (ADR-0219 Context §4 — a defect only visible with both surfaces open at
+ * once). It lives beside `NARRATIVE_SEPARATOR` because that is the separator it has always
+ * used, and beside `dayPhoto`, which is its first caller.
+ */
+export function placeCredit(image: Pick<DeliveredImageValue, 'attribution' | 'license'>): string {
+  const license = ltrIsolate(image.license);
+  return image.attribution
+    ? `${autoIsolate(image.attribution)}${NARRATIVE_SEPARATOR}${license}`
+    : license;
+}
+
+/**
+ * **A photo needs the name to have AGREED, not merely to have matched** (ADR-0213's
+ * 2026-08-30 amendment, reversing §3's refusal of imagery).
+ *
+ * Enrichment at all clears `MATCH_CONFIDENCE_THRESHOLD` (0.6). A photo asks for more,
+ * because a wrong photo is visibly wrong in a way a wrong opening-hours line is not — and
+ * `MATCH_METHOD_CONFIDENCE` already grades the routes: `wikidata_tag` and `settled_id` are
+ * 1.0, `name_proximity` is 0.9, `geosearch` 0.8, full-text below. 0.9 is exactly "the name
+ * agreed, or the id was settled", which is the bar a picture deserves. A second threshold
+ * on a number already stored per value, not a new mechanism.
+ */
+export const PHOTO_CONFIDENCE_FLOOR = 0.9;
+
+/** How the ranking weighs its four terms. Named because the numbers are a balance and not
+ *  a scale: 90 minutes' worth of "somebody booked this", 30 per decade of ratings, and a
+ *  human mark worth a quarter-hour of dwell — see `dayPhoto` for what each one is for. */
+const PHOTO_RANK = { committed: 90, ratingsDecade: 30, humanMark: 15 } as const;
+
+/** One event, as far as picturing a day is concerned. The shared shapes, not a Prisma row:
+ *  `startsAt`/`endsAt` are ISO strings here, and a `Date` sitting in one would silently
+ *  score every stop at zero dwell (this package's CLAUDE.md, "a Prisma row is not one of
+ *  these shapes"). */
+export interface DayPhotoEvent {
+  placeId?: string;
+  startsAt?: string;
+  endsAt?: string;
+  bookingId?: string;
+  kind?: EventKind;
+  title: string;
+}
+
+/** What the ranking asks about a place. Deliberately narrow: `userRatingsTotal` is the
+ *  world's opinion and `nickname`/`icon` are this group's. */
+export interface DayPhotoPlace {
+  id: string;
+  nickname?: string;
+  icon?: string;
+  userRatingsTotal?: number;
+}
+
+/**
+ * **Which stop a day is a picture of** — a gate, then a rank.
+ *
+ * The gate is `PHOTO_CONFIDENCE_FLOOR` plus a credit we can print: a photo we cannot credit
+ * is a photo we do not publish, since the licence is not ours to drop. The rank, among
+ * survivors, in order:
+ *
+ *  1. **Dwell time.** The strongest signal and it is the traveller's own: four hours at
+ *     Landmannalaugar beats fifteen minutes at Öxarárfoss, and the day genuinely WAS
+ *     Landmannalaugar.
+ *  2. **Booked or hard** (ADR-0011). Something paid for and planned around.
+ *  3. **`userRatingsTotal`, log-scaled** — the COUNT, never `rating`, which is 4.5-4.8 for
+ *     everything scenic and separates nothing. Log-scaled or it swamps the other terms.
+ *  4. **A human mark** — a nickname or a chosen icon. The weakest term and the only one
+ *     about THIS group rather than about the world, so it breaks ties in the right way.
+ *
+ * Deliberately NOT ranked on: Wikidata sitelink count (the provider filters sitelinks to
+ * `hewiki|enwiki` because a big item has hundreds, so counting them would make every entity
+ * read heavier for a tiebreak `userRatingsTotal` gives free); `rating` alone; and position
+ * in the day, which is the rule that produced `Stuðlagil Canyon ← Baugur Bjólfs`.
+ *
+ * **Returns `undefined` freely, and that is the design.** A day whose stops clear no gate
+ * gets no photo — not a gradient, not a map tile, not the trip's own image repeated. Nine
+ * days with photos and three without reads as honest; three days showing the wrong mountain
+ * destroys trust in the other nine. ADR-0219 §3 keeps that rule in the app: the day head
+ * stands alone rather than reserving a placeholder band.
+ */
+export function dayPhoto(
+  dayEvents: readonly DayPhotoEvent[],
+  places: ReadonlyMap<string, DayPhotoPlace>,
+  enrichments: TripEnrichments,
+  placeLabel: (place: DayPhotoPlace) => string | undefined,
+): SharedPhoto | undefined {
+  let best: { score: number; photo: SharedPhoto } | undefined;
+  for (const event of dayEvents) {
+    const place = event.placeId ? places.get(event.placeId) : undefined;
+    if (!place) continue;
+    const image = enrichments[place.id]?.image;
+    if (!image || image.confidence < PHOTO_CONFIDENCE_FLOOR) continue;
+    // Required by 27 of the 32 Commons files ADR-0166 §12.2 surveyed, so a photo we cannot
+    // credit is a photo we do not publish — the licence is not ours to drop.
+    if (!image.attribution && !image.license) continue;
+    const credit = placeCredit(image);
+
+    const minutes =
+      event.startsAt && event.endsAt
+        ? Math.max(0, (Date.parse(event.endsAt) - Date.parse(event.startsAt)) / 60_000)
+        : 0;
+    const score =
+      minutes +
+      (event.bookingId || event.kind === EVENT_KIND.HARD ? PHOTO_RANK.committed : 0) +
+      Math.log10(1 + (place.userRatingsTotal ?? 0)) * PHOTO_RANK.ratingsDecade +
+      (place.nickname?.trim() || place.icon ? PHOTO_RANK.humanMark : 0);
+
+    if (!best || score > best.score) {
+      best = {
+        score,
+        photo: { url: image.url, of: placeLabel(place) ?? event.title, credit },
+      };
+    }
+  }
+  return best?.photo;
+}
 
 export const sharedDaySchema = z.strictObject({
   ordinal: z.number().int().positive(),

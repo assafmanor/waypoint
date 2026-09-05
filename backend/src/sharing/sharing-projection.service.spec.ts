@@ -1107,28 +1107,10 @@ describe('SharingProjectionService', () => {
         Record<string, string>
       >((all, place) => ({ ...all, [place.name]: place.id }), {});
 
-    it('publishes no photo below the confidence floor, and one at it', async () => {
-      const ids = await placeIds();
-      const under = await project({ [ids['Reykjavík']]: { image: imageValue(0.8) } });
-      // 0.8 is `geosearch`: found by coordinates, corroborated by nothing readable. Enough
-      // for a summary, not enough for a picture — a wrong photo is visibly wrong.
-      expect(under.days.some((day) => day.photo)).toBe(false);
-
-      const at = await project({ [ids['Reykjavík']]: { image: imageValue(0.9) } });
-      // 0.9 is `name_proximity`: the name agreed.
-      expect(at.days.some((day) => day.photo)).toBe(true);
-    });
-
-    it('publishes no photo it cannot credit, however confident the match', async () => {
-      const ids = await placeIds();
-      // 27 of the 32 Commons files ADR-0166 §12.2 surveyed require attribution. A file we
-      // cannot credit is one we may not publish — the licence is not ours to drop.
-      const projection = await project({
-        [ids['Reykjavík']]: { image: imageValue(1, { attribution: undefined, license: '' }) },
-      });
-      expect(projection.days.some((day) => day.photo)).toBe(false);
-    });
-
+    // **The gate and the rank are `dayPhoto`'s, and they are tested where it lives** —
+    // `packages/shared/src/sharing.test.ts`, since ADR-0219 §7 made the app's day head read
+    // the same function. What is left here is the one thing only a projection can prove:
+    // that a chosen photo, with its credit, reaches `SharedDay`.
     it('carries the credit with the photo, never the photo alone', async () => {
       const ids = await placeIds();
       const projection = await project({ [ids['Reykjavík']]: { image: imageValue(1) } });

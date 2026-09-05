@@ -1,6 +1,6 @@
 # 0219 — A day is a place you can see: the day's head is a frame with the day's shot, and the day's facts live in it
 
-**Status:** Accepted 2026-09-05 (owner: _"figure everything out, then write up ADRs and a detailed phased plan"_). **Phase 1 built 2026-09-05**; phases 2–5 pending. Build plan: [`planning/2026-09-05-a-day-is-a-place-you-can-see-build-plan.md`](../planning/2026-09-05-a-day-is-a-place-you-can-see-build-plan.md). Mockup: [`mockups/a-day-is-a-place-you-can-see-v1.html`](../../mockups/a-day-is-a-place-you-can-see-v1.html). Brief: [`planning/2026-09-05-a-day-is-a-place-you-can-see.md`](../planning/2026-09-05-a-day-is-a-place-you-can-see.md).
+**Status:** Accepted 2026-09-05 (owner: _"figure everything out, then write up ADRs and a detailed phased plan"_). **Phases 1–2 built 2026-09-05**; phases 3–5 pending. Build plan: [`planning/2026-09-05-a-day-is-a-place-you-can-see-build-plan.md`](../planning/2026-09-05-a-day-is-a-place-you-can-see-build-plan.md). Mockup: [`mockups/a-day-is-a-place-you-can-see-v1.html`](../../mockups/a-day-is-a-place-you-can-see-v1.html). Brief: [`planning/2026-09-05-a-day-is-a-place-you-can-see.md`](../planning/2026-09-05-a-day-is-a-place-you-can-see.md).
 
 ## Context
 
@@ -75,6 +75,8 @@ Teal leaves the day's top entirely. The one hue left there is amber, on today's 
 ### §7 · What moves to `packages/shared`, and why it is one move
 
 `dayPhoto` (ranking + gate), `fallbackDayTitle` + `DayFacts` + the pure helpers that build them (the stops sequence's dedupe, the region/kind majority), and `placeCredit` — all pure, all currently in `backend/src/sharing/` or `frontend/src/lib/`, all now needed by both. `tripShapeOf` and `derivedPlaceLabel` already made this move for the same reason (ADR-0213's fourth pass). Nothing about the reader's output changes; its tests move with the functions.
+
+**Built 2026-09-05, with one correction to the sentence above.** `SharedPhoto.credit` DOES change, and it is §6's point: the projection joined the raw strings and `PlaceKnowledge` isolated each run, so one composition had to lose. The app's wins, and the reader's credit gains the isolate characters (invisible; the line already resolved LTR there, so it looks the same). Day titles and photo URLs are byte-identical, which is what the build plan's acceptance was reaching for. `dayPhoto` and `placeCredit` landed in `packages/shared/src/sharing.ts` beside `tripShapeOf`; the title derivation in a new `day-title.ts`, which also exports the facts builder's two pure parts by name — `buildDayStopSequence` (a leg contributes both its ends) and `dominantValue` (the region/kind majority) — so phase 4 assembles `DayFacts` from trip state without re-deriving either. The projection maps its Prisma rows into the shared shapes rather than casting: `startsAt` is a `Date` there and an ISO string here, and a `Date` reaching `Date.parse` would have scored every stop at zero dwell in silence.
 
 ## What rendering it found
 

@@ -43,6 +43,16 @@ import {
   ROUTE_ARROW,
   SHARE_OP_KIND,
   tripShapeOf,
+  buildDayStopSequence,
+  dayPhoto,
+  dominantValue,
+  type DayPhotoEvent,
+  type DayPhotoPlace,
+  type DayStopEvent,
+  type EventKind,
+  fallbackDaySummary,
+  fallbackDayTitle,
+  type DayFacts,
   type SharedCommitment,
   type SharedOp,
   resolveTextVariant,
@@ -55,12 +65,9 @@ import { EnrichmentService } from '../enrichment/enrichment.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   applyNarrative,
-  fallbackDaySummary,
-  fallbackDayTitle,
   fallbackTripTitle,
   routeLabelsFrom,
   routeStrip,
-  type DayFacts,
 } from './itinerary-narrative.fallback';
 import { ItineraryNarrativeService } from './itinerary-narrative.service';
 import {
@@ -382,90 +389,6 @@ function absorbSpannedDays(
     i = last;
   }
   return out;
-}
-
-const MAJORITY = 0.6;
-const dominant = (values: readonly (string | undefined)[]): string | undefined => {
-  const known = values.filter((value): value is string => Boolean(value?.trim()));
-  if (known.length < 2) return undefined;
-  const counts = new Map<string, number>();
-  for (const value of known) counts.set(value, (counts.get(value) ?? 0) + 1);
-  const [best, count] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
-  return count / known.length >= MAJORITY ? best : undefined;
-};
-
-/**
- * **A photo needs the name to have AGREED, not merely to have matched** (ADR-0213's
- * 2026-08-30 amendment, reversing §3's refusal of imagery).
- *
- * Enrichment at all clears `MATCH_CONFIDENCE_THRESHOLD` (0.6). A photo asks for more,
- * because a wrong photo is visibly wrong in a way a wrong opening-hours line is not — and
- * `MATCH_METHOD_CONFIDENCE` already grades the routes: `wikidata_tag` and `settled_id` are
- * 1.0, `name_proximity` is 0.9, `geosearch` 0.8, full-text below. 0.9 is exactly "the name
- * agreed, or the id was settled", which is the bar a picture deserves. A second threshold
- * on a number already stored per value, not a new mechanism.
- */
-const PHOTO_CONFIDENCE_FLOOR = 0.9;
-
-/**
- * **Which stop a day is a picture of** — a gate, then a rank.
- *
- * The gate is above. The rank, among survivors, in order:
- *
- *  1. **Dwell time.** The strongest signal and it is the traveller's own: four hours at
- *     Landmannalaugar beats fifteen minutes at Öxarárfoss, and the day genuinely WAS
- *     Landmannalaugar.
- *  2. **Booked or hard** (ADR-0011). Something paid for and planned around.
- *  3. **`userRatingsTotal`, log-scaled** — the COUNT, never `rating`, which is 4.5-4.8 for
- *     everything scenic and separates nothing. Log-scaled or it swamps the other terms.
- *  4. **A human mark** — a nickname or a chosen icon. The weakest term and the only one
- *     about THIS group rather than about the world, so it breaks ties in the right way.
- *
- * Deliberately NOT ranked on: Wikidata sitelink count (the provider filters sitelinks to
- * `hewiki|enwiki` because a big item has hundreds, so counting them would make every entity
- * read heavier for a tiebreak `userRatingsTotal` gives free); `rating` alone; and position
- * in the day, which is the rule that produced `Stuðlagil Canyon ← Baugur Bjólfs`.
- *
- * **Returns `undefined` freely, and that is the design.** A day whose stops clear no gate
- * gets no photo — not a gradient, not a map tile, not the trip's own image repeated. Nine
- * days with photos and three without reads as honest; three days showing the wrong mountain
- * destroys trust in the other nine.
- */
-function dayPhoto(
-  dayEvents: ShareEventRow[],
-  places: ReadonlyMap<string, SharePlaceRow>,
-  enrichments: TripEnrichments,
-  placeLabel: PlaceLabeller,
-): SharedPhoto | undefined {
-  let best: { score: number; photo: SharedPhoto } | undefined;
-  for (const event of dayEvents) {
-    const place = event.placeId ? places.get(event.placeId) : undefined;
-    if (!place) continue;
-    const image = enrichments[place.id]?.image;
-    if (!image || image.confidence < PHOTO_CONFIDENCE_FLOOR) continue;
-    // Required by 27 of the 32 Commons files ADR-0166 §12.2 surveyed, so a photo we cannot
-    // credit is a photo we do not publish — the licence is not ours to drop.
-    const credit = [image.attribution, image.license].filter(Boolean).join(NARRATIVE_SEPARATOR);
-    if (!credit) continue;
-
-    const minutes =
-      event.startsAt && event.endsAt
-        ? Math.max(0, (event.endsAt.getTime() - event.startsAt.getTime()) / 60_000)
-        : 0;
-    const score =
-      minutes +
-      (event.bookingId || event.kind === EVENT_KIND.HARD ? 90 : 0) +
-      Math.log10(1 + (place.userRatingsTotal ?? 0)) * 30 +
-      (place.nickname?.trim() || place.icon ? 15 : 0);
-
-    if (!best || score > best.score) {
-      best = {
-        score,
-        photo: { url: image.url, of: placeLabel(place) ?? event.title, credit },
-      };
-    }
-  }
-  return best?.photo;
 }
 
 /** Where an op hangs: on the event, on the booking behind it, or on neither. The two maps
@@ -875,13 +798,37 @@ export class SharingProjectionService {
       const variants = placeId ? enrichments[placeId]?.[field] : undefined;
       return variants ? resolveTextVariant(variants, SUMMARY_LANG_PREFERENCE)?.value : undefined;
     };
-    const eventStops = (event: ShareEventRow): (string | undefined)[] => {
-      const from = event.booking?.fromPlaceId;
-      const to = event.booking?.toPlaceId;
-      // Both ends, in travel order, so a leg contributes its origin AND its destination.
-      if (from || to) return [labelById.get(from ?? ''), labelById.get(to ?? '')];
-      return [placeLabel(event.place)];
-    };
+    /** A row, as the shared derivations want it. Prisma answers `null` where the shared
+     *  shapes say `undefined`, and `Date` where they say `string` — a difference that is
+     *  silent rather than a type error the moment anything casts, so it is spelled out
+     *  here and nowhere else (`packages/shared/CLAUDE.md`). */
+    const stopEventOf = (event: ShareEventRow): DayStopEvent => ({
+      placeId: event.placeId ?? undefined,
+      fromPlaceId: event.booking?.fromPlaceId ?? undefined,
+      toPlaceId: event.booking?.toPlaceId ?? undefined,
+    });
+    const photoEventOf = (event: ShareEventRow): DayPhotoEvent => ({
+      placeId: event.placeId ?? undefined,
+      // `Date` → ISO. The rank scores dwell as `Date.parse(endsAt) - Date.parse(startsAt)`,
+      // and a `Date` handed to it stringifies to something `Date.parse` cannot read — every
+      // stop would score zero dwell and the day would be pictured by its ratings alone.
+      startsAt: event.startsAt?.toISOString(),
+      endsAt: event.endsAt?.toISOString(),
+      bookingId: event.bookingId ?? undefined,
+      kind: event.kind as EventKind,
+      title: event.title,
+    });
+    const photoPlaceById: ReadonlyMap<string, DayPhotoPlace> = new Map(
+      places.map((place) => [
+        place.id,
+        {
+          id: place.id,
+          nickname: place.nickname ?? undefined,
+          icon: place.icon ?? undefined,
+          userRatingsTotal: place.userRatingsTotal ?? undefined,
+        },
+      ]),
+    );
     const isFlight = (event: ShareEventRow): boolean => event.booking?.type === BOOKING_TYPE.FLIGHT;
 
     const byDay = this.groupByDay(events, trip.startDate, trip.endDate, zones);
@@ -901,7 +848,7 @@ export class SharingProjectionService {
     const lastBusy = holdsEvents.lastIndexOf(true);
 
     const dayFacts = (dayEvents: ShareEventRow[], index: number): DayFacts => ({
-      stops: dayEvents.flatMap(eventStops),
+      stops: buildDayStopSequence(dayEvents.map(stopEventOf), (placeId) => labelById.get(placeId)),
       bookingTypes: dayEvents.map((event) => event.booking?.type as BookingType | undefined),
       // The night, named by where it is rather than by what the booking is called: a
       // lodging's own title is a brand, and the place is where you will be.
@@ -1004,12 +951,12 @@ export class SharingProjectionService {
         tripShape: shape.shape,
         // Only the settled stops vote: a transport leg's endpoints are airports, and an
         // airport's region would name a travel day after the municipality of its runway.
-        region: dominant(
+        region: dominantValue(
           dayEvents
             .filter((event) => !isTransport(event))
             .map((event) => textOf(event.placeId ?? undefined, 'region')),
         ),
-        kind: dominant(
+        kind: dominantValue(
           dayEvents
             .filter((event) => !isTransport(event))
             .map((event) => textOf(event.placeId ?? undefined, 'kind')),
@@ -1028,7 +975,12 @@ export class SharingProjectionService {
         // days with pictures and three without reads as honest; three days showing the
         // wrong mountain destroys trust in the other nine.
         ...(() => {
-          const photo = dayPhoto(dayEvents, placeById, enrichments, placeLabel);
+          const photo = dayPhoto(
+            dayEvents.map(photoEventOf),
+            photoPlaceById,
+            enrichments,
+            (place) => labelById.get(place.id),
+          );
           return photo ? { photo } : {};
         })(),
         title,
@@ -1076,7 +1028,9 @@ export class SharingProjectionService {
       );
       return settled.length > 0
         ? placeLabel(settled[0].place)
-        : dayEvents.flatMap(eventStops).find(Boolean);
+        : buildDayStopSequence(dayEvents.map(stopEventOf), (placeId) =>
+            labelById.get(placeId),
+          ).find(Boolean);
     };
 
     // **The whole route, then a slice of it to draw.** The title's endpoints are the trip's

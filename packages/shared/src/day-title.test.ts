@@ -1,16 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import {
-  BOOKING_TYPE,
-  SHARE_DAY_KIND,
-  SHARE_DAY_SUMMARY_KIND,
-  SHARE_TRIP_SHAPE,
-  type ShareTripShape,
-} from '@waypoint/shared';
-import {
-  fallbackDaySummary,
-  fallbackDayTitle,
-  type DayFacts,
-} from './itinerary-narrative.fallback';
+import { BOOKING_TYPE } from './constants';
+import { SHARE_DAY_KIND, SHARE_DAY_SUMMARY_KIND, SHARE_TRIP_SHAPE } from './sharing';
+import type { ShareTripShape } from './sharing';
+import { fallbackDaySummary, fallbackDayTitle, type DayFacts } from './day-title';
 
 /**
  * **The derivation that names a day**, tested as a pure function because that is what it is
