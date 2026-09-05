@@ -66,6 +66,7 @@ function row(
     onPark?: () => void;
     readOnly?: boolean;
     onOpen?: () => void;
+    photoUrl?: string;
   } = {},
 ) {
   return render(
@@ -73,6 +74,7 @@ function row(
       <BuilderRow
         event={event}
         tz={TZ}
+        photoUrl={opts.photoUrl}
         onOpen={opts.onOpen ?? vi.fn()}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
@@ -376,5 +378,27 @@ describe('a hard row answers the hold it cannot obey (ADR-0199)', () => {
     press();
     vi.advanceTimersByTime(DRAG_HOLD_MS);
     expect(rowEl().classList.contains(BEAT.PINNED)).toBe(false);
+  });
+});
+
+// **THE BUILDER ROW'S BADGE TAKES THE PHOTO TOO** (ADR-0219 §1). Plan and Trip render the
+// same rows off the same derivation, so the two assertions here are `EventCard`'s own — a
+// difference between them would be a difference about a fact (ADR-0159 §1).
+describe('the badge photo (ADR-0219 §1)', () => {
+  afterEach(() => cleanup());
+
+  const photoImg = (c: HTMLElement) =>
+    c.querySelector('.bld-bd .wp-placebadge-photo img') as HTMLImageElement | null;
+
+  it('fills the badge with the photo it is given', () => {
+    const { container } = row(A, { photoUrl: '/enrichment/images/enr_1' });
+    expect(photoImg(container)?.getAttribute('src')).toBe('/enrichment/images/enr_1');
+    expect(container.querySelector('.bld-bd')!.hasAttribute('data-photo')).toBe(true);
+  });
+
+  it('renders the glyph and no image without one — most rows, unchanged', () => {
+    const { container } = row(A);
+    expect(photoImg(container)).toBeNull();
+    expect(container.querySelector('.bld-bd')!.hasAttribute('data-photo')).toBe(false);
   });
 });

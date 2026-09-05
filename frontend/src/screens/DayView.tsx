@@ -20,6 +20,7 @@ import {
   type MaybeItem,
   type Place,
   spendsSpanInMotion,
+  type TripEnrichments,
   type TripEvent,
   typicalMinutesFor,
 } from '@waypoint/shared';
@@ -30,6 +31,8 @@ import {
   useShowPlaceOnMap,
 } from '../state/map-scope-state';
 import { prefersReducedMotion } from '../lib/motion';
+import { apiAssetUrl } from '../lib/api-asset';
+import { rowPhoto } from '../lib/place-photo';
 import { useLandOnArrival } from '../lib/land-at-top';
 import { useDaySurface } from '../lib/useDaySurface';
 import { DayPeeks } from '../ui/domain/DayPeek';
@@ -405,6 +408,7 @@ export function DayView() {
     justAddedIdea,
     bookings,
     places,
+    enrichments,
     notes,
     documentAttachments,
     travelModeOverrides,
@@ -689,6 +693,7 @@ export function DayView() {
     toggle: (id) => setOpenId((cur) => (cur === id ? null : id)),
     bookings,
     places,
+    enrichments,
     placeLabels,
     noteCounts,
     taskCounts,
@@ -1874,6 +1879,10 @@ interface DayCtx {
   toggle: (id: string) => void;
   bookings: Booking[];
   places: Place[];
+  /** **What the world knows about each place** (ADR-0166 §6) — threaded beside `places` for the
+   *  same reason they are: the row asks both questions about the same endpoint. Read here only
+   *  to fill the badge with a photograph (ADR-0219 §1). */
+  enrichments: TripEnrichments;
   /** A nickname or the city an airport serves, per place (ADR-0166 §18) — threaded with `places`
    *  because every row that names a place asks both questions at once. */
   placeLabels: PlaceLabels;
@@ -1978,9 +1987,15 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
   // the title and the meta so they can't disagree (ADR-0059 §3 amendment).
   const route = routeDisplay(eventRoute(e, ctx.bookings, ctx.places, ctx.placeLabels));
 
+  // **The badge is the thumbnail's frame** (ADR-0167 §1) and the day rows never filled it.
+  // `rowPhoto` answers the whole "was a glyph picked" question — on the event or on its place —
+  // so the rule is not written out here and again in Plan.
+  const photo = rowPhoto(e, ctx.places, ctx.enrichments);
+
   const card = (
     <EventCard
       icon={e.icon}
+      photoUrl={photo && apiAssetUrl(photo.url)}
       // No route in reach: the stored title may still BE one, so it goes through
       // `TitleLabel` rather than out raw. `titleText` stays the plain string.
       title={route.title ?? <TitleLabel title={e.title} />}

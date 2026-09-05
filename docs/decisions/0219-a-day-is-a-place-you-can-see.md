@@ -1,6 +1,6 @@
 # 0219 — A day is a place you can see: the day's head is a frame with the day's shot, and the day's facts live in it
 
-**Status:** Accepted 2026-09-05 (owner: _"figure everything out, then write up ADRs and a detailed phased plan"_), not built. Build plan: [`planning/2026-09-05-a-day-is-a-place-you-can-see-build-plan.md`](../planning/2026-09-05-a-day-is-a-place-you-can-see-build-plan.md). Mockup: [`mockups/a-day-is-a-place-you-can-see-v1.html`](../../mockups/a-day-is-a-place-you-can-see-v1.html). Brief: [`planning/2026-09-05-a-day-is-a-place-you-can-see.md`](../planning/2026-09-05-a-day-is-a-place-you-can-see.md).
+**Status:** Accepted 2026-09-05 (owner: _"figure everything out, then write up ADRs and a detailed phased plan"_). **Phase 1 built 2026-09-05**; phases 2–5 pending. Build plan: [`planning/2026-09-05-a-day-is-a-place-you-can-see-build-plan.md`](../planning/2026-09-05-a-day-is-a-place-you-can-see-build-plan.md). Mockup: [`mockups/a-day-is-a-place-you-can-see-v1.html`](../../mockups/a-day-is-a-place-you-can-see-v1.html). Brief: [`planning/2026-09-05-a-day-is-a-place-you-can-see.md`](../planning/2026-09-05-a-day-is-a-place-you-can-see.md).
 
 ## Context
 

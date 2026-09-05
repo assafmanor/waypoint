@@ -37,6 +37,7 @@ import {
   type MaybeItem,
   type Place,
   type LegTravelMode,
+  type TripEnrichments,
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
@@ -44,6 +45,8 @@ import { EVENT_PARAM, EVENT_ROW_ATTR, eventRowSelector, useArrivalParam } from '
 import { useLandOnArrival } from '../lib/land-at-top';
 import { edgeFadeRef } from '../lib/edge-fade';
 import { useDragState } from '../state/drag-state';
+import { apiAssetUrl } from '../lib/api-asset';
+import { rowPhoto } from '../lib/place-photo';
 import { useSpringLoadedDay } from '../lib/useSpringLoadedDay';
 import { useEdgeDayStep } from '../lib/useEdgeDayStep';
 import { useDaySurface } from '../lib/useDaySurface';
@@ -291,6 +294,7 @@ export function PlanDay() {
     justAddedIdea,
     bookings,
     places,
+    enrichments,
     notes,
     documentAttachments,
     travelModeOverrides,
@@ -1392,6 +1396,7 @@ export function PlanDay() {
     nowZone,
     bookings,
     places,
+    enrichments,
     placeLabels,
     showPlaceOnMap,
     noteCounts,
@@ -2165,6 +2170,10 @@ interface BuilderCtx {
   nowZone: string;
   bookings: Booking[];
   places: Place[];
+  /** **What the world knows about each place** (ADR-0166 §6), threaded beside `places` for the
+   *  same reason — read here only to fill the row's badge with a photograph (ADR-0219 §1).
+   *  Trip's `DayCtx` carries the same pair: the two day surfaces answer this identically. */
+  enrichments: TripEnrichments;
   /** A nickname or the city an airport serves, per place (ADR-0166 §18) — threaded with `places`
    *  because a builder row asks both questions about the same endpoint. */
   placeLabels: PlaceLabels;
@@ -2526,6 +2535,9 @@ function BuilderNode({
   const zones = eventZones(e, ctx.zoneCtx);
   // Same route treatment as the Trip-mode day row (ADR-0059 §3 amendment).
   const route = routeDisplay(eventRoute(e, ctx.bookings, ctx.places, ctx.placeLabels));
+  // And the same badge photo, off the same `rowPhoto` (ADR-0219 §1) — a difference here would
+  // be a difference about a FACT, which ADR-0159 §1 forbids between these two screens.
+  const photo = rowPhoto(e, ctx.places, ctx.enrichments);
   // **THE MARK IS NAILED HERE**, at whatever depth this row is — the same three lines
   // `DayView`'s `ItemNode` carries, off the same ctx field and the same derivation
   // (ADR-0217 §2). Plan's posture makes it violet and dashed and nothing else.
@@ -2547,6 +2559,7 @@ function BuilderNode({
         <BuilderRow
           event={e}
           tz={ctx.tz}
+          photoUrl={photo && apiAssetUrl(photo.url)}
           title={route.title}
           zones={zones}
           duration={eventDurationLabel(e, booking, zones)}
@@ -2613,6 +2626,7 @@ function BuilderNode({
 export function BuilderRow({
   event,
   tz,
+  photoUrl,
   title,
   zones,
   duration,
@@ -2637,6 +2651,10 @@ export function BuilderRow({
 }: {
   event: TripEvent;
   tz: string;
+  /** **A fetched photograph to fill the badge's interior** (ADR-0219 §1), or absent for the
+   *  glyph. `EventCard`'s prop of the same name, resolved by the same `rowPhoto` — the two day
+   *  surfaces render the same rows off the same derivation and must not differ about a fact. */
+  photoUrl?: string;
   /** Title node — the screen passes the `routeDisplay` title so a transport row
    *  reads as its route; falls back to the stored title, itself route-aware
    *  (`TitleLabel`). */
@@ -2855,7 +2873,7 @@ export function BuilderRow({
       {/* The badge is the way to the map, and it survives `readOnly` — a finished
           trip is a browsable archive (ADR-0040) and looking at a place changes
           nothing. */}
-      <PlaceBadge className="bld-bd" onShowOnMap={onShowOnMap}>
+      <PlaceBadge className="bld-bd" onShowOnMap={onShowOnMap} photoUrl={photoUrl}>
         {event.icon}
       </PlaceBadge>
       {/* **THE ROW'S TAP IS A READ NOW, NOT AN EDIT** (ADR-0174 §4). It opened `EventForm`

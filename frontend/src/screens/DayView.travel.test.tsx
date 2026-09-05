@@ -176,6 +176,10 @@ vi.mock('../state/trip-state', () => ({
     },
     bookings: tripBookings,
     places: tripPlaces,
+    // Nothing is known about any of these places, which is the majority state (ADR-0166 §11.3)
+    // and what the badges here assume — stated rather than omitted, because the real state
+    // always carries the map and a surface reading it must not be handed `undefined`.
+    enrichments: {},
     events: tripEvents,
     maybeItems: [],
     justAddedIdea: null,
