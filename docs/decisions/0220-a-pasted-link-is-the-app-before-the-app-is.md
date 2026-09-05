@@ -378,3 +378,92 @@ a bright region earns its place when it is part of the thing being shown.
 
 The strings, the three-URL routing, the header sets, the throttle, the escaping, and the
 notification badge. `og:image:alt` was reworded per cover, since there are three now.
+
+## Amendment (2026-09-06) — the cover is drawn per trip, and §4's isolate was wrapped around the wrong thing
+
+Owner, on a WhatsApp thread carrying all three previews: _"I noticed that it doesn't render
+the trip's icon."_ Then, on the first render of the fix: _"if you're already getting info
+dynamically like the trip's icon, why not also show the trip's name instead of a generic
+`יוצאים לדרך`?"_ and _"also in the live sharing preview I think."_
+
+Both are the same gap. The card's TEXT named the trip from the day it shipped and the PICTURE
+never did — one PNG per surface, served to every crawler — so an invitation to Georgia and an
+invitation to Iceland were the same boarding pass, and the live share's masthead printed the
+wordmark in the slot where the reader page puts the trip.
+
+### §F — The two shared covers are rendered per request, from the same templates
+
+`scripts/og-covers/og-invite.html` and `og-live.html` gain `{{…}}` slots and are filled
+**twice**: by `scripts/gen-app-icons.mjs` with `defaults.json`'s generic text, into the
+committed PNGs; and by `backend/src/spa/og-cover.template.ts` with a trip's own icon, name,
+destination and dates, screenshotted per request. One template, so the fallback cannot drift
+from the thing it falls back from — the same argument §B made for rendering the app's real
+CSS instead of hand-cutting SVG, one layer up.
+
+What each cover draws is what the screen it advertises draws, in the same slot: the ticket's
+`.ticket-name` (icon + name) and `.ticket-meta`, and the reader's `.sh-title-mark` /
+`.sh-title` / `.sh-dates`. The live cover also gains the reader page's **own brand bar**, so
+it keeps the wordmark while the title slot goes back to naming a trip.
+
+**`README.md`'s "No trip name, ever" is repealed.** That rule was never about privacy — the
+`og:title` beside the image has carried the name since §5 — it was a consequence of cutting
+one PNG at build time. Nothing in §6 changes: the cover routes carry the same bearer code, the
+same 20/min cap, the same `no-store` / `no-referrer` / `noindex`, and the same refusal to be an
+existence oracle (an unresolvable code gets the generic cover, never a 404).
+
+**Three things a cover may not carry**, and the rule is one sentence: it is cached by us and
+then by every chat app that ever fetched it, so **nothing on it may go stale**. The ticket's
+`בעוד 6 ימים` countdown is dropped, the reader's `עודכן לפני…` is not drawn, and the face row
+is capped rather than being a live roster. An icon, a name, a destination and a date range
+still read true a month later.
+
+### §G — The backlog line said this could not be cached, and that was half right
+
+`backlog.md` deferred this as _"a Chromium render per crawler hit, on a page whose `no-store`
+posture forbids caching the result"_. `no-store` binds **intermediaries and clients**; it says
+nothing about what our own process may hold, and the cover is not the response — it is a pure
+function of five trip facts. So `OgImageService` keeps a `byte-lru` (rule 8's existing
+primitive, third consumer) keyed on a hash of exactly those facts, which makes staleness
+structurally impossible: change the icon and the key changes, and `og:image`'s `?v=` changes
+with it, so every crawler's own cache is correct with no invalidation path to forget.
+
+The half that was right is that crawlers give up fast, which is why a failed or slow render
+falls back to the committed PNG rather than erroring — a generic picture is a far smaller loss
+than a broken one.
+
+The line also named the mechanism correctly: the PDF's browser. `PdfBrowserService` held the
+pool inline, so it was **extracted** to `RenderBrowserService` — one Chromium, one
+`PDF_RENDER_CONCURRENCY`, one deadline, shared by the paper and the covers. A second browser
+would have doubled the memory ceiling that class exists to bound.
+
+### §H — **§4's isolate was wrapped around the whole range, and it shipped reversed**
+
+§4 measured `11–22 בספטמבר` and found the numeric run painting as `22–11` — correct, and the
+same defect `day-scheduling-grammar-v1.html` had found. The fix applied `ltrIsolate` to
+`heTripRange`'s **whole return value**, and an isolate forces a direction on everything inside
+it. On a cross-month range that is two Hebrew date phrases, so both halves flipped: the owner's
+own screenshot reads `גאורגיה, באוגוסט 5 – בספטמבר 28`.
+
+The isolate now goes around the **day range only**, in the one shape that has a neutral between
+two numbers. Measured both ways, per surface, rather than argued: with the run isolated `11`
+paints left of `22`; with the whole string isolated `5` paints left of `28`, which is the two
+date phrases in the wrong order.
+
+**The rule, which `lib/bidi.ts` already stated and this got wrong anyway:** an isolate belongs
+around the numeric island, never around the sentence holding it. A measurement taken on one
+shape is not a licence to wrap the function that returns four.
+
+Two smaller corrections landed with it, both visible in the same screenshot:
+
+- **`1 נוסעים כבר בפנים`.** `t.shell.join.members` has had the singular since the join screen
+  shipped; only the preview's copy lacked it. It is now that string word for word — a dual
+  (`שני נוסעים`) was drafted and dropped, because the screen does not say it and a preview
+  that improves on the screen it advertises is drift.
+- **Three faces beside one traveller.** The cover drew a fixed row of three; the count and the
+  row are the same fact. `INVITE_AVATARS` (glyph, colours, cap) moves to `@waypoint/shared` and
+  both renderers build the row from it, as `DEFAULT_TRIP_ICON` did in the same change.
+
+### What did not change
+
+§1 (a PNG cannot flip with the theme), §6 in full, §7, and the amendment above it. The homepage
+keeps the static brand cover: it has no trip to draw, so there is nothing to render per request.

@@ -242,7 +242,7 @@ export class SharingService {
     const [trip, travellers] = await this.prisma.$transaction([
       this.prisma.trip.findUniqueOrThrow({
         where: { id: share.tripId },
-        select: { name: true, destination: true, startDate: true, endDate: true },
+        select: { name: true, destination: true, startDate: true, endDate: true, icon: true },
       }),
       this.prisma.membership.count({ where: { tripId: share.tripId } }),
     ]);
@@ -252,6 +252,7 @@ export class SharingService {
       startDate: toDateOnly(trip.startDate),
       endDate: toDateOnly(trip.endDate),
       travellers,
+      icon: trip.icon ?? undefined,
     };
   }
 

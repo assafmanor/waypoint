@@ -1,6 +1,7 @@
 import {
   ROUTE_ARROW,
   bindPrefix,
+  ltrIsolate,
   tripRangeShape,
   SHARE_DAY_KIND,
   SHARE_DAY_SUMMARY_KIND,
@@ -258,15 +259,80 @@ export function heTripRange(startDate: string, endDate: string): string {
   const day = fmt({ day: 'numeric' });
   const dayMonth = fmt({ day: 'numeric', month: 'long' });
 
+  /**
+   * **`בספטמבר`, and it has to come from the same formatter that printed `22 בספטמבר`.**
+   *
+   * `{ month: 'long' }` alone gives the bare `ספטמבר` — Hebrew binds the preposition onto the
+   * month and ICU emits it as the LITERAL between the day and the month, so asking for the
+   * month on its own drops the `ב` and the range read `11–22 ספטמבר` (caught in a render).
+   * Taking everything after the day part keeps whatever ICU puts there, which is the same
+   * argument the docblock above makes for not hand-typing `HE_MONTHS`.
+   */
+  const boundMonth = (at: Date): string => {
+    const parts = dayMonth.formatToParts(at);
+    return parts
+      .slice(parts.findIndex((part) => part.type === 'day') + 1)
+      .map((part) => part.value)
+      .join('')
+      .trim();
+  };
+
   switch (tripRangeShape(startDate, endDate)) {
     case 'same-day':
       return dayMonth.format(start);
     case 'same-month':
-      return `${day.format(start)}${EN_DASH}${dayMonth.format(end)}`;
+      // **`11–22` is the one shape with a neutral BETWEEN two numbers, and that is the whole
+      // bidi problem here** (ADR-0118). In an RTL paragraph the en dash takes the embedding
+      // direction, so the run paints as `22–11` — reversed, and read as a range starting on
+      // the 22nd. Measured in `hebrew.copy.spec.ts` rather than argued.
+      //
+      // **Only the numeric run is isolated, never the whole range.** Wrapping the returned
+      // string was the first fix and it shipped: `5 באוגוסט – 28 בספטמבר` laid out
+      // left-to-right entire, so both halves flipped and a real preview read
+      // `באוגוסט 5 – בספטמבר 28` (owner screenshot, 2026-09-05). An isolate forces a
+      // direction on everything inside it, so it belongs around the digits and nothing else.
+      return `${ltrIsolate(`${day.format(start)}${EN_DASH}${day.format(end)}`)} ${boundMonth(end)}`;
     case 'same-year':
     case 'cross-year':
       return `${dayMonth.format(start)} ${EN_DASH} ${dayMonth.format(end)}`;
   }
+}
+
+/**
+ * **`1 נוסעים כבר בפנים` was on a real preview** (owner screenshot, 2026-09-05) — a trip one
+ * person has joined so far is the COMMON case for an invitation, which is the whole point of
+ * sending one, so the un-inflected plural was showing on the link that matters most.
+ *
+ * **Word for word `t.shell.join.members`**, which had the singular all along — the join
+ * screen this preview advertises has said `נוסע אחד כבר בפנים` since it shipped, and only
+ * the preview said `1 נוסעים`. The duplication is ADR-0197's rule (server-side copy lives
+ * server-side, because whoever sends composes); what is not allowed is the two disagreeing,
+ * so this is the frontend's string and not a better one. A dual (`שני נוסעים`) was drafted
+ * here and dropped for exactly that reason: the screen does not say it.
+ */
+export function heTravellersInside(count: number): string {
+  return count === 1 ? 'נוסע אחד כבר בפנים' : `${count} נוסעים כבר בפנים`;
+}
+
+/**
+ * **The same range as digits** — `05.08–28.09`, `formatTripDates`' numeric style.
+ *
+ * Not a nicer or a shorter version of `heTripRange`: it is what a **mono** slot has to hold.
+ * The reader page's `.sh-dates` is `var(--font-mono)`, which is JetBrains Mono and ships
+ * Latin only by design (design-language.md — it carries times, codes and money, never
+ * prose), so the prose range put every Hebrew month name into a fallback face on the live
+ * cover. The element's own CSS decides which of the two a surface takes.
+ *
+ * Isolated whole, and here that IS right: every character is a digit, a dot or a dash, so
+ * there is no Hebrew for an isolate to reorder — the failure `heTripRange` documents needs a
+ * Hebrew segment to have something to flip.
+ */
+export function heTripRangeNumeric(startDate: string, endDate: string): string {
+  const numeric = fmt({ day: '2-digit', month: '2-digit' });
+  return ltrIsolate(
+    `${numeric.format(new Date(`${startDate}T00:00:00Z`))}${EN_DASH}` +
+      `${numeric.format(new Date(`${endDate}T00:00:00Z`))}`,
+  );
 }
 
 /**
@@ -289,6 +355,7 @@ export function heTripRange(startDate: string, endDate: string): string {
  * Every value a caller interpolates is trip content and is escaped by the renderer, never
  * here — see `spa-shell.service.ts`.
  */
+
 export const SHARE_META_COPY = {
   siteName: 'Travelive',
   home: {
@@ -300,7 +367,7 @@ export const SHARE_META_COPY = {
     /** `travellers` is `memberCount`, and it is last because it is the first thing a
      *  two-line clamp drops — the destination and the dates are what a person needs. */
     description: (destination: string, dates: string, travellers: number) =>
-      `${destination}, ${dates}. ${travellers} נוסעים כבר בפנים.`,
+      `${destination}, ${dates}. ${heTravellersInside(travellers)}.`,
   },
   live: {
     title: (tripName: string) => `${tripName} - הלו״ז החי`,

@@ -128,8 +128,10 @@ describe('SpaShellService', () => {
     it('gives an invitation the ticket cover, the trip in the title, and refuses indexing', () => {
       const html = render(inviteMeta('7Fq2xKmA', FACTS));
       expect(html).toContain('<meta property="og:title" content="הוזמנת ליפן 2026" />');
-      expect(html).toContain(
-        '<meta property="og:image" content="https://travelive.app/og-invite.png" />',
+      // The cover is rendered for THIS trip and content-addressed, so the URL carries the
+      // code and a hash of what is drawn (the 2026-09-06 amendment).
+      expect(html).toMatch(
+        /og:image" content="https:\/\/travelive\.app\/og\/join\/7Fq2xKmA\.png\?v=[0-9a-f]{10}"/,
       );
       expect(html).toContain(
         '<meta property="og:url" content="https://travelive.app/join/7Fq2xKmA" />',
@@ -140,8 +142,8 @@ describe('SpaShellService', () => {
 
     it('gives a live share the trip and what it is, and refuses indexing', () => {
       const html = render(liveMeta('9pTb3Wx1', FACTS));
-      expect(html).toContain(
-        '<meta property="og:image" content="https://travelive.app/og-live.png" />',
+      expect(html).toMatch(
+        /og:image" content="https:\/\/travelive\.app\/og\/s\/9pTb3Wx1\.png\?v=[0-9a-f]{10}"/,
       );
       expect(html).toContain('<meta property="og:title" content="יפן 2026 - הלו״ז החי" />');
       expect(html).toContain(
@@ -161,7 +163,25 @@ describe('SpaShellService', () => {
         (meta) => meta.imagePath,
       );
       expect(new Set(images).size).toBe(3);
-      expect(images).toEqual(['/og-cover.png', '/og-invite.png', '/og-live.png']);
+      expect(images[0]).toBe('/og-cover.png');
+      expect(images[1]).toMatch(/^\/og\/join\/a\.png\?v=/);
+      expect(images[2]).toMatch(/^\/og\/s\/b\.png\?v=/);
+    });
+
+    /**
+     * **And two trips are two pictures** (the 2026-09-06 amendment) — the thing the owner
+     * reported missing: _"it doesn't render the trip's icon"_. The `?v=` is a hash of what
+     * the cover draws, so it is also what makes a crawler's cache correct without an
+     * invalidation path: a renamed trip is simply a different URL.
+     */
+    it('gives two trips two cover URLs, and the same trip one', () => {
+      const other = { ...FACTS, name: 'איסלנד 2026' };
+      expect(inviteMeta('a', FACTS).imagePath).not.toBe(inviteMeta('a', other).imagePath);
+      expect(inviteMeta('a', FACTS).imagePath).toBe(inviteMeta('a', { ...FACTS }).imagePath);
+      // The icon is drawn and nothing else reads it, so it has to move the hash by itself.
+      expect(inviteMeta('a', FACTS).imagePath).not.toBe(
+        inviteMeta('a', { ...FACTS, icon: '🗻' }).imagePath,
+      );
     });
 
     /** And each one's alt describes the COVER, so three covers means three alts. */
@@ -226,13 +246,20 @@ describe('SpaShellService', () => {
       expect(html).toContain('<meta name="twitter:card" content="summary_large_image" />');
     });
 
-    /** A preview card is an image with text baked into it, so a screen reader has nothing
-     *  without this — and the alt describes the COVER, never the trip: it is the same PNG
-     *  for every trip. */
-    it('describes the cover, not the trip', () => {
+    /**
+     * A preview card is an image with text baked into it, so a screen reader has nothing
+     * without this.
+     *
+     * **It names the trip now, and the old assertion here was that it must not** — which was
+     * right while one PNG served every crawler, because an alt naming a trip described a
+     * picture that was not there. The cover draws the name, so the alt has to say it (the
+     * 2026-09-06 amendment).
+     */
+    it('describes the cover, which now names the trip it draws', () => {
       const html = render(inviteMeta('7Fq2xKmA', FACTS));
-      expect(html).toContain('<meta property="og:image:alt"');
-      expect(html).not.toMatch(/og:image:alt" content="[^"]*יפן 2026/);
+      expect(html).toMatch(/og:image:alt" content="[^"]*יפן 2026/);
+      // Still a description of the PICTURE: the destination is not on the invitation cover,
+      // so an alt mentioning it would be describing the card's text instead.
       expect(html).not.toMatch(/og:image:alt" content="[^"]*אוסקה/);
     });
 

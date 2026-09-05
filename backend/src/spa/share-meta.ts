@@ -1,5 +1,5 @@
-import { ltrIsolate } from '@waypoint/shared';
 import { heTripRange, SHARE_META_COPY } from '../sharing/hebrew.copy';
+import { coverSignature, type CoverKind } from './og-cover.template';
 import type { ShareMeta } from './spa-shell.service';
 
 /**
@@ -18,18 +18,40 @@ import type { ShareMeta } from './spa-shell.service';
  * it was added to draw. The live cover's bright half is the reader page's own body, i.e.
  * content rather than a device, which is why it keeps one.
  */
-const COVER = {
-  brand: '/og-cover.png',
-  invite: '/og-invite.png',
-  live: '/og-live.png',
-} as const;
+const COVER = { brand: '/og-cover.png' } as const;
 
-/** `og:image:alt`. Describes the cover, never the trip — the image is the same PNG for every
- *  trip, and an alt text that named one would be a caption for a picture that is not there. */
+/**
+ * **The route prefix each per-trip cover is served from**, named once because the controller
+ * mounts it and `coverImagePath` writes it into `og:image`; two spellings of the same path
+ * would be a broken picture in every chat card, and nothing in a test suite looks at both.
+ */
+export const OG_COVER_PREFIX: Record<CoverKind, string> = {
+  invite: 'og/join',
+  live: 'og/s',
+};
+
+/**
+ * **`og:image` for one trip** (ADR-0220's 2026-09-06 amendment).
+ *
+ * `?v=` is the cover's own content hash, so the URL changes exactly when the picture does.
+ * That is what makes a crawler's cache correct without an invalidation path: WhatsApp holds
+ * a preview against the URL it fetched, and a renamed trip is simply a different URL.
+ *
+ * `.png` is decoration for readers that sniff an extension — the response's `Content-Type`
+ * is what actually decides, and the controller strips the suffix back off.
+ */
+function coverImagePath(kind: CoverKind, code: string, facts: TripPreviewFacts): string {
+  return `/${OG_COVER_PREFIX[kind]}/${encodeURIComponent(code)}.png?v=${coverSignature(kind, facts)}`;
+}
+
+/** `og:image:alt`. **It names the trip now**, and it did not before for a reason that has
+ *  stopped being true: the cover was one PNG served to every crawler, so an alt text naming a
+ *  trip was a caption for a picture that was not there. The per-trip cover draws the name, so
+ *  the alt text describing it has to say the same word (ADR-0220's 2026-09-06 amendment). */
 const COVER_ALT = {
   brand: 'הלוגו של Travelive על רקע כהה',
-  invite: 'כרטיס הזמנה לטיול על רקע כהה, בסגנון כרטיס עלייה למטוס',
-  live: 'ראש העמוד של לו״ז חי ב-Travelive, עם סימון שהמסלול מתעדכן',
+  invite: (name: string) => `כרטיס הזמנה ל${name}, בסגנון כרטיס עלייה למטוס`,
+  live: (name: string) => `ראש העמוד של הלו״ז החי של ${name} ב-Travelive`,
 } as const;
 
 /**
@@ -43,6 +65,10 @@ export interface TripPreviewFacts {
   startDate: string;
   endDate: string;
   travellers: number;
+  /** The trip's chosen glyph (ADR-0038 §5), absent when nobody picked one. It reaches no
+   *  `<meta>` tag — it is drawn on the COVER, which is what the 2026-09-06 amendment made
+   *  per-trip, and the fifth field is here because the cover is filled from these facts. */
+  icon?: string;
 }
 
 /** The homepage, and every in-app route that is not a bearer link. */
@@ -66,8 +92,8 @@ export function inviteMeta(code: string, facts: TripPreviewFacts): ShareMeta {
       dateRange(facts),
       facts.travellers,
     ),
-    imagePath: COVER.invite,
-    imageAlt: COVER_ALT.invite,
+    imagePath: coverImagePath('invite', code, facts),
+    imageAlt: COVER_ALT.invite(facts.name),
     path: `/join/${code}`,
     // The code IS the grant (ADR-0067), so this page must never enter a search index.
     indexable: false,
@@ -80,8 +106,8 @@ export function liveMeta(code: string, facts: TripPreviewFacts): ShareMeta {
   return {
     title: SHARE_META_COPY.live.title(facts.name),
     description: SHARE_META_COPY.live.description(facts.destination, dateRange(facts)),
-    imagePath: COVER.live,
-    imageAlt: COVER_ALT.live,
+    imagePath: coverImagePath('live', code, facts),
+    imageAlt: COVER_ALT.live(facts.name),
     path: `/s/${code}`,
     // Same rule, stated once more because it is the whole of ADR-0213 §5.
     indexable: false,
@@ -89,18 +115,19 @@ export function liveMeta(code: string, facts: TripPreviewFacts): ShareMeta {
 }
 
 /**
- * **The range, isolated — and this is the one line in the file that came out of rendering
- * the mockup rather than reading anything.**
+ * **The range, and the isolate is NOT here** (ADR-0220's 2026-09-06 amendment).
  *
- * `אוסקה, 11–22 בספטמבר.` leads with Hebrew, so the element resolves RTL and the numeric run
- * inside it paints as `22–11` (ADR-0118; the same defect
- * `day-scheduling-grammar-v1.html` found shipped). Measured, not eyeballed: the two numbers'
- * painted x differ by −18px raw and +18px isolated.
+ * It was: `dateRange` wrapped the whole of `heTripRange` in `ltrIsolate`, on a measurement
+ * taken against the same-month shape (`11–22 בספטמבר`, where a neutral sits between two
+ * numbers and really does paint reversed). Applied to the whole string it forced a
+ * left-to-right layout on Hebrew as well, and a real preview read
+ * `גאורגיה, באוגוסט 5 – בספטמבר 28` (owner screenshot, 2026-09-05) — the month ahead of its
+ * own day, in both halves.
  *
- * `ltrIsolate` emits U+2066/U+2069, which a `<meta>` attribute carries like any other text —
- * the tag is a string, not markup, and the consumer's own text layout honours the controls.
- * It is the app's own helper, not a local copy, for the reason the sweep in ADR-0213 exists.
+ * `heTripRange` now isolates the run that needs it and nothing else, which is the rule
+ * `lib/bidi.ts` states: the isolate goes around the numeric island, never around the
+ * sentence holding it.
  */
 function dateRange(facts: TripPreviewFacts): string {
-  return ltrIsolate(heTripRange(facts.startDate, facts.endDate));
+  return heTripRange(facts.startDate, facts.endDate);
 }

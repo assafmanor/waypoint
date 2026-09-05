@@ -16,12 +16,36 @@ import { heTripRange, SHARE_META_COPY } from './hebrew.copy';
  * dates in a Hebrew preview and nothing else would notice.
  */
 describe('heTripRange', () => {
-  it('names the month once when both ends share it', () => {
-    expect(heTripRange('2026-09-11', '2026-09-22')).toBe('11–22 בספטמבר');
+  /**
+   * **The isolate is around the DAY RANGE and nothing else** (ADR-0220's 2026-09-06
+   * amendment), which is the only shape here with a neutral between two numbers: in an RTL
+   * line the en dash takes the paragraph's direction and `11–22` paints as `22–11`.
+   *
+   * The characters are asserted literally rather than stripped, because where they sit IS
+   * the fix. A first attempt wrapped the whole returned string, which forced Hebrew
+   * left-to-right too and put a real preview's month ahead of its own day
+   * (`באוגוסט 5 – בספטמבר 28`, owner screenshot 2026-09-05).
+   */
+  it('names the month once when both ends share it, and isolates only the digits', () => {
+    expect(heTripRange('2026-09-11', '2026-09-22')).toBe(
+      '\u2066' + '11–22' + '\u2069' + ' בספטמבר',
+    );
   });
 
-  it('names both months when they differ', () => {
+  /** The month keeps the `ב` ICU binds onto it. `{ month: 'long' }` on its own returns the
+   *  bare `ספטמבר` — the preposition is the LITERAL between the day and the month — and
+   *  reading it off `{ day, month }` is what stops the range printing `11–22 ספטמבר`. */
+  it('keeps the preposition ICU binds to the month name', () => {
+    expect(heTripRange('2026-09-11', '2026-09-22')).toContain('בספטמבר');
+    expect(heTripRange('2026-09-11', '2026-09-22')).not.toContain(' ספטמבר');
+  });
+
+  /** **No isolate at all here, and that is the point.** Two Hebrew date phrases either side
+   *  of a dash need the RTL segment order the paragraph already gives them; an isolate would
+   *  swap them. */
+  it('names both months when they differ, with nothing forced left-to-right', () => {
     expect(heTripRange('2026-09-27', '2026-10-03')).toBe('27 בספטמבר – 3 באוקטובר');
+    expect(heTripRange('2026-08-05', '2026-09-28')).toBe('5 באוגוסט – 28 בספטמבר');
   });
 
   it('reads as one date when the trip is a single day', () => {

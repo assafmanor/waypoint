@@ -7,7 +7,15 @@ import { REVALIDATE } from '../common/static-cache';
 import { applyPublicShareHeaders } from '../sharing/public-response-headers';
 import { SharingService } from '../sharing/sharing.service';
 import { TripsService } from '../trips/trips.service';
-import { homeMeta, inviteMeta, liveMeta, type TripPreviewFacts } from './share-meta';
+import type { CoverKind } from './og-cover.template';
+import { OgImageService } from './og-image.service';
+import {
+  homeMeta,
+  inviteMeta,
+  liveMeta,
+  OG_COVER_PREFIX,
+  type TripPreviewFacts,
+} from './share-meta';
 import { SpaShellService } from './spa-shell.service';
 
 /**
@@ -37,6 +45,7 @@ export class SpaShellController {
     private readonly shell: SpaShellService,
     private readonly trips: TripsService,
     private readonly sharing: SharingService,
+    private readonly covers: OgImageService,
   ) {}
 
   @Get()
@@ -68,6 +77,47 @@ export class SpaShellController {
     return this.send(req, res, facts ? liveMeta(code, facts) : homeMeta(), { bearerLink: true });
   }
 
+  /**
+   * **The picture the two shells above point `og:image` at** (ADR-0220's 2026-09-06
+   * amendment). Same code, same throttle, same resolution as the shell — the cover simply
+   * draws the facts the tags describe.
+   *
+   * An unresolvable code gets the generic cover rather than a 404, for `factsOr`'s reason:
+   * the shell it accompanies already fell back to the app's own tags, and a 404 here would
+   * be the existence oracle both routes exist to refuse.
+   */
+  @Get(`${OG_COVER_PREFIX.invite}/:code`)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  inviteCover(@Param('code') code: string, @Res() res: Response): Promise<void> {
+    return this.sendCover('invite', code, () => this.invitePreview(stripPng(code)), res);
+  }
+
+  @Get(`${OG_COVER_PREFIX.live}/:code`)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  liveCover(@Param('code') code: string, @Res() res: Response): Promise<void> {
+    return this.sendCover('live', code, () => this.sharing.previewByCode(stripPng(code)), res);
+  }
+
+  private async sendCover(
+    kind: CoverKind,
+    code: string,
+    resolve: () => Promise<TripPreviewFacts>,
+    res: Response,
+  ): Promise<void> {
+    const facts = await this.factsOr(resolve);
+    const png = facts ? await this.covers.render(kind, facts) : await this.covers.generic(kind);
+    if (!png) {
+      // No built PWA to read the fallback from (dev/test, ADR-0020) — the same honest 404
+      // the shell route gives, rather than an empty body a crawler would cache as an image.
+      res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Not found' } });
+      return;
+    }
+    // The path carries a bearer code and the picture now names the trip, so it takes the
+    // same three headers the shell does (ADR-0213 §5).
+    applyPublicShareHeaders(res);
+    res.type('png').send(png);
+  }
+
   private async invitePreview(code: string): Promise<TripPreviewFacts> {
     const preview = await this.trips.getInvitePreview(code);
     return {
@@ -76,6 +126,7 @@ export class SpaShellController {
       startDate: preview.startDate,
       endDate: preview.endDate,
       travellers: preview.memberCount,
+      icon: preview.icon,
     };
   }
 
@@ -125,4 +176,12 @@ export class SpaShellController {
     }
     res.type('html').send(html);
   }
+}
+
+/** `.png` is decoration on the cover URL (`share-meta.ts`), so the code is what is left when
+ *  it is taken off. Written here rather than as a route pattern because Express's `:code.png`
+ *  is a path-to-regexp subtlety, and a URL that silently matched nothing would be a broken
+ *  image in every chat card. */
+function stripPng(code: string): string {
+  return code.endsWith('.png') ? code.slice(0, -4) : code;
 }

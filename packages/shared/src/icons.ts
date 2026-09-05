@@ -103,6 +103,35 @@ export const TRIP_ICON_CLUSTERS: readonly (readonly string[])[] = [
 /** Flattened view for any consumer that just needs the membership list. */
 export const TRIP_ICON_SET: readonly string[] = TRIP_ICON_CLUSTERS.flat();
 
+/** **The glyph a trip with no chosen icon is drawn with** — `TRIP_ICON_CLUSTERS`' own first
+ *  member, stated separately because three surfaces reach for it by name.
+ *
+ *  Here rather than in `frontend/constants.ts`, where it lived while the frontend was its
+ *  only reader: the link-preview cover is rendered by the BACKEND (ADR-0220's 2026-09-06
+ *  amendment) and draws the same ticket the join screen does, so a default that disagreed
+ *  would show one glyph in the chat and another on the screen the chat links to. */
+export const DEFAULT_TRIP_ICON = TRIP_ICON_CLUSTERS[0][0];
+
+/**
+ * **The invite ticket's row of faces** (ADR-0067's join screen), here because two renderers
+ * draw it: `screens/JoinTrip.tsx` and the link-preview cover the backend cuts for that same
+ * ticket (ADR-0220's 2026-09-06 amendment).
+ *
+ * They are **placeholders, not people** — the pre-join preview carries a member COUNT and no
+ * names, deliberately (a stranger holding an invite code learns how many are in, never who).
+ * So every face is the same anonymous glyph and only the colours vary, and `MAX` is where the
+ * row stops widening; the sentence beside it carries the real number.
+ *
+ * The cover got this wrong first and the owner caught it in a render: three faces beside
+ * `נוסע אחד כבר בפנים`. A count and a row of faces are the same fact drawn twice, so they
+ * cannot be authored twice.
+ */
+export const INVITE_AVATARS = {
+  GLYPH: '🙂',
+  COLORS: ['#5ec5b6', '#e88c8c', '#9c8ce8', '#8cb6e8'],
+  MAX: 4,
+} as const;
+
 /** Search terms (Hebrew + English) per vibe glyph, so the trip picker's search
  *  matches style icons too — not only country flags. */
 export const TRIP_VIBE_TERMS: Record<string, readonly string[]> = {

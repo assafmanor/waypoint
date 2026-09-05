@@ -1,0 +1,15 @@
+{
+  "_": "The generic filling of the slots in og-invite.html and og-live.html — what scripts/gen-app-icons.mjs cuts into the committed og-*.png. Those PNGs are the DEGRADATION path: with per-trip covers the backend draws the real trip, and it falls back to these bytes only when a render fails or there is no built PWA to read the CSS from. So this text stands in for a trip it could not draw and must name none. The backend never reads this file; it always has real facts.",
+  "og-invite.html": {
+    "icon": "🗺️",
+    "name": "יוצאים לדרך",
+    "meta": "כל הטיול נפתח בלינק אחד",
+    "members": "החבורה כבר בפנים"
+  },
+  "og-live.html": {
+    "icon": "🧭",
+    "name": "הטיול שלכם",
+    "kicker": "לו״ז חי, בלינק אחד",
+    "dates": ""
+  }
+}

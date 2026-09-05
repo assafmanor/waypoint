@@ -10,6 +10,17 @@ import {
 } from '../common/env';
 import { NINE_DAY_REFERENCE_TRIP } from './itinerary-pdf.fixture';
 import { generatedAtLabel, PdfBrowserService } from './pdf-browser.service';
+import { RenderBrowserService } from './render-browser.service';
+
+/** The pool is what holds the browser and the slots now (`render-browser.service.ts`), so a
+ *  test that stubs a browser or counts slots reaches for it rather than for the PDF service
+ *  it is injected into. The assertions below are unchanged: they are about a wedged PDF
+ *  render giving its slot back, which is a fact about the two together. */
+const withStubbedBrowser = (browser: unknown): PdfBrowserService => {
+  const pool = new RenderBrowserService();
+  (pool as unknown as { browser: unknown }).browser = browser;
+  return new PdfBrowserService(pool);
+};
 
 const URL_UNDER_TEST = 'travelive.app/s/7Kq2mB9x';
 
@@ -40,9 +51,8 @@ describe('PdfBrowserService concurrency', () => {
     const previous = { ...process.env };
     process.env[PDF_RENDER_CONCURRENCY] = '1';
     process.env[PDF_RENDER_TIMEOUT_MS] = '50';
-    const service = new PdfBrowserService();
     // A launch that never resolves holds the one slot, so the second caller queues.
-    (service as unknown as { browser: Promise<unknown> }).browser = new Promise(() => undefined);
+    const service = withStubbedBrowser(new Promise(() => undefined));
 
     const first = service.render(NINE_DAY_REFERENCE_TRIP, URL_UNDER_TEST);
     await expect(service.render(NINE_DAY_REFERENCE_TRIP, URL_UNDER_TEST)).rejects.toBeInstanceOf(
@@ -69,7 +79,6 @@ describe('PdfBrowserService concurrency', () => {
     const previous = { ...process.env };
     process.env[PDF_RENDER_CONCURRENCY] = '1';
     process.env[PDF_RENDER_TIMEOUT_MS] = '50';
-    const service = new PdfBrowserService();
     let closed = 0;
     const page = {
       route: () => Promise.resolve(),
@@ -81,9 +90,7 @@ describe('PdfBrowserService concurrency', () => {
         return Promise.resolve();
       },
     };
-    (service as unknown as { browser: Promise<unknown> }).browser = Promise.resolve({
-      newPage: () => Promise.resolve(page),
-    });
+    const service = withStubbedBrowser(Promise.resolve({ newPage: () => Promise.resolve(page) }));
 
     try {
       await expect(service.render(NINE_DAY_REFERENCE_TRIP, URL_UNDER_TEST)).rejects.toThrow(
@@ -131,7 +138,8 @@ const LAUNCH_AND_RENDER_MS = 120_000;
 const RENDER_MS = 60_000;
 
 describe.skipIf(!chromiumPath)('PdfBrowserService against a real Chromium', () => {
-  const service = new PdfBrowserService();
+  const pool = new RenderBrowserService();
+  const service = new PdfBrowserService(pool);
   let pdf: Buffer;
 
   beforeAll(async () => {
@@ -139,7 +147,7 @@ describe.skipIf(!chromiumPath)('PdfBrowserService against a real Chromium', () =
     pdf = await service.render(NINE_DAY_REFERENCE_TRIP, URL_UNDER_TEST);
   }, LAUNCH_AND_RENDER_MS);
 
-  afterAll(() => service.onModuleDestroy());
+  afterAll(() => pool.onModuleDestroy());
 
   it('produces a real PDF', () => {
     expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
