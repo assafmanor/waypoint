@@ -201,3 +201,52 @@ the generic tags at 200 (no existence oracle), a trip renamed to
 the badge rendered **through Android's own rule** — the PNG used as a mask for a
 white slot — beside the old asset, which reproduced the owner's white rectangle
 exactly.
+
+## The same evening — three reports off a real device, and one of them was mine to have caught
+
+The build shipped and the owner tested it on a phone. Three reports, and they land in
+descending order of how badly I should have caught them myself.
+
+**The links didn't work at all, and the code was already telling me so.** A copied
+`travelive.app/join/<code>` has no scheme, and WhatsApp linkifies a scheme-less string
+without previewing it — so every `og:*` tag this session added was unreachable through the
+app's own copy buttons. `lib/invite-link.ts`'s header asserted the opposite ("the chat apps
+an invite is actually pasted into linkify a bare host + path"), and I read that header,
+believed it, and did not check it.
+
+The tell was sitting in the diff I had just read: **three share-sheet call sites carried
+their own `` `https://${publicAppLink(…)}` `` template and four clipboard writes did not.**
+An inline fix present at some call sites and absent at others is not a style inconsistency,
+it is a bug somebody half-found. Counting them would have taken one grep.
+
+**"Too small" was a base-width question and I would have answered it with a scale.** The
+instinct is to raise the multiplier. Measured, the ticket is ⁦197.5px⁩ tall at _any_ width in
+the phone range — its content does not wrap — so the height budget fixes the scale outright
+and the only free variable is the base: ⁦300px⁩ fills ⁦63%⁩ of the cover, ⁦390px⁩ fills ⁦82%⁩, at the
+same scale. Two lines of measurement beat the guess, and the guess would have shipped a
+cover that was still too small.
+
+**And the band's number was measured against the wrong surface.** The owner asked whether
+the dark artwork and the white footer went together, which is the kind of question that
+deserves a rendered answer rather than a defence. §2 had compared `--paper` to the chat
+**bubble** — where the band's actual neighbour is the card's own **text panel**, near-white
+in a light chat at ⁦1.04:1⁩. The band and the panel were one light block, so the band
+destroyed the boundary it existed to draw. Four treatments drawn at the real ⁦278px⁩ card
+width settled it in one look.
+
+The general lesson, and it is the same one three times: **a number is only evidence if it was
+measured against the thing that will actually sit next to it.**
+
+## What that produced
+
+- **`publicAppUrl` / `publicAppLink`** — leaves-the-app vs. shown, the second derived from
+  the first so they cannot drift, and the `inviteLink` alias deleted because which form you
+  want is the whole question. Three screens now hold the invite **path** in state.
+- **The covers are HTML rendered from `styles/tokens.css`, `App.css` and
+  `screens/shared-itinerary.css`** instead of hand-cut SVG — the same principle as
+  `inline-app-css.mjs` one layer up, applied to the assets, and it retires the whole
+  hand-transcription failure mode that produced the RTL anchoring defect earlier in the day.
+- **Three covers**, the live one being the reader page's own top with its teal wash.
+- **No paper band** on the two artwork covers.
+- A spec that asserts the three covers are **distinct**, which is the regression guard for
+  the report that they were not.

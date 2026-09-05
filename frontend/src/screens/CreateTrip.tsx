@@ -41,7 +41,7 @@ import { useIsOffline } from '../lib/outbox';
 import { useActiveTripId } from '../state/active-trip-id';
 import { useAppBack } from '../state/nav-state';
 import { createInvite, createTrip } from '../lib/api';
-import { inviteLink } from '../lib/invite-link';
+import { publicAppLink, publicAppUrl } from '../lib/invite-link';
 import { suggestTripName } from '../lib/trip-name';
 import { useDerivedField } from '../lib/useDerivedField';
 import { prefersReducedMotion, readDurationMs } from '../lib/motion';
@@ -545,7 +545,10 @@ function Birth({
   );
 }
 
-type InviteState = { status: 'pending' } | { status: 'ready'; url: string } | { status: 'failed' };
+/** `path` rather than `url`: what the API returns is `/join/<code>` and the two consumers
+ *  want different strings from it — the box shows `publicAppLink`, the clipboard takes
+ *  `publicAppUrl`. Holding one rendered form here is what made the copy scheme-less. */
+type InviteState = { status: 'pending' } | { status: 'ready'; path: string } | { status: 'failed' };
 
 /** Screen 2 (mockup #s-born): the beat right after creation where the invite
  *  link goes in front of the creator. */
@@ -558,7 +561,9 @@ function BornBody({ trip, onDone }: { trip: Trip; onDone: () => void }) {
     let cancelled = false;
     createInvite(trip.id).then(
       (res) => {
-        if (!cancelled) setInvite({ status: 'ready', url: inviteLink(res.inviteUrl) });
+        // The PATH, not a rendered link: the box shows the short form and the clipboard
+        // takes the whole URL, and one of those with no scheme is a paste with no preview.
+        if (!cancelled) setInvite({ status: 'ready', path: res.inviteUrl });
       },
       () => {
         if (!cancelled) setInvite({ status: 'failed' });
@@ -573,7 +578,7 @@ function BornBody({ trip, onDone }: { trip: Trip; onDone: () => void }) {
 
   const copyInvite = () => {
     if (invite.status !== 'ready') return;
-    void navigator.clipboard.writeText(invite.url);
+    void navigator.clipboard.writeText(publicAppUrl(invite.path));
     showToast(CONTROL_ICON.clipboard, t.shell.created.inviteCopied);
     // Confirm IN PLACE as well as in the toast (ADR-0142 §3): the toast says it
     // happened, the box you tapped should say that you tapped it.
@@ -603,7 +608,7 @@ function BornBody({ trip, onDone }: { trip: Trip; onDone: () => void }) {
           data-copied={copied ? '' : undefined}
         >
           <span className="code" dir="auto">
-            {invite.url}
+            {publicAppLink(invite.path)}
           </span>
           <span className="lbl2">{t.shell.created.inviteLabel}</span>
           <span className="cp">

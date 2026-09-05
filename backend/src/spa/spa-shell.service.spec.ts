@@ -140,11 +140,36 @@ describe('SpaShellService', () => {
 
     it('gives a live share the trip and what it is, and refuses indexing', () => {
       const html = render(liveMeta('9pTb3Wx1', FACTS));
+      expect(html).toContain(
+        '<meta property="og:image" content="https://travelive.app/og-live.png" />',
+      );
       expect(html).toContain('<meta property="og:title" content="יפן 2026 - הלו״ז החי" />');
       expect(html).toContain(
         '<meta property="og:url" content="https://travelive.app/s/9pTb3Wx1" />',
       );
       expect(html).toContain('<meta name="robots" content="noindex, nofollow, noarchive" />');
+    });
+
+    /**
+     * **Three URLs, three covers** (the 2026-09-05 amendment). The live share used to reuse
+     * the brand cover, which made an itinerary sent to family look like a marketing link
+     * (owner). Asserted as a distinctness property rather than three separate string checks,
+     * so a future fourth case cannot quietly share one either.
+     */
+    it('gives each shared URL its own cover', () => {
+      const images = [homeMeta(), inviteMeta('a', FACTS), liveMeta('b', FACTS)].map(
+        (meta) => meta.imagePath,
+      );
+      expect(new Set(images).size).toBe(3);
+      expect(images).toEqual(['/og-cover.png', '/og-invite.png', '/og-live.png']);
+    });
+
+    /** And each one's alt describes the COVER, so three covers means three alts. */
+    it('describes each cover distinctly', () => {
+      const alts = [homeMeta(), inviteMeta('a', FACTS), liveMeta('b', FACTS)].map(
+        (meta) => meta.imageAlt,
+      );
+      expect(new Set(alts).size).toBe(3);
     });
 
     /**
@@ -208,6 +233,7 @@ describe('SpaShellService', () => {
       const html = render(inviteMeta('7Fq2xKmA', FACTS));
       expect(html).toContain('<meta property="og:image:alt"');
       expect(html).not.toMatch(/og:image:alt" content="[^"]*יפן 2026/);
+      expect(html).not.toMatch(/og:image:alt" content="[^"]*אוסקה/);
     });
 
     it('leaves the marker behind — a second render must not find it gone', () => {

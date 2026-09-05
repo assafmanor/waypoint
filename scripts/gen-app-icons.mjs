@@ -32,7 +32,16 @@ const { chromium } = createRequire(new URL('../frontend/package.json', import.me
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = join(ROOT, 'frontend', 'public');
-const FONTS = join(ROOT, 'frontend', 'src', 'assets', 'fonts');
+const SRC = join(ROOT, 'frontend', 'src');
+const FONTS = join(SRC, 'assets', 'fonts');
+const COVERS = join(ROOT, 'scripts', 'og-covers');
+
+/** The app's real stylesheets, in the app's own import order — later rules win at equal
+ *  specificity, so the order is not decoration. Same manifest idea as
+ *  `mockups/tools/inline-app-css.mjs`, and here for the same reason: a cover that borrows
+ *  `.join-ticket` or `.sh-hero` must render the SHIPPED rules, not a transcription of them.
+ *  `shared-itinerary.css` is the live cover's masthead; `App.css` is the join ticket. */
+const COVER_SHEETS = ['styles/tokens.css', 'App.css', 'screens/shared-itinerary.css'];
 const BUNDLED_CHROME = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 
 /** Every raster icon, and the size it is asked for.
@@ -47,12 +56,16 @@ const ICONS = [
   { source: 'favicon.svg', file: 'pwa-maskable-512.png', size: 512 },
   { source: 'favicon.svg', file: 'apple-touch-icon.png', size: 180 },
 
-  // **The link-preview covers** (ADR-0220 §2-3). 1200x630 is Open Graph's own
-  // recommendation and the size WhatsApp promotes to a large card; below ~300px wide it
-  // degrades to a thumbnail beside the text, which is the layout the covers were measured
-  // against and rejected. They carry Hebrew and Latin type, so `fonts: true`.
-  { source: 'og-cover.svg', file: 'og-cover.png', size: 1200, height: 630, fonts: true },
-  { source: 'og-invite.svg', file: 'og-invite.png', size: 1200, height: 630, fonts: true },
+  // **The link-preview covers** (ADR-0220 §2-3, amended 2026-09-05). `html: true` — these
+  // render the app's REAL stylesheets from `scripts/og-covers/`, because two of them borrow
+  // a shipped tree (`.join-ticket`, `.sh-hero`) and the SVG versions were hand-transcribed
+  // coordinates that had already drifted once, in a way only a rendered PNG could show.
+  // See `scripts/og-covers/README.md`.
+  { source: 'og-cover.html', file: 'og-cover.png', size: 1200, height: 630, html: true },
+  { source: 'og-invite.html', file: 'og-invite.png', size: 1200, height: 630, html: true },
+  // The third cover, and the reason there is a third: sharing the brand cover made a live
+  // itinerary sent to family look like a marketing link (owner, 2026-09-05).
+  { source: 'og-live.html', file: 'og-live.png', size: 1200, height: 630, html: true },
 
   // **Android's small notification icon** (ADR-0220 §6), and the one asset here that MUST
   // keep its alpha: Android paints the small icon from the alpha channel, so a white
@@ -104,24 +117,75 @@ async function fontFaces() {
 
 const FACES = await fontFaces();
 
+/** The app's sheets plus the covers' own chrome, read once. */
+async function coverCss() {
+  const app = await Promise.all(COVER_SHEETS.map((sheet) => readFile(join(SRC, sheet), 'utf8')));
+  const own = await readFile(join(COVERS, '_cover.css'), 'utf8');
+  return app.join('\n') + '\n' + own;
+}
+
+const COVER_CSS = await coverCss();
+
+/**
+ * An HTML cover. **`dir="rtl"` and no `data-theme`**, both deliberate: the app is RTL and
+ * half of what these draw is Hebrew, and a PNG has no theme — leaving the attribute off is
+ * what pins the artwork to `tokens.css`'s `:root` (light) block, which is the whole of §1.
+ */
+async function shotHtml(source) {
+  const body = await readFile(join(COVERS, source), 'utf8');
+  await page.setContent(
+    `<!doctype html><html lang="he" dir="rtl"><head><meta charset="UTF-8">` +
+      `<style>${FACES}${COVER_CSS}</style></head><body>${body}</body></html>`,
+  );
+  await page.evaluate(() =>
+    Promise.all(
+      ['400 12px Assistant', '600 12px Assistant', '700 12px Assistant', '12px "Secular One"'].map(
+        (f) => document.fonts.load(f),
+      ),
+    ),
+  );
+  return page.locator('.og-cover').screenshot();
+}
+
+/** An SVG icon. */
+async function shotSvg(source, size, height, fonts, alpha) {
+  const svg = await readFile(join(PUBLIC, source), 'utf8');
+  await page.setContent(
+    `<style>${fonts ? FACES : ''}html,body{margin:0}` +
+      `svg{display:block;width:${size}px;height:${height}px}</style>${svg}`,
+  );
+  if (fonts) await page.evaluate(() => document.fonts.ready);
+  // **Screenshot the element, never the viewport** — `--window-size` on a headless Chromium
+  // is the WINDOW, not the page box. `omitBackground` keeps the alpha channel for the
+  // notification badge, whose entire job is to BE an alpha channel.
+  return page.locator('svg').screenshot({ omitBackground: alpha });
+}
+
 try {
-  for (const { source, file, size, height = size, fonts = false, alpha = false } of ICONS) {
-    const svg = await readFile(join(PUBLIC, source), 'utf8');
-    await page.setContent(
-      `<style>${fonts ? FACES : ''}html,body{margin:0}` +
-        `svg{display:block;width:${size}px;height:${height}px}</style>${svg}`,
-    );
-    // The faces are `font-display: block` and inlined, so this resolves immediately — but
-    // it resolves AFTER layout has seen them, which is the part that matters: a screenshot
-    // taken in the same tick as `setContent` can catch the fallback metrics.
-    if (fonts) await page.evaluate(() => document.fonts.ready);
-    // **Screenshot the element, never the viewport** — `--window-size` on a headless
-    // Chromium is the WINDOW, not the page box. `omitBackground` keeps the alpha channel
-    // for the notification badge, whose entire job is to BE an alpha channel.
-    const shot = await page.locator('svg').screenshot({ omitBackground: alpha });
+  for (const {
+    source,
+    file,
+    size,
+    height = size,
+    fonts = false,
+    alpha = false,
+    html = false,
+  } of ICONS) {
+    const shot = html ? await shotHtml(source) : await shotSvg(source, size, height, fonts, alpha);
     await writeFile(join(PUBLIC, file), shot);
     console.log(`wrote frontend/public/${file} (${size}×${height}) from ${source}`);
   }
 } finally {
   await browser.close();
+}
+
+/** **A cover whose PNG is not 1200×630 is a cover that grew a scrollbar or a stray margin**,
+ *  and the card would letterbox it rather than fail. Asserted rather than eyeballed, because
+ *  the last two defects in these assets were both invisible in the source. */
+for (const { file, size, height = size, html = false } of ICONS.filter((i) => i.html)) {
+  const png = await readFile(join(PUBLIC, file));
+  const [w, h] = [png.readUInt32BE(16), png.readUInt32BE(20)];
+  if (w !== size || h !== height) {
+    throw new Error(`${file} came out ${w}×${h}, expected ${size}×${height} (${html})`);
+  }
 }

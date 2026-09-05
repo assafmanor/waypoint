@@ -33,7 +33,7 @@ import { useToast } from '../ui/Toast';
 import { useIsOffline, useOutboxCount } from '../lib/outbox';
 import { formatTripDates } from '../lib/time';
 import { allowMemberBack, createInvite, fetchRemovedMembers, rotateInvite } from '../lib/api';
-import { inviteLink } from '../lib/invite-link';
+import { publicAppLink, publicAppUrl } from '../lib/invite-link';
 import { DEFAULT_TRIP_ICON, DEVICE_TIMEZONE, DOT_SEPARATOR, CONTROL_ICON } from '../constants';
 import { NavArrow } from '../ui/NavArrow';
 import { t } from '../i18n/he';
@@ -64,7 +64,7 @@ export function TripSettings() {
   const [editing, setEditing] = useState(false);
   const [sheetFor, setSheetFor] = useState<Membership | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
-  const [invite, setInvite] = useState<{ url: string } | 'loading' | null>(null);
+  const [invite, setInvite] = useState<{ path: string } | 'loading' | null>(null);
   const [removed, setRemoved] = useState<RemovedMember[] | null>(null);
 
   // Leave for /trips once the trip is gone — whether we deleted it or a remote
@@ -151,7 +151,8 @@ export function TripSettings() {
   const generateInvite = () => {
     setInvite('loading');
     createInvite(trip.id).then(
-      (res) => setInvite({ url: inviteLink(res.inviteUrl) }),
+      // The PATH — `publicAppLink` for the row, `publicAppUrl` for the clipboard.
+      (res) => setInvite({ path: res.inviteUrl }),
       () => {
         setInvite(null);
         toast(CONTROL_ICON.warn, t.toast.writeFailed);
@@ -170,7 +171,7 @@ export function TripSettings() {
         setInvite('loading');
         rotateInvite(trip.id).then(
           (res) => {
-            setInvite({ url: inviteLink(res.inviteUrl) });
+            setInvite({ path: res.inviteUrl });
             toast(CONTROL_ICON.done, t.settings.inviteReset_done);
           },
           () => {
@@ -183,7 +184,7 @@ export function TripSettings() {
 
   const copyInvite = () => {
     if (invite === 'loading' || !invite) return;
-    void navigator.clipboard?.writeText(invite.url);
+    void navigator.clipboard?.writeText(publicAppUrl(invite.path));
     toast(CONTROL_ICON.clipboard, t.settings.inviteCopied);
   };
 
@@ -326,7 +327,7 @@ export function TripSettings() {
             component, not a second copy of "the trip's link", and neutral rather than the
             plan violet `.invite-box` painted here outside Plan mode. */}
         {invite && invite !== 'loading' ? (
-          <TripLinkRow url={invite.url} onCopy={copyInvite} />
+          <TripLinkRow url={publicAppLink(invite.path)} onCopy={copyInvite} />
         ) : (
           <button
             className="set-invite-btn"

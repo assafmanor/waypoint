@@ -1,0 +1,51 @@
+<!-- THE INVITATION COVER — `/join/<code>` (ADR-0220 §3).
+     The join screen's OWN boarding pass: every class below is `App.css`'s shipped
+     `.join-ticket` tree, rendered by the shipped rules rather than transcribed into
+     coordinates. Rule 8 — the ticket already MEANS "an invitation" in this app.
+
+     **Rendered at 390px, which is why it is finally legible.** The first cut used the 300px
+     base and 1.85x and the owner reported the result as "too small". Measured, the ticket is
+     197.5px tall at ANY width in this range — its content does not wrap — so the height
+     budget alone fixes the scale and the wider base is free: 300px fills 63% of the cover,
+     390px fills 82%. The scale was never the knob.
+
+     390px is a real device stop (ADR-0017's secondary width), so this is still the shipped
+     tree at a shipped width. With the paper band gone the whole 630px is available and the
+     limit moves to WIDTH: 2.55x is 995x504, inside the 1008px that 96px of side margin
+     leaves, with 63px above and below. (It was 2.3x against a 496px budget while the band
+     took 134px, and 2.45x before that visibly touched both edges.)
+
+     No trip name: one PNG serves every crawler. The words are about the act. -->
+<div class="og-cover">
+  <div class="og-art">
+    <div class="og-scale" style="--og-w: 390px; --og-s: 2.55">
+      <div class="join-ticket-wrap" style="margin-top: 0">
+        <div class="join-ticket">
+          <div class="ticket-top">
+            <div class="ticket-head">
+              <span class="ticket-badge">✈️ הזמנה לטיול</span>
+              <span class="ticket-countdown">בעוד <span class="num" dir="auto">6</span> ימים</span>
+            </div>
+            <div class="ticket-name"><span class="ticket-emoji">🗺️</span> יוצאים לדרך</div>
+            <div class="ticket-meta">כל הטיול נפתח בלינק אחד</div>
+          </div>
+          <div class="ticket-perf">
+            <span class="notch start"></span><span class="notch end"></span>
+          </div>
+          <div class="ticket-bottom">
+            <div class="ticket-avatars" aria-hidden="true">
+              <span class="ticket-av" style="background: #3f6ea8">🙂</span>
+              <span class="ticket-av" style="background: #3f8f7d">😎</span>
+              <span class="ticket-av" style="background: #a8763f">🤓</span>
+            </div>
+            <div class="ticket-people">
+              <div class="ticket-members">החבורה כבר בפנים</div>
+              <div class="ticket-sub">מחכים רק לך</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- No band: see `_cover.css`. The pass carries the card on its own. -->
+</div>

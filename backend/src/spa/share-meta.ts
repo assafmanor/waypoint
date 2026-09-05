@@ -3,25 +3,33 @@ import { heTripRange, SHARE_META_COPY } from '../sharing/hebrew.copy';
 import type { ShareMeta } from './spa-shell.service';
 
 /**
- * **The two covers** (ADR-0220 §2-3), cut from
- * `frontend/public/og-cover.svg` / `og-invite.svg` by `scripts/gen-app-icons.mjs`.
+ * **Three covers, one per shared URL** (ADR-0220 §2-3 and its 2026-09-05 amendment), rendered
+ * from the app's real CSS in `scripts/og-covers/` and cut by `scripts/gen-app-icons.mjs`.
  *
- * Both are board-plus-a-paper-band rather than the plain board tile the app icon is, and
- * that is a measurement rather than a preference: against a WhatsApp bubble the board alone
- * is 17.9:1 in a light chat and **1.25:1** in a dark one, paper alone is 1.15:1 and 12.48:1,
- * so neither single ground clears the 3:1 graphic floor in both. A two-region cover needs
- * only one region with an edge (`mockups/the-app-is-seen-before-it-is-opened-v1.html` §2).
+ * Each one is the surface its link opens: the mark and the wordmark for the homepage, the
+ * join screen's own boarding pass for an invitation, the reader page's own masthead for a
+ * live itinerary. The live cover exists because sharing the brand one made an itinerary sent
+ * to family indistinguishable from a marketing link (owner, 2026-09-05).
+ *
+ * **None of them carries the paper band the first cut had**, and the reason is a measurement
+ * error worth naming: §2 justified the band by comparing `--paper` to the chat BUBBLE, but
+ * what sits under the image is the card's own TEXT PANEL, which is near-white in a light
+ * chat — `1.04:1`. The band and the panel were one light block, so it destroyed the boundary
+ * it was added to draw. The live cover's bright half is the reader page's own body, i.e.
+ * content rather than a device, which is why it keeps one.
  */
 const COVER = {
   brand: '/og-cover.png',
   invite: '/og-invite.png',
+  live: '/og-live.png',
 } as const;
 
 /** `og:image:alt`. Describes the cover, never the trip — the image is the same PNG for every
  *  trip, and an alt text that named one would be a caption for a picture that is not there. */
 const COVER_ALT = {
-  brand: 'הלוגו של Travelive על רקע כהה, ומתחתיו הכיתוב מרכז שליטה לטיול',
-  invite: 'כרטיס הזמנה לטיול על רקע כהה, עם הלוגו של Travelive',
+  brand: 'הלוגו של Travelive על רקע כהה',
+  invite: 'כרטיס הזמנה לטיול על רקע כהה, בסגנון כרטיס עלייה למטוס',
+  live: 'ראש העמוד של לו״ז חי ב-Travelive, עם סימון שהמסלול מתעדכן',
 } as const;
 
 /**
@@ -66,13 +74,14 @@ export function inviteMeta(code: string, facts: TripPreviewFacts): ShareMeta {
   };
 }
 
-/** `/s/<code>` — the read-only live itinerary. */
+/** `/s/<code>` — the read-only live itinerary, and the one surface with its own cover since
+ *  the 2026-09-05 amendment. */
 export function liveMeta(code: string, facts: TripPreviewFacts): ShareMeta {
   return {
     title: SHARE_META_COPY.live.title(facts.name),
     description: SHARE_META_COPY.live.description(facts.destination, dateRange(facts)),
-    imagePath: COVER.brand,
-    imageAlt: COVER_ALT.brand,
+    imagePath: COVER.live,
+    imageAlt: COVER_ALT.live,
     path: `/s/${code}`,
     // Same rule, stated once more because it is the whole of ADR-0213 §5.
     indexable: false,
