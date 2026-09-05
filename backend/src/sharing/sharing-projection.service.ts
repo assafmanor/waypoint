@@ -1,11 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import {
-  BOOKING_TYPE,
-  EVENT_CATEGORY,
-  EVENT_KIND,
-  TRAVEL_MODE,
-  TRAVEL_MODES,
-} from '@waypoint/shared';
+import { BOOKING_TYPE, EVENT_KIND, TRAVEL_MODE, TRAVEL_MODES } from '@waypoint/shared';
 import {
   SHARE_DAYPART_ORDER,
   SHARE_DETAIL_LEVEL,
@@ -39,7 +33,6 @@ import {
   derivedPlaceLabel,
   shortPlaceLabel,
   placeIataCode,
-  NARRATIVE_SEPARATOR,
   ROUTE_ARROW,
   SHARE_OP_KIND,
   tripShapeOf,
@@ -60,7 +53,6 @@ import {
   type SharedOp,
   resolveTextVariant,
   SUMMARY_LANG_PREFERENCE,
-  type SharedPhoto,
   type TripEnrichments,
 } from '@waypoint/shared';
 
