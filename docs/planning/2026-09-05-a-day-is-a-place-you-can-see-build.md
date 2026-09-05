@@ -166,6 +166,26 @@ reason held (it changes what a share publishes, which is a decision), and it was
 stating. Cost estimates made from a function's shape rather than from reading it are worth what
 they cost.
 
+## The third round: the surfaces nobody walked to
+
+Two more, and they are a different failure from the six before them. Those were a rule asked in
+a weaker **form** one surface over. These two — the bookings Index row's badge, and
+`PlaceKnowledge` on the booking's read — are a rule never asked **at all** on a surface that has
+always existed, because the five-phase plan named the day surfaces and the event read and the
+Index was not on the list. A plan is a list of the surfaces somebody thought of.
+
+The tell, in both cases, was a capability already present and unused: `PlaceBadge` has taken a
+`photoUrl` since ADR-0167 §1 and `ListRow` never passed one; `DetailSheet` has taken a
+`knowledge` node since ADR-0219 §6 and `BookingDetail` never passed one. **When a primitive
+already supports something and one of its hosts does not use it, that is worth a look before it
+is called a decision.** Neither of these needed an ADR — §1 and §6 already said it.
+
+**And one test lesson, from the file that reported "no tests".** Adding a `beforeEach` to
+`IndexBookingsView.test.tsx` failed the whole file at COLLECTION, because that import was not
+there — 26 passing tests vanished behind one red filename, which is exactly the trap
+`frontend/CLAUDE.md` records about `virtual:pwa-register`. Read the FILE count beside the test
+count; it is the only number that would have shown it.
+
 ## Left open
 
 - **The 44px touch floor on `.new-event-btn`** (26px). That is its shipped size and it was 26px in

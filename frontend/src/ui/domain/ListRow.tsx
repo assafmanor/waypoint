@@ -26,6 +26,12 @@ export interface ListRowProps {
    *  ADR-0188:** a row with a `lead` has no badge, because the control IS its leading
    *  element and a task has no icon slot to fill. */
   icon?: ReactNode;
+  /** **A fetched photograph to fill the badge's interior** (ADR-0167 §1, extended to this row
+   *  2026-09-05). `PlaceBadge` has taken this since the Map first filled it; the row simply
+   *  never forwarded it, so the bookings index wore a ticket glyph for a place the day surface
+   *  was already showing a photograph of. Resolved by the host through `lib/place-photo`'s
+   *  `rowPhoto` — only a host knows whether a glyph was PICKED, which is what beats a photo. */
+  photoUrl?: string;
   badgeTone?: BadgeTone;
   /** **A control at the row's leading edge, as a SIBLING of the trigger** (ADR-0188 §1) —
    *  the kebab's twin at the other end, and rendered before it for the same reason the
@@ -90,6 +96,7 @@ export interface ListRowProps {
 
 export function ListRow({
   icon,
+  photoUrl,
   badgeTone,
   lead,
   onOpen,
@@ -125,6 +132,7 @@ export function ListRow({
           <PlaceBadge
             className={'wp-listrow-badge' + (badgeTone ? ` ${badgeTone}` : '')}
             onShowOnMap={onShowOnMap}
+            photoUrl={photoUrl}
           >
             {icon}
           </PlaceBadge>

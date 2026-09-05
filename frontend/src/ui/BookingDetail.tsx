@@ -3,11 +3,21 @@
 // guard for a hard commitment (ADR-0011); editing is a deliberate tap. Edit
 // opens the merged BookingSheet. Delete lives on the row's "⋯" (BookingManageSheet),
 // not here — the detail carries edit only (ADR-0053 revision, 2026-07-17).
-import { carriesRoute, type Booking } from '@waypoint/shared';
+import { useState } from 'react';
+import {
+  carriesRoute,
+  placeCredit,
+  type Booking,
+  type DeliveredImageValue,
+} from '@waypoint/shared';
 import { bookingSheetDraft } from '../lib/booking-draft';
 import { useJourney, useRoundTripPartner, type Journey } from '../lib/booking-journey';
 import { useTrip } from '../state/trip-state';
+import { apiAssetUrl } from '../lib/api-asset';
+import { placeSummary } from '../lib/place-summary';
 import { DetailSheet } from './DetailSheet';
+import { MediaViewer } from './MediaViewer';
+import { KNOWLEDGE_DENSITY, PlaceKnowledge } from './domain/PlaceKnowledge';
 import { NavArrow } from './NavArrow';
 import { RouteLabel } from './RouteLabel';
 import {
@@ -107,6 +117,15 @@ export function BookingDetail({
   // → origin, else the single place) shown as a fact like the rest, with navigate
   // (directions) + מפה (view) links. Links are absent for a coordless Place-lite.
   const navPlace = places.find((p) => p.id === bookingPlaceId(booking));
+  /** **What the world knows about the place this booking is AT** (ADR-0219 §6, which named
+   *  this surface as the next host: _"`BookingDetail` may pass the same later"_). The same
+   *  place the location fact below already resolves, so the two cannot disagree — and no
+   *  picked-icon rule, for §6's reason: the badge is where a choice beats a photograph, and
+   *  this is the surface that choice leaves the photograph one tap away on. */
+  const knowledgeEnrichment = navPlace ? enrichments[navPlace.id] : undefined;
+  /** The full picture, one level below the read — owned here because the viewer is a portal,
+   *  exactly as `EventDetail` and `Map.tsx` own theirs (ADR-0167 §10). */
+  const [fullPicture, setFullPicture] = useState<DeliveredImageValue | null>(null);
   const dirUrl = mapsDirectionsUrl(navPlace);
   // `מפה` shows the place on OUR map now (ADR-0121 §8) — the Map tab, focused on it
   // — rather than deep-linking to Google's place view, which existed only because
@@ -165,127 +184,157 @@ export function BookingDetail({
       showPlaceOnMap(placeId);
     });
 
+  // **The shell is `DetailSheet`** (ADR-0174 §4). This file built it inline while it was the
+  // app's only read surface, which was right then; an event's read came out identical line for
+  // line, so the skeleton moved out and both render it. What stayed here is the facts, which
+  // are the part that actually differs.
   return (
-    // **The shell is `DetailSheet`** (ADR-0174 §4). This file built it inline while it was
-    // the app's only read surface, which was right then; an event's read came out identical
-    // line for line, so the skeleton moved out and both render it. What stayed here is the
-    // facts, which are the part that actually differs.
-    <DetailSheet
-      ariaLabel={heading}
-      badge={icon}
-      badgeClassName={badgeTint || undefined}
-      title={isRoute ? <RouteLabel from={fromLabel} to={toLabel} /> : heading}
-      // Same rule as the Index row (ADR-0163's amendment): the sub-line is dropped rather
-      // than echoing a title that is already the type's own name.
-      subtitle={typeChipAddsMeaning(booking) ? t.index.bookingType[booking.type] : undefined}
-      hard={linkedEvent?.kind === 'hard'}
-      host={{ kind: 'booking', id: booking.id, name: booking.title }}
-      onEdit={edit}
-      onClose={onClose}
-      facts={
-        <>
-          {showLocation && (
-            <LocationFact
-              text={locationText}
-              dirUrl={dirUrl}
-              onShowOnMap={bookingShowOnMap(booking, places, show)}
-              // Offered whenever there is no place to focus: none at all, or a
-              // coordless Place-lite the picker can enrich in place.
-              onAddLocation={
-                mapPlace || !startErrand
-                  ? undefined
-                  : () =>
-                      startErrand({
-                        target: { kind: 'booking', id: booking.id, field: 'placeId' },
-                        label: errandLabel,
-                        draft: bookingSheetDraft({ booking, trip, events, places }),
-                      })
+    <>
+      <DetailSheet
+        ariaLabel={heading}
+        badge={icon}
+        badgeClassName={badgeTint || undefined}
+        title={isRoute ? <RouteLabel from={fromLabel} to={toLabel} /> : heading}
+        // Same rule as the Index row (ADR-0163's amendment): the sub-line is dropped rather
+        // than echoing a title that is already the type's own name.
+        subtitle={typeChipAddsMeaning(booking) ? t.index.bookingType[booking.type] : undefined}
+        hard={linkedEvent?.kind === 'hard'}
+        host={{ kind: 'booking', id: booking.id, name: booking.title }}
+        onEdit={edit}
+        onClose={onClose}
+        knowledge={
+          /* `PlaceKnowledge` answers both absences itself — a place with an image and no summary
+           shows the picture, one with neither renders nothing, which is the majority case
+           (ADR-0166 §11.3). `DECIDING` is the density this sheet wants: it changes no mode,
+           and its clamp opens where it stands. */
+          <span className="wp-read-know">
+            <PlaceKnowledge
+              density={KNOWLEDGE_DENSITY.DECIDING}
+              image={knowledgeEnrichment?.image}
+              summary={placeSummary(knowledgeEnrichment)}
+              onFullPicture={() =>
+                knowledgeEnrichment?.image && setFullPicture(knowledgeEnrichment.image)
               }
             />
-          )}
-          {!linkedEvent ? (
-            <Fact k={t.index.detail.timing} v={t.index.detail.unscheduled} />
-          ) : endsAt ? (
-            <>
-              <Fact k={labels.start} v={startsAt ? formatDayTime(startsAt, startZone) : '-'} />
-              <Fact k={labels.end} v={formatDayTime(endsAt, endZone)} />
-            </>
-          ) : (
-            <Fact
-              k={startsAt ? labels.start : t.index.detail.timing}
-              v={startsAt ? formatDayTime(startsAt, startZone) : formatDayDate(linkedEvent.date)}
-            />
-          )}
-          {duration && <Fact k={t.index.detail.duration} v={duration} />}
-          {booking.confirmationCode && (
-            <Fact k={t.index.detail.code} v={`${CODE_PREFIX}${booking.confirmationCode}`} mono />
-          )}
-          {/* Only for a route, and only once at least one end HAS a code — a train's endpoints
+          </span>
+        }
+        facts={
+          <>
+            {showLocation && (
+              <LocationFact
+                text={locationText}
+                dirUrl={dirUrl}
+                onShowOnMap={bookingShowOnMap(booking, places, show)}
+                // Offered whenever there is no place to focus: none at all, or a
+                // coordless Place-lite the picker can enrich in place.
+                onAddLocation={
+                  mapPlace || !startErrand
+                    ? undefined
+                    : () =>
+                        startErrand({
+                          target: { kind: 'booking', id: booking.id, field: 'placeId' },
+                          label: errandLabel,
+                          draft: bookingSheetDraft({ booking, trip, events, places }),
+                        })
+                }
+              />
+            )}
+            {!linkedEvent ? (
+              <Fact k={t.index.detail.timing} v={t.index.detail.unscheduled} />
+            ) : endsAt ? (
+              <>
+                <Fact k={labels.start} v={startsAt ? formatDayTime(startsAt, startZone) : '-'} />
+                <Fact k={labels.end} v={formatDayTime(endsAt, endZone)} />
+              </>
+            ) : (
+              <Fact
+                k={startsAt ? labels.start : t.index.detail.timing}
+                v={startsAt ? formatDayTime(startsAt, startZone) : formatDayDate(linkedEvent.date)}
+              />
+            )}
+            {duration && <Fact k={t.index.detail.duration} v={duration} />}
+            {booking.confirmationCode && (
+              <Fact k={t.index.detail.code} v={`${CODE_PREFIX}${booking.confirmationCode}`} mono />
+            )}
+            {/* Only for a route, and only once at least one end HAS a code — a train's endpoints
               have none, so the fact is simply absent there rather than empty. With one end
               known it still states that end and `RouteLabel` draws its usual `-` for the
               other, which is how every half route in this app already reads. */}
-          {isRoute && (fromCode || toCode) && (
-            <div className="bk-fact">
-              <span className="bk-fact-k">{t.index.detail.airports}</span>
-              <span className="bk-fact-v mono">
-                {/* The same arrow every route in this app draws, so a pair of codes reads as a
+            {isRoute && (fromCode || toCode) && (
+              <div className="bk-fact">
+                <span className="bk-fact-k">{t.index.detail.airports}</span>
+                <span className="bk-fact-v mono">
+                  {/* The same arrow every route in this app draws, so a pair of codes reads as a
                     journey rather than as two values (design-language.md: every visible arrow
                     is `NavArrow`). */}
-                <RouteLabel from={fromCode} to={toCode} />
-              </span>
-            </div>
-          )}
-          {booking.provider && <Fact k={t.index.detail.provider} v={booking.provider} />}
-          {room && <Fact k={t.index.detail.room} v={room} />}
-          {(wifi?.network || wifi?.password) && (
-            <Fact
-              k={t.index.detail.wifi}
-              v={[wifi.network, wifi.password].filter(Boolean).join(' · ')}
-              mono
-            />
-          )}
-          {/* **Two derived relations, two facts, both last** (ADR-0154 §5, ADR-0159).
+                  <RouteLabel from={fromCode} to={toCode} />
+                </span>
+              </div>
+            )}
+            {booking.provider && <Fact k={t.index.detail.provider} v={booking.provider} />}
+            {room && <Fact k={t.index.detail.room} v={room} />}
+            {(wifi?.network || wifi?.password) && (
+              <Fact
+                k={t.index.detail.wifi}
+                v={[wifi.network, wifi.password].filter(Boolean).join(' · ')}
+                mono
+              />
+            )}
+            {/* **Two derived relations, two facts, both last** (ADR-0154 §5, ADR-0159).
               The journey reads first because it is about THIS leg's own trip; the
               round trip is about the other half of the purchase. A leg can honestly
               have both — the outbound of a round trip can itself have a layover. */}
-          {journey && (
-            <RelatedFact
-              label={t.index.detail.journey}
-              text={[
-                t.index.detail.journeyLeg(journey.index + 1, journey.legs.length),
-                journeyNeighbour(journey, zoneEvidence)?.text,
-              ]
-                .filter(Boolean)
-                .join(` ${DOT_SEPARATOR} `)}
-              onOpen={
-                onOpen &&
-                (() => {
-                  const neighbour = journeyNeighbour(journey, zoneEvidence);
-                  if (neighbour) onOpen(neighbour.booking);
-                })
-              }
-            />
-          )}
-          {pair && (
-            <RelatedFact
-              label={t.index.detail.pair}
-              text={t.index.detail.pairLeg(
-                pair.leg,
-                pair.partnerEvent?.startsAt
-                  ? formatDayTime(
-                      pair.partnerEvent.startsAt,
-                      eventDisplayZones(pair.partnerEvent, zoneEvidence).start,
-                    )
-                  : pair.partnerEvent?.date
-                    ? formatDayDate(pair.partnerEvent.date)
-                    : t.index.detail.pairUnscheduled,
-              )}
-              onOpen={onOpen && (() => onOpen(pair.partner))}
-            />
-          )}
-        </>
-      }
-    />
+            {journey && (
+              <RelatedFact
+                label={t.index.detail.journey}
+                text={[
+                  t.index.detail.journeyLeg(journey.index + 1, journey.legs.length),
+                  journeyNeighbour(journey, zoneEvidence)?.text,
+                ]
+                  .filter(Boolean)
+                  .join(` ${DOT_SEPARATOR} `)}
+                onOpen={
+                  onOpen &&
+                  (() => {
+                    const neighbour = journeyNeighbour(journey, zoneEvidence);
+                    if (neighbour) onOpen(neighbour.booking);
+                  })
+                }
+              />
+            )}
+            {pair && (
+              <RelatedFact
+                label={t.index.detail.pair}
+                text={t.index.detail.pairLeg(
+                  pair.leg,
+                  pair.partnerEvent?.startsAt
+                    ? formatDayTime(
+                        pair.partnerEvent.startsAt,
+                        eventDisplayZones(pair.partnerEvent, zoneEvidence).start,
+                      )
+                    : pair.partnerEvent?.date
+                      ? formatDayDate(pair.partnerEvent.date)
+                      : t.index.detail.pairUnscheduled,
+                )}
+                onOpen={onOpen && (() => onOpen(pair.partner))}
+              />
+            )}
+          </>
+        }
+      />
+      {/* **Above the sheet, as a second layer** — the same arrangement `EventDetail` uses, so
+          back peels the picture before the read (ADR-0090's stack, `Modal` registering each). */}
+      {fullPicture && (
+        <MediaViewer
+          title={navPlace?.name ?? booking.title}
+          mimeType={fullPicture.mimeType}
+          source={{ kind: 'url', url: apiAssetUrl(fullPicture.url) }}
+          caption={placeCredit(fullPicture)}
+          onClose={() => setFullPicture(null)}
+          intrinsic={fullPicture}
+        />
+      )}
+    </>
   );
 }
 

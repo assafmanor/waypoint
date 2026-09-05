@@ -54,8 +54,10 @@ export function badgePhoto(
  * categorised row while the same place on the Map showed it, since the Map asks about the
  * PLACE's icon and a place's icon is only stored on a real pick (ADR-0147).
  *
- * It resolves the place itself rather than taking one: both day surfaces hold `bookings`,
- * `places` and `enrichments` and would otherwise write the same lookups.
+ * It resolves the place itself rather than taking one: every host holds `places` and
+ * `enrichments` and would otherwise write the same lookups. The **booking** comes in resolved,
+ * because the third host has one and no array — the bookings index row IS a booking, and
+ * handing it `[booking]` to be searched would be a lookup invented to satisfy a signature.
  *
  * **Through `eventStopPlaceId`, and the first cut read `event.placeId` alone.** That column is
  * authoritative only for an event no booking backs (ADR-0048 clears it on save), so every
@@ -66,16 +68,16 @@ export function badgePhoto(
  * never its origin airport's picture.
  */
 export function rowPhoto(
-  event: Pick<TripEvent, 'icon' | 'placeId' | 'bookingId' | 'category'>,
-  bookings: Booking[],
+  event: Pick<TripEvent, 'icon' | 'placeId' | 'category'> | undefined,
+  booking: Booking | undefined,
   places: Place[],
   enrichments: TripEnrichments,
 ): DeliveredImageValue | undefined {
-  if (pickedIcon(event.icon, event.category)) return undefined;
-  const placeId = eventStopPlaceId(
-    event,
-    event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined,
-  );
+  // **The event is optional, and its absence is not a pick.** A booking with no linked row
+  // still has a place and still has a photograph; there is simply no glyph anybody could have
+  // chosen on it.
+  if (event && pickedIcon(event.icon, event.category)) return undefined;
+  const placeId = eventStopPlaceId(event ?? {}, booking);
   if (!placeId) return undefined;
   const place = places.find((p) => p.id === placeId);
   return place && badgePhoto(place, enrichments[place.id]);

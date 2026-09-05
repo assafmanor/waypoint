@@ -91,15 +91,17 @@ describe('rowPhoto', () => {
    *  own column is CLEARED. Writing it any other way tests a row the app cannot store. */
   const linked = (over: Partial<Booking> = {}) => ({
     event: event({ placeId: undefined, bookingId: 'b1' }),
-    bookings: [booking(over)],
+    booking: booking(over),
   });
 
   it('fills the badge when nobody picked an icon at either level', () => {
-    expect(rowPhoto(event(), [], [place()], { p1: withImage })).toBe(IMAGE);
+    expect(rowPhoto(event(), undefined, [place()], { p1: withImage })).toBe(IMAGE);
   });
 
   it('yields to an icon picked on the EVENT — the half ADR-0167 §2 could not ask', () => {
-    expect(rowPhoto(event({ icon: '🍜' }), [], [place()], { p1: withImage })).toBeUndefined();
+    expect(
+      rowPhoto(event({ icon: '🍜' }), undefined, [place()], { p1: withImage }),
+    ).toBeUndefined();
   });
 
   // **A CATEGORY'S DEFAULT IS NOT A CHOICE** (owner, 2026-09-05: _"how is it that there's no
@@ -109,31 +111,35 @@ describe('rowPhoto', () => {
   // the majority of rows, while the same place on the Map showed it.
   it('does not treat the CATEGORY’s own default as a pick', () => {
     const nature = event({ icon: '⛰️', category: 'nature' });
-    expect(rowPhoto(nature, [], [place()], { p1: withImage })).toBe(IMAGE);
+    expect(rowPhoto(nature, undefined, [place()], { p1: withImage })).toBe(IMAGE);
   });
 
   // …and the rule it must not break: a glyph from the same category that is NOT its default is
   // a real choice, so it still wins. `🌋` is in the nature group; `⛰️` is the group's default.
   it('still yields to a glyph chosen from within the category', () => {
     const chosen = event({ icon: '🌋', category: 'nature' });
-    expect(rowPhoto(chosen, [], [place()], { p1: withImage })).toBeUndefined();
+    expect(rowPhoto(chosen, undefined, [place()], { p1: withImage })).toBeUndefined();
   });
 
   // An event with no category cannot have a derived glyph, so anything stored on it is a pick.
   it('treats any glyph on an uncategorised event as a pick', () => {
-    expect(rowPhoto(event({ icon: '⛰️' }), [], [place()], { p1: withImage })).toBeUndefined();
+    expect(
+      rowPhoto(event({ icon: '⛰️' }), undefined, [place()], { p1: withImage }),
+    ).toBeUndefined();
   });
 
   it('yields to an icon picked on the PLACE, as it always did', () => {
-    expect(rowPhoto(event(), [], [place({ icon: '⛰️' })], { p1: withImage })).toBeUndefined();
+    expect(
+      rowPhoto(event(), undefined, [place({ icon: '⛰️' })], { p1: withImage }),
+    ).toBeUndefined();
   });
 
   // A DERIVED glyph is not a pick: `📌` is what the form leaves when nobody chose anything, so
   // treating it as one would suppress the photo on most rows (`chosenIcon`'s own reasoning).
   it('does not treat the placeholder pin as a pick', () => {
-    expect(rowPhoto(event({ icon: DEFAULT_EVENT_ICON }), [], [place()], { p1: withImage })).toBe(
-      IMAGE,
-    );
+    expect(
+      rowPhoto(event({ icon: DEFAULT_EVENT_ICON }), undefined, [place()], { p1: withImage }),
+    ).toBe(IMAGE);
   });
 
   // **The reported defect** (owner, 2026-09-05: _"places don't have their image as the icon
@@ -141,29 +147,31 @@ describe('rowPhoto', () => {
   // which ADR-0048 clears on every linked row — so a booking-backed stop could never have a
   // photo, on a surface where the same place on the Map does.
   it('fills the badge from the BOOKING’s place, which is where a linked row’s place lives', () => {
-    const { event: linkedEvent, bookings } = linked({ placeId: 'p1' });
-    expect(rowPhoto(linkedEvent, bookings, [place()], { p1: withImage })).toBe(IMAGE);
+    const { event: linkedEvent, booking: linkedBooking } = linked({ placeId: 'p1' });
+    expect(rowPhoto(linkedEvent, linkedBooking, [place()], { p1: withImage })).toBe(IMAGE);
   });
 
   // …and what the first cut was right about, kept: a leg is at two places rather than one, so
   // a flight's badge is a flight's and never its origin airport's picture.
   it('has no photo for a LEG, whose two ends are not a place it is at', () => {
-    const { event: linkedEvent, bookings } = linked({
+    const { event: linkedEvent, booking: linkedBooking } = linked({
       type: BOOKING_TYPE.FLIGHT,
       fromPlaceId: 'p1',
       toPlaceId: 'p2',
     });
-    expect(rowPhoto(linkedEvent, bookings, [place()], { p1: withImage })).toBeUndefined();
+    expect(rowPhoto(linkedEvent, linkedBooking, [place()], { p1: withImage })).toBeUndefined();
   });
 
   it('has no photo for an event with no place of its own', () => {
     expect(
-      rowPhoto(event({ placeId: undefined }), [], [place()], { p1: withImage }),
+      rowPhoto(event({ placeId: undefined }), undefined, [place()], { p1: withImage }),
     ).toBeUndefined();
   });
 
   it('has no photo when the place is not in reach, or carries no enrichment', () => {
-    expect(rowPhoto(event({ placeId: 'gone' }), [], [place()], { p1: withImage })).toBeUndefined();
-    expect(rowPhoto(event(), [], [place()], {})).toBeUndefined();
+    expect(
+      rowPhoto(event({ placeId: 'gone' }), undefined, [place()], { p1: withImage }),
+    ).toBeUndefined();
+    expect(rowPhoto(event(), undefined, [place()], {})).toBeUndefined();
   });
 });

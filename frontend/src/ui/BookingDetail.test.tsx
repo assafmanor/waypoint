@@ -714,3 +714,88 @@ describe('BookingDetail — the heading', () => {
     expect(screen.getByText('נמל התעופה בן גוריון')).toBeTruthy();
   });
 });
+
+/**
+ * **THE BOOKING'S READ KNOWS ITS PLACE TOO** (ADR-0219 §6, which named this surface as the next
+ * host — _"`BookingDetail` may pass the same later"_ — and the owner asked for it: _"bookings
+ * with place enrichment should also have the place details in the booking"_).
+ *
+ * One place, one enrichment, two read surfaces: an event's read showed the photograph and the
+ * summary while a booking's read showed neither, which is the same fact drawn two ways. The
+ * component's own rules are tested where it lives; what is only observable here is that this
+ * screen connects it to the right place — the booking's, by the same authority rule the location
+ * fact above already follows.
+ */
+describe('BookingDetail · what the world knows about the place', () => {
+  const IMAGE = {
+    url: '/enrichment/images/granbell',
+    mimeType: 'image/jpeg',
+    width: 1200,
+    height: 800,
+    sizeBytes: 90_000,
+    source: 'commons',
+    license: 'CC BY-SA 4.0',
+    attribution: 'A. Photographer',
+    fetchedAt: '2026-08-01T00:00:00.000Z',
+    method: 'name_proximity',
+    ref: 'Q38519',
+    confidence: 1,
+  };
+  const SUMMARY = {
+    en: {
+      value: 'A hotel in Kabukicho, Shinjuku.',
+      lang: 'en',
+      source: 'wikipedia',
+      license: 'CC BY-SA 4.0',
+      fetchedAt: '2026-08-01T00:00:00.000Z',
+      confidence: 1,
+      method: 'settled_id',
+      ref: 'Q1585881',
+    },
+  };
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    tripPlaces = [placed, lite];
+    tripEvents = [];
+    tripBookings = [];
+    tripEnrichments = {};
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  it('shows the picture, its credit and the summary', () => {
+    tripEnrichments = { 'pl-1': { image: IMAGE, summary: SUMMARY } };
+    open(bk({ id: 'b1', type: BOOKING_TYPE.HOTEL, placeId: 'pl-1' }));
+
+    expect(document.querySelector('.map-hero img')).toBeTruthy();
+    expect(document.querySelector('.map-credit')?.textContent).toContain('A. Photographer');
+    expect(document.querySelector('.map-sum-t')?.textContent).toContain('Kabukicho');
+  });
+
+  // The majority case, and the one that must cost nothing: most places are known for nothing.
+  it('renders no knowledge block at all when nothing is known', () => {
+    open(bk({ id: 'b2', type: BOOKING_TYPE.HOTEL, placeId: 'pl-1' }));
+    expect(document.querySelector('.map-hero')).toBeNull();
+    expect(document.querySelector('.map-sum')).toBeNull();
+  });
+
+  // **The booking's OWN place, by the authority rule the location fact follows** — a transport
+  // booking is at its origin, and nothing else on this sheet would have caught it reading the
+  // wrong end.
+  it('reads the place the booking is at, not the event’s cleared column', () => {
+    tripEnrichments = { 'pl-lite': { image: IMAGE } };
+    open(bk({ id: 'b3', type: BOOKING_TYPE.RESTAURANT, placeId: 'pl-lite' }));
+    expect(document.querySelector('.map-hero img')).toBeTruthy();
+  });
+
+  // A coordless Place-lite has no map to focus and is still a place we may know a great deal
+  // about — the same distinction `EventDetail` records (ADR-0147's Place-lite).
+  it('does not gate the knowledge on coordinates', () => {
+    tripEnrichments = { 'pl-lite': { summary: SUMMARY } };
+    open(bk({ id: 'b4', type: BOOKING_TYPE.RESTAURANT, placeId: 'pl-lite' }));
+    expect(document.querySelector('.map-sum-t')?.textContent).toContain('Kabukicho');
+  });
+});

@@ -5,7 +5,7 @@
 // tab → Home rule; a nested BookingDetail/BookingManageSheet/BookingSheet
 // registers on top of that via its own Modal, so it closes first in turn.
 import { useEffect, useMemo, useState } from 'react';
-import { BOOKING_TYPE, type Booking, type Place } from '@waypoint/shared';
+import { BOOKING_TYPE, type Booking, type Place, type TripEnrichments } from '@waypoint/shared';
 import type { DayNaming } from '../lib/time';
 import { useTrip } from '../state/trip-state';
 import { usePlaceErrandReturn, useShowPlaceOnMap } from '../state/map-scope-state';
@@ -28,7 +28,9 @@ import {
   typeChipAddsMeaning,
   visibleRows,
 } from '../lib/index-bookings';
+import { apiAssetUrl } from '../lib/api-asset';
 import { countVisible } from '../lib/filter-reveal';
+import { rowPhoto } from '../lib/place-photo';
 import { hostCountForContext, noteCountsByHost } from '../lib/notes';
 import { openTaskCountsByHost } from '../lib/tasks';
 import { useSettledHosts } from './HostTasks';
@@ -72,6 +74,7 @@ export function IndexBookingsView({
     hostContexts,
     tasks,
     zoneEvidence,
+    enrichments,
   } = useTrip();
   const { mode } = useMode();
   // This screen is the Index's topmost overlay (ADR-0098 §5), so it closes before
@@ -207,6 +210,7 @@ export function IndexBookingsView({
     <BookingLi
       row={row}
       places={places}
+      enrichments={enrichments}
       zoneEvidence={zoneEvidence}
       tripWindow={trip}
       now={now}
@@ -389,6 +393,7 @@ export function IndexBookingsView({
 function BookingLi({
   row,
   places,
+  enrichments,
   zoneEvidence,
   tripWindow,
   now,
@@ -402,6 +407,9 @@ function BookingLi({
 }: {
   row: BookingRow;
   places: Place[];
+  /** What the world knows about the trip's places — for the badge's photograph, the same
+   *  `rowPhoto` the two day surfaces spend (ADR-0219 §1). */
+  enrichments: TripEnrichments;
   /** The row's clocks read in each event's OWN resolved zone (ADR-0107); this replaced the
    *  `Trip` prop, which the row only ever consulted for `timezone`. */
   zoneEvidence: ZoneEvidence;
@@ -426,6 +434,12 @@ function BookingLi({
 }) {
   const { booking, event } = row;
   const icon = chosenIcon(event?.icon) ?? BOOKING_TYPE_ICON[booking.type];
+  // **AND THE INDEX WEARS THE SAME BADGE THE DAY DOES** (ADR-0219 §1, extended 2026-09-05;
+  // owner: _"the bookings screen should also render the same as the day"_). One booking read
+  // two ways — a photograph on the day surface and a ticket glyph here — is a difference about
+  // a FACT between two surfaces, which is what ADR-0159 §1 forbids between the day pair and is
+  // no more defensible across this one. Same function, so the picked-icon rule cannot drift.
+  const photo = rowPhoto(event, booking, places, enrichments);
   // Shared booking grammar (ADR-0059 §3): the badge is tinted by category (teal
   // for a stay, amber for transport), and a hard booking wears the lock.
   const badgeClass = badgeClassForBookingType(booking.type);
@@ -453,6 +467,7 @@ function BookingLi({
   return (
     <ListRow
       icon={icon}
+      photoUrl={photo && apiAssetUrl(photo.url)}
       badgeTone={badgeTone}
       onOpen={() => onOpen(booking)}
       openLabel={booking.title}
