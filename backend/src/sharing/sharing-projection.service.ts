@@ -45,6 +45,7 @@ import {
   tripShapeOf,
   buildDayStopSequence,
   eventStopPlaceId,
+  isAddressLabel,
   dayPhoto,
   isTransportEvent,
   dominantValue,
@@ -807,13 +808,24 @@ export class SharingProjectionService {
       placeId: eventStopPlaceId(event, event.booking ?? undefined),
       fromPlaceId: event.booking?.fromPlaceId ?? undefined,
       toPlaceId: event.booking?.toPlaceId ?? undefined,
+      // What the trip calls it, for a place whose NAME is its own street address.
+      title: event.title,
     });
+    /** A place's stored address, for `isAddressLabel`'s half the label cannot answer. */
+    const addressOf = (placeId: string) => placeById.get(placeId)?.address ?? undefined;
     /** **The label for where a row IS** — the stop's place, whichever row holds it. `event.place`
      *  is the relation on `Event.placeId`, which ADR-0048 clears on every linked row, so it is
      *  null for exactly the hotels and restaurants whose place a reader most wants named. */
-    const settledLabel = (event: ShareEventRow) =>
-      labelById.get(eventStopPlaceId(event, event.booking ?? undefined) ?? '') ??
-      placeLabel(event.place);
+    const settledLabel = (event: ShareEventRow) => {
+      const placeId = eventStopPlaceId(event, event.booking ?? undefined);
+      const name = labelById.get(placeId ?? '') ?? placeLabel(event.place);
+      if (!name) return undefined;
+      // The same substitution the day's stops make: a place NAMED by its own street address
+      // cannot name a stop, and the trip has a word of its own.
+      return placeId && event.title.trim() && isAddressLabel(name, addressOf(placeId))
+        ? event.title.trim()
+        : name;
+    };
 
     const photoEventOf = (event: ShareEventRow): DayPhotoEvent => ({
       placeId: eventStopPlaceId(event, event.booking ?? undefined),
@@ -856,7 +868,11 @@ export class SharingProjectionService {
     const lastBusy = holdsEvents.lastIndexOf(true);
 
     const dayFacts = (dayEvents: ShareEventRow[], index: number): DayFacts => ({
-      stops: buildDayStopSequence(dayEvents.map(stopEventOf), (placeId) => labelById.get(placeId)),
+      stops: buildDayStopSequence(
+        dayEvents.map(stopEventOf),
+        (placeId) => labelById.get(placeId),
+        addressOf,
+      ),
       bookingTypes: dayEvents.map((event) => event.booking?.type as BookingType | undefined),
       // The night, named by where it is rather than by what the booking is called: a
       // lodging's own title is a brand, and the place is where you will be.
@@ -1036,8 +1052,10 @@ export class SharingProjectionService {
       );
       return settled.length > 0
         ? settledLabel(settled[0])
-        : buildDayStopSequence(dayEvents.map(stopEventOf), (placeId) =>
-            labelById.get(placeId),
+        : buildDayStopSequence(
+            dayEvents.map(stopEventOf),
+            (placeId) => labelById.get(placeId),
+            addressOf,
           ).find(Boolean);
     };
 
@@ -1131,7 +1149,7 @@ export class SharingProjectionService {
     codeById: ReadonlyMap<string, string | undefined>,
     captionOf: (placeId: string | undefined) => string | undefined,
     chains: JourneyChains,
-    placeById: ReadonlyMap<string, { timezone: string | null }>,
+    placeById: ReadonlyMap<string, SharePlaceRow>,
   ): SharedEvent[] {
     const one = (event: ShareEventRow): SharedEvent =>
       this.projectEvent(
@@ -1385,7 +1403,7 @@ export class SharingProjectionService {
     placeLabel: PlaceLabeller,
     ops: OpsByHost,
     captionOf: (placeId: string | undefined) => string | undefined,
-    placeById: ReadonlyMap<string, { timezone: string | null }>,
+    placeById: ReadonlyMap<string, SharePlaceRow>,
   ): SharedEvent {
     const zone = displayZones(event, zones);
     // **Which part of the day a row sits in is a question about where it STARTS** — a flight
@@ -1407,13 +1425,21 @@ export class SharingProjectionService {
     };
     if (detail === SHARE_DETAIL_LEVEL.SUMMARY) return base;
 
-    const label = placeLabel(event.place);
-    const address = event.place?.address?.trim() || undefined;
+    // **WHERE THIS ROW IS, not what column happens to hold it.** ADR-0048 clears
+    // `Event.placeId` on every booking-backed row, so `event.place` is null for every hotel,
+    // restaurant, ticket and activity on the trip — and this row published no name, no
+    // address, no description and no map link for exactly the stops a reader most needs to
+    // find (owner, 2026-09-05, on closing the gap: _"even if they change the live sharing
+    // page"_). `event.place` stays as the fallback for a row the map has no entry for.
+    const stopPlaceId = eventStopPlaceId(event, event.booking ?? undefined);
+    const stopPlace = (stopPlaceId ? placeById.get(stopPlaceId) : undefined) ?? event.place;
+    const label = placeLabel(stopPlace);
+    const address = stopPlace?.address?.trim() || undefined;
     // **A stop's one-line description, at every level** (owner, 2026-08-30). Public
     // knowledge about a public place: it reveals nothing about the trip, which is why it
     // is not behind a sensitive toggle and why Summary — the level whose whole job is to
     // inspire — is the one that gains most from it.
-    const caption = captionOf(event.placeId ?? undefined);
+    const caption = captionOf(stopPlaceId);
     // **A row asks BOTH hosts.** A note may be written against the event or against the
     // booking behind it (`Note`'s union allows either) and to a reader those are one row,
     // so a row that only asked one would drop half the material for no reason a reader

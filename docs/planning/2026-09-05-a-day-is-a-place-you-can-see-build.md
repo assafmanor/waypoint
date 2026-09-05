@@ -141,6 +141,31 @@ its lodging row carried a `placeId` and no `bookingId` — a shape the app canno
 could not see the peek bug because its fixture is deliberately _"a tall-enough day"_. Both suites were
 green about surfaces that did not work, and in both cases the fixture, not the assertion, was the reason.
 
+## The second follow-up round: three more, and the same habit again
+
+[ADR-0219](../decisions/0219-a-day-is-a-place-you-can-see.md)'s second follow-up log has the
+decisions. What this session is worth remembering for is that **all three fixes were a question
+the codebase already answered correctly somewhere else**, being asked in a weaker form one
+surface over:
+
+| the weak question                                    | where the app already answers it                                       |
+| ---------------------------------------------------- | ---------------------------------------------------------------------- |
+| `chosenIcon(icon)` — "is this glyph a placeholder?"  | `EventForm`'s `storedIcon !== derivedIcon` — "did a person choose it?" |
+| `event.place` — "what does this row's column hold?"  | `eventStopPlaceId` — "where is this event?"                            |
+| the place label alone — "what is this place called?" | `effectiveTitle` — "what does the trip call it?"                       |
+
+The first round's three were the same shape. That is now nine defects across three rounds with
+one cause, and the cheap habit that would have caught each of them is the same: **before writing
+a rule, grep for where the app already states it.** Not for reuse's sake — for the weaker copy
+you are about to write.
+
+**And one estimate to be honest about.** The reader's rows were deferred in round one partly on
+cost — "it widens two signatures rather than changing a line". Traced properly, those were type
+annotations over an object that already carried the data: two lines. The other half of the
+reason held (it changes what a share publishes, which is a decision), and it was the half worth
+stating. Cost estimates made from a function's shape rather than from reading it are worth what
+they cost.
+
 ## Left open
 
 - **The 44px touch floor on `.new-event-btn`** (26px). That is its shipped size and it was 26px in

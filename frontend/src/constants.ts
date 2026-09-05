@@ -2,6 +2,7 @@
 // values live in @waypoint/shared. Keep magic numbers/strings out of logic.
 import {
   BOOKING_TYPE,
+  iconForCategory,
   type BookingType,
   type DocumentType,
   type EventCategory,
@@ -787,6 +788,34 @@ const PLACEHOLDER_ICONS: ReadonlySet<string> = new Set([DEFAULT_EVENT_ICON, DEFA
  *  more specific glyph instead. */
 export const chosenIcon = (icon?: string): string | undefined =>
   icon && !PLACEHOLDER_ICONS.has(icon) ? icon : undefined;
+
+/**
+ * **Did a PERSON choose this glyph?** — `chosenIcon` with the CATEGORY's own default treated
+ * as the placeholder it is.
+ *
+ * `chosenIcon` knows two placeholders, `📌` and `💡`. But `EventForm` persists
+ * `iconForCategory(category)` on save — its own comment says "the effective default is what
+ * gets persisted" — so a nature event stores `⛰️` that nobody picked, an activity stores `🎫`,
+ * a sight stores `⛩️`. Every one of those reads as a pick.
+ *
+ * That is harmless in the `chosenIcon(x) ?? categoryGlyph` chains, which land on the same
+ * glyph either way, and it is not harmless where the question is used as a GATE: `rowPhoto`
+ * suppresses a place's photograph when a glyph was picked (ADR-0167 §2 — the trip's opinion
+ * beats the world's facts), so every nature row wore `⛰️` while the same place on the Map wore
+ * its photograph. The owner's _"how is it that there's no images as the icons of events"_,
+ * against a day of waterfalls that all have pictures.
+ *
+ * **The test is `EventForm`'s own, generalised rather than copied** (root rule 8): that form
+ * has computed `storedIcon !== derivedIcon` since field report #31 to decide whether a category
+ * change may still move the glyph. One question, one answer, two callers.
+ *
+ * A category default a person deliberately re-picked is treated as unpicked — the same honest,
+ * small cost `chosenIcon` already accepts for someone who genuinely wants `📌`.
+ */
+export const pickedIcon = (icon?: string, category?: EventCategory | null): string | undefined => {
+  const stored = chosenIcon(icon);
+  return stored && category && stored === iconForCategory(category) ? undefined : stored;
+};
 
 /** Drag edge auto-scroll (ADR-0116 §5 amendment): how deep the edge band is, and
  *  the fastest one frame may scroll while the pointer is pinned against it. The

@@ -131,8 +131,12 @@ export function buildDayFacts({
       placeId: eventStopPlaceId(event, booking),
       fromPlaceId: booking?.fromPlaceId,
       toPlaceId: booking?.toPlaceId,
+      // What the trip calls it, for a place whose NAME is its own street address.
+      title: event.title,
     };
   };
+  /** A place's stored address, for `isAddressLabel`'s half that the label cannot answer. */
+  const addressOf = (placeId: string) => places.find((p) => p.id === placeId)?.address;
 
   /** The stop's own name, for a row whose label is where it IS rather than what it is called. */
   const stayLabel = (event: TripEvent) => label(stopOf(event).placeId ?? '');
@@ -161,7 +165,7 @@ export function buildDayFacts({
   const sleeps = bookends.sleeps ?? bookends.woke;
 
   return {
-    stops: buildDayStopSequence(dayEvents.map(stopOf), label),
+    stops: buildDayStopSequence(dayEvents.map(stopOf), label, addressOf),
     bookingTypes: dayEvents.map((event) => bookingOf(event)?.type as BookingType | undefined),
     lodgingPlace: sleeps ? (stayLabel(sleeps) ?? sleeps.title) : undefined,
     eventTitles: dayEvents.map((event) => event.title),

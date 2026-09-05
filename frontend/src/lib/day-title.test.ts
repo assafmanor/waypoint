@@ -22,7 +22,8 @@ import { buildDayFacts } from './day-title';
 const DAY = '2026-07-07';
 const stamps = { createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z' };
 
-const place = (id: string, name: string): Place => ({ id, tripId: 't1', name, ...stamps }) as Place;
+const place = (id: string, name: string, address?: string): Place =>
+  ({ id, tripId: 't1', name, address, ...stamps }) as Place;
 
 const event = (over: Partial<TripEvent>): TripEvent =>
   ({
@@ -92,5 +93,30 @@ describe('buildDayFacts · a booked stop is a stop', () => {
   it('leaves an unlinked row reading its own place, as it always did', () => {
     const facts = factsFor([event({ id: 'e', placeId: 'p-kerid' })], [], places);
     expect(facts.stops).toEqual(['Kerið Crater']);
+  });
+});
+
+// **AND WHAT A STOP IS CALLED** (ADR-0219's second follow-up; owner, of a head reading
+// `מפלי גולפוס ← Árhólmar 1`: _"it should read zip line (the event title) instead of the
+// address"_). The rule itself is `buildDayStopSequence`'s and is tested in `@waypoint/shared`;
+// what this asserts is that the app HANDS IT what it needs — the event's title and the place's
+// address — which is the half a shared unit test cannot see.
+describe('buildDayFacts · a place named by its own street line', () => {
+  it('titles the day by the trip’s word for the stop', () => {
+    const facts = factsFor(
+      [event({ id: 'e-zip', bookingId: 'b-zip', title: 'Zip line', sortOrder: 0 })],
+      [booking({ id: 'b-zip', placeId: 'p-zip' })],
+      [place('p-zip', 'Árhólmar 1', 'Árhólmar 1, 800 Selfoss, Iceland')],
+    );
+    expect(facts.stops).toEqual(['Zip line']);
+  });
+
+  it('leaves a real name alone, however generic the title beside it', () => {
+    const facts = factsFor(
+      [event({ id: 'e', placeId: 'p-falls', title: 'טיול בוקר' })],
+      [],
+      [place('p-falls', 'Skógafoss', 'Skógafoss, 861, Iceland')],
+    );
+    expect(facts.stops).toEqual(['Skógafoss']);
   });
 });

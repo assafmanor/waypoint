@@ -21,6 +21,7 @@ import {
   type ShareTripShape,
 } from './sharing';
 import { BOOKING_TYPE } from './constants';
+import { isAddressLabel } from './place-label';
 import type { BookingType } from './entities';
 
 const MAX_SUMMARY_EVENTS = 2;
@@ -44,6 +45,10 @@ export interface DayStopEvent {
   placeId?: string;
   fromPlaceId?: string;
   toPlaceId?: string;
+  /** **What the trip calls this stop**, for the one case the place cannot name itself: a
+   *  place added by searching an address is NAMED by that address (`isAddressLabel`). Absent
+   *  is normal and means "the place's own label, whatever it is". */
+  title?: string;
 }
 
 /**
@@ -60,12 +65,25 @@ export interface DayStopEvent {
 export function buildDayStopSequence(
   events: readonly DayStopEvent[],
   label: (placeId: string) => string | undefined,
+  addressOf?: (placeId: string) => string | undefined,
 ): (string | undefined)[] {
+  /** The place's own label, unless that label is the street line of its own address and the
+   *  trip has a word of its own — `Zip line` over `Árhólmar 1`. Deliberately NOT title-first:
+   *  `Skógafoss` is a name and must keep beating a generic `ארוחת ערב`, which is the app's
+   *  own title precedence (`effectiveTitle`) read the same way round. */
+  const stop = (placeId: string, title?: string) => {
+    const name = label(placeId);
+    if (!name) return title?.trim() || undefined;
+    if (!title?.trim() || !isAddressLabel(name, addressOf?.(placeId))) return name;
+    return title.trim();
+  };
   return events.flatMap((event) => {
     const { fromPlaceId, toPlaceId } = event;
-    // Both ends, in travel order, so a leg contributes its origin AND its destination.
+    // Both ends, in travel order, so a leg contributes its origin AND its destination. No
+    // title substitution here: a leg's ends are airports and stations, which name themselves,
+    // and one title cannot stand for two places anyway.
     if (fromPlaceId || toPlaceId) return [label(fromPlaceId ?? ''), label(toPlaceId ?? '')];
-    return [event.placeId ? label(event.placeId) : undefined];
+    return [event.placeId ? stop(event.placeId, event.title) : undefined];
   });
 }
 

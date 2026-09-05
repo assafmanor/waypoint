@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { BOOKING_TYPE } from './constants';
 import { SHARE_DAY_KIND, SHARE_DAY_SUMMARY_KIND, SHARE_TRIP_SHAPE } from './sharing';
 import type { ShareTripShape } from './sharing';
-import { fallbackDaySummary, fallbackDayTitle, type DayFacts } from './day-title';
+import {
+  buildDayStopSequence,
+  fallbackDaySummary,
+  fallbackDayTitle,
+  type DayFacts,
+} from './day-title';
 
 /**
  * **The derivation that names a day**, tested as a pure function because that is what it is
@@ -193,5 +198,72 @@ describe('fallbackDaySummary', () => {
         }),
       ).toEqual({ kind: SHARE_DAY_KIND.FLIGHT_HOME });
     });
+  });
+});
+
+// **A PLACE NAMED BY ITS OWN ADDRESS CANNOT NAME A STOP** (ADR-0219's 2026-09-05 follow-up;
+// owner, of a day head reading `מפלי גולפוס ← Árhólmar 1`: _"it should read zip line (the event
+// title) instead of the address (unless the address is actually a name and not just some random
+// address)"_).
+//
+// A place added by searching an address gets that address as its `name` — Google has no other
+// answer — so the trip's own word for the stop is the better one. The parenthesis is the whole
+// difficulty and is why this is not simply title-first.
+describe('buildDayStopSequence · what a stop is called', () => {
+  const NAMES: Record<string, string> = {
+    zip: 'Árhólmar 1',
+    falls: 'Skógafoss',
+    dill: 'Dill',
+    route: 'Route 66',
+  };
+  const ADDRESSES: Record<string, string> = {
+    zip: 'Árhólmar 1, 800 Selfoss, Iceland',
+    falls: 'Skógafoss, 861, Iceland',
+    dill: 'Hverfisgata 12, 101 Reykjavík, Iceland',
+    route: 'Route 66, Arizona, USA',
+  };
+  const stops = (events: { placeId?: string; title?: string }[]) =>
+    buildDayStopSequence(
+      events,
+      (id) => NAMES[id],
+      (id) => ADDRESSES[id],
+    );
+
+  it('uses the trip’s own word when the place is named by its street line', () => {
+    expect(stops([{ placeId: 'zip', title: 'Zip line' }])).toEqual(['Zip line']);
+  });
+
+  // **The half that makes it safe.** Title-first would title this day `ארוחת ערב`, which is
+  // worse than what shipped — a real name has to keep beating a generic title.
+  it('keeps a real name over a generic title', () => {
+    expect(stops([{ placeId: 'dill', title: 'ארוחת ערב' }])).toEqual(['Dill']);
+    expect(stops([{ placeId: 'falls', title: 'טיול בוקר' }])).toEqual(['Skógafoss']);
+  });
+
+  // `Skógafoss, 861, Iceland` leads with its name like almost every formatted address, so
+  // "leads its own address" alone would demote every place in the trip. The house number is
+  // what separates a street line from a name.
+  it('is not fooled by an address that merely opens with the place’s name', () => {
+    expect(stops([{ placeId: 'falls', title: 'x' }])).toEqual(['Skógafoss']);
+  });
+
+  it('falls back to nothing rather than to a title when there is no place at all', () => {
+    expect(stops([{ title: 'Zip line' }])).toEqual([undefined]);
+  });
+
+  it('leaves a leg’s two ends alone — one title cannot stand for two places', () => {
+    expect(
+      buildDayStopSequence(
+        [{ fromPlaceId: 'zip', toPlaceId: 'falls', title: 'טיסה' }],
+        (id) => NAMES[id],
+        (id) => ADDRESSES[id],
+      ),
+    ).toEqual(['Árhólmar 1', 'Skógafoss']);
+  });
+
+  it('changes nothing when no address is known — the chain fails to "no change"', () => {
+    expect(
+      buildDayStopSequence([{ placeId: 'zip', title: 'Zip line' }], (id) => NAMES[id]),
+    ).toEqual(['Árhólmar 1']);
   });
 });
