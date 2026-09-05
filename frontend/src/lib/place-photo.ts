@@ -22,7 +22,7 @@ import {
   type TripEnrichments,
   type TripEvent,
 } from '@waypoint/shared';
-import { chosenIcon } from '../constants';
+import { pickedIcon } from '../constants';
 
 /**
  * The image that should fill this badge, or `undefined` for the glyph.
@@ -48,9 +48,11 @@ export function badgePhoto(
  * a pin has no event behind it; a day row has both, and answering only half the question
  * would let a background fetch overwrite a glyph someone chose on the event.
  *
- * `chosenIcon` rather than `event.icon` because a stored `📌` is what the form leaves behind
- * when nobody picked anything (`constants.ts`) — treating that as a pick is the defect that
- * function exists to undo, and it would suppress the photo on most rows.
+ * **`pickedIcon`, not `chosenIcon`** — the gate needs the sharper question. `chosenIcon` knows
+ * only `📌` and `💡`, and the form persists `iconForCategory(category)` on save, so a nature
+ * row stores `⛰️` nobody chose. Reading that as a pick suppressed the photograph on every
+ * categorised row while the same place on the Map showed it, since the Map asks about the
+ * PLACE's icon and a place's icon is only stored on a real pick (ADR-0147).
  *
  * It resolves the place itself rather than taking one: both day surfaces hold `bookings`,
  * `places` and `enrichments` and would otherwise write the same lookups.
@@ -64,12 +66,12 @@ export function badgePhoto(
  * never its origin airport's picture.
  */
 export function rowPhoto(
-  event: Pick<TripEvent, 'icon' | 'placeId' | 'bookingId'>,
+  event: Pick<TripEvent, 'icon' | 'placeId' | 'bookingId' | 'category'>,
   bookings: Booking[],
   places: Place[],
   enrichments: TripEnrichments,
 ): DeliveredImageValue | undefined {
-  if (chosenIcon(event.icon)) return undefined;
+  if (pickedIcon(event.icon, event.category)) return undefined;
   const placeId = eventStopPlaceId(
     event,
     event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined,

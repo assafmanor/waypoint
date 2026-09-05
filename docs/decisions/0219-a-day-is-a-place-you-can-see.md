@@ -29,6 +29,10 @@ This amends ADR-0167 §1 in place (its §19) and needs nothing else.
 
 **A booking-backed row had no photograph at all** (amended 2026-09-05, owner: _"places don't have their image as the icon (like on the map)"_, against a booked zip line). `rowPhoto` resolved the place from `event.placeId`, which ADR-0048 CLEARS on every linked row — so every hotel, restaurant and ticket on the trip wore its category glyph while the same place on the Map wore its picture. The rule the first cut was reaching for survives intact and is now stated once, in `@waypoint/shared`'s `eventStopPlaceId`: a **leg** answers with neither end, so a flight's badge is still a flight's and never its origin airport's photograph.
 
+**And nor did an UNBOOKED one, for a second reason** (amended 2026-09-05, owner: _"how is it that there's no images as the icons of events"_, against a day of waterfalls that all have pictures). The gate is right — a picked icon beats a fetched photo, ADR-0167 §2 — and it was asking `chosenIcon`, which knows only `📌` and `💡`. But `EventForm` persists `iconForCategory(category)` on save, so a nature event stores `⛰️` nobody chose, an activity `🎫`, a sight `⛩️`; every categorised row read as a pick and suppressed its own picture. `pickedIcon(icon, category)` is the sharper question, and it is **`EventForm`'s own test lifted** rather than a second one: that form has computed `storedIcon !== derivedIcon` since field report #31 for exactly this. A glyph from the category that is not its default (`🌋` under `nature`) is still a choice and still wins.
+
+Note which surfaces this does NOT change: the eleven `chosenIcon(x) ?? categoryGlyph` chains land on the same glyph either way, counted before the change. Only a **gate** can spend the wrong answer, and `rowPhoto` was the only gate. It also explains the report's "like on the map": the Map asks about the PLACE's icon, and a place's icon is only stored when a human picks one (ADR-0147).
+
 ### §2 · The day's head is a frame, and it is the reader's frame
 
 `ui/domain/DayHead` replaces `.sec-title`'s heading on both day surfaces **and** the reader's day-card head. Its CSS is `.sh-day-head` / `.sh-day-date` / `.sh-day-copy` / `.sh-shot` **moved** out of `shared-itinerary.css` into `day-head.css` under `wp-dayhead-*` names — the reader consumes the component, so its rules leave its sheet. Root rule 8: the reader's head is the one-off that nearly does the job, so it is generalised rather than twinned. The mockup draws the app's head with the reader's classes verbatim, and the geometry it measures is therefore the reader's own.
@@ -196,3 +200,20 @@ questions now, and the two are documented as different questions rather than as 
 one surface over — the bleed that stopped at the pane's edge, the region test that stopped at "is it
 scrolling", the place lookup that stopped at the event's own column. The tell each time was that nothing
 was measured wrong; something simply was not there.
+
+### Second follow-up round (2026-09-05) — the share publishes where a booked stop is, and a stop can refuse its own name
+
+**The reader's ROWS were the half the first round deliberately left**, and the reason given for leaving it was half wrong. The plumbing objection was weak — `withJourneys` and `projectEvent` narrowed `placeById` to `{ timezone }` in their _type annotations only_, while the object passed in was already the full row, so the fix is two annotations and four lines. What was right is that it changes **what a share publishes**, which is ADR-0213's detail levels to decide; the owner decided it (_"I want to close all gaps, even if they change the live sharing page"_).
+
+Measured before the change, on a real projection rather than from the code: a booked activity published `{title, bookingType, startLabel}` and nothing else, where an unbooked row beside it published `placeName`, `address` and `mapUrl`. So a reader could not find the hotel — no name, no address, no map link, no description — on every hotel, restaurant, activity and ticket in the trip. `SHARE_PLACE_SELECT` gains `address` (it had none: the only address in the projection came through `event.place`, which is null on exactly these rows).
+
+**A place can be named by its own street address, and then it cannot name a stop.** A place added by searching an address gets that address as its `name` — Google has no other answer — so the day head read `מפלי גולפוס ← Árhólmar 1` where the trip's word for that stop was `Zip line` (owner, with the qualifier that carries the whole design: _"unless the address is actually a name and not just some random address"_).
+
+The rule is **not** title-first, and that is the decision. An event titled `ארוחת ערב` at _Dill_ would title the day `ארוחת ערב`, which is worse than what shipped: a real name has to keep beating a generic title, which is the app's own `effectiveTitle` precedence read the same way round. So the place label stays primary and the title is substituted only when the label is **address-shaped** — `isAddressLabel`, which asks two things and needs both:
+
+- **a trailing house number** (`Árhólmar 1`, `Laugavegur 22`) — anchored at the END, because `101 Hotel` and `66 Diner` are names;
+- **and that the label leads its own address** — since alone this matches nearly every place, Google's formatted address opening with the name (`Skógafoss, 861, Iceland`).
+
+Together they say: this name is the first line of a postal address and nothing more. `false` whenever we cannot tell, which keeps the label chain's own rule that it fails to "no change" rather than to a wrong name. A **leg** substitutes nothing — its ends are airports, which name themselves, and one title cannot stand for two places.
+
+**What this round did not have to invent.** Both fixes are the same shape as the first round's: a question already answered correctly somewhere in the codebase, being asked in a weaker form one surface over. `pickedIcon` is `EventForm`'s test; the row's place is `eventStopPlaceId`, already shipped; and the stop's label is `effectiveTitle`'s precedence. Three rounds, and the useful habit is the same one — before writing a rule, find where the app already states it.

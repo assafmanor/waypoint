@@ -83,6 +83,12 @@ export const SHARE_PLACE_SELECT = {
   id: true,
   name: true,
   nickname: true,
+  /** **Where a booked stop is**, which no other row can answer: ADR-0048 clears
+   *  `Event.placeId` on a linked row, so `event.place` above is null for every hotel,
+   *  restaurant and ticket and this map is the only place their address lives. It also
+   *  carries `isAddressLabel`'s second half — whether a place's NAME is the street line of
+   *  this address, which is what lets a day be titled `Zip line` and not `Árhólmar 1`. */
+  address: true,
   timezone: true,
   lat: true,
   lng: true,

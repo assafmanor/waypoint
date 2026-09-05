@@ -609,6 +609,23 @@ describe('SharingProjectionService', () => {
     expect(titlesOn('2026-08-30')).not.toContain('אורות הצפון');
   });
 
+  // **A BOOKED STOP PUBLISHES WHERE IT IS** (owner, 2026-09-05: close the gap _"even if they
+  // change the live sharing page"_). `Event.placeId` is cleared on every linked row (ADR-0048),
+  // so a reader looking at a booked hotel, restaurant or ticket got its title, its type and its
+  // clock — and no name, no address, no description and no map link. Four fields, all four
+  // absent, on exactly the rows somebody needs in order to turn up.
+  it('gives a booked row its place, address and map link', async () => {
+    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
+    const zip = projection.days
+      .flatMap((day) => day.sections.flatMap((section) => section.events))
+      .find((event) => event.title === 'אומגה');
+
+    expect(zip?.placeName).toBe('Zip line');
+    expect(zip?.mapUrl).toContain('maps');
+    // The row still says what it IS as well as where — the two are not alternatives.
+    expect(zip?.bookingType).toBe('activity');
+  });
+
   // **A booked stop is a stop** (owner, 2026-09-05: _"the first stop of the day doesn't include
   // the first or last event if it's a booking … also in the live sharing"_). ADR-0048 puts a
   // linked event's place on its BOOKING and clears the event's own column, so a projection

@@ -102,6 +102,28 @@ describe('rowPhoto', () => {
     expect(rowPhoto(event({ icon: '🍜' }), [], [place()], { p1: withImage })).toBeUndefined();
   });
 
+  // **A CATEGORY'S DEFAULT IS NOT A CHOICE** (owner, 2026-09-05: _"how is it that there's no
+  // images as the icons of events"_, against a day of waterfalls that all have pictures).
+  // `EventForm` persists `iconForCategory(category)` on save, so `⛰️` is on every nature row
+  // whether or not anybody chose it — and reading that as a pick suppressed the photograph on
+  // the majority of rows, while the same place on the Map showed it.
+  it('does not treat the CATEGORY’s own default as a pick', () => {
+    const nature = event({ icon: '⛰️', category: 'nature' });
+    expect(rowPhoto(nature, [], [place()], { p1: withImage })).toBe(IMAGE);
+  });
+
+  // …and the rule it must not break: a glyph from the same category that is NOT its default is
+  // a real choice, so it still wins. `🌋` is in the nature group; `⛰️` is the group's default.
+  it('still yields to a glyph chosen from within the category', () => {
+    const chosen = event({ icon: '🌋', category: 'nature' });
+    expect(rowPhoto(chosen, [], [place()], { p1: withImage })).toBeUndefined();
+  });
+
+  // An event with no category cannot have a derived glyph, so anything stored on it is a pick.
+  it('treats any glyph on an uncategorised event as a pick', () => {
+    expect(rowPhoto(event({ icon: '⛰️' }), [], [place()], { p1: withImage })).toBeUndefined();
+  });
+
   it('yields to an icon picked on the PLACE, as it always did', () => {
     expect(rowPhoto(event(), [], [place({ icon: '⛰️' })], { p1: withImage })).toBeUndefined();
   });

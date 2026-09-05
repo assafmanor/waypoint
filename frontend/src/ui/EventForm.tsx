@@ -44,6 +44,7 @@ import {
   BOOKING_TYPE_ICON,
   CATEGORY_DEFAULT_BOOKED,
   chosenIcon,
+  pickedIcon,
   DEFAULT_EVENT_ICON,
   DOT_SEPARATOR,
   TRANSPORT_BOOKING_TYPES,
@@ -238,8 +239,11 @@ export function EventForm({
   // category change. A booked transport event badged with its finer booking-type glyph
   // (🚆 where `transport` derives ✈️) therefore reads as chosen — correctly: only an
   // explicit `pickBookingType` could have put it there.
-  const derivedIcon = initialCategory ? iconForCategory(initialCategory) : undefined;
-  const initialIconTouched = storedIcon != null && storedIcon !== derivedIcon;
+  //
+  // **`pickedIcon` IS this test**, lifted to `constants.ts` when `rowPhoto` turned out to need
+  // the same question and to be answering it with `chosenIcon`, which does not know a category
+  // default from a choice. Written out here for a month and one call site; now one function.
+  const initialIconTouched = pickedIcon(initialIcon, initialCategory) != null;
   // **The same value test, one form over** (field report #37). The record stores only the
   // EFFECTIVE title, so a stored name that is exactly what the Place derives is read as the
   // derivation's answer and the box opens empty — the Place goes on answering, and changing

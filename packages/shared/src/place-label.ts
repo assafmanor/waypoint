@@ -120,6 +120,34 @@ export function shortPlaceLabel(name: string): string {
   return full;
 }
 
+/** A house number at the END of a name: `Árhólmar 1`, `Laugavegur 22`, `Bankastræti 7a`. The
+ *  number LEADS in `101 Hotel` and `66 Diner`, which are names, so the anchor matters. */
+const TRAILING_HOUSE_NUMBER = /\s\d+\s*[A-Za-z\u0590-\u05FF]?$/;
+
+/**
+ * **Is this "name" actually the street line of its own address?**
+ *
+ * A place added by searching an address gets that address as its `name` — Google has no other
+ * answer — so a stop can be called `Árhólmar 1` while the trip calls it `Zip line`. That is
+ * the owner's report (2026-09-05): a day titled `מפלי גולפוס ← Árhólmar 1` whose first stop
+ * is a booked zip line.
+ *
+ * **Both halves are needed and neither is enough.** A house number alone would demote `Route
+ * 66`; leading its own address alone matches almost every place, since Google's formatted
+ * address opens with the name (`Skógafoss, 861, Iceland`). Together they say: this name is the
+ * first line of a postal address and nothing more.
+ *
+ * `false` whenever we cannot tell — no address, no number — which keeps the label chain's own
+ * rule that it fails to "no change" rather than to a wrong name.
+ */
+export function isAddressLabel(name: string, address?: string | null): boolean {
+  const label = name.trim();
+  const full = address?.trim();
+  if (!label || !full || !TRAILING_HOUSE_NUMBER.test(label)) return false;
+  // Case-insensitive, because a formatted address may capitalise differently than the name.
+  return full.toLocaleLowerCase().startsWith(label.toLocaleLowerCase());
+}
+
 /**
  * **The two rungs above the stripping** (ADR-0166 §18) — a nickname, else the city the
  * airport serves — or `undefined` when neither is available, which is the signal to fall
