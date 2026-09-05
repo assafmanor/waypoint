@@ -23,9 +23,12 @@ advertises, and the live cover cannot disagree with the reader page.
   tree comes from the inlined sheets. If a cover needs a colour, it names the token.
 - **Pinned to the light theme.** A PNG has no `data-theme`, so the cutter sets none and the
   `:root` block is what applies. Never write a `[data-theme='dark']` rule here.
-- **`.og-band` is the paper strip every cover ends with**, and it is not decoration: the
-  board tile alone measures ⁦1.25:1⁩ against a dark WhatsApp bubble, so a cover with no bright
-  region has no edge in a dark chat. It says what the link IS.
+- **There is no paper band, and the number that once justified one was measured against the
+  wrong surface.** ADR-0220 §2 compared `--paper` to the chat BUBBLE; what sits under the
+  image is the card's own TEXT PANEL, which is near-white in a light chat — ⁦1.04:1⁩ — so the
+  band and the panel were one light block and it destroyed the boundary it was added to draw.
+  A cover's bright region has to be **content** to earn its place: `og-live.html` has one
+  because the reader page's body is genuinely part of the page it borrows.
 - **Borrow at a width the app actually ships at.** The ticket renders at ⁦390px⁩ — a real
   device stop (ADR-0017) — then scales. Its height is ⁦197.5px⁩ at any width in that range, so
   the wider base is free: at ⁦300px⁩ the ticket fills ⁦63%⁩ of the cover, at ⁦390px⁩ it fills ⁦82%⁩.
