@@ -154,19 +154,38 @@ for (const theme of ['light', 'dark'] as const) {
       test('hangs the picture off the day strip, and keeps the card without one', async ({
         page,
       }) => {
-        /** **The gap above the head, read at the top of the scroller.** Trip mode lands on the
-         *  now-marker, so a viewport-relative read is whatever the landing left — the question
-         *  here is a LAYOUT one, and the scroller has to be at its origin for the two to be the
-         *  same number. */
-        const gapAbove = async () => {
-          await page.evaluate(() => document.querySelector('.body')!.scrollTo(0, 0));
-          await page.waitForTimeout(120);
-          return page.evaluate(() => {
-            const h = document.querySelector('.wp-dayhead')!.getBoundingClientRect();
-            const b = document.querySelector('.body')!.getBoundingClientRect();
-            return { gap: Math.round(h.y - b.y), x: Math.round(h.x), w: Math.round(h.width) };
-          });
-        };
+        /**
+         * **The gap above the head, measured so the scroll position cannot reach it.**
+         *
+         * This is a LAYOUT question — how far the head sits from the top of the day's content —
+         * and a bare viewport read answers a different one, because Trip mode lands on the
+         * now-marker and a day with a 240px head is scrolled when it arrives. The first draft
+         * scrolled to 0 and waited 120ms, which CI caught: the landing is an EASED
+         * `scrollIntoView` that keeps re-aiming while the surface settles, so a fixed wait races
+         * it and the read lands mid-flight. It failed at `-19` and, on the retry, `-3` — a
+         * NEGATIVE gap, which is the scroller still on its way back rather than any layout at
+         * all. `frontend/CLAUDE.md` names both halves: an eased scroll is a state to converge
+         * on, not a value to read, and a fixed wait is what makes that a flake instead of a
+         * failure.
+         *
+         * Adding `scrollTop` back removes the race rather than widening the window for it:
+         * `.body` has no border, so `head.y - body.y + body.scrollTop` is the head's offset from
+         * the scroller's own content origin — the same number wherever the scroll happens to be,
+         * with nothing to wait for and nothing to retry. Scoped to the real page, since a peek
+         * pane holds a whole day surface and its own head.
+         */
+        const gapAbove = () =>
+          page.evaluate((sel) => {
+            const scroller = document.querySelector('.body') as HTMLElement;
+            const el = document.querySelector(`${sel} .wp-dayhead`) as HTMLElement;
+            const h = el.getBoundingClientRect();
+            const b = scroller.getBoundingClientRect();
+            return {
+              gap: Math.round(h.y - b.y + scroller.scrollTop),
+              x: Math.round(h.x),
+              w: Math.round(h.width),
+            };
+          }, PAGE);
 
         await boot(page, true);
         await openDays(page, mode);
