@@ -170,6 +170,8 @@ vi.mock('../state/trip-state', () => ({
     trip: {
       id: 't1',
       timezone: tripTimezone,
+      // Required on the real entity, and the day head names an empty day by it (ADR-0219 §2).
+      destination: 'איסלנד',
       startDate: DAY,
       endDate: '2026-08-05',
       updatedBy: 'u1',
@@ -757,7 +759,7 @@ describe('DayView — the walk out of the bed', () => {
       el.textContent?.includes('מלון'),
     );
     expect(staysNamed).toHaveLength(2);
-    expect(document.querySelector('.day-ambient .an')).toBeNull();
+    expect(document.querySelector('.wp-dayhead-facts')?.textContent ?? '').not.toContain('מלון');
   });
 
   // …and neither row states a clock, which is what lets every leg stay an ordinary block (§3).
@@ -964,20 +966,21 @@ describe('DayView — a midnight pickup reads above the bed', () => {
     expect(titles.indexOf('Iceland Car Rental')).toBeLessThan(titles.indexOf('Gissurarbúð 5'));
   });
 
-  // **REVERSED by the owner (2026-08-28): the strip says the COUNT, and the row says the clock.**
-  // This spec used to assert the opposite, and its reasoning was that falling back to the span
-  // count would lose "the very clock the strip exists to say". What it did not weigh is that the
-  // ROW below says that clock too — so the strip was not saying it, it was repeating it. Asked
-  // directly, the owner: _"for consistency I'm voting no, same as hotel check in/check out days"_.
+  // **THE HIRE'S MIDDLE-DAY LINE IS GONE FROM THE DAY** (ADR-0219 §2, amending ADR-0163 §3).
   //
-  // The pair below is the whole point and neither half is enough alone: the count has to be in the
-  // strip AND the transition word has to be out of it, or a fallback that merely reworded the
-  // sentence would pass.
-  it('says the day count in the strip, and leaves the pickup clock to the row', () => {
+  // This spec has now been written three ways, and the third is a deletion. It first asserted
+  // that the strip said the pickup CLOCK; the owner reversed that in 2026-08-28 (_"for
+  // consistency I'm voting no, same as hotel check in/check out days"_) and it became "the strip
+  // says the day COUNT". ADR-0219 asks the question one level up — is `Hertz · יום 3 מתוך 6`
+  // worth a line at the top of the day at all — and the answer is no: on day three of six there
+  // is nothing to do with the company's name, the hire's edges are rows on their own days, and
+  // its count sits on the booking in the Index.
+  //
+  // What survives is the half that was always the point: the EDGE is a row, with its own clock.
+  it('leaves the pickup to its row, and says nothing about the hire above the list', () => {
     show();
-    const strip = document.querySelector('.day-ambient')?.textContent ?? '';
-    expect(strip).toContain('Iceland Car Rental');
-    expect(strip).not.toContain(t.glance.transition.carPickup);
+    const head = document.querySelector('.wp-dayhead')?.textContent ?? '';
+    expect(head).not.toContain('Iceland Car Rental');
     const rows = [...document.querySelectorAll('.day-list .transition-row')];
     const pickup = rows.find((r) => r.textContent?.includes(t.glance.transition.carPickup));
     expect(pickup).toBeTruthy();

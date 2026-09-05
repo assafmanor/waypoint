@@ -39,7 +39,14 @@ import { NowMarker } from '../ui/domain/NowMarker';
 import { DayHead } from '../ui/domain/DayHead';
 import { useClock } from '../lib/useClock';
 import { usePublicReaderChrome } from '../lib/public-reader-chrome';
-import { DAY_PHASE, dayPhase, formatTripDates, tripDayNumber, type DayPhase } from '../lib/time';
+import {
+  DAY_PHASE,
+  dayOfMonth,
+  dayPhase,
+  formatTripDates,
+  tripDayNumber,
+  type DayPhase,
+} from '../lib/time';
 import brandMark from '/icon-mark-bright.svg';
 import { RELOAD_GUARD_KEY, reloadOnce } from '../lib/guarded-reload';
 import { takeParkedBuild } from '../lib/useAppUpdate';
@@ -61,7 +68,8 @@ const WEEKDAY = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי
 function dayParts(date: string): { day: string; weekday: string } {
   const [year, month, day] = date.split('-').map(Number);
   return {
-    day: String(day).padStart(2, '0'),
+    // `lib/time`'s, so the app's head and this one stamp the same two characters (ADR-0219 §2).
+    day: dayOfMonth(date),
     weekday: WEEKDAY[new Date(Date.UTC(year, month - 1, day)).getUTCDay()],
   };
 }

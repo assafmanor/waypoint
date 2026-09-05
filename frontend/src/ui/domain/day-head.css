@@ -52,10 +52,14 @@
   cursor: pointer;
 }
 
-/* A region, not a toggle — and the row holds the name alone, since the app's facts live in the
-   footer band below the grid. So the floor is the date tile's own. Content still grows it. */
+/* A region, not a toggle. **And it keeps the reader's floor**, which the mockup drew at 64 and
+   the build measured wrong: the reasoning was right — the app's row holds the name alone, since
+   its facts live in the footer band, so the floor is the DATE TILE's own — and the tile has
+   THREE lines on today (⁦22px⁩ numeral + ⁦14px⁩ weekday + ⁦14px⁩ `עכשיו` = ⁦58px⁩ of stack). At 64 that
+   left ⁦3px⁩ of air above and below on the one day anybody looks at, against ⁦12px⁩ on every other
+   day. 76 is the tile's own floor, not the copy column's, and it is the reader's number — so all
+   three surfaces stamp a date the same way (ADR-0219 §2, amended with the built measurement). */
 .wp-dayhead.is-card .wp-dayhead-head {
-  min-height: 64px;
   cursor: default;
 }
 

@@ -3,52 +3,20 @@
    the annotation grammar of ADR-0077 is withdrawn from this surface, and what is left is two
    lines of words. Scoped under .glance-day.
 
-   **Two families live in this file and only one of them is the card.** `.day-ambient` and
-   `.transition-row` below belong to the DAY screens (ADR-0054 / ADR-0064 §B) and arrived here
-   when this stylesheet was extracted from `screens.css`; they are untouched by ADR-0215 and are
-   where a bracketed booking's word, time and per-edge zone (ADR-0107) read now. */
+   **Two families live in this file and only one of them is the card.** `.transition-row` below
+   belongs to the DAY screens (ADR-0064 §B) and arrived here when this stylesheet was extracted
+   from `screens.css`; it is untouched by ADR-0215 and is where a bracketed booking's word, time
+   and per-edge zone (ADR-0107) read. It has a third host since ADR-0219 §4 —
+   `UnplacedCommitment`, which used to draw the `.day-ambient` rules that sat here beside it and
+   are now deleted with the strip they belonged to. */
 
-/* ── the card, and the two day-screen families it hosts ─────────────────────── */
+/* ── the card, and the day-screen family it hosts ───────────────────────────── */
 .glance-day {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 15px 16px 16px;
 }
-/* Ambient-span backdrop (a hotel / multi-day booking, ADR-0054): shown above the
-   day's blocks on the strictly-middle nights it covers, teal-tinted (it's a place,
-   not a time). Day-screen only — Home carries no persistent band (ADR-0064 §A). */
-.day-ambient .ambient {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  background: color-mix(in srgb, var(--teal) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--teal) 30%, transparent);
-  border-radius: 12px;
-  padding: 9px 12px;
-}
-.day-ambient .ai {
-  font-size: 16px;
-  flex: 0 0 auto;
-}
-.day-ambient .an {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--ink);
-}
-.day-ambient .as {
-  margin-inline-start: auto;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--muted);
-}
-.day-ambient {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
 /* ── per-day transition entry (ADR-0064 §B) ─────────────────────────────
    A multi-day booking's edge (check-in/out, departure/arrival) as a compact,
    read-only reference row interleaved in the day timeline by instant. Amber =

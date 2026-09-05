@@ -375,135 +375,26 @@ body.wp-dragging
   margin-top: 3px;
 }
 
-/* Ambient-span backdrop (a hotel / multi-day booking, ADR-0054): shown above the
-   day's blocks on the strictly-middle nights it covers, teal-tinted (it's a place,
-   not a time). Day-screen only — Home carries no persistent band (ADR-0064 §A). */
-.day-ambient .ambient {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  background: color-mix(in srgb, var(--teal) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--teal) 30%, transparent);
-  border-radius: 12px;
-  padding: 9px 12px;
-}
-.day-ambient .ai {
-  font-size: 16px;
-  flex: 0 0 auto;
-}
-/* **THE READ-OUT IS PROTECTED; THE TITLE IS WHAT GIVES WAY**, and that became necessary the
-   moment an edge day started saying `צ׳ק-אאוט · עד 09:40` (2026-08-13) where it used to say
-   `לילה 1 מתוך 1`. `.an` had no ellipsis and could not shrink, so a long guesthouse name and
-   the longer sentence would have wrapped the line — the same trade `.index .bk-when` states
-   and for the same reason: a truncated name still identifies the booking, a truncated clock
-   is the fact the line exists for. The block is `.as-open`'s own, which the unplaced variant
-   beside it has always carried — generalised here rather than copied a second time, so both
-   strip rows agree. */
-.day-ambient .an {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--ink);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.day-ambient .as {
-  margin-inline-start: auto;
-  flex: 0 0 auto;
-  white-space: nowrap;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--muted);
-}
-.day-ambient {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-/* **THE DAY'S OWN VERDICT** (ADR-0206 §V1.7 / §AN, drawn in
-   `a-travel-time-between-two-points-v2.html` §5) — Plan mode only, and only ever when a
-   journey does not fit: there is no positive arm to style, because a day that fits and a
-   day nothing was measured on must read the same (§D4).
-
-   **It is `.ambient` above at a second density, not a new region.** That row already
-   stacks one-line facts true of the whole day and already protects its read-out while the
-   name gives way, which is exactly the trade here — so this swaps the hue and inherits the
-   rest. Amber and NOT `--miss`: what is missing is time (rule 4), and `--miss` across the
-   whole day is the app scolding you for planning, which is the failure ADR-0206's own
-   Consequence names. The status colour stays on the one leg that cannot be made. */
-.day-ambient .day-fit {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  background: color-mix(in srgb, var(--amber) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--amber) 32%, transparent);
-  border-radius: 12px;
-  padding: 9px 12px;
-}
-/* The same `warn` glyph an infeasible LEG carries (ADR-0206 §AL4), at the same meaning:
-   one mark for one fact, at two scopes. */
-.day-ambient .day-fit-ic {
-  display: flex;
-  flex: 0 0 auto;
-  color: var(--amber-deep);
-}
-.day-ambient .day-fit-ic .icon {
-  width: 15px;
-  height: 15px;
-}
-/* `.an`'s treatment, for `.an`'s reason: the COUNT is what gives way, because the
-   measurement beside it is the fact the row exists for. Measured at 360 (mockup §5): the
-   whole row is 233.9px of ink in a 308px box, and the copy that did not fit was 314.9px —
-   `ביום` and `בסך הכול`, both recoverable from context, neither worth the shortfall. */
-.day-ambient .day-fit-n {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--ink);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* `.as`'s position; `--amber-deep`'s ink, because plain `--amber` measures 2.1:1 on
-   `--card` in light. It passes in dark (7.95:1) and the failing theme is what picks the
-   token, or the app ships a sentence nobody can read on the surface it was designed on. */
-.day-ambient .day-fit-s {
-  margin-inline-start: auto;
-  flex: 0 0 auto;
-  white-space: nowrap;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--amber-deep);
-}
-
 /* **HOW FAR THE DAY GOES** (ADR-0206 §V1.9, amended §AP) — both day surfaces, because a day's
    total distance is a FACT and ADR-0159 §1 lets the two differ only in posture.
 
-   **The one row in this strip that is NOT a card, and that is the decision.** Its two neighbours
-   are tinted boxes because each asserts something to locate (teal, a place) or to act on (amber,
-   `.day-fit`'s verdict); a total is neither — you read it and read past it. Painting it amber
-   would also put two amber cards in one strip on an overrunning Plan day, where one means "this
-   day does not fit" and the other means "here is your mileage", which is the loudest possible
-   reading of the quietest fact here. So: the cards' own inline padding, so the ink lines up with
-   theirs, and nothing else.
+   **It was never a card, and that was the decision** — in the retired strip its neighbours were
+   tinted boxes because each asserted something to locate (teal, a place) or to act on (amber, the
+   fit verdict), and a total is neither: you read it and read past it. Since ADR-0219 §2 it is a
+   line in the day head's footer band, where the verdict is a line beside it and neither is a box
+   — so nothing about this rule changed and the reasoning outlived its strip.
 
    Amber survives on the GLYPH alone, which is rule 4 spent where it is true — a travel time is
    time (§D1) — at the one strength a summary can carry. */
 /* **UNSCOPED FROM `.day-ambient` BY ADR-0215 §6**, because the component moved and the rules had
-   not: `DayTravelTotal` now also renders in the Home glance card's foot, and a second copy of
-   three declarations under a second host is the duplication root rule 8 exists to stop. What
-   stayed at the host is the one thing that IS the host's — the inline padding that lines this line
-   up with the day cards beside it. */
+   not: `DayTravelTotal` renders in the Home glance card's foot, and — since ADR-0219 §2 — in the
+   day head's footer band, where the strip it used to lead has been retired. A second copy of
+   three declarations under a second host is the duplication root rule 8 exists to stop; the
+   inline padding that WAS the host's went with the host. */
 .day-total {
   display: flex;
   align-items: center;
   gap: 9px;
-}
-.day-ambient .day-total {
-  padding: 0 12px;
 }
 .day-total-ic {
   display: flex;
@@ -535,37 +426,6 @@ body.wp-dragging
   display: flex;
   align-items: center;
   gap: 9px;
-  flex: 0 0 auto;
-}
-
-/* An unpositioned COMMITMENT sharing the strip (ADR-0171 §10a-i). Same box as the
-   ambient backdrop beside it — one hotel reads the same way on every day of itself,
-   edges included — with two differences it earns: its title is a button (there is a
-   booking behind it), and it carries the settle pair, because ADR-0164 counts it in
-   `נותרו היום` until somebody answers. */
-.day-ambient .ambient.unplaced .as {
-  margin-inline-start: auto;
-}
-.day-ambient .as-open {
-  background: none;
-  border: 0;
-  padding: 0;
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--ink);
-  text-align: start;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.day-ambient .as-open:disabled {
-  cursor: default;
-}
-/* The settle cluster sits after the label rather than pushing it: `.as` already takes
-   the free space, so this only needs to stop shrinking. */
-.day-ambient .ambient.unplaced .wp-settle {
   flex: 0 0 auto;
 }
 

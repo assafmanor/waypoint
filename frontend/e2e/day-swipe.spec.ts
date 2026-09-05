@@ -262,14 +262,18 @@ async function swipeDay(
   // which owns the horizontal axis and correctly refuses the gesture, so the spec would be
   // measuring the wrong thing while looking green on one fixture. The heading is the first
   // row of both day surfaces and exists on an empty day too, which the last-day case needs.
+  // **`.wp-dayhead-head` and not `.sec-title`** since ADR-0219 §2: the head is a component now,
+  // and `.sec-title` still names the maybe shelf's own heading — which is inside the shelf, the
+  // one region that refuses this gesture on purpose. The head's GRID row rather than the whole
+  // card, so the origin does not land on the day's photograph.
   // **`> .day-page`, and the child combinator is the whole point.** A peek pane holds a whole
-  // day surface, so `.sec-title` exists three times over while a gesture is live — and
-  // `.day-peeks` renders BEFORE `.day-page`, so a descendant `${PAGE} .sec-title` reaches a
-  // PEEK's heading first. `:not([data-preview])` cannot help: it excludes a pane's own inner
+  // day surface, so the head exists three times over while a gesture is live — and
+  // `.day-peeks` renders BEFORE `.day-page`, so a descendant `${PAGE} .wp-dayhead-head` reaches
+  // a PEEK's heading first. `:not([data-preview])` cannot help: it excludes a pane's own inner
   // host, not the panes nested inside the host being asked. That is the trap `DayPeek.tsx`
   // states in its own comment, and it fails QUIETLY — the spec would swipe from tomorrow's
   // heading and still look green. Line 379 already asks the right way.
-  const box = await stableBox(page.locator(`${PAGE} > .day-page .sec-title`).first());
+  const box = await stableBox(page.locator(`${PAGE} > .day-page .wp-dayhead-head`).first());
   const x0 = box.x + box.width * 0.45;
   const y0 = box.y + box.height / 2;
   await touch(cdp, 'touchStart', x0, y0, stamp(0));
@@ -580,7 +584,7 @@ test.describe('a day surface steps day to day with a swipe', () => {
   test('the page leaves level at zero and tracks the finger from there', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
     await boot(page, 'trip');
-    const box = await stableBox(page.locator(`${PAGE} > .day-page .sec-title`).first());
+    const box = await stableBox(page.locator(`${PAGE} > .day-page .wp-dayhead-head`).first());
     const x0 = box.x + box.width * 0.45;
     const y0 = box.y + box.height / 2;
 

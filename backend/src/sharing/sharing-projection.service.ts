@@ -45,6 +45,7 @@ import {
   tripShapeOf,
   buildDayStopSequence,
   dayPhoto,
+  isTransportEvent,
   dominantValue,
   type DayPhotoEvent,
   type DayPhotoPlace,
@@ -665,20 +666,16 @@ function stayMoments(
   return out;
 }
 
-/** **Is this event a way of getting somewhere, rather than somewhere to be?** Asked of the
- *  booking first, because a booking states its type, and of the category only for an event
- *  no booking backs. Both vocabularies already exist and `BOOKING_TYPE_TO_CATEGORY` maps
- *  between them, so this names no third set. */
-const TRANSPORT_BOOKINGS: readonly BookingType[] = [
-  BOOKING_TYPE.FLIGHT,
-  BOOKING_TYPE.TRAIN,
-  BOOKING_TYPE.TRANSIT,
-  BOOKING_TYPE.CAR,
-];
+/** **Is this event a way of getting somewhere, rather than somewhere to be?** The rule is
+ *  `@waypoint/shared`'s `isTransportEvent` since ADR-0219 phase 4 — it used to be a literal
+ *  list of four booking types here, under a comment saying `BOOKING_TYPE_TO_CATEGORY` already
+ *  maps between the two vocabularies and this should name no third set. The app needed the
+ *  same question and generalised the one-off rather than copying it (root rule 8). */
 const isTransport = (event: ShareEventRow): boolean =>
-  event.booking?.type
-    ? TRANSPORT_BOOKINGS.includes(event.booking.type as BookingType)
-    : event.category === EVENT_CATEGORY.TRANSPORT;
+  isTransportEvent(
+    { category: event.category as EventCategory },
+    event.booking ? { type: event.booking.type as BookingType } : undefined,
+  );
 
 /**
  * **Everything an anonymous reader is ever handed**, built once and consumed unchanged by

@@ -140,6 +140,10 @@ Cost: the ~20px of row height §5 charged only to windowed rows is now charged t
 
 The word is now per edge — `＋ עד` / `＋ מ־`, with `סוף החלון` / `תחילת החלון` as the caption. **`windowBoundIso` is unchanged**: its roll is correct for the case it was written for (a car returned at 02:00 against a counter open from 22:00), and §8's refusal to put a threshold on window width still stands, so there is no number to reject a wide one by.
 
+### 9g. Amendment, 2026-09-05 — the strip is gone; the edge stays a row ([ADR-0219](0219-a-day-is-a-place-you-can-see.md) §4)
+
+§9f's whole subject was what the ambient STRIP said about an edge day, and the strip is deleted: it stacked a day's distance total, Plan's fit verdict, a span's day count and every untimed commitment in one teal box, and ADR-0219 §4 splits them by what they are. **Nothing §9f decided is reversed.** An edge day states the edge and never the count — as a `.transition-row` on its own day, which is where §9 put it in the first place (ADR-0209 §1 for a stay's two ends). What leaves is the second place that sentence was ALSO printed: a middle day now says nothing on the day at all (ADR-0163's 2026-09-05 amendment), so the `.day-ambient .an` ellipsis trade above describes a rule that no longer has a host. `edgeTimePhrase` + `edgeSentence` are unchanged and still shared, which is what keeps the row's clock the edge's own.
+
 ### 9f. Amendment, 2026-08-13 (after §9 shipped): the strip states the edge, and the range stops reading `atMs`
 
 §9a put the stay's ambient line on its edge days and left `ambientSpanLabel` on it. Owner, off that build:

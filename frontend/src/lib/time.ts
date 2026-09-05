@@ -91,6 +91,18 @@ export function weekdayLetter(date: string): string {
   return weekdayNarrow.format(new Date(`${date}T00:00:00Z`));
 }
 
+/**
+ * **The day of the month, two digits** — the numeral the day head stamps (ADR-0219 §2).
+ *
+ * Sliced out of `YYYY-MM-DD` without building a `Date`, so a browser in any zone reads the
+ * same day the string names: parsing it as a date would shift the label across the date line.
+ * The reader's own head reads this too, which is what keeps the app's `13` and the reader's
+ * `13` the same two characters.
+ */
+export function dayOfMonth(date: string): string {
+  return date.slice(8, 10);
+}
+
 /** A trip day's full weekday name, in the trip's own zone — read at that day's **noon**,
  *  so no offset can push the name onto a neighbouring day. Both day surfaces (Trip and
  *  Plan) read this one; they held a byte-identical formatter each. */

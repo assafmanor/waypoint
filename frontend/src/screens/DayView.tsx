@@ -33,6 +33,10 @@ import {
 import { prefersReducedMotion } from '../lib/motion';
 import { apiAssetUrl } from '../lib/api-asset';
 import { rowPhoto } from '../lib/place-photo';
+import { dayHeadTitle } from '../lib/day-title';
+import { dayShot, type DayShot } from '../lib/day-photo';
+import { DayHead } from '../ui/domain/DayHead';
+import { MediaViewer } from '../ui/MediaViewer';
 import { useLandOnArrival } from '../lib/land-at-top';
 import { useDaySurface } from '../lib/useDaySurface';
 import { DayPeeks } from '../ui/domain/DayPeek';
@@ -82,13 +86,13 @@ import {
   isoToTimeInput,
   hardConflicts,
   zonedIso,
+  dayOfMonth,
   weekdayName,
   resolveEndIso,
   type TimeGroup,
   type TimeItem,
   tripDates,
   dayLabel,
-  tripDayNumber,
   dayWindowMs,
 } from '../lib/time';
 import {
@@ -121,7 +125,6 @@ import {
   groupStartEvent,
   mergeDayEntries,
   placeDayEntries,
-  staysOnDate,
   type DayEntry,
   type TransitionEntry,
 } from '../lib/day-entries';
@@ -169,7 +172,7 @@ import {
   JourneyRow,
   type JourneyRowProps,
 } from '../ui/domain/DayJoinRow';
-import { CODE_PREFIX, DEFAULT_STAY_ICON, MS_PER_MINUTE, SHELF_POOL_CAP } from '../constants';
+import { CODE_PREFIX, MS_PER_MINUTE, SHELF_POOL_CAP } from '../constants';
 import { ambientSpanLabel, dayBookendStays } from '../lib/glance';
 import { edgeSentence } from '../lib/transitions';
 import { t } from '../i18n/he';
@@ -577,10 +580,6 @@ export function DayView() {
   const dayEvents = events
     .filter((e) => e.date === activeDate && e.status !== EVENT_STATUS.SKIPPED && !isAmbient(e))
     .sort(byStart);
-  // Ambient-span stays (a hotel, ADR-0054/0063) are backdrop, not timeline rows — and the
-  // backdrop is there on every day of the stay now, edges included. One shared predicate
-  // with Plan, which is where that rule belongs (ADR-0171 §10e).
-  const staysToday = staysOnDate(events, activeDate);
   // The shelf, grouped (ADR-0116 §2) by one shared derivation both hosts call —
   // ideas pencilled in for this day, the rest of the pool, and (ADR-0027's parking
   // lot) the day's skipped soft events, durable and restorable in place.
@@ -634,9 +633,10 @@ export function DayView() {
     };
   };
 
-  const dayNumber = tripDayNumber(activeDate, trip.startDate);
   const weekday = weekdayName(activeDate, trip.timezone);
-  const heading = t.day.heading(dayNumber, weekday, trip.destination);
+  /** The day of the month, which the head stamps — the trip ORDINAL is the header anchor's
+   *  (`יום 3/12`) and is not repeated in the head (ADR-0219 §2). */
+  const dayOfMonthLabel = dayOfMonth(activeDate);
 
   // Per-event display zones (ADR-0107): one builder over the one evidence, shared
   // with the Plan-mode builder so the two day surfaces cannot diverge.
@@ -1043,6 +1043,50 @@ export function DayView() {
     [journeys, travelReads.unplacedLegs, airMeters],
   );
 
+  /**
+   * **What the head says this day is, and what it shows of it** (ADR-0219 §2/§3) — the same two
+   * derivations the public reader names and pictures a day with (`@waypoint/shared`).
+   *
+   * Both are memoized on the trip state they read because this screen re-renders every second on
+   * the clock, and both walk the whole trip's events: naming a day asks whether it is the way out
+   * or the way home, which is a whole-trip question.
+   */
+  const headTitle = useMemo(
+    () =>
+      dayHeadTitle({
+        trip,
+        date: activeDate,
+        dayEvents,
+        events,
+        bookings,
+        places,
+        placeLabels,
+        enrichments,
+      }),
+    [trip, activeDate, dayEvents, events, bookings, places, placeLabels, enrichments],
+  );
+  const shot = useMemo(
+    () => dayShot(dayEvents, places, placeLabels, enrichments),
+    [dayEvents, places, placeLabels, enrichments],
+  );
+  /** The full picture, opened from the shot — the screen owns the viewer, exactly as `Map.tsx`
+   *  does for `PlaceKnowledge`'s hero (ADR-0167 §10). */
+  const [fullShot, setFullShot] = useState<DayShot | null>(null);
+
+  /**
+   * **The facts true of the WHOLE day, in the head's footer band** (ADR-0219 §2/§4) — what the
+   * teal strip above the list used to hold, minus the two things that were never facts about the
+   * day. Trip mode has one: how far the day goes.
+   *
+   * **HOW FAR THE DAY GOES** (ADR-0206 §V1.9 / §AP) is Trip mode AND Plan mode, off one
+   * derivation and one component: a day's total distance is a FACT, and ADR-0159 §1 allows the
+   * two surfaces a difference in posture and forbids one about a fact.
+   */
+  const headFacts =
+    dayTotal.distanceMeters !== null
+      ? [<DayTravelTotal key="total" total={dayTotal} />]
+      : undefined;
+
   /** The live hole's one control, and the arm decides what it means: `בדרך` answers the mark,
    *  `ביטול סימון` takes it back (ADR-0207 §7 — a toast is transient and a mark is not). Nothing
    *  on a read-only archive, where every other write is gated too (ADR-0029). */
@@ -1264,103 +1308,67 @@ export function DayView() {
             <span className="ab-ic" aria-hidden="true">
               <Icon name="archive" />
             </span>
-            <span className="ab-main">
-              {heading} · {t.day.archiveTag}
-            </span>
+            {/* **The banner keeps its control and loses its heading** (ADR-0219 §2). It read
+              `{heading} · לקריאה בלבד`, and the head under it now says the date — so the
+              banner says only what the banner is for. */}
+            <span className="ab-main">{t.day.archiveTag}</span>
             <button className="ab-back" onClick={() => setActiveDate(today)}>
               {t.header.backToToday}
             </button>
           </div>
         )}
 
-        <div className="sec-title">
-          {heading}
-          <span className="sec-title-end">
-            {/* Trip-mode add is a Tier-1 quick soft-add for today (ADR-0025/0043),
-              prefilled at the next open slot; heavy building lives in Plan.
-              Locked on a past day (create gated, ADR-0029). */}
-            {!readOnly && (
+        {/* **A DAY IS A PLACE YOU CAN SEE** (ADR-0219 §2/§3), and this replaces `.sec-title`'s
+          12px muted `יום 3 · ראשון · איסלנד`. The trip ordinal is the header anchor's
+          (`יום 3/12`) and the destination is the trip's name, so neither is repeated: the head
+          says the date, what the day IS, and — when a stop clears `dayPhoto`'s gate — shows it.
+          The same component and the same derivations the public reader uses. */}
+        <DayHead
+          card
+          dayNumbers={dayOfMonthLabel}
+          weekday={weekday}
+          isNow={isToday}
+          title={headTitle}
+          shot={
+            shot && {
+              ...shot,
+              eager: true,
+              onOpen: () => setFullShot(shot),
+            }
+          }
+          facts={headFacts}
+          action={
+            /* Trip-mode add is a Tier-1 quick soft-add for today (ADR-0025/0043), prefilled at
+              the next open slot; heavy building lives in Plan. Locked on a past day (create
+              gated, ADR-0029) — and then the footer band is absent entirely. */
+            readOnly ? undefined : (
               <button className="new-event-btn" onClick={() => setFormTarget('new')}>
                 <Icon name="plus" /> {t.actions.newEvent}
               </button>
-            )}
-          </span>
-        </div>
-
-        {(staysToday.length > 0 ||
-          placement.commitments.length > 0 ||
-          dayTotal.distanceMeters !== null) && (
-          <div className="day-ambient">
-            {/* **HOW FAR THE DAY GOES** (ADR-0206 §V1.9 / §AP). Trip mode AND Plan mode, off one
-              derivation and one component: a day's total distance is a FACT, and ADR-0159 §1
-              allows the two surfaces a difference in posture and forbids one about a fact. It
-              leads the strip because it is the widest-scope thing in it — the whole day, where
-              the rows below are each about one booking. */}
-            <DayTravelTotal total={dayTotal} />
-            {/* **AN EDGE DAY SAYS THE EDGE; A MIDDLE DAY SAYS THE COUNT** (owner, 2026-08-13).
-              `לילה 1 מתוך 1` on both of two guesthouses — one being left this morning, one
-              being arrived at tonight — is the same words for opposite events. The sentence
-              comes from the day's PLACED entry, so this line and the row below it cannot
-              print two different clocks for one edge. */}
-            {staysToday
-              // **A stay named by its own row is not also named in the strip** (ADR-0209 §1). This
-              // is the subtraction the whole ADR turns on: one hotel was reading twice on one
-              // screen, here and as a row at its bound.
-              .filter((e) => !stayRowIds.has(e.id))
-              .map((e) => {
-                return (
-                  <div className="ambient" key={e.id}>
-                    <span className="ai" aria-hidden="true">
-                      {e.icon ?? DEFAULT_STAY_ICON}
-                    </span>
-                    <span className="an">{e.title}</span>
-                    <span className="as">
-                      {/* **A SPAN NAMED BY ITS OWN ROW SAYS THE COUNT HERE, NOT THE CLOCK** (owner,
-                          2026-08-28, amending the 2026-08-13 call above and extending ADR-0209 §1
-                          past stays). That call made this line BORROW the row's placed clock so the
-                          two could not disagree; the owner's answer now is that they should not both
-                          print it at all — _"for consistency I'm voting no, same as hotel check
-                          in/check out days"_.
-
-                          **`placedEdgeOf` only ever finds an edge that already has its own row**,
-                          which is what makes this a subtraction rather than a loss: a bookend stay
-                          is filtered out of this strip two lines up and its edge lives in
-                          `stayEdges`, never in `positioned`. So the branch this replaces fired for
-                          exactly the duplicated cases — a car hire's pick-up/return, a red-eye's
-                          departure/landing.
-
-                          **It is NOT the hotel's treatment, and that is deliberate.** A bookend stay
-                          leaves the strip entirely because its row carries the hotel's NAME, so
-                          nothing is lost. A hire's row carries the PLACE and the strip carries the
-                          COMPANY (ADR-0163 §3) — dropping the strip row would delete the company
-                          from the day. So the row stays and the CLOCK gives way: named once,
-                          timed once. */}
-                      {ambientSpanLabel(e, activeDate)}
-                    </span>
-                  </div>
-                );
-              })}
-            {/* **A commitment with no position reads at the TOP** (ADR-0171 §10a-i) — a
-              claim on your day, carried all day, rather than something buried at its
-              foot. It lands in the strip a multi-night stay's MIDDLE days already use,
-              so one hotel reads the same way on every day of itself, edges included,
-              and no second band is invented. */}
-            {placement.commitments.map((row) => (
-              <UnplacedCommitment
-                key={`${row.event.id}-${row.edge ?? 'untimed'}`}
-                row={row}
-                tz={dayZone}
-                bookings={bookings}
-                onDone={() => verbs.done(row.event)}
-                onSkip={() => verbs.skip(row.event)}
-                onUndo={() => verbs.restore(row.event)}
-                onOpen={setDetailTarget}
-              />
-            ))}
-          </div>
-        )}
+            )
+          }
+        />
 
         <div className={'day-list' + (readOnly ? ' archive' : '')}>
+          {/* **A COMMITMENT WITH NO CLOCK IS A ROW** (ADR-0219 §4), at the top of the list and
+            below the head. It used to sit in the teal strip a multi-night stay's middle days
+            also used — three unrelated kinds of thing in one box — and it is on
+            `.transition-row`'s grammar now, because ADR-0210 §1 made the amber box and the 32px
+            circle badge the committed point's and an untimed commitment is a commitment without
+            a moment. Above the first row, so §10a-i's "a claim on your day reads at the top"
+            holds with no strip to hold it. */}
+          {placement.commitments.map((row) => (
+            <UnplacedCommitment
+              key={`${row.event.id}-${row.edge ?? 'untimed'}`}
+              row={row}
+              tz={dayZone}
+              bookings={bookings}
+              onDone={() => verbs.done(row.event)}
+              onSkip={() => verbs.skip(row.event)}
+              onUndo={() => verbs.restore(row.event)}
+              onOpen={setDetailTarget}
+            />
+          ))}
           {/* **The walk out of the bed** (ADR-0206 §AD). Above the first row rather than between
             two, which is the one place in the day where a journey has no hole to sit in — and the
             leg you can be surest of, since the hotel is where you both started and finished. */}
@@ -1853,6 +1861,21 @@ export function DayView() {
               setGapTarget(null);
             }}
             onClose={() => setGapTarget(null)}
+          />
+        )}
+
+        {/* **The day's picture, full screen** (ADR-0219 §3) — the same viewer `PlaceKnowledge`'s
+          hero opens on the Map (ADR-0167 §10), owned by the screen because the viewer is a
+          portal. The credit is its caption: full screen is the photograph's most prominent
+          display, so it is where the licence is owed most plainly. */}
+        {fullShot && (
+          <MediaViewer
+            title={fullShot.of}
+            mimeType={fullShot.image.mimeType}
+            source={{ kind: 'url', url: fullShot.url }}
+            caption={fullShot.credit}
+            intrinsic={fullShot.image}
+            onClose={() => setFullShot(null)}
           />
         )}
       </div>

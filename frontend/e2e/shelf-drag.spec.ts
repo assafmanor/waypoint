@@ -1220,7 +1220,6 @@ test.describe('carrying a card to another day from the surface edge', () => {
   // where it LANDS: nothing is holding the surface, so it is given back rather than kept claimed.
   test('leaving the band inside the turn lets the turn finish', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const card = await centre(page, '.wp-maybecard');
     const host = page.locator('.day-swipe:not([data-preview])');
     const bands = await bodyBands(page);
 
@@ -1230,6 +1229,16 @@ test.describe('carrying a card to another day from the surface edge', () => {
     // poll is tight for the same reason: what is left inside the window is one CDP dispatch.
     const box = await boxOf(page, '.day-swipe:not([data-preview])');
     const middle = { x: box.x + box.width / 2, y: (bands.middleFrom + bands.middleTo) / 2 };
+    /** **The card is measured LAST, and that ordering is the whole of it.** `boxOf` calls
+     *  `scrollIntoViewIfNeeded`, so asking for `.day-swipe` — which is taller than this 660px
+     *  viewport — scrolls the body back up to reveal its top: measured at `scrollTop` 212 → 120,
+     *  which moved the shelf card ⁦144px⁩ down from where a `centre` taken first had found it. The
+     *  touch then lands on nothing and the drag never arms. It only started failing when
+     *  ADR-0219 §2's head made the surface taller, which is what a stale box does — it is
+     *  correct until the page grows (`frontend/CLAUDE.md`'s "a landing position written as a
+     *  constant instead of measured", one step removed). Every OTHER measurement still happens
+     *  before the touch, which is what the turn's window needs. */
+    const card = await centre(page, '.wp-maybecard');
 
     await touch(cdp, 'touchStart', card.x, card.y);
     await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
@@ -1265,10 +1274,19 @@ test.describe('carrying a card to another day from the surface edge', () => {
   // arriving in less time than a first step is allowed to take.
   test('reversing costs half a dwell', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const card = await centre(page, '.wp-maybecard');
     const bands = await bodyBands(page);
     const box = await boxOf(page, '.day-swipe:not([data-preview])');
     const middle = { x: box.x + box.width / 2, y: (bands.middleFrom + bands.middleTo) / 2 };
+    /** **The card is measured LAST, and that ordering is the whole of it.** `boxOf` calls
+     *  `scrollIntoViewIfNeeded`, so asking for `.day-swipe` — which is taller than this 660px
+     *  viewport — scrolls the body back up to reveal its top: measured at `scrollTop` 212 → 120,
+     *  which moved the shelf card ⁦144px⁩ down from where a `centre` taken first had found it. The
+     *  touch then lands on nothing and the drag never arms. It only started failing when
+     *  ADR-0219 §2's head made the surface taller, which is what a stale box does — it is
+     *  correct until the page grows (`frontend/CLAUDE.md`'s "a landing position written as a
+     *  constant instead of measured", one step removed). Every OTHER measurement still happens
+     *  before the touch, which is what the turn's window needs. */
+    const card = await centre(page, '.wp-maybecard');
 
     await touch(cdp, 'touchStart', card.x, card.y);
     await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
@@ -1416,11 +1434,20 @@ test.describe('carrying a card to another day from the surface edge', () => {
   // would pass just as well on a motion that had merely finished early.
   test('backing away after a landing does not move the surface', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const card = await centre(page, '.wp-maybecard');
     const host = page.locator('.day-swipe:not([data-preview])');
     const bands = await bodyBands(page);
     const box = await boxOf(page, '.day-swipe:not([data-preview])');
     const middle = { x: box.x + box.width / 2, y: (bands.middleFrom + bands.middleTo) / 2 };
+    /** **The card is measured LAST, and that ordering is the whole of it.** `boxOf` calls
+     *  `scrollIntoViewIfNeeded`, so asking for `.day-swipe` — which is taller than this 660px
+     *  viewport — scrolls the body back up to reveal its top: measured at `scrollTop` 212 → 120,
+     *  which moved the shelf card ⁦144px⁩ down from where a `centre` taken first had found it. The
+     *  touch then lands on nothing and the drag never arms. It only started failing when
+     *  ADR-0219 §2's head made the surface taller, which is what a stale box does — it is
+     *  correct until the page grows (`frontend/CLAUDE.md`'s "a landing position written as a
+     *  constant instead of measured", one step removed). Every OTHER measurement still happens
+     *  before the touch, which is what the turn's window needs. */
+    const card = await centre(page, '.wp-maybecard');
 
     await page.evaluate(() => {
       const w = window as unknown as { __runs: number; __watch: () => void };
@@ -1468,13 +1495,22 @@ test.describe('carrying a card to another day from the surface edge', () => {
   // way, and no further day may arrive on its own.
   test('turning back during the turn stops, and does not walk back', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const card = await centre(page, '.wp-maybecard');
     const host = page.locator('.day-swipe:not([data-preview])');
     const bands = await bodyBands(page);
     const box = await boxOf(page, '.day-swipe:not([data-preview])');
     const y = (bands.middleFrom + bands.middleTo) / 2;
     // The far band — where a hand pulling the card back the way it came ends up.
     const back = { x: box.x + box.width - Math.round(DRAG_DAY_EDGE_PX / 4), y };
+    /** **The card is measured LAST, and that ordering is the whole of it.** `boxOf` calls
+     *  `scrollIntoViewIfNeeded`, so asking for `.day-swipe` — which is taller than this 660px
+     *  viewport — scrolls the body back up to reveal its top: measured at `scrollTop` 212 → 120,
+     *  which moved the shelf card ⁦144px⁩ down from where a `centre` taken first had found it. The
+     *  touch then lands on nothing and the drag never arms. It only started failing when
+     *  ADR-0219 §2's head made the surface taller, which is what a stale box does — it is
+     *  correct until the page grows (`frontend/CLAUDE.md`'s "a landing position written as a
+     *  constant instead of measured", one step removed). Every OTHER measurement still happens
+     *  before the touch, which is what the turn's window needs. */
+    const card = await centre(page, '.wp-maybecard');
 
     await page.evaluate(() => {
       const w = window as unknown as { __turns: number; __watch: () => void };
@@ -1536,11 +1572,20 @@ test.describe('carrying a card to another day from the surface edge', () => {
   // the two windows are asserted separately rather than one covering for the other.
   test('crossing to the far edge after a landing does not walk back', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const card = await centre(page, '.wp-maybecard');
     const bands = await bodyBands(page);
     const box = await boxOf(page, '.day-swipe:not([data-preview])');
     const y = (bands.middleFrom + bands.middleTo) / 2;
     const back = { x: box.x + box.width - Math.round(DRAG_DAY_EDGE_PX / 4), y };
+    /** **The card is measured LAST, and that ordering is the whole of it.** `boxOf` calls
+     *  `scrollIntoViewIfNeeded`, so asking for `.day-swipe` — which is taller than this 660px
+     *  viewport — scrolls the body back up to reveal its top: measured at `scrollTop` 212 → 120,
+     *  which moved the shelf card ⁦144px⁩ down from where a `centre` taken first had found it. The
+     *  touch then lands on nothing and the drag never arms. It only started failing when
+     *  ADR-0219 §2's head made the surface taller, which is what a stale box does — it is
+     *  correct until the page grows (`frontend/CLAUDE.md`'s "a landing position written as a
+     *  constant instead of measured", one step removed). Every OTHER measurement still happens
+     *  before the touch, which is what the turn's window needs. */
+    const card = await centre(page, '.wp-maybecard');
 
     await page.evaluate(() => {
       const w = window as unknown as { __turns: number; __watch: () => void };

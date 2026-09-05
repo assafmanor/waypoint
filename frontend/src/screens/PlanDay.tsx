@@ -16,7 +16,6 @@
 // either side of one are both.
 import {
   Fragment,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -47,6 +46,10 @@ import { edgeFadeRef } from '../lib/edge-fade';
 import { useDragState } from '../state/drag-state';
 import { apiAssetUrl } from '../lib/api-asset';
 import { rowPhoto } from '../lib/place-photo';
+import { dayHeadTitle } from '../lib/day-title';
+import { dayShot, type DayShot } from '../lib/day-photo';
+import { DayHead } from '../ui/domain/DayHead';
+import { MediaViewer } from '../ui/MediaViewer';
 import { useSpringLoadedDay } from '../lib/useSpringLoadedDay';
 import { useEdgeDayStep } from '../lib/useEdgeDayStep';
 import { useDaySurface } from '../lib/useDaySurface';
@@ -84,13 +87,13 @@ import {
   clockRange,
   formatTime,
   zonedIso,
+  dayOfMonth,
   weekdayName,
   crossesMidnightZoned,
   type TimeGroup,
   type TimeItem,
   tripDates,
   dayLabel,
-  tripDayNumber,
   dayWindowMs,
 } from '../lib/time';
 import {
@@ -156,7 +159,6 @@ import { useDragGhost } from '../lib/useDragGhost';
 import {
   CONTROL_ICON,
   DEFAULT_MAYBE_ICON,
-  DEFAULT_STAY_ICON,
   DOT_SEPARATOR,
   DRAG_DAY_DWELL_MS,
   MINUTES_PER_HOUR,
@@ -169,7 +171,6 @@ import {
   groupMembers,
   groupStartEvent,
   mergeDayEntries,
-  staysOnDate,
 } from '../lib/day-entries';
 import { nowLinePlacement } from '../lib/now-line';
 import { NOW_POSTURE, NowMarker } from '../ui/domain/NowMarker';
@@ -412,10 +413,6 @@ export function PlanDay() {
         e.date === activeDate && (readOnly || e.status !== EVENT_STATUS.SKIPPED) && !isAmbient(e),
     )
     .sort(byStart);
-  // Ambient-span stays (a hotel, ADR-0054/0063): backdrop, not builder rows — on every day
-  // of the stay, edges included. One shared predicate with the Trip day view (ADR-0171 §10e).
-  const staysToday = staysOnDate(events, activeDate);
-
   // Multi-day bracketed bookings (a hotel, a red-eye flight) are ambient — off
   // `dayEvents` — so their edge days would show nothing in the list. Interleave
   // their transition points (check-in/out, departure/arrival) among the builder
@@ -1357,8 +1354,76 @@ export function PlanDay() {
     };
   };
 
-  const dayNumber = tripDayNumber(activeDate, trip.startDate);
   const weekday = weekdayName(activeDate, trip.timezone);
+  /** The day of the month, which the head stamps — the trip ORDINAL is the header anchor's
+   *  (`יום 3/12`) and is not repeated in the head (ADR-0219 §2). */
+  const dayOfMonthLabel = dayOfMonth(activeDate);
+
+  /**
+   * **What the head says this day is, and what it shows of it** (ADR-0219 §2/§3) — the same two
+   * derivations Trip mode and the public reader use, which is what makes the three surfaces name
+   * and picture a day identically. Memoized on the trip state they read; both walk the whole
+   * trip's events, since naming a day asks whether it is the way out or the way home.
+   */
+  const headTitle = useMemo(
+    () =>
+      dayHeadTitle({
+        trip,
+        date: activeDate,
+        dayEvents,
+        events,
+        bookings,
+        places,
+        placeLabels,
+        enrichments,
+      }),
+    [trip, activeDate, dayEvents, events, bookings, places, placeLabels, enrichments],
+  );
+  const shot = useMemo(
+    () => dayShot(dayEvents, places, placeLabels, enrichments),
+    [dayEvents, places, placeLabels, enrichments],
+  );
+  /** The full picture, opened from the shot — the screen owns the viewer, as `Map.tsx` does for
+   *  `PlaceKnowledge`'s hero (ADR-0167 §10). */
+  const [fullShot, setFullShot] = useState<DayShot | null>(null);
+
+  /**
+   * **The facts true of the WHOLE day, in the head's footer band** (ADR-0219 §2/§4), at most two.
+   *
+   * **HOW FAR THE DAY GOES** (ADR-0206 §V1.9 / §AP) leads, because it is true of every day where
+   * the verdict is true of few — and it is not Plan's to differ about, so Trip renders the same
+   * component off the same function.
+   *
+   * **THE DAY'S OWN VERDICT** (ADR-0206 §V1.7 / §AN) follows, and three things about it are
+   * decisions rather than styling. **It only ever appears** — there is no positive arm, because
+   * §D4 says a reader must not be able to tell "not computed" from "not computable", and a `✓` on
+   * an unmeasured day is exactly that tell, in the direction that costs someone their afternoon.
+   * **It is amber, not `--miss`** — what is missing is time (rule 4), and painting the whole day
+   * with the status colour is the app scolding you for planning. **It says what no leg's row
+   * can** — how many, and the sum; without the count it is an echo of the block below it.
+   *
+   * On a read-only past day the verdict gives way to the note that says so — the day is not
+   * yours to fix, so an opinion about its fit has nothing to act on. That note was the
+   * `.sec-title`'s trailing `hint`, which the head's footer band now carries (ADR-0219 §2).
+   */
+  const headFacts: ReactNode[] = [];
+  if (dayTotal.distanceMeters !== null) {
+    headFacts.push(<DayTravelTotal key="total" total={dayTotal} />);
+  }
+  if (readOnly) {
+    headFacts.push(
+      <span key="past">
+        <Icon name="archive" /> {t.planDay.pastNote}
+      </span>,
+    );
+  } else if (planFit.fit === TRAVEL_FIT.OVERRUNS) {
+    headFacts.push(
+      <span key="fit" className="wp-dayhead-fit">
+        <Icon name="warn" /> {infeasibleLegsPhrase(planFit.legs)} {DOT_SEPARATOR}{' '}
+        {dayShortfallPhrase(planFit.overrunSeconds / SECONDS_PER_MINUTE)}
+      </span>,
+    );
+  }
 
   // RE-OPENING AFTER A PLACE ERRAND (ADR-0134 §2) — the same shape as `DayView`'s, through
   // the same shared hook: the form went to the Map tab to have a location picked, which
@@ -1464,95 +1529,44 @@ export function PlanDay() {
         fact, and "does the day assemble in one paint or two" is one. */}
       <div className="day-page" data-measuring={!planTravel.settled || undefined}>
         <div className="builder-main">
-          <div className="sec-title">
-            {t.day.heading(dayNumber, weekday, trip.destination)}
-            <span className="sec-title-end">
-              {readOnly ? (
-                <span className="hint">{t.planDay.pastNote}</span>
-              ) : (
+          {/* **A DAY IS A PLACE YOU CAN SEE** (ADR-0219 §2/§3) — the same head Trip mode and the
+            public reader draw, off the same derivations. Plan's posture shows in what its
+            footer band carries, never in what the head SAYS: ADR-0159 §1 allows a difference in
+            posture and forbids one about a fact. */}
+          <DayHead
+            card
+            dayNumbers={dayOfMonthLabel}
+            weekday={weekday}
+            /* **Amber marks today in Plan too** (ADR-0219 §2). Plan's ban is on the now PULSE
+              (ADR-0043 §5), not on marking which day the trip is on — and the day strip above
+              already paints today amber here. */
+            isNow={activeDate === today}
+            title={headTitle}
+            shot={shot && { ...shot, eager: true, onOpen: () => setFullShot(shot) }}
+            facts={headFacts}
+            action={
+              readOnly ? undefined : (
                 <button className="new-event-btn" onClick={() => setFormTarget('new')}>
                   <Icon name="plus" /> {t.actions.newEvent}
                 </button>
-              )}
-            </span>
-          </div>
+              )
+            }
+          />
 
-          {(staysToday.length > 0 ||
-            placement.commitments.length > 0 ||
-            planFit.fit === TRAVEL_FIT.OVERRUNS ||
-            dayTotal.distanceMeters !== null) && (
-            <div className="day-ambient">
-              {/* **HOW FAR THE DAY GOES** (ADR-0206 §V1.9 / §AP) — the same component Trip mode
-                renders, above the verdict rather than below it: the total is true of every day
-                and the verdict is true of few, so the strip reads the same on both. */}
-              <DayTravelTotal total={dayTotal} />
-              {/* **THE DAY'S OWN VERDICT** (ADR-0206 §V1.7 / §AN) — Plan mode's one opinion, in
-                the strip the day already keeps for facts true of the whole of it. Three things
-                about it are decisions rather than styling, and each is drawn in
-                `a-travel-time-between-two-points-v2.html` §5:
-
-                **It only ever appears.** There is no positive arm: a day that fits and a day
-                nothing could be measured on are the same silence, because §D4 says a reader must
-                not be able to tell "not computed" from "not computable" — and a `✓` on an
-                unmeasured day is exactly that tell, in the direction that costs someone their
-                afternoon. `dayFeasibility` still answers three ways so the code cannot forget it.
-
-                **It is amber, not `--miss`** — what is missing is time (rule 4), and painting the
-                whole day with the status colour is the app scolding you for planning, which is
-                the failure ADR-0206's own Consequence names. `--miss` stays where it earns its
-                keep: on the one leg that cannot be made.
-
-                **It says what no leg's row can** — how many, and the sum. Without the count it is
-                an echo of the block below it, and then it really is only a telling-off. */}
-              {planFit.fit === TRAVEL_FIT.OVERRUNS && (
-                <div className="day-fit">
-                  <span className="day-fit-ic">
-                    <Icon name="warn" />
-                  </span>
-                  <span className="day-fit-n">{infeasibleLegsPhrase(planFit.legs)}</span>
-                  <span className="day-fit-s">
-                    {dayShortfallPhrase(planFit.overrunSeconds / SECONDS_PER_MINUTE)}
-                  </span>
-                </div>
-              )}
-              {/* An edge day says the edge, a middle day says the count — the same rule Trip
-                reads, from the same two functions (ADR-0171 §10e). No posture difference
-                here: what the strip STATES is a fact about the booking. */}
-              {staysToday
-                // A stay named by its own row is not also named here (ADR-0209 §1).
-                .filter((e) => !stayRowIds.has(e.id))
-                .map((e) => {
-                  return (
-                    <div className="ambient" key={e.id}>
-                      <span className="ai" aria-hidden="true">
-                        {e.icon ?? DEFAULT_STAY_ICON}
-                      </span>
-                      <span className="an">{e.title}</span>
-                      <span className="as">
-                        {/* Trip mode's rule, and it must be Trip mode's rule: ADR-0159 §1 lets the two
-                            surfaces differ in posture and forbids one about a FACT, and whether a
-                            span is named twice on one screen is a fact. See `DayView.tsx` for why
-                            this is a subtraction and why it is not the hotel's treatment. */}
-                        {ambientSpanLabel(e, activeDate)}
-                      </span>
-                    </div>
-                  );
-                })}
-              {/* **The same row, without the control** (ADR-0171 §10e). Plan settles through
-                a sheet off the row menu and never inline, and `נותרו היום` — the number
-                that made settling load-bearing on Trip's copy — is a Trip-mode number.
-                Posture differs; the fact does not. */}
-              {placement.commitments.map((row) => (
-                <UnplacedCommitment
-                  key={`${row.event.id}-${row.edge ?? 'untimed'}`}
-                  row={row}
-                  tz={tz}
-                  bookings={bookings}
-                  onOpen={setDetailTarget}
-                />
-              ))}
-            </div>
-          )}
+          {/* **A COMMITMENT WITH NO CLOCK IS A ROW** (ADR-0219 §4), at the top of the list. The
+            same row Trip mode draws, on `.transition-row`'s grammar, **without the settle
+            control**: Plan settles through a sheet off the row menu and never inline, and
+            `נותרו היום` — the number that made settling load-bearing on Trip's copy — is a
+            Trip-mode number (ADR-0171 §10e). Posture differs; the fact does not. */}
+          {placement.commitments.map((row) => (
+            <UnplacedCommitment
+              key={`${row.event.id}-${row.edge ?? 'untimed'}`}
+              row={row}
+              tz={tz}
+              bookings={bookings}
+              onOpen={setDetailTarget}
+            />
+          ))}
 
           {isEmptyDay && (
             // An empty day has no gap chips, so it had nothing to drop a card onto —
@@ -2030,6 +2044,20 @@ export function PlanDay() {
           the fixed panes survive), so one level out is a viewport-anchored clone again. Any
           fixed layer that must track the finger belongs here, not in there. */}
       {dragLive && <div className="wp-dragghost" ref={ghost.ref} aria-hidden="true" inert />}
+
+      {/* **The day's picture, full screen** (ADR-0219 §3) — the same viewer Trip mode and the
+        Map open, owned by the screen because the viewer is a portal. The credit is its caption:
+        full screen is the photograph's most prominent display. */}
+      {fullShot && (
+        <MediaViewer
+          title={fullShot.of}
+          mimeType={fullShot.image.mimeType}
+          source={{ kind: 'url', url: fullShot.url }}
+          caption={fullShot.credit}
+          intrinsic={fullShot.image}
+          onClose={() => setFullShot(null)}
+        />
+      )}
     </div>
   );
 }
