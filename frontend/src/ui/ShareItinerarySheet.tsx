@@ -21,7 +21,7 @@ import {
   stopTripShare,
   upsertTripShare,
 } from '../lib/api';
-import { inviteLink, publicAppLink } from '../lib/invite-link';
+import { publicAppLink, publicAppUrl } from '../lib/invite-link';
 import { shareFileOrDownload, shareUrlOrCopy } from '../lib/system-share';
 import { CONTROL_ICON } from '../constants';
 import { useToast } from './Toast';
@@ -185,7 +185,7 @@ export function ShareItinerarySheet({
     if (audience !== AUDIENCE.JOIN || invite) return;
     let live = true;
     void createInvite(tripId)
-      .then((res) => live && setInvite(inviteLink(res.inviteUrl)))
+      .then((res) => live && setInvite(res.inviteUrl))
       .catch(() => live && setError(t.share.owner.failed));
     return () => {
       live = false;
@@ -287,7 +287,7 @@ export function ShareItinerarySheet({
       const outcome = await shareUrlOrCopy({
         title: tripName,
         text: tripName,
-        url: `https://${publicAppLink(config.shareUrl)}`,
+        url: publicAppUrl(config.shareUrl),
       });
       if (outcome === 'copied') setNote(t.share.owner.copied);
     });
@@ -307,7 +307,7 @@ export function ShareItinerarySheet({
       const outcome = await shareUrlOrCopy({
         title: tripName,
         text: tripName,
-        url: `https://${publicAppLink(config.shareUrl)}`,
+        url: publicAppUrl(config.shareUrl),
       });
       if (outcome === 'copied') setNote(t.share.owner.copied);
     });
@@ -321,17 +321,28 @@ export function ShareItinerarySheet({
     });
 
   const copyToClipboard = (config: TripShareConfig) => {
-    void navigator.clipboard?.writeText(publicAppLink(config.shareUrl));
+    // `publicAppUrl`, not `publicAppLink`: the clipboard is where the link becomes somebody
+    // else's message, and a scheme-less paste gets no preview card (ADR-0220 amendment).
+    void navigator.clipboard?.writeText(publicAppUrl(config.shareUrl));
     toast(CONTROL_ICON.clipboard, t.share.owner.copied);
   };
 
-  const shareInvite = () =>
-    void shareUrlOrCopy({ title: tripName, text: tripName, url: `https://${invite}` }).then(
+  /** **`invite` holds the PATH the API returned, not a rendered link**, so each use derives
+   *  the form it needs: `publicAppUrl` for anything leaving the app, `publicAppLink` for the
+   *  row that shows it. Keeping the label in state was what made a scheme-adding helper look
+   *  necessary here — and a third way to attach a scheme is how the four broken clipboard
+   *  writes happened in the first place. */
+  const shareInvite = () => {
+    // Guarded, which the previous `` `https://${invite}` `` was not: before the link resolves
+    // this handed the system share sheet the literal string `https://undefined`.
+    if (!invite) return;
+    void shareUrlOrCopy({ title: tripName, text: tripName, url: publicAppUrl(invite) }).then(
       (outcome) => outcome === 'copied' && setNote(t.share.owner.copied),
     );
+  };
 
   const copyInvite = () => {
-    if (invite) void navigator.clipboard?.writeText(invite);
+    if (invite) void navigator.clipboard?.writeText(publicAppUrl(invite));
     toast(CONTROL_ICON.clipboard, t.share.owner.copied);
   };
 
@@ -411,7 +422,7 @@ export function ShareItinerarySheet({
         {/* The link and what you do with it are ONE object — the sheet's single prominent
             element, with everything above it the quiet that earns it. */}
         <div className="share-send">
-          {invite ? <TripLinkRow url={invite} onCopy={copyInvite} /> : null}
+          {invite ? <TripLinkRow url={publicAppLink(invite)} onCopy={copyInvite} /> : null}
           <div className="share-outcomes is-single">
             <button
               type="button"
@@ -802,7 +813,7 @@ export function ShareItinerarySheet({
             setConfirming(undefined);
             void rotateInvite(tripId)
               .then((res) => {
-                setInvite(inviteLink(res.inviteUrl));
+                setInvite(res.inviteUrl);
                 toast(CONTROL_ICON.done, t.share.owner.join.rotated);
               })
               .catch(() => setError(t.share.owner.failed));

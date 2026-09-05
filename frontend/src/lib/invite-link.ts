@@ -34,21 +34,50 @@
 // take liberties; this one is the link, and takes exactly two.
 
 /**
- * A public app link as one string, shown and copied — deliberately the same string, because
- * a label that differs from what the clipboard holds is a small lie the reader can't see.
+ * **The link as it LEAVES the app** — clipboard, share sheet, anywhere a string becomes
+ * somebody else's message. Scheme included, and that is the whole point of it existing
+ * (ADR-0220's 2026-09-05 amendment).
  *
- * **Two links now take exactly these two liberties** (ADR-0213): `/join/<code>` and the
- * shared itinerary's `/s/<code>`. Both are pasted into somebody else's chat rather than
- * clicked from an `href` here, so both need the same rule about what may come off — which
- * is why this generalized rather than the share sheet growing a near-copy that drops
- * `www.` slightly differently.
+ * The header above argued that dropping the scheme was free because "the chat apps an
+ * invite is actually pasted into linkify a bare host + path". **They linkify it and they do
+ * not preview it** (owner, 2026-09-05, from a device): a pasted `travelive.app/join/<code>`
+ * arrives in WhatsApp as tappable text with no card, so every `og:*` tag ADR-0220 added was
+ * invisible on exactly the paths it was added for. The scheme is what makes the crawler run.
+ *
+ * The tell that this was already half-known: three share-sheet call sites had grown their own
+ * `` `https://${publicAppLink(…)}` `` template and four clipboard writes had not — the fix
+ * existed, inline, at some of the places that needed it. It lives here now, once.
+ *
+ * The page's own protocol rather than a hardcoded `https:` — in production that IS https and
+ * `.app` is HSTS-preloaded anyway, and in dev a copied link stays openable on `http://localhost`.
+ *
+ * @param path the root-relative path the API returned (`/join/<code>`, `/s/<code>`).
+ */
+export function publicAppUrl(path: string): string {
+  const url = new URL(path, window.location.origin);
+  url.hostname = url.hostname.replace(/^www\./i, '');
+  return url.toString();
+}
+
+/**
+ * **The link as it is SHOWN** — the same link with the scheme taken off the front, because
+ * `https://` is plumbing on a 360px line and nobody reads it (owner, 2026-09-05: _"url
+ * previews should exclude the https prefix … but when copying or sharing them it should add
+ * them"_).
+ *
+ * The rule this file shipped with — label and clipboard must be the same string, or the
+ * label is a small lie — survives in the only form that still holds: this is **derived from**
+ * {@link publicAppUrl} rather than built beside it, so the two cannot drift and the label is
+ * exactly the copied link minus a prefix that changes nothing about where it goes. What was
+ * wrong was not the short label; it was shipping the short form to the clipboard too.
+ *
+ * **Two links take exactly these liberties** (ADR-0213): `/join/<code>` and the shared
+ * itinerary's `/s/<code>`. Both are pasted into somebody else's chat rather than clicked from
+ * an `href` here, which is why this generalized rather than the share sheet growing a
+ * near-copy that drops `www.` slightly differently.
  *
  * @param path the root-relative path the API returned (`/join/<code>`, `/s/<code>`).
  */
 export function publicAppLink(path: string): string {
-  const url = new URL(path, window.location.origin);
-  return url.host.replace(/^www\./i, '') + url.pathname + url.search;
+  return publicAppUrl(path).replace(/^https?:\/\//i, '');
 }
-
-/** The invite link, which is what its call sites read. */
-export const inviteLink = publicAppLink;

@@ -448,9 +448,15 @@ describe('ShareItinerarySheet', () => {
 
       fireEvent.click(screen.getByRole('button', { name: new RegExp(t.share.owner.join.action) }));
 
+      // **`http`, and the `https` this used to assert was a bug this spec was holding in
+      // place.** The old code built `` `https://${invite}` `` by hand, so a link copied on a
+      // dev origin came out `https://localhost:3000/...` and would not open. `publicAppUrl`
+      // carries the PAGE's protocol — https in production, http here — and the scheme is
+      // there at all because a scheme-less paste gets no WhatsApp preview card
+      // (ADR-0220's 2026-09-05 amendment).
       await waitFor(() =>
         expect(systemShare.shareUrlOrCopy).toHaveBeenCalledWith(
-          expect.objectContaining({ url: `https://localhost:3000/join/${INVITE}` }),
+          expect.objectContaining({ url: `http://localhost:3000/join/${INVITE}` }),
         ),
       );
       expect(api.upsertTripShare).not.toHaveBeenCalled();

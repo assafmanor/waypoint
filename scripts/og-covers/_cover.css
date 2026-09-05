@@ -1,0 +1,160 @@
+/* The three covers' shared chrome (ADR-0220 §2-3). Nothing here ships to a browser — the
+   cutter inlines it beside the app's real sheets and screenshots the result.
+
+   `og-*` because these classes exist for one purpose and must never be mistaken for app CSS
+   somebody could reach from a screen. */
+
+html,
+body {
+  margin: 0;
+  /* The cutter screenshots `.og-cover` itself, not the viewport, so the page around it is
+     irrelevant — but `overflow: visible` undoes `tokens.css`'s `overflow: clip` (ADR-0200 §1)
+     which would otherwise clip a cover taller than the viewport. */
+  overflow: visible;
+  background: var(--board);
+}
+
+/* 1200×630 is Open Graph's own recommendation and the size WhatsApp promotes to a large
+   card; below ~300px wide it falls back to a thumbnail beside the text, which is the layout
+   these covers were measured against and rejected. */
+.og-cover {
+  position: relative;
+  width: 1200px;
+  height: 630px;
+  overflow: hidden;
+  display: grid;
+  font-family: var(--font-body);
+}
+
+/* THE GROUND. Board, because that is what the app looks like — its icon, its login chrome,
+   its join screen. The band below is what gives it an edge in a dark chat. */
+.og-art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: linear-gradient(160deg, var(--board-2), var(--board) 62%);
+}
+
+/* The amber "now" core spilling onto the tile — the same radial `.join-ticket::before`
+   paints, at cover scale. It is what keeps the board from reading as a flat rectangle,
+   which is what a chat's own dark bubble already looks like. */
+.og-art::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(62% 74% at 84% 6%, rgba(233, 166, 60, 0.17), transparent 62%);
+}
+
+/* The live cover's ground instead — the reader's OWN wash (`.sh-hero`'s
+   `radial-gradient(circle at 8% 14%, rgba(44,156,144,0.22) …)`), which is teal rather than
+   amber and is the single strongest thing telling the three covers apart. Teal is location
+   (ADR-0028) and a live itinerary is about where the group is, so this is the shipped
+   screen's own spend, not a decorative one. */
+.og-art[data-wash='reader']::before {
+  background: radial-gradient(46% 62% at 10% 12%, rgba(44, 156, 144, 0.26), transparent 60%);
+}
+
+/* **THE PAPER BAND IS GONE, and the number that justified it was measured against the wrong
+   surface** (owner, 2026-09-05: _"do you think that the dark mode + white paper footer go
+   together well?"_).
+   ADR-0220 §2 compared `--paper` to the chat BUBBLE — 12.48:1 in a dark chat — and concluded
+   a cover needs a bright region to have an edge. But the bubble is not what sits under the
+   image: the card's own TEXT PANEL does, and it is near-white in a light chat. Measured,
+   `--paper` against that panel is **1.04:1**. So in a light chat the band and the panel were
+   one continuous light block, and the band destroyed the very boundary it was added to draw —
+   the image appeared to end where the band began.
+   The dark chat is the case it did help, and the render answered whether that was worth it:
+   the artwork's own content (a glowing pin, a white wordmark, a boarding pass with an amber
+   badge) carries the card perfectly well, and a bright bar under it reads as a caption strip
+   bolted to a picture. `board` against the dark panel is 1.11:1 — there is no way to buy an
+   image boundary in a dark chat without a bright region, and the boundary turned out not to
+   be worth buying.
+   What the band carried in words is redundant anyway: the card's own title already says
+   `הוזמנת ל…` on an invite and names the app on the homepage.
+   Kept as a class with no callers on purpose would be dead CSS, so it is deleted. The live
+   cover never had one — its bright half is the reader page's own body, which is content. */
+
+/* A borrowed tree, rendered at a width the app actually ships at and then scaled. The
+   transform does not affect layout, so the host reserves the scaled box and centres it. */
+.og-scale {
+  display: grid;
+  place-items: center;
+}
+.og-scale > * {
+  width: var(--og-w);
+  transform: scale(var(--og-s));
+  transform-origin: center;
+}
+
+/* The brand lockup — the only cover that draws the mark and the wordmark, because it is the
+   only one whose subject IS the app. */
+.og-brand {
+  display: grid;
+  justify-items: center;
+  gap: 34px;
+  text-align: center;
+}
+/* Sized for the whole 630px frame — the band used to take 134px of it, and the lockup had
+   been scaled for what was left. */
+.og-mark {
+  width: 258px;
+  height: 258px;
+  display: block;
+}
+.og-word {
+  font-family: var(--font-head);
+  font-size: 108px;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: var(--on-dark-strong);
+}
+
+/* THE LIVE COVER draws no ground of its own: `.sh-hero` brings the reader's indigo→board
+   gradient AND its teal radial, so the art region gets out of the way and lets it bleed
+   edge to edge. Without this the amber wash above would sit on top of the teal one and the
+   cover would read as neither page. */
+.og-art--bleed {
+  background: none;
+}
+.og-art--bleed::before {
+  content: none;
+}
+
+/* **And it has to bleed, not float.** Centred at a width-fitting `transform: scale` the
+   masthead sat in a box with board showing above, below and either side, which reads as a
+   screenshot pasted onto a tile rather than as the page.
+
+   **So this one uses `zoom`, not `transform`, and that is the whole trick.** A transform does
+   not affect layout, so the art region cannot size itself to a scaled child and something has
+   to hardcode the scaled height — a number derived from a measurement, which goes stale the
+   first time a word in the masthead changes and shows up as a gap nobody edited. `zoom` IS
+   layout, so the region is exactly as tall as the zoomed masthead and the band takes whatever
+   is left (`grid-template-rows: auto 1fr` below). Change the kicker's copy and the split
+   re-derives itself.
+
+   (An RTL trap on the way here: anchoring the crop with `justify-items: end` put the masthead
+   at the LEFT edge, because `end` is the inline end and this document is RTL. `zoom` needs no
+   anchor at all.) */
+.og-zoom {
+  zoom: var(--og-z);
+  /* The zoomed box is `1200 / z` CSS px wide, so it lands exactly 1200 device px wide. */
+  width: calc(1200px / var(--og-z));
+}
+
+/* A PAGE cover pins its borrowed page to the top and lets the rest overflow: the zoomed page
+   runs past 630 and `overflow: hidden` crops it, which is what makes it read as a screenshot
+   of something that continues rather than a tile that happens to be tall. */
+.og-cover--page .og-art {
+  align-items: start;
+  justify-items: stretch;
+}
+
+/* `.sh-kicker` is a block on the page; here it holds the live dot beside its word, which is
+   how `.sh-freshness` composes the same two elements in the reader's own bar. */
+.og-kicker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}

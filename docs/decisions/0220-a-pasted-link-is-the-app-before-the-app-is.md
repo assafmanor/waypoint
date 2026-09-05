@@ -1,6 +1,6 @@
 # 0220 — A pasted link is the app before the app is
 
-**Status:** Accepted — **built 2026-09-05**. The build log at the foot records the four things the render changed, the two the live run changed, and the one place the plan turned out to be wrong before a line of it was written.
+**Status:** Accepted — **built 2026-09-05**, and **amended the same evening** after three owner reports off a real device: the link a person copies had no scheme and so got no preview at all, the invitation cover was too small to read, and the live share had no cover of its own. The amendment at the foot also **reverses §2's paper band** and names the measurement error behind it.
 **Date:** 2026-09-05
 
 **Refines:** [0087](0087-app-logo-waypoint-marker.md) (the mark, its two sanctioned grounds, and the cutter this extends — amended below), [0213](0213-a-shared-trip-changes-emphasis-and-print-is-its-own-rendering.md) §5 (the bearer-link headers, whose predicate this renames and widens — amended below), [0197](0197-a-notification-is-a-derived-obligation-and-the-sweep-is-its-clock.md) §8 (the worker that shows the notification — amended below), [0067](0067-invite-is-one-stable-link.md) (the invite code is the grant, which is why its preview refuses indexing), [0020](0020-single-origin-deploy.md) (the backend serves the PWA, which is the only reason per-route tags are possible at all), [0170](0170-the-product-is-travelive-the-codebase-is-waypoint.md) (`APP_TITLE`'s tagline, which the covers carry), [0118](0118-bidi-and-rtl-copy.md) (the isolate the date range needs)
@@ -273,3 +273,108 @@ slot — beside the old asset, which reproduced the owner's white rectangle exac
 - **ADR-0197 §8** — the worker's `badge` is `notification-badge.png`; `icon` is unchanged. The
   docblock in `sw.ts` claiming a notification "needs no asset of its own" was true of the large icon
   and false of the small one, which is what the owner's screenshot showed.
+
+## Amendment (2026-09-05, same evening) — three reports off a device, and one of them says §2 was measured against the wrong surface
+
+> _"On WhatsApp, and I guess other apps and services too, it doesn't work unless you prefix
+> with http(s):// … sharing with the copiable links doesn't work. This includes everything
+> we've talked about (home, join, sharing)."_
+>
+> _"The join page preview is too small! Why does it take so little space out of all the
+> screen space?"_
+>
+> _"Why doesn't the live sharing screen look different?"_
+
+### §A — The scheme, and why every tag above was invisible on the paths it was added for
+
+`lib/invite-link.ts`'s header argued that dropping `https://` was free because _"the chat
+apps an invite is actually pasted into linkify a bare host + path"_. **They linkify it and
+they do not preview it.** So a copied `travelive.app/join/<code>` arrived as tappable text
+with no card, and this ADR's whole first half was unreachable through the app's own copy
+buttons.
+
+The state of the code was the tell: **three share-sheet call sites had grown their own
+`` `https://${publicAppLink(…)}` `` template and four clipboard writes had not.** The fix
+already existed, inline, at some of the places that needed it.
+
+The rule now, in the owner's words — _"url previews should exclude the https prefix … but
+when copying or sharing them it should add them"_:
+
+- **`publicAppUrl(path)`** is the form that leaves the app: clipboard, share sheet. It
+  carries the page's own protocol (https in production; http in dev, so a copied dev link
+  still opens — the old hand-built `https://${…}` produced `https://localhost:3000` and a
+  spec was pinning that).
+- **`publicAppLink(path)`** is the form that is shown, and it is **derived from**
+  `publicAppUrl` rather than built beside it. The file's original honesty rule — label and
+  clipboard must be the same string — survives in the only form that still holds: the label
+  is exactly the copied link minus a prefix that changes nothing about where it goes.
+- **The `inviteLink` alias is deleted.** Which form you want is the entire question, and an
+  alias that answered "the invite link" hid it. Three screens now hold the invite **path** in
+  state rather than a rendered string, so each use derives its own form.
+
+### §B — The covers are HTML rendered from the app's real CSS, not hand-cut SVG
+
+The invitation cover was `.join-ticket` transcribed into SVG coordinates, and it had already
+shipped one defect that only a rendered PNG could show (`text-anchor="end"` is the LEFT edge
+under `direction="rtl"`). That is the failure `mockups/tools/inline-app-css.mjs` exists to
+prevent one layer up.
+
+So `scripts/og-covers/*.html` are now rendered by `gen-app-icons.mjs` **with
+`styles/tokens.css`, `App.css` and `screens/shared-itinerary.css` inlined**, and screenshotted
+at 1200×630. The invitation cover cannot disagree with the join screen any more, and the live
+one cannot disagree with the reader page. The cutter also asserts each PNG comes out
+1200×630, since the last two defects in these assets were both invisible in the source.
+
+### §C — "Too small" was a base-width question, not a scale one
+
+Measured: **the ticket is 197.5px tall at any width in the phone range** — its content does
+not wrap — so the height budget alone fixes the scale, and a wider base is free:
+
+| ticket base                  | max scale in the budget | fills                          |
+| ---------------------------- | ----------------------- | ------------------------------ |
+| ⁦300px⁩ (what shipped)       | ⁦2.51×⁩                 | **⁦63%⁩** of the cover's width |
+| ⁦390px⁩ (a real device stop) | ⁦2.51×⁩                 | **⁦82%⁩**                      |
+
+It now renders at 390px, ADR-0017's secondary width. **Bumping the scale would not have
+fixed it** and is the thing I would have done without measuring.
+
+### §D — The live share gets its own cover, and it is the reader page
+
+Three URLs, three covers. `/s/<code>` is now the reader's **own** top — `.sh-hero`,
+`.sh-kicker`, `.sh-title`, `.sh-live-dot`, `.sh-story`, `.sh-days-head`, full bleed and
+cropped at 630 so it reads as a page that continues. Its wash is the reader's **teal** radial
+where the other two carry the amber one, which is the strongest thing telling them apart —
+and it is the shipped screen's own spend, not a new one (teal is location, ADR-0028).
+
+### §E — **§2's paper band is withdrawn, and its number was measured against the wrong thing**
+
+> _"Do you think that the dark mode + white paper footer go together well? Do we want it
+> changed?"_
+
+§2 justified the band by comparing `--paper` to the chat **bubble** (⁦12.48:1⁩ in a dark chat)
+and concluded a cover needs a bright region or it has no edge. But **the bubble is not what
+sits under the image** — the card's own text panel is, and it is near-white in a light chat:
+
+|                                              | vs. light chat | vs. dark chat |
+| -------------------------------------------- | -------------- | ------------- |
+| `--paper` band vs. the card's **text panel** | **⁦1.04:1⁩**   | ⁦14.08:1⁩     |
+| `--board` art vs. the card's **text panel**  | ⁦16.22:1⁩      | ⁦1.11:1⁩      |
+
+So in a light chat the band and the panel were one continuous light block: **the band
+destroyed the boundary it was added to draw.** In a dark chat it did buy an edge, and drawing
+four treatments at the real ⁦278px⁩ card width answered whether that was worth it — it is not.
+The artwork's own content carries the card, and a bright bar under it reads as a caption strip
+bolted to a picture. There is no way to buy an image boundary in a dark chat without a bright
+region, and the boundary turned out not to be worth buying.
+
+What the band carried in words was redundant anyway: the card's own title already says
+`הוזמנת ל…` on an invite and names the app on the homepage.
+
+**The live cover keeps a bright half and that is not an exception** — it is the reader page's
+own body under its masthead, i.e. content rather than a device. Which is the general lesson:
+a bright region earns its place when it is part of the thing being shown.
+
+### What did not change
+
+The strings, the three-URL routing, the header sets, the throttle, the escaping, and the
+notification badge. `og:image:alt` was reworded per cover, since there are three now.

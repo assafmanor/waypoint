@@ -1,0 +1,85 @@
+<!-- THE LIVE-ITINERARY COVER — `/s/<code>` (ADR-0220's 2026-09-05 amendment).
+     Owner: _"Why doesn't the live sharing screen look different?"_ It shared the brand
+     cover, which made an itinerary sent to family indistinguishable from a marketing link.
+
+     **It is the reader page's own top, edge to edge and cropped** — `.sh-page`, `.sh-hero`,
+     `.sh-kicker`, `.sh-title`, `.sh-title-mark`, `.sh-live-dot`, `.sh-story`,
+     `.sh-days-head`, every one of them `screens/shared-itinerary.css`'s shipped rules. Same
+     move as the invitation cover borrowing the join ticket, and for the same reason: the
+     artwork cannot drift from the page it advertises.
+
+     Three things make it unmistakably this page rather than the other two covers, and none
+     of them is a decorative choice:
+
+     • **The wash is TEAL.** `.sh-hero` paints `radial-gradient(circle at 8% 14%,
+       rgba(44,156,144,0.22) …)` where the other covers carry the amber one. Teal is location
+       (ADR-0028) and a live itinerary is about where the group is — the shipped screen's own
+       spend, not a new one.
+     • **The live dot is `--ok`**, the reader's own freshness mark.
+     • **It has the page's light body under a dark masthead**, which is also what gives it an
+       edge against a dark WhatsApp bubble — so this cover needs no `.og-band` at all. The
+       other two are artwork and borrow their bright region from a paper strip; this one is a
+       page and already has one.
+
+     **Cropped at 630, deliberately.** The zoomed page runs past the bottom of the cover, so
+     the day list is cut mid-card exactly as a screenshot of a scrolling page would be, and
+     nothing here states a height that could go stale.
+
+     No trip name, no dates: one PNG serves every crawler, so the title slot carries the
+     wordmark and the card's own `og:title` names the trip. -->
+<div class="og-cover og-cover--page">
+  <div class="og-art og-art--bleed">
+    <!-- ⁦3.33⁩ = ⁦1200 / 360⁩: the page is laid out at a 360px base (ADR-0017's design width)
+         and zoomed to the cover's width. `zoom` rather than `transform: scale` because it
+         affects LAYOUT — see `_cover.css`; a transform would need the scaled height written
+         down somewhere, and that number goes stale the first time a word changes. -->
+    <div class="og-zoom" style="--og-z: 3.3333">
+      <div class="sh-page">
+        <header class="sh-hero">
+          <div class="sh-kicker og-kicker">
+            <span class="sh-live-dot"></span>
+            <strong>מסלול חי</strong>
+          </div>
+          <h1 class="sh-title">
+            <span class="sh-title-mark" aria-hidden="true">
+              <svg viewBox="0 0 512 512" style="width: 66%; height: 66%; display: block">
+                <defs>
+                  <linearGradient id="l-teal" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#37B3A3" />
+                    <stop offset="1" stop-color="#1F7D73" />
+                  </linearGradient>
+                  <linearGradient id="l-amber" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#F2B65A" />
+                    <stop offset="1" stop-color="#E09A2F" />
+                  </linearGradient>
+                </defs>
+                <g transform="translate(256 256) scale(0.95) translate(-256 -260)">
+                  <path
+                    d="M256 44 C150 44 66 126 66 230 C66 348 206 436 256 476 C306 436 446 348 446 230 C446 126 362 44 256 44 Z"
+                    fill="url(#l-teal)"
+                  />
+                  <circle cx="256" cy="216" r="60" fill="url(#l-amber)" />
+                </g>
+              </svg>
+            </span>
+            Travelive
+          </h1>
+        </header>
+        <!-- The narrative card, in the slot the reader's own generated summary sits in. -->
+        <div class="sh-story">
+          <strong>הלו״ז החי של הטיול</strong>
+          <p>מתעדכן מעצמו כשמשהו זז, בלי לשלוח לינק חדש.</p>
+        </div>
+        <div class="sh-days">
+          <div class="sh-days-head">
+            <h2>המסע יום אחר יום</h2>
+            <span>כל יום לפי חלקיו</span>
+          </div>
+          <!-- One day card, cut off by the cover's own edge — the "there is more below this"
+               that a masthead alone cannot say. -->
+          <div class="sh-day"><div class="sh-day-head"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
