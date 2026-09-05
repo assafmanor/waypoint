@@ -33,6 +33,7 @@ import { apiAssetUrl } from '../../lib/api-asset';
 import { type PlaceSummary } from '../../lib/place-summary';
 import { useFailableImage } from '../../lib/useFailableImage';
 import { Icon } from '../Icon';
+import './place-knowledge.css';
 
 /** How much room this place's enrichment gets — the host's state, not this block's choice. */
 export const KNOWLEDGE_DENSITY = {

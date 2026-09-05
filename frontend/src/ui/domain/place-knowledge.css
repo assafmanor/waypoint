@@ -1,0 +1,163 @@
+/* **WHAT THE WORLD KNOWS ABOUT A PLACE** (ADR-0167) — `ui/domain/PlaceKnowledge`'s own sheet.
+
+   MOVED out of `screens/map.css` (ADR-0219 §6), where these rules sat because the Map's place
+   card was the only host. It has a second one now that is nowhere near a map — the event read
+   (`EventDetail`), where the same block answers the same question one tap from the day's row.
+
+   **The class names stay `map-*` and that is deliberate.** They are what the component renders,
+   they are what the Map's own layout rules select through, and renaming them would be a rewrite
+   of every rule that positions this block on that card for no behaviour at all. What the names
+   describe is where these rules were BORN, not where they belong.
+
+   **What did NOT move** is the geometry that is the Map card's: `.map-placecard:has(.map-hero) >
+   .place` makes the canvas card a grid whose notes list is the one scrolling track, which is a
+   fact about a card pinned over a canvas. Outside that card the block has these base rules alone,
+   and a column is all it needs.
+
+   Every rule below is unchanged from the sheet it left, comments included — the extraction is a
+   move, not a redesign. */
+
+/* ── WHAT THE WORLD KNOWS, PINNED UNDER THE IDENTITY (ADR-0167 §9.3) ───────────────────
+   A full-width line on a row that has wrapped since it shipped, beside `.map-refs` and
+   `.note-sec` on the Map's card — one declaration, no new grammar.
+
+   **No separator.** It belongs to the identity group rather than starting a new section; on the
+   Map's card the `border-top` below it is the notes header's, which is that section's top edge.
+
+   A flex row rather than one text box, so the language marker sits **before** the prose without
+   costing a line of its own: the chip is a `flex: 0 0 auto` sibling and the prose takes the rest.
+   Two reasons it cannot be inline inside the prose element — `dir="auto"` would sniff the Hebrew
+   chip and lay an English extract out RTL, and `-webkit-box` (which the clamp needs) lays
+   ELEMENT children out as boxes, so the chip would take a whole line of the clamp. */
+.map-sum {
+  flex-basis: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 7px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+/* `באנגלית` — the row's existing tag grammar, no new hue (ADR-0167 §5). Slightly quieter than
+   the prose it introduces: it is a fact ABOUT the text, not part of it. */
+.map-sum-lang {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--faint);
+}
+/* **TWO LINES, and the clamp lives on THIS element.** `min-width: 0` because a flex item's
+   default `auto` basis refuses to shrink below its content, which would push the chip out of
+   the row.
+
+   ADR-0167 §9's closing note is a warning to whoever adds the second state: a clamp that
+   varies by state has to be written on the **compound selector** (`.map-sum-t.expanded`, not a
+   sibling `.expanded` class), because the mockup's later-declared 3-line rule silently won the
+   specificity tie and rendered three lines where two were measured. */
+.map-sum-t {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* ── EXPANDING IS A MODE CHANGE (ADR-0167 §11.1) ───────────────────────────────────────
+   The card becomes the one an un-added research place gets — picture, whole summary, credit —
+   and the notes, the references and the schedule footer are not rendered at all. That is what
+   dissolved §10.2's measured problem rather than working around it: a 116px hero revealed INSIDE
+   the collapsed card left the notes scroller 31px, which only bites if expansion is GROWTH.
+
+   **The hero is on the deciding surface only** (§9.4). A committed place already carries its
+   photograph in the badge at zero cost, and 130px of picture is the least valuable block on a
+   capped card — so it appears when you have asked to look at the place as a subject, and never
+   before. 130px and `border-radius: 12px` are the mockup's own numbers. */
+.map-hero {
+  flex-basis: 100%;
+  height: 130px;
+  margin-top: 9px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--paper);
+  cursor: pointer;
+  display: block;
+}
+.map-hero img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Same judgement as the badge's, for the same reason: the measured aspect range is 0.54-1.78
+     (ADR-0166 §11.4), so a `contain` would letterbox six portraits in 32. */
+  object-fit: cover;
+}
+/* **The credit, under the picture and never over it** (ADR-0167 §4): an overlay fights whatever
+   is behind it - a bright sky - and has to be re-solved for dark mode, where the card surface is
+   stable in both.
+
+   `text-align: start` and NO `dir`: the element stays RTL like every other line on this card, and
+   the Latin run inside it is isolated by `placeCredit`. Reversing those two is ADR-0118's
+   mirror-image bug, which its lint guard cannot see (§8.2) - the credit orphaned itself to the
+   opposite edge, correctly ordered and visually detached from the image it credits. */
+.map-credit {
+  flex-basis: 100%;
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--faint);
+  text-align: start;
+}
+/* The summary loses its clamp in the expanded state - **written on the compound selector, not as
+   a sibling class** (ADR-0167 §9's closing note): the clamp is declared later in this file, so a
+   `.is-open` rule on its own would lose the specificity fight and silently render two lines where
+   the whole extract belongs. */
+.map-sum.is-open .map-sum-t {
+  display: block;
+  -webkit-line-clamp: none;
+  overflow: visible;
+}
+/* **THREE lines on the deciding card** (ADR-0166 §17), which is the mockup's own `.summary` — the
+   two-line `.clamp2` there is the COMMITTED card's variant, and this is the state it was measured
+   against. Wider than the committed row because nothing competes with it: a place nobody has added
+   has no notes, no references and no schedule action (ADR-0167 §9.1).
+   Clamped rather than released, and that is deliberate: this card has nothing to expand INTO, so
+   the third line is the floor rather than a step on the way to more, and the way to the rest of the
+   text is the row's Google exit. Compound selector, like `.is-open` above and for the same reason
+   ADR-0167 §9 records. */
+.map-sum.is-decide .map-sum-t {
+  -webkit-line-clamp: 3;
+}
+/* `עוד ›` and `‹ חזרה לפרטי המקום` are one control in two directions - a teal text link, the
+   mockup's `.more`. Not a pill: the footer's `שיבוץ ליום` is this card's one primary, and a
+   second pill beside it reads as a second primary (the reasoning `.map-del` already follows). */
+.map-know-more {
+  align-self: flex-start;
+  border: 0;
+  background: none;
+  padding: 2px 0;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--teal);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* ── THE BLOCK IN A COLUMN (ADR-0219 §6) ──────────────────────────────────────────────
+   Every rule above sets `flex-basis: 100%`, because on the Map's card these are wrapped items
+   in `.place`'s flex row — a full-width line on a row that has wrapped since it shipped. A host
+   that is a plain column has no such row, so it supplies one: this is the whole of what the
+   event read needs to reuse the block, which is what makes the extraction worth doing.
+
+   `margin-top` on the container rather than on the hero, so the block sits away from the head
+   above it whether or not it starts with a picture — the hero's own 9px is the Map card's
+   spacing from the line above IT, and it is cancelled here for the same reason. */
+.wp-read-know {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.wp-read-know .map-hero {
+  margin-top: 0;
+}
