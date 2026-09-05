@@ -160,10 +160,19 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
-      // The app's own maskable icon, already precached — so a notification has our face
-      // on it offline, and needs no asset of its own.
+      // The LARGE icon — the colour tile on the right of the shade row. The app's own
+      // maskable icon, already precached (it is a manifest icon, so `includeManifestIcons`
+      // catches it), so a notification has our face on it offline.
       icon: '/pwa-192.png',
-      badge: '/pwa-192.png',
+      // **The SMALL icon, and it needs an asset of its own** (ADR-0220 §6). This was
+      // `pwa-192.png` too, and it drew a solid white rectangle in the status bar: Android
+      // paints the small icon from the asset's ALPHA channel in the status-bar colour, and
+      // the alpha of a full-bleed tile is the tile. ADR-0087's amendment made every icon
+      // full bleed deliberately — the platform's mask is meant to be the only silhouette —
+      // which is exactly why the badge cannot be one of them. `notification-badge.png` is a
+      // monochrome-on-transparent pin with the amber core punched out as a hole, listed in
+      // `vite.config.ts`'s `includeAssets` so the worker can read it offline.
+      badge: '/notification-badge.png',
       // Where the tap goes. Carried through `data` rather than the tag, because `tag` is
       // the COLLAPSE key: two notifications sharing one replace each other.
       data: { url },

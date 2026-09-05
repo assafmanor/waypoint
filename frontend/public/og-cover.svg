@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <!-- The brand link-preview cover (ADR-0220 §2) — the homepage and the live share.
+       Transcribed from `mockups/the-app-is-seen-before-it-is-opened-v1.html` §3.
+
+       **Board with a paper band, and that is a measurement rather than a preference.**
+       Against a WhatsApp bubble the plain board tile the app icon is measures 17.9:1 in a
+       light chat and 1.25:1 in a dark one; the paper tile ADR-0087 also sanctions measures
+       1.15:1 and 12.48:1. Neither single ground clears the 3:1 graphic floor in both chats,
+       so a dark cover is a hole in a dark chat and a light one melts into a light chat. A
+       two-region cover needs only one region with an edge: 17.9:1 / 12.48:1 on the better of
+       its two.
+
+       **Every colour here is a literal, and it has to be.** A PNG has no `data-theme`, so
+       the cover cannot join `tokens.css`'s remap — these are its LIGHT values, byte for
+       byte: --board-2 #152137, --board #0e1729, --paper #f3efe6, --ink #16233d,
+       --on-dark-strong #ffffff, --amber #e9a63c. Changing a token does not change this file;
+       that is the trade, and §1 of the mockup is about nothing else.
+
+       **The band carries the tagline, never the title.** The first draft printed
+       `כל הטיול שלכם במסך אחד` here, which is `og:title` — the same sentence twice in one
+       bubble, one line apart. This is `APP_TITLE`'s own `מרכז שליטה לטיול` (ADR-0170),
+       minus the `·`.
+
+       Rasterized by `node scripts/gen-app-icons.mjs`, the one cut for every raster asset
+       (ADR-0087). Change the geometry here, then re-run it. Fonts are inlined by that
+       script from `frontend/src/assets/fonts/` — the Hebrew line needs Assistant and the
+       wordmark needs Secular One, and headless Chromium has neither by default. -->
+  <defs>
+    <linearGradient id="og-board" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#152137" />
+      <stop offset="0.62" stop-color="#0e1729" />
+    </linearGradient>
+    <radialGradient id="og-aura" cx="0.84" cy="0.06" r="0.74">
+      <stop offset="0" stop-color="#e9a63c" stop-opacity="0.17" />
+      <stop offset="0.62" stop-color="#e9a63c" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="og-teal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#37b3a3" />
+      <stop offset="1" stop-color="#1f7d73" />
+    </linearGradient>
+    <linearGradient id="og-amber" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f2b65a" />
+      <stop offset="1" stop-color="#e09a2f" />
+    </linearGradient>
+    <linearGradient id="og-disc" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#182642" />
+      <stop offset="1" stop-color="#0e1729" />
+    </linearGradient>
+    <filter id="og-glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="10" />
+    </filter>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#og-board)" />
+  <rect width="1200" height="496" fill="url(#og-aura)" />
+
+  <!-- The mark, at 200px, from `ui/AppMark.tsx` — the disc, the 0.66 marker scale and the
+       amber core, unchanged. Centred in the 496px the band leaves. -->
+  <g transform="translate(500 128)">
+    <g transform="scale(0.390625)">
+      <circle cx="256" cy="256" r="256" fill="url(#og-disc)" />
+      <g transform="translate(256 268) scale(0.66) translate(-256 -260)">
+        <path
+          d="M256 44 C150 44 66 126 66 230 C66 348 206 436 256 476 C306 436 446 348 446 230 C446 126 362 44 256 44 Z"
+          fill="url(#og-teal)"
+        />
+        <circle
+          cx="256"
+          cy="216"
+          r="96"
+          fill="none"
+          stroke="#f2b65a"
+          stroke-width="9"
+          opacity="0.42"
+        />
+        <circle cx="256" cy="216" r="66" fill="#f2b65a" filter="url(#og-glow)" opacity="0.7" />
+        <circle cx="256" cy="216" r="60" fill="url(#og-amber)" />
+      </g>
+    </g>
+  </g>
+
+  <!-- 96px, which the mockup measured at 22px once the canvas is scaled to a 274px bubble —
+       above the 11px floor below which nobody reads a brand in a chat. -->
+  <text
+    x="600"
+    y="396"
+    fill="#ffffff"
+    font-family="Secular One, sans-serif"
+    font-size="96"
+    text-anchor="middle"
+  >
+    Travelive
+  </text>
+
+  <!-- The band. 40px of type in 134px of paper: measured at 11.9px in the bubble. -->
+  <rect x="0" y="496" width="1200" height="134" fill="#f3efe6" />
+  <text
+    x="600"
+    y="576"
+    fill="#4b5468"
+    font-family="Assistant, sans-serif"
+    font-size="40"
+    font-weight="600"
+    text-anchor="middle"
+    direction="rtl"
+  >
+    מרכז שליטה לטיול
+  </text>
+</svg>

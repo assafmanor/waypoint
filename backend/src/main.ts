@@ -8,7 +8,8 @@ import { cleanupOpenApiDoc } from 'nestjs-zod';
 import { AppModule } from './app.module';
 import { SyncGateway } from './sync/sync.gateway';
 import { DEFAULT_FRONTEND_URL, FRONTEND_URL } from './common/env';
-import { AllExceptionsFilter, SPA_INDEX, STATIC_ROOT } from './common/all-exceptions.filter';
+import { AllExceptionsFilter, STATIC_ROOT } from './common/all-exceptions.filter';
+import { SpaShellService } from './spa/spa-shell.service';
 import { canonicalHostMiddleware } from './common/canonical-host';
 import { setStaticCacheHeaders } from './common/static-cache';
 import { ConfigValidationError, validateConfig } from './common/validate-config';
@@ -63,8 +64,16 @@ async function bootstrap() {
   // browser navigations. Passing the index path only when it exists keeps the
   // fallback off in dev/test (JSON for everything).
   const spaAvailable = existsSync(STATIC_ROOT);
-  if (spaAvailable) app.useStaticAssets(STATIC_ROOT, { setHeaders: setStaticCacheHeaders });
-  app.useGlobalFilters(new AllExceptionsFilter(spaAvailable ? SPA_INDEX : undefined));
+  if (spaAvailable) {
+    // **`index: false`, and without it ADR-0220 does not work at all.** `express.static`
+    // answers a request for `/` with `public/index.html` itself, before the router is ever
+    // reached — so `SpaShellController.home` would never run and the homepage would be the
+    // one shared URL with no preview tags. Every other file it serves is unaffected.
+    app.useStaticAssets(STATIC_ROOT, { index: false, setHeaders: setStaticCacheHeaders });
+  }
+  app.useGlobalFilters(
+    new AllExceptionsFilter(spaAvailable ? app.get(SpaShellService) : undefined),
+  );
 
   const port = process.env.PORT ? Number(process.env.PORT) : 3000;
   await app.listen(port);

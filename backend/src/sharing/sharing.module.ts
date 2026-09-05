@@ -33,5 +33,7 @@ import { TripSharingController } from './trip-sharing.controller';
     { provide: ITINERARY_NARRATIVE_GENERATOR, useClass: DisabledItineraryNarrativeGenerator },
     MembershipGuard,
   ],
+  // `SpaModule` needs `previewByCode` for `/s/<code>`'s meta tags (ADR-0220).
+  exports: [SharingService],
 })
 export class SharingModule {}

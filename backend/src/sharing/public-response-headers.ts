@@ -26,9 +26,21 @@ export function applyPublicShareHeaders(res: Response): void {
   for (const [name, value] of Object.entries(PUBLIC_SHARE_HEADERS)) res.setHeader(name, value);
 }
 
-/** True for a URL the SPA fallback is about to answer with the app shell, when that URL is
- *  a public share page. The shell itself carries no itinerary, but the response must still
- *  refuse indexing and referrer leakage — the code is in the URL being requested. */
-export function isPublicSharePath(url: string): boolean {
-  return /^\/s\/[^/?#]+/.test(url);
+/**
+ * **True for a URL whose own path contains a bearer credential**, which is the property the
+ * headers above are protecting — not "is this the sharing feature".
+ *
+ * Two such paths: `/s/<code>` (ADR-0213's reader) and `/join/<code>` (ADR-0067's invite).
+ * The invite joined it in ADR-0220 and the reason is that its response CHANGED: until the
+ * link preview it was a content-free app shell at a secret URL, and it is now the trip's
+ * name and dates at one. `no-referrer` mattered even before that — a tap from the join
+ * screen would hand the destination site the invite code in `Referer` — and it was simply
+ * never applied here.
+ *
+ * The name moved with the meaning: `isPublicSharePath` said sharing, and the third caller
+ * would have had to decide whether an invite counts as a share. A credential in a path is
+ * not a judgement call.
+ */
+export function isBearerLinkPath(url: string): boolean {
+  return /^\/(s|join)\/[^/?#]+/.test(url);
 }

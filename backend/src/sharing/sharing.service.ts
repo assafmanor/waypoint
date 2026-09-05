@@ -5,6 +5,10 @@ import { generatePublicCode } from '../common/public-code.util';
 import { assertTripAdmin } from '../common/trip-scope.util';
 import { DocumentsService } from '../documents/documents.service';
 import { PrismaService } from '../prisma/prisma.service';
+// Type-only, so nothing at runtime crosses back: `spa/` imports this module's Hebrew copy,
+// and the shape a preview says is `spa/`'s to define.
+import type { TripPreviewFacts } from '../spa/share-meta';
+import { toDateOnly } from '../trips/trips.mapper';
 import { PdfBrowserService } from './pdf-browser.service';
 import { normalizeSharePolicy, sharePolicyHash } from './share-policy';
 import { SharingProjectionService } from './sharing-projection.service';
@@ -217,6 +221,38 @@ export class SharingService {
   /** The public projection behind a code (see `SharingProjectionService` for the rules). */
   byCode(code: string) {
     return this.projection.byCode(code);
+  }
+
+  /**
+   * **The four facts a link preview says, and deliberately not the projection** (ADR-0220 §6).
+   *
+   * `byCode` above resolves the whole itinerary and runs the narrative generator on the way.
+   * A preview needs the trip's name, destination and dates — and a crawler must not be able
+   * to make us generate prose, which is the reason this is a separate method rather than a
+   * projection the caller reads two fields off. `ItineraryNarrativeService` is deterministic
+   * today (ADR-0213 §2 binds the port to the disabled generator), so this is guarding the
+   * day it is not: the port exists precisely so a model can be swapped in behind it, and an
+   * unauthenticated page that triggers one is an invoice with no session attached.
+   *
+   * A missing, revoked or rotated code is the same `NotFoundException` every public read
+   * gives, so the shell cannot be used to ask whether a code exists.
+   */
+  async previewByCode(code: string): Promise<TripPreviewFacts> {
+    const share = await this.projection.requireActiveShare(code);
+    const [trip, travellers] = await this.prisma.$transaction([
+      this.prisma.trip.findUniqueOrThrow({
+        where: { id: share.tripId },
+        select: { name: true, destination: true, startDate: true, endDate: true },
+      }),
+      this.prisma.membership.count({ where: { tripId: share.tripId } }),
+    ]);
+    return {
+      name: trip.name,
+      destination: trip.destination,
+      startDate: toDateOnly(trip.startDate),
+      endDate: toDateOnly(trip.endDate),
+      travellers,
+    };
   }
 
   /**

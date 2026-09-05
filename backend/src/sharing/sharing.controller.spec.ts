@@ -4,7 +4,7 @@ import { SHARE_DETAIL_LEVEL } from '@waypoint/shared';
 import type { Response } from 'express';
 import {
   applyPublicShareHeaders,
-  isPublicSharePath,
+  isBearerLinkPath,
   PUBLIC_SHARE_HEADERS,
 } from './public-response-headers';
 import { PublicSharingController } from './public-sharing.controller';
@@ -36,19 +36,32 @@ describe('public share response headers', () => {
 
   // The SPA fallback branches on this, so a change to the public route shape must not
   // quietly leave those navigations indexable.
-  it.each(['/s/7Kq2mB9x', '/s/7Kq2mB9x?from=chat'])(
-    'recognises %s as a share navigation',
-    (path) => {
-      expect(isPublicSharePath(path)).toBe(true);
-    },
-  );
+  it.each([
+    '/s/7Kq2mB9x',
+    '/s/7Kq2mB9x?from=chat',
+    // The invite joined the set in ADR-0220, when its shell started carrying the trip's
+    // name. Before that it was a content-free document at a secret URL.
+    '/join/7Kq2mB9x',
+    '/join/7Kq2mB9x?utm_source=whatsapp',
+  ])('recognises %s as a bearer-link navigation', (path) => {
+    expect(isBearerLinkPath(path)).toBe(true);
+  });
 
-  it.each(['/', '/trips', '/settings', '/join/7Kq2mB9x', '/shared-itineraries/7Kq2mB9x'])(
-    'leaves %s on the ordinary policy',
-    (path) => {
-      expect(isPublicSharePath(path)).toBe(false);
-    },
-  );
+  it.each([
+    '/',
+    '/trips',
+    '/settings',
+    '/shared-itineraries/7Kq2mB9x',
+    // A bare prefix is not a credential — `/s` and `/join` with no code carry nothing to
+    // protect, and matching them would put `no-store` on paths that are not shares.
+    '/s',
+    '/join',
+    // …and neither is a path that merely STARTS with one of the words.
+    '/settings/share',
+    '/joins/7Kq2mB9x',
+  ])('leaves %s on the ordinary policy', (path) => {
+    expect(isBearerLinkPath(path)).toBe(false);
+  });
 });
 
 describe('PublicSharingController', () => {

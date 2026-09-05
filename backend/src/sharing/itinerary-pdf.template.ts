@@ -15,7 +15,7 @@ import {
   type SharedEvent,
   type SharedItinerary,
 } from '@waypoint/shared';
-import { PDF_COPY, PDF_DAYPART_MARK, pdfSpan } from './itinerary-pdf.copy';
+import { PDF_COPY, PDF_DAYPART_MARK, pdfSpan } from './hebrew.copy';
 
 /**
  * **The paper, and it is not a screenshot of the page** (ADR-0213 §4).

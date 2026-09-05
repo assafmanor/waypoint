@@ -1,9 +1,10 @@
 # 2026-09-05 — לפני שפותחים אותה: link previews and the notification's white rectangle
 
-Design session. Two owner reports, one subject, one mockup:
+Design session **and build**, same day. Two owner reports, one subject, one mockup:
 [`mockups/the-app-is-seen-before-it-is-opened-v1.html`](../../mockups/the-app-is-seen-before-it-is-opened-v1.html).
-No ADR yet — the strings are answered, the cover ground is a recommendation
-awaiting the owner. Nothing was built.
+The owner approved the strings, then the cover ground and the whole plan
+(_"Alright let's do this"_), and it shipped as
+[ADR-0220](../decisions/0220-a-pasted-link-is-the-app-before-the-app-is.md).
 
 ## The reports
 
@@ -61,9 +62,9 @@ WhatsApp's own preview servers and are visible to everyone in the chat the link
 is pasted into. The owner took that trade for both the invitation and the live
 share. A third option that revealed nothing was offered and declined.
 
-## Still open — the one fork the mockup exists to settle
+## The one fork the mockup existed to settle — answered by its own numbers
 
-**Which ground the cover uses.** The measurements make this less of a taste
+**Which ground the cover uses.** Approved 2026-09-05; the recommendation stood. The measurements make this less of a taste
 question than it looked, because the failure is symmetric:
 
 | Ground                                    | vs. light WhatsApp bubble | vs. dark WhatsApp bubble |
@@ -122,10 +123,10 @@ the parser only handled `rgb(...)`), and an element screenshot of §3 came back
 the bidi probe's `left: -2000px` child had no containing block and was widening
 the RTL document.
 
-## What the build needs, when it is approved
+## What the build needed — and the one thing this note got wrong
 
-Not built, and scoped in `docs/backlog.md` under **"The app outside the app"**.
-The parts that are not obvious:
+Built 2026-09-05. The parts that were not obvious, with the correction first
+because it is the useful part:
 
 - **One renderer, two entry points.** A `@Get('/')` + `join/:code` + `s/:code`
   shell controller **and** `AllExceptionsFilter`'s existing SPA fallback for every
@@ -138,11 +139,20 @@ The parts that are not obvious:
   name is HTML-escaped.
 - **A cheap `previewByCode`.** `SharingService.byCode` runs the full projection,
   which generates a narrative; a crawler must never be able to trigger that.
-- **`formatTripDates` moves to `packages/shared`** with `APP_LOCALE`. It lives in
-  `frontend/src/lib/time.ts` and the description needs its `prose` style
-  server-side. A second date grammar for one surface is the duplicate rule 8
-  forbids — and `proseTripRange`'s en dash is the app's own convention, so the
-  OG description inherits it rather than inventing `עד`.
+- **`formatTripDates` does NOT move to `packages/shared`, and this note said it
+  would.** It was flagged to the owner as the one shared-file change worth
+  knowing about in advance, and reading the code killed it: that package's own
+  `CLAUDE.md` forbids product formatting there in as many words (_"no ambient
+  locale — `APP_LOCALE` is the frontend's"_), and **the repo had already answered
+  this question**. The itinerary PDF is a server-rendered Hebrew surface and it
+  keeps its words in `itinerary-pdf.copy.ts`, whose docblock explains that a
+  second locale consumer is a constraint rather than a preference. So what moved
+  to shared is the **shape** — `tripRangeShape`, a four-case discriminant with no
+  locale in it, the same form as `eventEndBoundary` — and the month names stayed
+  with each renderer. The backend's come from `Intl` with `he-IL` rather than a
+  hand-typed table, which is the only way the two are identical by construction
+  rather than by review. `proseTripRange`'s en dash is the app's own convention,
+  so the preview inherits it rather than inventing `עד`.
 - **Two assets**, `og-cover.svg` and `og-invite.svg`, cut to PNG by
   `scripts/gen-app-icons.mjs` — already the single cut for every raster icon
   (ADR-0087), so this is an entry in its list, not a new script.
@@ -155,3 +165,39 @@ the image). It is a Chromium render per crawler hit, on a page whose whole
 `no-store` posture (ADR-0213) forbids caching the result, and crawlers give up
 fast. The card's _text_ already carries the specifics, which is what §4 measures.
 On the backlog, not in this round.
+
+## Built — what the two verification passes found
+
+The mockup's five findings are in the ADR. Two more arrived after it, from steps
+a mockup cannot take, and both are worth the note because they name the limits of
+the format rather than a mistake in it.
+
+**Hand-transcribing CSS into SVG lost what the mockup had right.** The invitation
+cover is `.join-ticket` at ⁦1.85×⁩, and in the mockup that is the shipped rules
+doing the work. In `og-invite.svg` it is coordinates, and the first cut used
+`text-anchor="end"` for right-aligned Hebrew — but SVG resolves the anchor against
+the **inline-base direction**, so under `direction="rtl"` `end` is the LEFT edge.
+Every Hebrew line pinned its left edge and flowed rightward out of the pass:
+`יוצאים לדרך` ran ⁦200px⁩ past the ticket and the avatars landed on
+`החבורה כבר בפנים`. Invisible in the markup, obvious the moment the PNG was
+opened. **This is the cost the design-mockups skill warns about, arriving one
+layer down** — the mockup inlines real CSS precisely so it cannot lie, and the
+asset cut from it has no such protection.
+
+**And a live run found a regression the unit tests were happy with.** The built
+app was served from a real `backend/public` and fetched with WhatsApp's user
+agent. `/join/<code>` now reaches the database to name a trip, so it gained the
+same ⁦20/min⁩ per-IP cap the JSON reads carry — and it had **none** before. A group
+of friends behind one NAT opening the same invite would have been handed the raw
+error envelope where the join screen used to be. `TOO_MANY_REQUESTS` joined 404
+and 401 in the exception filter's shell fallback: the guard has already rejected
+the request, so the work the cap protects is not done either way, and the app can
+show its own failure state. A programmatic fetch still gets JSON.
+
+The rest of the pass confirmed rather than corrected: the three URLs' tags
+against a seeded trip, the header set per route, an unknown code answering with
+the generic tags at 200 (no existence oracle), a trip renamed to
+`Osaka" /><script>alert(1)</script>` escaped in both `<title>` and every tag, and
+the badge rendered **through Android's own rule** — the PNG used as a mask for a
+white slot — beside the old asset, which reproduced the owner's white rectangle
+exactly.

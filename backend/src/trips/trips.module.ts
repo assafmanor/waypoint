@@ -18,5 +18,9 @@ import { TripsService } from './trips.service';
   ],
   controllers: [TripsController, InvitesController],
   providers: [TripsService, MembershipGuard],
+  // `SpaModule` resolves an invite code to the trip a link preview names (ADR-0220) through
+  // `getInvitePreview` — the same public lookup the join screen calls, so the preview and
+  // the screen it opens cannot disagree.
+  exports: [TripsService],
 })
 export class TripsModule {}

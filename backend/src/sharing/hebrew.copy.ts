@@ -1,6 +1,7 @@
 import {
   ROUTE_ARROW,
   bindPrefix,
+  tripRangeShape,
   SHARE_DAY_KIND,
   SHARE_DAY_SUMMARY_KIND,
   SHARE_DAYPART,
@@ -9,13 +10,33 @@ import {
   type ShareDaypart,
 } from '@waypoint/shared';
 
+/** The app's own product locale. It is `frontend/src/constants.ts`'s `APP_LOCALE` by value
+ *  and not by import — the backend cannot reach across the workspace (TS2835), which is the
+ *  same constraint this whole file exists under. */
+const HE_LOCALE = 'he-IL';
+
+/** UTC, always: these are calendar dates, not instants to localise. */
+const fmt = (opts: Intl.DateTimeFormatOptions) =>
+  new Intl.DateTimeFormat(HE_LOCALE, { ...opts, timeZone: 'UTC' });
+
+/** The same en dash `frontend/src/lib/time.ts` puts in a range, and not an em dash — root
+ *  `CLAUDE.md` forbids those in UI copy. */
+const EN_DASH = '–';
+
 /**
- * **The PDF's Hebrew, and why it is here rather than in `frontend/src/i18n/he.ts`.**
+ * **The backend's Hebrew, all of it, and why it is here rather than in
+ * `frontend/src/i18n/he.ts`.**
  *
- * ADR-0009 puts product copy in the frontend and this repo keeps it there — but the PDF is
- * rendered on the server, by a Node process that cannot import a React app's i18n module,
- * and the paper has to be in Hebrew for the same people the screen is. So the print
- * renderer is a second locale consumer. That is the constraint, not a preference.
+ * ADR-0009 puts product copy in the frontend and this repo keeps it there — but some product
+ * output is rendered by a Node process that cannot import a React app's i18n module, and it
+ * has to be in Hebrew for the same people the screen is. There are **two** such renderers
+ * now: the itinerary PDF (ADR-0213), and the link-preview meta tags a chat's crawler reads
+ * before anyone opens the app at all (ADR-0220 — the crawler runs no JS, so the shell has to
+ * be answered with its `og:*` already in it). That is the constraint, not a preference.
+ *
+ * The file was `itinerary-pdf.copy.ts` until the second consumer arrived. **The name moved
+ * rather than the words** because the invariant below is what makes the duplication safe,
+ * and a second Hebrew file in the backend would have quietly ended it.
  *
  * **It is deliberately not guarded by a cross-package test.** The obvious one — import
  * `frontend/src/i18n/he.ts` here and assert the daypart words match — makes the backend's
@@ -203,3 +224,87 @@ export const PDF_DAYPART_MARK = {
   [SHARE_DAYPART.NIGHT]: '🌙',
   [SHARE_DAYPART.FLEXIBLE]: '◌',
 } satisfies Record<ShareDaypart, string>;
+
+// ── The link preview's Hebrew (ADR-0220) ───────────────────────────────────────────────
+
+/**
+ * **A trip's date range, in Hebrew prose, on the server** — `11–22 בספטמבר`,
+ * `27 בספטמבר – 3 באוקטובר`.
+ *
+ * Three things about this are deliberate.
+ *
+ * **The four cases are not decided here.** `tripRangeShape` in `@waypoint/shared` owns them
+ * and `frontend/src/lib/time.ts`'s `proseTripRange` reads the same discriminant, so the
+ * invite ticket and the preview that advertised it cannot disagree about one trip. What is
+ * local is only which words go around the numbers.
+ *
+ * **The month names come from `Intl`, not from a table in this file** — and that is a
+ * departure from how the rest of this module works, on purpose. A hand-typed `HE_MONTHS`
+ * would be twelve strings that can only ever *approximate* what the screen prints, because
+ * the screen gets its months from ICU; reading the same ICU data is the only way the two
+ * renderers are identical by construction rather than by review. The words this file exists
+ * to hold are the ones ICU cannot supply.
+ *
+ * `hebrew.copy.spec.ts` asserts all four shapes, which also fails loudly on a runtime built
+ * with small-ICU (where `he-IL` would silently fall back to English month names). Node ships
+ * full ICU by default and the runtime image is `node:22-slim`, so this is a guard rather
+ * than a live concern.
+ *
+ * Calendar dates, so read in UTC like every other date in the projection.
+ */
+export function heTripRange(startDate: string, endDate: string): string {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+  const day = fmt({ day: 'numeric' });
+  const dayMonth = fmt({ day: 'numeric', month: 'long' });
+
+  switch (tripRangeShape(startDate, endDate)) {
+    case 'same-day':
+      return dayMonth.format(start);
+    case 'same-month':
+      return `${day.format(start)}${EN_DASH}${dayMonth.format(end)}`;
+    case 'same-year':
+    case 'cross-year':
+      return `${dayMonth.format(start)} ${EN_DASH} ${dayMonth.format(end)}`;
+  }
+}
+
+/**
+ * **Every string a link preview can say**, in the three cases that get shared (ADR-0220 §5).
+ *
+ * The forks behind each one are in
+ * `planning/2026-09-05-the-app-is-seen-before-it-is-opened.md`; two of them changed after the
+ * mockup was rendered rather than read, and both changes are visible here:
+ *
+ * - `invite.title` is `הוזמנת ל…`, **not** `הוזמנת לטיול …`, which stuttered into
+ *   `הוזמנת לטיול טיול הבוגרים של כיתה יב3 ליוון` on a real trip name and could not on the
+ *   clean one. The bare `ל` is also what the app already says (`הצטרפתם ל${tripName}`).
+ * - The covers carry `מרכז שליטה לטיול`, `APP_TITLE`'s own tagline, because the first draft
+ *   printed `home.title`'s sentence on the image one line above the title itself.
+ *
+ * **No `·` and no em dash anywhere** (owner, 2026-09-05) — the app's separator is fine on a
+ * screen and reads as debris in a chat preview, so these lines use commas and full stops.
+ * The en dash inside a date range is `heTripRange`'s and is the app's existing convention.
+ *
+ * Every value a caller interpolates is trip content and is escaped by the renderer, never
+ * here — see `spa-shell.service.ts`.
+ */
+export const SHARE_META_COPY = {
+  siteName: 'Travelive',
+  home: {
+    title: 'Travelive - כל הטיול שלכם במסך אחד',
+    description: 'מה עכשיו, מה הבא בתור, ואיפה כל ההזמנות, בזמן שאתם שם.',
+  },
+  invite: {
+    title: (tripName: string) => `הוזמנת ל${tripName}`,
+    /** `travellers` is `memberCount`, and it is last because it is the first thing a
+     *  two-line clamp drops — the destination and the dates are what a person needs. */
+    description: (destination: string, dates: string, travellers: number) =>
+      `${destination}, ${dates}. ${travellers} נוסעים כבר בפנים.`,
+  },
+  live: {
+    title: (tripName: string) => `${tripName} - הלו״ז החי`,
+    description: (destination: string, dates: string) =>
+      `${destination}, ${dates}. לינק שמתעדכן עם הטיול.`,
+  },
+} as const;

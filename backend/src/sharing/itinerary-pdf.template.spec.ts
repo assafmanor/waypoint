@@ -11,7 +11,7 @@ import {
   itineraryPdfHtml,
   resetPdfFontCache,
 } from './itinerary-pdf.template';
-import { PDF_COPY } from './itinerary-pdf.copy';
+import { PDF_COPY } from './hebrew.copy';
 // `DENSE_REFERENCE_TRIP` is no longer imported here: the only test that rendered it was the
 // journey-block guard, which matched zero blocks in it (2026-09-01). The dense trip's real
 // guard is `pdf-container-smoke`'s page count, which still renders it.

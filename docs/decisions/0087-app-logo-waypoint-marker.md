@@ -50,3 +50,25 @@ The stroke was decided above for a real reason — "a teal edge so the dark tile
 **And the drift trap this ADR left open is closed.** The Consequences above say the PNGs are rasterized from the SVG "so the set never drifts" — but the full-bleed source was never committed, so there was nothing to rasterize _from_, and the four files had duly diverged on three axes at once (radius, stroke, and a 0.72 vs 0.66 marker scale). `favicon.svg` is now that source and `scripts/gen-app-icons.mjs` is the cut, following `deploy-swap-check.mjs`'s pattern for reaching Playwright's Chromium from a root script. Headless Chromium rather than a raster library because the amber core is an `feGaussianBlur`, which lightweight rasterizers drop silently — it would flatten the one glowing element the mark is built around.
 
 **What did not change:** the geometry, the palette, the semantic reading (teal = place, amber = the live "now"), the manifest wiring, `theme_color`, or the marker's optical centring (2% low, which a pin wants). Only the shape the artwork presumes about its container.
+
+## Amendment (2026-09-05) — the cutter cuts seven, and one asset is deliberately not full bleed
+
+[ADR-0220](0220-a-pasted-link-is-the-app-before-the-app-is.md) extends `scripts/gen-app-icons.mjs`
+from the four raster icons above to **seven**: `og-cover.png` and `og-invite.png` (the 1200×630 link
+preview covers) and `notification-badge.png` (Android's small notification icon). The script now
+also inlines the app's own woff2 faces from `frontend/src/assets/fonts/` for the two assets that
+carry type — headless Chromium has neither Assistant nor Secular One, and `page.setContent` has no
+origin to fetch them from, so without it the wordmark rasterizes in a fallback and the Hebrew line
+rasterizes as boxes.
+
+**The covers are the first assets to spend this ADR's sanctioned bright ground, and they spend it as
+a band rather than a tile.** Measured against a WhatsApp bubble, the board tile is ⁦17.9:1⁩ in a light
+chat and ⁦1.25:1⁩ in a dark one; paper is ⁦1.15:1⁩ and ⁦12.48:1⁩. Neither clears the ⁦3:1⁩ graphic floor in
+both, so a cover is board with a paper band under it and takes the better of its two regions.
+
+**And the badge is deliberately NOT full bleed, which does not contradict the amendment above.**
+That amendment is about assets a platform **masks to a silhouette** — there, drawn rounding fights
+the mask. Android does not mask the small icon, it _reads_ it: the icon's alpha channel IS the
+silhouette, painted in the status-bar colour. A full-bleed tile therefore draws a solid rectangle,
+which is what the owner reported. The badge is the mark's pin at ⁦0.86⁩ of its canvas with the amber
+core punched out as a hole, on transparency.

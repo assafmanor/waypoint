@@ -2577,3 +2577,19 @@ the repair that brings the outage back.
 ## Amendment (2026-09-05) — the day card's head and shot become the app's `DayHead`, and three derivations move to shared ([ADR-0219](0219-a-day-is-a-place-you-can-see.md))
 
 The reader's day card — `.sh-shot` (§5's photograph) and `.sh-day-head` (the date column, the name, the second line) — is the design the owner pointed at for the app's own day surfaces. ADR-0219 §2 lifts both into `ui/domain/DayHead` (`day-head.css`, `wp-dayhead-*` names) and the reader consumes the component; nothing the reader renders changes, and the fourteenth amendment's child-combinator rule moves with it (its contract test too). Three pure functions the reader owned move to `packages/shared` so the app and the reader name and picture a day identically: `dayPhoto` with its gate (§5), `fallbackDayTitle` with `DayFacts` and the facts builder's pure parts, and the credit's composition (which this ADR's §5 joined server-side and `PlaceKnowledge` composed client-side, in two visual orders). Same move as the fourth pass's `derivedPlaceLabel`, for the same reason.
+
+## Amendment (2026-09-05) — the headers follow the credential, not the feature
+
+[ADR-0220](0220-a-pasted-link-is-the-app-before-the-app-is.md) renames §5's `isPublicSharePath` to
+**`isBearerLinkPath`** and widens it to match `/join/<code>` as well as `/s/<code>`. The four headers
+themselves are unchanged.
+
+Two reasons, and the second is why the name moved with the meaning. The invite's **response
+changed**: until the link preview it was a content-free app shell at a secret URL, and it now
+carries the trip's name and dates at one, so it needs `no-store` and `noindex` for the first time.
+And `no-referrer` was owed the whole time and simply never applied — a reader tapping a map link
+from the join screen hands the destination site the invite code in `Referer`, which is the same leak
+this section closed for `/s/`.
+
+`isPublicSharePath` asked "is this the sharing feature", which made the invite a judgement call.
+**A credential in a path is not one.**
