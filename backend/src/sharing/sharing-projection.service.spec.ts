@@ -152,6 +152,30 @@ describe('SharingProjectionService', () => {
       }),
     ]);
 
+    // **A booked stop, seeded the way ADR-0048 stores one**: the place is on the BOOKING and
+    // the event's own column is null. Nothing in this fixture was shaped that way before, which
+    // is why the projection could read `event.placeId` alone and lose every booked stop on the
+    // trip without a single spec noticing.
+    const zip = await prisma.place.create({
+      data: {
+        tripId: trip.id,
+        name: 'Zip line',
+        lat: 64.05,
+        lng: -21.8,
+        timezone: 'Atlantic/Reykjavik',
+        updatedBy: OWNER,
+      },
+    });
+    const zipBooking = await prisma.booking.create({
+      data: {
+        tripId: trip.id,
+        type: 'activity',
+        title: 'אומגה',
+        placeId: zip.id,
+        updatedBy: OWNER,
+      },
+    });
+
     const booking = await prisma.booking.create({
       data: {
         tripId: trip.id,
@@ -220,6 +244,20 @@ describe('SharingProjectionService', () => {
           kind: 'soft',
           startsAt: null, // no time at all -> flexible
           placeId: apartment.id,
+          updatedBy: OWNER,
+        },
+        {
+          // Late in the day on purpose: the day's PRINCIPAL stop is its first settled one, so
+          // this joins the day's route without moving the trip's masthead — the fixture gains
+          // a shape it lacked rather than restating what the specs above already pin.
+          tripId: trip.id,
+          date: new Date('2026-08-30'),
+          title: 'אומגה',
+          kind: 'hard',
+          startsAt: new Date('2026-08-30T20:00:00Z'),
+          endsAt: new Date('2026-08-30T21:00:00Z'),
+          placeId: null,
+          bookingId: zipBooking.id,
           updatedBy: OWNER,
         },
       ],
@@ -538,7 +576,7 @@ describe('SharingProjectionService', () => {
 
   it('derives a route and a day title from real places, with no authored title anywhere', async () => {
     const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
-    expect(projection.trip.routeLabels).toEqual(['רייקיאוויק']);
+    expect(projection.trip.routeLabels).toEqual(['רייקיאוויק', 'Zip line']);
     // **The kind and its values, never a sentence** (ADR-0213's 2026-08-30 amendment). The
     // words are each renderer's, so what the projection owes is the shape they key off.
     // Day one holds the trip's only flight and is its first day with anything on it, so it
@@ -571,12 +609,30 @@ describe('SharingProjectionService', () => {
     expect(titlesOn('2026-08-30')).not.toContain('אורות הצפון');
   });
 
+  // **A booked stop is a stop** (owner, 2026-09-05: _"the first stop of the day doesn't include
+  // the first or last event if it's a booking … also in the live sharing"_). ADR-0048 puts a
+  // linked event's place on its BOOKING and clears the event's own column, so a projection
+  // reading `event.placeId` sees nothing at every hotel, restaurant and ticket on the trip —
+  // and names the day after whatever unbooked stops happen to sit between them.
+  it('names a day by its booked stops, whose place lives on the booking', async () => {
+    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
+    const day = projection.days.find((d) => d.date === '2026-08-30');
+    // The booked activity is the day's FIRST stop — the position the owner's report is about,
+    // and the one a cleared `event.placeId` silently dropped, leaving the day named by the
+    // single unbooked stop after it.
+    expect(day?.title).toEqual({
+      kind: SHARE_DAY_KIND.ROUTE,
+      from: 'Zip line',
+      to: 'רייקיאוויק',
+    });
+  });
+
   // **The route is where the trip WAS, not the airports it passed through** (owner, on the
   // PDF masthead: _"Seems very redundant"_). The flight's endpoints are on its booking, so
   // before this a trip's strip opened and closed on two airport names.
   it('builds the route from settled stops, skipping transport endpoints', async () => {
     const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
-    expect(projection.trip.routeLabels).toEqual(['רייקיאוויק']);
+    expect(projection.trip.routeLabels).toEqual(['רייקיאוויק', 'Zip line']);
     expect(projection.trip.routeLabels).not.toContain('קפלוויק');
   });
 
@@ -584,7 +640,7 @@ describe('SharingProjectionService', () => {
   // the trip's `אזורים` count, so a long trip reported eight however many it visited.
   it('counts the whole route, not the capped strip', async () => {
     const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
-    expect(projection.trip.routeStopCount).toBe(1);
+    expect(projection.trip.routeStopCount).toBe(2);
   });
 
   // A booking states its kind, and the kind is what a renderer captions a row from. Nothing

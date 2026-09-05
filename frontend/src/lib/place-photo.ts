@@ -13,12 +13,14 @@
 // Lives here rather than inside `PlaceBadge` because the badge cannot tell a picked glyph from
 // a derived one — it receives rendered children. The distinction is the *place's*, so the
 // question is answered where the place is known.
-import type {
-  DeliveredEnrichmentFields,
-  DeliveredImageValue,
-  Place,
-  TripEnrichments,
-  TripEvent,
+import {
+  eventStopPlaceId,
+  type Booking,
+  type DeliveredEnrichmentFields,
+  type DeliveredImageValue,
+  type Place,
+  type TripEnrichments,
+  type TripEvent,
 } from '@waypoint/shared';
 import { chosenIcon } from '../constants';
 
@@ -50,18 +52,29 @@ export function badgePhoto(
  * when nobody picked anything (`constants.ts`) — treating that as a pick is the defect that
  * function exists to undo, and it would suppress the photo on most rows.
  *
- * It resolves the place itself rather than taking one: both day surfaces hold `places` and
- * `enrichments` and would otherwise write the same two lookups, and the event's OWN place is
- * the answer here — never the booking's endpoints, which `eventPlaceId` would fall back to.
- * The row's badge has always been the event's place, and the photo is that place's.
+ * It resolves the place itself rather than taking one: both day surfaces hold `bookings`,
+ * `places` and `enrichments` and would otherwise write the same lookups.
+ *
+ * **Through `eventStopPlaceId`, and the first cut read `event.placeId` alone.** That column is
+ * authoritative only for an event no booking backs (ADR-0048 clears it on save), so every
+ * hotel, restaurant and ticket on the trip wore its category glyph while the same place on the
+ * Map wore its photograph — the owner's _"places don't have their image as the icon (like on
+ * the map)"_, reported against a booked zip line. What the first cut was right about is kept by
+ * the same call: a LEG answers with neither end, so a flight's badge is still a flight's and
+ * never its origin airport's picture.
  */
 export function rowPhoto(
-  event: Pick<TripEvent, 'icon' | 'placeId'>,
+  event: Pick<TripEvent, 'icon' | 'placeId' | 'bookingId'>,
+  bookings: Booking[],
   places: Place[],
   enrichments: TripEnrichments,
 ): DeliveredImageValue | undefined {
   if (chosenIcon(event.icon)) return undefined;
-  if (!event.placeId) return undefined;
-  const place = places.find((p) => p.id === event.placeId);
+  const placeId = eventStopPlaceId(
+    event,
+    event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined,
+  );
+  if (!placeId) return undefined;
+  const place = places.find((p) => p.id === placeId);
   return place && badgePhoto(place, enrichments[place.id]);
 }

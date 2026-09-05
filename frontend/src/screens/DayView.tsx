@@ -1066,8 +1066,8 @@ export function DayView() {
     [trip, activeDate, dayEvents, events, bookings, places, placeLabels, enrichments],
   );
   const shot = useMemo(
-    () => dayShot(dayEvents, places, placeLabels, enrichments),
-    [dayEvents, places, placeLabels, enrichments],
+    () => dayShot(dayEvents, bookings, places, placeLabels, enrichments),
+    [dayEvents, bookings, places, placeLabels, enrichments],
   );
   /** The full picture, opened from the shot — the screen owns the viewer, exactly as `Map.tsx`
    *  does for `PlaceKnowledge`'s hero (ADR-0167 §10). */
@@ -2013,7 +2013,7 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
   // **The badge is the thumbnail's frame** (ADR-0167 §1) and the day rows never filled it.
   // `rowPhoto` answers the whole "was a glyph picked" question — on the event or on its place —
   // so the rule is not written out here and again in Plan.
-  const photo = rowPhoto(e, ctx.places, ctx.enrichments);
+  const photo = rowPhoto(e, ctx.bookings, ctx.places, ctx.enrichments);
 
   const card = (
     <EventCard

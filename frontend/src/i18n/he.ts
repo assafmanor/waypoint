@@ -588,6 +588,11 @@ export const t = {
       // shipped idiom the refs row already uses.
       more: 'עוד',
       back: 'חזרה לפרטי המקום',
+      // **The same word for a different move.** On the collapsed row `עוד` goes THROUGH to the
+      // expanded card; on a card that has nowhere to go it opens the clamped extract where it
+      // stands and `פחות` puts it back. One pair rather than a second vocabulary, because the
+      // reference block beside it already says `עוד`/`פחות` for exactly this (`map.refs`).
+      less: 'פחות',
       // The hero opens the full-screen zoomable preview (ADR-0062's one permitted zoom). Named
       // for what the tap does, since the picture itself carries no label.
       fullPicture: 'תמונה מלאה',

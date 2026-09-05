@@ -27,7 +27,7 @@
 // absent one is doing real work — nothing arrives, which is the same thing ADR-0182 said about
 // the Map track's missing peek, and the reason the rebuff needs no label.
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
-import { scrollerFor } from '../../lib/scrollable';
+import { scrollContainerFor } from '../../lib/scrollable';
 import { DayPreview } from '../../state/day-preview';
 
 export interface DayPeeksProps {
@@ -47,14 +47,25 @@ export function DayPeeks({ prev, next, children }: DayPeeksProps) {
   // **Measured, never assumed** — `frontend/CLAUDE.md` lists "a landing position written as a
   // constant" as a scar three times over. The window's inline box is the HOST's (the day
   // surface's own content column, already the page width at every breakpoint, so `.app`'s
-  // max-widths are not copied here) and its block box is the SCROLLER's visible strip. Both
-  // halves earn their keep: bounding it to the scroller is what stops a fixed pane painting
-  // over the header and the tab bar, and bounding it to the column plus `overflow: clip` is
-  // what stops a pane mid-flight sliding across the page background on a desktop viewport,
-  // where `.app` is a centred column rather than the whole screen.
+  // max-widths are not copied here) and its block box is the SCROLLING REGION's visible strip.
+  // Both halves earn their keep: bounding it to that region is what stops a fixed pane
+  // painting over the header and the tab bar, and bounding it to the column plus
+  // `overflow: clip` is what stops a pane mid-flight sliding across the page background on a
+  // desktop viewport, where `.app` is a centred column rather than the whole screen.
   //
-  // `paddingTop` is read rather than hard-coded for the same reason the width is: `.body`'s
-  // padding lives in `App.css` and is not this component's to know.
+  // **`scrollContainerFor`, not `scrollerFor`** — the region is the `.body` whether or not it
+  // is scrolling. Asking the overflow question here made a day whose content FITS produce no
+  // geometry at all, so every custom property fell back and the window was `0px` tall with
+  // `overflow: clip`: the neighbouring day mounted, rendered, and painted nothing. It is the
+  // short days that have room to show a peek, so the bug hid on exactly the days nobody could
+  // see it (owner: _"the next day doesn't always appear"_).
+  //
+  // **The window spans the region's PADDING too, and each pane reproduces it.** The head's
+  // photograph bleeds out of `--body-pad` to hang off the day strip (ADR-0219 §3), i.e. it
+  // draws 16px above where the host's content begins — so a window starting at the content
+  // would clip exactly that bleed and the peeked day's picture would sit a gap below the
+  // strip while the host's sat flush. The padding is read rather than hard-coded for the same
+  // reason the width is: it lives in `App.css` and is not this component's to know.
   //
   // `useLayoutEffect`, so the geometry is in place before the first paint of a window that
   // mounted mid-gesture. jsdom reports every rect as zero, which leaves it 0×0 — the honest
@@ -64,14 +75,15 @@ export function DayPeeks({ prev, next, children }: DayPeeksProps) {
     const el = win.current;
     const host = el?.parentElement;
     if (!el || !host) return;
-    const scroller = scrollerFor(host, 'block');
-    if (!scroller) return;
-    const box = scroller.getBoundingClientRect();
-    const pad = parseFloat(getComputedStyle(scroller).paddingTop) || 0;
+    const region = scrollContainerFor(host, 'block');
+    if (!region) return;
+    const box = region.getBoundingClientRect();
+    const pad = parseFloat(getComputedStyle(region).paddingTop) || 0;
     const inline = host.getBoundingClientRect();
-    el.style.setProperty('--peek-top', `${Math.round(box.top + pad)}px`);
-    el.style.setProperty('--peek-h', `${Math.round(scroller.clientHeight - pad)}px`);
+    el.style.setProperty('--peek-top', `${Math.round(box.top)}px`);
+    el.style.setProperty('--peek-h', `${Math.round(region.clientHeight)}px`);
     el.style.setProperty('--peek-x', `${Math.round(inline.left)}px`);
+    el.style.setProperty('--peek-pad', `${Math.round(pad)}px`);
   });
 
   // `data-preview` on each pane's own host (set by the screens) is what keeps a selector

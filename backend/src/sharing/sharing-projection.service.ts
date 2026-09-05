@@ -44,6 +44,7 @@ import {
   SHARE_OP_KIND,
   tripShapeOf,
   buildDayStopSequence,
+  eventStopPlaceId,
   dayPhoto,
   isTransportEvent,
   dominantValue,
@@ -800,12 +801,22 @@ export class SharingProjectionService {
      *  silent rather than a type error the moment anything casts, so it is spelled out
      *  here and nowhere else (`packages/shared/CLAUDE.md`). */
     const stopEventOf = (event: ShareEventRow): DayStopEvent => ({
-      placeId: event.placeId ?? undefined,
+      // **Not `event.placeId`** — ADR-0048 clears it on every booking-backed row, so reading it
+      // alone put the day's hotels, restaurants and tickets at nowhere and named a day after
+      // the two unbooked stops between them (`eventStopPlaceId`).
+      placeId: eventStopPlaceId(event, event.booking ?? undefined),
       fromPlaceId: event.booking?.fromPlaceId ?? undefined,
       toPlaceId: event.booking?.toPlaceId ?? undefined,
     });
+    /** **The label for where a row IS** — the stop's place, whichever row holds it. `event.place`
+     *  is the relation on `Event.placeId`, which ADR-0048 clears on every linked row, so it is
+     *  null for exactly the hotels and restaurants whose place a reader most wants named. */
+    const settledLabel = (event: ShareEventRow) =>
+      labelById.get(eventStopPlaceId(event, event.booking ?? undefined) ?? '') ??
+      placeLabel(event.place);
+
     const photoEventOf = (event: ShareEventRow): DayPhotoEvent => ({
-      placeId: event.placeId ?? undefined,
+      placeId: eventStopPlaceId(event, event.booking ?? undefined),
       // `Date` → ISO. The rank scores dwell as `Date.parse(endsAt) - Date.parse(startsAt)`,
       // and a `Date` handed to it stringifies to something `Date.parse` cannot read — every
       // stop would score zero dwell and the day would be pictured by its ratings alone.
@@ -851,7 +862,7 @@ export class SharingProjectionService {
       // lodging's own title is a brand, and the place is where you will be.
       lodgingPlace: dayEvents
         .filter((event) => event.booking?.type === BOOKING_TYPE.HOTEL)
-        .map((event) => placeLabel(event.place) ?? event.title)
+        .map((event) => settledLabel(event) ?? event.title)
         .find(Boolean),
       eventTitles: dayEvents.map((event) => event.title),
       // **Where the journey ENDS, not where its last leg of this day lands** (owner,
@@ -895,11 +906,11 @@ export class SharingProjectionService {
     const stayRows = byDay.map(({ events: dayEvents }) =>
       dayEvents.find(
         (event) =>
-          event.booking?.type === BOOKING_TYPE.HOTEL && (placeLabel(event.place) || event.title),
+          event.booking?.type === BOOKING_TYPE.HOTEL && (settledLabel(event) || event.title),
       ),
     );
     const stays = stayRows.map((event) =>
-      event ? (placeLabel(event.place) ?? event.title) : undefined,
+      event ? (settledLabel(event) ?? event.title) : undefined,
     );
     const shape = tripShapeOf(stays);
 
@@ -951,12 +962,12 @@ export class SharingProjectionService {
         region: dominantValue(
           dayEvents
             .filter((event) => !isTransport(event))
-            .map((event) => textOf(event.placeId ?? undefined, 'region')),
+            .map((event) => textOf(stopEventOf(event).placeId, 'region')),
         ),
         kind: dominantValue(
           dayEvents
             .filter((event) => !isTransport(event))
-            .map((event) => textOf(event.placeId ?? undefined, 'kind')),
+            .map((event) => textOf(stopEventOf(event).placeId, 'kind')),
         ),
       };
       const title: SharedDayTitle = fallbackDayTitle(facts);
@@ -1021,10 +1032,10 @@ export class SharingProjectionService {
     // `נתב״ג · Stokksnes · … · נמל התעופה הבינלאומי קפלוויק` into the places themselves.
     const principalStop = (dayEvents: ShareEventRow[]): string | undefined => {
       const settled = dayEvents.filter(
-        (event) => !isTransport(event) && Boolean(placeLabel(event.place)),
+        (event) => !isTransport(event) && Boolean(settledLabel(event)),
       );
       return settled.length > 0
-        ? placeLabel(settled[0].place)
+        ? settledLabel(settled[0])
         : buildDayStopSequence(dayEvents.map(stopEventOf), (placeId) =>
             labelById.get(placeId),
           ).find(Boolean);

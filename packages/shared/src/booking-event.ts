@@ -50,3 +50,30 @@ export function bookingEventFields(
     bookingId: booking.id,
   };
 }
+
+/**
+ * **Where an event IS**, and the reason it cannot be `event.placeId`.
+ *
+ * ADR-0048 makes a linked event's place the BOOKING's: `bookingEventFields` above carries none
+ * and the column is cleared on save, so `event.placeId` is authoritative only for an event no
+ * booking backs. Reading it alone puts every hotel, restaurant, ticket and activity on the trip
+ * at nowhere — which is what named a day `מפלי גולפוס ← Kerið Crater` when its first stop was a
+ * booked zip line (owner, 2026-09-05), and what left a day of three pictured booked stops with
+ * no picture at all.
+ *
+ * **Transport answers with neither end.** A leg is at two places rather than one, and a caller
+ * that wants them asks for them (`buildDayStopSequence` takes both). Contrast the app's
+ * `lib/places.ts` `eventPlaceId`, which is a different question with a different answer — which
+ * PIN an event drops, where a leg drops its origin — and is deliberately not this.
+ *
+ * Takes `null` as well as `undefined` so the two callers hand it their rows as they hold them:
+ * Prisma says `null` where these shapes say `undefined` (`packages/shared/CLAUDE.md`).
+ */
+export function eventStopPlaceId(
+  event: { placeId?: string | null },
+  booking?: { placeId?: string | null; fromPlaceId?: string | null; toPlaceId?: string | null },
+): string | undefined {
+  if (!booking) return event.placeId ?? undefined;
+  if (booking.fromPlaceId || booking.toPlaceId) return undefined;
+  return booking.placeId ?? undefined;
+}
