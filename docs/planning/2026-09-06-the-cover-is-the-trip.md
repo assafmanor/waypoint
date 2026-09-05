@@ -81,6 +81,19 @@ destination and a date range still read true a month later. This replaced `READM
 **"No trip name, ever"**, which read as a privacy rule and was only ever a consequence of
 cutting one PNG at build time.
 
+## One thing CI caught that nothing local could
+
+The first push failed `pdf-smoke` on the image build: `COPY --from=build /repo/scripts/og-covers`
+→ `not found`. The `build` stage copies `packages`, `backend` and `frontend` and **has never had
+`scripts/`** — the fonts line beside it reads from that stage only because `frontend/` happens to
+be there already, which is exactly the kind of neighbouring line that reads as a pattern and is
+not one. The covers are sources with no build step, so they come from the build **context**
+instead.
+
+Worth naming because no local check could have said so: the sandbox has no Docker daemon, so
+`pdf-smoke` is the only thing in this repo that builds the runtime image, and every claim about
+what is in that image — including the colour emoji font below — is verified there or nowhere.
+
 ## Not done
 
 - **Nothing was seen in a real chat app.** Every render here was a local screenshot. What a

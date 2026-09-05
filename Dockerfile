@@ -117,10 +117,16 @@ COPY --from=build /repo/backend/assets/fonts/noto-emoji.woff2 ./pdf-fonts/
 # from the screen the link opens. Neither source tree is otherwise in the runtime image, and
 # `app/` is where the flattened stylesheets land because a cover renders the app's SHIPPED
 # rules rather than a transcription of them.
-COPY --from=build /repo/scripts/og-covers ./og-covers
-COPY --from=build /repo/frontend/src/styles/tokens.css \
-     /repo/frontend/src/App.css \
-     /repo/frontend/src/screens/shared-itinerary.css \
+#
+# **From the build CONTEXT, not from the `build` stage** — that stage copies `packages`,
+# `backend` and `frontend` and has never had `scripts/`, so `--from=build` failed the image
+# build outright (`pdf-smoke`, 2026-09-05). These are sources with no build step of their own,
+# so there is nothing a stage would add; the fonts line above only reads from `build` because
+# `frontend/` happens to be there already.
+COPY scripts/og-covers ./og-covers
+COPY frontend/src/styles/tokens.css \
+     frontend/src/App.css \
+     frontend/src/screens/shared-itinerary.css \
      ./og-covers/app/
 EXPOSE 3000
 CMD ["node", "dist/main.js"]
