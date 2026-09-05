@@ -1,0 +1,106 @@
+# 0219 — A day is a place you can see: the day's head is a frame with the day's shot, and the day's facts live in it
+
+**Status:** Accepted 2026-09-05 (owner: _"figure everything out, then write up ADRs and a detailed phased plan"_), not built. Build plan: [`planning/2026-09-05-a-day-is-a-place-you-can-see-build-plan.md`](../planning/2026-09-05-a-day-is-a-place-you-can-see-build-plan.md). Mockup: [`mockups/a-day-is-a-place-you-can-see-v1.html`](../../mockups/a-day-is-a-place-you-can-see-v1.html). Brief: [`planning/2026-09-05-a-day-is-a-place-you-can-see.md`](../planning/2026-09-05-a-day-is-a-place-you-can-see.md).
+
+## Context
+
+Owner, with a screenshot of the public reader's day cards: _"I want to enhance my day view and plan day screens so that they look more beautiful, more professional and more stylish … the live sharing screen has images (from the place enrichment) … Try to think what fits both plan day and day view, and what fits only one."_ And, on the strip above the day's list: _"the ambient stuff (car rentals, hotel stays etc.) … I don't really like how ambient events look anyway."_
+
+Four facts from the code frame every decision below:
+
+1. **The day rows already have a photo slot and nobody fills it.** [ADR-0167](0167-the-badge-is-the-thumbnails-frame.md) §1 made the badge the thumbnail's frame; `PlaceBadge` takes `photoUrl`; `badgePhoto()` applies "a picked icon beats a fetched photo"; the enrichments ride the snapshot and the Dexie cache, so they are there offline. `EventCard`, the builder row, `TransitionRow` and `StayRow` render the badge **without the prop**. `Map.tsx` is the one host that passes it.
+2. **The design the owner is pointing at is one-off CSS.** `.sh-shot` and `.sh-day-head` live in `screens/shared-itinerary.css` alone. The app's own day head is `.sec-title`: 12px muted text reading `יום 3 · ראשון · איסלנד`.
+3. **The ambient strip is three kinds of thing in one teal box.** `.day-ambient` stacks the day's distance total (a plain line), Plan's amber fit verdict (a card), a teal card per span that no row names today (in practice a car hire's middle day: `Hertz · יום 3 מתוך 6`), and a teal card per **untimed hard event** with a settle pair (`UnplacedCommitment`, [ADR-0171](0171-a-time-can-be-a-floor-or-a-ceiling.md) §10a-i). Teal was justified as "a place, not a time"; a hire's day count is neither, and rule 4 says teal is location only.
+4. **One credit line has two shipped treatments and two visual orders.** ADR-0167 §4 renders it _under_ the image (`PlaceKnowledge`); [ADR-0213](0213-a-shared-trip-changes-emphasis-and-print-is-its-own-rendering.md) §5 renders it _on_ the image under a scrim (the reader). `placeCredit()` joins two isolated runs in an RTL paragraph (photographer at the start edge); the reader composes one server-side string that displays LTR.
+
+## Decision
+
+### §1 · The badge takes the photo on both day surfaces — two hosts, no new slot
+
+`EventCard` (both variants, including the settle variant) and Plan's `BuilderRow` pass `photoUrl` to `PlaceBadge`, resolved by `badgePhoto(place, enrichments[placeId])` and served through `apiAssetUrl`. **Measured at 0px** (card ⁦71px⁩ → ⁦71px⁩, builder row ⁦69px⁩ → ⁦69px⁩, a 495px list unchanged).
+
+- **The event's own place**, never the booking's endpoints: the row's badge has always been the event's place (`eventShowOnMap` frames it), and the photo is the same place's.
+- **A picked icon beats a fetched photo, at both levels.** ADR-0167 §2 tests `place.icon`; here the row's glyph is `chosenIcon(event.icon)`, and an icon a human picked _on the event_ is the trip's opinion exactly as one picked on the place. So: photo only when neither the event nor the place carries a picked icon.
+- **No category ring.** The day rows' badges were always `--paper` and never carried a hue, so there is nothing to preserve; only `PlaceBadge`'s white hairline (`.wp-placebadge-ring` with `--badge-ring` unset) holds the crop against a bright sky. Five hues on a list whose only accent is amber-for-time would spend rule 4's budget for no information the glyph did not already carry.
+- **Not `TransitionRow`, not `StayRow`, not `MaybeCard`.** [ADR-0210](0210-a-day-is-points-lines-and-envelopes.md) §1 made the point's badge a 32px circle-dot and §4 took the stay's tile away; a photo in a 32px circle is a smear and a stay has no box. The shelf tile's glyph is inline content with no box at all (drawn and refused in the mockup's §5).
+- **A failed image degrades to the glyph** — `useFailableImage` inside `PlaceBadge` already does this.
+
+This amends ADR-0167 §1 in place (its §19) and needs nothing else.
+
+### §2 · The day's head is a frame, and it is the reader's frame
+
+`ui/domain/DayHead` replaces `.sec-title`'s heading on both day surfaces **and** the reader's day-card head. Its CSS is `.sh-day-head` / `.sh-day-date` / `.sh-day-copy` / `.sh-shot` **moved** out of `shared-itinerary.css` into `day-head.css` under `wp-dayhead-*` names — the reader consumes the component, so its rules leave its sheet. Root rule 8: the reader's head is the one-off that nearly does the job, so it is generalised rather than twinned. The mockup draws the app's head with the reader's classes verbatim, and the geometry it measures is therefore the reader's own.
+
+**Three bands in one card**, inside the `.day-page` where `.sec-title` was: the shot (§3, when there is one) · the grid `64px minmax(0, 1fr) auto` at `min-height: 64px` holding the date tile and the name (the reader's 76 was sized for a name plus two lines; the facts now live below) · the footer band with the facts and the action. `--card`, 16px radius, the reader's hairlines.
+
+- **The date column says the day of month and the weekday** (`13` / `ראשון`), as the reader's does. The trip ordinal (`יום 3`) is the header anchor's (`יום 3/12`) and is not repeated; the destination is the header's trip name and is not repeated either. **Today** takes the amber ground and the word `עכשיו` in that column, in **both modes** — a day is a span of time and the selected today is already amber in the day strip; Plan's ban is on the _pulse_, not on marking today.
+- **The title is the day's name, from the same derivation the reader uses** — `fallbackDayTitle` over `DayFacts`, moved to `packages/shared` (§6). Flights first, then the region the stops share, then what they are, then the furthest stop or the route. On `NONE` (no places) the title is `trip.destination` — what the old heading carried, and the one word an empty day still has.
+- **Under the grid, a footer band carries the day's facts and the day's action.** The facts are at most two lines, full card width, allowed to wrap, never ellipsised: the day's distance total (`DayTravelTotal`, lifted from the strip — the Home glance keeps its own copy), then in Plan only either the fit verdict when the day does not fit (in `--amber-deep` with the `warn` glyph, ADR-0206 §AN's sentence unchanged) or the past-day note (`t.planDay.pastNote`, `archive` glyph) on a read-only day. **Not the stay** — [ADR-0209](0209-a-stay-is-named-once-in-the-day-it-belongs-to.md) names it once, as the bookend rows. **And not a span's middle day** (`Hertz · יום 3 מתוך 6`): the owner asked to lose information if the head was crowded, and this is the information — on day three of six there is nothing to do with the company's name; the hire's edges are rows on their own days and its count sits on the booking in the Index. This amends [ADR-0163](0163-a-hire-is-not-a-journey.md) §3, which kept the company on the strip so it would not vanish from the day. The facts were drawn first as the reader's `.sh-day-copy > span` lines and the render clipped two of them at 360 (Plan's verdict at 247px, the past-day note at 269px, in a 238px column) — the reader's copy column is sized for a name and a stay, not for a day's facts.
+- **Two text sizes and one display face.** The numeral keeps `--font-head` (the day's stamp, as in the reader); the name is `--font-body` 15px/700; the facts are `--font-body` `--sh-micro` (12.5px)/400 in `--muted`, and the total's own 11px/600 readout takes the facts' size inside the head. No mono digits, no emoji, no third size — the owner's round-three report was _"several different fonts and sizes, which looks weird"_, and the first draft had five sizes, two faces, mono and an emoji in one card.
+- **The day's one action shares that footer band**: the existing `.new-event-btn` (`+ אירוע חדש`), unchanged in look, at the end edge where `.sec-title` has always put it, bottom-aligned beside the facts (`.wp-dayhead-foot`: flex, `space-between`, `align-items: flex-end`, a hairline above). A row of its own cost 39px more and read as a fourth band. Two placements were drawn and rejected by rendering: an icon-only `+` in the trailing cell (the owner's first question about the render was _"what is it?"_ — an unlabelled control on a head carrying three kinds of text is not self-explanatory; the reader's caret is the universal disclosure mark and has no such problem), and the labelled button in that same cell, which **ellipsised the day's name at 360px** (`…ur crater ← Háifoss`) — a control took the width the head exists to spend on the title. The trailing track stays `auto` for the reader's caret and is 0px in the app. When the day is read-only (Trip's archive, Plan's past day) the footer is absent.
+- **The archive banner keeps its control and loses its heading.** Trip's past-day banner read `{heading} · לקריאה בלבד` plus `חזרה להיום`; the head now says the date, so the banner says `לקריאה בלבד` and keeps the button.
+
+### §3 · The day has a shot, and it is the reader's shot
+
+Above the head's grid, inside the same card: `.sh-shot` — a **116px** `object-fit: cover` photograph with a scrim caption carrying the place's name and its credit. One number across the three surfaces (the app's two days and the reader); the mockup's height control exists to _see_ 88 and 140, and a second density is the variant rule 8 warns about.
+
+- **Which photo:** `dayPhoto`'s ranked choice (dwell minutes + a bonus for a booked or hard stop + `log10(1 + userRatingsTotal) × 30` + a nickname/icon bonus) under its gate — **`confidence ≥ 0.9` and a non-empty credit** — moved to `packages/shared` (§6) so the reader and the app picture a day identically. A day whose stops clear no gate has no shot and no placeholder: the frame stands alone, as the reader's does.
+- **The cost, stated:** at 360×640 the head with its shot is 194px, ⁦30%⁩ of the raw viewport (⁦23%⁩ at 390×844); the first row of the day sits nearer the fold on a small phone. Accepted: a day is a place before it is a list, and the frame without a shot is 78px, which is what most city days will pay.
+- **Tapping the shot opens the full picture** in `MediaViewer`, the way `PlaceKnowledge`'s hero does on the Map (ADR-0167 §10), with the credit as its caption. The reader's shot stays inert — it has no app to open into.
+- **Eager, not lazy**: the shot is the first thing on the page.
+
+### §4 · The ambient strip is retired; a commitment without a clock is a row
+
+`.day-ambient`, `.ambient`, `.ambient.unplaced`, `.as-open`, `.day-fit` and their rules are **deleted**. What they carried goes to two places:
+
+- **Facts true of the whole day → the head's footer band** (§2): the total, Plan's verdict, Plan's past-day note. **A span's middle day → nowhere on the day** (§2's loss, ADR-0163 §3 amended).
+- **An untimed hard event → a row at the top of `.day-list`**, on `.transition-row`'s grammar (ADR-0210 §1: the amber box and the 32px circle badge are the committed point's, and an untimed commitment is a commitment without a moment). `UnplacedCommitment` keeps its name and its props and is re-rendered on that tree: `tr-face` (opens the booking), `tr-badge`, `tr-main` with `tr-title` and a `tr-time` whose `tr-clock` reads `ללא שעה` with no bound box, and the compact `SettleControl` in Trip only (ADR-0171 §10e). It stays **above the first row** and below the head, so §10a-i's "a claim on your day reads at the top" holds without a strip to hold it.
+
+Teal leaves the day's top entirely. The one hue left there is amber, on today's date column and on Plan's verdict line — both time (rule 4).
+
+### §5 · A passed row's photo recedes with its card — Trip only
+
+`.wp-event.passed .wp-placebadge-photo img { filter: grayscale(1) }`, beside `.wp-event.passed` in `event-card.css`. The card already drops to 0.66 opacity; a full-colour thumbnail inside it is the one thing on the row still saying "upcoming". The settle variant is `passed` and greys too. **`done` keeps its colour** — a record is not a fade. Plan has no phases ([ADR-0043](0043-day-view-now-line-phases-and-archive-chrome.md) §5), so nothing there changes.
+
+### §6 · The read gets the place's knowledge, and the credit rule gets its second half
+
+`EventDetail` renders `PlaceKnowledge` at `KNOWLEDGE_DENSITY.DECIDING` (the picture, three clamped lines, `עוד בגוגל`, nothing to expand into) **directly under `.bk-head`**, before the hard note and the facts. A place with an image but no summary shows the picture and the link; with neither, nothing renders — `PlaceKnowledge` already answers both. `EventDetail` owns the `MediaViewer` for the full picture, exactly as `Map.tsx` does (`fullPicture` state, `placeCredit` caption). The build cost is one extraction: `.map-hero`, `.map-credit`, `.map-sum*` and `.map-know-more`'s base rules move from `map.css` to `place-knowledge.css`; the `.map-placecard:has(.map-hero)` grid rules stay where they are, since they lay out the Map's card and nothing else.
+
+**The credit line's rule, completed (amends ADR-0167 §4):**
+
+- **On the photograph, under a scrim, when the photograph is a band with nothing under it** — the day head (§3) and the reader's day card. The scrim is black over the picture in both themes, which answers §4's "re-solved for dark mode", and it costs 0px where a line under it costs ~16px on a head already 194px tall.
+- **Under the photograph, in the surface's own ink, when prose follows it** — `PlaceKnowledge`, on the Map and in the read. The summary is under it anyway and the line reads as part of the same block.
+- **Composed once.** `placeCredit` moves to `packages/shared` and both renderers call it: `attribution · license`, each run isolated, so the photographer leads at the start edge everywhere. The reader's server-side composition is deleted.
+
+### §7 · What moves to `packages/shared`, and why it is one move
+
+`dayPhoto` (ranking + gate), `fallbackDayTitle` + `DayFacts` + the pure helpers that build them (the stops sequence's dedupe, the region/kind majority), and `placeCredit` — all pure, all currently in `backend/src/sharing/` or `frontend/src/lib/`, all now needed by both. `tripShapeOf` and `derivedPlaceLabel` already made this move for the same reason (ADR-0213's fourth pass). Nothing about the reader's output changes; its tests move with the functions.
+
+## What rendering it found
+
+- The credit's two visual orders (Context §4). Not visible in either surface alone.
+- `.wp-maybecard-ic` is `display: block` and carries `.wp-placebadge`'s ring `box-shadow`, so on a shelf tile whose idea has a place the teal ring spans the tile's width; `place-badge.css` describes that slot as "inline content, ~21×17px". One of the two is wrong — a device look, not this ADR's.
+
+## Alternatives considered
+
+- **An icon-only `+` in the head's trailing cell.** Drawn; the owner asked what it was. Rejected for that reason.
+- **The labelled button in the trailing cell.** Drawn; at 360px it ellipsised the day's name and Plan's verdict line. A head's width belongs to its title.
+- **Keeping `.sec-title` above the frame** for the button. The same ~34px as the footer, outside the card, and it repeats the date the frame says.
+- **The stay as the head's second line** (the reader's second line). ADR-0209 names it once, as bookend rows.
+- **A photo behind the whole event card.** A scrim on every card in both themes, and the hard/soft grammar (dashed border, hatch) disappears under it. The reader put the photo _above_ the card for the same reason.
+- **A departure board on the day view.** The board is rationed — one per screen, and it is Home's.
+- **Category hue on the day rows' badges.** Rule 4's budget; the glyph already says the kind.
+- **An indigo day head in Trip mode.** Two boards under one dark header, and a broken mode identity in Plan.
+- **A mini-map in the head.** ADR-0004; the badge is already the way to the Map (ADR-0121 §8).
+- **Photo tiles on the shelf.** No box to clip into; a new slot is what ADR-0167 §1 refused; ragged on any city day. Drawn to refuse (mockup §5).
+- **A different shot height in Plan.** One number, three surfaces.
+- **The facts as lines in the reader's copy column.** Drawn; clipped at 360. The column is a name's width.
+- **A car hire's middle day as a head line.** Drawn; dropped on the owner's "lose a little information if it's too much" — it is the one fact in the head nobody acts on.
+- **Keeping the ambient strip and re-tinting it.** The strip is three kinds of thing; splitting them by what they are (a fact → a line, a commitment → a row) is what makes the top of the day read.
+
+## Consequences
+
+- Both day surfaces lead with a picture when the day has one, and their head says what the reader's says. The three surfaces name and picture a day from one derivation.
+- `screens.css` loses `.day-ambient`, `.ambient*`, `.as-open`, `.day-fit*`; `shared-itinerary.css` loses its head and shot rules; `map.css` loses `PlaceKnowledge`'s base rules. Net CSS goes down.
+- `UnplacedCommitment` stops being a fourth row grammar and becomes the third host of `.transition-row`.
+- Open, and owned by the device pass: whether a real photograph is legible at 40px (ADR-0167 §18); the shot's 116px on a 640px phone.

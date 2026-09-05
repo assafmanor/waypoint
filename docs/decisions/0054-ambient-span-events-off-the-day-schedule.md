@@ -4,6 +4,10 @@
 **Date:** 2026-07-17
 **Refines:** [0045](0045-trip-home-real-data-only.md) (the day-at-a-glance card this fixes), [0041](0041-parallel-overlapping-events.md) (`buildTimeTree` / the block model an ambient span must sit outside of), [0018](0018-timeline-data-model-shape.md) (the `endDate` ambient-span field that becomes the discriminator), [0047](0047-booking-event-linkage-and-notes.md) (a hotel = one Booking backing one Event with an `endDate` span), [0037](0037-overnight-events.md) (distinguishes a true multi-day span from a single overnight tail), [0011](0011-hard-soft-event-model.md) (hard/soft is orthogonal; ambient is a third, presentational axis)
 
+## Amendment (2026-09-05) — the ambient STRIP retires; the span's edges and the day head carry what it said ([ADR-0219](0219-a-day-is-a-place-you-can-see.md) §2/§4)
+
+The "backdrop" this ADR introduced became `.day-ambient` on the day surfaces: a teal card per span on its middle days, later also the home of the day's distance total, Plan's fit verdict and every untimed hard event (ADR-0171 §10a-i). The owner: _"I don't really like how ambient events look anyway."_ ADR-0219 splits the strip by what each thing is and deletes it: the total and the verdict become lines in the day head; an untimed commitment becomes a `.transition-row` at the top of the list; and a span's **middle day says nothing on the day** (ADR-0163's 2026-09-05 amendment) — its edges are rows (ADR-0209 for stays, ADR-0184 §9 for the rest) and its count stays on the Index and the Home glance. §2's rule that a span is **off the counted schedule** is untouched; what changes is that it no longer has a band of its own above it.
+
 ## Amendment (2026-08-25) — off the day's SCHEDULE, on the day's ROUTE
 
 Owner, running the shipped map polyline on a real trip: _"Now that we have real paths, I'm starting

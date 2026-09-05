@@ -1,15 +1,25 @@
 <!doctype html>
-<!-- יום הוא מקום שרואים — WHERE A PHOTOGRAPH GOES ON THE TWO DAY SURFACES, AND WHAT THE
-     DAY'S HEAD SAYS — v1 (2026-09-05)
+<!-- יום הוא מקום שרואים — WHERE A PHOTOGRAPH GOES ON THE TWO DAY SURFACES, WHAT THE DAY'S
+     HEAD SAYS, AND WHERE THE AMBIENT STRIP WENT — v1 (2026-09-05, two rounds the same day)
 
      WHAT THIS IS. Owner, with a screenshot of the public reader's day cards on their own
      Iceland trip: "I want to enhance my day view and plan day screens so that they look
      more beautiful, more professional and more stylish. They're currently looking pretty
      good, with schedule, driving times etc. But I think that they could still look more
      inviting. For instance, the live sharing screen has images (from the place
-     enrichment). … brainstorm all improvements and mockup some ideas along with
-     recommendations. Try to think what fits both plan day and day view, and what fits
+     enrichment). … Try to think what fits both plan day and day view, and what fits
      only one."
+
+     ROUND 2, same day. Off the first render: "I can see a plus sign on the day header -
+     what is it? Do we need to mockup more details? Don't leave out anything for the
+     implementing agent to guess" — and "the current plan day / day view show stuff that
+     aren't apparent in your mockup: the ambient stuff (car rentals, hotel stays etc.).
+     Make sure to answer these as well, don't be afraid to change how stuff looks. I don't
+     really like how ambient events look anyway". Round 2 therefore DECIDES rather than
+     forks: the icon-only `+` is gone (the question was the answer), the ambient strip is
+     drawn as it ships and as it goes, and every state the build needs is a frame.
+     Promotes ADR-0219; the build plan is
+     `docs/planning/2026-09-05-a-day-is-a-place-you-can-see-build-plan.md`.
 
      ─────────────────────────────────────────────────────────────────────────
      WHAT READING THE CODE CHANGED — four things, and the first is the whole §1.
@@ -18,56 +28,50 @@
         badge the thumbnail's frame; `PlaceBadge` takes `photoUrl`, draws the clip, the
         ring and the failure fallback; `lib/place-photo.ts`'s `badgePhoto()` applies the
         "a picked icon beats a fetched photo" rule; and the trip's enrichments ride the
-        snapshot AND the Dexie cache (`trip-state.tsx` / `cache.ts`), so they are there
-        offline. Then `EventCard.tsx:354/426`, `PlanDay.tsx:2858` (the builder row),
-        `TransitionRow.tsx:118` and `StayRow.tsx` all render `PlaceBadge` WITHOUT the
-        prop. `Map.tsx` is the one host that passes it. So the first improvement on both
-        day surfaces is not a design: it is one prop on four hosts, at 0px.
+        snapshot AND the Dexie cache, so they are there offline. `EventCard.tsx:354/426`
+        and `PlanDay.tsx:2858` (the builder row) render `PlaceBadge` WITHOUT the prop.
+        `Map.tsx` is the one host that passes it. §1 is one prop on two hosts, at 0px.
 
      2. THE READER'S DAY CARD IS THE DESIGN THE OWNER IS POINTING AT, AND IT IS ONE-OFF
         CSS. `.sh-shot` (the 116px photo band with a scrim caption) and `.sh-day-head`
-        (a 64px date column, a name, a second line, a 44px trailing control) live in
+        (a 64px date column, a name, a second line, a trailing control) live in
         `screens/shared-itinerary.css` and nowhere else. The app's own day head is
-        `.sec-title`: 12px muted text reading `יום 13 · ראשון · איסלנד`. Rule 8 says
-        generalise the one-off rather than draw a second one, so §2 here is drawn WITH
-        the reader's own classes — the proposal is to lift them into `ui/domain/DayHead`
-        and have the reader consume that, not to write a `.wp-dayhead` twin.
+        `.sec-title`: 12px muted text reading `יום 3 · ראשון · איסלנד`. Rule 8 says
+        generalise the one-off, so §2 is drawn WITH the reader's own classes — the
+        proposal is `ui/domain/DayHead`, which the reader then consumes.
 
-     3. TWO SHIPPED TREATMENTS OF ONE CREDIT LINE. ADR-0167 §4 decided the credit renders
-        UNDER the image, never over it ("an overlay fights whatever is behind it and has
-        to be re-solved for dark mode") — and `PlaceKnowledge`'s `.map-credit` does that.
-        The reader (ADR-0213 §5) then put the credit ON the photograph, under a black
-        scrim. Both are live. The scrim is theme-invariant (black over a photo is the
-        same in both themes), which answers §4's stated reason, and it costs 0px of
-        height where §4's line costs ~16px. This file draws the scrim on the day head
-        and the under-line inside the read, and asks the owner to pick ONE.
+     3. THE AMBIENT STRIP IS THREE KINDS OF THING IN ONE TEAL BOX. `.day-ambient` stacks
+        the day's distance total (a plain line), Plan's amber fit verdict (a card), a teal
+        card per span no row names today (a car hire's middle day: `Hertz · יום 3 מתוך 6`)
+        and a teal card per UNTIMED HARD EVENT with a settle pair (`UnplacedCommitment`,
+        ADR-0171 §10a-i). Teal was "a place, not a time"; a hire's day count is neither.
+        §2 splits them by what they are: a fact → a line in the head; a commitment → a row.
 
-     4. THE READ HAS NO KNOWLEDGE. Tapping a row opens `EventDetail` (ADR-0174 §4). The
-        component that shows a place's photo, credit, summary and `עוד בגוגל` —
-        `PlaceKnowledge` — is consumed by the Map's place card and Plan's research card
-        only. Its layout rules are scoped under `.map-placecard:has(.map-hero)` in
-        `map.css`, so reusing it in the read is a small CSS extraction, not a new
-        component.
+     4. ONE CREDIT LINE, TWO SHIPPED TREATMENTS, TWO VISUAL ORDERS. ADR-0167 §4 renders it
+        UNDER the image (`PlaceKnowledge`); ADR-0213 §5 renders it ON the image under a
+        scrim (the reader). And `placeCredit()` joins two isolated runs in an RTL
+        paragraph (photographer at the start edge) while the reader composes one
+        server-side string that displays LTR. Decided: on the band, under the prose,
+        composed once in `packages/shared`.
 
      ─────────────────────────────────────────────────────────────────────────
-     THIS FILE'S SECTIONS:
+     THIS FILE'S SECTIONS AGAINST ADR-0219'S:
 
-       §1 the badge is the frame (both modes)       →  build now; ADR-0167 §1 amended
-       §2 the day's head becomes a frame + a shot    →  the design decision; new ADR
-       §3 a photo takes part in the phase grammar   →  Trip mode only
-       §4 the read gets the place's knowledge       →  both modes; ADR-0174 amended
-       §5 the shelf tile, with and without a badge  →  Plan mode only; drawn to REFUSE
+       §1 the badge is the frame (both)              → ADR §1
+       §2 the head is a frame, the strip goes (both) → ADR §2, §3, §4
+       §3 every state the head has                   → ADR §2 (states)
+       §4 a passed photo recedes (Trip only)         → ADR §5
+       §5 the read gets the knowledge (both)         → ADR §6
+       §6 the shelf tile — drawn to refuse           → ADR "Alternatives"
 
      ─────────────────────────────────────────────────────────────────────────
-     Interactive: theme (light · dark), screen (360×640 · 390×844), the shot's height
-     (88 · 116 · 140 — a feel call, default = the reader's shipped 116), and whether the
-     head's second line carries the day's distance total.
+     Interactive: theme (light · dark), screen (360×640 · 390×844), and the shot's height
+     (88 · 116 · 140 — a feel call; 116 is the reader's shipped number and the decision).
 
      Photographs are SYNTHETIC — this sandbox has no egress to `upload.wikimedia.org`, so
      every picture is an inline SVG landscape. Crop geometry, scrim legibility and the
-     ring's hold against a bright sky are honest; the content is not. Same caveat
-     `place-enrichment-v2.html` carried, and a device pass owns the answer to "is a real
-     photograph legible at 40px" (backlog).
+     ring's hold against a bright sky are honest; the content is not. A device pass owns
+     "is a real photograph legible at 40px" (ADR-0167 §18).
 
      Measurements at the foot are read from THIS page's rendered DOM. -->
 <html lang="he" dir="rtl" data-theme="light">
@@ -84,11 +88,11 @@
 
     <!-- ══ THE APP'S REAL STYLESHEETS, in the app's own import order ══
          main.tsx → App.tsx → per-component sheets → the two lazily-loaded screens
-         (`map.css` for §4's `PlaceKnowledge`, `shared-itinerary.css` for §2's reuse of
+         (`map.css` for §5's `PlaceKnowledge`, `shared-itinerary.css` for §2's reuse of
          the reader's day head and shot). Regenerate with:
 
              node mockups/tools/inline-app-css.mjs mockups/a-day-is-a-place-you-can-see-v1.html -->
-    <!-- APP-CSS: styles/tokens.css, App.css, screens.css, styles/edge-fade.css, ui/when-line.css, ui/domain/place-badge.css, ui/domain/event-card.css, ui/domain/glance-card.css, ui/domain/day-join.css, ui/domain/settle-control.css, ui/domain/now-marker.css, ui/domain/maybe-card.css, screens/map.css, screens/shared-itinerary.css -->
+    <!-- APP-CSS: styles/tokens.css, App.css, screens.css, styles/edge-fade.css, ui/when-line.css, ui/primitives/modal.css, ui/domain/place-badge.css, ui/domain/event-card.css, ui/domain/glance-card.css, ui/domain/day-join.css, ui/domain/settle-control.css, ui/domain/now-marker.css, ui/domain/maybe-card.css, screens/map.css, screens/shared-itinerary.css -->
     <style data-app-css>
 /* GENERATED by mockups/tools/inline-app-css.mjs from the manifest above.
    Do not edit below this line — change the app css, then re-run the tool. */
@@ -9593,6 +9597,319 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   color: var(--muted);
 }
 
+/* ═══ ui/primitives/modal.css — generated, do not edit here ═══ */
+/* The single overlay primitive (ADR-0079). Three variants share one scrim +
+   focus/close machinery (Modal.tsx); only shape/position differ. Built on the
+   Wave-0 non-color tokens (radius/elevation/spacing, ADR-0082) and logical
+   properties so RTL needs no left/right. Neutral chrome only — never amber/teal
+   (unlike the legacy .confirm-card, which is deliberately amber for the
+   hard-edit guard); semantic hues stay reserved for meaning, not chrome.
+   The old sheet, confirm, and event-form class families remain in screens.css
+   until their consumers fold onto this primitive (Wave 2). */
+
+/* ── Arrival & departure (ADR-0140) ─────────────────────────────────────────
+   The scrim and the card animate on SEPARATE channels, and both animate in BOTH
+   directions. Before this the whole overlay carried one `opacity` keyframe, so
+   scrim and card cross-faded as a single flat image and the card never travelled —
+   a bottom sheet with no direction reads as a screenshot swap rather than as
+   something that came from the bottom of the screen. And there was no exit at all:
+   `Modal` unmounted its portal on the frame `onClose` ran, so every sheet, dialog,
+   picker and the search overlay SNAPPED shut. Enter-slow / exit-instant is the
+   single loudest "unfinished" tell an app can have, and it was app-wide.
+
+   `animation`, not `transition`, on purpose: an animation fires on mount with no
+   need to paint a closed state first and flip it a frame later, so there is no
+   double-rAF and no first-frame flash.
+
+   Exit is deliberately BRISKER than entrance (`--t-quick` vs `--t-base`): you have
+   already decided to leave, and matching the two makes dismissal feel sluggish.
+   The `.toast` in screens.css is the in-repo precedent for animating both ways off
+   a class — this is that shape, generalized into the primitive so all ~20 overlay
+   call sites inherit it (ADR-0096).
+
+   ── EVERY EXIT HAS ITS OWN @keyframes NAME, AND MUST (ADR-0140's 2026-08-02
+   amendment) ───────────────────────────────────────────────────────────────────
+   This block used to read "`.is-closing` swaps in the reverse pair", with one
+   keyframe per channel played `reverse` to leave — argued as the thing that stops
+   an exit drifting out of sync with its entrance by being written twice. It does
+   stop that. It also meant NONE OF THESE EXITS EVER RAN.
+
+   The same `animation-name` is the same animation: changing only duration, easing
+   and direction retargets the running one rather than starting a new one, so it
+   keeps its current time. By the time anyone closes an overlay that current time is
+   far past the new `--t-quick` duration, the animation is therefore already
+   complete, and `fill: both` paints the REVERSED END STATE on the first frame.
+   Measured on a sheet: open for >=200ms and it is at `translateY(100%)` with the
+   scrim at 0 the instant `.is-closing` lands. It only animated if you closed within
+   ~140ms of opening — which is exactly the window ADR-0140's build log was sampling
+   in when it verified these durations "mid-flight", and why this survived review.
+
+   So the cost is real and is accepted: two names per channel is two things to keep
+   true, and it is the only way either of them runs. If you add a variant, add BOTH
+   halves — `modal-x-in` and `modal-x-out` — and never write `reverse` here.
+   `styles/exit-animations.contract.test.ts` fails the build if this is broken again;
+   jsdom has no CSS engine, so no rendering test can catch it. */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  /* Peer of the legacy .sheet-/.confirm-overlays (also z-index 20): a nested,
+     body-portalled prompt paints above by DOM order, not a higher z-index. */
+  z-index: 20;
+}
+/* The scrim is a pseudo-element rather than the overlay's own background, because
+   the overlay is the CARD's ancestor: fading the overlay fades the card with it,
+   which is exactly the coupling being removed here. The backdrop click stays on
+   `.modal-overlay` itself, so hit-testing is unchanged. */
+.modal-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(22, 35, 61, 0.45);
+  animation: modal-scrim-in var(--t-base) var(--ease-standard) both;
+}
+.modal-overlay.is-closing::before {
+  animation: modal-scrim-out var(--t-quick) var(--ease-exit) both;
+}
+/* Paints above the scrim pseudo (which is drawn as the first child) and gives the
+   card its own compositing box for the transform. */
+.modal-card {
+  position: relative;
+}
+/* While the exit plays, the overlay is on screen but no longer a target — the
+   decision to close is already made, and a tap landing on a leaving sheet would
+   act on a surface the user has dismissed. */
+.modal-overlay.is-closing {
+  pointer-events: none;
+}
+
+/* sheet — bottom-anchored, full-width, rounded top (phone-first, ADR-0017). */
+.modal-overlay[data-variant='sheet'] {
+  align-items: flex-end;
+}
+/* dialog — centered, constrained, gutter so it never touches the screen edge. */
+.modal-overlay[data-variant='dialog'] {
+  align-items: center;
+  padding: var(--space-6);
+}
+/* full — a full-viewport screen, not a floating card over dimmed content
+   (ADR-0101): opaque (matches the app's own page background) since it
+   REPLACES the trip header + bottom nav rather than sitting above them, and
+   there's nothing "outside" it to see or tap-dismiss to (see Modal.tsx's
+   backdrop-click gate). Used today by `SearchOverlay`; reusable for any
+   future full-screen mode. */
+.modal-overlay[data-variant='full']::before {
+  background: var(--screen);
+}
+
+/* Each variant arrives the way its SHAPE implies — the point of the split is that
+   there is something shape-specific to say, which one shared fade could not.
+   Entrances use `--ease-arrive` so the card settles rather than stopping dead;
+   exits use `--ease-exit`, which must never overshoot. */
+
+/* sheet — rises from the edge it came from. */
+.modal-overlay[data-variant='sheet'] .modal-card {
+  animation: modal-sheet-in var(--t-base) var(--ease-arrive) both;
+}
+.modal-overlay[data-variant='sheet'].is-closing .modal-card {
+  animation: modal-sheet-out var(--t-quick) var(--ease-exit) both;
+}
+/* dialog — has no edge to come from, so it is summoned in place. A confirm that
+   slid in from somewhere would imply a location it does not have. */
+.modal-overlay[data-variant='dialog'] .modal-card {
+  animation: modal-dialog-in var(--t-base) var(--ease-arrive) both;
+}
+.modal-overlay[data-variant='dialog'].is-closing .modal-card {
+  animation: modal-dialog-out var(--t-quick) var(--ease-exit) both;
+}
+/* full — REPLACES a screen, so it arrives like one: from the inline-end edge, the
+   same grammar as the shell's forward push, off the same `--dir` sign. */
+.modal-overlay[data-variant='full'] .modal-card {
+  animation: modal-full-in var(--t-base) var(--ease-standard) both;
+}
+.modal-overlay[data-variant='full'].is-closing .modal-card {
+  animation: modal-full-out var(--t-quick) var(--ease-exit) both;
+}
+
+.modal-card {
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: var(--elevation-floating);
+  /* Focus lands here (tabIndex -1); it is not keyboard-tabbable, so no ring. */
+  outline: none;
+}
+
+.modal-overlay[data-variant='sheet'] .modal-card {
+  max-width: 480px;
+  border-start-start-radius: var(--radius-16);
+  border-start-end-radius: var(--radius-16);
+  padding: var(--space-4);
+  /* Clear the home indicator on the bottom-anchored variant. */
+  padding-block-end: calc(var(--space-4) + var(--safe-bottom));
+}
+
+.modal-overlay[data-variant='dialog'] .modal-card {
+  max-width: 340px;
+  border-radius: var(--radius-16);
+  padding: var(--space-4);
+}
+
+.modal-overlay[data-variant='full'] .modal-card {
+  height: 100%;
+  max-width: none;
+  /* The card fills 100% of the overlay, so it's what's actually visible —
+     override the base rule's white `--card` fill with the same page-grey the
+     overlay itself uses, or the overlay's own background would never show. */
+  background: var(--screen);
+  border: 0;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-title {
+  font-weight: 700;
+  font-size: var(--text-h3);
+  line-height: var(--leading-snug);
+  color: var(--ink);
+  margin-block-end: var(--space-3);
+}
+
+/* Two keyframes per channel: an `-in` and an `-out`. The `-out` is the `-in`
+   inverted BY HAND, which is the cost the block at the top of this file accepts —
+   `reverse` expresses the same thing and does not run. Keep each pair in sync. */
+@keyframes modal-scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes modal-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes modal-dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes modal-full-in {
+  from {
+    transform: translateX(calc(var(--dir) * 100%));
+  }
+  to {
+    transform: none;
+  }
+}
+
+/* The exits. Each is its `-in` read bottom-to-top; nothing here is a new decision. */
+@keyframes modal-scrim-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes modal-sheet-out {
+  from {
+    transform: none;
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes modal-dialog-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+@keyframes modal-full-out {
+  from {
+    transform: none;
+  }
+  to {
+    transform: translateX(calc(var(--dir) * 100%));
+  }
+}
+
+/* ── lift — the promoted hero (ADR-0160) ─────────────────────────────────────
+   CENTRED and CONTENT-SIZED, which is what makes it none of the three above: a
+   sheet is bottom-anchored, a full replaces the screen, and a dialog is centred but
+   width-constrained and paper. The lifted hero is as tall as it has something to
+   say (§8, owner's call).
+
+   **Centred, not top-anchored** — owner's correction on a device, 2026-08-03: _"I
+   was imagining the hero to lift to the center of the screen, not to the top"_.
+   ADR-0160 §5 said the box travels to the top of the screen, which is what the
+   mockup's measurement argued for (it was the only way to stop the anchored
+   character needing a scroller at 360×640). Read on a real phone, a centred lift is
+   the one that looks like the object came toward you: a top-anchored card reads as a
+   panel that arrived from somewhere, which is the sheet grammar §2 rejects.
+
+   It still covers the chrome whenever it is tall enough to, so §5's consequence
+   holds for the cases that motivated it; a short hero now leaves the chrome visible
+   above it, which is the honest reading of content-sizing.
+
+   **This variant has no entrance or exit of its own, and that is deliberate.** Every
+   other overlay's motion is CSS keyed on `.is-closing`; the lifted hero's is a
+   measured FLIP in `lib/useLiftFlight.ts`, because the box it travels from is a
+   different element on the page underneath and no stylesheet can know where that is.
+   The placeholder fade that stood here through phase 3 is GONE rather than kept as a
+   companion: a promoted object that also fades is two boards cross-dissolving, which
+   is precisely the overlay grammar §1 rejects, and it was reported as exactly that
+   on a phone. Under reduced motion nothing animates and the lifted state is simply
+   correct as a static state, which is the requirement anyway (ADR-0140 §5). */
+.modal-overlay[data-variant='lift'] {
+  align-items: center;
+  /* Viewport-relative, not a bare percentage, and shared as a custom property rather than
+     repeated: `.modal-card` has no `height` of its own here (only this `max-height`), and a
+     percentage `max-height`/`height` on a DESCENDANT of a box with no *specified* height
+     computes to `none` regardless of what that box's own max-height renders at (CSS2.1
+     §10.5) — which is exactly why the hero inside used to grow straight past this cap
+     instead of scrolling within it (ADR-0160 §T). Naming it once is what keeps the card and
+     the hero it wraps from independently computing "the room" and drifting. */
+  --lift-max-h: calc(100vh - 18px);
+  --lift-max-h: calc(100dvh - 18px);
+}
+.modal-overlay[data-variant='lift'] .modal-card {
+  margin: 8px;
+  width: calc(100% - 16px);
+  max-width: none;
+  max-height: var(--lift-max-h);
+  background: none;
+  /* `border: 0` and not just `border-radius: 0`, and the pair is the whole point: the base
+     `.modal-card` carries `1px solid var(--line)`, so resetting only the radius left a
+     SQUARE stroke boxing in the rounded hero, 1px outside it on every side. Reported from a
+     phone. The card is a transparent shell in this variant — the hero inside owns every
+     visible edge — so each paint property the base rule sets has to be given back here, and
+     this one was missed because a border with no radius reads as someone else's outline. */
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  overflow: visible;
+}
+
 /* ═══ ui/domain/place-badge.css — generated, do not edit here ═══ */
 /* PlaceBadge — the category badge as the way to the place on our map. It adds NO
    box to the row: the badge already exists on every host, at the same leading
@@ -15379,16 +15696,14 @@ button.day-trv-face:focus-visible {
     <style>
       /* ══════════════════════════════════════════════════════════════════════
          PROPOSED — the only app CSS this file writes by hand. Small on purpose: §1 is
-         a prop, §2 reuses the reader's `.sh-day-head` / `.sh-shot` verbatim, §4 reuses
+         a prop, §2 reuses the reader's `.sh-day-head` / `.sh-shot` verbatim, §5 reuses
          `PlaceKnowledge`'s classes. What is genuinely new is below, and each rule says
-         which sheet it moves into.
+         which sheet it moves into (`day-head.css`, ADR-0219 §2 / build plan phase 3–4).
          ══════════════════════════════════════════════════════════════════════ */
 
-      /* §2 · THE DAY'S HEAD IS A FRAME. Built as `ui/domain/DayHead` + `day-head.css`,
-         which is `.sh-day` + `.sh-shot` + `.sh-day-head` MOVED out of the reader's sheet
-         (the reader keeps consuming them under the new name). The host wrapper below is
-         the only rule the app adds: the card's margins in the day page, and the head is
-         a region rather than the reader's toggle button. */
+      /* THE DAY'S HEAD IS A FRAME. `ui/domain/DayHead` + `day-head.css` = `.sh-day` +
+         `.sh-shot` + `.sh-day-head` MOVED out of the reader's sheet under `wp-dayhead-*`
+         names; the reader consumes the component. The wrapper is the app's card. */
       .wp-dayhead {
         margin: 12px 0 12px;
         border: 1px solid var(--line);
@@ -15396,77 +15711,138 @@ button.day-trv-face:focus-visible {
         background: var(--card);
         overflow: hidden;
       }
+      /* A region, not the reader's toggle button; and the trailing track is CONTENT-SIZED
+         so the labelled `אירוע חדש` fits and a read-only day pays 0px for an empty cell. */
       .wp-dayhead > .sh-day-head {
         cursor: default;
+        grid-template-columns: 64px minmax(0, 1fr) auto;
+        /* The reader's 76 was sized for a name plus two lines in the copy column; here the
+           row holds the name alone and the facts live below, so the floor is the date
+           tile's own (numeral · weekday · `עכשיו`). Content still grows it. */
+        min-height: 64px;
       }
-      /* The reader's `.sh-day.is-now .sh-day-date` rule, MOVED with the head: amber marks
-         the day the trip is on (ADR-0213's eleventh amendment §2) — a span of time, which
-         is the one thing amber is for. Restated here only because the wrapper is the
-         app's, not the reader's `.sh-day`. */
+      /* The reader's `.sh-day.is-now .sh-day-date`, MOVED with the head: amber marks the day
+         the trip is on (ADR-0213's eleventh amendment §2) — a span of time, which is the
+         one thing amber is for. Both modes: the day strip already paints today amber in Plan. */
       .wp-dayhead.is-now .sh-day-date {
         background: color-mix(in srgb, var(--amber) 11%, var(--card));
       }
-      /* The trailing 44px column carries the day's one action — `אירוע חדש` as an
-         icon-only `+` at the touch floor, where the reader carries its caret. Neutral,
-         because a generic primary is never amber (rule 4). */
-      .wp-dayhead-add {
-        display: grid;
-        place-items: center;
-        border: 0;
-        background: none;
-        color: var(--ink);
-        cursor: pointer;
-        font: inherit;
+      /* TWO TEXT SIZES IN THE HEAD, AND ONE DISPLAY FACE (owner, round 3: "several different
+         fonts and sizes, which looks weird"). The numeral keeps `--font-head` — it is the
+         day's stamp and the reader's. Everything else is `--font-body`: the name at 15px/700,
+         the facts at `--sh-micro` (12.5px)/400. The total's own 11px/600 readout (a glance-card
+         density) is overridden to the facts' size here, so digits and words sit on one line
+         at one size. No emoji, no mono, no third size. */
+      .wp-dayhead .sh-day-copy > strong {
+        font: 700 15px/1.3 var(--font-body);
       }
-      .wp-dayhead-add .icon {
-        width: 20px;
-        height: 20px;
+      .wp-dayhead-facts .day-total-n {
+        font-size: inherit;
+        font-weight: inherit;
+        color: inherit;
       }
-      /* The shot's height is a control on this page (88 · 116 · 140). The reader ships
-         116 and the recommendation is to keep the ONE number; the control exists so the
-         owner can see what 88 buys on a 640px screen. */
+      /* THE DAY'S ACTION IS A FOOTER ROW, not a cell. Round 1 drew an icon-only `+` in the
+         trailing cell and got "what is it?"; round 2 drew the SHIPPED labelled
+         `.new-event-btn` in that cell and the render ellipsised the day's own name at 360
+         (`…ur crater ← Háifoss`) — a control took the width the head exists to spend on the
+         title. So the button keeps its look and moves under the grid, at the end edge where
+         `.sec-title` has always put it, on a hairline. Absent on a read-only day. */
+      .wp-dayhead-foot {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 9px 11px 10px;
+        border-top: 1px solid var(--line);
+      }
+      /* The button alone (an empty day) keeps to the end edge. */
+      .wp-dayhead-foot > .new-event-btn {
+        flex: 0 0 auto;
+        margin-inline-start: auto;
+      }
+      /* The shot's height is a control on this page (88 · 116 · 140). 116 is the reader's
+         shipped number and the decision; the control exists so 88 can be SEEN on a 640px
+         screen, not so a second number can be picked. */
       .wp-dayhead .sh-shot img {
         height: var(--dayshot-h, 116px);
       }
-      /* The second line is the day's distance total — `.day-total` moved INTO the head
-         from `.day-ambient`. `.sh-day-copy > span` forces `display: block` on the direct
-         child, so `.day-total` sits one level in and keeps its own flex. */
-      .wp-dayhead .day-total {
-        gap: 6px;
+      /* The shot is a BUTTON in the app (it opens the full picture, ADR-0167 §10's viewer)
+         and a figure in the reader. Same geometry either way. */
+      button.sh-shot {
+        display: block;
+        width: 100%;
+        padding: 0;
+        border: 0;
+        font: inherit;
+        color: inherit;
+        text-align: inherit;
+        cursor: pointer;
+      }
+      /* THE FACTS ARE A BLOCK UNDER THE GRID, FULL WIDTH — not lines in the copy column.
+         Round 2 drew them as `.sh-day-copy > span` lines and the render clipped two of them at
+         360 (Plan's verdict at 247px and the past-day note at 269px, in a 238px column): the
+         reader's copy column is sized for one name and one stay, and a day's facts are longer
+         than that. Below the grid they get the card's whole width (~326px at 360) and may WRAP,
+         so nothing is ellipsised; the date tile above them reads as the day's stamp beside its
+         name. `--sh-micro` (12.5px) and `--muted`, the reader's own facts ink. */
+      .wp-dayhead-facts {
+        flex: 1 1 auto;
+        min-width: 0;
+        display: grid;
+        gap: 5px;
         font-size: var(--sh-micro);
+        line-height: 1.45;
         color: var(--muted);
       }
-      .wp-dayhead .day-total-ic .icon {
+      .wp-dayhead-facts > span {
+        display: block;
+        min-width: 0;
+      }
+      .wp-dayhead-facts .icon {
         width: 12px;
         height: 12px;
+        vertical-align: -1.5px;
+        margin-inline-end: 5px;
+      }
+      .wp-dayhead-facts .day-total {
+        gap: 6px;
+        font-size: inherit;
+        color: inherit;
+      }
+      .wp-dayhead-facts .day-total .day-total-ic .icon {
+        width: 12px;
+        height: 12px;
+        margin: 0;
+      }
+      /* Plan's verdict (ADR-0206 §AN): what is missing is TIME, so amber — and `--amber-deep`
+         because plain amber is 2.1:1 as text on `--card` in light. Weight carries the
+         "act on it" the card used to. */
+      .wp-dayhead-facts > .wp-dayhead-fit {
+        color: var(--amber-deep);
+        font-weight: 600;
       }
 
-      /* §3 · A PASSED ROW'S PHOTO RECEDES WITH IT — `event-card.css`, beside `.wp-event.passed`.
-         The card already drops to 0.66 opacity; a full-colour thumbnail inside a faded
-         card is the one thing on the row that still reads "upcoming". Trip mode only:
-         Plan has no phases (ADR-0043 §5). `done` keeps its colour — a record is not a
-         fade. */
+      /* §4 · A PASSED ROW'S PHOTO RECEDES WITH IT — `event-card.css`, beside `.wp-event.passed`.
+         Trip mode only: Plan has no phases (ADR-0043 §5). `done` keeps its colour. */
       .wp-event.passed .wp-placebadge-photo img {
         filter: grayscale(1);
       }
 
-      /* §4 · THE READ GETS THE KNOWLEDGE — the ONE extraction the reuse needs. `.map-hero`,
+      /* §5 · THE READ GETS THE KNOWLEDGE — the ONE extraction the reuse needs. `.map-hero`,
          `.map-credit` and `.map-sum` are laid out by `.map-placecard:has(.map-hero) > .place`
-         grid rules in `map.css`; outside that card they have their base rules only. This
-         host is a plain column, so nothing more is needed than a stack — which is what
-         the extraction would be: these three base rules moving to `place-knowledge.css`. */
+         grid rules in `map.css`; outside that card they have their base rules only, which
+         is all a column needs. The extraction moves those base rules to
+         `place-knowledge.css` (build plan phase 5b). */
       .wp-read-know {
         display: flex;
         flex-wrap: wrap;
-        margin-top: 4px;
+        margin-top: 10px;
       }
       .wp-read-know .map-hero {
         margin-top: 0;
       }
 
-      /* §5 · THE SHELF TILE'S GLYPH SLOT GROWS A BOX — drawn to be measured and REFUSED.
-         `MaybeCard`'s `.wp-maybecard-ic` is inline content with no box, so a photo has
-         nowhere to clip; giving it `.bld-bd`'s 36px box is the smallest honest version. */
+      /* §6 · THE SHELF TILE'S GLYPH SLOT GROWS A BOX — drawn to be measured and REFUSED. */
       .wp-maybecard-ic.mk-boxed {
         width: 36px;
         height: 36px;
@@ -15480,7 +15856,8 @@ button.day-trv-face:focus-visible {
       /* ══════════════════════════════════════════════════════════════════════
          MOCKUP-ONLY OVERRIDES of shipped rules, labelled. The app's `.app` is a
          100dvh flex column and `.body` fades in and pads 92px for the toast; a frame
-         on a document page has neither a viewport nor a toast. */
+         on a document page has neither a viewport nor a toast. The read's `.modal-card`
+         is drawn IN FLOW rather than as the fixed overlay it is in the app. */
       .phone .app {
         height: auto;
       }
@@ -15489,8 +15866,13 @@ button.day-trv-face:focus-visible {
         animation: none;
         overflow: visible;
       }
-      /* The reader's card `.sh-day` is not used here — the wrapper above is — but the
-         `.sh-day-head` grid sets `cursor: pointer` because in the reader it is a button. */
+      .phone .modal-card.mk-inflow {
+        position: static;
+        transform: none;
+        max-height: none;
+        margin: 0;
+        animation: none;
+      }
 
       /* ══════════════════════════════════════════════════════════════════════
          mk-* — this file's own chrome. Nothing below ships. Own variables, dark block
@@ -15723,8 +16105,9 @@ button.day-trv-face:focus-visible {
         <p>
           שני מסכי היום (תצוגת היום בטיול, ובניית היום בתכנון) אומרים היום הכול במילים ובשעות.
           הקורא הציבורי כבר מראה תמונה של כל יום · והתמונה הזאת יושבת אצלנו במטמון, בלי רשת. הקובץ
-          הזה מצייר איפה תמונה נכנסת לשני המסכים בלי לפתוח חריץ חדש (הבאדג׳ כבר מסגרת, ADR-0167 §1),
-          מה הראש של היום אומר, ומה מתאים רק לאחד המצבים.
+          הזה מחליט איפה תמונה נכנסת לשני המסכים בלי לפתוח חריץ חדש (הבאדג׳ כבר מסגרת, ADR-0167 §1),
+          מה הראש של היום אומר, ולאן הולכת הרצועה ה«אמביינטית» (השכרת רכב, לינה, הסה״כ, הפסק של
+          תכנון) · שמעל הרשימה. כל סעיף מסומן: שני המצבים, או אחד.
         </p>
         <p>
           כל מספר בטבלת המדידה בתחתית נקרא מה-DOM המרונדר בעמוד הזה, במסך ובערכת הצבעים שנבחרו ·
@@ -15744,12 +16127,8 @@ button.day-trv-face:focus-visible {
         <span class="sep"></span>
         <span class="lbl">גובה התמונה</span>
         <button type="button" data-shot="88">⁦88px⁩</button>
-        <button type="button" data-shot="116" aria-pressed="true">⁦116px⁩ · הקורא</button>
+        <button type="button" data-shot="116" aria-pressed="true">⁦116px⁩ · ההחלטה</button>
         <button type="button" data-shot="140">⁦140px⁩</button>
-        <span class="sep"></span>
-        <span class="lbl">שורה שנייה בראש</span>
-        <button type="button" data-line="total" aria-pressed="true">כמה נוסעים היום</button>
-        <button type="button" data-line="none">בלי</button>
       </div>
 
       <!-- ══════════════════════════ §1 ══════════════════════════ -->
@@ -15760,84 +16139,102 @@ button.day-trv-face:focus-visible {
             >PlaceBadge</code
           >
           כבר יודע לקבל <code>photoUrl</code>, לחתוך, לצייר טבעת, ולהסתיר תמונה שנפלה. במפה זה
-          עובד. בארבעת המארחים של היום (<code>EventCard</code>, שורת הבנייה, <code>TransitionRow</code
-          >, <code>StayRow</code>) אף אחד לא מעביר את ה-prop. ההעשרות נוסעות בסנאפשוט וב-Dexie, אז זה
-          עובד גם בלי רשת. עלות: אפס פיקסלים · המדידה למטה. שימו לב לשורת המסעדה: אין לה תמונה (0 מ-7
-          במדגם של ADR-0166), והרשימה לא נהיית משוננת · זה בדיוק למה החריץ הוא הבאדג׳ ולא עמודה חדשה.
+          עובד. בשני מארחי היום (<code>EventCard</code> ושורת הבנייה) אף אחד לא מעביר את ה-prop.
+          ההעשרות נוסעות בסנאפשוט וב-Dexie, אז זה עובד גם בלי רשת. עלות: אפס פיקסלים · המדידה למטה.
+          שימו לב לשורת המסעדה: אין לה תמונה (0 מ-7 במדגם של ADR-0166), והרשימה לא נהיית משוננת ·
+          זה בדיוק למה החריץ הוא הבאדג׳ ולא עמודה חדשה. <b>לא</b> שורת הנקודה (צ׳ק-אין, נחיתה · עיגול
+          ⁦32px⁩, ADR-0210 §1), <b>לא</b> סוגר הלינה (בלי אריח, §4), <b>לא</b> אריח המדף (§6 כאן).
         </p>
         <div class="pair" id="s1"></div>
         <div class="pair" id="s1p"></div>
         <div class="verdict">
-          <b>המלצה: לבנות עכשיו, לפני כל שאר הקובץ.</b> תיקון של ADR-0167 §1 במקום («ארבעת מארחי היום
-          מצטרפים»), בלי ADR חדש. הטבעת בקטגוריה נשארת שקופה בשורות היום · הבאדג׳ שלהן היה תמיד
-          <code>--paper</code> ולא נשא גוון, אז אין מה לשמר; נשאר רק הקו הלבן הדק שמחזיק את החיתוך מול
-          שמיים בהירים.
+          <b>הוחלט: לבנות ראשון (שלב 1 בתוכנית).</b> תיקון של ADR-0167 §1 במקום («שני מארחי היום
+          מצטרפים»). אייקון שנבחר ביד · על האירוע <i>או</i> על המקום · מנצח תמונה (הרחבה של §2 שם).
+          הטבעת בקטגוריה נשארת שקופה בשורות היום · הבאדג׳ שלהן היה תמיד <code>--paper</code> ולא נשא
+          גוון, אז אין מה לשמר; נשאר רק הקו הלבן הדק שמחזיק את החיתוך מול שמיים בהירים.
         </div>
       </section>
 
       <!-- ══════════════════════════ §2 ══════════════════════════ -->
       <section class="case">
-        <h2>§2 · הראש של היום הוא מסגרת, ויש לו תמונה · שני המצבים</h2>
+        <h2>§2 · הראש של היום הוא מסגרת · הרצועה האמביינטית נעלמת · שני המצבים</h2>
         <p class="note">
-          <b>היום הראש הוא <code>.sec-title</code>: טקסט אפור בגודל ⁦12px⁩ שאומר «יום 13 · ראשון ·
-            איסלנד».</b>
-          הקורא הציבורי כבר צייר את התשובה: עמודת תאריך ברוחב ⁦64px⁩ עם ספרה גדולה ויום בשבוע, שם
-          ליום, שורה שנייה, ותמונה מעל. הצעה: <code>.sh-day-head</code> ו-<code>.sh-shot</code>
-          עוברים מגיליון הקורא ל-<code>ui/domain/DayHead</code>, ושני המסכים והקורא צורכים אותו
-          רכיב. השם של היום («Stútur crater ← Háifoss») נגזר היום בשרת בשביל השיתוף · הגזירה עוברת
-          ל-<code>packages/shared</code> כדי ששלושת המשטחים יקראו ליום באותו שם. הבחירה איזו תמונה
-          (<code>dayPhoto</code>: משך השהייה + הזמנה/קשיח + דירוגים, סף ביטחון ⁦0.9⁩ וקרדיט לא ריק)
-          עוברת לשם מאותה סיבה. השורה השנייה: לא הלינה (ADR-0209 · לינה נאמרת פעם אחת ביום, והיא
-          כבר שורה) אלא <b>כמה נוסעים היום</b> · <code>DayTravelTotal</code> עולה מהרצועה שמתחת אל
-          תוך הראש. תכנון מקבל את אותה מסגרת: הצ׳ק שם הוא הקידמה ה-סגלגלה, לא הראש. היעד («איסלנד»)
-          כבר כתוב בכותרת הטיול שמעל, אז הוא לא חוזר.
+          <b>היום, מעל הרשימה: <code>.sec-title</code> (טקסט אפור ⁦12px⁩, «יום 3 · ראשון · איסלנד»)
+            ואז <code>.day-ambient</code></b>
+          · שורה לסה״כ הנסיעה, כרטיס טורקיז לכל טווח שאין לו שורה היום (השכרת רכב באמצע התקופה:
+          «Hertz · יום 3 מתוך 6»), כרטיס טורקיז לכל התחייבות <i>בלי שעה</i> עם זוג «היינו/דילגנו»
+          (<code>UnplacedCommitment</code>, ADR-0171 §10a-i), ובתכנון גם כרטיס ענבר עם פסק היום.
+          שלושה סוגי דברים בקופסה אחת, וטורקיז ל«יום 3 מתוך 6» זה לא מיקום (כלל 4).
+          <b>ההחלטה:</b> הראש הוא המסגרת של הקורא (<code>.sh-day-head</code> + <code>.sh-shot</code>
+          עוברים ל-<code>ui/domain/DayHead</code>, הקורא צורך אותו) · עמודת תאריך ⁦64px⁩ (יום בחודש
+          ויום בשבוע; ה«יום 3» שייך לכותרת <code>יום 3/12</code> שמעל, ו«איסלנד» לשם הטיול · לא
+          חוזרים), שם היום מאותה גזירה של הקורא (<code>fallbackDayTitle</code> עובר ל-shared), ומתחתיו,
+          <b>ברוחב מלא של הכרטיס, לכל היותר שתי שורות עובדות</b>: הסה״כ של היום, ובתכנון גם הפסק
+          בענבר-עמוק (או ההערה של יום שעבר) · מותר להן לגלוש, לא נחתכות. <b>שורת ההשכרה («Hertz · יום 3
+          מתוך 6») יוצאת מהיום</b> · על יום אמצעי היא לא אומרת כלום שצריך לפעול לפיו, קצוות ההשכרה
+          (איסוף, החזרה) הם שורות ביום שלהן, והספירה יושבת על ההזמנה באינדקס. שני גדלים בטקסט
+          (שם ⁦15px⁩, עובדות ⁦12.5px⁩) וגופן תצוגה אחד (הספרה בלבד); בלי mono ובלי אמוג׳י בראש.
+          <b>ההתחייבות בלי שעה נהיית שורה</b> בראש הרשימה, בדקדוק של <code>.transition-row</code>
+          (קופסה ענברית, עיגול, «ללא שעה», הזוג הקומפקטי בטיול) · אותו רכיב, עץ אחר. הפעולה של היום
+          («אירוע חדש», הכפתור הקיים, עם המילים) <b>באותה רצועת תחתית</b>, בקצה הסופי, מיושר לתחתית
+          העובדות · לא בתא הסוגר: שם היא חתכה את שם היום ב-360 (נמדד). שלוש רצועות: [תמונה]
+          [תאריך | שם] [עובדות … כפתור]. הרצועה הישנה, ה-CSS שלה והטורקיז נמחקים.
         </p>
         <div class="pair" id="s2"></div>
         <div class="pair" id="s2p"></div>
         <div class="verdict">
-          <b>המלצה: המסגרת עם התמונה, ב-⁦116px⁩ (המספר שהקורא כבר שילם עליו), והסה״כ בשורה השנייה.</b>
-          ליום בלי תמונה (רוב הימים בעיר: מסעדות 0 מ-7) המסגרת עומדת בלי הרצועה · אין placeholder ואין
-          חור, כמו בקורא. <b>העלות, נמדדת ולא מוחלקת:</b> ב-⁦360×640⁩ הראש עם התמונה הוא כ-⁦30%⁩ מגובה
-          המסך הגולמי (⁦23%⁩ ב-⁦390×844⁩), לפני הכותרת והניווט · הכרטיס הראשון של היום נדחק אל קו הקיפול
-          במכשיר קטן. הפקד ⁦88px⁩ למעלה מראה מה נחסך; אם המספר האחד ישתנה, שלושת המשטחים משתנים יחד. הקרדיט על התמונה במקום מתחתיה: הצללית שחורה בשתי הערכות, אז הטענה של
-          ADR-0167 §4 («צריך לפתור מחדש בכהה») לא חלה, והיא חוסכת ~⁦16px⁩. <b>פיצול שצריך החלטה:</b>
-          שני טיפולים לאותו קו קרדיט חיים היום (על התמונה בקורא, מתחתיה בכרטיס המפה) · לבחור אחד.
+          <b>העלות, נמדדת ולא מוחלקת:</b> ב-⁦360×640⁩ הראש עם התמונה הוא כ-⁦30%⁩ מגובה המסך הגולמי
+          (⁦23%⁩ ב-⁦390×844⁩), לפני הכותרת והניווט. מתקבל: יום הוא מקום לפני שהוא רשימה, ויום בלי
+          תמונה (רוב הימים בעיר) משלם רק את המסגרת · ⁦78px⁩ מול ⁦51px⁩ של הכותרת והרצועה היום, ובלי
+          הרצועה עצמה (שעלתה ⁦~40px⁩ לכל כרטיס בה). הקרדיט <b>על</b> התמונה (צללית שחורה בשתי הערכות,
+          ⁦0px⁩); בקריאה (§5) הוא <b>מתחת</b> · זה כלל ADR-0167 §4 שהושלם, לא סתירה.
         </div>
       </section>
 
       <!-- ══════════════════════════ §3 ══════════════════════════ -->
       <section class="case">
-        <h2>§3 · תמונה משתתפת בדקדוק השלבים · טיול בלבד</h2>
+        <h2>§3 · כל מצב שיש לראש · שני המצבים</h2>
         <p class="note">
-          <b>בטיול לכרטיס יש שלב</b> (ADR-0043): עתידי, עכשיו, עבר, בוצע. כרטיס שעבר יורד ל-⁦0.66⁩
-          אטימות · ותמונה מלאה בצבע בתוכו היא הדבר היחיד בשורה שעדיין אומר «עוד לא». אז תמונה של שורה
-          שעברה הופכת לאפור (<code>grayscale</code>, שורה אחת ב-<code>event-card.css</code>). «בוצע»
-          שומר צבע · רשומה היא לא דהייה. לתכנון אין שלבים (ADR-0043 §5), אז זה לא שלו.
+          <b>מה שהבנייה צריכה לא לנחש.</b> מימין לשמאל: <b>היום</b> (ענבר בעמודת התאריך, «עכשיו», שתי
+          שורות עובדות) · <b>יום עתידי בלי תמונה</b> (שום עצירה לא עברה את הסף ⁦0.9⁩ + קרדיט · המסגרת
+          לבדה, בלי placeholder) · <b>יום ריק</b> (בלי מקומות: השם הוא היעד, <code>trip.destination</code>,
+          מה שהכותרת הישנה נשאה; בלי שורות; הכפתור נשאר) · <b>יום שעבר · טיול</b> (הבאנר הקיים נשאר
+          בשביל «חזרה להיום» ומאבד את הכותרת · הראש כבר אומר את התאריך; בלי שורת הפעולה) ·
+          <b>יום שעבר · תכנון</b> (ההערה <code>pastNote</code> נהיית שורה עם גליף הארכיון; אין כפתור).
         </p>
         <div class="pair" id="s3"></div>
       </section>
 
       <!-- ══════════════════════════ §4 ══════════════════════════ -->
       <section class="case">
-        <h2>§4 · הקריאה מקבלת את מה שידוע על המקום · שני המצבים</h2>
+        <h2>§4 · תמונה משתתפת בדקדוק השלבים · טיול בלבד</h2>
         <p class="note">
-          <b>נגיעה בשורה פותחת קריאה</b> (ADR-0174 §4), ובקריאה אין תמונה, אין תקציר ואין «עוד
-          בגוגל». הרכיב שמראה את כולם, <code>PlaceKnowledge</code>, קיים ומשרת את כרטיס המקום במפה
-          ואת מסך המחקר. כלל 8: הוא נכנס גם לקריאה. הרכיב תלוי בכללי grid של <code>map.css</code>
-          שמכוונים ל-<code>.map-placecard</code> · ההוצאה שלהם לגיליון משלו היא כל מה שהבנייה צריכה.
-          כאן הקרדיט מתחת לתמונה (ADR-0167 §4), כמו במפה · זה הצד השני של הפיצול מ-§2.
+          <b>בטיול לכרטיס יש שלב</b> (ADR-0043): עתידי, עכשיו, עבר, בוצע. כרטיס שעבר יורד ל-⁦0.66⁩
+          אטימות · ותמונה מלאה בצבע בתוכו היא הדבר היחיד בשורה שעדיין אומר «עוד לא». אז תמונה של שורה
+          שעברה הופכת לאפור (<code>grayscale</code>, שורה אחת ב-<code>event-card.css</code>). «בוצע»
+          שומר צבע · רשומה היא לא דהייה. לתכנון אין שלבים (ADR-0043 §5), אז זה לא שלו.
         </p>
         <div class="pair" id="s4"></div>
-        <div class="verdict">
-          <b>המלצה: לבנות, בצפיפות <code>KNOWLEDGE_DENSITY</code> של המפה, בין הכותרת לשעות.</b>
-          אותו רכיב, אותם מספרים (תמונה ⁦130px⁩, תקציר עד שתי שורות, «עוד בגוגל» תמיד). מקום שלא יודעים
-          עליו כלום מקבל רק את הקישור · «כרטיס שכל תוכנו הוא הדרך לתשובה» (ADR-0167 §6).
-        </div>
       </section>
 
       <!-- ══════════════════════════ §5 ══════════════════════════ -->
       <section class="case">
-        <h2>§5 · אריח המדף · תכנון בלבד · מצויר כדי לדחות</h2>
+        <h2>§5 · הקריאה מקבלת את מה שידוע על המקום · שני המצבים</h2>
+        <p class="note">
+          <b>נגיעה בשורה פותחת קריאה</b> (<code>EventDetail</code> על <code>DetailSheet</code>,
+          ADR-0174 §4), ובקריאה אין תמונה, אין תקציר ואין «עוד בגוגל». הרכיב שמראה את כולם,
+          <code>PlaceKnowledge</code>, קיים ומשרת את כרטיס המקום במפה ואת מסך המחקר. כלל 8: הוא נכנס גם
+          לקריאה, <b>ישר מתחת לראש</b> (<code>.bk-head</code>) ולפני הערת הקשיחות והעובדות, בצפיפות
+          <code>DECIDING</code> (תמונה ⁦130px⁩, עד שלוש שורות, «עוד בגוגל» תמיד, אין מה להרחיב). הרכיב
+          תלוי בכללי grid של <code>map.css</code> · ההוצאה שלהם לגיליון משלו היא כל מה שהבנייה צריכה.
+          הקרדיט כאן <b>מתחת</b> לתמונה (ADR-0167 §4): פרוזה באה אחריה.
+        </p>
+        <div class="pair" id="s5"></div>
+      </section>
+
+      <!-- ══════════════════════════ §6 ══════════════════════════ -->
+      <section class="case">
+        <h2>§6 · אריח המדף · תכנון בלבד · מצויר כדי לדחות</h2>
         <p class="note">
           <b>המדף הוא המקום שבו בוחרים מה לעשות</b>, אז לכאורה הוא המשטח שתמונות יעשו לו הכי הרבה.
           אבל ל-<code>MaybeCard</code> אין קופסה לגליף (⁦~21×17px⁩, תוכן בשורה), אז תמונה מצריכה
@@ -15845,11 +16242,10 @@ button.day-trv-face:focus-visible {
           <code>.bld-bd</code>. שימו לב לאריח האמצעי, בלי תמונה · במדף של רעיונות בעיר זה רוב
           האריחים.
         </p>
-        <div class="pair" id="s5"></div>
+        <div class="pair" id="s6"></div>
         <div class="verdict">
-          <b>המלצה: לא עכשיו.</b> העלות נמדדת למטה (גובה אריח), והיתרון מגיע רק למדף שרובו נופים.
-          אם המדף יקבל תמונות, זה אחרי ש-§1 חי על מכשיר ורואים אם צילום אמיתי קריא ב-⁦40px⁩ (השאלה
-          הפתוחה של ADR-0167 §18).
+          <b>נדחה.</b> העלות נמדדת למטה (גובה אריח), והיתרון מגיע רק למדף שרובו נופים. אחרי ש-§1 חי
+          על מכשיר ורואים אם צילום אמיתי קריא ב-⁦40px⁩ (השאלה הפתוחה של ADR-0167 §18) · אפשר לחזור.
         </div>
       </section>
 
@@ -15870,8 +16266,8 @@ button.day-trv-face:focus-visible {
           <li>
             <b>אור היום (זריחה/שקיעה) על ראש היום.</b> לא כאן: ADR-0218 והמוקאפ
             <code>daylight-on-the-day-v1.html</code> כבר החליטו איפה עובדה שהאפליקציה לא אומרת נכנסת,
-            ורשומת הקטלוג שלו מזהירה בדיוק מזה. אם הראש נבנה (§2), הווידג׳ט הקיים מקבל מקום מועמד
-            טבעי מתחתיו · שאלה נפרדת.
+            ורשומת הקטלוג שלו מזהירה בדיוק מזה. אם הראש נבנה, הווידג׳ט הקיים מקבל מקום מועמד טבעי
+            מתחתיו · שאלה נפרדת.
           </li>
           <li>
             <b>גוון קטגוריה על הבאדג׳ בשורות היום</b> (כמו במפה). נדחה: שורות היום מעולם לא נשאו גוון
@@ -15886,6 +16282,10 @@ button.day-trv-face:focus-visible {
           <li>
             <b>נקודות עצירה על מפה קטנה בראש היום.</b> נדחה: אינטגרציות הן צינורות ולא מסכים
             (ADR-0004), ויש טאב מפה שמסונן ליום · הבאדג׳ כבר הדרך אליו (ADR-0121 §8).
+          </li>
+          <li>
+            <b>לשמור את הרצועה ולצבוע אותה מחדש.</b> נדחה: הרצועה היא שלושה סוגי דברים; לפצל לפי מה
+            שהם (עובדה → שורה בראש, התחייבות → שורה ברשימה) זה מה שנותן לראש היום להיקרא.
           </li>
         </ul>
       </div>
@@ -15909,25 +16309,54 @@ button.day-trv-face:focus-visible {
       </div>
 
       <div class="panel">
-        <h2>הערות · מה נבחר, ומה נדחה ולמה</h2>
+        <h2>הערות · מה הוחלט, ומה נדחה ולמה</h2>
         <ul>
           <li>
-            <b>נבחר: התמונה בבאדג׳, לא בחריץ.</b> ADR-0167 §1 כבר מדד ודחה עמודת תמונה נפרדת (רשימה
+            <b>הוחלט: התמונה בבאדג׳, לא בחריץ.</b> ADR-0167 §1 כבר מדד ודחה עמודת תמונה נפרדת (רשימה
             משוננת כשרוב השורות בלי תמונה). כאן זה נמדד שוב: גובה שורה זהה לפני ואחרי.
           </li>
           <li>
-            <b>נבחר: לייצר <code>DayHead</code> מהקורא ולא לכתוב <code>.wp-dayhead</code> חדש.</b>
+            <b>הוחלט: לייצר <code>DayHead</code> מהקורא ולא לכתוב <code>.wp-dayhead</code> חדש.</b>
             ADR-0078/0079/0094/0095 הם כולם ביטולים של עותק שני. הגיליון של הקורא הוא ה-one-off
             שכמעט עושה את זה · מכלילים אותו.
+          </li>
+          <li>
+            <b>הוחלט: הכפתור עם המילים, בשורת פעולה מתחת לגריד.</b> סיבוב 1 צייר `+` בלי מילים
+            ב-⁦44px⁩ והשאלה הראשונה עליו הייתה «מה זה?» · פקד בלי תווית על ראש שנושא שלושה סוגי טקסט
+            לא מסביר את עצמו (הקארט של הקורא כן: סימן הגילוי האוניברסלי). סיבוב 2 שם את
+            <code>.new-event-btn</code> עם המילים בתא הסוגר, והרינדור חתך את שם היום ב-360
+            («…ur crater ← Háifoss») · פקד לקח את הרוחב שהראש קיים בשבילו. אז הכפתור, במראה שלו,
+            יורד לרצועת התחתית של הכרטיס, בקצה הסופי כמו ב-<code>.sec-title</code> מאז ומתמיד,
+            באותה שורה עם גוש העובדות (הן בקצה ההתחלתי, הוא בסופי, מיושרים לתחתית) · שורה משלו
+            עלתה ⁦39px⁩ נוספים ונראתה כרצועה רביעית. ביום לקריאה בלבד אין כפתור והעובדות לבדן. חלופה שנדחתה: <code>.sec-title</code> מעל המסגרת רק בשביל הכפתור · אותו
+            מחיר, מחוץ לכרטיס, וחוזר על התאריך.
+          </li>
+          <li>
+            <b>הוחלט: הרצועה נמחקת · עובדה = שורה בראש, התחייבות = שורה ברשימה.</b> ADR-0171 §10a-i
+            («התחייבות בלי מקום נקראת למעלה») מתקיים בלי רצועה: השורה יושבת מתחת לראש ומעל השורה
+            הראשונה. הדקדוק של <code>.transition-row</code> הוא של הנקודה המחויבת (ADR-0210 §1) והתחייבות
+            בלי שעה היא התחייבות בלי רגע · אותה קופסה ענברית, אותו עיגול, «ללא שעה» בלי תיבת גבול.
+          </li>
+          <li>
+            <b>הוחלט: יום אמצעי של טווח (השכרה, כרטיס רב-יומי) לא נאמר בראש · מידע שמותר לאבד.</b>
+            ADR-0163 §3 שמר את שם החברה על יום אמצעי כדי שלא ייעלם מהיום; הבעלים ביקש «לאבד קצת מידע
+            אם זה יותר מדי» · וזה המידע: על יום 3 מתוך 6 אין מה לעשות עם «Hertz». הקצוות (איסוף,
+            החזרה) הם שורות ביום שלהן, הספירה על ההזמנה באינדקס. ADR-0163 §3 מתוקן במקום.
+          </li>
+          <li>
+            <b>הוחלט: שני גדלי טקסט, גופן תצוגה אחד.</b> «כמה גופנים וגדלים, נראה מוזר» (סיבוב 3):
+            הספרה ב-<code>--font-head</code> (החותמת של היום, כמו בקורא), השם ⁦15px⁩/700, העובדות
+            ⁦12.5px⁩/400 · ה-readout של הסה״כ (⁦11px⁩/600) מקבל את גודל העובדות בראש, בלי mono ובלי
+            אמוג׳י. הכפתור נשאר הכפתור.
           </li>
           <li>
             <b>נדחה: לינה בשורה השנייה של הראש</b> (כמו בקורא). ADR-0209 שם את הלינה כשורות סוגר
             בתחילת וסוף היום · לכתוב אותה גם בראש זה אותה עובדה פעמיים (ADR-0159 §1).
           </li>
           <li>
-            <b>נדחה: תמונה ל-<code>TransitionRow</code> של נקודה (צ׳ק-אין, נחיתה).</b> ADR-0210 §1 הפך
-            את הבאדג׳ שלה לעיגול-נקודה · תמונה בעיגול של ⁦32px⁩ היא כתם. הבאדג׳ של הלינה (סוגר,
-            ⁦38×34⁩ בלי אריח) גם לא מקבל · אין לו קופסה.
+            <b>נדחה: תמונה ל-<code>TransitionRow</code> של נקודה (צ׳ק-אין, נחיתה) ולסוגר הלינה.</b>
+            ADR-0210 §1 הפך את הבאדג׳ של הנקודה לעיגול ⁦32px⁩ · תמונה בעיגול כזה היא כתם. לסוגר אין
+            קופסה בכלל.
           </li>
           <li>
             <b>נדחה: גובה שונה לתמונה בתכנון.</b> מספר אחד (⁦116⁩) בשלושת המשטחים · צפיפות שנייה
@@ -15935,25 +16364,26 @@ button.day-trv-face:focus-visible {
             מספרים.
           </li>
           <li>
-            <b>ממצא מהרינדור: קרדיט אחד, שני סדרים על המסך.</b> <code>placeCredit()</code> (המפה, §4)
+            <b>ממצא מהרינדור: קרדיט אחד, שני סדרים על המסך.</b> <code>placeCredit()</code> (המפה, §5)
             מרכיב שני ריצות מבודדות בתוך פסקה RTL, אז הצלם מימין והרישיון משמאל; הקורא (§2) מרכיב
-            בשרת מחרוזת אחת ומבודד אותה כמקשה, אז היא נקראת משמאל לימין. שניהם «נכונים» ונראים הפוך
-            זה מזה באותו מסך. הרכבת הקרדיט עוברת ל-<code>packages/shared</code> פעם אחת, ושני
-            המשטחים צורכים · זה חלק מאותה העברה של <code>dayPhoto</code>.
+            בשרת מחרוזת אחת ומבודד אותה כמקשה, אז היא נקראת משמאל לימין. <b>הוחלט:</b> ההרכבה עוברת
+            ל-<code>packages/shared</code> פעם אחת (עם <code>dayPhoto</code> ו-<code>fallbackDayTitle</code>),
+            שני המשטחים צורכים, הצלם תמיד ראשון.
+          </li>
+          <li>
+            <b>הוחלט: הקרדיט על התמונה כשהתמונה היא רצועה בלי כלום מתחתיה</b> (ראש היום, כרטיס היום
+            בקורא) · <b>ומתחתיה כשבאה אחריה פרוזה</b> (<code>PlaceKnowledge</code>, במפה ובקריאה).
+            הצללית שחורה בשתי הערכות, אז הטענה של ADR-0167 §4 («צריך לפתור מחדש בכהה») לא חלה עליה;
+            ו-⁦0px⁩ מול ⁦~16px⁩ על ראש שכבר ⁦194px⁩. ADR-0167 §4 מתוקן במקום.
           </li>
           <li>
             <b>נראה בזמן הציור, לבדיקה על מכשיר · לא של הקובץ הזה לתקן.</b>
             <code>.wp-maybecard-ic</code> הוא <code>display: block</code> ונושא את הטבעת של
             <code>.wp-placebadge</code>, אז באריח מדף שלרעיון שלו יש מקום הטבעת התכולה אמורה להימתח על
-            כל רוחב האריח (מסגרת «לפני» ב-§5 מציירת בדיוק את זה מה-CSS האמיתי). ההערה ב-<code
+            כל רוחב האריח (מסגרת «לפני» ב-§6 מציירת בדיוק את זה מה-CSS האמיתי). ההערה ב-<code
               >place-badge.css</code
             >
             מתארת את החריץ הזה כ«תוכן בשורה, ⁦~21×17px⁩», והגיליון אומר אחרת · אחד מהם לא מדויק.
-          </li>
-          <li>
-            <b>פיצול פתוח לבעלים: הקרדיט על התמונה או מתחתיה.</b> §2 מצייר «על», §4 מצייר «מתחת», שני
-            הטיפולים חיים היום. ההמלצה: «על» בראש היום (⁦0px⁩, צללית בלתי-משתנית בין ערכות), «מתחת»
-            בקריאה (שם יש תקציר מתחת ממילא ושורת קרדיט לא עולה כלום) · ולכתוב את ההבחנה ב-ADR-0167 §4.
           </li>
         </ul>
       </div>
@@ -15978,51 +16408,28 @@ button.day-trv-face:focus-visible {
           'M4.4 16.2h15.2 M6 16.2l1.5-4.8a1.7 1.7 0 0 1 1.6-1.2h5.8a1.7 1.7 0 0 1 1.6 1.2l1.5 4.8 M5.4 16.2v2.6h2.4v-2.6 M16.2 16.2v2.6h2.4v-2.6 M8 13.4h8',
         navigate: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M15.6 8.4l-2.2 5.2-5.2 2.2 2.2-5.2Z',
         check: 'M5 12.6l4.7 4.7L19 7.4',
+        skip: 'M7.5 7.5l9 9 M16.5 7.5l-9 9',
+        warn: 'M12 3.6 22 20.4H2Z M12 9.8v4.6 M12 17.4v.02',
+        archive:
+          'M3.4 8.6h17.2 M5 8.6v10a1.6 1.6 0 0 0 1.6 1.6h10.8a1.6 1.6 0 0 0 1.6-1.6v-10 M4.2 3.8h15.6a.8.8 0 0 1 .8.8v3.2a.8.8 0 0 1-.8.8H4.2a.8.8 0 0 1-.8-.8V4.6a.8.8 0 0 1 .8-.8Z M10.2 12.6h3.6',
+        edit: 'M12 20h9 M16.4 3.6a2.12 2.12 0 0 1 3 3L7.5 18.5l-4.2 1.2 1.2-4.2Z',
         external: 'M14 4h6v6 M20 4 11 13 M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4',
       };
       const FILLED = new Set(['caret']);
-      const icon = (name, cls = '', rot = 0) =>
+      const icon = (name, cls = '') =>
         `<svg class="icon ${cls}" viewBox="0 0 24 24" ${
           FILLED.has(name) ? 'fill="currentColor" stroke="none"' : 'fill="none" stroke="currentColor"'
-        } stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${
-          rot ? ` style="transform:rotate(${rot}deg)"` : ''
-        }><path d="${ICON[name]}"/></svg>`;
+        } stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON[name]}"/></svg>`;
 
       // ADR-0118: a numeric or Latin run inside Hebrew prose is isolated (U+2066 … U+2069).
       const iso = (s) => `⁦${s}⁩`;
 
-      /* ══ SYNTHETIC PHOTOGRAPHS — labelled fiction. Inline SVG landscapes in four
-            palettes. What they test honestly: the 40px crop, the scrim's legibility, the
-            white hairline's hold against a bright sky, grayscale in §3. */
+      /* ══ SYNTHETIC PHOTOGRAPHS — labelled fiction. Inline SVG landscapes in four palettes. */
       const SHOT = {
-        falls: {
-          sky: ['#c9d4dc', '#8ea2b3'],
-          far: '#4d5d66',
-          near: '#2f3a3f',
-          moss: '#6f8a4a',
-          water: '#e8eef2',
-        },
-        crater: {
-          sky: ['#d8dde6', '#9aa8b8'],
-          far: '#7a4a3a',
-          near: '#3a2620',
-          moss: '#8b7a44',
-          water: '#3f6f8a',
-        },
-        moss: {
-          sky: ['#dfe5ea', '#a8b8c4'],
-          far: '#5d7852',
-          near: '#33482e',
-          moss: '#7f9d5a',
-          water: '#a9c0cc',
-        },
-        glacier: {
-          sky: ['#e3e9ef', '#b7c6d4'],
-          far: '#8fa7b8',
-          near: '#e6edf2',
-          moss: '#c9d6df',
-          water: '#4f7f9c',
-        },
+        falls: { sky: ['#c9d4dc', '#8ea2b3'], far: '#4d5d66', near: '#2f3a3f', moss: '#6f8a4a', water: '#e8eef2' },
+        crater: { sky: ['#d8dde6', '#9aa8b8'], far: '#7a4a3a', near: '#3a2620', moss: '#8b7a44', water: '#3f6f8a' },
+        moss: { sky: ['#dfe5ea', '#a8b8c4'], far: '#5d7852', near: '#33482e', moss: '#7f9d5a', water: '#a9c0cc' },
+        glacier: { sky: ['#e3e9ef', '#b7c6d4'], far: '#8fa7b8', near: '#e6edf2', moss: '#c9d6df', water: '#4f7f9c' },
       };
       const shotUrl = (key, w = 800, h = 480) => {
         const p = SHOT[key];
@@ -16041,10 +16448,7 @@ button.day-trv-face:focus-visible {
         return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
       };
 
-      /* ══ PlaceBadge — the real markup (`ui/domain/PlaceBadge.tsx`): the host's own class
-            plus `wp-placebadge`, `data-photo` when a photograph fills it, the photo clip
-            and the ring as REAL elements, the glyph only when there is no photo, and the
-            corner pin. */
+      /* ══ PlaceBadge — the real markup (`ui/domain/PlaceBadge.tsx`). */
       const badge = (host, glyph, photo) =>
         `<span class="${host} wp-placebadge"${photo ? ' data-photo=""' : ''} role="button" tabindex="0" aria-label="מפה" title="מפה">` +
         (photo
@@ -16052,8 +16456,11 @@ button.day-trv-face:focus-visible {
           : glyph) +
         `<span class="wp-placebadge-mark" aria-hidden="true">${icon('pin')}</span></span>`;
 
-      /* ══ EventCard — `ui/domain/EventCard.tsx`'s face: 'badge title check chev' /
-            'badge when check chev'. Trip mode's day card. */
+      /* ══ SettleControl, `compact` density — `ui/domain/SettleControl.tsx`. */
+      const settleCompact = () =>
+        `<span class="wp-settle compact"><button type="button" class="wp-settle-btn done" aria-label="היינו" title="היינו">${icon('check')}</button><button type="button" class="wp-settle-btn skip" aria-label="דילגנו" title="דילגנו">${icon('skip')}</button></span>`;
+
+      /* ══ EventCard — `ui/domain/EventCard.tsx`'s face. */
       const eventCard = ({ title, glyph, photo, start, end, kind = 'soft', phase = '', dur, dist, tag }) => {
         const cls = ['wp-event', kind === 'soft' ? 'soft' : '', phase].filter(Boolean).join(' ');
         const tagHtml =
@@ -16088,7 +16495,7 @@ button.day-trv-face:focus-visible {
 </div>`;
       };
 
-      /* ══ BuilderRow — `PlanDay.tsx`'s `.bld`: 'badge title menu' / 'badge when menu'. */
+      /* ══ BuilderRow — `PlanDay.tsx`'s `.bld`. */
       const bldRow = ({ title, glyph, photo, start, end, kind = 'soft', dur, dist }) =>
         `<div class="bld ${kind === 'soft' ? 'soft draggable' : ''}">
   ${badge('bld-bd', glyph, photo)}
@@ -16105,8 +16512,7 @@ button.day-trv-face:focus-visible {
   <button class="bld-icon" type="button" aria-label="פעולות">${icon('more')}</button>
 </div>`;
 
-      /* ══ StayRow — `.transition-row.stay-bookend[.at-sleep]` (ADR-0209/0210 §4). The
-            badge has no tile, so it takes no photo (notes panel). */
+      /* ══ StayRow — `.transition-row.stay-bookend[.at-sleep]` (ADR-0209/0210 §4). */
       const stayRow = ({ title, edge, bound }) =>
         `<div class="transition-row stay-bookend${edge === 'sleep' ? ' at-sleep' : ''}">
   <button type="button" class="tr-face">
@@ -16115,8 +16521,19 @@ button.day-trv-face:focus-visible {
   </button>
 </div>`;
 
-      /* ══ JourneyBlock — `ui/domain/DayJoinRow.tsx`'s `.day-trv` (ADR-0210 §3: the line, no
-            box). */
+      /* ══ THE UNTIMED COMMITMENT AS A ROW (ADR-0219 §4) — `UnplacedCommitment` re-rendered on
+            `.transition-row`'s tree: the point's amber box and circle badge (ADR-0210 §1), the
+            title, `ללא שעה` as a bare clock with no bound box, the compact settle in Trip. */
+      const commitmentRow = ({ title, glyph, settle }) =>
+        `<div class="transition-row">
+  <button type="button" class="tr-face">
+    ${badge('tr-badge', glyph)}
+    <span class="tr-main"><span class="tr-title">${title}</span><span class="tr-time"><span class="tr-clock" data-bound="exact">ללא שעה</span></span></span>
+  </button>
+  ${settle ? settleCompact() : ''}
+</div>`;
+
+      /* ══ JourneyBlock — `ui/domain/DayJoinRow.tsx`'s `.day-trv` (ADR-0210 §3). */
       const journey = ({ dur, dist, leave }) =>
         `<div class="day-trv time">
   <div class="day-trv-face">
@@ -16129,37 +16546,65 @@ button.day-trv-face:focus-visible {
   </div>
 </div>`;
 
-      /* ══ Today's head: `.sec-title` + `.day-ambient` with `DayTravelTotal`. */
+      /* ══ TODAY'S TOP OF THE DAY, as it ships: `.sec-title` + `.day-ambient` with its four
+            tenants (`DayTravelTotal`, the teal span card, the teal unplaced card with its settle
+            pair, Plan's amber `.day-fit`). Drawn from the real trees in `DayView.tsx:1275-1357`,
+            `PlanDay.tsx:1462-1560`, `UnplacedCommitment.tsx:68-92`. */
       const dayTotal = (text) =>
         `<div class="day-total"><span class="day-total-ic" aria-hidden="true">${icon('navigate')}</span><span class="day-total-n">${text}</span></div>`;
-      const secTitle = (text, mode) =>
+      const newEventBtn = () => `<button class="new-event-btn" type="button">${icon('plus')} אירוע חדש</button>`;
+      const secTitle = (text, state) =>
         `<div class="sec-title">${text}<span class="sec-title-end">${
-          mode === 'plan-past'
-            ? '<span class="hint">יום שעבר</span>'
-            : `<button class="new-event-btn" type="button">${icon('plus')} אירוע חדש</button>`
+          state === 'plan-past' ? '<span class="hint">טיול שהסתיים · מבנה קפוא, אפשר להסדיר</span>' : state === 'past' ? '' : newEventBtn()
         }</span></div>`;
-      const ambientToday = (total) => `<div class="day-ambient">${dayTotal(total)}</div>`;
+      const ambientToday = ({ total, span, commitment, fit, settle }) =>
+        `<div class="day-ambient">${dayTotal(total)}${
+          fit
+            ? `<div class="day-fit"><span class="day-fit-ic">${icon('warn')}</span><span class="day-fit-n">${fit.n}</span><span class="day-fit-s">${fit.s}</span></div>`
+            : ''
+        }${
+          span
+            ? `<div class="ambient"><span class="ai" aria-hidden="true">${span.glyph}</span><span class="an">${span.title}</span><span class="as">${span.count}</span></div>`
+            : ''
+        }${
+          commitment
+            ? `<div class="ambient unplaced"><span class="ai" aria-hidden="true">${commitment.glyph}</span><button type="button" class="an as-open">${commitment.title}</button><span class="as">ללא שעה</span>${settle ? settleCompact() : ''}</div>`
+            : ''
+        }</div>`;
+      const archiveBanner = (text) =>
+        `<div class="archive-banner"><span class="ab-ic" aria-hidden="true">${icon('archive')}</span><span class="ab-main">${text}</span><button class="ab-back" type="button">חזרה להיום</button></div>`;
 
-      /* ══ §2's DayHead — the reader's `.sh-day-head` and `.sh-shot` used VERBATIM inside
-            the app's `.wp-dayhead` wrapper. `isNow` is the reader's `.is-now` (amber ground on
-            the date column + the word). */
-      const dayHead = ({ num, weekday, title, total, isNow, shot, of, credit }) =>
+      /* ══ THE DAY HEAD (ADR-0219 §2/§3) — the reader's `.sh-day-head` and `.sh-shot` used
+            VERBATIM inside the app's `.wp-dayhead` wrapper. `lines` are the facts true of the
+            whole day, in order; `action` is the trailing cell's content. */
+      const dayHead = ({ num, weekday, title, lines = [], isNow, shot, of, credit, action }) =>
         `<div class="wp-dayhead${isNow ? ' is-now' : ''}">
   ${
     shot
-      ? `<figure class="sh-shot"><img src="${shotUrl(shot)}" alt="${of}" /><figcaption><strong>${iso(of)}</strong><span>${iso(credit)}</span></figcaption></figure>`
+      ? `<button type="button" class="sh-shot" aria-label="תמונה מלאה"><img src="${shotUrl(shot)}" alt="${of}" /><figcaption><strong>${iso(of)}</strong><span>${iso(credit)}</span></figcaption></button>`
       : ''
   }
   <div class="sh-day-head">
     <span class="sh-day-date"><strong>${iso(num)}</strong><span>${weekday}</span>${
       isNow ? '<i class="sh-now-mark">עכשיו</i>' : ''
     }</span>
-    <span class="sh-day-copy"><strong>${title}</strong>${
-      total && state.line === 'total' ? `<span>${dayTotal(total)}</span>` : ''
-    }</span>
-    <button type="button" class="wp-dayhead-add" aria-label="אירוע חדש" title="אירוע חדש">${icon('plus')}</button>
+    <span class="sh-day-copy"><strong>${title}</strong></span>
   </div>
+  ${
+    lines.length || action
+      ? `<div class="wp-dayhead-foot">${
+          lines.length ? `<div class="wp-dayhead-facts">${lines.map((l) => `<span${l.cls ? ` class="${l.cls}"` : ''}>${l.html}</span>`).join('')}</div>` : ''
+        }${action ?? ''}</div>`
+      : ''
+  }
 </div>`;
+      // The lines, each written once.
+      const LINE = {
+        total: (text) => ({ html: dayTotal(text) }),
+        span: (glyph, title, count) => ({ html: `${glyph} ${title} · ${count}` }),
+        fit: (n, s) => ({ cls: 'wp-dayhead-fit', html: `${icon('warn')}${n} · ${s}` }),
+        past: () => ({ html: `${icon('archive')}טיול שהסתיים · מבנה קפוא, אפשר להסדיר` }),
+      };
 
       /* ══ The screen: the app's `.app[data-mode] > .body > .day-page` tree. */
       const screen = (mode, inner) =>
@@ -16167,15 +16612,20 @@ button.day-trv-face:focus-visible {
       const col = (tag, inner) => `<div class="col">${tag}${inner}</div>`;
       const T = (kind, text) => `<span class="tag ${kind}">${text}</span>`;
 
-      /* ══ THE DAY — the owner's own, off the screenshot: 13.09, Sunday. Woke at The Hill
-            Hotel at Fludir, Háifoss, Stútur crater, dinner in Hvolsvöllur, sleep at
-            Hvolstun 33a. The restaurant has NO photo on purpose (0 of 7, ADR-0166 §11). */
+      /* ══ THE DAY — the owner's own, off the screenshot: 13.09, Sunday, DAY 3 of the trip
+            (`tripDayNumber`; the old heading says `יום 3`, the reader's column says `13`). Woke at
+            The Hill Hotel at Fludir, Háifoss, Stútur crater, dinner in Hvolsvöllur, sleep at
+            Hvolstun 33a. A car hire on its third of six days. Blue Lagoon tickets with no hour —
+            the untimed hard event. The restaurant has NO photo on purpose (0 of 7, ADR-0166 §11). */
       const D = {
         num: '13',
         weekday: 'ראשון',
-        heading: 'יום 13 · ראשון · איסלנד',
+        heading: 'יום 3 · ראשון · איסלנד',
         title: 'Stútur crater ← Háifoss',
         total: `${iso('165 ק״מ')} · ${iso('2:40 ש׳')}`,
+        span: { glyph: '🚗', title: 'Hertz', count: `יום ${iso('3')} מתוך ${iso('6')}` },
+        commitment: { glyph: '🎟️', title: 'כרטיסים לבלו לגון' },
+        fit: { n: 'שתי דרכים לא נכנסות', s: `חסרות ${iso('35 דק׳')}` },
         shot: 'falls',
         of: 'Háifoss',
         credit: 'Chris 73 · CC BY-SA 3.0',
@@ -16192,83 +16642,128 @@ button.day-trv-face:focus-visible {
           { title: 'ארוחת ערב · Hvolsvöllur', glyph: '🍽️', start: '19:30', end: '21:00', kind: 'hard', dur: iso('1:30 ש׳') },
         ],
       };
-      // The same day, with or without photographs.
       const withPhotos = (on) => D.stops.map((s) => ({ ...s, photo: on ? s.photo : undefined }));
 
-      const tripList = (photos) => {
+      // Trip's list (`.day-list`): the rows only; `head` and the commitment are prepended by the caller.
+      const tripRows = (photos) => {
         const s = withPhotos(photos);
-        return `<div class="day-list">
-${stayRow(D.wake)}${journey(D.legs[0])}${eventCard(s[0])}${journey(D.legs[1])}${eventCard(s[1])}${journey(D.legs[2])}${eventCard(s[2])}${stayRow(D.sleep)}
-</div>`;
+        return `${stayRow(D.wake)}${journey(D.legs[0])}${eventCard(s[0])}${journey(D.legs[1])}${eventCard(s[1])}${journey(D.legs[2])}${eventCard(s[2])}${stayRow(D.sleep)}`;
       };
-      const planList = (photos) => {
+      const planRows = (photos) => {
         const s = withPhotos(photos);
         return `${stayRow(D.wake)}${journey(D.legs[0])}${bldRow(s[0])}${journey(D.legs[1])}${bldRow(s[1])}${journey(D.legs[2])}${bldRow(s[2])}${stayRow(D.sleep)}`;
       };
+      const tripList = (photos, first = '') => `<div class="day-list">${first}${tripRows(photos)}</div>`;
 
-      const state = { line: 'total' };
+      const headToday = (extra = {}) =>
+        dayHead({
+          num: D.num,
+          weekday: D.weekday,
+          title: D.title,
+          isNow: true,
+          shot: D.shot,
+          of: D.of,
+          credit: D.credit,
+          lines: [LINE.total(D.total)],
+          action: newEventBtn(),
+          ...extra,
+        });
 
       const paint = () => {
-        // §1 — Trip and Plan, glyph-only vs the prop passed. Same list, one flag.
+        // §1 — Trip and Plan, glyph-only vs the prop passed. Same list, one flag. Today's head
+        // stays as it ships, so this section measures the badge alone.
+        const topToday = (mode) =>
+          secTitle(D.heading) + ambientToday({ total: D.total, span: D.span, commitment: D.commitment, settle: mode === 'trip' });
         document.querySelector('#s1').innerHTML = [
-          col(T('before', 'היום · טיול'), screen('trip', secTitle(D.heading) + ambientToday(D.total) + `<div id="m1b">${tripList(false)}</div>`)),
-          col(T('after', 'הבאדג׳ מקבל את התמונה · טיול'), screen('trip', secTitle(D.heading) + ambientToday(D.total) + `<div id="m1a">${tripList(true)}</div>`)),
+          col(T('before', 'היום · טיול'), screen('trip', topToday('trip') + `<div id="m1b">${tripList(false)}</div>`)),
+          col(T('after', 'הבאדג׳ מקבל את התמונה · טיול'), screen('trip', topToday('trip') + `<div id="m1a">${tripList(true)}</div>`)),
         ].join('');
         document.querySelector('#s1p').innerHTML = [
-          col(T('before', 'היום · תכנון'), screen('plan', `<div class="builder-main">${secTitle(D.heading)}${ambientToday(D.total)}<div id="m1pb">${planList(false)}</div></div>`)),
-          col(T('after', 'הבאדג׳ מקבל את התמונה · תכנון'), screen('plan', `<div class="builder-main">${secTitle(D.heading)}${ambientToday(D.total)}<div id="m1pa">${planList(true)}</div></div>`)),
+          col(T('before', 'היום · תכנון'), screen('plan', `<div class="builder-main">${topToday('plan')}<div id="m1pb">${planRows(false)}</div></div>`)),
+          col(T('after', 'הבאדג׳ מקבל את התמונה · תכנון'), screen('plan', `<div class="builder-main">${topToday('plan')}<div id="m1pa">${planRows(true)}</div></div>`)),
         ].join('');
 
-        // §2 — the head. Three frames: today, frame only (a day with no photo), frame + shot.
-        const headBase = { num: D.num, weekday: D.weekday, title: D.title, total: D.total, isNow: true };
+        // §2 — the top of the day, as it ships and as decided. Trip: the strip's four tenants
+        // → two head lines + one commitment row. Plan: the same, plus the verdict as a line.
         document.querySelector('#s2').innerHTML = [
-          col(T('before', 'היום · sec-title'), screen('trip', `<div id="m2b">${secTitle(D.heading)}${ambientToday(D.total)}</div>${tripList(true)}`)),
-          col(T('opt', 'מסגרת בלי תמונה · יום שאין לו'), screen('trip', `<div id="m2f">${dayHead(headBase)}</div>${tripList(true)}`)),
-          col(T('after', 'מסגרת + תמונת היום'), screen('trip', `<div id="m2a">${dayHead({ ...headBase, shot: D.shot, of: D.of, credit: D.credit })}</div>${tripList(true)}`)),
+          col(
+            T('before', 'היום · טיול · sec-title + הרצועה'),
+            screen('trip', `<div id="m2b">${secTitle(D.heading)}${ambientToday({ total: D.total, span: D.span, commitment: D.commitment, settle: true })}</div>${tripList(true)}`),
+          ),
+          col(
+            T('after', 'ההחלטה · טיול · ראש + שורת התחייבות'),
+            screen('trip', `<div id="m2a">${headToday()}</div>${tripList(true, `<div id="m2c">${commitmentRow({ ...D.commitment, settle: true })}</div>`)}`),
+          ),
         ].join('');
         document.querySelector('#s2p').innerHTML = [
-          col(T('before', 'היום · תכנון'), screen('plan', `<div class="builder-main">${secTitle(D.heading)}${ambientToday(D.total)}${planList(true)}</div>`)),
-          col(T('after', 'אותה מסגרת · תכנון'), screen('plan', `<div class="builder-main"><div id="m2pa">${dayHead({ ...headBase, isNow: false, shot: D.shot, of: D.of, credit: D.credit })}</div>${planList(true)}</div>`)),
+          col(
+            T('before', 'היום · תכנון · יום שלא נכנס'),
+            screen('plan', `<div class="builder-main"><div id="m2pb">${secTitle(D.heading)}${ambientToday({ total: D.total, span: D.span, commitment: D.commitment, fit: D.fit, settle: false })}</div>${planRows(true)}</div>`),
+          ),
+          col(
+            T('after', 'ההחלטה · תכנון · הפסק כשורה בענבר-עמוק'),
+            screen(
+              'plan',
+              `<div class="builder-main"><div id="m2pa">${headToday({
+                isNow: false,
+                lines: [LINE.total(D.total), LINE.fit(D.fit.n, D.fit.s)],
+              })}</div>${commitmentRow({ ...D.commitment, settle: false })}${planRows(true)}</div>`,
+            ),
+          ),
         ].join('');
 
-        // §3 — the phase grammar. One list: passed (grey), now (amber ring), upcoming, done.
-        const s = withPhotos(true);
-        const phases = `<div class="day-list" id="m3">
-${eventCard({ ...s[0], phase: 'passed', tag: 'passed', end: '12:30' })}${journey(D.legs[1])}${eventCard({ ...s[1], phase: 'now', tag: 'now' })}${journey(D.legs[2])}${eventCard({ ...s[2], photo: 'moss', glyph: '🥾' })}${eventCard({ title: 'Kerið Crater', glyph: '🌋', photo: 'glacier', start: '09:00', end: '10:00', phase: 'done', dur: iso('1:00 ש׳') })}
-</div>`;
+        // §3 — every state of the head. One renderer, five inputs.
+        const base = { num: D.num, weekday: D.weekday, title: D.title, lines: [LINE.total(D.total)] };
         document.querySelector('#s3').innerHTML = [
-          col(T('after', 'עבר · עכשיו · עתידי · בוצע'), screen('trip', `<div id="m2n">${dayHead({ ...headBase, shot: 'crater', of: 'Stútur crater', credit: 'Pjt56 · CC BY-SA 4.0' })}</div>${phases}`)),
+          col(T('after', 'היום · טיול'), screen('trip', `<div id="m3a">${dayHead({ ...base, isNow: true, shot: D.shot, of: D.of, credit: D.credit, action: newEventBtn() })}</div>${tripList(true)}`)),
+          col(T('after', 'יום עתידי · בלי תמונה שעברה את הסף'), screen('trip', `<div id="m3b">${dayHead({ ...base, action: newEventBtn() })}</div>${tripList(true)}`)),
+          col(T('after', 'יום ריק · השם הוא היעד'), screen('trip', `<div id="m3c">${dayHead({ num: '16', weekday: 'רביעי', title: 'איסלנד', action: newEventBtn() })}</div>`)),
+          col(T('after', 'יום שעבר · טיול · הבאנר בלי הכותרת'), screen('trip', `<div id="m3d">${archiveBanner('לקריאה בלבד')}${dayHead({ ...base, shot: D.shot, of: D.of, credit: D.credit })}</div><div class="day-list archive">${tripRows(true)}</div>`)),
+          col(T('after', 'יום שעבר · תכנון · ההערה כשורה'), screen('plan', `<div class="builder-main"><div id="m3e">${dayHead({ ...base, shot: D.shot, of: D.of, credit: D.credit, lines: [...base.lines, LINE.past()] })}</div>${planRows(true)}</div>`)),
         ].join('');
 
-        // §4 — the read. `EventDetail`'s head (title + when) is drawn as a plain card, then
-        // `PlaceKnowledge`'s own classes at the Map's density.
-        const read = (know) => `<div class="modal-card" style="position:static;transform:none;max-height:none;margin:12px 0">
-  <div class="modal-title">Háifoss</div>
-  <div style="display:flex;gap:11px;align-items:center;margin-bottom:8px">${badge('wp-event-badge', '🏞️', know ? 'falls' : undefined)}<span class="wp-event-time" style="font-family:var(--font-mono);font-weight:700"><span dir="auto">11:00–12:30</span> <span class="wp-event-timemeta"><span class="when-dur">${iso('1:30 ש׳')}</span></span></span></div>
+        // §4 — the phase grammar. One list: passed (grey), now (amber ring), upcoming, done.
+        const s = withPhotos(true);
+        const phases = `<div class="day-list" id="m4">
+${eventCard({ ...s[0], phase: 'passed', tag: 'passed' })}${journey(D.legs[1])}${eventCard({ ...s[1], phase: 'now', tag: 'now' })}${journey(D.legs[2])}${eventCard({ ...s[2], photo: 'moss', glyph: '🥾' })}${eventCard({ title: 'Kerið Crater', glyph: '🌋', photo: 'glacier', start: '09:00', end: '10:00', phase: 'done', dur: iso('1:00 ש׳') })}
+</div>`;
+        document.querySelector('#s4').innerHTML = [
+          col(T('after', 'עבר · עכשיו · עתידי · בוצע'), screen('trip', headToday({ shot: 'crater', of: 'Stútur crater', credit: 'Pjt56 · CC BY-SA 4.0' }) + phases)),
+        ].join('');
+
+        // §5 — the read: `DetailSheet`'s real tree (`ui/DetailSheet.tsx:64-97`) with
+        // `PlaceKnowledge` at DECIDING density between `.bk-head` and the facts.
+        const read = (know) => `<div class="modal-card mk-inflow" role="dialog"><div class="bk-detail">
+  <div class="bk-actions"><button type="button" class="bk-edit">${icon('edit')} עריכה</button></div>
+  <div class="bk-head"><div class="bk-badge">🏞️</div><div class="bk-headtext"><div class="bk-title">Háifoss</div><div class="bk-type">גמיש</div></div></div>
   ${
     know
-      ? `<div class="wp-read-know" id="m4">
+      ? `<div class="wp-read-know" id="m5">
     <button type="button" class="map-hero" aria-label="תמונה מלאה"><img src="${shotUrl('falls')}" alt="" /></button>
     <span class="map-credit">${iso('Chris 73')} · ${iso('CC BY-SA 3.0')}</span>
-    <span class="map-sum"><span class="map-tag map-sum-lang">באנגלית</span><span class="map-sum-t" dir="auto" lang="en">Háifoss is a waterfall in the south of Iceland, on the Fossá river, at the edge of the highland. At 122 m it is one of the country's tallest.</span></span>
+    <span class="map-sum is-decide"><span class="map-tag map-sum-lang">באנגלית</span><span class="map-sum-t" dir="auto" lang="en">Háifoss is a waterfall in the south of Iceland, on the Fossá river, at the edge of the highland. At 122 m it is one of the country's tallest, and the canyon below it is one of the deepest.</span></span>
     <button type="button" class="map-know-more">עוד בגוגל ${icon('external')}</button>
   </div>`
       : ''
   }
-</div>`;
-        document.querySelector('#s4').innerHTML = [
+  <div class="bk-facts">
+    <div class="bk-fact"><span class="bk-fact-k">מיקום</span><span class="bk-fact-v bk-loc"><span dir="auto">Háifoss, Iceland</span><span class="bk-loc-links"><a class="bk-loc-link" href="#">ניווט</a></span></span></div>
+    <div class="bk-fact"><span class="bk-fact-k">מתי</span><span class="bk-fact-v" dir="auto">ראשון 13.09 · 11:00–12:30</span></div>
+  </div>
+</div></div>`;
+        document.querySelector('#s5').innerHTML = [
           col(T('before', 'הקריאה היום'), screen('trip', read(false))),
-          col(T('after', 'הקריאה עם PlaceKnowledge'), screen('trip', read(true))),
+          col(T('after', 'הקריאה עם PlaceKnowledge · DECIDING'), screen('trip', read(true))),
         ].join('');
 
-        // §5 — the shelf tile, `MaybeCard`'s markup, glyph inline vs a 36px boxed badge.
+        // §6 — the shelf tile, `MaybeCard`'s markup, glyph inline vs a 36px boxed badge.
         const tile = (boxed, photo, title, glyph) =>
           `<button type="button" class="wp-maybecard">${badge(boxed ? 'wp-maybecard-ic mk-boxed' : 'wp-maybecard-ic', glyph, photo)}<span class="wp-maybecard-main"><span class="wp-maybecard-title">${title}</span><span class="wp-maybecard-meta">${iso('2 ש׳')}</span></span></button>`;
         const shelf = (boxed, id) =>
           `<div class="sec-title">מדף האולי</div><div class="shelf" id="${id}">${tile(boxed, boxed ? 'moss' : undefined, 'Landmannalaugar', '🥾')}${tile(boxed, undefined, 'Friðheimar · חממת עגבניות', '🍅')}${tile(boxed, boxed ? 'glacier' : undefined, 'Gullfoss', '🏞️')}</div>`;
-        document.querySelector('#s5').innerHTML = [
-          col(T('before', 'המדף היום'), screen('plan', `<div class="builder-main">${shelf(false, 'm5b')}</div>`)),
-          col(T('opt', 'קופסה של 36px · נדחה'), screen('plan', `<div class="builder-main">${shelf(true, 'm5a')}</div>`)),
+        document.querySelector('#s6').innerHTML = [
+          col(T('before', 'המדף היום'), screen('plan', `<div class="builder-main">${shelf(false, 'm6b')}</div>`)),
+          col(T('opt', 'קופסה של 36px · נדחה'), screen('plan', `<div class="builder-main">${shelf(true, 'm6a')}</div>`)),
         ].join('');
         measure();
       };
@@ -16279,7 +16774,6 @@ ${eventCard({ ...s[0], phase: 'passed', tag: 'passed', end: '12:30' })}${journey
       const themeBtns = group('data-theme');
       const widthBtns = group('data-w');
       const shotBtns = group('data-shot');
-      const lineBtns = group('data-line');
       themeBtns.forEach((b) =>
         b.addEventListener('click', () => {
           document.documentElement.setAttribute('data-theme', b.dataset.theme);
@@ -16301,13 +16795,6 @@ ${eventCard({ ...s[0], phase: 'passed', tag: 'passed', end: '12:30' })}${journey
           measure();
         }),
       );
-      lineBtns.forEach((b) =>
-        b.addEventListener('click', () => {
-          state.line = b.dataset.line;
-          press(lineBtns, b);
-          paint();
-        }),
-      );
 
       /* ══ Measurement — read off the rendered boxes, never typed in. */
       function measure() {
@@ -16319,32 +16806,66 @@ ${eventCard({ ...s[0], phase: 'passed', tag: 'passed', end: '12:30' })}${journey
         };
         const px = (v) => (v == null ? '-' : `${v}px`);
         const h = (sel) => px(r(sel)?.h);
+        const wh = (sel) => `${px(r(sel)?.w)} × ${h(sel)}`;
+        // Line boxes, counted from the text's own rects (a block's `line-height: normal`
+        // has no number to divide by): one Range over the contents, one distinct top per line.
+        const lines = (sel) => {
+          const el = document.querySelector(sel);
+          if (!el) return '-';
+          const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+          const tops = new Set();
+          for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+            if (!n.textContent.trim()) continue;
+            const range = document.createRange();
+            range.selectNodeContents(n);
+            for (const b of range.getClientRects()) if (b.width > 0) tops.add(Math.round(b.top));
+          }
+          return `${tops.size || 1} שורות`;
+        };
+        // Ellipsised or whole: the one question a nowrap line answers.
+        const clipped = (sel) => {
+          const el = document.querySelector(sel);
+          if (!el) return '-';
+          return el.scrollWidth > el.clientWidth + 1 ? `נחתך (${el.scrollWidth}/${el.clientWidth}px)` : 'שלם';
+        };
+        const fw = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fw'));
+        const vh = fw === 390 ? 844 : 640;
+        const pct = (sel) => {
+          const a = r(sel)?.h;
+          return a ? `${Math.round((a / vh) * 100)}%` : '-';
+        };
         const rows = [
-          ['§1 · כרטיס אירוע, בלי תמונה', h('#m1b .wp-event'), 'לפני'],
-          ['§1 · כרטיס אירוע, עם תמונה', h('#m1a .wp-event'), 'אחרי · חייב להיות זהה (ADR-0167 §1)'],
-          ['§1 · הבאדג׳ בכרטיס', `${px(r('#m1a .wp-event-badge')?.w)} × ${h('#m1a .wp-event-badge')}`, 'רצפת מגע 44px · ADR-0017 (הבאדג׳ 40, כמו היום)'],
-          ['§1 · שורת בנייה, בלי תמונה', h('#m1pb .bld'), 'לפני'],
-          ['§1 · שורת בנייה, עם תמונה', h('#m1pa .bld'), 'אחרי · חייב להיות זהה'],
-          ['§1 · רשימת היום כולה · טיול, לפני / אחרי', `${h('#m1b')} / ${h('#m1a')}`, 'אפס שינוי בגלילה'],
-          ['§2 · הראש היום · sec-title + הרצועה', h('#m2b'), 'הבסיס'],
-          ['§2 · המסגרת בלי תמונה', h('#m2f .wp-dayhead'), 'מול הבסיס · מה שיום בעיר משלם'],
-          ['§2 · המסגרת עם התמונה', h('#m2a .wp-dayhead'), 'מול הבסיס · מה שיום נוף משלם'],
-          ['§2 · התמונה לבדה', h('#m2a .sh-shot'), 'הפקד למעלה · הקורא שילם 116'],
+          ['§1 · כרטיס אירוע, בלי / עם תמונה', `${h('#m1b .wp-event')} / ${h('#m1a .wp-event')}`, 'חייב להיות זהה (ADR-0167 §1)'],
+          ['§1 · הבאדג׳ בכרטיס', wh('#m1a .wp-event-badge'), 'הבאדג׳ 40, כמו היום · רצפת מגע 44px (ADR-0017)'],
+          ['§1 · שורת בנייה, בלי / עם תמונה', `${h('#m1pb .bld')} / ${h('#m1pa .bld')}`, 'חייב להיות זהה'],
+          ['§1 · רשימת היום · טיול, לפני / אחרי', `${h('#m1b')} / ${h('#m1a')}`, 'אפס שינוי בגלילה'],
+          ['§2 · הראש היום · טיול · sec-title + הרצועה (3 דיירים)', h('#m2b'), 'הבסיס'],
+          ['§2 · ההחלטה · טיול · הראש + שורת ההתחייבות', `${h('#m2a')} + ${h('#m2c')}`, 'מול הבסיס · כולל התמונה'],
+          ['§2 · הראש היום · תכנון · עם הפסק (4 דיירים)', h('#m2pb'), 'הבסיס'],
+          ['§2 · ההחלטה · תכנון · הראש עם סה״כ + פסק', h('#m2pa'), 'מול הבסיס · כולל התמונה'],
+          ['§2 · כרטיס אמביינטי (Hertz) היום', h('#m2b .ambient'), 'מה ששורה בראש חוסכת'],
+          ['§2 · גוש העובדות · טיול (שורה אחת: הסה״כ)', h('#m2a .wp-dayhead-facts'), 'מול כרטיס ההשכרה שיצא (~41) + שורת הסה״כ הישנה'],
+          ['§2 · גוש העובדות · תכנון (סה״כ + פסק)', h('#m2pa .wp-dayhead-facts'), 'שתי שורות לכל היותר'],
+          ['§2 · כרטיס ההתחייבות היום (טורקיז) / השורה שמחליפה אותו (ענבר)', `${h('#m2b .ambient.unplaced')} / ${h('#m2c .transition-row')}`, 'אותה עובדה, בדקדוק של הנקודה'],
+          ['§2 · הכפתור בשורת הפעולה', wh('#m2a .new-event-btn'), 'הכפתור השייפ, לא נגעו בו'],
+          ['§2 · רצועת התחתית · עובדות + הכפתור בשורה אחת', h('#m2a .wp-dayhead-foot'), 'מול שני כרטיסי הרצועה (~41 + 52) ועוד שורת כפתור'],
+          ['§2 · שורת השם (התאריך | השם)', h('#m2a .sh-day-head'), 'הקורא 76 · כאן 64 כי העובדות ירדו למטה'],
+          ['§2 · השם בראש · שורות · נחתך?', `${lines('#m2a .sh-day-copy > strong')} · ${clipped('#m2a .sh-day-copy > strong')}`, 'בתא הסוגר הוא נחתך ב-360 (סיבוב 2) · עכשיו הרוחב שלו'],
+          ['§2 · פסק התכנון בראש · שורות · נחתך?', `${lines('#m2pa .wp-dayhead-fit')} · ${clipped('#m2pa .wp-dayhead-fit')}`, 'בעמודת הקורא נחתך (247/238) · עכשיו רוחב מלא ומותר לו לגלוש'],
+          ['§3 · הערת יום-שעבר בתכנון · שורות · נחתך?', `${lines('#m3e .wp-dayhead-facts > span:nth-of-type(2)')} · ${clipped('#m3e .wp-dayhead-facts > span:nth-of-type(2)')}`, 'בעמודת הקורא נחתך (269/238)'],
+          ['§2 · התמונה לבדה', h('#m2a .sh-shot'), 'הפקד למעלה · 116 = הקורא'],
           ['§2 · הכיתוב על התמונה (שם + קרדיט)', h('#m2a .sh-shot figcaption'), 'הצללית · 0px בגובה הכרטיס'],
-          ['§2 · עמודת התאריך', `${px(r('#m2a .sh-day-date')?.w)} × ${h('#m2a .sh-day-date')}`, 'הקורא · 64px'],
-          ['§2 · כפתור ה-+ בעמודה הסוגרת', `${px(r('#m2a .wp-dayhead-add')?.w)} × ${h('#m2a .wp-dayhead-add')}`, 'רצפת מגע 44px'],
-          ['§2 · המסגרת בתכנון', h('#m2pa .wp-dayhead'), 'מול הטיול · אותו רכיב, אותו מספר'],
-          ['§2 · המסגרת + התמונה, חלק מהמסך', (() => {
-            const a = r('#m2a .wp-dayhead')?.h;
-            const fw = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fw'));
-            const vh = fw === 390 ? 844 : 640;
-            return a ? `${Math.round((a / vh) * 100)}%` : '-';
-          })(), 'מגובה המסך שנבחר · הכותרת והניווט לא נספרים'],
-          ['§4 · התמונה בקריאה', h('#m4 .map-hero'), 'המפה · 130px'],
-          ['§4 · שורת הקרדיט מתחתיה', h('#m4 .map-credit'), 'מה ש-«מתחת» עולה מול «על»'],
-          ['§4 · הידע כולו בקריאה', h('#m4'), 'מול הקריאה בלי'],
-          ['§5 · אריח מדף, גליף בשורה', h('#m5b .wp-maybecard'), 'לפני · הרצפה 132'],
-          ['§5 · אריח מדף, קופסה 36px', h('#m5a .wp-maybecard'), 'אחרי · מה שהקופסה עולה'],
+          ['§2 · עמודת התאריך', wh('#m2a .sh-day-date'), 'הקורא · 64px'],
+          ['§3 · היום · עם תמונה', `${h('#m3a .wp-dayhead')} · ${pct('#m3a .wp-dayhead')}`, 'מגובה המסך שנבחר'],
+          ['§3 · יום עתידי · בלי תמונה', h('#m3b .wp-dayhead'), 'מה שרוב הימים בעיר משלמים'],
+          ['§3 · יום ריק', h('#m3c .wp-dayhead'), 'min-height 76 של הקורא'],
+          ['§3 · יום שעבר · טיול · באנר + ראש', `${h('#m3d .archive-banner')} + ${h('#m3d .wp-dayhead')}`, 'בלי שורת הפעולה'],
+          ['§3 · יום שעבר · טיול · כפתור «אירוע חדש»', document.querySelector('#m3d .new-event-btn') ? 'קיים' : 'אין', 'חייב לא להיות · הרצועה נשארת בשביל העובדות'],
+          ['§3 · יום שעבר · תכנון · ראש עם סה״כ + ההערה', h('#m3e .wp-dayhead'), 'ההערה כשורה'],
+          ['§5 · התמונה בקריאה', h('#m5 .map-hero'), 'המפה · 130px'],
+          ['§5 · שורת הקרדיט מתחתיה', h('#m5 .map-credit'), 'מה ש-«מתחת» עולה מול «על»'],
+          ['§5 · הידע כולו בקריאה', h('#m5'), 'מול הקריאה בלי'],
+          ['§6 · אריח מדף, גליף בשורה / קופסה 36px', `${h('#m6b .wp-maybecard')} / ${h('#m6a .wp-maybecard')}`, 'הרצפה 132'],
         ];
         document.querySelector('#meas tbody').innerHTML = rows
           .map((row) => `<tr>${row.map((c) => `<td>${c}</td>`).join('')}</tr>`)
@@ -16352,8 +16873,6 @@ ${eventCard({ ...s[0], phase: 'passed', tag: 'passed', end: '12:30' })}${journey
       }
 
       paint();
-      // `document.fonts.ready` alone resolves before a lazily fetched face exists; ask for
-      // the faces this page measures, then re-measure (pitfalls.md).
       Promise.all(
         ['400 12px Assistant', '700 12px Assistant', '12px "Secular One"', '700 12px "JetBrains Mono"'].map((f) =>
           document.fonts.load(f),

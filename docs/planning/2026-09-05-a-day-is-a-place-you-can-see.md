@@ -96,3 +96,21 @@ Four facts, and the first one turns the biggest-looking item into a prop.
 - The photographs are synthetic (no egress to Commons from this sandbox), so ADR-0167 §18's device
   question — is a real photograph legible at 40px — is still open, and §1 is the cheapest way to
   finally answer it.
+
+## Rounds 2 and 3, the same day — the forks are closed
+
+The owner's answer to the five forks was _"figure everything out, then write up ADRs and a detailed phased plan … another agent is going to take it"_, plus two things the first round had not drawn: _"the ambient stuff (car rentals, hotel stays etc.) … I don't really like how ambient events look anyway"_, and, off the renders, _"a plus sign on the day header - what is it?"_, _"some of the text doesn't fit inside the header"_, _"several different fonts and sizes, which looks weird … maybe even lose a little information if it's too much"_.
+
+Everything above is therefore **superseded by [ADR-0219](../decisions/0219-a-day-is-a-place-you-can-see.md)** where the two disagree, and the build is the [five-phase plan](2026-09-05-a-day-is-a-place-you-can-see-build-plan.md). What the three render rounds decided, each against a measurement in the mockup:
+
+| drawn                                                           | measured                                                                    | decided                                                                                     |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| icon-only `+` in the head's trailing cell                       | owner: _"what is it?"_                                                      | never an unlabelled control on the head                                                     |
+| the labelled `.new-event-btn` in the trailing cell              | the day's name clipped to `…ur crater ← Háifoss` at 360                     | a head's width belongs to its title                                                         |
+| the facts as `.sh-day-copy > span` lines                        | Plan's verdict 247px and the past-day note 269px in a 238px column, clipped | facts are a full-width block under the grid, allowed to wrap                                |
+| facts block, then a button row                                  | +39px, read as a fourth band                                                | facts and the button share one footer band (facts start, button end, bottom-aligned)        |
+| a car hire's middle day as a head line (`Hertz · יום 3 מתוך 6`) | one more line on every day of a hire                                        | dropped — the information the owner said we can lose (ADR-0163 §3 amended)                  |
+| five type sizes, two faces, mono digits, an emoji               | _"several different fonts and sizes"_                                       | two text sizes (15/700 name, 12.5/400 facts), one display face on the numeral, nothing else |
+| the ambient strip re-tinted                                     | three kinds of thing in one box                                             | deleted: fact → head line, commitment → `.transition-row` at the top, span → nowhere        |
+
+Final numbers at 360×640, light: the head with a shot ⁦228px⁩ (⁦36%⁩ of the raw viewport), without one ⁦112px⁩, an empty day ⁦112px⁩; the commitment row ⁦62px⁩ where the teal card was ⁦52px⁩; the badge photo ⁦0px⁩.

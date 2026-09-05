@@ -319,3 +319,7 @@ Built: §1, §2, §3, §5, §7. **Not built: §4**, which is the owner's call.
   **row**, so a section joins the row unless it is `flex-basis: 100%`). The canvas place card's
   grid gained a row for the same reason.
 - **The hero** (§7), extended in `lib/hero-horizon.ts` — pure and clock-free, as it was.
+
+## Amendment (2026-09-05) — the read shows the place's knowledge ([ADR-0219](0219-a-day-is-a-place-you-can-see.md) §6)
+
+§4 made a row's tap a **read**, and the read has never said anything about the place beyond its address. `PlaceKnowledge` — the picture, the credit under it, the clamped summary marked `באנגלית` where it is, and `עוד בגוגל` — serves the Map's place card and Plan's research card and no third host. ADR-0219 §6 puts it in `EventDetail` directly under `DetailSheet`'s head, at `KNOWLEDGE_DENSITY.DECIDING`, with the full picture opening in `MediaViewer` the way the Map's does. The one build cost is extracting its base rules out of `map.css`'s `.map-placecard:has(.map-hero)` scope into a sheet of its own. Built in ADR-0219's phase 5.

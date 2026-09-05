@@ -120,3 +120,7 @@ Both gated on the **category** / `carriesRoute`, which is exactly the conflation
 - **A generic `ספק` label for every type.** Rejected in §2: you know you booked with Hertz, and calling that a "supplier" is how the field stays empty.
 - **The return-deadline wording for the ambient strip.** Rejected in §4 by the owner's call, and worth recording because it is the more _useful_ option: it loses one grammar across the strip's two rows.
 - **Derive the hire's toggle from `to === from`** and keep the field stateless. Rejected in §1 — it cannot represent "elsewhere, not yet said where", which is every moment between the two taps.
+
+## Amendment (2026-09-05) — §3's middle day leaves the day ([ADR-0219](0219-a-day-is-a-place-you-can-see.md) §2)
+
+§3 kept the company's name on the ambient strip for a hire's middle days so that dropping the strip row would not "delete the company from the day". The strip is retired by ADR-0219 §4, and the owner, shown the day head with every fact the strip carried, asked to _"lose a little information if it's too much"_. This is that information: on day three of six there is nothing to do with `Hertz`. **A span's middle day says nothing on the day surfaces.** Its edges — the pick-up and the return — are rows on their own days, as they have been since ADR-0184 §9; its count (`יום 3 מתוך 6`, §4's unit) stays on the booking in the Index and on the Home glance, where `ambientSpanLabel` still runs. §4's unit rule is untouched; only its third host is gone.
