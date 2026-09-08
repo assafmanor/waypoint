@@ -46,9 +46,11 @@ button.day-gap:focus-visible {
   display: inline-flex;
   color: var(--faint);
 }
-button.day-gap:hover .day-gap-add,
-button.day-gap:hover .day-gap-lbl {
-  color: var(--muted);
+@media (hover: hover) and (pointer: fine) {
+  button.day-gap:hover .day-gap-add,
+  button.day-gap:hover .day-gap-lbl {
+    color: var(--muted);
+  }
 }
 .day-gap-line {
   flex: 1;

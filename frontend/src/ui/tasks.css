@@ -111,8 +111,9 @@
 
    What survives from that attempt, because it is the part with 40 other call sites: on a
    touch device EVERY `:hover` rule is also a stuck state, and `@media (hover: hover) and
-   (pointer: fine)` is the guard for the ones that must keep a hint. The sweep is on
-   `docs/backlog.md`. Verified here in a real touch context: after a tap the hover is
+   (pointer: fine)` is the guard for the ones that must keep a hint. The sweep shipped
+   2026-09-08 and `styles/hover-is-gated.contract.test.ts` refuses an ungated one since.
+   Verified here in a real touch context: after a tap the hover is
    latched (`:hover` matches) and the control paints exactly its resting state — ring
    `--line`, mark `opacity: 0`. */
 .tsk-tick:focus-visible,
@@ -557,8 +558,10 @@
   color: var(--muted);
   cursor: pointer;
 }
-.tsk-when-clear:hover {
-  color: var(--ink);
+@media (hover: hover) and (pointer: fine) {
+  .tsk-when-clear:hover {
+    color: var(--ink);
+  }
 }
 
 /* THE ASSIGNEE ROW (ADR-0189 §2) — `ChoiceGrid layout="pills"` with a person where the

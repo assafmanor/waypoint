@@ -113,9 +113,13 @@
   cursor: pointer;
 }
 
-.pp-result:hover:not(:disabled),
 .pp-result:focus-visible {
   background: var(--line);
+}
+@media (hover: hover) and (pointer: fine) {
+  .pp-result:hover:not(:disabled) {
+    background: var(--line);
+  }
 }
 
 .pp-result:disabled {
@@ -184,6 +188,8 @@
   cursor: pointer;
   white-space: nowrap;
 }
-.pp-addbtn:hover {
-  border-color: var(--muted);
+@media (hover: hover) and (pointer: fine) {
+  .pp-addbtn:hover {
+    border-color: var(--muted);
+  }
 }

@@ -170,20 +170,35 @@
   transform: scale(0.6);
   font-size: 13px;
 }
-.wp-event-check.btn:hover,
 .wp-event-check.btn:focus-visible {
   box-shadow: 0 0 0 4px rgba(60, 154, 107, 0.18);
   transform: scale(1.06);
 }
-.wp-event-check.btn:hover .mark,
+@media (hover: hover) and (pointer: fine) {
+  .wp-event-check.btn:hover {
+    box-shadow: 0 0 0 4px rgba(60, 154, 107, 0.18);
+    transform: scale(1.06);
+  }
+}
 .wp-event-check.btn:focus-visible .mark {
   opacity: 0;
   transform: scale(0.6);
 }
-.wp-event-check.btn:hover .undo,
+@media (hover: hover) and (pointer: fine) {
+  .wp-event-check.btn:hover .mark {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
 .wp-event-check.btn:focus-visible .undo {
   opacity: 1;
   transform: scale(1);
+}
+@media (hover: hover) and (pointer: fine) {
+  .wp-event-check.btn:hover .undo {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 .wp-event-check.btn:focus-visible {
   outline: 2.5px solid var(--teal);
@@ -486,18 +501,22 @@
     background var(--t-quick),
     color var(--t-quick);
 }
-.wp-event-act:hover {
-  background: var(--cta);
-  color: var(--cta-text);
-  border-color: var(--ink);
+@media (hover: hover) and (pointer: fine) {
+  .wp-event-act:hover {
+    background: var(--cta);
+    color: var(--cta-text);
+    border-color: var(--ink);
+  }
 }
 .wp-event-act.go {
   border-color: var(--teal);
   color: var(--teal);
 }
-.wp-event-act.go:hover {
-  background: var(--teal);
-  color: var(--on-fill);
+@media (hover: hover) and (pointer: fine) {
+  .wp-event-act.go:hover {
+    background: var(--teal);
+    color: var(--on-fill);
+  }
 }
 .wp-event-act:focus-visible {
   outline: 2.5px solid var(--teal);
@@ -520,10 +539,12 @@
   font-size: var(--text-h3);
   padding: 6px 9px;
 }
-.wp-event-act.icon-only.more:hover {
-  background: var(--paper);
-  color: var(--ink);
-  border-color: var(--line);
+@media (hover: hover) and (pointer: fine) {
+  .wp-event-act.icon-only.more:hover {
+    background: var(--paper);
+    color: var(--ink);
+    border-color: var(--line);
+  }
 }
 .wp-event-act.stepper {
   display: flex;

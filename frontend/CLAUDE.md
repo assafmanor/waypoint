@@ -293,8 +293,11 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   fill — both of which were correct the whole time. **A report about a control's appearance
   after an interaction is not answered by asserting its state.** Three rules follow. A hover
   hint may never spend a status colour or a state's own glyph. A hint that must exist goes
-  inside `@media (hover: hover) and (pointer: fine)` so it cannot latch (~40 older rules are
-  a backlogged sweep). And on a **stateful** control, prefer deleting the hover to overriding
+  inside `@media (hover: hover) and (pointer: fine)` so it cannot latch — every hover rule in
+  the app is, since the 2026-09-08 sweep, and `styles/hover-is-gated.contract.test.ts` fails
+  the suite on a new one outside the gate. The same latch wears `:focus-within` on a tapped
+  button (it keeps focus after its panel closes), which is why `ValueToken`'s open mark pairs
+  `.open` with `:focus-visible`. And on a **stateful** control, prefer deleting the hover to overriding
   it: the tick's fix is a deletion, because the quieter replacement could not be measured as
   cheaply as it could be dropped — and it was mouse-only on a phone-primary app either way.
   If you do override, check the specificity: `.x:hover .icon` and

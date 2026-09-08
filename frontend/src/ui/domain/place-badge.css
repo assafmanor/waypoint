@@ -30,8 +30,10 @@
   position: absolute;
   inset: calc(var(--placebadge-hit) * -1);
 }
-.wp-placebadge:hover {
-  box-shadow: 0 0 0 2px var(--teal);
+@media (hover: hover) and (pointer: fine) {
+  .wp-placebadge:hover {
+    box-shadow: 0 0 0 2px var(--teal);
+  }
 }
 .wp-placebadge:focus-visible {
   outline: 2.5px solid var(--teal);

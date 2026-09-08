@@ -45,8 +45,10 @@
    gets painted. `:not(:disabled)` is the one behaviour change beyond the paint area, and it
    is a correction: a disabled button still MATCHES `:hover` in a browser, so a row that
    cannot be opened was offering hover feedback for a press that does nothing. */
-.wp-listrow:has(.wp-listrow-open:hover:not(:disabled)) {
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .wp-listrow:has(.wp-listrow-open:hover:not(:disabled)) {
+    background: color-mix(in srgb, var(--ink) 4%, transparent);
+  }
 }
 .wp-listrow-open:focus-visible {
   outline: 2px solid var(--teal);
@@ -156,9 +158,11 @@
   width: 1.15em;
   height: 1.15em;
 }
-.wp-listrow-kebab:hover {
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  color: var(--ink);
+@media (hover: hover) and (pointer: fine) {
+  .wp-listrow-kebab:hover {
+    background: color-mix(in srgb, var(--ink) 6%, transparent);
+    color: var(--ink);
+  }
 }
 
 /* RowManageSheet action list — the `⋯` menu items (ported from `.row-action`).
@@ -186,9 +190,11 @@
   padding: 13px 14px;
   cursor: pointer;
 }
-.wp-row-action:hover {
-  border-color: var(--plan);
-  background: var(--plan-tint);
+@media (hover: hover) and (pointer: fine) {
+  .wp-row-action:hover {
+    border-color: var(--plan);
+    background: var(--plan-tint);
+  }
 }
 .wp-row-action:focus-visible {
   outline: 2.5px solid var(--plan);
@@ -197,9 +203,11 @@
 .wp-row-action.danger {
   color: var(--miss);
 }
-.wp-row-action.danger:hover {
-  border-color: var(--miss);
-  background: rgba(198, 40, 40, 0.06);
+@media (hover: hover) and (pointer: fine) {
+  .wp-row-action.danger:hover {
+    border-color: var(--miss);
+    background: rgba(198, 40, 40, 0.06);
+  }
 }
 .wp-row-action-ic {
   font-size: var(--text-h3);

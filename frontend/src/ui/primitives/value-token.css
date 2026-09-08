@@ -49,11 +49,18 @@
   content: none;
 }
 
-/* Open and focused wear the same mark, because they are the same state to the reader:
-   this is the value the panel on screen belongs to. Amber, since what opens is a
-   picker for a value in a form — matching `.tp-field.open`, which this replaces. */
+/* Open and keyboard-focused wear the same mark, because they are the same state to the
+   reader: this is the value the panel on screen belongs to. Amber, since what opens is a
+   picker for a value in a form — matching `.tp-field.open`, which this replaces.
+
+   `:focus-visible`, NOT `:focus-within`, and the difference is a shipped defect: a tapped
+   button keeps focus after its panel closes, so on a phone the token stayed amber until
+   something else was tapped — the owner's "+2 ימים still looks selected" (2026-09-08), the
+   same latch as a stuck `:hover` wearing a different pseudo-class. `:focus-visible` is
+   matched by neither a click nor a tap (probed in ADR-0195 §4), so only `.open` paints the
+   mark on a phone and a keyboard user keeps it. */
 .vt.open,
-.vt:focus-within {
+.vt:focus-visible {
   border-color: var(--amber);
   background: rgba(233, 166, 60, 0.08);
 }
@@ -93,10 +100,16 @@
   border-radius: 9px;
   padding: 4px 8px;
 }
-.df.vt-date:focus-within {
-  outline: none;
-  border-color: var(--amber);
-  background: rgba(233, 166, 60, 0.08);
+/* A date's control is the native input, which the platform's picker leaves FOCUSED when it
+   closes (`date-field.css`), so an ungated `:focus-within` is the same latch as the button's
+   above. Gated to a fine pointer: there a focused date input is genuinely being edited by
+   keyboard; on a phone the platform's own dialog is the open mark. */
+@media (hover: hover) and (pointer: fine) {
+  .df.vt-date:focus-within {
+    outline: none;
+    border-color: var(--amber);
+    background: rgba(233, 166, 60, 0.08);
+  }
 }
 /* The face is the token's text; its `min-block-size` (there to hold a line for an
    empty native control) would otherwise make a date token taller than its neighbours. */
