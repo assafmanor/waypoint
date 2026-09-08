@@ -255,8 +255,10 @@
   cursor: pointer;
   transition: background-color var(--t-quick) var(--ease-standard);
 }
-.hdr-trip:hover {
-  background: color-mix(in srgb, var(--chrome-ink) 15%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .hdr-trip:hover {
+    background: color-mix(in srgb, var(--chrome-ink) 15%, transparent);
+  }
 }
 .hdr-trip:focus-visible {
   outline: 2.5px solid var(--teal);
@@ -388,9 +390,11 @@
 .gear-btn {
   flex: 0 0 auto;
 }
-.gear-btn:hover,
-.chrome-ghost-btn:hover {
-  color: var(--chrome-ink);
+@media (hover: hover) and (pointer: fine) {
+  .gear-btn:hover,
+  .chrome-ghost-btn:hover {
+    color: var(--chrome-ink);
+  }
 }
 .gear-btn:focus-visible,
 .chrome-ghost-btn:focus-visible {
@@ -1881,9 +1885,11 @@
     transform var(--t-quick) var(--ease-standard),
     box-shadow var(--t-quick) var(--ease-standard);
 }
-.trip-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 24px -16px rgba(22, 35, 61, 0.5);
+@media (hover: hover) and (pointer: fine) {
+  .trip-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px -16px rgba(22, 35, 61, 0.5);
+  }
 }
 .trip-card:focus-visible,
 .trip-hero:focus-visible {
@@ -1979,8 +1985,10 @@
     transform var(--t-quick) var(--ease-standard),
     box-shadow var(--t-quick) var(--ease-standard);
 }
-.trip-hero:hover {
-  transform: translateY(-2px);
+@media (hover: hover) and (pointer: fine) {
+  .trip-hero:hover {
+    transform: translateY(-2px);
+  }
 }
 .trip-hero .flag {
   width: 52px;
@@ -2225,8 +2233,10 @@
   background: var(--plan-tint);
   border-color: rgba(110, 89, 214, 0.28);
 }
-.app[data-mode='plan'] .hdr-trip:hover {
-  background: rgba(110, 89, 214, 0.16);
+@media (hover: hover) and (pointer: fine) {
+  .app[data-mode='plan'] .hdr-trip:hover {
+    background: rgba(110, 89, 214, 0.16);
+  }
 }
 .app[data-mode='plan'] .hdr-swap {
   background: rgba(110, 89, 214, 0.16);
@@ -2241,9 +2251,11 @@
 .mode-chrome[data-mode='plan'] .chrome-ghost-btn {
   color: var(--plan-deep);
 }
-.app[data-mode='plan'] .gear-btn:hover,
-.mode-chrome[data-mode='plan'] .chrome-ghost-btn:hover {
-  color: var(--plan);
+@media (hover: hover) and (pointer: fine) {
+  .app[data-mode='plan'] .gear-btn:hover,
+  .mode-chrome[data-mode='plan'] .chrome-ghost-btn:hover {
+    color: var(--plan);
+  }
 }
 .app[data-mode='plan'] .gear-btn:focus-visible,
 .mode-chrome[data-mode='plan'] .chrome-ghost-btn:focus-visible {

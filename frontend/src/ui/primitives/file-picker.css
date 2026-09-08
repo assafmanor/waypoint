@@ -30,11 +30,17 @@
     border-color 0.15s ease,
     background 0.15s ease;
 }
-.file-tile:hover,
 .file-tile:focus-visible {
   outline: none;
   border-color: var(--cta);
   background: color-mix(in srgb, var(--ink) 6%, var(--card));
+}
+@media (hover: hover) and (pointer: fine) {
+  .file-tile:hover {
+    outline: none;
+    border-color: var(--cta);
+    background: color-mix(in srgb, var(--ink) 6%, var(--card));
+  }
 }
 .file-tile:disabled {
   cursor: default;
@@ -181,11 +187,17 @@
   border: 1px solid var(--line);
   cursor: pointer;
 }
-.file-preview-clear:hover,
 .file-preview-clear:focus-visible {
   outline: none;
   border-color: var(--miss);
   color: var(--miss);
+}
+@media (hover: hover) and (pointer: fine) {
+  .file-preview-clear:hover {
+    outline: none;
+    border-color: var(--miss);
+    color: var(--miss);
+  }
 }
 .file-preview-clear:disabled {
   cursor: default;

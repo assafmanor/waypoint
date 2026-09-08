@@ -28,9 +28,11 @@
   text-align: start;
   cursor: pointer;
 }
-.slotpick-opt:hover {
-  border-color: var(--plan);
-  background: var(--plan-tint);
+@media (hover: hover) and (pointer: fine) {
+  .slotpick-opt:hover {
+    border-color: var(--plan);
+    background: var(--plan-tint);
+  }
 }
 .slotpick-opt:focus-visible {
   outline: 2.5px solid var(--plan);

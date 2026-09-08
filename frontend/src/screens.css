@@ -254,10 +254,12 @@ body.wp-dragging
   padding: 5px 9px;
   cursor: pointer;
 }
-.new-event-btn:hover {
-  background: var(--ink);
-  color: var(--cta-text);
-  border-color: var(--ink);
+@media (hover: hover) and (pointer: fine) {
+  .new-event-btn:hover {
+    background: var(--ink);
+    color: var(--cta-text);
+    border-color: var(--ink);
+  }
 }
 
 /* quick-access grid — the four real shortcuts (ADR-0045; navigate-to-next joined
@@ -310,9 +312,11 @@ body.wp-dragging
   font: inherit;
   color: var(--ink);
 }
-.qa:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 18px -12px rgba(22, 35, 61, 0.35);
+@media (hover: hover) and (pointer: fine) {
+  .qa:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 18px -12px rgba(22, 35, 61, 0.35);
+  }
 }
 .qa .ic {
   font-size: 20px;
@@ -1075,8 +1079,10 @@ body.wp-dragging
   cursor: pointer;
   transition: 0.14s;
 }
-.acct-signout:hover {
-  border-color: var(--ink);
+@media (hover: hover) and (pointer: fine) {
+  .acct-signout:hover {
+    border-color: var(--ink);
+  }
 }
 .acct-signout:focus-visible {
   outline: 2.5px solid var(--teal);
@@ -2189,9 +2195,11 @@ button.bld-time::after {
   position: absolute;
   inset: -8px 0;
 }
-button.bld-time:hover {
-  border-color: var(--plan);
-  background: var(--plan-tint);
+@media (hover: hover) and (pointer: fine) {
+  button.bld-time:hover {
+    border-color: var(--plan);
+    background: var(--plan-tint);
+  }
 }
 button.bld-time:focus-visible {
   outline: 2.5px solid var(--plan);
@@ -2230,13 +2238,17 @@ button.bld-time.empty {
   display: grid;
   place-items: center;
 }
-.bld-icon:hover {
-  border-color: var(--plan);
-  color: var(--plan-deep);
+@media (hover: hover) and (pointer: fine) {
+  .bld-icon:hover {
+    border-color: var(--plan);
+    color: var(--plan-deep);
+  }
 }
-.bld-icon.danger:hover {
-  border-color: var(--miss);
-  color: var(--miss);
+@media (hover: hover) and (pointer: fine) {
+  .bld-icon.danger:hover {
+    border-color: var(--miss);
+    color: var(--miss);
+  }
 }
 .bld-icon:focus-visible {
   outline: 2.5px solid var(--plan);
@@ -2297,31 +2309,52 @@ button.bld-time.empty {
   border-radius: 999px;
   box-shadow: 0 0 0 1.5px rgba(60, 154, 107, 0.35);
 }
-.bld-settle.done:hover,
 .bld-settle.done:focus-visible {
   box-shadow: 0 0 0 4px rgba(60, 154, 107, 0.18);
   transform: scale(1.06);
 }
-.bld-settle.done:hover .mark,
+@media (hover: hover) and (pointer: fine) {
+  .bld-settle.done:hover {
+    box-shadow: 0 0 0 4px rgba(60, 154, 107, 0.18);
+    transform: scale(1.06);
+  }
+}
 .bld-settle.done:focus-visible .mark {
   opacity: 0;
   transform: scale(0.6);
 }
-.bld-settle.done:hover .undo,
+@media (hover: hover) and (pointer: fine) {
+  .bld-settle.done:hover .mark {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
 .bld-settle.done:focus-visible .undo {
   opacity: 1;
   transform: scale(1);
+}
+@media (hover: hover) and (pointer: fine) {
+  .bld-settle.done:hover .undo {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 .bld-settle.ghost {
   border: 1.5px dashed var(--soft-line);
   color: var(--muted);
   background: transparent;
 }
-.bld-settle.ghost:hover,
 .bld-settle.ghost:focus-visible {
   border-style: solid;
   border-color: var(--ok);
   color: var(--ok);
+}
+@media (hover: hover) and (pointer: fine) {
+  .bld-settle.ghost:hover {
+    border-style: solid;
+    border-color: var(--ok);
+    color: var(--ok);
+  }
 }
 .bld-settle.restore {
   border: 1.5px solid rgba(194, 88, 78, 0.4);
@@ -2329,9 +2362,13 @@ button.bld-time.empty {
   background: transparent;
   font-size: 12px;
 }
-.bld-settle.restore:hover,
 .bld-settle.restore:focus-visible {
   background: rgba(194, 88, 78, 0.1);
+}
+@media (hover: hover) and (pointer: fine) {
+  .bld-settle.restore:hover {
+    background: rgba(194, 88, 78, 0.1);
+  }
 }
 /* A skipped archive row recedes and strikes through — legible history, not a
    live plan (ADR-0044). */
@@ -2404,9 +2441,11 @@ button.bld-time.empty {
   cursor: pointer;
   white-space: nowrap;
 }
-.gap-add:hover {
-  background: var(--plan);
-  color: var(--on-fill);
+@media (hover: hover) and (pointer: fine) {
+  .gap-add:hover {
+    background: var(--plan);
+    color: var(--on-fill);
+  }
 }
 .gap-add:focus-visible {
   outline: 2.5px solid var(--plan);
@@ -2508,9 +2547,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   margin-top: 2px;
   transition: 0.12s;
 }
-.addbtn:hover {
-  border-color: var(--plan);
-  background: var(--plan-tint);
+@media (hover: hover) and (pointer: fine) {
+  .addbtn:hover {
+    border-color: var(--plan);
+    background: var(--plan-tint);
+  }
 }
 .addbtn:focus-visible {
   outline: 2.5px solid var(--plan);
@@ -2551,9 +2592,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   border-radius: 10px;
   cursor: pointer;
 }
-.add-idea-btn:hover:not(:disabled) {
-  background: var(--plan);
-  color: var(--on-fill);
+@media (hover: hover) and (pointer: fine) {
+  .add-idea-btn:hover:not(:disabled) {
+    background: var(--plan);
+    color: var(--on-fill);
+  }
 }
 .add-idea-btn:disabled {
   opacity: 0.4;
@@ -2937,9 +2980,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   line-height: 1;
   cursor: pointer;
 }
-.kebab:hover {
-  background: color-mix(in srgb, var(--ink) 5%, transparent);
-  color: var(--ink);
+@media (hover: hover) and (pointer: fine) {
+  .kebab:hover {
+    background: color-mix(in srgb, var(--ink) 5%, transparent);
+    color: var(--ink);
+  }
 }
 
 /* invite */
@@ -3333,8 +3378,10 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   cursor: pointer;
   transition: background 0.1s ease;
 }
-.icon-cell:hover {
-  background: var(--screen);
+@media (hover: hover) and (pointer: fine) {
+  .icon-cell:hover {
+    background: var(--screen);
+  }
 }
 /* Selection — neutral ink fill + ring (non-colour-redundant, ADR-0038 §6).
    The ring is a `0 0 0 Npx` SPREAD, which is a ring and not a drop shadow — the
@@ -3574,8 +3621,10 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
     background 0.15s ease,
     transform 0.12s ease;
 }
-.index .back-icon-btn:hover {
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .index .back-icon-btn:hover {
+    background: color-mix(in srgb, var(--ink) 6%, transparent);
+  }
 }
 .index .back-icon-btn:active {
   transform: scale(var(--press-scale));
@@ -4066,9 +4115,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   padding: 5px 11px;
   cursor: pointer;
 }
-.bk-edit:hover {
-  border-color: var(--plan);
-  background: var(--plan-tint);
+@media (hover: hover) and (pointer: fine) {
+  .bk-edit:hover {
+    border-color: var(--plan);
+    background: var(--plan-tint);
+  }
 }
 .bk-head {
   display: flex;
@@ -4108,8 +4159,10 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
      while `ניווט` stays an <a> out to Google — one appearance, two elements. */
   cursor: pointer;
 }
-.bk-loc-link:hover {
-  background: color-mix(in srgb, var(--teal) 10%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .bk-loc-link:hover {
+    background: color-mix(in srgb, var(--teal) 10%, transparent);
+  }
 }
 .bk-badge {
   width: 44px;
@@ -4183,10 +4236,15 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
 .bk-pairlink:active {
   transform: scale(var(--press-scale));
 }
-.bk-pairlink:hover,
 .bk-pairlink:focus-visible {
   outline: none;
   text-decoration: underline;
+}
+@media (hover: hover) and (pointer: fine) {
+  .bk-pairlink:hover {
+    outline: none;
+    text-decoration: underline;
+  }
 }
 
 /* ===== Documents section (DocumentsSection.tsx) — grouped by type, per the
@@ -4747,9 +4805,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   border-radius: 6px;
   opacity: 0.7;
 }
-.stay-strip .ss-x:hover {
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  opacity: 1;
+@media (hover: hover) and (pointer: fine) {
+  .stay-strip .ss-x:hover {
+    background: color-mix(in srgb, var(--ink) 6%, transparent);
+    opacity: 1;
+  }
 }
 
 /* Shared badge tint (ADR-0059 §3): teal for a stay, amber for transport — on the
@@ -5020,8 +5080,10 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   cursor: pointer;
   min-height: 44px;
 }
-.set-member-tap:hover {
-  background: color-mix(in srgb, var(--ink) 3%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .set-member-tap:hover {
+    background: color-mix(in srgb, var(--ink) 3%, transparent);
+  }
 }
 .set-member-tap:focus-visible {
   outline: 2.5px solid var(--teal);

@@ -1523,8 +1523,10 @@
   white-space: nowrap;
   text-decoration: none;
 }
-.map-navbtn:hover {
-  background: color-mix(in srgb, var(--teal) 10%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .map-navbtn:hover {
+    background: color-mix(in srgb, var(--teal) 10%, transparent);
+  }
 }
 /* The coordless `＋ מיקום` affordance is the shared `AddLocationButton`
    (ui/primitives/place-picker.css) — a placeless booking's מיקום fact needed the
@@ -1902,8 +1904,10 @@
   text-decoration: none;
   cursor: pointer;
 }
-.map-res-out:hover {
-  border-color: var(--muted);
+@media (hover: hover) and (pointer: fine) {
+  .map-res-out:hover {
+    border-color: var(--muted);
+  }
 }
 /* ── THE DECIDING CARD (ADR-0166 §17, ADR-0167 §9.1) ──────────────────────────────
    A selected result grows the hero, the credit and the summary — and it needs **no rules of its
@@ -1982,8 +1986,10 @@
   white-space: nowrap;
   cursor: pointer;
 }
-.map-del:hover {
-  color: var(--miss);
+@media (hover: hover) and (pointer: fine) {
+  .map-del:hover {
+    color: var(--miss);
+  }
 }
 .map-del:active {
   transform: scale(var(--press-scale));
@@ -2011,9 +2017,11 @@
   cursor: pointer;
   white-space: nowrap;
 }
-.map-addmaybe:hover:not(:disabled) {
-  background: var(--cta);
-  color: var(--cta-text);
+@media (hover: hover) and (pointer: fine) {
+  .map-addmaybe:hover:not(:disabled) {
+    background: var(--cta);
+    color: var(--cta-text);
+  }
 }
 .map-addmaybe:disabled {
   opacity: 0.55;

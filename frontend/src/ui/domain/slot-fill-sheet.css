@@ -61,9 +61,11 @@
   padding: 10px 12px;
   cursor: pointer;
 }
-.slotfill-row:hover {
-  border-color: var(--slotfill-accent);
-  background: var(--slotfill-tint);
+@media (hover: hover) and (pointer: fine) {
+  .slotfill-row:hover {
+    border-color: var(--slotfill-accent);
+    background: var(--slotfill-tint);
+  }
 }
 .slotfill-row:focus-visible {
   outline: 2.5px solid var(--slotfill-accent);
@@ -141,8 +143,10 @@
   padding: 12px;
   cursor: pointer;
 }
-.slotfill-new:hover {
-  background: var(--slotfill-accent-deep);
+@media (hover: hover) and (pointer: fine) {
+  .slotfill-new:hover {
+    background: var(--slotfill-accent-deep);
+  }
 }
 .slotfill-new:focus-visible {
   outline: 2.5px solid var(--slotfill-accent);

@@ -223,8 +223,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.note-chip-t:hover {
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .note-chip-t:hover {
+    background: color-mix(in srgb, var(--ink) 4%, transparent);
+  }
 }
 .note-chip-x {
   flex: 0 0 auto;
