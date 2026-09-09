@@ -289,6 +289,14 @@ Measured **in the running app**, light mode, on a real 828px card (dark clears e
 - The lifted plan hero is a `Modal`, so back / Escape / backdrop / the Android gesture all reach one handler (ADR-0103, ADR-0090). Nothing here is exempt.
 - The mockup's contrast harness composites alpha and reads gradient stops. Both were added because the naive version was **wrong in this file three times** — reporting 1:1 for a tinted pill, 3.36:1 for a card measured against the page behind it, and 1.06:1 for ink on a gradient with no `background-color`. Any future file measuring a ratio should copy that function rather than the idea of it.
 
+> **AMENDED 2026-09-09 by [ADR-0221 §7](0221-the-countdown-climbs-to-tomorrow-and-the-first-morning-lights-up.md)
+> — the lifted card's head is the hero's own components.** "Same markup, not a re-statement"
+> was the rule for the two numbers, and the build kept it by _copying_ the markup into
+> `PlanLift` — so when ADR-0221 gave the collapsed hero a tier, a word in the value slot and a
+> clock, the lift kept the old head and the owner saw two different cards. The head is now
+> `PrepHeroCount` + `PrepHeroNumbers`, and `.prep-lifted` carries `data-tier`; the only things
+> the lift owns are its one-size-down headline and the horizon at its real foot.
+
 ### 6. When nothing is missing, the section says so as a BLOCK
 
 Owner: _"when everything done it should show some empty state (let's design this)"_.

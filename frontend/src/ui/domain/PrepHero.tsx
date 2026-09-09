@@ -64,12 +64,20 @@ export interface PrepHeroProps {
   pressLabel?: string;
 }
 
-export const PrepHero = forwardRef<HTMLElement, PrepHeroProps>(function PrepHero(props, ref) {
-  const { tier, countdown, eve, runway, nowMs } = props;
+/** **The countdown block** — kicker, headline (a word, a numeral, or the eve's flap clock),
+ *  the dates, the runway, the eve's sentence. Exported because the lifted card (`PlanLift`)
+ *  composes the SAME block one elevation up beside its close control (ADR-0193 §5: "same
+ *  markup, not a re-statement"; ADR-0221 §7 — the lifted card had re-typed this head by
+ *  hand and so missed every tier). */
+export type PrepHeroCountProps = Pick<
+  PrepHeroProps,
+  'tier' | 'countdown' | 'dates' | 'runway' | 'eve' | 'nowMs'
+>;
+
+export function PrepHeroCount({ tier, countdown, dates, runway, eve, nowMs }: PrepHeroCountProps) {
   const clockHeadline = tier === PREP_TIER.EVE && !!eve && !!countdown;
   const standalone = !!countdown && !countdown.value && !countdown.prefix;
-
-  const inner = (
+  return (
     <>
       {countdown &&
         (clockHeadline ? (
@@ -101,7 +109,7 @@ export const PrepHero = forwardRef<HTMLElement, PrepHeroProps>(function PrepHero
       ) : (
         <div className="prep-count">{t.planHome.prep.underway}</div>
       )}
-      <div className="prep-dates">{props.dates}</div>
+      <div className="prep-dates">{dates}</div>
       {runway && tier === PREP_TIER.WEEK && (
         <div className="prep-runway" aria-hidden="true">
           {runway.map((lit, i) => (
@@ -127,33 +135,66 @@ export const PrepHero = forwardRef<HTMLElement, PrepHeroProps>(function PrepHero
           </span>
         </div>
       )}
-      {/* The two numbers, exactly as ADR-0193 §2 prints them. A full bar is a STATUS and
-          takes `--ok` (rule 4); anything less stays the plan ink. */}
+    </>
+  );
+}
+
+/** **The two numbers**, exactly as ADR-0193 §2 prints them, shared by both hosts for the
+ *  same reason as the block above. A full bar is a STATUS and takes `--ok` (rule 4);
+ *  anything less stays the plan ink. */
+export function PrepHeroNumbers({
+  readinessPct,
+  openTasks,
+  overdue,
+}: Pick<PrepHeroProps, 'readinessPct' | 'openTasks' | 'overdue'>) {
+  return (
+    <>
       <div className="prep-ready">
         <div className="prep-ready-top">
           <span>{t.planHome.prep.readiness}</span>
-          <b dir="auto">{props.readinessPct}%</b>
+          <b dir="auto">{readinessPct}%</b>
         </div>
         <div className="prep-track">
           <div
-            className={props.readinessPct >= 100 ? 'prep-fill is-full' : 'prep-fill'}
-            style={{ width: `${props.readinessPct}%` }}
+            className={readinessPct >= 100 ? 'prep-fill is-full' : 'prep-fill'}
+            style={{ width: `${readinessPct}%` }}
           />
         </div>
       </div>
-      {props.openTasks > 0 && (
+      {openTasks > 0 && (
         <div className="prep-tasks">
           <span>{t.planHome.prep.openTasks}</span>
           <span className="prep-tasks-end">
-            {props.overdue > 0 && (
-              <span className="prep-tasks-late">{t.tasks.band.overdue(props.overdue)}</span>
+            {overdue > 0 && (
+              <span className="prep-tasks-late">{t.tasks.band.overdue(overdue)}</span>
             )}
             <b className="prep-tasks-n" dir="auto">
-              {props.openTasks}
+              {openTasks}
             </b>
           </span>
         </div>
       )}
+    </>
+  );
+}
+
+export const PrepHero = forwardRef<HTMLElement, PrepHeroProps>(function PrepHero(props, ref) {
+  const { tier } = props;
+  const inner = (
+    <>
+      <PrepHeroCount
+        tier={tier}
+        countdown={props.countdown}
+        dates={props.dates}
+        runway={props.runway}
+        eve={props.eve}
+        nowMs={props.nowMs}
+      />
+      <PrepHeroNumbers
+        readinessPct={props.readinessPct}
+        openTasks={props.openTasks}
+        overdue={props.overdue}
+      />
     </>
   );
 

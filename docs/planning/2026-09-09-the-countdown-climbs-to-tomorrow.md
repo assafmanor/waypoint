@@ -135,6 +135,21 @@ first-open face over `00:00:00`. Drawn as §9 in the mockup, §7's face redrawn;
 _"I agree with you, let's go with that."_ Rejected on the way: running the flaps to zero during
 a first-open morph while the real clock reads `02:40` (dishonest content).
 
+## The fifth round: the lifted card inherits
+
+Merged and deployed, the owner opened the lift two days out and sent two screenshots: the
+collapsed card at the tier's 46px `מחרתיים` over a horizon, the lifted card at the old 15px
+rung over a plain white bar. _"The expanded hero should also inherit the same looks, or gain new
+ones. Do we need a mockup here?"_ Inherit — ADR-0193 §5's rule was already "the same markup" —
+and no design round: `PlanLift` had copied the hero's head rather than rendering it, so every
+ADR-0221 change missed it by construction. `PrepHero` is now split into `PrepHeroCount` and
+`PrepHeroNumbers`, the lift composes both and carries `data-tier`, and the two things the lift
+owns are its one-size-down headline (34 · 36 · 40px, smaller flap cells: the lift owes its
+space to the list) and a horizon on an `::after` at the card's real foot, since the sheen's
+`::before` is pinned to the collapsed height. §10 in the mockup is the one render, measuring the
+last row's ink 16px above the foot against the 14px glow. `PlanHome.lift.test.tsx` asserts the
+two cards agree as a relation. Recorded as ADR-0221 §7; shipped on its own branch from `main`.
+
 ## What is next
 
 - A device pass on four numbers: `GOING_LIVE.HOLD_MS` (400), `GOING_LIVE.ZERO_HOLD_MS` (1200),

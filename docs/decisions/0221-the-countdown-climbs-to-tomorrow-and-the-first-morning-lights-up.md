@@ -1,10 +1,10 @@
 # 0221 — The countdown climbs to tomorrow, and the first morning lights up
 
-**Status:** Accepted and **BUILT** (2026-09-09), in one session with the design.
+**Status:** Accepted and **BUILT** (2026-09-09), in one session with the design; **§7 added the same evening** after the owner opened the lift on the deployed build.
 **Date:** 2026-09-09
-**Design references:** [`mockups/the-countdown-climbs-to-tomorrow-v1.html`](../../mockups/the-countdown-climbs-to-tomorrow-v1.html) (§1–§8; every number in it is read off its own DOM), session note [`planning/2026-09-09-the-countdown-climbs-to-tomorrow.md`](../planning/2026-09-09-the-countdown-climbs-to-tomorrow.md).
+**Design references:** [`mockups/the-countdown-climbs-to-tomorrow-v1.html`](../../mockups/the-countdown-climbs-to-tomorrow-v1.html) (§1–§10; every number in it is read off its own DOM), session note [`planning/2026-09-09-the-countdown-climbs-to-tomorrow.md`](../planning/2026-09-09-the-countdown-climbs-to-tomorrow.md).
 
-**Amends:** [0193 §5](0193-what-is-missing-counts-everything-open-and-the-plan-hero-lifts.md) (`--prep-collapsed-h` is measured, not 190px); [`design-language.md`](../design/design-language.md)'s automatic-switch line and its board ration (a narrow exception for the eve's flap cells); [0118](0118-numbers-in-hebrew-bidi.md) gains a call site (`proseTripRange`).
+**Amends:** [0193 §5](0193-what-is-missing-counts-everything-open-and-the-plan-hero-lifts.md) (`--prep-collapsed-h` is measured, not 190px; and, §7, the lifted card's head is the hero's own components, not a copy); [`design-language.md`](../design/design-language.md)'s automatic-switch line and its board ration (a narrow exception for the eve's flap cells); [0118](0118-numbers-in-hebrew-bidi.md) gains a call site (`proseTripRange`).
 **Builds on:** [0016](0016-plan-trip-modes-one-surface.md) (mode is derived), [0140](0140-motion-foundations-overlays-arrive-taps-answer-routes-have-a-direction.md) (motion tokens, reduced motion resolves every animation-only state), [0142](0142-trip-birth-is-the-boards-first-departure.md) (the board's power-on is the one celebration asset, played at the two moments a trip changes state), [0193](0193-what-is-missing-counts-everything-open-and-the-plan-hero-lifts.md) (the hero's two numbers, the lift), [0198](0198-we-notify-what-you-can-still-miss.md) §2 (`trip.tomorrow` names the first timed thing on day 1).
 
 ## Context
@@ -67,6 +67,10 @@ Sequence: 400ms hold, 600ms fade and chrome, ignition at +120ms for 600ms, ~1.7s
 
 The bar fills `--ok` only when it is full (rule 4: statuses take `--ok`); at 99% it stays the plan ink, or the green would be a colour step and not a fact.
 
+### §7 The lifted card is the same object, one elevation up (fifth round, 2026-09-09)
+
+The owner opened the lift on the built screen and it read `מחרתיים` at the 15px rung over a plain white bar, while the card it flew out of had the tier's 46px word and the horizon. `PlanLift` had **re-typed the hero's head by hand** — the same shape ADR-0193 §5 warned about for the ramp — so every change in §1–§3 and §6 missed it by construction. The lifted card now carries `data-tier` too, and its head is `PrepHeroCount` beside the close control, its numbers `PrepHeroNumbers`: the word in the value slot, the runway, the eve's flap clock and `--ok` at 100% arrive by being the same component, and there is no second place to forget. Two things differ, and both are the lift's: the headline steps **one size down** at every tier (34 · 36 · 40px, and smaller flap cells) because the lift owes its space to the list, as the 26px head always did against 34px; and the horizon moves from the sheen's `::before` — pinned to the collapsed height — to an `::after` at the card's real foot, under the list, where the body's 16px padding keeps the last row's ink above the 14px glow (mockup §10 re-measures the pair on this card). `PlanHome.lift.test.tsx` asserts the two cards agree, as a relation: whatever the collapsed hero says, the lift says.
+
 ## Rejected
 
 - **Confetti, a toast, a greeting sentence** — 0142's rejection stands: the board's first departure is the sentence, and a second surface speaking at once is the duplication.
@@ -79,8 +83,8 @@ The bar fills `--ok` only when it is full (rule 4: statuses take `--ok`); at 99%
 
 ## Consequences
 
-- New: `lib/prep-tier.ts`, `lib/prep-hero-facts.ts`, `lib/mode-seen.ts`, `ui/domain/PrepHero.tsx` (the hero has two hosts and one face), `ui/domain/FlapClock.tsx` (two hosts), `ui/domain/GoingLiveMorph.tsx`; `ModeProvider` gains `chromeMode`, `goingLive`, `skipGoingLive`; `BoardCountdown` gains `flap`; `PlanLift` takes a measured `collapsedHeight`; `GOING_LIVE` in `constants.ts`.
+- New: `lib/prep-tier.ts`, `lib/prep-hero-facts.ts`, `lib/mode-seen.ts`, `ui/domain/PrepHero.tsx` (the hero has two hosts and one face), `ui/domain/FlapClock.tsx` (two hosts), `ui/domain/GoingLiveMorph.tsx`; `ModeProvider` gains `chromeMode`, `goingLive`, `skipGoingLive`; `BoardCountdown` gains `flap`; `PlanLift` takes a measured `collapsedHeight` and, since §7, the head's facts (`tier`, `runway`, `eve`, `nowMs`), composing `PrepHeroCount`/`PrepHeroNumbers`; `GOING_LIVE` in `constants.ts`.
 - The Shell and the Header paint `chromeMode`; `Screen` keeps `mode`. The `ModeToggle` is unchanged.
 - The hero's `<button>` constraint (ADR-0160 §4) now binds `FlapClock` too: a `role="timer"` read, never a control. `PrepHero.test.tsx` asserts it.
-- `mockups/the-countdown-climbs-to-tomorrow-v1.html` is the record of the three rounds and is not retrofitted.
+- `mockups/the-countdown-climbs-to-tomorrow-v1.html` is the record of the three rounds and is not retrofitted; §10 is the fifth round's one render of the lifted card.
 - A device pass owns four numbers: `GOING_LIVE.HOLD_MS`, `GOING_LIVE.ZERO_HOLD_MS`, the horizon's 14px against the tasks row's 16px, and whether seven lamps read as a bar.

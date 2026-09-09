@@ -157,3 +157,86 @@
 .prep-lift-body .hero-task-due.late {
   color: #ffd2cd;
 }
+
+/* ── THE LIFTED CARD INHERITS THE TIER (ADR-0221 §7) ──────────────────────────────
+   Same object, one elevation up: `data-tier` rides on `.prep-lifted` too, and the head is
+   `PrepHeroCount` — the collapsed card's own block — so the word in the value slot, the
+   runway, the eve's flap clock and the horizon arrive by being the same component. The
+   first build typed this head by hand and the lifted card missed every one of them (owner,
+   2026-09-09, with a screenshot: `מחרתיים` in the 15px rung over a plain white bar).
+
+   What the lift owes its space to is the LIST, so the headline steps down one size from the
+   collapsed card's at every tier, as the 26px rung above always did against 34px. */
+.prep-lifted[data-tier='week'] .prep-lift-head .prep-count {
+  font-size: 34px;
+}
+.prep-lifted[data-tier='eve2'] .prep-lift-head .prep-count {
+  font-size: 36px;
+}
+.prep-lifted[data-tier='eve'] .prep-lift-head .prep-count {
+  font-size: 40px;
+}
+/* The eve's flap cells, at the head's smaller rung. */
+.prep-lift-head .prep-flap {
+  width: 28px;
+  height: 40px;
+  font-size: 24px;
+}
+.prep-lift-head .prep-flap.sec {
+  width: 22px;
+  height: 32px;
+  font-size: 18px;
+}
+.prep-lift-head .prep-flap-sep {
+  font-size: 22px;
+}
+/* THE HORIZON IS THE CARD'S FOOT — and the lifted card's foot is under the list, not the
+   collapsed height the sheen's box is pinned to (above). `::before` is one layer with both
+   gradients on the collapsed card; here it paints the sheen alone and the horizon moves to
+   `::after` at the real foot. `.prep-lift-body`'s 16px bottom padding keeps the last row's
+   ink above the 14px glow — the same two numbers ADR-0221 §1 measured on the collapsed
+   card, re-measured for this card in the mockup's §10. */
+.prep.prep-lifted[data-tier]::before {
+  background: radial-gradient(90% 60% at 85% 0%, rgba(255, 255, 255, 0.1), transparent 60%);
+}
+.prep.prep-lifted[data-tier]::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 14px;
+  pointer-events: none;
+}
+.prep.prep-lifted[data-tier='week']::after {
+  background: linear-gradient(
+    0deg,
+    rgba(233, 166, 60, 0.3) 0,
+    rgba(233, 166, 60, 0.08) 5px,
+    transparent 12px
+  );
+}
+.prep.prep-lifted[data-tier='eve2']::after {
+  background: linear-gradient(
+    0deg,
+    rgba(233, 166, 60, 0.5) 0,
+    rgba(233, 166, 60, 0.12) 6px,
+    transparent 13px
+  );
+}
+.prep.prep-lifted[data-tier='eve']::after {
+  background: linear-gradient(
+    0deg,
+    rgba(233, 166, 60, 0.95) 0,
+    rgba(233, 166, 60, 0.7) 2px,
+    rgba(233, 166, 60, 0.16) 8px,
+    transparent 14px
+  );
+}
+/* The lift has its own flight (`useLiftFlight`); the eve card's `prep-arrive` is the
+   collapsed card's alone. The eve's amber cast joins the floating elevation instead of
+   replacing it. */
+.prep.prep-lifted[data-tier='eve'] {
+  animation: none;
+  box-shadow:
+    var(--elevation-floating),
+    0 26px 44px -22px rgba(233, 166, 60, 0.5);
+}
