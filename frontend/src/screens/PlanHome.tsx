@@ -518,14 +518,12 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
         <PlanLift
           origin={prepRef.current}
           collapsedHeight={prepRef.current?.getBoundingClientRect().height}
+          tier={facts.tier}
           countdown={countdown}
-          underway={t.planHome.prep.underway}
-          dates={
-            <>
-              {formatTripDates(trip.startDate, trip.endDate, { style: 'prose' })}{' '}
-              <span className="dot">{DOT_SEPARATOR}</span> {dayPhrase(total)}
-            </>
-          }
+          runway={facts.runway}
+          eve={facts.eve}
+          nowMs={now.getTime()}
+          dates={<PrepDates startDate={trip.startDate} endDate={trip.endDate} />}
           readinessPct={readinessPct}
           openTasks={preview.open}
           overdue={preview.overdue}

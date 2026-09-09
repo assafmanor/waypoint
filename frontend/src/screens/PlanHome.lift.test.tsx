@@ -338,6 +338,32 @@ describe('PlanHome — the hero lifts', () => {
     }
   });
 
+  // **THE LIFTED CARD IS THE SAME OBJECT, ONE ELEVATION UP** (ADR-0221 §7; owner, 2026-09-09,
+  // with a screenshot of the lift reading `מחרתיים` at the 15px rung over a plain bar while
+  // the card it flew out of had the tier's 46px). The first build re-typed the head by hand,
+  // so every ADR-0221 change to the collapsed hero — the tier, the word in the value slot,
+  // the clock, the runway — missed the lift. Asserted as a RELATION between the two cards
+  // rather than against a tier literal: whatever the collapsed hero says, the lift says.
+  it("the lifted card carries the collapsed hero's tier and prints the same headline", () => {
+    tasks = [task('a', { title: 'להוציא ביטוח' })];
+    show();
+    const hero = prep();
+    fireEvent.click(hero);
+    const card = document.querySelector('.prep-lifted')!;
+    expect(hero.getAttribute('data-tier')).toBeTruthy();
+    expect(card.getAttribute('data-tier')).toBe(hero.getAttribute('data-tier'));
+    expect(card.querySelector('.prep-lift-head .prep-count')!.textContent).toBe(
+      hero.querySelector('.prep-count')!.textContent,
+    );
+    expect(card.querySelector('.prep-lift-head .prep-k')!.textContent).toBe(
+      hero.querySelector('.prep-k')!.textContent,
+    );
+    // The two numbers too — the head is `PrepHeroNumbers`, not a second readiness bar.
+    expect(card.querySelector('.prep-lift-head .prep-ready-top b')!.textContent).toBe(
+      hero.querySelector('.prep-ready-top b')!.textContent,
+    );
+  });
+
   // …and the other side of it: with no run-up there is nothing to open, so the hero goes
   // back to being the `<div>` it always was rather than announcing a control that would do
   // nothing on activation (ADR-0150 §8 from the other direction).

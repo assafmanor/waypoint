@@ -33,16 +33,25 @@ import { useLiftFlight } from '../../lib/useLiftFlight';
 import { Modal } from '../primitives/Modal';
 import { Icon } from '../Icon';
 import { HeroTaskRows, type HeroLiftTask } from './HeroLift';
+import {
+  PrepHeroCount,
+  PrepHeroNumbers,
+  type PrepHeroCountdown,
+  type PrepHeroEve,
+} from './PrepHero';
+import type { PrepTier } from '../../lib/prep-tier';
 import { t } from '../../i18n/he';
 import './plan-lift.css';
 
 export interface PlanLiftProps {
-  /** The countdown, pre-split exactly as the collapsed hero renders it, so the head of the
-   *  lifted card and the card it flew out of print the same words. */
-  countdown: { prefix?: string; value?: string; unit: string } | null;
-  /** `הטיול בעיצומו` when there is no countdown — the collapsed hero's own fallback. */
-  underway: string;
+  /** The head's facts, exactly as the collapsed hero renders them (`PrepHeroCount`), so the
+   *  lifted card and the card it flew out of print the same words, in the same tier. */
+  tier: PrepTier;
+  countdown: PrepHeroCountdown | null;
   dates: ReactNode;
+  runway?: boolean[] | null;
+  eve?: PrepHeroEve | null;
+  nowMs: number;
   readinessPct: number;
   openTasks: number;
   overdue: number;
@@ -72,7 +81,19 @@ export interface PlanLiftProps {
 }
 
 export function PlanLift(props: PlanLiftProps) {
-  const { countdown, underway, dates, readinessPct, openTasks, overdue, tasks, more } = props;
+  const {
+    tier,
+    countdown,
+    dates,
+    runway,
+    eve,
+    nowMs,
+    readinessPct,
+    openTasks,
+    overdue,
+    tasks,
+    more,
+  } = props;
 
   return (
     <Modal variant="lift" ariaLabel={t.planHome.lift.title} onClose={props.onClose}>
@@ -81,25 +102,23 @@ export function PlanLift(props: PlanLiftProps) {
           origin={props.origin ?? null}
           closing={closing}
           collapsedHeight={props.collapsedHeight}
+          tier={tier}
         >
           <div className="prep-lift-head">
             <div className="prep-lift-top">
               <div>
-                {countdown && <div className="prep-k">{t.planHome.prep.departIn}</div>}
-                {countdown ? (
-                  <div className="prep-count">
-                    {countdown.prefix && <span className="prep-count-u">{countdown.prefix}</span>}{' '}
-                    {countdown.value && (
-                      <span className="prep-count-n" dir="auto">
-                        {countdown.value}
-                      </span>
-                    )}{' '}
-                    <span className="prep-count-u">{countdown.unit}</span>
-                  </div>
-                ) : (
-                  <div className="prep-count">{underway}</div>
-                )}
-                <div className="prep-dates">{dates}</div>
+                {/* THE SAME BLOCK the collapsed hero prints (ADR-0193 §5 / ADR-0221 §7), not a
+                    re-statement of it: the tier, the word in the value slot, the eve's clock
+                    and the runway all arrive here by being the same component. The first
+                    build typed this head by hand and the lifted card missed every one. */}
+                <PrepHeroCount
+                  tier={tier}
+                  countdown={countdown}
+                  dates={dates}
+                  runway={runway}
+                  eve={eve}
+                  nowMs={nowMs}
+                />
               </div>
               {/* Bound to the primitive's OWN animated close, not to the caller's
                   `onClose` — the same path the backdrop, a back and Escape take. Calling
@@ -113,32 +132,7 @@ export function PlanLift(props: PlanLiftProps) {
                 <Icon name="close" />
               </button>
             </div>
-
-            {/* The two numbers, exactly as the collapsed hero prints them (ADR-0193 §2).
-                Same markup, not a re-statement: the lifted card is the same object, and a
-                readiness bar that rounded differently one elevation up would say so. */}
-            <div className="prep-ready">
-              <div className="prep-ready-top">
-                <span>{t.planHome.prep.readiness}</span>
-                <b dir="auto">{readinessPct}%</b>
-              </div>
-              <div className="prep-track">
-                <div className="prep-fill" style={{ width: `${readinessPct}%` }} />
-              </div>
-            </div>
-            {openTasks > 0 && (
-              <div className="prep-tasks">
-                <span>{t.planHome.prep.openTasks}</span>
-                <span className="prep-tasks-end">
-                  {overdue > 0 && (
-                    <span className="prep-tasks-late">{t.tasks.band.overdue(overdue)}</span>
-                  )}
-                  <b className="prep-tasks-n" dir="auto">
-                    {openTasks}
-                  </b>
-                </span>
-              </div>
-            )}
+            <PrepHeroNumbers readinessPct={readinessPct} openTasks={openTasks} overdue={overdue} />
           </div>
 
           {/* ONE scroller between a pinned head and no foot — ADR-0148 §1's bounded card,
@@ -165,11 +159,13 @@ function Lifted({
   origin,
   closing,
   collapsedHeight,
+  tier,
   children,
 }: {
   origin: HTMLElement | null;
   closing: boolean;
   collapsedHeight?: number;
+  tier: PrepTier;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -180,6 +176,7 @@ function Lifted({
   return (
     <div
       className="prep prep-lifted"
+      data-tier={tier}
       ref={ref}
       style={
         collapsedHeight
