@@ -15,9 +15,11 @@ import { useTrip } from '../state/trip-state';
 import { BEAT, playBeat } from '../lib/one-shot';
 import { useClock } from '../lib/useClock';
 import { useCountUp } from '../lib/useCountUp';
-import { daysUntilStart, tripPhase } from '../lib/mode';
+import { tripPhase } from '../lib/mode';
 import { dayPhrase } from '../lib/hebrew';
-import { countdownParts, formatTripDates, tripDayNumber } from '../lib/time';
+import { formatTripDates, tripDayNumber } from '../lib/time';
+import { prepHeroFacts } from '../lib/prep-hero-facts';
+import { PrepDates, PrepHero } from '../ui/domain/PrepHero';
 import { useAutomaticTasks } from '../lib/useAutomaticTasks';
 import {
   AUTOMATIC_TASK_ACTION,
@@ -134,7 +136,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
    *  The ref survives the change with a second job: it is the box the flight measures
    *  (ADR-0160 §5) — held rather than measured at press time, because `--press-scale-lg` is
    *  still applied under the finger and `getBoundingClientRect` includes transforms. */
-  const prepRef = useRef<HTMLButtonElement>(null);
+  const prepRef = useRef<HTMLElement>(null);
   const [lifted, setLifted] = useState(false);
   const wasLifted = useRef(false);
   /** The landing beat (ADR-0160 §7), played AFTER the render that reveals the hero — not in
@@ -185,8 +187,10 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
     );
   }
 
-  const days = daysUntilStart(trip, now, zoneEvidence);
-  const countdown = days === null ? null : countdownParts(days);
+  /** The hero's tier, countdown, runway and eve clock — one derivation for both of its hosts
+   *  (`lib/prep-hero-facts.ts`, ADR-0221). */
+  const facts = prepHeroFacts({ trip, events, now, zoneEvidence });
+  const countdown = facts.countdown;
   // Still missing = not satisfied by the data and not waved off by a person. The completed
   // half keeps its own collapse (ADR-0190 §4): the tasks screen's `הושלמו` chip is a
   // different surface, so two toggles is not one mechanism twice — and this section's title
@@ -371,76 +375,22 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
           reproduced live at 1 of 4 children left) — which is also why the second readout
           below is a readout. `PlanHome.lift.test.tsx` fails the build if a control
           appears in here, because no snapshot can see that. */}
-      {(() => {
-        const inner = (
-          <>
-            {/* No "היציאה" label once the trip is underway — the countdown line
-                reads "הטיול בעיצומו" on its own (would otherwise concatenate oddly).
-                The "בעוד" connective rides with the count (ADR-0085), so a near date
-                reads "היציאה · מחר" and a far one "היציאה · בעוד 3 ימים". */}
-            {countdown && <div className="prep-k">{t.planHome.prep.departIn}</div>}
-            {countdown ? (
-              <div className="prep-count">
-                {countdown.prefix && <span className="prep-count-u">{countdown.prefix}</span>}{' '}
-                {countdown.value && (
-                  <span className="prep-count-n" dir="auto">
-                    {countdown.value}
-                  </span>
-                )}{' '}
-                <span className="prep-count-u">{countdown.unit}</span>
-              </div>
-            ) : (
-              <div className="prep-count">{t.planHome.prep.underway}</div>
-            )}
-            <div className="prep-dates">
-              {formatTripDates(trip.startDate, trip.endDate, { style: 'prose' })}{' '}
-              <span className="dot">{DOT_SEPARATOR}</span> {dayPhrase(total)}
-            </div>
-            <div className="prep-ready">
-              <div className="prep-ready-top">
-                <span>{t.planHome.prep.readiness}</span>
-                <b dir="auto">{readinessPct}%</b>
-              </div>
-              <div className="prep-track">
-                <div className="prep-fill" style={{ width: `${readinessPct}%` }} />
-              </div>
-            </div>
-            {/* **The second number, with its own noun** (§2). The bar above is the five
-                derived checks and nothing else, so 100% over eight open tasks was the same
-                claim `הכול מוכן` was making one line down. Absent at zero — there is no
-                "0 משימות פתוחות" state, because a card that says so is ADR-0045's empty
-                shell in one line. */}
-            {preview.open > 0 && (
-              <div className="prep-tasks">
-                <span>{t.planHome.prep.openTasks}</span>
-                <span className="prep-tasks-end">
-                  {preview.overdue > 0 && (
-                    <span className="prep-tasks-late">{t.tasks.band.overdue(preview.overdue)}</span>
-                  )}
-                  <b className="prep-tasks-n" dir="auto">
-                    {preview.open}
-                  </b>
-                </span>
-              </div>
-            )}
-          </>
-        );
-        return liftable ? (
-          <button
-            type="button"
-            className={'prep is-tappable' + (lifted ? ' is-lifted' : '')}
-            ref={prepRef}
-            onClick={() => setLifted(true)}
-            aria-label={t.planHome.lift.title}
-          >
-            {inner}
-          </button>
-        ) : (
-          <div className="prep" onClick={(e) => playBeat(e.currentTarget, BEAT.REBUFF)}>
-            {inner}
-          </div>
-        );
-      })()}
+      <PrepHero
+        ref={prepRef}
+        tier={facts.tier}
+        countdown={facts.countdown}
+        runway={facts.runway}
+        eve={facts.eve}
+        nowMs={now.getTime()}
+        dates={<PrepDates startDate={trip.startDate} endDate={trip.endDate} />}
+        readinessPct={readinessPct}
+        openTasks={preview.open}
+        overdue={preview.overdue}
+        lifted={lifted}
+        {...(liftable
+          ? { onPress: () => setLifted(true), pressLabel: t.planHome.lift.title }
+          : { onRebuff: (el) => playBeat(el, BEAT.REBUFF) })}
+      />
 
       <div className="sec-title">{t.planHome.checklist.title}</div>
 
@@ -567,6 +517,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
       {lifted && (
         <PlanLift
           origin={prepRef.current}
+          collapsedHeight={prepRef.current?.getBoundingClientRect().height}
           countdown={countdown}
           underway={t.planHome.prep.underway}
           dates={

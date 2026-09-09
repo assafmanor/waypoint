@@ -590,3 +590,30 @@
   font-size: var(--text-h2);
   color: var(--on-dark-strong);
 }
+
+/* ── THE MORNING OF DEPARTURE: the tile is the flap clock (ADR-0221 §3) ──────────
+   Until the first timed thing starts, the countdown tile carries the same split-flap
+   clock the prep hero showed the evening before (`FlapClock`, one component), sized
+   down to the tile. The cells' own recipe is `screens.css`'s `.prep-flap`; only the
+   geometry changes here. */
+.wp-board-countdown .wp-board-flaps {
+  gap: 3px;
+  margin-top: 0;
+  filter: none;
+}
+.wp-board-countdown .prep-flap {
+  width: 20px;
+  height: 30px;
+  font-size: 18px;
+  border-radius: 4px;
+}
+.wp-board-countdown .prep-flap.sec {
+  width: 16px;
+  height: 24px;
+  font-size: 14px;
+}
+.wp-board-countdown .prep-flap-sep {
+  font-size: 16px;
+  padding-bottom: 3px;
+  color: var(--on-dark-dim);
+}

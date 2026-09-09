@@ -21,6 +21,7 @@
 // count must stay legible without a tap — and its rows move to the lifted hero in
 // phase 3. This was the board's only interactive child, so it now has none.
 import type { CSSProperties, ReactNode } from 'react';
+import { FlapClock } from './FlapClock';
 import { Icon } from '../Icon';
 import { TitleLabel } from '../TitleLabel';
 import { ZoneShiftPill } from '../ZoneShiftPill';
@@ -194,6 +195,10 @@ export interface BoardCountdown {
   unit: string;
   unitBelow?: string;
   missed?: boolean;
+  /** **The morning of departure** (ADR-0221 §3): until the first timed thing starts, the
+   *  tile is the same split-flap clock the prep hero showed the evening before — one
+   *  component, so the clock hands over from one hero to the other without a gap. */
+  flap?: { targetMs: number; nowMs: number };
 }
 
 export interface BoardProps {
@@ -722,10 +727,18 @@ export function Board(props: BoardProps) {
             </div>
             {countdown && (
               <div className={'wp-board-countdown' + (countdown.missed ? ' missed' : '')}>
-                {countdown.value && (
-                  <div className="t" dir="auto">
-                    {countdown.value}
-                  </div>
+                {countdown.flap ? (
+                  <FlapClock
+                    className="wp-board-flaps"
+                    nowMs={countdown.flap.nowMs}
+                    targetMs={countdown.flap.targetMs}
+                  />
+                ) : (
+                  countdown.value && (
+                    <div className="t" dir="auto">
+                      {countdown.value}
+                    </div>
+                  )
                 )}
                 <div className="u">{countdown.unit}</div>
                 {countdown.unitBelow && <div className="u">{countdown.unitBelow}</div>}

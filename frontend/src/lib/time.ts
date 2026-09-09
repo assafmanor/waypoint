@@ -169,8 +169,14 @@ function proseTripRange(startDate: string, endDate: string, withYear: boolean): 
   switch (tripRangeShape(startDate, endDate)) {
     case 'same-day':
       return dayMonthEnd.format(start);
-    case 'same-month':
-      return `${tripDateDay.format(start)}${EN_DASH}${dayMonthEnd.format(end)}`;
+    case 'same-month': {
+      // **The one shape with a neutral between two numbers**, and so the one that reversed
+      // in RTL prose (ADR-0221 §5; the owner's own screenshot read `22–11 בספטמבר`). The
+      // isolate goes around the numeric island alone — never the sentence holding it, which
+      // is how ADR-0220's preview flipped a cross-month range the other way.
+      const range = ltrIsolate(`${tripDateDay.format(start)}${EN_DASH}${tripDateDay.format(end)}`);
+      return dayMonthEnd.format(end).replace(/^\d+/, range);
+    }
     case 'same-year':
       return `${tripDateDayMonth.format(start)} ${EN_DASH} ${dayMonthEnd.format(end)}`;
     case 'cross-year':

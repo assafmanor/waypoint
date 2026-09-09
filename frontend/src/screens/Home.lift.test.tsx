@@ -179,6 +179,10 @@ vi.mock('../state/auth-state', () => ({
 }));
 
 const done = vi.fn();
+vi.mock('../state/mode-state', () => ({
+  // Home reads the first-morning stage (ADR-0221 §4); these suites are about the board.
+  useMode: () => ({ mode: 'trip', chromeMode: 'trip', goingLive: null, skipGoingLive: () => {} }),
+}));
 vi.mock('../state/verbs', () => ({
   useVerbs: () => ({ done, skip: vi.fn(), restore: vi.fn() }),
 }));

@@ -79,7 +79,9 @@ vi.mock('./state/trip-state', () => ({
   }),
 }));
 vi.mock('./state/auth-state', () => ({ useAuth: () => ({ me: { user: ME } }) }));
-vi.mock('./state/mode-state', () => ({ useMode: () => ({ mode, phase, setOverride }) }));
+vi.mock('./state/mode-state', () => ({
+  useMode: () => ({ mode, chromeMode: mode, phase, setOverride }),
+}));
 vi.mock('./state/drag-state', () => ({
   useDragState: () => ({ dragging: false, overDate: null }),
 }));
