@@ -74,6 +74,19 @@
        §3 ערב היציאה — the eve's sentence         §6 הלוח מתחמם — the eve's headline is a flap clock
                                                   §7 הכרטיס הופך ללוח — the first open as a transformation
 
+     THEN A THIRD ROUND, AND IT IS NOW THE DEFAULT. On seeing §6–§7 the owner
+     asked for "everything more flashy, more colorful, exciting … beautiful and
+     professional at the same time". §8 answers it without spending a hue the
+     colour budget does not own: the mode switch's OWN temperature ramp (violet
+     → indigo + amber, design-language "the mode switch") is spread across the
+     last week instead of happening in one 600ms beat on day 1 — the hero warms
+     day by day, dawn sits on its horizon on the eve, the runway pips become
+     runway LIGHTS (amber = time passing), the flap digits take the board's own
+     amber countdown ink, the readiness bar goes `--ok` at 100% (a status), and
+     the first morning's ignition BLOOMS. Every frame in §2–§7 renders in this
+     skin by default; the `עוצמה` control drops back to the quiet skin so the
+     cost can be read side by side.
+
      TWO LEVELS, ON PURPOSE. §1–§5 is the disciplined answer: correct, quiet,
      three CSS rules and a fixed trigger. The owner's follow-up — "is this flashy
      enough though?" — is answered by §6–§7, which spend the app's own signature
@@ -83,7 +96,8 @@
      exception in §6 is refused.
 
      ─────────────────────────────────────────────────────────────────────────
-     Interactive: theme (בהיר · כהה), screen (360×640 · 390×844), the eve
+     Interactive: theme (בהיר · כהה), screen (360×640 · 390×844), intensity
+     (עוצמה: מלא · שקט — §8's skin on or off, everywhere), the eve
      clock's ink (ענבר · סגול — a rule-4 call the owner should make on a device),
      the first-open HOLD (0 · 250 · 400ms — the one number in §4/§7 a screenshot
      cannot settle), the last-week runway (§6, on/off — it sits one line under
@@ -11701,6 +11715,212 @@ button.wp-av:focus-visible {
         animation: prep-flap-turn 260ms steps(4, end) both;
       }
 
+      /* ── §8 · THE HERO WARMS TOWARD THE MORNING ────────────────────────────────
+         Scoped under `.vivid` here so the control can switch it off; in the build
+         these ARE the tier rules (there is no quiet skin to keep).
+
+         THE COLOUR IS THE MODE SWITCH'S. design-language: "the chrome warms
+         violet → indigo + amber". That ramp plays once, in 600ms, at the moment
+         nobody is watching (§4-B). §8 lets the hero travel the same ramp over the
+         last week — plan violet at the top, the trip's warmth rising from the foot
+         one tier at a time, dawn on the horizon the night before.
+
+         THE DAWN IS A HORIZON LINE, NOT A BAND — and the measurement is what decided
+         it. The first cut mixed `--amber` into the card's ground under the tasks
+         row; white ink on that stop measured 3.6:1 in light (AA is 4.5), and no
+         mix above ~18% amber passes. So the ground stays plan violet everywhere
+         ink sits, and the warmth is a thin amber line at the card's foot with a
+         glow that dies within 14px — the tasks row's text ends 16px above the foot
+         (the table reads the gap), so the ink never sits on the glow. The first
+         horizon was 36px and the gap measurement is what shortened it. Night deepens at the top for the same reason a horizon needs a
+         sky: the card reads as the last evening, and the ink only gets safer. */
+      .vivid .prep[data-tier='week'],
+      .vivid .prep[data-tier='eve2'],
+      .vivid .prep[data-tier='eve'] {
+        background: linear-gradient(
+          180deg,
+          color-mix(in srgb, var(--plan-surface-2) 84%, #0b0a2a) 0%,
+          var(--plan-surface-2) 42%,
+          var(--plan-surface) 100%
+        );
+      }
+      /* The horizon, one tier at a time: faint, warmer, then dawn. The layer is the
+         shipped `::before` sheen with the horizon stacked under it. */
+      .vivid .prep[data-tier='week']::before {
+        background:
+          linear-gradient(0deg, rgba(233, 166, 60, 0.3) 0, rgba(233, 166, 60, 0.08) 5px, transparent 12px),
+          radial-gradient(90% 60% at 85% 0%, rgba(255, 255, 255, 0.14), transparent 60%);
+      }
+      .vivid .prep[data-tier='eve2']::before {
+        background:
+          linear-gradient(0deg, rgba(233, 166, 60, 0.5) 0, rgba(233, 166, 60, 0.12) 6px, transparent 13px),
+          radial-gradient(90% 60% at 85% 0%, rgba(255, 255, 255, 0.12), transparent 60%);
+      }
+      .vivid .prep[data-tier='eve']::before {
+        background:
+          linear-gradient(
+            0deg,
+            rgba(233, 166, 60, 0.95) 0,
+            rgba(233, 166, 60, 0.7) 2px,
+            rgba(233, 166, 60, 0.16) 8px,
+            transparent 14px
+          ),
+          radial-gradient(50% 8% at 50% 100%, rgba(233, 166, 60, 0.28), transparent 72%),
+          radial-gradient(90% 60% at 85% 0%, rgba(255, 255, 255, 0.1), transparent 60%);
+      }
+      .vivid .prep[data-tier='eve'] {
+        box-shadow:
+          0 26px 44px -22px rgba(233, 166, 60, 0.5),
+          0 20px 34px -20px rgba(46, 33, 104, 0.7);
+      }
+      /* THE WORD. `--on-plan-strong` fading to `--on-plan-dim` down the glyph — one
+         ink ramp the surface already carries, read as depth. */
+      .vivid .prep[data-tier='eve2'] .prep-count-n,
+      .vivid .prep[data-tier='eve'] .prep-count-n {
+        background: linear-gradient(180deg, var(--on-plan-strong), var(--on-plan-dim));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      /* THE CLOCK takes the board's own countdown ink (`.wp-board-countdown .t` is
+         `--amber`): a departure-board countdown is amber wherever it is drawn. A
+         glossy upper half and a soft amber cast under the row. */
+      .vivid .prep-flap {
+        color: var(--amber);
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+          inset 0 1px 0 rgba(255, 255, 255, 0.06),
+          0 6px 14px -8px rgba(0, 0, 0, 0.6);
+      }
+      .vivid .prep-flap::before {
+        content: '';
+        position: absolute;
+        inset: 0 0 50% 0;
+        border-radius: 6px 6px 0 0;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent);
+        pointer-events: none;
+      }
+      .vivid .prep-flaps {
+        filter: drop-shadow(0 10px 22px rgba(233, 166, 60, 0.28));
+      }
+      /* Cells turn in one after another on mount — `.birth-flap`'s stagger. */
+      .vivid .prep-flap {
+        animation: prep-flap-turn 260ms steps(4, end) both;
+        animation-delay: calc(var(--i, 0) * var(--stagger-step));
+      }
+      /* RUNWAY LIGHTS. Pips become lamps: a lit one is amber (time passed), with the
+         glow a lamp has at night, and they come on in order down the strip. */
+      .vivid .prep-runway {
+        gap: 7px;
+        width: 140px;
+        margin-top: 10px;
+        align-items: center;
+      }
+      .vivid .prep-runway i {
+        flex: 0 0 auto;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--on-plan-track);
+      }
+      .vivid .prep-runway i.on {
+        background: var(--amber);
+        box-shadow: 0 0 10px 1px rgba(233, 166, 60, 0.65);
+        animation: prep-lamp-on 320ms var(--ease-emphasized) both;
+        animation-delay: calc(120ms + var(--i, 0) * var(--stagger-step) * 2);
+      }
+      @keyframes prep-lamp-on {
+        from {
+          background: var(--on-plan-track);
+          box-shadow: 0 0 0 0 rgba(233, 166, 60, 0);
+        }
+      }
+      /* READINESS AT 100% IS A STATUS, and statuses take `--ok` (rule 4). The bar
+         fills green only when it is full; anything less stays the plan ink. */
+      .vivid .prep-fill.is-full {
+        background: linear-gradient(90deg, var(--ok), color-mix(in srgb, var(--ok) 55%, #fff));
+        box-shadow: 0 0 12px rgba(60, 154, 107, 0.45);
+      }
+      /* The eve card ARRIVES: a real object entering, so `--ease-arrive` (ADR-0140). */
+      .vivid .prep[data-tier='eve'] {
+        animation: prep-arrive var(--t-deliberate) var(--ease-arrive) both;
+      }
+      @keyframes prep-arrive {
+        from {
+          opacity: 0;
+          transform: translateY(10px) scale(0.985);
+        }
+      }
+      .vivid .prep-eve {
+        animation: prep-line-in var(--t-deliberate) var(--ease-standard) both;
+        animation-delay: 260ms;
+      }
+      @keyframes prep-line-in {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+      }
+      /* THE IGNITION BLOOMS (§7). When the board finally lights, the amber glow
+         swells past the card and settles back to the board's resting shadow, and one
+         highlight sweeps across the face. Keyed to the same delayed clock as the
+         shipped power-on, so it is one moment and not two. */
+      .vivid .app[data-mode='trip'] .prep-morph > .wp-board:not(.hero-lifted) {
+        animation:
+          wp-board-power var(--t-cinematic) var(--ease-emphasized) calc(var(--t-cinematic) + 0.12s) both,
+          prep-bloom 1100ms var(--ease-emphasized) calc(var(--t-cinematic) + 0.12s) both;
+      }
+      @keyframes prep-bloom {
+        0% {
+          box-shadow: 0 20px 34px -20px rgba(8, 14, 28, 0.9);
+        }
+        45% {
+          box-shadow:
+            0 0 0 2px rgba(233, 166, 60, 0.35),
+            0 0 64px 6px rgba(233, 166, 60, 0.42),
+            0 20px 34px -20px rgba(8, 14, 28, 0.9);
+        }
+        100% {
+          box-shadow:
+            0 0 0 1px rgba(233, 166, 60, 0.18),
+            0 0 28px -4px rgba(233, 166, 60, 0.28),
+            0 20px 34px -20px rgba(8, 14, 28, 0.9);
+        }
+      }
+      .vivid .prep-morph > .wp-board::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: linear-gradient(
+          100deg,
+          transparent 30%,
+          rgba(255, 255, 255, 0.09) 48%,
+          rgba(233, 166, 60, 0.12) 52%,
+          transparent 70%
+        );
+        transform: translateX(calc(var(--dir) * -130%));
+      }
+      .vivid .app[data-mode='trip'] .prep-morph > .wp-board::after {
+        animation: prep-sweep 900ms var(--ease-standard) calc(var(--t-cinematic) + 0.3s) both;
+      }
+      @keyframes prep-sweep {
+        to {
+          transform: translateX(calc(var(--dir) * 130%));
+        }
+      }
+      /* The day-1 anchor lights with the board: `יום 1/12` is the first true thing
+         the chrome says about the trip, and it says it in the clock's ink, once. */
+      .vivid .app[data-switching='to-trip'] .hdr-anchor .num {
+        animation: prep-anchor-on 900ms var(--ease-emphasized) calc(var(--t-cinematic) + 0.12s) both;
+      }
+      @keyframes prep-anchor-on {
+        40% {
+          color: var(--amber);
+          transform: scale(1.12);
+        }
+      }
+
       /* ══════════════════════════════════════════════════════════════════════
          MOCKUP-ONLY OVERRIDES — labelled, ship nothing.
          ══════════════════════════════════════════════════════════════════════ */
@@ -11983,6 +12203,13 @@ button.wp-av:focus-visible {
           מה שהן מתדרדרות אליו תחת <code>prefers-reduced-motion</code>, והרצפה אם החריג ב-§6 יידחה.
         </p>
         <p>
+          <b>ואז סבב שלישי, והוא ברירת המחדל:</b> "הכול יותר מרשים, יותר צבעוני, מרגש · יפה ומקצועי
+          בו-זמנית". §8 עונה בלי להוציא גוון שתקציב הצבע לא מכיר: סולם הטמפרטורה של מעבר המצב עצמו
+          (סגול → אינדיגו + ענבר) נמתח על השבוע האחרון, שחר על האופק בערב, אורות מסלול, ספרות בדיו הספירה
+          של הלוח, פס מוכנות ירוק במאה אחוז, והדלקה שפורחת. הפקד <code>עוצמה</code> מחליף בין העור
+          המלא לשקט בכל המסגרות.
+        </p>
+        <p>
           כל מספר בטבלת המדידה בתחתית נקרא מה-DOM המרונדר בעמוד הזה, במסך ובערכת הצבעים שנבחרו · לא
           מהקוד ולא מהערכה.
         </p>
@@ -11996,6 +12223,10 @@ button.wp-av:focus-visible {
         <span class="lbl">מסך</span>
         <button type="button" data-w="360" data-h="640" aria-pressed="true">⁦360×640⁩</button>
         <button type="button" data-w="390" data-h="844">⁦390×844⁩</button>
+        <span class="sep"></span>
+        <span class="lbl">עוצמה (§8)</span>
+        <button type="button" data-vivid="on" aria-pressed="true">מלא</button>
+        <button type="button" data-vivid="off">שקט</button>
         <span class="sep"></span>
         <span class="lbl">שעון הערב (§3)</span>
         <button type="button" data-ink="amber" aria-pressed="true">ענבר</button>
@@ -12148,6 +12379,23 @@ button.wp-av:focus-visible {
         </div>
       </section>
 
+      <!-- ══════════════════════════ §8 ══════════════════════════ -->
+      <section class="case">
+        <h2>§8 · הכרטיס מתחמם לקראת הבוקר: הצבע הוא של מעבר המצב</h2>
+        <p class="note">
+          <b>הבקשה:</b> יותר מרשים, יותר צבעוני, יפה ומקצועי. <b>המקור לצבע:</b> design-language מתאר את
+          מעבר המצב כ"הכרום מתחמם, סגול → אינדיגו + ענבר" - ורצף שמנוגן פעם אחת ב-600ms ברגע שאיש לא
+          מסתכל (§4). §8 נותן לכרטיס לעבור את אותו סולם על פני השבוע האחרון: סגול תכנון בראש, החום של
+          הטיול עולה מהתחתית מדרגה אחרי מדרגה, ו<b>שחר על האופק בערב היציאה</b>. אין גוון חדש, ואין ענבר מתחת לדיו: הראשון שנוסה ערבב ענבר לתוך הקרקע ונמדד 3.6:1 מתחת לשורת המשימות, אז השחר הוא <b>קו אופק</b> בתחתית הכרטיס שהזוהר שלו נמוג תוך 14px - מתחת לשורת הטקסט האחרונה, שמסתיימת 16px מעל התחתית (נמדד). ואז: <b>אורות מסלול</b> - הנקודות נדלקות ענבר אחת אחרי השנייה (זמן
+          שעבר); <b>ספרות השעון בדיו הספירה של הלוח</b> (<code>.wp-board-countdown .t</code> הוא ענבר); <b>פס
+          המוכנות ירוק במאה אחוז</b> - סטטוס, ולכן <code>--ok</code> (כלל 4); המילה עם רמפת דיו קלה; והכרטיס
+          <i>מגיע</i> ב-<code>--ease-arrive</code>. ב-§7 <b>ההדלקה פורחת</b>: הזוהר מתנפח מעבר לכרטיס ומתייצב,
+          הבהק אחד חולף על הפנים, ו-<code>יום 1/12</code> בכותרת נדלק פעם אחת בדיו השעון. הכול על שעון
+          ההדלקה הקיים, אז זה רגע אחד ולא שניים.
+        </p>
+        <div class="pair" id="s8"></div>
+      </section>
+
       <div class="panel">
         <h2>מדידה · נקראת מה-DOM החי</h2>
         <p>
@@ -12208,6 +12456,20 @@ button.wp-av:focus-visible {
             מעבר שקורה <i>מתחת לידיים</i> בחצות. פתיחה ראשונה בבוקר היציאה היא רגע שהמשתמש <i>מגיע אליו</i>,
             והוא הפעם היחידה שהמעבר האוטומטי ניתן לראייה בכלל - אז הוא כן מופיע, פעם אחת לטיול. מעבר
             שמתרחש בזמן שהאפליקציה פתוחה נשאר כפי שהוא.
+          </li>
+          <li>
+            <b>§8, נבחר: הצבע של מעבר המצב, נמתח על השבוע האחרון.</b> נדחה: גוון חדש (טורקיז, ורוד,
+            "שקיעה") - כלל 4 וזהות המצבים; נדחה: ענבר כמילוי של הכרטיס כולו - זה הלוח בסגול, לא כרטיס
+            תכנון מתחמם; נדחה: פעימה של הזוהר בערב - פעימה פירושה חי עכשיו. המיקס של הענבר לתוך הסגול
+            נדחה בעצמו אחרי מדידה: הגרסה הראשונה ערבבה ענבר לתוך הקרקע מתחת לשורת המשימות, ודיו לבן
+            עליה נמדד 3.6:1 בבהיר. השחר הוא לכן <b>קו אופק</b> - פס ענבר דק בתחתית הכרטיס וזוהר שנמוג
+            תוך 14px, מתחת לשורת הטקסט האחרונה שמסתיימת 16px מעל התחתית (הטבלה קוראת את המרווח, והיא
+            שקיצרה את האופק הראשון מ-36px); הקרקע נשארת סגולה בכל מקום
+            שדיו יושב עליו.
+          </li>
+          <li>
+            <b>§8, נבחר: ירוק במאה אחוז.</b> סטטוס, לא קישוט: <code>--ok</code> הוא בדיוק הדיו שכלל 4 נותן
+            ל"הושלם". ב-99% הפס נשאר בדיו התכנון, אחרת הירוק היה מדרגת צבע ולא עובדה.
           </li>
           <li>
             <b>§6, נבחר: הפלאפים של הלוח על כרטיס התכנון, בערב בלבד.</b> החריג לכלל הקצבת הלוח נטען
@@ -12315,7 +12577,7 @@ button.wp-av:focus-visible {
             .map((ch, i) =>
               ch === ':'
                 ? `<span class="prep-flap-sep">:</span>`
-                : `<span class="prep-flap${i >= 6 ? ' sec' : ''}" data-i="${i}">${ch}</span>`,
+                : `<span class="prep-flap${i >= 6 ? ' sec' : ''}" data-i="${i}" style="--i:${i}">${ch}</span>`,
             )
             .join('')}</div>`;
         const count = proposed
@@ -12337,7 +12599,7 @@ button.wp-av:focus-visible {
         const headline = useFlaps ? flapRow() : `<div class="prep-count">${count}</div>`;
         const pips =
           proposed && runway && tier === 'week'
-            ? `<div class="prep-runway" aria-hidden="true">${Array.from({ length: 7 }, (_, i) => `<i class="${i < 7 - days ? 'on' : ''}"></i>`).join('')}</div>`
+            ? `<div class="prep-runway" aria-hidden="true">${Array.from({ length: 7 }, (_, i) => `<i class="${i < 7 - days ? 'on' : ''}" style="--i:${i}"></i>`).join('')}</div>`
             : '';
         const eveLine = useFlaps
           ? `<div class="prep-eve"><span>${icon('flight')}${EVE.first} <span dir="auto">${EVE.at}</span></span></div>`
@@ -12350,7 +12612,7 @@ button.wp-av:focus-visible {
           ${eveLine}
           <div class="prep-ready">
             <div class="prep-ready-top"><span>מוכנות הטיול</span><b dir="auto">${TRIP.readiness}%</b></div>
-            <div class="prep-track"><div class="prep-fill" style="width:${TRIP.readiness}%"></div></div>
+            <div class="prep-track"><div class="prep-fill${TRIP.readiness === 100 ? ' is-full' : ''}" style="width:${TRIP.readiness}%"></div></div>
           </div>
           <div class="prep-tasks"><span>משימות פתוחות</span><span class="prep-tasks-end"><span class="prep-tasks-late">אחת באיחור</span><b class="prep-tasks-n" dir="auto">${TRIP.open}</b></span></div>
         </button>`;
@@ -12430,10 +12692,12 @@ button.wp-av:focus-visible {
       }
 
       /** A full shell frame: `.app[data-mode] > .header + .body + .nav`. */
-      function shell(mode, bodyHtml, { dayNum = 1 } = {}) {
-        return `<div class="phone shell"><div class="app" data-mode="${mode}">${header(mode, { dayNum })}<main class="body">${bodyHtml}</main>${NAV}</div></div>`;
+      function shell(mode, bodyHtml, { dayNum = 1, id } = {}) {
+        return `<div class="phone shell${vivid()}"${id ? ` id="${id}"` : ''}><div class="app" data-mode="${mode}">${header(mode, { dayNum })}<main class="body">${bodyHtml}</main>${NAV}</div></div>`;
       }
-      const cropped = (inner) => `<div class="phone"><div class="fbody">${inner}</div></div>`;
+      const vivid = () => (state.vivid ? ' vivid' : '');
+      const cropped = (inner, force) =>
+        `<div class="phone"><div class="fbody${force === undefined ? vivid() : force ? ' vivid' : ''}">${inner}</div></div>`;
       const col = (tag, inner, extra = '') => `<div class="col">${tag}${inner}${extra}</div>`;
 
       /** Plan Home's body under the hero: `.sec-title` + `.checklist` of rows. */
@@ -12441,7 +12705,7 @@ button.wp-av:focus-visible {
         `${heroHtml}<div class="sec-title">מה חסר להשלמה</div><div class="checklist">${TASKS.map(taskRow).join('')}</div>`;
 
       /* ══ State the controls own. */
-      const state = { ink: 'amber', hold: 400, runway: true };
+      const state = { ink: 'amber', hold: 400, runway: true, vivid: true };
       const DAYS = [47, 5, 2, 1];
 
       function paint() {
@@ -12470,18 +12734,12 @@ button.wp-av:focus-visible {
         document.querySelector('#s4').innerHTML = [
           col(
             '<span class="tag before">היום · כל פתיחה במצב טיול</span>',
-            shell('trip', board({ dormant: false }) + '<div class="sec-title">היום</div>').replace(
-              'class="phone shell"',
-              'class="phone shell" id="f-today"',
-            ),
+            shell('trip', board({ dormant: false }) + '<div class="sec-title">היום</div>', { id: 'f-today' }),
             `<div class="col-actions"><button type="button" class="mk-btn" data-play="today">נגן שוב</button></div>`,
           ),
           col(
             '<span class="tag after">בהצעה · הפתיחה הראשונה בלבד</span>',
-            shell('trip', board({ dormant: false }) + '<div class="sec-title">היום</div>').replace(
-              'class="phone shell"',
-              'class="phone shell" id="f-first"',
-            ),
+            shell('trip', board({ dormant: false }) + '<div class="sec-title">היום</div>', { id: 'f-first' }),
             `<div class="col-actions"><button type="button" class="mk-btn primary" data-play="first">נגן את הפתיחה הראשונה</button></div>`,
           ),
         ].join('');
@@ -12507,8 +12765,29 @@ button.wp-av:focus-visible {
             shell(
               'plan',
               `<div class="prep-morph" data-stage="plan">${hero(0, { proposed: true, ink: state.ink, hours: '0:48' })}${board({ dormant: false })}</div><div class="sec-title">היום</div>`,
-            ).replace('class="phone shell"', 'class="phone shell" id="f-morph"'),
+              { id: 'f-morph' },
+            ),
             `<div class="col-actions"><button type="button" class="mk-btn primary" data-play="morph">נגן את ההפיכה</button></div>`,
+          ),
+        ].join('');
+        document.querySelector('#s8').innerHTML = [
+          col(
+            '<span class="tag before">שקט · ערב היציאה (§6)</span>',
+            `<div id="f-quiet">${cropped(hero(1, { proposed: true, ink: state.ink, flaps: true }), false)}</div>`,
+          ),
+          col(
+            '<span class="tag after">מלא · ערב היציאה (§8)</span>',
+            `<div id="f-vivid">${cropped(hero(1, { proposed: true, ink: state.ink, flaps: true }), true)}</div>`,
+            `<div class="col-actions"><button type="button" class="mk-btn primary" data-replay="f-vivid">נגן שוב</button></div>`,
+          ),
+          col(
+            '<span class="tag after">מלא · השבוע האחרון: אורות מסלול</span>',
+            `<div id="f-vivid-week">${cropped(hero(5, { proposed: true, ink: state.ink, runway: true }), true)}</div>`,
+            `<div class="col-actions"><button type="button" class="mk-btn" data-replay="f-vivid-week">נגן שוב</button></div>`,
+          ),
+          col(
+            '<span class="tag after">מלא · מחרתיים</span>',
+            `<div id="f-vivid-eve2">${cropped(hero(2, { proposed: true, ink: state.ink }), true)}</div>`,
           ),
         ].join('');
         document.querySelector('#s5').innerHTML = [3, 1]
@@ -12646,8 +12925,8 @@ button.wp-av:focus-visible {
         if (clockTimer) clearInterval(clockTimer);
         let [h, m, sec] = EVE.clock.split(':').map(Number);
         clockTimer = setInterval(() => {
-          const row = document.querySelector('#f-flaps .prep-flaps');
-          if (!row) return;
+          const rows = document.querySelectorAll('.prep-flaps');
+          if (!rows.length) return;
           sec -= 1;
           if (sec < 0) {
             sec = 59;
@@ -12658,15 +12937,18 @@ button.wp-av:focus-visible {
             }
           }
           const next = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-          row.querySelectorAll('.prep-flap').forEach((cell) => {
-            const ch = next[Number(cell.dataset.i)];
-            if (cell.textContent !== ch) {
-              cell.textContent = ch;
-              cell.classList.remove('is-turning');
-              void cell.offsetWidth; // `one-shot.ts`'s remove-reflow-add
-              cell.classList.add('is-turning');
-            }
-          });
+          rows.forEach((row) =>
+            row.querySelectorAll('.prep-flap').forEach((cell) => {
+              const ch = next[Number(cell.dataset.i)];
+              if (cell.textContent !== ch) {
+                cell.textContent = ch;
+                cell.style.animationDelay = '0ms';
+                cell.classList.remove('is-turning');
+                void cell.offsetWidth; // `one-shot.ts`'s remove-reflow-add
+                cell.classList.add('is-turning');
+              }
+            }),
+          );
         }, 1000);
       }
       function wirePlay() {
@@ -12752,6 +13034,15 @@ button.wp-av:focus-visible {
           measure();
         }),
       );
+      const vividBtns = q('.controls button[data-vivid]');
+      vividBtns.forEach((b) =>
+        b.addEventListener('click', () => {
+          state.vivid = b.dataset.vivid === 'on';
+          press(vividBtns, b);
+          paint();
+          measure();
+        }),
+      );
       const runwayBtns = q('.controls button[data-runway]');
       runwayBtns.forEach((b) =>
         b.addEventListener('click', () => {
@@ -12795,10 +13086,16 @@ button.wp-av:focus-visible {
         // contradicted it — which is the pitfall this probe exists for.
         return ra.left < rb.left ? '11 משמאל ל-22 · נקרא 11–22 ✓' : '11 מימין ל-22 · נקרא 22–11 ✗';
       }
-      const lum = (rgb) => {
-        const m = rgb.match(/[\d.]+/g).map(Number);
+      /** `rgb(…)`, `rgba(…)` or Chrome's `color(srgb r g b)` — the form a `color-mix()`
+       *  stop comes back in from `getComputedStyle`. */
+      const lum = (col) => {
+        const srgb = col.startsWith('color(srgb');
+        const m = col
+          .replace(/^color\(srgb/, '')
+          .match(/[\d.]+/g)
+          .map(Number);
         const c = m.slice(0, 3).map((v) => {
-          v /= 255;
+          if (!srgb) v /= 255;
           return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
         });
         return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
@@ -12889,6 +13186,36 @@ button.wp-av:focus-visible {
             'AA 4.5:1 · הקרקע היא הלוח (' + iso('--board-2') + ')',
           ]);
         }
+        const vividHero = document.querySelector('#f-vivid .prep');
+        if (vividHero) {
+          const bg = getComputedStyle(vividHero).backgroundImage;
+          const stops = bg.match(/(?:rgba?|color)\([^)]*\)/g) || [];
+          const last = stops[stops.length - 1] || 'rgb(110, 89, 214)';
+          const tasks = vividHero.querySelector('.prep-tasks');
+          rows.push([
+            '§8 · שורת המשימות על הקרקע בתחתית הכרטיס · ניגודיות',
+            iso(`${contrast(getComputedStyle(tasks).color, last)}:1`),
+            'AA 4.5:1 · התחנה האחרונה של הגרדיאנט: ' + iso(last) + ' · הגרסה עם הענבר בקרקע נמדדה 3.6:1 ונדחתה',
+          ]);
+          const gap = rnd(rect(vividHero).bottom - rect(tasks).bottom);
+          rows.push([
+            '§8 · מרחק שורת המשימות מתחתית הכרטיס · מול טווח זוהר האופק',
+            iso(`${gap}px`) + ' · ' + iso('14px'),
+            'הזוהר נמוג ' + iso('14px') + ' מהתחתית; הטקסט מסתיים ' + iso(`${gap}px`) + ' מעליה · הראשון היה ' + iso('36px') + ' והמרווח הזה קיצר אותו',
+          ]);
+          const digit = vividHero.querySelector('.prep-flap');
+          const dcs = getComputedStyle(digit);
+          rows.push([
+            '§8 · ספרה ענברית על תא פלאפ · ניגודיות',
+            iso(`${contrast(dcs.color, sampleGradient(dcs.backgroundImage))}:1`),
+            'AA 4.5:1 · הדיו של ' + iso('.wp-board-countdown .t'),
+          ]);
+          rows.push([
+            '§8 · כרטיס הערב המלא · גובה',
+            iso(`${rnd(rect(vividHero).height)}px`),
+            'מול השקט: ' + iso(`${rnd(rect(document.querySelector('#f-quiet .prep')).height)}px`),
+          ]);
+        }
         const runway = document.querySelector('#f-week .prep-runway');
         if (runway)
           rows.push([
@@ -12924,7 +13251,7 @@ button.wp-av:focus-visible {
       /** The first colour stop of a `linear-gradient(...)` — the hero's top band, where the
        *  eve line sits closest to. Good enough for a readout that is not on the gradient's foot. */
       function sampleGradient(bgImage) {
-        const m = bgImage.match(/rgba?\([^)]*\)/g);
+        const m = bgImage.match(/(?:rgba?|color)\([^)]*\)/g);
         return m ? m[0] : 'rgb(110, 89, 214)';
       }
       function tokenColor(name) {

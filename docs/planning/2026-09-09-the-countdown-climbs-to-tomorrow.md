@@ -61,7 +61,23 @@ out, and the board's shipped power-on is delayed to the end of the fade so ignit
 climax. 1720ms at the 400ms hold, once per trip, one tap skips, nothing under reduced
 motion.
 
+**Level three, now the default skin (§8).** The owner, on seeing §6–§7: _"Make everything
+more flashy, more colorful, exciting! It should be beautiful and professional at the same
+time."_ The colour is the mode switch's own temperature ramp (violet → indigo + amber)
+spread across the last week: the hero's top deepens to night, an amber horizon line glows at
+its foot (faint in the last week, dawn on the eve), the runway pips become lamps that light in
+sequence, the flap digits take the board's amber countdown ink, the readiness bar goes `--ok`
+at 100%, the eve card arrives on `--ease-arrive`, and the first morning's ignition blooms with
+a highlight sweep. No new hue anywhere. The first cut mixed amber into the card's ground and
+the file's own contrast probe rejected it (3.6:1 under the tasks row in light), which is how
+the dawn became a horizon line whose glow dies 14px from the foot while the text ends 16px
+above it. The `עוצמה` control drops every frame back to the quiet skin for comparison.
+
 ## Forks for the owner
+
+- **The vivid skin (§8) as the default.** Recommendation: yes. It is the mode switch's
+  colour story told early, every element of it is in the budget, and every contrast in it is
+  measured on the page. The quiet skin remains one toggle away in the file.
 
 - **The ration exception (§6).** The flap clock spends board grammar in Plan mode, which
   design-language rations to one surface per screen. The file argues a narrow exception
