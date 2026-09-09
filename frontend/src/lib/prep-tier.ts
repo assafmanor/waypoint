@@ -3,8 +3,8 @@
 // The prep hero's energy is a function of the distance to departure: far out it is the
 // shipped card; inside the last week the numeral grows and a runway of seven lamps lights
 // one per day behind you; the day before, the headline is a departure-board clock counting
-// to the first timed thing on day 1. Pure derivations, so both hosts of the hero — Plan
-// Home and the first-morning morph on Trip Home — read one answer.
+// to the trip's start. Pure derivations, so both hosts of the hero — Plan Home and the
+// first-morning morph on Trip Home — read one answer.
 import type { TripEvent } from '@waypoint/shared';
 import { zoneOffsetMinutes } from '@waypoint/shared';
 import { MINUTES_PER_HOUR, MS_PER_MINUTE } from '../constants';
@@ -52,14 +52,15 @@ export function firstTimedOn(events: TripEvent[], date: string): TripEvent | und
 }
 
 /** **What the eve's clock counts to: the trip's start** (ADR-0221 §3, settled in the fourth
- *  round) — trip-local midnight of day 1, the instant `deriveMode` flips. Plan counts to the
- *  trip; Trip counts to the next thing. The first draft counted to the first timed thing,
- *  which made the countdown and the flip two different moments ("counting down to what?");
- *  flipping AT the first thing instead would have surrendered the departure morning's board.
- *  The first thing is still NAMED under the clock (`firstTimedOn`). */
-export function tripStartMs(startDate: string, primaryZone: string): number {
+ *  round) — midnight of day 1 in `zone`, which must be the clock `tripToday` reads (the zone
+ *  you are standing in, `liveZone`), so that the zero is the instant `deriveMode` flips. Plan
+ *  counts to the trip; Trip counts to the next thing. The first draft counted to the first
+ *  timed thing, which made the countdown and the flip two different moments ("counting down
+ *  to what?"); flipping AT the first thing instead would have surrendered the departure
+ *  morning's board. The first thing is still NAMED under the clock (`firstTimedOn`). */
+export function tripStartMs(startDate: string, zone: string): number {
   const utcMidnight = Date.parse(`${startDate}T00:00:00Z`);
-  const offset = zoneOffsetMinutes(new Date(utcMidnight), primaryZone);
+  const offset = zoneOffsetMinutes(new Date(utcMidnight), zone);
   return utcMidnight - offset * MS_PER_MINUTE;
 }
 

@@ -103,6 +103,23 @@ describe('with zone evidence — "today" is the itinerary\'s, not the destinatio
     expect(deriveMode(TRIP, morning, ev)).toBe('trip');
   });
 
+  // The Tokyo case above passes for the wrong reason on a WESTWARD trip: Tokyo's midnight
+  // comes before home's, so by home midnight the far side is already on day 1. Reykjavík's
+  // comes three hours after, and `liveZone` read the departure day's ambient (the far side),
+  // so Trip mode opened at 03:00 at home (owner's device, 2026-09-10: `26:59:48` to מחר).
+  it("starts a westward trip on the home midnight too, not the far side's (field report, 2026-09-10)", () => {
+    const trip = { startDate: '2026-09-11', endDate: '2026-09-22', timezone: 'Atlantic/Reykjavik' };
+    const ev = evidence(
+      [{ at: Date.parse('2026-09-11T05:00:00Z'), fromZone: JLM, toZone: 'Atlantic/Reykjavik' }],
+      trip.timezone,
+    );
+    const homeMidnight = Date.parse('2026-09-10T21:00:00Z');
+    expect(deriveMode(trip, new Date(homeMidnight - 1), ev)).toBe('plan');
+    expect(daysUntilStart(trip, new Date(homeMidnight - 1), ev)).toBe(1);
+    expect(deriveMode(trip, new Date(homeMidnight), ev)).toBe('trip');
+    expect(daysUntilStart(trip, new Date(homeMidnight), ev)).toBeNull();
+  });
+
   it('reads the destination once the crossing has departed, as the day view does', () => {
     const ev = evidence(
       [{ at: Date.parse('2026-07-05T05:00:00Z'), fromZone: JLM, toZone: TRIP.timezone }],
