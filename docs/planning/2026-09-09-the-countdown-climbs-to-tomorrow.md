@@ -162,7 +162,10 @@ far side reaches day 1 first). Two changes: `liveZone` returns the first crossin
 instant before it, and the clock targets midnight in `liveZone(now)` rather than the trip's zone,
 so the zero is the flip by construction. `prep-hero-facts.test.ts` asserts `deriveMode` turns at
 the clock's target; `mode.test.ts` and `places.test.ts` carry the westward case. ADR-0221 §3 and
-ADR-0107 amended in place.
+ADR-0107 amended in place. Deployed, the owner sent the all-trips list next: `מחרתיים` at 00:34
+at home for tomorrow's trip. That chip had no evidence to read and fell back to the trip's zone;
+it now counts from the device's today, the rule the join ticket already had, through one
+`daysUntilStartOnDevice` both screens call.
 
 ## What is next
 

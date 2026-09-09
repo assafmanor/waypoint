@@ -388,6 +388,12 @@ signal: the device clock stays out of it (§4), and a trip with no zoned outboun
 the destination's midnight, as before. The evidence is optional on exactly two callers that have
 no itinerary to read — the all-trips list's `בעוד` chip and the pre-snapshot skeleton — and the
 docblock says so, so the fallback is a stated limitation rather than a per-surface `todayInTz`.
+**Corrected 2026-09-10:** the limitation showed the same night — at 00:34 at home the list said
+`מחרתיים` for tomorrow's trip — so the all-trips chip now counts from the **device's** today
+(`daysUntilStartOnDevice`), the rule the join ticket below already had: a screen with no trip
+loaded is wherever the phone is. The skeleton keeps the primary-zone fallback for its first
+frame. The list's `בקרוב`/`הסתיים` buckets stay on the trip zone with the landing rule
+(ADR-0033), so for a westward trip's first hours the row is still `בקרוב` and reads `היום`.
 
 **Corrected 2026-09-10 — the departure day itself.** The owner's device, at 00:00 at home on the
 eve of the same trip, read `היציאה מחר` over a clock of `26:59:48` (ADR-0221 §3). `tripToday` was

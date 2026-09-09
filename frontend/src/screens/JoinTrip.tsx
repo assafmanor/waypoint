@@ -47,11 +47,11 @@ import {
 import { saveIntent } from '../lib/intent';
 import { armInstallAskAfterJoin } from '../lib/install';
 import { dayCount } from '../lib/hebrew';
-import { countdownParts, formatTripDates, todayInTz } from '../lib/time';
+import { countdownParts, formatTripDates } from '../lib/time';
+import { daysUntilStartOnDevice } from '../lib/mode';
 import {
   APP_NAME,
   DEFAULT_TRIP_ICON,
-  DEVICE_TIMEZONE,
   DOT_SEPARATOR,
   GLYPH,
   JOIN_PASS,
@@ -239,13 +239,9 @@ export function JoinTrip() {
 
 function Ready({ preview, outcome }: { preview: InvitePreview; outcome: string | null }) {
   // Whole calendar days from the device's own today: nothing of the trip is loaded here, and
-  // the person reading an invite is at home. Measured to the start date's UTC midnight and
-  // rounded up, an evening east of UTC counted one day too many.
-  const daysUntilStart = Math.round(
-    (Date.parse(`${preview.startDate}T00:00:00Z`) -
-      Date.parse(`${todayInTz(DEVICE_TIMEZONE, new Date(getNow()))}T00:00:00Z`)) /
-      MS_PER_DAY,
-  );
+  // the person reading an invite is at home. (Measured to the start date's UTC midnight and
+  // rounded up, an evening east of UTC once counted one day too many.)
+  const daysUntilStart = daysUntilStartOnDevice(preview.startDate, new Date(getNow()));
   const tripDays =
     Math.round((Date.parse(preview.endDate) - Date.parse(preview.startDate)) / MS_PER_DAY) + 1;
   const avatarCount = Math.min(preview.memberCount, INVITE_AVATARS.MAX);

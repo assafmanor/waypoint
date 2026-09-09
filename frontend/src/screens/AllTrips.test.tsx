@@ -4,7 +4,7 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import type { Trip } from '@waypoint/shared';
 import { t } from '../i18n/he';
 import { DRAG_HOLD_MS } from '../constants';
-import { daysUntilStart } from '../lib/mode';
+import { daysUntilStartOnDevice } from '../lib/mode';
 import { setSimulatedNow } from '../lib/useClock';
 import { wrapNav } from '../test/nav-harness';
 import { ActiveTripIdProvider } from '../state/active-trip-id';
@@ -155,7 +155,7 @@ describe('AllTrips sharing entry', () => {
 
     const soon = screen.getByText('סוף שבוע ברומא').closest('button')!;
     expect(soon.querySelector('.chip.soon')?.textContent).toBe(
-      t.shell.allTrips.chipSoon(daysUntilStart(TRIPS[1], new Date(NOW)) ?? 0),
+      t.shell.allTrips.chipSoon(daysUntilStartOnDevice(TRIPS[1].startDate, new Date(NOW))),
     );
     expect(screen.getByText('ליסבון').closest('button')!.querySelector('.chip')).toBeNull();
     expect(container.querySelector('.chip.past')).toBeNull();
