@@ -102,10 +102,10 @@ above it. The `עוצמה` control drops every frame back to the quiet skin for 
 The owner: _"OK looks great. You can start building on the same pr."_ Everything in the file,
 §8 as the default skin, with two calls the build made where the file left them open:
 
-- **The eve clock counts to the first timed thing on day 1**, falling back to trip-local
-  midnight only when nothing on day 1 is timed. Asked as _"the countdown is to the first
-  event or to the start of the first day?"_ — the departure is the commitment and the fact the
-  push names; midnight is the boundary nobody feels.
+- **The eve clock counts to the trip's start** (trip-local midnight, the instant the mode
+  flips), with the first timed thing named under it. The first build counted to the first
+  timed thing (asked as _"the countdown is to the first event or to the start of the first
+  day?"_); a fourth round reversed it — see below.
 - **On the morning of departure the clock migrates.** Asked what happens when the day arrives
   (_"we have to add the countdown on both heroes?"_) and told to choose _"what is most natural
   and exciting"_: no second countdown — the board's own tile becomes the same `FlapClock`,
@@ -119,9 +119,26 @@ The owner: _"OK looks great. You can start building on the same pr."_ Everything
 `constants.ts`. Tests: `prep-tier`, `mode-seen`, `PrepHero`, `mode-state.going-live`, and the
 `time` expectations now carry the isolate.
 
+## The fourth round: the countdown and the flip are one moment
+
+On the built first draft: _"until the countdown is over we stay on the plan mode … are we
+counting down to what? … the mode flip should be something exciting … maybe it should happen
+after the countdown finishes … whether we should have a dedicated animation for the countdown
+over."_ Half right: the two moments had to be one. But flipping _at_ the first event is too
+late — the departure morning is the board's morning (leave-by, the shutting check-in, the
+journey block, ADR-0206), and a plan hero cannot carry that without becoming a second board.
+So the moment was unified the other way: **the clock counts to the trip's start**, the
+instant `deriveMode` flips. If the app is open at the zero (a group awake for it), the flaps
+land on `00:00:00`, the kicker turns `מחר` → `היום`, the zeros breathe `ZERO_HOLD_MS` (1200),
+and the same morph plays live — a second trigger on one mechanism. Everyone else sees the
+first-open face over `00:00:00`. Drawn as §9 in the mockup, §7's face redrawn; the owner:
+_"I agree with you, let's go with that."_ Rejected on the way: running the flaps to zero during
+a first-open morph while the real clock reads `02:40` (dishonest content).
+
 ## What is next
 
-- A device pass on three numbers: `GOING_LIVE.HOLD_MS` (400), the horizon's 14px against the
-  tasks row's 16px, and whether seven lamps read as a bar (ADR-0193 §2).
+- A device pass on four numbers: `GOING_LIVE.HOLD_MS` (400), `GOING_LIVE.ZERO_HOLD_MS` (1200),
+  the horizon's 14px against the tasks row's 16px, and whether seven lamps read as a bar
+  (ADR-0193 §2).
 - The mockup is the dated record of the three rounds and is not retrofitted to the two build
   decisions above.

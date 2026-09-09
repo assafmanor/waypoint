@@ -5,7 +5,14 @@
 import type { Trip, TripEvent, ZoneEvidence } from '@waypoint/shared';
 import { daysUntilStart, tripToday } from './mode';
 import { eventZones, liveZoneContext } from './places';
-import { eveTargetMs, PREP_TIER, prepTier, runwayLamps, type PrepTier } from './prep-tier';
+import {
+  firstTimedOn,
+  PREP_TIER,
+  prepTier,
+  runwayLamps,
+  tripStartMs,
+  type PrepTier,
+} from './prep-tier';
 import { countdownParts, formatTime } from './time';
 import type { PrepHeroCountdown, PrepHeroEve } from '../ui/domain/PrepHero';
 
@@ -41,18 +48,16 @@ export function prepHeroFacts(input: {
   const runway = tier === PREP_TIER.WEEK ? runwayLamps(days) : null;
   let eve: PrepHeroEve | null = null;
   if (tier === PREP_TIER.EVE) {
-    const target = eveTargetMs(events, trip.startDate, trip.timezone);
-    if (target.event) {
+    // The clock counts to the trip's start; on day 1 itself that instant has passed and the
+    // clock reads `00:00:00` — the count IS over, which is what the first morning's face says.
+    eve = { targetMs: tripStartMs(trip.startDate, trip.timezone) };
+    const first = firstTimedOn(events, trip.startDate);
+    if (first) {
       // The event's own zone, the way every other surface prints a clock (ADR-0107 §2).
-      const zones = eventZones(target.event, liveZoneContext(now.getTime(), zoneEvidence));
-      eve = {
-        targetMs: target.atMs,
-        title: target.event.title,
-        icon: target.event.icon,
-        time: formatTime(target.event.startsAt!, zones.startZone),
-      };
-    } else {
-      eve = { targetMs: target.atMs };
+      const zones = eventZones(first, liveZoneContext(now.getTime(), zoneEvidence));
+      eve.title = first.title;
+      eve.icon = first.icon;
+      eve.time = formatTime(first.startsAt!, zones.startZone);
     }
   }
   return { days, tier, countdown, runway, eve };

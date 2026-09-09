@@ -87,6 +87,23 @@
      skin by default; the `עוצמה` control drops back to the quiet skin so the
      cost can be read side by side.
 
+     A FOURTH ROUND SETTLED WHAT THE CLOCK COUNTS TO. The owner: "until the
+     countdown is over we stay on the plan mode … are we counting down to what?
+     the mode flip should be something exciting … maybe it should happen after
+     the countdown finishes." Flipping at the first EVENT is too late — the
+     morning of departure is the board's morning (leave-by, the shutting
+     check-in, the journey block, ADR-0206), and a plan hero cannot carry that
+     without becoming a second board. So the countdown and the flip are made
+     ONE moment the other way round: the eve's flaps count to THE TRIP'S START,
+     trip-local midnight of day 1, which is exactly when `deriveMode` flips;
+     the line under them still names the first thing tomorrow. §9 draws the
+     end of that count: the cells land on `00:00:00`, hold a beat, and — if the
+     app is open (a group awake for it) — the face morphs into the board there
+     and then, live; everyone else sees the same thing on the first open of
+     day 1, whose face reads `היציאה היום` over `00:00:00` (the count IS over)
+     before it becomes the board. §7's face is redrawn that way. The board's
+     day-1 tile then counts to the first thing, as §3 built it.
+
      TWO LEVELS, ON PURPOSE. §1–§5 is the disciplined answer: correct, quiet,
      three CSS rules and a fixed trigger. The owner's follow-up — "is this flashy
      enough though?" — is answered by §6–§7, which spend the app's own signature
@@ -96,7 +113,9 @@
      exception in §6 is refused.
 
      ─────────────────────────────────────────────────────────────────────────
-     Interactive: theme (בהיר · כהה), screen (360×640 · 390×844), intensity
+     Interactive: theme (בהיר · כהה), screen (360×640 · 390×844), the zero
+     hold (§9: 800 · 1200 · 1600ms — how long the zeros breathe before the flip),
+     intensity
      (עוצמה: מלא · שקט — §8's skin on or off, everywhere), the eve
      clock's ink (ענבר · סגול — a rule-4 call the owner should make on a device),
      the first-open HOLD (0 · 250 · 400ms — the one number in §4/§7 a screenshot
@@ -12246,6 +12265,11 @@ button.wp-av:focus-visible {
         <button type="button" data-ink="amber" aria-pressed="true">ענבר</button>
         <button type="button" data-ink="violet">סגול</button>
         <span class="sep"></span>
+        <span class="lbl">האפס נושם (§9)</span>
+        <button type="button" data-zero="800">800ms</button>
+        <button type="button" data-zero="1200" aria-pressed="true">1200ms</button>
+        <button type="button" data-zero="1600">1600ms</button>
+        <span class="sep"></span>
         <span class="lbl">השהייה לפני החימום (§4)</span>
         <button type="button" data-hold="0">0</button>
         <button type="button" data-hold="250">250ms</button>
@@ -12292,7 +12316,7 @@ button.wp-av:focus-visible {
           מסך הבית המלא בערב היציאה (16:18, טיסה מחר ב-06:40). <b>ההתראה <code>trip.tomorrow</code>
           כבר נשלחת ב-19:00 ואומרת "נוסעים מחר · איסלנד '26 · טיסה לקפלביק ב-06:40"</b> - העובדה הזו
           נגזרת מהאירועים שהלוח ממילא קורא, אז הכרטיס אומר אותה גם כן: הדבר הראשון מחר, ולידו שעון רץ
-          <code>בעוד 14:22 שעות</code> בדקדוק של הלוח עצמו (<code>inPhrase(formatCountdown)</code>).
+          <code>בעוד 7:41 שעות</code> בדקדוק של הלוח עצמו (<code>inPhrase(formatCountdown)</code>).
           <b>השעון הוא ענבר כמילוי</b>, במרשם של גלולת המצב (<code>.hdr-mode button.on .p</code>) - כי
           ענבר הוא הדיו של הזמן (כלל 4), אבל ענבר כטקסט על הסגול הזה נמדד 3.4:1 בבהיר (הטבלה). זהו תיקון
           לכלל "הכרטיס לעולם לא ענבר" ב-<code>screens.css</code>, שנכתב כשלכרטיס לא היה שעון; הפקד למעלה
@@ -12355,8 +12379,9 @@ button.wp-av:focus-visible {
           כפי ש-<code>.birth-flap</code> מתהפך בלידת הטיול. <b>(ב)</b> <b>מסלול ריצה:</b> שבע נקודות מתחת
           לתאריכים, אחת נדלקת על כל יום שכבר מאחוריכם - בדידות, לא פס (ADR-0193 §2 דחה פס שני מעל פס
           המוכנות, ובצדק). <b>(ג)</b> <b>בערב היציאה הכותרת עצמה היא שעון של לוח יציאות:</b>
-          <code>HH:MM:SS</code> עד הדבר הראשון מחר, מתקתק, בתאי פלאפ שנחתכו ממרשם <code>.cell</code> של
-          מסך האפס בגודל כותרת. <b>זה מוציא דקדוק של לוח במצב תכנון</b>, ו-design-language מקציב אותו
+          <code>HH:MM:SS</code> <b>עד תחילת הטיול</b> - חצות של יום 1, הרגע שבו המצב מתחלף (סבב רביעי;
+          השורה שמתחתיו עדיין אומרת מה הדבר הראשון מחר) - מתקתק, בתאי פלאפ שנחתכו ממרשם <code>.cell</code>
+          של מסך האפס בגודל כותרת. <b>זה מוציא דקדוק של לוח במצב תכנון</b>, ו-design-language מקציב אותו
           (משטח לוח אחד למסך; לתכנון אין). החריג שנטען כאן צר: תאים, לא משטח - בלי קרקע כהה מתחת לכרטיס,
           בלי זוהר, בלי פעימה, בלי "עכשיו". הפלאפים של הלוח מתחממים יום מוקדם על כרטיס התכנון - וזה כל
           הסיפור שיש לערב לספר. אם החריג נדחה, הערב נופל ל-§3.
@@ -12370,9 +12395,9 @@ button.wp-av:focus-visible {
         <p class="note">
           <b>אלמנט משותף, לא צביעה מחדש.</b> §4 מתקן את הטריגר כך שהחימום הקיים מנוגן; §7 נותן לו
           נושא. הכרטיס הסגול והלוח הם אותה תיבה באותו מקום, אז הפתיחה הראשונה מאפשרת לאחד להפוך לשני:
-          המעטפת עולה בכרום תכנון, הכרטיס אומר <code>היציאה · היום</code>, השהייה - ואז, באותו commit שבו
-          הכרום מתחמם, הכרטיס מתעמעם אל הלוח שמתחתיו (<code>--t-cinematic</code>), המילה <code>היום</code>
-          מתהפכת בדרך החוצה, ורק <i>בסוף</i> הדהייה הלוח נדלק: בהירות 0.55→1, הזוהר הענברי, הפעימה. ההדלקה
+          המעטפת עולה בכרום תכנון, הכרטיס אומר <code>היציאה היום</code> מעל <code>00:00:00</code> (הספירה
+          לטיול הסתיימה - תוכן אמיתי, לא קישוט; סבב רביעי), השהייה - ואז, באותו commit שבו הכרום מתחמם,
+          הכרטיס מתעמעם אל הלוח שמתחתיו (<code>--t-cinematic</code>), ורק <i>בסוף</i> הדהייה הלוח נדלק: בהירות 0.55→1, הזוהר הענברי, הפעימה. ההדלקה
           היא השיא ולא הפתיחה. <b>אפס keyframes חדשים:</b> שני הפנים יושבים בתא grid אחד (כמו שהלוח
           המכווץ נשאר מתחת לכרטיס המורם ב-<code>HeroLift</code>), הדהייה היא <code>transition</code> אחת,
           וההדלקה היא <code>wp-board-power/glow</code> של <code>board.css</code> עם עיכוב שנדחף לסוף הדהייה.
@@ -12410,6 +12435,40 @@ button.wp-av:focus-visible {
         <div class="pair" id="s8"></div>
       </section>
 
+      <!-- ══════════════════════════ §9 ══════════════════════════ -->
+      <section class="case">
+        <h2>§9 · הספירה נגמרת: אפס, נשימה, ואז הלוח</h2>
+        <p class="note">
+          <b>הבעלים:</b> "עד שהספירה נגמרת אנחנו נשארים במצב תכנון … סופרים לאחור למה? מעבר המצב צריך
+          להיות משהו מרגש … אולי הוא צריך לקרות אחרי שהספירה נגמרת." <b>נכון בחצי:</b> הספירה והמעבר חייבים
+          להיות רגע אחד. אבל להפוך את המצב <i>באירוע הראשון</i> מאוחר מדי: בוקר היציאה הוא הבוקר של הלוח
+          (<code>צאו ב־</code>, חלון הצ׳ק-אין שנסגר, בלוק המסע - ADR-0206), וכרטיס תכנון לא יכול לסחוב את
+          זה בלי להפוך ללוח שני. אז את הרגע האחד עושים <b>הפוך</b>: <b>הספירה סופרת לתחילת הטיול</b> - חצות
+          של יום 1, בדיוק הרגע שבו <code>deriveMode</code> מתחלף - והשורה שמתחתיה מספרת מה הדבר הראשון
+          מחר. תכנון סופר <i>לטיול</i>; טיול סופר <i>לדבר הבא</i>. <b>וכשהשעון מגיע לאפס בזמן שמישהו
+          מסתכל</b> (חבורה שנשארה ערה לזה - זה ערב השנה החדשה של הטיול) התאים נוחתים על <code>00:00:00</code>,
+          המילה בקיקר מתהפכת מ-<code>מחר</code> ל-<code>היום</code>, האפסים <b>נושמים</b> רגע, ואז אותה
+          הפיכה של §7 מתנגנת <i>בשידור חי</i>: הכרום מתחמם, הכרטיס מתעמעם ומצטמצם אל הלוח, הלוח נדלק
+          ופורח. כל השאר רואים בדיוק את זה בפתיחה הראשונה של יום 1 (§7, שצויר מחדש: הפנים קוראים
+          <code>היציאה היום</code> מעל <code>00:00:00</code>). <b>מכניזם אחד, שני טריגרים</b> - הפליפ החי
+          והפתיחה הראשונה - וכמות ה-CSS החדש היא אפס. הנשימה היא המספר היחיד כאן שהוא עניין של תחושה,
+          והפקד למעלה מחזיק אותו.
+        </p>
+        <div class="pair" id="s9"></div>
+        <div class="beats">
+          <table class="m" id="beats9">
+            <thead>
+              <tr>
+                <th>ms</th>
+                <th>מה קורה</th>
+                <th>מקור</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
       <div class="panel">
         <h2>מדידה · נקראת מה-DOM החי</h2>
         <p>
@@ -12439,7 +12498,7 @@ button.wp-av:focus-visible {
           </li>
           <li>
             <b>נבחר: שורת הערב, וממנה השעון.</b> העובדה קיימת בשרת (ההתראה) ובלקוח (הלוח קורא את אותם
-            אירועים); הכרטיס והדחיפה אומרים משפט אחד. הדקדוק <code>בעוד 14:22 שעות</code> הוא של הלוח
+            אירועים); הכרטיס והדחיפה אומרים משפט אחד. הדקדוק <code>בעוד 7:41 שעות</code> הוא של הלוח
             (<code>inPhrase</code> + <code>formatCountdown</code>), לא חדש.
           </li>
           <li>
@@ -12470,6 +12529,14 @@ button.wp-av:focus-visible {
             מעבר שקורה <i>מתחת לידיים</i> בחצות. פתיחה ראשונה בבוקר היציאה היא רגע שהמשתמש <i>מגיע אליו</i>,
             והוא הפעם היחידה שהמעבר האוטומטי ניתן לראייה בכלל - אז הוא כן מופיע, פעם אחת לטיול. מעבר
             שמתרחש בזמן שהאפליקציה פתוחה נשאר כפי שהוא.
+          </li>
+          <li>
+            <b>§9, נבחר: הספירה סופרת לתחילת הטיול, והמעבר הוא האפס שלה.</b> נדחה: להשאיר את המצב תכנון עד
+            האירוע הראשון ולהפוך שם (הצעת הבעלים) - זה מוותר על הלוח בבוקר היציאה, הבוקר שבו
+            <code>צאו ב־</code> וחלון הצ׳ק-אין הם השאלה, ועל כרטיס תכנון שסוחב אותם היה הופך ללוח שני
+            (הקצבה). נדחה: לספור לאירוע הראשון אבל להפוך בחצות (הסבב הקודם) - שני רגעים לספירה אחת, שהוא
+            בדיוק "סופרים לאחור למה?". נדחה: להריץ את הפלאפים לאפס בזמן ההפיכה בפתיחה הראשונה כשהשעון בפועל
+            מראה <code>02:40</code> - תוכן לא אמיתי; הפנים מראים אפסים כי הספירה לטיול באמת נגמרה.
           </li>
           <li>
             <b>§8, נבחר: הצבע של מעבר המצב, נמתח על השבוע האחרון.</b> נדחה: גוון חדש (טורקיז, ורוד,
@@ -12565,7 +12632,9 @@ button.wp-av:focus-visible {
         overdue: 1,
       };
       // The eve: 16:18 on the 10th, first timed thing on day 1 is the flight at 06:40.
-      const EVE = { first: 'טיסה לקפלביק', at: '06:40', hours: '14:22', clock: '14:22:07' };
+      // The eve at 16:18: 07:41:53 to the trip's start at midnight (the clock's target since round
+      // four); the flight at 06:40 is the LINE under it, not what it counts to.
+      const EVE = { first: 'טיסה לקפלביק', at: '06:40', hours: '7:41', clock: '07:41:53' };
 
       /* `countdownParts` (lib/time.ts:548), ported verbatim for the four days drawn.
          47 days is under `COUNTDOWN_MONTHS_THRESHOLD` (2 months), so it stays a day count. */
@@ -12719,7 +12788,7 @@ button.wp-av:focus-visible {
         `${heroHtml}<div class="sec-title">מה חסר להשלמה</div><div class="checklist">${TASKS.map(taskRow).join('')}</div>`;
 
       /* ══ State the controls own. */
-      const state = { ink: 'amber', hold: 400, runway: true, vivid: true };
+      const state = { ink: 'amber', hold: 400, runway: true, vivid: true, zeroHold: 1200 };
       const DAYS = [47, 5, 2, 1];
 
       function paint() {
@@ -12778,10 +12847,25 @@ button.wp-av:focus-visible {
             '<span class="tag after">בהצעה · הפתיחה הראשונה: הכרטיס הופך ללוח</span>',
             shell(
               'plan',
-              `<div class="prep-morph" data-stage="plan">${hero(0, { proposed: true, ink: state.ink, hours: '0:48' })}${board({ dormant: false })}</div><div class="sec-title">היום</div>`,
+              `<div class="prep-morph" data-stage="plan">${hero(0, { proposed: true, ink: state.ink, flaps: true, clock: '00:00:00', hours: '0' })}${board({ dormant: false })}</div><div class="sec-title">היום</div>`,
               { id: 'f-morph' },
             ),
             `<div class="col-actions"><button type="button" class="mk-btn primary" data-play="morph">נגן את ההפיכה</button></div>`,
+          ),
+        ].join('');
+        document.querySelector('#s9').innerHTML = [
+          col(
+            '<span class="tag after">בהצעה · חצות, בשידור חי: האפס ואז הלוח</span>',
+            shell(
+              'plan',
+              `<div class="prep-morph" data-stage="plan">${hero(1, { proposed: true, ink: state.ink, flaps: true, clock: '00:00:05', hours: '0' })}${board({ dormant: false })}</div><div class="sec-title">היום</div>`,
+              { id: 'f-zero' },
+            ),
+            `<div class="col-actions"><button type="button" class="mk-btn primary" data-play="zero">נגן את חמש השניות האחרונות</button></div>`,
+          ),
+          col(
+            '<span class="tag after">בהצעה · הפתיחה הראשונה של יום 1: הפנים שהלוח צומח מהם</span>',
+            cropped(hero(0, { proposed: true, ink: state.ink, flaps: true, clock: '00:00:00', hours: '0' })),
           ),
         ].join('');
         document.querySelector('#s8').innerHTML = [
@@ -12904,7 +12988,7 @@ button.wp-av:focus-visible {
         app.removeAttribute('data-switching');
         setMode(frame, 'plan');
         // Remount the whole morph so the board face's power-on can run again.
-        morph.outerHTML = `<div class="prep-morph" data-stage="plan">${hero(0, { proposed: true, ink: state.ink, hours: '0:48' })}${board({ dormant: false })}</div>`;
+        morph.outerHTML = `<div class="prep-morph" data-stage="plan">${hero(0, { proposed: true, ink: state.ink, flaps: true, clock: '00:00:00', hours: '0' })}${board({ dormant: false })}</div>`;
         // Pin the plan face at its measured height so the shrink has a start value.
         const face = frame.querySelector('.prep-morph > .prep');
         face.style.height = `${face.getBoundingClientRect().height}px`;
@@ -12929,6 +13013,84 @@ button.wp-av:focus-visible {
           },
           state.hold,
         );
+      }
+      /* §9 — the last five seconds, live. The flaps count down to zero (only the changed cells
+         turn), the kicker turns מחר → היום at zero, the zeros breathe for `state.zeroHold`, and
+         then §7's morph plays unchanged: same mechanism, second trigger. */
+      function playZero() {
+        const id = 'f-zero';
+        const frame = document.getElementById(id);
+        const t = T();
+        clearTimers(id);
+        frame.classList.add('is-playing');
+        const app = frame.querySelector('.app');
+        app.removeAttribute('data-switching');
+        setMode(frame, 'plan');
+        frame.querySelector('.prep-morph').outerHTML =
+          `<div class="prep-morph" data-stage="plan">${hero(1, { proposed: true, ink: state.ink, flaps: true, clock: '00:00:05', hours: '0' })}${board({ dormant: false })}</div>`;
+        const face = frame.querySelector('.prep-morph > .prep');
+        face.style.height = `${face.getBoundingClientRect().height}px`;
+        const cells = [...face.querySelectorAll('.prep-flap')];
+        const show = (secs) => {
+          const str = `00:00:${String(secs).padStart(2, '0')}`.replace(/:/g, '');
+          cells.forEach((cell, i) => {
+            if (cell.textContent !== str[i]) {
+              cell.textContent = str[i];
+              cell.style.animationDelay = '0ms';
+              cell.classList.remove('is-turning');
+              void cell.offsetWidth;
+              cell.classList.add('is-turning');
+            }
+          });
+        };
+        for (let k = 4; k >= 0; k--) later(id, () => show(k), (5 - k) * 1000);
+        // Zero: the day has turned, so the kicker's word turns with it.
+        later(id, () => (face.querySelector('.prep-k').textContent = 'היציאה היום'), 5000);
+        later(
+          id,
+          () => {
+            const m = frame.querySelector('.prep-morph');
+            app.setAttribute('data-switching', 'to-trip');
+            setMode(frame, 'trip');
+            m.setAttribute('data-stage', 'morph');
+            face.style.height = `${m.querySelector('.wp-board').getBoundingClientRect().height}px`;
+            later(
+              id,
+              () => {
+                app.removeAttribute('data-switching');
+                m.setAttribute('data-stage', 'board');
+              },
+              t.cinematic + t.tail,
+            );
+            later(id, () => frame.classList.remove('is-playing'), 2 * t.cinematic + t.boardDelay + t.tail);
+          },
+          5000 + state.zeroHold,
+        );
+      }
+      function finishZero() {
+        const frame = document.getElementById('f-zero');
+        clearTimers('f-zero');
+        frame.classList.remove('is-playing');
+        frame.querySelector('.app').removeAttribute('data-switching');
+        setMode(frame, 'trip');
+        const m = frame.querySelector('.prep-morph');
+        m.setAttribute('data-stage', 'board');
+        m.querySelector('.prep').style.height = `${m.querySelector('.wp-board').getBoundingClientRect().height}px`;
+      }
+      function paintBeats9() {
+        const t = T();
+        const z = state.zeroHold;
+        const rows = [
+          ['−5000 … 0', 'התאים סופרים לאחור: רק תא שהספרה שלו השתנתה מתהפך (<code>flap-turn</code>). הכרום עדיין תכנון.', '<code>FlapClock</code> · §6'],
+          ['0', '<code>00:00:00</code>. הקיקר מתהפך מ-<code>היציאה מחר</code> ל-<code>היציאה היום</code>. <code>deriveMode</code> החליף למצב טיול; הספק מחזיק את הכרום בתכנון.', '<code>chromeMode</code> · §4'],
+          [`${z}`, 'האפסים נשמו. נדרך <code>to-trip</code>: הכרום מתחמם, הכרטיס מתעמעם ומצטמצם לגובה הלוח.', 'השהיית האפס · פקד'],
+          [`${z + t.cinematic + t.boardDelay}`, 'הלוח נדלק ופורח; <code>יום 1/12</code> נדלק בכותרת.', '§7/§8 · שיפ'],
+          [`${z + 2 * t.cinematic + t.boardDelay}`, 'נגמר. <code>mode-seen</code> = טיול, כך שהפתיחה הבאה היא סתם טיול.', 'סה״כ'],
+          ['בכל רגע', 'נקישה מסיימת מיד. תחת <code>prefers-reduced-motion</code>: הפליפ מיידי, בלי רצף.', 'ADR-0140 §5'],
+        ];
+        document.querySelector('#beats9 tbody').innerHTML = rows
+          .map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`)
+          .join('');
       }
       function finishMorph() {
         const frame = document.getElementById('f-morph');
@@ -12975,7 +13137,13 @@ button.wp-av:focus-visible {
       function wirePlay() {
         document.querySelectorAll('[data-play]').forEach((b) =>
           b.addEventListener('click', () =>
-            b.dataset.play === 'today' ? playToday() : b.dataset.play === 'first' ? playFirst() : playMorph(),
+            b.dataset.play === 'today'
+              ? playToday()
+              : b.dataset.play === 'first'
+                ? playFirst()
+                : b.dataset.play === 'zero'
+                  ? playZero()
+                  : playMorph(),
           ),
         );
         document.querySelectorAll('[data-replay]').forEach((b) =>
@@ -12984,6 +13152,11 @@ button.wp-av:focus-visible {
             host.innerHTML = host.innerHTML; // remount → the mount animation replays
           }),
         );
+        document.getElementById('f-zero').addEventListener('click', () => {
+          if (document.getElementById('f-zero').classList.contains('is-playing')) finishZero();
+        });
+        timers.set('f-zero', []);
+        paintBeats9();
         document.getElementById('f-morph').addEventListener('click', () => {
           if (document.getElementById('f-morph').classList.contains('is-playing')) finishMorph();
         });
@@ -13031,6 +13204,15 @@ button.wp-av:focus-visible {
       const themeBtns = q('.controls button[data-theme]');
       const widthBtns = q('.controls button[data-w]');
       const inkBtns = q('.controls button[data-ink]');
+      const zeroBtns = q('.controls button[data-zero]');
+      zeroBtns.forEach((b) =>
+        b.addEventListener('click', () => {
+          state.zeroHold = Number(b.dataset.zero);
+          press(zeroBtns, b);
+          paintBeats9();
+          measure();
+        }),
+      );
       const holdBtns = q('.controls button[data-hold]');
       themeBtns.forEach((b) =>
         b.addEventListener('click', () => {
@@ -13259,6 +13441,11 @@ button.wp-av:focus-visible {
             return `${iso(`${hh}px`)} → ${iso(`${bh}px`)} · ${iso(`${rnd(hh - bh)}px`)}`;
           })(),
           'נקרא מה-DOM בזמן הניגון, לא קבוע · הכרטיס מצטמצם אל הלוח באותו ' + iso('--t-cinematic') + ' של הדהייה',
+        ]);
+        rows.push([
+          '§9 · האפס ואז הלוח · אורך הרצף מהאפס',
+          iso(`${state.zeroHold + 2 * T().cinematic + T().boardDelay}ms`),
+          'נשימת האפס ' + iso(`${state.zeroHold}ms`) + ' + ההפיכה של §7 · ההפיכה עצמה זהה, טריגר שני',
         ]);
         rows.push([
           '§7 · אורך הרצף כשהכרטיס הופך ללוח',

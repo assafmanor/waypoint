@@ -63,7 +63,8 @@ describe('the first open of a live trip', () => {
     act(() =>
       vi.advanceTimersByTime(2 * CINEMATIC + GOING_LIVE.BOARD_DELAY_MS + GOING_LIVE.TAIL_MS),
     );
-    expect(seen!.goingLive).toEqual({ stage: GOING_LIVE_STAGE.DONE, quiet: false });
+    expect(seen!.goingLive?.stage).toBe(GOING_LIVE_STAGE.DONE);
+    expect(seen!.goingLive?.quiet).toBe(false);
     expect(seen!.chromeMode).toBe('trip');
   });
 
@@ -88,6 +89,28 @@ describe('the first open of a live trip', () => {
     show();
     expect(seen!.goingLive).toBeNull();
     expect(seen!.chromeMode).toBe('trip');
+  });
+
+  // The clock's zero, live: the app is open at 23:59:59 on the eve and the day turns.
+  it('plays from the zero when the day turns while the app is open, with the longer hold', () => {
+    setSimulatedNow(Date.parse('2026-09-10T20:59:59Z'));
+    show();
+    expect(seen!.mode).toBe('plan');
+    expect(seen!.goingLive).toBeNull();
+
+    // Jerusalem midnight is 21:00Z: the derived mode turns under a mounted provider.
+    act(() => setSimulatedNow(Date.parse('2026-09-10T21:00:00Z')));
+    expect(seen!.mode).toBe('trip');
+    expect(seen!.chromeMode).toBe('plan');
+    expect(seen!.goingLive).toEqual({ stage: GOING_LIVE_STAGE.HOLD, quiet: false, zero: true });
+
+    act(() => vi.advanceTimersByTime(GOING_LIVE.HOLD_MS));
+    expect(seen!.goingLive?.stage, 'the zero breathes longer than a first-open hold').toBe(
+      GOING_LIVE_STAGE.HOLD,
+    );
+    act(() => vi.advanceTimersByTime(GOING_LIVE.ZERO_HOLD_MS - GOING_LIVE.HOLD_MS));
+    expect(seen!.chromeMode).toBe('trip');
+    expect(seen!.goingLive?.stage).toBe(GOING_LIVE_STAGE.MORPH);
   });
 
   it('does not play before the trip is live', () => {

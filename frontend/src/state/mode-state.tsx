@@ -34,6 +34,9 @@ export interface GoingLive {
   stage: GoingLiveStage;
   /** Ended by a tap: the chrome flips without arming the switch, so the skip is instant. */
   quiet: boolean;
+  /** Began at the clock's zero, LIVE — the app was open when the day turned (§4). The hold is
+   *  the longer `ZERO_HOLD_MS`: the zeros breathe before the chrome warms. */
+  zero?: boolean;
 }
 
 interface ModeContextValue {
@@ -74,6 +77,17 @@ export function ModeProvider({ children }: { children: ReactNode }) {
     setSeenTripId(trip.id);
     setGoingLive(beginGoingLive(trip.id, deriveMode(trip, now, zoneEvidence)));
   }
+  // **The clock's zero, live** (ADR-0221 §4, fourth round): the eve's flaps count to this very
+  // instant, so when the derived mode turns while the app is open — a group awake for it — the
+  // same sequence plays from the zeros, with the longer hold. Derived flips only: a manual peek
+  // back to trip (`override`) is a person's action mid-trip, not the trip starting.
+  const [prevMode, setPrevMode] = useState(mode);
+  if (mode !== prevMode) {
+    setPrevMode(mode);
+    if (mode === 'trip' && override === null && !prefersReducedMotion()) {
+      setGoingLive({ stage: GOING_LIVE_STAGE.HOLD, quiet: false, zero: true });
+    }
+  }
   // The sequence keeps time; a Plan peek mid-sequence ends it, since there is no board.
   useEffect(() => {
     if (!goingLive || goingLive.stage === GOING_LIVE_STAGE.DONE) return;
@@ -84,16 +98,18 @@ export function ModeProvider({ children }: { children: ReactNode }) {
     const cinematic = motionDurationMs('--t-cinematic');
     const wait =
       goingLive.stage === GOING_LIVE_STAGE.HOLD
-        ? GOING_LIVE.HOLD_MS
+        ? goingLive.zero
+          ? GOING_LIVE.ZERO_HOLD_MS
+          : GOING_LIVE.HOLD_MS
         : // The face fades over one cinematic; the board ignites after it and takes another.
           2 * cinematic + GOING_LIVE.BOARD_DELAY_MS + GOING_LIVE.TAIL_MS;
     const id = setTimeout(
       () =>
         setGoingLive((g) =>
           g && g.stage === GOING_LIVE_STAGE.HOLD
-            ? { stage: GOING_LIVE_STAGE.MORPH, quiet: false }
+            ? { ...g, stage: GOING_LIVE_STAGE.MORPH }
             : g && g.stage === GOING_LIVE_STAGE.MORPH
-              ? { stage: GOING_LIVE_STAGE.DONE, quiet: false }
+              ? { ...g, stage: GOING_LIVE_STAGE.DONE }
               : g,
         ),
       wait,

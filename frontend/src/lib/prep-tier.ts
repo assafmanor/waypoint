@@ -51,20 +51,16 @@ export function firstTimedOn(events: TripEvent[], date: string): TripEvent | und
   return first;
 }
 
-/** **What the eve's clock counts to** (ADR-0221 §3): the first timed thing on day 1 when
- *  there is one, else the trip-local midnight that starts day 1 — the instant the mode
- *  flips. The departure is the commitment and the fact the push already names; midnight is
- *  the boundary nobody feels, so it is only the fallback. */
-export function eveTargetMs(
-  events: TripEvent[],
-  startDate: string,
-  primaryZone: string,
-): { atMs: number; event?: TripEvent } {
-  const first = firstTimedOn(events, startDate);
-  if (first) return { atMs: Date.parse(first.startsAt!), event: first };
+/** **What the eve's clock counts to: the trip's start** (ADR-0221 §3, settled in the fourth
+ *  round) — trip-local midnight of day 1, the instant `deriveMode` flips. Plan counts to the
+ *  trip; Trip counts to the next thing. The first draft counted to the first timed thing,
+ *  which made the countdown and the flip two different moments ("counting down to what?");
+ *  flipping AT the first thing instead would have surrendered the departure morning's board.
+ *  The first thing is still NAMED under the clock (`firstTimedOn`). */
+export function tripStartMs(startDate: string, primaryZone: string): number {
   const utcMidnight = Date.parse(`${startDate}T00:00:00Z`);
   const offset = zoneOffsetMinutes(new Date(utcMidnight), primaryZone);
-  return { atMs: utcMidnight - offset * MS_PER_MINUTE };
+  return utcMidnight - offset * MS_PER_MINUTE;
 }
 
 export interface FlapClock {

@@ -37,6 +37,7 @@ export function FlapClock({
     minutesLeft < MINUTES_PER_HOUR
       ? `${minutesLeft} ${t.planHome.prep.minutes}`
       : `${formatCountdown(minutesLeft).value} ${formatCountdown(minutesLeft).unit}`;
+  const label = targetMs <= nowMs ? t.planHome.prep.over : t.board.inPhrase(spoken);
   const cell = (ch: string, i: number, sec: boolean) => (
     <span
       key={`${i}-${ch}`}
@@ -53,7 +54,7 @@ export function FlapClock({
       className={'prep-flaps' + (className ? ` ${className}` : '')}
       dir="auto"
       role="timer"
-      aria-label={t.board.inPhrase(spoken)}
+      aria-label={label}
     >
       {group(clock.hours, 0)}
       <span className="prep-flap-sep" aria-hidden="true">

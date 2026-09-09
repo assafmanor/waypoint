@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { TripEvent } from '@waypoint/shared';
 import {
-  eveTargetMs,
   firstTimedOn,
   flapClock,
   PREP_TIER,
   prepTier,
   RUNWAY_DAYS,
   runwayLamps,
+  tripStartMs,
 } from './prep-tier';
 
 const ev = (id: string, date: string, startsAt?: string): TripEvent =>
@@ -58,25 +58,20 @@ describe('firstTimedOn', () => {
   });
 });
 
-describe('eveTargetMs', () => {
-  it('counts to the first timed thing on day 1 when there is one', () => {
-    const flight = ev('flight', '2026-09-11', '2026-09-11T03:40:00Z');
-    const target = eveTargetMs([flight], '2026-09-11', 'Asia/Jerusalem');
-    expect(target.event?.id).toBe('flight');
-    expect(target.atMs).toBe(Date.parse('2026-09-11T03:40:00Z'));
-  });
-
-  // The fallback is the instant the mode flips: trip-local midnight of day 1.
-  it('falls back to the trip-local midnight that starts day 1', () => {
-    const target = eveTargetMs([], '2026-09-11', 'Asia/Jerusalem');
-    expect(target.event).toBeUndefined();
+describe('tripStartMs', () => {
+  // The clock counts to the instant the mode flips: trip-local midnight of day 1.
+  it('is the trip-local midnight that starts day 1', () => {
     // Jerusalem is UTC+3 in September, so its midnight is 21:00Z the evening before.
-    expect(target.atMs).toBe(Date.parse('2026-09-10T21:00:00Z'));
+    expect(tripStartMs('2026-09-11', 'Asia/Jerusalem')).toBe(Date.parse('2026-09-10T21:00:00Z'));
+    // Reykjavik is UTC+0 all year.
+    expect(tripStartMs('2026-09-11', 'Atlantic/Reykjavik')).toBe(
+      Date.parse('2026-09-11T00:00:00Z'),
+    );
   });
 });
 
 describe('flapClock', () => {
-  it('reads HH:MM:SS to the target and can pass 24 hours on the eve', () => {
+  it('reads HH:MM:SS to the target and can pass 24 hours', () => {
     const target = Date.parse('2026-09-11T03:40:00Z');
     expect(flapClock(Date.parse('2026-09-10T13:18:00Z'), target)).toEqual({
       hours: '14',

@@ -1562,6 +1562,11 @@ export const TRIP_HANDOFF = {
  *  `0.12s` in `board.css`'s power-on rule, and `TAIL_MS` the Shell's own switch tail. */
 export const GOING_LIVE = {
   HOLD_MS: 400,
+  /** The hold when the flip happens LIVE at the clock's zero (ADR-0221 §4): the zeros breathe
+   *  before the chrome warms. Longer than `HOLD_MS`, because here the face is already on
+   *  screen and the beat is the payoff of a count someone watched; the mockup's control
+   *  offered 800 · 1200 · 1600. */
+  ZERO_HOLD_MS: 1200,
   BOARD_DELAY_MS: 120,
   TAIL_MS: 80,
 } as const;
