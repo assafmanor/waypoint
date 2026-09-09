@@ -56,7 +56,9 @@ chrome, holds, then arms the shipped `to-trip` switch. Zero new keyframes.
 early: numerals flip in as split flaps inside the last week, seven discrete runway pips, and
 on the eve the headline itself is a ticking `HH:MM:SS` in flap cells cut from the zero
 state's `.cell` recipe. The first open is a transformation: the violet card fades into the
-board underneath it over `--t-cinematic` while the chrome warms, `היום` turns on the way
+board underneath it over `--t-cinematic` while the chrome warms **and shrinks to the board's
+height** (both heights read off the DOM at play time, as the lift's flight does; the owner
+caught the first cut keeping the plan hero's height on a device), `היום` turns on the way
 out, and the board's shipped power-on is delayed to the end of the fade so ignition is the
 climax. 1720ms at the 400ms hold, once per trip, one tap skips, nothing under reduced
 motion.

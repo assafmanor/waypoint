@@ -11681,13 +11681,27 @@ button.wp-av:focus-visible {
          `--t-cinematic` while the shipped chrome warm-up runs, and the board face's
          own `wp-board-power`/`glow` (shipped) is DELAYED to the end of the fade so
          the ignition is the climax and not the overture. Zero new keyframes. */
+      /* THE CARD ALSO CHANGES SIZE (owner, on a device: the board "stays the same
+         size even if the plan hero is much bigger"). Both faces share one grid cell,
+         so `align-items: start` lets the board keep its own height, and the plan
+         face's `height` transitions from its measured height to the board's over the
+         same `--t-cinematic` as its fade — `.prep` already clips (`overflow: hidden`),
+         so the card visibly shrinks INTO the board while it dims. Both heights are
+         read off the DOM at play time, never constants: the same rule the lift's
+         flight follows (ADR-0193 §4, "off the MEASURED box"). */
       .prep-morph {
         display: grid;
+        align-items: start;
       }
       .prep-morph > .prep,
       .prep-morph > .wp-board {
         grid-area: 1 / 1;
         transition: opacity var(--t-cinematic) var(--ease-standard);
+      }
+      .prep-morph > .prep {
+        transition:
+          opacity var(--t-cinematic) var(--ease-standard),
+          height var(--t-cinematic) var(--ease-standard);
       }
       .prep-morph[data-stage='plan'] > .wp-board {
         opacity: 0;
@@ -12891,6 +12905,9 @@ button.wp-av:focus-visible {
         setMode(frame, 'plan');
         // Remount the whole morph so the board face's power-on can run again.
         morph.outerHTML = `<div class="prep-morph" data-stage="plan">${hero(0, { proposed: true, ink: state.ink, hours: '0:48' })}${board({ dormant: false })}</div>`;
+        // Pin the plan face at its measured height so the shrink has a start value.
+        const face = frame.querySelector('.prep-morph > .prep');
+        face.style.height = `${face.getBoundingClientRect().height}px`;
         later(
           id,
           () => {
@@ -12898,6 +12915,8 @@ button.wp-av:focus-visible {
             app.setAttribute('data-switching', 'to-trip');
             setMode(frame, 'trip');
             m.setAttribute('data-stage', 'morph');
+            // …and send it to the board's own height, read now, in the same commit.
+            face.style.height = `${m.querySelector('.wp-board').getBoundingClientRect().height}px`;
             later(
               id,
               () => {
@@ -12917,7 +12936,9 @@ button.wp-av:focus-visible {
         frame.classList.remove('is-playing');
         frame.querySelector('.app').removeAttribute('data-switching');
         setMode(frame, 'trip');
-        frame.querySelector('.prep-morph').setAttribute('data-stage', 'board');
+        const m = frame.querySelector('.prep-morph');
+        m.setAttribute('data-stage', 'board');
+        m.querySelector('.prep').style.height = `${m.querySelector('.wp-board').getBoundingClientRect().height}px`;
       }
       /* §6's clock: one tick a second, only the cells that changed turn. */
       let clockTimer = null;
@@ -12990,7 +13011,7 @@ button.wp-av:focus-visible {
           .join('');
         const rows7 = [
           ['0', 'המעטפת עולה בכרום תכנון. במקום הלוח: כרטיס התכנון, <code>היציאה · היום</code>, הטיסה <code>06:40</code>, השעון <code>בעוד 0:48 שעות</code>.', 'טריגר חדש · <code>waypoint:mode-seen</code>'],
-          [`${h}`, 'נדרך <code>to-trip</code>: הכרום מתחמם והרשת נמוגה (שיפ). הכרטיס מתחיל להתעמעם אל הלוח שמתחתיו; המילה <code>היום</code> מתהפכת בדרך החוצה.', '<code>[data-switching]</code> שיפ · <code>.prep-morph</code> חדש'],
+          [`${h}`, 'נדרך <code>to-trip</code>: הכרום מתחמם והרשת נמוגה (שיפ). הכרטיס מתחיל להתעמעם אל הלוח שמתחתיו <b>ומצטמצם לגובהו</b> (שני הגבהים נקראים מה-DOM, לא קבועים); המילה <code>היום</code> מתהפכת בדרך החוצה.', '<code>[data-switching]</code> שיפ · <code>.prep-morph</code> חדש'],
           [`${h + t.cinematic}`, 'הכרום סיים; הכרטיס הסגול נעלם; הלוח מלא אבל עדיין רדום.', '<code>--t-cinematic</code>'],
           [`${h + t.cinematic + t.boardDelay}`, 'הלוח נדלק: בהירות 0.55→1, הזוהר הענברי, הפעימה. <b>זה השיא.</b>', '<code>wp-board-power/glow</code> שיפ, בעיכוב'],
           [`${h + 2 * t.cinematic + t.boardDelay}`, 'סוף. <code>mode-seen</code> נכתב = טיול; מכאן זה מצב טיול רגיל.', 'סה״כ'],
@@ -13224,6 +13245,21 @@ button.wp-av:focus-visible {
             'מול פס המוכנות: ' + iso(`${rnd(rect(document.querySelector('#f-week .prep-track')).height)}px`) + ' גובה · ADR-0193 §2',
           ]);
         const t = T();
+        rows.push([
+          '§7 · גובה כרטיס התכנון מול גובה הלוח · מרחק ההצטמצמות',
+          (() => {
+            const m = document.querySelector('#f-morph .prep-morph');
+            if (!m) return '—';
+            const face = m.querySelector('.prep');
+            const saved = face.style.height;
+            face.style.height = 'auto';
+            const hh = rnd(face.getBoundingClientRect().height);
+            face.style.height = saved;
+            const bh = rnd(m.querySelector('.wp-board').getBoundingClientRect().height);
+            return `${iso(`${hh}px`)} → ${iso(`${bh}px`)} · ${iso(`${rnd(hh - bh)}px`)}`;
+          })(),
+          'נקרא מה-DOM בזמן הניגון, לא קבוע · הכרטיס מצטמצם אל הלוח באותו ' + iso('--t-cinematic') + ' של הדהייה',
+        ]);
         rows.push([
           '§7 · אורך הרצף כשהכרטיס הופך ללוח',
           iso(`${state.hold + 2 * t.cinematic + t.boardDelay}ms`),
