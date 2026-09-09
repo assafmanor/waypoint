@@ -368,3 +368,28 @@ whose every label resolved in that day's own ambient.
 The surface record — the contract field, how a card claims the moment, and the seams either side
 of it — is [ADR-0213](0213-a-shared-trip-changes-emphasis-and-print-is-its-own-rendering.md)'s
 2026-09-03 amendment.
+
+## Amendment (2026-09-09) — the mode and the departure countdown read the same today
+
+Owner, from the Plan-mode hero at 00:58 at home on 9 September, for a trip starting on the 11th:
+
+> _"the date and time is used with the trip timezone instead of the real timezone"_
+
+The hero said `בעוד 3 ימים`; it is two. `lib/mode.ts` — `tripPhase`, `deriveMode`, `daysUntilStart`
+— predates the session-102 rule above and still read "today" as `todayInTz(trip.timezone, now)`,
+so before the trip the countdown rolled at **Reykjavík's** midnight while the person counting stood
+in Tel Aviv. The same read also opened Trip mode three hours late on the departure morning, and
+held it three hours after the return.
+
+**They now read `tripToday`, which is `liveToday` with the trip's zone evidence** — the mode-free
+answer everything else already gives: home before the outbound flight (`segmentZoneAt`'s origin
+rung), the far side after it, the primary only when no crossing anchors the itinerary. No new
+signal: the device clock stays out of it (§4), and a trip with no zoned outbound flight yet keeps
+the destination's midnight, as before. The evidence is optional on exactly two callers that have
+no itinerary to read — the all-trips list's `בעוד` chip and the pre-snapshot skeleton — and the
+docblock says so, so the fallback is a stated limitation rather than a per-surface `todayInTz`.
+
+The join ticket is the one countdown with no trip at all, and it had the same symptom by a
+different route: `Math.ceil` of the fractional days to the start date's UTC midnight, one too
+many for any evening east of UTC. It counts whole calendar days from the **device's** today now —
+the one place `DEVICE_TIMEZONE` is documented for, a screen with no trip loaded.

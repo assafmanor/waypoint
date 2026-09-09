@@ -76,6 +76,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
     tasks,
     subtasks,
     zoneCrossings,
+    zoneEvidence,
   } = useTrip();
   const now = useClock();
   const navigate = useNavigate();
@@ -158,7 +159,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
 
   // A finished trip is a calm read-only archive (ADR-0040): no prep dashboard,
   // no countdown, no board — a quiet retrospective and a way back into the days.
-  if (tripPhase(trip, now) === 'past') {
+  if (tripPhase(trip, now, zoneEvidence) === 'past') {
     return (
       <>
         <div className="prep prep-past">
@@ -184,7 +185,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
     );
   }
 
-  const days = daysUntilStart(trip, now);
+  const days = daysUntilStart(trip, now, zoneEvidence);
   const countdown = days === null ? null : countdownParts(days);
   // Still missing = not satisfied by the data and not waved off by a person. The completed
   // half keeps its own collapse (ADR-0190 §4): the tasks screen's `הושלמו` chip is a
