@@ -19,7 +19,7 @@ import { useIsOffline } from '../lib/outbox';
 import { useHoldToOpen } from '../lib/useHoldToOpen';
 import { loadTripList } from '../lib/cache';
 import { tripChip, type TripChip } from '../lib/active-trip';
-import { daysUntilStart } from '../lib/mode';
+import { daysUntilStartOnDevice } from '../lib/mode';
 import { formatTripDates } from '../lib/time';
 import { useClock } from '../lib/useClock';
 import { DEFAULT_TRIP_ICON, GLYPH } from '../constants';
@@ -196,9 +196,13 @@ export function AllTrips({
         <span className="t">{trip.name}</span>
         <TripMeta trip={trip} />
       </span>
+      {/* Counted from the DEVICE's today: no itinerary is loaded here, and the trip's own zone
+          is the far side's clock — at 00:34 at home this said `מחרתיים` for tomorrow's trip
+          (owner, 2026-09-10). Floored because the bucket above is the trip zone's (ADR-0033),
+          so on a westward trip's first hours the row is still `בקרוב` and says `היום`. */}
       {chip === 'soon' && (
         <span className="chip soon">
-          {t.shell.allTrips.chipSoon(daysUntilStart(trip, now) ?? 0)}
+          {t.shell.allTrips.chipSoon(Math.max(0, daysUntilStartOnDevice(trip.startDate, now)))}
         </span>
       )}
     </button>

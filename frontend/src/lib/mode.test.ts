@@ -1,7 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ZoneEvidence } from '@waypoint/shared';
-import { daysUntilStart, deriveMode, tripPhase } from './mode';
+import { daysUntilStart, daysUntilStartOnDevice, deriveMode, tripPhase } from './mode';
 import { TRIP } from '../fixtures';
+
+// The device's zone is read from `Intl` at load, so a spec about it must state it (frontend
+// CLAUDE.md: the suite reads no environment it did not set).
+vi.mock('../constants', async (orig) => ({
+  ...(await orig<typeof import('../constants')>()),
+  DEVICE_TIMEZONE: 'Asia/Jerusalem',
+}));
 
 describe('deriveMode', () => {
   it('is Plan mode before the trip starts', () => {
@@ -134,5 +141,22 @@ describe('with zone evidence — "today" is the itinerary\'s, not the destinatio
     const ev = evidence([], TRIP.timezone);
     expect(tripPhase(TRIP, new Date('2026-07-04T16:00:00Z'), ev)).toBe('live');
     expect(daysUntilStart(TRIP, new Date('2026-07-04T16:00:00Z'), ev)).toBeNull();
+  });
+});
+
+describe('daysUntilStartOnDevice — a screen with no trip loaded counts from where the phone is', () => {
+  // The all-trips list at 00:34 at home on the 10th said `מחרתיים` for a trip starting on the
+  // 11th (owner, 2026-09-10): `daysUntilStart` with no evidence reads the trip's primary zone,
+  // and in Reykjavík it was still the 9th.
+  it('says tomorrow at home when the far side is still on the day before', () => {
+    const trip = { startDate: '2026-09-11', endDate: '2026-09-22', timezone: 'Atlantic/Reykjavik' };
+    const at = new Date('2026-09-09T21:34:00Z');
+    expect(daysUntilStart(trip, at)).toBe(2); // the primary-zone fallback, kept for the skeleton
+    expect(daysUntilStartOnDevice(trip.startDate, at)).toBe(1);
+  });
+
+  it('is zero on the date itself and negative after it', () => {
+    expect(daysUntilStartOnDevice('2026-09-11', new Date('2026-09-10T21:00:00Z'))).toBe(0);
+    expect(daysUntilStartOnDevice('2026-09-11', new Date('2026-09-12T12:00:00Z'))).toBe(-1);
   });
 });
