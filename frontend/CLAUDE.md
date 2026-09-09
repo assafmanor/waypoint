@@ -445,6 +445,10 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   that the wrong pair looked _right_: the duration beside them is instant-based,
   so it agrees with any zone and hides the error until you open two surfaces at
   once. A read one tap from a row must state the row's time.
+- **And the DAY-side twin:** deciding what day it is with `todayInTz(trip.timezone, now)` —
+  the answer is `liveToday(nowMs, zoneEvidence)` (or `tripToday` in `lib/mode.ts`), which reads
+  home before the outbound flight. `lib/mode.ts` predated `liveToday` and kept the old read, so
+  the departure countdown rolled at the destination's midnight (ADR-0107, 2026-09-09 amendment).
 - `navigate(-1)`, `history.back()/forward()/go()`, or any read of
   `history.length` for a back action — back is computed from nav state
   (ADR-0090), never traversed. **Lint-blocked since session 178**, because the

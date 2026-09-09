@@ -18,13 +18,13 @@ interface ModeContextValue {
 const ModeContext = createContext<ModeContextValue | null>(null);
 
 export function ModeProvider({ children }: { children: ReactNode }) {
-  const { trip } = useTrip();
+  const { trip, zoneEvidence } = useTrip();
   const now = useClock();
   const [override, setOverride] = useState<Mode | null>(null);
   // Switching trips (T-027) starts fresh — a peek on one trip shouldn't leak into another.
   useEffect(() => setOverride(null), [trip.id]);
 
-  const phase = tripPhase(trip, now);
+  const phase = tripPhase(trip, now, zoneEvidence);
   // ADR-0040: Trip mode is a live-window-only state. While the trip is live the
   // override may peek *down* into Plan (edit the plan mid-trip); before it starts
   // and after it ends Plan is the only reachable mode, so a Trip-mode override is

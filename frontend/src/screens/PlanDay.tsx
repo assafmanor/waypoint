@@ -336,7 +336,7 @@ export function PlanDay() {
   const tz = zoneCtx.ambientZone;
   // A finished trip is a read-only archive (ADR-0040): the builder becomes a
   // frozen, browsable history — no create/edit/delete/move, no shelf.
-  const readOnly = tripPhase(trip, now) === 'past';
+  const readOnly = tripPhase(trip, now, zoneEvidence) === 'past';
   // A static "now" reference while building TODAY mid-trip (ADR-0043): a drafting
   // guide for "what's still ahead to build," never a live signal. Only when the
   // day on screen is today and the trip is live — Plan has no "now" otherwise.
@@ -350,7 +350,8 @@ export function PlanDay() {
   // number off it, where "עוד 15 ימים" is only the day number plus a constant.
   const dayNaming = { trip, today, anchor: activeDate };
   const nowRefMs =
-    tripPhase(trip, now) === 'live' && activeDate === liveToday(now.getTime(), zoneEvidence)
+    tripPhase(trip, now, zoneEvidence) === 'live' &&
+    activeDate === liveToday(now.getTime(), zoneEvidence)
       ? now.getTime()
       : null;
   const [formTarget, setFormTarget] = useState<'new' | TripEvent | null>(null);

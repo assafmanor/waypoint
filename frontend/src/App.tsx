@@ -755,8 +755,8 @@ function TripSettingsRoute() {
 /** `InstallAskBanner` wants the trip and `useTrip` is a hook, so this is the one-line
  *  component that reads it — the same shape as `ZeroStateRoute`/`AllTripsRoute` above. */
 function InstallAsk() {
-  const { trip } = useTrip();
-  return <InstallAskBanner trip={trip} />;
+  const { trip, zoneEvidence } = useTrip();
+  return <InstallAskBanner trip={trip} zoneEvidence={zoneEvidence} />;
 }
 
 /**

@@ -26,7 +26,7 @@
 // so the first "no" is a deferral, door B is what earns the second ask, and
 // `INSTALL_ASK_BUDGET` is what stops a deferral becoming a nag.
 import { useEffect, useState } from 'react';
-import type { Trip } from '@waypoint/shared';
+import type { Trip, ZoneEvidence } from '@waypoint/shared';
 import { StatusBanner } from './feedback';
 import { InstallSheet } from './InstallSheet';
 import { useHasOverlay } from '../state/nav-state';
@@ -48,8 +48,11 @@ type AskReason = { kind: 'joined' } | { kind: 'soon'; days: number };
 
 export function InstallAskBanner({
   trip,
+  zoneEvidence,
 }: {
   trip: Pick<Trip, 'name' | 'startDate' | 'endDate' | 'timezone'>;
+  /** So the days counted here are the days the hero counts (`tripToday`). */
+  zoneEvidence?: ZoneEvidence;
 }) {
   // Decided once and then held: a banner that re-derived itself every tick could vanish
   // under the finger reaching for it.
@@ -74,7 +77,7 @@ export function InstallAskBanner({
     // one — so a budget-blocked arrival still consumes it, which is also what stops the key
     // outliving its meaning.
     const armed = consumeJoinArm();
-    const days = daysUntilStart(trip, now);
+    const days = daysUntilStart(trip, now, zoneEvidence);
     const next: AskReason | null = armed
       ? { kind: 'joined' }
       : days !== null && days <= INSTALL_DEPARTURE_WINDOW_DAYS
@@ -86,7 +89,7 @@ export function InstallAskBanner({
     // Spent by the SHOWING, not the answering: a banner scrolled past has still been asked.
     markAskedThisSession();
     setReason(next);
-  }, [reason, hasOverlay, trip, now]);
+  }, [reason, hasOverlay, trip, now, zoneEvidence]);
 
   if (!reason || answered) return null;
 
