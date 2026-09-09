@@ -2485,6 +2485,9 @@ export const t = {
       // Fallback for the rare plan-mode-while-the-trip-runs case (a manual
       // override peeking at Plan mid-trip): no countdown to show.
       underway: 'הטיול בעיצומו',
+      /** The eve's clock, read aloud (`PrepHero`'s `role="timer"`): under an hour it counts
+       *  minutes, since `formatCountdown`'s ladder starts at `H:MM שעות`. */
+      minutes: 'דקות',
       readiness: 'מוכנות הטיול',
       /** **The second number, and the whole point is that it has its own noun**
        *  (ADR-0193 §2). `readiness` above is the five derived checks and nothing else,

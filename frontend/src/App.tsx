@@ -241,7 +241,9 @@ export function Header({
 }) {
   const { trip, users, zoneEvidence, activeDate, usingCachedSnapshot, events } = useTrip();
   const { me } = useAuth();
-  const { mode } = useMode();
+  // The chrome paints `chromeMode`: it differs from `mode` only during the first morning's
+  // hold (ADR-0221 §4), when the header is still violet over a trip that is already live.
+  const { chromeMode: mode } = useMode();
   // **Which surface is asking** decides whether the strip singles out a day at all
   // (field report #39). The remembered day is the `?day=` param wherever you are
   // (ADR-0035 §4 — one copy, nothing to sync), but it is only shown as selected on a
@@ -538,7 +540,7 @@ function Shell({ otherTripCount }: { otherTripCount: number }) {
   // Give Android's OS back an in-app entry to traverse into (ADR-0090) so a cold
   // launch straight into the trip can't let a system-back slip out of the app.
   useTripBackGuard();
-  const { mode } = useMode();
+  const { mode, chromeMode, goingLive } = useMode();
   const { trip, tripDeleted, usingCachedSnapshot } = useTrip();
   const navigate = useNavigate();
   const closeAllOverlays = useCloseAllOverlays();
@@ -586,11 +588,16 @@ function Shell({ otherTripCount }: { otherTripCount: number }) {
   // animation is intermittently skipped. So derive it during render (set-state-in-
   // render) rather than post-paint. Not armed on first mount; reduced-motion still
   // flips instantly (the CSS is inert under it).
-  const [prevMode, setPrevMode] = useState(mode);
+  //
+  // Keyed on `chromeMode`, not `mode` (ADR-0221 §4): on the first open of a live trip the
+  // chrome holds at plan for a beat and then flips, and THAT flip is the one this arms — the
+  // automatic midnight switch had never once been on screen to arm it. A first morning
+  // ended by a tap flips quietly instead.
+  const [prevMode, setPrevMode] = useState(chromeMode);
   const [switching, setSwitching] = useState<'to-trip' | 'to-plan' | null>(null);
-  if (mode !== prevMode) {
-    setPrevMode(mode);
-    setSwitching(mode === 'trip' ? 'to-trip' : 'to-plan');
+  if (chromeMode !== prevMode) {
+    setPrevMode(chromeMode);
+    setSwitching(goingLive?.quiet ? null : chromeMode === 'trip' ? 'to-trip' : 'to-plan');
   }
   // Disarm once the animation has settled. The duration is read from the CSS
   // token (not hardcoded) so JS and CSS can't drift — changing --t-cinematic in
@@ -635,7 +642,7 @@ function Shell({ otherTripCount }: { otherTripCount: number }) {
 
   return (
     <AppShell
-      mode={mode}
+      mode={chromeMode}
       switching={switching ?? undefined}
       bodyKey={tab}
       bodyClassName={fullBleed ? BODY_FULLBLEED : undefined}

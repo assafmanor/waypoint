@@ -1555,6 +1555,17 @@ export const TRIP_HANDOFF = {
   TILE_FADE: 0.6,
 } as const;
 
+/** **The first morning's going-live sequence** (ADR-0221 §4, `state/mode-state.tsx`).
+ *  `HOLD_MS` is how long the shell sits in plan chrome before it warms — long enough for
+ *  the violet to register, short enough not to read as a stall; a feel number the mockup
+ *  put on a control (0 · 250 · 400) and the device pass owns. `BOARD_DELAY_MS` mirrors the
+ *  `0.12s` in `board.css`'s power-on rule, and `TAIL_MS` the Shell's own switch tail. */
+export const GOING_LIVE = {
+  HOLD_MS: 400,
+  BOARD_DELAY_MS: 120,
+  TAIL_MS: 80,
+} as const;
+
 /** A value that changes should be seen to change (`lib/useCountUp.ts`, ADR-0143).
  *  Steps rather than a duration, because what runs up is an integer count. */
 export const COUNT_UP = {

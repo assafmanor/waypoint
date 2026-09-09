@@ -137,6 +137,13 @@ import {
 import { t } from '../i18n/he';
 import { Icon } from '../ui/Icon';
 import { useSettledHosts } from '../ui/HostTasks';
+import { useMode } from '../state/mode-state';
+import { useAutomaticTasks } from '../lib/useAutomaticTasks';
+import { resolvedReadinessPct } from '../lib/automatic-tasks';
+import { taskPreview } from '../lib/tasks';
+import { prepHeroFacts } from '../lib/prep-hero-facts';
+import { PrepDates, PrepHero } from '../ui/domain/PrepHero';
+import { GoingLiveMorph } from '../ui/domain/GoingLiveMorph';
 
 /** The start transition label key for a bracketed upcoming event (ADR-0063),
  *  by mode — a flight's take-off, a train's departure (via eventTransitionKeys). */
@@ -348,6 +355,14 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     [nowMs, zoneCrossings, trip],
   );
   const settledHosts = useSettledHosts();
+  // ── THE FIRST MORNING (ADR-0221 §4) ─────────────────────────────────────────
+  // On the first open of a live trip the plan face sits over the board and turns into it.
+  // Its facts are the prep hero's own derivation, so the face the board grows out of is the
+  // card the evening before showed — same tier, same clock, same two numbers.
+  const { goingLive, skipGoingLive } = useMode();
+  const { automatic } = useAutomaticTasks();
+  const prepFacts = goingLive ? prepHeroFacts({ trip, events, now, zoneEvidence }) : null;
+  const prepPreview = goingLive ? taskPreview(tasks, automatic, taskClock, settledHosts) : null;
 
   // ── THE LIFTED HERO (ADR-0160) ─────────────────────────────────────────────
   // The horizon is DERIVED from what the board is already showing, never
@@ -758,6 +773,22 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           : minsToNext >= MINUTES_PER_DAY
             ? countdownParts(nextDayDelta)
             : formatCountdown(minsToNext)));
+
+  // **The morning of departure** (ADR-0221 §3): until the first timed thing starts, the tile is
+  // the same split-flap clock the prep hero showed the evening before (`FlapClock`, one
+  // component), so the clock hands over from one hero to the other without a gap. Only while
+  // the tile counts to the next thing itself — a leave-by or a shutting window keeps its word.
+  const dayOneClock =
+    countdown &&
+    !('unitBelow' in countdown && countdown.unitBelow) &&
+    !('missed' in countdown && countdown.missed) &&
+    !nowEvent &&
+    nextInstant &&
+    today === trip.startDate &&
+    shownNext?.date === today &&
+    minsToNext < MINUTES_PER_DAY
+      ? { ...countdown, flap: { targetMs: Date.parse(nextInstant), nowMs } }
+      : countdown;
 
   const nowZones = zonesOf(nowEvent);
   // The NEXT slot's instant is a start for an ordinary event but an **end** for a
@@ -1342,51 +1373,121 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         </div>
       )}
 
-      <Board
-        variant={boardVariant}
-        lifted={lifted}
-        onLift={
-          liftable
-            ? (el) => {
-                boardEl.current = el;
-                setLifted(true);
-              }
-            : undefined
-        }
-        // **A press with nothing to lift is answered** (ADR-0160 §Q, reversing §A's
-        // silence): the board rises 7px and settles, the same beat Plan's prep hero
-        // plays — one shared rule, not a second copy (`styles/beats.css`). It stays a
-        // `<div>`, so nothing announces a control that cannot open.
-        onRebuff={liftable ? undefined : (el) => playBeat(el, BEAT.REBUFF)}
-        clock={formatTime(now, tz)}
-        nowIcon={boardNowEvent?.icon}
-        nowTitle={
-          boardNowEvent ? (
-            <EventTitle event={boardNowEvent} bookings={bookings} places={places} />
-          ) : undefined
-        }
-        nowKind={nowEvent?.kind === EVENT_KIND.HARD ? 'hard' : 'soft'}
-        nowUntil={
-          nowEvent?.endsAt ? formatTime(nowEvent.endsAt, nowZones?.endZone ?? tz) : undefined
-        }
-        nowShift={nowZones?.deltaMinutes}
-        conflict={
-          conflicts.length > 0
-            ? { title: conflicts[0].title, atLabel: formatTime(conflicts[0].startsAt!, tz) }
-            : undefined
-        }
-        transit={transit}
-        splitRows={splitRows}
-        alsoNow={alsoNowRows}
-        next={boardNext}
-        countdown={countdown}
-        gap={boardGap}
-        tomorrow={boardTomorrow}
-        progress={progress}
-        windowStartHour={hourLabel(DAY_WINDOW.START_HOUR)}
-        windowEndHour={hourLabel(DAY_WINDOW.END_HOUR)}
-        showRail={!boardGap || gapDrawsDayRail(boardGap.read)}
-      />
+      {/* THE BOARD — and on the first morning, the plan face it grows out of (ADR-0221 §4).
+          The wrapper stays for the life of this mount once the sequence has played, so the
+          board is never remounted (a remount replays its power-on); a later mount of Home in
+          the same session sees `goingLive` done and renders the board bare. */}
+      {goingLive && prepFacts && prepPreview ? (
+        <GoingLiveMorph
+          stage={goingLive.stage}
+          onSkip={skipGoingLive}
+          face={
+            <PrepHero
+              tier={prepFacts.tier}
+              countdown={prepFacts.countdown}
+              runway={prepFacts.runway}
+              eve={prepFacts.eve}
+              nowMs={nowMs}
+              dates={<PrepDates startDate={trip.startDate} endDate={trip.endDate} />}
+              readinessPct={resolvedReadinessPct(automatic)}
+              openTasks={prepPreview.open}
+              overdue={prepPreview.overdue}
+            />
+          }
+        >
+          <Board
+            variant={boardVariant}
+            lifted={lifted}
+            onLift={
+              liftable
+                ? (el) => {
+                    boardEl.current = el;
+                    setLifted(true);
+                  }
+                : undefined
+            }
+            // **A press with nothing to lift is answered** (ADR-0160 §Q, reversing §A's
+            // silence): the board rises 7px and settles, the same beat Plan's prep hero
+            // plays — one shared rule, not a second copy (`styles/beats.css`). It stays a
+            // `<div>`, so nothing announces a control that cannot open.
+            onRebuff={liftable ? undefined : (el) => playBeat(el, BEAT.REBUFF)}
+            clock={formatTime(now, tz)}
+            nowIcon={boardNowEvent?.icon}
+            nowTitle={
+              boardNowEvent ? (
+                <EventTitle event={boardNowEvent} bookings={bookings} places={places} />
+              ) : undefined
+            }
+            nowKind={nowEvent?.kind === EVENT_KIND.HARD ? 'hard' : 'soft'}
+            nowUntil={
+              nowEvent?.endsAt ? formatTime(nowEvent.endsAt, nowZones?.endZone ?? tz) : undefined
+            }
+            nowShift={nowZones?.deltaMinutes}
+            conflict={
+              conflicts.length > 0
+                ? { title: conflicts[0].title, atLabel: formatTime(conflicts[0].startsAt!, tz) }
+                : undefined
+            }
+            transit={transit}
+            splitRows={splitRows}
+            alsoNow={alsoNowRows}
+            next={boardNext}
+            countdown={dayOneClock}
+            gap={boardGap}
+            tomorrow={boardTomorrow}
+            progress={progress}
+            windowStartHour={hourLabel(DAY_WINDOW.START_HOUR)}
+            windowEndHour={hourLabel(DAY_WINDOW.END_HOUR)}
+            showRail={!boardGap || gapDrawsDayRail(boardGap.read)}
+          />
+        </GoingLiveMorph>
+      ) : (
+        <Board
+          variant={boardVariant}
+          lifted={lifted}
+          onLift={
+            liftable
+              ? (el) => {
+                  boardEl.current = el;
+                  setLifted(true);
+                }
+              : undefined
+          }
+          // **A press with nothing to lift is answered** (ADR-0160 §Q, reversing §A's
+          // silence): the board rises 7px and settles, the same beat Plan's prep hero
+          // plays — one shared rule, not a second copy (`styles/beats.css`). It stays a
+          // `<div>`, so nothing announces a control that cannot open.
+          onRebuff={liftable ? undefined : (el) => playBeat(el, BEAT.REBUFF)}
+          clock={formatTime(now, tz)}
+          nowIcon={boardNowEvent?.icon}
+          nowTitle={
+            boardNowEvent ? (
+              <EventTitle event={boardNowEvent} bookings={bookings} places={places} />
+            ) : undefined
+          }
+          nowKind={nowEvent?.kind === EVENT_KIND.HARD ? 'hard' : 'soft'}
+          nowUntil={
+            nowEvent?.endsAt ? formatTime(nowEvent.endsAt, nowZones?.endZone ?? tz) : undefined
+          }
+          nowShift={nowZones?.deltaMinutes}
+          conflict={
+            conflicts.length > 0
+              ? { title: conflicts[0].title, atLabel: formatTime(conflicts[0].startsAt!, tz) }
+              : undefined
+          }
+          transit={transit}
+          splitRows={splitRows}
+          alsoNow={alsoNowRows}
+          next={boardNext}
+          countdown={dayOneClock}
+          gap={boardGap}
+          tomorrow={boardTomorrow}
+          progress={progress}
+          windowStartHour={hourLabel(DAY_WINDOW.START_HOUR)}
+          windowEndHour={hourLabel(DAY_WINDOW.END_HOUR)}
+          showRail={!boardGap || gapDrawsDayRail(boardGap.read)}
+        />
+      )}
 
       {/* The board, promoted (ADR-0160). Mounted only while lifted, so it registers
           its back layer exactly when there is something to peel — the rule that

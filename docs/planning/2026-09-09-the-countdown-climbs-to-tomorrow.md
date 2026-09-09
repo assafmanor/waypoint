@@ -1,9 +1,9 @@
 # The countdown climbs to tomorrow, and the first morning lights up
 
-**2026-09-09.** Design session, no build. Mockup:
+**2026-09-09.** Design session, then the build, in one day. Mockup:
 [`mockups/the-countdown-climbs-to-tomorrow-v1.html`](../../mockups/the-countdown-climbs-to-tomorrow-v1.html)
-(catalog entry in [`design/mockups.md`](../design/mockups.md)). No ADR yet: the owner has
-not picked, and the file carries two levels for exactly that reason.
+(catalog entry in [`design/mockups.md`](../design/mockups.md)). Decision record:
+[ADR-0221](../decisions/0221-the-countdown-climbs-to-tomorrow-and-the-first-morning-lights-up.md).
 
 ## What was asked
 
@@ -97,11 +97,31 @@ above it. The `עוצמה` control drops every frame back to the quiet skin for 
   departure day is a moment the user comes to, and the only time the automatic switch can be
   seen at all. The proposal amends that line rather than breaking it.
 
+## What was built (the same day)
+
+The owner: _"OK looks great. You can start building on the same pr."_ Everything in the file,
+§8 as the default skin, with two calls the build made where the file left them open:
+
+- **The eve clock counts to the first timed thing on day 1**, falling back to trip-local
+  midnight only when nothing on day 1 is timed. Asked as _"the countdown is to the first
+  event or to the start of the first day?"_ — the departure is the commitment and the fact the
+  push names; midnight is the boundary nobody feels.
+- **On the morning of departure the clock migrates.** Asked what happens when the day arrives
+  (_"we have to add the countdown on both heroes?"_) and told to choose _"what is most natural
+  and exciting"_: no second countdown — the board's own tile becomes the same `FlapClock`,
+  sized down, in the board's amber, until the first timed thing starts. One component, two
+  hosts, no gap.
+
+`lib/prep-tier.ts` · `lib/prep-hero-facts.ts` · `lib/mode-seen.ts` · `ui/domain/PrepHero.tsx`
+(the hero's one face, two hosts) · `ui/domain/FlapClock.tsx` · `ui/domain/GoingLiveMorph.tsx` ·
+`ModeProvider`'s `chromeMode`/`goingLive` · the Shell keyed on `chromeMode` · `BoardCountdown.flap`
+· `PlanLift.collapsedHeight` (measured) · `proseTripRange`'s isolate · `GOING_LIVE` in
+`constants.ts`. Tests: `prep-tier`, `mode-seen`, `PrepHero`, `mode-state.going-live`, and the
+`time` expectations now carry the isolate.
+
 ## What is next
 
-- The owner's pick, then an ADR promoting the chosen level, amending ADR-0193 §5's
-  `--prep-collapsed-h` (must follow the tier), design-language's automatic-switch line, and
-  `screens.css`'s "never amber" comment.
-- The `proseTripRange` isolate is a bug fix independent of the design and should not wait.
-- Build order if adopted: the ramp and the isolate (small), the eve line and clock, the
-  `mode-seen` trigger and hold, then the morph.
+- A device pass on three numbers: `GOING_LIVE.HOLD_MS` (400), the horizon's 14px against the
+  tasks row's 16px, and whether seven lamps read as a bar (ADR-0193 §2).
+- The mockup is the dated record of the three rounds and is not retrofitted to the two build
+  decisions above.

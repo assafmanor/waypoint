@@ -28,7 +28,7 @@
 // settled for the trip hero — the owner was offered the tickable version and declined —
 // and it also pays ADR-0160 §4's constraint for free: the card is opened from a
 // `<button>`, and §4's finding is that Chrome tears a `<button>` apart at a nested one.
-import { useRef, type ReactNode } from 'react';
+import { useRef, type CSSProperties, type ReactNode } from 'react';
 import { useLiftFlight } from '../../lib/useLiftFlight';
 import { Modal } from '../primitives/Modal';
 import { Icon } from '../Icon';
@@ -63,6 +63,11 @@ export interface PlanLiftProps {
    *  descends back to (ADR-0160 §5). Absent → no flight, and the card is simply there,
    *  which is the correct static state under reduced motion anyway. */
   origin?: HTMLElement | null;
+  /** The collapsed hero's measured height (ADR-0221): `--prep-collapsed-h` pins the sheen's
+   *  painting box, and the hero is no longer one height — the eve's clock and the runway
+   *  grow it by tier. Measured off the origin, never a constant (ADR-0193 §5's 190px was
+   *  tuned on one shape). */
+  collapsedHeight?: number;
   onClose: () => void;
 }
 
@@ -72,7 +77,11 @@ export function PlanLift(props: PlanLiftProps) {
   return (
     <Modal variant="lift" ariaLabel={t.planHome.lift.title} onClose={props.onClose}>
       {(close, closing) => (
-        <Lifted origin={props.origin ?? null} closing={closing}>
+        <Lifted
+          origin={props.origin ?? null}
+          closing={closing}
+          collapsedHeight={props.collapsedHeight}
+        >
           <div className="prep-lift-head">
             <div className="prep-lift-top">
               <div>
@@ -155,10 +164,12 @@ export function PlanLift(props: PlanLiftProps) {
 function Lifted({
   origin,
   closing,
+  collapsedHeight,
   children,
 }: {
   origin: HTMLElement | null;
   closing: boolean;
+  collapsedHeight?: number;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -167,7 +178,15 @@ function Lifted({
   // on, and the shipped hero's own class is where its violet, its radius and its ink ramp
   // live. `hero-lifted` makes the identical claim about `.wp-board` one screen over.
   return (
-    <div className="prep prep-lifted" ref={ref}>
+    <div
+      className="prep prep-lifted"
+      ref={ref}
+      style={
+        collapsedHeight
+          ? ({ '--prep-collapsed-h': `${collapsedHeight}px` } as CSSProperties)
+          : undefined
+      }
+    >
       {children}
     </div>
   );

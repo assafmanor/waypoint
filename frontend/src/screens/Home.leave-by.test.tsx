@@ -136,6 +136,11 @@ let tripEvents: TripEvent[] = [];
 let tripBookings: Booking[] = [];
 
 let tripOverrides: TravelModeOverride[] = [];
+/** The trip's first day. The fixture sits on day 2 by default: on the MORNING OF DEPARTURE the
+ *  tile is the split-flap clock rather than the `H:MM` ladder (ADR-0221 §3), and every case
+ *  here is about the ladder — one case below moves the start to today to assert the flaps. */
+const DAY_BEFORE = new Date(Date.parse(`${DAY}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+let tripStart = DAY_BEFORE;
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
@@ -146,7 +151,13 @@ vi.mock('../state/trip-state', () => ({
     // board reads it since §AQ2, which is why this fixture gained it.
     travelModeOverrides: tripOverrides,
     hostContexts: buildHostContextIndex(tripEvents, tripBookings),
-    trip: { id: 't1', timezone: ZONE, startDate: DAY, endDate: '2026-08-05', updatedBy: 'u1' },
+    trip: {
+      id: 't1',
+      timezone: ZONE,
+      startDate: tripStart,
+      endDate: '2026-08-05',
+      updatedBy: 'u1',
+    },
     bookings: tripBookings,
     places,
     events: tripEvents,
@@ -203,6 +214,10 @@ vi.mock('../lib/useGeolocation', () => ({
 }));
 
 const onWay = vi.fn();
+vi.mock('../state/mode-state', () => ({
+  // Home reads the first-morning stage (ADR-0221 §4); these suites are about the board.
+  useMode: () => ({ mode: 'trip', chromeMode: 'trip', goingLive: null, skipGoingLive: () => {} }),
+}));
 vi.mock('../state/verbs', () => ({
   useVerbs: () => ({ done: vi.fn(), skip: vi.fn(), restore: vi.fn(), onWay }),
 }));
@@ -253,6 +268,7 @@ describe('Home — the board counts to the leaving (ADR-0206 §Z1)', () => {
   beforeEach(() => {
     setSimulatedNow(Date.parse(NOW));
     resetOnWayForTests();
+    tripStart = DAY_BEFORE;
     tripEvents = [];
     tripBookings = [];
     travelSeconds = null;
@@ -275,6 +291,20 @@ describe('Home — the board counts to the leaving (ADR-0206 §Z1)', () => {
     expect(value()).toBe('2:00');
     expect(unit()).toBe('שעות');
     expect(tile()?.classList.contains('missed')).toBe(false);
+  });
+
+  // **The morning of departure** (ADR-0221 §3): before the first timed thing starts, the same
+  // tile is the split-flap clock the prep hero showed the evening before — the `.t` value is
+  // gone, the cells carry `HH:MM:SS`, and the measure word stays. The clock hands over between
+  // the two heroes; there is never a second countdown.
+  it('on the morning of departure the tile is the flap clock to the first thing', () => {
+    tripStart = DAY;
+    tripEvents = [dinner(120)];
+    show();
+    expect(value()).toBeUndefined();
+    const cells = [...(tile()?.querySelectorAll('.prep-flap') ?? [])].map((c) => c.textContent);
+    expect(cells.join('')).toBe('020000');
+    expect(unit()).toBe('שעות');
   });
 
   // Arm 2. The same tile, one referent earlier — never a second box beside it.

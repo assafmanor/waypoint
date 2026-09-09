@@ -1521,8 +1521,10 @@ body.wp-dragging
 /* ============================================================
    Plan-mode Home — the prep dashboard (screens/PlanHome.tsx).
    modes.md; design-language "Plan-mode components". The prep hero is the one
-   loud element and it is PLAN VIOLET, never amber, and never pulses
-   (design-language: mode identity, ADR-0028). Everything else stays paper.
+   loud element and it is PLAN VIOLET and never pulses (design-language: mode
+   identity, ADR-0028). Amber appears on it only as the clock's ink and the horizon
+   line of the last week (ADR-0221 §1/§3 — rule 4's own use, not decoration); the
+   card itself is never an amber fill. Everything else stays paper.
    ============================================================ */
 
 /* prep hero — the single expressive surface on this screen */
@@ -1698,6 +1700,372 @@ body.wp-dragging
   background: var(--miss);
   border-radius: 999px;
   padding: 2px 8px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   THE RUN-UP TO DEPARTURE (ADR-0221; `mockups/the-countdown-climbs-to-tomorrow-v1.html`).
+   The hero's energy is a function of the distance to departure — `data-tier` on `.prep`,
+   set from `daysUntilStart` (`lib/prep-tier.ts`). `far` is the card above, unchanged.
+
+   THE COLOUR IS THE MODE SWITCH'S. design-language: "the chrome warms violet → indigo +
+   amber". That ramp plays once, in 600ms, at midnight, when nobody is watching; here the
+   hero travels the same ramp over the last week — night deepens at its top, and an amber
+   HORIZON LINE at its foot goes from faint to dawn. No new hue. The comment at the top of
+   this file ("PLAN VIOLET, never amber") was written when the hero carried no clock: amber
+   here is the clock's ink (rule 4) and the horizon's, and the card itself stays violet,
+   glowless and pulseless — pulse means live NOW, and the eve is not.
+
+   THE DAWN IS A HORIZON, NOT A BAND, and the mockup's own measurement decided it: amber
+   mixed into the ground under the tasks row put white ink at 3.6:1 in light. So the glow
+   dies within 14px of the foot while the tasks row's text ends 16px above it (measured):
+   ink never sits on amber. Re-check those two numbers on any change to `.prep`'s padding.
+   ══════════════════════════════════════════════════════════════════════════════ */
+.prep[data-tier='week'] .prep-count {
+  font-size: 44px;
+}
+.prep[data-tier='eve2'] .prep-count {
+  font-size: 46px;
+}
+.prep[data-tier='eve'] .prep-count {
+  font-size: 58px;
+  /* Secular One sits low; without this the word crowds the dates line. */
+  line-height: 1.05;
+}
+.prep[data-tier='week'],
+.prep[data-tier='eve2'],
+.prep[data-tier='eve'] {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--plan-surface-2) 84%, #0b0a2a) 0%,
+    var(--plan-surface-2) 42%,
+    var(--plan-surface) 100%
+  );
+}
+/* The horizon, one tier at a time. The layer is the sheen's own `::before`, with the
+   horizon stacked under it. */
+.prep[data-tier='week']::before {
+  background:
+    linear-gradient(
+      0deg,
+      rgba(233, 166, 60, 0.3) 0,
+      rgba(233, 166, 60, 0.08) 5px,
+      transparent 12px
+    ),
+    radial-gradient(90% 60% at 85% 0%, rgba(255, 255, 255, 0.14), transparent 60%);
+}
+.prep[data-tier='eve2']::before {
+  background:
+    linear-gradient(
+      0deg,
+      rgba(233, 166, 60, 0.5) 0,
+      rgba(233, 166, 60, 0.12) 6px,
+      transparent 13px
+    ),
+    radial-gradient(90% 60% at 85% 0%, rgba(255, 255, 255, 0.12), transparent 60%);
+}
+.prep[data-tier='eve']::before {
+  background:
+    linear-gradient(
+      0deg,
+      rgba(233, 166, 60, 0.95) 0,
+      rgba(233, 166, 60, 0.7) 2px,
+      rgba(233, 166, 60, 0.16) 8px,
+      transparent 14px
+    ),
+    radial-gradient(50% 8% at 50% 100%, rgba(233, 166, 60, 0.28), transparent 72%),
+    radial-gradient(90% 60% at 85% 0%, rgba(255, 255, 255, 0.1), transparent 60%);
+}
+.prep[data-tier='eve'] {
+  box-shadow:
+    0 26px 44px -22px rgba(233, 166, 60, 0.5),
+    0 20px 34px -20px rgba(46, 33, 104, 0.7);
+  /* A real object entering, so the settling easing (ADR-0140). */
+  animation: prep-arrive var(--t-deliberate) var(--ease-arrive) both;
+}
+@keyframes prep-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+}
+/* THE WORD (`מחרתיים`, `מחר`) rides in the value slot with a light ink ramp — one ramp the
+   surface already carries, read as depth. */
+.prep[data-tier='eve2'] .prep-count-n,
+.prep[data-tier='eve'] .prep-count-n {
+  background: linear-gradient(180deg, var(--on-plan-strong), var(--on-plan-dim));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+/* A NUMERAL ARRIVES AS A FLAP inside the last week: `steps()`, because a split-flap is
+   DISCRETE — a smooth scaleY reads as a blind (the birth board's own note). */
+.prep[data-tier='week'] .prep-count-n,
+.prep[data-tier='eve2'] .prep-count-n {
+  display: inline-block;
+  transform-origin: center top;
+  animation: prep-flap-in 320ms steps(5, end) both;
+}
+@keyframes prep-flap-in {
+  0% {
+    transform: scaleY(0.08);
+    opacity: 0.4;
+  }
+  60% {
+    transform: scaleY(1.04);
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+/* The eve's kicker carries the word the clock counts to, one size up. */
+.prep-k-eve {
+  font-size: 13px;
+  letter-spacing: 0.12em;
+}
+
+/* ── THE RUNWAY: seven lamps, one lit per day behind you. DISCRETE lamps, never a bar —
+   ADR-0193 §2 rejected a second bar over the readiness track, and two bars read as one
+   measurement split in half. A lit lamp is amber (time passed) with the glow a lamp has at
+   night, and they come on in order down the strip. */
+.prep-runway {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 140px;
+  margin-top: 10px;
+}
+.prep-runway i {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--on-plan-track);
+}
+.prep-runway i.on {
+  background: var(--amber);
+  box-shadow: 0 0 10px 1px rgba(233, 166, 60, 0.65);
+  animation: prep-lamp-on 320ms var(--ease-emphasized) both;
+  animation-delay: calc(120ms + var(--i, 0) * var(--stagger-step) * 2);
+}
+@keyframes prep-lamp-on {
+  from {
+    background: var(--on-plan-track);
+    box-shadow: 0 0 0 0 rgba(233, 166, 60, 0);
+  }
+}
+
+/* ── THE EVE'S SENTENCE — the first timed thing on day 1, the fact `trip.tomorrow`
+   already pushes at 19:00. `.prep-dates`' own rung, one size up: a fact about the trip in
+   the same voice, not a second headline. */
+.prep-eve {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--on-plan);
+  animation: prep-line-in var(--t-deliberate) var(--ease-standard) both;
+  animation-delay: 260ms;
+}
+.prep-eve-ic {
+  margin-inline-end: 6px;
+}
+@keyframes prep-line-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* ── THE DEPARTURE-BOARD CLOCK ON THE PLAN HERO, ONE DAY EARLY (`FlapClock`). `HH:MM:SS`
+   in split-flap cells cut from the zero state's `.cell` recipe (App.css — the two-tone face
+   and the split line) at headline size, with the board's own countdown ink
+   (`.wp-board-countdown .t` is `--amber`): a departure-board countdown is amber wherever it
+   is drawn. THIS SPENDS BOARD GRAMMAR IN PLAN MODE, which design-language rations, and the
+   exception is narrow: cells, not a surface — no dark ground under the card, no glow, no
+   pulse, no `עכשיו`. It is the board's flaps warming up one day early on the plan hero.
+   Seconds are the smallest cell; the eye reads hours. */
+.prep-flaps {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  width: fit-content;
+  filter: drop-shadow(0 10px 22px rgba(233, 166, 60, 0.28));
+}
+.prep-flap {
+  position: relative;
+  width: 34px;
+  height: 48px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, var(--board-2) 0 50%, var(--board) 50% 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 6px 14px -8px rgba(0, 0, 0, 0.6);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--amber);
+  transform-origin: center top;
+  /* Cells turn in one after another on mount (`--i`); a tick's fresh cell turns with no
+     delay (`--i: 0`). `steps()` — a flap is discrete. */
+  animation: flap-turn 260ms steps(4, end) both;
+  animation-delay: calc(var(--i, 0) * var(--stagger-step));
+}
+.prep-flap::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 50% 0;
+  border-radius: 6px 6px 0 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent);
+  pointer-events: none;
+}
+.prep-flap::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: rgba(10, 17, 32, 0.9);
+}
+.prep-flap.sec {
+  width: 26px;
+  height: 38px;
+  font-size: 22px;
+  align-self: end;
+  margin-bottom: 2px;
+}
+@keyframes flap-turn {
+  0% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(0.1);
+  }
+  100% {
+    transform: scaleY(1);
+  }
+}
+.prep-flap-sep {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--on-plan-dim);
+  margin: 0 1px;
+  line-height: 1;
+  padding-bottom: 6px;
+}
+
+/* READINESS AT 100% IS A STATUS, and statuses take `--ok` (rule 4). Full only: at 99% the
+   bar stays the plan ink, or the green would be a colour step and not a fact. */
+.prep-fill.is-full {
+  background: linear-gradient(90deg, var(--ok), color-mix(in srgb, var(--ok) 55%, #fff));
+  box-shadow: 0 0 12px rgba(60, 154, 107, 0.45);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   THE FIRST MORNING: THE PREP HERO BECOMES THE BOARD (ADR-0221 §4; `GoingLiveMorph`).
+   Both faces in one grid cell; `align-items: start` lets the board keep its own height,
+   and the plan face's `height` transitions from its measured height to the board's over
+   the same `--t-cinematic` as its fade — `.prep` already clips, so the card visibly
+   shrinks INTO the board while it dims. The board's shipped power-on is DELAYED to the end
+   of the fade (only while a stage is live — at `board` it is the shipped timing again),
+   and then BLOOMS: the amber glow swells past the card and settles, one highlight sweeps
+   the face, and `יום 1/12` in the header lights once in the clock's ink.
+   ══════════════════════════════════════════════════════════════════════════════ */
+.prep-morph {
+  display: grid;
+  align-items: start;
+}
+.prep-morph > .prep,
+.prep-morph > .wp-board {
+  grid-area: 1 / 1;
+  transition: opacity var(--t-cinematic) var(--ease-standard);
+}
+.prep-morph > .prep {
+  animation: none;
+  transition:
+    opacity var(--t-cinematic) var(--ease-standard),
+    height var(--t-cinematic) var(--ease-standard);
+}
+.prep-morph[data-stage='plan'] > .wp-board {
+  opacity: 0;
+  visibility: hidden;
+}
+.prep-morph[data-stage='morph'] > .prep {
+  opacity: 0;
+  pointer-events: none;
+}
+/* The word the plan face was saying turns as it goes. */
+.prep-morph[data-stage='morph'] .prep-count-n {
+  display: inline-block;
+  transform-origin: center top;
+  animation: flap-turn 260ms steps(4, end) both;
+}
+.app[data-mode='trip'] .prep-morph[data-stage='morph'] > .wp-board:not(.hero-lifted) {
+  animation:
+    wp-board-power var(--t-cinematic) var(--ease-emphasized) calc(var(--t-cinematic) + 0.12s) both,
+    prep-bloom 1100ms var(--ease-emphasized) calc(var(--t-cinematic) + 0.12s) both;
+}
+.app[data-mode='trip'] .prep-morph[data-stage='morph'] > .wp-board:not(.hero-lifted)::before {
+  animation-delay: calc(var(--t-cinematic) + 0.12s);
+}
+@keyframes prep-bloom {
+  0% {
+    box-shadow: 0 20px 34px -20px rgba(8, 14, 28, 0.9);
+  }
+  45% {
+    box-shadow:
+      0 0 0 2px rgba(233, 166, 60, 0.35),
+      0 0 64px 6px rgba(233, 166, 60, 0.42),
+      0 20px 34px -20px rgba(8, 14, 28, 0.9);
+  }
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(233, 166, 60, 0.18),
+      0 0 28px -4px rgba(233, 166, 60, 0.28),
+      0 20px 34px -20px rgba(8, 14, 28, 0.9);
+  }
+}
+.prep-morph[data-stage='morph'] > .wp-board::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.09) 48%,
+    rgba(233, 166, 60, 0.12) 52%,
+    transparent 70%
+  );
+  transform: translateX(calc(var(--dir) * -130%));
+  animation: prep-sweep 900ms var(--ease-standard) calc(var(--t-cinematic) + 0.3s) both;
+}
+@keyframes prep-sweep {
+  to {
+    transform: translateX(calc(var(--dir) * 130%));
+  }
+}
+/* `יום 1/12` is the first true thing the chrome says about the trip, and it says it in
+   the clock's ink, once, with the board. */
+.app[data-switching='to-trip'] .hdr-anchor .num {
+  animation: prep-anchor-on 900ms var(--ease-emphasized) calc(var(--t-cinematic) + 0.12s) both;
+}
+@keyframes prep-anchor-on {
+  40% {
+    color: var(--amber);
+    transform: scale(1.12);
+  }
 }
 
 /* completeness checklist — paper card, violet CTAs (plan action) */

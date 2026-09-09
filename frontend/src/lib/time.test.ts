@@ -75,8 +75,10 @@ describe('formatTripDates', () => {
   });
 
   it('prose+year, same month & year: day range + one month + year', () => {
+    // The day range is an isolated LTR island (ADR-0118): without it the RTL hero drew
+    // `22–11`, which is what the owner's screenshot showed.
     expect(formatTripDates('2026-09-11', '2026-09-22', { style: 'prose', withYear: true })).toBe(
-      '11–22 בספטמבר 2026',
+      `${ltrIsolate('11–22')} בספטמבר 2026`,
     );
   });
 
@@ -100,7 +102,9 @@ describe('formatTripDates', () => {
 
   // Prose without year — hero surfaces (PlanHome) stay year-free in every case.
   it('prose without year: collapses a same-month range to one month name', () => {
-    expect(formatTripDates('2026-07-20', '2026-07-29', { style: 'prose' })).toBe('20–29 ביולי');
+    expect(formatTripDates('2026-07-20', '2026-07-29', { style: 'prose' })).toBe(
+      `${ltrIsolate('20–29')} ביולי`,
+    );
   });
 
   it('prose without year: names both ends across a month boundary', () => {
