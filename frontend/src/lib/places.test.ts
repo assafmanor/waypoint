@@ -906,6 +906,33 @@ describe('liveZone — the clock follows the day you are in (ADR-0107 session-10
     expect(liveZone(Date.parse('2026-07-24T21:31:00Z'), evidence)).toBe(KEF);
   });
 
+  // The departure day's ambient is the far side (its events are there, and its noon is past
+  // the flight), so rung 3 read Reykjavík at home midnight and "today" stayed yesterday until
+  // 03:00 — Plan mode three hours into day 1, the eve's clock reading `26:59:48` to מחר
+  // (owner's device, 2026-09-10). Before the outbound flight you are at home, full stop.
+  it('reads HOME before the outbound flight, even on the departure day whose ambient is the far side', () => {
+    const crossings = [{ at: Date.parse('2026-09-11T05:00:00Z'), fromZone: JLM, toZone: KEF }];
+    const evidence: ZoneEvidence = {
+      events: [
+        event({
+          id: 'hotel',
+          date: '2026-09-11',
+          placeId: 'pl-kef',
+          startsAt: '2026-09-11T15:00:00Z',
+        }),
+      ],
+      bookings: [],
+      places: [place('pl-kef', 'מלון', { timezone: KEF })],
+      crossings,
+      primaryZone: KEF,
+    };
+    const homeMidnight = Date.parse('2026-09-10T21:00:00Z'); // 00:00 on the 11th in Tel Aviv
+    expect(dayAmbientZone('2026-09-11', evidence)).toBe(KEF); // the layout answer, unchanged
+    expect(liveZone(homeMidnight, evidence)).toBe(JLM);
+    expect(liveToday(homeMidnight, evidence)).toBe('2026-09-11');
+    expect(liveToday(homeMidnight - 1, evidence)).toBe('2026-09-10');
+  });
+
   it('still follows the segment mid-flight, where the day has no consensus', () => {
     const crossings = [{ at: Date.parse('2026-07-24T04:15:00Z'), fromZone: JLM, toZone: KEF }];
     const evidence: ZoneEvidence = {

@@ -150,6 +150,20 @@ space to the list) and a horizon on an `::after` at the card's real foot, since 
 last row's ink 16px above the foot against the 14px glow. `PlanHome.lift.test.tsx` asserts the
 two cards agree as a relation. Recorded as ADR-0221 §7; shipped on its own branch from `main`.
 
+## The sixth round: the zero is the flip, on the same clock
+
+At 00:00 at home on the eve the owner's device read `היציאה מחר` over `26:59:48`. The clock was
+fed `trip.timezone` (Reykjavík) — but a test asserting the zero against `deriveMode` showed the
+mode was reading the far side too: `liveZone`'s third rung takes the ambient zone of the day you
+are in, and the departure day's ambient is the destination, so on a westward trip Trip mode
+opened at 03:00 at home, exactly where the clock pointed. ADR-0107's 2026-09-09 amendment had
+promised home before the outbound flight and its Tokyo test could not see the gap (eastward, the
+far side reaches day 1 first). Two changes: `liveZone` returns the first crossing's origin for any
+instant before it, and the clock targets midnight in `liveZone(now)` rather than the trip's zone,
+so the zero is the flip by construction. `prep-hero-facts.test.ts` asserts `deriveMode` turns at
+the clock's target; `mode.test.ts` and `places.test.ts` carry the westward case. ADR-0221 §3 and
+ADR-0107 amended in place.
+
 ## What is next
 
 - A device pass on four numbers: `GOING_LIVE.HOLD_MS` (400), `GOING_LIVE.ZERO_HOLD_MS` (1200),

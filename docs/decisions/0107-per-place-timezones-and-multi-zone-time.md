@@ -389,6 +389,17 @@ the destination's midnight, as before. The evidence is optional on exactly two c
 no itinerary to read — the all-trips list's `בעוד` chip and the pre-snapshot skeleton — and the
 docblock says so, so the fallback is a stated limitation rather than a per-surface `todayInTz`.
 
+**Corrected 2026-09-10 — the departure day itself.** The owner's device, at 00:00 at home on the
+eve of the same trip, read `היציאה מחר` over a clock of `26:59:48` (ADR-0221 §3). `tripToday` was
+reading `liveToday` as promised, but `liveZone`'s third rung — no event near now — answers with the
+**ambient zone of the day the segment puts you in**, and the departure day's ambient is the far
+side (its events are there; its noon is past the flight). So at home midnight of day 1 the live
+zone was Reykjavík, where it was still the 10th, and Trip mode opened at 03:00 at home after all.
+Eastward this cannot show — Tokyo is on day 1 before Tel Aviv is — which is why the amendment's own
+test passed. `liveZone` now returns the first crossing's origin for any instant before it: before
+the outbound flight you are at home, and the day's ambient, a layout answer sampled at noon, has
+nothing to add. `mode.test.ts` carries the westward case beside the eastward one.
+
 The join ticket is the one countdown with no trip at all, and it had the same symptom by a
 different route: `Math.ceil` of the fractional days to the start date's UTC midnight, one too
 many for any evening east of UTC. It counts whole calendar days from the **device's** today now —

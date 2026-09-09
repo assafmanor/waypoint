@@ -452,6 +452,10 @@ function liveEventCoord(
  *       out says nothing about now, which is what the window is for.
  *    3. Otherwise the ambient zone of the day the segment puts you in — which is
  *       itself the day's own consensus, else the segment, else the trip primary.
+ *       **Except before the outbound flight, where you are at home** (ADR-0107's
+ *       2026-09-09 amendment, corrected 2026-09-10): the day's ambient is a layout
+ *       answer sampled at noon, so on the departure day it is already the far side,
+ *       and a westward trip's home midnight then read as still yesterday.
  *
  *  Why not the segment alone (the old rule): after a single outbound flight every
  *  later instant reads the destination's clock forever, so a traveler whose plan has
@@ -491,6 +495,10 @@ export function liveZone(nowMs: number, evidence: ZoneEvidence): string {
   }
   if (nearest) return nearest.zone;
 
+  // Before the first crossing the segment is home and the question is settled: asking the
+  // departure day's ambient instead held Plan mode three hours into day 1 on a Tel Aviv →
+  // Reykjavík trip, with the eve's clock reading `26:59:48` to מחר (field report, 2026-09-10).
+  if (crossings.length > 0 && nowMs < crossings[0].at) return crossings[0].fromZone;
   const segment = currentZone(nowMs, crossings, primaryZone);
   return dayAmbientZone(todayInTz(segment, new Date(nowMs)), evidence);
 }

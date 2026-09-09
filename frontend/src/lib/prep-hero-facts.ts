@@ -4,7 +4,7 @@
 // the rule ADR-0193 §2 set for the hero's numbers, extended to its tier and its clock.
 import type { Trip, TripEvent, ZoneEvidence } from '@waypoint/shared';
 import { daysUntilStart, tripToday } from './mode';
-import { eventZones, liveZoneContext } from './places';
+import { eventZones, liveZone, liveZoneContext } from './places';
 import {
   firstTimedOn,
   PREP_TIER,
@@ -48,9 +48,12 @@ export function prepHeroFacts(input: {
   const runway = tier === PREP_TIER.WEEK ? runwayLamps(days) : null;
   let eve: PrepHeroEve | null = null;
   if (tier === PREP_TIER.EVE) {
-    // The clock counts to the trip's start; on day 1 itself that instant has passed and the
-    // clock reads `00:00:00` — the count IS over, which is what the first morning's face says.
-    eve = { targetMs: tripStartMs(trip.startDate, trip.timezone) };
+    // The clock counts to the trip's start — midnight of day 1 on the clock `tripToday` reads
+    // (`liveZone`: home, before the outbound flight), so the zero IS the flip by construction
+    // and not by two derivations happening to agree. `trip.timezone` is the far side's clock,
+    // three hours off on a Tel Aviv → Reykjavík trip (field report, 2026-09-10). On day 1
+    // itself the instant has passed and the clock reads `00:00:00` — the count IS over.
+    eve = { targetMs: tripStartMs(trip.startDate, liveZone(now.getTime(), zoneEvidence)) };
     const first = firstTimedOn(events, trip.startDate);
     if (first) {
       // The event's own zone, the way every other surface prints a clock (ADR-0107 §2).
