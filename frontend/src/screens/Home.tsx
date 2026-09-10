@@ -141,6 +141,7 @@ import { useAutomaticTasks } from '../lib/useAutomaticTasks';
 import { resolvedReadinessPct } from '../lib/automatic-tasks';
 import { taskPreview } from '../lib/tasks';
 import { prepHeroFacts } from '../lib/prep-hero-facts';
+import { firstTimedOn } from '../lib/prep-tier';
 import { PrepDates, PrepHero } from '../ui/domain/PrepHero';
 import { GoingLiveMorph } from '../ui/domain/GoingLiveMorph';
 
@@ -774,6 +775,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // the same split-flap clock the prep hero showed the evening before (`FlapClock`, one
   // component), so the clock hands over from one hero to the other without a gap. Only while
   // the tile counts to the next thing itself — a leave-by or a shutting window keeps its word.
+  //
+  // **And only to the day's FIRST timed thing** (2026-09-10). `!nowEvent` alone let the flaps
+  // come back every time day 1 fell quiet — in the layover between two legs, on the drive to
+  // the hotel — so the departure clock was counting to a connection. The clock ends once, at
+  // the first thing; from there the trip counts on the `H:MM` ladder like every other day.
   const dayOneClock =
     countdown &&
     !('unitBelow' in countdown && countdown.unitBelow) &&
@@ -782,6 +788,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     nextInstant &&
     today === trip.startDate &&
     shownNext?.date === today &&
+    shownNext.id === firstTimedOn(events, today)?.id &&
     minsToNext < MINUTES_PER_DAY
       ? { ...countdown, flap: { targetMs: Date.parse(nextInstant), nowMs } }
       : countdown;
@@ -1509,7 +1516,10 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
             setLifted(false);
             navigate(`/?${TAB_PARAM}=days&${DAY_PARAM}=${tomorrowDate}`);
           }}
-          countdown={countdown}
+          // The board's own tile, flaps included (ADR-0221 §7's rule on the trip lift): the two
+          // elevations may not disagree about what the countdown looks like, any more than about
+          // what it counts to.
+          countdown={dayOneClock}
           travel={heroTravel}
           then={
             horizon.then

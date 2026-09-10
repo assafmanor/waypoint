@@ -611,6 +611,22 @@ describe('HeroLift — the journey between two points (ADR-0206 §V1.2 / §D2)',
       [...container.querySelectorAll('.wp-board-countdown .u')].map((u) => u.textContent),
     ).toEqual([t.board.lateBy('דקות'), t.board.leaveIn]);
   });
+
+  // The departure morning's flap clock (ADR-0221 §3) is the same tile too. Reported on the
+  // built screen: the board read `HH:MM:SS` in flaps and the lift over it read `15:12 שעות` —
+  // two copies of the tile, and the field reached one. One component now (`CountdownTile`).
+  it('carries the board’s flap clock on the morning of departure', () => {
+    const nowMs = Date.parse('2026-09-11T00:18:00Z');
+    const container = show({
+      next: point({ key: 'next', title: <span>טיסה לוינה</span> }),
+      countdown: { unit: 'שעות', flap: { nowMs, targetMs: nowMs + 2 * 3_600_000 } },
+    });
+    const cells = [...container.querySelectorAll('.wp-board-countdown .prep-flap')].map(
+      (c) => c.textContent,
+    );
+    expect(cells.join('')).toBe('020000');
+    expect(container.querySelector('.wp-board-countdown .t')).toBeNull();
+  });
 });
 
 describe('HeroLift — what a device position adds (ADR-0207 §2)', () => {

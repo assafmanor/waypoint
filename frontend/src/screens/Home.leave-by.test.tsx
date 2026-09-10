@@ -307,6 +307,18 @@ describe('Home — the board counts to the leaving (ADR-0206 §Z1)', () => {
     expect(unit()).toBe('שעות');
   });
 
+  // **And only to the FIRST thing** (2026-09-10). The museum has ended and nothing is running, so
+  // `!nowEvent` alone would hand the flaps back for the count to dinner — the layover between two
+  // legs, on the real trip. The departure clock ends once; after it the ladder.
+  it('once the first thing has ended, day 1 counts on the ladder like any other day', () => {
+    tripStart = DAY;
+    tripEvents = [museum, dinner(120)];
+    show();
+    expect(tile()?.querySelector('.prep-flap')).toBeNull();
+    expect(value()).toBe('2:00');
+    expect(unit()).toBe('שעות');
+  });
+
   // Arm 2. The same tile, one referent earlier — never a second box beside it.
   it('swaps to the LEAVE-BY inside the threshold, in one tile', () => {
     tripEvents = [museum, dinner(30)];
