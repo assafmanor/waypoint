@@ -1352,6 +1352,101 @@ describe('DayView — a carried leg rides the day thread (ADR-0212)', () => {
   });
 });
 
+// ── THE MARK AT THE HEAD OF A JOURNEY RUN STANDS ABOVE THE BOX (ADR-0217, 2026-09-10) ────────
+//
+// Reported from a phone at ⁦00:03⁩ on the departure day: two legs and their layover render as ONE
+// `.journey` box (ADR-0159 §3), and the boundary mark for "before the first leg" was drawn inside
+// that box — its rule ran ⁦12px⁩ under the box's top edge and its arrow was clipped by the box's
+// `overflow: hidden`, so a mark that meant "not yet" read as "we are on this flight". The
+// derivation was right (`nowLinePlacement` put the index at the run's first leg); the MARKUP put
+// the mark inside the container the run's rows share. Nothing in jsdom measures the ⁦12px⁩, but the
+// containment is a DOM fact and is what this asserts.
+describe('DayView — the now-mark before a journey run stands above the run, not inside it', () => {
+  const TLV = { lat: 32.0114, lng: 34.8867 };
+  const VIE = { lat: 48.1103, lng: 16.5697 };
+  const KEF = { lat: 63.985, lng: -22.6056 };
+  const airport = (id: string, name: string, at: { lat: number; lng: number }): Place => ({
+    id,
+    tripId: 't1',
+    name,
+    lat: at.lat,
+    lng: at.lng,
+    createdAt: `${DAY}T00:00:00Z`,
+    updatedAt: `${DAY}T00:00:00Z`,
+    updatedBy: 'u1',
+  });
+  const flight = (id: string, from: string, to: string): Booking =>
+    ({
+      id,
+      tripId: 't1',
+      type: 'flight',
+      title: `${from} ← ${to}`,
+      fromPlaceId: from,
+      toPlaceId: to,
+      createdAt: `${DAY}T00:00:00Z`,
+      updatedAt: `${DAY}T00:00:00Z`,
+      updatedBy: 'u1',
+    }) as Booking;
+  const leg1 = ev('leg1', {
+    title: 'נתב״ג ← וינה',
+    kind: EVENT_KIND.HARD,
+    bookingId: 'b-leg1',
+    startsAt: `${DAY}T12:30:00Z`,
+    endsAt: `${DAY}T16:15:00Z`,
+  });
+  const leg2 = ev('leg2', {
+    title: 'וינה ← קפלאוויק',
+    kind: EVENT_KIND.HARD,
+    bookingId: 'b-leg2',
+    startsAt: `${DAY}T19:00:00Z`,
+    endsAt: `${DAY}T23:20:00Z`,
+  });
+
+  beforeEach(() => {
+    // Twelve hours before the first leg, on the day itself.
+    setSimulatedNow(Date.parse(`${DAY}T00:30:00Z`));
+    tripPlaces = [
+      ...places,
+      airport('p-tlv', 'נתב״ג', TLV),
+      airport('p-vie', 'וינה', VIE),
+      airport('p-kef', 'קפלאוויק', KEF),
+    ];
+    tripEvents = [leg1, leg2];
+    tripBookings.length = 0;
+    tripBookings.push(flight('b-leg1', 'p-tlv', 'p-vie'), flight('b-leg2', 'p-vie', 'p-kef'));
+  });
+  afterEach(() => {
+    setSimulatedNow(null);
+    tripPlaces = places;
+    tripEvents = [];
+    tripBookings.length = 0;
+  });
+
+  it('draws the two legs as one run', () => {
+    const { container } = show();
+    const run = container.querySelector('.journey');
+    expect(run).toBeTruthy();
+    expect(run!.querySelectorAll('.wp-event').length).toBe(2);
+  });
+
+  it('puts the boundary mark above the run, and never inside its box', () => {
+    const { container } = show();
+    const mark = container.querySelector('.now-here');
+    expect(mark).toBeTruthy();
+    // The boundary form, not a nailed one: no row holds ⁦00:30⁩.
+    expect(mark!.classList.contains('edge')).toBe(true);
+    expect(mark!.closest('.journey')).toBeNull();
+    const run = container.querySelector('.journey')!;
+    // Above it in document order — the mark says "not yet", so it reads before the box.
+    expect(mark!.compareDocumentPosition(run) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('draws exactly one mark', () => {
+    const { container } = show();
+    expect(container.querySelectorAll('.now-here').length).toBe(1);
+  });
+});
+
 // ── WHERE THE MOMENT IS, ON THE REAL SCREEN (ADR-0217 §1/§2/§3/§4) ────────────────────────
 //
 // **These live in this file because the harness does, and that is the whole reason.** The
