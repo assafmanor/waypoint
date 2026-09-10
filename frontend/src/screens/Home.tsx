@@ -33,7 +33,6 @@ import { EventTitle } from '../ui/EventTitle';
 import { DocumentViewer } from '../ui/MediaViewer';
 import {
   Board,
-  ChangeFeed,
   DayRail,
   GlanceCard,
   RateCard,
@@ -185,9 +184,6 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     hostContexts,
     zoneEvidence,
     activeDate,
-    changeFeed,
-    dismissChange,
-    clearChangeFeed,
     fxRates,
     forecast,
     refreshFx,
@@ -1548,16 +1544,6 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       {viewingDoc && (
         <DocumentViewer tripId={trip.id} doc={viewingDoc} onClose={() => setViewingDoc(null)} />
       )}
-
-      {/* Group change-feed (ADR-0081, U-09): a quiet strip below the board that
-          narrates recent peer edits (attributed). Auto-collapses when empty, so
-          it costs no space until a peer changes something. Not a second board. */}
-      <ChangeFeed
-        entries={changeFeed}
-        now={nowMs}
-        onDismiss={dismissChange}
-        onDismissAll={clearChangeFeed}
-      />
 
       {/* **THE TASKS BAND** (ADR-0188 §6, brief §11) — above quick-access on purpose: this
           answers "what do I owe today", which belongs with the board's what-now/what-next
