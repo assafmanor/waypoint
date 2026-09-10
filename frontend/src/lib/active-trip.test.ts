@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { resolveActiveTrip, resolveLanding, tripChip } from './active-trip';
+import { resolveLanding, tripChip } from './active-trip';
+import { DEVICE_TIMEZONE } from '../constants';
 import { TRIP } from '../fixtures';
+import { todayInTz } from './time';
 
 const upcoming = { ...TRIP, id: 'trip-upcoming', startDate: '2026-08-01', endDate: '2026-08-10' };
 const fartherUpcoming = {
@@ -23,30 +25,26 @@ const inProgress = {
   endDate: '2026-07-20',
 };
 
-// All fixture trips run Asia/Tokyo — anchor "now" mid-morning JST so date-only
-// comparisons aren't sensitive to the UTC-vs-JST day boundary.
+// The chip counts from the DEVICE's day (ADR-0107, 2026-09-10), and the device running
+// this suite can be anywhere — so every fixture sits weeks from `NOW`, and no case turns
+// on which side of a midnight the host clock is.
 const NOW = new Date('2026-07-07T09:00:00+09:00');
 
-describe('resolveActiveTrip (ADR-0021)', () => {
-  it('returns null with no trips', () => {
-    expect(resolveActiveTrip([], NOW)).toBeNull();
-  });
-
-  it('prefers the current in-progress trip over upcoming/past', () => {
-    expect(resolveActiveTrip([past, upcoming, inProgress], NOW)?.id).toBe('trip-in-progress');
-  });
-
-  it('picks the nearest upcoming trip when none is in progress', () => {
-    expect(resolveActiveTrip([fartherUpcoming, upcoming, past], NOW)?.id).toBe('trip-upcoming');
-  });
-
-  it('falls back to the most recent past trip when none is upcoming or in progress', () => {
-    expect(resolveActiveTrip([olderPast, past], NOW)?.id).toBe('trip-past');
-  });
-
-  it('deterministically picks the earlier-starting trip among overlapping in-progress trips', () => {
-    const alsoInProgress = { ...inProgress, id: 'trip-also-in-progress', startDate: '2026-06-20' };
-    expect(resolveActiveTrip([inProgress, alsoInProgress], NOW)?.id).toBe('trip-also-in-progress');
+describe('tripChip reads the device day, not the trip zone', () => {
+  it('is "now" on the departure date at home even while the destination is still on the eve', () => {
+    // A westward trip: the far side is a day behind, and 15 hours before the flight the
+    // trip's own zone still says "soon". The person is at home, where it is day 1.
+    const startsToday = {
+      ...TRIP,
+      id: 'trip-westward',
+      timezone: 'Pacific/Honolulu',
+      startDate: todayInTz(DEVICE_TIMEZONE, NOW),
+      endDate: '2027-01-01',
+    };
+    expect(tripChip(startsToday, NOW)).toBe('now');
+    expect(resolveLanding([past, startsToday], null, false, NOW)).toEqual({
+      tripId: startsToday.id,
+    });
   });
 });
 
@@ -61,18 +59,6 @@ describe('tripChip (ADR-0033)', () => {
 
   it('is "past" for a trip that already ended', () => {
     expect(tripChip(past, NOW)).toBe('past');
-  });
-});
-
-describe('landing rule (ADR-0033): live → land in the trip, none live → /trips', () => {
-  it('resolves to the live trip when one is in progress', () => {
-    const resolved = resolveActiveTrip([past, upcoming, inProgress], NOW)!;
-    expect(tripChip(resolved, NOW)).toBe('now');
-  });
-
-  it('resolves to a non-live trip (→ /trips landing) when nothing is in progress', () => {
-    const resolved = resolveActiveTrip([past, upcoming], NOW)!;
-    expect(tripChip(resolved, NOW)).not.toBe('now');
   });
 });
 
@@ -103,19 +89,45 @@ describe('resolveLanding (ADR-0033 landing rule, refining ADR-0021)', () => {
 
   it('keeps a live last-opened trip on a cold reopen (last-opened among overlapping live)', () => {
     const alsoInProgress = { ...inProgress, id: 'trip-also-in-progress', startDate: '2026-06-20' };
-    // resolveActiveTrip alone would pick the earlier-starting one; the stored
-    // live id wins so a reopen stays on the trip you last had open.
+    // The stored live id wins so a reopen stays on the trip you last had open.
     expect(resolveLanding([inProgress, alsoInProgress], inProgress.id, false, NOW)).toEqual({
       tripId: inProgress.id,
     });
   });
 
-  it('redirects to /trips on a cold reopen when nothing is live', () => {
-    expect(resolveLanding([past, upcoming], past.id, false, NOW)).toEqual({ redirect: '/trips' });
+  it('redirects to /trips when two trips are live and neither was the last one open', () => {
+    // Overlapping live trips with no last-opened tiebreak: the list resolves the
+    // ambiguity rather than a silent "earliest start wins" pick.
+    const alsoInProgress = { ...inProgress, id: 'trip-also-in-progress', startDate: '2026-06-20' };
+    expect(resolveLanding([inProgress, alsoInProgress], past.id, false, NOW)).toEqual({
+      redirect: '/trips',
+    });
+    expect(resolveLanding([inProgress, alsoInProgress], null, false, NOW)).toEqual({
+      redirect: '/trips',
+    });
   });
 
-  it('redirects to /trips when a stale stored id no longer exists and nothing is live', () => {
-    expect(resolveLanding([past, upcoming], 'trip-deleted', false, NOW)).toEqual({
+  it('opens the one unfinished trip on a cold reopen when nothing is live', () => {
+    // The 2026-09-10 amendment: with a single upcoming trip the list has nothing
+    // to choose between, so the trip opens (in Plan mode) instead.
+    expect(resolveLanding([past, upcoming], past.id, false, NOW)).toEqual({
+      tripId: upcoming.id,
+    });
+    expect(resolveLanding([upcoming], null, false, NOW)).toEqual({ tripId: upcoming.id });
+  });
+
+  it('redirects to /trips on a cold reopen when several trips are upcoming and none is live', () => {
+    expect(resolveLanding([past, upcoming, fartherUpcoming], upcoming.id, false, NOW)).toEqual({
+      redirect: '/trips',
+    });
+  });
+
+  it('redirects to /trips on a cold reopen when every trip has finished', () => {
+    expect(resolveLanding([olderPast, past], past.id, false, NOW)).toEqual({ redirect: '/trips' });
+  });
+
+  it('redirects to /trips when a stale stored id no longer exists and nothing is unambiguous', () => {
+    expect(resolveLanding([past, upcoming, fartherUpcoming], 'trip-deleted', false, NOW)).toEqual({
       redirect: '/trips',
     });
   });

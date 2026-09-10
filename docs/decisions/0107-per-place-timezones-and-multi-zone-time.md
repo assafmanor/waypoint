@@ -392,8 +392,9 @@ docblock says so, so the fallback is a stated limitation rather than a per-surfa
 `מחרתיים` for tomorrow's trip — so the all-trips chip now counts from the **device's** today
 (`daysUntilStartOnDevice`), the rule the join ticket below already had: a screen with no trip
 loaded is wherever the phone is. The skeleton keeps the primary-zone fallback for its first
-frame. The list's `בקרוב`/`הסתיים` buckets stay on the trip zone with the landing rule
-(ADR-0033), so for a westward trip's first hours the row is still `בקרוב` and reads `היום`.
+frame. The list's `בקרוב`/`הסתיים` buckets and the landing rule (ADR-0033) followed the same
+day on 2026-09-10, once a westward trip's start date at home opened on the list fifteen hours
+before its flight (ADR-0033's 2026-09-10 amendment §6); `tripChip` counts from the device too.
 
 **Corrected 2026-09-10 — the departure day itself.** The owner's device, at 00:00 at home on the
 eve of the same trip, read `היציאה מחר` over a clock of `26:59:48` (ADR-0221 §3). `tripToday` was

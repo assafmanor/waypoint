@@ -228,11 +228,20 @@ describe('shareNowZone (ADR-0213 eighteenth amendment)', () => {
     expect(shareNowZone(days, JLM, inTheGap)).toBe(TYO);
   });
 
-  it('falls back to the trip primary before the trip and to its last day after it', () => {
+  it('is home before the trip and the last day’s clock after it', () => {
     const days = spine(['2026-09-15', KEF], ['2026-09-16', KEF]);
     expect(shareNowZone(days, JLM, new Date('2026-09-01T12:00:00Z'))).toBe(JLM);
     expect(shareNowZone(days, JLM, new Date('2026-10-01T12:00:00Z'))).toBe(KEF);
     expect(shareNowZone([], JLM, new Date('2026-09-15T12:00:00Z'))).toBe(JLM);
+  });
+
+  it('is home on the morning of a westward day one, before its card claims the moment', () => {
+    // The 2026-09-10 report: the travel day's own zone is Iceland's (its stay is there and the
+    // flight abstains), so at 00:50 in Tel Aviv on day one no card claims the moment yet. The
+    // trip's primary would say it is still yesterday; home says it is day one.
+    const days = spine(['2026-09-11', KEF], ['2026-09-12', KEF]);
+    const homeMidnight = new Date('2026-09-10T21:50:00Z'); // 00:50 Jerusalem 11th, 21:50 KEF 10th
+    expect(shareNowZone(days, JLM, homeMidnight)).toBe(JLM);
   });
 
   it('reads a card that swallowed two days as today while either of them is', () => {

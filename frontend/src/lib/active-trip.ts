@@ -1,14 +1,19 @@
 // ADR-0021 resolution rule. Never stored server-side — recomputed on load;
 // the manual override lives in state/active-trip-id.tsx.
 import type { Trip } from '@waypoint/shared';
+import { DEVICE_TIMEZONE } from '../constants';
 import { todayInTz } from './time';
 
 export type TripChip = 'now' | 'soon' | 'past';
 
-/** The all-trips row chip (ADR-0033) — same in-progress/upcoming/past split
- *  `resolveActiveTrip` uses, just not collapsed into a single pick. */
+/** The all-trips row chip (ADR-0033) — the in-progress/upcoming/past split the
+ *  landing rule reads, just not collapsed into a single pick. Counted from the
+ *  **device's** today, like `daysUntilStartOnDevice` (ADR-0107, 2026-09-10): neither
+ *  the list nor the landing has an itinerary loaded, so the person is wherever the
+ *  phone is — on the trip's own zone a westward trip was still `soon` fifteen hours
+ *  before its flight and the app opened on the list (owner, 2026-09-10). */
 export function tripChip(trip: Trip, now: Date): TripChip {
-  const today = todayInTz(trip.timezone, now);
+  const today = todayInTz(DEVICE_TIMEZONE, now);
   if (today >= trip.startDate && today <= trip.endDate) return 'now';
   return today < trip.startDate ? 'soon' : 'past';
 }
@@ -23,11 +28,12 @@ export type Landing = { tripId: string } | { redirect: '/trips' };
  *  - `pickedThisSession`: the stored id came from an explicit pick this session
  *    (tapping a trip on /trips, creating, or joining). Such a pick is honored
  *    regardless of whether the trip is live — you asked for it.
- *  - Otherwise it's a cold reopen: a live trip opens directly, nothing live
- *    goes to /trips (ADR-0033). A restored last-opened id only wins here when it
- *    is *itself* live (last-opened among overlapping live trips, ADR-0021); a
- *    stale non-live id must not shadow a trip that is live right now — the bug
- *    this rule fixes (a reopen landing on the last trip instead of the live one).
+ *  - Otherwise it's a cold reopen, and the rule is **one unambiguous answer opens,
+ *    anything else is the list's to resolve** (ADR-0033, 2026-09-10 amendment). A
+ *    restored last-opened id wins only when it is *itself* live (last-opened among
+ *    overlapping live trips, ADR-0021); a stale non-live id must not shadow a trip
+ *    that is live right now. Then: exactly one live trip opens; with none live,
+ *    exactly one unfinished trip opens; two or more candidates go to /trips.
  */
 export function resolveLanding(
   trips: Trip[],
@@ -41,30 +47,8 @@ export function resolveLanding(
 
   if (storedTrip && tripChip(storedTrip, now) === 'now') return { tripId: storedTrip.id };
 
-  const resolved = resolveActiveTrip(trips, now);
-  if (!resolved || tripChip(resolved, now) !== 'now') return { redirect: '/trips' };
-  return { tripId: resolved.id };
-}
-
-export function resolveActiveTrip(trips: Trip[], now: Date): Trip | null {
-  if (trips.length === 0) return null;
-
-  const inProgress = trips.filter((t) => {
-    const today = todayInTz(t.timezone, now);
-    return today >= t.startDate && today <= t.endDate;
-  });
-  if (inProgress.length > 0) {
-    // ponytail: overlapping in-progress trips are an explicitly deferred case
-    // (ADR-0021) — pick the one that started first, deterministic and good
-    // enough until "which trip is primary now" gets a real resolution.
-    return [...inProgress].sort((a, b) => (a.startDate < b.startDate ? -1 : 1))[0];
-  }
-
-  const upcoming = trips.filter((t) => todayInTz(t.timezone, now) < t.startDate);
-  if (upcoming.length > 0) {
-    return [...upcoming].sort((a, b) => (a.startDate < b.startDate ? -1 : 1))[0];
-  }
-
-  const past = trips.filter((t) => todayInTz(t.timezone, now) > t.endDate);
-  return [...past].sort((a, b) => (a.endDate > b.endDate ? -1 : 1))[0];
+  const live = trips.filter((t) => tripChip(t, now) === 'now');
+  const candidates = live.length > 0 ? live : trips.filter((t) => tripChip(t, now) === 'soon');
+  if (candidates.length === 1) return { tripId: candidates[0].id };
+  return { redirect: '/trips' };
 }

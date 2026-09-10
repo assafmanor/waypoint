@@ -44,6 +44,7 @@ import {
   dayOfMonth,
   dayPhase,
   formatTripDates,
+  todayInTz,
   tripDayNumber,
   type DayPhase,
 } from '../lib/time';
@@ -313,7 +314,7 @@ export function SharedItinerary() {
    * each day's own `timezone`, so this page derives its clock from the events exactly as
    * every day surface in the app does.
    */
-  const nowZone = ready ? shareNowZone(ready.days, ready.trip.timezone, now) : '';
+  const nowZone = ready ? shareNowZone(ready.days, ready.trip.homeZone, now) : '';
   /**
    * **Today, on that clock.**
    *
@@ -322,8 +323,16 @@ export function SharedItinerary() {
    * BEFORE (`sharePreviousNight`), so at 01:48 the calendar had rolled over while the share's
    * day had not — the page marked tomorrow as "now" and drew its now-line at the bottom of a
    * day nothing had happened in yet. One boundary for the grouping and for the question.
+   *
+   * **Except before day one, where the boundary is midnight.** The dawn rule files a pre-dawn
+   * hour on the card BEFORE, and before the trip there is no card before: at 00:50 at home on
+   * the morning of day one it only made the masthead say `מתחילים מחר` (owner, 2026-09-10),
+   * while the app had already flipped to Trip mode — its eve's clock counts to midnight of day
+   * one at home (ADR-0221 §3). So until the share's own day reaches `startDate`, the calendar
+   * day answers, and the two surfaces agree about when the trip begins.
    */
-  const today = ready ? shareToday(now, nowZone) : '';
+  const shareDay = ready ? shareToday(now, nowZone) : '';
+  const today = ready && shareDay < ready.trip.startDate ? todayInTz(nowZone, now) : shareDay;
   /** The card the clock is on, or `null` before the trip and after it. */
   const todayOrdinal = ready
     ? (ready.days.find((day) => dayPhase(day.date, today, day.endDate) === DAY_PHASE.TODAY)
