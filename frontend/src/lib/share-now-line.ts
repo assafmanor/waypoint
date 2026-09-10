@@ -57,8 +57,11 @@ import { DAY_PHASE, dayPhase } from './time';
  *  2. **The last day behind us**, for the gap the opposite seam opens: flying west, a day in
  *     Tokyo ends six hours before the following day in Israel begins, and no card claims
  *     those hours. The clock that fits them is the one you just left.
- *  3. **The trip's primary zone**, before the trip and after it — where nothing is marked
- *     `עכשיו` anyway, so this only decides what a phase line reads against.
+ *  3. **Home, before the trip** — `trip.homeZone`, the first crossing's origin (ADR-0213's
+ *     2026-09-10 amendment). The primary zone stood here first, and for a westward trip it is
+ *     a clock a day behind the travellers: at 00:50 at home on day one the masthead still
+ *     read `מתחילים מחר`. Nothing is marked `עכשיו` before the trip, so this decides what the
+ *     phase line reads against — which is exactly the thing that was wrong.
  *
  * `dayPhase` rather than a fourth spelling of the comparison: the eleventh amendment §7 lifted
  * it out of two surfaces for exactly this reason, and a card that swallowed two days is today
@@ -66,7 +69,7 @@ import { DAY_PHASE, dayPhase } from './time';
  */
 export function shareNowZone(
   days: readonly Pick<SharedDay, 'date' | 'endDate' | 'timezone'>[],
-  primaryZone: string,
+  homeZone: string,
   at: Date,
 ): string {
   let behind: string | undefined;
@@ -76,7 +79,7 @@ export function shareNowZone(
     if (phase === DAY_PHASE.TODAY) return day.timezone;
     if (phase === DAY_PHASE.PAST) behind = day.timezone;
   }
-  return behind ?? primaryZone;
+  return behind ?? homeZone;
 }
 
 /** One event of the day, named the way this page can find it again. */

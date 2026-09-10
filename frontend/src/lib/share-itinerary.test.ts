@@ -27,6 +27,7 @@ const projection = {
     startDate: '2026-08-29',
     endDate: '2026-08-30',
     timezone: 'Atlantic/Reykjavik',
+    homeZone: 'Atlantic/Reykjavik',
     dayCount: 1,
     eventCount: 0,
     routeLabels: [],

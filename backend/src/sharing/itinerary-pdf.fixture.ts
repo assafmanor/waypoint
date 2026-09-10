@@ -292,6 +292,7 @@ export const NINE_DAY_REFERENCE_TRIP: SharedItinerary = {
     // Carried because the projection is strict, and ignored by the renderer this fixture
     // feeds: paper prints dates, never `עכשיו` (eleventh amendment §6).
     timezone: 'Atlantic/Reykjavik',
+    homeZone: 'Atlantic/Reykjavik',
     dayCount: 9,
     eventCount: days.reduce(
       (total, day) => total + day.sections.reduce((n, s) => n + s.events.length, 0),

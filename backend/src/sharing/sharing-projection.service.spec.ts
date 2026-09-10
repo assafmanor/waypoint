@@ -523,6 +523,8 @@ describe('SharingProjectionService', () => {
     ]) {
       const projection = await service.byCode(await shareAt(level));
       expect(projection.trip.timezone).toBe('Atlantic/Reykjavik');
+      // No zone crossing on this trip, so home is wherever the primary zone is.
+      expect(projection.trip.homeZone).toBe('Atlantic/Reykjavik');
       // Strict schemas make this an assertion about the CONTRACT and not just this response:
       // an added `today` would have to be declared, and declaring it is what this refuses.
       expect(Object.keys(projection.trip)).not.toContain('today');
@@ -1593,6 +1595,14 @@ describe('SharingProjectionService', () => {
       // Rung 2 — nothing sits on the 12th, so the itinerary segment answers: after the last
       // crossing, that is Iceland.
       expect(zoneOf('2026-09-12')).toBe('Atlantic/Reykjavik');
+    });
+
+    it('names home as the first crossing’s origin, for the hours before day one', async () => {
+      // ADR-0213's 2026-09-10 amendment: before the outbound flight the group is in Tel Aviv,
+      // whatever the trip's primary zone is — the clock the masthead counts down on.
+      const projection = await project();
+      expect(projection.trip.homeZone).toBe('Asia/Jerusalem');
+      expect(projection.trip.timezone).toBe('Atlantic/Reykjavik');
     });
 
     it('counts a multi-night stay as evidence on the nights it covers', async () => {

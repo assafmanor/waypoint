@@ -45,6 +45,7 @@ const SUMMARY: SharedItinerary = {
     // for `now` since the eighteenth amendment — a trip whose days are all lived in the
     // destination is the case where the two agree, and that keeps the arithmetic-free clock.
     timezone: 'Atlantic/Reykjavik',
+    homeZone: 'Atlantic/Reykjavik',
     dayCount: 3,
     eventCount: 3,
     routeLabels: ['רייקיאוויק', 'ויק'],

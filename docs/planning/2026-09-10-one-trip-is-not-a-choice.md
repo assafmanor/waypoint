@@ -35,8 +35,19 @@ correction) and the correction had explicitly left the buckets and the landing o
 zone. Owner: _"It should use same device day yeah."_ So the chip now counts from
 `DEVICE_TIMEZONE`, which moves the list's sections with it.
 
+## The third report: the shared page, at the same hour
+
+Screenshot at 00:50 at home on day one: the public itinerary's masthead read `מתחילים מחר`. Two
+causes, both in `SharedItinerary`'s clock. Before day one `shareNowZone` fell back to the trip's
+**primary** zone, a day behind for a westward trip; and the share's dawn rule filed 00:50 on the
+night before, which is right inside the trip and meaningless before it. The projection now ships
+`trip.homeZone` (the first crossing's origin) and the page begins the trip at midnight at home,
+the instant the app's own eve clock counts to. Recorded as ADR-0213's 2026-09-10 amendment.
+
 ## What shipped
 
+- `trip.homeZone` on the shared projection; `shareNowZone` reads it before day one, and the
+  page's dawn boundary starts with the trip. Backend spec, page test and zone unit test added.
 - `tripChip` reads the device's day, so the landing and the list's sections agree with the
   `בעוד` countdown about which day it is.
 - `resolveLanding` restated as "exactly one candidate opens": the live trips if any, else the

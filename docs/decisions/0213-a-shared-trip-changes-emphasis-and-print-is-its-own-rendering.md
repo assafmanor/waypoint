@@ -2455,7 +2455,9 @@ rather than left to fall out of an array order:
   begins, and no card claims those hours. They take the clock of the **last day behind us**,
   which is the one you just left and are still flying out of.
 - Before the trip and after it, the trip's primary zone — where nothing is marked `עכשיו`
-  anyway, so this only decides what the masthead's phase line reads against.
+  anyway, so this only decides what the masthead's phase line reads against. _(Corrected
+  2026-09-10, below: before the trip it is `trip.homeZone`, and the phase line was exactly the
+  thing it got wrong.)_
 
 It walks with `dayPhase`, not a fourth spelling of the comparison: §7 lifted that helper out of
 two surfaces for this exact reason, and it is also what makes a card that swallowed two days
@@ -2605,3 +2607,46 @@ this section closed for `/s/`.
 
 `isPublicSharePath` asked "is this the sharing feature", which made the invite a judgement call.
 **A credential in a path is not one.**
+
+## Amendment — the trip begins at midnight at home (2026-09-10)
+
+Owner, at 00:50 in Tel Aviv on the morning of day one, with the page reading `מתחילים מחר` over
+`11.09–22.09`:
+
+> _"I see that the live sharing page also needs to fix the timezone issues. See screenshot: it
+> says 'starting tomorrow'."_
+
+The app had flipped to Trip mode fifty minutes earlier: its eve's clock counts to midnight of day
+one **at home** (ADR-0221 §3), and `liveZone` reads home as the first crossing's origin for any
+instant before the flight (ADR-0107's 2026-09-10 correction). The page disagreed twice, and both
+halves have to move for it to agree.
+
+### §1 · The hours before day one belong to home, not to the destination
+
+The eighteenth amendment §3's third rung handed "before the trip" to the trip's primary zone, on
+the ground that nothing is marked `עכשיו` there and so it "only decides what the masthead's phase
+line reads against". That is the thing it got wrong: for a westward trip the primary is a clock a
+day behind the travellers, and the phase line is the one sentence on the page that is read before
+the trip. On the owner's trip the travel day's own zone is Iceland's too — its stay is there and
+the flight abstains (§2) — so no card claimed the moment and the fallback was all there was.
+
+The projection ships **`trip.homeZone`**: the first zone crossing's origin, else the primary. Not
+the reader's zone, for the eleventh amendment §6's reason, which still holds; not derived on the
+page, because the page has no origin to derive it from (the contract deliberately carries no
+crossing instants, §2). `shareNowZone` takes it in the primary's place, and its third rung now
+reads: before the trip, home; after it, the last day's own clock, as before. The default fixture
+has no crossing and asserts home is the primary; the zone fixture asserts `Asia/Jerusalem` on a
+trip whose primary is Iceland's.
+
+### §2 · The dawn boundary is the trip's, not the eve's
+
+`shareToday` files an hour before 05:00 on the day **before**, so a 01:00 landing sits on the card
+of the night it belongs to. Before day one there is no card before, and the rule only produced
+`מחר` for fifty minutes past a midnight the app had already crossed. So until the share's own day
+reaches `startDate`, `SharedItinerary` asks the calendar day in that same zone instead; from day
+one on, the dawn rule is unchanged. The masthead and the mark on day one's card come out of the
+same `today`, so they still cannot disagree (eleventh amendment §4).
+
+**Version skew is the ordinary consequence of a grown contract** (`SharedItineraryUnreadable`, the
+seventeenth amendment): a page holding the previous build cannot parse `homeZone` and asks for a
+newer document, never for a retry. The PDF ignores the field with everything else about now.

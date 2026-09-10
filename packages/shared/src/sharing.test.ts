@@ -241,6 +241,7 @@ describe('sharedItinerarySchema', () => {
       startDate: '2026-08-29',
       endDate: '2026-09-06',
       timezone: 'Atlantic/Reykjavik',
+      homeZone: 'Atlantic/Reykjavik',
       dayCount: 9,
       eventCount: 21,
       routeLabels: ['רייקיאוויק', 'ויק'],

@@ -974,8 +974,8 @@ export const sharedItinerarySchema = z.strictObject({
     /**
      * **The trip's primary zone** (ADR-0213's eleventh amendment §6) — an INPUT rather than
      * an answer, and since 2026-09-03 no longer the input any question about _now_ reads:
-     * that is `SharedDay.timezone`, per day, from the day's own events. This stays as the
-     * fallback for a moment no day of the trip covers, and as what the primary zone means.
+     * that is `SharedDay.timezone`, per day, from the day's own events. This stays as what the
+     * primary zone means; the hours before day one read `homeZone` below.
      *
      * Everything else about time here is pre-formatted, for the reason the header states: two
      * renderers formatting one instant is how a PDF prints an hour the app never showed. But
@@ -991,6 +991,16 @@ export const sharedItinerarySchema = z.strictObject({
      * the live page it cannot correct itself.
      */
     timezone: timezoneSchema,
+    /**
+     * **Where the group is BEFORE the trip** — the first zone crossing's origin, else the
+     * primary (ADR-0213, 2026-09-10 amendment). The page needs a clock for the hours no card
+     * claims before day one, and the eighteenth amendment gave it the primary's: for a
+     * westward trip that is a clock a day behind the travellers, and at 00:50 at home on the
+     * morning of day one the masthead still read `מתחילים מחר`. This is the same answer the
+     * app's `liveZone` gives for any instant before the outbound flight (ADR-0107's 2026-09-10
+     * correction). Not the reader's zone, for the reason `timezone` above states.
+     */
+    homeZone: timezoneSchema,
     dayCount: z.number().int().positive(),
     eventCount: z.number().int().nonnegative(),
     /** Ordered destination labels — the compact route strip, built from real stops

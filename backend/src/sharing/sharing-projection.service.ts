@@ -1084,6 +1084,8 @@ export class SharingProjectionService {
         // The zone, not a stamped `today` — the reader's device resolves the calendar day
         // itself (eleventh amendment §6). Already selected above for `zones.primaryZone`.
         timezone: trip.timezone,
+        // Before the outbound flight the group is at home, wherever the trip's primary zone is.
+        homeZone: zones.crossings[0]?.fromZone ?? trip.timezone,
         dayCount: days.length,
         eventCount: events.length,
         routeLabels,

@@ -51,6 +51,7 @@ const summaryProjection: Projection = {
     // UTC+0 year-round, so the trip's wall clock and `NOW` below are the same reading and a
     // now-line assertion needs no offset arithmetic to be checkable.
     timezone: 'Atlantic/Reykjavik',
+    homeZone: 'Atlantic/Reykjavik',
     dayCount: 2,
     eventCount: 3,
     routeLabels: ['רייקיאוויק', 'ויק'],
@@ -1132,6 +1133,34 @@ describe('SharedItinerary', () => {
       expect(
         withoutBidiControls(ended.container.querySelector('.sh-kicker')!.textContent!),
       ).toContain(t.share.public.phase.ended);
+    });
+
+    it('begins the trip at midnight at home, not at dawn in the destination', async () => {
+      // ADR-0213's 2026-09-10 amendment. A westward trip: the group is in Tel Aviv, the cards
+      // are on Iceland's clock. At 00:50 at home on day one the destination is still on the
+      // eve and the share's dawn rule would file the hour on the night before — the page read
+      // `מתחילים מחר` while the app was already in Trip mode.
+      const westward = {
+        ...fullProjection,
+        trip: { ...fullProjection.trip, homeZone: 'Asia/Jerusalem' },
+      };
+      setSimulatedNow(Date.parse('2026-08-28T21:50:00.000Z')); // 00:50 Jerusalem, 29 Aug
+      serve(westward);
+      const dayOne = renderShared();
+      await screen.findByText('איסלנד עם המשפחה');
+      expect(
+        withoutBidiControls(dayOne.container.querySelector('.sh-kicker')!.textContent!),
+      ).toContain(t.share.public.phase.live(1, 2));
+
+      cleanup();
+      // The same hour one night earlier is the eve, and "tomorrow" is then the right word.
+      setSimulatedNow(Date.parse('2026-08-27T21:50:00.000Z'));
+      serve(westward);
+      const eve = renderShared();
+      await screen.findByText('איסלנד עם המשפחה');
+      expect(
+        withoutBidiControls(eve.container.querySelector('.sh-kicker')!.textContent!),
+      ).toContain(t.share.public.phase.soon(1));
     });
 
     it('says how old what it shows is, not that it is current', async () => {
