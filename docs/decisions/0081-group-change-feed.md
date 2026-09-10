@@ -1,6 +1,6 @@
 # 0081 — A quiet group change-feed (visible collaboration)
 
-**Status:** Accepted (2026-07-19)
+**Status:** Accepted (2026-07-19); **surface unmounted 2026-09-10** — the owner asked for the Home strip to go until the feature is discussed and specced. The buffer (`state/change-feed.tsx`), the `ChangeFeed` component and its copy remain in the tree, unrendered; `docs/backlog.md` tracks the re-mount decision.
 **Date:** 2026-07-19
 **Relates:** [0019](0019-sync-protocol.md) (the WS `change` stream this reads), [0004](0004-integrations-are-pipes.md) (a feed is a pipe into Home, not its own tab), [0028](0028-plan-violet-color-budget-dark-ready.md) ("one loud element": the board is the only loud surface, the feed is quiet chrome), **F-05** (the frontend-review fix that threaded the real author into writes — the attribution this depends on). Implements finding **U-09** of the UI/UX review (`../reviews/ui-ux-review.md`). See also [collaboration-model.md](../architecture/collaboration-model.md) ("The change-feed") and PRD §4.2 ("Noam moved ramen to 20:00").
 

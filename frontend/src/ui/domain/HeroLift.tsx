@@ -26,6 +26,7 @@ import { ZoneShiftPill } from '../ZoneShiftPill';
 import { SettleControl, type SettleOutcome } from './SettleControl';
 import {
   BoardGapSlot,
+  CountdownTile,
   TomorrowStrip,
   type BoardCountdown,
   type BoardGap,
@@ -756,17 +757,7 @@ export function HeroLift(props: HeroLiftProps) {
                         )}
                       </div>
                     </div>
-                    {countdown && (
-                      <div className={'wp-board-countdown' + (countdown.missed ? ' missed' : '')}>
-                        {countdown.value && (
-                          <div className="t" dir="auto">
-                            {countdown.value}
-                          </div>
-                        )}
-                        <div className="u">{countdown.unit}</div>
-                        {countdown.unitBelow && <div className="u">{countdown.unitBelow}</div>}
-                      </div>
-                    )}
+                    {countdown && <CountdownTile countdown={countdown} />}
                   </div>
                 </div>
                 {/* The same parts as any point: what the horizon adds to NEXT is the

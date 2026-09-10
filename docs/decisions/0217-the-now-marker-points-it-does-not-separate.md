@@ -813,3 +813,11 @@ left while the hole behind it keeps its own length; the `＋` opens on the windo
 the mark stands above the block where the hole states no free time at all. Eight unit specs on
 `narrowGapToNow` in `lib/gaps.test.ts` carry the arithmetic, the inward rounding, the ceiling, the
 `null`, and — the half a label could never reach — that `blockFor` moves with it.
+
+## Amendment (2026-09-10) — the mark before a journey run stands above the run's box
+
+Reported from a phone at 00:03 on the departure day, twelve hours before the first leg: the boundary mark sat 12px under the top edge of the two-leg flight box, its arrow clipped at the box's edge, and the owner read it as a timing bug — "why is the now line inside the flights?"
+
+The derivation was right. `nowLinePlacement` put the index at the run's first leg and `inside` at `null`, which is the boundary form at the head of the day. What was wrong was the **markup**: a journey run's legs and the band between them render inside one `.journey` container (ADR-0159 §3, `overflow: hidden`), and `DayView` drew the boundary form inside the first entry's fragment, so the head of a run was the one boundary the day drew _inside_ a box. The 2026-09-02 room amendment measured "head 11 · 0" against a plain card and never against a run.
+
+The block now takes the mark from its head entry and draws it **before** the `.day-thread` wrapper, where a mark between the row above and the run belongs. A mark at a later entry of the run is unchanged: between two legs the moment is in the layover, which `nowInJoin` already nails to the connection band. Plan mode is untouched — it draws no run container, so it never had the defect. Regression test in `DayView.travel.test.tsx` ("the now-mark before a journey run stands above the run, not inside it"); jsdom cannot measure the 12px, so it asserts the containment, which is the fact.

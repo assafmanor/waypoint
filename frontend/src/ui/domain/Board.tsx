@@ -201,6 +201,33 @@ export interface BoardCountdown {
   flap?: { targetMs: number; nowMs: number };
 }
 
+/** **The board's ONE countdown tile, drawn by both elevations** (ADR-0160 §M, ADR-0221 §3/§7).
+ *  The collapsed board and the lifted hero used to carry two copies of this markup, and the
+ *  departure morning's flap clock landed in one and not the other — the lift kept reading the
+ *  `H:MM` ladder while the board under it read `HH:MM:SS`. One component, so a field added to the
+ *  tile reaches both by construction. */
+export function CountdownTile({ countdown }: { countdown: BoardCountdown }) {
+  return (
+    <div className={'wp-board-countdown' + (countdown.missed ? ' missed' : '')}>
+      {countdown.flap ? (
+        <FlapClock
+          className="wp-board-flaps"
+          nowMs={countdown.flap.nowMs}
+          targetMs={countdown.flap.targetMs}
+        />
+      ) : (
+        countdown.value && (
+          <div className="t" dir="auto">
+            {countdown.value}
+          </div>
+        )
+      )}
+      <div className="u">{countdown.unit}</div>
+      {countdown.unitBelow && <div className="u">{countdown.unitBelow}</div>}
+    </div>
+  );
+}
+
 export interface BoardProps {
   variant: BoardVariant;
   /** Current time (pre-formatted) — the board clock. */
@@ -725,25 +752,7 @@ export function Board(props: BoardProps) {
                 </div>
               )}
             </div>
-            {countdown && (
-              <div className={'wp-board-countdown' + (countdown.missed ? ' missed' : '')}>
-                {countdown.flap ? (
-                  <FlapClock
-                    className="wp-board-flaps"
-                    nowMs={countdown.flap.nowMs}
-                    targetMs={countdown.flap.targetMs}
-                  />
-                ) : (
-                  countdown.value && (
-                    <div className="t" dir="auto">
-                      {countdown.value}
-                    </div>
-                  )
-                )}
-                <div className="u">{countdown.unit}</div>
-                {countdown.unitBelow && <div className="u">{countdown.unitBelow}</div>}
-              </div>
-            )}
+            {countdown && <CountdownTile countdown={countdown} />}
           </div>
 
           {/* **The rail's slot, re-spent.** On a finished day `dayProgress` clamps, so the

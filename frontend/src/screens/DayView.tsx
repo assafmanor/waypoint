@@ -1440,12 +1440,25 @@ export function DayView() {
             That predicate already separates the two for ADR-0061's bed-shaped gap, so a
             fourth carried mode joins by being one. */}
           {blocks.map((block) => {
-            const rows = block.entries.map(({ entry, index, join, from }) => {
+            // **THE MARK BEFORE A RUN STANDS ABOVE ITS BOX** (ADR-0217, 2026-09-10). A journey
+            // run's rows share one `.journey` container, so the boundary form drawn at the run's
+            // first leg landed INSIDE that box: ⁦12px⁩ under its top edge, arrow clipped by its
+            // `overflow: hidden` — a mark that meant "not yet" reading as "on this flight". The
+            // head entry hands its mark to the block, which draws it before the container.
+            let markAboveRun = false;
+            const rows = block.entries.map(({ entry, index, join, from }, i) => {
               const joinTo = entry.kind === 'event' ? groupStartEvent(entry.group) : undefined;
               const joinJourney = joinTo ? journeyFor(from, joinTo) : null;
               // A hole with no row drawn for it has nothing to nail the mark to, so the
               // boundary form keeps that case (§5's day-head hole).
               const joinNow = join || joinJourney ? nowInHole(from, joinTo) : null;
+              const boundaryHere =
+                showNowLine &&
+                !nowInsideRow &&
+                !headTaken &&
+                joinNow === null &&
+                index === nowLineIndex;
+              if (boundaryHere && block.journey && i === 0) markAboveRun = true;
               return (
                 <Fragment
                   key={
@@ -1492,11 +1505,7 @@ export function DayView() {
                   })()}
                   {/* The BOUNDARY form, and only when no row holds the moment: with an
                     `inside` the mark is nailed to that row instead (`ItemNode`). */}
-                  {showNowLine &&
-                    !nowInsideRow &&
-                    !headTaken &&
-                    joinNow === null &&
-                    index === nowLineIndex && <NowMarker ref={nowLineRef} label={nowLabel} />}
+                  {boundaryHere && !markAboveRun && <NowMarker ref={nowLineRef} label={nowLabel} />}
                   {entry.kind === 'event' ? (
                     // **A CARRIED LEG SITS ON THE DAY'S THREAD** (ADR-0212 §1). The card is
                     // untouched — ADR-0210 §1 reserved the box for commitments and a flight is the
@@ -1550,9 +1559,12 @@ export function DayView() {
             // wraps the whole RUN rather than each leg (ADR-0212 §1/§5), which is also the
             // honest drawing: one journey, two legs, one line.
             return block.journey ? (
-              <div className="day-thread" key={blockKey(block)}>
-                <div className="journey">{rows}</div>
-              </div>
+              <Fragment key={blockKey(block)}>
+                {markAboveRun && <NowMarker ref={nowLineRef} label={nowLabel} />}
+                <div className="day-thread">
+                  <div className="journey">{rows}</div>
+                </div>
+              </Fragment>
             ) : (
               <Fragment key={blockKey(block)}>{rows}</Fragment>
             );
