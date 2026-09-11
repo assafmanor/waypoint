@@ -62,7 +62,9 @@ export interface HeroLiftTransit {
   /** How long is left, already phrased (`בעוד 1:39 שע׳`) — the answer to "when do we
    *  land", which no surface carried before this. */
   inPhrase?: string;
-  code?: string;
+  /** **The service's own name, mid-journey** (ADR-0223 §2) — what replaced the confirmation
+   *  code on this point. */
+  flightNumber?: string;
   /** The journey's own progress, as the collapsed board's own component — rendered
    *  INSIDE this point rather than pinned to the card, because it is this point's fact
    *  and not the card's. A held span (a car hire) passes none: its end is a deadline,
@@ -257,7 +259,6 @@ export interface HeroLiftProps {
   /** The day token beside it, when the next point is not today (ADR-0211 §6) — the same
    *  string the collapsed board's `BoardNext.day` carries, passed rather than re-derived. */
   nextDay?: string;
-  nextCode?: string;
   /** **The flight's own name, as a term on the meta line** (ADR-0222 §6). Measured against
    *  the owner's crowded hero: a labelled `hero-part` cost ⁦91px⁩, riding the title cost
    *  ⁦24px⁩ by wrapping the ROUTE (which ADR-0059 §3 says is what a flight reads as), and
@@ -555,9 +556,9 @@ function Point({ point, lead }: { point: HeroLiftPoint; lead?: boolean }) {
                     {point.transit.inPhrase}
                   </span>
                 )}
-                {point.transit.code && (
-                  <span className="code" dir="auto">
-                    {point.transit.code}
+                {point.transit.flightNumber && (
+                  <span className="ident" dir="auto">
+                    {point.transit.flightNumber}
                   </span>
                 )}
               </div>
@@ -686,7 +687,6 @@ export function HeroLift(props: HeroLiftProps) {
     nextLabel,
     nextTime,
     nextDay,
-    nextCode,
     nextFlightNumber,
     countdown,
     travel,
@@ -784,11 +784,6 @@ export function HeroLift(props: HeroLiftProps) {
                             <Icon name="lock" /> {t.event.hard}
                           </span>
                         )}
-                        {nextCode && (
-                          <span className="code" dir="auto">
-                            {nextCode}
-                          </span>
-                        )}
                         {/* **The flight's name, in the plain-text register `.lockmini` uses
                             on this line** (ADR-0222 §6): no fill and no hue, because an
                             identifier is neither a time nor a commitment and rule 4 lends it
@@ -803,9 +798,10 @@ export function HeroLift(props: HeroLiftProps) {
                     {countdown && <CountdownTile countdown={countdown} />}
                   </div>
                 </div>
-                {/* The same parts as any point: what the horizon adds to NEXT is the
-                    way through and the where, not a second printing of the code the
-                    collapsed board already shows above. */}
+                {/* The same parts as any point: what the horizon adds to NEXT is the way
+                    through and the where. It used to say "not a second printing of the code
+                    the collapsed board already shows above" — ADR-0223 took the code off
+                    both, so the reason survives and its example does not. */}
                 <Where point={next} />
                 <Note point={next} />
                 <Tasks point={next} />

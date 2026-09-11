@@ -275,9 +275,10 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const transitBooking = transitEvent?.bookingId
     ? bookings.find((b) => b.id === transitEvent.bookingId)
     : undefined;
-  const transitCode = transitBooking?.confirmationCode
-    ? `${CODE_PREFIX}${transitBooking.confirmationCode}`
-    : undefined;
+  // **The flight's name, not its ticket number** (ADR-0223 §2). Mid-flight the code is a
+  // lookup key for a desk you have already left; `LY315` is what every screen and
+  // announcement around you is using, and it stays true for the whole journey.
+  const transitFlightNumber = transitBooking?.flightNumber;
   // Origin/destination anchor the in-transit progress ends (ADR-0059 §3): a
   // flight reads as where it goes, not a name.
   const transitRoute = transitEvent
@@ -342,9 +343,6 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
 
   const nextBooking = shownNext?.bookingId
     ? bookings.find((b) => b.id === shownNext!.bookingId)
-    : undefined;
-  const nextCode = nextBooking?.confirmationCode
-    ? `${CODE_PREFIX}${nextBooking.confirmationCode}`
     : undefined;
   // **The gate, but only inside its window** (ADR-0222 §4/§5). Resolved here rather than in
   // `Board` so the card never asks what time it is, and shared with the lifted hero below so
@@ -474,7 +472,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
               endTime: transit.endTime,
               endDay: transitArrivalDay,
               inPhrase: transitRemaining ? t.board.inPhrase(transitRemaining) : undefined,
-              code: transitCode,
+              flightNumber: transitFlightNumber,
               // The zone crossing in words, plus the destination's clock right now. The
               // pill stays on the collapsed board: same number, and this is the state you
               // asked for, so it can afford the sentence the pill cannot say.
@@ -1307,7 +1305,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           endTime: transitEvent.endsAt
             ? formatTime(transitEvent.endsAt, transitZones?.endZone ?? tz)
             : undefined,
-          code: transitCode,
+          flightNumber: transitFlightNumber,
           progress: transitProgress,
           startTime: transitEvent.startsAt
             ? formatTime(transitEvent.startsAt, transitZones?.startZone ?? tz)
@@ -1356,9 +1354,8 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         ...(shownNext.date !== today ? { day: dayLabel(shownNext.date, { trip, today }) } : {}),
         missed: hero.missed && shownNext === hero.event,
         hard: shownNext.kind === EVENT_KIND.HARD,
-        code: nextCode,
-        // The gate REPLACES the code in the board's one booking-fact slot while it is due
-        // (ADR-0222 §4) — `Board` draws whichever of the two it is handed.
+        // The gate, while it is due (ADR-0222 §4). It used to REPLACE the code in this slot;
+        // ADR-0223 took the code off the board entirely, so it now simply occupies it.
         gate: nextGate,
         // For a zone-crossing flight this is the jump the flight itself makes
         // (destination minus origin), the same number its day-timeline row shows;
@@ -1532,7 +1529,6 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           nextLabel={nextLabelKey ? transitionLabel(nextLabelKey) : undefined}
           nextTime={boardNext?.time}
           {...(boardNext?.day ? { nextDay: boardNext.day } : {})}
-          nextCode={nextCode}
           nextFlightNumber={nextBooking?.flightNumber}
           gap={boardGap}
           tomorrow={boardTomorrow}
@@ -1634,9 +1630,14 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
               <Icon name="ticket" />
             </span>
             <span className="lb">{t.quick.nextTicket}</span>
-            <span className="code" dir="auto">
-              {CODE_PREFIX}
-              {nextCoded.booking.confirmationCode}
+            {/* **The tile keeps its job and loses its value** (ADR-0223 §4). It was the one
+                surface built FOR the code (ADR-0050), and printing it here is exactly what
+                "outside the booking" means — so the tile stays a way IN and says which
+                booking it goes to instead: the flight's own name where there is one, the
+                title otherwise. `.sub` rather than `.code`, because that amber is spent on
+                commitment and an identifier is not one. */}
+            <span className="sub" dir="auto">
+              {nextCoded.booking.flightNumber || nextCoded.booking.title}
             </span>
           </button>
         )}

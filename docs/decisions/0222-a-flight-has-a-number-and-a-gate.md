@@ -56,7 +56,9 @@ Two `Fact` rows in `BookingDetail`. The column grows 152px → 228px, two rows a
 
 **The gate takes neither.** Plain ink. Teal in this sheet is an **affordance** (`ניווט`, `מפה`) and not a text colour; painting a gate teal here would teach the build to spend the hue decoratively, which is the one thing rule 4 is for.
 
-### 4. The board: inside the window, the gate inherits the code's slot
+### 4. The board: inside the window, the gate takes the slot
+
+> **Amended 2026-09-11 by [ADR-0223](0223-a-confirmation-code-is-looked-up-not-carried.md) §3, the same day.** The gate no longer _inherits_ the confirmation code's slot, because 0223 took the code off this surface entirely — so there is nothing to inherit and the branch choosing between them is gone. The section below is kept as written, because its argument is what made the code's removal from the board obviously right a day later. **The window is untouched:** when a gate is worth saying never depended on the code.
 
 **This is the fork, and it is the section where the mockup refuted its own first draft.** §4 was written on the assumption that a seventh chip breaks `.wp-board-next-meta`, and that the gate therefore had to take the code's place. The measurement says otherwise, at both widths and in both themes: the line is **already** two bands in the crowded case — the code sits alone on the second — and adding the gate beside it costs **0px** (42px → 42px on the line, 123px → 123px on the board).
 

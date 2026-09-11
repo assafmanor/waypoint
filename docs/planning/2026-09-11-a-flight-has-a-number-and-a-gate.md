@@ -85,3 +85,21 @@ Four things the build has that the drawing did not, each recorded in ADR-0222's 
 ## A shipped fact measured on the way past
 
 Every `.field input` in the app renders at 37px against ADR-0017's 44px touch floor — app-wide, predating this change, and now a number rather than a suspicion. Added to the backlog; the next form ADR should own it.
+
+## After the merge: the code goes the other way (ADR-0223)
+
+The owner, on the deployed build with two screenshots:
+
+> I think that we should demote the confirmation code, it shouldn't appear outside the booking itself and in the booking. The flight number should though, also in flight
+
+**Counting the call sites was the deliverable again, and it found the argument already written down twice.** ADR-0179 §2c took the code off the Index row on a measurement and concluded a booking is _found_ and _read_ by code but need not be _scanned_ by one — then scoped itself to that row. ADR-0174 §8 took it off the day card independently, and its comment states the rest of the case outright: _"the code is one tap away in the card this row opens, where the hard-edit warning already prints it, and on `BookingDetail`."_ Two of five ambient surfaces had already deleted it, each for a local reason, and neither generalised.
+
+That same comment also settled the one judgement call I would otherwise have guessed at: **the hard-edit warning keeps its code**, because it is an identification under warning rather than an ambient print, and ADR-0174 §8 had already carved it out.
+
+Five surfaces lost it (board ×2 slots, hero ×2, the `הכרטיס הבא` tile, `EventForm`'s linked statement); `BookingDetail`, the hard-edit warning and `searchTerms` keep it. Mid-journey the slot is re-spent on `flightNumber` — the owner's _"also in flight"_ — which is the fact that stays true for the whole journey where the code stopped being actionable at the desk.
+
+**Two coherence effects worth recording.** ADR-0222 §4's gate no longer _inherits_ the code's slot, because there is no code on that surface to inherit from — the branch is gone and the window is untouched, since when a gate is worth saying never depended on the code. And `.qa .code` lost its only caller, so it is deleted rather than left as dead amber.
+
+**The compiler found all seven tests asserting the old behaviour** across `Board`, `HeroLift` and `EventForm`. Each became an assertion of the new rule rather than being deleted, so the sweep is pinned rather than merely performed.
+
+**No mockup, and that is a judgement I should be able to defend:** this is a deletion applying a rule two ADRs already measured, plus a like-for-like substitution into a chip slot measured last session. There is no new geometry to falsify.

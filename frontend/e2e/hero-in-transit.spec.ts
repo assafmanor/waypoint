@@ -48,7 +48,10 @@ const BOOKINGS = [
     tripId: 't1',
     type: 'flight',
     title: 'LH 692',
-    confirmationCode: 'LH692',
+    // Deliberately DIFFERENT strings (ADR-0223): the row must show the flight's number and
+    // must not show the confirmation code, and one value could not tell those apart.
+    confirmationCode: 'XJ7K2Q',
+    flightNumber: 'LH692',
     fromPlaceId: 'p-fra',
     toPlaceId: 'p-tlv',
     source: 'manual',
@@ -188,9 +191,13 @@ for (const width of [360, 390]) {
 // **The arrival day, measured before it is trusted** (ADR-0160 §M). The meta row is
 // `flex-wrap: wrap`, and flex breaks lines on HYPOTHETICAL sizes — so wrapping is decided
 // before `flex-shrink` ever runs, which is the same mechanism that put `ניווט` on its own
-// line. A red-eye is also the row most likely to be carrying a code chip, so the token that
-// only a red-eye shows lands on the row that is already fullest. Both widths, both
-// elevations: the collapsed board is where it appears most.
+// line. A red-eye is the row carrying the most tokens, so the one that only a red-eye shows
+// lands on the row that is already fullest. Both widths, both elevations: the collapsed
+// board is where it appears most.
+//
+// **The densest token used to be the confirmation code and is now the flight number**
+// (ADR-0223 §2) — narrower, since `.ident` has neither the chip's fill nor its padding, so
+// this stays an upper bound on a row that got no fuller.
 for (const width of [360, 390]) {
   test(`the fullest arrival row holds ONE line at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 360 ? 640 : 844 });
@@ -201,6 +208,9 @@ for (const width of [360, 390]) {
     await expect(meta).toContainText('13:00');
     await expect(meta).toContainText('מחר');
     await expect(meta).toContainText('LH692');
+    // **And the code is not there at all** (ADR-0223 §2): mid-flight it is a lookup key for
+    // a desk you have already left, while the number is what the screens around you use.
+    await expect(meta).not.toContainText('XJ7K2Q');
     expect(await lineCount(page, '.hero-lifted .wp-board-now-meta')).toBe(1);
 
     // And on the board it came from, which is the surface a passenger actually stares at.
@@ -208,6 +218,8 @@ for (const width of [360, 390]) {
     await expect(page.locator('.hero-lifted')).toHaveCount(0);
     const board = page.locator('.wp-board .wp-board-now-meta').first();
     await expect(board).toContainText('מחר');
+    await expect(board).toContainText('LH692');
+    await expect(board).not.toContainText('XJ7K2Q');
     expect(await lineCount(page, '.wp-board .wp-board-now-meta')).toBe(1);
   });
 }

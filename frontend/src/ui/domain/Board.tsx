@@ -117,7 +117,10 @@ export interface BoardTransit {
    *  landing at 06:00 reads as this morning, and the zone jump breaks the arithmetic you
    *  would use to check. Absent on every same-day journey, which is nearly all of them. */
   endDay?: string;
-  code?: string;
+  /** **The service's own name, mid-journey** (ADR-0223 §2). What replaced the confirmation
+   *  code here: `LY315` is what a departure board, a crew member and a gate agent all answer
+   *  to, and it is the fact that stays true for the whole flight. */
+  flightNumber?: string;
   /** Flight progress 0..1 (drives the fill + plane). */
   progress: number;
   /** Departure time (pre-formatted) — in the **origin's** zone. */
@@ -172,11 +175,11 @@ export interface BoardNext {
    *  §M's own reason: what is ambiguous is `07:00`, not `בעוד 8 שעות`. */
   day?: string;
   hard?: boolean;
-  code?: string;
-  /** **The gate, when it is due — and it arrives INSTEAD of `code`** (ADR-0222 §4). The
-   *  caller resolves the window (`gateIsDue`), so this component never asks what time it
-   *  is: it draws whichever of the two facts it was handed. There is no gate on the
-   *  in-transit slot, because a gate says nothing once you are aboard. */
+  /** **The gate, when it is due** (ADR-0222 §4/§5, as amended by ADR-0223 §3). It no longer
+   *  INHERITS the code's slot, because the code no longer has one — it simply occupies a slot
+   *  nothing else uses now. The caller resolves the window (`gateIsDue`), so this component
+   *  never asks what time it is. There is no gate on the in-transit slot: a gate says nothing
+   *  once you are aboard. */
   gate?: string;
   /** That zone vs where you are now → the pill beside the time. */
   shift?: ZoneShift;
@@ -615,9 +618,13 @@ export function Board(props: BoardProps) {
             {transit.kind === 'held' && transit.remaining && (
               <span dir="auto">{t.board.inPhrase(transit.remaining)}</span>
             )}
-            {transit.code && (
-              <span className="code" dir="auto">
-                {transit.code}
+            {/* **The flight's name, where its ticket number used to be** (ADR-0223 §2). A
+                confirmation code mid-flight decides nothing — it is a lookup key for a desk
+                you have already left — while the number is what every screen and announcement
+                around you is using. Same neutral register as the `הבא בתור` line's. */}
+            {transit.flightNumber && (
+              <span className="ident" dir="auto">
+                {transit.flightNumber}
               </span>
             )}
           </div>
@@ -749,24 +756,15 @@ export function Board(props: BoardProps) {
                       <Icon name="lock" /> {t.event.hard}
                     </span>
                   )}
-                  {/* **Inside the departure window the gate takes this slot** (ADR-0222
-                      §4), and the swap is about meaning rather than width — the line is
-                      already two bands and measured room for both. The code is the fact
-                      you cannot act on at the gate, and Home's `הכרטיס הבא` tile carries
-                      it ⁦240px⁩ lower; the gate is the only thing on this screen you
-                      cannot get anywhere else. Teal because a gate is a place (rule 4),
-                      on `.tlabel.loc`'s existing recipe. */}
-                  {next.gate && !tomorrowRanked ? (
+                  {/* **The gate, inside its window** (ADR-0222 §4/§5). It used to INHERIT
+                      the confirmation code's slot here; ADR-0223 took the code off this
+                      surface entirely, so there is nothing left to inherit and the branch
+                      is gone with it. Teal because a gate is a place (rule 4), on
+                      `.tlabel.loc`'s existing recipe. */}
+                  {next.gate && !tomorrowRanked && (
                     <span className="tlabel loc" dir="auto">
                       {next.gate}
                     </span>
-                  ) : (
-                    next.code &&
-                    !tomorrowRanked && (
-                      <span className="code" dir="auto">
-                        {next.code}
-                      </span>
-                    )
                   )}
                 </div>
               )}
