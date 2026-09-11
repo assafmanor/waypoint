@@ -132,6 +132,12 @@ button.day-gap:focus-visible {
    clipping is this block's, and so is the reason. */
 .journey .now-here {
   --now-bleed: 0px;
+  /* **AND THE BLOCK'S GROUND IS THE BLOCK'S, NOT THE LIST'S** — the one known mismatch
+     `now-marker.css` names beside the halo, answered here because the ground is this block's
+     fact. A leg inside a journey sits on `.journey`'s `--card`, so the halo that stops the rule
+     behind a run of text has to be painted in that colour or it is a `--screen` patch on a card.
+     The sheet's own instruction: "a host that needs it different sets `--now-ground`". */
+  --now-ground: var(--card);
 }
 
 /* ── THE JOURNEY BLOCK (ADR-0206 §V1.1/§V1.3/§V1.4, drawn in

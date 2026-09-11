@@ -117,6 +117,27 @@ describe('now-marker · the wrapper is transparent to the day’s child combinat
     expect(shareCss).toMatch(/\.sh-event-now \{/);
   });
 
+  // **A LEG INSIDE A JOURNEY BLOCK IS A BOXLESS ROW, AND IT WAS NOT ON THE HALO'S LIST.**
+  // Reported from a phone: the rule ran through the running flight's `52 דק׳ · 2,362 ק״מ`
+  // while every ungrouped card in the day hid it behind its own box. `.journey > .wp-event`
+  // takes that box away (one ground for the whole run), so the leg occludes nothing — and the
+  // ground the halo paints has to be the BLOCK's `--card`, not the list's `--screen`, or the
+  // repair is a light patch on a card. jsdom loads no CSS and can see neither half.
+  it('stops the rule behind a journey leg’s text, on the block’s own ground', () => {
+    expect(dayJoinCss).toMatch(/\.journey \.now-here \{[^}]*--now-ground:\s*var\(--card\)/);
+    // The one halo block, found by the family that has been on it since ADR-0210 — so a second
+    // copy of these three properties fails here rather than quietly drifting from the first.
+    const list = selectorLists(markerCss).find((l) => l.includes('.day-gap-lbl')) ?? '';
+    expect(list).toBeTruthy();
+    // The when line is the run the report was about; the title is the one the same leg gets an
+    // hour later, because `--thru` moves with the clock.
+    expect(list).toContain('.journey .now-here .wp-event-time > *');
+    expect(list).toContain('.journey .now-here .wp-event-title-txt');
+    // Scoped, and the scope is the correctness: an ordinary card already hides the rule, so an
+    // unscoped halo would paint `--screen` onto a `--card` face.
+    expect(list).not.toMatch(/(^|,)\s*\.now-here \.wp-event/);
+  });
+
   // Both day surfaces render the same rows off the same derivation (ADR-0159 §1), so a bleed
   // named for only one of their braces is the split ADR-0171 §10e exists to repair.
   it('gives every nesting brace on both surfaces its own bleed', () => {

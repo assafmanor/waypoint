@@ -821,3 +821,45 @@ Reported from a phone at 00:03 on the departure day, twelve hours before the fir
 The derivation was right. `nowLinePlacement` put the index at the run's first leg and `inside` at `null`, which is the boundary form at the head of the day. What was wrong was the **markup**: a journey run's legs and the band between them render inside one `.journey` container (ADR-0159 §3, `overflow: hidden`), and `DayView` drew the boundary form inside the first entry's fragment, so the head of a run was the one boundary the day drew _inside_ a box. The 2026-09-02 room amendment measured "head 11 · 0" against a plain card and never against a run.
 
 The block now takes the mark from its head entry and draws it **before** the `.day-thread` wrapper, where a mark between the row above and the run belongs. A mark at a later entry of the run is unchanged: between two legs the moment is in the layover, which `nowInJoin` already nails to the connection band. Plan mode is untouched — it draws no run container, so it never had the defect. Regression test in `DayView.travel.test.tsx` ("the now-mark before a journey run stands above the run, not inside it"); jsdom cannot measure the 12px, so it asserts the containment, which is the fact.
+
+## Amendment (2026-09-11) — a leg inside a journey block is the third boxless row family
+
+Reported from a phone, on the running flight: the rule drawn **straight through**
+`52 דק׳ · 2,362 ק״מ`, and the report named the inconsistency rather than the artefact — _"the now
+line should not cover the text, like it does on regular lines (not in a flight row), this should be
+consistent"_.
+
+It is correct that regular lines differ, and the reason is one declaration two sheets away.
+§1's whole mechanism is that **the row occludes the rule** — a rule you can see runs _between_
+things, a rule that disappears behind a row runs _through_ it — and an ordinary `.wp-event`
+does that for free with its own opaque box. A leg inside a journey run has no box:
+`.journey > .wp-event` gives up its background, border and radius so the block paints one ground
+for the whole run (ADR-0159 §3). So the same mark reads one way on an ungrouped flight and
+another on a grouped one, which is not a posture difference — it is the day telling you something
+about the markup.
+
+**The answer already existed and the leg was simply not on its list.** The 2026-09-02 build gave
+the two families ADR-0210 §3/§4 had already un-carded — the gap strip and the travel leg — a halo
+in `--now-ground` on their inner text runs, so the rule stops behind the words and stays visible
+in the slack between them. A journey leg is the third such family and takes the same three
+properties: the when line (`.wp-event-time > *`, which is what the report caught), the title, the
+nest note, the meta marks, the chevron and the conflict flag. Inner runs, never the two tracks
+the face's grid gives full width — the rule then reads as passing behind the row rather than
+being masked by a band across it.
+
+**And the halo's ground is the host's to state.** `now-marker.css` already named this as its one
+known mismatch: a leg inside a `.journey` sits on `--card` while the sheet's default is the day
+list's `--screen`, so an unscoped halo there is a light patch painted on a card. `.journey` now
+sets `--now-ground` beside the `--now-bleed` it already sets — the block owns both, for the same
+reason. One case is left over deliberately: a **soft** leg's hatch is a gradient and a halo can
+only be a colour. It is the rarest of the three, because a journey run is booked travel and
+booked travel is hard (rule 1).
+
+The halo selectors are scoped to `.journey`, and that scope is the whole correctness of the
+change: on an ordinary card the rule is already hidden across the whole row, so a halo there
+would introduce the defect it exists to remove.
+
+`styles/now-marker.contract.test.ts` carries it — red on the shipped sheets, and the only kind of
+test that can see any of this, since jsdom loads no CSS. Verified by rendering the two legs and
+the layover band against the real stylesheets at three fractions: the rule crosses the when line,
+the title, and the space between them, and stops behind the text in all three.
