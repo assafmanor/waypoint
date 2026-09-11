@@ -53,7 +53,7 @@ Generalize the existing `assignMarkerLanes` (ADR-0054 amendment) to run over the
 
 ### E. Edges and short spans
 
-- Any anchor within `MARKER_EDGE_FRAC` of a rail edge **anchors inward** (grows toward centre) instead of centring on its point, so it can't clip. The window already stretches to the earliest/latest instant (`buildDayGlance`), so no anchor falls off the scale.
+- Any anchor within `MARKER_EDGE_FRAC` of a rail edge **anchors inward** (grows toward centre) instead of centring on its point, so it can't clip. The window already stretches to the earliest/latest instant (`buildDayGlance`), so no anchor falls off the scale. _(Amended 2026-09-11: it no longer stretches to an INSTANT — a midnight pick-up was pulling a whole day's window back to 00:00 — and `frac` clamps instead, so "no anchor falls off the scale" still holds. See [ADR-0045](0045-trip-home-real-data-only.md)'s window rule.)_
 - A **span keeps both times inside the one centered pill** — never at the bar feet. A 35-minute flight is a short bar with the same centered pill, so the two times can never collide (this fixes the latent flaw in the v1 "times at the feet" sketch).
 
 ## Architecture (derivation + rendering)

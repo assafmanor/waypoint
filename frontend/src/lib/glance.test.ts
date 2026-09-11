@@ -543,10 +543,10 @@ describe('buildDayGlance', () => {
     expect(g.anchors.find((a) => a.kind === 'span')?.standalone).toBe(false);
   });
 
-  it('stretches the window to a late transition so its marker stays on the rail', () => {
-    // An overnight (ambient) flight departs late and lands after midnight: it is
-    // not a counted block that stretches the window, so without folding the
-    // transition instants in, the arrival marker would land past frac 1 and clip.
+  it('keeps a late transition on the rail by clamping it, not by stretching the window', () => {
+    // An overnight (ambient) flight departs late and lands after midnight: it is not a
+    // counted block, so nothing stretches the window to it. The marker must still land on
+    // the rail rather than past frac 1.
     const events = [
       ev({
         id: 'redeye',
@@ -564,11 +564,37 @@ describe('buildDayGlance', () => {
     expect(g.segs.some((s) => s.key === 'redeye')).toBe(false);
     const dep = g.anchors.find((a) => a.kind === 'point' && a.labelKey === 'departure');
     expect(dep).toBeDefined();
-    if (dep && dep.kind === 'point') {
-      expect(dep.frac).toBeGreaterThanOrEqual(0);
-      expect(dep.frac).toBeLessThanOrEqual(1);
-    }
-    expect(g.windowEndMs).toBe(ms('23:30')); // stretched to the departure instant
+    if (dep && dep.kind === 'point') expect(dep.frac).toBe(1); // clamped onto the edge
+    expect(g.windowEndMs).toBe(day23); // the instant does not move the window
+  });
+
+  it('a midnight pick-up does not drag the window back and skew the day', () => {
+    // The reported case (2026-09-11): a car hire with no authored pick-up hour starts at
+    // 00:00, and that instant used to set `windowStartMs` — seven hours of rail with
+    // nothing drawable in them, and the day's real blocks squeezed into the far end.
+    const events = [
+      ev({
+        id: 'hire',
+        title: 'Iceland Car Rental',
+        category: 'transport',
+        kind: EVENT_KIND.HARD,
+        date: DATE,
+        endDate: '2026-07-10',
+        startsAt: at('00:00'),
+        endsAt: at('09:00', '2026-07-10'),
+      }),
+      ev({ id: 'hike', startsAt: at('11:00'), endsAt: at('15:00') }),
+    ];
+    const g = buildDayGlance(events, DATE, ms('08:00'), day07, day23, TZ);
+    expect(g.windowStartMs).toBe(day07);
+    // The hike keeps its proportional place in a 07:00→23:00 window (4/16 through it),
+    // where the dragged window put it at 11/23.
+    const hike = g.segs.find((seg) => seg.key === 'hike');
+    expect(hike?.startFrac).toBeCloseTo(4 / 16, 5);
+    expect(hike?.endFrac).toBeCloseTo(8 / 16, 5);
+    // The pick-up is still on the rail, at the day's own start edge.
+    const pickup = g.anchors.find((a) => a.kind === 'point');
+    expect(pickup?.kind === 'point' && pickup.frac).toBe(0);
   });
 
   it('is not empty on a day carrying only a transition marker', () => {

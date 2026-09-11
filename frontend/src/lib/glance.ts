@@ -375,11 +375,10 @@ export function buildDayGlance(
   const skipped = sameDay.filter((e) => e.status === EVENT_STATUS.SKIPPED && e.startsAt);
   const timed = sameDay.filter((e) => e.startsAt);
 
-  // Transition markers are derived first so their instants can join the window
-  // math below — an ambient booking's transition (an overnight flight's
-  // departure/arrival, a hotel's check-in/out) contributes no counted block to
-  // stretch the window, so without this a late-night marker would land past the
-  // rail's edge and clip. A day is non-empty if it carries any of these too.
+  // Transition markers are derived first because a day is non-empty if it carries any of
+  // these too — an ambient booking's transition (a hotel's check-in/out, a hire's pick-up)
+  // draws no counted block, so a check-out day would otherwise read as empty. They no
+  // longer join the window math below; see `frac`.
   const transitions = bookingTransitionsOnDate(events, activeDate);
 
   if (tree.length === 0 && skipped.length === 0 && transitions.length === 0) {
@@ -394,14 +393,33 @@ export function buildDayGlance(
     };
   }
 
-  // Window: 07:00→23:00, stretched to the earliest start / latest end (ADR-0037
-  // overnight ends included; skipped events count for the window so they stay
-  // on-rail) and to every transition instant (so no marker falls off the rail).
-  const transitionMs = transitions.map((tr) => tr.atMs);
-  const windowStartMs = Math.min(day07Ms, ...timed.map(startMsOf), ...transitionMs);
-  const windowEndMs = Math.max(day23Ms, ...timed.map(endMsOf), ...transitionMs);
+  // **The window follows what the rail DRAWS, and a bare instant is clamped onto it**
+  // (ADR-0045's window rule, amended 2026-09-11).
+  //
+  // 07:00→23:00, stretched to the earliest start / latest end of the day's own blocks
+  // (ADR-0037 overnight ends included; skipped events count for the window so they stay
+  // on-rail) — and no longer to a transition instant, which used to be folded in here so a
+  // late-night marker could not land past the edge and clip.
+  //
+  // **Clamping buys the same thing and costs the day nothing.** An instant that sets a
+  // bound lands exactly ON the edge — `frac` returns 0 or 1 for it either way — so
+  // stretching never bought the marker a better position than the clamp does; what it did
+  // buy was moving every real block to make room for a moment nothing occupies. A car hire
+  // with no authored pick-up hour defaults to midnight (`docs/backlog.md`), and one of those
+  // dragged the next day's window back to 00:00: seven hours of rail with nothing drawable
+  // in them, and the day's blocks squeezed into the far end of the strip (owner report,
+  // 2026-09-11 — _"the day is skewed to the left"_).
+  //
+  // The one thing given up: two instants past the SAME edge now share a position (and
+  // `thinMarks` keeps one of the two marks) instead of being 0 and 0.13 apart. A day with
+  // two ambient edges in the small hours is rare, and the rail has never carried their times
+  // anyway — those read on the day's rows, one tap away (ADR-0215 §2).
+  const windowStartMs = Math.min(day07Ms, ...timed.map(startMsOf));
+  const windowEndMs = Math.max(day23Ms, ...timed.map(endMsOf));
   const span = windowEndMs - windowStartMs || 1;
-  const frac = (t: number) => (t - windowStartMs) / span;
+  /** A position ON the rail, so it is 0..1 by construction — every block is inside the
+   *  window above, and a transition instant outside it clamps to the edge it is past. */
+  const frac = (t: number) => Math.min(1, Math.max(0, (t - windowStartMs) / span));
   const nextDayOf = (evs: TripEvent[]) =>
     evs.some((e) => e.endsAt != null && crossesMidnight(e.startsAt!, e.endsAt, timeZone));
 
