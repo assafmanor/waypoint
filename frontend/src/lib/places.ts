@@ -27,8 +27,11 @@ import {
   eventKnownZone,
   eventsOnDate,
   placeTimezone,
+  segmentBoundsAt,
   segmentZoneAt,
   tripZoneCrossings,
+  zoneConsensus,
+  zoneReachedAt,
   type ZoneCrossing,
   type ZoneEvidence,
 } from '@waypoint/shared';
@@ -42,8 +45,11 @@ export {
   eventKnownZone,
   eventsOnDate,
   placeTimezone,
+  segmentBoundsAt,
   segmentZoneAt,
   tripZoneCrossings,
+  zoneConsensus,
+  zoneReachedAt,
   type ZoneCrossing,
   type ZoneEvidence,
 };
@@ -384,6 +390,12 @@ function eventKnownCoord(
  * ADR-0107 §8's standing rule and what `liveZone` already does with zones. So a
  * crossing in progress resolves to its `to` end rather than abstaining.
  *
+ * **And it no longer mirrors `liveZone` exactly, deliberately** (ADR-0107's 2026-09-11
+ * amendment): the clock now rejects evidence from outside the leg you are on, and from any
+ * zone the itinerary says you reach later. Rung 2 here is the half the owner called _"or
+ * where we're headed"_, which is the opposite instinct — a forecast an hour before the drive
+ * is allowed to be about the destination; a clock has to say what time it is where you are.
+ *
  * `undefined` is a first-class answer, inherited unchanged: no placed events and
  * no destination means no forecast at all rather than a wrong one.
  */
@@ -450,12 +462,18 @@ function liveEventCoord(
  *    2. The **nearest** known-zone event within `LIVE_ZONE_WINDOW_MS` on either
  *       side. A booking half an hour ago or an hour ahead places you; one five days
  *       out says nothing about now, which is what the window is for.
- *    3. Otherwise the ambient zone of the day the segment puts you in — which is
- *       itself the day's own consensus, else the segment, else the trip primary.
- *       **Except before the outbound flight, where you are at home** (ADR-0107's
- *       2026-09-09 amendment, corrected 2026-09-10): the day's ambient is a layout
- *       answer sampled at noon, so on the departure day it is already the far side,
- *       and a westward trip's home midnight then read as still yesterday.
+ *    3. The **consensus of the live day's** own known-zone events, else the
+ *       itinerary segment at this instant, else the trip primary.
+ *
+ *  **Every rung is filtered to evidence that is about THIS leg** (ADR-0107's
+ *  2026-09-11 amendment) — `segmentBoundsAt` for when, `zoneReachedAt` for where:
+ *  an event outside the current segment's window, or in a zone the itinerary says
+ *  you reach later, does not get to move the clock. Without those two filters a
+ *  Reykjavík hotel whose door opens at 15:00 put the clock in Iceland at 09:44 on
+ *  the departure morning in Tel Aviv, and again through the Vienna layover
+ *  (owner's device, 2026-09-11). The pre-first-crossing special case the 2026-09-10
+ *  correction added is gone with them: "before the outbound flight you are at home"
+ *  is what these rules now say on their own, for every leg and not just the first.
  *
  *  Why not the segment alone (the old rule): after a single outbound flight every
  *  later instant reads the destination's clock forever, so a traveler whose plan has
@@ -463,11 +481,31 @@ function liveEventCoord(
  *  driven by the itinerary, never GPS (§4). Plan mode deliberately does not use it. */
 export function liveZone(nowMs: number, evidence: ZoneEvidence): string {
   const { events, bookings, places, crossings, primaryZone } = evidence;
+  const segment = segmentBoundsAt(nowMs, crossings);
+  const reached = zoneReachedAt(nowMs, crossings);
+  const spanOf = (event: TripEvent) => {
+    const start = Date.parse(event.startsAt!);
+    return { start, end: event.endsAt ? Date.parse(event.endsAt) : start };
+  };
+
+  /** Can this event say where you are standing? Only if it belongs to the leg you
+   *  are on — its span overlaps the current segment's window — **and** its zone is
+   *  one the itinerary has already taken you to. Both clauses are a real wrong
+   *  clock: a Tel Aviv breakfast still eight hours inside the window once you are in
+   *  Vienna, and a destination hotel or a trip-long car rental whose local time
+   *  starts before the flight that gets you there. An untimed event has no span to
+   *  place against a crossing, so only the second clause can speak for it. */
+  const testifies = (event: TripEvent, zone: string): boolean => {
+    if (!reached(zone)) return false;
+    if (!event.startsAt) return true;
+    const { start, end } = spanOf(event);
+    return end >= segment.from && start < segment.to;
+  };
+
   const timed = events.filter((e) => e.startsAt);
 
   const inProgress = timed.find((e) => {
-    const start = Date.parse(e.startsAt!);
-    const end = e.endsAt ? Date.parse(e.endsAt) : start;
+    const { start, end } = spanOf(e);
     return start <= nowMs && nowMs < end;
   });
   if (inProgress) {
@@ -480,27 +518,30 @@ export function liveZone(nowMs: number, evidence: ZoneEvidence): string {
       crossing && crossing.from !== crossing.to
         ? crossing.to
         : eventKnownZone(inProgress, bookings, places);
-    if (zone) return zone;
+    if (zone && testifies(inProgress, zone)) return zone;
   }
 
   let nearest: { zone: string; distance: number } | undefined;
   for (const e of timed) {
     const zone = eventKnownZone(e, bookings, places);
-    if (!zone) continue;
-    const start = Date.parse(e.startsAt!);
-    const end = e.endsAt ? Date.parse(e.endsAt) : start;
+    if (!zone || !testifies(e, zone)) continue;
+    const { start, end } = spanOf(e);
     const distance = nowMs < start ? start - nowMs : nowMs > end ? nowMs - end : 0;
     if (distance > LIVE_ZONE_WINDOW_MS) continue;
     if (!nearest || distance < nearest.distance) nearest = { zone, distance };
   }
   if (nearest) return nearest.zone;
 
-  // Before the first crossing the segment is home and the question is settled: asking the
-  // departure day's ambient instead held Plan mode three hours into day 1 on a Tel Aviv →
-  // Reykjavík trip, with the eve's clock reading `26:59:48` to מחר (field report, 2026-09-10).
-  if (crossings.length > 0 && nowMs < crossings[0].at) return crossings[0].fromZone;
-  const segment = currentZone(nowMs, crossings, primaryZone);
-  return dayAmbientZone(todayInTz(segment, new Date(nowMs)), evidence);
+  // The day's own consensus, on the same evidence rule — `dayAmbientZone` cannot answer this
+  // rung: it samples the segment at NOON, and on a travel day noon is on the wrong side of
+  // the crossing you are standing on (home midnight of day 1 read Reykjavík, and Trip mode
+  // opened three hours late — ADR-0107's 2026-09-10 correction, generalised here).
+  const liveDay = todayInTz(segmentZoneAt(nowMs, crossings) ?? primaryZone, new Date(nowMs));
+  const voters = eventsOnDate(events, liveDay)
+    .map((event) => ({ event, zone: eventKnownZone(event, bookings, places) }))
+    .filter((vote) => vote.zone != null && testifies(vote.event, vote.zone))
+    .map((vote) => vote.zone!);
+  return zoneConsensus(voters, new Date(nowMs)) ?? segmentZoneAt(nowMs, crossings) ?? primaryZone;
 }
 
 /**

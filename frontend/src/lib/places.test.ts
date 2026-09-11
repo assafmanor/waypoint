@@ -933,6 +933,98 @@ describe('liveZone — the clock follows the day you are in (ADR-0107 session-10
     expect(liveToday(homeMidnight - 1, evidence)).toBe('2026-09-10');
   });
 
+  // **The two-leg trip, reported from the owner's device on 2026-09-11** (ADR-0107's
+  // amendment that day): at 09:44 in Tel Aviv, six hours before the outbound flight, the
+  // board's clock read 06:44 — Reykjavík. The 2026-09-10 correction only guarded rung 3, and
+  // the Iceland hotel's 15:00 check-in sits 8h away, inside `LIVE_ZONE_WINDOW_MS`, so rung 2
+  // answered first with a zone two flights away. The same evidence then held the clock in
+  // Iceland right through the Vienna layover.
+  describe('a trip with a layover — TLV → VIE → KEF, and a hotel that opens before you land', () => {
+    const VIE = 'Europe/Vienna';
+    const places = [
+      place('pl-tlv', 'נתב״ג', { timezone: JLM }),
+      place('pl-vie', 'וינה', { timezone: VIE }),
+      place('pl-kef', 'קפלאוויק', { timezone: KEF }),
+      place('pl-hotel', 'מלון רייקיאוויק', { timezone: KEF }),
+    ];
+    const bookings = [
+      booking({
+        id: 'bk-leg1',
+        type: BOOKING_TYPE.FLIGHT,
+        fromPlaceId: 'pl-tlv',
+        toPlaceId: 'pl-vie',
+      }),
+      booking({
+        id: 'bk-leg2',
+        type: BOOKING_TYPE.FLIGHT,
+        fromPlaceId: 'pl-vie',
+        toPlaceId: 'pl-kef',
+      }),
+      booking({ id: 'bk-hotel', type: BOOKING_TYPE.HOTEL, placeId: 'pl-hotel' }),
+    ];
+    // 15:30 TLV → 18:30 Vienna, three hours on the ground, 21:30 Vienna → 23:30 Keflavík.
+    const events = [
+      event({
+        id: 'ev-leg1',
+        bookingId: 'bk-leg1',
+        date: '2026-09-11',
+        startsAt: '2026-09-11T12:30:00Z',
+        endsAt: '2026-09-11T16:30:00Z',
+      }),
+      event({
+        id: 'ev-leg2',
+        bookingId: 'bk-leg2',
+        date: '2026-09-11',
+        startsAt: '2026-09-11T19:30:00Z',
+        endsAt: '2026-09-11T23:30:00Z',
+      }),
+      event({
+        id: 'ev-hotel',
+        bookingId: 'bk-hotel',
+        date: '2026-09-11',
+        endDate: '2026-09-14',
+        startsAt: '2026-09-11T15:00:00Z', // the door opens at 15:00 local, 8h before we land
+        endsAt: '2026-09-14T10:00:00Z',
+      }),
+    ];
+    const evidence: ZoneEvidence = {
+      events,
+      bookings,
+      places,
+      crossings: tripZoneCrossings(events, bookings, places),
+      primaryZone: KEF,
+    };
+
+    it('is on HOME time on the departure morning, whatever the destination hotel says', () => {
+      const morning = Date.parse('2026-09-11T06:44:00Z'); // 09:44 in Tel Aviv
+      expect(liveZone(morning, evidence)).toBe(JLM);
+      expect(liveToday(morning, evidence)).toBe('2026-09-11');
+    });
+
+    it('is on VIENNA time during the layover — not Iceland, and not Tel Aviv either', () => {
+      // 19:30 in Vienna: landed an hour ago, two hours to the Keflavík flight. Iceland is a
+      // zone the itinerary has not taken us to; the 09:00 coffee in Tel Aviv is a fact about
+      // a leg we have left, though it is still inside the window.
+      const coffee = event({
+        id: 'ev-coffee',
+        date: '2026-09-11',
+        placeId: 'pl-tlv',
+        startsAt: '2026-09-11T06:00:00Z',
+      });
+      const withCoffee = { ...evidence, events: [...events, coffee] };
+      expect(liveZone(Date.parse('2026-09-11T17:30:00Z'), withCoffee)).toBe(VIE);
+    });
+
+    it("reads each leg's destination while that leg is in the air (§8)", () => {
+      expect(liveZone(Date.parse('2026-09-11T13:00:00Z'), evidence)).toBe(VIE);
+      expect(liveZone(Date.parse('2026-09-11T20:30:00Z'), evidence)).toBe(KEF);
+    });
+
+    it('lets the hotel place you once you have actually arrived', () => {
+      expect(liveZone(Date.parse('2026-09-12T09:00:00Z'), evidence)).toBe(KEF);
+    });
+  });
+
   it('still follows the segment mid-flight, where the day has no consensus', () => {
     const crossings = [{ at: Date.parse('2026-07-24T04:15:00Z'), fromZone: JLM, toZone: KEF }];
     const evidence: ZoneEvidence = {
