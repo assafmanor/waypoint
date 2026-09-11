@@ -580,13 +580,21 @@ describe('Board — the countdown swaps what it counts to (ADR-0206 §Z1)', () =
 
   // The three subtractions, and the day token is the one that DEPENDS on the rank swap: the
   // label above now says `מחר`, so keeping it prints one word twice.
-  it('at rank 1 the code, the lock and the day token come off the meta row', () => {
+  it('at rank 1 the code, the gate, the lock and the day token come off the meta row', () => {
     const { container } = render(
-      <Board {...(tomorrowProps as BoardProps)} tomorrow={{ label: 'מחר', ribbon: RIBBON }} />,
+      <Board
+        {...(tomorrowProps as BoardProps)}
+        next={{ ...tomorrowProps.next!, gate: 'רציף 14' }}
+        tomorrow={{ label: 'מחר', ribbon: RIBBON }}
+      />,
     );
     const meta = container.querySelector('.wp-board-next-meta');
     expect(meta?.textContent).toContain('07:12');
     expect(meta?.querySelector('.code')).toBeNull();
+    // **The gate goes the same way, on the same guard** (ADR-0222 §4). A gate three hours out
+    // cannot also be a day away, so rank 1 needed no branch of its own — and this is the
+    // assertion that says so rather than leaving it to be rediscovered.
+    expect(meta?.querySelector('.tlabel.loc')).toBeNull();
     expect(meta?.querySelector('.lockmini')).toBeNull();
     expect(meta?.textContent?.match(/מחר/g) ?? []).toHaveLength(0);
     // …and the label is where that word now lives, exactly once on the card.
@@ -659,5 +667,45 @@ describe('Board — the countdown swaps what it counts to (ADR-0206 §Z1)', () =
     // Everything after the strip is still inside the board.
     expect(board?.querySelector('.wp-track')).toBeTruthy();
     expect(board?.querySelector('.wp-board-tmr-sleep')).toBeTruthy();
+  });
+});
+
+/* ── THE GATE INHERITS THE CODE'S SLOT (ADR-0222 §4) ────────────────────────────────────
+   Not a width concession: the line is already two bands and was measured with room for both.
+   The swap is about meaning — the code is the fact you cannot act on at the gate, and Home's
+   `הכרטיס הבא` tile carries it lower on the same screen. `Board` never asks what time it is;
+   the caller resolves the window (`gateIsDue`) and hands it whichever fact is due. */
+describe('the board’s one booking-fact slot', () => {
+  const board = (next: Partial<BoardProps['next']>) =>
+    render(
+      <Board
+        variant="now"
+        clock="14:30"
+        nowKind="soft"
+        nowTitle={<span>ראמן</span>}
+        next={{ title: <span>טיסה</span>, time: '17:00', ...next } as BoardProps['next']}
+      />,
+    ).container;
+
+  it('draws the code when no gate is due', () => {
+    const c = board({ code: 'ABC123' });
+    expect(c.querySelector('.wp-board-next-meta .code')?.textContent).toBe('ABC123');
+    expect(c.querySelector('.wp-board-next-meta .tlabel.loc')).toBeNull();
+  });
+
+  // The swap, and the assertion that matters is the ABSENCE: both at once is the arm that
+  // was drawn, measured as affordable, and rejected on meaning.
+  it('replaces the code with the gate once the gate is due', () => {
+    const c = board({ code: 'ABC123', gate: 'שער B7' });
+    expect(c.querySelector('.wp-board-next-meta .tlabel.loc')?.textContent).toBe('שער B7');
+    expect(c.querySelector('.wp-board-next-meta .code')).toBeNull();
+  });
+
+  // Teal because a gate is a place (rule 4), on `.tlabel.loc`'s existing recipe — the
+  // selector this ADR extended to a line that had never carried a location before.
+  it('draws the gate in the location register, not the amber code one', () => {
+    const c = board({ gate: 'שער B7' });
+    const chip = c.querySelector('.wp-board-next-meta .tlabel');
+    expect(chip?.className).toContain('loc');
   });
 });

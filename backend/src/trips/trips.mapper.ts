@@ -135,6 +135,8 @@ export const toBookingDto = (b: Booking): SharedBooking => ({
   title: b.title,
   confirmationCode: b.confirmationCode ?? undefined,
   provider: b.provider ?? undefined,
+  flightNumber: b.flightNumber ?? undefined,
+  gate: b.gate ?? undefined,
   placeId: b.placeId ?? undefined,
   fromPlaceId: b.fromPlaceId ?? undefined,
   toPlaceId: b.toPlaceId ?? undefined,

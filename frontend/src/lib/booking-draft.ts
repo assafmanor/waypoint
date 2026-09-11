@@ -54,6 +54,11 @@ export interface BookingSheetDraft {
   /** **The company behind the booking** (ADR-0163 §2) — `Booking.provider`. Travels in
    *  the draft like every other typed field, so a place errand to the Map cannot lose it. */
   provider: string;
+  /** **The service's number and where you board it** (ADR-0222 §1/§2). Same travelling rule
+   *  as `provider` above. `gate` is also writable from the lifted hero without this form
+   *  (§7) — that path sends `{ gate }` alone and never builds a draft. */
+  flightNumber: string;
+  gate: string;
   fromPlaceId: string | undefined;
   toPlaceId: string | undefined;
   placeId: string | undefined;
@@ -165,6 +170,8 @@ export const BOOKING_FIELD_COVERAGE = {
   type: 'form',
   title: 'form',
   confirmationCode: 'form',
+  flightNumber: 'form',
+  gate: 'form',
   placeId: 'form',
   fromPlaceId: 'form',
   toPlaceId: 'form',
@@ -245,6 +252,8 @@ export function bookingSheetDraft(input: {
     titleTouched: title.trim() !== '' && title.trim() !== derivedTitle,
     code: booking?.confirmationCode ?? '',
     provider: booking?.provider ?? '',
+    flightNumber: booking?.flightNumber ?? '',
+    gate: booking?.gate ?? '',
     fromPlaceId: fromPlaceId || undefined,
     toPlaceId: toPlaceId || undefined,
     placeId,

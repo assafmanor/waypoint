@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bookingEventFields, eventStopPlaceId } from './booking-event';
+import { bookingEventFields, eventStopPlaceId, gateIsDue } from './booking-event';
 
 const booking = (over: Partial<{ id: string; title: string; type: string }> = {}) =>
   ({ id: 'bk-1', title: 'מסעדה יקרה', type: 'restaurant', ...over }) as {
@@ -80,5 +80,47 @@ describe('eventStopPlaceId', () => {
   it('normalises Prisma’s null to undefined at both levels', () => {
     expect(eventStopPlaceId({ placeId: null })).toBeUndefined();
     expect(eventStopPlaceId({ placeId: null }, { placeId: null })).toBeUndefined();
+  });
+});
+
+/* ── THE GATE'S WINDOW (ADR-0222 §4/§5) ─────────────────────────────────────────────────
+   The board rations, so a fact only earns a slot while you can act on it — ADR-0214 §3's
+   rule about the confirmation code, applied to the fact with the sharpest window in the app.
+   These pin the EDGES, because a window is entirely made of them. */
+describe('gateIsDue', () => {
+  const T = Date.parse('2026-09-11T15:30:00.000Z');
+  const MIN = 60_000;
+  const withGate = { gate: 'B7' };
+
+  it('is due inside the window', () => {
+    expect(gateIsDue(withGate, '2026-09-11T15:30:00.000Z', T - 60 * MIN)).toBe(true);
+  });
+
+  // The window is closed at its far edge and open at its near one: exactly T-3h is IN.
+  it('opens exactly at T-3h and not a minute before', () => {
+    expect(gateIsDue(withGate, '2026-09-11T15:30:00.000Z', T - 180 * MIN)).toBe(true);
+    expect(gateIsDue(withGate, '2026-09-11T15:30:00.000Z', T - 181 * MIN)).toBe(false);
+  });
+
+  // **Half-open, and that is the design.** Past departure the board is in its in-transit
+  // state, where a gate says nothing — so there is no "recently departed" grace period.
+  it('shuts at departure rather than after it', () => {
+    expect(gateIsDue(withGate, '2026-09-11T15:30:00.000Z', T - 1)).toBe(true);
+    expect(gateIsDue(withGate, '2026-09-11T15:30:00.000Z', T)).toBe(false);
+    expect(gateIsDue(withGate, '2026-09-11T15:30:00.000Z', T + MIN)).toBe(false);
+  });
+
+  // Callers need no second null check: an absent gate and a gate outside its window are the
+  // same answer to the board, which is why this returns a boolean rather than the value.
+  it('answers no for a booking with no gate, and for a booking with no time', () => {
+    expect(gateIsDue({}, '2026-09-11T15:30:00.000Z', T - 60 * MIN)).toBe(false);
+    expect(gateIsDue(undefined, '2026-09-11T15:30:00.000Z', T - 60 * MIN)).toBe(false);
+    expect(gateIsDue(withGate, undefined, T - 60 * MIN)).toBe(false);
+  });
+
+  // An unparseable date must not become "due at the epoch" — `NaN` comparisons are false,
+  // but the guard is explicit so the reason survives a refactor.
+  it('answers no for an unparseable start', () => {
+    expect(gateIsDue(withGate, 'not-a-date', T)).toBe(false);
   });
 });

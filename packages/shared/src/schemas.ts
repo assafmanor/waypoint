@@ -29,6 +29,8 @@ import {
   PUSH_KEY_BYTES,
   MAX_USER_AGENT_LENGTH,
   MAX_PLACE_NICKNAME_LENGTH,
+  MAX_SERVICE_NUMBER_LENGTH,
+  MAX_GATE_LENGTH,
   MAX_TRIP_NAME_LENGTH,
 } from './constants';
 
@@ -168,6 +170,10 @@ export const createBookingSchema = z.object({
   title: z.string().min(1),
   confirmationCode: z.string().optional(),
   provider: z.string().optional(),
+  // The service's number and where you board it (ADR-0222 §1). Bounded because both are
+  // hand-typed; see the constants for why the caps are deliberately short.
+  flightNumber: z.string().max(MAX_SERVICE_NUMBER_LENGTH).optional(),
+  gate: z.string().max(MAX_GATE_LENGTH).optional(),
   placeId: z.string().optional(), // single-place types; mutually exclusive with from/to
   fromPlaceId: z.string().optional(), // transport origin (ADR-0048)
   toPlaceId: z.string().optional(), // transport destination (ADR-0048)
@@ -196,6 +202,13 @@ export const updateBookingSchema = createBookingSchema.partial().extend({
   placeId: z.string().nullish(),
   fromPlaceId: z.string().nullish(),
   toPlaceId: z.string().nullish(),
+  /** **`gate` is the one field in this app with a write path of its own** (ADR-0222 §7): the
+   *  lifted hero's `ValueToken` sends `{ gate }` and nothing else, because routing two
+   *  characters through the stepped form means re-committing the whole booking (ADR-0155).
+   *  `nullish` so that path can also CLEAR a gate that changed — the same null-clears rule
+   *  the place FKs above document, and the reason neither is merely `optional` here. */
+  gate: z.string().max(MAX_GATE_LENGTH).nullish(),
+  flightNumber: z.string().max(MAX_SERVICE_NUMBER_LENGTH).nullish(),
 });
 export type UpdateBookingInput = z.infer<typeof updateBookingSchema>;
 

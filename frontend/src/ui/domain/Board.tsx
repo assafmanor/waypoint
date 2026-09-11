@@ -173,6 +173,11 @@ export interface BoardNext {
   day?: string;
   hard?: boolean;
   code?: string;
+  /** **The gate, when it is due — and it arrives INSTEAD of `code`** (ADR-0222 §4). The
+   *  caller resolves the window (`gateIsDue`), so this component never asks what time it
+   *  is: it draws whichever of the two facts it was handed. There is no gate on the
+   *  in-transit slot, because a gate says nothing once you are aboard. */
+  gate?: string;
   /** That zone vs where you are now → the pill beside the time. */
   shift?: ZoneShift;
   /** **This edge's window shut and nobody answered** (ADR-0184 §6). The transition word
@@ -744,10 +749,24 @@ export function Board(props: BoardProps) {
                       <Icon name="lock" /> {t.event.hard}
                     </span>
                   )}
-                  {next.code && !tomorrowRanked && (
-                    <span className="code" dir="auto">
-                      {next.code}
+                  {/* **Inside the departure window the gate takes this slot** (ADR-0222
+                      §4), and the swap is about meaning rather than width — the line is
+                      already two bands and measured room for both. The code is the fact
+                      you cannot act on at the gate, and Home's `הכרטיס הבא` tile carries
+                      it ⁦240px⁩ lower; the gate is the only thing on this screen you
+                      cannot get anywhere else. Teal because a gate is a place (rule 4),
+                      on `.tlabel.loc`'s existing recipe. */}
+                  {next.gate && !tomorrowRanked ? (
+                    <span className="tlabel loc" dir="auto">
+                      {next.gate}
                     </span>
+                  ) : (
+                    next.code &&
+                    !tomorrowRanked && (
+                      <span className="code" dir="auto">
+                        {next.code}
+                      </span>
+                    )
                   )}
                 </div>
               )}

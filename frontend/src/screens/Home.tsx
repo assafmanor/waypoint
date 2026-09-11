@@ -10,11 +10,13 @@ import {
   canPrice,
   EVENT_KIND,
   eventTransitionKeys,
+  gateIsDue,
   isAmbient,
   isBracketed,
   isExactEdge,
   isJourney,
   windowBoundOf,
+  type Booking,
   type DocumentSummary,
   type Task,
   type TripEvent,
@@ -31,6 +33,7 @@ import { useVerbs } from '../state/verbs';
 import { useToast } from '../ui/Toast';
 import { EventTitle } from '../ui/EventTitle';
 import { DocumentViewer } from '../ui/MediaViewer';
+import { GateSheet } from '../ui/GateSheet';
 import {
   Board,
   DayRail,
@@ -343,6 +346,14 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const nextCode = nextBooking?.confirmationCode
     ? `${CODE_PREFIX}${nextBooking.confirmationCode}`
     : undefined;
+  // **The gate, but only inside its window** (ADR-0222 §4/§5). Resolved here rather than in
+  // `Board` so the card never asks what time it is, and shared with the lifted hero below so
+  // the two surfaces cannot disagree about whether a gate is due.
+  const nextGateDue = gateIsDue(nextBooking, shownNext?.startsAt, nowMs);
+  const nextGate =
+    nextGateDue && nextBooking?.gate
+      ? `${t.index.sheet.gateLabel[nextBooking.type]} ${nextBooking.gate}`.trim()
+      : undefined;
   // ── What a task derivation is read against ─────────────────────────────────
   // Declared here rather than beside the band below, because the lifted hero reads tasks too
   // (ADR-0160 §U) and both must be the SAME clock and the SAME settled-host set — a hero that
@@ -410,6 +421,9 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
    *  than inside `HeroLift`, which is presentational like `Board` beside it — the same reason
    *  every other hand-off on that card arrives as a callback. */
   const [viewingDoc, setViewingDoc] = useState<DocumentSummary | null>(null);
+  // The booking whose gate is being set (ADR-0222 §7). Held here rather than inside the hero
+  // so the sheet outlives a hero close — the same reason `viewingDoc` lives at this level.
+  const [gateBooking, setGateBooking] = useState<Booking | null>(null);
   const boardEl = useRef<HTMLElement | null>(null);
   const wasLifted = useRef(false);
   const showPlaceOnMap = useShowPlaceOnMap();
@@ -477,6 +491,15 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       until: p.event.endsAt ? formatTime(p.event.endsAt, zones?.endZone ?? tz) : undefined,
       shift: zones?.deltaMinutes,
       place: placeLabelOf(placeLabels, p.placeId, p.place),
+      // **The gate, as a value you can set from here** (ADR-0222 §7). Present whenever this
+      // point is a booking whose type HAS a gate — not gated on the departure window the
+      // board uses, because the window decides what is worth SHOUTING and the hero is where
+      // you come to fill something in. An unset gate renders the inviting empty token.
+      ...(() => {
+        const b = p.bookingId ? bookings.find((x) => x.id === p.bookingId) : undefined;
+        const label = b ? t.index.sheet.gateLabel[b.type] : '';
+        return b && label ? { gate: { label, value: b.gate, onSet: () => setGateBooking(b) } } : {};
+      })(),
       note: p.notes[0]?.body,
       noteMore: Math.max(0, p.notes.length - 1),
       // **The one surface a boarding pass is actually needed on, and the one that never
@@ -1334,6 +1357,9 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         missed: hero.missed && shownNext === hero.event,
         hard: shownNext.kind === EVENT_KIND.HARD,
         code: nextCode,
+        // The gate REPLACES the code in the board's one booking-fact slot while it is due
+        // (ADR-0222 §4) — `Board` draws whichever of the two it is handed.
+        gate: nextGate,
         // For a zone-crossing flight this is the jump the flight itself makes
         // (destination minus origin), the same number its day-timeline row shows;
         // for anything else it's that event's zone vs where you are.
@@ -1507,6 +1533,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           nextTime={boardNext?.time}
           {...(boardNext?.day ? { nextDay: boardNext.day } : {})}
           nextCode={nextCode}
+          nextFlightNumber={nextBooking?.flightNumber}
           gap={boardGap}
           tomorrow={boardTomorrow}
           // The Day tab at tomorrow's date, through the same `date` deep link every other
@@ -1554,6 +1581,10 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       {viewingDoc && (
         <DocumentViewer tripId={trip.id} doc={viewingDoc} onClose={() => setViewingDoc(null)} />
       )}
+
+      {/* **The gate's own way in** (ADR-0222 §7) — one field, one write. It portals above the
+          lifted card for the same reason the viewer does, so closing it leaves the hero up. */}
+      {gateBooking && <GateSheet booking={gateBooking} onClose={() => setGateBooking(null)} />}
 
       {/* **THE TASKS BAND** (ADR-0188 §6, brief §11) — above quick-access on purpose: this
           answers "what do I owe today", which belongs with the board's what-now/what-next

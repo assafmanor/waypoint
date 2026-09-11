@@ -8,7 +8,7 @@
 //
 // Representation-agnostic (ISO strings, not Date): each side adapts the shape it
 // persists/renders and adds its own id / status / actor / timestamps.
-import { BOOKING_TYPE_TO_CATEGORY, EVENT_KIND } from './constants';
+import { BOOKING_TYPE_TO_CATEGORY, EVENT_KIND, GATE_WINDOW_MINUTES } from './constants';
 import type { BookingType, EventCategory, EventKind } from './entities';
 import type { BookingEventSeed } from './schemas';
 
@@ -76,4 +76,32 @@ export function eventStopPlaceId(
   if (!booking) return event.placeId ?? undefined;
   if (booking.fromPlaceId || booking.toPlaceId) return undefined;
   return booking.placeId ?? undefined;
+}
+
+/** **Is the gate the thing to say right now?** (ADR-0222 §4/§5.)
+ *
+ *  A gate is the one fact in this app that is worthless all trip and decisive for forty
+ *  minutes: unknown when you book, published a couple of hours out, and meaningless once
+ *  you are aboard. So the board draws it only inside a window before departure, and there
+ *  it takes the confirmation code's slot rather than adding a chip beside it — not because
+ *  the line cannot afford both (measured: it can) but because printing a ticket number you
+ *  cannot act on beside a gate you must act on is the wrong sentence, and the code is
+ *  already carried by Home's `הכרטיס הבא` tile.
+ *
+ *  **Closes at departure, not after it.** Past `startsAt` the board is in its in-transit
+ *  state, where a gate says nothing — so this is a half-open window and never a "recently
+ *  departed" grace period.
+ *
+ *  Returns false for a booking with no gate, so callers need no second null check: an
+ *  absent gate and a gate outside its window are the same answer to the board.
+ */
+export function gateIsDue(
+  booking: { gate?: string } | undefined,
+  startsAt: string | undefined,
+  nowMs: number,
+): boolean {
+  if (!booking?.gate || !startsAt) return false;
+  const startMs = Date.parse(startsAt);
+  if (Number.isNaN(startMs)) return false;
+  return nowMs < startMs && startMs - nowMs <= GATE_WINDOW_MINUTES * 60_000;
 }

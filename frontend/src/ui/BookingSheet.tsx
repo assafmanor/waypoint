@@ -23,6 +23,8 @@ import {
   defaultKindForBookingType,
   hasSpanSchedule,
   titlesFromRoute,
+  MAX_GATE_LENGTH,
+  MAX_SERVICE_NUMBER_LENGTH,
   type Booking,
   type BookingType,
 } from '@waypoint/shared';
@@ -216,6 +218,13 @@ export function BookingSheet({
   // airline and a hotel chain were as unenterable as a rental company. Collected for
   // EVERY type: the column and the read-out are not car-specific, and only the LABEL is.
   const [provider, setProvider] = useState(draft ? draft.provider : initial.provider);
+  // **The service's number and where you board it** (ADR-0222 §1/§2). Collected for the
+  // transport types only — a restaurant has neither — and the WORD comes from a `Record`
+  // over the enum, the shape `providerLabel` above already uses.
+  const [flightNumber, setFlightNumber] = useState(
+    draft ? draft.flightNumber : initial.flightNumber,
+  );
+  const [gate, setGate] = useState(draft ? draft.gate : initial.gate);
   const [fromPlaceId, setFromPlaceId] = useState<string | undefined>(
     draft ? draft.fromPlaceId : initial.fromPlaceId,
   );
@@ -330,6 +339,8 @@ export function BookingSheet({
         titleTouched: title.touched,
         code,
         provider,
+        flightNumber,
+        gate,
         fromPlaceId,
         toPlaceId,
         placeId,
@@ -378,6 +389,8 @@ export function BookingSheet({
   // **What the provider is CALLED, per type** (ADR-0163 §2) — a `Record` over the enum, so
   // a new booking type has to answer rather than silently inheriting "ספק".
   const providerLabel = t.index.sheet.providerLabel[type];
+  const numberLabel = t.index.sheet.numberLabel[type];
+  const gateLabel = t.index.sheet.gateLabel[type];
   const providerPlaceholder = t.index.sheet.providerPlaceholder[type];
   const isSpan = hasSpanSchedule(type);
   /** **A JOURNEY, which is not the same set as "has a span"** (ADR-0203 §3, corrected in the
@@ -661,6 +674,8 @@ export function BookingSheet({
     icon.value !== initial.icon ||
     title.value !== initial.title ||
     code !== initial.code ||
+    flightNumber !== initial.flightNumber ||
+    gate !== initial.gate ||
     fromPlaceId !== initial.fromPlaceId ||
     toPlaceId !== initial.toPlaceId ||
     placeId !== initial.placeId ||
@@ -955,6 +970,11 @@ export function BookingSheet({
           // explicit "clear it", where `undefined` would be dropped and read as
           // "leave unchanged" (ADR-0163 §2).
           provider: provider.trim(),
+          // Same empty-is-a-clear rule again (ADR-0222 §1). Both are sent for every type
+          // rather than gated on the label: switching a flight to a restaurant must CLEAR
+          // a gate that the new type has no field for, not orphan it in the row.
+          flightNumber: flightNumber.trim(),
+          gate: gate.trim(),
           details,
         };
 
@@ -1811,6 +1831,22 @@ export function BookingSheet({
                   />
                 </Field>
 
+                {/* **Between the company and the code, because it is half of each**
+                    (ADR-0222 §2): `LY` is the airline and `315` is the lookup. Same
+                    `dir="ltr"` as both of its neighbours, for the reason stated above them. */}
+                {numberLabel && (
+                  <Field label={numberLabel} htmlFor="bs-flight-number">
+                    <input
+                      id="bs-flight-number"
+                      dir="ltr"
+                      value={flightNumber}
+                      onChange={(e) => setFlightNumber(e.target.value)}
+                      placeholder={t.index.sheet.numberPlaceholder[type]}
+                      maxLength={MAX_SERVICE_NUMBER_LENGTH}
+                    />
+                  </Field>
+                )}
+
                 <Field
                   label={t.index.sheet.codeLabel}
                   htmlFor="bs-code"
@@ -1823,6 +1859,24 @@ export function BookingSheet({
                     onChange={(e) => setCode(e.target.value)}
                   />
                 </Field>
+
+                {/* **Last on this step, and that is not tidiness** (ADR-0222 §2): it is the
+                    one field here nobody fills in while booking — it is filled at the gate,
+                    on an edit. The `hint` says what leaving it empty costs, which is what
+                    that slot is for (ADR-0109 §6's anti-nag rule), and ADR-0222 §7 is the
+                    reason you rarely have to come back here at all. */}
+                {gateLabel && (
+                  <Field label={gateLabel} htmlFor="bs-gate" hint={t.index.sheet.gateHint}>
+                    <input
+                      id="bs-gate"
+                      dir="ltr"
+                      value={gate}
+                      onChange={(e) => setGate(e.target.value)}
+                      placeholder={t.index.sheet.gatePlaceholder[type]}
+                      maxLength={MAX_GATE_LENGTH}
+                    />
+                  </Field>
+                )}
 
                 {isHotel && (
                   <>

@@ -23,6 +23,7 @@ import { Modal } from '../primitives/Modal';
 import { Avatar, type AvatarPerson } from '../primitives/Avatar';
 import { Icon } from '../Icon';
 import { ZoneShiftPill } from '../ZoneShiftPill';
+import { ValueToken } from '../primitives/ValueToken';
 import { SettleControl, type SettleOutcome } from './SettleControl';
 import {
   BoardGapSlot,
@@ -103,6 +104,12 @@ export interface HeroLiftPoint {
   shift?: number;
   /** Resolved place name. Absent → no `איפה` block for this point. */
   place?: string;
+  /** **Where you board, and the way to set it** (ADR-0222 §7). One grouped prop, so a point
+   *  either has the affordance or does not — a label with no handler would be a readout
+   *  wearing a control's clothes. It renders in this point's OWN action row rather than in a
+   *  labelled part of its own: measured against the owner's real crowded hero, a part cost
+   *  ⁦91px⁩ and the chip row absorbed the token for ⁦0px⁩, because it already wraps. */
+  gate?: { label: string; value?: string; onSet: () => void };
   /** Present → the note block. The body of the newest; `noteMore` says how many
    *  others there are, because the hero shows ONE and must not imply it is all. */
   note?: string;
@@ -251,6 +258,11 @@ export interface HeroLiftProps {
    *  string the collapsed board's `BoardNext.day` carries, passed rather than re-derived. */
   nextDay?: string;
   nextCode?: string;
+  /** **The flight's own name, as a term on the meta line** (ADR-0222 §6). Measured against
+   *  the owner's crowded hero: a labelled `hero-part` cost ⁦91px⁩, riding the title cost
+   *  ⁦24px⁩ by wrapping the ROUTE (which ADR-0059 §3 says is what a flight reads as), and
+   *  this costs ⁦23px⁩ — a third band on a line already carrying two. */
+  nextFlightNumber?: string;
   /** The collapsed board's countdown, unchanged — including ADR-0206 §Z1's swap and its
    *  `missed` arm, because the hero IS that board one elevation up and the two may not
    *  disagree about what the tile counts to. */
@@ -302,7 +314,8 @@ export interface HeroLiftProps {
  *  for a translation nobody has measured, but at 344px it is not reached. */
 function Where({ point }: { point: HeroLiftPoint }) {
   const docs = point.documents ?? [];
-  const acts = [point.onMap, point.navigateUrl, point.onBooking].some(Boolean) || docs.length > 0;
+  const acts =
+    [point.onMap, point.navigateUrl, point.onBooking, point.gate].some(Boolean) || docs.length > 0;
   if (!point.place && !acts) return null;
   return (
     <div className="hero-part">
@@ -358,6 +371,26 @@ function Where({ point }: { point: HeroLiftPoint }) {
               </span>
             </button>
           ))}
+          {/* **A VALUE, among the ways out** (ADR-0222 §7) — and the distinction is the whole
+              reason this is a `ValueToken` and not a fourth `.hero-act`. Those chips are
+              hand-offs: they take you somewhere. This one holds a fact and opens a panel for
+              it, which is what ADR-0177's primitive is, so pressing a hand-off chip into the
+              job would have been the duplicate rule 8 exists to stop. `on-dark` is the
+              density that lets it live on the app's one dark surface, borrowing `.hero-act`'s
+              own measured recipe — the two render at the same ⁦34px⁩ and read as one family. */}
+          {point.gate && (
+            <ValueToken
+              kind="word"
+              className="on-dark"
+              empty={!point.gate.value}
+              label={point.gate.label}
+              onClick={point.gate.onSet}
+            >
+              {point.gate.value
+                ? `${point.gate.label} ${point.gate.value}`
+                : `＋ ${point.gate.label}`}
+            </ValueToken>
+          )}
         </div>
       )}
     </div>
@@ -654,6 +687,7 @@ export function HeroLift(props: HeroLiftProps) {
     nextTime,
     nextDay,
     nextCode,
+    nextFlightNumber,
     countdown,
     travel,
     then,
@@ -753,6 +787,15 @@ export function HeroLift(props: HeroLiftProps) {
                         {nextCode && (
                           <span className="code" dir="auto">
                             {nextCode}
+                          </span>
+                        )}
+                        {/* **The flight's name, in the plain-text register `.lockmini` uses
+                            on this line** (ADR-0222 §6): no fill and no hue, because an
+                            identifier is neither a time nor a commitment and rule 4 lends it
+                            no colour of its own. */}
+                        {nextFlightNumber && (
+                          <span className="ident" dir="auto">
+                            {nextFlightNumber}
                           </span>
                         )}
                       </div>

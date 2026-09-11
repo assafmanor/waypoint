@@ -98,6 +98,10 @@ function searchTerms(booking: Booking, places: Place[]): (string | undefined)[] 
   return [
     booking.title,
     booking.confirmationCode,
+    // **The number, but never the gate** (ADR-0222 §1). A flight number is how a booking
+    // is looked up by someone reading a departure board; a gate is a two-character value
+    // that would collide with half the trip and goes stale by design.
+    booking.flightNumber,
     t.index.bookingType[booking.type],
     t.index.bookingTypePlural[booking.type],
     ...t.index.bookingTypeSynonyms[booking.type],

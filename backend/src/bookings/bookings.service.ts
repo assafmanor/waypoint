@@ -272,6 +272,8 @@ export class BookingsService {
       title: input.title,
       confirmationCode: input.confirmationCode || null,
       provider: input.provider,
+      flightNumber: input.flightNumber || null,
+      gate: input.gate || null,
       placeId: input.placeId,
       fromPlaceId: input.fromPlaceId,
       toPlaceId: input.toPlaceId,
@@ -295,6 +297,11 @@ export class BookingsService {
         confirmationCode: input.confirmationCode || null,
       }),
       ...(input.provider !== undefined && { provider: input.provider }),
+      // Same empty-is-a-clear rule as the code above. `gate` is also the one field reached
+      // by a write of its own (ADR-0222 §7) — the hero's quick-add sends `{ gate }` alone —
+      // which this partial already supports without a second endpoint.
+      ...(input.flightNumber !== undefined && { flightNumber: input.flightNumber || null }),
+      ...(input.gate !== undefined && { gate: input.gate || null }),
       ...(input.placeId !== undefined && { placeId: input.placeId }),
       ...(input.fromPlaceId !== undefined && { fromPlaceId: input.fromPlaceId }),
       ...(input.toPlaceId !== undefined && { toPlaceId: input.toPlaceId }),

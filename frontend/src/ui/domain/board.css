@@ -156,7 +156,12 @@
   padding: 1px 7px;
   font-size: 11.5px;
 }
-.wp-board-now-meta .tlabel.loc {
+/* **The `הבא בתור` line gains the teal it never had** (ADR-0222 §4). The recipe is
+   unchanged and the selector is what grew: nothing on the next-line had ever been a PLACE
+   until the gate arrived, which is the only reason this was one-sided. A second rule under
+   it would have been a copy of four properties (rule 8). */
+.wp-board-now-meta .tlabel.loc,
+.wp-board-next-meta .tlabel.loc {
   color: #7fd8cc;
   background: rgba(44, 156, 144, 0.16);
 }
@@ -615,5 +620,16 @@
 .wp-board-countdown .prep-flap-sep {
   font-size: 16px;
   padding-bottom: 3px;
+  color: var(--on-dark-dim);
+}
+
+/* **A service's own name, as a term on the meta line** (ADR-0222 §6). The plain-text
+   register `.lockmini` already uses on this line: no fill, no hue. An identifier is neither
+   a time nor a commitment, so rule 4 lends it no colour — and the alternative measured
+   (riding the title) cost the same 23px by wrapping the ROUTE, which is what ADR-0059 §3
+   decided a flight reads as. */
+.wp-board-next-meta .ident {
+  font-family: var(--font-mono);
+  font-weight: 700;
   color: var(--on-dark-dim);
 }

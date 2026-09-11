@@ -253,6 +253,18 @@ export function BookingDetail({
               />
             )}
             {duration && <Fact k={t.index.detail.duration} v={duration} />}
+            {/* **The service's number, mono but NOT amber** (ADR-0222 §3). `mono` on the
+              code below sets a typeface AND `--amber-deep`; rule 4 spends amber on time
+              and commitment, and `LY315` is neither — so `ident` is the same face in the
+              fact's own ink. The word comes from the sheet's own `Record`, one label
+              table with two readers rather than two tables. */}
+            {booking.flightNumber && t.index.sheet.numberLabel[booking.type] && (
+              <Fact
+                k={t.index.sheet.numberLabel[booking.type]}
+                v={booking.flightNumber}
+                variant="ident"
+              />
+            )}
             {booking.confirmationCode && (
               <Fact k={t.index.detail.code} v={`${CODE_PREFIX}${booking.confirmationCode}`} mono />
             )}
@@ -272,6 +284,13 @@ export function BookingDetail({
               </div>
             )}
             {booking.provider && <Fact k={t.index.detail.provider} v={booking.provider} />}
+            {/* **Plain ink, and that is the decision** (ADR-0222 §3). A gate is a location,
+              but teal in this sheet is an AFFORDANCE (`ניווט`, `מפה`) and never a text
+              colour — painting one here would teach the build to spend the hue decoratively,
+              which is the one thing rule 4 exists to stop. */}
+            {booking.gate && t.index.sheet.gateLabel[booking.type] && (
+              <Fact k={t.index.sheet.gateLabel[booking.type]} v={booking.gate} />
+            )}
             {room && <Fact k={t.index.detail.room} v={room} />}
             {(wifi?.network || wifi?.password) && (
               <Fact
@@ -461,11 +480,29 @@ function RelatedFact({
  *  lint guard could not see, which is a base direction for the whole value: a Hebrew
  *  one would have read backwards. `auto` skips isolated content when it sniffs, so a
  *  duration built by `measure` still resolves RTL and keeps its number in front. */
-export function Fact({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
+export function Fact({
+  k,
+  v,
+  mono,
+  variant,
+}: {
+  k: string;
+  v: string;
+  /** The confirmation code's look: monospace AND `--amber-deep`, kept as one word because
+   *  that pairing is what shipped and nothing about it changes. */
+  mono?: boolean;
+  /** **`mono` minus the hue** (ADR-0222 §3) — an identifier you read character by character
+   *  but which is not a time or a commitment, so rule 4 lends it no colour. Added when the
+   *  second caller arrived and showed that one class was carrying two decisions. */
+  variant?: 'ident';
+}) {
   return (
     <div className="bk-fact">
       <span className="bk-fact-k">{k}</span>
-      <span className={'bk-fact-v' + (mono ? ' mono' : '')} dir="auto">
+      <span
+        className={'bk-fact-v' + (mono ? ' mono' : '') + (variant ? ` ${variant}` : '')}
+        dir="auto"
+      >
         {v}
       </span>
     </div>
