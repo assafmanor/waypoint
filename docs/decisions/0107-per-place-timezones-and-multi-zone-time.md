@@ -411,3 +411,59 @@ The join ticket is the one countdown with no trip at all, and it had the same sy
 different route: `Math.ceil` of the fractional days to the start date's UTC midnight, one too
 many for any evening east of UTC. It counts whole calendar days from the **device's** today now —
 the one place `DEVICE_TIMEZONE` is documented for, a screen with no trip loaded.
+
+---
+
+## Amendment (2026-09-11) — evidence about where you are must be about the leg you are on
+
+Owner, from a device on the departure morning of a TLV → Vienna → Keflavík trip, with the
+board's clock reading `06:44` beside a phone reading `09:44`:
+
+> _"It switched to the trip's timezone even though the first flight is still ahead of us. We
+> should be on the timezone of the first leg (Israel). […] we have a 3 hour layover at Vienna
+>
+> - make sure that while we're there we're using Vienna time"_
+
+The 2026-09-10 correction above fixed this at **rung 3** — "before the outbound flight you are
+at home" — and rung 3 is the last one consulted. Rung 2 answered first: the Reykjavík hotel's
+check-in is at 15:00 local, eight hours from 09:44, comfortably inside
+`LIVE_ZONE_WINDOW_MS`, and it was the nearest known-zone event because both flights abstain
+(a crossing does not vote). So the clock read the destination six hours before boarding — and
+went on reading it through the Vienna layover, where the same hotel is the event _in progress_
+(rung 1). The 09-10 test passed throughout: its hotel sat 18 hours out, just past the window.
+
+**Two filters now gate every rung, and each one is a wrong clock on this itinerary:**
+
+- **`segmentBoundsAt(nowMs, crossings)`** — the half-open window of the leg you are on. An
+  event outside it is a fact about another leg: the 09:00 coffee in Tel Aviv is still inside
+  the ±12h window at 19:30 in Vienna, and it is not where you are standing.
+- **`zoneReachedAt(nowMs, crossings)`** — a zone is _unreached_ when it is the destination of
+  a crossing still ahead and nothing has taken you there yet. This is the hotel, and the
+  trip-long car hire that starts on day 1 at the destination: a place whose local time begins
+  before the flight that gets you there. Compared by **offset**, like every other agreement in
+  the model, and **minus what you have already stood in** — on a round trip home is the return
+  leg's destination, so without that clause a home-zone event would stop testifying the moment
+  a return flight is entered. A zone the crossings never mention is reached by default: it has
+  nothing to contradict, which is what keeps the session-100 Cyprus rule working.
+
+**Neither filter alone is enough**, which is why there are two: the hotel sits _inside_ the
+layover's window (its check-in precedes the Keflavík flight), and the coffee is in a zone
+we have certainly reached.
+
+**Rung 3 stops calling `dayAmbientZone` and the 09-10 special case disappears with it.** The
+day's ambient is a layout answer sampled at **noon**, and on a travel day noon is on the wrong
+side of the crossing you are standing on — that is the whole of the 09-10 bug, and the layover
+is the same bug between two later crossings. Rung 3 is now the consensus of the live day's own
+_testifying_ events (`zoneConsensus`, extracted from `dayAmbientZone` so the two cannot
+disagree about what agreement means), else the segment **at this instant**, else the primary.
+Before the first crossing that segment _is_ the origin, so "you are at home" is what the
+general rule says rather than a case bolted in front of it.
+
+`dayAmbientZone` itself is unchanged: a day is still framed at noon, and the shared page, the
+shift pills and the ADR-0029 gate still read it. What changed is that the **live** question no
+longer borrows a day-shaped answer.
+
+**`liveAnchorCoord` deliberately does not follow** (ADR-0218's 2026-09-03 amendment), and its
+docblock now says so: its rung 2 is _"or where we're headed — an hour before the drive, the
+next place is already the answer"_, which is right for a forecast and wrong for a clock. A
+forecast is allowed to look ahead; the clock has to say what time it is where you are.

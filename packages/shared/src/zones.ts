@@ -117,6 +117,70 @@ export function segmentZoneAt(instantMs: number, crossings: ZoneCrossing[]): str
   return zone;
 }
 
+/** **The half-open instant window of the segment holding `instantMs`** — `from` is the
+ *  crossing that put you there (`-Infinity` before the first one), `to` the next crossing's
+ *  departure (`Infinity` after the last).
+ *
+ *  It is what lets a clock question ask whether a piece of evidence is even about *this* leg:
+ *  a Tel Aviv breakfast is a fact about the morning, not about the Vienna layover you are
+ *  standing in eight hours later (ADR-0107's 2026-09-11 amendment). */
+export function segmentBoundsAt(
+  instantMs: number,
+  crossings: ZoneCrossing[],
+): { from: number; to: number } {
+  let from = -Infinity;
+  let to = Infinity;
+  for (const crossing of crossings) {
+    if (crossing.at <= instantMs) from = crossing.at;
+    else {
+      to = crossing.at;
+      break;
+    }
+  }
+  return { from, to };
+}
+
+/**
+ * **Whether the itinerary says you have got there yet**, as a predicate over zones at one
+ * instant: a zone is *unreached* when it is the destination of a crossing still ahead and
+ * nothing has taken you there already.
+ *
+ * This is the second thing a clock question needs (ADR-0107's 2026-09-11 amendment). A
+ * placed event's zone is normally good evidence about where you are — that is the whole of
+ * the session-100 rule — but a hotel's door opens at 15:00 local, which on the arrival day
+ * is *hours before the flight that gets you there*, and a trip-long car rental starts on day
+ * 1 at the destination. Either one, read as evidence, moves the clock to the far side of a
+ * flight you have not boarded.
+ *
+ * **Minus what you have already stood in**, which is not a detail: on a round trip the home
+ * zone is the return leg's destination, so without that clause every home-zone event would
+ * stop testifying the moment a return flight is entered.
+ *
+ * Compared by **UTC offset at the instant**, like every other agreement in this file:
+ * Nicosia and Jerusalem are different zones that agree about what time it is, and a zone the
+ * itinerary never mentions is reached by default — it has nothing to contradict.
+ *
+ * Returns a predicate rather than an answer because the offset probes behind it are `Intl`
+ * constructions and every event at one instant gets the same verdict.
+ */
+export function zoneReachedAt(
+  instantMs: number,
+  crossings: ZoneCrossing[],
+): (zone: string) => boolean {
+  if (crossings.length === 0) return () => true;
+  const at = new Date(instantMs);
+  const offsets = (zones: string[]) => new Set(zones.map((zone) => zoneOffsetMinutes(at, zone)));
+  const visited = offsets([
+    crossings[0].fromZone,
+    ...crossings.filter((c) => c.at <= instantMs).flatMap((c) => [c.fromZone, c.toZone]),
+  ]);
+  const ahead = offsets(crossings.filter((c) => c.at > instantMs).map((c) => c.toZone));
+  return (zone) => {
+    const offset = zoneOffsetMinutes(at, zone);
+    return visited.has(offset) || !ahead.has(offset);
+  };
+}
+
 /**
  * The zone an instant sits in (ADR-0107 §4): the itinerary segment holding it, falling back
  * to the trip primary zone when no crossing anchors the timeline. Trip mode reads the clock,
@@ -271,14 +335,20 @@ export function dayAmbientZone(date: string, evidence: ZoneEvidence): string {
   const known = eventsOnDate(events, date)
     .map((e) => eventKnownZone(e, bookings, places))
     .filter((zone): zone is string => zone != null);
-  if (known.length > 0) {
-    const offset = zoneOffsetMinutes(noon, known[0]);
-    // Offsets, not zone ids: Nicosia and Jerusalem are different zones that agree about what
-    // time it is, and a day split between them is not a mixed day.
-    if (known.every((zone) => zoneOffsetMinutes(noon, zone) === offset)) return known[0];
-  }
 
-  return segmentZoneAt(noonMs, crossings) ?? primaryZone;
+  return zoneConsensus(known, noon) ?? segmentZoneAt(noonMs, crossings) ?? primaryZone;
+}
+
+/** **The one zone a set of voters agree on**, or `undefined` when they disagree or nobody
+ *  voted — the consensus step of {@link dayAmbientZone}, shared because `liveZone` asks the
+ *  same question of the events around *now* rather than of a whole day.
+ *
+ *  Offsets, not zone ids: Nicosia and Jerusalem are different zones that agree about what
+ *  time it is, so a day split between them is not a mixed day. */
+export function zoneConsensus(zones: string[], at: Date): string | undefined {
+  if (zones.length === 0) return undefined;
+  const offset = zoneOffsetMinutes(at, zones[0]);
+  return zones.every((zone) => zoneOffsetMinutes(at, zone) === offset) ? zones[0] : undefined;
 }
 
 /**
