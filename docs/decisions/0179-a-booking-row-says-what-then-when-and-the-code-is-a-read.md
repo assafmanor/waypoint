@@ -79,6 +79,8 @@ This also returns the row to agreement with the day card, where the marks have *
 
 **`ListRow` does not change shape, and the other two hosts are unaffected** — drawn in mockup §6 rather than promised. The one shared change is the meta line becoming a flex container; documents put a lone mark there and notes put nothing.
 
+> **Followed through 2026-09-11 by [ADR-0223](0223-a-confirmation-code-is-looked-up-not-carried.md).** The rule below was scoped to this row and is now the app's: the code came off the board, the lifted hero, the quick tile and the event form's linked statement, leaving it in `BookingDetail` and the hard-edit warning. The symptom this section says to listen for went unreported for a month, and the owner's instruction is what extended it.
+
 **A fact leaves a surface, and that is the part to watch.** The confirmation code has been on this row since the Index was built. The claim is that a booking is _found_ by code (search) and _read_ by code (detail) but need not be _scanned_ by code — and if that is wrong, the symptom will be people opening rows to check codes, which is worth listening for. Mockup §5b is the drawn fallback.
 
 **`scheduleLabel`'s signature changes** (string → parts), which touches its callers. It has one today.

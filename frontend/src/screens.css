@@ -333,15 +333,6 @@ body.wp-dragging
   outline-offset: 2px;
 }
 
-/* the ticket tile carries the real next-confirmation code (amber = commitment) */
-.qa .code {
-  display: block;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--amber-deep);
-  margin-top: 3px;
-}
 .qa .lb .plus {
   color: var(--amber-deep);
 }

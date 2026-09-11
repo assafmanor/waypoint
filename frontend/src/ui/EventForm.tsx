@@ -966,8 +966,12 @@ export function EventForm({
                 disabled={!linkedBooking || !onOpenBooking}
               >
                 <span className="k">{t.eventForm.bookedLinkedLabel}</span>
+                {/* The title alone (ADR-0223 §4). This is a way INTO the booking, and a
+                    confirmation code printed on the way in is the thing that ADR being
+                    about. The flight number joins it where there is one, because that is
+                    the fact this ADR moved the other way. */}
                 <span>
-                  {[linkedBooking?.title, linkedBooking?.confirmationCode]
+                  {[linkedBooking?.title, linkedBooking?.flightNumber]
                     .filter(Boolean)
                     .join(` ${DOT_SEPARATOR} `)}
                 </span>

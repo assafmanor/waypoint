@@ -37,14 +37,15 @@ describe('HeroLift', () => {
       now: [point({ place: 'Via dei Tribunali' })],
       next: point({ key: 'next', title: <span>מלון סנטרו</span>, kind: 'hard' }),
       nextTime: '16:00',
-      nextCode: '#7QK4LM',
       then: { title: 'ארוחת ערב', time: '19:30' },
       foot: <DayRail progress={48} startHour="07:00" endHour="23:00" />,
     });
     expect(container.querySelector('.hero-lifted')).toBeTruthy();
     expect(screen.getByText('סיור אוכל')).toBeTruthy();
     expect(screen.getByText('מלון סנטרו')).toBeTruthy();
-    expect(container.querySelector('.wp-board-next-meta .code')?.textContent).toBe('#7QK4LM');
+    // **No confirmation code on the hero either** (ADR-0223 §2) — it is looked up in the
+    // booking, which `להזמנה` is one tap from.
+    expect(container.querySelector('.wp-board-next-meta .code')).toBeNull();
     expect(container.querySelector('.hero-then')?.textContent).toContain('ארוחת ערב');
     // The foot is the collapsed board's own COMPONENT, not a copy of its markup.
     expect(container.querySelector('.hero-foot .wp-board-progress')).toBeTruthy();
@@ -332,7 +333,7 @@ describe('HeroLift', () => {
             endLabel: t.glance.transition.flightArrival,
             endTime: '22:15',
             inPhrase: t.board.inPhrase('1:39 שע׳'),
-            code: '#LH692',
+            flightNumber: 'LH692',
             rail: <div className="wp-board-transit-prog" />,
           },
         }),
@@ -348,6 +349,10 @@ describe('HeroLift', () => {
     expect(lead.querySelector('.wp-board-now-meta .tlabel.loc')?.textContent).toBe(
       t.glance.transition.flightArrival,
     );
+    // **What the ticket number gave way to** (ADR-0223 §2): mid-flight the code is a lookup
+    // key for a desk you have already left, and the number is what the screens around you use.
+    expect(lead.querySelector('.wp-board-now-meta .ident')?.textContent).toBe('LH692');
+    expect(lead.querySelector('.wp-board-now-meta .code')).toBeNull();
     expect(lead.querySelector('.hero-eta')?.textContent).toBe(t.board.inPhrase('1:39 שע׳'));
     // The rail is INSIDE the point, and the card pins nothing.
     expect(lead.querySelector('.hero-transit .wp-board-transit-prog')).toBeTruthy();
@@ -438,16 +443,17 @@ describe('HeroLift', () => {
     expect(screen.queryByText(t.hero.where)).toBeNull();
   });
 
-  it('what the horizon adds to NEXT is the way through, not a second code', () => {
+  // Was "not a SECOND code": the hand-off used to sit beside a code the next-row printed.
+  // ADR-0223 took that one off too, so what the horizon adds to NEXT is the way through and
+  // nothing else — and the way through is how you reach the code at all.
+  it('what the horizon adds to NEXT is the way through, and no code anywhere', () => {
     const onBooking = vi.fn();
-    show({
+    const container = show({
       next: point({ key: 'next', title: <span>מלון</span>, onBooking }),
-      nextCode: '#ABC',
     });
     fireEvent.click(screen.getByRole('button', { name: new RegExp(t.hero.toBooking) }));
     expect(onBooking).toHaveBeenCalledOnce();
-    // The code is printed once, by the next-row, not again by the hand-off.
-    expect(screen.getAllByText('#ABC')).toHaveLength(1);
+    expect(container.querySelector('.code')).toBeNull();
   });
 
   // ADR-0160 §12's condition, asserted on the render as well as on the type: one

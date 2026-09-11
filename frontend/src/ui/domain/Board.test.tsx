@@ -16,7 +16,7 @@ describe('Board', () => {
         nowKind="hard"
         nowTitle={<span>טיסה לטוקיו</span>}
         nowUntil="16:00"
-        next={{ title: <span>מלון</span>, time: '17:00', hard: true, code: 'ABC123' }}
+        next={{ title: <span>מלון</span>, time: '17:00', hard: true }}
         countdown={{ value: '2:30', unit: 'שעות' }}
         progress={40}
         windowStartHour="07:00"
@@ -32,7 +32,9 @@ describe('Board', () => {
     expect(container.querySelector('.wp-board-next-row')).toBeTruthy();
     expect(container.querySelector('.wp-board-progress')).toBeTruthy();
     expect(container.querySelector('.wp-board-countdown .t')?.textContent).toBe('2:30');
-    expect(container.querySelector('.wp-board-next-meta .code')?.textContent).toBe('ABC123');
+    // **No confirmation code on this surface at all** (ADR-0223 §2). It used to ride this
+    // line; the board is not where a booking is looked up.
+    expect(container.querySelector('.wp-board-next-meta .code')).toBeNull();
   });
 
   it('now + soft: the label reads soft (not hard)', () => {
@@ -555,7 +557,7 @@ describe('Board — the countdown swaps what it counts to (ADR-0206 §Z1)', () =
     variant: 'free',
     clock: '22:40',
     gap: { read: { kind: GAP_CHARACTER.DAY_DONE } },
-    next: { title: <span>רכבת לקיוטו</span>, time: '07:12', day: 'מחר', hard: true, code: 'HIK1' },
+    next: { title: <span>רכבת לקיוטו</span>, time: '07:12', day: 'מחר', hard: true },
     countdown: { value: '8:32', unit: 'שעות' },
   };
 
@@ -604,7 +606,6 @@ describe('Board — the countdown swaps what it counts to (ADR-0206 §Z1)', () =
   it('the same board WITHOUT a tomorrow keeps every one of them', () => {
     const { container } = render(<Board {...(tomorrowProps as BoardProps)} />);
     const meta = container.querySelector('.wp-board-next-meta');
-    expect(meta?.querySelector('.code')?.textContent).toBe('HIK1');
     expect(meta?.querySelector('.lockmini')).toBeTruthy();
     expect(meta?.textContent).toContain('מחר');
     expect(container.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.endOfDay);
@@ -687,16 +688,17 @@ describe('the board’s one booking-fact slot', () => {
       />,
     ).container;
 
-  it('draws the code when no gate is due', () => {
-    const c = board({ code: 'ABC123' });
-    expect(c.querySelector('.wp-board-next-meta .code')?.textContent).toBe('ABC123');
+  it('says nothing in the slot when no gate is due', () => {
+    const c = board({});
     expect(c.querySelector('.wp-board-next-meta .tlabel.loc')).toBeNull();
+    expect(c.querySelector('.wp-board-next-meta .code')).toBeNull();
   });
 
-  // The swap, and the assertion that matters is the ABSENCE: both at once is the arm that
-  // was drawn, measured as affordable, and rejected on meaning.
-  it('replaces the code with the gate once the gate is due', () => {
-    const c = board({ code: 'ABC123', gate: 'שער B7' });
+  // **The gate no longer INHERITS this slot, it simply occupies it** (ADR-0222 §4 as amended
+  // by ADR-0223 §3): the code it used to displace is not on this surface at all any more, so
+  // the branch that chose between them is gone.
+  it('draws the gate once it is due, and never a code beside it', () => {
+    const c = board({ gate: 'שער B7' });
     expect(c.querySelector('.wp-board-next-meta .tlabel.loc')?.textContent).toBe('שער B7');
     expect(c.querySelector('.wp-board-next-meta .code')).toBeNull();
   });

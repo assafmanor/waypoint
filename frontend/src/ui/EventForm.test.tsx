@@ -776,7 +776,10 @@ describe('EventForm (folded into Modal, U-01)', () => {
       ).toBeNull();
       const statement = document.querySelector('.ef-linked') as HTMLButtonElement;
       expect(statement.textContent).toContain('רמן נאגי');
-      expect(statement.textContent).toContain('RN-4820');
+      // **The way IN to a booking does not print its confirmation code** (ADR-0223 §4).
+      // This asserted `RN-4820` until the code was demoted to the booking itself; the
+      // statement still identifies which booking it opens, by title.
+      expect(statement.textContent).not.toContain('RN-4820');
       fireEvent.click(statement);
       expect(onOpenBooking).toHaveBeenCalledWith(expect.objectContaining({ id: 'bk-1' }));
       tripState.bookings = [];
