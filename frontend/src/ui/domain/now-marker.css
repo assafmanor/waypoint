@@ -9,8 +9,10 @@
                    (`App.css`'s `.body { padding: 16px … }`). The rule reaches the screen
                    edges with it and the arrow stands in the margin.
      --now-tab     the arrow's size.
-     --now-ground  what the halo paints, for the two row families that have no box of their
-                   own. The LIST's ground, never `--card` — `.day-trv-ic .icon` says why.
+     --now-ground  what the halo paints, for the row families that have no box of their own.
+                   The day list's own ground — `.day-trv-ic .icon` says why — which is exactly
+                   why a host whose rows sit on something else (`.journey`, the shared page)
+                   restates it rather than inheriting it.
 */
 
 .now-here {
@@ -138,7 +140,7 @@
   --now-bleed: calc(16px + 29px);
 }
 
-/* **AND THE TWO BOXLESS FAMILIES OCCLUDE THE RULE WITH THEIR TEXT, NOT WITH A BOX.**
+/* **AND A BOXLESS ROW OCCLUDES THE RULE WITH ITS TEXT, NOT WITH A BOX.**
    ADR-0210 §3/§4 took the card away from a leg and a bracket on purpose, so there is nothing
    there to hide the rule — it ran straight through a gap's `1:15 שע׳ פנויות`, which is the
    defect the owner reported against the drawing.
@@ -155,14 +157,40 @@
    which is what reads as passing behind the words. Scoped under `.now-here`, so it costs
    nothing on any row the moment is not in.
 
-   It inherits the halo's one known mismatch: a leg inside a `.journey` block sits on `--card`
-   while `--now-ground` is the list's `--screen`. The shipped glyph already does this, so a
-   host that needs it different sets `--now-ground` rather than this sheet guessing. */
+   **AND A LEG INSIDE A JOURNEY BLOCK IS THE THIRD SUCH FAMILY** — reported from a phone, the
+   rule drawn straight through `52 דק׳ · 2,362 ק״מ` on the running flight. `.journey`'s own rule
+   one sheet over takes the leg's background away so the block paints ONE ground for the whole
+   run (`day-join.css`), which is the same subtraction ADR-0210 §3/§4 made to a leg and a
+   bracket — so the box that hides the rule on every other event card in the day hides nothing
+   here, and the mark reads differently depending on whether the flight happens to be grouped.
+   That is the inconsistency the report is about; it is the defect above in a third row family,
+   and it takes the answer already in this list rather than a fourth mechanism.
+
+   **Scoped to `.journey`, and the scope is the whole correctness of it.** An ordinary
+   `.wp-event` carries its own opaque box, so the rule is already hidden across it and a halo
+   there would be a `--screen` patch painted on a `--card` face.
+
+   Inner runs again, never the two tracks the face's grid gives full width. Where the run IS a
+   block (`.wp-event-conflict-flag`, a title clamped to two lines) it masks the rule for its own
+   line, which is exactly what an ordinary card already does at every height. The badge, the ✓
+   and the zone-shift pill carry their own fill and were stopping it for free.
+
+   The ground itself is the host's to state, never this sheet's to guess: a leg inside a
+   `.journey` sits on `--card` and not on the list's `--screen`, so that block sets
+   `--now-ground` beside the bleed it already sets. One case is left over and left alone — a
+   SOFT leg's hatch is a gradient and a halo can only be a colour — and it is the rarest of the
+   three: a journey run is booked travel, and booked travel is hard (rule 1). */
 .now-here .day-gap-lbl,
 .now-here .day-gap-add,
 .now-here .day-trv-hd > span,
 .now-here .day-trv-leave,
-.now-here .day-trv-dist {
+.now-here .day-trv-dist,
+.journey .now-here .wp-event-title-txt,
+.journey .now-here .wp-event-nest-note,
+.journey .now-here .wp-event-conflict-flag,
+.journey .now-here .wp-event-m > *,
+.journey .now-here .wp-event-time > *,
+.journey .now-here .wp-event-chev {
   position: relative;
   background: var(--now-ground);
   box-shadow: 0 0 0 3.5px var(--now-ground);
