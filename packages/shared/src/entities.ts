@@ -269,6 +269,17 @@ export const bookingSchema = z.object({
   title: z.string(),
   confirmationCode: z.string().optional(),
   provider: z.string().optional(),
+  /** **The service's own number** (ADR-0222 §1) — `LY315`, `Hikari 503`. One column with a
+   *  `Record<BookingType, string>` of words over it, the shape ADR-0163 §2 chose for
+   *  `provider`: a flight number IS a train number, and a single abstract label is the one
+   *  nobody fills in. Known when you book and stable, which is what separates it from `gate`
+   *  below and is why it is searchable and the gate is not. */
+  flightNumber: z.string().optional(),
+  /** **Where you board** (ADR-0222 §1) — a gate for a flight, a platform for a train. Same
+   *  one-column-many-words shape, opposite lifecycle: unknown at booking, published a couple
+   *  of hours out, changed without warning, and worthless once you are aboard. That is why it
+   *  has a quick-add of its own (§7) and why the board only draws it inside a window (§4/§5). */
+  gate: z.string().optional(),
   placeId: z.string().optional(), // single-place types; mutually exclusive with from/to
   fromPlaceId: z.string().optional(), // transport origin (ADR-0048)
   toPlaceId: z.string().optional(), // transport destination (ADR-0048)

@@ -901,6 +901,54 @@ export const t = {
         activity: 'Klook · GetYourGuide',
         other: '',
       } satisfies Record<BookingType, string>,
+      // **The service's own number, and where you board it** (ADR-0222 §1). Two more
+      // `Record`s over the enum, for the reason `providerLabel` above already gives: a
+      // flight number IS a train number and a gate IS a platform, so one abstract word
+      // would be the vague option everywhere. Absent for the types that have neither.
+      numberLabel: {
+        car: '',
+        flight: 'מספר טיסה',
+        train: 'מספר הרכבת',
+        transit: 'מספר הקו',
+        hotel: '',
+        restaurant: '',
+        activity: '',
+        other: '',
+      } satisfies Record<BookingType, string>,
+      numberPlaceholder: {
+        car: '',
+        flight: 'LY315',
+        train: 'Hikari 503',
+        transit: '',
+        hotel: '',
+        restaurant: '',
+        activity: '',
+        other: '',
+      } satisfies Record<BookingType, string>,
+      gateLabel: {
+        car: '',
+        flight: 'שער',
+        train: 'רציף',
+        transit: 'רציף',
+        hotel: '',
+        restaurant: '',
+        activity: '',
+        other: '',
+      } satisfies Record<BookingType, string>,
+      gatePlaceholder: {
+        car: '',
+        flight: 'B7',
+        train: '14',
+        transit: '3',
+        hotel: '',
+        restaurant: '',
+        activity: '',
+        other: '',
+      } satisfies Record<BookingType, string>,
+      // What leaving it empty costs, said inline — `Field`'s `hint`, never a dialog
+      // (ADR-0109 §6's anti-nag rule). It is the one field on this step nobody fills in
+      // while booking, so the form says so instead of looking unfinished.
+      gateHint: 'בדרך כלל מתפרסם קרוב ליציאה · אפשר להשלים אחר כך',
       locationLabel: 'מיקום',
       roomLabel: 'חדר',
       notesLabel: 'הערות',

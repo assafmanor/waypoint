@@ -74,9 +74,13 @@ Re-measured against the real hero (mockup §7, 360px, cap 622px):
 
 The gate window (`T-4h · T-3h · T-2h`, default `T-3h`) is a control in the file and not a decision it pretends to have made. And the teal gate chip sits beside the amber transition label for the first time — whether that reads as two kinds of fact or as a clash is a screen question.
 
-## Left for the owner
+## Built the same session
 
-ADR-0222 is **Proposed**. §4 (the gate inherits the code's slot vs. both chips, now that both are known to be free) and §5 (the window) are the two answers it needs before anything is built.
+The owner's answer to the two open forks was _"Build everything now on the same pr"_ — so §4's swap and §5's `T-3h` were taken as recommended and the whole thing shipped in one PR with the design.
+
+Four things the build has that the drawing did not, each recorded in ADR-0222's build log: `gateIsDue` is one shared derivation returning a **boolean** (so board and hero cannot disagree, and no caller needs a second null check) over a **half-open** window that shuts at departure rather than after it; **rank 1 needed no branch**, because ADR-0214 §3's existing guard already covers a gate that cannot be both three hours out and a day away; the hero's token is deliberately **not** window-gated while the board's chip is (the window decides what is worth shouting, the hero is where you fill something in); and both fields are **sent on every save for every type**, so switching a flight to a restaurant clears a gate rather than orphaning it.
+
+`Fact` grew a `variant` rather than a second boolean, and the three-way split is asserted rather than commented: number `ident`, code `mono`, gate neither.
 
 ## A shipped fact measured on the way past
 

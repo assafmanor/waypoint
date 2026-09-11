@@ -339,6 +339,12 @@ model Booking {
   title                String
   confirmationCode     String?
   provider             String?
+  // The service's own number and where you board it (ADR-0222 §1). Two columns rather
+  // than `details` keys: `flightNumber` joins the booking search blob, and splitting a
+  // matched pair across a column and JSON is a seam with no reason behind it. The WORD
+  // for each is per-type and lives in the client's label `Record`, never here.
+  flightNumber         String?
+  gate                 String?
   placeId              String? // single-place types (hotel/restaurant/…); mutually exclusive with from/to
   fromPlaceId          String? // transport origin (map-pin/nav target of the linked Event) — ADR-0048
   toPlaceId            String? // transport destination — ADR-0048

@@ -1,6 +1,6 @@
 # 0222 — A flight has a **number** and a **gate**, and they are not the same kind of fact
 
-**Status:** Proposed (2026-09-11) — drawn and measured; **§6 and §7 added the same day** on three owner notes, the third of which (two screenshots of the running app: _"the hero looks very crowded when there's lots of stuff in the flight"_) **overturned §6's first shape before it was accepted**. §4 and §5 still carry the two forks that need an answer.
+**Status:** **Accepted and built 2026-09-11**, in one session with the design. §6's first shape was overturned before acceptance by the third of three owner notes (two screenshots of the running app: _"the hero looks very crowded when there's lots of stuff in the flight"_); §4's swap and §5's `T-3h` were the two open forks and were taken as recommended (_"Build everything now"_). See the build log at the foot.
 **Date:** 2026-09-11
 **Session note:** [`planning/2026-09-11-a-flight-has-a-number-and-a-gate.md`](../planning/2026-09-11-a-flight-has-a-number-and-a-gate.md)
 **Mockup:** [`mockups/a-flight-has-a-number-and-a-gate-v1.html`](../../mockups/a-flight-has-a-number-and-a-gate-v1.html)
@@ -138,3 +138,19 @@ The owner, in the same breath:
 **A shipped fact this measured and is not fixing:** every `.field input` renders at 37px against 0017's 44px touch floor, app-wide and predating this change. The two new fields sit at the same 37px, so this neither causes nor fixes it. Recorded in the backlog because it is now a measured number rather than a suspicion.
 
 **Rejected, each drawn or measured:** a labelled `hero-part` for the two facts (§6's own first drawing — 4× the cost of the same fact on the hero people actually have, and the reason this ADR was revised before it was accepted); the number riding the title (1px cheaper to reject than to take, and its cost is the route wrapping); the gate as a `.hero-act` chip (right surface, wrong meaning — a hand-off chip that edits a value is the duplicate rule 8 exists to stop); the quick-add on the **collapsed** board (impossible rather than merely unwise — the board is a `<button>`); an inline `<input>` in place of the token (it would be the app's only value edited without the token→panel gesture every other editable value uses, to save one sheet); one generic `מזהה השירות` column (0163 §2's own argument — the abstract word that is right for every type is the one nobody fills in); the flight number on the Index row (0179 §2c already measured what a code-like string costs that row); a permanent gate chip on the board (free, as it turns out, but empty on most days of a trip, and a chip that is always there teaches the eye to skip it exactly until the morning it matters); a gate in amber beside the code (rule 4 — amber is time and commitment, and the teal recipe already exists); and an alert when a gate is published (no data source; the value is the user's own).
+
+## Build log (2026-09-11)
+
+Built in the same session as the drawing, on the owner's instruction to take §4 and §5 as recommended. Four places the build has something the drawing did not:
+
+**`gateIsDue` is one derivation in `packages/shared`, and it returns a boolean rather than the value.** Both surfaces read it, so the board and the lifted hero cannot disagree about whether a gate is due, and a caller needs no second null check — an absent gate and a gate outside its window are the same answer. The window is **half-open**: `now < startsAt` and `startsAt - now <= GATE_WINDOW_MINUTES`, so it shuts at departure rather than after it, because past that instant the board is in its in-transit state where a gate says nothing. Pinned at both edges in `booking-event.test.ts`.
+
+**Rank 1 needed no branch.** ADR-0214 §3 already strips the code when tomorrow is the board's subject, and a gate three hours out cannot also be a day away — so the same `!tomorrowRanked` guard covers both. Asserted in `Board.test.tsx` rather than left to be rediscovered.
+
+**The hero's gate token is not gated on the window, and the board's chip is.** The window decides what is worth _shouting_; the lifted hero is where you go to _fill something in_, and an affordance that disappears three hours before you need it is worse than one that is always there. This is a distinction the mockup did not have to make because it drew one moment.
+
+**Both fields are sent on every save, for every type.** `BookingSheet` renders them only where the label `Record` has a word, but the payload always carries them — switching a flight to a restaurant has to **clear** a gate the new type has no field for, rather than orphan it in the row. The same empty-string-is-a-clear rule the confirmation code already documents.
+
+**`Fact` grew a `variant` rather than a second boolean.** `mono` stays exactly what it was (typeface **and** `--amber-deep`, the confirmation code's shipped look); `ident` is the same face in the fact's own ink. Asserted as a three-way split in `BookingDetail.test.tsx` — number `ident` and not `mono`, code `mono`, gate neither — because the split is the decision and a comment would not have held it.
+
+Green: `pnpm typecheck`, `pnpm build`, 604 shared tests, 5483+ frontend tests.

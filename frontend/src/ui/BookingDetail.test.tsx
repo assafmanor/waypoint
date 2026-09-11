@@ -799,3 +799,67 @@ describe('BookingDetail · what the world knows about the place', () => {
     expect(document.querySelector('.map-sum-t')?.textContent).toContain('Kabukicho');
   });
 });
+
+/* ── A SERVICE'S NUMBER, AND WHERE YOU BOARD IT (ADR-0222 §1/§3) ────────────────────────
+   The colour split is the part worth pinning: `.mono` carries a typeface AND `--amber-deep`,
+   which was right while the confirmation code was its only caller. A flight number wants the
+   face and must not take the hue, because rule 4 spends amber on time and commitment. */
+describe('BookingDetail — the flight number and the gate', () => {
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    tripPlaces = [placed, lite];
+    tripEvents = [];
+    showPlaceOnMap = null;
+    startErrand = () => {};
+    updateBooking.mockClear();
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  it('reads both facts under the words its own type uses', () => {
+    open(bk({ id: 'b1', type: BOOKING_TYPE.FLIGHT, flightNumber: 'LY315', gate: 'B7' }));
+    expect(screen.getByText(t.index.sheet.numberLabel[BOOKING_TYPE.FLIGHT])).toBeTruthy();
+    expect(screen.getByText('LY315')).toBeTruthy();
+    expect(screen.getByText(t.index.sheet.gateLabel[BOOKING_TYPE.FLIGHT])).toBeTruthy();
+    expect(screen.getByText('B7')).toBeTruthy();
+  });
+
+  // One `Record`, two readers — a train says `מספר הרכבת` and `רציף` off the same table the
+  // form reads (ADR-0163 §2's shape), so the two surfaces cannot drift apart.
+  it('says platform, not gate, for a train', () => {
+    open(bk({ id: 'b2', type: BOOKING_TYPE.TRAIN, flightNumber: 'Hikari 503', gate: '14' }));
+    expect(screen.getByText(t.index.sheet.gateLabel[BOOKING_TYPE.TRAIN])).toBeTruthy();
+    expect(screen.getByText(t.index.sheet.numberLabel[BOOKING_TYPE.TRAIN])).toBeTruthy();
+  });
+
+  // **The split, asserted rather than described.** The number takes the mono face without the
+  // amber; the code keeps both; the gate takes neither, because teal in this sheet is an
+  // affordance and never a text colour.
+  it('gives the number the mono face WITHOUT the code’s amber, and the gate neither', () => {
+    open(
+      bk({
+        id: 'b3',
+        type: BOOKING_TYPE.FLIGHT,
+        flightNumber: 'LY315',
+        gate: 'B7',
+        confirmationCode: '8JHEI4',
+      }),
+    );
+    expect(screen.getByText('LY315').className).toContain('ident');
+    expect(screen.getByText('LY315').className).not.toContain('mono');
+    expect(screen.getByText(/8JHEI4/).className).toContain('mono');
+    const gate = screen.getByText('B7').className;
+    expect(gate).not.toContain('mono');
+    expect(gate).not.toContain('ident');
+  });
+
+  // A booking type with no such fields draws no empty rows — the labels are '' in the
+  // `Record`, and an empty label is the switch rather than a per-type branch at the call site.
+  it('draws neither fact on a type that has no notion of them', () => {
+    open(bk({ id: 'b4', type: BOOKING_TYPE.RESTAURANT, flightNumber: 'X', gate: 'Y' }));
+    expect(screen.queryByText('X')).toBeNull();
+    expect(screen.queryByText('Y')).toBeNull();
+  });
+});

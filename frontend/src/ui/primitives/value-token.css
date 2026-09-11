@@ -166,3 +166,23 @@
 .vt-empty {
   border-style: dashed;
 }
+
+/* **The density that lets a value be edited on the app's one dark surface** (ADR-0222 §7).
+   Every rule above is `--ink` over `--soft-line`, and all four of this primitive's original
+   call sites are light surfaces — so a token on the board read as a hole punched in it.
+
+   The recipe is NOT invented here: it is `.hero-act`'s, one file over (`hero-lift.css`) — a
+   low-alpha fill under a brightened ink with a hairline of the same value — and the move is
+   the one `.wp-tzshift.on-dark` already made for the identical reason. Measured: this and the
+   `.hero-act` chip beside it both render at 34px, so the row reads as one family rather than
+   as a control that wandered in. A density on the existing primitive, never a second control. */
+.vt.on-dark {
+  color: var(--on-dark);
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.07);
+  min-height: 34px;
+}
+.vt.on-dark.vt-empty {
+  color: var(--on-dark-dim);
+  border-color: rgba(255, 255, 255, 0.26);
+}

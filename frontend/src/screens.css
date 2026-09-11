@@ -4578,6 +4578,14 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   font-family: var(--font-mono);
   color: var(--amber-deep);
 }
+/* **The same face without the hue** (ADR-0222 §3). `.mono` above carries a typeface AND a
+   colour, which was right while the confirmation code was its only caller. A flight number
+   wants the monospace — it is read character by character — and must not take the amber,
+   because rule 4 spends amber on time and commitment and `LY315` is neither. */
+.bk-fact-v.ident {
+  font-family: var(--font-mono);
+  color: var(--ink);
+}
 /* The derived round-trip pair's way through (ADR-0154 §5). Deliberately NOT the
    `.bk-loc-link` pill beside it: that one is teal because it goes to a place, and
    teal is location only (rule 4). A sibling booking is not a location, so this

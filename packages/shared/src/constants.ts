@@ -370,6 +370,26 @@ export const MAX_TRIP_NAME_LENGTH = 18;
  *  client-side by the input's `maxLength`. */
 export const MAX_PLACE_NICKNAME_LENGTH = 60;
 
+/** **A service's own number, and where you board it** (ADR-0222 §1). Both are typed by
+ *  hand from a ticket or a departure board, so both are bounded — and bounded SHORT,
+ *  because a long value here is a paste of something else rather than a long gate.
+ *  `LY315`, `Hikari 503`, `B7`, `רציף 14` are the shapes these hold. */
+export const MAX_SERVICE_NUMBER_LENGTH = 20;
+export const MAX_GATE_LENGTH = 12;
+
+/** **How long before departure a gate is worth drawing** (ADR-0222 §5).
+ *
+ *  The board rations, so a fact only earns a slot while you can act on it — which is
+ *  ADR-0214 §3's rule about the confirmation code ("a commitment you cannot act on for
+ *  eight hours decides nothing at 22:40") applied to the fact with the sharpest window
+ *  in the app. Three hours is early enough to be there when you leave for the airport
+ *  and late enough that the value on screen is the one the departure boards will carry.
+ *
+ *  **A feel call that a device pass owns.** The mockup made it a control (T-4h · T-3h ·
+ *  T-2h) rather than pretending to have settled it; this is the recommendation, and it
+ *  is a number to re-tune rather than a rule to re-derive. */
+export const GATE_WINDOW_MINUTES = 180;
+
 /** Display-name length cap. Roomier than the trip name because it is a person's
  *  name rather than a pill that must stay on one line, but bounded because it
  *  renders on every co-member's roster row (ADR-0133 §7). Validated server-side
