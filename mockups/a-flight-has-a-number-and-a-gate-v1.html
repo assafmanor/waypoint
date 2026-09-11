@@ -84,17 +84,71 @@
      rather than a suspicion, and because the next form ADR should own it.
 
      ─────────────────────────────────────────────────────────────────────────
+     REVISED 2026-09-11 (same day, before the ADR was accepted) on two owner
+     notes, which is why §5 and §6 exist:
+
+       "the lifted hero should also show the flight number and not only the gate"
+
+     and
+
+       "I'm also wondering whether we should think of an easy way to add the gate
+        number so that you wouldn't have to edit the entire flight just to add it"
+
+     The first is a correction and the default changed: §5 gives the lifted hero
+     its own `hero-part` carrying BOTH facts. The second is the question §2 of
+     this file gestured at and did not answer — the gate is the one field nobody
+     fills in while booking — and §6 answers it.
+
+     AND A THIRD NOTE, WITH TWO SCREENSHOTS OF THE RUNNING APP: "the hero looks
+     very crowded when there's lots of stuff in the flight, can you reconcile
+     that too?" — which is a defect in THIS FILE and not in the proposal. §5 was
+     measured against a THIN hero (one `איפה` part, three chips) while the real
+     one, photographed, already wraps its meta line to two bands and its chip row
+     to two rows. The skill's own rule is to draw the crowded case; §5 drew the
+     clean one, and a clean case decides nothing.
+
+     §7 is that reconciliation, and it overturned §5. Against the real hero:
+     §5's labelled part costs ⁦+91px⁩, the number on the title ⁦+24px⁩, the number
+     as a term on the meta line ⁦+23px⁩. **The finding that settles it is that the
+     GATE COSTS NOTHING** — the chip row is ⁦76px⁩ with and without it, because it
+     already wraps and has room — so the whole ⁦23px⁩ is the flight number, which
+     is the price of the ask itself rather than of any way of paying it. §5 is
+     kept as the record of a rejected shape, because the number is the argument.
+
+     ─────────────────────────────────────────────────────────────────────────
+     THE CONSTRAINT THAT DECIDES WHERE THE QUICK-ADD LIVES, and it is structural
+     rather than aesthetic: `Board.tsx:797` renders the collapsed board as a
+     `<button>` whenever it can lift (ADR-0160 §1), so it cannot host a nested
+     control at all. The quick-add is therefore the lifted hero's, one tap in —
+     the same surface the first note asks to carry the number.
+
+     AND THE PRIMITIVE QUESTION §6 HAD TO SETTLE, because the two candidates each
+     have half of what is needed. `ValueToken` (ADR-0177) has the right SEMANTICS
+     — "a value you can change, inline", with an `empty` variant documented for
+     exactly this ("dashed and muted, with the child saying what to add […] an
+     empty when has to invite, not sit blank") — and the wrong SURFACE: it is
+     `color: var(--ink)` over `--soft-line`, and all four call sites are light.
+     `.hero-act` has the right surface (the board's low-alpha-fill-under-
+     brightened-ink recipe) and the wrong semantics: it is a way OUT of a point,
+     a hand-off, never a value. Pressing a hand-off chip into being a value
+     editor is how a duplicate gets built. So §6 gives `ValueToken` an `on-dark`
+     density borrowing `.hero-act`'s already-measured recipe — the same move
+     `.wp-tzshift.on-dark` already made, for the same reason.
+
+     ─────────────────────────────────────────────────────────────────────────
      THIS FILE'S SECTIONS AGAINST THE ADR'S:
 
-       §1 הטופס        → ADR §1 + §2      §3 הלוח     → ADR §4
-       §2 הקריאה       → ADR §3           §4 החלון    → ADR §5
+       §1 הטופס        → ADR §1 + §2      §5 ההירו המורם   → ADR §6 (רשומה · נדחה)
+       §2 הקריאה       → ADR §3           §6 הוספה מהירה   → ADR §7
+       §3 הלוח         → ADR §4           §7 ההירו העמוס   → ADR §6 (ההחלטה)
+       §4 החלון        → ADR §5
 
      ─────────────────────────────────────────────────────────────────────────
      Interactive: theme (בהיר · כהה), screen (⁦360×640⁩ · ⁦390×844⁩), booking type
-     in §1 (טיסה · רכבת — the same two columns, different words), and in §3 the
-     three arms of the board's meta line. §4's window (⁦T-4h⁩ · ⁦T-3h⁩ · ⁦T-2h⁩) is
-     a FEEL call and therefore a control: the default is the recommendation and
-     a device pass owns the answer.
+     in §1/§5/§6 (טיסה · רכבת — the same two columns, different words), and in §3
+     the three arms of the board's meta line. §4's window (⁦T-4h⁩ · ⁦T-3h⁩ · ⁦T-2h⁩)
+     is a FEEL call and therefore a control: the default is the recommendation
+     and a device pass owns the answer.
 
      Measurements at the foot are read from THIS page's rendered DOM. -->
 <html lang="he" dir="rtl" data-theme="light">
@@ -109,7 +163,7 @@
       rel="stylesheet"
     />
 
-    <!-- APP-CSS: styles/tokens.css, App.css, screens.css, ui/primitives/field.css, ui/zone-shift-pill.css, ui/domain/board.css -->
+    <!-- APP-CSS: styles/tokens.css, App.css, screens.css, ui/primitives/field.css, ui/primitives/form-actions.css, ui/primitives/value-token.css, ui/zone-shift-pill.css, ui/domain/board.css, ui/domain/hero-lift.css -->
     <style data-app-css>
 /* GENERATED by mockups/tools/inline-app-css.mjs from the manifest above.
    Do not edit below this line — change the app css, then re-run the tool. */
@@ -9893,6 +9947,320 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   color: var(--muted);
 }
 
+/* ═══ ui/primitives/form-actions.css — generated, do not edit here ═══ */
+/* A form body inside a Modal sheet: the scroll container the sticky action bar
+   pins to (U-01/U-02). Capped height keeps a long form within the sheet; the
+   RTL left-edge scrollbar is hidden (it reads as a stray line). */
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-height: 75vh;
+  max-height: 75dvh;
+  overflow-y: auto;
+  scrollbar-width: none;
+  /* **A FOCUSED FIELD'S BORDER WAS BEING CLIPPED ON BOTH ENDS** (owner, 2026-08-16: _"selected
+     field outline is cut off"_, and reproduced in the running app before it was touched).
+     `overflow-y: auto` makes this a scroll container, which computes `overflow-x` to `auto`
+     as well and clips at the padding box — and a field is exactly as wide as that box, so the
+     teal `:focus-visible` border's outer edge lands ON the clip boundary and the two VERTICAL
+     sides vanish while the horizontal ones survive. That asymmetry is the tell, and it is why
+     it reads as "cut off" rather than as a missing ring.
+
+     Nothing overflows (`scrollWidth === clientWidth` measured), so this is not a sizing bug
+     and widening nothing fixes it: the cure is to stop the field sitting flush against the
+     clip edge. The negative margin gives the padding straight back, so no field moves and no
+     form's width changes — the only difference is that there is now slack for a border to be
+     drawn into. Here rather than at a call site because every sheet-form in the app is this
+     class, and `EventForm`'s fields sit exactly as flush as `TaskSheet`'s.
+
+     **4px, and `overflow-clip-margin` is NOT available here — which is worth writing down,
+     because it is the obvious reach and it silently does nothing.** A first pass shipped 2px;
+     the owner's phone still showed the vertical strokes lighter than the horizontal ones
+     (_"fully closed but narrower on the left and right compared to the top and bottom"_), so
+     the next instinct is `overflow-x: clip` + `overflow-clip-margin` to push the clip edge
+     outward. It cannot work on this element: CSS Overflow 3 says that when one axis is
+     `clip` and the other is not `visible`/`clip`, the `clip` **computes to `hidden`** — and
+     `overflow-clip-margin` applies to `clip` only. Measured here: `overflow-x` reports
+     `hidden` and the margin is inert. A scrolling form can therefore only buy slack with
+     padding, so this is padding.
+
+     **What padding cannot fix, and is the likely remainder:** a 1px border on an element whose
+     inline edges land on FRACTIONAL device pixels is antialiased across two of them and reads
+     lighter than the block edges, which sit on whole ones. That is a rounding artifact of the
+     device's ratio, not a clip, and it wants a device screenshot taken AFTER this change
+     before anything else is done about it. */
+  padding-inline: 4px;
+  margin-inline: -4px;
+  /* **SO `scrollIntoView` DOES NOT PARK ITS TARGET UNDER THE ACTION BAR** (ADR-0196 §13).
+     `.form-actions` below is `position: sticky; inset-block-end: 0` INSIDE this scrollport,
+     and nothing in the app declared `scroll-padding` anywhere except the Map's inline peek —
+     so `block: 'nearest'` aligned a target flush with the scrollport's bottom edge, which is
+     underneath the bar. Measured with a sub-task composer scrolling itself back into view:
+     **−53px** of clearance without this and **+15px** with it, at three added steps and at
+     six, so it is structural rather than incidental.
+
+     Latent for every consumer of this class, not only tasks: `EventForm`, `BookingSheet`,
+     `DocumentUploadSheet` and `TaskSheet` all scroll inside it. `useFormErrors` escapes only
+     because it passes `block: 'center'`.
+
+     `.body` needs none of this and the check is worth recording: `.nav` is sticky too, but it
+     is a SIBLING of that scrollport rather than inside it, so nothing there can land under
+     it. This is the app's only case. */
+  scroll-padding-block-end: var(--form-actions-h);
+}
+.modal-form::-webkit-scrollbar {
+  display: none;
+}
+
+/* One form action bar (U-02). Sticky to the bottom of its scroll container so
+   the primary stays reachable while a long form scrolls; the card background
+   masks fields sliding under it. Token-based, logical properties only (RTL). */
+
+.form-actions {
+  position: sticky;
+  inset-block-end: 0;
+  z-index: 1;
+  display: flex;
+  gap: var(--space-3);
+  padding-block-start: var(--space-3);
+  background: var(--card);
+}
+
+.form-actions button {
+  font: inherit;
+  font-weight: 700;
+  font-size: var(--text-secondary);
+  border-radius: var(--radius-12);
+  padding: var(--space-3);
+  cursor: pointer;
+}
+
+/* Primary spans the row; the ghost secondary is a small trailing pill. */
+.fa-primary {
+  flex: 1;
+  border: none;
+  background: var(--cta);
+  color: var(--cta-text);
+}
+.fa-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* A second way FORWARD (`alternate`): outlined in the CTA's ink rather than filled, so the
+   bar still has exactly one filled button and the eye still knows which one continues the
+   flow. Sized like the secondary, because it is a peer of it and not of the primary. */
+.fa-alternate {
+  flex: 0 0 auto;
+  padding-inline: var(--space-5);
+  background: transparent;
+  color: var(--cta);
+  border: 1px solid var(--cta);
+}
+.fa-alternate:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.fa-secondary {
+  flex: 0 0 auto;
+  padding-inline: var(--space-5);
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--soft-line);
+}
+
+/* Destructive: de-emphasized text button on its own row, never a filled CTA. */
+.fa-destructive {
+  align-self: center;
+  margin-block-start: var(--space-1);
+  font: inherit;
+  font-weight: 700;
+  font-size: var(--text-secondary);
+  color: var(--miss);
+  background: transparent;
+  border: none;
+  padding: var(--space-2);
+  cursor: pointer;
+}
+
+.form-actions button:focus-visible,
+.fa-destructive:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+
+/* ═══ ui/primitives/value-token.css — generated, do not edit here ═══ */
+/* ValueToken (ADR-0177 §2) — "a value you can change", inline.
+
+   Generalised from `button.bld-time` (ADR-0161 §7), whose geometry this is: a
+   hairline chip at radius 9, no hue of its own, and the touch target as an inset
+   overlay rather than a height. Logical properties only (RTL).
+
+   Nothing here is per-host. A host picks a tone and the prose around it; it does not
+   get to change the box, which is what stopped the five chromes ADR-0177 §1 counted. */
+
+.vt {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink);
+  background: none;
+  border: 1px solid var(--soft-line);
+  border-radius: 9px;
+  padding: 4px 8px;
+  cursor: pointer;
+  text-align: start;
+  min-inline-size: 0;
+  transition:
+    border-color 0.12s ease,
+    background-color 0.12s ease;
+}
+
+/* THE TARGET GROWS, THE LINE DOES NOT (ADR-0161 §7, measured there before it was a
+   rule: `min-height: 44px` took that row from 58px to 75px). The overlay reaches into
+   the line's own vertical padding, which nothing else occupies — so every form gets
+   ADR-0017's 44px floor without a single block growing. `.wf-line`'s `row-gap` is set
+   to clear two of these, so stacked tokens never trade taps. */
+.vt::after {
+  content: '';
+  position: absolute;
+  inset: -7px -2px;
+}
+
+.vt:active {
+  transform: scale(var(--press-scale));
+}
+.vt:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.vt:disabled::after {
+  content: none;
+}
+
+/* Open and keyboard-focused wear the same mark, because they are the same state to the
+   reader: this is the value the panel on screen belongs to. Amber, since what opens is a
+   picker for a value in a form — matching `.tp-field.open`, which this replaces.
+
+   `:focus-visible`, NOT `:focus-within`, and the difference is a shipped defect: a tapped
+   button keeps focus after its panel closes, so on a phone the token stayed amber until
+   something else was tapped — the owner's "+2 ימים still looks selected" (2026-09-08), the
+   same latch as a stuck `:hover` wearing a different pseudo-class. `:focus-visible` is
+   matched by neither a click nor a tap (probed in ADR-0195 §4), so only `.open` paints the
+   mark on a phone and a keyboard user keeps it. */
+.vt.open,
+.vt:focus-visible {
+  border-color: var(--amber);
+  background: rgba(233, 166, 60, 0.08);
+}
+.vt:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 1px;
+}
+
+/* ── tones: the ONLY thing a host varies ─────────────────────────────────────── */
+
+/* Amber = the clock (ADR-0028's budget, spent once so it means one thing). */
+.vt-time {
+  font-family: var(--font-mono);
+  color: var(--amber-deep);
+  letter-spacing: 0.01em;
+}
+
+/* A date is a calendar fact, not a commitment — ink. `DateField` wears this class on
+   its own wrapper (ADR-0176: the wrapper is the box), so these rules must also undo
+   the chrome the wrapper would otherwise inherit from a host's `.field`/`.set-fld`
+   rules — which ADR-0177 §5 deletes, and which the build initially left standing, so this
+   file carried `.field .vt-date` / `.set-fld .vt-date` overrides against rules that should
+   not have existed. Both are gone now, and so are the overrides.
+
+   `.df.vt-date`, not `.vt-date` alone: `date-field.css`'s own `.df` box rules tie on
+   specificity and neither sheet's load order is knowable from the source (both are lazy
+   chunks). `inline-size` is stated because a stretched token is invisible in review and
+   obvious only once drawn — it is what made the booking span measure TALLER than the
+   boxes it replaced. */
+.df.vt-date {
+  inline-size: auto;
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink);
+  background: none;
+  border: 1px solid var(--soft-line);
+  border-radius: 9px;
+  padding: 4px 8px;
+}
+/* A date's control is the native input, which the platform's picker leaves FOCUSED when it
+   closes (`date-field.css`), so an ungated `:focus-within` is the same latch as the button's
+   above. Gated to a fine pointer: there a focused date input is genuinely being edited by
+   keyboard; on a phone the platform's own dialog is the open mark. */
+@media (hover: hover) and (pointer: fine) {
+  .df.vt-date:focus-within {
+    outline: none;
+    border-color: var(--amber);
+    background: rgba(233, 166, 60, 0.08);
+  }
+}
+/* The face is the token's text; its `min-block-size` (there to hold a line for an
+   empty native control) would otherwise make a date token taller than its neighbours. */
+.vt-date .df-face {
+  min-block-size: 0;
+}
+/* One calendar affordance, not two: the platform's indicator appears only while the
+   input is opaque, so the cell would gain an element mid-tap (ADR-0177 §5). */
+.vt-date .df-input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+}
+
+/* **A DATE GROWS ITS INPUT, NOT AN OVERLAY** — and getting this wrong made every date
+   in the app unopenable. The `::after` target above is painted after its siblings and
+   takes pointer events, which is harmless over a `<button>` (the button under it is
+   what handles the press anyway) and fatal over a date, whose real control is the
+   native `<input>` INSIDE the token (ADR-0176). The overlay simply swallowed every tap.
+
+   So a date drops the pseudo-element and reaches the same 44px with the input itself:
+   same target, and it is the control rather than a decoration sitting on one. Nothing
+   here can be "cleaned up" into the shared `::after` without breaking the field again. */
+.vt-date::after {
+  content: none;
+}
+/* `.df.vt-date`, one class heavier than `date-field.css`'s `.df .df-input { inset: 0 }`,
+   which it must out-specify rather than merely follow: both sheets are lazy chunks and
+   neither's load order is knowable from the source (the same trap that hid App.css's
+   dead mono rule). Written at (0,3,0) the growth holds whichever lands last — and when
+   it did NOT, the click still worked and only the 44px floor quietly went missing, which
+   is exactly the kind of half-failure a measured assertion catches and an eye does not. */
+.df.vt-date .df-input {
+  /* -8px, ADR-0161 §7's own number, so the two reaches are one lineage rather than two
+     guesses. -7px measured 43.75px against ADR-0017's 44px floor — a quarter-pixel short,
+     which is exactly the sort of miss that survives review and fails a measurement. */
+  inset: -8px -2px;
+  inline-size: auto;
+  block-size: auto;
+}
+
+/* A value that is a word rather than a figure — a duration ("שעה"), where the app
+   already phrases the number. Body font, because JetBrains Mono has no Hebrew and
+   would fall back to something with different metrics. */
+.vt-word {
+  font-family: var(--font-body);
+}
+
+/* An absence, and it invites rather than sits blank. Dashed is the app's existing
+   "nothing here yet" mark (`button.bld-time.empty`). */
+.vt-empty,
+.vt-empty .df-empty {
+  color: var(--muted);
+  font-weight: 600;
+}
+.vt-empty {
+  border-style: dashed;
+}
+
 /* ═══ ui/zone-shift-pill.css — generated, do not edit here ═══ */
 /* ZoneShiftPill (ADR-0107) — the one amber time-shift pill. The three
    copy-pasted surface classes it replaced (`.wp-event-tzdelta`, `.tr-tzdelta`,
@@ -10537,6 +10905,526 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   padding-bottom: 3px;
   color: var(--on-dark-dim);
 }
+
+/* ═══ ui/domain/hero-lift.css — generated, do not edit here ═══ */
+/* The lifted hero (ADR-0160). It IS `.wp-board` — same class, same gradient, same
+   glow, same `--on-dark` ramp — which is the whole thesis: one object that gained
+   elevation, not a second surface wearing the board's clothes. Nothing about the
+   board's appearance is re-declared here; what this file adds is the three regions
+   the bounded form needs and the horizon's own parts.
+
+   Every ink is `--on-dark*` (ADR-0158 §3's ramp for always-dark surfaces) and hue is
+   spent only where the grammar already licenses it: teal for location, amber for
+   time and commitment (root rule 4). No new colour, no new token. */
+
+/* ── The three regions ────────────────────────────────────────────────────────
+   Head pinned, ONE scroller, foot pinned — ADR-0148 §1's bounded card, second
+   consumer. The board pads itself; the lifted form pads its regions instead, so the
+   scroller's edge IS the card's edge and a scrolled row never appears to slide out
+   of a margin. */
+.wp-board.hero-lifted {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  /* The card's box comes from the `lift` Modal variant (top-anchored, 8px inset,
+     capped). Content-sized within that cap: a thin hero is short, which is §8's
+     owner call — a screen-sized one would put ~400px of empty dark board under a
+     flight, and empty space on the app's one glowing surface reads as a failure.
+     `--lift-max-h` (`modal.css`'s lift variant, inherited) rather than `100%`: this
+     box's parent (`.modal-card`) has no `height` of its own, only a `max-height`, so a
+     percentage here computed to `none` and the hero grew straight past the cap instead
+     of scrolling within it (ADR-0160 §T) — `.hero-scroll` below is the one region meant
+     to absorb the overflow. */
+  max-height: var(--lift-max-h);
+  box-shadow: var(--elevation-floating);
+}
+.hero-head {
+  flex: 0 0 auto;
+  padding: 18px 18px 0;
+}
+.hero-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* The lifted hero is the top layer; a scroll that reaches its end must not become
+     a scroll of whatever is behind it. */
+  overscroll-behavior: contain;
+  padding: 0 18px;
+}
+.hero-foot {
+  flex: 0 0 auto;
+  padding: 0 18px 16px;
+}
+/* **With no foot, the scroller owns the bottom edge.** The foot used to supply the card's
+   bottom padding for every state, because every state had one — until in transit the rail
+   moved inside its point and the foot went away, and the last row sat flush against the
+   card's bottom edge (seen in a browser, not in review: jsdom has no padding to miss).
+   Matched to the foot's own 16px, so the two states end the same distance from the edge. */
+.hero-scroll:last-child {
+  padding-bottom: 16px;
+}
+
+.hero-head-end {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+/* A real 44×44 target (ADR-0017) with a visually smaller mark, and negative margin
+   so the target does not push the clock off the row. */
+.hero-x {
+  width: 44px;
+  height: 44px;
+  margin: -10px -12px -10px 0;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--on-dark-dim);
+  cursor: pointer;
+}
+.hero-x .icon {
+  width: 17px;
+  height: 17px;
+}
+
+/* ── The horizon's parts ──────────────────────────────────────────────────── */
+.hero-part {
+  padding-top: 13px;
+}
+.hero-lbl {
+  display: block;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--on-dark-faint);
+  margin-bottom: 5px;
+}
+/* The place name owns its LINE (session 215), which is what finally makes the ellipsis
+   below it reachable: while this sat inside a `flex-wrap: wrap` row, flex broke lines on
+   hypothetical sizes and pushed the chips off instead of ever asking the name to shrink.
+   A real airport name (`פרנקפורט (Frankfurter Flughafen – FRA)`) wants 247px against 308px
+   of row on a 360px phone — there was never a width where both fitted. */
+.hero-where-nm {
+  display: block;
+  font-size: var(--text-secondary);
+  color: var(--on-dark);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Every way out of a point, in ONE row: `במפה`, `ניווט`, `להזמנה`. Three chips measure
+   247px against that same 308px, so the small phone fits them with room to spare — and
+   the booking reach stops being a third stacked line of its own. `flex-wrap` is the
+   safety net for a translation nobody has measured yet, not the layout. */
+.hero-acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+/* A hand-off chip. Same recipe as every other chip on this board — a low-alpha
+   semantic fill under a brightened ink (`.wp-board-countdown`, `.code`, `.tlabel`) —
+   so it needs no new value and stays inside ADR-0028's budget. Teal reads location
+   and amber reads time/commitment, which is why the map way-in is teal and the
+   booking reach is amber rather than either being a decorative choice. */
+.hero-act {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  /* Not 44px: these sit in a row of two or three inside a bounded card, and the
+     44px floor is a *target* rule for a control standing alone. The row's own
+     padding carries the rest of the reach. */
+  min-height: 34px;
+  padding: 0 11px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--on-dark);
+}
+.hero-act .icon {
+  width: 14px;
+  height: 14px;
+}
+.hero-act.loc {
+  background: rgba(44, 156, 144, 0.16);
+  border-color: rgba(44, 156, 144, 0.34);
+  color: #7fd8cc;
+}
+.hero-act.time {
+  background: rgba(233, 166, 60, 0.14);
+  border-color: rgba(233, 166, 60, 0.32);
+  color: #f0c785;
+}
+/* **The document reach** (ADR-0174 §6). It takes the chip's BASE fill unchanged — neutral,
+   because rule 4 gives a document no hue, and the base had been sitting here unused since
+   every other way out of a point is a place (teal) or a booking (amber). What the density
+   adds is the two properties a stored TITLE needs and a fixed label does not.
+
+   Measured at 390x844: a fourth chip wraps this row onto a second line, +42px, and the
+   densest state (`in-transit`, whose settle verbs are gone) still fits the card with no
+   scroller. Wrapping is what `flex-wrap` is on this row for (ADR-0160 §O) — the honest claim
+   is "one wrapped line", not "free" — and the cost is exactly 0px when nothing is attached,
+   because there is then no element. */
+.hero-act.doc {
+  max-width: 190px;
+}
+.hero-act.doc .nm {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* ── A span you are inside ─────────────────────────────────────────────────────
+   The journey's own progress, in the point it belongs to. As the card's `foot` it was
+   pinned below `הבא בתור` — 258px under the route it describes, measured — and read as
+   that event's progress bar (`mockups/hero-in-transit-v1.html` §2). Only the rail's own
+   top margin is restated; everything it draws is `board.css`'s. */
+.hero-transit .wp-board-transit-prog {
+  margin-top: 11px;
+}
+/* How long is left, on the meta row that already answers "when". Amber because it is a
+   time (root rule 4) — the same ink `.tlabel` uses on this board. */
+.wp-board-now-meta .hero-eta {
+  font-weight: 700;
+  color: #f0c785;
+}
+
+/* The clock jump, in words. The collapsed board keeps the `🕐 +1 ש׳` pill; here there is
+   room for the sentence the pill cannot say, so it gets one line of its own. Amber for
+   the same reason the pill is amber — a clock jump is a TIME fact (root rule 4) — and the
+   recipe is the board's own chip one (a low-alpha semantic fill under a brightened ink),
+   so it adds no value to ADR-0028's budget. */
+.hero-clockshift {
+  margin-top: 9px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  color: #f0c785;
+  background: rgba(233, 166, 60, 0.1);
+  border: 1px solid rgba(233, 166, 60, 0.24);
+  border-radius: 10px;
+  padding: 7px 10px;
+}
+.hero-clockshift .icon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+/* ── A content block: a glyph column and what it labels ───────────────────────
+   `פתק` and `משימה` are the same shape with a different lead (ADR-0160 §U1), so the shared
+   half is written once.
+
+   **The line height is a variable because the GLYPH reads it.** An `.icon` inside a block
+   is an inline box sitting on a BASELINE, and a baseline is not a centre — so both glyphs
+   hung below the first line of their own text, which was reported from a device as the
+   tick being out of line with its star. Measured before the fix: the clipboard 1.4px low,
+   the checkbox 2.4px. A `margin-top` nudge is what put them there; the fix is to give the
+   column the text's own line box and centre in it, which is self-correcting if the ramp
+   ever changes. Both blocks take it, because fixing one alone would have made the two
+   disagree by 1.4px — the exact defect §U1 exists to prevent. */
+.hero-note,
+.hero-task {
+  --hero-block-line: calc(var(--text-secondary) * 1.55);
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+}
+/* **UP TO THREE OF THEM NOW** (ADR-0160 §U5, amended 2026-08-16). The stack is a sibling gap
+   rather than a wrapper, so one task renders exactly the box it did before this change and
+   the block's cost stays linear in what is actually there. `space-2` and not the 9px above:
+   that gap separates a glyph from its own words, and rows of different tasks need more air
+   than the parts of one row. */
+.hero-task + .hero-task {
+  margin-top: var(--space-2);
+}
+.hero-note-ic,
+.hero-task-ic {
+  flex: none;
+  display: flex;
+  align-items: center;
+  /* The FIRST line's box, not the block's — a note wraps, and the glyph belongs to the
+     line it introduces. */
+  height: var(--hero-block-line);
+  color: var(--on-dark-dim);
+}
+.hero-note-ic .icon,
+.hero-task-ic .icon {
+  width: 15px;
+  height: 15px;
+}
+.hero-note-tx {
+  font-size: var(--text-secondary);
+  line-height: var(--hero-block-line);
+  color: var(--on-dark);
+}
+/* GENERALISED rather than copied when the task block arrived (ADR-0160 §U): one rule, two
+   names. Two consumers on day one is rule 8's own threshold, and the alternative was a second
+   identical block six lines down. */
+.hero-note-more,
+.hero-task-more {
+  display: block;
+  margin-top: 5px;
+  padding-inline-start: 24px;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--on-dark-faint);
+}
+
+/* ── משימה — the fourth content type, and a READ (ADR-0160 §U) ─────────────────
+   `.hero-note`'s geometry exactly, because two content blocks inches apart on one surface
+   are one species or they are a defect. ADR-0191 §5 wrote the opposite down for the host
+   surface, shipped, and was reversed on the owner's first look at a 40px indent — measured
+   at 0px of line-start delta here BEFORE the build
+   (`mockups/a-task-in-the-hero-horizon-v1.html` §2).
+
+   Nothing here is pressable. Brief §13 settled that (the owner was offered the tickable
+   version and declined), and it is also what pays §A's constraint at zero cost. */
+.hero-task-main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+/* `flex: 1 1 0` on the name and NOT `auto` — `.tsk-title-txt`'s own rule, for its own reason:
+   a two-line title still has to start beside the star rather than under it, which a content
+   basis does not give. The line does not wrap, which is what keeps the face ON it: the first
+   draft wrapped, and at 360px the avatar landed alone underneath (ADR-0160 §O — flex breaks
+   lines by hypothetical size, before `flex-shrink` runs). */
+.hero-task-hd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-secondary);
+  /* The same line box the glyph column is sized to, so the two cannot drift apart. */
+  line-height: var(--hero-block-line);
+  color: var(--on-dark);
+}
+.hero-task-nm {
+  flex: 1 1 0;
+  min-width: 0;
+}
+/* `important` spends NO colour — brief §7's rule (the palette has nothing left), and the
+   screen's own answer. Shape and the board's ink carry it. */
+.hero-task-star {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--on-dark);
+}
+.hero-task-star .icon {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+}
+/* THE DEADLINE OWNS ITS OWN LINE — ADR-0191 §8's shipped answer to the identical crowding,
+   arriving one surface over rather than being re-decided.
+
+   The inks are the BOARD's, and that is a defect repair rather than a preference: `.tsk-due`'s
+   `--amber-deep` / `--miss-deep` are paper inks and measure 2.93:1 and 2.44:1 on this ground
+   in LIGHT mode — under WCAG AA's 4.5 for 11px text, the second under even 3.0. In dark the
+   same tokens are lifted and both are fine, which is exactly why looking at it was not enough.
+   ADR-0158 §15, as ADR-0160 §11 already found for `SettleControl`. Both replacements are
+   shipped values: this file's own `.hero-clockshift` and `settle-control.css`'s board skip. */
+.hero-task-due {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: #f0c785;
+}
+.hero-task-main > .hero-task-due {
+  display: flex;
+  margin-top: 2px;
+}
+.hero-task-due.late {
+  color: #f0a09b;
+}
+.hero-task-due .icon {
+  width: 11px;
+  height: 11px;
+}
+/* The face at the end of the title line (ADR-0190 §6 as amended) — the same 19px the section
+   and the screen already use, pushed to the end the same way. Measured at 0px of extra height:
+   it rides the line it sits on. */
+.hero-task-hd .wp-av {
+  width: 19px;
+  height: 19px;
+  font-size: 9px;
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+
+/* ── A group-split equal ──────────────────────────────────────────────────────
+   ADR-0041 §6 gives that variant its existence on there being NO primary, so every
+   equal carries the same depth and none is promoted. Separated by a hairline rather
+   than a card: a card inside the app's one surface allowed to be loud would read as
+   a second board. The hairline is the board's own divider value. */
+.hero-point + .hero-point {
+  margin-top: 13px;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+}
+.hero-equal-hd {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding-top: 13px;
+}
+.hero-equal-hd .ic {
+  flex: none;
+}
+.hero-equal-hd .nm {
+  font-family: var(--font-head);
+  font-size: var(--text-h3);
+  color: var(--on-dark-strong);
+  min-width: 0;
+}
+.hero-equal-hd .tm {
+  margin-inline-start: auto;
+  font-size: var(--text-caption);
+  color: var(--on-dark-dim);
+  white-space: nowrap;
+}
+/* An equal's parts sit one step in, so "this belongs to that one" reads differently
+   from "this is the horizon's next point". Indent rather than a box, and this is
+   level 1 of the ~2 ADR-0041 §4 caps at. */
+.hero-point:not([data-lead]) .hero-part {
+  padding-inline-start: 10px;
+}
+
+/* ── אחר כך ───────────────────────────────────────────────────────────────────
+   One line, and it stays one (ADR-0160 §12). No place, no note, no control and
+   nothing to press — the type it renders carries no id, so there is nothing here to
+   grow a hand-off from. If this rule ever needs a second row, the request underneath
+   it is "make the hero the Day tab", and the answer is the Day tab. */
+.hero-then {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--on-dark-dim);
+}
+.hero-then-lbl {
+  margin: 0;
+  flex: none;
+}
+.hero-then .tm {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--on-dark);
+}
+.hero-then-nm {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── THE JOURNEY BETWEEN TWO POINTS (ADR-0206 §V1.2 / §D2) ────────────────────
+   `~23 דק׳ · צאו ב־18:37`, in the slot that is already between two points: this sits under
+   `.wp-board-divider` rather than beside a point, because a journey is a property of neither
+   one. That is what keeps §D2 from becoming a fifth point-depth item and answers ADR-0160
+   §U0's admission rule instead of spending it.
+
+   The recipe is the board's own — a low-alpha semantic fill under a brightened ink, exactly
+   as `.wp-board-countdown`, `.code`, `.tlabel` and `.hero-act` already do it on this
+   always-dark surface — so no new value is minted and rule 4 is untouched. Amber is the
+   travel time (§D1), `--miss` is the risk (§D7), teal is somebody saying where they are
+   (ADR-0141's journey grammar). `--amber-deep` would be wrong here: it is amber's PAPER
+   variant, and this ground is the board.
+
+   §D6 is why there is no animation in this block. The app has one live mark, `.nowline` is
+   it, and a swap is not a second one — so a leave-by that has passed is ink and a word, never
+   a pulse or a glow. */
+.hero-trv {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 10px 0 12px;
+  padding: 7px 11px;
+  border-radius: 11px;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(233, 166, 60, 0.12);
+  border: 1px solid rgba(233, 166, 60, 0.26);
+  color: var(--amber);
+}
+.hero-trv .icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+/* The runs wrap together rather than the row breaking between the glyph and the words —
+   `זמן היציאה עבר ב־18:37` beside a duration is the widest state and it reaches two lines at
+   360px, which is a scroller's business and not a tile's. */
+.hero-trv-txt {
+  min-width: 0;
+}
+.hero-trv .sep {
+  opacity: 0.55;
+  font-weight: 400;
+}
+/* 7.80:1 over the board under this fill, measured — the same `#f0a0a0` the board's shut-window
+   label uses, and the same reason: `--miss` as a graphic fails what it crosses, so the ink is
+   the brightened variant (§D7's own note that the fill fails AA as ink). */
+.hero-trv.miss {
+  background: rgba(198, 40, 40, 0.18);
+  border-color: rgba(198, 40, 40, 0.42);
+  color: #f0a0a0;
+}
+/* Somebody said `בדרך` (§Z5 §M4). Teal because it is a claim about where they are, which is
+   the only thing rule 4 spends teal on — 8.91:1 over the board under this fill. */
+.hero-trv.on-way {
+  background: rgba(44, 156, 144, 0.14);
+  border-color: rgba(44, 156, 144, 0.34);
+  color: #7fd8cc;
+}
+/* The one control in the block, and it exists so the mark can be withdrawn where it is drawn
+   rather than one tab away. `.hero-act` unchanged, pushed to the row's end. */
+.hero-trv-act {
+  margin-inline-start: auto;
+  min-height: 30px;
+  font-size: 12px;
+}
+/* **What the fix adds** (ADR-0207 §2) — `📍 עדיין כאן` beside a passed leave-by. Teal, because
+   where-you-are is the only thing rule 4 spends teal on, and it sits INSIDE a `--miss` row on
+   purpose: the two are different claims (the clock passed · you are still here), and the mark
+   they justify together is the row's own. Absent whenever the position settles nothing, which is
+   the default. */
+.hero-trv-here {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  color: #7fd8cc;
+  font-weight: 700;
+}
+.hero-trv-here .icon {
+  width: 12px;
+  height: 12px;
+}
+
+/* **A chip STANDING ALONE owes ADR-0017's floor** (ADR-0214 §6), and `.hero-act`'s own comment
+   is why its ⁦34px⁩ is not enough here: that value is licensed for "a row of two or three inside
+   a bounded card", where the row's padding carries the rest of the reach. In the foot this is
+   one control on its own line with nothing beside it, so it takes the floor. Measured, because
+   the render reported ⁦34px⁩ and the floor does not bend for a surface that happens to be dark. */
+.hero-foot .hero-day-act {
+  min-height: 44px;
+  padding-inline: 14px;
+  margin-top: 11px;
+}
 </style>
 
     <style>
@@ -10570,6 +11458,56 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
       .bk-fact-v.ident {
         font-family: var(--font-mono);
         color: var(--ink);
+      }
+
+      /* → `ui/domain/hero-lift.css`. The lifted hero's value line already exists
+         as `.hero-where-nm` (a value on its own line under a `.hero-lbl`); an
+         IDENTIFIER wants the same line in the app's mono. One property, and
+         deliberately a modifier on that element rather than a second element:
+         the geometry, the ellipsis and the ink are already right. */
+      .hero-where-nm.hero-ident {
+        font-family: var(--font-mono);
+      }
+
+      /* → `ui/domain/hero-lift.css`, for §7's arm (ג). The flight's NAME, riding the
+         title it names, instead of a labelled part of its own. Quiet enough not to
+         compete with the route (which is what ADR-0059 §3 decided a flight reads as)
+         and mono because it is an identifier. Costs no band while the title fits. */
+      .wp-board-next-title .hero-title-ident {
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--on-dark-dim);
+        margin-inline-start: 7px;
+      }
+
+      /* → `ui/domain/board.css`, for §7's arm (ד) — the one the measurement chose. The
+         flight's name as a term on the meta line, in the plain-text register `.lockmini`
+         already uses there (no fill, no hue): it is an identifier, not a time and not a
+         commitment, so rule 4 gives it no colour of its own. */
+      .wp-board-next-meta .ident {
+        font-family: var(--font-mono);
+        font-weight: 700;
+        color: var(--on-dark-dim);
+      }
+
+      /* → `ui/primitives/value-token.css`. **The density that lets a value be
+         edited on the app's one dark surface.** `ValueToken` is `--ink` over
+         `--soft-line` and every one of its four call sites is a light surface,
+         so a token on the board reads as a hole. The recipe is NOT invented
+         here: it is `.hero-act`'s, measured one file over — a low-alpha fill
+         under a brightened ink with a hairline of the same hue — and the move
+         is the one `.wp-tzshift.on-dark` already made for the identical reason.
+         A density on the existing primitive, never a second control. */
+      .vt.on-dark {
+        color: var(--on-dark);
+        border-color: rgba(255, 255, 255, 0.18);
+        background: rgba(255, 255, 255, 0.07);
+        min-height: 34px;
+      }
+      .vt.on-dark.vt-empty {
+        color: var(--on-dark-dim);
+        border-color: rgba(255, 255, 255, 0.26);
       }
 
       /* ══════════════════════════════════════════════════════════════════════
@@ -10814,6 +11752,13 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           כל ערך ברגע שעליתם. הטופס יכול להתייחס אליהם אותו דבר. אף מסך אחר לא.
         </p>
         <p>
+          <b>ההירו המורם נושא את שתיהן</b>, וזה לא ויתור על §3 אלא אותו כלל מהצד השני: הלוח
+          המקופל מקצה, ההירו שמאחוריו נושא · בדיוק כפי ש-ADR-0214 §3 כבר הוריד מהלוח את המנעול
+          ואת הקוד אל תוך ההירו. ושם, ורק שם, אפשר גם <b>להוסיף</b> שער בלי לערוך את כל הטיסה
+          (§6). <b>אבל לא בחלק מתויג משלו:</b> מול ההירו העמוס האמיתי זה עולה ⁦91px⁩ לעומת
+          ⁦23px⁩, והשער עצמו עולה אפס · §7 הוא המדידה שהפכה את §5, והוא ההחלטה.
+        </p>
+        <p>
           מכאן שתי החלטות נפרדות: המספר נכנס למקום שבו ההזמנה <b>נקראת</b> ולא למקום שבו היא
           <b>נסרקת</b> (ADR-0179), והשער מופיע בלוח רק בתוך חלון לפני ההמראה · ושם הוא לוקח את
           המקום של קוד האישור. <b>שימו לב שזו לא טענת רוחב:</b> המדידה למטה מראה ששבב שביעי
@@ -10912,6 +11857,69 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         <div class="pair" id="s4"></div>
       </section>
 
+      <!-- ══════════════════════════ §5 ══════════════════════════ -->
+      <section class="case">
+        <h2>§5 · ההירו המורם · שתי העובדות, לא רק אחת</h2>
+        <p class="note">
+          <b>תיקון של הבעלים:</b> "the lifted hero should also show the flight number and not
+          only the gate". וזה מתיישב עם מה שכבר כתוב בקוד: ADR-0214 §3 הוריד מהלוח המקופל את
+          המנעול ואת הקוד דווקא כי "המנעול נמצא על הנקודה בהירו המורם, בלחיצה אחת" · כלומר
+          <b>הלוח מקצה וההירו נושא</b>. הציור הראשון נתן לשתי העובדות
+          <code>hero-part</code> מתויג משלהן, במבנה של <code>איפה</code> ו-<code>הערה</code>
+          לידה.
+          <b>הסעיף הזה נשאר כרשומה, וההצעה שבו נדחתה ב-§7.</b> הוא נמדד מול הירו
+          <b>דליל</b> · ⁦200px⁩ → ⁦291px⁩ · והמקרה הזה לא מכריע כלום, כי ההירו האמיתי נראה
+          כמו הצילום ב-§7. מול ההירו העמוס אותו חלק עולה <b>⁦+91px⁩</b> לעומת ⁦+23px⁩
+          לחלופה · ולכן מה שנבנה הוא §7(ד) ולא זה. נשאר כאן כי המחיר של הצורה המתויגת הוא
+          הנימוק, וקורא עתידי שיציע אותה שוב צריך לראות את המספר.
+        </p>
+        <div class="pair" id="s5"></div>
+      </section>
+
+      <!-- ══════════════════════════ §6 ══════════════════════════ -->
+      <section class="case">
+        <h2>§6 · הוספה מהירה · בלי לערוך את כל הטיסה</h2>
+        <p class="note">
+          <b>השאלה של הבעלים:</b> "an easy way to add the gate number so that you wouldn't have
+          to edit the entire flight just to add it". <b>המחיר היום אמיתי:</b> לפתוח את ההזמנה,
+          לנווט בטופס המדורג עד שלב <code>more</code>, להקליד שני תווים · ו-ADR-0155 קובע
+          שטופס מדורג <b>מתחייב פעם אחת</b>, כך שהשמירה כותבת מחדש את כל ההזמנה. <b>איפה זה
+          יושב נקבע במבנה ולא בטעם:</b> <code>Board.tsx:797</code> מרנדר את הלוח המקופל
+          כ-<code>&lt;button&gt;</code> כשאפשר להרים אותו (ADR-0160 §1), ולכן הוא לא יכול
+          להחזיק פקד מקונן בכלל · ההוספה המהירה היא של ההירו המורם, בלחיצה אחת. <b>והפרימיטיב
+          הוא <code>ValueToken</code></b> · "ערך שאפשר לשנות, בשורה" (ADR-0177 §2), שמצב
+          ה-<code>empty</code> שלו מתואר בדיוק לכאן. הפריים השלישי הוא מה שהוא פותח: שדה אחד
+          שכותב <code>gate</code> בלבד.
+        </p>
+        <div class="pair" id="s6"></div>
+      </section>
+
+      <!-- ══════════════════════════ §7 ══════════════════════════ -->
+      <section class="case">
+        <h2>§7 · ההירו העמוס · והמקרה ש-§5 היה צריך להימדד מולו</h2>
+        <p class="note">
+          <b>הבעלים, עם שני צילומי מסך מהאפליקציה החיה:</b> "the hero looks very crowded when
+          there's lots of stuff in the flight". <b>וזו טעות של הקובץ הזה, לא של ההצעה:</b> §5
+          נמדד מול הירו <b>דליל</b> · רק <code>איפה</code> ושלושה שבבים · בזמן שכללי המיומנות
+          עצמם אומרים לצייר את המקרה העמוס. בצילום, ההירו האמיתי כבר נושא שורת מטא שנשברת
+          <b>לשתי רצועות</b> (<code>המראה 15:30 🕐-1ש׳</code> ואז <code>קשיח #8JHEI4</code>),
+          שורת שבבים שנשברת <b>לשתי שורות</b> (מסמך <code>הזמנת כרטיסי טיסה</code> יורד לשנייה),
+          <code>אחר כך</code>, ופס היום. <b>ארבע זרועות מול אותו הירו, ומה שהמדידה אמרה:</b>
+          <b>(א)</b> היום · ⁦425px⁩. <b>(ב)</b> החלק החדש כפי שצויר ב-§5 · <b>⁦+91px⁩</b>.
+          <b>(ג)</b> המספר רוכב על הכותרת · ⁦+24px⁩. <b>(ד)</b> המספר כמונח בשורת המטא ·
+          <b>⁦+23px⁩</b>.
+          <b>הממצא שמכריע את כל השאר: השער עולה אפס.</b> שורת השבבים היא ⁦76px⁩ ב-(א)
+          וב-(ד) כאחד · היא כבר נשברת לשתי שורות היום, ולטוקן יש בה מקום. כלומר
+          <b>כל ה-⁦23px⁩ הם מספר הטיסה</b>, וזה המחיר של הבקשה עצמה · לא של האופן שבו היא
+          מיושמת. <b>§5 בוטל:</b> חלק מתויג משלו קונה את אותה עובדה פי ארבעה ביוקר.
+          <b>ובין (ג) ל-(ד) יש ⁦1px⁩</b>, כך שגם כאן זו שאלת משמעות ולא רוחב · ו-(ד) נבחרה
+          כי המחיר של (ג) הוא בדיוק שבירת הכותרת לשתי שורות (⁦24px⁩ → ⁦48px⁩), והכותרת היא
+          המסלול · מה ש-ADR-0059 §3 קבע שטיסה <b>נקראת</b> בתור. רצועה שלישית בשורה שכבר
+          נושאת שתיים היא עלבון קטן יותר משבירת המסלול.
+        </p>
+        <div class="pair" id="s7"></div>
+      </section>
+
       <div class="panel">
         <h2>מדידה · נקראת מה-DOM החי</h2>
         <p>
@@ -10988,6 +11996,10 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
       // COPIED from `ui/Icon.tsx` — never re-drawn.
       const ICON = {
         lock: 'M7.4 10.4V7.6a4.6 4.6 0 0 1 9.2 0v2.8 M5.8 10.4h12.4a1.4 1.4 0 0 1 1.4 1.4v8a1.4 1.4 0 0 1-1.4 1.4H5.8a1.4 1.4 0 0 1-1.4-1.4v-8a1.4 1.4 0 0 1 1.4-1.4Z',
+        pin: 'M12 21.5s6.5-5.9 6.5-10.5a6.5 6.5 0 1 0-13 0C5.5 15.6 12 21.5 12 21.5Z M14.2 10.8a2.2 2.2 0 1 1-4.4 0 2.2 2.2 0 0 1 4.4 0',
+        navigate: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M15.6 8.4l-2.2 5.2-5.2 2.2 2.2-5.2Z',
+        ticket:
+          'M3.4 8.6V6.8a1.6 1.6 0 0 1 1.6-1.6h14a1.6 1.6 0 0 1 1.6 1.6v1.8a2.2 2.2 0 0 0 0 4.4v1.8a1.6 1.6 0 0 1-1.6 1.6H5a1.6 1.6 0 0 1-1.6-1.6v-1.8a2.2 2.2 0 0 0 0-4.4Z M14.4 5.2v1.9 M14.4 10.2v1.9 M14.4 15.1v1.9',
       };
       const icon = (name) =>
         `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -11015,6 +12027,10 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           title: 'תל אביב ← טוקיו',
           badge: '✈️',
           verb: 'המראה',
+          heroLbl: 'הטיסה',
+          heroIdent: 'LY315 · El Al',
+          place: 'נתב"ג · טרמינל 3',
+          gateAdd: '＋ שער',
         },
         train: {
           providerLabel: 'חברת הרכבות',
@@ -11030,6 +12046,10 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           title: 'טוקיו ← קיוטו',
           badge: '🚆',
           verb: 'יציאה',
+          heroLbl: 'הרכבת',
+          heroIdent: 'Hikari 503 · JR East',
+          place: 'תחנת טוקיו · שער Yaesu',
+          gateAdd: '＋ רציף',
         },
       };
 
@@ -11124,6 +12144,149 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         </div></div>`;
       };
 
+      /* ── §5/§6 · the lifted hero. The real tree: `.wp-board.hero-lifted` is the
+            SAME `.wp-board` (that is ADR-0160's whole thesis — one object that gained
+            elevation), padded by its three regions instead of itself, with the point's
+            parts as labelled `.hero-part`s. `withFlight` adds the proposed part.
+            `gate`: 'has' | 'empty' | 'none'. */
+      const hero = ({ withFlight, gate }) => {
+        const w = WORDS[type];
+        const gateTok =
+          gate === 'has'
+            ? `<button type="button" class="vt vt-word on-dark">${w.gateChip}</button>`
+            : gate === 'empty'
+              ? `<button type="button" class="vt vt-word on-dark vt-empty">${w.gateAdd}</button>`
+              : '';
+        return `<div class="mkonly-boardpad"><div class="wp-board hero-lifted">
+          <div class="hero-head">
+            <div class="hero-point" data-lead>
+              <div class="hero-part">
+                <div class="wp-board-next-label">הבא בתור</div>
+                <div class="wp-board-next-title"><span class="wp-board-ic">${w.badge}</span>${w.title}</div>
+                <div class="wp-board-next-meta">
+                  <span class="tlabel">${w.verb}</span>
+                  <span dir="auto">${lt('07:25')}</span>
+                  <span class="wp-tzshift on-dark">${lt('+7:00')}</span>
+                  <span class="lockmini">${icon('lock')} מחויב</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="hero-scroll">
+            <div class="hero-point">
+              <div class="hero-part">
+                <span class="hero-lbl">איפה</span>
+                <span class="hero-where-nm" dir="auto">${w.place}</span>
+                <div class="hero-acts">
+                  <button type="button" class="hero-act loc">${icon('pin')} במפה</button>
+                  <a class="hero-act loc" href="#">${icon('navigate')} ניווט</a>
+                  <button type="button" class="hero-act time">${icon('ticket')} להזמנה</button>
+                </div>
+              </div>
+              ${
+                withFlight
+                  ? `<div class="hero-part mk-flightpart">
+                <span class="hero-lbl">${w.heroLbl}</span>
+                <span class="hero-where-nm hero-ident" dir="auto">${lt(w.heroIdent)}</span>
+                ${gateTok ? `<div class="hero-acts">${gateTok}</div>` : ''}
+              </div>`
+                  : ''
+              }
+            </div>
+          </div>
+        </div></div>`;
+      };
+
+      /* ── §7 · THE CROWDED HERO, reproduced from the owner's screenshot rather than
+            imagined: a `פנוי` lead point, the divider, `הבא בתור` whose meta line already
+            wraps to two bands, the countdown tile beside it, `איפה` whose chip row already
+            wraps to two (the document chip lands on the second), `אחר כך`, and the day rail.
+            This is the case §5 should have been measured against.
+
+            `arm`: 'now' (today) | 'part' (§5's labelled hero-part) | 'inline' (no new part —
+            the number rides the title, the gate joins the existing chip row). */
+      const heroCrowded = ({ arm }) => {
+        const w = WORDS[type];
+        const ident = `<span class="hero-title-ident" dir="auto">${lt(w.numberValue)}</span>`;
+        const gateTok = `<button type="button" class="vt vt-word on-dark">${w.gateChip}</button>`;
+        return `<div class="mkonly-boardpad"><div class="wp-board hero-lifted">
+          <div class="hero-head">
+            <div class="hero-point" data-lead>
+              <div class="hero-part">
+                <div class="wp-board-now-label">פנוי</div>
+                <div class="wp-board-now-title">זמן חופשי</div>
+                <div class="wp-board-now-meta">עד <span dir="auto">${lt('15:30')}</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="hero-scroll">
+            <div class="wp-board-divider"></div>
+            <div class="hero-point">
+              <div class="hero-part">
+                <div class="wp-board-next-row">
+                  <div>
+                    <div class="wp-board-next-label">הבא בתור</div>
+                    <div class="wp-board-next-title">
+                      <span class="wp-board-ic">${w.badge}</span>${w.title}${arm === 'title' ? ident : ''}
+                    </div>
+                    <div class="wp-board-next-meta">
+                      <span class="tlabel">${w.verb}</span>
+                      <span dir="auto">${lt('15:30')}</span>
+                      <span class="wp-tzshift on-dark">${lt('-1:00')}</span>
+                      <span class="lockmini">${icon('lock')} קשיח</span>
+                      <span class="code" dir="auto">${lt('#8JHEI4')}</span>
+                      ${arm === 'meta' ? `<span class="ident" dir="auto">${lt(w.numberValue)}</span>` : ''}
+                    </div>
+                  </div>
+                  <div class="wp-board-countdown">
+                    <div class="t" dir="auto">${lt('01:08:52')}</div>
+                    <div class="u">שעות</div>
+                  </div>
+                </div>
+              </div>
+              <div class="hero-part">
+                <span class="hero-lbl">איפה</span>
+                <span class="hero-where-nm" dir="auto">${w.place}</span>
+                <div class="hero-acts">
+                  <button type="button" class="hero-act loc">${icon('pin')} במפה</button>
+                  <a class="hero-act loc" href="#">${icon('navigate')} ניווט</a>
+                  <button type="button" class="hero-act time">${icon('ticket')} להזמנה</button>
+                  <button type="button" class="hero-act doc">${icon('ticket')}<span class="nm" dir="auto">הזמנת כרטיסי טיסה</span></button>
+                  ${arm === 'title' || arm === 'meta' ? gateTok : ''}
+                </div>
+              </div>
+              ${
+                arm === 'part'
+                  ? `<div class="hero-part mk-flightpart">
+                <span class="hero-lbl">${w.heroLbl}</span>
+                <span class="hero-where-nm hero-ident" dir="auto">${lt(w.heroIdent)}</span>
+                <div class="hero-acts">${gateTok}</div>
+              </div>`
+                  : ''
+              }
+              <div class="hero-part hero-then">
+                <span class="hero-lbl hero-then-lbl">אחר כך</span>
+                <span class="tm" dir="auto">${lt('18:00')}</span>
+                <span dir="auto">Gissurarbúð 5</span>
+              </div>
+            </div>
+          </div>
+        </div></div>`;
+      };
+
+      /* ── §6's third frame: what the token opens. One `Field` and the form's own
+            footer — it writes `gate` and nothing else, which is the entire point. */
+      const gateSheet = () => {
+        const w = WORDS[type];
+        return `<div class="mkonly-sheetpad">
+          ${field({ label: w.gateLabel, id: 'bs-gate-quick', value: '', placeholder: w.gatePlaceholder, hint: w.gateHint })}
+          <div class="form-actions">
+            <button type="button" class="fa-primary">שמירה</button>
+            <button type="button" class="fa-secondary">ביטול</button>
+          </div>
+        </div>`;
+      };
+
       const phone = (inner) => `<div class="phone">${inner}</div>`;
       const col = (tag, inner) => `<div class="col">${tag}${phone(inner)}</div>`;
       const T = { before: 'היום', after: 'בהצעה', neutral: '' };
@@ -11145,6 +12308,24 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           col(tag('before', '(א) היום'), board({ arm: 'now' })),
           col(tag('before', '(ב) שבב שביעי'), board({ arm: 'add' })),
           col(tag('after', '(ג) בהצעה · השער יורש את הקוד'), board({ arm: 'swap' })),
+        ].join('');
+
+        document.querySelector('#s5').innerHTML = [
+          col(tag('before', 'היום · אין לו מה לשאת'), hero({ withFlight: false })),
+          col(tag('after', 'בהצעה · שתי העובדות'), hero({ withFlight: true, gate: 'has' })),
+        ].join('');
+
+        document.querySelector('#s6').innerHTML = [
+          col(tag('neutral', 'יש ערך'), hero({ withFlight: true, gate: 'has' })),
+          col(tag('after', 'אין ערך · מזמין'), hero({ withFlight: true, gate: 'empty' })),
+          col(tag('neutral', 'מה שנפתח · שדה אחד'), gateSheet()),
+        ].join('');
+
+        document.querySelector('#s7').innerHTML = [
+          col(tag('before', '(א) היום · כבר עמוס'), heroCrowded({ arm: 'now' })),
+          col(tag('before', '(ב) §5 · חלק חדש'), heroCrowded({ arm: 'part' })),
+          col(tag('before', '(ג) המספר על הכותרת'), heroCrowded({ arm: 'title' })),
+          col(tag('after', '(ד) בהצעה · המספר בשורת המטא'), heroCrowded({ arm: 'meta' })),
         ].join('');
 
         document.querySelector('#s4').innerHTML = [
@@ -11281,6 +12462,97 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
               ' → ' +
               h('#s1 .col:nth-child(2) .mkonly-sheetpad'),
             'הטופס כבר מדורג (ADR-0155) · השלב גולל',
+          ],
+          [
+            'ההירו המורם · היום מול בהצעה',
+            h('#s5 .col:nth-child(1) .wp-board') + ' → ' + h('#s5 .col:nth-child(2) .wp-board'),
+            'מה עולה החלק החדש · ' + h('#s5 .col:nth-child(2) .mk-flightpart'),
+          ],
+          [
+            'שורת הזהות בהירו · רוחב',
+            wd('#s5 .col:nth-child(2) .hero-ident'),
+            'מול רוחב הכרטיס · לא אמורה לגלוש',
+          ],
+          [
+            'טוקן השער · קופסה מול יעד המגע',
+            (() => {
+              // `ValueToken`'s floor is NOT its box: ADR-0177 met 44px with an `::after`
+              // overlay reaching into the line's own vertical padding, precisely so the
+              // control would not make every row taller. So the honest number is the box
+              // PLUS that overlay's reach, read from the live computed style rather than
+              // assumed from the stylesheet.
+              const el = document.querySelector('#s6 .col:nth-child(1) .vt');
+              if (!el) return '·';
+              const box = el.getBoundingClientRect().height;
+              const a = getComputedStyle(el, '::after');
+              const px = (v) => (v && v.endsWith('px') ? parseFloat(v) : 0);
+              const reach = box - px(a.top) - px(a.bottom);
+              return r1(box) + ' → ' + r1(reach);
+            })(),
+            'רצפת מגע 44px (ADR-0017) · הקופסה לא עומדת בה וה-::after כן · וזה בדיוק המנגנון של ADR-0177',
+          ],
+          [
+            'טוקן השער · מלא מול ריק',
+            wd('#s6 .col:nth-child(1) .vt') + ' → ' + wd('#s6 .col:nth-child(2) .vt'),
+            'המצב הריק מזמין · לא מצטמק לכלום',
+          ],
+          [
+            'שבב ההירו לידו · גובה',
+            h('#s6 .col:nth-child(1) .hero-act'),
+            'מהמתכון ש-.vt.on-dark שואל · אמור להתלכד',
+          ],
+          [
+            'ההירו העמוס · (א) היום',
+            h('#s7 .col:nth-child(1) .wp-board'),
+            // `--lift-max-h` is `100dvh - 18px`, so the cap is the PHONE's height and not
+            // the renderer window's — reading `innerHeight` here reported 1182px and
+            // measured nothing. The selected screen is the honest number.
+            'מול תקרת הכרטיס · ' +
+              (document.querySelector('.controls button[data-w][aria-pressed="true"]')?.dataset.w ===
+              '390'
+                ? '826px'
+                : '622px') +
+              ' (--lift-max-h על המסך שנבחר)',
+          ],
+          [
+            'ההירו העמוס · (ב) חלק חדש',
+            h('#s7 .col:nth-child(2) .wp-board'),
+            'המחיר של §5 על המקרה האמיתי · ' +
+              r1(
+                (document.querySelector('#s7 .col:nth-child(2) .wp-board')?.getBoundingClientRect()
+                  .height ?? 0) -
+                  (document.querySelector('#s7 .col:nth-child(1) .wp-board')?.getBoundingClientRect()
+                    .height ?? 0),
+              ),
+          ],
+          [
+            'ההירו העמוס · (ג) המספר על הכותרת',
+            h('#s7 .col:nth-child(3) .wp-board'),
+            'המחיר של (ג) · ' + r1((document.querySelector('#s7 .col:nth-child(3) .wp-board')?.getBoundingClientRect().height ?? 0) - (document.querySelector('#s7 .col:nth-child(1) .wp-board')?.getBoundingClientRect().height ?? 0)) + '',
+          ],
+          [
+            'ההירו העמוס · (ד) בהצעה',
+            h('#s7 .col:nth-child(4) .wp-board'),
+            'המחיר של (ד) · ' + r1((document.querySelector('#s7 .col:nth-child(4) .wp-board')?.getBoundingClientRect().height ?? 0) - (document.querySelector('#s7 .col:nth-child(1) .wp-board')?.getBoundingClientRect().height ?? 0)) + '',
+          ],
+          [
+            'שורת השבבים · (א) מול (ד)',
+            h('#s7 .col:nth-child(1) .hero-acts') + ' → ' + h('#s7 .col:nth-child(4) .hero-acts'),
+            'כבר שתי שורות היום · האם השער מוסיף שלישית',
+          ],
+          [
+            'שורת המטא · (א) מול (ד)',
+            h('#s7 .col:nth-child(1) .wp-board-next-meta') +
+              ' → ' +
+              h('#s7 .col:nth-child(4) .wp-board-next-meta'),
+            'כבר שתי רצועות היום · האם המספר מוסיף שלישית',
+          ],
+          [
+            'כותרת הבא בתור · (ג) נשברת',
+            h('#s7 .col:nth-child(1) .wp-board-next-title') +
+              ' → ' +
+              h('#s7 .col:nth-child(3) .wp-board-next-title'),
+            'זה כל המחיר של (ג) · ולמה היא נדחתה',
           ],
           [
             'טור העובדות · היום מול בהצעה',

@@ -1,12 +1,12 @@
 # 0222 — A flight has a **number** and a **gate**, and they are not the same kind of fact
 
-**Status:** Proposed (2026-09-11) — drawn and measured, not yet reviewed by the owner. §4 and §5 carry the two forks that need an answer.
+**Status:** Proposed (2026-09-11) — drawn and measured; **§6 and §7 added the same day** on three owner notes, the third of which (two screenshots of the running app: _"the hero looks very crowded when there's lots of stuff in the flight"_) **overturned §6's first shape before it was accepted**. §4 and §5 still carry the two forks that need an answer.
 **Date:** 2026-09-11
 **Session note:** [`planning/2026-09-11-a-flight-has-a-number-and-a-gate.md`](../planning/2026-09-11-a-flight-has-a-number-and-a-gate.md)
 **Mockup:** [`mockups/a-flight-has-a-number-and-a-gate-v1.html`](../../mockups/a-flight-has-a-number-and-a-gate-v1.html)
 
 **Extends:** [0163](0163-a-hire-is-not-a-journey.md) §2 — the same shape, for the second and third time: one `Booking` column with a `Record<BookingType, string>` of words over it. 0163 is not amended; it scoped itself to `provider` and this adds two peers beside it.
-**Relates:** [0179](0179-a-booking-row-says-what-then-when-and-the-code-is-a-read.md) §2c (the code left the Index row; neither new fact asks for that slot), [0214](0214-the-night-board-has-one-subject-and-it-is-tomorrow.md) §3 (a fact you cannot act on comes off the board — the sentence §4 reads as a window), [0028](0028-plan-violet-color-budget-dark-ready.md) (amber = time & commitment, teal = location — §3 and §4 both turn on it), [0047](0047-booking-event-linkage-and-notes.md)/[0048](0048-index-build-data-model-refinements.md) (the booking shape these two columns join), [0155](0155-a-stepped-form-is-one-primitive-and-it-commits-once.md) (the `more` step they land in), [0109](0109-map-tab-design.md) §6 (the anti-nag rule `Field`'s `hint` serves), [0017](0017-mobile-first-device-targets.md) (360px is the design width), [0096](0096-per-domain-claude-md-guides.md) (rule 8 — no new mechanism here)
+**Relates:** [0160](0160-the-hero-lifts-and-shows-a-horizon.md) (§6's surface — the lifted hero IS the board, and §7's constraint is its tap target), [0177](0177-a-when-reads-as-a-sentence.md) (§7 — `ValueToken`, and the `empty` variant written for exactly this), [0155](0155-a-stepped-form-is-one-primitive-and-it-commits-once.md) (§7's cost — a stepped form commits once), [0179](0179-a-booking-row-says-what-then-when-and-the-code-is-a-read.md) §2c (the code left the Index row; neither new fact asks for that slot), [0214](0214-the-night-board-has-one-subject-and-it-is-tomorrow.md) §3 (a fact you cannot act on comes off the board — the sentence §4 reads as a window), [0028](0028-plan-violet-color-budget-dark-ready.md) (amber = time & commitment, teal = location — §3 and §4 both turn on it), [0047](0047-booking-event-linkage-and-notes.md)/[0048](0048-index-build-data-model-refinements.md) (the booking shape these two columns join), [0155](0155-a-stepped-form-is-one-primitive-and-it-commits-once.md) (the `more` step they land in), [0109](0109-map-tab-design.md) §6 (the anti-nag rule `Field`'s `hint` serves), [0017](0017-mobile-first-device-targets.md) (360px is the design width), [0096](0096-per-domain-claude-md-guides.md) (rule 8 — no new mechanism here)
 
 ## Context
 
@@ -70,13 +70,64 @@ The chip is `.tlabel.loc` — the existing teal recipe, with its selector **gain
 
 When the gate chip lights up. `T-3h` is the recommendation — early enough to be there when you leave for the airport, late enough that the value on screen is the one that will be on the departure boards — and the mockup makes it a control (`T-4h · T-3h · T-2h`) rather than pretending to have settled it. **A device pass owns the final number.**
 
+### 6. The lifted hero carries both facts, in a `hero-part` of its own
+
+The owner, on the drawn §4:
+
+> the lifted hero should also show the flight number and not only the gate
+
+**This is the same rule as §4 read from the other side, not a concession to it.** ADR-0214 §3 took the lock and the code off the collapsed board at rank 1 with the explicit reasoning that "the lock is on the point in the lifted hero, one press away" — the board **rations**, the hero **carries**. A flight's identity facts belong where the hero already puts a point's depth.
+
+**The first drawing gave them a labelled `hero-part` of their own**, in the structure `איפה`/`הערה`/`משימה` already use. The owner's third note killed it, with two screenshots:
+
+> the hero looks very crowded when there's lots of stuff in the flight, can you reconcile that too?
+
+**That is a defect in the mockup, not in the proposal, and it is the one the skill warns about by name: draw the crowded case.** §5 was measured against a _thin_ hero — one `איפה` part, three chips, 200px → 291px — while the photographed hero already wraps its meta line to **two bands** and its chip row to **two rows**, before any of this is added. A clean case decides nothing.
+
+Re-measured against the real one (mockup §7, 360px, `--lift-max-h` = 622px):
+
+| arm                                       | height    | cost      |
+| ----------------------------------------- | --------- | --------- |
+| (א) today                                 | 425px     | —         |
+| (ב) a labelled `hero-part` (§5's drawing) | 516px     | **+91px** |
+| (ג) the number rides the title            | 449px     | +24px     |
+| (ד) the number as a term on the meta line | **448px** | **+23px** |
+
+**The finding that settles all of it: the gate costs nothing.** The chip row measures 76px with and without the token — it already wraps to two rows and has room in the second. So the entire 23px is the **flight number**, which makes it the price of the ask itself rather than of any particular way of paying it, and makes a labelled part four times the cost of the same fact.
+
+**So the decision is (ד), and §5's shape is rejected:** no new `hero-part`. The number becomes a term on `.wp-board-next-meta` in the plain-text register `.lockmini` already uses there — no fill, no hue, because an identifier is neither a time nor a commitment and rule 4 lends it no colour. The gate is the `ValueToken` of §7, in the chip row that already exists.
+
+**(ג) and (ד) are 1px apart, so that choice is meaning again and not width** — the same shape as §4. (ג)'s whole cost _is_ the title breaking to two lines (24px → 48px), and the title is the **route**, which is what ADR-0059 §3 decided a flight reads as. A third band on a line already carrying two is a smaller insult than a wrapped route.
+
+### 7. The gate's way in is a `ValueToken` on that part, not a trip through the form
+
+The owner, in the same breath:
+
+> I'm also wondering whether we should think of an easy way to add the gate number so that you wouldn't have to edit the entire flight just to add it
+
+**The cost being described is real, and it is ADR-0155's.** Today the path is: open the booking, navigate the stepped form to its `more` step, type two characters, save — and a stepped form **commits once**, so setting a gate rewrites the whole booking.
+
+**Where it lives is decided structurally, not by taste.** `Board.tsx:797` renders the collapsed board as a `<button>` whenever it can lift (0160 §1), so it cannot host a nested control at all. The quick-add is therefore the lifted hero's, one tap in — the surface §6 just gave the facts to.
+
+**And the primitive is `ValueToken`** (0177 §2) — "a value you can change, inline" — in its `empty` state when there is nothing yet: dashed and muted, reading `＋ שער`, which is what that variant was documented for ("a placeholder the app writes, never a browser hint: an empty when has to invite, not sit blank"). It opens a one-field sheet that writes `gate` and nothing else. It sits in the `איפה` part's existing chip row, which §6's measurement showed has the room: **76px with and without it.**
+
+**The one thing this costs, and why it is a density rather than a second control.** The two candidate primitives each have half of what is needed: `ValueToken` has the right semantics and the wrong surface (`--ink` over `--soft-line`; all four call sites are light), while `.hero-act` has the right surface — the board's low-alpha-fill-under-brightened-ink recipe — and the wrong semantics, since it is a way **out** of a point and never a value. Pressing a hand-off chip into being a value editor is how ADR-0078 and its siblings got written. So `ValueToken` gains a `.vt.on-dark` density borrowing `.hero-act`'s already-measured recipe — the same move `.wp-tzshift.on-dark` made for the identical reason.
+
+**The render confirms the borrowing rather than asserting it:** the token and the `.hero-act` chip beside it both measure **34px**, so the two read as one family on the line. The token is 67px filled and 64px empty, so the empty state does not collapse to a stub. And the 44px floor is met the way 0177 built it — the box is 34px and the `::after` overlay reaches **48px**, read off the live computed style rather than taken from the stylesheet.
+
 ## Consequences
 
 **A migration, and `packages/shared` moves first** — two nullable columns on `Booking`, the zod schemas beside them, then the form, the read and the board. Nothing existing changes shape.
 
 **`searchTerms` gains one term** (`booking.flightNumber`), which is a push into an array the ADR-0102 build explicitly left open for this.
 
-**No new mechanism, and the proposal's CSS is 6 lines** — one selector gained, one class added. That number is the check on rule 8: a long block here would have meant a primitive went unused.
+**No new mechanism, and the proposal's CSS is ~16 lines** — one selector gained, three small classes added (`.bk-fact-v.ident`, `.hero-where-nm.hero-ident`, `.vt.on-dark` with its empty pair). It grew from 6 because §6 and §7 brought a second surface, not because anything was redrawn: each one is a density on something that already exists. That number is the check on rule 8, and it is still the right order of magnitude.
+
+**§7 adds one write path, and it must be a narrow one.** A one-field save that writes `gate` alone, never a `BookingSheet` commit — the section defeats itself if the quick-add round-trips the whole booking. That is a real constraint on the build and the place it is most likely to be got wrong.
+
+**The lifted hero grows 23px on a flight, and all of it is the number** — 425px → 448px against a 622px cap at 360×640. The gate is free. A hero carrying a note and two tasks _as well as_ everything §7 draws is the remaining case for a device pass; §7's frame is the owner's photographed one, which is the worst case anybody has actually reported.
+
+**§5's labelled `hero-part` is kept in the mockup as a rejected shape rather than deleted**, because the 91px is the argument and a future reader proposing it again should meet the number first.
 
 **The gate will go stale and the app will not know.** There is no gate data source; the field is what a person typed. A gate that changed after they typed it will be shown confidently and wrongly, and the mockup's rejected list says why an alert is not the answer (a notification about a value the user wrote is a message from them to themselves). The honest mitigation is that the chip only appears inside a window where the value is recent by construction — which is §5's real argument, and worth revisiting if anyone reports being sent to the wrong gate.
 
@@ -86,4 +137,4 @@ When the gate chip lights up. `T-3h` is the recommendation — early enough to b
 
 **A shipped fact this measured and is not fixing:** every `.field input` renders at 37px against 0017's 44px touch floor, app-wide and predating this change. The two new fields sit at the same 37px, so this neither causes nor fixes it. Recorded in the backlog because it is now a measured number rather than a suspicion.
 
-**Rejected, each drawn or measured:** one generic `מזהה השירות` column (0163 §2's own argument — the abstract word that is right for every type is the one nobody fills in); the flight number on the Index row (0179 §2c already measured what a code-like string costs that row); a permanent gate chip on the board (free, as it turns out, but empty on most days of a trip, and a chip that is always there teaches the eye to skip it exactly until the morning it matters); a gate in amber beside the code (rule 4 — amber is time and commitment, and the teal recipe already exists); and an alert when a gate is published (no data source; the value is the user's own).
+**Rejected, each drawn or measured:** a labelled `hero-part` for the two facts (§6's own first drawing — 4× the cost of the same fact on the hero people actually have, and the reason this ADR was revised before it was accepted); the number riding the title (1px cheaper to reject than to take, and its cost is the route wrapping); the gate as a `.hero-act` chip (right surface, wrong meaning — a hand-off chip that edits a value is the duplicate rule 8 exists to stop); the quick-add on the **collapsed** board (impossible rather than merely unwise — the board is a `<button>`); an inline `<input>` in place of the token (it would be the app's only value edited without the token→panel gesture every other editable value uses, to save one sheet); one generic `מזהה השירות` column (0163 §2's own argument — the abstract word that is right for every type is the one nobody fills in); the flight number on the Index row (0179 §2c already measured what a code-like string costs that row); a permanent gate chip on the board (free, as it turns out, but empty on most days of a trip, and a chip that is always there teaches the eye to skip it exactly until the morning it matters); a gate in amber beside the code (rule 4 — amber is time and commitment, and the teal recipe already exists); and an alert when a gate is published (no data source; the value is the user's own).

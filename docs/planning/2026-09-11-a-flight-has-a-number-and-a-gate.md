@@ -36,6 +36,40 @@ The recommendation did not change; its argument did. The gate inherits the code'
 | gate field with its hint / without     | 89.7px / 37px                    |
 | detail fact column — before / after    | 152px → 228px                    |
 
+## Two owner notes on the drawing, and what they changed
+
+**"the lifted hero should also show the flight number and not only the gate."** A correction, so the default changed rather than being drawn beside the old one. It also turned out to be the _same_ rule as §4 from the other side: ADR-0214 §3 took the lock and the code off the collapsed board precisely because "the lock is on the point in the lifted hero, one press away" — the board rations, the hero carries. The first drawing gave both facts a labelled `hero-part` beside `איפה`/`הערה`/`משימה`. **The third note then killed that shape — see below.**
+
+**"an easy way to add the gate number so that you wouldn't have to edit the entire flight just to add it."** The question §2 gestured at and did not answer. Two things settled it, neither a matter of taste:
+
+- **Where.** `Board.tsx:797` renders the collapsed board as a `<button>` whenever it can lift (ADR-0160 §1), so it cannot host a nested control _at all_. The quick-add is the lifted hero's, one tap in — the surface the first note had just populated.
+- **Which primitive.** The two candidates each hold half of it. `ValueToken` (ADR-0177 §2) has the right semantics — "a value you can change, inline", with an `empty` variant documented for exactly this case — and the wrong surface (`--ink` over `--soft-line`, all four call sites light). `.hero-act` has the right surface (the board's low-alpha-fill-under-brightened-ink recipe) and the wrong semantics: it is a way _out_ of a point, never a value. Pressing a hand-off chip into being a value editor is how a duplicate gets built, so `ValueToken` gains a `.vt.on-dark` density borrowing `.hero-act`'s measured recipe — the `.wp-tzshift.on-dark` move, for the same reason.
+
+The render confirmed the borrowing rather than asserting it: **token and chip both 34px**, so they read as one family. Token 67px filled, 64px empty. And the 44px floor is met as ADR-0177 built it — a 34px box whose `::after` reaches **48px**, read off the live computed style.
+
+The real cost being described was ADR-0155's: a stepped form commits once, so setting a gate today rewrites the whole booking. The build constraint that follows is the place this is most likely to be got wrong — the quick save must write `gate` alone.
+
+## The third note, which overturned the second before it was accepted
+
+**"the hero looks very crowded when there's lots of stuff in the flight, can you reconcile that too?"** — with two screenshots of the running app.
+
+**This was a defect in the mockup, not in the proposal, and it is the failure the skill warns about by name.** §5 was measured against a _thin_ hero: one `איפה` part, three chips, 200px → 291px. The photographed hero already wraps its meta line to **two bands** and its chip row to **two rows** before anything is added. "Draw the crowded case, not the clean one" — and a clean case decides nothing, which is exactly what the 91px turned out to be worth.
+
+Re-measured against the real hero (mockup §7, 360px, cap 622px):
+
+| arm                                    | height    | cost      |
+| -------------------------------------- | --------- | --------- |
+| (א) today                              | 425px     | —         |
+| (ב) a labelled `hero-part` (§5's draw) | 516px     | **+91px** |
+| (ג) the number rides the title         | 449px     | +24px     |
+| (ד) the number on the meta line        | **448px** | **+23px** |
+
+**The finding that settles it: the gate costs nothing.** The chip row is 76px with and without the token — it already wraps and has room in its second row. So all 23px is the flight number, which makes it the price of the ask rather than of any way of paying it, and makes the labelled part 4× the cost of the same fact.
+
+(ג) and (ד) are **1px** apart, so that choice is meaning and not width — the same shape as §4 two sections earlier. (ג)'s entire cost is the title breaking to two lines (24px → 48px), and the title is the route, which ADR-0059 §3 decided is what a flight reads as. A third band beats a wrapped route.
+
+§5 stays in the mockup as a **rejected shape** rather than being deleted: the 91px is the argument, and a future reader proposing it again should meet the number first.
+
 ## Open, and belonging to a device pass
 
 The gate window (`T-4h · T-3h · T-2h`, default `T-3h`) is a control in the file and not a decision it pretends to have made. And the teal gate chip sits beside the amber transition label for the first time — whether that reads as two kinds of fact or as a clash is a screen question.
