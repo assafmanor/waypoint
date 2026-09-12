@@ -81,12 +81,61 @@ describe('nowLinePlacement', () => {
     expect(nowLinePlacement(entriesFor(peers), Date.parse(at('14:45'))).inside?.key).toBe('pools');
   });
 
+  // ── A HUMAN OUTRANKS THE CLOCK (2026-09-12) ───────────────────────────────────────────────
+  //
+  // The reported day: two ⁦16:45–17:30⁩ rows ticked `היינו` at ⁦17:18⁩, with the arrow drawn above
+  // both of them. `inside` had always been right (a settled row holds nothing, §4); the INDEX
+  // was still asking the clock alone, so the mark said "not yet" across two cards saying "we
+  // were there". ADR-0117 §2's rule, arriving at the third derivation that needed it.
   it('is inside nothing on a row that has been settled', () => {
     const done = [{ ...ev('morning', '09:00', '10:30'), status: EVENT_STATUS.DONE }];
-    const placed = nowLinePlacement(entriesFor(done), Date.parse(at('09:45')));
-    expect(placed.inside).toBeNull();
-    // The row keeps its place: it did start, so the boundary is still below it.
-    expect(placed.index).toBe(0);
+    expect(nowLinePlacement(entriesFor(done), Date.parse(at('09:45'))).inside).toBeNull();
+  });
+
+  it('drops past a row that has been settled, before its own clock is up', () => {
+    const settled = [
+      { ...ev('morning', '09:00', '10:30'), status: EVENT_STATUS.DONE },
+      ev('lunch', '12:30', '13:20'),
+    ];
+    expect(nowLinePlacement(entriesFor(settled), Date.parse(at('09:45')))).toEqual({
+      index: 1,
+      inside: null,
+    });
+  });
+
+  it('drops past the reported pair only when BOTH of them are settled', () => {
+    const seen = (e: TripEvent) => ({ ...e, status: EVENT_STATUS.DONE });
+    const peers = [ev('park', '16:45', '17:30'), ev('gorge', '16:45', '17:30')];
+    const at1718 = Date.parse(at('17:18'));
+    // Both ticked: every row in the day is behind us, so the mark falls after all of them.
+    const bothSeen = entriesFor(peers.map(seen));
+    expect(nowLinePlacement(bothSeen, at1718).index).toBe(bothSeen.length);
+    // One still running: it holds the moment, and the mark is nailed to it rather than dropped.
+    expect(nowLinePlacement(entriesFor([seen(peers[0]), peers[1]]), at1718).inside).toEqual({
+      key: 'gorge',
+      thruFrac: 33 / 45,
+    });
+  });
+
+  // **A skip is usually a decision about something still AHEAD**, and the marker's position is
+  // the clock's. Without this, skipping the evening waterfall at ⁦17:18⁩ drags a mark reading
+  // `17:18` below a row that starts at ⁦18:30⁩.
+  it('leaves a row settled before it starts exactly where it is', () => {
+    const skipped = [
+      { ...ev('morning', '09:00', '10:30'), status: EVENT_STATUS.DONE },
+      { ...ev('falls', '18:30', '19:15'), status: EVENT_STATUS.SKIPPED },
+    ];
+    expect(nowLinePlacement(entriesFor(skipped), Date.parse(at('11:00'))).index).toBe(1);
+  });
+
+  // ADR-0041's forest: a settled container does not settle what hangs under it, and a child
+  // still ahead of you may not end up above the mark.
+  it('holds a settled container in place while an unstarted child hangs under it', () => {
+    const festival = [
+      { ...ev('festival', '16:00', '20:00'), status: EVENT_STATUS.DONE },
+      ev('concert', '19:00', '19:45'),
+    ];
+    expect(nowLinePlacement(entriesFor(festival), Date.parse(at('17:18'))).index).toBe(0);
   });
 
   it('reads a start-only row as ending at its own instant', () => {

@@ -155,8 +155,10 @@ control; if the owner wants the word, it is ⁦19px⁩ on one row per day.
   it is ahead of us or behind us, never around us.
 - **A bookend stay cannot either**, because it carries no clock at all (ADR-0210 §4).
 - **A settled row stops holding it.** Once you have answered "we were there", "how far through" is
-  not a question — so the arrow drops to the boundary below the row, which is where it already was.
-  The row keeps its place above the marker, because it did start.
+  not a question — so the arrow drops to the boundary below the row. The row keeps its place above
+  the marker, because it did start. _(The second sentence of this bullet read "which is where it
+  already was" until 2026-09-12, and that was the error: the boundary the index answered was ABOVE
+  such a row, not below it. See the amendment of that date.)_
 - **Where nothing holds the moment** — before the day's first row, after its last, and inside the
   head hole `dayBlocks` draws no row for (a join is computed only when `prevEnd && start`) — the
   arrow attaches to the **boundary** of the row it is next to, as a zero-height wrapper. One
@@ -863,3 +865,52 @@ would introduce the defect it exists to remove.
 test that can see any of this, since jsdom loads no CSS. Verified by rendering the two legs and
 the layover band against the real stylesheets at three fractions: the rule crosses the when line,
 the title, and the space between them, and stops behind the text in all three.
+
+## Amendment (2026-09-12) — a row a human has settled is behind us, and the index has to say so too
+
+Reported from a phone with a screenshot, against the day view: _"the now line location doesn't take
+visited/skipped into account. And it should be."_ ⁦17:18⁩, and the arrow floated above two
+⁦16:45–17:30⁩ cards each carrying its own green `✓ היינו`. The rule said "not there yet" across two
+rows the traveller had just said they had been.
+
+**§4 decided this and only half of it was built.** `inside` did let go of a settled row from the
+first build — that half is the `settled` flag on `NowSpan`, and its test has been green all along.
+The INDEX never learned: `nowLinePlacement` asked `entryEndMs(entry) > nowMs` and nothing else, so
+a row ticked off before its planned end stayed _ahead_ of the mark until its own clock ran out. §4's
+own words claimed the arrow "drops to the boundary below the row, **which is where it already
+was**" — it was above it, and that clause is why nobody went looking.
+
+**The rule is ADR-0117 §2's, arriving at the derivation that did not have it.** _"A human outranks the clock"_ is
+already how `isDayUsagePast` sorts a place into `כבר היינו` on the Map (2026-07-25), and it is the
+same sentence one surface over: what a person has closed cannot be what the day is still waiting
+for. `entryIsBehind` is the whole change — an entry is behind us when it has ended, **or** when
+every event in it is settled and has begun.
+
+**"And has begun" is load-bearing, and it is the one thing this could have got wrong.** A skip is
+usually a decision about something still _ahead_ — "we're not doing the ⁦18:30⁩ waterfall" said at
+⁦17:18⁩ — and the boundary mark carries the clock printed on it. Dropping it below a row that starts
+an hour later would put `17:18` under an ⁦18:30⁩ card, which is worse than the defect. Settling
+answers what is _done with_ a row; the mark's position is the day's. (Trip mode drops a skipped row
+from the list entirely, so in this host the case is a row ticked `היינו` early — the pure case is
+asserted in `lib/now-line.test.ts`.) It reads the whole subtree for the same reason: ADR-0041's
+forest can hang a ⁦19:00⁩ concert under a festival ticked done at ⁦17:18⁩, and a row still ahead of you
+may not end up above the mark.
+
+**And moving the index opened a case the host had never seen.** `DayView` draws the boundary form
+UNDER the join, deliberately — _"the join reads BEFORE the now-line: it is a fact about the plan,
+and the now-line is the clock arriving inside it"_ — and that was safe only because the index could
+never land at an entry whose hole had not opened: the row above it had _ended_, so the hole opened
+at its end. A settled row hands the mark down early, and then the join under it is a free hour
+nobody has had and a drive nobody has taken; drawn below them, the mark said the drive was done —
+the ⁦2026-09-04⁩ amendment's defect, arriving from the other direction. The boundary now reads
+**above** a hole the clock has not reached (`holeIsAhead`), which is also where Plan's static
+reference has always drawn it, so the two hosts agree rather than merely both being right.
+
+The shared reader is deliberately untouched: the public projection ships no status at all
+(`packages/shared/src/sharing.ts`), so a stranger's copy cannot answer this question and must not
+guess at it.
+
+Tests: `lib/now-line.test.ts` (the placement, including the two guards — a row settled before it
+starts, and a settled container with a child still ahead) and `DayView.travel.test.tsx`'s
+"against a row a human has already settled" (the screen, in document order, which is the only
+altitude that can see the join). Both were red on `main`.
