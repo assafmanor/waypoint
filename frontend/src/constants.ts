@@ -248,6 +248,14 @@ export const SHARE_LOAD_RETRY_MS = [1_000, 2_000, 4_000, 8_000, 16_000] as const
  *  One fresh document cures it; a second cannot, and the page must not spin trying. */
 export const SHARE_RELOAD_COOLDOWN_MS = 60 * 1000;
 
+/** **How much room the shared reader's now-line needs below it to count as already on
+ *  screen** (ADR-0213's eleventh amendment §1). The page lands on today's CARD while the
+ *  line fits under its header and on the LINE when it does not, and `48` is the drawing's
+ *  own number (`a-shared-itinerary-knows-what-day-it-is-v1.html`'s `land()`): a line resting
+ *  on the last pixel of the viewport is on screen arithmetically and invisible in a hand, so
+ *  the bound asks for a row's worth of day under it before it counts. */
+export const SHARE_NOW_LINE_ROOM_PX = 48;
+
 /** Realtime socket liveness (F-04, sync-and-offline.md "Realtime channel"). The
  *  client pings on `WS_HEARTBEAT_INTERVAL_MS`; a watchdog forces a reconnect if
  *  no frame (a `pong` or any message) lands within `WS_WATCHDOG_TIMEOUT_MS`, so a

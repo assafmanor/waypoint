@@ -40,6 +40,11 @@ import type React from 'react';
 import { t } from '../../i18n/he';
 import './now-marker.css';
 
+/** **The mark's own class**, exported because one host has to FIND the mark rather than
+ *  render it: the shared reader lands on it (`screens/SharedItinerary.tsx`), and a selector
+ *  spelled out at that call site is this component's class living in two files. */
+export const NOW_MARK_CLASS = 'now-here';
+
 /** Trip mode is live; Plan mode is a static reference and may never read as live (ADR-0043
  *  §5). The shared reader takes `LIVE`: it is a real clock on a real day, and ADR-0213 §11
  *  already had it reusing the Trip mark class for class. */
@@ -75,7 +80,7 @@ export function NowMarker({
   return (
     <div
       ref={ref}
-      className={'now-here' + (inside ? '' : ' edge')}
+      className={NOW_MARK_CLASS + (inside ? '' : ' edge')}
       data-posture={posture}
       // The same accessible name `.nowline` and `.nowref` both carried, so a screen reader
       // hears no change from a mark that moved from between the rows into one of them.

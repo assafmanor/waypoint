@@ -24,6 +24,7 @@ import {
   DOWNLOAD_SETTLE_MS,
   GLYPH,
   SHARE_LOAD_RETRY_MS,
+  SHARE_NOW_LINE_ROOM_PX,
   SHARE_RELOAD_COOLDOWN_MS,
 } from '../constants';
 import { Icon, type IconName } from '../ui/Icon';
@@ -35,7 +36,7 @@ import { autoIsolate, ltrIsolate } from '../lib/bidi';
 import { agoLabel, hoursPhrase } from '../lib/duration';
 import { landAtTop } from '../lib/land-at-top';
 import { shareNowLine, shareNowZone } from '../lib/share-now-line';
-import { NowMarker } from '../ui/domain/NowMarker';
+import { NOW_MARK_CLASS, NowMarker } from '../ui/domain/NowMarker';
 import { DayHead } from '../ui/domain/DayHead';
 import { useClock } from '../lib/useClock';
 import { usePublicReaderChrome } from '../lib/public-reader-chrome';
@@ -359,19 +360,27 @@ export function SharedItinerary() {
    * own: it aims `block: 'start'` with the row's own `scroll-margin-block-start` as the peek,
    * goes instant under `prefersReducedMotion`, ends the moment a finger touches the page, and
    * — the part that matters most here — keeps re-aiming while the surface settles. This page
-   * settles late twice over: the card does not exist until the fetch resolves, and every day
-   * photo is `loading="lazy"` with no intrinsic size, so the extent above the target grows as
-   * images arrive. A one-shot `scrollIntoView` would land short of wherever it had got to.
+   * settles late: the card does not exist until the fetch resolves, and the extent above the
+   * target keeps moving after it does (a web font arriving re-measures every line of it). A
+   * one-shot `scrollIntoView` would land short of wherever it had got to.
+   *
+   * **And until 2026-09-12 that re-aiming was a claim this page could not cash**, which is
+   * `land-at-top.ts`'s `movingBox`: the watch asked `scrollerFor` for the box it was moving,
+   * this page has no `overflow: auto` ancestor because it scrolls the DOCUMENT, and the walk
+   * came back empty — so the watch aimed once and then idled through its whole window. The
+   * target below is measured per frame and needed that to be true.
    *
    * Keyed on the CODE, not on `landOn`: the day mark re-derives every tick and rolls over at
    * midnight, and re-landing under a reader who has scrolled away is what "never on the clock
    * tick" forbids.
+   *
+   * **What it aims AT is `shareLanding` below**, which is the half that shipped wrong.
    */
   const landedFor = useRef<string | null>(null);
   useEffect(() => {
     if (landOn === null || landedFor.current === code) return;
     landedFor.current = code;
-    return landAtTop(() => document.getElementById(`day-${landOn}`));
+    return landAtTop(() => shareLanding(landOn));
   }, [code, landOn]);
 
   if (state.kind === 'loading') return <div className="sh-boot">{t.share.public.loading}</div>;
@@ -566,6 +575,44 @@ export function SharedItinerary() {
       </footer>
     </div>
   );
+}
+
+/**
+ * **WHAT THE LANDING AIMS AT** (ADR-0213's eleventh amendment §1, corrected 2026-09-12 from
+ * the owner reading the shipped page: _"the now line doesn't autoscroll to it correctly. It
+ * does to the day start instead of the now line"_).
+ *
+ * The drawing this landing was built from offered three targets and the build took the one it
+ * was not meant to: `#day-N`, full stop. That is right for a reader who opens the link in the
+ * morning and wrong every hour after, because the card is the whole day — by the afternoon the
+ * one thing a live link is read for is several hundred pixels below the fold.
+ *
+ * The drawn arm (`data-target="now"` in
+ * [`a-shared-itinerary-knows-what-day-it-is-v1.html`](../../../mockups/a-shared-itinerary-knows-what-day-it-is-v1.html))
+ * is two, and the first is why this is not simply `DayView`'s own call:
+ *
+ *  - **The card, while the line fits under its header.** `block: 'center'` there centres
+ *    inside `.body` — BELOW the day header, which is fixed chrome and cannot be scrolled
+ *    away. This page has no chrome at all: today's card header carries the date and the
+ *    `עכשיו` mark and is an ordinary box in the same document, so centring a line that is
+ *    already on screen would push the only thing naming the day off it.
+ *  - **The line, centred, when it does not fit.** The centring is
+ *    `.sh-day-body .now-here`'s own `scroll-margin-block-start` — `landAtTop` passes no
+ *    numbers on purpose, so the offset stays in the stylesheet that owns the row.
+ *
+ * Measured per frame rather than decided once, because `landAtTop` re-aims while the surface
+ * settles and which arm is true depends on geometry that is still arriving.
+ */
+function shareLanding(ordinal: number): Element | null {
+  const card = document.getElementById(`day-${ordinal}`);
+  const line = card?.querySelector(`.${NOW_MARK_CLASS}`);
+  if (!card || !line) return card;
+  // Where the line would come to rest if the card took the landing: its offset inside the
+  // card, plus the gap the card's own landing leaves above itself. Read off the card rather
+  // than restated here, so the peek stays one number in `shared-itinerary.css`.
+  const peek = parseFloat(getComputedStyle(card).scrollMarginBlockStart) || 0;
+  const under = line.getBoundingClientRect().top - card.getBoundingClientRect().top + peek;
+  return under <= window.innerHeight - SHARE_NOW_LINE_ROOM_PX ? card : line;
 }
 
 function DayCard({

@@ -55,6 +55,27 @@ import { LANDING_WAIT_MS, LANDING_WATCH_MS } from '../constants';
 const HANDS_ON = ['pointerdown', 'touchstart', 'wheel', 'keydown'] as const;
 
 /**
+ * **The box that will actually move when the element is scrolled to** — which is not always an
+ * ancestor with `overflow: auto`.
+ *
+ * `scrollerFor` is the right first question and answers it for every landing inside the app
+ * shell: the scroller is `.body`. The public reader has no such ancestor. It opts the viewport
+ * back in (`tokens.css`'s `[data-public-reader]`, so the browser's own pull-to-refresh works)
+ * and scrolls the DOCUMENT, so the walk came back empty and the watch spent its whole window
+ * in the "nothing overflows yet" branch below — one aim, and then a loop that could never
+ * correct it. On the one screen whose own comment leans on the watch.
+ *
+ * Gated on the document genuinely overflowing, so a surface that really has nothing to scroll
+ * still takes the one-shot branch rather than re-aiming at a scroller that cannot move.
+ */
+function movingBox(el: HTMLElement): HTMLElement | null {
+  const inner = scrollerFor(el, 'block');
+  if (inner) return inner;
+  const doc = el.ownerDocument.scrollingElement;
+  return doc instanceof HTMLElement && doc.scrollHeight > doc.clientHeight ? doc : null;
+}
+
+/**
  * Aim `find()`'s element at the top of its scroller and keep the landing true for
  * `windowMs`. Returns the canceller — call it when the surface it was aiming at is gone, or
  * when a newer landing replaces this one.
@@ -119,7 +140,7 @@ export function landAtTop(
       return;
     }
     settleDeadline ??= performance.now() + windowMs;
-    const scroller = el instanceof HTMLElement ? scrollerFor(el, 'block') : null;
+    const scroller = el instanceof HTMLElement ? movingBox(el) : null;
     if (el && !scroller) {
       // **Nothing overflows yet**, which is a real state and not an edge case: a list that has
       // not filled its box has nothing to scroll, and one that fills it a moment later gets
