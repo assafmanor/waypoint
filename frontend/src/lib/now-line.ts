@@ -102,22 +102,29 @@ function eventSpans(entries: readonly DayEntry[]): NowSpan[] {
  * ("the arrow drops to the boundary below the row") and was wrong that this was already where it
  * stood.
  *
- * **But it must have BEGUN.** A skip is often a decision about something still ahead — "we're
- * not doing the ⁦18:30⁩ waterfall" at ⁦17:18⁩ — and treating that as behind us would drag the arrow,
- * with the clock printed on it, below a row that starts an hour later. The clock is what the
- * marker's own position means; settling answers what is DONE with a row, not where the day is.
- * So: every event in the entry settled, and every one of them started. That is also why it reads
- * the whole subtree — ADR-0041's forest can hang a ⁦19:00⁩ concert under a festival ticked done at
- * ⁦17:18⁩, and a row still ahead of you may not end up above the mark.
+ * **WHATEVER ITS CLOCK SAYS includes a clock that has not started**, which the first build got
+ * wrong and the owner reported the same evening: a ⁦20:45⁩ waterfall ticked `היינו` at ⁦20:39⁩, with
+ * the mark still standing in the drive ABOVE it — _"we're already headed to the hotel"_. The
+ * first pass required the row to have BEGUN, on the theory that a skip is a decision about
+ * something still ahead. The theory is refuted by the surfaces: **a skipped row is not in this
+ * list at all** (`DayView`/`PlanDay` both filter `SKIPPED` out of the day, and the one place
+ * that keeps it — a finished trip's archive — has no "now" to place), so the only settling the
+ * index can ever see is `היינו`, which is a claim about the PAST whatever the plan says. Nothing
+ * is left of the guard but the defect: ticking a row off early is exactly the moment you want
+ * the mark to move, because you did the thing early and are already on to the next.
  *
- * A transition point is unaffected by construction: it is an instant, so it has ended exactly
- * when it has begun and the clock alone already answers for it (ADR-0210 §1).
+ * It reads the whole subtree, which is the rule that remains: ADR-0041's forest can hang a
+ * ⁦19:00⁩ concert under a festival ticked done at ⁦17:18⁩, and a row nobody has answered for may
+ * not end up above the mark on its container's say-so.
+ *
+ * A transition point is unaffected by construction: it is an instant, and its own clock already
+ * answers for it (ADR-0210 §1).
  */
 function entryIsBehind(entry: DayEntry, nowMs: number): boolean {
   if (entryEndMs(entry) <= nowMs) return true;
   if (entry.kind !== 'event') return false;
   const spans = groupSpans(entry.group);
-  return spans.length > 0 && spans.every((span) => span.settled && span.start <= nowMs);
+  return spans.length > 0 && spans.every((span) => span.settled);
 }
 
 /**

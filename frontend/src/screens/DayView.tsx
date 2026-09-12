@@ -1461,7 +1461,17 @@ export function DayView() {
               const joinJourney = joinTo ? journeyFor(from, joinTo) : null;
               // A hole with no row drawn for it has nothing to nail the mark to, so the
               // boundary form keeps that case (§5's day-head hole).
-              const joinNow = join || joinJourney ? nowInHole(from, joinTo) : null;
+              //
+              // **And only the boundary's OWN hole may hold it** (2026-09-12, the second
+              // report). `nowInHole` answers a clock question about one hole and knows nothing
+              // about the rest of the day, so a hole whose row below it is SETTLED went on
+              // holding the moment after the placement had moved past that row: at ⁦20:39⁩, with
+              // a ⁦20:45⁩ waterfall already ticked `היינו`, the mark stood in the drive INTO it
+              // while the day's own answer was the road to the hotel — and the day would have
+              // drawn a second mark at the tail. The hole above the boundary entry is the only
+              // one the placement can be in, so this is the one index asking the one question.
+              const joinNow =
+                (join || joinJourney) && index === nowLineIndex ? nowInHole(from, joinTo) : null;
               const boundaryHere =
                 showNowLine &&
                 !nowInsideRow &&

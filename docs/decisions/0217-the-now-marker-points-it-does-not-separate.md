@@ -884,17 +884,16 @@ was**" — it was above it, and that clause is why nobody went looking.
 already how `isDayUsagePast` sorts a place into `כבר היינו` on the Map (2026-07-25), and it is the
 same sentence one surface over: what a person has closed cannot be what the day is still waiting
 for. `entryIsBehind` is the whole change — an entry is behind us when it has ended, **or** when
-every event in it is settled and has begun.
+every event in it is settled.
 
-**"And has begun" is load-bearing, and it is the one thing this could have got wrong.** A skip is
-usually a decision about something still _ahead_ — "we're not doing the ⁦18:30⁩ waterfall" said at
-⁦17:18⁩ — and the boundary mark carries the clock printed on it. Dropping it below a row that starts
-an hour later would put `17:18` under an ⁦18:30⁩ card, which is worse than the defect. Settling
-answers what is _done with_ a row; the mark's position is the day's. (Trip mode drops a skipped row
-from the list entirely, so in this host the case is a row ticked `היינו` early — the pure case is
-asserted in `lib/now-line.test.ts`.) It reads the whole subtree for the same reason: ADR-0041's
-forest can hang a ⁦19:00⁩ concert under a festival ticked done at ⁦17:18⁩, and a row still ahead of you
-may not end up above the mark.
+**This shipped with one more clause — "and has begun" — and the owner reported it out again the
+same evening; the amendment below removes it, and this paragraph is kept as the reasoning that was
+wrong.** The theory was that a skip is usually a decision about something still _ahead_ — "we're not
+doing the ⁦18:30⁩ waterfall" said at ⁦17:18⁩ — and that the boundary mark, which carries the clock
+printed on it, must not drop below a row starting an hour later. What it never checked is whether
+the index can see a skipped row at all. It cannot. It reads the whole subtree for a reason that does
+survive: ADR-0041's forest can hang a ⁦19:00⁩ concert under a festival ticked done at ⁦17:18⁩, and a
+row nobody has answered for may not end up above the mark on its container's say-so.
 
 **And moving the index opened a case the host had never seen.** `DayView` draws the boundary form
 UNDER the join, deliberately — _"the join reads BEFORE the now-line: it is a fact about the plan,
@@ -910,7 +909,52 @@ The shared reader is deliberately untouched: the public projection ships no stat
 (`packages/shared/src/sharing.ts`), so a stranger's copy cannot answer this question and must not
 guess at it.
 
-Tests: `lib/now-line.test.ts` (the placement, including the two guards — a row settled before it
-starts, and a settled container with a child still ahead) and `DayView.travel.test.tsx`'s
+Tests: `lib/now-line.test.ts` (the placement, including the subtree guard — a settled container
+with a child still ahead) and `DayView.travel.test.tsx`'s
 "against a row a human has already settled" (the screen, in document order, which is the only
 altitude that can see the join). Both were red on `main`.
+
+## Amendment (2026-09-12, the same evening) — a row ticked off early is behind us too, and only the boundary's own hole may hold the mark
+
+The amendment above, reported against with a second screenshot four hours later: ⁦20:39⁩, a ⁦20:45⁩
+waterfall already marked `היינו`, the playhead still standing in the ⁦15⁩-minute drive **into** it
+under a `בדרך` chip — and the owner already driving somewhere else. _"It seems like it still
+sometimes doesn't do it well, for example now we're already headed to the hotel."_
+
+Two defects, and the first one is the clause the amendment above was proudest of.
+
+**§1 · "And has begun" is withdrawn.** It was a guess about `skipped`, and the guess is refuted by
+the two surfaces that render this list: **a skipped row is not in the day at all.**
+`DayView.tsx:581` filters `EVENT_STATUS.SKIPPED` out of the day's events, and `PlanDay.tsx:414`
+does the same except on a finished trip's read-only archive (ADR-0040/0044) — which is a past day,
+and a past day has no "now" to place (ADR-0043 §1/§4). So the only settling the index can ever see
+is `היינו`, a claim about the **past** whatever the plan's clock says; and ticking a row off early
+is precisely the moment the mark should move, because you did the thing early and are on to the
+next. The rule is now the one sentence ADR-0117 §2 always was: **settled is behind us, full stop.**
+
+That is also the lesson the root `CLAUDE.md` writes down twice over — _count the call sites before
+claiming what a derivation does_. The guard was written from the shape of `EventStatus`, not from
+who renders it, and one `grep` for `SKIPPED` would have killed it before it shipped.
+
+**§2 · A hole answers about itself, so the day had two marks.** `nowInHole` is a pure clock test
+over ONE hole — _is now between this row's end and the next row's start_ — and it is consulted at
+every join in the list, independently of where the placement went. Once a settled row could hand
+the mark down early, the hole ABOVE that row went on claiming the moment: at ⁦20:39⁩ the drive into
+the ⁦20:45⁩ waterfall still held it, while `nowLinePlacement` had already moved to the road to the
+hotel — so the screen drew the mark twice, breaking `hero-lift.css` §D6's one-live-mark rule from a
+direction nothing guarded.
+
+The hole above the boundary entry is the only hole the placement can be in, so the join now asks
+the question only there (`index === nowLineIndex`). This is not a new rule beside the placement; it
+is the placement's own index arriving at the one derivation that was still answering without it —
+and it retires a latent case that predates all of this (a settled all-day container could already
+produce two marks by the same route).
+
+**What stays exactly as it was:** the hole keeps stating what is left of itself, the drive keeps its
+own leave-by and its `בדרך` arm (ADR-0207 §2), and `nowInJoin` still decides which box of a hole a
+mark lands in when the mark is there at all. Only where the mark goes changed.
+
+Tests: `lib/now-line.test.ts` ("drops past a row settled before its own clock has even started") and
+`DayView.travel.test.tsx`'s "and ticked off before its own clock starts", which asserts **one** mark
+— the assertion that fails on §2 alone — and that it is nailed to neither box of the hole it used to
+sit in. Each half was verified red on its own against the merged ⁦#824⁩.
