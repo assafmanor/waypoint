@@ -7,6 +7,7 @@ import {
   EVENT_KIND,
   EVENT_STATUS,
   type CreateEventInput,
+  type EventEdge,
   type EventStatus,
   type MoveEventInput,
   type TripEvent,
@@ -184,13 +185,20 @@ export class EventsService {
     return toEventDto(entity);
   }
 
+  /** **One route, two edges** (ADR-0224 §1). `edge` is absent for everything that settled
+   *  before this ADR and means `'start'`, so the column written is `status` exactly as it
+   *  always was; a bracketed span's closing edge writes `endStatus` instead. The change
+   *  payload is the whole row either way (`toEventChangePayload`), so a peer merging it
+   *  picks up whichever column moved with no second action to understand. */
   async setStatus(
     tripId: string,
     eventId: string,
     actorUserId: string,
     status: EventStatus,
+    edge: EventEdge = 'start',
   ): Promise<TripEvent> {
     await this.requireEvent(tripId, eventId);
+    const column = edge === 'end' ? { endStatus: status } : { status };
     const { entity } = await this.changes.mutate({
       tripId,
       actorUserId,
@@ -199,7 +207,7 @@ export class EventsService {
       action: 'status',
       after: toEventChangePayload,
       apply: (tx) =>
-        tx.event.update({ where: { id: eventId }, data: { status, updatedBy: actorUserId } }),
+        tx.event.update({ where: { id: eventId }, data: { ...column, updatedBy: actorUserId } }),
     });
     return toEventDto(entity);
   }

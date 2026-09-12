@@ -2312,6 +2312,14 @@ export const t = {
     close: 'סגירה',
     where: 'איפה',
     note: 'פתק',
+    /** **The settle block's own label** (ADR-0224 §6), and the render is what asked for it:
+     *  every other block on this card is labelled and `Settle` was not — fine on the lead
+     *  point, where it follows prose, and not in `הבא בתור`, where it lands directly under a
+     *  row of hand-off chips and reads as a third row of them. Measured at 19px.
+     *
+     *  Edge-neutral on purpose: the pair beneath already says which transition it is asking
+     *  about (`יצאנו` / `נחתנו`), so a per-edge question would print that fact twice. */
+    settleAsk: 'כבר קרה?',
     then: 'אחר כך',
     onMap: 'במפה',
     navigate: 'ניווט',
@@ -2915,6 +2923,33 @@ export const t = {
     // side reuses `event.skipped` ('דילגנו'), because the pair `היינו` / `דלג` mixed a
     // record with an imperative and read as "yes, or move it along".
     wasThere: 'היינו',
+    /** **THE SAME PAIR, ASKED ABOUT A TRANSITION** (ADR-0224 §3). A stop keeps `היינו` /
+     *  `דילגנו` above; an EDGE of a bracketed span cannot use either. `היינו` on a check-out
+     *  says we were at the hotel, which is true and is not what was asked — and `דילגנו` is
+     *  worse than vague, because ADR-0208 gave `skipped` a real job on this data (a skipped
+     *  stop denies the plan the right to claim where you are), so on a check-out you actually
+     *  made it records that you never left.
+     *
+     *  So the done arm is the transition's OWN past tense, keyed on the same profile keys
+     *  `glance.transition` names the edges with (ADR-0063) — a ninth transition is one line
+     *  here, not a decision. The marks, the hues and the undo are `SettleControl`'s and do
+     *  not vary: what the host may change is the word (ADR-0139). */
+    transitionDid: {
+      checkIn: 'נכנסנו',
+      checkOut: 'יצאנו',
+      departure: 'יצאנו',
+      arrival: 'הגענו',
+      flightDeparture: 'המראנו',
+      flightArrival: 'נחתנו',
+      carPickup: 'אספנו',
+      carDropoff: 'החזרנו',
+    },
+    /** The other arm, and it is ONE word for every edge, because what it says does not vary:
+     *  this edge is not going to happen. Per-edge negations (`לא יצאנו`) would put a negation
+     *  beside a positive and make the pair read as one verb with a toggle rather than as two
+     *  outcomes (ADR-0117 §1). `לא רלוונטי` was drafted and dropped for talking about the ROW
+     *  where its partner talks about the world — the same reason `דילגנו` beat `דלג` above. */
+    transitionNotHappened: 'לא קרה',
     // What the undo takes back, said as what it undoes rather than a bare "בטל".
     undoSettle: 'ביטול סימון',
     // The row-menu / action-row ACTION ("skip this one") — not the settle pair's other half,

@@ -50,6 +50,7 @@ import {
   type DocumentAttachment,
   type DocumentType,
   type EnrichmentLookupInput,
+  type EventEdge,
   type EventStatus,
   type MaybeItem,
   type Note,
@@ -528,15 +529,18 @@ export async function updateEvent(
   return tripEventSchema.parse(await readJson(res));
 }
 
+/** `edge` is omitted for a stop and for a span's opening edge — which is what every caller
+ *  meant before ADR-0224 — and `'end'` writes `endStatus` instead (§1). One route either way. */
 export async function setEventStatus(
   tripId: string,
   eventId: string,
   status: EventStatus,
+  edge?: EventEdge,
 ): Promise<TripEvent> {
   const res = await apiFetch(`${eventUrl(tripId, eventId)}/status`, {
     method: HTTP_METHOD.POST,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, ...(edge ? { edge } : {}) }),
   });
   if (!res.ok) return throwApiError(res);
   return tripEventSchema.parse(await readJson(res));

@@ -22,6 +22,24 @@ import { t } from '../i18n/he';
 export const transitionLabel = (key: string): string =>
   (t.glance.transition as Record<string, string>)[key] ?? key;
 
+/** **The settle pair's words for ONE edge** (ADR-0224 §3), resolved the way the label above
+ *  is and for the same reason: the word belongs to the transition, not to the surface showing
+ *  it, so the lifted hero and the day's row cannot end up saying two things about one fact.
+ *
+ *  `undefined` when the event has no bracketed ends, which is most of the app — and the
+ *  callers read that as "this is a stop", falling back to `SettleControl`'s own `היינו` /
+ *  `דילגנו`. The skip arm is one shared word at every edge (see `transitionNotHappened`). */
+export function edgeSettleWords(
+  event: TripEvent,
+  edge: 'start' | 'end',
+): { did: string; not: string } | undefined {
+  if (!isBracketed(event)) return undefined;
+  const keys = eventTransitionKeys(event);
+  const key = edge === 'end' ? keys?.endKey : keys?.startKey;
+  const did = key ? (t.actions.transitionDid as Record<string, string>)[key] : undefined;
+  return did ? { did, not: t.actions.transitionNotHappened } : undefined;
+}
+
 /** The Hebrew word for a `midSpan` key — what the middle of a bracketed span is called
  *  while you are inside it (`בטיסה` / `בדרך` / `הרכב אצלנו`). The ends' resolver above,
  *  applied to the middle: same lookup shape, same reason (the word belongs to the mode,

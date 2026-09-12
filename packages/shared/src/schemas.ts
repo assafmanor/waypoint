@@ -8,6 +8,7 @@ import {
   bookingTypeSchema,
   documentTypeSchema,
   eventCategorySchema,
+  eventEdgeSchema,
   eventKindSchema,
   eventSourceSchema,
   eventStatusSchema,
@@ -141,8 +142,17 @@ export const moveEventSchema = z.object({
 });
 export type MoveEventInput = z.infer<typeof moveEventSchema>;
 
-/** Set an event's status (done/skipped). */
-export const eventStatusUpdateSchema = z.object({ status: eventStatusSchema });
+/** Set an event's status (done/skipped) — on ONE of its two edges (ADR-0224 §1).
+ *
+ *  `edge` is optional and absent means `'start'`, which is what every caller before this
+ *  ADR meant and what `status` has always written. A bracketed span's CLOSING edge passes
+ *  `'end'` and lands in `endStatus` instead; the verb, the outbox op and the change payload
+ *  are otherwise identical, so a check-out settles through the path a check-in already uses
+ *  rather than through a second one. */
+export const eventStatusUpdateSchema = z.object({
+  status: eventStatusSchema,
+  edge: eventEdgeSchema.optional(),
+});
 export type EventStatusUpdateInput = z.infer<typeof eventStatusUpdateSchema>;
 
 /** Optional event to auto-create/update alongside a booking (ADR-0047 §1). Present

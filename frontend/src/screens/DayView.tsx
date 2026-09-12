@@ -1398,9 +1398,9 @@ export function DayView() {
                 dayCtx.showPlaceOnMap,
                 entry.edge,
               )}
-              onDone={dayCtx.readOnly ? undefined : () => verbs.done(entry.event)}
-              onSkip={dayCtx.readOnly ? undefined : () => verbs.skip(entry.event)}
-              onUndo={dayCtx.readOnly ? undefined : () => verbs.restore(entry.event)}
+              onDone={dayCtx.readOnly ? undefined : () => verbs.done(entry.event, entry.edge)}
+              onSkip={dayCtx.readOnly ? undefined : () => verbs.skip(entry.event, entry.edge)}
+              onUndo={dayCtx.readOnly ? undefined : () => verbs.restore(entry.event, entry.edge)}
             />
           ))}
           {aboveArriveLeg && <NowMarker ref={nowLineRef} label={nowLabel} />}
@@ -1542,13 +1542,24 @@ export function DayView() {
                         entry.edge,
                       )}
                       // The settle pair the strip used to carry, moved with the floors that
-                      // moved into this list (2026-08-13). `TransitionRow` renders it on a
-                      // FLOOR only; passing it unconditionally here keeps that one rule in
-                      // one place. Trip mode's alone — Plan settles off a row menu (ADR-0171
-                      // §10e) — and gated on `readOnly` like every other write on a past day.
-                      onDone={dayCtx.readOnly ? undefined : () => verbs.done(entry.event)}
-                      onSkip={dayCtx.readOnly ? undefined : () => verbs.skip(entry.event)}
-                      onUndo={dayCtx.readOnly ? undefined : () => verbs.restore(entry.event)}
+                      // moved into this list (2026-08-13). Passing it unconditionally keeps
+                      // the one rule about WHICH rows offer it inside `TransitionRow`. Trip
+                      // mode's alone — Plan settles off a row menu (ADR-0171 §10e) — and
+                      // gated on `readOnly` like every other write on a past day.
+                      //
+                      // **The edge rides along** (ADR-0224 §1): `entry.edge` is which end of
+                      // the span this row is, so a check-out settles `endStatus` and a
+                      // check-in `status`. Without it every row on a stay would answer for
+                      // the check-in, which is the defect the ADR is about.
+                      onDone={
+                        dayCtx.readOnly ? undefined : () => verbs.done(entry.event, entry.edge)
+                      }
+                      onSkip={
+                        dayCtx.readOnly ? undefined : () => verbs.skip(entry.event, entry.edge)
+                      }
+                      onUndo={
+                        dayCtx.readOnly ? undefined : () => verbs.restore(entry.event, entry.edge)
+                      }
                     />
                   )}
                 </Fragment>

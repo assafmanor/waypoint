@@ -554,7 +554,9 @@ async function outboxOpToCacheChanges(tripId: string, op: OutboxOp): Promise<Ent
         entityType: ENTITY_TYPE.EVENT,
         entityId: op.eventId,
         action: CHANGE_ACTION.STATUS,
-        after: { status: op.status },
+        // Whichever column the op names (ADR-0224 §1) — the cached row is merged the same
+        // way either way, so the closing edge needs no second action here.
+        after: op.edge === 'end' ? { endStatus: op.status } : { status: op.status },
       });
     case OUTBOX_VERB.DELETE:
       return one({

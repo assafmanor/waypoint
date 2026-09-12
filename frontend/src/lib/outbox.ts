@@ -16,6 +16,7 @@ import type {
   UpdateTaskInput,
   CreatePlaceInput,
   DocumentType,
+  EventEdge,
   EventStatus,
   MembershipRole,
   MoveEventInput,
@@ -108,7 +109,9 @@ export type OutboxVerb = (typeof OUTBOX_VERB)[keyof typeof OUTBOX_VERB];
 export type OutboxOp =
   | { verb: typeof OUTBOX_VERB.CREATE; input: CreateEventInput }
   | { verb: typeof OUTBOX_VERB.UPDATE; eventId: string; input: UpdateEventInput; confirm: boolean }
-  | { verb: typeof OUTBOX_VERB.SET_STATUS; eventId: string; status: EventStatus }
+  // `edge` absent = the opening edge, i.e. `status` — what every queued settle meant before
+  // ADR-0224, so an op already sitting in a user's outbox replays unchanged.
+  | { verb: typeof OUTBOX_VERB.SET_STATUS; eventId: string; status: EventStatus; edge?: EventEdge }
   | { verb: typeof OUTBOX_VERB.MOVE; eventId: string; input: MoveEventInput; confirm: boolean }
   | { verb: typeof OUTBOX_VERB.DELETE; eventId: string; confirm: boolean }
   | { verb: typeof OUTBOX_VERB.CONSUME_MAYBE_ITEM; maybeItemId: string }
@@ -677,7 +680,7 @@ async function runOp(tripId: string, op: OutboxOp): Promise<void> {
       await updateEvent(tripId, op.eventId, op.input, op.confirm);
       return;
     case OUTBOX_VERB.SET_STATUS:
-      await setEventStatus(tripId, op.eventId, op.status);
+      await setEventStatus(tripId, op.eventId, op.status, op.edge);
       return;
     case OUTBOX_VERB.MOVE:
       await moveEvent(tripId, op.eventId, op.input, op.confirm);

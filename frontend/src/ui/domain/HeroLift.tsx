@@ -24,7 +24,7 @@ import { Avatar, type AvatarPerson } from '../primitives/Avatar';
 import { Icon } from '../Icon';
 import { ZoneShiftPill } from '../ZoneShiftPill';
 import { ValueToken } from '../primitives/ValueToken';
-import { SettleControl, type SettleOutcome } from './SettleControl';
+import { SettleControl, type SettleOutcome, type SettleWords } from './SettleControl';
 import {
   BoardGapSlot,
   CountdownTile,
@@ -133,6 +133,11 @@ export interface HeroLiftPoint {
   tasks?: HeroLiftTask[];
   taskMore?: number;
   settled?: SettleOutcome;
+  /** **What this point's pair is asking about** (ADR-0224 §3). Absent on a stop, which keeps
+   *  `SettleControl`'s own two words; a bracketed span's edge passes its transition's
+   *  (`יצאנו` / `נחתנו`), resolved by the screen off the same profile keys the row's label
+   *  comes from — never chosen here. */
+  settleWords?: SettleWords;
   /** The way to the pin, and the hand-off out to Maps (ADR-0121's amendment §4 —
    *  the affordance that was too loud on the COLLAPSED board and is affordable
    *  here, because this is a state you asked for). */
@@ -509,12 +514,22 @@ export function HeroTaskRows({ tasks, more }: { tasks: HeroLiftTask[]; more?: nu
   );
 }
 
+/** **The block is labelled, like every other one on this card** (ADR-0224 §6). It shipped
+ *  bare, which read fine on the lead point — it follows prose there — and not in `הבא בתור`,
+ *  where it lands under a row of hand-off chips and became a third row of them. Measured at
+ *  ⁦19px⁩ against a ⁦255px⁩ scrolling card.
+ *
+ *  **Only while the question is open.** Once answered the block is a RECORD (`✓ יצאנו` plus
+ *  the undo), and a question mark over an answer is the same defect §U's checkbox had: a
+ *  label read as the row's state. */
 function Settle({ point }: { point: HeroLiftPoint }) {
   if (!point.onDone || !point.onSkip) return null;
   return (
     <div className="hero-part">
+      {!point.settled && <span className="hero-lbl">{t.hero.settleAsk}</span>}
       <SettleControl
         variant="board"
+        words={point.settleWords}
         outcome={point.settled}
         onDone={point.onDone}
         onSkip={point.onSkip}
@@ -805,6 +820,12 @@ export function HeroLift(props: HeroLiftProps) {
                 <Where point={next} />
                 <Note point={next} />
                 <Tasks point={next} />
+                {/* **The answer this block never had** (ADR-0224 §4). `Point` has rendered
+                    `Settle` since ADR-0160 §11 and this block is not a `Point` — it is
+                    assembled here — so the one slot where a check-out is actually shouting
+                    at you was the one with nothing to say back. Same part order as the lead
+                    point, same `board` density, no new control. */}
+                <Settle point={next} />
               </>
             )}
 

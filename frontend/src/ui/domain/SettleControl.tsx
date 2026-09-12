@@ -38,14 +38,30 @@ export type SettleOutcome = typeof EVENT_STATUS.DONE | typeof EVENT_STATUS.SKIPP
  *                already use on this board. The words, marks and hues are unchanged. */
 export type SettleVariant = 'prompt' | 'sheet' | 'compact' | 'board';
 
+/** **What the pair is asking ABOUT** (ADR-0224 §3) — the one thing a host may now change, and
+ *  the exception is narrow on purpose. ADR-0139's rule was that the words are not the HOST's to
+ *  choose, and it stands: these do not come from the surface, they come from the **edge**
+ *  (`lib/transitions.ts`'s `edgeSettleWords`, off the same profile keys the labels use), so the
+ *  lifted hero and the day row say one thing about one fact.
+ *
+ *  Absent is a STOP, which is most of the app and keeps `היינו` / `דילגנו`. The marks, the hues,
+ *  the settled tag and the undo never vary. */
+export interface SettleWords {
+  did: string;
+  not: string;
+}
+
 export function SettleControl({
   variant,
+  words,
   outcome,
   onDone,
   onSkip,
   onUndo,
 }: {
   variant: SettleVariant;
+  /** Absent → a stop, and the shipped pair. Present → this edge's own two words. */
+  words?: SettleWords;
   /** Present → the pair is replaced by the record plus the one verb left. */
   outcome?: SettleOutcome;
   onDone: () => void;
@@ -53,6 +69,8 @@ export function SettleControl({
   /** Back to `planned` — the shipped `verbs.restore`. Required wherever `outcome` is passed. */
   onUndo?: () => void;
 }) {
+  const did = words?.did ?? t.actions.wasThere;
+  const not = words?.not ?? t.event.skipped;
   // Settling records an outcome; it is never also a navigation. The Map's reference row
   // nests inside two tap targets (the row opens the day, the row around it selects the
   // place) and the other two hosts have nothing above to trigger — so this is one rule
@@ -72,7 +90,11 @@ export function SettleControl({
     return (
       <span className={cls}>
         <span className={'wp-settle-tag ' + (done ? 'ok' : 'miss')}>
-          <Icon name={done ? 'check' : 'skip'} /> {done ? t.event.didThis : t.event.skipped}
+          {/* The RECORD says what the verb said. `t.event.didThis` is the stop's own past
+              tense and an edge's is its transition's, so the tag and the button it replaced
+              cannot drift apart — which is the whole reason `words` is one pair and not two
+              props. */}
+          <Icon name={done ? 'check' : 'skip'} /> {done ? (words?.did ?? t.event.didThis) : not}
         </span>
         <button
           type="button"
@@ -90,20 +112,8 @@ export function SettleControl({
   return (
     <span className={cls}>
       {variant === 'prompt' && <span className="wp-settle-ask">{t.day.settleAsk}</span>}
-      <SettleVerb
-        kind="done"
-        label={t.actions.wasThere}
-        icon="check"
-        compact={compact}
-        onClick={tap(onDone)}
-      />
-      <SettleVerb
-        kind="skip"
-        label={t.event.skipped}
-        icon="skip"
-        compact={compact}
-        onClick={tap(onSkip)}
-      />
+      <SettleVerb kind="done" label={did} icon="check" compact={compact} onClick={tap(onDone)} />
+      <SettleVerb kind="skip" label={not} icon="skip" compact={compact} onClick={tap(onSkip)} />
     </span>
   );
 }

@@ -26,12 +26,16 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { setSimulatedNow } from '../lib/useClock';
+import { relativeDayLabel } from '../lib/time';
 import { BEAT } from '../lib/one-shot';
 import { t } from '../i18n/he';
 import { wrapNav } from '../test/nav-harness';
 import { buildHostContextIndex } from '../lib/host-context';
 
 const DAY = '2026-08-03';
+/** The day before it — ADR-0224 §7's fixture needs a stay whose own `date` is not the day
+ *  its check-out falls on, which is every stay of more than one night. */
+const YESTERDAY = '2026-08-02';
 /** Pinned: these fixtures carry fixed dates, so reading the real clock would make
  *  the suite mean something different every day it ran. */
 const NOW = `${DAY}T12:30:00Z`;
@@ -1043,6 +1047,76 @@ describe('Home — the day at a glance', () => {
     // And no pill band came with it (ADR-0077 withdrawn from this rail).
     expect(document.querySelector('.glance-marks')).toBeNull();
     expect(document.querySelector('.glance-day .achip')).toBeNull();
+  });
+
+  // ── A CHECK-OUT IN `הבא בתור` (ADR-0224) ────────────────────────────────────
+  // Both halves of the owner's screenshot, end to end, because both are Home's own seam:
+  // `lib/hero-horizon.ts` is tested pure and `HeroLift` with hand-built props, so nothing
+  // else can see whether Home hands the slot the right EDGE.
+  describe('the check-out in `הבא בתור` (ADR-0224)', () => {
+    // NOW is 12:30Z = 14:30 in the fixture trip's Europe/Rome, so a 15:00-local check-out
+    // (13:00Z) is 30 minutes out — inside `CHECKOUT_LEAD_MIN`, and the slot's clock reads
+    // today while the STAY's own `date` is two days back. That gap is the defect.
+    const stay = (over: Partial<TripEvent> = {}) =>
+      ev('stay', {
+        category: 'lodging',
+        kind: EVENT_KIND.HARD,
+        date: YESTERDAY,
+        endDate: DAY,
+        startsAt: `${YESTERDAY}T15:00:00Z`,
+        endsAt: `${DAY}T13:00:00Z`,
+        ...over,
+      });
+    /** Whatever the app calls the stay's own `date` — the token the board used to print
+     *  beside a clock that reads today. Derived rather than spelled, so the assertion
+     *  cannot pass by disagreeing with the app about the word. */
+    const wrongToken = relativeDayLabel(YESTERDAY, DAY);
+
+    // **§7.** The board printed the stay's CHECK-IN day beside the check-out's clock —
+    // `אתמול` next to `11:00` one minute before 11:00 today, in the owner's screenshot.
+    it('does not label today`s check-out with the day the stay began', () => {
+      tripEvents = [stay()];
+      show();
+      const meta = document.querySelector('.wp-board-next-meta')!;
+      expect(meta.textContent).toContain(t.glance.transition.checkOut);
+      // The day token is for a slot whose instant is NOT today; this one's is.
+      expect(meta.textContent).not.toContain(wrongToken);
+    });
+
+    // **§4 + §1 + §3.** The slot the screenshot was taken of had no answer in it at all,
+    // because `הבא בתור` is not a `Point` and nobody passed it one. A place, because
+    // `canLift` wants depth and the owner's real board had one.
+    it('offers the pair in the lifted hero, in the transition`s own words', () => {
+      tripEvents = [stay({ placeId: 'p1' })];
+      tripPlaces = [place];
+      show();
+      fireEvent.click(board()!);
+      const settle = document.querySelector('.hero-lifted .wp-settle.board')!;
+      expect(settle).toBeTruthy();
+      expect(settle.textContent).toContain(t.actions.transitionDid.checkOut);
+      expect(settle.textContent).toContain(t.actions.transitionNotHappened);
+      // Never the stop's pair, which on this row would be vague and then false.
+      expect(settle.textContent).not.toContain(t.actions.wasThere);
+    });
+
+    it('settles the CLOSING edge, not the stay', () => {
+      tripEvents = [stay({ placeId: 'p1' })];
+      tripPlaces = [place];
+      show();
+      fireEvent.click(board()!);
+      fireEvent.click(document.querySelector('.hero-lifted .wp-settle-btn.done')!);
+      expect(done).toHaveBeenCalledWith(expect.objectContaining({ id: 'stay' }), 'end');
+    });
+
+    // Once answered, the board moves on — which is the point of being able to answer
+    // (§5). `deriveHeroBooking` drops the transition, so the slot is not this stay's.
+    it('leaves the board once the group says they are out', () => {
+      tripEvents = [stay({ endStatus: EVENT_STATUS.DONE })];
+      show();
+      expect(document.querySelector('.wp-board-next-meta')?.textContent ?? '').not.toContain(
+        t.glance.transition.checkOut,
+      );
+    });
   });
 
   // ADR-0215 §4: the board's gap slot carries this within an inch of the card, and the card's

@@ -25,6 +25,14 @@ export type AuthProvider = z.infer<typeof authProviderSchema>;
 export const eventStatusSchema = z.enum(['planned', 'done', 'skipped']);
 export type EventStatus = z.infer<typeof eventStatusSchema>;
 
+/** **Which end of a bracketed span** (ADR-0224 §1). The pair `'start' | 'end'` has been
+ *  written inline at every call site since ADR-0063 — `edgeMeaning`, `windowBoundOf`,
+ *  `eventEdgeTransition`, the day's transition entries — and naming it here is what lets a
+ *  wire schema take it (`eventStatusUpdateSchema`) without a third spelling of the union.
+ *  The inline ones are left alone: a repo-wide rename buys nothing this needs. */
+export const eventEdgeSchema = z.enum(['start', 'end']);
+export type EventEdge = z.infer<typeof eventEdgeSchema>;
+
 export const eventSourceSchema = z.enum(['manual', 'gmail', 'maybe_shelf', 'integration']);
 export type EventSource = z.infer<typeof eventSourceSchema>;
 
@@ -260,6 +268,18 @@ export const tripEventSchema = z.object({
    *  the user's pinned zone, honoured forever. Not a cache of the derived value. */
   displayTimezone: z.string().optional(),
   status: eventStatusSchema,
+  /** **What a human said about the CLOSING edge** (ADR-0224 §1) — a check-out, a car
+   *  return, a landing. A bracketed span has two moments and `status` above is already
+   *  spoken for: `glance.ts` clears a `not-before` row on `status === DONE` and
+   *  `hero-booking.ts` tests the same field on its missed-check-in arm, so that field
+   *  functions as the OPENING edge's answer and writing a check-out through it would
+   *  say "we checked in", a day late.
+   *
+   *  Read through `edgeStatusOf(event, edge)` rather than by hand, for the reason
+   *  `windowBoundOf` exists one field up: pairing an edge to its field reads fine and
+   *  inverts silently. Absent is the app's usual third state — nobody has answered
+   *  (ADR-0117 §1) — and it is absent on nearly every event, like the window bounds. */
+  endStatus: eventStatusSchema.optional(),
   bookingId: idSchema.optional(),
   sortOrder: z.number(),
   source: eventSourceSchema,
