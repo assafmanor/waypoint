@@ -33,6 +33,7 @@ const makeMe = (over: Partial<Me['user']> = {}): Me => ({
     avatarHue: 'denim',
     avatarChoice: 'initials',
     googleAvatarUrl: null,
+    googleAvatarCopyUrl: null,
     uploadedAvatarUrl: null,
     preferredCurrency: null,
     createdAt: '2026-07-01T00:00:00.000Z',

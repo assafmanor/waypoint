@@ -1,9 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, UnauthorizedException, UnsupportedMediaTypeException } from '@nestjs/common';
-import { ERROR_CODE, isAllowedAvatarMimeType, type Me, type UpdateMeInput } from '@waypoint/shared';
+import {
+  ERROR_CODE,
+  isAllowedAvatarMimeType,
+  MAX_AVATAR_SIZE_BYTES,
+  type Me,
+  type UpdateMeInput,
+} from '@waypoint/shared';
 import { decryptAtRest, encryptAtRest } from '../common/crypto.util';
 import { requireEnv, TOKEN_ENCRYPTION_KEY } from '../common/env';
 import { sniffImageMimeType } from '../common/image-sniff';
+import { EnrichmentImagePipeline } from '../enrichment/image-pipeline';
 import { archiveVintage, livePlanetBuild } from '../map/planet';
 import { deleteObject, getObject, putObject } from '../common/storage';
 import { vapidPublicKeyOrNull } from '../notifications/vapid';
@@ -35,7 +42,14 @@ export interface CallbackResult {
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    /** **The one fetch-sniff-store sequence in the process** (ADR-0166 §7, second consumer):
+     *  what copies the Google photo at sign-in. Reached across module lines exactly as
+     *  `routing/` reaches for the fetcher it wraps — a second one here would be a second
+     *  place to get SSRF and image sniffing wrong. */
+    private readonly images: EnrichmentImagePipeline,
+  ) {}
 
   beginGoogleAuth(forceConsent = false): OAuthTransaction {
     const state = generateOAuthState();
@@ -75,6 +89,15 @@ export class AuthService {
       ? encryptAtRest(tokens.refresh_token, requireEnv(TOKEN_ENCRYPTION_KEY), TOKEN_ENCRYPTION_KEY)
       : null;
 
+    // **What we held BEFORE the upsert overwrites it** — read here because the upsert below
+    // writes `googleAvatarUrl` unconditionally, so after it runs there is nothing left to
+    // compare the stored copy against (ADR-0133 §13's refresh policy). One indexed lookup on
+    // a path that has already made two network calls.
+    const priorAvatar = await this.prisma.user.findUnique({
+      where: { email: info.email },
+      select: { googleAvatarUrl: true, googleAvatarKey: true },
+    });
+
     // Provision User + AuthIdentity atomically (B-12): the identity upsert failing
     // after the user upsert used to leave a user with no linked identity.
     const user = await this.prisma.$transaction(async (tx) => {
@@ -106,7 +129,69 @@ export class AuthService {
       return user;
     });
 
+    await this.copyGoogleAvatar(user.id, info.picture ?? null, priorAvatar);
+
     return this.issueSession(user.id, user.email);
+  }
+
+  /**
+   * **Keep our own copy of the Google photo** (ADR-0133 §13) — the fix for the one thing on
+   * the roster that did not work offline.
+   *
+   * `googleAvatarUrl` is a hotlink, so on a plane every Google-photo avatar in the app failed
+   * to load (owner report, 2026-09-12, with a screenshot). Copying the bytes puts the face on
+   * our own origin behind an immutable URL, where it is cached like every other picture the
+   * app shows — the same objection ADR-0166 §2 raised against hotlinking a place photo, and
+   * the same answer.
+   *
+   * **The refresh policy is "whenever the URL changes"**, which is why the URL is stored beside
+   * the key: Google mints a new `picture` when a person changes their photo, so comparing the
+   * two is a free, exact answer to "is our copy stale" and costs no fetch on the ordinary
+   * sign-in. It is also what makes this safe to run on EVERY callback.
+   *
+   * **Never fatal.** A refused host, a timeout, a dead CDN or bytes that are not an image all
+   * leave the hotlink in place and let the sign-in through: an avatar is a decoration, and
+   * failing a login over one would be the worse bug by far.
+   */
+  private async copyGoogleAvatar(
+    userId: string,
+    picture: string | null,
+    /** The row as it stood BEFORE this sign-in wrote the new `picture` — `null` for a user
+     *  created by it. Passed rather than re-read, because the upsert has already overwritten
+     *  the only value this comparison could have used. */
+    prior: { googleAvatarUrl: string | null; googleAvatarKey: string | null } | null,
+  ): Promise<void> {
+    if (!picture) {
+      if (prior?.googleAvatarKey) await this.retireGoogleAvatar(userId, prior.googleAvatarKey);
+      return;
+    }
+    if (prior?.googleAvatarKey && prior.googleAvatarUrl === picture) return;
+
+    const stored = await this.images.store(picture, {
+      // An avatar's cap, not a thumbnail's: these are the same bytes an upload is bounded by,
+      // and a profile photo past half a megabyte is not a profile photo.
+      maxBytes: MAX_AVATAR_SIZE_BYTES,
+      // No prefix — `/users/:userId/avatar/:key` already says whose blob this is, which is the
+      // job the enrichment prefix does for a route keyed on the blob alone.
+      keyPrefix: '',
+    });
+    if (!stored) return;
+
+    const previous = prior?.googleAvatarKey;
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { googleAvatarKey: stored.blobKey },
+    });
+    // After the row points at the new bytes, never before: a delete that wins the race against
+    // the write would leave a key serving nothing.
+    if (previous) await deleteObject(previous).catch(() => undefined);
+  }
+
+  /** The photo is gone at Google, so ours goes too — "remove it there and it disappears here"
+   *  is the only behaviour that does not turn our copy into a face somebody cannot delete. */
+  private async retireGoogleAvatar(userId: string, blobKey: string): Promise<void> {
+    await this.prisma.user.update({ where: { id: userId }, data: { googleAvatarKey: null } });
+    await deleteObject(blobKey).catch(() => undefined);
   }
 
   async refresh(refreshTokenRaw: string): Promise<CallbackResult> {
@@ -272,18 +357,24 @@ export class AuthService {
     return this.getMe(userId);
   }
 
-  /** The bytes behind `avatarContentPath`, or `null` when this user has no upload or
-   *  the key is not their current one. A retired key returning nothing is the point:
-   *  it is what makes "remove the photo" actually stop serving the photo, and it is
-   *  why the key is matched here rather than merely looked up. */
-  async getAvatarContent(userId: string, uploadedAvatarKey: string): Promise<Buffer | null> {
+  /** The bytes behind `avatarContentPath`, or `null` when the key is not one of this
+   *  user's current ones. A retired key returning nothing is the point: it is what makes
+   *  "remove the photo" actually stop serving the photo, and it is why the key is matched
+   *  here rather than merely looked up.
+   *
+   *  **EITHER of the user's two keys** (ADR-0133 §13): the upload, and our copy of their
+   *  Google photo. One route rather than a second one beside it, because the question it
+   *  answers is identical — is this key this user's, and are the bytes still there — and the
+   *  path already carries the user, so a bare UUID needs no prefix to stay unambiguous. */
+  async getAvatarContent(userId: string, avatarKey: string): Promise<Buffer | null> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { uploadedAvatarKey: true },
+      select: { uploadedAvatarKey: true, googleAvatarKey: true },
     });
-    if (!user?.uploadedAvatarKey || user.uploadedAvatarKey !== uploadedAvatarKey) return null;
+    const isCurrent = avatarKey === user?.uploadedAvatarKey || avatarKey === user?.googleAvatarKey;
+    if (!isCurrent) return null;
     try {
-      return await getObject(uploadedAvatarKey);
+      return await getObject(avatarKey);
     } catch {
       // The row points at bytes that aren't there (storage misconfigured, or a blob
       // lost to an ephemeral filesystem). A missing face must degrade to initials, so

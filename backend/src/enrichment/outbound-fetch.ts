@@ -85,10 +85,16 @@ const ALLOWED_HOSTS = [
   'api.met.no',
 ];
 
-/** Suffix rules, for the one source that is genuinely per-language. Matched as a real
+/** Suffix rules, for the two sources that are genuinely per-subdomain. Matched as a real
  *  label boundary (`.wikipedia.org`), never a substring — `evilwikipedia.org` and
- *  `wikipedia.org.attacker.test` must both fail. */
-const ALLOWED_HOST_SUFFIXES = ['.wikipedia.org'];
+ *  `wikipedia.org.attacker.test` must both fail.
+ *
+ *  `.googleusercontent.com` is where a Google profile photo lives (ADR-0133 §13), and it is a
+ *  suffix rather than a host because Google shards it across `lh3`…`lh6` and rotates which one
+ *  a given `picture` URL names. The seat this file guards is unchanged by it: the URL comes
+ *  from Google's own userinfo response, not from anything a member typed, and it is still
+ *  allowlisted, timeboxed and size-capped like every other hop. */
+const ALLOWED_HOST_SUFFIXES = ['.wikipedia.org', '.googleusercontent.com'];
 
 /** Redirect hops followed before giving up. Wikimedia uses a redirect for
  *  `Special:Redirect/file`, so zero is too few; anything beyond a couple is a loop. */

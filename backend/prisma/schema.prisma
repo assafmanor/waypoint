@@ -124,6 +124,11 @@ model User {
   // The provider's `picture`, refreshed at each sign-in. Kept even while the user
   // is on `initials`, so "use my Google photo" has somewhere to come back from.
   googleAvatarUrl   String?
+  // **Our own copy of that photo** (ADR-0133 §13) — the blob key, so the face is served
+  // from our origin at an immutable URL and survives a flight with no network. The URL
+  // above is what it was fetched FROM and is what decides when to refetch; the two are
+  // separate columns because a mirror that failed must still leave a hotlink to render.
+  googleAvatarKey   String?
   uploadedAvatarKey String? // set by ADR-0133's Phase 4 only
   // The member's HOME currency (ADR-0184 §2) — the other side of every trip
   // conversion. Nullable because "never chosen" is a real state the client

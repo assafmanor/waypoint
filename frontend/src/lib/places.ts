@@ -7,6 +7,7 @@ import {
   titlesFromRoute,
   eventDurationUnit,
   isAmbient,
+  isJourney,
   type Booking,
   type MaybeItem,
   type Place,
@@ -1054,6 +1055,16 @@ export function ideaShowOnMap(
   return hasCoords(place) && show ? () => show(place.id) : undefined;
 }
 
+/** Where you are now, and whether "where" is a place or a journey between two. */
+export interface CurrentDestination {
+  event: TripEvent;
+  place: Place;
+  /** **You are INSIDE a journey, and `place` is where it is taking you** — not where you
+   *  are standing, because mid-flight that is nowhere. Read by the canvas, which spends
+   *  its amber on the leg ARRIVING at this stop and so draws the leg you are on. */
+  inTransit: boolean;
+}
+
 /**
  * Where you are RIGHT NOW — the in-progress event's place, or `undefined`.
  *
@@ -1069,7 +1080,16 @@ export function ideaShowOnMap(
  * **An ambient stay is filtered out before the question is asked**, exactly as
  * Home filters it: a stay's span runs to check-out, so it would read "now" for
  * three days straight and drown whatever you are actually doing. The hotel stays
- * the day's backdrop (ADR-0054).
+ * the day's backdrop (ADR-0054). **A journey is exempt from that filter for the same
+ * reason Home exempts it** (`scheduleEvents`): a red-eye has an `endDate`, so it is
+ * `isMultiDay` and therefore ambient — and dropping it here means the tab stops seeing
+ * the flight the moment it takes off. Ambient says how a span RENDERS across days; what
+ * its middle IS is the journey you are inside.
+ *
+ * **Mid-journey the place is the DESTINATION** (the rule session 215 settled for the
+ * board's own now-point, `midSpanEventId`): the authority rule answers the origin, which
+ * mid-flight is the airport you have already left — so the Map marked the layover you
+ * had just taken off from as `עכשיו` and drew no leg at all (owner report, 2026-09-12).
  *
  * Unlike `nextDestination` this needs **no directions URL**: a coordless place can
  * still be where you are standing — it simply has no pin to mark, which is
@@ -1080,15 +1100,16 @@ export function currentDestination(
   bookings: Booking[],
   places: Place[],
   nowMs: number,
-): { event: TripEvent; place: Place } | undefined {
+): CurrentDestination | undefined {
   const { now } = deriveNow(
-    events.filter((e) => !isAmbient(e)),
+    events.filter((e) => !(isAmbient(e) && !isJourney(e))),
     new Date(nowMs),
   );
   if (!now) return undefined;
+  const inTransit = isJourney(now);
   const booking = now.bookingId ? bookings.find((b) => b.id === now.bookingId) : undefined;
-  const place = places.find((p) => p.id === eventPlaceId(now, booking));
-  return place ? { event: now, place } : undefined;
+  const place = places.find((p) => p.id === eventPlaceId(now, booking, inTransit));
+  return place ? { event: now, place, inTransit } : undefined;
 }
 
 /** Where you have to get to next, and the event that puts you there. */

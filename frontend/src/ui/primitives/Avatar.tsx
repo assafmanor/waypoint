@@ -7,6 +7,7 @@
 // It owns ALL of: which source to render, the initials fallback, the ink-on-hue
 // pairing, and the ring the account avatar wears. No call site does any of that
 // again — a call site picks a size and passes a person.
+import { useState } from 'react';
 import type { AvatarChoice, IdentityHue, User } from '@waypoint/shared';
 import { AVATAR_INITIAL_LENGTH } from '../../constants';
 import { apiAssetUrl } from '../../lib/api-asset';
@@ -28,6 +29,9 @@ export type AvatarPerson = Pick<User, 'displayName' | 'avatarHue'> & {
    *  is the honest render for them rather than a borrowed photo. */
   avatarChoice?: AvatarChoice;
   googleAvatarUrl?: string | null;
+  /** Server-built path to OUR copy of the Google photo, or null when there is none
+   *  (ADR-0133 §13). Relative to the API origin, so it is prefixed here. */
+  googleAvatarCopyUrl?: string | null;
   /** Server-built path to an uploaded avatar's bytes, or null when there is no
    *  upload (ADR-0133 §12). Relative to the API origin, so it is prefixed here. */
   uploadedAvatarUrl?: string | null;
@@ -35,12 +39,21 @@ export type AvatarPerson = Pick<User, 'displayName' | 'avatarHue'> & {
 
 /** Which source to actually render. Honours the stored choice, then falls back to
  *  initials whenever the chosen source has nothing to show — a revoked Google
- *  photo, an upload that is gone, and an offline load all land here, and none of
- *  them may produce a broken image (ADR-0133 §4).
+ *  photo and an upload that is gone both land here, and neither may produce a
+ *  broken image (ADR-0133 §4; a load that FAILS is the component's half of the
+ *  same rule).
+ *
+ *  **Our copy of the Google photo wins over the hotlink** (§13): same-origin and
+ *  immutable, so it is in the browser's cache on a plane where `lh3.googleusercontent`
+ *  is unreachable. The hotlink stays as the fallback for the window before a person's
+ *  next sign-in has made a copy — online it renders exactly as it always did.
  *
  *  Exported because it is the interesting decision and deserves its own test. */
 export function avatarPictureUrl(person: AvatarPerson): string | null {
-  if (person.avatarChoice === 'google') return person.googleAvatarUrl ?? null;
+  if (person.avatarChoice === 'google') {
+    if (person.googleAvatarCopyUrl) return apiAssetUrl(person.googleAvatarCopyUrl);
+    return person.googleAvatarUrl ?? null;
+  }
   if (person.avatarChoice === 'upload') {
     return person.uploadedAvatarUrl ? apiAssetUrl(person.uploadedAvatarUrl) : null;
   }
@@ -73,16 +86,28 @@ export function Avatar({
   label?: string;
 }) {
   const url = avatarPictureUrl(person);
+  // **The load is the other half of §4's rule, and it was the missing half** (owner report,
+  // 2026-09-12, with a screenshot of a plane). A resolved URL is not a picture: a Google
+  // photo revoked between snapshots, an upload the server has retired, and — the reported
+  // case — ANY photo on a phone with no network all resolve fine and then fail to decode,
+  // and the browser's answer to that is the broken-image glyph. "Never render a broken
+  // image" has to be enforced where the failure actually happens, so a failed load falls
+  // back to the same initials a missing URL does.
+  //
+  // Keyed by URL rather than a bare flag: a person whose photo changes (or a recycled row
+  // in a list) must get a fresh attempt, not inherit the last one's failure.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const src = url && url !== failedUrl ? url : null;
   const hue: IdentityHue = person.avatarHue;
   const cls = ['wp-av', size !== 'inherit' && `wp-av-${size}`, ring && 'wp-av-ring', className]
     .filter(Boolean)
     .join(' ');
   // The hue is a token NAME, never a hex, so the dark remap reaches it.
   const style = { background: `var(--id-${hue})` };
-  const inner = url ? (
+  const inner = src ? (
     // `no-referrer` so rendering a Google-hosted photo does not leak the page it is
     // rendered on back to Google on every load.
-    <img src={url} alt="" referrerPolicy="no-referrer" />
+    <img src={src} alt="" referrerPolicy="no-referrer" onError={() => setFailedUrl(src)} />
   ) : (
     initialOf(person.displayName)
   );
