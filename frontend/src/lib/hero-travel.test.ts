@@ -163,6 +163,68 @@ describe('travelOrigin — which stop the journey leaves from', () => {
     it('changes nothing when the caller has no bed to offer', () => {
       expect(travelOrigin({ events: [later], nowMs: NOW }).event).toBeUndefined();
     });
+
+    // **The flag is about the ROW, not about which argument supplied it.** Home derived it as
+    // `originEvent.id === wokeIn?.id`, so the hotel you check into TONIGHT — an ordinary member of
+    // today's events, and after 15:00 the latest one to have started — answered `false` and handed
+    // `legDepartAfterMs` a check-out days away as this leg's departure floor.
+    it('marks a bed that simply started last as the bed it is', () => {
+      const origin = travelOrigin({ events: [hotel], nowMs: NOW });
+      expect(origin.event?.id).toBe('hotel');
+      expect(origin.isStay).toBe(true);
+    });
+
+    it('marks an ordinary stop as no bed at all', () => {
+      expect(travelOrigin({ events, nowMs: NOW }).isStay).toBe(false);
+      expect(travelOrigin({ nowEvent: museum, events, nowMs: NOW }).isStay).toBe(false);
+    });
+  });
+
+  // ── A JOURNEY THAT CROSSES A NIGHT (field report, 2026-09-12) ───────────────────────────────
+  //
+  // The night board's `הבא בתור` is tomorrow's first stop (ADR-0214 §7), and the leg into it was
+  // measured from whatever today left you at: `~1:36 שע׳ · צאו ב־05:33` on the board against
+  // `~1:02 שע׳ · יציאה עד 06:08` in the day view, about one morning. You sleep in between, so
+  // every claim about today is the wrong end of the leg.
+  describe('the bed you sleep in first (ADR-0206 §AD, extended)', () => {
+    const tonight = ev({
+      id: 'tonight',
+      category: 'lodging',
+      date: '2026-08-26',
+      endDate: '2026-08-27',
+      startsAt: '2026-08-26T13:00:00Z',
+      endsAt: '2026-08-27T09:00:00Z',
+    });
+
+    it('outranks the last stop today left you at', () => {
+      const origin = travelOrigin({ events, nowMs: NOW, sleepsIn: tonight });
+      expect(origin.event?.id).toBe('tonight');
+      expect(origin.isStay).toBe(true);
+    });
+
+    // The one precedence the bed inverts, and deliberately: `nowEvent` is the strongest claim
+    // about where you are NOW, and where you are now is not where tomorrow starts.
+    it('outranks the point still in progress', () => {
+      expect(
+        travelOrigin({ nowEvent: museum, events, nowMs: NOW, sleepsIn: tonight }).event?.id,
+      ).toBe('tonight');
+    });
+
+    it('is never its own origin, so a check-out next keeps the stop below it', () => {
+      const origin = travelOrigin({
+        events,
+        nowMs: NOW,
+        sleepsIn: tonight,
+        excludeEventId: 'tonight',
+      });
+      expect(origin.event?.id).toBe('museum');
+    });
+
+    // A night nobody booked a bed for has no better answer than the shipped one — the caller
+    // simply has nothing to hand over, and absence is what keeps this additive.
+    it('changes nothing when no stay covers the night', () => {
+      expect(travelOrigin({ events, nowMs: NOW }).event?.id).toBe('museum');
+    });
   });
 
   // **ADR-0208 §2**, reported from a real day: the group skipped the stop they were at, and the

@@ -11,6 +11,7 @@
 // `leaveBy` computes the instant (`@waypoint/shared`'s `travel-time.ts`, so the sweep that will
 // one day fire a "leave now" reminder reads it the same way this does).
 import { EVENT_STATUS, leaveBy, type TripEvent } from '@waypoint/shared';
+import { isStayRow } from './glance';
 
 const MS_PER_MIN = 60_000;
 
@@ -159,6 +160,17 @@ export interface TravelOriginClaim {
    * for a stale one — the leg from where you were six hours ago is not less of a guess.
    */
   denied: boolean;
+  /**
+   * **The origin is a BED, so it has no usable end instant** — `DayLeg.fromIsStay`, answered here
+   * rather than at the caller.
+   *
+   * Home used to derive it as `originEvent.id === wokeIn?.id`, which is an identity test standing
+   * in for a question about the ROW: a stay that is simply the latest thing to have started —
+   * every check-in evening has one — answered `false` and took its `endsAt` as this leg's
+   * departure floor, i.e. a check-out days away (`legDepartAfterMs`, ADR-0206 §AF3). The flag now
+   * says what its name says, so every bed this function can return is covered by it.
+   */
+  isStay: boolean;
 }
 
 /**
@@ -189,6 +201,14 @@ export interface TravelOriginClaim {
  * `nowEvent` first, because that is the point the hero leads with — and mid-span its own place
  * already resolves to where you are **going** (`heroHorizon`'s `midSpanEventId`), so a flight in
  * the air measures the leg out of the airport it lands at rather than the one it left.
+ *
+ * **Except across a NIGHT, where the journey starts from the bed** — `sleepsIn`, and it outranks
+ * every claim above because they are all claims about TODAY (field report, 2026-09-12). The night
+ * board's `הבא בתור` is tomorrow's first stop (ADR-0214 §7) and the leg into it was measured from
+ * the last stop today left you at: the board read `נסיעה · ~1:36 שע׳ · צאו ב־05:33` off yesterday
+ * evening's waterfall while the day view, measuring the same morning out of the hotel, read
+ * `~1:02 שע׳ · יציאה עד 06:08`. One journey, two answers, and the longer one was a drive nobody
+ * makes — you sleep in between, which is the one thing the plan is sure of.
  */
 export function travelOrigin(input: {
   /** The primary in-progress event, when there is one. */
@@ -204,12 +224,23 @@ export function travelOrigin(input: {
    *  Resolved by the caller because it is a question about the day's DATE and this function is
    *  handed a clock; absent leaves the behaviour §AE3 shipped, exactly. */
   wokeIn?: TripEvent;
+  /** **The bed between here and the destination** — supplied only where the journey crosses a
+   *  night, and then it is the answer. `dayBookendStays(events, destinationDate).woke`, which is
+   *  the very row the day list draws its own first leg out of, so the two surfaces measure one
+   *  morning once (ADR-0159 §1). Resolved by the caller for `wokeIn`'s reason: it is a question
+   *  about a DATE and this function is handed a clock. */
+  sleepsIn?: TripEvent;
 }): TravelOriginClaim {
-  const { nowEvent, events, nowMs, excludeEventId, wokeIn } = input;
+  const { nowEvent, events, nowMs, excludeEventId, wokeIn, sleepsIn } = input;
+  // A night stands between the two points, so nothing today can be the origin — not the stop that
+  // started an hour ago and not the one still running. A stay is never `skipped`.
+  if (sleepsIn && sleepsIn.id !== excludeEventId) {
+    return { event: sleepsIn, denied: false, isStay: true };
+  }
   // `deriveNow` admits only PLANNED events, so an in-progress point can never be the denied
   // one — skipping the thing you are inside removes it from `now` and this falls to the branch
   // below on the same render.
-  if (nowEvent) return { event: nowEvent, denied: false };
+  if (nowEvent) return { event: nowEvent, denied: false, isStay: isStayRow(nowEvent) };
   let latest: TripEvent | undefined;
   for (const event of events) {
     if (!event.startsAt || event.id === excludeEventId) continue;
@@ -220,5 +251,9 @@ export function travelOrigin(input: {
   // The bed only answers when nothing else has: a stop that has started is a later and therefore
   // stronger claim about where the plan left you, and a stay is never `skipped`.
   const event = latest ?? (wokeIn?.id === excludeEventId ? undefined : wokeIn);
-  return { event, denied: event?.status === EVENT_STATUS.SKIPPED };
+  return {
+    event,
+    denied: event?.status === EVENT_STATUS.SKIPPED,
+    isStay: !!event && isStayRow(event),
+  };
 }
