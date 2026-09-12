@@ -265,6 +265,32 @@ describe('heroHorizon', () => {
     ]);
   });
 
+  // **WHICH EDGE THE SLOT IS SHOWING** (ADR-0224 §1). The board fills `הבא בתור` with an END
+  // transition `deriveNow` cannot surface — a hotel check-out — and only the caller knows,
+  // because only the caller chose it. Before this, the point reported the span's single
+  // `status`, so a check-out could only ever repeat what the check-in said.
+  describe('a point knows which END it is (ADR-0224 §1)', () => {
+    const stay = (over: Partial<TripEvent> = {}) => ev('stay', { category: 'lodging', ...over });
+
+    it('defaults to the opening edge, which is every point that is not a check-out', () => {
+      const h = heroHorizon(input({ nowAll: [stay()], events: [] }));
+      expect(h.now[0].edge).toBe('start');
+    });
+
+    it('reads `endStatus` when the slot is showing the closing edge', () => {
+      const out = stay({ endStatus: EVENT_STATUS.DONE });
+      const h = heroHorizon(input({ nextAll: [out], nextEdge: 'end', events: [out] }));
+      expect(h.next!.edge).toBe('end');
+      expect(h.next!.settled).toBe(EVENT_STATUS.DONE);
+    });
+
+    it('does not let the check-in answer for the check-out', () => {
+      const checkedIn = stay({ status: EVENT_STATUS.DONE });
+      const h = heroHorizon(input({ nextAll: [checkedIn], nextEdge: 'end', events: [checkedIn] }));
+      expect(h.next!.settled).toBeUndefined();
+    });
+  });
+
   describe('אחר כך — the third point', () => {
     it('is the first event after the NEXT cluster, not merely the one after now', () => {
       // Two events share the next start (ADR-0041's cluster) — both are `next`, so

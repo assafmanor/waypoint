@@ -8,11 +8,13 @@ import {
   EVENT_KIND,
   EVENT_SOURCE,
   EVENT_STATUS,
+  edgeStatusOf,
   type Booking,
   type CreateBookingInput,
   type CreateEventInput,
   type DocumentAttachment,
   type EventCategory,
+  type EventEdge,
   type Note,
   type NoteHostKey,
   NOTE_HOST_KEYS,
@@ -85,7 +87,10 @@ export interface AddMaybeOptions {
 }
 
 type UndoDescriptor =
-  | { kind: 'status'; id: string; previous: TripEvent['status'] }
+  /** `edge` absent = the opening edge (ADR-0224 §1). It rides the descriptor because the
+   *  undo has to put back the column that moved: without it, withdrawing a check-out mark
+   *  would write `status` and claim something about the check-in instead. */
+  | { kind: 'status'; id: string; previous: TripEvent['status']; edge?: EventEdge }
   | { kind: 'move'; id: string; previous: { date: string; startsAt?: string }; isHard: boolean }
   /** An event this action created. `maybeId` is the shelf idea it CONSUMED, when the create
    *  was a schedule (ADR-0027 §2) — reversing has to put that idea back on the shelf
@@ -340,18 +345,28 @@ const slotOf = (e: TripEvent): UpdateEventInput => ({
   sortOrder: e.sortOrder,
 });
 
+/** **Settle ONE edge** (ADR-0224 §1). `edge` is absent for a stop and for a span's opening
+ *  edge — `status`, exactly as before — and `'end'` writes `endStatus`. The previous value
+ *  the undo restores is read off the SAME edge (`edgeStatusOf`), which is the half a second
+ *  field quietly breaks. */
 export async function applySetStatus(
   deps: VerbDeps,
   event: TripEvent,
   status: TripEvent['status'],
+  edge?: EventEdge,
 ): Promise<void> {
-  deps.dispatch({ type: TRIP_ACTION.SET_STATUS, id: event.id, status });
-  deps.lastAction.current = { kind: 'status', id: event.id, previous: event.status };
+  deps.dispatch({ type: TRIP_ACTION.SET_STATUS, id: event.id, status, edge });
+  deps.lastAction.current = {
+    kind: 'status',
+    id: event.id,
+    previous: edgeStatusOf(event, edge ?? 'start'),
+    edge,
+  };
   try {
     const canonical = await restOrQueue(
       deps.tripId,
-      { verb: OUTBOX_VERB.SET_STATUS, eventId: event.id, status },
-      () => setEventStatus(deps.tripId, event.id, status),
+      { verb: OUTBOX_VERB.SET_STATUS, eventId: event.id, status, ...(edge ? { edge } : {}) },
+      () => setEventStatus(deps.tripId, event.id, status, edge),
     );
     if (canonical) deps.dispatch({ type: TRIP_ACTION.RECONCILE_EVENT, event: canonical });
   } catch (err) {
@@ -1019,8 +1034,13 @@ async function reverseRest(deps: VerbDeps, desc: UndoDescriptor): Promise<void> 
     case 'status':
       await restOrQueue(
         tripId,
-        { verb: OUTBOX_VERB.SET_STATUS, eventId: desc.id, status: desc.previous },
-        () => setEventStatus(tripId, desc.id, desc.previous),
+        {
+          verb: OUTBOX_VERB.SET_STATUS,
+          eventId: desc.id,
+          status: desc.previous,
+          ...(desc.edge ? { edge: desc.edge } : {}),
+        },
+        () => setEventStatus(tripId, desc.id, desc.previous, desc.edge),
       );
       return;
     case 'move': {
@@ -1352,16 +1372,20 @@ export function useVerbs() {
   };
 
   return {
-    done: (e: TripEvent) => {
-      void applySetStatus(deps, e, EVENT_STATUS.DONE);
+    // **The three settle verbs take an EDGE** (ADR-0224 §1), absent everywhere it was absent
+    // before — a stop and a span's opening edge are unchanged. The toasts do not vary by
+    // edge: `סומן כבוצע` is as true of a check-out as of a stop, and a per-edge toast would
+    // be a second vocabulary beside the one `SettleControl` already renders.
+    done: (e: TripEvent, edge?: EventEdge) => {
+      void applySetStatus(deps, e, EVENT_STATUS.DONE, edge);
       toast(CONTROL_ICON.done, t.toast.markedDone, undo);
     },
-    skip: (e: TripEvent) => {
-      void applySetStatus(deps, e, EVENT_STATUS.SKIPPED);
+    skip: (e: TripEvent, edge?: EventEdge) => {
+      void applySetStatus(deps, e, EVENT_STATUS.SKIPPED, edge);
       toast(CONTROL_ICON.trash, t.toast.removed, undo);
     },
-    restore: (e: TripEvent) => {
-      void applySetStatus(deps, e, EVENT_STATUS.PLANNED);
+    restore: (e: TripEvent, edge?: EventEdge) => {
+      void applySetStatus(deps, e, EVENT_STATUS.PLANNED, edge);
       toast(CONTROL_ICON.restore, t.toast.restored, undo);
     },
     // `swap` used to live here and it did not swap: it SKIPPED the event and posted a toast

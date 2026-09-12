@@ -662,4 +662,75 @@ describe('EventsService', () => {
     );
     expect(event.date).toBe('2027-02-02');
   });
+
+  // **A SPAN HAS TWO MOMENTS AND ONE `status`** (ADR-0224 §1). The route is one route and
+  // `edge` picks the column — absent means `start`, which is what every settle before this
+  // ADR meant, so a queued outbox op from an older client replays unchanged.
+  describe('settling one edge of a span', () => {
+    const stay = (tripId: string) =>
+      service.create(tripId, DEV_USER, {
+        date: DAY,
+        endDate: '2027-02-04',
+        title: 'Gissurarbúð 5',
+        category: 'lodging',
+        kind: EVENT_KIND.HARD,
+        startsAt: at('15:00'),
+        endsAt: '2027-02-04T11:00:00+09:00',
+        source: 'manual',
+      });
+
+    it('writes `endStatus` for the closing edge and leaves `status` alone', async () => {
+      const tripId = await newTrip();
+      const e = await stay(tripId);
+      const out = await service.setStatus(tripId, e.id, DEV_USER, EVENT_STATUS.DONE, 'end');
+      expect(out.endStatus).toBe(EVENT_STATUS.DONE);
+      expect(out.status).toBe(EVENT_STATUS.PLANNED);
+    });
+
+    it('writes `status` for the opening edge, and for a caller that names no edge at all', async () => {
+      const tripId = await newTrip();
+      const e = await stay(tripId);
+      const opened = await service.setStatus(tripId, e.id, DEV_USER, EVENT_STATUS.DONE, 'start');
+      expect(opened.status).toBe(EVENT_STATUS.DONE);
+      expect(opened.endStatus).toBeUndefined();
+
+      const other = await stay(tripId);
+      const legacy = await service.setStatus(tripId, other.id, DEV_USER, EVENT_STATUS.SKIPPED);
+      expect(legacy.status).toBe(EVENT_STATUS.SKIPPED);
+      expect(legacy.endStatus).toBeUndefined();
+    });
+
+    it('holds both answers at once — they are different questions', async () => {
+      const tripId = await newTrip();
+      const e = await stay(tripId);
+      await service.setStatus(tripId, e.id, DEV_USER, EVENT_STATUS.DONE, 'start');
+      const both = await service.setStatus(tripId, e.id, DEV_USER, EVENT_STATUS.SKIPPED, 'end');
+      expect(both.status).toBe(EVENT_STATUS.DONE);
+      expect(both.endStatus).toBe(EVENT_STATUS.SKIPPED);
+    });
+
+    // The undo's path: `planned` on the edge that was answered, and nothing else touched.
+    it('withdraws the mark on the edge that carried it', async () => {
+      const tripId = await newTrip();
+      const e = await stay(tripId);
+      await service.setStatus(tripId, e.id, DEV_USER, EVENT_STATUS.DONE, 'start');
+      await service.setStatus(tripId, e.id, DEV_USER, EVENT_STATUS.DONE, 'end');
+      const back = await service.setStatus(tripId, e.id, DEV_USER, EVENT_STATUS.PLANNED, 'end');
+      expect(back.status).toBe(EVENT_STATUS.DONE);
+      expect(back.endStatus).toBe(EVENT_STATUS.PLANNED);
+    });
+
+    // The whole ROW is broadcast (`toEventChangePayload`), so a peer merging it picks up
+    // whichever column moved with no second change action to understand.
+    it('broadcasts the closing edge in the change payload', async () => {
+      const tripId = await newTrip();
+      const e = await stay(tripId);
+      await service.setStatus(tripId, e.id, DEV_USER, EVENT_STATUS.DONE, 'end');
+      const change = await prisma.change.findFirst({
+        where: { tripId, entityId: e.id, action: 'status' },
+        orderBy: { seq: 'desc' },
+      });
+      expect((change!.after as Record<string, unknown>).endStatus).toBe(EVENT_STATUS.DONE);
+    });
+  });
 });

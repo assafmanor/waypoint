@@ -4511,6 +4511,15 @@ body.wp-dragging
   align-self: center;
   margin-inline-end: 10px;
 }
+/* **The RECORD, once this edge is answered** (ADR-0224 §4/§6). The pair is two 32px squares
+   and needs no type of its own; the tag that replaces them is words, and with nothing said
+   here it inherits the body size — louder than `.tr-title`'s own ⁦13.5px⁩ two lines up, on a
+   row whose whole point is that the title wins. `nowrap` because `יצאנו` sharing a line with
+   the undo is the shape, not two lines of it. */
+.transition-row .wp-settle.compact .wp-settle-tag {
+  font-size: 11.5px;
+  white-space: nowrap;
+}
 .tr-nav {
   flex: 0 0 auto;
   align-self: center;

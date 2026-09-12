@@ -97,7 +97,7 @@ export class EventsController {
     @Param('eventId') eventId: string,
     @Body(new ZodValidationPipe(eventStatusUpdateSchema)) body: EventStatusUpdateDto,
   ): Promise<TripEvent> {
-    return this.events.setStatus(tripId, eventId, user.userId, body.status);
+    return this.events.setStatus(tripId, eventId, user.userId, body.status, body.edge);
   }
 
   // Response is `{ event, rippleSuggestion? }` — no shared schema for rippleSuggestion

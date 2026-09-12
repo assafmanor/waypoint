@@ -13,6 +13,7 @@ import {
   edgeMeaning,
   windowBoundOf,
   EVENT_STATUS,
+  isEdgeSettled,
   eventDurationUnit,
   eventTransitionKeys,
   isAmbient,
@@ -501,11 +502,17 @@ export function buildDayGlance(
   const remainingEdges = transitions.filter((t) => {
     if (!isAmbient(t.event)) return false;
     const meaning = edgeMeaning(t.event, t.edge);
+    // **Settled on THIS edge, whichever edge it is** (ADR-0224 §1/§5). The three arms below
+    // each decide when an edge stops being owed; this one rule is prior to all of them, and
+    // it used to read `t.event.status` — the span's single field — which meant a check-out
+    // could never be cleared by being done and a check-in cleared its own row and its
+    // partner's alike. `bookingTransitionsOnDate` drops only SKIPPED events wholesale, so
+    // the per-edge answer has to be asked here.
+    if (isEdgeSettled(t.event, t.edge)) return false;
     // A floor is still ahead of you until somebody says otherwise. `transitions` is
-    // already scoped to `activeDate`, so "or the day ends" needs no condition — but
-    // "settled" does: `bookingTransitionsOnDate` drops only SKIPPED, and a check-in you
-    // have actually done is the whole reason this branch is settleable at all.
-    if (meaning === TIME_MEANING.NOT_BEFORE) return t.event.status !== EVENT_STATUS.DONE;
+    // already scoped to `activeDate`, so "or the day ends" needs no condition — and
+    // "settled" is the line above, which is why this arm no longer restates it.
+    if (meaning === TIME_MEANING.NOT_BEFORE) return true;
     // **A WINDOW DOES expire, and that is the whole of what closing it buys** (ADR-0184
     // §6). This is the one branch that had to change here, and it is the one place in
     // the app that asked `edgeMeaning` for a specific FLEXIBLE value rather than testing
@@ -514,7 +521,7 @@ export function buildDayGlance(
     // edge needs nothing: a check-out window's ceiling is the deadline it already had.
     if (meaning === TIME_MEANING.WINDOW && t.edge === 'start') {
       const shuts = windowBoundOf(t.event, t.edge);
-      return t.event.status !== EVENT_STATUS.DONE && (!shuts || Date.parse(shuts) > nowMs);
+      return !shuts || Date.parse(shuts) > nowMs;
     }
     return t.atMs > nowMs;
   }).length;

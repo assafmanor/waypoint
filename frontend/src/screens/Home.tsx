@@ -66,7 +66,7 @@ import {
 } from '../lib/places';
 import { placeLabelOf, shortRoute } from '../lib/place-label';
 import { usePlaceLabels } from '../state/place-labels';
-import { eventMidSpanWords, transitionLabel } from '../lib/transitions';
+import { edgeSettleWords, eventMidSpanWords, transitionLabel } from '../lib/transitions';
 import { approxTravelTime, clockShiftSentence, formatDuration } from '../lib/duration';
 import { TAB_PARAM, FOCUS_PARAM, DAY_PARAM, INDEX_FOCUS, INDEX_TAB } from '../state/nav-state';
 import {
@@ -394,6 +394,10 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     midSpanEventId: transitEvent?.id,
     nowAll,
     nextAll: shownNext ? [shownNext] : nextAll.slice(0, 0),
+    // **Which END that slot is showing** (ADR-0224 §1). `nextInstant` is the event's `endsAt`
+    // exactly when the board filled the slot with a check-out (see `shownNext` above), which
+    // is the same test `nextZone` already makes a few lines down — asked once, read twice.
+    nextEdge: nextInstant && nextInstant === shownNext?.endsAt ? 'end' : 'start',
     bookings,
     places,
     notes,
@@ -525,12 +529,16 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       // the transit point drops the verbs — not a density question but a nonsense one.
       // Derived from the point rather than threaded as a flag, so a concurrent event during
       // a flight keeps its own.
+      // **The pair's words are the EDGE's** (ADR-0224 §3) — `יצאנו` on a check-out where the
+      // shipped pair says `היינו`, and never `דילגנו`, which on an edge you made is a false
+      // record (ADR-0208). Absent on a stop, where the shipped pair is right.
+      settleWords: edgeSettleWords(p.event, p.edge),
       ...(isMidSpan
         ? {}
         : {
-            onDone: () => verbs.done(p.event),
-            onSkip: () => verbs.skip(p.event),
-            onUndo: () => verbs.restore(p.event),
+            onDone: () => verbs.done(p.event, p.edge),
+            onSkip: () => verbs.skip(p.event, p.edge),
+            onUndo: () => verbs.restore(p.event, p.edge),
           }),
     };
   };
@@ -820,6 +828,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const nextZones = zonesOf(shownNext);
   const nextZone =
     nextInstant && nextInstant === shownNext?.endsAt ? nextZones?.endZone : nextZones?.startZone;
+  /** **The calendar day the NEXT slot's own clock falls on** (ADR-0224 §7). Read in the zone
+   *  that clock is rendered in, not the ambient one, so the token and the time it annotates
+   *  cannot disagree across a crossing — the same pairing `transitArrivalDay` makes one slot
+   *  up. `undefined` when there is no next at all. */
+  const nextDay = nextInstant ? todayInTz(nextZone ?? tz, new Date(nextInstant)) : undefined;
 
   /** **The window on the NEXT slot, when the row showing there has one** (ADR-0184 §6).
    *  Same isolate rule as the day row: a range is a run of digits with no strong
@@ -1351,7 +1364,14 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         // this slot has always crossed midnight and never said so — `07:00` at ⁦22:40⁩ reads as
         // this morning. `relativeDayLabel` is the same derivation five other surfaces use, and
         // the same words `BoardTransit.endDay` already puts one row up (ADR-0160 §M).
-        ...(shownNext.date !== today ? { day: dayLabel(shownNext.date, { trip, today }) } : {}),
+        //
+        // **Off the INSTANT this slot is showing, not off the row it came from** (ADR-0224 §7,
+        // from an owner screenshot). This read `shownNext.date`, and for a check-out
+        // `shownNext` is the STAY, whose `date` is the CHECK-IN day — so one minute before an
+        // 11:00 check-out the board printed `11:00` and `אתמול` on the same line. `nextInstant`
+        // is what the clock beside it renders, and `todayInTz` reads it in the same zone the
+        // day comparison uses.
+        ...(nextDay && nextDay !== today ? { day: dayLabel(nextDay, { trip, today }) } : {}),
         missed: hero.missed && shownNext === hero.event,
         hard: shownNext.kind === EVENT_KIND.HARD,
         // The gate, while it is due (ADR-0222 §4). It used to REPLACE the code in this slot;

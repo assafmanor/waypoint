@@ -315,6 +315,12 @@ model Event {
   placeId         String? // authoritative only for unlinked events; cleared when bookingId is set (ADR-0048)
   displayTimezone String? // manual display-zone override; null trusts the derived zone (ADR-0107 §7)
   status          EventStatus    @default(planned)
+  // What a human said about the CLOSING edge — a check-out, a car return, a landing
+  // (ADR-0224 §1). `status` above is already spoken for: two derivations read it as the
+  // OPENING edge's answer, so a check-out written through it says "we checked in".
+  // Nullable rather than defaulted, so "nobody has answered" stays distinguishable and no
+  // backfill claims anything about a trip that already happened.
+  endStatus       EventStatus?
   bookingId       String?        @unique // strict 1:1 with Booking (ADR-0047)
   sortOrder       Int            @default(0)
   source          EventSource    @default(manual)

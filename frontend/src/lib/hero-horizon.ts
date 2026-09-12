@@ -15,7 +15,9 @@
 import {
   ENTITY_TYPE,
   EVENT_STATUS,
+  edgeStatusOf,
   type Booking,
+  type EventEdge,
   type DocumentAttachment,
   type DocumentSummary,
   type Note,
@@ -72,7 +74,13 @@ export interface HeroPoint {
    *  reading of our own): a done or skipped event has no future, so its tasks are not open
    *  obligations — they have already left the mark, both Home bands and the Index tile. */
   tasks: Task[];
-  /** Absent → nobody has answered yet. */
+  /** **Which end of this event the slot is showing** (ADR-0224 §1). `start` for every now
+   *  point and for an ordinary next; `end` only where the board surfaced a CLOSING
+   *  transition, which today is a check-out (`deriveHeroBooking`'s `transition-checkout`).
+   *  It decides two things and the screen must not re-derive either: which stored answer
+   *  `settled` reports, and which transition's verb the pair says. */
+  edge: EventEdge;
+  /** Absent → nobody has answered yet, **on this point's own edge**. */
   settled?: HeroSettled;
 }
 
@@ -122,6 +130,11 @@ export interface HeroHorizonInput {
    *  disagree about what is happening (ADR-0018: derived, and derived once). */
   nowAll: TripEvent[];
   nextAll: TripEvent[];
+  /** **Which edge the NEXT slot is showing** (ADR-0224 §1), absent meaning `start`. The board
+   *  sometimes fills that slot with an END transition `deriveNow` cannot surface — a hotel
+   *  check-out — and only the caller knows, because only the caller chose it (`shownNext`).
+   *  Re-deriving it here would be the second answer to a question the board already asked. */
+  nextEdge?: EventEdge;
   bookings: Booking[];
   places: Place[];
   notes: Note[];
@@ -141,7 +154,7 @@ export interface HeroHorizonInput {
   hostContexts: HostContextIndex;
 }
 
-function toPoint(event: TripEvent, input: HeroHorizonInput): HeroPoint {
+function toPoint(event: TripEvent, input: HeroHorizonInput, edge: EventEdge = 'start'): HeroPoint {
   const booking = event.bookingId
     ? input.bookings.find((b) => b.id === event.bookingId)
     : undefined;
@@ -171,7 +184,14 @@ function toPoint(event: TripEvent, input: HeroHorizonInput): HeroPoint {
     tasks: tasksForContext(input.tasks, context, input.taskClock).filter(
       (task) => !isSettled(task) && !isOnSettledHost(task, input.settledHosts),
     ),
-    settled: event.status === EVENT_STATUS.PLANNED ? undefined : (event.status as HeroSettled),
+    edge,
+    // **THIS edge's answer, not the span's** (ADR-0224 §1). `edgeStatusOf` reads `status` at
+    // the start and `endStatus` at the end, so a check-out point stops reporting whatever the
+    // check-in said — which before this ADR was the only thing it could report.
+    settled:
+      edgeStatusOf(event, edge) === EVENT_STATUS.PLANNED
+        ? undefined
+        : (edgeStatusOf(event, edge) as HeroSettled),
   };
 }
 
@@ -192,7 +212,9 @@ function thenAfter(input: HeroHorizonInput): HeroThen | undefined {
 export function heroHorizon(input: HeroHorizonInput): HeroHorizon {
   return {
     now: input.nowAll.map((e) => toPoint(e, input)),
-    next: input.nextAll[0] ? toPoint(input.nextAll[0], input) : undefined,
+    next: input.nextAll[0]
+      ? toPoint(input.nextAll[0], input, input.nextEdge ?? 'start')
+      : undefined,
     then: thenAfter(input),
   };
 }

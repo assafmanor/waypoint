@@ -15,6 +15,8 @@ import {
   defaultKindForBookingType,
   hasSpanSchedule,
   edgeMeaning,
+  edgeStatusOf,
+  isEdgeSettled,
   eventDurationUnit,
   eventEndBoundary,
   eventMidSpan,
@@ -661,5 +663,35 @@ describe('an authored window is the meaning (ADR-0184 §1)', () => {
     };
     expect(windowBoundOf(both, 'start')).toBe('2026-09-15T18:00:00.000Z');
     expect(windowBoundOf(both, 'end')).toBe('2026-09-18T04:00:00.000Z');
+  });
+});
+
+// **A SPAN HAS TWO MOMENTS AND ONE `status`** (ADR-0224 §1), which is the whole defect: the
+// app had already spent that field on the opening edge — `glance.ts` clears a `not-before` row
+// on `DONE`, `hero-booking.ts` tests it on the missed-check-in arm — so a check-out had
+// nowhere to be written. These pair each edge with its own field, for the reason
+// `windowBoundOf` exists directly above: the pairing reads fine and inverts silently.
+describe('edgeStatusOf / isEdgeSettled', () => {
+  const stay = { status: 'planned' as const };
+
+  it('reads the opening edge from `status` and the closing one from `endStatus`', () => {
+    const both = { status: 'done' as const, endStatus: 'skipped' as const };
+    expect(edgeStatusOf(both, 'start')).toBe('done');
+    expect(edgeStatusOf(both, 'end')).toBe('skipped');
+  });
+
+  it('reports an unwritten closing edge as `planned`, so no caller handles `undefined`', () => {
+    expect(edgeStatusOf(stay, 'end')).toBe('planned');
+    expect(isEdgeSettled(stay, 'end')).toBe(false);
+  });
+
+  it('does not let one edge answer for the other — the defect ADR-0224 is about', () => {
+    const checkedIn = { status: 'done' as const };
+    expect(isEdgeSettled(checkedIn, 'start')).toBe(true);
+    expect(isEdgeSettled(checkedIn, 'end')).toBe(false);
+  });
+
+  it('counts a SKIPPED edge as settled: not happening is an answer, not an absence', () => {
+    expect(isEdgeSettled({ ...stay, endStatus: 'skipped' as const }, 'end')).toBe(true);
   });
 });

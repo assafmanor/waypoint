@@ -1,6 +1,6 @@
 # 0224 — A transition is settled **on its own**
 
-**Status:** **Proposed 2026-09-12** — design only, nothing built.
+**Status:** **Accepted and built 2026-09-12**, in one session with the design.
 **Date:** 2026-09-12
 **Mockup:** [`mockups/a-transition-is-settled-on-its-own-v1.html`](../../mockups/a-transition-is-settled-on-its-own-v1.html)
 **Session note:** [`planning/2026-09-12-a-transition-is-settled-on-its-own.md`](../planning/2026-09-12-a-transition-is-settled-on-its-own.md)
@@ -68,7 +68,7 @@ One entry per key in `t.glance.transition`'s own shape, so a ninth transition is
 
 ### 4. Two hosts, both already built
 
-- **The lifted hero's `הבא בתור` block** — `<Settle point={next} />` after `<Tasks />`, the same part order the lead point uses, at the `board` density 0160 §11 built for this card. Measured: **+51px** on a 255px scrolling card, and **0 new CSS** beyond the block's own top padding (it is hand-assembled, so it does not inherit `.hero-point`'s part rules).
+- **The lifted hero's `הבא בתור` block** — `<Settle point={next} />` after `<Tasks />`, the same part order the lead point uses, at the `board` density 0160 §11 built for this card. Measured: **+51px** on a 255px scrolling card, **+70px** with §6's label. **And zero new CSS** — the mockup proposed one rule for the block's own top padding on the reasoning that a hand-assembled block inherits none of `.hero-point`'s, and the build showed it was not needed at all: `Settle` returns a `.hero-part`, which carries that padding itself. One rule ships from this whole ADR, and it is §6's.
 - **The day's `TransitionRow`** — the `NOT_BEFORE` gate drops; **every** edge is settleable, at the shipped `compact` density. Measured: **0px** of row height and 183px of title left at 360px, because `.transition-row .wp-settle.compact` already exists in `screens.css` and the row already reserved that slot for a floor.
 
 **Not the collapsed board.** 0160 §1 renders it as a `<button>` whenever it can lift, so it cannot host a nested control at all — and §11 already answered the taste question: the board is a glance, the controls live in the lift.
@@ -83,7 +83,9 @@ One entry per key in `t.glance.transition`'s own shape, so a ninth transition is
 
 A settled edge renders `SettleControl`'s existing outcome branch with the edge's word: `✓ יצאנו` / `✕ לא קרה`, plus `ביטול סימון`. Undo stays reachable forever — 0139 §2's rule that every event is settleable rather than only the passed ones is what earns it, and it is unchanged here.
 
-**One thing the drawing raised and no reading would have.** Every other block in the lifted hero is labelled (`איפה` · `פתק` · `משימה`) and the shipped `Settle` is not. On the lead point that is fine — it follows prose. In the `הבא בתור` block it lands directly under a row of hand-off chips, and reads as a third row of them. The mockup draws both, with `כבר קרה?` as a `.hero-lbl`: **+19px**, one edge-neutral string rather than a second table of eight. Recommended on, and it lands on **both** hosts of the `board` density or the two points would differ — which is why it is a control in the file and a device-pass call here (0017), not something this ADR pretends to have settled.
+**One thing the drawing raised and no reading would have.** Every other block in the lifted hero is labelled (`איפה` · `פתק` · `משימה`) and the shipped `Settle` is not. On the lead point that is fine — it follows prose. In the `הבא בתור` block it lands directly under a row of hand-off chips, and reads as a third row of them. The mockup draws both, with `כבר קרה?` as a `.hero-lbl`: **+19px**, one edge-neutral string rather than a second table of eight.
+
+**Built on**, on both hosts of the `board` density, since the two points must not differ — and with one condition the drawing did not have: the label renders **only while the question is open**. Once answered the block is a record (`✓ יצאנו` plus the undo), and a question mark over an answer is §U's checkbox defect again, a label read as the row's state. The final call on whether the label earns its 19px at all is still a device pass (0017); what ships is the recommendation.
 
 ### 7. A defect found by drawing the screenshot, fixed alongside
 
@@ -91,10 +93,20 @@ The owner's board reads `11:00` and `אתמול` on one line, one minute before 
 
 The day token must follow the **instant the slot is showing**, not the row it came from: `todayInTz(tz, new Date(nextInstant))`. Independent of everything above and shipped with it, because it is the same screenshot.
 
+## What the build found, and what it changed
+
+Three things, all of them the same shape: a rule that was half-stated because only half of it could be expressed before this ADR.
+
+1. **The missed-check-in arm tested `!== DONE`, not "settled".** `hero-booking.ts` excluded a _done_ check-in from failing and had no opinion about a _skipped_ one — so a check-in the group had decided against went on being reported as missed. And its LIVE arm made no test at all, so a checked-in stay was offered for the rest of its grace or its window. Both are now one `isEdgeSettled(e, 'start')` guard above the pair, which is §5 as written and is more than §5 asked for.
+2. **`glance.ts` restated "settled" inside two of its three arms and not the third.** The floor arm read `status !== DONE` and the window arm repeated it; the clock arm had nothing. Since the per-edge answer has to be asked anyway, it became **one rule prior to all three** (`isEdgeSettled(t.event, t.edge)`), and the arms below it are now purely about clocks. 0171 §6 is untouched: a floor still leaves the count only by being settled, and a ceiling still also leaves it by its own clock.
+3. **The undo had to carry the edge.** `UndoDescriptor`'s `status` kind stored only the previous value, and with two columns that is ambiguous — withdrawing a check-out mark would have written `status` and claimed something about the check-in. The descriptor, the outbox op, the reducer action and the REST call all take the same optional `edge`, absent everywhere it was absent before, so **an op already queued in a user's outbox replays unchanged**.
+
+**One shipped test asserted the rule this ADR reverses** (`TransitionRow.test.tsx`: _"does NOT settle a ceiling or a window — both expire by their own clock"_). It is rewritten as an assertion of the new rule with the old one's reasoning kept, because that reasoning was right about the thing it named and wrong about the surface it was applied to.
+
 ## What this does not settle
 
 - **Whether a third state is wanted.** The owner's sentence names two things ("dismiss … or mark as already"), and §8 records why this ADR reads them as one. If "get it off my board without saying anything" turns out to be a real need in use, it is a new enum value across `eventStatusSchema`, sharing, the count and 0117's vocabulary — a decision, not an extension.
-- **The label** (§6) — device pass.
+- **The label** (§6) — device pass. It ships on; whether 19px is the right price for it is a question a phone answers.
 - **The car hire's return time still has no home on the day list** (`backlog.md`, 2026-08-31). That row is settleable here the moment it is shown; it is not shown, and that is the other ADR.
 
 ## Alternatives rejected

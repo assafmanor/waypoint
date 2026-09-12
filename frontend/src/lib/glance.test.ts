@@ -220,6 +220,36 @@ describe('buildDayGlance', () => {
     expect(after.remaining).toBe(0); // behind you now
   });
 
+  // **AND SAYING SO CLEARS IT EARLY** (ADR-0224 §5). The clock rule above is untouched — a
+  // ceiling still expires by itself at 11:00, which is ADR-0171 §6 working — but until this
+  // ADR that was the ONLY way a check-out could leave the number, because `status` is the
+  // opening edge's answer and there was no field for the closing one.
+  it('drops a check-out the group has already made, before its ceiling', () => {
+    const base = {
+      id: 'hotel',
+      category: 'lodging' as const,
+      kind: EVENT_KIND.HARD,
+      startsAt: at('15:00'),
+      endsAt: at('11:00', '2026-07-11'),
+      endDate: '2026-07-11',
+    };
+    const count = (over: Partial<TripEvent>) =>
+      buildDayGlance(
+        [ev({ ...base, ...over })],
+        '2026-07-11',
+        ms('09:00', '2026-07-11'),
+        ms('07:00', '2026-07-11'),
+        ms('23:00', '2026-07-11'),
+        TZ,
+      ).remaining;
+
+    expect(count({})).toBe(1);
+    expect(count({ endStatus: EVENT_STATUS.DONE })).toBe(0);
+    expect(count({ endStatus: EVENT_STATUS.SKIPPED })).toBe(0);
+    // The check-in's answer is NOT the check-out's — the defect ADR-0224 is about, counted.
+    expect(count({ status: EVENT_STATUS.DONE })).toBe(1);
+  });
+
   it('keeps a CHECK-IN counted after its floor passes — a floor is not an event (ADR-0171 §6)', () => {
     // The asymmetry, and the reason it is not one rule for both ends: 11:01 means a
     // check-out was missed, so it stops being ahead of you. 15:01 means nothing at all —

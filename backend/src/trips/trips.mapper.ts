@@ -99,6 +99,7 @@ export const toEventDto = (e: Event): TripEvent => ({
   placeId: e.placeId ?? undefined,
   displayTimezone: e.displayTimezone ?? undefined,
   status: e.status,
+  endStatus: e.endStatus ?? undefined,
   bookingId: e.bookingId ?? undefined,
   sortOrder: e.sortOrder,
   source: e.source,

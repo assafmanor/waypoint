@@ -37,6 +37,7 @@ import {
   type Membership,
   type DocumentAttachment,
   type LegTravelMode,
+  type EventEdge,
   type TravelModeOverride,
   travelOverridePair,
   type Note,
@@ -196,7 +197,13 @@ export const TRIP_ACTION = {
 export type TripActionType = (typeof TRIP_ACTION)[keyof typeof TRIP_ACTION];
 
 export type Action =
-  | { type: typeof TRIP_ACTION.SET_STATUS; id: string; status: TripEvent['status'] }
+  | {
+      type: typeof TRIP_ACTION.SET_STATUS;
+      id: string;
+      status: TripEvent['status'];
+      /** Absent = the opening edge, i.e. `status` (ADR-0224 §1). */
+      edge?: EventEdge;
+    }
   | { type: typeof TRIP_ACTION.DELAY; id: string; minutes: number }
   | { type: typeof TRIP_ACTION.SCHEDULE; event: TripEvent; maybeId: string }
   // Consume an idea WITHOUT an event of our own (ADR-0135 §5). A booking creates its
@@ -291,8 +298,11 @@ export function initialState(seed: Snapshot = { events: EVENTS, maybeItems: MAYB
 export function reducer(state: State, action: Action): State {
   switch (action.type) {
     case TRIP_ACTION.SET_STATUS: {
+      // One action, two columns (ADR-0224 §1): a stop and a span's opening edge write
+      // `status`, its closing edge `endStatus`.
+      const field = action.edge === 'end' ? 'endStatus' : 'status';
       const events = state.events.map((e) =>
-        e.id === action.id ? { ...e, status: action.status } : e,
+        e.id === action.id ? { ...e, [field]: action.status } : e,
       );
       return { ...state, events, ripple: null, undo: snapshotOf(state) };
     }

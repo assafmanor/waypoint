@@ -15,6 +15,7 @@ import type {
   BookingType,
   EventCategory,
   EventKind,
+  EventStatus,
   PlaceSearchKind,
   TripEvent,
 } from './entities';
@@ -512,6 +513,27 @@ export const windowBoundOf = (
   edge: 'start' | 'end',
 ): string | undefined =>
   (edge === 'start' ? event.startWindowEnd : event.endWindowStart) ?? undefined;
+
+/** **What a human said about THIS edge** (ADR-0224 §1), and the accessor exists for exactly
+ *  the reason `windowBoundOf` above does: the two fields are not spelled alike, so pairing an
+ *  edge to its field at six call sites is the kind of thing that reads fine and inverts
+ *  silently. `status` answers the opening edge (two derivations already read it that way) and
+ *  `endStatus` the closing one.
+ *
+ *  **`planned` and absent are the same answer and this returns it as `planned`**, so a caller
+ *  can compare against `EVENT_STATUS` without also handling `undefined` — the settled/unsettled
+ *  question is `!== EVENT_STATUS.PLANNED`, one test at every edge. */
+export const edgeStatusOf = (
+  event: Pick<TripEvent, 'status' | 'endStatus'>,
+  edge: 'start' | 'end',
+): EventStatus => (edge === 'start' ? event.status : (event.endStatus ?? 'planned'));
+
+/** Is this edge answered at all? The one predicate the hero, the day row and the day's count
+ *  all ask, so none of them restates "done or skipped" in its own words. */
+export const isEdgeSettled = (
+  event: Pick<TripEvent, 'status' | 'endStatus'>,
+  edge: 'start' | 'end',
+): boolean => edgeStatusOf(event, edge) !== 'planned';
 
 /** Does this end name a moment the app actually KNOWS? The one predicate the day's
  *  ordering and the map's numbering both ask (ADR-0171 §10a/§10b) — and they must ask
