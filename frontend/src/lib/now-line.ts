@@ -9,9 +9,10 @@
 // **It now answers BOTH halves of the question** (ADR-0217 §1/§2), because a marker between
 // rows cannot answer it at all:
 //
-//  - `index` — the row the marker sits above when nothing holds the moment. This is the
-//    original answer and it is unchanged, which is what keeps the boundary cases (before the
-//    day, after it, inside a hole `dayBlocks` draws no row for) on one rule.
+//  - `index` — the row the marker sits above when nothing holds the moment, which is what keeps
+//    the boundary cases (before the day, after it, inside a hole `dayBlocks` draws no row for)
+//    on one rule. It is the clock's answer, **plus the one thing that outranks the clock**: a
+//    row every traveller on it has already settled is behind us (`entryIsBehind`, 2026-09-12).
 //  - `inside` — the row the moment is INSIDE and how far through it we are, or `null`. This is
 //    what the header of this file asked for on 2026-08-02: _"'now' is often genuinely INSIDE
 //    something — a flight you are on, a dinner you are at, the layover between two legs — and
@@ -56,7 +57,7 @@ function entryEndMs(entry: DayEntry): number {
 }
 
 /**
- * **Every event in the day as a span, at every depth** — because the moment can be inside
+ * **Every event in a group as a span, at every depth** — because the moment can be inside
  * more than one of them and only the innermost is the marker's (ADR-0041's forest).
  *
  * A settled row is flagged rather than dropped: `nowInside` needs to know it exists to fall
@@ -67,7 +68,7 @@ function entryEndMs(entry: DayEntry): number {
  * hold a moment anyway (`NowSpan.end` is exclusive), so this is a statement rather than a
  * guard.
  */
-function eventSpans(entries: readonly DayEntry[]): NowSpan[] {
+function groupSpans(group: TimeGroup): NowSpan[] {
   const spans: NowSpan[] = [];
   const pushItem = (item: TimeItem) => {
     const { event } = item;
@@ -81,9 +82,42 @@ function eventSpans(entries: readonly DayEntry[]): NowSpan[] {
     });
     item.children.forEach(pushGroup);
   };
-  const pushGroup = (group: TimeGroup) => groupMembers(group).forEach(pushItem);
-  for (const entry of entries) if (entry.kind === 'event') pushGroup(entry.group);
+  const pushGroup = (g: TimeGroup) => groupMembers(g).forEach(pushItem);
+  pushGroup(group);
   return spans;
+}
+
+/** The whole day, flattened the same way — a transition point contributes nothing. */
+function eventSpans(entries: readonly DayEntry[]): NowSpan[] {
+  return entries.flatMap((entry) => (entry.kind === 'event' ? groupSpans(entry.group) : []));
+}
+
+/**
+ * **A ROW A HUMAN HAS ANSWERED FOR IS BEHIND US, WHATEVER ITS CLOCK SAYS** — ADR-0117 §2's
+ * "a human outranks the clock", which `isDayUsagePast` has applied on the Map since 2026-07-25
+ * and this file did not apply at all. Reported 2026-09-12 against a day whose ⁦16:45–17:30⁩ pair
+ * was ticked `היינו` at ⁦17:18⁩: `inside` correctly stopped holding the moment (§4), and the index
+ * then put the arrow ABOVE the rows it had just been told were over — the marker saying "not
+ * yet" across two cards each saying "we were there". ADR-0217 §4 decided the opposite in words
+ * ("the arrow drops to the boundary below the row") and was wrong that this was already where it
+ * stood.
+ *
+ * **But it must have BEGUN.** A skip is often a decision about something still ahead — "we're
+ * not doing the ⁦18:30⁩ waterfall" at ⁦17:18⁩ — and treating that as behind us would drag the arrow,
+ * with the clock printed on it, below a row that starts an hour later. The clock is what the
+ * marker's own position means; settling answers what is DONE with a row, not where the day is.
+ * So: every event in the entry settled, and every one of them started. That is also why it reads
+ * the whole subtree — ADR-0041's forest can hang a ⁦19:00⁩ concert under a festival ticked done at
+ * ⁦17:18⁩, and a row still ahead of you may not end up above the mark.
+ *
+ * A transition point is unaffected by construction: it is an instant, so it has ended exactly
+ * when it has begun and the clock alone already answers for it (ADR-0210 §1).
+ */
+function entryIsBehind(entry: DayEntry, nowMs: number): boolean {
+  if (entryEndMs(entry) <= nowMs) return true;
+  if (entry.kind !== 'event') return false;
+  const spans = groupSpans(entry.group);
+  return spans.length > 0 && spans.every((span) => span.settled && span.start <= nowMs);
 }
 
 /**
@@ -96,7 +130,7 @@ function eventSpans(entries: readonly DayEntry[]): NowSpan[] {
  * than floated above it.
  */
 export function nowLinePlacement(entries: readonly DayEntry[], nowMs: number): NowLinePlacement {
-  const index = entries.findIndex((entry) => entryEndMs(entry) > nowMs);
+  const index = entries.findIndex((entry) => !entryIsBehind(entry, nowMs));
   return {
     index: index === -1 ? entries.length : index,
     inside: nowInside(eventSpans(entries), nowMs),

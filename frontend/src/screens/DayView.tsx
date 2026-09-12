@@ -1223,6 +1223,16 @@ export function DayView() {
       ? { nowMs, opensMs, closesMs, label: nowLabel, ref: nowLineRef }
       : null;
   };
+  // **AND A HOLE THE DAY HAS NOT REACHED YET TAKES THE MARK ABOVE IT** (2026-09-12). The
+  // boundary form renders UNDER the join because the join is a fact about the plan and the mark
+  // is the clock arriving inside it — which held while the index could only ever be drawn at an
+  // entry whose hole was already open (the row above it had ENDED, so the hole opened at its end).
+  // A settled row hands the mark down before its own clock is up (`entryIsBehind`), and then the
+  // join below it is a drive nobody has taken and a free hour nobody has had: drawn under them,
+  // the mark says the drive is behind us. Above them it says what it means. Plan's reference has
+  // always read above the hole, so this is also the two hosts agreeing.
+  const holeIsAhead = (from?: TripEvent) =>
+    showNowLine && !!from?.endsAt && Date.parse(from.endsAt) > now.getTime();
   // **AND THE DAY'S EDGE LEGS HOLD IT TOO** (the 2026-09-04 amendment) — `arriveJourney`,
   // `wakeJourney` and `homeJourney` render OUTSIDE the block loop because they have no join to
   // hang off (ADR-0206 §AD, ADR-0209 §1), so the boundary mark had exactly one position against
@@ -1459,6 +1469,7 @@ export function DayView() {
                 joinNow === null &&
                 index === nowLineIndex;
               if (boundaryHere && block.journey && i === 0) markAboveRun = true;
+              const markAboveJoin = boundaryHere && !markAboveRun && holeIsAhead(from);
               return (
                 <Fragment
                   key={
@@ -1468,7 +1479,9 @@ export function DayView() {
                   }
                 >
                   {/* The join reads BEFORE the now-line: it is a fact about the plan, and
-                  the now-line is the clock arriving inside it. */}
+                  the now-line is the clock arriving inside it — unless the clock has not
+                  reached the hole at all, which a settled row above it makes possible. */}
+                  {markAboveJoin && <NowMarker ref={nowLineRef} label={nowLabel} />}
                   {(() => {
                     const to = joinTo;
                     const journey = joinJourney;
@@ -1505,7 +1518,9 @@ export function DayView() {
                   })()}
                   {/* The BOUNDARY form, and only when no row holds the moment: with an
                     `inside` the mark is nailed to that row instead (`ItemNode`). */}
-                  {boundaryHere && !markAboveRun && <NowMarker ref={nowLineRef} label={nowLabel} />}
+                  {boundaryHere && !markAboveRun && !markAboveJoin && (
+                    <NowMarker ref={nowLineRef} label={nowLabel} />
+                  )}
                   {entry.kind === 'event' ? (
                     // **A CARRIED LEG SITS ON THE DAY'S THREAD** (ADR-0212 §1). The card is
                     // untouched — ADR-0210 §1 reserved the box for commitments and a flight is the

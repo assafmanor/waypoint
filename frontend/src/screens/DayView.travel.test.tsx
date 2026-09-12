@@ -1776,15 +1776,69 @@ describe('DayView · where the moment is', () => {
     });
   });
 
-  // ADR-0217 §4: once you have answered "we were there", "how far through" is not a question.
-  it('lets a settled row keep its place and drops the mark out of it', () => {
-    setSimulatedNow(Date.parse(INSIDE_LUNCH));
-    tripEvents = [morning, { ...lunch, status: EVENT_STATUS.DONE }, theatre];
-    const { container } = show();
-    const marks = container.querySelectorAll('.day-swipe > .day-page .now-here');
-    expect(marks).toHaveLength(1);
-    // Nailed to nothing: the boundary form, and no countdown on a row we have answered for.
-    expect(marks[0].querySelector('.wp-event')).toBeNull();
-    expect(container.querySelector('.day-swipe > .day-page .wp-event-left')).toBeNull();
+  // ── AND A ROW WE HAVE ANSWERED FOR IS BEHIND US (2026-09-12) ──────────────────────────────
+  //
+  // ADR-0217 §4 had half of this from the start: once you have answered "we were there", "how
+  // far through" is not a question, so `inside` lets go. What it did NOT do is what §4 claimed
+  // was already true — the index still asked the clock alone, so the mark floated ABOVE the row
+  // it had just been told was over. Reported against a pair ticked `היינו` at ⁦17:18⁩ that ran to
+  // ⁦17:30⁩ on paper, with the arrow above both of them.
+  describe('against a row a human has already settled', () => {
+    beforeEach(() => {
+      tripEvents = [morning, { ...lunch, status: EVENT_STATUS.DONE }, theatre];
+    });
+    const marks = (container: HTMLElement) =>
+      container.querySelectorAll('.day-swipe > .day-page .now-here');
+    const card = (container: HTMLElement, title: string) =>
+      [...container.querySelectorAll('.day-swipe > .day-page .wp-event')].find((el) =>
+        (el.textContent ?? '').includes(title),
+      )!;
+
+    it('drops the mark out of the row and stands it below it', () => {
+      setSimulatedNow(Date.parse(INSIDE_LUNCH));
+      const { container } = show();
+      expect(marks(container)).toHaveLength(1);
+      const mark = marks(container)[0];
+      // Nailed to nothing: the boundary form, and no countdown on a row we have answered for.
+      expect(mark.querySelector('.wp-event')).toBeNull();
+      expect(container.querySelector('.day-swipe > .day-page .wp-event-left')).toBeNull();
+      // Document order is the report: the settled row reads ABOVE the mark, not below it.
+      expect(
+        mark.compareDocumentPosition(card(container, lunch.title)) &
+          Node.DOCUMENT_POSITION_PRECEDING,
+      ).toBeTruthy();
+    });
+
+    // The half that only exists because the first half moved: the mark now arrives at a hole
+    // the day has not reached, and the boundary form renders UNDER the join. Below the strip it
+    // says an hour nobody has had is spent; below a block it says the drive is done.
+    it('reads above the hole below it, which has not opened yet', () => {
+      setSimulatedNow(Date.parse(INSIDE_LUNCH));
+      travelSeconds = WALK_MINUTES * 60;
+      const { container } = show();
+      const mark = marks(container)[0];
+      // The ⁦13:20–16:00⁩ hole, still ahead at ⁦12:00⁩: its strip and its walk both follow the mark.
+      for (const row of ['.day-gap', '.day-trv']) {
+        const below = [...container.querySelectorAll(`.day-swipe > .day-page ${row}`)].at(-1)!;
+        expect(mark.compareDocumentPosition(below) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      }
+      expect(card(container, theatre.title)).toBeTruthy();
+    });
+
+    // The guard, and it is the reason `entryIsBehind` asks whether the row has BEGUN: settling
+    // answers what is DONE with a row, not where the day is, and the mark carries the clock on
+    // it. (A SKIPPED row cannot show this here — Trip mode drops it from the list entirely —
+    // which is why the pure case is asserted in `lib/now-line.test.ts`.)
+    it('leaves a row settled before it starts exactly where it is', () => {
+      tripEvents = [morning, lunch, { ...theatre, status: EVENT_STATUS.DONE }];
+      // ⁦14:00⁩ — in the hole, two hours before a row ticked off ahead of time.
+      setSimulatedNow(Date.parse(`${DAY}T14:00:00Z`));
+      const { container } = show();
+      const mark = marks(container)[0];
+      expect(
+        mark.compareDocumentPosition(card(container, theatre.title)) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
   });
 });
