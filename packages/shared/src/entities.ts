@@ -148,6 +148,13 @@ export const userSchema = z.object({
   // sign-in, never user-edited. Kept even when the user is on `initials`, which is
   // what makes "use my Google photo" a real way back rather than a dead end.
   googleAvatarUrl: z.string().nullable(),
+  // **Our own copy of that photo**, or null when we have none (ADR-0133 §13). Relative to
+  // the API origin exactly like `uploadedAvatarUrl` below, and PREFERRED over the hotlink
+  // above wherever the Google source is rendered: a same-origin immutable URL is what makes
+  // a face survive a flight, which the hotlink never could. Kept as a second field rather
+  // than overwriting the one above, because that one is still the answer to "does this
+  // person have a Google photo at all" — the way back from `initials` depends on it.
+  googleAvatarCopyUrl: z.string().nullable(),
   // Where this user's uploaded avatar is served from, or null when there is no
   // upload — the server builds it from the stored blob key via `avatarContentPath`,
   // so no client knows the route shape and a retired key simply stops appearing.

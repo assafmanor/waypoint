@@ -620,17 +620,20 @@ export function amberLegIndex(
   route: readonly DayStop[],
   ctx: {
     selectedPlaceId?: string;
+    /** **Where the journey you are INSIDE is taking you** (`currentDestination`'s
+     *  `inTransit`). It outranks `nextStopPlaceId` because the leg arriving there is the
+     *  one you are on: after a layover the "next stop" is whatever waits past the landing,
+     *  and drawing ITS leg leaves the flight in the air unmarked — which is the reported
+     *  defect, a map that still reads as the layover you took off from. */
+    transitPlaceId?: string;
     nextStopPlaceId?: string;
     eventById?: DayStopContext['eventById'];
     nowMs?: number;
   },
 ): number {
   if (route.length < 2) return -1;
-  const asked = ctx.selectedPlaceId
-    ? stopIndexOf(route, ctx.selectedPlaceId, ctx)
-    : ctx.nextStopPlaceId
-      ? stopIndexOf(route, ctx.nextStopPlaceId, ctx)
-      : -1;
+  const askedPlaceId = ctx.selectedPlaceId ?? ctx.transitPlaceId ?? ctx.nextStopPlaceId;
+  const asked = askedPlaceId ? stopIndexOf(route, askedPlaceId, ctx) : -1;
   if (asked < 0) return -1;
   // The day's first stop is the one place with no leg arriving at it, so it takes the leg
   // departing it instead. Leg `i` runs from stop `i` to stop `i + 1`.

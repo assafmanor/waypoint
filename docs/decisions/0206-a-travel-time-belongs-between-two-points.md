@@ -601,6 +601,22 @@ The general form, worth keeping because it will recur: **a fallback that exists 
 being empty must be re-examined the moment something else fills that surface.** Nothing failed here
 — the workaround simply outlived its reason by one commit.
 
+> **Amended 2026-09-12 — the stop that picks the leg has a THIRD source, between the two.** Owner,
+> from a plane: _"after a layover, i.e. on the second flight, the map doesn't show the route and it
+> looks like we're still on the layover."_ `selected → next` cannot answer mid-journey: while you are
+> in the air the "next stop" is whatever waits past the landing (the hire counter, the hotel), and on
+> a day whose remaining legs are all flight, there is no upcoming stop at all — so Trip mode, which
+> is handed the amber leg alone (§AB1), was handed nothing. The order is now **selected → the
+> journey you are inside → next**, where the middle one is where that journey is TAKING you
+> (`currentDestination`'s `inTransit`, the same rule the board settled for its own now-point in
+> session 215). It is not a fourth arm of the deleted fallback: it names a real stop from the clock,
+> which is exactly what `next` does, and it spends no amber when you are standing still.
+>
+> The same report's other half is upstream of this file: the map's `עכשיו` cue resolved the
+> in-progress leg through the authority rule, which answers a booking's ORIGIN — mid-flight, the
+> airport you have just left. So the layover pin wore `עכשיו` while the board correctly read
+> `כרגע · בדרך`.
+
 ### AC2. A selected stop marks the leg ARRIVING at it, and dims the rest
 
 Three candidates drawn. **Recommended: the arriving leg takes the amber, the departing leg takes

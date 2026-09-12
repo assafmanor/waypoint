@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UnauthorizedException } from '@nestjs/common';
 import { decryptAtRest } from '../common/crypto.util';
 import { requireEnv, TOKEN_ENCRYPTION_KEY } from '../common/env';
+import { EnrichmentImagePipeline } from '../enrichment/image-pipeline';
+import { EnrichmentFetcher } from '../enrichment/outbound-fetch';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from './auth.service';
 import * as googleClient from './google-oauth.client';
@@ -40,7 +42,10 @@ function fakeUserinfo(sub: string, email: string, emailVerified = true) {
 
 describe('AuthService', () => {
   const prisma = new PrismaService();
-  const service = new AuthService(prisma);
+  // The image pipeline is a REAL one over a fetcher that never reaches a socket: these specs
+  // are about what the rows and the bytes do, and an outbound call inside them would be a
+  // network dependency in a DB test. The Google-copy path has its own spec.
+  const service = new AuthService(prisma, new EnrichmentImagePipeline(new EnrichmentFetcher()));
   const createdUserIds: string[] = [];
 
   beforeEach(() => {

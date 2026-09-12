@@ -1347,16 +1347,21 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     // Each end reads its own word, in the per-mode wording a flight earns.
     expect(pin('origin')!.getAttribute('data-transition')).toBe('המראה');
     expect(pin('dest')!.getAttribute('data-transition')).toBe('נחיתה');
-    expect(pin('origin')!.getAttribute('data-amber')).toBe('now');
+    // **`עכשיו` is where the journey is TAKING you** (owner report, 2026-09-12). This used
+    // to sit on `origin`, because the authority rule answers a booking's origin — which
+    // mid-flight is the airport you have already left, so after a layover the tab read as
+    // the layover. The board settled the same question in session 215 (`midSpanEventId`).
+    expect(pin('dest')!.getAttribute('data-amber')).toBe('now');
+    expect(pin('origin')!.getAttribute('data-amber')).toBe('');
 
     fireEvent.click(listButton(t.map.allDays));
     // The scope gate is on the NEUTRAL tag only — an amber pin is a claim about the clock,
     // not about which day you are looking at, so it survives all-days with its word.
-    expect(pin('origin')!.getAttribute('data-amber')).toBe('now');
-    expect(pin('origin')!.getAttribute('data-transition')).toBe('המראה');
+    expect(pin('dest')!.getAttribute('data-amber')).toBe('now');
+    expect(pin('dest')!.getAttribute('data-transition')).toBe('נחיתה');
     // …and the pin beside it, which carries no cue, loses its word with the scope.
-    expect(pin('dest')!.getAttribute('data-amber')).toBe('');
-    expect(pin('dest')!.getAttribute('data-transition')).toBe('');
+    expect(pin('origin')!.getAttribute('data-amber')).toBe('');
+    expect(pin('origin')!.getAttribute('data-transition')).toBe('');
   });
 
   // A mid-stay night is pinned at full strength now (ADR-0109's 2026-07-27
@@ -4135,7 +4140,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         event({ id: 'e3', placeId: 'c', startsAt: `${ACTIVE_DATE}T17:00:00Z` }),
       ];
     };
-    type Leg = { path: unknown[]; emphasis?: string };
+    type Leg = { path: unknown[]; emphasis?: string; unrouted?: boolean };
     const legs = () => (paneProps.current.connector ?? []) as Leg[];
     /** The one leg §D8 rations the amber to, or `undefined` when none is marked. */
     const amber = () => legs().find((leg) => leg.emphasis === 'route')?.path;
@@ -4167,6 +4172,61 @@ describe('the embedded map’s shell (ADR-0121)', () => {
 
       expect(legs()).toHaveLength(1);
       expect(legs()[0]!.emphasis).toBe('route');
+    });
+
+    // ── THE LEG YOU ARE FLYING (owner report, 2026-09-12) ────────────────────────────────
+    //
+    // _"After a layover, i.e. on the second flight, the map doesn't show the route and it
+    // looks like we're still on the layover."_ Trip mode is handed the amber leg alone, and
+    // the stop that picks it was `next` — which mid-flight is whatever waits PAST the
+    // landing, so on a day of two legs there was nothing upcoming at all and the canvas drew
+    // nothing. `currentDestination`'s `inTransit` names where the journey is taking you, and
+    // the leg arriving there is the one you are on.
+    it('draws the leg you are in the air on, after a layover', () => {
+      const TLV = { lat: 32.0, lng: 34.88 };
+      const VIE = { lat: 48.11, lng: 16.57 };
+      const KEF = { lat: 63.98, lng: -22.6 };
+      const flight = (id: string, fromPlaceId: string, toPlaceId: string): Booking =>
+        ({
+          id,
+          tripId: 't1',
+          type: 'flight',
+          title: id,
+          source: 'manual',
+          fromPlaceId,
+          toPlaceId,
+          createdAt: '',
+          updatedAt: '',
+          updatedBy: 'u1',
+        }) as Booking;
+      tripPlaces = [place('tlv', true, TLV), place('vie', true, VIE), place('kef', true, KEF)];
+      tripBookings = [flight('bk1', 'tlv', 'vie'), flight('bk2', 'vie', 'kef')];
+      tripEvents = [
+        event({
+          id: 'f1',
+          bookingId: 'bk1',
+          icon: '✈️',
+          category: 'transport',
+          startsAt: `${ACTIVE_DATE}T06:00:00Z`,
+          endsAt: `${ACTIVE_DATE}T09:00:00Z`,
+        }),
+        event({
+          id: 'f2',
+          bookingId: 'bk2',
+          icon: '✈️',
+          category: 'transport',
+          startsAt: `${ACTIVE_DATE}T12:00:00Z`,
+          endsAt: `${ACTIVE_DATE}T15:00:00Z`,
+        }),
+      ];
+      currentMode = 'trip';
+      setSimulatedNow(Date.parse(`${ACTIVE_DATE}T13:00:00Z`));
+      render(wrap(<MapView />));
+
+      // The second leg, not the first and not nothing. Straight and disclaiming, because no
+      // road crosses the Atlantic and §AM10 refuses to draw one (`unrouted`).
+      expect(amber()).toEqual([VIE, KEF]);
+      expect(legs()[0]!.unrouted).toBe(true);
     });
 
     it('a tapped stop takes the line, and it is the leg ARRIVING there', () => {

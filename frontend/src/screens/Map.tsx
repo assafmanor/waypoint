@@ -1123,10 +1123,15 @@ export function MapView() {
   // Trip mode only, for the same reason `nextStopId` is: a live "now" says nothing
   // while you're planning. The two are mutually exclusive per place — `eventPhase`
   // is `now` or `upcoming`, never both — so no row and no pin ever carries both cues.
-  const nowStopId = useMemo(() => {
+  const nowStop = useMemo(() => {
     if (mode !== 'trip') return undefined;
-    return currentDestination(events, bookings, places, nowMs)?.place.id;
+    return currentDestination(events, bookings, places, nowMs);
   }, [mode, events, bookings, places, nowMs]);
+  const nowStopId = nowStop?.place.id;
+  /** **Where the journey you are inside is taking you**, or `undefined` when "now" is a place
+   *  you are standing in (`currentDestination`'s `inTransit`). A plain string rather than the
+   *  object, so the amber leg's memo below can depend on it without rebuilding on every tick. */
+  const transitStopId = nowStop?.inTransit ? nowStop.place.id : undefined;
 
   // **Which places are connection stops** (ADR-0159), from the same rule the day list
   // draws its bands from — so the pin, the row beneath it and the day's own band say
@@ -1473,12 +1478,14 @@ export function MapView() {
       orderedRoute.map(({ stop }) => stop),
       {
         selectedPlaceId: orderedRoute.find(({ pin }) => pin.selected)?.pin.placeId,
+        // **The leg you are ON outranks the stop past it** — see `amberLegIndex`.
+        transitPlaceId: transitStopId,
         nextStopPlaceId: orderedRoute.find(({ pin }) => pin.nextStop)?.pin.placeId,
         eventById: eventLookup,
         nowMs: nowRef.current,
       },
     );
-  }, [orderedRoute, allDays, eventLookup, orderMinute]);
+  }, [orderedRoute, allDays, eventLookup, orderMinute, transitStopId]);
 
   // **What kind of trip this is** (ADR-0206 §Z2), derived rather than stored. Not a constant: a
   // hardcoded `walking` drew footpath routes over legs the trip drives, which is a wrong line

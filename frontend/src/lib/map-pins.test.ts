@@ -938,6 +938,31 @@ describe('the stay bookends the day, and wears no number for it', () => {
       ).toBe(1);
     });
 
+    // ── THE LEG YOU ARE ON (owner report, 2026-09-12) ────────────────────────────────────
+    //
+    // _"After a layover, i.e. on the second flight, the map doesn't show the route"_. Mid-leg
+    // the live "next stop" is whatever waits past the landing — the hire counter, the hotel —
+    // so the amber went to a leg you have not started while the one you are flying was drawn
+    // nowhere. `currentDestination`'s `inTransit` answers where the journey is taking you, and
+    // the leg arriving there is the leg you are on.
+    it('spends the amber on the leg you are flying, over the stop waiting past it', () => {
+      const { route } = twiceVisited();
+      expect(amberLegIndex(route, { transitPlaceId: 'hall', nextStopPlaceId: 'gate' })).toBe(0);
+    });
+
+    // …and a selection still outranks it: a tap is a question, and this is a state.
+    it('yields to a selection, and falls through to the next stop when there is no journey', () => {
+      const { route } = twiceVisited();
+      expect(
+        amberLegIndex(route, {
+          selectedPlaceId: 'gate',
+          transitPlaceId: 'hall',
+          nowMs: Date.parse(at2('18:00')),
+        }),
+      ).toBe(1);
+      expect(amberLegIndex(route, { transitPlaceId: undefined, nextStopPlaceId: 'hall' })).toBe(0);
+    });
+
     // A place visited once needs no clock at all, and a route with nothing asked of it spends no
     // amber — Plan mode with no selection (§AC1).
     it('needs no clock for a place visited once, and spends none when nothing is asked', () => {

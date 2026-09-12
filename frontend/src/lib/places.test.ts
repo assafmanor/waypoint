@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BOOKING_SOURCE,
   BOOKING_TYPE,
+  EVENT_CATEGORY,
   EVENT_KIND,
   EVENT_SOURCE,
   EVENT_STATUS,
@@ -13,11 +14,13 @@ import {
   bookingDirectionsUrl,
   bookingMapPlace,
   bookingShowOnMap,
+  currentDestination,
   eventDirectionsUrl,
   eventDisplayZones,
   eventDurationLabel,
   eventEdgeZone,
   eventMapPlace,
+  eventPlaceId,
   eventRoute,
   eventShowOnMap,
   ideaShowOnMap,
@@ -397,6 +400,103 @@ describe('nextDestination (navigate-to-next, ADR-0106 §6)', () => {
     expect(
       nextDestination([event({ id: 'x', placeId: 'pl-lite', startsAt: at('18:00') })], [], PL, NOW),
     ).toBeUndefined();
+  });
+});
+
+// ── WHERE YOU ARE WHILE YOU ARE IN THE AIR (owner report, 2026-09-12) ────────────────────
+//
+// _"After a layover, i.e. on the second flight, the map doesn't show the route and it looks
+// like we're still on the layover, even though the flight has already took off."_ The Map's
+// one "now" cue reads `currentDestination`, which resolved the in-progress leg through the
+// authority rule — and that rule answers the ORIGIN, which mid-flight is the airport you
+// have just left. So the layover pin wore `עכשיו` and the canvas drew nothing.
+//
+// The rule is not new here: session 215 already settled it for the board's own now-point
+// (`heroHorizon`'s `midSpanEventId`). This is the second surface asking the same question.
+describe('currentDestination — where you are, and where a journey is taking you', () => {
+  const PL = [
+    place('pl-tlv3', 'נתב״ג', { lat: 32.0, lng: 34.88 }),
+    place('pl-vie3', 'וינה', { lat: 48.11, lng: 16.57 }),
+    place('pl-kef3', 'קפלאוויק', { lat: 63.98, lng: -22.6 }),
+    place('pl-hotel3', 'מלון', { lat: 64.14, lng: -21.93 }),
+  ];
+  const leg = (id: string, fromPlaceId: string, toPlaceId: string) =>
+    booking({ id, type: BOOKING_TYPE.FLIGHT, fromPlaceId, toPlaceId });
+  const BK = [
+    leg('bk-1', 'pl-tlv3', 'pl-vie3'),
+    leg('bk-2', 'pl-vie3', 'pl-kef3'),
+    booking({ id: 'bk-stay', type: BOOKING_TYPE.HOTEL, placeId: 'pl-hotel3' }),
+  ];
+  // 15:30 TLV → 18:30 Vienna, three hours on the ground, 21:30 Vienna → 23:30 Keflavík.
+  const flight = (id: string, bookingId: string, startsAt: string, endsAt: string) =>
+    event({
+      id,
+      bookingId,
+      category: EVENT_CATEGORY.TRANSPORT,
+      date: '2026-09-11',
+      startsAt,
+      endsAt,
+    });
+  const EV = [
+    flight('ev-1', 'bk-1', '2026-09-11T12:30:00Z', '2026-09-11T16:30:00Z'),
+    flight('ev-2', 'bk-2', '2026-09-11T19:30:00Z', '2026-09-11T23:30:00Z'),
+  ];
+  const at = (iso: string) => Date.parse(iso);
+
+  it('answers the DESTINATION of the leg you are on, not the airport you left', () => {
+    const inTheAir = currentDestination(EV, BK, PL, at('2026-09-11T20:30:00Z'));
+    expect(inTheAir?.event.id).toBe('ev-2');
+    expect(inTheAir?.place.id).toBe('pl-kef3');
+    expect(inTheAir?.inTransit).toBe(true);
+    // **The shipped shape, pinned so the defect is legible here rather than only in a
+    // changelog:** the authority rule's own answer is the layover you took off from.
+    expect(eventPlaceId(EV[1]!, BK[1]!)).toBe('pl-vie3');
+  });
+
+  it('says nothing while you are on the ground between the two legs', () => {
+    expect(currentDestination(EV, BK, PL, at('2026-09-11T17:30:00Z'))).toBeUndefined();
+  });
+
+  it('a place you are standing in is still that place, and not in transit', () => {
+    const lunch = event({
+      id: 'ev-lunch',
+      placeId: 'pl-hotel3',
+      date: '2026-09-11',
+      startsAt: '2026-09-11T17:00:00Z',
+      endsAt: '2026-09-11T18:00:00Z',
+    });
+    const now = currentDestination([...EV, lunch], BK, PL, at('2026-09-11T17:30:00Z'));
+    expect(now?.place.id).toBe('pl-hotel3');
+    expect(now?.inTransit).toBe(false);
+  });
+
+  // The red-eye half of the same defect, and the reason the ambient filter grew an exemption:
+  // an overnight flight carries an `endDate`, so it is multi-day and therefore AMBIENT — and
+  // the filter dropped it the moment it took off, which is the same bug Home's `scheduleEvents`
+  // fixed for the board (a journey's middle is you, inside it).
+  it('keeps seeing an OVERNIGHT journey once it is in the air', () => {
+    const redEye = {
+      ...flight('ev-red', 'bk-2', '2026-09-11T22:00:00Z', '2026-09-12T04:00:00Z'),
+      endDate: '2026-09-12',
+    };
+    const now = currentDestination([redEye], BK, PL, at('2026-09-12T01:00:00Z'));
+    expect(now?.place.id).toBe('pl-kef3');
+    expect(now?.inTransit).toBe(true);
+  });
+
+  // …and the exemption is a journey's alone: a stay's span runs to check-out, so it would
+  // read `עכשיו` for three days straight and drown whatever you are actually doing.
+  it('still keeps an ambient STAY out of the now slot', () => {
+    const stay = event({
+      id: 'ev-stay',
+      bookingId: 'bk-stay',
+      category: EVENT_CATEGORY.LODGING,
+      date: '2026-09-11',
+      endDate: '2026-09-14',
+      startsAt: '2026-09-11T15:00:00Z',
+      endsAt: '2026-09-14T10:00:00Z',
+    });
+    expect(currentDestination([stay], BK, PL, at('2026-09-12T09:00:00Z'))).toBeUndefined();
   });
 });
 
