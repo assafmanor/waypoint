@@ -21,6 +21,7 @@ import {
   TRAVEL_BUFFER_SECONDS,
   TRAVEL_MODE,
   type Booking,
+  type LatLng,
   type Place,
   type LegTravelMode,
   type TravelEstimate,
@@ -32,6 +33,7 @@ import { setSimulatedNow } from '../lib/useClock';
 import { formatCountdown } from '../lib/time';
 import { markOnWay, resetOnWayForTests } from '../lib/on-way';
 import { withoutBidiControls } from '../lib/bidi';
+import { formatTime } from '../lib/time';
 import { t } from '../i18n/he';
 import { wrapNav } from '../test/nav-harness';
 import { buildHostContextIndex } from '../lib/host-context';
@@ -77,6 +79,18 @@ const places: Place[] = [
     name: 'Via dei Tribunali 32',
     lat: 40.851,
     lng: 14.258,
+    createdAt: `${DAY}T00:00:00Z`,
+    updatedAt: `${DAY}T00:00:00Z`,
+    updatedBy: 'u1',
+  },
+  /** The bed — deliberately nowhere near the other two, so a leg measured out of it is
+   *  distinguishable from a leg measured out of the stop the evening ended at. */
+  {
+    id: 'p-hotel',
+    tripId: 't1',
+    name: 'מלון פְלוּדִיר',
+    lat: 40.63,
+    lng: 14.49,
     createdAt: `${DAY}T00:00:00Z`,
     updatedAt: `${DAY}T00:00:00Z`,
     updatedBy: 'u1',
@@ -234,10 +248,15 @@ const askedModes: LegTravelMode[] = [];
 /** Seconds per mode, where a spec needs the two answers to differ the way they did on the real
  *  trip — `~23 דק׳` by car against `~1:16` on foot, over one 6 km leg. */
 let travelSecondsByMode: Partial<Record<string, number>> = {};
+/** **WHICH LEG the board asked about** (field report, 2026-09-12), recorded for `askedModes`' own
+ *  reason: the origin is the whole of that defect, and a mock that answers one number whatever it
+ *  is asked about stays green through a leg measured from the wrong end of a night. */
+const askedLegs: { from: LatLng; to: LatLng }[] = [];
 vi.mock('../lib/travel', () => ({
   useDayTravel: () => ({
-    estimateFor: (_from: unknown, _to: unknown, mode: TravelMode): TravelEstimate | null => {
+    estimateFor: (from: LatLng, to: LatLng, mode: TravelMode): TravelEstimate | null => {
       askedModes.push(mode);
+      askedLegs.push({ from, to });
       const seconds = travelSecondsByMode[mode] ?? travelSeconds;
       return seconds == null ? null : { mode, durationSeconds: seconds, distanceMeters: 1800 };
     },
@@ -558,6 +577,93 @@ describe('Home — the journey line says which day it leaves on (ADR-0214 §7)',
     fireEvent.click(document.querySelector('.wp-board')!);
     expect(line()).toContain('צאו');
     expect(line()).not.toContain('מחר');
+  });
+});
+
+// **A JOURNEY THAT CROSSES A NIGHT LEAVES FROM THE BED** (field report, 2026-09-12). The slot above
+// prints tomorrow's leave-by, and it was counting back from the wrong end of the night: the board
+// read `נסיעה · ~1:36 שע׳ · צאו ב־05:33` off the stop the evening had ended at, while the day view —
+// measuring the same morning out of the hotel — read `~1:02 שע׳ · יציאה עד 06:08`. ADR-0159 §1
+// forbids the two differing about a fact, and when to leave is one.
+describe('Home — a journey across a night leaves from the bed (2026-09-12)', () => {
+  /** ⁦21:40⁩ Rome — the evening is over and the next point is tomorrow morning. */
+  const EVENING = `${DAY}T19:40:00Z`;
+  const TOMORROW = '2026-08-04';
+  /** Tomorrow's first stop, ⁦07:12⁩ Rome. */
+  const tomorrowTrain = ev('train', {
+    title: 'רכבת לקיוטו',
+    placeId: 'p-dinner',
+    date: TOMORROW,
+    startsAt: `${TOMORROW}T05:12:00Z`,
+    endsAt: `${TOMORROW}T07:40:00Z`,
+  });
+  /** Tonight's bed: checked in this afternoon, out tomorrow at ⁦11:00⁩ Rome — a check-out AFTER the
+   *  train, which is what makes the departure floor observable in the line below. */
+  const hotel = ev('hotel', {
+    title: 'מלון פְלוּדִיר',
+    category: 'lodging',
+    placeId: 'p-hotel',
+    endDate: TOMORROW,
+    startsAt: `${DAY}T13:00:00Z`,
+    endsAt: `${TOMORROW}T09:00:00Z`,
+  });
+  /** The stop the evening ended at — deliberately AFTER the hotel's check-in, so the bed is not
+   *  the last thing to have started and the origin is genuinely contested. */
+  const waterfall = ev('waterfall', {
+    title: 'מפל',
+    placeId: 'p-museum',
+    startsAt: `${DAY}T17:00:00Z`,
+    endsAt: `${DAY}T19:15:00Z`,
+  });
+  const walkMinutes = 18;
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(EVENING));
+    resetOnWayForTests();
+    tripEvents = [waterfall, hotel, tomorrowTrain];
+    tripBookings = [];
+    tripOverrides = [];
+    askedLegs.length = 0;
+    travelSeconds = walkMinutes * 60;
+    geoFix = null;
+  });
+  afterEach(() => {
+    cleanup();
+    resetOnWayForTests();
+    setSimulatedNow(null);
+  });
+
+  const line = () =>
+    withoutBidiControls(document.querySelector('.hero-trv-txt')?.textContent ?? '');
+  const hotelPlace = places.find((p) => p.id === 'p-hotel')!;
+  const eveningPlace = places.find((p) => p.id === 'p-museum')!;
+
+  it('measures the leg out of the hotel, not out of the stop the evening ended at', () => {
+    show();
+    expect(askedLegs.length).toBeGreaterThan(0);
+    expect(askedLegs[0]!.from).toEqual({ lat: hotelPlace.lat, lng: hotelPlace.lng });
+    expect(askedLegs[0]!.from).not.toEqual({ lat: eveningPlace.lat, lng: eveningPlace.lng });
+  });
+
+  // **And a bed has no departure floor** (ADR-0206 §AF3): the origin's `endsAt` is a check-out —
+  // here two hours AFTER the train it is supposed to let you catch — so reading it as this leg's
+  // earliest departure clamps the leave-by to a departure nobody could make and nobody needs.
+  it('states a departure before the train, never the check-out behind it', () => {
+    const leaveAt = new Date(
+      Date.parse(tomorrowTrain.startsAt!) - (walkMinutes * 60 + TRAVEL_BUFFER_SECONDS) * 1000,
+    );
+    show();
+    fireEvent.click(document.querySelector('.wp-board')!);
+    expect(line()).toContain(formatTime(leaveAt, ZONE));
+    expect(line()).not.toContain(formatTime(new Date(Date.parse(hotel.endsAt!)), ZONE));
+  });
+
+  // A night nobody booked a bed for keeps the shipped answer: the last stop today left you at is
+  // still the only position the plan has.
+  it('keeps the last stop of today when no stay covers the night', () => {
+    tripEvents = [waterfall, tomorrowTrain];
+    show();
+    expect(askedLegs[0]!.from).toEqual({ lat: eveningPlace.lat, lng: eveningPlace.lng });
   });
 });
 

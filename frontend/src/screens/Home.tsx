@@ -568,19 +568,36 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // hotel you woke in, sat one derivation away. `dayBookendStays` is that derivation, and the day
   // list's own first leg reads it too, so the two surfaces start their morning in one place.
   const wokeIn = useMemo(() => dayBookendStays(events, today).woke, [events, today]);
+  // **AND A JOURNEY THAT CROSSES A NIGHT STARTS FROM THE BED, NOT FROM TODAY'S LAST STOP** (field
+  // report, 2026-09-12). The night board's `הבא בתור` is TOMORROW's first stop (ADR-0214 §7) and
+  // the leg into it was still measured from wherever today left you — so the board read
+  // `נסיעה · ~1:36 שע׳ · צאו ב־05:33` off the previous evening's last waterfall while the day view
+  // one tab away, measuring the same morning out of the hotel, read `~1:02 שע׳ · יציאה עד 06:08`.
+  // ADR-0159 §1 forbids the two surfaces differing about a FACT, and when to leave is a fact.
+  //
+  // The bed is the destination day's own `woke` — literally the row `DayView` draws its first leg
+  // out of — so the two now measure one morning from one place by construction.
+  const nextDate = nextInstant ? todayInTz(tz, new Date(nextInstant)) : undefined;
+  const sleepsIn = useMemo(
+    () => (nextDate && nextDate > today ? dayBookendStays(events, nextDate).woke : undefined),
+    [events, nextDate, today],
+  );
   const travelPrev = travelOrigin({
+    // The point in progress, handed over rather than applied here: `travelOrigin` owns the
+    // precedence now that a night can outrank it, and a precedence split across two files is one
+    // the next reader has to reassemble.
+    ...(horizon.now[0]?.event ? { nowEvent: horizon.now[0].event } : {}),
     events: events.filter((e) => e.date === today),
     nowMs,
     excludeEventId: shownNext?.id,
     ...(wokeIn ? { wokeIn } : {}),
+    ...(sleepsIn ? { sleepsIn } : {}),
   });
-  const prevEvent = travelPrev.event;
-  const nowPlaceId = horizon.now[0]?.placeId;
   /** **THE LEG, AS TWO ROWS** (ADR-0206 §AQ) — and it is two ROWS rather than two coordinates
    *  because that is the only shape the day's own derivation can be asked about. The board used to
    *  resolve its own places, its own mode and its own estimate here, which is how it ended up
    *  reading a leg somebody had declared a drive as a walk (§AQ2). */
-  const originEvent = horizon.now[0]?.event ?? prevEvent;
+  const originEvent = travelPrev.event;
   const destEvent = horizon.next?.event;
   /** **`endpointPlaceId`'s inversion, asked the right way round** (`lib/day-travel.ts`). This line
    *  read `eventPlaceId(prevEvent, booking)` — whose default is `arriving` — so the leg out of a
@@ -591,8 +608,9 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // **And whether the plan may still claim it** (ADR-0208 §2). A skipped stop is still the last
   // thing that started, so it is still where the plan left you — except the group has said they
   // did not go, which denies exactly that. Only when the leg actually starts from that stop: an
-  // in-progress point supplies its own place, and `deriveNow` never hands back a skipped one.
-  const originDenied = nowPlaceId === undefined && travelPrev.denied;
+  // in-progress point supplies its own place, and `deriveNow` never hands back a skipped one —
+  // which `travelOrigin` now answers for itself, since it is handed that point.
+  const originDenied = travelPrev.denied;
   const travelToId = horizon.next?.placeId;
   const coordOf = (placeId?: string) => {
     const place = placeId ? places.find((p) => p.id === placeId) : undefined;
@@ -614,11 +632,12 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       ? {
           from: originEvent,
           to: destEvent,
-          // **THERE IS NO WINDOW OUT OF A BED** (ADR-0206 §AF3), and the board's origin can be one:
-          // `travelOrigin` reaches for `wokeIn` on a morning before anything has started (§AD). The
-          // flag is what stops `legDepartAfterMs` reading a middle night's check-out — days away —
-          // as the instant this journey may leave.
-          ...(originEvent.id === wokeIn?.id ? { fromIsStay: true } : {}),
+          // **THERE IS NO WINDOW OUT OF A BED** (ADR-0206 §AF3), and the board's origin can be
+          // one: the morning before anything has started (§AD), the night the next stop is on the
+          // other side of, and the check-in evening whose hotel is simply the latest thing to have
+          // started. The flag is what stops `legDepartAfterMs` reading a check-out — days away —
+          // as the instant this journey may leave, and the claim answers it for all three.
+          ...(travelPrev.isStay ? { fromIsStay: true } : {}),
         }
       : null;
   // ── WHAT A DEVICE POSITION LETS THIS SURFACE CLAIM (ADR-0207) ──────────────
@@ -746,11 +765,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // the event's date, not the raw hour-count (37h out is calendar-"מחרתיים",
   // never a duration-"יום"). Durations elsewhere stay counts (formatCountdown).
   const minsToNext = nextInstant ? minutesUntil(nextInstant, now) : 0;
-  const nextDayDelta = nextInstant
+  // Off `nextDate` — the same "which day is the next point on" the journey's origin asks above,
+  // asked once.
+  const nextDayDelta = nextDate
     ? Math.round(
-        (Date.parse(`${todayInTz(tz, new Date(nextInstant))}T00:00:00Z`) -
-          Date.parse(`${today}T00:00:00Z`)) /
-          MS_PER_DAY,
+        (Date.parse(`${nextDate}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / MS_PER_DAY,
       )
     : 0;
   // **Inside a window, the thing worth counting is the SHUTTING** (ADR-0184 §6): the

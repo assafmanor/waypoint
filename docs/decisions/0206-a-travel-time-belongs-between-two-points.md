@@ -1072,6 +1072,28 @@ rather than a line in it. **That is the first thing M6a or M11 should reconcile*
 of them derives an origin differently makes the two surfaces state different leave-bys for one
 journey.
 
+> **Amended 2026-09-12, on a field report from Iceland: the day-scoping above is right about the
+> ORIGIN's pool and wrong about a DESTINATION on the other side of a night.** The night board's
+> `הבא בתור` is tomorrow's first stop (ADR-0214 §7), so the leg it printed ran from the waterfall the
+> evening ended at to a stop the next morning — `נסיעה · ~1:36 שע׳ · צאו ב־05:33`, while the day view
+> one tab away measured the same morning out of the hotel and read `~1:02 שע׳ · יציאה עד 06:08`. The
+> gap this section named was closed for the morning (§AD) and left open at the other end of the same
+> night: **a journey that crosses a night starts from the bed**, and every claim the rules above make
+> is a claim about today. So `travelOrigin` takes a `sleepsIn` — the destination DAY's own
+> `dayBookendStays(…).woke`, i.e. the row `DayView` draws its own first leg out of — and it outranks
+> both the last stop that started and the point still in progress, which is the one place anything
+> outranks `nowEvent`. Where no stay covers the night there is nothing better than today's last
+> claim, so the behaviour above is exactly what still ships.
+>
+> **Two consequences worth stating.** The bed's place is now what the leg is measured from, so a
+> hotel with no coordinates leaves the board silent rather than confidently wrong — §D4's absence,
+> which is the trade this ADR takes everywhere else. And the claim reports `isStay` instead of the
+> board re-deriving it as `originEvent.id === wokeIn?.id`: that identity test answered `false` for the
+> hotel you check into TONIGHT — an ordinary member of today's events, and after check-in the latest
+> one to have started — so `legDepartAfterMs` took its `endsAt`, a check-out days away, as the leg's
+> earliest departure and §AJ2 clamped the leave-by onto it. Reproduced at the board: `צאו ב־11:00`,
+> the check-out clock, for a train at `07:12`.
+
 ### AE4. The collision is decided in code, and a passed leave-by is negative for that reason
 
 §Z5 §M1 named the collision — a shutting check-in window (ADR-0184 §6) and a live leave-by, both true

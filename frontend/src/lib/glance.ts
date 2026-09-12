@@ -180,6 +180,13 @@ export function ambientEventsOnDate(events: TripEvent[], date: string): TripEven
 export const countsNights = (event: Pick<TripEvent, 'category' | 'icon'>): boolean =>
   eventDurationUnit(event) === 'nights';
 
+/** **Is this row a BED** — the two questions `dayBookendStays` asks below, about one event rather
+ *  than about a date: `isAmbient` makes it a backdrop rather than a stop, and `countsNights`
+ *  separates the hotel you sleep in from the car you merely hold. Named because a THIRD caller
+ *  arrived (`travelOrigin`, which has to know whether its origin is a bed and therefore has no
+ *  departure instant) and the pair was already written out twice. */
+export const isStayRow = (event: TripEvent): boolean => isAmbient(event) && countsNights(event);
+
 /** **The stays that bracket a day** — the one you woke in and the one you sleep in
  *  (ADR-0054's 2026-08-25 amendment; ADR-0206 §AD). */
 /** **An event's display glyph** — what the group chose, else its category's default, else the
