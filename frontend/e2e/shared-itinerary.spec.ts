@@ -500,6 +500,74 @@ test('the reader lands on the day the trip is on, with the day before peeking ab
   await expect(page.locator('.sh-day.is-past')).toHaveCount(3);
 });
 
+/**
+ * **A DAY WITH HOURS BEHIND IT, so the landing has to choose** (ADR-0213's eleventh amendment
+ * §1, corrected 2026-09-12). `LONG` repeats a day carrying ONE event at 09:30 and lands at
+ * 09:00, which is the arm where the card's top and the now-line are the same answer — so the
+ * suite could not see that the page only ever knew the first one. Sixteen timed rows and an
+ * hour past the last of them puts the line a full screen below the card's header.
+ */
+const BUSY: SharedItinerary = {
+  ...LONG,
+  days: LONG.days.map((day) => ({
+    ...day,
+    sections: [SHARE_DAYPART.MORNING, SHARE_DAYPART.AFTERNOON].map((daypart, part) => ({
+      daypart,
+      events: Array.from({ length: 8 }, (_, index) => {
+        const label = `${String(8 + part * 4 + Math.floor(index / 2)).padStart(2, '0')}:${
+          index % 2 ? '30' : '00'
+        }`;
+        return {
+          title: `תחנה ${part * 8 + index + 1}`,
+          icon: '📍',
+          daypart,
+          // `startLabel` is what `shareNowLine` walks and `time` is what the row prints —
+          // the fixture carries both for the same reason `FULL` does.
+          startLabel: label,
+          time: { label, meaning: TIME_MEANING.EXACT },
+          placeName: 'Reykjavík',
+        };
+      }),
+    })),
+  })),
+};
+
+test('a day with hours behind it lands on the now-line, not on the top of the card', async ({
+  page,
+}) => {
+  // 17:00 on day 4 — every one of that day's sixteen rows is behind us, so the mark is the
+  // boundary form at the foot of the day and the two arms cannot agree by accident.
+  const later = Date.parse('2026-09-01T17:00:00.000Z');
+  await page.addInitScript(
+    (now) => localStorage.setItem('waypoint:dev-now', now as string),
+    String(later),
+  );
+  await page.clock.setFixedTime(later);
+  const phone = PHONES[0];
+  await page.setViewportSize(phone);
+  await page.route(
+    (url) => url.pathname === `/shared-itineraries/${CODE}`,
+    (route) => route.fulfill({ json: BUSY }),
+  );
+  await page.goto(`/s/${CODE}`);
+
+  const today = page.locator('.sh-day.is-now');
+  await expect(today).toHaveCount(1);
+  // The same retried block the landing test above explains: an eased scroll is a state to
+  // converge on, and `stableBox` inside it absorbs a node this clock-driven page re-renders.
+  await expect(async () => {
+    const mark = await stableBox(today.locator('.now-here'));
+    // **On screen, which is the whole report.** Landing on the card's top left it a screen
+    // and a half below the fold.
+    expect(mark.y).toBeGreaterThan(0);
+    expect(mark.y + mark.height).toBeLessThan(phone.height);
+    // And it really is the other arm: the card's header — the landing's target on an
+    // ordinary day — has gone above the fold to bring the line down.
+    const head = await stableBox(today.locator('.wp-dayhead-head'));
+    expect(head.y).toBeLessThan(0);
+  }).toPass();
+});
+
 test('nothing is open before the trip starts, and everything is cooled after it', async ({
   page,
 }) => {

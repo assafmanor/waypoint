@@ -2650,3 +2650,53 @@ same `today`, so they still cannot disagree (eleventh amendment §4).
 **Version skew is the ordinary consequence of a grown contract** (`SharedItineraryUnreadable`, the
 seventeenth amendment): a page holding the previous build cannot parse `homeZone` and asks for a
 newer document, never for a retry. The PDF ignores the field with everything else about now.
+
+## Amendment — the landing shipped one of its two arms (2026-09-12)
+
+Owner, reading the shipped page:
+
+> _"The trip sharing now line doesn't autoscroll to it correctly. It does to the day start
+> instead of the now line."_
+
+The eleventh amendment §1 decided this and the build took half of it. It says, in as many
+words, that the target is the now-line; that `DayView`'s `block: 'center'` does not translate
+to a page with no chrome, because today's card header is an ordinary box and centring the line
+pushes the date off the screen; and that the faithful translation is **the header pinned at the
+top with the line in the space that remains — _only where a day is long enough to push the line
+past the fold does the choice bite_**. That last clause is a second arm, and nothing was ever
+written for it: the effect aimed at `#day-<ordinal>` and stopped there.
+
+It survived its own verification honestly. The measurement in _What building it changed_ is the
+seeded Tokyo day at 14:30, where the line lands at 489px of 844 — an ordinary day, where the two
+targets really are the same scroll, which is what the amendment claims and all it checked. Every
+hour after that on a real trip is the other arm, and the report is what a full afternoon of rows
+above the line looks like.
+
+So `shareLanding` measures the two and picks, per frame while `landAtTop` re-aims: **the card
+while the line fits under its header, the line centred when it does not.** The bound is the
+drawing's own — the line needs `SHARE_NOW_LINE_ROOM_PX` (48) of day under it to count as on
+screen — and the centring is `.sh-day-body .now-here`'s `scroll-margin-block-start: 50vh`, which
+is the drawing's `scrollTop = lineTop - vh / 2` said in the stylesheet that owns the mark, since
+`landAtTop` passes no numbers by design. The mockup's third control (`nowHard`, the line at any
+cost) stays rejected for the reason measured there: it clips the date row above the fold.
+
+**And the re-aiming this page's landing was written against was never running here.**
+`landAtTop`'s watch asks `scrollerFor` for the box it is moving; this page has no `overflow:
+auto` ancestor, because the ninth amendment §6 made the reader scroll the DOCUMENT, so the walk
+came back empty and the watch spent its whole window in the "nothing overflows yet" branch —
+one aim, then an idle loop. `land-at-top.ts`'s `movingBox` falls back to the document's
+scrolling element when it genuinely overflows, which every other host reaches past (they find
+`.body` first). The arm above is measured per frame and needed it to be true.
+
+### What was verified
+
+- `pnpm typecheck` green; **5524 frontend tests pass**, and the full `shared-itinerary`
+  e2e (13) plus every other landing spec (`event-arrival-scroll`, `place-arrival-scroll`,
+  `shell-does-not-scroll`, `day-swipe` — 27).
+- **The new arm is asserted in a browser, because jsdom reports every rect as zero.** A
+  fourteen-day fixture whose days carry sixteen timed rows, clock at 17:00 on day 4, 360×640:
+  the mark lands on screen and the card's header goes above the fold. Reverted to the shipped
+  target, the same assertion reads the mark at **1129px of a 640px viewport** — the report,
+  measured.
+- The existing landing spec is untouched and still passes: its day carries one 09:30 row and
+  its clock is 09:00, which is the arm where the card is the answer.

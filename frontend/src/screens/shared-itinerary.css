@@ -355,6 +355,14 @@
   --now-tab: 15px;
   --now-ground: color-mix(in srgb, var(--paper) 34%, var(--card));
   --now-room: 6px;
+  /* **AND WHERE THE MARK IS THE LANDING'S TARGET, IT LANDS IN THE MIDDLE** (ADR-0213's
+     eleventh amendment §1, corrected 2026-09-12). `landAtTop` aims `block: 'start'` and
+     passes no numbers — the gap above a landing belongs to the row being aimed at — so
+     `50vh` here IS the drawing's `scrollTop = lineTop - vh / 2`, written where the rest of
+     this mark's numbers live rather than as arithmetic at the call site. It costs nothing on
+     the ordinary landing: a scroll margin is read only when this element is the thing being
+     scrolled to, and on most of the day it is the card (`shareLanding`). */
+  scroll-margin-block-start: 50vh;
 }
 
 /* **AND THE ROW SAYS THE WORD, WHICH IS WHAT KEEPS THE MARK A SHAPE.**
