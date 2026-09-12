@@ -117,20 +117,22 @@ describe('nowLinePlacement', () => {
     });
   });
 
-  // **A skip is usually a decision about something still AHEAD**, and the marker's position is
-  // the clock's. Without this, skipping the evening waterfall at ⁦17:18⁩ drags a mark reading
-  // `17:18` below a row that starts at ⁦18:30⁩.
-  it('leaves a row settled before it starts exactly where it is', () => {
-    const skipped = [
-      { ...ev('morning', '09:00', '10:30'), status: EVENT_STATUS.DONE },
-      { ...ev('falls', '18:30', '19:15'), status: EVENT_STATUS.SKIPPED },
+  // **AND A ROW TICKED OFF EARLY IS BEHIND US TOO** — the same evening's second report, which
+  // took the first build's "but it must have begun" guard out again: a ⁦20:45⁩ waterfall marked
+  // `היינו` at ⁦20:39⁩, with the mark still in the drive above it and the owner already on the
+  // road to the hotel. Ticking a row off early is exactly when the mark should move.
+  it('drops past a row settled before its own clock has even started', () => {
+    const early = [
+      { ...ev('geyser', '19:45', '20:30'), status: EVENT_STATUS.DONE },
+      { ...ev('falls', '20:45', '21:15'), status: EVENT_STATUS.DONE },
+      ev('hotel', '22:00', '22:30'),
     ];
-    expect(nowLinePlacement(entriesFor(skipped), Date.parse(at('11:00'))).index).toBe(1);
+    expect(nowLinePlacement(entriesFor(early), Date.parse(at('20:39'))).index).toBe(2);
   });
 
-  // ADR-0041's forest: a settled container does not settle what hangs under it, and a child
-  // still ahead of you may not end up above the mark.
-  it('holds a settled container in place while an unstarted child hangs under it', () => {
+  // ADR-0041's forest: a settled container does not settle what hangs under it, and a row
+  // nobody has answered for may not end up above the mark on its container's say-so.
+  it('holds a settled container in place while an unsettled child hangs under it', () => {
     const festival = [
       { ...ev('festival', '16:00', '20:00'), status: EVENT_STATUS.DONE },
       ev('concert', '19:00', '19:45'),

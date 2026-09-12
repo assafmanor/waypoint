@@ -1825,20 +1825,50 @@ describe('DayView · where the moment is', () => {
       expect(card(container, theatre.title)).toBeTruthy();
     });
 
-    // The guard, and it is the reason `entryIsBehind` asks whether the row has BEGUN: settling
-    // answers what is DONE with a row, not where the day is, and the mark carries the clock on
-    // it. (A SKIPPED row cannot show this here — Trip mode drops it from the list entirely —
-    // which is why the pure case is asserted in `lib/now-line.test.ts`.)
-    it('leaves a row settled before it starts exactly where it is', () => {
-      tripEvents = [morning, lunch, { ...theatre, status: EVENT_STATUS.DONE }];
-      // ⁦14:00⁩ — in the hole, two hours before a row ticked off ahead of time.
-      setSimulatedNow(Date.parse(`${DAY}T14:00:00Z`));
-      const { container } = show();
-      const mark = marks(container)[0];
-      expect(
-        mark.compareDocumentPosition(card(container, theatre.title)) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
+    // ── AND A ROW TICKED OFF EARLY IS BEHIND US TOO (the same evening's second report) ──────
+    //
+    // ⁦20:39⁩, a ⁦20:45⁩ waterfall already marked `היינו`, and the mark still standing in the drive
+    // INTO it — _"we're already headed to the hotel"_. Two defects in one screenshot: the
+    // placement's own "but it must have begun" guard, and `nowInHole`, which answers a clock
+    // question about ONE hole and so went on holding the moment in a hole the placement had
+    // already moved past. Here that is the ⁦13:20–16:00⁩ hole with its walk, under a row ticked
+    // off two hours early.
+    describe('and ticked off before its own clock starts', () => {
+      beforeEach(() => {
+        tripEvents = [morning, lunch, { ...theatre, status: EVENT_STATUS.DONE }];
+        travelSeconds = WALK_MINUTES * 60;
+      });
+      afterEach(() => {
+        travelSeconds = null;
+      });
+
+      it('stands the mark below the row, not in the drive into it', () => {
+        setSimulatedNow(Date.parse(`${DAY}T14:00:00Z`));
+        const { container } = show();
+        // **One mark.** Without the hole's own gate the day draws two: the hole still claims
+        // ⁦14:00⁩ while the placement has moved to the tail.
+        expect(marks(container)).toHaveLength(1);
+        const mark = marks(container)[0];
+        expect(mark.classList.contains('edge')).toBe(true);
+        // Nailed to neither box of the hole it used to sit in.
+        expect(mark.querySelector('.day-gap')).toBeNull();
+        expect(mark.querySelector('.day-trv')).toBeNull();
+        // And below the row that was answered for, which is the report.
+        expect(
+          mark.compareDocumentPosition(card(container, theatre.title)) &
+            Node.DOCUMENT_POSITION_PRECEDING,
+        ).toBeTruthy();
+      });
+
+      // The other half of the same screenshot: the hole keeps saying what is left of it, and
+      // the drive keeps its own leave-by. Only the MARK moved.
+      it('leaves the hole itself untouched', () => {
+        setSimulatedNow(Date.parse(`${DAY}T14:00:00Z`));
+        const { container } = show();
+        // Both holes of the day, each still drawing its strip and its walk.
+        expect(container.querySelectorAll('.day-swipe > .day-page .day-trv').length).toBe(2);
+        expect(container.querySelectorAll('.day-swipe > .day-page .day-gap').length).toBe(2);
+      });
     });
   });
 });
