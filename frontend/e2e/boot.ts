@@ -426,12 +426,23 @@ async function mockAuth(page: Page, memberships: unknown[] = []): Promise<void> 
 }
 
 /** The trip a creation run produces. Dates fixed so the board's flapped row is assertable. */
+/** A trip that starts TOMORROW on the box clock and runs twelve days. `CreateTrip` refuses a
+ *  start before device-local today (`startInPast`, so the CTA never arms), which makes a literal
+ *  date a fuse: this fixture read `2026-09-12` and every run from the 13th on failed the born
+ *  screen on both e2e legs while nothing in the app had changed. Same lesson as
+ *  `shortLiveTripDates`, one screen earlier. */
+function upcomingTripDates(): { startDate: string; endDate: string } {
+  const day = 24 * 60 * 60 * 1000;
+  const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
+  const today = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
+  return { startDate: iso(today + day), endDate: iso(today + 12 * day) };
+}
+
 export const CREATED_TRIP = {
   ...TRIP,
   name: 'יפן · ספטמבר',
   destination: 'יפן',
-  startDate: '2026-09-12',
-  endDate: '2026-09-23',
+  ...upcomingTripDates(),
   icon: '🇯🇵',
 };
 

@@ -55,8 +55,10 @@ test.describe('trip birth (ADR-0142)', () => {
     await page.locator('.pp-result').first().click();
     await expect(page.locator('.dest-trigger')).toContainText('יפן');
 
-    await page.locator('.birth-form input[type="date"]').nth(0).fill('2026-09-12');
-    await page.locator('.birth-form input[type="date"]').nth(1).fill('2026-09-23');
+    // The fixture's own dates, which are derived from the box clock: a literal here went stale
+    // the morning after it and `CreateTrip` refused the start date, so the CTA never armed.
+    await page.locator('.birth-form input[type="date"]').nth(0).fill(CREATED_TRIP.startDate);
+    await page.locator('.birth-form input[type="date"]').nth(1).fill(CREATED_TRIP.endDate);
     await page.locator('.title-input').fill(CREATED_TRIP.name);
 
     const cta = page.locator('.create-btn');
