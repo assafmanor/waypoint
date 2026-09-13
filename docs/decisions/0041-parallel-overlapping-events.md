@@ -1,6 +1,6 @@
 # 0041 — Parallel / overlapping-time events: a containment forest, rendered as nests and clusters
 
-**Status:** Accepted
+**Status:** Accepted · **Refined by** [0225](0225-two-things-at-one-time-are-one-stop.md) (2026-09-13, Proposed): a cluster is **one stop** — one comparator orders its members everywhere, the map numbers it once and draws no leg inside it, and the board/lift name the peers.
 **Date:** 2026-07-15
 **Refines:** [0011](0011-hard-soft-event-model.md) (hard vs. soft — soft overlap is sanctioned, only hard-vs-soft is flagged), [0018](0018-timeline-data-model-shape.md) (no stored `now` — derived), [0028](0028-plan-violet-color-budget-dark-ready.md) (color budget, mode identity), [0036](0036-event-time-setter.md) (the time-setter the resolve falls back to), [0016](0016-plan-trip-modes-one-surface.md) (mode-emphasis, not different screens)
 
