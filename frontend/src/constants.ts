@@ -1477,6 +1477,15 @@ export const MAP_CONNECTOR = {
     DASH: [3, 1.2],
     CAP: 'butt',
   },
+  /** **The tether between two places that are one stop** (ADR-0225 §3). The connector's own
+   *  neutral ink, so it spends nothing; a finer dash and a lighter weight than the ordered
+   *  connector, so in Plan mode — where every leg is a neutral dash — it still reads as a
+   *  different kind of line. At `WEIGHT` 1.6 this is a ~2px dash and a ~4px gap. */
+  TETHER: {
+    WEIGHT: 1.6,
+    DASH: [1.2, 2.4],
+    OPACITY: 0.85,
+  },
   /** **A leg not being asked about recedes** (ADR-0206 §AC2). Opacity and weight, never a second
    *  hue — the budget has none to spare (root rule 4). `NEAR_WEIGHT` is the departing leg of a
    *  selected stop: prominent without spending amber a second time. */

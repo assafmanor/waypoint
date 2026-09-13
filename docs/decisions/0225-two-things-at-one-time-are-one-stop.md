@@ -1,6 +1,6 @@
 # 0225 — Two things at one time are **one stop**
 
-**Status:** **Proposed 2026-09-13** — designed and drawn, not built. Three forks are put to the owner in the session note (§9); the recommendation is the default in every frame.
+**Status:** **Accepted and built 2026-09-13**, in one session with the design. Owner, on the mockup: _"Let's build this"_ — the recommendation on every fork in §9 stands as decided. Build log in §10.
 **Date:** 2026-09-13
 **Mockup:** [`mockups/two-things-at-one-time-are-one-stop-v1.html`](../../mockups/two-things-at-one-time-are-one-stop-v1.html)
 **Session note:** [`planning/2026-09-13-two-things-at-one-time-are-one-stop.md`](../planning/2026-09-13-two-things-at-one-time-are-one-stop.md)
@@ -80,11 +80,25 @@ Rejected: `ועוד 1` (0160 retired that expander because it hides what it coun
 
 The tomorrow strip and the Home glance rail (a cluster is one block already, 0214 §8 / 0215); the ⚠ conflict line for hard-vs-soft overlap (0011); Plan's `הזז` (0041 §5) and its `.bld-cluster`, which iterates the same `g.items` as the day and so inherits the order; the countdown (to the cluster's first start, as today); `knowsMoment`'s refusal to number a floor or a ceiling.
 
-### 9. Forks for the owner
+### 9. Forks for the owner — decided 2026-09-13 as recommended
 
 - **F1 — the comparator's tail.** `createdAt` (recommended) vs. alphabetical (the map's today) vs. storage order (the day's today).
 - **F2 — the tether.** A dashed neutral line between peers (recommended, off by control) vs. nothing.
 - **F3 — the number.** The same number on every peer (recommended) vs. on the entry peer only.
+
+### 10. Build log (2026-09-13)
+
+What the build did, and where it departed from the drawing above:
+
+- **`byPeer`, `peerEntry`, `peerExit`, `clusterAround`** live in `lib/time.ts` beside `byPrimaryNow`. `buildTimeTree`'s sibling layout and `byPrimaryNow` end in `byPeer`; `deriveNow.nextAll` is `clusterAround` the earliest upcoming start, primary-first; `nextDestination` sorts by start then `byPeer`. Four tails are one.
+- **`groupStartEvent`/`groupEndEvent` kept their names.** §5 said "`clusterEntry`/`clusterExit`… those two are them"; renaming a function two surfaces already read for a third to adopt is a second name for one thing, so the day's helpers now call `peerEntry`/`peerExit` and the map calls the same two directly.
+- **The map's clusters are the day's own.** `buildDayStopSequence` reads `buildTimeTree` over its stops' events (`peerKeysOf`) rather than re-deriving overlap, and only a start-edge moment can be a peer — a same-day hire's return is a second visit to the counter, not a second place you are at during the pickup. Peers carry `DayStop.peerKey`, sit together at the earliest peer's slot in entry-first/exit-last order, and the count increments once per key. `amberLegIndex` walks back to the entry peer, so asking about the second place never spends the amber on the tether.
+- **The tether is `MapDayLeg.tether`**, drawn by its own MapLibre layer (`wp-route-tether`, under everything in `PAINT_ORDER`) with `MAP_CONNECTOR.TETHER` — the connector's neutral ink at weight 1.6 and dash `[1.2, 2.4]`, so in Plan mode, where every leg is already a neutral dash, it still reads as a different kind of line. No end dots, no stub. Drawn in **both** modes: Trip mode's `paneLegs` keeps the amber leg and the tethers. The `near` emphasis skips a tether to land on the first real leg after the amber one. `useDayTravel` on the Map still asks for the pair's estimate (it decides modes, not journeys); the day list never did.
+- **`nextDestination` answers the stop**: `NextDestination.peers` is every mappable member of the cluster around the lead, and the lead is the entry peer by construction (earliest start, `byPeer` ties). `Map.tsx` rings `nextStopIds` and prints the word on `nextStopId`; the pin carries `MapPin.nextPeer` ("ring, no word") and `PinMarker` reads it for both the tag and the accessible name. The list row keeps the word on the lead only. Home's quick tile reads the lead, unchanged.
+- **The hero.** `HeroHorizon.nextPeers` is `nextAll` past its primary as points, and `canLift` counts a peer as depth. `Home` hands the horizon the whole cluster only when the board's `shownNext` is `deriveNow`'s own next — a check-out standing in for next is one moment and goes in alone, as before. `thenAfter` excludes every member of `nextAll` (the §7 defect). The lift takes `nextPeers: HeroLiftPeer[]` (key · icon · title · pre-isolated range) and draws the `בו-זמנית` block between the next row and `Where`; the board takes `BoardNext.peers` (titles) for the meta line. Times are formatted in each peer's own zone (`eventZones`), like every other clock on the card.
+- **Two CSS rules** (`.hero-peers .hero-lbl`, `.hero-peers .hero-equal-hd`) and one string (`board.peersMore`). The `.wp-board-next-meta .peer` rule the mockup drew is not needed: the meta line already renders in that ink. §Consequences' "four rules, one empty" is therefore two.
+- **Tests:** `time.test.ts` (byPeer's tail and precedence, entry/exit on equal and partial spans, `clusterAround`, `nextAll` as the cluster, back-to-back is not overlap, a chain), `hero-horizon.test.ts` (`אחר כך` skips a later-starting peer, a peer lifts), `day-entries.test.ts` (entry/exit ties), `map-pins.test.ts` (shared number, entry-first order, partial overlap, the amber leg's walk-back, no resolver → no clustering), `places.test.ts` (peers ride along, entry leads), `Board.test.tsx` and `HeroLift.test.tsx` (the peer line and the peers block). Frontend: 304 files, 5,555 tests green; typecheck and build clean.
+- **Not built, by §8:** nothing on the strip, the rail, the ⚠ line, Plan's `הזז`, or the countdown.
 
 ## Consequences
 
@@ -92,7 +106,7 @@ The tomorrow strip and the Home glance rail (a cluster is one block already, 021
 - **The map's stop traversal (0182) steps by stop**, so a stop with two places frames both in one step. Not drawn; a build consequence to verify on a device.
 - **`buildPinOrderIndex` maps two places to one number**, which its `Map<placeId, order>` already allows; the `pinZIndex` spread by order gives peers equal z, and the tier order decides between them as it does for coincident pins.
 - **Shipped defect found by counting, fixed by §7:** `thenAfter` names a cluster peer as `אחר כך` whenever peers start at different times.
-- **Proposal CSS is four rules**, one of them empty — the honest size of what the surfaces grow. The rest is derivation.
+- **Proposal CSS was four rules, one of them empty; the build needed two** — the honest size of what the surfaces grow. The rest is derivation.
 
 ## Alternatives considered
 

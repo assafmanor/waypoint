@@ -237,6 +237,17 @@ export interface HeroLiftTravel {
   action?: { label: string; onPress: () => void };
 }
 
+/** **One other place of the next stop** (ADR-0225 §6) — what the `.hero-equal-hd` row needs
+ *  and nothing a point carries: the primary keeps `Where`/`Note`/`Tasks`/`Settle`, a peer is
+ *  named and timed. */
+export interface HeroLiftPeer {
+  key: string;
+  icon?: ReactNode;
+  title: ReactNode;
+  /** The peer's own range, pre-formatted and isolated (`clockRange`). */
+  time?: string;
+}
+
 export interface HeroLiftProps {
   /** Current time, pre-formatted — the board clock, unchanged. */
   clock: string;
@@ -258,6 +269,10 @@ export interface HeroLiftProps {
    *  one minute differently (ADR-0160 §1). */
   gap?: BoardGap | null;
   next?: HeroLiftPoint;
+  /** **The other members of the next stop** (ADR-0225 §6), listed as equals under `הבא בתור`
+   *  — the row a group-split `עכשיו` already draws, at a second host. The collapsed board
+   *  NAMES the peer; this is the elevation that has room to list it. */
+  nextPeers?: HeroLiftPeer[];
   /** The `הבא בתור` transition chip (`צ׳ק-אין` / `המראה` …), already resolved. */
   nextLabel?: ReactNode;
   nextTime?: string;
@@ -700,6 +715,7 @@ export function HeroLift(props: HeroLiftProps) {
     gap,
     next,
     nextLabel,
+    nextPeers,
     nextTime,
     nextDay,
     nextFlightNumber,
@@ -813,6 +829,25 @@ export function HeroLift(props: HeroLiftProps) {
                     {countdown && <CountdownTile countdown={countdown} />}
                   </div>
                 </div>
+                {/* **The stop's other places** (ADR-0225 §6): `בו-זמנית`, then one equal row
+                    per peer. Before the way through, because the peer is part of WHAT is next
+                    and the chips below are how you get there. */}
+                {nextPeers && nextPeers.length > 0 && (
+                  <div className="hero-part hero-peers">
+                    <span className="hero-lbl">{t.day.concurrent}</span>
+                    {nextPeers.map((peer) => (
+                      <div key={peer.key} className="hero-equal-hd">
+                        {peer.icon && <span className="ic">{peer.icon}</span>}
+                        <span className="nm">{peer.title}</span>
+                        {peer.time && (
+                          <span className="tm" dir="auto">
+                            {peer.time}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {/* The same parts as any point: what the horizon adds to NEXT is the way
                     through and the where. It used to say "not a second printing of the code
                     the collapsed board already shows above" — ADR-0223 took the code off

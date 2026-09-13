@@ -307,6 +307,26 @@ describe('heroHorizon', () => {
       expect(heroHorizon(input({ nextAll: [n], events: [n] })).then).toBeUndefined();
     });
 
+    it('skips a peer that starts later than the primary — a stop is the whole cluster (ADR-0225 §7)', () => {
+      const s = ev('s', { startsAt: '2026-08-03T08:30:00Z', endsAt: '2026-08-03T10:00:00Z' });
+      const g = ev('g', {
+        startsAt: '2026-08-03T09:00:00Z',
+        endsAt: '2026-08-03T10:30:00Z',
+        title: 'Gljúfrabúi',
+      });
+      const cafe = ev('cafe', { startsAt: '2026-08-03T10:45:00Z', title: 'Faxi' });
+      const h = heroHorizon(input({ nextAll: [s, g], events: [s, g, cafe] }));
+      expect(h.then).toEqual({ title: 'Faxi', startsAt: '2026-08-03T10:45:00Z' });
+      expect(h.nextPeers.map((p) => p.event.id)).toEqual(['g']);
+    });
+
+    it('a stop with peers lifts even when the primary carries nothing else', () => {
+      const s = ev('s', { startsAt: '2026-08-03T08:30:00Z' });
+      const g = ev('g', { startsAt: '2026-08-03T08:30:00Z' });
+      expect(canLift(heroHorizon(input({ nextAll: [s, g], events: [s, g] })))).toBe(true);
+      expect(canLift(heroHorizon(input({ nextAll: [s], events: [s] })))).toBe(false);
+    });
+
     it('is absent when there is no next at all', () => {
       expect(heroHorizon(input({ events: [ev('a')] })).then).toBeUndefined();
     });

@@ -2004,6 +2004,9 @@ export const t = {
     // Concurrency on the board (ADR-0041): the "ועוד N עכשיו" expander for extra
     // in-progress events, and the group-split header when several run at once.
     alsoNow: (n: number) => `ועוד ${n} עכשיו`,
+    // The next STOP's other places, when there are several (ADR-0225 §6): `בו-זמנית · ועוד 2`.
+    // One peer is named instead; `ועוד 1` would hide the one thing the line exists to say.
+    peersMore: (n: number) => `ועוד ${n}`,
     concurrentNow: 'עכשיו · במקביל',
     // **The middle of a bracketed span, by mode** (ADR-0059 §2's mid-span, generalized in
     // session 215). Keyed by `CategoryTimeProfile.midSpan`, resolved through

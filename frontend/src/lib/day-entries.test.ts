@@ -7,6 +7,8 @@ import {
   placedEdgeOf,
   staysOnDate,
   type DayEntry,
+  groupStartEvent,
+  groupEndEvent,
 } from './day-entries';
 import { buildTimeTree } from './time';
 
@@ -96,6 +98,28 @@ describe('dayTransitions', () => {
     expect(arr).toHaveLength(1);
     expect(arr[0].edge).toBe('end');
     expect(arr[0].labelKey).toBe('arrival');
+  });
+});
+
+describe('groupStartEvent / groupEndEvent — a cluster has one entry and one exit (ADR-0225 §5)', () => {
+  const peer = (id: string, startsAt: string, endsAt: string, createdAt: string) =>
+    ev({ id, title: id, startsAt, endsAt, createdAt, sortOrder: 0 });
+
+  it('equal spans: the entry is the one added first and the exit the one added last', () => {
+    const s = peer('s', '2026-08-03T08:30:00Z', '2026-08-03T10:00:00Z', '2026-08-01T00:00:01Z');
+    const g = peer('g', '2026-08-03T08:30:00Z', '2026-08-03T10:00:00Z', '2026-08-01T00:00:02Z');
+    const [group] = buildTimeTree([g, s]);
+    expect(group!.kind).toBe('cluster');
+    expect(groupStartEvent(group!).id).toBe('s');
+    expect(groupEndEvent(group!).id).toBe('g');
+  });
+
+  it('partial overlap: the entry starts first and the exit ends last', () => {
+    const s = peer('s', '2026-08-03T08:30:00Z', '2026-08-03T10:00:00Z', '2026-08-01T00:00:02Z');
+    const g = peer('g', '2026-08-03T09:00:00Z', '2026-08-03T10:30:00Z', '2026-08-01T00:00:01Z');
+    const [group] = buildTimeTree([s, g]);
+    expect(groupStartEvent(group!).id).toBe('s');
+    expect(groupEndEvent(group!).id).toBe('g');
   });
 });
 

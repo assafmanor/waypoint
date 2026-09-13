@@ -333,22 +333,91 @@ function nowEndOf(event: Pick<TripEvent, 'startsAt' | 'endsAt' | 'category'>): n
     : start + typicalMinutesFor(event.category) * MS_PER_MINUTE;
 }
 
+/**
+ * **The one order for the members of a cluster** (ADR-0225 §1) — hard first (the anchor,
+ * ADR-0011), then start, then the user's own `sortOrder`, then `createdAt`, then `id`.
+ *
+ * It exists because four consumers of ADR-0041's cluster each broke the tie their own way:
+ * `buildTimeTree` by storage order, `buildDayStopSequence` alphabetically, `byPrimaryNow` by
+ * storage order and `nextDestination` by first-in-array. Every new event carries
+ * `sortOrder: 0`, so on a real day the TAIL was the whole decision — and the map numbered one
+ * waterfall first while the day listed the other. `createdAt` is the tail because "the one you
+ * added first" is an order a person can reconstruct; alphabetical over mixed Hebrew and Latin
+ * names is not, and storage order is not promised to agree between two devices.
+ */
+export function byPeer(a: TripEvent, b: TripEvent): number {
+  const hard = (e: TripEvent) => (e.kind === EVENT_KIND.HARD ? 0 : 1);
+  if (hard(a) !== hard(b)) return hard(a) - hard(b);
+  const startOf = (e: TripEvent) => (e.startsAt ? Date.parse(e.startsAt) : 0);
+  if (startOf(a) !== startOf(b)) return startOf(a) - startOf(b);
+  if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+  const created = (e: TripEvent) => e.createdAt ?? '';
+  if (created(a) !== created(b)) return created(a) < created(b) ? -1 : 1;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/** **The peer a stop is entered through** — the one that starts first, ties by `byPeer`
+ *  (ADR-0225 §5). The day's journey row measures INTO it, the map's route arrives at it and
+ *  the hero's leg is timed to it; it is the first card under the brace. */
+export function peerEntry(peers: readonly TripEvent[]): TripEvent {
+  return [...peers].sort(
+    (a, b) => Date.parse(a.startsAt!) - Date.parse(b.startsAt!) || byPeer(a, b),
+  )[0]!;
+}
+
+/** **The peer a stop is left from** — the one that ends last, ties by `byPeer` reversed, so
+ *  that with equal spans the entry and the exit are two different peers and the brace reads
+ *  top to bottom the way the route runs (ADR-0225 §5). */
+export function peerExit(peers: readonly TripEvent[]): TripEvent {
+  const endOf = (e: TripEvent) => Date.parse(e.endsAt ?? e.startsAt!);
+  return [...peers].sort((a, b) => endOf(b) - endOf(a) || byPeer(b, a))[0]!;
+}
+
+/**
+ * **Everything that shares a stop with `seed`** — the overlap-connected component around it,
+ * over `pool`'s timed events, in `byPeer` order (ADR-0225 §7). The same overlap rule
+ * `buildTimeTree` clusters with (`spansOverlap`: touching is not overlap), so the hero's
+ * `nextAll` and the day's brace cannot disagree about who is in the stop.
+ */
+export function clusterAround(seed: TripEvent, pool: readonly TripEvent[]): TripEvent[] {
+  const timed = pool.filter((e) => e.startsAt);
+  const members = new Set<TripEvent>([seed]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const e of timed) {
+      if (members.has(e)) continue;
+      if ([...members].some((m) => spansOverlap(spanOf(m), spanOf(e)))) {
+        members.add(e);
+        grew = true;
+      }
+    }
+  }
+  return [...members].sort(byPeer);
+}
+
 /** Orders concurrent events so the "loudest" is first: a hard commitment beats a
  *  soft plan; then the one ending soonest (most urgent to leave); then the
- *  earliest start; then sortOrder. Drives which event owns the board hero. */
+ *  earliest start; then `byPeer`'s tail (ADR-0225 §1). Drives which event owns the board hero. */
 function byPrimaryNow(a: TripEvent, b: TripEvent): number {
   const hard = (e: TripEvent) => (e.kind === EVENT_KIND.HARD ? 0 : 1);
   if (hard(a) !== hard(b)) return hard(a) - hard(b);
   if (nowEndOf(a) !== nowEndOf(b)) return nowEndOf(a) - nowEndOf(b);
   const startOf = (e: TripEvent) => Date.parse(e.startsAt!);
   if (startOf(a) !== startOf(b)) return startOf(a) - startOf(b);
-  return a.sortOrder - b.sortOrder;
+  return byPeer(a, b);
 }
 
 /** The events in progress (start ≤ now < end) and the next upcoming ones. Returns
  *  the full concurrent sets (nowAll/nextAll) plus their primaries (now/next) so
- *  the board can show one hero + "ועוד N". Derived from the clock, never stored
- *  (ADR-0018). */
+ *  the board can show one hero + its peers. Derived from the clock, never stored
+ *  (ADR-0018).
+ *
+ *  **`nextAll` is the STOP, not the instant** (ADR-0225 §7). It used to be "everything sharing
+ *  the earliest upcoming start", while ADR-0041's brace is "everything that overlaps" — so for
+ *  `08:30–10:00` beside `09:00–10:30` the day braced the pair and the lifted hero printed the
+ *  second as `אחר כך`. It is now the overlap-connected cluster around the earliest upcoming
+ *  start (`clusterAround`, the tree's own rule), primary-first. */
 export function deriveNow(events: TripEvent[], at: Date): NowNext {
   const t = at.getTime();
   const timed = events.filter((e) => e.startsAt && e.status === EVENT_STATUS.PLANNED);
@@ -360,12 +429,8 @@ export function deriveNow(events: TripEvent[], at: Date): NowNext {
     .sort(byPrimaryNow);
   const future = timed
     .filter((e) => Date.parse(e.startsAt!) > t)
-    .sort((a, b) => Date.parse(a.startsAt!) - Date.parse(b.startsAt!));
-  const nextStart = future.length ? Date.parse(future[0].startsAt!) : undefined;
-  const nextAll =
-    nextStart === undefined
-      ? []
-      : future.filter((e) => Date.parse(e.startsAt!) === nextStart).sort(byPrimaryNow);
+    .sort((a, b) => Date.parse(a.startsAt!) - Date.parse(b.startsAt!) || byPeer(a, b));
+  const nextAll = future.length ? clusterAround(future[0]!, future).sort(byPrimaryNow) : [];
   return { now: nowAll[0], next: nextAll[0], nowAll, nextAll };
 }
 
@@ -743,8 +808,12 @@ export function buildTimeTree(events: TripEvent[]): TimeGroup[] {
   // Lay out one sibling set: cluster the partial overlaps (union-find over the
   // overlap graph), then emit groups in start order. Recurses into each item.
   const layout = (siblings: TripEvent[]): TimeGroup[] => {
+    // Start, then `byPeer` (ADR-0225 §1) — the same tail the map's sequence and the hero's
+    // primary end in, so two peers with equal spans read in one order on every surface. This
+    // ended in `sortOrder` alone, and two events both carrying the default `0` fell through to
+    // the order the API happened to return them in.
     const ordered = [...siblings].sort(
-      (a, b) => span.get(a.id)!.start - span.get(b.id)!.start || a.sortOrder - b.sortOrder,
+      (a, b) => span.get(a.id)!.start - span.get(b.id)!.start || byPeer(a, b),
     );
     const root = ordered.map((_, i) => i);
     const find = (i: number): number => (root[i] === i ? i : (root[i] = find(root[i])));

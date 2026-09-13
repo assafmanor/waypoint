@@ -387,6 +387,15 @@
   color: var(--on-dark-dim);
   white-space: nowrap;
 }
+/* **The next stop's peers** (ADR-0225 §6) — the equal row at a second host. The label is
+   `.hero-lbl`'s own and the row's 13px top is the part's, so the two do not stack. Measured
+   at 360: a one-peer block costs the lift 59px. */
+.hero-peers .hero-lbl {
+  margin-bottom: 0;
+}
+.hero-peers .hero-equal-hd {
+  padding-top: 8px;
+}
 /* An equal's parts sit one step in, so "this belongs to that one" reads differently
    from "this is the horizon's next point". Indent rather than a box, and this is
    level 1 of the ~2 ADR-0041 §4 caps at. */

@@ -174,6 +174,11 @@ export interface BoardNext {
    *  **It rides WITH the time it qualifies**, never on the countdown — §M's own rule, for
    *  §M's own reason: what is ambiguous is `07:00`, not `בעוד 8 שעות`. */
   day?: string;
+  /** **The other places of the same stop** (ADR-0225 §6) — the titles of `nextAll` past its
+   *  primary. The title stays one loud element; this rides the meta line in its own ink as
+   *  `בו-זמנית · <peer>`, or `בו-זמנית · ועוד N` past one, so a stop that is two places is
+   *  never printed as one. Empty is the common case. */
+  peers?: ReactNode[];
   hard?: boolean;
   /** **The gate, when it is due** (ADR-0222 §4/§5, as amended by ADR-0223 §3). It no longer
    *  INHERITS the code's slot, because the code no longer has one — it simply occupies a slot
@@ -744,6 +749,17 @@ export function Board(props: BoardProps) {
                       ADR-0211's build log removed when it refused `לילה` in the badge AND the
                       label. Where the label still reads `הבא בתור`, the day token stays. */}
                   {next.day && !tomorrowRanked && <span>{next.day}</span>}
+                  {/* The peer, in the meta line's own ink (ADR-0225 §6) — the day's word for
+                      the brace, and the name when there is one. Measured: the line does not
+                      wrap at 360 and the board does not grow. */}
+                  {next.peers && next.peers.length > 0 && (
+                    <span className="peer">
+                      {t.day.concurrent} ·{' '}
+                      {next.peers.length === 1
+                        ? next.peers[0]
+                        : t.board.peersMore(next.peers.length)}
+                    </span>
+                  )}
                   {next.shift != null && <ZoneShiftPill minutes={next.shift} className="on-dark" />}
                   {/* **The lock and the code come off at rank 1 too**, and neither is a
                       preference. The code is a measured duplication: the `הכרטיס הבא` quick

@@ -1,6 +1,6 @@
 # 2026-09-13 — Two things at one time are one stop
 
-**ADR:** [0225](../decisions/0225-two-things-at-one-time-are-one-stop.md) (Proposed — awaiting the owner's answers below)
+**ADR:** [0225](../decisions/0225-two-things-at-one-time-are-one-stop.md) (Accepted and built the same session — the owner answered the forks with _"Let's build this"_, every recommendation standing)
 **Mockup:** [`mockups/two-things-at-one-time-are-one-stop-v1.html`](../../mockups/two-things-at-one-time-are-one-stop-v1.html)
 
 ## The ask
@@ -32,3 +32,13 @@ Four screenshots of one Iceland morning — Seljalandsfoss and Gljúfrabúi both
 
 - Nearest-peer-first as the entry rule when neither `sortOrder` nor time says anything (ADR §5, kept as a later refinement).
 - Whether the map's stop traversal (0182) framing both peers in one step reads right on a device.
+
+## The build, same session
+
+Owner, on the mockup: _"Let's build this"_. Twenty files, all under `frontend/src`; the ADR's §10 carries the log. Three things worth keeping here rather than there:
+
+- **The map's clusters are read off `buildTimeTree`, not re-derived.** The first instinct was a union-find over the stops' spans inside `buildDayStopSequence`, which is the tree's own algorithm written a second time (rule 8). The stops' events go through the tree and a walk collects cluster membership at every depth; only a start-edge moment can be a peer.
+- **`Home` hands the horizon the whole cluster only when `shownNext` is `deriveNow`'s next.** The board sometimes shows a check-out in that slot (ADR-0224), and a stay's edge has no peers; passing `nextAll` unconditionally would have listed tomorrow's first stop's peers under a check-out.
+- **The `HeroLift` test file cleans up per `describe`**, not globally — a new describe that forgets `afterEach(cleanup)` inherits the previous test's portal and every count assertion in the file after it goes wrong by exactly one render. Found by the count, not by the failing test.
+
+Verification: frontend 304 files / 5,555 unit tests green; `tsc` and `vite build` clean; the map, hero and day e2e specs run locally before the push (numbers in the PR).

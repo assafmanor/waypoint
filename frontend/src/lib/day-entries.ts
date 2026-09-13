@@ -19,7 +19,7 @@ import {
 } from '@waypoint/shared';
 import { bookingTransitionsOnDate, type BookingTransition } from './glance';
 import { broughtInOvernight } from './place-usage';
-import type { TimeGroup, TimeItem } from './time';
+import { peerEntry, peerExit, type TimeGroup, type TimeItem } from './time';
 
 /** The events a group holds — one, or a cluster's several (ADR-0041). */
 export const groupMembers = (g: TimeGroup): TimeItem[] =>
@@ -29,11 +29,17 @@ const endMsOf = (e: TripEvent) => Date.parse(e.endsAt ?? e.startsAt!);
 /** The member a group STARTS with, and the one it ENDS with — which is what anything
  *  measuring the space between two groups has to ask (a gap, a connection). Written
  *  once in `PlanDay` while it was the only surface measuring that space; moved here
- *  when the Day view began measuring it too (root rule 8: generalise the one-off). */
+ *  when the Day view began measuring it too (root rule 8: generalise the one-off).
+ *
+ *  **The ties are `peerEntry`/`peerExit`'s** (ADR-0225 §5), the same rule the map's route
+ *  and the hero's leg read — so the journey row above a brace measures into the card
+ *  directly under it, and the row below measures out of the last card, on every surface.
+ *  A `reduce` keeping the FIRST on a tie answered the same peer for both ends of a stop
+ *  whose two members share a span. */
 export const groupStartEvent = (g: TimeGroup): TripEvent =>
-  groupMembers(g).reduce((a, b) => (startMsOf(b.event) < startMsOf(a.event) ? b : a)).event;
+  peerEntry(groupMembers(g).map((item) => item.event));
 export const groupEndEvent = (g: TimeGroup): TripEvent =>
-  groupMembers(g).reduce((a, b) => (endMsOf(b.event) > endMsOf(a.event) ? b : a)).event;
+  peerExit(groupMembers(g).map((item) => item.event));
 
 export type DayEntry =
   | { kind: 'event'; group: TimeGroup; atMs: number }

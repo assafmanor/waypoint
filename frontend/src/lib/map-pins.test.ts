@@ -1671,6 +1671,76 @@ describe('buildDayStopSequence — the day in order, which is what you step thro
   const ids = (stops: DayStop[]) => stops.map((s) => s.usage.placeId);
   const orders = (stops: DayStop[]) => stops.map((s) => s.order);
 
+  // ── TWO THINGS AT ONE TIME ARE ONE STOP (ADR-0225 §2, §5) ───────────────────────────────
+  describe('two overlapping events are one stop', () => {
+    const eventsById = (all: TripEvent[]) => (id: string) => all.find((e) => e.id === id);
+    const day = (g: Partial<TripEvent> = {}, s: Partial<TripEvent> = {}) => {
+      const events = [
+        event({ id: 'first', placeId: 'hotel', startsAt: at2('07:30') }),
+        // `glj` sorts before `selj` alphabetically and was added SECOND — the case the map got
+        // backwards while the day list had it right.
+        event({
+          id: 'g',
+          placeId: 'glj',
+          startsAt: at2('08:30'),
+          endsAt: at2('10:00'),
+          sortOrder: 0,
+          createdAt: at2('00:02'),
+          ...g,
+        }),
+        event({
+          id: 's',
+          placeId: 'selj',
+          startsAt: at2('08:30'),
+          endsAt: at2('10:00'),
+          sortOrder: 0,
+          createdAt: at2('00:01'),
+          ...s,
+        }),
+        event({ id: 'cafe', placeId: 'faxi', startsAt: at2('10:45'), endsAt: at2('11:30') }),
+      ];
+      const all = [
+        ...usages({
+          places: [place('hotel'), place('glj'), place('selj'), place('faxi')],
+          events,
+        }).values(),
+      ];
+      return buildDayStopSequence(all, { nameOf, onDate: DAY, eventById: eventsById(events) });
+    };
+
+    it("peers share the stop's number, the stop after them counts once more, and the entry is the one added first", () => {
+      const stops = day();
+      expect(ids(stops)).toEqual(['hotel', 'selj', 'glj', 'faxi']);
+      expect(orders(stops)).toEqual([1, 2, 2, 3]);
+      expect(stops[1]!.peerKey).toBeDefined();
+      expect(stops[1]!.peerKey).toBe(stops[2]!.peerKey);
+      expect(stops[0]!.peerKey).toBeUndefined();
+      expect(stops[3]!.peerKey).toBeUndefined();
+    });
+
+    it('partial overlap: the entry starts first and the exit ends last, whatever was added when', () => {
+      const stops = day({ startsAt: at2('09:00'), endsAt: at2('10:30'), createdAt: at2('00:00') });
+      expect(ids(stops)).toEqual(['hotel', 'selj', 'glj', 'faxi']);
+      expect(orders(stops)).toEqual([1, 2, 2, 3]);
+    });
+
+    it('the amber leg into the second peer is the leg into the STOP, never the tether', () => {
+      const route = day();
+      expect(amberLegIndex(route, { nextStopPlaceId: 'glj' })).toBe(0);
+      expect(amberLegIndex(route, { nextStopPlaceId: 'selj' })).toBe(0);
+      expect(amberLegIndex(route, { selectedPlaceId: 'faxi' })).toBe(2);
+    });
+
+    it('without an event resolver nothing clusters, as before', () => {
+      const events = [
+        event({ id: 'g', placeId: 'glj', startsAt: at2('08:30'), endsAt: at2('10:00') }),
+        event({ id: 's', placeId: 'selj', startsAt: at2('08:30'), endsAt: at2('10:00') }),
+      ];
+      const all = [...usages({ places: [place('glj'), place('selj')], events }).values()];
+      expect(orders(buildDayStopSequence(all, { nameOf, onDate: DAY }))).toEqual([1, 2]);
+    });
+  });
+
   it('is the day in clock order, numbered 1..n over the moments it knows', () => {
     const all = [
       ...usages({
