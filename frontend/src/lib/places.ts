@@ -57,6 +57,8 @@ export {
 import { ltrIsolate } from './bidi';
 import type { PlaceLabels } from './place-label';
 import {
+  byPeer,
+  clusterAround,
   deriveNow,
   eventPhase,
   isCalendarDay,
@@ -1118,6 +1120,10 @@ export interface NextDestination {
   place: Place;
   /** Directions deep-link — resolved here, so it is never null for a result. */
   url: string;
+  /** **The other places of the same stop** (ADR-0225 §4) — every mappable member of the
+   *  ADR-0041 cluster around `event`, in `byPeer` order. The canvas rings all of them and
+   *  prints the word on `place` alone, which is the peer the stop is entered through. */
+  peers: { event: TripEvent; place: Place }[];
 }
 
 /**
@@ -1143,19 +1149,27 @@ export function nextDestination(
   nowMs: number,
 ): NextDestination | undefined {
   const at = new Date(nowMs);
-  let best: NextDestination | undefined;
-  let bestStart = Infinity;
-  for (const event of events) {
-    if (!event.startsAt) continue;
-    if (eventPhase(event, at) !== 'upcoming') continue;
-    const start = Date.parse(event.startsAt);
-    if (start >= bestStart) continue;
+  const placeOf = (event: TripEvent) => {
     const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
-    const place = places.find((p) => p.id === eventPlaceId(event, booking));
+    return places.find((p) => p.id === eventPlaceId(event, booking));
+  };
+  // Earliest start first, ties by `byPeer` (ADR-0225 §1) — this took the FIRST of two equal
+  // starts in array order, a fourth tie-break beside the day's, the map's and the hero's.
+  const upcoming = events
+    .filter((event) => event.startsAt && eventPhase(event, at) === 'upcoming')
+    .sort((a, b) => Date.parse(a.startsAt!) - Date.parse(b.startsAt!) || byPeer(a, b));
+  for (const event of upcoming) {
+    const place = placeOf(event);
     const url = place && mapsDirectionsUrl(place);
     if (!place || !url) continue;
-    best = { event, place, url };
-    bestStart = start;
+    // The rest of the stop this event is one member of (ADR-0225 §4), each with its place.
+    const peers = clusterAround(event, upcoming)
+      .filter((peer) => peer !== event)
+      .flatMap((peer) => {
+        const peerPlace = placeOf(peer);
+        return peerPlace && peerPlace.id !== place.id ? [{ event: peer, place: peerPlace }] : [];
+      });
+    return { event, place, url, peers };
   }
-  return best;
+  return undefined;
 }

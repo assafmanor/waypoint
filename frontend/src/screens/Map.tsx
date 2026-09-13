@@ -1112,10 +1112,19 @@ export function MapView() {
   // time-anchor cue the map's colour budget allows (ADR-0109 §6) — an amber tag on
   // one row, and the SAME cue as an outline on one pin (ADR-0121 §6). Only in Trip
   // mode: a live "next" says nothing while you're planning.
-  const nextStopId = useMemo(() => {
+  //
+  // **A stop can be several places** (ADR-0225 §4): `nextStopId` is the peer the stop is
+  // entered through and carries the WORD; `nextStopIds` is every place of the stop and carries
+  // the ring. One amber cue on one stop — the population the budget counts is stops.
+  const nextStop = useMemo(() => {
     if (mode !== 'trip') return undefined;
-    return nextDestination(events, bookings, places, nowMs)?.place.id;
+    return nextDestination(events, bookings, places, nowMs);
   }, [mode, events, bookings, places, nowMs]);
+  const nextStopId = nextStop?.place.id;
+  const nextStopIds = useMemo(
+    () => new Set([nextStopId, ...(nextStop?.peers.map((peer) => peer.place.id) ?? [])]),
+    [nextStopId, nextStop],
+  );
 
   // Where you ARE — the second time-anchor, and the one the tab was missing. Read
   // off `currentDestination`, which asks `deriveNow`: the board's own resolver, so
@@ -1254,7 +1263,7 @@ export function MapView() {
       const tier = pinTier(usage);
       // Hoisted out of the object because the phase word reads them too: an amber pin's
       // word survives the day scope where every other pin's does not (see `transition`).
-      const isNext = nextStopId === usage.placeId && !isAsidePin(tier);
+      const isNext = nextStopIds.has(usage.placeId) && !isAsidePin(tier);
       const isNow = nowStopId === usage.placeId && !isAsidePin(tier);
       // Hoisted for the same reason those two are: the object below reads it once, and a ghost
       // (which draws no fill) has to be able to opt out without asking the resolver twice.
@@ -1297,6 +1306,8 @@ export function MapView() {
         // whole distinction, and writing it as one query-aware predicate would have
         // changed five behaviours silently, two of them wrongly.
         nextStop: isNext,
+        // A peer of the next stop wears the ring and not the word (ADR-0225 §4).
+        nextPeer: isNext && nextStopId !== usage.placeId,
         nowStop: isNow,
         // WHICH TRANSITION IS NEXT HERE (ADR-0141) — the word the row's own meta line
         // already leads with, so `צ׳ק-אאוט` stops being something only the list knows.
@@ -1351,6 +1362,7 @@ export function MapView() {
         // while the tab is open changes the tag and nothing else about the pin.
         p.transition,
         p.nextStop,
+        p.nextPeer,
         p.nowStop,
         p.selected,
       ].join('|'),
@@ -1558,15 +1570,31 @@ export function MapView() {
   // dimmed and a Plan day reads as one even set.
   const dayLegs = useMemo<MapDayLeg[]>(() => {
     const legs: MapDayLeg[] = [];
+    // **No leg inside a stop** (ADR-0225 §3). Two consecutive stops that are peers of one
+    // cluster are one place you are at, not a journey: the day has no join between them
+    // (`dayBlocks`), so there is no duration to give a leg and no amber to spend on it. The
+    // pane is handed a TETHER instead — a short neutral dash that says only "one stop".
+    const isTether = (i: number) => {
+      const a = orderedRoute[i]?.stop.peerKey;
+      return a != null && a === orderedRoute[i + 1]?.stop.peerKey;
+    };
+    // `near` is the leg departing the amber one's stop (§AC2) — the first real leg after it,
+    // which is not the tether when the stop has two places.
+    let nearLeg = amberLeg + 1;
+    while (amberLeg >= 0 && isTether(nearLeg)) nearLeg += 1;
     for (let i = 0; i + 1 < orderedStops.length; i++) {
       const from = orderedStops[i]!;
       const to = orderedStops[i + 1]!;
+      if (isTether(i)) {
+        legs.push({ path: [from, to], from, to, tether: true });
+        continue;
+      }
       const emphasis =
         amberLeg < 0
           ? undefined
           : i === amberLeg
             ? ('route' as const)
-            : i === amberLeg + 1
+            : i === nearLeg
               ? ('near' as const)
               : ('dim' as const);
       // **A DECLARED leg draws its own straight segment, never the road route** (ADR-0206 §AA4's
@@ -1597,13 +1625,15 @@ export function MapView() {
       });
     }
     return legs;
-  }, [orderedStops, dayShapes, amberLeg, legModes, travelMode]);
+  }, [orderedStops, orderedRoute, dayShapes, amberLeg, legModes, travelMode]);
 
   // The dashed ORDER is Plan mode + day scope only (ADR-0121 §10); the one amber leg draws in
   // either mode, because it answers "where is next" rather than "what shape is this day"
-  // (ADR-0206 §AB1). So Trip mode is handed that leg alone.
+  // (ADR-0206 §AB1). So Trip mode is handed that leg alone — plus the tethers (ADR-0225 §3),
+  // which say which pins are one stop, a fact both modes' numbers already assert.
   const paneLegs = useMemo(
-    () => (dayShapeVisible ? dayLegs : dayLegs.filter((leg) => leg.emphasis === 'route')),
+    () =>
+      dayShapeVisible ? dayLegs : dayLegs.filter((leg) => leg.emphasis === 'route' || leg.tether),
     [dayShapeVisible, dayLegs],
   );
 

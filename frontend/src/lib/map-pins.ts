@@ -9,6 +9,7 @@
 // Day view renders. That is the property the list-first investment was for — a
 // chip that changes the list changes the pins in the same pass (ADR-0110 §2).
 import { iconForCategory, isAmbient, type EventCategory, type TripEvent } from '@waypoint/shared';
+import { buildTimeTree, byPeer, peerEntry, peerExit, type TimeGroup } from './time';
 import { chosenIcon, DEFAULT_PLACE_ICON, MAP_PIN } from '../constants';
 import {
   isDayUsagePast,
@@ -311,6 +312,10 @@ export interface DayStop {
   day: DayUsage;
   moment: DayStopMoment;
   order?: number;
+  /** **The stop this is one member of** (ADR-0225 §2) — set on every peer of an ADR-0041
+   *  cluster, keyed by the cluster's first member. Peers share `order` and the route draws no
+   *  leg between them: a stop you are at once is one stop, whatever the count of places. */
+  peerKey?: string;
   /** **The tail** (ADR-0182 §2): on the day, but with no schedule slot to hold a position —
    *  an idea pencilled in with no event. It is traversable and it is never numbered. */
   tail?: true;
@@ -335,6 +340,67 @@ export interface DayStopContext {
 
 /** A stop before it is numbered: a place, the day it sits on, and one of that day's moments. */
 type DayStopEntry = { usage: PlaceUsage; day: DayUsage; moment: DayStopMoment };
+
+/**
+ * **Which stops are peers of one stop** (ADR-0225 §2): a stop's cluster key, for every stop whose
+ * start-edge moment belongs to an ADR-0041 cluster on this day. Read off `buildTimeTree` over the
+ * stops' own events — the day's brace and the map's number cannot then disagree about who shares
+ * a stop. Nested clusters count too (a beach day holding two things that clash), because a peer
+ * is a peer at whatever depth; an ambient stay is left out, as it is everywhere on this canvas.
+ * Empty without an event resolver, which is every surface that numbers moments as before.
+ */
+function peerKeysOf(
+  stops: readonly DayStopEntry[],
+  eventById: DayStopContext['eventById'],
+): Map<DayStopEntry, string> {
+  const out = new Map<DayStopEntry, string>();
+  if (!eventById) return out;
+  const candidates = stops.filter(
+    (stop) => stop.moment.edge !== 'end' && stop.moment.eventId && stop.moment.at != null,
+  );
+  const events = new Map<string, TripEvent>();
+  for (const stop of candidates) {
+    const event = eventById(stop.moment.eventId!);
+    if (event && !isAmbient(event)) events.set(event.id, event);
+  }
+  const keyByEvent = new Map<string, string>();
+  const walk = (groups: TimeGroup[]) => {
+    for (const g of groups) {
+      if (g.kind === 'cluster') {
+        const key = g.items[0]!.event.id;
+        for (const item of g.items) {
+          keyByEvent.set(item.event.id, key);
+          walk(item.children);
+        }
+      } else walk(g.item.children);
+    }
+  };
+  walk(buildTimeTree([...events.values()]));
+  for (const stop of candidates) {
+    const key = keyByEvent.get(stop.moment.eventId!);
+    if (key) out.set(stop, key);
+  }
+  return out;
+}
+
+/** **The peers in the order the route runs through the stop** (ADR-0225 §5): the entry first,
+ *  the exit last, the rest by `byPeer` between them. With two peers of equal span that is
+ *  "the one you added first, then the other" — and it is the order the day's brace lists them. */
+function orderPeers(
+  peers: readonly DayStopEntry[],
+  eventById: NonNullable<DayStopContext['eventById']>,
+): DayStopEntry[] {
+  const eventOf = (stop: DayStopEntry) => eventById(stop.moment.eventId!)!;
+  const events = peers.map(eventOf);
+  const entry = peerEntry(events);
+  const exit = peerExit(events);
+  const head = peers.find((stop) => eventOf(stop) === entry)!;
+  const tail = peers.find((stop) => eventOf(stop) === exit)!;
+  const rest = peers
+    .filter((stop) => stop !== head && stop !== tail)
+    .sort((a, b) => byPeer(eventOf(a), eventOf(b)));
+  return head === tail ? [head, ...rest] : [head, ...rest, tail];
+}
 
 /**
  * **Which ends of `date` a stay bookends**, or `undefined` when this day is not a night of
@@ -530,6 +596,34 @@ export function buildDayStopSequence(
     ...middle.filter((s) => !early(s)),
     ...last,
   ];
+  // ── TWO THINGS AT ONE TIME ARE ONE STOP (ADR-0225 §2, §5) ─────────────────────────────
+  // Two events that overlap are ONE cluster on the day (ADR-0041), and this sequence used to
+  // number them 1 and 2 and hand the route a leg between them — a drive the day list never
+  // had. The peers now sit together at the slot of whichever came first, ordered the way the
+  // route runs through the stop (entry first, exit last, `peerEntry`/`peerExit`, the same
+  // rule the day's journey rows measure by), and the numbering below counts the stop once.
+  //
+  // The clusters are the DAY'S OWN — `buildTimeTree` over the stops' events, read rather than
+  // re-derived (rule 8) — and only a start-edge moment can be a peer: a same-day hire's
+  // return is a second visit to the counter, not a second place you are at during the pickup.
+  const peerKeyOf = peerKeysOf(bookended, eventById);
+  const grouped: DayStopEntry[] = [];
+  const placedKeys = new Set<string>();
+  for (const stop of bookended) {
+    const key = peerKeyOf.get(stop);
+    if (!key) {
+      grouped.push(stop);
+      continue;
+    }
+    if (placedKeys.has(key)) continue;
+    placedKeys.add(key);
+    grouped.push(
+      ...orderPeers(
+        bookended.filter((s) => peerKeyOf.get(s) === key),
+        eventById!,
+      ),
+    );
+  }
   // **A NUMBER IS ONLY EVER THE INDEX OF A MOMENT THE APP KNOWS** (ADR-0171 §10b). A
   // number asserts "this is the Nth place you were at", and a floor, a ceiling and a row
   // with no clock cannot back that up: "from 15:00" is any hour after, and numbering a
@@ -537,11 +631,22 @@ export function buildDayStopSequence(
   // Tel Aviv. The unknown ones keep their place in the list and lose the mark — so the
   // known stops still count 1, 2, 3 with no hole, unlike a filter's informative gaps,
   // because nothing is hidden here to hint at.
+  //
+  // **And a stop is counted once** (ADR-0225 §2): every peer wears the stop's number, because
+  // both places ARE the N-th stop of the day.
   let counted = 0;
-  const sequence: DayStop[] = bookended.map((stop) => ({
-    ...stop,
-    order: knowsMoment(stop.moment, eventById) ? ++counted : undefined,
-  }));
+  const numberOfStop = new Map<string, number>();
+  const sequence: DayStop[] = grouped.map((stop) => {
+    const key = peerKeyOf.get(stop);
+    let order: number | undefined;
+    if (knowsMoment(stop.moment, eventById)) {
+      if (key) {
+        if (!numberOfStop.has(key)) numberOfStop.set(key, ++counted);
+        order = numberOfStop.get(key);
+      } else order = ++counted;
+    }
+    return { ...stop, order, ...(key ? { peerKey: key } : {}) };
+  });
   // **THE TAIL** (ADR-0182 §2). `hasScheduleSlot` above wants `prominence === 'edge'` AND an
   // `eventId`, so an idea pencilled to this day with no event never entered the sequence at
   // all — while the list shows it, because the list asks the much wider `inDayScope`. That
@@ -633,8 +738,13 @@ export function amberLegIndex(
 ): number {
   if (route.length < 2) return -1;
   const askedPlaceId = ctx.selectedPlaceId ?? ctx.transitPlaceId ?? ctx.nextStopPlaceId;
-  const asked = askedPlaceId ? stopIndexOf(route, askedPlaceId, ctx) : -1;
+  let asked = askedPlaceId ? stopIndexOf(route, askedPlaceId, ctx) : -1;
   if (asked < 0) return -1;
+  // **The leg INTO a stop arrives at its entry peer** (ADR-0225 §3/§5): asking about the
+  // second place of a two-place stop must not spend the amber on the tether between them,
+  // which is not a journey at all.
+  while (asked > 0 && route[asked]!.peerKey && route[asked - 1]!.peerKey === route[asked]!.peerKey)
+    asked -= 1;
   // The day's first stop is the one place with no leg arriving at it, so it takes the leg
   // departing it instead. Leg `i` runs from stop `i` to stop `i + 1`.
   return Math.max(asked, 1) - 1;

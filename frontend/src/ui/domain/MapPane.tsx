@@ -306,8 +306,12 @@ export interface MapPin {
    *  and — unless the pin is one of the two amber cues — outside a day scope, which is
    *  the screen's call for the reason `order` is (see `Map.tsx`). */
   transition?: string;
-  /** The single amber time-anchor the canvas allows — Trip mode, exactly one pin. */
+  /** The single amber time-anchor the canvas allows — Trip mode, exactly one STOP. A stop can
+   *  be several places (ADR-0225 §4): every peer wears the ring, and `nextPeer` says which of
+   *  them do not also carry the word. */
   nextStop?: boolean;
+  /** A peer of the next stop that is not the one you enter it through: ring, no word. */
+  nextPeer?: boolean;
   /** You are here, right now. The canvas's second amber cue, and the only animated
    *  thing on it: `nextStop` waits still, this one pulses (ADR-0109's 2026-07-27
    *  amendment). Mutually exclusive with `nextStop` — an event is `now` or
@@ -1201,7 +1205,7 @@ const PinMarker = memo(function PinMarker({
   // reservation has. `nowStop`/`nextStop` then decide the tag's HUE rather than its words.
   const tagText =
     pin.transition ??
-    (pin.nowStop ? t.map.happeningNow : pin.nextStop ? t.map.nextStop : undefined);
+    (pin.nowStop ? t.map.happeningNow : pin.nextStop && !pin.nextPeer ? t.map.nextStop : undefined);
   // The mark is silent, so the outcome joins the NAME — `שם · היינו`, the app's own
   // separator. Built here rather than folded into the screen's `label` so the words and
   // the shape they stand in for are written in one place.
@@ -1210,7 +1214,11 @@ const PinMarker = memo(function PinMarker({
   // carried visually by the leading dot and the pulse — so the name composes it back in
   // words, and nothing that used to be readable is now only visible (ADR-0141 §6, the
   // same three-carriers arrangement ADR-0137 §3 made for the outcome).
-  const cue = pin.nowStop ? t.map.happeningNow : pin.nextStop ? t.map.nextStop : undefined;
+  const cue = pin.nowStop
+    ? t.map.happeningNow
+    : pin.nextStop && !pin.nextPeer
+      ? t.map.nextStop
+      : undefined;
   const name = [
     pin.label,
     pin.transition ? cue : undefined,
@@ -1391,6 +1399,10 @@ const ROUTE = { layer: 'wp-route-line' } as const;
  *  LAYOUT/paint properties MapLibre cannot switch per feature with a data expression. */
 const TRANSIT = { layer: 'wp-route-transit' } as const;
 
+/** The tether between two peers of one stop (ADR-0225 §3) — its own layer for the same reason
+ *  the unrouted leg has one: a different dash and weight, which are not per-feature paint. */
+const TETHER = { layer: 'wp-route-tether' } as const;
+
 /** The stubs and the end dots. **The stubs share the LINE source** — they are one more kind of
  *  line, split off by `filter` rather than by a parallel copy of the data (rule 8). The dots
  *  cannot: a `circle` layer needs a point source, and that is the honest cost ADR-0206 §AC3
@@ -1402,6 +1414,7 @@ const DOT = { source: 'wp-connector-dot', layer: 'wp-connector-dot-circle' } as 
  *  the background for, the end dots over both. Read by `layer()` for its `beforeId` and by the
  *  teardown for what to take away. */
 const PAINT_ORDER: readonly string[] = [
+  TETHER.layer,
   CONNECTOR.layer,
   STUB.layer,
   ROUTE.layer,
@@ -1432,6 +1445,10 @@ export interface MapDayLeg {
    *  Drawn in the route's amber at the route's weight with a long dash and butt caps, which is
    *  three channels away from the un-routed connector — the one thing it could be mistaken for. */
   unrouted?: boolean;
+  /** **Not a leg at all** (ADR-0225 §3): the short dash between two places that are one stop.
+   *  Neutral, thin, no duration, no end dots and no stub — it asserts nothing about a path,
+   *  only that the two pins share a number for a reason. Drawn in both modes. */
+  tether?: boolean;
 }
 
 const KIND = { leg: 'leg', stub: 'stub' } as const;
@@ -1447,6 +1464,7 @@ const legsKey = (legs?: readonly MapDayLeg[]): string =>
           lngLat(leg.to),
           leg.emphasis ?? '',
           leg.unrouted ? 'u' : '',
+          leg.tether ? 't' : '',
         ]),
       )
     : '';
@@ -1567,6 +1585,14 @@ const DayConnector = memo(function DayConnector({
           MAP_CONNECTOR.COLLAR_PX,
         );
         const coords = trimmed.map(back);
+        // A tether is a line and nothing else (ADR-0225 §3): no end dots, no stub — those say
+        // "a journey ends here", and nothing ends inside a stop.
+        if (leg.tether) {
+          lines.push(
+            feature({ type: 'LineString', coordinates: coords }, { kind: KIND.leg, tether: 1 }),
+          );
+          return;
+        }
         lines.push(
           feature(
             { type: 'LineString', coordinates: coords },
@@ -1614,21 +1640,23 @@ const DayConnector = memo(function DayConnector({
 
     const draw = () => {
       const data = build();
+      type LegProps = { kind?: string; emphasis?: string; unrouted?: number; tether?: number };
+      const props = (f: object) => (f as { properties: LegProps }).properties;
       const has = (kind: string, route: boolean) =>
         data.lines.features.some((f) => {
-          const p = (f as { properties: { kind?: string; emphasis?: string; unrouted?: number } })
-            .properties;
+          const p = props(f);
           if (p.kind !== kind) return false;
           if (kind !== KIND.leg) return true;
-          // An unrouted leg belongs to neither of the other two layers, so it must not keep them
-          // mounted either — an empty layer composited every frame is work nobody asked for, which
-          // is the whole reason `layer()` is conditional.
-          return !p.unrouted && (p.emphasis === 'route') === route;
+          // An unrouted leg and a tether belong to none of the other layers, so they must not keep
+          // them mounted either — an empty layer composited every frame is work nobody asked for,
+          // which is the whole reason `layer()` is conditional.
+          return !p.unrouted && !p.tether && (p.emphasis === 'route') === route;
         });
       const hasUnrouted = data.lines.features.some(
-        (f) =>
-          (f as { properties: { kind?: string; unrouted?: number } }).properties.kind ===
-            KIND.leg && Boolean((f as { properties: { unrouted?: number } }).properties.unrouted),
+        (f) => props(f).kind === KIND.leg && Boolean(props(f).unrouted),
+      );
+      const hasTether = data.lines.features.some(
+        (f) => props(f).kind === KIND.leg && Boolean(props(f).tether),
       );
 
       // The style is torn down and rebuilt by a theme swap, so "already added" has to be asked
@@ -1664,12 +1692,34 @@ const DayConnector = memo(function DayConnector({
         } else if (!want && there) map.removeLayer(spec.id);
       };
 
+      const isTether = ['==', ['get', 'tether'], 1];
       const lines = source(CONNECTOR.source, data.lines);
+      // **The tether** (ADR-0225 §3): the connector's neutral ink at a finer dash and a lighter
+      // weight — under everything, because it is the least of the claims on this canvas.
+      layer(lines && hasTether, {
+        id: TETHER.layer,
+        type: 'line',
+        source: CONNECTOR.source,
+        filter: ['all', ['==', ['get', 'kind'], KIND.leg], isTether],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': legColor,
+          'line-width': MAP_CONNECTOR.TETHER.WEIGHT,
+          'line-opacity': MAP_CONNECTOR.TETHER.OPACITY,
+          'line-dasharray': [...MAP_CONNECTOR.TETHER.DASH],
+        },
+      });
       layer(lines && has(KIND.leg, false), {
         id: CONNECTOR.layer,
         type: 'line',
         source: CONNECTOR.source,
-        filter: ['all', ['==', ['get', 'kind'], KIND.leg], ['!', isRoute], ['!', isUnrouted]],
+        filter: [
+          'all',
+          ['==', ['get', 'kind'], KIND.leg],
+          ['!', isRoute],
+          ['!', isUnrouted],
+          ['!', isTether],
+        ],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': legColor,

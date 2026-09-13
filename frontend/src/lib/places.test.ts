@@ -339,6 +339,31 @@ describe('nextDestination (navigate-to-next, ADR-0106 §6)', () => {
     expect(result?.url).toContain('destination=35.77%2C140.39');
   });
 
+  it('answers the whole STOP: the peers of the same cluster ride along, and the entry leads (ADR-0225 §4)', () => {
+    const s = event({
+      id: 's',
+      placeId: 'pl-hotel',
+      startsAt: at('11:00'),
+      endsAt: at('12:30'),
+      sortOrder: 0,
+      createdAt: '2026-07-01T00:00:01Z',
+    });
+    const g = event({
+      id: 'g',
+      placeId: 'pl-nrt2',
+      startsAt: at('11:00'),
+      endsAt: at('12:30'),
+      sortOrder: 0,
+      createdAt: '2026-07-01T00:00:02Z',
+    });
+    const later = event({ id: 'later', placeId: 'pl-tlv2', startsAt: at('15:00') });
+    // `g` first in the array: first-in-array used to be the tie-break.
+    const result = nextDestination([g, s, later], [], PL, NOW);
+    expect(result?.event.id).toBe('s');
+    expect(result?.peers.map((peer) => peer.place.id)).toEqual(['pl-nrt2']);
+    expect(nextDestination([later], [], PL, NOW)?.peers).toEqual([]);
+  });
+
   it('resolves transport to its ORIGIN — you go to the airport you fly from', () => {
     const flight = booking({
       id: 'bk',

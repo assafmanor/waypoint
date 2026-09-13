@@ -468,6 +468,54 @@ describe('Board', () => {
   });
 });
 
+describe('Board — a stop that is two places names the second (ADR-0225 §6)', () => {
+  it('one peer is named on the meta line, in the day’s own word', () => {
+    const { container } = render(
+      <Board
+        variant="free"
+        clock="20:57"
+        next={{
+          title: <span>Seljalandsfoss</span>,
+          time: '08:30',
+          peers: [<span key="g">Gljúfrabúi</span>],
+        }}
+      />,
+    );
+    const peer = container.querySelector('.wp-board-next-meta .peer');
+    expect(peer?.textContent).toBe(`${t.day.concurrent} · Gljúfrabúi`);
+    // One loud element: the title still names only the primary.
+    expect(container.querySelector('.wp-board-next-title')?.textContent).toBe('Seljalandsfoss');
+  });
+
+  it('several peers are counted, not listed', () => {
+    const { container } = render(
+      <Board
+        variant="free"
+        clock="20:57"
+        next={{
+          title: <span>A</span>,
+          time: '08:30',
+          peers: [<span key="b">B</span>, <span key="c">C</span>],
+        }}
+      />,
+    );
+    expect(container.querySelector('.wp-board-next-meta .peer')?.textContent).toBe(
+      `${t.day.concurrent} · ${t.board.peersMore(2)}`,
+    );
+  });
+
+  it('draws nothing for a stop that is one place', () => {
+    const { container } = render(
+      <Board
+        variant="free"
+        clock="20:57"
+        next={{ title: <span>A</span>, time: '08:30', peers: [] }}
+      />,
+    );
+    expect(container.querySelector('.wp-board-next-meta .peer')).toBeNull();
+  });
+});
+
 describe('Board — the countdown swaps what it counts to (ADR-0206 §Z1)', () => {
   const board = (countdown: BoardCountdown) =>
     render(

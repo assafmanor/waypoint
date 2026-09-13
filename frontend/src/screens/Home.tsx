@@ -75,6 +75,7 @@ import {
   deriveNow,
   formatCountdown,
   formatDayMonth,
+  clockRange,
   formatTime,
   hardConflicts,
   minutesUntil,
@@ -114,6 +115,7 @@ import { canLift, heroHorizon, type HeroPoint } from '../lib/hero-horizon';
 import { BEAT, playBeat } from '../lib/one-shot';
 import {
   HeroLift,
+  type HeroLiftPeer,
   type HeroLiftPoint,
   type HeroLiftTask,
   type HeroLiftTravel,
@@ -393,7 +395,10 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     // the airport you have already left (session 215).
     midSpanEventId: transitEvent?.id,
     nowAll,
-    nextAll: shownNext ? [shownNext] : nextAll.slice(0, 0),
+    // **The whole STOP when the board shows `deriveNow`'s own next** (ADR-0225 §6/§7): the
+    // horizon lists the peers and `אחר כך` skips them. A check-out standing in for next has
+    // no peers — a stay's edge is one moment — so it goes in alone, as before.
+    nextAll: shownNext ? (shownNext === nextEvent ? nextAll : [shownNext]) : nextAll.slice(0, 0),
     // **Which END that slot is showing** (ADR-0224 §1). `nextInstant` is the event's `endsAt`
     // exactly when the board filled the slot with a check-out (see `shownNext` above), which
     // is the same test `nextZone` already makes a few lines down — asked once, read twice.
@@ -1372,6 +1377,23 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     ...boardRow(e),
     hard: e.kind === EVENT_KIND.HARD,
   }));
+  // **The next stop's other places** (ADR-0225 §6) — the horizon's `nextPeers`, in the two
+  // shapes the two elevations need: a title for the board's meta line, a titled and timed row
+  // for the lift. Derived once here so the collapsed and lifted states name the same peers.
+  const nextPeerRows: HeroLiftPeer[] = horizon.nextPeers.map((p) => {
+    const zones = eventZones(p.event, zoneCtx);
+    return {
+      key: p.event.id,
+      icon: p.event.icon,
+      title: <EventTitle event={p.event} bookings={bookings} places={places} />,
+      time: p.event.startsAt
+        ? clockRange(
+            formatTime(p.event.startsAt, zones.startZone),
+            p.event.endsAt ? formatTime(p.event.endsAt, zones.endZone) : undefined,
+          )
+        : undefined,
+    };
+  });
   const boardNext: BoardNext | null = shownNext
     ? {
         title: <EventTitle event={shownNext} bookings={bookings} places={places} />,
@@ -1391,6 +1413,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         // is what the clock beside it renders, and `todayInTz` reads it in the same zone the
         // day comparison uses.
         ...(nextDay && nextDay !== today ? { day: dayLabel(nextDay, { trip, today }) } : {}),
+        peers: nextPeerRows.map((row) => row.title),
         missed: hero.missed && shownNext === hero.event,
         hard: shownNext.kind === EVENT_KIND.HARD,
         // The gate, while it is due (ADR-0222 §4). It used to REPLACE the code in this slot;
@@ -1566,6 +1589,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           split={groupSplit}
           next={horizon.next ? liftPoint(horizon.next, 'next') : undefined}
           nextLabel={nextLabelKey ? transitionLabel(nextLabelKey) : undefined}
+          nextPeers={nextPeerRows}
           nextTime={boardNext?.time}
           {...(boardNext?.day ? { nextDay: boardNext.day } : {})}
           nextFlightNumber={nextBooking?.flightNumber}

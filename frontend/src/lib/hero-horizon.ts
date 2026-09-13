@@ -26,6 +26,7 @@ import {
 } from '@waypoint/shared';
 import type { TripEvent } from '@waypoint/shared';
 import { eventPlaceId, placeName } from './places';
+import { byPeer } from './time';
 import { notesForContext } from './notes';
 import { isOnSettledHost, isSettled, tasksForContext, type TaskClock } from './tasks';
 import { attachmentsForContext, documentsForAttachments } from './attachments';
@@ -109,6 +110,10 @@ export interface HeroHorizon {
    *  The caller slices; the shape does not care which variant it is feeding. */
   now: HeroPoint[];
   next?: HeroPoint;
+  /** **The other members of the next STOP** (ADR-0225 §6) — `nextAll` past its primary, as
+   *  points, so the lift can list them as equals the way a group-split `now` already is.
+   *  Empty is the common case. */
+  nextPeers: HeroPoint[];
   then?: HeroThen;
 }
 
@@ -195,17 +200,22 @@ function toPoint(event: TripEvent, input: HeroHorizonInput, edge: EventEdge = 's
   };
 }
 
-/** The first event starting strictly after the `next` cluster — `אחר כך`.
+/** The first event after the `next` STOP — `אחר כך`.
  *
- *  Keyed off `nextAll`'s start rather than the clock, so the third point is
- *  genuinely the one after the second and not merely "soon": several events can
- *  share the next start (ADR-0041's cluster), and all of them are `next`. */
+ *  Keyed off `nextAll` rather than the clock, so the third point is genuinely the one after
+ *  the second and not merely "soon". **And off the whole of `nextAll`, not its first start**
+ *  (ADR-0225 §7): `nextAll` is the overlap cluster, so a peer that starts later than the
+ *  primary is still part of the stop the board is showing — this used to name it as
+ *  `אחר כך` while the day braced it under `בו-זמנית`. */
 function thenAfter(input: HeroHorizonInput): HeroThen | undefined {
   const nextStart = input.nextAll[0]?.startsAt;
   if (!nextStart) return undefined;
+  const inStop = new Set(input.nextAll.map((e) => e.id));
   const after = input.events
-    .filter((e) => e.startsAt && Date.parse(e.startsAt) > Date.parse(nextStart))
-    .sort((a, b) => Date.parse(a.startsAt!) - Date.parse(b.startsAt!))[0];
+    .filter(
+      (e) => e.startsAt && !inStop.has(e.id) && Date.parse(e.startsAt) > Date.parse(nextStart),
+    )
+    .sort((a, b) => Date.parse(a.startsAt!) - Date.parse(b.startsAt!) || byPeer(a, b))[0];
   return after?.startsAt ? { title: after.title, startsAt: after.startsAt } : undefined;
 }
 
@@ -215,6 +225,7 @@ export function heroHorizon(input: HeroHorizonInput): HeroHorizon {
     next: input.nextAll[0]
       ? toPoint(input.nextAll[0], input, input.nextEdge ?? 'start')
       : undefined,
+    nextPeers: input.nextAll.slice(1).map((e) => toPoint(e, input)),
     then: thenAfter(input),
   };
 }
@@ -267,6 +278,8 @@ export function canLift(horizon: HeroHorizon): boolean {
     horizon.now.length > 1 ||
     horizon.now.some(hasDepth) ||
     (horizon.next ? hasDepth(horizon.next) : false) ||
+    // A peer is depth the collapsed board only names (ADR-0225 §6).
+    horizon.nextPeers.length > 0 ||
     !!horizon.then
   );
 }

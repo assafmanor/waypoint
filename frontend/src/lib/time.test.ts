@@ -36,6 +36,10 @@ import {
   crossesMidnightZoned,
   formatZoneDelta,
   zoneOffsetMinutes,
+  byPeer,
+  peerEntry,
+  peerExit,
+  clusterAround,
 } from './time';
 import { ltrIsolate, withoutBidiControls } from './bidi';
 import { DEMO_NOW, EVENTS, TRIP } from '../fixtures';
@@ -795,6 +799,87 @@ describe('deriveNow — concurrent now/next sets', () => {
     const { next, nextAll } = deriveNow([p, q, later], at('12:00'));
     expect(next?.id).toBe('q');
     expect(nextAll.map((e) => e.id)).toEqual(['q', 'p']);
+  });
+
+  // ── A CLUSTER IS ONE STOP (ADR-0225 §7) ─────────────────────────────────────
+  it('nextAll is the overlap cluster, not the shared start — a later-starting peer is in it', () => {
+    const first = ev('first', '08:30', '10:00');
+    const peer = ev('peer', '09:00', '10:30');
+    const after = ev('after', '10:45', '11:30');
+    const { next, nextAll } = deriveNow([first, peer, after], at('07:00'));
+    expect(next?.id).toBe('first');
+    expect(nextAll.map((e) => e.id)).toEqual(['first', 'peer']);
+  });
+
+  it('touching is not overlap: a back-to-back event is the next stop, not a peer', () => {
+    const first = ev('first', '08:30', '10:00');
+    const touching = ev('touching', '10:00', '11:00');
+    const { nextAll } = deriveNow([first, touching], at('07:00'));
+    expect(nextAll.map((e) => e.id)).toEqual(['first']);
+  });
+
+  it('a chain of overlaps is one stop', () => {
+    const a = ev('a', '08:00', '09:00');
+    const b = ev('b', '08:45', '09:45');
+    const c = ev('c', '09:30', '10:30');
+    const { nextAll } = deriveNow([a, b, c], at('07:00'));
+    expect(nextAll.map((e) => e.id).sort()).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('byPeer / peerEntry / peerExit (ADR-0225 §1, §5)', () => {
+  const iso = (hhmm: string) => `2026-08-03T${hhmm}:00Z`;
+  const ev = (id: string, start: string, end: string, over: Partial<TripEvent> = {}): TripEvent =>
+    ({
+      id,
+      tripId: 't',
+      date: '2026-08-03',
+      title: id,
+      kind: EVENT_KIND.SOFT,
+      startsAt: iso(start),
+      endsAt: iso(end),
+      status: EVENT_STATUS.PLANNED,
+      sortOrder: 0,
+      source: 'manual',
+      createdAt: iso('00:00'),
+      updatedAt: iso('00:00'),
+      updatedBy: 'u',
+      ...over,
+    }) as TripEvent;
+
+  it('equal spans with the default sortOrder fall to createdAt — the one you added first', () => {
+    const second = ev('second', '08:30', '10:00', { createdAt: iso('00:02') });
+    const first = ev('first', '08:30', '10:00', { createdAt: iso('00:01') });
+    expect([second, first].sort(byPeer).map((e) => e.id)).toEqual(['first', 'second']);
+    // …and never alphabetical: `first` < `second` here happens to agree, so flip the names.
+    const zed = ev('zed', '08:30', '10:00', { createdAt: iso('00:01') });
+    const alpha = ev('alpha', '08:30', '10:00', { createdAt: iso('00:02') });
+    expect([alpha, zed].sort(byPeer).map((e) => e.id)).toEqual(['zed', 'alpha']);
+  });
+
+  it("the user's own sortOrder outranks creation, and a hard peer outranks both", () => {
+    const early = ev('early', '08:30', '10:00', { sortOrder: 2, createdAt: iso('00:01') });
+    const late = ev('late', '08:30', '10:00', { sortOrder: 1, createdAt: iso('00:02') });
+    const hard = ev('hard', '08:30', '10:00', { kind: EVENT_KIND.HARD, sortOrder: 9 });
+    expect([early, late, hard].sort(byPeer).map((e) => e.id)).toEqual(['hard', 'late', 'early']);
+  });
+
+  it('entry is the first start and exit the last end; equal spans give two different peers', () => {
+    const s = ev('s', '08:30', '10:00', { createdAt: iso('00:01') });
+    const g = ev('g', '08:30', '10:00', { createdAt: iso('00:02') });
+    expect(peerEntry([g, s]).id).toBe('s');
+    expect(peerExit([g, s]).id).toBe('g');
+    const later = ev('later', '09:00', '10:30');
+    expect(peerEntry([later, s]).id).toBe('s');
+    expect(peerExit([s, later]).id).toBe('later');
+  });
+
+  it('clusterAround grows through overlaps and answers in byPeer order', () => {
+    const a = ev('a', '08:00', '09:00', { createdAt: iso('00:03') });
+    const b = ev('b', '08:00', '09:00', { createdAt: iso('00:01') });
+    const c = ev('c', '08:50', '09:30');
+    const far = ev('far', '12:00', '13:00');
+    expect(clusterAround(a, [a, b, c, far]).map((e) => e.id)).toEqual(['b', 'a', 'c']);
   });
 });
 

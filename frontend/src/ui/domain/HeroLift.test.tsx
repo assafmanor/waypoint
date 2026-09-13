@@ -488,6 +488,37 @@ describe('HeroLift', () => {
   });
 });
 
+describe('HeroLift — the next stop’s peers are listed as equals (ADR-0225 §6)', () => {
+  afterEach(() => cleanup());
+
+  it('a `בו-זמנית` block under הבא בתור, one equal row per peer, timed', () => {
+    const doc = show({
+      now: [],
+      next: point({ key: 'next', title: <span>Seljalandsfoss</span>, place: 'Seljalandsfoss' }),
+      nextPeers: [{ key: 'g', icon: '🏔️', title: <span>Gljúfrabúi</span>, time: '08:30–10:00' }],
+    });
+    const block = doc.querySelector('.hero-peers');
+    expect(block).toBeTruthy();
+    expect(block!.querySelector('.hero-lbl')?.textContent).toBe(t.day.concurrent);
+    const rows = block!.querySelectorAll('.hero-equal-hd');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.querySelector('.nm')?.textContent).toBe('Gljúfrabúi');
+    expect(rows[0]!.querySelector('.tm')?.textContent).toBe('08:30–10:00');
+    // The way through stays on the primary: one `איפה`, and it is the primary's.
+    expect(doc.querySelectorAll('.hero-where-nm')).toHaveLength(1);
+    expect(doc.querySelector('.hero-where-nm')?.textContent).toBe('Seljalandsfoss');
+  });
+
+  it('no block when the stop is one place', () => {
+    const doc = show({
+      now: [],
+      next: point({ key: 'next', title: <span>A</span> }),
+      nextPeers: [],
+    });
+    expect(doc.querySelector('.hero-peers')).toBeNull();
+  });
+});
+
 describe('HeroLift — the journey between two points (ADR-0206 §V1.2 / §D2)', () => {
   afterEach(() => cleanup());
 
