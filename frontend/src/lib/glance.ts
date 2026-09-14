@@ -15,6 +15,7 @@ import {
   EVENT_STATUS,
   isEdgeSettled,
   eventDurationUnit,
+  eventMidSpan,
   eventTransitionKeys,
   isAmbient,
   isBracketed,
@@ -170,6 +171,25 @@ export function ambientEventsOnDate(events: TripEvent[], date: string): TripEven
   return events.filter((e) => isAmbient(e) && e.date <= date && date <= e.endDate!);
 }
 
+/** **The resources you are HOLDING on `date`** — a stay, a car hire, a locker (ADR-0227 §B).
+ *
+ *  `ambientEventsOnDate` above is the same question asked of a MULTI-DAY span, and that is the
+ *  whole of the difference: `isAmbient` is `ambientWhenMultiDay && isMultiDay`, so a hire
+ *  collected and returned on one day was invisible to it — which is why a same-day hire owned
+ *  the board's `עכשיו` from pick-up to return with nothing to move it aside. Keyed on
+ *  `midSpan.kind` (ADR-0063), so a journey is excluded by construction rather than by a
+ *  `!isJourney` at the call site: a flight's middle is you, inside it, and it is not a
+ *  condition you are under.
+ *
+ *  Generalised from the one-off this replaced rather than added beside it (root rule 8): the
+ *  strip had `ambientEventsOnDate(...).find((e) => !isJourney(e) && …)`, which is exactly this
+ *  predicate with the multi-day restriction nobody wanted. */
+export function heldSpansOnDate(events: TripEvent[], date: string): TripEvent[] {
+  return events.filter(
+    (e) => eventMidSpan(e)?.kind === 'held' && e.date <= date && date <= (e.endDate ?? e.date),
+  );
+}
+
 /** **Is this ambient span counted in nights** — i.e. is it a stay? (ADR-0163 §4.)
  *  Read off `eventDurationUnit`, so the answer comes from ADR-0162's profile rather
  *  than from a `category === 'lodging'` at a call site.
@@ -259,7 +279,13 @@ export function ambientSpanPosition(
   event: Pick<TripEvent, 'category' | 'icon' | 'date' | 'endDate'>,
   date: string,
 ): { position: number; total: number } {
-  const spanDays = Math.round((Date.parse(event.endDate!) - Date.parse(event.date)) / MS_PER_DAY);
+  // `endDate ?? date` because a HELD span need not be multi-day since ADR-0227 §B — a hire
+  // collected and returned the same day reaches this through the strip, and `Date.parse(undefined)`
+  // is `NaN`, which `Math.max(1, NaN)` propagates rather than floors. The comment below already
+  // said a same-day span should answer 1 rather than 0; this is what makes that true.
+  const spanDays = Math.round(
+    (Date.parse(event.endDate ?? event.date) - Date.parse(event.date)) / MS_PER_DAY,
+  );
   // **NIGHTS are the gaps between the dates; DAYS are the dates themselves** (ADR-0163 §4's
   // 2026-08-04 amendment). A stay checked in on day 1 and out of on day 3 is TWO nights —
   // you slept twice — and a car collected on day 1 and returned on day 3 is THREE days,

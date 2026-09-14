@@ -28,6 +28,7 @@ import {
 import { setSimulatedNow } from '../lib/useClock';
 import { relativeDayLabel } from '../lib/time';
 import { BEAT } from '../lib/one-shot';
+import { withoutBidiControls } from '../lib/bidi';
 import { t } from '../i18n/he';
 import { wrapNav } from '../test/nav-harness';
 import { buildHostContextIndex } from '../lib/host-context';
@@ -922,6 +923,86 @@ describe('Home — the lift wiring', () => {
     expect(hero.querySelector('.wp-board-held')?.textContent).toBe(t.board.heldSince('13:00'));
   });
 
+  // ── A SPAN YOU ARE INSIDE IS A CONDITION, NOT AN EVENT (ADR-0227 §B) ──────────
+  //
+  // The same hire as above, with one thing added: something you are actually doing. Before
+  // this rule the hire held the slot from pick-up to return — it is hard, so `byPrimaryNow`
+  // put it first — and the lunch you were sitting at appeared nowhere on the card.
+  it('a held span yields the now-slot to what you are actually doing, and drops to the strip', () => {
+    const hire = flight({ icon: '🚗', title: 'Hertz', bookingId: 'bk-car' });
+    const lunch = ev('lunch', {
+      title: 'ארוחה',
+      category: 'food',
+      startsAt: `${DAY}T12:00:00Z`,
+      endsAt: `${DAY}T13:00:00Z`,
+    });
+    tripEvents = [hire, lunch];
+    tripBookings = [{ ...flightBooking, id: 'bk-car', type: BOOKING_TYPE.CAR, title: 'Hertz' }];
+    show();
+
+    // The board's subject is the meal, in the ordinary now-grammar — not the car's.
+    expect(document.querySelector('.wp-board-now-title')?.textContent).toContain('ארוחה');
+    expect(document.querySelector('.wp-board-now-label')?.textContent).not.toBe(
+      t.board.midSpan.carHoldLabel,
+    );
+    expect(document.querySelector('.wp-board-live')?.textContent).not.toContain(
+      t.board.midSpan.carHoldLive,
+    );
+    // …and the car is still on the screen, as the condition it is.
+    expect(document.querySelector('.stay-strip')?.textContent).toContain('Hertz');
+  });
+
+  it('…and keeps the slot when nothing else is running, without also saying it twice', () => {
+    const hire = flight({ icon: '🚗', title: 'Hertz', bookingId: 'bk-car' });
+    tripEvents = [hire];
+    tripBookings = [{ ...flightBooking, id: 'bk-car', type: BOOKING_TYPE.CAR, title: 'Hertz' }];
+    show();
+    expect(document.querySelector('.wp-board-now-label')?.textContent).toBe(
+      t.board.midSpan.carHoldLabel,
+    );
+    // The board is carrying it, so the strip must not repeat it twelve pixels down.
+    expect(document.querySelector('.stay-strip')).toBeNull();
+    // And the lift still opens onto it — this is the one surface with its booking, its
+    // notes, its files and its settle, and filtering the span out of the schedule took
+    // `canLift` to "nothing to lift" until the horizon was told to follow the board.
+    fireEvent.click(board()!);
+    expect(document.querySelector('.hero-lifted')).not.toBeNull();
+  });
+
+  // **The line §B draws, from the other side.** A held span's MIDDLE is a condition; its ENDS
+  // are moments, so a return deadline inside `ARRIVAL_EMPHASIS_MIN` keeps the slot even though
+  // something else is running — that IS the "what do I need in the next 30 minutes" question
+  // this card exists for. Untested, this inverts silently: the gate reads `in-transit` and one
+  // careless widening to "any held mid-span" would quietly hand the slot to lunch 30 minutes
+  // before the car is due back.
+  it('a return deadline keeps the slot even while something else is running', () => {
+    // Ends at 13:00Z with the clock at 12:30Z — 30 minutes, inside the 45-minute emphasis.
+    const hire = flight({
+      icon: '🚗',
+      title: 'Hertz',
+      bookingId: 'bk-car',
+      startsAt: `${DAY}T09:00:00Z`,
+      endsAt: `${DAY}T13:00:00Z`,
+    });
+    const lunch = ev('lunch', {
+      title: 'ארוחה',
+      category: 'food',
+      startsAt: `${DAY}T12:00:00Z`,
+      endsAt: `${DAY}T13:00:00Z`,
+    });
+    tripEvents = [hire, lunch];
+    tripBookings = [{ ...flightBooking, id: 'bk-car', type: BOOKING_TYPE.CAR, title: 'Hertz' }];
+    show();
+
+    expect(document.querySelector('.wp-board-now-label')?.textContent).toBe(
+      t.board.midSpan.carHoldLabel,
+    );
+    // …and the meal is not lost: the lift carries both points, because the horizon follows
+    // the board's now-point without dropping the activities underneath it.
+    fireEvent.click(board()!);
+    expect(document.querySelector('.hero-lifted')?.textContent).toContain('ארוחה');
+  });
+
   // The owner's content idea, wired: the crossing said out loud, plus the destination's
   // clock now. `Europe/Rome` (the trip) → `Asia/Tokyo` (the destination place) is +7 in
   // August, and the direction must follow the sign.
@@ -1081,6 +1162,49 @@ describe('Home — the day at a glance', () => {
       expect(meta.textContent).toContain(t.glance.transition.checkOut);
       // The day token is for a slot whose instant is NOT today; this one's is.
       expect(meta.textContent).not.toContain(wrongToken);
+    });
+
+    // **ADR-0227 §C.** A check-out is a CEILING (`edgeMeaning` → `not-after`), and the board
+    // printed a bare `13:00` beside `🔒 קשיח` — a pair that reads as an appointment you can be
+    // late for. The word comes from `edgeTimePhrase`, the same helper the day's transition row
+    // and the ambient strip already say it with, so the three cannot word it differently.
+    it('says the check-out is a ceiling, not an appointment', () => {
+      // A place, because `canLift` wants depth before the board becomes pressable — the same
+      // reason the sibling spec below gives one.
+      tripEvents = [stay({ placeId: 'p1' })];
+      tripPlaces = [place];
+      show();
+      // `withoutBidiControls` because the clock run is ISOLATED (ADR-0118) — asserting the
+      // raw text would either fail or, worse, pass by having the isolate written into the
+      // expectation, where a later build could drop it unnoticed.
+      const read = (el: Element | null | undefined) => withoutBidiControls(el?.textContent ?? '');
+      // 13:00Z in Europe/Rome is 15:00 — the zone the instant happens in, as every other
+      // clock on this card is read.
+      expect(read(document.querySelector('.wp-board-next-meta'))).toContain(
+        t.day.untilTime('15:00'),
+      );
+      // …and the lift takes the board's own string, so it cannot drift from it.
+      fireEvent.click(board()!);
+      expect(read(document.querySelector('.hero-lifted .wp-board-next-meta'))).toContain(
+        t.day.untilTime('15:00'),
+      );
+    });
+
+    // The opposite edge, because a floor and a ceiling are the two halves of one rule and a
+    // single-edge assertion passes a build that draws both the same way.
+    it('says the check-in is a floor', () => {
+      tripEvents = [
+        stay({
+          date: DAY,
+          endDate: '2026-08-05',
+          startsAt: `${DAY}T15:00:00Z`,
+          endsAt: '2026-08-05T11:00:00Z',
+        }),
+      ];
+      show();
+      expect(
+        withoutBidiControls(document.querySelector('.wp-board-next-meta')?.textContent ?? ''),
+      ).toContain(t.day.fromTime('17:00'));
     });
 
     // **§4 + §1 + §3.** The slot the screenshot was taken of had no answer in it at all,

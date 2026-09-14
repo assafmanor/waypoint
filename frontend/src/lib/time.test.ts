@@ -825,6 +825,45 @@ describe('deriveNow — concurrent now/next sets', () => {
     const { nextAll } = deriveNow([a, b, c], at('07:00'));
     expect(nextAll.map((e) => e.id).sort()).toEqual(['a', 'b', 'c']);
   });
+
+  // ── A HELD SPAN IS NEVER A PEER (ADR-0227 §A) ───────────────────────────────
+  /** The owner's reported night: a stay from ⁦16:00⁩ to ⁦11:00⁩ the next morning, with the
+   *  evening and the next morning happening inside it. */
+  const stay = () =>
+    ({
+      ...ev('stay', '16:00', '16:30', EVENT_KIND.HARD),
+      category: EVENT_CATEGORY.LODGING,
+      endsAt: '2027-02-03T11:00:00Z',
+      endDate: '2027-02-03',
+    }) as TripEvent;
+
+  it('a held span does not pull what happens INSIDE it into its stop', () => {
+    const shop = ev('shop', '18:30', '20:00');
+    const aurora = ev('aurora', '22:00', '23:30');
+    const { next, nextAll } = deriveNow([stay(), shop, aurora], at('15:31'));
+    expect(next?.id).toBe('stay');
+    // Five, before this rule: the board printed `בו-זמנית · ועוד 4` about a night.
+    expect(nextAll.map((e) => e.id)).toEqual(['stay']);
+  });
+
+  it('a held span is not dragged into somebody else s stop either', () => {
+    const dinner = ev('dinner', '18:00', '19:30');
+    const { nextAll } = deriveNow([dinner, stay()], at('15:31'));
+    expect(clusterAround(dinner, [dinner, stay()]).map((e) => e.id)).toEqual(['dinner']);
+    // The stay starts first, so it leads — and it goes in alone.
+    expect(nextAll.map((e) => e.id)).toEqual(['stay']);
+  });
+
+  /** **The case that falsified the alternative**, kept as a guard rather than as a comment.
+   *  Excluding CONTAINMENT instead of held-ness looks like the same fix and is not:
+   *  `spanContains` needs one strict edge, so these two — which start together and are
+   *  plainly one stop — stop being peers under it. */
+  it('two stops that start together are still one stop, whichever ends first', () => {
+    const longer = ev('longer', '08:30', '10:00');
+    const shorter = ev('shorter', '08:30', '09:30');
+    const { nextAll } = deriveNow([longer, shorter], at('07:00'));
+    expect(nextAll.map((e) => e.id).sort()).toEqual(['longer', 'shorter']);
+  });
 });
 
 describe('byPeer / peerEntry / peerExit (ADR-0225 §1, §5)', () => {

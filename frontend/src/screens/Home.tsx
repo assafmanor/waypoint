@@ -9,15 +9,15 @@ import { useNavigate } from 'react-router-dom';
 import {
   canPrice,
   EVENT_KIND,
+  eventMidSpan,
   eventTransitionKeys,
   gateIsDue,
   isAmbient,
   isBracketed,
   isExactEdge,
-  isJourney,
-  windowBoundOf,
   type Booking,
   type DocumentSummary,
+  type EventEdge,
   type Task,
   type TripEvent,
   dayLight,
@@ -66,7 +66,12 @@ import {
 } from '../lib/places';
 import { placeLabelOf, shortRoute } from '../lib/place-label';
 import { usePlaceLabels } from '../state/place-labels';
-import { edgeSettleWords, eventMidSpanWords, transitionLabel } from '../lib/transitions';
+import {
+  edgeSettleWords,
+  edgeTimePhrase,
+  eventMidSpanWords,
+  transitionLabel,
+} from '../lib/transitions';
 import { approxTravelTime, clockShiftSentence, formatDuration } from '../lib/duration';
 import { TAB_PARAM, FOCUS_PARAM, DAY_PARAM, INDEX_FOCUS, INDEX_TAB } from '../state/nav-state';
 import {
@@ -88,8 +93,8 @@ import {
   hourLabel,
 } from '../lib/time';
 import {
-  ambientEventsOnDate,
   ambientSpanPosition,
+  heldSpansOnDate,
   buildDayGlance,
   countsNights,
   dayBookendStays,
@@ -242,18 +247,28 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const [converterFrom, setConverterFrom] = useState<string | null>(null);
   const [converterTo, setConverterTo] = useState<string | null>(null);
 
-  // Ambient hotels are backdrop, never a now/next block — once you've checked in
-  // they'd otherwise hijack the hero for the whole stay (ADR-0059 §1 / ADR-0054).
-  // Their transitions surface via the hero-booking derivation below; before
-  // check-in a hotel stays in, so it can be the natural "next" fairly.
+  // A span you are INSIDE is backdrop, never a now/next block — once you've checked in it
+  // would otherwise hijack the hero for the whole stay (ADR-0059 §1 / ADR-0054). Its
+  // transitions surface via the hero-booking derivation below; before it starts it stays in,
+  // so it can be the natural "next" fairly.
   //
   // **A journey is exempt, and that exemption is a red-eye's whole bug.** An overnight
   // flight has an `endDate`, so it is `isMultiDay` and therefore ambient — and this filter
   // dropped it from `deriveNow` the moment it took off, which is why the board stopped
   // seeing it as happening at all. Ambient says how a span RENDERS across days; what its
   // middle IS is `midSpan.kind`, and a journey's middle is you, inside it.
+  //
+  // **So ask `midSpan.kind` DIRECTLY, which is what this was reaching for all along**
+  // (ADR-0227 §B). `isAmbient(e) && !isJourney(e)` is "a multi-day held span", and the
+  // multi-day half was never part of the argument — it is just where the predicate came
+  // from. A SAME-day car hire is not `isMultiDay`, so it survived this filter, and
+  // `byPrimaryNow` puts a hard event first: measured, `deriveNow(12:20)` answered
+  // `Iceland Car Rental` with the lunch you are actually at in `nowAll[1]`, for the nine
+  // hours between pick-up and return. The replacement is both simpler and broader, and it
+  // changes nothing for a multi-day span, whose only ambient categories are lodging (held)
+  // and transport (journey, exempt above and below alike).
   const scheduleEvents = events.filter(
-    (e) => !(isAmbient(e) && !isJourney(e) && nowMs >= Date.parse(e.startsAt!)),
+    (e) => !(eventMidSpan(e)?.kind === 'held' && nowMs >= Date.parse(e.startsAt!)),
   );
   const { now: nowEvent, next: nextEvent, nowAll, nextAll } = deriveNow(scheduleEvents, now);
   const dayEvents = events.filter((e) => e.date === activeDate);
@@ -262,12 +277,45 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // (ADR-0059 §1): a flight in the air fills the NOW slot (in-transit), a hotel
   // check-in/out or flight departure decorates the NEXT slot.
   const hero = deriveHeroBooking(events, nowMs, today);
-  const inTransit = hero.kind === 'in-transit' || hero.kind === 'transition-arrival';
+  /** **A held span's MIDDLE yields the slot to whatever you are actually doing** (ADR-0227 §B).
+   *
+   *  Session 215 designed what a held middle LOOKS like on this card — `כרגע · הרכב אצלנו`,
+   *  no rail, no travelling mark — and the question it never asked is whether that middle
+   *  should be the card's SUBJECT while something else is running. It should not: holding a
+   *  car is a condition you are under, and the `.stay-strip` below is the surface this app
+   *  already has for one. When nothing else is in progress the middle keeps the slot exactly
+   *  as it was, because then there is nothing for it to talk over.
+   *
+   *  **Its ENDS are untouched, and that is the line.** `transition-arrival` is the return
+   *  deadline inside its emphasis window — the "what do I need in the next 30 minutes"
+   *  question this card exists for — so it outranks lunch and is deliberately not gated. */
+  const heldMiddleYields =
+    hero.kind === 'in-transit' &&
+    !!hero.event &&
+    eventMidSpan(hero.event)?.kind === 'held' &&
+    nowAll.length > 0;
+  const inTransit =
+    (hero.kind === 'in-transit' || hero.kind === 'transition-arrival') && !heldMiddleYields;
   const arriving = hero.kind === 'transition-arrival';
-
   // In-transit hero derivations (flight in the air): time-to-landing progress
   // and the code chip.
   const transitEvent = inTransit ? hero.event : undefined;
+  /** **The horizon's now-points are whatever the BOARD is showing**, which is ADR-0160 §1's
+   *  one-object rule stated as an expression rather than trusted.
+   *
+   *  `nowAll` is the activities, and a span you are inside is deliberately not one of them
+   *  (§B's filter above). A JOURNEY was never filtered, so it has always arrived here inside
+   *  `nowAll`; a held span that keeps the slot because nothing else is running now has to be
+   *  added back, or the two elevations disagree — which is exactly what the suite caught:
+   *  the collapsed board drew `כרגע · הרכב אצלנו` correctly and `canLift` then answered
+   *  "nothing to lift", so the one surface carrying that span's booking, notes, files and
+   *  settle could not be opened at all. Written as "is the board's now-point already in the
+   *  list" rather than as a second reading of `midSpan.kind`, so there is one rule here and
+   *  not a copy of the one above. */
+  const heroNowAll =
+    transitEvent && !nowAll.some((e) => e.id === transitEvent.id)
+      ? [transitEvent, ...nowAll]
+      : nowAll;
   const transitZones = zonesOf(transitEvent);
   const transitStart = transitEvent?.startsAt ? Date.parse(transitEvent.startsAt) : 0;
   const transitEnd = transitEvent?.endsAt ? Date.parse(transitEvent.endsAt) : 0;
@@ -343,6 +391,13 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     }
   }
   if (!nextLabelKey && shownNext) nextLabelKey = startTransitionKey(shownNext);
+  /** **WHICH END the next slot is showing** (ADR-0224 §1) — `end` exactly when the branch
+   *  above filled the slot with a check-out, `start` everywhere else. Asked once here and
+   *  read three times (the horizon's `nextEdge`, the zone that instant renders in, and the
+   *  bound its clock states): three call sites were re-deriving the same comparison, which is
+   *  the shape of thing that reads fine and inverts silently in one of them. */
+  const nextShownEdge: EventEdge =
+    nextInstant && nextInstant === shownNext?.endsAt ? 'end' : 'start';
 
   const nextBooking = shownNext?.bookingId
     ? bookings.find((b) => b.id === shownNext!.bookingId)
@@ -395,7 +450,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     // Mid-flight the point's place is where you are GOING; the authority rule's origin is
     // the airport you have already left (session 215).
     midSpanEventId: transitEvent?.id,
-    nowAll,
+    nowAll: heroNowAll,
     // **The whole STOP when the board shows `deriveNow`'s own next** (ADR-0225 §6/§7): the
     // horizon lists the peers and `אחר כך` skips them. A check-out standing in for next has
     // no peers — a stay's edge is one moment — so it goes in alone, as before.
@@ -403,7 +458,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     // **Which END that slot is showing** (ADR-0224 §1). `nextInstant` is the event's `endsAt`
     // exactly when the board filled the slot with a check-out (see `shownNext` above), which
     // is the same test `nextZone` already makes a few lines down — asked once, read twice.
-    nextEdge: nextInstant && nextInstant === shownNext?.endsAt ? 'end' : 'start',
+    nextEdge: nextShownEdge,
     bookings,
     places,
     notes,
@@ -861,24 +916,36 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // The NEXT slot's instant is a start for an ordinary event but an **end** for a
   // check-out (deriveNow can't surface an end), so its zone follows that edge.
   const nextZones = zonesOf(shownNext);
-  const nextZone =
-    nextInstant && nextInstant === shownNext?.endsAt ? nextZones?.endZone : nextZones?.startZone;
+  const nextZone = nextShownEdge === 'end' ? nextZones?.endZone : nextZones?.startZone;
   /** **The calendar day the NEXT slot's own clock falls on** (ADR-0224 §7). Read in the zone
    *  that clock is rendered in, not the ambient one, so the token and the time it annotates
    *  cannot disagree across a crossing — the same pairing `transitArrivalDay` makes one slot
    *  up. `undefined` when there is no next at all. */
   const nextDay = nextInstant ? todayInTz(nextZone ?? tz, new Date(nextInstant)) : undefined;
 
-  /** **The window on the NEXT slot, when the row showing there has one** (ADR-0184 §6).
-   *  Same isolate rule as the day row: a range is a run of digits with no strong
-   *  character, so the RUN is isolated rather than the box it sits in (ADR-0118). */
-  const nextWindowBound =
-    shownNext && shownNext === hero.event ? windowBoundOf(shownNext, 'start') : undefined;
-  const nextRange =
-    nextWindowBound && nextInstant
-      ? ltrIsolate(
-          `${formatTime(nextInstant, nextZone ?? tz)}–${formatTime(nextWindowBound, nextZone ?? tz)}`,
-        )
+  /** **WHAT THE NEXT SLOT'S CLOCK SAYS** (ADR-0227 §C) — a floor as `מ-16:00`, a ceiling as
+   *  `עד 11:00`, a window as its two authored numbers, and an exact moment as the bare clock
+   *  it always was.
+   *
+   *  `edgeMeaning` has answered `not-before` for a check-in and `not-after` for a check-out
+   *  since ADR-0171, and `.tr-clock[data-bound]` has drawn the open bracket on the DAY row
+   *  since ADR-0210 §2 — the board printed a bare `16:00` beside `🔒 קשיח`, and the pair reads
+   *  as an appointment you can be late for. One character fixes it, and the character is not
+   *  this file's to choose: `edgeTimePhrase` is the app's one answer to this question and had
+   *  two callers already (the day's transition row, the ambient strip). This is the third,
+   *  not a fourth phrasing (root rule 8).
+   *
+   *  **It supersedes the `nextRange` special case it replaces, and slightly widens it.** That
+   *  branch printed a window only while the next slot WAS the hero booking; the helper asks
+   *  `windowBoundOf` unconditionally, exactly as the day row does. So a windowed event that
+   *  is merely next now reads as a range here too — which is the board agreeing with the day
+   *  rather than a new behaviour, and the isolate comes from the helper for free.
+   *
+   *  The lift takes this same string (`nextTime={boardNext?.time}`), so both elevations are
+   *  one derivation and cannot disagree about what the bound is. */
+  const nextTimeText =
+    shownNext && nextInstant
+      ? edgeTimePhrase(shownNext, nextShownEdge, Date.parse(nextInstant), nextZone ?? tz)
       : undefined;
 
   /** **§V1.2's read, for the horizon** — `~23 דק׳ · צאו ב־18:37`, where the collapsed board
@@ -1142,29 +1209,28 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // pass and read as a claim that it does not. Tomorrow's strip below memoizes for the opposite
   // reason — its inputs really are stable.
   const glanceTrackModel = glanceTrack({ glance, meta: trackMetaFor(events, glance.segs) });
-  // Ambient-span stays active today (a hotel spanning several nights, ADR-0054).
-  // No persistent band on Home (ADR-0064 §A): the hero surfaces the transition
-  // moments and the glance draws the check-in/out markers. This only feeds the
-  // clock-gated "inside a booking now" strip below.
-  const ambientStays = ambientEventsOnDate(events, activeDate);
   // Same-day (non-ambient) events drive the day's own end / hard-anchor stats —
   // a multi-night hotel's check-out is days away and must not skew them.
   const sameDayEvents = dayEvents.filter((e) => !isAmbient(e));
-  // "Inside a booking now" (ADR-0059 §2): the ambient stay whose span currently
-  // contains the clock — a slim, dismissible teal strip subordinate to the hero.
+  // "Inside a booking now" (ADR-0059 §2): the held span whose span currently contains the
+  // clock — a slim, dismissible teal strip subordinate to the hero.
   //
   // **A journey is not something you are "inside" in this sense**, and without the guard a
   // red-eye would be in two places at once the moment the hero learned to keep it: the
   // board saying `בטיסה` and this strip saying `LH692 · יום 1 מתוך 2` underneath. The strip
-  // is for a span whose middle is passive, which is exactly `midSpan.kind === 'held'`.
-  const stayNow = ambientStays.find(
+  // is for a span whose middle is passive, which is exactly `midSpan.kind === 'held'` — so
+  // since ADR-0227 §B the SOURCE asks that directly (`heldSpansOnDate`) and the `!isJourney`
+  // guard is gone with it, not weakened: a journey can no longer reach this list at all.
+  // What the wider source adds is the same-day hire, which is the span §B moves off the
+  // board's now-slot and therefore the one that most needs somewhere to land.
+  const heldNow = heldSpansOnDate(events, activeDate).find(
     (e) =>
-      !isJourney(e) &&
-      e.startsAt &&
-      e.endsAt &&
-      Date.parse(e.startsAt) <= nowMs &&
-      nowMs < Date.parse(e.endsAt),
+      e.startsAt && e.endsAt && Date.parse(e.startsAt) <= nowMs && nowMs < Date.parse(e.endsAt),
   );
+  // **Never both.** §B leaves a held middle on the board when nothing else is running, and
+  // this strip is what carries it otherwise — so the one state the wider source newly creates
+  // is the one where the board is already saying it, twelve pixels up. One fact, one place.
+  const stayNow = heldNow && heldNow.id === transitEvent?.id ? undefined : heldNow;
   // Where the strip's span has got to, computed once for its mono fraction.
   const stayProgress = stayNow ? ambientSpanPosition(stayNow, activeDate) : null;
   // A dismiss persists across reload/navigation but self-expires on the next
@@ -1449,7 +1515,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         icon: shownNext.icon,
         labelKey: nextLabelKey,
         // A window reads as its range; everything else is the one clock it always was.
-        time: nextRange ?? (nextInstant ? formatTime(nextInstant, nextZone ?? tz) : undefined),
+        time: nextTimeText,
         // **Which day, when it is not today** (ADR-0211 §6). `deriveNow` has no date filter, so
         // this slot has always crossed midnight and never said so — `07:00` at ⁦22:40⁩ reads as
         // this morning. `relativeDayLabel` is the same derivation five other surfaces use, and
