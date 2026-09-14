@@ -4,6 +4,7 @@ import {
   EVENT_KIND,
   EVENT_STATUS,
   eventEndBoundary,
+  eventMidSpan,
   typicalMinutesFor,
   type TripEvent,
 } from '@waypoint/shared';
@@ -378,9 +379,28 @@ export function peerExit(peers: readonly TripEvent[]): TripEvent {
  * over `pool`'s timed events, in `byPeer` order (ADR-0225 §7). The same overlap rule
  * `buildTimeTree` clusters with (`spansOverlap`: touching is not overlap), so the hero's
  * `nextAll` and the day's brace cannot disagree about who is in the stop.
+ *
+ * **A HELD SPAN IS NEVER A PEER** (ADR-0227 §A), and without that this claimed the opposite of
+ * what ADR-0041 decided. `spansOverlap` is true of CONTAINMENT too, so a stay running
+ * ⁦16:00⁩ → ⁦11:00⁩ the next morning pulled the supermarket run, the aurora and two of tomorrow's
+ * stops into the check-in's stop — measured, five members — and the board printed
+ * `בו-זמנית · ועוד 4` about four things that happen INSIDE the stay rather than beside it.
+ * ADR-0041's forest has always said containment is a nest and partial overlap is a cluster;
+ * `buildTimeTree` still says it, and `DayView` drops ambient stays before even asking, so the
+ * paragraph above was false the day it was written.
+ *
+ * **The discriminator is `midSpan.kind`, not containment**, and that is a measurement rather
+ * than a preference: `spanContains` needs only ONE strict edge, so excluding containment
+ * breaks `08:30–10:00` beside `08:30–09:30` — two waterfalls that start together and ARE one
+ * stop (`groups nextAll by the earliest upcoming start`, which went red when it was tried).
+ * A held span is a resource you are holding, whose ends matter and whose middle is passive
+ * (ADR-0063), so nothing that happens while you hold it is happening *with* it. It therefore
+ * neither joins another stop nor drags anything into its own.
  */
 export function clusterAround(seed: TripEvent, pool: readonly TripEvent[]): TripEvent[] {
-  const timed = pool.filter((e) => e.startsAt);
+  const held = (e: TripEvent) => eventMidSpan(e)?.kind === 'held';
+  if (held(seed)) return [seed];
+  const timed = pool.filter((e) => e.startsAt && !held(e));
   const members = new Set<TripEvent>([seed]);
   let grew = true;
   while (grew) {

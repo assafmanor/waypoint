@@ -13,6 +13,7 @@ import {
   ambientEventsOnDate,
   ambientSpanLabel,
   ambientSpanPosition,
+  heldSpansOnDate,
   buildDayGlance,
   countsNights,
   dayBookendStays,
@@ -755,6 +756,37 @@ describe('buildDayGlance', () => {
     expect(ambientEventsOnDate(events, '2026-07-10').map((e) => e.id)).toEqual(['hotel']);
     expect(ambientEventsOnDate(events, '2026-07-11')).toHaveLength(0);
     expect(ambientEventsOnDate(events, '2026-07-06')).toHaveLength(0);
+  });
+
+  // ── THE RESOURCES YOU ARE HOLDING (ADR-0227 §B) ───────────────────────────────
+  it('heldSpansOnDate takes the same-day hire `ambientEventsOnDate` cannot see', () => {
+    const hotel = ev({
+      id: 'hotel',
+      category: 'lodging',
+      date: '2026-07-07',
+      endDate: '2026-07-10',
+    });
+    // One day, so NOT `isMultiDay` and therefore never ambient — which is exactly why the
+    // board had nothing to move it aside with.
+    const hire = ev({ id: 'hire', category: 'transport', icon: '🚗', date: '2026-07-08' });
+    const flight = ev({ id: 'flight', category: 'transport', icon: '✈️', date: '2026-07-08' });
+    const walk = ev({ id: 'walk', category: 'sightseeing', date: '2026-07-08' });
+    const events = [hotel, hire, flight, walk];
+
+    expect(heldSpansOnDate(events, '2026-07-08').map((e) => e.id)).toEqual(['hotel', 'hire']);
+    // A journey is excluded BY CONSTRUCTION — its middle is you, inside it, not a condition
+    // you are under. That is what retired the `!isJourney` guard at the strip's call site.
+    expect(heldSpansOnDate(events, '2026-07-08').map((e) => e.id)).not.toContain('flight');
+    expect(heldSpansOnDate(events, '2026-07-08').map((e) => e.id)).not.toContain('walk');
+    // The hire covers its own day only; the hotel still covers every night it spans.
+    expect(heldSpansOnDate(events, '2026-07-09').map((e) => e.id)).toEqual(['hotel']);
+  });
+
+  it('a same-day held span reads 1/1 rather than NaN', () => {
+    // `ambientSpanPosition` read `endDate!`, and `Math.max(1, NaN)` is `NaN` — invisible until
+    // a span with no `endDate` could reach the strip, which is what §B newly allows.
+    const hire = ev({ id: 'hire', category: 'transport', icon: '🚗', date: '2026-07-08' });
+    expect(ambientSpanPosition(hire, '2026-07-08')).toEqual({ position: 1, total: 1 });
   });
 
   // ── THE AMBIENT STRIP'S READ-OUT (ADR-0163 §4) ────────────────────────────────
