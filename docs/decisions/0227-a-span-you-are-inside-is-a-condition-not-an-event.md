@@ -89,3 +89,29 @@ Built as decided, with **one thing the drawing could not have caught**, found by
 - **THE THING THE MOCKUP COULD NOT SEE.** Filtering the held span out of the schedule also took it out of `nowAll`, and the horizon is built from `nowAll` — so on a day whose only event was the hire, the collapsed board correctly drew `כרגע · הרכב אצלנו` and `canLift` then answered **"nothing to lift"**: the one surface carrying that span's booking, notes, files and settle could not be opened at all. A journey never had this problem because journeys were never filtered. Fixed with `heroNowAll` — "the horizon's now-points are whatever the board is showing", written as _is the board's now-point already in the list_ rather than as a second reading of `midSpan.kind`, so the rule lives in one place. Caught by `Home.lift.test.tsx`'s existing same-day-hire spec, which is the argument for that spec having asserted the lift as well as the board.
 - **Two imports died with the change** (`isJourney`, `windowBoundOf` in `Home.tsx`) and are removed rather than left for lint to warn about forever.
 - **Verified:** `pnpm typecheck`, `pnpm lint` (0 errors; the 2 remaining warnings are pre-existing and on HEAD), `pnpm build` green; frontend suite **306 files, 5,584 tests** green, +9 new. Each new spec was run against the pre-change derivation and confirmed to fail — a spec that passes either way measures nothing.
+
+## 2026-09-14 amendment — the ⚠ line was the third implementation, and the count that missed it
+
+**Owner, against the deployed build, with two screenshots of the ⁦18:47⁩ board:** a supermarket run of ⁦18:30–20:00⁩ carrying `⚠ חופף ל-The Garage (קשיח) · 16:00` — _"Is this correct? Does this look right to you? `חופף...`"_
+
+**It is not correct, and it is this ADR's own cause in a function this ADR did not touch.** `hardConflicts` (`lib/time.ts`) tests `eStart < end && eEnd > start` — raw overlap, with no containment distinction and no held-span exclusion — so the stay running ⁦16:00⁩ → ⁦11:00⁩ is reported as clashing with the evening it contains. Reproduced before fixing: `hardConflicts(shop, [stay, shop])` → `['The Garage']`. The warning also names ⁦16:00⁩, a check-in ⁦2h47m⁩ in the past.
+
+**Why it can never be a clash, from the ADRs already in force.** ADR-0011 spends this warning on a double-booking you must fix **in reality** — its own words are that a hard event "can never move to resolve it" — and there is nothing to resolve about the bed you are sleeping in. ADR-0171 makes a held span's ends `not-before` / `not-after`, the two meanings that explicitly do NOT pin you, so even the edge is not a clash: you check in any time after ⁦16:00⁩. A **journey** still warns, because its ends are `exact` and you genuinely cannot be shopping and on the plane — which is the test that stops this becoming "never warn about anything hard".
+
+### What the original §Consequences got wrong, and the rule that replaces it
+
+It said: _"`clusterAround` has exactly one caller (`deriveNow`) — counted, not assumed."_ That sentence is **true and answers the wrong question.** Counting the callers of the function you are changing measures the blast radius of your edit; it says nothing about how many OTHER functions implement the same faulty notion. The right question — _how many places in this codebase decide that two spans collide?_ — has a different and larger answer:
+
+| site                                               | verdict                                                                                                                                             |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `clusterAround` (`time.ts:410`)                    | fixed by §A                                                                                                                                         |
+| `buildTimeTree` sibling clustering (`time.ts:842`) | **correct by construction** — containment is resolved into parentage before any sibling overlap test runs, which is ADR-0041's forest doing its job |
+| `hardConflicts` (`time.ts:750`)                    | **the miss**, fixed here                                                                                                                            |
+
+Three, and the sweep that finds them is one grep for `spansOverlap` plus one for the hand-rolled `start < end && end > start` shape. Root `CLAUDE.md`'s "count the call sites before claiming what a derivation does" is the instruction that was followed; the amendment it needs is that **a claim about a NOTION is counted over implementations, not over callers** — and the tell that the narrower count was the wrong one is that its conclusion ("Plan and the Map are untouched") was about _other surfaces_ while the defect was on _this_ one.
+
+### Found while sweeping, deliberately not fixed here
+
+`rippleForward` (backend `events.service.ts`) breaks at the first `EVENT_KIND.HARD` event in start order. A stay is hard, so on any day whose check-in falls mid-afternoon it is the first hard row after most soft events and **truncates the ripple chain** — the same "a containing span is treated as a sequential obstacle" shape. It is guarded in practice by the `ms(e.startsAt) >= prevEnd` break one line down, which usually fires first, so this is an observation rather than a reproduced defect; it is ADR-0011/0012's territory and a backlog line rather than a silent widening of this change.
+
+**Verified:** the two new specs (a stay, and a hire) were run against the unfixed `hardConflicts` and both went red; the flight spec passes either way by design, since it guards against over-removal rather than under-removal. One line of code, both consumers — Home's board and the day view call the same function.
