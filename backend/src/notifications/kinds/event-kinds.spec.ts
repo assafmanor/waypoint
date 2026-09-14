@@ -200,6 +200,23 @@ describe('event.hard.soon', () => {
     })();
   });
 
+  it('counts down from the SEND, so a delayed one does not overstate its own lead', async () => {
+    // A two-hour lead on a transport event. On time, the title says two hours; held up by an
+    // outage (still inside `STALE_AFTER_MS`), it says what is actually left — `בעוד שעתיים`
+    // over a flight an hour away is the failure this kind exists to prevent.
+    const flight = ev({ category: 'transport', startsAt: new Date(now + 2 * HOUR) });
+    const onTime = fakePrisma({ events: [flight] });
+    const [prompt] = await eventSoonKind.due(input(onTime.prisma, now));
+    expect(prompt.payload.title).toBe('Ichiran Ramen בעוד שעתיים');
+
+    const late = fakePrisma({ events: [flight] });
+    const [delayed] = await eventSoonKind.due(input(late.prisma, now + HOUR));
+    expect(delayed.payload.title).toBe('Ichiran Ramen בעוד שעה');
+    // The ledger still keys on the instant it was AIMED at, so the delay cannot mint a second
+    // claim for the same commitment.
+    expect(delayed.aimedAtMs).toBe(prompt.aimedAtMs);
+  });
+
   it('NEVER fires for a soft event — the line that keeps the budget honest', async () => {
     // ADR-0011: a soft item is free to move, slip and be skipped, so a ping about one
     // interrupts somebody about something that is by definition fine to ignore.
@@ -360,8 +377,24 @@ describe('span.edge.soon', () => {
     const atClose = fakePrisma({ events: [windowed] });
     const sends = await spanEdgeKind.due(input(atClose.prisma, checkIn + 3 * HOUR));
     expect(sends).toHaveLength(2);
-    // 17:00 UTC = 20:00 Tel Aviv, which is the bound you can actually miss.
-    expect(sends[0].payload.title).toContain('20:00');
+    // 17:00 UTC = 20:00 Tel Aviv, which is the bound you can actually miss — so a windowed
+    // check-in is the one floor that still reads `עד`: the instant printed IS its deadline.
+    expect(sends[0].payload.title).toBe('צ׳ק-אין עד 20:00');
+  });
+
+  it('says מ- at a floor and עד at a deadline, never `עד` at both', async () => {
+    // The owner's 2026-09-14 lock screen: a 16:00 check-in read `צ׳ק-אין עד 16:00` — an hour
+    // to be there BY — while the app's own row two inches away read `מ-16:00`. 13:00 UTC is
+    // 16:00 in Tel Aviv; 08:00 UTC on the 25th is 11:00.
+    const arriving = fakePrisma({ events: [stay()] });
+    const [checkInSend] = await spanEdgeKind.due(input(arriving.prisma, checkIn - HOUR));
+    expect(checkInSend.payload.title).toBe('צ׳ק-אין מ-16:00');
+
+    const leaving = fakePrisma({ events: [stay()] });
+    const [checkOutSend] = await spanEdgeKind.due(
+      input(leaving.prisma, utc('2026-08-25T08:00:00Z') - HOUR),
+    );
+    expect(checkOutSend.payload.title).toBe('צ׳ק-אאוט עד 11:00');
   });
 
   it('uses the edge’s OWN word, refined by the glyph', async () => {

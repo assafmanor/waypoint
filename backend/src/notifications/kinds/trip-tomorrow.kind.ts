@@ -8,7 +8,13 @@
 // inside the inverted loop the same way: one small query for the trips that start tomorrow,
 // then zones only for those. The set is tiny by construction — a trip starts on exactly one
 // day — so this is the one place where asking about trips first is also the cheap way round.
-import { currentZone, NOTIFICATION_KIND, todayInTz } from '@waypoint/shared';
+import {
+  currentZone,
+  edgeMeaning,
+  NOTIFICATION_KIND,
+  todayInTz,
+  type TimeMeaning,
+} from '@waypoint/shared';
 import { hourInZone, hourStartInZone } from '../send-policy';
 import {
   DEDUP,
@@ -19,6 +25,7 @@ import {
   type TripZones,
 } from '../notification-kind';
 import { tripTomorrowPayload } from '../notify-copy';
+import { asShared } from './event-soon.kind';
 import { EVENT_SELECT, eventZones, type EventRow } from './event-shape';
 import { tripAudience } from './trip-audience';
 
@@ -111,7 +118,7 @@ async function firstTimedThing(
   tripId: string,
   dayKey: string,
   zones: TripZones,
-): Promise<{ title: string; atMs: number; zone: string } | null> {
+): Promise<{ title: string; atMs: number; zone: string; meaning: TimeMeaning } | null> {
   const events = (await prisma.event.findMany({
     where: { tripId, date: new Date(`${dayKey}T00:00:00.000Z`), startsAt: { not: null } },
     orderBy: { startsAt: 'asc' },
@@ -124,5 +131,9 @@ async function firstTimedThing(
     title: first.title,
     atMs: first.startsAt.getTime(),
     zone: eventZones(first, zones).start,
+    // Ordered by `startsAt`, so the instant printed is always the OPENING edge — and what
+    // that instant means is the same question `span.edge.soon` asks: a 16:00 check-in is an
+    // hour the room opens, not an appointment.
+    meaning: edgeMeaning(asShared(first), 'start'),
   };
 }
