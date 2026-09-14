@@ -28,6 +28,7 @@ import { ZoneShiftPill } from '../ZoneShiftPill';
 import { transitionLabel } from '../../lib/transitions';
 import { gapIsLocative, gapWords, type GapRead } from '../../lib/gap-character';
 import { trackBlockClass, trackBlockStyle } from '../../lib/day-track';
+import { timeFacts, type StatedTime, type TimeFactClaim } from '../../lib/time-claim';
 import type { TomorrowRibbon } from '../../lib/tomorrow';
 import '../../styles/day-track.css';
 import { t } from '../../i18n/he';
@@ -65,10 +66,14 @@ export interface BoardGap {
   read: GapRead;
   /** The stay's resolved display name, for `at-the-stay`. */
   stayName?: string;
-  /** Pre-formatted `HH:MM` the gap runs to, for `open` — the fact the `free` branch never said
-   *  while `GlanceCard` said it two inches lower (ADR-0211 §5). Times arrive formatted; the
-   *  board reads no zone. */
-  until?: string;
+  /** The instant the gap runs to, for `open` — the fact the `free` branch never said while
+   *  `GlanceCard` said it two inches lower (ADR-0211 §5). Times arrive formatted; the board
+   *  reads no zone.
+   *
+   *  **It is a `StatedTime` rather than a string** (ADR-0226): the gap ends at the DEPARTURE,
+   *  not at the next point (ADR-0206 §AJ4.1/§BF), and a bare `HH:MM` is exactly what let this
+   *  slot print a ceiling ⁦15 minutes⁩ later than the tile below it with nothing able to notice. */
+  until?: StatedTime;
 }
 
 /** **WHAT THE NIGHT BOARD SAYS INSTEAD OF `סוף היום`** (ADR-0214).
@@ -212,6 +217,12 @@ export interface BoardCountdown {
    *  tile is the same split-flap clock the prep hero showed the evening before — one
    *  component, so the clock hands over from one hero to the other without a gap. */
   flap?: { targetMs: number; nowMs: number };
+  /** **What this tile is counting TO** (ADR-0226). The tile states a duration, the day row
+   *  states a clock, and ADR-0159 §1 lets them: the posture differs, the moment must not. So
+   *  the instant rides with the number and the agreement suite compares it against every other
+   *  surface's answer for the same subject. Absent while the tile counts to the event itself,
+   *  which is the datum rather than a derivation. */
+  fact?: TimeFactClaim;
 }
 
 /** **The board's ONE countdown tile, drawn by both elevations** (ADR-0160 §M, ADR-0221 §3/§7).
@@ -221,7 +232,10 @@ export interface BoardCountdown {
  *  tile reaches both by construction. */
 export function CountdownTile({ countdown }: { countdown: BoardCountdown }) {
   return (
-    <div className={'wp-board-countdown' + (countdown.missed ? ' missed' : '')}>
+    <div
+      className={'wp-board-countdown' + (countdown.missed ? ' missed' : '')}
+      {...timeFacts(countdown.fact)}
+    >
       {countdown.flap ? (
         <FlapClock
           className="wp-board-flaps"
@@ -361,8 +375,8 @@ export function BoardGapSlot({ gap }: { gap: BoardGap }) {
         {title}
       </div>
       {gap.until && (
-        <div className="wp-board-now-meta">
-          {t.board.until} <span dir="auto">{gap.until}</span>
+        <div className="wp-board-now-meta" {...timeFacts(gap.until.fact)}>
+          {t.board.until} <span dir="auto">{gap.until.text}</span>
         </div>
       )}
     </>

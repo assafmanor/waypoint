@@ -1646,6 +1646,7 @@ export function PlanDay() {
                         showPlaceOnMap,
                       )}
                       zones={legZones(cameIn.event, bookends.woke!)}
+                      subjectId={bookends.woke!.id}
                     />
                   ) : null;
                 })()}
@@ -1690,6 +1691,7 @@ export function PlanDay() {
                     showPlaceOnMap,
                   )}
                   zones={legZones(bookends.woke, headJourney.to)}
+                  subjectId={headJourney.to.id}
                 />
               )}
               <BuilderGroups
@@ -1729,6 +1731,7 @@ export function PlanDay() {
                     showPlaceOnMap,
                   )}
                   zones={legZones(tailJourney.from, bookends.sleeps)}
+                  subjectId={bookends.sleeps.id}
                 />
               )}
               {bookends.sleeps && (
@@ -2501,6 +2504,7 @@ function BuilderGroups({
                     {...ctx.modeControl(prevEnd, groupStartEvent(g))}
                     onShowOnMap={ctx.legOnMap(prevEnd, groupStartEvent(g))}
                     zones={ctx.legZones(prevEnd, groupStartEvent(g))}
+                    subjectId={groupStartEvent(g).id}
                   />
                 ) : null;
               })()}

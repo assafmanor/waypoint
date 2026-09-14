@@ -3,6 +3,7 @@ import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { Board, type BoardCountdown, type BoardGap, type BoardProps } from './Board';
 import { GAP_CHARACTER, NIGHT_BAND } from '../../lib/gap-character';
+import { TIME_FACT, parseTimeFacts, statedTime } from '../../lib/time-claim';
 import { t } from '../../i18n/he';
 
 describe('Board', () => {
@@ -55,12 +56,30 @@ describe('Board', () => {
       render(<Board variant="free" clock="14:30" next={null} gap={gap} {...extra} />).container;
 
     it('open: a real gap keeps the words it always had, and finally says until when', () => {
-      const c = gapBoard({ read: { kind: GAP_CHARACTER.OPEN }, until: '16:20' });
+      const until = statedTime({
+        kind: TIME_FACT.FREE_UNTIL,
+        atMs: Date.parse('2026-08-03T14:20:00.000Z'),
+        zone: 'Europe/Rome',
+        of: 'ev-dinner',
+      });
+      const c = gapBoard({ read: { kind: GAP_CHARACTER.OPEN }, until });
       expect(c.querySelector('.wp-board-now-label')?.textContent).toBe(t.board.freeLabel);
       expect(c.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.freeTitle);
       // The meta line the `free` branch never rendered, while `GlanceCard` said it two
       // inches lower (§5).
       expect(c.querySelector('.wp-board-now-meta')?.textContent).toContain('16:20');
+      // **And it carries the instant it derived** (ADR-0226), which is what lets the agreement
+      // suite hold this ceiling against the departure another surface states for one subject.
+      expect(
+        parseTimeFacts(c.querySelector('.wp-board-now-meta')?.getAttribute('data-facts')),
+      ).toEqual([
+        {
+          kind: 'free-until',
+          atMs: Date.parse('2026-08-03T14:20:00.000Z'),
+          zone: 'Europe/Rome',
+          of: 'ev-dinner',
+        },
+      ]);
     });
 
     it('on the way: the reported contradiction, from the side that was wrong', () => {

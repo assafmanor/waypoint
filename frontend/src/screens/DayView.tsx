@@ -1143,6 +1143,9 @@ export function DayView() {
     // reading a watch in — so on a trip whose primary sits an hour off its stops the block printed
     // a departure after the arrival it was counted back from.
     zones: legDisplayZones(leg, zoneCtx),
+    // **What this leg is INTO** (ADR-0226) — the key the agreement suite groups by, so one
+    // subject's departure is compared against the board's answer for the same subject.
+    subjectId: leg.to.id,
     // **One tap to this leg on the canvas** (owner, 2026-08-27) — the pair comes from the one
     // function that resolves it, so the map lights the leg this row is about (ADR-0206 §AB2).
     onShowOnMap: legShowOnMap(travelReads.pairFor(leg.from, leg.to), showPlaceOnMap),

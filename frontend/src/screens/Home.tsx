@@ -96,6 +96,7 @@ import {
 } from '../lib/glance';
 import { deriveHeroBooking } from '../lib/hero-booking';
 import { LEAVE_PHASE, heroLeaveBy, travelOrigin, type HeroLeaveBy } from '../lib/hero-travel';
+import { TIME_FACT, statedTime, type TimeFactClaim } from '../lib/time-claim';
 import { GAP_CHARACTER, gapCharacter, gapDrawsDayRail } from '../lib/gap-character';
 import { tomorrowRibbon } from '../lib/tomorrow';
 import { TRAVEL_STANCE, remainingTravelSeconds, travelStance } from '../lib/travel-position';
@@ -791,6 +792,12 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   //
   // `at` rides along because the collision below compares the two CANDIDATES rather than the
   // words they print, and a formatted `H:MM` cannot be compared to a minute count.
+  /** The departure this board is counting to, named once (ADR-0226) and spent by both the tile
+   *  and the hero's own `צאו ב־` line — so the two cannot be tagged with different instants. */
+  const leaveFact: TimeFactClaim | null =
+    leave && shownNext
+      ? { kind: TIME_FACT.LEAVE_BY, atMs: leave.leaveByMs, zone: tz, of: shownNext.id }
+      : null;
   const leaveTile =
     leave && !leaveAnswered && leave.phase !== LEAVE_PHASE.AHEAD
       ? {
@@ -817,12 +824,16 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         // `15 · לסגירה`, a number with no measure either. Fixed with it rather than after it: they
         // are one slot, and leaving the sibling wrong is the shape `frontend/CLAUDE.md` names.
         { ...formatCountdown(closingMins), unitBelow: t.board.closesIn }
-      : (leaveTile?.countdown ??
-        (!nextInstant
+      : // **The leave-by arm carries what it counts to** (ADR-0226). The window arm above states
+        // a closing no day surface prints, and the event arms below count to the point's own
+        // `startsAt` — a datum, not a derivation — so this is the one arm with a claim to tag.
+        leaveTile
+        ? { ...leaveTile.countdown, ...(leaveFact ? { fact: leaveFact } : {}) }
+        : !nextInstant
           ? null
           : minsToNext >= MINUTES_PER_DAY
             ? countdownParts(nextDayDelta)
-            : formatCountdown(minsToNext)));
+            : formatCountdown(minsToNext);
 
   // **The morning of departure** (ADR-0221 §3): until the first timed thing starts, the tile is
   // the same split-flap clock the prep hero showed the evening before (`FlapClock`, one
@@ -1204,8 +1215,18 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     const arrival = Date.parse(nextInstant);
     return Number.isFinite(arrival) ? arrival : null;
   })();
+  /** **Tagged with the instant it was derived from** (ADR-0226), so the suite can hold this
+   *  ceiling against the departure the tile below it is counting to. The two disagreeing by
+   *  exactly the walk plus the buffer is what §BF was, and nothing could see it. */
   const freeUntil =
-    freeUntilMs !== null && freeUntilMs > nowMs ? formatTime(new Date(freeUntilMs), tz) : null;
+    freeUntilMs !== null && freeUntilMs > nowMs
+      ? statedTime({
+          kind: TIME_FACT.FREE_UNTIL,
+          atMs: freeUntilMs,
+          zone: tz,
+          ...(shownNext ? { of: shownNext.id } : {}),
+        })
+      : null;
   const dayEndMs = sameDayEvents.reduce((max, e) => {
     const end = e.endsAt ? Date.parse(e.endsAt) : e.startsAt ? Date.parse(e.startsAt) : 0;
     return end > max ? end : max;

@@ -41,6 +41,7 @@ import { Collapsible } from '../primitives/Collapsible';
 import { Skeleton } from '../feedback/Skeleton';
 import { DAY_JOURNEY_ARM, type DayJourney } from '../../lib/day-joins';
 import { approxTravelTime, freeTimePhrase, hoursPhrase, shortfallPhrase } from '../../lib/duration';
+import { TIME_FACT, timeFacts, type TimeFactClaim } from '../../lib/time-claim';
 import { formatDistance } from '../../lib/distance';
 import { formatTime } from '../../lib/time';
 import { ltrIsolate } from '../../lib/bidi';
@@ -206,6 +207,7 @@ export function JourneyBlock({
    *  behind you and on one whose origin claim was denied (ADR-0208 §2) — both are journeys the
    *  day may still MEASURE and may not give advice about. */
   leave,
+  facts,
   /** `time` is amber (§D1). `miss` is the leave-by gone by, in `--miss` — **ink and word only**,
    *  no fill on the block, no glow and no pulse, because the app has one live mark and `.nowline`
    *  is it (§D6/§D7). `on-way` is teal, because somebody said they are moving and that is a
@@ -233,6 +235,10 @@ export function JourneyBlock({
   pending?: boolean;
   onShowOnMap?: () => void;
   leave?: string;
+  /** **The instants behind that line** (ADR-0226). `leave` is one composed text run — `יציאה עד
+   *  15:12 · הגעה ~15:55` — so the claims ride together on the element rather than forcing the
+   *  sentence apart into spans for a test's benefit. */
+  facts?: TimeFactClaim[];
   tone: 'time' | 'miss' | 'on-way';
   located?: string;
   action?: { label: string; onPress: () => void };
@@ -286,7 +292,9 @@ export function JourneyBlock({
         </span>
         {leave && (
           <span className="day-trv-meta">
-            <span className="day-trv-leave">{leave}</span>
+            <span className="day-trv-leave" {...timeFacts(...(facts ?? []))}>
+              {leave}
+            </span>
           </span>
         )}
       </span>
@@ -397,6 +405,11 @@ export interface JourneyRowProps {
    *  that starts at 20:00, a departure after the arrival it was counted back from. Same instant,
    *  two zones, and the row was the only clock on the screen not reading in the itinerary's. */
   zones: JourneyZones;
+  /** **The event this journey is INTO** (ADR-0226) — the comparison key the agreement suite
+   *  groups claims by, so a board's departure for dinner is never held against a day's
+   *  departure for the museum and reported as a disagreement. Optional because the day's
+   *  bookend legs are assembled by hand and one of them has no destination row. */
+  subjectId?: string;
   /** The live hole's one control — `בדרך`, or `ביטול סימון` to take that back (ADR-0207 §7).
    *  **Trip mode's alone**: Plan has no inline settle pair (ADR-0159 §1 / ADR-0171 §10e), and the
    *  coverage mockup's Plan column draws the block with no action row for the same reason. */
@@ -429,6 +442,7 @@ export function JourneyRow({
   journey,
   travelMode,
   zones,
+  subjectId,
   action,
   located,
   modes,
@@ -472,6 +486,12 @@ export function JourneyRow({
     !untimed &&
     !unmeasured &&
     (!isRoutableMode(travelMode) || seconds === null);
+  /** Words and claims together, so the row cannot tag one thing and say another. Note the five
+   *  arms ABOVE this in the `leave` prop below — `tooFar`, `warming`, `untimed`, `unmeasured`,
+   *  `declared` — replace the text entirely, and each of them is an absence: no clock, so
+   *  nothing to tag even though `meta.facts` may hold one. */
+  const meta = journeyMetaLine(journey, zones, subjectId);
+  const statesTheLine = !tooFar && !warming && !untimed && !unmeasured && !declared;
   return (
     <JourneyBlock
       mode={t.travelMode[travelMode]}
@@ -496,6 +516,10 @@ export function JourneyRow({
       distance={
         journey.distanceMeters === null ? undefined : formatDistance(journey.distanceMeters)
       }
+      // **The instants behind the line, from the line's own arms** (ADR-0226). Only the last arm
+      // states a clock at all: the five above it say what is wrong with the leg, and a line with
+      // no clock in it makes no claim for another surface to contradict.
+      facts={statesTheLine ? meta.facts : []}
       leave={
         tooFar
           ? t.travel.tooFarFor(t.travelMode[travelMode])
@@ -510,7 +534,7 @@ export function JourneyRow({
               ? t.travel.underMinute
               : unmeasured || declared
                 ? t.travel.noEstimate
-                : journeyMetaLine(journey, zones)
+                : meta.text
       }
       tone={
         // An overrun is a negative status about the plan, so it takes §D7's own paint — the same
@@ -565,33 +589,75 @@ function shortfallLine(free: TravelWindow): string | undefined {
  * The clock is read in the DAY's own zone and isolated: it is a digit run inside Hebrew and the
  * maqaf before it is a strong RTL character (ADR-0118).
  */
-function journeyMetaLine(journey: DayJourney, zones: JourneyZones): string | undefined {
+/** What the meta line says, and the instants it says it about (ADR-0226). */
+interface JourneyMeta {
+  text: string | undefined;
+  facts: TimeFactClaim[];
+}
+
+/**
+ * **The line, and the claims inside it, from ONE set of arms.**
+ *
+ * The arms below are intricate — which arm prints a departure, which an arrival, which both and
+ * which neither is the accumulated answer of ADR-0206 §AI, §AR1, §AS5 and §AJ4.2. A second
+ * function deciding what to TAG would have to re-walk every one of them, and the first draft of
+ * this did exactly that and got it wrong: it tagged an arrival on the `PASSED` arm, which prints
+ * `זמן היציאה עבר ב־14:17` and states no arrival at all. The agreement suite caught it, which is
+ * the mechanism working and also the argument for not needing it to. One walk, one answer.
+ */
+function journeyMetaLine(
+  journey: DayJourney,
+  zones: JourneyZones,
+  subjectId?: string,
+): JourneyMeta {
+  const of = subjectId ? { of: subjectId } : {};
+  const departs = (): TimeFactClaim[] =>
+    journey.leaveByMs === null
+      ? []
+      : [{ kind: TIME_FACT.LEAVE_BY, atMs: journey.leaveByMs, zone: zones.depart, ...of }];
+  const arrives = (): TimeFactClaim[] =>
+    journey.arriveAtMs === null
+      ? []
+      : [{ kind: TIME_FACT.ARRIVE_AT, atMs: journey.arriveAtMs, zone: zones.arrive, ...of }];
+  const said = (text: string | undefined, facts: TimeFactClaim[] = []): JourneyMeta => ({
+    text,
+    // A line that renders nothing claims nothing, whatever the derivation holds.
+    facts: text === undefined ? [] : facts,
+  });
   if (journey.arm === DAY_JOURNEY_ARM.OVERRUNS) {
     // A window you will reach after it shuts is the same fact as a leg that does not fit it, so
     // it rides this arm — and says the thing you act on rather than the arithmetic behind it.
     if (journey.arrivesAfterClose && journey.arriveAtMs !== null) {
-      return t.travel.arriveAfterClose(
-        ltrIsolate(`~${formatTime(new Date(journey.arriveAtMs), zones.arrive)}`),
+      return said(
+        t.travel.arriveAfterClose(
+          ltrIsolate(`~${formatTime(new Date(journey.arriveAtMs), zones.arrive)}`),
+        ),
+        arrives(),
       );
     }
     // **The shortfall AND where it lands** (ADR-0206 §AS5). `חסרות 8 דק׳ לדרך` is the size of the
     // problem; `הגעה ~13:38` is the consequence, and a reader deciding what to drop needs both.
     // The arrival is already on the arm — it has been since §AR1 — it was simply not printed.
     const shortfall = journey.free ? shortfallLine(journey.free) : undefined;
-    if (!shortfall) return undefined;
+    if (!shortfall) return said(undefined);
     const lands =
       journey.arriveAtMs === null
         ? null
         : ltrIsolate(`~${formatTime(new Date(journey.arriveAtMs), zones.arrive)}`);
-    return lands === null ? shortfall : t.travel.overrunThenArrive(shortfall, lands);
+    // The shortfall names no clock; the arrival beside it does.
+    return lands === null
+      ? said(shortfall)
+      : said(t.travel.overrunThenArrive(shortfall, lands), arrives());
   }
   if (journey.arm === DAY_JOURNEY_ARM.PAST) {
-    return journey.free?.fit === TRAVEL_FIT.OVERRUNS ? shortfallLine(journey.free) : undefined;
+    return said(
+      journey.free?.fit === TRAVEL_FIT.OVERRUNS ? shortfallLine(journey.free) : undefined,
+    );
   }
   if (journey.arm === DAY_JOURNEY_ARM.ON_WAY) {
     const left = journey.remainingSeconds;
     const phrase = left === null ? null : approxTravelTime(left);
-    return phrase ? `${t.actions.onWay} · ${t.travel.remaining(phrase)}` : t.actions.onWay;
+    return said(phrase ? `${t.actions.onWay} · ${t.travel.remaining(phrase)}` : t.actions.onWay);
   }
   // **WHICH OF THE TWO FACTS THE DERIVATION LEFT US** (ADR-0206 §AI, amended 2026-08-26).
   // `dayJourney` owns the decision and this only reads it: a destination with no deadline gets the
@@ -602,11 +668,16 @@ function journeyMetaLine(journey: DayJourney, zones: JourneyZones): string | und
       ? null
       : ltrIsolate(`~${formatTime(new Date(journey.arriveAtMs), zones.arrive)}`);
   if (journey.leaveByMs === null) {
-    if (at === null) return undefined;
-    return journey.arrivesAfterClose ? t.travel.arriveAfterClose(at) : t.travel.arriveAt(at);
+    if (at === null) return said(undefined);
+    return said(
+      journey.arrivesAfterClose ? t.travel.arriveAfterClose(at) : t.travel.arriveAt(at),
+      arrives(),
+    );
   }
   const clock = ltrIsolate(formatTime(new Date(journey.leaveByMs), zones.depart));
-  if (journey.arm === DAY_JOURNEY_ARM.PASSED) return t.travel.leavePassed(clock);
+  // **The departure ALONE** — this arm states that the hour went by and says nothing about an
+  // arrival, even where the derivation holds one.
+  if (journey.arm === DAY_JOURNEY_ARM.PASSED) return said(t.travel.leavePassed(clock), departs());
   /**
    * **A DEADLINE SAYS SO** (owner, 2026-08-31: _"when there's a gap before a journey, it
    * could show `יציאה עד X` instead of the exact leaving time"_).
@@ -626,6 +697,10 @@ function journeyMetaLine(journey: DayJourney, zones: JourneyZones): string | und
    */
   const until = !journey.leaveByIsFloor;
   // Both: the departure is the origin's own end and the arrival is why that matters.
-  if (at === null) return until ? t.travel.leaveByDay(clock) : t.travel.leaveAtDay(clock);
-  return until ? t.travel.leaveByThenArrive(clock, at) : t.travel.leaveThenArrive(clock, at);
+  if (at === null)
+    return said(until ? t.travel.leaveByDay(clock) : t.travel.leaveAtDay(clock), departs());
+  return said(until ? t.travel.leaveByThenArrive(clock, at) : t.travel.leaveThenArrive(clock, at), [
+    ...departs(),
+    ...arrives(),
+  ]);
 }
