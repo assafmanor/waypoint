@@ -112,6 +112,10 @@ Three, and the sweep that finds them is one grep for `spansOverlap` plus one for
 
 ### Found while sweeping, deliberately not fixed here
 
-`rippleForward` (backend `events.service.ts`) breaks at the first `EVENT_KIND.HARD` event in start order. A stay is hard, so on any day whose check-in falls mid-afternoon it is the first hard row after most soft events and **truncates the ripple chain** — the same "a containing span is treated as a sequential obstacle" shape. It is guarded in practice by the `ms(e.startsAt) >= prevEnd` break one line down, which usually fires first, so this is an observation rather than a reproduced defect; it is ADR-0011/0012's territory and a backlog line rather than a silent widening of this change.
+`rippleForward` (backend `events.service.ts`) breaks at the first `EVENT_KIND.HARD` event in start order. A stay is hard, so a containing span is read as a **sequential obstacle** — the same shape one layer down.
+
+**Reproduced, against the function transcribed from the shipped source.** A soft event moved +90 min so it now ends ⁦16:30⁩, a soft dinner at ⁦16:15–17:15⁩ that genuinely overlaps it, and a stay checking in at ⁦16:00⁩: without the stay the ripple offers `['dinner']`, with it `[]`. The stay sorts first in `following`, hits the `kind === HARD` break, and the dinner is never reached. The `ms(e.startsAt) >= prevEnd` guard one line down does NOT save it — it is never reached either.
+
+It is fixed the same way this amendment fixes `hardConflicts` (a held span is not a sequential anchor, so skip it rather than break the walk; `rippleBackward` carries the same line), and it is **not fixed here**: it is backend and ADR-0011/0012's territory, and this change is a one-line frontend fix. A backlog line carries the case.
 
 **Verified:** the two new specs (a stay, and a hire) were run against the unfixed `hardConflicts` and both went red; the flight spec passes either way by design, since it guards against over-removal rather than under-removal. One line of code, both consumers — Home's board and the day view call the same function.
