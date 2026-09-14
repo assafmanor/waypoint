@@ -969,6 +969,40 @@ describe('Home — the lift wiring', () => {
     expect(document.querySelector('.hero-lifted')).not.toBeNull();
   });
 
+  // **The line §B draws, from the other side.** A held span's MIDDLE is a condition; its ENDS
+  // are moments, so a return deadline inside `ARRIVAL_EMPHASIS_MIN` keeps the slot even though
+  // something else is running — that IS the "what do I need in the next 30 minutes" question
+  // this card exists for. Untested, this inverts silently: the gate reads `in-transit` and one
+  // careless widening to "any held mid-span" would quietly hand the slot to lunch 30 minutes
+  // before the car is due back.
+  it('a return deadline keeps the slot even while something else is running', () => {
+    // Ends at 13:00Z with the clock at 12:30Z — 30 minutes, inside the 45-minute emphasis.
+    const hire = flight({
+      icon: '🚗',
+      title: 'Hertz',
+      bookingId: 'bk-car',
+      startsAt: `${DAY}T09:00:00Z`,
+      endsAt: `${DAY}T13:00:00Z`,
+    });
+    const lunch = ev('lunch', {
+      title: 'ארוחה',
+      category: 'food',
+      startsAt: `${DAY}T12:00:00Z`,
+      endsAt: `${DAY}T13:00:00Z`,
+    });
+    tripEvents = [hire, lunch];
+    tripBookings = [{ ...flightBooking, id: 'bk-car', type: BOOKING_TYPE.CAR, title: 'Hertz' }];
+    show();
+
+    expect(document.querySelector('.wp-board-now-label')?.textContent).toBe(
+      t.board.midSpan.carHoldLabel,
+    );
+    // …and the meal is not lost: the lift carries both points, because the horizon follows
+    // the board's now-point without dropping the activities underneath it.
+    fireEvent.click(board()!);
+    expect(document.querySelector('.hero-lifted')?.textContent).toContain('ארוחה');
+  });
+
   // The owner's content idea, wired: the crossing said out loud, plus the destination's
   // clock now. `Europe/Rome` (the trip) → `Asia/Tokyo` (the destination place) is +7 in
   // August, and the direction must follow the sign.
