@@ -221,6 +221,16 @@ It stays **addressed** — which is what earns this send its place against ADR-0
 
 **And the part that is genuinely new:** the operating system draws these strings, so **none of ADR-0118's bidi isolation reaches them** — `lib/bidi.ts`, the LTR islands, the `dir` attributes are all app-side. A Hebrew string that ends in a time can reorder on a lock screen in a way the app never shows. Hence the digits sitting mid-string above, `·` instead of parentheses or arrows around numbers, and a **device pass on both platforms' lock screens** before Phase A ships — the sense in which ADR-0146 means a thing must be seen on a phone, not drawn in a mockup.
 
+#### 7.2 AMENDED 2026-09-14 — a lock screen may not say what the app contradicts
+
+Reported against a live trip: a 16:00 check-in read **`צ׳ק-אין עד 16:00`** on the lock screen — an hour to be there **by** — while the app's own row, two inches away, read `מ-16:00`. `span.edge.soon` composed `עד` at **every** edge. That is [ADR-0171](0171-a-time-can-be-a-floor-or-a-ceiling.md) §1's axis, which every other surface reads off `edgeMeaning`, and which the booking sheet had already had to fix once for the same reason (`t.booking.addWindow` is per edge). The word now comes from the meaning: `not-before` → `מ-`, `not-after` → `עד`, `exact` → `ב-`. **`window` stays `עד`** — a fact rather than a fallback, since the amendment below aims a windowed edge at its **closing** bound, so the instant printed is a deadline on both sides of a span. One table in `notify-copy.ts`, keyed on `TimeMeaning`, so a fifth meaning cannot be added without the compiler asking for its word.
+
+**A pass over the rest of the catalogue for the same defect — a string restating a fact instead of deriving it — found three more.** All four are the same failure and none of them could be seen from the code that composes the string:
+
+- **`trip.tomorrow` said `ב-` at every clock.** The first timed thing on day 1 is often a check-in, so `Hotel X ב-16:00` is the softer half of the same wrong claim. It shares the table above; an `exact` dinner still reads `ב-` exactly as before.
+- **`event.hard.soon` counted down from its category's LEAD, not from the send.** The same minute while the sweep is on time, but a send held up by an outage stays deliverable for an hour (`staleAfterMs`) — so `בעוד שעתיים` could go out over a flight forty minutes away, which is the one thing this kind exists not to do. The countdown is a claim about the reader's now, so it is measured from it (rounded, so ordinary sub-minute lateness still prints the whole lead).
+- **`task.digest` counted TOMORROW into a title that says `היום`.** One task due today beside two due tomorrow announced `3 דברים לסגור היום`, which the body under it then corrected with `ועוד 2 למחר`. The title now counts today; tomorrow keeps its own clause in the body, which is where §2's "names today and tomorrow" always put it. This reverses phase A's choice deliberately: a number and the word it sits in have to mean the same thing.
+
 ## PHASE A BUILT (2026-08-21) — [session note](../planning/2026-08-21-notifications-phase-a-and-the-settings-surface.md)
 
 `task.due`, `task.digest` and `task.assigned` are registered and firing; the settings surface ADR-0197 §7.1 designed is built beside them, because a switch and the thing it switches had to ship together.

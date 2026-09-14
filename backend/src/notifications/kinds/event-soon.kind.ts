@@ -20,7 +20,12 @@
 // This is the reason `timeCritical` exists at all: a 05:30 departure has to ring at 03:30 or
 // the feature is decorative (ADR-0197 §5). It is also the reason the caps do not reach it —
 // you cannot ration a flight.
-import { isAmbient, NOTIFICATION_KIND, notifyLeadMinutesFor } from '@waypoint/shared';
+import {
+  isAmbient,
+  NOTIFICATION_KIND,
+  notifyLeadMinutesFor,
+  type TripEvent,
+} from '@waypoint/shared';
 import {
   DEDUP,
   NOTIFY_PREF,
@@ -90,7 +95,11 @@ export const eventSoonKind: NotificationKind = {
         tripId: event.tripId,
         dateKey: eventDayKey(event, zone),
         title: event.title,
-        leadMinutes,
+        // **Measured from the SEND, not from the aim.** Identical in normal operation — the
+        // sweep ticks every 60 seconds — but a send delayed by an outage is still deliverable
+        // an hour later, and the lead would then state a countdown that has already run down.
+        // Rounded, so ordinary sub-minute lateness still prints the whole lead.
+        untilMinutes: Math.round((startsAtMs - nowMs) / 60_000),
         startsAtMs,
         zone,
       });
@@ -110,10 +119,27 @@ export const eventSoonKind: NotificationKind = {
   },
 };
 
+/** The event fields the shared derivations read. */
+type SharedEventShape = Pick<
+  TripEvent,
+  | 'category'
+  | 'icon'
+  | 'date'
+  | 'endDate'
+  | 'startsAt'
+  | 'endsAt'
+  | 'startWindowEnd'
+  | 'endWindowStart'
+>;
+
 /** A Prisma row as the shared derivations read one. They take the DTO's string dates where
  *  Prisma hands back `Date`s, and `null` where the DTO says absent — one place to convert, so
- *  a kind never passes a half-converted row to `isAmbient` and gets a quiet wrong answer. */
-export function asShared(event: EventRow) {
+ *  a kind never passes a half-converted row to `isAmbient` and gets a quiet wrong answer.
+ *
+ *  **The ADR-0184 window bounds are part of that**, because `edgeMeaning` reads them: omitting
+ *  them here would not fail to compile, it would answer `not-before` about an edge somebody
+ *  gave a closing bound — which is the quiet wrong answer this shim exists to prevent. */
+export function asShared(event: EventRow): SharedEventShape {
   return {
     category: event.category,
     icon: event.icon,
@@ -121,5 +147,7 @@ export function asShared(event: EventRow) {
     endDate: event.endDate ? event.endDate.toISOString().slice(0, 10) : undefined,
     startsAt: event.startsAt?.toISOString(),
     endsAt: event.endsAt?.toISOString(),
-  } as Parameters<typeof isAmbient>[0];
+    startWindowEnd: event.startWindowEnd?.toISOString(),
+    endWindowStart: event.endWindowStart?.toISOString(),
+  } as SharedEventShape;
 }

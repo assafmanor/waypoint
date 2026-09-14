@@ -30,7 +30,13 @@
 // MID-STRING wherever a sentence allows it, `·` separates rather than parentheses or arrows,
 // and none of this is settled until it has been seen on both platforms' lock screens — the
 // device pass ADR-0198 §7 requires before phase A is called done.
-import { NOTIFICATION_KIND, type CheckId, type PushPayload } from '@waypoint/shared';
+import {
+  NOTIFICATION_KIND,
+  TIME_MEANING,
+  type CheckId,
+  type PushPayload,
+  type TimeMeaning,
+} from '@waypoint/shared';
 
 /** A time as a lock screen should read it: `18:00`, in the zone the deadline means. Through
  *  `Intl` with an explicit zone, the same derivation `send-policy.ts` uses for quiet hours,
@@ -103,16 +109,21 @@ export function taskDuePayload(input: {
  *
  * **It names today and tomorrow**, in that order, which is the one addition that closes the
  * owner's "we don't want to miss any upcoming" without a second send.
+ *
+ * **The title counts TODAY, and that is a 2026-09-14 correction to phase A.** It counted both
+ * — so one task due today beside two due tomorrow announced `3 דברים לסגור היום`, three
+ * things to close *today*, which the body then quietly corrected with `ועוד 2 למחר`. A number
+ * and the word it sits in have to mean the same thing; tomorrow keeps its own clause in the
+ * body, where it was already being named, so nothing is lost but the overstatement.
  */
 export function taskDigestPayload(input: {
   tripId: string;
   titles: string[];
   tomorrowCount: number;
 }): PushPayload {
-  const count = input.titles.length + input.tomorrowCount;
   return {
     kind: NOTIFICATION_KIND.TASK_DIGEST,
-    title: digestTitle(count),
+    title: digestTitle(input.titles.length),
     body: digestBody(input.titles, input.tomorrowCount),
     url: taskUrl(input.tripId),
   };
@@ -201,18 +212,24 @@ export function untilLabel(minutes: number): string {
  *
  * The title is the countdown because that is the fact that makes it urgent; the body is what
  * and where, with the hour last so a truncated line still says which thing it is about.
+ *
+ * **`untilMinutes` is how long is actually left, not the category's lead**, and the two are
+ * the same minute only when the sweep is on time (2026-09-14). A send held up by an outage
+ * stays deliverable for a whole hour (`event-soon.kind.ts`'s `STALE_AFTER_MS`), and a title
+ * reading `בעוד שעתיים` over a flight forty minutes away is the one thing this kind exists
+ * not to do — the countdown is a claim about the reader's now, so it is derived from it.
  */
 export function eventSoonPayload(input: {
   tripId: string;
   dateKey: string;
   title: string;
-  leadMinutes: number;
+  untilMinutes: number;
   startsAtMs: number;
   zone: string;
 }): PushPayload {
   return {
     kind: NOTIFICATION_KIND.EVENT_HARD_SOON,
-    title: `${input.title} ${untilLabel(input.leadMinutes)}`,
+    title: `${input.title} ${untilLabel(input.untilMinutes)}`,
     body: `${clockLabel(input.startsAtMs, input.zone)}`,
     url: eventUrl(input.tripId, input.dateKey),
   };
@@ -256,21 +273,52 @@ export function spanEdgeWord(transitionKey: string | undefined): string {
 }
 
 /**
+ * **What an edge's clock MEANS, said in one word** (ADR-0171 §1 · ADR-0184).
+ *
+ * This kind's title used to read `עד` at every edge, and on a check-in that is not a shade of
+ * wording — it is the opposite fact. A check-out at 11:00 is a deadline; a check-in at 16:00
+ * is a **floor**, the hour the room becomes yours, and `צ׳ק-אין עד 16:00` on a lock screen
+ * announces a deadline that does not exist (owner's report, 2026-09-14, against a 16:00
+ * check-in the app's own row rendered `מ-16:00` two inches away). Every other surface — the
+ * day row, the ambient strip, the shared itinerary, the PDF — has read this off `edgeMeaning`
+ * since ADR-0171; the notification was the one place restating it by hand.
+ *
+ * **`window` is `עד`, and that is a fact about this kind rather than a fallback:** a windowed
+ * edge is aimed at its CLOSING bound (ADR-0198's phase-B amendment — `startWindowEnd` on the
+ * start side, `endsAt` on the end side), so the instant being printed is a deadline on both
+ * sides of a span. `exact` takes `ב-`, the same construction `trip.tomorrow` uses for an
+ * instant that simply IS the commitment.
+ *
+ * Keyed on the meaning so a fifth `TIME_MEANING` cannot be added without the compiler asking
+ * for its word — the words are the notification's own (see `SPAN_EDGE_WORD` below), which is
+ * why this is a table here and not a call into `i18n/he.ts`.
+ */
+const EDGE_CLOCK_PHRASE: Record<TimeMeaning, (clock: string) => string> = {
+  [TIME_MEANING.EXACT]: (clock) => `ב-${clock}`,
+  [TIME_MEANING.NOT_BEFORE]: (clock) => `מ-${clock}`,
+  [TIME_MEANING.NOT_AFTER]: (clock) => `עד ${clock}`,
+  [TIME_MEANING.WINDOW]: (clock) => `עד ${clock}`,
+};
+
+/**
  * `span.edge.soon` — a check-in, check-out, pick-up or return, an hour out.
  *
- * The caller passes the word (`spanEdgeWord` above); this stays a formatter.
+ * The caller passes the word (`spanEdgeWord` above) and the edge's meaning (`edgeMeaning`);
+ * this stays a formatter.
  */
 export function spanEdgePayload(input: {
   tripId: string;
   dateKey: string;
   edgeWord: string;
+  meaning: TimeMeaning;
   subject: string;
   atMs: number;
   zone: string;
 }): PushPayload {
+  const clock = EDGE_CLOCK_PHRASE[input.meaning](clockLabel(input.atMs, input.zone));
   return {
     kind: NOTIFICATION_KIND.SPAN_EDGE_SOON,
-    title: `${input.edgeWord} עד ${clockLabel(input.atMs, input.zone)}`,
+    title: `${input.edgeWord} ${clock}`,
     body: input.subject,
     url: eventUrl(input.tripId, input.dateKey),
   };
@@ -282,20 +330,27 @@ export function spanEdgePayload(input: {
  * The one row that fires before the trip has anything timed in it, so it names the trip and
  * the first thing on it. `firstThing` is null when day 1 has nothing timed, which is common
  * enough to be the normal case rather than an edge one.
+ *
+ * **Its clock goes through the same table `span.edge.soon` uses**, and for the reason found
+ * beside it (2026-09-14): the first thing on day 1 is often a check-in, and `ב-16:00` about
+ * an hour the room merely OPENS is the softer half of the same wrong claim. A dinner at 19:00
+ * is `exact` and reads `ב-` exactly as before — the table only changes the rows whose clock
+ * was never an appointment.
  */
 export function tripTomorrowPayload(input: {
   tripId: string;
   dateKey: string;
   tripName: string;
-  firstThing: { title: string; atMs: number; zone: string } | null;
+  firstThing: { title: string; atMs: number; zone: string; meaning: TimeMeaning } | null;
 }): PushPayload {
   const { firstThing } = input;
+  const clock = firstThing
+    ? EDGE_CLOCK_PHRASE[firstThing.meaning](clockLabel(firstThing.atMs, firstThing.zone))
+    : null;
   return {
     kind: NOTIFICATION_KIND.TRIP_TOMORROW,
     title: 'נוסעים מחר',
-    body: firstThing
-      ? `${input.tripName} · ${firstThing.title} ב-${clockLabel(firstThing.atMs, firstThing.zone)}`
-      : input.tripName,
+    body: firstThing ? `${input.tripName} · ${firstThing.title} ${clock}` : input.tripName,
     url: eventUrl(input.tripId, input.dateKey),
   };
 }

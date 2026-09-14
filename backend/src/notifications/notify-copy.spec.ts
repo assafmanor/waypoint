@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NOTIFICATION_KIND } from '@waypoint/shared';
+import { NOTIFICATION_KIND, TIME_MEANING, type TimeMeaning } from '@waypoint/shared';
 import {
   clockLabel,
   eventSoonPayload,
@@ -133,11 +133,13 @@ describe('taskDigestPayload', () => {
     expect(p.body).toBe('א, ב ועוד אחד');
   });
 
-  it('counts tomorrow in the TITLE and names it in the body', () => {
-    // The one addition that closes "we don't want to miss any upcoming" without a second
-    // send (ADR-0198 §2).
+  it('counts TODAY in the title and gives tomorrow its own clause in the body', () => {
+    // Phase A counted both, and `3 דברים לסגור היום` over one task due today was the title
+    // contradicting the body under it (`ועוד 2 למחר`). Tomorrow is still named — it is the
+    // addition that closes "we don't want to miss any upcoming" (ADR-0198 §2) — it just no
+    // longer inflates a count whose own word says today.
     const p = taskDigestPayload({ tripId: 't1', titles: ['א'], tomorrowCount: 2 });
-    expect(p.title).toBe('3 דברים לסגור היום');
+    expect(p.title).toBe('דבר אחד לסגור היום');
     expect(p.body).toBe('א · ועוד 2 למחר');
   });
 
@@ -224,7 +226,7 @@ describe('the phase-B payloads', () => {
     tripId: 't1',
     dateKey: '2026-08-21',
     title: 'טיסה TLV → NRT',
-    leadMinutes: 120,
+    untilMinutes: 120,
     startsAtMs: Date.parse('2026-08-21T03:20:00Z'),
     zone: 'Asia/Jerusalem',
   });
@@ -241,17 +243,38 @@ describe('the phase-B payloads', () => {
     expect(soon.url).toBe('/?trip=t1&tab=days&day=2026-08-21');
   });
 
-  it('gives a span edge its own word and its deadline', () => {
-    const edge = spanEdgePayload({
+  const edgeAt = (meaning: TimeMeaning, word = 'צ׳ק-אאוט') =>
+    spanEdgePayload({
       tripId: 't1',
       dateKey: '2026-08-25',
-      edgeWord: 'צ׳ק-אאוט',
+      edgeWord: word,
+      meaning,
       subject: 'Hotel Nikko',
       atMs: Date.parse('2026-08-25T08:00:00Z'),
       zone: 'Asia/Tokyo',
     });
+
+  it('gives a span edge its own word and its deadline', () => {
+    const edge = edgeAt(TIME_MEANING.NOT_AFTER);
     expect(edge.title).toBe('צ׳ק-אאוט עד 17:00');
     expect(edge.body).toBe('Hotel Nikko');
+  });
+
+  it('says מ- on a FLOOR, because `עד` there is the opposite fact', () => {
+    // The owner's 2026-09-14 report: a 16:00 check-in read `צ׳ק-אין עד 16:00` on the lock
+    // screen while the app's own row, two inches away, read `מ-16:00`. An hour the room
+    // OPENS is not an hour to be there by.
+    expect(edgeAt(TIME_MEANING.NOT_BEFORE, 'צ׳ק-אין').title).toBe('צ׳ק-אין מ-17:00');
+  });
+
+  it('says עד on a WINDOW, because the instant it prints is the closing bound', () => {
+    // Not a fallback: `span.edge.soon` aims a windowed edge at the bound you can miss.
+    expect(edgeAt(TIME_MEANING.WINDOW, 'צ׳ק-אין').title).toBe('צ׳ק-אין עד 17:00');
+  });
+
+  it('marks an EXACT edge the way `trip.tomorrow` marks an instant', () => {
+    // A journey's ends are moments, not constraints — `עד` and `מ-` both overclaim there.
+    expect(edgeAt(TIME_MEANING.EXACT, 'הגעה').title).toBe('הגעה ב-17:00');
   });
 
   it('falls back to a NOUN rather than printing a key at somebody', () => {
@@ -270,10 +293,28 @@ describe('the phase-B payloads', () => {
         title: 'טיסה TLV → NRT',
         atMs: Date.parse('2026-08-22T03:20:00Z'),
         zone: 'Asia/Jerusalem',
+        meaning: TIME_MEANING.EXACT,
       },
     });
     expect(tomorrow.title).toBe('נוסעים מחר');
     expect(tomorrow.body).toBe('יפן ׳26 · טיסה TLV → NRT ב-06:20');
+  });
+
+  it('opens with מ- when day 1 opens with a FLOOR rather than an appointment', () => {
+    // The same table `span.edge.soon` uses: plenty of trips start with a drive and a 16:00
+    // check-in, and the room opening is not an hour to be anywhere by.
+    const tomorrow = tripTomorrowPayload({
+      tripId: 't1',
+      dateKey: '2026-08-22',
+      tripName: 'יפן ׳26',
+      firstThing: {
+        title: 'Hotel Nikko',
+        atMs: Date.parse('2026-08-22T13:00:00Z'),
+        zone: 'Asia/Jerusalem',
+        meaning: TIME_MEANING.NOT_BEFORE,
+      },
+    });
+    expect(tomorrow.body).toBe('יפן ׳26 · Hotel Nikko מ-16:00');
   });
 
   it('says just the trip when day 1 has nothing on a clock', () => {

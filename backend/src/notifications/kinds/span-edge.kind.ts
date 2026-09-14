@@ -18,7 +18,7 @@
 // **deadline at 21:00**, not an appointment at 17:00. So this aims at `startWindowEnd` where
 // there is one and `startsAt` otherwise — and at `endWindowStart`'s counterpart the other way
 // round, where the EARLIEST is the constraint you can breach by being late to start.
-import { isAmbient, NOTIFICATION_KIND, eventTransitionKeys } from '@waypoint/shared';
+import { isAmbient, NOTIFICATION_KIND, edgeMeaning, eventTransitionKeys } from '@waypoint/shared';
 import {
   DEDUP,
   NOTIFY_PREF,
@@ -99,6 +99,11 @@ export const spanEdgeKind: NotificationKind = {
           tripId: event.tripId,
           dateKey: eventDayKey(event, zone),
           edgeWord: spanEdgeWord(edge.which === 'start' ? words?.startKey : words?.endKey),
+          // **A floor is not a deadline**, and the word has to say which: `עד 16:00` about a
+          // check-in promises an hour to be there BY, when 16:00 is the hour the room opens.
+          // Read off the same derivation every screen uses, so a lock screen and the row
+          // behind it cannot describe one edge two ways.
+          meaning: edgeMeaning(asShared(event), edge.which),
           subject: event.title,
           atMs: edge.atMs,
           zone,

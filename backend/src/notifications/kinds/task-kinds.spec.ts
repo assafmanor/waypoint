@@ -300,8 +300,9 @@ describe('task.digest', () => {
     });
     const sends = await taskDigestKind.due(input(prisma, at8));
     expect(sends[0].payload.body).toContain('למחר');
-    // Two things, so the count in the title is 2 and not 1.
-    expect(sends[0].payload.title).toContain('2');
+    // One thing today, so the title says one thing today — tomorrow's is named in the body
+    // rather than counted into a word that says `היום` (2026-09-14).
+    expect(sends[0].payload.title).toBe('דבר אחד לסגור היום');
   });
 
   it('does NOT fire on tomorrow alone', async () => {
