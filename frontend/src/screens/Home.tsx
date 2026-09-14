@@ -1176,8 +1176,36 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // blocks" was the right rule for a readout this surface no longer owns; the leaf-level answer
   // now lives on the board, which reads its own next.
   // "Free until" only reads honestly when there's no current event; otherwise the
-  // board already says what's on. Day-end is the latest instant of the day.
-  const freeUntil = !nowEvent && nextEvent?.startsAt ? formatTime(nextEvent.startsAt, tz) : null;
+  // board already says what's on.
+  //
+  // **And it ends at the DEPARTURE, not at the point** (ADR-0206 §AJ4.1, which this surface
+  // never got). `narrowGapForTravel` has shrunk the day's holes by the journey in them since
+  // §AJ4 — "the window the strip states ends at the leave-by the block advises" — while the
+  // board went on printing the next point's own clock. So one card counted `7 דקות ליציאה` in
+  // its tile and said `עד 10:30` two lines above it, off one estimate: the free time ran 15
+  // minutes past the departure it was measured from, and both numbers were on screen together
+  // (field report, 2026-09-14). ADR-0159 §1 allows the two elevations a difference in POSTURE
+  // and forbids one about a FACT, and when the free time ends is a fact.
+  //
+  // **Off `nextInstant`, which is the second defect underneath it.** Every other line on this
+  // card is about `shownNext` — the gap's own read is derived from it — and on the check-out
+  // arm above that is a different event at a different instant than `nextEvent`, so the
+  // ceiling named a point the card was not about.
+  //
+  // Three arms leave it reading exactly as it shipped. No estimate is the ORDINARY answer
+  // (§D4: absence, never a pessimistic guess), so the raw hole stays the honest statement. A
+  // CLAMPED instant is the earliest departure rather than the latest (§AJ2), where `עד` is
+  // false rather than merely redundant — so it states no ceiling at all, which is the same
+  // `goMs = null` `narrowGapForTravel` takes on that arm, for the same reason. And a ceiling
+  // already behind us is withdrawn rather than restated: the tile is saying `באיחור ליציאה`.
+  const freeUntilMs = (() => {
+    if (nowEvent || !nextInstant) return null;
+    if (leave) return leave.clamped ? null : leave.leaveByMs;
+    const arrival = Date.parse(nextInstant);
+    return Number.isFinite(arrival) ? arrival : null;
+  })();
+  const freeUntil =
+    freeUntilMs !== null && freeUntilMs > nowMs ? formatTime(new Date(freeUntilMs), tz) : null;
   const dayEndMs = sameDayEvents.reduce((max, e) => {
     const end = e.endsAt ? Date.parse(e.endsAt) : e.startsAt ? Date.parse(e.startsAt) : 0;
     return end > max ? end : max;

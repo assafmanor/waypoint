@@ -1106,3 +1106,96 @@ describe('Home — every arm of the tile says what its number measures (ADR-0206
     expect(unitBelow()).toBe(t.board.leaveIn);
   });
 });
+
+/**
+ * **THE FREE TIME ENDS AT THE DEPARTURE** (ADR-0206 §AJ4.1, reported 2026-09-14).
+ *
+ * §AJ4.1 settled the rule for the day's holes — "the window the strip states ends at the
+ * leave-by the block advises" — and `narrowGapForTravel` has shrunk them by the journey in them
+ * ever since. The board never got it: its `עד` was the next point's own `startsAt`, so one card
+ * carried a tile counting `7 דקות ליציאה` and, two lines above it, `עד 10:30` — a free window
+ * running fifteen minutes past the departure the same card was counting to, off one estimate,
+ * both numbers on screen together.
+ *
+ * These live in this file rather than beside the gap's own specs because the leave-by is what
+ * the claim now rests on: the fixtures, the buffer and the estimate seam are all here.
+ */
+describe('Home — the free time ends where the journey begins (ADR-0206 §AJ4.1)', () => {
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    resetOnWayForTests();
+    tripStart = DAY_BEFORE;
+    tripEvents = [];
+    tripBookings = [];
+    travelSeconds = null;
+    geoFix = null;
+  });
+  afterEach(() => {
+    cleanup();
+    resetOnWayForTests();
+    setSimulatedNow(null);
+  });
+
+  /** The gap slot's meta line — the one `עד HH:MM` the card prints under `זמן חופשי`. */
+  const freeUntil = () =>
+    withoutBidiControls(document.querySelector('.wp-board-now-meta')?.textContent ?? '');
+  const gapTitle = () => document.querySelector('.wp-board-now-title')?.textContent;
+  /** A clock `minutes` from now, in the trip's zone — written out rather than hardcoded so the
+   *  spec cannot drift from the fixture's own arithmetic. */
+  const clockAt = (minutes: number) =>
+    formatTime(new Date(Date.parse(NOW) + minutes * 60_000), ZONE);
+
+  /**
+   * **The reported card, to the minute.** A stop 22 minutes out, a 10-minute leg, and §D5's
+   * 5-minute buffer put the departure 7 minutes from now — the tile's own number. Before this
+   * fix the meta line said the event's `14:52` while the tile said 7.
+   */
+  it('states the DEPARTURE as the ceiling, not the point it is a departure for', () => {
+    tripEvents = [museum, dinner(22)];
+    travelSeconds = 10 * 60;
+    show();
+    expect(gapTitle()).toBe(t.board.freeTitle);
+    expect(toLeave(22, 10)).toBe(7);
+    expect(freeUntil()).toContain(clockAt(7));
+    // The point's own clock is what it used to say, and saying it here is the defect.
+    expect(freeUntil()).not.toContain(clockAt(22));
+  });
+
+  /** And the two numbers on the one card agree by construction, which is the whole point of
+   *  reading them off one derivation: the tile counts to the instant the meta line names. */
+  it('agrees with the tile counting to the same instant', () => {
+    tripEvents = [museum, dinner(22)];
+    travelSeconds = 10 * 60;
+    show();
+    expect(value()).toBe('7');
+    expect(unitBelow()).toBe(t.board.leaveIn);
+    expect(freeUntil()).toContain(clockAt(7));
+  });
+
+  /**
+   * **No estimate leaves it reading exactly as it shipped** (§D4: absence, never a pessimistic
+   * guess). With nothing measured, the raw hole is the honest statement and the board has no
+   * departure to end it at.
+   */
+  it('falls back to the point’s own clock when there is no estimate', () => {
+    tripEvents = [museum, dinner(22)];
+    travelSeconds = null;
+    show();
+    expect(freeUntil()).toContain(clockAt(22));
+  });
+
+  /**
+   * **A ceiling already behind us is withdrawn rather than restated** (ADR-0207). The leg eats
+   * more than the hole, so the departure has gone by — the tile is saying `באיחור ליציאה`, and a
+   * free window bounded by a past instant, or worse re-bounded by the point's own clock, is the
+   * overstatement from the other side.
+   */
+  it('states no ceiling at all once the departure has passed', () => {
+    tripEvents = [museum, dinner(12)];
+    travelSeconds = 20 * 60;
+    show();
+    expect(toLeave(12, 20)).toBeLessThan(0);
+    expect(freeUntil()).toBe('');
+    expect(unitBelow()).toBe(t.board.leaveIn);
+  });
+});
