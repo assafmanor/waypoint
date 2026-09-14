@@ -4318,3 +4318,77 @@ download.
   removes the failure this report proves was happening; a `202` from a cold precompute or a `5xx`
   from a provider outage would leave the pack absent still — silently, which is §D4's whole point,
   and visible in the settings readout as a trip with an extract and no pack.
+
+## BF. §AJ4.1's rule never reached the board, and the two numbers were on one card (2026-09-14)
+
+A field report as a screenshot of the hero, ⁦10:08⁩ on an Iceland morning, with the card saying both
+halves of the contradiction at once:
+
+> _"There's a discrepancy between the time to take off and the free time."_
+
+`פנוי · זמן חופשי · עד 10:30` in the now-slot, and ⁦100px⁩ below it a tile reading
+`7 · דקות · ליציאה` against `Faxi Bakery Cafe · 10:30`. Both off one estimate, and only one of them
+right: the departure was ⁦10:15⁩, so the free window was overstated by the whole of the walk plus
+§D5's buffer — the app offering fifteen minutes it had just finished saying you must spend
+travelling.
+
+### BF1. It is this ADR's founding defect, on the one surface the corrections never reached
+
+The opening line of this ADR **corrects ADR-0159 §1** because `פנוי · 2:40 שע׳` counted the walk as
+free time. §V1.1 ranked that first, _"a correction, not a feature"_. §AJ4.1 then settled the rule in
+words the board could have been read against directly — _"the window the strip states **ends at**
+the leave-by the block advises"_ — and §AY tightened it to one function ending both.
+
+Every one of those landed on a **hole between two rows**: `narrowGapForTravel`, called from
+`DayView`'s join and `PlanDay`'s seams and edges. The board's free time is not a hole between two
+rows. It is `Home`'s own `freeUntil`, one line, computed from `nextEvent.startsAt` and formatted —
+written before any of this ADR existed and never touched by it. So the surface whose entire job is
+_what do I need in the next 30 minutes_ was the last one still making the claim this ADR opens by
+withdrawing.
+
+**This is rule 8's cost read backwards.** The correction was generalised into shared infra exactly
+as it should have been, and the one call site that predates it did not become a caller — so the fix
+shipped three times and the fourth surface, the most-glanced one, kept the bug.
+
+### BF2. The rule, and the three arms that keep reading as they shipped
+
+The ceiling is the **departure**, and the departure is `heroLeaveBy`'s — already derived ⁦440 lines⁩
+above `freeUntil` in the same component, already clamped by §AJ3, already the instant the tile
+counts to. ADR-0159 §1 permits the two elevations a difference in **posture** and forbids one about
+a **fact**; when the free time ends is a fact, and it was the same fact twice with different answers
+inside one card.
+
+- **No estimate → the point's own clock, unchanged.** §D4's absence rule: offline, refused, over the
+  ceiling, still warming. With nothing measured there is no departure to end the window at, and the
+  raw hole is the honest statement rather than a guess.
+- **A clamped instant → no ceiling at all.** §AJ2 pulls the departure **forward** to `departAfterMs`
+  when the buffer lands it behind the row it leaves from, so the number is then the _earliest_
+  departure that exists and `עד` is **false** rather than merely redundant — §AJ4.2 settled that
+  predicate, and this takes it whole. The board withdraws the line instead of falling back to the
+  point's clock, which is the overstatement it is here to end; the same `goMs = null`
+  `narrowGapForTravel` takes on that arm, for the same reason.
+- **A departure already behind us → no ceiling either** (ADR-0207: a fix may withdraw a claim, it
+  may not make one). The tile is saying `באיחור ליציאה`; a free window bounded by a past instant
+  states nothing, and bounding it by the point's clock instead states the overstatement.
+
+### BF3. The second defect underneath it — the ceiling named a point the card was not about
+
+`freeUntil` read `nextEvent.startsAt`. Every other line on that card is about **`shownNext`**, which
+is where the check-out override lands: when a hotel's `endsAt` beats `deriveNow`'s next, the board
+shows the hotel and counts to _its_ instant, while the gap's own character is derived from it too.
+The meta line went on naming a different event at a different clock.
+
+Found by reading the variable rather than from the report, and it is the ordinary shape of this
+kind of bug: a line written before the override existed, never revisited when it arrived. The
+ceiling is off `nextInstant` now, so the card's four numbers are all about one point.
+
+### BF4. What is deliberately not changed
+
+- **No duration beside the clock.** The day's strip says `46 דק׳ פנויות` because it describes a hole
+  read from outside; the board is standing _in_ the hole and its tile already counts the live
+  number. A third rendering of one fact is what §AH3 removed from the journey row.
+- **`עד` stays the word.** ADR-0171's ceiling, `t.board.until`, the same key the row slot and the
+  now slot already use — and now true on every arm that prints it.
+- **The gap's five characters are untouched** (ADR-0211). What the slot _says_ is unchanged; only
+  the instant it bounds moved. `on-the-way` still withdraws the leave read upstream, so the ceiling
+  goes with it for free.

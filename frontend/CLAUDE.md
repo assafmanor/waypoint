@@ -431,6 +431,13 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   where a check-in read as unplaced in Trip and interleaved by its floor in Plan.
   Touching `placeDayEntries`, `dayBlocks`, `mergeDayEntries` or anything either
   screen reads means checking **both**, in code and in the mockup.
+  **And for a derived TIME there is now a test rather than this instruction**
+  ([ADR-0226](../docs/decisions/0226-a-derived-time-carries-the-instant-behind-it.md)):
+  state one with `statedTime`/`timeFacts` (`lib/time-claim.ts`) so the element
+  carries the instant, the zone and the subject, and
+  `surfaces.agreement.test.tsx` will fail when two surfaces answer one question
+  differently. This line had already cost a release twice when it was written and
+  six more times after; a rule that depends on remembering it is not a rule.
 - Turning a typed wall-clock into an instant with `trip.timezone` (or any zone the
   call site happened to have) instead of `authoringZone(…, zoneEvidence)` — the
   event then renders at a different time than it was typed at. A `WhenField`
