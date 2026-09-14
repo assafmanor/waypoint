@@ -738,13 +738,33 @@ export function crossesMidnightZoned(
 
 /** Same-day hard event(s) whose span overlaps this soft event's current span.
  *  Two soft events overlapping is expected/unguarded (ADR-0011) — only hard-vs-soft
- *  matters, since a hard event can never move to resolve it. */
+ *  matters, since a hard event can never move to resolve it.
+ *
+ *  **A HELD SPAN IS NOT A COLLISION** (ADR-0227's 2026-09-14 amendment, reported against the
+ *  deployed build): this is the THIRD implementation of "these two spans collide" and the one
+ *  the ADR missed, so at ⁦18:47⁩ a supermarket run of ⁦18:30–20:00⁩ carried
+ *  `⚠ חופף ל-The Garage (קשיח) · 16:00` — a warning about the hotel it is being done FROM,
+ *  naming a check-in ⁦2h47m⁩ in the past. Same cause as §A: the test below is raw overlap, and
+ *  a stay running ⁦16:00⁩ → ⁦11:00⁩ CONTAINS the evening rather than clashing with it.
+ *
+ *  Two reasons it can never clash, and they are the ADRs' own. ADR-0011 spends this warning on
+ *  a double-booking you must fix **in reality** — "a hard event can never move to resolve it" —
+ *  and there is nothing to resolve about the bed you are sleeping in. And ADR-0171 makes a held
+ *  span's ends `not-before` / `not-after`, which are precisely the times that do NOT pin you:
+ *  you check in any time after ⁦16:00⁩, so even the edge is not a clash. A JOURNEY still warns —
+ *  its ends are `exact` and you genuinely cannot be at dinner and on the plane.
+ *
+ *  Note what the ADR's own scope note got wrong: it counted `clusterAround`'s CALLERS (one) and
+ *  called the blast radius counted. The question that finds this one is how many functions
+ *  implement the NOTION — three, of which `buildTimeTree` is correct by construction because it
+ *  resolves containment into parentage before any sibling overlap test runs. */
 export function hardConflicts(event: TripEvent, dayEvents: TripEvent[]): TripEvent[] {
   if (event.kind !== EVENT_KIND.SOFT || !event.startsAt || !event.endsAt) return [];
   const start = Date.parse(event.startsAt);
   const end = Date.parse(event.endsAt);
   return dayEvents.filter((e) => {
     if (e.id === event.id || e.kind !== EVENT_KIND.HARD || !e.startsAt) return false;
+    if (eventMidSpan(e)?.kind === 'held') return false;
     const eStart = Date.parse(e.startsAt);
     const eEnd = e.endsAt ? Date.parse(e.endsAt) : eStart;
     return eStart < end && eEnd > start;

@@ -640,6 +640,54 @@ describe('hardConflicts', () => {
   it('returns nothing for a hard event itself', () => {
     expect(hardConflicts(ichiran, EVENTS)).toEqual([]);
   });
+
+  // ── A HELD SPAN IS NOT A COLLISION (ADR-0227's 2026-09-14 amendment) ─────────
+  //
+  // Reported against the deployed build: at 18:47 a supermarket run of 18:30–20:00 carried
+  // `⚠ חופף ל-The Garage (קשיח) · 16:00` — a warning about the hotel it was being done FROM,
+  // naming a check-in nearly three hours in the past.
+  const held = (id: string, cat: 'lodging' | 'transport', icon: string): TripEvent =>
+    ({
+      ...shinjuku,
+      id,
+      title: id,
+      kind: EVENT_KIND.HARD,
+      category: cat,
+      icon,
+      startsAt: '2026-07-07T16:00:00+09:00',
+      endsAt: '2026-07-08T11:00:00+09:00',
+      endDate: '2026-07-08',
+    }) as TripEvent;
+  const evening: TripEvent = {
+    ...shinjuku,
+    id: 'x-shop',
+    kind: EVENT_KIND.SOFT,
+    startsAt: '2026-07-07T18:30:00+09:00',
+    endsAt: '2026-07-07T20:00:00+09:00',
+  };
+
+  it('does not flag the stay an evening is spent inside', () => {
+    expect(hardConflicts(evening, [evening, held('x-stay', 'lodging', '🏨')])).toEqual([]);
+  });
+
+  it('does not flag a car hire either — you have the car, that is not a clash', () => {
+    expect(hardConflicts(evening, [evening, held('x-hire', 'transport', '🚗')])).toEqual([]);
+  });
+
+  /** The other half, and it is what stops this becoming "never warn about anything hard":
+   *  a JOURNEY's ends are `exact` (ADR-0171), and you cannot be shopping and on the plane. */
+  it('still flags a flight, whose ends are exact', () => {
+    const flight: TripEvent = {
+      ...shinjuku,
+      id: 'x-flight',
+      kind: EVENT_KIND.HARD,
+      category: 'transport',
+      icon: '✈️',
+      startsAt: '2026-07-07T19:00:00+09:00',
+      endsAt: '2026-07-07T22:00:00+09:00',
+    };
+    expect(hardConflicts(evening, [evening, flight]).map((e) => e.id)).toEqual(['x-flight']);
+  });
 });
 
 describe('buildTimeTree — containment forest + per-level clustering', () => {
