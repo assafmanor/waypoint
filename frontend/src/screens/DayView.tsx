@@ -12,7 +12,7 @@ import type { ReactNode } from 'react';
 import {
   EVENT_KIND,
   EVENT_STATUS,
-  edgeMeaning,
+  edgeOutlivesItsInstant,
   isAmbient,
   isExactEdge,
   isRoutableMode,
@@ -1200,13 +1200,19 @@ export function DayView() {
       : ambientSpanLabel(stay, activeDate);
   };
 
-  /** **The settle pair, on a FLOOR only** — inherited from the edge row this replaces, and
-   *  load-bearing rather than parity: `glance.ts` keeps a `not-before` edge in `נותרו היום` until
-   *  it is `DONE`, because 15:01 does not mean anybody checked in (ADR-0171 §6). A ceiling and a
-   *  window expire by their own clock and need none. Gated on the archive like every other write
-   *  (ADR-0029). */
+  /** **The settle pair, on every check-in the clock cannot answer** — inherited from the edge row
+   *  this replaces, and load-bearing rather than parity: `glance.ts` keeps such an edge in
+   *  `נותרו היום` until it is settled, because 15:01 does not mean anybody checked in (ADR-0171
+   *  §6). A ceiling expires by its own clock and needs none.
+   *
+   *  **A WINDOW is not a ceiling, and reading it as one is the bug this fixed** (owner,
+   *  2026-09-15): ADR-0184 §6 made the count hold a windowed check-in to its ceiling, this gate
+   *  kept asking for `not-before`, and a guesthouse booked ⁦17:00–22:00⁩ therefore read
+   *  `נותר דבר אחד היום` at ⁦20:05⁩ with no control anywhere on the day able to clear it. The two
+   *  now ask `edgeOutlivesItsInstant` — one predicate, so the row and the number cannot drift
+   *  apart again. Gated on the archive like every other write (ADR-0029). */
   const staySettle = (stay: TripEvent) => {
-    if (readOnly || edgeMeaning(stay, 'start') !== 'not-before') return {};
+    if (readOnly || !edgeOutlivesItsInstant(stay, 'start')) return {};
     return {
       outcome:
         stay.status === EVENT_STATUS.DONE || stay.status === EVENT_STATUS.SKIPPED

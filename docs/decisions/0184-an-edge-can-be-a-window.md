@@ -207,3 +207,19 @@ The section above already stated the rule correctly: _"a start edge's own time i
 **One thing left open.** Swapping the render order means the `Field` carrying the refusal mark (ADR-0150) is no longer the first token in the line. The mark sits on the line's box rather than on a token, so this is correct — but the refusal's scroll-into-view targets that box, and it is worth a look on a device.
 
 Design reference: [`mockups/the-way-back-is-its-own-route-v1.html`](../../mockups/the-way-back-is-its-own-route-v1.html) §3, whose measurement table prints the actual word run each line renders — a screenshot cannot be trusted to tell `מ־` from `עד` at that size.
+
+## Amendment (2026-09-15) — the count held an edge the day gave no way to answer
+
+Owner, with the Home glance and the day view of one Iceland evening at ⁦20:05⁩:
+
+> There's a bug in the home glance, for some reason it shows that there's one thing left while there isn't.
+
+The card read `נותר דבר אחד היום` beside `מסתיים ~18:30` — a day whose last stop had been marked done ninety minutes earlier, and one thing still counted. **The one thing was the guesthouse's check-in, booked ⁦17:00–22:00⁩, and the number was this §6 working exactly as decided.** What was missing is the other half of the loop.
+
+§6 widened `remaining` to hold a windowed check-in to its **ceiling**, and it holds it there until somebody settles it. ADR-0184 §2 had given a floor its `היינו` for precisely that reason, and [ADR-0209](0209-a-stay-is-named-once-in-the-day-it-belongs-to.md) §1 moved that control onto the stay's bookend row so it would survive the edge row's deletion — **gated on `edgeMeaning(…) === 'not-before'`**, with a comment asserting that _"a ceiling and a window expire by their own clock and need none."_ For a check-**out** that is true. For a check-**in** window it is this section's own rule, negated: the count was holding the edge for five hours and nothing on any screen could clear it. The row rendered no settle pair at all, which is what the screenshot shows.
+
+**The audit this section ran is the one that missed it.** §6 states that _"`glance.ts` was the one consumer in the codebase that asked `edgeMeaning` for a specific FLEXIBLE value rather than testing `exact`"_ — true when it was written, and the count was fixed there. ADR-0209's build then wrote a second one, and it is the same sentence ADR-0227's own amendment had to add: **a claim about a notion is counted over implementations, not over callers.** Two spellings of "which edges the clock cannot answer" will disagree the moment one of them is widened.
+
+**The fix is one predicate, in `@waypoint/shared` beside `isEdgeSettled`.** `edgeOutlivesItsInstant(event, edge)` is true for a floor and for a check-in window, false for a deadline and for an exact moment — and both surfaces now ask it: `buildDayGlance` to decide what the number holds, `DayView`'s `staySettle` to decide whether the row can answer. A window's ceiling stays the only clock that retires it, so nothing this section decided changes; what changes is that the number can now reach zero the way §6 assumed it could.
+
+**What was deliberately left alone.** `מסתיים ~18:30` reads off the day's own blocks and ignores an ambient edge — correct for the line it is (when the day's stops end), and the pairing stops looking like a contradiction the moment the check-in is answered. And `remaining` still counts an unanswered check-in in the evening: that is [ADR-0171](0171-a-time-can-be-a-floor-or-a-ceiling.md) §6's call — _"an un-checked-into hotel at ⁦19:00⁩ is exactly one"_ — and this report is not evidence against it, because until now there was no way to tell the app otherwise.

@@ -88,6 +88,14 @@ cannot make.
 gone, that pair belongs on the stay's own row. A build that drops it re-opens the report ADR-0184
 §2 fixed.
 
+**CORRECTED 2026-09-15 — a _floor_ was too narrow, and the build's gate said so literally.** It
+shipped as `edgeMeaning(…) === 'not-before'`, on the reasoning that a window expires by its own
+clock; [ADR-0184](0184-an-edge-can-be-a-window.md) §6 had already decided the opposite for a
+check-in window, which `remaining` holds to its **ceiling** and not to its floor. So a guesthouse
+booked ⁦17:00–22:00⁩ was counted all evening by a card whose only possible answer this row was, and
+the row drew no control. Both surfaces now ask `edgeOutlivesItsInstant` — see that ADR's 2026-09-15
+amendment. The rule this paragraph states is unchanged; the gate is the rule it always meant.
+
 **AMENDED 2026-08-26 — "the day starts there" is not the same as "it is the day's first row."**
 Owner, off this ADR's own deploy: _"it doesn't handle a car rental late at the night before. Should
 be handled like the map handles this."_ A car collected at 00:00 after a late landing was drawn
