@@ -37,3 +37,11 @@ The same-gesture hand-off from a browser-owned pan. It is impossible as a `preve
 ## What is unmeasured
 
 The claim and the hand-off are measured on Chromium (the e2e spec, plus ADR-0200 §9's earlier measurement of the same claim mechanism). iOS Safari's slop before it commits a pan is undocumented; the ADR names the lever (a touch-only decide threshold under the slop) for the device pass.
+
+## The third round: _"control feels a little slow and wonky"_ (owner, on the deployed #840)
+
+Two costs were found by reading the gesture's own code, and one was measured. **A state update per move**: the live height lived in React state, so every move re-rendered `SnapSheet` — the exact thing ADR-0200 §7 refused for the day swipe. It is written to the DOM now, and React owns only `--snap-h`. **A non-passive `touchmove` listener during the browser's pan**: kept bound to watch for the hand-off, it made the browser wait on the main thread before every scroll frame. It is swapped for a passive one the moment the list owns the gesture.
+
+Measured in Chromium with `e2e/snap-sheet-perf.spec.ts` (a flagged instrument, `E2E_PERF=1`): script time per 60-move sheet drag 69ms → 14ms, total main-thread 158ms → 70ms; the hand-off drag 26ms → 7ms. Layouts unchanged at one per frame, which is the drag. The passive listener's effect is latency, which counters do not show.
+
+Left as a backlog line: the Map's one-second clock rebuilds the sheet's list as fresh JSX, so a tick mid-gesture reconciles twenty rows under the finger. That is a `Map.tsx` memoisation with its own audit.

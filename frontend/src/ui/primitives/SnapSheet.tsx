@@ -11,14 +11,7 @@
 //
 // Generic mechanics with no trip-domain shape, so it is a primitive: the caller
 // owns the stops, the current stop, the header content, and the scrolling body.
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from 'react';
+import { useCallback, useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { clampToStops, nearestStop, stopHeightCss, type SnapStop } from '../../lib/snap-sheet';
 import { scrollerWithin } from '../../lib/scrollable';
 import { SNAP_CLAIM, useSnapDrag } from '../../lib/useSnapDrag';
@@ -55,26 +48,36 @@ export function SnapSheet<T extends string>({
   className?: string;
 }) {
   const root = useRef<HTMLDivElement>(null);
-  // The live height WHILE dragging, in px. `null` at rest, which is what hands the
-  // height back to CSS so the snap animates instead of being set imperatively.
-  const [dragPx, setDragPx] = useState<number | null>(null);
 
   const containerPx = useCallback(() => root.current?.parentElement?.clientHeight ?? 0, []);
   const currentPx = useCallback(() => root.current?.getBoundingClientRect().height ?? 0, []);
 
+  /** **The live height is written to the DOM, not to React state** (ADR-0200 §7's rule, applied
+   *  here after the owner reported the drag as _"slow and wonky"_). A state update per move
+   *  re-rendered this component sixty times a second while the finger was down, on the screen
+   *  whose parent already re-renders every second on the clock — and nothing in that render
+   *  changed except one inline pixel value. Chrome delivers pointer and touch moves aligned to
+   *  the frame, so one write per move is one write per frame with no batching of our own.
+   *
+   *  React never owns `height` or the `dragging` class: its `style` carries only `--snap-h`,
+   *  so a clock re-render mid-drag writes neither and cannot wipe them. Release clears both,
+   *  which is what hands the height back to `--snap-h` and lets the snap animate. */
+  const setLiveHeight = (px: number | null) => {
+    const el = root.current;
+    if (!el) return;
+    el.style.height = px == null ? '' : `${px}px`;
+    el.classList.toggle(DRAGGING_CLASS, px != null);
+  };
+  const onDrag = (px: number) => setLiveHeight(clampToStops(px, containerPx(), stops, order));
   const onRelease = (px: number, velocity: number) => {
     const container = containerPx();
-    setDragPx(null);
+    setLiveHeight(null);
     onViewChange(
       nearestStop(clampToStops(px, container, stops, order), container, stops, order, velocity),
     );
   };
 
-  const drag = useSnapDrag({
-    heightPx: currentPx,
-    onDrag: (px) => setDragPx(clampToStops(px, containerPx(), stops, order)),
-    onRelease,
-  });
+  const drag = useSnapDrag({ heightPx: currentPx, onDrag, onRelease });
 
   /** **THE LIST SCROLLS FIRST; THE SHEET MOVES ONLY ONCE THE LIST HAS NOTHING LEFT TO SCROLL
    *  THAT WAY** (ADR-0122 §4's 2026-09-15 amendment, as corrected the same day by the owner:
@@ -107,7 +110,7 @@ export function SnapSheet<T extends string>({
       return listAtEnd(dy) ? SNAP_CLAIM.sheet : SNAP_CLAIM.list;
     },
     handoff: listAtEnd,
-    onDrag: (px) => setDragPx(clampToStops(px, containerPx(), stops, order)),
+    onDrag,
     onRelease,
   });
 
@@ -132,11 +135,10 @@ export function SnapSheet<T extends string>({
   // that no longer exists (a rotation, an on-screen keyboard). Drop back to the
   // snapped height rather than carrying a stale pixel number.
   useEffect(() => {
-    if (dragPx == null) return;
-    const drop = () => setDragPx(null);
+    const drop = () => setLiveHeight(null);
     window.addEventListener('resize', drop);
     return () => window.removeEventListener('resize', drop);
-  }, [dragPx]);
+  }, []);
 
   // The splitter's keyboard, which is the whole reason for the role: arrows move one
   // stop, Home/End go to the extremes. As a focusable button that did nothing on a
@@ -161,18 +163,11 @@ export function SnapSheet<T extends string>({
   return (
     <div
       ref={root}
-      className={
-        'wp-snapsheet' + (dragPx != null ? ' dragging' : '') + (className ? ' ' + className : '')
-      }
+      className={'wp-snapsheet' + (className ? ' ' + className : '')}
       // The resting height is declarative (`--snap-h`), so the browser animates the
-      // snap; the live drag height overrides it imperatively and drops back to
-      // `null` on release, which is what makes the release animate.
-      style={
-        {
-          '--snap-h': stopHeightCss(stops[view]),
-          ...(dragPx != null ? { height: `${dragPx}px` } : null),
-        } as CSSProperties
-      }
+      // snap; the live drag height overrides it imperatively (`setLiveHeight`) and is
+      // cleared on release, which is what makes the release animate.
+      style={{ '--snap-h': stopHeightCss(stops[view]) } as CSSProperties}
       data-view={view}
     >
       {/* The whole top region is the drag target, not the grab line inside it: 76×16px
@@ -214,3 +209,6 @@ export function SnapSheet<T extends string>({
 /** A sub-pixel short of the bottom is the bottom: `scrollHeight` is an integer and `scrollTop`
  *  need not be, so without the slack a list at its end would keep the gesture for nothing. */
 const SCROLL_END_EPSILON_PX = 1;
+/** Owned imperatively for the gesture's lifetime; the stylesheet keys its no-transition,
+ *  no-selection and cursor rules on it. */
+const DRAGGING_CLASS = 'dragging';

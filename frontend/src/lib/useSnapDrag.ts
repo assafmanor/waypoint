@@ -158,6 +158,7 @@ export function useSnapDrag({
     const unbind = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('touchmove', touchMove);
+      window.removeEventListener('touchmove', touchWatch);
       window.removeEventListener('pointerup', end);
       window.removeEventListener('pointercancel', end);
       window.removeEventListener('touchend', touchEnd);
@@ -183,6 +184,13 @@ export function useSnapDrag({
       }
       if (verdict === SNAP_CLAIM.list) {
         phase = 'list';
+        // **The pan is the browser's now, so get out of its way.** A non-passive `touchmove`
+        // listener anywhere on the path makes the browser dispatch every move to the main
+        // thread and WAIT for it before scrolling — with this screen re-rendering on the
+        // clock, that wait is the stutter. The watch only reads, so it listens passively,
+        // and the browser scrolls on the compositor as if nothing were listening at all.
+        window.removeEventListener('touchmove', touchMove);
+        window.addEventListener('touchmove', touchWatch, { passive: true });
         return;
       }
       region.setPointerCapture?.(pointerId);
@@ -206,12 +214,17 @@ export function useSnapDrag({
       if (phase === 'done' || ev.touches.length !== 1) return;
       const touch = ev.touches[0];
       decide(touch.clientX, touch.clientY);
+      lastTouchY = touch.clientY;
+      if (phase === 'sheet' && ev.cancelable) ev.preventDefault();
+    };
+    /** The PASSIVE half, bound only once the list owns the gesture: it reads the finger for
+     *  the step on which the list runs out, and then carries the hand-off. Never prevents
+     *  anything — it could not, and it must not need to. */
+    const touchWatch = (ev: TouchEvent) => {
+      if (phase === 'done' || ev.touches.length !== 1) return;
+      const touch = ev.touches[0];
       const step = touch.clientY - lastTouchY;
       lastTouchY = touch.clientY;
-      if (phase === 'sheet') {
-        if (ev.cancelable) ev.preventDefault();
-        return;
-      }
       if (phase === 'list') {
         if (step === 0 || !latest.current.handoff?.(step)) return;
         phase = 'handoff';
@@ -262,7 +275,8 @@ export function useSnapDrag({
     };
 
     window.addEventListener('pointermove', move);
-    // Non-passive, because its whole job in `sheet` is `preventDefault`.
+    // Non-passive, because its whole job in `sheet` is `preventDefault` — and it is swapped
+    // for the passive `touchWatch` the moment the verdict is the list's.
     window.addEventListener('touchmove', touchMove, { passive: false });
     window.addEventListener('pointerup', end);
     window.addEventListener('pointercancel', end);
