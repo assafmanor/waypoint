@@ -7,12 +7,12 @@
 // never stored, ADR-0043) and passed in, so the card stays presentational.
 //
 // A passed-but-unmarked soft event settles inline ("we did this / skip"); a done
-// event's ✓ doubles as one-tap undo; the ±nudge adapts to phase; Tier-2 edits
+// event's `היינו ✓` CHIP doubles as one-tap undo (ADR-0230); the ±nudge adapts to phase; Tier-2 edits
 // (swap/edit/delete) sit behind the `⋯` sheet (ADR-0025). Verbs arrive as
 // callbacks — no `verbs` hook, no trip-state.
 //
 // Domain UI may use the shared copy/icon/time helpers (not state); it does.
-import { useState, type ReactNode } from 'react';
+import { useState, type HTMLAttributes, type ReactNode } from 'react';
 import { clockRange, formatTime, crossesMidnightZoned } from '../../lib/time';
 import type { EventKind, EventPhaseName } from './event-phase';
 import type { EventZones } from '../../lib/places';
@@ -166,6 +166,8 @@ export interface EventCardProps {
   onDelay?: () => void;
   onEarlier?: () => void;
   onOnWay?: () => void;
+  /** Take a settled row back to `planned`. Wired, it makes the `היינו ✓` chip the control
+   *  that does it (ADR-0230 §1); absent, the chip stays the plain label it always was. */
   onRestore?: () => void;
   /** `החלף` — open the slot's own chooser: pick a replacement, this event goes to the shelf,
    *  the replacement takes its exact start and length (ADR-0161 §6). Soft events only, and
@@ -288,9 +290,40 @@ export function EventCard(props: EventCardProps) {
   // the soft arm, so a passed booking — the row that now carries the same open question —
   // said nothing about it. Status first, kind second: the ladder below is the order the
   // slot's own job implies, not a per-kind list.
+  //
+  // **AND ON THE DONE ARM THE CHIP IS ALSO THE CONTROL** (ADR-0230 §1). One verb was spelled
+  // four ways — this label, a ✓ circle on the face, a `שחזור` button in the verb band, and
+  // Plan's own circle — and the circle's meaning lived in a `hover`/`focus-visible` morph,
+  // neither of which a phone tap produces (ADR-0017). The chip already carries the word, so
+  // it is the one mark that explains itself, and the other two on this card are gone.
+  //
+  // A `role="button"` SPAN, not a `<button>`: the face is itself one, and a nested button is
+  // invalid HTML — the parser closes the outer and reparents the rest (`frontend/CLAUDE.md`;
+  // the first render of the mockup grew the card +64px proving it). Same reason
+  // `PlaceBadge` and the `⋯` below are spans with a role.
   const hasWhenSlot = !!startsAt;
+  const undoDone = (e: { preventDefault: () => void; stopPropagation: () => void }) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onRestore?.();
+  };
+  // Everything the chip needs to BE the control, or nothing — so the label is written once
+  // and the two arms cannot drift in what they say. `title` as well as `aria-label`, because
+  // `היינו ✓` names the state and the tap does the opposite of it.
+  const undoProps: HTMLAttributes<HTMLSpanElement> = onRestore
+    ? {
+        role: 'button',
+        tabIndex: 0,
+        'aria-label': t.actions.undoDone,
+        title: t.actions.undoDone,
+        onClick: undoDone,
+        onKeyDown: (e) => {
+          if (e.key === 'Enter' || e.key === ' ') undoDone(e);
+        },
+      }
+    : {};
   const tag = isDone ? (
-    <span className="wp-event-tag-done">
+    <span className={`wp-event-tag-done${onRestore ? ' btn' : ''}`} {...undoProps}>
       <Icon name="check" /> {t.event.didThis}
     </span>
   ) : isPassed ? (
@@ -454,35 +487,6 @@ export function EventCard(props: EventCardProps) {
           {icon}
         </PlaceBadge>
         {titleBlock}
-        {/* The done ✓ doubles as one-tap undo (ADR-0043): a role=button inside
-            the face that stops propagation so it restores without toggling. */}
-        {isDone && onRestore && (
-          <span
-            className="wp-event-check btn"
-            role="button"
-            tabIndex={0}
-            aria-label={t.actions.undoDone}
-            title={t.actions.undoDone}
-            onClick={(e) => {
-              e.stopPropagation();
-              onRestore();
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                e.stopPropagation();
-                onRestore();
-              }
-            }}
-          >
-            <span className="mark" aria-hidden="true">
-              <Icon name="check" />
-            </span>
-            <span className="undo" aria-hidden="true">
-              <Icon name="undo" />
-            </span>
-          </span>
-        )}
         {timeBlock}
         {/* **TIER-2 LIVES ON THE FACE** (ADR-0228's 2026-09-15 amendment). It was the last
             item of the verb band, which made its position depend on how many verbs the row
@@ -537,7 +541,6 @@ export function EventCard(props: EventCardProps) {
             settleAsked={showSettle}
             onDone={onDone}
             onSkip={onSkip}
-            onRestore={onRestore}
             onDelay={onDelay}
             onEarlier={onEarlier}
             onOnWay={onOnWay}

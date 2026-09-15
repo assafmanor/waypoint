@@ -19,13 +19,14 @@
 // draw and draws it (`EventActions`), which is what makes the order testable on its own.
 import type { EventKind, EventPhaseName } from './event-phase';
 
-/** The row's verbs, as ids. The `⋯` is not one of them: Tier-2 editing (ADR-0025) lives on
- *  the card FACE now, so this band holds verbs or nothing. */
+/** The row's verbs, as ids. Two things are deliberately NOT in here: the `⋯`, because
+ *  Tier-2 editing (ADR-0025) lives on the card FACE now, and **undo**, because the done
+ *  chip is itself the control that takes a settled row back (ADR-0230 §1). Removing
+ *  `RESTORE` also took out the one entry `live()` did not gate — so every verb this band
+ *  can hold is now a verb about today, which is what a quick action is. */
 export const EVENT_ACTION = {
   /** The settle pair — `סיימנו` / `דילוג`, the record of what happened. */
   SETTLE: 'settle',
-  /** Its replacement once an outcome exists: back to `planned`. */
-  RESTORE: 'restore',
   /** The ±`DELAY_STEP_MINUTES` nudge. One control; a hard event's confirm gate is
    *  inside the verb (`applyGuardedDelay`), never a different button. */
   NUDGE: 'nudge',
@@ -73,7 +74,6 @@ const SPEC: { id: EventActionId; when: (ctx: EventActionContext) => boolean }[] 
   // `live` here too, although `eventPhase` can only ever call a row `now` on today: the
   // spec states its own rule rather than leaning on an invariant held in another file.
   { id: EVENT_ACTION.SETTLE, when: (c) => live(c) && c.phase === 'now' && !c.settleAsked },
-  { id: EVENT_ACTION.RESTORE, when: (c) => c.phase === 'done' },
   // Retiming is a live correction to today's plan. On a past day it is locked (ADR-0029);
   // on a FUTURE day it is Plan mode's job, and `⋯` → `עריכה` is one tap.
   { id: EVENT_ACTION.NUDGE, when: (c) => live(c) && (c.phase === 'upcoming' || c.phase === 'now') },

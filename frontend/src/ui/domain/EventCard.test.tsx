@@ -224,14 +224,48 @@ describe('EventCard', () => {
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
-  it('done event: the ✓ doubles as one-tap undo (keyboard-operable, restores)', () => {
-    const onRestore = vi.fn();
-    render(wrapNav(<EventCard {...base} phase="done" onRestore={onRestore} />));
-    const undo = screen.getByRole('button', { name: t.actions.undoDone });
-    fireEvent.keyDown(undo, { key: 'Enter' });
-    expect(onRestore).toHaveBeenCalledTimes(1);
-    fireEvent.click(undo);
-    expect(onRestore).toHaveBeenCalledTimes(2);
+  // ADR-0230 §1 — ONE done mark, and it is the undo. The `היינו ✓` chip was the label of
+  // three affordances for one verb; it is now the only one, and these four assertions are
+  // what that sentence means: it restores, it says so, the other two are gone, and it goes
+  // back to being a label where there is nothing to restore into.
+  describe('a settled row (ADR-0230)', () => {
+    const done = (over = {}) =>
+      render(wrapNav(<EventCard {...base} phase="done" onRestore={() => {}} {...over} />));
+
+    it('the `היינו ✓` chip IS the undo: tappable and keyboard-operable', () => {
+      const onRestore = vi.fn();
+      done({ onRestore });
+      const chip = screen.getByRole('button', { name: t.actions.undoDone });
+      expect(chip.className).toContain('wp-event-tag-done');
+      expect(chip.textContent).toContain(t.event.didThis);
+      fireEvent.keyDown(chip, { key: 'Enter' });
+      expect(onRestore).toHaveBeenCalledTimes(1);
+      fireEvent.click(chip);
+      expect(onRestore).toHaveBeenCalledTimes(2);
+    });
+
+    // The tap must not also collapse the row it settles — the same two calls the `⋯` makes,
+    // and the reason both are `role="button"` spans inside the face rather than buttons.
+    it('undoes without toggling the card it sits on', () => {
+      const onToggle = vi.fn();
+      done({ onToggle });
+      fireEvent.click(screen.getByRole('button', { name: t.actions.undoDone }));
+      expect(onToggle).not.toHaveBeenCalled();
+    });
+
+    // The two the chip replaces: the face's ✓ circle and the band's `שחזור`. Asserted by
+    // COUNT rather than by a stale class name, which an absence assertion would let rot.
+    it('carries no second undo — no ✓ circle, no verb band', () => {
+      const { container } = done({ isOpen: true });
+      expect(screen.getAllByRole('button', { name: t.actions.undoDone })).toHaveLength(1);
+      expect(container.querySelector('.wp-event-act-row')).toBeNull();
+    });
+
+    it('is a plain label, not a control, where nothing can restore it', () => {
+      const { container } = done({ onRestore: undefined });
+      expect(screen.queryByRole('button', { name: t.actions.undoDone })).toBeNull();
+      expect(container.querySelector('.wp-event-tag-done')!.textContent).toContain(t.event.didThis);
+    });
   });
 
   it('renders the conflict flag when a hard conflict is passed', () => {
