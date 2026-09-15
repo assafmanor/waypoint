@@ -19,15 +19,9 @@ import {
   type CSSProperties,
   type ReactNode,
 } from 'react';
-import {
-  clampToStops,
-  nearestStop,
-  stopHeightCss,
-  stopsRangePx,
-  type SnapStop,
-} from '../../lib/snap-sheet';
+import { clampToStops, nearestStop, stopHeightCss, type SnapStop } from '../../lib/snap-sheet';
 import { scrollerWithin } from '../../lib/scrollable';
-import { useSnapDrag } from '../../lib/useSnapDrag';
+import { SNAP_CLAIM, useSnapDrag } from '../../lib/useSnapDrag';
 import './snap-sheet.css';
 
 export function SnapSheet<T extends string>({
@@ -82,47 +76,38 @@ export function SnapSheet<T extends string>({
     onRelease,
   });
 
-  /** **THE BODY TAKES A VERTICAL DRAG EXACTLY WHEN THE LIST CANNOT USE IT THAT WAY** (ADR-0122
-   *  §4's 2026-09-15 amendment, replacing the 2026-08-06 rule "the body drags while it cannot
-   *  scroll" — which was this rule in the one case where both directions answer the same).
+  /** **THE LIST SCROLLS FIRST; THE SHEET MOVES ONLY ONCE THE LIST HAS NOTHING LEFT TO SCROLL
+   *  THAT WAY** (ADR-0122 §4's 2026-09-15 amendment, as corrected the same day by the owner:
+   *  _"I want it to scroll first and only when there's nothing more to scroll then it goes to
+   *  switch to full list"_).
    *
-   *  One sentence decides every press: **up is the sheet's while the sheet can still grow;
-   *  down is the sheet's while the list is at its top.** Everything else is the list's own
-   *  scroll, and the hook stands down without touching it. So from `half` a drag up opens the
-   *  list rather than scrolling it (nothing scrolls until the sheet is as tall as it gets),
-   *  at `full` a drag up scrolls, and a drag down from a list at its top closes the sheet —
-   *  the hand-off every native bottom sheet makes, and the one the `touch-action` version
-   *  could not, because `touch-action` is read before the direction exists.
+   *  One question decides every vertical press on the body, and it is asked of the LIST, not
+   *  the sheet: **can it still scroll the way the finger is going?** If it can, the gesture is
+   *  the browser's pan, and the hook watches it until the list runs out — at which point the
+   *  same finger starts moving the sheet (`handoff`). If it cannot — a finger going up with the
+   *  list already at its bottom, a finger going down with the list at its top, or a list that
+   *  fits and so is at both ends at once — the sheet moves from the first pixel. So from
+   *  `half` a long drag up reads the rest of the list and then opens it, in one motion.
    *
-   *  The reasons are read LIVE at the press and at the slop, never off state: the DOM cannot
+   *  The reasons are read LIVE from the DOM at each decision, never off state: the DOM cannot
    *  be a frame behind the way state can, and the Map's sheet re-renders every second. */
   const bodyRef = useRef<HTMLDivElement>(null);
-  /** Where the list's scroll stood at the press — the base the continuation below adds to. */
-  const scrollAtPress = useRef(0);
+  const listAtEnd = (dy: number) => {
+    const body = bodyRef.current;
+    if (!body) return true;
+    return dy < 0
+      ? body.scrollTop >= body.scrollHeight - body.clientHeight - SCROLL_END_EPSILON_PX
+      : body.scrollTop <= 0;
+  };
   const bodyDrag = useSnapDrag({
     heightPx: currentPx,
     claim: ({ dx, dy }) => {
-      const body = bodyRef.current;
-      if (!body) return false;
       // Vertical-dominant or nothing: a sideways finger is a strip's, or a text selection's.
-      if (Math.abs(dx) > Math.abs(dy)) return false;
-      if (dy < 0) {
-        const { max } = stopsRangePx(containerPx(), stops, order);
-        return currentPx() < max - GROW_EPSILON_PX;
-      }
-      return body.scrollTop <= 0;
+      if (Math.abs(dx) > Math.abs(dy)) return SNAP_CLAIM.none;
+      return listAtEnd(dy) ? SNAP_CLAIM.sheet : SNAP_CLAIM.list;
     },
-    onDrag: (px) => {
-      const clamped = clampToStops(px, containerPx(), stops, order);
-      setDragPx(clamped);
-      // **The travel the clamp refuses is handed to the list.** A drag up that reaches the top
-      // stop keeps following the finger as a scroll, so one gesture from `half` both opens the
-      // list and starts reading it — and coming back down unwinds the scroll before the sheet
-      // moves, which is the same statement in reverse. Scroll from the press's base, never by
-      // deltas, so nothing accumulates across frames the browser clamped.
-      const body = bodyRef.current;
-      if (body) body.scrollTop = scrollAtPress.current + Math.max(0, px - clamped);
-    },
+    handoff: listAtEnd,
+    onDrag: (px) => setDragPx(clampToStops(px, containerPx(), stops, order)),
     onRelease,
   });
 
@@ -140,7 +125,6 @@ export function SnapSheet<T extends string>({
     //    A sheet that moves when you try to place a cursor is worse than no gesture at all —
     //    and the Map's sheet holds a note composer on every selected row.
     if (target.closest('input, textarea, select, [contenteditable]')) return;
-    scrollAtPress.current = body.scrollTop;
     bodyDrag.onPointerDown(e);
   };
 
@@ -215,11 +199,11 @@ export function SnapSheet<T extends string>({
         </button>
         {header && <div className="wp-snapsheet-headrow">{header}</div>}
       </div>
-      {/* **THE BODY IS A DRAG TARGET WHEN THE LIST CANNOT USE THE GESTURE THAT WAY** (ADR-0122
+      {/* **THE BODY SCROLLS FIRST AND DRAGS THE SHEET ONCE IT HAS NOTHING LEFT TO SCROLL** (ADR-0122
           §4's 2026-09-15 amendment; the rule is on `bodyDrag` above). It carries NO
-          `touch-action` of its own: the pan is arbitrated per gesture, at the slop, by a
-          `preventDefault` on the `touchmove` — `touch-action` would have to be decided before
-          the finger has moved, which is before the direction that decides it exists. */}
+          `touch-action` of its own: whose the pan is gets decided per gesture, at the slop, and
+          the hand-off at the list's end rides the same touch — `touch-action` would have to be
+          decided before the finger has moved, which is before anything that decides it exists. */}
       <div ref={bodyRef} className="wp-snapsheet-body" onPointerDown={onBodyPointerDown}>
         {children}
       </div>
@@ -227,6 +211,6 @@ export function SnapSheet<T extends string>({
   );
 }
 
-/** A sub-pixel of headroom is not "room to grow": a fractional stop height and a rounded
- *  rect would otherwise let a drag up at the top stop claim a list's scroll for nothing. */
-const GROW_EPSILON_PX = 1;
+/** A sub-pixel short of the bottom is the bottom: `scrollHeight` is an integer and `scrollTop`
+ *  need not be, so without the slack a list at its end would keep the gesture for nothing. */
+const SCROLL_END_EPSILON_PX = 1;
