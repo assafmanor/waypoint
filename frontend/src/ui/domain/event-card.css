@@ -81,8 +81,9 @@
    "69px of headroom" had measured a route long enough to trip ADR-0059 §3's
    destination-primary fallback, i.e. the short title the fallback makes.
 
-   `check` is the settled ✓ (ADR-0043), present on some rows only; an `auto` track with
-   nothing in it is 0px, so an ordinary card lays out exactly like the builder row.
+   It once carried a `check` track for the settled ✓ as well; ADR-0230 made the done CHIP
+   the undo control, so the circle and its track are both gone and the title has that width
+   back — which is what lets `היינו ✓` sit BESIDE the name instead of wrapping under it.
 
    What stays different from Plan stays different deliberately: this time is a readout
    and Plan's is a button wearing ADR-0161 §7's chip, and the badge is 40px against
@@ -95,15 +96,14 @@
   /* `menu` joins `check` as an OPTIONAL track (ADR-0228's 2026-09-15 amendment): the `⋯`
      renders on an editable row and not on a past day's, and an `auto` track with nothing
      in it is 0px — so a read-only card lays out exactly as it did. */
-  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   grid-template-areas:
-    'badge title check menu chev'
-    'badge when  check menu chev';
+    'badge title menu chev'
+    'badge when  menu chev';
   align-items: center;
   /* THE GUTTER IS A MARGIN, NOT `column-gap`, and that is not a style preference.
-     Two of these four tracks are optional — the ✓ renders only on a settled row and
-     the chevron not at all on the settle variant — and `column-gap` is charged
-     between EMPTY tracks too, so a plain card paid 12px and the settle card 24px of
+     One of these tracks is optional — the `⋯` does not render on a past day — and
+     `column-gap` is charged between EMPTY tracks too, so a card that lacks one paid for
      dead space at its trailing edge. A margin on the item disappears with the item. */
   column-gap: 0;
   row-gap: 2px;
@@ -136,86 +136,6 @@
 }
 .wp-event.soft .wp-event-badge {
   background: color-mix(in srgb, var(--ink) 5%, transparent);
-}
-
-/* Done ✓ as a tap-to-undo control (ADR-0043 revision) — --ok green; hover/focus
-   morphs the ✓ to an undo arrow; a thin persistent ring hints it's tappable. */
-.wp-event-check {
-  grid-area: check;
-  align-self: center;
-  margin-inline-start: var(--space-3);
-  width: 22px;
-  height: 22px;
-  border-radius: var(--radius-999);
-  display: grid;
-  place-items: center;
-  font-size: var(--text-caption);
-  font-weight: 700;
-  color: var(--on-fill);
-  background: var(--ok);
-}
-.wp-event-check.btn {
-  position: relative;
-  cursor: pointer;
-  transition:
-    box-shadow var(--t-quick),
-    transform var(--t-quick);
-}
-.wp-event-check .mark,
-.wp-event-check .undo {
-  grid-area: 1 / 1;
-  transition:
-    opacity var(--t-quick),
-    transform var(--t-quick);
-}
-.wp-event-check .undo {
-  opacity: 0;
-  transform: scale(0.6);
-  font-size: 13px;
-}
-.wp-event-check.btn:focus-visible {
-  box-shadow: 0 0 0 4px rgba(60, 154, 107, 0.18);
-  transform: scale(1.06);
-}
-@media (hover: hover) and (pointer: fine) {
-  .wp-event-check.btn:hover {
-    box-shadow: 0 0 0 4px rgba(60, 154, 107, 0.18);
-    transform: scale(1.06);
-  }
-}
-.wp-event-check.btn:focus-visible .mark {
-  opacity: 0;
-  transform: scale(0.6);
-}
-@media (hover: hover) and (pointer: fine) {
-  .wp-event-check.btn:hover .mark {
-    opacity: 0;
-    transform: scale(0.6);
-  }
-}
-.wp-event-check.btn:focus-visible .undo {
-  opacity: 1;
-  transform: scale(1);
-}
-@media (hover: hover) and (pointer: fine) {
-  .wp-event-check.btn:hover .undo {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-.wp-event-check.btn:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
-}
-.wp-event-check.btn:active {
-  transform: scale(var(--press-scale));
-}
-.wp-event-check.btn::after {
-  content: '';
-  position: absolute;
-  inset: -4px;
-  border-radius: var(--radius-999);
-  box-shadow: 0 0 0 1.5px rgba(60, 154, 107, 0.35);
 }
 
 .wp-event-main {
@@ -465,6 +385,54 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
+}
+
+/* **AND ON A ROW THAT CAN BE TAKEN BACK, THE CHIP IS THE CONTROL** (ADR-0230 §1). One verb
+   was spelled four ways; the chip is the only one of them carrying a WORD, which is the one
+   thing the ✓ circle it replaces could not do without a hover the phone never sends
+   (ADR-0017). Everything visual is inherited from the rule above — becoming tappable adds
+   exactly a press step and a target. */
+.wp-event-tag-done.btn {
+  position: relative;
+  cursor: pointer;
+}
+
+/* **THE TARGET GROWS, THE LINE DOES NOT** — `ValueToken`'s own idiom (ADR-0177), whose
+   comment records what the obvious `min-height: 44px` costs: a form row from ⁦58px⁩ to
+   ⁦75px⁩. Here it would be the title line, on the app's most glanced-at surface.
+
+   `-14px` in the block axis rather than that rule's `-7px`, and the number is MEASURED for
+   this element instead of copied: the chip renders ⁦17px⁩ where a token is ⁦26px⁩, so
+   ⁦-12px⁩ reached only ⁦41px⁩ and the first render said so. ⁦14 + 17 + 14 = 45⁩, against
+   ADR-0017's ⁦44px⁩ floor.
+
+   **The inline inset is `ValueToken`'s own ⁦-2px⁩ and not the ⁦-8px⁩ the mockup drew**, because
+   the rendered app is where that number could first be paid for: the chip measures ⁦42px⁩
+   wide, so ⁦-2px⁩ already clears the floor on that axis and every pixel past it is taken
+   from the card's own toggle for nothing. What the target does take is stated rather than
+   hoped for — measured at 390 on a settled row, the overlay is ⁦46×45⁩ inside a ⁦356×69⁩
+   face, and it contains that face's geometric CENTRE, which is unavoidable: the title line's
+   centre sits ⁦11px⁩ from the card's, so any title-line control that reaches ⁦44px⁩ covers it.
+   It is a visible, labelled control and the band around it is its own; what it must not do
+   is cover a NEIGHBOURING control (`frontend/CLAUDE.md`), and it covers none — the badge,
+   the `⋯` and the chevron are all at the face's two edges, and the only things under the
+   block reach are the meta line's read-only marks. `e2e/done-chip-undo.spec.ts` holds both
+   halves of that, because jsdom can see neither. */
+.wp-event-tag-done.btn::after {
+  content: '';
+  position: absolute;
+  inset: -14px -2px;
+}
+
+.wp-event-tag-done.btn:active {
+  transform: scale(var(--press-scale));
+}
+
+/* `--ok`, not the app's teal focus ring: this control IS the status, and the ring naming it
+   green is the one place the record's own hue answers for a focus state. */
+.wp-event-tag-done.btn:focus-visible {
+  outline: 2.5px solid var(--ok);
+  outline-offset: 2px;
 }
 
 .wp-event-nest-note {

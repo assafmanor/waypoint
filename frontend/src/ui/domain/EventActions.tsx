@@ -20,7 +20,6 @@ import './event-actions.css';
 export interface EventActionHandlers {
   onDone?: () => void;
   onSkip?: () => void;
-  onRestore?: () => void;
   onDelay?: () => void;
   onEarlier?: () => void;
   onOnWay?: () => void;
@@ -50,7 +49,6 @@ export function EventActions(props: EventActionsProps) {
       // The settle slot needs BOTH halves: one answer without the other is not a pair,
       // and `SettleControl` makes the same demand of its own hosts.
       [EVENT_ACTION.SETTLE]: !!props.onDone && !!props.onSkip,
-      [EVENT_ACTION.RESTORE]: !!props.onRestore,
       [EVENT_ACTION.NUDGE]: !!props.onDelay,
       [EVENT_ACTION.ON_WAY]: !!props.onOnWay,
       [EVENT_ACTION.NAVIGATE]: !!props.onNavigate,
@@ -76,7 +74,6 @@ function Act({
   phase,
   onDone,
   onSkip,
-  onRestore,
   onDelay,
   onEarlier,
   onOnWay,
@@ -93,12 +90,6 @@ function Act({
             {t.actions.skip}
           </button>
         </>
-      );
-    case EVENT_ACTION.RESTORE:
-      return (
-        <button type="button" className="wp-event-act" onClick={onRestore}>
-          {t.actions.restore}
-        </button>
       );
     case EVENT_ACTION.NUDGE:
       // The nudge adapts to phase, not to kind (ADR-0043 §3): both ways on an upcoming

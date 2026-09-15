@@ -74,11 +74,17 @@ Measured in v1 against that file's baseline, and unchanged by the band: the refu
 - **A row in the `⋯` sheet (ד).** Free, and therefore tempting. ADR-0174 §4 already refused it, citing ADR-0138 §1's row menu as a list of **verbs**; the owner rejected the same shape once before, for notes (_"notes don't belong in a menu"_). A thing you open in order to **know** does not belong in a list of things you **do**.
 - **The facts inside the card (ה).** ⁦+164px⁩ — and, by coincidence worth recording, the identical number ADR-0174 §4's mockup measured for "expansion in place" on the Plan row. It buys mode parity, which is the thing the owner asked NOT to buy, and it is a second rendering of `bk-facts`. If it is ever wanted, the route is the exported `Fact`/`LocationFact`, never a second list.
 
-### 4. The sheet opens on a closed card
+### 4. The sheet opens on a card that stays open
 
-The read is a `Sheet`, so it lands over a card that is still open — and documents, tasks and notes then appear twice, once per layer. **The card closes when the read opens**: one line in the caller (`ctx.toggle`), no branch inside `DetailSheet`.
+_(Amended 2026-09-15, the day after it shipped — owner, on the deployed build: **"it also closes the event card (collapses the expanded event card), and it shouldn't do it"**. This section originally decided the opposite and is rewritten rather than annotated; the reasoning that led there is kept below, because it is why the mistake was plausible.)_
 
-The alternative — suppressing the host sections in the sheet when it is opened from the day — is a per-caller branch inside the shared shell, which is the shape ADR-0094 is a retraction of. Refused.
+The read is a `Sheet`, so it lands over a card that is still open — and documents, tasks and notes then render twice, once per layer. The first build closed the card for that reason: one line in the caller, no branch inside `DetailSheet`.
+
+**The duplication was the wrong thing to optimise.** It is invisible — the second copy is behind the scrim, and both layers read the same trip state, so they cannot disagree. What closing the card cost is not invisible: dismissing the read dropped you onto a collapsed row and you had to find your place and open it again, having gone one level in to read a fact about the row you were already looking at. A panel you opened is yours until you close it; a sheet over it is a layer, not a replacement.
+
+So `onOpenRead` opens the sheet and touches nothing else. The alternative that is still refused is the original one — suppressing the host sections in the sheet when it is opened from the day — which is a per-caller branch inside the shared shell, the shape ADR-0094 is a retraction of.
+
+This was §5's third fork, left open for the owner (_"whether the card closes when the read opens, or the duplication is simply lived with as Plan effectively does"_). It is answered: lived with, as Plan does.
 
 ## What rendering it found
 
@@ -103,7 +109,7 @@ The alternative — suppressing the host sections in the sheet when it is opened
 
 1. **The band's height** — ⁦72⁩ / ⁦88⁩ / ⁦116px⁩, shipped at **88**. The day head's own number is 116, but a head is the first thing on the screen and this sits mid-list, where 116 pushes the rows after the card below the fold. A control in the mockup's toolbar; a phone in a hand answers it and a desktop screenshot cannot.
 2. **The summary under the band** — two clamped lines of what the world knows, ⁦+58px⁩. Off by default: on the ground the picture and the address are what you act on, and the extract is planning knowledge. Also a control.
-3. **Whether the card closes when the read opens** (§4), or the duplication is simply lived with as Plan effectively does.
+3. ~~**Whether the card closes when the read opens** (§4), or the duplication is simply lived with as Plan effectively does.~~ **Answered 2026-09-15: it stays open** — see §4, rewritten.
 
 ## Rejected
 

@@ -1,15 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import {
-  EVENT_ACTION,
-  eventQuickActions,
-  type EventActionContext,
-  type EventActionId,
-} from './event-actions';
+import { EVENT_ACTION, eventQuickActions, type EventActionContext } from './event-actions';
 import type { EventKind, EventPhaseName } from './event-phase';
 
 const ALL: EventActionContext['available'] = {
   [EVENT_ACTION.SETTLE]: true,
-  [EVENT_ACTION.RESTORE]: true,
   [EVENT_ACTION.NUDGE]: true,
   [EVENT_ACTION.ON_WAY]: true,
   [EVENT_ACTION.NAVIGATE]: true,
@@ -67,8 +61,11 @@ describe('the day card quick-action spec (ADR-0228)', () => {
       expect(eventQuickActions(ctx({ phase: 'passed', settleAsked: true }))).toEqual([]);
     });
 
-    it('done: the one verb left', () => {
-      expect(eventQuickActions(ctx({ phase: 'done' }))).toEqual([EVENT_ACTION.RESTORE]);
+    // ADR-0230 §1: undo is the `היינו ✓` chip now, so a settled row's band holds nothing
+    // and does not render. Was `[RESTORE]` for one release, and that entry was also the only
+    // one `live()` never gated — the band is verbs about TODAY, exactly.
+    it('done: nothing — the record on the row is itself the way back', () => {
+      expect(eventQuickActions(ctx({ phase: 'done' }))).toEqual([]);
     });
   });
 
@@ -80,7 +77,7 @@ describe('the day card quick-action spec (ADR-0228)', () => {
       for (const phase of PHASES) {
         expect({ phase, verbs: eventQuickActions(ctx({ today: false, phase })) }).toEqual({
           phase,
-          verbs: phase === 'done' ? [EVENT_ACTION.RESTORE] : [],
+          verbs: [],
         });
       }
     });
@@ -89,12 +86,12 @@ describe('the day card quick-action spec (ADR-0228)', () => {
       expect(eventQuickActions(ctx({ today: false, readOnly: true, phase: 'passed' }))).toEqual([]);
     });
 
-    // A settled row can always be un-settled, including on a past day (ADR-0043 §2's
-    // 2026-07-16 revision: "check but never uncheck" is a mistake with no correction).
-    it('still takes back a settled row on a past day', () => {
-      expect(eventQuickActions(ctx({ today: false, readOnly: true, phase: 'done' }))).toEqual([
-        EVENT_ACTION.RESTORE,
-      ]);
+    // A settled row can still always be un-settled, including on a past day (ADR-0043 §2's
+    // 2026-07-16 revision: "check but never uncheck" is a mistake with no correction) — the
+    // chip is what does it now, and it renders wherever the done state does, so the band
+    // being empty here takes nothing away. `EventCard.test.tsx` holds that assertion.
+    it('carries no verb at all on a past day, settled or not', () => {
+      expect(eventQuickActions(ctx({ today: false, readOnly: true, phase: 'done' }))).toEqual([]);
     });
   });
 
@@ -102,15 +99,6 @@ describe('the day card quick-action spec (ADR-0228)', () => {
     expect(eventQuickActions(ctx({ available: { [EVENT_ACTION.NUDGE]: true } }))).toEqual([
       EVENT_ACTION.NUDGE,
     ]);
-  });
-
-  it('never offers the settle pair and its undo at once', () => {
-    for (const phase of PHASES) {
-      const verbs: EventActionId[] = eventQuickActions(ctx({ phase }));
-      expect(verbs.includes(EVENT_ACTION.SETTLE) && verbs.includes(EVENT_ACTION.RESTORE)).toBe(
-        false,
-      );
-    }
   });
 
   // The band is one line at 360px, which is the amendment's real cap; the count is how it
