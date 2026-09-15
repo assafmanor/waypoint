@@ -234,6 +234,23 @@ describe('applyGuardedDelay (hard-event confirmation gate, ADR-0011)', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  // ADR-0228 §4: the row offers BOTH directions on a hard event now, and `earlier` used to
+  // call `applyDelay` straight past this gate. The guard is keyed on the kind, not on the
+  // sign — asserted here because the stepper is what makes the negative step reachable.
+  it('gates the EARLIER direction on a hard event exactly as it gates the later one', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const confirmHardEdit = vi.fn().mockResolvedValue(false);
+    const deps = fakeDeps(confirmHardEdit);
+
+    const applied = await applyGuardedDelay(deps, hardEvent, -30);
+
+    expect(confirmHardEdit).toHaveBeenCalledWith(hardEvent);
+    expect(applied).toBe(false);
+    expect(deps.actions).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('applies a soft-event delay without asking for confirmation', async () => {
     const fetchMock = vi
       .fn()

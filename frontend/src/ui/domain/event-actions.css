@@ -1,0 +1,109 @@
+/* The day card's quick-action row (ADR-0228) — the geometry that used to live in
+   `event-card.css`, moved beside the component that owns it (`EventActions.tsx`) so
+   the row's look and the row's order sit in one place. The selectors are unchanged:
+   `.wp-event-act*` is still the card's namespace, because the row is still the card's
+   only host. */
+
+/* TWO BOXES, AND THE SPLIT IS WHAT KEEPS THE `⋯` PUT (ADR-0228 §1). The row used to be one
+   wrapping flex box with the `⋯` inside it, so the moment the verbs filled a line the menu
+   was pushed onto a second one by itself — a 40px line for one glyph, and a control that
+   moved whenever a verb appeared or left. The verbs wrap inside their own box now; the `⋯`
+   is a non-wrapping sibling pinned to the row's trailing edge, at the same place on every
+   card whatever the row carries. */
+.wp-event-act-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: var(--space-3) 14px;
+}
+.wp-event-act-verbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.wp-event-act {
+  font: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  border-radius: 9px;
+  padding: 7px 11px;
+  cursor: pointer;
+  transition:
+    background var(--t-quick),
+    color var(--t-quick);
+}
+@media (hover: hover) and (pointer: fine) {
+  .wp-event-act:hover {
+    background: var(--cta);
+    color: var(--cta-text);
+    border-color: var(--ink);
+  }
+}
+.wp-event-act.go {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+@media (hover: hover) and (pointer: fine) {
+  .wp-event-act.go:hover {
+    background: var(--teal);
+    color: var(--on-fill);
+  }
+}
+.wp-event-act:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+.wp-event-act-row-end {
+  display: flex;
+  gap: 7px;
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+.wp-event-act.icon-only {
+  padding: 7px 10px;
+  font-size: var(--text-body);
+  line-height: 1;
+}
+/* The quiet "more" ⋯ — no border until touched. */
+.wp-event-act.icon-only.more {
+  border-color: transparent;
+  color: var(--muted);
+  font-size: var(--text-h3);
+  padding: 6px 9px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .wp-event-act.icon-only.more:hover {
+    background: var(--paper);
+    color: var(--ink);
+    border-color: var(--line);
+  }
+}
+.wp-event-act.stepper {
+  display: flex;
+  align-items: stretch;
+  padding: 0;
+}
+.wp-event-act.stepper .step {
+  font: inherit;
+  font-size: var(--text-body);
+  font-weight: 700;
+  line-height: 1;
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+.wp-event-act.stepper .step-label {
+  display: flex;
+  align-items: center;
+  padding: 7px 6px;
+  border-inline: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--text-caption);
+}

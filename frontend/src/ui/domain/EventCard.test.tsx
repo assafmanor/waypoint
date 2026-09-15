@@ -45,8 +45,9 @@ describe('EventCard', () => {
     // and keeps the chip — the fallback ADR-0178 §4 leaves for an unplaced commitment.
     expect(container.querySelector('.wp-event-tag-hard')?.textContent).toContain(t.event.hard);
     expect(container.querySelector('.hard-lock')).toBeNull();
-    // Hard events have no ±nudge stepper.
-    expect(container.querySelector('.wp-event-act.stepper')).toBeNull();
+    // The nudge is the SAME control a soft row gets (ADR-0228 §1) — a hard event's
+    // confirm gate lives in the verb, not in a different button.
+    expect(container.querySelector('.wp-event-act.stepper')).toBeTruthy();
     // The edit-guard warning shows the code.
     expect(container.querySelector('.wp-event-hard-warn')?.textContent).toContain('WP-ABC123');
   });
@@ -129,16 +130,90 @@ describe('EventCard', () => {
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
 
-  it('passed soft event → the inline settle strip (we did this / skip)', () => {
-    const onDone = vi.fn();
-    const onSkip = vi.fn();
+  it('passed event → the inline settle strip (we did this / skip), either kind', () => {
+    for (const kind of ['soft', 'hard'] as const) {
+      const onDone = vi.fn();
+      const onSkip = vi.fn();
+      const { container } = render(
+        wrapNav(<EventCard {...base} kind={kind} phase="passed" onDone={onDone} onSkip={onSkip} />),
+      );
+      expect(container.querySelector('.wp-settle.prompt')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.actions.wasThere) }));
+      expect(onDone).toHaveBeenCalledTimes(1);
+      cleanup();
+    }
+  });
+
+  // ADR-0228 §3: the strip used to REPLACE the card, which is why a passed row's
+  // documents, notes and tasks were unreachable — on a booking, its confirmation code
+  // with them. It is a band on the card now, and the card still opens.
+  it('a settle-strip card still expands, so its documents stay reachable', () => {
     const { container } = render(
-      wrapNav(<EventCard {...base} phase="passed" onDone={onDone} onSkip={onSkip} />),
+      wrapNav(
+        <EventCard
+          {...base}
+          kind="hard"
+          phase="passed"
+          isOpen
+          code="WP-ABC123"
+          onDone={() => {}}
+          onSkip={() => {}}
+          documentsSlot={<div className="docr-sec">docs</div>}
+        />,
+      ),
     );
-    expect(container.querySelector('.wp-settle.prompt')).toBeTruthy();
-    // The settle card doesn't expand (no toggle button face).
-    expect(container.querySelector('.wp-event-face.static')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.actions.wasThere) }));
+    expect(container.querySelector('.wp-event-face.static')).toBeNull();
+    expect(screen.getByRole('button', { expanded: true })).toBeTruthy();
+    expect(container.querySelector('.docr-sec')).toBeTruthy();
+    expect(container.querySelector('.wp-event-hard-warn')?.textContent).toContain('WP-ABC123');
+  });
+
+  // The `לא סומן` chip is the STATUS slot, so it reads the status before the kind.
+  it('a passed booking wears the same לא סומן chip a passed stop does', () => {
+    const { container } = render(
+      wrapNav(<EventCard {...base} kind="hard" startsAt="2026-07-20T02:00:00Z" phase="passed" />),
+    );
+    expect(container.querySelector('.wp-event-tag-phase')?.textContent).toBe(t.event.notMarked);
+  });
+
+  // ADR-0228 §1, read off the DOM rather than off the spec: the order is one list, so the
+  // rendered rows have to come out identical too.
+  it('the action row reads the same on a booking as on a stop', () => {
+    const labels = (kind: 'hard' | 'soft') => {
+      const { container } = render(
+        wrapNav(
+          <EventCard
+            {...base}
+            kind={kind}
+            phase="upcoming"
+            isOpen
+            onDone={() => {}}
+            onSkip={() => {}}
+            onDelay={() => {}}
+            onEarlier={() => {}}
+            onOnWay={() => {}}
+            onEdit={() => {}}
+          />,
+        ),
+      );
+      const row = [...container.querySelectorAll('.wp-event-act-verbs > *')].map(
+        (n) => n.className + '|' + (n.textContent ?? '').trim(),
+      );
+      cleanup();
+      return row;
+    };
+    expect(labels('hard')).toEqual(labels('soft'));
+    expect(labels('soft')[0]).toContain(t.actions.done);
+  });
+
+  it('a booking can be marked done from its action row (ADR-0228 §2)', () => {
+    const onDone = vi.fn();
+    render(
+      wrapNav(
+        <EventCard {...base} kind="hard" phase="now" isOpen onDone={onDone} onSkip={() => {}} />,
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: t.actions.done }));
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
@@ -590,7 +665,7 @@ describe('EventCard — the meta line and the note mark (ADR-0152 §6c)', () => 
           />,
         ),
       );
-      expect(container.querySelector('.wp-event-face.static')).toBeTruthy();
+      expect(container.querySelector('.wp-settle.prompt')).toBeTruthy();
       expect(photoImg(container)?.getAttribute('src')).toBe('/enrichment/images/enr_2');
     });
 

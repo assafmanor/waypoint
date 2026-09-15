@@ -14,13 +14,15 @@
 // Domain UI may use the shared copy/icon/time helpers (not state); it does.
 import { useState, type ReactNode } from 'react';
 import { clockRange, formatTime, crossesMidnightZoned } from '../../lib/time';
+import type { EventKind, EventPhaseName } from './event-phase';
 import type { EventZones } from '../../lib/places';
 import { ZoneShiftPill } from '../ZoneShiftPill';
-import { CONTROL_ICON, DELAY_STEP_MINUTES, DOT_SEPARATOR } from '../../constants';
+import { CONTROL_ICON, DOT_SEPARATOR } from '../../constants';
 import { Icon } from '../Icon';
 import { HardLock } from '../HardLock';
 import { TitleLabel } from '../TitleLabel';
-import { RowManageSheet, type RowAction } from './ListRow';
+import { type RowAction } from './ListRow';
+import { EventActions } from './EventActions';
 import { PlaceBadge } from './PlaceBadge';
 import { SettleControl } from './SettleControl';
 import { NoteMark } from './NoteMark';
@@ -29,8 +31,7 @@ import { DocumentMark } from './DocumentMark';
 import { t } from '../../i18n/he';
 import './event-card.css';
 
-export type EventKind = 'hard' | 'soft';
-export type EventPhaseName = 'upcoming' | 'now' | 'passed' | 'done';
+export type { EventKind, EventPhaseName } from './event-phase';
 
 export interface EventCardProps {
   /** Event icon (emoji content). */
@@ -229,9 +230,13 @@ export function EventCard(props: EventCardProps) {
   const isDone = phase === 'done';
   const isNow = phase === 'now';
   const isPassed = phase === 'passed';
-  // A passed-but-unmarked soft event settles inline (the honest "still on?"
-  // moment, ADR-0027/0043); hard events aren't settled this way.
-  const showSettle = !isHard && isPassed;
+  // **A passed-but-unmarked event settles inline, WHATEVER ITS KIND** (ADR-0228 §2).
+  // The gate used to read `!isHard && isPassed`, and nothing decided the `!isHard`: no ADR
+  // withholds a record from a commitment, the write path (`applySetStatus` → the backend)
+  // never looked at the kind, and every other surface that settles — the Map's reference
+  // row, the lifted hero, `StayRow`, `TransitionRow` — has always offered it on a booking.
+  // The day card was the one place a booking could not be marked done.
+  const showSettle = isPassed;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const runAction = (fn?: () => void) => {
@@ -251,19 +256,24 @@ export function EventCard(props: EventCardProps) {
   //
   // The when line is where the lock lives now, so a card with no time at all would lose
   // the mark entirely — an unplaced commitment is exactly that row. It keeps the chip.
+  //
+  // **AND THE RECORD IS READ BEFORE THE KIND** (ADR-0228 §2). `לא סומן` used to sit inside
+  // the soft arm, so a passed booking — the row that now carries the same open question —
+  // said nothing about it. Status first, kind second: the ladder below is the order the
+  // slot's own job implies, not a per-kind list.
   const hasWhenSlot = !!startsAt;
   const tag = isDone ? (
     <span className="wp-event-tag-done">
       <Icon name="check" /> {t.event.didThis}
     </span>
+  ) : isPassed ? (
+    <span className="wp-event-tag-phase">{t.event.notMarked}</span>
   ) : isHard ? (
     hasWhenSlot ? null : (
       <span className="wp-event-tag-hard">
         <Icon name="lock" /> {t.event.hard}
       </span>
     )
-  ) : isPassed ? (
-    <span className="wp-event-tag-phase">{t.event.notMarked}</span>
   ) : isNow ? (
     <span className="wp-event-tag-soft">{t.event.softNow}</span>
   ) : null;
@@ -275,7 +285,10 @@ export function EventCard(props: EventCardProps) {
     isDone ? 'done' : '',
     isPassed && !isDone ? 'passed' : '',
     unsynced ? 'unsynced' : '',
-    isOpen && !showSettle ? 'open' : '',
+    // A settle-strip card EXPANDS like every other one now (ADR-0228 §3) — the `&&
+    // !showSettle` that used to be here paired with the early return that swallowed the
+    // card, and with that gone it only kept the panel shut on the rows that need it most.
+    isOpen ? 'open' : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -355,22 +368,6 @@ export function EventCard(props: EventCardProps) {
     </span>
   );
 
-  // Settle variant: a calm, non-expanding card + the inline settle strip.
-  if (showSettle) {
-    return (
-      <div className={cls} {...anchor}>
-        <div className="wp-event-face static">
-          <PlaceBadge className="wp-event-badge" onShowOnMap={onShowOnMap} photoUrl={photoUrl}>
-            {icon}
-          </PlaceBadge>
-          {titleBlock}
-          {timeBlock}
-        </div>
-        <SettleControl variant="prompt" onDone={() => onDone?.()} onSkip={() => onSkip?.()} />
-      </div>
-    );
-  }
-
   const menuActions: RowAction[] = [];
   // **`החלף` needs a slot to be taken on** (ADR-0161 §6), and an untimed row has none —
   // §10 says so outright: an untimed event holds no position of its own. Offering it anyway
@@ -419,16 +416,6 @@ export function EventCard(props: EventCardProps) {
     .filter(Boolean)
     .join(` ${DOT_SEPARATOR} `);
 
-  // `ניווט` stays in the action row: it is a live, on-the-ground verb, so it belongs
-  // with the verbs, and it renders only when the event has a mappable place
-  // (ADR-0109 amendment). `מפה` left this row for the badge (`PlaceBadge`), so it is
-  // reachable without expanding the card.
-  const navAct = onNavigate && (
-    <button type="button" className="wp-event-act go" onClick={onNavigate}>
-      {t.actions.navigate}
-    </button>
-  );
-
   return (
     <div className={cls} {...anchor}>
       <button type="button" className="wp-event-face" onClick={onToggle} aria-expanded={isOpen}>
@@ -470,80 +457,41 @@ export function EventCard(props: EventCardProps) {
           <Icon name="caret" dir="down" />
         </span>
       </button>
+      {/* **THE ASK SITS ON THE CARD, NOT INSTEAD OF IT** (ADR-0228 §3). It used to REPLACE
+          the whole expandable card — a static face plus this strip — which is why a passed
+          soft stop had no reachable documents, notes or tasks, and why a passed BOOKING
+          could not be given the strip at all without losing its code and its receipt. The
+          card keeps its chevron; the strip is a band under the face, so ADR-0043 §2's
+          one tap "exactly where you glance back" is unchanged and costs nothing. */}
+      {showSettle && (
+        <SettleControl variant="prompt" onDone={() => onDone?.()} onSkip={() => onSkip?.()} />
+      )}
       <div className="wp-event-actions">
         {/* One wrapper, and it is load-bearing: a collapsing grid track can only shrink a
             child that is allowed to, so this carries `min-height: 0` and the overflow the
             old `max-height` rule owned. */}
         <div className="wp-event-actions-in">
-          <div className="wp-event-act-row">
-            {isDone ? (
-              <>
-                <button type="button" className="wp-event-act" onClick={onRestore}>
-                  {t.actions.restore}
-                </button>
-                {navAct}
-              </>
-            ) : isHard ? (
-              <>
-                {navAct}
-                {!readOnly && (
-                  <>
-                    <button type="button" className="wp-event-act" onClick={onOnWay}>
-                      {t.actions.onWay}
-                    </button>
-                    <button type="button" className="wp-event-act" onClick={onDelay}>
-                      {t.actions.delayBy(DELAY_STEP_MINUTES)}
-                    </button>
-                  </>
-                )}
-              </>
-            ) : (
-              <>
-                <button type="button" className="wp-event-act" onClick={onDone}>
-                  {t.actions.done}
-                </button>
-                <button type="button" className="wp-event-act" onClick={onSkip}>
-                  {t.actions.skip}
-                </button>
-                {/* The nudge adapts to phase (ADR-0043): both ways upcoming; +30
-                  only for a now event (can't pull it into the past). */}
-                <div className="wp-event-act stepper">
-                  {!isNow && (
-                    <button
-                      type="button"
-                      className="step"
-                      onClick={onEarlier}
-                      aria-label={t.actions.earlierBy(DELAY_STEP_MINUTES)}
-                    >
-                      −
-                    </button>
-                  )}
-                  <span className="step-label">{t.actions.stepMinutes(DELAY_STEP_MINUTES)}</span>
-                  <button
-                    type="button"
-                    className="step"
-                    onClick={onDelay}
-                    aria-label={t.actions.delayBy(DELAY_STEP_MINUTES)}
-                  >
-                    +
-                  </button>
-                </div>
-                {navAct}
-              </>
-            )}
-            {!readOnly && menuActions.length > 0 && (
-              <span className="wp-event-act-row-end">
-                <button
-                  type="button"
-                  className="wp-event-act icon-only more"
-                  onClick={() => setMenuOpen(true)}
-                  aria-label={t.actions.more}
-                >
-                  <Icon name="more" />
-                </button>
-              </span>
-            )}
-          </div>
+          {/* ONE ROW, ONE ORDER, BOTH KINDS (ADR-0228). What used to be three hand-written
+              arms in this file is a spec + a renderer: which verbs this row carries is
+              `event-actions.ts`, what each looks like is `EventActions`. */}
+          <EventActions
+            kind={kind}
+            phase={phase}
+            readOnly={readOnly}
+            settleAsked={showSettle}
+            onDone={onDone}
+            onSkip={onSkip}
+            onRestore={onRestore}
+            onDelay={onDelay}
+            onEarlier={onEarlier}
+            onOnWay={onOnWay}
+            onNavigate={onNavigate}
+            menuActions={menuActions}
+            menuTitle={titleText}
+            menuSubject={menuSubject}
+            menuOpen={menuOpen}
+            onMenuOpenChange={setMenuOpen}
+          />
           {isHard && (
             <div className="wp-event-hard-warn">
               <Icon name="warn" /> {t.event.hardWarn} {code && <span dir="auto">{code}</span>}
@@ -563,16 +511,6 @@ export function EventCard(props: EventCardProps) {
           {isOpen && notesSlot}
         </div>
       </div>
-      {menuOpen && (
-        <RowManageSheet
-          // The menu header is a visible title: a flight names its route there the
-          // same way the card does, not as the raw stored string.
-          title={<TitleLabel title={titleText} />}
-          subject={menuSubject}
-          actions={menuActions}
-          onClose={() => setMenuOpen(false)}
-        />
-      )}
     </div>
   );
 }
