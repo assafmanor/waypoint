@@ -1,6 +1,6 @@
-# 2026-09-15 — The list drags when it cannot use the gesture that way
+# 2026-09-15 — The list scrolls first, and the sheet moves once it has nothing left to scroll
 
-**Outcome:** [ADR-0122](../decisions/0122-map-split-controls-over-the-canvas.md)'s 2026-09-15 amendment (built) · `SnapSheet` / `useSnapDrag` · `e2e/snap-sheet-drag.spec.ts` rewritten to drive the real component · one backlog line for the half deliberately left.
+**Outcome:** [ADR-0122](../decisions/0122-map-split-controls-over-the-canvas.md)'s 2026-09-15 amendment (built, corrected the same day, rebuilt) · `SnapSheet` / `useSnapDrag` · `e2e/snap-sheet-drag.spec.ts` drives the real component in Chromium.
 
 ## What was asked
 
@@ -12,27 +12,28 @@ The owner, on the Map tab:
 
 ADR-0122's 2026-08-06 amendment built the body drag for a list that fits and wrote the scrollable case off as _"the genuinely hard problem"_, reasoning from `touch-action`: it has to be set before the gesture starts, and the direction that would decide arrives too late. The same file's `e2e` spec asserted that attribute and nothing else.
 
-That premise was retired a month later by a different surface. ADR-0200 §9 measured, for the day swipe, that a non-passive `touchmove` listener calling `preventDefault()` under Chrome's ~8px slop keeps the browser from starting its pan — and that not calling it lets the pan through exactly as if no listener existed. So the choice **can** be deferred to the first move, which is the whole problem.
+That premise was retired a month later by a different surface. ADR-0200 §9 measured, for the day swipe, that a non-passive `touchmove` listener calling `preventDefault()` under Chrome's ~8px slop keeps the browser from starting its pan — and that not calling it lets the pan through exactly as if no listener existed. So the choice **can** be deferred to the first move.
 
-## The rule
+## The first build, and the correction
 
-Up is the sheet's while the sheet can still grow. Down is the sheet's while the list is at its top. Everything else is the list's own scroll. From `half` a drag up therefore **opens** the list rather than scrolling it inside a half-height port; at `full` the same drag scrolls; a drag down from a list at its top closes the sheet; a drag down on a scrolled list scrolls it back and moves no sheet, at any stop. A list that fits behaves as before, because for it both directions answer the same. Plus the continuation: a drag up that reaches the top stop hands the rest of its travel to the list's scroll, so one gesture from `half` opens the list and starts reading it.
+The first build (PR #839, merged and deployed) chose the Google Maps order for an upward finger: the sheet grows first, and only once it is as tall as it gets does the rest of the travel scroll the list. The owner refused it off the deployed build:
 
-## What was built
+> first it switches from half to full list and only then it scrolls. I want it to scroll first and only when there's nothing more to scroll then it goes to switch to full list.
 
-- `useSnapDrag` takes an optional `claim({ dx, dy })`, asked once at the slop, and carries the touch half of the claim (a `touchmove` listener that prevents once — and only once — the gesture is ours). The handle row passes nothing and is unchanged.
-- `SnapSheet` mounts a second instance for the body with the rule above as its `claim` and the continuation in its `onDrag`. The `data-drag` attribute, its `touch-action: none` rule and the `ResizeObserver` that maintained it are gone: one mechanism, both cases.
-- `snap-sheet.ts` gains `stopsRangePx`, which `clampToStops` now uses — "can the sheet grow" is `max`.
+The refusal is right for this product. At `half` the list is the thing being read and the map above it is context the user chose to keep; a gesture that takes the map away before the list has asked for the room is the mode switch arriving uninvited. So the rule is now asked of the **list**: can it still scroll the way the finger is going? If yes, the browser pans it, and when it runs out the same finger moves the sheet. If no, the sheet moves from the first pixel. A list that fits is at both ends at once and behaves as before.
+
+## What the first build had called impossible, and how it is built
+
+The same-gesture hand-off from a browser-owned pan. It is impossible as a `preventDefault` — once the pan is under way the `touchmove`s are non-cancelable — but the `touchmove`s keep arriving, so the hand-off is a second phase read off the touch stream: the hook watches each move while the list owns the gesture, and the move on which the list reports itself at its end becomes the origin of a sheet drag. `pointercancel` (the browser starting its pan) is not treated as the gesture's end while the list owns it; `touchend` releases. The sheet never crosses the height it had at the hand-off (a reversing finger is scrolling the list again, and the browser is already doing that), a hand-off walked back releases with zero velocity, and the scroller carries `overscroll-behavior: none` so the browser paints no bounce under the sheet's motion.
 
 ## What the tests found
 
-- jsdom stamps back-to-back events ~0ms apart, so a unit test's last two moves read as a flick whatever the distance; the continuation test waits 250ms before its final move for that reason.
-- A test that asserts before it lifts leaks its `window` listeners into the next case. Two cascading failures traced to one such test; the touch cases now lift first and assert after.
-- CDP delivers touch moves a frame apart, so 12 steps of 20px is 1.3px/ms — a flick, which commits to the next stop rather than the nearest. The e2e drags state their own clock through `dispatchTouch`'s timestamp.
+- jsdom stamps back-to-back events ~0ms apart, so a unit test's last two moves read as a flick whatever the distance; the reversal case is what surfaced the walked-back-release rule.
+- A hand-dispatched `touchmove` is not wrapped in React's `act`, so a state update it causes has not flushed when the next line reads the DOM — the hand-off looked like it never happened until the dispatch was wrapped.
+- A test that asserts before it lifts leaks its `window` listeners into the next case; the touch cases lift first and assert after. And a scroll-metric stub written onto the prototype outlives `restoreAllMocks`, so it is deleted in `afterEach`.
+- CDP delivers touch moves a frame apart, so 12 steps of 20px is 1.3px/ms — a flick. The e2e drags state their own clock through `dispatchTouch`'s timestamp.
 - The harness had to set `--snap-top-h` as the Map does, or its handle row is 19px tall and a press aimed at it lands on the body.
 
-## What was left, and why
+## What is unmeasured
 
-The claim is measured on Chromium (the e2e spec, plus ADR-0200 §9's earlier measurement of the same mechanism). iOS Safari's slop before it commits a pan is undocumented; if it commits on the first unprevented `touchmove`, an up-drag from `half` would sometimes scroll instead of opening — degraded, not broken, and the ADR names the lever (a touch-only decide threshold under the slop) for the device pass.
-
-A drag down on a scrolled list still takes two gestures to close the sheet. In that direction the browser owns the pan and its `touchmove`s are non-cancelable, so a takeover at `scrollTop === 0` would fight the native overscroll. The single-gesture version is a JS-driven scroll for the whole gesture, a trade a device has to weigh — backlog line added.
+The claim and the hand-off are measured on Chromium (the e2e spec, plus ADR-0200 §9's earlier measurement of the same claim mechanism). iOS Safari's slop before it commits a pan is undocumented; the ADR names the lever (a touch-only decide threshold under the slop) for the device pass.

@@ -101,14 +101,17 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  overscroll-behavior-y: contain;
+  /* `none`, not `contain` (ADR-0122 §4's 2026-09-15 amendment): once the list runs out under a
+     finger the SHEET follows it, and the browser's own bounce or glow painted under that would
+     be two answers to one gesture. Chaining to an ancestor was never wanted either. */
+  overscroll-behavior-y: none;
 }
-/* **THE BODY DECLARES NO `touch-action`** (ADR-0122 §4's 2026-09-15 amendment). Its drag is
-   arbitrated per gesture, at the slop, by a `preventDefault` on the `touchmove` — up is the
-   sheet's while it can still grow, down is the sheet's while the list is at its top, and the
-   rest is the list's own pan. `touch-action` is read by the browser before the finger has
-   moved, so it cannot ask the one question that decides this; the 2026-08-06 `[data-drag]`
-   rule that did, for a list that fitted, is gone with the mechanism.
+/* **THE BODY DECLARES NO `touch-action`** (ADR-0122 §4's 2026-09-15 amendment). Whose the pan
+   is gets decided per gesture, at the slop: the list's while it can still scroll the way the
+   finger is going, the sheet's from the first pixel otherwise — and a list that runs out under
+   the finger hands the rest of the gesture to the sheet. `touch-action` is read by the browser
+   before the finger has moved, so it cannot ask the one question that decides this; the
+   2026-08-06 `[data-drag]` rule that did, for a list that fitted, is gone with the mechanism.
 
    The one thing the body's drag still needs from CSS: a mouse drag that is ours must not also
    paint a text selection down the list. */

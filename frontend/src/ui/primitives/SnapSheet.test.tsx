@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useState, type ReactNode } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import '../../test/pointer-events';
 import { SnapSheet } from './SnapSheet';
 import {
@@ -180,37 +180,63 @@ describe('SnapSheet (ADR-0121 §5, the region drag ADR-0122 §4)', () => {
     fireEvent.pointerUp(region(), { clientY: 5000 });
   });
 
-  // ── THE BODY DRAGS WHEN THE LIST CANNOT USE THE GESTURE THAT WAY (ADR-0122 §4's 2026-09-15
-  // amendment) ──
-  // The 2026-08-06 rule was "the body drags while it cannot scroll" — the owner's report was an
-  // empty state and a short list, and it left a list that fills the sheet with no body drag at
-  // all, which the owner then reported: _"When scrollable, you can't drag the list to change the
-  // mode."_ One rule now covers both: **up is the sheet's while the sheet can still grow; down is
-  // the sheet's while the list is at its top**; everything else is the list's own scroll.
+  // ── THE LIST SCROLLS FIRST; THE SHEET MOVES ONCE THE LIST HAS NOTHING LEFT TO SCROLL THAT WAY
+  // (ADR-0122 §4's 2026-09-15 amendment, corrected the same day) ──
+  // The 2026-08-06 rule was "the body drags while it cannot scroll", which left a list that fills
+  // the sheet with no body drag at all. The first build of this amendment answered with "up is the
+  // sheet's while it can grow", and the owner corrected it off the deployed build: _"first it
+  // switches from half to full list and only then it scrolls. I want it to scroll first and only
+  // when there's nothing more to scroll then it goes to switch to full list."_
   //
-  // The claim is taken at the slop, from the direction, and on touch it is a `preventDefault`
-  // on the `touchmove` — so there is no `touch-action` and no `data-drag` on the body any more.
+  // So the one question is asked of the LIST: can it still scroll the way the finger is going? If
+  // yes, the gesture is the browser's pan — and the hook watches the touch until the list runs
+  // out, at which point the same finger moves the sheet. If no, the sheet moves from the first
+  // pixel. A list that fits is at both ends at once, so it behaves exactly as it did.
   //
-  // jsdom reports 0 for every scroll metric, so a list that FITS is its default; `outgrow()`
-  // is how a test says the list is taller than the sheet, and `scrollTop` is a plain settable
-  // property here, so where the list stands is set directly.
-  describe('the body drags when the list cannot use the gesture that way', () => {
+  // jsdom reports 0 for every scroll metric, so a list that FITS is its default; `outgrow()` says
+  // the list is taller than the sheet (max scroll = MAX_SCROLL), and `scrollTop` is a plain settable
+  // property here, so where the list stands — and where the browser's pan has taken it — is set
+  // directly. Real panning and the hand-off under it are `e2e/snap-sheet-drag.spec.ts`'s.
+  describe('the list scrolls first, and the sheet moves once it has nothing left to scroll', () => {
     const body = () => document.querySelector('.wp-snapsheet-body') as HTMLElement;
+    const MAX_SCROLL = CONTAINER;
     const outgrow = () => {
       Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
         configurable: true,
         get(this: HTMLElement) {
-          return this.classList.contains('wp-snapsheet-body') ? CONTAINER * 2 : 0;
+          return this.classList.contains('wp-snapsheet-body') ? CONTAINER + MAX_SCROLL : 0;
         },
       });
       vi.spyOn(window, 'getComputedStyle').mockImplementation(
         () => ({ overflowY: 'auto', overflowX: 'visible' }) as CSSStyleDeclaration,
       );
     };
+    /** A mouse-shaped gesture: pointer events only. */
     const drag = (from: number, to: number) => {
       fireEvent.pointerDown(body(), { clientY: from, button: 0 });
       fireEvent.pointerMove(body(), { clientY: to });
       fireEvent.pointerUp(body(), { clientY: to });
+    };
+    /** The touch stream a finger also dispatches, as the browser would: a `touchmove` carries
+     *  the finger, a `touchend` the lift. Plain `Event`s with the lists defined on them, since
+     *  jsdom has no `Touch`. */
+    const touchMove = (y: number) => {
+      const ev = new Event('touchmove', { bubbles: true, cancelable: true });
+      Object.defineProperty(ev, 'touches', { value: [{ clientX: 200, clientY: y }] });
+      // Hand-dispatched, so wrapped in `act` ourselves: the hand-off sets React state from
+      // this very event, and an unflushed update would read as a sheet that never moved.
+      act(() => {
+        window.dispatchEvent(ev);
+      });
+      return ev.defaultPrevented;
+    };
+    const touchEnd = (y: number) => {
+      const ev = new Event('touchend', { bubbles: true, cancelable: true });
+      Object.defineProperty(ev, 'touches', { value: [] });
+      Object.defineProperty(ev, 'changedTouches', { value: [{ clientX: 200, clientY: y }] });
+      act(() => {
+        window.dispatchEvent(ev);
+      });
     };
 
     describe('a list that fits — the 2026-08-06 case, unchanged', () => {
@@ -238,41 +264,43 @@ describe('SnapSheet (ADR-0121 §5, the region drag ADR-0122 §4)', () => {
 
     describe('a list that outgrows the sheet — the reported case', () => {
       beforeEach(outgrow);
+      // `outgrow` writes onto the prototype, which `restoreAllMocks` does not undo — without
+      // this, every later case would see a scrollable list and the fitting-list cases would lie.
+      afterEach(() => {
+        delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
+      });
 
-      // From `half` a drag up OPENS the list rather than scrolling it: the list has the whole
-      // rest of the screen to grow into, and nothing scrolls until the sheet is as tall as it
-      // gets. Every native bottom sheet makes this choice.
-      it('at half, a drag UP grows the sheet to full', () => {
+      // **The correction.** A list with more below it keeps an upward finger: the sheet does not
+      // move, nothing is captured, and the browser's pan is left alone.
+      it('at half with more list below, a drag UP is the list’s: the sheet neither moves nor claims', () => {
         render(<Host />);
+        drag(300, 60);
+        expect(sheet().dataset.view).toBe(MAP_SHEET_VIEW.half);
+        expect(sheet().style.height).toBe('');
+        expect(HTMLElement.prototype.setPointerCapture).not.toHaveBeenCalled();
+      });
+
+      it('at half with the list at its bottom, a drag UP grows the sheet to full', () => {
+        render(<Host />);
+        body().scrollTop = MAX_SCROLL;
         drag(300, 60);
         expect(sheet().dataset.view).toBe(MAP_SHEET_VIEW.full);
       });
 
-      it('at half, a drag DOWN from a list at its top shrinks the sheet to map', () => {
+      it('at half with the list at its top, a drag DOWN shrinks the sheet to map', () => {
         render(<Host />);
         drag(300, 560);
         expect(sheet().dataset.view).toBe(MAP_SHEET_VIEW.map);
       });
 
-      // **The other half of the rule.** At the top stop the sheet cannot grow, so an upward
-      // finger is the list's scroll and the hook stands down — nothing captured, no height set.
-      it('at full, a drag UP is the list’s scroll: the sheet neither moves nor claims', () => {
-        stubLayout(() => FULL);
-        render(<Host initial={MAP_SHEET_VIEW.full} />);
-        drag(300, 60);
-        expect(sheet().dataset.view).toBe(MAP_SHEET_VIEW.full);
-        expect(sheet().style.height).toBe('');
-        expect(HTMLElement.prototype.setPointerCapture).not.toHaveBeenCalled();
-      });
-
-      it('at full, a drag DOWN from a list at its top shrinks the sheet', () => {
+      it('at full with the list at its top, a drag DOWN shrinks the sheet', () => {
         stubLayout(() => FULL);
         render(<Host initial={MAP_SHEET_VIEW.full} />);
         drag(300, 500);
         expect(sheet().dataset.view).toBe(MAP_SHEET_VIEW.half);
       });
 
-      // A list that is scrolled down owns the downward gesture too: the finger is asking to
+      // A list scrolled below its top owns the downward gesture too: the finger is asking to
       // read what is above, and a sheet that closed instead would take the list away mid-read.
       it('a drag DOWN on a list scrolled below its top is the list’s, at any stop', () => {
         stubLayout(() => FULL);
@@ -283,53 +311,10 @@ describe('SnapSheet (ADR-0121 §5, the region drag ADR-0122 §4)', () => {
         expect(HTMLElement.prototype.setPointerCapture).not.toHaveBeenCalled();
       });
 
-      it('…and a drag UP on that same scrolled list still grows the sheet while it can', () => {
-        render(<Host />);
-        body().scrollTop = 120;
-        drag(300, 60);
-        expect(sheet().dataset.view).toBe(MAP_SHEET_VIEW.full);
-      });
-
-      // **The continuation.** The travel the clamp refuses is handed to the list, so one gesture
-      // from `half` both opens the list and starts reading it — and coming back down unwinds the
-      // scroll before the sheet moves again.
-      it('a drag UP past the top stop keeps following the finger as the list’s scroll', async () => {
-        render(<Host />);
-        fireEvent.pointerDown(body(), { clientY: 300, button: 0 });
-        // FULL - HALF px of travel puts the sheet exactly at the top stop…
-        fireEvent.pointerMove(body(), { clientY: 300 - (FULL - HALF) });
-        expect(sheet().style.height).toBe(`${FULL}px`);
-        expect(body().scrollTop).toBe(0);
-        // …and the next 90px, which the clamp refuses, become scroll.
-        fireEvent.pointerMove(body(), { clientY: 300 - (FULL - HALF) - 90 });
-        expect(sheet().style.height).toBe(`${FULL}px`);
-        expect(body().scrollTop).toBe(90);
-        // Back down: the scroll unwinds first, the sheet only then.
-        fireEvent.pointerMove(body(), { clientY: 300 - (FULL - HALF) - 30 });
-        expect(body().scrollTop).toBe(30);
-        expect(sheet().style.height).toBe(`${FULL}px`);
-        // Slowly, so the release reads a drag and not a downward flick: the last two moves are
-        // the velocity, and 70px has to take well over 140ms to stay under the flick threshold.
-        await new Promise((resolve) => setTimeout(resolve, 250));
-        fireEvent.pointerMove(body(), { clientY: 300 - (FULL - HALF) + 40 });
-        expect(body().scrollTop).toBe(0);
-        expect(sheet().style.height).toBe(`${FULL - 40}px`);
-        fireEvent.pointerUp(body(), { clientY: 300 - (FULL - HALF) + 40 });
-        expect(sheet().dataset.view).toBe(MAP_SHEET_VIEW.full);
-      });
-
-      it('the continuation scrolls from where the list already stood, never from zero', () => {
-        render(<Host />);
-        body().scrollTop = 50;
-        fireEvent.pointerDown(body(), { clientY: 300, button: 0 });
-        fireEvent.pointerMove(body(), { clientY: 300 - (FULL - HALF) - 90 });
-        expect(body().scrollTop).toBe(140);
-        fireEvent.pointerUp(body(), { clientY: 300 - (FULL - HALF) - 90 });
-      });
-
       // A sideways finger is a strip's, or a text selection's — never the sheet's.
       it('a drag that is more sideways than vertical is not the sheet’s', () => {
         render(<Host />);
+        body().scrollTop = MAX_SCROLL;
         fireEvent.pointerDown(body(), { clientX: 200, clientY: 300, button: 0 });
         fireEvent.pointerMove(body(), { clientX: 260, clientY: 300 - 40 });
         fireEvent.pointerUp(body(), { clientX: 260, clientY: 300 - 40 });
@@ -337,23 +322,92 @@ describe('SnapSheet (ADR-0121 §5, the region drag ADR-0122 §4)', () => {
         expect(sheet().style.height).toBe('');
       });
 
-      // ── The touch half of the claim: the browser's pan is taken by `preventDefault` on the
-      // `touchmove`, at the same moment the direction decides, and NOT before — a prevented
+      // ── THE HAND-OFF. The browser owns a pan once it has started one: it cancels the pointer
+      // and its `touchmove`s arrive non-cancelable, so the rest of the gesture is read off the
+      // touch stream itself. The move on which the list reports itself at its end is the origin
+      // of a sheet drag that follows the rest of the finger. Each case lifts BEFORE it asserts:
+      // the gesture's listeners live on `window`, so a failing assertion ahead of the release
+      // would leak them into the next case.
+      describe('the hand-off, once the list runs out under the finger', () => {
+        it('scrolls first, then the same finger grows the sheet to full', () => {
+          render(<Host />);
+          fireEvent.pointerDown(body(), { clientX: 200, clientY: 300, button: 0 });
+          // Past the slop with more list below: the list's. Not prevented, so the browser pans.
+          const first = touchMove(290);
+          // The browser cancels the pointer as its pan begins. That is not the gesture's end.
+          fireEvent.pointerCancel(body(), { clientY: 290 });
+          // The pan takes the list to its bottom while the finger keeps going…
+          body().scrollTop = MAX_SCROLL;
+          touchMove(240);
+          const heightAtHandoff = sheet().style.height;
+          // …and from here the finger moves the sheet: 100px more travel is 100px more sheet.
+          touchMove(140);
+          const heightAfter = sheet().style.height;
+          touchEnd(140);
+          expect(first).toBe(false);
+          expect(heightAtHandoff).toBe('');
+          expect(heightAfter).toBe(`${HALF + 100}px`);
+          expect(sheet().dataset.view).toBe(MAP_SHEET_VIEW.full);
+        });
+
+        it('a finger that reverses after the hand-off scrolls the list again; the sheet stays', () => {
+          render(<Host />);
+          fireEvent.pointerDown(body(), { clientX: 200, clientY: 300, button: 0 });
+          touchMove(290);
+          fireEvent.pointerCancel(body(), { clientY: 290 });
+          body().scrollTop = MAX_SCROLL;
+          touchMove(240);
+          touchMove(200);
+          const grown = sheet().style.height;
+          // Back below the hand-off point: the browser is scrolling the list up again, and the
+          // sheet must not shrink under that — it holds the height it had when the list ran out.
+          touchMove(280);
+          const reversed = sheet().style.height;
+          touchEnd(280);
+          expect(grown).toBe(`${HALF + 40}px`);
+          expect(reversed).toBe(`${HALF}px`);
+          expect(sheet().dataset.view).toBe(MAP_SHEET_VIEW.half);
+        });
+
+        it('runs the other way too: a list scrolled up to its top hands a drag DOWN to the sheet', () => {
+          stubLayout(() => FULL);
+          render(<Host initial={MAP_SHEET_VIEW.full} />);
+          body().scrollTop = 60;
+          fireEvent.pointerDown(body(), { clientX: 200, clientY: 200, button: 0 });
+          const first = touchMove(210);
+          fireEvent.pointerCancel(body(), { clientY: 210 });
+          body().scrollTop = 0;
+          touchMove(260);
+          touchMove(460);
+          const shrunk = sheet().style.height;
+          touchEnd(460);
+          expect(first).toBe(false);
+          expect(shrunk).toBe(`${FULL - 200}px`);
+          expect(sheet().dataset.view).toBe(MAP_SHEET_VIEW.half);
+        });
+
+        it('a lift with the list still short of its end changes nothing', () => {
+          render(<Host />);
+          fireEvent.pointerDown(body(), { clientX: 200, clientY: 300, button: 0 });
+          touchMove(290);
+          fireEvent.pointerCancel(body(), { clientY: 290 });
+          body().scrollTop = 200;
+          touchMove(140);
+          touchEnd(140);
+          expect(sheet().dataset.view).toBe(MAP_SHEET_VIEW.half);
+          expect(sheet().style.height).toBe('');
+        });
+      });
+
+      // ── The touch half of the claim at the slop: the browser's pan is taken by `preventDefault`
+      // on the `touchmove` only when the sheet's turn has come, and NOT before — a prevented
       // first `touchmove` forfeits the whole touch's scrolling, so a move still under the slop
       // must be left alone or the list would lose a scroll `claim` was about to hand it.
-      const touchMove = (dy: number) => {
-        const ev = new Event('touchmove', { bubbles: true, cancelable: true });
-        Object.defineProperty(ev, 'touches', { value: [{ clientX: 200, clientY: 300 + dy }] });
-        window.dispatchEvent(ev);
-        return ev.defaultPrevented;
-      };
-
-      // Each case lifts BEFORE it asserts: the gesture's listeners live on `window`, so a
-      // failing assertion ahead of the release would leak them into the next case.
-      it('claims the touch when the gesture is the sheet’s', () => {
+      it('claims the touch when the list is already at its end that way', () => {
         render(<Host />);
+        body().scrollTop = MAX_SCROLL;
         fireEvent.pointerDown(body(), { clientX: 200, clientY: 300, button: 0 });
-        const prevented = touchMove(-(SNAP_DRAG_SLOP_PX + 2));
+        const prevented = touchMove(300 - SNAP_DRAG_SLOP_PX - 2);
         // The `pointermove` a finger also dispatches then carries the height, as ever.
         fireEvent.pointerMove(window, { clientX: 200, clientY: 300 - SNAP_DRAG_SLOP_PX - 2 });
         const live = sheet().className.includes('dragging');
@@ -362,25 +416,24 @@ describe('SnapSheet (ADR-0121 §5, the region drag ADR-0122 §4)', () => {
         expect(live).toBe(true);
       });
 
-      it('leaves the touch to the browser when the gesture is the list’s', () => {
-        stubLayout(() => FULL);
-        render(<Host initial={MAP_SHEET_VIEW.full} />);
+      it('leaves the touch to the browser while the list can still scroll that way', () => {
+        render(<Host />);
         fireEvent.pointerDown(body(), { clientX: 200, clientY: 300, button: 0 });
-        const first = touchMove(-(SNAP_DRAG_SLOP_PX + 2));
-        // Stood down for good: a later move in the other direction is not re-examined.
-        const reversed = touchMove(80);
-        fireEvent.pointerUp(window, { clientX: 200, clientY: 380 });
+        const first = touchMove(300 - SNAP_DRAG_SLOP_PX - 2);
+        const later = touchMove(200);
+        touchEnd(200);
         expect(first).toBe(false);
-        expect(reversed).toBe(false);
+        expect(later).toBe(false);
         expect(sheet().className).not.toContain('dragging');
       });
 
       it('decides nothing while the finger is under the slop', () => {
         render(<Host />);
+        body().scrollTop = MAX_SCROLL;
         fireEvent.pointerDown(body(), { clientX: 200, clientY: 300, button: 0 });
-        const under = touchMove(-(SNAP_DRAG_SLOP_PX - 1));
+        const under = touchMove(300 - (SNAP_DRAG_SLOP_PX - 1));
         // …and the claim is still open once it crosses.
-        const over = touchMove(-(SNAP_DRAG_SLOP_PX + 2));
+        const over = touchMove(300 - (SNAP_DRAG_SLOP_PX + 2));
         fireEvent.pointerUp(window, { clientX: 200, clientY: 300 - SNAP_DRAG_SLOP_PX - 2 });
         expect(under).toBe(false);
         expect(over).toBe(true);
