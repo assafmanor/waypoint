@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { clampToStops, nearestStop, stopHeightCss, type SnapStop } from '../../lib/snap-sheet';
 import { scrollerWithin } from '../../lib/scrollable';
-import { SNAP_CLAIM, useSnapDrag } from '../../lib/useSnapDrag';
+import { useSnapDrag } from '../../lib/useSnapDrag';
 import './snap-sheet.css';
 
 export function SnapSheet<T extends string>({
@@ -79,20 +79,22 @@ export function SnapSheet<T extends string>({
 
   const drag = useSnapDrag({ heightPx: currentPx, onDrag, onRelease });
 
-  /** **THE LIST SCROLLS FIRST; THE SHEET MOVES ONLY ONCE THE LIST HAS NOTHING LEFT TO SCROLL
-   *  THAT WAY** (ADR-0122 §4's 2026-09-15 amendment, as corrected the same day by the owner:
-   *  _"I want it to scroll first and only when there's nothing more to scroll then it goes to
-   *  switch to full list"_).
+  /** **A SWIPE THAT BEGINS AS A SCROLL IS A SCROLL; THE SHEET MOVES ONLY WHEN A SWIPE BEGINS WITH
+   *  THE LIST ALREADY AT ITS END THAT WAY** (ADR-0122 §4's 2026-09-15 amendment, in its third
+   *  reading by the owner: _"sometimes I just want to scroll and I don't want it to change mode
+   *  immediately. I want to first finish scrolling, then if I want to change mode I'd swipe
+   *  again"_).
    *
-   *  One question decides every vertical press on the body, and it is asked of the LIST, not
-   *  the sheet: **can it still scroll the way the finger is going?** If it can, the gesture is
-   *  the browser's pan, and the hook watches it until the list runs out — at which point the
-   *  same finger starts moving the sheet (`handoff`). If it cannot — a finger going up with the
-   *  list already at its bottom, a finger going down with the list at its top, or a list that
-   *  fits and so is at both ends at once — the sheet moves from the first pixel. So from
-   *  `half` a long drag up reads the rest of the list and then opens it, in one motion.
+   *  One question decides every vertical press on the body, asked of the LIST at the moment the
+   *  finger has moved enough to have a direction: **can it still scroll the way the finger is
+   *  going?** If it can, the gesture is the browser's pan for its whole life — however far it
+   *  goes, and even if the list runs out under the finger. If it cannot — a finger going up with
+   *  the list already at its bottom, a finger going down with the list at its top, or a list
+   *  that fits and so is at both ends at once — the sheet moves from the first pixel. So from
+   *  `half` a long drag up reads to the end of the list and stops there; the NEXT swipe up opens
+   *  it. The browser's own bounce at the end is the cue that the list is done.
    *
-   *  The reasons are read LIVE from the DOM at each decision, never off state: the DOM cannot
+   *  The reasons are read LIVE from the DOM at the decision, never off state: the DOM cannot
    *  be a frame behind the way state can, and the Map's sheet re-renders every second. */
   const bodyRef = useRef<HTMLDivElement>(null);
   const listAtEnd = (dy: number) => {
@@ -104,12 +106,8 @@ export function SnapSheet<T extends string>({
   };
   const bodyDrag = useSnapDrag({
     heightPx: currentPx,
-    claim: ({ dx, dy }) => {
-      // Vertical-dominant or nothing: a sideways finger is a strip's, or a text selection's.
-      if (Math.abs(dx) > Math.abs(dy)) return SNAP_CLAIM.none;
-      return listAtEnd(dy) ? SNAP_CLAIM.sheet : SNAP_CLAIM.list;
-    },
-    handoff: listAtEnd,
+    // Vertical-dominant or nothing: a sideways finger is a strip's, or a text selection's.
+    claim: ({ dx, dy }) => Math.abs(dx) <= Math.abs(dy) && listAtEnd(dy),
     onDrag,
     onRelease,
   });
@@ -194,11 +192,11 @@ export function SnapSheet<T extends string>({
         </button>
         {header && <div className="wp-snapsheet-headrow">{header}</div>}
       </div>
-      {/* **THE BODY SCROLLS FIRST AND DRAGS THE SHEET ONCE IT HAS NOTHING LEFT TO SCROLL** (ADR-0122
-          §4's 2026-09-15 amendment; the rule is on `bodyDrag` above). It carries NO
-          `touch-action` of its own: whose the pan is gets decided per gesture, at the slop, and
-          the hand-off at the list's end rides the same touch — `touch-action` would have to be
-          decided before the finger has moved, which is before anything that decides it exists. */}
+      {/* **THE BODY SCROLLS, AND DRAGS THE SHEET ONLY WHEN A SWIPE BEGINS WITH NOTHING LEFT TO
+          SCROLL** (ADR-0122 §4's 2026-09-15 amendment; the rule is on `bodyDrag` above). It
+          carries NO `touch-action` of its own: whose the pan is gets decided per gesture, at the
+          slop — `touch-action` would have to be decided before the finger has moved, which is
+          before anything that decides it exists. */}
       <div ref={bodyRef} className="wp-snapsheet-body" onPointerDown={onBodyPointerDown}>
         {children}
       </div>

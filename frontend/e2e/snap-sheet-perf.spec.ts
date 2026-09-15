@@ -9,13 +9,15 @@
 // What it read on 2026-09-15, before and after the drag stopped going through React state:
 //
 //     sheet drag (list at its bottom)   script 69ms → 14ms   task 158ms → 70ms   layouts 59 → 59
-//     list pan, then hand-off           script 26ms →  7ms   task  56ms → 36ms
+//     list pan that runs the list out   script 26ms →  7ms   task  56ms → 36ms
 //     pure list pan (the browser's)     script  5ms →  6ms   layouts 0 → 0
 //
 // The layouts did not move and are not meant to: one height write per frame is one layout per
 // frame, and that is the drag. What the counters cannot show is the other half of that change —
 // a non-passive `touchmove` listener makes the browser wait on the main thread before every
-// scroll frame, and the list phase now listens passively, so the pan is the compositor's alone.
+// scroll frame, and a gesture the list owns now unbinds everything at the verdict, so the pan is
+// the compositor's alone. (The middle row was measured while a same-gesture hand-off existed;
+// since the third reading that gesture is a pan to the end and nothing more, so it is cheaper.)
 //
 // Same harness as `snap-sheet-drag.spec.ts` (the real component, dev server only).
 import { test, type CDPSession, type Page } from '@playwright/test';
@@ -81,9 +83,9 @@ test('sheet drag, the list already at its bottom', async ({ page }) => {
   await measure(cdp, 'SHEET_DRAG', () => drag(cdp, PANE - HALF + 120, -200));
 });
 
-test('list pan, then the hand-off to the sheet', async ({ page }) => {
+test('list pan that runs the list out under the finger', async ({ page }) => {
   const cdp = await mount(page, 'half', HALF - 52 + 150);
-  await measure(cdp, 'HANDOFF_DRAG', () => drag(cdp, PANE - HALF + 120, -320));
+  await measure(cdp, 'PAN_TO_END', () => drag(cdp, PANE - HALF + 120, -320));
 });
 
 test('pure list pan, the browser’s own', async ({ page }) => {

@@ -1,4 +1,4 @@
-# 2026-09-15 — The list scrolls first, and the sheet moves once it has nothing left to scroll
+# 2026-09-15 — A swipe that begins as a scroll is a scroll; the sheet moves only from the list's end
 
 **Outcome:** [ADR-0122](../decisions/0122-map-split-controls-over-the-canvas.md)'s 2026-09-15 amendment (built, corrected the same day, rebuilt) · `SnapSheet` / `useSnapDrag` · `e2e/snap-sheet-drag.spec.ts` drives the real component in Chromium.
 
@@ -45,3 +45,9 @@ Two costs were found by reading the gesture's own code, and one was measured. **
 Measured in Chromium with `e2e/snap-sheet-perf.spec.ts` (a flagged instrument, `E2E_PERF=1`): script time per 60-move sheet drag 69ms → 14ms, total main-thread 158ms → 70ms; the hand-off drag 26ms → 7ms. Layouts unchanged at one per frame, which is the drag. The passive listener's effect is latency, which counters do not show.
 
 Left as a backlog line: the Map's one-second clock rebuilds the sheet's list as fresh JSX, so a tick mid-gesture reconciles twenty rows under the finger. That is a `Map.tsx` memoisation with its own audit.
+
+## The fourth round: _"I want to first finish scrolling, then if I want to change mode I'd swipe again"_
+
+The same-gesture hand-off was refused on the deployed build, and the reason decides the rule: a scroll that ends at the list's end is a common thing to do on purpose, and a sheet that opens in the same motion turns every long scroll into a mode switch nobody asked for. So the question is asked once, at the slop, and a `false` stands the hook down for the whole gesture. The hook lost its `handoff` option, its touch-end listeners and its three-way verdict; the scroller is back on `overscroll-behavior: contain`, because the browser's bounce at the end is now the cue that the list is done. A time-window continuation ("swipe again within N ms") was considered and refused: still the app interpreting a motion. The hand-off's mechanism is recorded in the ADR so it is not re-derived.
+
+Four rounds on one gesture in one day is worth one sentence for the next session: **each build was refused for how it read, not for a defect** — the shape of a gesture is the owner's to feel, and the cheapest way to find it was to ship the next reading, not to argue the last.
