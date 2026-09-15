@@ -3,7 +3,7 @@
 **Status:** **PROPOSED** — drawn and measured, not built. Two forks are the owner's and are named at the foot.
 **Date:** 2026-09-15
 **Session note:** [`planning/2026-09-15-the-read-in-trip-mode.md`](../planning/2026-09-15-the-read-in-trip-mode.md)
-**Mockup:** [`mockups/the-read-in-trip-mode-v1.html`](../../mockups/the-read-in-trip-mode-v1.html)
+**Mockup:** [`mockups/the-read-in-trip-mode-v2.html`](../../mockups/the-read-in-trip-mode-v2.html) (v1 is the dated record of the first answer, kept per ADR-0097)
 
 **Amends in place:** [0174](0174-an-attachment-is-marked-and-opened-and-an-event-has-a-read.md) §6 — _"No change to how the Trip-mode day card opens. It already expands and that expansion is the read"_ — which was true when it was written and has stopped being true since.
 **Completes:** [0223](0223-a-confirmation-code-is-looked-up-not-carried.md) — its mitigation, stated twice, is _"every surface that dropped the code is one tap from the booking that has it."_ The Trip-mode day view is the one surface where that sentence is false.
@@ -38,24 +38,35 @@ Not a second read surface, not a facts block copied into the card, not a new scr
 
 This keeps the difference the owner asked to keep. Trip mode's panel stays a doing surface with the group's own content under it; the knowing surface is the app's one read, unchanged and un-duplicated.
 
-### 2. Where the reach lives — the read row
+### 2. Where the reach lives — the band
 
-A full-width `.rd-row` inside `.wp-event-actions-in`, **after the verb band and the hard-edit warning, above `HostDocuments`**. That position is not arbitrary: it is the read surface's own sequence (knowledge → hard note → facts → documents → tasks → notes) with the facts compressed to one line, re-entered after the verbs because Trip mode is doing-first.
+**Revised 2026-09-15 on the owner's _"let's be more creative in how we display the information"_.** The first answer was a text row — `להזמנה` over an address, with a caret. It is not wrong and it is timid: it _points at_ the information instead of displaying any of it, which is the half of the report v1 answered and the half it did not. The default changes; v1's row survives only as the measurement baseline and as what a placeless row actually gets (below).
 
-It says the **destination's name**, not a generic word: `להזמנה` on a booked row (the lifted hero's own string, `t.hero.toBooking`), `פרטים` otherwise. Under it, the one fact the row above cannot say — the address, one line, ellipsised. The way in is `<Icon name="caret" dir="left" />`, which is what `.map-know-more` already means by "through to another card"; **not** `NavArrow`, which is the app's back/route arrow.
+**The panel's knowledge band is a photograph.** The place's shot as a full-width band, the address and its credit over the scrim, and the whole band is the way into the read. A picture answers "what is this" faster than three lines of prose ever will — and the day view is the one surface that already fetches the shot (ADR-0219 §1) and then shows it at 40px inside a badge.
 
-**Measured** (360×640 and 390×844, both themes, read off the rendered DOM):
+**It is not a new mechanism. It is `.wp-dayhead-shot` at a card density** — the day's own head is already a band with a `<figure>`, an `<img>` and a `<figcaption>` scrim carrying `strong` (what it is) and `span` (the credit, which ADR-0219 §6 makes structural rather than decorative). The proposal renders _that class_; `.rd-shot` overrides a height, a radius and two clamps. A second shot primitive is what this refuses to be.
 
-| container                         | card height | vs. today    | what it costs                                        |
-| --------------------------------- | ----------- | ------------ | ---------------------------------------------------- |
-| **א** today                       | ⁦393px⁩     | —            | no path to the facts at all                          |
-| **ב** read row in the panel       | ⁦447px⁩     | **⁦+54px⁩**  | the row itself is ⁦54px⁩ (⁦44px⁩ without an address) |
-| **ג** a fifth control on the face | ⁦393px⁩     | ⁦0px⁩        | ⁦26px⁩ of the title, at both widths                  |
-| **ה** the facts inside the card   | ⁦557px⁩     | **⁦+164px⁩** | ⁦152px⁩ of `bk-facts`, copied                        |
+It still sits **after the verb band and the hard-edit warning, above `HostDocuments`** — the read surface's own sequence with the facts compressed, re-entered after the verbs because Trip mode is doing-first. And it still cannot live _in_ the verb band, for Context 2's reason.
 
-The read row is ⁦54px⁩ with an address and ⁦44px⁩ without — on the floor, never under it — and a long address (`Nordurljosavegur 9, 240 Grindavík, Suðurnesjabær, איסלנד`) ellipsises at the same ⁦54px⁩ rather than wrapping.
+**A place with no photograph gets a sentence, not a grey box** — v1's row, at the 44px floor. Most places have no image (ADR-0166 §11.3: 0 of 7 Tokyo restaurants had one), and an empty band is worse than a line.
+
+#### What makes a richer panel affordable, which v1 never went and checked
+
+`DayView.tsx:698` — `toggle: (id) => setOpenId((cur) => (cur === id ? null : id))`. **The day is a single-open accordion.** One card is open at a time, ever, so the panel's height is paid once per day and never per row. v1's "+54px" was therefore being weighed against the wrong thing: the number that decides is how much of a 640px screen the one open card takes.
+
+**Measured** (360×640 and 390×844, both themes, off the rendered DOM; the frames are cut to a real 640px screen and scrolled to the open card):
+
+|               | card                               | neighbours still on screen |
+| ------------- | ---------------------------------- | -------------------------- |
+| today         | —                                  | **3** of 4                 |
+| v1's text row | ⁦447px⁩                            | **2** of 4                 |
+| **the band**  | **⁦482px⁩** (⁦+35px⁩ over the row) | **2** of 4                 |
+
+**The photograph costs no more of the day than the sentence did.** Both spend one neighbour against today; the picture is ⁦35px⁩ more card and the same amount of screen. The band itself is ⁦89px⁩ at the proposed height; the placeless row is ⁦44px⁩; a two-line summary under the band would add ⁦58px⁩, which is why it is off by default.
 
 ### 3. Three containers drawn and refused, each for its own reason
+
+Measured in v1 against that file's baseline, and unchanged by the band: the refusals are about _where_ a reach may live, not about what it looks like.
 
 - **A fifth control on the face (ג).** ⁦0px⁩ of height and ⁦26px⁩ of the title at 360 — 191 → ⁦165px⁩, i.e. ⁦13.6%⁩ of the name. The face already holds four targets (badge → map, face → open, `⋯` → Tier-2, chevron), and **ADR-0174 §4 refused exactly this addition on the Plan row for exactly this reason**. Also the wrong register: a face control is a main function, and the owner asked for the opposite.
 - **A row in the `⋯` sheet (ד).** Free, and therefore tempting. ADR-0174 §4 already refused it, citing ADR-0138 §1's row menu as a list of **verbs**; the owner rejected the same shape once before, for notes (_"notes don't belong in a menu"_). A thing you open in order to **know** does not belong in a list of things you **do**.
@@ -69,6 +80,10 @@ The alternative — suppressing the host sections in the sheet when it is opened
 
 ## What rendering it found
 
+**v2 (the band), three passes, all one wrong assumption** — that the day head's caption, written for a short day title alone on its line, would hold an address and a credit with a control beside them. (a) The way-in pill painted on top of the credit. (b) Reserving a track for it fixed the overlap and broke the credit instead, ellipsising it from its **start** (`…A 2.0 · Ulrich Latzenhofer`) — so the pill moved to the band's top trailing corner and the caption went back to full width: move the control, do not shrink a licence obligation. (c) Neither line clamped, so a long address ran past the picture and the credit wrapped to two lines, which at 88px leaves almost no photograph. All three would have shipped.
+
+**v1 (the row):**
+
 - **A real confirmation code breaks the hard-edit warning onto two lines.** The stress row carries `#MEGAZIP-T141215488` — the code from ADR-0174 §8's own device report — inside the shipped `.wp-event-hard-warn`, and it wraps. It wraps rather than overflows, so it is not a defect; it is ⁦16px⁩ the card spends on a fact the read states properly as `קוד אישור`, and one more argument for where the code belongs.
 - The file's first pass hand-rolled the `⋯` sheet and it rendered as one squashed line — the rule-8 failure a file that inlines the real CSS exists to catch, inside the file whose premise is that it does not invent markup.
 - The way-in glyph was `NavArrow` and was wrong; see §2.
@@ -77,14 +92,16 @@ The alternative — suppressing the host sections in the sheet when it is opened
 
 - `DayView.tsx` gains the `PlanDay.tsx` branch it does not have (`booking ? BookingDetail : EventDetail`) and one piece of state. No new component, no new overlay, no change to `DetailSheet`.
 - The Trip-mode day view stops being the one surface where ADR-0223's mitigation is untrue.
-- The open card grows ⁦54px⁩ — ⁦44px⁩ on a placeless row, ⁦0px⁩ while closed, which is every row you are not looking at.
+- The open card grows ⁦89px⁩ where the place has a photograph and ⁦44px⁩ where it has not — ⁦0px⁩ while closed, which is every row you are not looking at, and the day only ever has one open.
 - On a past day and on any day that is not today the read row is the **only** thing in the panel above the host sections, and that is the point (§2 / Context 2).
-- `ui/domain/event-card.css` grows ~40 lines. Nothing else in the app changes.
+- `ui/domain/event-card.css` grows ~60 lines, most of it the placeless fallback; the band itself is `.wp-dayhead-shot` plus a height, a radius and two clamps. `day-head.css` is untouched — the head's caption is correct for the head, and the clamps belong to the second host's density.
+- The day view starts showing the enrichment photograph it has always fetched at something larger than 40px, which is the asset ADR-0219 bought and this surface never spent.
 
-## The two forks for the owner
+## The forks for the owner
 
-1. **The row's density.** Shipped in the mockup as label + address (⁦54px⁩). Label only is ⁦44px⁩ and says less than the row above it; label + address + a two-line summary says "what is this" with no tap at all and inflates the panel on the surface that is meant to be scanned. The control is in the mockup's toolbar.
-2. **Whether the card closes when the read opens** (§4), or the duplication is simply lived with as Plan effectively does.
+1. **The band's height** — ⁦72⁩ / ⁦88⁩ / ⁦116px⁩, shipped at **88**. The day head's own number is 116, but a head is the first thing on the screen and this sits mid-list, where 116 pushes the rows after the card below the fold. A control in the mockup's toolbar; a phone in a hand answers it and a desktop screenshot cannot.
+2. **The summary under the band** — two clamped lines of what the world knows, ⁦+58px⁩. Off by default: on the ground the picture and the address are what you act on, and the extract is planning knowledge. Also a control.
+3. **Whether the card closes when the read opens** (§4), or the duplication is simply lived with as Plan effectively does.
 
 ## Rejected
 
@@ -92,3 +109,8 @@ The alternative — suppressing the host sections in the sheet when it is opened
 - A picture in the read row. The badge already carries the photograph at ⁦0px⁩ (ADR-0219 §1), and the full hero is in the read.
 - Making the badge's tap the reach. It is `מפה`, settled by ADR-0121 §8, and the map is the one destination it may have.
 - A long-press anywhere. No hover, no discoverability, and nothing in this app teaches it.
+- **A band on every row, open or not.** A day with eight stops becomes a gallery, and that is where "glanceable" genuinely breaks. The band lives in the state you asked to open.
+- **The confirmation code on the band.** ADR-0223 is four days old and explicit: the code appears in the booking and in the save warning, nowhere else. The band is the _way to_ the code — which is exactly what was missing — not a second printing of it.
+- **A two-sided panel** (`לעשות` / `לדעת`, swapped by a segmented control). The genuinely different structure, drawn in v2 §4 and refused on three counts the drawing turns into numbers: the control sits on _every_ open card even when there is nothing to know, which is the clutter ADR-0228's amendment just removed; the `לדעת` side is a second copy of `bk-facts`, the shape ADR-0094 is a retraction of; and it teaches a second navigation model inside a card when the sheet already answers that question everywhere else in the app.
+- **A perforated ticket-stub pill.** Pleasant physicality, but a dashed border is this app's grammar for an _absence_ (ADR-0174 §5) and a radial-gradient perforation is decoration — two separate reasons, each sufficient.
+- **A full-height ⁦116px⁩ hero**, the day head's own number. The control exists so it can be _seen_; §2 measures what it costs the rows below.

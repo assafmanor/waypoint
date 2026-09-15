@@ -1,6 +1,6 @@
 # 2026-09-15 — The read in Trip mode: the day row has no way to an event's facts
 
-**Outcome:** [ADR-0229](../decisions/0229-the-row-opens-what-you-do-and-the-read-is-one-tap-further.md) (**Proposed**, drawn and measured, not built) · mockup [`mockups/the-read-in-trip-mode-v1.html`](../../mockups/the-read-in-trip-mode-v1.html) · [ADR-0174](../decisions/0174-an-attachment-is-marked-and-opened-and-an-event-has-a-read.md) §6 amended in place · catalog + backlog updated.
+**Outcome:** [ADR-0229](../decisions/0229-the-row-opens-what-you-do-and-the-read-is-one-tap-further.md) (**Proposed**, drawn twice and measured, not built) · mockups [`the-read-in-trip-mode-v1.html`](../../mockups/the-read-in-trip-mode-v1.html) then [`-v2.html`](../../mockups/the-read-in-trip-mode-v2.html) · [ADR-0174](../decisions/0174-an-attachment-is-marked-and-opened-and-an-event-has-a-read.md) §6 amended in place · catalog + backlog updated.
 
 ## What was asked
 
@@ -53,3 +53,39 @@ Both are in the ADR's closing section. Nothing is built until they are answered.
 
 - No ADR for the hard-warn wrap: it wraps, it does not overflow, and the fix is ADR-0229 itself.
 - No second mark on the meta line, no picture in the read row, no long-press — each refused in the ADR with the rule it would have broken.
+
+## Second round the same day — "let's be more creative in how we display the information"
+
+The owner, against v1's text row. It is a **correction, not a fork** (root `CLAUDE.md`), so the default changed rather than gaining a sibling: v1's row survives in the drawing only as the measurement baseline and as what a placeless row actually gets.
+
+**What the row got wrong** is not its position or its wording — both survive v2 untouched — it is that it _points at_ the information and displays none of it. The band displays: the place's photograph full-width, the address and its credit over the scrim, the whole thing the way into the read.
+
+**And it is not a new mechanism.** `.wp-dayhead-shot` is already a band with a `figure`/`img`/`figcaption` scrim carrying "what it is" and the credit; the proposal renders that class and overrides a height, a radius and two clamps. Writing a second shot primitive would have been the duplicate this repo has four ADRs retracting.
+
+**The fact that made it affordable, and the reason v1's argument was aimed at the wrong number.** `DayView.tsx:698` — `setOpenId((cur) => (cur === id ? null : id))`. The day is a single-open accordion, so the panel is paid once per day and never per row; the question is not what one card grows by but how much of a 640px screen the one open card takes. §2's frames are cut to a real screen and scrolled to the open card, and count what survives:
+
+|          | card              | neighbours on screen |
+| -------- | ----------------- | -------------------- |
+| today    | —                 | 3 of 4               |
+| v1's row | ⁦447px⁩           | 2 of 4               |
+| the band | ⁦482px⁩ (⁦+35px⁩) | 2 of 4               |
+
+**The photograph costs no more of the day than the sentence did.** That is the sentence the second round exists to be able to write, and it is a measurement.
+
+### What rendering found this time — three passes, one wrong assumption
+
+That the day head's caption, written for a short day title alone on its line, would hold an address and a credit with a control beside them.
+
+1. The way-in pill painted **on top of** the credit.
+2. Reserving a track for it fixed the overlap and broke the credit instead — ellipsised from its **start** (`…A 2.0 · Ulrich Latzenhofer`), mangling the one line on the band that is a licence obligation rather than a nicety (ADR-0166 §12.2: 27 of 32 Commons files require attribution). The pill moved to the band's top corner: **move the control, don't shrink the obligation.**
+3. Neither line clamped, so a long address ran past the picture and the credit wrapped to two lines — at 88px that leaves almost no photograph.
+
+All three would have shipped. None is visible in the source.
+
+### The bolder structure, drawn and refused
+
+A **two-sided panel** — `לעשות` (the verbs and the group's content) / `לדעת` (picture, summary, address, times, code), swapped by a segmented control. Genuinely different, and reading without leaving the day is a real advantage. Refused on three counts the drawing turns into numbers: the control sits on _every_ open card even when there is nothing to know, which is the clutter ADR-0228's amendment just removed; the `לדעת` side is a second copy of `bk-facts`, the shape ADR-0094 retracts; and it teaches a second navigation model inside a card when the sheet answers that question everywhere else.
+
+### The forks now
+
+Three, all in the ADR: the band's height (⁦72⁩/⁦88⁩/⁦116px⁩, 88 proposed), the summary under it (⁦+58px⁩, off proposed), and whether the card closes when the read opens. The first two are controls in the mockup's toolbar and are questions a phone in a hand answers.
