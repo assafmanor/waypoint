@@ -527,8 +527,8 @@ test.describe('a day surface steps day to day with a swipe', () => {
         return el ? Math.round(el.getBoundingClientRect().top) : null;
       };
       return {
-        host: top(`${pageSel} > .day-page .wp-dayhead-shot img`),
-        peek: top('.day-peek[data-day="next"] .wp-dayhead-shot img'),
+        host: top(`${pageSel} > .day-page .wp-photoband img`),
+        peek: top('.day-peek[data-day="next"] .wp-photoband img'),
         win: top('.day-peeks'),
       };
     }, PAGE);

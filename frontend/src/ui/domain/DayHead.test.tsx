@@ -60,24 +60,24 @@ describe('DayHead', () => {
 
     it('is absent, with no placeholder band, when the day has no photo', () => {
       const { container } = render(<DayHead {...base} />);
-      expect(container.querySelector('.wp-dayhead-shot')).toBeNull();
+      expect(container.querySelector('.wp-photoband')).toBeNull();
     });
 
     it('carries the picture, its subject and its credit', () => {
       const { container } = render(<DayHead {...base} shot={shot} />);
-      const img = container.querySelector('.wp-dayhead-shot img') as HTMLImageElement;
+      const img = container.querySelector('.wp-photoband img') as HTMLImageElement;
       expect(img.getAttribute('src')).toBe('/enrichment/images/abc');
       // `alt` takes the subject RAW — bidi controls in alt text are read aloud.
       expect(img.getAttribute('alt')).toBe('Háifoss');
-      const caption = container.querySelector('.wp-dayhead-shot figcaption')!;
+      const caption = container.querySelector('.wp-photoband figcaption')!;
       expect(caption.textContent).toContain('Háifoss');
       expect(caption.textContent).toContain('CC BY-SA 4.0');
     });
 
     it('is inert without `onOpen` — the reader has no app to open into', () => {
       const { container } = render(<DayHead {...base} shot={shot} />);
-      expect(container.querySelector('.wp-dayhead-shot button')).toBeNull();
-      expect(container.querySelector('.wp-dayhead-shot img')!.getAttribute('loading')).toBe('lazy');
+      expect(container.querySelector('.wp-photoband button')).toBeNull();
+      expect(container.querySelector('.wp-photoband img')!.getAttribute('loading')).toBe('lazy');
     });
 
     it('becomes a control that opens the full picture, and loads eagerly, in the app', () => {
@@ -87,9 +87,9 @@ describe('DayHead', () => {
       );
       // The BUTTON holds the image and the caption sits over it: a `<figcaption>` inside a
       // `<button>` is invalid HTML, and the caption is not the tap target anyway.
-      const button = container.querySelector('.wp-dayhead-shot > button')!;
+      const button = container.querySelector('.wp-photoband > button')!;
       expect(button.querySelector('img')!.getAttribute('loading')).toBe('eager');
-      expect(container.querySelector('.wp-dayhead-shot > figcaption')).toBeTruthy();
+      expect(container.querySelector('.wp-photoband > figcaption')).toBeTruthy();
       fireEvent.click(screen.getByRole('button', { name: t.map.know.fullPicture }));
       expect(onOpen).toHaveBeenCalledTimes(1);
     });

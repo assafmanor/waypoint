@@ -117,7 +117,7 @@ for (const theme of ['light', 'dark'] as const) {
       test('costs the frame alone when the day has no picture', async ({ page }) => {
         await boot(page, false);
         await openDays(page, mode);
-        await expect(head(page).locator('.wp-dayhead-shot')).toHaveCount(0);
+        await expect(head(page).locator('.wp-photoband')).toHaveCount(0);
         const box = await stableBox(head(page));
         const parts = await head(page).evaluate((el) => ({
           grid: (el.querySelector('.wp-dayhead-head') as HTMLElement).getBoundingClientRect()
@@ -135,7 +135,7 @@ for (const theme of ['light', 'dark'] as const) {
       test('adds the 116px shot when a stop clears the gate', async ({ page }) => {
         await boot(page, true);
         await openDays(page, mode);
-        const shot = head(page).locator('.wp-dayhead-shot img');
+        const shot = head(page).locator('.wp-photoband img');
         await expect(shot).toBeVisible();
         const image = await stableBox(shot);
         expect(Math.round(image.height)).toBe(116);

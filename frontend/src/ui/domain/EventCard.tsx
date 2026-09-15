@@ -128,6 +128,18 @@ export interface EventCardProps {
    *  A node rather than the component, for `notesSlot`'s reason: this file is `ui/domain/`.
    *  Above the notes because a document is a thing you need and a note is something about
    *  it, and because the app must not teach one order on the form and another on the read. */
+  /** **The way into the read** (ADR-0229 §2) — `ReadBand`, connected by the screen, which is
+   *  the only layer that knows the place, its photograph and whether there is a booking.
+   *
+   *  It renders after the verbs and the hard-edit warning and ABOVE the documents: the read
+   *  surface's own sequence (knowledge → guard → facts → documents → tasks → notes) with the
+   *  facts compressed to one band, re-entered after the verbs because Trip mode is doing-first.
+   *
+   *  **Not in the verb band, and that is structural rather than stylistic.** Every entry in
+   *  `event-actions.ts` is gated on `today && !readOnly`, so a row on tomorrow or on a past day
+   *  renders no band at all — and those are exactly the rows whose facts you want (ADR-0040's
+   *  browsable archive). Absent on a card with nothing to read. */
+  readSlot?: ReactNode;
   documentsSlot?: ReactNode;
   /** **Where an event's notes are READ and WRITTEN** (ADR-0152 §6's 2026-08-02 amendment) —
    *  the connected `<HostNotes>`, rendered inside the card this row EXPANDS, under its verbs.
@@ -216,6 +228,7 @@ export function EventCard(props: EventCardProps) {
     notes,
     documents,
     tasks,
+    readSlot,
     documentsSlot,
     tasksSlot,
     notesSlot,
@@ -535,6 +548,11 @@ export function EventCard(props: EventCardProps) {
               <Icon name="warn" /> {t.event.hardWarn} {code && <span dir="auto">{code}</span>}
             </div>
           )}
+          {/* **WHAT THIS IS, BEFORE WHAT THE GROUP ATTACHED TO IT** (ADR-0229 §2). Mounted only
+              while open, for `notesSlot`'s own reason one comment down — and it is the one band
+              here that a row on ANOTHER day still carries, since the verbs above it are gated
+              on `today` and this is not. */}
+          {isOpen && readSlot}
           {/* The body, under the verbs: what the group knows about this event, where the row
               that carries the mark opens. Mounted only while the card is open, because the
               strip is in the DOM at every height — a day of twelve events would otherwise

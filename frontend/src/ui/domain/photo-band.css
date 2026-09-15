@@ -1,0 +1,102 @@
+/* **A photograph as a band, with its credit on it** — `ui/domain/PhotoBand`.
+
+   MOVED here from `day-head.css`, where `.wp-dayhead-shot` served the day's head alone. ADR-0229
+   needs the same object inside an opened event card, and root rule 8 says generalise the
+   existing one-off rather than set a second beside it — so the rules below are the head's,
+   renamed, plus one density. What stayed in `day-head.css` is what belongs to the HEAD rather
+   than to the band: the `:first-child:has()` bleed that pulls a head's picture to the screen's
+   edge, which is a fact about where a head sits and not about what a picture is. */
+
+.wp-photoband {
+  margin: 0;
+  position: relative;
+  border-start-start-radius: var(--radius-16);
+  border-start-end-radius: var(--radius-16);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--teal) 10%, transparent);
+  /* **The band states its own two sizes.** They were the head's (`--dayhead-caption` /
+     `--dayhead-line` on `.wp-dayhead`), and inheriting them stopped being safe the moment this
+     band got a host that is not a head: an inherited-or-fallback value is a rule no reader can
+     find in the sheet. Same numbers ADR-0219 §2 chose. */
+  --band-caption: 15px;
+  --band-line: 12.5px;
+}
+
+/* The picture is the control in the app (it opens the full picture, ADR-0167 §10's viewer) and
+   a bare image in the reader, which has no app to open into. Same geometry either way. */
+.wp-photoband > button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.wp-photoband img {
+  display: block;
+  width: 100%;
+  /* **One number across the three surfaces that have a day head** (ADR-0219 §3). The mockup's
+     height control exists so 88 and 140 can be SEEN on a 640px screen, not so a second density
+     can be picked — `is-card` below is a different HOST, not a second opinion about a head. */
+  height: 116px;
+  object-fit: cover;
+}
+
+.wp-photoband figcaption {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline: 0;
+  display: grid;
+  gap: 1px;
+  padding: 18px 12px 8px;
+  /* Legible over any photograph: a scrim rather than a solid, so the picture still reads. */
+  background: linear-gradient(to top, rgb(0 0 0 / 62%), transparent);
+  color: #fff;
+  /* The caption overlays the tap target and is not one itself, so the tap passes through to the
+     picture under it — see `PhotoBand`'s comment for why the button holds only the image. */
+  pointer-events: none;
+}
+
+.wp-photoband figcaption strong {
+  font-size: var(--band-caption);
+}
+
+.wp-photoband figcaption span {
+  font-size: var(--band-line);
+  opacity: 0.82;
+}
+
+/* ── `card` — inside an opened event card (ADR-0229 §2) ──────────────────────────────────────
+   Three overrides, and each one is a fact about this host rather than a second opinion about
+   the head. */
+
+/* Mid-list, so it rounds nothing: a head is the first thing in its card and rounds with it. */
+.wp-photoband.is-card {
+  border-radius: 0;
+}
+
+/* ⁦88px⁩ rather than ⁦116px⁩. A head is the top of the screen; this sits in the middle of a day,
+   and 116 here pushes the rows after the open card below the fold — measured on frames cut to a
+   real 640px screen in `the-read-in-trip-mode-v2.html` §2. */
+.wp-photoband.is-card img {
+  height: 88px;
+}
+
+/* **Both caption lines clamp, and rendering is what forced it** (ADR-0229's build). The head's
+   caption holds a DAY TITLE — short, and alone on its line. This one holds an ADDRESS, which at
+   360px runs past the picture's edge, and a credit that wraps to a second line and then leaves
+   an ⁦88px⁩ band with almost no photograph showing. The head is unaffected: its own titles are
+   short and its picture is ⁦116px⁩. */
+.wp-photoband.is-card figcaption {
+  padding-block-start: 12px;
+}
+
+.wp-photoband.is-card figcaption strong,
+.wp-photoband.is-card figcaption span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

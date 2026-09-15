@@ -2667,6 +2667,12 @@ export const t = {
   day: {
     heading: (day: number, weekday: string, destination: string) =>
       `יום ${day} · ${weekday} · ${destination}`,
+    // **The way from an open card into the read** (ADR-0229 §2). A booked row says `להזמנה`
+    // instead — `t.hero.toBooking`, the lifted hero's own word, because it is the same journey
+    // one surface over and the label is what tells you whether the tap gets you the code.
+    read: {
+      details: 'פרטים',
+    },
     // **What sits between two events** (ADR-0159). Trip mode STATES the gap where Plan
     // mode offers to fill it, so the wording is a fact and not an invitation: no verb,
     // no `שבץ`. `פנוי · <משך>` and not `<משך> פנויות`, because the adjective has to
