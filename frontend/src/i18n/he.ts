@@ -2975,6 +2975,10 @@ export const t = {
     // decision now, so it gets one toast: what took the slot, and where the other one went.
     replaced: (title: string) => `${title} נכנס לשעה הזו · הקודם עבר למדף`,
     hardDelayed: 'נדחה · צריך לעדכן גם את ההזמנה',
+    // Its twin for the other direction (ADR-0228 §4), now that a hard row's stepper offers
+    // both. `hardDelayed` could not be reused: it says the move was a postponement, and the
+    // half that matters — go and change the booking — is the same either way.
+    hardEarlier: 'הוקדם · צריך לעדכן גם את ההזמנה',
     softDelayed: (minutes: number) => `נדחה ב-${minutes} דקות`,
     softEarlier: (minutes: number) => `הוקדם ב-${minutes} דקות`,
     // `בדרך` writes a device mark now (ADR-0206 §Z5 §M4) and the toast says exactly that. It

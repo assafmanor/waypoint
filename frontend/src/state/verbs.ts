@@ -1401,9 +1401,17 @@ export function useVerbs() {
     // Same rule as `delay` above, and it was missing the check entirely: pulling an event
     // earlier is the direction that lands in the past most easily, so the toast has to wait
     // for the write (ADR-0208 §3).
+    //
+    // **And it goes through the GUARD now** (ADR-0228 §4), which is the half of ADR-0011's
+    // hard gate this verb never had: `applyGuardedDelay` is described in its own comment as
+    // "the single choke point", and `earlier` was calling straight past it to `applyDelay`.
+    // Harmless while the ±stepper was soft-only, and a hole the moment one row offers both
+    // directions to both kinds — a commitment would have moved with no confirm at all.
     earlier: (e: TripEvent) => {
-      void applyDelay(deps, e, -DELAY_STEP_MINUTES).then((applied) => {
-        if (applied) toast(CONTROL_ICON.delay, t.toast.softEarlier(DELAY_STEP_MINUTES), undo);
+      void applyGuardedDelay(deps, e, -DELAY_STEP_MINUTES).then((applied) => {
+        if (!applied) return;
+        if (e.kind === EVENT_KIND.HARD) toast(CONTROL_ICON.warn, t.toast.hardEarlier, undo);
+        else toast(CONTROL_ICON.delay, t.toast.softEarlier(DELAY_STEP_MINUTES), undo);
       });
     },
     // `moveBy` lived here — an arbitrary minute delta, for the `הזז` overlap-resolve's two

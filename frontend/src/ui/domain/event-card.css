@@ -481,95 +481,6 @@
   padding: var(--space-3) 14px;
   border-top: 1px solid var(--line);
 }
-.wp-event-act-row {
-  display: flex;
-  gap: 7px;
-  padding: var(--space-3) 14px;
-  flex-wrap: wrap;
-}
-.wp-event-act {
-  font: inherit;
-  font-size: var(--text-secondary);
-  font-weight: 600;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--ink);
-  border-radius: 9px;
-  padding: 7px 11px;
-  cursor: pointer;
-  transition:
-    background var(--t-quick),
-    color var(--t-quick);
-}
-@media (hover: hover) and (pointer: fine) {
-  .wp-event-act:hover {
-    background: var(--cta);
-    color: var(--cta-text);
-    border-color: var(--ink);
-  }
-}
-.wp-event-act.go {
-  border-color: var(--teal);
-  color: var(--teal);
-}
-@media (hover: hover) and (pointer: fine) {
-  .wp-event-act.go:hover {
-    background: var(--teal);
-    color: var(--on-fill);
-  }
-}
-.wp-event-act:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
-}
-.wp-event-act-row-end {
-  display: flex;
-  gap: 7px;
-  margin-inline-start: auto;
-}
-.wp-event-act.icon-only {
-  padding: 7px 10px;
-  font-size: var(--text-body);
-  line-height: 1;
-}
-/* The quiet "more" ⋯ — no border until touched. */
-.wp-event-act.icon-only.more {
-  border-color: transparent;
-  color: var(--muted);
-  font-size: var(--text-h3);
-  padding: 6px 9px;
-}
-@media (hover: hover) and (pointer: fine) {
-  .wp-event-act.icon-only.more:hover {
-    background: var(--paper);
-    color: var(--ink);
-    border-color: var(--line);
-  }
-}
-.wp-event-act.stepper {
-  display: flex;
-  align-items: stretch;
-  padding: 0;
-}
-.wp-event-act.stepper .step {
-  font: inherit;
-  font-size: var(--text-body);
-  font-weight: 700;
-  line-height: 1;
-  border: none;
-  background: transparent;
-  color: inherit;
-  padding: 7px 10px;
-  cursor: pointer;
-}
-.wp-event-act.stepper .step-label {
-  display: flex;
-  align-items: center;
-  padding: 7px 6px;
-  border-inline: 1px solid var(--line);
-  color: var(--muted);
-  font-size: var(--text-caption);
-}
 .wp-event-hard-warn {
   font-size: var(--text-caption);
   color: var(--amber-deep);
@@ -579,13 +490,15 @@
   gap: 6px;
 }
 
-/* Settle strip (a passed-but-unmarked soft event). The card owns only where the strip
-   SITS — aligned to the title's gutter, clear of the soft tag; the verbs themselves are
-   the shared control's (`ui/domain/settle-control.css`, ADR-0139's Consequences). */
+/* Settle strip (a passed-but-unmarked event, either kind — ADR-0228 §2). The card owns
+   only where the strip SITS — aligned to the title's gutter, clear of the `לא סומן` chip;
+   the verbs themselves are the shared control's (`ui/domain/settle-control.css`,
+   ADR-0139's Consequences).
+
+   The clearance used to be keyed on `.soft`, which was the only kind that ever reached
+   this strip; the chip it clears is now on both, so it folds into the one rule rather
+   than gaining a hard twin. */
 .wp-event .wp-settle.prompt {
-  padding: 0 15px 12px 66px;
+  padding: 0 15px 12px 62px;
   margin-top: -2px;
-}
-.wp-event.soft .wp-settle.prompt {
-  padding-inline-end: 62px;
 }

@@ -2041,15 +2041,16 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
   const unsynced = useUnsynced(e.id);
 
   // The screen derives the phase from the clock (ADR-0043) and passes it in. On a
-  // read-only past day every planned soft event is there to be settled (ADR-0029),
-  // including untimed ones the clock alone would call 'upcoming' — force 'passed'
-  // so the card shows the settle strip, matching the pre-migration EventItem.
+  // read-only past day every planned event is there to be settled (ADR-0029), including
+  // untimed ones the clock alone would call 'upcoming' — force 'passed' so the card shows
+  // the settle strip.
+  //
+  // **The `=== SOFT` that used to be in this test is gone** (ADR-0228 §2), and it was the
+  // screen's half of the same withholding `EventCard`'s `showSettle` made: a booking on a
+  // day that is over is exactly the row somebody opens to record that it happened.
   const raw = eventPhase(e, ctx.now);
   const phase: EventPhaseName =
-    ctx.readOnly &&
-    e.kind === EVENT_KIND.SOFT &&
-    e.status === EVENT_STATUS.PLANNED &&
-    raw !== 'done'
+    ctx.readOnly && e.status === EVENT_STATUS.PLANNED && raw !== 'done'
       ? 'passed'
       : raw === 'skipped'
         ? 'upcoming'
