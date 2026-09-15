@@ -1,6 +1,6 @@
 # 0228 — The day row's quick actions are one ordered list, and a commitment can be marked done
 
-**Status:** Accepted — **built 2026-09-15**
+**Status:** Accepted — **built 2026-09-15**, **amended and rebuilt the same day** (§5 below)
 **Date:** 2026-09-15
 **Refines:** [0011](0011-hard-soft-event-model.md) (hard/soft, and what it actually reserves), [0043](0043-day-view-now-line-phases-and-archive-chrome.md) §2/§3 (the settle strip, the reframed `סיימנו`, the phase-scoped nudge), [0139](0139-settling-an-event-from-the-map.md) §2/§4 (every event is settleable; the write path is existing), [0029](0029-trip-mode-day-scope-gating.md) (a past day keeps settle and the read), [0025](0025-trip-mode-edit-capability-tiers.md) / [0138](0138-the-row-menu-is-one-surface-and-icons-are-ui.md) (the `⋯` is Tier-2 and stays there)
 **Amends:** [0174](0174-an-attachment-is-marked-and-opened-and-an-event-has-a-read.md) §3 — an event's documents are now reachable on a passed row too, which is where §3's "the read is on the card" was quietly not true.
@@ -64,18 +64,59 @@ The strip is a **band under the face** now and the card expands as every other c
 
 `applyGuardedDelay`'s own comment calls it "the single choke point", and `verbs.earlier` was calling straight past it to `applyDelay`. Harmless while the ±stepper was soft-only; a hole the moment one row offers both directions to both kinds — a commitment would have moved with no confirmation at all. The guard is keyed on the kind, not on the sign, so this is one call swapped. It needs `toast.hardEarlier`: `hardDelayed` says the move was a postponement, and the half that matters — go and change the booking — is the same either way.
 
+## 5. Amendment, 2026-09-15: a quick action is scoped by how near the row is, not by its phase alone
+
+Owner, with a screenshot of **day 16 browsed on day 15** at ⁦09:20⁩: _"looks like too many buttons. Do you think that we need all of these as quick actions? Especially for events that are still ahead of us, even not today…"_
+
+The count was the symptom. **The gate was the defect, and it is §1's.** Each verb was scoped by `EventPhaseName`, which `eventPhase` derives per event from the clock — so **every row on a future day reads `upcoming`, identically to "later this afternoon"**. A waterfall at ⁦06:30⁩ two days out was offering to be marked done, to be told you were on your way to it, and to be nudged by half an hour. Six controls, none of which had a now to act in.
+
+**And §1 was contradicting an ADR while it did it.** [ADR-0043 §2](0043-day-view-now-line-phases-and-archive-chrome.md) says of `סיימנו`: _"demoted, not removed… its natural home is **behind the line**"_ — a looking-back verb. The shipped soft row had always **led** with it on an upcoming event, and §1 preserved that instead of noticing the ADR said otherwise. Half of this amendment is simply ADR-0043 being applied.
+
+### 5a. The rule
+
+**A quick action answers "what do I do about this row _now_". A row you will not reach for two days has no now.** So the context carries `today` — whether the row's DAY is today, which no per-event phase can supply — and the on-the-ground verbs ask for it.
+
+| the row is                      | verbs                                                       |
+| ------------------------------- | ----------------------------------------------------------- |
+| **now** — you are inside it     | `סיימנו` `דילוג` · `+30` · `ניווט`                          |
+| **today, ahead of you**         | `−30+` · `בדרך` · `ניווט`                                   |
+| **passed**                      | — (the `היינו שם?` strip above is already asking, in words) |
+| **done / skipped**              | `שחזור`                                                     |
+| **another day**, past or future | —                                                           |
+
+Each line is one `when`, in the same single ordered list §1 built — which is the infrastructure earning itself: the fix is five predicates, not a re-plumb. `ניווט` survives a `now` row because being inside an event's window is not the same as having arrived, and goes once the row is behind you, where the strip is asking a different question; `מפה` on the badge still answers "where is this" on every row of every day, so nothing is stranded. Everything taken off a row is in `⋯`, one tap, with a label and an icon — which is more discoverable than a fifth identical pill, not less.
+
+**The cap is that the band fits one line at 360px**, and the count is how it is kept: **never more than three verbs**, asserted in `event-actions.test.ts` so a fourth has to face the measurement rather than quietly wrap. Measured on the shipped stylesheet: the `now` row is ⁦57px⁩, one line; the upcoming row ⁦57px⁩, one line; a passed row and any row on another day render **no band at all**.
+
+### 5b. The `⋯` moves to the card face
+
+It was the last item of the verb band, so its position depended on how many verbs the row happened to carry — and once the band is allowed to be **empty**, it would have been a strip of padding holding one glyph. On the face it is in the same place on every card, and reachable **without expanding**, which is what `עריכה` and `מחיקה` always wanted.
+
+A `role="button"` span, not a `<button>` — `PlaceBadge`'s reason one element over: nested buttons are invalid HTML, and the tap must not also toggle the row. `menu` joins `check` as an optional `auto` grid track, so a past day's card (no `⋯`, ADR-0029) lays out exactly as it did. The 30px glyph carries ADR-0017's 44px floor on an `::after` overlay rather than by growing, which is [ADR-0177](0177-a-when-reads-as-a-sentence.md)'s recipe on a control that had to shrink to fit the when line.
+
+The band's two-box split from §1 is gone with the `⋯` it was written to pin; one wrapping box again, `flex-wrap` kept as a safety net for a longer translation.
+
+### 5c. What this trades
+
+**`סיימנו` leaves the upcoming row.** The original report was about _passed_ bookings, which keep it — on the strip — so the ask that started this ADR is intact, and the early mark ADR-0117 §2 protects ("a human outranks the clock") is in `⋯`. §2's reading of that clause stands and narrows: it is about marking **tonight's** dinner done at 11:00, which is a claim about today, not about Thursday.
+
+**`ניווט` leaves a past day**, which amends [ADR-0043 §4](0043-day-view-now-line-phases-and-archive-chrome.md)'s _"Done / Skip / Restore / Navigate stay"_. Directions to somewhere you already were is not a thing anyone taps; the badge keeps the place one tap away either way. Done/Skip/Restore are untouched — that is the retrospective job §4 was actually written for.
+
 ## Consequences
 
 - **Frontend only, no schema change and no new write.** `applySetStatus`, the outbox, the undo toast and the backend column already served every kind (ADR-0139 §4's "a new caller, not a new mechanism", one more time).
-- **The parity is a test rather than a promise.** `event-actions.test.ts` asserts that a hard row and a soft row in the **same** state produce the identical list, across every phase × read-only × strip combination, and `EventCard.test.tsx` asserts the same off the rendered DOM. A future divergence has to be written past both.
+- **The parity is a test rather than a promise.** `event-actions.test.ts` asserts that a hard row and a soft row in the **same** state produce the identical list, across every phase × today × read-only × strip combination, and `EventCard.test.tsx` asserts the same off the rendered DOM. A future divergence has to be written past both.
+- **The amendment cost five predicates and a grid track**, which is the §1 infrastructure being paid back on its first real test: the order, the renderer and the parity tests are untouched.
 - **`EventKind` / `EventPhaseName` moved to `ui/domain/event-phase.ts`** so the spec can name them without importing the component that renders it. `EventCard` re-exports both; no call site changed.
 - **A passed row gains a panel it did not have.** Soft rows included — the ADR-0174 §3 amendment above. This is a behaviour change on a surface the report did not name, and it is what makes §2 affordable rather than a trade.
-- **The hard row gains a second line at 360px** (⁦57px⁩ → ⁦97px⁩); the soft row was already two lines and is ⁦+1px⁩. Left for the device pass: whether `בדרך` earns its place on every soft row, which is one `when` to change if it does not.
+- **Every band is one line now** (⁦57px⁩), and most rows have none — the two-line row §1 measured lived for one afternoon. The device-pass question §1 left open (_"whether `בדרך` earns its place on every soft row"_) is answered by §5 rather than deferred: it does, on today, ahead of you, and nowhere else.
 - **For the device pass:** whether the `לא סומן` chip on a passed booking reads as an open question rather than as a fault, beside a lock that is still on its when line.
 
 ## Alternatives considered
 
 - **Give the strip to hard events and keep the early return.** The one-line version of §2, and it takes a booking's documents, code and warning off the card on exactly the day you go looking for the receipt. Rejected in §3.
-- **Keep `בדרך` as the hard row's specialisation.** It preserves one line at 360px and preserves nothing else: there is no reading of ADR-0011 under which "I am on my way" is a property of a commitment, so it would have been the same undecided divergence with an ADR number on it.
+- **Keep `בדרך` as the hard row's specialisation.** It preserves one line at 360px and preserves nothing else: there is no reading of ADR-0011 under which "I am on my way" is a property of a commitment, so it would have been the same undecided divergence with an ADR number on it. §5 scopes it by proximity instead, which is the axis it was always about.
+- **Leave the `⋯` in the band and let the band be a strip of padding on a future day** (§5b). Rejected on the same ground as the wrap it replaced: a 40px line for one glyph, in a position that moves with the verb count.
+- **Hide the whole card's expansion on a day that is not today.** Tempting once the band is empty, and wrong for §3's reason — the documents, tasks and notes under it are exactly what you open a future row to read.
 - **Render the act-row pair through `SettleControl`.** Tempting under rule 8, and wrong on the words: ADR-0139 settled that the pair is a **record** (`היינו` / `דילגנו`) and that `actions.skip` stays for instruction surfaces. The act row is a row of verbs, so it keeps `סיימנו` / `דילוג`; the strip above it keeps the control. ADR-0139's "what was deliberately left" is unchanged by this ADR.
 - **Order the row `ניווט` first, as the hard arm did.** Rejected with the coin-flip it was: neither arm's order was ever chosen, so the tie breaks to the arm that carried the whole set.

@@ -19,6 +19,10 @@ const base: EventCardProps = {
   onToggle: () => {},
   tz: TZ,
   onNavigate: () => {},
+  // The quick actions are scoped to today (ADR-0228's 2026-09-15 amendment), and the
+  // fixture is the on-the-ground row every spec below is about. The amendment's own
+  // "another day" cases pass `today={false}` explicitly.
+  today: true,
 };
 
 describe('EventCard', () => {
@@ -196,14 +200,17 @@ describe('EventCard', () => {
           />,
         ),
       );
-      const row = [...container.querySelectorAll('.wp-event-act-verbs > *')].map(
+      const row = [...container.querySelectorAll('.wp-event-act-row > *')].map(
         (n) => n.className + '|' + (n.textContent ?? '').trim(),
       );
       cleanup();
       return row;
     };
     expect(labels('hard')).toEqual(labels('soft'));
-    expect(labels('soft')[0]).toContain(t.actions.done);
+    // Ahead of you the row is moves and the way there — the record is not offered for a
+    // thing that has not happened (ADR-0043 §2, restored by the amendment).
+    expect(labels('soft').join('|')).toContain(t.actions.onWay);
+    expect(labels('soft').join('|')).not.toContain(t.actions.done);
   });
 
   it('a booking can be marked done from its action row (ADR-0228 §2)', () => {
@@ -343,23 +350,69 @@ describe('EventCard', () => {
     });
   });
 
-  it('read-only past day: forward verbs hidden, no ⋯ menu (settle/navigate still allowed)', () => {
+  // ADR-0029 hides create/edit on a past day; the amendment takes the live verbs with them,
+  // because a day that is over has no "now" for a quick action to act in. What answers a
+  // past row is the settle strip (ADR-0043 §4's retrospective job), and `מפה` on the badge.
+  it('read-only past day: no quick actions at all and no ⋯ menu', () => {
     const { container } = render(
       wrapNav(
         <EventCard
           {...base}
           kind="hard"
-          phase="now"
+          phase="passed"
+          today={false}
           isOpen
           readOnly
           onNavigate={() => {}}
+          onDone={() => {}}
+          onSkip={() => {}}
           onEdit={() => {}}
         />,
       ),
     );
-    // navigate stays; the more menu is gone (create/edit gated, ADR-0029).
-    expect(container.querySelector('.wp-event-act.more')).toBeNull();
-    expect(screen.getByRole('button', { name: t.actions.navigate })).toBeTruthy();
+    expect(container.querySelector('.wp-event-menu')).toBeNull();
+    expect(container.querySelector('.wp-event-act-row')).toBeNull();
+    // The ask is still there, in the one place that asks in words.
+    expect(container.querySelector('.wp-settle.prompt')).toBeTruthy();
+  });
+
+  // THE REPORT THE AMENDMENT ANSWERS: day 16 browsed on day 15, a waterfall at 06:30
+  // offering `סיימנו`, `בדרך` and a ±30 nudge. `eventPhase` calls every future row
+  // `upcoming`, exactly like this afternoon's — so the row asked what-now about a day
+  // nobody is living yet.
+  it('a future day carries no quick actions, and keeps its ⋯', () => {
+    const { container } = render(
+      wrapNav(
+        <EventCard
+          {...base}
+          phase="upcoming"
+          today={false}
+          isOpen
+          startsAt="2026-07-20T02:00:00Z"
+          onDone={() => {}}
+          onSkip={() => {}}
+          onDelay={() => {}}
+          onEarlier={() => {}}
+          onOnWay={() => {}}
+          onEdit={() => {}}
+        />,
+      ),
+    );
+    expect(container.querySelector('.wp-event-act-row')).toBeNull();
+    expect(screen.getByRole('button', { name: t.actions.more })).toBeTruthy();
+  });
+
+  // The `⋯` left the band for the face, so it is in one place on every card and reachable
+  // without expanding — and it must not toggle the row on its way to the sheet.
+  it('the ⋯ sits on the face, opens the sheet, and does not toggle the row', () => {
+    const onToggle = vi.fn();
+    const { container } = render(
+      wrapNav(<EventCard {...base} onToggle={onToggle} onEdit={() => {}} />),
+    );
+    expect(container.querySelector('.wp-event-face .wp-event-menu')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: t.actions.more }));
+    expect(onToggle).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: t.actions.edit })).toBeTruthy();
   });
 
   it('no location → no ניווט / מפה buttons (handlers omitted, Phase 2)', () => {

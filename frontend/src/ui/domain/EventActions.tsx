@@ -1,16 +1,17 @@
-// The day card's quick-action row — one renderer for the one order (ADR-0228).
+// The day card's quick-action band — one renderer for the one order (ADR-0228).
 //
 // `event-actions.ts` decides WHICH verbs a row carries and in what sequence; this file
-// decides what each one looks like, once. A button's tone, its label, its touch target
-// and the `⋯` end slot are therefore per-VERB rather than per-kind, which is the half of
-// the drift the spec alone does not stop: three arms could still have drawn the same verb
-// three ways.
+// decides what each one looks like, once. A button's tone, its label and its touch target
+// are therefore per-VERB rather than per-kind, which is the half of the drift the spec alone
+// does not stop: three arms could still have drawn the same verb three ways.
+//
+// **It renders nothing when there is nothing to offer**, which is the amendment's shape:
+// a row on another day has no quick action, and an empty band would be a strip of padding
+// under every card on a future day. The `⋯` is not in here to keep it company — Tier-2
+// editing lives on the card face now, in one fixed place on every row.
 //
 // Presentational, like the card that hosts it: callbacks in, no trip state.
-import { CONTROL_ICON, DELAY_STEP_MINUTES } from '../../constants';
-import { Icon } from '../Icon';
-import { RowManageSheet, type RowAction } from './ListRow';
-import { TitleLabel } from '../TitleLabel';
+import { DELAY_STEP_MINUTES } from '../../constants';
 import { t } from '../../i18n/he';
 import { EVENT_ACTION, eventQuickActions, type EventActionContext } from './event-actions';
 import type { EventKind, EventPhaseName } from './event-phase';
@@ -29,25 +30,20 @@ export interface EventActionHandlers {
 export interface EventActionsProps extends EventActionHandlers {
   kind: EventKind;
   phase: EventPhaseName;
+  /** Whether this row's day is today — see `EventActionContext`. */
+  today: boolean;
   readOnly: boolean;
   /** The passed card's prompt strip is already asking — see `EventActionContext`. */
   settleAsked: boolean;
-  /** Tier-2 edits, in the `⋯` sheet (ADR-0025/0138). Empty → no menu button. */
-  menuActions: RowAction[];
-  /** The sheet's header, as the card writes it (a flight reads as its route). */
-  menuTitle: string;
-  /** The sheet's subject line (ADR-0138 §3). */
-  menuSubject: string;
-  menuOpen: boolean;
-  onMenuOpenChange: (open: boolean) => void;
 }
 
 export function EventActions(props: EventActionsProps) {
-  const { kind, phase, readOnly, settleAsked, menuActions, menuOpen, onMenuOpenChange } = props;
+  const { kind, phase, today, readOnly, settleAsked } = props;
 
   const ctx: EventActionContext = {
     kind,
     phase,
+    today,
     readOnly,
     settleAsked,
     available: {
@@ -61,43 +57,20 @@ export function EventActions(props: EventActionsProps) {
     },
   };
 
-  const showMenu = !readOnly && menuActions.length > 0;
+  const actions = eventQuickActions(ctx);
+  if (actions.length === 0) return null;
 
   return (
-    <>
-      <div className="wp-event-act-row">
-        <div className="wp-event-act-verbs">
-          {eventQuickActions(ctx).map((id) => (
-            <Act key={id} id={id} {...props} />
-          ))}
-        </div>
-        {showMenu && (
-          <span className="wp-event-act-row-end">
-            <button
-              type="button"
-              className="wp-event-act icon-only more"
-              onClick={() => onMenuOpenChange(true)}
-              aria-label={t.actions.more}
-            >
-              <Icon name={CONTROL_ICON.more} />
-            </button>
-          </span>
-        )}
-      </div>
-      {menuOpen && (
-        <RowManageSheet
-          title={<TitleLabel title={props.menuTitle} />}
-          subject={props.menuSubject}
-          actions={menuActions}
-          onClose={() => onMenuOpenChange(false)}
-        />
-      )}
-    </>
+    <div className="wp-event-act-row">
+      {actions.map((id) => (
+        <Act key={id} id={id} {...props} />
+      ))}
+    </div>
   );
 }
 
-/** One verb, drawn the one way. Everything kind-shaped is upstream in the spec, so this
- *  switch only ever answers "what does THIS verb look like". */
+/** One verb, drawn the one way. Everything kind- or proximity-shaped is upstream in the
+ *  spec, so this switch only ever answers "what does THIS verb look like". */
 function Act({
   id,
   phase,
