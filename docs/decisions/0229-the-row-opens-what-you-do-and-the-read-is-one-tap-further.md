@@ -1,6 +1,6 @@
 # 0229 — In Trip mode the row opens **what you do**; the read is **one tap further**
 
-**Status:** **PROPOSED** — drawn and measured, not built. Two forks are the owner's and are named at the foot.
+**Status:** **ACCEPTED AND BUILT** — 2026-09-15, on the owner's _"let's build this, with the photographs, your recommendations"_. The three forks were taken as recommended: the band at **88px**, the summary **off**, and the card **closes** when the read opens. Read the build log at the end before §2.
 **Date:** 2026-09-15
 **Session note:** [`planning/2026-09-15-the-read-in-trip-mode.md`](../planning/2026-09-15-the-read-in-trip-mode.md)
 **Mockup:** [`mockups/the-read-in-trip-mode-v2.html`](../../mockups/the-read-in-trip-mode-v2.html) (v1 is the dated record of the first answer, kept per ADR-0097)
@@ -116,3 +116,33 @@ The alternative — suppressing the host sections in the sheet when it is opened
 - **A two-sided panel** (`לעשות` / `לדעת`, swapped by a segmented control). The genuinely different structure, drawn in v2 §4 and refused on three counts the drawing turns into numbers: the control sits on _every_ open card even when there is nothing to know, which is the clutter ADR-0228's amendment just removed; the `לדעת` side is a second copy of `bk-facts`, the shape ADR-0094 is a retraction of; and it teaches a second navigation model inside a card when the sheet already answers that question everywhere else in the app.
 - **A perforated ticket-stub pill.** Pleasant physicality, but a dashed border is this app's grammar for an _absence_ (ADR-0174 §5) and a radial-gradient perforation is decoration — two separate reasons, each sufficient.
 - **A full-height ⁦116px⁩ hero**, the day head's own number. The control exists so it can be _seen_; §2 measures what it costs the rows below.
+
+## Build log (2026-09-15)
+
+### What shipped
+
+- **`ui/domain/PhotoBand`** + `photo-band.css` — the band, extracted from `DayHead`'s own `Shot`, which was the single call site doing almost this job. Root rule 8's "generalise the existing one-off rather than set a second beside it", taken literally: `DayHead` is now its first consumer and renders identically, and `.wp-dayhead-shot` became `.wp-photoband`. Two densities, `day` (⁦116px⁩, ADR-0219 §3's one number) and `card` (⁦88px⁩).
+- **`ui/domain/ReadBand`** + `read-band.css` — the band or, with no photograph, the ⁦44px⁩ line. It is the button; `PhotoBand` takes `interactive={false}` there, because a button inside a button is invalid HTML.
+- **`EventCard` gains `readSlot`**, rendered after the verbs and the hard warning and above the documents, mounted only while the card is open.
+- **`DayView`** resolves the place, the photograph and the booking, and opens `BookingDetail` or `EventDetail` — the branch `PlanDay` already had. `EventDetail` is rendered here for the first time; `BookingDetail` already was.
+- **`t.day.read.details`** — `פרטים`. A booked row says `t.hero.toBooking`, the string the lifted hero already uses for the same journey.
+
+### What the build corrected in this ADR
+
+**Context 3 was overstated and is fixed in place** (see the note there). `BookingDetail` has five render sites, not two, and `DayView` was already one of them — reached from `TransitionRow` and `UnplacedCommitment`, never from an event card. The defect is real and narrower, and the narrower version is the sharper one: the disagreement is **inside one screen**.
+
+### Three things rendering forced, none visible in the source
+
+The day head's caption is written for a **short day title alone on its line**; an address with a control beside it is neither.
+
+1. The way-in pill painted **on top of** the credit.
+2. Reserving a track for it fixed that and broke the credit instead — ellipsised from its **start** (`…A 2.0 · Ulrich Latzenhofer`), mangling a licence obligation (ADR-0166 §12.2). **The pill moved to the band's top trailing corner**: move the control, not the obligation.
+3. Neither caption line clamped, so a long address ran past the picture and the credit wrapped — at ⁦88px⁩ that leaves almost no photograph. Both clamp now, **on `is-card` only**: the head's own titles are short and its picture is ⁦116px⁩, so it is unaffected.
+
+### Seen in the running app, not only in the mockup
+
+Driven headless against a seeded trip (`DEV_AUTH=1`): the read row renders in the right place on an open card, a booked row says `להזמנה` and an unbooked one `פרטים`, the tap opens the sheet, the sheet carries `קוד אישור`, and **the card closes behind it**. The seed holds no enrichment, so the photograph path was verified by re-pointing the mockup at the **shipped** sheets — `the-read-in-trip-mode-v2.html` now inlines `photo-band.css` and `read-band.css` and renders the app's real classes, which makes it a render of what shipped rather than a drawing of what was asked for.
+
+### Deliberately not built
+
+**The summary under the band.** The recommendation was off and the owner took the recommendations, so `read-band.css` carries no rule for it — shipping one would be shipping a fork nobody chose. The mockup keeps the rule in its own non-shipping block so the control can still show what the other answer costs (⁦+58px⁩).

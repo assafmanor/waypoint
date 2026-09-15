@@ -251,7 +251,7 @@ describe('the day’s shot (ADR-0219 §3)', () => {
   it('shows the picture, its subject and its credit, when a stop clears the gate', () => {
     tripEnrichments = { [HAIFOSS.id]: { image: image() } };
     show();
-    const shot = head().querySelector('.wp-dayhead-shot')!;
+    const shot = head().querySelector('.wp-photoband')!;
     expect(shot.querySelector('img')!.getAttribute('src')).toContain('/enrichment/images/haifoss');
     expect(shot.querySelector('figcaption')!.textContent).toContain('Háifoss');
     expect(shot.querySelector('figcaption')!.textContent).toContain('CC BY-SA 4.0');
@@ -264,18 +264,18 @@ describe('the day’s shot (ADR-0219 §3)', () => {
   it('stands alone below the confidence floor', () => {
     tripEnrichments = { [HAIFOSS.id]: { image: image({ confidence: 0.8 }) } };
     show();
-    expect(head().querySelector('.wp-dayhead-shot')).toBeNull();
+    expect(head().querySelector('.wp-photoband')).toBeNull();
   });
 
   it('stands alone when the picture cannot be credited', () => {
     tripEnrichments = { [HAIFOSS.id]: { image: image({ attribution: undefined, license: '' }) } };
     show();
-    expect(head().querySelector('.wp-dayhead-shot')).toBeNull();
+    expect(head().querySelector('.wp-photoband')).toBeNull();
   });
 
   it('stands alone when nothing is known about the day’s stops at all', () => {
     show();
-    expect(head().querySelector('.wp-dayhead-shot')).toBeNull();
+    expect(head().querySelector('.wp-photoband')).toBeNull();
   });
 });
 

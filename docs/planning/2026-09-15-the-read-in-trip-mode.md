@@ -99,3 +99,17 @@ Point 3 above is the corrected version. **What was first written, pushed, and pu
 **How it happened is the part worth recording**, because root `CLAUDE.md` names it exactly: _"count the call sites before claiming what a derivation does."_ The grep **was** run. Its output listed `screens/DayView.tsx`, and the line fell outside the `head -30` the result was read through. So the rule was followed and the reading was not — which is a different failure from the one the rule was written for, and a cheaper one to repeat.
 
 **The defect is real and narrower, and the narrower version is sharper.** It is not one screen missing what other screens have; it is **one screen whose two row families disagree** about whether a booking can be read — and the family that cannot is the one a booked activity renders as, carrying the confirmation code. Nothing in the design changes: the band is still the answer, and it is now the answer to a better-stated problem.
+
+## Built the same day
+
+Owner: _"Let's build this, with the photographs, your recommendations."_ All three forks taken as recommended — the band at ⁦88px⁩, the summary off, the card closing behind the read.
+
+**The extraction is the part worth recording.** The band could have reached across into `day-head.css` and worn `.wp-dayhead-shot` on an event card. There is precedent for keeping a misleading class name (`DetailSheet` kept `bk-*`, `MediaViewer` kept `doc-viewer-*`) — but both of those kept a name that still _described_ the thing. `wp-dayhead-shot` on an event card describes the wrong host. Root rule 8's own wording settles it: _"check whether a similar one-off already exists … and generalise that."_ One call site, ~20 lines of JSX, ~50 of CSS: a small extraction, not the substantial refactor the rule says to ask about. So `ui/domain/PhotoBand` exists, `DayHead` is its first consumer, and the read band is its second at a `card` density.
+
+**The summary was not built, and that is a decision rather than an omission.** The recommendation was off; the owner took the recommendations; shipping the rule anyway would be shipping a fork nobody chose. The mockup keeps it in its own non-shipping block so the control still shows what the other answer costs.
+
+**The mockup stopped proposing CSS.** Now that the band ships, `the-read-in-trip-mode-v2.html` inlines `photo-band.css` and `read-band.css` through its manifest and renders the app's real classes — a render of what shipped rather than a drawing of what was asked for. That is also how the photograph path was verified, since the dev seed carries no enrichment at all.
+
+**What the running app proved that no unit could.** Driven headless against a seeded trip: the row in place on an open card, `להזמנה` on a booked row and `פרטים` on an unbooked one, the tap opening the sheet, the sheet carrying `קוד אישור`, and the card closed behind it.
+
+**And one thing the suite caught that the tests did not.** All three new specs passed while `tsc` failed on them — vitest does not typecheck, so a `Booking` fixture carrying a `startsAt` it has never had, an image literal missing its whole provenance block, and a `Date` where the clock takes a number all ran green. The image fixture became `src/test/enrichment-image.ts` rather than a cast, because a spec that casts past a shape is a spec that stops noticing when the shape changes.

@@ -55,7 +55,7 @@
    `.sh-day` and bleeds nothing). `:has()` is the picture. **`:first-child` is the one that is
    easy to miss**: Trip's ripple bar and its archive banner both render above the head, and a
    head pulled up under either would sit on top of it. */
-.wp-dayhead.is-card:first-child:has(.wp-dayhead-shot) {
+.wp-dayhead.is-card:first-child:has(.wp-photoband) {
   /* `.body`'s own inline padding, negated — the value is named there so the two cannot drift.
      The fallback is what that rule sets, for a host outside the app shell. */
   margin-block-start: calc(-1 * var(--body-pad, 16px));
@@ -66,7 +66,7 @@
 
 /* The picture's own corners go with the card's. The card clips (`overflow: hidden`), so leaving
    these rounded would show the card's ground through two notches at the top of the photograph. */
-.wp-dayhead.is-card:first-child:has(.wp-dayhead-shot) .wp-dayhead-shot {
+.wp-dayhead.is-card:first-child:has(.wp-photoband) .wp-photoband {
   border-start-start-radius: 0;
   border-start-end-radius: 0;
 }
@@ -280,63 +280,4 @@
 .wp-dayhead-facts > .wp-dayhead-fit {
   color: var(--amber-deep);
   font-weight: 600;
-}
-
-/* **The day's photo** (ADR-0213's 2026-08-30 amendment, reversing §3's refusal of imagery; the
-   app's own band is ADR-0219 §3). A band above the head, with its credit — 27 of the 32 Commons
-   files ADR-0166 §12.2 surveyed require attribution, so the caption is structural rather than
-   decoration. */
-.wp-dayhead-shot {
-  margin: 0;
-  position: relative;
-  border-start-start-radius: var(--radius-16);
-  border-start-end-radius: var(--radius-16);
-  overflow: hidden;
-  background: color-mix(in srgb, var(--teal) 10%, transparent);
-}
-
-/* The picture is the control in the app (it opens the full picture, ADR-0167 §10's viewer) and
-   a bare image in the reader, which has no app to open into. Same geometry either way. */
-.wp-dayhead-shot > button {
-  display: block;
-  width: 100%;
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-}
-
-.wp-dayhead-shot img {
-  display: block;
-  width: 100%;
-  /* **One number across the three surfaces** (ADR-0219 §3). The mockup's height control exists
-     so 88 and 140 can be SEEN on a 640px screen, not so a second density can be picked. */
-  height: 116px;
-  object-fit: cover;
-}
-
-.wp-dayhead-shot figcaption {
-  position: absolute;
-  inset-block-end: 0;
-  inset-inline: 0;
-  display: grid;
-  gap: 1px;
-  padding: 18px 12px 8px;
-  /* Legible over any photograph: a scrim rather than a solid, so the picture still reads. */
-  background: linear-gradient(to top, rgb(0 0 0 / 62%), transparent);
-  color: #fff;
-  /* The caption overlays the tap target and is not one itself, so the tap passes through to the
-     picture under it — see `DayHead`'s `Shot` for why the button holds only the image. */
-  pointer-events: none;
-}
-
-.wp-dayhead-shot figcaption strong {
-  font-size: var(--dayhead-caption);
-}
-
-.wp-dayhead-shot figcaption span {
-  font-size: var(--dayhead-line);
-  opacity: 0.82;
 }

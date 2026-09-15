@@ -36,6 +36,8 @@ import { rowPhoto } from '../lib/place-photo';
 import { dayHeadTitle } from '../lib/day-title';
 import { dayShot, type DayShot } from '../lib/day-photo';
 import { DayHead } from '../ui/domain/DayHead';
+import { ReadBand } from '../ui/domain/ReadBand';
+import { EventDetail } from '../ui/EventDetail';
 import { MediaViewer } from '../ui/MediaViewer';
 import { useLandOnArrival } from '../lib/land-at-top';
 import { useDaySurface } from '../lib/useDaySurface';
@@ -54,6 +56,7 @@ import {
   eventShowOnMap,
   legShowOnMap,
   eventDisplayZones,
+  eventMapPlace,
   eventPlaceId,
   eventZones,
   dayZoneContext,
@@ -476,6 +479,11 @@ export function DayView() {
   // Tapping a transition row opens the read-only booking detail (ADR-0053/0064),
   // the same pattern as the Index; editing from there opens the BookingSheet.
   const [detailTarget, setDetailTarget] = useState<Booking | null>(null);
+  /** **An UNBOOKED event's read** (ADR-0229 §2). Its booked sibling has always had one here —
+   *  `detailTarget` above, which `TransitionRow` and `UnplacedCommitment` already open — and
+   *  the event CARD could reach neither. That was the whole defect: two row families on one
+   *  screen disagreeing about whether what they stand for can be read. */
+  const [eventDetail, setEventDetail] = useState<TripEvent | null>(null);
   const [scheduleItem, setScheduleItem] = useState<MaybeItem | null>(null);
   /** Where a quick-schedule opens: the first position on the day with room for this idea, and
    *  the block its category usually takes there (ADR-0161 §4/§5). One derivation shared with
@@ -712,6 +720,21 @@ export function DayView() {
       else setFormTarget(e);
     },
     onReplace: setReplaceTarget,
+    /** **The band's tap** (ADR-0229 §2/§4) — a booked event routes to `BookingDetail`, since a
+     *  linked pair is ONE context (ADR-0172 §1) and that read already exists; an unbooked one
+     *  gets `EventDetail`. The same branch `PlanDay` makes, which is what keeps the two day
+     *  surfaces from answering one question differently.
+     *
+     *  **And the card closes behind it.** The read is a sheet over a panel that is still open,
+     *  so documents, tasks and notes would otherwise render twice, once per layer. One line
+     *  here rather than a per-caller branch inside `DetailSheet`, which is the shape ADR-0094
+     *  is a retraction of. */
+    onOpenRead: (e) => {
+      setOpenId(null);
+      const booking = e.bookingId ? bookings.find((b) => b.id === e.bookingId) : undefined;
+      if (booking) setDetailTarget(booking);
+      else setEventDetail(e);
+    },
     onOpenDetail: setDetailTarget,
     showPlaceOnMap,
   };
@@ -1692,6 +1715,24 @@ export function DayView() {
           />
         )}
 
+        {eventDetail && (
+          <EventDetail
+            event={eventDetail}
+            zoneCtx={zoneCtx}
+            onClose={() => setEventDetail(null)}
+            // A past day is a browsable archive and not editable (ADR-0029/0040), so the read
+            // there carries no way to write — absent rather than disabled, per ADR-0150 §8.
+            onEdit={
+              readOnly
+                ? undefined
+                : () => {
+                    setEventDetail(null);
+                    setFormTarget(eventDetail);
+                  }
+            }
+          />
+        )}
+
         {/* The maybe-shelf schedules onto a day — a create action, so it's gone on
           a read-only past day (ADR-0029/0040); a build hint points to Plan. */}
         {readOnly ? (
@@ -1985,6 +2026,7 @@ interface DayCtx {
   /** `החלף` — open the slot's own chooser (ADR-0161 §6). The screen owns the sheet, because
    *  the sheet needs the shelf and the day; the row only says which event. */
   onReplace: (event: TripEvent) => void;
+  onOpenRead: (event: TripEvent) => void;
   onOpenDetail: (booking: Booking) => void;
   /** `מפה` — show this place on OUR map (ADR-0121 §8), not Google's. */
   /** Absent outside the trip shell, where there is no Map tab to route to. */
@@ -2075,6 +2117,14 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
   // `rowPhoto` answers the whole "was a glyph picked" question — on the event or on its place —
   // so the rule is not written out here and again in Plan.
   const photo = rowPhoto(e, booking, ctx.places, ctx.enrichments);
+  // The read band's two facts (ADR-0229 §2). `eventMapPlace` for the address, because it is the
+  // row the map hand-off already reads; `eventPlaceId` for the enrichment, because that is the
+  // same authority rule MINUS the coordinate gate — a place we know nothing about *where* is
+  // still a place we may know a great deal about *what*, and gating the picture on coordinates
+  // would hide it for a reason that has nothing to do with it (`EventDetail` says the same).
+  const readPlace = eventMapPlace(e, ctx.bookings, ctx.places);
+  const readPlaceId = eventPlaceId(e, booking);
+  const readEnrichment = readPlaceId ? ctx.enrichments[readPlaceId] : undefined;
 
   const card = (
     <EventCard
@@ -2101,6 +2151,25 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       )}
       // The mark says there are notes; this is where they are read and written. Connected
       // here rather than inside the card, which is presentational (`ui/domain/`).
+      /** **WHAT THIS IS, one band above what the group attached to it** (ADR-0229 §2).
+       *
+       *  The photograph resolves through `eventPlaceId` rather than through the badge's own
+       *  `rowPhoto`, and the difference is deliberate: `rowPhoto` answers "should this 40px
+       *  square show a picture", and a PICKED icon beats a photo there (ADR-0167 §2). This band
+       *  is the surface that choice leaves the photograph one tap away on, so it shows the
+       *  picture regardless — the same call `EventDetail` makes for the same reason.
+       *
+       *  The address comes from `eventMapPlace`, so the band and the map hand-off read one row
+       *  rather than two lookups that could disagree. */
+      readSlot={
+        <ReadBand
+          image={readEnrichment?.image}
+          address={readPlace?.address ?? readPlace?.name}
+          title={readPlace?.name ?? e.title}
+          booked={!!booking}
+          onOpen={() => ctx.onOpenRead(e)}
+        />
+      }
       documentsSlot={<HostDocuments host={{ kind: 'event', id: e.id }} />}
       tasksSlot={<HostTasks host={{ kind: 'event', id: e.id, name: e.title }} />}
       notesSlot={<HostNotes host={{ kind: 'event', id: e.id, name: e.title }} />}
