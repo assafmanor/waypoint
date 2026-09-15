@@ -535,6 +535,28 @@ export const isEdgeSettled = (
   edge: 'start' | 'end',
 ): boolean => edgeStatusOf(event, edge) !== 'planned';
 
+/** **An edge the clock cannot answer for you** (ADR-0171 §6 + ADR-0184 §6), and it is one
+ *  predicate because two surfaces have to give one answer: the day's count keeps such an edge
+ *  past its instant, and the stay's row is the only place anybody can say it happened.
+ *
+ *  A floor is owed all day — ⁦15:01⁩ does not mean anybody checked in — and a check-in WINDOW
+ *  until it shuts. A deadline and an exact moment answer themselves by passing, so they are
+ *  false here and neither surface asks anything of a person.
+ *
+ *  **The two spellings disagreed, and that is what this exists to stop.** `remaining` was
+ *  widened to hold a windowed check-in to its ceiling while `StayRow`'s `היינו` stayed gated on
+ *  `not-before`, so a hotel booked ⁦17:00–22:00⁩ sat in `נותר דבר אחד היום` all evening with
+ *  nothing on screen able to clear it (owner, 2026-09-15). */
+export const edgeOutlivesItsInstant = (
+  event: Pick<TripEvent, 'category' | 'icon' | 'startWindowEnd' | 'endWindowStart'>,
+  edge: 'start' | 'end',
+): boolean => {
+  const meaning = edgeMeaning(event, edge);
+  return (
+    meaning === TIME_MEANING.NOT_BEFORE || (meaning === TIME_MEANING.WINDOW && edge === 'start')
+  );
+};
+
 /** Does this end name a moment the app actually KNOWS? The one predicate the day's
  *  ordering and the map's numbering both ask (ADR-0171 §10a/§10b) — and they must ask
  *  the same one, or a row can hold a position its pin refuses to number.

@@ -16,6 +16,7 @@ import {
   hasSpanSchedule,
   edgeMeaning,
   edgeStatusOf,
+  edgeOutlivesItsInstant,
   isEdgeSettled,
   eventDurationUnit,
   eventEndBoundary,
@@ -693,5 +694,38 @@ describe('edgeStatusOf / isEdgeSettled', () => {
 
   it('counts a SKIPPED edge as settled: not happening is an answer, not an absence', () => {
     expect(isEdgeSettled({ ...stay, endStatus: 'skipped' as const }, 'end')).toBe(true);
+  });
+});
+
+// **THE EDGES A CLOCK CANNOT ANSWER** (ADR-0171 §6 + ADR-0184 §6). Two surfaces read this and
+// they are the two halves of one loop: `glance.ts` holds such an edge in `נותרו היום`, and
+// `StayRow`'s settle pair is the only thing that can take it out again. They were two spellings
+// of one rule and they disagreed about a window — the report in §window below.
+describe('edgeOutlivesItsInstant', () => {
+  const stay = { category: 'lodging' as const, icon: '🏨' };
+
+  it('holds a floor: 15:01 does not mean anybody checked in', () => {
+    expect(edgeOutlivesItsInstant(stay, 'start')).toBe(true);
+  });
+
+  it('lets a deadline answer itself, because 11:01 is missed rather than pending', () => {
+    expect(edgeOutlivesItsInstant(stay, 'end')).toBe(false);
+  });
+
+  // §window — the reported defect: `remaining` counted a check-in booked 17:00–22:00 to its
+  // ceiling while the row that could clear it asked for `not-before` and rendered nothing.
+  it('holds a check-in WINDOW, which is a floor with a ceiling and not a deadline', () => {
+    const windowed = { ...stay, startWindowEnd: '2026-09-15T22:00:00.000Z' };
+    expect(edgeOutlivesItsInstant(windowed, 'start')).toBe(true);
+    // Its own end stays the deadline it always was — a check-out window's ceiling expires.
+    expect(
+      edgeOutlivesItsInstant({ ...windowed, endWindowStart: '2026-09-17T08:00:00.000Z' }, 'end'),
+    ).toBe(false);
+  });
+
+  it('asks nothing of a person about an exact moment, at either end', () => {
+    const flight = { category: 'transport' as const, icon: '✈️' };
+    expect(edgeOutlivesItsInstant(flight, 'start')).toBe(false);
+    expect(edgeOutlivesItsInstant(flight, 'end')).toBe(false);
   });
 });

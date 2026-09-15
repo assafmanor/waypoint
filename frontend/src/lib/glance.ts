@@ -10,7 +10,7 @@
 // (ADR-0164) — a stay's middle nights still count nothing.
 import {
   CATEGORY_DEFAULT_ICON,
-  edgeMeaning,
+  edgeOutlivesItsInstant,
   windowBoundOf,
   EVENT_STATUS,
   isEdgeSettled,
@@ -19,7 +19,6 @@ import {
   eventTransitionKeys,
   isAmbient,
   isBracketed,
-  TIME_MEANING,
   type TripEvent,
 } from '@waypoint/shared';
 import {
@@ -534,28 +533,25 @@ export function buildDayGlance(
   // drops settled events, so that is not a second rule here.
   const remainingEdges = transitions.filter((t) => {
     if (!isAmbient(t.event)) return false;
-    const meaning = edgeMeaning(t.event, t.edge);
-    // **Settled on THIS edge, whichever edge it is** (ADR-0224 §1/§5). The three arms below
-    // each decide when an edge stops being owed; this one rule is prior to all of them, and
+    // **Settled on THIS edge, whichever edge it is** (ADR-0224 §1/§5). The arms below each
+    // decide when an edge stops being owed; this one rule is prior to all of them, and
     // it used to read `t.event.status` — the span's single field — which meant a check-out
     // could never be cleared by being done and a check-in cleared its own row and its
     // partner's alike. `bookingTransitionsOnDate` drops only SKIPPED events wholesale, so
     // the per-edge answer has to be asked here.
     if (isEdgeSettled(t.event, t.edge)) return false;
-    // A floor is still ahead of you until somebody says otherwise. `transitions` is
-    // already scoped to `activeDate`, so "or the day ends" needs no condition — and
-    // "settled" is the line above, which is why this arm no longer restates it.
-    if (meaning === TIME_MEANING.NOT_BEFORE) return true;
-    // **A WINDOW DOES expire, and that is the whole of what closing it buys** (ADR-0184
-    // §6). This is the one branch that had to change here, and it is the one place in
-    // the app that asked `edgeMeaning` for a specific FLEXIBLE value rather than testing
-    // `exact` — so without it a windowed check-in fell into the clock test below against
-    // its FLOOR, and stopped counting at 17:01 while its window ran to 21:00. The end
-    // edge needs nothing: a check-out window's ceiling is the deadline it already had.
-    if (meaning === TIME_MEANING.WINDOW && t.edge === 'start') {
+    // **An edge the clock cannot answer is owed until somebody answers it** — a floor
+    // (⁦15:01⁩ does not mean anybody checked in, ADR-0171 §6) and a check-in window alike.
+    // The two used to be two arms here, and `StayRow`'s settle control then read only the
+    // first of them: one predicate in `@waypoint/shared` now says which edges this number
+    // holds, so the row that clears it and the number cannot drift apart again (2026-09-15).
+    // `transitions` is already scoped to `activeDate`, so "or the day ends" needs no
+    // condition, and a window's own ceiling is the only clock that retires it.
+    if (edgeOutlivesItsInstant(t.event, t.edge)) {
       const shuts = windowBoundOf(t.event, t.edge);
       return !shuts || Date.parse(shuts) > nowMs;
     }
+    // A deadline expires by passing: at ⁦11:01⁩ a check-out is not pending, it is missed.
     return t.atMs > nowMs;
   }).length;
   const remaining = remainingBlocks + remainingEdges;
