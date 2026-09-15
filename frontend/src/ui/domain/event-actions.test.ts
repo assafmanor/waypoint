@@ -18,6 +18,7 @@ const ALL: EventActionContext['available'] = {
 const ctx = (over: Partial<EventActionContext> = {}): EventActionContext => ({
   kind: 'soft',
   phase: 'upcoming',
+  today: true,
   readOnly: false,
   settleAsked: false,
   available: ALL,
@@ -33,64 +34,74 @@ describe('the day card quick-action spec (ADR-0228)', () => {
   // the assertion that closes that door: in every state the two kinds agree, exactly.
   it('a hard row and a soft row in the same state carry the same verbs, in the same order', () => {
     for (const phase of PHASES) {
-      for (const readOnly of [false, true]) {
-        for (const settleAsked of [false, true]) {
-          const [soft, hard] = KINDS.map((kind) =>
-            eventQuickActions(ctx({ kind, phase, readOnly, settleAsked })),
-          );
-          expect({ phase, readOnly, settleAsked, verbs: hard }).toEqual({
-            phase,
-            readOnly,
-            settleAsked,
-            verbs: soft,
-          });
+      for (const today of [true, false]) {
+        for (const readOnly of [false, true]) {
+          for (const settleAsked of [false, true]) {
+            const state = { phase, today, readOnly, settleAsked };
+            const [soft, hard] = KINDS.map((kind) => eventQuickActions(ctx({ ...state, kind })));
+            expect({ ...state, verbs: hard }).toEqual({ ...state, verbs: soft });
+          }
         }
       }
     }
   });
 
-  it('an upcoming row: settle, the nudge, the way there', () => {
-    expect(eventQuickActions(ctx())).toEqual([
-      EVENT_ACTION.SETTLE,
-      EVENT_ACTION.NUDGE,
-      EVENT_ACTION.ON_WAY,
-      EVENT_ACTION.NAVIGATE,
-    ]);
+  describe('today, where the row is on the ground', () => {
+    it('ahead of you: the moves and the way there — no record of a thing that has not happened', () => {
+      expect(eventQuickActions(ctx({ phase: 'upcoming' }))).toEqual([
+        EVENT_ACTION.NUDGE,
+        EVENT_ACTION.ON_WAY,
+        EVENT_ACTION.NAVIGATE,
+      ]);
+    });
+
+    it('inside it: the record leads, and `בדרך` goes — you are not on your way to it', () => {
+      expect(eventQuickActions(ctx({ phase: 'now' }))).toEqual([
+        EVENT_ACTION.SETTLE,
+        EVENT_ACTION.NUDGE,
+        EVENT_ACTION.NAVIGATE,
+      ]);
+    });
+
+    it('passed: nothing, because the prompt strip above is already asking in words', () => {
+      expect(eventQuickActions(ctx({ phase: 'passed', settleAsked: true }))).toEqual([]);
+    });
+
+    it('done: the one verb left', () => {
+      expect(eventQuickActions(ctx({ phase: 'done' }))).toEqual([EVENT_ACTION.RESTORE]);
+    });
   });
 
-  it('a done row trades the settle pair for the one verb left', () => {
-    const verbs = eventQuickActions(ctx({ phase: 'done' }));
-    expect(verbs).toContain(EVENT_ACTION.RESTORE);
-    expect(verbs).not.toContain(EVENT_ACTION.SETTLE);
-    // Nothing left to retime or to be on the way to.
-    expect(verbs).not.toContain(EVENT_ACTION.NUDGE);
-    expect(verbs).not.toContain(EVENT_ACTION.ON_WAY);
-  });
+  // The amendment's whole subject: `eventPhase` calls a waterfall two days out `upcoming`,
+  // exactly like this afternoon's stop, and the first build gave it `סיימנו`, `בדרך` and a
+  // ±30 nudge on that basis. A quick action answers "what now"; that row has no now.
+  describe('another day, where there is no now to act in', () => {
+    it('offers nothing on a future day, at every phase', () => {
+      for (const phase of PHASES) {
+        expect({ phase, verbs: eventQuickActions(ctx({ today: false, phase })) }).toEqual({
+          phase,
+          verbs: phase === 'done' ? [EVENT_ACTION.RESTORE] : [],
+        });
+      }
+    });
 
-  it('a passed row keeps no nudge — retiming history is not a verb (ADR-0043 §3)', () => {
-    expect(eventQuickActions(ctx({ phase: 'passed' }))).toEqual([
-      EVENT_ACTION.SETTLE,
-      EVENT_ACTION.NAVIGATE,
-    ]);
-  });
+    it('keeps nothing live on a past day either — the strip carries the retrospective job', () => {
+      expect(eventQuickActions(ctx({ today: false, readOnly: true, phase: 'passed' }))).toEqual([]);
+    });
 
-  it('the prompt strip takes the settle slot rather than asking twice', () => {
-    expect(eventQuickActions(ctx({ phase: 'passed', settleAsked: true }))).toEqual([
-      EVENT_ACTION.NAVIGATE,
-    ]);
-  });
-
-  // ADR-0029: a past day locks the moves and keeps the record + the read.
-  it('a read-only day keeps settle and navigate, and drops everything structural', () => {
-    expect(eventQuickActions(ctx({ readOnly: true }))).toEqual([
-      EVENT_ACTION.SETTLE,
-      EVENT_ACTION.NAVIGATE,
-    ]);
+    // A settled row can always be un-settled, including on a past day (ADR-0043 §2's
+    // 2026-07-16 revision: "check but never uncheck" is a mistake with no correction).
+    it('still takes back a settled row on a past day', () => {
+      expect(eventQuickActions(ctx({ today: false, readOnly: true, phase: 'done' }))).toEqual([
+        EVENT_ACTION.RESTORE,
+      ]);
+    });
   });
 
   it('a verb with no handler is simply absent — "no location, no ניווט"', () => {
-    const verbs = eventQuickActions(ctx({ available: { [EVENT_ACTION.SETTLE]: true } }));
-    expect(verbs).toEqual([EVENT_ACTION.SETTLE]);
+    expect(eventQuickActions(ctx({ available: { [EVENT_ACTION.NUDGE]: true } }))).toEqual([
+      EVENT_ACTION.NUDGE,
+    ]);
   });
 
   it('never offers the settle pair and its undo at once', () => {
@@ -99,6 +110,27 @@ describe('the day card quick-action spec (ADR-0228)', () => {
       expect(verbs.includes(EVENT_ACTION.SETTLE) && verbs.includes(EVENT_ACTION.RESTORE)).toBe(
         false,
       );
+    }
+  });
+
+  // The band is one line at 360px, which is the amendment's real cap; the count is how it
+  // is kept. Asserted here so a fifth verb has to face the measurement rather than wrap.
+  it('never offers more than three verbs in any state', () => {
+    for (const phase of PHASES) {
+      for (const today of [true, false]) {
+        for (const readOnly of [false, true]) {
+          for (const settleAsked of [false, true]) {
+            const verbs = eventQuickActions(ctx({ phase, today, readOnly, settleAsked }));
+            expect({ phase, today, readOnly, settleAsked, n: verbs.length }).toEqual({
+              phase,
+              today,
+              readOnly,
+              settleAsked,
+              n: Math.min(verbs.length, 3),
+            });
+          }
+        }
+      }
     }
   });
 });

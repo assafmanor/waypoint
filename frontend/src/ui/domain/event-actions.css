@@ -4,24 +4,16 @@
    `.wp-event-act*` is still the card's namespace, because the row is still the card's
    only host. */
 
-/* TWO BOXES, AND THE SPLIT IS WHAT KEEPS THE `⋯` PUT (ADR-0228 §1). The row used to be one
-   wrapping flex box with the `⋯` inside it, so the moment the verbs filled a line the menu
-   was pushed onto a second one by itself — a 40px line for one glyph, and a control that
-   moved whenever a verb appeared or left. The verbs wrap inside their own box now; the `⋯`
-   is a non-wrapping sibling pinned to the row's trailing edge, at the same place on every
-   card whatever the row carries. */
+/* ONE WRAPPING BOX AGAIN (ADR-0228's 2026-09-15 amendment). It was split in two so the
+   `⋯` could be pinned to the trailing edge while the verbs wrapped beside it; the `⋯` has
+   left for the card face, so the split has nothing left to hold apart. `flex-wrap` stays
+   as the safety net — the amendment's cap is that the band fits one line at 360px, and a
+   longer translation should soften rather than clip. */
 .wp-event-act-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 7px;
-  padding: var(--space-3) 14px;
-}
-.wp-event-act-verbs {
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
-  flex: 1 1 auto;
-  min-width: 0;
+  padding: var(--space-3) 14px;
 }
 .wp-event-act {
   font: inherit;
@@ -57,31 +49,6 @@
 .wp-event-act:focus-visible {
   outline: 2.5px solid var(--teal);
   outline-offset: 2px;
-}
-.wp-event-act-row-end {
-  display: flex;
-  gap: 7px;
-  flex: 0 0 auto;
-  margin-inline-start: auto;
-}
-.wp-event-act.icon-only {
-  padding: 7px 10px;
-  font-size: var(--text-body);
-  line-height: 1;
-}
-/* The quiet "more" ⋯ — no border until touched. */
-.wp-event-act.icon-only.more {
-  border-color: transparent;
-  color: var(--muted);
-  font-size: var(--text-h3);
-  padding: 6px 9px;
-}
-@media (hover: hover) and (pointer: fine) {
-  .wp-event-act.icon-only.more:hover {
-    background: var(--paper);
-    color: var(--ink);
-    border-color: var(--line);
-  }
 }
 .wp-event-act.stepper {
   display: flex;

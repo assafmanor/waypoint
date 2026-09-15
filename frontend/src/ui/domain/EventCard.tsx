@@ -21,7 +21,7 @@ import { CONTROL_ICON, DOT_SEPARATOR } from '../../constants';
 import { Icon } from '../Icon';
 import { HardLock } from '../HardLock';
 import { TitleLabel } from '../TitleLabel';
-import { type RowAction } from './ListRow';
+import { RowManageSheet, type RowAction } from './ListRow';
 import { EventActions } from './EventActions';
 import { PlaceBadge } from './PlaceBadge';
 import { SettleControl } from './SettleControl';
@@ -64,6 +64,12 @@ export interface EventCardProps {
   unsynced?: boolean;
   /** A read-only past day (ADR-0029): create/edit/move locked; settle stays. */
   readOnly?: boolean;
+  /** **Whether this row's DAY is today** (ADR-0228's 2026-09-15 amendment) — the axis
+   *  `phase` cannot supply, since a future day's rows and this afternoon's are both
+   *  `upcoming` and only one of them is on the ground. It gates the live verbs, so it
+   *  defaults FALSE: a host that has not thought about it gets the calm row, never a
+   *  waterfall two days out offering `בדרך`. */
+  today?: boolean;
   /** **How the DOM names this card**, so something sent to one event can find it — the
    *  `?event=` arrival lands on the row this stamps (`EVENT_ROW_ATTR`, `state/nav-state`).
    *  Spread rather than a bare id prop, so the host owns the attribute's spelling and this
@@ -194,6 +200,7 @@ export function EventCard(props: EventCardProps) {
     sync,
     unsynced,
     readOnly = false,
+    today = false,
     anchor,
     isOpen,
     onToggle,
@@ -242,6 +249,13 @@ export function EventCard(props: EventCardProps) {
   const runAction = (fn?: () => void) => {
     setMenuOpen(false);
     fn?.();
+  };
+  // The `⋯` sits INSIDE the face button now, so opening the sheet must not also toggle
+  // the row — the same two calls the done-✓ below makes, for the same reason.
+  const openMenu = (e: { preventDefault: () => void; stopPropagation: () => void }) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenuOpen(true);
   };
 
   // **THE KIND CHIP IS GONE; THE STATUS CHIP STAYS** (ADR-0178 §4). The hard mark moved
@@ -416,6 +430,10 @@ export function EventCard(props: EventCardProps) {
     .filter(Boolean)
     .join(` ${DOT_SEPARATOR} `);
 
+  // Unchanged gate, new home: a past day locks create/edit (ADR-0029), so the face
+  // carries no `⋯` there and the sheet has nothing to show.
+  const showMenu = !readOnly && menuActions.length > 0;
+
   return (
     <div className={cls} {...anchor}>
       <button type="button" className="wp-event-face" onClick={onToggle} aria-expanded={isOpen}>
@@ -453,6 +471,30 @@ export function EventCard(props: EventCardProps) {
           </span>
         )}
         {timeBlock}
+        {/* **TIER-2 LIVES ON THE FACE** (ADR-0228's 2026-09-15 amendment). It was the last
+            item of the verb band, which made its position depend on how many verbs the row
+            happened to carry — and once the band is allowed to be EMPTY (a row on another
+            day offers no quick action) it would have been a strip of padding holding one
+            glyph. Here it is in the same place on every card, and reachable without
+            expanding, which is what `עריכה` and `מחיקה` always wanted.
+            A `role="button"` span rather than a `<button>`, for `PlaceBadge`'s reason one
+            element over: nested buttons are invalid HTML, and the tap must not also
+            toggle the row. */}
+        {showMenu && (
+          <span
+            className="wp-event-menu"
+            role="button"
+            tabIndex={0}
+            aria-label={t.actions.more}
+            title={t.actions.more}
+            onClick={openMenu}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') openMenu(e);
+            }}
+          >
+            <Icon name={CONTROL_ICON.more} />
+          </span>
+        )}
         <span className="wp-event-chev" aria-hidden="true">
           <Icon name="caret" dir="down" />
         </span>
@@ -477,6 +519,7 @@ export function EventCard(props: EventCardProps) {
           <EventActions
             kind={kind}
             phase={phase}
+            today={today}
             readOnly={readOnly}
             settleAsked={showSettle}
             onDone={onDone}
@@ -486,11 +529,6 @@ export function EventCard(props: EventCardProps) {
             onEarlier={onEarlier}
             onOnWay={onOnWay}
             onNavigate={onNavigate}
-            menuActions={menuActions}
-            menuTitle={titleText}
-            menuSubject={menuSubject}
-            menuOpen={menuOpen}
-            onMenuOpenChange={setMenuOpen}
           />
           {isHard && (
             <div className="wp-event-hard-warn">
@@ -511,6 +549,16 @@ export function EventCard(props: EventCardProps) {
           {isOpen && notesSlot}
         </div>
       </div>
+      {menuOpen && (
+        <RowManageSheet
+          // The menu header is a visible title: a flight names its route there the
+          // same way the card does, not as the raw stored string.
+          title={<TitleLabel title={titleText} />}
+          subject={menuSubject}
+          actions={menuActions}
+          onClose={() => setMenuOpen(false)}
+        />
+      )}
     </div>
   );
 }

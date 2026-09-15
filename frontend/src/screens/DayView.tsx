@@ -571,6 +571,10 @@ export function DayView() {
   // number off it, where "עוד 15 ימים" is only the day number plus a constant.
   const dayNaming = { trip, today, anchor: activeDate };
   const dayScope = dayPhase(activeDate, today);
+  // Hoisted above `dayCtx`, which needs it as well: a row's quick actions are scoped by
+  // whether its DAY is today, not only by the event's own clock-derived phase (ADR-0228's
+  // 2026-09-15 amendment). The now-line and the landing read the same const below.
+  const isToday = dayScope === DAY_PHASE.TODAY;
   // A past day is a read-only archive within a live trip (ADR-0029) — but "past"
   // for EDITING is not the live zone's answer, nor even this day's ambient: a day
   // is over only once it is over in EVERY zone it touched (ADR-0029 session-103
@@ -689,6 +693,7 @@ export function DayView() {
     zoneCtx,
     now,
     readOnly,
+    onToday: isToday,
     openId,
     toggle: (id) => setOpenId((cur) => (cur === id ? null : id)),
     bookings,
@@ -1194,7 +1199,6 @@ export function DayView() {
   // the clock tick — so it doesn't fight a manual scroll. Instant under
   // reduced-motion.
   const nowLineRef = useRef<HTMLDivElement>(null);
-  const isToday = dayScope === DAY_PHASE.TODAY;
 
   // **Where the moment is** — only on today, because a past or future day has no "now"
   // (ADR-0043 §1/§4). `lib/now-line.ts` answers both halves (ADR-0217 §1/§2): `inside` names
@@ -1949,6 +1953,11 @@ interface DayCtx {
   zoneCtx: ZoneContext;
   now: Date;
   readOnly: boolean;
+  /** **Is the day on screen today** (ADR-0228's 2026-09-15 amendment) — what tells a row
+   *  still ahead of you this afternoon from one two days out, which `eventPhase` calls
+   *  `upcoming` alike. Named `onToday` rather than `today`, because `DayView` already has a
+   *  `today` in scope and it is a DATE. */
+  onToday: boolean;
   openId: string | null;
   toggle: (id: string) => void;
   bookings: Booking[];
@@ -2100,6 +2109,7 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       sync={<EntitySyncBadge id={e.id} />}
       unsynced={unsynced}
       readOnly={ctx.readOnly}
+      today={ctx.onToday}
       anchor={{ [EVENT_ROW_ATTR]: e.id }}
       isOpen={ctx.openId === e.id}
       onToggle={() => ctx.toggle(e.id)}

@@ -110,13 +110,12 @@ async function boot(page: Page): Promise<void> {
   await expect(page).toHaveURL(/[?&]tab=days/);
 }
 
-/** Open a row's `⋯` sheet. The card has to be expanded first — the menu lives inside it, and
- *  both locators are scoped to the card so a day of several rows cannot answer for the wrong
- *  one. */
+/** Open a row's `⋯` sheet. The menu is on the card FACE since ADR-0228 §5b, so the card no
+ *  longer has to be expanded first; the locator stays scoped to the card so a day of several
+ *  rows cannot answer for the wrong one. */
 async function openRowMenu(page: Page, title: string) {
   const card = page.locator('.wp-event', { hasText: title });
-  await card.locator('.wp-event-face').click();
-  await card.locator('.wp-event-act.more').click();
+  await card.locator('.wp-event-menu').click();
   await expect(page.getByRole('dialog')).toBeVisible();
 }
 
@@ -300,8 +299,7 @@ test('an untimed row is never offered החלף, and nothing crashes on the way',
   await page.locator('nav.nav button', { hasText: t.tabs.days }).click();
 
   const card = page.locator('.wp-event', { hasText: 'משהו' });
-  await card.locator('.wp-event-face').click();
-  await card.locator('.wp-event-act.more').click();
+  await card.locator('.wp-event-menu').click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await expect(page.getByRole('button', { name: t.actions.swap })).toHaveCount(0);
 

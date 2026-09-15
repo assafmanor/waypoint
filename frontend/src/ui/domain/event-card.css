@@ -92,10 +92,13 @@
      the control value this reads as collapsing rather than as pressed. */
   --press-scale: var(--press-scale-lg);
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  /* `menu` joins `check` as an OPTIONAL track (ADR-0228's 2026-09-15 amendment): the `⋯`
+     renders on an editable row and not on a past day's, and an `auto` track with nothing
+     in it is 0px — so a read-only card lays out exactly as it did. */
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   grid-template-areas:
-    'badge title check chev'
-    'badge when  check chev';
+    'badge title check menu chev'
+    'badge when  check menu chev';
   align-items: center;
   /* THE GUTTER IS A MARGIN, NOT `column-gap`, and that is not a style preference.
      Two of these four tracks are optional — the ✓ renders only on a settled row and
@@ -375,6 +378,48 @@
   transform: rotate(180deg);
 }
 
+/* THE `⋯`, on the face (ADR-0228's 2026-09-15 amendment). Quiet until touched, like the
+   band's version it replaces — but it is a real target now rather than a 33px pill: the
+   glyph stays 30px so it does not crowd the when line, and an `::after` overlay carries
+   ADR-0017's 44px floor without growing the row, which is `ValueToken`'s recipe
+   (ADR-0177) applied to a control that had to shrink to fit here. */
+.wp-event-menu {
+  grid-area: menu;
+  position: relative;
+  align-self: center;
+  margin-inline-start: var(--space-2);
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-999);
+  color: var(--muted);
+  font-size: var(--text-h3);
+  cursor: pointer;
+  transition:
+    background var(--t-quick),
+    color var(--t-quick);
+}
+.wp-event-menu::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .wp-event-menu:hover {
+    background: var(--paper);
+    color: var(--ink);
+  }
+}
+.wp-event-menu:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+  color: var(--ink);
+}
+.wp-event-menu:active {
+  transform: scale(var(--press-scale));
+}
+
 /* ONE LOCK, BESIDE THE THING IT LOCKS (ADR-0178 §4) — the hard mark left the
    title line for the when line, where ADR-0011's commitment actually points. The rule
    that used to live here was byte-identical to the builder row's, so ADR-0179 collected
@@ -480,6 +525,11 @@
   margin: 0;
   padding: var(--space-3) 14px;
   border-top: 1px solid var(--line);
+}
+/* The band above it may not render at all now (a row on another day carries no quick
+   action), and this rule's `0` top padding assumed it always did. */
+.wp-event-actions-in > .wp-event-hard-warn:first-child {
+  padding-top: var(--space-3);
 }
 .wp-event-hard-warn {
   font-size: var(--text-caption);
