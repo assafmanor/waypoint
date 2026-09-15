@@ -43,6 +43,16 @@
          hard-edit warning happens to print the code (ADR-0174 §8's carve-out). A soft
          booked row shows it nowhere.
 
+     CORRECTION (2026-09-15, after this file was pushed; the file is otherwise NOT
+     retrofitted — it is the dated record of what was decided then). Point 3 above is
+     overstated. `BookingDetail` has FIVE render sites, not two: `IndexBookingsView`,
+     `Map`, `PlanDay` and `DayView` ITSELF, which reaches it from `TransitionRow` and
+     `UnplacedCommitment`. So the Trip-mode day does have a path to a booking — just not
+     from an EVENT CARD, which is what a booked activity renders as. The defect is real
+     and narrower than stated, and the narrower version is the sharper one: two row
+     families on one screen disagree about whether a booking can be read. See
+     `-v2` and ADR-0229's Context 3.
+
      4 · ADR-0174 §6 ALREADY ANSWERED THIS QUESTION — with "no change to how the
          Trip-mode day card opens. It already expands and that expansion is the read."
          That sentence was true on 2026-08-08 and has quietly stopped being true since:

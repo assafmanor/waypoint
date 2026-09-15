@@ -49,8 +49,15 @@
        — see §5, which is v1's §4 kept because nothing about it changed.
      · **The defect underneath the report.** ADR-0223 deleted the confirmation code from
        five surfaces on _"every surface that dropped the code is one tap from the booking
-       that has it"_; `BookingDetail`'s only callers are `PlanDay.tsx` and
-       `IndexBookingsView.tsx`, so a SOFT booked row states its code nowhere in Trip mode.
+       that has it"_. On this screen that holds for a `TransitionRow` and for
+       `UnplacedCommitment` — both wired to `onOpenDetail` → `BookingDetail`, which
+       `DayView.tsx` already renders — and fails for the **event card**, which is what a
+       booked ACTIVITY renders as. One screen, two row families, disagreeing about whether
+       a booking can be read; the one that cannot is the one holding the code.
+       (v1's header said "no path to a booking at all" and named two `BookingDetail`
+       callers where there are five. Corrected here the same day: the grep was run and its
+       output read past the relevant line. The defect is real and narrower, and the
+       narrower version is sharper — the inconsistency is inside a single screen.)
 
      ──────────────────────────────────────────────────────────────────────────
      WHAT RENDERING IT FOUND — three passes, and all three are about the same wrong

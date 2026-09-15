@@ -18,7 +18,7 @@ Four things, and the count matters because three of them narrow the problem and 
 
 1. **The gap is the facts, not "a read".** Both surfaces already reach the trip's own content in one tap — `HostDocuments` → `HostTasks` → `HostNotes` render inside `EventCard`'s expansion (the `*Slot` props) and inside `DetailSheet` for Plan. What Trip cannot reach is `DetailSheet`'s `knowledge` + `facts`.
 2. **The verb band cannot host the reach.** `event-actions.ts` gates every entry on `live(c) = c.today && !c.readOnly`; a row on another day gets `[]` and `EventActions` returns `null`. So a read living in that band would be absent on tomorrow's row and on a finished trip — the two places the facts matter most.
-3. **ADR-0223 relies on a path that does not exist.** It deleted the confirmation code from five surfaces on the mitigation _"every surface that dropped the code is one tap from the booking that has it."_ `BookingDetail`'s callers are `PlanDay.tsx` and `IndexBookingsView.tsx`. The Trip-mode day view has none — and it went unnoticed because a **hard** row's edit warning happens to print the code (ADR-0174 §8's carve-out). A **soft booked** row states it nowhere.
+3. **ADR-0223's mitigation is kept by one row family on this screen and broken by the other.** It deleted the confirmation code from five surfaces on _"every surface that dropped the code is one tap from the booking that has it."_ On the Trip-mode day a `TransitionRow` (a hotel check-in, a flight edge) and `UnplacedCommitment` both reach `BookingDetail`; the **event card** — what a booked activity renders as — reaches nothing. It went unnoticed because a **hard** row's edit warning happens to print the code (ADR-0174 §8's carve-out); a **soft booked** activity states it nowhere.
 4. **ADR-0174 §6 had already answered the question, and its answer expired.** _"No change to how the Trip-mode day card opens. It already expands and that expansion is the read."_ True on 2026-08-08; ADR-0219 §6, ADR-0223 and ADR-0228 each moved something out from under it. §6 is amended in place rather than contradicted from a distance.
 
 Point 3 is what turned this from a preference into a defect, and it is the reason the ADR is framed as **completing ADR-0223** rather than as an addition.
@@ -89,3 +89,13 @@ A **two-sided panel** — `לעשות` (the verbs and the group's content) / `ל
 ### The forks now
 
 Three, all in the ADR: the band's height (⁦72⁩/⁦88⁩/⁦116px⁩, 88 proposed), the summary under it (⁦+58px⁩, off proposed), and whether the card closes when the read opens. The first two are controls in the mockup's toolbar and are questions a phone in a hand answers.
+
+## The correction that came out of starting the build
+
+Point 3 above is the corrected version. **What was first written, pushed, and put in the ADR, the README, the backlog, the PR and both mockups was wrong:** that the Trip-mode day had _"no path to a booking at all"_ and that `BookingDetail`'s only callers were `PlanDay.tsx` and `IndexBookingsView.tsx`.
+
+`BookingDetail` has **five** render sites — those two plus `Map.tsx` and **`DayView.tsx` itself**, which reaches it from `TransitionRow` and `UnplacedCommitment`. The error surfaced on the first file opened for the build, when `setDetailTarget` turned up already in `DayView`'s state.
+
+**How it happened is the part worth recording**, because root `CLAUDE.md` names it exactly: _"count the call sites before claiming what a derivation does."_ The grep **was** run. Its output listed `screens/DayView.tsx`, and the line fell outside the `head -30` the result was read through. So the rule was followed and the reading was not — which is a different failure from the one the rule was written for, and a cheaper one to repeat.
+
+**The defect is real and narrower, and the narrower version is sharper.** It is not one screen missing what other screens have; it is **one screen whose two row families disagree** about whether a booking can be read — and the family that cannot is the one a booked activity renders as, carrying the confirmation code. Nothing in the design changes: the band is still the answer, and it is now the answer to a better-stated problem.
