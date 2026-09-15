@@ -39,6 +39,10 @@ export const GAP_CHARACTER = {
   /** Somebody pressed `בדרך`. The strongest evidence on this screen, because a human supplied
    *  it (`lib/on-way.ts`'s own words: the one thing here that knows what a sensor would). */
   ON_THE_WAY: 'on-the-way',
+  /** **The leave-by has gone by and nothing has withdrawn it** (the 2026-09-15 amendment to
+   *  ADR-0211 §8). The gap is still a gap by every test below — there IS something later today —
+   *  and it has stopped being free time. */
+  DUE_OUT: 'due-out',
   /** The plan says you are at a bed, and the clock is outside the waking window. A statement
    *  about a PLACE — never `ישנים`, which would be a claim about a person. */
   AT_THE_STAY: 'at-the-stay',
@@ -46,7 +50,8 @@ export const GAP_CHARACTER = {
   DAY_DONE: 'day-done',
   /** A day with no timed event at all. Not the same thing as a day that is over. */
   EMPTY_DAY: 'empty-day',
-  /** A real gap: something later today. The one case `זמן חופשי` was always right about. */
+  /** A real gap: something later today, **and no departure already overdue into it**. The one
+   *  case `זמן חופשי` was always right about. */
   OPEN: 'open',
 } as const;
 export type GapCharacter = (typeof GAP_CHARACTER)[keyof typeof GAP_CHARACTER];
@@ -92,6 +97,17 @@ export interface GapCharacterInput {
   wokeIn?: TripEvent;
   /** The device mark for `next` (`useOnWay`). */
   onWay: boolean;
+  /**
+   * **The leave-by for `next` has passed, and nothing has answered it** — the caller's own
+   * `leave.phase === PASSED && !leaveAnswered`, which is the condition the red countdown tile
+   * already prints on (`Home.tsx`'s `leaveTile`). Handed in rather than derived because the
+   * estimate is the screen's (`useDayTravel`, ADR-0206 §7) and this file never reads a clock.
+   *
+   * **It is the tile's own condition and not a second one**, so a `בדרך` mark or an
+   * `arrived`/`en-route` fix withdraws the title exactly as it already withdraws the tile
+   * (ADR-0207), and §AJ2's clamp keeps it off a departure nobody could have made.
+   */
+  leavePassed: boolean;
 }
 
 /** Whether the clock is inside the hours the board's own rail agrees to draw. */
@@ -122,7 +138,7 @@ function nightBandOf(hour: number): NightBand | undefined {
  * nothing here needs a field the app does not store.
  */
 export function gapCharacter(input: GapCharacterInput): GapRead {
-  const { hour, next, today, dayHasEvents, wokeIn, onWay } = input;
+  const { hour, next, today, dayHasEvents, wokeIn, onWay, leavePassed } = input;
   // Resolved once, before any arm, because it is true of the MINUTE rather than of the arm —
   // which is the correction the 2026-09-01 amendment makes: keyed on the arm, the night was
   // only noticed when a bed happened to be there to name.
@@ -132,6 +148,12 @@ export function gapCharacter(input: GapCharacterInput): GapRead {
   // A person said they are moving. Nothing the plan knows outranks that — including the bed,
   // which is why this is first: somebody up and out at ⁦06:20⁩ is on their way, not at a hotel.
   if (onWay && next) return at({ kind: GAP_CHARACTER.ON_THE_WAY });
+
+  // **And a departure that is late outranks the bed you are late from.** Second for
+  // `on-the-way`'s own reason one line up: this is the live question of the next 30 minutes, where
+  // `at-the-stay` and `open` are both statements about a day. `next` is required because the
+  // leave-by is a leg INTO something — without it there is no departure to be late for.
+  if (leavePassed && next) return at({ kind: GAP_CHARACTER.DUE_OUT });
 
   // The plan's own position, but only while it is still fresh. `wokeIn` is `travelOrigin`'s
   // fallback and it survives all day — at ⁦11:00⁩ on an empty day the bed is still the last
@@ -185,6 +207,11 @@ export function gapWords(read: GapRead, stayName?: string): { label: string; tit
   switch (read.kind) {
     case GAP_CHARACTER.ON_THE_WAY:
       return t.board.gap.onTheWay;
+    // **It does not spend the band**, for `day-done`'s and `empty-day`'s reason in the ADR's own
+    // amendment: the label is carrying real information, and the hour would displace it. A
+    // departure is late at ⁦05:40⁩ in exactly the way it is late at ⁦11:16⁩.
+    case GAP_CHARACTER.DUE_OUT:
+      return t.board.gap.dueOut;
     case GAP_CHARACTER.AT_THE_STAY:
       return stayName
         ? { label: t.board.gap.band[read.band ?? NIGHT_BAND.NIGHT], title: stayName }
@@ -216,6 +243,11 @@ export function gapWords(read: GapRead, stayName?: string): { label: string; tit
  * **`at-the-stay` deliberately does NOT.** Its label is `לילה` / `בוקר`, which are claims about
  * the CLOCK (ADR-0208), and the clock is amber's. The stay's name in the title is the place, and
  * a title is not where this app spends a hue.
+ *
+ * **Nor does `due-out`**, which shares `on-the-way`'s label and not its costume: `זמן לצאת` is a
+ * claim about the clock, and the lateness it stands on is already red in the countdown tile
+ * (ADR-0208 §1). Teal here would say the traveller is somewhere, which is the one thing this
+ * state is waiting to find out.
  */
 export function gapIsLocative(kind: GapCharacter): boolean {
   return kind === GAP_CHARACTER.ON_THE_WAY;

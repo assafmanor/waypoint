@@ -1993,6 +1993,17 @@ export const t = {
      *  app has no sensor for that. */
     gap: {
       onTheWay: { label: 'כרגע', title: 'בדרך' },
+      // **The state just before that one** (the 2026-09-15 amendment to ADR-0211 §8): the
+      // leave-by has gone by and nobody has said `בדרך` yet, so the board was printing
+      // `פנוי · זמן חופשי` over its own red `12 דקות באיחור ליציאה`. The label is `onTheWay`'s
+      // on purpose — one word, and the title moves from the question to the answer the moment
+      // somebody presses the mark.
+      //
+      // **`זמן לצאת` is a claim about the CLOCK, which is what lets it print at all.**
+      // `אתם באיחור` and `יוצאים` are claims about people and stay refused (ADR-0208 §Z5 M4);
+      // `זמן היציאה עבר` is already the journey line's sentence two rows down, and this slot
+      // takes a noun phrase rather than a third printing of one fact.
+      dueOut: { label: 'כרגע', title: 'זמן לצאת' },
       // **The two band words, and they belong to the HOUR rather than to the stay** — which is
       // why the key is `band` since the 2026-09-01 amendment to ADR-0211 and no longer
       // `atTheStay`. `open` spends them too: at ⁦01:12⁩ on a night the plan gave no bed, the

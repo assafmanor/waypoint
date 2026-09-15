@@ -271,6 +271,21 @@ describe('HeroLift', () => {
     expect(container.querySelector('.hero-lifted')?.textContent).not.toContain(t.board.freeTitle);
   });
 
+  // Both elevations again (§2), on the arm the amendment added: the reported screenshot was
+  // the LIFTED hero, so a title fixed only on the collapsed board would have missed it.
+  it('carries `due out` up too, and the free words do not survive the lift', () => {
+    const container = show({
+      now: [],
+      gap: { read: { kind: GAP_CHARACTER.DUE_OUT } },
+      next: point({ key: 'next', title: <span>Dyrhólaey</span> }),
+      nextTime: '11:30',
+    });
+    expect(container.querySelector('.wp-board-now-title')?.textContent).toBe(
+      t.board.gap.dueOut.title,
+    );
+    expect(container.querySelector('.hero-lifted')?.textContent).not.toContain(t.board.freeTitle);
+  });
+
   it('and says which day the next point is on', () => {
     const container = show({
       now: [],

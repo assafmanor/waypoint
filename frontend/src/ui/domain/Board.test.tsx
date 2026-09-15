@@ -95,6 +95,19 @@ describe('Board', () => {
       expect(c.querySelector('.wp-board-live')?.textContent).toBe(t.board.gap.onTheWay.title);
     });
 
+    // The 2026-09-15 amendment to §8: the reported card said `פנוי · זמן חופשי` above its own
+    // red `12 דקות באיחור ליציאה`.
+    it("due out: the title stops contradicting the tile, and stays in the clock's register", () => {
+      const c = gapBoard({ read: { kind: GAP_CHARACTER.DUE_OUT } });
+      expect(c.querySelector('.wp-board-now-label')?.textContent).toBe(t.board.gap.dueOut.label);
+      expect(c.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.gap.dueOut.title);
+      expect(c.textContent).not.toContain(t.board.freeTitle);
+      // Amber, not teal: `on-the-way` says where you are and this one is waiting to find out.
+      expect(c.querySelector('.wp-board-now-label')?.className).not.toContain('loc');
+      expect(c.querySelector('.wp-board-live')?.className).not.toContain('loc');
+      expect(c.querySelector('.wp-board-live')?.textContent).toBe(t.common.now);
+    });
+
     it('at the stay: a PLACE and an hour, never a claim about sleeping', () => {
       const night = gapBoard({
         read: { kind: GAP_CHARACTER.AT_THE_STAY, band: NIGHT_BAND.NIGHT },
