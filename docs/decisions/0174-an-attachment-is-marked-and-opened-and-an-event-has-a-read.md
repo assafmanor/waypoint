@@ -191,6 +191,9 @@ Unchanged from ADR-0173 §9, and named again so the boundary is explicit rather 
 - **No "where is this document attached?" on the documents screen.** This is the _reverse_ read, and it is a real gap — ADR-0173's own Consequences flag that a document row can no longer be read as "belongs to the trip and nothing else". It is deliberately a **separate** decision: it is a third feature, and the owner's standing constraint this session was that the UI must not grow.
 - **No auto-attachment**, no attachment to a `MaybeItem` or to another document, no change to encryption, download or the MIME allowlist.
 - **No change to how the Trip-mode day card opens.** It already expands and that expansion already holds the notes; it gains the documents section (§3) and nothing else.
+
+  > **Amended 2026-09-15 — this sentence expired** ([ADR-0229](0229-the-row-opens-what-you-do-and-the-read-is-one-tap-further.md)). It was true when it was written: the expansion held everything the read did except a location fact and a time the row already states. Since then ADR-0219 §6 gave the read a **picture and a summary** Trip has no way to show, and ADR-0223 moved the **confirmation code** into it — so the Trip card's expansion now holds only the trip's own content, and the facts are unreachable from the surface you hold on the ground. ADR-0229 keeps the expansion exactly as this bullet describes it and adds **one reach** to the read, rather than growing the card into a second one.
+
 - **No change to Plan's hero.** ADR-0160 §H settled that separately and its reasoning (the prep hero summarises the checklist rendered beneath it) does not reach the row. §7 above is the **Trip** hero, which does lift.
 - **No document on the COLLAPSED board.** It is the glance surface, and ADR-0028 already spent its budget; the reach lives in the state you asked for.
 
