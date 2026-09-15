@@ -39,25 +39,12 @@
 // job — it is evaluated when the gesture starts, before the direction that decides it
 // exists — and `useSwipePager` measured the `preventDefault` route for the day surface
 // (ADR-0200 §9), so this is the same mechanism a second time rather than a new one.
-//
-// **When the list can still scroll that way, the gesture is the LIST'S — and the sheet
-// takes over in the same gesture once the list runs out** (owner, 2026-09-15: _"first
-// scrolling and then only after we're done scrolling it goes to mode switch"_). The
-// browser owns that pan, so the hand-off cannot be a `preventDefault` (its `touchmove`s
-// arrive non-cancelable once a scroll is under way). It is a second phase driven by the
-// touch stream itself: the pointer is cancelled the moment the pan starts, but the
-// `touchmove`s keep coming, and the one on which the caller reports the list at its end
-// becomes the origin of a sheet drag that follows the rest of the finger's travel.
-// `overscroll-behavior: none` on the scroller is what keeps the browser from painting
-// its own bounce under that hand-off. A region with no scroll to compete with passes no
-// `claim` and nothing here changes.
+// **A gesture the caller declines is the browser's for its whole life**: the hook
+// unbinds everything at the verdict, including the non-passive listener, so the pan
+// that follows runs on the compositor with nothing waiting on the main thread. A
+// region with no scroll to compete with passes no `claim` and nothing here changes.
 import { useCallback, useRef } from 'react';
 import { SNAP_DRAG_SLOP_PX } from '../constants';
-
-/** Whose a body press is, once the finger has moved far enough to say (ADR-0095: named,
- *  because a typo in a bare verdict string would be a silent stand-down). */
-export const SNAP_CLAIM = { sheet: 'sheet', list: 'list', none: 'none' } as const;
-export type SnapClaim = (typeof SNAP_CLAIM)[keyof typeof SNAP_CLAIM];
 
 export interface SnapDragOptions {
   /** The sheet's height right now, in px — where this drag starts from. */
@@ -73,21 +60,14 @@ export interface SnapDragOptions {
    */
   onRelease: (px: number, velocityPxPerMs: number) => void;
   /**
-   * **Whose is this gesture?** — asked ONCE, at the first move past the slop, with the
+   * **Is this gesture ours?** — asked ONCE, at the first move past the slop, with the
    * finger's travel so far (`dy < 0` is a finger moving up, which grows the sheet).
-   * `sheet`: ours now, and on touch the pan is taken from the browser. `list`: the
-   * scroller's under the finger — nothing is captured or prevented, and the hook keeps
-   * listening to the touch for `handoff`. `none`: nobody's; the hook stands down for the
-   * rest of the gesture. Omitted, every gesture past the slop is the sheet's.
+   * `false` stands the hook down for the rest of the gesture: nothing is captured,
+   * nothing is prevented, and whatever is under the finger (a list's own scroll) keeps
+   * it — for the whole gesture, however far it goes. Omitted, every gesture past the
+   * slop is ours.
    */
-  claim?: (travel: { dx: number; dy: number }) => SnapClaim;
-  /**
-   * While the list owns a touch, asked on every move with that move's own vertical step
-   * (`< 0` is a finger moving up). `true` the moment the list can go no further that
-   * way, and from there the sheet follows the rest of the finger's travel. Omitted, a
-   * `list` verdict is final for the gesture.
-   */
-  handoff?: (stepDy: number) => boolean;
+  claim?: (travel: { dx: number; dy: number }) => boolean;
 }
 
 /** Props to spread on the drag REGION (the sheet's whole top row, not the grab
@@ -99,22 +79,16 @@ export interface SnapDragProps {
   onPointerDown: (e: React.PointerEvent) => void;
 }
 
-/** Where a gesture is. `pending` is under the slop; `sheet` is ours through the pointer;
- *  `list` is the browser's pan, watched through the touch stream; `handoff` is ours again,
- *  through that same touch stream, because the pointer was cancelled when the pan began. */
-type Phase = 'pending' | 'sheet' | 'list' | 'handoff' | 'done';
-
 export function useSnapDrag({
   heightPx,
   onDrag,
   onRelease,
   claim,
-  handoff,
 }: SnapDragOptions): SnapDragProps {
   // Latest-ref, so a re-render mid-drag (this screen re-renders every second on
   // the clock) can't leave the listeners closed over a stale height or callback.
-  const latest = useRef({ heightPx, onDrag, onRelease, claim, handoff });
-  latest.current = { heightPx, onDrag, onRelease, claim, handoff };
+  const latest = useRef({ heightPx, onDrag, onRelease, claim });
+  latest.current = { heightPx, onDrag, onRelease, claim };
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     // Only the primary button/finger: a right-click or a second finger landing on
@@ -127,143 +101,68 @@ export function useSnapDrag({
     const startX = e.clientX;
     const startY = e.clientY;
     const startHeight = latest.current.heightPx();
-    let phase: Phase = 'pending';
+    let dragging = false;
+    // Stood down: `claim` said no, or the gesture ended. Nothing below acts again.
+    let done = false;
     // Two samples, so the release reads the finger's speed as it left rather than
     // the gesture's average. Seeded with the press, which makes a single-move
     // gesture measurable instead of a division by zero.
     let last = { y: e.clientY, t: e.timeStamp };
     let prev = last;
-    const sample = (y: number, t: number) => {
-      prev = last;
-      last = { y, t };
-    };
-    const velocity = () => (prev.y - last.y) / Math.max(last.t - prev.t, 1);
 
     // Dragging UP grows the sheet: it is anchored at the bottom, so the height is
     // the distance from the finger to that edge.
     const heightAt = (clientY: number) => startHeight - (clientY - startY);
 
-    // The hand-off's own origin and direction. The height is measured from where the list
-    // ran out, not from the press, and it never crosses the height the sheet had then:
-    // a finger that reverses is scrolling the list again, and the browser is already
-    // doing that — a sheet moving the other way under it would be two motions for one.
-    let handoffY = 0;
-    let handoffDir = 0;
-    let lastTouchY = startY;
-    const handoffHeightAt = (clientY: number) => {
-      const h = startHeight - (clientY - handoffY);
-      return handoffDir < 0 ? Math.max(startHeight, h) : Math.min(startHeight, h);
-    };
-
     const unbind = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('touchmove', touchMove);
-      window.removeEventListener('touchmove', touchWatch);
       window.removeEventListener('pointerup', end);
       window.removeEventListener('pointercancel', end);
-      window.removeEventListener('touchend', touchEnd);
-      window.removeEventListener('touchcancel', touchEnd);
-    };
-    const finish = () => {
-      phase = 'done';
-      unbind();
     };
 
     /** The one decision, taken by whichever event crosses the slop first — the
      *  `pointermove` (a mouse only ever has that one) or the `touchmove` that a finger's
      *  move also dispatches. Idempotent, so the second arrival changes nothing. */
     const decide = (clientX: number, clientY: number) => {
-      if (phase !== 'pending') return;
+      if (dragging || done) return;
       // Below the slop this is still a tap, and whatever is under the finger keeps it.
       if (Math.abs(clientY - startY) < SNAP_DRAG_SLOP_PX) return;
-      const verdict =
-        latest.current.claim?.({ dx: clientX - startX, dy: clientY - startY }) ?? SNAP_CLAIM.sheet;
-      if (verdict === SNAP_CLAIM.none) {
-        finish();
-        return;
-      }
-      if (verdict === SNAP_CLAIM.list) {
-        phase = 'list';
-        // **The pan is the browser's now, so get out of its way.** A non-passive `touchmove`
-        // listener anywhere on the path makes the browser dispatch every move to the main
-        // thread and WAIT for it before scrolling — with this screen re-rendering on the
-        // clock, that wait is the stutter. The watch only reads, so it listens passively,
-        // and the browser scrolls on the compositor as if nothing were listening at all.
-        window.removeEventListener('touchmove', touchMove);
-        window.addEventListener('touchmove', touchWatch, { passive: true });
+      const ours = latest.current.claim?.({ dx: clientX - startX, dy: clientY - startY }) ?? true;
+      if (!ours) {
+        done = true;
+        unbind();
         return;
       }
       region.setPointerCapture?.(pointerId);
-      phase = 'sheet';
+      dragging = true;
     };
 
     const move = (ev: PointerEvent) => {
       decide(ev.clientX, ev.clientY);
-      if (phase !== 'sheet') return;
-      sample(ev.clientY, ev.timeStamp);
+      if (!dragging) return;
+      prev = last;
+      last = { y: ev.clientY, t: ev.timeStamp };
       latest.current.onDrag(heightAt(ev.clientY));
     };
-    /** **The touch half.** In `sheet` every `touchmove` is prevented, so the browser never
-     *  starts the pan — and only then: the spec makes a prevented FIRST `touchmove` forfeit
-     *  the whole touch's scrolling, so preventing a move still under the slop would take the
-     *  list's scroll away from a gesture `claim` was about to hand it. In `list` the moves
-     *  are the browser's and are only READ, for the step that finds the list at its end;
-     *  in `handoff` they are the drag. `cancelable` is false once a scroll is under way,
-     *  and preventing then is a console warning and nothing else. */
+    /** **The touch half of the claim.** Once the gesture is ours every `touchmove` is
+     *  prevented, so the browser never starts the pan — and only once it is ours: the
+     *  spec makes a prevented FIRST `touchmove` forfeit the whole touch's scrolling, so
+     *  preventing a move still under the slop would take the list's scroll away from a
+     *  gesture `claim` was about to hand it. `cancelable` is false once a scroll is
+     *  already under way, and preventing then is a console warning and nothing else. */
     const touchMove = (ev: TouchEvent) => {
-      if (phase === 'done' || ev.touches.length !== 1) return;
+      if (done || ev.touches.length !== 1) return;
       const touch = ev.touches[0];
       decide(touch.clientX, touch.clientY);
-      lastTouchY = touch.clientY;
-      if (phase === 'sheet' && ev.cancelable) ev.preventDefault();
-    };
-    /** The PASSIVE half, bound only once the list owns the gesture: it reads the finger for
-     *  the step on which the list runs out, and then carries the hand-off. Never prevents
-     *  anything — it could not, and it must not need to. */
-    const touchWatch = (ev: TouchEvent) => {
-      if (phase === 'done' || ev.touches.length !== 1) return;
-      const touch = ev.touches[0];
-      const step = touch.clientY - lastTouchY;
-      lastTouchY = touch.clientY;
-      if (phase === 'list') {
-        if (step === 0 || !latest.current.handoff?.(step)) return;
-        phase = 'handoff';
-        handoffY = touch.clientY;
-        handoffDir = Math.sign(step);
-        // Re-seeded here: the speed that matters is the finger's from the hand-off on.
-        last = { y: touch.clientY, t: ev.timeStamp };
-        prev = last;
-        return;
-      }
-      if (phase === 'handoff') {
-        sample(touch.clientY, ev.timeStamp);
-        latest.current.onDrag(handoffHeightAt(touch.clientY));
-      }
-    };
-    const touchEnd = (ev: TouchEvent) => {
-      if (phase === 'done') return;
-      const y = ev.changedTouches?.[0]?.clientY ?? lastTouchY;
-      const was = phase;
-      finish();
-      // A pan the browser ran ends in no `click`, so there is nothing to swallow here.
-      if (was !== 'handoff') return;
-      const h = handoffHeightAt(y);
-      // A hand-off the finger walked back to where it began is no drag at all: the speed it
-      // lifted with belongs to the list it was scrolling again, and must not flick a sheet
-      // that never left its stop.
-      latest.current.onRelease(h, h === startHeight ? 0 : velocity());
+      if (dragging && ev.cancelable) ev.preventDefault();
     };
     const end = (ev: PointerEvent) => {
-      // The browser cancels the pointer the moment it starts the pan, and the touch
-      // stream carries the rest of a `list` gesture — so a cancel there is not an end. A
-      // `pointerup` there is: a mouse has no touch stream, and a finger that lifted before
-      // the browser ever panned has nothing to hand off.
-      if ((phase === 'list' || phase === 'handoff') && ev.type === 'pointercancel') return;
-      const was = phase;
-      finish();
+      unbind();
+      done = true;
       // A press that never passed the slop is a tap, not a drag — releasing must not
       // snap the sheet to whichever stop happens to be nearest its current height.
-      if (was !== 'sheet') return;
+      if (!dragging) return;
       // A real drag ends in a `click` retargeted to the capturing element. The region
       // holds controls, so that click has to be swallowed rather than treated as a tap
       // on one of them. Only on a release: a cancelled gesture dispatches no click, and
@@ -271,17 +170,15 @@ export function useSnapDrag({
       if (ev.type === 'pointerup') {
         region.addEventListener('click', swallow, { capture: true, once: true });
       }
-      latest.current.onRelease(heightAt(ev.clientY), velocity());
+      const dt = Math.max(last.t - prev.t, 1);
+      latest.current.onRelease(heightAt(ev.clientY), (prev.y - last.y) / dt);
     };
 
     window.addEventListener('pointermove', move);
-    // Non-passive, because its whole job in `sheet` is `preventDefault` — and it is swapped
-    // for the passive `touchWatch` the moment the verdict is the list's.
+    // Non-passive, because its whole job is `preventDefault`.
     window.addEventListener('touchmove', touchMove, { passive: false });
     window.addEventListener('pointerup', end);
     window.addEventListener('pointercancel', end);
-    window.addEventListener('touchend', touchEnd);
-    window.addEventListener('touchcancel', touchEnd);
   }, []);
 
   return { onPointerDown };
