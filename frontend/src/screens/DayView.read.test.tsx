@@ -10,8 +10,8 @@
 //      event card opened neither — while `TransitionRow` and `UnplacedCommitment` on the same
 //      screen already opened the first. Two row families, one screen, disagreeing about whether
 //      what they stand for can be read.
-//  2 · **The card closes behind the read** (§4), so the documents/tasks/notes sections do not
-//      render twice, once per layer.
+//  2 · **The card STAYS OPEN behind the read** (§4, amended): the read is a sheet, and what
+//      you opened is still yours when you dismiss it.
 //  3 · **The band is there on a day that is not today**, where `event-actions.ts` renders no
 //      verbs at all — which is the structural reason it could never live in that band.
 //
@@ -264,15 +264,15 @@ describe('DayView — the read is one tap from the card (ADR-0229)', () => {
     expect(screen.queryByText(t.index.detail.code)).toBeNull();
   });
 
-  // 2 — §4. The read is a sheet over a panel that is still open, so without this the host
-  // sections render twice, once per layer.
-  it('closes the card behind the read', () => {
+  // 2 — §4, amended on the deployed build (owner: _"it also closes the event card, and it
+  // shouldn't do it"_). It closed for one release, so the host sections would not render
+  // twice, once per layer — a duplication behind a scrim, off one shared state. What it
+  // actually cost was the reader's place: dismissing the read left a collapsed row.
+  it('leaves the card open behind the read, so dismissing it returns you where you were', () => {
     const { container } = show();
     openCard(booked.title);
-    expect(container.querySelector('.wp-event.open')).toBeTruthy();
-
     fireEvent.click(container.querySelector('.rd-line')!);
-    expect(container.querySelector('.wp-event.open')).toBeNull();
+    expect(container.querySelector('.wp-event.open')).toBeTruthy();
   });
 
   // 3 — the structural reason the band cannot live in the verb row. `event-actions.ts` gates

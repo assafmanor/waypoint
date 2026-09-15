@@ -43,3 +43,32 @@ Measured: the open card ⁦309⁩ → ⁦233px⁩, the closed row ⁦91⁩ → �
 
 1. The chip's treatment — as-is (proposed), the word changing on press, or a quiet undo glyph.
 2. **Whether Plan's archive row changes with it**, and this is the real scope question: changing the day card alone reopens a two-surface divergence ADR-0044 closed. Either it moves too, or the divergence is declared in ADR-0044 so the next reader finds a reason rather than a difference.
+
+---
+
+## Built the same day — _"Build it"_
+
+Treatment **א** as drawn; the circle, its ~⁦70⁩ lines of CSS and the face's `check` grid track deleted; `EVENT_ACTION.RESTORE` out of `event-actions.ts`, taking with it the last entry `live()` never gated. **Fork 2 answered by declaring the divergence in ADR-0044** rather than moving Plan's row: with ② gone, `.bld-settle.done` is the app's only morphing settle circle — the duplication ADR-0139 exists to prevent is retired by a **deletion** rather than a second rewrite — and that slot carries three states in one square where the chip answers one.
+
+### What the build corrected in the drawing
+
+**The closed row does not shrink.** The drawn ⁦−19px⁩ was published as half the headline and is wrong: measured in the running app, before and after the diff under the same probe, the closed row is ⁦72px⁩ → ⁦72px⁩ with a short title and ⁦115px⁩ → ⁦115px⁩ with one long enough to wrap. The mockup's fixture had a chip wrapping under its title; the app's does not, so there was no line to save. The open card is the whole saving — ⁦313⁩ → ⁦256px⁩, against a drawn ⁦−76px⁩.
+
+**The lesson is narrower than "the mockup was wrong":** a saving drawn against ONE fixture, whose size depends on that fixture's text length, is the kind of number to distrust. The tap box and the title line — which depend on the type scale rather than the content — both reproduced exactly.
+
+### What only the running app could find
+
+**The overlay that reaches ⁦44px⁩ contains the card face's geometric centre**, so a tap aimed at the middle of the card presses the chip rather than opening the row. Not tunable: the title line's centre sits ⁦11px⁩ from the card's on a ⁦69px⁩ face, so any title-line control that meets the floor covers it. Two things followed.
+
+1. The drawn inline inset of ⁦-8px⁩ became `ValueToken`'s own ⁦-2px⁩ — the chip is ⁦42px⁩ wide and already clears the floor on that axis, so the extra ⁦12px⁩ was taken from the card's own toggle for nothing.
+2. The condition that actually decides is `frontend/CLAUDE.md`'s — an expanded target may own its neighbourhood and may not cover a neighbouring **control** — and it holds: the badge, the `⋯` and the chevron are at the face's two edges, and the only things under the block reach are read-only marks.
+
+**A mockup cannot find this, structurally**, and that is the part worth keeping: it can measure a target, but not what the target takes, because what it takes from is the app's own behaviour. `frontend/e2e/done-chip-undo.spec.ts` measures both with `elementFromPoint` — the reach walked out from the chip's centre until the document stops answering with it, and each other control on the face asked what is above it. Four specs, ~⁦110⁩ lines, and the ⁦45px⁩ now lives in a test rather than in a sentence nobody re-runs.
+
+### One thing the first e2e run got wrong about itself
+
+`getByRole('button', { name: t.actions.undoDone })` resolved **two** elements on a row with one control: an `aria-label` on a descendant feeds its ancestor's name-from-content, so the face `<button>` answers to `שחזור` too. It did with the ✓ circle as well — nothing regressed — but a count assertion that reads two where one control exists is not measuring what it claims. Counted by the label attribute instead.
+
+## And, on the way: the read no longer closes the card (ADR-0229 §4)
+
+Owner, on the same deployed build: _"when you click on it, it opens the event/booking details. It also closes the event card, and it shouldn't do it."_ §4 shipped the day before with the card closing, to stop documents/tasks/notes rendering twice — one copy per layer. That duplication is **behind the scrim and off one shared state**, i.e. invisible; what it cost is not: you go one level in to read a fact about the row you are looking at, and come back to a collapsed row. `onOpenRead` now opens the sheet and touches nothing else, and §4 is rewritten in place rather than annotated — it was also that ADR's own third fork, left open for the owner, and this answers it.

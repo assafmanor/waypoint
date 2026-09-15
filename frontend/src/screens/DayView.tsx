@@ -725,12 +725,13 @@ export function DayView() {
      *  gets `EventDetail`. The same branch `PlanDay` makes, which is what keeps the two day
      *  surfaces from answering one question differently.
      *
-     *  **And the card closes behind it.** The read is a sheet over a panel that is still open,
-     *  so documents, tasks and notes would otherwise render twice, once per layer. One line
-     *  here rather than a per-caller branch inside `DetailSheet`, which is the shape ADR-0094
-     *  is a retraction of. */
+     *  **And the card STAYS OPEN behind it** (§4, amended 2026-09-15 on the deployed build —
+     *  owner: _"it also closes the event card, and it shouldn't do it"_). It closed for one
+     *  release, to keep documents, tasks and notes from rendering twice, once per layer. That
+     *  duplication is invisible — it is behind a scrim, and both layers read the same state —
+     *  and what it cost is not: dismissing the read dropped you on a collapsed row and you
+     *  had to find your place again. A panel you opened is yours until you close it. */
     onOpenRead: (e) => {
-      setOpenId(null);
       const booking = e.bookingId ? bookings.find((b) => b.id === e.bookingId) : undefined;
       if (booking) setDetailTarget(booking);
       else setEventDetail(e);
