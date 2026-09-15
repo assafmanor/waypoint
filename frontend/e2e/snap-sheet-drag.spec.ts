@@ -1,15 +1,15 @@
 // **THE SHEET'S BODY AS A DRAG TARGET, MEASURED IN A REAL ENGINE** (ADR-0122 §4's 2026-09-15
-// amendment, which replaced the 2026-08-06 one and was corrected the same day).
+// amendment, in its third reading).
 //
 // The 2026-08-06 rule — "the body drags while it cannot scroll" — carried its whole claim in one
 // CSS attribute, so this spec asserted `touch-action` and nothing else. The rule now is asked of
-// the LIST: **can it still scroll the way the finger is going?** If yes, the gesture is the
-// browser's pan, and the sheet takes over in the same gesture the moment the list runs out. If
-// no, the sheet moves from the first pixel. Whether Chromium really keeps its pan when the hook
-// stands down, really never starts one when the hook claims, and really keeps delivering the
-// touch stream through its own pan so the hand-off can ride it — those are facts only a real
-// engine with real touch input can report. jsdom has no scroll, no pan and no `touch-action`, so
-// `SnapSheet.test.tsx` covers the decision and this covers the browser.
+// the LIST, once, when the finger has a direction: **can it still scroll that way?** If yes, the
+// gesture is the browser's pan for its whole life, to the list's end and past it. If no, the
+// sheet moves from the first pixel. Whether Chromium really keeps its pan when the hook stands
+// down, really never starts one when the hook claims, and really moves nothing when a pan runs
+// the list out under the finger — those are facts only a real engine with real touch input can
+// report. jsdom has no scroll, no pan and no `touch-action`, so `SnapSheet.test.tsx` covers the
+// decision and this covers the browser.
 //
 // Driven through CDP touch for the reason `e2e/touch.ts` states: `page.touchscreen` can only tap.
 // The component is the REAL one, mounted by `snap-sheet-harness.html` — the app cannot host it
@@ -114,21 +114,21 @@ test.describe('the sheet’s body as a drag target', () => {
     await expect(page.locator('.wp-snapsheet')).toHaveAttribute('data-view', 'full');
   });
 
-  // **The hand-off, in one gesture.** The list has 100px left to scroll from `half`; the finger
-  // travels 320. The first hundred are the browser's pan, and the sheet does not move; the
-  // rest is the sheet's, and it lands on `full`. Both facts are asserted: the list is AT its
-  // end, and the sheet moved anyway.
-  test('a long drag up scrolls the list to its end and then, in the same gesture, opens the sheet', async ({
+  // **The third reading, measured.** The list has 100px left to scroll from `half`; the finger
+  // travels 320. Every pixel is the browser's pan: the list ends up at its bottom and the sheet
+  // has not moved. Then a NEW swipe, with the list already there, opens it from the first pixel.
+  test('a long drag up scrolls the list to its end and stops there; the next swipe opens the sheet', async ({
     page,
   }) => {
     const bodyAtHalf = HALF - 52;
     const cdp = await mount(page, 'half', bodyAtHalf + 100);
     await drag(cdp, PRESS_Y.half, -320);
-    await expect(page.locator('.wp-snapsheet')).toHaveAttribute('data-view', 'full');
     const m = await read(page);
-    // The list ran out first: it is at its bottom for the body it had when it did.
-    expect(m.scrollTop).toBeGreaterThanOrEqual(0);
-    expect(m.scrollable).toBe(false);
+    expect(m.view).toBe('half');
+    expect(m.scrollable).toBe(true);
+    expect(m.scrollTop).toBeGreaterThanOrEqual(99);
+    await drag(cdp, PRESS_Y.half, -240);
+    await expect(page.locator('.wp-snapsheet')).toHaveAttribute('data-view', 'full');
   });
 
   test('at half with the list at its top, a drag down shrinks the sheet', async ({ page }) => {
@@ -165,16 +165,18 @@ test.describe('the sheet’s body as a drag target', () => {
     expect(m.scrollTop).toBeGreaterThan(0);
   });
 
-  // …and a long one reaches the top and then, in the same gesture, closes the sheet.
-  test('a long drag down scrolls a list to its top and then, in the same gesture, shrinks the sheet', async ({
+  // …and a long one reaches the top and stops there; the next swipe down closes the sheet.
+  test('a long drag down scrolls a list to its top and stops there; the next swipe shrinks the sheet', async ({
     page,
   }) => {
     const cdp = await mount(page, 'full');
     await setScroll(page, 80);
     await drag(cdp, PRESS_Y.full, 320);
-    await expect(page.locator('.wp-snapsheet')).toHaveAttribute('data-view', 'half');
     const m = await read(page);
+    expect(m.view).toBe('full');
     expect(m.scrollTop).toBe(0);
+    await drag(cdp, PRESS_Y.full, 220);
+    await expect(page.locator('.wp-snapsheet')).toHaveAttribute('data-view', 'half');
   });
 
   // The handle row is the target that works at every stop, whatever the list is doing.
