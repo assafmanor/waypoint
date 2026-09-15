@@ -853,6 +853,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     leave && shownNext
       ? { kind: TIME_FACT.LEAVE_BY, atMs: leave.leaveByMs, zone: tz, of: shownNext.id }
       : null;
+  /** **The leave-by has gone by and nothing has withdrawn it** — the gap's `due-out` gate (the
+   *  2026-09-15 amendment to ADR-0211 §8), and deliberately the same condition the red tile below
+   *  prints on rather than a second one beside it. Two reads of one departure is how the title
+   *  and the tile would come to disagree again, which is the defect being fixed. */
+  const leavePassed = !!leave && !leaveAnswered && leave.phase === LEAVE_PHASE.PASSED;
   const leaveTile =
     leave && !leaveAnswered && leave.phase !== LEAVE_PHASE.AHEAD
       ? {
@@ -1361,6 +1366,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     // exists to refuse.
     ...(travelPrev.event && travelPrev.event.id === wokeIn?.id ? { wokeIn: travelPrev.event } : {}),
     onWay: onWayToNext,
+    leavePassed,
   });
   // ── TOMORROW, WHEN TODAY'S PLAN IS FINISHED (ADR-0214) ─────────────────────
   // **The clock's day plus one, never `activeDate` plus one.** Swiping the day strip must not

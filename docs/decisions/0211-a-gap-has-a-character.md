@@ -69,6 +69,63 @@ something you can still miss, and the two answers disagree. On a trip whose zone
 the traveller currently is, the arrival night compounds it. That is a question about what counts as
 a day having content, and it belongs to ADR-0164/0054's boundary rather than to this amendment.
 
+## Amendment (2026-09-15) — §8 refused a title state, and at a PASSED leave-by it was wrong to
+
+**Reported from a device at ⁦11:16⁩, with a screenshot:** _"I feel like it shouldn't say that we have
+free time if we're late."_
+
+The card behind it: nothing running, `Dyrhólaey` at ⁦11:30⁩ as `הבא בתור`, and the countdown tile in
+`--miss` red reading `12 · דקות באיחור · ליציאה`. Two inches above it, the now-slot read
+`פנוי · זמן חופשי`.
+
+**That is this file's own header defect, one state further along.** The opening screenshot was the
+lifted hero saying `זמן חופשי` in its title while its journey line, ⁦40px⁩ below, said
+`נסיעה · בדרך`. This is the same card, the same slot, and the contradicting line is now the tile.
+`open` fires because there IS something later today — which is true, and stopped being the whole
+truth the moment the departure into it went by.
+
+**§8 named this state and refused it**, in two sentences that are each half right:
+
+> **No separate "about to leave" state.** The countdown already swaps to the leave-by (ADR-0206
+> §Z1). A title state would say it twice, and would turn a passed clock into a claim about a person.
+
+1. **"Would say it twice" holds for `LIVE`, and that arm is unchanged.** With the departure still
+   ahead of you the gap IS free time, and the tile is the slot carrying the urgency. A sixth
+   character there would be the second printing §8 named.
+2. **At `PASSED` it is not a second printing, it is the opposite one.** The cost §8 weighed was
+   redundancy; what shipped was contradiction, and ADR-0207/0208 rank those differently — the board
+   may be quiet about a thing, it may not say the reverse of what it says ⁦100px⁩ lower.
+3. **"A claim about a person" is a constraint on the WORDS, not a veto on the state.**
+   `זמן לצאת` is a claim about the clock, in the register `זמן היציאה עבר` already uses on this
+   card. `אתם באיחור` and `יוצאים` remain refused, for §Z5 M4's reason, which has not weakened.
+
+So `due-out` joins the closed set as its second member, and §8's bullet now reads as a refusal of
+the `LIVE` arm alone.
+
+**What it stands on is the tile's own condition, not a second one.** Home passes
+`leavePassed = leave.phase === PASSED && !leaveAnswered` — the boolean that already decides the red
+tile. A `בדרך` mark or an `arrived`/`en-route` fix withdraws the title exactly as it withdraws the
+tile (ADR-0207), §AJ2's clamp keeps it off a departure nobody could have made (ADR-0206 §AJ3), and
+two reads of one departure is precisely how the title and the tile came to disagree in the first
+place.
+
+**Order: second, above `at-the-stay`.** For `on-the-way`'s own reason one line up — the leave-by is
+the live question of the next thirty minutes, where `at-the-stay` and `open` are both statements
+about a day. Late out of a hotel at ⁦05:40⁩ is late, not `בוקר`.
+
+**It carries the band and does not spend it**, which is the 2026-09-01 amendment applied rather than
+excepted: `band` is a fact about the hour, so it is set (and `gapDrawsDayRail` still takes the rail
+off at ⁦05:40⁩), but the label is carrying real information and the hour would displace it — the same
+reason `day-done` and `empty-day` keep `היום`.
+
+**And it does not wear teal.** It shares `on-the-way`'s label, not its costume: `כרגע · זמן לצאת`
+becomes `כרגע · בדרך` the moment somebody presses the mark, one word steady and the title moving
+from the question to the answer. Teal is "where you are" (rule 4), and where they are is the one
+thing this state is waiting to find out.
+
+**No new control, no new number, no layout change** — a sixth member on a keyed record, two words,
+and one boolean the screen already held.
+
 ## Context
 
 The board's now-slot printed `זמן חופשי` in a gap. It was not a claim anybody decided to make: it
@@ -111,7 +168,7 @@ derives the character **once** and hands the same `BoardGap` to both; `BoardGapS
 from `Board.tsx` and imported by `HeroLift`, the same path `DayRail` and `BoardCountdown` already
 take. A second copy of these two lines is exactly how §S's defect comes back.
 
-### 3. The closed set — five characters, first match wins
+### 3. The closed set — five characters, first match wins (six since 2026-09-15)
 
 Each stands on something already in the code. Nothing here is a guess about a person, and nothing
 needs a field the app does not store.
@@ -119,6 +176,7 @@ needs a field the app does not store.
 | character     | stands on                                                      | label · title                                                                                                      |
 | ------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `on-the-way`  | the `בדרך` device mark (`lib/on-way.ts`)                       | `כרגע` · `בדרך`                                                                                                    |
+| `due-out`     | the leave-by has passed and nothing withdrew it (2026-09-15)   | `כרגע` · `זמן לצאת`                                                                                                |
 | `at-the-stay` | `travelOrigin → wokeIn` **and** the clock outside `DAY_WINDOW` | `לילה` / `בוקר` · the stay's name                                                                                  |
 | `day-done`    | no `next` **on today's date**, on a day that had events        | `היום` · `סוף היום`                                                                                                |
 | `empty-day`   | the clock's day holds no timed event at all                    | `היום` · `יום פנוי`                                                                                                |
@@ -199,6 +257,9 @@ new way in. `אחר כך` stays one quiet line that has stopped stopping at midn
   hero growing into it competes with something already shipped.
 - **No separate "about to leave" state.** The countdown already swaps to the leave-by (ADR-0206
   §Z1). A title state would say it twice, and would turn a passed clock into a claim about a person.
+  **Amended 2026-09-15 — this now refuses the `LIVE` arm only.** Once the leave-by has PASSED the
+  title was not saying it twice but saying the reverse of it, which is `due-out`. See the amendment
+  at the top.
 - **`סוף היום` in both slots on the trip's last day** stays as it is — two ways of saying one
   nothing, and the only place that phrase now appears. Backlogged rather than fixed here.
 
@@ -229,7 +290,8 @@ new way in. `אחר כך` stays one quiet line that has stopped stopping at midn
   reads LTR within itself, and ADR-0118 is about a run in the _middle_. The probe ships as a
   measurement row in the mockup.
 - **`ישנים` as the night title.** A claim about a person with no sensor behind it.
-- **A separate member for "about to leave".** §8.
+- **A separate member for "about to leave".** §8 — **and half of this was reversed on 2026-09-15**:
+  it stands for a leave-by still ahead and does not for one already passed.
 - **Two `at-the-stay` members** instead of one with a band. The stay is the same fact at ⁦02:40⁩ and
   ⁦06:40⁩; only the hour differs, and an hour is not a character.
 

@@ -34,6 +34,7 @@ const base: GapCharacterInput = {
   today: TODAY,
   dayHasEvents: true,
   onWay: false,
+  leavePassed: false,
 };
 
 describe('gapCharacter', () => {
@@ -55,6 +56,46 @@ describe('gapCharacter', () => {
     // state — it is a stale key. Falling through is what keeps it from claiming a journey.
     it('but a mark with no next is not a journey', () => {
       const read = gapCharacter({ ...base, next: undefined, onWay: true });
+      expect(read.kind).toBe(GAP_CHARACTER.DAY_DONE);
+    });
+  });
+
+  // The 2026-09-15 amendment to §8: reported from a device at ⁦11:16⁩, where the title said
+  // `פנוי · זמן חופשי` over the card's own red `12 דקות באיחור ליציאה`.
+  describe('due out — the gap that is not free any more', () => {
+    it('a passed leave-by takes the gap out of `open`', () => {
+      const read = gapCharacter({ ...base, leavePassed: true });
+      expect(read.kind).toBe(GAP_CHARACTER.DUE_OUT);
+      expect(gapWords(read).title).toBe(t.board.gap.dueOut.title);
+    });
+
+    it('and the words no longer contradict the tile beside them', () => {
+      expect(gapWords(gapCharacter({ ...base, leavePassed: true })).title).not.toBe(
+        t.board.freeTitle,
+      );
+    });
+
+    it('`בדרך` still wins — the person answered the question the departure was asking', () => {
+      const read = gapCharacter({ ...base, leavePassed: true, onWay: true });
+      expect(read.kind).toBe(GAP_CHARACTER.ON_THE_WAY);
+    });
+
+    it('and it outranks the bed: late out of a hotel at 05:40 is late, not `בוקר`', () => {
+      const read = gapCharacter({ ...base, hour: 5, wokeIn: hotel, leavePassed: true });
+      expect(read.kind).toBe(GAP_CHARACTER.DUE_OUT);
+    });
+
+    // The band belongs to every arm (the 2026-09-01 amendment), so the rail still comes off at
+    // ⁦05:40⁩ — what this arm declines to do is SPEND it on a label carrying real information.
+    it('carries the band without printing it', () => {
+      const read = gapCharacter({ ...base, hour: 5, leavePassed: true });
+      expect(read.band).toBe(NIGHT_BAND.MORNING);
+      expect(gapDrawsDayRail(read)).toBe(false);
+      expect(gapWords(read).label).toBe(t.board.gap.dueOut.label);
+    });
+
+    it('a passed leave-by with nothing to be late FOR is not a state', () => {
+      const read = gapCharacter({ ...base, next: undefined, leavePassed: true });
       expect(read.kind).toBe(GAP_CHARACTER.DAY_DONE);
     });
   });

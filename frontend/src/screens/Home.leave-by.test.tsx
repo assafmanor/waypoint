@@ -508,6 +508,45 @@ describe('Home — the board counts to the leaving (ADR-0206 §Z1)', () => {
     expect(row.textContent).toContain(t.actions.onWay);
     expect(row.textContent).not.toContain('עבר');
   });
+
+  // **THE TITLE AND THE TILE ARE ABOUT ONE DEPARTURE** (the 2026-09-15 amendment to ADR-0211 §8).
+  // Reported from a device at ⁦11:16⁩: the now-slot said `פנוי · זמן חופשי` while the tile ⁦100px⁩
+  // below it said `12 דקות באיחור ליציאה` in red. §8 had refused a title state for the LIVE arm,
+  // where the tile would merely say it twice — at PASSED it is not a repetition, it is the
+  // opposite. Only observable here, because the words are the component's and the gate is Home's.
+  describe('and the words above it stop saying free time', () => {
+    const title = () => document.querySelector('.wp-board-now-title')?.textContent;
+
+    it('a passed leave-by takes `זמן חופשי` off the board', () => {
+      tripEvents = [museum, dinner(15)];
+      travelSeconds = 20 * 60;
+      show();
+      expect(value()).toBe('10');
+      expect(unit()).toBe(lateUnit(10));
+      expect(title()).toBe(t.board.gap.dueOut.title);
+      expect(document.querySelector('.wp-board')?.textContent).not.toContain(t.board.freeTitle);
+    });
+
+    // §8's own refusal, kept: with the departure still ahead of you the gap IS free, and the
+    // tile is the slot carrying the urgency. A title here would be the second printing §8 named.
+    it('but a leave-by still to come leaves the gap free', () => {
+      tripEvents = [museum, dinner(30)];
+      travelSeconds = 20 * 60;
+      show();
+      expect(value()).toBe('5');
+      expect(title()).toBe(t.board.freeTitle);
+    });
+
+    // The same withdrawal the tile already takes (ADR-0207), reaching the title through one
+    // condition rather than a second one beside it.
+    it('and `בדרך` moves it on to the answer', () => {
+      tripEvents = [museum, dinner(15)];
+      travelSeconds = 20 * 60;
+      markOnWay('t1', 'dinner');
+      show();
+      expect(title()).toBe(t.board.gap.onTheWay.title);
+    });
+  });
 });
 
 /** **Interpolated between the two REAL stops** above — the museum and the restaurant, ~⁦1.9km⁩
