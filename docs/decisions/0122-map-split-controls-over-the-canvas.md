@@ -489,6 +489,53 @@ sheet from the first pixel; and a long drag scrolls the list to its end and then
 gesture, lands the sheet on the next stop, in both directions. The old spec asserted `touch-action`
 and nothing else, because the old rule lived entirely in that attribute.
 
+### 6. The drag's cost, counted (owner, 2026-09-15: _"control feels a little slow and wonky"_)
+
+Two things in the first two builds were spending the main thread while a finger was down, and
+neither was the gesture itself.
+
+**A state update per move.** `SnapSheet` held the live height in React state, so every
+`pointermove` re-rendered the component — sixty times a second, on the screen whose parent already
+re-renders every second on the clock — to change one inline pixel value. [ADR-0200 §7](0200-a-day-steps-with-a-swipe-and-the-shell-stops-scrolling.md)
+had already refused exactly this for the day swipe (_"a state update per `pointermove` would
+re-render the heaviest screen in the app sixty times a second"_) and written its offset to a CSS
+custom property instead. The sheet now does the same: the height and the `dragging` class are
+written to the DOM by the gesture and cleared on release, React's `style` carries only `--snap-h`,
+and a clock re-render mid-drag touches neither. No batching of our own: Chrome delivers pointer
+and touch moves aligned to the frame, so one write per move is one write per frame.
+
+**A non-passive `touchmove` listener left on during the browser's pan.** The claim needs a
+non-passive listener (it is the `preventDefault`), and the first build kept that same listener
+bound while the list scrolled, to watch for the hand-off. A non-passive `touchmove` listener
+anywhere on the path makes the browser dispatch every move to the main thread and **wait for the
+handler to return before it scrolls** — so the list's own native pan was throttled to whatever the
+main thread was doing, which on this screen includes a re-render every second. The moment the
+verdict is the list's, the non-passive listener is swapped for a passive one that only reads; the
+pan is the compositor's again, as if nothing were listening.
+
+Measured with `e2e/snap-sheet-perf.spec.ts` (Chromium's own counters over a 60-move gesture in the
+real component, run by hand with `E2E_PERF=1`):
+
+| gesture                        | script, before → after | main thread, before → after | layouts |
+| ------------------------------ | ---------------------- | --------------------------- | ------- |
+| sheet drag, list at its bottom | 69ms → 14ms            | 158ms → 70ms                | 59 → 59 |
+| list pan, then hand-off        | 26ms → 7ms             | 56ms → 36ms                 | 18 → 22 |
+| pure list pan (the browser's)  | 5ms → 6ms              | 30ms → 31ms                 | 0 → 0   |
+
+The counters cannot see the passive listener's effect — it is scroll latency, not work — and the
+harness holds a trivial sheet, so the saving in the app, where the render per move reconciled the
+view toggle and the near chip too, is larger than the table.
+
+**What still costs, and what the next lever is.** The layouts did not move and are not meant to:
+a height that follows the finger is one layout per frame, and that layout is of the list the sheet
+holds. On a real day that list is twenty rows of cards with photographs, so the per-frame floor is
+theirs, and the release animation (`--t-base` on `height`) pays it for another seventeen frames.
+The lever that remains is the Map's own clock: `screens/Map.tsx` rebuilds the sheet's children as
+fresh JSX every second (`sheetList`, over `renderList(listRows, …)` whose `select` closes over the
+render), so a one-second tick mid-gesture reconciles the whole list under the finger. Memoising
+that against the clock is a `Map.tsx` change with its own latest-ref audit, not this one's, and is
+the backlog line this section leaves.
+
 ## The device pass, and what it owns
 
 **The stops cannot be honestly tuned without a phone, and this ADR does not pretend otherwise.** What is decided here is the _shape_: what the controls cost, where they live, how the stops are derived, and how the gesture behaves. The numbers printed above are the derivations' output on a measured 390×844 baseline — a starting point, not a calibration. Specifically the device pass owns:
