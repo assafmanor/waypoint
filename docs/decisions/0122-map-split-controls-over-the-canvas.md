@@ -278,6 +278,10 @@ two mechanisms and removed a trap.
 
 ### What it still does not do
 
+> **Superseded 2026-09-15** — the case below is now built; the rule that covers it is the
+> [2026-09-15 amendment](#amendment-2026-09-15--the-body-drags-when-the-list-cannot-use-the-gesture-that-way).
+> The paragraph stands as the record of why it was scoped out here.
+
 **A list that fills the sheet has no drag.** That case needs overscroll chaining — the list runs out
 of scroll and hands the gesture on — which is the genuinely hard problem above, and the one place a
 drag and a scroll really do compete. The handle row and the view toggle both still work there, so
@@ -366,6 +370,105 @@ only, like `✕`: folding from a neighbour would act on a card you are not looki
 with the sheet's own drag region two elements away (§4's amendment), which is the genuinely hard
 gesture problem this ADR already scoped out once. Two taps reach the same state and neither is
 ambiguous. Worth revisiting only if the caret measures as hard to find on a device.
+
+## Amendment (2026-09-15) — the body drags when the list cannot use the gesture that way
+
+> _"You could also drag the list view to change the mode as well and it works, but only if the list
+> isn't too long that it becomes scrollable. When scrollable, you can't drag the list to change the
+> mode (to list / half half / full map). I want to add support for that."_ — owner, 2026-09-15
+
+The 2026-08-06 amendment built the body drag for a list that fits and wrote the scrollable list off
+as _"the genuinely hard problem"_. The owner's report is that the gap is felt on every real day —
+a day with more than three or four stops is scrollable at `half`, so the body drag existed exactly
+where a list was short enough not to need it. This closes the gap, and the premise that made it
+look hard turns out to have been retired a month ago by another surface.
+
+### 1. The rule: up is the sheet's while it can grow; down is the sheet's while the list is at its top
+
+One sentence decides every press on the body, and it is the arbitration every native bottom sheet
+(Google Maps, Apple Maps, Material's `BottomSheetBehavior`) makes:
+
+| stop   | list scrolled to | finger UP                | finger DOWN          |
+| ------ | ---------------- | ------------------------ | -------------------- |
+| `half` | top              | **sheet** grows → `full` | **sheet** shrinks    |
+| `half` | below top        | **sheet** grows → `full` | list scrolls back up |
+| `full` | top              | list scrolls             | **sheet** shrinks    |
+| `full` | below top        | list scrolls             | list scrolls back up |
+
+Two things fall out of it that are worth saying plainly. **From `half` a drag up opens the list
+rather than scrolling it.** The list has the whole rest of the screen to grow into, and a list that
+scrolled inside a half-height port while that room sat empty above it is the failure the report
+describes. Nothing scrolls until the sheet is as tall as it gets. **And a list scrolled below its
+top owns the downward gesture at every stop.** The finger is asking to read what is above, and a
+sheet that closed instead would take the list away mid-read — so a drag down first brings the list
+to its top, and a second drag down closes the sheet. That two-gesture shape is what every web
+bottom sheet does (§4 below is the native single gesture, and why it is not built).
+
+The 2026-08-06 rule — the body drags while it cannot scroll — is this rule in the one case where
+both directions answer the same, so a list that fits behaves exactly as it did.
+
+### 2. The continuation: the travel the clamp refuses is handed to the list
+
+A drag up from `half` reaches the top stop with the finger still moving. The old drag clamped there
+and the rest of the travel went nowhere. Now it becomes the list's scroll — set from the press's
+own base, never by deltas, so nothing accumulates across frames the browser clamped — and coming
+back down unwinds that scroll before the sheet moves again. One gesture from `half` both opens the
+list and starts reading it, which is Android's nested-scroll feel; the release snaps the sheet as
+ever and leaves the scroll where the finger left it (no fling, since the browser never owned it).
+
+### 3. The mechanism, and why `touch-action` was the wrong premise
+
+The 2026-08-06 amendment reasoned from `touch-action`: it _"is what lets a drag be seen at all and
+is precisely what makes a list unscrollable, and the choice cannot be deferred to the first move
+either, because a browser will not hand a native pan back once it has started one"_. Both halves
+are true and neither is the constraint. **[ADR-0200 §9](0200-a-day-steps-with-a-swipe-and-the-shell-stops-scrolling.md)
+measured the third way for the day surface:** a non-passive `touchmove` listener that calls
+`preventDefault()` on the first move that means anything, _before_ Chrome's ~8px slop. The browser
+dispatches that `touchmove` cancelable and waits; prevented, it never starts the pan, and the pointer
+events keep flowing. Not prevented, it pans exactly as if no listener existed. So the decision
+**can** be deferred to the first move — the direction exists by then, and 4px of it is enough.
+
+`useSnapDrag` gains one option, `claim({ dx, dy })`, asked once at the slop; `false` stands the hook
+down for the rest of the gesture (nothing captured, nothing prevented). The body's `claim` is the
+table above plus an axis test — a sideways finger is a strip's or a text selection's, never the
+sheet's. The handle row passes no `claim` and is untouched. Two rules inside the hook are
+load-bearing and not tuning: **the move still under the slop is never prevented** (the spec makes a
+prevented first `touchmove` forfeit the whole touch's scrolling, so preventing early would take the
+list's scroll away from a gesture `claim` was about to hand it), and **once the gesture is ours
+every `touchmove` is prevented**, or the browser may start a pan mid-drag.
+
+What went with the old mechanism: the body's `data-drag` attribute, its `touch-action: none` rule,
+and the `ResizeObserver` on the body and its children that maintained it. One mechanism now covers
+the list that fits and the list that does not, where keeping both would have been the parallel copy
+root rule 8 exists to refuse.
+
+### 4. What this does not do, and why
+
+**A drag down on a scrolled list does not close the sheet in the same gesture** once the list
+reaches its top. That is the one direction where the browser owns the gesture — it started the pan,
+and its `touchmove`s arrive non-cancelable — so a JS takeover at `scrollTop === 0` would run
+underneath the browser's own overscroll (Android's stretch, iOS's rubber band) and fight it visibly.
+The two-gesture shape is what every web bottom sheet ships, and it is a backlog line rather than a
+gap: the honest build is a JS-driven scroll for the whole gesture, which is a different trade (no
+native momentum) and wants a device to weigh it.
+
+**And the claim is measured on Chromium only.** It rests on the browser leaving a `touchmove` still
+under our 4px slop cancelable — Chromium does, at its own ~8px — and on iOS Safari that hysteresis
+is not documented. If WebKit commits its pan on the first unprevented `touchmove`, a drag up from
+`half` on a scrollable list would sometimes scroll instead of growing the sheet: degraded, never
+broken, since the handle row keeps every stop reachable. The device pass owns the measurement, and
+the lever if it fails is a touch-only decide threshold under the slop, not a lower slop (the slop
+is what keeps a tap on a row from being read as a drag).
+
+### 5. Verification
+
+`SnapSheet.test.tsx` covers the decision (the table, the continuation, the axis test, and the three
+`touchmove` rules) in jsdom, where the scroll metrics are stubbed. **`e2e/snap-sheet-drag.spec.ts`
+now drives the REAL component with trusted CDP touch in Chromium** — mounted by
+`e2e/snap-sheet-harness.html` since the app cannot host the sheet without a canvas — and asserts
+the fact only an engine can report: a claimed gesture moves the sheet and the list does not pan, a
+declined one pans the list and the sheet does not move. The old spec asserted `touch-action` and
+nothing else, because the old rule lived entirely in that attribute.
 
 ## The device pass, and what it owns
 
