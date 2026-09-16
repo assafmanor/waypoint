@@ -1,6 +1,6 @@
 # 0224 — A transition is settled **on its own**
 
-**Status:** **Accepted and built 2026-09-12**, in one session with the design.
+**Status:** **Accepted and built 2026-09-12**, in one session with the design. **Amended and extended 2026-09-16** — the three hosts §4 did not count (see the amendment below).
 **Date:** 2026-09-12
 **Mockup:** [`mockups/a-transition-is-settled-on-its-own-v1.html`](../../mockups/a-transition-is-settled-on-its-own-v1.html)
 **Session note:** [`planning/2026-09-12-a-transition-is-settled-on-its-own.md`](../planning/2026-09-12-a-transition-is-settled-on-its-own.md)
@@ -62,11 +62,13 @@ Absent means what it means everywhere in this app: **nobody has answered** (0117
 | `carPickup`       | `איסוף הרכב`    | `אספנו`         |
 | `carDropoff`      | `החזרת הרכב`    | `החזרנו`        |
 
-One entry per key in `t.glance.transition`'s own shape, so a ninth transition is a one-line addition rather than a decision (rule 8). The other arm is **one word for every edge** — `לא קרה` — because what it says does not vary: this edge is not going to happen. A stop keeps `היינו` / `דילגנו` unchanged; nothing about the Map's reference row, the day card's prompt or Plan's archive chooser moves.
+One entry per key in `t.glance.transition`'s own shape, so a ninth transition is a one-line addition rather than a decision (rule 8). The other arm is **one word for every edge** — `לא קרה` — because what it says does not vary: this edge is not going to happen. A **stop** keeps `היינו` / `דילגנו` unchanged, wherever it is shown — the day card's prompt and Plan's archive chooser host nothing else and do not move at all. (This first read "nothing about the Map's reference row … moves", which was true of the build and wrong as a rule: that row shows a span's EDGE as often as a stop. See the 2026-09-16 amendment.)
 
 > `לא רלוונטי` was drafted first and rejected: it talks about the **row**, and in a pair whose other arm is a record of the world (`יצאנו`), both halves have to be. That is the argument `he.ts` already writes down for why the skip arm reads `דילגנו` and not `דלג`.
 
 ### 4. Two hosts, both already built
+
+> Two of six, as it turned out. Three more hosts of this control show a span's edge and were left reading `status`; the 2026-09-16 amendment below wires them and says why counting them here would have been the whole job.
 
 - **The lifted hero's `הבא בתור` block** — `<Settle point={next} />` after `<Tasks />`, the same part order the lead point uses, at the `board` density 0160 §11 built for this card. Measured: **+51px** on a 255px scrolling card, **+70px** with §6's label. **And zero new CSS** — the mockup proposed one rule for the block's own top padding on the reasoning that a hand-assembled block inherits none of `.hero-point`'s, and the build showed it was not needed at all: `Settle` returns a `.hero-part`, which carries that padding itself. One rule ships from this whole ADR, and it is §6's.
 - **The day's `TransitionRow`** — the `NOT_BEFORE` gate drops; **every** edge is settleable, at the shipped `compact` density. Measured: **0px** of row height and 183px of title left at 360px, because `.transition-row .wp-settle.compact` already exists in `screens.css` and the row already reserved that slot for a floor.
@@ -102,6 +104,40 @@ Three things, all of them the same shape: a rule that was half-stated because on
 3. **The undo had to carry the edge.** `UndoDescriptor`'s `status` kind stored only the previous value, and with two columns that is ambiguous — withdrawing a check-out mark would have written `status` and claimed something about the check-in. The descriptor, the outbox op, the reducer action and the REST call all take the same optional `edge`, absent everywhere it was absent before, so **an op already queued in a user's outbox replays unchanged**.
 
 **One shipped test asserted the rule this ADR reverses** (`TransitionRow.test.tsx`: _"does NOT settle a ceiling or a window — both expire by their own clock"_). It is rewritten as an assertion of the new rule with the old one's reasoning kept, because that reasoning was right about the thing it named and wrong about the surface it was applied to.
+
+## Amendment, 2026-09-16 — the hosts this ADR did not reach
+
+**Owner, three days after the build:** _"When you check in or out, you can mark `היינו`. Marking that makes it `היינו` for both check in and out. I want to be able to mark as checked in / checked out separately (same for other similar stuff like picked up / dropped off etc.)"_
+
+Which is this ADR, reported as still broken — and it was, on **three surfaces it never counted**. §4 named "two hosts, both already built" and stopped there; `SettleControl` has six. Nothing about §1 or §3 changes here. What changes is how many places obey them.
+
+### A1. The three hosts, and what each one already knew
+
+Every one of them had the edge in hand and spent it on something else:
+
+| host                                   | had                                                 | did with the settle pair               |
+| -------------------------------------- | --------------------------------------------------- | -------------------------------------- |
+| `StayRow` (the day's two bookend rows) | which end of the day the row is (ADR-0209 §1)       | read and wrote `status`, asked `היינו` |
+| `UnplacedCommitment`                   | `row.edge` — it picks the `צ׳ק-אין` above the title | read and wrote `status`, asked `היינו` |
+| The Map's reference row                | `ref.edge` — it picks the row's word and its zone   | read and wrote `status`, asked `היינו` |
+
+So a hotel's `צ׳ק-אין` and `צ׳ק-אאוט` rows on the map were one switch with two handles, and on the day the row for the hotel you left this morning and the row for the one you sleep in tonight were the same. The owner's `picked up / dropped off` is the same booking one category over: a hire is collected and returned at the same counter, so both of **its** references are on one place too.
+
+**The bookend row's gate was the worst of the three**, because it was a predicate about the _other_ edge: `edgeOutlivesItsInstant(stay, 'start')`. That is §4's "a rule about a count applied to a control" — the same mistake `TransitionRow` had and this ADR fixed — surviving on the row §4 did not look at. It also meant the app offered an answer on **a middle night**, which is not an edge of anything. The gate is now the day's own edge (`placement.stayEdges`, which `stayBound` was already reading one line up): a day that is neither end of the stay asks nothing.
+
+### A2. `place-usage.ts` carried the conflation one layer down
+
+`spanDays` read the outcome **once** off `status` and stamped it on every day of the span — while computing that day's own `edge` two lines below. So a hotel's pin went green the morning you arrived and `מה נשאר` stopped counting a departure nobody had made. Each day now asks `edgeStatusOf` about the end it is; a strictly-middle night has no edge, so it keeps the opening answer, which is what it always had and the only thing on offer.
+
+This is the half that decides the Map row's **emphasis**, so without it the reference row would have shown the right mark under the wrong `asking` wash.
+
+### A3. One resolution, because that is how three hosts drifted
+
+The pairing of "this edge's words" with "this edge's answer" existed only inside `TransitionRow`, written out by hand. That is exactly the shape rule 8 is about, and the drift it predicts is what happened. It is `edgeSettleProps(event, edge)` in `lib/transitions.ts` now, and a host joins by spreading it.
+
+### A4. What did not change
+
+The words are §3's table, unchanged and unextended — `נכנסנו` / `יצאנו` / `אספנו` / `החזרנו` are what the owner's own examples name. No new string, no new density, no new field: `endStatus` has been stored, synced and undoable since the build. Nothing about `SettleControl`'s marks, hues, record or undo varies, and a stop still keeps `היינו` / `דילגנו`.
 
 ## What this does not settle
 

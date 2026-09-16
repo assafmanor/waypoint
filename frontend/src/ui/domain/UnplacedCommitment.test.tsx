@@ -110,6 +110,46 @@ describe('UnplacedCommitment', () => {
     expect(onUndo).toHaveBeenCalledTimes(1);
   });
 
+  // **THE ROW'S EDGE REACHES THE PAIR** (ADR-0224 §1/§3, wired 2026-09-16). `row.edge` has
+  // picked the word ABOVE the title since this row was born; below it the pair went on reading
+  // the span's `status` and asking `היינו`, so a car return wore its pick-up's tick and
+  // answering it wrote the pick-up. One row, two ends, two answers.
+  it('answers for its own end of the span, in that end’s words', () => {
+    const hire = (over: Partial<TripEvent> = {}) =>
+      ev({
+        id: 'hire',
+        title: 'Blue Car Rental',
+        category: 'transport',
+        icon: '🚗',
+        endDate: '2026-07-11',
+        ...over,
+      });
+    const collected = { status: EVENT_STATUS.DONE };
+
+    const { container } = renderRow({
+      row: { event: hire(collected), labelKey: 'carDropoff', edge: 'end' },
+    });
+    // The pick-up is answered and the RETURN is not, so this row is still asking — and asking
+    // `החזרנו`, which is the one word that is true of this end (`היינו` is not).
+    expect(container.querySelector('.wp-settle-tag')).toBeNull();
+    expect(container.querySelector('.wp-settle-btn.done')!.getAttribute('aria-label')).toBe(
+      t.actions.transitionDid.carDropoff,
+    );
+
+    cleanup();
+
+    const returned = renderRow({
+      row: {
+        event: hire({ ...collected, endStatus: EVENT_STATUS.SKIPPED }),
+        labelKey: 'carDropoff',
+        edge: 'end',
+      },
+    }).container;
+    expect(returned.querySelector('.wp-settle-tag.miss')!.textContent).toContain(
+      t.actions.transitionNotHappened,
+    );
+  });
+
   it("drops the whole control when no handlers are given — Plan mode's posture", () => {
     // ADR-0171 §10e. Plan settles through a sheet off the row menu and never inline, and
     // `נותרו היום` is a Trip-mode number — so in Plan this row is the same STATEMENT with

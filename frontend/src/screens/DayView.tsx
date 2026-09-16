@@ -13,7 +13,6 @@ import {
   EVENT_KIND,
   EVENT_SOURCE,
   EVENT_STATUS,
-  edgeOutlivesItsInstant,
   isAmbient,
   isExactEdge,
   isRoutableMode,
@@ -184,7 +183,6 @@ import {
 } from '../lib/now-line';
 import { NowMarker } from '../ui/domain/NowMarker';
 import { StayRow } from '../ui/domain/StayRow';
-import { type SettleOutcome } from '../ui/domain/SettleControl';
 import { UnplacedCommitment } from '../ui/domain/UnplacedCommitment';
 import { bookingWhen } from '../lib/booking-journey';
 import { hoursPhrase, remainingPhrase } from '../lib/duration';
@@ -197,7 +195,7 @@ import {
 import { CODE_PREFIX, DELAY_STEP_MINUTES, MS_PER_MINUTE, SHELF_POOL_CAP } from '../constants';
 import { ambientSpanLabel, dayBookendStays, isStayRow } from '../lib/glance';
 import { autoIsolate } from '../lib/bidi';
-import { edgeSentence } from '../lib/transitions';
+import { edgeSentence, edgeSettleProps } from '../lib/transitions';
 import { t } from '../i18n/he';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
 import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
@@ -1332,38 +1330,52 @@ export function DayView() {
   const arriveJourney = day.arrive ? journeyFor(day.arrive.from, day.arrive.to) : null;
   const homeJourney = day.home ? journeyFor(day.home.from, day.home.to) : null;
 
+  /** **Which END of the stay this day is, when it is one at all** — `placement.stayEdges` is
+   *  exactly the day's transition for a stay that got a bookend row instead of a list row
+   *  (ADR-0209 §1), so a check-out day answers `end`, a check-in day `start`, and a middle
+   *  night answers nothing. Both the row's sentence and its settle pair ask it, which is what
+   *  stops them describing two different ends of one booking. */
+  const stayEdgeEntry = (stay: TripEvent) =>
+    placement.stayEdges.find((e) => e.event.id === stay.id);
+
   /** **The stay's own bound, in the words the strip already used** (ADR-0209 §1) — `edgeSentence`
    *  where the day is an edge of it, `ambientSpanLabel` where it is not. Both sentences existed in
    *  the band this row replaces, so nothing is reworded: `placement.stayEdges` is that edge, kept
    *  precisely so its sentence survives leaving the list. */
   const stayBound = (stay: TripEvent): string | undefined => {
-    const edge = placement.stayEdges.find((e) => e.event.id === stay.id);
+    const edge = stayEdgeEntry(stay);
     return edge
       ? edgeSentence(edge, transitionZoneProps(edge, zoneCtx).zone)
       : ambientSpanLabel(stay, activeDate);
   };
 
-  /** **The settle pair, on every check-in the clock cannot answer** — inherited from the edge row
-   *  this replaces, and load-bearing rather than parity: `glance.ts` keeps such an edge in
+  /** **The settle pair, on the edge this day actually is** — inherited from the edge row this
+   *  replaces, and load-bearing rather than parity: `glance.ts` keeps such an edge in
    *  `נותרו היום` until it is settled, because 15:01 does not mean anybody checked in (ADR-0171
-   *  §6). A ceiling expires by its own clock and needs none.
+   *  §6). Gated on the archive like every other write (ADR-0029).
    *
-   *  **A WINDOW is not a ceiling, and reading it as one is the bug this fixed** (owner,
-   *  2026-09-15): ADR-0184 §6 made the count hold a windowed check-in to its ceiling, this gate
-   *  kept asking for `not-before`, and a guesthouse booked ⁦17:00–22:00⁩ therefore read
-   *  `נותר דבר אחד היום` at ⁦20:05⁩ with no control anywhere on the day able to clear it. The two
-   *  now ask `edgeOutlivesItsInstant` — one predicate, so the row and the number cannot drift
-   *  apart again. Gated on the archive like every other write (ADR-0029). */
+   *  **The gate used to be a PREDICATE about the check-in, and that is the defect** (owner,
+   *  2026-09-16: _"marking that makes it היינו for both check in and out"_). It asked
+   *  `edgeOutlivesItsInstant(stay, 'start')` and then read and wrote `status` — so the row for
+   *  the hotel you left this morning and the row for the one you sleep in tonight were the same
+   *  switch, and on a middle night the app offered an answer to a transition the day does not
+   *  have. ADR-0224 §1 already stores the two ends apart and §4 already dropped this exact gate
+   *  on `TransitionRow` (a rule about the COUNT applied to a CONTROL); the bookend row simply
+   *  never got either. Now the day's own edge decides all three: whether to ask, in which words,
+   *  and which field the tap writes.
+   *
+   *  A window's `נותרו היום` report (fixed 2026-09-15 by widening the old gate past
+   *  `not-before`) stays fixed, and by a stronger rule: every edge is settleable now, so no
+   *  meaning can fall outside it. */
   const staySettle = (stay: TripEvent) => {
-    if (readOnly || !edgeOutlivesItsInstant(stay, 'start')) return {};
+    const entry = stayEdgeEntry(stay);
+    if (readOnly || !entry) return {};
+    const { edge } = entry;
     return {
-      outcome:
-        stay.status === EVENT_STATUS.DONE || stay.status === EVENT_STATUS.SKIPPED
-          ? (stay.status as SettleOutcome)
-          : undefined,
-      onDone: () => verbs.done(stay),
-      onSkip: () => verbs.skip(stay),
-      onUndo: () => verbs.restore(stay),
+      ...edgeSettleProps(stay, edge),
+      onDone: () => verbs.done(stay, edge),
+      onSkip: () => verbs.skip(stay, edge),
+      onUndo: () => verbs.restore(stay, edge),
     };
   };
 
@@ -1570,9 +1582,9 @@ export function DayView() {
               row={row}
               tz={dayZone}
               bookings={bookings}
-              onDone={() => verbs.done(row.event)}
-              onSkip={() => verbs.skip(row.event)}
-              onUndo={() => verbs.restore(row.event)}
+              onDone={() => verbs.done(row.event, row.edge)}
+              onSkip={() => verbs.skip(row.event, row.edge)}
+              onUndo={() => verbs.restore(row.event, row.edge)}
               onOpen={setDetailTarget}
             />
           ))}

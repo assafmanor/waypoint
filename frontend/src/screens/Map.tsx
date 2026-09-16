@@ -38,7 +38,6 @@ import {
   exceedsTravelCeiling,
   isRoutableMode,
   legTravelMode,
-  EVENT_STATUS,
   matchesAnyTerm,
   placeCredit,
   type Booking,
@@ -141,7 +140,7 @@ import { daySelectTarget, useBackLayer, withBookingFormReturn } from '../state/n
 import { useNoteHostWayIn } from '../state/note-host-nav';
 import { useNavigate } from 'react-router-dom';
 import { dayLabel, dayWindowMs, formatTime } from '../lib/time';
-import { eventEdgeTransition } from '../lib/transitions';
+import { edgeSettleProps, eventEdgeTransition } from '../lib/transitions';
 import { connectionStopKey, connectionStops } from '../lib/day-joins';
 import { bookingWhen } from '../lib/booking-journey';
 import { shortTitleText } from '../lib/route-title';
@@ -196,7 +195,7 @@ import { DocumentMark } from '../ui/domain/DocumentMark';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
 import { KNOWLEDGE_DENSITY, PlaceKnowledge } from '../ui/domain/PlaceKnowledge';
 import { RowManageSheet } from '../ui/domain/ListRow';
-import { SettleControl } from '../ui/domain/SettleControl';
+import { SettleControl, type SettleWords } from '../ui/domain/SettleControl';
 import { ConfirmDialog } from '../ui/primitives/ConfirmDialog';
 import { EmptyState, StatusBanner } from '../ui/feedback';
 import { Icon } from '../ui/Icon';
@@ -234,7 +233,13 @@ interface RefEntry {
    *  block already enumerates the references one per row, each labelled in its own words, so
    *  hanging the verb here needs no disambiguator at all. */
   settle?: {
-    /** What a human already said, if they did. Drives tag-plus-undo instead of the pair. */
+    /** **The words this reference's pair asks in** (ADR-0224 §3) — `נכנסנו` / `יצאנו` on a
+     *  stay's two references, `אספנו` / `החזרנו` on a hire's. Absent on a stop, which keeps
+     *  `SettleControl`'s own `היינו` / `דילגנו`. The row already names which end it is
+     *  (`eventEdgeTransition`, in its label); this is that same fact reaching the control. */
+    words?: SettleWords;
+    /** What a human already said **about this edge**, if they did (ADR-0224 §1). Drives
+     *  tag-plus-undo instead of the pair. */
     outcome?: PinOutcome;
     /** The clock has passed it and nobody answered — ADR-0117 §1's third state, and the one
      *  the emphasis is for. Not a gate on the controls: **every** event is settleable here
@@ -2753,12 +2758,14 @@ export function MapView() {
         // in its own — the same resolution the row's meta line makes one line up.
         const zones = event && eventZones(event, zoneCtx);
         const zone = zones && (ref.edge === 'end' ? zones.endZone : zones.startZone);
-        const settled =
-          event?.status === EVENT_STATUS.DONE
-            ? ('done' as const)
-            : event?.status === EVENT_STATUS.SKIPPED
-              ? ('skipped' as const)
-              : undefined;
+        // **THIS END of the booking, not the booking** (ADR-0224 §1, wired here 2026-09-16).
+        // A stay lists twice on its hotel — `צ׳ק-אין` and `צ׳ק-אאוט`, and a hire twice on its
+        // counter — and both rows read the span's `status`, so answering either one ticked both
+        // and said `היינו` about a check-out. `ref.edge` is already in hand: it picks the row's
+        // own word and its own zone two lines up, and had simply never reached the verb.
+        const settleEdge = ref.edge ?? 'start';
+        const settle = event ? edgeSettleProps(event, settleEdge) : undefined;
+        const settled = settle?.outcome;
         // The emphasis is the CLOCK's question, asked only of a day that has passed with
         // nothing said about it — the same `isDayUsagePast` the tier, the block header and
         // `מה נשאר` all read, so the four cannot disagree about whether a day is closed.
@@ -2787,13 +2794,14 @@ export function MapView() {
               ? () =>
                   wayIn.goTo({ kind: 'event', id: event.id, name: event.title, date: event.date })
               : () => goToDay(ref.date ?? today),
-          settle: event && {
-            outcome: settled,
-            asking: !settled && !!usageDay && isDayUsagePast(usageDay, nowMs, today),
-            onDone: () => verbs.done(event),
-            onSkip: () => verbs.skip(event),
-            onUndo: () => verbs.restore(event),
-          },
+          settle: event &&
+            settle && {
+              ...settle,
+              asking: !settled && !!usageDay && isDayUsagePast(usageDay, nowMs, today),
+              onDone: () => verbs.done(event, settleEdge),
+              onSkip: () => verbs.skip(event, settleEdge),
+              onUndo: () => verbs.restore(event, settleEdge),
+            },
         };
       },
     );
@@ -4716,6 +4724,7 @@ function PlaceRow({
                 {ref.settle && (
                   <SettleControl
                     variant="compact"
+                    words={ref.settle.words}
                     outcome={ref.settle.outcome}
                     onDone={ref.settle.onDone}
                     onSkip={ref.settle.onSkip}
