@@ -128,7 +128,9 @@ export function EventForm({
   event?: TripEvent | null;
   // Prefill for a *new* event (e.g. the builder's gap-fill: date + start of the
   // gap). Ignored when editing an existing event.
-  defaults?: { date?: string; start?: string; end?: string; placeId?: string };
+  /** `title` is the quick add's hand-over (ADR-0231 §3): what was typed in the small room
+   *  arrives in the big one rather than being lost at the door. */
+  defaults?: { date?: string; start?: string; end?: string; placeId?: string; title?: string };
   /** The way in from an already-linked event's statement (ADR-0136 §3). Absent on a host with
    *  nowhere to send it, which makes the statement a plain read-out rather than a dead
    *  control — the derived-affordance rule this app runs everywhere else. */
@@ -257,7 +259,7 @@ export function EventForm({
   // place here (ADR-0051), so nothing on this form could re-derive a name it decided was the
   // derivation's — the box must open on the stored title and the save must keep it.
   const derivedTitle = placeDerivedTitle(places, showPlace ? initialPlaceId : undefined);
-  const storedTitle = (event?.title ?? maybeItem?.title ?? '').trim();
+  const storedTitle = (event?.title ?? maybeItem?.title ?? defaults?.title ?? '').trim();
   const initialTitle = storedTitle && storedTitle !== derivedTitle ? storedTitle : '';
 
   // A returning draft wins over every derived initial value (ADR-0134 §2) — including

@@ -149,6 +149,10 @@ export const COUNTDOWN_MONTHS_THRESHOLD = 2;
 
 /** How far a "delay" verb pushes an event. */
 export const DELAY_STEP_MINUTES = 30;
+/** **The delays `מאחרים` offers the day** (ADR-0231 §5), in minutes. Five, because five chips of
+ *  `+N` are what fit inside a sheet at 360px without scrolling (the mockup's render); the unit is
+ *  said once in the sentence above them. */
+export const DAY_DELAY_STEPS = [15, 30, 45, 60, 90] as const;
 
 /** Toast auto-dismiss. */
 export const TOAST_DURATION_MS = 3600;

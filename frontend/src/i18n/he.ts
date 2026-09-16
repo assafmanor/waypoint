@@ -89,6 +89,7 @@ export const t = {
     yes: 'כן',
     no: 'לא',
     now: 'עכשיו',
+    today: 'היום',
     loading: 'טוען',
     // **"About"** — the hedge on an estimate, for the ladder rungs that are WORDS rather than
     // numbers (`כשעה`, `כשעתיים`). The number-led rungs take `~` inside the bidi isolate
@@ -2715,6 +2716,37 @@ export const t = {
     // The STATE, not the gesture (owner, 2026-08-11): the card is a button and its tap
     // restores — what the line has to say is that this one was skipped.
     skippedTag: 'דילגתם',
+    // …and a parked COMMITMENT says what it is in, not what we did (ADR-0231 §2, F1): a tour the
+    // operator cancelled is not something you skipped, and "not happening" is true whoever
+    // called it off. A label on the card, never a fourth status (ADR-0228 §6b).
+    notHappeningTag: 'לא מתקיים',
+    // The parked card's own sheet (ADR-0231 §2, F2) — a tap used to RESTORE, which on a
+    // cancelled booking is the wrong verb for the tap you make looking for its code.
+    parked: {
+      restore: 'שחזור ליום',
+    },
+    // **The day takes a delay** (ADR-0231 §5) — `מאחרים` in the head's footer, today only.
+    late: {
+      action: 'מאחרים',
+      title: 'מאחרים',
+      // What moves, said BEFORE the tap: the count and the first row's hour.
+      what: (n: number, from: string) =>
+        n === 1
+          ? `בכמה דקות? יזוז אירוע גמיש אחד, מ־${from}.`
+          : `בכמה דקות? יזוזו ${n} אירועים גמישים מ־${from} ואילך.`,
+      // …and what stays: the first commitment ahead, which the shift stops at (ADR-0011). The
+      // title and its hour are nodes the sheet composes (`TitleLabel`); this is the tail.
+      anchorStays: 'נשאר · הזמנה. מה שאחריו לא זז.',
+      minutes: (n: number) => `${n} דקות`,
+    },
+    // **The quick add** (ADR-0231 §3; ADR-0043 §3's Tier-1 add, finally built): a title, one
+    // when-sentence, one primary. The sheet's title carries `היום` so the sentence need not.
+    quickAdd: {
+      title: 'אירוע חדש · היום',
+      titlePlaceholder: 'למשל: קפה שמצאנו',
+      add: 'הוספה',
+      more: 'עוד פרטים…',
+    },
     // The idea's sheet — the surface a tap now opens. `שיבוץ ליום` leads it, so the
     // verb the tile used to perform is one press away and named.
     idea: {
@@ -3004,6 +3036,8 @@ export const t = {
     onWayMarked: 'בדרך · לא שותף לקבוצה עדיין',
     scheduled: (title: string, time: string) => `${title} שובץ ל-${time}`,
     rippleApplied: 'האירועים הבאים נדחו',
+    dayDelayed: (minutes: number, n: number) =>
+      n === 1 ? `אירוע אחד נדחה ב-${minutes} דקות` : `${n} אירועים נדחו ב-${minutes} דקות`,
     hardConfirmRequired: 'שינוי אירוע קשיח מחייב אישור',
     writeFailed: 'משהו השתבש · אפשר לנסות שוב',
     moveIntoPast: 'אי אפשר לשבץ אירוע לשעה שכבר עברה',

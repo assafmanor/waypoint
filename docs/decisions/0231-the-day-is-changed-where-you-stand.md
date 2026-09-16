@@ -1,8 +1,8 @@
 # 0231 — The day is changed where you stand: the time is the move, the ＋ lands on now, and the day takes a delay
 
-**Status:** **Proposed** — product phase closed 2026-09-16 (this document), design phase closed the same day ([`mockups/the-day-is-changed-where-you-stand-v1.html`](../../mockups/the-day-is-changed-where-you-stand-v1.html)); **the forks at the foot are open for the owner.** Nothing here is built.
+**Status:** **ACCEPTED AND BUILT** — 2026-09-16, on the owner's _"Build it"_, with the recommended answer to every fork. Product and design phases closed the same day; the build log at the foot records what the build corrected in this document. Tests pin every rule (`late-shift.test.ts`, `gaps.test.ts`, `day-positions.test.ts`, `day-joins.test.ts`, `shelf.test.ts`, `EventCard.test.tsx`, `DaySlotPicker.test.tsx`, `DelaySheet.test.tsx`, `QuickAddSheet.test.tsx`, `ParkedEventSheet.test.tsx`, `DayView.changes.test.tsx`).
 **Date:** 2026-09-16
-**Session note:** [`planning/2026-09-16-last-minute-changes-on-the-ground.md`](../planning/2026-09-16-last-minute-changes-on-the-ground.md) · orientation was [`planning/2026-09-16-handoff-last-minute-changes.md`](../planning/2026-09-16-handoff-last-minute-changes.md)
+**Session note:** [`planning/2026-09-16-last-minute-changes-on-the-ground.md`](../planning/2026-09-16-last-minute-changes-on-the-ground.md) · **Mockup:** [`mockups/the-day-is-changed-where-you-stand-v1.html`](../../mockups/the-day-is-changed-where-you-stand-v1.html) · orientation was [`planning/2026-09-16-handoff-last-minute-changes.md`](../planning/2026-09-16-handoff-last-minute-changes.md)
 **Builds on:** [0011](0011-hard-soft-event-model.md) (hard is never auto-moved; soft rides the ripple), [0025](0025-trip-mode-edit-capability-tiers.md) (the Tier-1 list this ADR finally builds two entries of: _"Add a quick soft event for today"_, _"Do-it-now"_), [0027](0027-soft-item-lifecycle-shelf-slip.md) (the parking lot; **Do-it-now / Pick-a-time**, decided and never on the card), [0043](0043-day-view-now-line-phases-and-archive-chrome.md) §3 (**the quick-add scoped to "soft, today, next open slot"**, decided and shipped as the full builder), [0161](0161-a-move-names-a-position-and-an-event-owns-its-length.md) §4/§7/§10 (the day is the time picker; **the Trip card's time is a button** — written in §7's own text and never built; the day-level "we're running late" deferred to a Trip-mode day control), [0228](0228-the-quick-actions-are-one-list-and-a-commitment-can-be-settled.md) §6 (a cancelled booking leaves the day and keeps its code — the seed report, not this session), [0229](0229-the-row-opens-what-you-do-and-the-read-is-one-tap-further.md) (the read is one tap further, and a parked booking has no tap to it), [0116](0116-day-aware-shelf-and-idea-target-day.md) §5a (a tap on a parked idea opens the idea; a skipped event restores on tap "because it has a surface of its own" — which stops being true when it is parked).
 **Amends in place:** [0161](0161-a-move-names-a-position-and-an-event-owns-its-length.md) §7 — the sentence _"with the card's time tappable in Trip mode too"_ becomes true; §10's deferred day-level delay is decided here. [0116](0116-day-aware-shelf-and-idea-target-day.md) §5a — a parked **event**'s tap (fork F2). [0027](0027-soft-item-lifecycle-shelf-slip.md) §1 — Do-it-now and Pick-a-time are the picker's `עכשיו` and its positions, not separate verbs.
 
@@ -68,7 +68,7 @@ Nothing new on the follow-up (the owner's _"refund, rebook, tell the group — i
 
 ### 3. `＋` on today is a quick add, and it lands on now
 
-The day head's `＋ אירוע חדש` in Trip mode opens the **quick add** ADR-0043 §3 decided: a `Sheet` with a title field and one when-sentence — `היום · עכשיו 13:51 · שעה` — where the time and the length are `ValueToken`s, and one primary, `הוספה`. That is three steps: ＋, type, add. The time token opens §1's `DaySlotPicker` (`עכשיו` first, positions from now); the length token opens ADR-0036's duration presets. `עוד פרטים…` hands the draft to `EventForm` through the `formDraft` state the errand return already uses, so nothing typed is lost when the quick add is not enough (a place, a booking, a hard kind — all Tier-2/3, ADR-0025).
+The day head's `＋ אירוע חדש` in Trip mode opens the **quick add** ADR-0043 §3 decided: a `Sheet` with a title field and one when-sentence — `היום · עכשיו 13:51 · שעה` — where the time and the length are `ValueToken`s, and one primary, `הוספה`. That is three steps: ＋, type, add. The when-sentence **is `TimePicker`** — ADR-0036's start + duration setter, the two tokens the form's own when line renders — not §1's position list _(corrected in the build; the first draft said `DaySlotPicker`)_: the default here is `עכשיו`, which is a clock, and a chooser of positions for a value that is already right would be a second picker for nothing. `עוד פרטים…` hands the draft to `EventForm` through the `formDraft` state the errand return already uses, so nothing typed is lost when the quick add is not enough (a place, a booking, a hard kind — all Tier-2/3, ADR-0025).
 
 **The default is `עכשיו`** (fork F4): the start is now ceiled to the slot grid (`ceiledSlotStart`), the length is `GAP_FILL_MINUTES` capped by the room to the next row (`blockFor`), the kind is soft, the category unset — the same posture as Plan's shelf jot (`AddIdea`, ADR-0109 §11: a jot takes no category; category is captured when it matters). Rejected as the default: `firstPositionFitting` from now — "the first hole with room" is the right answer for an idea being placed and the wrong one for a thing you are standing in front of.
 
@@ -120,6 +120,27 @@ Drawn in [`mockups/the-day-is-changed-where-you-stand-v1.html`](../../mockups/th
 - **F6b, the now marker, rendered its own refusal:** a control beside the ⁦19px⁩ chip lands under the rule at the marker's trailing edge, ⁦74×21px⁩, and the marker's whole box is ⁦21px⁩ — three short of half the floor. A control there is a redesign of ADR-0217's mark, not an addition to it.
 - **Three shipped shortfalls this design inherits and does not cause**, recorded so the build does not "fix" them at one host: `.new-event-btn` is ⁦26px⁩ (both head buttons wear it), `.field input` is ⁦37px⁩, `.sched-confirm` is ⁦42px⁩. Each is a primitive with many hosts; the fix, if wanted, is in the primitive.
 
+## Build log (2026-09-16)
+
+### What shipped
+
+- **§1** — `EventCard` gains `onPickTime`; the when line becomes a `role="button"` span wearing `ValueToken`'s box at the card's ink (`.wp-event-time.is-token`, `event-card.css`), painting into the face's padding so the row measures what it measured. `DayView` opens `DaySlotPicker` in a `Sheet` for it, `mode="trip"`, with `nowOption` first on today and `positionsFromNow` (new, `lib/day-positions.ts`) narrowing every position to the clock. A pick writes `verbs.update` with `eventAtSlot` (new in `lib/gaps.ts`, and `PlanDay`'s `slotFor` now delegates to it — the second copy that never got written). `שעה מדויקת…` opens `ScheduleSheet`, generalised from _an idea_ to _a subject with a place_ (`heading`, `confirmLabel`, `subject`). `DaySlotPicker` gains `mode` and `--slotpick-accent`. The position words moved out of `PlanDay` into `ui/domain/day-slot-options.tsx` (`positionOption`, `nowOption`, `gapLabel`) — two hosts, one sentence.
+- **§2** — `dayBlocks` measures the join before a cluster from its entry member (`groupStartEvent`, which already handled clusters; only the `leaf` guard withheld it). `parkedTag` (`lib/shelf.ts`) says `לא מתקיים` on a hard or booked parked card. `ui/ParkedEventSheet` — a `RowManageSheet` with `שחזור ליום` first and `להזמנה` / `פרטים` second — opens from the parked card on **both** day surfaces.
+- **§3** — `ui/QuickAddSheet`: a `Field`, `TimePicker`, `.sched-confirm`, `עוד פרטים…` (which hands `EventForm` a `defaults.title`, one new optional field). `nowGap` / `quickAddSlot` (`lib/gaps.ts`) are the default. The head's ＋ on today, the gap `+` and `החלפה`'s `אירוע חדש` all open it on today (`addAt`); any other day keeps the form. `scheduleDefaults` narrows its positions with `positionsFromNow`.
+- **§5** — `lib/late-shift.ts` (`lateShift`: planned ∧ soft ∧ ahead of now ∧ before the first hard anchor), `verbs.delayDay` over `applyEventPatches`, `ui/DelaySheet` (a `ChoiceGrid` of `DAY_DELAY_STEPS`, lifted to the 44px floor by `.late-steps`), `מאחרים` in the day head's footer inside `.wp-dayhead-acts`, offered only while something ahead can move.
+
+### Counted again on the running app, the same way
+
+`DEV_AUTH`, the seeded Tokyo day, ⁦13:51⁩, every tap logged: **cancel ⁦2⁩** and the freed `שעתיים פנויות` is stated before the cluster; the parked card says `לא מתקיים` and its code is **⁦2⁩ more** (card → `להזמנה`); **move to `עכשיו` ⁦2⁩** (⁦16:30–19:30⁩ → ⁦13:55–16:55⁩, the length kept); **move a booking ⁦3⁩** (one gate); **add now ⁦3⁩** (⁦13:55–14:55⁩ written); **running late ⁦2⁩** (`+45`: the free time ⁦16:30⁩ → ⁦17:15⁩, Ichiran and the evening untouched, one toast, one undo).
+
+### What the build corrected in this document
+
+- **The quick add's time token is `TimePicker`, not `DaySlotPicker`** (§3, corrected in place above). The sentence the form renders already IS start + duration; a position list over a default that is already `עכשיו` would be a second picker for nothing.
+- **`dayBlocks`'s docblock described the opposite of its code.** It argued the gap _after_ a cluster is not a single fact; the code measured that gap all along (`prevEnd` from the exit member) and withheld the one _before_. §2's F9 was therefore one guard, not a rule change; the docblock now says what the code does.
+- **The shelf's Trip-mode default on the counted day is `בסוף היום · 23:15`, not the afternoon**, once it stops offering the morning: every hole from now to the evening is under an hour, because the done tour still holds ⁦10:00–16:00⁩ — fork F8's cost, stated. It is honest ("after everything" is the right answer when nothing fits) and it is why `עכשיו` is the quick add's default rather than the first fitting position.
+- **`עכשיו` and the hole it sits in were listed twice** on the running app (`עכשיו · 13:55` above `אחרי שוק צוקיג׳י · 13:55`): the position starting at now is dropped from the list when the `עכשיו` row carries it.
+- **A booking moved to `בסוף היום` crosses midnight** (⁦23:15–00:45⁩⁺¹) — `eventAtSlot` keeps its ⁦90⁩ minutes, as ADR-0161 §1 says a move must, and the card's `+1` says so. Not a defect; recorded because it is the first surface that lets a Trip-mode move reach the day's tail.
+
 ## Out of scope, and said so
 
 - **The change feed** (handoff hypothesis 6): a delay or a cancellation made by one member reaches the others as a feed row nobody sees. Unmounted from Home pending its own spec (backlog, owner 2026-09-10). Last-minute changes are the case the group most needs to know about; it stays a separate decision unless the owner pulls it in.
@@ -137,9 +158,9 @@ Drawn in [`mockups/the-day-is-changed-where-you-stand-v1.html`](../../mockups/th
 - **A `canceled` status**, above.
 - **Free a done event's remaining window now** (F8). Deferred with its cost stated in §3.
 
-## The forks for the owner
+## The forks, resolved
 
-Each has a recommendation; a correction is not a fork.
+Owner, 2026-09-16: _"Build it"_ — the recommendation was taken on all nine. Recorded as they were put, with the answer bolded.
 
 1. **F1 · the parked commitment's word.** `לא מתקיים` on a booked/hard parked card and `דילגתם` on a soft one (**recommended**) · `דילגתם` on both, as today · `בוטל`.
 2. **F2 · what a tap on a parked event card does.** Opens its sheet, `שחזור ליום` first, then `להזמנה` / `פרטים` (**recommended**, ADR-0116 §5a amended) · restores in place as today · the sheet only when the card is booked.

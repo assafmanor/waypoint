@@ -7,11 +7,20 @@
 // two rows that touch — the same slot is a drag-only seam. The `free*` functions answer
 // without a threshold and the `gap*` wrappers apply it, so a gap and a seam cannot
 // disagree about what free time IS or about what a drop into it lands on.
-import { typicalMinutesFor, type EventCategory, type TripEvent } from '@waypoint/shared';
+import {
+  EVENT_STATUS,
+  typicalMinutesFor,
+  type EventCategory,
+  type TripEvent,
+  type UpdateEventInput,
+} from '@waypoint/shared';
 import { DAY_WINDOW, MS_PER_MINUTE } from '../constants';
 import { isoToTimeInput, toHHMM, toMin, zonedIso } from './time';
 
 const LAST_MINUTE_OF_DAY = 23 * 60 + 59; // 23:59 — the prefill slot stays same-day
+/** The day's last minute as an instant — the ceiling a hole with nothing after it runs to. */
+export const dayLastMinuteMs = (date: string, tz: string): number =>
+  localMidnight(date, tz) + LAST_MINUTE_OF_DAY * MS_PER_MINUTE;
 
 /** Minutes since the day's own local midnight. An overnight end (02:00 the next
  *  morning, ADR-0037) reads as ≥ 1440 rather than as an early-morning slot. */
@@ -378,4 +387,72 @@ export function nextSlot(dayEvents: TripEvent[], date: string, tz: string): GapD
     start: toHHMM(startMin),
     end: endMin > startMin ? toHHMM(endMin) : '',
   };
+}
+
+/**
+ * **The slot a quick add lands on: now** (ADR-0231 §3, fork F4). The start is the moment,
+ * ceiled to the slot grid; the length is the default block, capped by the room to the next
+ * planned row ahead — so a café added at ⁦13:51⁩ with a stop at ⁦14:30⁩ is ⁦13:55–14:30⁩, and
+ * one added into an open afternoon is the full hour.
+ *
+ * Not `firstPositionFitting`: "the first hole with room" is the right opening offer for an
+ * idea being PLACED and the wrong one for a thing you are standing in front of — and a done
+ * event whose end is still ahead holds its slot in every gap derivation (fork F8), so the
+ * first fitting hole is frequently not where you are. The clock is.
+ *
+ * Same-day, like every prefill here: a start past the day's last minute clamps to it, and
+ * the end drops when there is no block's worth of room left (`nextSlot`'s own shape).
+ */
+export function quickAddSlot(
+  dayEvents: TripEvent[],
+  date: string,
+  tz: string,
+  nowMs: number,
+): GapDefaults {
+  return nowGap(dayEvents, date, tz, nowMs).fill;
+}
+
+/**
+ * **The hole you are standing in, opened at now** — `minutes` is the room to the next planned
+ * row ahead (or to the day's last minute), `fill` the default block from now, capped by it.
+ * `quickAddSlot` is its fill; the picker's `עכשיו` row (ADR-0231 §1) is the whole thing, so it
+ * can say how much is free the way every other position does. Inside an event the room is
+ * measured to the NEXT row's start regardless — `עכשיו` while inside a row is ADR-0161 §3's
+ * honest overlap, not a refusal.
+ */
+export function nowGap(dayEvents: TripEvent[], date: string, tz: string, nowMs: number): Gap {
+  const dayStartMs = localMidnight(date, tz);
+  const startMin = Math.min(
+    Math.max(0, minutesInto(new Date(ceiledSlotStart(nowMs)).toISOString(), dayStartMs)),
+    LAST_MINUTE_OF_DAY,
+  );
+  const startMs = dayStartMs + startMin * MS_PER_MINUTE;
+  const nextStarts = dayEvents
+    .filter((e) => e.status === EVENT_STATUS.PLANNED && e.startsAt)
+    .map((e) => Date.parse(e.startsAt!))
+    .filter((ms) => ms > startMs);
+  const room = nextStarts.length
+    ? Math.round((Math.min(...nextStarts) - startMs) / MS_PER_MINUTE)
+    : LAST_MINUTE_OF_DAY - startMin;
+  const free: Gap = { minutes: room, fill: { date, start: toHHMM(startMin), end: '' } };
+  return { ...free, fill: blockFor(free, GAP_FILL_MINUTES) };
+}
+
+/**
+ * **An EXISTING event, put at a slot, keeping its own length** (ADR-0161 §1). It starts where
+ * the slot starts; an untimed event has no length to keep, so it takes the slot's block.
+ *
+ * Written once in `PlanDay` as `slotFor` while the builder was the only surface that moved a
+ * row into a position; the Trip card's time button (ADR-0231 §1) is the second, and two copies
+ * of "start here, keep your length" is the parallel copy rule 8 exists to prevent.
+ */
+export function eventAtSlot(event: TripEvent, fill: GapDefaults, tz: string): UpdateEventInput {
+  const startsAt = zonedIso(fill.date, fill.start, tz);
+  if (!event.startsAt)
+    return { startsAt, ...(fill.end ? { endsAt: zonedIso(fill.date, fill.end, tz) } : {}) };
+  if (!event.endsAt) return { startsAt };
+  const durationMs = Date.parse(event.endsAt) - Date.parse(event.startsAt);
+  // Absolute ms, so an event long enough to run past midnight keeps its length instead of
+  // needing the date arithmetic ADR-0037 already settled.
+  return { startsAt, endsAt: new Date(Date.parse(startsAt) + durationMs).toISOString() };
 }

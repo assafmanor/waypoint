@@ -1,6 +1,6 @@
 # 2026-09-16 — Last-minute changes on the ground: product and design
 
-**Outcome:** [ADR-0231](../decisions/0231-the-day-is-changed-where-you-stand.md) (**Proposed**, drawn and measured, not built) · mockup [`mockups/the-day-is-changed-where-you-stand-v1.html`](../../mockups/the-day-is-changed-where-you-stand-v1.html) · catalog + backlog + README + INDEX updated · the [handoff](2026-09-16-handoff-last-minute-changes.md) points here. **The build phase waits on the owner's answers to the ADR's nine forks.**
+**Outcome:** [ADR-0231](../decisions/0231-the-day-is-changed-where-you-stand.md) (**accepted and built the same day**, on _"Build it"_) · mockup [`mockups/the-day-is-changed-where-you-stand-v1.html`](../../mockups/the-day-is-changed-where-you-stand-v1.html) · catalog + backlog + README + INDEX updated · the [handoff](2026-09-16-handoff-last-minute-changes.md) points here. **The recommendation was taken on all nine forks; the build is below.**
 
 ## What was asked
 
@@ -58,3 +58,25 @@ The change feed (a change made by one member reaching the others), the hero as a
 
 - **The counting script** lived at `frontend/.journeys.mjs` during the session and was not committed; its shape is worth keeping — boot, pin the clock, `tap()` that logs and screenshots, reseed **after sweeping the journeys' own UUID rows**. If the build wants the "after" counts in the ADR verified the same way, that is the tool.
 - **Environment recipe that worked here** with no Docker: `pg_ctlcluster 16 main start`, a `waypoint`/`waypoint` role and database, `pnpm --filter @waypoint/shared build` before the backend watcher (it cannot resolve `@waypoint/shared` otherwise and reports ⁦304⁩ errors), `backend/.env` as a copy of the root `.env` for `prisma:seed`, Playwright launched with `executablePath: '/opt/pw-browsers/chromium'` because the repo pins a newer Playwright than the preinstalled browser.
+
+---
+
+## Built the same day — _"Build it"_
+
+Every fork at its recommendation. What shipped, by rule: the Trip card's time is a `role="button"` opening `DaySlotPicker` (`עכשיו` first, `positionsFromNow`, a Trip accent, `ScheduleSheet` generalised for the exact-time escape); the join before a cluster is measured and the parked card says `לא מתקיים` and opens `ParkedEventSheet` in both modes; `QuickAddSheet` on the head's ＋, the gap `+` and `החלפה`'s new-event, landing on `nowGap`; `מאחרים` over `lateShift` → `applyEventPatches`. Frontend only, no schema, no new write.
+
+### Counted again, the same way
+
+The same Playwright counter against the same seeded day at ⁦13:51⁩, after the build: **cancel ⁦2⁩** and the day now says `שעתיים פנויות` before the cluster; the parked card reads `לא מתקיים` and its code is two taps further (`card → להזמנה`); **move to `עכשיו` ⁦2⁩**, the row's three hours kept; **move a booking ⁦3⁩**; **add now ⁦3⁩**, written at ⁦13:55–14:55⁩; **running late ⁦2⁩**, `+45` moving the free time and nothing past the booking. Every number the ADR promised in its Consequences.
+
+### What the build corrected
+
+- **The quick add's time token is `TimePicker`, not the position list.** The form's when-sentence already is start + duration, and the default is `עכשיו`; a position chooser over a right value is a second picker for nothing. §3 is corrected in place.
+- **`dayBlocks`'s docblock had the code inverted**: it argued the gap _after_ a cluster is not a fact, while the code measured it and withheld the gap _before_. F9 was one guard.
+- **The shelf's default on the counted day is `בסוף היום · 23:15`** once it stops offering the morning — F8's cost, exactly: the done tour holds the afternoon. Stated in the ADR and the backlog rather than smoothed over.
+- **`עכשיו` and its hole were listed twice** in the picker on the running app; the duplicate position is dropped.
+- **`PlanDay`'s `slotFor` was the one-off** (`eventAtSlot` now, in `lib/gaps.ts`); the position words moved to `ui/domain/day-slot-options.tsx` for the second host.
+
+### Tests
+
+`late-shift.test.ts` (the set that moves and the anchor that stops it), `gaps.test.ts` (`quickAddSlot`, `eventAtSlot`), `day-positions.test.ts` (`positionsFromNow` — including the ⁦09:00⁩-at-⁦13:51⁩ case as a regression), `day-joins.test.ts` (the join before a cluster, and still after it), `shelf.test.ts` (`parkedTag`), `EventCard.test.tsx` (the time is a `role="button"`, never a `<button>`; no toggle on tap), `DaySlotPicker.test.tsx` (`data-mode`), `DelaySheet` / `QuickAddSheet` / `ParkedEventSheet` specs, and `DayView.changes.test.tsx` pinning the screen's wiring on the counted day. `DayView.head.test.tsx` updated for the footer group.

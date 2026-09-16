@@ -11,6 +11,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   EVENT_KIND,
+  EVENT_SOURCE,
   EVENT_STATUS,
   edgeOutlivesItsInstant,
   isAmbient,
@@ -102,6 +103,7 @@ import {
   dayStops,
   ideaCategory,
   ideaGlyph,
+  parkedTag,
   poolStrip,
   proposedDay,
   rankIdeas,
@@ -114,14 +116,29 @@ import {
 } from '../lib/shelf';
 import {
   blockFor,
+  eventAtSlot,
   ideaBlock,
   narrowGapToNow,
   nextSlot,
+  nowGap,
   statesFreeTime,
   type Gap,
   type GapDefaults,
 } from '../lib/gaps';
-import { dayPositions, firstPositionFitting } from '../lib/day-positions';
+import {
+  dayPositions,
+  firstPositionFitting,
+  positionsFromNow,
+  type DayPosition,
+} from '../lib/day-positions';
+import { lateShift } from '../lib/late-shift';
+import { generateId } from '../lib/id';
+import { useAuth } from '../state/auth-state';
+import { DaySlotPicker } from '../ui/domain/DaySlotPicker';
+import { nowOption, positionOption } from '../ui/domain/day-slot-options';
+import { ParkedEventSheet } from '../ui/ParkedEventSheet';
+import { QuickAddSheet, type QuickAddDraft } from '../ui/QuickAddSheet';
+import { DelaySheet } from '../ui/DelaySheet';
 import {
   dayTransitions,
   groupEndEvent,
@@ -175,7 +192,7 @@ import {
   JourneyRow,
   type JourneyRowProps,
 } from '../ui/domain/DayJoinRow';
-import { CODE_PREFIX, MS_PER_MINUTE, SHELF_POOL_CAP } from '../constants';
+import { CODE_PREFIX, DELAY_STEP_MINUTES, MS_PER_MINUTE, SHELF_POOL_CAP } from '../constants';
 import { ambientSpanLabel, dayBookendStays } from '../lib/glance';
 import { edgeSentence } from '../lib/transitions';
 import { t } from '../i18n/he';
@@ -453,10 +470,13 @@ export function DayView() {
   // location picked, which unmounted it — so it comes back from its own draft with the
   // chosen place already in the named field, rather than from whatever the entity holds.
   const [formDraft, setFormDraft] = useState<EventFormDraft | null>(null);
+  /** The title the quick add hands the form through `עוד פרטים…` (ADR-0231 §3). */
+  const [formTitle, setFormTitle] = useState<string | undefined>(undefined);
   const closeForm = () => {
     setFormTarget(null);
     setFormSlot(null);
     setFormDraft(null);
+    setFormTitle(undefined);
   };
   usePlaceErrandReturn<EventFormDraft>('event', 'days', (returned) => {
     if (!returned.draft) return;
@@ -497,10 +517,11 @@ export function DayView() {
     // 60-minute idea when 60 of those minutes were the drive, and `blockFor` then wrote the block
     // across it. The same correction the chip and the strip apply, so the day cannot offer a slot
     // on one surface that it refuses on another.
-    const positions = dayPositions(dayEvents, activeDate, zone).map((p) => {
-      const journey = p.beforeEvent ? journeyFor(p.afterEvent, p.beforeEvent) : null;
-      return journey ? { ...p, free: narrowGapForTravel(p.free, journey, zone) } : p;
-    });
+    // **And never a position behind the clock, on today** (ADR-0231 §3). Without this line the
+    // first hole with room at ⁦13:51⁩ was the one before the ⁦10:00⁩ tour, and the shelf wrote an
+    // idea into the morning — a create has no `MOVE_INTO_PAST` behind it, so the offer itself
+    // has to be honest.
+    const positions = livePositions(zone);
     const position = firstPositionFitting(positions, minutes);
     return position ? blockFor(position.free, minutes) : nextSlot(dayEvents, activeDate, zone);
   };
@@ -510,6 +531,17 @@ export function DayView() {
    *  the gap's own header — filling a hole on the ground is Tier-1 work (ADR-0025), and the one
    *  surface that states the hole was the one place it could not be done. */
   const [gapTarget, setGapTarget] = useState<Gap | null>(null);
+  // ── THE DAY IS CHANGED WHERE YOU STAND (ADR-0231) ────────────────────────────────
+  /** The row whose time was tapped (§1) — the day's positions open for it. */
+  const [timeTarget, setTimeTarget] = useState<TripEvent | null>(null);
+  /** …and the row that asked for an exact time instead: the scoped sheet, not the form (F3). */
+  const [exactTarget, setExactTarget] = useState<TripEvent | null>(null);
+  /** The parked card whose sheet is open (§2, F2). */
+  const [parkedSheet, setParkedSheet] = useState<TripEvent | null>(null);
+  /** The slot a quick add is open on (§3): now, or the gap that was tapped. */
+  const [quickAdd, setQuickAdd] = useState<GapDefaults | null>(null);
+  /** `מאחרים` (§5). */
+  const [delayOpen, setDelayOpen] = useState(false);
   /** An event's own slot as a wall clock, read in the zone the day shows it in (ADR-0107) —
    *  what the replacement inherits, and what the shelf is ranked against. */
   /** **How long a row occupies**, in minutes — what an idea replacing it has to fit inside
@@ -694,6 +726,67 @@ export function DayView() {
     [documentAttachments],
   );
 
+  /** **The day's positions, corrected for the journey into each and, on today, for the clock**
+   *  (ADR-0231 §1/§3) — one derivation for the shelf's default, the row's picker and the quick
+   *  add, so no two of them can offer a slot the other refuses. `exclude` takes the row being
+   *  moved out of the walk (`dayPositions`' own option). */
+  const livePositions = (zone: string, exclude?: string): DayPosition[] => {
+    const positions = dayPositions(dayEvents, activeDate, zone, { exclude }).map((p) => {
+      const journey = p.beforeEvent ? journeyFor(p.afterEvent, p.beforeEvent) : null;
+      return journey ? { ...p, free: narrowGapForTravel(p.free, journey, zone) } : p;
+    });
+    return isToday ? positionsFromNow(positions, nowMs, zone) : positions;
+  };
+  /** What `מאחרים` would move right now, and what it stops at — read once per render so the
+   *  head can decline to offer a control that would move nothing (§5). */
+  const late = isToday && !readOnly ? lateShift(dayEvents, nowMs, DELAY_STEP_MINUTES) : null;
+  const { me } = useAuth();
+  /** The quick add's write (§3): a soft, planned event on the day, typed in the day's zone —
+   *  the same shape `EventForm`'s plain create builds, minus the nine fields it asks after. */
+  const addQuick = (draft: QuickAddDraft, date: string) => {
+    const stamp = now.toISOString();
+    void verbs.create({
+      id: generateId(),
+      tripId: trip.id,
+      date,
+      title: draft.title,
+      kind: EVENT_KIND.SOFT,
+      status: EVENT_STATUS.PLANNED,
+      startsAt: draft.start ? zonedIso(date, draft.start, dayZone) : undefined,
+      endsAt:
+        draft.start && draft.end ? resolveEndIso(date, draft.start, draft.end, dayZone) : undefined,
+      sortOrder: 99,
+      source: EVENT_SOURCE.MANUAL,
+      createdAt: stamp,
+      updatedAt: stamp,
+      updatedBy: me?.user.id ?? trip.updatedBy,
+    });
+  };
+  /** Where a new event asked for from a slot opens (§3, F5): the quick add on today, the form
+   *  on any other day — building tomorrow is Plan's job and the form is its room. */
+  const addAt = (slot: GapDefaults) => {
+    if (isToday) setQuickAdd(slot);
+    else {
+      setFormSlot(slot);
+      setFormTarget('new');
+    }
+  };
+
+  /** The picker's `עכשיו` row for the row being moved (§1): the hole the moment is inside, with
+   *  the moved row taken out of the room measurement. `undefined` off today — the picker owns no
+   *  clock, and neither should a day that is not being lived. */
+  const nowRow =
+    isToday && timeTarget
+      ? nowOption(
+          nowGap(
+            dayEvents.filter((e) => e.id !== timeTarget.id),
+            activeDate,
+            dayZone,
+            nowMs,
+          ),
+        )
+      : undefined;
+
   const dayCtx: DayCtx = {
     tz: dayZone,
     // Filled in below, once `merged` exists to derive the placement from.
@@ -720,6 +813,7 @@ export function DayView() {
       else setFormTarget(e);
     },
     onReplace: setReplaceTarget,
+    onPickTime: setTimeTarget,
     /** **The band's tap** (ADR-0229 §2/§4) — a booked event routes to `BookingDetail`, since a
      *  linked pair is ONE context (ADR-0172 §1) and that read already exists; an unbooked one
      *  gets `EventDetail`. The same branch `PlanDay` makes, which is what keeps the two day
@@ -1388,7 +1482,24 @@ export function DayView() {
             /* Trip-mode add is a Tier-1 quick soft-add for today (ADR-0025/0043), prefilled at
               the next open slot; heavy building lives in Plan. Locked on a past day (create
               gated, ADR-0029) — and then the footer band is absent entirely. */
-            readOnly ? undefined : (
+            readOnly ? undefined : isToday ? (
+              /* **On today the ＋ is the quick add and lands on now** (ADR-0231 §3), and the
+                 day takes a delay beside it (§5) — offered only while something ahead of you
+                 can move, the rule `onNavigate` has always followed: no target, no control. */
+              <span className="wp-dayhead-acts">
+                {late && late.moved.length > 0 && (
+                  <button className="new-event-btn" onClick={() => setDelayOpen(true)}>
+                    <Icon name="clock" /> {t.day.late.action}
+                  </button>
+                )}
+                <button
+                  className="new-event-btn"
+                  onClick={() => setQuickAdd(nowGap(dayEvents, activeDate, dayZone, nowMs).fill)}
+                >
+                  <Icon name="plus" /> {t.actions.newEvent}
+                </button>
+              </span>
+            ) : (
               <button className="new-event-btn" onClick={() => setFormTarget('new')}>
                 <Icon name="plus" /> {t.actions.newEvent}
               </button>
@@ -1691,7 +1802,7 @@ export function DayView() {
             event={formTarget === 'new' ? null : formTarget}
             defaults={
               formTarget === 'new'
-                ? (formSlot ?? nextSlot(dayEvents, activeDate, dayZone))
+                ? { ...(formSlot ?? nextSlot(dayEvents, activeDate, dayZone)), title: formTitle }
                 : undefined
             }
             draft={formDraft}
@@ -1774,8 +1885,11 @@ export function DayView() {
                   ))}
                   {/* Skipped events park here, restorable (ADR-0027 parking lot) — a
                     cancelled booking included, since ADR-0228's 2026-09-16 amendment.
-                    No action line: the card is a button and `skippedTag` marks the state
-                    it is in, which is the part a reader cannot get from the tile itself. */}
+                    No action line: the card is a button and its tag marks the state it is in
+                    (`parkedTag`: a commitment says `לא מתקיים`, a stop `דילגתם`, ADR-0231 §2).
+                    **A tap opens the card's sheet** rather than restoring (ADR-0231 §2, F2,
+                    amending ADR-0116 §5a): `שחזור ליום` is its first row, and the read — the
+                    code you came for on a cancelled booking — its second. */}
                   {shelf.skipped.map((e) => (
                     <MaybeCard
                       key={e.id}
@@ -1783,11 +1897,9 @@ export function DayView() {
                       className="skipped-card"
                       icon={e.icon}
                       title={e.title}
-                      meta={t.day.skippedTag}
-                      // A skipped event's tap still restores it in place: it HAS a surface of
-                      // its own (its day row), so the gesture change is the idea's alone.
+                      meta={parkedTag(e, bookings)}
                       onShowOnMap={eventShowOnMap(e, bookings, places, showPlaceOnMap)}
-                      onOpen={() => verbs.restore(e)}
+                      onOpen={() => setParkedSheet(e)}
                     />
                   ))}
                 </div>
@@ -1848,7 +1960,9 @@ export function DayView() {
 
         {scheduleItem && (
           <ScheduleSheet
-            item={scheduleItem}
+            heading={t.day.scheduleTitle(scheduleItem.title)}
+            confirmLabel={t.actions.scheduleToDay}
+            subject={scheduleItem}
             // The free slot is read on the same clock the sheet types on, so the
             // prefilled time means what the day means by it (ADR-0107 session 128).
             // **The first position with room for it**, not the end of the day's last event
@@ -1882,6 +1996,123 @@ export function DayView() {
               setScheduleItem(null);
             }}
             onClose={() => setScheduleItem(null)}
+          />
+        )}
+
+        {/* **THE TIME IS THE MOVE** (ADR-0231 §1 — ADR-0161 §7's Trip-mode sentence, built). The
+          row's when line opens the day's positions: the same picker, the same `dayPositions`,
+          the same words Plan's row uses (`positionOption`), with what Trip adds by props alone —
+          `עכשיו` first on today (ADR-0027 §1's Do-it-now, said as a position), nothing behind the
+          clock, and the Trip accent. A pick is the write a drop on that position performs, through
+          the hard gate (`verbs.update` → `applyGuardedUpdate`). */}
+        {timeTarget && (
+          <Sheet
+            title={t.planDay.slotMoveTitle(timeTarget.title)}
+            onClose={() => setTimeTarget(null)}
+          >
+            {/* `nowRow` is computed once for both props below: the row and the filter that keeps
+                the same slot from being listed twice under the name of the row it follows. */}
+            <DaySlotPicker
+              mode="trip"
+              sub={t.planDay.slotWhen}
+              now={nowRow}
+              // The hole the moment is inside is already the `עכשיו` row above; listed again
+              // under the name of the row it follows, it read as two offers of one slot (seen on
+              // the running app: `עכשיו · 13:55` over `אחרי שוק צוקיג׳י · 13:55`).
+              options={livePositions(dayZone, timeTarget.id)
+                .map((p) => positionOption(p, p.free))
+                .filter((o) => !isToday || o.time !== nowRow?.time)}
+              onPick={(option) => {
+                const target = timeTarget;
+                setTimeTarget(null);
+                verbs.update(target, {
+                  date: option.fill.date,
+                  ...eventAtSlot(target, option.fill, dayZone),
+                });
+              }}
+              // **The scoped sheet, not the form** (F3): ADR-0025 says a Tier-2 edit in Trip mode
+              // is "an inline bottom sheet scoped to the one edit", and `ScheduleSheet` is exactly
+              // that — a when and one confirm — now for an event as well as an idea.
+              onExact={() => {
+                setExactTarget(timeTarget);
+                setTimeTarget(null);
+              }}
+            />
+          </Sheet>
+        )}
+        {exactTarget && (
+          <ScheduleSheet
+            heading={t.planDay.slotMoveTitle(exactTarget.title)}
+            confirmLabel={t.common.save}
+            subject={exactTarget}
+            defaults={slotOf(exactTarget)}
+            date={exactTarget.date}
+            minDate={today > trip.startDate ? today : trip.startDate}
+            maxDate={trip.endDate}
+            evidence={zoneEvidence}
+            onConfirm={({ date, start, end, zone, override }) => {
+              verbs.update(exactTarget, {
+                date,
+                startsAt: start ? zonedIso(date, start, zone) : undefined,
+                endsAt: end && start ? resolveEndIso(date, start, end, zone) : undefined,
+                displayTimezone: override ?? undefined,
+              });
+              setExactTarget(null);
+            }}
+            onClose={() => setExactTarget(null)}
+          />
+        )}
+
+        {/* **A parked card opens its sheet** (ADR-0231 §2, F2). */}
+        {parkedSheet && (
+          <ParkedEventSheet
+            event={parkedSheet}
+            bookings={bookings}
+            tz={dayZone}
+            onRestore={() => {
+              verbs.restore(parkedSheet);
+              setParkedSheet(null);
+            }}
+            onOpen={() => {
+              const e = parkedSheet;
+              setParkedSheet(null);
+              dayCtx.onOpenRead(e);
+            }}
+            onClose={() => setParkedSheet(null)}
+          />
+        )}
+
+        {/* **The quick add** (ADR-0231 §3; ADR-0043 §3's Tier-1 add). Three steps: ＋, a name,
+          `הוספה`. `עוד פרטים…` carries the draft into the form. */}
+        {quickAdd && (
+          <QuickAddSheet
+            defaults={quickAdd}
+            onAdd={(draft) => {
+              addQuick(draft, quickAdd.date);
+              setQuickAdd(null);
+            }}
+            onMore={(draft) => {
+              setFormSlot({ date: quickAdd.date, start: draft.start, end: draft.end });
+              setFormTitle(draft.title || undefined);
+              setQuickAdd(null);
+              setFormTarget('new');
+            }}
+            onClose={() => setQuickAdd(null)}
+          />
+        )}
+
+        {/* **The day takes a delay** (ADR-0231 §5): two taps, one write, one undo. */}
+        {delayOpen && late && late.moved.length > 0 && (
+          <DelaySheet
+            moved={late.moved}
+            anchor={late.anchor}
+            nowLabel={nowLabel}
+            tz={dayZone}
+            onPick={(minutes) => {
+              verbs.delayDay(dayEvents, nowMs, minutes);
+              setDelayOpen(false);
+            }}
+            onClose={() => setDelayOpen(false)}
           />
         )}
 
@@ -1921,9 +2152,9 @@ export function DayView() {
             // it back on the day.
             onNewEvent={() => {
               verbs.park(replaceTarget);
-              setFormSlot(slotOf(replaceTarget));
-              setFormTarget('new');
+              const slot = slotOf(replaceTarget);
               setReplaceTarget(null);
+              addAt(slot);
             }}
             onClose={() => setReplaceTarget(null)}
           />
@@ -1960,9 +2191,9 @@ export function DayView() {
             // A NEW event keeps the gap's own default block: its category is the form's next
             // question, so there is nothing yet to read a typical length from.
             onNewEvent={() => {
-              setFormSlot(gapTarget.fill);
-              setFormTarget('new');
+              const slot = gapTarget.fill;
               setGapTarget(null);
+              addAt(slot);
             }}
             onClose={() => setGapTarget(null)}
           />
@@ -2034,6 +2265,8 @@ interface DayCtx {
   /** `החלף` — open the slot's own chooser (ADR-0161 §6). The screen owns the sheet, because
    *  the sheet needs the shelf and the day; the row only says which event. */
   onReplace: (event: TripEvent) => void;
+  /** **The time is the move** (ADR-0231 §1): open the day's positions for this row. */
+  onPickTime: (event: TripEvent) => void;
   onOpenRead: (event: TripEvent) => void;
   onOpenDetail: (booking: Booking) => void;
   /** `מפה` — show this place on OUR map (ADR-0121 §8), not Google's. */
@@ -2220,6 +2453,14 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       onPark={ctx.readOnly ? undefined : () => ctx.verbs.park(e)}
       onEdit={() => ctx.onEdit(e)}
       onRemove={() => ctx.verbs.remove(e)}
+      // A planned row with a clock, on a day that can be written (ADR-0231 §1) — passed and
+      // unmarked included, which is where ADR-0027 §1's Do-it-now lives. Not a settled row:
+      // its chip is the undo (ADR-0230), and there is nothing to move a record to.
+      onPickTime={
+        !ctx.readOnly && e.startsAt && e.status === EVENT_STATUS.PLANNED
+          ? () => ctx.onPickTime(e)
+          : undefined
+      }
     />
   );
   // **THE MARK IS NAILED HERE, at whatever depth this row is** (ADR-0217 §1). `ItemNode` is
@@ -2259,7 +2500,9 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
 // own zone, so on a multi-zone trip an idea dropped at 19:00 reappeared shifted.
 // Editable only when no place answers the zone — the same rule as every other form.
 function ScheduleSheet({
-  item,
+  heading,
+  confirmLabel,
+  subject,
   defaults,
   date,
   minDate,
@@ -2268,7 +2511,14 @@ function ScheduleSheet({
   onConfirm,
   onClose,
 }: {
-  item: MaybeItem;
+  heading: string;
+  confirmLabel: string;
+  /** What is being placed: an idea being scheduled, or — since ADR-0231 §1 (F3) — an event
+   *  being given an exact time. Only the place matters here, for the zone the times read in;
+   *  the two callers own their own write. The generalisation `GapFillSheet → SlotFillSheet`
+   *  made (ADR-0161 §6), one sheet over: a second when-and-confirm sheet would drift on the
+   *  zone rule. */
+  subject: { placeId?: string };
   defaults: { start: string; end: string };
   date: string;
   minDate: string;
@@ -2290,8 +2540,8 @@ function ScheduleSheet({
   // crossing), so it re-resolves with the fields rather than once on open.
   const zone =
     override ??
-    authoringZone({ placeId: item.placeId }, { date: when.date, time: when.start }, evidence);
-  const placeAnswers = placeTimezone(evidence.places, item.placeId) != null;
+    authoringZone({ placeId: subject.placeId }, { date: when.date, time: when.start }, evidence);
+  const placeAnswers = placeTimezone(evidence.places, subject.placeId) != null;
   const suggestedZones = useMemo(() => {
     const zones = [zone, evidence.primaryZone];
     for (const p of evidence.places) if (p.timezone) zones.push(p.timezone);
@@ -2299,7 +2549,7 @@ function ScheduleSheet({
   }, [zone, evidence.primaryZone, evidence.places]);
 
   return (
-    <Sheet title={t.day.scheduleTitle(item.title)} onClose={onClose}>
+    <Sheet title={heading} onClose={onClose}>
       <WhenField
         variant="day"
         date={when.date}
@@ -2320,7 +2570,7 @@ function ScheduleSheet({
         className="sched-confirm"
         onClick={() => onConfirm({ ...when, zone, override })}
       >
-        <Icon name="calendar" /> {t.actions.scheduleToDay}
+        <Icon name="calendar" /> {confirmLabel}
       </button>
     </Sheet>
   );

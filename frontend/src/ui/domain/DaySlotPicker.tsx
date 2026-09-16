@@ -21,6 +21,7 @@ import type { ReactNode } from 'react';
 import { Icon } from '../Icon';
 import { t } from '../../i18n/he';
 import type { GapDefaults } from '../../lib/gaps';
+import type { Mode } from '../../lib/mode';
 import './day-slot-picker.css';
 
 export interface DaySlotOption {
@@ -43,10 +44,17 @@ export function DaySlotPicker({
   sub,
   options,
   now,
+  mode = 'plan',
   onPick,
   onExact,
   onOtherDay,
 }: {
+  /** Which mode is showing this (ADR-0231 §1). **Not decoration**: the clock a position
+   *  resolves to and the `עכשיו` row's tint are plan violet in Plan mode and the neutral
+   *  `--cta` in Trip mode (root rule 4, ADR-0028) — and a `Modal` portals outside `.app`, so
+   *  the surface has to carry `data-mode` itself. `SlotFillSheet`'s mechanism, for its reason;
+   *  defaults to Plan because every host before the Trip card was Plan. */
+  mode?: Mode;
   /** The question, in the host's words — "לאיזה מקום ביום?" for a move. */
   sub: string;
   options: DaySlotOption[];
@@ -80,7 +88,7 @@ export function DaySlotPicker({
   );
 
   return (
-    <div className="slotpick">
+    <div className="slotpick" data-mode={mode}>
       <div className="slotpick-sub">{sub}</div>
       {now && row(now, true)}
       {options.map((option) => row(option))}

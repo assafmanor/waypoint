@@ -65,6 +65,7 @@ import { attachmentsForHost } from '../lib/attachments';
 import { coerceClearedFields } from '../lib/cache';
 import { isoToTimeInput, zonedIso } from '../lib/time';
 import { planSwap } from '../lib/reorder';
+import { lateShift } from '../lib/late-shift';
 import {
   DEFAULT_MAYBE_ICON,
   DELAY_STEP_MINUTES,
@@ -1591,6 +1592,16 @@ export function useVerbs() {
       void applyDeletePlace(deps, place, soleIdeaFor(place.id, maybeItems)).then((applied) => {
         if (applied) toast(CONTROL_ICON.trash, t.toast.placeDeleted, undo);
       });
+    },
+    /** **The day takes a delay** (ADR-0231 §5): every planned soft row ahead of now, up to the
+     *  first hard anchor, moves by `minutes` — `lateShift`'s set, which is the server ripple's own
+     *  rule — through the one multi-event write, so N moves are one undo. Soft only by
+     *  construction, so no gate; the toast counts what moved. */
+    delayDay: (dayEvents: TripEvent[], nowMs: number, minutes: number) => {
+      const shift = lateShift(dayEvents, nowMs, minutes);
+      if (shift.patches.length === 0) return;
+      void applyEventPatches(deps, shift.patches, dayEvents);
+      toast(CONTROL_ICON.delay, t.toast.dayDelayed(minutes, shift.patches.length), undo);
     },
     // Plan-mode builder: two soft events **trade positions**, each keeping its own
     // length (ADR-0161 §1/§2). Hard events are pinned and never in the patch set.

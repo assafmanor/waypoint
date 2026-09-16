@@ -107,6 +107,7 @@ import {
   nextSlot,
   type Gap,
   type GapDefaults,
+  eventAtSlot,
 } from '../lib/gaps';
 import {
   dayAirMeters,
@@ -140,6 +141,7 @@ import {
   shelfGroups,
   stopReasonText,
   tileReasonText,
+  parkedTag,
 } from '../lib/shelf';
 import { SECONDS_PER_MINUTE, SHELF_POOL_CAP } from '../constants';
 import {
@@ -156,13 +158,7 @@ import { useEdgeAutoScroll, type DragPoint } from '../lib/edge-autoscroll';
 import { useHoldToDrag, type HoldToDragProps } from '../lib/useHoldToDrag';
 import { BEAT, playBeat } from '../lib/one-shot';
 import { useDragGhost } from '../lib/useDragGhost';
-import {
-  CONTROL_ICON,
-  DEFAULT_MAYBE_ICON,
-  DOT_SEPARATOR,
-  DRAG_DAY_DWELL_MS,
-  MINUTES_PER_HOUR,
-} from '../constants';
+import { CONTROL_ICON, DEFAULT_MAYBE_ICON, DOT_SEPARATOR, DRAG_DAY_DWELL_MS } from '../constants';
 import {
   dayTransitions,
   placeDayEntries,
@@ -201,8 +197,10 @@ import {
   TaskMark,
 } from '../ui/domain';
 import { DaySlotPicker, type DaySlotOption } from '../ui/domain/DaySlotPicker';
+import { gapLabel, positionOption as positionWords } from '../ui/domain/day-slot-options';
+import { ParkedEventSheet } from '../ui/ParkedEventSheet';
 import { DayTravelTotal } from '../ui/domain/DayTravelTotal';
-import { dayPositions, POSITION_AT, type DayPosition } from '../lib/day-positions';
+import { dayPositions, type DayPosition } from '../lib/day-positions';
 import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
 import { MaybeManageSheet } from '../ui/MaybeManageSheet';
 import { SlotFillSheet } from '../ui/domain/SlotFillSheet';
@@ -276,16 +274,6 @@ const shelfAt = (el: Element | null) =>
     ShelfDrop | undefined) ?? null;
 /** The empty day's drop zone, which exists only while a drag is in flight. */
 const dayDropAt = (el: Element | null) => el?.closest('[data-day-drop]') != null;
-
-function gapLabel(minutes: number): string {
-  if (minutes < MINUTES_PER_HOUR) return t.planDay.gapMinutes(minutes);
-  const hours = Math.round(minutes / MINUTES_PER_HOUR);
-  return hours === 1
-    ? t.planDay.gapHour
-    : hours === 2
-      ? t.planDay.gapTwoHours
-      : t.planDay.gapHours(hours);
-}
 
 export function PlanDay() {
   const {
@@ -369,6 +357,8 @@ export function PlanDay() {
   // The idea's own surface (ADR-0116's 2026-08-01 amendment): a tap opens this, the hold
   // still drags. `שיבוץ ליום` inside it reaches `openSchedule` below.
   const [ideaSheet, setIdeaSheet] = useState<MaybeItem | null>(null);
+  /** The parked card whose sheet is open (ADR-0231 §2, F2). */
+  const [parkedSheet, setParkedSheet] = useState<TripEvent | null>(null);
   // **ARRIVING AT ONE ROW** (owner, 2026-08-20: _"going from a place to the event … doesn't
   // scroll correctly. Check plan day and trip day"_). A place's reference row sends you to the
   // event's day with `?event=<id>`, and this is the half that makes that land: the row is
@@ -886,16 +876,7 @@ export function PlanDay() {
    *  being created (GAP_FILL_MINUTES), never a decision to shorten a two-hour visit to
    *  an hour. An untimed event has no length to keep, so it takes the chip's block —
    *  which is the whole point of dropping it on one. */
-  const slotFor = (event: TripEvent, fill: GapDefaults) => {
-    const startsAt = zonedIso(fill.date, fill.start, tz);
-    if (!event.startsAt)
-      return { startsAt, ...(fill.end ? { endsAt: zonedIso(fill.date, fill.end, tz) } : {}) };
-    if (!event.endsAt) return { startsAt };
-    const durationMs = Date.parse(event.endsAt) - Date.parse(event.startsAt);
-    // Absolute ms, so an event long enough to run past midnight keeps its length
-    // instead of needing the date arithmetic ADR-0037 already settled.
-    return { startsAt, endsAt: new Date(Date.parse(startsAt) + durationMs).toISOString() };
-  };
+  const slotFor = (event: TripEvent, fill: GapDefaults) => eventAtSlot(event, fill, tz);
 
   /** The event's own start/end wall-clock times, rebuilt on another date. An untimed
    *  event has none, and moving it is just the date. */
@@ -1092,11 +1073,12 @@ export function PlanDay() {
           className="skipped-card"
           icon={e.icon}
           title={e.title}
-          meta={t.day.skippedTag}
-          // A skipped event's tap still restores it in place — it has a surface of its own
-          // (its day row), so the gesture change is the idea's alone.
+          meta={parkedTag(e, bookings)}
+          // **A tap opens the card's sheet** (ADR-0231 §2, F2, amending ADR-0116 §5a): a parked
+          // event has no day row, and on a cancelled booking restore is the wrong verb for the
+          // tap that goes looking for the code. `שחזור ליום` is the sheet's first row.
           onShowOnMap={eventShowOnMap(e, bookings, places, showPlaceOnMap)}
-          onOpen={() => verbs.restore(e)}
+          onOpen={() => setParkedSheet(e)}
           dragProps={skippedDragProps(e)}
           dragging={dragging}
         />
@@ -1272,52 +1254,12 @@ export function PlanDay() {
    */
   const positionSlot = (p: DayPosition): Gap => narrowedFree(p.afterEvent, p.beforeEvent, p.free);
   /** A position, said in the same words the drag's seams use — deliberately, so the two
-   *  ways to reach a position do not name it differently. */
-  const positionOption = (p: DayPosition): DaySlotOption => ({
-    key: p.key,
-    label:
-      p.at === POSITION_AT.AFTER && p.afterEvent ? (
-        // The row above, and the one below when it is a HARD anchor: "before the flight" is
-        // the more useful half of that pair, and the anchor is what the day is built around.
-        <>
-          {t.planDay.seamAfter('')}
-          <TitleLabel title={p.afterEvent.title} />
-          {p.beforeEvent?.kind === EVENT_KIND.HARD && (
-            <span className="slotpick-before">
-              {DOT_SEPARATOR} {t.planDay.seamBefore('')}
-              <TitleLabel title={p.beforeEvent.title} />
-            </span>
-          )}
-        </>
-      ) : p.at === POSITION_AT.DAY_END ? (
-        t.planDay.seamDayEnd
-      ) : p.at === POSITION_AT.WHOLE_DAY ? (
-        t.planDay.slotWholeDay
-      ) : (
-        t.planDay.seamDayStart
-      ),
-    time: p.free.fill.start,
-    // **What is FREE here, not how long the hole is** (ADR-0206 §V1.1 / §AN) — the last
-    // surface still stating the raw gap. The chip, the seam and the between-row label were
-    // corrected in M6a; this one was not, because `dayPositions` answers with **positions**
-    // and the correction is about **pairs**. So the pair is looked up where there is one and
-    // the position is left exactly as it was where there is not.
-    //
-    // `earnsChipAt` on the corrected number, not `earnsChip` on the hole (§AG5): a 45-minute
-    // hole a 40-minute walk eats is not an offer, and the sheet must not list one the day
-    // itself refuses to draw. That is the same threshold asked the same question, so a
-    // position offered here and a chip drawn there cannot disagree.
-    //
-    // **And the FILL is the same corrected slot, which is the 2026-09-01 half.** This row stated
-    // the free minutes and then handed the raw hole to the write — so a position could say
-    // `פנוי · 10 דק׳` and put an hour-long event across the drive it had just subtracted. One
-    // sheet contradicting itself in two taps; one object now, so it cannot.
-    free: (() => {
-      const minutes = positionSlot(p).minutes;
-      return earnsChipAt(minutes) ? t.planDay.slotFree(gapLabel(minutes)) : undefined;
-    })(),
-    fill: positionSlot(p).fill,
-  });
+   *  ways to reach a position do not name it differently. The words live in
+   *  `ui/domain/day-slot-options` since the Trip card's time became a button (ADR-0231 §1):
+   *  two hosts, one sentence. What this host supplies is the FREE time once the journey into
+   *  the hole is counted (`positionSlot`), which is both the number said and the fill written
+   *  (ADR-0206 §AN). */
+  const positionOption = (p: DayPosition): DaySlotOption => positionWords(p, positionSlot(p));
   /** The day's positions with one event taken out, as picker options — the row's time button
    *  and the overlap resolve both ask for exactly this. */
   const positionOptionsFor = (excludeId: string | null): DaySlotOption[] =>
@@ -1938,6 +1880,25 @@ export function PlanDay() {
           </Sheet>
         )}
 
+        {parkedSheet && (
+          <ParkedEventSheet
+            event={parkedSheet}
+            bookings={bookings}
+            tz={tz}
+            onRestore={() => {
+              verbs.restore(parkedSheet);
+              setParkedSheet(null);
+            }}
+            onOpen={() => {
+              const e = parkedSheet;
+              setParkedSheet(null);
+              const booking = e.bookingId ? bookings.find((b) => b.id === e.bookingId) : undefined;
+              if (booking) setDetailTarget(booking);
+              else setEventDetail(e);
+            }}
+            onClose={() => setParkedSheet(null)}
+          />
+        )}
         {ideaSheet && (
           <MaybeManageSheet
             item={ideaSheet}

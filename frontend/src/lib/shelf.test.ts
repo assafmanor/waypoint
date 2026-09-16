@@ -7,6 +7,7 @@ import {
   EVENT_STATUS,
   type MaybeItem,
   type Place,
+  type Booking,
   type TripEvent,
 } from '@waypoint/shared';
 import {
@@ -20,11 +21,13 @@ import {
   shelfForSlot,
   tripDayStops,
   shelfGroups,
+  parkedTag,
   slotStops,
   stopReasonText,
   tileReasonText,
 } from './shelf';
 import { withoutBidiControls } from './bidi';
+import { t } from '../i18n/he';
 import { DEFAULT_MAYBE_ICON, SHELF_POOL_CAP } from '../constants';
 
 const DAY = '2026-07-20';
@@ -646,5 +649,22 @@ describe('ideaCategory / ideaGlyph', () => {
     );
     expect(ideaCategory(bare({ placeId: 'p-gone' }), [categorised])).toBeUndefined();
     expect(ideaGlyph(bare({ placeId: 'p-gone' }), [categorised])).toBe(DEFAULT_MAYBE_ICON);
+  });
+});
+
+describe('parkedTag — what a parked card says about its state (ADR-0231 §2, F1)', () => {
+  const bookings = [{ id: 'b1' } as unknown as Booking];
+  it('a skipped soft stop says דילגתם', () => {
+    expect(parkedTag(event({ id: 'stop', status: EVENT_STATUS.SKIPPED }), bookings)).toBe(
+      t.day.skippedTag,
+    );
+  });
+  it('a parked commitment says לא מתקיים — hard, or booked', () => {
+    expect(
+      parkedTag(event({ id: 'hard', status: EVENT_STATUS.SKIPPED, kind: EVENT_KIND.HARD }), []),
+    ).toBe(t.day.notHappeningTag);
+    expect(
+      parkedTag(event({ id: 'booked', status: EVENT_STATUS.SKIPPED, bookingId: 'b1' }), bookings),
+    ).toBe(t.day.notHappeningTag);
   });
 });

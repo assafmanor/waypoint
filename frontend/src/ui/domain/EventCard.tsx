@@ -12,7 +12,7 @@
 // callbacks — no `verbs` hook, no trip-state.
 //
 // Domain UI may use the shared copy/icon/time helpers (not state); it does.
-import { useState, type HTMLAttributes, type ReactNode } from 'react';
+import { useState, type HTMLAttributes, type KeyboardEvent, type ReactNode } from 'react';
 import { clockRange, formatTime, crossesMidnightZoned } from '../../lib/time';
 import type { EventKind, EventPhaseName } from './event-phase';
 import type { EventZones } from '../../lib/places';
@@ -182,6 +182,13 @@ export interface EventCardProps {
   onPark?: () => void;
   onEdit?: () => void;
   onRemove?: () => void;
+  /** **The time is the move** (ADR-0231 §1, the Trip-mode sentence of ADR-0161 §7 built). Wired,
+   *  the when line is a `role="button"` opening the day's positions; absent, it is the readout
+   *  it always was. The screen decides when to wire it — a planned row with a clock, on a day
+   *  that can be written — and this component only draws what it was handed, like every other
+   *  verb here. A `role="button"` span and never a `<button>`: the face is one, and a nested
+   *  button reparents the whole face (ADR-0230's first render). */
+  onPickTime?: () => void;
 }
 
 /* **THE ROW'S META LINE CARRIES NO TEXT AT ALL** (owner, 2026-08-09: _"events and bookings
@@ -249,6 +256,7 @@ export function EventCard(props: EventCardProps) {
     onPark,
     onEdit,
     onRemove,
+    onPickTime,
   } = props;
 
   const isHard = kind === 'hard';
@@ -400,8 +408,27 @@ export function EventCard(props: EventCardProps) {
 
   const startZone = zones?.startZone ?? tz;
   const endZone = zones?.endZone ?? tz;
+  // The `⋯`'s two calls (below), for the same reason: the control sits inside the face
+  // button, so its tap must not also toggle the row.
+  const pickTime = (e: { preventDefault: () => void; stopPropagation: () => void }) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onPickTime?.();
+  };
+  const timeControl = onPickTime
+    ? {
+        className: 'wp-event-time is-token',
+        role: 'button' as const,
+        tabIndex: 0,
+        'aria-label': t.planDay.slotMoveTitle(titleText),
+        onClick: pickTime,
+        onKeyDown: (e: KeyboardEvent) => {
+          if (e.key === 'Enter' || e.key === ' ') pickTime(e);
+        },
+      }
+    : { className: 'wp-event-time' };
   const timeBlock = startsAt && (
-    <span className="wp-event-time">
+    <span {...timeControl}>
       {isHard && <HardLock />}
       <span dir="auto">
         {formatTime(startsAt, startZone)}

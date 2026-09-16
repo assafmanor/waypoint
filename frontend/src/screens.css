@@ -3039,6 +3039,70 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   vertical-align: super;
 }
 
+/* ── THE QUICK ADD (ADR-0231 §3) ───────────────────────────────────────────────
+   A title, one when-sentence (`TimePicker`'s own two tokens) and one primary — the primary is
+   `.sched-confirm` below, the shelf schedule's, because it is the same "put this on today". */
+.quick-add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.quick-add .field input {
+  width: 100%;
+}
+/* The way into the big room. A link, not a second primary: `.sched-confirm` is the one
+   primary, and this is the exit from the small room into `EventForm`, carrying the draft. */
+.quick-add-more {
+  display: block;
+  width: fit-content;
+  margin: 0 auto;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  padding: 6px 10px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.quick-add-more:focus-visible {
+  outline: 2.5px solid var(--cta);
+  outline-offset: 2px;
+  border-radius: var(--radius-8, 8px);
+}
+
+/* ── THE DAY TAKES A DELAY (ADR-0231 §5) ───────────────────────────────────────
+   Two lines of prose around the chooser: what moves, and what stays. `--muted`, the
+   `.wp-row-subject` voice — they explain, they do not ask. The anchor line names the row that
+   will not move and why, so the consequence is read BEFORE the tap, not in a toast after it. */
+.late-what,
+.late-anchor {
+  margin: 0 2px 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.late-anchor {
+  margin-block: 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.late-anchor .hard-lock {
+  opacity: 1;
+}
+/* The chooser's pills at ADR-0017's floor. `.choice-pill` ships at 36px (ADR-0052 §6, known);
+   `.category-pills` already bumps its own consumer to 8px 14px. This is a third consumer
+   taking the same bump to the floor: a control whose whole job is one tap has no other job to
+   spend the height on. Measured ⁦54×44px⁩, five inside a 360 sheet. */
+.late-steps .choice-pill {
+  font-size: var(--text-secondary);
+  padding: 11px 16px;
+  min-block-size: 44px;
+}
+
 /* Trip-mode quick-schedule confirm (shelf → day). Neutral --cta, not plan
    violet — this is Trip mode. */
 .sched-confirm {
@@ -3057,6 +3121,10 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
 .sched-confirm:focus-visible {
   outline: 2.5px solid var(--cta);
   outline-offset: 2px;
+}
+.sched-confirm:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 /* The `.row-action*` family that lived here is GONE (ADR-0138 §1). It was the
