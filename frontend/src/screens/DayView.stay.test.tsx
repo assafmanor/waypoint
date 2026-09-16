@@ -224,7 +224,9 @@ describe("DayView — a stay's check-in can be answered wherever the count holds
   it('settles that edge, and settling is what clears the number', () => {
     const { container } = show();
     fireEvent.click(container.querySelector('.stay-bookend .wp-settle-btn.done')!);
-    expect(done).toHaveBeenCalledWith(guesthouse());
+    // **The OPENING edge, named** (ADR-0224 §1) — `'start'` is what `status` always meant, and
+    // saying so here is what the closing edge's own test below can contradict.
+    expect(done).toHaveBeenCalledWith(guesthouse(), 'start');
     // The other half of the loop, where the glance already agreed: a settled edge counts nothing.
     expect(remaining([waterfall, guesthouse({ status: EVENT_STATUS.DONE })])).toBe(0);
   });
@@ -240,5 +242,78 @@ describe("DayView — a stay's check-in can be answered wherever the count holds
     tripEvents = [waterfall, guesthouse({ status: EVENT_STATUS.DONE })];
     const { container } = show();
     expect(container.querySelector('.stay-bookend .wp-settle-tag.ok')).toBeTruthy();
+  });
+
+  // **AND IT ASKS IN THE CHECK-IN'S OWN WORD** (ADR-0224 §3). The pair on this row said
+  // `היינו` / `דילגנו` — `SettleControl`'s stop vocabulary — although the row is one END of a
+  // bracketed span and `TransitionRow` has asked `נכנסנו` since the ADR shipped.
+  it("asks in the check-in's own words", () => {
+    const { container } = show();
+    // `compact` is icon-only (ADR-0139), so the word rides the accessible name.
+    expect(
+      container.querySelector('.stay-bookend .wp-settle-btn.done')!.getAttribute('aria-label'),
+    ).toBe('נכנסנו');
+  });
+});
+
+// ── THE OTHER END OF THE SAME BOOKING ────────────────────────────────────────────────────
+//
+// **The 2026-09-16 report**, owner: _"when you check in or out, you can mark היינו. Marking
+// that makes it היינו for both check in and out."_
+//
+// ADR-0224 §1 split a bracketed span's answer in two — `status` opens, `endStatus` closes — and
+// wired `TransitionRow`, the lifted hero and the three derivations that read them. The bookend
+// row was not among them: it asked `edgeOutlivesItsInstant(stay, 'start')` and then read and
+// wrote `status` whichever end of the day it was drawing, so the hotel you left this morning and
+// the one you sleep in tonight were one switch with two handles.
+describe('DayView — a check-out is answered on its own', () => {
+  const CHECKOUT = '2026-09-17';
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(`${CHECKOUT}T09:00:00Z`));
+    tripEvents = [guesthouse()];
+    activeDate = CHECKOUT;
+    done.mockClear();
+  });
+
+  it("asks in the check-out's own words", () => {
+    const { container } = show();
+    // `compact` is icon-only (ADR-0139), so the word rides the accessible name.
+    expect(
+      container.querySelector('.stay-bookend .wp-settle-btn.done')!.getAttribute('aria-label'),
+    ).toBe('יצאנו');
+  });
+
+  it('writes the CLOSING edge, so the check-in is left alone', () => {
+    const { container } = show();
+    fireEvent.click(container.querySelector('.stay-bookend .wp-settle-btn.done')!);
+    expect(done).toHaveBeenCalledWith(guesthouse(), 'end');
+  });
+
+  // THE REPORT, as an assertion: a check-in answered two days ago leaves the check-out open.
+  it('does not wear the check-in’s answer', () => {
+    tripEvents = [guesthouse({ status: EVENT_STATUS.DONE })];
+    const { container } = show();
+    expect(container.querySelector('.stay-bookend .wp-settle-tag')).toBeNull();
+    expect(container.querySelector('.stay-bookend .wp-settle-btn.done')).toBeTruthy();
+  });
+
+  it('wears its own once it has one', () => {
+    tripEvents = [guesthouse({ endStatus: EVENT_STATUS.DONE })];
+    const { container } = show();
+    expect(container.querySelector('.stay-bookend .wp-settle-tag.ok')!.textContent).toContain(
+      'יצאנו',
+    );
+  });
+
+  // **A MIDDLE NIGHT IS NEITHER END** — and the old gate, which only ever asked about the
+  // check-in, offered a control on every night of the stay. There is no transition on this day
+  // to answer for, so the row states the night and says nothing else.
+  it('offers no pair on a night that is neither end of the stay', () => {
+    activeDate = '2026-09-16';
+    setSimulatedNow(Date.parse('2026-09-16T09:00:00Z'));
+    const { container } = show();
+    expect(container.querySelector('.stay-bookend')).toBeTruthy();
+    expect(container.querySelector('.stay-bookend .wp-settle')).toBeNull();
   });
 });

@@ -557,10 +557,44 @@ describe('pinOutcome — what happened there, on the two tiers that can say (ADR
     expect(pinOutcome(index.get('shelved')!, ctx)).toBeUndefined();
   });
 
-  // `spanDays` gives EVERY day of a span the event's status, so without this a hotel
-  // marked done would stamp a ✓ on each of its nights — a claim nobody made about any one
-  // of them. Same suppression the row runs (`Map.tsx`'s `dayMeta`).
+  // `spanDays` gives every day of a span the answer of the END it is, so without this a
+  // hotel marked done would stamp a ✓ on each of its middle nights — a claim nobody made
+  // about any one of them. Same suppression the row runs (`Map.tsx`'s `dayMeta`).
   it('a strictly-middle stay night reports nothing, though its stay is settled', () => {
+    const index = usages({
+      places: [place('hotel')],
+      events: [
+        event({
+          id: 'stay',
+          placeId: 'hotel',
+          category: 'lodging',
+          date: PREV_DAY,
+          endDate: NEXT_DAY,
+          startsAt: `${PREV_DAY}T15:00:00Z`,
+          endsAt: `${NEXT_DAY}T10:00:00Z`,
+          status: EVENT_STATUS.DONE,
+          endStatus: EVENT_STATUS.DONE,
+        }),
+      ],
+    });
+    // DAY is the strictly-middle night of PREV_DAY → NEXT_DAY, and the tier here is
+    // `behind` rather than `ambient`: settling the stay settles every day of it
+    // (ADR-0117 §2 outranks the clock), and `behind` is resolved first. Which is exactly
+    // why the ambient guard cannot live on the tier — it has to read the DAY.
+    const midStay = { onDate: DAY, nowMs: NOON };
+    expect(placePinTier(index.get('hotel')!, midStay)).toBe(PIN_TIER.behind);
+    expect(pinOutcome(index.get('hotel')!, midStay)).toBeUndefined();
+    // The stay's own EDGES do report it — that is where a human settled something, and
+    // since ADR-0224 §1 there are two of them to settle (`status` opens, `endStatus` closes).
+    expect(pinOutcome(index.get('hotel')!, { onDate: PREV_DAY, nowMs: NOON })).toBe('done');
+    expect(pinOutcome(index.get('hotel')!, { onDate: NEXT_DAY, nowMs: NOON })).toBe('done');
+  });
+
+  // **AND ONE EDGE'S ANSWER IS NOT THE OTHER'S** (ADR-0224 §1, 2026-09-16). The pin used to
+  // read the span's `status` on every day it touched, so a check-in ticked on arrival day put
+  // a ✓ on the hotel for the morning you had not yet left — the map's half of the owner's
+  // _"marking that makes it היינו for both check in and out"_.
+  it('a checked-in stay reports nothing yet on its check-out day', () => {
     const index = usages({
       places: [place('hotel')],
       events: [
@@ -576,16 +610,8 @@ describe('pinOutcome — what happened there, on the two tiers that can say (ADR
         }),
       ],
     });
-    // DAY is the strictly-middle night of PREV_DAY → NEXT_DAY, and the tier here is
-    // `behind` rather than `ambient`: settling the stay settles every day of it
-    // (ADR-0117 §2 outranks the clock), and `behind` is resolved first. Which is exactly
-    // why the ambient guard cannot live on the tier — it has to read the DAY.
-    const midStay = { onDate: DAY, nowMs: NOON };
-    expect(placePinTier(index.get('hotel')!, midStay)).toBe(PIN_TIER.behind);
-    expect(pinOutcome(index.get('hotel')!, midStay)).toBeUndefined();
-    // The stay's own EDGES do report it — that is where a human settled something.
     expect(pinOutcome(index.get('hotel')!, { onDate: PREV_DAY, nowMs: NOON })).toBe('done');
-    expect(pinOutcome(index.get('hotel')!, { onDate: NEXT_DAY, nowMs: NOON })).toBe('done');
+    expect(pinOutcome(index.get('hotel')!, { onDate: NEXT_DAY, nowMs: NOON })).toBeUndefined();
   });
 
   // Plan mode withdraws `behind` entirely (ADR-0130 §2), so a filled pin has no past to

@@ -19,7 +19,7 @@
 // `ui/domain/`: presentational, every value via props.
 import { type Booking, type TripEvent } from '@waypoint/shared';
 import { PlaceBadge } from './PlaceBadge';
-import { SettleControl, type SettleOutcome } from './SettleControl';
+import { SettleControl, type SettleOutcome, type SettleWords } from './SettleControl';
 import { TitleLabel } from '../TitleLabel';
 import { chosenIcon, DEFAULT_STAY_ICON } from '../../constants';
 
@@ -30,6 +30,7 @@ export function StayRow({
   bookings,
   onOpen,
   onShowOnMap,
+  words,
   outcome,
   onDone,
   onSkip,
@@ -56,7 +57,15 @@ export function StayRow({
    *  `not-before` edge in `נותרו היום` until it is `DONE`, because 15:01 does not mean anybody
    *  checked in (ADR-0171 §6). With the edge row gone, dropping this would re-open the report
    *  ADR-0184 §2 fixed. Trip mode supplies it and Plan supplies nothing, which is ADR-0171 §10e's
-   *  posture difference. */
+   *  posture difference.
+   *
+   *  **And it is about ONE end of the stay** (ADR-0224 §1/§3, wired here 2026-09-16). This row
+   *  is drawn twice on a day you change hotels and twice again on a middle night, and it used to
+   *  ask `היינו` on every one of them against the span's single `status` — so the wake row and
+   *  the sleep row were one switch with two handles. The caller resolves which edge this day is
+   *  and passes that edge's words and that edge's answer; a day that is neither end of the stay
+   *  passes no pair at all, because there is no transition on it to answer for. */
+  words?: SettleWords;
   outcome?: SettleOutcome;
   onDone?: () => void;
   onSkip?: () => void;
@@ -84,6 +93,7 @@ export function StayRow({
       {onDone && onSkip && (
         <SettleControl
           variant="compact"
+          words={words}
           outcome={outcome}
           onDone={onDone}
           onSkip={onSkip}

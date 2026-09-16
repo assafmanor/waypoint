@@ -18,6 +18,7 @@ import {
   EVENT_KIND,
   EVENT_STATUS,
   eventCategorySchema,
+  edgeStatusOf,
   isAmbient,
   isExactEdge,
   isMultiDay,
@@ -200,13 +201,21 @@ export function routeEndpointDay(
  *  it is two calls, each keeping its own end, which is exactly a car hire collected on one day
  *  and returned on another. */
 function spanDays(event: TripEvent, endpoint?: 'start' | 'end'): DayUsage[] {
-  const outcome =
-    event.status === EVENT_STATUS.DONE
+  /** **Asked of an END, because that is what a day of a span is** (ADR-0224 §1, 2026-09-16).
+   *  A span's answer used to be read once off `status` and stamped on every day it touched, so
+   *  a hotel's check-out day inherited the check-in's tick: the pin went green the morning you
+   *  arrived and `מה נשאר` stopped counting a departure nobody had made. `edgeStatusOf` reads
+   *  the field that edge actually writes. A strictly-middle night has no edge and therefore no
+   *  answer of its own — it keeps the opening one, which is what it always had and is the only
+   *  thing on offer: nothing happens on it to settle. */
+  const outcomeAt = (edge?: 'start' | 'end') => {
+    const status = edgeStatusOf(event, edge ?? 'start');
+    return status === EVENT_STATUS.DONE
       ? ('done' as const)
-      : event.status === EVENT_STATUS.SKIPPED
+      : status === EVENT_STATUS.SKIPPED
         ? ('skipped' as const)
         : undefined;
-  const settled = outcome != null;
+  };
   const startAt = event.startsAt ? Date.parse(event.startsAt) : undefined;
   const endAt = event.endsAt ? Date.parse(event.endsAt) : undefined;
   const { sortOrder } = event;
@@ -220,18 +229,21 @@ function spanDays(event: TripEvent, endpoint?: 'start' | 'end'): DayUsage[] {
   // still ahead — on the strength of the tick. Reported as an airport whose 02:00 landing sat
   // under `מה שלפנינו` at 15:11, kept there by an 18:00 car return already marked `היינו`.
   // Per-reference is where the rule belongs: what a human has closed cannot be what makes a
-  // place still ahead of you.
-  const until = settled ? undefined : (endAt ?? startAt);
+  // place still ahead of you — and since ADR-0224 the answer is per-EDGE, so the day asks about
+  // its own end rather than about the span.
+  const until = (settled: boolean) => (settled ? undefined : (endAt ?? startAt));
   const eventId = event.id;
   const edge = endpoint ?? 'start';
   if (!isMultiDay(event)) {
     const at = edge === 'end' ? (endAt ?? startAt) : startAt;
+    const outcome = outcomeAt(edge);
+    const settled = outcome != null;
     return [
       {
         date: event.date,
         prominence: 'edge',
         at,
-        until,
+        until: until(settled),
         sortOrder,
         eventId,
         edge,
@@ -245,12 +257,14 @@ function spanDays(event: TripEvent, endpoint?: 'start' | 'end'): DayUsage[] {
   // shared with `placeRefs` so the row's way-in block and the row's own day cannot disagree.
   const own = routeEndpointDay(event, endpoint);
   if (own) {
+    const outcome = outcomeAt(own.edge);
+    const settled = outcome != null;
     return [
       {
         date: own.date,
         prominence: 'edge',
         at: own.edge === 'start' ? startAt : (endAt ?? startAt),
-        until,
+        until: until(settled),
         sortOrder,
         eventId,
         edge: own.edge,
@@ -278,6 +292,9 @@ function spanDays(event: TripEvent, endpoint?: 'start' | 'end'): DayUsage[] {
   return dates.map((date, i) => {
     const isFirst = i === 0;
     const isLast = i === dates.length - 1;
+    const dayEdge = isFirst ? ('start' as const) : isLast ? ('end' as const) : undefined;
+    const outcome = outcomeAt(dayEdge);
+    const settled = outcome != null;
     return {
       date,
       prominence: ambient && !isFirst && !isLast ? ('ambient' as const) : ('edge' as const),
@@ -285,17 +302,17 @@ function spanDays(event: TripEvent, endpoint?: 'start' | 'end'): DayUsage[] {
       // the first day departs/checks in, the last arrives/checks out, the middle
       // nights have neither.
       at: isFirst ? startAt : isLast ? endAt : undefined,
-      until,
+      until: until(settled),
       sortOrder,
       eventId,
-      edge: isFirst ? ('start' as const) : isLast ? ('end' as const) : undefined,
+      edge: dayEdge,
       outcome,
       settled,
       moments: [
         {
           at: isFirst ? startAt : isLast ? endAt : undefined,
           eventId,
-          edge: isFirst ? ('start' as const) : isLast ? ('end' as const) : undefined,
+          edge: dayEdge,
           settled,
         },
       ],

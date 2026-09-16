@@ -10,19 +10,13 @@
 // but only when a caller supplies `onNavigate` (Trip mode, live day, and the
 // booking has a mappable location). Plan mode has no live "now", so it passes
 // none; a read-only past day, or a location-less booking, passes none too.
-import {
-  CATEGORY_DEFAULT_ICON,
-  edgeMeaning,
-  edgeStatusOf,
-  isEdgeSettled,
-  type Booking,
-} from '@waypoint/shared';
-import { SettleControl, type SettleOutcome } from './domain/SettleControl';
+import { CATEGORY_DEFAULT_ICON, edgeMeaning, type Booking } from '@waypoint/shared';
+import { SettleControl } from './domain/SettleControl';
 import { chosenIcon, DEFAULT_EVENT_ICON } from '../constants';
 import { ZoneShiftPill } from './ZoneShiftPill';
 import { TitleLabel } from './TitleLabel';
 import { PlaceBadge } from './domain/PlaceBadge';
-import { edgeSettleWords, edgeTimePhrase, transitionLabel } from '../lib/transitions';
+import { edgeSettleProps, edgeTimePhrase, transitionLabel } from '../lib/transitions';
 import { parseRouteTitle } from '../lib/route-title';
 import { placeLabelOf } from '../lib/place-label';
 import { usePlaceLabels } from '../state/place-labels';
@@ -162,17 +156,14 @@ export function TransitionRow({
       {/* `compact` is the density `UnplacedCommitment` already picked for this exact row
           shape — icon-only beside a label that needs the width — so nothing new is minted
           (ADR-0139's Consequences: four settle affordances drifted before one collected
-          them). **Every edge, and THIS edge's own answer** (ADR-0224 §1/§4): `edgeStatusOf`
+          them). **Every edge, and THIS edge's own answer** (ADR-0224 §1/§4): `edgeSettleProps`
           reads `status` at the start and `endStatus` at the end, so a check-out row stops
-          reporting what the check-in said, and `edgeSettleWords` gives the pair the
-          transition's own verb — `יצאנו` where it used to say `היינו`. */}
+          reporting what the check-in said, and gives the pair the transition's own verb —
+          `יצאנו` where it used to say `היינו`. */}
       {onDone && onSkip && (
         <SettleControl
           variant="compact"
-          words={edgeSettleWords(event, edge)}
-          outcome={
-            isEdgeSettled(event, edge) ? (edgeStatusOf(event, edge) as SettleOutcome) : undefined
-          }
+          {...edgeSettleProps(event, edge)}
           onDone={onDone}
           onSkip={onSkip}
           onUndo={onUndo}

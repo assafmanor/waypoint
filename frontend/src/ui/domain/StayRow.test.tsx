@@ -131,6 +131,41 @@ describe('StayRow', () => {
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
+  // **AND THE PAIR IS ABOUT ONE END** (ADR-0224 §3, wired 2026-09-16). The row is drawn twice a
+  // day and used to ask `היינו` on both, against one field. The words are the caller's now — it
+  // is the screen that knows which end today is — and `compact` is icon-only, so they ride the
+  // accessible name.
+  it('asks in the words the host gives it, and keeps the shipped pair without them', () => {
+    render(
+      <StayRow
+        edge="wake"
+        stay={stay()}
+        bookings={[]}
+        onOpen={vi.fn()}
+        words={{ did: 'יצאנו', not: 'לא קרה' }}
+        onDone={vi.fn()}
+        onSkip={vi.fn()}
+        onUndo={vi.fn()}
+      />,
+    );
+    expect(document.querySelector('.wp-settle-btn.done')!.getAttribute('aria-label')).toBe('יצאנו');
+
+    cleanup();
+
+    render(
+      <StayRow
+        edge="wake"
+        stay={stay()}
+        bookings={[]}
+        onOpen={vi.fn()}
+        onDone={vi.fn()}
+        onSkip={vi.fn()}
+        onUndo={vi.fn()}
+      />,
+    );
+    expect(document.querySelector('.wp-settle-btn.done')!.getAttribute('aria-label')).toBe('היינו');
+  });
+
   it('is a statement where the host supplies none — a past day is read-only', () => {
     const { container } = render(
       <StayRow edge="wake" stay={stay()} bookings={[]} onOpen={vi.fn()} />,

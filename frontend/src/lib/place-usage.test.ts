@@ -167,7 +167,10 @@ describe('a route endpoint owns its own end of the span, not all of it', () => {
 // day was settled, so one tick on one reference kept the whole place ahead of you.
 describe('a settled reference holds nothing open', () => {
   const NOW = Date.parse('2026-08-06T12:11:00Z');
-  const dayOf = (status: TripEvent['status']) => {
+  // **Both ends, because the hire is collected and returned at the same counter** (ADR-0224
+  // §1). It used to take one status and stamp it on the whole span, which is exactly the
+  // conflation that made a check-out inherit its check-in's tick; the return is `endStatus` now.
+  const dayOf = (status: TripEvent['status'], endStatus: TripEvent['status'] = status) => {
     const hire = booking({
       id: 'car',
       type: BOOKING_TYPE.CAR,
@@ -197,6 +200,7 @@ describe('a settled reference holds nothing open', () => {
         startsAt: '2026-08-06T15:00:00Z',
         endsAt: '2026-08-06T15:00:00Z',
         status,
+        endStatus,
       }),
     ];
     const idx = buildPlaceUsageIndex(events, [flight, hire], [], [place('fra'), place('tlv')]);
@@ -216,6 +220,16 @@ describe('a settled reference holds nothing open', () => {
   // UNSETTLED thing later today still holds the place ahead.
   it('but an unanswered one still does hold it ahead', () => {
     expect(isDayUsagePast(dayOf(EVENT_STATUS.PLANNED), NOW, '2026-08-06')).toBe(false);
+  });
+
+  // **AND ONE END DOES NOT ANSWER FOR THE OTHER** (ADR-0224 §1, 2026-09-16). The hire is
+  // collected and returned at the same counter, so both ends reference this place — and the
+  // span's one `status` used to close both. Saying `אספנו` at the counter this morning cannot
+  // make the 18:00 return behind you.
+  it('and collecting the car does not return it', () => {
+    expect(isDayUsagePast(dayOf(EVENT_STATUS.DONE, EVENT_STATUS.PLANNED), NOW, '2026-08-06')).toBe(
+      false,
+    );
   });
 });
 

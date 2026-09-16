@@ -5,9 +5,11 @@
 import {
   categoryForBookingType,
   edgeMeaning,
+  edgeStatusOf,
   eventMidSpan,
   eventTransitionKeys,
   isBracketed,
+  isEdgeSettled,
   windowBoundOf,
   TIME_MEANING,
   type BookingType,
@@ -17,6 +19,7 @@ import {
 import { ltrIsolate } from './bidi';
 import { formatTime } from './time';
 import { t } from '../i18n/he';
+import type { SettleOutcome, SettleWords } from '../ui/domain/SettleControl';
 
 /** The Hebrew word for a profile transition key (המראה / צ׳ק-אין …). */
 export const transitionLabel = (key: string): string =>
@@ -38,6 +41,28 @@ export function edgeSettleWords(
   const key = edge === 'end' ? keys?.endKey : keys?.startKey;
   const did = key ? (t.actions.transitionDid as Record<string, string>)[key] : undefined;
   return did ? { did, not: t.actions.transitionNotHappened } : undefined;
+}
+
+/** **Everything the settle pair needs to be about ONE edge** — the words it asks in, and the
+ *  answer that edge already has (ADR-0224 §1/§3).
+ *
+ *  The two were resolved side by side in `TransitionRow` and nowhere else, and that is how
+ *  three other hosts of the same control went on reading `status` at *both* ends of a span:
+ *  the day's bookend rows, the untimed-commitment row and the Map's reference row all showed
+ *  `היינו` on a check-out and wrote the check-in when you tapped it (owner, 2026-09-16 —
+ *  _"marking that makes it היינו for both check in and out"_). One resolution rather than a
+ *  fourth copy of the pairing (rule 8), so the next host is a spread and not a re-derivation.
+ *
+ *  `words` absent means "this is a stop", which `SettleControl` reads as its own
+ *  `היינו` / `דילגנו`; `outcome` absent means nobody has answered THIS edge yet. */
+export function edgeSettleProps(
+  event: TripEvent,
+  edge: 'start' | 'end',
+): { words?: SettleWords; outcome?: SettleOutcome } {
+  return {
+    words: edgeSettleWords(event, edge),
+    outcome: isEdgeSettled(event, edge) ? (edgeStatusOf(event, edge) as SettleOutcome) : undefined,
+  };
 }
 
 /** The Hebrew word for a `midSpan` key — what the middle of a bracketed span is called

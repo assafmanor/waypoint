@@ -19,13 +19,13 @@
 // holds with no strip to hold it.
 //
 // It settles, and that is not decoration: ADR-0164 counts a check-in in `נותרו היום` until it
-// is settled, so a host with no way to say `היינו` leaves that number stuck all evening.
+// is settled, so a host with no way to say `נכנסנו` leaves that number stuck all evening.
 // `SettleControl`'s `compact` density is the one this wants — and it is the density
 // `TransitionRow` picked for this exact row shape, which is one more thing the two now share.
-import { CATEGORY_DEFAULT_ICON, EVENT_STATUS, TIME_MEANING, type Booking } from '@waypoint/shared';
+import { CATEGORY_DEFAULT_ICON, TIME_MEANING, type Booking } from '@waypoint/shared';
 import { PlaceBadge } from './PlaceBadge';
-import { SettleControl, type SettleOutcome } from './SettleControl';
-import { transitionLabel } from '../../lib/transitions';
+import { SettleControl } from './SettleControl';
+import { edgeSettleProps, transitionLabel } from '../../lib/transitions';
 import { isoToTimeInput } from '../../lib/time';
 import { chosenIcon, DEFAULT_EVENT_ICON } from '../../constants';
 import { t } from '../../i18n/he';
@@ -66,10 +66,6 @@ export function UnplacedCommitment({
   const icon =
     chosenIcon(event.icon) ??
     (event.category != null ? CATEGORY_DEFAULT_ICON[event.category] : DEFAULT_EVENT_ICON);
-  const outcome =
-    event.status === EVENT_STATUS.DONE || event.status === EVENT_STATUS.SKIPPED
-      ? (event.status as SettleOutcome)
-      : undefined;
   const label = row.labelKey ? transitionLabel(row.labelKey) : undefined;
   return (
     <div className="transition-row">
@@ -98,10 +94,14 @@ export function UnplacedCommitment({
           </span>
         </span>
       </button>
+      {/* **THIS EDGE's own answer, in this edge's own words** (ADR-0224 §1/§3, wired here
+          2026-09-16). The row has carried `row.edge` since it was born — it is what picks
+          the `צ׳ק-אין` above the title — and the settle pair below it read the span's
+          `status` anyway, so a car return marked `היינו` because the pickup was. */}
       {onDone && onSkip && (
         <SettleControl
           variant="compact"
-          outcome={outcome}
+          {...edgeSettleProps(event, row.edge ?? 'start')}
           onDone={onDone}
           onSkip={onSkip}
           onUndo={onUndo}

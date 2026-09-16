@@ -2007,6 +2007,57 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       );
     });
 
+    // **A PLACE'S REFERENCE IS ONE END OF A BOOKING, AND ANSWERS FOR THAT END**
+    // (ADR-0224 §1/§3, wired 2026-09-16). `edgeOnDate` has resolved this row to the day's own
+    // end of the span since 2026-08-06 — it is what picks `צ׳ק-אאוט` for the label — and the
+    // settle pair under it went on reading the span's `status` and saying `היינו`. So on the
+    // morning you leave, the hotel you checked into on Saturday showed the check-out already
+    // ticked, and tapping it would have re-written the check-in.
+    it('answers for the end of the stay this day IS, not for the span', () => {
+      setSimulatedNow(Date.parse(`${ACTIVE_DATE}T08:00:00Z`));
+      tripPlaces = [place('granbell', true)];
+      tripBookings = [];
+      tripEvents = [
+        event({
+          id: 'stay',
+          placeId: 'granbell',
+          category: 'lodging',
+          icon: '🏨',
+          kind: EVENT_KIND.HARD,
+          title: 'Shinjuku Granbell',
+          date: '2026-07-18',
+          startsAt: '2026-07-18T15:00:00Z',
+          endDate: ACTIVE_DATE,
+          endsAt: `${ACTIVE_DATE}T01:00:00Z`,
+          // Checked in two nights ago. The one answer this booking has, and it is not this
+          // day's question.
+          status: EVENT_STATUS.DONE,
+        }),
+      ];
+      render(wrap(<MapView />));
+      fireEvent.click(row('granbell')!);
+
+      const ref = row('granbell')!.querySelector('.map-ref')!;
+      expect(ref.querySelector('.map-ref-label')!.textContent).toContain(
+        t.glance.transition.checkOut,
+      );
+      // Still asking, and asking the check-OUT's own question.
+      expect(ref.querySelector('.wp-settle-tag')).toBeNull();
+      expect(ref.querySelector('.wp-settle-btn.done')!.getAttribute('aria-label')).toBe(
+        t.actions.transitionDid.checkOut,
+      );
+
+      cleanup();
+
+      // …and once it has its own answer, the record is the check-out's word.
+      tripEvents = [{ ...tripEvents[0], endStatus: EVENT_STATUS.DONE }];
+      render(wrap(<MapView />));
+      fireEvent.click(row('granbell')!);
+      expect(row('granbell')!.querySelector('.map-ref .wp-settle-tag')!.textContent).toContain(
+        t.actions.transitionDid.checkOut,
+      );
+    });
+
     it('an unlinked booking still resolves to exactly one entry', () => {
       seedLinked();
       tripEvents = [];
