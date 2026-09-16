@@ -102,6 +102,29 @@ The band's two-box split from §1 is gone with the `⋯` it was written to pin; 
 
 **`ניווט` leaves a past day**, which amends [ADR-0043 §4](0043-day-view-now-line-phases-and-archive-chrome.md)'s _"Done / Skip / Restore / Navigate stay"_. Directions to somewhere you already were is not a thing anyone taps; the badge keeps the place one tap away either way. Done/Skip/Restore are untouched — that is the retrospective job §4 was actually written for.
 
+## 6. Amendment, 2026-09-16: the early mark is actually in `⋯`, and the parking lot takes a commitment
+
+Owner, with two screenshots of day 16 at ⁦13:51⁩ and the `⋯` sheet open on a ⁦15:00⁩ boat tour: _"Our boat tour got canceled, and the app doesn't have a way to say that, especially because it's a hard event."_
+
+**§5c says the early mark is in `⋯`. It was not.** The sheet carried `החלף` · `העבר למדף` (both soft-only, ADR-0011) · `עריכה` · `מחיקה`, so an upcoming **booking** had exactly one verb that took it off the day, and that verb throws away the confirmation code you are about to need for the refund. The i18n already described `actions.skip` as _"the row-menu action"_ — the word was there, the row never was. The row ahead of the line is also the one where a cancellation actually reaches you: the operator writes in the morning, not once the slot has passed.
+
+**Counting the consumers of `skipped` found the second half.** `shelfGroups` kept `kind === SOFT` on ADR-0027's parking lot from the days when only a soft event could be skipped, and §2 made a commitment settleable without visiting it. A skipped booking left `dayEvents` in both modes (`DayView` and `PlanDay` both filter `!== SKIPPED`) and was refused by the shelf — no surface left, restorable only from the Map's reference row. That was already true of a passed booking marked `דילגנו` under §2; this amendment is the first time the state is reachable **ahead of time**, which is when you go looking for the card.
+
+### 6a. What changed
+
+- **`EventCard`'s `⋯` sheet leads with `סיימנו` · `דילוג` on an `upcoming` row**, hard and soft alike, when both handlers are wired — the both-halves rule `SettleControl` and `EventActions` already hold. One place per phase and no duplicates: passed → the strip (§3), now → the band (§5a), done → the chip is the undo ([0230 §1](0230-one-done-mark-and-it-is-the-undo.md)), upcoming → `⋯`. The pair leads the sheet: what happened, before what to do about the row.
+- **`shelfGroups.skipped` drops `=== SOFT`.** `place-usage`'s `isParked` — the Map's `אולי` facet, defined as "what the shelf renders" — follows, so the two cannot disagree about a parked booking.
+- **Nothing new on what the parked card can do.** A tap restores in place. Plan's drag into a gap already goes through `verbs.update` → `applyGuardedUpdate`, so a hard card re-timed by a drop asks first (ADR-0011); the drop table's refusal to re-day a skipped card is unchanged.
+- **No write, no schema, no backend change**, one more time. `applySetStatus` never read the kind; `event-soon` selects `status: 'planned'`, so a skipped booking stops being reminded about; the travel legs, the gaps and the leave-by all read the day without it, which is what "the tour is off" has to do to the afternoon.
+
+### 6b. What it says, and what it does not
+
+**The verb is `דילוג` and the record is `דילגנו` / `דילגתם`**, the vocabulary ADR-0139 fixed. A tour the operator cancelled is not, strictly, something _we_ skipped. A fourth `EventStatus` (`canceled`) was considered and **not** taken: it is a Prisma enum migration plus some forty frontend consumers that test `=== SKIPPED` or `DONE || SKIPPED`, for a distinction the day does nothing different with — not happening is not happening, and the booking keeps its code in the Index either way. **For the device pass:** whether `דילגתם` on a parked booking reads wrong enough to earn its own word. If it does, the cheap answer is a kind-aware _label_ on the parked card, not a status.
+
+**Skipping does not pass the hard gate.** `שינוי מחייב עדכון ההזמנה` guards edits to the commitment's time and its deletion; a settle is a record about the world, not an edit of the booking (§2's strip and the Map's row never asked either), and the booking itself is untouched.
+
+**Tests:** `EventCard.test.tsx` pins the pair on an upcoming hard row and its identical twin on a soft one, its lead position, and its absence on passed / now / done rows and when either handler is missing; `shelf.test.ts` and `place-usage.test.ts` flip the assertions that had encoded the `=== SOFT`.
+
 ## Consequences
 
 - **Frontend only, no schema change and no new write.** `applySetStatus`, the outbox, the undo toast and the backend column already served every kind (ADR-0139 §4's "a new caller, not a new mechanism", one more time).

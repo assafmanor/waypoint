@@ -2,11 +2,10 @@
 // the same shelf: Trip mode's DayView and Plan mode's PlanDay. Before this each
 // screen inlined `maybeItems.filter((m) => !m.consumed)` and Trip mode alone knew
 // about the day's skipped events — which is how ADR-0027's "the shelf renders
-// unplaced ideas AND skipped soft events, uniformly" stayed half-built.
+// unplaced ideas AND skipped events, uniformly" stayed half-built.
 //
 // Pure: no clock, no zone, no state. The day it groups against is passed in.
 import {
-  EVENT_KIND,
   EVENT_STATUS,
   haversineMeters,
   iconForCategory,
@@ -37,8 +36,11 @@ export interface ShelfGroups {
   /** Everything else, dateless first, then ideas aimed at another day — each of
    *  which states which day at the call site (ADR-0085's relative phrasing). */
   pool: MaybeItem[];
-  /** The focused day's skipped soft events, parked here and restorable in place
-   *  (ADR-0027 §2). They belong to the day, so they render beside `forDay`. */
+  /** The focused day's skipped events, parked here and restorable in place (ADR-0027 §2).
+   *  They belong to the day, so they render beside `forDay`. Both kinds: the `=== SOFT` this
+   *  carried dated from when only a soft event could be skipped, and once ADR-0228 §2 let a
+   *  commitment be settled it made a skipped booking vanish from both day screens with no
+   *  path back (ADR-0228's 2026-09-16 amendment). */
   skipped: TripEvent[];
 }
 
@@ -54,9 +56,7 @@ export function shelfGroups(
     forDay,
     // Dateless ideas lead: they're the ones still asking to be placed anywhere.
     pool: [...others.filter((m) => !m.targetDate), ...others.filter((m) => !!m.targetDate)],
-    skipped: events.filter(
-      (e) => e.date === date && e.kind === EVENT_KIND.SOFT && e.status === EVENT_STATUS.SKIPPED,
-    ),
+    skipped: events.filter((e) => e.date === date && e.status === EVENT_STATUS.SKIPPED),
   };
 }
 

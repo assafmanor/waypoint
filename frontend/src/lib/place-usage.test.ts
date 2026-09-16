@@ -471,7 +471,9 @@ describe('buildPlaceUsageIndex', () => {
     expect(withEvent()).toMatchObject({ eventId: 'e' });
   });
 
-  it('a skipped SOFT event is parked on the shelf; a skipped hard one is not', () => {
+  // Both kinds since ADR-0228's 2026-09-16 amendment: the shelf parks a skipped booking too,
+  // and this flag is the Map's mirror of what the shelf renders, so it moved with it.
+  it('a skipped event is parked on the shelf, whatever its kind; a planned one is not', () => {
     const idx = buildPlaceUsageIndex(
       [
         event({ id: 'e1', placeId: 'pl-skipped', status: EVENT_STATUS.SKIPPED }),
@@ -489,7 +491,7 @@ describe('buildPlaceUsageIndex', () => {
     );
     expect(idx.get('pl-skipped')?.isParked).toBe(true);
     expect(isOnShelf(idx.get('pl-skipped')!)).toBe(true);
-    expect(idx.get('pl-hard')?.isParked).toBe(false);
+    expect(idx.get('pl-hard')?.isParked).toBe(true);
     expect(idx.get('pl-planned')?.isParked).toBe(false);
     // …and it is not an idea: the event still owns its date and slot.
     expect(idx.get('pl-skipped')?.isMaybe).toBe(false);
