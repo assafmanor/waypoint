@@ -10699,14 +10699,20 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
    1+1 border), and the face's height is set by the 40px badge, not by its text — so the chip
    paints 5px into the face's own 14px padding above and below, and the face measures what it
    measured (⁦69px⁩ → ⁦69px⁩ in the mockup, against ⁦79⁩ without this). The same trade
-   `button.bld-time` made on the Plan row. `margin-inline-start` gives back the chip's own
-   padding so the digits stay where the span put them and the title column loses nothing. */
+   `button.bld-time` made on the Plan row.
+
+   **THE BOX ALIGNS WITH THE TITLE, NOT THE DIGITS** (owner, 2026-09-16: _"Plan day got it
+   right, day view has it wrong… the right alignment is wrong"_). This shipped with
+   `margin-inline-start: calc(var(--space-3) - 8px)` so the digits stayed where the span had
+   put them — which pushed the chip's border 8px past the title's start edge, into the gutter
+   beside the badge, on every row. `button.bld-time` never did that: its box sits on the
+   title's edge and the digits take the inset. Measured: the box was ⁦8px⁩ past the title on
+   every Trip row and ⁦0⁩ on Plan's; it is ⁦0⁩ here now, digits ⁦9px⁩ in (8px padding + border). */
 .wp-event-time.is-token {
   position: relative;
   border: 1px solid var(--soft-line);
   border-radius: 9px;
   padding: 4px 8px;
-  margin-inline-start: calc(var(--space-3) - 8px);
   margin-block: -5px;
   cursor: pointer;
 }
@@ -11499,6 +11505,30 @@ button.day-trv-face:focus-visible {
 /* The leave-by is a time you owe, so it is the clock's hue (§D1). */
 .day-trv-leave {
   color: var(--amber-deep);
+}
+/* **WHERE A SPANNING LEG LEAVES FROM** (ADR-0232 R3). A place name, so it may wear neither the
+   clock's amber (§D1, and root rule 4) nor the map's teal, which is a location CONTROL's: it takes
+   the `--muted` standing `.day-trv-dist` gives a fact that is context rather than commitment. A
+   block, so the meta line's own `nowrap` + `overflow: hidden` ellipsises IT rather than clipping a
+   long hotel name mid-glyph. */
+.day-trv-from {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-weight: 600;
+}
+/* **AN ORIGIN AND A SENTENCE NEVER SHARE THE LINE**, and the render is what asked for this rule
+   (`mockups/a-journey-is-between-two-placed-stops-v1.html`): `.day-trv-meta` is one `nowrap` flex
+   line whose `overflow: hidden` clips a second child silently — `text-overflow: ellipsis` on a flex
+   container does nothing for its items — so `מ-Fancy Sheep` beside `חסרות 21 דק׳ לדרך` lost the
+   digits at 360 with no mark. They stack, one fact per line, at a measured ⁦+15px⁩ only on the arms
+   that carry a sentence beside the origin. */
+.day-trv-meta:has(.day-trv-from) {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
 }
 /* The routed distance — `formatDistance` over `distanceMeters`, per mode, never the crow-flies
    helper (a 1.9 km crow-flies leg is a 2.4 km walk). `--muted` because a distance is context
