@@ -101,3 +101,13 @@ describe('DaySlotPicker', () => {
     expect(screen.queryByText(t.planDay.slotOtherDay)).toBeNull();
   });
 });
+
+describe('the accent follows the mode (ADR-0231 §1)', () => {
+  it('wears data-mode, defaulting to plan — every host before the Trip card was Plan', () => {
+    picker();
+    expect(document.querySelector('.slotpick')!.getAttribute('data-mode')).toBe('plan');
+    cleanup();
+    picker({ mode: 'trip' });
+    expect(document.querySelector('.slotpick')!.getAttribute('data-mode')).toBe('trip');
+  });
+});

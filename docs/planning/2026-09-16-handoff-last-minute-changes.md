@@ -1,5 +1,7 @@
 # 2026-09-16 — Handoff: last-minute schedule changes, on the ground
 
+**Outcome (2026-09-16, the same day):** [ADR-0231](../decisions/0231-the-day-is-changed-where-you-stand.md) (Proposed) · [`mockups/the-day-is-changed-where-you-stand-v1.html`](../../mockups/the-day-is-changed-where-you-stand-v1.html) · [session note](2026-09-16-last-minute-changes-on-the-ground.md). Hypotheses 1–4 and 7 below are answered there; 5 and 6 are out of scope by decision.
+
 **For:** the next session, which the owner framed as a **product → design → build** pass. **From:** the session that shipped [ADR-0228 §6](../decisions/0228-the-quick-actions-are-one-list-and-a-commitment-can-be-settled.md) (a cancelled booking leaves the day and keeps its code). This file is orientation, not a decision — nothing in it is authoritative until it lands in an ADR (root `CLAUDE.md`, "Durable vs. scratch").
 
 ## The brief, in the owner's words

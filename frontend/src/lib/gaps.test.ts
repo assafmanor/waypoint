@@ -14,6 +14,8 @@ import {
   gapBetween,
   narrowGapToNow,
   nextSlot,
+  quickAddSlot,
+  eventAtSlot,
 } from './gaps';
 
 const TZ = 'Asia/Tokyo';
@@ -460,5 +462,93 @@ describe('narrowGapToNow', () => {
     expect(
       blockFor(narrowGapToNow({ ...hole(), until: '16:45' }, at('16:10'), at('16:46'), TZ)!, 90),
     ).toEqual({ date: DAY, start: '16:10', end: '16:45' });
+  });
+});
+
+describe('quickAddSlot — the ＋ lands on now (ADR-0231 §3)', () => {
+  const DATE = '2026-09-16';
+  const TZ = 'Asia/Tokyo';
+  const at = (hhmm: string) => Date.parse(`${DATE}T${hhmm}:00+09:00`);
+  const row = (
+    id: string,
+    start: string,
+    end: string,
+    status: TripEvent['status'] = EVENT_STATUS.PLANNED,
+  ): TripEvent => ({
+    id,
+    tripId: 't1',
+    date: DATE,
+    title: id,
+    kind: EVENT_KIND.SOFT,
+    status,
+    startsAt: `${DATE}T${start}:00+09:00`,
+    endsAt: `${DATE}T${end}:00+09:00`,
+    sortOrder: 1,
+    source: 'manual',
+    createdAt: '2026-09-01T00:00:00Z',
+    updatedAt: '2026-09-01T00:00:00Z',
+    updatedBy: 'u1',
+  });
+
+  it('starts at now on the slot grid and takes the default block into an open afternoon', () => {
+    expect(quickAddSlot([row('free', '16:30', '19:30')], DATE, TZ, at('13:51'))).toEqual({
+      date: DATE,
+      start: '13:55',
+      end: '14:55',
+    });
+  });
+
+  it('is capped by the next planned row ahead', () => {
+    expect(quickAddSlot([row('next', '14:30', '16:00')], DATE, TZ, at('13:51')).end).toBe('14:30');
+  });
+
+  it('ignores a done row still holding its box — you are standing in the free time it left', () => {
+    const tour = row('tour', '10:00', '16:00', EVENT_STATUS.DONE);
+    expect(quickAddSlot([tour, row('free', '16:30', '19:30')], DATE, TZ, at('13:51'))).toEqual({
+      date: DATE,
+      start: '13:55',
+      end: '14:55',
+    });
+  });
+
+  it('never leaves the day: late at night the block clamps and then drops', () => {
+    expect(quickAddSlot([], DATE, TZ, at('23:20'))).toEqual({
+      date: DATE,
+      start: '23:20',
+      end: '23:59',
+    });
+    expect(quickAddSlot([], DATE, TZ, at('23:58')).end).toBe('');
+  });
+});
+
+describe('eventAtSlot — an existing event keeps its length at a new slot (ADR-0161 §1)', () => {
+  const DATE = '2026-09-16';
+  const TZ = 'Asia/Tokyo';
+  const base: TripEvent = {
+    id: 'e',
+    tripId: 't1',
+    date: DATE,
+    title: 'e',
+    kind: EVENT_KIND.SOFT,
+    status: EVENT_STATUS.PLANNED,
+    sortOrder: 1,
+    source: 'manual',
+    createdAt: '2026-09-01T00:00:00Z',
+    updatedAt: '2026-09-01T00:00:00Z',
+    updatedBy: 'u1',
+  };
+  const fill = { date: DATE, start: '18:00', end: '19:00' };
+  const iso = (hhmm: string) => new Date(Date.parse(`${DATE}T${hhmm}:00+09:00`)).toISOString();
+
+  it("a three-hour row moved to 18:00 ends at 21:00, not at the slot's own end", () => {
+    const e = { ...base, startsAt: iso('16:30'), endsAt: iso('19:30') };
+    expect(eventAtSlot(e, fill, TZ)).toEqual({ startsAt: iso('18:00'), endsAt: iso('21:00') });
+  });
+
+  it("a start-only row stays start-only; an untimed one takes the slot's block", () => {
+    expect(eventAtSlot({ ...base, startsAt: iso('16:30') }, fill, TZ)).toEqual({
+      startsAt: iso('18:00'),
+    });
+    expect(eventAtSlot(base, fill, TZ)).toEqual({ startsAt: iso('18:00'), endsAt: iso('19:00') });
   });
 });

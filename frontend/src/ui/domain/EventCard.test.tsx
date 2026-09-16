@@ -837,3 +837,40 @@ describe('EventCard — the meta line and the note mark (ADR-0152 §6c)', () => 
     });
   });
 });
+
+describe('the time is the move (ADR-0231 §1)', () => {
+  const timed = { ...base, startsAt: '2026-09-16T07:30:00Z', endsAt: '2026-09-16T10:30:00Z' };
+
+  it('the when line is a role="button" when the screen wires it, and a readout otherwise', () => {
+    const { container, unmount } = render(wrapNav(<EventCard {...timed} onPickTime={() => {}} />));
+    const time = container.querySelector('.wp-event-time')!;
+    expect(time.getAttribute('role')).toBe('button');
+    expect(time.classList.contains('is-token')).toBe(true);
+    expect(time.getAttribute('aria-label')).toBe(t.planDay.slotMoveTitle(base.titleText));
+    // Never a nested <button>: the face is one (ADR-0230's first render).
+    expect(container.querySelectorAll('.wp-event-face button').length).toBe(0);
+    unmount();
+    const plain = render(wrapNav(<EventCard {...timed} />));
+    expect(plain.container.querySelector('.wp-event-time')!.getAttribute('role')).toBeNull();
+  });
+
+  it('opens the positions without toggling the row, by tap and by keyboard', () => {
+    const onPickTime = vi.fn();
+    const onToggle = vi.fn();
+    const { container } = render(
+      wrapNav(<EventCard {...timed} onPickTime={onPickTime} onToggle={onToggle} />),
+    );
+    const time = container.querySelector('.wp-event-time')!;
+    fireEvent.click(time);
+    fireEvent.keyDown(time, { key: 'Enter' });
+    expect(onPickTime).toHaveBeenCalledTimes(2);
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it('a hard row keeps its lock inside the control', () => {
+    const { container } = render(
+      wrapNav(<EventCard {...timed} kind="hard" onPickTime={() => {}} />),
+    );
+    expect(container.querySelector('.wp-event-time.is-token .hard-lock')).toBeTruthy();
+  });
+});

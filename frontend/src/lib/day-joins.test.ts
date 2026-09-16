@@ -1395,3 +1395,51 @@ describe('dayJourney — the arrival explains the departure beside it (ADR-0206 
     expect(j.arriveAtMs).toBeNull();
   });
 });
+
+describe('dayBlocks — the join BEFORE a cluster is stated (ADR-0231 §2, F9)', () => {
+  const blocksFor = (events: TripEvent[]) =>
+    dayBlocks(mergeDayEntries(buildTimeTree(events), []), ctxFor(events, []));
+  // The seeded evening the ADR counted on: the free time ends at 19:30, the booking between
+  // it and the bar is cancelled, and the two bar rows overlap into one cluster from 21:30.
+  const free = ev({
+    id: 'free',
+    kind: EVENT_KIND.SOFT,
+    startsAt: '2026-07-12T16:30:00+09:00',
+    endsAt: '2026-07-12T19:30:00+09:00',
+  });
+  const bar = ev({
+    id: 'bar',
+    kind: EVENT_KIND.SOFT,
+    startsAt: '2026-07-12T21:30:00+09:00',
+    endsAt: '2026-07-12T22:30:00+09:00',
+  });
+  const cocktails = ev({
+    id: 'cocktails',
+    kind: EVENT_KIND.SOFT,
+    startsAt: '2026-07-12T22:00:00+09:00',
+    endsAt: '2026-07-12T22:45:00+09:00',
+  });
+  const walk = ev({
+    id: 'walk',
+    kind: EVENT_KIND.SOFT,
+    startsAt: '2026-07-12T23:30:00+09:00',
+    endsAt: '2026-07-12T23:50:00+09:00',
+  });
+
+  it("measures the two free hours from the row above to the cluster's entry member", () => {
+    const blocks = blocksFor([free, bar, cocktails]);
+    const cluster = blocks[1].entries[0];
+    expect(cluster.entry.kind === 'event' && cluster.entry.group.kind).toBe('cluster');
+    expect(cluster.join).toMatchObject({ kind: 'gap', minutes: 120 });
+    expect(cluster.from?.id).toBe('free');
+  });
+
+  it('and still measures the join AFTER it from the exit member, as it always did', () => {
+    const blocks = blocksFor([bar, cocktails, walk]);
+    const after = blocks[1].entries[0];
+    expect(after.entry.kind === 'event' && after.entry.group.kind).toBe('single');
+    // 22:45 → 23:30: under the chip floor, so no gap join, but the row above is named.
+    expect(after.join).toBeUndefined();
+    expect(after.from?.id).toBe('cocktails');
+  });
+});

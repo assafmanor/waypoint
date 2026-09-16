@@ -280,7 +280,14 @@ describe('the day’s shot (ADR-0219 §3)', () => {
 });
 
 describe('the head’s footer band (ADR-0219 §2/§4)', () => {
-  it('carries the day’s one action, at the end edge', () => {
+  it('carries the day’s add, at the end edge — grouped on today, alone on another day', () => {
+    show();
+    // Today: the add is the quick add and sits in the actions group (ADR-0231 §3/§5).
+    expect(
+      head().querySelector('.wp-dayhead-foot > .wp-dayhead-acts .new-event-btn')!.textContent,
+    ).toContain(t.actions.newEvent);
+    cleanup();
+    activeDate = '2026-08-05';
     show();
     expect(head().querySelector('.wp-dayhead-foot > .new-event-btn')!.textContent).toContain(
       t.actions.newEvent,

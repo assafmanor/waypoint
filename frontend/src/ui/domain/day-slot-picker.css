@@ -2,7 +2,26 @@
 
    The geometry is `.resolve-opt`'s, moved here rather than re-invented: that rule was one of
    the two one-offs this component replaces (`ResolveSheet`'s before/after pair), so this is
-   where it lives now. What is new is the free-time note, the `עכשיו` row and the escapes. */
+   where it lives now. What is new is the free-time note, the `עכשיו` row and the escapes.
+
+   **THE ACCENT FOLLOWS THE MODE** (ADR-0231 §1). Every host of this picker was Plan's until the
+   Trip card's time became a button, and it painted plan violet outright — `--plan-deep` on the
+   clock, `--plan-tint` under `עכשיו` — which on a Trip-mode day is root rule 4 broken in one
+   look. One local variable, defaulting to Plan's and re-pointed by the surface's OWN
+   `data-mode` (a `Modal` portals outside `.app`, so `.app[data-mode]` cannot reach it): the
+   mechanism `SlotFillSheet` paid for the same move in ADR-0161 §6. */
+.slotpick {
+  --slotpick-accent: var(--plan);
+  --slotpick-accent-deep: var(--plan-deep);
+  --slotpick-accent-tint: var(--plan-tint);
+  --slotpick-now-line: rgba(110, 89, 214, 0.35);
+}
+.slotpick[data-mode='trip'] {
+  --slotpick-accent: var(--cta);
+  --slotpick-accent-deep: var(--cta);
+  --slotpick-accent-tint: color-mix(in srgb, var(--cta) 8%, transparent);
+  --slotpick-now-line: color-mix(in srgb, var(--cta) 35%, transparent);
+}
 
 .slotpick-sub {
   color: var(--muted);
@@ -30,12 +49,12 @@
 }
 @media (hover: hover) and (pointer: fine) {
   .slotpick-opt:hover {
-    border-color: var(--plan);
-    background: var(--plan-tint);
+    border-color: var(--slotpick-accent);
+    background: var(--slotpick-accent-tint);
   }
 }
 .slotpick-opt:focus-visible {
-  outline: 2.5px solid var(--plan);
+  outline: 2.5px solid var(--slotpick-accent);
   outline-offset: 2px;
 }
 
@@ -58,15 +77,15 @@
   font-family: var(--font-mono);
   font-weight: 700;
   font-size: 13px;
-  color: var(--plan-deep);
+  color: var(--slotpick-accent-deep);
   flex: none;
 }
 
 /* `עכשיו`, when the day on screen is today. Tinted rather than a different shape: it is one
    of the positions, not a different kind of thing. */
 .slotpick-opt.now {
-  border-color: rgba(110, 89, 214, 0.35);
-  background: var(--plan-tint);
+  border-color: var(--slotpick-now-line);
+  background: var(--slotpick-accent-tint);
 }
 
 /* The ways out — an exact time (ADR-0036's setter) and another day. Centred and dashed, the

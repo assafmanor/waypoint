@@ -227,6 +227,43 @@
 .wp-event.soft .wp-event-time {
   color: var(--muted);
 }
+/* **THE TIME IS THE MOVE** (ADR-0231 §1) — the when line as a control, on a planned row of a
+   day that can be written. `ValueToken`'s box (`value-token.css`: hairline, radius 9, 4px 8px,
+   the target as an inset overlay) at the CARD's ink rather than `.vt-time`'s amber: the two
+   rules above already say what colour this line is (ink hard, muted soft), and the chip only
+   says "you can press this". Amber on every upcoming row would spend rule 4's budget on a hint.
+   Not composed from `.vt` itself: that class is `inline-flex` against this line's `flex`, and
+   the two sheets tie on specificity in an order neither controls.
+
+   **THE ROW DOES NOT GROW.** The chip is 10px taller than the span it replaces (4+4 padding,
+   1+1 border), and the face's height is set by the 40px badge, not by its text — so the chip
+   paints 5px into the face's own 14px padding above and below, and the face measures what it
+   measured (⁦69px⁩ → ⁦69px⁩ in the mockup, against ⁦79⁩ without this). The same trade
+   `button.bld-time` made on the Plan row. `margin-inline-start` gives back the chip's own
+   padding so the digits stay where the span put them and the title column loses nothing. */
+.wp-event-time.is-token {
+  position: relative;
+  border: 1px solid var(--soft-line);
+  border-radius: 9px;
+  padding: 4px 8px;
+  margin-inline-start: calc(var(--space-3) - 8px);
+  margin-block: -5px;
+  cursor: pointer;
+}
+/* -8.5, not -8: the identical overlay on `button.bld-time` reaches ⁦43px⁩ against the 44px floor
+   (ADR-0199's Consequences) — this one measured the same before the half pixel. */
+.wp-event-time.is-token::after {
+  content: '';
+  position: absolute;
+  inset: -8.5px 0;
+}
+.wp-event-time.is-token:active {
+  transform: scale(var(--press-scale));
+}
+.wp-event-time.is-token:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
 .wp-event-xmid {
   font-size: 9px;
 }

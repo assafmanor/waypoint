@@ -6,6 +6,7 @@
 //
 // Pure: no clock, no zone, no state. The day it groups against is passed in.
 import {
+  EVENT_KIND,
   EVENT_STATUS,
   haversineMeters,
   iconForCategory,
@@ -42,6 +43,18 @@ export interface ShelfGroups {
    *  commitment be settled it made a skipped booking vanish from both day screens with no
    *  path back (ADR-0228's 2026-09-16 amendment). */
   skipped: TripEvent[];
+}
+
+/**
+ * **What a parked event's card says about the state it is in** (ADR-0231 §2, fork F1). A
+ * skipped stop says `דילגתם`; a parked COMMITMENT — hard, or booked — says `לא מתקיים`. A tour
+ * the operator cancelled is not something you skipped, and "not happening" is true whoever
+ * called it off. A label, never a status: ADR-0228 §6b priced a fourth `EventStatus` at a
+ * migration plus forty consumers for a distinction the day does nothing different with.
+ */
+export function parkedTag(event: TripEvent, bookings: readonly Booking[]): string {
+  const booked = !!event.bookingId && bookings.some((b) => b.id === event.bookingId);
+  return event.kind === EVENT_KIND.HARD || booked ? t.day.notHappeningTag : t.day.skippedTag;
 }
 
 export function shelfGroups(

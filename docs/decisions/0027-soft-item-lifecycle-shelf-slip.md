@@ -27,6 +27,8 @@ Two separate concepts — `maybe.consumed` and `event.status = skipped` — both
 | Unresolved (past day) | soft, past, planned, **earlier day** | greyed "not done" — factual history, not chased forward                                                                |
 | Done / Skipped        | human tapped                         | as designed                                                                                                            |
 
+_Amended 2026-09-16 ([ADR-0231](0231-the-day-is-changed-where-you-stand.md) §1): **Do it now** and **Pick a time** were decided here and never reached the card as verbs. They are the Trip card's time button now — `עכשיו` heads the day's positions on today, and the positions are the times — rather than separate verbs._
+
 This mirrors ADR-0018's reasoning for dropping stored `now`: auto-writing a derived state needs a trigger, emits per-event `Change` traffic, can write a false "done," and goes stale on an offline phone.
 
 **2. The shelf is a parking lot.** An idea is always in exactly one place: **parked** (shelf), **placed** (a day), **done**, or **deleted**.

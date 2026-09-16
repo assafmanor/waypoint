@@ -129,9 +129,9 @@ export interface DayBlock {
  * Group the day's entries into blocks, computing each join once.
  *
  * **Adjacency is the same rule Plan uses for its gap chips**: joins are measured between
- * consecutive EVENT entries, and a leaf group at that — a cluster is two things at once,
- * so "the gap after it" is not a single fact, and a transition point (ADR-0064 §B)
- * neither opens nor closes one.
+ * consecutive EVENT entries — a cluster included, measured from its exit member to the next
+ * group's entry member (ADR-0231 §2) — and a transition point (ADR-0064 §B) neither opens
+ * nor closes one.
  *
  * **What differs since ADR-0171 §5 is what a transition does to the row AFTER it.** It
  * still starts a new block, but a **flexible** edge no longer ends the measurement: free
@@ -149,8 +149,13 @@ export function dayBlocks(entries: readonly DayEntry[], ctx: JoinContext): DayBl
   let prevEnd: TripEvent | null = null;
 
   entries.forEach((entry, index) => {
-    const leaf = entry.kind === 'event' && entry.group.kind !== 'cluster';
-    const start = leaf ? groupStartEvent(entry.group) : null;
+    // **A cluster OPENS a join like any row** (ADR-0231 §2, fork F9). The docblock above argued
+    // that "the gap after a cluster is not a single fact", and the code below has always
+    // measured it anyway (`prevEnd` is set from the cluster's exit member) — what it withheld
+    // was the join BEFORE one, whose start is a single fact: the cluster's entry member. That
+    // is how cancelling the booking before an evening cluster freed two hours the day did not
+    // state. Both modes at once, since both read this.
+    const start = entry.kind === 'event' ? groupStartEvent(entry.group) : null;
     const join = prevEnd && start ? (joinBetween(prevEnd, start, ctx) ?? undefined) : undefined;
     const from = start ? (prevEnd ?? undefined) : undefined;
     const last = blocks[blocks.length - 1];
@@ -163,9 +168,8 @@ export function dayBlocks(entries: readonly DayEntry[], ctx: JoinContext): DayBl
     }
     // **A flexible edge is TRANSPARENT to the measurement** (ADR-0171 §5). Free time is
     // time between commitments, and a check-out "by 11:00" does not consume a particular
-    // hour — so it neither bounds a gap nor hides one. Everything else still ends the
-    // run: an exact transition IS a moment, and a cluster is two things at once, so "the
-    // gap after it" is not a single fact.
+    // hour — so it neither bounds a gap nor hides one. An exact transition IS a moment and
+    // ends the run; a cluster ends it at its exit member (`groupEndEvent`).
     if (entry.kind === 'event') prevEnd = groupEndEvent(entry.group);
     else if (edgeMeaning(entry.event, entry.edge) === TIME_MEANING.EXACT) prevEnd = null;
   });

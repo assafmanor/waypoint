@@ -225,6 +225,15 @@
   flex: 0 0 auto;
   margin-inline-start: auto;
 }
+/* **Two actions in the footer where one stood** (ADR-0231 §5): `מאחרים` beside `＋ אירוע חדש`
+   on today. A group at the end edge, so the rule above moves up one level and nothing else in
+   the head moves. Measured at 360: the footer stays one line and the facts keep ⁦134px⁩. */
+.wp-dayhead-acts {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  margin-inline-start: auto;
+}
 
 /* **THE FACTS ARE A BLOCK UNDER THE GRID, FULL WIDTH** — not lines in the copy column. Round 2
    drew them as `.wp-dayhead-copy > span` lines and the render clipped two of them at 360

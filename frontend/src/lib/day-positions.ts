@@ -21,6 +21,8 @@ import {
   freeBeforeFirst,
   freeBetween,
   freeWholeDay,
+  dayLastMinuteMs,
+  narrowGapToNow,
   type Gap,
   type GapDefaults,
 } from './gaps';
@@ -155,4 +157,34 @@ export function firstPositionFitting(
   minutes: number,
 ): DayPosition | null {
   return positions.find((p) => p.free.minutes >= minutes) ?? positions.at(-1) ?? null;
+}
+
+/**
+ * **The positions still ahead of the clock, on today** (ADR-0231 §1/§3). A position entirely
+ * behind now is not offered; the one the moment is inside opens at now (`narrowGapToNow`, the
+ * same narrowing `DayJoinRow` applies to the hole you are standing in).
+ *
+ * This is the line whose absence let the Trip-mode quick-schedule prefill ⁦09:00⁩ at ⁦13:51⁩
+ * and write the event into the morning: `firstPositionFitting` was asked over positions that
+ * had never been told what time it was. A move has `MOVE_INTO_PAST` behind it; a create has
+ * nothing, so the offer itself has to be honest.
+ *
+ * A hole's end is the row after it, or the day's last minute where nothing follows — the
+ * same ceiling `freeAfterLast` measures to.
+ */
+export function positionsFromNow(
+  positions: DayPosition[],
+  nowMs: number,
+  tz: string,
+): DayPosition[] {
+  const out: DayPosition[] = [];
+  for (const p of positions) {
+    const endsMs = p.beforeEvent?.startsAt
+      ? Date.parse(p.beforeEvent.startsAt)
+      : dayLastMinuteMs(p.free.fill.date, tz);
+    if (endsMs <= nowMs) continue;
+    const free = narrowGapToNow(p.free, nowMs, endsMs, tz);
+    if (free) out.push({ ...p, free });
+  }
+  return out;
 }

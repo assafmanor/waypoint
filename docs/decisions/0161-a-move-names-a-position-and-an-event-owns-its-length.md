@@ -181,6 +181,8 @@ What it would need if it comes back, recorded so the next attempt starts further
 
 The delay pair keeps `DELAY_STEP_MINUTES` (30) and gains no long-press: with the card's time tappable in Trip mode too (the same button, Tier-2 scoped sheet), an arbitrary delay is two taps on the number that is wrong, and a hidden long-press on a control that already works is exactly the kind of second path this section exists to refuse.
 
+_Amended 2026-09-16 ([ADR-0231](0231-the-day-is-changed-where-you-stand.md) §1): the Trip-mode half of that sentence was **not built** with this ADR — `EventCard` rendered its time as a `<span>` for six weeks, and moving a Trip row to a named time was the whole `EventForm`. It is built now: a `role="button"` (the face is a `<button>`, so never a nested one) opening the same `DaySlotPicker`, `עכשיו` first on today and no position behind the clock. §10's deferred day-level "we're running late" is also decided there (`מאחרים`, on `applyEventPatches`)._
+
 ### 8. The thing you are dragging stops hiding where it would land.
 
 Owner, 2026-08-04: _"when dragging a maybe/event, it should be somewhat transparent — right now it isn't, and because events take the entire row, it's hard to see where you're landing and read the controls."_
