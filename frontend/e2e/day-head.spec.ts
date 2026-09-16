@@ -231,6 +231,11 @@ for (const theme of ['light', 'dark'] as const) {
       // keeps its own look** — ADR-0219 §2 says so outright, so what this checks is that the
       // band did not squeeze it: the BAND's own height, and the button at the end edge.
       //
+      // **On today in Trip mode the button has company** (ADR-0231 §5): `מאחרים` stands beside
+      // it inside `.wp-dayhead-acts`, a group at the same end edge, so the button is found by
+      // its own label rather than as the band's direct child — and the end-edge claim below is
+      // then about the GROUP's own order: the ＋ is its last child, which in RTL is its leftmost.
+      //
       // **The button is ⁦26px⁩ and this does not assert ⁦44px⁩ on it**, deliberately. That is
       // `.new-event-btn`'s shipped size and it was ⁦26px⁩ in `.sec-title` too, so ADR-0017's touch
       // floor is a standing debt of that control rather than anything this change introduced —
@@ -240,7 +245,9 @@ for (const theme of ['light', 'dark'] as const) {
       test('keeps the day’s one action reachable in the footer band', async ({ page }) => {
         await boot(page, true);
         await openDays(page, mode);
-        const button = head(page).locator('.wp-dayhead-foot > .new-event-btn');
+        const button = head(page).locator('.wp-dayhead-foot .new-event-btn', {
+          hasText: t.actions.newEvent,
+        });
         await expect(button).toBeVisible();
         const box = await stableBox(button);
         console.log(

@@ -305,6 +305,29 @@ export async function bootIntoTrip(
       });
     },
   );
+  // **The status write, answered for the same reason** (ADR-0230's chip, ADR-0228's settle).
+  // `POST …/status` was the one event write this file left to the dev server's 404, so a spec
+  // asserting a restore or a settle was really racing the optimistic flip against its own
+  // rollback — and won only while the poll happened to land inside that window. It lost the
+  // day the Trip day surface grew heavier (ADR-0231). Echoes the seeded event with the status
+  // written, which is the contract's shape (`setEventStatus` parses a `TripEvent`); an `'end'`
+  // edge writes `endStatus`, as the server does (ADR-0224 §1).
+  await page.route(
+    (u) => /^\/trips\/t1\/events\/[^/]+\/status$/.test(u.pathname),
+    async (route, request) => {
+      if (request.method() !== 'POST') return route.fallback();
+      const id = new URL(request.url()).pathname.split('/').at(-2);
+      const before = seeded.find((e) => e.id === id) ?? { id };
+      const { status, edge } = (request.postDataJSON() ?? {}) as { status: string; edge?: string };
+      await route.fulfill({
+        json: {
+          ...before,
+          ...(edge === 'end' ? { endStatus: status } : { status }),
+          updatedAt: new Date().toISOString(),
+        },
+      });
+    },
+  );
   // Shelf writes, so parking a row (create-idea then delete-event) survives to the
   // assertion instead of rolling back. Echoes what was sent.
   // Event CREATES are answered for the same reason edits are (see above): without this the
