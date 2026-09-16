@@ -2253,23 +2253,19 @@ export const t = {
     // דקות מהזמן שיש לנו`"_). Their version is right about what was wrong — `ארוכה מהפער ב־`
     // stacks two prepositions and asks the reader to hold `פער` in their head to parse it — and
     // it is **41 characters** where the meta line has ⁦180px⁩ of box at 360px, so it ellipsises on
-    // the one arm that matters. `חסרות 18 דק׳ לדרך` says the same thing in half of it, leads with
-    // the number you act on, and is the sibling of `אין זמן לדרך` below rather than a third way
-    // of talking about the same hole. **The word `פער` is gone from the sentence** and nothing is
+    // the one arm that matters. `חסרות 18 דק׳ לדרך` says the same thing in half of it and leads
+    // with the number you act on. **The word `פער` is gone from the sentence** and nothing is
     // lost: what the journey is longer than is the hole it is drawn inside.
     shortfall: (length: string) => `חסרות ${length} לדרך`,
     // Agreement again, and only the hour rung needs it — the tolerance in
     // `TRAVEL_FIT_TOLERANCE_SECONDS` means a shortfall never rounds below two minutes.
     shortfallOneHour: 'חסרה שעה לדרך',
-    // **And when there is no gap at all, the shortfall is not the thing to say.** Two rows that
-    // touch — the next stop starting exactly when the previous one ends — have no gap for the
-    // journey to be longer THAN, so `הדרך ארוכה מהפער ב־12 דק׳` is arithmetically true and reads
-    // as nonsense. It is also the same number twice: with a zero gap the shortfall IS the
-    // journey's own duration, which the head above already states, and printing one number in two
-    // places is the ambiguity ADR-0207 §6 removed from the `בדרך` line.
-    //
-    // Covers an overlap too (a negative gap), where it is just as true.
-    noTimeForTravel: 'אין זמן לדרך',
+    // **And when there is no gap at all, nothing is said.** `אין זמן לדרך` stood here from
+    // 2026-08-26 to 2026-09-16 and was retired on the owner's call — _"doesn't add any information
+    // + is actually confusing"_. It repeated three things the block already shows (the strip's
+    // absent free time, the head's duration, the `--miss` tone and mark) and had fired falsely
+    // three times against windows it misread (ADR-0206 §AJ1, ADR-0232 §8). The arm keeps its
+    // arrival alone where it lands somewhere (§AS5).
     // ── THE DAY'S OWN VERDICT (ADR-0206 §V1.7 / §AN) ──────────────────────────────────
     //
     // **Plan mode only, and that is a posture difference rather than a disagreement about a

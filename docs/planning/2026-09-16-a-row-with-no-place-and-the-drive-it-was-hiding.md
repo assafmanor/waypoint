@@ -45,6 +45,10 @@ Two slices, as F6 said. **Slice 1:** `dayRun` (`lib/day-joins.ts`) walks the jou
 
 **One bug the build hit and the tests caught:** Home's `placed` predicate first reached for a `coordOf` helper declared thirty lines below it — a temporal-dead-zone `ReferenceError` that took the whole board down in `Home.lift.test.tsx`. Resolved inline against `places`.
 
+## Field report, the same evening (after the merge)
+
+The owner's screenshot of the live day at ⁦20:47⁩: the leg into `Setberg` read `נסיעה · ~22 דק׳ · מ-Nettó Hofn · אין זמן לדרך`. Two things, and the visible one was the smaller. **The arithmetic:** R4 subtracted the aurora watch's two hours from the slack before the hotel's ⁦20:00⁩ close, though the watch runs ⁦22:45–00:45⁩ — `dayJourney` now takes the crossed rows as intervals and clips them to the leg's window (`reservedSecondsWithin`), so the same day measures ⁦45⁩ minutes for a ⁦22⁩-minute drive and fits. **The sentence:** the owner retired `אין זמן לדרך` outright — _"doesn't add any information + is actually confusing"_ — and ADR-0206 §BG records why the record agrees: it repeated three facts the block already shows and had fired falsely three times. The rows-that-touch arm keeps its arrival alone; the shortfall and the three absent-duration explanations stay, for reasons §BG gives.
+
 ## Next
 
 Field check on a real day with a placeless row (the aurora night is the one to look at), and the backlog's authoring nudge — _"איפה זה?"_ on a placeless row — when it earns a drawing.

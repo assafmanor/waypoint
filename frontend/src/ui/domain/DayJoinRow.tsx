@@ -575,7 +575,12 @@ export function JourneyRow({
  * the head one line up already carries. Covers an overlap too, where it is just as true.
  */
 function shortfallLine(free: TravelWindow): string | undefined {
-  if (free.availableSeconds <= 0) return t.travel.noTimeForTravel;
+  // **With no gap at all there is no sentence** (owner, 2026-09-16: `אין זמן לדרך` _"doesn't add any
+  // information + is actually confusing"_). The strip already says the hole is nothing, the head
+  // already says the duration, and the tone and the mark already say the leg does not fit; a line
+  // that repeated all three had also fired falsely three times (ADR-0206 §AJ1, ADR-0232 §8). On
+  // the arm that lands somewhere the arrival alone is what is left to say (§AS5).
+  if (free.availableSeconds <= 0) return undefined;
   return shortfallPhrase(free.overrunSeconds / SECONDS_PER_MINUTE) ?? undefined;
 }
 
@@ -651,11 +656,15 @@ function journeyMetaLine(
     // problem; `הגעה ~13:38` is the consequence, and a reader deciding what to drop needs both.
     // The arrival is already on the arm — it has been since §AR1 — it was simply not printed.
     const shortfall = journey.free ? shortfallLine(journey.free) : undefined;
-    if (!shortfall) return said(undefined);
     const lands =
       journey.arriveAtMs === null
         ? null
         : ltrIsolate(`~${formatTime(new Date(journey.arriveAtMs), zones.arrive)}`);
+    // Rows that touch have no shortfall to name (`shortfallLine`), and still land somewhere: the
+    // arrival is the whole line there (§AS5's second half, without the sentence it used to ride).
+    if (!shortfall) {
+      return lands === null ? said(undefined) : said(t.travel.arriveAt(lands), arrives());
+    }
     // The shortfall names no clock; the arrival beside it does.
     return lands === null
       ? said(shortfall)
