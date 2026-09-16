@@ -275,8 +275,9 @@ export async function reconcileThisDevice(
   if (!vapidPublicKey) return;
   try {
     const subscription = await currentSubscription();
-    // Nothing registered here. The switch says so honestly, and asking would need a gesture.
-    if (!subscription) return;
+    // Nothing registered here — which is either a device that never subscribed or one whose
+    // subscription went missing. Only the second is ours to repair.
+    if (!subscription) return restoreLostSubscription(vapidPublicKey);
 
     if (keyMatches(subscription, vapidPublicKey) === false) {
       await subscription.unsubscribe().catch(() => {});
@@ -292,6 +293,29 @@ export async function reconcileThisDevice(
   } catch {
     /* Next start tries again. A boot path owes the app nothing here. */
   }
+}
+
+/**
+ * **A subscription this install once had and no longer has, remade without asking.**
+ *
+ * The reconcile above repairs the SERVER's picture of a device that still holds a
+ * subscription. This is the other loss, and it is the one that was reported: the device's own
+ * subscription is gone, so there is nothing to re-post, the switch reads off, and the second
+ * door (`pushAskAnswered`) was spent long ago — a person who never touched the switch simply
+ * stops being reachable, for good. Two of three members of one trip were in exactly that
+ * state while the third received everything (owner, 2026-09-16).
+ *
+ * **The two conditions are what keep this from overriding an answer somebody gave.**
+ * `thisDeviceSubscriptionId()` is the proof this install was subscribed and never deliberately
+ * unsubscribed — the settings switch and sign-out both go through `unsubscribeThisDevice`,
+ * which clears it — so an explicit OFF is never resurrected here. And `granted` means the
+ * remake needs no prompt, which is the rule the whole module is built on: a boot path may
+ * repair, it may never ask.
+ */
+async function restoreLostSubscription(vapidPublicKey: string): Promise<void> {
+  if (thisDeviceSubscriptionId() === null) return;
+  if (Notification.permission !== 'granted') return;
+  await subscribeThisDevice(vapidPublicKey);
 }
 
 /**

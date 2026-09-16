@@ -75,12 +75,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus('anon');
       clearCachedMe();
       void wipeLocalData();
-      // The same revoke as `logout`, and here the SERVER half will fail — the session is
-      // already gone, which is why we are in this callback at all. The local
-      // `unsubscribe()` is the part that matters: this device stops receiving immediately,
-      // and the server prunes its now-unreachable row when a push service reports it gone
-      // (ADR-0197 §10). Deliberately not skipped just because half of it cannot succeed.
-      void unsubscribeThisDevice().catch(() => {});
+      // **The push subscription is deliberately NOT revoked here** (ADR-0197 §2.3a). This ran
+      // `logout`'s revoke, and a lapsed cookie is nobody leaving: the local `unsubscribe()`
+      // cannot be undone without a gesture, so a member who had simply not opened the app for
+      // a while found notifications reading OFF for good. Signing back in re-posts the device
+      // through `reconcileThisDevice` below, and a DIFFERENT person signing in re-owns the row.
     });
     return () => setOnSessionExpired(null);
   }, []);
