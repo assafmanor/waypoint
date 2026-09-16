@@ -651,6 +651,13 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     events: events.filter((e) => e.date === today),
     nowMs,
     excludeEventId: shownNext?.id,
+    // **Whether a stop's leaving end is somewhere** (ADR-0232 R6) — the same resolution the leg's
+    // own coordinates take three lines down, so the origin the plan names and the origin the read
+    // is made from cannot disagree about which stops have a place.
+    placed: (event) => {
+      const id = endpointPlaceId(event, bookings, 'leaving');
+      return places.some((p) => p.id === id && p.lat != null && p.lng != null);
+    },
     ...(wokeIn ? { wokeIn } : {}),
     ...(sleepsIn ? { sleepsIn } : {}),
   });
@@ -1313,7 +1320,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
    *  day's every gap behind a provider call on the app's most-loaded screen is a cost decision,
    *  not a card layout, and offline it would leave the foot flickering between two shapes. The
    *  real `dayTravelTotal` composes the value, with no journeys and nothing unplaced to claim. */
-  const glanceTravel = dayTravelTotal([], 0, dayAirMeters(sameDayEvents, bookings, places));
+  const glanceTravel = dayTravelTotal(
+    [],
+    { unplacedLegs: 0, spanningLegs: 0 },
+    dayAirMeters(sameDayEvents, bookings, places),
+  );
 
   const copyWifi = async () => {
     if (wifi && navigator.clipboard) {

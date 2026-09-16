@@ -1,6 +1,6 @@
 # 2026-09-16 — A row with no place, and the drive it was hiding
 
-**Outcome:** [ADR-0232](../decisions/0232-a-journey-is-between-two-placed-stops.md) (**Proposed**, six forks with recommendations, nothing built) · mockup [`mockups/a-journey-is-between-two-placed-stops-v1.html`](../../mockups/a-journey-is-between-two-placed-stops-v1.html) on the owner's _"Mockup"_ (catalog entry in `docs/design/mockups.md`) · backlog line amended in place (it already existed, under Sharing) · README + INDEX rows.
+**Outcome:** [ADR-0232](../decisions/0232-a-journey-is-between-two-placed-stops.md) (**Accepted and built the same day**, on _"Build it with the recommendations"_; build log in its §8) · mockup [`mockups/a-journey-is-between-two-placed-stops-v1.html`](../../mockups/a-journey-is-between-two-placed-stops-v1.html) on the owner's _"Mockup"_ (catalog entry in `docs/design/mockups.md`) · backlog line amended in place (it already existed, under Sharing) · README + INDEX rows.
 
 ## What was asked
 
@@ -37,6 +37,14 @@ Drawn on the shipped CSS (ten sheets inlined), the app's own trees (`EventCard`,
 
 **Measured at 360, both themes:** spanning block with the origin word ⁦40px⁩ against ⁦38px⁩ bare (+2px, the whole cost of F2a under F3a); the day list ⁦371⁩ → ⁦421px⁩; face ⁦40px⁩ with the shipped `::after` overlay at ⁦48px⁩ over the 44px floor; gap strip ⁦20px⁩ and `StayRow` ⁦48px⁩ untouched; §3 naive/seam 2/1 blocks; F1c counts 3 blocks against 2.
 
+## The build (same session, on "Build it with the recommendations")
+
+Two slices, as F6 said. **Slice 1:** `dayRun` (`lib/day-joins.ts`) walks the journey chain beside the join chain — `JoinContext.chain` is required, seeded with the bed — and returns the chain's tail for the leg back into tonight's stay; `DayBlockEntry` carries `legFrom`/`spans`, `DayLeg` carries `spans`, `dayJourney` takes `spannedSeconds` and answers `spansPlaceless`, `dayTravelTotal` takes `{ unplacedLegs, spanningLegs }`. Both surfaces build their legs off the run, look a hole's journey up by the row it leads into, and pass `t.travel.from(autoIsolate(origin))` where the leg spans. **Slice 2:** `travelOrigin({ placed })` walks back to the last placed started stop as a denied claim; Home supplies `placed` from the same endpoint resolution its coordinates use.
+
+**Two things the build corrected in the design.** §4.1 feared ADR-0231's slot walker would miss a spanning leg; it must — asking with the adjacent pair is what keeps the shelf's default slot on the raw hole (R5), and `narrowGapForTravel` refuses a spanning journey besides. And the origin word binds through `bindPrefix` (`מ-Nettó Hofn`, `מארוחת צהריים`), not the mockup's maqaf: the app decided that rule on 2026-08-31.
+
+**One bug the build hit and the tests caught:** Home's `placed` predicate first reached for a `coordOf` helper declared thirty lines below it — a temporal-dead-zone `ReferenceError` that took the whole board down in `Home.lift.test.tsx`. Resolved inline against `places`.
+
 ## Next
 
-The owner picks the forks (or says "build it" for the recommendations). Then slice 1: `dayBlocks` grows the placed origin, `DayLeg` grows `spans`, both day surfaces and the five readers move to it, `dayTravelTotal` keeps its floor for the new reason, tests for the eighteen rows. Slice 2: `travelOrigin` and the board.
+Field check on a real day with a placeless row (the aurora night is the one to look at), and the backlog's authoring nudge — _"איפה זה?"_ on a placeless row — when it earns a drawing.

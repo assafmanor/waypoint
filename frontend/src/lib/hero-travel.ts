@@ -186,9 +186,16 @@ export interface TravelOriginClaim {
  * still the last thing that started, so it is still the answer — with the flag that says the
  * caller may not build a read on it unless something else backs it up.
  *
- * It deliberately does **not** walk further back when the answer has no coordinates: the stop
- * before it is somewhere you have already left, and offering it would invent a position. No
- * coordinates is §D4's absence, like every other missing estimate.
+ * **An origin with no place walks back to the last PLACED stop, as a claim that does not stand**
+ * (ADR-0232 R6). This function refused that walk for a year — _"the stop before it is somewhere
+ * you have already left, and offering it would invent a position"_ — and the refusal was right
+ * about the claim and wrong about the leg. ADR-0208 §2 then gave a claim the plan cannot back a
+ * shape: the stop is still returned as the leg's first point, so a device fix can test it, and
+ * **nothing is asserted on it alone**. An aurora watch with no place is the same shape by a
+ * different road: once it has started the plan's last claim about where you are is "somewhere",
+ * so the leg is measured from the supermarket you were last placed at, and the board reads it only
+ * where a fix puts you there or on the way (`originStands`). The walk-back invents nothing once
+ * the claim it carries is marked as one the plan cannot make.
  *
  * **A morning before anything has started reaches for the BED** (§AD, built in M6a — this is the
  * gap §AE3 named as the first thing to reconcile). Scoped to the clock's own day, there is no
@@ -219,6 +226,10 @@ export function travelOrigin(input: {
   /** The destination — never its own origin, which is what a day whose only stop is one stay's
    *  two ends would otherwise ask for. */
   excludeEventId?: string;
+  /** **Whether a stop's LEAVING end resolves to a place** (ADR-0232 R6). Absent, every stop is
+   *  taken as placed, which is the behaviour before that ADR. Resolved by the caller because it
+   *  is a question about bookings and places, and this function is handed events. */
+  placed?: (event: TripEvent) => boolean;
   /** **The stay you woke in** (`dayBookendStays(events, date).woke`, ADR-0206 §AD) — the fallback
    *  for a morning before anything has started, which had no origin and therefore no read at all.
    *  Resolved by the caller because it is a question about the day's DATE and this function is
@@ -232,6 +243,7 @@ export function travelOrigin(input: {
   sleepsIn?: TripEvent;
 }): TravelOriginClaim {
   const { nowEvent, events, nowMs, excludeEventId, wokeIn, sleepsIn } = input;
+  const placed = input.placed ?? (() => true);
   // A night stands between the two points, so nothing today can be the origin — not the stop that
   // started an hour ago and not the one still running. A stay is never `skipped`.
   if (sleepsIn && sleepsIn.id !== excludeEventId) {
@@ -240,20 +252,33 @@ export function travelOrigin(input: {
   // `deriveNow` admits only PLANNED events, so an in-progress point can never be the denied
   // one — skipping the thing you are inside removes it from `now` and this falls to the branch
   // below on the same render.
-  if (nowEvent) return { event: nowEvent, denied: false, isStay: isStayRow(nowEvent) };
+  // **A point in progress with no place is the same shape** (ADR-0232 R6): the leg leaves from
+  // the last placed stop behind it, and the claim does not stand on its own.
+  if (nowEvent && placed(nowEvent)) {
+    return { event: nowEvent, denied: false, isStay: isStayRow(nowEvent) };
+  }
   let latest: TripEvent | undefined;
+  let latestPlaced: TripEvent | undefined;
   for (const event of events) {
     if (!event.startsAt || event.id === excludeEventId) continue;
     const startedAt = Date.parse(event.startsAt);
     if (!Number.isFinite(startedAt) || startedAt > nowMs) continue;
     if (!latest || startedAt > Date.parse(latest.startsAt!)) latest = event;
+    if (placed(event) && (!latestPlaced || startedAt > Date.parse(latestPlaced.startsAt!)))
+      latestPlaced = event;
   }
+  const bed = wokeIn?.id === excludeEventId ? undefined : wokeIn;
   // The bed only answers when nothing else has: a stop that has started is a later and therefore
   // stronger claim about where the plan left you, and a stay is never `skipped`.
-  const event = latest ?? (wokeIn?.id === excludeEventId ? undefined : wokeIn);
+  const last = nowEvent ?? latest ?? bed;
+  // **Where the plan last put you and where it last placed you differ, the leg leaves from the
+  // second and the claim is the first's to deny** (ADR-0232 R6): an unplaced stop that has started
+  // says you are "somewhere", and a walk-back is honest only marked as such.
+  const unplaced = !!last && !placed(last);
+  const event = unplaced ? (latestPlaced ?? bed) : last;
   return {
     event,
-    denied: event?.status === EVENT_STATUS.SKIPPED,
+    denied: unplaced || event?.status === EVENT_STATUS.SKIPPED,
     isStay: !!event && isStayRow(event),
   };
 }

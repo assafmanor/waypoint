@@ -176,6 +176,7 @@ describe('nowInJoin', () => {
     arriveAtMs: Date.parse(at('16:55')),
     arrivesAfterClose: false,
     remainingSeconds: null,
+    spansPlaceless: false,
     ...over,
   });
   const hole = (over: Partial<Parameters<typeof nowInJoin>[0]> = {}) => ({
@@ -276,6 +277,7 @@ describe('nowInJourney · a leg with no join above it', () => {
     arriveAtMs: Date.parse(at('08:58')),
     arrivesAfterClose: false,
     remainingSeconds: null,
+    spansPlaceless: false,
   };
 
   it('holds the moment only between the departure and the arrival', () => {

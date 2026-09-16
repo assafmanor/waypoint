@@ -262,3 +262,60 @@ describe('travelOrigin — which stop the journey leaves from', () => {
     });
   });
 });
+
+// ══ AN ORIGIN WITH NO PLACE WALKS BACK, AS A CLAIM THAT DOES NOT STAND (ADR-0232 R6) ═════════
+//
+// The refusal this replaces — "offering it would invent a position" — was right about the CLAIM
+// and wrong about the LEG. ADR-0208 §2 gave a claim the plan cannot back a shape, and an aurora
+// watch with no place is that shape by another road: the leg leaves from the supermarket the plan
+// last placed you at, and the board reads it only where a fix backs it (`originStands`).
+describe('travelOrigin — an origin with no place (ADR-0232 R6)', () => {
+  const morning = ev({ id: 'morning', startsAt: new Date(at(-240)).toISOString() });
+  const supermarket = ev({ id: 'netto', startsAt: new Date(at(-180)).toISOString() });
+  const aurora = ev({ id: 'aurora', startsAt: new Date(at(-30)).toISOString() });
+  const events = [morning, supermarket, aurora];
+  const placed = (event: TripEvent) => event.id !== 'aurora' && event.id !== 'call';
+  const hotel = ev({
+    id: 'hotel',
+    category: 'lodging',
+    date: '2026-08-01',
+    endDate: '2026-08-05',
+    startsAt: '2026-08-01T15:00:00Z',
+    endsAt: '2026-08-05T11:00:00Z',
+  });
+
+  it('walks back to the last PLACED stop that has started, and denies the claim', () => {
+    const claim = travelOrigin({ events, nowMs: NOW, placed });
+    expect(claim.event?.id).toBe('netto');
+    expect(claim.denied).toBe(true);
+  });
+
+  it('does the same for a placeless point in progress', () => {
+    const claim = travelOrigin({ nowEvent: aurora, events, nowMs: NOW, placed });
+    expect(claim.event?.id).toBe('netto');
+    expect(claim.denied).toBe(true);
+  });
+
+  it('reaches the bed when nothing placed has started, still as a claim that does not stand', () => {
+    const call = ev({ id: 'call', startsAt: new Date(at(-60)).toISOString() });
+    const claim = travelOrigin({ events: [call], nowMs: NOW, placed, wokeIn: hotel });
+    expect(claim.event?.id).toBe('hotel');
+    expect(claim.denied).toBe(true);
+    expect(claim.isStay).toBe(true);
+  });
+
+  it('has no origin at all with nothing placed behind and no bed — nothing is invented', () => {
+    const call = ev({ id: 'call', startsAt: new Date(at(-60)).toISOString() });
+    expect(travelOrigin({ events: [call], nowMs: NOW, placed }).event).toBeUndefined();
+  });
+
+  it('leaves a placed origin exactly as it was: the claim stands', () => {
+    const claim = travelOrigin({ events: [morning, supermarket], nowMs: NOW, placed });
+    expect(claim.event?.id).toBe('netto');
+    expect(claim.denied).toBe(false);
+  });
+
+  it('takes every stop as placed when nobody says otherwise, which is the behaviour before this', () => {
+    expect(travelOrigin({ events, nowMs: NOW })).toMatchObject({ event: aurora, denied: false });
+  });
+});

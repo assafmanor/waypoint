@@ -62,6 +62,58 @@ export interface JoinContext {
   when: BookingWhen;
   /** The day's base zone, for the gap arithmetic `gapBetween` already does. */
   tz: string;
+  /** **Which rows a journey may start and end at** (ADR-0232) — required, because a surface that
+   *  forgets to say is indistinguishable from a day where every row is placed, and that is the
+   *  exact shape this ADR replaced. `journeyChainFor` (`day-travel.ts`) answers it from the
+   *  bookings and the places. */
+  chain: JourneyChainContext;
+}
+
+/**
+ * **THE JOURNEY CHAIN IS BETWEEN PLACED STOPS; THE JOIN CHAIN STAYS ADJACENT** (ADR-0232 R1).
+ *
+ * A row with no place is a claim about time and only time. It still opens and closes free time —
+ * `3:30 שע׳ פנויות` between the supermarket and an aurora watch is true — but it is nowhere a
+ * journey can start or end, so the leg is measured from the last PLACED row behind it to the next
+ * placed row ahead of it, however many placeless rows lie between. Pairing by adjacency deleted the
+ * leg into such a row and the leg out of it, and the drive to tonight's hotel with them.
+ *
+ * **A row that MOVES you and has an unplaced end is a seam, not transparent** (R2): a ferry to a
+ * landing nobody placed relocated you somewhere the plan cannot name, and chaining across it would
+ * draw a road route beside a sea crossing the row already states (§AA4's false-path claim). The
+ * chain restarts from it — the leg out of it is simply unmeasurable, as today.
+ */
+export interface JourneyChainContext {
+  /** Does this row's end resolve to a placed point — a place with coordinates? */
+  placedAt(event: TripEvent, end: 'leaving' | 'arriving'): boolean;
+  /** Does this row carry you somewhere (a flight, a train, a ferry) rather than keep you? */
+  movesYou(event: TripEvent): boolean;
+  /** **The row the day's chain starts from** — the stay you woke in (ADR-0209), so the leg out of
+   *  the bed spans a placeless first row like any other leg. Absent on a day with no bed behind it. */
+  from?: TripEvent;
+}
+
+/** **What the chain knows once a run of rows has been walked**: the row the next journey leaves
+ *  from and the placeless rows it would cross. `null` while nothing placed is behind. */
+export interface JourneyChainState {
+  from: TripEvent;
+  spans: readonly TripEvent[];
+}
+
+/**
+ * **Sum of the time the placeless rows a leg crosses occupy** (ADR-0232 R4) — what comes off the
+ * combined slack the leg is measured against, because a ⁦45⁩-minute call between two placed rows is
+ * time the traveller is not driving, wherever they are making it.
+ */
+export function spannedSeconds(spans: readonly TripEvent[]): number {
+  let total = 0;
+  for (const row of spans) {
+    const start = Date.parse(row.startsAt ?? '');
+    const end = Date.parse(row.endsAt ?? '');
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start)
+      total += (end - start) / MS_PER_SECOND;
+  }
+  return total;
 }
 
 const bookingOf = (event: TripEvent, bookings: readonly Booking[]) =>
@@ -114,6 +166,16 @@ export interface DayBlockEntry {
    *  gating the leg on the floored gap is exactly how it stayed silent. The floor decides whether
    *  free time is worth STATING; it has never had anything to say about travel. */
   from?: TripEvent;
+  /** **The row this row's JOURNEY leaves from** (ADR-0232 R1) — the last placed stop behind it,
+   *  which is `from` on an ordinary day and an earlier row wherever placeless rows sit between.
+   *  Absent where nothing placed is behind (a placeless first row on a day with no bed). Every
+   *  reader of a journey on the day surface asks with THIS row, never with `from` (§4.1): a
+   *  spanning leg keyed on the adjacent pair is a leg nobody can find. */
+  legFrom?: TripEvent;
+  /** **The placeless rows that journey crosses** — empty on an ordinary leg. Their durations come
+   *  off the slack the leg is measured against (R4), and a leg with any is a detour of unknown
+   *  length, which is why the day's total stays a floor over it (R5). */
+  spans?: readonly TripEvent[];
 }
 
 /** A run of rows drawn as one thing. `journey: true` means every entry after the first
@@ -145,8 +207,25 @@ export interface DayBlock {
  * two legs apart.
  */
 export function dayBlocks(entries: readonly DayEntry[], ctx: JoinContext): DayBlock[] {
+  return dayRun(entries, ctx).blocks;
+}
+
+/**
+ * **The blocks, and where the chain stands once the last row is walked** (ADR-0232). The tail is
+ * what the leg back into tonight's stay leaves from — the last placed row, with the placeless rows
+ * after it — and it is returned from here rather than re-derived at the screen because this loop
+ * is the one place that knows the transparency rules the chain has to agree with.
+ */
+export function dayRun(
+  entries: readonly DayEntry[],
+  ctx: JoinContext,
+): { blocks: DayBlock[]; tail: JourneyChainState | null } {
   const blocks: DayBlock[] = [];
   let prevEnd: TripEvent | null = null;
+  // **The journey chain, beside the join chain** (ADR-0232 R1/R2). Seeded with the bed, so the
+  // walk out of it spans a placeless first row exactly as a mid-day leg spans a placeless stop.
+  let chainFrom: TripEvent | null = ctx.chain.from ?? null;
+  let spans: TripEvent[] = [];
 
   entries.forEach((entry, index) => {
     // **A cluster OPENS a join like any row** (ADR-0231 §2, fork F9). The docblock above argued
@@ -158,23 +237,50 @@ export function dayBlocks(entries: readonly DayEntry[], ctx: JoinContext): DayBl
     const start = entry.kind === 'event' ? groupStartEvent(entry.group) : null;
     const join = prevEnd && start ? (joinBetween(prevEnd, start, ctx) ?? undefined) : undefined;
     const from = start ? (prevEnd ?? undefined) : undefined;
+    const legFrom = start && chainFrom ? chainFrom : undefined;
     const last = blocks[blocks.length - 1];
+    const record: DayBlockEntry = {
+      entry,
+      index,
+      join,
+      from,
+      ...(legFrom ? { legFrom, spans: [...spans] } : {}),
+    };
     // A connection continues the block above it; everything else starts a new one.
     if (join?.kind === 'connection' && last && last.entries.length > 0) {
       last.journey = true;
-      last.entries.push({ entry, index, join, from });
+      last.entries.push(record);
     } else {
-      blocks.push({ entries: [{ entry, index, join, from }], journey: false });
+      blocks.push({ entries: [record], journey: false });
     }
     // **A flexible edge is TRANSPARENT to the measurement** (ADR-0171 §5). Free time is
     // time between commitments, and a check-out "by 11:00" does not consume a particular
     // hour — so it neither bounds a gap nor hides one. An exact transition IS a moment and
     // ends the run; a cluster ends it at its exit member (`groupEndEvent`).
-    if (entry.kind === 'event') prevEnd = groupEndEvent(entry.group);
-    else if (edgeMeaning(entry.event, entry.edge) === TIME_MEANING.EXACT) prevEnd = null;
+    if (entry.kind === 'event') {
+      const end = groupEndEvent(entry.group);
+      prevEnd = end;
+      // **Where the chain stands after this row** (ADR-0232 R1/R2). A placed exit is the next
+      // journey's origin. A row that moves you is one too, placed or not — unplaced, the leg out
+      // of it is unmeasurable and stays so (a seam), never bridged from further back. A placeless
+      // STOP is neither: you are still wherever the plan last put you, and the row joins the list
+      // of what the next journey crosses.
+      if (ctx.chain.placedAt(end, 'leaving') || ctx.chain.movesYou(end)) {
+        chainFrom = end;
+        spans = [];
+      } else {
+        spans.push(end);
+      }
+    } else if (edgeMeaning(entry.event, entry.edge) === TIME_MEANING.EXACT) {
+      prevEnd = null;
+      // A moment ends the run for the journey chain as it does for the join chain — a span edge
+      // is never a leg's endpoint (ADR-0054's 2026-08-26 amendment).
+      chainFrom = null;
+      spans = [];
+    }
   });
 
-  return blocks;
+  return { blocks, tail: chainFrom ? { from: chainFrom, spans } : null };
 }
 
 /** A place where one leg hands over to the next, on a given day. Two dates can name the
@@ -403,6 +509,11 @@ export interface DayJourney {
    *  not more honest here but less: it reads as "44 minutes still to walk" two minutes from the
    *  door. `null` on every other arm, where the leg's own total is the question. */
   remainingSeconds: number | null;
+  /** **This leg crosses rows with no place** (ADR-0232 R4/R5). It is why the arm states no clock,
+   *  and it is what tells `narrowGapForTravel` to leave the hole it is drawn in alone: the journey
+   *  may be on either side of the placeless row, and narrowing either hole would invent a
+   *  position. The day's total reads it too, and stays `לפחות` over a detour of unknown length. */
+  spansPlaceless: boolean;
 }
 
 /**
@@ -490,8 +601,22 @@ export function dayJourney(input: {
    *  only one of them that is temporary: a declared leg is never asked and a refused one is never
    *  coming, so either of those being true makes this one irrelevant rather than merely lower. */
   warming?: boolean;
+  /**
+   * **THE PLACELESS ROWS THIS LEG CROSSES, AS TIME** (ADR-0232 R4) — `spannedSeconds(spans)`, given
+   * where the leg spans any and absent otherwise.
+   *
+   * Given, the leg is a fact about the plan and the clock advice is withheld: no `יציאה עד`, no
+   * `הגעה ~`, no late mark. A leave-by assumes you are at the origin until it, and with an aurora
+   * watch between the supermarket and the hotel you may make the drive at ⁦19:15⁩ or at ⁦00:45⁩; the
+   * plan cannot say which. What may still be said is whether the journey FITS, measured against the
+   * combined slack — the whole window minus these seconds — never against the hole the block
+   * happens to be drawn in: a ⁦30⁩-minute hole under the block holding a ⁦51⁩-minute drive is not an
+   * overrun when the hours above the placeless row would have held it.
+   */
+  spannedSeconds?: number;
 }): DayJourney | null {
   const { departAfterMs, arriveByMs, travelSeconds, nowMs, onWay, claimDenied } = input;
+  const spansPlaceless = input.spannedSeconds !== undefined;
   // **A declared leg is a journey with no duration, not an absent journey** (ADR-0206 §AA4). It
   // has to come BEFORE the floor below, because every one of those bails on exactly the missing
   // estimate the declaration guarantees — and a hole that renders nothing also renders no mode
@@ -513,6 +638,7 @@ export function dayJourney(input: {
       leaveByIsFloor: false,
       // No duration means no routed answer, so whatever distance rode in is the crow (§AZ3).
       distanceIsFloor: true,
+      spansPlaceless,
     };
   // **A REFUSED MODE IS AN ANSWER, NOT AN ABSENCE** (ADR-0206 §AM10). Same position and the same
   // argument as the declaration above — it has to come BEFORE the floor, because the floor bails
@@ -535,6 +661,7 @@ export function dayJourney(input: {
       leaveByIsFloor: false,
       // No duration means no routed answer, so whatever distance rode in is the crow (§AZ3).
       distanceIsFloor: true,
+      spansPlaceless,
     };
   // **A NUMBER ON ITS WAY IS NOT AN ABSENT NUMBER** (ADR-0206 §AU1). Third of the three flags that
   // stand in for a missing estimate, and last for the reason its docblock gives — but still BEFORE
@@ -566,6 +693,7 @@ export function dayJourney(input: {
       leaveByIsFloor: false,
       // No duration means no routed answer, so whatever distance rode in is the crow (§AZ3).
       distanceIsFloor: true,
+      spansPlaceless,
     };
   /**
    * **NO DURATION TO NAME, AND THE ROW STANDS ANYWAY** (ADR-0206 §AZ1).
@@ -616,6 +744,7 @@ export function dayJourney(input: {
       leaveByIsFloor: false,
       // No duration means no routed answer, so whatever distance rode in is the crow (§AZ3).
       distanceIsFloor: true,
+      spansPlaceless,
     };
   }
   /**
@@ -641,6 +770,7 @@ export function dayJourney(input: {
     arriveAtMs: null,
     arrivesAfterClose: false,
     remainingSeconds: null,
+    spansPlaceless,
   });
   // A destination with no instant at all — an untimed row. There is no deadline to count back
   // from and nothing to be late for; the journey between the two points is unchanged by that.
@@ -677,16 +807,25 @@ export function dayJourney(input: {
   const deadlineMs = input.flexibleArrival === true ? input.windowClosesMs : arriveByMs;
   // No deadline means no window to be free inside, so there is no free-time half and no fit — the
   // same structural absence the day's first leg out of a bed reports (§AF3), for the same reason.
+  // **Against the combined slack where the leg spans placeless rows** (ADR-0232 R4): the window
+  // less the time those rows occupy, wherever in it they fall. Shifting the departure is the
+  // arithmetic; the departure itself is not stated on such a leg.
   const free =
     measurableFrom && deadlineMs !== undefined
-      ? freeAfterTravel(departAfterMs!, deadlineMs, stated)
+      ? freeAfterTravel(
+          departAfterMs! + (input.spannedSeconds ?? 0) * MS_PER_SECOND,
+          deadlineMs,
+          stated,
+        )
       : null;
   /**
    * **WHETHER THE APP WILL ADVISE A DEPARTURE AT ALL** — an EXACT start is the only deadline it
    * will count back from (§AI1). A window's opening is not one, and its close is a deadline nobody
    * plans against: `יציאה 18:26` for a lagoon open from 15:00 is arithmetically true and useless.
    */
-  const statesLeaveBy = input.flexibleArrival !== true;
+  // …and never across a placeless row (ADR-0232 R4): the departure it would advise is from a place
+  // you may have left hours ago, or not yet — the plan cannot say which.
+  const statesLeaveBy = input.flexibleArrival !== true && !spansPlaceless;
   /**
    * **THE BUFFERED DEPARTURE, PULLED FORWARD WHERE IT LANDS INSIDE THE ROW IT LEAVES FROM**
    * (§AJ2 — §AI2's open question, answered).
@@ -734,7 +873,9 @@ export function dayJourney(input: {
    * The one arm that must still withhold it is `claimDenied`, below.
    */
   const goesAtMs = leaveByMs ?? (measurableFrom ? departAfterMs! : null);
-  const arriveAt = goesAtMs === null ? null : goesAtMs + stated * MS_PER_SECOND;
+  // No arrival across a placeless row either (ADR-0232 R4): `הגעה ~20:06` at the hotel claims you
+  // left the supermarket the moment it closed, with an aurora watch still to happen somewhere.
+  const arriveAt = goesAtMs === null || spansPlaceless ? null : goesAtMs + stated * MS_PER_SECOND;
   // The same rounding `heroLeaveBy` phases on, asked of the clamped instant — which is what
   // `leave.phase` is keyed to since §AJ3 moved the clamp there. Kept local only because this must
   // also be false wherever the app states no departure at all (`statesLeaveBy`).
@@ -751,6 +892,7 @@ export function dayJourney(input: {
     leaveByIsFloor,
     // Every arm below this line has a stated duration, so its distance is the road (§AZ3).
     distanceIsFloor: false,
+    spansPlaceless,
   };
   // The row below has started: whatever the leave-by says, the departure is not the question any
   // more. Checked FIRST, so a finished day is quiet however late its legs ran.
@@ -927,9 +1069,19 @@ export interface DayTravelTotal {
 export const hasTravelTotal = (total: DayTravelTotal | null | undefined): boolean =>
   !!total && (total.distanceMeters !== null || total.airMeters !== null);
 
+/** **The two ways a day's total can fail to see a leg** (ADR-0206 §AT2, ADR-0232 R5) — both
+ *  required, because a surface that forgets either silently claims a completeness it has not got.
+ *  `unplacedLegs` is a hole this app can never measure; `spanningLegs` is one it measured as the
+ *  DIRECT route between two known points, which does not count the stop the reader can see between
+ *  them (ADR-0213 §3's cost, in as many words). */
+export interface DayTravelHoles {
+  unplacedLegs: number;
+  spanningLegs: number;
+}
+
 export function dayTravelTotal(
   journeys: readonly (DayJourney | null)[],
-  unplacedLegs: number,
+  holes: DayTravelHoles,
   /** The day's carried legs, already in metres — `carriedLegMeters` per in-motion booking. Kept
    *  out of the ground sum for the reason `DayTravelTotal.airMeters` gives. */
   airMeters: number | null = null,
@@ -950,7 +1102,7 @@ export function dayTravelTotal(
     distanceMeters,
     travelSeconds,
     // A crow-flies leg makes the sum a floor exactly as an unmeasurable hole does (§AZ3).
-    partial: unplacedLegs > 0 || floored,
+    partial: holes.unplacedLegs > 0 || holes.spanningLegs > 0 || floored,
     airMeters: airMeters !== null && Number.isFinite(airMeters) ? airMeters : null,
   };
 }
@@ -1045,7 +1197,11 @@ export function holeDepartsMs(
 }
 
 export function narrowGapForTravel(free: Gap, journey: DayJourney | null, tz: string): Gap {
-  if (!journey) return free;
+  // **A hole beside a spanning leg stays raw** (ADR-0232 R5): the journey may be on either side of
+  // the placeless row, so narrowing THIS hole says which, and that is a position nobody gave. Each
+  // strip is then a ceiling — the claim a strip already makes wherever the app has no estimate
+  // (§D4) — and the day's total says `לפחות` once for all of them.
+  if (!journey || journey.spansPlaceless) return free;
   /** The advised departure, and **only where it is a CEILING**: on the clamped arm the same number
    *  is the earliest departure that exists (§AJ2), so it says nothing about what is free. Guarded
    *  for finiteness on the way in, this file's own rule — `NaN` is not a bound, and a slot capped

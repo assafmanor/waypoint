@@ -141,7 +141,6 @@ import { QuickAddSheet, type QuickAddDraft } from '../ui/QuickAddSheet';
 import { DelaySheet } from '../ui/DelaySheet';
 import {
   dayTransitions,
-  groupEndEvent,
   groupStartEvent,
   mergeDayEntries,
   placeDayEntries,
@@ -150,11 +149,12 @@ import {
 } from '../lib/day-entries';
 import {
   DAY_JOURNEY_ARM,
-  dayBlocks,
   dayJourney,
+  dayRun,
   dayTravelTotal,
   holeDepartsMs,
   narrowGapForTravel,
+  spannedSeconds,
   windowClosesMs,
   type DayBlock,
   type DayJoin,
@@ -162,6 +162,7 @@ import {
 } from '../lib/day-joins';
 import {
   dayAirMeters,
+  journeyChainFor,
   legDepartAfterMs,
   useDayTravelReads,
   useLegModeControl,
@@ -193,7 +194,8 @@ import {
   type JourneyRowProps,
 } from '../ui/domain/DayJoinRow';
 import { CODE_PREFIX, DELAY_STEP_MINUTES, MS_PER_MINUTE, SHELF_POOL_CAP } from '../constants';
-import { ambientSpanLabel, dayBookendStays } from '../lib/glance';
+import { ambientSpanLabel, dayBookendStays, isStayRow } from '../lib/glance';
+import { autoIsolate } from '../lib/bidi';
 import { edgeSentence } from '../lib/transitions';
 import { t } from '../i18n/he';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
@@ -871,7 +873,12 @@ export function DayView() {
   // is not free time at all and takes both legs into one block. The join derivation is
   // shared with nothing else on this screen and the same `gapBetween` Plan mode fills
   // from, so the two modes cannot disagree about where a hole is.
-  const blocks = dayBlocks(merged, { bookings, when: bookingWhen(events), tz: dayZone });
+  // **And the journey chain beside the join chain** (ADR-0232 R1): a row with no place is
+  // transparent to the leg, a row that moves you with an unplaced end is a seam, and the chain is
+  // seeded with the bed you woke in so the walk out of it spans a placeless first row too.
+  const chain = { ...journeyChainFor(bookings, places), from: bookends.woke };
+  const run = dayRun(merged, { bookings, when: bookingWhen(events), tz: dayZone, chain });
+  const blocks = run.blocks;
 
   // ══ THE JOURNEY IN A HOLE (ADR-0206 §V1.1 / §V1.3 / §V1.4) ═══════════════════════════════
   //
@@ -892,29 +899,36 @@ export function DayView() {
   // sits beside.
   const day = useMemo(() => {
     const between: DayLeg[] = [];
+    let wake: DayLeg | undefined;
     for (const block of blocks) {
-      for (const { entry, join, from } of block.entries) {
+      for (const { entry, join, from, legFrom, spans } of block.entries) {
         // **A connection is the one join that has no journey to draw** — you are inside one
         // commitment for the whole of it (`joinBetween`'s own rule). Everything else does,
         // INCLUDING a hole too short to earn a `gap` join at all: the floor is about whether free
         // time is worth stating and says nothing about travel (§Z5 §M2, and `DayBlockEntry.from`).
-        if (!from || join?.kind === 'connection' || entry.kind !== 'event') continue;
-        between.push({ from, to: groupStartEvent(entry.group) });
+        if (!legFrom || join?.kind === 'connection' || entry.kind !== 'event') continue;
+        const to = groupStartEvent(entry.group);
+        // **No leg INTO a placeless stop** (ADR-0232 R1): the leg across it is the one that
+        // draws. A row that moves you gets one whatever its ends resolve to — unplaced, it is a
+        // seam the reads count rather than a row the chain looks across (R2).
+        if (!chain.placedAt(to, 'arriving') && !chain.movesYou(to)) continue;
+        const leg: DayLeg = {
+          from: legFrom,
+          to,
+          ...(spans?.length ? { spans } : {}),
+          // **THERE IS NO WINDOW OUT OF A BED** (§AF3) — asked of the ROW, not of which slot the
+          // leg came from, which is the identity test `travelOrigin` was fixed for.
+          ...(isStayRow(legFrom) ? { fromIsStay: true } : {}),
+        };
+        // **THE DAY'S FIRST LEG, OUT OF THE STAY YOU WOKE IN** (§AD). It renders above the first
+        // row rather than in a hole — there is no join for it to hang off — so it is returned
+        // separately: the leg whose destination has no row above it at all. A leg out of the bed
+        // into a LATER row (a placeless first row between, ADR-0232) has a hole and draws in it.
+        if (!from) wake = leg;
+        else between.push(leg);
       }
     }
-    // **THE DAY'S FIRST LEG, OUT OF THE STAY YOU WOKE IN** (§AD, and §AE3 named it as the first
-    // thing to reconcile here). A journey block sits between two ROWS, and on a mid-stay day the
-    // hotel is ambient — off the day's schedule (ADR-0054) — so the first row has nothing above
-    // it and the one leg you are certain to make was the one leg the list could never draw. It is
-    // returned SEPARATELY rather than unshifted into the list, because it renders outside the
-    // block loop: there is no join for it to hang off.
-    const firstRow = blocks[0]?.entries[0]?.entry;
     const woke = bookends.woke;
-    const first = firstRow?.kind === 'event' ? groupStartEvent(firstRow.group) : undefined;
-    const wake =
-      woke && first && first.id !== woke.id
-        ? { from: woke, to: first, fromIsStay: true }
-        : undefined;
     // **AND THE DRIVE THAT BROUGHT YOU TO THE BED** (owner, 2026-08-26: _"it should also show the
     // way from the car rental to the hotel, right?"_). ADR-0054's amendment refused this leg the
     // same day and gave a reason that has since been fixed: a stay's only arrival bound is its
@@ -946,24 +960,38 @@ export function DayView() {
     // it here suppressed this leg's `departAfterMs` instead — and with no departure instant there
     // was no arrival either, leaving the row silent at every hour of every day while Plan mode,
     // which asked the origin question directly, printed `הגעה ~21:26` all along.
-    const lastBlock = blocks[blocks.length - 1];
-    const lastEntry = lastBlock?.entries[lastBlock.entries.length - 1]?.entry;
-    const last = lastEntry?.kind === 'event' ? groupEndEvent(lastEntry.group) : undefined;
-    const home =
-      bookends.sleeps && last && last.id !== bookends.sleeps.id
-        ? // **No `fromIsStay` here, and that is §AS1's fix.** The stay is this leg's DESTINATION;
-          // its origin is the day's last ordinary row, whose `endsAt` is exactly when you leave.
-          { from: last, to: bookends.sleeps }
+    // **From where the chain stands after the last row** (ADR-0232): the last PLACED row, with
+    // the placeless rows after it as what the leg crosses — which is how the drive to tonight's
+    // hotel survives an aurora watch with no place between the supermarket and the bed. On a day
+    // of nothing placed it is the bed you woke in, and a hotel change reads as the one drive it is
+    // (the reads skip a same-place pair, so a single stay asks for nothing).
+    const home: DayLeg | undefined =
+      bookends.sleeps && run.tail
+        ? {
+            from: run.tail.from,
+            to: bookends.sleeps,
+            ...(run.tail.spans.length ? { spans: run.tail.spans } : {}),
+            ...(isStayRow(run.tail.from) ? { fromIsStay: true } : {}),
+          }
         : undefined;
+    const legs = [arrive, wake, ...between, home].filter((l): l is DayLeg => !!l);
     return {
       between,
       wake,
       home,
       arrive,
-      legs: [arrive, wake, ...between, home].filter((l): l is DayLeg => !!l),
+      legs,
+      /** **The leg INTO a row, by the row** (ADR-0232 §4.1) — what every hole asks with, because a
+       *  spanning leg's origin is not the row above the hole and a lookup by the adjacent pair
+       *  finds nothing. One leg per destination, by construction of the chain. */
+      into: new Map(legs.map((leg) => [leg.to.id, leg])),
     };
-  }, [blocks, bookends.woke, bookends.sleeps, placement.overnight]);
+    // `run` and `chain` are rebuilt every render exactly as `blocks` is; `legsKey` downstream is
+    // the memo that holds (ADR-0206 §AZ7), so listing them buys nothing `blocks` does not already.
+  }, [blocks, run, chain, bookends.woke, bookends.sleeps, placement.overnight]);
   const dayLegs = day.legs;
+  const legInto = (to: TripEvent | undefined): DayLeg | undefined =>
+    to ? day.into.get(to.id) : undefined;
 
   const travelReads = useDayTravelReads({
     tripId: trip.id,
@@ -1114,6 +1142,9 @@ export function DayView() {
         // because the block is what tells the reader a route is coming and what carries the control
         // that would pick a different mode for it. Ranked last of the three by `dayJourney` itself.
         warming: travelReads.warmingFor(leg.from, leg.to),
+        // **The placeless rows this leg crosses, as time** (ADR-0232 R4): given, the clock advice is
+        // withheld and the fit is measured on the combined slack.
+        ...(leg.spans?.length ? { spannedSeconds: spannedSeconds(leg.spans) } : {}),
         nowMs,
         // `arrived` needs no separate arm here: a fix at the next stop means you got there, and
         // the day list is a record either way — what it must not do is keep offering a departure.
@@ -1162,8 +1193,13 @@ export function DayView() {
    *  the list shows no block for. `dayTravelTotal`'s docblock owns the asymmetry between the two
    *  halves; Plan mode reads the same function over its own map. */
   const dayTotal = useMemo(
-    () => dayTravelTotal([...journeys.values()], travelReads.unplacedLegs, airMeters),
-    [journeys, travelReads.unplacedLegs, airMeters],
+    () =>
+      dayTravelTotal(
+        [...journeys.values()],
+        { unplacedLegs: travelReads.unplacedLegs, spanningLegs: travelReads.spanningLegs },
+        airMeters,
+      ),
+    [journeys, travelReads.unplacedLegs, travelReads.spanningLegs, airMeters],
   );
 
   /**
@@ -1254,9 +1290,17 @@ export function DayView() {
   const journeyProps = (
     journey: DayJourney,
     live: boolean,
-    leg: { from: TripEvent; to: TripEvent; fromEdge?: 'start' | 'end' },
+    leg: {
+      from: TripEvent;
+      to: TripEvent;
+      fromEdge?: 'start' | 'end';
+      spans?: readonly TripEvent[];
+    },
   ) => ({
     journey,
+    // **The block names its origin where the row above is not it** (ADR-0232 R3), and only then:
+    // on an ordinary leg the row above IS the origin, and the word would say what the eye has.
+    ...(leg.spans?.length ? { from: t.travel.from(autoIsolate(leg.from.title)) } : {}),
     // **The LEG's mode, not the trip's** (ADR-0206 §AM). `modeFor` answers the override where one
     // was set and the derivation otherwise, and it is the same read the Map makes — one leg cannot
     // be a train in the list and a drive on the canvas (ADR-0159 §1).
@@ -1606,7 +1650,11 @@ export function DayView() {
             let markAboveRun = false;
             const rows = block.entries.map(({ entry, index, join, from }, i) => {
               const joinTo = entry.kind === 'event' ? groupStartEvent(entry.group) : undefined;
-              const joinJourney = joinTo ? journeyFor(from, joinTo) : null;
+              // **By the row it leads into, never by the adjacent pair** (ADR-0232 §4.1): the leg
+              // across a placeless row leaves from an earlier row than the one above this hole.
+              // Gated on `from` so the first row's leg stays the head's (`day.wake`).
+              const joinLeg = from ? legInto(joinTo) : undefined;
+              const joinJourney = joinLeg ? journeyFor(joinLeg.from, joinLeg.to) : null;
               // A hole with no row drawn for it has nothing to nail the mark to, so the
               // boundary form keeps that case (§5's day-head hole).
               //
@@ -1651,11 +1699,8 @@ export function DayView() {
                       <JoinRow
                         join={join ?? null}
                         nowMark={joinNow ?? undefined}
-                        {...(journey && from && to
-                          ? journeyProps(journey, to === liveLeg?.to && from === liveLeg?.from, {
-                              from,
-                              to,
-                            })
+                        {...(journey && joinLeg && to
+                          ? journeyProps(journey, joinLeg === liveLeg, joinLeg)
                           : {
                               journey: null,
                               travelMode: travelReads.mode,

@@ -208,6 +208,10 @@ export function JourneyBlock({
    *  day may still MEASURE and may not give advice about. */
   leave,
   facts,
+  /** **Where the leg leaves from, where the row above is not it** (ADR-0232 R3) — `t.travel.from`,
+   *  already bound and isolated. It shares the meta line with `leave` and never a LINE with it:
+   *  the two stack (`day-join.css`), because the line clips a second child silently. */
+  from,
   /** `time` is amber (§D1). `miss` is the leave-by gone by, in `--miss` — **ink and word only**,
    *  no fill on the block, no glow and no pulse, because the app has one live mark and `.nowline`
    *  is it (§D6/§D7). `on-way` is teal, because somebody said they are moving and that is a
@@ -239,6 +243,7 @@ export function JourneyBlock({
    *  15:12 · הגעה ~15:55` — so the claims ride together on the element rather than forcing the
    *  sentence apart into spans for a test's benefit. */
   facts?: TimeFactClaim[];
+  from?: string;
   tone: 'time' | 'miss' | 'on-way';
   located?: string;
   action?: { label: string; onPress: () => void };
@@ -290,11 +295,14 @@ export function JourneyBlock({
             </>
           )}
         </span>
-        {leave && (
+        {(leave || from) && (
           <span className="day-trv-meta">
-            <span className="day-trv-leave" {...timeFacts(...(facts ?? []))}>
-              {leave}
-            </span>
+            {from && <span className="day-trv-from">{from}</span>}
+            {leave && (
+              <span className="day-trv-leave" {...timeFacts(...(facts ?? []))}>
+                {leave}
+              </span>
+            )}
           </span>
         )}
       </span>
@@ -429,6 +437,8 @@ export interface JourneyRowProps {
    *  way to the map is not a posture: ADR-0159 §1 forbids them differing about a fact, and where
    *  a leg is on the ground is one. */
   onShowOnMap?: () => void;
+  /** The origin's name where the row above is not the origin (ADR-0232 R3) — `JourneyBlock.from`. */
+  from?: string;
 }
 
 /**
@@ -447,6 +457,7 @@ export function JourneyRow({
   located,
   modes,
   onShowOnMap,
+  from,
 }: JourneyRowProps) {
   const overrunning = journey.arm === DAY_JOURNEY_ARM.OVERRUNS;
   /** **A declared תחב״צ leg has no duration by nature** (ADR-0206 §AA4). Not "missing" and not
@@ -550,6 +561,7 @@ export function JourneyRow({
       action={action}
       modes={modes}
       onShowOnMap={onShowOnMap}
+      from={from}
     />
   );
 }

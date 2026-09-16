@@ -34,6 +34,7 @@ import { setSimulatedNow } from '../lib/useClock';
 import { formatDistance, haversineMeters } from '../lib/distance';
 import { clockRange } from '../lib/time';
 import { t } from '../i18n/he';
+import { autoIsolate } from '../lib/bidi';
 import { wrapNav } from '../test/nav-harness';
 import { MapScopeProvider } from '../state/map-scope-state';
 import { DragProvider } from '../state/drag-state';
@@ -286,6 +287,62 @@ describe('PlanDay — the chip offers what is free AFTER the journey (ADR-0206 �
 // "changing a day-surface derivation in `DayView` only" for the third time. And Plan is where §AL10
 // argued the override would mostly be set — "the sort of thing set while planning rather than while
 // standing in it" — so this was the surface that needed it most.
+// **THE SAME FACT IN PLAN'S POSTURE** (ADR-0232, and `frontend/CLAUDE.md`'s rule that a
+// day-surface derivation changes in both modes or in neither): the journey is between the two
+// placed rows, drawn once before its destination, named for where it leaves from; the chips on
+// either side stay whole.
+describe('PlanDay — a row with no place is transparent to the journey (ADR-0232)', () => {
+  const call = ev('call', {
+    title: 'שיחה עם המשרד',
+    startsAt: `${DAY}T14:30:00Z`,
+    endsAt: `${DAY}T15:00:00Z`,
+  });
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    tripEvents = [lunch, call, theatre];
+    tripPlaces = places;
+    travelSeconds = WALK_MINUTES * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  it('draws one block, between the call and the theatre, named for lunch', () => {
+    show();
+    const blocks = document.querySelectorAll('.day-trv');
+    expect(blocks).toHaveLength(1);
+    const callRow = screen.getByText(call.title).closest('.bld')!;
+    const theatreRow = screen.getByText(theatre.title).closest('.bld')!;
+    expect(
+      callRow.compareDocumentPosition(blocks[0]!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      blocks[0]!.compareDocumentPosition(theatreRow) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByText(t.travel.from(autoIsolate(lunch.title)))).toBeTruthy();
+    expect(document.querySelector('.day-trv .day-trv-leave')).toBeNull();
+  });
+
+  it('offers both holes whole: a chip is a ceiling beside a leg that may be on either side', () => {
+    show();
+    const lunchRow = screen.getByText(lunch.title).closest('.bld')!;
+    const theatreRow = screen.getByText(theatre.title).closest('.bld')!;
+    // The chips BETWEEN the two placed rows — the day's head and tail slots sit outside them.
+    const between = [...document.querySelectorAll('.gap')].filter(
+      (el) =>
+        lunchRow.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING &&
+        el.compareDocumentPosition(theatreRow) & Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(between).toHaveLength(2);
+    // Whole: a 60-minute hole under a 40-minute walk still earns its chip, where narrowing it by
+    // the walk and the buffer would have left 15 minutes and no chip at all.
+    expect(between.every((el) => el.querySelector('.gap-add'))).toBe(true);
+    // …and no `מתוך … מהם דרך` note: the note explains a narrowing that did not happen.
+    expect(document.querySelector('.bld-slot-note')).toBeNull();
+  });
+});
+
 describe('PlanDay — the leg mode is declarable here too (ADR-0206 §AM9)', () => {
   const PAIR = { fromPlaceId: 'p-lunch', toPlaceId: 'p-theatre' };
 

@@ -115,6 +115,25 @@ describe('JourneyBlock', () => {
     expect(screen.getByText('2.4 ק״מ')).toBeTruthy();
   });
 
+  // **WHERE IT LEAVES FROM, when the row above is not the origin** (ADR-0232 R3) — in the meta
+  // line, muted, and on its own line even beside a sentence: the line clips a second child
+  // silently, which the mockup's render found.
+  it('names its origin in the meta line, on a line of its own', () => {
+    const from = t.travel.from('Nettó Hofn');
+    render(<JourneyBlock {...props} from={from} />);
+    const el = screen.getByText(from);
+    expect(el.classList.contains('day-trv-from')).toBe(true);
+    expect(el.closest('.day-trv-meta')).not.toBeNull();
+    expect(screen.getByText(t.travel.leaveAtDay('17:15'))).toBeTruthy();
+  });
+
+  it('renders the meta line for the origin alone, with no clock to say', () => {
+    const from = t.travel.from('Nettó Hofn');
+    render(<JourneyBlock {...props} leave={undefined} from={from} />);
+    expect(screen.getByText(from).closest('.day-trv-meta')).not.toBeNull();
+    expect(document.querySelector('.day-trv-leave')).toBeNull();
+  });
+
   // **AND IT SAYS NOTHING ABOUT FREE TIME** (owner, 2026-08-26 — ADR-0206 §AH3). The block is
   // about the LEG; what is free is about the HOLE, and it is stated by the quiet strip below.
   it('carries no free-time run at all', () => {
