@@ -38,7 +38,6 @@ import {
   exceedsTravelCeiling,
   isRoutableMode,
   legTravelMode,
-  EVENT_STATUS,
   matchesAnyTerm,
   placeCredit,
   type Booking,
