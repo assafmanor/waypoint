@@ -2183,6 +2183,11 @@ export const t = {
     // the same admission `approxDuration` makes about a duration (§D5). The clock arrives already
     // isolated from the caller (ADR-0118).
     arriveAt: (clock: string) => `הגעה ${clock}`,
+    /** **Where a spanning leg leaves from** (ADR-0232 R3) — said only where the row above the
+     *  block is not its origin, because then the block reads as a drive FROM that row. Bound the
+     *  way Hebrew binds a one-letter prefix (`bindPrefix`): `מ-Nettó Hofn`, `מארוחת צהריים`. The
+     *  name arrives already isolated from the caller (ADR-0118). */
+    from: (origin: string) => bindPrefix('מ', origin),
     // **AND BOTH, WHERE THERE IS A DEADLINE BUT NO SLACK** (§AJ2). The
     // departure is the origin's own end — go the moment you are done — and the arrival is why that
     // matters: `יציאה 14:00 · הגעה ~14:58` in front of a ⁦15:00⁩ start says "leave now and you only

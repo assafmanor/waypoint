@@ -21,8 +21,10 @@ import {
   derivedTravelMode,
   haversineMeters,
   exceedsTravelCeiling,
+  isJourney,
   isRoutableMode,
   legTravelMode,
+  spendsSpanInMotion,
   TRAVEL_MODE,
   type Booking,
   type LatLng,
@@ -35,6 +37,7 @@ import {
 } from '@waypoint/shared';
 import { eventPlaceId } from './places';
 import { useDayTravel } from './travel';
+import type { JourneyChainContext } from './day-joins';
 
 /** **A leg, as the day's rows name it** — the two rows either side of one hole. */
 export interface DayLeg {
@@ -67,6 +70,11 @@ export interface DayLeg {
    *  its RETURN — ten days out on a car hire — so a leg off its pickup edge has to carry the edge's
    *  own placed instant or it measures the drive to the hotel from next week. */
   departAfterMs?: number;
+  /** **The placeless rows this leg crosses** (ADR-0232 R1) — the aurora watch between the
+   *  supermarket and the hotel. Empty or absent on an ordinary leg. Their time comes off the slack
+   *  the leg is measured against (`spannedSeconds`, R4), the block names its origin because the
+   *  row above is not it (R3), and the day's total stays a floor over the detour (R5). */
+  spans?: readonly TripEvent[];
 }
 
 /**
@@ -149,6 +157,11 @@ export interface DayTravelReads {
    * rather than missing.
    */
   unplacedLegs: number;
+  /** **Legs measured as the DIRECT route across rows nobody placed** (ADR-0232 R5) — resolved and
+   *  asked like any other, and still a hole in what the total covers, because the stop the reader
+   *  can see between the two ends is not in the number. Counted apart from `unplacedLegs`, which
+   *  never gains a number; both reach `dayTravelTotal` as required arguments. */
+  spanningLegs: number;
   /**
    * **Is this leg's own mode simply too far for it?** (ADR-0206 §AM10.)
    *
@@ -262,6 +275,30 @@ export function endpointPlaceId(
 }
 
 /**
+ * **Which rows a journey may start and end at, from the bookings and the places** (ADR-0232 R1/R2)
+ * — the `JourneyChainContext` both day surfaces hand `dayRun`, built here because this module is
+ * the one that resolves an end to a coordinate (`endpointPlaceId` + `coordOf`); a surface that
+ * answered it itself is a surface that can answer it differently.
+ *
+ * A row MOVES you when its booking spends its span in motion (`spendsSpanInMotion` — a flight, a
+ * train, a ferry; not a hire, which you hold) or, unbooked, when its category is a journey
+ * (`isJourney`). Such a row with an unplaced end is a seam the chain restarts from, never a
+ * placeless stop it looks across.
+ */
+export function journeyChainFor(
+  bookings: readonly Booking[],
+  places: readonly Place[],
+): Pick<JourneyChainContext, 'placedAt' | 'movesYou'> {
+  return {
+    placedAt: (event, end) => coordOf(places, endpointPlaceId(event, bookings, end)) !== undefined,
+    movesYou: (event) => {
+      const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
+      return booking ? spendsSpanInMotion(booking.type) : isJourney(event);
+    },
+  };
+}
+
+/**
  * **The travel times for one day's holes**, asked for once.
  *
  * `legs` are the day's holes in order, as the surface's own row derivation named them — `dayBlocks`
@@ -317,7 +354,7 @@ export function useDayTravelReads(opts: {
   const legsKey = legs
     .map(
       (leg) =>
-        `${leg.from.id}>${leg.to.id}|${leg.fromEdge ?? ''}|${leg.fromIsStay ? 1 : 0}|${leg.departAfterMs ?? ''}`,
+        `${leg.from.id}>${leg.to.id}|${leg.fromEdge ?? ''}|${leg.fromIsStay ? 1 : 0}|${leg.departAfterMs ?? ''}|${(leg.spans ?? []).map((row) => row.id).join(',')}`,
     )
     .join(';');
   const legsRef = useRef(legs);
@@ -336,6 +373,7 @@ export function useDayTravelReads(opts: {
     // Holes this app can never measure, kept apart from the ones it simply has no answer for yet
     // (see `DayTravelReads.unplacedLegs`).
     let unplacedLegs = 0;
+    let spanningLegs = 0;
     for (const leg of legsRef.current) {
       // A leg off a span's START edge leaves from that span's ORIGIN — the counter you collected
       // the car at, not the one you will return it to. See `DayLeg.fromEdge`.
@@ -355,6 +393,7 @@ export function useDayTravelReads(opts: {
         continue;
       }
       byRows.set(legKey(leg.from, leg.to), { from, to, fromPlaceId: fromId, toPlaceId: toId });
+      if (leg.spans?.length) spanningLegs += 1;
       // Consecutive and deduped: hole `n`'s destination is hole `n + 1`'s origin whenever the
       // rows between them are placed, so the day's holes collapse into the ordered stop list the
       // matrix wants. Where placement breaks the chain the array simply has a seam, and the leg
@@ -364,7 +403,7 @@ export function useDayTravelReads(opts: {
       if (!last || last.lat !== from.lat || last.lng !== from.lng) stops.push(from);
       stops.push(to);
     }
-    return { byRows, stops, unplacedLegs };
+    return { byRows, stops, unplacedLegs, spanningLegs };
     // `legsKey` carries every field the loop above reads; the legs themselves ride the ref.
   }, [legsKey, bookings, places]);
 
@@ -411,6 +450,7 @@ export function useDayTravelReads(opts: {
       mode,
       settled: travel.settled,
       unplacedLegs: resolved.unplacedLegs,
+      spanningLegs: resolved.spanningLegs,
       modeFor: modeOf,
       distanceFor: (from: TripEvent, to: TripEvent) => {
         const leg = legFor(from, to);

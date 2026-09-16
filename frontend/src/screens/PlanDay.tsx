@@ -111,6 +111,7 @@ import {
 } from '../lib/gaps';
 import {
   dayAirMeters,
+  journeyChainFor,
   legDepartAfterMs,
   useDayTravelReads,
   useLegModeControl,
@@ -120,8 +121,11 @@ import {
 import {
   dayFeasibility,
   dayJourney,
+  danglingLegs,
+  dayRun,
   dayTravelTotal,
   narrowGapForTravel,
+  spannedSeconds,
   windowClosesMs,
   type DayJourney,
 } from '../lib/day-joins';
@@ -170,7 +174,9 @@ import {
 } from '../lib/day-entries';
 import { nowLinePlacement } from '../lib/now-line';
 import { NOW_POSTURE, NowMarker } from '../ui/domain/NowMarker';
-import { ambientSpanLabel, dayBookendStays } from '../lib/glance';
+import { ambientSpanLabel, dayBookendStays, isStayRow } from '../lib/glance';
+import { autoIsolate } from '../lib/bidi';
+import { bookingWhen } from '../lib/booking-journey';
 import { edgeSentence } from '../lib/transitions';
 import { t } from '../i18n/he';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
@@ -448,23 +454,30 @@ export function PlanDay() {
   //
   // Memoized like the day list's, and for the same reason: this screen re-renders on the drag and
   // on the clock, and the legs array is what `useDayTravelReads` fingerprints.
-  const planLegs = useMemo<DayLeg[]>(() => {
+  const planRun = useMemo<{ legs: DayLeg[]; dangling: number }>(() => {
     const legs: DayLeg[] = [];
-    let prev: TripEvent | null = null;
-    for (const group of planGroups) {
-      const start = groupStartEvent(group);
-      if (prev) legs.push({ from: prev, to: start });
-      prev = groupEndEvent(group);
-    }
-    // **The day's two bookend legs** (ADR-0209 §1) — out of the stay you woke in and back into
-    // the one you sleep in. **Only the first carries `fromIsStay`**, and the flag says which:
-    // a stay's own `endsAt` is a check-out days away, so the leg LEAVING one has no departure
-    // window (§AF3), while the leg arriving AT one leaves an ordinary row that ends when it ends.
-    // Both were `bookend: true` until §AS1, where the name let Trip mode read the second as the
-    // first and go silent.
-    const first = planGroups.length ? groupStartEvent(planGroups[0]) : undefined;
-    if (bookends.woke && first && first.id !== bookends.woke.id) {
-      legs.unshift({ from: bookends.woke, to: first, fromIsStay: true });
+    // **THE SAME CHAIN TRIP MODE WALKS** (ADR-0232 R1, and `frontend/CLAUDE.md`'s rule that a
+    // day-surface derivation changes in both modes or in neither): `dayRun` over the same
+    // positioned entries, seeded with the same bed, so a placeless row is transparent to the leg
+    // here exactly as it is there and a moving row with an unplaced end is a seam in both. The
+    // leg out of the bed falls out of the seed rather than being assembled by hand: the first
+    // placed row's `legFrom` IS the stay, and `isStayRow` says so (§AF3, asked of the row).
+    const chain = { ...journeyChainFor(bookings, places), from: bookends.woke };
+    const run = dayRun(placement.positioned, { bookings, when: bookingWhen(events), tz, chain });
+    for (const block of run.blocks) {
+      for (const { entry, join, legFrom, spans } of block.entries) {
+        if (!legFrom || join?.kind === 'connection' || entry.kind !== 'event') continue;
+        const to = groupStartEvent(entry.group);
+        // No leg INTO a placeless stop — the leg across it is the one that draws (R1); a row that
+        // moves you gets one whatever its ends resolve to (R2).
+        if (!chain.placedAt(to, 'arriving') && !chain.movesYou(to)) continue;
+        legs.push({
+          from: legFrom,
+          to,
+          ...(spans?.length ? { spans } : {}),
+          ...(isStayRow(legFrom) ? { fromIsStay: true } : {}),
+        });
+      }
     }
     // **AND THE DRIVE THAT BROUGHT YOU TO THE BED** (owner, 2026-08-26) — off the last overnight
     // edge, carrying the EDGE's placed instant, because a hire's `endsAt` is its return ten days
@@ -479,11 +492,33 @@ export function PlanDay() {
         departAfterMs: cameIn.atMs,
       });
     }
-    if (bookends.sleeps && prev && prev.id !== bookends.sleeps.id) {
-      legs.push({ from: prev, to: bookends.sleeps });
+    // **And back into tonight's bed from where the chain stands** (ADR-0232) — the last placed row,
+    // across whatever placeless rows follow it.
+    if (bookends.sleeps && run.tail) {
+      legs.push({
+        from: run.tail.from,
+        to: bookends.sleeps,
+        ...(run.tail.spans.length ? { spans: run.tail.spans } : {}),
+        ...(isStayRow(run.tail.from) ? { fromIsStay: true } : {}),
+      });
     }
-    return legs;
-  }, [planGroups, bookends.woke, bookends.sleeps, overnight]);
+    // …and the placeless runs no leg reaches at all (ADR-0232 R5), counted here where `run` is.
+    return { legs, dangling: danglingLegs(run, bookends.sleeps) };
+  }, [
+    placement.positioned,
+    bookends.woke,
+    bookends.sleeps,
+    overnight,
+    bookings,
+    places,
+    events,
+    tz,
+  ]);
+  const planLegs = planRun.legs;
+  /** **The leg INTO a row, by the row** (ADR-0232 §4.1) — a spanning leg's origin is not the row
+   *  above the hole, so the hole asks with its destination and reads the origin off the leg. */
+  const legInto = (to: TripEvent | undefined): DayLeg | undefined =>
+    to ? planLegs.find((leg) => leg.to.id === to.id) : undefined;
   const planTravel = useDayTravelReads({
     tripId: trip.id,
     legs: planLegs,
@@ -554,6 +589,8 @@ export function PlanDay() {
       // because the block is what tells the reader a route is coming and what carries the control
       // that would pick a different mode for it. Ranked last of the three by `dayJourney` itself.
       warming: planTravel.warmingFor(from, to),
+      // The placeless rows this leg crosses, as time (ADR-0232 R4) — the same input Trip mode gives.
+      ...(leg.spans?.length ? { spannedSeconds: spannedSeconds(leg.spans) } : {}),
       nowMs: now.getTime(),
     });
   };
@@ -615,6 +652,9 @@ export function PlanDay() {
    *  mode makes, off the same pair, because a way to the map is not a posture (ADR-0159 §1). */
   const legOnMap = (from: TripEvent, to: TripEvent) =>
     legShowOnMap(planTravel.pairFor(from, to), showPlaceOnMap);
+  /** **The block names its origin where the row above is not it** (ADR-0232 R3), and only then. */
+  const originWord = (leg: DayLeg): string | undefined =>
+    leg.spans?.length ? t.travel.from(autoIsolate(leg.from.title)) : undefined;
   /** **"This day does not fit"** (ADR-0206 §V1.7) — Plan mode's one opinion, and the reason it
    *  is allowed here and not in `DayView` is ADR-0159 §1's posture clause: a day-level verdict in
    *  Trip mode is a verdict on a day you are already living. `UNKNOWN` and `FITS` both render
@@ -626,7 +666,11 @@ export function PlanDay() {
    *  only about the former. Trip mode renders the same component off the same function. */
   const dayTotal = dayTravelTotal(
     [...journeyByRows.values()],
-    planTravel.unplacedLegs,
+    {
+      // …plus the placeless runs no leg reaches at all (ADR-0232 R5, `danglingLegs`).
+      unplacedLegs: planTravel.unplacedLegs + planRun.dangling,
+      spanningLegs: planTravel.spanningLegs,
+    },
     // The air half is a FACT about the day, so it is not Plan's to differ about either
     // (ADR-0212 §3, and ADR-0159 §1's posture clause read the same way as the line above).
     dayAirMeters(dayEvents, bookings, places),
@@ -1194,15 +1238,22 @@ export function PlanDay() {
    * was nothing owning the latter. Naming them here is what lets the slot and the leg be
    * ordered against each other at all, since the slot renders outside the fragment.
    */
+  // **The head is the leg into the FIRST row, wherever it leaves from** (ADR-0232): out of the bed
+  // on an ordinary day, and nothing at all when the first row is placeless — its leg then lands in
+  // the hole before the first PLACED row, which `BuilderGroups` draws (`legInto`). The tail is the
+  // leg into tonight's bed from where the chain stands, which `planLegs` already worked out.
   const headJourney = (() => {
     if (!bookends.woke || planGroups.length === 0) return { journey: null, to: undefined };
     const to = groupStartEvent(planGroups[0]);
-    return { journey: journeyFor(bookends.woke, to), to };
+    const leg = legInto(to);
+    return leg ? { journey: journeyFor(leg.from, to), to } : { journey: null, to: undefined };
   })();
   const tailJourney = (() => {
-    if (!bookends.sleeps || planGroups.length === 0) return { journey: null, from: undefined };
-    const from = groupEndEvent(planGroups[planGroups.length - 1]);
-    return { journey: journeyFor(from, bookends.sleeps), from };
+    if (!bookends.sleeps) return { journey: null, from: undefined, leg: undefined };
+    const leg = legInto(bookends.sleeps);
+    return leg
+      ? { journey: journeyFor(leg.from, bookends.sleeps), from: leg.from, leg }
+      : { journey: null, from: undefined, leg: undefined };
   })();
   /**
    * **And the slot each of them narrows** — `narrowGapForTravel`, the same function Trip mode
@@ -1419,6 +1470,8 @@ export function PlanDay() {
     narrowedFree,
     slotNote,
     journeyFor,
+    legInto,
+    originWord,
     legOnMap,
     legZones,
     modeFor: planTravel.modeFor,
@@ -1674,6 +1727,7 @@ export function PlanDay() {
                   )}
                   zones={legZones(tailJourney.from, bookends.sleeps)}
                   subjectId={bookends.sleeps.id}
+                  from={tailJourney.leg ? originWord(tailJourney.leg) : undefined}
                 />
               )}
               {bookends.sleeps && (
@@ -2206,6 +2260,11 @@ interface BuilderCtx {
    *  **Read out of the day's one derivation, never re-derived here** (ADR-0206 §AN) — the same
    *  objects the day-level verdict is rolled up from. */
   journeyFor: (from: TripEvent, to: TripEvent) => DayJourney | null;
+  /** The leg into a row, by the row (ADR-0232 §4.1) — the hole above a row asks with this, because
+   *  a spanning leg leaves from an earlier row than the one above the hole. */
+  legInto: (to: TripEvent | undefined) => DayLeg | undefined;
+  /** `t.travel.from` for a spanning leg, absent on an ordinary one (ADR-0232 R3). */
+  originWord: (leg: DayLeg) => string | undefined;
   /** One tap from a leg to that leg on the canvas (owner, 2026-08-27). */
   legOnMap: (from: TripEvent, to: TripEvent) => (() => void) | undefined;
   /** **Which zone each of a journey block's two clocks reads in** (ADR-0206 §AQ) — threaded
@@ -2457,15 +2516,19 @@ function BuilderGroups({
             {prevEnd &&
               depth === 0 &&
               (() => {
-                const journey = ctx.journeyFor(prevEnd, groupStartEvent(g));
-                return journey ? (
+                // **By the row it leads into** (ADR-0232 §4.1): the leg may leave from a row
+                // above `prevEnd`, across placeless rows, and then names it (R3).
+                const leg = ctx.legInto(groupStartEvent(g));
+                const journey = leg ? ctx.journeyFor(leg.from, leg.to) : null;
+                return journey && leg ? (
                   <JourneyRow
                     journey={journey}
-                    travelMode={ctx.modeFor(prevEnd, groupStartEvent(g))}
-                    {...ctx.modeControl(prevEnd, groupStartEvent(g))}
-                    onShowOnMap={ctx.legOnMap(prevEnd, groupStartEvent(g))}
-                    zones={ctx.legZones(prevEnd, groupStartEvent(g))}
-                    subjectId={groupStartEvent(g).id}
+                    travelMode={ctx.modeFor(leg.from, leg.to)}
+                    {...ctx.modeControl(leg.from, leg.to)}
+                    onShowOnMap={ctx.legOnMap(leg.from, leg.to)}
+                    zones={ctx.legZones(leg.from, leg.to)}
+                    subjectId={leg.to.id}
+                    from={ctx.originWord(leg)}
                   />
                 ) : null;
               })()}

@@ -38,7 +38,7 @@ import {
 import { setSimulatedNow } from '../lib/useClock';
 import { approxTravelTime, freeTimePhrase, hoursPhrase, remainingPhrase } from '../lib/duration';
 import { markOnWay, resetOnWayForTests } from '../lib/on-way';
-import { ltrIsolate, withoutBidiControls } from '../lib/bidi';
+import { autoIsolate, ltrIsolate, withoutBidiControls } from '../lib/bidi';
 import { clockRange, formatTime } from '../lib/time';
 import { formatDistance, haversineMeters } from '../lib/distance';
 import { t } from '../i18n/he';
@@ -571,6 +571,82 @@ describe('DayView — a hole states what is free AFTER the journey (ADR-0206 §V
   });
 });
 
+// ══ A JOURNEY IS BETWEEN TWO PLACED STOPS (ADR-0232) ═══════════════════════════════════════════
+//
+// The owner's report, on the shipped day: an aurora watch with no place between the supermarket
+// and the hotel deleted the drive into it AND the drive out of it, so the one leg the traveller
+// was certain to make was drawn nowhere. Here the same shape with a call between lunch and the
+// theatre: 13:20 → [call 14:30–15:00, no place] → 16:00, a 40-minute walk between the two rows
+// that have somewhere to be.
+describe('DayView — a row with no place is transparent to the journey (ADR-0232)', () => {
+  const call = ev('call', {
+    title: 'שיחה עם המשרד',
+    startsAt: `${DAY}T14:30:00Z`,
+    endsAt: `${DAY}T15:00:00Z`,
+  });
+  /** The two holes either side of the call: 70 minutes above it, 60 below. */
+  const HOLE_ABOVE = 70;
+  const HOLE_BELOW = 60;
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    resetOnWayForTests();
+    tripEvents = [lunch, call, theatre];
+    tripPlaces = places;
+    travelSeconds = WALK_MINUTES * 60;
+  });
+  afterEach(() => {
+    cleanup();
+    resetOnWayForTests();
+    setSimulatedNow(null);
+  });
+
+  it('draws the journey between the two PLACED rows, once, in the hole before its destination', () => {
+    show();
+    const blocks = document.querySelectorAll('.day-trv');
+    expect(blocks).toHaveLength(1);
+    const block = blocks[0]!;
+    const callCard = screen.getByText(call.title).closest('.wp-event')!;
+    const theatreCard = screen.getByText(theatre.title).closest('.wp-event')!;
+    // After the call, before the theatre — the row it leads into.
+    expect(callCard.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      block.compareDocumentPosition(theatreCard) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('names its origin, because the row above it is not where it leaves from', () => {
+    show();
+    const from = screen.getByText(t.travel.from(autoIsolate(lunch.title)));
+    expect(from.closest('.day-trv')).not.toBeNull();
+    expect(from.classList.contains('day-trv-from')).toBe(true);
+  });
+
+  it('states the measurement and no advice: no leave-by, no arrival, no late mark', () => {
+    show();
+    expect(screen.getByText(approxTravelTime(WALK_MINUTES * 60)!)).toBeTruthy();
+    expect(document.querySelector('.day-trv .day-trv-leave')).toBeNull();
+    expect(document.querySelector('.day-trv.miss')).toBeNull();
+  });
+
+  it('leaves both free-time strips raw — each is a ceiling, and neither says which side the walk is on', () => {
+    show();
+    expect(screen.getByText(freeTimePhrase(HOLE_ABOVE)!)).toBeTruthy();
+    expect(screen.getByText(freeTimePhrase(HOLE_BELOW)!)).toBeTruthy();
+    // What narrowing the hole under the block would have claimed.
+    expect(
+      screen.queryByText(freeTimePhrase(HOLE_BELOW - WALK_MINUTES - TRAVEL_BUFFER_SECONDS / 60)!),
+    ).toBeNull();
+  });
+
+  it('asks for the route between the two placed points, not for the call', () => {
+    travelAsks.length = 0;
+    show();
+    const stops = travelAsks.flatMap((ask) => ask.stops);
+    expect(stops).toEqual(expect.arrayContaining([coordOf('p-lunch'), coordOf('p-theatre')]));
+    expect(stops).toHaveLength(2);
+  });
+});
+
 describe('DayView — the four arms of a journey (ADR-0206 §V1.3/§V1.4)', () => {
   beforeEach(() => {
     resetOnWayForTests();
@@ -1085,6 +1161,24 @@ describe('DayView — the day says how far it goes (ADR-0206 §V1.9)', () => {
   // carry crow-flies kilometres rather than nothing, so the header counts what the list shows
   // (§AP2) — with `לפחות` over it, because every one of those numbers is a floor, and with no
   // minutes at all, because no duration was measured and none may be invented (§D4/§D5).
+  // ADR-0206 §AT2 through ADR-0232: the leg into a trailing row nobody placed is not a leg the
+  // chain can draw, and it is still travel the total does not know — so the same numbers make the
+  // smaller claim. The e2e `day-paints-once.spec.ts` asserts the same wiring in the live page.
+  it('keeps the floor for a trailing row nobody placed', () => {
+    tripEvents = [
+      morning,
+      lunch,
+      theatre,
+      ev('evening', { title: 'ערב', startsAt: `${DAY}T19:00:00Z`, endsAt: `${DAY}T20:00:00Z` }),
+    ];
+    show();
+    expect(line().textContent).toBe(
+      t.travel.dayTotalFloor(
+        t.travel.dayTotal(formatDistance(ROUTED_M * 2), approxTravelTime(WALK_MINUTES * 2 * 60)!),
+      ),
+    );
+  });
+
   it('states the crow-flies floor when nothing on the day is routable', () => {
     travelSeconds = null;
     show();

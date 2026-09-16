@@ -14,12 +14,15 @@ import {
   dayBlocks,
   dayFeasibility,
   dayJourney,
+  danglingLegs,
+  dayRun,
   dayTravelTotal,
   joinBetween,
   narrowGapForTravel,
+  spannedSeconds,
 } from './day-joins';
 import { bookingWhen } from './booking-journey';
-import { mergeDayEntries } from './day-entries';
+import { groupStartEvent, mergeDayEntries } from './day-entries';
 import { buildTimeTree } from './time';
 import { gapBetween, type Gap } from './gaps';
 
@@ -68,10 +71,14 @@ const leg2 = ev({
 const bLeg1 = bk({ id: 'b-leg1', fromPlaceId: 'nrt', toPlaceId: 'dxb' });
 const bLeg2 = bk({ id: 'b-leg2', fromPlaceId: 'dxb', toPlaceId: 'tlv' });
 
+/** **Every row placed, nothing moving** — today's day, which is the shape the join specs below
+ *  were written against; the chain's own specs build their context by hand (ADR-0232). */
+const ALL_PLACED = { placedAt: () => true, movesYou: () => false };
 const ctxFor = (events: TripEvent[], bookings: Booking[] = []) => ({
   bookings,
   when: bookingWhen(events),
   tz: TZ,
+  chain: ALL_PLACED,
 });
 
 describe('joinBetween', () => {
@@ -272,7 +279,7 @@ describe('a flexible edge is transparent to the measurement (ADR-0171 §5)', () 
     startsAt: '2026-07-10T15:00:00+09:00',
     endsAt: at('11:00'),
   });
-  const ctx = { bookings: [], when: bookingWhen([]), tz: TZ };
+  const ctx = { bookings: [], when: bookingWhen([]), tz: TZ, chain: ALL_PLACED };
 
   it('measures ACROSS a check-out instead of being stopped by it', () => {
     const entries = mergeDayEntries(buildTimeTree([morning, evening]), [
@@ -310,6 +317,14 @@ describe('a flexible edge is transparent to the measurement (ADR-0171 §5)', () 
       .flatMap((b) => b.entries.map((e) => e.join))
       .filter(Boolean);
     expect(joins).toHaveLength(0);
+    // …and the JOURNEY chain ends there too (ADR-0232): a span edge is never a leg's endpoint, so
+    // nothing behind the landing is where the evening's leg leaves from.
+    const evenings = dayRun(entries, ctx)
+      .blocks.flatMap((b) => b.entries)
+      .filter((e) => e.entry.kind === 'event' && e.entry.group !== undefined)
+      .filter((e) => e.entry.kind === 'event' && groupStartEvent(e.entry.group).id === 'e-pm');
+    expect(evenings).toHaveLength(1);
+    expect(evenings[0]!.legFrom).toBeUndefined();
   });
 });
 
@@ -641,7 +656,7 @@ describe('dayJourney — the number is still being computed (§AU1)', () => {
   /** And it contributes nothing to the day's roll-ups, which stay the settled claim they were. */
   it('is invisible to the day total and to the verdict', () => {
     const journeys = [computing()];
-    expect(dayTravelTotal(journeys, 0)).toEqual({
+    expect(dayTravelTotal(journeys, { unplacedLegs: 0, spanningLegs: 0 })).toEqual({
       distanceMeters: null,
       travelSeconds: null,
       partial: false,
@@ -729,7 +744,7 @@ describe('dayJourney — a leg with no length to print (§AW/§AZ1)', () => {
    *  them, and no minutes, because no row accounts for them. */
   it('counts in the day’s distance as a FLOOR, and not in its duration', () => {
     const journeys = [brief()];
-    expect(dayTravelTotal(journeys, 0)).toEqual({
+    expect(dayTravelTotal(journeys, { unplacedLegs: 0, spanningLegs: 0 })).toEqual({
       distanceMeters: 50,
       travelSeconds: null,
       // §AZ3: no duration means the distance is the crow, and a sum over one is a floor.
@@ -843,7 +858,7 @@ describe('dayBlocks — the row above is recorded whether or not a join survived
     const a = ev({ id: 'a', startsAt: at('09:00'), endsAt, placeId: 'pa' });
     const b = ev({ id: 'b', startsAt: nextStartsAt, endsAt: nextEndsAt, placeId: 'pb' });
     const entries = mergeDayEntries(buildTimeTree([a, b]), []);
-    return dayBlocks(entries, { bookings: [], when: bookingWhen([]), tz: TZ });
+    return dayBlocks(entries, { bookings: [], when: bookingWhen([]), tz: TZ, chain: ALL_PLACED });
   };
   const originsOf = (blocks: ReturnType<typeof dayBlocks>) =>
     blocks.flatMap((b) => b.entries.map((e) => e.from?.id));
@@ -1176,7 +1191,10 @@ describe('dayTravelTotal — the kilometres cover every leg, the minutes only th
     });
 
   it('adds every leg up when the whole day is routed', () => {
-    const total = dayTravelTotal([routed(18, 1_400), routed(30, 1_800)], 0);
+    const total = dayTravelTotal([routed(18, 1_400), routed(30, 1_800)], {
+      unplacedLegs: 0,
+      spanningLegs: 0,
+    });
     expect(total.distanceMeters).toBe(3_200);
     expect(total.travelSeconds).toBe(48 * 60);
   });
@@ -1186,14 +1204,20 @@ describe('dayTravelTotal — the kilometres cover every leg, the minutes only th
   // genuinely crossing, and inventing minutes prints the walking number the declaration exists
   // to suppress.
   it('counts a declared leg in the distance and not in the duration', () => {
-    const total = dayTravelTotal([routed(18, 1_400), declared(9_000), routed(30, 1_800)], 0);
+    const total = dayTravelTotal([routed(18, 1_400), declared(9_000), routed(30, 1_800)], {
+      unplacedLegs: 0,
+      spanningLegs: 0,
+    });
     expect(total.distanceMeters).toBe(12_200);
     expect(total.travelSeconds).toBe(48 * 60);
   });
 
   // A day of declared legs travels a real distance for no duration this app may state.
   it('answers a distance with no duration when every leg is declared', () => {
-    const total = dayTravelTotal([declared(2_700), declared(9_000)], 0);
+    const total = dayTravelTotal([declared(2_700), declared(9_000)], {
+      unplacedLegs: 0,
+      spanningLegs: 0,
+    });
     expect(total.distanceMeters).toBe(11_700);
     expect(total.travelSeconds).toBeNull();
   });
@@ -1201,14 +1225,14 @@ describe('dayTravelTotal — the kilometres cover every leg, the minutes only th
   // §D4: absence is silence, never a zero — the reader must not be able to tell "not computed"
   // from "not computable", and `0 ק״מ` is exactly that tell.
   it('is null on both halves rather than zero when nothing was measured', () => {
-    expect(dayTravelTotal([null, null], 0)).toEqual({
+    expect(dayTravelTotal([null, null], { unplacedLegs: 0, spanningLegs: 0 })).toEqual({
       distanceMeters: null,
       travelSeconds: null,
       partial: false,
 
       airMeters: null,
     });
-    expect(dayTravelTotal([], 0)).toEqual({
+    expect(dayTravelTotal([], { unplacedLegs: 0, spanningLegs: 0 })).toEqual({
       distanceMeters: null,
       travelSeconds: null,
       partial: false,
@@ -1227,13 +1251,19 @@ describe('dayTravelTotal — the kilometres cover every leg, the minutes only th
       nowMs: AT(-60),
     });
     expect(unrouted).toBeNull();
-    expect(dayTravelTotal([unrouted, routed(18, 1_400)], 0).distanceMeters).toBe(1_400);
+    expect(
+      dayTravelTotal([unrouted, routed(18, 1_400)], { unplacedLegs: 0, spanningLegs: 0 })
+        .distanceMeters,
+    ).toBe(1_400);
   });
 
   // An estimate that carries no distance still carries a duration, and the halves are counted
   // independently rather than gated on each other.
   it('counts a duration whose leg reported no distance', () => {
-    const total = dayTravelTotal([routed(18, 1_400), routed(12, null)], 0);
+    const total = dayTravelTotal([routed(18, 1_400), routed(12, null)], {
+      unplacedLegs: 0,
+      spanningLegs: 0,
+    });
     expect(total.distanceMeters).toBe(1_400);
     expect(total.travelSeconds).toBe(30 * 60);
   });
@@ -1245,7 +1275,10 @@ describe('dayTravelTotal — the kilometres cover every leg, the minutes only th
   // two run through an event nobody gave a place prints the three it could measure AS IF they
   // were the day. That is not §D4's silence: the line is present and reads complete.
   it('is a FLOOR when a hole had an end nobody placed', () => {
-    const total = dayTravelTotal([routed(18, 1_400), routed(30, 1_800)], 2);
+    const total = dayTravelTotal([routed(18, 1_400), routed(30, 1_800)], {
+      unplacedLegs: 2,
+      spanningLegs: 0,
+    });
     expect(total.partial).toBe(true);
     // The numbers are unchanged — what a floor changes is the claim, not the arithmetic. An
     // unmeasurable leg has no distance to add, so inventing one here would be §D4's own failure.
@@ -1263,13 +1296,15 @@ describe('dayTravelTotal — the kilometres cover every leg, the minutes only th
       travelSeconds: null,
       nowMs: AT(-60),
     });
-    expect(dayTravelTotal([pending, routed(18, 1_400)], 0).partial).toBe(false);
+    expect(
+      dayTravelTotal([pending, routed(18, 1_400)], { unplacedLegs: 0, spanningLegs: 0 }).partial,
+    ).toBe(false);
   });
 
   // A day nothing could be measured on stays silent whether or not the holes were placeable —
   // the component renders nothing without a distance, so the flag has nothing to qualify.
   it('reports the floor even where there is nothing to state', () => {
-    expect(dayTravelTotal([], 3)).toEqual({
+    expect(dayTravelTotal([], { unplacedLegs: 3, spanningLegs: 0 })).toEqual({
       distanceMeters: null,
       travelSeconds: null,
       partial: true,
@@ -1441,5 +1476,239 @@ describe('dayBlocks — the join BEFORE a cluster is stated (ADR-0231 §2, F9)',
     // 22:45 → 23:30: under the chip floor, so no gap join, but the row above is named.
     expect(after.join).toBeUndefined();
     expect(after.from?.id).toBe('cocktails');
+  });
+});
+
+// ══ A JOURNEY IS BETWEEN TWO PLACED STOPS (ADR-0232) ═══════════════════════════════════════════
+//
+// The owner's day: `Nettó Hofn` 18:15–19:15, an aurora watch 22:45–00:45 with no place, then the
+// hotel. Pairing by adjacent row deleted the leg into the aurora and the leg out of it, and the
+// one drive the traveller was certain to make tonight with them. These specs are the eighteen
+// rows of ADR-0232 §3, the ones a pure derivation can answer.
+describe('dayRun — the journey chain is between placed stops (ADR-0232 R1/R2)', () => {
+  const placedIds = new Set(['netto', 'lunch', 'museum', 'ferry-origin']);
+  /** A row is placed when its id is in the set; a `moving` row is a ferry with a placed origin
+   *  and an unplaced landing — `leaving` unplaced, `arriving` placed. */
+  const chainOf = (placed: Set<string>, moving: Set<string> = new Set()) => ({
+    placedAt: (event: TripEvent, end: 'leaving' | 'arriving') =>
+      moving.has(event.id) ? end === 'arriving' : placed.has(event.id),
+    movesYou: (event: TripEvent) => moving.has(event.id),
+  });
+  const at = (h: string, m = '00', day = '12') => `2026-07-${day}T${h}:${m}:00+09:00`;
+  // In clock order, because `buildTimeTree` sorts: pack 09:00 · lunch 12–13 · call 13:30–14:15 ·
+  // rest 14:30–15:30 · museum 16:30–18 · netto 18:15–19:15 · aurora 22:45–00:45.
+  const pack = ev({ id: 'pack', startsAt: at('09'), endsAt: at('09', '30') });
+  const lunch = ev({ id: 'lunch', startsAt: at('12'), endsAt: at('13') });
+  const call = ev({ id: 'call', startsAt: at('13', '30'), endsAt: at('14', '15') });
+  const rest = ev({ id: 'rest', startsAt: at('14', '30'), endsAt: at('15', '30') });
+  const museum = ev({ id: 'museum', startsAt: at('16', '30'), endsAt: at('18') });
+  const netto = ev({ id: 'netto', startsAt: at('18', '15'), endsAt: at('19', '15') });
+  const aurora = ev({ id: 'aurora', startsAt: at('22', '45'), endsAt: at('00', '45', '13') });
+  const bed = ev({
+    id: 'bed',
+    startsAt: '2026-07-10T15:00:00+09:00',
+    endsAt: at('11', '00', '14'),
+  });
+  const runOf = (events: TripEvent[], chain: ReturnType<typeof chainOf>, from?: TripEvent) =>
+    dayRun(mergeDayEntries(buildTimeTree(events), []), {
+      ...ctxFor(events),
+      chain: from ? { ...chain, from } : chain,
+    });
+  const entriesOf = (run: ReturnType<typeof dayRun>) => run.blocks.flatMap((b) => b.entries);
+
+  it('leaves the join chain adjacent: the hole above a placeless row is still free time', () => {
+    const run = runOf([netto, aurora], chainOf(placedIds));
+    const [, second] = entriesOf(run);
+    expect(second.from?.id).toBe('netto');
+    expect(second.join).toMatchObject({ kind: 'gap' });
+  });
+
+  it('carries the last PLACED row forward across a placeless one (scenario 1)', () => {
+    const run = runOf([lunch, rest, museum], chainOf(placedIds));
+    const [, second, third] = entriesOf(run);
+    // Into the rest: from lunch, spanning nothing — the caller drops it, since the destination is
+    // placeless; the chain itself simply reports where it stands.
+    expect(second.legFrom?.id).toBe('lunch');
+    expect(second.spans).toEqual([]);
+    // Into the museum: from lunch still, ACROSS the rest.
+    expect(third.from?.id).toBe('rest');
+    expect(third.legFrom?.id).toBe('lunch');
+    expect(third.spans?.map((row) => row.id)).toEqual(['rest']);
+  });
+
+  it('spans two placeless rows in a row as one leg (scenario 4)', () => {
+    const run = runOf([lunch, call, rest, museum], chainOf(placedIds));
+    const last = entriesOf(run)[3];
+    expect(last.legFrom?.id).toBe('lunch');
+    expect(last.spans?.map((row) => row.id)).toEqual(['call', 'rest']);
+  });
+
+  it('is seeded with the bed, so the walk out of it spans a placeless first row (scenario 3)', () => {
+    const run = runOf([pack, lunch], chainOf(placedIds), bed);
+    const [first, second] = entriesOf(run);
+    expect(first.from).toBeUndefined();
+    expect(first.legFrom?.id).toBe('bed');
+    expect(second.legFrom?.id).toBe('bed');
+    expect(second.spans?.map((row) => row.id)).toEqual(['pack']);
+  });
+
+  it("reports where the chain stands after the last row — the leg back into tonight's bed (scenario 2)", () => {
+    const run = runOf([netto, aurora], chainOf(placedIds));
+    expect(run.tail?.from.id).toBe('netto');
+    expect(run.tail?.spans.map((row) => row.id)).toEqual(['aurora']);
+  });
+
+  it('stands at the bed on a day with nothing placed, and nowhere with no bed (scenarios 6/7)', () => {
+    expect(runOf([call, rest], chainOf(placedIds), bed).tail?.from.id).toBe('bed');
+    expect(runOf([call, rest], chainOf(placedIds)).tail).toBeNull();
+  });
+
+  // **The e2e that caught the first build** (`day-paints-once.spec.ts`, ADR-0206 §AT2): three placed
+  // rows and a placeless fourth at the end, no bed. The chain attached nothing to that row and the
+  // total read as complete — a smaller claim turned into a confident one, which is the failure §AT2
+  // exists to prevent. The run counts what no leg reaches; the caller adds the trailing run.
+  it('counts a trailing placeless run as a hole where no bed follows it', () => {
+    const run = runOf([lunch, museum, aurora], chainOf(placedIds));
+    expect(run.orphanRuns).toBe(0);
+    expect(danglingLegs(run, undefined)).toBe(1);
+    // With a bed after it, the leg home spans the row instead — measured, and a floor for that.
+    expect(danglingLegs(run, bed)).toBe(0);
+  });
+
+  it('counts a leading placeless run as a hole where no bed seeds the chain', () => {
+    const run = runOf([pack, lunch], chainOf(placedIds));
+    expect(run.orphanRuns).toBe(1);
+    expect(danglingLegs(run, bed)).toBe(1);
+    // Seeded, the same rows are the bed leg's spans and no hole at all.
+    expect(runOf([pack, lunch], chainOf(placedIds), bed).orphanRuns).toBe(0);
+  });
+
+  it('counts a day of nothing placed and no bed once, not per row', () => {
+    const run = runOf([call, rest], chainOf(placedIds));
+    expect(run.orphanRuns).toBe(1);
+    expect(danglingLegs(run, undefined)).toBe(1);
+  });
+
+  it('treats a row that MOVES you with an unplaced end as a seam, not as transparent (scenario 8)', () => {
+    const ferry = ev({ id: 'ferry-origin', startsAt: at('15'), endsAt: at('15', '40') });
+    const run = runOf([lunch, ferry, museum], chainOf(placedIds, new Set(['ferry-origin'])));
+    const [, intoFerry, intoMuseum] = entriesOf(run);
+    // The leg INTO the ferry reaches its placed origin.
+    expect(intoFerry.legFrom?.id).toBe('lunch');
+    // The leg OUT of it leaves from the ferry itself — unplaced, so unmeasurable — never from lunch
+    // across it: a road route beside a sea crossing is the false-path claim §AA4 refuses.
+    expect(intoMuseum.legFrom?.id).toBe('ferry-origin');
+    expect(intoMuseum.spans).toEqual([]);
+  });
+});
+
+describe('dayJourney — a leg across a placeless stop states the measurement and no advice (ADR-0232 R4)', () => {
+  const base = Date.parse('2026-07-12T13:00:00+09:00');
+  const H = 60 * 60 * 1000;
+  /** Lunch ends 13:00, a 45-minute call with no place at 13:30, the hike starts 14:45: a 1:45
+   *  window less 45 minutes is 60 of slack, and a 51-minute drive fits in it — though the hole the
+   *  block is drawn in (14:15–14:45) is 30 minutes long. */
+  const spanning = (over: Partial<Parameters<typeof dayJourney>[0]> = {}) =>
+    dayJourney({
+      departAfterMs: base,
+      arriveByMs: base + 1.75 * H,
+      travelSeconds: 51 * 60,
+      distanceMeters: 65_000,
+      nowMs: base - H,
+      spannedSeconds: 45 * 60,
+      ...over,
+    })!;
+
+  it('keeps the duration, the distance and the mode, and marks itself as spanning', () => {
+    const j = spanning();
+    expect(j.travelSeconds).toBe(51 * 60);
+    expect(j.distanceMeters).toBe(65_000);
+    expect(j.spansPlaceless).toBe(true);
+    expect(j.arm).toBe(DAY_JOURNEY_ARM.AHEAD);
+  });
+
+  it('states no leave-by and no arrival — the plan cannot say which side of the row the drive is on', () => {
+    const j = spanning();
+    expect(j.leaveByMs).toBeNull();
+    expect(j.arriveAtMs).toBeNull();
+  });
+
+  it('is never PASSED: a departure it does not state cannot have gone by', () => {
+    // At 14:40 the buffered leave-by (13:49) would long have passed on an ordinary leg.
+    const j = spanning({ nowMs: base + 1.66 * H });
+    expect(j.arm).toBe(DAY_JOURNEY_ARM.AHEAD);
+    expect(j.leaveByMs).toBeNull();
+  });
+
+  it('measures the fit against the combined slack, not the hole it is drawn in', () => {
+    // 60 minutes of slack hold a 51-minute drive plus the buffer: FITS, where the 30-minute hole
+    // under the block would have said `חסרות 21 דק׳ לדרך`.
+    expect(spanning().free?.fit).toBe(TRAVEL_FIT.FITS);
+    expect(spanning().free?.availableSeconds).toBe(60 * 60);
+  });
+
+  it('…and still says so when even the combined slack does not hold it', () => {
+    // A 70-minute call leaves 35 minutes for a 51-minute drive.
+    const j = spanning({ spannedSeconds: 70 * 60 });
+    expect(j.arm).toBe(DAY_JOURNEY_ARM.OVERRUNS);
+    expect(j.overrunSeconds).toBeGreaterThan(0);
+    expect(j.leaveByMs).toBeNull();
+  });
+
+  it('is PAST once the destination has started, like any leg', () => {
+    expect(spanning({ nowMs: base + 2 * H }).arm).toBe(DAY_JOURNEY_ARM.PAST);
+  });
+
+  it('honours `בדרך` — a device mark is not a claim the plan makes', () => {
+    expect(spanning({ onWay: true }).arm).toBe(DAY_JOURNEY_ARM.ON_WAY);
+  });
+
+  it('is not spanning by default, so every leg that never had a placeless row is unchanged', () => {
+    expect(spanning({ spannedSeconds: undefined }).spansPlaceless).toBe(false);
+    expect(spanning({ spannedSeconds: undefined }).leaveByMs).not.toBeNull();
+  });
+});
+
+describe('spannedSeconds', () => {
+  it('sums the rows that have both ends and ignores the rest', () => {
+    const rows = [
+      ev({ id: 'a', startsAt: '2026-07-12T13:30:00+09:00', endsAt: '2026-07-12T14:15:00+09:00' }),
+      ev({ id: 'b', startsAt: '2026-07-12T15:00:00+09:00' }),
+    ];
+    expect(spannedSeconds(rows)).toBe(45 * 60);
+    expect(spannedSeconds([])).toBe(0);
+  });
+});
+
+describe('a spanning leg leaves the free-time strips raw and the total a floor (ADR-0232 R5)', () => {
+  const TZ_DAY = '2026-07-12';
+  const free: Gap = gapBetween(
+    ev({
+      id: 'x',
+      date: TZ_DAY,
+      startsAt: '2026-07-12T13:00:00+09:00',
+      endsAt: '2026-07-12T13:00:00+09:00',
+    }),
+    ev({ id: 'y', date: TZ_DAY, startsAt: '2026-07-12T16:30:00+09:00' }),
+    TZ,
+  )!;
+  const journey = dayJourney({
+    departAfterMs: Date.parse('2026-07-12T13:00:00+09:00'),
+    arriveByMs: Date.parse('2026-07-12T22:00:00+09:00'),
+    travelSeconds: 51 * 60,
+    distanceMeters: 65_000,
+    nowMs: Date.parse('2026-07-12T09:00:00+09:00'),
+    spannedSeconds: 2 * 60 * 60,
+  })!;
+
+  it('does not narrow a hole by a journey that may not be in it', () => {
+    expect(narrowGapForTravel(free, journey, TZ)).toEqual(free);
+  });
+
+  it('keeps `לפחות` on the total for a leg that does not count the stop between its ends', () => {
+    const total = dayTravelTotal([journey], { unplacedLegs: 0, spanningLegs: 1 });
+    expect(total.partial).toBe(true);
+    expect(total.distanceMeters).toBe(65_000);
+    expect(dayTravelTotal([journey], { unplacedLegs: 0, spanningLegs: 0 }).partial).toBe(false);
   });
 });

@@ -468,6 +468,30 @@ button.day-trv-face:focus-visible {
 .day-trv-leave {
   color: var(--amber-deep);
 }
+/* **WHERE A SPANNING LEG LEAVES FROM** (ADR-0232 R3). A place name, so it may wear neither the
+   clock's amber (§D1, and root rule 4) nor the map's teal, which is a location CONTROL's: it takes
+   the `--muted` standing `.day-trv-dist` gives a fact that is context rather than commitment. A
+   block, so the meta line's own `nowrap` + `overflow: hidden` ellipsises IT rather than clipping a
+   long hotel name mid-glyph. */
+.day-trv-from {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-weight: 600;
+}
+/* **AN ORIGIN AND A SENTENCE NEVER SHARE THE LINE**, and the render is what asked for this rule
+   (`mockups/a-journey-is-between-two-placed-stops-v1.html`): `.day-trv-meta` is one `nowrap` flex
+   line whose `overflow: hidden` clips a second child silently — `text-overflow: ellipsis` on a flex
+   container does nothing for its items — so `מ-Fancy Sheep` beside `חסרות 21 דק׳ לדרך` lost the
+   digits at 360 with no mark. They stack, one fact per line, at a measured ⁦+15px⁩ only on the arms
+   that carry a sentence beside the origin. */
+.day-trv-meta:has(.day-trv-from) {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
 /* The routed distance — `formatDistance` over `distanceMeters`, per mode, never the crow-flies
    helper (a 1.9 km crow-flies leg is a 2.4 km walk). `--muted` because a distance is context
    rather than a commitment: the amber in this block is already spent on the time. */
