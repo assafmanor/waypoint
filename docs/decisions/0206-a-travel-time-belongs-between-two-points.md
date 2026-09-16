@@ -3048,7 +3048,7 @@ pulls the departure to the origin's own end (there is no buffered departure that
 land here_. It is the earliest arrival that exists rather than the best case of advice nobody can
 follow, which is why the app can state it.
 
-**Both halves of the arm take it, including `אין זמן לדרך`.** Two rows that touch have no gap for
+**Both halves of the arm take it, including `אין זמן לדרך`** _(that sentence is retired since 2026-09-16 — §BG; the arrival now stands alone on that half)_**.** Two rows that touch have no gap for
 the journey to be longer than, so the shortfall is the wrong sentence there — but you still land
 somewhere, and how late is exactly as actionable. The one that does not take it is
 `arrivesAfterClose`, which already led with the arrival and names the thing that makes it matter
@@ -4392,3 +4392,13 @@ ceiling is off `nextInstant` now, so the card's four numbers are all about one p
 - **The gap's five characters are untouched** (ADR-0211). What the slot _says_ is unchanged; only
   the instant it bounds moved. `on-the-way` still withdraws the leave read upstream, so the ceiling
   goes with it for free.
+
+## BG. `אין זמן לדרך` is retired: it said nothing the block did not already show (2026-09-16)
+
+Owner, off the first ADR-0232 deploy, with a screenshot of the leg into `Setberg Guesthouse` reading `נסיעה · ~22 דק׳ · מ-Nettó Hofn · אין זמן לדרך`: _"come to think of it `אין זמן לדרך` doesn't add any information + is actually confusing, so I think that we should remove this."_
+
+**Two faults, and the sentence was the one that showed.** The arithmetic behind it was ADR-0232 R4's: the spanning leg subtracted the aurora watch's two hours from the slack before the hotel's ⁦20:00⁩ close, though the watch runs ⁦22:45–00:45⁩ — fixed there (a crossed row eats only the part of the window it is in). But the owner's point stands on its own, and the record bears it out. §AH added the sentence for a zero-or-negative hole because _"the shortfall IS the journey's own duration, which the head above already states"_ — true, and the replacement said even less: the strip above already shows there is no free time, the head already shows the duration, and `--miss` with the mark already says the leg does not fit (§AK/§AL5). A line repeating three visible facts adds nothing when it is right, and it has been wrong three times: against a check-in floor read as a deadline (§AJ1), against a hole measured negative from a stay's own `endsAt` (§1235's case), and now against a spanning leg.
+
+**So the half-arm says the arrival and nothing else.** `shortfallLine` answers `undefined` at a zero or negative window, the `OVERRUNS` arm prints `הגעה ~HH:MM` alone where it lands somewhere (§AS5's second half, which was the actionable part all along), and `PAST` prints nothing for it. The tone and the mark are unchanged: the leg still reads as one that does not fit. `t.travel.noTimeForTravel` is removed; nothing else consumed it.
+
+**What was not retired, and why.** `חסרות N דק׳ לדרך` carries a number the reader acts on — how much has to move — and is not the same nature of sentence. `בלי הערכת זמן`, `רחוק מדי ל…` and `מחשב מסלול…` each explain an absent duration in the head beside them, which the block cannot show any other way. If any of them reads as noise on a real day, it is the same one-line change.

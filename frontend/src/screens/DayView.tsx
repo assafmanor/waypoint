@@ -155,7 +155,7 @@ import {
   dayTravelTotal,
   holeDepartsMs,
   narrowGapForTravel,
-  spannedSeconds,
+  spannedIntervals,
   windowClosesMs,
   type DayBlock,
   type DayJoin,
@@ -1145,7 +1145,7 @@ export function DayView() {
         warming: travelReads.warmingFor(leg.from, leg.to),
         // **The placeless rows this leg crosses, as time** (ADR-0232 R4): given, the clock advice is
         // withheld and the fit is measured on the combined slack.
-        ...(leg.spans?.length ? { spannedSeconds: spannedSeconds(leg.spans) } : {}),
+        ...(leg.spans?.length ? { spanned: spannedIntervals(leg.spans) } : {}),
         nowMs,
         // `arrived` needs no separate arm here: a fix at the next stop means you got there, and
         // the day list is a record either way — what it must not do is keep offering a departure.

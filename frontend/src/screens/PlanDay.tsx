@@ -125,7 +125,7 @@ import {
   dayRun,
   dayTravelTotal,
   narrowGapForTravel,
-  spannedSeconds,
+  spannedIntervals,
   windowClosesMs,
   type DayJourney,
 } from '../lib/day-joins';
@@ -590,7 +590,7 @@ export function PlanDay() {
       // that would pick a different mode for it. Ranked last of the three by `dayJourney` itself.
       warming: planTravel.warmingFor(from, to),
       // The placeless rows this leg crosses, as time (ADR-0232 R4) — the same input Trip mode gives.
-      ...(leg.spans?.length ? { spannedSeconds: spannedSeconds(leg.spans) } : {}),
+      ...(leg.spans?.length ? { spanned: spannedIntervals(leg.spans) } : {}),
       nowMs: now.getTime(),
     });
   };

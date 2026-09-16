@@ -100,18 +100,40 @@ export interface JourneyChainState {
   spans: readonly TripEvent[];
 }
 
+/** An interval on the clock, as `dayJourney` reads a crossed row: it holds instants, not events. */
+export interface TimeSpan {
+  startMs: number;
+  endMs: number;
+}
+
 /**
- * **Sum of the time the placeless rows a leg crosses occupy** (ADR-0232 R4) — what comes off the
- * combined slack the leg is measured against, because a ⁦45⁩-minute call between two placed rows is
- * time the traveller is not driving, wherever they are making it.
+ * **When the placeless rows a leg crosses happen** (ADR-0232 R4) — the intervals that come off the
+ * slack the leg is measured against, because a ⁦45⁩-minute call between two placed rows is time the
+ * traveller is not driving, wherever they are making it. Intervals rather than a sum, because only
+ * the part of a row that falls INSIDE the leg's window can eat that window: an aurora watch at
+ * ⁦22:45⁩ takes nothing off a check-in that closes at ⁦20:00⁩ (§8's second catch).
  */
-export function spannedSeconds(spans: readonly TripEvent[]): number {
-  let total = 0;
+export function spannedIntervals(spans: readonly TripEvent[]): TimeSpan[] {
+  const out: TimeSpan[] = [];
   for (const row of spans) {
-    const start = Date.parse(row.startsAt ?? '');
-    const end = Date.parse(row.endsAt ?? '');
-    if (Number.isFinite(start) && Number.isFinite(end) && end > start)
-      total += (end - start) / MS_PER_SECOND;
+    const startMs = Date.parse(row.startsAt ?? '');
+    const endMs = Date.parse(row.endsAt ?? '');
+    if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs)
+      out.push({ startMs, endMs });
+  }
+  return out;
+}
+
+/** Seconds of `spans` that fall inside `[fromMs, toMs]` — the slack the crossed rows really take. */
+export function reservedSecondsWithin(
+  spans: readonly TimeSpan[],
+  fromMs: number,
+  toMs: number,
+): number {
+  let total = 0;
+  for (const { startMs, endMs } of spans) {
+    const overlap = Math.min(endMs, toMs) - Math.max(startMs, fromMs);
+    if (overlap > 0) total += overlap / MS_PER_SECOND;
   }
   return total;
 }
@@ -630,21 +652,26 @@ export function dayJourney(input: {
    *  coming, so either of those being true makes this one irrelevant rather than merely lower. */
   warming?: boolean;
   /**
-   * **THE PLACELESS ROWS THIS LEG CROSSES, AS TIME** (ADR-0232 R4) — `spannedSeconds(spans)`, given
-   * where the leg spans any and absent otherwise.
+   * **WHEN THE PLACELESS ROWS THIS LEG CROSSES HAPPEN** (ADR-0232 R4) — `spannedIntervals(spans)`,
+   * given where the leg spans any and absent otherwise.
    *
    * Given, the leg is a fact about the plan and the clock advice is withheld: no `יציאה עד`, no
    * `הגעה ~`, no late mark. A leave-by assumes you are at the origin until it, and with an aurora
    * watch between the supermarket and the hotel you may make the drive at ⁦19:15⁩ or at ⁦00:45⁩; the
    * plan cannot say which. What may still be said is whether the journey FITS, measured against the
-   * combined slack — the whole window minus these seconds — never against the hole the block
-   * happens to be drawn in: a ⁦30⁩-minute hole under the block holding a ⁦51⁩-minute drive is not an
-   * overrun when the hours above the placeless row would have held it.
+   * combined slack — the window minus the part of these rows that falls INSIDE it — never against
+   * the hole the block happens to be drawn in: a ⁦30⁩-minute hole under the block holding a
+   * ⁦51⁩-minute drive is not an overrun when the hours above the placeless row would have held it.
+   *
+   * **Inside it, and that clause is a field report** (owner, 2026-09-16, off the first deploy): the
+   * aurora watch runs ⁦22:45–00:45⁩ and the hotel's check-in closes at ⁦20:00⁩, so a ⁦22⁩-minute
+   * drive with ⁦45⁩ minutes of window read `אין זמן לדרך` because two hours that happen AFTER the
+   * deadline were subtracted from the slack before it. A row cannot eat a window it is not in.
    */
-  spannedSeconds?: number;
+  spanned?: readonly TimeSpan[];
 }): DayJourney | null {
   const { departAfterMs, arriveByMs, travelSeconds, nowMs, onWay, claimDenied } = input;
-  const spansPlaceless = input.spannedSeconds !== undefined;
+  const spansPlaceless = input.spanned !== undefined;
   // **A declared leg is a journey with no duration, not an absent journey** (ADR-0206 §AA4). It
   // has to come BEFORE the floor below, because every one of those bails on exactly the missing
   // estimate the declaration guarantees — and a hole that renders nothing also renders no mode
@@ -836,15 +863,15 @@ export function dayJourney(input: {
   // No deadline means no window to be free inside, so there is no free-time half and no fit — the
   // same structural absence the day's first leg out of a bed reports (§AF3), for the same reason.
   // **Against the combined slack where the leg spans placeless rows** (ADR-0232 R4): the window
-  // less the time those rows occupy, wherever in it they fall. Shifting the departure is the
-  // arithmetic; the departure itself is not stated on such a leg.
+  // less the part of those rows that falls inside it. Shifting the departure is the arithmetic;
+  // the departure itself is not stated on such a leg.
+  const reservedMs =
+    measurableFrom && deadlineMs !== undefined && input.spanned
+      ? reservedSecondsWithin(input.spanned, departAfterMs!, deadlineMs) * MS_PER_SECOND
+      : 0;
   const free =
     measurableFrom && deadlineMs !== undefined
-      ? freeAfterTravel(
-          departAfterMs! + (input.spannedSeconds ?? 0) * MS_PER_SECOND,
-          deadlineMs,
-          stated,
-        )
+      ? freeAfterTravel(departAfterMs! + reservedMs, deadlineMs, stated)
       : null;
   /**
    * **WHETHER THE APP WILL ADVISE A DEPARTURE AT ALL** — an EXACT start is the only deadline it

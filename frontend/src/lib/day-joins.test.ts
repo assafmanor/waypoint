@@ -19,7 +19,8 @@ import {
   dayTravelTotal,
   joinBetween,
   narrowGapForTravel,
-  spannedSeconds,
+  reservedSecondsWithin,
+  spannedIntervals,
 } from './day-joins';
 import { bookingWhen } from './booking-journey';
 import { groupStartEvent, mergeDayEntries } from './day-entries';
@@ -1615,7 +1616,8 @@ describe('dayJourney — a leg across a placeless stop states the measurement an
       travelSeconds: 51 * 60,
       distanceMeters: 65_000,
       nowMs: base - H,
-      spannedSeconds: 45 * 60,
+      // The call: 13:30–14:15, inside the window.
+      spanned: [{ startMs: base + 0.5 * H, endMs: base + 1.25 * H }],
       ...over,
     })!;
 
@@ -1649,7 +1651,9 @@ describe('dayJourney — a leg across a placeless stop states the measurement an
 
   it('…and still says so when even the combined slack does not hold it', () => {
     // A 70-minute call leaves 35 minutes for a 51-minute drive.
-    const j = spanning({ spannedSeconds: 70 * 60 });
+    const j = spanning({
+      spanned: [{ startMs: base + 0.25 * H, endMs: base + (0.25 + 70 / 60) * H }],
+    });
     expect(j.arm).toBe(DAY_JOURNEY_ARM.OVERRUNS);
     expect(j.overrunSeconds).toBeGreaterThan(0);
     expect(j.leaveByMs).toBeNull();
@@ -1664,19 +1668,48 @@ describe('dayJourney — a leg across a placeless stop states the measurement an
   });
 
   it('is not spanning by default, so every leg that never had a placeless row is unchanged', () => {
-    expect(spanning({ spannedSeconds: undefined }).spansPlaceless).toBe(false);
-    expect(spanning({ spannedSeconds: undefined }).leaveByMs).not.toBeNull();
+    expect(spanning({ spanned: undefined }).spansPlaceless).toBe(false);
+    expect(spanning({ spanned: undefined }).leaveByMs).not.toBeNull();
+  });
+
+  // **The owner's second field report, off the first deploy** (2026-09-16): `Nettó Hofn` ends
+  // 19:15, the hotel's check-in closes 20:00, the aurora watch runs 22:45–00:45 — and the leg read
+  // `אין זמן לדרך`, because two hours that happen AFTER the deadline were taken off the 45 minutes
+  // before it. A row cannot eat a window it is not in.
+  it('takes nothing off the slack for a crossed row that happens after the deadline', () => {
+    const j = spanning({
+      // 45 minutes of window, a 22-minute drive, and the crossed row three hours past the close.
+      arriveByMs: base + 0.75 * H,
+      travelSeconds: 22 * 60,
+      spanned: [{ startMs: base + 3.5 * H, endMs: base + 5.5 * H }],
+    });
+    expect(j.free?.availableSeconds).toBe(45 * 60);
+    expect(j.free?.fit).toBe(TRAVEL_FIT.FITS);
+    expect(j.arm).toBe(DAY_JOURNEY_ARM.AHEAD);
+  });
+
+  it('counts only the part of a crossed row that falls inside the window', () => {
+    // The row straddles the deadline: 14:15–15:15 against a 14:45 close takes 30 minutes, not 60.
+    const j = spanning({ spanned: [{ startMs: base + 1.25 * H, endMs: base + 2.25 * H }] });
+    expect(j.free?.availableSeconds).toBe(75 * 60);
   });
 });
 
-describe('spannedSeconds', () => {
-  it('sums the rows that have both ends and ignores the rest', () => {
+describe('spannedIntervals / reservedSecondsWithin', () => {
+  it('keeps the rows that have both ends and ignores the rest', () => {
     const rows = [
       ev({ id: 'a', startsAt: '2026-07-12T13:30:00+09:00', endsAt: '2026-07-12T14:15:00+09:00' }),
       ev({ id: 'b', startsAt: '2026-07-12T15:00:00+09:00' }),
     ];
-    expect(spannedSeconds(rows)).toBe(45 * 60);
-    expect(spannedSeconds([])).toBe(0);
+    const spans = spannedIntervals(rows);
+    expect(spans).toHaveLength(1);
+    expect(spannedIntervals([])).toEqual([]);
+    const from = Date.parse('2026-07-12T13:00:00+09:00');
+    const at = (clock: string) => Date.parse(`2026-07-12T${clock}:00+09:00`);
+    // Whole row inside: 45 minutes. Window closing mid-row: 15. Window before the row: nothing.
+    expect(reservedSecondsWithin(spans, from, at('16:00'))).toBe(45 * 60);
+    expect(reservedSecondsWithin(spans, from, at('13:45'))).toBe(15 * 60);
+    expect(reservedSecondsWithin(spans, from, at('13:20'))).toBe(0);
   });
 });
 
@@ -1698,7 +1731,12 @@ describe('a spanning leg leaves the free-time strips raw and the total a floor (
     travelSeconds: 51 * 60,
     distanceMeters: 65_000,
     nowMs: Date.parse('2026-07-12T09:00:00+09:00'),
-    spannedSeconds: 2 * 60 * 60,
+    spanned: [
+      {
+        startMs: Date.parse('2026-07-12T16:30:00+09:00'),
+        endMs: Date.parse('2026-07-12T18:30:00+09:00'),
+      },
+    ],
   })!;
 
   it('does not narrow a hole by a journey that may not be in it', () => {

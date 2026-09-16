@@ -627,7 +627,7 @@ describe('PlanDay — the day starts where the day started', () => {
     // the drive that brought you to the bed is a block of its own above the stay row.
     const blocks = [...document.querySelectorAll('.day-trv')].map((b) => b.textContent ?? '');
     expect(blocks.length).toBeGreaterThan(0);
-    expect(blocks.some((b) => b.includes(t.travel.noTimeForTravel))).toBe(false);
+    expect(document.querySelector('.day-trv.miss')).toBeNull();
     expect(blocks.some((b) => b.includes('יציאה'))).toBe(true);
   });
 
@@ -698,7 +698,7 @@ describe('PlanDay — the drive into tonight’s hotel cannot be impossible', ()
     show();
     const block = document.querySelector('.day-trv');
     expect(block).toBeTruthy();
-    expect(block!.textContent).not.toContain(t.travel.noTimeForTravel);
+    expect(block!.classList.contains('miss')).toBe(false);
     expect(block!.textContent).toContain('הגעה');
   });
 });
@@ -763,7 +763,7 @@ describe('PlanDay — the drive from the pickup into the bed', () => {
     show();
     const blocks = [...document.querySelectorAll('.day-trv')].map((b) => b.textContent ?? '');
     expect(blocks.some((b) => b.includes('הגעה'))).toBe(true);
-    expect(blocks.some((b) => b.includes(t.travel.noTimeForTravel))).toBe(false);
+    expect(document.querySelector('.day-trv.miss')).toBeNull();
   });
 
   // The whole reason the leg carries `departAfterMs`: read off the hire's own `endsAt` the arrival

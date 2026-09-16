@@ -382,13 +382,15 @@ describe('JourneyRow — the journey does not fit', () => {
   // **The arrival rides this half of the arm too** (ADR-0206 §AS5): two rows that touch have no
   // gap for the journey to be longer THAN, so the shortfall is the wrong sentence — but you still
   // land somewhere, and how late that is, is the thing you act on.
-  it('says there is no time, rather than a shortfall, when the rows touch', () => {
+  // …and since the owner's 2026-09-16 retirement of `אין זמן לדרך`, the arrival is the whole line:
+  // the sentence that led it said nothing the strip, the head and the mark did not.
+  it('says only the arrival, and no shortfall, when the rows touch', () => {
     const { container } = row(0, 12);
     const lands = ltrIsolate(`~${formatTime(new Date(START + 12 * MIN), 'Asia/Tokyo')}`);
-    expect(container.querySelector('.day-trv-meta')?.textContent).toBe(
-      t.travel.overrunThenArrive(t.travel.noTimeForTravel, lands),
-    );
+    expect(container.querySelector('.day-trv-meta')?.textContent).toBe(t.travel.arriveAt(lands));
     expect(container.textContent).not.toContain(shortfallPhrase(12)!);
+    // …and it still reads as a leg that does not fit: the tone and the mark carry that.
+    expect(container.querySelector('.day-trv.miss')).toBeTruthy();
     // …and the duration is stated exactly once, in the head.
     expect(container.querySelectorAll('.day-trv-hd').length).toBe(1);
   });
