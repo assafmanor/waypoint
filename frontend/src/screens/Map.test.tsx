@@ -2058,6 +2058,47 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       );
     });
 
+    // **AND A DAY YOU HAVE NOT REACHED HAS NOTHING TO RECORD** (owner, 2026-09-16, the same
+    // report as the day list's). ADR-0139 §2's "every event is settleable here" was written
+    // against the CLOCK — it protects the early mark on TONIGHT's dinner — and this row carries
+    // references from every day of the trip, so it read that as covering Thursday too.
+    it('offers no pair on a reference the trip has not reached, and keeps an answered one', () => {
+      setSimulatedNow(Date.parse(`${ACTIVE_DATE}T12:00:00Z`));
+      tripPlaces = [place('granbell', true)];
+      tripBookings = [];
+      const ahead = '2026-07-24';
+      const stay = (over: Partial<TripEvent> = {}) =>
+        event({
+          id: 'stay',
+          placeId: 'granbell',
+          category: 'lodging',
+          icon: '🏨',
+          kind: EVENT_KIND.HARD,
+          title: 'Shinjuku Granbell',
+          date: ahead,
+          startsAt: `${ahead}T15:00:00Z`,
+          ...over,
+        });
+
+      tripEvents = [stay()];
+      render(wrap(<MapView />));
+      tapAllDays(); // the reference is on another day, so the scope has to admit it
+      fireEvent.click(row('granbell')!);
+      expect(row('granbell')!.querySelector('.map-ref')).toBeTruthy();
+      expect(row('granbell')!.querySelector('.map-ref .wp-settle')).toBeNull();
+
+      cleanup();
+
+      // Answered → the record and its undo stay reachable (ADR-0139 §2), and only those.
+      tripEvents = [stay({ status: EVENT_STATUS.DONE })];
+      render(wrap(<MapView />));
+      tapAllDays();
+      fireEvent.click(row('granbell')!);
+      expect(row('granbell')!.querySelector('.map-ref .wp-settle-tag.ok')).toBeTruthy();
+      expect(row('granbell')!.querySelector('.map-ref .wp-settle-btn.undo')).toBeTruthy();
+      expect(row('granbell')!.querySelector('.map-ref .wp-settle-btn.done')).toBeNull();
+    });
+
     it('an unlinked booking still resolves to exactly one entry', () => {
       seedLinked();
       tripEvents = [];

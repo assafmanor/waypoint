@@ -266,6 +266,64 @@ describe("DayView — a stay's check-in can be answered wherever the count holds
 // row was not among them: it asked `edgeOutlivesItsInstant(stay, 'start')` and then read and
 // wrote `status` whichever end of the day it was drawing, so the hotel you left this morning and
 // the one you sleep in tonight were one switch with two handles.
+// **AND A RECORD IS ABOUT A DAY YOU HAVE REACHED** (owner, 2026-09-16, on a day-21 screenshot
+// taken at ⁦21:37⁩ with a `היום` jump button on screen: _"I think that it's only relevant for the
+// current day, not for future days"_). ADR-0228 §5a's table already ends with "another day, past
+// or future — none"; it was applied to the card's verb band and never to the rows.
+describe('DayView — a day you have not reached has nothing to record', () => {
+  const AHEAD = '2026-09-17'; // NOW is still 2026-09-15T20:05
+
+  beforeEach(() => {
+    tripEvents = [guesthouse()];
+    activeDate = AHEAD;
+    done.mockClear();
+  });
+
+  it('offers no settle pair on a future day', () => {
+    const { container } = show();
+    expect(container.querySelector('.stay-bookend')).toBeTruthy();
+    expect(container.querySelector('.stay-bookend .wp-settle')).toBeNull();
+  });
+
+  // The rule is the DAY's, not the row type's — so the car hire's pick-up and return, which are
+  // `TransitionRow`s rather than bookends, lose it on the same day for the same reason. This is
+  // the other half of the reported screenshot, where `החזרת הרכב` carried ✓/✕ three days out.
+  it('offers no pair on a transition row of that day either', () => {
+    tripEvents = [
+      guesthouse(),
+      ev('hire', {
+        title: 'Iceland Car Rental',
+        category: 'transport',
+        icon: '🚗',
+        kind: EVENT_KIND.HARD,
+        // Collected on the day of the report and due back on the day being browsed — which is
+        // what makes the return an edge ROW rather than a card (ADR-0063), exactly as in the
+        // screenshot.
+        date: DAY,
+        startsAt: at('09:00'),
+        endDate: AHEAD,
+        endsAt: at('21:30', AHEAD),
+      }),
+    ];
+    const { container } = show();
+    // Both row kinds are on screen — the bookend and at least one of the hire's edges…
+    expect(container.querySelectorAll('.transition-row').length).toBeGreaterThan(1);
+    // …and not one of them is asking.
+    expect(container.querySelector('.transition-row .wp-settle')).toBeNull();
+  });
+
+  // …and the undo is never what goes (ADR-0139 §2). An edge with an answer keeps its record,
+  // which since ADR-0230 IS the control that takes it back.
+  it('keeps the record and its undo on a future day that already has an answer', () => {
+    tripEvents = [guesthouse({ endStatus: EVENT_STATUS.DONE })];
+    const { container } = show();
+    expect(container.querySelector('.stay-bookend .wp-settle-tag.ok')).toBeTruthy();
+    expect(container.querySelector('.stay-bookend .wp-settle-btn.undo')).toBeTruthy();
+    // The pair itself stays gone — a record is not a question.
+    expect(container.querySelector('.stay-bookend .wp-settle-btn.done')).toBeNull();
+  });
+});
+
 describe('DayView — a check-out is answered on its own', () => {
   const CHECKOUT = '2026-09-17';
 

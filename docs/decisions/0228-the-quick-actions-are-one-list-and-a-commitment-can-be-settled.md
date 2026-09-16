@@ -1,6 +1,6 @@
 # 0228 — The day row's quick actions are one ordered list, and a commitment can be marked done
 
-**Status:** Accepted — **built 2026-09-15**, **amended and rebuilt the same day** (§5 below)
+**Status:** Accepted — **built 2026-09-15**, **amended and rebuilt the same day** (§5 below), **extended 2026-09-16** (§6, and §7 — §5a's rule applied to the list's rows and the Map's reference row)
 **Date:** 2026-09-15
 **Refines:** [0011](0011-hard-soft-event-model.md) (hard/soft, and what it actually reserves), [0043](0043-day-view-now-line-phases-and-archive-chrome.md) §2/§3 (the settle strip, the reframed `סיימנו`, the phase-scoped nudge), [0139](0139-settling-an-event-from-the-map.md) §2/§4 (every event is settleable; the write path is existing), [0029](0029-trip-mode-day-scope-gating.md) (a past day keeps settle and the read), [0025](0025-trip-mode-edit-capability-tiers.md) / [0138](0138-the-row-menu-is-one-surface-and-icons-are-ui.md) (the `⋯` is Tier-2 and stays there)
 **Amends:** [0174](0174-an-attachment-is-marked-and-opened-and-an-event-has-a-read.md) §3 — an event's documents are now reachable on a passed row too, which is where §3's "the read is on the card" was quietly not true.
@@ -124,6 +124,46 @@ Owner, with two screenshots of day 16 at ⁦13:51⁩ and the `⋯` sheet open on
 **Skipping does not pass the hard gate.** `שינוי מחייב עדכון ההזמנה` guards edits to the commitment's time and its deletion; a settle is a record about the world, not an edit of the booking (§2's strip and the Map's row never asked either), and the booking itself is untouched.
 
 **Tests:** `EventCard.test.tsx` pins the pair on an upcoming hard row and its identical twin on a soft one, its lead position, and its absence on passed / now / done rows and when either handler is missing; `shelf.test.ts` and `place-usage.test.ts` flip the assertions that had encoded the `=== SOFT`.
+
+## 7. Amendment, 2026-09-16: §5a's last row was never applied to the LIST's rows
+
+Owner, with a day-21 screenshot taken at ⁦21:37⁩ — a `היום` jump button on screen, so the day is not today — showing `צ׳ק-אאוט · עד 11:00` and `החזרת הרכב` each carrying a ✓/✕ pair:
+
+> I think that it's only relevant for the current day, not for future days.
+
+**Which is §5a, reported back.** That table's last row already reads _"another day, past or future — **none**"_, and §5c restates it in ADR-0117 §2's own words: "a human outranks the clock" is about marking **tonight's** dinner done at ⁦11:00⁩, not Thursday's. The rule was correct, decided, and **applied to exactly one host**.
+
+### 7a. Why the rows were missed, and it is not an oversight about them
+
+§5 fixed the card's verb **band**, and the band is the only settle affordance that goes through `eventQuickActions`. The list's other rows — `TransitionRow`, `StayRow`, `UnplacedCommitment` — have no band at all: the pair **is** their affordance, hung directly on the row (ADR-0139's `compact` density). So there was no `when` to add a `today` to, and nothing in §5's diff went near them.
+
+What gated them instead was `readOnly`, which is the **past-day archive** (ADR-0029) and answers nothing about the future. The card and the rows therefore disagreed in opposite directions on the same screen, which is the tell §5 could have caught and did not:
+
+| on a **future** day | the card                        | the rows      |
+| ------------------- | ------------------------------- | ------------- |
+| settle offered?     | no — `eventPhase` is `upcoming` | **yes** ← bug |
+
+### 7b. The gate is FUTURE, not `onToday`
+
+The obvious repair is to reuse `onToday`, the axis §5 introduced. It is wrong here by one case. A past day's posture on these rows belongs to `readOnly` — and [ADR-0029](0029-trip-mode-day-scope-gating.md)'s session-103 amendment makes `isDayOver` deliberately generous, so **a travel day stays live until it is over in every zone it touched**. Asking `onToday` would take the control off a day you are still inside, in the exact case that amendment exists for. So the new predicate removes only what nobody has reached:
+
+```
+canSettle(event, edge) = dayScope !== FUTURE || isEdgeSettled(event, edge)
+```
+
+### 7c. An answered edge keeps its control, which is ADR-0139 §2 held rather than reversed
+
+That section's decisive argument is that gating on "passed and unanswered" **deletes the undo**: a settled row stops matching the gate, so the control that takes it back vanishes the instant it is earned. The `|| isEdgeSettled` clause is that argument paid. On an answered edge `SettleControl` renders the record plus `ביטול סימון` and **never** the pair, so handing the verbs back cannot ask anything — it only keeps the way back reachable.
+
+### 7d. The Map's reference row is the same rule, asked per reference
+
+[ADR-0139](0139-settling-an-event-from-the-map.md) §2 is **narrowed in place** by this amendment. Its "every event is settleable" was argued entirely against the clock **inside a day**, and that row has always carried references from every day of the trip — so the rule quietly covered Thursday's check-out too. Asked per **reference** rather than per screen, because all-days puts several days' references in one block, and the row already knows its own date (it is what prints `מחר` beside it). The amber `asking` wash is the mirror question about a day already behind you and is untouched.
+
+### 7e. One predicate, because four hosts is how they drifted in the first place
+
+The four day-surface call sites wrote their own gate three lines each, which is precisely how `readOnly` ended up on two `TransitionRow`s and on `StayRow` and **not** on the `UnplacedCommitment` rendered between them. `canSettle` is on `DayCtx` and `transitionSettle(entry, ctx)` collapses the two identical `TransitionRow` wirings; rule 8, on the same control that has now produced two reports in two days.
+
+**Not changed:** past-day posture anywhere (still `readOnly`'s), the words, the marks, the hues, the record, and Plan mode, which supplies no inline pair at all (ADR-0171 §10e).
 
 ## Consequences
 
