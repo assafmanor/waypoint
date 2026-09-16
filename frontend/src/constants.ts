@@ -1719,12 +1719,18 @@ export const STAY_STRIP_DISMISS_STORAGE_KEY = 'wp_stay_strip_dismissed';
 /** The bottom nav. Its glyphs crossed from emoji to `Icon` in ADR-0138 §4 on the
  *  owner's call — navigation is the case design-language names first when it says
  *  controls are icons, and the tab bar is the app's most-seen surface, so the one
- *  place a platform's emoji font showed through loudest was here. */
+ *  place a platform's emoji font showed through loudest was here.
+ *
+ *  **The ORDER is a rule, not a list** (ADR-0233): the three day-anchored surfaces
+ *  come first — Home (today), Day-by-day (a day's sequence), Map (a day's ground) —
+ *  and the trip-wide Index sits at the far end. This array renders RTL, so index 0
+ *  is the rightmost tab. A fifth tab goes next to the group whose question it
+ *  answers; it does not go in the middle of the day block. */
 export const TABS = [
   { id: 'home', icon: 'home' },
+  { id: 'days', icon: 'calendar' },
   { id: 'map', icon: 'map' },
   { id: 'index', icon: 'cards' },
-  { id: 'days', icon: 'calendar' },
 ] as const satisfies readonly { id: string; icon: IconName }[];
 
 export type TabId = (typeof TABS)[number]['id'];
