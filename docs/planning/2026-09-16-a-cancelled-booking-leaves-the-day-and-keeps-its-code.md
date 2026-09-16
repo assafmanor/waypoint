@@ -31,6 +31,10 @@ Not a missing feature — a decision that was written and never built, plus a le
 - **A `canceled` status.** Considered and not taken (ADR-0228 §6b): a Prisma enum migration plus ~40 frontend consumers for a distinction the day does nothing with. Open to the device pass whether `דילגתם` on a parked booking reads wrong enough to earn a kind-aware label.
 - **Skipping does not pass the hard gate**, deliberately — a record, not an edit of the booking.
 
+## Later the same day: the time chip covered the notes glyph
+
+Owner, off the deployed ADR-0231 build (day 17, the Stokksnes / Viking Village / Vestrahorn cluster): _"it's covering when there's attachments."_ The new time token's -5px top margin was described as painting into the face's padding; measured, what it consumes above is the always-rendered marks line's 3px margin plus the 2px row gap — 0px of glyph on an unmarked row, 3px of glyph on a marked one. Fixed with one `:has()`-scoped rule in `event-card.css` (top margin 0 when the marks line has children), measured before and after in Chromium against the real stylesheets (plain ⁦69⁩ → ⁦69⁩, two-line title ⁦88⁩ → ⁦88⁩, marked ⁦82⁩ → ⁦87⁩), pinned by a CSS contract test, and recorded in [ADR-0231 §1](../decisions/0231-the-day-is-changed-where-you-stand.md) in place.
+
 ## Handoff — next session: last-minute schedule changes
 
 The owner asked for the next session to be a **product → design → build** pass on last-minute changes on the ground: _"how we make this as easy as possible for users… what's inconvenient and is holding people back, what's taking too many steps… adding things, canceling, moving things around should be seamless."_ This report is the seed: a cancellation needed a trip through `⋯` to a verb that did not exist. Start from `docs/planning/2026-09-16-handoff-last-minute-changes.md`.
