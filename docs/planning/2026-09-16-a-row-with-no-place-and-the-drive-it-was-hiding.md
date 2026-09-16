@@ -1,6 +1,6 @@
 # 2026-09-16 — A row with no place, and the drive it was hiding
 
-**Outcome:** [ADR-0232](../decisions/0232-a-journey-is-between-two-placed-stops.md) (**Proposed**, six forks with recommendations, nothing built) · backlog line amended in place (it already existed, under Sharing) · README + INDEX rows.
+**Outcome:** [ADR-0232](../decisions/0232-a-journey-is-between-two-placed-stops.md) (**Proposed**, six forks with recommendations, nothing built) · mockup [`mockups/a-journey-is-between-two-placed-stops-v1.html`](../../mockups/a-journey-is-between-two-placed-stops-v1.html) on the owner's _"Mockup"_ (catalog entry in `docs/design/mockups.md`) · backlog line amended in place (it already existed, under Sharing) · README + INDEX rows.
 
 ## What was asked
 
@@ -28,6 +28,14 @@ A mapping session, not a build: the deliverable is the scenario map and a decisi
 ## What the ADR decides, in one breath
 
 The journey chain is between placed stops while gaps and connections stay adjacent; a placeless row that _moves_ you is a seam, not transparent; the spanning leg draws once, under the hole before its destination, and names its origin; across a placeless stop the duration/distance/mode stand and the leave-by, arrive-at and late marks are withheld, with fit measured on the combined slack; the free-time strips stay raw and the total stays `לפחות` because the detour is unknown; the board's origin walks back as an unbacked claim once the placeless row has started. Eighteen scenarios in §3, eight build pitfalls in §4, six forks in §6.
+
+## The mockup (same session, on "Mockup")
+
+Drawn on the shipped CSS (ten sheets inlined), the app's own trees (`EventCard`, `JourneyBlock`, `GapStrip`, `StayRow` + compact `SettleControl`, Plan's `.bld` row and `שבץ` chip), both themes, 360 and 390. §1 is the owner's day before/after with F1 (block position), F2 (origin word) and F5 (strips) as controls; §2 puts the four answers to F3 side by side on a hard-destination hole, the first of them the false overrun that the hole-it-sits-in arithmetic would print; §3 draws the naive chain across a ferry with an unplaced landing on purpose, beside R2's seam; §4 is Plan posture.
+
+**What rendering found that reading had not.** The block's meta line (`.day-trv-meta`) is a `nowrap` flex line with `overflow: hidden`, and ellipsis on a flex container does nothing for its child spans: `מ־Fancy Sheep · חסרות 21 דק׳ לדרך` clipped the digits silently at 360. Today the line has one child and the trap is unarmed. So the proposal's CSS is two rules rather than one — `.day-trv-from` (`--muted`, because the slot's own hue is the clock's amber and a place name may not wear it) and `.day-trv-meta:has(.day-trv-from)` stacking origin and sentence — and the measurement table asks the clip question off the children's boxes rather than trusting `scrollWidth`, which had reported "fits" on a line that did not.
+
+**Measured at 360, both themes:** spanning block with the origin word ⁦40px⁩ against ⁦38px⁩ bare (+2px, the whole cost of F2a under F3a); the day list ⁦371⁩ → ⁦421px⁩; face ⁦40px⁩ with the shipped `::after` overlay at ⁦48px⁩ over the 44px floor; gap strip ⁦20px⁩ and `StayRow` ⁦48px⁩ untouched; §3 naive/seam 2/1 blocks; F1c counts 3 blocks against 2.
 
 ## Next
 
