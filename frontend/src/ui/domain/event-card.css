@@ -250,6 +250,17 @@
   margin-block: -5px;
   cursor: pointer;
 }
+/* **THE 5px ABOVE COMES FROM THE EMPTY MARKS LINE, AND ONLY WHILE IT IS EMPTY.** What the chip
+   consumes above is `.wp-event-m`'s 3px margin plus the 2px row gap — a line that renders
+   unconditionally and is 0px tall on an unmarked row (its own comment says so). On a row with a
+   note, a document or a task the same 5px is the glyph's, and the chip painted 3px into it
+   (owner, 2026-09-16, the Stokksnes cluster). Measured: the plain row is ⁦69px⁩ with the chip at
+   the title's foot either way; a marked row goes ⁦82⁩ → ⁦87px⁩ here, which is the 5px the
+   glyph was owed. The bottom keeps its -5px: below the chip is the face's padding on every row.
+   A two-line title needs nothing — the marks line is still the thing between it and the chip. */
+.wp-event-face:has(.wp-event-m:not(:empty)) .wp-event-time.is-token {
+  margin-block-start: 0;
+}
 /* -8.5, not -8: the identical overlay on `button.bld-time` reaches ⁦43px⁩ against the 44px floor
    (ADR-0199's Consequences) — this one measured the same before the half pixel. */
 .wp-event-time.is-token::after {
