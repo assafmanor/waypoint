@@ -22,6 +22,14 @@ import { API_TIMEOUT_MS, ME_STORAGE_KEY } from '../constants';
 
 vi.mock('../lib/cache', () => ({ wipeLocalData: vi.fn().mockResolvedValue(undefined) }));
 
+// The device's half of Web Push, stubbed so the boot's two calls into it are ASSERTABLE:
+// what a lapsed session does to this device's subscription is the subject of the last
+// describe in this file.
+vi.mock('../lib/push', () => ({
+  reconcileThisDevice: vi.fn().mockResolvedValue(undefined),
+  unsubscribeThisDevice: vi.fn().mockResolvedValue(undefined),
+}));
+
 const ME: Me = { user: USERS[0], memberships: [] };
 
 /** A fetch that neither resolves nor rejects — the reported condition, not airplane mode. */
@@ -113,5 +121,46 @@ describe('boot with no reception (field report #22)', () => {
     await waitOutTheBoot();
 
     expect(screen.getByText(`authed:${ME.user.displayName}`)).toBeTruthy();
+  });
+});
+
+/**
+ * **A lapsed session is not a sign-out** (ADR-0197 §2.3's 2026-09-16 amendment).
+ *
+ * The reported state: three people on one trip, two of them with notifications reading OFF
+ * in settings and neither having touched the switch, and one phone still receiving
+ * everything. This boot is where the two lost it — the refresh cookie was gone, the app
+ * dropped to anon, and the revoke that belongs to a deliberate sign-out ran anyway. Nothing
+ * asks again (the second door is spent once per install), so it never came back.
+ */
+describe('a lapsed session leaves this device subscribed', () => {
+  it('keeps the subscription when the session simply lapsed', async () => {
+    const { unsubscribeThisDevice } = await import('../lib/push');
+    vi.stubGlobal('fetch', answers(401));
+    await mountAuth();
+    await waitOutTheBoot();
+
+    expect(screen.getByText('anon:-')).toBeTruthy();
+    // The one thing a sign-in cannot rebuild without a gesture, and the reason this is not
+    // symmetrical with `logout`: nobody asked to leave.
+    expect(unsubscribeThisDevice).not.toHaveBeenCalled();
+  });
+
+  it('re-registers this device once the session is good again', async () => {
+    const { reconcileThisDevice } = await import('../lib/push');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(url.endsWith('/auth/refresh') ? { accessToken: 'tok' } : ME),
+        }),
+      ),
+    );
+    await mountAuth();
+    await waitOutTheBoot();
+
+    expect(reconcileThisDevice).toHaveBeenCalled();
   });
 });

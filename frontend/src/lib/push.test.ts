@@ -25,6 +25,11 @@ vi.mock('./api', () => ({
   deletePushSubscription: vi.fn().mockResolvedValue(undefined),
 }));
 
+/** The key `lib/push.ts` remembers this device's row id under. Written out here rather than
+ *  exported from the module: a test that sets it is standing in for a previous run of the
+ *  app, not reaching into an implementation detail the app would let anyone else write. */
+const SUBSCRIPTION_ID_KEY = 'waypoint:push:subscription-id';
+
 const VAPID =
   'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkTPqLuXBLQxqSCXfQ0nnBIIiFuVBpEyIrxJEMHWQwWrGRKgTGCXOo0';
 
@@ -340,8 +345,65 @@ describe('reconcileThisDevice', () => {
     expect(registerPushSubscription).toHaveBeenCalledOnce();
   });
 
+  // ── THE SUBSCRIPTION THAT VANISHED (2026-09-16) ─────────────────────────────────────────
+  //
+  // The reported state: two members of a trip with notifications reading OFF in settings,
+  // neither having touched the switch, while a third phone received everything. A lapsed
+  // session revoked the subscription (see `state/auth-state.tsx`), and nothing could ever
+  // put it back — the ask is spent once per install, so the settings switch was the only
+  // door left and nobody knew to look for it.
+  it('remakes a subscription this install had and lost', async () => {
+    localStorage.setItem(SUBSCRIPTION_ID_KEY, 'sub-1');
+    const fresh = fakeSubscription('https://push.example/remade', VAPID);
+    install({
+      serviceWorker: true,
+      pushManager: true,
+      subscribe: () => fresh,
+      permission: 'granted',
+    });
+
+    await reconcileThisDevice(VAPID);
+
+    expect(registerPushSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({ endpoint: 'https://push.example/remade' }),
+    );
+  });
+
+  it('does not resurrect a subscription somebody turned off', async () => {
+    // `unsubscribeThisDevice` clears the id — from the settings switch and from sign-out
+    // alike — so its absence is the answer a person gave, and a boot may not overrule it.
+    localStorage.removeItem(SUBSCRIPTION_ID_KEY);
+    install({
+      serviceWorker: true,
+      pushManager: true,
+      subscribe: () => fakeSubscription('https://push.example/nope', VAPID),
+      permission: 'granted',
+    });
+
+    await reconcileThisDevice(VAPID);
+
+    expect(registerPushSubscription).not.toHaveBeenCalled();
+  });
+
+  it('does not ask for permission it does not already have', async () => {
+    // A boot path may repair; it may never put a permission prompt in front of somebody.
+    localStorage.setItem(SUBSCRIPTION_ID_KEY, 'sub-1');
+    install({
+      serviceWorker: true,
+      pushManager: true,
+      subscribe: () => fakeSubscription('https://push.example/nope', VAPID),
+      permission: 'default',
+    });
+
+    await reconcileThisDevice(VAPID);
+
+    expect(registerPushSubscription).not.toHaveBeenCalled();
+  });
+
   it('does nothing where there is nothing to reconcile', async () => {
-    install({ serviceWorker: true, pushManager: true });
+    // An install that never subscribed remembers no row id, so the repair above declines it.
+    localStorage.removeItem(SUBSCRIPTION_ID_KEY);
+    install({ serviceWorker: true, pushManager: true, permission: 'granted' });
     await reconcileThisDevice(VAPID);
     // No server keypair is a property of the deployment, not of this device.
     install({ serviceWorker: true, pushManager: true, subscription: fakeSubscription() });

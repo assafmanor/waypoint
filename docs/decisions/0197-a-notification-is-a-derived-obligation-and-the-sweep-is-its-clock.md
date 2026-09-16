@@ -49,6 +49,18 @@ model PushSubscription {
 
 **2.3 Sign-out revokes it, and this is the security bug worth naming before it ships.** ADR-0066 tears down client-local data on sign-out. A push subscription is not client-local data — it lives on the server and keeps working after the tab closes, which is the point. So a phone handed to somebody else, or a shared laptop, would keep waking with **another person's** deadlines on the lock screen. Sign-out therefore does two things: `pushManager.getSubscription()?.unsubscribe()` on the device and `DELETE /notifications/subscription` for the row. The delete is best-effort and the server prunes anyway (§10), but the local `unsubscribe()` is not optional.
 
+**2.3a AMENDED (2026-09-16) — a lapsed session is not a sign-out, and reading it as one is what made three phones into one.**
+
+Reported: two members of one trip found the notifications switch reading OFF in settings, neither having touched it, while a third phone received every send — _"only one member of a trip is receiving notifications"_. §2.3's revoke was wired to **both** ways a session ends. `logout()` is one; the other is `setOnSessionExpired` in `state/auth-state.tsx`, which fires on any 401 the silent refresh cannot fix — a refresh cookie that lapsed, which for a group that opens this app between trips is the ordinary state of the app, not an incident.
+
+The two halves of §2.3 do not survive that reading. The server `DELETE` cannot run (there is no session left — the callback clears the access token first), so only the **local** `unsubscribe()` takes effect, and it is the half that cannot be undone without a gesture: `reconcileThisDevice` has nothing to re-post, and §7's second door is spent once per install. A person who never made a choice ends up with a switch that says they did, and the settings row is the only door left.
+
+So the revoke belongs to the **deliberate** act alone. §2.3 stands verbatim for `logout()`; a session that merely lapsed keeps the subscription, and the next sign-in re-posts it through the reconcile (§10's 2026-09-04 amendment). The handed-over-phone case §2.3 was written for is unharmed: handing a phone over goes through sign-out, and a different person signing in on the same device re-owns the row through §2's `update` half, which exists for exactly that. What this trades is the window between the lapse and the next sign-in, where the device still wakes with the previous session's notifications — the same state it is in whenever the app is simply closed.
+
+**And the loss had no repair, which is the second half of the fix.** `reconcileThisDevice` only ever repaired the server's picture of a device that still holds a subscription; a device whose own subscription had gone (revoked by the above, dropped by the browser, evicted with the site's storage) was left off forever. It now remakes one when this install remembers a row id (`waypoint:push:subscription-id` — proof it was subscribed here and never deliberately unsubscribed, since both the switch and sign-out clear it) **and** permission is still `granted`, so the remake needs no prompt. An explicit OFF is never resurrected, and a boot path still never asks for anything.
+
+Devices already in the broken state carry no remembered id, so they need the settings switch once; after that they stay.
+
 **2.4 A removed member stops receiving with no cancellation step.** ADR-0074 had to evict a removed member's WebSocket explicitly because a live socket is state. §3 has no per-user state to evict: membership is read at send time, so removal (ADR-0067), a trip block, and an archived trip (ADR-0040) all take effect on the next tick with no code that knows about them.
 
 ### 3. The schedule is **derived at send time**, never enqueued
