@@ -33,7 +33,7 @@ test('cold launch pushes a back-guard entry so the OS back has an in-app target'
 });
 
 test('system back from a non-Home tab returns to Home, not out of the app', async ({ page }) => {
-  await page.locator('nav.nav button').last().click(); // days (last of home/map/index/days)
+  await page.locator('nav.nav button', { hasText: 'יום-יום' }).click(); // a non-Home tab
   await expect(page).toHaveURL(/[?&]tab=days/);
 
   await systemBack(page);
