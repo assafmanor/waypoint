@@ -38,6 +38,15 @@ describe('event-card · the time token above a marks line', () => {
     expect(scoped?.body).not.toContain('margin-block-end');
   });
 
+  // Owner, same day, Plan and Trip side by side: "the right alignment is wrong". The chip's
+  // BOX sits on the title's start edge as `button.bld-time`'s does; the digits take the inset.
+  // `margin-inline-start: calc(var(--space-3) - 8px)` aligned the digits and pushed the border
+  // 8px into the gutter, so the token must not override the plain line's start margin at all.
+  it('the token’s box starts where the plain when line starts — no negative inline offset', () => {
+    expect(rule('.wp-event-time')?.body).toContain('margin-inline-start: var(--space-3)');
+    expect(rule('.wp-event-time.is-token')?.body).not.toContain('margin-inline-start');
+  });
+
   it('the marks line keeps the 3px margin the plain row’s chip is designed to consume', () => {
     expect(rule('.wp-event-m')?.body).toContain('margin-top: 3px');
   });
