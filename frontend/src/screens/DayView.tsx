@@ -594,7 +594,7 @@ export function DayView() {
     .sort(byStart);
   // The shelf, grouped (ADR-0116 §2) by one shared derivation both hosts call —
   // ideas pencilled in for this day, the rest of the pool, and (ADR-0027's parking
-  // lot) the day's skipped soft events, durable and restorable in place.
+  // lot) the day's skipped events, durable and restorable in place.
   const shelf = shelfGroups(maybeItems, events, activeDate);
   // …and ranked (ADR-0116 session-202 §3 / ADR-0151). The grouping above is
   // untouched — this only orders what it produced, and attaches each idea's reason.
@@ -1772,7 +1772,8 @@ export function DayView() {
                       onOpen={() => setIdeaSheet(m)}
                     />
                   ))}
-                  {/* Skipped soft events park here, restorable (ADR-0027 parking lot).
+                  {/* Skipped events park here, restorable (ADR-0027 parking lot) — a
+                    cancelled booking included, since ADR-0228's 2026-09-16 amendment.
                     No action line: the card is a button and `skippedTag` marks the state
                     it is in, which is the part a reader cannot get from the tile itself. */}
                   {shelf.skipped.map((e) => (

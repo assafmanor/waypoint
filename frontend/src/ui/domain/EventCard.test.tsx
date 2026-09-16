@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { wrapNav } from '../../test/nav-harness';
 import { EventCard, type EventCardProps } from './EventCard';
 import { SyncBadge } from '../feedback';
@@ -381,6 +381,79 @@ describe('EventCard', () => {
       fireEvent.click(screen.getByRole('button', { name: t.actions.more }));
       expect(screen.getByRole('button', { name: t.actions.edit })).toBeTruthy();
       expect(screen.queryByRole('button', { name: t.actions.swap })).toBeNull();
+    });
+  });
+
+  // **THE EARLY MARK** (ADR-0228 §5c, built by its 2026-09-16 amendment). The band asks on a
+  // `now` row and the strip on a passed one; ahead of the line the pair belongs to `⋯`, and the
+  // sheet never had it — so a booking cancelled on you had only `מחיקה`, which throws away the
+  // code. Owner, with the boat tour that was cancelled: "the app doesn't have a way to say that,
+  // especially because it's a hard event."
+  describe('the settle pair in the ⋯ sheet', () => {
+    const menu = (props: Partial<Parameters<typeof EventCard>[0]>) => {
+      cleanup();
+      const onDone = vi.fn();
+      const onSkip = vi.fn();
+      render(
+        wrapNav(
+          <EventCard
+            {...base}
+            isOpen
+            phase="upcoming"
+            onEdit={() => {}}
+            onDone={onDone}
+            onSkip={onSkip}
+            {...props}
+          />,
+        ),
+      );
+      fireEvent.click(screen.getByRole('button', { name: t.actions.more }));
+      const sheet = document.querySelector('.wp-row-actions') as HTMLElement;
+      return { onDone, onSkip, sheet };
+    };
+
+    it('an upcoming HARD row offers סיימנו and דילוג, and דילוג fires the skip', () => {
+      const { onSkip, sheet } = menu({ kind: 'hard' });
+      expect(within(sheet).getByRole('button', { name: t.actions.done })).toBeTruthy();
+      fireEvent.click(within(sheet).getByRole('button', { name: t.actions.skip }));
+      expect(onSkip).toHaveBeenCalledTimes(1);
+    });
+
+    it('an upcoming soft row carries the identical pair — a kind is not a branch (ADR-0228)', () => {
+      const { onDone, sheet } = menu({ kind: 'soft' });
+      expect(within(sheet).getByRole('button', { name: t.actions.skip })).toBeTruthy();
+      fireEvent.click(within(sheet).getByRole('button', { name: t.actions.done }));
+      expect(onDone).toHaveBeenCalledTimes(1);
+    });
+
+    it('the pair leads the sheet: what happened, before what to do about the row', () => {
+      const { sheet } = menu({ kind: 'soft', onReplace: () => {}, onPark: () => {} });
+      const labels = within(sheet)
+        .getAllByRole('button')
+        .map((b) => b.textContent?.trim());
+      expect(labels.slice(0, 2)).toEqual([t.actions.done, t.actions.skip]);
+    });
+
+    it('is not in the sheet on a passed row — the strip is already asking, in words', () => {
+      const { sheet } = menu({ phase: 'passed' });
+      expect(within(sheet).queryByRole('button', { name: t.actions.done })).toBeNull();
+      expect(within(sheet).queryByRole('button', { name: t.actions.skip })).toBeNull();
+    });
+
+    it('is not in the sheet on a now row — the band carries it there', () => {
+      const { sheet } = menu({ phase: 'now', today: true });
+      expect(within(sheet).queryByRole('button', { name: t.actions.done })).toBeNull();
+      expect(within(sheet).queryByRole('button', { name: t.actions.skip })).toBeNull();
+    });
+
+    it('is not in the sheet once the row is done — the chip is the undo (ADR-0230)', () => {
+      const { sheet } = menu({ phase: 'done' });
+      expect(within(sheet).queryByRole('button', { name: t.actions.skip })).toBeNull();
+    });
+
+    it('needs BOTH handlers, like every other host of the pair', () => {
+      const { sheet } = menu({ onSkip: undefined });
+      expect(within(sheet).queryByRole('button', { name: t.actions.done })).toBeNull();
     });
   });
 

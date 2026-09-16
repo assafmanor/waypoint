@@ -405,7 +405,7 @@ export function PlanDay() {
   // state was hand-rolled, and nothing outside the sheet ever read it.
   const [resolveCluster, setResolveCluster] = useState<TimeGroup | null>(null);
 
-  // A live trip hides skipped soft events (they park on the shelf); a finished
+  // A live trip hides skipped events (they park on the shelf); a finished
   // trip's archive shows them in place — struck-through, restorable — so the
   // record reads "what we did / what we skipped" (ADR-0044).
   const dayEvents = events
@@ -1784,7 +1784,7 @@ export function PlanDay() {
           <div className="builder-side">
             <div className="sec-title">{t.day.maybeShelf}</div>
             {/* Two groups (ADR-0116 §2), and Plan mode finally renders ADR-0027's
-              union: the day's skipped soft events were invisible here, on the very
+              union: the day's skipped events were invisible here, on the very
               surface you rebuild the day from. */}
             {/* Either group also appears while a drag is in flight, even when empty:
               without it there would be nothing to drop onto (ADR-0116 §2 amendment,

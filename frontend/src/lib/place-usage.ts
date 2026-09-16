@@ -124,8 +124,8 @@ export interface PlaceUsage {
    *  moment they said so. A union, so it never removes a facet the references earned. */
   categories: EventCategory[];
   isMaybe: boolean; // referenced by an unconsumed MaybeItem
-  /** Referenced by a **skipped soft event** — parked on the shelf and restorable
-   *  in place (ADR-0027 §2), which is the other half of what the shelf renders.
+  /** Referenced by a **skipped event** — parked on the shelf and restorable in
+   *  place (ADR-0027 §2), which is the other half of what the shelf renders.
    *  Distinct from `isMaybe`: the event still owns its date and slot. */
   isParked: boolean;
   isScheduled: boolean; // referenced by a scheduled event
@@ -429,9 +429,10 @@ export function buildPlaceUsageIndex(
     const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
     const category = event.category ?? (booking ? categoryForBookingType(booking.type) : null);
     const commitment: PinCommitment = event.kind === EVENT_KIND.HARD ? 'hard' : 'soft';
-    // A skipped SOFT event is what the shelf parks and offers to restore (ADR-0027
-    // §2 / ADR-0116 §3) — a hard one isn't restorable there, so it isn't shelved.
-    const isParked = event.kind === EVENT_KIND.SOFT && event.status === EVENT_STATUS.SKIPPED;
+    // What the shelf parks and offers to restore (ADR-0027 §2 / ADR-0116 §3), whatever its
+    // kind — this mirrors `shelfGroups`, and it dropped its `=== SOFT` the day the shelf did
+    // (ADR-0228's 2026-09-16 amendment): a cancelled booking is parked there too.
+    const isParked = event.status === EVENT_STATUS.SKIPPED;
     // Transport contributes both endpoints, each at its OWN moment — the origin
     // when you depart, the destination when you land — so the two ends of a flight
     // never tie and list in travel order. Everything else: its resolved place.
@@ -527,7 +528,7 @@ export interface PlaceFilter extends PlaceDayContext {
 }
 
 /** On the shelf: ADR-0027 §2's union, which is what the shelf actually renders —
- *  an unconsumed idea **or** a skipped soft event parked for restoring. The `אולי`
+ *  an unconsumed idea **or** a skipped event parked for restoring. The `אולי`
  *  facet reads this rather than `isMaybe` alone, so an idea that was scheduled and
  *  then skipped stops falling out of the one filter that should still find it. */
 export const isOnShelf = (usage: PlaceUsage): boolean => usage.isMaybe || usage.isParked;

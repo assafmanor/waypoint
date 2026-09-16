@@ -161,6 +161,9 @@ export interface EventCardProps {
   // (coordinates); absent → that button is dropped, since there's nowhere to go.
   onNavigate?: () => void;
   onShowOnMap?: () => void;
+  /** The settle pair. On a passed row the strip asks in words; on a `now` row the band
+   *  carries it; on an upcoming row it is the ⋯ sheet's early mark (ADR-0228 §5c), which is
+   *  how a commitment that was cancelled on you leaves the day without losing its record. */
   onDone?: () => void;
   onSkip?: () => void;
   onDelay?: () => void;
@@ -429,6 +432,25 @@ export function EventCard(props: EventCardProps) {
   );
 
   const menuActions: RowAction[] = [];
+  // **THE EARLY MARK LIVES HERE, AHEAD OF THE LINE** (ADR-0228 §5c, built by its 2026-09-16
+  // amendment). Behind the line the strip asks in words and inside the event the band
+  // carries the pair; ahead of it the pair was promised to `⋯` and never given to it — so a
+  // booking cancelled on you this morning had no way to be taken off the day short of
+  // `מחיקה`, which throws away the code you will want for the refund. Both kinds: a
+  // commitment is settled through the same write (ADR-0228 §2), and `skipped` is exactly the
+  // status that keeps the row while telling the day it is not happening.
+  if (phase === 'upcoming' && onDone && onSkip) {
+    menuActions.push({
+      label: t.actions.done,
+      icon: CONTROL_ICON.done,
+      onSelect: () => runAction(onDone),
+    });
+    menuActions.push({
+      label: t.actions.skip,
+      icon: CONTROL_ICON.skip,
+      onSelect: () => runAction(onSkip),
+    });
+  }
   // **`החלף` needs a slot to be taken on** (ADR-0161 §6), and an untimed row has none —
   // §10 says so outright: an untimed event holds no position of its own. Offering it anyway
   // asked the shelf to be ranked against a slot with no clock, and the day view went blank on

@@ -77,7 +77,7 @@ describe('shelfGroups (ADR-0116 §2/§3)', () => {
     expect(ids(groups.pool)).toEqual([]);
   });
 
-  it("carries the day's skipped soft events — the parking lot, in both modes", () => {
+  it("carries the day's skipped events, both kinds — the parking lot, in both modes", () => {
     const groups = shelfGroups(
       [],
       [
@@ -88,8 +88,10 @@ describe('shelfGroups (ADR-0116 §2/§3)', () => {
       ],
       DAY,
     );
-    // Only this day's SOFT skipped events park here.
-    expect(ids(groups.skipped)).toEqual(['bailed']);
+    // Only THIS day's skipped events park here — and a skipped commitment parks beside a
+    // skipped stop (ADR-0228's 2026-09-16 amendment): the `=== SOFT` this asserted was the one
+    // place a cancelled booking fell out of, with no surface left to restore it from.
+    expect(ids(groups.skipped)).toEqual(['bailed', 'hard-skip']);
   });
 
   it('an all-dateless trip reads as one pool, so the shelf looks unchanged', () => {
