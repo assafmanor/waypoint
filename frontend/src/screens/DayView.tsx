@@ -14,9 +14,11 @@ import {
   EVENT_SOURCE,
   EVENT_STATUS,
   isAmbient,
+  isEdgeSettled,
   isExactEdge,
   isRoutableMode,
   type Booking,
+  type EventEdge,
   type MaybeItem,
   type Place,
   spendsSpanInMotion,
@@ -236,6 +238,26 @@ function navigateHandler(
 ): (() => void) | undefined {
   const url = eventDirectionsUrl(event, ctx.bookings, ctx.places);
   return url ? () => openMaps(url) : undefined;
+}
+
+/** **The settle verbs for a transition row, or none at all.** Both of `TransitionRow`'s
+ *  hosts on this screen — the overnight block and the positioned list — ask the identical
+ *  question about the identical entry, and wrote it out three lines each; a fourth host
+ *  would have written it a third time, which is how `readOnly` ended up on two of these
+ *  rows and not on `UnplacedCommitment` beside them.
+ *
+ *  Two gates, and they answer different things: `readOnly` is the past-day archive
+ *  (ADR-0029) and `canSettle` the day nobody has reached yet (ADR-0228 §5a). `TransitionRow`
+ *  renders the control only when it has both verbs, so an empty object is the whole
+ *  withdrawal — and on an ANSWERED edge `canSettle` says yes, which keeps the record and
+ *  its undo (ADR-0139 §2) without asking anything. */
+function transitionSettle(entry: TransitionEntry, ctx: DayCtx) {
+  if (ctx.readOnly || !ctx.canSettle(entry.event, entry.edge)) return {};
+  return {
+    onDone: () => ctx.verbs.done(entry.event, entry.edge),
+    onSkip: () => ctx.verbs.skip(entry.event, entry.edge),
+    onUndo: () => ctx.verbs.restore(entry.event, entry.edge),
+  };
 }
 
 /** The zone display props for a transition entry's edge (ADR-0107): the edge's
@@ -621,6 +643,27 @@ export function DayView() {
   // is over only once it is over in EVERY zone it touched (ADR-0029 session-103
   // amendment), so a travel day can't lock itself while you're still inside it.
   const readOnly = isDayOver(activeDate, zoneEvidence, now.getTime());
+  /** **A record is about a day you have reached** (owner, 2026-09-16: _"it's only relevant for
+   *  the current day, not for future days"_). [ADR-0228](../../docs/decisions/0228-the-quick-actions-are-one-list-and-a-commitment-can-be-settled.md)
+   *  §5a already ends its table with "another day, past or future — **none**", on the argument
+   *  that a quick action answers "what do I do about this row NOW" and a row two days out has
+   *  no now. That was applied to the card's verb band and never to the LIST's rows, which have
+   *  no band — the pair IS their affordance — so a check-out and a car return three days ahead
+   *  asked `היינו` on a day nobody had lived. §5c is the same argument in ADR-0117 §2's words:
+   *  "a human outranks the clock" is about marking **tonight's** dinner done at ⁦11:00⁩, not
+   *  Thursday's.
+   *
+   *  **The gate is FUTURE, not `onToday`.** A past day's posture belongs to `readOnly`
+   *  (ADR-0029, whose session-103 amendment makes a travel day live until it is over in every
+   *  zone it touched) and is deliberately untouched here — narrowing to `onToday` would take
+   *  the control off a day you are still inside. This only removes a day nobody has reached.
+   *
+   *  **And an answered edge keeps its control**, which is ADR-0139 §2's rule that the undo is
+   *  never what goes: with `outcome` set, `SettleControl` renders the record plus `ביטול סימון`
+   *  and never the pair, so handing the verbs back on a settled future edge cannot ask anything
+   *  — it only keeps the way back reachable. */
+  const canSettle = (event: TripEvent, edge: EventEdge = 'start') =>
+    dayScope !== DAY_PHASE.FUTURE || isEdgeSettled(event, edge);
 
   const dayEvents = events
     .filter((e) => e.date === activeDate && e.status !== EVENT_STATUS.SKIPPED && !isAmbient(e))
@@ -796,6 +839,7 @@ export function DayView() {
     now,
     readOnly,
     onToday: isToday,
+    canSettle,
     openId,
     toggle: (id) => setOpenId((cur) => (cur === id ? null : id)),
     bookings,
@@ -1369,7 +1413,7 @@ export function DayView() {
    *  meaning can fall outside it. */
   const staySettle = (stay: TripEvent) => {
     const entry = stayEdgeEntry(stay);
-    if (readOnly || !entry) return {};
+    if (readOnly || !entry || !canSettle(stay, entry.edge)) return {};
     const { edge } = entry;
     return {
       ...edgeSettleProps(stay, edge),
@@ -1582,9 +1626,13 @@ export function DayView() {
               row={row}
               tz={dayZone}
               bookings={bookings}
-              onDone={() => verbs.done(row.event, row.edge)}
-              onSkip={() => verbs.skip(row.event, row.edge)}
-              onUndo={() => verbs.restore(row.event, row.edge)}
+              {...(canSettle(row.event, row.edge)
+                ? {
+                    onDone: () => verbs.done(row.event, row.edge),
+                    onSkip: () => verbs.skip(row.event, row.edge),
+                    onUndo: () => verbs.restore(row.event, row.edge),
+                  }
+                : {})}
               onOpen={setDetailTarget}
             />
           ))}
@@ -1617,9 +1665,7 @@ export function DayView() {
                 dayCtx.showPlaceOnMap,
                 entry.edge,
               )}
-              onDone={dayCtx.readOnly ? undefined : () => verbs.done(entry.event, entry.edge)}
-              onSkip={dayCtx.readOnly ? undefined : () => verbs.skip(entry.event, entry.edge)}
-              onUndo={dayCtx.readOnly ? undefined : () => verbs.restore(entry.event, entry.edge)}
+              {...transitionSettle(entry, dayCtx)}
             />
           ))}
           {aboveArriveLeg && <NowMarker ref={nowLineRef} label={nowLabel} />}
@@ -1786,15 +1832,7 @@ export function DayView() {
                       // the span this row is, so a check-out settles `endStatus` and a
                       // check-in `status`. Without it every row on a stay would answer for
                       // the check-in, which is the defect the ADR is about.
-                      onDone={
-                        dayCtx.readOnly ? undefined : () => verbs.done(entry.event, entry.edge)
-                      }
-                      onSkip={
-                        dayCtx.readOnly ? undefined : () => verbs.skip(entry.event, entry.edge)
-                      }
-                      onUndo={
-                        dayCtx.readOnly ? undefined : () => verbs.restore(entry.event, entry.edge)
-                      }
+                      {...transitionSettle(entry, dayCtx)}
                     />
                   )}
                 </Fragment>
@@ -2300,6 +2338,11 @@ interface DayCtx {
    *  `upcoming` alike. Named `onToday` rather than `today`, because `DayView` already has a
    *  `today` in scope and it is a DATE. */
   onToday: boolean;
+  /** **May this row be settled on the day on screen** — the rule written out where it is
+   *  derived (`DayView`'s `canSettle`). Threaded rather than re-derived per row, for
+   *  `frontend/CLAUDE.md`'s reason: four hosts asking this question four times is how the
+   *  answer starts differing between them. */
+  canSettle: (event: TripEvent, edge?: EventEdge) => boolean;
   openId: string | null;
   toggle: (id: string) => void;
   bookings: Booking[];

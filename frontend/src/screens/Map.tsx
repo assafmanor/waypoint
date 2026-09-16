@@ -2770,6 +2770,19 @@ export function MapView() {
         // nothing said about it — the same `isDayUsagePast` the tier, the block header and
         // `מה נשאר` all read, so the four cannot disagree about whether a day is closed.
         const usageDay = usage.days.find((d) => d.date === (ref.date ?? event?.date));
+        // **AND A RECORD IS ABOUT A DAY YOU HAVE REACHED** (owner, 2026-09-16, the same report
+        // as the day list's: _"it's only relevant for the current day, not for future days"_).
+        // ADR-0139 §2's "every event is settleable here" was written against the CLOCK — it
+        // protects ADR-0117 §2's early mark on tonight's dinner, which is a claim about today —
+        // and this row has always carried references from every day of the trip, so it read
+        // that rule as covering Thursday too. Asked per REFERENCE rather than per screen,
+        // because all-days puts several days' references in one block; the emphasis above is
+        // the mirror question about a day already behind you.
+        //
+        // An ANSWERED reference keeps its controls, which is the rest of §2: with `outcome`
+        // set the control is the record plus its undo, never the pair, so nothing is stranded.
+        const refDate = ref.date ?? event?.date;
+        const unreached = !settled && !!refDate && refDate > today;
         return {
           key: ref.key,
           // The booking leads when there is one: it is what a traveller standing at the
@@ -2794,14 +2807,16 @@ export function MapView() {
               ? () =>
                   wayIn.goTo({ kind: 'event', id: event.id, name: event.title, date: event.date })
               : () => goToDay(ref.date ?? today),
-          settle: event &&
-            settle && {
-              ...settle,
-              asking: !settled && !!usageDay && isDayUsagePast(usageDay, nowMs, today),
-              onDone: () => verbs.done(event, settleEdge),
-              onSkip: () => verbs.skip(event, settleEdge),
-              onUndo: () => verbs.restore(event, settleEdge),
-            },
+          settle:
+            event && settle && !unreached
+              ? {
+                  ...settle,
+                  asking: !settled && !!usageDay && isDayUsagePast(usageDay, nowMs, today),
+                  onDone: () => verbs.done(event, settleEdge),
+                  onSkip: () => verbs.skip(event, settleEdge),
+                  onUndo: () => verbs.restore(event, settleEdge),
+                }
+              : undefined,
         };
       },
     );
