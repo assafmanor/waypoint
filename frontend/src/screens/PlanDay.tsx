@@ -121,6 +121,7 @@ import {
 import {
   dayFeasibility,
   dayJourney,
+  danglingLegs,
   dayRun,
   dayTravelTotal,
   narrowGapForTravel,
@@ -453,7 +454,7 @@ export function PlanDay() {
   //
   // Memoized like the day list's, and for the same reason: this screen re-renders on the drag and
   // on the clock, and the legs array is what `useDayTravelReads` fingerprints.
-  const planLegs = useMemo<DayLeg[]>(() => {
+  const planRun = useMemo<{ legs: DayLeg[]; dangling: number }>(() => {
     const legs: DayLeg[] = [];
     // **THE SAME CHAIN TRIP MODE WALKS** (ADR-0232 R1, and `frontend/CLAUDE.md`'s rule that a
     // day-surface derivation changes in both modes or in neither): `dayRun` over the same
@@ -501,7 +502,8 @@ export function PlanDay() {
         ...(isStayRow(run.tail.from) ? { fromIsStay: true } : {}),
       });
     }
-    return legs;
+    // …and the placeless runs no leg reaches at all (ADR-0232 R5), counted here where `run` is.
+    return { legs, dangling: danglingLegs(run, bookends.sleeps) };
   }, [
     placement.positioned,
     bookends.woke,
@@ -512,6 +514,7 @@ export function PlanDay() {
     events,
     tz,
   ]);
+  const planLegs = planRun.legs;
   /** **The leg INTO a row, by the row** (ADR-0232 §4.1) — a spanning leg's origin is not the row
    *  above the hole, so the hole asks with its destination and reads the origin off the leg. */
   const legInto = (to: TripEvent | undefined): DayLeg | undefined =>
@@ -663,7 +666,11 @@ export function PlanDay() {
    *  only about the former. Trip mode renders the same component off the same function. */
   const dayTotal = dayTravelTotal(
     [...journeyByRows.values()],
-    { unplacedLegs: planTravel.unplacedLegs, spanningLegs: planTravel.spanningLegs },
+    {
+      // …plus the placeless runs no leg reaches at all (ADR-0232 R5, `danglingLegs`).
+      unplacedLegs: planTravel.unplacedLegs + planRun.dangling,
+      spanningLegs: planTravel.spanningLegs,
+    },
     // The air half is a FACT about the day, so it is not Plan's to differ about either
     // (ADR-0212 §3, and ADR-0159 §1's posture clause read the same way as the line above).
     dayAirMeters(dayEvents, bookings, places),

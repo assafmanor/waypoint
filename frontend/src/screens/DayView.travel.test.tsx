@@ -1161,6 +1161,24 @@ describe('DayView — the day says how far it goes (ADR-0206 §V1.9)', () => {
   // carry crow-flies kilometres rather than nothing, so the header counts what the list shows
   // (§AP2) — with `לפחות` over it, because every one of those numbers is a floor, and with no
   // minutes at all, because no duration was measured and none may be invented (§D4/§D5).
+  // ADR-0206 §AT2 through ADR-0232: the leg into a trailing row nobody placed is not a leg the
+  // chain can draw, and it is still travel the total does not know — so the same numbers make the
+  // smaller claim. The e2e `day-paints-once.spec.ts` asserts the same wiring in the live page.
+  it('keeps the floor for a trailing row nobody placed', () => {
+    tripEvents = [
+      morning,
+      lunch,
+      theatre,
+      ev('evening', { title: 'ערב', startsAt: `${DAY}T19:00:00Z`, endsAt: `${DAY}T20:00:00Z` }),
+    ];
+    show();
+    expect(line().textContent).toBe(
+      t.travel.dayTotalFloor(
+        t.travel.dayTotal(formatDistance(ROUTED_M * 2), approxTravelTime(WALK_MINUTES * 2 * 60)!),
+      ),
+    );
+  });
+
   it('states the crow-flies floor when nothing on the day is routable', () => {
     travelSeconds = null;
     show();

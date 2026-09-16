@@ -216,16 +216,28 @@ export function dayBlocks(entries: readonly DayEntry[], ctx: JoinContext): DayBl
  * after it — and it is returned from here rather than re-derived at the screen because this loop
  * is the one place that knows the transparency rules the chain has to agree with.
  */
-export function dayRun(
-  entries: readonly DayEntry[],
-  ctx: JoinContext,
-): { blocks: DayBlock[]; tail: JourneyChainState | null } {
+export interface DayRun {
+  blocks: DayBlock[];
+  /** Where the chain stands after the last row — what the leg back into tonight's bed leaves
+   *  from. `null` while nothing placed is behind the end of the day. */
+  tail: JourneyChainState | null;
+  /** **Placeless runs no placed leg can reach** (ADR-0232 R5, and ADR-0206 §AT2's hole by another
+   *  road): rows before anything placed on a day with no bed to seed the chain, or after an exact
+   *  transition ended it. You travelled into or out of them from somewhere, and that somewhere is
+   *  not in the total — so each run is one hole the total is a floor over, counted here because
+   *  the reads never see a leg for it. The trailing run is the caller's to judge (`danglingLegs`),
+   *  since only the caller knows whether a bed follows it. */
+  orphanRuns: number;
+}
+
+export function dayRun(entries: readonly DayEntry[], ctx: JoinContext): DayRun {
   const blocks: DayBlock[] = [];
   let prevEnd: TripEvent | null = null;
   // **The journey chain, beside the join chain** (ADR-0232 R1/R2). Seeded with the bed, so the
   // walk out of it spans a placeless first row exactly as a mid-day leg spans a placeless stop.
   let chainFrom: TripEvent | null = ctx.chain.from ?? null;
   let spans: TripEvent[] = [];
+  let orphanRuns = 0;
 
   entries.forEach((entry, index) => {
     // **A cluster OPENS a join like any row** (ADR-0231 §2, fork F9). The docblock above argued
@@ -266,6 +278,9 @@ export function dayRun(
       // STOP is neither: you are still wherever the plan last put you, and the row joins the list
       // of what the next journey crosses.
       if (ctx.chain.placedAt(end, 'leaving') || ctx.chain.movesYou(end)) {
+        // Placeless rows the chain was not standing anywhere behind are a run nobody's leg
+        // reaches (`DayRun.orphanRuns`); ones it was are the next leg's `spans`, already recorded.
+        if (!chainFrom && spans.length) orphanRuns += 1;
         chainFrom = end;
         spans = [];
       } else {
@@ -275,12 +290,25 @@ export function dayRun(
       prevEnd = null;
       // A moment ends the run for the journey chain as it does for the join chain — a span edge
       // is never a leg's endpoint (ADR-0054's 2026-08-26 amendment).
+      if (!chainFrom && spans.length) orphanRuns += 1;
       chainFrom = null;
       spans = [];
     }
   });
+  if (!chainFrom && spans.length) orphanRuns += 1;
 
-  return { blocks, tail: chainFrom ? { from: chainFrom, spans } : null };
+  return { blocks, tail: chainFrom ? { from: chainFrom, spans } : null, orphanRuns };
+}
+
+/**
+ * **The holes a day's reads never see a leg for** (ADR-0232 R5): the run's orphan runs, plus its
+ * trailing placeless rows when no bed follows them — you leave the last placed stop for that row
+ * and the total does not know how far. Both surfaces add this to `unplacedLegs`; it is what keeps
+ * `לפחות` on a day whose last row nobody placed, which is the case ADR-0206 §AT2 was written for
+ * and the one the chain would otherwise have turned into a complete-looking number.
+ */
+export function danglingLegs(run: DayRun, sleeps: TripEvent | undefined): number {
+  return run.orphanRuns + (!sleeps && run.tail && run.tail.spans.length ? 1 : 0);
 }
 
 /** A place where one leg hands over to the next, on a given day. Two dates can name the

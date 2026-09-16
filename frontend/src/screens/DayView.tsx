@@ -150,6 +150,7 @@ import {
 import {
   DAY_JOURNEY_ARM,
   dayJourney,
+  danglingLegs,
   dayRun,
   dayTravelTotal,
   holeDepartsMs,
@@ -1196,7 +1197,11 @@ export function DayView() {
     () =>
       dayTravelTotal(
         [...journeys.values()],
-        { unplacedLegs: travelReads.unplacedLegs, spanningLegs: travelReads.spanningLegs },
+        {
+          // …plus the placeless runs no leg reaches at all (ADR-0232 R5, `danglingLegs`).
+          unplacedLegs: travelReads.unplacedLegs + danglingLegs(run, bookends.sleeps),
+          spanningLegs: travelReads.spanningLegs,
+        },
         airMeters,
       ),
     [journeys, travelReads.unplacedLegs, travelReads.spanningLegs, airMeters],

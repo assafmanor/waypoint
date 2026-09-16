@@ -14,6 +14,7 @@ import {
   dayBlocks,
   dayFeasibility,
   dayJourney,
+  danglingLegs,
   dayRun,
   dayTravelTotal,
   joinBetween,
@@ -1560,6 +1561,32 @@ describe('dayRun — the journey chain is between placed stops (ADR-0232 R1/R2)'
   it('stands at the bed on a day with nothing placed, and nowhere with no bed (scenarios 6/7)', () => {
     expect(runOf([call, rest], chainOf(placedIds), bed).tail?.from.id).toBe('bed');
     expect(runOf([call, rest], chainOf(placedIds)).tail).toBeNull();
+  });
+
+  // **The e2e that caught the first build** (`day-paints-once.spec.ts`, ADR-0206 §AT2): three placed
+  // rows and a placeless fourth at the end, no bed. The chain attached nothing to that row and the
+  // total read as complete — a smaller claim turned into a confident one, which is the failure §AT2
+  // exists to prevent. The run counts what no leg reaches; the caller adds the trailing run.
+  it('counts a trailing placeless run as a hole where no bed follows it', () => {
+    const run = runOf([lunch, museum, aurora], chainOf(placedIds));
+    expect(run.orphanRuns).toBe(0);
+    expect(danglingLegs(run, undefined)).toBe(1);
+    // With a bed after it, the leg home spans the row instead — measured, and a floor for that.
+    expect(danglingLegs(run, bed)).toBe(0);
+  });
+
+  it('counts a leading placeless run as a hole where no bed seeds the chain', () => {
+    const run = runOf([pack, lunch], chainOf(placedIds));
+    expect(run.orphanRuns).toBe(1);
+    expect(danglingLegs(run, bed)).toBe(1);
+    // Seeded, the same rows are the bed leg's spans and no hole at all.
+    expect(runOf([pack, lunch], chainOf(placedIds), bed).orphanRuns).toBe(0);
+  });
+
+  it('counts a day of nothing placed and no bed once, not per row', () => {
+    const run = runOf([call, rest], chainOf(placedIds));
+    expect(run.orphanRuns).toBe(1);
+    expect(danglingLegs(run, undefined)).toBe(1);
   });
 
   it('treats a row that MOVES you with an unplaced end as a seam, not as transparent (scenario 8)', () => {

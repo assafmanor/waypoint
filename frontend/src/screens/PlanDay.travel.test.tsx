@@ -1287,6 +1287,21 @@ describe('PlanDay — the day says how far it goes (ADR-0206 §V1.9)', () => {
 
   // **A day nothing routed still travels, and now says so as a FLOOR** (§AZ2/§AZ3) — Trip mode's
   // own assertion, here because the two surfaces may not differ about a fact (ADR-0159 §1).
+  it('keeps the floor for a trailing row nobody placed, exactly as the day list does', () => {
+    tripEvents = [
+      morning,
+      lunch,
+      theatre,
+      ev('evening', { title: 'ערב', startsAt: `${DAY}T19:00:00Z`, endsAt: `${DAY}T20:00:00Z` }),
+    ];
+    show();
+    expect(line().textContent).toBe(
+      t.travel.dayTotalFloor(
+        t.travel.dayTotal(formatDistance(ROUTED_M * 2), approxTravelTime(WALK_MINUTES * 2 * 60)!),
+      ),
+    );
+  });
+
   it('states the crow-flies floor when nothing on the day is routable', () => {
     travelSeconds = null;
     show();
