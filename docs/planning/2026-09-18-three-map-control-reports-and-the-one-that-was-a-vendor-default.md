@@ -40,6 +40,20 @@ The fix is a distinction, not a flag: the once-per-session gate is about the **c
 
 The harness itself is left alone in this change and is on the backlog: launching the full Chromium rather than the headless shell would have caught this in July.
 
+## What the file shipped wrong, and what caught it
+
+The owner opened it and asked one question: _"Did you follow the writing mockups skill? It is not scrollable for example…"_ Three things came out of that, and the first is the one worth generalising.
+
+**It shipped unscrollable, and nothing in the process could have told me.** `tokens.css` declares `html, body { overflow: clip }` (ADR-0200 §1) and every mockup inlines it. `clip` is not a scroll container, so 5.6k px of content sat behind an 844px window — **unreachable** rather than hidden. The root's `scrollHeight` collapses to `clientHeight`, so the obvious check answers "no, it fits"; no console error; the measurement table filled in; and the render script's full-page screenshot painted every section, because Playwright's full-page capture does not scroll. Every signal I looked at said the page was fine.
+
+`references/pitfalls.md` has documented this since 2026-08, twice, with the canonical fix and the three files it was found on. **I did not read it** — the skill says to, immediately after rendering, and I treated rendering as the finish line. That is the actual process failure; the missing CSS block is only its symptom. Fixed, and a sweep of all 176 mockups in a real Chromium found no others still carrying it.
+
+**No control for either feel call.** The skill names this as "the valuable one": a number that cannot be settled in a desktop screenshot becomes a button, the default ships as the recommendation, and the ADR hands the pair to the device pass. This design has two — the cone's reach and how the needle sweeps back to north — and the file shipped with both as silent literals. Both are now ⟨controls⟩. Writing the second surfaced that **`--t-slow` does not exist** (the tokens are `--t-quick`/`--t-base`/`--t-deliberate`): an undefined `var()` makes the declaration invalid, so the button did nothing and reported `0s`, and the faked ground had been riding a hard-coded `320ms` fallback nobody ever chose.
+
+**`--pin-base` has never been set anywhere in this lineage.** The app writes `clamp(34px, 0.11 * 100cqh, 56px)` from `pinSizeCss()` onto `.map-screen` — ADR-0123's "a pin is a share of the canvas" — and **13 of the 21 mockups that draw a `.map-pin` omit it**, so every pin in them falls back to the 34px floor. At `half` that is right by coincidence, since `0.11 × 233` clamps up to the floor anyway; at the `map` stop the app draws 53–56px and no mockup in four months has ever shown it. Set here because this file's cone is a share of it and could not inherit a number that is only accidentally true: measured 34px at `half`, 53px at `map`. The other twelve are a backlog line.
+
+The shape all three share: **each one produced a plausible-looking page, and the checks I ran were the ones that cannot see the failure.** A full-page screenshot cannot see a page you cannot scroll; an undefined custom property reads as a working control; a coincidence at the default stop reads as fidelity.
+
 ## What was deliberately not done
 
 - **Pitch.** `dragRotate` carries a tilt too, and tilting a map whose pins are DOM teardrops sized as a share of the canvas (ADR-0123) is a separate question. ADR-0234 §7 says so and stops there.

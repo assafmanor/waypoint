@@ -14307,14 +14307,22 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
          which is exactly what heading-up means. */
       .map-me {
         position: relative;
+        /* **A FEEL CALL, SO IT IS NAMED RATHER THAN BURIED IN TWO `calc()`s.** How much of
+           the canvas your heading is allowed to claim cannot be settled in a desktop
+           screenshot: too small and it is a smudge on the dot, too large and it reads as
+           a torch beam over other people's pins. `0.95` of the pin base is this file's
+           recommendation and the ⟨החרוט⟩ control ships the neighbours either side of it,
+           for the device pass to settle (ADR-0234's own list). Like every other length on
+           this canvas it is a share of `--pin-base`, never a px (ADR-0123). */
+        --me-cone: 0.95;
       }
       .map-me[data-heading]::before {
         content: '';
         position: absolute;
         left: 50%;
         bottom: 50%;
-        width: calc(var(--pin-base, 34px) * 0.95);
-        height: calc(var(--pin-base, 34px) * 0.95);
+        width: calc(var(--pin-base, 34px) * var(--me-cone));
+        height: calc(var(--pin-base, 34px) * var(--me-cone));
         translate: -50% 0;
         rotate: var(--me-heading, 0deg);
         transform-origin: 50% 100%;
@@ -14351,7 +14359,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         position: absolute;
         inset: -40%;
         rotate: var(--map-bearing, 0deg);
-        transition: rotate var(--t-slow, 320ms) var(--ease-standard);
+        transition: rotate var(--t-deliberate) var(--ease-standard);
         background-image:
           linear-gradient(to right, rgba(148, 163, 184, 0.16) 1px, transparent 1px),
           linear-gradient(to bottom, rgba(148, 163, 184, 0.16) 1px, transparent 1px);
@@ -14379,6 +14387,29 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
          band — and it is also a mode with no way in, which is the whole argument. */
       .map-pane[data-compass='conditional'] .map-compass[data-orient='north'] {
         display: none;
+      }
+
+      /* THE TWO FEEL CALLS, AS CONTROLS RATHER THAN AS DEFAULTS NOBODY CAN ARGUE WITH.
+         Both are numbers a desktop screenshot cannot settle, so the delta above ships
+         the recommendation and these draw its neighbours. They live in the mockup-only
+         block on purpose: what ships is the delta's own value, and the ADR hands the
+         final pair to the device pass rather than pretending this file chose it. */
+      .map-pane[data-cone='s'] .map-me {
+        --me-cone: 0.66;
+      }
+      .map-pane[data-cone='l'] .map-me {
+        --me-cone: 1.3;
+      }
+      /* How the needle SWEEPS back to north. The reset is a camera move and the glyph
+         must not race it, so the honest question is which existing token it rides —
+         never a new duration (design-language.md). `none` is also the reduced-motion
+         answer the delta already gives, drawn here so it can be judged on purpose
+         rather than only under a media query. */
+      .map-pane[data-needle='instant'] .map-compass .icon {
+        transition: none;
+      }
+      .map-pane[data-needle='slow'] .map-compass .icon {
+        transition-duration: var(--t-deliberate);
       }
 
       /* ═══════════════════════════════════════════════════════════════════
@@ -14704,6 +14735,26 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
       .mk-num {
         font-family: 'JetBrains Mono', monospace;
       }
+
+      /* ══ AND THE DOCUMENT HAS TO BE ALLOWED TO SCROLL. KEEP THIS LAST. ══
+         `tokens.css` declares `html, body { overflow: clip }` (ADR-0200 §1): the app's
+         document never scrolls, an inner `.body` does. Every mockup inlines that sheet
+         and applies it to a page that has no inner scroller and is several viewports
+         tall — and `clip` is NOT a scroll container, so the content below the fold is
+         *unreachable* rather than hidden, the root's `scrollHeight` collapses to
+         `clientHeight`, and the obvious check ("is scrollHeight > clientHeight?")
+         answers **no**, exactly like a page that fits. Nothing errors, the measurement
+         table still fills in, and a full-page screenshot still paints everything — so
+         the only thing that catches it is a person trying to scroll.
+
+         The `height: auto` two blocks up is the other half of the same undo and was
+         already here; this is the half that was missing. Last in the block so it wins
+         whatever the app's sheets grow. See `references/pitfalls.md`, which has said so
+         since 2026-08 and which this file shipped without reading. */
+      html:has(body.mk),
+      body.mk {
+        overflow: visible;
+      }
     </style>
   </head>
   <body class="mk">
@@ -14744,6 +14795,18 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         <span class="mk-label">נוכחות המצפן</span>
         <button data-compass="always" class="on">תמיד ברצועה (האפיון)</button>
         <button data-compass="conditional">רק כשיש סטייה (נפסל)</button>
+      </div>
+      <div class="mk-states">
+        <span class="mk-label">החרוט (החלטת תחושה)</span>
+        <button data-cone="s">0.66</button>
+        <button data-cone="m" class="on">0.95 (ההמלצה)</button>
+        <button data-cone="l">1.3</button>
+      </div>
+      <div class="mk-states">
+        <span class="mk-label">תנועת המחט (החלטת תחושה)</span>
+        <button data-needle="instant">מיידית</button>
+        <button data-needle="base" class="on">t-base (ההמלצה)</button>
+        <button data-needle="slow">t-deliberate</button>
       </div>
       <div class="mk-states">
         <span class="mk-label">סדר הרשימה</span>
@@ -14877,7 +14940,13 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             data-mode="trip"
             data-view="half"
             data-scope="day"
-            style="--sheet-h: 56%; --map-controls-h: 46px; --map-strip-h: 52px; --map-attr-h: 22px"
+            style="
+              --sheet-h: 56%;
+              --map-controls-h: 46px;
+              --map-strip-h: 52px;
+              --map-attr-h: 22px;
+              --pin-base: clamp(34px, 0.11 * 100cqh, 56px);
+            "
           >
             <div class="map-split" id="split">
               <div class="map-pane">
@@ -14941,7 +15010,21 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
                       <span class="pin-b"><span class="pin-g" aria-hidden="true">🛠️</span></span>
                     </div>
                   </div>
-                  <!-- THE ME-DOT, and the cone is §3's whole delta. It is the one
+                  <!-- **`--pin-base` IS NOW SET ON `.map-screen` ABOVE, AND IT NEVER WAS
+                       IN THIS LINEAGE.** The app writes it from `pinSizeCss()` —
+                       `clamp(34px, 0.11 * 100cqh, 56px)`, ADR-0123's "a pin is a share of
+                       the canvas" — as an inline style on the screen. No mockup here ever
+                       carried it, so every pin in `map-chrome-v1` and its descendants fell
+                       back to the 34px floor. At `half` that is right by coincidence (the
+                       pane is 233px, so `0.11 × 233 = 26` clamps up to the floor anyway);
+                       at the `map` stop the pane is ~516px and the app draws **56**, which
+                       no file in this lineage has ever shown. The pane is already a size
+                       container (`container-type: size` arrives with the shipped css), so
+                       the real expression resolves live per stop. This file reads it —
+                       the cone is a share of it — so it could not keep inheriting a
+                       number that is only accidentally true.
+
+                       THE ME-DOT, and the cone is §3's whole delta. It is the one
                        marker whose ORIENTATION is a fact about the world rather than
                        about the camera, so it is also the one that has to be drawn
                        while the ground turns under it. `data-heading` is absent when
@@ -15890,6 +15973,8 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         // unscoped mark strips the `.on` that `setOrient` had just put on it.
         mark('.mk-states [data-orient]', (b) => b.dataset.orient === orient);
         mark('[data-compass]', (b) => b.dataset.compass === (paneEl.dataset.compass || 'always'));
+        mark('[data-cone]', (b) => b.dataset.cone === (paneEl.dataset.cone || 'm'));
+        mark('[data-needle]', (b) => b.dataset.needle === (paneEl.dataset.needle || 'base'));
         mark('[data-theme]', (b) => b.dataset.theme === document.documentElement.dataset.theme);
         mark('[data-sort]', (b) => b.dataset.sort === sortBy);
         mark('[data-facets]', () => !facetstrip.hidden);
@@ -15915,12 +16000,14 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
       document
         .querySelectorAll('.mk-states [data-orient]')
         .forEach((b) => b.addEventListener('click', () => setOrient(b.dataset.orient)));
-      document.querySelectorAll('[data-compass]').forEach((b) =>
-        b.addEventListener('click', () => {
-          paneEl.dataset.compass = b.dataset.compass;
-          sync();
-        }),
-      );
+      for (const key of ['compass', 'cone', 'needle']) {
+        document.querySelectorAll(`[data-${key}]`).forEach((b) =>
+          b.addEventListener('click', () => {
+            paneEl.dataset[key] = b.dataset[key];
+            sync();
+          }),
+        );
+      }
       document.querySelectorAll('.mk-states [data-theme]').forEach((b) =>
         b.addEventListener('click', () => {
           document.documentElement.dataset.theme = b.dataset.theme;
@@ -16139,6 +16226,17 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         const attr = document.querySelector('.mk-attr').getBoundingClientRect();
         const compass = compassbtn.getBoundingClientRect();
         const shown = compass.width > 0;
+        // The cone is a pseudo-element, so it has no box of its own to read. Derive the
+        // base from the dot's own RENDERED width instead of parsing `--pin-base`: that
+        // property's computed value is the `clamp()` expression itself, so `parseFloat`
+        // would read its 34px floor and quietly report the `half` number at every stop.
+        // The dot is `--pin-base × 0.41`, and its box is measured.
+        const meCS = getComputedStyle(medot);
+        const coneRatio = meCS.getPropertyValue('--me-cone').trim() || '0.95';
+        const base = medot.getBoundingClientRect().width / 0.41;
+        const cone = medot.dataset.heading === undefined
+          ? null
+          : { width: base * parseFloat(coneRatio), height: base * parseFloat(coneRatio) };
         // What the band would be WITHOUT the third control, measured rather than
         // assumed: the two neighbours plus the gap the flex row puts between them.
         const GAP = 8;
@@ -16158,6 +16256,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           <tr><td>הרצועה <b>עם</b> הפקד השלישי</td><td><b>${px(shown ? band.width : bandTwo)}</b></td><td>הפקד השלישי עולה ${px(shown ? compass.width + GAP : 0)} בציר הרוחב</td></tr>
           <tr><td>נשאר פנוי בציר הרוחב</td><td class="${spare > 60 ? 'mk-good' : 'mk-bad'}"><b>${px(spare)}</b></td><td>מתוך ${Math.round(pane.width)} · בלי המצפן היו ${px(spareTwo)}</td></tr>
           <tr><td>נשאר פנוי בציר ה<b>גובה</b></td><td class="${clear > 60 ? 'mk-good' : 'mk-bad'}"><b>${px(clear)}</b></td><td>זהה עם המצפן ובלעדיו · זה כל הכלל של ADR-0126 §1</td></tr>
+          <tr><td>החרוט של הנקודה שלכם</td><td><b>${cone ? `${Math.round(cone.width)}×${Math.round(cone.height)}` : 'נעדר'}</b></td><td>${cone ? `יחס ${coneRatio} מ־<code>--pin-base</code> · החלטת תחושה` : 'אין כיוון ידוע · אין חרוט'}</td></tr>
           <tr><td>ה־<code>bearing</code> של המצלמה</td><td><b>${bearingOf(orient)}°</b></td><td>${label} · המחט נושאת את הנגדי שלו</td></tr>
           <tr><td>דרך חזרה לצפון היום</td><td class="mk-bad"><b>אין</b></td><td>הסיבוב קיים (ברירת מחדל של MapLibre) · שום פקד לא קורא אותו</td></tr>
         `;
