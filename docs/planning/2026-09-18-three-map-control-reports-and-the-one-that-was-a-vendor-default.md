@@ -94,6 +94,38 @@ bearing in state would have re-rendered the marker set on every frame of a turn.
 specs; a real magnetometer, a real tilted map and the question of whether following a heading
 is legible at all in a moving hand are the device pass's, and ADR-0234 still says so.
 
+## After deploy: the needle unwound the long way
+
+Owner, on the shipped build: _"when the compass rolls over the top and then a little more it
+does a full circle instead of just slightly moving to the left/right."_
+
+**One line, and the shape of it is the lesson.** Every shortest-arc rule in this feature is in
+code I wrote and reasoned about — `cameraFrame`, `smoothHeading`, `sameCamera`, and the
+`shortestTurn` helper written precisely because "a plain average of 350 and 10 is 180". All
+correct. The needle's rotation is the one interpolation **CSS** performs, and it interpolates a
+custom property numerically — so `normalizeBearing`'s `[0, 360)` wrap is a cliff at north, and
+358 → 2 animates −356°.
+
+I had the right idea and applied it everywhere I was doing the arithmetic myself. I did not ask
+where the arithmetic was being done by something else.
+
+The fix is a continuous angle, renamed `--map-needle` so nobody reads it as the bearing (it
+equals `−bearing` modulo 360 and is not equal to it). Two specs assert the **step** rather than
+the value — no single write may move the needle more than half a turn — because the absolute
+number is an accumulation and pinning it would invite a rewrite every time the arithmetic moves.
+
+**The first version of the spec asserted the wrong thing and the code was right.** I expected
+`twistTo(358)` from 0 to write `358deg`; it writes `-2deg`, because turning the camera to a
+bearing of 358 IS a two-degree counter-clockwise turn. Worth recording because the failure read
+as a bug for about a minute: the honest assertion is about the step, and once it was written
+that way it also stopped depending on where the needle happened to start.
+
+**And the mockup was structurally unable to catch this**, which is the part worth generalising.
+⟨כיוון המפה⟩ steps between three fixed orientations — 0°, 40°, 118° — and no step crosses
+north. The file draws the band's geometry exactly and exercises none of the seams in its
+motion. **A control that steps between discrete values tests the values, not the transitions
+between them.** Noted in the catalog entry so the next revision adds a state that crosses.
+
 ## What was deliberately not done
 
 - **Pitch.** `dragRotate` carries a tilt too, and tilting a map whose pins are DOM teardrops sized as a share of the canvas (ADR-0123) is a separate question. ADR-0234 §7 says so and stops there.
