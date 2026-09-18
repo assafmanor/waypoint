@@ -8,7 +8,7 @@
 // (chrome-base color only — no board glow/pulse/now-next, so board scarcity
 // still holds; ADR-0028/0033). A live trip present is also what drives the
 // header back button. Design reference: mockups/all-trips-v2.html.
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useRef, type PointerEvent as ReactPointerEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Trip } from '@waypoint/shared';
 import { useAuth } from '../state/auth-state';
@@ -17,7 +17,7 @@ import { NAV_DIR, useBackLayer } from '../state/nav-state';
 import { beginTripHandoff } from '../lib/trip-handoff';
 import { useIsOffline } from '../lib/outbox';
 import { useHoldToOpen } from '../lib/useHoldToOpen';
-import { loadTripList } from '../lib/cache';
+import { useTripList } from '../lib/useTripList';
 import { tripChip, type TripChip } from '../lib/active-trip';
 import { daysUntilStartOnDevice } from '../lib/mode';
 import { formatTripDates } from '../lib/time';
@@ -83,19 +83,9 @@ export function AllTrips({
   const { setTripId } = useActiveTripId();
   const offline = useIsOffline();
   const now = useClock();
-  const [trips, setTrips] = useState<Trip[] | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    // Falls back to the cached list offline so the all-trips view (and the back
-    // route into a live trip) keeps working with no network.
-    loadTripList().then(({ trips: list }) => {
-      if (!cancelled) setTrips(list);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Falls back to the cached list offline — and on a link too slow to say so yet — so the
+  // all-trips view (and the back route into a live trip) keeps working with no network.
+  const trips = useTripList();
 
   // **THE BACK ARROW AND THE SYSTEM BACK ARE ONE FUNCTION** (owner, session 175). This
   // screen is a declared root (`ROOT_PATHS`), so a structural back here is a no-op and the

@@ -301,6 +301,26 @@ export const LOCAL_READ_TIMEOUT_MS = {
   SNAPSHOT: 10_000,
 } as const;
 
+/** **How long a boot read waits for the network before showing what it already has.**
+ *
+ *  The mirror of `API_TIMEOUT_MS` above, and deliberately sized the other way round. That one
+ *  is a verdict — _"this is dead"_ — and it is why a reception-starved boot still sat on its
+ *  skeleton for twenty seconds before the cache was allowed to answer at all: **every offline
+ *  fallback in this app keys on the live read FAILING, and a slow link never fails.** This is
+ *  the wait after which the cache answers anyway, sized _"this is slow"_, with the live read
+ *  still running underneath it.
+ *
+ *  **Lowering `API_TIMEOUT_MS` instead is the obvious fix and the wrong one:** it buys the same
+ *  seconds by KILLING the live read, so a connection that needed eight would never deliver at
+ *  all. Same trade ADR-0121's map amendment made when expiry stopped tearing the attempt down
+ *  and started changing only what the screen says.
+ *
+ *  Being wrong here costs one frame of cached data and an offline cue that the live answer
+ *  clears a moment later, which is why the number is small. The boot's cached reads are
+ *  **sequential** (identity, then the trip list, then the trip), so a dead-slow link reaches
+ *  its first usable screen in a few of these, not one. */
+export const STAND_IN_AFTER_MS = 3_000;
+
 /** **When the base map's wait stops being silent** (field reports #28/#35). The MapLibre canvas
  *  and our DOM markers can exist before any PMTiles ground paints, so the first-tile signal is
  *  guarded by the `withDeadline` heuristic in `lib/deadline.ts`.

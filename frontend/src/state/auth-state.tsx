@@ -15,8 +15,8 @@ import {
 import { isNetworkError, isOffline } from '../lib/outbox';
 import { wipeLocalData } from '../lib/cache';
 import { reconcileThisDevice, unsubscribeThisDevice } from '../lib/push';
-import { withDeadline } from '../lib/deadline';
-import { API_PHASE, API_TIMEOUT_MS, ME_STORAGE_KEY } from '../constants';
+import { standInAfter, withDeadline } from '../lib/deadline';
+import { API_PHASE, API_TIMEOUT_MS, ME_STORAGE_KEY, STAND_IN_AFTER_MS } from '../constants';
 
 export type AuthStatus = 'loading' | 'anon' | 'authed';
 
@@ -100,11 +100,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // would turn a slow-but-alive one into a forced sign-out, which is a product call and
       // not this fix's to make. Giving up on the wait costs nothing — it is what a *failed*
       // refresh already does here, and a late one still installs its token for the next call.
-      await withDeadline(API_PHASE.BOOT_REFRESH, API_TIMEOUT_MS.FETCH, () =>
-        refreshAccessToken(),
-      ).catch(() => false);
+      //
+      // **And a bound is only half of it** (owner report, low reception abroad): the wait it
+      // ends is twenty seconds long, and on a link that is alive but crawling the whole boot
+      // spends them on `BootScreen` before the cached identity below is even reachable — that
+      // fallback runs on a FAILURE, and a slow link does not fail. So the two network steps of
+      // this boot are one `live` read that the cached identity stands in for after
+      // `STAND_IN_AFTER_MS`, and `/me` replaces when it lands.
+      const live = (async () => {
+        await withDeadline(API_PHASE.BOOT_REFRESH, API_TIMEOUT_MS.FETCH, () =>
+          refreshAccessToken(),
+        ).catch(() => false);
+        return fetchMe();
+      })();
       try {
-        const who = await fetchMe();
+        // Standing in can put the first API call ahead of the token the refresh above is still
+        // fetching: that call 401s and `apiFetch` retries it behind the SAME in-flight refresh
+        // (`refreshInFlight` coalesces), so it costs a retry and never a sign-out.
+        const who = await standInAfter(
+          STAND_IN_AFTER_MS,
+          live,
+          async () => readCachedMe(),
+          (cached) => {
+            if (cancelled) return;
+            setMe(cached);
+            setStatus('authed');
+          },
+        );
         if (cancelled) return;
         setMe(who);
         setStatus('authed');

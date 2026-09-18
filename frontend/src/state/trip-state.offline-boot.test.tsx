@@ -15,7 +15,7 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { TripSnapshot } from '@waypoint/shared';
 import { TRIP } from '../fixtures';
-import { API_TIMEOUT_MS } from '../constants';
+import { API_TIMEOUT_MS, STAND_IN_AFTER_MS } from '../constants';
 import { t } from '../i18n/he';
 
 const h = vi.hoisted(() => ({ readCachedSnapshot: vi.fn() }));
@@ -100,14 +100,36 @@ describe('boot with no reception (field report #22)', () => {
     expect(screen.getByLabelText(t.snapshot.loading)).toBeTruthy();
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(API_TIMEOUT_MS.FETCH - 1);
+      await vi.advanceTimersByTimeAsync(STAND_IN_AFTER_MS - 1);
     });
-    expect(screen.queryByText('CONTENT')).toBeNull(); // a slow boot is still a boot
+    expect(screen.queryByText('CONTENT')).toBeNull(); // a moment's wait is still a boot
 
+    // The cache stands in here, `API_TIMEOUT_MS.FETCH` before the read it is standing in for
+    // would have been allowed to fail (owner report, low reception abroad).
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     expect(screen.getByText('CONTENT')).toBeTruthy();
+  });
+
+  // The stand-in is a wait, not a preference: a link that answers inside it renders LIVE data
+  // and never shows the cached frame at all.
+  it('never stands in when the network answers first', async () => {
+    const live: TripSnapshot = { ...CACHED, latestSeq: '9' };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(live) } as Response),
+      ),
+    );
+    renderBoot(<div>CONTENT</div>);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(STAND_IN_AFTER_MS * 2);
+    });
+
+    expect(screen.getByText('CONTENT')).toBeTruthy();
+    expect(h.readCachedSnapshot).not.toHaveBeenCalled();
   });
 
   // The true last resort — this trip was never cached, so there is nothing to fall back to.
@@ -115,6 +137,13 @@ describe('boot with no reception (field report #22)', () => {
   it('lands on the retryable error when nothing was ever cached', async () => {
     h.readCachedSnapshot.mockResolvedValue(null);
     renderBoot(<div>CONTENT</div>);
+
+    // Nothing to stand in with, so this one still waits out the full bound — a skeleton is a
+    // better answer than an error screen while the read might yet deliver.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(STAND_IN_AFTER_MS + 1);
+    });
+    expect(screen.queryByText(t.snapshot.errorTitle)).toBeNull();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(API_TIMEOUT_MS.FETCH + 1);

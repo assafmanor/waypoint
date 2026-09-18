@@ -81,3 +81,42 @@ export function bestEffort<T>(
 ): Promise<T> {
   return withDeadline(phase, ms, work).catch(() => fallback);
 }
+
+/** **What we already hold, while the network is still trying.**
+ *
+ *  `withDeadline` is a **verdict**: it cancels the wait and the work with it, and
+ *  `API_TIMEOUT_MS` sizes it _"this is dead"_. That deliberately leaves the other half of the
+ *  same problem untouched — a link that is alive and merely **slow**, where every bound above
+ *  is right to keep waiting and the app has nothing on screen for the whole of it. Field
+ *  report #22 was the boot that never ends; this is the boot that ends in half a minute,
+ *  which from a hand abroad is the same complaint.
+ *
+ *  So: run the live read, and if `ms` passes with nothing to show, hand the caller what the
+ *  cache holds and keep waiting. **Nothing is aborted here** — the returned promise still
+ *  settles exactly as `live` does, so a caller that can adopt the live answer later simply
+ *  does. One that cannot (a state seeded once) aborts its own read from `onStandIn`.
+ *
+ *  `onStandIn` fires at most once, never after `live` has settled, and never with `null`: a
+ *  cache with no answer changes nothing, which is what keeps a first-ever boot on its skeleton
+ *  instead of flashing an empty screen at it. A cache read that throws is the same as an
+ *  empty one — this is the path that runs when things are already going badly. */
+export function standInAfter<T>(
+  ms: number,
+  live: Promise<T>,
+  cached: () => Promise<T | null>,
+  onStandIn: (value: T) => void,
+): Promise<T> {
+  let settled = false;
+  const timer = setTimeout(() => {
+    void cached().then(
+      (value) => {
+        if (!settled && value !== null) onStandIn(value);
+      },
+      () => {},
+    );
+  }, ms);
+  return live.finally(() => {
+    settled = true;
+    clearTimeout(timer);
+  });
+}
