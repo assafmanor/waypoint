@@ -1142,13 +1142,20 @@
    `rotate` on the GLYPH and never on the button: a 44px circle with a hairline turning
    under the finger is a wobble, and a touch target must not rotate out from under a press.
    The needle carries the NEGATIVE of the camera's bearing, because it points at true north
-   rather than at the top of the screen. `--map-bearing` is written by `MapPane` from the
+   rather than at the top of the screen. `--map-needle` is written by `MapPane` from the
    camera on its own idle, never from React state — a bearing in state would re-render the
-   pane on every frame of a turn. */
+   pane on every frame of a turn.
+
+   **`--map-needle` is NOT the camera's bearing, and it must not be**: it is a CONTINUOUS
+   angle that is never wrapped into `[0, 360)`. The transition below interpolates this
+   property NUMERICALLY, so a wrap at north takes it from `358deg` to `2deg` and the browser
+   sweeps −356° the long way round for a four-degree turn (owner, 2026-09-18: _"a full circle
+   instead of just slightly moving"_). `MapPane` advances it by the short arc instead, so it
+   reads 362 where the bearing reads 2. Anything wanting the real bearing asks the camera. */
 .map-compass .icon {
   width: 22px;
   height: 22px;
-  rotate: calc(-1 * var(--map-bearing, 0deg));
+  rotate: calc(-1 * var(--map-needle, 0deg));
   transition: rotate var(--t-base) var(--ease-standard);
 }
 /* The reset is a camera move and the camera eases it, so the glyph must not race it — one

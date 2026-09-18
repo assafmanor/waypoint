@@ -37,6 +37,12 @@ It does not, and the difference is not a technicality. #19's defect was never "t
 
 `rotate` goes on the **glyph**, never on the button: a 44px circle with a hairline turning under the finger is a wobble, and a touch target must not rotate. The needle carries the **negative** of the camera's bearing, because a needle points at true north rather than at the top of the screen.
 
+_**Corrected 2026-09-18 (§10): "the negative of the bearing" is the picture, not the value.**
+The glyph's `rotate` is transitioned, and CSS interpolates a custom property **numerically** —
+so feeding it a bearing wrapped into `[0, 360)` makes north a cliff, and a four-degree turn
+across it animates −356°. The property the needle reads is a **continuous** angle that is never
+wrapped; it agrees with `−bearing` modulo 360 and is not equal to it._
+
 ### 2. It is always in the band, and that is what makes the second mode reachable
 
 The alternative — Google's own — is a compass that exists only while the map is off north. It is the smaller band and it is rejected on one argument: **it deletes the only way into heading-up**, because the control is absent in exactly the state you enter that mode from. Drawn in the mockup under ⟨נוכחות המצפן⟩ so the saving and the cost are visible together.
@@ -182,3 +188,39 @@ made.
    to `MAP_CONTROLS_H`, the fit padding or the stops, since the band does not grow on the
    block axis; and no screen-level state at all — the whole feature is pane-local, so
    `screens/Map.tsx` is untouched.
+
+## §10 — The needle unwound the long way across north (2026-09-18, after deploy)
+
+Owner, on the shipped build: _"when the compass rolls over the top and then a little more it
+does a full circle instead of just slightly moving to the left/right."_
+
+**The cause is one line, and its shape is worth more than the fix.** Every shortest-arc rule
+this feature has — `cameraFrame`'s interpolation, `smoothHeading`'s low-pass, `sameCamera`'s
+tolerance — is in code this ADR reasoned about and got right. The needle's rotation is the one
+interpolation **CSS** performs, and `.map-compass .icon` carries a `transition`. A custom
+property is interpolated **numerically**, so `normalizeBearing`'s wrap into `[0, 360)` hands the
+browser a discontinuity at north: 358 → 2 is animated as **−356°**, a full turn of sweep for a
+four-degree change of picture.
+
+So the needle reads `--map-needle`, a **continuous** angle advanced by the short arc each
+frame — 358 → 362, never 358 → 2. It is deliberately **not** called `--map-bearing` any more:
+it agrees with `−bearing` modulo 360 and is not equal to it, and a future reader reaching for
+"the bearing" must get the camera's real value rather than 362. Unbounded in principle, which
+is fine in practice — 27,000 full turns to reach 1e7, where a double still resolves a
+millionth of a degree.
+
+**Two things this says about the method, both of which cost nothing to record:**
+
+- **The normalisation that fixed one class of bug caused another.** `[0, 360)` is exactly what
+  makes `sameCamera`'s comparison and `shortestTurn`'s arithmetic well-behaved, and exactly
+  what a numeric interpolator must never be given. Both are right; the boundary between them
+  is the thing to name, and the property's new name is where it is named.
+- **The mockup could not have caught this.** `map-orientation-v1.html` draws three fixed
+  orientations — 0°, 40° and 118° — and no step between them crosses north. A file that
+  measures a band's geometry is not thereby a file that exercises its motion, and a control
+  that steps between discrete values exercises none of the seams between them. Recorded in
+  the catalog entry rather than retrofitted into the file.
+
+Asserted by two specs in `MapPane.test.tsx`, and they assert the **step** rather than the
+value: no single write may move the needle more than half a turn, which is the defect stated
+directly and survives any change to where the accumulation starts.

@@ -2149,8 +2149,24 @@ function MapCameraControls({
   const headingRef = useRef(heading.heading);
   headingRef.current = heading.status === 'on' ? heading.heading : undefined;
 
+  /** **The needle's angle, ACCUMULATED and never wrapped** (owner, 2026-09-18: _"when the
+   *  compass rolls over the top and then a little more it does a full circle instead of just
+   *  slightly moving"_).
+   *
+   *  The bearing itself is `[0, 360)`, and that wrap is exactly the problem: the needle is a
+   *  `rotate` with a `transition`, and CSS interpolates the property NUMERICALLY. Crossing
+   *  north takes the value from `358deg` to `2deg`, so the browser animates **−356°** — the
+   *  long way round the dial — for a four-degree turn. Every shortest-arc rule this feature
+   *  has is in code I wrote (`cameraFrame`, `smoothHeading`, `sameCamera`); this is the one
+   *  interpolation CSS does, and normalising to `[0, 360)` is what handed it a cliff.
+   *
+   *  So this ref holds a CONTINUOUS angle — 358 → 362, never 358 → 2 — advanced by the
+   *  short arc each frame. It grows without bound in principle and that is fine in practice:
+   *  27,000 full turns to reach 1e7, where a double still resolves a millionth of a degree. */
+  const needle = useRef(0);
+
   /** **The two angles, written to the DOM rather than to state** — `PinDensity`'s own shape
-   *  one control over. `--map-bearing` turns the needle; `--me-heading` turns the me-dot's
+   *  one control over. `--map-needle` turns the needle; `--me-heading` turns the me-dot's
    *  cone and is the DEVICE's heading minus the MAP's bearing, so in heading-up it points
    *  straight up the screen. `data-heading` is the cone's presence: absent when no heading
    *  is known, because a cone pointing at a guess is a claim the sensor cannot back. */
@@ -2158,7 +2174,11 @@ function MapCameraControls({
     const pane = paneRef.current;
     if (!pane) return;
     const bearing = readBearing() ?? 0;
-    pane.style.setProperty('--map-bearing', `${bearing}deg`);
+    // **`--map-needle` is NOT the bearing, and the name says so.** It is the continuous
+    // angle above; read the camera if you want the real `[0, 360)` value. `shortestTurn`
+    // normalises both ends, so handing it an unwrapped `from` is exactly what it is for.
+    needle.current += shortestTurn(needle.current, bearing);
+    pane.style.setProperty('--map-needle', `${needle.current}deg`);
     // React sees only the boolean, and only when it flips — `setState` bails out on an
     // identical value, so a turn costs no renders until the map crosses into or out of north.
     setAtNorth(Math.abs(shortestTurn(bearing, 0)) <= MAP_ORIENT.NORTH_EPSILON_DEG);

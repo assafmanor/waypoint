@@ -1453,7 +1453,66 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
     const map = mapStub.current;
     act(() => map.twistTo(40));
     const pane = document.querySelector('.map-pane') as HTMLElement;
-    expect(pane.style.getPropertyValue('--map-bearing')).toBe('40deg');
+    expect(pane.style.getPropertyValue('--map-needle')).toBe('40deg');
+  });
+
+  // **The needle's angle is CONTINUOUS, and this is the defect that made it so** (owner,
+  // 2026-09-18: _"when the compass rolls over the top and then a little more it does a full
+  // circle instead of just slightly moving"_).
+  //
+  // `rotate` carries a `transition`, and CSS interpolates the property NUMERICALLY — so a
+  // bearing wrapped into `[0, 360)` hands the browser a cliff at north: 358 → 2 animates
+  // −356° the long way round for a four-degree turn. Asserting the VALUE is the only way to
+  // see it; the rendered angle is identical either way, which is why nothing caught it.
+  //
+  // **What is asserted is the STEP, not the value.** The absolute number is an accumulation
+  // and depends on where the needle started, so pinning it invites a test that is rewritten
+  // every time the arithmetic is touched. What must hold is that no single step the browser
+  // interpolates is ever the long way round — which is the bug, stated directly.
+  it('crosses north without unwinding the long way', () => {
+    paint();
+    const map = mapStub.current;
+    const pane = document.querySelector('.map-pane') as HTMLElement;
+    const needle = () => parseFloat(pane.style.getPropertyValue('--map-needle'));
+
+    act(() => map.twistTo(350));
+    const before = needle();
+
+    // Twenty degrees clockwise, straight over the top. Wrapped into `[0, 360)` this is the
+    // step CSS would animate as −340°; continuous, it is +20.
+    act(() => map.twistTo(10));
+    expect(needle() - before).toBeCloseTo(20, 5);
+
+    // …and back the other way across the same seam: −20, never +340.
+    act(() => map.twistTo(350));
+    expect(needle() - before).toBeCloseTo(0, 5);
+  });
+
+  // The general form of the rule above: whatever the map does, no single step may exceed a
+  // half turn. A step over 180° is by definition the long way round to the same picture.
+  it('never hands CSS a step longer than half a turn', () => {
+    paint();
+    const map = mapStub.current;
+    const pane = document.querySelector('.map-pane') as HTMLElement;
+    const needle = () => parseFloat(pane.style.getPropertyValue('--map-needle'));
+
+    let last = needle();
+    for (const bearing of [359, 1, 180, 181, 90, 270, 0, 359.5, 0.5]) {
+      act(() => map.twistTo(bearing));
+      expect(Math.abs(needle() - last)).toBeLessThanOrEqual(180);
+      last = needle();
+    }
+  });
+
+  // Many crossings in one direction keep accumulating rather than snapping back — the
+  // property is an angle, not a bearing, and nothing downstream may wrap it.
+  it('keeps accumulating over repeated crossings', () => {
+    paint();
+    const map = mapStub.current;
+    const pane = document.querySelector('.map-pane') as HTMLElement;
+    for (const bearing of [90, 180, 270, 0, 90, 180, 270, 0]) act(() => map.twistTo(bearing));
+    // Two full turns clockwise from 0, by the short arc each time.
+    expect(pane.style.getPropertyValue('--map-needle')).toBe('720deg');
   });
 
   // `points` falls back to `[me]` when the day has no pins of its own, so a frame
