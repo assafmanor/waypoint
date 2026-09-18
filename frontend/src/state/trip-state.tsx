@@ -132,7 +132,8 @@ import { observeVisibility } from '../lib/visibility';
 import { clampDate, shiftIso } from '../lib/time';
 import { bookingLinkedEventChange } from '../lib/outbox-effects';
 import { useToast } from '../ui/Toast';
-import { CONTROL_ICON, type TabId } from '../constants';
+import { standInAfter } from '../lib/deadline';
+import { CONTROL_ICON, STAND_IN_AFTER_MS, type TabId } from '../constants';
 import { EVENTS, MAYBE_ITEMS } from '../fixtures';
 import { useAuth } from './auth-state';
 import { DAY_PARAM, HOME_TAB, TAB_PARAM, daySelectTarget, resolveActiveDate } from './nav-state';
@@ -797,15 +798,39 @@ export function TripProvider({
     let cancelled = false;
     setSnapshot(null);
     setError(null);
-    fetchSnapshot(tripId).then(
+    // **A read that is merely SLOW never reaches the fallback below** (owner report, low
+    // reception abroad). That one runs on a rejection, and a crawling link does not reject —
+    // it delivers, twenty seconds later, with the skeleton up for every one of them. So the
+    // cache stands in at `STAND_IN_AFTER_MS` and the trip is usable from there, offline-cued
+    // (`usingCachedSnapshot`) until the catch-up says otherwise.
+    //
+    // The live read is **aborted** when that happens rather than merged, because `TripReady`
+    // seeds its whole reactive state from this snapshot exactly once: a later one would change
+    // nothing on screen. What replaces it is the catch-up `TripReady` already runs on mount —
+    // `/changes?sinceSeq=` off the cached cursor, then the socket — which is smaller than a
+    // second snapshot and is also what clears the offline cue (`onReconnected`).
+    const controller = new AbortController();
+    let stoodIn = false;
+    standInAfter(
+      STAND_IN_AFTER_MS,
+      fetchSnapshot(tripId, controller.signal),
+      () => readCachedSnapshot(tripId),
+      (cached) => {
+        if (cancelled) return;
+        stoodIn = true;
+        controller.abort();
+        setSnapshot(cached);
+        setUsingCachedSnapshot(true);
+      },
+    ).then(
       (s) => {
+        if (cancelled || stoodIn) return;
         void cacheSnapshot(tripId, s);
-        if (!cancelled) {
-          setSnapshot(s);
-          setUsingCachedSnapshot(false);
-        }
+        setSnapshot(s);
+        setUsingCachedSnapshot(false);
       },
       (e: unknown) => {
+        if (cancelled || stoodIn) return;
         // Offline read (sync-and-offline.md "Read"): fall back to the last-cached
         // snapshot rather than showing the boot-error screen. The error screen is
         // the true last resort — nothing was ever cached for this trip.
@@ -827,6 +852,7 @@ export function TripProvider({
     );
     return () => {
       cancelled = true;
+      controller.abort(); // a trip switch (or a retry) has no use for the read it left behind
     };
   }, [tripId, reloadNonce]);
 

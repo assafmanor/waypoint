@@ -8,7 +8,6 @@ import {
   useNavigate,
   useParams,
 } from 'react-router-dom';
-import type { Trip } from '@waypoint/shared';
 import { TripProvider, useTrip } from './state/trip-state';
 import { ModeProvider, useMode } from './state/mode-state';
 import { MapScopeProvider, useMapScope, useSelectDay } from './state/map-scope-state';
@@ -36,7 +35,7 @@ import {
   usePendingChangeCount,
   useSyncFailures,
 } from './lib/outbox';
-import { loadTripList } from './lib/cache';
+import { useTripList } from './lib/useTripList';
 import { retainMapArchives } from './lib/map-archive-cache';
 import { resolveLanding } from './lib/active-trip';
 import { consumeIntent, hasIntent, saveIntent } from './lib/intent';
@@ -789,20 +788,11 @@ function TripRoutePack() {
 }
 
 function RootSurface() {
-  const [trips, setTrips] = useState<Trip[] | null>(null);
+  // Offline-aware (sync-and-offline.md "Read"): reads the cached trip list when the fetch
+  // fails AND when it is merely too slow, so a cold reopen on a bad connection resolves the
+  // active trip instead of holding the boot screen or collapsing to ZeroState.
+  const trips = useTripList();
   const { tripId: storedTripId, pickedThisSession } = useActiveTripId();
-  useEffect(() => {
-    let cancelled = false;
-    // Offline-aware (sync-and-offline.md "Read"): falls back to the cached trip
-    // list when the fetch fails, so a cold reopen with no network resolves the
-    // active trip instead of collapsing to ZeroState.
-    loadTripList().then(({ trips: list }) => {
-      if (!cancelled) setTrips(list);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
   useEffect(() => {
     if (trips) void retainMapArchives({ trips, currentTripId: storedTripId ?? undefined });
   }, [storedTripId, trips]);

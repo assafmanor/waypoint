@@ -497,8 +497,11 @@ async function throwApiError(res: Response): Promise<never> {
   throw new ApiError(res.status, body?.error?.code, body?.error?.details);
 }
 
-export async function fetchSnapshot(tripId: string): Promise<TripSnapshot> {
-  const res = await apiFetch(snapshotUrl(tripId));
+/** The caller's signal is how the boot drops this read once the cache has stood in for it
+ *  (`state/trip-state.tsx`): a snapshot nobody can use any more is just bytes competing with
+ *  the catch-up on a link that has none to spare. */
+export async function fetchSnapshot(tripId: string, signal?: AbortSignal): Promise<TripSnapshot> {
+  const res = await apiFetch(snapshotUrl(tripId), { signal });
   if (!res.ok) throw new Error(`snapshot fetch failed: ${res.status}`);
   return tripSnapshotSchema.parse(await readJson(res));
 }

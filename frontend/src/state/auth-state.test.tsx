@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import type { Me } from '@waypoint/shared';
 import { USERS } from '../fixtures';
-import { API_TIMEOUT_MS, ME_STORAGE_KEY } from '../constants';
+import { API_TIMEOUT_MS, ME_STORAGE_KEY, STAND_IN_AFTER_MS } from '../constants';
 
 vi.mock('../lib/cache', () => ({ wipeLocalData: vi.fn().mockResolvedValue(undefined) }));
 
@@ -104,6 +104,24 @@ describe('boot with no reception (field report #22)', () => {
 
     expect(screen.getByText('anon:-')).toBeTruthy();
     expect(localStorage.getItem(ME_STORAGE_KEY)).toBeNull();
+  });
+
+  // **The same fallback, on the link that is slow rather than dead** (owner report, low
+  // reception abroad). Nothing above fails here — the boot is simply still waiting — and the
+  // bound it would eventually hit is twenty seconds away. The cached identity stands in long
+  // before that, so the app is signed in and usable while `/me` keeps trying.
+  it('renders signed-in from the cache long before the bound, on a link that is merely slow', async () => {
+    await mountAuth();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(STAND_IN_AFTER_MS - 1);
+    });
+    expect(screen.getByText('loading:-')).toBeTruthy();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(screen.getByText(`authed:${ME.user.displayName}`)).toBeTruthy();
   });
 
   it('signs in normally when the network is healthy', async () => {
