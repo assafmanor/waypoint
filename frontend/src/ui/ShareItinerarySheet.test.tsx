@@ -444,6 +444,13 @@ describe('ShareItinerarySheet', () => {
 
     it('sends the join link, and never touches the read-only share', async () => {
       renderSheet();
+      // **Wait for the INVITE, not for the button** — the two tests above already do, and
+      // this one not doing it is a race it loses under load (CI, 2026-09-18). `shareInvite`
+      // opens `if (!invite) return`, and the button renders before `createInvite` resolves:
+      // a click that wins that race returns early, nothing re-fires it, and the `waitFor`
+      // below then polls an assertion that can never come true. It reads as a flake and is
+      // a missing precondition. Reproduced by resolving the mock 50ms late.
+      await screen.findByText(`localhost:3000/join/${INVITE}`);
       await screen.findByRole('button', { name: new RegExp(t.share.owner.join.action) });
 
       fireEvent.click(screen.getByRole('button', { name: new RegExp(t.share.owner.join.action) }));

@@ -159,9 +159,27 @@ interface MapScope {
   requestFocus: (placeId: string) => void;
   /** Consumed by the Map once applied, so it fires exactly once. */
   clearFocus: () => void;
-  /** Have we already offered to locate the user this session? */
+  /** Have we already offered to locate the user this session? **This is about the CARD**,
+   *  and only about the card — it is what keeps `לא עכשיו` meaning not-this-session rather
+   *  than a reason-first prompt on every visit to the tab (ADR-0109 §6). */
   locationOffered: boolean;
   markLocationOffered: () => void;
+  /** **…and this is about the FIX**, which is a different question with a different answer
+   *  (owner, 2026-09-18: _"the map doesn't always show the current location pin, and sometimes
+   *  we should click on the current location button"_).
+   *
+   *  `useGeolocation` lives in the Map SCREEN and the screen unmounts on a tab switch, so
+   *  every return to the tab starts with no fix, `status: 'idle'` and — on any browser
+   *  without a Permissions API, i.e. Safari — `permission: 'unsupported'`. The offer gate
+   *  above then correctly refused to show the card a second time and, because it also
+   *  guarded the silent re-request beside it, refused the DOT with it. Consent already
+   *  given is exactly the case where asking again raises no dialog of any kind, so it is
+   *  the one case that must not be gated on having asked.
+   *
+   *  A boolean, not a position: the fix itself is still never persisted, never lifted out of
+   *  the screen and never put on the wire (ADR-0006). */
+  locationGranted: boolean;
+  setLocationGranted: (value: boolean) => void;
   /** **A surface on the Map tab wants the app chrome off** (ADR-0132 §2/§3): the header
    *  and the tab bar come off screen and the safe-area insets move to the body. The shell
    *  is the second consumer, exactly as `allDays` has the `DayStrip`.
@@ -199,6 +217,7 @@ export function MapScopeProvider({ children }: { children: ReactNode }) {
   const [allDays, setAllDays] = useState(false);
   const [focusPlaceId, setFocusPlaceId] = useState<string | null>(null);
   const [locationOffered, setLocationOffered] = useState(false);
+  const [locationGranted, setLocationGranted] = useState(false);
   const [chromeReclaimed, setChromeReclaimed] = useState(false);
   const maybesFacet = useHandoff<true>();
   const errand = useHandoff<PlaceErrand>();
@@ -212,13 +231,24 @@ export function MapScopeProvider({ children }: { children: ReactNode }) {
       clearFocus: () => setFocusPlaceId(null),
       locationOffered,
       markLocationOffered: () => setLocationOffered(true),
+      locationGranted,
+      setLocationGranted,
       chromeReclaimed,
       setChromeReclaimed,
       maybesFacet,
       errand,
       errandResult,
     }),
-    [allDays, focusPlaceId, locationOffered, chromeReclaimed, maybesFacet, errand, errandResult],
+    [
+      allDays,
+      focusPlaceId,
+      locationOffered,
+      locationGranted,
+      chromeReclaimed,
+      maybesFacet,
+      errand,
+      errandResult,
+    ],
   );
   return <MapScopeContext.Provider value={value}>{children}</MapScopeContext.Provider>;
 }

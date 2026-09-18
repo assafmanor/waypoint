@@ -74,6 +74,12 @@ class FakeMapLibreMap {
   getMaxZoom() {
     return undefined;
   }
+  /** Which way is up (ADR-0234). This fake stands in for the MapLibre instance, so it
+   *  speaks MapLibre's own `(-180, 180]` and the normalising happens above it. */
+  bearing = 0;
+  getBearing() {
+    return this.bearing;
+  }
   getBounds() {
     const b = this.viewport;
     if (!b) return undefined;
@@ -84,9 +90,12 @@ class FakeMapLibreMap {
       getWest: () => b.west,
     };
   }
-  jumpTo(at: { center?: [number, number]; zoom?: number }) {
+  jumpTo(at: { center?: [number, number]; zoom?: number; bearing?: number }) {
     if (at.center) this.centre = { lat: at.center[1], lng: at.center[0] };
     if (at.zoom != null) this.zoom = at.zoom;
+    // A stated bearing is a command and a missing one leaves the angle alone — MapLibre's
+    // own contract, and what `CameraAt.bearing` being optional encodes (ADR-0234).
+    if (at.bearing != null) this.bearing = at.bearing;
   }
   /** The adapter hands MapLibre `[[west, south], [east, north]]`, so that is what a test
    *  reading `fits` gets — and reading it is how "the camera framed the LEG, not the stop"
@@ -207,6 +216,36 @@ class FakeMapLibreMap {
     this.zoom = zoom;
     this.handlers.get('zoom')?.forEach((fn) => fn());
   }
+  /** **A two-finger twist** (ADR-0234) — the gesture that has always been able to turn this
+   *  map and that nothing could undo. `rotate` is MapLibre's own per-frame event, which is
+   *  what the compass needle reads, so a test can turn the ground exactly as a finger does. */
+  twistTo(bearing: number) {
+    this.bearing = bearing;
+    this.handlers.get('rotate')?.forEach((fn) => fn());
+  }
+}
+
+/** **jsdom has no `DeviceOrientationEvent`**, so heading-up is `unsupported` here unless a
+ *  test says otherwise — which is honest (a desktop without a magnetometer is the ordinary
+ *  case) and useless for testing the mode. This installs the constructor without a
+ *  `requestPermission`, i.e. the Chrome/Android shape where the events simply flow; the iOS
+ *  shape is the one `useDeviceHeading`'s own spec covers. */
+function withOrientationSensor() {
+  const existing = Reflect.get(window, 'DeviceOrientationEvent');
+  Object.defineProperty(window, 'DeviceOrientationEvent', {
+    value: class {},
+    configurable: true,
+    writable: true,
+  });
+  return () => {
+    if (existing === undefined) Reflect.deleteProperty(window, 'DeviceOrientationEvent');
+    else
+      Object.defineProperty(window, 'DeviceOrientationEvent', {
+        value: existing,
+        configurable: true,
+        writable: true,
+      });
+  };
 }
 
 /** The map the next `paint()` hands over. Always present — a test that wants no map is not a
@@ -1323,24 +1362,98 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
   });
 
   // ADR-0126 §6 splits the one control that branched on a permission you could not
-  // see. Both are named icon controls, and the pair is not ADR-0109 §1's rejected one:
-  // that objection is about confusable silhouettes, which a crosshair and four corner
-  // brackets are not.
-  it('the two camera controls are named icon controls, not raw glyphs', () => {
+  // see. All three are named icon controls, and they are not ADR-0109 §1's rejected
+  // pair: that objection is about confusable silhouettes, and a round crosshair, four
+  // rectangular corner brackets and a solid needle share none.
+  it('the camera controls are named icon controls, not raw glyphs', () => {
     paint();
-    for (const name of [t.map.locate, t.map.frameAll]) {
+    for (const name of [t.map.locate, t.map.frameAll, t.map.orient.follow]) {
       const button = screen.getByRole('button', { name });
       expect(button.querySelector('svg.icon')).toBeTruthy();
       expect(button.textContent).toBe('');
     }
   });
 
-  // Both live in ONE cluster, which is what lets ADR-0122 §6's one-floating-object
-  // rule keep working with a single extra selector instead of a third one.
-  it('the camera controls are one band, not two independently placed objects', () => {
+  // All three live in ONE cluster, which is what lets ADR-0122 §6's one-floating-object
+  // rule keep working with a single extra selector instead of a fourth one — and it is
+  // ADR-0126 §1's own prediction, that a third piece of furniture joins this band rather
+  // than opening a second, arriving (ADR-0234 §2).
+  it('the camera controls are one band, not three independently placed objects', () => {
     paint();
     expect(document.querySelectorAll('.map-camctl')).toHaveLength(1);
-    expect(document.querySelectorAll('.map-camctl > button')).toHaveLength(2);
+    expect(document.querySelectorAll('.map-camctl > button')).toHaveLength(3);
+  });
+
+  // ── THE COMPASS (ADR-0234) ───────────────────────────────────────────────────
+  // **Always in the band**, which is the §2 decision and the one a reader is most likely
+  // to expect the other way round: Google's compass appears only off north, and that
+  // variant deletes the only way INTO heading-up, because the control would be absent in
+  // exactly the state you enter that mode from.
+  it('the compass is present at north, because that is the state you enter following from', () => {
+    paint();
+    const compass = screen.getByRole('button', { name: t.map.orient.follow });
+    expect(compass.className).toContain('map-compass');
+    expect(compass.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  // The label says what the TAP DOES, and changes with the state — correct here (the
+  // control has no visible text) and deliberately unlike `באזור`, whose visible count must
+  // stay its accessible name (ADR-0126 §4).
+  it('a tap at north starts following, and the label then offers the way back', async () => {
+    const restore = withOrientationSensor();
+    try {
+      paint();
+      fireEvent.click(screen.getByRole('button', { name: t.map.orient.follow }));
+      const compass = await screen.findByRole('button', { name: t.map.orient.north });
+      expect(compass.getAttribute('aria-pressed')).toBe('true');
+      expect(compass.className).toContain('on');
+    } finally {
+      restore();
+    }
+  });
+
+  // **The defect the whole ADR starts from**: a two-finger twist has always been able to turn
+  // this map — `touchZoomRotate` is a MapLibre default `MapCanvas` never switched off — and
+  // nothing read the bearing back, so there was no control, no cue and no way home.
+  it('a twist offers the way back to north, which nothing did before', () => {
+    paint();
+    const map = mapStub.current;
+    // At rest the tap offers to FOLLOW, because there is nothing to undo.
+    expect(screen.getByRole('button', { name: t.map.orient.follow })).toBeTruthy();
+    act(() => map.twistTo(40));
+    expect(screen.getByRole('button', { name: t.map.orient.north })).toBeTruthy();
+  });
+
+  // §4: a reset changes the ANGLE and nothing else. The difference between "put the map
+  // back" and "move the map", and every other camera verb on this surface does the second.
+  //
+  // Under reduced motion a camera move is a single `moveCamera` to the destination — a real
+  // shipped path (ADR-0098 §4), not a test-only shortcut — so this asks WHERE the camera
+  // ended up rather than racing its 480ms ease through jsdom's timer-driven rAF. A
+  // `waitFor` here would be a 480ms animation under a 1000ms bound, i.e. a spec that passes
+  // on an idle machine and loses on a loaded runner: the exact shape of the failure this
+  // branch had already spent a round on in `ShareItinerarySheet.test.tsx`.
+  it('a reset turns the map to north and moves neither centre nor zoom', () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true }) as unknown as MediaQueryList);
+    paint();
+    const map = mapStub.current;
+    const before = { centre: { ...map.centre }, zoom: map.zoom };
+    act(() => map.twistTo(40));
+    fireEvent.click(screen.getByRole('button', { name: t.map.orient.north }));
+    expect(map.bearing).toBe(0);
+    expect(map.centre).toEqual(before.centre);
+    expect(map.zoom).toBe(before.zoom);
+  });
+
+  // The needle is CSS reading a custom property the pane writes on the map's own `rotate`,
+  // never React state — a bearing in state would re-render this subtree on every frame of a
+  // turn, on a screen that already re-renders every second.
+  it('the bearing reaches the needle as a custom property, not as state', () => {
+    paint();
+    const map = mapStub.current;
+    act(() => map.twistTo(40));
+    const pane = document.querySelector('.map-pane') as HTMLElement;
+    expect(pane.style.getPropertyValue('--map-bearing')).toBe('40deg');
   });
 
   // `points` falls back to `[me]` when the day has no pins of its own, so a frame

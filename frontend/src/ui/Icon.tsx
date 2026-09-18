@@ -18,6 +18,7 @@ export type IconName =
   | 'close'
   | 'locate'
   | 'frame'
+  | 'compass'
   | 'pin'
   | 'external'
   | 'eye'
@@ -126,6 +127,14 @@ const PATHS: Record<IconName, string> = {
   // CONFUSABLE silhouettes, and these two share none).
   frame:
     'M4 9V6a2 2 0 0 1 2-2h3 M15 4h3a2 2 0 0 1 2 2v3 M20 15v3a2 2 0 0 1-2 2h-3 M9 20H6a2 2 0 0 1-2-2v-3',
+  // Which way is up (ADR-0234) — the band's third camera control. A north arrow: the
+  // cartographer's mark, and a SOLID one, so it joins `FILLED` below beside `star` and
+  // `flight`. Its silhouette is what keeps three icon-only controls apart at a glance —
+  // the crosshair is round, the frame rectangular, and this is a point. The notch in its
+  // base is not decoration: it is what makes the arrow read as a needle with a tail rather
+  // than as a play triangle, and it is the only asymmetry telling the reader which end is
+  // north when the whole glyph is rotated to an arbitrary angle.
+  compass: 'M12 2.6 18 21.4 12 17.2 6 21.4Z',
   // `מפה` — show a place on OUR map (ADR-0121 §8). Deliberately the Waypoint
   // marker's own silhouette (ADR-0087: a teardrop, tip down, with a centre dot), so
   // the control wears the shape of the thing it takes you to. A real SVG, never the
@@ -376,7 +385,7 @@ const PATHS: Record<IconName, string> = {
   // Authored opening to the LEFT: the cluster's rows sit to the trailing side in RTL.
   bracket: 'M16.4 4.2h-4.8a2 2 0 0 0-2 2v11.6a2 2 0 0 0 2 2h4.8 M9.6 12H5.4',
 };
-const FILLED: ReadonlySet<IconName> = new Set(['caret', 'flight', 'star']);
+const FILLED: ReadonlySet<IconName> = new Set(['caret', 'compass', 'flight', 'star']);
 const ROTATE: Record<Dir, number> = { down: 0, left: 90, up: 180, right: 270 };
 
 /**

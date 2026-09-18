@@ -1077,6 +1077,48 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       expect(getCurrentPosition).not.toHaveBeenCalled();
     });
 
+    // The other half of the rule above, and the one that shipped broken (owner, 2026-09-18:
+    // _"the map doesn't always show the current location pin, and sometimes we should click
+    // on the current location button"_). `לא עכשיו` is remembered across a tab change; CONSENT
+    // must not be turned into the same kind of refusal, because re-asking under it raises no
+    // dialog at all. jsdom has no Permissions API, so this is exactly the Safari shape: the
+    // remounted screen knows consent only from the session's own memory of it.
+    it('consent is re-used on every visit: the fix comes back with no tap', () => {
+      seedNear();
+      geoFix = HERE;
+      const view = render(wrap(<MapView />));
+      fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.allow }));
+      expect(getCurrentPosition).toHaveBeenCalledTimes(1);
+      expect(document.querySelector('.map-dist')).toBeTruthy();
+
+      view.rerender(wrap(<div />));
+      view.rerender(wrap(<MapView />));
+      // No card, no locate tap — and a fix in hand again.
+      expect(screen.queryByText(t.map.near.prompt.body)).toBeNull();
+      expect(getCurrentPosition).toHaveBeenCalledTimes(2);
+      expect(document.querySelector('.map-dist')).toBeTruthy();
+    });
+
+    // …and a permission revoked in browser settings costs ONE silent refusal, not one per
+    // visit: the session's memory of consent is withdrawn by the outcome that withdrew it.
+    it('a refusal withdraws the remembered consent', () => {
+      seedNear();
+      geoFix = HERE;
+      const view = render(wrap(<MapView />));
+      fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.allow }));
+      expect(getCurrentPosition).toHaveBeenCalledTimes(1);
+
+      geoFix = null;
+      geoErrorCode = 1; // PERMISSION_DENIED — revoked between visits
+      view.rerender(wrap(<div />));
+      view.rerender(wrap(<MapView />));
+      expect(getCurrentPosition).toHaveBeenCalledTimes(2);
+
+      view.rerender(wrap(<div />));
+      view.rerender(wrap(<MapView />));
+      expect(getCurrentPosition).toHaveBeenCalledTimes(2);
+    });
+
     it('the chip states the reason first, and only then asks the device', () => {
       seedNear();
       geoFix = HERE;

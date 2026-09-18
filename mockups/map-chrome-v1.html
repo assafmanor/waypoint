@@ -9641,7 +9641,13 @@ body {
       const listEl = document.getElementById('maplist');
 
       let stop = 'half';
-      let chrome = 'new';
+      // `chromeState`, not `chrome`: a top-level `let chrome` collides with the
+      // `window.chrome` a REAL browser defines, and the whole script then throws
+      // `Identifier 'chrome' has already been declared` before its first line runs —
+      // no stops, no toggles, no measurements, a static picture with no error visible.
+      // Playwright's headless SHELL has no `window.chrome`, which is exactly why the
+      // render harness never saw it. Swept 2026-09-18: these were the only two files.
+      let chromeState = 'new';
       let sortBy = 'schedule';
       let planMode = false;
       const allDays = () => scopechip.classList.contains('on');
@@ -9730,7 +9736,7 @@ body {
       // AS SHIPPED vs THE DESIGN: one control that branches invisibly and a 24px
       // readout, against two named controls and a 44px band.
       function setChrome(which) {
-        chrome = which;
+        chromeState = which;
         framebtn.hidden = which === 'old';
         areabtn.classList.toggle('mk-flat', which === 'old');
         document
@@ -9782,7 +9788,7 @@ body {
         const mark = (sel, pred) =>
           document.querySelectorAll(sel).forEach((b) => b.classList.toggle('on', pred(b)));
         mark('[data-stop]', (b) => b.dataset.stop === stop);
-        mark('[data-chrome]', (b) => b.dataset.chrome === chrome);
+        mark('[data-chrome]', (b) => b.dataset.chrome === chromeState);
         mark('[data-camctl]', (b) => b.dataset.camctl === (paneEl.dataset.camctl || 'row'));
         mark('[data-sort]', (b) => b.dataset.sort === sortBy);
         mark('[data-facets]', () => !facetstrip.hidden);
