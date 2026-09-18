@@ -14,11 +14,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { TripSnapshot } from '@waypoint/shared';
+import type { TripStreamHandlers } from '../lib/ws';
 import { TRIP } from '../fixtures';
 import { API_TIMEOUT_MS, STAND_IN_AFTER_MS } from '../constants';
 import { t } from '../i18n/he';
 
-const h = vi.hoisted(() => ({ readCachedSnapshot: vi.fn() }));
+const h = vi.hoisted(() => ({
+  readCachedSnapshot: vi.fn(),
+  /** The handlers `TripReady` hands the socket, so a test can drive a frame into it. */
+  stream: { handlers: null as TripStreamHandlers | null },
+}));
 
 vi.mock('../lib/cache', () => ({
   cacheSnapshot: vi.fn().mockResolvedValue(undefined),
@@ -39,7 +44,12 @@ vi.mock('../lib/outbox', () => ({
   restOrQueue: vi.fn(),
   OUTBOX_VERB: {},
 }));
-vi.mock('../lib/ws', () => ({ openTripStream: () => () => {} }));
+vi.mock('../lib/ws', () => ({
+  openTripStream: (_tripId: string, _seq: string, handlers: TripStreamHandlers) => {
+    h.stream.handlers = handlers;
+    return () => {};
+  },
+}));
 vi.mock('../lib/useClock', () => ({
   getNow: () => Date.parse('2026-07-08T12:00:00+09:00'),
   useClock: () => Date.parse('2026-07-08T12:00:00+09:00'),
@@ -48,7 +58,7 @@ vi.mock('../lib/useClock', () => ({
 vi.mock('./auth-state', () => ({ useAuth: () => ({ me: null }) }));
 vi.mock('../ui/Toast', () => ({ useToast: () => () => {} }));
 
-import { TripProvider } from './trip-state';
+import { TripProvider, useTrip } from './trip-state';
 
 const CACHED: TripSnapshot = {
   trip: TRIP,
@@ -75,6 +85,7 @@ const NEVER = new Promise<never>(() => {});
 beforeEach(() => {
   vi.useFakeTimers();
   h.readCachedSnapshot.mockReset().mockResolvedValue(CACHED);
+  h.stream.handlers = null;
   vi.stubGlobal(
     'fetch',
     vi.fn(() => NEVER),
@@ -151,5 +162,52 @@ describe('boot with no reception (field report #22)', () => {
 
     expect(screen.getByText(t.snapshot.errorTitle)).toBeTruthy();
     expect(screen.getByText(t.feedback.retry)).toBeTruthy();
+  });
+});
+
+/**
+ * **Standing in is only half a promise: the app has to come BACK.**
+ *
+ * The two paths that clear the cue are both network reads a bad link can lose — the mount
+ * catch-up swallows its own failure, and `onResync` fires only when the server is AHEAD of the
+ * cached cursor. So a boot that stood in, connected first try and had missed nothing had no
+ * signal left: `navigator.onLine` never flipped, the socket never dropped, and the trip read
+ * offline for the rest of the session while fully connected. `onLive` is that signal.
+ */
+function OfflineCueProbe() {
+  const { usingCachedSnapshot } = useTrip();
+  return <div>{usingCachedSnapshot ? 'CUE:on' : 'CUE:off'}</div>;
+}
+
+describe('coming back online after standing in', () => {
+  it('clears the offline cue on a live socket, with no catch-up and nothing to resync', async () => {
+    renderBoot(<OfflineCueProbe />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(STAND_IN_AFTER_MS);
+    });
+    // Standing in on cached data — and `fetch` still never answers, so the mount catch-up
+    // this would otherwise depend on is hanging exactly as it would on a bad link.
+    expect(screen.getByText('CUE:on')).toBeTruthy();
+
+    await act(async () => {
+      h.stream.handlers?.onLive?.();
+    });
+
+    expect(screen.getByText('CUE:off')).toBeTruthy();
+  });
+
+  // The cue is about the DATA, not the socket: a hello that is ahead routes to `onResync`, and
+  // until that refetch lands we are still looking at what we cached.
+  it('keeps the cue up while a resync is still in flight', async () => {
+    renderBoot(<OfflineCueProbe />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(STAND_IN_AFTER_MS);
+    });
+
+    await act(async () => {
+      h.stream.handlers?.onResync();
+    });
+
+    expect(screen.getByText('CUE:on')).toBeTruthy();
   });
 });
