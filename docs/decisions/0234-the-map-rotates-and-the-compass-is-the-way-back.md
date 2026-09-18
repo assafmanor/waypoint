@@ -1,6 +1,6 @@
 # 0234 — The map already rotates; the compass is the way back, and heading-up is the same control
 
-**Status:** Accepted — designed 2026-09-18. **Design only: nothing in §1–§7 is built.** The two defects in the same report (§8, §9) _are_ built and shipped in the same change.
+**Status:** Accepted — designed 2026-09-18 and **built the same day, at the owner's approval of the mockup** (see the build log). §8 and §9 shipped with the design. The rendered compass has not been seen on a real device and nothing below claims otherwise — the device pass at the foot still owns its three questions.
 **Date:** 2026-09-18
 **Amends** [0126](0126-map-canvas-chrome-two-camera-controls-and-an-area-sort.md) **§1** (the furniture band gains its first third member, which §1 predicted and never measured) and **§8** (its "no semantic colour" clause now has a second control to cover). **Amends** [0186](0186-the-map-is-ours-and-it-works-on-a-plane.md) **§2** in the honest direction: the renderer's rotation was inherited, not chosen, and this is where it gets chosen.
 Relates [0017](0017-mobile-first-device-targets.md) (the 44×44 floor), [0028](0028-plan-violet-color-budget-dark-ready.md) (the colour budget), [0109](0109-map-tab-design.md) §6 (the reason-first card is the only thing allowed to ask for **location**), [0121](0121-embedded-map-phase-6-design.md) §12, [0123](0123-map-pin-size-is-a-share-of-the-canvas.md) (why an upright teardrop is load-bearing), [0129](0129-map-camera-moves-like-a-camera.md) §4 (`sameCamera`), [0145](0145-the-canvas-takes-a-one-finger-zoom.md) (the gesture seam this rotation passes through), [0207](0207-a-fix-may-withdraw-a-claim-it-may-not-make-one.md) §4 (a fix may not claim more than it knows).
@@ -115,3 +115,70 @@ Reading `geo.permission === 'granted'` alone would have fixed Chrome and left Sa
 - **The mockup shipped unscrollable and that is worth recording, because the failure is silent by construction.** `tokens.css` declares `html, body { overflow: clip }` (ADR-0200 §1) and every mockup inlines it; `clip` is not a scroll container, so 5.6k px of content sat behind an 844px window — unreachable rather than hidden — with no console error, a complete measurement table, and a full-page screenshot that painted all of it. `references/pitfalls.md` has documented precisely this since 2026-08. Only a person trying to scroll catches it, and one did. Fixed with the canonical block; a sweep of all 176 mockups found no others.
 - **`--pin-base` has never been set in the map mockup lineage**, which this file needed because its cone is a share of it. The app writes `clamp(34px, 0.11 * 100cqh, 56px)` from `pinSizeCss()` onto `.map-screen`; **13 of the 21 mockups that draw a `.map-pin` omit it**, so their pins sit at the 34px floor — right by coincidence at `half`, and wrong at the `map` stop, where the app draws 53–56px. Set in this file only (it resolves against the pane's existing size container: 34px at `half`, 53px at `map`); the other twelve are a backlog line, not this change's to sweep.
 - **The device pass owns three things, and one of them is the heaviest question here:** whether a needle reads over real tiles in both themes; whether continuously following the device's heading is legible at all on a phone in a moving hand, or whether it reads as a jitter (and therefore at what rate a bearing should be eased); and whether the reset's meaning survives when the map is only 5° off. A faked base cannot settle any of them.
+
+## Build log (2026-09-18)
+
+§1–§7 are what shipped and none of them needed reversing. What the build had to decide or
+found out is here rather than in a new ADR, because none of it changes a decision this one
+made.
+
+1. **`CameraAt.bearing` is optional, and that is the load-bearing choice.** Almost every
+   camera move in this app is a pan or a fit with no opinion about the angle. `undefined`
+   means "leave it where it is", so every existing call site stays bearing-blind by
+   construction and only the orientation control ever states a number — where a required
+   field would have made ~10 call sites state one they do not care about, and the first to
+   state it wrongly would silently straighten a map the user had turned. `cameraFrame`
+   carries the key through only when it was asked for, and a spec pins that a fit leaves a
+   turned map turned.
+
+2. **`sameCamera` gained the angle, and without it the ease would overwrite a twist.** That
+   function is how "a finger wins" is enforced (ADR-0121 §7), and a two-finger twist moves
+   **only** the bearing — so the check was blind on the one axis nothing had ever read.
+   Compared over the short arc, so 359.9999 and 0.0001 are one camera rather than a full
+   turn apart.
+
+3. **A real defect the deterministic test caught, and the racy version of that test would
+   not have.** `easeTo`'s reduced-motion branch writes a single `moveCamera` to the
+   destination — and it shipped without `bearing` in it. For everyone with reduced motion on
+   (and for a map that has not rendered yet) the reset turned the **needle** and left the
+   ground where it was: the whole of the feature, silently absent, on a path nothing on
+   screen would have reported. The first version of the spec used `waitFor` around the 480ms
+   ease, which passed by racing it; rewriting it onto the reduced-motion path — a real
+   shipped path, not a test shortcut — is what made it fail. Trap-checked both ways.
+
+4. **The two high-frequency values never touch React.** `--map-bearing` and `--me-heading`
+   are written to the pane's style on the map's own `rotate` event, in `PinDensity`'s exact
+   shape; React sees only `atNorth`, a boolean that flips when the map crosses into or out
+   of north, and `setState` bails out on an identical value so a turn costs no renders at
+   all. `data-heading` goes on the **pane** rather than on `.map-me`, which keeps `MeMarker`
+   free of orientation entirely — no prop, no state, no re-render per sample on the marker
+   set whose re-diff is the expensive thing here (ADR-0122 §9's discipline, one control over).
+
+5. **`turnTo` records its own write, and that is not bookkeeping.** Following jumps rather
+   than eases, because the device reports a heading many times a second. An unrecorded
+   bearing write is indistinguishable from a finger, so without the `wrote` update, following
+   the compass while a pin-tap pan was still easing would have cancelled the pan on its first
+   heading sample. It deliberately does not cancel a running ease: a pan and a turn are about
+   different axes and can honestly happen at once.
+
+6. **Two sign traps in the sensor, both of which look like CSS bugs on screen.** iOS reports
+   `webkitCompassHeading`, already clockwise from true north; everyone else reports `alpha`
+   on `deviceorientationabsolute`, which is **counter**-clockwise, so a heading is
+   `360 - alpha` — read the other way the compass turns the wrong way. And smoothing must run
+   over the short arc: a plain weighted average of 350° and 10° is 180°, i.e. the needle
+   swings through south to cross north. Both are pure functions with their own spec, because
+   neither throws.
+
+7. **`normalizeBearing` returned `-0`** for an exact `-360` (`-0 < 0` is false, so a
+   `< 0 ? x + 360 : x` branch skips the correction). Harmless in CSS and not harmless in
+   `sameCamera`, where `Object.is(-0, 0)` is false and the value decides whether a finger
+   moved the map. `((x % 360) + 360) % 360` instead. Found by the spec, not by reading.
+
+8. **The mockup's two feel calls shipped as named constants**, not as literals in a
+   `calc()`: `MAP_ORIENT.CONE_SHARE` (0.95 of `--pin-base`) and the needle riding `--t-base`.
+   The device pass moves numbers, not code.
+
+9. **What the build did NOT do**, and each is deliberate: nothing about pitch (§7); no change
+   to `MAP_CONTROLS_H`, the fit padding or the stops, since the band does not grow on the
+   block axis; and no screen-level state at all — the whole feature is pane-local, so
+   `screens/Map.tsx` is untouched.

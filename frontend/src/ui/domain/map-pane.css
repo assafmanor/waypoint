@@ -1022,6 +1022,8 @@
    no `--pin-u` of its own, so it reads the base directly. */
 .map-me {
   display: block;
+  /* The cone below positions against this (ADR-0234 §3). */
+  position: relative;
   width: calc(var(--pin-base, 34px) * 0.41);
   height: calc(var(--pin-base, 34px) * 0.41);
   border-radius: 999px;
@@ -1029,6 +1031,45 @@
   border: calc(var(--pin-base, 34px) * 0.074) solid var(--card);
   box-shadow: 0 0 0 calc(var(--pin-base, 34px) * 0.21)
     color-mix(in srgb, var(--me) 16%, transparent);
+}
+/* ── WHICH WAY YOU ARE FACING (ADR-0234 §3) ─────────────────────────────────────
+   The ground rotates and nothing on it does — MapLibre's markers are viewport-aligned by
+   default, which is what keeps every teardrop, tag and numeral upright for free, and a
+   `pin-tag` reading `היעד הבא` at 40° is not text any more. The me-dot is the ONE
+   exception, because its angle is a fact about the world rather than about the camera.
+
+   **Present only when a heading is known.** `data-heading` is set on the PANE — not on this
+   element — because the pane is what the imperative painter already holds, and writing it
+   there keeps `MeMarker` free of orientation entirely: no prop, no state, no re-render per
+   sample on a marker set whose re-diff is the expensive thing here. Absent when no heading
+   is known, so a cone never points at a direction we are guessing — the same rule ADR-0207
+   §4 applies to a fix's own age, on the other axis.
+
+   `--me-heading` is the DEVICE's heading minus the MAP's bearing: in heading-up those are
+   equal and the cone points straight up the screen, which is what heading-up means, and
+   while the map is merely twisted it keeps pointing where you are actually facing. Sized as
+   a share of `--pin-base` like everything else on this canvas (ADR-0123), never a px. */
+.map-pane[data-heading] .map-me::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 50%;
+  width: calc(var(--pin-base, 34px) * var(--me-cone, 0.95));
+  height: calc(var(--pin-base, 34px) * var(--me-cone, 0.95));
+  translate: -50% 0;
+  rotate: var(--me-heading, 0deg);
+  transform-origin: 50% 100%;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--me) 78%, transparent),
+    color-mix(in srgb, var(--me) 4%, transparent)
+  );
+  clip-path: polygon(50% 0%, 96% 100%, 4% 100%);
+  /* Under the dot, never over it: the dot is where you ARE and the cone is only which way
+     you point. Inside the canvas's own isolation, so this competes with nothing but its
+     own marker. */
+  z-index: -1;
+  pointer-events: none;
 }
 
 /* ── OUR CONTROLS, NOT GOOGLE'S (§12, restated by ADR-0126) ────────────────────
@@ -1063,10 +1104,16 @@
   gap: 8px;
 }
 .map-recenter,
-.map-frame {
+.map-frame,
+.map-compass {
   /* 44, not the 38 that shipped: design-language's floor is 44×44 and the old single
      control was already under it. Met by geometry — never by a hit area painted
-     smaller than the box it claims. */
+     smaller than the box it claims.
+
+     **The compass joins this list rather than copying it** (ADR-0234 §1, and ADR-0126 §1's
+     own prediction that a third piece would join the band). Three members of one band have
+     to read as one: same box, same fill, same hairline, same shadow. The real diff for this
+     control is this selector and the four rules below. */
   width: var(--map-furniture-h, 44px);
   height: var(--map-furniture-h, 44px);
   display: grid;
@@ -1083,6 +1130,45 @@
 .map-frame .icon {
   width: 20px;
   height: 20px;
+}
+
+/* ── THE NEEDLE IS THE STATE (ADR-0234 §1) ──────────────────────────────────────
+   ADR-0126 §1 exists because one control held two actions — `recentre` was
+   `if (me) focus(me); else reframe(points)` — so a second control that holds two has to
+   answer it. It does: that defect was never the COUNT of actions, it was that the state
+   choosing between them was a permission, and a permission has no representation on a
+   canvas. A bearing has exactly one, it is drawn here, and it is never not drawn.
+
+   `rotate` on the GLYPH and never on the button: a 44px circle with a hairline turning
+   under the finger is a wobble, and a touch target must not rotate out from under a press.
+   The needle carries the NEGATIVE of the camera's bearing, because it points at true north
+   rather than at the top of the screen. `--map-bearing` is written by `MapPane` from the
+   camera on its own idle, never from React state — a bearing in state would re-render the
+   pane on every frame of a turn. */
+.map-compass .icon {
+  width: 22px;
+  height: 22px;
+  rotate: calc(-1 * var(--map-bearing, 0deg));
+  transition: rotate var(--t-base) var(--ease-standard);
+}
+/* The reset is a camera move and the camera eases it, so the glyph must not race it — one
+   duration token, never a new number. Under reduced motion the needle LANDS rather than
+   sweeps, which is the same trade `easeTo` itself makes (ADR-0098 §4: the resting position
+   carries the whole meaning either way). */
+@media (prefers-reduced-motion: reduce) {
+  .map-compass .icon {
+    transition: none;
+  }
+}
+/* FOLLOWING YOUR HEADING — `.map-areacount.on`'s own three declarations and the same
+   `--idx-accent`, because a control that hides the fact that it is on is the defect
+   ADR-0119 exists to prevent. Deliberately NOT teal: ADR-0126 §8 settled that the camera
+   controls are chrome, and teal is location (ADR-0028). Which way the map faces is not a
+   place. */
+.map-compass.on {
+  background: var(--idx-accent);
+  border-color: var(--idx-accent);
+  color: var(--idx-accent-text);
 }
 
 /* THE AREA COUNT (§9). ADR-0106 §4 decided pan/zoom IS the area filter and no chip

@@ -6,7 +6,7 @@ Owner, with three screenshots of the Map tab at `half`:
 2. _"We need to add a button for changing the orientation of the map: like in Google maps, it should be a compass of some sort where there's two modes: the orientation of our current location pin, and a reset to default. I think that we should mockup this first"_
 3. _"The map doesn't always show the current location pin, and sometimes we should click on the current location button, please investigate and fix"_
 
-(1) and (3) shipped. (2) is drawn and decided but **not built**, which is what the owner asked for.
+(1) and (3) shipped immediately. (2) was drawn and decided first, as asked, and then built in the same session once the owner approved the mockup.
 
 ## What each one actually was
 
@@ -54,8 +54,49 @@ The owner opened it and asked one question: _"Did you follow the writing mockups
 
 The shape all three share: **each one produced a plausible-looking page, and the checks I ran were the ones that cannot see the failure.** A full-page screenshot cannot see a page you cannot scroll; an undefined custom property reads as a working control; a coincidence at the default stop reads as fidelity.
 
+## The build (same session, after the owner approved the mockup)
+
+Owner: _"Approved, build"_. §1–§7 shipped; the design needed no reversing. Three things the
+build found that the design could not have, and the shape they share is worth more than any
+of them individually: **each was invisible on screen and silent in the type system.**
+
+**`easeTo`'s reduced-motion branch dropped the bearing.** That branch writes a single
+`moveCamera` to the destination, and it shipped without `bearing` in it — so for everyone
+with reduced motion on, and for a map that has not rendered yet, the reset turned the
+**needle** and left the ground where it was. The whole feature, absent, on a path nothing
+reports.
+
+What caught it is the part worth keeping: my first version of that spec wrapped the 480ms
+ease in a `waitFor`, and it **passed** — by racing the animation. That is precisely the
+defect this same branch had just spent a round on in `ShareItinerarySheet.test.tsx`, written
+again by the person who had just written it up. Rewriting the assertion onto the
+reduced-motion path — a real shipped path, not a test shortcut — made it deterministic, and
+the determinism is what made it fail. Trap-checked both ways.
+
+**`normalizeBearing` returned `-0`.** `-0 < 0` is false, so a `< 0 ? x + 360 : x` branch
+skips its own correction for an exact `-360`. Harmless in CSS; not harmless in `sameCamera`,
+which compares with `Object.is` and decides from it whether a finger moved the map.
+
+**Two sign traps in the sensor, both of which read as CSS bugs.** iOS reports
+`webkitCompassHeading`, clockwise from true north; everyone else reports `alpha`, which is
+**counter**-clockwise — so a heading is `360 - alpha`, and read the other way the compass
+turns backwards. And smoothing has to cross north the short way: a weighted average of 350°
+and 10° is 180°, i.e. the needle swings through south. Both are pure functions with their own
+spec, because neither throws and both look like someone's minus sign in a stylesheet.
+
+**What did not need building:** any screen state. The whole feature is pane-local — the
+bearing comes from the camera, the heading from the device — so `screens/Map.tsx` is
+untouched, no prop changes on a tap (ADR-0122 §9), and the two high-frequency values go to
+the DOM as custom properties rather than through React, in `PinDensity`'s own shape. A
+bearing in state would have re-rendered the marker set on every frame of a turn.
+
+**Not seen on a device.** The compass has been rendered in the mockup and exercised by
+specs; a real magnetometer, a real tilted map and the question of whether following a heading
+is legible at all in a moving hand are the device pass's, and ADR-0234 still says so.
+
 ## What was deliberately not done
 
 - **Pitch.** `dragRotate` carries a tilt too, and tilting a map whose pins are DOM teardrops sized as a share of the canvas (ADR-0123) is a separate question. ADR-0234 §7 says so and stops there.
 - **Hoisting `useGeolocation`** into the provider so the fix itself survives a tab switch. It would also fix (3), and it changes what ADR-0006 promises about where a position lives. Remembering consent needs none of that.
-- **Building the compass.** The owner asked to mock it first. `mockups/map-orientation-v1.html` and ADR-0234 §1–§7 are the whole deliverable; the build's largest piece is named in §7 and it is not the CSS — it is teaching `sameCamera` (ADR-0129 §4) that a bearing write can be ours.
+- **Pitch, still.** `dragRotate` carries a tilt as well as a turn, and tilting a canvas whose pins are DOM teardrops sized as a share of it (ADR-0123) is its own question — quite possibly answered by switching it off. ADR-0234 §7 says so and the build did not touch it.
+- **Anything at the screen level.** The compass is pane-local by construction, and keeping it that way is what makes it free on a surface that re-renders every second.

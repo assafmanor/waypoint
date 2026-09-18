@@ -549,6 +549,19 @@ export const t = {
     // are already looking at the map.
     frameOnPlace: 'התמקדות במקום הזה',
     frameAll: 'התאמת התצוגה לכל המקומות',
+    // **The compass, and the label says what the TAP DOES, not what the state is**
+    // (ADR-0234 §1). Three states, two actions: from north-up a tap starts following your
+    // heading, and from anywhere else it brings the map back. The label changes with the
+    // state, which is correct here and would be wrong on `באזור` — that control has visible
+    // text the label must not override (ADR-0126 §4), and this one has none but its needle.
+    orient: {
+      follow: 'סיבוב המפה לפי הכיוון שלכם',
+      north: 'החזרת המפה לצפון',
+      // The one thing the tap cannot deliver. Heading-up needs the device's orientation,
+      // which is a separate permission from the location one, and a refusal leaves the
+      // control doing its other job rather than leaving it dead.
+      denied: 'אין גישה לחיישן הכיוון · אפשר עדיין להחזיר את המפה לצפון',
+    },
     // The canvas card's own way out (ADR-0182's device pass). The card was already dismissible
     // three ways — a tap on blank canvas, system back, selecting something else — and none of
     // them is visible on it. Names the card, because `סגירה` alone sits beside a filter close

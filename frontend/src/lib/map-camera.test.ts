@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   cameraFrame,
   focusBoundsFor,
+  normalizeBearing,
+  shortestTurn,
   boundsContain,
   boundsOfPoints,
   centreOfPoints,
@@ -755,5 +757,74 @@ describe('the selected place stays in the middle of what you can see (ADR-0122 �
 
   it('rounds to whole pixels, like its twin', () => {
     expect(Number.isInteger(recentreInBand(CANVAS - 17.4, CANVAS, RESERVE, TOP, TOL))).toBe(true);
+  });
+});
+
+// ── WHICH WAY IS UP (ADR-0234) ────────────────────────────────────────────────
+// These two are where a bearing bug hides, because neither throws: the wrong sign gives a
+// compass that turns the wrong way, and the wrong arc gives one that spins the long way
+// round to cross north. Both look like a CSS problem on screen.
+describe('normalizeBearing', () => {
+  it('puts every angle on [0, 360)', () => {
+    expect(normalizeBearing(0)).toBe(0);
+    expect(normalizeBearing(360)).toBe(0);
+    expect(normalizeBearing(370)).toBe(10);
+    // MapLibre reports `(-180, 180]`, so a negative is the ordinary input here, not an edge.
+    expect(normalizeBearing(-90)).toBe(270);
+    expect(normalizeBearing(-360)).toBe(0);
+  });
+});
+
+describe('shortestTurn', () => {
+  it('goes the short way across north', () => {
+    expect(shortestTurn(350, 10)).toBe(20);
+    expect(shortestTurn(10, 350)).toBe(-20);
+  });
+
+  it('is zero for the same angle however it is written', () => {
+    expect(shortestTurn(40, 40)).toBe(0);
+    expect(shortestTurn(-10, 350)).toBe(0);
+  });
+
+  it('never asks for more than half a turn', () => {
+    for (const [from, to] of [
+      [0, 179],
+      [0, 181],
+      [270, 5],
+      [5, 270],
+    ]) {
+      expect(Math.abs(shortestTurn(from, to))).toBeLessThanOrEqual(180);
+    }
+  });
+
+  // Nothing recommends one direction over the other for a half turn; that it is the SAME
+  // every time is the whole property, so this pins the arithmetic's own answer.
+  it('resolves an exact half turn counter-clockwise, and always the same way', () => {
+    expect(shortestTurn(0, 180)).toBe(-180);
+    expect(shortestTurn(90, 270)).toBe(-180);
+  });
+});
+
+describe('cameraFrame, on the angle', () => {
+  const AT = { center: { lat: 35.68, lng: 139.76 }, zoom: 12 };
+
+  // **The default, and the one that keeps every existing caller honest.** Almost every move
+  // in this app is a pan or a fit with no opinion about the angle; a frame that invented one
+  // would silently straighten a map the user had turned.
+  it('says nothing about the angle when neither end states one', () => {
+    expect(cameraFrame(AT, AT, 0.5).bearing).toBeUndefined();
+  });
+
+  it('interpolates the short way, like longitude one line above it', () => {
+    const from = { ...AT, bearing: 350 };
+    const to = { ...AT, bearing: 10 };
+    // Halfway across north is 0, not 180 — the same trap the longitude wrap exists for.
+    expect(cameraFrame(from, to, 0.5).bearing).toBeCloseTo(0, 5);
+  });
+
+  it('lands exactly on the target at the end', () => {
+    const from = { ...AT, bearing: 40 };
+    const to = { ...AT, bearing: 0 };
+    expect(cameraFrame(from, to, 1).bearing).toBe(0);
   });
 });

@@ -50,9 +50,11 @@ import {
   cameraFrame,
   boundsOfPoints,
   focusBoundsFor,
+  normalizeBearing,
   recentreInBand,
   panShiftForReserve,
   searchCameraTarget,
+  shortestTurn,
   zoomNoTighterThan,
   zoomStepIn,
   type CameraAt,
@@ -130,6 +132,16 @@ export interface MapCamera {
    *  zoom there** — restoring what Google's own double-click zoom did before we suppressed
    *  it. Omitted (or with no projection yet) it anchors at the centre. */
   stepZoomIn: (offsetPx?: WorldPoint) => void;
+  /** **Turn the map to an angle and change nothing else** (ADR-0234 §4) — eased, because a
+   *  reset is a discrete move the user asked for once. Centre and zoom are re-stated from
+   *  the live camera so the ease moves on one axis only. */
+  orientTo: (bearing: number) => void;
+  /** The same turn without the ease, for heading-up: the device reports a heading many
+   *  times a second and each one is a jump, not a journey (ADR-0234 §7). It records the
+   *  write so an in-flight ease does not mistake it for a finger. */
+  turnTo: (bearing: number) => void;
+  /** Which way is up, `[0, 360)`, or `undefined` before the map has a camera. */
+  readBearing: () => number | undefined;
 }
 
 export function useMapCamera(
@@ -254,7 +266,17 @@ export function useMapCamera(
       // No camera to interpolate FROM (a map that has not rendered) is not a failure —
       // there is simply nothing to ease across, so land on the target.
       if (!fromCenter || fromZoom == null || prefersReducedMotion()) {
-        map.moveCamera({ center: to.center, zoom: to.zoom });
+        // **`to.bearing` belongs here too, and leaving it out is a move that silently does
+        // nothing** (ADR-0234 §4). This branch is the whole of a reset for anyone with
+        // reduced motion on, and for a map that has not rendered yet — so dropping the one
+        // axis the reset is ABOUT means the compass turns the needle and not the map. The
+        // key stays absent when the caller stated none, which is what keeps every pan and
+        // fit bearing-blind.
+        map.moveCamera({
+          center: to.center,
+          zoom: to.zoom,
+          ...(to.bearing != null ? { bearing: to.bearing } : {}),
+        });
         going.current = null;
         wrote.current = null;
         return;
@@ -696,6 +718,64 @@ export function useMapCamera(
     [map, easeTo],
   );
 
+  /**
+   * **Turn the map to an angle, and change nothing else** (ADR-0234 §4).
+   *
+   * Not the centre, not the zoom — that is the whole difference between "put the map back"
+   * and "move the map", and every other verb in this hook does the second. It reads the
+   * live centre and zoom and re-states them so the ease has a `from` and a `to` that differ
+   * on one axis only.
+   *
+   * It goes through `easeTo` rather than easing itself, because ADR-0129 §3's invariant is
+   * ONE eased driver: a second rAF loop writing bearing while this one writes centre would
+   * be two drivers on one map, and the "a finger wins" check would see each as the other's
+   * finger.
+   */
+  const orientTo = useCallback(
+    (bearing: number) => {
+      if (!map) return;
+      const at = readCamera(map);
+      if (!at) return;
+      easeTo({ center: at.center, zoom: at.zoom, bearing: normalizeBearing(bearing) });
+    },
+    [map, easeTo],
+  );
+
+  /**
+   * **Follow: the same turn, without the ease and without losing the argument about who
+   * moved the map** (ADR-0234 §7).
+   *
+   * Heading-up writes a bearing at whatever rate the device reports it, so easing each one
+   * would queue eases on top of each other and never settle. This jumps — and then records
+   * the write in `wrote`, which is the part that is not optional: `sameCamera` is how an
+   * in-flight ease decides a finger has taken over, and an unrecorded bearing write is
+   * indistinguishable from a two-finger twist. Without this line, following the compass
+   * while a pin-tap pan is still easing would cancel the pan on its first heading sample.
+   *
+   * It deliberately does NOT cancel a running ease: a pan and a turn are about different
+   * axes and can honestly happen at once (tap a pin while following, and the map should
+   * both travel and stay heading-up). `easeTo`'s own frames re-state the bearing they were
+   * given, so the two do not fight — the ease carries `bearing: undefined` unless it was
+   * asked for one, and `moveCamera` leaves the angle alone in that case.
+   */
+  const turnTo = useCallback(
+    (bearing: number) => {
+      if (!map) return;
+      const to = normalizeBearing(bearing);
+      map.moveCamera({ bearing: to });
+      if (wrote.current) wrote.current = { ...wrote.current, bearing: to };
+    },
+    [map],
+  );
+
+  /** The angle the map is at now, `[0, 360)`, or `undefined` before it has one. Read on
+   *  demand rather than held in state: the compass needle is CSS reading a custom property,
+   *  and a bearing in React state would re-render the pane on every frame of a turn. */
+  const readBearing = useCallback(() => {
+    const raw = map?.getBearing();
+    return raw == null ? undefined : normalizeBearing(raw);
+  }, [map]);
+
   return {
     reframe,
     focus,
@@ -706,6 +786,9 @@ export function useMapCamera(
     locate,
     zoomTo,
     stepZoomIn,
+    orientTo,
+    turnTo,
+    readBearing,
   };
 }
 
@@ -714,7 +797,12 @@ function readCamera(map: CameraMap): CameraAt | null {
   const centre = map.getCenter();
   const zoom = map.getZoom();
   if (!centre || zoom == null) return null;
-  return { center: { lat: centre.lat(), lng: centre.lng() }, zoom };
+  const bearing = map.getBearing();
+  return {
+    center: { lat: centre.lat(), lng: centre.lng() },
+    zoom,
+    ...(bearing != null ? { bearing: normalizeBearing(bearing) } : {}),
+  };
 }
 
 /** Is the camera still where we put it? Compared with a tolerance, because a round trip
@@ -725,7 +813,14 @@ function sameCamera(a: CameraAt | null, b: CameraAt): boolean {
   return (
     Math.abs(a.zoom - b.zoom) < 0.001 &&
     Math.abs(a.center.lat - b.center.lat) < 1e-6 &&
-    Math.abs(a.center.lng - b.center.lng) < 1e-6
+    Math.abs(a.center.lng - b.center.lng) < 1e-6 &&
+    // **The angle joins the comparison, and it has to** (ADR-0234 §7). This function is how
+    // "a finger wins" is enforced, and a two-finger twist moves ONLY the bearing — so
+    // without this line the ease would read a turning map as untouched and keep writing
+    // over the gesture, which is the exact defect ADR-0121 §7 wrote this check for, on the
+    // one axis nothing had ever read. Compared the short way round, so 359.9999 and 0.0001
+    // are the same camera rather than a full turn apart.
+    Math.abs(shortestTurn(a.bearing ?? 0, b.bearing ?? 0)) < 0.01
   );
 }
 

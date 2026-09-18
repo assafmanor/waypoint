@@ -58,17 +58,19 @@ import { observeResize } from '../../lib/observe-resize';
 import { observeVisibility } from '../../lib/visibility';
 import { RELOAD_GUARD_KEY, reloadOnce } from '../../lib/guarded-reload';
 import { PhaseTimeoutError, withDeadline } from '../../lib/deadline';
-import { centreOfPoints } from '../../lib/map-camera';
+import { centreOfPoints, normalizeBearing, shortestTurn } from '../../lib/map-camera';
 import type { LatLng, MapArrival, MapBounds } from '../../lib/map-camera';
 import { MAP_COLOR_SCHEME, type MapColorScheme, type MapTileUrls } from '../../lib/map-config';
 import {
   MAP_CONNECTOR,
   MAP_LOAD_PHASE,
   MAP_LOAD_TIMEOUT_MS,
+  MAP_ORIENT,
   MAP_RELOAD_COOLDOWN_MS,
   MAP_ZOOM,
   type PinHue,
 } from '../../constants';
+import { useDeviceHeading } from '../../lib/useDeviceHeading';
 import { publishMapReading, TUNE, tune } from '../../lib/dev-tuning';
 import { DevMapProbe } from '../../dev/DevMapProbe';
 import { Icon, type IconName } from '../Icon';
@@ -1967,6 +1969,9 @@ function MapCameraControls({
     framePath,
     zoomTo,
     stepZoomIn,
+    orientTo,
+    turnTo,
+    readBearing,
   } = useMapCamera(map, {
     points,
     setSignal,
@@ -2131,6 +2136,95 @@ function MapCameraControls({
   // readout; `null` is "no idle yet", so there are no bounds to snapshot either.
   const areaTappable = areaCount != null && areaCount > 0;
 
+  // ── ORIENTATION (ADR-0234) ────────────────────────────────────────────────────
+  // **Everything here is pane-local, and that is what keeps it free.** The bearing comes
+  // from the camera and the heading from the device, so the screen learns nothing, no prop
+  // changes on a tap (ADR-0122 §9), and the marker set never re-diffs for a turn.
+  const heading = useDeviceHeading();
+  const [following, setFollowing] = useState(false);
+  const [atNorth, setAtNorth] = useState(true);
+
+  // Read through a ref by the painter below, which runs on the MAP's events rather than on
+  // React's: a bearing in state would re-render this subtree on every frame of a turn.
+  const headingRef = useRef(heading.heading);
+  headingRef.current = heading.status === 'on' ? heading.heading : undefined;
+
+  /** **The two angles, written to the DOM rather than to state** — `PinDensity`'s own shape
+   *  one control over. `--map-bearing` turns the needle; `--me-heading` turns the me-dot's
+   *  cone and is the DEVICE's heading minus the MAP's bearing, so in heading-up it points
+   *  straight up the screen. `data-heading` is the cone's presence: absent when no heading
+   *  is known, because a cone pointing at a guess is a claim the sensor cannot back. */
+  const paint = useCallback(() => {
+    const pane = paneRef.current;
+    if (!pane) return;
+    const bearing = readBearing() ?? 0;
+    pane.style.setProperty('--map-bearing', `${bearing}deg`);
+    // React sees only the boolean, and only when it flips — `setState` bails out on an
+    // identical value, so a turn costs no renders until the map crosses into or out of north.
+    setAtNorth(Math.abs(shortestTurn(bearing, 0)) <= MAP_ORIENT.NORTH_EPSILON_DEG);
+    const facing = headingRef.current;
+    if (facing == null) {
+      delete pane.dataset.heading;
+      return;
+    }
+    pane.dataset.heading = '';
+    pane.style.setProperty('--me-heading', `${normalizeBearing(facing - bearing)}deg`);
+  }, [paneRef, readBearing]);
+
+  // The map's own turn — a two-finger twist, or our own eased reset. `rotate` fires per
+  // frame of either, which is exactly the cadence the needle wants and precisely why none
+  // of it goes through React.
+  useEffect(() => {
+    if (!map) return;
+    paint();
+    const rotate = map.addListener('rotate', paint);
+    const idle = map.addListener('idle', paint);
+    return () => {
+      rotate.remove();
+      idle.remove();
+    };
+  }, [map, paint]);
+
+  // A new heading sample: turn the map if we are following, and repaint the cone either
+  // way — a twist while merely holding a fix still moves the cone against the ground.
+  useEffect(() => {
+    if (following && heading.status === 'on' && heading.heading != null) turnTo(heading.heading);
+    paint();
+  }, [following, heading.status, heading.heading, turnTo, paint]);
+
+  // A sensor that refuses mid-follow ends the follow rather than leaving a control claiming
+  // to track something it cannot read.
+  useEffect(() => {
+    if (following && (heading.status === 'denied' || heading.status === 'unsupported')) {
+      setFollowing(false);
+    }
+  }, [following, heading.status]);
+
+  /** **One control, two actions, and the needle says which** (ADR-0234 §1). Following → stop,
+   *  at north. Off north → back to north. North-up → start following, and THIS TAP is the
+   *  user gesture iOS requires for the orientation permission (§6). A refused sensor leaves
+   *  the control in reset-only service and re-asks on the next tap; it is never dead. */
+  const orientAction: 'north' | 'follow' = following || !atNorth ? 'north' : 'follow';
+  const toggleOrient = useCallback(() => {
+    if (following) {
+      setFollowing(false);
+      heading.stop();
+      orientTo(0);
+      return;
+    }
+    if (!atNorth) {
+      orientTo(0);
+      return;
+    }
+    setFollowing(true);
+    heading.start();
+  }, [following, atNorth, heading, orientTo]);
+
+  const orientLabel =
+    heading.status === 'denied' && orientAction === 'follow'
+      ? t.map.orient.denied
+      : t.map.orient[orientAction];
+
   return (
     <>
       {/* One cluster, so the band's geometry is written once and the
@@ -2156,6 +2250,27 @@ function MapCameraControls({
             <Icon name="frame" />
           </button>
         )}
+        {/* THE COMPASS — the band's third member, and the first test of ADR-0126 §1's own
+            prediction that a third would join this band rather than open a second one.
+            Measured: 52px of the inline axis, 0px of the block axis.
+
+            ALWAYS PRESENT, deliberately. Google's appears-only-off-north variant is the
+            smaller band and it deletes the only way INTO heading-up, because the control
+            would be absent in exactly the state you enter that mode from (§2).
+
+            The label says what the TAP DOES and changes with the state, which is correct
+            here and would be wrong on `באזור`: that control has visible text the label must
+            not override (ADR-0126 §4), and this one has none but its needle. */}
+        <button
+          type="button"
+          className={'map-compass' + (following ? ' on' : '')}
+          aria-label={orientLabel}
+          aria-pressed={following}
+          title={orientLabel}
+          onClick={toggleOrient}
+        >
+          <Icon name="compass" />
+        </button>
       </div>
       {/* The live region WRAPS the control rather than becoming it (ADR-0126 §4):
           one node cannot hold both roles, and `role="status"` would win over

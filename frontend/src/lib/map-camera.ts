@@ -510,6 +510,40 @@ export function cameraTargetFor(points: readonly LatLng[], view: MapBounds | nul
 export interface CameraAt {
   center: LatLng;
   zoom: number;
+  /** **Which way is up, in degrees clockwise from north** (ADR-0234). Optional, and that is
+   *  not laziness: almost every camera move in this app is a pan or a fit and has no opinion
+   *  about the angle, so `undefined` means "leave it where it is" and only the orientation
+   *  control ever sets it. A required field would make every existing call site state a
+   *  number it does not care about, and the first one to state it wrongly would silently
+   *  straighten a map the user had turned. */
+  bearing?: number;
+}
+
+/** Degrees, wrapped into `[0, 360)`. The renderer will hand back anything — MapLibre reports
+ *  a bearing in `(-180, 180]` — and every comparison below wants one representation. */
+export function normalizeBearing(degrees: number): number {
+  // `((x % 360) + 360) % 360` rather than a `< 0` branch, because the branch returns **`-0`**
+  // for an exact `-360`: `-0 < 0` is false, so the correction is skipped. Harmless in CSS
+  // and not harmless in a comparison — `Object.is(-0, 0)` is false, and this value is what
+  // `sameCamera` decides "did a finger move the map" on.
+  return ((degrees % 360) + 360) % 360;
+}
+
+/**
+ * **The short way round**, in degrees, signed: what to ADD to `from` to arrive at `to`.
+ *
+ * Exactly the problem `cameraFrame` already solves for longitude, and for the same reason —
+ * a straight lerp from 350° to 10° sweeps 340° the wrong way, which on a map that is
+ * *turning under the reader* is not a rounding error but a spin. The one difference is that
+ * bearings live on `[0, 360)` where longitudes live on `[-180, 180]`.
+ *
+ * Ties (exactly 180°) resolve **negative**, i.e. counter-clockwise. Nothing recommends one
+ * direction over the other for a half turn; what matters is that it is the same every time,
+ * so this states what the arithmetic does rather than adding a branch to prefer the other.
+ */
+export function shortestTurn(from: number, to: number): number {
+  const delta = (normalizeBearing(to) - normalizeBearing(from) + 540) % 360;
+  return delta - 180;
 }
 
 /**
@@ -534,6 +568,14 @@ export function cameraFrame(from: CameraAt, to: CameraAt, progress: number): Cam
       lng: from.center.lng + dLng * t,
     },
     zoom: from.zoom + (to.zoom - from.zoom) * t,
+    // Only when the move HAS an opinion about the angle, and only when there is one to
+    // interpolate from. Otherwise the key is absent and the renderer keeps what it has —
+    // which is what makes every pan and fit in the app bearing-blind by construction.
+    ...(to.bearing != null && from.bearing != null
+      ? { bearing: normalizeBearing(from.bearing + shortestTurn(from.bearing, to.bearing) * t) }
+      : to.bearing != null
+        ? { bearing: to.bearing }
+        : {}),
   };
 }
 

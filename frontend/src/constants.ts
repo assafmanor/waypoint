@@ -1374,6 +1374,38 @@ export const MAP_CARD_RESERVE_H = MAP_ATTRIBUTION_H + MAP_FLOAT_GAP + MAP_CARD_B
  * phone, which is one of the two reasons ADR-0142 makes the neutral phase tag day-scoped.
  * The `MAX_H` question above is untouched — that was measured at 40px pins, not at the cap.
  */
+/**
+ * **Orientation: the compass and the heading it can follow** (ADR-0234).
+ *
+ * The two numbers ADR-0234 calls feel calls are in here rather than in the CSS, because the
+ * mockup shipped them as controls and its device pass settles them — a literal buried in a
+ * `calc()` is not a number anyone can find later. The rest are the thresholds that keep a
+ * sensor reading from becoming a spin.
+ */
+export const MAP_ORIENT = {
+  /** Inside this many degrees of north the map counts as north-up: the compass stops
+   *  offering a reset that would move nothing, and a needle a third of a degree off does
+   *  not read as crooked. A twist always lands well outside it. */
+  NORTH_EPSILON_DEG: 0.5,
+  /**
+   * **How much of a new heading sample to believe, per sample.** A phone's compass is noisy
+   * at rest — a few degrees of wander with the device on a table — and writing every sample
+   * straight to the camera is the jitter ADR-0234's device pass is about. A low-pass over
+   * the SHORT arc (never a raw average, which would sweep the wrong way across north).
+   *
+   * 0.15 is a recommendation from the mockup, not a measurement: a real device settles it.
+   */
+  SMOOTHING: 0.15,
+  /** Below this, a sample is noise and the camera is left alone — so a hand held still does
+   *  not produce a continuous stream of one-degree writes, each of which is a re-render's
+   *  worth of work on a surface that re-renders every second anyway. */
+  MIN_STEP_DEG: 1.5,
+  /** The heading cone's reach, as a share of `--pin-base` — so it scales with the canvas
+   *  like every other length on it (ADR-0123). The mockup's ⟨החרוט⟩ control shipped 0.66 ·
+   *  **0.95** · 1.3 and this is its recommendation. */
+  CONE_SHARE: 0.95,
+} as const;
+
 export const MAP_PIN = {
   MIN_H: 34,
   MAX_H: 56,

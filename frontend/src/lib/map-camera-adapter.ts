@@ -60,7 +60,16 @@ export interface CameraMap {
    *  already falls back to `MAP_DRAG_ZOOM.MIN`/`.MAX` for a map that states no limits. */
   getMinZoom(): number | null | undefined;
   getMaxZoom(): number | null | undefined;
-  moveCamera(camera: { center?: { lat: number; lng: number }; zoom?: number }): void;
+  /** **Which way is up** (ADR-0234). The eighth method, and the reason it is here at all is
+   *  that nothing ever read it: MapLibre's `touchZoomRotate` is a default `MapCanvas` never
+   *  switched off, so a two-finger twist has always been able to write this — and with no
+   *  reader there was no control, no cue and no way back to north. */
+  getBearing(): number | undefined;
+  moveCamera(camera: {
+    center?: { lat: number; lng: number };
+    zoom?: number;
+    bearing?: number;
+  }): void;
   fitBounds(
     bounds: { north: number; south: number; east: number; west: number },
     padding?: { top: number; bottom: number; left: number; right: number },
@@ -131,6 +140,9 @@ export function cameraMapFor(map: MapLibreMap): CameraMap {
         getSouthWest: () => asLatLng(b.getSouth(), b.getWest()),
       };
     },
+    // MapLibre reports `(-180, 180]`; `normalizeBearing` at the consumer puts it on
+    // `[0, 360)`. Left raw here because the adapter's job is the dialect, not the domain.
+    getBearing: () => map.getBearing(),
     getProjection: () => ({
       fromLatLngToPoint: ({ lat, lng }) => {
         // Off-globe latitudes have no mercator point; `useMapCamera` already treats a
@@ -150,10 +162,14 @@ export function cameraMapFor(map: MapLibreMap): CameraMap {
     // **`jumpTo`, never `easeTo`.** `useMapCamera` owns its own easing and cancellation
     // (ADR-0129 §3's one-eased-driver invariant); a second easer underneath would be two
     // drivers on one map, which is the thing that invariant exists to prevent.
-    moveCamera: ({ center, zoom }) => {
+    moveCamera: ({ center, zoom, bearing }) => {
       map.jumpTo({
         ...(center ? { center: [center.lng, center.lat] } : {}),
         ...(zoom != null ? { zoom } : {}),
+        // Absent rather than `undefined`: `jumpTo` treats a stated `bearing` as a command
+        // and a missing one as "keep", which is exactly the distinction `CameraAt.bearing`
+        // encodes one layer up.
+        ...(bearing != null ? { bearing } : {}),
       });
     },
     fitBounds: (bounds, padding) => {
