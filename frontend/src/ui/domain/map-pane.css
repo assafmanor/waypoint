@@ -38,6 +38,23 @@
 .map-canvas {
   width: 100%;
   height: 100%;
+  /* **AND THE SAME ISOLATION AGAIN, ONE LEVEL IN** (owner, 2026-09-18: _"z-index issues with
+     the control buttons — they should always be on top, not the map pins and labels"_).
+
+     The pane's own `isolation` above keeps marker z-indexes off the screen's cards. It does
+     nothing for the pane's OWN children, and every piece of canvas furniture is one: the
+     camera cluster, the area readout and the OSM attribution are siblings of this element,
+     not of the pane. MapLibre's marker container carries no z-index of its own, so a pin's
+     `z-index: 400` (and the me-dot's 1000) escaped this box and out-painted furniture sitting
+     at `auto` — a `צ'ק-אאוט` tag printed over both camera buttons, a pin tag over `41 באזור`,
+     and, quietly, a teardrop over an attribution the ODbL does not let us obscure.
+
+     Isolating HERE rather than numbering the furniture is the fix that cannot rot: the
+     marker ladder in `lib/map-pins.ts` ranks objects ON the ground against each other and is
+     free to grow, while everything painted OVER the ground is ranked by DOM order among
+     siblings. A furniture z-index would have to be re-checked against `ME_MARKER_Z` every
+     time that ladder gained a rung. */
+  isolation: isolate;
 }
 /* **THE VENDOR'S TYPOGRAPHY STOPS HERE.** `maplibre-gl.css`'s very first rule is
      `.maplibregl-map { font: 12px/20px Helvetica Neue, Arial, Helvetica, sans-serif }` — a

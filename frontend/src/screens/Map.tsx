@@ -318,6 +318,8 @@ export function MapView() {
     clearFocus,
     locationOffered,
     markLocationOffered,
+    locationGranted,
+    setLocationGranted,
     setChromeReclaimed,
     maybesFacet,
     errand,
@@ -737,8 +739,9 @@ export function MapView() {
   //     our own reason-first card comes up, which states the on-device promise
   //     (ADR-0006) before anything touches the device;
   //   • already refused → nothing. A refusal is an answer, not an invitation.
-  // Once per session (`locationOffered`), so "לא עכשיו" means not-this-session rather
-  // than a card on every visit to the tab — the nag §6 exists to prevent.
+  // The CARD is once per session (`locationOffered`), so "לא עכשיו" means not-this-session
+  // rather than a card on every visit to the tab — the nag §6 exists to prevent. The FIX is
+  // not: see the effect below.
   //
   // The card is canvas furniture now (ADR-0122 §6), which is why raising it can lower
   // the sheet: a question about a map you cannot see lowers the sheet enough to see it,
@@ -747,26 +750,36 @@ export function MapView() {
     setPromptOpen(true);
     setSheetView((view) => (view === MAP_SHEET_VIEW.full ? MAP_SHEET_VIEW.half : view));
   }, []);
+
+  // **The once-per-session gate covers the CARD and nothing else** (owner, 2026-09-18:
+  // _"the map doesn't always show the current location pin, and sometimes we should click on
+  // the current location button"_). This hook lives in the screen and the screen unmounts on
+  // a tab switch, so the second visit to the tab arrives with no fix and no `nearMe` while
+  // `locationOffered` — which is lifted — is already true. Gating the silent re-request on
+  // it meant the dot came back only if you tapped locate: the exact report, and it was the
+  // WHOLE report on Safari, where `permission` is `unsupported` on every mount and consent
+  // is knowable only from `locationGranted`.
+  //
+  // So consent short-circuits the gate. It cannot raise a dialog — that is what consent
+  // means — and §6's invariant is untouched: the card is still the only thing that asks.
   useEffect(() => {
-    if (locationOffered || offline || nearMe) return;
+    if (offline || nearMe) return;
     // `unknown` means the Permissions API query is still in flight — wait for it,
     // rather than showing a card we may not need. `unsupported` is the settled
     // "nothing better is coming" answer, handled below.
     if (geo.permission === 'unknown') return;
-    if (geo.permission === 'denied') {
-      markLocationOffered();
-      return;
-    }
-    if (geo.permission === 'granted') {
-      markLocationOffered();
+    if (geo.permission === 'granted' || locationGranted) {
       setNearMe(true);
       geo.request();
       return;
     }
+    if (locationOffered) return;
     markLocationOffered();
+    if (geo.permission === 'denied') return;
     openPrompt();
   }, [
     locationOffered,
+    locationGranted,
     offline,
     nearMe,
     geo.permission,
@@ -774,6 +787,16 @@ export function MapView() {
     geo.request,
     openPrompt,
   ]);
+
+  // The session's memory of consent, written from the one place that actually knows: the
+  // outcome of a request. `granted` is the standing permission a later visit re-uses;
+  // `denied` withdraws it, so a permission revoked in browser settings costs one silent
+  // refusal rather than one per visit for the rest of the session. `unavailable` writes
+  // nothing — a radio that is off is not an answer about consent (ADR-0126 §6).
+  useEffect(() => {
+    if (geo.status === 'granted') setLocationGranted(true);
+    else if (geo.status === 'denied') setLocationGranted(false);
+  }, [geo.status, setLocationGranted]);
 
   // ONE RULE, three callers (ADR-0126 §7): a canvas control whose answer lives in the
   // list normalises the sheet to `half`. A row tap already did it; the area sort and a

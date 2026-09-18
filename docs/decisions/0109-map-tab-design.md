@@ -196,6 +196,19 @@ was to "a cold permission prompt with no stated reason", not to the timing:
   nag §6 exists to prevent. The flag lives on the lifted `MapScopeProvider`, which
   outlives the screen; a reload asks again.
 
+  _**Corrected 2026-09-18 ([ADR-0234](0234-the-map-rotates-and-the-compass-is-the-way-back.md) §9): that flag guards the CARD and nothing else.**
+  As built it opened the ladder with `if (locationOffered || offline || nearMe) return`,
+  so the second visit to the tab declined the card (right) and declined the **silent
+  re-request** in the first bullet with it (wrong) — the me-dot came back only if you
+  tapped locate, which is what the owner reported. Consent already given raises no
+  dialog, so it is the one case that must not be gated on having asked: the provider
+  now also remembers `locationGranted` (a boolean, never a position), written from the
+  outcome of a request — set on `granted`, cleared on `denied`, untouched by
+  `unavailable`. The first bullet's `permission` reading is **not** sufficient on its
+  own, and for the reason the second bullet already names: Safari has no Permissions
+  API, so it reports `unsupported` on every mount and the session's own memory is the
+  only evidence consent exists._
+
 Reads still never depend on it (§6's other half): the list renders in full with no
 location, and offline nothing is offered at all, since you cannot be located anyway.
 
