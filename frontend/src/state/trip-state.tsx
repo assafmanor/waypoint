@@ -1264,6 +1264,13 @@ function TripReady({
         // The socket reopened itself after a silent foreground drop (F-04); run
         // the same catch-up handleOnline does, but don't reopen — ws.ts owns it.
         onReconnect: () => void catchUp().catch(() => {}),
+        // **The socket is live and our cursor is current, so we are not offline** — the only
+        // signal that says so with nothing to fetch. It matters because the two paths that
+        // used to clear the cue are both network reads that a bad link can lose: the mount
+        // catch-up swallows its failure, and `onResync` fires only when the server is AHEAD.
+        // A boot that stood in on cached data, connected first try and missed nothing would
+        // otherwise read offline for the rest of the session while fully connected.
+        onLive: onReconnected,
         // Enrichment landed for a place we hold (ADR-0166 §6). Deliberately NOT routed through
         // `applyEntityChange`: it is not a `Change`, so it narrates nothing into the change
         // feed (nobody did it), advances no cursor, and needs no reconciliation — the server is
