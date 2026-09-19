@@ -81,4 +81,46 @@ describe('lateShift — the day takes a delay (ADR-0231 §5)', () => {
     expect(shift.anchor).toBeNull();
     expect(shift.moved.map((e) => e.id)).toEqual(['bar', 'walk']);
   });
+
+  // **The 2026-09-19 amendment** — the walk steps over a commitment it has collected nothing
+  // for. Reported from an Iceland morning at ⁦08:42⁩ with a booked ⁦09:00⁩ ahead of it: the day
+  // had nothing to offer, and offered the same afternoon again at ⁦09:01⁩.
+  describe('a commitment stops the shift only once the delay has reached it', () => {
+    const waterfall = ev('waterfall', '09:00', '10:30', { kind: EVENT_KIND.HARD });
+    const lunch = ev('lunch', '12:30', '13:30');
+    const iceland = [ev('asbyrgi', '07:00', '08:00'), waterfall, lunch, ramen, bar];
+
+    it('the next thing ahead being a booking no longer empties the set', () => {
+      const shift = lateShift(iceland, at('08:42'), 30);
+      expect(shift.moved.map((e) => e.id)).toEqual(['lunch']);
+      expect(shift.anchor?.id).toBe('ramen');
+      expect(shift.patches.some((p) => p.id === 'waterfall')).toBe(false);
+    });
+
+    it('and the set does not change when that booking starts', () => {
+      const before = lateShift(iceland, at('08:42'), 30);
+      const after = lateShift(iceland, at('09:01'), 30);
+      expect(after.moved.map((e) => e.id)).toEqual(before.moved.map((e) => e.id));
+      expect(after.anchor?.id).toBe(before.anchor?.id);
+    });
+
+    it('a soft row beside the stepped-over booking still moves', () => {
+      const peer = ev('peer', '09:00', '11:15', { sortOrder: 2 });
+      const shift = lateShift([waterfall, peer], at('08:42'), 30);
+      expect(shift.moved.map((e) => e.id)).toEqual(['peer']);
+    });
+
+    it('back-to-back commitments are all stepped over, and the anchor is the one that stops it', () => {
+      const second = ev('second', '11:00', '12:00', { kind: EVENT_KIND.HARD });
+      const shift = lateShift([waterfall, second, lunch, ramen], at('08:42'), 30);
+      expect(shift.moved.map((e) => e.id)).toEqual(['lunch']);
+      expect(shift.anchor?.id).toBe('ramen');
+    });
+
+    it('a day whose whole tail is commitments still has nothing to move', () => {
+      const shift = lateShift([waterfall, ramen], at('08:42'), 30);
+      expect(shift.moved).toEqual([]);
+      expect(shift.anchor).toBeNull();
+    });
+  });
 });

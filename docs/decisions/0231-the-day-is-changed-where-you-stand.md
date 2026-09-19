@@ -99,6 +99,8 @@ ADR-0161 §7 deferred it with its shape already named: _"a **day-level** control
 
 **What moves** is exactly what the server's ripple would move (ADR-0011, `computeRippleSuggestion`): every **planned, soft** event of today whose start is after now, **up to the first hard anchor after now** — an anchor re-synchronises you; being late for the afternoon does not make you late for the table you booked, and not for the evening after it. Events inside a cluster move with their peers. Nothing else on the day is touched.
 
+> "Up to the first hard anchor after now" was too strong by one case: a commitment that is itself the **next** thing ahead absorbs nothing, because nothing is being pushed into it. See the [2026-09-19 amendment](#2026-09-19-amendment--a-commitment-you-have-not-reached-yet-is-not-an-anchor).
+
 **The write** is `applyEventPatches` — _"these events, these starts, one undo"_, named for exactly this in ADR-0161 §7 — with `startsAt`/`endsAt` shifted by the chosen minutes through the same `slotFor` a pick uses. Soft only, so no gate; one `REORDER` dispatch, one undo descriptor, N persisted moves, all offline-capable through the outbox. No backend change: the ripple stays server-side for the overlap case and is not consulted here, because a delay that preserves gaps is not an overlap to close.
 
 Rejected placements, each drawn in the mockup so the rejection is measured rather than argued: the **now marker** (ADR-0043 §1 made it a quiet reference deliberately below the live event; a 44px control on it is a second loud element on the tab, and "now" is not where "late" is said); the **hero** (it settles a transition; adding verbs there is ADR-0160's decision to reopen, and the day is where you go to change the day); the **next row's band** with the ripple bar asking on every later nudge (noise on every `+30` that meant one row).
@@ -177,3 +179,23 @@ Owner, 2026-09-16: _"Build it"_ — the recommendation was taken on all nine. Re
 7. **F7 · how a delay is chosen.** A `ChoiceGrid` of `+15 · +30 · +45 · +60 · +90` that commits on tap (**recommended**, ⁦214px⁩ of sheet) · a `ValueToken` duration and a confirm (⁦254px⁩, one tap more).
 8. **F8 · a done event whose end is ahead frees its remainder.** Not now (**recommended**; `עכשיו` covers the journey) · yes, in both modes, measured first.
 9. **F9 · the join before a cluster is stated.** Yes, derived from the cluster's earliest member (**recommended**) · keep the leaf-only rule.
+
+## 2026-09-19 amendment — a commitment you have not reached yet is not an anchor
+
+**Owner, against the deployed build, with a screenshot of an Iceland morning at ⁦08:42⁩:** _"I can't see it all the time, it's absent sometimes."_
+
+**It was absent for most of a day with commitments in it, and §5's own rule is why.** `lateShift` walked the planned rows ahead of now and stopped at the first hard one. On that morning the first hard row ahead **was** the next row — a booked ⁦09:00⁩ — so the walk stopped before collecting anything, `moved` came back empty, and the head declined to offer a control that would move nothing. The screenshot's own leg says what the user was doing at that moment: `זמן היציאה עבר ב־08:17`. The day had nothing to offer on exactly the morning the control exists for.
+
+**The tell is not the emptiness, it is the instability.** Reproduced on that day's shape before fixing: at ⁦08:42⁩ the set is `[]`; at ⁦09:01⁩ — the same rows, none of them touched, the ⁦09:00⁩ merely started and so no longer "ahead" — the set is `[lunch, evening]` and the control is back. Nineteen minutes of clock changed nothing about the day and everything about whether the day could be delayed. A control whose presence is a function of which row happens to be next is one a user cannot learn, which is what the report says.
+
+**The rule is right and its stopping condition was one case too wide.** §5's justification for the tail staying put is that _an anchor re-synchronises you_ — a claim about a delay that the rows before the anchor have already absorbed. When nothing precedes the anchor, nothing has been absorbed: you are late **for the commitment itself**, and the rows behind it are what the delay actually reaches. So the walk now **steps over a commitment it has collected nothing for** — never moving it, ADR-0011 is untouched — and stops at the first hard row something is being pushed into.
+
+**It is strictly additive.** Where the first row ahead is soft, the first hard row encountered always has a non-empty `moved` behind it, so the walk stops exactly where it did: the ADR's own counted day (⁦13:51⁩, `free` moves, Ichiran anchors, `bar`/`walk` stay) is unchanged, and so is every case where the control was already offered. The amendment only reaches the cases where the control was absent. A day whose whole remaining tail is commitments still offers nothing, which is still right.
+
+**`anchor` now means "the commitment the shift stops at"**, not "the first commitment ahead" — a stepped-over one is `null` if nothing else stops the walk. The sheet's `מה שאחריו לא זז` is therefore still true wherever it renders, because it only ever names the stopper. What the sheet does not say is that a stepped-over commitment also stays; the day's own card says it with `HardLock`, and the count sentence already says `אירועים גמישים`, so it does not claim otherwise.
+
+### What shipped
+
+- **`lib/late-shift.ts`** — one branch in the walk: a hard row with `moved.length === 0` is skipped rather than terminal. No signature change, no new field, no host change.
+- **Six specs, each run against the pre-change walk and confirmed to fail** (five in `late-shift.test.ts`, one in `DayView.changes.test.tsx`). The DayView one is the reported symptom itself: the head offers `מאחרים` with a commitment next ahead and a soft afternoon behind it. The stability spec asserts the set is the same either side of the commitment's start, which is the property the report was actually about.
+- **Not touched**: the placement question (backlog, §5's fork F6) is about where the control is **found** when the head is scrolled off. This was about whether it was there at all.
