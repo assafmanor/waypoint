@@ -254,6 +254,21 @@ describe('DayView — the day is changed where you stand (ADR-0231)', () => {
     expect(screen.queryByRole('button', { name: new RegExp(t.day.late.action) })).toBeNull();
   });
 
+  // The reported symptom of ADR-0231 §5's 2026-09-19 amendment: the head kept the control
+  // to itself for as long as a commitment was the next thing ahead, over an afternoon it
+  // handed back the minute that commitment started.
+  it('offers מאחרים with a commitment next ahead and a soft afternoon behind it', () => {
+    const shrine = ev('shrine', {
+      title: 'מקדש',
+      kind: EVENT_KIND.HARD,
+      startsAt: at('14:00'),
+      endsAt: at('15:30'),
+    });
+    tripEvents = [tour, shrine, free, bar];
+    show();
+    expect(screen.getByRole('button', { name: new RegExp(t.day.late.action) })).toBeTruthy();
+  });
+
   it('the head’s ＋ on today is the quick add, landing on now, and הוספה is a soft create', () => {
     show();
     fireEvent.click(screen.getByRole('button', { name: new RegExp(t.actions.newEvent) }));

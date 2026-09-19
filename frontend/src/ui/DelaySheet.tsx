@@ -2,7 +2,9 @@
 // said BEFORE the tap; then a `ChoiceGrid` of delays, and a chip commits on tap the way a
 // `DaySlotPicker` row does: two taps, one toast, one undo. The set that moves is
 // `lib/late-shift.ts`'s, which is the server ripple's own rule (planned, soft, ahead of now,
-// up to the first anchor); this component draws what it was handed and decides nothing.
+// up to the anchor the delay reaches); this component draws what it was handed and decides
+// nothing — including the anchor line, which names the row that STOPS the shift and so stays
+// true beside `מה שאחריו לא זז` (ADR-0231 §5, 2026-09-19 amendment).
 //
 // `+15 … +90`, the stepper's own sign, with the unit in the sentence above: as `15 דק׳ … 90 דק׳`
 // the fifth chip scrolled off the sheet at 360 (the mockup's render). The pills are lifted to
@@ -30,7 +32,7 @@ export function DelaySheet({
   /** The rows that will move, in start order (`lateShift().moved`). Never empty: the host does
    *  not offer the control when nothing ahead can move. */
   moved: TripEvent[];
-  /** The first commitment ahead, which stays and stops the shift — or none. */
+  /** The commitment that stays and stops the shift — or none. */
   anchor: TripEvent | null;
   /** The clock, already formatted by the host — this sheet has none of its own. */
   nowLabel: string;

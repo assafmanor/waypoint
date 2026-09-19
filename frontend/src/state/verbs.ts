@@ -1594,8 +1594,8 @@ export function useVerbs() {
       });
     },
     /** **The day takes a delay** (ADR-0231 §5): every planned soft row ahead of now, up to the
-     *  first hard anchor, moves by `minutes` — `lateShift`'s set, which is the server ripple's own
-     *  rule — through the one multi-event write, so N moves are one undo. Soft only by
+     *  hard anchor the delay reaches, moves by `minutes` — `lateShift`'s set, which is the server
+     *  ripple's own rule — through the one multi-event write, so N moves are one undo. Soft only by
      *  construction, so no gate; the toast counts what moved. */
     delayDay: (dayEvents: TripEvent[], nowMs: number, minutes: number) => {
       const shift = lateShift(dayEvents, nowMs, minutes);
