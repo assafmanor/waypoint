@@ -408,6 +408,15 @@ export function openManualTasks(
  *  when there is one. A raw open-count barely moves and answers nothing. */
 export interface TaskPreview {
   next?: Task;
+  /** **What the line says when nothing open carries a deadline** — the title of the row
+   *  `orderTaskRows` leads with, readiness checks included. It exists because `next` is the
+   *  DATED half of the answer and the tile was printing `tile.empty` for the other half: a
+   *  trip whose open work is an undated task, or the five readiness checks, read
+   *  `אין משימות פתוחות` beside a count of 1 or 5 — the two halves of one tile contradicting
+   *  each other (backlog, noticed 2026-08-16). Naming the top of the list rather than adding
+   *  a "none dated" string keeps the tile and the screen behind it in one order, which is
+   *  ADR-0190 §2's rule and the same call `PlanLift` made for its run-up. */
+  lead?: string;
   open: number;
   overdue: number;
 }
@@ -431,13 +440,16 @@ export function taskPreview(
   const openManual = tasks.filter(
     (task) => isManual(task) && !isSettled(task) && !isOnSettledHost(task, settledHosts),
   );
+  const live = automatic.filter(isLive);
   const dated = sortTasks(
     openManual.filter((task) => task.dueAt),
     clock,
   );
+  const [leadRow] = orderTaskRows(openManual, live, clock);
   return {
     next: dated[0],
-    open: openManual.length + automatic.filter(isLive).length,
+    lead: leadRow && (leadRow.kind === 'task' ? leadRow.task.title : leadRow.auto.title),
+    open: openManual.length + live.length,
     overdue: openManual.filter((task) => taskBand(task, clock) === TASK_BAND.OVERDUE).length,
   };
 }

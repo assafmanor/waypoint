@@ -208,14 +208,27 @@ export function Index() {
   // a trip nobody has prepared has five things to do, and the tile is what says so.
   const preview = taskPreview(tasks, automatic, clock, settledHosts);
   const nextDue = preview.next ? taskDue(preview.next, clock) : undefined;
-  const tasksSubtitle = preview.next ? (
+  // **Nothing dated is not nothing open** (backlog, noticed 2026-08-16). `next` is the dated
+  // half of the answer, so a trip whose open work is undated — or is the readiness checks,
+  // which carry no deadline at all — used to read `אין משימות פתוחות` beside a count of 5.
+  // `lead` is the other half: the row the screen behind this tile leads with, named in the
+  // same `הבאה:` shape because that is what it is, one list and one order (ADR-0190 §2).
+  const tasksLead = preview.next
+    ? nextDue?.time
+      ? `${preview.next.title} · ${nextDue.day} ${nextDue.time}`
+      : preview.next.title
+    : preview.lead;
+  const tasksSubtitle = tasksLead ? (
     <>
-      <Icon name="clock" />{' '}
-      {t.tasks.tile.next(
-        nextDue?.time
-          ? `${preview.next.title} · ${nextDue.day} ${nextDue.time}`
-          : preview.next.title,
+      {/* The glyph says "deadline", so it goes where there is one — every other tile's
+          leading icon names what its line is about, and a clock over an undated row names
+          something the row does not have. */}
+      {preview.next && (
+        <>
+          <Icon name="clock" />{' '}
+        </>
       )}
+      {t.tasks.tile.next(tasksLead)}
       {preview.overdue > 0 && <> · {t.tasks.tile.overdue(preview.overdue)}</>}
     </>
   ) : (

@@ -330,6 +330,32 @@ describe('taskPreview', () => {
     expect(preview.next).toBeUndefined();
     expect(preview.overdue).toBe(0);
   });
+
+  // **The tile may not say "nothing is open" while its own count says two.** `next` is the
+  // dated half of the answer and `lead` is the rest of it — the top of `orderTaskRows`, so
+  // the tile names what the screen behind it leads with.
+  it('leads with the top row when nothing open carries a deadline', () => {
+    const check = { key: 'lodging', title: 'לינה', done: false, dismissed: false } as AutomaticTask;
+    const preview = taskPreview([], [check], clock);
+    expect(preview.next).toBeUndefined();
+    expect(preview).toMatchObject({ lead: 'לינה', open: 1 });
+  });
+
+  it('leads with an undated task a person wrote', () => {
+    expect(taskPreview([task('u')], [], clock).lead).toBe('u');
+  });
+
+  // A flagged task outranks the checks on the screen, so it outranks them here too.
+  it('leads with an important task above a check, as the screen does', () => {
+    const check = { key: 'lodging', title: 'לינה', done: false, dismissed: false } as AutomaticTask;
+    expect(taskPreview([task('u', { important: true })], [check], clock).lead).toBe('u');
+  });
+
+  it('leads with a settled check no more than it counts one', () => {
+    const check = { key: 'lodging', title: 'לינה', done: true, dismissed: false } as AutomaticTask;
+    const preview = taskPreview([], [check], clock);
+    expect(preview).toMatchObject({ lead: undefined, open: 0 });
+  });
 });
 
 describe('tickedStatus', () => {

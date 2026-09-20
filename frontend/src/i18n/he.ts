@@ -1344,6 +1344,9 @@ export const t = {
     // The tile's one changing line: what is due soonest, with an overdue count when there is
     // one (brief §13). A raw open-count barely moves and answers nothing.
     tile: {
+      // Carries the deadline when there is one, and otherwise the row the tasks screen leads
+      // with — `הבאה` is true of both, which is why "open, none dated" needed no string of
+      // its own (`taskPreview.lead`).
       next: (text: string) => `הבאה: ${text}`,
       overdue: (n: number) => (n === 1 ? 'אחת באיחור' : `${n} באיחור`),
       empty: 'אין משימות פתוחות',
