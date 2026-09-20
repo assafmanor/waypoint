@@ -112,6 +112,23 @@ describe('Index landing (ADR-0098)', () => {
     expect(titles).toEqual([t.index.bookingsTitle, t.tasks.title, t.docs.title, t.notes.title]);
   });
 
+  // **The tile may not contradict its own count** (field report, 2026-09-20; backlog line
+  // opened 2026-08-16). This fixture's trip has no manual tasks and nothing prepared, so
+  // every open row is a readiness check — the exact state that printed `אין משימות פתוחות`
+  // beside a count of five, because `taskPreview.next` can only ever name a DATED task.
+  it('names the leading readiness check rather than claiming nothing is open', () => {
+    render(wrap(<Index />));
+    const tile = screen.getByRole('button', { name: new RegExp(t.tasks.title) });
+    const sub = tile.querySelector('.wp-idx-tile-sub')?.textContent ?? '';
+    const count = Number(tile.querySelector('.wp-idx-tile-count')?.textContent);
+
+    expect(count).toBeGreaterThan(0);
+    expect(sub).not.toBe(t.tasks.tile.empty);
+    // The flights check leads `orderTaskRows` here — nothing manual is urgent, so the
+    // checks are the top of the list on the screen behind this tile too.
+    expect(sub).toBe(t.tasks.tile.next(t.planHome.checklist.flightsTitle));
+  });
+
   // The Index is trip-wide, and a remembered `?day=` rides along on its URL now (field
   // report #39) — so the guard is that the param changes NOTHING here: the same tiles, the
   // same counts, the same readiness. There is no date filter on this screen to remove, and
