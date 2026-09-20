@@ -2,10 +2,10 @@
 // stored on the Trip (docs/architecture/data-model.md). The manual override
 // (state/mode-state.tsx) is session-only, in-memory UI state, not persisted —
 // the app always comes back to auto-derived on a fresh load.
-import type { Trip, ZoneEvidence } from '@waypoint/shared';
+import { eventMidSpan, type Trip, type TripEvent, type ZoneEvidence } from '@waypoint/shared';
 import { DEVICE_TIMEZONE, MS_PER_DAY } from '../constants';
 import { liveToday } from './places';
-import { todayInTz } from './time';
+import { deriveNow, todayInTz } from './time';
 
 export type Mode = 'plan' | 'trip';
 
@@ -23,20 +23,74 @@ type TripWindow = Pick<Trip, 'startDate' | 'endDate' | 'timezone'>;
  *  `evidence` is optional only for a trip whose itinerary is not loaded — the pre-snapshot
  *  skeleton's first mode — where the primary zone is all there is to read. A screen with no trip
  *  loaded at all counts from the device instead (`daysUntilStartOnDevice`). */
-export function tripToday(trip: TripWindow, now: Date, evidence?: ZoneEvidence): string {
-  return evidence ? liveToday(now.getTime(), evidence) : todayInTz(trip.timezone, now);
+export function tripToday(
+  trip: TripWindow,
+  now: Date,
+  evidence?: ZoneEvidence,
+  events?: readonly TripEvent[],
+): string {
+  const today = evidence ? liveToday(now.getTime(), evidence) : todayInTz(trip.timezone, now);
+  // **A trip you are still inside does not end at its last midnight** (ADR-0236 §1). The
+  // clamp fires in ONE direction and only past the end: you can stay in a trip, never
+  // arrive at one early (ADR-0040 §1's principle, intact).
+  if (today <= trip.endDate || !events?.length) return today;
+  return holdingCommitment(trip, events, now)?.date ?? today;
 }
 
-export function tripPhase(trip: TripWindow, now: Date, evidence?: ZoneEvidence): TripPhase {
-  const today = tripToday(trip, now, evidence);
+/**
+ * **The commitment still running that BEGAN inside the trip** — or `undefined`, which is
+ * what "the trip is over" means (ADR-0236 §1).
+ *
+ * It asks the board's own question with the board's own filter, rather than deriving a
+ * second answer beside it:
+ *
+ *  - `deriveNow` decides what is running (instant-based, `PLANNED` only — so a leg marked
+ *    `נחתנו` or skipped releases the window, which is the person saying they have arrived);
+ *  - a **held** span you are inside is dropped first (`midSpan.kind === 'held'`, ADR-0227
+ *    §B), because the board drops it too. A hotel whose check-out is the morning after the
+ *    trip ends must not hold Trip mode open with a board that has nothing to stand on —
+ *    the empty shell ADR-0040 §1 refused. A journey is exempt from that filter, which is
+ *    exactly why the flight home holds the window and the hotel does not.
+ *
+ * **`e.date` inside the range is the "began inside" guard**, and it is load-bearing: an
+ * event stranded past `endDate` by a date edit (§6) would otherwise hold a finished trip
+ * live forever.
+ */
+function holdingCommitment(
+  trip: TripWindow,
+  events: readonly TripEvent[],
+  now: Date,
+): TripEvent | undefined {
+  const nowMs = now.getTime();
+  const began = events.filter((e) => e.date >= trip.startDate && e.date <= trip.endDate);
+  const schedule = began.filter(
+    (e) =>
+      !(eventMidSpan(e)?.kind === 'held' && e.startsAt != null && nowMs >= Date.parse(e.startsAt)),
+  );
+  return deriveNow([...schedule], now).now;
+}
+
+export function tripPhase(
+  trip: TripWindow,
+  now: Date,
+  evidence?: ZoneEvidence,
+  events?: readonly TripEvent[],
+): TripPhase {
+  const today = tripToday(trip, now, evidence, events);
   if (today < trip.startDate) return 'pre';
   if (today > trip.endDate) return 'past';
   return 'live';
 }
 
-/** Trip mode runs the trip's local calendar days [startDate, endDate] inclusive; Plan mode otherwise. */
-export function deriveMode(trip: TripWindow, now: Date, evidence?: ZoneEvidence): Mode {
-  return tripPhase(trip, now, evidence) === 'live' ? 'trip' : 'plan';
+/** Trip mode runs the trip's local calendar days [startDate, endDate] inclusive — plus, while
+ *  one is still running, the commitment that began inside them (ADR-0236 §1); Plan otherwise. */
+export function deriveMode(
+  trip: TripWindow,
+  now: Date,
+  evidence?: ZoneEvidence,
+  events?: readonly TripEvent[],
+): Mode {
+  return tripPhase(trip, now, evidence, events) === 'live' ? 'trip' : 'plan';
 }
 
 /** Calendar days remaining before startDate, counted from {@link tripToday} — null once

@@ -534,3 +534,91 @@ describe('placeDayEntries — the overnight run comes out of the list (ADR-0054,
     expect(placedEdgeOf(placed, 'nobody')).toBeUndefined();
   });
 });
+
+/* ── ADR-0236 §4: an end the trip has no day for is hosted by the day it departed from ──
+   A trip running 2026-07-05…14, and a flight home leaving ⁦22:10⁩ on the last night and
+   landing at ⁦04:30⁩ on the 15th — a day `tripDates` does not enumerate, `activeDate`
+   cannot select and `?day=` falls back from. The `E` numbers are the ADR's register. */
+const TRIP_RANGE = { startDate: '2026-07-05', endDate: '2026-07-14' };
+const flightHome = ev({
+  id: 'ev-home',
+  category: 'transport',
+  date: '2026-07-14',
+  endDate: '2026-07-15',
+  startsAt: at('2026-07-14', '22:10'),
+  endsAt: at('2026-07-15', '04:30'),
+});
+
+describe('dayTransitions — an arrival the trip has no day for (ADR-0236 §4)', () => {
+  it('draws the arrival nowhere at all without the range — which is the bug', () => {
+    expect(dayTransitions([flightHome], '2026-07-14')).toHaveLength(1); // the departure only
+    expect(dayTransitions([flightHome], '2026-07-15')).toHaveLength(1); // a day nothing asks for
+  });
+
+  it('hosts it on the day the leg departed from, with the distance (E12)', () => {
+    const lastDay = dayTransitions([flightHome], '2026-07-14', TRIP_RANGE);
+    expect(lastDay.map((tr) => tr.edge)).toEqual(['start', 'end']);
+    const arrival = lastDay[1];
+    expect(arrival.atMs).toBe(ms('2026-07-15', '04:30'));
+    expect(arrival.dayOffset).toBe(1);
+    // It sorts last by INSTANT even though its clock reads smaller (E17).
+    expect(arrival.atMs).toBeGreaterThan(lastDay[0].atMs);
+  });
+
+  it('leaves an ordinary arrival on its own day, and unmarked', () => {
+    const inside = ev({
+      id: 'ev-leg',
+      category: 'transport',
+      date: '2026-07-07',
+      endDate: '2026-07-08',
+      startsAt: at('2026-07-07', '23:00'),
+      endsAt: at('2026-07-08', '02:00'),
+    });
+    expect(dayTransitions([inside], '2026-07-07', TRIP_RANGE)).toHaveLength(1);
+    const own = dayTransitions([inside], '2026-07-08', TRIP_RANGE);
+    expect(own).toHaveLength(1);
+    expect(own[0].edge).toBe('end');
+    expect(own[0].dayOffset).toBeUndefined();
+  });
+
+  it('draws nothing on any day the trip HAS when the leg starts after it ends (E13)', () => {
+    // The trip was shrunk past the departure as well, so the span covers no day the trip
+    // has. Asked about the days it does have, the answer is nothing — and the 14th is not
+    // one of them, so no surface ever asks about it.
+    const shrunk = { startDate: '2026-07-05', endDate: '2026-07-13' };
+    expect(dayTransitions([flightHome], '2026-07-13', shrunk)).toHaveLength(0);
+    expect(dayTransitions([flightHome], '2026-07-12', shrunk)).toHaveLength(0);
+  });
+
+  it('hosts a stay’s check-out the same way (E15)', () => {
+    const staysPast = ev({
+      id: 'ev-stay',
+      category: 'lodging',
+      date: '2026-07-12',
+      endDate: '2026-07-15',
+      startsAt: at('2026-07-12', '15:00'),
+      endsAt: at('2026-07-15', '11:00'),
+    });
+    // The LAST NIGHT you are actually there — not the check-in day, which is what makes the
+    // host rule one sentence for a stay and a leg alike.
+    const hosted = dayTransitions([staysPast], '2026-07-14', TRIP_RANGE);
+    expect(hosted).toHaveLength(1);
+    expect(hosted[0].edge).toBe('end');
+    expect(hosted[0].dayOffset).toBe(1);
+    expect(dayTransitions([staysPast], '2026-07-12', TRIP_RANGE).map((tr) => tr.edge)).toEqual([
+      'start',
+    ]);
+  });
+
+  it('counts the distance for a leg that lands two days out (E14)', () => {
+    const long = ev({
+      id: 'ev-ferry',
+      category: 'transport',
+      date: '2026-07-14',
+      endDate: '2026-07-16',
+      startsAt: at('2026-07-14', '20:00'),
+      endsAt: at('2026-07-16', '06:00'),
+    });
+    expect(dayTransitions([long], '2026-07-14', TRIP_RANGE)[1].dayOffset).toBe(2);
+  });
+});

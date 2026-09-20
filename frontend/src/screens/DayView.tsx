@@ -33,6 +33,7 @@ import {
   useShowPlaceOnMap,
 } from '../state/map-scope-state';
 import { prefersReducedMotion } from '../lib/motion';
+import { tripToday } from '../lib/mode';
 import { apiAssetUrl } from '../lib/api-asset';
 import { rowPhoto } from '../lib/place-photo';
 import { dayHeadTitle } from '../lib/day-title';
@@ -64,7 +65,6 @@ import {
   dayZoneContext,
   isDayOver,
   legDisplayZones,
-  liveToday,
   liveZone,
   placeName,
   placeTimezone,
@@ -628,7 +628,11 @@ export function DayView() {
   // day re-anchors. Trip mode only; Plan mode frames everything in the trip primary.
   const nowZone = liveZone(now.getTime(), zoneEvidence);
   const nowMs = now.getTime();
-  const today = liveToday(now.getTime(), zoneEvidence);
+  // **The trip's own today, clamped while a commitment that began inside it is still
+  // running** (ADR-0236 §1): without it the trip's last day reads PAST while the flight
+  // home is in the air, which locks the day (ADR-0029), paints the archive chrome and
+  // points `offToday` at a day the trip does not have.
+  const today = tripToday(trip, now, zoneEvidence, events);
   // How this screen names a day (`dayLabel`): relative on a live trip, anchored on the day
   // ON SCREEN so an idea's "מחר" is the day after the one being built (ADR-0151); by trip-day
   // number off it, where "עוד 15 ימים" is only the day number plus a constant.
@@ -904,7 +908,7 @@ export function DayView() {
     [bookends.woke?.id, bookends.sleeps?.id],
   );
   const placement = placeDayEntries(
-    mergeDayEntries(groups, dayTransitions(events, activeDate)),
+    mergeDayEntries(groups, dayTransitions(events, activeDate, trip)),
     dayEvents.filter((e) => !e.startsAt),
     groups,
     stayRowIds,

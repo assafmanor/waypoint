@@ -23,6 +23,11 @@ import { usePlaceLabels } from '../state/place-labels';
 import { t } from '../i18n/he';
 import type { TransitionEntry } from '../lib/day-entries';
 
+/** `למחרת` / `+N ימים` — ADR-0203 §2's relative-day words, which this row borrows because
+ *  it is stating the same relation: how far after the day it is drawn on a moment lands. */
+const relativeDayWord = (offset: number): string =>
+  offset === 1 ? t.journey.nextDay : t.journey.plusDays(offset);
+
 export function TransitionRow({
   entry,
   tz,
@@ -102,6 +107,9 @@ export function TransitionRow({
   // render in this edge's own zone, like the single clock does.
   const meaning = edgeMeaning(event, edge);
   const time = edgeTimePhrase(event, edge, atMs, zone ?? tz);
+  /** The relative day, derived from the entry rather than taken as a prop — four call
+   *  sites render this row and none of them should have to know the rule. */
+  const dayNote = entry.dayOffset ? relativeDayWord(entry.dayOffset) : undefined;
   return (
     <div className="transition-row">
       <button
@@ -147,6 +155,16 @@ export function TransitionRow({
             <span className="tr-clock" data-bound={meaning}>
               {time}
             </span>
+            {/* **Which day this moment is actually on, when the row is hosting it** (ADR-0236
+                §4). Present only for an end whose own day the trip does not have — the flight
+                home landing after the last day — so it is absent on every ordinary row.
+
+                **The RAIL's vocabulary, not the board's**, and that is a correctness point
+                rather than a preference: `למחרת` means "the day after the one this is
+                anchored to", which is what a hosted row means, while the board's `מחר` means
+                "tomorrow from now" and would be a lie the moment you opened the last day in
+                advance. ADR-0203 §2 minted these words for exactly this relation. */}
+            {dayNote && <span className="tr-day">{dayNote}</span>}
             {deltaMinutes != null && (
               <ZoneShiftPill minutes={deltaMinutes} className="tr-tzdelta" />
             )}

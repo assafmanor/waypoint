@@ -161,7 +161,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
 
   // A finished trip is a calm read-only archive (ADR-0040): no prep dashboard,
   // no countdown, no board — a quiet retrospective and a way back into the days.
-  if (tripPhase(trip, now, zoneEvidence) === 'past') {
+  if (tripPhase(trip, now, zoneEvidence, events) === 'past') {
     return (
       <>
         <div className="prep prep-past">

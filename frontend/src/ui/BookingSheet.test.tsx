@@ -462,22 +462,115 @@ describe('BookingSheet — refusing a save', () => {
     );
   });
 
-  /** **The two dates this spec used to set are one date now** (ADR-0203 §2), so the case it
-   *  was written for has to be built the way it can now arise: a journey whose date is INSIDE
-   *  the trip but whose arrival rolls past the end of it. Tel Aviv 20:00 on the trip's last day
-   *  lands in Tokyo at 14:00 — which, on instants, cannot be that same day — so the arrival is
-   *  the 31st and the trip ended on the 30th. The date is right and the arrival is not, and
-   *  that is precisely what the refusal has to say. */
-  it('marks only the moment that falls outside the trip', () => {
+  /** **A journey may LAND after the trip's last day, and this spec used to assert the
+   *  opposite** (owner report, 2026-09-20). It was written when both ends of a span were dates
+   *  a person picked and ADR-0083 bounded each of them; §2 made the arrival a DERIVED moment,
+   *  and the bound came along with it — so the ordinary flight home, leaving at ⁦20:00⁩ on the
+   *  last day and landing the next morning, was refused at a field no control can move. ADR-0037
+   *  §1 is what makes it harmless: a span is filed under the day it STARTS, so the booking sits
+   *  on the 30th and carries the 31st as `endDate`. `EventForm` has always said so in its own
+   *  words and bounds the date alone, which is why a night out ending at ⁦02:00⁩ on that same day
+   *  has always saved. */
+  it('lets a journey land after the trip’s last day — the date is what is bounded', () => {
     render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
     next();
+    // Tel Aviv 20:00 on the trip's last day lands in Tokyo at 14:00, which on instants cannot
+    // be that same day — so the arrival is the 31st and the trip ended on the 30th.
     fillJourney('2026-07-30', ['20:00', '14:00']);
     next();
-    const [departure, arrival] = railNodes();
-    expect(fieldOf(departure.querySelector('.vt-date'))?.hasAttribute('data-invalid')).toBe(false);
-    const marked = fieldOf(arrival.querySelector('button.vt-time'));
-    expect(marked?.hasAttribute('data-invalid')).toBe(true);
-    expect(marked?.querySelector('.field-error')?.textContent).toBe(t.index.form.dateOutOfRange);
+    // Nothing is marked, and the step advanced rather than refusing.
+    expect(document.querySelector('.jf [data-invalid]')).toBeNull();
+    expect(screen.getByText(t.index.sheet.codeLabel)).toBeTruthy();
+  });
+
+  /** The other half of the same rule: a moment that DATES a booking stays bounded, because a
+   *  leg filed outside [startDate, endDate] is one no day surface can show. A layover's own
+   *  departure is such a moment — it opens the leg after it. */
+  it('still marks a leg that would DEPART outside the trip', () => {
+    render(
+      wrapNav(
+        <BookingSheet
+          booking={null}
+          draft={{
+            ...bookingSheetDraft({
+              booking: null,
+              seed: { type: BOOKING_TYPE.FLIGHT },
+              trip,
+              events: [],
+              places,
+            }),
+            fromPlaceId: 'pl-tlv',
+            toPlaceId: 'pl-nrt',
+            stopPlaceIds: ['pl-dxb'],
+            roundTrip: false,
+          }}
+          onClose={() => {}}
+        />,
+      ),
+    );
+    pastTypeStep();
+    next();
+    // Tel Aviv 20:00 on the last day, Dubai at 02:00 — the 31st — and the leg out of Dubai
+    // then departs on a day the trip does not have.
+    fillJourney('2026-07-30', ['20:00', '02:00', '03:00', '11:00']);
+    next();
+    // Marked on the stop's own DEPARTURE — the moment that dates the leg after it — and on
+    // nothing else: neither the journey's date, which is inside the trip, nor either arrival.
+    const [origin, stop, destination] = railNodes();
+    expect(fieldOf(origin.querySelector('.vt-date'))?.hasAttribute('data-invalid')).toBe(false);
+    expect(destination.querySelector('[data-invalid]')).toBeNull();
+    const marks = stop.querySelectorAll('.field[data-invalid]');
+    expect(marks).toHaveLength(1);
+    expect(marks[0].querySelector('.field-error')?.textContent).toBe(t.index.form.dateOutOfRange);
+    // The stop's two clocks are arrival then departure; the mark is on the second.
+    expect(marks[0].querySelector('button.vt-time')?.textContent).toContain('03:00');
+  });
+});
+
+// **THE JOURNEY THE RAIL DRAWS IS THE JOURNEY IT SAVES** (ADR-0203 §2). The rail re-resolves
+// every moment on every render; `LegTimes` only ever learned the day of the moment being
+// typed. So moving a clock that something FOLLOWS left the moments after it on the day they
+// were first resolved onto — the rail said `למחרת` and the stored leg still said today.
+describe('BookingSheet — a moment that moves takes the ones after it with it', () => {
+  afterEach(() => {
+    cleanup();
+    indexVerbs.updateBooking.mockClear();
+  });
+
+  it('re-resolves the arrival when the departure moves past it', async () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    next();
+    // Tel Aviv 09:00 → Tokyo 18:00: forward on instants, so the arrival is the same day.
+    fillJourney('2026-07-19', ['09:00', '18:00']);
+    // The departure moves to the evening, which 18:00 in Tokyo can no longer follow: on
+    // instants the arrival is now tomorrow, and the rail says so.
+    setNodeTime(0, 'depart', '23:00');
+    expect(railNodes()[1].textContent).toContain(t.journey.nextDay);
+
+    next();
+    save();
+    await waitFor(() => expect(indexVerbs.updateBooking).toHaveBeenCalled());
+    const [, payload] = indexVerbs.updateBooking.mock.calls[0];
+    // The saved span is the one on screen — not a backwards leg the refusal had to catch.
+    expect(payload.event.startsAt).toBe(zonedIso('2026-07-19', '23:00', 'Asia/Jerusalem'));
+    expect(payload.event.endsAt).toBe(zonedIso('2026-07-20', '18:00', 'Asia/Tokyo'));
+  });
+
+  it('re-resolves it when the arrival is typed before the departure it follows', async () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    next();
+    setJourneyDate('2026-07-19');
+    // The arrival first, with no departure above it to resolve against...
+    setNodeTime(1, 'arrive', '18:00');
+    // ...and the departure after it, which the arrival cannot follow on the same day.
+    setNodeTime(0, 'depart', '23:00');
+    expect(railNodes()[1].textContent).toContain(t.journey.nextDay);
+
+    next();
+    save();
+    await waitFor(() => expect(indexVerbs.updateBooking).toHaveBeenCalled());
+    const [, payload] = indexVerbs.updateBooking.mock.calls[0];
+    expect(payload.event.endsAt).toBe(zonedIso('2026-07-20', '18:00', 'Asia/Tokyo'));
   });
 });
 
@@ -1024,6 +1117,33 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
     // Departs Tokyo (the outbound's DESTINATION) and lands in Tel Aviv.
     expect(back.event.startsAt).toBe(zonedIso('2026-07-28', '11:00', 'Asia/Tokyo'));
     expect(back.event.endsAt).toBe(zonedIso('2026-07-28', '18:00', 'Asia/Jerusalem'));
+  });
+
+  /** **THE FLIGHT HOME, AS REPORTED** (owner, 2026-09-20). It leaves at ⁦22:10⁩ on the trip's last
+   *  day and lands at ⁦02:30⁩ the next morning — the ordinary shape of a return, and the one the
+   *  form could not save: the rail drew `למחרת` while the leg was stored as same-day, and once
+   *  the days agreed the arrival was refused for falling outside the trip. Both halves are what
+   *  this spec holds down, and the assertion is the SAVE rather than the absence of a mark,
+   *  because what a reader needs to know is that the journey on screen is the one written. */
+  it('saves the flight home that lands the morning after the trip ends', async () => {
+    indexVerbs.createBooking.mockResolvedValue({ id: 'b-out' });
+    open();
+    goRoundTrip();
+    next();
+    fillOut('2026-07-19', '09:00', '2026-07-19', '18:00');
+    next();
+    fillOut('2026-07-30', '22:10', '2026-07-31', '02:30');
+    next();
+    save();
+
+    await waitFor(() => expect(indexVerbs.createBooking).toHaveBeenCalledTimes(2));
+    const back = indexVerbs.createBooking.mock.calls[1][0];
+    expect(back.event.startsAt).toBe(zonedIso('2026-07-30', '22:10', 'Asia/Tokyo'));
+    expect(back.event.endsAt).toBe(zonedIso('2026-07-31', '02:30', 'Asia/Jerusalem'));
+    // Filed under the day it DEPARTS, carrying the later day as `endDate` (ADR-0037 §1) —
+    // which is why landing past the trip's end places nothing outside it.
+    expect(back.event.date).toBe('2026-07-30');
+    expect(back.event.endDate).toBe('2026-07-31');
   });
 
   it('refuses a return that leaves before the outbound has landed, on that field', async () => {

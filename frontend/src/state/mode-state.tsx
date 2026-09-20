@@ -53,13 +53,13 @@ interface ModeContextValue {
 const ModeContext = createContext<ModeContextValue | null>(null);
 
 export function ModeProvider({ children }: { children: ReactNode }) {
-  const { trip, zoneEvidence } = useTrip();
+  const { trip, zoneEvidence, events } = useTrip();
   const now = useClock();
   const [override, setOverride] = useState<Mode | null>(null);
   // Switching trips (T-027) starts fresh — a peek on one trip shouldn't leak into another.
   useEffect(() => setOverride(null), [trip.id]);
 
-  const phase = tripPhase(trip, now, zoneEvidence);
+  const phase = tripPhase(trip, now, zoneEvidence, events);
   // ADR-0040: Trip mode is a live-window-only state. While the trip is live the
   // override may peek *down* into Plan (edit the plan mid-trip); before it starts
   // and after it ends Plan is the only reachable mode, so a Trip-mode override is
@@ -69,13 +69,13 @@ export function ModeProvider({ children }: { children: ReactNode }) {
   // Decided at the FIRST render, synchronously, so the first paint is already plan chrome:
   // deciding in an effect would paint the trip chrome for a frame and then jump back.
   const [goingLive, setGoingLive] = useState<GoingLive | null>(() =>
-    beginGoingLive(trip.id, deriveMode(trip, now, zoneEvidence)),
+    beginGoingLive(trip.id, deriveMode(trip, now, zoneEvidence, events)),
   );
   // A trip switch under a mounted provider re-asks the question for the new trip.
   const [seenTripId, setSeenTripId] = useState(trip.id);
   if (trip.id !== seenTripId) {
     setSeenTripId(trip.id);
-    setGoingLive(beginGoingLive(trip.id, deriveMode(trip, now, zoneEvidence)));
+    setGoingLive(beginGoingLive(trip.id, deriveMode(trip, now, zoneEvidence, events)));
   }
   // **The clock's zero, live** (ADR-0221 §4, fourth round): the eve's flaps count to this very
   // instant, so when the derived mode turns while the app is open — a group awake for it — the

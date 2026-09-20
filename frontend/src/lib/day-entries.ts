@@ -43,7 +43,11 @@ export const groupEndEvent = (g: TimeGroup): TripEvent =>
 
 export type DayEntry =
   | { kind: 'event'; group: TimeGroup; atMs: number }
-  | { kind: 'transition'; event: TripEvent; edge: 'start' | 'end'; atMs: number; labelKey: string };
+  /** **The transition IS a `BookingTransition`**, not a re-declaration of its fields. It was
+   *  the latter, which is how `dayOffset` (ADR-0236 §4) reached `mergeDayEntries` through the
+   *  spread and stopped at the type — a second copy of one shape, drifting on its first new
+   *  member (root rule 8). */
+  | ({ kind: 'transition' } & BookingTransition);
 
 export type TransitionEntry = Extract<DayEntry, { kind: 'transition' }>;
 
@@ -56,9 +60,18 @@ function groupStartMs(g: TimeGroup): number {
 
 /** The transition points to interleave on `activeDate`: the shared derivation
  *  (`bookingTransitionsOnDate`) narrowed to MULTI-DAY brackets. A same-day
- *  bracket keeps its single span row and gets no transition rows (ADR-0064). */
-export function dayTransitions(events: TripEvent[], activeDate: string): BookingTransition[] {
-  return bookingTransitionsOnDate(events, activeDate).filter((tr) => isMultiDay(tr.event));
+ *  bracket keeps its single span row and gets no transition rows (ADR-0064).
+ *
+ *  `range` is the trip's window, and it is what lets an end the trip has no day for be
+ *  hosted by the day its span departed from (ADR-0236 §4) — the flight home landing after
+ *  the last day, or any leg left that way by a date edit. Optional so a caller with no trip
+ *  in hand keeps today's behaviour exactly. */
+export function dayTransitions(
+  events: TripEvent[],
+  activeDate: string,
+  range?: { startDate: string; endDate: string },
+): BookingTransition[] {
+  return bookingTransitionsOnDate(events, activeDate, range).filter((tr) => isMultiDay(tr.event));
 }
 
 /** The transition entry a given stay has in TODAY's placed list, if any. The ambient strip
