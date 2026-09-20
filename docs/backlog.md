@@ -932,3 +932,21 @@ Two more deliberately not built on the way, both now cheap to reach:
 
 - **Nothing offers to extend the trip when a journey lands past its end.** The app knows both facts (`trip.endDate`, the resolved landing day) and says neither. It is a suggestion, not a refusal — the flight saves today — so it wants the offer grammar ([ADR-0171](decisions/0171-a-time-can-be-a-floor-or-a-ceiling.md) §1: offered into an empty value, never corrected onto a filled one) rather than a guard.
 - **A trip whose dates are SHRUNK still strands the events outside the new range** (`trips.service.ts` does not inspect them, and nothing in the backend or `packages/shared` bounds a date to the trip at all). The day strip enumerates `[startDate, endDate]` and `activeDate` clamps, so such an event is unreachable on every day surface while remaining live in `deriveNow`, the Index and the all-days Map. Unrelated to this report and older than it; it is the one path that can still produce the state the form refuses.
+
+## The board does not know it is moving (owner report, 2026-09-20) — BUILT
+
+All four causes shipped in [ADR-0237](decisions/0237-the-board-says-where-you-are.md)
+([mockup](../mockups/the-board-says-where-you-are-v1.html) ·
+[note](planning/2026-09-20-the-board-does-not-know-it-is-moving.md)). What is left, and it is one
+line rather than four:
+
+- **The two live surfaces still derive their own leg.** The board asks `travelOrigin` (the latest
+  stop that has STARTED today) and the day asks `dayRun`'s journey chain (the last PLACED row, with
+  placeless rows spanned). They agree on every shape `board-and-day-one-leg.test.ts` can build and
+  they are still two implementations of one fact, which is what [ADR-0159](decisions/0159-the-day-says-what-is-between-two-events.md)
+  §1 forbids — the 2026-09-20 report is what one divergence between them costs, and the contract
+  test is a guard rather than a fix. Removing the second means Home computing the day's own
+  `dayEntries` + `dayRun` + bookends for today, which is a refactor rather than an extraction
+  (root rule 8's "ask before you take on the larger change"), and it is the same line
+  [ADR-0206 §AZ8](decisions/0206-a-travel-time-belongs-between-two-points.md) already opened for
+  the two DAY surfaces, one surface wider.

@@ -74,6 +74,39 @@ export interface BoardGap {
    *  not at the next point (ADR-0206 §AJ4.1/§BF), and a bare `HH:MM` is exactly what let this
    *  slot print a ceiling ⁦15 minutes⁩ later than the tile below it with nothing able to notice. */
   until?: StatedTime;
+  /** **The journey you are on, for `on-the-way`** (2026-09-20). See {@link BoardGapJourney}. */
+  journey?: BoardGapJourney;
+}
+
+/**
+ * **WHAT THE BOARD SAYS WHILE YOU ARE DRIVING** — the slot ADR-0211 §5 opened and never spent.
+ *
+ * `on-the-way` has always rendered a label and a title and nothing under them, because the only
+ * thing that could reach it was a device MARK, which carries no numbers. A fix does: scaled by
+ * the remaining crow fraction, `remainingTravelSeconds` answers how much road is left, and the
+ * clock plus that answers when you get there. Both were already computed on the screen and spent
+ * only on the LIFTED hero's journey line (`HeroLiftTravel`), so the collapsed card — the one you
+ * are actually looking at from a moving car — said neither.
+ *
+ * **Every string arrives formatted, isolated and hedged**, like every other datum on this card,
+ * and both are approximations of an approximation (ADR-0207 §6): the `~` is not modesty, it is
+ * the honest size of a routed estimate multiplied by a crow ratio.
+ *
+ * Absent is the ordinary answer (§D4) and it is what a `בדרך` mark with no fix behind it
+ * produces: somebody who says they are moving has told the app where they are and not how far
+ * along, so the board says what it knows and stops.
+ */
+export interface BoardGapJourney {
+  /** `נותרו ⁦~1:12⁩ שע׳` — what is left of the leg. */
+  remaining?: string;
+  /** `הגעה ⁦~18:19⁩` — when you get there, in the point's own zone. */
+  arrival?: StatedTime;
+  /** **The arrival lands after the point's own start**, and only where that start is a deadline
+   *  worth being late for (ADR-0206 §AI1's gate, read the same way `arrivalIsDeadline` reads it:
+   *  a check-in's ⁦17:00⁩ is the hour the door opens, so nothing arrives late to it). Ink, and the
+   *  ink is on the ARRIVAL alone — what is late is where you land, not how much driving is left,
+   *  and painting the whole line red said the second. */
+  late?: boolean;
 }
 
 /** **WHAT THE NIGHT BOARD SAYS INSTEAD OF `סוף היום`** (ADR-0214).
@@ -368,6 +401,7 @@ export interface BoardProps {
 export function BoardGapSlot({ gap }: { gap: BoardGap }) {
   const { label, title } = gapWords(gap.read, gap.stayName);
   const loc = gapIsLocative(gap.read.kind);
+  const { journey } = gap;
   return (
     <>
       <div className={loc ? 'wp-board-now-label loc' : 'wp-board-now-label'}>{label}</div>
@@ -377,6 +411,25 @@ export function BoardGapSlot({ gap }: { gap: BoardGap }) {
       {gap.until && (
         <div className="wp-board-now-meta" {...timeFacts(gap.until.fact)}>
           {t.board.until} <span dir="auto">{gap.until.text}</span>
+        </div>
+      )}
+      {/* **The journey, in the meta line's own slot** — the same `.wp-board-now-meta` the `open`
+          arm fills, so the card costs nothing it did not already spend (measured at ⁦292px⁩ either
+          way in `the-board-says-where-you-are-v1`). The two runs are separated by the app's `·`
+          as a NODE rather than as part of a string, which is `TravelBetween`'s own rule one
+          elevation up: a dimmed dot needs no second copy of the runs around it. */}
+      {journey && (journey.remaining || journey.arrival) && (
+        <div
+          className="wp-board-now-meta"
+          {...(journey.arrival ? timeFacts(journey.arrival.fact) : {})}
+        >
+          {journey.remaining && <span dir="auto">{t.travel.remaining(journey.remaining)}</span>}
+          {journey.remaining && journey.arrival && <span className="sep">·</span>}
+          {journey.arrival && (
+            <span className={journey.late ? 'eta miss' : 'eta'} dir="auto">
+              {t.travel.arriveAt(journey.arrival.text)}
+            </span>
+          )}
         </div>
       )}
     </>
@@ -595,13 +648,17 @@ export function Board(props: BoardProps) {
             `בדרך` is the same fact from a person rather than from a bracket, so it takes the
             same swap rather than printing amber `עכשיו` over a teal label two lines down —
             which is the contradiction, one register over, that this ADR is about. */}
+        {/* **The blip is the live mark; the WORD is the title's** (amending ADR-0211's build
+            log §1, 2026-09-20). That log kept `on-the-way` swapping this badge to the gap's own
+            title _"because there the swap is the shipped transit costume rather than a
+            repetition"_ — true while the title had nothing under it, and false the moment the
+            journey's numbers landed below it: rendered, `בדרך` printed in the badge and again in
+            the title ⁦85px⁩ apart, which is the duplication the same log removed when it refused
+            `לילה` in both slots. `in-transit` keeps its word because there the badge says the
+            MODE (`בטיסה`) and the title says the flight — two facts, not one twice. */}
         <div className={'wp-board-live' + (inTransit || gapLoc ? ' loc' : '')}>
           <span className="blip" />
-          {inTransit && transit
-            ? transit.liveWord
-            : gapLoc
-              ? gapWords(gap!.read, gap!.stayName).title
-              : t.common.now}
+          {inTransit && transit ? transit.liveWord : t.common.now}
         </div>
         <div className="wp-board-clock" dir="auto">
           {clock}

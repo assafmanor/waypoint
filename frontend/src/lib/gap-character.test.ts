@@ -6,9 +6,11 @@ import {
   NIGHT_BAND,
   gapCharacter,
   gapDrawsDayRail,
+  gapIsLocative,
   gapWords,
   type GapCharacterInput,
 } from './gap-character';
+import { TRAVEL_STANCE } from './travel-position';
 
 const TODAY = '2026-08-29';
 const TOMORROW = '2026-08-30';
@@ -239,5 +241,80 @@ describe('gapCharacter', () => {
       expect(gapDrawsDayRail(read({ hour: 13, onWay: true }))).toBe(true);
       expect(gapDrawsDayRail(read({ hour: 22, next: tomorrowFlight }))).toBe(true);
     });
+  });
+});
+
+// ══ THE FIX REACHES THE TITLE (field report, 2026-09-20) ═══════════════════════════════════════
+//
+// The board read `פנוי · זמן חופשי` while the day view, one tab away at the same minute, drew the
+// leg as in progress off the same `travelStance`. `ON_THE_WAY` existed here from this file's first
+// commit and nothing but a human press could reach it: the screen passed `onWay` and kept the
+// stance to itself, so ADR-0207 §2's fix could WITHDRAW the leave-by and never replace it — and
+// what it fell through to was the loudest false statement on the card.
+describe('gapCharacter — a fix may now supply the character (ADR-0207 §2 as amended)', () => {
+  it('reads on-the-way off an `en-route` fix with nobody having pressed anything', () => {
+    expect(gapCharacter({ ...base, stance: TRAVEL_STANCE.EN_ROUTE }).kind).toBe(
+      GAP_CHARACTER.ON_THE_WAY,
+    );
+  });
+
+  it('and still off the mark alone, which is what a fix cannot always answer', () => {
+    expect(gapCharacter({ ...base, onWay: true }).kind).toBe(GAP_CHARACTER.ON_THE_WAY);
+  });
+
+  it('reads `arrived` at the next stop before its clock', () => {
+    expect(gapCharacter({ ...base, stance: TRAVEL_STANCE.ARRIVED }).kind).toBe(
+      GAP_CHARACTER.ARRIVED,
+    );
+  });
+
+  // The stale-mark case, and the reason `arrived` is ordered first: somebody pressed `בדרך` half
+  // an hour ago and has since got there. ADR-0207 §2 already withdraws the mark on this stance;
+  // this is that withdrawal reaching the words.
+  it('and `arrived` outranks a mark the arrival has already answered', () => {
+    expect(gapCharacter({ ...base, onWay: true, stance: TRAVEL_STANCE.ARRIVED }).kind).toBe(
+      GAP_CHARACTER.ARRIVED,
+    );
+  });
+
+  // `at-origin` is the one arm that makes the app louder, and it is the leave-by's to spend
+  // (`עדיין כאן`). As a CHARACTER it would say what `open` and `due-out` already say.
+  it('changes nothing on `at-origin` or `unknown`', () => {
+    expect(gapCharacter({ ...base, stance: TRAVEL_STANCE.AT_ORIGIN }).kind).toBe(
+      GAP_CHARACTER.OPEN,
+    );
+    expect(gapCharacter({ ...base, stance: TRAVEL_STANCE.UNKNOWN }).kind).toBe(GAP_CHARACTER.OPEN);
+    expect(gapCharacter(base).kind).toBe(GAP_CHARACTER.OPEN);
+  });
+
+  // A fix is about the leg INTO something. With nothing next there is no leg for it to be on.
+  it('says nothing about a stance with no next point', () => {
+    const { next: _next, ...noNext } = base;
+    expect(gapCharacter({ ...noNext, stance: TRAVEL_STANCE.EN_ROUTE }).kind).toBe(
+      GAP_CHARACTER.DAY_DONE,
+    );
+    expect(gapCharacter({ ...noNext, stance: TRAVEL_STANCE.ARRIVED }).kind).toBe(
+      GAP_CHARACTER.DAY_DONE,
+    );
+  });
+
+  it('wears the teal costume, which is what a position claim spends (rule 4)', () => {
+    expect(gapIsLocative(GAP_CHARACTER.ARRIVED)).toBe(true);
+    expect(gapIsLocative(GAP_CHARACTER.ON_THE_WAY)).toBe(true);
+    // A clock with no position behind it stays amber — the distinction the hue is carrying.
+    expect(gapIsLocative(GAP_CHARACTER.DUE_OUT)).toBe(false);
+  });
+
+  it('says `הגענו`, the word the day row already settles an edge with', () => {
+    expect(gapWords({ kind: GAP_CHARACTER.ARRIVED })).toEqual(t.board.gap.arrived);
+  });
+
+  // It carries the band like every arm since the 2026-09-01 amendment (so the rail still comes
+  // off at ⁦05:40⁩) and spends it on nothing: arriving at ⁦05:40⁩ is arriving.
+  it('carries the band without spending it', () => {
+    const read = gapCharacter({ ...base, hour: 5, stance: TRAVEL_STANCE.ARRIVED });
+    expect(read.band).toBe(NIGHT_BAND.MORNING);
+    expect(gapWords(read)).toEqual(t.board.gap.arrived);
+    expect(gapDrawsDayRail(read)).toBe(false);
   });
 });

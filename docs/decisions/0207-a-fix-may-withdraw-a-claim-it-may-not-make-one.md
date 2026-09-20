@@ -86,6 +86,32 @@ asked. **A prompt on Home would need its own reason-first card and its own decis
 declines to take it: the payoff here does not justify meeting a permission dialog where you did not
 ask a location question.
 
+## Amendment (2026-09-20) — §2's asymmetry was about a PERSON, and §4's one-shot was never re-asked
+
+Two device screenshots one minute apart, and this file is behind both of them. Decided and built in
+[0237](0237-the-board-says-where-you-are.md); recorded here because both sentences below read as
+settled and are not.
+
+**§2 — "a fix may withdraw a claim, it may not make one" holds for claims about a PERSON.** It was
+written against `אתם באיחור` and `יוצאים`, and it was applied to the whole surface — so a fix that
+had just deleted `זמן לצאת` was forbidden to say what it knew, and what stood in its place was
+`פנוי · זמן חופשי` at 90 km/h. That is not the silence the asymmetry was protecting; it is the
+reverse of the withdrawn claim. `GAP_CHARACTER.ON_THE_WAY` had existed since ADR-0211's first commit
+and **nothing but a human press could reach it**, because `Home` passed `gapCharacter` the `בדרך`
+mark and kept the stance to itself. 0237 §2 gives the fix that door, and adds `arrived` — which
+outranks the mark, for the reason §2 already withdraws the mark on that stance.
+
+**§4's expiry is right and the hook it assumed does not exist.** The Alternatives below reject
+`watchPosition` because it would _"buy accuracy only while the app is open and in front of you,
+which is when a one-shot already works"_. A one-shot works **once per mount**: `useGeolocation`'s
+callers asked on mount and never again, so every position read on the board was `unknown` from
+`POSITION_FRESH_MS` after it opened, and the day view looked correct only because a tab switch had
+just remounted it. `useLiveFix` (0237 §7) re-asks every `POSITION_REFRESH_MS` while a leg is live
+and the screen is visible. Still one-shot, still not a subscription, still gated on standing
+consent — so §3's "Home never prompts" and the battery argument this file is built on both survive
+intact. The rejection of `watchPosition` stands; what changes is that the sentence describing the
+one-shot is now true of the app.
+
 ### 4. A stale fix is worse than no fix, so it expires
 
 `useGeolocation` is **one-shot by design** (a battery decision, written at the top of the file), and it

@@ -172,7 +172,7 @@ import {
 } from '../lib/day-travel';
 import { travelStance, remainingTravelSeconds, TRAVEL_STANCE } from '../lib/travel-position';
 import { travelOrigin } from '../lib/hero-travel';
-import { useGeolocation } from '../lib/useGeolocation';
+import { useLiveFix } from '../lib/useLiveFix';
 import { clearOnWay, useOnWay } from '../lib/on-way';
 import type { NowInside } from '../lib/now-inside';
 import {
@@ -1058,12 +1058,11 @@ export function DayView() {
   //
   // **Requested only where consent already exists, so the day never prompts** (§3) — the same rule
   // Home follows: a read is never blocked on a permission, and a surface you swiped to is not an
-  // intent to be located.
-  const geo = useGeolocation();
-  const { permission: geoPermission, status: geoStatus, request: requestGeo } = geo;
-  useEffect(() => {
-    if (geoPermission === 'granted' && geoStatus === 'idle') requestGeo();
-  }, [geoPermission, geoStatus, requestGeo]);
+  // intent to be located. **And asked again while the leg is live** (§4 as amended, 2026-09-20):
+  // this screen and Home held the same mount-time effect against a ⁦2⁩-minute bound, so a day left
+  // open read an expired fix — which looked like correctness here only because a tab switch
+  // remounts it. `useLiveFix` is that effect with the refresh; the hook is declared after
+  // `liveLeg` because that is the live question it is gated on.
 
   // **WHICH HOLE IS THE LIVE ONE.** Only one hole of a day is the journey you are about to make,
   // and it is the only one a position or a `בדרך` mark can say anything about: the rest are a
@@ -1081,6 +1080,7 @@ export function DayView() {
     }
     return soonest;
   }, [dayLegs, dayScope, nowMs]);
+  const geo = useLiveFix(!!liveLeg);
 
   // **AND WHETHER THE PLAN MAY STILL CLAIM IT** (ADR-0208 §2). `travelOrigin` is the hero's own
   // derivation, read here rather than re-implemented — which is what stops the day row asserting a

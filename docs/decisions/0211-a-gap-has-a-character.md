@@ -69,6 +69,33 @@ something you can still miss, and the two answers disagree. On a trip whose zone
 the traveller currently is, the arrival night compounds it. That is a question about what counts as
 a day having content, and it belongs to ADR-0164/0054's boundary rather than to this amendment.
 
+## Amendment (2026-09-20) — the closed set gains `arrived`, and three things this file got right for one reason only
+
+Decided and built in [0237](0237-the-board-says-where-you-are.md), off two device screenshots one
+minute apart: the day view drew the live leg as in progress, this board read `פנוי · זמן חופשי`.
+
+1. **`ON_THE_WAY` was unreachable by sensor for three weeks.** §3 gives it "the `בדרך` device mark",
+   which is what `Home` passed — and never the `stance` the same screen computed ⁦600⁩ lines above.
+   So an `en-route` fix withdrew the leave-by tile and the read fell through to `open`. The
+   character now takes either kind of evidence; the board is not obliged to say how it knows.
+2. **A seventh character, `arrived`** (`כרגע · הגענו`), first in the set — a fix at the destination
+   outranks a `בדרך` pressed half an hour ago and since answered by arriving. It wears teal, which
+   is the clearest case rule 4 has. It gets **no meta line**: the next row says that clock ⁦40px⁩
+   lower and the tile counts to it.
+3. **§5's ceiling was unconditional on the character**, which was invisible while `on-the-way` drew
+   nothing else — the shipped card printed `כרגע · בדרך` over `עד 14:15`, a free-time ceiling for
+   somebody who had already left. `due-out` excluded itself by arithmetic and nothing else did.
+   The two moving arms now withhold it.
+4. **Build log §1 is amended.** It kept `on-the-way` swapping the BADGE to the gap's own title
+   _"because there the swap is the shipped transit costume rather than a repetition"_. True while
+   the title had nothing under it; false the moment the journey's numbers landed below it, where
+   `בדרך` printed in the badge and again in the title ⁦85px⁩ apart — the duplication this same log
+   removed when it refused `לילה` in both slots. The **blip** stays teal: that is the live mark,
+   not the word.
+
+§5's own slot is where the journey's numbers go (`נותרו ~1:12 שע׳ · הגעה ~18:19`), which is why
+0237 costs ⁦0px⁩ — it spends a line this ADR opened and never filled on `on-the-way`.
+
 ## Amendment (2026-09-15) — §8 refused a title state, and at a PASSED leave-by it was wrong to
 
 **Reported from a device at ⁦11:16⁩, with a screenshot:** _"I feel like it shouldn't say that we have
