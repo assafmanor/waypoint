@@ -87,6 +87,7 @@ import {
   placeRefSubject,
   placeRefs,
   soleIdeaFor,
+  type PlaceRef,
 } from '../lib/place-refs';
 import { badgePhoto } from '../lib/place-photo';
 import { placeSummary, type PlaceSummary } from '../lib/place-summary';
@@ -140,7 +141,7 @@ import { daySelectTarget, useBackLayer, withBookingFormReturn } from '../state/n
 import { useNoteHostWayIn } from '../state/note-host-nav';
 import { useNavigate } from 'react-router-dom';
 import { dayLabel, dayWindowMs, formatTime } from '../lib/time';
-import { edgeSettleProps, eventEdgeTransition } from '../lib/transitions';
+import { edgeSettleProps, eventEdgeTransition, relativeDayWord } from '../lib/transitions';
 import { connectionStopKey, connectionStops } from '../lib/day-joins';
 import { bookingWhen } from '../lib/booking-journey';
 import { shortTitleText } from '../lib/route-title';
@@ -888,9 +889,20 @@ export function MapView() {
     return byPlace;
   }, [geo.coords, places]);
 
+  // **The trip's window, because a day scope is only as honest as its days** (ADR-0236 §4,
+  // reaching the map 2026-09-20). Both derivations below read it, so the pin and the row put
+  // one landing on one day; without it the flight home's destination has a day facet the
+  // strip has no chip for and the map draws the departure airport alone.
+  const tripRange = useMemo(
+    () =>
+      trip?.startDate && trip?.endDate
+        ? { startDate: trip.startDate, endDate: trip.endDate }
+        : undefined,
+    [trip?.startDate, trip?.endDate],
+  );
   const usageIndex = useMemo(
-    () => buildPlaceUsageIndex(events, bookings, maybeItems, places),
-    [events, bookings, maybeItems, places],
+    () => buildPlaceUsageIndex(events, bookings, maybeItems, places, tripRange),
+    [events, bookings, maybeItems, places, tripRange],
   );
   const placeById = useMemo(() => new Map(places.map((p) => [p.id, p])), [places]);
   const allUsages = useMemo(() => [...usageIndex.values()], [usageIndex]);
@@ -1176,14 +1188,14 @@ export function MapView() {
   // airport you change planes at on the way out is a plain destination on the way home.
   const connectionWordAt = useMemo(() => {
     const words = new Map<string, string>();
-    for (const stop of connectionStops(bookings, events, bookingWhen(events))) {
+    for (const stop of connectionStops(bookings, events, bookingWhen(events), tripRange)) {
       words.set(
         connectionStopKey(stop.placeId, stop.date),
         t.day.join.word[stop.type] ?? t.day.join.word.flight,
       );
     }
     return (placeId: string, date: string) => words.get(connectionStopKey(placeId, date));
-  }, [bookings, events]);
+  }, [bookings, events, tripRange]);
 
   // ── The pins (ADR-0121 §6) ────────────────────────────────────────────────
   // The number is the index in the scoped day sequence, computed over the whole
@@ -2734,9 +2746,11 @@ export function MapView() {
    *  the one state this verb exists to answer. */
   const placeIsScheduledInScope = (placeId: string) =>
     listCtx.onDate != null &&
-    placeRefs(placeId, { events, bookings, maybeItems }, { onDate: listCtx.onDate }).some(
-      (ref) => ref.kind !== PLACE_REF_KIND.idea,
-    );
+    placeRefs(
+      placeId,
+      { events, bookings, maybeItems },
+      { onDate: listCtx.onDate, range: tripRange },
+    ).some((ref) => ref.kind !== PLACE_REF_KIND.idea);
 
   /** **The way in to what a reference is about**, shared with the note surfaces
    *  (`useNoteHostWayIn`): the day plus the id that opens and lands the one card. Held at the
@@ -2754,95 +2768,107 @@ export function MapView() {
     // already names it and `היום ·` on every entry is noise. A reference with no day
     // at all says so in either scope: inside a scoped block, silence would read as
     // "on this day".
-    const refDayLabel = (date: string | undefined): string | undefined =>
-      date == null ? t.map.noDay : onDate != null ? undefined : dayLabel(date, { trip, today });
+    // …**unless the moment does not land on the day it is drawn on** (ADR-0236 §4, on this row
+    // 2026-09-20). A hosted arrival is exactly the case where day-scoped silence would read as
+    // "on this day": the flight home's landing sits on the trip's last day and happens the
+    // morning after it. `relativeDayWord` is the transition row's own vocabulary, so the map
+    // row and the day row say the same thing about the same landing.
+    const refDayLabel = (ref: PlaceRef): string | undefined =>
+      ref.dayOffset
+        ? relativeDayWord(ref.dayOffset)
+        : ref.date == null
+          ? t.map.noDay
+          : onDate != null
+            ? undefined
+            : dayLabel(ref.date, { trip, today });
 
-    const entries = placeRefs(usage.placeId, { events, bookings, maybeItems }, { onDate }).map(
-      (ref): Omit<RefEntry, 'rank'> => {
-        const event = ref.eventId ? eventById.get(ref.eventId) : undefined;
-        const booking = ref.bookingId ? bookings.find((b) => b.id === ref.bookingId) : undefined;
-        if (ref.kind === PLACE_REF_KIND.idea) {
-          // The shelf, which both day surfaces render (Trip's day view and Plan's
-          // builder), so this needs no mode switch. Labelled with the idea's OWN name:
-          // two ideas on one place are two intentions (`soleIdeaFor` turns on exactly
-          // that) and the entry used to read `על המדף · <day>` for both of them.
-          const idea = maybeItems.find((m) => m.id === ref.maybeId);
-          return {
-            key: ref.key,
-            kind: t.map.refs.idea,
-            label: idea?.title || t.map.shelfTag,
-            day: refDayLabel(ref.date),
-            onOpen: () => goToDay(ref.date ?? today),
-          };
-        }
-        const title = event ? shortTitleText(event.title) : (booking?.title ?? '');
-        const edgeWord = event && ref.edge ? eventEdgeTransition(event, ref.edge) : undefined;
-        // The time renders in the reference's own zone, each end of a bracketed booking
-        // in its own — the same resolution the row's meta line makes one line up.
-        const zones = event && eventZones(event, zoneCtx);
-        const zone = zones && (ref.edge === 'end' ? zones.endZone : zones.startZone);
-        // **THIS END of the booking, not the booking** (ADR-0224 §1, wired here 2026-09-16).
-        // A stay lists twice on its hotel — `צ׳ק-אין` and `צ׳ק-אאוט`, and a hire twice on its
-        // counter — and both rows read the span's `status`, so answering either one ticked both
-        // and said `היינו` about a check-out. `ref.edge` is already in hand: it picks the row's
-        // own word and its own zone two lines up, and had simply never reached the verb.
-        const settleEdge = ref.edge ?? 'start';
-        const settle = event ? edgeSettleProps(event, settleEdge) : undefined;
-        const settled = settle?.outcome;
-        // The emphasis is the CLOCK's question, asked only of a day that has passed with
-        // nothing said about it — the same `isDayUsagePast` the tier, the block header and
-        // `מה נשאר` all read, so the four cannot disagree about whether a day is closed.
-        const usageDay = usage.days.find((d) => d.date === (ref.date ?? event?.date));
-        // **AND A RECORD IS ABOUT A DAY YOU HAVE REACHED** (owner, 2026-09-16, the same report
-        // as the day list's: _"it's only relevant for the current day, not for future days"_).
-        // ADR-0139 §2's "every event is settleable here" was written against the CLOCK — it
-        // protects ADR-0117 §2's early mark on tonight's dinner, which is a claim about today —
-        // and this row has always carried references from every day of the trip, so it read
-        // that rule as covering Thursday too. Asked per REFERENCE rather than per screen,
-        // because all-days puts several days' references in one block; the emphasis above is
-        // the mirror question about a day already behind you.
-        //
-        // An ANSWERED reference keeps its controls, which is the rest of §2: with `outcome`
-        // set the control is the record plus its undo, never the pair, so nothing is stranded.
-        const refDate = ref.date ?? event?.date;
-        const unreached = !settled && !!refDate && refDate > today;
+    const entries = placeRefs(
+      usage.placeId,
+      { events, bookings, maybeItems },
+      { onDate, range: tripRange },
+    ).map((ref): Omit<RefEntry, 'rank'> => {
+      const event = ref.eventId ? eventById.get(ref.eventId) : undefined;
+      const booking = ref.bookingId ? bookings.find((b) => b.id === ref.bookingId) : undefined;
+      if (ref.kind === PLACE_REF_KIND.idea) {
+        // The shelf, which both day surfaces render (Trip's day view and Plan's
+        // builder), so this needs no mode switch. Labelled with the idea's OWN name:
+        // two ideas on one place are two intentions (`soleIdeaFor` turns on exactly
+        // that) and the entry used to read `על המדף · <day>` for both of them.
+        const idea = maybeItems.find((m) => m.id === ref.maybeId);
         return {
           key: ref.key,
-          // The booking leads when there is one: it is what a traveller standing at the
-          // place wants first, and it is `PlaceRef.kind`'s own answer rather than a
-          // second opinion about which entity names this reference.
-          kind: booking ? t.map.refs.booking : t.map.refs.event,
-          label: [title, edgeWord].filter(Boolean).join(` ${DOT_SEPARATOR} `),
-          day: refDayLabel(ref.date),
-          time: ref.at != null && zone ? formatTime(new Date(ref.at), zone) : undefined,
-          at: ref.at,
-          // **AND THE EVENT'S OWN CARD IS WHAT IT OPENS** (owner, 2026-08-20: _"going from a
-          // place to the event … doesn't scroll correctly"_). It used to land on the DAY and
-          // stop there: on a full day that leaves you looking at whatever the day opens on,
-          // with nothing saying which of its rows you came for. `wayIn.goTo` is the channel
-          // that already answers this for a note's host — the day, plus `?event=`, which both
-          // day surfaces now open and land on — so this is a second caller rather than a
-          // second rule (the booking below is unchanged: its detail opens HERE, without
-          // leaving the place you are standing on).
-          onOpen: booking
-            ? () => setDetailBooking(booking)
-            : event
-              ? () =>
-                  wayIn.goTo({ kind: 'event', id: event.id, name: event.title, date: event.date })
-              : () => goToDay(ref.date ?? today),
-          settle:
-            event && settle && !unreached
-              ? {
-                  ...settle,
-                  asking: !settled && !!usageDay && isDayUsagePast(usageDay, nowMs, today),
-                  onDone: () => verbs.done(event, settleEdge),
-                  onSkip: () => verbs.skip(event, settleEdge),
-                  onUndo: () => verbs.restore(event, settleEdge),
-                }
-              : undefined,
+          kind: t.map.refs.idea,
+          label: idea?.title || t.map.shelfTag,
+          day: refDayLabel(ref),
+          onOpen: () => goToDay(ref.date ?? today),
         };
-      },
-    );
+      }
+      const title = event ? shortTitleText(event.title) : (booking?.title ?? '');
+      const edgeWord = event && ref.edge ? eventEdgeTransition(event, ref.edge) : undefined;
+      // The time renders in the reference's own zone, each end of a bracketed booking
+      // in its own — the same resolution the row's meta line makes one line up.
+      const zones = event && eventZones(event, zoneCtx);
+      const zone = zones && (ref.edge === 'end' ? zones.endZone : zones.startZone);
+      // **THIS END of the booking, not the booking** (ADR-0224 §1, wired here 2026-09-16).
+      // A stay lists twice on its hotel — `צ׳ק-אין` and `צ׳ק-אאוט`, and a hire twice on its
+      // counter — and both rows read the span's `status`, so answering either one ticked both
+      // and said `היינו` about a check-out. `ref.edge` is already in hand: it picks the row's
+      // own word and its own zone two lines up, and had simply never reached the verb.
+      const settleEdge = ref.edge ?? 'start';
+      const settle = event ? edgeSettleProps(event, settleEdge) : undefined;
+      const settled = settle?.outcome;
+      // The emphasis is the CLOCK's question, asked only of a day that has passed with
+      // nothing said about it — the same `isDayUsagePast` the tier, the block header and
+      // `מה נשאר` all read, so the four cannot disagree about whether a day is closed.
+      const usageDay = usage.days.find((d) => d.date === (ref.date ?? event?.date));
+      // **AND A RECORD IS ABOUT A DAY YOU HAVE REACHED** (owner, 2026-09-16, the same report
+      // as the day list's: _"it's only relevant for the current day, not for future days"_).
+      // ADR-0139 §2's "every event is settleable here" was written against the CLOCK — it
+      // protects ADR-0117 §2's early mark on tonight's dinner, which is a claim about today —
+      // and this row has always carried references from every day of the trip, so it read
+      // that rule as covering Thursday too. Asked per REFERENCE rather than per screen,
+      // because all-days puts several days' references in one block; the emphasis above is
+      // the mirror question about a day already behind you.
+      //
+      // An ANSWERED reference keeps its controls, which is the rest of §2: with `outcome`
+      // set the control is the record plus its undo, never the pair, so nothing is stranded.
+      const refDate = ref.date ?? event?.date;
+      const unreached = !settled && !!refDate && refDate > today;
+      return {
+        key: ref.key,
+        // The booking leads when there is one: it is what a traveller standing at the
+        // place wants first, and it is `PlaceRef.kind`'s own answer rather than a
+        // second opinion about which entity names this reference.
+        kind: booking ? t.map.refs.booking : t.map.refs.event,
+        label: [title, edgeWord].filter(Boolean).join(` ${DOT_SEPARATOR} `),
+        day: refDayLabel(ref),
+        time: ref.at != null && zone ? formatTime(new Date(ref.at), zone) : undefined,
+        at: ref.at,
+        // **AND THE EVENT'S OWN CARD IS WHAT IT OPENS** (owner, 2026-08-20: _"going from a
+        // place to the event … doesn't scroll correctly"_). It used to land on the DAY and
+        // stop there: on a full day that leaves you looking at whatever the day opens on,
+        // with nothing saying which of its rows you came for. `wayIn.goTo` is the channel
+        // that already answers this for a note's host — the day, plus `?event=`, which both
+        // day surfaces now open and land on — so this is a second caller rather than a
+        // second rule (the booking below is unchanged: its detail opens HERE, without
+        // leaving the place you are standing on).
+        onOpen: booking
+          ? () => setDetailBooking(booking)
+          : event
+            ? () => wayIn.goTo({ kind: 'event', id: event.id, name: event.title, date: event.date })
+            : () => goToDay(ref.date ?? today),
+        settle:
+          event && settle && !unreached
+            ? {
+                ...settle,
+                asking: !settled && !!usageDay && isDayUsagePast(usageDay, nowMs, today),
+                onDone: () => verbs.done(event, settleEdge),
+                onSkip: () => verbs.skip(event, settleEdge),
+                onUndo: () => verbs.restore(event, settleEdge),
+              }
+            : undefined,
+      };
+    });
 
     // **WHICH ONES SURVIVE THE FOLD** (`PLACE_REFS_CAP`), and it is a different order from
     // the one they are drawn in. Chronological is right for READING a place's history, and

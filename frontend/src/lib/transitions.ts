@@ -21,6 +21,18 @@ import { formatTime } from './time';
 import { t } from '../i18n/he';
 import type { SettleOutcome, SettleWords } from '../ui/domain/SettleControl';
 
+/**
+ * **`למחרת` / `+N ימים`** — ADR-0203 §2's relative-day words, borrowed by every surface that
+ * draws a moment on a day it does not fall on (ADR-0236 §4's hosted arrival).
+ *
+ * Deliberately NOT the board's `מחר`, which means "tomorrow from now": a row read in advance
+ * on the trip's last day would then claim a landing is tomorrow when it is three days out.
+ * This says how far after the day it is DRAWN ON the moment lands, which is the only relation
+ * a hosted row can state without a clock.
+ */
+export const relativeDayWord = (offset: number): string =>
+  offset === 1 ? t.journey.nextDay : t.journey.plusDays(offset);
+
 /** The Hebrew word for a profile transition key (המראה / צ׳ק-אין …). */
 export const transitionLabel = (key: string): string =>
   (t.glance.transition as Record<string, string>)[key] ?? key;

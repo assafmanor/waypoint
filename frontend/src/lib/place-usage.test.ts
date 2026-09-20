@@ -162,6 +162,78 @@ describe('a route endpoint owns its own end of the span, not all of it', () => {
   });
 });
 
+// ── THE FLIGHT HOME LANDS ON A DAY THE MAP HAS NO CHIP FOR (owner, 2026-09-20) ────────
+// Reported from the device: on the trip's last day the map drew the departure airport and
+// nothing else — _"it shows only one leg of the flight"_. The arrival's day facet was the
+// day AFTER the trip ends, so the destination fell out of every day scope the strip offers
+// and rendered as a ghost. ADR-0236 §4's hosting rule, asked of a pin.
+describe('a route endpoint the trip has no day for is hosted by its last day', () => {
+  const TRIP = { startDate: '2026-01-21', endDate: '2026-01-25' };
+  const home = booking({
+    id: 'fl',
+    type: BOOKING_TYPE.FLIGHT,
+    fromPlaceId: 'fco',
+    toPlaceId: 'tlv',
+  });
+  // Rome 22:10 on the trip's last day, Tel Aviv 02:30 the morning after it ends.
+  const redEye = event({
+    id: 'e-home',
+    bookingId: 'fl',
+    kind: EVENT_KIND.HARD,
+    date: '2026-01-25',
+    endDate: '2026-01-26',
+    startsAt: '2026-01-25T21:10:00Z',
+    endsAt: '2026-01-26T00:30:00Z',
+  });
+  const index = (range?: { startDate: string; endDate: string }) =>
+    buildPlaceUsageIndex([redEye], [home], [], [place('fco'), place('tlv')], range);
+
+  it("puts the DESTINATION on the trip's last day, at the arrival", () => {
+    const days = index(TRIP).get('tlv')!.days;
+    expect(days.map((d) => d.date)).toEqual(['2026-01-25']);
+    expect(days[0].edge).toBe('end');
+    expect(days[0].at).toBe(Date.parse('2026-01-26T00:30:00Z'));
+  });
+
+  it('leaves the ORIGIN exactly where it was', () => {
+    const days = index(TRIP).get('fco')!.days;
+    expect(days.map((d) => d.date)).toEqual(['2026-01-25']);
+    expect(days[0].edge).toBe('start');
+  });
+
+  // The rule is the trip's, not the calendar's: with no range nothing is hosted, which is
+  // what every caller that is not day-scoped wants.
+  it('hosts nothing without a range', () => {
+    expect(
+      index()
+        .get('tlv')!
+        .days.map((d) => d.date),
+    ).toEqual(['2026-01-26']);
+  });
+
+  // A red-eye INSIDE the trip is untouched: it really does land on a day the strip has.
+  it('leaves a within-trip red-eye on its own arrival day', () => {
+    const inside = event({
+      ...redEye,
+      date: '2026-01-22',
+      endDate: '2026-01-23',
+      startsAt: '2026-01-22T21:10:00Z',
+      endsAt: '2026-01-23T00:30:00Z',
+    });
+    const days = buildPlaceUsageIndex([inside], [home], [], [place('fco'), place('tlv')], TRIP).get(
+      'tlv',
+    )!.days;
+    expect(days.map((d) => d.date)).toEqual(['2026-01-23']);
+  });
+
+  // …and a leg shrunk ENTIRELY out of the trip is hosted nowhere (ADR-0236 §6): hosting it
+  // would put the landing on a day that does not exist either.
+  it('hosts nothing when the departure is outside the trip too', () => {
+    const days = index({ startDate: '2026-01-21', endDate: '2026-01-24' }).get('tlv')!.days;
+    expect(days).toEqual([]);
+  });
+});
+
 // ── WHAT A HUMAN HAS CLOSED CANNOT HOLD A PLACE AHEAD (ADR-0117 §2, 2026-08-06) ───────
 // `isDayUsagePast` honoured "a human outranks the clock" only when EVERY reference on the
 // day was settled, so one tick on one reference kept the whole place ahead of you.

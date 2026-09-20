@@ -1,6 +1,6 @@
 # 2026-09-20 — The flight home leaves the trip behind
 
-**Outcome:** [ADR-0236](../decisions/0236-the-trip-is-live-while-its-last-commitment-is.md) (**Proposed, not built** — ADR and mockup first, on the owner's instruction) · [`mockups/the-trip-is-live-while-its-last-leg-is-v1.html`](../../mockups/the-trip-is-live-while-its-last-leg-is-v1.html) · README row · catalog entry · backlog line updated. The form half of the same session shipped separately: [ADR-0203](../decisions/0203-a-journey-has-one-date-and-its-arrival-is-a-clock.md)'s fifth build log and [ADR-0083](../decisions/0083-whenfield-datetime-standard.md)'s amendment.
+**Outcome:** [ADR-0236](../decisions/0236-the-trip-is-live-while-its-last-commitment-is.md) (**built the same day, in three passes** — §1–§5 on #860, §6 on #861, §7 on the map after that; the ADR and mockup came first, on the owner's instruction) · [`mockups/the-trip-is-live-while-its-last-leg-is-v1.html`](../../mockups/the-trip-is-live-while-its-last-leg-is-v1.html) · README row · catalog entry · backlog line updated. The form half of the same session shipped separately: [ADR-0203](../decisions/0203-a-journey-has-one-date-and-its-arrival-is-a-clock.md)'s fifth build log and [ADR-0083](../decisions/0083-whenfield-datetime-standard.md)'s amendment.
 
 ## What was asked, and in what order
 
@@ -54,6 +54,20 @@ Later the same day, with the first and last day side by side:
 
 Both are shape questions about a surface the session had just changed, and both found something. The first produced §4 (the arrival had no day at all). The second produced §6, and the useful part is what it cost to get right: **the app's existing exemption was the obvious reach and the wrong one.** `isAmbient(e) && !isJourney(e)` is at three call sites already and reads like the answer; it would have drawn a within-trip red-eye as a card on its departure day AND as two transition rows across two days. The question §6 asks is how many day surfaces a span's ends are spread across — which is `endHostDay`, the function §4 had just written.
 
+## The third pass, which is the same correction a third time
+
+The owner, on the trip's last day with the map open:
+
+> there's still an issue with the map regarding this issue, see that it shows only one leg of the flight on the map
+
+**The ADR had already answered this, and answered it wrong.** E26 said the Map's day scope is untouched — its clock reads `liveToday` for "where are you standing", which is a different question from "which day of the trip is it". That is true, and it is about the clock. The **pins** ask a third question: which day of the trip does this place's reference land on. `routeEndpointDay` dated the flight's destination to `endDate`, so on the last day it was a `ghost` — dimmed, filed under a day the strip has no chip for — and the tab drew the departure airport alone.
+
+So the session's own rule landed on it a second time: **the claim "X is untouched" needed one `grep` and did not get one.** `routeEndpointDay` has three consumers and two of them are day-scoped; they were in plain sight. The pattern across all three passes is the same and worth naming once: every one of the four defects was found by the owner **looking at a surface**, and in each case the code had the answer available to anyone who counted.
+
+Two things were riding underneath the missing pin and neither was in the report: the row said nothing about which day the landing falls on (day-scoped silence reads as "today"), and the arrival was structurally unsettleable, because `unreached` is `refDate > today` and the reference was dated past the trip's own end.
+
+**No new mockup frame.** §4's already draws this landing and this word; §7 adds a consumer, not a decision. What it claims — that the map row and the day row say the same thing — is pinned by a spec asserting the day list's own `t.journey.nextDay` inside `.map-ref-meta`.
+
 ## Handoff
 
-The build is unstarted. What it needs: the running-commitment arm in `tripPhase` (`lib/mode.ts`, which needs the trip's events — `ModeProvider` already has them), and `mode-seen` read on the way **out** of Trip as well as in (ADR-0221 §4 wrote only the entry half). Specs pin the clock (`setSimulatedNow`) and both day scopes, per `frontend/CLAUDE.md`: the window holds mid-flight, closes at the landing, never opens early, and a trip ending with a daytime commitment behaves exactly as it does today.
+Built and merged: §1–§5 (#860), §6 (#861), §7 on the map. Still deliberately open, on the backlog: `buildDayGlance`'s `!isAmbient` filter (Home's rail draws such a leg as anchor ticks, and no number disagrees); offering to extend `trip.endDate` when a journey lands past it; the older path where **shrinking** a trip's dates strands events outside the new range with nothing in the backend to stop it.

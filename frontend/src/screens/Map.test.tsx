@@ -15,6 +15,9 @@ import {
 } from '@waypoint/shared';
 
 const ACTIVE_DATE = '2026-07-20';
+/** The day scope, when a test needs one the shared fixture's mid-trip day cannot be: the
+ *  trip's LAST day, which is the only place a leg can land past the end from. */
+let scopedDate: string | null = null;
 
 const place = (id: string, coords: boolean, at?: { lat: number; lng: number }): Place => ({
   id,
@@ -103,7 +106,7 @@ vi.mock('../state/trip-state', () => ({
     bookings: tripBookings,
     maybeItems: tripMaybes,
     places: tripPlaces,
-    activeDate: ACTIVE_DATE,
+    activeDate: scopedDate ?? ACTIVE_DATE,
     zoneEvidence: {
       events: tripEvents,
       bookings: tripBookings,
@@ -328,6 +331,7 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
   afterEach(() => {
     cleanup();
     setSimulatedNow(null);
+    scopedDate = null;
     tripEvents = [];
     tripMaybes = [];
     tripPlaces = [];
@@ -2538,6 +2542,73 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       fireEvent.click(row('lite')!.querySelector('.pp-addbtn') as HTMLElement);
       fireEvent.click(row('food')!);
       expect(trash()).toBeNull();
+    });
+  });
+  // ── THE FLIGHT HOME LANDS ON A DAY THE STRIP HAS NO CHIP FOR ────────────────────────
+  // Owner, 2026-09-20, from the device on the trip's last day: _"it shows only one leg of
+  // the flight on the map"_. The arrival's day facet was `endDate` — the morning AFTER the
+  // trip ends — so the destination fell out of every scope the strip offers and the tab drew
+  // the departure airport alone. ADR-0236 §4 already hosts that landing on the day list; this
+  // is the same rule reaching the fourth day surface.
+  describe('a leg that lands past the trip is hosted by its last day (ADR-0236 §4)', () => {
+    const LAST_DAY = '2026-07-25';
+    const seedFlightHome = () => {
+      scopedDate = LAST_DAY;
+      setSimulatedNow(Date.parse(`${LAST_DAY}T09:00:00Z`));
+      tripPlaces = [place('hnd', true), place('tlv', true, { lat: 32.0, lng: 34.9 })];
+      tripBookings = [
+        {
+          id: 'bk-home',
+          tripId: 't1',
+          type: 'flight',
+          title: 'LY 096',
+          source: 'manual',
+          fromPlaceId: 'hnd',
+          toPlaceId: 'tlv',
+          createdAt: '',
+          updatedAt: '',
+          updatedBy: 'u1',
+        } as Booking,
+      ];
+      // Tokyo 22:10 on the trip's last day, Tel Aviv 02:30 the morning after it ends.
+      tripEvents = [
+        event({
+          id: 'e-home',
+          bookingId: 'bk-home',
+          kind: EVENT_KIND.HARD,
+          category: 'transport',
+          title: 'LY 096',
+          date: LAST_DAY,
+          endDate: '2026-07-26',
+          startsAt: `${LAST_DAY}T13:10:00Z`,
+          endsAt: `${LAST_DAY}T23:30:00Z`,
+        }),
+      ];
+    };
+
+    // THE REPORT, as one line: the destination is on the day, not dimmed off it.
+    it('draws BOTH ends of the flight on the last day', () => {
+      seedFlightHome();
+      render(wrap(<MapView />));
+      expect(filteredOut('hnd')).toBe(false);
+      expect(filteredOut('tlv')).toBe(false);
+      // …and it has a place in the day's sequence, which is what a ghost has not.
+      expect(orderOf('tlv')).not.toBeNull();
+    });
+
+    // **AND THE ROW SAYS WHICH DAY IT LANDS ON.** Day-scoped silence reads as "on this day",
+    // which is the one thing this landing is not — the same `למחרת` the day list's arrival row
+    // carries beside the identical clock.
+    it("names the arrival's own day beside its clock", () => {
+      seedFlightHome();
+      render(wrap(<MapView />));
+      fireEvent.click(row('tlv')!);
+      expect(row('tlv')!.querySelector('.map-ref-meta')!.textContent).toContain(t.journey.nextDay);
+      // The DEPARTURE lands on the day it is drawn on, so it says nothing extra.
+      fireEvent.click(row('hnd')!);
+      expect(row('hnd')!.querySelector('.map-ref-meta')!.textContent).not.toContain(
+        t.journey.nextDay,
+      );
     });
   });
 });

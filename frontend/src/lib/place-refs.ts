@@ -28,6 +28,7 @@ import {
 } from '@waypoint/shared';
 import { bookingPlaceId, eventPlaceId } from './places';
 import { routeEndpointDay } from './place-usage';
+import type { TransitionRange } from './glance';
 
 /** What kind of thing references the place — which decides where the entry goes:
  *  a booking → `BookingDetail`, an event → its day, an idea → the shelf. */
@@ -52,6 +53,11 @@ export interface PlaceRef {
   edge?: 'start' | 'end';
   /** The moment it happens here — the ordering key, so the moment's owner leads. */
   at?: number;
+  /** **How many days after `date` this moment actually lands** (ADR-0236 §4, on the map
+   *  2026-09-20). Absent — and therefore `0` — for every reference on its own day. Non-zero
+   *  only for an end HOSTED by the trip's last day because its own day is outside the window,
+   *  and it is what lets the row say `למחרת` beside `נחיתה 02:30` instead of implying today. */
+  dayOffset?: number;
 }
 
 /** Snapshot slice the resolution reads. Bundled so a call site can't supply three
@@ -99,14 +105,18 @@ function edgeOnDate(
  * when it touches that date **or** when it has no date at all — a dateless
  * reference belongs to no day, so no day excludes it, which is the same reading
  * the list's `dayless` block applies.
+ *
+ * `range` is the trip's window, and it is what puts the flight home's ARRIVAL on a day this
+ * list can be scoped to: hosted on the trip's last day, carrying `dayOffset` so the row says
+ * how far past it the landing is ({@link routeEndpointDay}).
  */
 export function placeRefs(
   placeId: string,
   source: PlaceRefSource,
-  opts: { onDate?: string } = {},
+  opts: { onDate?: string; range?: TransitionRange } = {},
 ): PlaceRef[] {
   const { events, bookings, maybeItems } = source;
-  const { onDate } = opts;
+  const { onDate, range } = opts;
   const refs: PlaceRef[] = [];
 
   for (const event of events) {
@@ -128,9 +138,11 @@ export function placeRefs(
     const route = booking && carriesRoute(booking.type);
     for (const endpoint of endpoints) {
       if (endpoint.id !== placeId) continue;
-      const own = route ? routeEndpointDay(event, endpoint.edge) : null;
+      const own = route ? routeEndpointDay(event, endpoint.edge, range) : null;
       // A route endpoint is in scope only on ITS OWN day; everything else keeps the span test,
       // which is what holds a stay on every night it touches.
+      // A route endpoint the trip hosts nowhere is on no day at all (ADR-0236 §6).
+      if (route && endpoint.edge === 'end' && !own) continue;
       if (own ? onDate != null && own.date !== onDate : onDate && !touchesDate(event, onDate))
         continue;
       const edge = own ? own.edge : edgeOnDate(event, endpoint.edge, onDate);
@@ -156,6 +168,7 @@ export function placeRefs(
         date,
         edge,
         at: iso ? Date.parse(iso) : undefined,
+        ...(own?.dayOffset ? { dayOffset: own.dayOffset } : {}),
       });
     }
   }

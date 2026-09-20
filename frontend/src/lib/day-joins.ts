@@ -31,6 +31,7 @@ import { flooredSlotEnd, gapBetween, type Gap } from './gaps';
 import { heroLeaveBy } from './hero-travel';
 import { isoToTimeInput, toMin, zonedIso } from './time';
 import { routeEndpointDay } from './place-usage';
+import type { TransitionRange } from './glance';
 import type { DayEntry } from './day-entries';
 import { groupEndEvent, groupStartEvent } from './day-entries';
 
@@ -362,6 +363,7 @@ export function connectionStops(
   bookings: readonly Booking[],
   events: readonly TripEvent[],
   when: BookingWhen,
+  range?: TransitionRange,
 ): ConnectionStop[] {
   // **THE DAY THE LEG ENDS, not the day it began** (2026-08-06). `dateOf` read the event's own
   // `date`, which for an overnight inbound leg is the day you took OFF — so a layover you sit
@@ -369,10 +371,12 @@ export function connectionStops(
   // two dates this function means to list are named in its own doc ("arrives on one and leaves
   // on the next"): the **arrival** of the leg that brings you in, and the **departure** of the
   // one that takes you out. `routeEndpointDay` is the same rule `spanDays` and `placeRefs` read,
-  // so a third derivation of "which day does this end happen on" cannot drift from the other two.
+  // so a third derivation of "which day does this end happen on" cannot drift from the other two
+  // — including ADR-0236 §4's hosting, which is why `range` is threaded here too: a layover on
+  // the way home lands on the same day surface as the leg that arrives at it, or on none.
   const dateOf = (booking: Booking, edge: 'start' | 'end') => {
     const event = events.find((e) => e.bookingId === booking.id);
-    return event ? routeEndpointDay(event, edge)?.date : undefined;
+    return event ? routeEndpointDay(event, edge, range)?.date : undefined;
   };
   const stops: ConnectionStop[] = [];
   for (const from of bookings) {

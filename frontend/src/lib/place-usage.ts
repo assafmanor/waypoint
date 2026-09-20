@@ -29,6 +29,11 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { eventPlaceId } from './places';
+// ADR-0236 §4's hosting rule, read rather than restated: which day of the TRIP a span's end
+// is drawn on when its own day is outside the window. The day list already draws the arrival
+// there, and a pin on a different day would be the two surfaces disagreeing about one landing.
+import { endHostDay, type TransitionRange } from './glance';
+import { calendarDaysBetween } from './time';
 import { MS_PER_DAY } from '../constants';
 
 /** Commitment weight for the colour-by-most-committed tiebreak (ADR-0109 §4). */
@@ -164,19 +169,35 @@ const isTransport = (booking: Booking): boolean => carriesRoute(booking.type);
  * arrival's word — `נחיתה 02:00` at the airport you took off from. `place-usage` had it in
  * `spanDays`; `place-refs` had it in `edgeOnDate` on the day-scoped path. Naming the rule
  * once is what stops the third copy.
+ *
+ * **With a `range`, the end is HOSTED the way the day list hosts it** (ADR-0236 §4, extended
+ * to the map 2026-09-20). The flight home lands on a day the trip does not have, and that day
+ * is one no surface can ask for: the strip stops at `endDate`, so the destination fell out of
+ * every day scope and the map drew the departure airport alone. `endHostDay` is the same
+ * answer the arrival ROW already reads, so a pin and a row cannot put one landing on two days
+ * — and `null` (the whole leg shrunk out of the trip) means no day at all, which is §6's
+ * reading of a booking the trip no longer covers. `dayOffset` is how far past the host day
+ * the moment really lands, so a row drawn there can say `למחרת` beside the clock.
+ *
+ * Without a `range` nothing is hosted, which is what every caller that is not day-scoped wants.
  */
 export function routeEndpointDay(
   event: Pick<TripEvent, 'date' | 'endDate' | 'startsAt' | 'endsAt'>,
   endpoint: 'start' | 'end' | undefined,
-): { date: string; edge: 'start' | 'end'; iso?: string } | null {
+  range?: TransitionRange,
+): { date: string; edge: 'start' | 'end'; iso?: string; dayOffset?: number } | null {
   if (!endpoint) return null;
-  return endpoint === 'start'
-    ? { date: event.date, edge: 'start', iso: event.startsAt ?? undefined }
-    : {
-        date: event.endDate ?? event.date,
-        edge: 'end',
-        iso: event.endsAt ?? event.startsAt ?? undefined,
-      };
+  if (endpoint === 'start')
+    return { date: event.date, edge: 'start', iso: event.startsAt ?? undefined };
+  const own = event.endDate ?? event.date;
+  const host = endHostDay(event, range);
+  if (host == null) return null;
+  return {
+    date: host,
+    edge: 'end',
+    iso: event.endsAt ?? event.startsAt ?? undefined,
+    ...(host === own ? {} : { dayOffset: calendarDaysBetween(host, own) }),
+  };
 }
 
 /** Calendar dates spanned by an event, inclusive. Parsed/stepped in UTC so the
@@ -200,7 +221,11 @@ export function routeEndpointDay(
  *  A route whose two ends are the SAME place is not a special case and must not become one:
  *  it is two calls, each keeping its own end, which is exactly a car hire collected on one day
  *  and returned on another. */
-function spanDays(event: TripEvent, endpoint?: 'start' | 'end'): DayUsage[] {
+function spanDays(
+  event: TripEvent,
+  endpoint?: 'start' | 'end',
+  range?: TransitionRange,
+): DayUsage[] {
   /** **Asked of an END, because that is what a day of a span is** (ADR-0224 §1, 2026-09-16).
    *  A span's answer used to be read once off `status` and stamped on every day it touched, so
    *  a hotel's check-out day inherited the check-in's tick: the pin went green the morning you
@@ -255,7 +280,11 @@ function spanDays(event: TripEvent, endpoint?: 'start' | 'end'): DayUsage[] {
   }
   // **A ROUTE ENDPOINT OWNS ONE END OF THE SPAN, NOT ALL OF IT** — `routeEndpointDay`'s rule,
   // shared with `placeRefs` so the row's way-in block and the row's own day cannot disagree.
-  const own = routeEndpointDay(event, endpoint);
+  const own = routeEndpointDay(event, endpoint, range);
+  // A route endpoint whose end the trip hosts nowhere anchors nothing (ADR-0236 §6): the leg
+  // is shrunk entirely out of the window, so hosting it would put a pin on a day that does
+  // not exist either.
+  if (endpoint && !own) return [];
   if (own) {
     const outcome = outcomeAt(own.edge);
     const settled = outcome != null;
@@ -352,12 +381,18 @@ const primaryRef = (a: DayUsage, b: DayUsage): DayUsage => {
  *  existing resolver: a transport event contributes BOTH endpoints (origin +
  *  destination), every other linked/unlinked event its single place; an unlinked
  *  booking contributes its place with no day facet (a Booking carries no time);
- *  an unconsumed MaybeItem contributes `isMaybe` + its category. (ADR-0110 §2.) */
+ *  an unconsumed MaybeItem contributes `isMaybe` + its category. (ADR-0110 §2.)
+ *
+ *  `range` is the trip's window, and passing it is what makes the index DAY-SCOPED-honest:
+ *  a span whose end the trip has no day for is hosted on the last day it still covers, the
+ *  same one the day list draws its arrival row on ({@link routeEndpointDay}). The Map passes
+ *  it; a caller asking about places rather than about days leaves it out. */
 export function buildPlaceUsageIndex(
   events: TripEvent[],
   bookings: Booking[],
   maybeItems: MaybeItem[],
   places: Place[],
+  range?: TransitionRange,
 ): Map<string, PlaceUsage> {
   const acc = new Map<string, Accum>();
   const ensure = (placeId: string): Accum => {
@@ -466,7 +501,7 @@ export function buildPlaceUsageIndex(
       addRef(placeId, {
         category,
         commitment,
-        days: spanDays(event, edge),
+        days: spanDays(event, edge, range),
         isEvent: true,
         isMaybe: false,
         isParked,
