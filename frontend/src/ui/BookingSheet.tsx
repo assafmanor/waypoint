@@ -862,8 +862,18 @@ export function BookingSheet({
       };
       list.forEach((leg, i) => {
         const zones = legZones(side, i);
+        // **A moment that DATES a booking is bounded; one that only ENDS one is not.** A leg
+        // is filed under the day it DEPARTS (ADR-0037 §1: nothing lives in two day-buckets),
+        // so a start outside the trip is a booking on a day no surface can show — and an
+        // arrival outside it places nothing at all. Refusing the arrival made the ordinary
+        // flight home unenterable: leave at ⁦22:10⁩ on the last day, land at ⁦02:30⁩, and the form
+        // marked a day nobody typed and no control can move. `EventForm` has always read it
+        // this way in so many words — "an overnight event on the last day still files under
+        // that day" — and bounds the DATE alone, so a night out ending at ⁦02:00⁩ saved while
+        // the flight did not. ADR-0037 §3 named transport as the looser case in advance.
+        // A per-leg form's end is a date a person PICKED, so it keeps ADR-0083's bound.
         if (outOfRange(leg.start)) outsideTrip(legField(side, i, 'start'));
-        if (outOfRange(leg.end)) outsideTrip(legField(side, i, 'end'));
+        if (!isJourney && outOfRange(leg.end)) outsideTrip(legField(side, i, 'end'));
         const departure = instantAt(leg.start, zones.start);
         const arrival = instantAt(leg.end, zones.end);
         if (departure != null && arrival != null && arrival <= departure) {
