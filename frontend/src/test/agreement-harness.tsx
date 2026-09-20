@@ -29,6 +29,9 @@ export const world = {
   events: [] as TripEvent[],
   /** Seconds for any leg asked about, or `null` — the ordinary answer (ADR-0206 §D4). */
   travelSeconds: null as number | null,
+  /** The day the surfaces render. A spec about the trip's LAST day has to be able to stand on
+   *  one (ADR-0236 §8), and hard-coding `AGREE_DAY` here made that unreachable. */
+  activeDate: AGREE_DAY,
 };
 
 export const agreePlaces: Place[] = [
@@ -122,7 +125,9 @@ export const tripState = () => ({
   justAddedIdea: null,
   ripple: null,
   setActiveDate: () => {},
-  activeDate: AGREE_DAY,
+  get activeDate() {
+    return world.activeDate;
+  },
   changeFeed: [],
   dismissChange: () => {},
   clearChangeFeed: () => {},
@@ -161,4 +166,5 @@ export const BOOKING_FIXTURE_SOURCE = BOOKING_SOURCE.MANUAL;
 export function resetWorld() {
   world.events = [];
   world.travelSeconds = null;
+  world.activeDate = AGREE_DAY;
 }

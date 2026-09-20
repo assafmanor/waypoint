@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { EVENT_KIND, EVENT_SOURCE, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
 import {
+  dayListEvents,
   dayTransitions,
+  groupEndEvent,
+  groupStartEvent,
   mergeDayEntries,
   placeDayEntries,
   placedEdgeOf,
   staysOnDate,
   type DayEntry,
-  groupStartEvent,
-  groupEndEvent,
 } from './day-entries';
+import { bookingTransitionsOnDate, spanDrawsWholeOn } from './glance';
 import { buildTimeTree } from './time';
 
 const OFF = '+09:00';
@@ -556,13 +558,22 @@ describe('dayTransitions — an arrival the trip has no day for (ADR-0236 §4)',
   });
 
   it('hosts it on the day the leg departed from, with the distance (E12)', () => {
-    const lastDay = dayTransitions([flightHome], '2026-07-14', TRIP_RANGE);
+    const lastDay = bookingTransitionsOnDate([flightHome], '2026-07-14', TRIP_RANGE);
     expect(lastDay.map((tr) => tr.edge)).toEqual(['start', 'end']);
     const arrival = lastDay[1];
     expect(arrival.atMs).toBe(ms('2026-07-15', '04:30'));
     expect(arrival.dayOffset).toBe(1);
     // It sorts last by INSTANT even though its clock reads smaller (E17).
     expect(arrival.atMs).toBeGreaterThan(lastDay[0].atMs);
+  });
+
+  it('but the DAY does not draw them as two rows — it draws the leg whole (§8)', () => {
+    // The hosting fact above is what says both ends land here; §8 is what that then means.
+    // `dayTransitions` is the two-rows renderer, so it must decline the leg entirely or the
+    // same journey is drawn twice on one day.
+    expect(spanDrawsWholeOn(flightHome, '2026-07-14', TRIP_RANGE)).toBe(true);
+    expect(dayTransitions([flightHome], '2026-07-14', TRIP_RANGE)).toHaveLength(0);
+    expect(dayListEvents([flightHome], '2026-07-14', TRIP_RANGE)).toEqual([flightHome]);
   });
 
   it('leaves an ordinary arrival on its own day, and unmarked', () => {
@@ -619,6 +630,6 @@ describe('dayTransitions — an arrival the trip has no day for (ADR-0236 §4)',
       startsAt: at('2026-07-14', '20:00'),
       endsAt: at('2026-07-16', '06:00'),
     });
-    expect(dayTransitions([long], '2026-07-14', TRIP_RANGE)[1].dayOffset).toBe(2);
+    expect(bookingTransitionsOnDate([long], '2026-07-14', TRIP_RANGE)[1].dayOffset).toBe(2);
   });
 });

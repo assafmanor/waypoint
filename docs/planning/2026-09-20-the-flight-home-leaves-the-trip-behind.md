@@ -42,6 +42,18 @@ None of these has been put to the owner yet — the ADR is Proposed and this not
 
 Three, all recorded in the ADR's Measurements and the catalog entry. The one that is a lesson rather than a slip: **the file typed its own elapsed minutes in the wrong zone** — counted from Rome's ⁦22:10⁩ against a board clock that is Israel's (ADR-0107 §4) — so ⁦01:05⁩ claimed ⁦0:25 שע׳⁩ remaining instead of ⁦1:25⁩, and the `מחר` chip was drawn on exactly the two moments that should not carry it. A file arguing that a clock must be read in its own zone got that wrong inside itself, and only rendering it said so.
 
+## The follow-up that became §6
+
+Later the same day, with the first and last day side by side:
+
+> What about the day view and plan day? What will the arrival look like? At what date?
+
+…and then, on seeing them:
+
+> why does the flight back look different than the outward flight?
+
+Both are shape questions about a surface the session had just changed, and both found something. The first produced §4 (the arrival had no day at all). The second produced §6, and the useful part is what it cost to get right: **the app's existing exemption was the obvious reach and the wrong one.** `isAmbient(e) && !isJourney(e)` is at three call sites already and reads like the answer; it would have drawn a within-trip red-eye as a card on its departure day AND as two transition rows across two days. The question §6 asks is how many day surfaces a span's ends are spread across — which is `endHostDay`, the function §4 had just written.
+
 ## Handoff
 
 The build is unstarted. What it needs: the running-commitment arm in `tripPhase` (`lib/mode.ts`, which needs the trip's events — `ModeProvider` already has them), and `mode-seen` read on the way **out** of Trip as well as in (ADR-0221 §4 wrote only the entry half). Specs pin the clock (`setSimulatedNow`) and both day scopes, per `frontend/CLAUDE.md`: the window holds mid-flight, closes at the landing, never opens early, and a trip ending with a daytime commitment behaves exactly as it does today.

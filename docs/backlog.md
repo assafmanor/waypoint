@@ -922,6 +922,10 @@ Fixed the same day; [ADR-0203](decisions/0203-a-journey-has-one-date-and-its-arr
 
 Worth keeping from the same pass: **the shipped half of this session already fixed a trap on that path.** Before it, shrinking a trip so a booking's arrival fell outside made that booking un-editable — the form refused at the arrival, a field no control can move.
 
+**§6 followed the same day**, on the owner seeing the trip's first and last day side by side: _"why does the flight back look different than the outward flight?"_ It is not direction but **crossing midnight** — `endDate` makes the leg `isAmbient`, and ADR-0064 §B then splits it into two transition points carrying neither the duration nor the distance the identical same-day leg states on its card. §B's reasoning is about a span whose ends land on TWO day surfaces, and §4 had just removed the second one. A span with no days left to cross now takes its ordinary card (⁦251px⁩ → ⁦88px⁩, against the outward leg's ⁦87px⁩); a red-eye inside the trip is untouched. The finding worth keeping: **the existing `isAmbient && !isJourney` exemption was the obvious reach and the wrong one** — it answers what a span's MIDDLE is, where this asks how many day surfaces its ENDS are spread across, and using it would have drawn a within-trip leg twice.
+
+**Still open, and deliberately scoped out of §6:** `buildDayGlance` also filters `!isAmbient`, so Home's rail still draws such a leg as anchor ticks rather than as a counted block. No number disagrees (its edges already count in `remaining`, ADR-0164) and the exclusion there is about the rail's window maths rather than a row's shape — but it is the third day surface, and the next person in that file should decide whether it follows.
+
 One line found on the way and deliberately not smuggled in: **`glance-card.css` reads `var(--font-ui)`, which `tokens.css` does not define** — that rule has been falling back to the inherited face since it was written. Unrelated to this ADR; one line whenever somebody is in that file.
 
 Two more deliberately not built on the way, both now cheap to reach:

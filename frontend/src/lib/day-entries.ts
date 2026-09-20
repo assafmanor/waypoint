@@ -17,7 +17,12 @@ import {
   TIME_MEANING,
   type TripEvent,
 } from '@waypoint/shared';
-import { bookingTransitionsOnDate, type BookingTransition } from './glance';
+import {
+  bookingTransitionsOnDate,
+  spanDrawsWholeOn,
+  type BookingTransition,
+  type TransitionRange,
+} from './glance';
 import { broughtInOvernight } from './place-usage';
 import { peerEntry, peerExit, type TimeGroup, type TimeItem } from './time';
 
@@ -69,9 +74,33 @@ function groupStartMs(g: TimeGroup): number {
 export function dayTransitions(
   events: TripEvent[],
   activeDate: string,
-  range?: { startDate: string; endDate: string },
+  range?: TransitionRange,
 ): BookingTransition[] {
-  return bookingTransitionsOnDate(events, activeDate, range).filter((tr) => isMultiDay(tr.event));
+  return bookingTransitionsOnDate(events, activeDate, range).filter(
+    (tr) =>
+      isMultiDay(tr.event) &&
+      // …and NOT one this day draws whole (ADR-0236 §8). Both ends hosted here means one
+      // card, so its two transition points would be the same journey drawn a second time.
+      !spanDrawsWholeOn(tr.event, activeDate, range),
+  );
+}
+
+/** **The day's own events, with a span this day draws WHOLE put back in** (ADR-0236 §8).
+ *
+ *  `isAmbient` is how a span renders ACROSS days, so a span with no days left to cross is not
+ *  ambient for this one: it takes its ordinary card, with the range, the duration, the
+ *  distance and ADR-0037's `+1` — which is what the identical same-day leg already shows.
+ *
+ *  Shared rather than inlined because **both** day screens filter this list, and a day
+ *  derivation changed in `DayView` alone has cost a release twice (`frontend/CLAUDE.md`). */
+export function dayListEvents(
+  events: readonly TripEvent[],
+  activeDate: string,
+  range?: TransitionRange,
+): TripEvent[] {
+  return events.filter(
+    (e) => e.date === activeDate && (!isAmbient(e) || spanDrawsWholeOn(e, activeDate, range)),
+  );
 }
 
 /** The transition entry a given stay has in TODAY's placed list, if any. The ambient strip
