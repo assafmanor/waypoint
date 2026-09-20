@@ -1025,6 +1025,18 @@
   font-size: var(--sh-secondary);
   line-height: 1.55;
 }
+/* **The clip's budget on this page** (ADR-0235 §3). The same six lines a host's section
+   takes: a reading page has no competing blocks, but it has no reason to differ either, and
+   two numbers for one decision is how they drift. `.note-clip` itself is in `ui/notes.css`,
+   shared with the app — this page renders the app's note renderer, so it inherits the app's
+   answer about how much of a note a card shows and states only the number.
+
+   The control is `.row-open-act.note-more` from the same place, and `row-open.css` reaches
+   this page through `NoteProse`'s own import chain in the app bundle — `SharedItinerary`
+   imports it explicitly beside `NoteProse` so a future tree-shake cannot take it away. */
+.sh-op-note .note-clip {
+  --note-clip-lines: 6;
+}
 .sh-op-note > strong {
   font-size: var(--sh-caption);
 }

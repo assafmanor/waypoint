@@ -1362,3 +1362,64 @@ describe('SharedItinerary', () => {
     });
   });
 });
+
+// ── A NOTE ON THE SHARED PAGE IS A PREVIEW TOO (ADR-0235 §5) ────────────────
+// The one surface where the control grows the text WHERE IT STANDS, because this is a
+// public read-only page with no app underneath it and therefore no full screen to open.
+// The word follows the destination: `עוד`/`פחות`, never `תצוגה מלאה`.
+describe('a long note on the shared page', () => {
+  const noteProjection = (): Projection => ({
+    ...fullProjection,
+    appendix: {
+      ops: [
+        {
+          kind: SHARE_OP_KIND.NOTE,
+          title: 'הודעת קבלה',
+          body: Array.from({ length: 14 }, (_, i) => `שורה מספר ${i}`).join('\n\n'),
+        },
+      ],
+    },
+  });
+
+  // jsdom lays nothing out, so the box is told what it would have measured — on the
+  // prototype and before the render, because the probe runs in a layout effect.
+  beforeEach(() => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get: () => 400,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get: () => 120,
+    });
+  });
+  afterEach(() => {
+    delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
+    delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+  });
+
+  it('is bounded, and grows where it stands rather than opening a screen', async () => {
+    serve(noteProjection());
+    const { container } = renderShared();
+    await screen.findByText('איסלנד עם המשפחה');
+
+    const prose = container.querySelector('.sh-op-note .note-prose')!;
+    expect(prose.classList.contains('note-clip')).toBe(true);
+    expect(prose.classList.contains('is-open')).toBe(false);
+
+    const control = container.querySelector('.sh-op-note .note-more')!;
+    expect(control.textContent).toContain(t.notes.clip.more);
+    // The word says where you are going, and this one is not going anywhere.
+    expect(control.textContent).not.toContain(t.notes.open.full);
+
+    fireEvent.click(control);
+    expect(container.querySelector('.sh-op-note .note-prose')!.classList.contains('is-open')).toBe(
+      true,
+    );
+    expect(container.querySelector('.sh-op-note .note-more')!.textContent).toContain(
+      t.notes.clip.less,
+    );
+    // No overlay: this page has none to open.
+    expect(document.querySelector('.note-full')).toBeNull();
+  });
+});

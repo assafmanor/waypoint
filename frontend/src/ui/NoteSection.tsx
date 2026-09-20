@@ -7,16 +7,32 @@
 // against a 44px floor, widening its target would put it in competition with opening the
 // row it sits in.
 //
-// **A line here does not clamp** — it never has — so a note is already whole on this surface,
-// and opening one adds no words. That is exactly why the tap opens the FOOT and nothing else
-// (ADR-0153 §4's amendment, round two): the only thing missing from a note you can already
-// read is the verb. And the foot carries no way in to the host, because this surface IS the
-// host. (The notes SCREEN is the other case: its rows clamp to two lines, so opening there
-// lifts the clamp as well.)
+// **A line here did not clamp until 2026-09-20, and now the BODY takes a box** (ADR-0235).
+// The rule above it is unchanged and is what the box is measured against: a note that fits
+// its budget is whole on this surface, so opening it adds no words and the tap opens the FOOT
+// and nothing else (ADR-0153 §4's amendment, round two). What changed is the other case — a
+// note that does NOT fit used to be printed in full anyway, which took the reported booking
+// sheet's section to 565px and is what the owner's screenshot was of.
 //
-// **Not clamping is also what makes this one of the two surfaces that can SHAPE a note**
-// (ADR-0202 §6) — a pasted heading and list read as a heading and a list here, at the dense
-// density, because there is no two-line budget to spend on markers.
+// So there are two notes here, and they are told apart by a MEASUREMENT rather than by a
+// character count (ADR-0235 §7, `lib/useIsClipped.ts`):
+//
+//   • it fits     → no clip, no control, tap opens the foot. Exactly as before.
+//   • it is clipped → six lines and a fade, one `תצוגה מלאה` control under it, and the tap
+//                     opens the full screen — which is where the app was already sending a
+//                     long note's tap, so the control makes a shipped route visible rather
+//                     than adding one.
+//
+// The measurement is what keeps those two from disagreeing. `noteReadsFullScreen` is a
+// character estimate frozen at the 360px design width, so on a wider phone it can call a
+// six-line note long; it stays in use on the notes SCREEN, where the clamp (two lines) and
+// the threshold (eight) are genuinely two different numbers.
+//
+// **Shaping a note here is unchanged** (ADR-0202 §6, amended by ADR-0235 §6): at six lines a
+// heading and a bullet are what make a preview legible, so the markers stay. §6's "a clamped
+// surface gets its markers peeled" was reasoned from a TWO-line preview, where a marker costs
+// a third of everything visible — the peel is a function of how small the budget is, not of
+// whether there is one.
 //
 // One caveat worth stating rather than discovering: `.note-item-b` is a `<button>`, and
 // `NoteProse` puts block elements inside it. React builds that with DOM calls rather than the
@@ -28,13 +44,15 @@
 // guarantees it.
 import { useRef, useState, type ReactNode } from 'react';
 import type { Note, User } from '@waypoint/shared';
-import { noteReadsFullScreen, noteTitleText, noteWhen } from '../lib/notes';
+import { noteTitleText, noteWhen } from '../lib/notes';
 import { NoteOpenFoot } from './NoteOpenFoot';
 import { NoteProse } from './NoteProse';
 import { useHoldToOpen } from '../lib/useHoldToOpen';
+import { useIsClipped } from '../lib/useIsClipped';
 import { Icon } from './Icon';
 import { t } from '../i18n/he';
 import './section-head.css';
+import './domain/row-open.css';
 import './notes.css';
 
 export function NoteSection({
@@ -107,8 +125,9 @@ export function NoteSection({
   // any reason to know or to persist it.
   const [openId, setOpenId] = useState<string | null>(null);
   // **Which note the finger is on**, so one set of hold handlers can serve the whole list
-  // rather than a hook per row — a hook inside `notes.map()` is not allowed, and a
-  // per-row child component would be a second component for one prop.
+  // rather than a hook per row. It stays shared even though ADR-0235 gave the row a
+  // component of its own (`NoteItem` below): a hold means the same thing on every row, and
+  // moving the hook inside would mount one timer per note to answer one question.
   const held = useRef<Note | null>(null);
   const hold = useHoldToOpen(
     onOpenFull ? () => held.current && onOpenFull(held.current) : undefined,
@@ -138,88 +157,147 @@ export function NoteSection({
           )
         ) : (
           notes.map((note) => (
-            <div className={'note-item' + (openId === note.id ? ' is-open' : '')} key={note.id}>
-              {/* The shared leading cell (ADR-0191 §5, reversed). Empty here: a note's leading
-                  element is the rule `.note-item-lead::before` paints, where a task's is its
-                  tick. Both texts then start at `--sec-lead`. */}
-              <span className="note-item-lead" aria-hidden="true" />
-              <span className="note-item-main">
-                <button
-                  type="button"
-                  className="note-item-b"
-                  // Same rule as the notes screen (ADR-0202 §9c), so one gesture does not
-                  // mean two different things on two surfaces. A long note here is already
-                  // rendered in full — the section has never clamped — so what the screen adds
-                  // is a place to read it that is not inside a card.
-                  onClick={() =>
-                    onOpenFull && noteReadsFullScreen(note)
-                      ? onOpenFull(note)
-                      : setOpenId((current) => (current === note.id ? null : note.id))
-                  }
-                  {...hold}
-                  onPointerDown={(event) => {
-                    held.current = note;
-                    hold.onPointerDown?.(event);
-                  }}
-                >
-                  {/* **A titled note shows its title AND its body** (ADR-0152 §6's 2026-08-16
-                      amendment). `noteTitleText` is `title || body`, so until now a note with
-                      both showed only its title HERE — and since the notes screen printed the
-                      body into a meta line that collapses newlines, a long structured note had
-                      no surface at all that rendered it as written.
-
-                      **And the body is now SHAPED** (ADR-0202 §6): this surface never clamped,
-                      so it is one of the two where a pasted heading and list can read as a
-                      heading and a list. `anchors={false}` because this whole element is a
-                      `<button>` — an `<a>` cannot nest inside one, and ADR-0153 §8 refused a
-                      second tap target inside a row's one open target anyway. It is also why
-                      `pre-wrap` is no longer what carries the newlines here: the parser keeps
-                      them and `NoteProse` renders them as breaks.
-
-                      `noteTitleText` still answers the untitled url-only case, which it is the
-                      only holder of. */}
-                  {note.title && <span className="note-item-t">{note.title}</span>}
-                  {note.body ? (
-                    <NoteProse body={note.body} dense anchors={false} />
-                  ) : (
-                    // **Only when there is no title either.** The first draft of this fell
-                    // through to `noteTitleText` whenever the body was empty, and that
-                    // function is `title || body || prettyUrl(url)` — so a titled note with
-                    // no body printed its title twice, one line apart. Caught by
-                    // `HostNotes.test.tsx`, which is what that spec is for.
-                    !note.title && noteTitleText(note)
-                  )}
-                </button>
-                <span className="note-item-m">
-                  {[
-                    users.find((u) => u.id === note.createdBy)?.displayName,
-                    noteWhen(note.createdAt, now.getTime()),
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                  {inheritedFrom?.(note) && (
-                    <span className="note-from">{inheritedFrom(note)}</span>
-                  )}
-                </span>
-                {openId === note.id && (
-                  <NoteOpenFoot
-                    url={note.url}
-                    urlIsTheTitle={!note.title && !note.body}
-                    // The surface IS the host, so the foot says nothing about where this
-                    // belongs — rather than saying `פתק כללי`, which is what it used to do
-                    // here and was false on every hosted note (ADR-0202's build).
-                    onHostSurface
-                    onView={onOpenFull ? () => onOpenFull(note) : undefined}
-                    onEdit={() => onEdit(note)}
-                  />
-                )}
-              </span>
-            </div>
+            <NoteItem
+              key={note.id}
+              note={note}
+              users={users}
+              now={now}
+              open={openId === note.id}
+              inheritedFrom={inheritedFrom}
+              onOpenFull={onOpenFull}
+              onToggle={() => setOpenId((current) => (current === note.id ? null : note.id))}
+              onEdit={() => onEdit(note)}
+              hold={hold}
+              onHeld={() => (held.current = note)}
+            />
           ))
         )}
         {compose}
         {composeActive && composeHint && <p className="note-item-m">{composeHint}</p>}
       </div>
+    </div>
+  );
+}
+
+/** **One note's row, and the reason it is now a component** (ADR-0235). The section used to
+ *  render this inline, and the file said a per-row component would be "a second component for
+ *  one prop". The clip is what changed that arithmetic: measuring whether a box hid something
+ *  needs a ref and a `useLayoutEffect` PER ROW, and a hook cannot be called inside `.map()`.
+ *
+ *  Presentational like its parent — every decision arrives as a prop, and the full screen it
+ *  routes to is still `HostNotes`'s to mount. */
+function NoteItem({
+  note,
+  users,
+  now,
+  open,
+  inheritedFrom,
+  onOpenFull,
+  onToggle,
+  onEdit,
+  hold,
+  onHeld,
+}: {
+  note: Note;
+  users: User[];
+  now: Date;
+  open: boolean;
+  inheritedFrom?: (note: Note) => string | undefined;
+  onOpenFull?: (note: Note) => void;
+  onToggle: () => void;
+  onEdit: () => void;
+  /** The section's shared hold handlers — see `held` above for why they are not per row. */
+  hold: ReturnType<typeof useHoldToOpen>;
+  onHeld: () => void;
+}) {
+  const body = useRef<HTMLDivElement>(null);
+  /** **Is the box hiding part of this note?** The one fact that decides both the control and
+   *  where the tap goes, so the two cannot disagree (ADR-0235 §7). Measured, not estimated:
+   *  `noteReadsFullScreen` counts characters at a frozen 360px, and on a wider phone that
+   *  calls a six-line note long. jsdom has no layout and answers `false`, which is why the
+   *  clipped behaviour is proven in the e2e suite rather than asserted here. */
+  const clipped = useIsClipped(body, [note.body, note.title]);
+  // A clipped note's tap goes where its words are; an unclipped one opens the foot, which is
+  // ADR-0153 §4 unchanged — the only thing missing from a note you can already read is the
+  // verb.
+  const readsFull = clipped && !!onOpenFull;
+
+  return (
+    <div className={'note-item' + (open ? ' is-open' : '')}>
+      {/* The shared leading cell (ADR-0191 §5, reversed). Empty here: a note's leading
+          element is the rule `.note-item-lead::before` paints, where a task's is its tick.
+          Both texts then start at `--sec-lead`. */}
+      <span className="note-item-lead" aria-hidden="true" />
+      <span className="note-item-main">
+        <button
+          type="button"
+          className="note-item-b"
+          // Same rule as the notes screen (ADR-0202 §9c), so one gesture does not mean two
+          // different things on two surfaces.
+          onClick={() => (readsFull ? onOpenFull?.(note) : onToggle())}
+          {...hold}
+          onPointerDown={(event) => {
+            onHeld();
+            hold.onPointerDown?.(event);
+          }}
+        >
+          {/* **A titled note shows its title AND its body** (ADR-0152 §6's 2026-08-16
+              amendment). `noteTitleText` is `title || body`, so until that change a note with
+              both showed only its title here.
+
+              **The title is outside the clip on purpose**: it is the one line that says what
+              the note is, and a budget spent on it would buy nothing. `noteTitleText` still
+              answers the untitled url-only case, which it is the only holder of. */}
+          {note.title && <span className="note-item-t">{note.title}</span>}
+          {note.body ? (
+            // `anchors={false}` because this whole element is a `<button>` — an `<a>` cannot
+            // nest inside one, and ADR-0153 §8 refused a second tap target inside a row's one
+            // open target anyway.
+            <NoteProse ref={body} className="note-clip" body={note.body} dense anchors={false} />
+          ) : (
+            // **Only when there is no title either.** The first draft of this fell through to
+            // `noteTitleText` whenever the body was empty, and that function is
+            // `title || body || prettyUrl(url)` — so a titled note with no body printed its
+            // title twice, one line apart.
+            !note.title && noteTitleText(note)
+          )}
+        </button>
+        {/* **The way to the rest, and only where there IS a rest** (ADR-0235 §4). It is
+            `.row-open-act` — the class the foot's own `תצוגה מלאה` wears — because it is the
+            same verb going to the same screen, and `Icon name="frame"` is the glyph ADR-0202
+            §1 already chose to mean "this opens as a full screen". */}
+        {readsFull && (
+          <button
+            type="button"
+            className="row-open-act note-more"
+            onClick={() => onOpenFull?.(note)}
+          >
+            {t.notes.open.full}
+            <Icon name="frame" />
+          </button>
+        )}
+        <span className="note-item-m">
+          {[
+            users.find((u) => u.id === note.createdBy)?.displayName,
+            noteWhen(note.createdAt, now.getTime()),
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+          {inheritedFrom?.(note) && <span className="note-from">{inheritedFrom(note)}</span>}
+        </span>
+        {open && (
+          <NoteOpenFoot
+            url={note.url}
+            urlIsTheTitle={!note.title && !note.body}
+            // The surface IS the host, so the foot says nothing about where this belongs —
+            // rather than saying `פתק כללי`, which is what it used to do here and was false
+            // on every hosted note (ADR-0202 §7b).
+            onHostSurface
+            onView={onOpenFull ? () => onOpenFull(note) : undefined}
+            onEdit={onEdit}
+          />
+        )}
+      </span>
     </div>
   );
 }

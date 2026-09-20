@@ -33,12 +33,13 @@
 //    out to be `Map.tsx`'s own row, which the event read does not have. The control appears only
 //    when the text is ACTUALLY clamped, which is what keeps it subtle: most extracts are shorter
 //    than three lines and show nothing at all.
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { placeCredit, type DeliveredImageValue } from '@waypoint/shared';
 import { t } from '../../i18n/he';
 import { apiAssetUrl } from '../../lib/api-asset';
 import { type PlaceSummary } from '../../lib/place-summary';
 import { useFailableImage } from '../../lib/useFailableImage';
+import { useIsClipped } from '../../lib/useIsClipped';
 import { Icon } from '../Icon';
 import './place-knowledge.css';
 
@@ -78,17 +79,11 @@ export function PlaceKnowledge({
   const wantsHero = density !== KNOWLEDGE_DENSITY.COLLAPSED && !!image;
   const [openInPlace, setOpenInPlace] = useState(false);
   const prose = useRef<HTMLSpanElement>(null);
-  /** **Is there more text than the clamp is showing?** Measured rather than guessed: a
-   *  character count cannot know the width it is laid out at, and a control offering to reveal
-   *  nothing is worse than no control. `useLayoutEffect` so the answer is in place before the
-   *  first paint; jsdom reports both metrics as 0, so it answers `false` there — which is the
-   *  honest result for a surface with no layout, and why `e2e/place-decide.spec.ts` is where
-   *  this is proven. */
-  const [clamped, setClamped] = useState(false);
-  useLayoutEffect(() => {
-    const el = prose.current;
-    setClamped(!!el && el.scrollHeight > el.clientHeight + 1);
-  }, [summary?.text, openInPlace]);
+  /** **Is there more text than the clamp is showing?** Measured rather than guessed, and the
+   *  measurement now lives in `lib/useIsClipped.ts` — this surface had it first and ADR-0235
+   *  gave it a second caller in `NoteSection`, so it was extracted rather than copied. The
+   *  reasoning that earned it is in that file's header. */
+  const clamped = useIsClipped(prose, [summary?.text, openInPlace]);
   // Through the shared failable-image hook, so a blob a refresh replaced degrades to no picture
   // rather than to a broken one — the same answer the badge gets.
   const { src: heroUrl, onError: heroFailed } = useFailableImage(

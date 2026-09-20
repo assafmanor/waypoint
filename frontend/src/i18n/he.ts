@@ -1244,6 +1244,18 @@ export const t = {
        *  does not say on its own. */
       toHost: (name: string) => `מעבר אל ${name}`,
     },
+    // **A clipped note that grows WHERE IT STANDS** (ADR-0235 §5) — the shared itinerary and
+    // nothing else, because it is the one surface with no app under it and therefore no full
+    // screen to open. Everywhere else a clipped note's control says `open.full` above, since
+    // the word has to say where you are going.
+    //
+    // The same two words `map.know.more`/`less` carry for the same move on the place card,
+    // repeated rather than imported: a public read-only page reaching into the Map's
+    // namespace for its copy is a dependency nobody would predict from either side.
+    clip: {
+      more: 'עוד',
+      less: 'פחות',
+    },
     // The note's own screen (ADR-0202 §2). No title of its own beyond `notes.one` — the bar
     // says what KIND of thing you are reading and the note's words say the rest, which is
     // ADR-0153 §4's rule for the row one surface up.

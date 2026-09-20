@@ -19,7 +19,7 @@
 //
 // It also cannot nest an `<a>` inside a `<button>`, so `anchors={false}` is a correctness
 // requirement and not only a design one.
-import { type ReactNode } from 'react';
+import { type ReactNode, type Ref } from 'react';
 import { autoIsolate, baseDirection } from '../lib/bidi';
 import { parseNoteMarkdown, type NoteBlock, type NoteInline } from '../lib/note-markdown';
 import './notes.css';
@@ -28,12 +28,23 @@ export function NoteProse({
   body,
   dense = false,
   anchors = true,
+  className = '',
+  ref,
 }: {
   body: string;
   /** A host's section rather than the note's own screen. */
   dense?: boolean;
   /** False where this renders inside a `<button>` — see the header. */
   anchors?: boolean;
+  /** **A third fact about the surface, and it is the only one the CSS owns**: whether the
+   *  prose is BOUNDED there (`note-clip`, ADR-0235). A class rather than a prop with a
+   *  meaning, because the budget is a custom property the host states and this component has
+   *  no opinion about the number. */
+  className?: string;
+  /** The bounded element, for the host's overflow probe (`lib/useIsClipped.ts`). It has to be
+   *  THIS div and not a wrapper: the `max-height` is here, so `scrollHeight`/`clientHeight`
+   *  only answer the question on the element carrying it. */
+  ref?: Ref<HTMLDivElement>;
 }) {
   const blocks = parseNoteMarkdown(body);
   return (
@@ -46,7 +57,11 @@ export function NoteProse({
     //
     // Still never `dir="ltr"` (lint-blocked, ADR-0118) — this resolves to `rtl` or `ltr` from
     // the content, which is a different thing from forcing one.
-    <div className={'note-prose' + (dense ? ' dense' : '')} dir={baseDirection(body)}>
+    <div
+      ref={ref}
+      className={['note-prose', dense && 'dense', className].filter(Boolean).join(' ')}
+      dir={baseDirection(body)}
+    >
       {blocks.map((block, index) => (
         <Block key={index} block={block} anchors={anchors} />
       ))}

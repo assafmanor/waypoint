@@ -305,18 +305,82 @@ describe('HostNotes', () => {
     expect(document.querySelector('.note-full .row-open-lead')?.textContent).toBeTruthy();
   });
 
-  // ADR-0202 §9c, on this surface too — one gesture must not mean two different things on two
-  // surfaces. A long note here is already rendered in full (the section never clamped), so the
-  // screen is what gives it a place to be read that is not inside a card.
-  it('opens a long note on its own screen instead of adding a foot to a wall', () => {
-    const long = Array.from({ length: 14 }, (_, i) => `שורה מספר ${i} עם עוד קצת טקסט`).join('\n');
-    tripNotes = [note({ id: 'n1', body: long, documentId: 'd1' })];
+  // **ADR-0235 §7 — the long-note route moved from an estimate to a MEASUREMENT, and this
+  // spec had to move with it.** It used to seed 14 lines and rely on `noteReadsFullScreen`
+  // counting characters; the section now asks the box whether it hid anything, which jsdom
+  // cannot answer on its own (no layout — both metrics read 0, so the honest answer there is
+  // "nothing was clipped"). So the box is told what it would have measured, the way
+  // `SnapSheet.test.tsx` and `land-at-top.test.ts` already do for their own scrollers.
+  //
+  // ADR-0202 §9c still holds and is still what is being asserted: one gesture must not mean
+  // two different things on two surfaces.
+  //
+  // It has to be on the PROTOTYPE and in place BEFORE the render: the probe runs in a
+  // `useLayoutEffect` keyed on the note's text, so stubbing the element afterwards is never
+  // read. `SnapSheet.test.tsx` writes the same pair the same way, including the `delete` —
+  // `restoreAllMocks` does not undo a prototype property, and leaving it on would make every
+  // later case in this file see a clipped note.
+  const clipEveryBox = () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get: () => 400,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get: () => 120,
+    });
+  };
+
+  describe('a note the box had to cut', () => {
+    beforeEach(clipEveryBox);
+    afterEach(() => {
+      delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
+      delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+    });
+
+    it('opens it on its own screen instead of adding a foot to a wall', () => {
+      const long = Array.from({ length: 14 }, (_, i) => `שורה ${i} עם עוד קצת טקסט`).join('\n');
+      tripNotes = [note({ id: 'n1', body: long, documentId: 'd1' })];
+      open('document', 'd1');
+      // By element, not by accessible name: the body renders through `NoteProse`, so the
+      // button's name is every line concatenated without the newlines that seeded it.
+      fireEvent.click(document.querySelector('.note-item-b')!);
+      expect(document.querySelector('.note-full')).toBeTruthy();
+      expect(document.querySelector('.note-item.is-open')).toBeNull();
+    });
+
+    // **The named control, and it is the foot's own** (ADR-0235 §4): same class, same words,
+    // because it is the same verb going to the same screen.
+    it('offers the way there as a named control wearing the foot’s chrome', () => {
+      tripNotes = [note({ id: 'n1', body: 'שורה\nשורה\nשורה', documentId: 'd1' })];
+      open('document', 'd1');
+      const control = document.querySelector('.note-item-main > .note-more');
+      expect(control?.className).toContain('row-open-act');
+      expect(control?.textContent).toContain(t.notes.open.full);
+      fireEvent.click(control!);
+      expect(document.querySelector('.note-full')).toBeTruthy();
+    });
+  });
+
+  // **A note that FITS is untouched** (ADR-0235 §3) — no control, and the tap opens the foot,
+  // which is ADR-0153 §4 exactly as written. jsdom reports no overflow, so this is the case
+  // it can prove without being told anything.
+  it('leaves a note that fits its budget alone, control and all', () => {
+    tripNotes = [note({ id: 'n1', body: 'הכניסה מהחצר האחורית', documentId: 'd1' })];
     open('document', 'd1');
-    // By element, not by accessible name: the body renders through `NoteProse`, so the
-    // button's name is every line concatenated without the newlines that seeded it.
     fireEvent.click(document.querySelector('.note-item-b')!);
-    expect(document.querySelector('.note-full')).toBeTruthy();
-    expect(document.querySelector('.note-item.is-open')).toBeNull();
+    expect(document.querySelector('.note-item.is-open')).toBeTruthy();
+    expect(document.querySelector('.note-full')).toBeNull();
+    expect(document.querySelector('.note-more')).toBeNull();
+  });
+
+  // **The body is bounded on this surface at all** — the structural half of §2, which jsdom
+  // can see because it is a class in the DOM rather than a height. The budget itself lives in
+  // `notes.css` and is guarded in `notes.contract.test.ts`.
+  it('bounds the body and hands the probe the element carrying the bound', () => {
+    tripNotes = [note({ id: 'n1', body: 'שורה', documentId: 'd1' })];
+    open('document', 'd1');
+    expect(document.querySelector('.note-item-b .note-prose.note-clip')).toBeTruthy();
   });
 
   // The hold reaches the same screen from the host's section (ADR-0202's amendment). Both

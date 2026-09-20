@@ -680,3 +680,98 @@
   padding-inline: var(--space-2);
   padding-block-end: var(--safe-bottom);
 }
+
+/* ── THE CLIP, AND THE WAY TO THE REST (ADR-0235) ─────────────────────────────
+   A note read inside a card is a preview; a note read on its own screen is the note. Three
+   surfaces print a body — a host's section, the board's lifted hero, the shared page — and
+   all three take these two rules, which is why they live here rather than in each. */
+
+/* **A BOX, NOT A LINE COUNT** (§2). `-webkit-line-clamp` is the reflex and it is not wrong
+   on prose; it is wrong here because it counts what `-webkit-box` calls a line, and a whole
+   `<ul>` that `NoteProse` emits is ONE box in that count — same budget of 6, 170.6px against
+   this rule's 120.8px (measured in the mockup at light/360). The argument that decides it is
+   the other number in that comparison: a `max-height` returns 120.8px for a prose note and a
+   structured one alike, so the section's height becomes a property of the SURFACE rather
+   than of whatever somebody pasted into it. That is what the report was actually about.
+
+   `1lh` is the element's own line box, so the budget follows whatever a host's density does
+   to the leading; a hand-copied `1.55` would drift the first time `.note-prose.dense` moves.
+   Baseline since 2023 (Chrome 109 / Safari 16.4 / Firefox 120).
+
+   **Block gaps are spent from the budget, and that is the right direction**: six lines is
+   six line-heights, and a new paragraph costs `--space-3` out of them, so a note full of
+   headings previews fewer lines than a running one.
+
+   **The fade is part of the mechanism, not decoration.** Because the budget is a box, the
+   cut does not always land on a line boundary, and a hard edge through a glyph reads as a
+   broken layout rather than as "there is more". NOT `styles/edge-fade.css`: that gradient's
+   axis is `to right` and its two variables exist to zero a side with nothing behind it
+   (ADR-0100 §6), which is a different question — prose always continues. */
+.note-clip {
+  display: block;
+  max-height: calc(var(--note-clip-lines) * 1lh);
+  overflow: hidden;
+  /* **The fade's stops are absolute, not percentages, and that is what makes it free.** A
+     `100% - 1.15lh` gradient is relative to the box, so on a note SHORTER than the budget —
+     where the box shrinks to its content and nothing is hidden — it would fade the last line
+     of a note you can already read whole. Measured from the top instead, a short box lies
+     entirely inside the opaque stop and takes no fade at all, with no class to toggle and no
+     measurement to wait for. */
+  --note-clip-fade: calc(var(--note-clip-lines) * 1lh);
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    black calc(var(--note-clip-fade) - 1.15lh),
+    transparent var(--note-clip-fade)
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    black calc(var(--note-clip-fade) - 1.15lh),
+    transparent var(--note-clip-fade)
+  );
+}
+/* The one surface whose control grows the text where it stands, because it has no app under
+   it to open a screen in (§5). `.map-sum.is-decide` has the same shape for the same reason. */
+.note-clip.is-open {
+  max-height: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+/* **THE WAY TO THE REST IS `.row-open-act`** — the class, not a copy of its recipe. The foot
+   one line below already wears `תצוגה מלאה` in exactly this chrome (11.5px, weight 700,
+   `--cta`, and a 44px `::after` overlay over a 27px box), and the two are the same verb going
+   to the same screen: painting them differently is how one meaning grows two faces. So this
+   rule adds only what the foot's layout already supplied and a bare row does not — a block of
+   its own, under the body it is about.
+
+   `--cta` and not `--teal`: `.map-know-more` spends teal because the Map's card is a location
+   surface and root rule 4 licenses it there. A note is not a location.
+
+   Deliberately not a pill: a note section already has `＋ פתק` in its header, and a second
+   filled control inside a row reads as a second primary — the reasoning `.map-del` and
+   `.map-know-more` both already follow. */
+.note-more {
+  display: inline-flex;
+  margin-top: 2px;
+  padding-inline: 0;
+}
+.note-more .icon {
+  width: 14px;
+  height: 14px;
+}
+/* `עוד` / `פחות` point ALONG the text direction on the one surface that grows in place; the
+   glyph is drawn pointing down, so a quarter turn puts it where `.map-know-more`'s caret is.
+   `תצוגה מלאה` wears `Icon name="frame"` instead and needs none of this. */
+.note-more .icon.note-more-fwd {
+  transform: rotate(90deg);
+}
+.note-more .icon.note-more-back {
+  transform: rotate(-90deg);
+}
+
+/* The budget, per surface (§3). A number each host states, because how much of a note reads
+   as "enough to know what this is" is a property of the card it sits in. The hero's own is in
+   `ui/domain/hero-lift.css`, beside the block it bounds. */
+.note-item-b .note-clip {
+  --note-clip-lines: 6;
+}

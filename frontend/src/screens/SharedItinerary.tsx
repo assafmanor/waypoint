@@ -29,12 +29,16 @@ import {
 } from '../constants';
 import { Icon, type IconName } from '../ui/Icon';
 import { NoteProse } from '../ui/NoteProse';
+// `.note-clip` arrives with `NoteProse`'s own `notes.css`; `.note-more` is `.row-open-act`,
+// whose sheet this page has no other reason to pull in (ADR-0235 §5).
+import '../ui/domain/row-open.css';
 import { Spinner } from '../ui/Spinner';
 import { ZoneShiftPill } from '../ui/ZoneShiftPill';
 import { t } from '../i18n/he';
 import { autoIsolate, ltrIsolate } from '../lib/bidi';
 import { agoLabel, hoursPhrase } from '../lib/duration';
 import { landAtTop } from '../lib/land-at-top';
+import { useIsClipped } from '../lib/useIsClipped';
 import { shareNowLine, shareNowZone } from '../lib/share-now-line';
 import { NOW_MARK_CLASS, NowMarker } from '../ui/domain/NowMarker';
 import { DayHead } from '../ui/domain/DayHead';
@@ -1429,12 +1433,7 @@ function OpList({ ops, code }: { ops: readonly SharedOp[]; code: string }) {
               three Latin characters (ADR-0202 §4/§6). `dense` because this is a row's
               detail, not the note's own screen. Reusing it is also the only way the shared
               page and the app cannot drift about what a marker means (ADR-0096). */}
-          {op.kind === SHARE_OP_KIND.NOTE ? (
-            <span className="sh-op-note">
-              {op.title ? <strong dir="auto">{op.title}</strong> : null}
-              {op.body ? <NoteProse body={op.body} dense /> : null}
-            </span>
-          ) : null}
+          {op.kind === SHARE_OP_KIND.NOTE ? <NoteOp title={op.title} body={op.body} /> : null}
           {op.kind === SHARE_OP_KIND.FILE ? (
             <FileOp href={sharedDocumentUrl(code, op.handle)} title={op.title} />
           ) : null}
@@ -1529,3 +1528,43 @@ const LoadFailed = ({ onRetry }: { onRetry: () => void }) => (
     </div>
   </div>
 );
+
+/** **A note on the shared page, bounded like a note anywhere else — and the one that grows
+ *  WHERE IT STANDS** (ADR-0235 §5). Six lines and a fade, the same `.note-clip` the app's
+ *  three other note surfaces take.
+ *
+ *  What differs here is only the destination, and it differs for a structural reason rather
+ *  than a stylistic one: this is a public read-only page with no app underneath it, so there
+ *  is no `NoteFullScreen` to open. The control therefore lifts the clip in place and says
+ *  `עוד` / `פחות` rather than `תצוגה מלאה` — the word says where you are going, and this one
+ *  is not going anywhere. `.map-sum.is-decide` already has exactly this shape, for exactly
+ *  this reason (ADR-0219 §6): a card with nothing to swap to grows instead of changing mode.
+ *
+ *  A component rather than an inline branch because the measurement needs a ref and a hook
+ *  per note, and a hook cannot be called inside the `.map()` above. */
+function NoteOp({ title, body }: { title?: string; body?: string }) {
+  const [open, setOpen] = useState(false);
+  const prose = useRef<HTMLDivElement>(null);
+  const clipped = useIsClipped(prose, [body, open]);
+  return (
+    <span className="sh-op-note">
+      {title ? <strong dir="auto">{title}</strong> : null}
+      {body ? (
+        <NoteProse
+          ref={prose}
+          className={'note-clip' + (open ? ' is-open' : '')}
+          body={body}
+          dense
+        />
+      ) : null}
+      {/* Absent once there is nothing left to reveal AND nothing revealed — which is the
+          short-note case, and the reason this is measured rather than counted. */}
+      {(clipped || open) && (
+        <button type="button" className="row-open-act note-more" onClick={() => setOpen((v) => !v)}>
+          {open ? t.notes.clip.less : t.notes.clip.more}
+          <Icon name="caret" className={open ? 'note-more-back' : 'note-more-fwd'} />
+        </button>
+      )}
+    </span>
+  );
+}

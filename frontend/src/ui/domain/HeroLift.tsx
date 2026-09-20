@@ -19,6 +19,7 @@
 // content-sized board overflowing a box animating independently of it.
 import { useRef, type ReactNode } from 'react';
 import { useLiftFlight } from '../../lib/useLiftFlight';
+import { useIsClipped } from '../../lib/useIsClipped';
 import { Modal } from '../primitives/Modal';
 import { Avatar, type AvatarPerson } from '../primitives/Avatar';
 import { Icon } from '../Icon';
@@ -34,6 +35,7 @@ import {
   type BoardTomorrow,
 } from './Board';
 import { t } from '../../i18n/he';
+import './row-open.css';
 import './hero-lift.css';
 
 /** **A span you are inside**, in the collapsed board's own words (session 215).
@@ -113,9 +115,15 @@ export interface HeroLiftPoint {
    *  ⁦91px⁩ and the chip row absorbed the token for ⁦0px⁩, because it already wraps. */
   gate?: { label: string; value?: string; onSet: () => void };
   /** Present → the note block. The body of the newest; `noteMore` says how many
-   *  others there are, because the hero shows ONE and must not imply it is all. */
+   *  others there are, because the hero shows ONE and must not imply it is all.
+   *
+   *  **Three lines of it, and then a way to the rest** (ADR-0235 §3/§5): this is the app's
+   *  most contended card and the reported note took it from 207.4px to 400.2px on its own.
+   *  `onReadNote` opens that note's full screen — absent leaves the block a pure read, which
+   *  is what a surface with no reader to open would want. */
   note?: string;
   noteMore?: number;
+  onReadNote?: () => void;
   /** **The files attached to this point** (ADR-0174 §6), each with the tap that opens it in
    *  the app's one viewer. The board is where a boarding pass is actually needed and the one
    *  surface that never showed one — so the reach is a chip in this point's OWN action row,
@@ -419,6 +427,11 @@ function Where({ point }: { point: HeroLiftPoint }) {
 }
 
 function Note({ point }: { point: HeroLiftPoint }) {
+  const tx = useRef<HTMLSpanElement>(null);
+  /** Three lines is a budget, and whether it actually cut anything is a measurement — the
+   *  same one the place card and a host's note section make (`lib/useIsClipped.ts`). A
+   *  control that reveals nothing is worse than no control. */
+  const clipped = useIsClipped(tx, [point.note]);
   if (!point.note) return null;
   return (
     <div className="hero-part">
@@ -429,8 +442,25 @@ function Note({ point }: { point: HeroLiftPoint }) {
         <span className="hero-note-ic" aria-hidden="true">
           <Icon name="clipboard" />
         </span>
-        <span className="hero-note-tx">{point.note}</span>
+        <span ref={tx} className="hero-note-tx note-clip">
+          {point.note}
+        </span>
       </div>
+      {/* **The way to the rest, and it says `תצוגה מלאה` rather than `עוד`** (ADR-0235 §4).
+          Drawn as `עוד` first, since the place summary is what the report points at, and the
+          render killed it: `עוד` lands directly above the `ועוד פתק אחד` below, two different
+          meanings one line apart opening on the same word. The word says where you are going.
+
+          **A control here qualifies ADR-0160 §U rather than contradicting it.** §U made the
+          task block unpressable because ticking a task from the board is a commitment; this
+          acts on nothing. What it answers is that the clip DELETES information from the
+          screen, and deleted information must have a way back. */}
+      {clipped && point.onReadNote && (
+        <button type="button" className="row-open-act note-more" onClick={point.onReadNote}>
+          {t.notes.open.full}
+          <Icon name="frame" />
+        </button>
+      )}
       {/* The hero shows ONE note and must not imply it is the only one. */}
       {!!point.noteMore && (
         <span className="hero-note-more">{t.hero.moreNotes(point.noteMore)}</span>
