@@ -481,6 +481,53 @@ describe('BookingSheet — refusing a save', () => {
   });
 });
 
+// **THE JOURNEY THE RAIL DRAWS IS THE JOURNEY IT SAVES** (ADR-0203 §2). The rail re-resolves
+// every moment on every render; `LegTimes` only ever learned the day of the moment being
+// typed. So moving a clock that something FOLLOWS left the moments after it on the day they
+// were first resolved onto — the rail said `למחרת` and the stored leg still said today.
+describe('BookingSheet — a moment that moves takes the ones after it with it', () => {
+  afterEach(() => {
+    cleanup();
+    indexVerbs.updateBooking.mockClear();
+  });
+
+  it('re-resolves the arrival when the departure moves past it', async () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    next();
+    // Tel Aviv 09:00 → Tokyo 18:00: forward on instants, so the arrival is the same day.
+    fillJourney('2026-07-19', ['09:00', '18:00']);
+    // The departure moves to the evening, which 18:00 in Tokyo can no longer follow: on
+    // instants the arrival is now tomorrow, and the rail says so.
+    setNodeTime(0, 'depart', '23:00');
+    expect(railNodes()[1].textContent).toContain(t.journey.nextDay);
+
+    next();
+    save();
+    await waitFor(() => expect(indexVerbs.updateBooking).toHaveBeenCalled());
+    const [, payload] = indexVerbs.updateBooking.mock.calls[0];
+    // The saved span is the one on screen — not a backwards leg the refusal had to catch.
+    expect(payload.event.startsAt).toBe(zonedIso('2026-07-19', '23:00', 'Asia/Jerusalem'));
+    expect(payload.event.endsAt).toBe(zonedIso('2026-07-20', '18:00', 'Asia/Tokyo'));
+  });
+
+  it('re-resolves it when the arrival is typed before the departure it follows', async () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    next();
+    setJourneyDate('2026-07-19');
+    // The arrival first, with no departure above it to resolve against...
+    setNodeTime(1, 'arrive', '18:00');
+    // ...and the departure after it, which the arrival cannot follow on the same day.
+    setNodeTime(0, 'depart', '23:00');
+    expect(railNodes()[1].textContent).toContain(t.journey.nextDay);
+
+    next();
+    save();
+    await waitFor(() => expect(indexVerbs.updateBooking).toHaveBeenCalled());
+    const [, payload] = indexVerbs.updateBooking.mock.calls[0];
+    expect(payload.event.endsAt).toBe(zonedIso('2026-07-20', '18:00', 'Asia/Tokyo'));
+  });
+});
+
 // The note is written ON THE WAY (ADR-0152 §6b): the booking form carries a composer, and
 // the booking's own save commits both. This is the first host to get it, and the shape
 // every other host will copy.

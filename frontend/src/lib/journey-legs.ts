@@ -14,10 +14,13 @@
 //
 // **Days are not stored as offsets.** A leg keeps its absolute day, so the save path is
 // untouched and a journey re-opened for an edit reads back correctly. The offset the rail
-// shows is derived on read (`dayDiff` from the journey's date) and resolved on write.
+// shows is derived on read (`dayDiff` from the journey's date), and `withResolvedDays` is
+// where the days themselves are settled — for the WHOLE journey, so a clock that moves takes
+// the moments that follow it with it rather than leaving them on yesterday.
 import { addDays } from '@waypoint/shared';
 import { MS_PER_DAY } from '../constants';
 import type { LegTimes } from './booking-draft';
+import { resolveJourneyDays } from './journey-days';
 
 const dayOf = (v: string) => v.split('T')[0] ?? '';
 const timeOf = (v: string) => v.split('T')[1] ?? '';
@@ -88,24 +91,23 @@ export function withJourneyDate(legs: LegTimes[], date: string): LegTimes[] {
 }
 
 /**
- * **One moment's clock → legs.** The day it lands on is the journey's date plus the offset
- * the caller resolved (`resolveJourneyDays`), so this module never decides a day either —
- * it only writes the one it is given.
+ * **One moment's clock → legs, on the journey's own date.** This writes a CLOCK and no day:
+ * which day it lands on is `withResolvedDays`' answer, over the whole journey. It took an
+ * offset from its caller once, resolved for the moment being typed — which settled that one
+ * and left every moment after it on the day it was first resolved onto.
  */
 export function withMomentTime(
   legs: LegTimes[],
   node: number,
   which: 'arrive' | 'depart',
   time: string,
-  dayOffset: number,
 ): LegTimes[] {
   const { date } = journeyViewOf(legs);
   const { leg, edge } = targetOf(node, which);
   if (leg < 0 || leg >= legs.length) return legs;
   // With no journey date yet a clock still lands: node 0's departure is what SETS the date,
   // and any other moment holds its clock until one exists (`join` keeps it dateless).
-  const day = date ? addDays(date, dayOffset) : '';
-  return legs.map((l, i) => (i === leg ? { ...l, [edge]: join(day, time) } : l));
+  return legs.map((l, i) => (i === leg ? { ...l, [edge]: join(date, time) } : l));
 }
 
 /** **One moment's day offset → legs**, for the override token. Same write, the clock kept. */
@@ -123,4 +125,56 @@ export function withMomentDayOffset(
   return legs.map((l, i) =>
     i === leg ? { ...l, [edge]: join(addDays(date, dayOffset), timeOf(current)) } : l,
   );
+}
+
+/** Which leg endpoint a MOMENT writes to — the inverse of the order `journeyViewOf` lays
+ *  them out (`leg0.start, leg0.end, leg1.start, leg1.end, …`). */
+const edgeOfMoment = (moment: number) =>
+  moment % 2 === 0
+    ? ({ leg: moment / 2, edge: 'start' } as const)
+    : ({ leg: (moment - 1) / 2, edge: 'end' } as const);
+
+/**
+ * **Every day in the journey, re-derived — not just the one being typed** (ADR-0203 §2).
+ *
+ * The rail resolves the whole journey on every render, and legs only ever learned the day of
+ * the moment the user last touched. So moving a clock that something FOLLOWS left every
+ * moment after it on the day it was first resolved onto: the rail drew `למחרת` and the stored
+ * leg still said today, which the save would have written backwards and the `endBeforeStart`
+ * refusal caught instead — on a journey where §2's forward resolution makes that state
+ * unreachable by construction. Normalising on READ is what makes it unrepresentable rather
+ * than a bug that only appears when an earlier clock moves (the posture `resizeLegs` already
+ * takes for the leg COUNT).
+ *
+ * `zoneOf` answers with a leg endpoint's own zone (ADR-0107), because the resolution runs on
+ * instants: a westward crossing keeps the same calendar day past midnight.
+ *
+ * Each moment's stored day still enters as its FLOOR, so a `+2 ימים` a human tapped survives
+ * and only a day the clocks contradict is dropped — the rule §2 already states for overrides.
+ */
+export function withResolvedDays(
+  legs: LegTimes[],
+  zoneOf: (leg: number, edge: 'start' | 'end') => string,
+): LegTimes[] {
+  const { date, moments } = journeyViewOf(legs);
+  if (!date) return legs;
+  const resolved = resolveJourneyDays(
+    date,
+    moments.map((moment, m) => {
+      const { leg, edge } = edgeOfMoment(m);
+      return {
+        time: moment.time,
+        timeZone: zoneOf(leg, edge),
+        dayOffset: moment.time ? moment.dayOffset : undefined,
+      };
+    }),
+  );
+  const next = legs.map((leg) => ({ ...leg }));
+  moments.forEach((moment, m) => {
+    if (!moment.time) return;
+    const { leg, edge } = edgeOfMoment(m);
+    if (leg >= next.length) return;
+    next[leg][edge] = join(addDays(date, resolved[m].dayOffset), moment.time);
+  });
+  return next;
 }

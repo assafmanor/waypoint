@@ -54,6 +54,7 @@ import {
   withJourneyDate,
   withMomentDayOffset,
   withMomentTime,
+  withResolvedDays,
 } from '../lib/journey-legs';
 import { DATE_SOURCES, suggest, type KnownLeg } from '../lib/form-suggest';
 import { destinationRefOf } from '@waypoint/shared';
@@ -461,11 +462,6 @@ export function BookingSheet({
   function legCountFor(side: LegSide) {
     return isSpan ? pointsFor(side).length - 1 : 1;
   }
-  // Read through a resize rather than kept in sync by a setter: state can lag the
-  // number of stops for one render, and normalising on READ makes that unrepresentable
-  // instead of a bug that only appears when a stop is added mid-edit.
-  const outLegs = resizeLegs(legs, legCount);
-  const backLegs = twoLegs ? resizeLegs(returnLegs, legCountFor('back')) : EMPTY_LEGS;
   const setLeg = (side: 'out' | 'back', index: number, next: LegTimes) => {
     const write = side === 'out' ? setLegs : setReturnLegs;
     const current = side === 'out' ? outLegs : backLegs;
@@ -501,6 +497,24 @@ export function BookingSheet({
       end: index === legCountFor(side) - 1 ? outerEnd : zoneOf(points[index + 1], null),
     };
   };
+  /** **The legs a side actually has, normalised on READ** — its leg COUNT against the route
+   *  (state can lag the stops by a render), and on a journey its DAYS against ADR-0203 §2's
+   *  forward resolution. Both for the same reason: a mismatch nobody can represent beats one
+   *  that only appears when something upstream moves. The days need the zones, which is why
+   *  this sits below `legZones` rather than beside the state it reads.
+   *
+   *  **A journey's days are not a per-moment fact.** `withMomentTime` settles the clock being
+   *  typed; every moment after it keeps the day it was first resolved onto, so moving a
+   *  departure past its own arrival left the rail drawing `למחרת` over a leg still stored as
+   *  same-day — displayed forwards, stored backwards, and caught by `endBeforeStart` on a
+   *  journey where §2 makes that state unreachable. A per-leg form (a hire, a stay) is not a
+   *  journey and keeps its own absolute dates, which is what `isJourney` gates. */
+  const sideLegs = (side: LegSide, list: LegTimes[]) => {
+    const sized = resizeLegs(list, legCountFor(side));
+    return isJourney ? withResolvedDays(sized, (leg, edge) => legZones(side, leg)[edge]) : sized;
+  };
+  const outLegs = sideLegs('out', legs);
+  const backLegs = twoLegs ? sideLegs('back', returnLegs) : EMPTY_LEGS;
   // A chip per time field (ADR-0107 §6). It is **editable only when no place
   // answers the zone** — a picked place with coordinates carries its own zone, and
   // correcting it there is the honest edit (§3); a coordless Place-lite (offline, or
@@ -1613,20 +1627,13 @@ export function BookingSheet({
                               })),
                             )[m]?.dayOffset ?? 0
                           }
-                          onTimeChange={(node, which, time) => {
-                            /* The offset is DERIVED for the clock just typed — the moment
-                               loses its explicit day so §2's forward resolution decides it,
-                               and the adapter writes only the day it is handed. */
-                            const at =
-                              node === 0 ? 0 : which === 'arrive' ? 2 * node - 1 : 2 * node;
-                            const probe = view.moments.map((m, i) => ({
-                              time: i === at ? time : m.time,
-                              timeZone: nodes[i === 0 ? 0 : Math.floor((i + 1) / 2)].timeZone,
-                              dayOffset: i === at ? undefined : m.time ? m.dayOffset : undefined,
-                            }));
-                            const offset = resolveJourneyDays(view.date, probe)[at].dayOffset;
-                            write(withMomentTime(legs, node, which, time, offset));
-                          }}
+                          /* The clock lands on the journey's own date and the DAY is
+                             settled by `sideLegs`, which resolves the whole journey rather
+                             than the one moment being typed (§2). A probe here settled this
+                             moment and left the ones after it on yesterday. */
+                          onTimeChange={(node, which, time) =>
+                            write(withMomentTime(legs, node, which, time))
+                          }
                           onDayOffsetChange={(node, which, offset) =>
                             write(withMomentDayOffset(legs, node, which, offset))
                           }
