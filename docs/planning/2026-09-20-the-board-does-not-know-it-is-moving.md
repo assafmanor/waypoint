@@ -4,7 +4,7 @@
 **Branch:** `claude/hero-now-next-logic-kjrtjs`
 **Reported:** the owner, two device screenshots one minute apart — _"There's some bug in the way the hero decides what to show for the now and for the next. See for example the way that the day view shows correctly that we're on the way (and the right time for arrival estimate, based on where we actually are), vs. the hero that doesn't. Lets discuss and decide how the hero should behave, then we'll mockup and build."_
 **Drawn in:** [`mockups/the-board-says-where-you-are-v1.html`](../../mockups/the-board-says-where-you-are-v1.html)
-**Status:** drawn, five forks open with the owner. No ADR yet, nothing built.
+**Status:** drawn, the five forks answered, **built the same day** — [ADR-0237](../decisions/0237-the-board-says-where-you-are.md).
 
 ## The two screenshots
 
@@ -49,6 +49,54 @@ Fork ה׳ is a shipped-app question rather than a question about the proposal: t
 - The `--miss` rule was written for `.eta.miss` while the markup moved the class onto a child, so three of fork ב׳'s four arms drew an identical grey line and the fork could not be judged at all. A drawing that cannot show its own difference is worse than no drawing.
 - `⁦~1:12 שע׳⁩` put the Hebrew unit **inside** the LTR isolate and printed `נותרו שע׳ ~1:12`. `approxDuration` isolates the number alone and leaves the unit outside it (`lib/duration.ts:117`); the file now does the same. ADR-0118's trap, in the one file that promises to render the real thing.
 
-## Next
+## How the forks came back
 
-Owner decides the five forks. Then: the ADR (an amendment in place to ADR-0211's closed set plus a new section for the board's journey slot), the repro for cause 4, the freshness fix for cause 3, and the build.
+_"Build with your recommendations"_ — all five as drawn, with cause 3's answer ("should a passed
+leave-by alone be enough to assume you are moving?") already refused by the owner during the
+discussion: _"I'd also say no."_ So the fix and the mark are the only two things that can assert a
+journey, which is what keeps ADR-0208 intact.
+
+## Cause 4, found — and it is the whole of the reported card's arithmetic
+
+The write-up above lists two candidates and says neither is confirmed. Both were wrong, and the
+repro found the real one in one assertion.
+
+`travelOrigin` reads "the last thing that STARTED" as where the plan left you. **Tonight's hotel
+checks in at ⁦16:00⁩**, so from ⁦16:00⁩ it was the latest started row on the day — and the board
+measured the evening's drive out of a bed nobody had reached. Grundarfjörður is ~⁦7⁩ minutes from
+Kolgrafarfjörður Viewpoint; `17:30 − 7 − TRAVEL_BUFFER_SECONDS` is `17:18`, which is `עד 17:18` and
+`11 · דקות · ליציאה` exactly. The day view never had the bug because its journey chain is built
+from `dayEvents`, which drops ambient spans before it starts.
+
+`board-and-day-one-leg.test.ts` is that repro, kept as a contract: the two derivations agreeing on
+the reported day, on a settled stop, across a placeless stop, and on the day with the bed in it.
+The fix is `isExactEdge(event, 'start')` — ADR-0237 §8, amending ADR-0206 §AF3 in place, which had
+found the same row through the `isStay` flag and stopped one step short of it.
+
+**The method note worth keeping:** four separate analytic passes over the code produced two
+plausible causes and neither was right. The fixture did it immediately. `CLAUDE.md`'s "count the
+call sites before claiming what a derivation does" generalises — _run_ the derivation before
+claiming what it does, because a day with a bed in it is not a case anybody thinks to imagine.
+
+## Two more the build found that the drawing could not
+
+- **`arrived` gets no meta line.** The mockup drew `מתחיל ב־17:30` under it. The next row says that
+  clock ⁦40px⁩ lower and the tile counts to it, so a third printing is the duplication ADR-0214 §3
+  took off this card once already. Cut in the build, recorded in ADR-0237 §6.
+- **The free-time ceiling printed while you were moving.** `until` was unconditional on the
+  character, so the shipped card drew `כרגע · בדרך` over `עד 14:15` — a free-time ceiling for
+  somebody who had already left. Invisible until the journey line landed beside it, and caught by
+  a Home-seam spec rather than by reading. Amends ADR-0211 §5.
+
+## Verification
+
+`pnpm typecheck` and `pnpm build` green; the full frontend suite at **5,918** tests across **322**
+files (from 5,908). New specs: `gapCharacter` 8, `heroArrival` 7, `useLiveFix` 7, `Board` 4, the
+Home seam 9, the two-surface contract 5. Two shipped specs were rewritten rather than deleted —
+ADR-0206 §AF3's "a bed that simply started last" (now asserting it is **not** the origin, with the
+flag still held for the beds that are handed in) and ADR-0211's badge assertion.
+
+**Not verified in the running app.** The three position states need a device fix, and this session
+had no browser session against a seeded trip — the derivations are pinned pure, the component with
+hand-built props, and the wiring at the Home seam with a mocked `useGeolocation`, which is where
+this repo already tests ADR-0207's four stances.

@@ -26,6 +26,25 @@ import { haversineMeters, type LatLng } from '@waypoint/shared';
  */
 export const POSITION_FRESH_MS = 2 * 60_000;
 
+/**
+ * **How often a live leg re-asks**, and it is the other half of {@link POSITION_FRESH_MS} rather
+ * than a tuning knob beside it.
+ *
+ * ADR-0207 §4 rejected `watchPosition` on battery and wrote that a one-shot _"buys accuracy only
+ * while the app is open and in front of you, which is when a one-shot already works"_. It does
+ * not: `useGeolocation` requests once per MOUNT, so the fix went stale two minutes later and
+ * every position read on the board reverted to `unknown` for as long as the screen stayed open.
+ * Reported 2026-09-20 as the day view knowing the traveller was moving while the board, one tab
+ * away at the same minute, did not — and the day view was right only because a tab switch had
+ * just remounted it.
+ *
+ * So the ADR's own sentence becomes true: **still one shot, asked again while there is a live
+ * question**. Under the freshness bound with room for a slow fix to land, so a leg in progress is
+ * never reading an expired one; and asked at all only while a leg exists and the screen is
+ * visible, which is what keeps the battery argument intact.
+ */
+export const POSITION_REFRESH_MS = 75_000;
+
 /** **The smallest radius worth measuring**, in metres. Urban GPS is routinely ±⁦20–50m⁩, so a radius
  *  under the error bar flickers between stances while nobody moves. The fix's own `accuracy`
  *  outranks this where the platform reports one (§5); this is the floor when it does not. */

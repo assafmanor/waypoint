@@ -177,6 +177,21 @@
 .wp-board-now-meta .tlabel.emph {
   box-shadow: 0 0 0 1px rgba(44, 156, 144, 0.5);
 }
+/* **The journey's meta line** (2026-09-20). Two declarations, because the slot, the ink and the
+   separator all exist: the row is `.wp-board-now-meta` unchanged, `#f0a0a0` is the brightened
+   `--miss` the shut-window label and the countdown's passed arm already use on this always-dark
+   surface (§D7 — `--miss` as a graphic fails what it crosses, so the ink is the variant), and the
+   dimmed dot is `.hero-trv .sep`'s own recipe one elevation up.
+
+   **The ink is on the ARRIVAL alone.** Painting the whole line said the driving was late, which
+   is not a thing that can be true; what is late is where you land. Found by rendering, in the one
+   file that promises to render the real rule. */
+.wp-board-now-meta .eta.miss {
+  color: #f0a0a0;
+}
+.wp-board-now-meta .sep {
+  opacity: 0.55;
+}
 .wp-board-now-conflict {
   color: var(--amber-deep);
   font-size: var(--text-caption);

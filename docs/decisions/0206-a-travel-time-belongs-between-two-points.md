@@ -1207,6 +1207,30 @@ spec passed while proving nothing.
 
 ### AF3. The day's first leg reports no free time, because there is no window to report
 
+**AMENDED 2026-09-20 — §AF3 found the row through the FLAG, and the row is not the origin at all.**
+Decided and built in [0237](0237-the-board-says-where-you-are.md) §8; recorded here because this
+section's own note names the row and stops one step short of it.
+
+`travelOrigin` reads "the last thing that STARTED" as where the plan left you. Tonight's hotel
+checks in at ⁦16:00⁩, so from ⁦16:00⁩ it is the latest started row on the day — and the board measured
+the evening's drive out of a bed nobody had reached: ⁦7 דק׳⁩ against the day view's ⁦3:26⁩ out of the
+stop they were actually driving from. `17:30 − 7 − TRAVEL_BUFFER_SECONDS` is `17:18`, which is every
+number on the reported card, `11 · דקות · ליציאה` included. The day view never had it: its journey
+chain is built from `dayEvents`, which drops ambient spans before it starts.
+
+The repair below is right — `isStay` is a question about the ROW, and a stay whose check-in hour
+merely passed was handing `legDepartAfterMs` a check-out days away — and it left that row as the
+origin. **An hour the door opens is not a position.** The rule is `isExactEdge(event, 'start')`, the
+predicate both surfaces already share for the mirror question (§AI1 — whether an ARRIVAL is a
+deadline worth counting back from), read backwards: a check-in's ⁦15:00⁩ is when you MAY be there, so
+the clock passing it says nothing about whether you are. It answers `not-before` for exactly the
+held spans, which is why it is the rule rather than a `lodging` test — a car collected at ⁦09:00⁩ is
+the same floor as a room taken at ⁦15:00⁩.
+
+The bed still reaches `travelOrigin` by the two doors built for it, `wokeIn` and `sleepsIn` — handed
+in deliberately, dated, and bounded by ADR-0211 §4's waking window, which is the difference between
+a position the plan is sure of and one the clock merely walked past.
+
 §AD said the stay you woke in is the honest origin for a morning and that reaching it needed
 `buildDayStopSequence` plus the place-usage index. **It needs neither.** The question is which
 ambient night-counting span covers the previous night, which is `ambientEventsOnDate` and

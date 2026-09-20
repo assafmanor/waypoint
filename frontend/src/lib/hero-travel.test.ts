@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { TRAVEL_BUFFER_SECONDS, type TripEvent } from '@waypoint/shared';
-import { LEAVE_BY_SWAP_MINUTES, LEAVE_PHASE, heroLeaveBy, travelOrigin } from './hero-travel';
+import {
+  LEAVE_BY_SWAP_MINUTES,
+  LEAVE_PHASE,
+  heroArrival,
+  heroLeaveBy,
+  travelOrigin,
+} from './hero-travel';
 
 const MIN = 60_000;
 /** A fixed clock. Nothing here reads the system one — these are pure functions and `now`
@@ -164,12 +170,21 @@ describe('travelOrigin — which stop the journey leaves from', () => {
       expect(travelOrigin({ events: [later], nowMs: NOW }).event).toBeUndefined();
     });
 
-    // **The flag is about the ROW, not about which argument supplied it.** Home derived it as
-    // `originEvent.id === wokeIn?.id`, so the hotel you check into TONIGHT — an ordinary member of
-    // today's events, and after 15:00 the latest one to have started — answered `false` and handed
-    // `legDepartAfterMs` a check-out days away as this leg's departure floor.
-    it('marks a bed that simply started last as the bed it is', () => {
-      const origin = travelOrigin({ events: [hotel], nowMs: NOW });
+    // **A check-in hour that has passed is not a position at all** (field report, 2026-09-20,
+    // amending §AF3). §AF3 found this row through the FLAG — Home derived `isStay` as
+    // `originEvent.id === wokeIn?.id`, so tonight's hotel answered `false` and handed
+    // `legDepartAfterMs` a check-out days away — and fixed the flag while leaving the row as the
+    // origin. It is not one: `15:00` is when the door opens, so the clock passing it says nothing
+    // about whether anybody is there. The board measured an evening drive out of a bed nobody had
+    // reached, ⁦7 דק׳⁩ against the day view's ⁦3:26⁩ out of the stop they were driving from.
+    it('does not take a bed whose check-in hour merely passed', () => {
+      expect(travelOrigin({ events: [hotel], nowMs: NOW }).event).toBeUndefined();
+    });
+
+    // **And the flag §AF3 fixed still holds for the beds that DO reach this function** — the two
+    // doors built for them, which are dated and bounded where the clock-walk was neither.
+    it('still marks the bed it is handed as a bed', () => {
+      const origin = travelOrigin({ events: [], nowMs: NOW, wokeIn: hotel });
       expect(origin.event?.id).toBe('hotel');
       expect(origin.isStay).toBe(true);
     });
@@ -317,5 +332,74 @@ describe('travelOrigin — an origin with no place (ADR-0232 R6)', () => {
 
   it('takes every stop as placed when nobody says otherwise, which is the behaviour before this', () => {
     expect(travelOrigin({ events, nowMs: NOW })).toMatchObject({ event: aurora, denied: false });
+  });
+});
+
+// ══ WHEN WE GET THERE (field report, 2026-09-20) ═══════════════════════════════════════════════
+//
+// The board could say when to leave and not when you would arrive, so once the leaving was done
+// it had nothing true left to say — and said `זמן חופשי`.
+describe('heroArrival', () => {
+  const ARRIVE = NOW + 30 * MIN;
+
+  it('is the clock plus what is left of the road', () => {
+    expect(heroArrival({ remainingSeconds: 12 * 60, nowMs: NOW })?.etaMs).toBe(NOW + 12 * MIN);
+  });
+
+  it('is absent with no position behind it — a `בדרך` mark says where, not how far along', () => {
+    expect(heroArrival({ remainingSeconds: null, nowMs: NOW })).toBeNull();
+  });
+
+  it('is absent once there is no road left, rather than an arrival in the past', () => {
+    expect(heroArrival({ remainingSeconds: 0, nowMs: NOW })).toBeNull();
+    expect(heroArrival({ remainingSeconds: -60, nowMs: NOW })).toBeNull();
+  });
+
+  it('counts the minutes past a deadline it lands after', () => {
+    const read = heroArrival({
+      remainingSeconds: 79 * 60,
+      nowMs: NOW,
+      arriveByMs: ARRIVE,
+      arrivalIsDeadline: true,
+    });
+    expect(read?.lateMinutes).toBe(49);
+  });
+
+  it('is not late when it lands before', () => {
+    expect(
+      heroArrival({
+        remainingSeconds: 18 * 60,
+        nowMs: NOW,
+        arriveByMs: ARRIVE,
+        arrivalIsDeadline: true,
+      })?.lateMinutes,
+    ).toBeNull();
+  });
+
+  // Rounding is why this has to be asserted: eighteen seconds over rounds to `0`, and a red
+  // `0 · דקות באיחור` for arriving on time is the tile accusing somebody of nothing.
+  it('and zero is not late', () => {
+    expect(
+      heroArrival({
+        remainingSeconds: 30 * 60 + 18,
+        nowMs: NOW,
+        arriveByMs: ARRIVE,
+        arrivalIsDeadline: true,
+      })?.lateMinutes,
+    ).toBeNull();
+  });
+
+  // ADR-0206 §AI1's gate, read the same way the leave-by reads it: a check-in's hour is when the
+  // door opens, so nothing arrives late to it — and a red tile counting against one would be
+  // lateness for nothing.
+  it('never calls an arrival late against a start that is not a deadline', () => {
+    const read = heroArrival({
+      remainingSeconds: 79 * 60,
+      nowMs: NOW,
+      arriveByMs: ARRIVE,
+      arrivalIsDeadline: false,
+    });
+    expect(read?.etaMs).toBe(NOW + 79 * MIN);
+    expect(read?.lateMinutes).toBeNull();
   });
 });

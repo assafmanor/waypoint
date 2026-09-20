@@ -29,6 +29,7 @@
 // other.
 import { DAY_WINDOW, NIGHT_ENDS_HOUR } from '../constants';
 import { t } from '../i18n/he';
+import { TRAVEL_STANCE, type TravelStance } from './travel-position';
 import type { TripEvent } from '@waypoint/shared';
 
 /**
@@ -36,8 +37,19 @@ import type { TripEvent } from '@waypoint/shared';
  * outranks the plan's, and the plan's position outranks the absence of one.
  */
 export const GAP_CHARACTER = {
-  /** Somebody pressed `בדרך`. The strongest evidence on this screen, because a human supplied
-   *  it (`lib/on-way.ts`'s own words: the one thing here that knows what a sensor would). */
+  /** **A fix puts you at the next stop, and it has not started yet** (2026-09-20). The most
+   *  specific thing that can be true of a leg, so it is first — the same order `travelStance`
+   *  itself takes, where `arrived` outranks `at-origin` because being where you are going is
+   *  the more specific fact. It outranks the `בדרך` mark for the same reason the mark outranks
+   *  the plan: it is the later evidence, and ADR-0207 §2 already has an `arrived` fix withdraw
+   *  that mark automatically. */
+  ARRIVED: 'arrived',
+  /** Somebody pressed `בדרך` — **or a fix says you are on the leg** (2026-09-20). One character,
+   *  two kinds of evidence, because the board is not obliged to say how it knows: the human
+   *  assertion (`lib/on-way.ts`'s own words: the one thing here that knows what a sensor would)
+   *  and the `en-route` stance ADR-0207 §2 computes beside it. Before this the fix could only
+   *  WITHDRAW — it deleted the leave-by tile and the read fell through to `open`, so a traveller
+   *  doing 90 km/h was told they had free time. */
   ON_THE_WAY: 'on-the-way',
   /** **The leave-by has gone by and nothing has withdrawn it** (the 2026-09-15 amendment to
    *  ADR-0211 §8). The gap is still a gap by every test below — there IS something later today —
@@ -98,6 +110,18 @@ export interface GapCharacterInput {
   /** The device mark for `next` (`useOnWay`). */
   onWay: boolean;
   /**
+   * **What a device fix says about the leg into `next`** (`travelStance`, ADR-0207 §2) — the
+   * screen's own `stance`, handed over rather than re-derived, for the reason every other input
+   * here is: this file reads no clock and holds no coordinates.
+   *
+   * Absent is the ordinary answer and it is the behaviour this file shipped with: no permission,
+   * a refusal, a stale fix, a leg too short to resolve, or a position that settles nothing all
+   * leave every arm below reading exactly as it did. `at-origin` is deliberately NOT a character
+   * either — the traveller is where the plan says, which is what `open` and `due-out` already
+   * describe; what it earns is the `עדיין כאן` mark on the journey line (§2).
+   */
+  stance?: TravelStance;
+  /**
    * **The leave-by for `next` has passed, and nothing has answered it** — the caller's own
    * `leave.phase === PASSED && !leaveAnswered`, which is the condition the red countdown tile
    * already prints on (`Home.tsx`'s `leaveTile`). Handed in rather than derived because the
@@ -138,16 +162,24 @@ function nightBandOf(hour: number): NightBand | undefined {
  * nothing here needs a field the app does not store.
  */
 export function gapCharacter(input: GapCharacterInput): GapRead {
-  const { hour, next, today, dayHasEvents, wokeIn, onWay, leavePassed } = input;
+  const { hour, next, today, dayHasEvents, wokeIn, onWay, leavePassed, stance } = input;
   // Resolved once, before any arm, because it is true of the MINUTE rather than of the arm —
   // which is the correction the 2026-09-01 amendment makes: keyed on the arm, the night was
   // only noticed when a bed happened to be there to name.
   const band = nightBandOf(hour);
   const at = <T extends GapRead>(read: T): T => (band ? { ...read, band } : read);
 
-  // A person said they are moving. Nothing the plan knows outranks that — including the bed,
-  // which is why this is first: somebody up and out at ⁦06:20⁩ is on their way, not at a hotel.
-  if (onWay && next) return at({ kind: GAP_CHARACTER.ON_THE_WAY });
+  // **You are there and it has not started.** First, because it is the most specific thing that
+  // can be true — and because it is the one arm that has to beat a `בדרך` mark somebody pressed
+  // half an hour ago and has since answered by arriving (ADR-0207 §2 withdraws the mark on this
+  // stance already; this is the same withdrawal reaching the title).
+  if (stance === TRAVEL_STANCE.ARRIVED && next) return at({ kind: GAP_CHARACTER.ARRIVED });
+
+  // A person said they are moving, or a fix says so. Nothing the plan knows outranks either —
+  // including the bed, which is why this is here: somebody up and out at ⁦06:20⁩ is on their way,
+  // not at a hotel.
+  if ((onWay || stance === TRAVEL_STANCE.EN_ROUTE) && next)
+    return at({ kind: GAP_CHARACTER.ON_THE_WAY });
 
   // **And a departure that is late outranks the bed you are late from.** Second for
   // `on-the-way`'s own reason one line up: this is the live question of the next 30 minutes, where
@@ -205,6 +237,12 @@ export function gapDrawsDayRail(read: GapRead): boolean {
 export function gapWords(read: GapRead, stayName?: string): { label: string; title: string } {
   const open = { label: t.board.freeLabel, title: t.board.freeTitle };
   switch (read.kind) {
+    // **`הגענו` is already this app's word for it** — `settleWords.arrival`, what the day row's
+    // settle control says about an edge you made — so the board is not inventing a register for
+    // a fact it has just learned how to know. It spends no band, for `due-out`'s reason: arriving
+    // at ⁦05:40⁩ is arriving.
+    case GAP_CHARACTER.ARRIVED:
+      return t.board.gap.arrived;
     case GAP_CHARACTER.ON_THE_WAY:
       return t.board.gap.onTheWay;
     // **It does not spend the band**, for `day-done`'s and `empty-day`'s reason in the ADR's own
@@ -248,7 +286,12 @@ export function gapWords(read: GapRead, stayName?: string): { label: string; tit
  * claim about the clock, and the lateness it stands on is already red in the countdown tile
  * (ADR-0208 §1). Teal here would say the traveller is somewhere, which is the one thing this
  * state is waiting to find out.
+ *
+ * **`arrived` does**, and it is the clearest case the hue has: the fix says the traveller is at a
+ * particular place, which is what rule 4 spends teal on. It is also why `due-out` staying amber
+ * is not an inconsistency — that state is a clock with no position behind it, and this one is a
+ * position with no clock in it.
  */
 export function gapIsLocative(kind: GapCharacter): boolean {
-  return kind === GAP_CHARACTER.ON_THE_WAY;
+  return kind === GAP_CHARACTER.ON_THE_WAY || kind === GAP_CHARACTER.ARRIVED;
 }

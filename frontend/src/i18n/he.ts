@@ -1972,6 +1972,20 @@ export const t = {
     // asked the obvious question — _"6 what?"_. That is ADR-0208 §1's rule, which this arm had
     // escaped: the slot carries the measure AND the referent, never one of the two.
     leaveIn: 'ליציאה',
+    // **The same slot, pointed at the JOURNEY** (ADR-0206 §Z1's swap, a third time). Once a fix
+    // says you are on the leg, counting to a departure you have made is the wrong question and
+    // counting to the event says you have an hour when you have forty minutes of driving. So the
+    // tile counts what is left of the road, under the ladder's own measure word — `1:12 · שעות ·
+    // לדרך`. A preposition plus the noun the minutes are left OF, which is `closesIn`'s and
+    // `leaveIn`'s grammar rather than a third one.
+    toTravel: 'לדרך',
+    // **And when the arrival lands after the point's own start** (2026-09-20): `49 · דקות באיחור ·
+    // להגעה`. ADR-0208 §1's three-part slot with its third referent — how much, that it is
+    // lateness, and what for — where `leaveIn` names a departure and this names the arrival.
+    // **Still a claim about the NUMBER**, which is what `lateBy` below has always been: the fix
+    // knows where the device is, and `אתם מאחרים` would be a claim about the travellers, which
+    // ADR-0208 §Z5 M4 refuses whether or not there is a sensor.
+    lateToArrival: 'להגעה',
     // **And once the leave-by has gone by: `15 · דקות באיחור · ליציאה`** (ADR-0208 §1). Two
     // words were reported unclear here before this one, and each was missing a different half
     // of the sentence. `מהיציאה` read as _measured from_ — "15, counted from the departure".
@@ -2033,6 +2047,17 @@ export const t = {
       // `זמן היציאה עבר` is already the journey line's sentence two rows down, and this slot
       // takes a noun phrase rather than a third printing of one fact.
       dueOut: { label: 'כרגע', title: 'זמן לצאת' },
+      // **The state after `on-the-way`, and the one the app could never say** (2026-09-20): a
+      // fix at the next stop, before its clock. `הגענו` is `settleWords.arrival` — what the day
+      // row's settle control already calls an edge you made — rather than a new word for a new
+      // state, and it is a claim a position actually backs, which is the whole test ADR-0208
+      // applies to this slot. `כאן` and `במקום` were the alternatives: the first says where
+      // without saying that anything happened, and the second reads as an instruction.
+      //
+      // **No meta line under it.** The next row says `17:30` ⁦40px⁩ lower and the tile counts to
+      // it, so `מתחיל ב־17:30` in the title's own meta prints one clock twice — the duplication
+      // ADR-0214 §3 removed from this card once already.
+      arrived: { label: 'כרגע', title: 'הגענו' },
       // **The two band words, and they belong to the HOUR rather than to the stay** — which is
       // why the key is `band` since the 2026-09-01 amendment to ADR-0211 and no longer
       // `atTheStay`. `open` spends them too: at ⁦01:12⁩ on a night the plan gave no bed, the

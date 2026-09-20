@@ -933,11 +933,20 @@ Two more deliberately not built on the way, both now cheap to reach:
 - **Nothing offers to extend the trip when a journey lands past its end.** The app knows both facts (`trip.endDate`, the resolved landing day) and says neither. It is a suggestion, not a refusal — the flight saves today — so it wants the offer grammar ([ADR-0171](decisions/0171-a-time-can-be-a-floor-or-a-ceiling.md) §1: offered into an empty value, never corrected onto a filled one) rather than a guard.
 - **A trip whose dates are SHRUNK still strands the events outside the new range** (`trips.service.ts` does not inspect them, and nothing in the backend or `packages/shared` bounds a date to the trip at all). The day strip enumerates `[startDate, endDate]` and `activeDate` clamps, so such an event is unreachable on every day surface while remaining live in `deriveNow`, the Index and the all-days Map. Unrelated to this report and older than it; it is the one path that can still produce the state the form refuses.
 
-## The board does not know it is moving (owner report, 2026-09-20)
+## The board does not know it is moving (owner report, 2026-09-20) — BUILT
 
-Two device screenshots one minute apart: the day view draws the live leg as in progress with a position-scaled remainder, the board reads `פנוי · זמן חופשי` with a leave-by beside it. Drawn in [`mockups/the-board-says-where-you-are-v1.html`](../mockups/the-board-says-where-you-are-v1.html); the design forks are open with the owner and the four defects below are the build.
+All four causes shipped in [ADR-0237](decisions/0237-the-board-says-where-you-are.md)
+([mockup](../mockups/the-board-says-where-you-are-v1.html) ·
+[note](planning/2026-09-20-the-board-does-not-know-it-is-moving.md)). What is left, and it is one
+line rather than four:
 
-- **The board has no journey slot.** `heroTravel` is built at `Home.tsx:1011` and passed only to `HeroLift` (`:1764`); `Board` has no `travel` prop, so the collapsed card has no vocabulary for a leg in progress whatever the derivations say. Fixing it is the mockup's §1–§4 and needs the ADR.
-- **`gapCharacter` cannot be reached by a fix.** `Home.tsx:1393` passes the `בדרך` device MARK and never `stance`, which the same screen computed at `:756` — so `GAP_CHARACTER.ON_THE_WAY` is unreachable by sensor and an `en-route` fix withdraws the leave tile only to fall through to `open`. One argument, and it is the mockup's §1.
-- **The board's fix expires after two minutes and nothing re-asks.** `useGeolocation` is per-component one-shot state and Home requests once (`:748` fires only while `geoStatus === 'idle'`), against `POSITION_FRESH_MS` of ⁦2⁩ minutes — so every position read on the app's front door is dead from two minutes after mount, and `DayView`'s is alive only because a tab switch remounts it (`App.tsx:510-519`). [ADR-0207](decisions/0207-a-fix-may-withdraw-a-claim-it-may-not-make-one.md) §4 rejected `watchPosition` on battery and assumed a one-shot "works when the app is open and in front of you"; what is missing is a re-request while a live leg exists and the screen is visible, and one shared store instead of three independent hook instances. Still one-shot, still not a subscription, so the ADR's reasoning is applied rather than reversed.
-- **The board and the day measured different legs**, and no stance disagreement explains it: `עד 17:18` with `11 · דקות · ליציאה` into a ⁦17:30⁩ arrival implies `travelSeconds ≈ 7 דק׳` where the day's own leg is ⁦3:26⁩ / ⁦207 ק״מ⁩. Off the day's number the board should have read ~⁦3⁩ שעות באיחור. Candidates: the hero's destination is `horizon.next.placeId` where the day's is `endpointPlaceId(leg.to, …, 'arriving')`, and the hero's origin is `travelOrigin`'s latest-started stop where the day's is its chain leg. Needs a repro against the reported day before it is called a cause; [ADR-0159](decisions/0159-the-day-says-what-is-between-two-events.md) §1 forbids the two surfaces differing about a fact, and which leg you are on is a fact.
+- **The two live surfaces still derive their own leg.** The board asks `travelOrigin` (the latest
+  stop that has STARTED today) and the day asks `dayRun`'s journey chain (the last PLACED row, with
+  placeless rows spanned). They agree on every shape `board-and-day-one-leg.test.ts` can build and
+  they are still two implementations of one fact, which is what [ADR-0159](decisions/0159-the-day-says-what-is-between-two-events.md)
+  §1 forbids — the 2026-09-20 report is what one divergence between them costs, and the contract
+  test is a guard rather than a fix. Removing the second means Home computing the day's own
+  `dayEntries` + `dayRun` + bookends for today, which is a refactor rather than an extraction
+  (root rule 8's "ask before you take on the larger change"), and it is the same line
+  [ADR-0206 §AZ8](decisions/0206-a-travel-time-belongs-between-two-points.md) already opened for
+  the two DAY surfaces, one surface wider.

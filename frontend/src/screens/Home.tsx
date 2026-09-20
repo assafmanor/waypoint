@@ -104,12 +104,18 @@ import {
   dayBookendStays,
 } from '../lib/glance';
 import { deriveHeroBooking } from '../lib/hero-booking';
-import { LEAVE_PHASE, heroLeaveBy, travelOrigin, type HeroLeaveBy } from '../lib/hero-travel';
+import {
+  LEAVE_PHASE,
+  heroArrival,
+  heroLeaveBy,
+  travelOrigin,
+  type HeroLeaveBy,
+} from '../lib/hero-travel';
 import { TIME_FACT, statedTime, type TimeFactClaim } from '../lib/time-claim';
 import { GAP_CHARACTER, gapCharacter, gapDrawsDayRail } from '../lib/gap-character';
 import { tomorrowRibbon } from '../lib/tomorrow';
 import { TRAVEL_STANCE, remainingTravelSeconds, travelStance } from '../lib/travel-position';
-import { useGeolocation } from '../lib/useGeolocation';
+import { useLiveFix } from '../lib/useLiveFix';
 import {
   dayAirMeters,
   endpointPlaceId,
@@ -741,16 +747,14 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // exists for exactly this: the front door is not an intent to be located, so anyone who has
   // used the Map gets the fix free and anyone who has not sees today's behaviour and is never
   // asked. A prompt here would need its own reason-first card (ADR-0109 §6) and its own decision.
-  const geo = useGeolocation();
-  // Keyed on the two values it reads and the stable `request`, never on `geo` itself: the hook
-  // returns a fresh object every render and this screen re-renders on the CLOCK, so an object dep
-  // would re-run this effect once a second forever (`frontend/CLAUDE.md`'s rule for exactly this
-  // screen). The guard would still hold — `request` leaves `status` at `locating` — but a
-  // per-second effect on the app's front door is the kind of thing that is cheap until it is not.
-  const { permission: geoPermission, status: geoStatus, request: requestGeo } = geo;
-  useEffect(() => {
-    if (geoPermission === 'granted' && geoStatus === 'idle') requestGeo();
-  }, [geoPermission, geoStatus, requestGeo]);
+  //
+  // **AND ASKED AGAIN WHILE THE LEG IS LIVE** (§4 as amended, 2026-09-20). This screen held its
+  // own mount-time `useEffect` and `DayView` held the identical one — two copies of a one-shot
+  // against a ⁦2⁩-minute freshness bound, so the board's stance was `unknown` from two minutes
+  // after it opened and the day view was right only because a tab switch had just remounted it.
+  // `useLiveFix` is that effect, generalised, with the refresh the ADR's own reasoning already
+  // assumed (root rule 8: generalise the one-off rather than add a third beside it).
+  const geo = useLiveFix(!!travelLeg);
   // **A fix decides what we may CLAIM, and is never an input to an estimate** (§1) — no request
   // is issued from a position, so ADR-0205 §4's place-keyed cache is untouched.
   const stance = travelLeg
@@ -907,45 +911,6 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // this epic inherited the collision rather than creating it (§Z5 §M1). There is ONE tile, so
   // the NEARER NUMBER WINS — drawing both costs 11px of the `הבא בתור` title and breaks it onto
   // a second line at 360px. A passed leave-by is negative, so it is nearer than any window.
-  const countdown =
-    closingMins != null && (leaveTile === null || closingMins <= leaveTile.at)
-      ? // **The same defect, one arm over, and it was never reported** (ADR-0206 §AR2). `closesIn`
-        // is the precedent `leaveIn` copied — including the overwrite — so a shutting window read
-        // `15 · לסגירה`, a number with no measure either. Fixed with it rather than after it: they
-        // are one slot, and leaving the sibling wrong is the shape `frontend/CLAUDE.md` names.
-        { ...formatCountdown(closingMins), unitBelow: t.board.closesIn }
-      : // **The leave-by arm carries what it counts to** (ADR-0226). The window arm above states
-        // a closing no day surface prints, and the event arms below count to the point's own
-        // `startsAt` — a datum, not a derivation — so this is the one arm with a claim to tag.
-        leaveTile
-        ? { ...leaveTile.countdown, ...(leaveFact ? { fact: leaveFact } : {}) }
-        : !nextInstant
-          ? null
-          : minsToNext >= MINUTES_PER_DAY
-            ? countdownParts(nextDayDelta)
-            : formatCountdown(minsToNext);
-
-  // **The morning of departure** (ADR-0221 §3): until the first timed thing starts, the tile is
-  // the same split-flap clock the prep hero showed the evening before (`FlapClock`, one
-  // component), so the clock hands over from one hero to the other without a gap. Only while
-  // the tile counts to the next thing itself — a leave-by or a shutting window keeps its word.
-  //
-  // **And only to the day's FIRST timed thing** (2026-09-10). `!nowEvent` alone let the flaps
-  // come back every time day 1 fell quiet — in the layover between two legs, on the drive to
-  // the hotel — so the departure clock was counting to a connection. The clock ends once, at
-  // the first thing; from there the trip counts on the `H:MM` ladder like every other day.
-  const dayOneClock =
-    countdown &&
-    !('unitBelow' in countdown && countdown.unitBelow) &&
-    !('missed' in countdown && countdown.missed) &&
-    !nowEvent &&
-    nextInstant &&
-    today === trip.startDate &&
-    shownNext?.date === today &&
-    shownNext.id === firstTimedOn(events, today)?.id &&
-    minsToNext < MINUTES_PER_DAY
-      ? { ...countdown, flap: { targetMs: Date.parse(nextInstant), nowMs } }
-      : countdown;
 
   const nowZones = zonesOf(nowEvent);
   // The NEXT slot's instant is a start for an ordinary event but an **end** for a
@@ -1008,6 +973,16 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     ? remainingTravelSeconds(stance, travelEstimate?.durationSeconds ?? null)
     : null;
   const enRoute = stance?.stance === TRAVEL_STANCE.EN_ROUTE || onWayToNext;
+  /** **When we get there, and whether that is late** (2026-09-20) — `heroArrival`, off the same
+   *  `remainingSeconds` the lifted hero's journey line already spends. Scoped to the `deadline`
+   *  gate the leave-by uses (§AI1): a check-in's hour is when the door opens, and nothing arrives
+   *  late to it. `null` on every arm with no position behind it, including a bare `בדרך` mark. */
+  const arrival = heroArrival({
+    remainingSeconds,
+    nowMs,
+    ...(nextInstant ? { arriveByMs: Date.parse(nextInstant) } : {}),
+    arrivalIsDeadline,
+  });
   const heroTravel: HeroLiftTravel | undefined =
     // **Arrived is the one state with nothing to report**, so the block goes entirely rather
     // than saying something quieter about a journey that is over (§2, §D4).
@@ -1328,6 +1303,20 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           ...(shownNext ? { of: shownNext.id } : {}),
         })
       : null;
+  /** `~1:12 שע׳` — `approxTravelTime`'s ladder, the same hedge and the same rounding the lifted
+   *  hero's journey line and the day row both print, so one leg is one number on three surfaces. */
+  const journeyRemaining =
+    remainingSeconds !== null ? (approxTravelTime(remainingSeconds) ?? undefined) : undefined;
+  /** `~18:19`, tagged with the instant it was derived from (ADR-0226) so a suite can hold it
+   *  against the point's own clock — which is the comparison the `late` ink is made of. The `~`
+   *  is inside the isolate, `approxDuration`'s own rule for a hedged number (ADR-0118). */
+  const journeyArrival =
+    arrival && shownNext
+      ? statedTime(
+          { kind: TIME_FACT.ARRIVE_AT, atMs: arrival.etaMs, zone: tz, of: shownNext.id },
+          (clock) => ltrIsolate(`~${clock}`),
+        )
+      : null;
   const dayEndMs = sameDayEvents.reduce((max, e) => {
     const end = e.endsAt ? Date.parse(e.endsAt) : e.startsAt ? Date.parse(e.startsAt) : 0;
     return end > max ? end : max;
@@ -1401,7 +1390,98 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     ...(travelPrev.event && travelPrev.event.id === wokeIn?.id ? { wokeIn: travelPrev.event } : {}),
     onWay: onWayToNext,
     leavePassed,
+    // **THE FIX REACHES THE TITLE** (2026-09-20). It was computed ⁦600⁩ lines up and spent only on
+    // `positionAnswered`, so an `en-route` fix withdrew the leave-by tile and the read fell
+    // through to `open` — the board printing `זמן חופשי` at 90 km/h, which is ADR-0211's own
+    // thesis one state further along. `GAP_CHARACTER.ON_THE_WAY` has existed since that ADR and
+    // nothing but a human press could reach it.
+    ...(stance ? { stance: stance.stance } : {}),
   });
+
+  // ── THE TILE (ADR-0206 §Z1) ────────────────────────────────────────────────
+  // **Declared here rather than beside the leave-by it extends**, because its first arm asks the
+  // gap's CHARACTER and that is resolved above. The ordering of the arms is unchanged; what moved
+  // is where the expression sits.
+  /**
+   * **THE TILE, POINTED AT THE JOURNEY** (2026-09-20) — ADR-0206 §Z1's swap, a third and fourth
+   * time, and for its own reason: once a fix says you are on the leg, counting to a departure you
+   * have made is the wrong question, and counting to the event says you have ⁦23⁩ minutes when you
+   * have ⁦72⁩ of driving. It is one tile that changes what it counts to, never a second box.
+   *
+   * **The late arm and the meta line are not one fact twice** — the meta says WHEN you land, this
+   * says BY HOW MUCH you are past the start, which is the `due-out` precedent exactly (the title
+   * carries the state and the tile carries the number). ADR-0211 §8's "would say it twice" was
+   * about a title restating a countdown, and it still holds for everything it was written about.
+   *
+   * It outranks nothing: the ordering below is unchanged, and this arm only ever replaces the
+   * count-to-event that had nothing true to say on this state.
+   */
+  const journeyTile =
+    gapRead.kind === GAP_CHARACTER.ON_THE_WAY && remainingSeconds !== null
+      ? arrival?.lateMinutes != null
+        ? {
+            at: -arrival.lateMinutes,
+            countdown: {
+              ...formatCountdown(arrival.lateMinutes),
+              unit: t.board.lateBy(formatCountdown(arrival.lateMinutes).unit),
+              unitBelow: t.board.lateToArrival,
+              missed: true,
+            },
+          }
+        : {
+            at: Math.round(remainingSeconds / 60),
+            countdown: {
+              ...formatCountdown(Math.max(1, Math.round(remainingSeconds / 60))),
+              unitBelow: t.board.toTravel,
+            },
+          }
+      : null;
+  const countdown = journeyTile
+    ? // **The journey's own number, tagged with where it lands** (ADR-0226), so the suite can
+      // hold the tile against the arrival stated two lines above it — which is the pairing §BF
+      // was, one slot over.
+      {
+        ...journeyTile.countdown,
+        ...(journeyArrival ? { fact: journeyArrival.fact } : {}),
+      }
+    : closingMins != null && (leaveTile === null || closingMins <= leaveTile.at)
+      ? // **The same defect, one arm over, and it was never reported** (ADR-0206 §AR2). `closesIn`
+        // is the precedent `leaveIn` copied — including the overwrite — so a shutting window read
+        // `15 · לסגירה`, a number with no measure either. Fixed with it rather than after it: they
+        // are one slot, and leaving the sibling wrong is the shape `frontend/CLAUDE.md` names.
+        { ...formatCountdown(closingMins), unitBelow: t.board.closesIn }
+      : // **The leave-by arm carries what it counts to** (ADR-0226). The window arm above states
+        // a closing no day surface prints, and the event arms below count to the point's own
+        // `startsAt` — a datum, not a derivation — so this is the one arm with a claim to tag.
+        leaveTile
+        ? { ...leaveTile.countdown, ...(leaveFact ? { fact: leaveFact } : {}) }
+        : !nextInstant
+          ? null
+          : minsToNext >= MINUTES_PER_DAY
+            ? countdownParts(nextDayDelta)
+            : formatCountdown(minsToNext);
+
+  // **The morning of departure** (ADR-0221 §3): until the first timed thing starts, the tile is
+  // the same split-flap clock the prep hero showed the evening before (`FlapClock`, one
+  // component), so the clock hands over from one hero to the other without a gap. Only while
+  // the tile counts to the next thing itself — a leave-by or a shutting window keeps its word.
+  //
+  // **And only to the day's FIRST timed thing** (2026-09-10). `!nowEvent` alone let the flaps
+  // come back every time day 1 fell quiet — in the layover between two legs, on the drive to
+  // the hotel — so the departure clock was counting to a connection. The clock ends once, at
+  // the first thing; from there the trip counts on the `H:MM` ladder like every other day.
+  const dayOneClock =
+    countdown &&
+    !('unitBelow' in countdown && countdown.unitBelow) &&
+    !('missed' in countdown && countdown.missed) &&
+    !nowEvent &&
+    nextInstant &&
+    today === trip.startDate &&
+    shownNext?.date === today &&
+    shownNext.id === firstTimedOn(events, today)?.id &&
+    minsToNext < MINUTES_PER_DAY
+      ? { ...countdown, flap: { targetMs: Date.parse(nextInstant), nowMs } }
+      : countdown;
   // ── TOMORROW, WHEN TODAY'S PLAN IS FINISHED (ADR-0214) ─────────────────────
   // **The clock's day plus one, never `activeDate` plus one.** Swiping the day strip must not
   // change what the live surface says about the minute you are in — the same rule ADR-0211
@@ -1471,6 +1551,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
             : {}),
         }
       : null;
+  /** **The two arms that say you are not sitting still** — written out rather than asked of
+   *  `gapIsLocative`, which answers a question about the HUE and happens to have the same two
+   *  members today. */
+  const movingRead =
+    gapRead.kind === GAP_CHARACTER.ON_THE_WAY || gapRead.kind === GAP_CHARACTER.ARRIVED;
   const boardGap: BoardGap | null =
     nowEvent || inTransit || groupSplit
       ? null
@@ -1482,7 +1567,31 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           ...(gapRead.stay ? { stayName: gapRead.stay.title } : {}),
           // `עד HH:MM` — the fact the `free` branch never said while `GlanceCard` said it two
           // inches lower (§5). Only when the gap actually runs to something today.
-          ...(freeUntil ? { until: freeUntil } : {}),
+          //
+          // **And never while you are moving** (2026-09-20). This was unconditional on the
+          // character, which was invisible while `on-the-way` drew nothing else: the shipped
+          // card printed `כרגע · בדרך` over `עד 14:15`, a free-time ceiling for somebody who
+          // has already left, and `הגענו` would have printed one for somebody already there.
+          // Found by wiring the journey line in beside it. `due-out` excludes itself by
+          // arithmetic — its leave-by is in the past, and `freeUntilMs` refuses one.
+          ...(freeUntil && !movingRead ? { until: freeUntil } : {}),
+          // **THE JOURNEY, ON THE COLLAPSED CARD** (2026-09-20). `heroTravel` below has carried
+          // these two facts to the LIFTED hero since §V1.2, and `Board` had no slot for them at
+          // all — so the one surface you read from a moving car said less about the drive than
+          // the one you have to open. Only on `on-the-way`, and only with a position behind it:
+          // a `בדרך` mark says where you are, not how far along, and §D4's absence is the answer
+          // for everything else.
+          ...(gapRead.kind === GAP_CHARACTER.ON_THE_WAY && (journeyRemaining || journeyArrival)
+            ? {
+                journey: {
+                  ...(journeyRemaining ? { remaining: journeyRemaining } : {}),
+                  ...(journeyArrival ? { arrival: journeyArrival } : {}),
+                  ...(arrival?.lateMinutes !== null && arrival?.lateMinutes !== undefined
+                    ? { late: true }
+                    : {}),
+                },
+              }
+            : {}),
         };
   const transit: BoardTransit | undefined =
     inTransit && transitEvent && transitWords

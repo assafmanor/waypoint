@@ -1238,3 +1238,151 @@ describe('Home — the free time ends where the journey begins (ADR-0206 §AJ4.1
     expect(unitBelow()).toBe(t.board.leaveIn);
   });
 });
+
+// ══ THE BOARD SAYS WHERE YOU ARE (field report, 2026-09-20) ════════════════════════════════════
+//
+// Two device screenshots one minute apart: the day view drew the live leg as in progress with a
+// position-scaled remainder, and the board read `פנוי · זמן חופשי`. The stance was computed on the
+// same screen ⁦600⁩ lines above the gap's read and spent only on withdrawing the leave-by tile, so
+// a fix could delete a claim and never replace one — and what it fell through to was the loudest
+// false statement on the card.
+//
+// These are the wiring only. The derivations are pure and tested next door (`gap-character`,
+// `hero-travel`), the component is tested with hand-built props (`Board.test.tsx`); what is only
+// observable here is that Home connects one to the other.
+describe('Home — the board says where you are (2026-09-20)', () => {
+  const label = () => document.querySelector('.wp-board-now-label')?.textContent;
+  const title = () => document.querySelector('.wp-board-now-title')?.textContent;
+  /** The gap slot's meta lines: `open` fills one, the journey fills its own. */
+  const metas = () => [...document.querySelectorAll('.wp-board-now-meta')];
+  const journeyMeta = () => withoutBidiControls(metas().at(-1)?.textContent ?? '');
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    resetOnWayForTests();
+    tripEvents = [museum, dinner(90)];
+    tripBookings = [];
+    // A 30-minute drive into a dinner 90 minutes out: comfortably on time, so `late` is a
+    // property of the fixture rather than of the clock.
+    travelSeconds = 30 * 60;
+    geoFix = null;
+    geoRequest.mockClear();
+  });
+  afterEach(() => {
+    cleanup();
+    resetOnWayForTests();
+    setSimulatedNow(null);
+  });
+
+  it('is the reported card: free time, from the side that was wrong', () => {
+    geoFix = null;
+    show();
+    expect(title()).toBe(t.board.freeTitle);
+  });
+
+  it('and with a fix along the leg it stops saying that, with nobody pressing anything', () => {
+    geoFix = atFraction(0.75);
+    show();
+    expect(label()).toBe(t.board.gap.onTheWay.label);
+    expect(title()).toBe(t.board.gap.onTheWay.title);
+    expect(document.body.textContent).not.toContain(t.board.freeTitle);
+  });
+
+  it('says what is left of the road and when it lands', () => {
+    geoFix = atFraction(0.75);
+    show();
+    // Roughly a quarter of a 30-minute drive, and an arrival ⁦8⁩ minutes out — both hedged,
+    // because both are a routed estimate scaled by a CROW fraction (ADR-0207 §6). The number is
+    // the rendered one rather than `0.25 × 30`: the fraction is a great-circle ratio over two
+    // real coordinates, so writing the arithmetic out here would be a second implementation of
+    // it that happens to agree.
+    expect(journeyMeta()).toContain(t.travel.remaining('~8 דק׳'));
+    expect(journeyMeta()).toContain('14:37');
+  });
+
+  // The ceiling under `זמן חופשי` was unconditional on the character, so the shipped card printed
+  // a free-time ceiling at 90 km/h. Invisible until the journey line landed beside it.
+  it('and stops claiming free time runs until the departure you have already made', () => {
+    geoFix = atFraction(0.75);
+    show();
+    expect(journeyMeta()).not.toContain(t.board.until);
+    expect(metas()).toHaveLength(1);
+  });
+
+  it('and the tile counts the road rather than the event it is not at yet', () => {
+    geoFix = atFraction(0.75);
+    show();
+    expect(unitBelow()).toBe(t.board.toTravel);
+    expect(value()).toBe('8');
+  });
+
+  // **The owner's first question.** The fix says we are moving and the arithmetic says we get
+  // there after it has started — which is a claim about the JOURNEY, in words the day view
+  // already prints, and never `אתם מאחרים` (ADR-0208 §Z5 M4).
+  describe('and when the arrival lands after the start', () => {
+    beforeEach(() => {
+      tripEvents = [museum, dinner(15)];
+      travelSeconds = 60 * 60;
+    });
+
+    it('marks the ARRIVAL, and only the arrival', () => {
+      geoFix = atFraction(0.5);
+      show();
+      const eta = document.querySelector('.wp-board-now-meta .eta');
+      expect(eta?.className).toContain('miss');
+      // What is late is where you land; the driving that is left cannot be.
+      expect(withoutBidiControls(eta?.textContent ?? '')).not.toContain(t.travel.remaining(''));
+    });
+
+    it('and the tile says by how much, for what', () => {
+      geoFix = atFraction(0.5);
+      show();
+      // 30 minutes of road left against a dinner 15 minutes out.
+      expect(value()).toBe('15');
+      expect(unit()).toBe(lateUnit(15));
+      expect(unitBelow()).toBe(t.board.lateToArrival);
+      expect(tile()?.classList.contains('missed')).toBe(true);
+    });
+
+    // ADR-0206 §AI1's gate, and the reason the tile is safe to make this loud: a check-in's hour
+    // is when the door opens, so nothing arrives late to it.
+    it('never calls an arrival late against a start that is only a floor', () => {
+      tripEvents = [
+        museum,
+        ev('checkin', {
+          title: 'מלון',
+          category: 'lodging',
+          placeId: 'p-dinner',
+          startsAt: new Date(Date.parse(NOW) + 15 * 60_000).toISOString(),
+          endsAt: `${DAY}T22:00:00Z`,
+        }),
+      ];
+      geoFix = atFraction(0.5);
+      show();
+      expect(document.querySelector('.wp-board-now-meta .eta')?.className).not.toContain('miss');
+      expect(tile()?.classList.contains('missed')).toBe(false);
+    });
+  });
+
+  // **The owner's second question.** `arrived` was the one state with nothing to report, so the
+  // board fell to `open` and spent the minute the fix is most certain about saying `זמן חופשי`.
+  it('says הגענו at the stop before its clock, with no meta line under it', () => {
+    geoFix = atFraction(1);
+    show();
+    expect(label()).toBe(t.board.gap.arrived.label);
+    expect(title()).toBe(t.board.gap.arrived.title);
+    expect(document.querySelector('.wp-board-now-label')?.className).toContain('loc');
+    // The next row says that clock and the tile counts to it; a third printing is the
+    // duplication ADR-0214 §3 took off this card once already.
+    expect(metas()).toHaveLength(0);
+  });
+
+  // A person's press says where they are, not how far along — so the words arrive and the
+  // numbers do not, which is §D4's absence rather than an omission.
+  it('a בדרך mark alone gives the words and no numbers', () => {
+    markOnWay('t1', 'dinner');
+    show();
+    expect(title()).toBe(t.board.gap.onTheWay.title);
+    expect(metas()).toHaveLength(0);
+  });
+});

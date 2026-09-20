@@ -10,7 +10,7 @@
 // **The estimate itself is not this file's** — `useDayTravel` holds it (ADR-0205 §7) and
 // `leaveBy` computes the instant (`@waypoint/shared`'s `travel-time.ts`, so the sweep that will
 // one day fire a "leave now" reminder reads it the same way this does).
-import { EVENT_STATUS, leaveBy, type TripEvent } from '@waypoint/shared';
+import { EVENT_STATUS, isExactEdge, leaveBy, type TripEvent } from '@waypoint/shared';
 import { isStayRow } from './glance';
 
 const MS_PER_MIN = 60_000;
@@ -145,6 +145,62 @@ export function heroLeaveBy(input: {
   return { travelSeconds, leaveByMs, minutesToLeave, phase, clamped };
 }
 
+/**
+ * **WHEN YOU GET THERE, AND WHETHER THAT IS LATE** (2026-09-20) — the read the board could never
+ * make, beside the one it has made since §V1.2.
+ *
+ * `heroLeaveBy` above answers _when must I go_, which stops being the question the moment you have
+ * gone. This answers the one that replaces it. Both live here for the same reason: the collapsed
+ * board and the lifted hero must not be able to disagree about a journey (ADR-0018, ADR-0159 §1),
+ * and the arithmetic is one function either can ask.
+ *
+ * **It is an approximation of an approximation, and the `~` at the render is what says so**
+ * (ADR-0207 §1/§6): `remainingSeconds` is a routed estimate scaled by the remaining CROW fraction,
+ * never a re-route from the live position — which would break ADR-0205 §4's place-keyed cache and
+ * buy a number that is stale a step later.
+ *
+ * `null` is the ordinary answer and every consumer renders it as absence (§D4): no fix, a stale
+ * one, a leg too short for the fraction to mean anything, or a `בדרך` mark with no position
+ * behind it — somebody who says they are moving has told the app where they are and not how far
+ * along.
+ */
+export interface HeroArrival {
+  /** The instant you get there, on the clock. */
+  etaMs: number;
+  /**
+   * Whole minutes past the point's own start, or `null` when you are not late.
+   *
+   * **Only where that start is a DEADLINE**, which is the gate ADR-0206 §AI1 already puts on the
+   * leave-by and for the identical reason: a check-in's ⁦17:00⁩ is the hour the door opens, so
+   * nothing can arrive late to it and a red tile counting minutes against it would be lateness
+   * for nothing. The caller answers `arrivalIsDeadline` because it holds the event.
+   */
+  lateMinutes: number | null;
+}
+
+export function heroArrival(input: {
+  /** What is left of the leg (`remainingTravelSeconds`), or `null`. */
+  remainingSeconds: number | null;
+  nowMs: number;
+  /** The point's own start — the instant being arrived at. */
+  arriveByMs?: number;
+  /** Whether that start is an exact edge (`isExactEdge(next, 'start')`). */
+  arrivalIsDeadline?: boolean;
+}): HeroArrival | null {
+  const { remainingSeconds, nowMs, arriveByMs, arrivalIsDeadline } = input;
+  if (remainingSeconds === null || !Number.isFinite(remainingSeconds) || remainingSeconds <= 0) {
+    return null;
+  }
+  const etaMs = nowMs + remainingSeconds * 1000;
+  const over =
+    arrivalIsDeadline && arriveByMs !== undefined && Number.isFinite(arriveByMs)
+      ? Math.round((etaMs - arriveByMs) / MS_PER_MIN)
+      : 0;
+  // **Zero is not late**, and rounding is why it has to be said: an ETA eighteen seconds past the
+  // start rounds to `0` and would otherwise print a red `0 · דקות באיחור` for arriving on time.
+  return { etaMs, lateMinutes: over > 0 ? over : null };
+}
+
 /** What the plan says about where you are, and whether that claim still stands. */
 export interface TravelOriginClaim {
   /** The stop the plan puts you at, when it names one. */
@@ -261,6 +317,27 @@ export function travelOrigin(input: {
   let latestPlaced: TripEvent | undefined;
   for (const event of events) {
     if (!event.startsAt || event.id === excludeEventId) continue;
+    // **AN HOUR THE DOOR OPENS IS NOT A POSITION** (field report, 2026-09-20). This walk reads
+    // "the last thing that STARTED" as where the plan left you, which is true of a moment you
+    // keep and false of a floor: tonight's hotel checks in at ⁦16:00⁩, so from ⁦16:00⁩ it was the
+    // latest started row on the day and the board measured the evening's drive out of a bed
+    // nobody had reached — ⁦7 דק׳⁩ where the day view, whose chain never sees an ambient span,
+    // read ⁦3:26⁩ off the stop you were actually driving from. Every number on the reported card
+    // follows from that one substitution, the `11 · דקות · ליציאה` included.
+    //
+    // `isExactEdge` is the predicate the two surfaces already share for the mirror question —
+    // whether an ARRIVAL is a deadline worth counting back from (ADR-0206 §AI1, `arrivalIsDeadline`
+    // here and `flexibleArrival` on the day row) — and the reasoning is the same one read
+    // backwards: a check-in's ⁦15:00⁩ is when you MAY be there, so the clock passing it says
+    // nothing about whether you are. Today it answers `not-before` for exactly the held spans
+    // (`midSpan.kind === 'held'` — a stay, a hire), which is why this is the rule rather than a
+    // `lodging` test: a car you collect at ⁦09:00⁩ is the same floor as a room you take at ⁦15:00⁩.
+    //
+    // **The bed still reaches this function**, by the two doors built for it: `wokeIn` and
+    // `sleepsIn` are handed in deliberately, dated, and bounded (§AD, and ADR-0211 §4's waking
+    // window) — which is the difference between a position the plan is sure of and one the clock
+    // merely walked past.
+    if (!isExactEdge(event, 'start')) continue;
     const startedAt = Date.parse(event.startsAt);
     if (!Number.isFinite(startedAt) || startedAt > nowMs) continue;
     if (!latest || startedAt > Date.parse(latest.startsAt!)) latest = event;

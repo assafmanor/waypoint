@@ -92,7 +92,79 @@ describe('Board', () => {
       // plan brackets, so it must not read amber over a teal line two rows down.
       expect(c.querySelector('.wp-board-now-label')?.className).toContain('loc');
       expect(c.querySelector('.wp-board-live')?.className).toContain('loc');
-      expect(c.querySelector('.wp-board-live')?.textContent).toBe(t.board.gap.onTheWay.title);
+      // **The BLIP is the live mark; the word is the title's** (amending ADR-0211's build log
+      // §1, 2026-09-20). That log kept the badge swapping to the gap's own title here because
+      // it was "the shipped transit costume rather than a repetition" — true while the title
+      // had nothing under it, and false the moment the journey's numbers landed below it:
+      // rendered, `בדרך` printed twice ⁦85px⁩ apart.
+      expect(c.querySelector('.wp-board-live')?.textContent).toBe(t.common.now);
+    });
+
+    // ── THE JOURNEY, ON THE COLLAPSED CARD (2026-09-20) ──────────────────────
+    // `heroTravel` has carried these two facts to the LIFTED hero since ADR-0206 §V1.2 and
+    // this component had no slot for them at all, so the one surface you read from a moving
+    // car said less about the drive than the one you have to open.
+    describe('and says what the journey is doing', () => {
+      const arrival = statedTime(
+        {
+          kind: TIME_FACT.ARRIVE_AT,
+          atMs: Date.parse('2026-08-03T16:19:00.000Z'),
+          zone: 'Europe/Rome',
+          of: 'ev-viewpoint',
+        },
+        (clock) => `~${clock}`,
+      );
+
+      it('prints what is left and where it lands, in the meta slot that already existed', () => {
+        const c = gapBoard({
+          read: { kind: GAP_CHARACTER.ON_THE_WAY },
+          journey: { remaining: '~1:12 שע׳', arrival },
+        });
+        const metas = c.querySelectorAll('.wp-board-now-meta');
+        expect(metas).toHaveLength(1);
+        expect(metas[0]!.textContent).toContain(t.travel.remaining('~1:12 שע׳'));
+        expect(metas[0]!.textContent).toContain('18:19');
+        // Tagged with the instant it derived (ADR-0226), so the agreement suite can hold it
+        // against the point's own clock — which is what the late ink is made of.
+        expect(parseTimeFacts(metas[0]!.getAttribute('data-facts'))).toEqual([
+          {
+            kind: 'arrive-at',
+            atMs: Date.parse('2026-08-03T16:19:00.000Z'),
+            zone: 'Europe/Rome',
+            of: 'ev-viewpoint',
+          },
+        ]);
+      });
+
+      it('puts the miss ink on the ARRIVAL alone, never on the driving', () => {
+        const c = gapBoard({
+          read: { kind: GAP_CHARACTER.ON_THE_WAY },
+          journey: { remaining: '~1:12 שע׳', arrival, late: true },
+        });
+        const eta = c.querySelector('.wp-board-now-meta .eta');
+        expect(eta?.className).toContain('miss');
+        expect(eta?.textContent).toContain('18:19');
+        // What is late is where you land; how much driving is left cannot be late.
+        expect(eta?.textContent).not.toContain('1:12');
+      });
+
+      it('draws nothing with no position behind it — a mark says where, not how far along', () => {
+        const c = gapBoard({ read: { kind: GAP_CHARACTER.ON_THE_WAY }, journey: {} });
+        expect(c.querySelector('.wp-board-now-meta')).toBeNull();
+      });
+    });
+
+    // The state the fix could never reach before: you are there, and it has not started.
+    it('arrived: the teal costume, and NO meta line under it', () => {
+      const c = gapBoard({ read: { kind: GAP_CHARACTER.ARRIVED } });
+      expect(c.querySelector('.wp-board-now-label')?.textContent).toBe(t.board.gap.arrived.label);
+      expect(c.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.gap.arrived.title);
+      expect(c.querySelector('.wp-board-now-label')?.className).toContain('loc');
+      expect(c.querySelector('.wp-board-live')?.className).toContain('loc');
+      // **`מתחיל ב־17:30` was drawn and cut**: the next row says that clock ⁦40px⁩ lower and the
+      // tile counts to it, so a meta line here prints one fact three times — the duplication
+      // ADR-0214 §3 removed from this card once already.
+      expect(c.querySelector('.wp-board-now-meta')).toBeNull();
     });
 
     // The 2026-09-15 amendment to §8: the reported card said `פנוי · זמן חופשי` above its own
