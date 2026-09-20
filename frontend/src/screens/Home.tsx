@@ -17,6 +17,7 @@ import {
   isExactEdge,
   type Booking,
   type DocumentSummary,
+  type Note,
   type EventEdge,
   type Task,
   type TripEvent,
@@ -34,6 +35,9 @@ import { useToast } from '../ui/Toast';
 import { EventTitle } from '../ui/EventTitle';
 import { DocumentViewer } from '../ui/MediaViewer';
 import { GateSheet } from '../ui/GateSheet';
+import { NoteFullScreen } from '../ui/NoteFullScreen';
+import { NoteSheet } from '../ui/NoteSheet';
+import { noteHost } from '../lib/notes';
 import {
   Board,
   DayRail,
@@ -205,6 +209,8 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     zoneCrossings,
     travelModeOverrides,
     taskVerbs,
+    noteHosts,
+    noteVerbs,
   } = useTrip();
   const { me } = useAuth();
   const placeLabels = usePlaceLabels();
@@ -487,6 +493,15 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // The booking whose gate is being set (ADR-0222 §7). Held here rather than inside the hero
   // so the sheet outlives a hero close — the same reason `viewingDoc` lives at this level.
   const [gateBooking, setGateBooking] = useState<Booking | null>(null);
+  /** **The hero's note, opened on its own screen** (ADR-0235 §5). Held here for the reason
+   *  every other hand-off off that card is: `HeroLift` is presentational, and the screen
+   *  needs the trip's users and the note's resolved host — both of which live up here. */
+  const [readingNote, setReadingNote] = useState<Note | null>(null);
+  /** The same note, being edited. A second piece of state rather than a mode on the first,
+   *  because the editor OUTLIVES the screen it was opened from: closing the reader on the way
+   *  into the form is what keeps one `Modal` on screen at a time (ADR-0090's one-back-action
+   *  invariant), and a single `'read' | 'edit'` would have to remember the note twice anyway. */
+  const [editingNote, setEditingNote] = useState<Note | null>(null);
   const boardEl = useRef<HTMLElement | null>(null);
   const wasLifted = useRef(false);
   const showPlaceOnMap = useShowPlaceOnMap();
@@ -565,6 +580,14 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       })(),
       note: p.notes[0]?.body,
       noteMore: Math.max(0, p.notes.length - 1),
+      // **Three lines and then a way to the rest** (ADR-0235 §5). The hero shows the newest
+      // note, so this opens exactly the one it is showing — not the host's list. Captured
+      // rather than re-indexed inside the closure, so the control cannot open a different
+      // note than the one whose words are on screen.
+      ...(() => {
+        const shown = p.notes[0];
+        return shown ? { onReadNote: () => setReadingNote(shown) } : {};
+      })(),
       // **The one surface a boarding pass is actually needed on, and the one that never
       // showed it.** One chip per document, in this point's own action row — `אחר כך` gets
       // none for free, because `HeroThen` carries no id (ADR-0160 §12's condition).
@@ -1776,6 +1799,42 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       {/* **The gate's own way in** (ADR-0222 §7) — one field, one write. It portals above the
           lifted card for the same reason the viewer does, so closing it leaves the hero up. */}
       {gateBooking && <GateSheet booking={gateBooking} onClose={() => setGateBooking(null)} />}
+
+      {/* **The note's own screen, reached from the board** (ADR-0235 §5) — the container
+          ADR-0202 built, mounted here for the first time outside `HostNotes` and the notes
+          screen. `noteHost` resolves the host from the note's own FKs, which is the same
+          lookup both of those go through, so the bar names the host the same way they do.
+          No `onEdit`: the board is a read surface, and ADR-0153 §4 already puts the editor
+          one surface further in. */}
+      {readingNote && (
+        <NoteFullScreen
+          note={readingNote}
+          host={noteHost(readingNote, noteHosts)}
+          users={users}
+          now={now}
+          onEdit={() => {
+            setEditingNote(readingNote);
+            setReadingNote(null);
+          }}
+          onClose={() => setReadingNote(null)}
+        />
+      )}
+      {/* The editor the reader's foot reaches, so a note found on the board can be fixed
+          where it was found. `host` is resolved rather than passed: the sheet states the
+          category the note inherits, and inventing one here would be the second derivation
+          of a fact ADR-0152 §5 keeps in one place. */}
+      {editingNote && (
+        <NoteSheet
+          note={editingNote}
+          host={noteHost(editingNote, noteHosts)}
+          onSave={(draft) => {
+            const note = editingNote;
+            setEditingNote(null);
+            void noteVerbs.updateNote(note.id, draft);
+          }}
+          onClose={() => setEditingNote(null)}
+        />
+      )}
 
       {/* **THE TASKS BAND** (ADR-0188 §6, brief §11) — above quick-access on purpose: this
           answers "what do I owe today", which belongs with the board's what-now/what-next

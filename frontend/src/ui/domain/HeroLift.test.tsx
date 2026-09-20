@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { EVENT_STATUS } from '@waypoint/shared';
 import { DayRail } from './Board';
@@ -77,6 +77,54 @@ describe('HeroLift', () => {
   it('the note count is silent when there is only one note', () => {
     show({ now: [point({ note: 'יש תור', noteMore: 0 })] });
     expect(screen.queryByText(t.hero.moreNotes(0))).toBeNull();
+  });
+
+  // ── THE NOTE IS A PREVIEW HERE TOO (ADR-0235 §5) ──────────────────────────
+  // The bound is a class jsdom can see; whether it CUT anything is a height jsdom cannot, so
+  // the box is told what it would have measured (`HostNotes.test.tsx` and
+  // `SnapSheet.test.tsx` do the same, and for the same reason). On the prototype and before
+  // the render, because the probe runs in a layout effect keyed on the note's text.
+  it('bounds the note block', () => {
+    const container = show({ now: [point({ note: 'הכניסה מהחצר האחורית' })] });
+    expect(container.querySelector('.hero-note-tx.note-clip')).toBeTruthy();
+  });
+
+  describe('a hero note the box had to cut', () => {
+    beforeEach(() => {
+      Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+        configurable: true,
+        get: () => 300,
+      });
+      Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+        configurable: true,
+        get: () => 60,
+      });
+    });
+    afterEach(() => {
+      delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
+      delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+    });
+
+    // **`תצוגה מלאה`, not `עוד`, and the render is what decided it** (ADR-0235 §4): `עוד`
+    // lands directly above `ועוד פתק אחד`, two meanings one line apart on the same word.
+    it('offers a way to the rest, and the word says where it goes', () => {
+      const onReadNote = vi.fn();
+      const container = show({
+        now: [point({ note: 'הודעת קבלה ארוכה מאוד', noteMore: 1, onReadNote })],
+      });
+      const control = container.querySelector('.hero-note ~ .note-more, .note-more');
+      expect(control?.textContent).toContain(t.notes.open.full);
+      expect(control?.textContent).not.toContain(t.hero.moreNotes(1));
+      fireEvent.click(control!);
+      expect(onReadNote).toHaveBeenCalledOnce();
+    });
+
+    // **Absent, not broken** — a surface with no reader to open gets a pure read, which is
+    // ADR-0160 §U's rule for this block everywhere it still applies.
+    it('shows no control when the board has nowhere to send you', () => {
+      const container = show({ now: [point({ note: 'הודעת קבלה ארוכה מאוד' })] });
+      expect(container.querySelector('.note-more')).toBeNull();
+    });
   });
 
   // ── משימה (ADR-0160 §U) ───────────────────────────────────────────────────

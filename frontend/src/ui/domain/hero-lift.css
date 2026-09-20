@@ -525,3 +525,28 @@
   padding-inline: 14px;
   margin-top: 11px;
 }
+
+/* **THE NOTE IS A PREVIEW HERE TOO, AND ITS BUDGET IS THE SMALLEST** (ADR-0235 §3/§5). This
+   is the app's most contended card: `איפה`, the action row, `פתק`, `משימה` and the settle
+   question all stack inside one `--lift-max-h`, and the reported note took it from 207.4px to
+   400.2px on its own. Three lines rather than the section's six for that reason and no other.
+
+   **A control on this block qualifies ADR-0160 §U rather than contradicting it.** §U settled
+   that the task block is not pressable, and it was right — ticking a task from the board is a
+   commitment. A clipped note is a different thing: the clip DELETES information from the
+   screen, and deleted information must have a way back. The control acts on nothing; it
+   opens a reader.
+
+   `.hero-note-tx` is a `<span>` and a `max-height` needs a box, which `.note-clip`'s own
+   `display: block` supplies. */
+.hero-note-tx.note-clip {
+  --note-clip-lines: 3;
+}
+/* `.hero-note-more`'s own inset, for the same reason it has it: the note's words start past
+   the 15px clipboard glyph and its 9px gap, and a control that says something about those
+   words has to start where they do. Found by rendering the mockup — without it the control
+   sat 20px outside the `ועוד פתק אחד` line directly beneath it. */
+.hero-note .note-more {
+  padding-inline-start: 24px;
+  color: var(--on-dark);
+}

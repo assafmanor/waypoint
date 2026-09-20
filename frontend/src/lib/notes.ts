@@ -367,6 +367,17 @@ export const noteCountFor = (counts: Map<string, number>, kind: NoteHostKind, id
  *
  * A note with no body never qualifies: a url-only note's row IS its url, and there is nothing
  * for a screen to add that the foot does not already carry.
+ *
+ * **ONE CONSUMER SINCE 2026-09-20, and that is the whole point** (ADR-0235 §7). It used to
+ * decide the same tap on a host's SECTION too, and does not any more: once that surface
+ * clips, the estimate and the clip can disagree — a control offering to reveal nothing, or a
+ * cut note whose tap still opens the foot — so the section asks the box (`lib/useIsClipped.ts`)
+ * and this stays where it is still the right tool. On the notes screen the clamp is TWO lines
+ * and the threshold is eight, which are genuinely two different numbers: "is it cut" would
+ * answer the wrong question there, since almost every note is.
+ *
+ * Worth knowing when reading the numbers below: they are frozen at the 360px design width, so
+ * the same note estimated at 19 lines renders as 19 at 360px and 18 at 390px.
  */
 export function noteReadsFullScreen(note: Pick<Note, 'body'>): boolean {
   const text = flattenNoteMarkdown(note.body ?? '');

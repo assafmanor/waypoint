@@ -95,3 +95,38 @@ describe('the prose rhythm is not out-specified by its own reset (ADR-0202 §10b
     expect(rule('.note-chip-t')).toMatch(/white-space:\s*nowrap/);
   });
 });
+
+// ── THE CLIP (ADR-0235) ──────────────────────────────────────────────────────
+// Everything here is invisible to jsdom by construction: the clip is a height and the fade
+// is a mask, and the component tests can only see the class. Both rules below are ones that
+// were WRONG in a first draft and would have shipped looking fine, which is the standard
+// this file exists to hold.
+describe('a note inside a card is bounded, and the fade does not touch a short one', () => {
+  // **The fade's stops are absolute, not percentages.** A `100% - 1.15lh` gradient resolves
+  // against the box, so on a note SHORTER than its budget — where the box shrinks to content
+  // and hides nothing — it fades the last line of a note you can read whole. Caught while
+  // writing the mockup; the version that shipped measures from the top, so a short box lies
+  // entirely inside the opaque stop and needs neither a class nor a measurement.
+  it('.note-clip fades from a fixed offset rather than from 100%', () => {
+    const clip = rule('.note-clip');
+    expect(clip).toMatch(/mask-image/);
+    expect(clip).not.toMatch(/100%\s*-\s*1\.15lh/);
+    expect(clip).toMatch(/--note-clip-fade:\s*calc\(var\(--note-clip-lines\) \* 1lh\)/);
+  });
+
+  // The bound itself, and that it is a BOX. `-webkit-line-clamp` counts what `-webkit-box`
+  // calls a line, and a whole `<ul>` from `NoteProse` is one box in that count — same budget,
+  // 170.6px against 120.8px (ADR-0235 §2, measured in the mockup).
+  it('.note-clip bounds a height and does not reach for -webkit-line-clamp', () => {
+    expect(rule('.note-clip')).toMatch(/max-height:\s*calc\(var\(--note-clip-lines\) \* 1lh\)/);
+    expect(rule('.note-clip')).not.toMatch(/line-clamp/);
+  });
+
+  // Every surface that clips must state its budget, or `calc(var(--note-clip-lines) * 1lh)`
+  // resolves to nothing and the clip silently does not clip. The hero's lives beside the
+  // block it bounds in `hero-lift.css` and the shared page's in `shared-itinerary.css`; this
+  // one is the section's.
+  it('a host section states its own budget', () => {
+    expect(rule('.note-item-b .note-clip')).toMatch(/--note-clip-lines:\s*\d+/);
+  });
+});

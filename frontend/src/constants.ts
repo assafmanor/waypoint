@@ -898,7 +898,13 @@ export const DRAG_SCROLLER_MIN_OVERFLOW_PX = 24;
  *  body on top of a ~99px row, against ~540px of list on a 640px screen).
  *
  *  Both want a device pass: they decide which of two containers a tap opens, and the boundary
- *  between them is invisible by construction. */
+ *  between them is invisible by construction.
+ *
+ *  **Scope narrowed 2026-09-20** (ADR-0235 §7): these decide the notes SCREEN's tap and
+ *  nothing else. A host's section now clips its body and routes on whether the box actually
+ *  cut anything, which is a measurement rather than an estimate — its own budget is
+ *  `--note-clip-lines` in `ui/notes.css`, stated per surface. Do not re-point that surface at
+ *  these: the two would disagree on any phone wider than the design width. */
 export const NOTE_ROW_CHARS_PER_LINE = 42;
 export const NOTE_INLINE_MAX_LINES = 8;
 
