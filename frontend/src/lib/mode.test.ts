@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ZoneEvidence } from '@waypoint/shared';
-import { daysUntilStart, daysUntilStartOnDevice, deriveMode, tripPhase } from './mode';
+import {
+  EVENT_CATEGORY,
+  EVENT_KIND,
+  EVENT_STATUS,
+  type TripEvent,
+  type ZoneEvidence,
+} from '@waypoint/shared';
+import { daysUntilStart, daysUntilStartOnDevice, deriveMode, tripPhase, tripToday } from './mode';
+
+const NOW = '2026-07-01T00:00:00Z';
 import { TRIP } from '../fixtures';
 
 // The device's zone is read from `Intl` at load, so a spec about it must state it (frontend
@@ -158,5 +166,102 @@ describe('daysUntilStartOnDevice — a screen with no trip loaded counts from wh
   it('is zero on the date itself and negative after it', () => {
     expect(daysUntilStartOnDevice('2026-09-11', new Date('2026-09-10T21:00:00Z'))).toBe(0);
     expect(daysUntilStartOnDevice('2026-09-11', new Date('2026-09-12T12:00:00Z'))).toBe(-1);
+  });
+});
+
+/* ── ADR-0236 §1: the trip is live while its last commitment is ───────────────────────
+   The trip ends 2026-07-14. A flight home leaving ⁦22:10⁩ Tokyo that night lands at
+   ⁦04:30⁩ local on the 15th — a day the trip does not have. The `E` numbers are the
+   ADR's own edge-case register. */
+const flightHome = (over: Partial<TripEvent> = {}): TripEvent => ({
+  id: 'ev-home',
+  tripId: TRIP.id,
+  date: '2026-07-14',
+  endDate: '2026-07-15',
+  title: 'טוקיו → תל אביב',
+  kind: EVENT_KIND.HARD,
+  status: EVENT_STATUS.PLANNED,
+  sortOrder: 0,
+  source: 'manual',
+  category: EVENT_CATEGORY.TRANSPORT,
+  startsAt: '2026-07-14T22:10:00+09:00',
+  endsAt: '2026-07-15T04:30:00+09:00',
+  createdAt: NOW,
+  updatedAt: NOW,
+  updatedBy: 'u',
+  ...over,
+});
+const hotel = (over: Partial<TripEvent> = {}): TripEvent =>
+  flightHome({
+    id: 'ev-hotel',
+    category: EVENT_CATEGORY.LODGING,
+    title: 'המלון',
+    startsAt: '2026-07-10T15:00:00+09:00',
+    endsAt: '2026-07-15T11:00:00+09:00',
+    date: '2026-07-10',
+    ...over,
+  });
+/** Mid-flight, after the trip's last midnight: the case the whole ADR is about. */
+const MID_FLIGHT = new Date('2026-07-15T01:00:00+09:00');
+
+describe('the live window ends at the last commitment (ADR-0236 §1)', () => {
+  it('stays live while a leg that began inside the trip is still running', () => {
+    expect(deriveMode(TRIP, MID_FLIGHT, undefined, [flightHome()])).toBe('trip');
+    // …and without the events it is the calendar answer it has always been, which is what
+    // the pre-snapshot chrome asks for (E20).
+    expect(deriveMode(TRIP, MID_FLIGHT)).toBe('plan');
+  });
+
+  it('clamps the trip’s own today to the day that commitment belongs to (E11)', () => {
+    expect(tripToday(TRIP, MID_FLIGHT, undefined, [flightHome()])).toBe('2026-07-14');
+    // Which is the whole point: `dayPhase` then reads the last day as TODAY, not PAST.
+    expect(tripToday(TRIP, MID_FLIGHT)).toBe('2026-07-15');
+  });
+
+  it('is over the moment the leg lands', () => {
+    const landed = new Date('2026-07-15T04:31:00+09:00');
+    expect(deriveMode(TRIP, landed, undefined, [flightHome()])).toBe('plan');
+  });
+
+  it('is NOT held open by a stay you are inside (E1)', () => {
+    // `scheduleEvents` drops a held span you are inside (ADR-0227 §B) — the board would
+    // have nothing to stand on, which is the empty shell ADR-0040 §1 refused.
+    expect(deriveMode(TRIP, MID_FLIGHT, undefined, [hotel()])).toBe('plan');
+  });
+
+  it('is released by a done or skipped leg (E4)', () => {
+    expect(
+      deriveMode(TRIP, MID_FLIGHT, undefined, [flightHome({ status: EVENT_STATUS.DONE })]),
+    ).toBe('plan');
+    expect(
+      deriveMode(TRIP, MID_FLIGHT, undefined, [flightHome({ status: EVENT_STATUS.SKIPPED })]),
+    ).toBe('plan');
+  });
+
+  it('cannot be held open by an event stranded outside the trip (E5)', () => {
+    // A date edit can leave an event past `endDate`. Without the "began inside" guard it
+    // would hold a finished trip live forever.
+    const stranded = flightHome({ date: '2026-07-15', endDate: '2026-07-16' });
+    expect(deriveMode(TRIP, MID_FLIGHT, undefined, [stranded])).toBe('plan');
+  });
+
+  it('never opens the window early (E9)', () => {
+    const beforeStart = new Date('2026-07-04T23:00:00+09:00');
+    const early = flightHome({ date: '2026-07-04', endDate: '2026-07-05' });
+    expect(deriveMode(TRIP, beforeStart, undefined, [early])).toBe('plan');
+    expect(tripToday(TRIP, beforeStart, undefined, [early])).toBe('2026-07-04');
+  });
+
+  it('holds for a start-only commitment, on its category’s typical length (E3)', () => {
+    const dinner = flightHome({
+      id: 'ev-dinner',
+      category: EVENT_CATEGORY.FOOD,
+      endsAt: undefined,
+      endDate: undefined,
+      startsAt: '2026-07-14T23:40:00+09:00',
+    });
+    expect(deriveMode(TRIP, new Date('2026-07-15T00:20:00+09:00'), undefined, [dinner])).toBe(
+      'trip',
+    );
   });
 });

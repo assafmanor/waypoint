@@ -11465,8 +11465,8 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         <button type="button" data-m="0235">⁦02:35⁩ · נחתנו</button>
         <span class="sep"></span>
         <span class="lbl">המסירה בנחיתה</span>
-        <button type="button" data-h="now">מיד</button>
-        <button type="button" data-h="next" aria-pressed="true">בפתיחה הבאה</button>
+        <button type="button" data-h="now" aria-pressed="true">מיד</button>
+        <button type="button" data-h="next">מוחזק</button>
       </div>
 
       <!-- ══════════════════════════ §1 ══════════════════════════ -->
@@ -11487,12 +11487,13 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
       <section class="case">
         <h2>§2 · המסירה · מה קורה כשהמטוס נוחת</h2>
         <p class="note">
-          בשנייה שהטיסה נגמרת הטיול באמת נגמר, והשאלה היחידה היא <b>מתי נמסר הארכיון</b>. ⁦02:30⁩
-          בלילה, עם החגורות עוד רכוסות, זה בדיוק ה"מעבר שקורה מתחת לידיים" ש־ADR-0221 §7 כבר
-          זיהה כבעיה בכיוון השני (המעבר האוטומטי בחצות). ההמלצה כאן היא <b>בפתיחה הבאה</b> —
-          אותו מנגנון <code>waypoint:mode-seen:&lt;tripId&gt;</code> ש־ADR-0221 §4 כבר בנה כדי
-          שהרגע הקולנועי של תחילת הטיול יקרה כשבאים אליו ולא בזמן שמחזיקים את הטלפון. הפקד למעלה
-          מחליף בין השניים; המדידה בתחתית אומרת כמה גובה הכרטיס משנה.
+          <b>הסעיף הזה התהפך, והציור הוא מה שהפך אותו.</b> הגרסה הראשונה המליצה להחזיק את הלוח
+          עד הפתיחה הבאה, כדי שהמעבר לא יקרה מתחת לידיים ב־⁦02:30⁩ בלילה. אבל הלוח המוחזק הוא לא
+          הטיסה שנחתה: <code>Home.tsx</code> בוחר וריאנט לפי <code>nowEvent</code>, ואחרי הנחיתה
+          אין <code>now</code> ואין מחר בתוך הטיול — ולכן הלוח נופל ל־<code>free</code> ואומר
+          <b>פנוי · זמן חופשי</b> כמשפט האחרון של הטיול. זו בדיוק ה"קליפה ריקה" ש־ADR-0040 §1
+          דחה. לכן <b>המסירה מיידית</b>, והסימטריה היא הטיעון: אותו משפט שפותח את החלון סוגר
+          אותו. הפקד למעלה מצייר את שתי האפשרויות, והברירה היא ההמלצה.
         </p>
         <div class="pair" id="s2"></div>
       </section>
@@ -11531,6 +11532,20 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           של מצב־הטיול זז, רשימת הימים לא.
         </p>
         <div class="pair" id="s4"></div>
+      </section>
+
+      <!-- ══════════════════════════ §5 ══════════════════════════ -->
+      <section class="case">
+        <h2>§5 · מה נשבר בלי ההצמדה של "היום"</h2>
+        <p class="note">
+          הסעיף הזה הוא <b>לא ציור אלא נגזרת</b>, ולכן הוא טבלה ולא מסגרת: שלוש תשובות שהאפליקציה
+          גוזרת ב־⁦01:05⁩ בלילה, עם ובלי §1. בלי ההצמדה <code>liveToday</code> הוא כבר ⁦26⁩,
+          <code>activeDate</code> נצמד ל־⁦25⁩, ואז <code>dayPhase('25','26')</code> עונה
+          <b>PAST</b> — כלומר היום האחרון של הטיול נקרא "עבר" בזמן שהטיסה באוויר: ADR-0029 נועל
+          יצירה/עריכה/הזזה, הכרום הופך לארכיון, ו־<code>offToday</code> מצביע על יום שלטיול אין.
+          זה מה שהפך את §1 לכלל אחד במקום שניים.
+        </p>
+        <div class="mk-win" id="s5"></div>
       </section>
 
       <div class="panel">
@@ -11649,7 +11664,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
       };
       const MOMENTS = { 2340: at('23:40'), '0105': at('01:05'), '0235': at('02:35') };
       let moment = '0105';
-      let handover = 'next';
+      let handover = 'now';
 
       /** `נותרו` on the app's elapsed ladder — hours for a journey however long it runs
        *  (ADR-0084), which is why this is `1:25 שע׳` and never `85 דקות`. */
@@ -11708,6 +11723,22 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           </div>
         </div>`;
       };
+
+      /** **The board at ⁦02:31⁩ if the window were held open** — and it is not the landed
+       *  flight this file first drew. `Home.tsx` picks the variant
+       *  `inTransit ? 'in-transit' : groupSplit ? 'group-split' : nowEvent ? 'now' : 'free'`,
+       *  and once the leg lands there is no `now` and no tomorrow inside the trip, so a held
+       *  board falls to `free`. That is the frame the code produces, and drawing it is what
+       *  reversed §3. */
+      const freeBoard = (clock) => `
+        <div class="wp-board">
+          <div class="wp-board-top">
+            <div class="wp-board-live"><span class="blip"></span>עכשיו</div>
+            <div class="wp-board-clock" dir="auto">${clock}</div>
+          </div>
+          <div class="wp-board-now-label">פנוי</div>
+          <div class="wp-board-now-title">זמן חופשי</div>
+        </div>`;
 
       /** `PlanHome`'s past branch, class for class (`screens/PlanHome.tsx`). */
       const archive = () => `
@@ -11774,16 +11805,16 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           ),
           handover === 'now'
             ? col(
-                '<span class="tag before">⁦02:31⁩ · מיד</span>',
+                '<span class="tag after">⁦02:31⁩ · מיד</span>',
                 'plan',
                 archive(),
-                'המעבר קורה מתחת לידיים, עם החגורות רכוסות',
+                'הארכיון · המשטח הרגוע ש־ADR-0040 §2 בנה בדיוק לרגע הזה',
               )
             : col(
-                '<span class="tag after">⁦02:31⁩ · בפתיחה הבאה</span>',
+                '<span class="tag before">⁦02:31⁩ · מוחזק לפתיחה הבאה</span>',
                 'trip',
-                board(at('02:31')),
-                'הלוח מחזיק את מצבו האחרון · הארכיון מחכה לפתיחה הבאה',
+                freeBoard('02:31'),
+                'מה שהחזקה באמת מייצרת · אין `now`, ולכן הלוח נופל ל־free',
               ),
         ].join('');
 
@@ -11812,8 +11843,20 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             lastDay(false),
             'היום · ההמראה לבדה · שעת הנחיתה לא נאמרת באף מקום ברשימה',
           ),
-          col(T.after, 'trip', lastDay(true), 'הנחיתה מתוארחת ביום שממנו המריאו'),
+          col(T.after, 'trip', lastDay(true), 'הנחיתה מתוארחת ביום האחרון שהמסע עוד מכסה'),
         ].join('');
+
+        const derived = [
+          ['<code>tripToday</code>', '⁦2026-01-26⁩', '⁦2026-01-25⁩ · היום שהמחויבות שייכת אליו'],
+          ['<code>tripPhase</code>', 'past', 'live'],
+          ['<code>dayPhase</code> של ⁦25⁩', 'PAST · נעול (ADR-0029)', 'TODAY · חי'],
+          ['<code>offToday</code>', 'true · מצביע על יום שאין', 'false'],
+          ['מה ב־Home', 'הטיול הסתיים', 'הלוח, במצב in-transit'],
+        ];
+        document.querySelector('#s5').innerHTML =
+          '<table class="m"><thead><tr><th>מה נגזר</th><th>היום</th><th>בהצעה</th></tr></thead><tbody>' +
+          derived.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('') +
+          '</tbody></table>';
 
         document.querySelector('#s3').innerHTML =
           strip('היום', 24 * 60, 'now', 'חצות · והטיסה באוויר') +

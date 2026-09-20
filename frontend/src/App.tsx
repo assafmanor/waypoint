@@ -105,9 +105,8 @@ import {
   TRIP_NAME_FIT,
   type TabId,
 } from './constants';
-import { type Mode } from './lib/mode';
+import { tripToday, type Mode } from './lib/mode';
 import { monthLabelFor, tripDates, tripDayNumber, weekdayLetter } from './lib/time';
-import { liveToday } from './lib/places';
 import { t } from './i18n/he';
 import './App.css';
 import './screens.css';
@@ -322,7 +321,10 @@ export function Header({
   // session-102 amendment) — the same answer in BOTH modes. What time it is is a
   // fact about the trip and the clock, not about which surface you're looking at:
   // switching to Plan mode to do some building must not change "now".
-  const today = liveToday(now.getTime(), zoneEvidence);
+  // The trip's own today (ADR-0236 §1) — clamped while a commitment that began inside the
+  // trip is still running, so the day strip and `offToday` do not step past the last day
+  // while the flight home is in the air.
+  const today = tripToday(trip, now, zoneEvidence, events);
   // The anchor slot's two states (ADR-0149 §5, replacing ADR-0029/0043's ribbon):
   // on today it reads the trip's progress, off it becomes the way back. Only in
   // Trip mode — Plan mode has no "now" to return to.

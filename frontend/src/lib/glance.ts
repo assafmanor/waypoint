@@ -342,10 +342,39 @@ export interface BookingTransition {
   /** i18n transition key for this end, by mode (`checkIn`/`departure`/
    *  `flightDeparture`…), from `eventTransitionKeys`. */
   labelKey: string;
+  /** **How many days after the day it is drawn on this moment actually lands** (ADR-0236 §4).
+   *  `0` — and therefore absent — for every transition on its own day, which is nearly all of
+   *  them. Non-zero only for an end HOSTED by its span's start day because its own day is
+   *  outside the trip, and it is what lets the row say `מחר` beside the clock, exactly as the
+   *  board already does beside the same landing (`BoardTransit.endDay`, ADR-0160 §M). */
+  dayOffset?: number;
 }
 
-export function bookingTransitionsOnDate(events: TripEvent[], date: string): BookingTransition[] {
+/** The trip's own window, for the hosting rule below. Absent → no hosting, which is what
+ *  every caller that is not a day surface wants. */
+type TransitionRange = { startDate: string; endDate: string };
+
+/**
+ * **The transitions on `date`** — and, with a `range`, the ones whose own day the trip does
+ * not have (ADR-0236 §4).
+ *
+ * An end is normally keyed to `endDate`. A journey that lands after the trip's last day — the
+ * flight home, or any leg left that way by a date edit — has an `endDate` no day surface can
+ * ask for: `tripDates` stops at `endDate`, `activeDate` clamps, an out-of-range `?day=` falls
+ * back. So that end is **hosted by the day its span departed from**, which is the day the leg
+ * already lives on, and carries the distance as `dayOffset`.
+ *
+ * The second clause is not pedantry: shrink a trip past the departure too and the whole leg is
+ * off-trip, so hosting it would put a row on a day that does not exist either. Then nothing is
+ * drawn, which is the honest reading of a booking the trip no longer covers.
+ */
+export function bookingTransitionsOnDate(
+  events: TripEvent[],
+  date: string,
+  range?: TransitionRange,
+): BookingTransition[] {
   const out: BookingTransition[] = [];
+  const inTrip = (d: string) => !range || (d >= range.startDate && d <= range.endDate);
   for (const e of events) {
     if (!isBracketed(e) || e.category == null) continue;
     if (e.status === EVENT_STATUS.SKIPPED) continue;
@@ -354,12 +383,35 @@ export function bookingTransitionsOnDate(events: TripEvent[], date: string): Boo
     if (e.date === date && e.startsAt) {
       out.push({ event: e, edge: 'start', atMs: Date.parse(e.startsAt), labelKey: trans.startKey });
     }
-    if ((e.endDate ?? e.date) === date && e.endsAt) {
-      out.push({ event: e, edge: 'end', atMs: Date.parse(e.endsAt), labelKey: trans.endKey });
+    if (!e.endsAt) continue;
+    const endDay = e.endDate ?? e.date;
+    // Its own day when the trip has one; otherwise **the last day of the trip the span still
+    // covers**. For a leg that is the day it departed from; for a stay whose check-out falls
+    // past the end it is the last night you are actually there, which is why this is one
+    // rule and not a journey-shaped special case. `null` when the span starts after the trip
+    // ends — then it covers no day the trip has, and hosting it would put a row on a day that
+    // does not exist either.
+    const hostDay = inTrip(endDay)
+      ? endDay
+      : range && range.endDate >= e.date
+        ? range.endDate
+        : null;
+    if (hostDay === date) {
+      out.push({
+        event: e,
+        edge: 'end',
+        atMs: Date.parse(e.endsAt),
+        labelKey: trans.endKey,
+        ...(endDay !== date ? { dayOffset: dayCount(date, endDay) } : {}),
+      });
     }
   }
   return out;
 }
+
+/** Whole calendar days between two `YYYY-MM-DD`, UTC-anchored so DST never shifts a count. */
+const dayCount = (from: string, to: string): number =>
+  Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / MS_PER_DAY);
 
 function itemEvents(item: TimeItem): TripEvent[] {
   return [item.event, ...item.children.flatMap(groupEvents)];

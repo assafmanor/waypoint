@@ -91,6 +91,17 @@
   color: var(--amber-deep);
   white-space: nowrap;
 }
+/* **Which day a hosted moment is actually on** (ADR-0236 §4) — the flight home's landing,
+   drawn on the day it departed from because the trip has no day of its own for it. A word,
+   not a clock: the amber above is time and commitment (rule 4), and `למחרת` is neither, so
+   it takes the row's muted ink and the UI face rather than the mono one. */
+.tr-day {
+  font-family: var(--font-body);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--muted);
+  margin-inline-start: 6px;
+}
 .tr-nav {
   flex: 0 0 auto;
   align-self: center;

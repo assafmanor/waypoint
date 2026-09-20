@@ -117,7 +117,7 @@ import {
   restOrQueue,
   subscribeSyncFailures,
 } from '../lib/outbox';
-import { liveToday, tripZoneCrossings, type ZoneCrossing, type ZoneEvidence } from '../lib/places';
+import { tripZoneCrossings, type ZoneCrossing, type ZoneEvidence } from '../lib/places';
 import { buildHostContextIndex, type HostContextIndex } from '../lib/host-context';
 import { openTripStream } from '../lib/ws';
 import {
@@ -139,7 +139,7 @@ import { useAuth } from './auth-state';
 import { DAY_PARAM, HOME_TAB, TAB_PARAM, daySelectTarget, resolveActiveDate } from './nav-state';
 import { AppShell } from '../ui/layout';
 import { ChromeSkeleton, ErrorState, HomeSkeleton, LoadingState } from '../ui/feedback';
-import { deriveMode } from '../lib/mode';
+import { deriveMode, tripToday } from '../lib/mode';
 import { t } from '../i18n/he';
 
 export type { RippleSuggestion };
@@ -1073,7 +1073,13 @@ function TripReady({
   // the midnight of the day you're in — the itinerary segment, refined by that
   // day's own events — so crossing a zone re-anchors "today" via the itinerary,
   // never GPS. Falls back to the trip primary when nothing evidences a zone.
-  const defaultDay = clampDate(liveToday(getNow(), zoneEvidence), trip.startDate, trip.endDate);
+  // The trip's own today (ADR-0236 §1), so the day a fresh open lands on is the day the
+  // trip is still living — the last one, while the commitment that began inside it runs.
+  const defaultDay = clampDate(
+    tripToday(trip, new Date(getNow()), zoneEvidence, state.events),
+    trip.startDate,
+    trip.endDate,
+  );
   // Derived, tab-aware: the Home tab is today-anchored (both modes), so it ALWAYS
   // resolves to today regardless of any `?day=` — even a stray or hand-crafted one
   // can't make Home show a past/future day. Off Home, the day comes from `?day=`,

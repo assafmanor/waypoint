@@ -73,7 +73,6 @@ import {
   legDisplayZones,
   eventZones,
   dayZoneContext,
-  liveToday,
   liveZone,
   type EventZones,
   type ShowPlaceOnMap,
@@ -81,7 +80,7 @@ import {
 } from '../lib/places';
 import type { PlaceLabels } from '../lib/place-label';
 import { usePlaceLabels } from '../state/place-labels';
-import { tripPhase } from '../lib/mode';
+import { tripPhase, tripToday } from '../lib/mode';
 import {
   buildTimeTree,
   clockRange,
@@ -330,7 +329,7 @@ export function PlanDay() {
   const tz = zoneCtx.ambientZone;
   // A finished trip is a read-only archive (ADR-0040): the builder becomes a
   // frozen, browsable history — no create/edit/delete/move, no shelf.
-  const readOnly = tripPhase(trip, now, zoneEvidence) === 'past';
+  const readOnly = tripPhase(trip, now, zoneEvidence, events) === 'past';
   // A static "now" reference while building TODAY mid-trip (ADR-0043): a drafting
   // guide for "what's still ahead to build," never a live signal. Only when the
   // day on screen is today and the trip is live — Plan has no "now" otherwise.
@@ -338,14 +337,16 @@ export function PlanDay() {
   // modes, so which day counts as "today" — and what the now-reference shows —
   // doesn't shift when you switch over to build.
   const nowZone = liveZone(now.getTime(), zoneEvidence);
-  const today = liveToday(now.getTime(), zoneEvidence);
+  // **The trip's own today, which is clamped while a commitment that began inside it is
+  // still running** (ADR-0236 §1) — so the last day does not read as PAST while the flight
+  // home is in the air, and ADR-0029's gating, the archive chrome and `offToday` stay right.
+  const today = tripToday(trip, now, zoneEvidence, events);
   // How this screen names a day (`dayLabel`): relative on a live trip, anchored on the day
   // ON SCREEN so an idea's "מחר" is the day after the one being built (ADR-0151); by trip-day
   // number off it, where "עוד 15 ימים" is only the day number plus a constant.
   const dayNaming = { trip, today, anchor: activeDate };
   const nowRefMs =
-    tripPhase(trip, now, zoneEvidence) === 'live' &&
-    activeDate === liveToday(now.getTime(), zoneEvidence)
+    tripPhase(trip, now, zoneEvidence, events) === 'live' && activeDate === today
       ? now.getTime()
       : null;
   const [formTarget, setFormTarget] = useState<'new' | TripEvent | null>(null);
@@ -414,7 +415,7 @@ export function PlanDay() {
   // `dayEvents` — so their edge days would show nothing in the list. Interleave
   // their transition points (check-in/out, departure/arrival) among the builder
   // groups by instant (ADR-0064 §B); same-day brackets stay a single span row.
-  const transitions = dayTransitions(events, activeDate);
+  const transitions = dayTransitions(events, activeDate, trip);
   // **The same split Trip mode makes, from the same derivation** (ADR-0171 §10e). The two
   // modes are allowed to differ in POSTURE and never about a FACT (ADR-0159 §1) — and
   // "15:00 on a check-in is a floor" is a fact about the booking, not about the screen
