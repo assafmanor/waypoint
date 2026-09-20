@@ -230,6 +230,38 @@ describe('placeRefs — the way in to the entity (ADR-0121 §8)', () => {
       expect(placeRefs('fra', overnight, { onDate: '2026-08-05' })[0].edge).toBe('start');
       expect(placeRefs('tlv', overnight, { onDate: '2026-08-06' })[0].edge).toBe('end');
     });
+
+    // …**AND THE FLIGHT HOME LANDS ON A DAY THE TRIP HAS NO CHIP FOR** (owner, 2026-09-20).
+    // With a `range` the arrival is hosted on the trip's last day — ADR-0236 §4's rule, so the
+    // map row and the day list draw one landing on one day — and says how far past it it is.
+    describe('hosted by the trip when it lands past the end', () => {
+      const RANGE = { startDate: '2026-08-01', endDate: '2026-08-05' };
+
+      it("answers on the trip's last day, carrying the distance", () => {
+        const [ref] = placeRefs('tlv', overnight, { onDate: '2026-08-05', range: RANGE });
+        expect([ref.edge, ref.date, ref.dayOffset]).toEqual(['end', '2026-08-05', 1]);
+        // The clock is still the landing's own, not the day's.
+        expect(ref.at).toBe(Date.parse('2026-08-05T23:00:00Z'));
+      });
+
+      // The origin is untouched: it was always on a day the trip has.
+      it('leaves the departure alone', () => {
+        const [ref] = placeRefs('fra', overnight, { onDate: '2026-08-05', range: RANGE });
+        expect([ref.edge, ref.date, ref.dayOffset]).toEqual(['start', '2026-08-05', undefined]);
+      });
+
+      // Without a range nothing is hosted — every caller that is not day-scoped is unchanged.
+      it('hosts nothing without a range', () => {
+        expect(placeRefs('tlv', overnight, { onDate: '2026-08-05' })).toEqual([]);
+      });
+
+      // A leg shrunk ENTIRELY out of the trip is on no day at all (ADR-0236 §6).
+      it('answers nowhere when the departure is outside the trip too', () => {
+        const gone = { startDate: '2026-08-01', endDate: '2026-08-04' };
+        expect(placeRefs('tlv', overnight, { range: gone })).toEqual([]);
+        expect(placeRefs('tlv', overnight, { onDate: '2026-08-04', range: gone })).toEqual([]);
+      });
+    });
   });
 
   // A STAY IS NOT A ROUTE — one place across every night, which the endpoint rule must not

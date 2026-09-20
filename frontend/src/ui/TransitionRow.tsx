@@ -16,17 +16,17 @@ import { chosenIcon, DEFAULT_EVENT_ICON } from '../constants';
 import { ZoneShiftPill } from './ZoneShiftPill';
 import { TitleLabel } from './TitleLabel';
 import { PlaceBadge } from './domain/PlaceBadge';
-import { edgeSettleProps, edgeTimePhrase, transitionLabel } from '../lib/transitions';
+import {
+  edgeSettleProps,
+  edgeTimePhrase,
+  relativeDayWord,
+  transitionLabel,
+} from '../lib/transitions';
 import { parseRouteTitle } from '../lib/route-title';
 import { placeLabelOf } from '../lib/place-label';
 import { usePlaceLabels } from '../state/place-labels';
 import { t } from '../i18n/he';
 import type { TransitionEntry } from '../lib/day-entries';
-
-/** `למחרת` / `+N ימים` — ADR-0203 §2's relative-day words, which this row borrows because
- *  it is stating the same relation: how far after the day it is drawn on a moment lands. */
-const relativeDayWord = (offset: number): string =>
-  offset === 1 ? t.journey.nextDay : t.journey.plusDays(offset);
 
 export function TransitionRow({
   entry,

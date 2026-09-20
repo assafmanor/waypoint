@@ -3,9 +3,9 @@
 // (state/mode-state.tsx) is session-only, in-memory UI state, not persisted —
 // the app always comes back to auto-derived on a fresh load.
 import { eventMidSpan, type Trip, type TripEvent, type ZoneEvidence } from '@waypoint/shared';
-import { DEVICE_TIMEZONE, MS_PER_DAY } from '../constants';
+import { DEVICE_TIMEZONE } from '../constants';
 import { liveToday } from './places';
-import { deriveNow, todayInTz } from './time';
+import { calendarDaysBetween, deriveNow, todayInTz } from './time';
 
 export type Mode = 'plan' | 'trip';
 
@@ -113,10 +113,4 @@ export function daysUntilStart(
  *  tomorrow (owner, 2026-09-10). Zero on the date itself and negative after it. */
 export function daysUntilStartOnDevice(startDate: string, now: Date): number {
   return calendarDaysBetween(todayInTz(DEVICE_TIMEZONE, now), startDate);
-}
-
-/** Plain calendar days (no time-of-day) — UTC-midnight arithmetic diffs two `YYYY-MM-DD`
- *  days correctly without a timezone re-interpreting either. */
-function calendarDaysBetween(from: string, to: string): number {
-  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / MS_PER_DAY);
 }

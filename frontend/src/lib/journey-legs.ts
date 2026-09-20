@@ -18,17 +18,13 @@
 // where the days themselves are settled — for the WHOLE journey, so a clock that moves takes
 // the moments that follow it with it rather than leaving them on yesterday.
 import { addDays } from '@waypoint/shared';
-import { MS_PER_DAY } from '../constants';
+import { calendarDaysBetween } from './time';
 import type { LegTimes } from './booking-draft';
 import { resolveJourneyDays } from './journey-days';
 
 const dayOf = (v: string) => v.split('T')[0] ?? '';
 const timeOf = (v: string) => v.split('T')[1] ?? '';
 const join = (day: string, time: string) => (day ? (time ? `${day}T${time}` : day) : '');
-
-/** Whole-day difference, UTC-anchored so DST never shifts a calendar count. */
-const dayDiff = (from: string, to: string): number =>
-  Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / MS_PER_DAY);
 
 /** One moment as the rail reads it: the clock, and how many days after the journey's date. */
 export interface MomentView {
@@ -53,7 +49,7 @@ export interface JourneyView {
  */
 export function journeyViewOf(legs: LegTimes[]): JourneyView {
   const date = dayOf(legs[0]?.start ?? '');
-  const offset = (v: string) => (date && dayOf(v) ? dayDiff(date, dayOf(v)) : 0);
+  const offset = (v: string) => (date && dayOf(v) ? calendarDaysBetween(date, dayOf(v)) : 0);
   const moments: MomentView[] = [{ time: timeOf(legs[0]?.start ?? ''), dayOffset: 0 }];
   legs.forEach((leg, i) => {
     // Node i+1's arrival is this leg's end.
@@ -86,7 +82,7 @@ export function withJourneyDate(legs: LegTimes[], date: string): LegTimes[] {
     }));
   }
   const shift = (v: string) =>
-    dayOf(v) ? join(addDays(date, dayDiff(before.date, dayOf(v))), timeOf(v)) : v;
+    dayOf(v) ? join(addDays(date, calendarDaysBetween(before.date, dayOf(v))), timeOf(v)) : v;
   return legs.map((leg) => ({ start: shift(leg.start), end: shift(leg.end) }));
 }
 

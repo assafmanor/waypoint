@@ -27,6 +27,7 @@ import {
   crossesMidnightZoned,
   type TimeGroup,
   type TimeItem,
+  calendarDaysBetween,
 } from './time';
 import { eventEdgeZone, eventZones, type EventZones, type ZoneContext } from './places';
 import { chosenIcon, DEFAULT_EVENT_ICON, MS_PER_DAY } from '../constants';
@@ -429,16 +430,12 @@ export function bookingTransitionsOnDate(
         edge: 'end',
         atMs: Date.parse(e.endsAt),
         labelKey: trans.endKey,
-        ...(endDay !== date ? { dayOffset: dayCount(date, endDay) } : {}),
+        ...(endDay !== date ? { dayOffset: calendarDaysBetween(date, endDay) } : {}),
       });
     }
   }
   return out;
 }
-
-/** Whole calendar days between two `YYYY-MM-DD`, UTC-anchored so DST never shifts a count. */
-const dayCount = (from: string, to: string): number =>
-  Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / MS_PER_DAY);
 
 function itemEvents(item: TimeItem): TripEvent[] {
   return [item.event, ...item.children.flatMap(groupEvents)];

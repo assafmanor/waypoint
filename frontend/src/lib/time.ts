@@ -533,15 +533,24 @@ export function relativeDay(delta: number): string {
   return delta > 0 ? `עוד ${dayPhrase(delta)}` : `לפני ${dayPhrase(-delta)}`;
 }
 
+/**
+ * **Whole calendar days between two `YYYY-MM-DD`**, UTC-anchored so DST never shifts a
+ * count (a calendar date carries no zone).
+ *
+ * One line, and it had been written five times in four spellings — `dayDiff` in
+ * `booking-timing` and again in `journey-legs`, `dayCount` in `glance`,
+ * `calendarDaysBetween` in `mode`, and inline in `relativeDayLabel` just below. Named here
+ * on the way past because the sixth caller was about to be a sixth copy (CLAUDE.md rule 8).
+ */
+export const calendarDaysBetween = (from: string, to: string): number =>
+  Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / MS_PER_DAY);
+
 /** {@link relativeDay} for a calendar date against today — the form every surface
  *  actually wants. Both are trip-local `YYYY-MM-DD`, so the diff is whole-day and
  *  DST-safe (a calendar date carries no zone). Read by the Index booking rows and
  *  the Map row's meta when its list spans more than one day. */
 export function relativeDayLabel(date: string, today: string): string {
-  const delta = Math.round(
-    (Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / MS_PER_DAY,
-  );
-  return relativeDay(delta);
+  return relativeDay(calendarDaysBetween(today, date));
 }
 
 /**
