@@ -4,7 +4,7 @@
 **Date:** 2026-09-20
 **Design reference:** [`mockups/the-trip-is-live-while-its-last-leg-is-v1.html`](../../mockups/the-trip-is-live-while-its-last-leg-is-v1.html) — every number in §Measurements is read off that file's live DOM in a headless browser, at 360px and 390px, in both themes. **It found two errors in its own first draft and one in the file's data**; both are recorded in §Measurements rather than quietly fixed.
 
-**Amends** [0040](0040-trip-mode-access-window-and-past-trip-archive.md) §1 — the live window ends at the last commitment, not at `endDate`'s midnight. Everything else in that ADR stands: the one-directional override, the read-only archive, the pre-trip half.
+**Amends** [0064](0064-day-transition-entries-and-home-band-trim.md) §B (§6 — a span with no days left to cross draws one row, not two) and [0040](0040-trip-mode-access-window-and-past-trip-archive.md) §1 — the live window ends at the last commitment, not at `endDate`'s midnight. Everything else in that ADR stands: the one-directional override, the read-only archive, the pre-trip half.
 **Applies unchanged** [0160](0160-the-hero-lifts-and-shows-a-horizon.md) §I/§10 and §M (the `in-transit` hero, its horizon, and the landing-day chip written for the red-eye), [0107](0107-per-place-timezones-and-multi-zone-time.md) §4 (mid-journey you are standing in the destination's clock), [0026](0026-real-clock-and-dev-time-travel.md) (the real clock every derivation here reads) / [0033](0033-all-trips-home.md) (the board is scarce: it means the trip is speaking), [0221](0221-the-countdown-climbs-to-tomorrow-and-the-first-morning-lights-up.md) §4/§7 (a mode change is a moment you come to, not one that happens under your hands).
 **Follows** [0203](0203-a-journey-has-one-date-and-its-arrival-is-a-clock.md)'s fifth build log and [0083](0083-whenfield-datetime-standard.md)'s 2026-09-20 amendment, which together made the flight this ADR is about enterable for the first time.
 
@@ -89,6 +89,24 @@ Rejected: giving the trip a 26th day (that is `tripDates`, the day strip and ADR
 - **Trip mode stays unreachable** once the last commitment has ended. The override is still one-directional (ADR-0040 §1); this ADR moves the window's edge, not the rule about who may cross it.
 - **Nothing extends `trip.endDate`.** That is a fact a person wrote. _Offering_ to extend it is a good idea and is on the backlog; changing it quietly is the thing ADR-0171 §1 forbids — a suggestion goes into an empty value, never over a filled one.
 
+### 6. A span with no days left to cross draws ONE row, not two — amending ADR-0064 §B
+
+The owner, with the trip's first and last day side by side after §4 shipped:
+
+> _"why does the flight back look different than the outward flight?"_
+
+**It is not outbound versus return. It is crossing midnight**, and the asymmetry is `buildSpanSeed`'s: `endDate` is set only when the authored end day differs from the start day. The outward leg (⁦18:15–21:00⁩) has none, so it is not `isMultiDay`, not `isAmbient`, stays in `dayEvents`, and draws one **card** — the range, the hard lock, ⁦3:45 שע׳⁩, ⁦2,278 ק״מ⁩, the zone shift. The flight home has one, so it fell to §B's two transition points, **neither of which carries a duration or a distance** (`TransitionRow` has no such element; `EventCard` has both).
+
+**ADR-0064 §B is right about the case it was written for and this is no longer that case.** Its reasoning, in `day-entries.ts`'s own header: an ambient span shows nothing in the day list, so _"on its edge days it would otherwise show nothing"_ — a span whose ends land on **two** day surfaces. §4 hosts the landing back on the day it departed from, and then there are no two days: the same journey drew two rows on one day, and the cost was information the identical same-day leg states.
+
+**Decision: an ambient span both of whose ends this day draws takes its ordinary card.** `isAmbient` is how a span renders **across days**; a span with no days left to cross is not ambient for this one. The card already says everything the two rows did and two things they could not — ADR-0037's `+1` for the crossing, and the duration and distance beside it.
+
+Untouched, and deliberately: a leg departing day 3 and landing day 4 **inside** the trip. Its ends really are on two day surfaces, so it keeps its two transition points, one per day — §B exactly as written.
+
+**Not `isJourney`.** The obvious move was to extend the app's existing exemption — `isAmbient(e) && !isJourney(e)`, already at three call sites (ADR-0054's session-215 amendment) — but it answers a different question. `isJourney` says what a span's MIDDLE is; this asks how many day surfaces its ENDS are spread across, which is why a within-trip red-eye must stay split and a hotel must not follow the flight. One predicate, `spanDrawsWholeOn`, reading `endHostDay` — the same function §4's hosting already uses, so the two cannot disagree about which day an end lands on.
+
+**Scoped deliberately: the two day surfaces, not the Home glance.** `buildDayGlance` also filters `!isAmbient`, and it stays as it is — its exclusion is about the rail's **window maths** (_"so a multi-night stay can't distort the day"_), not about a row's shape, and the flight is already represented there as anchor ticks with its edges counted in `remaining` (ADR-0164). No number disagrees between the surfaces; only the drawing differs, as it did before. Recorded on the backlog rather than widened into here.
+
 ## The edge cases, swept
 
 Asked for by the owner — _"investigate and find all edge cases that you can find"_ — and the sweep changed two decisions (§1's shape and §3's direction) rather than merely confirming them. `#` numbers are how the specs refer to them.
@@ -120,6 +138,7 @@ Asked for by the owner — _"investigate and find all edge cases that you can fi
 | E16 | **A hosted arrival creating a bogus free-time gap**                                  | It cannot: gaps are measured from **timed events**, and a transition point is not one (`gaps.ts`, and `freeWholeDay`'s docblock says so outright).                                                                                                                                                                                                                                                           |
 | E17 | **Ordering** — an arrival clock that reads `02:30` sitting under a `22:10` departure | Correct as-is: entries sort by **instant** (`mergeDayEntries`), so the arrival sorts last, and its `מחר` says why its clock reads smaller.                                                                                                                                                                                                                                                                   |
 | E18 | **Settling a hosted arrival**                                                        | Unchanged: it is the same event and the same `end` edge, so `edgeSettleProps(event, 'end')` answers exactly as it does on a normal arrival day.                                                                                                                                                                                                                                                              |
+| E27 | **A leg that crosses midnight INSIDE the trip**                                      | Keeps its two transition points, one per day — §6 turns on how many day surfaces the ends are spread across, not on what the span is. Pinned by the control half of `day-surfaces.whole-leg.test.tsx`.                                                                                                                                                                                                       |
 | E19 | **Plan day**                                                                         | Every rule here is in `lib/`, and both screens read it — `frontend/CLAUDE.md`'s standing rule that a day derivation changed in `DayView` only has cost a release twice.                                                                                                                                                                                                                                      |
 
 ### Elsewhere
@@ -201,5 +220,29 @@ Read from the mockup's live DOM, ⁦360px⁩ and ⁦390px⁩, both themes (ident
 **The day word is the RAIL's, not the board's, and that is a correctness point.** `למחרת` means "the day after the one this is anchored to"; the board's `מחר` means "tomorrow from now" and would be a lie the moment you opened the last day in advance. ADR-0203 §2 minted those words for exactly this relation, so `TransitionRow` borrows them and needs no `trip`/`today` prop at any of its four call sites.
 
 **Tests: 14 new specs, and two of them failed first.** `mode.test.ts` carries E1/E3/E4/E5/E9/E11/E20 and the live-and-over pair; `day-entries.test.ts` carries E12–E15 and E17. E13's first version asserted something stricter than the code needed (it asked about a date the trip does not have, which no surface does) and E15's failure is what corrected §4's rule from "the day it departed from" to "the last day of the trip its span still covers" — the sentence that serves a stay and a leg alike. Suite: **5852 green**, ⁦14⁩ up.
+
+## Build log — 2026-09-20 (second pass: §6)
+
+Added after §4 shipped and the owner put the trip's first and last day side by side. **The report is a shape question and the answer was an ADR-0064 amendment**, which is why it is a section rather than a tweak.
+
+**Root rule 8 was asked first and answered no.** The app already exempts journeys from ambient's consequences at three call sites (`isAmbient(e) && !isJourney(e)`, ADR-0054's session-215 amendment), and extending that to the day list was the obvious move — and wrong: it would put a card on day 3 for a leg landing on day 4 while its transition rows still drew, i.e. the same journey twice. The question here is how many day surfaces the ends are spread across; `isJourney` answers what the middle is. `spanDrawsWholeOn` reads `endHostDay`, the function §4's hosting already uses, so the two cannot drift about which day an end lands on.
+
+**`dayListEvents` is shared, and that is the point.** Both day screens filtered `!isAmbient(e)` inline; they now call one function, because a day derivation changed in `DayView` alone has cost a release twice.
+
+**Specs on both screens, and the control is the half that matters.** `day-surfaces.whole-leg.test.tsx` renders `DayView` **and** `PlanDay` against one fixture: the flight home draws one `.wp-event-face` / `.bld` and zero `.transition-row` on both, with ADR-0037's `+1` on the card; a red-eye inside the trip still draws its two transition points, on its two days. Verified by inverting the predicate — the three §6 specs go red, the three control specs stay green, which is what says they pin different behaviours. The shared agreement harness gained a settable `activeDate`, since a spec about the trip's LAST day has to be able to stand on one. Suite: **5859 green**.
+
+**Measured** (mockup §6, 390px): the return goes from ⁦251px⁩ of transition rows to an ⁦88px⁩ card — the outward leg's own card measures ⁦87px⁩, which is the point.
+
+## Build log — 2026-09-20 (second pass: §6)
+
+Added after §4 shipped and the owner put the trip's first and last day side by side. **The report is a shape question and the answer is an ADR-0064 amendment**, which is why §6 is a section rather than a tweak.
+
+**Root rule 8 was asked first, and answered no.** The app already exempts journeys from ambient's consequences at three call sites (`isAmbient(e) && !isJourney(e)`, ADR-0054's session-215 amendment), and extending that to the day list was the obvious move — and wrong: it would draw a card on day 3 for a leg landing on day 4 while its transition rows still drew, i.e. the same journey twice. The question §6 asks is how many day surfaces the ends are spread across; `isJourney` answers what the middle is. So `spanDrawsWholeOn` reads `endHostDay`, the function §4's hosting already uses, and the two cannot drift about which day an end lands on.
+
+**`dayListEvents` is shared, and that is the point.** Both day screens filtered `!isAmbient(e)` inline; they call one function now, because a day derivation changed in `DayView` alone has cost a release twice.
+
+**Specs on both screens, and the control half is what makes them mean something.** `day-surfaces.whole-leg.test.tsx` renders `DayView` **and** `PlanDay` against one fixture: the flight home draws one `.wp-event-face` / `.bld` and zero `.transition-row` on both, with ADR-0037's `+1` on the card; a red-eye inside the trip keeps its two transition points, on its two days. Verified by inverting the predicate — the three §6 specs go red and the three control specs stay green, which is what says they pin different behaviours rather than the same one twice. The shared agreement harness gained a settable `activeDate`, since a spec about the trip's LAST day has to be able to stand on one. Suite: **5859 green**.
+
+**Measured** (mockup §6, at 390px): the return goes from ⁦251px⁩ of transition rows to an ⁦88px⁩ card, against the outward leg's own ⁦87px⁩ — which is the point, not a coincidence.
 
 **Found on the way, not fixed here:** `glance-card.css` reads `var(--font-ui)`, a token `tokens.css` does not define, so that rule has been falling back to the inherited face since it was written. One line, unrelated to this ADR, and on the backlog rather than smuggled into it.

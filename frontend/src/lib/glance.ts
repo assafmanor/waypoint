@@ -352,7 +352,45 @@ export interface BookingTransition {
 
 /** The trip's own window, for the hosting rule below. Absent → no hosting, which is what
  *  every caller that is not a day surface wants. */
-type TransitionRange = { startDate: string; endDate: string };
+export type TransitionRange = { startDate: string; endDate: string };
+
+/**
+ * **Which day a span's END is drawn on** (ADR-0236 §4) — its own, when the trip has that day;
+ * otherwise the last day of the trip the span still covers. `null` when the span starts after
+ * the trip ends, because then it covers no day the trip has.
+ *
+ * Exported because two questions need the same answer and a second copy is how they would
+ * start disagreeing: which day the arrival row lands on, and whether a span's two ends land on
+ * the SAME day — which is what decides between one row and two (§8).
+ */
+export function endHostDay(
+  event: Pick<TripEvent, 'date' | 'endDate'>,
+  range?: TransitionRange,
+): string | null {
+  const endDay = event.endDate ?? event.date;
+  const inTrip = (d: string) => !range || (d >= range.startDate && d <= range.endDate);
+  if (inTrip(endDay)) return endDay;
+  return range && range.endDate >= event.date ? range.endDate : null;
+}
+
+/**
+ * **Both of this span's ends are drawn on `date`, so it draws ONE row rather than two**
+ * (ADR-0236 §8, amending ADR-0064 §B).
+ *
+ * §B splits a multi-day bracket into two read-only transition points because an ambient span
+ * shows nothing in the day list, so *"on its edge days it would otherwise show nothing"*. That
+ * reasoning is about a span whose ends land on **two** day surfaces. Once §4 hosts a landing
+ * back on the day it departed from, there are no two days left: the same journey would draw
+ * two rows on one day, neither carrying the duration or the distance that the identical
+ * same-day leg states on its single card.
+ *
+ * True only for an ambient span both of whose ends this day draws. A leg that departs day 3
+ * and lands day 4 inside the trip is untouched — its ends really are on two surfaces, which is
+ * the case §B was written for.
+ */
+export function spanDrawsWholeOn(event: TripEvent, date: string, range?: TransitionRange): boolean {
+  return isAmbient(event) && event.date === date && endHostDay(event, range) === date;
+}
 
 /**
  * **The transitions on `date`** — and, with a `range`, the ones whose own day the trip does
@@ -374,7 +412,6 @@ export function bookingTransitionsOnDate(
   range?: TransitionRange,
 ): BookingTransition[] {
   const out: BookingTransition[] = [];
-  const inTrip = (d: string) => !range || (d >= range.startDate && d <= range.endDate);
   for (const e of events) {
     if (!isBracketed(e) || e.category == null) continue;
     if (e.status === EVENT_STATUS.SKIPPED) continue;
@@ -385,17 +422,7 @@ export function bookingTransitionsOnDate(
     }
     if (!e.endsAt) continue;
     const endDay = e.endDate ?? e.date;
-    // Its own day when the trip has one; otherwise **the last day of the trip the span still
-    // covers**. For a leg that is the day it departed from; for a stay whose check-out falls
-    // past the end it is the last night you are actually there, which is why this is one
-    // rule and not a journey-shaped special case. `null` when the span starts after the trip
-    // ends — then it covers no day the trip has, and hosting it would put a row on a day that
-    // does not exist either.
-    const hostDay = inTrip(endDay)
-      ? endDay
-      : range && range.endDate >= e.date
-        ? range.endDate
-        : null;
+    const hostDay = endHostDay(e, range);
     if (hostDay === date) {
       out.push({
         event: e,

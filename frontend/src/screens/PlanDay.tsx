@@ -29,7 +29,6 @@ import {
   EVENT_STATUS,
   isExactEdge,
   isRoutableMode,
-  isAmbient,
   TRAVEL_FIT,
   type Booking,
   type EventCategory,
@@ -163,13 +162,14 @@ import { BEAT, playBeat } from '../lib/one-shot';
 import { useDragGhost } from '../lib/useDragGhost';
 import { CONTROL_ICON, DEFAULT_MAYBE_ICON, DOT_SEPARATOR, DRAG_DAY_DWELL_MS } from '../constants';
 import {
+  dayListEvents,
   dayTransitions,
-  placeDayEntries,
-  type DayEntry,
   groupEndEvent,
   groupMembers,
   groupStartEvent,
   mergeDayEntries,
+  placeDayEntries,
+  type DayEntry,
 } from '../lib/day-entries';
 import { nowLinePlacement } from '../lib/now-line';
 import { NOW_POSTURE, NowMarker } from '../ui/domain/NowMarker';
@@ -405,11 +405,10 @@ export function PlanDay() {
   // A live trip hides skipped events (they park on the shelf); a finished
   // trip's archive shows them in place — struck-through, restorable — so the
   // record reads "what we did / what we skipped" (ADR-0044).
-  const dayEvents = events
-    .filter(
-      (e) =>
-        e.date === activeDate && (readOnly || e.status !== EVENT_STATUS.SKIPPED) && !isAmbient(e),
-    )
+  // A span this day draws WHOLE rejoins the list (ADR-0236 §8) — see `dayListEvents`, which
+  // Trip's day view reads too so the two cannot answer this differently.
+  const dayEvents = dayListEvents(events, activeDate, trip)
+    .filter((e) => readOnly || e.status !== EVENT_STATUS.SKIPPED)
     .sort(byStart);
   // Multi-day bracketed bookings (a hotel, a red-eye flight) are ambient — off
   // `dayEvents` — so their edge days would show nothing in the list. Interleave

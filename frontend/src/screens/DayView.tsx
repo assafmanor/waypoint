@@ -13,7 +13,6 @@ import {
   EVENT_KIND,
   EVENT_SOURCE,
   EVENT_STATUS,
-  isAmbient,
   isEdgeSettled,
   isExactEdge,
   isRoutableMode,
@@ -141,6 +140,7 @@ import { ParkedEventSheet } from '../ui/ParkedEventSheet';
 import { QuickAddSheet, type QuickAddDraft } from '../ui/QuickAddSheet';
 import { DelaySheet } from '../ui/DelaySheet';
 import {
+  dayListEvents,
   dayTransitions,
   groupStartEvent,
   mergeDayEntries,
@@ -669,8 +669,12 @@ export function DayView() {
   const canSettle = (event: TripEvent, edge: EventEdge = 'start') =>
     dayScope !== DAY_PHASE.FUTURE || isEdgeSettled(event, edge);
 
-  const dayEvents = events
-    .filter((e) => e.date === activeDate && e.status !== EVENT_STATUS.SKIPPED && !isAmbient(e))
+  // **A span this day draws WHOLE is back in the list** (ADR-0236 §8): with both ends hosted
+  // here it has no days left to cross, so it takes its ordinary card rather than two
+  // transition points. `dayListEvents` is shared with Plan's builder so the two cannot answer
+  // this differently.
+  const dayEvents = dayListEvents(events, activeDate, trip)
+    .filter((e) => e.status !== EVENT_STATUS.SKIPPED)
     .sort(byStart);
   // The shelf, grouped (ADR-0116 §2) by one shared derivation both hosts call —
   // ideas pencilled in for this day, the rest of the pool, and (ADR-0027's parking
