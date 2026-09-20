@@ -14,7 +14,7 @@ Fixing the booking form let a person enter the ordinary flight home: it leaves a
 
 > _"What will it look like on the schedule (day view and plan day the hero etc.) if the flight arrival is after the trip? Needs addressing?"_
 
-**Two of the three surfaces need nothing, and that was worth establishing before proposing anything.** A span is filed under the day it STARTS (ADR-0037 §1), so the leg sits on the trip's last day and carries the next as `endDate`; both day screens already draw the cross-midnight marker for it (`crossesMidnightZoned`, `EventCard.tsx` / `PlanDay.tsx`), and nothing is placed on a day the trip does not have. The shared itinerary is ahead of both: `sharePreviousNight` already files a pre-dawn instant under the previous night.
+**Nothing is placed on a day the trip does not have**, and that was worth establishing before proposing anything: a span is filed under the day it STARTS (ADR-0037 §1), so the leg sits on the trip's last day and carries the next as `endDate`. But the day surfaces are **not** simply fine, and this ADR's first draft said they were — see §4, which is a correction the owner's follow-up question forced. The shared itinerary is the one surface that is genuinely untouched: `sharePreviousNight` already files a pre-dawn instant under the previous night.
 
 **The board is the gap, and it is a window bug, not a missing surface.**
 
@@ -38,9 +38,9 @@ Three things found by reading the code, each of which made this change smaller:
 
 **The extension is bounded by the thing that causes it.** It is the length of one commitment, so in practice the last leg: ⁦3:20⁩ on the flight this ADR is about, ⁦0⁩ on every trip that ends with a hotel checkout at ⁦11:00⁩. There is no number to tune, which is the point of measuring it in commitments.
 
-### 2. Nothing new is drawn
+### 2. Nothing new is drawn for the board
 
-The `in-transit` board, its rail, the zone-shift pill, the landing-day chip and `הבא בתור` all ship today. The archive card ships today. **The mockup's proposed-CSS block is empty**, and that is the strongest argument in this ADR: what changes is _when_ each of them renders, which lives in `lib/mode.ts`. A "landing" screen was drawn and rejected — ADR-0160 §I already checked that content against this exact case and found it present, so a second surface would be a parallel copy of one that exists (root rule 8).
+The `in-transit` board, its rail, the zone-shift pill, the landing-day chip and `הבא בתור` all ship today. The archive card ships today. **§1–§3 cost the mockup's proposed-CSS block zero lines**, and that is the strongest argument in this ADR (§4 adds one rule, and says why): what changes is _when_ each of them renders, which lives in `lib/mode.ts`. A "landing" screen was drawn and rejected — ADR-0160 §I already checked that content against this exact case and found it present, so a second surface would be a parallel copy of one that exists (root rule 8).
 
 ### 3. The archive is handed over at the **next opening**, not under your hands
 
@@ -50,7 +50,24 @@ So the flip is deferred the way the trip's **beginning** already is: `waypoint:m
 
 **This is the file's one feel call and the mockup makes it a control** (`מיד` · `בפתיחה הבאה`), with the deferred handover as the recommendation and the immediate one drawn beside it. A device pass owns the final answer; the measurement below is what it costs either way.
 
-### 4. What does not change, said so nobody "fixes" it
+### 4. The arrival's transition row has no day, and that is the day surfaces' own half of this
+
+**This section is a correction.** This ADR's first draft claimed the day view and Plan day need nothing, reasoning that a span is filed under its start day and that both screens draw a cross-midnight `+1`. **Counting the call sites says otherwise** — root `CLAUDE.md`'s own warning landing on the session that quotes it. `transport` is `ambientWhenMultiDay: true`, and a leg whose two ends fall on different days has `endDate` set, so the flight home is **`isAmbient`** — which both day screens _exclude_ from `dayEvents` (`DayView.tsx:669`, `PlanDay.tsx:410`). It never renders as an event card, so that `+1` never fires on it.
+
+What renders instead is ADR-0064 §B's mechanism, built for exactly this case ("a hotel, **a red-eye flight**", in `day-entries.ts`'s own header): two read-only **transition points**, interleaved among the day's groups at their real clocks. `bookingTransitionsOnDate` dates them:
+
+```ts
+if (e.date === date && e.startsAt)              // 'start' → המראה, the 25th
+if ((e.endDate ?? e.date) === date && e.endsAt) // 'end'   → נחיתה, the 26th
+```
+
+**And the trip has no 26th.** `tripDates` stops at `endDate`, `activeDate` clamps, an out-of-range `?day=` falls back — no surface ever asks for that day, so the arrival row is never drawn. The trip's last day lists `המראה · 22:10`, and **the landing time appears nowhere on the day surfaces at all**. Nor is there a bookend row carrying it: a flight is not a stay (`isStayRow` needs `countsNights`).
+
+**Decision: an arrival whose own day falls outside the trip is filed under the day its leg departed from.** The last day then reads `המראה · 22:10` and `נחיתה · 02:30 · מחר` — the journey it actually is. The day word beside the clock is not new either: it is `BoardTransit.endDay`'s `מחר` (ADR-0160 §M), the same fact in the same word, reaching the day list. **This is the only new CSS in the whole change** — one rule, three declarations (`.tr-day`), drawn and measured in the mockup's §4.
+
+Rejected: giving the trip a 26th day (that is `tripDates`, the day strip and ADR-0018 rewritten for one row); and leaving the arrival unsaid (the trip's final arrival is precisely what a person opens the day list to check). And this is **not** `sharePreviousNight` generalised — that rule's own docblock calls itself share-only and notes the app's day surfaces already sort correctly by `startsAt`. The problem here is a missing day, not a misordered one.
+
+### 5. What does not change, said so nobody "fixes" it
 
 - **`activeDate` still clamps to `endDate`.** The day view keeps showing the day the leg is filed under, which is the day it departs. Correct as-is.
 - **The archive itself** — its copy, its read-only rules, ADR-0040 §2 — is untouched.
@@ -69,7 +86,9 @@ Read from the mockup's live DOM, ⁦360px⁩ and ⁦390px⁩, both themes (ident
 | The flight rail                | **⁦27px⁩** carrying `נותרו`, the landing and the shift                                          |
 | `הבא בתור` row                 | **⁦62px⁩** — what is first on the ground                                                        |
 | Today's window vs the proposal | **⁦40%⁩ → ⁦65%⁩** of the ⁦20:00–06:00⁩ strip; the window ends ⁦50⁩ minutes after take-off today |
-| **New CSS this change needs**  | **⁦0⁩ lines**                                                                                   |
+| The last day's list            | **⁦164px⁩** today (two transition rows) → **⁦251px⁩** with the arrival                          |
+| One transition row             | **⁦77px⁩** — against ADR-0017's ⁦44px⁩ floor                                                    |
+| **New CSS this change needs**  | **one rule, `.tr-day`** — §1–§3 cost ⁦0⁩ lines; §4 adds the day word beside the clock           |
 
 **Three errors the render caught, recorded rather than quietly fixed**, because two of them are the traps `references/pitfalls.md` exists for:
 
