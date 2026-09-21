@@ -65,7 +65,11 @@ const SUMMARY: SharedItinerary = {
       // The derived shapes, not sentences — the words are the renderer's (ADR-0213's
       // 2026-08-30 amendment), so this fixture is also the check that it has them.
       title: { kind: SHARE_DAY_KIND.FLIGHT_OUT, to: 'איסלנד' },
-      summary: { kind: SHARE_DAY_SUMMARY_KIND.STAY, place: 'Laugavegur 22' },
+      summary: { kind: SHARE_DAY_SUMMARY_KIND.EVENTS, titles: ['נחיתה בקפלוויק'] },
+      // **The day's two ends** (ADR-0238 §1). A check-in day: it sleeps somewhere and woke
+      // nowhere this trip knows about. The name used to be the day's SUMMARY — that rung is
+      // gone, because a second line reading `לינה ב…` could only restate the frame.
+      sleeps: { name: 'Laugavegur 22' },
       sections: [
         {
           daypart: SHARE_DAYPART.MORNING,

@@ -276,6 +276,16 @@ keeps its own ceiling (ADR-0184 §1) because that arm sets it itself. Guarded in
 rather than in the fixture: a stay with no `category` is a real row, and a fixture that dressed
 one up would have asserted the right clock for the wrong reason.
 
+**And the first push went red, on the one suite that compiles the e2e fixtures — which is
+nothing.** `frontend/tsconfig.json` is `include: ["src", "vite.config.ts"]`, so `e2e/` is outside
+the program: retiring `SHARE_DAY_SUMMARY_KIND.STAY` left `e2e/shared-itinerary.spec.ts` serving a
+day whose `kind` was `undefined`, the reader's own parse refused the projection, and **twelve
+specs timed out waiting for a `.sh-page` that never rendered** — after typecheck, build and 7,936
+unit tests had all gone green. The fixture now carries `sleeps` instead, so the e2e suite also
+covers the new rows. Closing the gap itself is one line and 18 pre-existing errors in five other
+spec files, so it is backlogged rather than ridden in here; the rule it leaves behind is that **a
+change to this contract is not verified until the e2e suite has run**.
+
 ### What was verified
 
 A real Postgres and the repo's own seed, so the projection's **integration** spec ran rather than
