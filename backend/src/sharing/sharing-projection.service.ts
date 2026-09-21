@@ -24,6 +24,7 @@ import {
   type ShareDetailLevel,
   type SharedAppendix,
   type SharedDay,
+  type SharedDayBed,
   type SharedEvent,
   type SharedItinerary,
   type BookingType,
@@ -359,8 +360,12 @@ function absorbSpannedDays(
   days: readonly SharedDay[],
   byDay: readonly { date: string; events: ShareEventRow[] }[],
 ): SharedDay[] {
+  // **A day with a bed is not empty** (ADR-0238 §1). It read `!day.stay`, which was true of
+  // every night but the one a span was filed in — so this test called a middle night blank and
+  // a journey crossing midnight could swallow a day the reader can see a hotel on. Both ends
+  // count: a morning you check out of is as much content as a night you arrive for.
   const isEmpty = (index: number): boolean =>
-    (days[index]?.sections.length ?? 0) === 0 && !days[index]?.stay;
+    (days[index]?.sections.length ?? 0) === 0 && !days[index]?.sleeps && !days[index]?.wokeIn;
 
   const out: SharedDay[] = [];
   for (let i = 0; i < days.length; i += 1) {
@@ -595,69 +600,105 @@ function journeyClock(
   };
 }
 
+/** **The two lodging rows that bracket one day** — `dayBookendStays`' `{woke, sleeps}`, over
+ *  Prisma rows (ADR-0238 §1). */
+interface DayBedRows {
+  woke?: ShareEventRow;
+  sleeps?: ShareEventRow;
+}
+
+/** The key a day's closing leg is stored under in the journey map. A bed is the day's frame
+ *  rather than one of its rows, so it has no event id to be keyed by — and the prefix keeps it
+ *  out of any collision with one. */
+const bedJourneyKey = (date: string): string => `bed:${date}`;
+
 /**
- * **THE TWO MOMENTS A DAY'S STAY HAS** (ADR-0213's 2026-08-31 amendment §2).
+ * **WHICH TWO BEDS BRACKET A DAY** (ADR-0238 §1) — the projection's copy of
+ * `dayBookendStays` (`frontend/src/lib/glance.ts`), over Prisma rows.
  *
- * A check-in window is the commonest flexible time this app holds, and sharing showed it
- * nowhere: the fourth amendment moved the stay out of the schedule and into `day.stay`, a
- * name with no clock — for the good reason that as a ROW it sorted into the afternoon by its
- * check-in hour and printed `15:00–11:00` across midnight. So the two moments come back to
- * the day's FRAME rather than to the schedule, which is the one place a stay still exists.
+ * Two independent comparisons over the stays whose span COVERS the date: the one that began
+ * before today is the bed you woke in, the one that runs past tonight is the bed you sleep in.
+ * A check-in day answers only `sleeps`, a check-out day only `woke`, a middle night answers
+ * both with the same stay, and a day you change hotels answers each from its own span. There is
+ * no ambient branch because there is no ambient case — which is exactly why the app's two day
+ * surfaces have never had one either.
  *
- * `checkIn` belongs to the day the run BEGINS: a middle night has no arrival. `checkOut`
- * belongs to the day after the run ends and names the place being left, which on a transfer
- * day is not the place the frame names — hence its own `place`.
- *
- * Both are read through `sharedTimeOf`, so a hotel with an authored window prints
- * `17:00–21:00` and one with only a floor prints `מ-15:00`, exactly as a row would.
+ * **It deliberately does not read `byDay`.** That is where the old frame came from, and it is
+ * why a four-night stay framed one night: `groupByDay` files a span into the single bucket its
+ * own `date` falls in, which is correct for the SCHEDULE and answers a different question from
+ * this one. Coverage, not filing.
  */
-function stayMoments(
-  stayRows: readonly (ShareEventRow | undefined)[],
-  stays: readonly (string | undefined)[],
-  index: number,
+function dayBeds(stays: readonly ShareEventRow[], date: string): DayBedRows {
+  const covering = stays.filter((stay) => dayKey(stay.date) <= date && date <= stayEndKey(stay));
+  return {
+    woke: covering.find((stay) => dayKey(stay.date) < date),
+    sleeps: covering.find((stay) => date < stayEndKey(stay)),
+  };
+}
+
+/**
+ * **The morning a stay ends on** — `endDate` where the span has one, otherwise the day its
+ * `endsAt` falls in.
+ *
+ * The second rung is this projection's own, and it is a widening of `dayBookendStays` rather
+ * than a copy of it. The app's version gates on `isAmbient`, which needs `isMultiDay`
+ * (`endDate > date`) — so a one-night booking recorded as `17:00 → 13:00 tomorrow` with no
+ * `endDate` is not ambient there and stays an ordinary row in the day list. Here it cannot:
+ * every hotel row is lifted out of the schedule before the sections are built, so a stay this
+ * rung did not cover would vanish from the page entirely. That is not hypothetical — it is the
+ * shape of the reference trip's own guesthouse, and it is what the assertion above it catches.
+ */
+function stayEndKey(stay: ShareEventRow): string {
+  if (stay.endDate) return dayKey(stay.endDate);
+  return stay.endsAt ? dayKey(stay.endsAt) : dayKey(stay.date);
+}
+
+/**
+ * **THE BOUND A BED CARRIES, AND IT POSITIONS NOTHING** (ADR-0238 §1, ADR-0209 §1).
+ *
+ * The evening bed states its check-in, which is the stay's START edge and therefore exactly
+ * what `sharedTimeOf` already answers for every row on the page — a floor prints `מ-15:00` and
+ * an authored window `17:00–21:00`. The morning bed states its check-out, the stay's FAR end,
+ * so it is read off `endsAt` in the stay's END zone and asked `edgeMeaning(…, 'end')`.
+ *
+ * Absent at Summary with every other clock, and absent on a middle night, where neither edge
+ * happens today — which is the ordinary case and not a gap.
+ */
+function bedTime(
+  row: ShareEventRow,
+  edge: 'start' | 'end',
   detail: ShareDetailLevel,
   zones: ShareZoneContext,
-): { checkIn?: SharedTime; checkOut?: SharedTime } {
-  // Summary carries no clock at all — the same line `projectEvent` draws.
-  if (detail === SHARE_DETAIL_LEVEL.SUMMARY) return {};
-  const out: { checkIn?: SharedTime; checkOut?: SharedTime } = {};
-
-  const here = stayRows[index];
-  const previous = stays[index - 1];
-  // The run begins here: either nothing preceded it, or you slept somewhere else last night.
-  if (here && stays[index] !== previous) {
-    const time = sharedTimeOf(here, displayZones(here, zones));
-    if (time) out.checkIn = time;
+): SharedTime | undefined {
+  if (detail === SHARE_DETAIL_LEVEL.SUMMARY) return undefined;
+  if (edge === 'start') {
+    const time = sharedTimeOf(row, displayZones(row, zones));
+    // **A BED'S CHECK-IN NEVER PRINTS THE SPAN'S FAR END**, and that guard is the `15:00–11:00`
+    // defect ADR-0213's fourth amendment pulled stays out of the schedule for. `sharedTimeOf`'s
+    // `exact` arm appends `endsAt`, which for a stay is a check-out days away and reads
+    // backwards because the span crosses midnight. Only a WINDOW has a second bound that
+    // belongs to this edge (its own ceiling, ADR-0184 §1), and that arm sets it itself.
+    return time && time.meaning !== TIME_MEANING.WINDOW && time.endLabel
+      ? { label: time.label, meaning: time.meaning }
+      : time;
   }
-
-  // …and the night before ended, so this morning you left it. Read off THAT row's own end,
-  // which is the check-out instant — never off today's stay, whose end is days away.
-  const left = stayRows[index - 1];
-  if (previous && previous !== stays[index] && left?.endsAt) {
-    // A check-out is the stay's FAR end, so it is printed in the stay's end zone.
-    const zone = displayZones(left, zones).end;
-    const meaning = edgeMeaning(
-      {
-        category: (left.category as EventCategory | null) ?? undefined,
-        icon: left.icon ?? undefined,
-        startWindowEnd: left.startWindowEnd?.toISOString(),
-        endWindowStart: left.endWindowStart?.toISOString(),
-      },
-      'end',
-    );
-    const label = shareTimeLabel(left.endsAt, zone);
-    // **The place it belongs to is NOT published** (2026-08-31). It is the card directly
-    // above — whose header the reader page never collapses — and naming it here made the day
-    // read future → past → future while spending amber on a place. `previous` is still read,
-    // as the test for whether last night was somewhere ELSE; it just no longer travels.
-    out.checkOut =
-      meaning === TIME_MEANING.WINDOW && left.endWindowStart
-        ? // A closed window on the OUT edge opens at `endWindowStart` and shuts at the
-          // check-out itself — the earliest you may leave and the latest, in that order.
-          { label: shareTimeLabel(left.endWindowStart, zone), endLabel: label, meaning }
-        : { label, meaning };
-  }
-  return out;
+  if (!row.endsAt) return undefined;
+  const zone = displayZones(row, zones).end;
+  const meaning = edgeMeaning(
+    {
+      category: (row.category as EventCategory | null) ?? undefined,
+      icon: row.icon ?? undefined,
+      startWindowEnd: row.startWindowEnd?.toISOString(),
+      endWindowStart: row.endWindowStart?.toISOString(),
+    },
+    'end',
+  );
+  const label = shareTimeLabel(row.endsAt, zone);
+  return meaning === TIME_MEANING.WINDOW && row.endWindowStart
+    ? // A closed window on the OUT edge opens at `endWindowStart` and shuts at the check-out
+      // itself — the earliest you may leave and the latest, in that order.
+      { label: shareTimeLabel(row.endWindowStart, zone), endLabel: label, meaning }
+    : { label, meaning };
 }
 
 /** **Is this event a way of getting somewhere, rather than somewhere to be?** The rule is
@@ -844,9 +885,6 @@ export class SharingProjectionService {
     const isFlight = (event: ShareEventRow): boolean => event.booking?.type === BOOKING_TYPE.FLIGHT;
 
     const byDay = this.groupByDay(events, trip.startDate, trip.endDate, zones);
-    const journeys = orienting
-      ? await this.journeyLookup(share.tripId, byDay, places, zoneBookings)
-      : undefined;
 
     // **Which day is the way out and which is the way home** — a whole-trip question, so it
     // is answered here and handed to the per-day derivation as two booleans. Both ends are
@@ -911,16 +949,46 @@ export class SharingProjectionService {
      *  event itself so the day can also state the two moments it has (2026-08-31 amendment
      *  §2). It used to map straight to a string, which is why a check-in window could not be
      *  projected: the row it lives on had already been thrown away. */
-    const stayRows = byDay.map(({ events: dayEvents }) =>
-      dayEvents.find(
-        (event) =>
-          event.booking?.type === BOOKING_TYPE.HOTEL && (settledLabel(event) || event.title),
-      ),
+    /** **Every lodging row on the trip**, whole — the input both beds are asked of. It used
+     *  to be one row per DAY BUCKET (`byDay.map(events => events.find(HOTEL))`), which is the
+     *  whole of ADR-0238's F2: a span is filed in one bucket, so a four-night stay framed its
+     *  first night and none of the other three. */
+    const stayRows = events.filter(
+      (event) => event.booking?.type === BOOKING_TYPE.HOTEL && (settledLabel(event) || event.title),
     );
-    const stays = stayRows.map((event) =>
-      event ? (settledLabel(event) ?? event.title) : undefined,
-    );
+    const bedName = (row: ShareEventRow) => settledLabel(row) ?? row.title;
+    /** One end of a day, as the contract carries it: a name, its own bound where the level
+     *  allows one, and — on the evening bed only — the leg that got you there. */
+    const bedFrame = (
+      row: ShareEventRow,
+      edge: 'start' | 'end',
+      date: string,
+      journey?: SharedEvent['journey'],
+    ): SharedDayBed => {
+      // **THE BOUND ONLY EXISTS ON THE DAY THE EDGE DOES** (ADR-0209 §1). A middle night is
+      // neither end of the stay, so it has no check-in and no check-out — printing the span's
+      // own `endsAt` there would state an hour that happens on a different date, which is the
+      // shape of the defect this whole change is about, one day out instead of four.
+      const onItsEdge = edge === 'start' ? dayKey(row.date) === date : stayEndKey(row) === date;
+      const time = onItsEdge ? bedTime(row, edge, detail, zones) : undefined;
+      return {
+        name: bedName(row),
+        ...(time ? { time } : {}),
+        ...(journey ? { journey } : {}),
+      };
+    };
+    /** The two beds of each day, in `byDay` order — read once, because the chain needs them
+     *  before the days are built and each day needs them again. */
+    const beds = byDay.map(({ date }) => dayBeds(stayRows, date));
+    /** **Where you sleep, per night** — which is what `tripShapeOf`'s run-length encoding
+     *  always claimed to read and never could (ADR-0238 §1). */
+    const stays = beds.map((bed) => (bed.sleeps ? bedName(bed.sleeps) : undefined));
     const shape = tripShapeOf(stays);
+    // **Asked after the beds, because the chain has two ends now** (ADR-0238 §2): it is seeded
+    // with the bed you woke in and closed into the bed you sleep in.
+    const journeys = orienting
+      ? await this.journeyLookup(share.tripId, byDay, places, zoneBookings, beds)
+      : undefined;
 
     // **Chained once, over the whole trip.** A journey that departs at 22:40 and lands the
     // next morning is one journey; a per-day pass could never see that (`chainJourneys`).
@@ -985,8 +1053,20 @@ export class SharingProjectionService {
         // **The zone this card's clock means** (`SharedDay.timezone`) — the day's own events
         // when they agree, else the segment, never the destination by default.
         timezone: dayZone(date, zones),
-        stay: stays[index],
-        ...stayMoments(stayRows, stays, index, detail, zones),
+        // **THE DAY'S TWO ENDS** (ADR-0238 §1). Each one is a name plus, quietly, its own
+        // bound; the leg INTO the evening bed rides it, and the leg OUT of the morning one
+        // rides the day's first scheduled row, which is where `journey` already means that.
+        ...(beds[index].woke ? { wokeIn: bedFrame(beds[index].woke!, 'end', date) } : {}),
+        ...(beds[index].sleeps
+          ? {
+              sleeps: bedFrame(
+                beds[index].sleeps!,
+                'start',
+                date,
+                journeys?.get(bedJourneyKey(date)),
+              ),
+            }
+          : {}),
         // **Absent freely**: a day whose stops clear no confidence gate gets no photo. Nine
         // days with pictures and three without reads as honest; three days showing the
         // wrong mountain destroys trust in the other nine.
@@ -1485,9 +1565,12 @@ export class SharingProjectionService {
    */
   private async journeyLookup(
     tripId: string,
-    byDay: { events: ShareEventRow[] }[],
+    byDay: { date: string; events: ShareEventRow[] }[],
     places: SharePlaceRow[],
     bookings: { type: string }[],
+    /** **The two beds of each day, aligned with `byDay`** (ADR-0238 §2) — what seeds the
+     *  chain and what closes it. Absent where the day has neither. */
+    beds?: readonly DayBedRows[],
   ): Promise<Map<string, SharedEvent['journey']>> {
     const coordOf = new Map(
       places
@@ -1519,11 +1602,24 @@ export class SharingProjectionService {
      * it is a real understatement on a day with an unplaced detour, and the app's own
      * `planLegs` has the identical gap (backlogged, not fixed from a read-only projection).
      */
-    for (const { events } of byDay) {
-      let prevId: string | undefined;
-      let prev: { lat: number; lng: number } | undefined;
+    /** **Where a row IS, asked the way the other four call sites in this file ask it**
+     *  (ADR-0238 §3). It read `event.placeId` raw, and ADR-0048 clears that column on every
+     *  booking-backed row — so a booked restaurant, a ticketed attraction and every hotel
+     *  resolved to nothing, the pair was skipped, and `prevId` did not advance, which printed
+     *  the next leg from the row BEFORE the stop the reader can see. `stopEventOf` carries the
+     *  same repair and says so; this was the one place that did not. */
+    const stopPlaceOf = (event: ShareEventRow): string | undefined =>
+      eventStopPlaceId(event, event.booking ?? undefined);
+    byDay.forEach(({ date, events }, index) => {
+      // **The chain starts at the bed you woke in** (ADR-0238 §2), so the day's first leg is
+      // the walk out of the hotel — and it rides that first row's own `journey`, because that
+      // field already means "the leg INTO this row".
+      const bed = beds?.[index];
+      let prevId = bed?.woke ? stopPlaceOf(bed.woke) : undefined;
+      let prev = prevId ? coordOf.get(prevId) : undefined;
+      if (!prev) prevId = undefined;
       for (const event of events) {
-        const to = event.placeId ?? event.booking?.fromPlaceId;
+        const to = stopPlaceOf(event) ?? event.booking?.fromPlaceId;
         const b = to ? coordOf.get(to) : undefined;
         const fromId = prevId;
         const a0 = prev;
@@ -1538,14 +1634,30 @@ export class SharingProjectionService {
           });
         }
         // Where the row LEAVES you, which is the far end of a booking rather than its start.
-        const from = event.placeId ?? event.booking?.toPlaceId;
+        const from = stopPlaceOf(event) ?? event.booking?.toPlaceId;
         const a = from ? coordOf.get(from) : undefined;
         if (from && a) {
           prevId = from;
           prev = a;
         }
       }
-    }
+      // **And it closes into the bed you sleep in** (ADR-0238 §2) — measured from wherever the
+      // chain stands after the day's last PLACED row, which is why a placeless stop between the
+      // supermarket and the hotel is crossed rather than breaking the drive home (ADR-0232).
+      // Keyed by the day, because a bed is a frame and not one of the day's rows.
+      const sleepsId = bed?.sleeps ? stopPlaceOf(bed.sleeps) : undefined;
+      const sleepsAt = sleepsId ? coordOf.get(sleepsId) : undefined;
+      if (prevId && prev && sleepsId && sleepsAt && prevId !== sleepsId) {
+        pairs.push({
+          eventId: bedJourneyKey(date),
+          fromPlaceId: prevId,
+          toPlaceId: sleepsId,
+          from: prev,
+          to: sleepsAt,
+          keys: TRAVEL_MODES.map((mode) => routeLegKey(prev!, sleepsAt, mode)),
+        });
+      }
+    });
     if (pairs.length === 0) return new Map();
 
     const [legs, overrides] = await Promise.all([

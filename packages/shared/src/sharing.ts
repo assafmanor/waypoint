@@ -265,13 +265,14 @@ export type SharedDayTitle = z.infer<typeof sharedDayTitleSchema>;
  * **A day's second line, and it must not repeat the first.**
  *
  * It shipped as the first two event titles joined, which on a flight day printed two
- * airport names under a headline made of the same two airport names. What a reader
- * actually wants from a day's second line is **where they sleep** — so a day holding a
- * lodging says so, and only a day with no bed to name falls back to what it holds.
+ * airport names under a headline made of the same two airport names.
+ *
+ * **It then answered `where they sleep`, and that rung is gone** (ADR-0238 §1). The rung
+ * existed because the day had nowhere else to name a bed; the day now has two — `wokeIn` and
+ * `sleeps`, each with a position in the schedule — so a `stay` summary could only restate the
+ * frame directly above and below it. The second line is back to what the day held.
  */
 export const SHARE_DAY_SUMMARY_KIND = {
-  /** `place` is where the night is. */
-  STAY: 'stay',
   /** `titles` are event titles, already filtered of anything the headline said. */
   EVENTS: 'events',
   TEXT: 'text',
@@ -281,7 +282,6 @@ export type ShareDaySummaryKind =
   (typeof SHARE_DAY_SUMMARY_KIND)[keyof typeof SHARE_DAY_SUMMARY_KIND];
 
 export const sharedDaySummarySchema = z.discriminatedUnion('kind', [
-  z.strictObject({ kind: z.literal(SHARE_DAY_SUMMARY_KIND.STAY), place: z.string() }),
   z.strictObject({
     kind: z.literal(SHARE_DAY_SUMMARY_KIND.EVENTS),
     titles: z.array(z.string()).min(1),
@@ -386,11 +386,17 @@ export type TripShareConfig = z.infer<typeof tripShareConfigSchema>;
  * ROUTE for both, which on a star trip is actively false: every day of one starts and ends
  * at the same base, so `base ← somewhere` describes the commute rather than the day.
  *
- * **Derived from the run-length encoding of `day.stay`, and nothing else.** Consecutive
+ * **Derived from the run-length encoding of `day.sleeps`, and nothing else.** Consecutive
  * nights in one place are one base; the number of bases and whether the last is the first
  * are the whole classification. No new column, no heuristic over distances, and it is
  * `unknown` for a trip that records no nights at all — which is a real state (a day trip,
  * or a trip whose lodging was never entered) and not a failure.
+ *
+ * **It reads `sleeps` because that is now a per-night answer** (ADR-0238 §1). It was written
+ * against `day.stay`, which existed only on the day a span was FILED — so the encoding it
+ * describes was never running: an eleven-night trip handed it one entry, and a star trip and
+ * a rolling trip produced the same array. Nothing here changed; the input became what this
+ * comment always claimed.
  */
 export const SHARE_TRIP_SHAPE = {
   /** One base for the whole trip; you go out and come back to the same bed. */
@@ -561,6 +567,25 @@ export const sharedTimeSchema = z.strictObject({
 export type SharedTime = z.infer<typeof sharedTimeSchema>;
 
 /**
+ * **The leg INTO something**, read from the route cache and never computed (ADR-0205).
+ *
+ * Named and lifted out of `sharedEventSchema` when the day's evening bed became its second
+ * host (ADR-0238 §2): the bed at the end of a day is reached by exactly the kind of journey
+ * every other row on the page is reached by, and a second inline copy of these three fields
+ * is how the two would start disagreeing about what a leg reports.
+ */
+export const sharedJourneySchema = z.strictObject({
+  /** **The enum, not a free string** — a reader keys both a word and an icon off it,
+   *  which is the definition of a discriminant (`packages/shared/CLAUDE.md`). It was
+   *  `z.string()`, and both renderers answered by dropping the mode entirely: a 121-min
+   *  walk and a 67-min drive printed as the same shape of line (owner, 2026-08-30). */
+  mode: z.enum(LEG_TRAVEL_MODES),
+  minutes: z.number().int().nonnegative(),
+  km: z.number().nonnegative(),
+});
+export type SharedJourney = z.infer<typeof sharedJourneySchema>;
+
+/**
  * One event as the public sees it.
  *
  * Everything optional is absent at Summary — absent, not empty-string or null, so a
@@ -619,17 +644,7 @@ export const sharedEventSchema = z.strictObject({
    *  families the owner switched on. Absent, not empty, when there is none. */
   ops: z.array(sharedOpSchema).optional(),
   /** The journey INTO this event, when one is already stored (ADR-0205). Full and above. */
-  journey: z
-    .strictObject({
-      /** **The enum, not a free string** — a reader keys both a word and an icon off it,
-       *  which is the definition of a discriminant (`packages/shared/CLAUDE.md`). It was
-       *  `z.string()`, and both renderers answered by dropping the mode entirely: a 121-min
-       *  walk and a 67-min drive printed as the same shape of line (owner, 2026-08-30). */
-      mode: z.enum(LEG_TRAVEL_MODES),
-      minutes: z.number().int().nonnegative(),
-      km: z.number().nonnegative(),
-    })
-    .optional(),
+  journey: sharedJourneySchema.optional(),
   /** **Where a chained journey ENDS**, for the container's header (ADR-0213's ninth
    *  amendment §1). `title` stays the whole route, which is what a single-leg row needs and
    *  what paper's index reads; the header of a `legs` block names the DESTINATION instead,
@@ -812,6 +827,38 @@ export function dayPhoto(
   return best?.photo;
 }
 
+/**
+ * **One end of a day: the bed you woke in, or the bed you sleep in** (ADR-0238 §1).
+ *
+ * The app's own answer, carried to the two shared renderers. [ADR-0209](../../../docs/decisions/0209-a-stay-is-named-once-in-the-day-it-belongs-to.md)
+ * §1 splits a stay into two facts and gives only one of them a position: **where the day
+ * starts and ends is certain**, and **when you check out or in is a bound that positions
+ * nothing**. So a bed carries its place, and its own constraint quietly beside it.
+ *
+ * On a middle night both ends are the same stay and the day names it twice, which is what
+ * `DayView` has done since 2026-08-26 — the repetition is what gives the two legs an origin
+ * and a destination on the page, and without them there is no reason to draw it.
+ */
+export const sharedDayBedSchema = z.strictObject({
+  /** The place, as the day's frame names it — the linked place's label where there is one,
+   *  the booking's own title otherwise (`settledLabel`'s chain, ADR-0048). */
+  name: z.string().min(1),
+  /** **The stay's own bound, and it positions nothing** — a check-out ceiling on the morning
+   *  bed (`עד 11:00`), a check-in floor or window on the evening one (`מ-15:00`,
+   *  `17:00–21:00`). The same `SharedTime` every row's clock uses, so `edgeMeaning`'s answer
+   *  is stated rather than re-derived per renderer. Absent below Full with every other clock,
+   *  and absent on a middle night, which is the ordinary case: neither end happens today. */
+  time: sharedTimeSchema.optional(),
+  /** **The leg INTO this bed** (ADR-0238 §2), where the route cache already holds one.
+   *
+   *  Only the EVENING bed has one. The morning bed's leg is the journey on the day's first
+   *  scheduled row, because `SharedEvent.journey` already means "the leg into this row" and
+   *  that is exactly what the walk out of the hotel is — a second place to say it would be a
+   *  second way to say one thing. */
+  journey: sharedJourneySchema.optional(),
+});
+export type SharedDayBed = z.infer<typeof sharedDayBedSchema>;
+
 export const sharedDaySchema = z.strictObject({
   ordinal: z.number().int().positive(),
   date: dateOnlySchema,
@@ -853,39 +900,33 @@ export const sharedDaySchema = z.strictObject({
   endDate: dateOnlySchema.optional(),
   title: sharedDayTitleSchema,
   summary: sharedDaySummarySchema,
-  /** **Where you sleep, as the day's frame rather than a row in its afternoon** (owner,
-   *  2026-08-30: _"Bad event ordering when it comes to the flights and hotels"_). A lodging
-   *  event sorts by its check-in hour, so on the outbound day it landed between the two
-   *  flight legs — reading as if you leave the airport in Vienna to sleep, then fly on. It
-   *  is also what made a stay print `15:00–11:00`, a range that reads backwards because it
-   *  spans midnight. A stay is not an event at 15:00; it is the roof over the day. */
-  stay: z.string().optional(),
   /**
-   * **THE TWO MOMENTS THE STAY HAS, ON THE DAY THEY HAPPEN** (owner, 2026-08-31, the
-   * flexible half of the same report).
+   * **THE BED THIS DAY STARTS IN, AND THE ONE IT ENDS IN** (ADR-0238 §1).
    *
-   * A check-in window is the commonest flexible time this app holds, and until now sharing
-   * showed it nowhere: the fourth amendment moved the stay OUT of the schedule and into
-   * `stay` above, which is a name with no clock. So the fix for "show me the ranges" cannot
-   * be a rule about rows — the row does not exist.
+   * `wokeIn` is the stay whose span began before today; `sleeps` is the one whose span runs
+   * past tonight. Two independent questions, which is why there is no ambient case: a
+   * check-in day answers only `sleeps`, a check-out day only `woke`, **a middle night
+   * answers both with the same stay**, and a day you change hotels answers each from its own
+   * span. They are `dayBookendStays`' two comparisons (`frontend/src/lib/glance.ts`) asked of
+   * the projection's spans, so the shared page and the two day surfaces cannot disagree about
+   * which bed a night is.
    *
-   * `checkIn` belongs to `stay`: the day the run begins. `checkOut` is the morning you leave
-   * the night before's, which on a transfer day is a different place — so a day can hold both.
-   * A middle night has neither, which is the ordinary case.
+   * **They replace `stay` + `checkIn` + `checkOut`**, which were one name in the day's header
+   * plus two clocks beside it. That shape was right about the ordering defect it fixed
+   * (ADR-0213's fourth amendment: a lodging row sorted into the afternoon by its check-in hour
+   * and printed `15:00–11:00` across midnight) and wrong about two things it could not see.
+   * It was derived from the one day bucket the span was FILED in, so a four-night stay framed
+   * its first night and none of the other three — and `checkOut`, asking "did last night
+   * happen somewhere else", answered yes on the second morning and printed a check-out four
+   * days early. And a name in a header is not a position, so the two legs a day is most
+   * certain to contain — out of one bed, into the other — had nothing to hang on.
    *
-   * **`checkOut` carried that place's NAME and no longer does** (owner, 2026-08-31, with a
-   * screenshot: _"the day titles has gotten a little messy: too many line breaks, questionable
-   * ordering of the details"_). Naming it made the card read future → past → future — tonight's
-   * hotel, then yesterday's, then tonight's hour — and it put a PLACE inside the amber clock
-   * run, which is ADR-0028's budget spent on the wrong axis. The place is the card immediately
-   * above, whose header the reader page never collapses, so nothing is lost by leaving it
-   * there. A field the projection does not publish cannot be revealed by a renderer, which is
-   * this file's own argument for dropping it rather than merely not printing it.
-   *
-   * Absent below Full, with every other clock.
+   * A bed is **not** a schedule row either way: it sorts into no daypart section and opens no
+   * heading (ADR-0209 §2 / ADR-0054 §2). It is the frame, now with a place in the reading
+   * order rather than only in the header.
    */
-  checkIn: sharedTimeSchema.optional(),
-  checkOut: sharedTimeSchema.optional(),
+  wokeIn: sharedDayBedSchema.optional(),
+  sleeps: sharedDayBedSchema.optional(),
   photo: sharedPhotoSchema.optional(),
   sections: z.array(sharedDaypartSectionSchema),
 });

@@ -3592,10 +3592,6 @@ export const t = {
         // needs no entry: its value is a place name and prints as itself.
         kind: (noun: string) => `יום ${noun}`,
       },
-      /** The owner's own phrasing for the day's second line: _"night at…, Sleeping at…"_. */
-      daySummary: {
-        stay: (place: string) => `לינה ב${place}`,
-      },
       /** Names the route strip, which is otherwise an unexplained list of place names. */
       route: 'המסלול',
       // **A flight has to say when it lands** (owner, 2026-08-30: _"important time ranges, for

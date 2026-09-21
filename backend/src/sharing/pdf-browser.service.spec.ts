@@ -171,9 +171,13 @@ describe.skipIf(!chromiumPath)('PdfBrowserService against a real Chromium', () =
         {
           ...NINE_DAY_REFERENCE_TRIP,
           detailLevel: SHARE_DETAIL_LEVEL.SUMMARY,
-          days: NINE_DAY_REFERENCE_TRIP.days.map(
-            ({ checkIn: _checkIn, checkOut: _checkOut, ...day }) => day,
-          ),
+          // Summary carries no clock, so the beds keep their names and lose their bounds —
+          // which is what the projection does at that level (ADR-0238 §5).
+          days: NINE_DAY_REFERENCE_TRIP.days.map((day) => ({
+            ...day,
+            ...(day.wokeIn ? { wokeIn: { name: day.wokeIn.name } } : {}),
+            ...(day.sleeps ? { sleeps: { name: day.sleeps.name } } : {}),
+          })),
         },
         URL_UNDER_TEST,
       );

@@ -111,10 +111,9 @@ describe('itineraryPdfHtml', () => {
   it('says the derived day headlines and the booking captions in Hebrew', () => {
     expect(full).toContain(PDF_COPY.dayTitle.flightOut(auto('איסלנד')));
     expect(full).toContain(PDF_COPY.dayTitle.flightHome);
-    // **The stay is the day's frame now**, so it prints in the header's second line
-    // instead of the derived `לינה ב…` summary (ADR-0213's 2026-08-30 amendment).
-    expect(full).toContain(PDF_COPY.stay(auto('Reykjavík')));
-    expect(full).toContain('class="pdf-stay"');
+    // **The stay is the day's two ENDS now** (ADR-0238 §4), so it prints as the first and
+    // last row of the block rather than as a clause in its header.
+    expect(full).toContain('class="pdf-event pdf-bed"');
     expect(full).toContain(PDF_COPY.bookingType.hotel);
     expect(full).toContain(PDF_COPY.bookingType.car);
   });
@@ -461,35 +460,51 @@ describe('itineraryPdfHtml', () => {
   });
 
   /**
-   * **THE STAY'S TWO MOMENTS ARE TWO LINES, ON PAPER AS ON THE READER** (owner, 2026-09-01:
-   * _"I wanted a line break between the check out and check in times"_).
+   * **THE DAY OPENS AND CLOSES AT A BED** (ADR-0238 §4).
    *
-   * They were joined by the narrative separator here, on the reasoning that half an A4 column
-   * is wide enough that the run never wraps — which is true and answers the wrong question:
-   * the break is how the two moments read, not a wrap being repaired, and the two renderers
-   * must not teach different shapes for one line (ADR-0159 §1).
+   * The two moments used to be two `.pdf-moment` lines inside the day's HEADER, beside a
+   * `לנים ב…` clause. They are the bounds on the two bed rows now — `עד 11:00` in the morning
+   * row's time column, `מ-15:00` or a window in the evening one's — which is the same two facts
+   * with a position, and the position is the report this change answers.
    */
-  it('breaks the stay’s two moments onto their own lines, with no separator between them', () => {
-    // The FIRST day leaves nothing behind it, so it carries one moment; the transfer days
-    // carry both, and both is the shape the break is about.
-    const headers = full.match(/<span class="pdf-day-copy">[\s\S]*?<\/header>/g) ?? [];
-    const lines = headers
-      .filter((block) => block.includes('pdf-stay-when'))
-      .map((block) => block.slice(block.indexOf('<span class="pdf-stay-when">')));
-    expect(lines.length, 'no stay-when line in the reference trip').toBeGreaterThan(0);
+  it('opens and closes each day at a bed, with its bound in the row’s own time column', () => {
+    const blocks = full.match(/<div class="pdf-parts">[\s\S]*?<\/article>/g) ?? [];
+    expect(blocks.length, 'no day blocks in the reference trip').toBeGreaterThan(0);
 
-    const both = lines.filter(
-      (line) => line.includes(PDF_COPY.checkOut('')) && line.includes(PDF_COPY.checkIn('')),
+    // Every day but the first woke somewhere, and every day but the last sleeps somewhere —
+    // so the reference trip has days with a bed at BOTH ends, which is what a middle night is.
+    const both = blocks.filter(
+      (block) => (block.match(/class="pdf-event pdf-bed"/g) ?? []).length === 2,
     );
-    expect(both.length, 'no day carries both moments').toBeGreaterThan(0);
-    for (const line of both) {
-      expect((line.match(/class="pdf-moment"/g) ?? []).length).toBe(2);
-      // The `·` is what put a noun on one line and its own clock on the next.
-      expect(line).not.toContain(NARRATIVE_SEPARATOR);
+    expect(both.length, 'no day carries a bed at both ends').toBeGreaterThan(0);
+
+    for (const block of both) {
+      // Sliced at the marker rather than matched with a lazy `</div>`, which cannot see where
+      // a nested span ends and silently reports one row for two.
+      const [, morning, evening] = block.split('<div class="pdf-event pdf-bed">');
+      expect(evening, 'a day with two beds split into two rows').toBeTruthy();
+      // The morning bed leads the block and the evening bed closes it — a frame is not one of
+      // the day's rows, so neither may land inside a daypart section.
+      expect(block.indexOf('pdf-bed')).toBeLessThan(block.indexOf('pdf-part-head'));
+      expect(block.lastIndexOf('pdf-bed')).toBeGreaterThan(block.lastIndexOf('pdf-part-head'));
+      // The bound rides the row's own time column, where it positions nothing.
+      // `sharedTimeText` wraps the word and sets the clock in mono, so the pair is asserted
+      // as it renders rather than as a bare string — which is the thirteenth amendment's own
+      // rule about this column: the Hebrew word must NOT be inside the mono span.
+      const morningTime = morning.slice(0, morning.indexOf('</div>'));
+      expect(morningTime).toContain('class="pdf-word"');
+      expect(morningTime).toContain('11:00');
+      expect(evening.slice(0, evening.indexOf('</div>'))).toContain('15:00');
+      // And the leg into tonight's bed prints above it, like every other leg on the page.
+      expect(block).toContain('class="pdf-journey"');
     }
-    // Every moment is a block, on a one-moment day too — so a day with one never quietly
-    // becomes the inline shape the pair was joined in.
-    for (const line of lines) expect(line).toContain('class="pdf-moment"');
+
+    // The header lost the clause and the clocks with it: a field the projection no longer
+    // publishes cannot be printed, and the class it was styled by is gone too.
+    // Asserted as MARKUP, not as a substring: the sheet's own comment still names both
+    // classes, saying what replaced them, and a bare substring test reads that as a render.
+    expect(full).not.toContain('class="pdf-stay-when"');
+    expect(full).not.toContain('class="pdf-stay"');
   });
 
   // A composed line cannot sniff its own direction — see `itinerary-narrative.fallback.ts`.

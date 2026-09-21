@@ -1087,7 +1087,7 @@ describe('SharingProjectionService', () => {
 
     it('lifts the stay out of the schedule and onto the day', async () => {
       const day = (await project()).days[0];
-      expect(day.stay).toBe('Gissurarbud 5');
+      expect(day.sleeps?.name).toBe('Gissurarbud 5');
 
       // And it is no longer a row, so nothing can sort between the flight legs and nothing
       // prints `17:00–13:00`.
@@ -1358,6 +1358,251 @@ describe('SharingProjectionService', () => {
   });
 
   /**
+   * **A DAY STARTS AND ENDS AT A BED, ON EVERY NIGHT THE STAY COVERS** (ADR-0238).
+   *
+   * Three findings, one fixture, because they are one defect seen from three sides:
+   *
+   *  - **F2** the frame was read out of the one day bucket a span was FILED in, so a
+   *    two-night stay framed its check-in day and neither of the others — and the check-out
+   *    printed on the SECOND morning, which is the day after the one it was derived from.
+   *  - **F1** the journey chain started at the day's first scheduled row and stopped at its
+   *    last, so the two legs the app calls the most certain were on neither renderer.
+   *  - **F3** `journeyLookup` read `event.placeId` raw, which ADR-0048 clears on every
+   *    booking-backed row — so the booked dinner below resolved to nothing, the pair was
+   *    skipped, and the chain carried the museum forward across it.
+   *
+   * The stay is a hotel BOOKING with the place on the booking and nothing on the event, which
+   * is the shape every hotel in this app has and the reason F3 is load-bearing here rather
+   * than a drive-by: without it the bed has no coordinates and no leg can be measured to it.
+   */
+  describe('a day starts and ends at a bed', () => {
+    let bedTripId = '';
+    let bedCode = '';
+
+    const HOTEL = { lat: 64.1466, lng: -21.9426 };
+    const MUSEUM = { lat: 64.15, lng: -21.95 };
+    const DINNER = { lat: 64.16, lng: -21.9 };
+    const PAIRS: [typeof HOTEL, typeof HOTEL][] = [
+      [HOTEL, MUSEUM],
+      [MUSEUM, DINNER],
+      [DINNER, HOTEL],
+    ];
+    const legKeys = () =>
+      PAIRS.flatMap(([from, to]) =>
+        [TRAVEL_MODE.WALKING, TRAVEL_MODE.DRIVING].map((mode) => routeLegKey(from, to, mode)),
+      );
+
+    beforeAll(async () => {
+      const trip = await prisma.trip.create({
+        data: {
+          name: 'איסלנד · לילה אמצעי',
+          destination: 'איסלנד',
+          startDate: new Date('2026-09-11'),
+          endDate: new Date('2026-09-13'),
+          timezone: 'Atlantic/Reykjavik',
+          createdBy: OWNER,
+          updatedBy: OWNER,
+          memberships: { create: [{ userId: OWNER, role: 'admin' }] },
+        },
+      });
+      bedTripId = trip.id;
+
+      const place = (name: string, at: { lat: number; lng: number }) =>
+        prisma.place.create({
+          data: {
+            tripId: trip.id,
+            name,
+            lat: at.lat,
+            lng: at.lng,
+            timezone: 'Atlantic/Reykjavik',
+            updatedBy: OWNER,
+          },
+        });
+      const [hotel, museum, dinner] = await Promise.all([
+        place('מלון קליפורניה', HOTEL),
+        place('המוזיאון הלאומי', MUSEUM),
+        place('מסעדת הנמל', DINNER),
+      ]);
+
+      // **A stay of two nights, and the place is on the BOOKING** — ADR-0048's shape.
+      const stayBooking = await prisma.booking.create({
+        data: {
+          tripId: trip.id,
+          type: 'hotel',
+          title: 'מלון קליפורניה',
+          placeId: hotel.id,
+          updatedBy: OWNER,
+        },
+      });
+      await prisma.event.create({
+        data: {
+          tripId: trip.id,
+          date: new Date('2026-09-11'),
+          endDate: new Date('2026-09-13'),
+          title: 'מלון קליפורניה',
+          // The category is what makes a check-in a FLOOR (ADR-0171's profile); a fixture
+          // without it would assert the right clock for the wrong reason.
+          category: 'lodging',
+          kind: 'hard',
+          startsAt: new Date('2026-09-11T15:00:00Z'),
+          endsAt: new Date('2026-09-13T11:00:00Z'),
+          bookingId: stayBooking.id,
+          updatedBy: OWNER,
+        },
+      });
+
+      // The middle day: an unbooked stop, then a BOOKED one. The second is F3's whole case.
+      await prisma.event.create({
+        data: {
+          tripId: trip.id,
+          date: new Date('2026-09-12'),
+          title: 'המוזיאון הלאומי',
+          kind: 'soft',
+          startsAt: new Date('2026-09-12T10:00:00Z'),
+          placeId: museum.id,
+          updatedBy: OWNER,
+        },
+      });
+      const dinnerBooking = await prisma.booking.create({
+        data: {
+          tripId: trip.id,
+          type: 'restaurant',
+          title: 'מסעדת הנמל',
+          placeId: dinner.id,
+          updatedBy: OWNER,
+        },
+      });
+      await prisma.event.create({
+        data: {
+          tripId: trip.id,
+          date: new Date('2026-09-12'),
+          title: 'מסעדת הנמל',
+          kind: 'hard',
+          startsAt: new Date('2026-09-12T19:00:00Z'),
+          bookingId: dinnerBooking.id,
+          updatedBy: OWNER,
+        },
+      });
+
+      // Both modes for every pair, for the reason the block above gives: the walk is what
+      // `defaultLegTravelMode` reads to pick, and the drive is what then prints.
+      await prisma.routeLeg.createMany({
+        data: PAIRS.flatMap(([from, to]) =>
+          [TRAVEL_MODE.WALKING, TRAVEL_MODE.DRIVING].map((mode) => ({
+            key: routeLegKey(from, to, mode),
+            mode,
+            fromLat: from.lat,
+            fromLng: from.lng,
+            toLat: to.lat,
+            toLng: to.lng,
+            durationSeconds: mode === TRAVEL_MODE.WALKING ? 3_600 : 600,
+            distanceMeters: 5_000,
+            provider: 'test',
+          })),
+        ),
+      });
+
+      bedCode = generatePublicCode();
+      await prisma.tripShare.create({
+        data: {
+          tripId: trip.id,
+          code: bedCode,
+          policyHash: sharePolicyHash({
+            detailLevel: SHARE_DETAIL_LEVEL.FULL,
+            sensitive: { bookingSecrets: false, notesAndTasks: false, travelerIdentity: false },
+            documentIds: [],
+          }),
+          detailLevel: SHARE_DETAIL_LEVEL.FULL,
+          includeBookingSecrets: false,
+          includeNotesAndTasks: false,
+          includeTravelerIdentity: false,
+          createdBy: OWNER,
+        },
+      });
+    });
+
+    afterAll(async () => {
+      await prisma.routeLeg.deleteMany({ where: { key: { in: legKeys() } } });
+      if (bedTripId) await prisma.trip.deleteMany({ where: { id: bedTripId } });
+    });
+
+    /** One share for the block: `TripShare` is unique on (tripId, policyHash), so a second
+     *  one at the same level is a constraint violation rather than a second link. */
+    const projectBeds = async () => {
+      const projection = await service.byCode(bedCode);
+      const dayOn = (date: string) => projection.days.find((day) => day.date === date)!;
+      return { projection, dayOn };
+    };
+
+    it('frames every night the stay covers, not only the night it was filed in', async () => {
+      const { dayOn } = await projectBeds();
+
+      // The check-in day sleeps somewhere and woke nowhere this trip knows about.
+      expect(dayOn('2026-09-11').wokeIn).toBeUndefined();
+      expect(dayOn('2026-09-11').sleeps?.name).toBe('מלון קליפורניה');
+
+      // **The middle night is BOTH ends, with the same stay** — the case that had no frame at
+      // all, and the one `dayBookendStays` answers without a rule of its own.
+      expect(dayOn('2026-09-12').wokeIn?.name).toBe('מלון קליפורניה');
+      expect(dayOn('2026-09-12').sleeps?.name).toBe('מלון קליפורניה');
+
+      // The check-out morning woke there and sleeps nowhere.
+      expect(dayOn('2026-09-13').wokeIn?.name).toBe('מלון קליפורניה');
+      expect(dayOn('2026-09-13').sleeps).toBeUndefined();
+    });
+
+    it('prints the check-out on the morning you leave, and on no other', async () => {
+      const { projection, dayOn } = await projectBeds();
+
+      // **The defect, stated as the assertion that would have caught it**: the check-out used
+      // to print on the 12th — the day after the span was filed — because "last night was
+      // somewhere else" is true the moment the frame vanishes.
+      expect(dayOn('2026-09-12').wokeIn?.time).toBeUndefined();
+      expect(dayOn('2026-09-13').wokeIn?.time?.label).toBe('11:00');
+      // And it is stated once, on that morning alone.
+      expect(projection.days.filter((day) => day.wokeIn?.time)).toHaveLength(1);
+
+      // The check-in is a floor and says so, on the day the run begins and nowhere else.
+      expect(dayOn('2026-09-11').sleeps?.time).toEqual({
+        label: '15:00',
+        meaning: TIME_MEANING.NOT_BEFORE,
+      });
+      expect(dayOn('2026-09-12').sleeps?.time).toBeUndefined();
+    });
+
+    it('draws the leg out of the bed on the day’s first row, and the leg back on the bed', async () => {
+      const { dayOn } = await projectBeds();
+      const middle = dayOn('2026-09-12');
+      const rows = middle.sections.flatMap((section) => section.events);
+
+      // Out of the bed: it rides the first scheduled row, because `journey` already means
+      // "the leg INTO this row" and that is exactly what the walk out of the hotel is.
+      const museum = rows.find((event) => event.title.includes('המוזיאון'))!;
+      expect(museum.journey).toEqual({ mode: TRAVEL_MODE.DRIVING, minutes: 10, km: 5 });
+
+      // …and back into it, on the bed itself — the one new place a journey can live.
+      expect(middle.sleeps?.journey).toEqual({ mode: TRAVEL_MODE.DRIVING, minutes: 10, km: 5 });
+
+      // The morning bed never carries one: a second place to say the same leg is what the
+      // contract refuses (ADR-0238 §2).
+      expect(middle.wokeIn?.journey).toBeUndefined();
+    });
+
+    it('puts a BOOKED stop on the chain, so the drive into it is drawn', async () => {
+      const { dayOn } = await projectBeds();
+      const rows = dayOn('2026-09-12').sections.flatMap((section) => section.events);
+
+      // **F3.** The dinner's place is on its booking and `Event.placeId` is null, so the old
+      // resolution answered nothing: no leg into it, and the chain carried the museum forward
+      // to the hotel instead. Both halves are asserted — the leg that appears, and the fact
+      // that the day now measures three legs rather than one.
+      const dinner = rows.find((event) => event.title.includes('מסעדת'))!;
+      expect(dinner.journey).toEqual({ mode: TRAVEL_MODE.DRIVING, minutes: 10, km: 5 });
+      expect(rows.filter((event) => event.journey)).toHaveLength(2);
+    });
+  });
+
+  /**
    * **A CLOCK MEANS THE ZONE ITS END IS IN** (owner, 2026-09-01, with the app, the reader
    * page and the PDF side by side: _"The timezone derivation is simply wrong - see how plan
    * day doesn't agree with the times. And how the durations don't add up"_).
@@ -1567,10 +1812,10 @@ describe('SharingProjectionService', () => {
 
     it('prints the stay’s check-in in the hotel’s own zone, not the segment you are still in', async () => {
       const projection = await project();
-      const day = projection.days.find((d) => d.checkIn);
+      const day = projection.days.find((d) => d.sleeps?.time);
       // 15:00 Iceland. The crossings put you in Vienna at that instant, which is true and is
       // not the question: the hotel's door opens at 15:00 where the hotel is.
-      expect(day?.checkIn?.label).toBe('15:00');
+      expect(day?.sleeps?.time?.label).toBe('15:00');
     });
 
     /**

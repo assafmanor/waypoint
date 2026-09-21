@@ -196,10 +196,6 @@ export const PDF_COPY = {
      *  `REGION` needs no entry: its value is a place name and prints as itself. */
     [SHARE_DAY_KIND.KIND]: (noun: string) => `יום ${noun}`,
   },
-  /** The owner's own phrasing for the day's second line: _"night at…, Sleeping at…"_. */
-  daySummary: {
-    [SHARE_DAY_SUMMARY_KIND.STAY]: (place: string) => `לינה ב${place}`,
-  },
   /** **The same eight words the app already uses** (`he.ts`'s `index.bookingType`), for
    *  the same reason this file carries the daypart words: the print renderer cannot import
    *  the React app's i18n. Reword one and reword the other — they are named in each
@@ -215,6 +211,12 @@ export const PDF_COPY = {
     other: 'אחר',
   } satisfies Record<BookingType, string>,
 } as const;
+
+/** **The glyph a bed row carries** (ADR-0238 §4) — the app's own `DEFAULT_STAY_ICON`, which
+ *  this file cannot import for the reason every other string here exists: the print renderer
+ *  runs server-side and the app's constants live behind the frontend's `tsc`. Change one and
+ *  change the other; they name each other so the pair cannot be missed. */
+export const PDF_STAY_GLYPH = '🏨';
 
 /** The same marks the reader uses, for the same sections. */
 export const PDF_DAYPART_MARK = {

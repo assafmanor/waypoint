@@ -78,12 +78,16 @@ describe('fallbackDayTitle', () => {
 });
 
 describe('fallbackDaySummary', () => {
-  it('says where the night is, in preference to what the day held', () => {
+  // **It used to lead with where the night is, and that rung is gone** (ADR-0238 §1): the
+  // shared day carries its two beds as rows of its own now, so a second line reading
+  // `לינה ב…` could only restate the frame around it. `lodgingPlace` is still read — by the
+  // TITLE above, which is asserted separately.
+  it('says what the day held, even on a day that has a bed to name', () => {
     expect(
       fallbackDaySummary(facts({ lodgingPlace: 'Laugavegur 22', eventTitles: ['מפל גולפוס'] }), {
         kind: SHARE_DAY_KIND.NONE,
       }),
-    ).toEqual({ kind: SHARE_DAY_SUMMARY_KIND.STAY, place: 'Laugavegur 22' });
+    ).toEqual({ kind: SHARE_DAY_SUMMARY_KIND.EVENTS, titles: ['מפל גולפוס'] });
   });
 
   // **The second line must not repeat the first.** This is the whole reason a flight day

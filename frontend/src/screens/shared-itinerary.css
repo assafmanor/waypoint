@@ -457,6 +457,21 @@
   border-inline-start: 3px solid var(--amber-deep);
 }
 
+/* **THE DAY'S FRAME, NOT ONE OF ITS STOPS** (ADR-0238 §1, drawn in
+   `mockups/a-shared-day-starts-and-ends-at-a-bed-v1.html`).
+
+   The two bed rows are `.sh-event`s — same grid, same glyph column, same place line — because
+   a bed is exactly that row with a hotel's name and `לינה · עד 11:00` on it, and inventing a
+   second row shape for it is what root rule 8 exists to stop. What they drop is the card fill:
+   the day body's own tint shows through and a hairline states the edge, so a frame does not
+   read as a stop somebody scheduled. Position alone would say it on a day that HAS stops and
+   says nothing on a day whose schedule is otherwise empty, which is why this is two
+   declarations rather than none. Measured at ⁦55px⁩, identical to the row it borrows. */
+.sh-bed {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
 .sh-event-glyph {
   font-size: 17px;
   text-align: center;

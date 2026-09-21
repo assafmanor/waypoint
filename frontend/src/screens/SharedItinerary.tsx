@@ -12,6 +12,7 @@ import {
   TIME_MEANING,
   type ShareOpKind,
   type SharedDay,
+  type SharedDayBed,
   type SharedDaySummary,
   type SharedDayTitle,
   type SharedEvent,
@@ -20,6 +21,7 @@ import {
   type SharedItinerary as SharedItineraryProjection,
 } from '@waypoint/shared';
 import {
+  DEFAULT_STAY_ICON,
   BOOKING_TYPE_MARK,
   DOWNLOAD_SETTLE_MS,
   GLYPH,
@@ -131,8 +133,6 @@ function assertNever(value: never): string {
 
 function daySummaryText(summary: SharedDaySummary): string {
   switch (summary.kind) {
-    case SHARE_DAY_SUMMARY_KIND.STAY:
-      return t.share.public.daySummary.stay(autoIsolate(summary.place));
     case SHARE_DAY_SUMMARY_KIND.EVENTS:
       return summary.titles.map(autoIsolate).join(NARRATIVE_SEPARATOR);
     case SHARE_DAY_SUMMARY_KIND.TEXT:
@@ -543,6 +543,7 @@ export function SharedItinerary() {
               open={open === day.ordinal}
               onToggle={() => setOpenDay(open === day.ordinal ? null : day.ordinal)}
               code={code}
+              summary={summary}
               // The marker only exists where there is a "now" to mark and times for it to sit
               // between — today's card, at Full and above (§5).
               nowLabel={isNow && wantsNowLine ? nowLabel : undefined}
@@ -626,12 +627,17 @@ function DayCard({
   onToggle,
   code,
   nowLabel,
+  summary,
 }: {
   day: SharedDay;
   phase: DayPhase;
   open: boolean;
   onToggle: () => void;
   code: string;
+  /** **Summary draws no bed rows** (ADR-0238 §5). §1 gives a bed a position so the day's two
+   *  legs have an origin and a destination on the page, and Summary has no legs, no clocks and
+   *  no addresses — so the fact stays where it shipped, on the header's own line. */
+  summary: boolean;
   /** The trip's wall clock, present only on the card the trip is on and only where the level
    *  carries times. Absent is the answer for every other card. */
   nowLabel?: string;
@@ -645,6 +651,8 @@ function DayCard({
   const dayNumbers = endParts ? `${dayNumber}–${endParts.day}` : dayNumber;
   const weekday = endParts ? `${firstWeekday}–${endParts.weekday}` : firstWeekday;
   const isNow = phase === DAY_PHASE.TODAY;
+  /** The bed the collapsed header names — tonight's, else the one this day woke in. */
+  const bedName = day.sleeps?.name ?? day.wokeIn?.name;
   // Where the marker sits, or nothing — `shareNowLine` refuses a day that crosses a zone and
   // a day with no timed row, and those refusals are its answer rather than a gap (§5).
   const marker = nowLabel ? shareNowLine(day, nowLabel) : null;
@@ -681,26 +689,40 @@ function DayCard({
            inventing one — the date is then the name. Composed server-side with its values
            already isolated, which is why the head must not sniff. */
         title={dayTitleText(day.title) || `${weekday} ${ltrIsolate(dayNumbers)}`}
-        lines={[
-          /* **Where you sleep frames the day** (ADR-0213's 2026-08-30 amendment). It used to
-             be a row in the afternoon, sorted there by its check-in hour — which on the
-             outbound day put it between the two legs of the flight, and printed `15:00–11:00`
-             because a stay's span crosses midnight. */
-          day.stay ? (
-            <span className="sh-stay">
-              <Icon name="hotel" />
-              {t.share.public.stay(autoIsolate(day.stay))}
-            </span>
-          ) : (
-            <span>{daySummaryText(day.summary)}</span>
-          ),
-          <StayWhen day={day} />,
-        ]}
+        lines={
+          /* **WHERE YOU SLEEP IS THE COLLAPSED CARD'S LINE, AND THE OPEN ONE'S ROWS**
+             (ADR-0238 §1, decided by the build — the drawing shows an open day only).
+
+             This page is an accordion: one day's body is open and every other card is its
+             header alone, so the header is the scanning surface and dropping the bed from it
+             would cost a reader the one fact they scan twelve days for. Open, the two bed rows
+             state it in the schedule with their legs attached, and repeating it here would be
+             the third mention of one hotel on one card — which is what ADR-0209 subtracted for
+             the app. `sleeps` before `wokeIn` because `לנים ב…` is about tonight; on a
+             check-out day only the morning bed exists and it is the honest answer. */
+          open && !summary
+            ? [<span key="sum">{daySummaryText(day.summary)}</span>]
+            : [
+                bedName ? (
+                  <span className="sh-stay">
+                    <Icon name="hotel" />
+                    {t.share.public.stay(autoIsolate(bedName))}
+                  </span>
+                ) : (
+                  <span>{daySummaryText(day.summary)}</span>
+                ),
+                <StayWhen day={day} />,
+              ]
+        }
         shot={day.photo}
         trailing={<Icon name="caret" />}
       />
       {open ? (
         <div className="sh-day-body">
+          {/* **The day opens at the bed it woke in** (ADR-0238 §1) — outside the daypart
+              sections, because a stay is the day's frame and not something you perform at an
+              hour of it (ADR-0209 §2 / ADR-0054 §2). */}
+          {day.wokeIn && !summary ? <BedRow bed={day.wokeIn} /> : null}
           {day.sections.map((section) => (
             <section className="sh-part" key={section.daypart}>
               <header className="sh-part-head">
@@ -752,6 +774,8 @@ function DayCard({
               })}
             </section>
           ))}
+          {/* …and closes at the bed it ends in, with the leg that got you there. */}
+          {day.sleeps && !summary ? <BedRow bed={day.sleeps} /> : null}
         </div>
       ) : null}
     </section>
@@ -814,20 +838,74 @@ function DayCard({
  * column already takes.
  */
 function StayWhen({ day }: { day: SharedDay }) {
-  if (!day.checkIn && !day.checkOut) return null;
+  // **Off the two beds since ADR-0238 §1**, which is the same two moments and the first time
+  // they land on the right days: they were derived from the day bucket a span was FILED in, so
+  // a four-night stay printed its check-out on the SECOND morning and never again.
+  const checkOut = day.wokeIn?.time;
+  const checkIn = day.sleeps?.time;
+  if (!checkIn && !checkOut) return null;
   return (
     <span className="sh-stay-when">
-      {day.checkOut ? (
+      {checkOut ? (
         <span className="sh-moment">
-          {t.share.public.checkOut} <SharedTimeText time={day.checkOut} />
+          {t.share.public.checkOut} <SharedTimeText time={checkOut} />
         </span>
       ) : null}
-      {day.checkIn ? (
+      {checkIn ? (
         <span className="sh-moment">
-          {t.share.public.checkIn} <SharedTimeText time={day.checkIn} />
+          {t.share.public.checkIn} <SharedTimeText time={checkIn} />
         </span>
       ) : null}
     </span>
+  );
+}
+
+/**
+ * **ONE END OF THE DAY, AS A ROW OF ITS SCHEDULE** (ADR-0238 §1/§2).
+ *
+ * The app's answer, carried here: where the day starts and ends is certain and gets a
+ * position; the stay's own bound is quiet beside it and positions nothing (ADR-0209 §1).
+ *
+ * **It is an `.sh-event` and nothing else** — the hotel's glyph, its name, and `לינה · עד 11:00`
+ * on the place line, which is the row this page already draws for every booked stop. What it
+ * adds is one modifier: the frame reads quieter than a stop somebody scheduled, which position
+ * alone cannot say on a day whose schedule is otherwise empty.
+ *
+ * The leg INTO the evening bed renders above it, the same sibling `.sh-journey` an event's
+ * journey renders as — the morning bed has none, because the walk out of it is the journey on
+ * the day's first scheduled row (`SharedEvent.journey` already means the leg into a row).
+ */
+function BedRow({ bed }: { bed: SharedDayBed }) {
+  return (
+    <>
+      {bed.journey ? (
+        <div className="sh-journey">
+          <Icon name={bed.journey.mode} />
+          {t.share.public.journey(
+            t.travelMode[bed.journey.mode],
+            bed.journey.minutes,
+            bed.journey.km,
+          )}
+        </div>
+      ) : null}
+      <article className="sh-event sh-bed">
+        <span className="sh-event-glyph" aria-hidden="true">
+          {DEFAULT_STAY_ICON}
+        </span>
+        <span className="sh-event-main">
+          <strong>{autoIsolate(bed.name)}</strong>
+          <span className="sh-place-line">
+            <b className="sh-kind">{t.index.bookingType.hotel}</b>
+            {bed.time ? (
+              <>
+                {' · '}
+                <SharedTimeText time={bed.time} />
+              </>
+            ) : null}
+          </span>
+        </span>
+      </article>
+    </>
   );
 }
 
