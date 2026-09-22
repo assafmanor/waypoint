@@ -200,19 +200,21 @@ export function fallbackDayTitle(facts: DayFacts): SharedDayTitle {
 /**
  * **A day's second line, and it must not repeat the first.**
  *
- * Where you sleep beats what you did: it is the one fact a reader scans a day for that the
- * headline never carries. Only a day with no bed to name falls back to its events — and
- * then to the ones the headline did not already say, which on a flight day is what stopped
- * two airport names printing under a headline made of the same two airport names.
+ * It says what the day held, filtered of anything the headline already put on screen — which
+ * on a flight day is what stopped two airport names printing under a headline made of the
+ * same two airport names.
+ *
+ * **It used to lead with where you sleep, and that rung is gone** (ADR-0238 §1): the shared
+ * day now carries its two beds as `wokeIn`/`sleeps`, each with a row of its own, so a line
+ * reading `לינה ב…` could only restate the frame around it. `lodgingPlace` is still read — by
+ * the title above, to pick the day's significant place on a star trip without naming the base
+ * that every one of its days starts and ends at.
  *
  * The reader's line, not the app's: ADR-0209 names a stay once, as its bookend rows, so the
  * day head has no stay line (ADR-0219 §2). It moves with its title because the two are one
  * derivation and splitting them across two packages is what lets them drift.
  */
 export function fallbackDaySummary(facts: DayFacts, title: SharedDayTitle): SharedDaySummary {
-  if (facts.lodgingPlace) {
-    return { kind: SHARE_DAY_SUMMARY_KIND.STAY, place: facts.lodgingPlace };
-  }
   const said = new Set(titleValues(title));
   const titles = facts.eventTitles
     .filter((eventTitle) => !said.has(eventTitle.trim()))

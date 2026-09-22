@@ -68,6 +68,11 @@ export function pdfSpan(minutes: number): string {
   return `${m} דק׳`;
 }
 
+/** **The two nouns, defined once** — the composed pair below and the bed rows both read them,
+ *  so `צ׳ק-אאוט` has one spelling in this file (ADR-0238 §1's 2026-09-21 correction). */
+const PDF_CHECK_IN = 'צ׳ק-אין';
+const PDF_CHECK_OUT = 'צ׳ק-אאוט';
+
 export const PDF_COPY = {
   /** **A journey's header names where it ENDS** (ADR-0213 ninth amendment §1) — the legs
    *  beneath it already spell the route out, and repeating it above them put the same two
@@ -129,6 +134,11 @@ export const PDF_COPY = {
   bases: (count: number) => `${count} ${count === 1 ? 'בסיס' : 'בסיסים'}`,
   /** Where you sleep, as the day's frame rather than a row in its afternoon. */
   stay: (place: string) => `לנים ${bindPrefix('ב', place)}`,
+  /** **Where a leg leaves from, said only where the row above it is not its origin**
+   *  (ADR-0238 §1's 2026-09-21 correction). Same word and same binding as the screen's
+   *  `t.share.public.legFrom`, which is the same word the app spends on the same situation
+   *  (`t.travel.from`, ADR-0232 R3) — three surfaces, one sentence. */
+  legFrom: (origin: string) => bindPrefix('מ', origin),
   /** The wait between two legs of one journey, named by the place you wait IN. */
   layover: (place: string, span: string) => `המתנה ${bindPrefix('ב', place)} · ${span}`,
   /**
@@ -144,12 +154,19 @@ export const PDF_COPY = {
    */
   timeFrom: (clock: string) => `מ-${clock}`,
   timeUntil: (clock: string) => `עד ${clock}`,
-  /** The stay's two moments on the day header (§2). The nouns are the app's
-   *  (`t.transition.checkIn`/`checkOut`), so paper and screen name them the same. */
-  checkIn: (when: string) => `צ׳ק-אין ${when}`,
+  /** The stay's two moments. The nouns are the app's (`t.transition.checkIn`/`checkOut`), so
+   *  paper and screen name them the same.
+   *
+   *  **The bare nouns are the definition and the composed pair reads them** (ADR-0238 §1's
+   *  2026-09-21 correction): a bed row states the edge it IS and leaves the clock to the
+   *  column that is for clocks, so paper needs the word without a time glued to it. Two
+   *  spellings of `צ׳ק-אאוט` in one file is exactly what this block exists to prevent. */
+  checkInLabel: PDF_CHECK_IN,
   /** **No place** (2026-08-31) — the day card above names it, and naming it twice put a past
    *  place under tonight's and inside the amber clock run. */
-  checkOut: (when: string) => `צ׳ק-אאוט ${when}`,
+  checkOutLabel: PDF_CHECK_OUT,
+  checkIn: (when: string) => `${PDF_CHECK_IN} ${when}`,
+  checkOut: (when: string) => `${PDF_CHECK_OUT} ${when}`,
   /** Four words for the four op kinds, printed inline because paper has no fold. */
   ops: { code: 'קוד', note: 'פתק', task: 'משימה', file: 'קובץ' },
   appendix: {
@@ -196,10 +213,6 @@ export const PDF_COPY = {
      *  `REGION` needs no entry: its value is a place name and prints as itself. */
     [SHARE_DAY_KIND.KIND]: (noun: string) => `יום ${noun}`,
   },
-  /** The owner's own phrasing for the day's second line: _"night at…, Sleeping at…"_. */
-  daySummary: {
-    [SHARE_DAY_SUMMARY_KIND.STAY]: (place: string) => `לינה ב${place}`,
-  },
   /** **The same eight words the app already uses** (`he.ts`'s `index.bookingType`), for
    *  the same reason this file carries the daypart words: the print renderer cannot import
    *  the React app's i18n. Reword one and reword the other — they are named in each
@@ -215,6 +228,12 @@ export const PDF_COPY = {
     other: 'אחר',
   } satisfies Record<BookingType, string>,
 } as const;
+
+/** **The glyph a bed row carries** (ADR-0238 §4) — the app's own `DEFAULT_STAY_ICON`, which
+ *  this file cannot import for the reason every other string here exists: the print renderer
+ *  runs server-side and the app's constants live behind the frontend's `tsc`. Change one and
+ *  change the other; they name each other so the pair cannot be missed. */
+export const PDF_STAY_GLYPH = '🏨';
 
 /** The same marks the reader uses, for the same sections. */
 export const PDF_DAYPART_MARK = {

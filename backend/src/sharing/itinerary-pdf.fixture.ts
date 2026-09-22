@@ -7,6 +7,7 @@ import {
   SHARE_OP_KIND,
   SHARE_TRIP_SHAPE,
   TIME_MEANING,
+  TRAVEL_MODE,
   type BookingType,
   type SharedDay,
   type SharedDayTitle,
@@ -38,7 +39,7 @@ const DAYS: [
   [
     '2026-08-29',
     { kind: SHARE_DAY_KIND.FLIGHT_OUT, to: 'איסלנד' },
-    { kind: SHARE_DAY_SUMMARY_KIND.STAY, place: 'Laugavegur 22' },
+    { kind: SHARE_DAY_SUMMARY_KIND.EVENTS, titles: ['נחיתה בקפלאוויק', 'ארוחת ערב ברייקיאוויק'] },
     [
       // Carries an END, so the range renders: a flight has to say when it lands.
       ['09:20', 'נחיתה בקפלוויק', 'KEF', 'MORNING', BOOKING_TYPE.FLIGHT, '14:05'],
@@ -73,7 +74,7 @@ const DAYS: [
   [
     '2026-09-01',
     { kind: SHARE_DAY_KIND.PLACE, at: 'סיידיספיורדור' },
-    { kind: SHARE_DAY_SUMMARY_KIND.STAY, place: 'Norðurgata 2' },
+    { kind: SHARE_DAY_SUMMARY_KIND.EVENTS, titles: ['מפל דטיפוס', 'נסיעה לאקורייררי'] },
     [
       ['09:00', 'שביל ב׳יולפור', 'Bjólfur', 'MORNING'],
       ['15:30', 'קפה בנורד אוסטור', 'Norðurgata 2', 'AFTERNOON'],
@@ -160,21 +161,35 @@ const days: SharedDay[] = DAYS.map(([date, title, summary, events], index) => {
     timezone: index === DAYS.length - 1 ? 'Asia/Jerusalem' : 'Atlantic/Reykjavik',
     title,
     summary,
-    // **The reference trip has to exercise what the renderer draws.** Without a stay on any
-    // day the masthead's nights tile printed `0 לילות` in the smoke render, which looks
-    // like a defect and hides one. Every day but the last has a night; the day you fly
-    // home does not, which is also the shape that proves the tile counts rather than
-    // assuming `dayCount - 1`.
-    ...(index < DAYS.length - 1 ? { stay: FIXTURE_STAYS[index % FIXTURE_STAYS.length] } : {}),
-    // **The stay's two moments, so the renderer's own header is exercised** (ADR-0213's
-    // 2026-09-01 amendment §4). They were absent, which is why the tofu guard never saw
-    // `צ׳ק-אאוט עד` — a Hebrew word beside a mono clock, the exact shape the thirteenth
-    // amendment found printing as boxes. A check-in wherever there is a night; a check-out on
-    // every day but the first, since nothing is being left on the day you arrive.
-    ...(index < DAYS.length - 1
-      ? { checkIn: { label: '15:00', endLabel: '21:00', meaning: TIME_MEANING.WINDOW } }
+    // **The reference trip has to exercise what the renderer draws** (ADR-0238 §4). Without a
+    // bed on any day the masthead's nights tile printed `0 לילות` in the smoke render, which
+    // looks like a defect and hides one. Every day but the last has a night; the day you fly
+    // home does not, which is also the shape that proves the tile counts rather than assuming
+    // `dayCount - 1`. And every day but the first woke somewhere, so both ends are drawn.
+    //
+    // **Their two bounds are here for the tofu guard's sake** (ADR-0213's 2026-09-01 amendment
+    // §4): `צ׳ק-אאוט עד` is a Hebrew word beside a mono clock, the exact shape the thirteenth
+    // amendment found printing as boxes. They now ride the rows rather than the header, which
+    // is the only thing about them this change moves.
+    ...(index > 0
+      ? {
+          wokeIn: {
+            name: FIXTURE_STAYS[(index - 1) % FIXTURE_STAYS.length],
+            time: { label: '11:00', meaning: TIME_MEANING.NOT_AFTER },
+          },
+        }
       : {}),
-    ...(index > 0 ? { checkOut: { label: '11:00', meaning: TIME_MEANING.NOT_AFTER } } : {}),
+    ...(index < DAYS.length - 1
+      ? {
+          sleeps: {
+            name: FIXTURE_STAYS[index % FIXTURE_STAYS.length],
+            time: { label: '15:00', endLabel: '21:00', meaning: TIME_MEANING.WINDOW },
+            // The drive into tonight's bed, so the bed row's own journey line is rendered
+            // and measured rather than only its name.
+            journey: { mode: TRAVEL_MODE.DRIVING, minutes: 26, km: 24.8 },
+          },
+        }
+      : {}),
     sections: [...byDaypart.entries()].map(([daypart, bucket]) => ({
       daypart: daypart as SharedDay['sections'][number]['daypart'],
       events: bucket.map((event, position) => ({

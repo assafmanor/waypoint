@@ -24,6 +24,8 @@ import {
   type DayPhotoEvent,
   type DayPhotoPlace,
 } from './sharing';
+import { TIME_MEANING } from './icons';
+import { TRAVEL_MODE } from './constants';
 import type { DeliveredImageValue } from './enrichment';
 
 describe('shareDaypart', () => {
@@ -259,7 +261,7 @@ describe('sharedItinerarySchema', () => {
         date: '2026-08-29',
         timezone: 'Atlantic/Reykjavik',
         title: { kind: SHARE_DAY_KIND.FLIGHT_OUT, to: 'איסלנד' },
-        summary: { kind: SHARE_DAY_SUMMARY_KIND.STAY, place: 'Laugavegur 22' },
+        summary: { kind: SHARE_DAY_SUMMARY_KIND.EVENTS, titles: ['מפל גולפוס'] },
         sections: [
           {
             daypart: SHARE_DAYPART.MORNING,
@@ -313,8 +315,26 @@ describe('sharedItinerarySchema', () => {
         days: [{ ...projection.days[0], ...day }],
       });
 
-    it('takes a stay on the day and a photo that must carry its credit', () => {
-      expect(withDay({ stay: 'Reykjahlíð' }).days[0].stay).toBe('Reykjahlíð');
+    it('takes the day’s two beds and a photo that must carry its credit', () => {
+      // **The two ends, and the leg only the evening one carries** (ADR-0238 §1/§2).
+      const bracketed = withDay({
+        wokeIn: {
+          name: 'Laugavegur 22',
+          time: { label: '11:00', meaning: TIME_MEANING.NOT_AFTER },
+        },
+        sleeps: {
+          name: 'Reykjahlíð',
+          time: { label: '15:00', meaning: TIME_MEANING.NOT_BEFORE },
+          journey: { mode: TRAVEL_MODE.DRIVING, minutes: 26, km: 24.8 },
+        },
+      });
+      expect(bracketed.days[0].wokeIn?.name).toBe('Laugavegur 22');
+      expect(bracketed.days[0].sleeps?.journey?.km).toBe(24.8);
+      // A bed is a name plus, at most, its own bound and its own leg — a renderer cannot be
+      // handed a field the contract never agreed to publish.
+      expect(() => withDay({ sleeps: { name: 'Reykjahlíð', place: 'Mývatn' } })).toThrow();
+      // A bed with no bound and no leg is the ordinary middle night, and it parses.
+      expect(withDay({ sleeps: { name: 'Reykjahlíð' } }).days[0].sleeps?.time).toBeUndefined();
       // Required, never optional: 27 of the 32 Commons files ADR-0166 §12.2 surveyed
       // demand attribution, so a credit a renderer could forget is a licence breach.
       expect(() => withDay({ photo: { url: '/enrichment/images/abc', of: 'גודאפוס' } })).toThrow();

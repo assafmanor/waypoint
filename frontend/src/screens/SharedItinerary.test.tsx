@@ -9,6 +9,7 @@ import {
   SHARE_OP_KIND,
   SHARE_DAYPART,
   SHARE_DETAIL_LEVEL,
+  TRAVEL_MODE,
   TIME_MEANING,
   type SharedItinerary as Projection,
 } from '@waypoint/shared';
@@ -69,7 +70,14 @@ const summaryProjection: Projection = {
       date: '2026-08-29',
       timezone: 'Atlantic/Reykjavik',
       title: { kind: SHARE_DAY_KIND.FLIGHT_OUT, to: 'איסלנד' },
-      summary: { kind: SHARE_DAY_SUMMARY_KIND.STAY, place: 'Laugavegur 22' },
+      summary: { kind: SHARE_DAY_SUMMARY_KIND.EVENTS, titles: ['נחיתה בקפלאוויק'] },
+      // **The day's two ends** (ADR-0238 §1) — a check-in day, so it sleeps somewhere and
+      // woke nowhere this trip knows about.
+      sleeps: {
+        name: 'Laugavegur 22',
+        time: { label: '15:00', meaning: TIME_MEANING.NOT_BEFORE },
+        journey: { mode: TRAVEL_MODE.DRIVING, minutes: 48, km: 51.3 },
+      },
       sections: [
         {
           daypart: SHARE_DAYPART.MORNING,
@@ -97,6 +105,9 @@ const bookedProjection: Projection = {
   days: [
     {
       ...summaryProjection.days[0],
+      // See `fullProjection`: the bed is two rows at this level and this fixture is about one.
+      wokeIn: undefined,
+      sleeps: undefined,
       sections: [
         {
           daypart: SHARE_DAYPART.MORNING,
@@ -153,6 +164,12 @@ const fullProjection: Projection = {
   days: [
     {
       ...summaryProjection.days[0],
+      // **No bed here, deliberately** (ADR-0238 §1). At Full a bed is two ROWS, and the row
+      // assertions below are about what the SCHEDULE says — a frame inherited from the Summary
+      // fixture would put a `.sh-kind` and a hotel name into every one of them. The beds have
+      // a fixture of their own, `bedProjection`.
+      wokeIn: undefined,
+      sleeps: undefined,
       sections: [
         {
           daypart: SHARE_DAYPART.MORNING,
@@ -332,13 +349,16 @@ describe('SharedItinerary', () => {
     expect(screen.getByText(plain(t.share.public.dayTitle.flightOut('איסלנד')))).toBeTruthy();
   });
 
-  // The owner's own phrasing for the second line: _"night at…, Sleeping at…"_.
-  it('names where the night is instead of repeating the day', async () => {
+  // **A COLLAPSED CARD STILL SAYS WHERE YOU SLEEP** (ADR-0238 §1, the build's own call). The
+  // page is an accordion, so every card but one is its header alone — and the header is what a
+  // reader scans twelve days of. Open, the two bed ROWS state it and the header steps back, or
+  // one hotel would be named three times on one card.
+  it('names where the night is on the collapsed card, from the day’s own bed', async () => {
     serve(summaryProjection);
     renderShared();
 
     await screen.findByText('איסלנד עם המשפחה');
-    expect(screen.getByText(plain(t.share.public.daySummary.stay('Laugavegur 22')))).toBeTruthy();
+    expect(screen.getByText(plain(t.share.public.stay('Laugavegur 22')))).toBeTruthy();
   });
 
   // A booking states its type, so the row can say what it IS before it says where — and it
@@ -451,20 +471,28 @@ describe('SharedItinerary', () => {
   });
 
   /**
-   * **THE STAY'S TWO MOMENTS** (§2). A check-in window is the commonest flexible time the
-   * app holds and sharing showed it nowhere, because the fourth amendment moved the stay out
-   * of the schedule into `day.stay` — a name with no clock, so there was no row for a rule
-   * about rows to reach. They come back to the day's FRAME, on their own line.
+   * **THE DAY OPENS AND CLOSES AT A BED, AND EACH ONE CARRIES ITS OWN BOUND** (ADR-0238 §1).
+   *
+   * The two moments were a line in the day's HEADER, derived from the one day bucket a span was
+   * filed in — so a four-night stay printed its check-out on the SECOND morning and named the
+   * hotel on none of the other three. They are the bounds on the two bed rows now, which is the
+   * same two facts with a position, and the position is what the legs hang on.
    */
-  it('states the stay’s check-in and check-out on the day frame', async () => {
+  it('opens and closes the day at a bed, each with its own bound', async () => {
     serve({
       ...fullProjection,
       days: [
         {
           ...fullProjection.days[0],
-          stay: 'פלוּדיר',
-          checkIn: { label: '15:00', endLabel: '21:00', meaning: TIME_MEANING.WINDOW },
-          checkOut: { label: '11:00', meaning: TIME_MEANING.NOT_AFTER },
+          wokeIn: {
+            name: 'ויק',
+            time: { label: '11:00', meaning: TIME_MEANING.NOT_AFTER },
+          },
+          sleeps: {
+            name: 'פלוּדיר',
+            time: { label: '15:00', endLabel: '21:00', meaning: TIME_MEANING.WINDOW },
+            journey: { mode: TRAVEL_MODE.DRIVING, minutes: 26, km: 24.8 },
+          },
         },
         fullProjection.days[1],
       ],
@@ -472,31 +500,96 @@ describe('SharedItinerary', () => {
     const { container } = renderShared();
 
     await screen.findByText('איסלנד עם המשפחה');
-    const when = container.querySelector('.sh-stay-when');
-    expect(when).toBeTruthy();
-    // `plain` is a MATCHER factory for `getByText`, not a string transform — the whole
-    // point here is to read one element's composed text, so the control strip is direct.
-    const text = withoutBidiControls(when!.textContent ?? '');
-    expect(text).toContain(t.share.public.checkIn);
-    expect(text).toContain(withoutBidiControls(t.share.public.timeRange('15:00', '21:00')));
-    // The check-out names no place: the place being left is the card immediately above, and
-    // naming it made this line read future → past → future (§3).
-    expect(text).toContain(t.share.public.checkOut);
-    expect(text).not.toContain('ויק');
-    expect(text).toContain(withoutBidiControls(t.share.public.timeUntil('11:00')));
-    // **And the header is FOUR lines, not seven** (§3, the reported mess). `.wp-dayhead-copy`'s
-    // rules used to be descendant selectors, so the spans `.sh-stay-when` composes its line
-    // out of each became a muted grey block of their own. Only its direct children stack.
-    const copy = container.querySelector('.wp-dayhead-copy')!;
-    const blocks = [...copy.querySelectorAll('span, strong')].filter(
-      (el) => el.parentElement === copy,
+    const beds = [...container.querySelectorAll('.sh-event.sh-bed')];
+    expect(beds, 'a day with two beds draws two rows').toHaveLength(2);
+
+    // **The frames sit OUTSIDE the daypart sections** — a stay is the day's frame and not
+    // something you perform at an hour of it (ADR-0209 §2 / ADR-0054 §2).
+    for (const bed of beds) expect(bed.closest('.sh-part')).toBeNull();
+    const body = container.querySelector('.sh-day-body')!;
+    const kids = [...body.children];
+    expect(kids.indexOf(beds[0])).toBe(0);
+    expect(kids.indexOf(beds[1])).toBe(kids.length - 1);
+
+    // **THE ROW CARRIES NO LABEL, AND ITS BOUND BRINGS ITS OWN NOUN** (ADR-0209 §1, restored
+    // 2026-09-21). It shipped with `לינה` under the name — the event row's grammar on a row
+    // that is not an event — which left a whole line holding one word. The noun is now the
+    // edge this day IS, which is the app's own `edgeSentence`.
+    const morning = withoutBidiControls(beds[0].textContent ?? '');
+    expect(morning).toContain('ויק');
+    expect(morning).toContain(t.share.public.checkOut);
+    expect(morning).toContain(withoutBidiControls(t.share.public.timeUntil('11:00')));
+    expect(morning).not.toContain(t.index.bookingType.hotel);
+    const evening = withoutBidiControls(beds[1].textContent ?? '');
+    expect(evening).toContain('פלוּדיר');
+    expect(evening).toContain(t.share.public.checkIn);
+    // A closed window prints both bounds (ADR-0184 §1) — the one flexible arm that does.
+    expect(evening).toContain(withoutBidiControls(t.share.public.timeRange('15:00', '21:00')));
+
+    // **And the leg into tonight's bed is the page's own journey line**, rendered as the
+    // sibling before the row exactly as an event's journey is (ADR-0238 §2).
+    const journey = beds[1].previousElementSibling;
+    expect(journey?.className).toContain('sh-journey');
+
+    // The open header no longer repeats any of it: one hotel, named twice, as the day's two
+    // ends — which is what ADR-0209 subtracted for the app.
+    expect(container.querySelector('.sh-stay')).toBeNull();
+    expect(container.querySelector('.sh-stay-when')).toBeNull();
+  });
+
+  /**
+   * **A STAY IS NAMED ONCE A DAY** (owner, 2026-09-21, on the built page: _"make it read once
+   * on a middle night"_).
+   *
+   * Both ends being the same stay is exactly when the head frame says nothing the foot does
+   * not — the same name, and no bound, because a middle night is neither edge of its stay. So
+   * only the end the day reaches is published, and the leg out of the bed takes the name
+   * (`journey.from`), which is the one thing that frame was load-bearing for (ADR-0206 §AD).
+   */
+  it('names the stay once on a middle night, and the leg out of it says where it left', async () => {
+    const day = fullProjection.days[0];
+    serve({
+      ...fullProjection,
+      days: [
+        {
+          ...day,
+          sections: [
+            {
+              ...day.sections[0],
+              events: [
+                {
+                  ...day.sections[0].events[0],
+                  journey: { mode: TRAVEL_MODE.DRIVING, minutes: 7, km: 2.4, from: 'ויק' },
+                },
+              ],
+            },
+          ],
+          sleeps: { name: 'ויק', journey: { mode: TRAVEL_MODE.DRIVING, minutes: 22, km: 18.6 } },
+        },
+        fullProjection.days[1],
+      ],
+    });
+    const { container } = renderShared();
+
+    await screen.findByText('איסלנד עם המשפחה');
+    // One row, at the foot, and the hotel is named once in the whole open card.
+    const beds = [...container.querySelectorAll('.sh-event.sh-bed')];
+    expect(beds).toHaveLength(1);
+    const body = container.querySelector('.sh-day-body')!;
+    expect([...body.children].indexOf(beds[0])).toBe(body.children.length - 1);
+    // A middle night is neither edge, so the row is its glyph and its name and nothing else.
+    expect(withoutBidiControls(beds[0].textContent ?? '')).toBe('🏨ויק');
+
+    // **The leg out of it names its origin**, because the bed it leaves has no row above the
+    // line (ADR-0232 R3's rule and its words).
+    const legs = [...container.querySelectorAll('.sh-journey')];
+    expect(withoutBidiControls(legs[0].textContent ?? '')).toContain(
+      withoutBidiControls(t.share.public.legFrom('ויק')),
     );
-    expect(blocks).toHaveLength(3);
-    // **And the two moments are two blocks, not one `·`-joined run** (§4). Joined, the pair
-    // wrapped wherever it ran out of box — which at 360 fell between `צ׳ק-אין` and its own
-    // clock, stranding a noun from the time it names.
-    expect(when!.querySelectorAll('.sh-moment')).toHaveLength(2);
-    expect(text).not.toContain('·');
+    // …and the leg BACK does not: the row above that one is exactly where it leaves from.
+    expect(withoutBidiControls(legs[legs.length - 1].textContent ?? '')).not.toContain(
+      withoutBidiControls(t.share.public.legFrom('ויק')),
+    );
   });
 
   it('captions nothing on a row no booking backs', async () => {
@@ -693,10 +786,23 @@ describe('SharedItinerary', () => {
       return screen.getByText(plain('הזמנת הדירה.pdf'));
     };
 
-    it('says where you sleep in the day header, not as a row in its afternoon', async () => {
-      serve(withDay({ stay: 'Reykjahlíð' }));
+    // **A COLLAPSED CARD SAYS WHERE YOU SLEEP; AN OPEN ONE SHOWS THE ROWS** (ADR-0238 §1).
+    // The page is an accordion, so all but one card is a header — and `withDay` builds day 1,
+    // which this suite leaves closed by opening none.
+    it('says where you sleep in the header of a card that is closed', async () => {
+      // Day 2, because the accordion opens the day it lands on (day 1 here) and an OPEN card
+      // shows the rows instead — which is the other half of the same rule.
+      serve({
+        ...fullProjection,
+        days: [
+          fullProjection.days[0],
+          { ...fullProjection.days[1], sleeps: { name: 'Reykjahlíð' } },
+        ],
+      });
       renderShared();
       expect(await screen.findByText(plain(t.share.public.stay('Reykjahlíð')))).toBeTruthy();
+      // …and it is the header's line, never a row: the body is closed.
+      expect(document.querySelector('.sh-bed')).toBeNull();
     });
 
     it('names the wait between two legs of one journey', async () => {

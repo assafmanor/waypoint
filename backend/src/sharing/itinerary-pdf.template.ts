@@ -8,12 +8,14 @@ import {
   SHARE_DETAIL_LEVEL,
   TIME_MEANING,
   type SharedDay,
+  type SharedDayBed,
+  type SharedJourney,
   type SharedDaySummary,
   type SharedDayTitle,
   type SharedEvent,
   type SharedItinerary,
 } from '@waypoint/shared';
-import { PDF_COPY, PDF_DAYPART_MARK, pdfSpan } from './hebrew.copy';
+import { PDF_COPY, PDF_DAYPART_MARK, PDF_STAY_GLYPH, pdfSpan } from './hebrew.copy';
 import {
   EMOJI_RANGE,
   HEBREW_RANGE,
@@ -140,8 +142,6 @@ function assertNeverTitle(value: never): string {
 
 function daySummaryText(summary: SharedDaySummary): string {
   switch (summary.kind) {
-    case SHARE_DAY_SUMMARY_KIND.STAY:
-      return PDF_COPY.daySummary.stay(auto(summary.place));
     case SHARE_DAY_SUMMARY_KIND.EVENTS:
       return summary.titles.map(auto).join(NARRATIVE_SEPARATOR);
     case SHARE_DAY_SUMMARY_KIND.TEXT:
@@ -220,35 +220,58 @@ function sharedTimeText(time: NonNullable<SharedEvent['time']>): string {
 }
 
 /**
- * **THE STAY'S TWO MOMENTS, ON THE DAY HEADER** (ADR-0213's 2026-08-31 amendment §2).
+ * **ONE END OF THE DAY, AS THE FIRST OR LAST ROW OF ITS BLOCK** (ADR-0238 §4).
  *
- * Its own line under the stay's name, never appended to it — that line is `nowrap` with an
- * ellipsis, and the clock sits at its logical end, so a long hotel name would eat the fact
- * with no sign it had been there (measured on the reader page at ⁦275px⁩ of ink in a ⁦206px⁩
- * box).
+ * This was `stayWhen`, two clocks inside the day's HEADER beside a `לנים ב…` clause. Both
+ * moved here for the reason ADR-0209 §1 gives and ADR-0213 §7 already learned the hard way:
+ * where the day starts and ends is certain and belongs in the reading order, and the two
+ * renderers must not differ about WHAT is stated — only about how.
  *
- * **A MOMENT PER LINE, on paper too** (owner, 2026-09-01: _"I wanted a line break between the
- * check out and check in times"_). This joined the pair with the narrative separator and fitted
- * it on one line, because half an A4 column is wide enough that it never wraps — and that
- * measurement answered the wrong question. The break is not a wrap being repaired; it is how
- * the two moments are meant to read, and the two renderers must not teach different shapes for
- * one line (ADR-0159 §1). Costs one line-height on the day cards that have both moments, which
- * is a transfer day and not most days.
+ * It is a `.pdf-event`, the shape this block already lays out: the bound in the time column
+ * (it positions nothing, it is what the column is for), `לינה` and the place beside it. The
+ * only new declaration is the hairline that says this row is the frame rather than a stop
+ * somebody scheduled.
  *
- * Absent on a middle night, which is most nights: nothing arrives and nothing leaves.
+ * The leg into the evening bed prints above it, exactly as a leg prints above any other row.
  */
-function stayWhen(day: SharedDay): string {
-  // **No place on the check-out** (2026-08-31) — it is the day card directly above, and
-  // naming it made the header read future → past → future with a PLACE in the clock's amber.
-  const parts = [
-    day.checkOut ? PDF_COPY.checkOut(sharedTimeText(day.checkOut)) : '',
-    day.checkIn ? PDF_COPY.checkIn(sharedTimeText(day.checkIn)) : '',
-  ].filter(Boolean);
-  return parts.length > 0
-    ? `<span class="pdf-stay-when">${parts
-        .map((part) => `<span class="pdf-moment">${part}</span>`)
-        .join('')}</span>`
-    : '';
+/** **The drive into a row**, wherever it hangs — an event's own journey or a bed's. It names
+ *  its origin only where the row above it is not one (ADR-0238 §1's correction, ADR-0232 R3's
+ *  rule): the walk out of a bed the day draws once, at its foot, would otherwise read as a
+ *  drive out of nothing at the top of the block. The mode leads the numbers and the numbers
+ *  carry their units — it printed as `37 · 30.5` once, two figures with nothing saying what
+ *  either measured (owner, 2026-08-30). */
+function journeyLine(journey: SharedJourney | undefined): string {
+  if (!journey) return '';
+  const origin = journey.from ? `${PDF_COPY.legFrom(auto(journey.from))} · ` : '';
+  return (
+    `<div class="pdf-journey">${origin}${PDF_COPY.travelMode[journey.mode]} · ` +
+    `${ltr(journey.minutes)} ${PDF_COPY.minutes} · ${ltr(journey.km)} ${PDF_COPY.km}</div>`
+  );
+}
+
+function bedRow(bed: SharedDayBed | undefined, summary: boolean, edge: 'woke' | 'sleeps'): string {
+  // **SUMMARY KEEPS THE CLAUSE AND GETS NO ROWS** (ADR-0238 §5, and the render is what decided
+  // it). §1's argument for giving a bed a position is that a leg drawn out of an origin nobody
+  // can see is a journey with an invisible start — and Summary has no legs, no clocks and no
+  // addresses, so there is nothing for a position to serve. What it costs is measurable and was
+  // measured: the rows first shipped at every level and a real Chromium pass put the nine-day
+  // reference trip onto TWO pages against ADR-0213 §4's one. The fact is not lost — it is the
+  // day header's `לנים ב…` there, exactly as it shipped.
+  if (summary || !bed) return '';
+  // **NO LABEL, AND THE BOUND BRINGS ITS OWN NOUN** (ADR-0209 §1, restored 2026-09-21 — the
+  // screen's `BedRow` carries the whole argument). `לינה` under the name was the event row's
+  // grammar on a row that is not an event, and on a middle night it was a line holding one
+  // word. The noun is the edge this day IS, and the clock stays in the column that is for
+  // clocks — which is the one place paper differs from the screen here, and only in layout.
+  const noun = edge === 'woke' ? PDF_COPY.checkOutLabel : PDF_COPY.checkInLabel;
+  return (
+    journeyLine(bed.journey) +
+    `<div class="pdf-event pdf-bed">` +
+    `<span class="pdf-event-time">${bed.time ? sharedTimeText(bed.time) : ''}</span>` +
+    `<span class="pdf-event-copy"><strong>${PDF_STAY_GLYPH} ${auto(bed.name)}</strong>` +
+    (bed.time ? `<span>${noun}</span>` : '') +
+    `</span></div>`
+  );
 }
 
 /**
@@ -488,10 +511,7 @@ function eventRow(event: SharedEvent, summary: boolean): string {
   }
   // The mode leads the numbers, and the numbers carry their units — it printed as `37 · 30.5`,
   // two bare figures with nothing saying what either measured (owner, 2026-08-30).
-  const journey = event.journey
-    ? `<div class="pdf-journey">${PDF_COPY.travelMode[event.journey.mode]} · ` +
-      `${ltr(event.journey.minutes)} ${PDF_COPY.minutes} · ${ltr(event.journey.km)} ${PDF_COPY.km}</div>`
-    : '';
+  const journey = journeyLine(event.journey);
   // Each value isolated, the separator left in the RTL flow — a `dir="auto"` over the JOIN
   // would let an English address decide which side the place name sits on.
   // **The row says what it IS before it says where** (owner, 2026-08-30: _"hotels and other
@@ -529,6 +549,11 @@ function eventRow(event: SharedEvent, summary: boolean): string {
     legRows(event)
   );
 }
+
+/** The bed a day is named by where it is named by one — tonight's, else the one it woke in.
+ *  `sleeps` first because `לנים ב…` is about tonight; on a check-out day only the morning bed
+ *  exists and it is then the honest answer. The reader's collapsed header makes the same pick. */
+const bedName = (day: SharedDay): string | undefined => day.sleeps?.name ?? day.wokeIn?.name;
 
 function dayCard(day: SharedDay, summary: boolean, photoSrc?: string): string {
   const { day: dayNumber, weekday: firstWeekday } = dayLabel(day.date);
@@ -568,12 +593,14 @@ function dayCard(day: SharedDay, summary: boolean, photoSrc?: string): string {
     // its check-in hour, which on the outbound day put it between the two legs of the
     // flight and printed 15:00-11:00 — a range that reads backwards because a stay crosses
     // midnight.
-    `<span class="${day.stay ? 'pdf-stay' : ''}">${
-      day.stay ? PDF_COPY.stay(auto(day.stay)) : daySummaryText(day.summary)
-    }</span>` +
-    stayWhen(day) +
+    // **The stay left this header at Full and above** (ADR-0238 §4): it is the block's first
+    // and last ROW there, so the second line is back to what the day held. At Summary, which
+    // draws no rows worth a frame, it stays here and nothing below repeats it.
+    (summary && bedName(day)
+      ? `<span class="pdf-stay">${PDF_COPY.stay(auto(bedName(day)!))}</span>`
+      : `<span>${daySummaryText(day.summary)}</span>`) +
     `</span></header>` +
-    `<div class="pdf-parts">${sections}</div></article>`
+    `<div class="pdf-parts">${bedRow(day.wokeIn, summary, 'woke')}${sections}${bedRow(day.sleeps, summary, 'sleeps')}</div></article>`
   );
 }
 
@@ -707,7 +734,10 @@ export function itineraryPdfHtml({
   // **12 azorim counted pins**, which on a ring road is exactly the number of stops and
   // tells a reader nothing. Nights and bookings are the two counts somebody planning
   // against this page actually uses, and both derive from what is already here.
-  const nights = projection.days.filter((day) => day.stay).length;
+  // **And it counted BOOKINGS, not nights** (ADR-0238 §1). `day.stay` existed only on the day
+  // a span was filed, so an eleven-night trip in one hotel printed `1 לילות`. `sleeps` is the
+  // per-night answer, so this tile now counts what its own word says.
+  const nights = projection.days.filter((day) => day.sleeps).length;
   const ledeTitle = projection.narrative.title;
   const lede =
     // **Not when it IS the trip's name** (owner, 2026-08-31, with a screenshot of the same
@@ -863,21 +893,18 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
 /* **What the trip IS, under its name.** Replaces .pdf-route-mini, the capped stop sample
    that printed in teal beside the QR and named two airports plus three arbitrary stops. */
 .pdf-what{margin-block-start:3px;font:600 10px 'Assistant',sans-serif;color:var(--pdf-ink);}
-/* Where you sleep, teal because it is a location and nothing else (ADR-0028). */
+/* **THE DAY'S TWO ENDS, AS ROWS** (ADR-0238 §4). What was here — .pdf-stay's teal clause in
+   the header and .pdf-stay-when's pair of amber clocks under it — is gone with the header
+   fields it styled: a bed is the first and last row of the block now, so it is a .pdf-event
+   and inherits that row's whole geometry, its time column included. Teal and amber are spent
+   exactly where they already were (the place, and the bound in the clock column); the one
+   declaration this row adds is the hairline that says it is the day's frame and not a stop
+   somebody scheduled. 0.5px because it prints at 96dpi and a full pixel reads as a border.
+   NOTE: no backticks in this sheet — it is a template literal, and one ends it. */
+.pdf-bed{box-shadow:inset 0 0 0 0.5px var(--pdf-line);}
+/* Where you sleep, teal because it is a location and nothing else (ADR-0028). Summary only:
+   above that level the bed is a row and the header says what the day held. */
 .pdf-stay{color:var(--pdf-teal);}
-/* **The stay's two moments, on their own line** (2026-08-31 amendment §2). Amber, because a
-   clock is time and commitment — so the line above keeps teal for the place and this one
-   spends the other half of ADR-0028's pair, rather than one line carrying two meanings in
-   one hue. .pdf-day-copy>span is (0,1,1) and sets nowrap with an ellipsis, which is
-   right for the names above and wrong here: a pair of clocks is bounded, so cutting it only
-   costs the fact. (0,2,0) wins it. Measured at ⁦106px⁩ of ink in a ⁦295.5px⁩ box — one line
-   on paper, where the screen needs a wrap. */
-.pdf-day-copy>.pdf-stay-when{margin-block-start:1px;color:var(--pdf-amber);font-size:7.6px;white-space:normal;}
-/* **One moment per line** (2026-09-01), matching the reader page rather than fitting both on
-   the A4 column because they happen to fit. Each moment is bounded (a noun plus at most a
-   range), so the blocks keep nowrap and the container's normal only permits the break BETWEEN
-   them. */
-.pdf-stay-when>.pdf-moment{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 /* **The time column holds a range, or it wraps** (owner, 2026-08-30: "the times wrap to
    two lines which also looks bad"). Measured in the print mockup: the shipped column is
    38px and a range is 53px of ink at this face, so every row carrying one broke across two
