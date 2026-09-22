@@ -13,6 +13,7 @@ import {
   type ShareOpKind,
   type SharedDay,
   type SharedDayBed,
+  type SharedJourney,
   type SharedDaySummary,
   type SharedDayTitle,
   type SharedEvent,
@@ -722,7 +723,7 @@ function DayCard({
           {/* **The day opens at the bed it woke in** (ADR-0238 §1) — outside the daypart
               sections, because a stay is the day's frame and not something you perform at an
               hour of it (ADR-0209 §2 / ADR-0054 §2). */}
-          {day.wokeIn && !summary ? <BedRow bed={day.wokeIn} /> : null}
+          {day.wokeIn && !summary ? <BedRow bed={day.wokeIn} edge="woke" /> : null}
           {day.sections.map((section) => (
             <section className="sh-part" key={section.daypart}>
               <header className="sh-part-head">
@@ -775,7 +776,7 @@ function DayCard({
             </section>
           ))}
           {/* …and closes at the bed it ends in, with the leg that got you there. */}
-          {day.sleeps && !summary ? <BedRow bed={day.sleeps} /> : null}
+          {day.sleeps && !summary ? <BedRow bed={day.sleeps} edge="sleeps" /> : null}
         </div>
       ) : null}
     </section>
@@ -875,37 +876,60 @@ function StayWhen({ day }: { day: SharedDay }) {
  * journey renders as — the morning bed has none, because the walk out of it is the journey on
  * the day's first scheduled row (`SharedEvent.journey` already means the leg into a row).
  */
-function BedRow({ bed }: { bed: SharedDayBed }) {
+function BedRow({ bed, edge }: { bed: SharedDayBed; edge: 'woke' | 'sleeps' }) {
   return (
     <>
-      {bed.journey ? (
-        <div className="sh-journey">
-          <Icon name={bed.journey.mode} />
-          {t.share.public.journey(
-            t.travelMode[bed.journey.mode],
-            bed.journey.minutes,
-            bed.journey.km,
-          )}
-        </div>
-      ) : null}
+      {bed.journey ? <JourneyLine journey={bed.journey} /> : null}
       <article className="sh-event sh-bed">
         <span className="sh-event-glyph" aria-hidden="true">
           {DEFAULT_STAY_ICON}
         </span>
         <span className="sh-event-main">
           <strong>{autoIsolate(bed.name)}</strong>
-          <span className="sh-place-line">
-            <b className="sh-kind">{t.index.bookingType.hotel}</b>
-            {bed.time ? (
-              <>
-                {' · '}
-                <SharedTimeText time={bed.time} />
-              </>
-            ) : null}
-          </span>
+          {/* **THE ROW CARRIES NO LABEL, AND ITS BOUND BRINGS ITS OWN NOUN** (ADR-0209 §1,
+              restored 2026-09-21 — owner, on the built page: the row read `מלון קליפורניה`
+              over a bare `לינה`, _"which looks odd"_).
+
+              It shipped with `.sh-kind`'s `לינה` under the name, copied from the event row's
+              grammar — and ADR-0209 had already refused exactly that label on exactly this row
+              (_"do we really need the label? what's its purpose?"_), because the glyph, the
+              position and the bound each already say which end of the day this is. What that
+              left was a whole line holding one word, on the middle nights that have no bound
+              at all.
+
+              So the label goes and the bound states the edge it IS, which is the app's own
+              `edgeSentence`: `צ׳ק-אאוט · עד 11:00` at the head, `צ׳ק-אין · מ-15:00` at the
+              foot. Both words are already in this page's dictionary — they were the day
+              header's two moments before this ADR moved them onto the rows. A day that is
+              neither edge of its stay has no second line at all, which is the ordinary case
+              and reads as one clean row. */}
+          {bed.time ? (
+            <span className="sh-place-line">
+              {edge === 'woke' ? t.share.public.checkOut : t.share.public.checkIn}
+              {' · '}
+              <SharedTimeText time={bed.time} />
+            </span>
+          ) : null}
         </span>
       </article>
     </>
+  );
+}
+
+/** **The drive into a row**, wherever it hangs — an event's own `journey` or a bed's.
+ *
+ *  **It names its origin only where the row above it is not one** (ADR-0238 §1's correction,
+ *  ADR-0232 R3's rule and its words): the walk out of a bed the day draws once, at its foot,
+ *  would otherwise read as a drive out of nothing at the very top of the day. */
+function JourneyLine({ journey }: { journey: SharedJourney }) {
+  return (
+    <div className="sh-journey">
+      {/* The mode is a control-shaped fact, so it gets the app's own icon beside its own
+          word — `Icon`'s names ARE the mode keys, which is how `DayJoinRow` already draws it. */}
+      <Icon name={journey.mode} />
+      {journey.from ? `${t.share.public.legFrom(autoIsolate(journey.from))} · ` : null}
+      {t.share.public.journey(t.travelMode[journey.mode], journey.minutes, journey.km)}
+    </div>
   );
 }
 
@@ -1023,19 +1047,7 @@ function EventRow({
     <>
       {/* **OUTSIDE the mark, and that is the fix** (2026-09-03): this is the drive INTO the
           event, not part of it, so a moment inside the event is not a fraction of it. */}
-      {event.journey ? (
-        <div className="sh-journey">
-          {/* The mode is a control-shaped fact, so it gets the app's own icon beside its
-              own word — `Icon`'s names ARE the mode keys, which is how `DayJoinRow`
-              already draws it. */}
-          <Icon name={event.journey.mode} />
-          {t.share.public.journey(
-            t.travelMode[event.journey.mode],
-            event.journey.minutes,
-            event.journey.km,
-          )}
-        </div>
-      ) : null}
+      {event.journey ? <JourneyLine journey={event.journey} /> : null}
       {nail(
         <article className={`sh-event${event.hard ? ' hard' : ''}`}>
           <span className="sh-event-glyph" aria-hidden="true">

@@ -1541,10 +1541,13 @@ describe('SharingProjectionService', () => {
       expect(dayOn('2026-09-11').wokeIn).toBeUndefined();
       expect(dayOn('2026-09-11').sleeps?.name).toBe('מלון קליפורניה');
 
-      // **The middle night is BOTH ends, with the same stay** — the case that had no frame at
-      // all, and the one `dayBookendStays` answers without a rule of its own.
-      expect(dayOn('2026-09-12').wokeIn?.name).toBe('מלון קליפורניה');
+      // **The middle night is both ends, and it names the stay ONCE** (owner, 2026-09-21:
+      // _"make it read once on a middle night"_). Both ends being the same stay is precisely
+      // when the head frame carries nothing the foot does not — the same name and no bound of
+      // its own — so the day publishes the end it reaches, and the leg out of the bed takes
+      // the name instead (asserted below).
       expect(dayOn('2026-09-12').sleeps?.name).toBe('מלון קליפורניה');
+      expect(dayOn('2026-09-12').wokeIn).toBeUndefined();
 
       // The check-out morning woke there and sleeps nowhere.
       expect(dayOn('2026-09-13').wokeIn?.name).toBe('מלון קליפורניה');
@@ -1557,7 +1560,9 @@ describe('SharingProjectionService', () => {
       // **The defect, stated as the assertion that would have caught it**: the check-out used
       // to print on the 12th — the day after the span was filed — because "last night was
       // somewhere else" is true the moment the frame vanishes.
-      expect(dayOn('2026-09-12').wokeIn?.time).toBeUndefined();
+      // The middle night publishes no morning frame at all now, which is the same claim one
+      // step stronger: there is no clock because there is no edge here.
+      expect(dayOn('2026-09-12').wokeIn).toBeUndefined();
       expect(dayOn('2026-09-13').wokeIn?.time?.label).toBe('11:00');
       // And it is stated once, on that morning alone.
       expect(projection.days.filter((day) => day.wokeIn?.time)).toHaveLength(1);
@@ -1577,15 +1582,26 @@ describe('SharingProjectionService', () => {
 
       // Out of the bed: it rides the first scheduled row, because `journey` already means
       // "the leg INTO this row" and that is exactly what the walk out of the hotel is.
+      //
+      // **And it names its origin**, because on a middle night the bed it leaves has no row
+      // above this line — that is the one thing the dropped head frame was load-bearing for
+      // (ADR-0206 §AD: a leg out of an origin nobody can see is a journey with an invisible
+      // start), and `from` is where it survives.
       const museum = rows.find((event) => event.title.includes('המוזיאון'))!;
-      expect(museum.journey).toEqual({ mode: TRAVEL_MODE.DRIVING, minutes: 10, km: 5 });
+      expect(museum.journey).toEqual({
+        mode: TRAVEL_MODE.DRIVING,
+        minutes: 10,
+        km: 5,
+        from: 'מלון קליפורניה',
+      });
 
-      // …and back into it, on the bed itself — the one new place a journey can live.
+      // …and no other leg names one: past the first row the chain is on ordinary stops, and a
+      // name there would read as a drive from the row the reader can already see above it.
+      expect(rows.filter((event) => event.journey?.from)).toHaveLength(1);
+
+      // …and back into it, on the bed itself — the one new place a journey can live. It needs
+      // no `from`: the row above it IS where it leaves from.
       expect(middle.sleeps?.journey).toEqual({ mode: TRAVEL_MODE.DRIVING, minutes: 10, km: 5 });
-
-      // The morning bed never carries one: a second place to say the same leg is what the
-      // contract refuses (ADR-0238 §2).
-      expect(middle.wokeIn?.journey).toBeUndefined();
     });
 
     it('puts a BOOKED stop on the chain, so the drive into it is drawn', async () => {

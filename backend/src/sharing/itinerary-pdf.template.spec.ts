@@ -114,6 +114,9 @@ describe('itineraryPdfHtml', () => {
     // **The stay is the day's two ENDS now** (ADR-0238 §4), so it prints as the first and
     // last row of the block rather than as a clause in its header.
     expect(full).toContain('class="pdf-event pdf-bed"');
+    // …and these two are the COMMITMENTS block's captions, which is worth spelling out: the
+    // bed row itself stopped printing `לינה` in ADR-0238 §1's 2026-09-21 correction, so this
+    // line would otherwise read as a test of the row and quietly pass on a different block.
     expect(full).toContain(PDF_COPY.bookingType.hotel);
     expect(full).toContain(PDF_COPY.bookingType.car);
   });

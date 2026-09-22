@@ -511,13 +511,18 @@ describe('SharedItinerary', () => {
     expect(kids.indexOf(beds[0])).toBe(0);
     expect(kids.indexOf(beds[1])).toBe(kids.length - 1);
 
-    // Each bed says what it IS, then its own bound — the row grammar this page already has.
+    // **THE ROW CARRIES NO LABEL, AND ITS BOUND BRINGS ITS OWN NOUN** (ADR-0209 §1, restored
+    // 2026-09-21). It shipped with `לינה` under the name — the event row's grammar on a row
+    // that is not an event — which left a whole line holding one word. The noun is now the
+    // edge this day IS, which is the app's own `edgeSentence`.
     const morning = withoutBidiControls(beds[0].textContent ?? '');
     expect(morning).toContain('ויק');
-    expect(morning).toContain(t.index.bookingType.hotel);
+    expect(morning).toContain(t.share.public.checkOut);
     expect(morning).toContain(withoutBidiControls(t.share.public.timeUntil('11:00')));
+    expect(morning).not.toContain(t.index.bookingType.hotel);
     const evening = withoutBidiControls(beds[1].textContent ?? '');
     expect(evening).toContain('פלוּדיר');
+    expect(evening).toContain(t.share.public.checkIn);
     // A closed window prints both bounds (ADR-0184 §1) — the one flexible arm that does.
     expect(evening).toContain(withoutBidiControls(t.share.public.timeRange('15:00', '21:00')));
 
@@ -530,6 +535,61 @@ describe('SharedItinerary', () => {
     // ends — which is what ADR-0209 subtracted for the app.
     expect(container.querySelector('.sh-stay')).toBeNull();
     expect(container.querySelector('.sh-stay-when')).toBeNull();
+  });
+
+  /**
+   * **A STAY IS NAMED ONCE A DAY** (owner, 2026-09-21, on the built page: _"make it read once
+   * on a middle night"_).
+   *
+   * Both ends being the same stay is exactly when the head frame says nothing the foot does
+   * not — the same name, and no bound, because a middle night is neither edge of its stay. So
+   * only the end the day reaches is published, and the leg out of the bed takes the name
+   * (`journey.from`), which is the one thing that frame was load-bearing for (ADR-0206 §AD).
+   */
+  it('names the stay once on a middle night, and the leg out of it says where it left', async () => {
+    const day = fullProjection.days[0];
+    serve({
+      ...fullProjection,
+      days: [
+        {
+          ...day,
+          sections: [
+            {
+              ...day.sections[0],
+              events: [
+                {
+                  ...day.sections[0].events[0],
+                  journey: { mode: TRAVEL_MODE.DRIVING, minutes: 7, km: 2.4, from: 'ויק' },
+                },
+              ],
+            },
+          ],
+          sleeps: { name: 'ויק', journey: { mode: TRAVEL_MODE.DRIVING, minutes: 22, km: 18.6 } },
+        },
+        fullProjection.days[1],
+      ],
+    });
+    const { container } = renderShared();
+
+    await screen.findByText('איסלנד עם המשפחה');
+    // One row, at the foot, and the hotel is named once in the whole open card.
+    const beds = [...container.querySelectorAll('.sh-event.sh-bed')];
+    expect(beds).toHaveLength(1);
+    const body = container.querySelector('.sh-day-body')!;
+    expect([...body.children].indexOf(beds[0])).toBe(body.children.length - 1);
+    // A middle night is neither edge, so the row is its glyph and its name and nothing else.
+    expect(withoutBidiControls(beds[0].textContent ?? '')).toBe('🏨ויק');
+
+    // **The leg out of it names its origin**, because the bed it leaves has no row above the
+    // line (ADR-0232 R3's rule and its words).
+    const legs = [...container.querySelectorAll('.sh-journey')];
+    expect(withoutBidiControls(legs[0].textContent ?? '')).toContain(
+      withoutBidiControls(t.share.public.legFrom('ויק')),
+    );
+    // …and the leg BACK does not: the row above that one is exactly where it leaves from.
+    expect(withoutBidiControls(legs[legs.length - 1].textContent ?? '')).not.toContain(
+      withoutBidiControls(t.share.public.legFrom('ויק')),
+    );
   });
 
   it('captions nothing on a row no booking backs', async () => {

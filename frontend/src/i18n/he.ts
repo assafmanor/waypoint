@@ -3635,6 +3635,11 @@ export const t = {
       // **Where you sleep, as the day's frame** (ADR-0213's 2026-08-30 amendment). The
       // value arrives isolated, so this joins it rather than composing around a raw name.
       stay: (place: string) => `לנים ${bindPrefix('ב', place)}`,
+      /** **Where a leg leaves from, said only where the row above it is not its origin**
+       *  (ADR-0238 §1's 2026-09-21 correction). The app's own word for the same situation
+       *  (`t.travel.from`, ADR-0232 R3) and bound the same way Hebrew binds a one-letter
+       *  prefix: `מ-Laugavegur 22`, `מהמלון`. The name arrives already isolated. */
+      legFrom: (origin: string) => bindPrefix('מ', origin),
       // The wait between two legs of one journey. Named by the place you wait IN, because
       // "45 דקות" alone says nothing about where you are standing.
       layover: (place: string, span: string) => `המתנה ${bindPrefix('ב', place)} · ${span}`,

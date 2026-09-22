@@ -605,6 +605,10 @@ function journeyClock(
 interface DayBedRows {
   woke?: ShareEventRow;
   sleeps?: ShareEventRow;
+  /** **The name the day's first leg leaves from, where the bed it leaves has no row of its
+   *  own** (ADR-0238 §1's 2026-09-21 correction) — set only on a day whose two ends are the
+   *  same stay, which is the only day that draws one bed for two ends. */
+  namedOrigin?: string;
 }
 
 /** The key a day's closing leg is stored under in the journey map. A bed is the day's frame
@@ -979,7 +983,18 @@ export class SharingProjectionService {
     };
     /** The two beds of each day, in `byDay` order — read once, because the chain needs them
      *  before the days are built and each day needs them again. */
-    const beds = byDay.map(({ date }) => dayBeds(stayRows, date));
+    const beds = byDay.map(({ date }) => {
+      const bed = dayBeds(stayRows, date);
+      // **ONE BED A DAY** (ADR-0238 §1's 2026-09-21 correction; owner: _"make it read once on
+      // a middle night"_). Both ends the same stay means the day is neither of its edges — so
+      // the head frame would carry a name the foot already carries and no bound of its own.
+      // It is dropped, and the leg out of it takes the name instead, which is the one thing
+      // that frame was load-bearing for (ADR-0206 §AD).
+      if (bed.woke && bed.sleeps && bed.woke.id === bed.sleeps.id) {
+        return { sleeps: bed.sleeps, namedOrigin: bedName(bed.woke), woke: bed.woke };
+      }
+      return bed;
+    });
     /** **Where you sleep, per night** — which is what `tripShapeOf`'s run-length encoding
      *  always claimed to read and never could (ADR-0238 §1). */
     const stays = beds.map((bed) => (bed.sleeps ? bedName(bed.sleeps) : undefined));
@@ -1056,7 +1071,11 @@ export class SharingProjectionService {
         // **THE DAY'S TWO ENDS** (ADR-0238 §1). Each one is a name plus, quietly, its own
         // bound; the leg INTO the evening bed rides it, and the leg OUT of the morning one
         // rides the day's first scheduled row, which is where `journey` already means that.
-        ...(beds[index].woke ? { wokeIn: bedFrame(beds[index].woke!, 'end', date) } : {}),
+        // `namedOrigin` set means the two ends are one stay, so the head frame is the one that
+        // goes and its leg carries the name instead (ADR-0238 §1's correction).
+        ...(beds[index].woke && !beds[index].namedOrigin
+          ? { wokeIn: bedFrame(beds[index].woke!, 'end', date) }
+          : {}),
         ...(beds[index].sleeps
           ? {
               sleeps: bedFrame(
@@ -1584,6 +1603,8 @@ export class SharingProjectionService {
       from: { lat: number; lng: number };
       to: { lat: number; lng: number };
       keys: string[];
+      /** The origin's NAME, on the one leg whose origin has no row above it. */
+      fromName?: string;
     }[] = [];
     /**
      * **The chain is between PLACED rows, not between adjacent ones** (owner, 2026-08-31:
@@ -1618,6 +1639,11 @@ export class SharingProjectionService {
       let prevId = bed?.woke ? stopPlaceOf(bed.woke) : undefined;
       let prev = prevId ? coordOf.get(prevId) : undefined;
       if (!prev) prevId = undefined;
+      // **The first leg off the bed names it, where the bed has no row** (ADR-0238 §1's
+      // 2026-09-21 correction). Tracked rather than inferred from the pair: once the chain
+      // advances past the first placed row, `prevId` is an ordinary stop again and a name on
+      // it would read as a drive from a row the reader can already see above the line.
+      let seeded = prevId !== undefined;
       for (const event of events) {
         const to = stopPlaceOf(event) ?? event.booking?.fromPlaceId;
         const b = to ? coordOf.get(to) : undefined;
@@ -1631,7 +1657,9 @@ export class SharingProjectionService {
             from: a0,
             to: b,
             keys: TRAVEL_MODES.map((mode) => routeLegKey(a0, b, mode)),
+            ...(seeded && bed?.namedOrigin ? { fromName: bed.namedOrigin } : {}),
           });
+          seeded = false;
         }
         // Where the row LEAVES you, which is the far end of a booking rather than its start.
         const from = stopPlaceOf(event) ?? event.booking?.toPlaceId;
@@ -1728,6 +1756,7 @@ export class SharingProjectionService {
         mode: leg.mode as LegTravelMode,
         minutes: Math.round(leg.durationSeconds / 60),
         km: Math.round(leg.distanceMeters / 100) / 10,
+        ...(pair.fromName ? { from: pair.fromName } : {}),
       });
     }
     return out;

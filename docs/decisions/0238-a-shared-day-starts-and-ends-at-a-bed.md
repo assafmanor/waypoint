@@ -236,6 +236,69 @@ behind a toggle.
 - **Put the check-out on the row it belongs to and leave the frame alone.** Rejected: there is no row.
   ADR-0213's fourth amendment removed it, correctly, and this is what the frame is for.
 
+## CORRECTED 2026-09-21, same day — a stay is named once, and the row carries no label
+
+The owner, on the built page: _"make it read once on a middle night"_, and _"I see that it says
+`מלון קליפורניה` /new line/ `לינה` which looks odd. Should at least be the other way around, or
+let's think what exactly it should read."_
+
+**Both corrections are subtractions, and ADR-0209 had already made both of them for the app.**
+That is the finding worth recording: §1 carried the app's rule to two new renderers and then
+spent two decisions the app had already spent the other way.
+
+### §1a · Where both ends are the same stay, only the foot is published
+
+`wokeIn` and `sleeps` are a real pair of facts and stay a real pair of fields — but on a middle
+night they are the **same stay**, and that is exactly the day on which the head frame carries
+nothing the foot does not: the same name, and no bound at all, because a middle night is neither
+edge of its stay. Two rows, one name between them, no clock on either. So the projection publishes
+only `sleeps` there — the end the day reaches, and the one the drive home lands on.
+
+**What the head row was load-bearing for survives the subtraction.** ADR-0206 §AD's argument — a
+leg drawn out of an origin nobody can see is a journey with an invisible start — is answered by
+naming the origin instead of drawing it: `SharedJourney` gains **`from`**, set on exactly one leg
+(the walk out of that bed), and printed with the same word and the same binding the app already
+spends on the same situation (`t.travel.from`, [ADR-0232](0232-a-journey-is-between-two-placed-stops.md)
+R3's `מ־{origin}`). So the day opens `מ-מלון קליפורניה · נהיגה · 7 דק׳ · 2.4 ק״מ` and closes on
+the bed itself.
+
+A day whose two ends are **different** stays still draws both rows: a hotel change names two
+hotels, which is not repetition.
+
+### §1b · The row carries no label, and its bound brings its own noun
+
+The row shipped as `.sh-event`'s grammar whole — including `<b class="sh-kind">לינה</b>` under the
+name. That is the **event** row's caption on a row that is not an event, and ADR-0209 §1 had
+refused exactly this label on exactly this row: _"No label … because the row's position and its
+bound each already say which end this is (owner: 'do we really need the label? what's its
+purpose?')."_ What it left was a line holding one word, on every night with no bound to put beside
+it — which is what the report is pointing at.
+
+So the label goes, and the second line states the **edge this day is**, which is the app's own
+`edgeSentence` (`lib/transitions.ts`): `צ׳ק-אאוט · עד 11:00` at the head, `צ׳ק-אין · מ-15:00` or a
+window at the foot. Neither word is new — they are the day header's own two moments, which §1
+moved onto the rows. **A day that is neither edge of its stay has no second line at all**, and a
+middle night's row is then its glyph and its name: `🏨 מלון קליפורניה`.
+
+Paper states the same two facts and differs only in **layout**, which is ADR-0213 §4's rule: the
+clock stays in the column that is for clocks, so the copy column carries the noun alone.
+
+### What it cost, re-measured off the revised drawing
+
+Both corrections make the feature cheaper, which is the honest argument for them:
+
+|                      | first build                              | corrected                                  |
+| -------------------- | ---------------------------------------- | ------------------------------------------ |
+| middle night         | ⁦540px⁩ → ⁦706px⁩ (+⁦166⁩), ⁦2⁩ mentions | ⁦540px⁩ → ⁦632px⁩ (+⁦92⁩), **⁦1⁩ mention** |
+| A4 day block         | ⁦245px⁩ → ⁦320px⁩ (+⁦75⁩)                | ⁦245px⁩ → ⁦278px⁩ (**+⁦33⁩**)              |
+| twelve days on paper | ⁦900px⁩ of a ⁦1071px⁩ column             | **⁦396px⁩**                                |
+
+The check-out, check-in and no-hotel days are unchanged (+⁦61⁩ / +⁦105⁩ / ⁦0⁩), and the hotel-change
+day keeps its two rows and its +⁦166px⁩ — it is the one shape where two rows name two things. The
+one number that grew is the journey line, ⁦36px⁩ → ⁦42px⁩, on the single leg per day that now carries
+an origin: at ⁦360px⁩ that name wraps it to two lines. Taken, because the alternative is the leg
+with no origin the correction exists to avoid.
+
 ## Build log — four things the build decided, and one it found in its own diff
 
 **A collapsed card keeps the bed on its header.** The drawing shows an open day, and the reader

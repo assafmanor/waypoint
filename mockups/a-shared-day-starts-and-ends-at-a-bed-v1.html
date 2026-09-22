@@ -54,6 +54,30 @@
        §4 השרשרת מדלגת על עצירה מוזמנת → ADR §3 (F3)
 
      ─────────────────────────────────────────────────────────────────────────
+     ─────────────────────────────────────────────────────────────────────────
+     REVISED 2026-09-21, SAME DAY, ON THE OWNER'S TWO CORRECTIONS TO THE BUILT PAGE.
+     Both are subtractions, and both were already decided once in ADR-0209:
+
+       "make it read once on a middle night" — a day whose two ends are the SAME
+       stay drew two rows with one name between them. That is exactly the day on
+       which the head frame carries nothing the foot does not (the same name, and
+       no bound, because a middle night is neither edge of its stay), so it goes.
+       What it was load-bearing for survives: the leg out of the bed takes the
+       NAME (`journey.from`), which is ADR-0232 R3's rule and its words, so no
+       journey is drawn out of an origin nobody can see.
+
+       "מלון קליפורניה / לינה ... looks odd" — right, and the label was mine to
+       begin with: it is the EVENT row's grammar (`.sh-kind`) on a row that is not
+       an event, and ADR-0209 §1 had already refused it here ("do we really need
+       the label? what's its purpose?"). What it left was a whole line holding one
+       word on the nights that have no bound. The label goes; the bound states the
+       edge it IS, which is the app's own `edgeSentence` — `צ׳ק-אאוט · עד 11:00`,
+       `צ׳ק-אין · מ-15:00`. A middle night has no second line at all.
+
+     The measurement table below is re-read off the revised DOM, so the numbers
+     here are the corrected design's and not the first draft's.
+
+     ─────────────────────────────────────────────────────────────────────────
      Interactive: theme (light · dark), screen (360×640 · 390×844), the day's
      shape (five), whether the bed row is QUIETED or an ordinary card (a feel
      call, so it is a control and not a decision this file pretends to have
@@ -5993,6 +6017,7 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
         until: (c) => `עד ${c}`,
         journey: (mode, min, km) => `${mode} · ${LTR(min)} דק׳ · ${LTR(km)} ק״מ`,
         drive: 'נהיגה',
+        legFrom: (o) => `מ-${o}`,
         dayparts: { morning: 'בוקר', noon: 'צהריים', afternoon: 'אחר הצהריים', evening: 'ערב' },
       };
       const MARK = { morning: '☀️', noon: '🌤️', afternoon: '🌇', evening: '🌙' };
@@ -6123,7 +6148,11 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
 
       const journeyLine = (j) =>
         j
-          ? `<div class="sh-journey">${icon('driving')}${T.journey(j.mode, j.minutes, j.km)}</div>`
+          ? `<div class="sh-journey">${icon('driving')}` +
+            // **Named only where the row above is not the origin** (ADR-0232 R3's rule and its
+            // words) — the walk out of a bed the day draws once, at its foot.
+            (j.from ? `${T.legFrom(AUTO(j.from))} · ` : '') +
+            `${T.journey(j.mode, j.minutes, j.km)}</div>`
           : '';
 
       const eventRow = (e) =>
@@ -6140,15 +6169,18 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
 
       /** A bed row: `.sh-event`'s own geometry, the hotel's glyph, its name, and
        *  `לינה · <bound>` on the place line. Nothing here is a new shape. */
-      const bedRow = (name, bound, journeyIn, quiet) =>
+      const bedRow = (name, bound, journeyIn, quiet, edge) =>
         journeyLine(journeyIn) +
         `<article class="sh-event${quiet ? ' sh-bed' : ''}">` +
         `<span class="sh-event-glyph" aria-hidden="true">🏨</span>` +
         `<span class="sh-event-main"><strong>${AUTO(name)}</strong>` +
-        placeLine([
-          `<b class="sh-kind">${T.kindHotel}</b>`,
-          bound ? `<span class="sh-said">${bound}</span>` : '',
-        ]) +
+        // **No label, and the bound brings its own noun** (revised 2026-09-21 — see the
+        // header). `לינה` under the name was the EVENT row's grammar on a row that is not an
+        // event, and ADR-0209 §1 had already refused exactly that label here. A day that is
+        // neither edge of its stay now has no second line at all.
+        (bound
+          ? placeLine([edge === 'woke' ? T.checkOut : T.checkIn, `<span class="sh-said">${bound}</span>`])
+          : '') +
         `</span></article>`;
 
       const dayHead = (lines, title) =>
@@ -6194,38 +6226,53 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
         `</section>`;
 
       /** PROPOSED: the head loses the stay line; the schedule gains two frames. */
-      const readerProposed = (shape, quiet) =>
-        `<section class="sh-day open">` +
-        dayHead([`<span>יום בדרך הדרומית</span>`], shape.title) +
-        `<div class="sh-day-body">` +
-        (shape.woke ? bedRow(shape.woke, shape.wokeBound, null, quiet) : '') +
-        sections(
-          SECTIONS.full,
-          // With a bed above it the first row's leg is the walk OUT of the bed.
-          shape.woke ? DRIVE(7, 2.4) : SECTIONS.full[0].events[0].journeyIn,
-        ) +
-        (shape.sleeps ? bedRow(shape.sleeps, shape.sleepsBound, shape.backJourney, quiet) : '') +
-        `</div></section>`;
+      const readerProposed = (shape, quiet) => {
+        // **ONE BED A DAY** (owner, 2026-09-21: _"make it read once on a middle night"_). Both
+        // ends the same stay is exactly when the head frame carries nothing the foot does not,
+        // so it goes — and the leg out of it takes the NAME, which is the one thing it was
+        // load-bearing for (ADR-0206 §AD).
+        const sameStay = shape.woke && shape.sleeps && shape.woke === shape.sleeps;
+        const head = sameStay ? null : shape.woke;
+        const out = shape.woke
+          ? { ...DRIVE(7, 2.4), ...(sameStay ? { from: shape.woke } : {}) }
+          : SECTIONS.full[0].events[0].journeyIn;
+        return (
+          `<section class="sh-day open">` +
+          dayHead([`<span>יום בדרך הדרומית</span>`], shape.title) +
+          `<div class="sh-day-body">` +
+          (head ? bedRow(head, shape.wokeBound, null, quiet, 'woke') : '') +
+          sections(SECTIONS.full, out) +
+          (shape.sleeps
+            ? bedRow(shape.sleeps, shape.sleepsBound, shape.backJourney, quiet, 'sleeps')
+            : '') +
+          `</div></section>`
+        );
+      };
 
       /* ── The paper's real layout tree. ──────────────────────────────────── */
 
       const pdfEvent = (e) =>
-        (e.journeyIn
-          ? `<div class="pdf-journey">${T.journey(e.journeyIn.mode, e.journeyIn.minutes, e.journeyIn.km)}</div>`
-          : '') +
+        pdfJourney(e.journeyIn) +
         `<div class="pdf-event"><span class="pdf-event-time">${LTR(e.time)}</span>` +
         `<span class="pdf-event-copy"><strong>${AUTO(e.title)}</strong>` +
         `<span>${e.booked ? `<b class="pdf-kind">מסעדה</b> · ` : ''}${AUTO(e.place)}</span>` +
         `</span></div>`;
 
-      const pdfBed = (name, bound, journeyIn, quiet) =>
-        (journeyIn
-          ? `<div class="pdf-journey">${T.journey(journeyIn.mode, journeyIn.minutes, journeyIn.km)}</div>`
-          : '') +
+      const pdfJourney = (j) =>
+        j
+          ? `<div class="pdf-journey">${j.from ? `${T.legFrom(AUTO(j.from))} · ` : ''}` +
+            `${T.journey(j.mode, j.minutes, j.km)}</div>`
+          : '';
+
+      // Paper's one difference is LAYOUT, not what is stated: the clock stays in the column
+      // that is for clocks, so the copy column carries the noun alone.
+      const pdfBed = (name, bound, journeyIn, quiet, edge) =>
+        pdfJourney(journeyIn) +
         `<div class="pdf-event${quiet ? ' pdf-bed' : ''}">` +
         `<span class="pdf-event-time">${bound ? bound : ''}</span>` +
-        `<span class="pdf-event-copy"><strong>${AUTO(name)}</strong>` +
-        `<span><b class="pdf-kind">${T.kindHotel}</b></span></span></div>`;
+        `<span class="pdf-event-copy"><strong>🏨 ${AUTO(name)}</strong>` +
+        (bound ? `<span>${edge === 'woke' ? T.checkOut : T.checkIn}</span>` : '') +
+        `</span></div>`;
 
       const pdfParts = (leadJourney) =>
         SECTIONS.full
@@ -6240,6 +6287,8 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
               `</section>`,
           )
           .join('');
+
+      const sameStayOf = (shape) => shape.woke && shape.sleeps && shape.woke === shape.sleeps;
 
       const paperToday = (shape) =>
         `<article class="pdf-day"><header class="pdf-day-head no-photo">` +
@@ -6259,9 +6308,17 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
         `<span class="pdf-day-copy"><strong>${shape.title}</strong>` +
         `<span>יום בדרך הדרומית</span></span></header>` +
         `<div class="pdf-parts">` +
-        (shape.woke ? pdfBed(shape.woke, shape.wokeBound, null, quiet) : '') +
-        pdfParts(shape.woke ? DRIVE(7, 2.4) : SECTIONS.full[0].events[0].journeyIn) +
-        (shape.sleeps ? pdfBed(shape.sleeps, shape.sleepsBound, shape.backJourney, quiet) : '') +
+        (sameStayOf(shape) || !shape.woke
+          ? ''
+          : pdfBed(shape.woke, shape.wokeBound, null, quiet, 'woke')) +
+        pdfParts(
+          shape.woke
+            ? { ...DRIVE(7, 2.4), ...(sameStayOf(shape) ? { from: shape.woke } : {}) }
+            : SECTIONS.full[0].events[0].journeyIn,
+        ) +
+        (shape.sleeps
+          ? pdfBed(shape.sleeps, shape.sleepsBound, shape.backJourney, quiet, 'sleeps')
+          : '') +
         `</div></article>`;
 
       /* ── §4's fixture: a day whose stops are all BOOKED. ────────────────── */

@@ -109,3 +109,34 @@ the frame on all three days, the check-out on the morning you leave **and on no 
 with the morning bed carrying none, and the booked stop back on the chain. Backend **1406 passed**,
 frontend **5918 passed**, shared **612 passed**, and the A4 smoke render back to one page at
 Summary and two at Full.
+
+## The owner's two corrections, same day, and what they have in common
+
+> make it read once on a middle night
+>
+> Also I see that it says "מלון קליפורניה /new line/ לינה" which looks odd. Should at least be
+> the other way around, or let's think what exactly it should read and how to make it more
+> natural sounding.
+
+**Both are subtractions, and ADR-0209 had already made both of them for the app** — which is the
+lesson, not the diff. This change carried the app's rule to two new renderers and then, inside
+that carry, spent two decisions the app had spent the other way: it drew the stay at both ends of
+a day where both ends are one stay, and it kept the event row's `לינה` caption on a row that is
+not an event and whose label that ADR had explicitly refused. Reading ADR-0209 §1 as a _rule about
+where a stay goes_ and not also as a _list of what it does not carry_ is how both got through.
+
+What the corrections are, in full, is in [the ADR](../decisions/0238-a-shared-day-starts-and-ends-at-a-bed.md#corrected-2026-09-21-same-day--a-stay-is-named-once-and-the-row-carries-no-label).
+Two things worth keeping here:
+
+- **The head row was load-bearing for exactly one thing, and it is cheap to keep without it.**
+  ADR-0206 §AD's argument is that a leg drawn out of an invisible origin is a journey with no
+  start — so the leg names its origin instead (`SharedJourney.from`, ADR-0232 R3's word and
+  binding). The row was one of two ways to say it; the cheaper one survives.
+- **Both corrections made the feature smaller.** The middle night went +⁦166px⁩ → +⁦92px⁩ at one
+  hotel mention instead of two, and an A4 day block +⁦75px⁩ → +⁦33px⁩, which is ⁦396px⁩ over twelve
+  days rather than ⁦900⁩. When a correction is also a saving, the first version was carrying
+  something it had not argued for.
+
+Re-verified after the corrections: backend **1406**, frontend **5919**, shared **612**, the
+sharing e2e **13 passed** in both modes, and the mockup re-rendered and re-measured in both themes
+with no console errors.

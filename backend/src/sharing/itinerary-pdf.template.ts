@@ -9,6 +9,7 @@ import {
   TIME_MEANING,
   type SharedDay,
   type SharedDayBed,
+  type SharedJourney,
   type SharedDaySummary,
   type SharedDayTitle,
   type SharedEvent,
@@ -233,7 +234,22 @@ function sharedTimeText(time: NonNullable<SharedEvent['time']>): string {
  *
  * The leg into the evening bed prints above it, exactly as a leg prints above any other row.
  */
-function bedRow(bed: SharedDayBed | undefined, summary: boolean): string {
+/** **The drive into a row**, wherever it hangs — an event's own journey or a bed's. It names
+ *  its origin only where the row above it is not one (ADR-0238 §1's correction, ADR-0232 R3's
+ *  rule): the walk out of a bed the day draws once, at its foot, would otherwise read as a
+ *  drive out of nothing at the top of the block. The mode leads the numbers and the numbers
+ *  carry their units — it printed as `37 · 30.5` once, two figures with nothing saying what
+ *  either measured (owner, 2026-08-30). */
+function journeyLine(journey: SharedJourney | undefined): string {
+  if (!journey) return '';
+  const origin = journey.from ? `${PDF_COPY.legFrom(auto(journey.from))} · ` : '';
+  return (
+    `<div class="pdf-journey">${origin}${PDF_COPY.travelMode[journey.mode]} · ` +
+    `${ltr(journey.minutes)} ${PDF_COPY.minutes} · ${ltr(journey.km)} ${PDF_COPY.km}</div>`
+  );
+}
+
+function bedRow(bed: SharedDayBed | undefined, summary: boolean, edge: 'woke' | 'sleeps'): string {
   // **SUMMARY KEEPS THE CLAUSE AND GETS NO ROWS** (ADR-0238 §5, and the render is what decided
   // it). §1's argument for giving a bed a position is that a leg drawn out of an origin nobody
   // can see is a journey with an invisible start — and Summary has no legs, no clocks and no
@@ -242,16 +258,19 @@ function bedRow(bed: SharedDayBed | undefined, summary: boolean): string {
   // reference trip onto TWO pages against ADR-0213 §4's one. The fact is not lost — it is the
   // day header's `לנים ב…` there, exactly as it shipped.
   if (summary || !bed) return '';
-  const journey = bed.journey
-    ? `<div class="pdf-journey">${PDF_COPY.travelMode[bed.journey.mode]} · ` +
-      `${ltr(bed.journey.minutes)} ${PDF_COPY.minutes} · ${ltr(bed.journey.km)} ${PDF_COPY.km}</div>`
-    : '';
+  // **NO LABEL, AND THE BOUND BRINGS ITS OWN NOUN** (ADR-0209 §1, restored 2026-09-21 — the
+  // screen's `BedRow` carries the whole argument). `לינה` under the name was the event row's
+  // grammar on a row that is not an event, and on a middle night it was a line holding one
+  // word. The noun is the edge this day IS, and the clock stays in the column that is for
+  // clocks — which is the one place paper differs from the screen here, and only in layout.
+  const noun = edge === 'woke' ? PDF_COPY.checkOutLabel : PDF_COPY.checkInLabel;
   return (
-    journey +
+    journeyLine(bed.journey) +
     `<div class="pdf-event pdf-bed">` +
     `<span class="pdf-event-time">${bed.time ? sharedTimeText(bed.time) : ''}</span>` +
     `<span class="pdf-event-copy"><strong>${PDF_STAY_GLYPH} ${auto(bed.name)}</strong>` +
-    `<span><b class="pdf-kind">${PDF_COPY.bookingType.hotel}</b></span></span></div>`
+    (bed.time ? `<span>${noun}</span>` : '') +
+    `</span></div>`
   );
 }
 
@@ -492,10 +511,7 @@ function eventRow(event: SharedEvent, summary: boolean): string {
   }
   // The mode leads the numbers, and the numbers carry their units — it printed as `37 · 30.5`,
   // two bare figures with nothing saying what either measured (owner, 2026-08-30).
-  const journey = event.journey
-    ? `<div class="pdf-journey">${PDF_COPY.travelMode[event.journey.mode]} · ` +
-      `${ltr(event.journey.minutes)} ${PDF_COPY.minutes} · ${ltr(event.journey.km)} ${PDF_COPY.km}</div>`
-    : '';
+  const journey = journeyLine(event.journey);
   // Each value isolated, the separator left in the RTL flow — a `dir="auto"` over the JOIN
   // would let an English address decide which side the place name sits on.
   // **The row says what it IS before it says where** (owner, 2026-08-30: _"hotels and other
@@ -584,7 +600,7 @@ function dayCard(day: SharedDay, summary: boolean, photoSrc?: string): string {
       ? `<span class="pdf-stay">${PDF_COPY.stay(auto(bedName(day)!))}</span>`
       : `<span>${daySummaryText(day.summary)}</span>`) +
     `</span></header>` +
-    `<div class="pdf-parts">${bedRow(day.wokeIn, summary)}${sections}${bedRow(day.sleeps, summary)}</div></article>`
+    `<div class="pdf-parts">${bedRow(day.wokeIn, summary, 'woke')}${sections}${bedRow(day.sleeps, summary, 'sleeps')}</div></article>`
   );
 }
 

@@ -582,6 +582,15 @@ export const sharedJourneySchema = z.strictObject({
   mode: z.enum(LEG_TRAVEL_MODES),
   minutes: z.number().int().nonnegative(),
   km: z.number().nonnegative(),
+  /** **Where this leg leaves from, named — said only where the row above it is not its
+   *  origin** (ADR-0238 §1's 2026-09-21 correction, borrowing ADR-0232 R3's rule and its
+   *  words). A journey line otherwise reads as a drive FROM the row above it, which on the
+   *  day's first row would be a drive out of nothing.
+   *
+   *  It is set on exactly one leg: the walk out of the bed, on a day whose two ends are the
+   *  same stay and which therefore draws that bed once, at its foot. Absent everywhere else,
+   *  because everywhere else the row above the line IS where the leg starts. */
+  from: z.string().optional(),
 });
 export type SharedJourney = z.infer<typeof sharedJourneySchema>;
 
@@ -927,6 +936,18 @@ export const sharedDaySchema = z.strictObject({
    */
   wokeIn: sharedDayBedSchema.optional(),
   sleeps: sharedDayBedSchema.optional(),
+  //
+  // **A STAY IS NAMED ONCE A DAY** (owner, 2026-09-21, on the built page: _"make it read once
+  // on a middle night"_). Where both ends are the SAME stay — every middle night, which on a
+  // long stay is most of them — only `sleeps` is published: the end the day reaches, and the
+  // one the drive home lands on. `wokeIn` is absent there, and it loses nothing by being: a
+  // middle night is neither edge of its stay, so that frame carried a name `sleeps` already
+  // carries and no bound at all.
+  //
+  // The leg out of it is not lost with it. It rides the day's first scheduled row as always,
+  // and takes `journey.from` — the origin named — so the one thing the head row was for
+  // (ADR-0206 §AD: a leg drawn out of an origin nobody can see is a journey with an invisible
+  // start) survives the subtraction that the repetition did not.
   photo: sharedPhotoSchema.optional(),
   sections: z.array(sharedDaypartSectionSchema),
 });
