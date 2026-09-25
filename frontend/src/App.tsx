@@ -548,7 +548,7 @@ function Shell({ otherTripCount }: { otherTripCount: number }) {
   // Give Android's OS back an in-app entry to traverse into (ADR-0090) so a cold
   // launch straight into the trip can't let a system-back slip out of the app.
   useTripBackGuard();
-  const { mode, phase, chromeMode, goingLive } = useMode();
+  const { mode, isFinished, chromeMode, goingLive } = useMode();
   const { trip, tripDeleted, usingCachedSnapshot } = useTrip();
   const navigate = useNavigate();
   const closeAllOverlays = useCloseAllOverlays();
@@ -665,7 +665,7 @@ function Shell({ otherTripCount }: { otherTripCount: number }) {
           onOpenSwitcher={() => navigate('/trips')}
           onOpenPeople={() => setRosterOpen(true)}
           onOpenSettings={() => navigate(`/trip/${trip.id}/settings`)}
-          onShare={() => share.open(trip, phase === 'past')}
+          onShare={() => share.open(trip, isFinished)}
           allDays={allDays}
           otherTripCount={otherTripCount}
         />
