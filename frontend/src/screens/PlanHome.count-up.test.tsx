@@ -65,6 +65,7 @@ const bk = (id: string): Booking => ({
   updatedBy: 'u1',
 });
 
+vi.mock('../state/mode-state', () => import('../test/mode-from-trip'));
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
     trip,

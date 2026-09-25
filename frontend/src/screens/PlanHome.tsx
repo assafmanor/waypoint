@@ -12,10 +12,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { BOOKING_TYPE, TASK_STATUS } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
+import { useMode } from '../state/mode-state';
 import { BEAT, playBeat } from '../lib/one-shot';
 import { useClock } from '../lib/useClock';
 import { useCountUp } from '../lib/useCountUp';
-import { tripPhase } from '../lib/mode';
 import { dayPhrase } from '../lib/hebrew';
 import { formatTripDates, tripDayNumber } from '../lib/time';
 import { prepHeroFacts } from '../lib/prep-hero-facts';
@@ -81,6 +81,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
     zoneEvidence,
   } = useTrip();
   const now = useClock();
+  const { isFinished } = useMode();
   const navigate = useNavigate();
   const { readiness, automatic, applyVerb } = useAutomaticTasks();
   // **The percentage reads the same resolution the rows do** — otherwise the hero can say
@@ -161,7 +162,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
 
   // A finished trip is a calm read-only archive (ADR-0040): no prep dashboard,
   // no countdown, no board — a quiet retrospective and a way back into the days.
-  if (tripPhase(trip, now, zoneEvidence, events) === 'past') {
+  if (isFinished) {
     return (
       <>
         <div className="prep prep-past">
@@ -498,7 +499,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
         <StatTile
           // Not counted-up: `readiness` (and so `emptyDates.length`) is computed
           // below the past-trip branch's early return above, so a `useCountUp`
-          // call here would run conditionally on `tripPhase` — the hooks-rules
+          // call here would run conditionally on `isFinished` — the hooks-rules
           // violation the two calls above avoid by sitting ahead of that return.
           value={
             <span
