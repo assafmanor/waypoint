@@ -39,6 +39,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
+import { useMode } from '../state/mode-state';
 import { EVENT_PARAM, EVENT_ROW_ATTR, eventRowSelector, useArrivalParam } from '../state/nav-state';
 import { useLandOnArrival } from '../lib/land-at-top';
 import { edgeFadeRef } from '../lib/edge-fade';
@@ -79,7 +80,7 @@ import {
 } from '../lib/places';
 import type { PlaceLabels } from '../lib/place-label';
 import { usePlaceLabels } from '../state/place-labels';
-import { tripPhase, tripToday } from '../lib/mode';
+import { tripToday } from '../lib/mode';
 import {
   buildTimeTree,
   clockRange,
@@ -310,6 +311,7 @@ export function PlanDay() {
   const daySurface = useDaySurface<HTMLDivElement>();
   const placeLabels = usePlaceLabels();
   const now = useClock();
+  const { phase, isFinished } = useMode();
   // The builder's way to the map (ADR-0121 §8), on every row whose event resolves a
   // coord-bearing place. It is the only surface here that needs it: the row's own tap
   // opens the edit form, which carries no location view of its own.
@@ -329,7 +331,7 @@ export function PlanDay() {
   const tz = zoneCtx.ambientZone;
   // A finished trip is a read-only archive (ADR-0040): the builder becomes a
   // frozen, browsable history — no create/edit/delete/move, no shelf.
-  const readOnly = tripPhase(trip, now, zoneEvidence, events) === 'past';
+  const readOnly = isFinished;
   // A static "now" reference while building TODAY mid-trip (ADR-0043): a drafting
   // guide for "what's still ahead to build," never a live signal. Only when the
   // day on screen is today and the trip is live — Plan has no "now" otherwise.
@@ -345,10 +347,7 @@ export function PlanDay() {
   // ON SCREEN so an idea's "מחר" is the day after the one being built (ADR-0151); by trip-day
   // number off it, where "עוד 15 ימים" is only the day number plus a constant.
   const dayNaming = { trip, today, anchor: activeDate };
-  const nowRefMs =
-    tripPhase(trip, now, zoneEvidence, events) === 'live' && activeDate === today
-      ? now.getTime()
-      : null;
+  const nowRefMs = phase === 'live' && activeDate === today ? now.getTime() : null;
   const [formTarget, setFormTarget] = useState<'new' | TripEvent | null>(null);
   // A booking-linked event edits through the merged BookingSheet (ADR-0053 §2).
   const [bookingTarget, setBookingTarget] = useState<Booking | null>(null);

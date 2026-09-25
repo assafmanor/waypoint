@@ -8,13 +8,8 @@ Eight phases, numbered 0 to 7, of four kinds: **bug fixes** (0), **design** (1A,
 
 ```mermaid
 graph LR
-  P07[0.7 count-up] --> DONE0
-  P01[0.1 the seam] --> P02[0.2 opens on day 1]
-  P01 --> P03[0.3 the Map]
-  P01 --> P04[0.4 the Index]
-  P01 --> P05[0.5 tasks after the trip]
-  P01 --> P06[0.6 share after the trip]
-  P02 & P03 & P04 & P05 & P06 --> DONE0((Phase 0 done))
+  P07[0.7 count-up] & P01[0.1 the seam] & P02[0.2 opens on day 1] --> DONE0((Phase 0 done))
+  P03[0.3 the Map] & P04[0.4 the Index] & P05[0.5 tasks after the trip] & P06[0.6 share after the trip] --> DONE0
   D1A[1A palette + posture + Home] --> P3[3 archive posture]
   D1A --> P4[4 memory Home]
   D1A --> P6B[6B resurface]
@@ -33,7 +28,7 @@ graph LR
 
 | Phase                    | Kind   | Needs                        | Can run beside    |
 | ------------------------ | ------ | ---------------------------- | ----------------- |
-| **0** the trip knows     | fixes  | nothing (0.1 first)          | 1A, 2             |
+| **0** the trip knows     | fixes  | nothing                      | 1A, 2             |
 | **1A** palette + posture | design | nothing                      | 0, 2              |
 | **1B** motion + outputs  | design | 1A                           | 3, 4              |
 | **2** recap derivation   | logic  | nothing                      | 0, 1A             |
@@ -46,7 +41,7 @@ graph LR
 
 **The critical path is 1A → 4 → 5.** Design is the long pole, so it starts today alongside the fixes and the derivation, and nothing in Phase 0 or 2 waits on it. Three lanes open immediately:
 
-- **Lane A (frontend fixes):** 0.7, then 0.1, then 0.2 to 0.6 in parallel.
+- **Lane A (frontend fixes):** 0.1 to 0.7 in parallel.
 - **Lane B (design):** 1A.
 - **Lane C (shared logic):** 2.
 
@@ -54,7 +49,7 @@ graph LR
 
 ## Phase 0 — the trip knows it ended (bug fixes · ADR-0239 §1–§5)
 
-No design needed. Each item's surfaces are otherwise untouched, and **0.1 lands first** because everything else reads it. 0.7 needs nothing and can land before 0.1.
+No design needed. Each item's surfaces are otherwise untouched. **No item waits on 0.1:** `useMode().phase` already existed, so 0.2–0.6 read it directly, and 0.1 only moved the three screens still calling `tripPhase(...)` onto it. 0.7 needs nothing.
 
 ### 0.1 · The seam (§1)
 

@@ -80,7 +80,7 @@ vi.mock('./state/trip-state', () => ({
 }));
 vi.mock('./state/auth-state', () => ({ useAuth: () => ({ me: { user: ME } }) }));
 vi.mock('./state/mode-state', () => ({
-  useMode: () => ({ mode, chromeMode: mode, phase, setOverride }),
+  useMode: () => ({ mode, chromeMode: mode, phase, isFinished: phase === 'past', setOverride }),
 }));
 vi.mock('./state/drag-state', () => ({
   useDragState: () => ({ dragging: false, overDate: null }),
@@ -244,6 +244,35 @@ describe('the anchor slot', () => {
     activeDate = '2026-07-22';
     const { container } = renderHeader();
     expect(container.querySelector('.hdr-anchor')!.classList.contains('is-back')).toBe(false);
+  });
+
+  // ADR-0239 §3: a finished trip has no progress to read. The slot stays, empty, until
+  // Phase 3 gives it words.
+  it('keeps the slot and reads nothing through it on a finished trip', () => {
+    mode = 'plan';
+    phase = 'past';
+    const { container } = renderHeader();
+    const anchor = container.querySelector('.hdr-anchor')!;
+    expect(anchor.childElementCount).toBe(0);
+    expect(anchor.textContent).toBe('');
+  });
+});
+
+// The fixture trip has no events, so every Plan-mode day is empty.
+describe('the empty-day marker', () => {
+  it('marks empty days while the trip is still being planned', () => {
+    mode = 'plan';
+    phase = 'pre';
+    const { container } = renderHeader({ at: '/?tab=days' });
+    expect(container.querySelectorAll('.wp-daypill.empty')).toHaveLength(10);
+  });
+
+  it('marks none on a finished trip (ADR-0239 §3)', () => {
+    mode = 'plan';
+    phase = 'past';
+    const { container } = renderHeader({ at: '/?tab=days' });
+    expect(container.querySelectorAll('.wp-daypill')).toHaveLength(10);
+    expect(container.querySelectorAll('.wp-daypill.empty')).toHaveLength(0);
   });
 });
 
