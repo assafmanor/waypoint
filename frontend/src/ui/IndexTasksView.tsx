@@ -100,7 +100,7 @@ export function IndexTasksView({
   const navigate = useNavigate();
   // A finished trip adds and edits nothing (ADR-0239 §4). What stays is the tick and its
   // dismiss/reopen twins: settling a task is the one write a record keeps.
-  const finished = useMode().phase === 'past';
+  const finished = useMode().isFinished;
 
   const [facet, setFacet] = useState<TaskFacet>(TASK_FACET.ALL);
   // null = closed; 'create' = a new task; a Task = editing that one.

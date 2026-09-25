@@ -58,10 +58,9 @@ import './notes.css';
 
 export function IndexNotesView({ onClose }: { onClose: () => void }) {
   const { trip, notes, users, noteHosts, noteVerbs } = useTrip();
-  const { mode, phase } = useMode();
   // A finished trip's notes read and nothing writes one (ADR-0239 §4, owner: no post-trip
   // notes).
-  const finished = phase === 'past';
+  const { mode, isFinished: finished } = useMode();
   const now = useClock();
 
   const [category, setCategory] = useState<NoteCategoryFilter>(NOTE_CATEGORY_ALL);

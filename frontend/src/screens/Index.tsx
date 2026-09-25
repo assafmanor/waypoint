@@ -51,7 +51,7 @@ export function Index() {
     zoneEvidence,
   } = useTrip();
   const now = useClock();
-  const { phase } = useMode();
+  const { isFinished } = useMode();
   const { automatic } = useAutomaticTasks();
   const [view, setView] = useState<IndexView>('landing');
   // Set alongside `view` by the ?booking= deep-link below, and handed to a
@@ -171,19 +171,18 @@ export function Index() {
     .filter((type) => bookingCounts[type] > 0)
     .map((type) => t.index.bookingType[type])
     .join(` ${DOT_SEPARATOR} `);
-  const bookingsSubtitle =
-    phase === 'past' ? (
-      bookingTypesHad || t.index.tile.noBookings
-    ) : next ? (
-      <>
-        <Icon name="link" /> {t.index.tile.nextPrefix}{' '}
-        <BookingTitle booking={next.booking} places={places} />
-        {next.event && <> · {scheduleLabel(next.event, next.booking, zoneEvidence, now, trip)}</>}
-        {past.length > 0 && <> · {t.index.tile.pastCount(past.length)}</>}
-      </>
-    ) : (
-      t.index.tile.emptyBookings
-    );
+  const bookingsSubtitle = isFinished ? (
+    bookingTypesHad || t.index.tile.noBookings
+  ) : next ? (
+    <>
+      <Icon name="link" /> {t.index.tile.nextPrefix}{' '}
+      <BookingTitle booking={next.booking} places={places} />
+      {next.event && <> · {scheduleLabel(next.event, next.booking, zoneEvidence, now, trip)}</>}
+      {past.length > 0 && <> · {t.index.tile.pastCount(past.length)}</>}
+    </>
+  ) : (
+    t.index.tile.emptyBookings
+  );
 
   const docGroups = groupDocuments(documents);
   const documentsSubtitle =

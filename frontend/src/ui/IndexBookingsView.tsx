@@ -77,10 +77,9 @@ export function IndexBookingsView({
     zoneEvidence,
     enrichments,
   } = useTrip();
-  const { mode, phase } = useMode();
   // **A finished trip is a record** (ADR-0239 §4, building ADR-0049 §2): every booking in one
   // open list, since all of them are past and the fold would hide the trip, and nothing writes.
-  const finished = phase === 'past';
+  const { mode, isFinished: finished } = useMode();
   // This screen is the Index's topmost overlay (ADR-0098 §5), so it closes before
   // the tab changes — the same ordering `BookingDetail` needs, one level out.
   const showPlaceOnMap = useShowPlaceOnMap();

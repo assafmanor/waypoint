@@ -53,10 +53,9 @@ export function DocumentsSection({
   onFilterChange?: (filter: DocumentTypeFilter) => void;
 } = {}) {
   const { trip, documents, notes } = useTrip();
-  const { mode, phase } = useMode();
   // A finished trip's documents still open (ADR-0049 §2), and nothing uploads, renames or
   // deletes one (ADR-0239 §4).
-  const finished = phase === 'past';
+  const { mode, isFinished: finished } = useMode();
   // Built once per note-list change rather than filtered per row (ADR-0152 §6c).
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
   const [uploading, setUploading] = useState(false);
