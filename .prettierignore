@@ -14,4 +14,3 @@ mockups/**
 # validated offline (developers.google.com is unreachable from sandboxed sessions).
 # Reformatting a vendored file would hide any drift from Google's own copy.
 docs/design/map-styles/cbms-json-schema.json
-mockups/past-trip-v1.html
