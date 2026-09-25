@@ -53,6 +53,8 @@ No design needed. Each item's surfaces are otherwise untouched. **No item waits 
 
 ### 0.1 · The seam (§1)
 
+Built · PR #872
+
 - **Goal:** one phase, read everywhere.
 - **Files:**
   - `state/mode-state.tsx`: already exposes `phase`. Add `isFinished` beside it only if three or more callers would otherwise compare strings.
@@ -64,6 +66,8 @@ No design needed. Each item's surfaces are otherwise untouched. **No item waits 
   - After this PR, `grep "tripPhase("` finds only `lib/mode.ts`, `state/mode-state.tsx` and `trip-state.tsx`.
 
 ### 0.2 · Where it opens (F1, F6 · §2, §3)
+
+Built · PR #872
 
 - **Files:**
   - `state/trip-state.tsx`: `defaultDay = trip.startDate` when finished. `daySelectTarget` keys on `defaultDay`, so `?day=` omission follows by itself.
