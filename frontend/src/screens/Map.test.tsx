@@ -72,6 +72,7 @@ let tripNotes: Note[] = [];
 const createNote = vi.fn(() => Promise.resolve(undefined));
 let tripBookings: Booking[] = [];
 let currentMode = 'trip';
+let currentPhase = 'live';
 let isOffline = false;
 // The strip's write. It is a spy rather than a setter on purpose: the bug #10 fixes
 // is the case where the chosen day IS the active one, so `activeDate` must NOT move.
@@ -131,7 +132,9 @@ vi.mock('../state/trip-state', () => ({
     attachmentVerbs: { attachDocument: vi.fn(), detachDocument: vi.fn() },
   }),
 }));
-vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: currentMode }) }));
+vi.mock('../state/mode-state', () => ({
+  useMode: () => ({ mode: currentMode, phase: currentPhase }),
+}));
 // Plan-mode research writes through the shelf verb; the write itself is covered in
 // PlaceResearch.test.tsx, so the screen only needs the hook to exist.
 // The Map now hosts `EventForm` too (ADR-0135 §3), which reaches for the write verbs and the
@@ -338,6 +341,7 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     tripNotes = [];
     tripBookings = [];
     currentMode = 'trip';
+    currentPhase = 'live';
     isOffline = false;
     geoFix = null;
     geoErrorCode = null;
@@ -345,6 +349,83 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     setActiveDate.mockClear();
     for (const fn of Object.values(verbs)) fn.mockClear();
     createNote.mockClear();
+  });
+
+  // ── A FINISHED TRIP IS A MEMORY (ADR-0239 §2–§4) ────────────────────────────────
+  describe('on a finished trip', () => {
+    const finish = () => {
+      currentMode = 'plan';
+      currentPhase = 'past';
+      setSimulatedNow(Date.parse('2026-07-29T03:00:00Z'));
+    };
+    const names = () =>
+      [...document.querySelectorAll('.place:not(.result) .map-name')]
+        .filter((el) => !el.closest('.wp-reveal.hidden'))
+        .map((el) => el.textContent);
+
+    it('opens on all days, in trip order, with only the undated block named', () => {
+      seed();
+      finish();
+      render(wrap(<MapView />));
+      expect(allDaysOn()).toBe(true);
+      expect(names()).toEqual(['food', 'lite', 'see', 'idea']);
+      expect(screen.queryByText(t.map.blockHeader.ahead)).toBeNull();
+      expect(screen.queryByText(t.map.blockHeader.behind)).toBeNull();
+      expect(screen.getByText(t.map.blockHeader.dayless)).toBeTruthy();
+    });
+
+    it('offers no location: no card, no request, no `קרוב עכשיו`', () => {
+      seed();
+      finish();
+      render(wrap(<MapView />));
+      expect(screen.queryByText(t.map.near.prompt.body)).toBeNull();
+      expect(getCurrentPosition).not.toHaveBeenCalled();
+      expect(document.querySelector('.map-nearchip')).toBeNull();
+    });
+
+    it('no row offers `ניווט` or `＋ מיקום`', () => {
+      seed();
+      finish();
+      render(wrap(<MapView />));
+      expect(screen.queryAllByRole('link', { name: new RegExp(t.actions.navigate) })).toEqual([]);
+      expect(screen.queryByRole('button', { name: t.placePicker.empty })).toBeNull();
+    });
+
+    it('a selected row adds nothing, and settling stays', () => {
+      seed();
+      finish();
+      render(wrap(<MapView />));
+      fireEvent.click(row('idea')!);
+      expect(screen.queryByRole('button', { name: t.map.scheduleToDay })).toBeNull();
+      fireEvent.click(row('food')!);
+      expect(screen.queryByRole('button', { name: t.map.scheduleToDay })).toBeNull();
+      // The sections still render what was written; they just have no way in.
+      expect(row('food')!.querySelector('.note-sec')).toBeTruthy();
+      expect(row('food')!.querySelector('.note-sec .add')).toBeNull();
+      expect(row('food')!.querySelector('.wp-settle-btn')).toBeTruthy();
+    });
+
+    it('a search result has no `＋ אולי`', () => {
+      seed();
+      finish();
+      searchStub.predictions = [{ googlePlaceId: 'g-1', primaryText: 'Kissa' }];
+      render(wrap(<MapView />));
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.search.button) }));
+      fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
+        target: { value: 'kissa' },
+      });
+      expect(screen.getByText('Kissa')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: t.map.research.addAria('Kissa') })).toBeNull();
+      searchStub.predictions = [];
+    });
+
+    it('withdraws `מה נשאר`: nothing is left to visit', () => {
+      seed();
+      finish();
+      render(wrap(<MapView />));
+      openFacets();
+      expect(screen.queryByRole('button', { name: new RegExp(t.map.filter.left) })).toBeNull();
+    });
   });
 
   // ── A PLACE CARRIES NOTES (ADR-0153 §8's 2026-08-02 amendment) ───────────────

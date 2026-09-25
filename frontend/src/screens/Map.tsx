@@ -295,7 +295,10 @@ export function MapView() {
     enrichments,
     tasks,
   } = useTrip();
-  const { mode } = useMode();
+  const { mode, phase } = useMode();
+  // A finished trip is a memory, not a plan (ADR-0239): the live trip's help withdraws (§3)
+  // and nothing on this tab adds to it (§4). Settling stays, being the one sanctioned write.
+  const finished = phase === 'past';
   const offline = useIsOffline() || usingCachedSnapshot;
   const nowMs = useClock().getTime();
   const navigate = useNavigate();
@@ -326,7 +329,8 @@ export function MapView() {
     errand,
     errandResult,
   } = useMapScope();
-  useEffect(() => setAllDays(false), [mode, setAllDays]);
+  // A finished trip opens on all of it (ADR-0239 §2): there is no "day you are on".
+  useEffect(() => setAllDays(finished), [mode, finished, setAllDays]);
   // The other way out of all-days: arriving on a different day (a `daySelectTarget`
   // from another surface, a deep link). Choosing a day on the strip is the INTENT
   // path and clears the scope itself (`useSelectDay`), which is what makes tapping
@@ -764,7 +768,7 @@ export function MapView() {
   // So consent short-circuits the gate. It cannot raise a dialog — that is what consent
   // means — and §6's invariant is untouched: the card is still the only thing that asks.
   useEffect(() => {
-    if (offline || nearMe) return;
+    if (finished || offline || nearMe) return;
     // `unknown` means the Permissions API query is still in flight — wait for it,
     // rather than showing a card we may not need. `unsupported` is the settled
     // "nothing better is coming" answer, handled below.
@@ -779,6 +783,7 @@ export function MapView() {
     if (geo.permission === 'denied') return;
     openPrompt();
   }, [
+    finished,
     locationOffered,
     locationGranted,
     offline,
@@ -920,7 +925,7 @@ export function MapView() {
   // per call site. `today` is the trip-local date, which is what lets a whole passed
   // day count as behind you even where nothing carries a clock.
   const today = liveToday(nowMs, zoneEvidence);
-  const dayCtx = { onDate: scopedDate, nowMs, today };
+  const dayCtx = { onDate: scopedDate, nowMs, today, phase };
 
   // …AND A LIVE QUERY WIDENS THE LIST THE SAME WAY `כל הימים` DOES.
   //
@@ -942,7 +947,7 @@ export function MapView() {
   // untouched — it has always named the day of anything out of scope through `forceDay`,
   // which is why this defect could be checked on a real device and read as fixed.
   const listSpansTrip = allDays || searching;
-  const listCtx = { onDate: listSpansTrip ? undefined : activeDate, nowMs, today };
+  const listCtx = { onDate: listSpansTrip ? undefined : activeDate, nowMs, today, phase };
 
   // ADR-0119's coupling rule, now on THREE axes: each facet's count is what the
   // OTHER facets leave visible, so no chip ever claims rows the list won't show.
@@ -953,7 +958,7 @@ export function MapView() {
   const leftOk = (u: PlaceUsage) => !leftOnly || isPlaceLeft(u, dayCtx);
   const countScope = useMemo(
     () => dayScoped.filter((u) => shelfOk(u) && leftOk(u)),
-    [dayScoped, maybesOnly, leftOnly, scopedDate, nowMs, today],
+    [dayScoped, maybesOnly, leftOnly, scopedDate, nowMs, today, phase],
   );
   const categoryCounts = useMemo(() => countPlacesByCategory(countScope), [countScope]);
   const hasMaybes = allUsages.some(isOnShelf);
@@ -1507,7 +1512,7 @@ export function MapView() {
     () => orderedPins.map(({ lat, lng }) => ({ lat, lng })),
     [orderedPins],
   );
-  const dayRouteUrl = dayShapeVisible ? mapsDayRouteUrl(orderedStops) : null;
+  const dayRouteUrl = dayShapeVisible && !finished ? mapsDayRouteUrl(orderedStops) : null;
 
   // **The one leg the amber is spent on** (ADR-0206 §D8): the journey INTO the stop you are
   // asking about — the selected one, or the next one in Trip mode. Into rather than out of,
@@ -2230,6 +2235,9 @@ export function MapView() {
 
   const openDraft = useRef<(next: MapDraft, frameAt?: LatLng) => void>(() => {});
   openDraft.current = (next, frameAt) => {
+    // The two ADD sources stop here on a finished trip (ADR-0239 §4); their controls are
+    // already absent, but a long press on blank canvas has no control to withhold.
+    if (finished && next.kind !== 'rename') return;
     // **EXACTLY ONE CARD ON THIS CANVAS** (ADR-0125 §6, ADR-0122 §7). A canvas gesture lands
     // on something that is not ours, so it replaces the selection outright — which is also
     // what every map app does when you tap something else. The other two sources are ABOUT
@@ -2659,6 +2667,7 @@ export function MapView() {
     onDate: opts.forceDay ? undefined : listCtx.onDate,
     nowMs,
     today,
+    phase,
   });
 
   const dayMeta = (
@@ -2996,12 +3005,18 @@ export function MapView() {
           // and a note section per unselected row is a section nobody is looking at.
           tasksSlot={
             revealed ? (
-              <HostTasks host={{ kind: 'place', id: place.id, name: place.name }} />
+              <HostTasks
+                host={{ kind: 'place', id: place.id, name: place.name }}
+                canAdd={!finished}
+              />
             ) : undefined
           }
           notesSlot={
             revealed ? (
-              <HostNotes host={{ kind: 'place', id: place.id, name: place.name }} />
+              <HostNotes
+                host={{ kind: 'place', id: place.id, name: place.name }}
+                canAdd={!finished}
+              />
             ) : undefined
           }
           // Above the notes, the order every other read surface uses. Gated on `selected`
@@ -3037,18 +3052,22 @@ export function MapView() {
             // Absent under a place errand (ADR-0134 §3 / ADR-0135 §7): the tab is answering
             // one question, so the verb changes rather than accumulating — exactly as `נווט`
             // gives its slot to `בחירה` on the same row.
-            selected && !pendingErrand && !placeIsScheduledInScope(usage.placeId)
+            selected && !pendingErrand && !finished && !placeIsScheduledInScope(usage.placeId)
               ? () => openScheduleForm(usage.placeId)
               : undefined
           }
-          onEnrich={() =>
-            setRowErrand({
-              target: { kind: 'place', id: place.id },
-              // The row names itself, which is all the banner needs: you are standing on
-              // the thing you are answering, so there is no reference to name it by.
-              label: place.name,
-            })
+          onEnrich={
+            finished
+              ? undefined
+              : () =>
+                  setRowErrand({
+                    target: { kind: 'place', id: place.id },
+                    // The row names itself, which is all the banner needs: you are standing on
+                    // the thing you are answering, so there is no reference to name it by.
+                    label: place.name,
+                  })
           }
+          navigable={!finished}
           onFrame={opts.onFrame}
           onChoose={opts.onChoose && (() => opts.onChoose!(usage.placeId))}
           // Selected only, and never under an errand: the tab is then answering one question,
@@ -3091,7 +3110,12 @@ export function MapView() {
     const headerFor = new Map<string, string>();
     if (labelled) {
       shown.forEach((usage, i) => {
-        if (blocks[i] !== blocks[i - 1]) headerFor.set(usage.placeId, t.map.blockHeader[blocks[i]]);
+        // A finished trip has nothing ahead of it: its dated rows are the trip itself, and
+        // only `ללא יום` needs naming (ADR-0239 §2).
+        const unnamed = finished && blocks[i] === PLACE_BLOCK.ahead;
+        if (blocks[i] !== blocks[i - 1] && !unnamed) {
+          headerFor.set(usage.placeId, t.map.blockHeader[blocks[i]]);
+        }
       });
     }
     // The area sort needs TWO headers where near-me needs one: a distance is legible on
@@ -3137,7 +3161,7 @@ export function MapView() {
   // (ADR-0109 §7 / ADR-0121 §11's "absent, not disabled"). At the map extreme it stays
   // mounted and CSS hides it — two different facts, two different mechanisms, and
   // neither borrows the other's (§5).
-  const nearChip = !offline && (
+  const nearChip = !offline && !finished && (
     <ToggleChip
       on={distanceOrder}
       // Teal is what this control is ABOUT (location), so it holds in both states; a
@@ -3664,6 +3688,8 @@ export function MapView() {
   // ALREADY OWNS sets both ids deliberately (session 167), and the place card is the richer
   // of the two — it carries the day, the distance and the way in to every reference. So the
   // place we own wins, which is also the honest answer to "what is this": ours.
+  // Under an errand the verb is `בחירה`, which answers a form rather than adding to the trip.
+  const resultAddable = !finished || pendingErrand != null;
   const cardResult =
     sheetView === MAP_SHEET_VIEW.map && selectedResultId && !cardUsage && !draft
       ? research.predictions.find((r) => r.googlePlaceId === selectedResultId)
@@ -3678,7 +3704,7 @@ export function MapView() {
         image={candidateKnowledge.image}
         summary={candidateKnowledge.summary}
         onFullPicture={showCandidatePicture}
-        onAdd={() => onResultAdd(cardResult)}
+        onAdd={resultAddable ? () => onResultAdd(cardResult) : undefined}
       />
     </div>
   );
@@ -3779,7 +3805,7 @@ export function MapView() {
       onFullPicture={showCandidatePicture}
       addingId={addingResultId}
       addFailed={addResultFailed}
-      onAdd={onResultAdd}
+      onAdd={resultAddable ? onResultAdd : undefined}
     />
   );
 
@@ -4089,7 +4115,7 @@ export function MapView() {
           areaCount={areaCount}
           areaSorted={areaSorted}
           onAreaSort={toggleAreaSort}
-          onLocate={locateFromCanvas}
+          onLocate={finished ? undefined : locateFromCanvas}
           arrival={arrival}
           // The MEASURED reserve, not "a card is open": the constant it replaced was sized
           // for a selected row and the form is nearly twice that, which put a freshly
@@ -4226,6 +4252,7 @@ function PlaceRow({
   onSelect,
   onDeselect,
   onEnrich,
+  navigable,
   onFrame,
   onChoose,
   onRename,
@@ -4351,8 +4378,12 @@ function PlaceRow({
   /** Present only while a place errand is live: choose THIS place for the form that sent
    *  it, and return (ADR-0134 §3). */
   onChoose?: () => void;
-  /** Open the picker to give a coordless Place-lite real coordinates. */
-  onEnrich: () => void;
+  /** Open the picker to give a coordless Place-lite real coordinates. Absent on a finished
+   *  trip, which adds nothing (ADR-0239 §4) — the slot then stays empty. */
+  onEnrich?: () => void;
+  /** Whether the row offers `נווט`. Not on a finished trip: directions are the live trip's
+   *  help (ADR-0239 §3). */
+  navigable: boolean;
   /** **Give this place your own name** (ADR-0147 §3). Present only while selected, which is
    *  what makes it free: every other slot on this row is measured-spent, and a selected row is
    *  already the object that reveals its verbs. */
@@ -4406,7 +4437,7 @@ function PlaceRow({
   const glyph = placeGlyph(place, usage.pin.category);
   const isHard = usage.pin.commitment === 'hard';
   const isPureIdea = usage.isMaybe && !usage.isScheduled;
-  const dirUrl = mapsDirectionsUrl(place);
+  const dirUrl = navigable ? mapsDirectionsUrl(place) : undefined;
   // What the meta line says, in priority order (ADR-0109 §1): what happens here,
   // else the address, else the category. The address is the fallback rather than the
   // headline — on a scheduled row it says nothing about why the place is on the list.
@@ -4633,12 +4664,14 @@ function PlaceRow({
             <Icon name="navigate" /> {t.actions.navigate}
           </a>
         ) : (
-          <AddLocationButton
-            onClick={(e) => {
-              e.stopPropagation();
-              onEnrich();
-            }}
-          />
+          onEnrich && (
+            <AddLocationButton
+              onClick={(e) => {
+                e.stopPropagation();
+                onEnrich();
+              }}
+            />
+          )
         )}
       </span>
       {/* **AND ITS WAY OUT OF THE WAY** (ADR-0122 §7's 2026-08-27 amendment; owner report:
