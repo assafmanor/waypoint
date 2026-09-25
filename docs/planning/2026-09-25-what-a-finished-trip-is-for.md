@@ -156,3 +156,14 @@ Grouped by job. **Reuses** names the infrastructure that already does most of th
 4. **Notes on a finished trip:** ADR-0049 freezes the Index, but a note written after the trip ("next time, book Ichiran ahead") is exactly the kind of thing worth keeping. Should notes stay writable, as settling does?
 5. **The anniversary (6a):** in-app only, or is this the one push that earns an exception to ADR-0198?
 6. **Coming home (1f):** do you want the one-time beat, or should the archive stay entirely calm, as ADR-0040 first imagined?
+
+### The owner's answers (2026-09-25), decided in [ADR-0239](../decisions/0239-a-finished-trip-is-a-memory-not-a-plan.md)
+
+1. Yes: day 1, and all days on the Map (§2).
+2. _"We should maybe come up with a whole new color palette for past trips"_ (§6). Neither violet nor the past-day wash; designed in the epic's Phase 1A.
+3. Yes (§3). A consequence written into §3: post-trip deadlines keep **notifying** too, which amends ADR-0198's "a past trip sends nothing".
+4. No: notes are frozen with everything else (§4).
+5. The owner leaned towards a push and asked for an opinion. The opinion is yes, fenced: once per trip per year, only when it can name a place marked `היינו`, its own preference, on by default (§8).
+6. Yes: the coming-home beat (§7).
+
+The epic's phases, and what blocks what: [`2026-09-25-a-finished-trip-is-a-memory-build-plan.md`](2026-09-25-a-finished-trip-is-a-memory-build-plan.md).
