@@ -339,7 +339,7 @@ Three requests triaged together: a user settings page reachable from inside a tr
 
 ## Screens not built
 
-- **Archive presentation** — ADR-0044 settled the behavior of a finished trip and explicitly left how the archive _looks_ as a follow-up (the Index's read-only archive state is designed in ADR-0049; other tabs' archive presentation is still open).
+- **Archive presentation** — ADR-0044 settled the behavior of a finished trip and explicitly left how the archive _looks_ as a follow-up (the Index's read-only archive state is designed in ADR-0049; other tabs' archive presentation is still open). **Investigated and spec'd 2026-09-25** ([planning note](planning/2026-09-25-what-a-finished-trip-is-for.md)); six owner questions are open there. **Step 0 is ten carried-over bugs (F1–F10)** with one root cause: `useMode().phase` is read only by the mode toggle, so the Index, Map, header, tasks and share sheet never learn the trip ended. Among the ten: Days/Map open on the last day, the Map list reads newest-first, the Home tiles read `0`, and the share sheet mints an invite the join route refuses with 410. ADR-0049 §2's archive state was never built and falls inside that step. The design language is the next session, with `mockups/past-trip-v1.html`; the retrospective features (stats, contact sheet, replay, trip book, next-time list) follow the note's phasing.
 
 ## Documents: performance & caching
 
