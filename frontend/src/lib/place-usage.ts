@@ -35,6 +35,7 @@ import { eventPlaceId } from './places';
 import { endHostDay, type TransitionRange } from './glance';
 import { calendarDaysBetween } from './time';
 import { MS_PER_DAY } from '../constants';
+import type { TripPhase } from './mode';
 
 /** Commitment weight for the colour-by-most-committed tiebreak (ADR-0109 §4). */
 export type PinCommitment = 'hard' | 'soft' | 'idea';
@@ -623,7 +624,7 @@ export const matchesPlaceCategory = (usage: PlaceUsage, category: PlaceCategoryF
  *  the settle strip's job (ADR-0043), not a map filter's. */
 export function isPlaceLeft(usage: PlaceUsage, ctx: PlaceDayContext): boolean {
   const inScope = !ctx.onDate || usage.days.some((d) => d.date === ctx.onDate);
-  const scope = inScope ? ctx : { nowMs: ctx.nowMs, today: ctx.today };
+  const scope = inScope ? ctx : { nowMs: ctx.nowMs, today: ctx.today, phase: ctx.phase };
   return placeBlock(usage, scope) !== PLACE_BLOCK.behind;
 }
 
@@ -684,7 +685,17 @@ export interface PlaceOrderContext {
    *  resolve events, which then rank every clocked moment as known — the behaviour this
    *  had before the two questions were told apart. */
   eventById?: (id: string) => TripEvent | undefined;
+  /** `useMode().phase`. A finished trip (`'past'`) orders as if there were no clock:
+   *  see {@link listClock}. */
+  phase?: TripPhase;
 }
+
+/** The clock the list is split and ordered by. **A finished trip has none** (ADR-0239 §2):
+ *  every day is behind it, so the ahead/behind split would leave one block read
+ *  newest-first, which is the trip told backwards. Without a clock the list is the trip's
+ *  own sequence, day 1 first, and nothing is behind you, so `מה נשאר` withdraws itself. */
+const listClock = (ctx: PlaceDayContext): number | undefined =>
+  ctx.phase === 'past' ? undefined : ctx.nowMs;
 
 /** Whether a place's day is behind you: everything anchored there has ended.
  *  In progress counts as current — an event running now is maximally relevant. */
@@ -702,7 +713,7 @@ export function isDayUsagePast(day: DayUsage, nowMs: number, today?: string): bo
 /** What resolving a place's day needs: the scope, plus the clock where the caller
  *  already holds one. Omitting the clock is a real choice, not a shortcut — see
  *  {@link placeDay}. */
-export type PlaceDayContext = Pick<PlaceOrderContext, 'onDate' | 'nowMs' | 'today'>;
+export type PlaceDayContext = Pick<PlaceOrderContext, 'onDate' | 'nowMs' | 'today' | 'phase'>;
 
 /** The `DayUsage` a place is read as in this context. `undefined` when it has no day
  *  at all — day-scoped, that is a place not in this day (the map's ghost tier).
@@ -720,7 +731,8 @@ export type PlaceDayContext = Pick<PlaceOrderContext, 'onDate' | 'nowMs' | 'toda
  *  That is what keeps the pin's NUMBER clock-free (ADR-0121 §6): `buildPinOrderIndex`
  *  passes no `nowMs`, and so a tick can never renumber a pin. */
 export function placeDay(usage: PlaceUsage, ctx: PlaceDayContext = {}): DayUsage | undefined {
-  const { onDate, nowMs, today } = ctx;
+  const { onDate, today } = ctx;
+  const nowMs = listClock(ctx);
   if (onDate) return usage.days.find((d) => d.date === onDate);
   if (nowMs == null) return usage.days[0];
   return (
@@ -838,7 +850,8 @@ export type PlaceBlock = (typeof PLACE_BLOCK)[keyof typeof PLACE_BLOCK];
 export function placeBlock(usage: PlaceUsage, ctx: PlaceDayContext): PlaceBlock {
   const day = placeDay(usage, ctx);
   if (!day) return PLACE_BLOCK.dayless;
-  return ctx.nowMs != null && isDayUsagePast(day, ctx.nowMs, ctx.today)
+  const nowMs = listClock(ctx);
+  return nowMs != null && isDayUsagePast(day, nowMs, ctx.today)
     ? PLACE_BLOCK.behind
     : PLACE_BLOCK.ahead;
 }
@@ -850,7 +863,8 @@ export function comparePlacesBySchedule(
   b: PlaceUsage,
   ctx: PlaceOrderContext,
 ): number {
-  const { nameOf, nowMs, today } = ctx;
+  const { nameOf, today } = ctx;
+  const nowMs = listClock(ctx);
   const da = placeDay(a, ctx);
   const db = placeDay(b, ctx);
   // The block comes first, BEFORE the date is even considered. Ordering by date first

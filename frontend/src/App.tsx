@@ -241,7 +241,7 @@ export function Header({
   const { me } = useAuth();
   // The chrome paints `chromeMode`: it differs from `mode` only during the first morning's
   // hold (ADR-0221 §4), when the header is still violet over a trip that is already live.
-  const { chromeMode: mode } = useMode();
+  const { chromeMode: mode, isFinished } = useMode();
   // **Which surface is asking** decides whether the strip singles out a day at all
   // (field report #39). The remembered day is the `?day=` param wherever you are
   // (ADR-0035 §4 — one copy, nothing to sync), but it is only shown as selected on a
@@ -471,16 +471,22 @@ export function Header({
           </button>
         ) : (
           /* Not a control on today, and not labelled as one: `יום` over `3/10` is
-             what it says, and that reads correctly on its own. */
+             what it says, and that reads correctly on its own. A finished trip keeps
+             the slot and reads no progress through it (ADR-0239 §3); Phase 3 gives it
+             words. */
           <div className="hdr-anchor">
-            <span className="anchor-progress">
-              <span className="cap">{t.header.dayCap}</span>
-              <span className="num">{ltrIsolate(t.header.dayProgress(dayNumber, total))}</span>
-            </span>
-            <span className="anchor-back" aria-hidden="true" data-off>
-              <NavArrow variant="back" />
-              {t.header.todayShort}
-            </span>
+            {!isFinished && (
+              <>
+                <span className="anchor-progress">
+                  <span className="cap">{t.header.dayCap}</span>
+                  <span className="num">{ltrIsolate(t.header.dayProgress(dayNumber, total))}</span>
+                </span>
+                <span className="anchor-back" aria-hidden="true" data-off>
+                  <NavArrow variant="back" />
+                  {t.header.todayShort}
+                </span>
+              </>
+            )}
           </div>
         )}
         <div className="hdr-strip-wrap">
@@ -493,6 +499,7 @@ export function Header({
             unscoped={unscoped}
             dragging={dragging}
             overDate={overDate}
+            finished={isFinished}
           />
         </div>
         <ModeToggle />

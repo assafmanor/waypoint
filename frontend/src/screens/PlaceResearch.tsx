@@ -65,7 +65,8 @@ export function PlaceResearch({
   addFailed: boolean;
   onShow: (result: PlaceResult) => void;
   onFullPicture?: () => void;
-  onAdd: (result: PlaceResult) => void;
+  /** Absent on a finished trip, which adds nothing (ADR-0239 §4). */
+  onAdd?: (result: PlaceResult) => void;
 }) {
   if (offline) {
     // No Google, so no affordance — the same rule the near-me chip follows
@@ -112,7 +113,7 @@ export function PlaceResearch({
               summary={selectedId === result.googlePlaceId ? selectedKnowledge?.summary : undefined}
               onShow={() => onShow(result)}
               onFullPicture={onFullPicture}
-              onAdd={() => onAdd(result)}
+              onAdd={onAdd && (() => onAdd(result))}
             />
           ))}
       </div>
@@ -175,7 +176,7 @@ export function ResultRow({
   /** Open the picture full screen (ADR-0167 §11.1) — the same level below the card the committed
    *  place's hero reaches, since it is the same hero. */
   onFullPicture?: () => void;
-  onAdd: () => void;
+  onAdd?: () => void;
 }) {
   const body = (
     <>
@@ -227,25 +228,27 @@ export function ResultRow({
         >
           <Icon name="external" />
         </a>
-        <button
-          type="button"
-          className="map-addmaybe"
-          disabled={busy}
-          aria-label={
-            chooseMode
-              ? t.map.errand.chooseAria(result.primaryText)
-              : t.map.research.addAria(result.primaryText)
-          }
-          onClick={onAdd}
-        >
-          {chooseMode ? (
-            t.map.errand.choose
-          ) : (
-            <>
-              <Icon name="plus" /> {t.map.research.add}
-            </>
-          )}
-        </button>
+        {onAdd && (
+          <button
+            type="button"
+            className="map-addmaybe"
+            disabled={busy}
+            aria-label={
+              chooseMode
+                ? t.map.errand.chooseAria(result.primaryText)
+                : t.map.research.addAria(result.primaryText)
+            }
+            onClick={onAdd}
+          >
+            {chooseMode ? (
+              t.map.errand.choose
+            ) : (
+              <>
+                <Icon name="plus" /> {t.map.research.add}
+              </>
+            )}
+          </button>
+        )}
       </span>
       {/* **THE DECIDING CARD** (ADR-0167 §9.1, ADR-0166 §17): the picture, its credit and the
           summary, in the one component the committed place's card renders too — `deciding` is the

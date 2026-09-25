@@ -13,7 +13,7 @@
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import type { TripSnapshot } from '@waypoint/shared';
 import { TRIP } from '../fixtures';
 import { t } from '../i18n/he';
@@ -23,6 +23,7 @@ import { t } from '../i18n/he';
 const h = vi.hoisted(() => ({
   fetchSnapshot: vi.fn(),
   readCachedSnapshot: vi.fn(),
+  now: Date.parse('2026-07-08T12:00:00+09:00'),
 }));
 
 vi.mock('../lib/api', () => ({
@@ -44,10 +45,9 @@ vi.mock('../lib/outbox', () => ({
   restOrQueue: vi.fn(),
 }));
 vi.mock('../lib/ws', () => ({ openTripStream: () => () => {} }));
-// Pin the clock inside the trip so "today" is a deterministic in-range day.
-vi.mock('../lib/useClock', () => ({
-  getNow: () => Date.parse('2026-07-08T12:00:00+09:00'),
-}));
+// Pin the clock inside the trip so "today" is a deterministic in-range day; the
+// finished-trip block moves it past the end.
+vi.mock('../lib/useClock', () => ({ getNow: () => h.now }));
 vi.mock('./auth-state', () => ({ useAuth: () => ({ me: null }) }));
 vi.mock('../ui/Toast', () => ({ useToast: () => () => {} }));
 
@@ -88,6 +88,7 @@ function renderAt(path: string, children: ReactNode) {
 }
 
 beforeEach(() => {
+  h.now = Date.parse('2026-07-08T12:00:00+09:00');
   h.fetchSnapshot.mockReset().mockResolvedValue(SNAPSHOT);
   h.readCachedSnapshot.mockReset().mockResolvedValue(null);
 });
@@ -200,6 +201,48 @@ describe('the remembered day across tab moves (field report #39)', () => {
     await at('home', TODAY);
     go('days');
     await at('days', TODAY);
+  });
+});
+
+// **A finished trip opens on its first day** (ADR-0239 §2, F1). Four days past the end, the
+// trip's clamped today would be its last day; the first day is where a memory starts. Omitting
+// `?day=` keys on the same default, so the first day is the one a URL no longer needs to name.
+describe('a finished trip opens on its first day (ADR-0239 §2)', () => {
+  beforeEach(() => {
+    h.now = Date.parse('2026-07-18T12:00:00+09:00'); // TRIP ends 2026-07-14
+  });
+
+  function WhereProbe() {
+    const { activeDate, setActiveDate } = useTrip();
+    const { search } = useLocation();
+    return (
+      <div>
+        <span>
+          DAY:{activeDate} URL:{search}
+        </span>
+        <button onClick={() => setActiveDate('2026-07-05')}>first</button>
+        <button onClick={() => setActiveDate('2026-07-14')}>last</button>
+      </div>
+    );
+  }
+
+  it('resolves Home to the first day', async () => {
+    renderAt('/', <DayProbe />);
+    expect(await screen.findByText('DAY:2026-07-05')).toBeTruthy();
+  });
+
+  it('resolves a bare ?tab=days to the first day', async () => {
+    renderAt('/?tab=days', <DayProbe />);
+    expect(await screen.findByText('DAY:2026-07-05')).toBeTruthy();
+  });
+
+  it('writes no ?day= for the first day, and names the last one', async () => {
+    renderAt('/?tab=days&day=2026-07-10', <WhereProbe />);
+    await screen.findByText(/DAY:2026-07-10/);
+    fireEvent.click(screen.getByText('last'));
+    expect(await screen.findByText('DAY:2026-07-14 URL:?tab=days&day=2026-07-14')).toBeTruthy();
+    fireEvent.click(screen.getByText('first'));
+    expect(await screen.findByText('DAY:2026-07-05 URL:?tab=days')).toBeTruthy();
   });
 });
 

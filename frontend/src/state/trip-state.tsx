@@ -1075,11 +1075,13 @@ function TripReady({
   // never GPS. Falls back to the trip primary when nothing evidences a zone.
   // The trip's own today (ADR-0236 §1), so the day a fresh open lands on is the day the
   // trip is still living — the last one, while the commitment that began inside it runs.
-  const defaultDay = clampDate(
-    tripToday(trip, new Date(getNow()), zoneEvidence, state.events),
-    trip.startDate,
-    trip.endDate,
-  );
+  // A finished trip opens on its first day (ADR-0239 §2): this provider sits above
+  // `ModeProvider`, so it reads the phase off the same today `tripPhase` would.
+  const tripTodayNow = tripToday(trip, new Date(getNow()), zoneEvidence, state.events);
+  const defaultDay =
+    tripTodayNow > trip.endDate
+      ? trip.startDate
+      : clampDate(tripTodayNow, trip.startDate, trip.endDate);
   // Derived, tab-aware: the Home tab is today-anchored (both modes), so it ALWAYS
   // resolves to today regardless of any `?day=` — even a stray or hand-crafted one
   // can't make Home show a past/future day. Off Home, the day comes from `?day=`,

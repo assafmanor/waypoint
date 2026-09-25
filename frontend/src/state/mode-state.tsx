@@ -42,6 +42,9 @@ export interface GoingLive {
 interface ModeContextValue {
   mode: Mode;
   phase: TripPhase;
+  /** The trip has ended (`phase === 'past'`, ADR-0239 §1): what every surface that behaves
+   *  differently after the trip reads. */
+  isFinished: boolean;
   override: Mode | null;
   setOverride: (mode: Mode | null) => void;
   /** What the chrome paints — `mode`, except during the first morning's hold. */
@@ -129,7 +132,16 @@ export function ModeProvider({ children }: { children: ReactNode }) {
 
   return (
     <ModeContext.Provider
-      value={{ mode, phase, override, setOverride, chromeMode, goingLive, skipGoingLive }}
+      value={{
+        mode,
+        phase,
+        isFinished: phase === 'past',
+        override,
+        setOverride,
+        chromeMode,
+        goingLive,
+        skipGoingLive,
+      }}
     >
       {children}
     </ModeContext.Provider>

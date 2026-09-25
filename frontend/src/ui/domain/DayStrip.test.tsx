@@ -113,6 +113,22 @@ describe('DayStrip', () => {
     expect(pills[0].classList.contains('empty')).toBe(false); // has events
   });
 
+  // Nothing is filled after the trip, so an empty day is not a gap (ADR-0239 §3).
+  it('marks no empty day on a finished trip', () => {
+    const { container } = render(
+      <DayStrip
+        days={DAYS}
+        selected="2026-07-18"
+        today="2026-07-20"
+        mode="plan"
+        onSelect={() => {}}
+        finished
+      />,
+    );
+    expect(container.querySelectorAll('.wp-daypill')).toHaveLength(3);
+    expect(container.querySelectorAll('.empty')).toHaveLength(0);
+  });
+
   // `unscoped` = the host surface isn't showing one day: the Map's all-days scope
   // (ADR-0110 §4) and a trip-wide tab like the Index (field report #39). Both want
   // exactly this — the day is still in the URL, it is simply not the selected one here.

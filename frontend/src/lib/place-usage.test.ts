@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { TripPhase } from './mode';
 import {
   BOOKING_SOURCE,
   BOOKING_TYPE,
@@ -1176,6 +1177,61 @@ describe('comparePlacesBySchedule (the list reads in trip order)', () => {
       [place('later'), place('earlier')],
     );
     expect(order(idx)).toEqual(['earlier', 'later']);
+  });
+
+  describe('a finished trip is one block, day 1 first (ADR-0239 §2)', () => {
+    // Three days, all behind the clock, plus a hotel that spans two of them and an idea
+    // nobody scheduled.
+    const trip = () =>
+      buildPlaceUsageIndex(
+        [
+          event({
+            id: 'd1',
+            placeId: 'day-1',
+            date: '2026-07-05',
+            startsAt: '2026-07-05T09:00:00Z',
+          }),
+          event({
+            id: 'd2',
+            placeId: 'day-2',
+            date: '2026-07-06',
+            startsAt: '2026-07-06T09:00:00Z',
+          }),
+          event({ id: 'd3', placeId: 'day-3', date: DAY, startsAt: at('09:00') }),
+          event({
+            id: 'h',
+            placeId: 'hotel',
+            date: '2026-07-06',
+            endDate: DAY,
+            startsAt: '2026-07-06T15:00:00Z',
+            endsAt: at('11:00'),
+          }),
+        ],
+        [],
+        [maybe({ id: 'm', placeId: 'someday' })],
+        [place('day-1'), place('day-2'), place('day-3'), place('hotel'), place('someday')],
+      );
+    const AFTER = Date.parse('2026-07-11T12:00:00Z');
+    const ctx = (phase: TripPhase) => ({ nameOf, nowMs: AFTER, today: '2026-07-11', phase });
+    const ordered = (phase: TripPhase) =>
+      [...trip().values()]
+        .sort((a, b) => comparePlacesBySchedule(a, b, ctx(phase)))
+        .map((u) => u.placeId);
+
+    it('orders day 1 first, each place by its first day, the undated idea last', () => {
+      expect(ordered('past')).toEqual(['day-1', 'day-2', 'hotel', 'day-3', 'someday']);
+    });
+
+    it('puts nothing behind you, so `מה נשאר` has nothing to hide', () => {
+      for (const usage of trip().values()) {
+        expect(placeBlock(usage, ctx('past'))).not.toBe(PLACE_BLOCK.behind);
+        expect(isPlaceLeft(usage, ctx('past'))).toBe(true);
+      }
+    });
+
+    it('leaves a live trip at the same clock unchanged: newest first, below the idea', () => {
+      expect(ordered('live')).toEqual(['someday', 'hotel', 'day-3', 'day-2', 'day-1']);
+    });
   });
 });
 

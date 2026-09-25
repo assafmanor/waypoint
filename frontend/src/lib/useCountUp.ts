@@ -7,7 +7,7 @@
 //
 // Deliberately NOT a generic tween: it counts in INTEGER steps to a whole number, so
 // what runs up is the value itself rather than a float being rounded for display.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { prefersReducedMotion } from './motion';
 import { COUNT_UP } from '../constants';
 
@@ -19,19 +19,17 @@ import { COUNT_UP } from '../constants';
  *  number the trip does not have. */
 export function useCountUp(target: number, armed = true): number {
   const [value, setValue] = useState(target);
-  // The animation runs once per target, so a re-render on an unrelated state change
-  // (the invite link resolving, the CTA switching label) must not restart it.
-  const playedFor = useRef<number | null>(null);
 
+  // Runs once per target: the deps alone keep an unrelated re-render (the invite link
+  // resolving, the CTA switching label) from restarting it. No "already played" ref on
+  // top — it survived the cleanup that cleared the interval, so StrictMode's second run
+  // and any N → 0 → N target returned early and stuck at 0 (F5).
   useEffect(() => {
     if (!armed) return;
     if (!Number.isFinite(target) || target <= 0 || prefersReducedMotion()) {
       setValue(target);
       return;
     }
-    if (playedFor.current === target) return;
-    playedFor.current = target;
-
     let step = 0;
     setValue(0);
     const id = setInterval(() => {
