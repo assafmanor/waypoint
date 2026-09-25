@@ -175,7 +175,7 @@ vi.mock('../state/trip-state', () => ({
   }),
 }));
 vi.mock('../state/mode-state', () => ({
-  useMode: () => ({ mode: currentMode, phase: currentPhase }),
+  useMode: () => ({ mode: currentMode, phase: currentPhase, isFinished: currentPhase === 'past' }),
 }));
 const addMaybe = vi.fn();
 // The Map hosts `EventForm` since ADR-0135 §3, so the stub covers the verbs that form calls.

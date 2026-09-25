@@ -133,7 +133,7 @@ vi.mock('../state/trip-state', () => ({
   }),
 }));
 vi.mock('../state/mode-state', () => ({
-  useMode: () => ({ mode: currentMode, phase: currentPhase }),
+  useMode: () => ({ mode: currentMode, phase: currentPhase, isFinished: currentPhase === 'past' }),
 }));
 // Plan-mode research writes through the shelf verb; the write itself is covered in
 // PlaceResearch.test.tsx, so the screen only needs the hook to exist.

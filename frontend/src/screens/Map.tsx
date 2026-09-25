@@ -295,10 +295,9 @@ export function MapView() {
     enrichments,
     tasks,
   } = useTrip();
-  const { mode, phase } = useMode();
   // A finished trip is a memory, not a plan (ADR-0239): the live trip's help withdraws (§3)
   // and nothing on this tab adds to it (§4). Settling stays, being the one sanctioned write.
-  const finished = phase === 'past';
+  const { mode, phase, isFinished: finished } = useMode();
   const offline = useIsOffline() || usingCachedSnapshot;
   const nowMs = useClock().getTime();
   const navigate = useNavigate();
