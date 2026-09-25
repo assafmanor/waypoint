@@ -431,8 +431,9 @@ export interface MapPaneProps {
   cardReserveAt?: () => number;
   /** Locate was tapped with no fix to centre on. The camera half stays here (it needs
    *  the map instance); the permission ladder is the screen's, because that is where
-   *  `useGeolocation` and the pre-prompt live (ADR-0126 §6). */
-  onLocate: () => void;
+   *  `useGeolocation` and the pre-prompt live (ADR-0126 §6). Absent, the control is too
+   *  (a finished trip, ADR-0239 §3). */
+  onLocate?: () => void;
 }
 
 /** Below `MAP_ZOOM.DOT_BELOW` every pin degrades to a dot (ADR-0121 §6, finally built).
@@ -1925,7 +1926,7 @@ function MapCameraControls({
   areaCount: number | null;
   areaSorted: boolean;
   onAreaSort: () => void;
-  onLocate: () => void;
+  onLocate?: () => void;
   /** See `MapPaneProps` — the pane hands it straight to the camera. */
   arrival?: MapArrival | null;
   /** The day's lines, so the camera can frame the one the selection is ABOUT (ADR-0206 §AC8).
@@ -2122,7 +2123,7 @@ function MapCameraControls({
     // A repeat tap steps one level in from wherever the map IS (#20) — statelessly, so
     // a pinch between taps cannot desynchronise it and no tap count lives anywhere.
     if (me) locateCamera(me);
-    else onLocate();
+    else onLocate?.();
   }, [me, locateCamera, onLocate]);
 
   // The job the second tap used to do invisibly, now a control that says it: frame
@@ -2250,15 +2251,17 @@ function MapCameraControls({
       {/* One cluster, so the band's geometry is written once and the
           one-floating-object rule (ADR-0122 §6) needs one selector, not three. */}
       <div className="map-camctl">
-        <button
-          type="button"
-          className="map-recenter"
-          aria-label={t.map.locate}
-          title={t.map.locate}
-          onClick={locate}
-        >
-          <Icon name="locate" />
-        </button>
+        {onLocate && (
+          <button
+            type="button"
+            className="map-recenter"
+            aria-label={t.map.locate}
+            title={t.map.locate}
+            onClick={locate}
+          >
+            <Icon name="locate" />
+          </button>
+        )}
         {framable && (
           <button
             type="button"

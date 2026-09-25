@@ -94,6 +94,7 @@ const createNote = vi.fn(() => Promise.resolve(undefined));
 let tripBookings: Booking[] = [];
 let tripEnrichments: Record<string, DeliveredEnrichmentFields> = {};
 let currentMode = 'trip';
+let currentPhase = 'live';
 let isOffline = false;
 
 // The index write layer, stubbed at module scope so it is BOTH assertable and stable: the
@@ -173,7 +174,9 @@ vi.mock('../state/trip-state', () => ({
     attachmentVerbs: { attachDocument: vi.fn(), detachDocument: vi.fn() },
   }),
 }));
-vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: currentMode }) }));
+vi.mock('../state/mode-state', () => ({
+  useMode: () => ({ mode: currentMode, phase: currentPhase, isFinished: currentPhase === 'past' }),
+}));
 const addMaybe = vi.fn();
 // The Map hosts `EventForm` since ADR-0135 §3, so the stub covers the verbs that form calls.
 // `done`/`skip`/`restore` are the SHIPPED verbs the settle cluster calls (ADR-0139). This
@@ -650,6 +653,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     stubShapes.clear();
     tripEnrichments = {};
     currentMode = 'trip';
+    currentPhase = 'live';
     isOffline = false;
     paneProps.current = {};
     permissionState = 'prompt';
@@ -2909,6 +2913,14 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       });
 
       // ── 6b: THE FREE GESTURE ────────────────────────────────────────────────────
+      it('on a finished trip a long press on blank canvas makes nothing (ADR-0239 §4)', () => {
+        currentPhase = 'past';
+        seed();
+        render(wrap(<MapView />));
+        holdCanvas();
+        expect(draftForm()).toBeNull();
+      });
+
       it('a long press opens the form on an empty name and spends nothing', () => {
         seed();
         render(wrap(<MapView />));

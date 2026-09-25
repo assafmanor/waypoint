@@ -101,6 +101,7 @@ export function HostTasks({
   host,
   quiet,
   staging,
+  canAdd = true,
 }: {
   /** `id` is absent on a CREATE, where there is nothing to hang an FK on yet — the section
    *  then reads and writes `staging` instead of trip state. */
@@ -113,6 +114,8 @@ export function HostTasks({
   quiet?: boolean;
   /** Required when `host.id` is absent; ignored when it is not. */
   staging?: TaskStaging;
+  /** Whether the header carries a way in at all — `HostNotes`' prop of the same name. */
+  canAdd?: boolean;
 }) {
   const { tasks, subtasks, users, taskVerbs } = useTrip();
   const now = useClock();
@@ -182,7 +185,7 @@ export function HostTasks({
         clock={clock}
         hostSettled={hostId ? settledHosts.has(`${host.kind}:${hostId}`) : false}
         quiet={quiet}
-        onAdd={() => setSheet('create')}
+        onAdd={canAdd ? () => setSheet('create') : undefined}
         // A staged task has nothing to tick: it does not exist yet, and completing something
         // you have not saved is a state with nowhere to live.
         onTick={(task) => (hostId ? void taskVerbs.tickTask(task) : undefined)}
