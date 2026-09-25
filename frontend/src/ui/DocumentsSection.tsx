@@ -53,7 +53,10 @@ export function DocumentsSection({
   onFilterChange?: (filter: DocumentTypeFilter) => void;
 } = {}) {
   const { trip, documents, notes } = useTrip();
-  const { mode } = useMode();
+  const { mode, phase } = useMode();
+  // A finished trip's documents still open (ADR-0049 §2), and nothing uploads, renames or
+  // deletes one (ADR-0239 §4).
+  const finished = phase === 'past';
   // Built once per note-list change rather than filtered per row (ADR-0152 §6c).
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
   const [uploading, setUploading] = useState(false);
@@ -182,7 +185,7 @@ export function DocumentsSection({
         </div>
       )}
 
-      {!isEmpty && !searchMode && (
+      {!isEmpty && !searchMode && !finished && (
         <button type="button" className="addbtn" onClick={() => setUploading(true)}>
           <Icon name="plus" /> {t.docs.add}
         </button>
@@ -197,12 +200,14 @@ export function DocumentsSection({
           </div>
           <div className="et">{t.docs.emptyTitle}</div>
           <div className="es">{t.docs.emptyBody}</div>
-          <button type="button" className="ea" onClick={() => setUploading(true)}>
-            <span className="plus">
-              <Icon name="plus" />
-            </span>{' '}
-            {t.docs.emptyAdd}
-          </button>
+          {!finished && (
+            <button type="button" className="ea" onClick={() => setUploading(true)}>
+              <span className="plus">
+                <Icon name="plus" />
+              </span>{' '}
+              {t.docs.emptyAdd}
+            </button>
+          )}
         </div>
       )}
 
@@ -253,7 +258,12 @@ export function DocumentsSection({
         />
       )}
       {managing && (
-        <DocumentManageSheet tripId={trip.id} doc={managing} onClose={() => setManaging(null)} />
+        <DocumentManageSheet
+          tripId={trip.id}
+          doc={managing}
+          frozen={finished}
+          onClose={() => setManaging(null)}
+        />
       )}
     </>
   );

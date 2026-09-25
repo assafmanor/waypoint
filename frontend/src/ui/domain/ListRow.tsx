@@ -261,7 +261,7 @@ export function RowActionList({ actions }: { actions: RowAction[] }) {
 
   return (
     <>
-      <div className="wp-row-actions">{safe.map(item)}</div>
+      {safe.length > 0 && <div className="wp-row-actions">{safe.map(item)}</div>}
       {danger.length > 0 && (
         <div className="wp-row-actions wp-row-actions-danger">{danger.map(item)}</div>
       )}

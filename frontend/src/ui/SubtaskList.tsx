@@ -79,8 +79,10 @@ export function SubtaskList({
   /** `form` drops the card inset: inside the editor the field is already inset, so the steps
    *  align to the field rather than to a card. */
   variant?: 'row' | 'form';
-  onAdd: (draft: SubtaskDraft) => void;
-  onRename: (task: Task, draft: SubtaskDraft) => void;
+  /** Both absent on a finished trip (ADR-0239 §4): the steps read and tick, and none is added
+   *  or reopened for editing. */
+  onAdd?: (draft: SubtaskDraft) => void;
+  onRename?: (task: Task, draft: SubtaskDraft) => void;
   /** Absent while a step cannot be ticked — a staged step on a CREATE does not exist yet,
    *  and completing something unsaved is a state with nowhere to live (`HostTasks`' rule). */
   onTick?: (task: Task) => void;
@@ -158,12 +160,22 @@ export function SubtaskList({
   const commit = () => {
     const title = draft.trim();
     if (!title) return;
-    if (mode === 'edit' && editing) onRename(editing, { title, assigneeUserId: who });
+    if (mode === 'edit' && editing) onRename?.(editing, { title, assigneeUserId: who });
     else if (steps.length >= TASK_SUBTASK_CAP) return setFull(true);
-    else onAdd({ title, assigneeUserId: who });
+    else onAdd?.({ title, assigneeUserId: who });
     reset();
     inputRef.current?.focus();
   };
+
+  const stepLabel = (step: Task) => (
+    <>
+      <span className="tsk-title-txt">{step.title}</span>
+      {/* The face alone, at the end of the title row — the screen's rule, so a step reads the
+          same way wherever it is rendered. Absent when nobody owns it: the slot says that by
+          being empty. */}
+      <StepAssignee users={users} assigneeUserId={step.assigneeUserId} />
+    </>
+  );
 
   /** Tapping a step's words returns it to the composer, in its own place. */
   const edit = (task: Task) => {
@@ -310,13 +322,13 @@ export function SubtaskList({
                 />
               </span>
               <span className="note-item-main">
-                <button type="button" className="note-item-b" onClick={() => edit(step)}>
-                  <span className="tsk-title-txt">{step.title}</span>
-                  {/* The face alone, at the end of the title row — the screen's rule, so a
-                      step reads the same way wherever it is rendered. Absent when nobody owns
-                      it: the slot says that by being empty. */}
-                  <StepAssignee users={users} assigneeUserId={step.assigneeUserId} />
-                </button>
+                {onRename ? (
+                  <button type="button" className="note-item-b" onClick={() => edit(step)}>
+                    {stepLabel(step)}
+                  </button>
+                ) : (
+                  <span className="note-item-b">{stepLabel(step)}</span>
+                )}
               </span>
             </div>
           ),

@@ -18,6 +18,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TASK_STATUS, type Task, type User } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
+import { useMode } from '../state/mode-state';
 import { useAuth } from '../state/auth-state';
 import { useClock } from '../lib/useClock';
 import {
@@ -97,6 +98,9 @@ export function IndexTasksView({
   const { me } = useAuth();
   const now = useClock();
   const navigate = useNavigate();
+  // A finished trip adds and edits nothing (ADR-0239 §4). What stays is the tick and its
+  // dismiss/reopen twins: settling a task is the one write a record keeps.
+  const finished = useMode().phase === 'past';
 
   const [facet, setFacet] = useState<TaskFacet>(TASK_FACET.ALL);
   // null = closed; 'create' = a new task; a Task = editing that one.
@@ -288,13 +292,15 @@ export function IndexTasksView({
         steps={subtasks.get(row.task.id) ?? EMPTY_STEPS}
         users={users}
         onTick={() => void taskVerbs.tickTask(row.task)}
-        onAddStep={(draft) => addStep(row.task, draft)}
-        onRenameStep={(step, draft) => void taskVerbs.updateTask(step.id, draft)}
+        onAddStep={finished ? undefined : (draft) => addStep(row.task, draft)}
+        onRenameStep={
+          finished ? undefined : (step, draft) => void taskVerbs.updateTask(step.id, draft)
+        }
         onTickStep={(step) => void taskVerbs.tickTask(step)}
         onRemoveStep={(step) => void taskVerbs.deleteTask(step.id)}
         open={openId === row.task.id}
         onToggle={() => setOpenId((current) => (current === row.task.id ? null : row.task.id))}
-        onEdit={() => setSheet(row.task)}
+        onEdit={finished ? undefined : () => setSheet(row.task)}
         onManage={() => setManage(row.task)}
       />
     );
@@ -318,7 +324,11 @@ export function IndexTasksView({
           icon={<Icon name="check" />}
           title={t.tasks.empty.title}
           body={t.tasks.empty.body}
-          action={{ label: t.tasks.empty.action, onClick: () => setSheet('create') }}
+          action={
+            finished
+              ? undefined
+              : { label: t.tasks.empty.action, onClick: () => setSheet('create') }
+          }
         />
       ) : (
         <>
@@ -333,9 +343,11 @@ export function IndexTasksView({
             />
           </div>
 
-          <button type="button" className="addbtn" onClick={() => setSheet('create')}>
-            <Icon name="plus" /> {t.tasks.add}
-          </button>
+          {!finished && (
+            <button type="button" className="addbtn" onClick={() => setSheet('create')}>
+              <Icon name="plus" /> {t.tasks.add}
+            </button>
+          )}
 
           {matchCount > 0 ? (
             <RevealList
@@ -366,7 +378,7 @@ export function IndexTasksView({
           // §5) — a tap that does something non-obvious needs a named twin.
           derivedAction={(() => {
             const auto = automatic.find((a) => a.key === manage.derivedKey);
-            return auto
+            return auto && !finished
               ? {
                   label: auto.title,
                   onSelect: () => {
@@ -376,16 +388,24 @@ export function IndexTasksView({
                 }
               : undefined;
           })()}
-          onEdit={() => {
-            const task = manage;
-            setManage(null);
-            setSheet(task);
-          }}
-          onToggleImportant={() => {
-            const task = manage;
-            setManage(null);
-            applyVerb(task, { important: !task.important });
-          }}
+          onEdit={
+            finished
+              ? undefined
+              : () => {
+                  const task = manage;
+                  setManage(null);
+                  setSheet(task);
+                }
+          }
+          onToggleImportant={
+            finished
+              ? undefined
+              : () => {
+                  const task = manage;
+                  setManage(null);
+                  applyVerb(task, { important: !task.important });
+                }
+          }
           onDismiss={() => {
             const task = manage;
             setManage(null);
@@ -396,11 +416,15 @@ export function IndexTasksView({
             setManage(null);
             applyVerb(task, { status: TASK_STATUS.OPEN });
           }}
-          onDelete={() => {
-            const task = manage;
-            setManage(null);
-            void taskVerbs.deleteTask(task.id);
-          }}
+          onDelete={
+            finished
+              ? undefined
+              : () => {
+                  const task = manage;
+                  setManage(null);
+                  void taskVerbs.deleteTask(task.id);
+                }
+          }
           onClose={() => setManage(null)}
         />
       )}
@@ -457,14 +481,15 @@ function TaskLi({
   steps: Task[];
   users: User[];
   onTick: () => void;
-  onAddStep: (draft: SubtaskDraft) => void;
-  onRenameStep: (step: Task, draft: SubtaskDraft) => void;
+  /** This and the two optional verbs below are absent on a finished trip (ADR-0239 §4). */
+  onAddStep?: (draft: SubtaskDraft) => void;
+  onRenameStep?: (step: Task, draft: SubtaskDraft) => void;
   onTickStep: (step: Task) => void;
   onRemoveStep: (step: Task) => void;
   /** Expanded: the body is printed under the row and the foot is under that. */
   open: boolean;
   onToggle: () => void;
-  onEdit: () => void;
+  onEdit?: () => void;
   onManage: () => void;
 }) {
   const unsynced = useUnsynced(task.id);
@@ -650,8 +675,8 @@ function TaskLi({
               one with no steps — otherwise nothing could get its first (§10). It hides once
               the composer is showing: one control, not two six pixels apart. */}
           <RowOpenFoot
-            addLabel={composing ? undefined : t.tasks.subtasks.add}
-            onAdd={composing ? undefined : () => setComposing(true)}
+            addLabel={composing || !onAddStep ? undefined : t.tasks.subtasks.add}
+            onAdd={composing || !onAddStep ? undefined : () => setComposing(true)}
             editLabel={t.tasks.manage.edit}
             onEdit={onEdit}
           />

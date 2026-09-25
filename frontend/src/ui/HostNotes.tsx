@@ -90,6 +90,7 @@ export function useAnchorName(
 export function HostNotes({
   host,
   canAdd = true,
+  frozen = false,
   onAdd,
   compose,
   composeActive,
@@ -102,6 +103,9 @@ export function HostNotes({
   host: Omit<NoteHostRef, 'id'> & { id?: string };
   /** Whether the header carries a way in at all. */
   canAdd?: boolean;
+  /** **A finished trip** (ADR-0239 §4): the notes still read and open full screen, and
+   *  nothing adds or edits one. */
+  frozen?: boolean;
   /** **What `＋ פתק` does, when it is not `NoteSheet`.** A host FORM passes the composer's
    *  `openNew` here, so the control reveals the inline box below instead of opening a second
    *  form over a form (ADR-0192 §2's 2026-08-16 reversal — owner: _"clicking the + פתק should
@@ -154,8 +158,8 @@ export function HostNotes({
         users={users}
         now={now}
         inheritedFrom={inheritedFrom}
-        onAdd={canAdd ? (onAdd ?? (() => setEditing('create'))) : undefined}
-        onEdit={setEditing}
+        onAdd={canAdd && !frozen ? (onAdd ?? (() => setEditing('create'))) : undefined}
+        onEdit={frozen ? undefined : setEditing}
         onOpenFull={setReading}
         compose={compose}
         composeActive={composeActive}
@@ -171,11 +175,15 @@ export function HostNotes({
           host={hostId ? resolved : undefined}
           users={users}
           now={now}
-          onEdit={() => {
-            const note = reading;
-            setReading(null);
-            setEditing(note);
-          }}
+          onEdit={
+            frozen
+              ? undefined
+              : () => {
+                  const note = reading;
+                  setReading(null);
+                  setEditing(note);
+                }
+          }
           onClose={() => setReading(null)}
         />
       )}

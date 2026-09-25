@@ -157,6 +157,14 @@ export function visibleRows(
   );
 }
 
+/** Every booking with its linked event, chronological. A finished trip lists these as they
+ *  are (ADR-0239 §4): once everything is past, a past/upcoming split hides the whole trip. */
+export function bookingRows(bookings: Booking[], events: TripEvent[]): BookingRow[] {
+  return bookings
+    .map((booking) => ({ booking, event: events.find((e) => e.bookingId === booking.id) }))
+    .sort(byWhen);
+}
+
 export function splitBookings(
   bookings: Booking[],
   events: TripEvent[],
@@ -164,18 +172,15 @@ export function splitBookings(
   now: number,
 ): { upcoming: BookingRow[]; past: BookingRow[] } {
   const at = new Date(now);
-  const rows: BookingRow[] = bookings.map((booking) => ({
-    booking,
-    event: events.find((e) => e.bookingId === booking.id),
-  }));
+  const rows = bookingRows(bookings, events);
   // A booking is behind you once its linked event's closing edge has passed
   // (ADR-0049): a flight at landing, a hotel at check-out, an untimed booking at
   // midnight. An unlinked booking has no place on the timeline yet, so it's never
   // past. The edge is derived type-agnostically by `eventEndBoundary`.
   const isPast = (r: BookingRow) => !!r.event && isEventPast(r.event, at, timezone);
   return {
-    upcoming: rows.filter((r) => !isPast(r)).sort(byWhen),
-    past: rows.filter(isPast).sort(byWhen),
+    upcoming: rows.filter((r) => !isPast(r)),
+    past: rows.filter(isPast),
   };
 }
 

@@ -128,7 +128,8 @@ vi.mock('../state/auth-state', () => ({
   // no VAPID keypair, so the ask renders nothing, which is what these tests are about.
   useMaybeAuth: () => ({ me: { user: { id: 'u1' } } }),
 }));
-vi.mock('../lib/useClock', () => ({ useClock: () => NOW }));
+let clockNow = NOW;
+vi.mock('../lib/useClock', () => ({ useClock: () => clockNow }));
 vi.mock('../lib/outbox', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/outbox')>();
   return {
@@ -186,9 +187,53 @@ describe('IndexTasksView', () => {
   afterEach(() => {
     cleanup();
     tripTasks = ALL;
+    clockNow = NOW;
     created.length = 0;
     updated.length = 0;
     deleted.length = 0;
+  });
+
+  // A FINISHED TRIP ADDS AND EDITS NOTHING (ADR-0239 §4). The trip ends 08-20. Ticking and its
+  // dismiss/reopen twins stay: settling is the one write a record keeps.
+  describe('a finished trip', () => {
+    const OPEN_TITLES = [overdue, today, later, undated, mine].map((x) => x.title);
+    const foot = () => document.querySelector('.row-open-foot')!;
+
+    it("offers the add button, the open row's verbs and the full ⋯ on a live trip", () => {
+      show();
+      expect(document.querySelector('.addbtn')).not.toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: later.title }));
+      expect(foot().textContent).toContain(t.tasks.manage.edit);
+      expect(foot().textContent).toContain(t.tasks.subtasks.add);
+    });
+
+    it('lists every task with no add button, no edit on the open row, and only settling in the ⋯', () => {
+      clockNow = new Date('2026-08-25T09:00:00.000Z');
+      show();
+      expect(document.querySelector('.addbtn')).toBeNull();
+      expect(titles()).toEqual(expect.arrayContaining(OPEN_TITLES));
+
+      fireEvent.click(screen.getByRole('button', { name: later.title }));
+      expect(foot().textContent).not.toContain(t.tasks.manage.edit);
+      expect(foot().textContent).not.toContain(t.tasks.subtasks.add);
+
+      const row = visibleRows().find((r) => within(r).queryByText(later.title))!;
+      fireEvent.click(row.querySelector('.wp-listrow-kebab')!);
+      const sheet = screen.getByRole('dialog');
+      expect(
+        [...sheet.querySelectorAll('.wp-row-action')].map((b) => b.textContent?.trim()),
+      ).toEqual([t.tasks.manage.dismiss]);
+      fireEvent.click(within(sheet).getByRole('button', { name: t.tasks.manage.dismiss }));
+      expect(updated).toEqual([{ id: later.id, input: { status: TASK_STATUS.DISMISSED } }]);
+    });
+
+    it('still ticks a task', () => {
+      clockNow = new Date('2026-08-25T09:00:00.000Z');
+      show();
+      const row = visibleRows().find((r) => within(r).queryByText(later.title))!;
+      fireEvent.click(row.querySelector('.tsk-tick')!);
+      expect(updated).toEqual([{ id: later.id, input: { status: TASK_STATUS.DONE } }]);
+    });
   });
 
   describe('the row', () => {

@@ -61,7 +61,7 @@ export function NoteFullScreen({
   now: Date;
   /** Absent when there is nowhere to go, or when the surface behind this IS the host. */
   onGoToHost?: () => void;
-  onEdit: () => void;
+  onEdit?: () => void;
   onClose: () => void;
 }) {
   // **The tint is read here, not taken as a prop** — and the prop version was written first,
