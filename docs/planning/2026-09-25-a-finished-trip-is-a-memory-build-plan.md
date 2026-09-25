@@ -125,6 +125,8 @@ Built · PR #872
 
 ### 0.7 · The count-up (F5)
 
+Built · PR #867
+
 - **Files:** `lib/useCountUp.ts:32`. Reset `playedFor` in the effect's cleanup, so a re-run after a cleared interval plays rather than returning at 0 (StrictMode, and any N → 0 → N target).
 - **Tests:** a spec that mounts under `<StrictMode>` with motion wanted and asserts the final value is the target. Its sibling `PlanHome.count-up.test.tsx` does not run under StrictMode, which is why it missed this.
 
