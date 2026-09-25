@@ -79,7 +79,7 @@ Built · PR #872
 
 ### 0.3 · The Map (F2, F3, F4 · §2, §3)
 
-Built · PR #PENDING
+Built · PR #871
 
 - **Files:**
   - `screens/Map.tsx:329`: `setAllDays(phase === 'past')` in place of `false`.
